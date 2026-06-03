@@ -30,7 +30,7 @@
     --radius:10px; --radius-sm:6px;
   }
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{font-family:'Calibri',Calibri,Arial,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+  body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
 
   /* Titlebar / top panel */
   .titlebar{min-height:54px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:stretch;padding:0 14px;gap:6px;flex-shrink:0;}
@@ -62,7 +62,7 @@
   .sidebar-section{padding:0 12px;margin-bottom:16px;}
   .sidebar-label{font-size:13px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:0 4px;margin-bottom:6px;}
   .week-nav{padding:0 12px;margin-bottom:16px;}
-  .week-display{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;font-size:14px;color:var(--text);text-align:center;margin-bottom:6px;font-family:'Calibri',Consolas,monospace;}
+  .week-display{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;font-size:13px;color:var(--text);text-align:center;margin-bottom:6px;font-family:'DM Mono',monospace;}
   .week-btns{display:flex;gap:4px;}
   .week-btn{flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:var(--radius-sm);padding:5px;cursor:pointer;font-size:15px;transition:all 0.15s;display:flex;align-items:center;justify-content:center;}
   .week-btn:hover{background:var(--border2);color:var(--text);}
@@ -72,7 +72,7 @@
   .worker-avatar{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;}
   .worker-info{flex:1;min-width:0;}
   .worker-name{font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .worker-hours{font-size:14px;color:var(--text2);}
+  .worker-hours{font-size:12px;color:var(--text2);margin-top:2px;}
   .worker-actions{display:flex;gap:2px;opacity:0;transition:opacity 0.15s;}
   .worker-chip:hover .worker-actions{opacity:1;}
   .worker-act-btn{background:none;border:none;cursor:pointer;padding:3px 4px;border-radius:4px;font-size:14px;transition:background 0.15s;}
@@ -91,11 +91,11 @@
   .page-section{display:none;}
   .page-section.visible{display:block;}
   .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
-  .page-title{font-size:14px;font-weight:600;color:var(--text);letter-spacing:-0.5px;}
-  .page-sub{font-size:15px;color:var(--text2);margin-top:2px;}
+  .page-title{font-size:22px;font-weight:600;color:var(--text);letter-spacing:-0.5px;}
+  .page-sub{font-size:14px;color:var(--text2);margin-top:4px;}
 
   /* Buttons */
-  .btn{touch-action:manipulation;display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--radius-sm);font-size:15px;font-family:'Calibri',Calibri,Arial,sans-serif;font-weight:500;cursor:pointer;border:1px solid var(--border2);background:var(--bg3);color:var(--text);transition:all 0.15s;}
+  .btn{touch-action:manipulation;display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--radius-sm);font-size:15px;font-family:'DM Sans',system-ui,sans-serif;font-weight:500;cursor:pointer;border:1px solid var(--border2);background:var(--bg3);color:var(--text);transition:all 0.15s;}
   .btn:hover{background:var(--bg2);}
   .btn:active{transform:scale(0.98);}
   .btn.accent{background:var(--accent);border-color:var(--accent2);color:#fff;}
@@ -112,15 +112,15 @@
 
   /* Stats */
   .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:20px;}
-  .stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;}
-  .stat-label{font-size:14px;color:var(--text2);margin-bottom:4px;}
-  .stat-val{font-size:15px;font-weight:600;color:var(--text);letter-spacing:-0.5px;font-family:'Calibri',Consolas,monospace;}
-  .stat-unit{font-size:15px;color:var(--text2);font-weight:400;}
+  .stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;}
+  .stat-label{font-size:13px;color:var(--text2);margin-bottom:6px;}
+  .stat-val{font-size:28px;font-weight:600;color:var(--text);letter-spacing:-1px;font-family:'DM Mono',monospace;line-height:1;}
+  .stat-unit{font-size:16px;color:var(--text2);font-weight:400;}
 
   /* Gantt */
   .gantt-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;user-select:none;}
   .gantt-header{display:grid;background:var(--bg3);border-bottom:1px solid var(--border);}
-  .gantt-header-cell{padding:10px 8px;font-size:14px;font-weight:600;color:var(--text2);text-align:center;text-transform:uppercase;letter-spacing:0.5px;border-right:1px solid var(--border);}
+  .gantt-header-cell{padding:12px 8px;font-size:13px;font-weight:600;color:var(--text2);text-align:center;text-transform:uppercase;letter-spacing:0.5px;border-right:1px solid var(--border);line-height:1.4;}
   .gantt-header-cell:first-child{text-align:left;border-right:1px solid var(--border2);}
   .gantt-header-cell:last-child{border-right:none;}
   .day-hebrew{font-size:14px;color:var(--accent);font-weight:700;margin-top:2px;display:block;}
@@ -151,7 +151,7 @@
   .modal-title{font-size:19px;font-weight:600;color:var(--text);margin-bottom:18px;letter-spacing:-0.3px;}
   .field{margin-bottom:14px;}
   .field label{display:block;font-size:14px;color:var(--text2);margin-bottom:5px;font-weight:500;}
-  .field input,.field select{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:15px;font-family:'Calibri',Calibri,Arial,sans-serif;padding:8px 10px;outline:none;transition:border-color 0.15s;}
+  .field input,.field select{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:15px;font-family:'DM Sans',system-ui,sans-serif;padding:8px 10px;outline:none;transition:border-color 0.15s;}
   .field input:focus,.field select:focus{border-color:var(--accent);}
   .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
   .hours-badge{display:inline-block;font-size:14px;color:var(--green);background:var(--green-bg);border-radius:4px;padding:3px 8px;margin-top:6px;font-family:'Calibri',Consolas,monospace;}
@@ -159,7 +159,7 @@
   .day-grid{display:flex;flex-direction:column;gap:6px;}
   .day-row{display:grid;grid-template-columns:42px 68px 1fr 1fr;gap:6px;align-items:center;}
   .day-tag{font-size:14px;font-weight:600;color:var(--text2);text-align:center;line-height:1.3;}
-  .day-row select,.day-row input{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;font-family:'Calibri',Calibri,Arial,sans-serif;padding:5px 7px;outline:none;width:100%;}
+  .day-row select,.day-row input{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;font-family:'DM Sans',system-ui,sans-serif;padding:5px 7px;outline:none;width:100%;}
   .day-row select:focus,.day-row input:focus{border-color:var(--accent);}
 
   /* Clients page */
@@ -175,6 +175,10 @@
   ::-webkit-scrollbar{width:5px;}
   ::-webkit-scrollbar-track{background:transparent;}
   ::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:3px;}
+
+  /* Section eyebrow */
+  .eyebrow{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:10px;display:flex;align-items:center;gap:6px;}
+  .eyebrow-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
 
   /* Toast */
   .toast{position:fixed;bottom:20px;right:20px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:10px 16px;font-size:15px;color:var(--text);z-index:999;opacity:0;transform:translateY(8px);transition:all 0.2s;pointer-events:none;}
@@ -388,33 +392,40 @@
 
       <!-- On-site now -->
       <div style="margin-bottom:20px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">🟢 On Site Now</div>
-        <div id="dashOnSite" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px"></div>
+        <div class="eyebrow"><div class="eyebrow-dot" style="background:var(--green)"></div>On Site Now</div>
+        <div id="dashOnSite" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px"></div>
       </div>
 
       <!-- Missing from shift -->
       <div style="margin-bottom:20px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">⚠️ Should Be Here (Not Clocked In)</div>
-        <div id="dashMissing" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px"></div>
+        <div class="eyebrow"><div class="eyebrow-dot" style="background:var(--amber)"></div>Should Be Here (Not Clocked In)</div>
+        <div id="dashMissing" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px"></div>
       </div>
 
       <!-- Today's log -->
       <div style="margin-bottom:20px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">📋 Today's Log</div>
+        <div class="eyebrow"><div class="eyebrow-dot" style="background:var(--blue)"></div>Today's Log</div>
         <div id="dashLog" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden"></div>
       </div>
 
       <!-- Salary summary -->
       <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px">💰 Salary Calculation</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div class="eyebrow" style="margin-bottom:0"><span style="color:var(--amber)">💰</span>&nbsp;Salary Calculation · Israeli Rules</div>
           <div style="display:flex;gap:8px;align-items:center">
-            <select id="salaryPeriod" onchange="renderDashboard()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:4px 8px;font-size:12px;outline:none">
+            <div style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:4px 10px;font-size:13px;color:var(--text2)">
+              Default rate
+              <span style="color:var(--amber);font-size:13px;font-weight:600">₪</span>
+              <input type="number" id="defaultRate" value="32" min="0" step="0.5" onchange="renderSalary()"
+                style="width:46px;background:transparent;border:none;color:var(--text);font-size:13px;font-weight:600;outline:none;text-align:center;">
+              <span style="color:var(--text3)">/h</span>
+            </div>
+            <select id="salaryPeriod" onchange="renderDashboard()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:5px 10px;font-size:13px;outline:none">
               <option value="week">This Week</option>
               <option value="month">This Month</option>
               <option value="all">All Time</option>
             </select>
-            <button class="btn sm" onclick="exportSalaryCSV()">📤 Export</button>
+            <button class="btn sm" style="background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)" onclick="exportSalaryCSV()">↗ Export</button>
           </div>
         </div>
         <div id="dashSalary"></div>
@@ -640,7 +651,7 @@ function onDateChange(){ weekStart=getSundayOfWeek(new Date(document.getElementB
 // --- Render -------------------------------------------------------------------
 function render(){
   document.getElementById('weekDisplay').textContent=fmtRange(weekStart);
-  document.getElementById('pageSub').textContent=fmtRange(weekStart)+' · Drag ⠿ to reorder';
+  document.getElementById('pageSub').textContent=fmtRange(weekStart)+' · Drag ⠿ to reorder · Click shifts to edit';
   renderStats(); renderGanttHeader(); renderGanttBody(); renderWorkerList(); renderSidebarClients();
 }
 
@@ -709,7 +720,7 @@ function renderGanttBody(){
           h+=`<div class="shift-bar work" style="left:${ps}%;width:${pw}%" onclick="event.stopPropagation();openEditShift(${wi},${di})"><span>${sh.start}</span><span>${sh.end}</span></div>`;
         }
       } else {
-        h+=`<div class="shift-bar off" style="left:4%;width:92%">Day off</div>`;
+        h+=`<div class="shift-bar off" style="left:4%;width:92%;font-weight:600;letter-spacing:0.5px">OFF</div>`;
       }
       h+=`</div>`;
     });
@@ -732,9 +743,12 @@ function renderWorkerList(){
   let h='';
   workers.forEach((w,wi)=>{
     const c=WORKER_COLORS[w.colorIdx%8],wh=workerTotalHours(w),ini=w.name.slice(0,2).toUpperCase();
+    const shifts=w.schedule.filter(sh=>sh.type==='work').length;
+    const rate=w.hourlyRate?`₪${w.hourlyRate}/h`:'';
+    const meta=[wh.toFixed(1)+'h', shifts+' shifts', rate].filter(Boolean).join(' · ');
     h+=`<div class="worker-chip">
       <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${ini}</div>
-      <div class="worker-info"><div class="worker-name">${w.name}</div><div class="worker-hours">${wh.toFixed(1)}h/week</div></div>
+      <div class="worker-info"><div class="worker-name">${w.name}</div><div class="worker-hours">${meta}</div></div>
       <div class="worker-actions">
         <button class="worker-act-btn edit" onclick="openEditWorker(${wi})" title="Edit">✏️</button>
         <button class="worker-act-btn edit" onclick="copyWorkerLink('${w.id}')" title="Copy punch link">🔗</button>
@@ -1349,21 +1363,22 @@ function renderDashboard(){
   if(onSite.length){
     onSiteEl.innerHTML = onSite.map(w=>{
       const c=WORKER_COLORS[w.colorIdx%8];
-      const ini=w.name.slice(0,2).toUpperCase();
+      const ini=w.name.slice(0,2).toUpperCase().slice(0,1);
       const lastIn=todayLog.filter(e=>e.workerId===w.id&&e.type==='in').pop();
       const sinceTime=lastIn?lastIn.time:'?';
-      const shiftHours=w.schedule?.[todayIdx]?.end?calcHours(sinceTime,w.schedule[todayIdx].end).toFixed(1):'-';
-      return `<div style="background:var(--bg2);border:1px solid rgba(62,207,142,0.25);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
-        <div style="width:40px;height:40px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;position:relative">
-          ${ini}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--green);border:2px solid var(--bg2)"></span>
+      const siteName=lastIn?.site||'';
+      return `<div style="background:var(--bg2);border:1px solid rgba(62,207,142,0.2);border-radius:var(--radius);padding:14px 16px;display:flex;align-items:center;gap:12px">
+        <div style="width:36px;height:36px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;flex-shrink:0;position:relative">
+          ${ini}<span style="position:absolute;bottom:-1px;right:-1px;width:9px;height:9px;border-radius:50%;background:var(--green);border:2px solid var(--bg2)"></span>
         </div>
-        <div style="font-size:13px;font-weight:600">${w.name}</div>
-        <div style="font-size:11px;color:var(--text2)">Since ${sinceTime}</div>
-        ${lastIn?.dist!=null?`<div style="font-size:10px;color:var(--text3)">📍 ${lastIn.dist}m</div>`:''}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600">${w.name}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:1px">${siteName?siteName+' · ':''}in ${sinceTime}</div>
+        </div>
       </div>`;
     }).join('');
   } else {
-    onSiteEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">Nobody clocked in yet today</div>`;
+    onSiteEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:8px 0">Nobody clocked in yet today</div>`;
   }
 
   // ── Render missing workers ──────────────────────────────────────────────
@@ -1371,19 +1386,20 @@ function renderDashboard(){
   if(missing.length){
     missingEl.innerHTML = missing.map(w=>{
       const c=WORKER_COLORS[w.colorIdx%8];
-      const ini=w.name.slice(0,2).toUpperCase();
+      const ini=w.name.slice(0,1).toUpperCase();
       const sh=w.schedule?.[todayIdx];
-      return `<div style="background:var(--bg2);border:1px solid rgba(248,113,113,0.25);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
-        <div style="width:40px;height:40px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;position:relative;opacity:0.6">
-          ${ini}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--red);border:2px solid var(--bg2)"></span>
+      return `<div style="background:var(--bg2);border:1px solid rgba(248,113,113,0.2);border-radius:var(--radius);padding:14px 16px;display:flex;align-items:center;gap:12px">
+        <div style="width:36px;height:36px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;flex-shrink:0">
+          ${ini}
         </div>
-        <div style="font-size:13px;font-weight:600">${w.name}</div>
-        <div style="font-size:11px;color:var(--red)">Should be here</div>
-        <div style="font-size:10px;color:var(--text3)">${sh?.start||''}–${sh?.end||''}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600">${w.name}</div>
+          <div style="font-size:12px;color:var(--red);margin-top:2px">shift ${sh?.start||''} · late</div>
+        </div>
       </div>`;
     }).join('');
   } else {
-    missingEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">Everyone is present ✓</div>`;
+    missingEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:8px 0">Everyone is present ✓</div>`;
   }
 
   // ── Today's punch log ───────────────────────────────────────────────────
@@ -1395,16 +1411,15 @@ function renderDashboard(){
     dashLogEl.innerHTML=sorted.map((e,i)=>{
       const wc=workers.find(w=>w.id===e.workerId);
       const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
-      const ini=e.workerName?.slice(0,2).toUpperCase()||'?';
-      return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:${i<sorted.length-1?'1px solid var(--border)':'none'}">
-        <div style="width:30px;height:30px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div>
-        <div style="flex:1">
-          <div style="font-size:13px;font-weight:600">${e.workerName}</div>
-          <div style="font-size:11px;color:var(--text2)">${e.site||''}</div>
-        </div>
-        <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;${e.type==='in'?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${e.type==='in'?'IN':'OUT'}</span>
-        <span style="font-size:13px;font-family:monospace;color:var(--text);min-width:42px;text-align:right">${e.time}</span>
-        ${e.gpsSuspicious?'<span title="GPS suspicious" style="color:var(--amber);font-size:12px">⚠</span>':''}
+      const isIn=e.type==='in';
+      const gpsOk=!e.gpsSuspicious;
+      const distStr=e.dist!=null?(gpsOk?`<span style="color:var(--green);font-size:12px">✓ ${e.dist<1000?e.dist+'m':(e.dist/1000).toFixed(1)+'km'}</span>`:`<span style="color:var(--amber);font-size:12px">⚠ ${e.dist<1000?e.dist+'m':(e.dist/1000).toFixed(1)+'km'}</span>`):'';
+      return `<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:${i<sorted.length-1?'1px solid var(--border)':'none'}">
+        <span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;flex-shrink:0;${isIn?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${isIn?'IN':'OUT'}</span>
+        <span style="font-size:14px;font-weight:600;flex-shrink:0">${e.workerName}</span>
+        ${e.site?`<span style="font-size:13px;color:var(--text2)">${e.site}</span>`:''}
+        ${distStr}
+        <span style="font-size:12px;color:var(--text2);font-family:'DM Mono',monospace;margin-left:auto">${e.time}</span>
       </div>`;
     }).join('');
   }
@@ -1447,7 +1462,8 @@ function renderSalary(){
       h=calcHours(ins[0],now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0'));
     }
     if(h>0){
-      const rate=workers.find(w=>w.id===workerId)?.hourlyRate||0;
+      const defaultRate=parseFloat(document.getElementById('defaultRate')?.value)||0;
+      const rate=workers.find(w=>w.id===workerId)?.hourlyRate||defaultRate;
       const isSat=date.getDay()===6;
       const p=israeliDayPay(h,rate,isSat);
       byWorker[worker].hours+=h;
