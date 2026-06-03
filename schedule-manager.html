@@ -720,7 +720,7 @@ function renderGanttBody(){
           h+=`<div class="shift-bar work" style="left:${ps}%;width:${pw}%" onclick="event.stopPropagation();openEditShift(${wi},${di})"><span>${sh.start}</span><span>${sh.end}</span></div>`;
         }
       } else {
-        h+=`<div class="shift-bar off" style="left:4%;width:92%;font-weight:600;letter-spacing:0.5px">OFF</div>`;
+        h+=`<div class="shift-bar off" style="left:4%;width:92%">Day off</div>`;
       }
       h+=`</div>`;
     });
