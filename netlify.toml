@@ -1,0 +1,25 @@
+[[redirects]]
+  from = "/"
+  to = "/schedule-manager.html"
+  status = 302
+
+[[redirects]]
+  from = "/punch"
+  to = "/worker-punch.html"
+  status = 200
+
+[[headers]]
+  for = "/service-worker.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+    Service-Worker-Allowed = "/"
+
+[[headers]]
+  for = "/**/*.html"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"
+
+[[headers]]
+  for = "/**/*.png"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000"
