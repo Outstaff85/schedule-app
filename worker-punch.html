@@ -46,7 +46,7 @@ html,body{
 /* ── Screens ────────────────────────────────────────────────────── */
 .screen{
   position:fixed;inset:0;
-  display:flex;flex-direction:column;align-items:center;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
   padding:max(env(safe-area-inset-top,24px),24px) 20px max(env(safe-area-inset-bottom,24px),24px);
   overflow-y:auto;-webkit-overflow-scrolling:touch;
   transition:opacity 0.3s cubic-bezier(.4,0,.2,1), transform 0.3s cubic-bezier(.4,0,.2,1);
@@ -56,15 +56,16 @@ html,body{
 .screen.center-v{justify-content:center;}
 
 /* ══ SCREEN 1 — Worker Select ══════════════════════════════════════ */
-#screenWorker{justify-content:flex-start;gap:0;}
+#screenWorker{justify-content:center;gap:0;}
+#screenWorker > *{width:100%;max-width:480px;}
 
 /* Top bar */
 .top-bar{
-  width:100%;display:flex;align-items:center;justify-content:space-between;
-  margin-bottom:28px;
+  width:100%;max-width:480px;display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:20px;
 }
 .site-pill{
-  display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+  display:inline-flex;align-items:center;gap:6px;
   background:rgba(41,217,122,0.08);border:1px solid rgba(41,217,122,0.2);
   color:var(--green);border-radius:100px;padding:6px 14px;
   font-size:13px;font-weight:600;letter-spacing:0.2px;
@@ -76,7 +77,7 @@ html,body{
 
 /* Section label */
 .section-label{
-  width:100%;text-align:left;
+  width:100%;max-width:480px;text-align:left;
   font-size:12px;font-weight:600;color:var(--text3);
   text-transform:uppercase;letter-spacing:1.2px;
   margin-bottom:14px;
@@ -163,6 +164,7 @@ html,body{
 
 /* ══ SCREEN 2 — Punch ══════════════════════════════════════════════ */
 #screenPunch{justify-content:center;text-align:center;}
+#screenPunch > *{width:100%;max-width:400px;}
 
 .punch-header{margin-bottom:8px;}
 .punch-site{
@@ -214,7 +216,7 @@ html,body{
 .punch-btn-wrap{
   position:relative;display:flex;
   align-items:center;justify-content:center;
-  margin-bottom:28px;
+  margin-bottom:28px;width:100%;
 }
 
 /* Outer glow ring */
@@ -274,6 +276,7 @@ html,body{
 
 /* ══ SCREEN 3 — Success ════════════════════════════════════════════ */
 #screenSuccess{justify-content:center;text-align:center;gap:0;}
+#screenSuccess > *{width:100%;max-width:360px;}
 
 .success-anim{
   width:90px;height:90px;border-radius:50%;
@@ -350,11 +353,11 @@ html,body{
 
 <!-- Screen 1: Worker select -->
 <div class="screen" id="screenWorker">
-  <div class="top-bar" style="flex-direction:column;align-items:center;gap:10px;">
+  <div class="top-bar">
     <div class="site-pill">📍 <span id="verifiedSiteName">Work Site</span></div>
     <div class="time-pill" id="workerClock">--:--</div>
   </div>
-  <div class="section-label" style="text-align: center">Who are you?</div>
+  <div class="section-label">Who are you?</div>
   <div class="worker-grid" id="workerGrid"></div>
   <button class="continue-btn" id="continueBtn" disabled onclick="goToPunch()">
     Select a worker to continue
@@ -399,7 +402,7 @@ html,body{
 </div>
 
 <!-- Screen 4: History -->
-<div class="screen hidden" id="screenHistory">
+<div class="screen hidden" id="screenHistory" style="justify-content:flex-start;align-items:center">
   <div class="top-bar" style="margin-bottom:16px">
     <div style="font-size:18px;font-weight:800">📅 My History</div>
     <div class="back-link" onclick="showScreen('screenWorker');startWorkerClock()" style="font-size:14px">✕ Close</div>
@@ -680,7 +683,9 @@ function doPunch(){
   const entry={
     id:Date.now(), workerId:selectedWorker.id, workerName:selectedWorker.name,
     type, time:hh+':'+mm, ts:now.toISOString(),
-    site:SITE.name, dist:locDist, gpsVerified:true,
+    site:SITE.name, dist:locDist,
+    gpsVerified:true,
+    manual:false,
     gpsAccuracy:gps.accuracy||null, gpsSuspicious:gps.suspicious||false, gpsWarnings:gps.warnings||[],
     gpsElapsed:gps.elapsed||null,
   };

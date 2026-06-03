@@ -1972,7 +1972,13 @@ window.addEventListener('appinstalled',()=>{
 });
 
 // ── Google Contacts API ───────────────────────────────────────────
-const GCONTACTS_CLIENT_ID = '894216414920-kps8ekteomgnb6dvmjr5c8qf2p1c0cc1.apps.googleusercontent.com';
+// Multiple Google accounts support
+const GCONTACTS_ACCOUNTS = [
+  { label: 'Account 1', clientId: '894216414920-kps8ekteomgnb6dvmjr5c8qf2p1c0cc1.apps.googleusercontent.com' },
+  { label: 'uneversam@gmail.com', clientId: '164512799784-rq1tmsp4p9nse8ai8feplevlqm0otrbl.apps.googleusercontent.com' },
+];
+let _activeAccountIdx = 0;
+const GCONTACTS_CLIENT_ID = GCONTACTS_ACCOUNTS[_activeAccountIdx].clientId;
 let _gToken = null;
 let _contactsCache = [];
 
@@ -1993,27 +1999,51 @@ function initGoogleContacts(){
 let _tokenClient = null;
 
 function triggerContactsPicker(){
-  if(!_tokenClient){
-    if(typeof google === 'undefined'){ showToast('Google API not loaded'); return; }
-    _tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: GCONTACTS_CLIENT_ID,
-      scope: 'https://www.googleapis.com/auth/contacts.readonly',
-      callback: (resp) => {
-        if(resp.error){ showToast('Auth failed: '+resp.error); return; }
-        _gToken = resp.access_token;
-        fetchContacts().then(()=>{
-          const query = document.getElementById('wName')?.value||'';
-          showContactsSuggestions(query);
-        });
-      }
-    });
+  // Show account selector
+  const el = document.getElementById('contactsSuggestions');
+  if(el){
+    el.style.display = 'block';
+    el.innerHTML = `
+      <div style="padding:10px 14px;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border)">
+        Choose Google Account
+      </div>
+      ${GCONTACTS_ACCOUNTS.map((acc,i)=>`
+        <div onclick="switchContactsAccount(${i})"
+          style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--border)"
+          onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+          <div style="width:34px;height:34px;border-radius:50%;background:rgba(66,133,244,0.15);color:#4285f4;display:flex;align-items:center;justify-content:center;font-size:16px">G</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--text)">${acc.label}</div>
+            <div style="font-size:11px;color:var(--text3)">Click to load contacts</div>
+          </div>
+          ${_activeAccountIdx===i&&_contactsCache.length?'<span style="font-size:11px;color:var(--green);margin-left:auto">✓ Active</span>':''}
+        </div>`).join('')}`;
   }
-  if(_gToken){
-    if(_contactsCache.length) showContactsSuggestions(document.getElementById('wName')?.value||'');
-    else fetchContacts().then(()=>showContactsSuggestions(document.getElementById('wName')?.value||''));
-  } else {
-    _tokenClient.requestAccessToken();
-  }
+}
+
+function switchContactsAccount(idx){
+  _activeAccountIdx = idx;
+  _gToken = null;
+  _tokenClient = null;
+  _contactsCache = [];
+  const acc = GCONTACTS_ACCOUNTS[idx];
+  showToast('Connecting to '+acc.label+'...');
+  hideContactsSuggestions();
+
+  if(typeof google === 'undefined'){ showToast('Google API not loaded'); return; }
+  _tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: acc.clientId,
+    scope: 'https://www.googleapis.com/auth/contacts.readonly',
+    callback: (resp) => {
+      if(resp.error){ showToast('Auth failed: '+resp.error); return; }
+      _gToken = resp.access_token;
+      fetchContacts().then(()=>{
+        const query = document.getElementById('wName')?.value||'';
+        showContactsSuggestions(query);
+      });
+    }
+  });
+  _tokenClient.requestAccessToken();
 }
 
 async function fetchContacts(){
