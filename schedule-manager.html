@@ -130,12 +130,12 @@
   .gantt-row.dragging{opacity:0.4;}
   .gantt-name-cell{display:flex;align-items:center;gap:8px;padding:10px 12px;border-right:1px solid var(--border2);font-size:15px;font-weight:500;color:var(--text);}
   .drag-handle{color:var(--text3);font-size:16px;cursor:grab;flex-shrink:0;}
-  .gantt-day-cell{position:relative;height:68px;border-right:1px solid var(--border);cursor:pointer;overflow:hidden;}
+  .gantt-day-cell{position:relative;height:80px;border-right:1px solid var(--border);cursor:pointer;overflow:hidden;}
   .gantt-day-cell:last-child{border-right:none;}
   .gantt-day-cell:hover{background:rgba(255,255,255,0.025);}
   .h-tick{position:absolute;top:0;bottom:0;width:1px;background:var(--border);pointer-events:none;}
   .h-label{display:none;}
-  .shift-bar{position:absolute;top:5px;height:58px;border-radius:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:16px;font-weight:500;padding:2px 4px;cursor:pointer;overflow:hidden;text-align:center;line-height:1.2;transition:opacity 0.15s,transform 0.1s;z-index:1;}
+  .shift-bar{position:absolute;top:6px;height:68px;border-radius:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:16px;font-weight:500;padding:2px 4px;cursor:pointer;overflow:hidden;text-align:center;line-height:1.2;transition:opacity 0.15s,transform 0.1s;z-index:1;}
   .shift-bar:hover{opacity:0.85;transform:scaleY(1.05);}
   .shift-bar.work{background:var(--green-bg);color:var(--green);border:1px solid rgba(62,207,142,0.25);}
   .shift-bar.off{background:var(--amber-bg);color:var(--amber);border:1px solid rgba(245,166,35,0.2);}
@@ -662,13 +662,11 @@ function renderStats(){
   const totalH=vis.reduce((s,w)=>s+workerTotalHours(w),0);
   const shifts=vis.reduce((s,w)=>s+w.schedule.filter(sh=>sh.type==='work').length,0);
   const offs  =vis.reduce((s,w)=>s+w.schedule.filter(sh=>sh.type==='off').length,0);
-  let h=`
+  const h=`
     <div class="stat-card"><div class="stat-label">Total hours</div><div class="stat-val">${totalH.toFixed(1)}<span class="stat-unit">h</span></div></div>
     <div class="stat-card"><div class="stat-label">Shifts</div><div class="stat-val">${shifts}</div></div>
     <div class="stat-card"><div class="stat-label">Days off</div><div class="stat-val">${offs}</div></div>
     <div class="stat-card"><div class="stat-label">Workers</div><div class="stat-val">${vis.length}</div></div>`;
-  vis.forEach(w=>{ const c=WORKER_COLORS[w.colorIdx%8],wh=workerTotalHours(w);
-    h+=`<div class="stat-card" style="border-color:${c.text}30"><div class="stat-label" style="color:${c.text}">${w.name}</div><div class="stat-val">${wh.toFixed(1)}<span class="stat-unit">h</span></div></div>`; });
   document.getElementById('statsRow').innerHTML=h;
 }
 
@@ -680,7 +678,10 @@ function renderGanttHeader(){
   DAYS.forEach((d,i)=>{
     const date=new Date(weekStart); date.setDate(date.getDate()+i);
     const today=date.toDateString()===new Date().toDateString();
-    h+=`<div class="gantt-header-cell" style="${today?'color:#60a5fa':''}">${d}<br><span style="font-weight:400;font-size:10px;opacity:0.7">${fmtDate(date)}</span><span class="day-hebrew">${DAYS_HE[i]}</span></div>`;
+    h+=`<div class="gantt-header-cell" style="${today?'color:#60a5fa':''}">
+      <span style="display:flex;align-items:center;justify-content:center;gap:5px">${d}<span class="day-hebrew" style="margin-top:0">${DAYS_HE[i]}</span></span>
+      <span style="display:block;font-weight:400;font-size:11px;color:var(--text2);margin-top:2px;opacity:0.9">${fmtDate(date)}</span>
+    </div>`;
   });
   el.innerHTML=h;
 }
