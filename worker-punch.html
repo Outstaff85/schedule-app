@@ -64,7 +64,7 @@ html,body{
   margin-bottom:28px;
 }
 .site-pill{
-  display:inline-flex;align-items:center;gap:6px;
+  display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
   background:rgba(41,217,122,0.08);border:1px solid rgba(41,217,122,0.2);
   color:var(--green);border-radius:100px;padding:6px 14px;
   font-size:13px;font-weight:600;letter-spacing:0.2px;
@@ -350,11 +350,11 @@ html,body{
 
 <!-- Screen 1: Worker select -->
 <div class="screen" id="screenWorker">
-  <div class="top-bar">
+  <div class="top-bar" style="flex-direction:column;align-items:center;gap:10px;">
     <div class="site-pill">📍 <span id="verifiedSiteName">Work Site</span></div>
     <div class="time-pill" id="workerClock">--:--</div>
   </div>
-  <div class="section-label">Who are you?</div>
+  <div class="section-label" style="text-align: center">Who are you?</div>
   <div class="worker-grid" id="workerGrid"></div>
   <button class="continue-btn" id="continueBtn" disabled onclick="goToPunch()">
     Select a worker to continue
