@@ -32,10 +32,19 @@
   *{box-sizing:border-box;margin:0;padding:0;}
   body{font-family:'Calibri',Calibri,Arial,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
 
-  /* Titlebar */
-  .titlebar{height:44px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:12px;flex-shrink:0;}
-  .titlebar .logo{font-size:16px;font-weight:600;color:var(--text);letter-spacing:-0.3px;}
+  /* Titlebar / top panel */
+  .titlebar{min-height:54px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:stretch;padding:0 14px;gap:6px;flex-shrink:0;}
+  .titlebar .brand{display:flex;align-items:center;gap:9px;padding-right:14px;}
+  .titlebar .brand img{width:28px;height:28px;border-radius:8px;}
+  .titlebar .logo{font-size:16px;font-weight:600;color:var(--text);letter-spacing:-0.3px;align-self:center;}
   .titlebar .logo span{color:var(--accent);}
+  .top-tabs{display:flex;gap:2px;align-items:stretch;}
+  .ttab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:70px;padding:0 12px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text2);transition:all 0.15s;}
+  .ttab .ic{font-size:18px;line-height:1;}
+  .ttab .lb{font-size:12px;font-weight:500;}
+  .ttab:hover{color:var(--text);background:rgba(255,255,255,0.025);}
+  .ttab.active{color:var(--blue);border-bottom-color:var(--blue);background:var(--blue-bg);}
+  .ttab.admin.active{color:var(--amber);border-bottom-color:var(--amber);background:var(--amber-bg);}
   .titlebar-actions{margin-left:auto;display:flex;gap:6px;align-items:center;}
   .save-indicator{font-size:14px;color:var(--text3);display:flex;align-items:center;gap:4px;transition:color 0.3s;}
   .save-indicator.saving{color:var(--amber);}
@@ -126,7 +135,7 @@
   .gantt-day-cell:hover{background:rgba(255,255,255,0.025);}
   .h-tick{position:absolute;top:0;bottom:0;width:1px;background:var(--border);pointer-events:none;}
   .h-label{display:none;}
-  .shift-bar{position:absolute;top:5px;height:58px;border-radius:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:16px;font-weight:600;padding:2px 4px;cursor:pointer;overflow:hidden;text-align:center;line-height:1.2;transition:opacity 0.15s,transform 0.1s;z-index:1;}
+  .shift-bar{position:absolute;top:5px;height:58px;border-radius:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:16px;font-weight:500;padding:2px 4px;cursor:pointer;overflow:hidden;text-align:center;line-height:1.2;transition:opacity 0.15s,transform 0.1s;z-index:1;}
   .shift-bar:hover{opacity:0.85;transform:scaleY(1.05);}
   .shift-bar.work{background:var(--green-bg);color:var(--green);border:1px solid rgba(62,207,142,0.25);}
   .shift-bar.off{background:var(--amber-bg);color:var(--amber);border:1px solid rgba(245,166,35,0.2);}
@@ -188,6 +197,13 @@
       gap: 6px; position: sticky; top: 0; z-index: 40;
     }
     .titlebar .logo { font-size: 13px; }
+    .titlebar .brand { padding-right: 8px; }
+    .titlebar .brand img { width: 24px; height: 24px; }
+    .top-tabs { order: 3; width: 100%; overflow-x: auto; gap: 0; scrollbar-width: none; }
+    .top-tabs::-webkit-scrollbar { display: none; }
+    .ttab { min-width: 60px; padding: 6px 8px; flex: 1; }
+    .ttab .ic { font-size: 16px; }
+    .ttab .lb { font-size: 11px; }
     .titlebar-actions { margin-left: auto; gap: 4px; flex-wrap: wrap; }
     .save-indicator { font-size: 10px; }
     .btn.sm { font-size: 11px; padding: 5px 10px; min-height: 34px; }
@@ -307,7 +323,16 @@
 <body>
 
 <div class="titlebar">
-  <div class="logo">Schedule <span>Manager</span></div>
+  <div class="brand">
+    <img src="icon-192.png" alt="Schedule Manager">
+    <div class="logo">Schedule <span>Manager</span></div>
+  </div>
+  <div class="top-tabs">
+    <div class="ttab active" id="tabDashboard" onclick="switchTab('dashboard')"><span class="ic">📊</span><span class="lb">Today</span></div>
+    <div class="ttab" id="tabSchedule" onclick="switchTab('schedule')"><span class="ic">📅</span><span class="lb">Schedule</span></div>
+    <div class="ttab" id="tabClients" onclick="switchTab('clients')"><span class="ic">👥</span><span class="lb">Clients</span></div>
+    <div class="ttab admin" id="tabAdmin" onclick="switchTab('admin')"><span class="ic">🔐</span><span class="lb">Admin</span></div>
+  </div>
   <div class="titlebar-actions">
     <div class="save-indicator saved" id="saveIndicator">
       <div class="save-dot"></div><span>Saved</span>
@@ -327,13 +352,6 @@
 
 <div class="app">
   <div class="sidebar">
-    <div class="tab-nav">
-      <div class="tab-btn active" id="tabDashboard" onclick="switchTab('dashboard')" style="color:var(--blue)">📊 Today</div>
-      <div class="tab-btn" id="tabSchedule" onclick="switchTab('schedule')">📅 Schedule</div>
-      <div class="tab-btn" id="tabClients" onclick="switchTab('clients')">👥 Clients</div>
-      <div class="tab-btn" id="tabAdmin" onclick="switchTab('admin')" style="color:var(--amber)">🔐 Admin</div>
-    </div>
-
     <div class="week-nav">
       <div class="sidebar-label">Week</div>
       <div class="week-display" id="weekDisplay"></div>
@@ -589,6 +607,14 @@ function toMins(t){ if(!t)return null; const[h,m]=t.split(':').map(Number); retu
 function calcHours(s,e){ if(!s||!e)return 0; const sm=toMins(s),em=toMins(e); return em<=sm?(1440-sm+em)/60:(em-sm)/60; }
 function isMidnight(s,e){ return !!s&&!!e&&toMins(e)<=toMins(s); }
 function workerTotalHours(w){ return w.schedule.reduce((s,sh)=>s+calcHours(sh.start,sh.end),0); }
+// Israeli labour-law daily pay. Regular ≤8h, next 2h overtime, beyond = higher overtime.
+// Saturday (Shabbat) shifts the whole base to 150% and its OT tiers compound (175% / 200%).
+function israeliDayPay(hours, rate, isSat){
+  const base=isSat?1.5:1.0, ot1=isSat?1.75:1.25, ot2=isSat?2.0:1.5;
+  const reg=Math.min(hours,8), o1=Math.min(Math.max(hours-8,0),2), o2=Math.max(hours-10,0);
+  const regularPay=reg*rate*base, otPay=o1*rate*ot1+o2*rate*ot2;
+  return { regularPay, otPay, total:regularPay+otPay, isSat };
+}
 function fmtDate(d){ return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); }
 function fmtRange(d){ const e=new Date(d); e.setDate(e.getDate()+6); return fmtDate(d)+' – '+fmtDate(e); }
 
@@ -1405,24 +1431,30 @@ function renderSalary(){
   const byWorkerDay={};
   filtered.forEach(e=>{
     const key=e.workerName+'|'+new Date(e.ts).toDateString();
-    if(!byWorkerDay[key]) byWorkerDay[key]={worker:e.workerName,workerId:e.workerId,ins:[],outs:[]};
+    if(!byWorkerDay[key]) byWorkerDay[key]={worker:e.workerName,workerId:e.workerId,date:new Date(e.ts),ins:[],outs:[]};
     if(e.type==='in')  byWorkerDay[key].ins.push(e.time);
     if(e.type==='out') byWorkerDay[key].outs.push(e.time);
   });
 
-  // Sum hours per worker
+  // Sum hours + Israeli pay per worker
   const byWorker={};
-  Object.values(byWorkerDay).forEach(({worker,workerId,ins,outs})=>{
-    if(!byWorker[worker]) byWorker[worker]={worker,workerId,hours:0,days:0};
+  Object.values(byWorkerDay).forEach(({worker,workerId,date,ins,outs})=>{
+    if(!byWorker[worker]) byWorker[worker]={worker,workerId,hours:0,days:0,regular:0,ot:0,shabbat:0,total:0};
+    let h=0;
     if(ins.length&&outs.length){
-      const h=calcHours(ins[0],outs[0]);
-      byWorker[worker].hours+=h;
-      byWorker[worker].days++;
+      h=calcHours(ins[0],outs[0]);
     } else if(ins.length&&!outs.length){
-      // Still clocked in — count until now
-      const h=calcHours(ins[0],now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0'));
+      h=calcHours(ins[0],now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0'));
+    }
+    if(h>0){
+      const rate=workers.find(w=>w.id===workerId)?.hourlyRate||0;
+      const isSat=date.getDay()===6;
+      const p=israeliDayPay(h,rate,isSat);
       byWorker[worker].hours+=h;
       byWorker[worker].days++;
+      if(isSat){ byWorker[worker].shabbat+=p.total; }
+      else { byWorker[worker].regular+=p.regularPay; byWorker[worker].ot+=p.otPay; }
+      byWorker[worker].total+=p.total;
     }
   });
 
@@ -1434,15 +1466,19 @@ function renderSalary(){
   }
 
   const totalHours=entries.reduce((s,e)=>s+e.hours,0);
+  const grandTotal=entries.reduce((s,e)=>s+e.total,0);
   salaryEl.innerHTML=`
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-      <table style="width:100%;border-collapse:collapse">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table style="width:100%;border-collapse:collapse;min-width:560px">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
             <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Worker</th>
-            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">Days</th>
             <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">Hours</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Hourly Rate</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Rate</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Regular</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">OT</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Shabbat</th>
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Total Pay</th>
           </tr>
         </thead>
@@ -1451,7 +1487,6 @@ function renderSalary(){
             const wc=workers.find(w=>w.id===e.workerId);
             const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
             const rate=wc?.hourlyRate||0;
-            const pay=(e.hours*rate).toFixed(2);
             const ini=e.worker.slice(0,2).toUpperCase();
             return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
               <td style="padding:10px 12px">
@@ -1460,30 +1495,34 @@ function renderSalary(){
                   <span style="font-size:13px;font-weight:600">${e.worker}</span>
                 </div>
               </td>
-              <td style="padding:10px 12px;text-align:center;font-size:13px;color:var(--text2)">${e.days}</td>
               <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${e.hours.toFixed(1)}h</td>
               <td style="padding:10px 12px;text-align:right">
                 <input type="number" value="${rate}" min="0" step="0.5"
                   onchange="setWorkerRate('${e.workerId}',this.value);renderSalary()"
-                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+                  style="width:64px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
+              <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)">${rate>0?'₪'+e.regular.toFixed(0):'—'}</td>
+              <td style="padding:10px 12px;text-align:right;font-size:13px;color:${e.ot>0?'var(--amber)':'var(--text3)'}">${rate>0?'₪'+e.ot.toFixed(0):'—'}</td>
+              <td style="padding:10px 12px;text-align:right;font-size:13px;color:${e.shabbat>0?'var(--blue)':'var(--text3)'}">${rate>0?'₪'+e.shabbat.toFixed(0):'—'}</td>
               <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${rate>0?'var(--green)':'var(--text3)'}">
-                ${rate>0?'₪'+pay:'—'}
+                ${rate>0?'₪'+e.total.toFixed(0):'—'}
               </td>
             </tr>`;
           }).join('')}
         </tbody>
         <tfoot>
           <tr style="background:var(--bg3);border-top:2px solid var(--border)">
-            <td colspan="2" style="padding:10px 12px;font-size:13px;font-weight:600;color:var(--text2)">TOTAL</td>
+            <td style="padding:10px 12px;font-size:13px;font-weight:600;color:var(--text2)">TOTAL</td>
             <td style="padding:10px 12px;text-align:center;font-size:14px;font-weight:700;color:var(--text)">${totalHours.toFixed(1)}h</td>
-            <td></td>
+            <td colspan="4"></td>
             <td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">
-              ₪${entries.reduce((s,e)=>s+(e.hours*(workers.find(w=>w.id===e.workerId)?.hourlyRate||0)),0).toFixed(2)}
+              ₪${grandTotal.toFixed(0)}
             </td>
           </tr>
         </tfoot>
       </table>
+      </div>
+      <div style="padding:8px 12px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">Israeli rules · Regular ≤8h ×1.0 · OT +2h ×1.25 then ×1.5 · Shabbat (Sat) base ×1.5 (OT ×1.75 / ×2.0)</div>
     </div>`;
 }
 
