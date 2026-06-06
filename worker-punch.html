@@ -490,19 +490,27 @@ window.addEventListener('load',   ()=>{ const q=getQueue(); if(q.length){showOff
 function init(){
   loadWorkers();
 
-  if(URL_WORKER){
-    // Personal link - auto-select worker by name
-    let matched = workers.find(w=>w.name.toLowerCase()===URL_WORKER.toLowerCase());
+  if(URL_WORKER && URL_TOKEN){
+    // Personal link with token - verify then auto-select
+    let matched = workers.find(w=>
+      w.name.toLowerCase()===URL_WORKER.toLowerCase() && w.token===URL_TOKEN
+    );
     if(matched){
       goToPunchDirect(matched);
     } else {
-      // Workers not in localStorage - load from GS then retry
+      // Not in localStorage - load from GS and verify
       showLoadingScreen('Verifying...');
       loadWorkersFromGS().then(()=>{
         hideLoadingScreen();
-        let w = workers.find(x=>x.name.toLowerCase()===URL_WORKER.toLowerCase());
-        if(!w) w = {id:'url_'+URL_WORKER, name:URL_WORKER, colorIdx:0, token:URL_TOKEN};
-        goToPunchDirect(w);
+        const verified = workers.find(w=>
+          w.name.toLowerCase()===URL_WORKER.toLowerCase() && w.token===URL_TOKEN
+        );
+        if(verified){
+          goToPunchDirect(verified);
+        } else {
+          // Token mismatch - show error
+          showInvalidLink();
+        }
       });
     }
     return;
@@ -513,7 +521,6 @@ function init(){
     showScreen('screenWorker');
     startWorkerClock();
   } else {
-    // No workers in localStorage - load from GS
     showLoadingScreen('Loading...');
     loadWorkersFromGS().then(()=>{
       hideLoadingScreen();
@@ -521,6 +528,14 @@ function init(){
       startWorkerClock();
     });
   }
+}
+
+function showInvalidLink(){
+  document.body.innerHTML = '<div style="position:fixed;inset:0;background:#080b12;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center">'
+    + '<div style="font-size:72px;margin-bottom:20px">🚫</div>'
+    + '<div style="font-size:24px;font-weight:900;color:#ff4f5e;margin-bottom:10px">Invalid Link</div>'
+    + '<div style="font-size:15px;color:#7c84a0;line-height:1.6;max-width:260px">This link is no longer valid.<br>Ask your manager for a new link.</div>'
+    + '</div>';
 }
 
 function goToPunchDirect(w){
@@ -553,35 +568,39 @@ function loadWorkers(){
     const raw=localStorage.getItem('schedMgr_v1')||localStorage.getItem('scheduleManagerData');
     if(raw){
       const d=JSON.parse(raw); let list=d.workers||[];
-      if(SITE.clientId) list=list.filter(w=>(w.clientIds||[]).includes(SITE.clientId))||list;
+      // Filter by client if clientId provided, but fall back to ALL workers if filtered list is empty
+      if(SITE.clientId){
+        const filtered=list.filter(w=>(w.clientIds||[]).includes(SITE.clientId));
+        list = filtered.length ? filtered : list;
+      }
       workers=list.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null}));
       if(workers.length) return;
     }
   }catch(e){}
-  // Priority 3: load from Google Sheets (worker's own phone — no localStorage)
+  // Priority 3: load from Google Sheets
   workers=[];
 }
 
 async function loadWorkersFromGS(){
-  // Try multiple methods to load from GS
   const url = GS_URL+'?action=loadSchedule&t='+Date.now();
   
-  // Method 1: direct fetch
   try{
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-      redirect: 'follow',
-    });
+    const res = await fetch(url, { method:'GET', redirect:'follow' });
     const text = await res.text();
     const data = JSON.parse(text);
     if(data.workers&&data.workers.length){
-      workers=data.workers.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null}));
+      let list = data.workers;
+      // Filter by client but fall back to all if empty
+      if(SITE.clientId){
+        const filtered=list.filter(w=>(w.clientIds||[]).includes(SITE.clientId));
+        list = filtered.length ? filtered : list;
+      }
+      workers=list.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null}));
       localStorage.setItem('schedMgr_v1', JSON.stringify(data));
-      console.log('GS loaded (method 1):', workers.length, 'workers');
+      console.log('GS loaded:', workers.length, 'workers');
       return true;
     }
-  }catch(e){ console.warn('Method 1 failed:', e.message); }
+  }catch(e){ console.warn('GS load failed:', e.message); }
 
   // Method 2: jsonp-style via script tag
   return new Promise((resolve)=>{
