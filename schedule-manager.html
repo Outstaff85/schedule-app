@@ -1940,6 +1940,50 @@ document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key==='s'){ e.preventDefault(); autoSave(); showToast('Сохранено!'); }
 });
 
+
+// ── Push Notifications ────────────────────────────────────────────
+const VAPID_PUBLIC_KEY = 'BBju9uoDfcpB0ZIPWhCyvUxg4lLwYVFy4QadSnvx6ImaafKK0pxalntUz5JmkH3Tc9wq9yymBucOf_U5i9o8t7w';
+
+function urlB64ToUint8(b64){
+  const pad = '='.repeat((4 - b64.length % 4) % 4);
+  const raw = atob((b64 + pad).replace(/-/g,'+').replace(/_/g,'/'));
+  return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
+}
+
+async function subscribeToPush(){
+  if(!('PushManager' in window)){ showToast('Push not supported'); return; }
+  try{
+    const perm = await Notification.requestPermission();
+    if(perm !== 'granted'){ showToast('Notifications blocked in browser settings'); return; }
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlB64ToUint8(VAPID_PUBLIC_KEY)
+    });
+    localStorage.setItem('pushSubscription', JSON.stringify(sub));
+    // Save to GS
+    fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'savePushSubscription',subscription:JSON.parse(JSON.stringify(sub)),role:'manager'})});
+    showToast('✅ Shift reminders enabled!');
+    document.getElementById('pushBtn')?.remove();
+  } catch(e){ showToast('Failed: '+e.message); console.error(e); }
+}
+
+async function checkPushStatus(){
+  if(!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if(!sub){
+      const btn=document.createElement('button');
+      btn.id='pushBtn'; btn.className='btn sm';
+      btn.innerHTML='🔔 Enable Alerts';
+      btn.style.cssText='background:rgba(62,207,142,0.12);border-color:rgba(62,207,142,0.3);color:var(--green)';
+      btn.onclick=subscribeToPush;
+      document.querySelector('.titlebar-actions')?.prepend(btn);
+    }
+  } catch(e){}
+}
+
 // ── PWA: Service Worker ───────────────────────────────────────────
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{

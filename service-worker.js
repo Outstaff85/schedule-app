@@ -119,21 +119,7 @@ async function syncPunches() {
   clients.forEach(client => client.postMessage({ type: 'FLUSH_QUEUE' }));
 }
 
-// ── Push notifications ────────────────────────────────────────────
-self.addEventListener('push', event => {
-  const data = event.data?.json() || {};
-  event.waitUntil(
-    self.registration.showNotification(data.title || 'Schedule Manager', {
-      body: data.body || '',
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-      tag: data.tag || 'default',
-      data: data.url ? { url: data.url } : {},
-      actions: data.actions || [],
-      vibrate: [200, 100, 200],
-    })
-  );
-});
+
 
 self.addEventListener('notificationclick', event => {
   event.notification.close();
@@ -143,6 +129,39 @@ self.addEventListener('notificationclick', event => {
       for (const client of windowClients) {
         if (client.url.includes(url) && 'focus' in client) return client.focus();
       }
+      return clients.openWindow(url);
+    })
+  );
+});
+
+// ── Push notifications ────────────────────────────────────────────────────────
+self.addEventListener('push', event => {
+  let data = {};
+  try { data = event.data?.json() || {}; } catch(e) {}
+  event.waitUntil(
+    self.registration.showNotification(data.title || '⏰ Shift Reminder', {
+      body:    data.body    || 'Your shift starts soon — tap to clock in!',
+      icon:    '/icon-192.png',
+      badge:   '/icon-192.png',
+      tag:     data.tag     || 'shift-reminder',
+      vibrate: [300, 100, 300],
+      data:    { url: data.url || '/worker-punch.html' },
+      actions: [
+        { action: 'punch',   title: '⏱ Clock In Now' },
+        { action: 'dismiss', title: 'Dismiss' }
+      ],
+      requireInteraction: true,
+    })
+  );
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  if (event.action === 'dismiss') return;
+  const url = event.notification.data?.url || '/worker-punch.html';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      for (const c of list) { if ('focus' in c) return c.focus(); }
       return clients.openWindow(url);
     })
   );

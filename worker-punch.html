@@ -766,6 +766,39 @@ function openHistory(){
 }
 
 init();
+
+// ── Push Subscription (worker) ────────────────────────────────────
+const VAPID_PUBLIC_KEY = 'BBju9uoDfcpB0ZIPWhCyvUxg4lLwYVFy4QadSnvx6ImaafKK0pxalntUz5JmkH3Tc9wq9yymBucOf_U5i9o8t7w';
+const GS_URL_WP = 'https://script.google.com/macros/s/AKfycbwfGCQs8TzGd38j-JU0ZdoHLXdHITaG1QjUE3nAJDVB6uZR2_56hxV0Y4UgCs1bGYi_/exec';
+
+function urlB64ToUint8WP(b64){
+  const pad='='.repeat((4-b64.length%4)%4);
+  const raw=atob((b64+pad).replace(/-/g,'+').replace(/_/g,'/'));
+  return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
+}
+
+async function subscribeWorkerPush(workerName){
+  if(!('PushManager' in window)) return;
+  try{
+    const perm = await Notification.requestPermission();
+    if(perm !== 'granted') return;
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+    if(existing) return; // already subscribed
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlB64ToUint8WP(VAPID_PUBLIC_KEY)
+    });
+    // Save with worker name to GS
+    fetch(GS_URL_WP,{method:'POST',body:JSON.stringify({
+      action:'savePushSubscription',
+      subscription:JSON.parse(JSON.stringify(sub)),
+      role:'worker',
+      workerName
+    })});
+  } catch(e){ console.warn('Worker push failed:',e); }
+}
+
 // ── PWA: Service Worker ───────────────────────────────────────────
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
