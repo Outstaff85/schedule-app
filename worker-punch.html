@@ -487,40 +487,70 @@ window.addEventListener('online', ()=>flushQueue());
 window.addEventListener('load',   ()=>{ const q=getQueue(); if(q.length){showOfflineBadge(q.length);flushQueue();} });
 
 // ── Init ──────────────────────────────────────────────────────────
-function init(){
+async function init(){
   loadWorkers();
-  if(URL_WORKER&&URL_TOKEN){
-    const matched=workers.find(w=>w.name.toLowerCase()===URL_WORKER.toLowerCase()&&w.token===URL_TOKEN);
-    if(matched){
-      selectedWorker=matched;
-      showScreen('screenPunch');
-      document.getElementById('punchSite').textContent='📍 '+SITE.name;
-      document.getElementById('punchWorkerName').textContent=matched.name;
-      startPunchClock(); getLocation(); updateBigBtn(); return;
+
+  if(URL_WORKER && URL_TOKEN){
+    // Show loading indicator
+    document.body.style.cssText='background:#080b12;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;text-align:center;color:#7c84a0;font-family:-apple-system,sans-serif';
+    document.body.innerHTML='<div style="font-size:40px;margin-bottom:16px">📡</div><div style="font-size:16px">Verifying...</div>';
+
+    // Check localStorage first
+    let matched = workers.find(w=>w.name.toLowerCase()===URL_WORKER.toLowerCase()&&w.token===URL_TOKEN);
+
+    // Not found locally — fetch from Google Sheets
+    if(!matched){
+      const ok = await loadWorkersFromGS();
+      if(ok) matched = workers.find(w=>w.name.toLowerCase()===URL_WORKER.toLowerCase()&&w.token===URL_TOKEN);
     }
-    // Invalid token
-    document.body.innerHTML='<div style="position:fixed;inset:0;background:#080b12;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center">'
-      +'<div style="font-size:72px;margin-bottom:20px">🚫</div>'
+
+    if(matched){
+      // Reload page — all data now in localStorage cache
+      location.reload();
+      return;
+    }
+
+    // Invalid
+    document.body.innerHTML='<div style="font-size:72px;margin-bottom:20px">🚫</div>'
       +'<div style="font-size:24px;font-weight:900;color:#ff4f5e;margin-bottom:10px">Invalid Link</div>'
-      +'<div style="font-size:15px;color:#7c84a0;line-height:1.6;max-width:260px">This link is no longer valid. Ask your manager for a new link.</div></div>';
+      +'<div style="font-size:15px;line-height:1.6;max-width:260px">This link is no longer valid.<br>Ask your manager for a new link.</div>';
     return;
   }
+
   showScreen('screenWorker');
   startWorkerClock();
 }
-
 function loadWorkers(){
+  // Priority 1: data passed from schedule manager (same device)
   if(_site?.workers?.length){ workers=_site.workers; return; }
+  // Priority 2: localStorage cache (same device)
   try{
     const raw=localStorage.getItem('schedMgr_v1')||localStorage.getItem('scheduleManagerData');
     if(raw){
       const d=JSON.parse(raw); let list=d.workers||[];
       if(SITE.clientId) list=list.filter(w=>(w.clientIds||[]).includes(SITE.clientId))||list;
       workers=list.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null}));
-      return;
+      if(workers.length) return;
     }
   }catch(e){}
-  workers=[{id:'w1',name:'Worker',colorIdx:0,token:null}];
+  // Priority 3: load from Google Sheets (worker's own phone — no localStorage)
+  workers=[];
+}
+
+async function loadWorkersFromGS(){
+  try{
+    const res = await fetch(GS_URL+'?action=loadSchedule');
+    const data = await res.json();
+    if(data.workers&&data.workers.length){
+      let list = data.workers;
+      if(SITE.clientId) list=list.filter(w=>(w.clientIds||[]).includes(SITE.clientId))||list;
+      workers=list.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null}));
+      // Cache in localStorage for next time
+      localStorage.setItem('schedMgr_v1', JSON.stringify(data));
+      return true;
+    }
+  }catch(e){ console.warn('GS load failed:', e); }
+  return false;
 }
 
 function showScreen(id){
