@@ -524,11 +524,14 @@ async function init(){
       return;
     }
 
-    // Invalid token
+    // Invalid token — show debug info
+    const debugInfo = 'URL worker: '+URL_WORKER+'\nURL token: '+URL_TOKEN+'\nWorkers loaded: '+workers.length+'\nWorker names: '+workers.map(w=>w.name+'('+w.token+')').join(', ');
+    console.error('Token mismatch:', debugInfo);
     document.body.innerHTML='<div style="position:fixed;inset:0;background:#080b12;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center">'
-      +'<div style="font-size:72px;margin-bottom:20px">🚫</div>'
-      +'<div style="font-size:24px;font-weight:900;color:#ff4f5e;margin-bottom:10px">Invalid Link</div>'
-      +'<div style="font-size:15px;color:#7c84a0;line-height:1.6;max-width:260px">This link is no longer valid.<br>Ask your manager for a new link.</div>';
+      +'<div style="font-size:48px;margin-bottom:16px">🚫</div>'
+      +'<div style="font-size:20px;font-weight:900;color:#ff4f5e;margin-bottom:10px">Invalid Link</div>'
+      +'<div style="font-size:13px;color:#7c84a0;line-height:1.6;max-width:300px;margin-bottom:16px">This link is no longer valid.<br>Ask your manager for a new link.</div>'
+      +'<div style="font-size:10px;color:#3a4060;background:#111520;border-radius:8px;padding:10px;text-align:left;word-break:break-all;max-width:300px;white-space:pre-wrap">'+debugInfo+'</div>';
     return;
   }
 
