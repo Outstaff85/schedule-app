@@ -3,7 +3,7 @@
 //  Caches all app files for offline use
 // ═══════════════════════════════════════════════
 
-const CACHE_NAME = 'schedule-manager-v1';
+const CACHE_NAME = 'schedule-manager-v3';
 
 // Files to cache for offline use
 const CACHE_FILES = [
