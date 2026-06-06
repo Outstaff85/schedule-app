@@ -872,6 +872,11 @@ async function subscribeWorkerPush(workerName){
 
 // ── PWA: Service Worker ───────────────────────────────────────────
 if('serviceWorker' in navigator){
+  // Unregister old SW first to clear stale cache
+  navigator.serviceWorker.getRegistrations().then(regs=>{
+    regs.forEach(reg=>reg.unregister());
+  });
+  // Then register fresh
   window.addEventListener('load',()=>{
     navigator.serviceWorker.register('service-worker.js')
       .then(()=>console.log('[PWA] Punch SW registered'))
