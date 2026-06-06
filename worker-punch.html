@@ -870,18 +870,21 @@ async function subscribeWorkerPush(workerName){
   } catch(e){ console.warn('Worker push failed:',e); }
 }
 
-// ── PWA: Service Worker ───────────────────────────────────────────
+// ── Unregister ALL service workers (clear stale cache) ───────────
 if('serviceWorker' in navigator){
-  // Unregister old SW first to clear stale cache
   navigator.serviceWorker.getRegistrations().then(regs=>{
-    regs.forEach(reg=>reg.unregister());
+    regs.forEach(reg=>{
+      reg.unregister();
+      console.log('[SW] Unregistered:', reg.scope);
+    });
   });
-  // Then register fresh
-  window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('service-worker.js')
-      .then(()=>console.log('[PWA] Punch SW registered'))
-      .catch(e=>console.warn('[PWA] SW failed:',e));
-  });
+  // Clear all caches
+  if('caches' in window){
+    caches.keys().then(keys=>{
+      keys.forEach(key=>caches.delete(key));
+      console.log('[Cache] Cleared:', keys.length, 'caches');
+    });
+  }
 }
 
 </script>
