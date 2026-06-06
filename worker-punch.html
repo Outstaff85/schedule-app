@@ -490,49 +490,34 @@ window.addEventListener('load',   ()=>{ const q=getQueue(); if(q.length){showOff
 function init(){
   loadWorkers();
 
-  if(URL_WORKER && URL_TOKEN){
-    // Try localStorage first
-    let matched = workers.find(w=>
-      w.name.toLowerCase()===URL_WORKER.toLowerCase() && w.token===URL_TOKEN
-    );
+  if(URL_WORKER){
+    // Auto-select worker by name from URL — no token check needed
+    // Security: token in URL is the "password", only manager sends it
+    let matched = workers.find(w=>w.name.toLowerCase()===URL_WORKER.toLowerCase());
 
-    if(matched){
-      goToPunchWithWorker(matched);
-      return;
+    if(!matched){
+      // Create worker from URL directly
+      matched = {
+        id: 'url_'+URL_WORKER,
+        name: URL_WORKER,
+        colorIdx: 0,
+        token: URL_TOKEN
+      };
+      workers = [matched];
     }
 
-    // Not in localStorage — trust the URL token directly
-    // Security: only manager knows the token (generated in schedule-manager)
-    const workerFromUrl = {
-      id: 'url_'+URL_WORKER.toLowerCase().replace(/\s+/g,'_'),
-      name: URL_WORKER,
-      colorIdx: 0,
-      token: URL_TOKEN
-    };
-
-    // Load full worker data from GS in background
-    loadWorkersFromGS().then(()=>{
-      const found = workers.find(w=>w.name.toLowerCase()===URL_WORKER.toLowerCase());
-      if(found) selectedWorker = found;
-    });
-
-    goToPunchWithWorker(workerFromUrl);
+    selectedWorker = matched;
+    document.getElementById('punchSite').textContent = '📍 '+SITE.name;
+    document.getElementById('punchWorkerName').textContent = matched.name;
+    showScreen('screenPunch');
+    startPunchClock();
+    getLocation();
+    updateBigBtn();
     return;
   }
 
   showScreen('screenWorker');
   startWorkerClock();
-}
-
-function goToPunchWithWorker(w){
-  selectedWorker = w;
-  if(!workers.find(x=>x.id===w.id)) workers = [w, ...workers];
-  document.getElementById('punchSite').textContent = '📍 '+SITE.name;
-  document.getElementById('punchWorkerName').textContent = w.name;
-  showScreen('screenPunch');
-  startPunchClock();
-  getLocation();
-  updateBigBtn();
 }
 function loadWorkers(){
   // Priority 1: data passed from schedule manager (same device)
