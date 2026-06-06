@@ -491,33 +491,59 @@ function init(){
   loadWorkers();
 
   if(URL_WORKER){
-    // Auto-select worker by name from URL — no token check needed
-    // Security: token in URL is the "password", only manager sends it
+    // Personal link - auto-select worker by name
     let matched = workers.find(w=>w.name.toLowerCase()===URL_WORKER.toLowerCase());
-
-    if(!matched){
-      // Create worker from URL directly
-      matched = {
-        id: 'url_'+URL_WORKER,
-        name: URL_WORKER,
-        colorIdx: 0,
-        token: URL_TOKEN
-      };
-      workers = [matched];
+    if(matched){
+      goToPunchDirect(matched);
+    } else {
+      // Workers not in localStorage - load from GS then retry
+      showLoadingScreen('Verifying...');
+      loadWorkersFromGS().then(()=>{
+        hideLoadingScreen();
+        let w = workers.find(x=>x.name.toLowerCase()===URL_WORKER.toLowerCase());
+        if(!w) w = {id:'url_'+URL_WORKER, name:URL_WORKER, colorIdx:0, token:URL_TOKEN};
+        goToPunchDirect(w);
+      });
     }
-
-    selectedWorker = matched;
-    document.getElementById('punchSite').textContent = '📍 '+SITE.name;
-    document.getElementById('punchWorkerName').textContent = matched.name;
-    showScreen('screenPunch');
-    startPunchClock();
-    getLocation();
-    updateBigBtn();
     return;
   }
 
-  showScreen('screenWorker');
-  startWorkerClock();
+  // No personal link - show worker list
+  if(workers.length){
+    showScreen('screenWorker');
+    startWorkerClock();
+  } else {
+    // No workers in localStorage - load from GS
+    showLoadingScreen('Loading...');
+    loadWorkersFromGS().then(()=>{
+      hideLoadingScreen();
+      showScreen('screenWorker');
+      startWorkerClock();
+    });
+  }
+}
+
+function goToPunchDirect(w){
+  selectedWorker = w;
+  if(!workers.find(x=>x.id===w.id)) workers = [w, ...workers];
+  document.getElementById('punchSite').textContent = '📍 '+SITE.name;
+  document.getElementById('punchWorkerName').textContent = w.name;
+  showScreen('screenPunch');
+  startPunchClock();
+  getLocation();
+  updateBigBtn();
+}
+
+function showLoadingScreen(msg){
+  const d = document.createElement('div');
+  d.id = 'loadingScreen';
+  d.style.cssText = 'position:fixed;inset:0;background:#080b12;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#7c84a0;font-family:-apple-system,sans-serif;z-index:999';
+  d.innerHTML = '<div style="font-size:48px;margin-bottom:16px">📡</div><div style="font-size:16px">'+msg+'</div>';
+  document.body.appendChild(d);
+}
+
+function hideLoadingScreen(){
+  document.getElementById('loadingScreen')?.remove();
 }
 function loadWorkers(){
   // Priority 1: data passed from schedule manager (same device)
