@@ -1936,6 +1936,8 @@ render();
 setSaveStatus('saved');
 // Start on Dashboard
 switchTab('dashboard');
+// Check push subscription status
+setTimeout(checkPushStatus, 1000);
 document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key==='s'){ e.preventDefault(); autoSave(); showToast('Сохранено!'); }
 });
@@ -1969,28 +1971,43 @@ async function subscribeToPush(){
 }
 
 async function checkPushStatus(){
-  if(!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-  try{
-    const reg = await navigator.serviceWorker.ready;
-    const sub = await reg.pushManager.getSubscription();
-    if(!sub){
-      const btn=document.createElement('button');
-      btn.id='pushBtn'; btn.className='btn sm';
-      btn.innerHTML='🔔 Enable Alerts';
-      btn.style.cssText='background:rgba(62,207,142,0.12);border-color:rgba(62,207,142,0.3);color:var(--green)';
-      btn.onclick=subscribeToPush;
-      document.querySelector('.titlebar-actions')?.prepend(btn);
-    }
-  } catch(e){}
+  if(!('Notification' in window)) return;
+  
+  // If already granted - don't show button
+  if(Notification.permission === 'granted'){
+    try{
+      if('serviceWorker' in navigator){
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if(sub) return; // already subscribed
+      }
+    } catch(e){}
+  }
+  
+  // Show button if not yet subscribed
+  if(!document.getElementById('pushBtn')){
+    const btn=document.createElement('button');
+    btn.id='pushBtn'; btn.className='btn sm';
+    btn.innerHTML='🔔 Enable Alerts';
+    btn.style.cssText='background:rgba(62,207,142,0.12);border-color:rgba(62,207,142,0.3);color:var(--green)';
+    btn.onclick=subscribeToPush;
+    document.querySelector('.titlebar-actions')?.prepend(btn);
+  }
 }
 
 // ── PWA: Service Worker ───────────────────────────────────────────
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
     navigator.serviceWorker.register('service-worker.js')
-      .then(reg=>console.log('[PWA] SW registered'))
+      .then(reg=>{
+        console.log('[PWA] SW registered');
+        checkPushStatus();
+      })
       .catch(e=>console.warn('[PWA] SW failed:',e));
   });
+} else {
+  // No SW support - still show button if Notification API available
+  if('Notification' in window) checkPushStatus();
 }
 
 // ── PWA: Install button ───────────────────────────────────────────
