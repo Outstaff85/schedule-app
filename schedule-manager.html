@@ -862,7 +862,7 @@ function showWorkerModal(w){
     <div class="field">
       <label>🔗 Personal Punch Link</label>
       <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <code style="font-size:11px;color:var(--blue);flex:1;word-break:break-all">worker-punch.html?worker=${encodeURIComponent(w.name)}&token=${w.token}</code>
+        <code style="font-size:11px;color:var(--blue);flex:1;word-break:break-all">https://odinson.ltd/worker-punch.html?worker=${encodeURIComponent(w.name)}&token=${w.token}</code>
         <button class="btn sm" onclick="copyWorkerLink('${w.id}')" style="flex-shrink:0">📋 Copy</button>
       </div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">Send this link to the worker. They save it as a bookmark.</div>
@@ -910,11 +910,12 @@ function regenerateWorkerToken(wi){
 function copyWorkerLink(wid){
   const w = workers.find(x=>x.id===wid);
   if(!w||!w.token){ showToast('No token — save worker first'); return; }
-  const base = window.location.href.replace(/[^/]*$/, '');
-  const link = base+'worker-punch.html?worker='+encodeURIComponent(w.name)+'&token='+w.token;
-  navigator.clipboard?.writeText(link).then(()=>showToast('Link copied!')).catch(()=>{
+  const link = 'https://odinson.ltd/worker-punch.html?worker='+encodeURIComponent(w.name)+'&token='+w.token;
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(link).then(()=>showToast('✅ Link copied!')).catch(()=>prompt('Copy this link:',link));
+  } else {
     prompt('Copy this link:', link);
-  });
+  }
 }
 function deleteWorker(wi){ if(!confirm('Remove "'+workers[wi].name+'"?'))return; const n=workers[wi].name; workers.splice(wi,1); render(); autoSave(); showToast(n+' removed'); }
 
