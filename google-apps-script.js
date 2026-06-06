@@ -24,13 +24,22 @@ function doPost(e) {
 
 function doGet(e) {
   try {
+    let result;
     switch (e.parameter.action || 'loadSchedule') {
-      case 'loadSchedule': return jsonResponse(loadSchedule());
-      case 'loadPunchLog': return jsonResponse(loadPunchLog(e.parameter));
-      case 'calcSalary':   return jsonResponse(calcSalary(e.parameter));
-      default:             return jsonResponse({error: 'Unknown action'});
+      case 'loadSchedule': result = loadSchedule();              break;
+      case 'loadPunchLog': result = loadPunchLog(e.parameter);   break;
+      case 'calcSalary':   result = calcSalary(e.parameter);     break;
+      default:             result = {error: 'Unknown action'};
     }
-  } catch(e) { return jsonResponse({error: e.toString()}); }
+    // Support JSONP callback for cross-origin requests
+    const callback = e.parameter.callback;
+    if (callback) {
+      return ContentService
+        .createTextOutput(callback + '(' + JSON.stringify(result) + ')')
+        .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    }
+    return jsonResponse(result);
+  } catch(err) { return jsonResponse({error: err.toString()}); }
 }
 
 function jsonResponse(data) {

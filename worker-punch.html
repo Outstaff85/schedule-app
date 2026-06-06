@@ -556,19 +556,46 @@ function loadWorkers(){
 }
 
 async function loadWorkersFromGS(){
+  // Try multiple methods to load from GS
+  const url = GS_URL+'?action=loadSchedule&t='+Date.now();
+  
+  // Method 1: direct fetch
   try{
-    const res = await fetch(GS_URL+'?action=loadSchedule');
-    const data = await res.json();
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      redirect: 'follow',
+    });
+    const text = await res.text();
+    const data = JSON.parse(text);
     if(data.workers&&data.workers.length){
-      let list = data.workers;
-      if(SITE.clientId) list=list.filter(w=>(w.clientIds||[]).includes(SITE.clientId))||list;
-      workers=list.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null}));
-      // Cache in localStorage for next time
+      workers=data.workers.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null}));
       localStorage.setItem('schedMgr_v1', JSON.stringify(data));
+      console.log('GS loaded (method 1):', workers.length, 'workers');
       return true;
     }
-  }catch(e){ console.warn('GS load failed:', e); }
-  return false;
+  }catch(e){ console.warn('Method 1 failed:', e.message); }
+
+  // Method 2: jsonp-style via script tag
+  return new Promise((resolve)=>{
+    const cb = 'gsCallback_'+Date.now();
+    window[cb] = (data)=>{
+      try{
+        if(data.workers&&data.workers.length){
+          workers=data.workers.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null}));
+          localStorage.setItem('schedMgr_v1', JSON.stringify(data));
+          console.log('GS loaded (method 2):', workers.length, 'workers');
+          resolve(true);
+        } else { resolve(false); }
+      }catch(e){ resolve(false); }
+      delete window[cb];
+    };
+    const script = document.createElement('script');
+    script.src = GS_URL+'?action=loadSchedule&callback='+cb+'&t='+Date.now();
+    script.onerror = ()=>{ resolve(false); delete window[cb]; };
+    setTimeout(()=>{ resolve(false); delete window[cb]; }, 8000);
+    document.head.appendChild(script);
+  });
 }
 
 function showScreen(id){
