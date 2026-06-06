@@ -492,8 +492,13 @@ async function init(){
 
   if(URL_WORKER && URL_TOKEN){
     // Show loading indicator
-    document.body.style.cssText='background:#080b12;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;text-align:center;color:#7c84a0;font-family:-apple-system,sans-serif';
-    document.body.innerHTML='<div style="font-size:40px;margin-bottom:16px">📡</div><div style="font-size:16px">Verifying...</div>';
+    document.querySelectorAll('.screen').forEach(s=>s.classList.add('hidden'));
+    document.body.style.overflow='hidden';
+    const loadDiv = document.createElement('div');
+    loadDiv.id='verifyScreen';
+    loadDiv.style.cssText='position:fixed;inset:0;background:#080b12;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#7c84a0;font-family:-apple-system,sans-serif;z-index:999';
+    loadDiv.innerHTML='<div style="font-size:48px;margin-bottom:16px">📡</div><div style="font-size:16px">Verifying...</div>';
+    document.body.appendChild(loadDiv);
 
     // Check localStorage first
     let matched = workers.find(w=>w.name.toLowerCase()===URL_WORKER.toLowerCase()&&w.token===URL_TOKEN);
@@ -504,16 +509,26 @@ async function init(){
       if(ok) matched = workers.find(w=>w.name.toLowerCase()===URL_WORKER.toLowerCase()&&w.token===URL_TOKEN);
     }
 
+    // Remove loading screen
+    loadDiv.remove();
+
     if(matched){
-      // Reload page — all data now in localStorage cache
-      location.reload();
+      // Go directly to punch screen
+      selectedWorker = matched;
+      document.getElementById('punchSite').textContent = '📍 '+SITE.name;
+      document.getElementById('punchWorkerName').textContent = matched.name;
+      showScreen('screenPunch');
+      startPunchClock();
+      getLocation();
+      updateBigBtn();
       return;
     }
 
-    // Invalid
-    document.body.innerHTML='<div style="font-size:72px;margin-bottom:20px">🚫</div>'
+    // Invalid token
+    document.body.innerHTML='<div style="position:fixed;inset:0;background:#080b12;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center">'
+      +'<div style="font-size:72px;margin-bottom:20px">🚫</div>'
       +'<div style="font-size:24px;font-weight:900;color:#ff4f5e;margin-bottom:10px">Invalid Link</div>'
-      +'<div style="font-size:15px;line-height:1.6;max-width:260px">This link is no longer valid.<br>Ask your manager for a new link.</div>';
+      +'<div style="font-size:15px;color:#7c84a0;line-height:1.6;max-width:260px">This link is no longer valid.<br>Ask your manager for a new link.</div>';
     return;
   }
 
