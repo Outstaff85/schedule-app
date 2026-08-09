@@ -43,7 +43,7 @@ Both HTML files talk to the **same** Google Apps Script Web App endpoint (`GS_UR
 
 **Backend sheets:**
 - `Schedule` (key/value pairs: workers JSON, clients JSON, weekStart, savedAt).
-- `PunchLog` (append-only, with GPS fields and edit tracking).
+- `PunchLog` (append-only columns: ID, WorkerID, Worker, Type, Time, Date, Timestamp, Site, Distance(m), GPS Accuracy(m), GPS Suspicious, GPS Warnings, Notes, EditedAt, ClientID; see migration notes below).
 - `Salary` (computed dynamically from PunchLog).
 - `Clients` (human-readable tab: Name, Address, Lat, Lng, Radius(m), Notes).
 - `PushSubscriptions` (web push endpoints).
