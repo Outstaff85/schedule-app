@@ -1926,10 +1926,12 @@ function renderSalary(){
     const h=_res.hours;
     if(h>0){
       const isSat=date.getDay()===6, RM=PAY_RULES.regularMax;
+      const wc=workers.find(w=>w.id===workerId);
       if(isSat){ byWorker[workerId].shabH+=h; }
       else { byWorker[workerId].regH+=Math.min(h,RM); byWorker[workerId].otH+=Math.max(h-RM,0); }
       byWorker[workerId].hours+=h;
       byWorker[workerId].days++;
+      byWorker[workerId].total+=shiftPay(h,wc,isSat);
     }
   });
 
