@@ -2584,8 +2584,8 @@ async function aiFillForm101(isId){
         else { fld.setText(String(v).replace(/[\u0590-\u05FF\uFB1D-\uFB4F]/g,'?')); }
       }catch(e){}
     };
-    setH('surname',surname); setH('given_name',given); setT('dob',dob);
-    setT('id_top2',no); setT('tax_year',String(new Date().getFullYear()));
+    setH('surname',surname); setH('given_name',given); setComb('dob',8,dob.replace(/\D/g,''));
+    setT('id_top2',no); setComb('tax_year',4,String(new Date().getFullYear()));
     if(sex==='M') chk('sex_male'); else if(sex==='F') chk('sex_female');
     if(isIsraeli){ chk('resident_yes'); chk('resident_h'); }
     else { chk('resident_no'); chk('marital_single'); }
