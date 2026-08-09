@@ -25,15 +25,36 @@ When bumping the service worker's cache (`CACHE` constant in `service-worker.js`
 
 ## Architecture
 
-### Backend: Google Apps Script, not in this repo
+### Backend: Google Apps Script
 
-Both HTML files talk to the **same** Google Apps Script Web App endpoint (`GS_URL`, a `script.google.com/macros/.../exec` URL hardcoded near the top of the `<script>` block in each file), authenticated with a hardcoded shared secret (`API_SECRET`). This Apps Script project (backed by a Google Sheet) is the actual database — its source is **not** part of this repository (`firebase.json` even lists `google-apps-script.js` in its `ignore` array as a placeholder). Requests are plain `fetch()` calls with an `action` field selecting the server-side operation:
+Both HTML files talk to the **same** Google Apps Script Web App endpoint (`GS_URL`, a `script.google.com/macros/.../exec` URL hardcoded near the top of the `<script>` block in each file), authenticated with a hardcoded shared secret (`API_SECRET` = `'odinson-7Kq2x9'`). The Apps Script project (backed by a Google Sheet) is the actual database. Source code is in `google-apps-script.js` (tracked here for reference; deployed separately to Google Apps Script platform via manual copy/paste or Apps Script editor). Requests are plain `fetch()` calls with an `action` field selecting the server-side operation:
 
-- `saveSchedule`, `loadSchedule` — the whole workers/clients/schedule blob.
-- `savePunch`, `updatePunch`, `deletePunch`, `loadPunchLog` — punch-clock entries.
-- `savePushSubscription` — web push registration.
-- `aiReadDoc` — server-side AI document OCR (used by the passport/ID scan flow).
-- `logError` — client error reporting.
+**GET endpoints:**
+- `loadSchedule` — fetch workers/clients/weekStart/savedAt.
+- `loadPunchLog` — fetch punch entries (with optional worker/date/type filters).
+- `calcSalary` — compute daily/worker hours from punch log.
+
+**POST endpoints (write actions, require `API_SECRET`):**
+- `saveSchedule` — persist workers/clients/weekStart; includes optimistic concurrency control (rejects if `baseSavedAt` conflicts with server version). `clients.radius` always coerced to NUMBER (default 100m).
+- `savePunch`, `updatePunch`, `deletePunch` — punch-clock entries with GPS data.
+- `savePushSubscription` — web push subscription registration.
+- `aiReadDoc` — server-side AI document OCR via Anthropic API (passport/Israeli ID extraction, stored in Script Properties: `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`).
+- `logError` — client error telemetry.
+
+**Backend sheets:**
+- `Schedule` (key/value pairs: workers JSON, clients JSON, weekStart, savedAt).
+- `PunchLog` (append-only, with GPS fields and edit tracking).
+- `Salary` (computed dynamically from PunchLog).
+- `Clients` (human-readable tab: Name, Address, Lat, Lng, Radius(m), Notes).
+- `PushSubscriptions` (web push endpoints).
+- `Backups` (daily snapshot for disaster recovery).
+- `Errors` (client error log, last 500 entries).
+
+**Backend utilities:**
+- `backupNow()` / `setupDailyBackup()` — daily 2am backup of Schedule to Backups sheet.
+- `restoreBackupRow(rowNum)` — manual restore from Backups.
+- `checkShiftReminders()` / `setupHourlyTrigger()` — hourly check for upcoming shifts, send push notifications.
+- `normalizeClients(clients)` — enforce numeric radius on load/save.
 
 The service worker explicitly never intercepts requests to `script.google.com` (`service-worker.js:31`) — the API always goes straight to network.
 
