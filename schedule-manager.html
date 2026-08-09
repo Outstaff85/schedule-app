@@ -1418,6 +1418,7 @@ function saveManualPunch(cid){
     date:        new Date(date).toLocaleDateString('en-GB'),
     ts,
     site:        c?.name || '',
+    clientId:    c?.id || null,
     dist:        null,
     gpsVerified: false,
     manual:      true,
