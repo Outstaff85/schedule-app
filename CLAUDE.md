@@ -32,7 +32,7 @@ When bumping the service worker's cache (`CACHE` constant in `service-worker.js`
 
 ### Backend: Google Apps Script
 
-Both HTML files talk to the **same** Google Apps Script Web App endpoint (`GS_URL`, a `script.google.com/macros/.../exec` URL hardcoded near the top of the `<script>` block in each file), authenticated with a hardcoded shared secret (`API_SECRET` = `'odinson-7Kq2x9'`). The Apps Script project (backed by a Google Sheet) is the actual database. Source code is in `google-apps-script.js` and configuration is in `apps-script/appsscript.json` (both tracked here; deployed to `script.google.com` via `clasp push` using the project ID in `apps-script/.clasp.json`). Requests are plain `fetch()` calls with an `action` field selecting the server-side operation:
+Both HTML files talk to the **same** Google Apps Script Web App endpoint (`GS_URL`, a `script.google.com/macros/.../exec` URL hardcoded near the top of the `<script>` block in each file), authenticated with a hardcoded shared secret (`API_SECRET` = `'odinson-7Kq2x9'`). The Apps Script project (backed by a Google Sheet) is the actual database. Source code is in `apps-script/` (tracked here and auto-deployed via GitHub Actions when pushed to `main`). Configuration is in `apps-script/appsscript.json` (project settings: timezone, runtime, web app access). The project ID in `apps-script/.clasp.json` links the local source to the deployed Apps Script via clasp. Requests are plain `fetch()` calls with an `action` field selecting the server-side operation:
 
 **GET endpoints:**
 - `loadSchedule` — fetch workers/clients/weekStart/savedAt.
