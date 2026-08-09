@@ -748,6 +748,19 @@ function israeliDayPay(hours, rate, isSat){
 function wRegRate(w){ const b=Number(w&&w.hourlyRate)||0; return (w&&w.regRate!=null&&w.regRate!=='')?Number(w.regRate):b; }
 function wOtRate(w){ const b=Number(w&&w.hourlyRate)||0; return (w&&w.otRate!=null&&w.otRate!=='')?Number(w.otRate):Math.round(b*PAY_RULES.otMult*100)/100; }
 function wShabRate(w){ const b=Number(w&&w.hourlyRate)||0; return (w&&w.shabbatRate!=null&&w.shabbatRate!=='')?Number(w.shabbatRate):Math.round(b*PAY_RULES.shabbatMult*100)/100; }
+// Pay for one shift's hours. Default: the israeliDayPay law tiers (125%/150% OT,
+// 150%/175%/200% Shabbat) applied to the worker's regular rate. A worker's manual
+// OT/Shabbat rate override replaces the law tiers with that single flat rate across
+// all OT/Shabbat hours of the shift, same as before this defaulted to the law.
+function shiftPay(hours, w, isSat){
+  const RM=PAY_RULES.regularMax, regRate=wRegRate(w);
+  if(isSat){
+    if(w && w.shabbatRate!=null && w.shabbatRate!=='') return hours*wShabRate(w);
+    return israeliDayPay(hours, regRate, true).total;
+  }
+  if(w && w.otRate!=null && w.otRate!=='') return Math.min(hours,RM)*regRate + Math.max(hours-RM,0)*wOtRate(w);
+  return israeliDayPay(hours, regRate, false).total;
+}
 function fmtDate(d){ return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); }
 function fmtRange(d){ const e=new Date(d); e.setDate(e.getDate()+6); return fmtDate(d)+' – '+fmtDate(e); }
 
