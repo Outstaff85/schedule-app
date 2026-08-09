@@ -675,6 +675,7 @@ let clients = [
 
 // --- Utils --------------------------------------------------------------------
 function uid(){ return 'id'+Math.random().toString(36).slice(2,9); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function getSundayOfWeek(d){ const c=new Date(d); c.setDate(c.getDate()-c.getDay()); c.setHours(0,0,0,0); return c; }
 function toMins(t){ if(!t)return null; const[h,m]=t.split(':').map(Number); return h*60+m; }
 function calcHours(s,e){ if(!s||!e)return 0; const sm=toMins(s),em=toMins(e); return em<=sm?(1440-sm+em)/60:(em-sm)/60; }
@@ -838,7 +839,7 @@ function renderGanttBody(){
     h+=`<div class="gantt-name-cell">
       <span class="drag-handle">⠿</span>
       <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${ini}</div>
-      <span>${w.name}</span>
+      <span>${esc(w.name)}</span>
     </div>`;
     w.schedule.forEach((sh,di)=>{
       h+=`<div class="gantt-day-cell" onclick="openEditShift(${wi},${di})">`;
@@ -878,7 +879,7 @@ function renderWorkerList(){
     const rateStr=w.hourlyRate?(' · ₪'+w.hourlyRate+'/h'):'';
     h+=`<div class="worker-chip">
       <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${ini}</div>
-      <div class="worker-info"><div class="worker-name">${w.name}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">FIRED</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">VAC</span>':''}</div><div class="worker-hours">${wh.toFixed(1)}h${rateStr}</div></div>
+      <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">FIRED</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">VAC</span>':''}</div><div class="worker-hours">${wh.toFixed(1)}h${rateStr}</div></div>
       <div class="worker-actions">
         <button class="worker-act-btn edit" onclick="openEditWorker(${wi})" title="Edit"><i class="ti ti-edit"></i></button>
         <button class="worker-act-btn edit" onclick="copyWorkerLink('${w.id}')" title="Copy punch link"><i class="ti ti-link"></i></button>
@@ -902,7 +903,7 @@ function renderSidebarClients(){
   cl.forEach(c=>{
     h+=`<div class="client-chip ${selectedClientId===c.id?'selected':''}" onclick="filterByClient('${c.id}')">
       <div class="client-dot" style="background:${c.color}"></div>
-      <span class="client-name-label">${c.name}</span>
+      <span class="client-name-label">${esc(c.name)}</span>
     </div>`;
   });
   el.innerHTML=h;
@@ -928,7 +929,7 @@ function openEditShift(wi,di){
   const w=workers[wi],sh=w.schedule[di];
   const date=new Date(weekStart); date.setDate(date.getDate()+di);
   document.getElementById('editModal').innerHTML=`
-    <div class="modal-title">Edit shift — ${w.name}, ${DAYS[di]} ${fmtDate(date)}</div>
+    <div class="modal-title">Edit shift — ${esc(w.name)}, ${DAYS[di]} ${fmtDate(date)}</div>
     <div class="field"><label>Shift type</label>
       <select id="eType" onchange="toggleEditTime()">
         <option value="work" ${sh.type==='work'?'selected':''}>Working</option>
@@ -1008,7 +1009,7 @@ function showWorkerModal(w){
         ${clients.length?clients.map(c=>`<label class="wc-row" data-name="${(c.name+' '+(c.object||'')).toLowerCase().replace(/"/g,'')}" style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:var(--radius-sm);cursor:pointer">
           <input type="checkbox" value="${c.id}" ${(w.clientIds||[]).includes(c.id)?'checked':''} onchange="updateClientCount()" style="width:auto;padding:0;flex-shrink:0">
           <span style="width:8px;height:8px;border-radius:50%;background:${c.color};flex-shrink:0"></span>
-          <span style="font-size:13px;color:var(--text)">${c.name}${c.object?`<span style="color:var(--text3);font-size:11px"> · ${c.object}</span>`:''}</span>
+          <span style="font-size:13px;color:var(--text)">${esc(c.name)}${c.object?`<span style="color:var(--text3);font-size:11px"> · ${esc(c.object)}</span>`:''}</span>
         </label>`).join(''):'<span style="font-size:12px;color:var(--text3);padding:8px">No clients yet</span>'}
       </div>
       <div id="wClientEmpty" style="display:none;font-size:12px;color:var(--text3);padding:8px">Nothing found</div>
@@ -1033,7 +1034,7 @@ function showWorkerModal(w){
         <button class="btn sm" onclick="copyWorkerLink('${w.id}')" style="flex-shrink:0"><i class="ti ti-clipboard-text"></i> Copy</button>
       </div>
       ${(()=>{ const geo=(w.clientIds||[]).map(id=>clients.find(c=>c.id===id)).find(c=>c&&c.lat&&c.lng); return geo
-        ? `<div style="font-size:11px;color:var(--green);margin-top:4px"><i class="ti ti-map-pin"></i> Geofence: ${geo.name} · ${(geo.radius||100)}m</div>`
+        ? `<div style="font-size:11px;color:var(--green);margin-top:4px"><i class="ti ti-map-pin"></i> Geofence: ${esc(geo.name)} · ${(geo.radius||100)}m</div>`
         : `<div style="font-size:11px;color:var(--amber);margin-top:4px"><i class="ti ti-alert-triangle"></i> Linked client has no location set — punch will NOT be geo-verified</div>`; })()}
       <div style="font-size:11px;color:var(--text3);margin-top:4px">Send this link to the worker. They save it as a bookmark.</div>
     </div>` : ''}
@@ -1246,9 +1247,9 @@ function renderWorkersPage(){
     const c=WORKER_COLORS[w.colorIdx%8], ini=w.name.slice(0,2).toUpperCase();
     const stMeta=stMetaMap[w.status||'active'];
     const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
-    const objBadges=objs.length?objs.map(o=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${o.color}22;border-radius:10px;margin-right:3px"><span style="width:6px;height:6px;border-radius:50%;background:${o.color}"></span>${o.name}</span>`).join(''):'<span style="color:var(--text3);font-size:12px">—</span>';
+    const objBadges=objs.length?objs.map(o=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${o.color}22;border-radius:10px;margin-right:3px"><span style="width:6px;height:6px;border-radius:50%;background:${o.color}"></span>${esc(o.name)}</span>`).join(''):'<span style="color:var(--text3);font-size:12px">—</span>';
     return `<tr onclick="openWorkerCard(${wi})" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background=''">
-      <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><span style="font-size:13px;font-weight:600">${w.name}</span></div></td>
+      <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><span style="font-size:13px;font-weight:600">${esc(w.name)}</span></div></td>
       <td style="padding:10px 12px"><span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col}">${stMeta.label}</span></td>
       <td style="padding:10px 12px">${objBadges}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.phone||'—'}</td>
@@ -1273,22 +1274,22 @@ function openWorkerCard(wi){
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
       <div style="width:52px;height:52px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">${ini}</div>
       <div style="flex:1">
-        <div style="font-size:18px;font-weight:700">${w.name}</div>
+        <div style="font-size:18px;font-weight:700">${esc(w.name)}</div>
         <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col};display:inline-block;margin-top:4px">${stMeta.label}</span>
       </div>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text2);margin-bottom:14px">
-      ${w.phone?`<div><i class="ti ti-phone"></i> ${w.phone}</div>`:''}
-      ${w.email?`<div><i class="ti ti-mail"></i> ${w.email}</div>`:''}
+      ${w.phone?`<div><i class="ti ti-phone"></i> ${esc(w.phone)}</div>`:''}
+      ${w.email?`<div><i class="ti ti-mail"></i> ${esc(w.email)}</div>`:''}
       ${w.hourlyRate?`<div><i class="ti ti-coin"></i> ₪${w.hourlyRate}/h</div>`:''}
       ${w.startDate?`<div><i class="ti ti-calendar-event"></i> Started ${w.startDate}</div>`:''}
-      ${w.address?`<div><i class="ti ti-id"></i> ${w.address}</div>`:''}
+      ${w.address?`<div><i class="ti ti-id"></i> ${esc(w.address)}</div>`:''}
       <div><i class="ti ti-clock-hour-4"></i> ${wh.toFixed(1)}h scheduled / week</div>
     </div>
-    ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${w.notes}</div>`:''}
+    ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
     <div style="margin-bottom:14px">
       <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Objects</div>
-      ${objs.length?objs.map(o=>`<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:4px 8px;background:${o.color}22;border-radius:12px;margin-right:5px;margin-bottom:5px"><span style="width:7px;height:7px;border-radius:50%;background:${o.color}"></span>${o.name}</span>`).join(''):'<span style="color:var(--text3);font-size:12px">Not assigned to any object</span>'}
+      ${objs.length?objs.map(o=>`<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:4px 8px;background:${o.color}22;border-radius:12px;margin-right:5px;margin-bottom:5px"><span style="width:7px;height:7px;border-radius:50%;background:${o.color}"></span>${esc(o.name)}</span>`).join(''):'<span style="color:var(--text3);font-size:12px">Not assigned to any object</span>'}
     </div>
     <div class="modal-actions">
       <button class="btn sm red" onclick="deleteWorkerFromCard(${wi})"><i class="ti ti-trash"></i> Delete</button>
@@ -1309,14 +1310,14 @@ function renderClientsPage(){
     return `<div class="client-card">
       <div class="client-card-header">
         <div class="client-card-dot" style="background:${c.color}"></div>
-        <div><div class="client-card-name">${c.name}</div>${c.object?`<div class="client-card-info"><i class="ti ti-building"></i> ${c.object}</div>`:''}${c.address?`<div class="client-card-info"><i class="ti ti-map-pin"></i> ${c.address}</div>`:''}</div>
+        <div><div class="client-card-name">${esc(c.name)}</div>${c.object?`<div class="client-card-info"><i class="ti ti-building"></i> ${esc(c.object)}</div>`:''}${c.address?`<div class="client-card-info"><i class="ti ti-map-pin"></i> ${esc(c.address)}</div>`:''}</div>
       </div>
-      ${c.notes?`<div style="font-size:12px;color:var(--text2)">${c.notes}</div>`:''}
+      ${c.notes?`<div style="font-size:12px;color:var(--text2)">${esc(c.notes)}</div>`:''}
       ${hasGeo?`<div style="font-size:12px;color:var(--green);background:var(--green-bg);border-radius:6px;padding:5px 8px">
         <i class="ti ti-gps"></i> GPS: ${Number(c.lat).toFixed(4)}, ${Number(c.lng).toFixed(4)} · radius ${c.radius||100}m
       </div>`:`<div style="font-size:12px;color:var(--text3)"><i class="ti ti-map-pin-off"></i> No geolocation — edit to add</div>`}
 
-      <div style="font-size:12px;color:var(--text2)"><strong style="color:var(--text)">Workers:</strong> ${assigned.length?assigned.map(w=>`<span style="color:${WORKER_COLORS[w.colorIdx%8].text}">${w.name}</span>`).join(', '):'None assigned'}</div>
+      <div style="font-size:12px;color:var(--text2)"><strong style="color:var(--text)">Workers:</strong> ${assigned.length?assigned.map(w=>`<span style="color:${WORKER_COLORS[w.colorIdx%8].text}">${esc(w.name)}</span>`).join(', '):'None assigned'}</div>
       <div class="client-card-actions">
         <button class="btn sm" onclick="openEditClient('${c.id}')"><i class="ti ti-edit"></i> Edit</button>
 
@@ -1337,14 +1338,14 @@ function openManualPunch(cid){
   const today = now.toISOString().slice(0,10);
 
   document.getElementById('manualPunchModal').innerHTML = `
-    <div class="modal-title"><i class="ti ti-clock"></i> Manual Punch — ${c.name}</div>
+    <div class="modal-title"><i class="ti ti-clock"></i> Manual Punch — ${esc(c.name)}</div>
     <div class="field">
       <label>Worker</label>
       <select id="mpWorker" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:10px;outline:none">
         <option value="">— Select worker —</option>
         ${assignedWorkers.length
-          ? assignedWorkers.map(w=>`<option value="${w.id}">${w.name}</option>`).join('')
-          : workers.map(w=>`<option value="${w.id}">${w.name}</option>`).join('')
+          ? assignedWorkers.map(w=>`<option value="${w.id}">${esc(w.name)}</option>`).join('')
+          : workers.map(w=>`<option value="${w.id}">${esc(w.name)}</option>`).join('')
         }
       </select>
     </div>
@@ -1833,7 +1834,7 @@ function renderDashboard(){
         <div style="width:40px;height:40px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;position:relative">
           ${ini}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--green);border:2px solid var(--bg2)"></span>
         </div>
-        <div style="font-size:13px;font-weight:600">${w.name}</div>
+        <div style="font-size:13px;font-weight:600">${esc(w.name)}</div>
         <div style="font-size:11px;color:var(--text2)">Since ${sinceTime}</div>
         ${lastIn?.dist!=null?`<div style="font-size:10px;color:var(--text3)"><i class="ti ti-map-pin"></i> ${lastIn.dist}m</div>`:''}
       </div>`;
@@ -1853,7 +1854,7 @@ function renderDashboard(){
         <div style="width:40px;height:40px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;position:relative;opacity:0.6">
           ${ini}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--red);border:2px solid var(--bg2)"></span>
         </div>
-        <div style="font-size:13px;font-weight:600">${w.name}</div>
+        <div style="font-size:13px;font-weight:600">${esc(w.name)}</div>
         <div style="font-size:11px;color:var(--red)">Should be here</div>
         <div style="font-size:10px;color:var(--text3)">${sh?.start||''}–${sh?.end||''}</div>
       </div>`;
@@ -1877,7 +1878,7 @@ function renderDashboard(){
       return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:${i<shown.length-1?'1px solid var(--border)':'none'}">
         <div style="width:30px;height:30px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div>
         <div style="flex:1">
-          <div style="font-size:13px;font-weight:600">${e.workerName}</div>
+          <div style="font-size:13px;font-weight:600">${esc(e.workerName)}</div>
           <div style="font-size:11px;color:var(--text2)">${punchSite(e)}</div>
         </div>
         <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;${e.type==='in'?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${e.type==='in'?'IN':'OUT'}</span>
@@ -2145,7 +2146,7 @@ function renderClientLogs(){
       return `<div style="background:var(--bg3);border-radius:8px;padding:12px;margin-bottom:8px">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:${recent.length?'10px':'0'}">
           <div style="width:32px;height:32px;border-radius:50%;background:${wc.bg};color:${wc.text};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${ini}</div>
-          <div style="flex:1"><div style="font-size:14px;font-weight:600">${w.name}</div>
+          <div style="flex:1"><div style="font-size:14px;font-weight:600">${esc(w.name)}</div>
             <div style="font-size:12px;margin-top:2px;color:${isClockedIn?'var(--green)':'var(--text3)'}">${isClockedIn?'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);vertical-align:middle;margin-right:4px"></span> In since '+lastEntry.time:lastEntry?'Last: '+lastEntry.time+' ('+lastEntry.type+')':'No records today'}</div>
           </div>
           <div style="font-size:11px;color:var(--text3)">${wLog.length} records</div>
@@ -2169,7 +2170,7 @@ function renderClientLogs(){
     return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:16px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)">
         <div style="width:14px;height:14px;border-radius:50%;background:${c.color};flex-shrink:0"></div>
-        <div style="flex:1"><div style="font-size:16px;font-weight:700">${c.name}</div>${c.address?`<div style="font-size:12px;color:var(--text2)"><i class="ti ti-map-pin"></i> ${c.address}</div>`:''}</div>
+        <div style="flex:1"><div style="font-size:16px;font-weight:700">${esc(c.name)}</div>${c.address?`<div style="font-size:12px;color:var(--text2)"><i class="ti ti-map-pin"></i> ${esc(c.address)}</div>`:''}</div>
         <div style="text-align:right">
           <div style="font-size:13px;color:var(--green);font-weight:600">${presentNow} on site now</div>
           <div style="font-size:11px;color:var(--text3)">${assignedWorkers.length} workers · ${clientLog.length} total punches</div>
@@ -2188,9 +2189,15 @@ function renderAdmin(){
   const filterType   = document.getElementById('adminFilterType')?.value||'';
 
   const workerSel = document.getElementById('adminFilterWorker');
-  if(workerSel){ const cur=workerSel.value; const names=[...new Set(log.map(e=>e.workerName))].sort(); workerSel.innerHTML='<option value="">All workers</option>'+names.map(n=>`<option value="${n}" ${n===cur?'selected':''}>${n}</option>`).join(''); }
+  if(workerSel){
+    const cur=workerSel.value;
+    const seen=new Map();
+    log.forEach(e=>{ if(e.workerId && !seen.has(e.workerId)) seen.set(e.workerId,e.workerName); });
+    const opts=[...seen.entries()].sort((a,b)=>a[1]<b[1]?-1:a[1]>b[1]?1:0);
+    workerSel.innerHTML='<option value="">All workers</option>'+opts.map(([id,name])=>`<option value="${id}" ${id===cur?'selected':''}>${esc(name)}</option>`).join('');
+  }
   const clientSel = document.getElementById('adminFilterClient');
-  if(clientSel){ const cur=clientSel.value; clientSel.innerHTML='<option value="">All clients</option>'+clients.map(c=>`<option value="${c.id}" ${c.id===cur?'selected':''}>${c.name}</option>`).join(''); }
+  if(clientSel){ const cur=clientSel.value; clientSel.innerHTML='<option value="">All clients</option>'+clients.map(c=>`<option value="${c.id}" ${c.id===cur?'selected':''}>${esc(c.name)}</option>`).join(''); }
   const dateSel = document.getElementById('adminFilterDate');
   if(dateSel){ const cur2=dateSel.value; const dates=[...new Set(log.map(e=>new Date(e.ts).toLocaleDateString('en-GB')))].sort().reverse(); dateSel.innerHTML='<option value="">All dates</option>'+dates.map(d=>`<option value="${d}" ${d===cur2?'selected':''}>${d}</option>`).join(''); }
 
@@ -2222,7 +2229,7 @@ function renderAdmin(){
     const ini=e.workerName?.slice(0,2).toUpperCase()||'?';
     const dateStr=new Date(e.ts).toLocaleDateString('en-GB');
     const wClients=wc?clients.filter(cl=>(wc.clientIds||[]).includes(cl.id)):[];
-    const clientBadge=wClients.map(cl=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${cl.color}22;border-radius:10px"><span style="width:6px;height:6px;border-radius:50%;background:${cl.color};flex-shrink:0"></span>${cl.name}</span>`).join(' ');
+    const clientBadge=wClients.map(cl=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${cl.color}22;border-radius:10px"><span style="width:6px;height:6px;border-radius:50%;background:${cl.color};flex-shrink:0"></span>${esc(cl.name)}</span>`).join(' ');
     return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'background:rgba(255,255,255,0.01)':''}">
       <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><span style="font-size:13px;font-weight:600">${e.workerName||'Unknown'}</span></div></td>
       <td style="padding:10px 12px">${clientBadge||'<span style="color:var(--text3);font-size:12px">—</span>'}</td>
@@ -2250,7 +2257,7 @@ function editPunchEntry(id){
   document.getElementById('editModal').innerHTML=`
     <div class="modal-title"><i class="ti ti-edit"></i> Edit Punch Record</div>
     <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:13px;color:var(--text2)">
-      Worker: <strong style="color:var(--text)">${e.workerName}</strong> &nbsp;·&nbsp; ${new Date(e.ts).toLocaleDateString('en-GB')}
+      Worker: <strong style="color:var(--text)">${esc(e.workerName)}</strong> &nbsp;·&nbsp; ${new Date(e.ts).toLocaleDateString('en-GB')}
     </div>
     <div class="field-row">
       <div class="field"><label>Type</label>
@@ -2266,8 +2273,8 @@ function editPunchEntry(id){
     <div class="field"><label>Site</label>
       <select id="epSite">
         <option value="">— No site —</option>
-        ${clients.map(c=>`<option value="${(c.name||'').replace(/"/g,'&quot;')}" ${e.site===c.name?'selected':''}>${c.name}</option>`).join('')}
-        ${(e.site && !clients.some(c=>c.name===e.site)) ? `<option value="${(e.site||'').replace(/"/g,'&quot;')}" selected>${e.site} (custom)</option>` : ''}
+        ${clients.map(c=>`<option value="${esc(c.name)}" ${e.site===c.name?'selected':''}>${esc(c.name)}</option>`).join('')}
+        ${(e.site && !clients.some(c=>c.name===e.site)) ? `<option value="${esc(e.site)}" selected>${esc(e.site)} (custom)</option>` : ''}
       </select>
     </div>
     <div class="field"><label>Notes</label>
@@ -3207,12 +3214,12 @@ function showContactsSuggestions(query){
       style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);transition:background 0.15s"
       onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
       ${c.photo
-        ? `<img src="${c.photo}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;flex-shrink:0">`
-        : `<div style="width:34px;height:34px;border-radius:50%;background:var(--blue-bg);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${c.name.slice(0,2).toUpperCase()}</div>`
+        ? `<img src="${esc(c.photo)}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;flex-shrink:0">`
+        : `<div style="width:34px;height:34px;border-radius:50%;background:var(--blue-bg);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${esc(c.name.slice(0,2).toUpperCase())}</div>`
       }
       <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:600;color:var(--text)">${c.name}</div>
-        <div style="font-size:11px;color:var(--text2)">${[c.phone,c.email].filter(Boolean).join(' · ')}</div>
+        <div style="font-size:13px;font-weight:600;color:var(--text)">${esc(c.name)}</div>
+        <div style="font-size:11px;color:var(--text2)">${esc([c.phone,c.email].filter(Boolean).join(' · '))}</div>
       </div>
     </div>
   `).join('');

@@ -461,6 +461,7 @@ const WORKER_COLORS=[
 let workers=[], allClients=[], selectedWorker=null, locOk=false, locDist=null, clockTick=null, _lastPunchAt=0, _geoLocked=false;
 
 // ── Offline queue ─────────────────────────────────────────────────
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function getQueue(){ try{return JSON.parse(localStorage.getItem(QUEUE_KEY)||'[]');}catch(e){return[];} }
 function saveQueue(q){ localStorage.setItem(QUEUE_KEY,JSON.stringify(q)); }
 
@@ -593,7 +594,7 @@ function resolveSiteFromWorker(w){
   }
 }
 // Label for the site pill: client name, plus its object/branch if set.
-function siteLabel(){ const n=SITE.name||'Work Site'; return SITE.object?(n+' · '+SITE.object):n; }
+function siteLabel(){ const n=esc(SITE.name||'Work Site'); return SITE.object?(n+' · '+esc(SITE.object)):n; }
 
 function goToPunchDirect(w){
   selectedWorker = w;
@@ -636,13 +637,13 @@ function showObjectPicker(w, objs){
   d.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;padding:20px;z-index:998;font-family:"DM Sans",-apple-system,sans-serif';
   let h='<div style="background:#181c27;border:1px solid rgba(255,255,255,0.13);border-radius:14px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto">';
   h+='<div style="display:flex;align-items:center;gap:8px;font-size:19px;font-weight:600;color:#eef0f8;letter-spacing:-0.3px"><i class="ti ti-building-store"></i> Выберите объект</div>';
-  h+='<div style="color:#7c84a0;font-size:13px;margin-top:4px;margin-bottom:18px">'+w.name+'</div>';
+  h+='<div style="color:#7c84a0;font-size:13px;margin-top:4px;margin-bottom:18px">'+esc(w.name)+'</div>';
   h+='<div style="display:flex;flex-direction:column;gap:10px">';
   objs.forEach(c=>{
     const hasGeo = c.lat!=null&&c.lng!=null&&c.lat!==''&&c.lng!=='';
     h+='<button onclick="pickObject(\''+c.id+'\')" style="background:#1e2333;border:1px solid rgba(255,255,255,0.13);border-radius:12px;padding:14px 16px;color:#eef0f8;font-size:15px;font-weight:600;text-align:left;cursor:pointer;font-family:inherit;transition:border-color .15s" onmouseover="this.style.borderColor=\'rgba(109,214,160,0.5)\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,0.13)\'">'
-      +'<div><i class="ti ti-building"></i> '+(c.name||'—')+'</div>'
-      +(c.object?'<div style="font-size:12px;color:#7c84a0;font-weight:400;margin-top:3px">'+c.object+'</div>':'')
+      +'<div><i class="ti ti-building"></i> '+esc(c.name||'—')+'</div>'
+      +(c.object?'<div style="font-size:12px;color:#7c84a0;font-weight:400;margin-top:3px">'+esc(c.object)+'</div>':'')
       +'<div style="font-size:11px;color:'+(hasGeo?'#6dd6a0':'#f5a623')+';font-weight:400;margin-top:5px"><i class="ti ti-map-pin'+(hasGeo?'':'-off')+'"></i> '+(hasGeo?('геозона · '+(Number(c.radius)||100)+' м'):'без геозоны')+'</div>'
       +'</button>';
   });
@@ -779,7 +780,7 @@ function renderWorkerGrid(){
         <div class="w-avatar-ring"></div>
         ${ini}
       </div>
-      <div class="w-name">${w.name}</div>
+      <div class="w-name">${esc(w.name)}</div>
       <div class="w-status">${status}</div>
     </div>`;
   }).join('');
@@ -884,11 +885,11 @@ function updateBigBtn(){
   const log=getPunchLog(), last=getLastEntry(log,selectedWorker?.id), isIn=last?.type==='in';
   if(isIn){
     btn.className='big-punch-btn out';
-    btn.innerHTML='<span class="btn-icon"><i class="ti ti-logout"></i></span><span class="btn-label">CLOCK OUT</span><span class="btn-sub">'+selectedWorker.name+'</span>';
+    btn.innerHTML='<span class="btn-icon"><i class="ti ti-logout"></i></span><span class="btn-label">CLOCK OUT</span><span class="btn-sub">'+esc(selectedWorker.name)+'</span>';
     ring.className='btn-ring out';
   } else {
     btn.className='big-punch-btn in';
-    btn.innerHTML='<span class="btn-icon"><i class="ti ti-login"></i></span><span class="btn-label">CLOCK IN</span><span class="btn-sub">'+selectedWorker.name+'</span>';
+    btn.innerHTML='<span class="btn-icon"><i class="ti ti-login"></i></span><span class="btn-label">CLOCK IN</span><span class="btn-sub">'+esc(selectedWorker.name)+'</span>';
     ring.className='btn-ring in';
   }
 }
@@ -995,7 +996,7 @@ function openHistory(){
       <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
         <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;min-width:44px;text-align:center;${e.type==='in'?'background:rgba(109,214,160,0.12);color:#6dd6a0':'background:rgba(255,79,94,0.12);color:#ff4f5e'}">${e.type==='in'?'IN':'OUT'}</span>
         <span style="font-size:15px;font-family:'DM Mono',ui-monospace,monospace;font-weight:600;color:var(--text)">${e.time}</span>
-        ${(()=>{const s=histSite(e);return s?`<span style="font-size:11px;color:var(--text3)"><i class="ti ti-map-pin"></i> ${s}</span>`:'';})()}
+        ${(()=>{const s=histSite(e);return s?`<span style="font-size:11px;color:var(--text3)"><i class="ti ti-map-pin"></i> ${esc(s)}</span>`:'';})()}
         ${e.dist!=null?`<span style="font-size:11px;color:var(--text3)">${e.dist}m</span>`:''}
       </div>`).join('');
     return `<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px 16px;margin-bottom:10px">
