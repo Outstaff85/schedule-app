@@ -61,6 +61,7 @@ Both HTML files talk to the **same** Google Apps Script Web App endpoint (`GS_UR
 - `checkShiftReminders()` / `setupHourlyTrigger()` — hourly check for upcoming shifts, send push notifications.
 - `normalizeClients(clients)` — enforce numeric radius on load/save.
 - `migrateAddClientIdColumn()` — one-time migration to add the `ClientID` column to an existing PunchLog sheet (run once from the Apps Script editor after deploying the version that includes this column; safely handles sheets where the column already exists).
+- `fixPunchLogHeaderDrift()` — one-time fix for sheets where an earlier code version wrote GPS Suspicious/GPS Warnings data to columns K:L but the row-1 headers still showed the old 'Notes'/'EditedAt' labels (causing loadPunchLog to silently skip those fields). Rewrites headers K1:N1 only, never touches data rows. Safe to run more than once; detects if headers are already correct.
 
 The service worker explicitly never intercepts requests to `script.google.com` (`service-worker.js:31`) — the API always goes straight to network.
 

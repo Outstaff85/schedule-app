@@ -234,6 +234,25 @@ function migrateAddClientIdColumn(){
   return {ok:true, note:'ClientID column already present'};
 }
 
+// One-time fix: an earlier version of PUNCH_HEADERS didn't have 'GPS Suspicious'/
+// 'GPS Warnings' — those fields' DATA has been written to columns K:L ever since
+// they were added to the code, but this sheet's row-1 LABELS were never updated
+// (ensureHeaders only writes headers to a brand-new, empty sheet), so K:L still
+// show the old 'Notes'/'EditedAt' labels while the real Notes/EditedAt data lives
+// unlabeled in M:N. loadPunchLog() reads by header name, so this silently hid
+// GPS Suspicious/Warnings and Notes/EditedAt from the app. Rewrites K1:N1 text
+// only — never touches any data row. Safe to run more than once.
+function fixPunchLogHeaderDrift(){
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_PUNCHLOG);
+  if (!sh || sh.getLastRow() === 0) return {ok:true, note:'sheet empty or missing, nothing to fix'};
+  const headers = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
+  if (headers[10] === 'GPS Suspicious' && headers[11] === 'GPS Warnings') {
+    return {ok:true, note:'headers already correct'};
+  }
+  sh.getRange(1,11,1,4).setValues([['GPS Suspicious','GPS Warnings','Notes','EditedAt']]);
+  return {ok:true, fixedColumns:'K:N'};
+}
+
 function savePunch(entry) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = getOrCreateSheet(ss, SH_PUNCHLOG);
