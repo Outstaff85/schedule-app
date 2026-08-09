@@ -2247,8 +2247,8 @@ function renderAdmin(){
       <td style="padding:10px 12px">${clientBadge||'<span style="color:var(--text3);font-size:12px">—</span>'}</td>
       <td style="padding:10px 12px"><span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;${e.type==='in'?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${e.type==='in'?'IN':'OUT'}</span></td>
       <td style="padding:10px 12px;font-size:13px;font-family:monospace;color:var(--text)">${e.time||'--'}</td>
-      <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${dateStr}</td>
-      <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${esc(punchSite(e))||'--'}</td>
+      <td style="padding:10px 12px;font-size:13px;color:var(--text2);white-space:nowrap">${dateStr}</td>
+      <td style="padding:10px 12px;font-size:13px;color:var(--text2);white-space:nowrap">${esc(punchSite(e))||'--'}</td>
       <td style="padding:10px 12px;font-size:12px">
         ${e.manual?'<span style="color:var(--amber);font-size:11px;font-weight:700"><i class="ti ti-edit"></i> Manual</span>':(e.dist!=null?'<i class="ti ti-map-pin"></i> '+e.dist+'m':'--')}
         ${!e.manual&&e.gpsAccuracy?`<span style="color:var(--text3);font-size:11px">±${Math.round(e.gpsAccuracy)}m</span>`:''}
