@@ -1,0 +1,4 @@
+.firebase/
+.claude/settings.local.json
+Screenshot_*.jpg
+Screenshot_*.png

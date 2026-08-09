@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "PowerShell",
+        "hooks": [
+          {
+            "type": "agent",
+            "if": "PowerShell(firebase deploy*)",
+            "prompt": "A `firebase deploy` just ran in this repo. Compare CLAUDE.md against the current state of the codebase (schedule-manager.html, worker-punch.html, service-worker.js, manifest.json, manifest-punch.json, firebase.json, .firebaserc) and update CLAUDE.md if anything is stale or missing: new commands, changed architecture/data flow, new top-level files, or a bumped service-worker cache version worth noting. Only edit CLAUDE.md if something actually changed since it was last written; otherwise do nothing and exit quietly.",
+            "timeout": 180
+          }
+        ]
+      }
+    ]
+  }
+}

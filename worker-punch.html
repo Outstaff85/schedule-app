@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f1117">
+<link rel="manifest" href="manifest-punch.json">
+<meta name="apple-mobile-web-app-title" content="Punch Clock">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Clock In / Out</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&family=Heebo:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+:root{
+  --bg:#0f1117;
+  --card:#181c27;
+  --card2:#1e2333;
+  --border:rgba(255,255,255,0.07);
+  --border2:rgba(255,255,255,0.13);
+  --text:#eef0f8;
+  --text2:#7c84a0;
+  --text3:#3a4060;
+  --green:#6dd6a0;
+  --green2:#4eb888;
+  --green-glow:rgba(109,214,160,0.25);
+  --red:#ff4f5e;
+  --red2:#d93040;
+  --red-glow:rgba(255,79,94,0.25);
+  --amber:#f5a623;
+  --amber-bg:rgba(245,166,35,0.12);
+  --blue:#4f8ef7;
+  --blue-bg:rgba(79,142,247,0.10);
+  --blue-glow:rgba(79,142,247,0.2);
+}
+
+html,body{
+  height:100%;width:100%;
+  background:var(--bg);color:var(--text);
+  font-family:'DM Sans','Heebo',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  -webkit-text-size-adjust:100%;
+  overflow:hidden;
+}
+
+/* ── Screens ────────────────────────────────────────────────────── */
+.screen{
+  position:fixed;inset:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:max(env(safe-area-inset-top,24px),24px) 20px max(env(safe-area-inset-bottom,24px),24px);
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
+  transition:opacity 0.3s cubic-bezier(.4,0,.2,1), transform 0.3s cubic-bezier(.4,0,.2,1);
+  background:var(--bg);
+}
+.screen.hidden{opacity:0;pointer-events:none;transform:translateY(16px) scale(0.98);}
+.screen.center-v{justify-content:center;}
+
+/* ══ SCREEN 1 — Worker Select ══════════════════════════════════════ */
+#screenWorker{justify-content:center;gap:0;}
+#screenWorker > *{width:100%;max-width:480px;}
+
+/* Top bar */
+.top-bar{
+  width:100%;max-width:480px;display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:20px;
+}
+.site-pill{
+  display:inline-flex;align-items:center;gap:6px;
+  background:rgba(109,214,160,0.08);border:1px solid rgba(109,214,160,0.2);
+  color:var(--green);border-radius:100px;padding:6px 14px;
+  font-size:13px;font-weight:600;letter-spacing:0.2px;
+}
+.time-pill{font-family:'DM Mono',ui-monospace,monospace;
+  font-size:22px;font-weight:700;color:var(--text);
+  font-variant-numeric:tabular-nums;letter-spacing:-0.5px;
+}
+
+/* Section label */
+.section-label{
+  width:100%;max-width:480px;text-align:left;
+  font-size:12px;font-weight:600;color:var(--text3);
+  text-transform:uppercase;letter-spacing:1.2px;
+  margin-bottom:14px;
+}
+
+/* Worker grid */
+.worker-grid{
+  display:grid;grid-template-columns:repeat(2,1fr);
+  gap:12px;width:100%;max-width:500px;margin-bottom:20px;
+}
+@media(min-width:540px){.worker-grid{grid-template-columns:repeat(3,1fr);}}
+
+.w-card{
+  position:relative;
+  background:var(--card);
+  border:1.5px solid var(--border);
+  border-radius:20px;padding:18px 12px 14px;
+  text-align:center;cursor:pointer;
+  transition:border-color 0.2s,background 0.2s,transform 0.15s;
+  touch-action:manipulation;user-select:none;
+}
+.w-card::before{
+  content:'';position:absolute;inset:0;border-radius:20px;
+  background:linear-gradient(135deg,rgba(255,255,255,0.04),transparent);
+  pointer-events:none;
+}
+.w-card:active{transform:scale(0.94);}
+.w-card.selected{
+  border-color:var(--blue);
+  background:linear-gradient(135deg,rgba(79,142,247,0.08),rgba(79,142,247,0.04));
+  box-shadow:0 0 0 3px rgba(79,142,247,0.12);
+}
+.w-card.in-progress{
+  border-color:var(--green);
+  background:linear-gradient(135deg,rgba(109,214,160,0.08),rgba(109,214,160,0.03));
+}
+
+.w-avatar{
+  width:52px;height:52px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:17px;font-weight:800;margin:0 auto 10px;
+  position:relative;
+}
+.w-avatar-ring{
+  position:absolute;inset:-3px;border-radius:50%;
+  border:2px solid transparent;transition:border-color 0.2s;
+}
+.w-card.in-progress .w-avatar-ring{border-color:var(--green);}
+.w-card.selected .w-avatar-ring{border-color:var(--blue);}
+
+.w-name{font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px;}
+.w-status{font-size:11px;color:var(--text3);line-height:1.3;}
+.w-card.in-progress .w-status{color:var(--green);}
+
+/* Status dot */
+.w-dot{
+  position:absolute;top:10px;right:10px;
+  width:8px;height:8px;border-radius:50%;
+  background:var(--text3);
+}
+.w-card.in-progress .w-dot{
+  background:var(--green);
+  animation:pulse-dot 2s infinite;
+}
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:0.4}}
+
+/* Continue button */
+.continue-btn{
+  width:100%;max-width:500px;
+  background:var(--blue);
+  color:#fff;border:none;border-radius:16px;
+  padding:17px;font-size:17px;font-weight:700;
+  cursor:pointer;touch-action:manipulation;
+  transition:opacity 0.15s,transform 0.1s;
+  letter-spacing:-0.2px;
+}
+.continue-btn:active{transform:scale(0.97);}
+.continue-btn:disabled{
+  background:var(--card2);color:var(--text3);
+  cursor:not-allowed;box-shadow:none;
+}
+
+/* ══ SCREEN 2 — Punch ══════════════════════════════════════════════ */
+#screenPunch{justify-content:center;text-align:center;}
+#screenPunch > *{width:100%;max-width:400px;}
+
+.punch-header{margin-bottom:8px;}
+.punch-site{
+  font-size:11px;font-weight:700;color:var(--blue);
+  letter-spacing:2px;text-transform:uppercase;margin-bottom:6px;
+  opacity:0.8;
+}
+.punch-greeting{
+  font-size:15px;font-weight:500;color:var(--text2);margin-bottom:2px;
+}
+.punch-worker-name{
+  font-size:clamp(24px,7vw,32px);font-weight:900;
+  letter-spacing:-0.5px;color:var(--text);margin-bottom:0;
+}
+
+/* Clock */
+.clock-block{margin:16px 0 6px;}
+.punch-clock{
+  font-family:'DM Mono',ui-monospace,monospace;
+  font-size:clamp(48px,15vw,68px);font-weight:400;
+  letter-spacing:-3px;font-variant-numeric:tabular-nums;
+  color:var(--text);line-height:1;
+}
+.punch-date{font-size:13px;color:var(--text3);margin-top:6px;letter-spacing:0.3px;}
+
+/* Location chip */
+.loc-chip{
+  display:inline-flex;align-items:center;gap:7px;
+  border-radius:100px;padding:9px 18px;
+  font-size:13px;font-weight:600;margin:16px 0 32px;
+  transition:all 0.3s;max-width:90vw;
+}
+.loc-chip.ok{
+  background:rgba(109,214,160,0.08);
+  border:1px solid rgba(109,214,160,0.25);color:var(--green);
+}
+.loc-chip.warn{
+  background:var(--amber-bg);
+  border:1px solid rgba(245,166,35,0.3);color:var(--amber);
+}
+.loc-chip.loading{
+  background:rgba(255,255,255,0.03);
+  border:1px solid var(--border);color:var(--text2);
+}
+.loc-dot{
+  width:7px;height:7px;border-radius:50%;
+  background:currentColor;flex-shrink:0;
+}
+.loc-chip.loading .loc-dot{animation:blink 1.2s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.2}}
+
+/* ── BIG ROUND PUNCH BUTTON ── */
+.punch-btn-wrap{
+  position:relative;display:flex;
+  align-items:center;justify-content:center;
+  margin-bottom:28px;width:100%;
+}
+
+/* Outer glow ring */
+.btn-ring{
+  position:absolute;
+  width:clamp(180px,55vw,224px);
+  height:clamp(180px,55vw,224px);
+  border-radius:50%;
+  animation:ring-pulse 2.5s ease-in-out infinite;
+  transition:background 0.4s;
+}
+.btn-ring.in {background:radial-gradient(circle,var(--green-glow) 0%,transparent 70%);}
+.btn-ring.out{background:radial-gradient(circle,var(--red-glow) 0%,transparent 70%);}
+.btn-ring.off{background:transparent;}
+@keyframes ring-pulse{0%,100%{transform:scale(1);opacity:0.6}50%{transform:scale(1.08);opacity:1}}
+
+.big-punch-btn{
+  position:relative;z-index:1;
+  width:clamp(148px,46vw,192px);
+  height:clamp(148px,46vw,192px);
+  border-radius:50%;border:none;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:6px;
+  cursor:pointer;touch-action:manipulation;
+  transition:transform 0.15s cubic-bezier(.4,0,.2,1),box-shadow 0.3s;
+  font-weight:800;
+}
+.big-punch-btn:active{transform:scale(0.90)!important;}
+
+.big-punch-btn.in{
+  background:linear-gradient(145deg,#32e882,var(--green2));
+  box-shadow:0 4px 32px var(--green-glow), 0 0 0 2px rgba(109,214,160,0.3);
+  color:#fff;
+}
+.big-punch-btn.out{
+  background:linear-gradient(145deg,#ff6b78,var(--red2));
+  box-shadow:0 4px 32px var(--red-glow), 0 0 0 2px rgba(255,79,94,0.3);
+  color:#fff;
+}
+.big-punch-btn.disabled{
+  background:var(--card2);
+  box-shadow:none;color:var(--text3);cursor:not-allowed;
+}
+.big-punch-btn.disabled .btn-ring{display:none;}
+
+.btn-icon{font-size:clamp(36px,11vw,48px);line-height:1;}
+.btn-label{font-size:clamp(13px,4vw,16px);font-weight:800;letter-spacing:1.5px;}
+.btn-sub{font-size:clamp(11px,3vw,13px);opacity:0.7;font-weight:500;}
+
+.back-link{
+  font-size:14px;color:var(--text3);cursor:pointer;
+  padding:10px 20px;border-radius:100px;
+  transition:color 0.15s,background 0.15s;
+  touch-action:manipulation;
+}
+.back-link:active{color:var(--text);background:rgba(255,255,255,0.04);}
+
+/* ══ SCREEN 3 — Success ════════════════════════════════════════════ */
+#screenSuccess{justify-content:center;text-align:center;gap:0;}
+#screenSuccess > *{width:100%;max-width:360px;}
+
+.success-anim{
+  width:90px;height:90px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:44px;margin:0 auto 20px;
+  animation:pop .45s cubic-bezier(.175,.885,.32,1.275);
+}
+.success-anim.in {background:rgba(109,214,160,0.12);border:2px solid rgba(109,214,160,0.3);}
+.success-anim.out{background:rgba(255,79,94,0.12);  border:2px solid rgba(255,79,94,0.3);}
+@keyframes pop{0%{transform:scale(0)}80%{transform:scale(1.1)}100%{transform:scale(1)}}
+
+.success-label{font-size:clamp(26px,8vw,34px);font-weight:900;margin-bottom:6px;letter-spacing:-0.5px;}
+.success-label.in {color:var(--green);}
+.success-label.out{color:var(--red);}
+.success-worker{font-size:clamp(15px,5vw,18px);color:var(--text2);margin-bottom:16px;}
+.success-time{
+  font-size:clamp(52px,16vw,72px);font-weight:200;
+  letter-spacing:-3px;font-variant-numeric:tabular-nums;
+  color:var(--text);line-height:1;margin-bottom:4px;
+}
+.success-date{font-size:13px;color:var(--text3);margin-bottom:36px;letter-spacing:0.3px;}
+
+.success-actions{display:flex;flex-direction:column;gap:10px;width:100%;max-width:320px;}
+.btn-primary{
+  background:var(--blue);
+  color:#fff;border:none;border-radius:14px;
+  padding:15px;font-size:16px;font-weight:700;
+  cursor:pointer;touch-action:manipulation;
+  box-shadow:0 4px 20px rgba(79,142,247,0.2);
+}
+.btn-secondary{
+  background:rgba(255,255,255,0.04);
+  color:var(--text2);border:1px solid var(--border);
+  border-radius:14px;padding:14px;font-size:15px;
+  font-weight:600;cursor:pointer;touch-action:manipulation;
+}
+.btn-primary:active,.btn-secondary:active{opacity:0.8;transform:scale(0.97);}
+
+/* ── Toast ── */
+#toast{
+  position:fixed;
+  bottom:max(env(safe-area-inset-bottom,20px),20px);
+  left:50%;transform:translateX(-50%) translateY(12px);
+  background:rgba(20,26,40,0.95);backdrop-filter:blur(12px);
+  border:1px solid var(--border2);border-radius:100px;
+  padding:11px 22px;font-size:14px;font-weight:500;color:var(--text);
+  white-space:nowrap;opacity:0;transition:all 0.25s;
+  z-index:999;pointer-events:none;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* ── Offline banner ── */
+#offlineBadge{
+  position:fixed;top:max(env(safe-area-inset-top,12px),12px);
+  left:50%;transform:translateX(-50%);
+  background:rgba(245,166,35,0.95);backdrop-filter:blur(8px);
+  color:#fff;font-size:13px;font-weight:700;
+  padding:7px 18px;border-radius:100px;z-index:999;
+  display:none;align-items:center;gap:6px;
+  box-shadow:0 4px 16px rgba(245,166,35,0.3);
+}
+
+/* ── Small phone ── */
+@media(max-width:380px){
+  .w-card{border-radius:16px;padding:14px 10px 12px;}
+  .w-avatar{width:44px;height:44px;font-size:14px;}
+  .w-name{font-size:13px;}
+  .worker-grid{gap:8px;}
+  .punch-clock{font-size:clamp(42px,14vw,60px);}
+}
+</style>
+</head>
+<body>
+
+<!-- Screen 1: Worker select -->
+<div class="screen" id="screenWorker">
+  <div class="top-bar">
+    <div class="site-pill"><i class="ti ti-map-pin"></i> <span id="verifiedSiteName">Work Site</span></div>
+    <div class="time-pill" id="workerClock">--:--</div>
+  </div>
+  <div class="section-label">Who are you?</div>
+  <div class="worker-grid" id="workerGrid"></div>
+  <button class="continue-btn" id="continueBtn" disabled onclick="goToPunch()">
+    Select a worker to continue
+  </button>
+</div>
+
+<!-- Screen 2: Punch -->
+<div class="screen center-v hidden" id="screenPunch">
+  <div class="punch-header">
+    <div class="punch-site" id="punchSite"></div>
+    <div class="punch-greeting" id="punchGreeting"></div>
+    <div class="punch-worker-name" id="punchWorkerName"></div>
+  </div>
+  <div class="clock-block">
+    <div class="punch-clock" id="punchClock">--:--:--</div>
+    <div class="punch-date"  id="punchDate"></div>
+  </div>
+  <div class="loc-chip loading" id="locChip">
+    <span class="loc-dot"></span>
+    <span>Checking location...</span>
+  </div>
+  <div class="punch-btn-wrap">
+    <div class="btn-ring off" id="btnRing"></div>
+    <button class="big-punch-btn disabled" id="bigPunchBtn" onclick="doPunch()">
+      <span class="btn-icon">👆</span>
+      <span class="btn-label">LOADING</span>
+    </button>
+  </div>
+  <div class="back-link" onclick="openHistory()" style="color:var(--blue)"><i class="ti ti-calendar"></i> My History</div>
+  <div class="back-link" id="changeWorkerLink" onclick="goBack()">← Change worker</div>
+</div>
+
+<!-- Screen 3: Success -->
+<div class="screen center-v hidden" id="screenSuccess">
+  <div class="success-anim in" id="successAnim"><i class="ti ti-circle-check"></i></div>
+  <div class="success-label in" id="successLabel">Clocked IN</div>
+  <div class="success-worker" id="successWorker"></div>
+  <div class="success-time" id="successTime">--:--</div>
+  <div class="success-date" id="successDate"></div>
+  <div class="success-actions">
+    <button class="btn-primary" id="clockAnotherBtn" onclick="goToWorker()">Clock another worker</button>
+    <button class="btn-secondary" onclick="resetToQR()">Done</button>
+  </div>
+</div>
+
+<!-- Screen 4: History -->
+<div class="screen hidden" id="screenHistory" style="justify-content:flex-start;align-items:center">
+  <div class="top-bar" style="margin-bottom:16px">
+    <div style="font-size:18px;font-weight:500"><i class="ti ti-calendar"></i> My History</div>
+    <div class="back-link" onclick="closeHistory()" style="font-size:14px">✕ Close</div>
+  </div>
+  <div id="historyContent" style="width:100%;max-width:500px"></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const params = new URLSearchParams(window.location.search);
+const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+let _site = null;
+try{ _site=JSON.parse(localStorage.getItem('punchClockSite')||'null'); }catch(e){}
+
+const URL_WORKER = params.get('worker') || null;
+const URL_TOKEN  = params.get('t') || params.get('token') || null;
+
+// A personal link (token in URL) is self-contained: trust ONLY the URL/base,
+// never a stale punchClockSite left in localStorage from an admin session.
+const _siteEff = URL_TOKEN ? null : _site;
+// Legacy long links carry their own &lat=&lng=; short token links don't (geo comes from DB).
+const _urlHasGeo = !!(params.get('lat') && params.get('lng'));
+
+const SITE = {
+  name:     _siteEff?.clientName || params.get('site') || 'Work Site',
+  object:   '',
+  lat:      parseFloat(_siteEff?.lat    || params.get('lat')) || null,
+  lng:      parseFloat(_siteEff?.lng    || params.get('lng')) || null,
+  radius:   parseInt(_siteEff?.radius   || params.get('r'))   || 100,
+  clientId: _siteEff?.clientId || null,
+};
+
+const GS_URL = 'https://script.google.com/macros/s/AKfycbwfGCQs8TzGd38j-JU0ZdoHLXdHITaG1QjUE3nAJDVB6uZR2_56hxV0Y4UgCs1bGYi_/exec';
+// Must match API_SECRET in Code.gs (deterrent; public file, not real auth).
+const API_SECRET = 'odinson-7Kq2x9';
+const QUEUE_KEY = 'punchQueue';
+
+const WORKER_COLORS=[
+  {bg:'rgba(109,214,160,0.2)', text:'#6dd6a0'},
+  {bg:'rgba(79,142,247,0.2)', text:'#4f8ef7'},
+  {bg:'rgba(255,167,60,0.2)', text:'#ffa73c'},
+  {bg:'rgba(196,140,250,0.2)',text:'#c48cf5'},
+  {bg:'rgba(255,210,60,0.2)', text:'#ffd23c'},
+  {bg:'rgba(255,80,100,0.2)', text:'#ff5064'},
+];
+
+let workers=[], allClients=[], selectedWorker=null, locOk=false, locDist=null, clockTick=null, _lastPunchAt=0, _geoLocked=false;
+
+// ── Offline queue ─────────────────────────────────────────────────
+function getQueue(){ try{return JSON.parse(localStorage.getItem(QUEUE_KEY)||'[]');}catch(e){return[];} }
+function saveQueue(q){ localStorage.setItem(QUEUE_KEY,JSON.stringify(q)); }
+
+async function gsSavePunch(entry){
+  if(!navigator.onLine){ queueEntry(entry); return; }
+  try{
+    const res=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'savePunch',secret:API_SECRET,data:entry})});
+    await res.json();
+  }catch(e){ queueEntry(entry); }
+}
+
+function queueEntry(entry){
+  const q=getQueue(); q.push(entry); saveQueue(q);
+  showOfflineBadge(q.length);
+}
+
+async function flushQueue(){
+  const q=getQueue();
+  if(!q.length||!navigator.onLine) return;
+  const failed=[];
+  for(const e of q){
+    try{ const r=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'savePunch',secret:API_SECRET,data:e})}); await r.json(); }
+    catch(e){ failed.push(e); }
+  }
+  saveQueue(failed);
+  if(!failed.length){ hideOfflineBadge(); if(q.length) showSyncToast(q.length); }
+}
+
+function showOfflineBadge(n){
+  let b=document.getElementById('offlineBadge');
+  if(!b){ b=document.createElement('div'); b.id='offlineBadge'; document.body.appendChild(b); }
+  b.style.cssText='position:fixed;top:max(env(safe-area-inset-top,12px),12px);left:50%;transform:translateX(-50%);background:rgba(245,166,35,0.95);backdrop-filter:blur(8px);color:#fff;font-size:13px;font-weight:700;padding:7px 18px;border-radius:100px;z-index:999;display:flex;align-items:center;gap:6px;';
+  b.textContent='📶 Offline — '+n+' punch'+(n>1?'es':'')+' queued';
+}
+function hideOfflineBadge(){ const b=document.getElementById('offlineBadge'); if(b) b.style.display='none'; }
+function showSyncToast(n){ showToast('Synced '+n+' offline punch'+(n>1?'es':'')); }
+
+window.addEventListener('online', ()=>flushQueue());
+window.addEventListener('load',   ()=>{ const q=getQueue(); if(q.length){showOfflineBadge(q.length);flushQueue();} });
+
+// ── Init ──────────────────────────────────────────────────────────
+function init(){
+  loadWorkers();
+
+  if(URL_TOKEN){
+    const cached = workers.find(w=> w.token===URL_TOKEN);
+    if(cached){
+      // Fast path: show instantly from cache (also works offline).
+      goToPunchDirect(cached);
+      // If online, verify against the DB in the background: refreshes the
+      // geofence and instantly revokes a regenerated/removed token.
+      if(navigator.onLine) verifyAndRefresh();
+    } else if(navigator.onLine){
+      // Not in cache → must verify against the DB before letting them in.
+      showLoadingScreen('Verifying...');
+      loadWorkersFromGS().then(ok=>{
+        hideLoadingScreen();
+        if(!ok){ showInvalidLink('Connection problem','Couldn\'t reach the server. Check your connection and reload.','ti-wifi-off'); return; }
+        const verified = workers.find(w=> w.token===URL_TOKEN);
+        if(verified){ goToPunchDirect(verified); } else { showInvalidLink(); }
+      }).catch(()=>{ hideLoadingScreen(); showInvalidLink('Connection problem','Couldn\'t reach the server. Check your connection and reload.','ti-wifi-off'); });
+    } else {
+      // Offline and never opened before → nothing to verify against.
+      showInvalidLink('No connection','Open this link once while online to set it up. After that it works offline.','ti-wifi-off');
+    }
+    return;
+  }
+
+  // No personal link - show worker list
+  if(workers.length){
+    showScreen('screenWorker');
+    startWorkerClock();
+    if(navigator.onLine) loadWorkersFromGS().catch(()=>{}); // refresh cache in background
+  } else {
+    showLoadingScreen('Loading...');
+    loadWorkersFromGS().then(()=>{
+      hideLoadingScreen();
+      showScreen('screenWorker');
+      startWorkerClock();
+    });
+  }
+}
+
+// Background check for a token link: confirm the token still exists in the DB
+// (instant revocation of regenerated/removed tokens) and refresh the geofence.
+function verifyAndRefresh(){
+  loadWorkersFromGS().then(ok=>{
+    if(!ok) return;                                  // server unreachable → keep cached view
+    const fresh = workers.find(w=> w.token===URL_TOKEN);
+    if(!fresh){ showInvalidLink(); return; }         // token regenerated/removed → revoke now
+    selectedWorker = fresh;
+    if(!_urlHasGeo && !_geoLocked){                 // short token link, single object → re-resolve from DB
+      SITE.lat=null; SITE.lng=null;
+      resolveSiteFromWorker(fresh);
+      const ps=document.getElementById('punchSite'); if(ps) ps.innerHTML='<i class="ti ti-map-pin"></i> '+siteLabel();
+      getLocation();
+    }
+  }).catch(()=>{});
+}
+
+function showInvalidLink(title, msg, icon){
+  title = title || 'Invalid Link';
+  msg   = msg   || 'This link is no longer valid.<br>Ask your manager for a new link.';
+  icon  = icon  || 'ti-link-off';
+  document.body.innerHTML = '<div style="position:fixed;inset:0;background:#0f1117;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center">'
+    + '<div style="color:#ff4f5e;margin-bottom:18px"><i class="ti '+icon+'" style="font-size:64px"></i></div>'
+    + '<div style="font-size:24px;font-weight:900;color:#ff4f5e;margin-bottom:10px">'+title+'</div>'
+    + '<div style="font-size:15px;color:#7c84a0;line-height:1.6;max-width:280px">'+msg+'</div>'
+    + '</div>';
+}
+
+// For a token-only link, fill the geofence from the worker's linked client
+// (only when the URL didn't already carry lat/lng — legacy long links keep their own).
+function resolveSiteFromWorker(w){
+  if(SITE.lat!=null && SITE.lng!=null) return;            // URL already provided geo
+  if(!w || !(w.clientIds||[]).length || !allClients.length) return;
+  const cs = w.clientIds.map(id=>allClients.find(x=>x.id===id)).filter(Boolean);
+  const geo = cs.find(c=> c.lat!=null && c.lng!=null && c.lat!=='' && c.lng!=='');
+  if(geo){
+    SITE.name     = geo.name || SITE.name;
+    SITE.object   = geo.object || '';
+    SITE.lat      = Number(geo.lat);
+    SITE.lng      = Number(geo.lng);
+    SITE.radius   = Number(geo.radius)||100;
+    SITE.clientId = geo.id;
+  } else if(cs[0]){
+    SITE.name     = cs[0].name;                            // client without coords: show name, no geofence
+    SITE.object   = cs[0].object || '';
+    SITE.clientId = cs[0].id;
+  }
+}
+// Label for the site pill: client name, plus its object/branch if set.
+function siteLabel(){ const n=SITE.name||'Work Site'; return SITE.object?(n+' · '+SITE.object):n; }
+
+function goToPunchDirect(w){
+  selectedWorker = w;
+  if(!workers.find(x=>x.id===w.id)) workers = [w, ...workers];
+  // #5: a worker tied to several objects chooses which one they're at.
+  const ids = [...new Set(w.clientIds||[])];
+  // If the worker has several objects but the client list isn't loaded yet
+  // (fast cache path on the worker's phone), fetch it first so the picker
+  // can be built — otherwise the object window would be silently skipped.
+  if(ids.length>1 && SITE.lat==null && !allClients.length && navigator.onLine){
+    loadWorkersFromGS().then(()=>decideObjectOrPunch(w)).catch(()=>enterPunch(w,false));
+    return;
+  }
+  decideObjectOrPunch(w);
+}
+
+function decideObjectOrPunch(w){
+  const objs = [...new Set(w.clientIds||[])].map(id=>allClients.find(x=>x.id===id)).filter(Boolean);
+  if(objs.length>1 && SITE.lat==null){
+    _geoLocked = true;
+    showObjectPicker(w, objs);
+    return;
+  }
+  enterPunch(w, false);
+}
+
+function enterPunch(w, skipResolve){
+  if(!skipResolve) resolveSiteFromWorker(w);
+  document.getElementById('punchSite').innerHTML = '<i class="ti ti-map-pin"></i> '+siteLabel();
+  document.getElementById('punchWorkerName').textContent = w.name;
+  const cw=document.getElementById('changeWorkerLink'); if(cw) cw.style.display=URL_TOKEN?'none':'';
+  showScreen('screenPunch');
+  startPunchClock();
+  getLocation();
+  updateBigBtn();
+}
+
+function showObjectPicker(w, objs){
+  const d=document.createElement('div'); d.id='objectPicker';
+  d.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;padding:20px;z-index:998;font-family:"DM Sans",-apple-system,sans-serif';
+  let h='<div style="background:#181c27;border:1px solid rgba(255,255,255,0.13);border-radius:14px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto">';
+  h+='<div style="display:flex;align-items:center;gap:8px;font-size:19px;font-weight:600;color:#eef0f8;letter-spacing:-0.3px"><i class="ti ti-building-store"></i> Выберите объект</div>';
+  h+='<div style="color:#7c84a0;font-size:13px;margin-top:4px;margin-bottom:18px">'+w.name+'</div>';
+  h+='<div style="display:flex;flex-direction:column;gap:10px">';
+  objs.forEach(c=>{
+    const hasGeo = c.lat!=null&&c.lng!=null&&c.lat!==''&&c.lng!=='';
+    h+='<button onclick="pickObject(\''+c.id+'\')" style="background:#1e2333;border:1px solid rgba(255,255,255,0.13);border-radius:12px;padding:14px 16px;color:#eef0f8;font-size:15px;font-weight:600;text-align:left;cursor:pointer;font-family:inherit;transition:border-color .15s" onmouseover="this.style.borderColor=\'rgba(109,214,160,0.5)\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,0.13)\'">'
+      +'<div><i class="ti ti-building"></i> '+(c.name||'—')+'</div>'
+      +(c.object?'<div style="font-size:12px;color:#7c84a0;font-weight:400;margin-top:3px">'+c.object+'</div>':'')
+      +'<div style="font-size:11px;color:'+(hasGeo?'#6dd6a0':'#f5a623')+';font-weight:400;margin-top:5px"><i class="ti ti-map-pin'+(hasGeo?'':'-off')+'"></i> '+(hasGeo?('геозона · '+(Number(c.radius)||100)+' м'):'без геозоны')+'</div>'
+      +'</button>';
+  });
+  h+='</div></div>';
+  d.innerHTML=h;
+  document.body.appendChild(d);
+}
+
+function pickObject(clientId){
+  const pk=document.getElementById('objectPicker'); if(pk) pk.remove();
+  const c=allClients.find(x=>x.id===clientId);
+  if(c){
+    SITE.name = c.name || SITE.name;
+    SITE.object = c.object || '';
+    SITE.clientId = c.id;
+    if(c.lat!=null&&c.lng!=null&&c.lat!==''&&c.lng!==''){
+      SITE.lat=Number(c.lat); SITE.lng=Number(c.lng); SITE.radius=Number(c.radius)||100;
+    } else { SITE.lat=null; SITE.lng=null; }
+  }
+  _geoLocked = true;
+  enterPunch(selectedWorker, true);
+}
+
+function showLoadingScreen(msg){
+  const d = document.createElement('div');
+  d.id = 'loadingScreen';
+  d.style.cssText = 'position:fixed;inset:0;background:#0f1117;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#7c84a0;font-family:"DM Sans",-apple-system,sans-serif;z-index:999';
+  d.innerHTML = '<div style="font-size:48px;margin-bottom:16px">📡</div><div style="font-size:16px">'+msg+'</div>';
+  document.body.appendChild(d);
+}
+
+function hideLoadingScreen(){
+  document.getElementById('loadingScreen')?.remove();
+}
+function loadWorkers(){
+  // Priority 1: data passed from schedule manager (same device)
+  if(_site?.workers?.length){ workers=_site.workers; return; }
+  // Priority 2: localStorage cache (same device)
+  try{
+    const raw=localStorage.getItem('schedMgr_v1')||localStorage.getItem('scheduleManagerData');
+    if(raw){
+      const d=JSON.parse(raw); let list=d.workers||[];
+      allClients = d.clients||[];
+      // Filter by client if clientId provided, but fall back to ALL workers if filtered list is empty
+      if(SITE.clientId){
+        const filtered=list.filter(w=>(w.clientIds||[]).includes(SITE.clientId));
+        list = filtered.length ? filtered : list;
+      }
+      workers=list.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null,clientIds:w.clientIds||[]}));
+      if(workers.length) return;
+    }
+  }catch(e){}
+  // Priority 3: load from Google Sheets
+  workers=[];
+}
+
+async function loadWorkersFromGS(){
+  const url = GS_URL+'?action=loadSchedule&t='+Date.now();
+  
+  try{
+    const res = await fetch(url, { method:'GET', redirect:'follow' });
+    const text = await res.text();
+    const data = JSON.parse(text);
+    if(data.workers&&data.workers.length){
+      let list = data.workers;
+      allClients = data.clients||[];
+      // Filter by client but fall back to all if empty
+      if(SITE.clientId){
+        const filtered=list.filter(w=>(w.clientIds||[]).includes(SITE.clientId));
+        list = filtered.length ? filtered : list;
+      }
+      workers=list.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null,clientIds:w.clientIds||[]}));
+      localStorage.setItem('schedMgr_v1', JSON.stringify(data));
+      console.log('GS loaded:', workers.length, 'workers');
+      return true;
+    }
+  }catch(e){ console.warn('GS load failed:', e.message); }
+
+  // Method 2: jsonp-style via script tag
+  return new Promise((resolve)=>{
+    const cb = 'gsCallback_'+Date.now();
+    window[cb] = (data)=>{
+      try{
+        if(data.workers&&data.workers.length){
+          allClients=data.clients||[];
+          workers=data.workers.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null,clientIds:w.clientIds||[]}));
+          localStorage.setItem('schedMgr_v1', JSON.stringify(data));
+          console.log('GS loaded (method 2):', workers.length, 'workers');
+          resolve(true);
+        } else { resolve(false); }
+      }catch(e){ resolve(false); }
+      delete window[cb];
+    };
+    const script = document.createElement('script');
+    script.src = GS_URL+'?action=loadSchedule&callback='+cb+'&t='+Date.now();
+    script.onerror = ()=>{ resolve(false); delete window[cb]; };
+    setTimeout(()=>{ resolve(false); delete window[cb]; }, 8000);
+    document.head.appendChild(script);
+  });
+}
+
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+}
+
+// ── Worker screen ─────────────────────────────────────────────────
+function startWorkerClock(){
+  document.getElementById('verifiedSiteName').textContent=siteLabel();
+  renderWorkerGrid();
+  if(clockTick) clearInterval(clockTick);
+  clockTick=setInterval(()=>{
+    const n=new Date();
+    document.getElementById('workerClock').textContent=
+      String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
+  },1000);
+  // immediate tick
+  const n=new Date();
+  document.getElementById('workerClock').textContent=
+    String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
+}
+
+function renderWorkerGrid(){
+  const log=getPunchLog();
+  document.getElementById('workerGrid').innerHTML=workers.map(w=>{
+    const c=WORKER_COLORS[w.colorIdx%WORKER_COLORS.length];
+    const ini=w.name.slice(0,2).toUpperCase();
+    const last=getLastEntry(log,w.id);
+    const isIn=last?.type==='in';
+    const status=isIn?'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:5px;vertical-align:middle"></span>In since '+last.time : last?'Last: '+last.time+' (out)':'Not clocked in';
+    return `<div class="w-card ${isIn?'in-progress':''} ${selectedWorker?.id===w.id?'selected':''}" onclick="selectWorker('${w.id}')">
+      <div class="w-dot"></div>
+      <div class="w-avatar" style="background:${c.bg};color:${c.text}">
+        <div class="w-avatar-ring"></div>
+        ${ini}
+      </div>
+      <div class="w-name">${w.name}</div>
+      <div class="w-status">${status}</div>
+    </div>`;
+  }).join('');
+
+  const btn=document.getElementById('continueBtn');
+  const _oldHist=document.getElementById('historyBtn'); if(_oldHist) _oldHist.remove();
+  if(selectedWorker){
+    const last=getLastEntry(getPunchLog(),selectedWorker.id);
+    const isIn=last?.type==='in';
+    btn.disabled=false;
+    btn.textContent=isIn?'Clock OUT →':'Clock IN →';
+  } else {
+    btn.disabled=true;
+    btn.textContent='Select a worker to continue';
+  }
+}
+
+function selectWorker(id){
+  if(URL_TOKEN) return;                 // personal link: cannot switch workers
+  selectedWorker=workers.find(w=>w.id===id)||null;
+  renderWorkerGrid();
+}
+
+function goToPunch(){
+  if(!selectedWorker) return;
+  showScreen('screenPunch');
+  document.getElementById('punchSite').innerHTML='<i class="ti ti-map-pin"></i> '+siteLabel();
+  document.getElementById('punchWorkerName').textContent=selectedWorker.name;
+  startPunchClock(); getLocation(); updateBigBtn();
+}
+function goBack(){ if(URL_TOKEN) return; showScreen('screenWorker'); renderWorkerGrid(); }
+
+// ── Punch screen ──────────────────────────────────────────────────
+function startPunchClock(){
+  if(clockTick) clearInterval(clockTick);
+  clockTick=setInterval(tickPunch,1000); tickPunch();
+}
+function greetingFor(h){
+  if(h>=5  && h<12) return 'Доброе утро';
+  if(h>=12 && h<17) return 'Добрый день';
+  if(h>=17 && h<23) return 'Добрый вечер';
+  return 'Доброй ночи';
+}
+function tickPunch(){
+  const n=new Date();
+  const g=document.getElementById('punchGreeting'); if(g) g.textContent=greetingFor(n.getHours());
+  document.getElementById('punchClock').textContent=
+    String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0')+':'+String(n.getSeconds()).padStart(2,'0');
+  document.getElementById('punchDate').textContent=
+    String(n.getDate()).padStart(2,'0')+'/'+String(n.getMonth()+1).padStart(2,'0')+'/'+String(n.getFullYear()).slice(-2);
+}
+
+// ── GPS anti-spoof ────────────────────────────────────────────────
+const GPS_MAX_ACCURACY=150, GPS_REQUEST_MS=800, GPS_MAX_SPEED=55;
+let _lastGpsPos=null, _gpsWarnings=[];
+
+function analyseGps(pos){
+  const warnings=[], {latitude:lat,longitude:lng,accuracy:acc,speed:spd,altitude:alt}=pos.coords, ts=pos.timestamp;
+  if(acc===0) warnings.push('accuracy=0 (fake GPS suspected)');
+  else if(acc>GPS_MAX_ACCURACY) warnings.push('accuracy too low ('+Math.round(acc)+'m)');
+  if(_lastGpsPos){ const dt=(ts-_lastGpsPos.ts)/1000; if(dt>0&&dt<300){ const sp=haversine(lat,lng,_lastGpsPos.lat,_lastGpsPos.lng)/dt; if(sp>GPS_MAX_SPEED) warnings.push('impossible speed ('+(sp*3.6).toFixed(0)+'km/h)'); } }
+  if(spd!=null&&spd>GPS_MAX_SPEED) warnings.push('device speed '+(spd*3.6).toFixed(0)+'km/h');
+  if(alt===0&&acc<10) warnings.push('altitude=0 with high accuracy');
+  _lastGpsPos={lat,lng,ts}; _gpsWarnings=warnings;
+  return {lat,lng,acc,suspicious:warnings.length>0,warnings};
+}
+
+function getLocation(){
+  const chip=document.getElementById('locChip');
+  chip.className='loc-chip loading';
+  chip.innerHTML='<span class="loc-dot"></span><span>Checking GPS...</span>';
+  locOk=false;
+  if(!navigator.geolocation){ chip.className='loc-chip warn'; chip.innerHTML='<span class="loc-dot"></span><span>GPS not available</span>'; updateBigBtn(); return; }
+  if(!SITE.lat||!SITE.lng){ chip.className='loc-chip ok'; chip.innerHTML='<span class="loc-dot"></span><span>Location check skipped</span>'; locOk=true; updateBigBtn(); return; }
+  const t0=Date.now();
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const elapsed=Date.now()-t0, a=analyseGps(pos);
+    const dist=Math.round(haversine(a.lat,a.lng,SITE.lat,SITE.lng)); locDist=dist;
+    const tooFast=elapsed<GPS_REQUEST_MS;
+    const distOk=dist<=SITE.radius, accOk=a.acc>0&&a.acc<=GPS_MAX_ACCURACY;
+    window._lastGpsAnalysis={lat:a.lat,lng:a.lng,accuracy:a.acc,dist,suspicious:a.suspicious||tooFast,warnings:tooFast?['Response in '+elapsed+'ms (too fast)'].concat(a.warnings):a.warnings,elapsed};
+    if(!distOk){ locOk=false; chip.className='loc-chip warn'; chip.innerHTML='<span class="loc-dot"></span><span>'+dist+'m from site (max '+SITE.radius+'m)</span>'; }
+    else if(!accOk){ locOk=false; chip.className='loc-chip warn'; chip.innerHTML='<span class="loc-dot"></span><span>Weak GPS (±'+Math.round(a.acc)+'m) — go outside</span>'; }
+    else if(a.suspicious||tooFast){ locOk=false; chip.className='loc-chip warn'; chip.innerHTML='<span class="loc-dot"></span><span>Suspicious GPS: '+(tooFast?'instant response':a.warnings[0])+'</span>'; }
+    else{ locOk=true; chip.className='loc-chip ok'; chip.innerHTML='<span class="loc-dot"></span><span>On site · '+dist+'m · ±'+Math.round(a.acc)+'m</span>'; }
+    updateBigBtn();
+  }, err=>{
+    chip.className='loc-chip warn';
+    chip.innerHTML='<span class="loc-dot"></span><span>'+(err.code===1?'GPS denied — enable in settings':'GPS error — go outside')+'</span>';
+    locOk=false; updateBigBtn();
+  },{enableHighAccuracy:true,timeout:15000,maximumAge:0});
+}
+
+function updateBigBtn(){
+  const btn=document.getElementById('bigPunchBtn');
+  const ring=document.getElementById('btnRing');
+  if(!locOk){
+    btn.className='big-punch-btn disabled';
+    btn.innerHTML='<span class="btn-icon"><i class="ti ti-map-pin-off"></i></span><span class="btn-label">NOT ON SITE</span>';
+    ring.className='btn-ring off'; return;
+  }
+  const log=getPunchLog(), last=getLastEntry(log,selectedWorker?.id), isIn=last?.type==='in';
+  if(isIn){
+    btn.className='big-punch-btn out';
+    btn.innerHTML='<span class="btn-icon"><i class="ti ti-logout"></i></span><span class="btn-label">CLOCK OUT</span><span class="btn-sub">'+selectedWorker.name+'</span>';
+    ring.className='btn-ring out';
+  } else {
+    btn.className='big-punch-btn in';
+    btn.innerHTML='<span class="btn-icon"><i class="ti ti-login"></i></span><span class="btn-label">CLOCK IN</span><span class="btn-sub">'+selectedWorker.name+'</span>';
+    ring.className='btn-ring in';
+  }
+}
+
+function doPunch(){
+  if(!locOk||!selectedWorker) return;
+  if(Date.now()-_lastPunchAt < 4000){ showToast('Подождите пару секунд'); return; }  // guard against accidental double-tap
+  _lastPunchAt = Date.now();
+  const now=new Date(), hh=String(now.getHours()).padStart(2,'0'), mm=String(now.getMinutes()).padStart(2,'0');
+  const log=getPunchLog(), last=getLastEntry(log,selectedWorker.id), type=last?.type==='in'?'out':'in';
+  const gps=window._lastGpsAnalysis||{};
+  const geoEnforced = !!(SITE.lat && SITE.lng);
+  const entry={
+    id:Date.now(), workerId:selectedWorker.id, workerName:selectedWorker.name,
+    type, time:hh+':'+mm, ts:now.toISOString(),
+    site:SITE.name, dist:locDist,
+    lat: geoEnforced ? (gps.lat ?? null) : null,
+    lng: geoEnforced ? (gps.lng ?? null) : null,
+    gpsVerified: geoEnforced,
+    geoSkipped: !geoEnforced,
+    manual:false,
+    gpsAccuracy:gps.accuracy||null, gpsSuspicious:gps.suspicious||false, gpsWarnings:gps.warnings||[],
+    gpsElapsed:gps.elapsed||null,
+  };
+  log.push(entry); savePunchLog(log);
+  gsSavePunch(entry);
+  if(type==='out'&&last) updateScheduleManager(selectedWorker.id,last.time,hh+':'+mm);
+  showSuccess(type,hh+':'+mm,now);
+}
+
+function showSuccess(type,time,date){
+  if(clockTick) clearInterval(clockTick);
+  const anim=document.getElementById('successAnim');
+  const label=document.getElementById('successLabel');
+  anim.innerHTML=type==='in'?'<i class="ti ti-circle-check"></i>':'<i class="ti ti-logout"></i>';
+  anim.className='success-anim '+(type==='in'?'in':'out');
+  label.textContent=type==='in'?'Clocked IN':'Clocked OUT';
+  label.className='success-label '+(type==='in'?'in':'out');
+  document.getElementById('successWorker').textContent=selectedWorker.name;
+  document.getElementById('successTime').textContent=time;
+  document.getElementById('successDate').textContent=
+    String(date.getDate()).padStart(2,'0')+'/'+String(date.getMonth()+1).padStart(2,'0')+'/'+String(date.getFullYear()).slice(-2);
+  const _ca=document.getElementById('clockAnotherBtn'); if(_ca) _ca.style.display=URL_TOKEN?'none':'';
+  showScreen('screenSuccess');
+}
+
+function goToWorker(){ if(URL_TOKEN&&selectedWorker){ showScreen('screenPunch'); startPunchClock(); getLocation(); updateBigBtn(); return; } selectedWorker=null; showScreen('screenWorker'); startWorkerClock(); }
+function resetToQR(){ if(URL_TOKEN&&selectedWorker){ showScreen('screenPunch'); startPunchClock(); getLocation(); updateBigBtn(); return; } selectedWorker=null; showScreen('screenWorker'); startWorkerClock(); }
+function closeHistory(){ if(URL_TOKEN&&selectedWorker){ showScreen('screenPunch'); startPunchClock(); getLocation(); updateBigBtn(); } else { showScreen('screenWorker'); startWorkerClock(); } }
+
+// ── Helpers ───────────────────────────────────────────────────────
+function getPunchLog(){ try{return JSON.parse(localStorage.getItem('punchLog')||'[]');}catch(e){return[];} }
+function savePunchLog(log){ localStorage.setItem('punchLog',JSON.stringify(log)); }
+function getLastEntry(log,wid){ const es=log.filter(e=>e.workerId===wid&&new Date(e.ts).toDateString()===new Date().toDateString()); if(!es.length) return null; return es.reduce((a,b)=> new Date(b.ts).getTime()>new Date(a.ts).getTime()?b:a); }
+function haversine(a,b,c,d){ const R=6371000,dL=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180,x=Math.sin(dL/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dl/2)**2; return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x)); }
+function updateScheduleManager(wid,s,e){ try{ const k='schedMgr_v1',r=localStorage.getItem(k)||localStorage.getItem('scheduleManagerData'); if(!r)return; const d=JSON.parse(r),w=d.workers?.find(x=>x.id===wid); if(w){w.schedule[new Date().getDay()]={type:'work',start:s,end:e};localStorage.setItem(k,JSON.stringify(d));} }catch(e){} }
+function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3500); }
+
+// Site shown in history: keep a recorded site only if it's one of THIS worker's
+// own clients; otherwise show the client the worker is attached to.
+function histSite(e){
+  const w=selectedWorker;
+  if(w && allClients.length){
+    const wc=(w.clientIds||[]).map(id=>allClients.find(x=>x.id===id)).filter(Boolean);
+    const match = e.site && wc.find(c=>c.name===e.site);
+    if(match) return match.name;
+    if(wc[0]) return wc[0].name;
+  }
+  if(SITE && SITE.name && SITE.name!=='Work Site') return SITE.name;
+  return e.site || '';
+}
+
+function openHistory(){
+  if(!selectedWorker) return;
+  showScreen('screenHistory');
+  const log=getPunchLog();
+  const wLog=log.filter(e=>e.workerId===selectedWorker.id);
+  const el=document.getElementById('historyContent');
+  if(!wLog.length){
+    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3);font-size:15px">No history yet</div>';
+    return;
+  }
+  // Group by date
+  const byDate={};
+  [...wLog].reverse().forEach(e=>{
+    const d=new Date(e.ts).toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
+    if(!byDate[d]) byDate[d]=[];
+    byDate[d].push(e);
+  });
+  // Calculate total hours per day
+  el.innerHTML=Object.entries(byDate).slice(0,14).map(([date,entries])=>{
+    // Sum each IN→OUT session chronologically (robust to multiple sessions / same-minute punches)
+    const chrono=[...entries].sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+    let hours=0, openIn=null;
+    chrono.forEach(e=>{
+      if(e.type==='in'){ openIn=e; }
+      else if(e.type==='out' && openIn && openIn.time && e.time){
+        const sm=openIn.time.split(':').map(Number), em=e.time.split(':').map(Number);
+        let dur=(em[0]*60+em[1])-(sm[0]*60+sm[1]); if(dur<0) dur+=1440;
+        hours+=dur/60; openIn=null;
+      }
+    });
+    const rows=entries.map(e=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
+        <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;min-width:44px;text-align:center;${e.type==='in'?'background:rgba(109,214,160,0.12);color:#6dd6a0':'background:rgba(255,79,94,0.12);color:#ff4f5e'}">${e.type==='in'?'IN':'OUT'}</span>
+        <span style="font-size:15px;font-family:'DM Mono',ui-monospace,monospace;font-weight:600;color:var(--text)">${e.time}</span>
+        ${(()=>{const s=histSite(e);return s?`<span style="font-size:11px;color:var(--text3)"><i class="ti ti-map-pin"></i> ${s}</span>`:'';})()}
+        ${e.dist!=null?`<span style="font-size:11px;color:var(--text3)">${e.dist}m</span>`:''}
+      </div>`).join('');
+    return `<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px 16px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:14px;font-weight:700;color:var(--text)">${date}</div>
+        ${hours>0?`<div style="font-size:13px;font-weight:600;color:var(--green)">${hours.toFixed(1)}h</div>`:''}
+      </div>
+      ${rows}
+    </div>`;
+  }).join('');
+}
+
+// Error telemetry: send client errors to the GS Errors sheet (throttled, silent).
+let _errSent={}, _errCount=0;
+function reportError(message, source, stack){
+  try{
+    if(_errCount>20) return;
+    const key=String(message||'').slice(0,120), nowT=Date.now();
+    if(_errSent[key] && nowT-_errSent[key]<60000) return;
+    _errSent[key]=nowT; _errCount++;
+    fetch(GS_URL,{method:'POST',body:JSON.stringify({
+      action:'logError',
+      page:(location.pathname.split('/').pop()||location.href),
+      role:'worker',
+      worker:(typeof selectedWorker!=='undefined'&&selectedWorker&&selectedWorker.name)||(URL_TOKEN?('token:'+String(URL_TOKEN).slice(0,4)):''),
+      message:String(message||'').slice(0,500),
+      source:String(source||'').slice(0,300),
+      stack:String(stack||'').slice(0,1200)
+    })}).catch(()=>{});
+  }catch(e){}
+}
+window.addEventListener('error', function(ev){ reportError(ev.message, (ev.filename||'')+':'+(ev.lineno||''), ev.error&&ev.error.stack); });
+window.addEventListener('unhandledrejection', function(ev){ const r=ev.reason; reportError((r&&r.message)||String(r), 'promise', r&&r.stack); });
+try{ init(); }catch(err){ console.error('init failed',err); reportError('init failed: '+(err&&err.message), 'init', err&&err.stack); showInvalidLink('Что-то пошло не так','Обновите страницу. Если не помогает — обратитесь к менеджеру.','ti-alert-triangle'); }
+
+// ── Push Subscription (worker) ────────────────────────────────────
+const VAPID_PUBLIC_KEY = 'BBju9uoDfcpB0ZIPWhCyvUxg4lLwYVFy4QadSnvx6ImaafKK0pxalntUz5JmkH3Tc9wq9yymBucOf_U5i9o8t7w';
+const GS_URL_WP = 'https://script.google.com/macros/s/AKfycbwfGCQs8TzGd38j-JU0ZdoHLXdHITaG1QjUE3nAJDVB6uZR2_56hxV0Y4UgCs1bGYi_/exec';
+
+function urlB64ToUint8WP(b64){
+  const pad='='.repeat((4-b64.length%4)%4);
+  const raw=atob((b64+pad).replace(/-/g,'+').replace(/_/g,'/'));
+  return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
+}
+
+async function subscribeWorkerPush(workerName){
+  if(!('PushManager' in window)) return;
+  try{
+    const perm = await Notification.requestPermission();
+    if(perm !== 'granted') return;
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+    if(existing) return; // already subscribed
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlB64ToUint8WP(VAPID_PUBLIC_KEY)
+    });
+    // Save with worker name to GS
+    fetch(GS_URL_WP,{method:'POST',body:JSON.stringify({
+      action:'savePushSubscription',
+      secret:API_SECRET,
+      subscription:JSON.parse(JSON.stringify(sub)),
+      role:'worker',
+      workerName
+    })});
+  } catch(e){ console.warn('Worker push failed:',e); }
+}
+
+// ── PWA service worker: always-fresh, auto-reload on new version ───────────
+if('serviceWorker' in navigator){
+  let _swRefreshing=false;
+  const _hadController=!!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(_swRefreshing) return; _swRefreshing=true;
+    if(_hadController) window.location.reload();
+  });
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('service-worker.js',{updateViaCache:'none'})
+      .then(reg=>{ reg.update(); })
+      .catch(()=>{});
+  });
+}
+
+</script>
+</body>
+</html>

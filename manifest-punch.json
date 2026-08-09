@@ -1,0 +1,12 @@
+{
+  "name": "Punch Clock",
+  "short_name": "Punch",
+  "description": "GPS clock in / out",
+  "start_url": "./worker-punch.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1117",
+  "theme_color": "#0f1117",
+  "icons": []
+}

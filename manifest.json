@@ -1,0 +1,12 @@
+{
+  "name": "Schedule Manager",
+  "short_name": "Schedule",
+  "description": "Staff schedule & payroll admin",
+  "start_url": "./schedule-manager.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1117",
+  "theme_color": "#0f1117",
+  "icons": []
+}
