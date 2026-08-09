@@ -2931,10 +2931,26 @@ async function fillForm101(){
     const resp=await fetch('form101_fillable.pdf',{cache:'no-store'});
     if(!resp.ok) throw new Error('Шаблон form101_fillable.pdf не найден на сайте — залей его на Firebase');
     const bytes=await resp.arrayBuffer();
+    await _loadFontkit();
     const doc=await PDFLib.PDFDocument.load(bytes);
+    doc.registerFontkit(fontkit);
     const form=doc.getForm();
     const setT=(n,v)=>{ try{ if(v!=null&&v!=='') form.getTextField(n).setText(String(v)); }catch(e){} };
     const chk=(n)=>{ try{ form.getCheckBox(n).check(); }catch(e){} };
+    // Hebrew-aware writer: embeds Heebo and re-renders the field's appearance with
+    // it (setText must come BEFORE updateAppearances, or pdf-lib regenerates the
+    // appearance with the default non-Hebrew font at save time and overwrites it).
+    const heFontBytes=await _loadHeeboFont().catch(()=>null);
+    let heFont=null;
+    if(heFontBytes){ try{ heFont=await doc.embedFont(heFontBytes,{subset:false}); }catch(e){ heFont=null; } }
+    const setH=(n,v)=>{
+      if(!v) return;
+      try{
+        const fld=form.getTextField(n);
+        if(heFont){ fld.setText(String(v)); fld.updateAppearances(heFont); }
+        else fld.setText(String(v).replace(/[֐-׿יִ-ﭏ]/g,'?'));
+      }catch(e){}
+    };
     const nat=_pf('mrzNat').toUpperCase();
     const isIsraeli = nat==='ISR';
     const year=new Date().getFullYear();
@@ -2950,7 +2966,10 @@ async function fillForm101(){
     const ws=document.getElementById('f101Work')?.value;         // yyyy-mm-dd
     if(ws){ const d=ws.split('-'); const ds=d[2]+'/'+d[1]+'/'+d[0]; setT('work_start',ds); setT('sign_date',ds); }
     const fund=document.getElementById('f101Fund')?.value;
-    if(fund){ chk('hf_yes'); setT('hf_name',fund); }             // Hebrew name may be skipped by the font — box still checked
+    if(fund){ chk('hf_yes'); setH('hf_name',HEALTH_FUND_HE[fund]||fund); }
+    // Without this, viewers ignore our appearance streams and re-render every
+    // field themselves using the template's default (non-Hebrew) Helvetica DA.
+    form.acroForm.dict.set(PDFLib.PDFName.of('NeedAppearances'), PDFLib.PDFBool.False);
     const out=await doc.save();
     const blob=new Blob([out],{type:'application/pdf'});
     const url=URL.createObjectURL(blob);
