@@ -2607,7 +2607,7 @@ async function aiFillForm101(isId){
       if(fund){ chk('hf_yes'); (customFont?setH:setT)('hf_name',HEALTH_FUND_HE[fund]||fund); }
     } else {
       // Foreign passport: fill passport_no, work start, fund from aiPp* inputs
-      setT('passport_no',no);
+      setComb('passport_no',13,no);
       const ws=document.getElementById('aiPpWork')?.value;
       if(ws){ const d=ws.split('-'); const ds=d[2]+'/'+d[1]+'/'+d[0]; setT('work_start',ds); setT('sign_date',ds); }
       const fund=document.getElementById('aiPpFund')?.value;
