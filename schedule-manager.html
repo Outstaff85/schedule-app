@@ -2602,7 +2602,19 @@ async function aiFillForm101(isId){
         // setText must come BEFORE updateAppearances — the other order lets
         // pdf-lib's save-time appearance refresh silently redo it with the
         // default (non-Hebrew) font and undo this.
-        if(customFont){ fld.setText(String(v)); fld.updateAppearances(customFont); }
+        if(customFont){
+          fld.setText(String(v)); fld.updateAppearances(customFont);
+          // pdf-lib's auto-generated appearance can silently drop the last glyph
+          // of multi-word RTL text (e.g. combining two Hebrew words loses a
+          // letter) — paint over it and draw the text ourselves instead, which
+          // doesn't have that bug.
+          const size=fieldSizes[n]||8;
+          const r=fld.acroField.getWidgets()[0].getRectangle();
+          const tw=customFont.widthOfTextAtSize(String(v),size);
+          const th=customFont.heightAtSize(size,{descender:false});
+          page1.drawRectangle({x:r.x,y:r.y,width:r.width,height:r.height,color:PDFLib.rgb(1,1,1)});
+          page1.drawText(String(v),{x:r.x+r.width-tw-2,y:r.y+(r.height-th)/2,size,font:customFont});
+        }
         else { fld.setText(String(v).replace(/[\u0590-\u05FF\uFB1D-\uFB4F]/g,'?')); }
       }catch(e){}
     };
