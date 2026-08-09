@@ -20,7 +20,10 @@ A staff scheduling & GPS punch-clock PWA for a single client ("Odinson"), served
 There is no npm/build/lint/test tooling. Development is edit-the-HTML-and-reload.
 
 - Local preview: `firebase emulators:start --only hosting` (uses `firebase.json` rewrites), or just open the HTML files directly in a browser.
-- Deploy: Push to `origin/main` (or `origin/HEAD`); a GitHub Actions workflow automatically deploys to Firebase Hosting (project alias `schedule-odinson`, see `.firebaserc`). No manual `firebase deploy` step is needed.
+- Deploy: Push to `origin/main` (or `origin/HEAD`); GitHub Actions workflows automatically deploy both the static hosting and backend:
+  - `.github/workflows/deploy.yml` — deploys `schedule-manager.html`, `worker-punch.html`, and supporting files to Firebase Hosting (project alias `schedule-odinson`, see `.firebaserc`).
+  - `.github/workflows/deploy-apps-script.yml` — deploys Google Apps Script source (anything in `apps-script/`) via `clasp push --force` and `clasp deploy` to the configured Apps Script project (requires `CLASP_CREDENTIALS` and `CLASP_DEPLOYMENT_ID` GitHub secrets).
+  - No manual `firebase deploy` or `clasp` commands are needed.
 - Routing: `firebase.json` rewrites `/` → `schedule-manager.html` and `/punch` → `worker-punch.html`.
 
 When bumping the service worker's cache (`CACHE` constant in `service-worker.js`), increment the version string (e.g. `schedule-mgr-v3` → `v4`) or clients will keep serving stale cached HTML after deploy.
