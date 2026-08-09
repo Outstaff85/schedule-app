@@ -55,6 +55,7 @@ Both HTML files talk to the **same** Google Apps Script Web App endpoint (`GS_UR
 - `restoreBackupRow(rowNum)` — manual restore from Backups.
 - `checkShiftReminders()` / `setupHourlyTrigger()` — hourly check for upcoming shifts, send push notifications.
 - `normalizeClients(clients)` — enforce numeric radius on load/save.
+- `migrateAddClientIdColumn()` — one-time migration to add the `ClientID` column to an existing PunchLog sheet (run once from the Apps Script editor after deploying the version that includes this column; safely handles sheets where the column already exists).
 
 The service worker explicitly never intercepts requests to `script.google.com` (`service-worker.js:31`) — the API always goes straight to network.
 
