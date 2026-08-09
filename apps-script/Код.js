@@ -253,6 +253,44 @@ function fixPunchLogHeaderDrift(){
   return {ok:true, fixedColumns:'K:N'};
 }
 
+// One-time fix: column J's header is still the legacy 'QR Verified' label from
+// before the app switched to GPS-only verification — the code has positionally
+// written GPS accuracy into that same column ever since, so loadPunchLog()'s
+// o['GPS Accuracy(m)'] name-based lookup has silently never matched it. Rewrites
+// J1 text only. Safe to run more than once.
+function fixGpsAccuracyHeaderLabel(){
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_PUNCHLOG);
+  if (!sh || sh.getLastRow() === 0) return {ok:true, note:'sheet empty or missing, nothing to fix'};
+  const cur = sh.getRange(1,10).getValue();
+  if (cur === 'GPS Accuracy(m)') return {ok:true, note:'header already correct'};
+  sh.getRange(1,10).setValue('GPS Accuracy(m)');
+  return {ok:true, fixedColumn:'J', from: cur, to:'GPS Accuracy(m)'};
+}
+
+// One-time backfill: punches recorded with site:'Office A' predate the clientId
+// field and predate client c1 being renamed from its old seed name 'Office A' to
+// its current name — so their historical client link is unrecoverable from the
+// name alone. Sets clientId='c1' only on rows that still have no clientId, so
+// it's safe to run more than once and never overwrites a punch that already has
+// a (possibly different, correctly-chosen) clientId.
+function backfillOfficeAClientId(){
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_PUNCHLOG);
+  if (!sh || sh.getLastRow() < 2) return {ok:true, note:'no data'};
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const siteCol = headers.indexOf('Site');
+  const clientIdCol = headers.indexOf('ClientID');
+  if (siteCol === -1 || clientIdCol === -1) return {error:'Site or ClientID header not found'};
+  let fixed = 0;
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][siteCol] === 'Office A' && !rows[i][clientIdCol]) {
+      sh.getRange(i+1, clientIdCol+1).setValue('c1');
+      fixed++;
+    }
+  }
+  return {ok:true, fixed};
+}
+
 function savePunch(entry) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = getOrCreateSheet(ss, SH_PUNCHLOG);

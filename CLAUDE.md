@@ -62,6 +62,8 @@ Both HTML files talk to the **same** Google Apps Script Web App endpoint (`GS_UR
 - `normalizeClients(clients)` — enforce numeric radius on load/save.
 - `migrateAddClientIdColumn()` — one-time migration to add the `ClientID` column to an existing PunchLog sheet (run once from the Apps Script editor after deploying the version that includes this column; safely handles sheets where the column already exists).
 - `fixPunchLogHeaderDrift()` — one-time fix for sheets where an earlier code version wrote GPS Suspicious/GPS Warnings data to columns K:L but the row-1 headers still showed the old 'Notes'/'EditedAt' labels (causing loadPunchLog to silently skip those fields). Rewrites headers K1:N1 only, never touches data rows. Safe to run more than once; detects if headers are already correct.
+- `fixGpsAccuracyHeaderLabel()` — one-time fix: rewrites column J's header from the legacy 'QR Verified' label (from before GPS-only verification) to 'GPS Accuracy(m)' so that `loadPunchLog()`'s name-based lookup matches the positionally-written GPS accuracy data. Rewrites J1 only, never touches data rows. Safe to run more than once; detects if header is already correct.
+- `backfillOfficeAClientId()` — one-time backfill for historical punches: sets `clientId='c1'` on punches where `site='Office A'` and `clientId` is empty, recovering the client link for punches recorded before the clientId field existed and before client c1 was renamed. Only updates rows with no clientId, so safe to run more than once; never overwrites an existing (possibly correctly-chosen) clientId.
 
 The service worker explicitly never intercepts requests to `script.google.com` (`service-worker.js:31`) — the API always goes straight to network.
 
