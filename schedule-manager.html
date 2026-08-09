@@ -2081,8 +2081,16 @@ function workerClientName(workerId){
   return c ? c.name : '';
 }
 function punchSite(e){
-  if(e && e.site && clients.some(c=>c.name===e.site)) return e.site;
+  if(e && e.clientId){ const c=clients.find(x=>x.id===e.clientId); if(c) return c.name; }
+  if(e && e.site && clients.some(c=>c.name===e.site)) return e.site; // legacy entries without clientId
   return workerClientName(e && e.workerId) || (e && e.site) || '';
+}
+// Client object/branch actually recorded on a punch, preferring the shift's own
+// clientId over the worker's CURRENT client assignment (which may have changed
+// since the shift happened).
+function punchClientObject(e){
+  if(e && e.clientId){ const c=clients.find(x=>x.id===e.clientId); if(c) return c.object||c.name||''; }
+  return '';
 }
 function workerClientObject(workerId){
   const w = workers.find(x=>x.id===workerId);
