@@ -2882,29 +2882,17 @@ function passportToWorker(){
 }
 
 // ===== Form 101: fill the fillable template with scanned passport data =====
-// Load Heebo Hebrew TTF font for PDF embedding (loaded once, cached in module scope)
+// Heebo Hebrew+Latin TTF, bundled same-origin (heebo-hebrew.ttf) so PDF filling
+// never depends on a third-party CDN being up — loaded once, cached in module scope.
 let _heeboFontBytes=null;
 async function _loadHeeboFont(){
   if(_heeboFontBytes) return _heeboFontBytes;
-  // Heebo supports full Hebrew Unicode block — hosted on jsDelivr (open CDN)
-  const url='https://cdn.jsdelivr.net/npm/@fontsource/heebo@5.0.8/files/heebo-hebrew-400-normal.woff2';
-  // woff2 not supported by pdf-lib; use the TTF variant via unpkg
-  const ttfUrl='https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/heebo/Heebo%5Bwght%5D.ttf';
-  // Fallback chain: try several open sources for a Hebrew TTF
-  const urls=[
-    'https://fonts.gstatic.com/s/heebo/v26/NGSpv5_NC0k9P_v6ZUCbLRAHxK1EiSysdUmj.woff',
-    'https://cdn.jsdelivr.net/npm/open-sans-hebrew@1.0.2/fonts/OpenSansHebrew-Regular.ttf',
-    'https://unpkg.com/open-sans-hebrew@1.0.0/fonts/OpenSansHebrew-Regular.ttf',
-  ];
-  for(const u of urls){
-    try{
-      const r=await fetch(u); if(!r.ok) continue;
-      _heeboFontBytes=await r.arrayBuffer();
-      if(_heeboFontBytes.byteLength>10000) return _heeboFontBytes;  // valid font
-      _heeboFontBytes=null;
-    }catch(e){}
-  }
-  return null;  // could not load — fallback to ASCII-safe mode
+  try{
+    const r=await fetch('heebo-hebrew.ttf',{cache:'force-cache'});
+    if(!r.ok) return null;
+    _heeboFontBytes=await r.arrayBuffer();
+    return _heeboFontBytes;
+  }catch(e){ return null; }  // could not load — fallback to ASCII-safe mode
 }
 
 let _pdflibLoading=null;
@@ -2919,6 +2907,22 @@ function _loadPdfLib(){
   });
   return _pdflibLoading;
 }
+// fontkit is required by pdf-lib to embed a custom (non-standard-14) font like Heebo.
+let _fontkitLoading=null;
+function _loadFontkit(){
+  if(window.fontkit) return Promise.resolve();
+  if(_fontkitLoading) return _fontkitLoading;
+  _fontkitLoading=new Promise((res,rej)=>{
+    const sc=document.createElement('script');
+    sc.src='https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js';
+    sc.onload=()=>res(); sc.onerror=()=>rej(new Error('fontkit CDN failed'));
+    document.head.appendChild(sc);
+  });
+  return _fontkitLoading;
+}
+// Hebrew label for each health-fund select value — the PDF's hf_name field must
+// show the Hebrew name, not the internal English value used for the <select>.
+const HEALTH_FUND_HE = {Clalit:'כללית', Maccabi:'מכבי', Meuhedet:'מאוחדת', Leumit:'לאומית'};
 async function fillForm101(){
   const btn=event&&event.target?event.target.closest('button'):null;
   try{
