@@ -2282,8 +2282,8 @@ function editPunchEntry(id){
     <div class="field"><label>Site</label>
       <select id="epSite">
         <option value="">— No site —</option>
-        ${clients.map(c=>`<option value="${esc(c.name)}" ${e.site===c.name?'selected':''}>${esc(c.name)}</option>`).join('')}
-        ${(e.site && !clients.some(c=>c.name===e.site)) ? `<option value="${esc(e.site)}" selected>${esc(e.site)} (custom)</option>` : ''}
+        ${clients.map(c=>`<option value="${c.id}" ${e.clientId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+        ${(e.site && !e.clientId) ? `<option value="__custom__" selected>${esc(e.site)} (custom)</option>` : ''}
       </select>
     </div>
     <div class="field"><label>Notes</label>
