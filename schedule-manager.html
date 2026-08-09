@@ -2014,8 +2014,14 @@ function exportSalaryCSV(){
   let filtered=log;
   if(period==='week'){ const ws=new Date(now); ws.setDate(ws.getDate()-ws.getDay()); ws.setHours(0,0,0,0); filtered=log.filter(e=>new Date(e.ts)>=ws); }
   else if(period==='month'){ filtered=log.filter(e=>new Date(e.ts)>=new Date(now.getFullYear(),now.getMonth(),1)); }
+  const byWorkerPunches={};
+  filtered.forEach(e=>{ (byWorkerPunches[e.workerId]=byWorkerPunches[e.workerId]||[]).push(e); });
   const byWD={};
-  filtered.forEach(e=>{ const k=e.workerName+'|'+new Date(e.ts).toDateString(); if(!byWD[k]) byWD[k]={worker:e.workerName,wid:e.workerId,date:new Date(e.ts),entries:[]}; byWD[k].entries.push(e); });
+  Object.entries(byWorkerPunches).forEach(([wid,list])=>{
+    groupPunchesIntoShifts(list).forEach((bucket,i)=>{
+      byWD[wid+'|'+i]={worker:list[0].workerName,wid,date:bucket.date,entries:bucket.entries};
+    });
+  });
   const rows=[['Worker','Object/Client','Date','First In','Last Out','Hours','Rate (\u20aa/h)','Day Pay (\u20aa)','Notes']];
   Object.values(byWD).sort((a,b)=> a.worker<b.worker?-1 : a.worker>b.worker?1 : (a.date-b.date)).forEach(d=>{
     const res=analyzeDayPunches(d.entries,d.date);
