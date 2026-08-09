@@ -951,6 +951,7 @@ function showToast(msg){ const t=document.getElementById('toast'); t.textContent
 // Site shown in history: keep a recorded site only if it's one of THIS worker's
 // own clients; otherwise show the client the worker is attached to.
 function histSite(e){
+  if(e.clientId && allClients.length){ const c=allClients.find(x=>x.id===e.clientId); if(c) return c.name; }
   const w=selectedWorker;
   if(w && allClients.length){
     const wc=(w.clientIds||[]).map(id=>allClients.find(x=>x.id===id)).filter(Boolean);
