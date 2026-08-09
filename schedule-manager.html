@@ -2556,7 +2556,8 @@ async function aiFillForm101(isId){
     // These fields default to a small shrink-to-fit size; force a bigger, fixed
     // size instead so the filled-in text is easy to read (each number chosen to
     // still fit the field's own box for a realistically long value).
-    const setSize=(n,size)=>{ try{ form.getTextField(n).acroField.setDefaultAppearance('/Helv '+size+' Tf 0 g'); }catch(e){} };
+    const fieldSizes={};
+    const setSize=(n,size)=>{ fieldSizes[n]=size; try{ form.getTextField(n).acroField.setDefaultAppearance('/Helv '+size+' Tf 0 g'); }catch(e){} };
     setSize('surname',10); setSize('given_name',10); setSize('addr_street',8.5);
     setSize('addr_city',8.5); setSize('hf_name',8.5); setSize('id_top2',9.5);
     const setT=(n,v)=>{ try{ if(v) form.getTextField(n).setText(String(v)); }catch(e){} };
