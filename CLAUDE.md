@@ -10,6 +10,7 @@ A staff scheduling & GPS punch-clock PWA for a single client ("Odinson"), served
 - `worker-punch.html` — the worker-facing clock-in/out app, opened via a per-worker tokenized link. ~1000 lines.
 - `service-worker.js` — PWA offline shell (network-first, cache fallback).
 - `manifest.json` / `manifest-punch.json` — separate installable-PWA manifests for the two apps.
+- `google-apps-script.js` — the backend Apps Script source code (backed by Google Sheets database). Deployed separately to `script.google.com` but tracked here for reference/documentation.
 - `form101_fillable.pdf` — Israeli tax form template filled in-app via pdf-lib (see AI/passport scan flow below).
 
 ## Commands
