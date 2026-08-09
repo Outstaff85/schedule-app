@@ -57,6 +57,7 @@ The service worker explicitly never intercepts requests to `script.google.com` (
 ### Shared conventions across both files
 
 - No modules/imports — everything is global functions/consts inside one inline `<script>` per file. When adding functionality, follow this style rather than introducing bundling.
+- **XSS protection:** All user-supplied text (worker names, client names, notes, addresses, phone, email) that is interpolated into HTML must be wrapped in `esc()` — a helper function that HTML-escapes `&<>"'` to prevent injection. Use it on all `${...}` expressions inside template strings that build HTML from data. This is especially important for names and notes since they're directly editable by users and displayed in grids, modals, and labels.
 - Both files duplicate constants like `GS_URL`/`API_SECRET` and helpers like `reportError`, `showToast`, `getPunchLog`/`savePunchLog`, `urlB64ToUint8` (`worker-punch.html` has `urlB64ToUint8WP`) — this is intentional (no shared build), so a fix in one file (e.g. the API URL, after rotating the Apps Script deployment) usually needs to be mirrored in the other.
 - Push notifications: both files subscribe via `savePushSubscription`; `service-worker.js` handles `push`/`notificationclick`.
 - Auto-commit: `.claude/settings.json` runs a `PostToolUse` hook on `Write|Edit|NotebookEdit` that stages, commits, and pushes to `origin/HEAD` automatically after every file change made by Claude Code in this repo. Each push to `origin/main` triggers the GitHub Actions deploy workflow.
