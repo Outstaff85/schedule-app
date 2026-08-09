@@ -483,7 +483,7 @@ async function flushQueue(){
   const failed=[];
   for(const e of q){
     try{ const r=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'savePunch',secret:API_SECRET,data:e})}); await r.json(); }
-    catch(e){ failed.push(e); }
+    catch(err){ failed.push(e); }
   }
   saveQueue(failed);
   if(!failed.length){ hideOfflineBadge(); if(q.length) showSyncToast(q.length); }
