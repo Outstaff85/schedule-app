@@ -454,8 +454,7 @@
           <div class="page-sub">All worker details, status and history</div>
         </div>
         <button class="btn sm" onclick="openAddWorker()"><i class="ti ti-plus"></i> Add Worker</button>
-        <button class="btn sm" onclick="openPassportScan()"><i class="ti ti-id-badge-2"></i> Scan Passport</button>
-      <button class="btn sm" onclick="openAiScan()" style="border-color:rgba(109,214,160,0.4);color:var(--green)"><i class="ti ti-sparkles"></i> AI-скан</button>
+        <button class="btn sm" onclick="openAiScan()" style="border-color:rgba(109,214,160,0.4);color:var(--green)"><i class="ti ti-sparkles"></i> Скан паспорта</button>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
         <input type="text" id="workersSearch" placeholder="Search by name, phone, object..." oninput="renderWorkersPage()" style="flex:1;min-width:180px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
@@ -580,22 +579,13 @@
 <div class="overlay" id="aiScanOverlay" onclick="if(event.target===this)closeModal('aiScanOverlay')">
   <div class="modal" style="width:460px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-      <div class="modal-title" style="margin-bottom:0"><i class="ti ti-sparkles" style="color:var(--green)"></i> AI-скан документа</div>
+      <div class="modal-title" style="margin-bottom:0"><i class="ti ti-sparkles" style="color:var(--green)"></i> Скан паспорта</div>
       <button class="btn sm" onclick="closeModal('aiScanOverlay')"><i class="ti ti-x"></i></button>
     </div>
     <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.5">
       Читает загранпаспорт <b>и</b> израильский теудат-зеут (включая иврит). Фото уходит на твой сервер (Apps Script) и обрабатывается ИИ. Стоимость: ~$0.002 за скан.
     </div>
     <div id="aiScanStage"></div>
-  </div>
-</div>
-<div class="overlay" id="passportOverlay" onclick="if(event.target===this)closeModal('passportOverlay')">
-  <div class="modal" style="width:440px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-      <div class="modal-title" style="margin-bottom:0"><i class="ti ti-id-badge-2"></i> Скан паспорта (MRZ)</div>
-      <button class="btn sm" onclick="closeModal('passportOverlay')"><i class="ti ti-x"></i></button>
-    </div>
-    <div id="passportStage" style="margin-top:10px"></div>
   </div>
 </div>
 <div class="overlay" id="workerCardOverlay" onclick="if(event.target===this)closeModal('workerCardOverlay')">
@@ -2470,8 +2460,27 @@ function renderAiResult(p){
     <button class="btn sm" onclick="openAiScan()"><i class="ti ti-refresh"></i> Заново</button>
     <button class="btn sm" onclick="aiToWorker(${JSON.stringify(isId)})">
       <i class="ti ti-user-plus"></i> Создать работника</button>`;
-  if(!isId) h+=`<button class="btn sm" onclick="aiFillForm101(false)">
-    <i class="ti ti-download" style="color:#4f8ef7"></i> Форма 101</button>`;
+  if(!isId) h+=`
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="ti ti-file-text"></i> Форма 101</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+        <label style="font-size:12px;color:var(--text2)">Дата начала работы:</label>
+        <input type="date" id="aiPpWork" value="${new Date().toISOString().slice(0,10)}"
+          style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:5px 8px;font-size:13px;outline:none">
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <label style="font-size:12px;color:var(--text2)">Больничная касса:</label>
+        <select id="aiPpFund" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:5px 8px;font-size:13px;outline:none">
+          <option value="">— не заполнять —</option>
+          <option value="Clalit">כללית (Клалит)</option>
+          <option value="Maccabi">מכבי (Маккаби)</option>
+          <option value="Meuhedet">מאוחדת (Меухедет)</option>
+          <option value="Leumit">לאומית (Леумит)</option>
+        </select>
+      </div>
+      <button class="btn sm" onclick="aiFillForm101(false)">
+        <i class="ti ti-download" style="color:#4f8ef7"></i> Форма 101</button>
+    </div>`;
   else h+=`
     <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
       <div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="ti ti-file-text"></i> Форма 101</div>
@@ -2584,11 +2593,11 @@ async function aiFillForm101(isId){
       const fund=document.getElementById('aiIdFund')?.value;
       if(fund){ chk('hf_yes'); (customFont?setH:setT)('hf_name',HEALTH_FUND_HE[fund]||fund); }
     } else {
-      // Foreign passport: fill passport_no, work start, fund from f101* inputs
+      // Foreign passport: fill passport_no, work start, fund from aiPp* inputs
       setT('passport_no',no);
-      const ws=document.getElementById('f101Work')?.value;
+      const ws=document.getElementById('aiPpWork')?.value;
       if(ws){ const d=ws.split('-'); const ds=d[2]+'/'+d[1]+'/'+d[0]; setT('work_start',ds); setT('sign_date',ds); }
-      const fund=document.getElementById('f101Fund')?.value;
+      const fund=document.getElementById('aiPpFund')?.value;
       if(fund){ chk('hf_yes'); (customFont?setH:setT)('hf_name',HEALTH_FUND_HE[fund]||fund); }
     }
     // Without this, viewers ignore our appearance streams and re-render every
@@ -2606,57 +2615,6 @@ async function aiFillForm101(isId){
   finally{ if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-download" style="color:#4f8ef7"></i> Форма 101'; } }
 }
 
-// ===== Passport MRZ scanner (free, client-side OCR — no API keys) =====
-let _tessLoading=null;
-function _loadTesseract(){
-  if(window.Tesseract) return Promise.resolve();
-  if(_tessLoading) return _tessLoading;
-  _tessLoading=new Promise((res,rej)=>{
-    const sc=document.createElement('script');
-    sc.src='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
-    sc.onload=()=>res(); sc.onerror=()=>rej(new Error('CDN load failed'));
-    document.head.appendChild(sc);
-  });
-  return _tessLoading;
-}
-
-function openPassportScan(){
-  document.getElementById('passportOverlay').classList.add('open');
-  document.getElementById('passportStage').innerHTML=`
-    <div style="display:flex;flex-direction:column;gap:10px">
-      <button class="btn sm" onclick="document.getElementById('passportFile').click()"><i class="ti ti-camera"></i> Загрузить фото паспорта</button>
-      <input type="file" id="passportFile" accept="image/*,application/pdf,.pdf" style="display:none" onchange="scanPassport(this.files[0])">
-      <div style="font-size:12px;color:var(--text3);line-height:1.5">Сфотографируй паспорт так, чтобы были видны <b>две нижние строки</b> (машинная зона MRZ). Распознавание идёт прямо на устройстве, без интернета к сторонним сервисам и без оплаты. Первый запуск качает ~несколько МБ — подожди.</div>
-    </div>`;
-}
-
-// Downscale + grayscale + threshold to help OCR read the MRZ.
-function _prepImage(src){
-  return new Promise((resolve)=>{
-    const img=new Image();
-    const _url=(typeof src==='string')?src:URL.createObjectURL(src);
-    img.onload=()=>{
-      const targetW=2000;                                   // UPSCALE small images so MRZ text is sharp
-      const scale=Math.min(3, Math.max(1, targetW/img.width));
-      const w=Math.round(img.width*scale), h=Math.round(img.height*scale);
-      const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
-      const ctx=cv.getContext('2d'); ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high'; ctx.drawImage(img,0,0,w,h);
-      try{
-        const d=ctx.getImageData(0,0,w,h), a=d.data;
-        for(let i=0;i<a.length;i+=4){                        // grayscale + mild contrast (keeps thin MRZ strokes)
-          let g=0.3*a[i]+0.59*a[i+1]+0.11*a[i+2];
-          g=(g-128)*1.45+128; if(g<0)g=0; else if(g>255)g=255;
-          a[i]=a[i+1]=a[i+2]=g;
-        }
-        ctx.putImageData(d,0,0);
-      }catch(e){/* tainted canvas — skip preprocess */}
-      resolve(cv.toDataURL('image/png'));
-    };
-    img.onerror=()=>resolve(_url);
-    img.src=_url;
-  });
-}
-
 let _pdfjsLoading=null;
 function _loadPdfJs(){
   if(window.pdfjsLib) return Promise.resolve();
@@ -2670,226 +2628,7 @@ function _loadPdfJs(){
   });
   return _pdfjsLoading;
 }
-async function _pdfFirstPageDataURL(file){
-  await _loadPdfJs();
-  const buf=await file.arrayBuffer();
-  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
-  const page=await pdf.getPage(1);
-  const vp=page.getViewport({scale:3.2});
-  const cv=document.createElement('canvas'); cv.width=vp.width; cv.height=vp.height;
-  await page.render({canvasContext:cv.getContext('2d'), viewport:vp}).promise;
-  return cv.toDataURL('image/png');
-}
-function _imgFromSrc(src){
-  return new Promise((res,rej)=>{ const im=new Image(); const u=(typeof src==='string')?src:URL.createObjectURL(src);
-    im.onload=()=>res(im); im.onerror=()=>rej(new Error('image load failed')); im.src=u; });
-}
-// Build several candidate crops (whole passport stays intact for the user; we crop the MRZ band internally).
-async function _mrzVariants(src){
-  const img=await _imgFromSrc(src);
-  const W=img.width, H=img.height;
-  const proc=(sy0,sy1,targetW)=>{
-    const sy=Math.round(H*sy0), sh=Math.max(1,Math.round(H*(sy1-sy0)));
-    const scale=Math.min(4, Math.max(1, targetW/W));
-    const w=Math.round(W*scale), h=Math.round(sh*scale);
-    const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
-    const ctx=cv.getContext('2d'); ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
-    ctx.drawImage(img, 0,sy,W,sh, 0,0,w,h);
-    try{ const d=ctx.getImageData(0,0,w,h),a=d.data;
-      for(let i=0;i<a.length;i+=4){ let g=0.3*a[i]+0.59*a[i+1]+0.11*a[i+2]; g=(g-128)*1.5+128; if(g<0)g=0; else if(g>255)g=255; a[i]=a[i+1]=a[i+2]=g; }
-      ctx.putImageData(d,0,0);
-    }catch(e){}
-    return cv.toDataURL('image/png');
-  };
-  // Scan overlapping horizontal bands across the WHOLE height (MRZ may be anywhere), then the full image.
-  return [
-    proc(0.50,0.78,2400),
-    proc(0.62,0.90,2400),
-    proc(0.38,0.66,2400),
-    proc(0.26,0.54,2400),
-    proc(0.74,1.00,2400),
-    proc(0,1,2600)
-  ];
-}
-async function scanPassport(file){
-  if(!file) return;
-  const stage=document.getElementById('passportStage');
-  const isPdf = file.type==='application/pdf' || /\.pdf$/i.test(file.name||'');
-  stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px"><i class="ti ti-loader-2"></i> '+(isPdf?'Открываю PDF…':'Ищу и распознаю MRZ…')+' это может занять до минуты</div>';
-  try{
-    const src = isPdf ? await _pdfFirstPageDataURL(file) : file;
-    await _loadTesseract();
-    const variants = await _mrzVariants(src);
-    const worker=await Tesseract.createWorker('eng');
-    await worker.setParameters({ tessedit_char_whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<', tessedit_pageseg_mode:'6' });
-    let parsed=null, lastText='', best=-1;
-    for(const v of variants){
-      const { data:{ text } }=await worker.recognize(v);
-      if(text && text.replace(/\s/g,'').length>lastText.replace(/\s/g,'').length) lastText=text;
-      const p=parseMRZ(text);
-      if(p){
-        const sc=(p.passportNo?2:0)+(/^[A-Z]{3}$/.test(p.nationality)?2:0)+(p.dob?2:0)+(p.sex?1:0)+((p.surname||p.given)?1:0);
-        if(sc>best){ best=sc; parsed=p; }
-        if(sc>=7) break;                       // strong result — stop early
-      }
-    }
-    await worker.terminate();
-    if(!parsed){
-      const hrz=parseHRZ(lastText);
-      if(hrz && (hrz.passportNo||hrz.surname||hrz.given||hrz.sex)){
-        renderPassportFields(hrz);      // best-effort from the readable text — user corrects & completes
-        const st=document.getElementById('passportStage');
-        st.insertAdjacentHTML('afterbegin','<div style="background:var(--amber-bg);border:1px solid rgba(245,166,35,0.3);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--amber);margin-bottom:10px">MRZ распозналась не полностью — проверь и допиши поля вручную, затем «Скачать форму 101».</div>');
-        return;
-      }
-      stage.innerHTML='<div style="padding:14px;font-size:13px;color:var(--text2)">Не удалось разобрать паспорт автоматически.<br><br><button class="btn sm" onclick="renderPassportFields({surname:\'\',given:\'\',passportNo:\'\',nationality:\'\',dob:\'\',sex:\'\',expiry:\'\'})"><i class="ti ti-edit"></i> Ввести вручную</button> <button class="btn sm" onclick="openPassportScan()">Ещё раз</button><br><br><details style="color:var(--text3)"><summary style="cursor:pointer">Показать распознанный текст</summary><pre style="white-space:pre-wrap;font-size:11px;margin-top:6px">'+(lastText||'').replace(/</g,'&lt;').slice(0,600)+'</pre></details></div>';
-      return;
-    }
-    renderPassportFields(parsed);
-  }catch(err){
-    console.error(err);
-    stage.innerHTML='<div style="padding:14px;font-size:13px;color:#ff6b78">Ошибка распознавания: '+(err&&err.message||'')+'<br><br><button class="btn sm" onclick="openPassportScan()">Ещё раз</button></div>';
-  }
-}
-
-// ── ICAO 9303 TD3 (passport) MRZ parser ──
-function _mrzDate(yymmdd, expiry){
-  const m=/^(\d{2})(\d{2})(\d{2})$/.exec(yymmdd); if(!m) return '';
-  let yy=+m[1]; const yearNow=new Date().getFullYear()%100;
-  const year = expiry ? 2000+yy : (yy>yearNow+1 ? 1900+yy : 2000+yy);
-  return String(m[3]).padStart(2,'0')+'/'+String(m[2]).padStart(2,'0')+'/'+year;
-}
-function parseMRZ(text){
-  const pad=s=>(s+'<'.repeat(44)).slice(0,44);
-  let lines=(text||'').toUpperCase().split(/\r?\n/)
-    .map(l=>l.replace(/[^A-Z0-9<]/g,''))
-    .filter(l=>l.length>=25 && (l.match(/</g)||[]).length>=2);   // MRZ lines are the ones with '<'
-  if(!lines.length) return null;
-  // best NAME line (line 1): lots of '<', has '<<' separator, few digits
-  let l1=null,b1=-1e9;
-  for(const ln of lines){
-    const ch=(ln.match(/</g)||[]).length, dg=(ln.match(/\d/g)||[]).length;
-    const sc=ch - dg + (ln.indexOf('<<')>=0?15:0) + (ln[0]==='P'?8:0);
-    if(sc>b1){ b1=sc; l1=pad(ln); }
-  }
-  // best DATA line (line 2): many digits, sex M/F at 20, 3-char nationality at 10-12
-  let l2=null,b2=-1e9;
-  for(const ln of lines){
-    const p=pad(ln); if(p===l1) continue;
-    const ch=(ln.match(/</g)||[]).length, dg=(ln.match(/\d/g)||[]).length;
-    let sc=dg + ch*0.3;
-    if(/[MF]/.test(p[20])) sc+=12;
-    if(/^[A-Z<]{3}$/.test(p.slice(10,13))) sc+=6;
-    if(/^[0-9OIS]{6}$/.test(p.slice(13,19))) sc+=6;
-    if(sc>b2){ b2=sc; l2=p; }
-  }
-  if(!l2) return null;
-  const clean=s=>s.replace(/</g,' ').replace(/\s+/g,' ').trim();
-  const D=s=>s.replace(/O/g,'0').replace(/I/g,'1').replace(/S/g,'5').replace(/B/g,'8');   // letters->digits for date fields
-  const L=s=>s.replace(/0/g,'O').replace(/1/g,'I');                                        // digits->letters for country code
-  const [surnameRaw,givenRaw='']=(l1||'').slice(5).split('<<');
-  const passportNo=l2.slice(0,9).replace(/</g,'').trim();
-  const nationality=L(l2.slice(10,13).replace(/</g,''));
-  const dob=_mrzDate(D(l2.slice(13,19)),false);
-  const sex=({M:'M',F:'F'}[l2[20]]||'');
-  const expiry=_mrzDate(D(l2.slice(21,27)),true);
-  if(!clean(surnameRaw) && !clean(givenRaw) && !passportNo) return null;
-  return { surname:clean(surnameRaw), given:clean(givenRaw), passportNo, nationality, dob, sex, expiry, issuer:L((l1||'').slice(2,5).replace(/</g,'')) };
-}
-
-// Best-effort fallback: pull fields from the human-readable passport text when MRZ fails.
-function parseHRZ(text){
-  const T=(text||'').toUpperCase();
-  const flat=T.replace(/[^A-Z0-9/ ]/g,' ');
-  const passportNo=(flat.replace(/\s/g,'').match(/[A-Z]\d{6,8}/)||[''])[0];
-  const nationality = /IND(IAN)?/.test(T) ? 'IND' : ((flat.match(/\b([A-Z]{3})\b/)||['',''])[1]||'');
-  const sex=((flat.match(/\bSEX\b[^MF]{0,6}([MF])\b/)||flat.match(/\b([MF])\b/)||['',''])[1])||'';
-  const dates=(flat.match(/\b\d{2}[\/ ]?\d{2}[\/ ]?\d{4}\b/g)||[]).map(d=>{ const m=d.replace(/\D/g,''); return m.slice(0,2)+'/'+m.slice(2,4)+'/'+m.slice(4,8); });
-  const lines=T.split(/\r?\n/).map(l=>l.trim());
-  const onlyLetters=s=>(s||'').replace(/[^A-Z ]/g,'').replace(/\s+/g,' ').trim();
-  let surname='', given='';
-  for(let i=0;i<lines.length;i++){
-    if(/SURNAME/.test(lines[i])){ let c=onlyLetters(lines[i].split('SURNAME').pop()); if(c.length<2) c=onlyLetters(lines[i+1]); surname=c; }
-    if(/GIVEN/.test(lines[i])){ let c=onlyLetters(lines[i].replace(/.*NAME.?.?/,'')); if(c.length<2) c=onlyLetters(lines[i+1]); given=c; }
-  }
-  return { surname, given, passportNo, nationality, dob:'', sex, expiry: dates[dates.length-1]||'' };
-}
-function renderPassportFields(p){
-  const f=(id,label,val)=>`<div style="margin-bottom:10px"><label style="display:block;font-size:12px;color:var(--text2);margin-bottom:4px">${label}</label><input id="${id}" value="${(val||'').replace(/"/g,'&quot;')}" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:8px 10px;font-size:14px;outline:none"></div>`;
-  document.getElementById('passportStage').innerHTML=
-    '<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Проверь и поправь при необходимости — OCR не всегда идеален.</div>'
-    +f('mrzSurname','Фамилия (Surname)',p.surname)
-    +f('mrzGiven','Имя (Given names)',p.given)
-    +f('mrzNo','Номер паспорта',p.passportNo)
-    +f('mrzNat','Гражданство',p.nationality)
-    +f('mrzDob','Дата рождения (дд/мм/гггг)',p.dob)
-    +f('mrzSex','Пол',p.sex)
-    +f('mrzExp','Срок действия (дд/мм/гггг)',p.exp||p.expiry)
-    +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-        <button class="btn sm" onclick="openPassportScan()"><i class="ti ti-refresh"></i> Заново</button>
-        <button class="btn sm" onclick="copyPassport()"><i class="ti ti-copy"></i> Копировать всё</button>
-        <button class="btn sm" onclick="copyForm101()"><i class="ti ti-file-text"></i> Для формы 101</button>
-        <button class="btn sm" onclick="passportToWorker()"><i class="ti ti-user-plus"></i> Создать работника</button>
-      </div>
-      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
-        <div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="ti ti-file-text"></i> Форма 101</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-          <label style="font-size:12px;color:var(--text2)">Дата начала работы:</label>
-          <input type="date" id="f101Work" value="${new Date().toISOString().slice(0,10)}" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:5px 8px;font-size:13px;outline:none">
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-          <label style="font-size:12px;color:var(--text2)">Больничная касса:</label>
-          <select id="f101Fund" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:5px 8px;font-size:13px;outline:none">
-            <option value="">— не заполнять —</option>
-            <option value="Clalit">כללית (Клалит)</option>
-            <option value="Maccabi">מכבי (Маккаби)</option>
-            <option value="Meuhedet">מאוחדת (Меухедет)</option>
-            <option value="Leumit">לאומית (Леумит)</option>
-          </select>
-        </div>
-        <button class="btn sm" onclick="fillForm101()"><i class="ti ti-download" style="color:#4f8ef7"></i> Скачать форму 101</button>
-        <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:6px">Подставит паспортные поля, год, гражданство и семейное (для иностранца), даты. Адрес, детей и ивритское название кассы впишешь в PDF вручную.</div>
-      </div>`;
-}
-function _pf(id){ return (document.getElementById(id)?.value||'').trim(); }
-function copyPassport(){
-  const txt=[
-    'Surname: '+_pf('mrzSurname'),
-    'Given names: '+_pf('mrzGiven'),
-    'Passport No: '+_pf('mrzNo'),
-    'Nationality: '+_pf('mrzNat'),
-    'Date of birth: '+_pf('mrzDob'),
-    'Sex: '+_pf('mrzSex'),
-    'Expiry: '+_pf('mrzExp')
-  ].join('\n');
-  navigator.clipboard?.writeText(txt).then(()=>showToast('Скопировано')).catch(()=>showToast('Не удалось скопировать'));
-}
-function copyForm101(){
-  const sex = _pf('mrzSex')==='M'?'זכר':(_pf('mrzSex')==='F'?'נקבה':'');
-  const txt=[
-    'מספר דרכון: '+_pf('mrzNo'),
-    'שם משפחה: '+_pf('mrzSurname'),
-    'שם פרטי: '+_pf('mrzGiven'),
-    'תאריך לידה: '+_pf('mrzDob'),
-    'מין: '+sex,
-    'אזרחות: '+_pf('mrzNat')
-  ].join('\n');
-  navigator.clipboard?.writeText(txt).then(()=>showToast('Скопировано для формы 101')).catch(()=>showToast('Не удалось скопировать'));
-}
-function passportToWorker(){
-  const name=(_pf('mrzGiven')+' '+_pf('mrzSurname')).trim();
-  const no=_pf('mrzNo'), nat=_pf('mrzNat'), dob=_pf('mrzDob'), exp=_pf('mrzExp');
-  closeModal('passportOverlay');
-  openAddWorker();
-  setTimeout(()=>{
-    const set=(id,v)=>{ const el=document.getElementById(id); if(el&&v) el.value=v; };
-    set('wName',name);
-    set('wAddress','Passport '+no);
-    set('wNotes','Nationality: '+nat+' · DOB: '+dob+' · Passport expiry: '+exp);
-  },60);
-}
-
-// ===== Form 101: fill the fillable template with scanned passport data =====
+// ===== Form 101: fill the fillable template from AI-scanned document data =====
 // Heebo Hebrew+Latin TTF, bundled same-origin (heebo-hebrew.ttf) so PDF filling
 // never depends on a third-party CDN being up — loaded once, cached in module scope.
 let _heeboFontBytes=null;
@@ -2931,67 +2670,6 @@ function _loadFontkit(){
 // Hebrew label for each health-fund select value — the PDF's hf_name field must
 // show the Hebrew name, not the internal English value used for the <select>.
 const HEALTH_FUND_HE = {Clalit:'כללית', Maccabi:'מכבי', Meuhedet:'מאוחדת', Leumit:'לאומית'};
-async function fillForm101(){
-  const btn=event&&event.target?event.target.closest('button'):null;
-  try{
-    if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader-2"></i> Готовлю…'; }
-    await _loadPdfLib();
-    const resp=await fetch('form101_fillable.pdf',{cache:'no-store'});
-    if(!resp.ok) throw new Error('Шаблон form101_fillable.pdf не найден на сайте — залей его на Firebase');
-    const bytes=await resp.arrayBuffer();
-    await _loadFontkit();
-    const doc=await PDFLib.PDFDocument.load(bytes);
-    doc.registerFontkit(fontkit);
-    const form=doc.getForm();
-    const setT=(n,v)=>{ try{ if(v!=null&&v!=='') form.getTextField(n).setText(String(v)); }catch(e){} };
-    const chk=(n)=>{ try{ form.getCheckBox(n).check(); }catch(e){} };
-    // Hebrew-aware writer: embeds Heebo and re-renders the field's appearance with
-    // it (setText must come BEFORE updateAppearances, or pdf-lib regenerates the
-    // appearance with the default non-Hebrew font at save time and overwrites it).
-    const heFontBytes=await _loadHeeboFont().catch(()=>null);
-    let heFont=null;
-    if(heFontBytes){ try{ heFont=await doc.embedFont(heFontBytes,{subset:false}); }catch(e){ heFont=null; } }
-    const setH=(n,v)=>{
-      if(!v) return;
-      try{
-        const fld=form.getTextField(n);
-        if(heFont){ fld.setText(String(v)); fld.updateAppearances(heFont); }
-        else fld.setText(String(v).replace(/[֐-׿יִ-ﭏ]/g,'?'));
-      }catch(e){}
-    };
-    const nat=_pf('mrzNat').toUpperCase();
-    const isIsraeli = nat==='ISR';
-    const year=new Date().getFullYear();
-    setT('surname',_pf('mrzSurname'));
-    setT('given_name',_pf('mrzGiven'));
-    setT('dob',_pf('mrzDob'));
-    setT('passport_no',_pf('mrzNo'));
-    setT('id_top2',_pf('mrzNo'));
-    setT('tax_year',String(year));
-    if(_pf('mrzSex')==='M') chk('sex_male'); else if(_pf('mrzSex')==='F') chk('sex_female');
-    if(isIsraeli){ chk('resident_yes'); chk('resident_h'); }
-    else { chk('resident_no'); chk('marital_single'); }
-    const ws=document.getElementById('f101Work')?.value;         // yyyy-mm-dd
-    if(ws){ const d=ws.split('-'); const ds=d[2]+'/'+d[1]+'/'+d[0]; setT('work_start',ds); setT('sign_date',ds); }
-    const fund=document.getElementById('f101Fund')?.value;
-    if(fund){ chk('hf_yes'); setH('hf_name',HEALTH_FUND_HE[fund]||fund); }
-    // Without this, viewers ignore our appearance streams and re-render every
-    // field themselves using the template's default (non-Hebrew) Helvetica DA.
-    form.acroForm.dict.set(PDFLib.PDFName.of('NeedAppearances'), PDFLib.PDFBool.False);
-    const out=await doc.save();
-    const blob=new Blob([out],{type:'application/pdf'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a'); a.href=url;
-    a.download='form101_'+((_pf('mrzSurname')||'worker').replace(/[^A-Za-z0-9]/g,'')||'worker')+'.pdf';
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),3000);
-    showToast('Форма 101 скачана');
-  }catch(err){
-    console.error(err); showToast('Не удалось: '+(err&&err.message||'ошибка'));
-  }finally{
-    if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-download" style="color:#4f8ef7"></i> Скачать форму 101'; }
-  }
-}
 
 // --- Init ---------------------------------------------------------------------
 // Error telemetry: send client errors to the GS Errors sheet (throttled, silent).
