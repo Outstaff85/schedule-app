@@ -708,6 +708,27 @@ function analyzeDayPunches(entries,date){
   }
   return {hours,warnings};
 }
+// Pair one worker's punches into shifts chronologically, independent of calendar-day
+// boundaries — so an IN before midnight and its OUT after midnight stay one bucket
+// instead of splitting into two half-shifts that analyzeDayPunches can't pair (and
+// whose hours would otherwise vanish from payroll). Each bucket is tagged with the
+// date of its opening punch.
+function groupPunchesIntoShifts(entries){
+  const chrono=[...entries].sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+  const buckets=[]; let cur=null;
+  chrono.forEach(e=>{
+    if(e.type==='in'){
+      if(cur) buckets.push(cur);
+      cur={date:new Date(e.ts),entries:[e]};
+    } else {
+      if(!cur) cur={date:new Date(e.ts),entries:[]};
+      cur.entries.push(e);
+      buckets.push(cur); cur=null;
+    }
+  });
+  if(cur) buckets.push(cur);
+  return buckets;
+}
 function isMidnight(s,e){ return !!s&&!!e&&toMins(e)<=toMins(s); }
 function workerTotalHours(w){ return w.schedule.reduce((s,sh)=>s+calcHours(sh.start,sh.end),0); }
 // ── Pay rules (Israeli labour-law DEFAULTS — VERIFY against your real rules) ──
