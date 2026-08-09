@@ -2047,7 +2047,8 @@ function exportSalaryCSV(){
     const rate=_w?.hourlyRate||0;
     const isSat=d.date.getDay()===6;
     const pay=shiftPay(res.hours,_w,isSat);
-    rows.push([d.worker, workerClientObject(d.wid), d.date.toLocaleDateString('en-GB'), ins[0]||'', outs[outs.length-1]||'', res.hours.toFixed(2), rate, pay.toFixed(2), res.warnings.join('; ')]);
+    const clientObj=punchClientObject(d.entries[0])||workerClientObject(d.wid);
+    rows.push([d.worker, clientObj, d.date.toLocaleDateString('en-GB'), ins[0]||'', outs[outs.length-1]||'', res.hours.toFixed(2), rate, pay.toFixed(2), res.warnings.join('; ')]);
   });
   const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const url=URL.createObjectURL(blob);
