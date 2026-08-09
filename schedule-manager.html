@@ -2460,8 +2460,27 @@ function renderAiResult(p){
     <button class="btn sm" onclick="openAiScan()"><i class="ti ti-refresh"></i> Заново</button>
     <button class="btn sm" onclick="aiToWorker(${JSON.stringify(isId)})">
       <i class="ti ti-user-plus"></i> Создать работника</button>`;
-  if(!isId) h+=`<button class="btn sm" onclick="aiFillForm101(false)">
-    <i class="ti ti-download" style="color:#4f8ef7"></i> Форма 101</button>`;
+  if(!isId) h+=`
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="ti ti-file-text"></i> Форма 101</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+        <label style="font-size:12px;color:var(--text2)">Дата начала работы:</label>
+        <input type="date" id="aiPpWork" value="${new Date().toISOString().slice(0,10)}"
+          style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:5px 8px;font-size:13px;outline:none">
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <label style="font-size:12px;color:var(--text2)">Больничная касса:</label>
+        <select id="aiPpFund" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:5px 8px;font-size:13px;outline:none">
+          <option value="">— не заполнять —</option>
+          <option value="Clalit">כללית (Клалит)</option>
+          <option value="Maccabi">מכבי (Маккаби)</option>
+          <option value="Meuhedet">מאוחדת (Меухедет)</option>
+          <option value="Leumit">לאומית (Леумит)</option>
+        </select>
+      </div>
+      <button class="btn sm" onclick="aiFillForm101(false)">
+        <i class="ti ti-download" style="color:#4f8ef7"></i> Форма 101</button>
+    </div>`;
   else h+=`
     <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
       <div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="ti ti-file-text"></i> Форма 101</div>
