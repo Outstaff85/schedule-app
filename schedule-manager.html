@@ -1942,7 +1942,6 @@ function renderSalary(){
     return;
   }
 
-  entries.forEach(e=>{ const wc=workers.find(w=>w.id===e.workerId); e.total = e.regH*wRegRate(wc)+e.otH*wOtRate(wc)+e.shabH*wShabRate(wc); });
   const totalHours=entries.reduce((s,e)=>s+e.hours,0);
   const grandTotal=entries.reduce((s,e)=>s+e.total,0);
   const shownEntries=_salExpanded?entries:entries.slice(0,4);
