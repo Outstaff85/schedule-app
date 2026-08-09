@@ -2043,8 +2043,8 @@ function exportSalaryCSV(){
     const outs=d.entries.filter(x=>x.type==='out').map(x=>x.time).sort();
     const _w=workers.find(w=>w.id===d.wid);
     const rate=_w?.hourlyRate||0;
-    const isSat=d.date.getDay()===6, RM=PAY_RULES.regularMax;
-    const pay=isSat ? res.hours*wShabRate(_w) : (Math.min(res.hours,RM)*wRegRate(_w)+Math.max(res.hours-RM,0)*wOtRate(_w));
+    const isSat=d.date.getDay()===6;
+    const pay=shiftPay(res.hours,_w,isSat);
     rows.push([d.worker, workerClientObject(d.wid), d.date.toLocaleDateString('en-GB'), ins[0]||'', outs[outs.length-1]||'', res.hours.toFixed(2), rate, pay.toFixed(2), res.warnings.join('; ')]);
   });
   const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
