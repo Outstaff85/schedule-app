@@ -291,6 +291,21 @@ function backfillOfficeAClientId(){
   return {ok:true, fixed};
 }
 
+// Visual formatting pass for PunchLog — bolds/colors the header row and freezes
+// it, and auto-fits column widths, matching the style already used for the
+// Clients/Backups/Errors tabs. Formatting only, never touches any data. Safe to
+// run more than once (and worth re-running after adding a column, since new
+// header cells don't inherit the existing bold/background styling).
+function formatPunchLogSheet(){
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_PUNCHLOG);
+  if (!sh || sh.getLastRow() === 0) return {ok:true, note:'sheet empty or missing'};
+  const lastCol = sh.getLastColumn();
+  sh.getRange(1,1,1,lastCol).setFontWeight('bold').setBackground('#e8eaf0');
+  sh.setFrozenRows(1);
+  try { sh.autoResizeColumns(1, lastCol); } catch(e) {}
+  return {ok:true, columns: lastCol};
+}
+
 function savePunch(entry) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = getOrCreateSheet(ss, SH_PUNCHLOG);
