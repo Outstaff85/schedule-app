@@ -2202,7 +2202,7 @@ function renderAdmin(){
   if(dateSel){ const cur2=dateSel.value; const dates=[...new Set(log.map(e=>new Date(e.ts).toLocaleDateString('en-GB')))].sort().reverse(); dateSel.innerHTML='<option value="">All dates</option>'+dates.map(d=>`<option value="${d}" ${d===cur2?'selected':''}>${d}</option>`).join(''); }
 
   let filtered=log;
-  if(filterWorker) filtered=filtered.filter(e=>e.workerName===filterWorker);
+  if(filterWorker) filtered=filtered.filter(e=>e.workerId===filterWorker);
   if(filterClient){ const ids=workers.filter(w=>(w.clientIds||[]).includes(filterClient)).map(w=>w.id); filtered=filtered.filter(e=>ids.includes(e.workerId)); }
   if(filterDate) filtered=filtered.filter(e=>new Date(e.ts).toLocaleDateString('en-GB')===filterDate);
   if(filterType) filtered=filtered.filter(e=>e.type===filterType);
