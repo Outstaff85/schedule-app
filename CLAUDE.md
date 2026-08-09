@@ -49,7 +49,8 @@ The service worker explicitly never intercepts requests to `script.google.com` (
 ### worker-punch.html
 
 - Reads a per-worker `token` from the URL (`URL_TOKEN`) to jump straight to that worker's punch screen; without a token it shows a worker picker (`renderWorkerGrid`).
-- GPS anti-spoofing lives in `analyseGps`/`getLocation`: flags zero/低 accuracy, impossibly fast movement between two readings (`haversine` distance ÷ time), suspicious device speed, and instant geolocation responses (`GPS_REQUEST_MS`) as signs of a mocked location, before allowing a punch within `SITE.radius` of the client site.
+- `getLastEntry(log, wid)` returns the most recent punch entry for a worker **across all days** (not just today). This determines whether to show "Clock IN" or "Clock OUT" in the UI, and powers the "In since" / "Last: X (out)" status in the worker grid.
+- GPS anti-spoofing lives in `analyseGps`/`getLocation`: flags zero/low accuracy, impossibly fast movement between two readings (`haversine` distance ÷ time), suspicious device speed, and instant geolocation responses (`GPS_REQUEST_MS`) as signs of a mocked location, before allowing a punch within `SITE.radius` of the client site.
 - Offline-safe punches: `doPunch()` always writes to `localStorage` (`punchLog`) and also queues to `punchQueue` (`getQueue`/`saveQueue`/`queueEntry`) when the Sheets `savePunch` call fails, for later resync.
 - `updateScheduleManager` reaches into the *same-origin* `schedMgr_v1` localStorage key to reflect a punch back into the manager app's cached schedule — this only works when both apps share local storage (i.e. same browser/device), it's not a sync mechanism across devices.
 
