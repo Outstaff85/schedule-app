@@ -17,7 +17,7 @@ A staff scheduling & GPS punch-clock PWA for a single client ("Odinson"), served
 There is no npm/build/lint/test tooling. Development is edit-the-HTML-and-reload.
 
 - Local preview: `firebase emulators:start --only hosting` (uses `firebase.json` rewrites), or just open the HTML files directly in a browser.
-- Deploy: `firebase deploy --only hosting` (project alias `schedule-odinson`, see `.firebaserc`).
+- Deploy: Push to `origin/main` (or `origin/HEAD`); a GitHub Actions workflow automatically deploys to Firebase Hosting (project alias `schedule-odinson`, see `.firebaserc`). No manual `firebase deploy` step is needed.
 - Routing: `firebase.json` rewrites `/` → `schedule-manager.html` and `/punch` → `worker-punch.html`.
 
 When bumping the service worker's cache (`CACHE` constant in `service-worker.js`), increment the version string (e.g. `schedule-mgr-v3` → `v4`) or clients will keep serving stale cached HTML after deploy.
@@ -58,4 +58,4 @@ The service worker explicitly never intercepts requests to `script.google.com` (
 - No modules/imports — everything is global functions/consts inside one inline `<script>` per file. When adding functionality, follow this style rather than introducing bundling.
 - Both files duplicate constants like `GS_URL`/`API_SECRET` and helpers like `reportError`, `showToast`, `getPunchLog`/`savePunchLog`, `urlB64ToUint8` (`worker-punch.html` has `urlB64ToUint8WP`) — this is intentional (no shared build), so a fix in one file (e.g. the API URL, after rotating the Apps Script deployment) usually needs to be mirrored in the other.
 - Push notifications: both files subscribe via `savePushSubscription`; `service-worker.js` handles `push`/`notificationclick`.
-- Auto-commit: `.claude/settings.json` runs a `PostToolUse` hook on `Write|Edit|NotebookEdit` that stages, commits, and pushes to `origin/main` automatically after every file change made by Claude Code in this repo.
+- Auto-commit: `.claude/settings.json` runs a `PostToolUse` hook on `Write|Edit|NotebookEdit` that stages, commits, and pushes to `origin/HEAD` automatically after every file change made by Claude Code in this repo. Each push to `origin/main` triggers the GitHub Actions deploy workflow.
