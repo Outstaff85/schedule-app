@@ -942,7 +942,7 @@ function closeHistory(){ if(URL_TOKEN&&selectedWorker){ showScreen('screenPunch'
 // ── Helpers ───────────────────────────────────────────────────────
 function getPunchLog(){ try{return JSON.parse(localStorage.getItem('punchLog')||'[]');}catch(e){return[];} }
 function savePunchLog(log){ localStorage.setItem('punchLog',JSON.stringify(log)); }
-function getLastEntry(log,wid){ const es=log.filter(e=>e.workerId===wid&&new Date(e.ts).toDateString()===new Date().toDateString()); if(!es.length) return null; return es.reduce((a,b)=> new Date(b.ts).getTime()>new Date(a.ts).getTime()?b:a); }
+function getLastEntry(log,wid){ const es=log.filter(e=>e.workerId===wid); if(!es.length) return null; return es.reduce((a,b)=> new Date(b.ts).getTime()>new Date(a.ts).getTime()?b:a); }
 function haversine(a,b,c,d){ const R=6371000,dL=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180,x=Math.sin(dL/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dl/2)**2; return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x)); }
 function updateScheduleManager(wid,s,e){ try{ const k='schedMgr_v1',r=localStorage.getItem(k)||localStorage.getItem('scheduleManagerData'); if(!r)return; const d=JSON.parse(r),w=d.workers?.find(x=>x.id===wid); if(w){w.schedule[new Date().getDay()]={type:'work',start:s,end:e};localStorage.setItem(k,JSON.stringify(d));} }catch(e){} }
 function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3500); }
