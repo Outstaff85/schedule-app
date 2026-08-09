@@ -545,7 +545,8 @@
 
       <!-- Log table -->
       <div class="admin-table-wrap" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-        <table style="width:100%;border-collapse:collapse" id="adminTable">
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+        <table style="width:100%;border-collapse:collapse;min-width:760px" id="adminTable">
           <thead>
             <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Worker</th>
@@ -561,6 +562,7 @@
           </thead>
           <tbody id="adminTableBody"></tbody>
         </table>
+        </div>
         <div id="adminEmpty" style="display:none;text-align:center;padding:40px;color:var(--text3);font-size:14px">No punch records found</div>
       </div>
     </div>
