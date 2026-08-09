@@ -2302,7 +2302,17 @@ function savePunchEntry(id){
   if(idx<0) return;
   log[idx].type  = document.getElementById('epType').value;
   log[idx].time  = document.getElementById('epTime').value;
-  log[idx].site  = document.getElementById('epSite').value || workerClientName(log[idx].workerId);
+  const siteVal  = document.getElementById('epSite').value;
+  if(siteVal==='__custom__'){
+    // unchanged custom text kept from before — clientId stays null
+  } else if(siteVal){
+    const c = clients.find(x=>x.id===siteVal);
+    log[idx].clientId = c ? c.id : null;
+    log[idx].site      = c ? c.name : (log[idx].site || workerClientName(log[idx].workerId));
+  } else {
+    log[idx].clientId = null;
+    log[idx].site      = workerClientName(log[idx].workerId);
+  }
   log[idx].notes = document.getElementById('epNotes').value;
   log[idx].editedBy = 'admin';
   log[idx].editedAt = new Date().toISOString();
