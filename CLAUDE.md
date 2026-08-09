@@ -12,6 +12,7 @@ A staff scheduling & GPS punch-clock PWA for a single client ("Odinson"), served
 - `manifest.json` / `manifest-punch.json` — separate installable-PWA manifests for the two apps.
 - `google-apps-script.js` — the backend Apps Script source code (backed by Google Sheets database). Deployed separately to `script.google.com` but tracked here for reference/documentation.
 - `apps-script/appsscript.json` — Google Apps Script project configuration (timezone, runtime version, web app access rules). Configures the Apps Script project deployed to `script.google.com`.
+- `apps-script/.clasp.json` — Google Apps Script CLI (clasp) configuration linking the local source to the deployed project via `scriptId`.
 - `form101_fillable.pdf` — Israeli tax form template filled in-app via pdf-lib (see AI/passport scan flow below).
 
 ## Commands
