@@ -2536,10 +2536,12 @@ async function aiFillForm101(isId){
   try{
     if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader-2"></i> Готовлю…'; }
     await _loadPdfLib();
+    await _loadFontkit();
     const resp=await fetch('form101_fillable.pdf',{cache:'no-store'});
     if(!resp.ok) throw new Error('form101_fillable.pdf не найден на сайте');
     const bytes=await resp.arrayBuffer();
     const doc=await PDFLib.PDFDocument.load(bytes);
+    doc.registerFontkit(fontkit);
     const form=doc.getForm();
     const setT=(n,v)=>{ try{ if(v) form.getTextField(n).setText(String(v)); }catch(e){} };
     const chk=(n)=>{ try{ form.getCheckBox(n).check(); }catch(e){} };
@@ -2553,7 +2555,10 @@ async function aiFillForm101(isId){
       if(!v) return;
       try{
         const fld=form.getTextField(n);
-        if(customFont){ fld.setFontSize(9); fld.defaultUpdateAppearances(customFont); fld.setText(String(v)); }
+        // setText must come BEFORE updateAppearances — the other order lets
+        // pdf-lib's save-time appearance refresh silently redo it with the
+        // default (non-Hebrew) font and undo this.
+        if(customFont){ fld.setText(String(v)); fld.updateAppearances(customFont); }
         else { fld.setText(String(v).replace(/[\u0590-\u05FF\uFB1D-\uFB4F]/g,'?')); }
       }catch(e){}
     };
@@ -2577,15 +2582,18 @@ async function aiFillForm101(isId){
       const ws=document.getElementById('aiIdWork')?.value;
       if(ws){ const d=ws.split('-'); const ds=d[2]+'/'+d[1]+'/'+d[0]; setT('work_start',ds); setT('sign_date',ds); }
       const fund=document.getElementById('aiIdFund')?.value;
-      if(fund){ chk('hf_yes'); setT('hf_name',fund); }
+      if(fund){ chk('hf_yes'); (customFont?setH:setT)('hf_name',HEALTH_FUND_HE[fund]||fund); }
     } else {
       // Foreign passport: fill passport_no, work start, fund from f101* inputs
       setT('passport_no',no);
       const ws=document.getElementById('f101Work')?.value;
       if(ws){ const d=ws.split('-'); const ds=d[2]+'/'+d[1]+'/'+d[0]; setT('work_start',ds); setT('sign_date',ds); }
       const fund=document.getElementById('f101Fund')?.value;
-      if(fund){ chk('hf_yes'); setT('hf_name',fund); }
+      if(fund){ chk('hf_yes'); (customFont?setH:setT)('hf_name',HEALTH_FUND_HE[fund]||fund); }
     }
+    // Without this, viewers ignore our appearance streams and re-render every
+    // field themselves using the template's default (non-Hebrew) Helvetica DA.
+    form.acroForm.dict.set(PDFLib.PDFName.of('NeedAppearances'), PDFLib.PDFBool.False);
     const out=await doc.save();
     const blob=new Blob([out],{type:'application/pdf'});
     const url=URL.createObjectURL(blob);
