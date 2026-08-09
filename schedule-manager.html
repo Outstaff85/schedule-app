@@ -1892,28 +1892,31 @@ function renderSalary(){
     filtered=log.filter(e=>new Date(e.ts)>=ms);
   }
 
-  // Pair IN/OUT per worker per day (keep full entries so we can pair chronologically)
+  // Pair IN/OUT per worker into shifts (workerId-keyed so two workers who share a
+  // display name never get merged; shift-based so overnight shifts stay intact)
+  const byWorkerPunches={};
+  filtered.forEach(e=>{ (byWorkerPunches[e.workerId]=byWorkerPunches[e.workerId]||[]).push(e); });
   const byWorkerDay={};
-  filtered.forEach(e=>{
-    const key=e.workerName+'|'+new Date(e.ts).toDateString();
-    if(!byWorkerDay[key]) byWorkerDay[key]={worker:e.workerName,workerId:e.workerId,date:new Date(e.ts),entries:[]};
-    byWorkerDay[key].entries.push(e);
+  Object.entries(byWorkerPunches).forEach(([wid,list])=>{
+    groupPunchesIntoShifts(list).forEach((bucket,i)=>{
+      byWorkerDay[wid+'|'+i]={worker:list[0].workerName,workerId:wid,date:bucket.date,entries:bucket.entries};
+    });
   });
 
   // Sum hours + Israeli pay per worker, flagging anomalies
   const byWorker={};
   Object.values(byWorkerDay).forEach(({worker,workerId,date,entries})=>{
-    if(!byWorker[worker]) byWorker[worker]={worker,workerId,hours:0,days:0,regH:0,otH:0,shabH:0,total:0,warns:[]};
+    if(!byWorker[workerId]) byWorker[workerId]={worker,workerId,hours:0,days:0,regH:0,otH:0,shabH:0,total:0,warns:[]};
     const _res=analyzeDayPunches(entries,date);
     const _dstr=date.toLocaleDateString('en-GB');
-    _res.warnings.forEach(wn=> byWorker[worker].warns.push(_dstr+': '+wn));
+    _res.warnings.forEach(wn=> byWorker[workerId].warns.push(_dstr+': '+wn));
     const h=_res.hours;
     if(h>0){
       const isSat=date.getDay()===6, RM=PAY_RULES.regularMax;
-      if(isSat){ byWorker[worker].shabH+=h; }
-      else { byWorker[worker].regH+=Math.min(h,RM); byWorker[worker].otH+=Math.max(h-RM,0); }
-      byWorker[worker].hours+=h;
-      byWorker[worker].days++;
+      if(isSat){ byWorker[workerId].shabH+=h; }
+      else { byWorker[workerId].regH+=Math.min(h,RM); byWorker[workerId].otH+=Math.max(h-RM,0); }
+      byWorker[workerId].hours+=h;
+      byWorker[workerId].days++;
     }
   });
 
