@@ -579,22 +579,13 @@
 <div class="overlay" id="aiScanOverlay" onclick="if(event.target===this)closeModal('aiScanOverlay')">
   <div class="modal" style="width:460px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-      <div class="modal-title" style="margin-bottom:0"><i class="ti ti-sparkles" style="color:var(--green)"></i> AI-скан документа</div>
+      <div class="modal-title" style="margin-bottom:0"><i class="ti ti-sparkles" style="color:var(--green)"></i> Скан паспорта</div>
       <button class="btn sm" onclick="closeModal('aiScanOverlay')"><i class="ti ti-x"></i></button>
     </div>
     <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.5">
       Читает загранпаспорт <b>и</b> израильский теудат-зеут (включая иврит). Фото уходит на твой сервер (Apps Script) и обрабатывается ИИ. Стоимость: ~$0.002 за скан.
     </div>
     <div id="aiScanStage"></div>
-  </div>
-</div>
-<div class="overlay" id="passportOverlay" onclick="if(event.target===this)closeModal('passportOverlay')">
-  <div class="modal" style="width:440px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-      <div class="modal-title" style="margin-bottom:0"><i class="ti ti-id-badge-2"></i> Скан паспорта (MRZ)</div>
-      <button class="btn sm" onclick="closeModal('passportOverlay')"><i class="ti ti-x"></i></button>
-    </div>
-    <div id="passportStage" style="margin-top:10px"></div>
   </div>
 </div>
 <div class="overlay" id="workerCardOverlay" onclick="if(event.target===this)closeModal('workerCardOverlay')">
