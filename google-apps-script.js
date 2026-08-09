@@ -299,10 +299,11 @@ function updatePunch(data) {
   for (let i = 1; i < rows.length; i++) {
     if (String(rows[i][0]) === String(data.id)) {
       const r = i + 1;
-      if (data.type)                sh.getRange(r,4).setValue(data.type.toUpperCase());
-      if (data.time)                sh.getRange(r,5).setValue(data.time);
-      if (data.site)                sh.getRange(r,8).setValue(data.site);
-      if (data.notes !== undefined) sh.getRange(r,13).setValue(data.notes);
+      if (data.type)                    sh.getRange(r,4).setValue(data.type.toUpperCase());
+      if (data.time)                    sh.getRange(r,5).setValue(data.time);
+      if (data.site)                    sh.getRange(r,8).setValue(data.site);
+      if (data.notes !== undefined)     sh.getRange(r,13).setValue(data.notes);
+      if (data.clientId !== undefined)  sh.getRange(r,15).setValue(data.clientId || '');
       sh.getRange(r,14).setValue(new Date().toISOString());
       colorPunchRow(sh, r, sh.getRange(r,4).getValue());
       return {ok: true};
