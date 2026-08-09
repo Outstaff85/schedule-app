@@ -283,6 +283,7 @@ function loadPunchLog(filter) {
       gpsWarnings:   o['GPS Warnings'] ? String(o['GPS Warnings']).split('; ').filter(Boolean) : [],
       notes:         o['Notes'],
       editedAt:      o['EditedAt'],
+      clientId:      o['ClientID'] || null,
     };
   }).filter(e => e.workerId);
   if (filter && filter.worker) entries = entries.filter(e => e.workerName === filter.worker);
