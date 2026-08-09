@@ -905,7 +905,7 @@ function doPunch(){
   const entry={
     id:Date.now(), workerId:selectedWorker.id, workerName:selectedWorker.name,
     type, time:hh+':'+mm, ts:now.toISOString(),
-    site:SITE.name, dist:locDist,
+    site:SITE.name, clientId:SITE.clientId||null, dist:locDist,
     lat: geoEnforced ? (gps.lat ?? null) : null,
     lng: geoEnforced ? (gps.lng ?? null) : null,
     gpsVerified: geoEnforced,
