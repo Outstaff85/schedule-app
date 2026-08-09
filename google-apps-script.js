@@ -216,8 +216,23 @@ function writeClientsTable(ss, clients) {
 const PUNCH_HEADERS = [
   'ID','WorkerID','Worker','Type','Time','Date','Timestamp',
   'Site','Distance(m)','GPS Accuracy(m)','GPS Suspicious','GPS Warnings',
-  'Notes','EditedAt'
+  'Notes','EditedAt','ClientID'
 ];
+
+// One-time migration: appends the 'ClientID' header to an existing PunchLog
+// sheet that predates this column, without touching any existing rows/columns.
+// Run once from the Apps Script editor after deploying this version.
+function migrateAddClientIdColumn(){
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_PUNCHLOG);
+  if (!sh || sh.getLastRow() === 0) return {ok:true, note:'sheet empty or missing, nothing to migrate'};
+  const headers = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
+  if (headers.indexOf('ClientID') === -1) {
+    const col = headers.length + 1;
+    sh.getRange(1, col).setValue('ClientID').setFontWeight('bold').setBackground('#e8eaf0');
+    return {ok:true, addedAtColumn: col};
+  }
+  return {ok:true, note:'ClientID column already present'};
+}
 
 function savePunch(entry) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -238,6 +253,7 @@ function savePunch(entry) {
     (entry.gpsWarnings||[]).join('; '),
     entry.notes       || '',
     '',
+    entry.clientId     || '',
   ];
   sh.appendRow(row);
   colorPunchRow(sh, sh.getLastRow(), row[3]);
