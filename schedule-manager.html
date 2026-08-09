@@ -2593,11 +2593,11 @@ async function aiFillForm101(isId){
       const fund=document.getElementById('aiIdFund')?.value;
       if(fund){ chk('hf_yes'); (customFont?setH:setT)('hf_name',HEALTH_FUND_HE[fund]||fund); }
     } else {
-      // Foreign passport: fill passport_no, work start, fund from f101* inputs
+      // Foreign passport: fill passport_no, work start, fund from aiPp* inputs
       setT('passport_no',no);
-      const ws=document.getElementById('f101Work')?.value;
+      const ws=document.getElementById('aiPpWork')?.value;
       if(ws){ const d=ws.split('-'); const ds=d[2]+'/'+d[1]+'/'+d[0]; setT('work_start',ds); setT('sign_date',ds); }
-      const fund=document.getElementById('f101Fund')?.value;
+      const fund=document.getElementById('aiPpFund')?.value;
       if(fund){ chk('hf_yes'); (customFont?setH:setT)('hf_name',HEALTH_FUND_HE[fund]||fund); }
     }
     // Without this, viewers ignore our appearance streams and re-render every
