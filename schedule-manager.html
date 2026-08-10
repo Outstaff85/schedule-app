@@ -1306,6 +1306,7 @@ function openWorkerCard(wi){
         <div style="font-size:18px;font-weight:700">${esc(w.name)}</div>
         <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col};display:inline-block;margin-top:4px">${stMeta.label}</span>
       </div>
+      <button class="btn sm" onclick="closeModal('workerCardOverlay')" title="Закрыть" style="flex-shrink:0;padding:0 8px"><i class="ti ti-x"></i></button>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text2);margin-bottom:14px">
       ${w.phone?`<div><i class="ti ti-phone"></i> ${esc(w.phone)}</div>`:''}
@@ -1322,7 +1323,7 @@ function openWorkerCard(wi){
     </div>
     <div class="modal-actions">
       <button class="btn sm red" onclick="deleteWorkerFromCard(${wi})"><i class="ti ti-trash"></i> Delete</button>
-      <button class="btn sm" onclick="closeModal('workerCardOverlay')">Close</button>
+      ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Скачать документ</a>`:''}
       <button class="btn sm" onclick="copyWorkerLink('${w.id}')"><i class="ti ti-link"></i> Link</button>
       <button class="btn accent" onclick="closeModal('workerCardOverlay');openEditWorker(${wi})"><i class="ti ti-edit"></i> Edit</button>
     </div>`;
