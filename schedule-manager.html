@@ -2561,20 +2561,8 @@ async function aiFillForm101(isId){
     setSize('surname',10); setSize('given_name',10); setSize('addr_street',8.5);
     setSize('addr_city',8.5); setSize('hf_name',8.5); setSize('id_top2',9.5);
     const setT=(n,v)=>{ try{ if(v) form.getTextField(n).setText(String(v)); }catch(e){} };
-    // Highlights a checked box with a colored square behind it so it stands out
-    // from the form's many other (unchecked) boxes at a glance.
     const chk=(n)=>{
-      try{
-        const cb=form.getCheckBox(n);
-        cb.check();
-        const r=cb.acroField.getWidgets()[0].getRectangle();
-        const pad=2.5;
-        page1.drawRectangle({
-          x:r.x-pad, y:r.y-pad, width:r.width+pad*2, height:r.height+pad*2,
-          color:PDFLib.rgb(1,0.85,0.15), opacity:0.65,
-          borderColor:PDFLib.rgb(0.7,0.45,0), borderWidth:1,
-        });
-      }catch(e){}
+      try{ form.getCheckBox(n).check(); }catch(e){}
     };
     // Some fields (dob, tax_year, passport_no) are printed with a row of small
     // per-character boxes on the template — combing spreads each character into
