@@ -471,7 +471,7 @@
           <div class="page-sub">All worker details, status and history</div>
         </div>
         <button class="btn sm" onclick="openAddWorker()"><i class="ti ti-plus"></i> Add Worker</button>
-        <button class="btn sm" onclick="openAiScan()" style="border-color:rgba(109,214,160,0.4);color:var(--green)"><i class="ti ti-sparkles"></i> Скан паспорта</button>
+        <button class="btn sm" onclick="window.__aiTargetWorkerId=undefined;openAiScan()" style="border-color:rgba(109,214,160,0.4);color:var(--green)"><i class="ti ti-sparkles"></i> Скан паспорта</button>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
         <input type="text" id="workersSearch" placeholder="Search by name, phone, object..." oninput="renderWorkersPage()" style="flex:1;min-width:180px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
@@ -979,7 +979,10 @@ function openEditWorker(wi){ editingWorkerIdx=wi; showWorkerModal(workers[wi]); 
 function showWorkerModal(w){
   selColorIdx=w.colorIdx||0;
   document.getElementById('workerModal').innerHTML=`
-    <div class="modal-title">${editingWorkerIdx!==null?'Edit Worker':'Add New Worker'}</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div class="modal-title" style="margin-bottom:0">${editingWorkerIdx!==null?'Edit Worker':'Add New Worker'}</div>
+      <button class="btn sm" onclick="closeModal('workerOverlay')" title="Закрыть" style="flex-shrink:0;padding:0 8px"><i class="ti ti-x"></i></button>
+    </div>
     <div class="field" style="position:relative">
       <label>Name</label>
       <div style="display:flex;gap:8px">
@@ -1057,7 +1060,7 @@ function showWorkerModal(w){
       </div>
     </div>` : ''}
     <div class="modal-actions">
-      <button class="btn" onclick="closeModal('workerOverlay')">Cancel</button>
+      ${editingWorkerIdx!==null?`<button class="btn" onclick="openAiScanForWorker('${w.id}')"><i class="ti ti-camera"></i> Скан документа</button>`:''}
       ${editingWorkerIdx!==null?`<button class="btn" onclick="regenerateWorkerToken(${editingWorkerIdx})" style="background:var(--amber-bg);border-color:rgba(245,166,35,0.3);color:var(--amber)"><i class="ti ti-refresh"></i> New Token</button>`:''}
       <button class="btn accent" onclick="saveWorker()">${editingWorkerIdx!==null?'Save Changes':'Add Worker'}</button>
     </div>`;
@@ -2415,6 +2418,17 @@ function openAiScan(){
     </div>`;
 }
 
+// Opens the scanner from an existing worker's edit modal — closes that modal
+// first (same overlay z-index as aiScanOverlay, so only one can usefully be
+// open at a time) and remembers the worker via window.__aiTargetWorkerId so
+// the "Загрузить" button in renderAiResult links the resulting doc back to
+// this worker instead of leaving it unattached.
+function openAiScanForWorker(workerId){
+  window.__aiTargetWorkerId=workerId;
+  closeModal('workerOverlay');
+  openAiScan();
+}
+
 // Straightens/crops the scanned photo using the AI's reported rotation +
 // bounding box (imageAlign, from aiReadDoc) — a phone photo of a document is
 // rarely perfectly level or tightly framed, and this is what actually ends
@@ -2704,7 +2718,7 @@ function renderAiResult(p){
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn sm" onclick="aiFillForm101(false,'download')">
           <i class="ti ti-download" style="color:#4f8ef7"></i> Форма 101</button>
-        <button class="btn sm" onclick="aiFillForm101(false,'upload')">
+        <button class="btn sm" onclick="aiFillForm101(false,'upload',window.__aiTargetWorkerId)">
           <i class="ti ti-cloud-upload" style="color:#6dd6a0"></i> Загрузить</button>
       </div>
       <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:6px">
@@ -2742,7 +2756,7 @@ function renderAiResult(p){
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn sm" onclick="aiFillForm101(true,'download')">
           <i class="ti ti-download" style="color:#4f8ef7"></i> Форма 101</button>
-        <button class="btn sm" onclick="aiFillForm101(true,'upload')">
+        <button class="btn sm" onclick="aiFillForm101(true,'upload',window.__aiTargetWorkerId)">
           <i class="ti ti-cloud-upload" style="color:#6dd6a0"></i> Загрузить</button>
       </div>
       <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:6px">
