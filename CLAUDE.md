@@ -11,7 +11,7 @@ A staff scheduling & GPS punch-clock PWA for a single client ("Odinson"), served
 - `service-worker.js` — PWA offline shell (network-first, cache fallback).
 - `manifest.json` / `manifest-punch.json` — separate installable-PWA manifests for the two apps.
 - `google-apps-script.js` — the backend Apps Script source code (backed by Google Sheets database). Deployed separately to `script.google.com` but tracked here for reference/documentation.
-- `apps-script/appsscript.json` — Google Apps Script project configuration (timezone, runtime version, web app access rules). Configures the Apps Script project deployed to `script.google.com`.
+- `apps-script/appsscript.json` — Google Apps Script project configuration (timezone, runtime version, web app access rules, OAuth scopes). Declares required OAuth scopes: `spreadsheets` (Sheets read/write), `script.external_request` (HTTP calls to Anthropic API), `drive` (storing worker PDFs and accessing Google Drive). Configures the Apps Script project deployed to `script.google.com`.
 - `apps-script/.clasp.json` — Google Apps Script CLI (clasp) configuration linking the local source to the deployed project via `scriptId`.
 - `form101_fillable.pdf` — Israeli tax form template filled in-app via pdf-lib with fontkit support for Hebrew. See AI/document-scan flow below.
 - `heebo-hebrew.ttf` — Heebo Hebrew+Latin TTF font subset (OFL licensed, bundled same-origin). Required for proper Hebrew glyph rendering in Form 101 PDF filling when embedding custom fonts via fontkit; loaded via `_loadHeeboFont()` (offline-safe, cache-first).
