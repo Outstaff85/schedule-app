@@ -2439,6 +2439,7 @@ async function runAiScan(file){
 function renderAiResult(p){
   if(!p){ document.getElementById('aiScanStage').innerHTML='<div style="color:#ff6b78;padding:14px">Не удалось разобрать ответ ИИ</div>'; return; }
   const isId=p.type==='israeli_id';
+  window.__aiScanChildren=(isId&&Array.isArray(p.children))?p.children:[];
   const f=(id,label,val)=>`<div style="margin-bottom:8px">
     <label style="display:block;font-size:12px;color:var(--text2);margin-bottom:3px">${label}</label>
     <input id="${id}" value="${(val||'').replace(/"/g,'&quot;')}"
@@ -2457,6 +2458,10 @@ function renderAiResult(p){
       +f('aiAddress','כתובת (Адрес)',p.address)
       +f('aiCity','עיר (Город)',p.city)
       +f('aiExpiry','תוקף (ДД/ММ/ГГГГ)',p.expiry);
+    if(window.__aiScanChildren.length)
+      h+='<div style="font-size:12px;color:var(--text2);margin-bottom:8px"><i class="ti ti-users"></i> Дети со ספח: '
+        +window.__aiScanChildren.map(c=>esc(c.name||'?')+(c.dob?' ('+esc(c.dob)+')':'')).join(', ')
+        +' — впишутся в форму 101 автоматически</div>';
   } else {
     h+=f('aiSurname','Фамилия (Surname)',p.surname)
       +f('aiGiven','Имя (Given names)',p.given)
@@ -2573,7 +2578,39 @@ async function aiFillForm101(isId){
     setSize('addr_city',11); setSize('hf_name',10); setSize('id_top2',13);
     const setT=(n,v)=>{ try{ if(v) form.getTextField(n).setText(String(v)); }catch(e){} };
     const chk=(n)=>{
-      try{ form.getCheckBox(n).check(); }catch(e){}
+      try{
+        const cb=form.getCheckBox(n);
+        cb.check();
+        // Draw a plain filled square instead of the template's default X mark —
+        // blank the widget's own "Yes" appearance first so it doesn't peek
+        // through underneath (same trick as the Hebrew text fix above).
+        const widget=cb.acroField.getWidgets()[0];
+        const ap=widget.getAppearances();
+        const yesRef=ap&&ap.normal&&ap.normal.get&&ap.normal.get(PDFLib.PDFName.of('Yes'));
+        const yesStream=yesRef&&doc.context.lookup(yesRef);
+        if(yesStream&&'contents' in yesStream) yesStream.contents=new Uint8Array(0);
+        const r=widget.getRectangle();
+        const pad=1.5;
+        page1.drawRectangle({x:r.x+pad,y:r.y+pad,width:r.width-pad*2,height:r.height-pad*2,color:PDFLib.rgb(0,0,0)});
+      }catch(e){}
+    };
+    // A few boxes on the template (work-start date, the children table) have no
+    // underlying form field at all — just printed comb boxes — so pdf-lib's
+    // field-based combing can't reach them. Draw the characters ourselves,
+    // evenly spaced across the given box, the same way native combing would.
+    const stdFont = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
+    const drawCombRaw=(text,maxLen,rect,size)=>{
+      if(!text) return;
+      const s=String(text).slice(0,maxLen);
+      const cellW=rect.width/maxLen;
+      const th=stdFont.heightAtSize(size,{descender:false});
+      const y=rect.y+(rect.height-th)/2;
+      for(let i=0;i<s.length;i++){
+        const ch=s[i];
+        const cw=stdFont.widthOfTextAtSize(ch,size);
+        const cx=rect.x+cellW*i+cellW/2-cw/2;
+        page1.drawText(ch,{x:cx,y,size,font:stdFont});
+      }
     };
     // Some fields (dob, tax_year, passport_no) are printed with a row of small
     // per-character boxes on the template — combing spreads each character into
@@ -2635,6 +2672,17 @@ async function aiFillForm101(isId){
     if(sex==='M') chk('sex_male'); else if(sex==='F') chk('sex_female');
     if(isIsraeli){ chk('resident_yes'); chk('resident_h'); }
     else { chk('resident_no'); chk('marital_single'); }
+    // "תאריך תחילת העבודה בשנת המס" (work start date) has no underlying form
+    // field on the template at all — just a printed comb box — so it's drawn
+    // by hand. sign_date is a real field.
+    const WORK_START_RECT={x:30.75,y:450.42,width:90.64,height:21.01};
+    const fillWorkStart=(isoDate)=>{
+      if(!isoDate) return;
+      const d=isoDate.split('-');
+      const ds=d[2]+'/'+d[1]+'/'+d[0];
+      drawCombRaw(d[2]+d[1]+d[0],8,WORK_START_RECT,9);
+      setT('sign_date',ds);
+    };
     if(isId){
       // Israeli ID: fill address, marital, work start, fund from aiId* inputs
       const addr=_v('aiAddress'), city=_v('aiCity');
@@ -2647,15 +2695,34 @@ async function aiFillForm101(isId){
       (customFont?setH:setT)('addr_city',city);
       const marital=document.getElementById('aiIdMarital')?.value;
       if(marital) chk(marital);
-      const ws=document.getElementById('aiIdWork')?.value;
-      if(ws){ const d=ws.split('-'); const ds=d[2]+'/'+d[1]+'/'+d[0]; setT('work_start',ds); setT('sign_date',ds); }
+      fillWorkStart(document.getElementById('aiIdWork')?.value);
       const fund=document.getElementById('aiIdFund')?.value;
       if(fund){ chk('hf_yes'); (customFont?setH:setT)('hf_name',HEALTH_FUND_HE[fund]||fund); }
+      // Children table ("ג. פרטים על ילדיי...") — like the work-start box, this
+      // is plain printed boxes with no form fields, filled by hand. Only the
+      // Israeli-ID scan path can surface children (from the ID's ספח, if any
+      // are registered there); the two "1"/"2" eligibility checkboxes on the
+      // template require the parent's own declaration, not something a scan
+      // can determine, so they're left blank for the user to mark by hand.
+      const children=Array.isArray(window.__aiScanChildren)?window.__aiScanChildren:[];
+      const CHILD_ROW_Y=[380.3115,402.2011,424.0908,445.9803,467.8701,489.7587,511.6493,533.5380,555.4286,577.3173,599.2079];
+      const CHILD_COLS={dob:{x:255.55,width:91.36},id:{x:346.91,width:101.9},name:{x:448.81,width:71.26}};
+      const pageH=page1.getHeight();
+      children.slice(0,10).forEach((c,i)=>{
+        const rowY=pageH-CHILD_ROW_Y[i+1], rowH=CHILD_ROW_Y[i+1]-CHILD_ROW_Y[i];
+        if(c.idNo) drawCombRaw(String(c.idNo).replace(/\D/g,''),9,{x:CHILD_COLS.id.x,y:rowY,width:CHILD_COLS.id.width,height:rowH},8);
+        if(c.dob){ const dd=String(c.dob).replace(/\D/g,''); if(dd) drawCombRaw(dd,8,{x:CHILD_COLS.dob.x,y:rowY,width:CHILD_COLS.dob.width,height:rowH},8); }
+        if(c.name){
+          const nameFont=customFont||stdFont;
+          const size=8, th=nameFont.heightAtSize(size,{descender:false});
+          const tw=nameFont.widthOfTextAtSize(String(c.name),size);
+          page1.drawText(String(c.name),{x:CHILD_COLS.name.x+CHILD_COLS.name.width-tw-2,y:rowY+(rowH-th)/2,size,font:nameFont});
+        }
+      });
     } else {
       // Foreign passport: fill passport_no, work start, fund from aiPp* inputs
       setComb('passport_no',13,no,9);
-      const ws=document.getElementById('aiPpWork')?.value;
-      if(ws){ const d=ws.split('-'); const ds=d[2]+'/'+d[1]+'/'+d[0]; setT('work_start',ds); setT('sign_date',ds); }
+      fillWorkStart(document.getElementById('aiPpWork')?.value);
       const fund=document.getElementById('aiPpFund')?.value;
       if(fund){ chk('hf_yes'); (customFont?setH:setT)('hf_name',HEALTH_FUND_HE[fund]||fund); }
     }
