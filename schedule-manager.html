@@ -2568,12 +2568,17 @@ async function aiFillForm101(isId){
     // per-character boxes on the template — combing spreads each character into
     // its own box (and sizes it to fill that box) instead of one small run of
     // text overlaid across the whole row.
-    const setComb=(n,maxLen,v)=>{
+    const setComb=(n,maxLen,v,size)=>{
       if(!v) return;
       try{
         const fld=form.getTextField(n);
         fld.setMaxLength(maxLen);
         fld.enableCombing();
+        // pdf-lib's own auto-sizing for combed fields picks a size that
+        // overflows the box vertically (it lands on fontSize === field
+        // height, ignoring the field's actual cap-height) — set an explicit,
+        // verified-safe size instead of trusting the auto-computed one.
+        fld.acroField.setDefaultAppearance('/Helv '+(size||8)+' Tf 0 g');
         fld.setText(String(v).slice(0,maxLen));
       }catch(e){}
     };
@@ -2606,8 +2611,8 @@ async function aiFillForm101(isId){
         else { fld.setText(String(v).replace(/[\u0590-\u05FF\uFB1D-\uFB4F]/g,'?')); }
       }catch(e){}
     };
-    setH('surname',surname); setH('given_name',given); setComb('dob',8,dob.replace(/\D/g,''));
-    setT('id_top2',no); setComb('tax_year',4,String(new Date().getFullYear()));
+    setH('surname',surname); setH('given_name',given); setComb('dob',8,dob.replace(/\D/g,''),9);
+    setT('id_top2',no); setComb('tax_year',4,String(new Date().getFullYear()),8);
     if(sex==='M') chk('sex_male'); else if(sex==='F') chk('sex_female');
     if(isIsraeli){ chk('resident_yes'); chk('resident_h'); }
     else { chk('resident_no'); chk('marital_single'); }
@@ -2629,7 +2634,7 @@ async function aiFillForm101(isId){
       if(fund){ chk('hf_yes'); (customFont?setH:setT)('hf_name',HEALTH_FUND_HE[fund]||fund); }
     } else {
       // Foreign passport: fill passport_no, work start, fund from aiPp* inputs
-      setComb('passport_no',13,no);
+      setComb('passport_no',13,no,9);
       const ws=document.getElementById('aiPpWork')?.value;
       if(ws){ const d=ws.split('-'); const ds=d[2]+'/'+d[1]+'/'+d[0]; setT('work_start',ds); setT('sign_date',ds); }
       const fund=document.getElementById('aiPpFund')?.value;
