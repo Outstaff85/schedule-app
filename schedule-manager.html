@@ -1107,7 +1107,7 @@ function saveWorker(){
     if(window.__aiPendingWorkerUpload!==undefined){
       const isId=window.__aiPendingWorkerUpload;
       window.__aiPendingWorkerUpload=undefined;
-      if(typeof aiFillForm101==='function') aiFillForm101(isId,'upload',newWorker.id);
+      if(typeof aiFillForm101==='function') aiFillForm101(isId,'upload',newWorker.id,null);
     }
   }
   closeModal('workerOverlay'); render(); autoSave();
@@ -2825,7 +2825,7 @@ function bytesToBase64(bytes){
   return btoa(binary);
 }
 
-async function aiFillForm101(isId,mode,workerId){
+async function aiFillForm101(isId,mode,workerId,btnEl){
   mode=mode||'download';
   const _v=id=>(document.getElementById(id)?.value||'').replace(/\s+/g,' ').trim();
   const surname=_v('aiSurname'), given=_v('aiGiven');
@@ -2833,7 +2833,10 @@ async function aiFillForm101(isId,mode,workerId){
   const no = isId ? _v('aiIdNo') : _v('aiPassportNo');
   const nat = isId ? 'ISR' : _v('aiNat');
   const isIsraeli = isId || nat.toUpperCase()==='ISR';
-  const btn=event&&event.target?event.target.closest('button'):null;
+  // Explicit btnEl (or a deliberate null) takes precedence over the implicit
+  // global `event` — needed when this runs in the background from saveWorker(),
+  // where `event` is the Add/Save Worker button, not a Form 101 button.
+  const btn=btnEl!==undefined?btnEl:(event&&event.target?event.target.closest('button'):null);
   const btnLabel=btn?btn.innerHTML:'';
   try{
     if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader-2 spin"></i> '+(mode==='upload'?'Загружаю…':'Готовлю…'); }
