@@ -507,18 +507,20 @@ function aiReadDoc(body){
     'For a foreign PASSPORT return: ' +
     '{"type":"passport","surname":"...","given":"...","passportNo":"...","nationality":"...","dob":"DD/MM/YYYY","sex":"M or F","expiry":"DD/MM/YYYY","issuer":"..."} ' +
     'For an ISRAELI ID (תעודת זהות / biometric passport) return: ' +
-    '{"type":"israeli_id","surname":"...","given":"...","idNo":"9-digit number","dob":"DD/MM/YYYY","sex":"M or F","address":"...","city":"...","expiry":"DD/MM/YYYY"} ' +
+    '{"type":"israeli_id","surname":"...","given":"...","idNo":"9-digit number","dob":"DD/MM/YYYY","sex":"M or F","address":"...","city":"...","expiry":"DD/MM/YYYY","children":[{"name":"...","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}]} ' +
     'Rules: dates always DD/MM/YYYY. Names exactly as printed. ' +
     'For Israeli ID the surname is שם משפחה, given name is שם פרטי, ID number is מספר זהות (9 digits). ' +
     'The address is usually on the back/appendix card (ספח לתעודת זהות), which has THREE separate labeled rows: ' +
     'מען (street name), מס\' בית (house/building number), and ישוב (city/town name). ' +
     'Combine מען and מס\' בית into the "address" field as "STREET NUMBER" (e.g. "יהודה הלוי 16"), ' +
     'and put ישוב alone into the "city" field (e.g. "פתח תקווה") — do not mix them up or put the city in "address". ' +
+    'The back/appendix card (ספח) sometimes also lists the holder\'s registered children (ילדים) with their own name/ID/birth date rows — ' +
+    'if such a section is present and populated, extract each child into the "children" array; if absent or empty, return "children":[]. ' +
     'If a field is not visible or unreadable use empty string. Return ONLY the JSON object.';
 
   var payload = {
     model: model,
-    max_tokens: 400,
+    max_tokens: 700,
     messages: [{
       role: 'user',
       content: [
