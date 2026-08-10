@@ -2554,7 +2554,7 @@ async function aiFillForm101(isId){
   const isIsraeli = isId || nat.toUpperCase()==='ISR';
   const btn=event&&event.target?event.target.closest('button'):null;
   try{
-    if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader-2"></i> Готовлю…'; }
+    if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader-2 spin"></i> Готовлю…'; }
     await _loadPdfLib();
     await _loadFontkit();
     const resp=await fetch('form101_fillable.pdf',{cache:'no-store'});
