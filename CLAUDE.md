@@ -44,6 +44,7 @@ Both HTML files talk to the **same** Google Apps Script Web App endpoint (`GS_UR
 - `savePunch`, `updatePunch`, `deletePunch` — punch-clock entries with GPS data.
 - `savePushSubscription` — web push subscription registration.
 - `aiReadDoc` — server-side AI document OCR via Anthropic API (passport/Israeli ID extraction, stored in Script Properties: `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`). For Israeli IDs, includes extraction of registered children from the ספח (appendix card) if present, returned as `children` array with each child's name, ID number, and DOB.
+- `saveWorkerDoc` — store an assembled worker PDF (Form 101 + signature + ID scan) into Google Drive under "Schedule manager APP/Workers", idempotently named by the client-supplied `fileName` (built from worker name + doc number). Re-uploading with the same `fileName` replaces the previous file. Returns file's shareable link URL (link-access only, not publicly indexed, for privacy of ID/passport scans) and file ID.
 - `logError` — client error telemetry.
 
 **Backend sheets:**
@@ -56,6 +57,7 @@ Both HTML files talk to the **same** Google Apps Script Web App endpoint (`GS_UR
 - `Errors` (client error log, last 500 entries).
 
 **Backend utilities:**
+- `saveWorkerDoc(body)` — store worker PDF docs to Google Drive. Decodes `body.fileBase64` to bytes, saves into Drive under "Schedule manager APP/Workers" folder with `body.fileName`. Re-uploading with the same `fileName` replaces the file (idempotent). Sets `ANYONE_WITH_LINK` VIEW access so manager can open/download without a Google account sign-in. Returns `{ok:true, url, id}` or error. Called after client-side Form 101 PDF generation + signature capture.
 - `backupNow()` / `setupDailyBackup()` — daily 2am backup of Schedule to Backups sheet.
 - `restoreBackupRow(rowNum)` — manual restore from Backups.
 - `checkShiftReminders()` / `setupHourlyTrigger()` — hourly check for upcoming shifts, send push notifications.

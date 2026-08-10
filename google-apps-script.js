@@ -23,7 +23,7 @@ function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
     // Write actions require the shared secret (deterrent against random writes).
-    const WRITE = ['saveSchedule','savePunch','deletePunch','updatePunch','savePushSubscription','aiReadDoc'];
+    const WRITE = ['saveSchedule','savePunch','deletePunch','updatePunch','savePushSubscription','aiReadDoc','saveWorkerDoc'];
     if (WRITE.indexOf(body.action) !== -1 && body.secret !== API_SECRET) {
       return jsonResponse({error: 'Unauthorized'});
     }
@@ -36,6 +36,7 @@ function doPost(e) {
       case 'savePushSubscription': return jsonResponse(savePushSubscription(body));
       case 'logError':             return jsonResponse(logError(body));
       case 'aiReadDoc':            return jsonResponse(aiReadDoc(body));
+      case 'saveWorkerDoc':        return jsonResponse(saveWorkerDoc(body));
       default:                     return jsonResponse({error: 'Unknown action: ' + body.action});
     }
   } catch(e) { return jsonResponse({error: e.toString()}); }
@@ -579,6 +580,35 @@ function aiReadDoc(body){
   catch(e){ return {error:'AI вернул нечитаемый ответ', raw: String(text).slice(0,400)}; }
 
   return {ok: true, parsed: parsed};
+}
+
+// ── Worker document storage (Drive) ────────────────────────────────────────────
+// Saves an assembled worker PDF (Form 101 + signature + ID scan, combined
+// client-side) into Drive under "Schedule manager APP/Workers", named by the
+// client-supplied fileName (already built from the worker's name + doc number).
+// Re-uploading with the same fileName replaces the previous file, so this is
+// safe to call again after a re-scan without piling up duplicates.
+function saveWorkerDoc(body){
+  try{
+    if(!body.fileBase64 || !body.fileName) return {error:'Нет fileBase64 или fileName'};
+    const rootIter = DriveApp.getFoldersByName('Schedule manager APP');
+    const root = rootIter.hasNext() ? rootIter.next() : DriveApp.createFolder('Schedule manager APP');
+    const subIter = root.getFoldersByName('Workers');
+    const folder = subIter.hasNext() ? subIter.next() : root.createFolder('Workers');
+
+    const existing = folder.getFilesByName(body.fileName);
+    while(existing.hasNext()) existing.next().setTrashed(true);
+
+    const bytes = Utilities.base64Decode(body.fileBase64);
+    const blob = Utilities.newBlob(bytes, body.mimeType || 'application/pdf', body.fileName);
+    const file = folder.createFile(blob);
+    // Link-accessible (not publicly indexed) so the manager's browser can open/
+    // download it straight from the app without needing to be signed into this
+    // Google account — the file still contains sensitive personal data (ID/
+    // passport scans), so treat the link itself as something to keep private.
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return {ok:true, url: file.getUrl(), id: file.getId()};
+  }catch(e){ return {error: e.toString()}; }
 }
 
 // ── Error telemetry ────────────────────────────────────────────────────────────
