@@ -2407,6 +2407,43 @@ function openAiScan(){
     </div>`;
 }
 
+// Straightens/crops the scanned photo using the AI's reported rotation +
+// bounding box (imageAlign, from aiReadDoc) — a phone photo of a document is
+// rarely perfectly level or tightly framed, and this is what actually ends
+// up embedded as the extra page in Form 101. Canvas 2D only does affine
+// transforms (no true perspective correction for an angled shot), so this
+// covers the common case — sideways/upside-down photos and loose framing —
+// not a fully skewed/keystoned one. Falls back to the untouched image on any
+// failure (missing data, load error, degenerate crop).
+function alignScanImage(b64,mediaType,align){
+  return new Promise(resolve=>{
+    if(!align){ resolve({b64,mediaType}); return; }
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        const iw=img.naturalWidth, ih=img.naturalHeight;
+        const c=align.crop||{};
+        const clamp01=v=>Math.max(0,Math.min(1,typeof v==='number'?v:0));
+        const x0=clamp01(c.x0)*iw, y0=clamp01(c.y0)*ih;
+        const x1=clamp01(c.x1!=null?c.x1:1)*iw, y1=clamp01(c.y1!=null?c.y1:1)*ih;
+        const cw=x1-x0, ch=y1-y0;
+        if(!(cw>4&&ch>4)) throw new Error('degenerate crop');
+        const rotate=[0,90,180,270].includes(align.rotate)?align.rotate:0;
+        const swap=rotate===90||rotate===270;
+        const cv=document.createElement('canvas');
+        cv.width=Math.round(swap?ch:cw); cv.height=Math.round(swap?cw:ch);
+        const ctx=cv.getContext('2d');
+        ctx.translate(cv.width/2,cv.height/2);
+        ctx.rotate(rotate*Math.PI/180);
+        ctx.drawImage(img,x0,y0,cw,ch,-cw/2,-ch/2,cw,ch);
+        resolve({b64:cv.toDataURL('image/jpeg',0.92).split(',')[1],mediaType:'image/jpeg'});
+      }catch(e){ resolve({b64,mediaType}); }
+    };
+    img.onerror=()=>resolve({b64,mediaType});
+    img.src='data:'+mediaType+';base64,'+b64;
+  });
+}
+
 async function runAiScan(file){
   if(!file) return;
   const stage=document.getElementById('aiScanStage');
@@ -2448,6 +2485,11 @@ async function runAiScan(file){
         +'<button class="btn sm" onclick="openAiScan()">Ещё раз</button></div>';
       return;
     }
+    // Straighten/crop the stored scan using the AI's reported rotation+bbox —
+    // this is the image that ends up embedded as Form 101's extra page, so
+    // fixing it here (once) means every downstream use gets the clean version.
+    const align=json.parsed&&json.parsed.imageAlign;
+    if(align) window.__aiScanImage=await alignScanImage(b64,mediaType,align);
     renderAiResult(json.parsed);
   }catch(err){
     console.error(err);
