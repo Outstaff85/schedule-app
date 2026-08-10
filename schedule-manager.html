@@ -2558,8 +2558,8 @@ async function aiFillForm101(isId){
     // still fit the field's own box for a realistically long value).
     const fieldSizes={};
     const setSize=(n,size)=>{ fieldSizes[n]=size; try{ form.getTextField(n).acroField.setDefaultAppearance('/Helv '+size+' Tf 0 g'); }catch(e){} };
-    setSize('surname',10); setSize('given_name',10); setSize('addr_street',8.5);
-    setSize('addr_city',8.5); setSize('hf_name',8.5); setSize('id_top2',9.5);
+    setSize('surname',11); setSize('given_name',11); setSize('addr_street',11);
+    setSize('addr_city',11); setSize('hf_name',10); setSize('id_top2',13);
     const setT=(n,v)=>{ try{ if(v) form.getTextField(n).setText(String(v)); }catch(e){} };
     const chk=(n)=>{
       try{ form.getCheckBox(n).check(); }catch(e){}
@@ -2599,14 +2599,22 @@ async function aiFillForm101(isId){
           fld.setText(String(v)); fld.updateAppearances(customFont);
           // pdf-lib's auto-generated appearance can silently drop the last glyph
           // of multi-word RTL text (e.g. combining two Hebrew words loses a
-          // letter) — paint over it and draw the text ourselves instead, which
-          // doesn't have that bug.
-          const size=fieldSizes[n]||8;
-          const r=fld.acroField.getWidgets()[0].getRectangle();
-          const tw=customFont.widthOfTextAtSize(String(v),size);
-          const th=customFont.heightAtSize(size,{descender:false});
-          page1.drawRectangle({x:r.x,y:r.y,width:r.width,height:r.height,color:PDFLib.rgb(1,1,1)});
-          page1.drawText(String(v),{x:r.x+r.width-tw-2,y:r.y+(r.height-th)/2,size,font:customFont});
+          // letter) — only happens with a space in the value, so only pay for
+          // the redraw fix there.
+          if(String(v).indexOf(' ')!==-1){
+            const size=fieldSizes[n]||8;
+            const widget=fld.acroField.getWidgets()[0];
+            const r=widget.getRectangle();
+            const tw=customFont.widthOfTextAtSize(String(v),size);
+            const th=customFont.heightAtSize(size,{descender:false});
+            // Blank the widget's own (buggy) appearance instead of just
+            // painting over it — the widget's operators still get composited
+            // with our own page-level drawText underneath a white rectangle,
+            // showing as a faint doubled/bold-looking stroke.
+            const ap=widget.getAppearances();
+            if(ap&&ap.normal&&'operators' in ap.normal) ap.normal.operators=[];
+            page1.drawText(String(v),{x:r.x+r.width-tw-2,y:r.y+(r.height-th)/2,size,font:customFont});
+          }
         }
         else { fld.setText(String(v).replace(/[\u0590-\u05FF\uFB1D-\uFB4F]/g,'?')); }
       }catch(e){}
