@@ -2439,7 +2439,10 @@ async function runAiScan(file){
 function renderAiResult(p){
   if(!p){ document.getElementById('aiScanStage').innerHTML='<div style="color:#ff6b78;padding:14px">Не удалось разобрать ответ ИИ</div>'; return; }
   const isId=p.type==='israeli_id';
-  window.__aiScanChildren=(isId&&Array.isArray(p.children))?p.children:[];
+  const _nrm=s=>String(s||'').replace(/\s+/g,' ').trim();
+  window.__aiScanChildren=(isId&&Array.isArray(p.children))?p.children.map(c=>(
+    {name:_nrm(c.name),idNo:_nrm(c.idNo),dob:_nrm(c.dob)}
+  )):[];
   const f=(id,label,val)=>`<div style="margin-bottom:8px">
     <label style="display:block;font-size:12px;color:var(--text2);margin-bottom:3px">${label}</label>
     <input id="${id}" value="${(val||'').replace(/"/g,'&quot;')}"
@@ -2471,7 +2474,7 @@ function renderAiResult(p){
       +f('aiSex','Пол (M/F)',p.sex)
       +f('aiExpiry','Срок действия (ДД/ММ/ГГГГ)',p.expiry);
   }
-  const _v=id=>(document.getElementById(id)?.value||'').trim();
+  const _v=id=>(document.getElementById(id)?.value||'').replace(/\s+/g,' ').trim();
   h+=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
     <button class="btn sm" onclick="openAiScan()"><i class="ti ti-refresh"></i> Заново</button>
     <button class="btn sm" onclick="aiToWorker(${JSON.stringify(isId)})">
@@ -2535,7 +2538,7 @@ function renderAiResult(p){
 }
 
 function aiToWorker(isId){
-  const _v=id=>(document.getElementById(id)?.value||'').trim();
+  const _v=id=>(document.getElementById(id)?.value||'').replace(/\s+/g,' ').trim();
   const name=(_v('aiGiven')+' '+_v('aiSurname')).trim();
   const no=isId?_v('aiIdNo'):_v('aiPassportNo');
   const dob=_v('aiDob'), exp=_v('aiExpiry');
@@ -2551,7 +2554,7 @@ function aiToWorker(isId){
 }
 
 async function aiFillForm101(isId){
-  const _v=id=>(document.getElementById(id)?.value||'').trim();
+  const _v=id=>(document.getElementById(id)?.value||'').replace(/\s+/g,' ').trim();
   const surname=_v('aiSurname'), given=_v('aiGiven');
   const dob=_v('aiDob'), sex=_v('aiSex');
   const no = isId ? _v('aiIdNo') : _v('aiPassportNo');
