@@ -2394,7 +2394,9 @@ async function runAiScan(file){
   const stage=document.getElementById('aiScanStage');
   const isPdf=file.type==='application/pdf'||/\.pdf$/i.test(file.name||'');
   stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
-    +'<i class="ti ti-loader-2"></i> ИИ читает документ…</div>';
+    +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
+    +'<span>ИИ читает документ…</span>'
+    +'<div class="progress-bar"></div></div>';
   try{
     let b64, mediaType;
     if(isPdf){
