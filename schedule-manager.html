@@ -2552,8 +2552,30 @@ async function aiFillForm101(isId){
     const doc=await PDFLib.PDFDocument.load(bytes);
     doc.registerFontkit(fontkit);
     const form=doc.getForm();
+    const page1=doc.getPages()[0];
+    // These fields default to a small shrink-to-fit size; force a bigger, fixed
+    // size instead so the filled-in text is easy to read (each number chosen to
+    // still fit the field's own box for a realistically long value).
+    const fieldSizes={};
+    const setSize=(n,size)=>{ fieldSizes[n]=size; try{ form.getTextField(n).acroField.setDefaultAppearance('/Helv '+size+' Tf 0 g'); }catch(e){} };
+    setSize('surname',10); setSize('given_name',10); setSize('addr_street',8.5);
+    setSize('addr_city',8.5); setSize('hf_name',8.5); setSize('id_top2',9.5);
     const setT=(n,v)=>{ try{ if(v) form.getTextField(n).setText(String(v)); }catch(e){} };
-    const chk=(n)=>{ try{ form.getCheckBox(n).check(); }catch(e){} };
+    // Highlights a checked box with a colored square behind it so it stands out
+    // from the form's many other (unchecked) boxes at a glance.
+    const chk=(n)=>{
+      try{
+        const cb=form.getCheckBox(n);
+        cb.check();
+        const r=cb.acroField.getWidgets()[0].getRectangle();
+        const pad=2.5;
+        page1.drawRectangle({
+          x:r.x-pad, y:r.y-pad, width:r.width+pad*2, height:r.height+pad*2,
+          color:PDFLib.rgb(1,0.85,0.15), opacity:0.65,
+          borderColor:PDFLib.rgb(0.7,0.45,0), borderWidth:1,
+        });
+      }catch(e){}
+    };
     // Some fields (dob, tax_year, passport_no) are printed with a row of small
     // per-character boxes on the template — combing spreads each character into
     // its own box (and sizes it to fill that box) instead of one small run of
@@ -2580,7 +2602,19 @@ async function aiFillForm101(isId){
         // setText must come BEFORE updateAppearances — the other order lets
         // pdf-lib's save-time appearance refresh silently redo it with the
         // default (non-Hebrew) font and undo this.
-        if(customFont){ fld.setText(String(v)); fld.updateAppearances(customFont); }
+        if(customFont){
+          fld.setText(String(v)); fld.updateAppearances(customFont);
+          // pdf-lib's auto-generated appearance can silently drop the last glyph
+          // of multi-word RTL text (e.g. combining two Hebrew words loses a
+          // letter) — paint over it and draw the text ourselves instead, which
+          // doesn't have that bug.
+          const size=fieldSizes[n]||8;
+          const r=fld.acroField.getWidgets()[0].getRectangle();
+          const tw=customFont.widthOfTextAtSize(String(v),size);
+          const th=customFont.heightAtSize(size,{descender:false});
+          page1.drawRectangle({x:r.x,y:r.y,width:r.width,height:r.height,color:PDFLib.rgb(1,1,1)});
+          page1.drawText(String(v),{x:r.x+r.width-tw-2,y:r.y+(r.height-th)/2,size,font:customFont});
+        }
         else { fld.setText(String(v).replace(/[\u0590-\u05FF\uFB1D-\uFB4F]/g,'?')); }
       }catch(e){}
     };
