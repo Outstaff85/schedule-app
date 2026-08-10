@@ -517,11 +517,18 @@ function aiReadDoc(body){
     'and put ישוב alone into the "city" field (e.g. "פתח תקווה") — do not mix them up or put the city in "address". ' +
     'The back/appendix card (ספח) sometimes also lists the holder\'s registered children (ילדים) with their own name/ID/birth date rows — ' +
     'if such a section is present and populated, extract each child into the "children" array; if absent or empty, return "children":[]. ' +
-    'If a field is not visible or unreadable use empty string. Return ONLY the JSON object.';
+    'If a field is not visible or unreadable use empty string. ' +
+    'Also include a top-level "imageAlign" object (for both document types) describing how to straighten the ORIGINAL photo: ' +
+    '{"rotate":0,"crop":{"x0":0,"y0":0,"x1":1,"y1":1}} — ' +
+    '"rotate" is the clockwise degrees needed to make the document upright and right-reading, and MUST be exactly one of 0, 90, 180, 270 (use 0 if already upright); ' +
+    '"crop" is the document\'s tight bounding box as fractions of the ORIGINAL (pre-rotation) image width/height — x0/y0 the top-left corner, x1/y1 the bottom-right corner, each from 0 to 1 — ' +
+    'excluding background, table, hand, or wallet, but never cutting off any printed text, photo, or edge of the document itself. ' +
+    'If the document already fills the frame, use {"x0":0,"y0":0,"x1":1,"y1":1}. ' +
+    'Return ONLY the JSON object.';
 
   var payload = {
     model: model,
-    max_tokens: 700,
+    max_tokens: 800,
     messages: [{
       role: 'user',
       content: [
