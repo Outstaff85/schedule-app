@@ -1039,6 +1039,15 @@ function showWorkerModal(w){
         : `<div style="font-size:11px;color:var(--amber);margin-top:4px"><i class="ti ti-alert-triangle"></i> Linked client has no location set — punch will NOT be geo-verified</div>`; })()}
       <div style="font-size:11px;color:var(--text3);margin-top:4px">Send this link to the worker. They save it as a bookmark.</div>
     </div>` : ''}
+    ${editingWorkerIdx!==null && w.docUrl ? `
+    <div class="field">
+      <label><i class="ti ti-file-text"></i> Документы (Форма 101 + скан)</label>
+      <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" style="flex-shrink:0">
+          <i class="ti ti-download"></i> Скачать документы</a>
+        <span style="font-size:11px;color:var(--text3)">${w.docSavedAt?'Сохранено: '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</span>
+      </div>
+    </div>` : ''}
     <div class="modal-actions">
       <button class="btn" onclick="closeModal('workerOverlay')">Cancel</button>
       ${editingWorkerIdx!==null?`<button class="btn" onclick="regenerateWorkerToken(${editingWorkerIdx})" style="background:var(--amber-bg);border-color:rgba(245,166,35,0.3);color:var(--amber)"><i class="ti ti-refresh"></i> New Token</button>`:''}
@@ -1081,8 +1090,17 @@ function saveWorker(){
     showToast(name+' updated!');
   } else {
     const token=genToken();
-    workers.push({id:uid(),name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,address,notes,clientIds,schedule,token});
+    const newWorker={id:uid(),name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,address,notes,clientIds,schedule,token};
+    workers.push(newWorker);
     showToast(name+' added! Copy their link from Edit.');
+    // If this worker was created from an AI document scan, generate the
+    // combined Form 101 + scan PDF and upload it to Drive in the background,
+    // then link the result onto this worker's record once it's done.
+    if(window.__aiPendingWorkerUpload!==undefined){
+      const isId=window.__aiPendingWorkerUpload;
+      window.__aiPendingWorkerUpload=undefined;
+      if(typeof aiFillForm101==='function') aiFillForm101(isId,'upload',newWorker.id);
+    }
   }
   closeModal('workerOverlay'); render(); autoSave();
 }
@@ -2606,6 +2624,11 @@ function aiToWorker(isId){
   const no=isId?_v('aiIdNo'):_v('aiPassportNo');
   const dob=_v('aiDob'), exp=_v('aiExpiry');
   const nat=isId?'ISR':_v('aiNat');
+  // closeModal only hides the scan overlay (doesn't clear its DOM), so the
+  // aiSurname/aiGiven/etc inputs — and window.__aiScanImage — are still
+  // readable after this; saveWorker() uses that once the new worker is
+  // actually created, to generate+upload the combined PDF and link it back.
+  window.__aiPendingWorkerUpload=isId;
   closeModal('aiScanOverlay');
   openAddWorker();
   setTimeout(()=>{
@@ -2626,7 +2649,7 @@ function bytesToBase64(bytes){
   return btoa(binary);
 }
 
-async function aiFillForm101(isId,mode){
+async function aiFillForm101(isId,mode,workerId){
   mode=mode||'download';
   const _v=id=>(document.getElementById(id)?.value||'').replace(/\s+/g,' ').trim();
   const surname=_v('aiSurname'), given=_v('aiGiven');
@@ -2854,7 +2877,14 @@ async function aiFillForm101(isId,mode){
       });
       const json=await resp.json();
       if(!json||json.error) throw new Error((json&&json.error)||'Сервер не ответил');
-      showToast('Файл сохранён в Google Drive');
+      if(workerId){
+        const w=workers.find(x=>x.id===workerId);
+        if(w){
+          w.docUrl=json.url; w.docSavedAt=new Date().toISOString();
+          render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
+          showToast('Документы '+(w.name||'')+' сохранены в Google Drive');
+        } else showToast('Файл сохранён в Google Drive');
+      } else showToast('Файл сохранён в Google Drive');
     } else {
       const blob=new Blob([out],{type:'application/pdf'});
       const url=URL.createObjectURL(blob);
