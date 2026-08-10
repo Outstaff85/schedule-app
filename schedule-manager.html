@@ -2416,6 +2416,9 @@ async function runAiScan(file){
       });
       mediaType=file.type||'image/jpeg';
     }
+    // Kept so Form 101 generation can embed the same scan as an extra page —
+    // the AI request above doesn't persist it anywhere on its own.
+    window.__aiScanImage={b64,mediaType};
     const resp=await fetch(GS_URL,{
       method:'POST',
       body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,image:b64,mediaType:mediaType})
@@ -2504,8 +2507,15 @@ function renderAiResult(p){
         </select>
       </div>
       ${SIG_PAD_HTML}
-      <button class="btn sm" onclick="aiFillForm101(false)">
-        <i class="ti ti-download" style="color:#4f8ef7"></i> Форма 101</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn sm" onclick="aiFillForm101(false,'download')">
+          <i class="ti ti-download" style="color:#4f8ef7"></i> Форма 101</button>
+        <button class="btn sm" onclick="aiFillForm101(false,'upload')">
+          <i class="ti ti-cloud-upload" style="color:#6dd6a0"></i> Загрузить</button>
+      </div>
+      <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:6px">
+        «Загрузить» соберёт Форму 101 + скан документа в один PDF и сохранит в Google Drive.
+      </div>
     </div>`;
   else h+=`
     <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
@@ -2535,10 +2545,15 @@ function renderAiResult(p){
         </select>
       </div>
       ${SIG_PAD_HTML}
-      <button class="btn sm" onclick="aiFillForm101(true)">
-        <i class="ti ti-download" style="color:#4f8ef7"></i> Форма 101</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn sm" onclick="aiFillForm101(true,'download')">
+          <i class="ti ti-download" style="color:#4f8ef7"></i> Форма 101</button>
+        <button class="btn sm" onclick="aiFillForm101(true,'upload')">
+          <i class="ti ti-cloud-upload" style="color:#6dd6a0"></i> Загрузить</button>
+      </div>
       <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:6px">
         Подставит ת.ז., имя, дату рождения, адрес, гражданство (כן). Касса и семейное — по выбору.
+        «Загрузить» соберёт Форму 101 + скан документа в один PDF и сохранит в Google Drive.
       </div>
     </div>`;
   h+='</div>';
@@ -2601,7 +2616,18 @@ function aiToWorker(isId){
   },60);
 }
 
-async function aiFillForm101(isId){
+// btoa(String.fromCharCode(...bytes)) blows the call-stack argument limit on
+// anything past a few tens of KB (a scanned photo easily exceeds that) —
+// convert in chunks instead.
+function bytesToBase64(bytes){
+  let binary='';
+  const chunk=0x8000;
+  for(let i=0;i<bytes.length;i+=chunk) binary+=String.fromCharCode.apply(null,bytes.subarray(i,i+chunk));
+  return btoa(binary);
+}
+
+async function aiFillForm101(isId,mode){
+  mode=mode||'download';
   const _v=id=>(document.getElementById(id)?.value||'').replace(/\s+/g,' ').trim();
   const surname=_v('aiSurname'), given=_v('aiGiven');
   const dob=_v('aiDob'), sex=_v('aiSex');
@@ -2609,8 +2635,9 @@ async function aiFillForm101(isId){
   const nat = isId ? 'ISR' : _v('aiNat');
   const isIsraeli = isId || nat.toUpperCase()==='ISR';
   const btn=event&&event.target?event.target.closest('button'):null;
+  const btnLabel=btn?btn.innerHTML:'';
   try{
-    if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader-2 spin"></i> Готовлю…'; }
+    if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader-2 spin"></i> '+(mode==='upload'?'Загружаю…':'Готовлю…'); }
     await _loadPdfLib();
     await _loadFontkit();
     const resp=await fetch('form101_fillable.pdf',{cache:'no-store'});
@@ -2791,19 +2818,54 @@ async function aiFillForm101(isId){
         page2.drawImage(sigImg,{x:SIG_RECT.x+(SIG_RECT.width-w)/2,y:SIG_RECT.y+(SIG_RECT.height-h)/2,width:w,height:h});
       }catch(e){}
     }
+    // Append the original scanned document (ID/passport photo) as an extra
+    // page, so the worker's whole file — Form 101 + ID copy — is one PDF
+    // instead of two separate downloads. Fit-to-page + a light frame/caption
+    // rather than pasting it in at native size/rotation as-is.
+    if(window.__aiScanImage){
+      try{
+        const {b64:scanB64,mediaType:scanType}=window.__aiScanImage;
+        const scanBytes=Uint8Array.from(atob(scanB64),c=>c.charCodeAt(0));
+        const scanImg=/png/i.test(scanType)?await doc.embedPng(scanBytes):await doc.embedJpg(scanBytes);
+        const pw=page1.getWidth(), ph=page1.getHeight();
+        const scanPage=doc.addPage([pw,ph]);
+        const margin=40, capH=24;
+        const maxW=pw-margin*2, maxH=ph-margin*2-capH;
+        const fit=Math.min(maxW/scanImg.width, maxH/scanImg.height, 1);
+        const w=scanImg.width*fit, h=scanImg.height*fit;
+        const x=(pw-w)/2, y=margin+(maxH-h)/2;
+        // stdFont is plain WinAnsi Helvetica — no Cyrillic support, so the
+        // caption has to be Latin-only regardless of the app's Russian UI.
+        scanPage.drawText('Document scan',{x:margin,y:ph-margin-16,size:12,font:stdFont,color:PDFLib.rgb(0.3,0.3,0.3)});
+        scanPage.drawRectangle({x:x-2,y:y-2,width:w+4,height:h+4,borderColor:PDFLib.rgb(0.7,0.7,0.7),borderWidth:1,color:PDFLib.rgb(1,1,1)});
+        scanPage.drawImage(scanImg,{x,y,width:w,height:h});
+      }catch(e){}
+    }
     // Without this, viewers ignore our appearance streams and re-render every
     // field themselves using the template's default (non-Hebrew) Helvetica DA.
     form.acroForm.dict.set(PDFLib.PDFName.of('NeedAppearances'), PDFLib.PDFBool.False);
     const out=await doc.save();
-    const blob=new Blob([out],{type:'application/pdf'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a'); a.href=url;
-    a.download='form101_'+(surname||'worker').replace(/[^A-Za-z0-9֐-׿]/g,'')+'.pdf';
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),3000);
-    showToast('Форма 101 скачана');
+    const fileName='form101_'+(surname||'worker').replace(/[^A-Za-z0-9֐-׿]/g,'')+(no?'_'+no.replace(/\D/g,''):'')+'.pdf';
+    if(mode==='upload'){
+      const fileBase64=bytesToBase64(out);
+      const resp=await fetch(GS_URL,{
+        method:'POST',
+        body:JSON.stringify({action:'saveWorkerDoc',secret:API_SECRET,fileBase64,fileName,mimeType:'application/pdf'})
+      });
+      const json=await resp.json();
+      if(!json||json.error) throw new Error((json&&json.error)||'Сервер не ответил');
+      showToast('Файл сохранён в Google Drive');
+    } else {
+      const blob=new Blob([out],{type:'application/pdf'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a'); a.href=url;
+      a.download=fileName;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),3000);
+      showToast('Форма 101 скачана');
+    }
   }catch(err){ console.error(err); showToast('Не удалось: '+(err&&err.message||'')); }
-  finally{ if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-download" style="color:#4f8ef7"></i> Форма 101'; } }
+  finally{ if(btn){ btn.disabled=false; btn.innerHTML=btnLabel; } }
 }
 
 let _pdfjsLoading=null;
