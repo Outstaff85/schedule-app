@@ -510,6 +510,10 @@ function aiReadDoc(body){
     '{"type":"israeli_id","surname":"...","given":"...","idNo":"9-digit number","dob":"DD/MM/YYYY","sex":"M or F","address":"...","city":"...","expiry":"DD/MM/YYYY"} ' +
     'Rules: dates always DD/MM/YYYY. Names exactly as printed. ' +
     'For Israeli ID the surname is שם משפחה, given name is שם פרטי, ID number is מספר זהות (9 digits). ' +
+    'The address is usually on the back/appendix card (ספח לתעודת זהות), which has THREE separate labeled rows: ' +
+    'מען (street name), מס\' בית (house/building number), and ישוב (city/town name). ' +
+    'Combine מען and מס\' בית into the "address" field as "STREET NUMBER" (e.g. "יהודה הלוי 16"), ' +
+    'and put ישוב alone into the "city" field (e.g. "פתח תקווה") — do not mix them up or put the city in "address". ' +
     'If a field is not visible or unreadable use empty string. Return ONLY the JSON object.';
 
   var payload = {
