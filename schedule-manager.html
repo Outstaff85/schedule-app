@@ -330,6 +330,14 @@
   .progress-bar::after { content: ''; position: absolute; top: 0; left: -40%; width: 40%; height: 100%;
     background: var(--accent); border-radius: 2px; animation: barSlide 1.1s ease-in-out infinite; }
 
+  /* ── Scan crop/rotate editor ── */
+  .scan-handle { position: absolute; width: 22px; height: 22px; margin: -11px;
+    background: var(--accent); border: 2px solid #fff; border-radius: 50%; touch-action: none; }
+  .scan-handle[data-h="nw"] { left: 0; top: 0; cursor: nwse-resize; }
+  .scan-handle[data-h="ne"] { left: 100%; top: 0; cursor: nesw-resize; }
+  .scan-handle[data-h="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
+  .scan-handle[data-h="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
+
 </style>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
@@ -2399,7 +2407,7 @@ function openAiScan(){
         <i class="ti ti-camera"></i> Загрузить фото / PDF
       </button>
       <input type="file" id="aiScanFile" accept="image/*,application/pdf,.pdf"
-        style="display:none" onchange="runAiScan(this.files[0])">
+        style="display:none" onchange="onScanFileSelected(this.files[0])">
       <div style="font-size:12px;color:var(--text3);line-height:1.5">
         Поддерживает: загранпаспорт, израильский теудат-зеут (обе стороны), PDF-скан.
         Паспорт может быть целиком — ИИ сам найдёт нужные поля.
@@ -2444,15 +2452,19 @@ function alignScanImage(b64,mediaType,align){
   });
 }
 
-async function runAiScan(file){
+// Step 1 of the scan flow: turn whatever the user picked (photo or PDF)
+// into a plain image, then hand off to the manual crop/rotate editor instead
+// of reading it immediately — a document the user has already straightened
+// and tightly framed is much easier for the AI to read accurately than a
+// raw, possibly crooked/cluttered phone photo.
+async function onScanFileSelected(file){
   if(!file) return;
   const stage=document.getElementById('aiScanStage');
-  const isPdf=file.type==='application/pdf'||/\.pdf$/i.test(file.name||'');
   stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
     +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
-    +'<span>ИИ читает документ…</span>'
-    +'<div class="progress-bar"></div></div>';
+    +'<span>Загружаю фото…</span></div>';
   try{
+    const isPdf=file.type==='application/pdf'||/\.pdf$/i.test(file.name||'');
     let b64, mediaType;
     if(isPdf){
       await _loadPdfJs();
@@ -2471,8 +2483,131 @@ async function runAiScan(file){
       });
       mediaType=file.type||'image/jpeg';
     }
+    window.__scanEdit={b64,mediaType};
+    renderScanEditor();
+  }catch(err){
+    console.error(err);
+    stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Ошибка: '
+      +(err&&err.message||'')+'<br><br>'
+      +'<button class="btn sm" onclick="openAiScan()">Ещё раз</button></div>';
+  }
+}
+
+// Step 2: manual crop/rotate editor. The crop rectangle is tracked in on-
+// screen pixels (window.__cropRect) while dragging, and only converted to
+// fractions of the image when the user confirms.
+function renderScanEditor(){
+  const {b64,mediaType}=window.__scanEdit;
+  const stage=document.getElementById('aiScanStage');
+  stage.innerHTML=`
+    <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Потяни за уголки, чтобы рамка совпала с документом, при необходимости поверни — затем «Готово».</div>
+    <div id="scanEditWrap" style="position:relative;display:inline-block;max-width:100%;touch-action:none;background:#111;line-height:0">
+      <img id="scanEditImg" src="data:${mediaType};base64,${b64}" draggable="false"
+        style="display:block;max-width:100%;max-height:46vh;user-select:none;-webkit-user-drag:none">
+      <div id="scanCropBox" style="position:absolute;border:2px solid #4f8ef7;box-sizing:border-box;background:rgba(79,142,247,0.15);touch-action:none">
+        <div class="scan-handle" data-h="nw"></div><div class="scan-handle" data-h="ne"></div>
+        <div class="scan-handle" data-h="sw"></div><div class="scan-handle" data-h="se"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn sm" onclick="rotateScanEdit(270)" title="Повернуть влево"><i class="ti ti-rotate-2"></i></button>
+      <button class="btn sm" onclick="rotateScanEdit(90)" title="Повернуть вправо"><i class="ti ti-rotate-clockwise-2"></i></button>
+      <button class="btn sm" onclick="resetScanCrop()">Сбросить рамку</button>
+    </div>
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn" onclick="skipScanEdit()">Пропустить</button>
+      <button class="btn accent" onclick="confirmScanEdit()">Готово</button>
+    </div>`;
+  const img=document.getElementById('scanEditImg');
+  if(img.complete&&img.naturalWidth) initScanCropBox(); else img.onload=initScanCropBox;
+}
+
+function initScanCropBox(){
+  const img=document.getElementById('scanEditImg');
+  if(!img) return;
+  window.__cropRect={left:0,top:0,width:img.clientWidth,height:img.clientHeight,imgW:img.clientWidth,imgH:img.clientHeight};
+  paintCropBox();
+  attachCropDrag();
+}
+function paintCropBox(){
+  const r=window.__cropRect, box=document.getElementById('scanCropBox');
+  if(!box||!r) return;
+  box.style.left=r.left+'px'; box.style.top=r.top+'px';
+  box.style.width=r.width+'px'; box.style.height=r.height+'px';
+}
+function resetScanCrop(){
+  const img=document.getElementById('scanEditImg');
+  if(!img) return;
+  window.__cropRect={left:0,top:0,width:img.clientWidth,height:img.clientHeight,imgW:img.clientWidth,imgH:img.clientHeight};
+  paintCropBox();
+}
+function attachCropDrag(){
+  const box=document.getElementById('scanCropBox');
+  if(!box) return;
+  const MIN=30;
+  const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+  const startDrag=(startEv,onMove)=>{
+    startEv.preventDefault();
+    const sx=startEv.clientX, sy=startEv.clientY;
+    const r0={...window.__cropRect};
+    const move=e=>{ onMove(e.clientX-sx,e.clientY-sy,r0); paintCropBox(); };
+    const up=()=>{ window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); };
+    window.addEventListener('pointermove',move);
+    window.addEventListener('pointerup',up);
+  };
+  box.addEventListener('pointerdown',e=>{
+    if(e.target.classList.contains('scan-handle')) return;
+    startDrag(e,(dx,dy,r0)=>{
+      const r=window.__cropRect;
+      r.left=clamp(r0.left+dx,0,r0.imgW-r0.width);
+      r.top=clamp(r0.top+dy,0,r0.imgH-r0.height);
+    });
+  });
+  box.querySelectorAll('.scan-handle').forEach(h=>{
+    h.addEventListener('pointerdown',e=>{
+      e.stopPropagation();
+      const which=h.dataset.h;
+      startDrag(e,(dx,dy,r0)=>{
+        const r=window.__cropRect;
+        let {left,top,width,height,imgW,imgH}=r0;
+        if(which==='nw'||which==='sw'){ const nl=clamp(left+dx,0,left+width-MIN); width+=left-nl; left=nl; }
+        if(which==='ne'||which==='se'){ width=clamp(width+dx,MIN,imgW-left); }
+        if(which==='nw'||which==='ne'){ const nt=clamp(top+dy,0,top+height-MIN); height+=top-nt; top=nt; }
+        if(which==='sw'||which==='se'){ height=clamp(height+dy,MIN,imgH-top); }
+        r.left=left; r.top=top; r.width=width; r.height=height;
+      });
+    });
+  });
+}
+async function rotateScanEdit(deg){
+  const {b64,mediaType}=window.__scanEdit;
+  window.__scanEdit=await alignScanImage(b64,mediaType,{rotate:deg,crop:{x0:0,y0:0,x1:1,y1:1}});
+  renderScanEditor();
+}
+async function confirmScanEdit(){
+  const {b64,mediaType}=window.__scanEdit;
+  const r=window.__cropRect;
+  const align=(r&&r.imgW>0&&r.imgH>0)?{rotate:0,crop:{x0:r.left/r.imgW,y0:r.top/r.imgH,x1:(r.left+r.width)/r.imgW,y1:(r.top+r.height)/r.imgH}}:null;
+  const cropped=align?await alignScanImage(b64,mediaType,align):{b64,mediaType};
+  runOcr(cropped.b64,cropped.mediaType,false);
+}
+function skipScanEdit(){
+  const {b64,mediaType}=window.__scanEdit;
+  runOcr(b64,mediaType,true);
+}
+
+// Step 3: send the (by now already straightened) image off to be read.
+// autoAlign is only true when the user skipped the manual editor — if they
+// already cropped/rotated it by hand, that's trusted over the AI's own guess.
+async function runOcr(b64,mediaType,autoAlign){
+  const stage=document.getElementById('aiScanStage');
+  stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
+    +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
+    +'<span>ИИ читает документ…</span>'
+    +'<div class="progress-bar"></div></div>';
+  try{
     // Kept so Form 101 generation can embed the same scan as an extra page —
-    // the AI request above doesn't persist it anywhere on its own.
+    // the AI request below doesn't persist it anywhere on its own.
     window.__aiScanImage={b64,mediaType};
     const resp=await fetch(GS_URL,{
       method:'POST',
@@ -2485,11 +2620,10 @@ async function runAiScan(file){
         +'<button class="btn sm" onclick="openAiScan()">Ещё раз</button></div>';
       return;
     }
-    // Straighten/crop the stored scan using the AI's reported rotation+bbox —
-    // this is the image that ends up embedded as Form 101's extra page, so
-    // fixing it here (once) means every downstream use gets the clean version.
-    const align=json.parsed&&json.parsed.imageAlign;
-    if(align) window.__aiScanImage=await alignScanImage(b64,mediaType,align);
+    if(autoAlign){
+      const align=json.parsed&&json.parsed.imageAlign;
+      if(align) window.__aiScanImage=await alignScanImage(b64,mediaType,align);
+    }
     renderAiResult(json.parsed);
   }catch(err){
     console.error(err);
