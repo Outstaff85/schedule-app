@@ -1107,7 +1107,7 @@ function saveWorker(){
     if(window.__aiPendingWorkerUpload!==undefined){
       const isId=window.__aiPendingWorkerUpload;
       window.__aiPendingWorkerUpload=undefined;
-      if(typeof aiFillForm101==='function') aiFillForm101(isId,'upload',newWorker.id);
+      if(typeof aiFillForm101==='function') aiFillForm101(isId,'upload',newWorker.id,null);
     }
   }
   closeModal('workerOverlay'); render(); autoSave();
