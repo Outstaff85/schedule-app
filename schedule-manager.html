@@ -1706,6 +1706,24 @@ async function gsUpdatePunch(data) {
   } catch(e) { console.warn('GS update failed:', e); }
 }
 
+// Best-effort: trashes a worker's stored PDF in Drive. Called when the worker
+// itself is deleted, so removing a worker doesn't leave an orphaned file in
+// the "Schedule manager APP/Workers" folder. Never blocks worker removal.
+async function gsDeleteWorkerDoc(fileId) {
+  try {
+    await fetch(GS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'deleteWorkerDoc', secret: API_SECRET, fileId })
+    });
+  } catch(e) { console.warn('GS worker doc delete failed:', e); }
+}
+// Older worker records only have docUrl (no docFileId) — Drive file URLs
+// embed the ID as .../d/<id>/... so it can be recovered from the link.
+function extractDriveFileId(url){
+  const m = url && url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+
 function setSaveStatus(s){
   const el=document.getElementById('saveIndicator');
   el.className='save-indicator '+s;
