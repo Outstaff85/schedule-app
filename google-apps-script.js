@@ -37,6 +37,7 @@ function doPost(e) {
       case 'logError':             return jsonResponse(logError(body));
       case 'aiReadDoc':            return jsonResponse(aiReadDoc(body));
       case 'saveWorkerDoc':        return jsonResponse(saveWorkerDoc(body));
+      case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body));
       default:                     return jsonResponse({error: 'Unknown action: ' + body.action});
     }
   } catch(e) { return jsonResponse({error: e.toString()}); }
