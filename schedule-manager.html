@@ -1050,12 +1050,14 @@ function showWorkerModal(w){
         : `<div style="font-size:11px;color:var(--amber);margin-top:4px"><i class="ti ti-alert-triangle"></i> Linked client has no location set — punch will NOT be geo-verified</div>`; })()}
       <div style="font-size:11px;color:var(--text3);margin-top:4px">Send this link to the worker. They save it as a bookmark.</div>
     </div>` : ''}
-    ${editingWorkerIdx!==null && w.docUrl ? `
+    ${editingWorkerIdx!==null ? `
     <div class="field">
       <label><i class="ti ti-file-text"></i> Документы (Форма 101 + скан)</label>
       <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" style="flex-shrink:0">
-          <i class="ti ti-download"></i> Скачать документы</a>
+        ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" style="flex-shrink:0">
+          <i class="ti ti-download"></i> Скачать документы</a>`:''}
+        <button class="btn sm" style="flex-shrink:0" onclick="rescanWorkerDoc('${w.id}')">
+          <i class="ti ti-scan"></i> ${w.docUrl?'Пересканировать':'Сканировать документ'}</button>
         <span style="font-size:11px;color:var(--text3)">${w.docSavedAt?'Сохранено: '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</span>
       </div>
     </div>` : ''}
