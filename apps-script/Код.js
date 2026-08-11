@@ -651,35 +651,6 @@ function extractDocNumberFromFileName(name){
   return matches.reduce((a,b)=>b.length>a.length?b:a, '');
 }
 
-// One-time sweep for duplicates left over from before automatic dedup was
-// added to saveWorkerDoc (old uploads never re-triggered cleanup unless the
-// worker was rescanned). Groups files in "Schedule manager APP/Workers" by
-// their extracted ID/passport number, keeps only the most recently updated
-// file per group, trashes the rest. Safe to run more than once. Run manually
-// from the Apps Script editor if you suspect old duplicates are still around.
-function cleanupDuplicateWorkerDocs(){
-  const rootIter = DriveApp.getFoldersByName('Schedule manager APP');
-  if(!rootIter.hasNext()) return {ok:true, removed:0};
-  const subIter = rootIter.next().getFoldersByName('Workers');
-  if(!subIter.hasNext()) return {ok:true, removed:0};
-  const folder = subIter.next();
-  const groups = {};
-  const iter = folder.getFiles();
-  while(iter.hasNext()){
-    const f = iter.next();
-    const key = extractDocNumberFromFileName(f.getName()) || ('__'+f.getName());
-    (groups[key] = groups[key]||[]).push(f);
-  }
-  let removed = 0;
-  Object.keys(groups).forEach(key=>{
-    const list = groups[key];
-    if(list.length < 2) return;
-    list.sort((a,b)=>b.getLastUpdated().getTime()-a.getLastUpdated().getTime());
-    for(let i=1;i<list.length;i++){ list[i].setTrashed(true); removed++; }
-  });
-  return {ok:true, removed:removed};
-}
-
 // Trashes a worker's stored PDF from Drive (called when the worker is deleted
 // in the app, so removing a worker doesn't leave orphaned documents behind).
 // Prefers a direct fileId; falls back to looking the file up by name inside
