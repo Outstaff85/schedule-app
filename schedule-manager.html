@@ -3080,19 +3080,23 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     const fileName='form101_'+(surname||'worker').replace(/[^A-Za-z0-9֐-׿]/g,'')+(no?'_'+no.replace(/\D/g,''):'')+'.pdf';
     if(mode==='upload'){
       const fileBase64=bytesToBase64(out);
+      // Resolve the worker before uploading so a rescan can pass along the
+      // previous file's ID — the OCR'd name/doc-number baked into fileName can
+      // drift between scans, so name-based dedup on the backend alone isn't
+      // reliable; a known previousFileId lets it trash the exact old file.
+      const targetWorkerId=workerId||window.__aiRescanWorkerId||null;
+      const w=targetWorkerId?workers.find(x=>x.id===targetWorkerId):null;
       const resp=await fetch(GS_URL,{
         method:'POST',
-        body:JSON.stringify({action:'saveWorkerDoc',secret:API_SECRET,fileBase64,fileName,mimeType:'application/pdf'})
+        body:JSON.stringify({action:'saveWorkerDoc',secret:API_SECRET,fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null})
       });
       const json=await resp.json();
       if(!json||json.error) throw new Error((json&&json.error)||'Сервер не ответил');
-      if(workerId){
-        const w=workers.find(x=>x.id===workerId);
-        if(w){
-          w.docUrl=json.url; w.docSavedAt=new Date().toISOString(); w.docFileId=json.id;
-          render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
-          showToast('Документы '+(w.name||'')+' сохранены в Google Drive');
-        } else showToast('Файл сохранён в Google Drive');
+      if(w){
+        w.docUrl=json.url; w.docSavedAt=new Date().toISOString(); w.docFileId=json.id;
+        render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
+        showToast('Документы '+(w.name||'')+' сохранены в Google Drive');
+        window.__aiRescanWorkerId=null;
       } else showToast('Файл сохранён в Google Drive');
     } else {
       const blob=new Blob([out],{type:'application/pdf'});

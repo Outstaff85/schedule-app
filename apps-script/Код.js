@@ -604,6 +604,13 @@ function saveWorkerDoc(body){
     const subIter = root.getFoldersByName('Workers');
     const folder = subIter.hasNext() ? subIter.next() : root.createFolder('Workers');
 
+    // Prefer trashing the exact previous file by ID (stable across rescans,
+    // where the OCR'd name/doc-number baked into fileName can drift and no
+    // longer match the old file) — fall back to name matching for callers
+    // that don't know their previous file's ID yet.
+    if(body.previousFileId){
+      try{ DriveApp.getFileById(body.previousFileId).setTrashed(true); }catch(e){}
+    }
     const existing = folder.getFilesByName(body.fileName);
     while(existing.hasNext()) existing.next().setTrashed(true);
 
