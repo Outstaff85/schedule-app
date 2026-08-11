@@ -3089,7 +3089,11 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     // field themselves using the template's default (non-Hebrew) Helvetica DA.
     form.acroForm.dict.set(PDFLib.PDFName.of('NeedAppearances'), PDFLib.PDFBool.False);
     const out=await doc.save();
-    const fileName='form101_'+(surname||'worker').replace(/[^A-Za-z0-9֐-׿]/g,'')+(no?'_'+no.replace(/\D/g,''):'')+'.pdf';
+    // <docNumber>_<given>_<surname>.pdf — the ID/passport number is the one
+    // stable part across rescans (used by the backend's automatic dedup in
+    // saveWorkerDoc), name parts are just for human-readable browsing in Drive.
+    const fnPart=s=>(s||'').replace(/[^A-Za-z0-9֐-׿]/g,'');
+    const fileName=(no?no.replace(/\D/g,''):'noid')+'_'+fnPart(given||'worker')+(surname?'_'+fnPart(surname):'')+'.pdf';
     if(mode==='upload'){
       const fileBase64=bytesToBase64(out);
       // Resolve the worker before uploading so a rescan can pass along the

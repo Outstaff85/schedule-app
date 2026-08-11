@@ -613,6 +613,22 @@ function saveWorkerDoc(body){
     }
     const existing = folder.getFilesByName(body.fileName);
     while(existing.hasNext()) existing.next().setTrashed(true);
+    // Automatic dedup: fileName is <docNumber>_<given>_<surname>.pdf (or the
+    // legacy form101_<surname>_<docNumber>.pdf for older uploads) — either way
+    // the ID/passport number is the one part that never changes between
+    // rescans, even when OCR reads the name slightly differently each time.
+    // Trash every other file in the folder sharing that same number so a
+    // rescan can never pile up as a duplicate, regardless of naming drift.
+    const docNumber = extractDocNumberFromFileName(body.fileName);
+    if(docNumber){
+      const all = folder.getFiles();
+      while(all.hasNext()){
+        const f = all.next();
+        if(f.getName() !== body.fileName && extractDocNumberFromFileName(f.getName()) === docNumber){
+          f.setTrashed(true);
+        }
+      }
+    }
 
     const bytes = Utilities.base64Decode(body.fileBase64);
     const blob = Utilities.newBlob(bytes, body.mimeType || 'application/pdf', body.fileName);
@@ -624,6 +640,44 @@ function saveWorkerDoc(body){
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     return {ok:true, url: file.getUrl(), id: file.getId()};
   }catch(e){ return {error: e.toString()}; }
+}
+
+// Pulls the longest run of 5+ digits out of a worker doc filename — the
+// ID/passport number, which is the one stable identifier across rescans
+// (names can be OCR'd differently each time, the document number can't).
+function extractDocNumberFromFileName(name){
+  const matches = String(name||'').match(/\d{5,}/g);
+  if(!matches) return null;
+  return matches.reduce((a,b)=>b.length>a.length?b:a, '');
+}
+
+// One-time sweep for duplicates left over from before automatic dedup was
+// added to saveWorkerDoc (old uploads never re-triggered cleanup unless the
+// worker was rescanned). Groups files in "Schedule manager APP/Workers" by
+// their extracted ID/passport number, keeps only the most recently updated
+// file per group, trashes the rest. Safe to run more than once. Run manually
+// from the Apps Script editor if you suspect old duplicates are still around.
+function cleanupDuplicateWorkerDocs(){
+  const rootIter = DriveApp.getFoldersByName('Schedule manager APP');
+  if(!rootIter.hasNext()) return {ok:true, removed:0};
+  const subIter = rootIter.next().getFoldersByName('Workers');
+  if(!subIter.hasNext()) return {ok:true, removed:0};
+  const folder = subIter.next();
+  const groups = {};
+  const iter = folder.getFiles();
+  while(iter.hasNext()){
+    const f = iter.next();
+    const key = extractDocNumberFromFileName(f.getName()) || ('__'+f.getName());
+    (groups[key] = groups[key]||[]).push(f);
+  }
+  let removed = 0;
+  Object.keys(groups).forEach(key=>{
+    const list = groups[key];
+    if(list.length < 2) return;
+    list.sort((a,b)=>b.getLastUpdated().getTime()-a.getLastUpdated().getTime());
+    for(let i=1;i<list.length;i++){ list[i].setTrashed(true); removed++; }
+  });
+  return {ok:true, removed:removed};
 }
 
 // Trashes a worker's stored PDF from Drive (called when the worker is deleted
