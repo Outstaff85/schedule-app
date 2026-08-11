@@ -471,7 +471,7 @@
           <div class="page-sub">All worker details, status and history</div>
         </div>
         <button class="btn sm" onclick="openAddWorker()"><i class="ti ti-plus"></i> Add Worker</button>
-        <button class="btn sm" onclick="openAiScan()" style="border-color:rgba(109,214,160,0.4);color:var(--green)"><i class="ti ti-sparkles"></i> Скан паспорта</button>
+        <button class="btn sm" onclick="window.__aiRescanWorkerId=null;openAiScan()" style="border-color:rgba(109,214,160,0.4);color:var(--green)"><i class="ti ti-sparkles"></i> Скан паспорта</button>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
         <input type="text" id="workersSearch" placeholder="Search by name, phone, object..." oninput="renderWorkersPage()" style="flex:1;min-width:180px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
