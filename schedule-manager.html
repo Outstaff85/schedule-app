@@ -2846,6 +2846,7 @@ function aiToWorker(isId){
   // readable after this; saveWorker() uses that once the new worker is
   // actually created, to generate+upload the combined PDF and link it back.
   window.__aiPendingWorkerUpload=isId;
+  window.__aiRescanWorkerId=null;
   closeModal('aiScanOverlay');
   openAddWorker();
   setTimeout(()=>{
