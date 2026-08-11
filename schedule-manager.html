@@ -471,7 +471,7 @@
           <div class="page-sub">All worker details, status and history</div>
         </div>
         <button class="btn sm" onclick="openAddWorker()"><i class="ti ti-plus"></i> Add Worker</button>
-        <button class="btn sm" onclick="openAiScan()" style="border-color:rgba(109,214,160,0.4);color:var(--green)"><i class="ti ti-sparkles"></i> Скан паспорта</button>
+        <button class="btn sm" onclick="window.__aiRescanWorkerId=null;openAiScan()" style="border-color:rgba(109,214,160,0.4);color:var(--green)"><i class="ti ti-sparkles"></i> Скан паспорта</button>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
         <input type="text" id="workersSearch" placeholder="Search by name, phone, object..." oninput="renderWorkersPage()" style="flex:1;min-width:180px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
@@ -1050,12 +1050,14 @@ function showWorkerModal(w){
         : `<div style="font-size:11px;color:var(--amber);margin-top:4px"><i class="ti ti-alert-triangle"></i> Linked client has no location set — punch will NOT be geo-verified</div>`; })()}
       <div style="font-size:11px;color:var(--text3);margin-top:4px">Send this link to the worker. They save it as a bookmark.</div>
     </div>` : ''}
-    ${editingWorkerIdx!==null && w.docUrl ? `
+    ${editingWorkerIdx!==null ? `
     <div class="field">
       <label><i class="ti ti-file-text"></i> Документы (Форма 101 + скан)</label>
       <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" style="flex-shrink:0">
-          <i class="ti ti-download"></i> Скачать документы</a>
+        ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" style="flex-shrink:0">
+          <i class="ti ti-download"></i> Скачать документы</a>`:''}
+        <button class="btn sm" style="flex-shrink:0" onclick="rescanWorkerDoc('${w.id}')">
+          <i class="ti ti-scan"></i> ${w.docUrl?'Пересканировать':'Сканировать документ'}</button>
         <span style="font-size:11px;color:var(--text3)">${w.docSavedAt?'Сохранено: '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</span>
       </div>
     </div>` : ''}
@@ -1142,7 +1144,16 @@ function copyWorkerLink(wid){
     prompt('Copy this link:', link);
   }
 }
-function deleteWorker(wi){ if(!confirm('Remove "'+workers[wi].name+'"?'))return; const n=workers[wi].name; workers.splice(wi,1); render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave(); showToast(n+' removed'); }
+function deleteWorker(wi){
+  const w=workers[wi];
+  if(!confirm('Remove "'+w.name+'"?'))return;
+  const n=w.name;
+  const fileId=w.docFileId||extractDriveFileId(w.docUrl);
+  workers.splice(wi,1);
+  render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
+  showToast(n+' removed');
+  if(fileId) gsDeleteWorkerDoc(fileId);
+}
 function deleteWorkerFromCard(wi){ closeModal('workerCardOverlay'); deleteWorker(wi); }
 
 // --- Client Modal -------------------------------------------------------------
@@ -1704,6 +1715,24 @@ async function gsUpdatePunch(data) {
       body: JSON.stringify({ action: 'updatePunch', secret: API_SECRET, data })
     });
   } catch(e) { console.warn('GS update failed:', e); }
+}
+
+// Best-effort: trashes a worker's stored PDF in Drive. Called when the worker
+// itself is deleted, so removing a worker doesn't leave an orphaned file in
+// the "Schedule manager APP/Workers" folder. Never blocks worker removal.
+async function gsDeleteWorkerDoc(fileId) {
+  try {
+    await fetch(GS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'deleteWorkerDoc', secret: API_SECRET, fileId })
+    });
+  } catch(e) { console.warn('GS worker doc delete failed:', e); }
+}
+// Older worker records only have docUrl (no docFileId) — Drive file URLs
+// embed the ID as .../d/<id>/... so it can be recovered from the link.
+function extractDriveFileId(url){
+  const m = url && url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : null;
 }
 
 function setSaveStatus(s){
@@ -2707,7 +2736,7 @@ function renderAiResult(p){
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn sm" onclick="aiFillForm101(false,'download')">
           <i class="ti ti-download" style="color:#4f8ef7"></i> Форма 101</button>
-        <button class="btn sm" onclick="aiFillForm101(false,'upload')">
+        <button class="btn sm" onclick="aiFillForm101(false,'upload',window.__aiRescanWorkerId)">
           <i class="ti ti-cloud-upload" style="color:#6dd6a0"></i> Загрузить</button>
       </div>
       <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:6px">
@@ -2745,7 +2774,7 @@ function renderAiResult(p){
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn sm" onclick="aiFillForm101(true,'download')">
           <i class="ti ti-download" style="color:#4f8ef7"></i> Форма 101</button>
-        <button class="btn sm" onclick="aiFillForm101(true,'upload')">
+        <button class="btn sm" onclick="aiFillForm101(true,'upload',window.__aiRescanWorkerId)">
           <i class="ti ti-cloud-upload" style="color:#6dd6a0"></i> Загрузить</button>
       </div>
       <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:6px">
@@ -2797,6 +2826,15 @@ function getSignaturePng(){
   return cv.toDataURL('image/png');
 }
 
+// Opens the AI scan flow tagged to an existing worker, so the resulting
+// upload replaces (not duplicates) that worker's previously stored PDF —
+// see the previousFileId strategy in aiFillForm101. Cleared automatically
+// once the upload lands, or when a fresh untagged scan is started.
+function rescanWorkerDoc(workerId){
+  window.__aiRescanWorkerId=workerId;
+  openAiScan();
+}
+
 function aiToWorker(isId){
   const _v=id=>(document.getElementById(id)?.value||'').replace(/\s+/g,' ').trim();
   const name=(_v('aiGiven')+' '+_v('aiSurname')).trim();
@@ -2808,6 +2846,7 @@ function aiToWorker(isId){
   // readable after this; saveWorker() uses that once the new worker is
   // actually created, to generate+upload the combined PDF and link it back.
   window.__aiPendingWorkerUpload=isId;
+  window.__aiRescanWorkerId=null;
   closeModal('aiScanOverlay');
   openAddWorker();
   setTimeout(()=>{
@@ -3050,22 +3089,30 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     // field themselves using the template's default (non-Hebrew) Helvetica DA.
     form.acroForm.dict.set(PDFLib.PDFName.of('NeedAppearances'), PDFLib.PDFBool.False);
     const out=await doc.save();
-    const fileName='form101_'+(surname||'worker').replace(/[^A-Za-z0-9֐-׿]/g,'')+(no?'_'+no.replace(/\D/g,''):'')+'.pdf';
+    // <docNumber>_<given>_<surname>.pdf — the ID/passport number is the one
+    // stable part across rescans (used by the backend's automatic dedup in
+    // saveWorkerDoc), name parts are just for human-readable browsing in Drive.
+    const fnPart=s=>(s||'').replace(/[^A-Za-z0-9֐-׿]/g,'');
+    const fileName=(no?no.replace(/\D/g,''):'noid')+'_'+fnPart(given||'worker')+(surname?'_'+fnPart(surname):'')+'.pdf';
     if(mode==='upload'){
       const fileBase64=bytesToBase64(out);
+      // Resolve the worker before uploading so a rescan can pass along the
+      // previous file's ID — the OCR'd name/doc-number baked into fileName can
+      // drift between scans, so name-based dedup on the backend alone isn't
+      // reliable; a known previousFileId lets it trash the exact old file.
+      const targetWorkerId=workerId||window.__aiRescanWorkerId||null;
+      const w=targetWorkerId?workers.find(x=>x.id===targetWorkerId):null;
       const resp=await fetch(GS_URL,{
         method:'POST',
-        body:JSON.stringify({action:'saveWorkerDoc',secret:API_SECRET,fileBase64,fileName,mimeType:'application/pdf'})
+        body:JSON.stringify({action:'saveWorkerDoc',secret:API_SECRET,fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null})
       });
       const json=await resp.json();
       if(!json||json.error) throw new Error((json&&json.error)||'Сервер не ответил');
-      if(workerId){
-        const w=workers.find(x=>x.id===workerId);
-        if(w){
-          w.docUrl=json.url; w.docSavedAt=new Date().toISOString();
-          render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
-          showToast('Документы '+(w.name||'')+' сохранены в Google Drive');
-        } else showToast('Файл сохранён в Google Drive');
+      if(w){
+        w.docUrl=json.url; w.docSavedAt=new Date().toISOString(); w.docFileId=json.id;
+        render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
+        showToast('Документы '+(w.name||'')+' сохранены в Google Drive');
+        window.__aiRescanWorkerId=null;
       } else showToast('Файл сохранён в Google Drive');
     } else {
       const blob=new Blob([out],{type:'application/pdf'});

@@ -23,7 +23,7 @@ function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
     // Write actions require the shared secret (deterrent against random writes).
-    const WRITE = ['saveSchedule','savePunch','deletePunch','updatePunch','savePushSubscription','aiReadDoc','saveWorkerDoc'];
+    const WRITE = ['saveSchedule','savePunch','deletePunch','updatePunch','savePushSubscription','aiReadDoc','saveWorkerDoc','deleteWorkerDoc'];
     if (WRITE.indexOf(body.action) !== -1 && body.secret !== API_SECRET) {
       return jsonResponse({error: 'Unauthorized'});
     }
@@ -37,6 +37,7 @@ function doPost(e) {
       case 'logError':             return jsonResponse(logError(body));
       case 'aiReadDoc':            return jsonResponse(aiReadDoc(body));
       case 'saveWorkerDoc':        return jsonResponse(saveWorkerDoc(body));
+      case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body));
       default:                     return jsonResponse({error: 'Unknown action: ' + body.action});
     }
   } catch(e) { return jsonResponse({error: e.toString()}); }
@@ -603,8 +604,31 @@ function saveWorkerDoc(body){
     const subIter = root.getFoldersByName('Workers');
     const folder = subIter.hasNext() ? subIter.next() : root.createFolder('Workers');
 
+    // Prefer trashing the exact previous file by ID (stable across rescans,
+    // where the OCR'd name/doc-number baked into fileName can drift and no
+    // longer match the old file) — fall back to name matching for callers
+    // that don't know their previous file's ID yet.
+    if(body.previousFileId){
+      try{ DriveApp.getFileById(body.previousFileId).setTrashed(true); }catch(e){}
+    }
     const existing = folder.getFilesByName(body.fileName);
     while(existing.hasNext()) existing.next().setTrashed(true);
+    // Automatic dedup: fileName is <docNumber>_<given>_<surname>.pdf (or the
+    // legacy form101_<surname>_<docNumber>.pdf for older uploads) — either way
+    // the ID/passport number is the one part that never changes between
+    // rescans, even when OCR reads the name slightly differently each time.
+    // Trash every other file in the folder sharing that same number so a
+    // rescan can never pile up as a duplicate, regardless of naming drift.
+    const docNumber = extractDocNumberFromFileName(body.fileName);
+    if(docNumber){
+      const all = folder.getFiles();
+      while(all.hasNext()){
+        const f = all.next();
+        if(f.getName() !== body.fileName && extractDocNumberFromFileName(f.getName()) === docNumber){
+          f.setTrashed(true);
+        }
+      }
+    }
 
     const bytes = Utilities.base64Decode(body.fileBase64);
     const blob = Utilities.newBlob(bytes, body.mimeType || 'application/pdf', body.fileName);
@@ -615,6 +639,39 @@ function saveWorkerDoc(body){
     // passport scans), so treat the link itself as something to keep private.
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     return {ok:true, url: file.getUrl(), id: file.getId()};
+  }catch(e){ return {error: e.toString()}; }
+}
+
+// Pulls the longest run of 5+ digits out of a worker doc filename — the
+// ID/passport number, which is the one stable identifier across rescans
+// (names can be OCR'd differently each time, the document number can't).
+function extractDocNumberFromFileName(name){
+  const matches = String(name||'').match(/\d{5,}/g);
+  if(!matches) return null;
+  return matches.reduce((a,b)=>b.length>a.length?b:a, '');
+}
+
+// Trashes a worker's stored PDF from Drive (called when the worker is deleted
+// in the app, so removing a worker doesn't leave orphaned documents behind).
+// Prefers a direct fileId; falls back to looking the file up by name inside
+// the same "Schedule manager APP/Workers" folder used by saveWorkerDoc.
+function deleteWorkerDoc(body){
+  try{
+    if(body.fileId){
+      DriveApp.getFileById(body.fileId).setTrashed(true);
+      return {ok:true};
+    }
+    if(body.fileName){
+      const rootIter = DriveApp.getFoldersByName('Schedule manager APP');
+      if(!rootIter.hasNext()) return {ok:true};
+      const subIter = rootIter.next().getFoldersByName('Workers');
+      if(!subIter.hasNext()) return {ok:true};
+      const folder = subIter.next();
+      const existing = folder.getFilesByName(body.fileName);
+      while(existing.hasNext()) existing.next().setTrashed(true);
+      return {ok:true};
+    }
+    return {error:'Нет fileId или fileName'};
   }catch(e){ return {error: e.toString()}; }
 }
 
