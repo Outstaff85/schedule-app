@@ -619,6 +619,30 @@ function saveWorkerDoc(body){
   }catch(e){ return {error: e.toString()}; }
 }
 
+// Trashes a worker's stored PDF from Drive (called when the worker is deleted
+// in the app, so removing a worker doesn't leave orphaned documents behind).
+// Prefers a direct fileId; falls back to looking the file up by name inside
+// the same "Schedule manager APP/Workers" folder used by saveWorkerDoc.
+function deleteWorkerDoc(body){
+  try{
+    if(body.fileId){
+      DriveApp.getFileById(body.fileId).setTrashed(true);
+      return {ok:true};
+    }
+    if(body.fileName){
+      const rootIter = DriveApp.getFoldersByName('Schedule manager APP');
+      if(!rootIter.hasNext()) return {ok:true};
+      const subIter = rootIter.next().getFoldersByName('Workers');
+      if(!subIter.hasNext()) return {ok:true};
+      const folder = subIter.next();
+      const existing = folder.getFilesByName(body.fileName);
+      while(existing.hasNext()) existing.next().setTrashed(true);
+      return {ok:true};
+    }
+    return {error:'Нет fileId или fileName'};
+  }catch(e){ return {error: e.toString()}; }
+}
+
 // ── Error telemetry ────────────────────────────────────────────────────────────
 // Client-side errors land here so you can see failures without waiting for a complaint.
 function logError(data){
