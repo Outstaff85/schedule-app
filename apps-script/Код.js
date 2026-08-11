@@ -520,11 +520,11 @@ function aiReadDoc(body){
     'if such a section is present and populated, extract each child into the "children" array; if absent or empty, return "children":[]. ' +
     'If a field is not visible or unreadable use empty string. ' +
     'Also include a top-level "imageAlign" object (for both document types) describing how to straighten the ORIGINAL photo: ' +
-    '{"rotate":0,"crop":{"x0":0,"y0":0,"x1":1,"y1":1}} — ' +
+    '{"rotate":0,"crop":{"x0":0,"y0":0,"x1":1,"y1":1},"corners":{"tl":{"x":0,"y":0},"tr":{"x":1,"y":0},"br":{"x":1,"y":1},"bl":{"x":0,"y":1}}} — ' +
     '"rotate" is the clockwise degrees needed to make the document upright and right-reading, and MUST be exactly one of 0, 90, 180, 270 (use 0 if already upright); ' +
-    '"crop" is the document\'s tight bounding box as fractions of the ORIGINAL (pre-rotation) image width/height — x0/y0 the top-left corner, x1/y1 the bottom-right corner, each from 0 to 1 — ' +
-    'excluding background, table, hand, or wallet, but never cutting off any printed text, photo, or edge of the document itself. ' +
-    'If the document already fills the frame, use {"x0":0,"y0":0,"x1":1,"y1":1}. ' +
+    '"corners" are the document\'s four actual physical corners (tl/tr/br/bl = top-left/top-right/bottom-right/bottom-left AS THE DOCUMENT WILL APPEAR AFTER "rotate" is applied, but each point\'s x/y given as fractions, 0 to 1, of the ORIGINAL pre-rotation image width/height) — trace the document\'s true outline even if the photo was taken at an angle (so the four points form a skewed quadrilateral, not necessarily an axis-aligned rectangle), never cutting off any printed text, photo, or edge; ' +
+    '"crop" is a simple axis-aligned bounding box fallback covering the same area (x0/y0 top-left, x1/y1 bottom-right, each 0 to 1, measured against the same pre-rotation image) — kept only for older clients that don\'t use "corners". ' +
+    'If the document already fills the frame, use the full-frame defaults shown above. ' +
     'Return ONLY the JSON object.';
 
   var payload = {
