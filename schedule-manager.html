@@ -2485,10 +2485,9 @@ function alignScanImage(b64,mediaType,align){
 }
 
 // Step 1 of the scan flow: turn whatever the user picked (photo or PDF)
-// into a plain image, then hand off to the manual crop/rotate editor instead
-// of reading it immediately — a document the user has already straightened
-// and tightly framed is much easier for the AI to read accurately than a
-// raw, possibly crooked/cluttered phone photo.
+// into a plain image and read it immediately — the AI itself now proposes
+// the document's corners (imageAlign.corners) in the same OCR call, so
+// there's no need for a separate pre-OCR manual straightening pass.
 async function onScanFileSelected(file){
   if(!file) return;
   const stage=document.getElementById('aiScanStage');
@@ -2515,8 +2514,7 @@ async function onScanFileSelected(file){
       });
       mediaType=file.type||'image/jpeg';
     }
-    window.__scanEdit={b64,mediaType};
-    renderScanEditor();
+    runOcr(b64,mediaType);
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Ошибка: '
@@ -2525,122 +2523,15 @@ async function onScanFileSelected(file){
   }
 }
 
-// Step 2: manual crop/rotate editor. The crop rectangle is tracked in on-
-// screen pixels (window.__cropRect) while dragging, and only converted to
-// fractions of the image when the user confirms.
-function renderScanEditor(){
-  const {b64,mediaType}=window.__scanEdit;
-  const stage=document.getElementById('aiScanStage');
-  stage.innerHTML=`
-    <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Потяни за уголки, чтобы рамка совпала с документом, при необходимости поверни — затем «Готово».</div>
-    <div id="scanEditWrap" style="position:relative;display:inline-block;max-width:100%;touch-action:none;background:#111;line-height:0">
-      <img id="scanEditImg" src="data:${mediaType};base64,${b64}" draggable="false"
-        style="display:block;max-width:100%;max-height:46vh;user-select:none;-webkit-user-drag:none">
-      <div id="scanCropBox" style="position:absolute;border:2px solid #4f8ef7;box-sizing:border-box;background:rgba(79,142,247,0.15);touch-action:none">
-        <div class="scan-handle" data-h="nw"></div><div class="scan-handle" data-h="ne"></div>
-        <div class="scan-handle" data-h="sw"></div><div class="scan-handle" data-h="se"></div>
-      </div>
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-      <button class="btn sm" onclick="rotateScanEdit(270)" title="Повернуть влево"><i class="ti ti-rotate-2"></i></button>
-      <button class="btn sm" onclick="rotateScanEdit(90)" title="Повернуть вправо"><i class="ti ti-rotate-clockwise-2"></i></button>
-      <button class="btn sm" onclick="resetScanCrop()">Сбросить рамку</button>
-    </div>
-    <div class="modal-actions" style="margin-top:14px">
-      <button class="btn" onclick="skipScanEdit()">Пропустить</button>
-      <button class="btn accent" onclick="confirmScanEdit()">Готово</button>
-    </div>`;
-  const img=document.getElementById('scanEditImg');
-  if(img.complete&&img.naturalWidth) initScanCropBox(); else img.onload=initScanCropBox;
-}
-
-function initScanCropBox(){
-  const img=document.getElementById('scanEditImg');
-  if(!img) return;
-  window.__cropRect={left:0,top:0,width:img.clientWidth,height:img.clientHeight,imgW:img.clientWidth,imgH:img.clientHeight};
-  paintCropBox();
-  attachCropDrag();
-}
-function paintCropBox(){
-  const r=window.__cropRect, box=document.getElementById('scanCropBox');
-  if(!box||!r) return;
-  box.style.left=r.left+'px'; box.style.top=r.top+'px';
-  box.style.width=r.width+'px'; box.style.height=r.height+'px';
-}
-function resetScanCrop(){
-  const img=document.getElementById('scanEditImg');
-  if(!img) return;
-  window.__cropRect={left:0,top:0,width:img.clientWidth,height:img.clientHeight,imgW:img.clientWidth,imgH:img.clientHeight};
-  paintCropBox();
-}
-function attachCropDrag(){
-  const box=document.getElementById('scanCropBox');
-  if(!box) return;
-  const MIN=30;
-  const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
-  const startDrag=(startEv,onMove)=>{
-    startEv.preventDefault();
-    const sx=startEv.clientX, sy=startEv.clientY;
-    const r0={...window.__cropRect};
-    const move=e=>{ onMove(e.clientX-sx,e.clientY-sy,r0); paintCropBox(); };
-    const up=()=>{ window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); };
-    window.addEventListener('pointermove',move);
-    window.addEventListener('pointerup',up);
-  };
-  box.addEventListener('pointerdown',e=>{
-    if(e.target.classList.contains('scan-handle')) return;
-    startDrag(e,(dx,dy,r0)=>{
-      const r=window.__cropRect;
-      r.left=clamp(r0.left+dx,0,r0.imgW-r0.width);
-      r.top=clamp(r0.top+dy,0,r0.imgH-r0.height);
-    });
-  });
-  box.querySelectorAll('.scan-handle').forEach(h=>{
-    h.addEventListener('pointerdown',e=>{
-      e.stopPropagation();
-      const which=h.dataset.h;
-      startDrag(e,(dx,dy,r0)=>{
-        const r=window.__cropRect;
-        let {left,top,width,height,imgW,imgH}=r0;
-        if(which==='nw'||which==='sw'){ const nl=clamp(left+dx,0,left+width-MIN); width+=left-nl; left=nl; }
-        if(which==='ne'||which==='se'){ width=clamp(width+dx,MIN,imgW-left); }
-        if(which==='nw'||which==='ne'){ const nt=clamp(top+dy,0,top+height-MIN); height+=top-nt; top=nt; }
-        if(which==='sw'||which==='se'){ height=clamp(height+dy,MIN,imgH-top); }
-        r.left=left; r.top=top; r.width=width; r.height=height;
-      });
-    });
-  });
-}
-async function rotateScanEdit(deg){
-  const {b64,mediaType}=window.__scanEdit;
-  window.__scanEdit=await alignScanImage(b64,mediaType,{rotate:deg,crop:{x0:0,y0:0,x1:1,y1:1}});
-  renderScanEditor();
-}
-async function confirmScanEdit(){
-  const {b64,mediaType}=window.__scanEdit;
-  const r=window.__cropRect;
-  const align=(r&&r.imgW>0&&r.imgH>0)?{rotate:0,crop:{x0:r.left/r.imgW,y0:r.top/r.imgH,x1:(r.left+r.width)/r.imgW,y1:(r.top+r.height)/r.imgH}}:null;
-  const cropped=align?await alignScanImage(b64,mediaType,align):{b64,mediaType};
-  runOcr(cropped.b64,cropped.mediaType,false);
-}
-function skipScanEdit(){
-  const {b64,mediaType}=window.__scanEdit;
-  runOcr(b64,mediaType,true);
-}
-
-// Step 3: send the (by now already straightened) image off to be read.
-// autoAlign is only true when the user skipped the manual editor — if they
-// already cropped/rotated it by hand, that's trusted over the AI's own guess.
-async function runOcr(b64,mediaType,autoAlign){
+// Step 2: send the raw photo/page straight to the AI (rotate/corner guessing
+// happens in the same request as field extraction — no extra Anthropic call).
+async function runOcr(b64,mediaType){
   const stage=document.getElementById('aiScanStage');
   stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
     +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
     +'<span>ИИ читает документ…</span>'
     +'<div class="progress-bar"></div></div>';
   try{
-    // Kept so Form 101 generation can embed the same scan as an extra page —
-    // the AI request below doesn't persist it anywhere on its own.
-    window.__aiScanImage={b64,mediaType};
     const resp=await fetch(GS_URL,{
       method:'POST',
       body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,image:b64,mediaType:mediaType})
@@ -2652,17 +2543,216 @@ async function runOcr(b64,mediaType,autoAlign){
         +'<button class="btn sm" onclick="openAiScan()">Ещё раз</button></div>';
       return;
     }
-    if(autoAlign){
-      const align=json.parsed&&json.parsed.imageAlign;
-      if(align) window.__aiScanImage=await alignScanImage(b64,mediaType,align);
-    }
-    renderAiResult(json.parsed);
+    window.__aiParsed=json.parsed;
+    const align=json.parsed&&json.parsed.imageAlign;
+    const rotateDeg=align&&[0,90,180,270].includes(align.rotate)?align.rotate:0;
+    // Fix gross orientation first so the quad editor below always works on an
+    // upright image — corners (given against the pre-rotation photo) get the
+    // same rotation applied to their coordinates to stay in sync.
+    const upright=rotateDeg?await alignScanImage(b64,mediaType,{rotate:rotateDeg,crop:{x0:0,y0:0,x1:1,y1:1}}):{b64,mediaType};
+    const corners=validQuadCorners(align&&align.corners)
+      ? {tl:rotatePointFrac(align.corners.tl,rotateDeg),tr:rotatePointFrac(align.corners.tr,rotateDeg),
+         br:rotatePointFrac(align.corners.br,rotateDeg),bl:rotatePointFrac(align.corners.bl,rotateDeg)}
+      : {tl:{x:0,y:0},tr:{x:1,y:0},br:{x:1,y:1},bl:{x:0,y:1}};
+    renderScanQuadEditor(upright.b64,upright.mediaType,corners);
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Ошибка: '
       +(err&&err.message||'')+'<br><br>'
       +'<button class="btn sm" onclick="openAiScan()">Ещё раз</button></div>';
   }
+}
+function validQuadCorners(c){
+  if(!c) return false;
+  return [c.tl,c.tr,c.br,c.bl].every(p=>p&&typeof p.x==='number'&&typeof p.y==='number'&&p.x>=-0.1&&p.x<=1.1&&p.y>=-0.1&&p.y<=1.1);
+}
+// 0/90/180/270° rotation of a fraction-space point (x,y in [0,1]), matching
+// the pixel rotation alignScanImage performs on the image itself.
+function rotatePointFrac(pt,deg){
+  const x=pt.x, y=pt.y;
+  switch(((deg%360)+360)%360){
+    case 90: return {x:1-y,y:x};
+    case 180: return {x:1-x,y:1-y};
+    case 270: return {x:y,y:1-x};
+    default: return {x,y};
+  }
+}
+
+// Step 3: corner-adjustment editor, pre-filled with the AI's guess (or a
+// full-frame default) — dragging the 4 handles is always available, "Готово"
+// perspective-warps the quad flat like a scanner, "Пропустить" uses the
+// image as-is.
+function renderScanQuadEditor(b64,mediaType,cornersFrac){
+  window.__scanEdit={b64,mediaType};
+  const stage=document.getElementById('aiScanStage');
+  stage.innerHTML=`
+    <div style="font-size:12px;color:var(--text2);margin-bottom:8px">ИИ подставил рамку по краям документа — потяни за точки, чтобы поправить, затем «Готово».</div>
+    <div id="scanEditWrap" style="position:relative;display:inline-block;max-width:100%;touch-action:none;background:#111;line-height:0">
+      <img id="scanEditImg" src="data:${mediaType};base64,${b64}" draggable="false"
+        style="display:block;max-width:100%;max-height:46vh;user-select:none;-webkit-user-drag:none">
+      <svg id="scanQuadSvg" style="position:absolute;left:0;top:0;width:100%;height:100%;touch-action:none">
+        <polygon id="scanQuadPoly" points="" fill="rgba(79,142,247,0.15)" stroke="#4f8ef7" stroke-width="2"></polygon>
+        <circle class="quad-handle" data-c="tl" r="11"></circle><circle class="quad-handle" data-c="tr" r="11"></circle>
+        <circle class="quad-handle" data-c="br" r="11"></circle><circle class="quad-handle" data-c="bl" r="11"></circle>
+      </svg>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn sm" onclick="rotateScanQuad(270)" title="Повернуть влево"><i class="ti ti-rotate-2"></i></button>
+      <button class="btn sm" onclick="rotateScanQuad(90)" title="Повернуть вправо"><i class="ti ti-rotate-clockwise-2"></i></button>
+    </div>
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn" onclick="skipScanQuad()">Пропустить</button>
+      <button class="btn accent" onclick="confirmScanQuad()">Готово</button>
+    </div>`;
+  const img=document.getElementById('scanEditImg');
+  if(img.complete&&img.naturalWidth) initScanQuad(cornersFrac); else img.onload=()=>initScanQuad(cornersFrac);
+}
+function initScanQuad(cornersFrac){
+  const img=document.getElementById('scanEditImg');
+  if(!img) return;
+  const w=img.clientWidth, h=img.clientHeight;
+  const clamp01=v=>Math.max(0,Math.min(1,typeof v==='number'?v:0));
+  const at=k=>({x:clamp01(cornersFrac[k].x)*w,y:clamp01(cornersFrac[k].y)*h});
+  window.__quadRect={tl:at('tl'),tr:at('tr'),br:at('br'),bl:at('bl'),imgW:w,imgH:h};
+  paintQuad();
+  attachQuadDrag();
+}
+function paintQuad(){
+  const r=window.__quadRect;
+  if(!r) return;
+  const poly=document.getElementById('scanQuadPoly');
+  if(poly) poly.setAttribute('points',[r.tl,r.tr,r.br,r.bl].map(p=>p.x+','+p.y).join(' '));
+  ['tl','tr','br','bl'].forEach(k=>{
+    const c=document.querySelector('.quad-handle[data-c="'+k+'"]');
+    if(c){ c.setAttribute('cx',r[k].x); c.setAttribute('cy',r[k].y); }
+  });
+}
+function attachQuadDrag(){
+  const svg=document.getElementById('scanQuadSvg');
+  if(!svg) return;
+  svg.querySelectorAll('.quad-handle').forEach(h=>{
+    h.addEventListener('pointerdown',e=>{
+      e.preventDefault(); e.stopPropagation();
+      const key=h.dataset.c;
+      const wrap=document.getElementById('scanEditWrap');
+      const move=ev=>{
+        const rect=wrap.getBoundingClientRect();
+        const r=window.__quadRect;
+        r[key]={x:Math.max(0,Math.min(r.imgW,ev.clientX-rect.left)),y:Math.max(0,Math.min(r.imgH,ev.clientY-rect.top))};
+        paintQuad();
+      };
+      const up=()=>{ window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); };
+      window.addEventListener('pointermove',move);
+      window.addEventListener('pointerup',up);
+    });
+  });
+}
+async function rotateScanQuad(deg){
+  const {b64,mediaType}=window.__scanEdit;
+  const r=window.__quadRect;
+  const frac=k=>({x:r[k].x/r.imgW,y:r[k].y/r.imgH});
+  const rotated={tl:rotatePointFrac(frac('tl'),deg),tr:rotatePointFrac(frac('tr'),deg),
+    br:rotatePointFrac(frac('br'),deg),bl:rotatePointFrac(frac('bl'),deg)};
+  const img=await alignScanImage(b64,mediaType,{rotate:deg,crop:{x0:0,y0:0,x1:1,y1:1}});
+  renderScanQuadEditor(img.b64,img.mediaType,rotated);
+}
+async function confirmScanQuad(){
+  const {b64,mediaType}=window.__scanEdit;
+  const r=window.__quadRect;
+  const stage=document.getElementById('aiScanStage');
+  stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
+    +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br><span>Выравниваю скан…</span></div>';
+  try{ window.__aiScanImage=await warpQuadImage(b64,mediaType,r); }
+  catch(e){ console.error(e); window.__aiScanImage={b64,mediaType}; }
+  renderAiResult(window.__aiParsed);
+}
+function skipScanQuad(){
+  window.__aiScanImage=window.__scanEdit;
+  renderAiResult(window.__aiParsed);
+}
+
+// Flattens the quadrilateral the user positioned into a plain rectangular
+// image — a true perspective warp (unlike alignScanImage's rotate+crop),
+// so a document photographed at an angle comes out looking scanner-flat.
+function warpQuadImage(b64,mediaType,quadPx){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        const sx=img.naturalWidth/quadPx.imgW, sy=img.naturalHeight/quadPx.imgH;
+        const toSrc=p=>({x:p.x*sx,y:p.y*sy});
+        const out=warpQuadToRect(img,[toSrc(quadPx.tl),toSrc(quadPx.tr),toSrc(quadPx.br),toSrc(quadPx.bl)]);
+        resolve({b64:out.toDataURL('image/jpeg',0.92).split(',')[1],mediaType:'image/jpeg'});
+      }catch(e){ reject(e); }
+    };
+    img.onerror=()=>reject(new Error('image load failed'));
+    img.src='data:'+mediaType+';base64,'+b64;
+  });
+}
+// Classic "unit square → arbitrary quad" projective mapping (Heckbert):
+// solves the 8-coefficient homography from 4 point correspondences.
+function computeSquareToQuadHomography(quad){
+  const [p0,p1,p2,p3]=quad;
+  const dx1=p1.x-p2.x, dx2=p3.x-p2.x, dx3=p0.x-p1.x+p2.x-p3.x;
+  const dy1=p1.y-p2.y, dy2=p3.y-p2.y, dy3=p0.y-p1.y+p2.y-p3.y;
+  let g=0,h=0;
+  if(Math.abs(dx3)>1e-9||Math.abs(dy3)>1e-9){
+    const det=dx1*dy2-dx2*dy1;
+    g=det?(dx3*dy2-dx2*dy3)/det:0;
+    h=det?(dx1*dy3-dx3*dy1)/det:0;
+  }
+  return {
+    a:p1.x-p0.x+g*p1.x, b:p3.x-p0.x+h*p3.x, c:p0.x,
+    d:p1.y-p0.y+g*p1.y, e:p3.y-p0.y+h*p3.y, f:p0.y,
+    g, h
+  };
+}
+function applyHomography(H,u,v){
+  const denom=H.g*u+H.h*v+1;
+  return {x:(H.a*u+H.b*v+H.c)/denom, y:(H.d*u+H.e*v+H.f)/denom};
+}
+function bilinearSample(data,sw,sh,x,y){
+  const x0=Math.floor(x), y0=Math.floor(y);
+  const x1=Math.min(x0+1,sw-1), y1=Math.min(y0+1,sh-1);
+  const fx=x-x0, fy=y-y0;
+  const idx=(xx,yy)=>(yy*sw+xx)*4;
+  const out=[0,0,0,0];
+  for(let c=0;c<4;c++){
+    const v00=data[idx(x0,y0)+c], v10=data[idx(x1,y0)+c], v01=data[idx(x0,y1)+c], v11=data[idx(x1,y1)+c];
+    out[c]=v00*(1-fx)*(1-fy)+v10*fx*(1-fy)+v01*(1-fx)*fy+v11*fx*fy;
+  }
+  return out;
+}
+function warpQuadToRect(img,quadSrcPx){
+  const sw=img.naturalWidth, sh=img.naturalHeight;
+  const srcCv=document.createElement('canvas'); srcCv.width=sw; srcCv.height=sh;
+  const sctx=srcCv.getContext('2d'); sctx.drawImage(img,0,0);
+  const srcData=sctx.getImageData(0,0,sw,sh).data;
+  const [tl,tr,br,bl]=quadSrcPx;
+  const topLen=Math.hypot(tr.x-tl.x,tr.y-tl.y), botLen=Math.hypot(br.x-bl.x,br.y-bl.y);
+  const leftLen=Math.hypot(bl.x-tl.x,bl.y-tl.y), rightLen=Math.hypot(br.x-tr.x,br.y-tr.y);
+  const MAXDIM=1400;
+  let outW=Math.round((topLen+botLen)/2), outH=Math.round((leftLen+rightLen)/2);
+  const scale=Math.min(1,MAXDIM/Math.max(outW,outH,1));
+  outW=Math.max(20,Math.round(outW*scale)); outH=Math.max(20,Math.round(outH*scale));
+  const H=computeSquareToQuadHomography([tl,tr,br,bl]);
+  const outCv=document.createElement('canvas'); outCv.width=outW; outCv.height=outH;
+  const octx=outCv.getContext('2d');
+  const outData=octx.createImageData(outW,outH);
+  const od=outData.data;
+  for(let j=0;j<outH;j++){
+    const v=j/((outH-1)||1);
+    for(let i=0;i<outW;i++){
+      const u=i/((outW-1)||1);
+      const p=applyHomography(H,u,v);
+      const cx=Math.max(0,Math.min(sw-1,p.x)), cy=Math.max(0,Math.min(sh-1,p.y));
+      const [r,g,b]=bilinearSample(srcData,sw,sh,cx,cy);
+      const o=(j*outW+i)*4;
+      od[o]=r; od[o+1]=g; od[o+2]=b; od[o+3]=255;
+    }
+  }
+  octx.putImageData(outData,0,0);
+  return outCv;
 }
 
 function renderAiResult(p){
