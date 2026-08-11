@@ -3062,7 +3062,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
       if(workerId){
         const w=workers.find(x=>x.id===workerId);
         if(w){
-          w.docUrl=json.url; w.docSavedAt=new Date().toISOString();
+          w.docUrl=json.url; w.docSavedAt=new Date().toISOString(); w.docFileId=json.id;
           render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
           showToast('Документы '+(w.name||'')+' сохранены в Google Drive');
         } else showToast('Файл сохранён в Google Drive');

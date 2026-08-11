@@ -23,7 +23,7 @@ function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
     // Write actions require the shared secret (deterrent against random writes).
-    const WRITE = ['saveSchedule','savePunch','deletePunch','updatePunch','savePushSubscription','aiReadDoc','saveWorkerDoc'];
+    const WRITE = ['saveSchedule','savePunch','deletePunch','updatePunch','savePushSubscription','aiReadDoc','saveWorkerDoc','deleteWorkerDoc'];
     if (WRITE.indexOf(body.action) !== -1 && body.secret !== API_SECRET) {
       return jsonResponse({error: 'Unauthorized'});
     }
@@ -37,6 +37,7 @@ function doPost(e) {
       case 'logError':             return jsonResponse(logError(body));
       case 'aiReadDoc':            return jsonResponse(aiReadDoc(body));
       case 'saveWorkerDoc':        return jsonResponse(saveWorkerDoc(body));
+      case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body));
       default:                     return jsonResponse({error: 'Unknown action: ' + body.action});
     }
   } catch(e) { return jsonResponse({error: e.toString()}); }
@@ -615,6 +616,30 @@ function saveWorkerDoc(body){
     // passport scans), so treat the link itself as something to keep private.
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     return {ok:true, url: file.getUrl(), id: file.getId()};
+  }catch(e){ return {error: e.toString()}; }
+}
+
+// Trashes a worker's stored PDF from Drive (called when the worker is deleted
+// in the app, so removing a worker doesn't leave orphaned documents behind).
+// Prefers a direct fileId; falls back to looking the file up by name inside
+// the same "Schedule manager APP/Workers" folder used by saveWorkerDoc.
+function deleteWorkerDoc(body){
+  try{
+    if(body.fileId){
+      DriveApp.getFileById(body.fileId).setTrashed(true);
+      return {ok:true};
+    }
+    if(body.fileName){
+      const rootIter = DriveApp.getFoldersByName('Schedule manager APP');
+      if(!rootIter.hasNext()) return {ok:true};
+      const subIter = rootIter.next().getFoldersByName('Workers');
+      if(!subIter.hasNext()) return {ok:true};
+      const folder = subIter.next();
+      const existing = folder.getFilesByName(body.fileName);
+      while(existing.hasNext()) existing.next().setTrashed(true);
+      return {ok:true};
+    }
+    return {error:'Нет fileId или fileName'};
   }catch(e){ return {error: e.toString()}; }
 }
 
