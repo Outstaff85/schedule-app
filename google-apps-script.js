@@ -23,7 +23,7 @@ function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
     // Write actions require the shared secret (deterrent against random writes).
-    const WRITE = ['saveSchedule','savePunch','deletePunch','updatePunch','savePushSubscription','aiReadDoc','saveWorkerDoc'];
+    const WRITE = ['saveSchedule','savePunch','deletePunch','updatePunch','savePushSubscription','aiReadDoc','saveWorkerDoc','deleteWorkerDoc'];
     if (WRITE.indexOf(body.action) !== -1 && body.secret !== API_SECRET) {
       return jsonResponse({error: 'Unauthorized'});
     }
