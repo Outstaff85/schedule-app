@@ -2826,6 +2826,15 @@ function getSignaturePng(){
   return cv.toDataURL('image/png');
 }
 
+// Opens the AI scan flow tagged to an existing worker, so the resulting
+// upload replaces (not duplicates) that worker's previously stored PDF —
+// see the previousFileId strategy in aiFillForm101. Cleared automatically
+// once the upload lands, or when a fresh untagged scan is started.
+function rescanWorkerDoc(workerId){
+  window.__aiRescanWorkerId=workerId;
+  openAiScan();
+}
+
 function aiToWorker(isId){
   const _v=id=>(document.getElementById(id)?.value||'').replace(/\s+/g,' ').trim();
   const name=(_v('aiGiven')+' '+_v('aiSurname')).trim();
