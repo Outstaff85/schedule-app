@@ -1142,7 +1142,16 @@ function copyWorkerLink(wid){
     prompt('Copy this link:', link);
   }
 }
-function deleteWorker(wi){ if(!confirm('Remove "'+workers[wi].name+'"?'))return; const n=workers[wi].name; workers.splice(wi,1); render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave(); showToast(n+' removed'); }
+function deleteWorker(wi){
+  const w=workers[wi];
+  if(!confirm('Remove "'+w.name+'"?'))return;
+  const n=w.name;
+  const fileId=w.docFileId||extractDriveFileId(w.docUrl);
+  workers.splice(wi,1);
+  render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
+  showToast(n+' removed');
+  if(fileId) gsDeleteWorkerDoc(fileId);
+}
 function deleteWorkerFromCard(wi){ closeModal('workerCardOverlay'); deleteWorker(wi); }
 
 // --- Client Modal -------------------------------------------------------------
