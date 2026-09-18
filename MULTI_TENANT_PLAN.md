@@ -174,6 +174,11 @@ already-backfilled rows skipped, existing usernames not duplicated).
 **Before running it or shipping this branch**, `SESSION_SECRET` must be set
 in Script Properties (Apps Script editor → Project Settings → Script
 Properties) — `login()`/`requireAuth()` throw a clear error otherwise.
+**Done** (2026-09-18): `SESSION_SECRET` set on the real project
+(scriptId `1um51tx-6A5Ljyz2AqsuOQcJ1eaMVgAiSL3Bbt_pKzCEdvHY1ngG5vvdj`,
+confirmed matching `apps-script/.clasp.json`), via the `stas@odinson.ltd`
+account. Next: run `migrateToMultiTenant(...)` there, then this branch can
+be merged.
 
 ## Drive / Form 101 (Step 3, not yet built)
 
