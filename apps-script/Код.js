@@ -1023,9 +1023,9 @@ function extractDocNumberFromFileName(name){
 
 // Trashes a worker's stored PDF from Drive (called when the worker is deleted
 // in the app, so removing a worker doesn't leave orphaned documents behind).
-// Prefers a direct fileId; falls back to looking the file up by name inside
-// the same "Schedule manager APP/Workers" folder used by saveWorkerDoc.
-// NOTE: `tenantId` reserved for the same per-company-folder follow-up as saveWorkerDoc.
+// Prefers a direct fileId (works regardless of which company folder it's in);
+// falls back to looking the file up by name inside that tenant's own
+// "Schedule manager APP/<CompanyName>/Workers" folder.
 function deleteWorkerDoc(body, tenantId){
   try{
     if(body.fileId){
@@ -1033,11 +1033,7 @@ function deleteWorkerDoc(body, tenantId){
       return {ok:true};
     }
     if(body.fileName){
-      const rootIter = DriveApp.getFoldersByName('Schedule manager APP');
-      if(!rootIter.hasNext()) return {ok:true};
-      const subIter = rootIter.next().getFoldersByName('Workers');
-      if(!subIter.hasNext()) return {ok:true};
-      const folder = subIter.next();
+      const folder = _companyFolder(tenantId);
       const existing = folder.getFilesByName(body.fileName);
       while(existing.hasNext()) existing.next().setTrashed(true);
       return {ok:true};
