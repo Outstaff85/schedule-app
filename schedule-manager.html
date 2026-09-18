@@ -3952,28 +3952,34 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
         page2.drawImage(sigImg,{x:SIG_RECT.x+(SIG_RECT.width-w)/2,y:SIG_RECT.y+(SIG_RECT.height-h)/2,width:w,height:h});
       }catch(e){}
     }
-    // Append the original scanned document (ID/passport photo) as an extra
-    // page, so the worker's whole file — Form 101 + ID copy — is one PDF
-    // instead of two separate downloads. Fit-to-page + a light frame/caption
-    // rather than pasting it in at native size/rotation as-is.
-    if(window.__aiScanImage){
+    // Append scanned page(s) as extra pages, so the worker's whole file —
+    // Form 101 + ID copy (+ any other pages from a multi-file "ready packet"
+    // upload, e.g. a contract) — is one PDF instead of several separate
+    // downloads. Fit-to-page + a light frame/caption rather than pasting in
+    // at native size/rotation as-is. stdFont is plain WinAnsi Helvetica — no
+    // Cyrillic support, so captions are Latin-only regardless of the app's
+    // Russian UI.
+    const appendScanPage=async(b64,mediaType,caption)=>{
       try{
-        const {b64:scanB64,mediaType:scanType}=window.__aiScanImage;
-        const scanBytes=Uint8Array.from(atob(scanB64),c=>c.charCodeAt(0));
-        const scanImg=/png/i.test(scanType)?await doc.embedPng(scanBytes):await doc.embedJpg(scanBytes);
+        const imgBytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
+        const img=/png/i.test(mediaType)?await doc.embedPng(imgBytes):await doc.embedJpg(imgBytes);
         const pw=page1.getWidth(), ph=page1.getHeight();
         const scanPage=doc.addPage([pw,ph]);
         const margin=40, capH=24;
         const maxW=pw-margin*2, maxH=ph-margin*2-capH;
-        const fit=Math.min(maxW/scanImg.width, maxH/scanImg.height, 1);
-        const w=scanImg.width*fit, h=scanImg.height*fit;
+        const fit=Math.min(maxW/img.width, maxH/img.height, 1);
+        const w=img.width*fit, h=img.height*fit;
         const x=(pw-w)/2, y=margin+(maxH-h)/2;
-        // stdFont is plain WinAnsi Helvetica — no Cyrillic support, so the
-        // caption has to be Latin-only regardless of the app's Russian UI.
-        scanPage.drawText('Document scan',{x:margin,y:ph-margin-16,size:12,font:stdFont,color:PDFLib.rgb(0.3,0.3,0.3)});
+        scanPage.drawText(caption,{x:margin,y:ph-margin-16,size:12,font:stdFont,color:PDFLib.rgb(0.3,0.3,0.3)});
         scanPage.drawRectangle({x:x-2,y:y-2,width:w+4,height:h+4,borderColor:PDFLib.rgb(0.7,0.7,0.7),borderWidth:1,color:PDFLib.rgb(1,1,1)});
-        scanPage.drawImage(scanImg,{x,y,width:w,height:h});
+        scanPage.drawImage(img,{x,y,width:w,height:h});
       }catch(e){}
+    };
+    if(window.__aiScanImage){
+      await appendScanPage(window.__aiScanImage.b64,window.__aiScanImage.mediaType,'Document scan');
+    }
+    if(Array.isArray(window.__aiPacketOtherPages)){
+      for(const p of window.__aiPacketOtherPages) await appendScanPage(p.b64,p.mediaType,'Document');
     }
     // Without this, viewers ignore our appearance streams and re-render every
     // field themselves using the template's default (non-Hebrew) Helvetica DA.
