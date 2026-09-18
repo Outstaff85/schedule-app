@@ -751,7 +751,7 @@ async function loadWorkersFromGS(){
       delete window[cb];
     };
     const script = document.createElement('script');
-    script.src = GS_URL+'?action=loadSchedule&callback='+cb+'&t='+Date.now();
+    script.src = GS_URL+'?action=loadSchedule&callback='+cb+'&t='+Date.now()+(URL_TOKEN?'&workerToken='+encodeURIComponent(URL_TOKEN):'');
     script.onerror = ()=>{ resolve(false); delete window[cb]; };
     setTimeout(()=>{ resolve(false); delete window[cb]; }, 8000);
     document.head.appendChild(script);
