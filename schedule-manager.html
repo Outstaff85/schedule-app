@@ -33,11 +33,13 @@
   body{font-family:'DM Sans','Heebo',Arial,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
 
   /* Titlebar / top panel */
-  .titlebar{min-height:54px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:stretch;padding:0 14px;gap:6px;flex-shrink:0;}
+  .titlebar{min-height:54px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:stretch;padding:0 14px;gap:6px;flex-shrink:0;position:relative;}
   .titlebar .brand{display:flex;align-items:center;gap:9px;padding-right:14px;}
   .titlebar .brand img{width:28px;height:28px;border-radius:8px;}
   .titlebar .logo{font-size:16px;font-weight:600;color:var(--text);letter-spacing:-0.3px;align-self:center;white-space:nowrap;}
   .titlebar .logo span{color:var(--accent);}
+  .account-label-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:16px;font-weight:600;color:var(--text);letter-spacing:-0.3px;white-space:nowrap;pointer-events:none;}
+  .account-label-center span{color:var(--accent);}
   .top-tabs{display:flex;gap:2px;align-items:stretch;}
   .ttab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:70px;padding:0 12px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text2);transition:all 0.15s;}
   .ttab .ic{font-size:18px;line-height:1;}
