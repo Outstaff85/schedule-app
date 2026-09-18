@@ -1955,7 +1955,7 @@ async function gsDeleteWorkerDoc(fileId) {
   try {
     await fetch(GS_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'deleteWorkerDoc', secret: API_SECRET, fileId })
+      body: JSON.stringify({ action: 'deleteWorkerDoc', secret: API_SECRET, ...gsAuth(), fileId })
     });
   } catch(e) { console.warn('GS worker doc delete failed:', e); }
 }
