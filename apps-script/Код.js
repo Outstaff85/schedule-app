@@ -57,6 +57,7 @@ function doPost(e) {
       case 'saveWorkerDoc':        return jsonResponse(saveWorkerDoc(body, tenantId));
       case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body, tenantId));
       case 'createUser':           return jsonResponse(createUser(body, auth));
+      case 'updateTenant':         return jsonResponse(updateTenant(body, auth));
       case 'listTenants':          return jsonResponse(listTenants(auth));
       case 'setTenantActive':      return jsonResponse(setTenantActive(body, auth));
       case 'deleteTenant':         return jsonResponse(deleteTenant(body, auth));
