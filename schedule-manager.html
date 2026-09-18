@@ -1885,6 +1885,7 @@ async function renderFirmsList(){
           <div style="font-size:12px;color:var(--text2)">${t.workerCount||0} воркеров · ${t.clientCount||0} клиентов${t.savedAt?' · сохранено '+esc(new Date(t.savedAt).toLocaleString()):''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:4px" onclick="event.stopPropagation()">
+          <button class="btn sm" onclick="openEditFirmForm('${esc(t.tenantId)}')" title="Редактировать"><i class="ti ti-pencil"></i></button>
           <button class="btn sm" onclick="toggleTenantActive('${esc(t.tenantId)}',${t.active===false})" title="${t.active===false?'Включить':'Отключить'}"><i class="ti ti-${t.active===false?'player-play':'player-pause'}"></i></button>
           <button class="btn sm" onclick="confirmDeleteTenant('${esc(t.tenantId)}','${esc(t.companyName||t.tenantId)}')" title="Удалить" style="color:#ff6b78"><i class="ti ti-trash"></i></button>
           <i class="ti ti-chevron-right"></i>
