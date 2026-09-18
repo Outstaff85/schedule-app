@@ -3273,6 +3273,15 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     const INCOME_TYPE_CB={monthly:'cb_p1_4',secondary:'cb_p1_5',partial:'cb_p1_6',daily:'cb_p1_7',pension:'cb_p1_8',scholarship:'cb_p1_9'};
     const incomeCb=targetWorker&&INCOME_TYPE_CB[targetWorker.incomeType];
     if(incomeCb) chk(incomeCb);
+    // "ה. פרטים על הכנסות אחרות" (income from OTHER employers) — same idea,
+    // from the worker's Other-income dropdown. 'none' checks only "אין לי
+    // הכנסות אחרות"; any specific type checks "יש לי הכנסות אחרות" plus that
+    // type's own box (verified against the template's printed glyph
+    // positions — see form101-field-map.md).
+    const OTHER_INCOME_CB={monthly:'cb_p1_13',secondary:'cb_p1_15',partial:'cb_p1_17',daily:'cb_p1_12',pension:'cb_p1_14',scholarship:'cb_p1_16'};
+    const otherType=targetWorker&&targetWorker.otherIncomeType;
+    if(otherType==='none') chk('cb_p1_10');
+    else if(otherType&&OTHER_INCOME_CB[otherType]){ chk('cb_p1_11'); chk(OTHER_INCOME_CB[otherType]); }
     // "תאריך תחילת העבודה בשנת המס" (work start date) has no underlying form
     // field on the template at all — just a printed comb box — so it's drawn
     // by hand.
