@@ -1798,7 +1798,23 @@ function gateApp(runInitApp){
     renderFirmsList();
     return;
   }
+  renderAccountControl(s);
   runInitApp();
+}
+
+// Small titlebar control: who's logged in, and for a super-admin currently
+// viewing one firm, a way back to the Firms list (never shown to a normal
+// tenant login — they have only one firm, nothing to switch to).
+function renderAccountControl(s){
+  const host = document.getElementById('accountControl');
+  if(!host) return;
+  const label = s.role === 'superadmin' ? ('Супер-админ · ' + esc(s.viewingTenantName || s.viewingTenantId || '')) : esc(s.username || '');
+  host.innerHTML = `
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+      <span>${label}</span>
+      ${s.role==='superadmin' ? '<button class="btn sm" onclick="backToFirmsList()"><i class="ti ti-building-skyscraper"></i> Фирмы</button>' : ''}
+      <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i></button>
+    </div>`;
 }
 
 async function renderFirmsList(){
