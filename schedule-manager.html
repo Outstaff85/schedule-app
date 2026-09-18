@@ -2769,7 +2769,7 @@ async function autoPreAlignScan(b64,mediaType){
   try{
     const resp=await fetch(GS_URL,{
       method:'POST',
-      body:JSON.stringify({action:'aiDetectAlign',secret:API_SECRET,image:b64,mediaType:mediaType})
+      body:JSON.stringify({action:'aiDetectAlign',secret:API_SECRET,...gsAuth(),image:b64,mediaType:mediaType})
     });
     const json=await resp.json();
     const align=json&&json.ok&&json.align;
