@@ -262,10 +262,28 @@ function updateTenant(body, auth) {
         const col = headers.indexOf(f);
         if (col !== -1) sh.getRange(i + 1, col + 1).setValue(body[f]);
       });
+      // Keep the firm's Drive folder name in sync with a renamed company —
+      // cheap (a single Drive API call) and a no-op if this tenant has no
+      // Drive folder yet (nothing uploaded so far; the new name is used
+      // whenever the folder is first created, see _companyFolder()).
+      if (body.companyName !== undefined) {
+        try { _syncTenantDriveFolderName(tenantId, body.companyName); } catch (e) {}
+      }
       return { ok: true };
     }
   }
   return { error: 'Фирма не найдена' };
+}
+
+// Renames a tenant's Drive company folder to match a newly-edited
+// companyName. No-op if the tenant has no cached driveFolderId yet.
+function _syncTenantDriveFolderName(tenantId, newCompanyName) {
+  const profile = getTenantProfile(tenantId);
+  const folderId = profile && profile.driveFolderId;
+  if (!folderId) return;
+  const name = String(newCompanyName || '').replace(/\//g, '-').trim() || tenantId;
+  const folder = DriveApp.getFolderById(folderId);
+  if (folder.getName() !== name) folder.setName(name);
 }
 
 // Super-admin only: firms list for the admin "Firms" screen, enriched with
