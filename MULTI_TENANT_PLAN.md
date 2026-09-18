@@ -16,12 +16,37 @@ one without the other breaks the live app for the real "Odinson" tenant.
       `PushSubscriptions`, `login`/`createUser`/`listTenants` actions,
       `migrateToMultiTenant()` one-time migration function.
       (`apps-script/Код.js` / `google-apps-script.js`)
-- [ ] **Step 2 — frontend**: login screen + 24h session in
-      `schedule-manager.html`, super-admin "Firms" screen + switcher,
-      `worker-punch.html` sends its own worker token with every write so the
-      backend can resolve the tenant without a login.
+- [x] **Step 2 — frontend**: login screen (`#loginScreen`) + 24h session
+      (`schedMgr_session` in localStorage) in `schedule-manager.html`;
+      super-admin "Firms" screen (`#firmsScreen`) + create-firm modal
+      (`#createFirmOverlay`) + switcher (`switchToTenant()`/
+      `backToFirmsList()`); every `fetch(GS_URL...)` call site now sends
+      `gsAuth()` (POST body) / `gsAuthQuery()` (GET query string);
+      `worker-punch.html` sends its own worker token (`_wpToken()` —
+      `URL_TOKEN` on a personal link, or the picked worker's own `.token` in
+      the picker-grid flow) as `workerToken` with every read/write. **Known
+      gap**: no proactive redirect-to-login if a session expires mid-use —
+      an expired-session API error currently just fails that one call
+      silently rather than showing the login screen again; a full page
+      reload picks up the expired session correctly via `getSession()`.
+      **Known regression**: the legacy no-token picker-grid flow in
+      `worker-punch.html` (`!URL_TOKEN`) has no per-request way to name a
+      firm and will fail against this backend — every real worker link is a
+      personal token link per `CLAUDE.md`, so this may not matter in
+      practice, but it hasn't been redesigned for multi-tenant.
 - [ ] **Step 3**: Form 101 section א (employer details) filled from the
       tenant's profile; Drive storage split into one folder per firm.
+
+## Testing status
+
+**Not yet tested against a live Apps Script deployment** — this was built
+from a sandboxed environment with no access to the real Google Sheet/Apps
+Script project. Before merging to `main`: deploy this branch's
+`apps-script/Код.js` to a **test** Apps Script project (or a temporary extra
+deployment of the real one) first, set `SESSION_SECRET`, run
+`migrateToMultiTenant(...)` there, and walk through login → Firms → create a
+firm → switch into it → save a schedule → open a worker's punch link →
+clock in/out, before pointing production `GS_URL` at it.
 
 ## Data model
 
