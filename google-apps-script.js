@@ -373,13 +373,14 @@ function deleteTenant(body, auth) {
   const removed = { tenant: false, users: 0, schedule: false, punches: 0, pushSubs: 0, drive: false };
 
   const tenantsSh = ss.getSheetByName(SH_TENANTS);
-  let companyName = tenantId;
+  let companyName = tenantId, driveFolderId = null;
   if (tenantsSh && tenantsSh.getLastRow() > 1) {
     const rows = tenantsSh.getDataRange().getValues();
-    const tCol = rows[0].indexOf('tenantId'), nameCol = rows[0].indexOf('companyName');
+    const tCol = rows[0].indexOf('tenantId'), nameCol = rows[0].indexOf('companyName'), folderCol = rows[0].indexOf('driveFolderId');
     for (let i = rows.length - 1; i >= 1; i--) {
       if (rows[i][tCol] === tenantId) {
         companyName = rows[i][nameCol] || tenantId;
+        if (folderCol !== -1) driveFolderId = rows[i][folderCol] || null;
         tenantsSh.deleteRow(i + 1);
         removed.tenant = true;
       }
