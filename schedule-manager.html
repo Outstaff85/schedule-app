@@ -2956,10 +2956,100 @@ function alignScanImage(b64,mediaType,align){
   });
 }
 
-// Step 1 of the scan flow: turn whatever the user picked (photo or PDF)
-// into a plain image, then auto-straighten it (autoPreAlignScan) before
-// sending it to the full OCR call — a flatter, cropped photo is easier for
-// the AI to read accurately than a raw, angled phone photo.
+// Entry point for the file picker (now `multiple`). A single non-PDF file
+// (the common case — one phone photo of an ID/passport) keeps the exact
+// existing single-photo flow (onScanFileSelected below), including the
+// manual crop/align editor. Anything else — a PDF (one or more pages) or
+// several files at once — is treated as a "ready packet": every page of
+// every file is expanded, classified, and reassembled in aiFillForm101()
+// (a fresh Form 101 is always generated there; any old Form-101-looking
+// page found here is simply dropped, never reused).
+async function onScanFilesSelected(fileList){
+  const files=[...(fileList||[])];
+  if(!files.length) return;
+  const isPdf=f=>f.type==='application/pdf'||/\.pdf$/i.test(f.name||'');
+  if(files.length===1 && !isPdf(files[0])) return onScanFileSelected(files[0]);
+
+  const stage=document.getElementById('aiScanStage');
+  window.__aiScanImage=null;
+  window.__aiPacketOtherPages=[];
+  stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
+    +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
+    +'<span>Читаю файлы…</span></div>';
+  try{
+    await _loadPdfJs();
+    // Expand every selected file into a flat, ordered list of page images
+    // ({b64, mediaType, text}) — text (from pdf.js's own text layer, free/
+    // local) is only used to spot an already-filled Form 101 page below.
+    const items=[];
+    for(const file of files){
+      if(isPdf(file)){
+        const buf=await file.arrayBuffer();
+        const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+        for(let n=1;n<=pdf.numPages;n++){
+          const page=await pdf.getPage(n);
+          const vp=page.getViewport({scale:2.5});
+          const cv=document.createElement('canvas'); cv.width=vp.width; cv.height=vp.height;
+          await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+          let text='';
+          try{ const tc=await page.getTextContent(); text=tc.items.map(it=>it.str).join(' '); }catch(e){}
+          items.push({b64:cv.toDataURL('image/png').split(',')[1], mediaType:'image/png', text});
+        }
+      } else {
+        const b64=await new Promise((res,rej)=>{
+          const r=new FileReader();
+          r.onload=()=>res(r.result.split(',')[1]);
+          r.onerror=rej; r.readAsDataURL(file);
+        });
+        items.push({b64, mediaType:file.type||'image/jpeg', text:''});
+      }
+    }
+    // Classify: drop pages that are already a filled Form 101 (we always
+    // generate our own, see aiFillForm101), find the first ID/passport page
+    // for the worker card, keep everything else ("contract" etc.) as-is.
+    let foundParsed=null;
+    const otherPages=[];
+    for(let i=0;i<items.length;i++){
+      const it=items[i];
+      stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
+        +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
+        +'<span>Читаю страницу '+(i+1)+' из '+items.length+'…</span></div>';
+      if(/כרטיס\s*עובד|0101\/130/.test(it.text||'')) continue; // старая Форма 101 — отбрасываем
+      if(!foundParsed){
+        try{
+          const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
+          const json=await resp.json();
+          const p=json&&json.parsed;
+          if(p&&(p.type==='israeli_id'||p.type==='passport')){
+            foundParsed=p;
+            window.__aiScanImage={b64:it.b64,mediaType:it.mediaType};
+            continue; // эта страница уже сохранена как window.__aiScanImage, в "прочие" не дублируем
+          }
+        }catch(e){ console.error(e); }
+      }
+      otherPages.push({b64:it.b64,mediaType:it.mediaType});
+    }
+    window.__aiPacketOtherPages=otherPages;
+    if(!foundParsed){
+      stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Не нашёл ID/паспорт в загруженных файлах<br><br>'
+        +'<button class="btn sm" onclick="openAiScan()">Ещё раз</button></div>';
+      return;
+    }
+    window.__aiParsed=foundParsed;
+    renderAiResult(foundParsed);
+  }catch(err){
+    console.error(err);
+    stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Ошибка: '
+      +(err&&err.message||'')+'<br><br>'
+      +'<button class="btn sm" onclick="openAiScan()">Ещё раз</button></div>';
+  }
+}
+
+// Step 1 of the single-photo scan flow: turn one picked photo/PDF page into
+// a plain image, then auto-straighten it (autoPreAlignScan) before sending
+// it to the full OCR call — a flatter, cropped photo is easier for the AI
+// to read accurately than a raw, angled phone photo. Reached either directly
+// (a single non-PDF file) or as "Заново" from the multi-file flow above.
 async function onScanFileSelected(file){
   if(!file) return;
   const stage=document.getElementById('aiScanStage');
