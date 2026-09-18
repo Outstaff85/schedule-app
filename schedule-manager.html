@@ -3220,7 +3220,14 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
       }catch(e){}
     };
     setH('surname',surname); setH('given_name',given); setComb('dob',8,dob.replace(/\D/g,''),9);
-    setT('id_top2',no); setComb('tax_year',4,String(new Date().getFullYear()),8);
+    setT('id_top2',no);
+    // The "tax_year" AcroForm field's own rect doesn't match its printed box
+    // on this template (narrower and shifted up relative to the visible
+    // "שנת המס" line), so combing through the field left the year floating
+    // above the box instead of inside it. Hand-drawn at the box's real
+    // coordinates instead, like the other printed-only boxes.
+    const TAX_YEAR_RECT={x:220.4,y:742.49,width:64.9,height:13};
+    drawCombRaw(String(new Date().getFullYear()),4,TAX_YEAR_RECT,11);
     if(sex==='M') chk('sex_male'); else if(sex==='F') chk('sex_female');
     if(isIsraeli){ chk('resident_yes'); chk('resident_h'); }
     else { chk('resident_no'); chk('marital_single'); }
