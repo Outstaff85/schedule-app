@@ -1004,6 +1004,17 @@ function showWorkerModal(w){
       </div>
       <div class="field"><label>Start date</label><input type="date" id="wStartDate" value="${w.startDate||''}"></div>
     </div>
+    <div class="field"><label>Income type (Form 101, section ד)</label>
+      <select id="wIncomeType">
+        <option value="">— not set —</option>
+        <option value="monthly" ${w.incomeType==='monthly'?'selected':''}>Monthly salary (משכורת חודש)</option>
+        <option value="secondary" ${w.incomeType==='secondary'?'selected':''}>Additional-job salary (משכורת בעד משרה נוספת)</option>
+        <option value="partial" ${w.incomeType==='partial'?'selected':''}>Partial salary (משכורת חלקית)</option>
+        <option value="daily" ${(w.incomeType||'daily')==='daily'?'selected':''}>Daily wage (שכר עבודה - עובד יומי)</option>
+        <option value="pension" ${w.incomeType==='pension'?'selected':''}>Pension/stipend (קצבה)</option>
+        <option value="scholarship" ${w.incomeType==='scholarship'?'selected':''}>Scholarship (מלגה)</option>
+      </select>
+    </div>
     <div class="field"><label>Address / ID (Teudat Zehut)</label><input type="text" id="wAddress" value="${w.address||''}" placeholder="Address or ID number"></div>
     <div class="field"><label>Notes</label><textarea id="wNotes" placeholder="Notes about this worker" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;padding:8px 10px;outline:none;min-height:56px;resize:vertical">${w.notes||''}</textarea></div>
     <div class="field"><label>Color</label>
