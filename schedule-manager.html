@@ -3635,7 +3635,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
       const w=targetWorker;
       const resp=await fetch(GS_URL,{
         method:'POST',
-        body:JSON.stringify({action:'saveWorkerDoc',secret:API_SECRET,fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null})
+        body:JSON.stringify({action:'saveWorkerDoc',secret:API_SECRET,...gsAuth(),fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null})
       });
       const json=await resp.json();
       if(!json||json.error) throw new Error((json&&json.error)||'Сервер не ответил');
