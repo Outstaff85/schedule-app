@@ -986,26 +986,47 @@ function openHistory(){
     el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3);font-size:15px">No history yet</div>';
     return;
   }
+  // Pair punches into shifts chronologically — mirrors groupPunchesIntoShifts
+  // in schedule-manager.html (kept in sync per CLAUDE.md's duplication
+  // convention) — and group by the SHIFT's own (IN-punch) date, not each
+  // entry's own calendar day. Grouping by calendar day first (the previous
+  // approach) split an overnight IN→OUT pair into two unpaired halves —
+  // the IN alone on day N with no matching OUT, and the OUT alone on day
+  // N+1 with no matching IN — so an overnight shift's hours silently
+  // vanished from the worker's own history even though they're correctly
+  // counted in the manager's payroll view.
+  const chronoAll=[...wLog].sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+  const shifts=[]; let openShift=null;
+  chronoAll.forEach(e=>{
+    if(e.type==='in'){
+      if(openShift) shifts.push(openShift);
+      openShift={date:new Date(e.ts),entries:[e]};
+    } else {
+      if(!openShift) openShift={date:new Date(e.ts),entries:[]};
+      openShift.entries.push(e);
+      shifts.push(openShift); openShift=null;
+    }
+  });
+  if(openShift) shifts.push(openShift);
   // Group by date
   const byDate={};
-  [...wLog].reverse().forEach(e=>{
-    const d=new Date(e.ts).toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
+  [...shifts].reverse().forEach(sh=>{
+    const d=sh.date.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
     if(!byDate[d]) byDate[d]=[];
-    byDate[d].push(e);
+    byDate[d].push(sh);
   });
   // Calculate total hours per day
-  el.innerHTML=Object.entries(byDate).slice(0,14).map(([date,entries])=>{
-    // Sum each IN→OUT session chronologically (robust to multiple sessions / same-minute punches)
-    const chrono=[...entries].sort((a,b)=>new Date(a.ts)-new Date(b.ts));
-    let hours=0, openIn=null;
-    chrono.forEach(e=>{
-      if(e.type==='in'){ openIn=e; }
-      else if(e.type==='out' && openIn && openIn.time && e.time){
-        const sm=openIn.time.split(':').map(Number), em=e.time.split(':').map(Number);
+  el.innerHTML=Object.entries(byDate).slice(0,14).map(([date,dayShifts])=>{
+    let hours=0;
+    dayShifts.forEach(sh=>{
+      const inE=sh.entries.find(e=>e.type==='in'), outE=sh.entries.find(e=>e.type==='out');
+      if(inE && outE && inE.time && outE.time){
+        const sm=inE.time.split(':').map(Number), em=outE.time.split(':').map(Number);
         let dur=(em[0]*60+em[1])-(sm[0]*60+sm[1]); if(dur<0) dur+=1440;
-        hours+=dur/60; openIn=null;
+        hours+=dur/60;
       }
     });
+    const entries=dayShifts.flatMap(sh=>sh.entries);
     const rows=entries.map(e=>`
       <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
         <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;min-width:44px;text-align:center;${e.type==='in'?'background:rgba(109,214,160,0.12);color:#6dd6a0':'background:rgba(255,79,94,0.12);color:#ff4f5e'}">${e.type==='in'?'IN':'OUT'}</span>
