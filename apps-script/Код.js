@@ -58,6 +58,8 @@ function doPost(e) {
       case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body, tenantId));
       case 'createUser':           return jsonResponse(createUser(body, auth));
       case 'listTenants':          return jsonResponse(listTenants(auth));
+      case 'setTenantActive':      return jsonResponse(setTenantActive(body, auth));
+      case 'deleteTenant':         return jsonResponse(deleteTenant(body, auth));
       default:                     return jsonResponse({error: 'Unknown action: ' + body.action});
     }
   } catch(e) {
