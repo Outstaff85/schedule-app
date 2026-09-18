@@ -8,7 +8,7 @@
     "test": "node test-mistral.js"
   },
   "dependencies": {
-    "@huggingface/inference": "^2.8.1",
+    "@huggingface/inference": "^4.13.30",
     "dotenv": "^16.4.5"
   }
 }
