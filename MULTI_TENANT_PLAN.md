@@ -99,9 +99,9 @@ Three real bugs were caught and fixed this way (all in `schedule-manager.html`):
    `.open` class — so the modal, once opened, could never close. Fixed to
    use `classList.add('open')` like every other overlay in the app.
 
-Before merging to `main`: deploy this branch's
-`apps-script/Код.js` to a **test** Apps Script project (or a temporary extra
-deployment of the real one) first, set `SESSION_SECRET`, run
+**(historical, pre-merge checklist)** Before merging to `main`: deploy this
+branch's `apps-script/Код.js` to a **test** Apps Script project (or a
+temporary extra deployment of the real one) first, set `SESSION_SECRET`, run
 `migrateToMultiTenant(...)` there, and walk through login → Firms → create a
 firm → switch into it → save a schedule → open a worker's punch link →
 clock in/out, before pointing production `GS_URL` at it.
