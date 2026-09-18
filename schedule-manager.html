@@ -1934,7 +1934,7 @@ async function gsDeletePunch(id) {
   try {
     await fetch(GS_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'deletePunch', secret: API_SECRET, id })
+      body: JSON.stringify({ action: 'deletePunch', secret: API_SECRET, ...gsAuth(), id })
     });
   } catch(e) { console.warn('GS delete failed:', e); }
 }
