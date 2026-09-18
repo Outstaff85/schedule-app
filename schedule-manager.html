@@ -667,6 +667,25 @@
   </div>
 </div>
 
+<div class="overlay" id="editFirmOverlay" style="z-index:950" onclick="if(event.target===this)closeModal('editFirmOverlay')">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title">Редактировать фирму</div>
+    <div class="field"><label>Название фирмы</label><input type="text" id="firmEditCompanyName"></div>
+    <div class="field"><label>מספר תיק ניכויים (8 цифр)</label><input type="text" id="firmEditDeductionsNo" maxlength="8" inputmode="numeric"></div>
+    <div class="field"><label>Телефон</label><input type="text" id="firmEditPhone"></div>
+    <div class="field-row">
+      <div class="field"><label>Улица</label><input type="text" id="firmEditStreet"></div>
+      <div class="field"><label>Номер дома</label><input type="text" id="firmEditStreetNumber"></div>
+    </div>
+    <div class="field"><label>Город</label><input type="text" id="firmEditCity"></div>
+    <div id="firmEditFormError" style="color:#ff6b78;font-size:13px;margin:2px 0 6px;min-height:1.2em"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('editFirmOverlay')">Отмена</button>
+      <button class="btn accent" onclick="submitEditFirm()" id="editFirmBtn">Сохранить</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
