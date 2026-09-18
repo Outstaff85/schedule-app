@@ -80,6 +80,29 @@ both halves are live together on `main`.
       not live data). `listTenants()` now also returns `t.active` per firm
       (true if any of its logins are active, or if it has no `Users` rows
       yet at all).
+- [x] **Step 5 — firm profile editing + Drive folder rename fix** (added
+      2026-09-18): super-admin Firms screen gained an edit (pencil) button
+      per row (`openEditFirmForm(tenantId)` / `submitEditFirm()`), calling a
+      new `updateTenant` action — updates the `Tenants` row's `companyName`,
+      `deductionsFileNumber`, `phone`, `street`, `streetNumber`, `city` (not
+      the login itself). This surfaced a real bug: `_companyFolder(tenantId)`
+      resolved the per-tenant Drive folder **by name** on every call, so
+      renaming a firm made the old folder (and every worker doc in it)
+      unreachable — the next save silently created a fresh, empty folder
+      under the new name instead of reusing the old one. Fixed by resolving
+      the company folder by a **stable Drive folder ID** cached on the
+      `Tenants` row (new `driveFolderId` column, backfilled lazily on first
+      use via `_setTenantDriveFolderId()` since `ensureHeaders()` only writes
+      headers to a fully empty sheet). `updateTenant()` also eagerly renames
+      the Drive folder in place via `_syncTenantDriveFolderName()` right
+      after a `companyName` edit (a no-op if the tenant has no folder yet);
+      `_companyFolder()` additionally self-heals the on-disk name on every
+      call as a safety net. `deleteTenant()` now prefers the cached
+      `driveFolderId` too (falling back to a name lookup only for tenants
+      that predate this column). Net effect: renaming a firm renames its
+      existing Drive folder and keeps every previously-uploaded document (and
+      future Form 101 saves) in place — no new folder, no data loss, and the
+      only added cost is one extra cheap Drive lookup per doc save/edit.
 
 ## Testing status
 

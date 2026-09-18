@@ -33,11 +33,13 @@
   body{font-family:'DM Sans','Heebo',Arial,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
 
   /* Titlebar / top panel */
-  .titlebar{min-height:54px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:stretch;padding:0 14px;gap:6px;flex-shrink:0;}
+  .titlebar{min-height:54px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:stretch;padding:0 14px;gap:6px;flex-shrink:0;position:relative;}
   .titlebar .brand{display:flex;align-items:center;gap:9px;padding-right:14px;}
   .titlebar .brand img{width:28px;height:28px;border-radius:8px;}
   .titlebar .logo{font-size:16px;font-weight:600;color:var(--text);letter-spacing:-0.3px;align-self:center;white-space:nowrap;}
   .titlebar .logo span{color:var(--accent);}
+  .account-label-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:16px;font-weight:600;color:var(--text);letter-spacing:-0.3px;white-space:nowrap;pointer-events:none;}
+  .account-label-center span{color:var(--accent);}
   .top-tabs{display:flex;gap:2px;align-items:stretch;}
   .ttab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:70px;padding:0 12px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text2);transition:all 0.15s;}
   .ttab .ic{font-size:18px;line-height:1;}
@@ -208,6 +210,7 @@
     .ttab .ic { font-size: 16px; }
     .ttab .lb { font-size: 11px; }
     .titlebar-actions { margin-left: auto; gap: 4px; flex-wrap: wrap; }
+    .account-label-center { display: none; }
     .save-indicator { font-size: 10px; }
     .btn.sm { font-size: 11px; padding: 5px 10px; min-height: 34px; }
     .dropdown-menu { right: 0; left: auto; min-width: 180px; }
@@ -352,6 +355,7 @@
     <div class="ttab" id="tabClients" onclick="switchTab('clients')"><span class="ic"><i class="ti ti-users"></i></span><span class="lb">Clients</span></div>
     <div class="ttab admin" id="tabAdmin" onclick="switchTab('admin')"><span class="ic"><i class="ti ti-lock"></i></span><span class="lb">Admin</span></div>
   </div>
+  <div id="accountLabelCenter" class="account-label-center"></div>
   <div class="titlebar-actions">
     <div class="save-indicator saved" id="saveIndicator">
       <div class="save-dot"></div><span>Saved</span>
@@ -415,6 +419,12 @@
       <div style="margin-bottom:20px">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"><i class="ti ti-alert-triangle"></i> Should Be Here (Not Clocked In)</div>
         <div id="dashMissing" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px"></div>
+      </div>
+
+      <!-- Contract expiry warnings (hidden unless at least one worker is flagged) -->
+      <div style="margin-bottom:20px;display:none" id="dashExpiringWrap">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"><i class="ti ti-alert-triangle"></i> Истекает срок работы</div>
+        <div id="dashExpiring" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px"></div>
       </div>
 
       <!-- Today's log -->
@@ -810,6 +820,38 @@ function groupPunchesIntoShifts(entries){
 }
 function isMidnight(s,e){ return !!s&&!!e&&toMins(e)<=toMins(s); }
 function workerTotalHours(w){ return w.schedule.reduce((s,sh)=>s+calcHours(sh.start,sh.end),0); }
+
+// ── Contract-expiry warning (per-worker, opt-in) ───────────────────────────────
+// A worker can optionally set expiryMonths (how many months after startDate
+// the deadline hits) and expiryWarnMonths (how many months before the
+// deadline to start warning). Returns null if the feature is off/unset for
+// this worker, or {level:'warning'|'overdue', deadline:Date} otherwise.
+// Single source of truth — used by every badge/section below.
+function workerExpiryStatus(w){
+  if(!w || !w.expiryEnabled || !w.startDate || !w.expiryMonths) return null;
+  const start = new Date(w.startDate+'T00:00:00');
+  if(isNaN(start)) return null;
+  const deadline = new Date(start);
+  deadline.setMonth(deadline.getMonth() + Number(w.expiryMonths));
+  const warnFrom = new Date(deadline);
+  warnFrom.setMonth(warnFrom.getMonth() - Number(w.expiryWarnMonths||0));
+  const now = new Date();
+  if(now >= deadline) return {level:'overdue', deadline};
+  if(now >= warnFrom) return {level:'warning', deadline};
+  return null;
+}
+// Compact inline badge (matches the existing VAC/FIRED badge styling) for
+// the sidebar chip and the Workers table row.
+function expiryBadgeHtml(w){
+  const st = workerExpiryStatus(w);
+  if(!st) return '';
+  const overdue = st.level==='overdue';
+  const color = overdue?'var(--red)':'var(--amber)';
+  const bg = overdue?'var(--red-bg)':'var(--amber-bg)';
+  const label = overdue?'СРОК ИСТЁК':'СКОРО ИСТЕКАЕТ';
+  const dateStr = st.deadline.toLocaleDateString('ru-RU');
+  return `<span title="Срок: ${dateStr}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:${bg};color:${color};margin-left:5px"><i class="ti ti-alert-triangle" style="font-size:9px"></i> ${label}</span>`;
+}
 // ── Pay rules (Israeli labour-law DEFAULTS — VERIFY against your real rules) ──
 // regularMax: hours at base rate. ot1Span: next N hours at the first OT tier.
 // Rates: weekday base x1.0 / OT1 x1.25 / OT2 x1.5 ; Saturday base x1.5 / x1.75 / x2.0.
@@ -957,7 +999,7 @@ function renderWorkerList(){
     const rateStr=w.hourlyRate?(' · ₪'+w.hourlyRate+'/h'):'';
     h+=`<div class="worker-chip">
       <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${ini}</div>
-      <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">FIRED</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">VAC</span>':''}</div><div class="worker-hours">${wh.toFixed(1)}h${rateStr}</div></div>
+      <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">FIRED</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">VAC</span>':''}${expiryBadgeHtml(w)}</div><div class="worker-hours">${wh.toFixed(1)}h${rateStr}</div></div>
       <div class="worker-actions">
         <button class="worker-act-btn edit" onclick="openEditWorker(${wi})" title="Edit"><i class="ti ti-edit"></i></button>
         <button class="worker-act-btn edit" onclick="copyWorkerLink('${w.id}')" title="Copy punch link"><i class="ti ti-link"></i></button>
@@ -1078,6 +1120,18 @@ function showWorkerModal(w){
       <div class="field"><label>Start date</label><input type="date" id="wStartDate" value="${w.startDate||''}"></div>
     </div>
     <div class="field-row">
+      <div class="field" style="display:flex;align-items:flex-end;padding-bottom:9px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400">
+          <input type="checkbox" id="wExpiryEnabled" ${w.expiryEnabled?'checked':''} onchange="toggleExpiryFields()" style="width:auto">
+          Предупреждение об истечении срока
+        </label>
+      </div>
+    </div>
+    <div class="field-row" id="wExpiryFields" style="${w.expiryEnabled?'':'display:none'}">
+      <div class="field"><label>Через сколько месяцев наступает срок</label><input type="number" id="wExpiryMonths" min="1" step="1" value="${w.expiryMonths||9}"></div>
+      <div class="field"><label>За сколько месяцев предупреждать заранее</label><input type="number" id="wExpiryWarnMonths" min="0" step="1" value="${w.expiryWarnMonths??1}"></div>
+    </div>
+    <div class="field-row">
       <div class="field"><label>Income type (Form 101, ד)</label>
         <select id="wIncomeType">
           <option value="">— not set —</option>
@@ -1164,6 +1218,7 @@ function showWorkerModal(w){
 }
 function pickWColor(i){ selColorIdx=i; document.querySelectorAll('#wColorPick [data-ci]').forEach(el=>{ const idx=parseInt(el.dataset.ci); el.style.borderColor=idx===i?'white':'transparent'; el.style.transform=idx===i?'scale(1.2)':'scale(1)'; }); }
 function toggleDayTime(i){ const off=document.getElementById(`wt${i}`).value==='off'; ['ws','we'].forEach(p=>{ const el=document.getElementById(p+i); el.disabled=off; el.style.opacity=off?'0.3':'1'; }); }
+function toggleExpiryFields(){ const on=document.getElementById('wExpiryEnabled').checked; document.getElementById('wExpiryFields').style.display=on?'flex':'none'; }
 function filterClientPick(q){
   q=(q||'').trim().toLowerCase();
   let shown=0;
@@ -1187,6 +1242,9 @@ function saveWorker(){
   const hourlyRate=parseFloat(document.getElementById('wRate')?.value)||0;
   const status=document.getElementById('wStatus')?.value||'active';
   const startDate=document.getElementById('wStartDate')?.value||'';
+  const expiryEnabled=document.getElementById('wExpiryEnabled')?.checked||false;
+  const expiryMonths=parseInt(document.getElementById('wExpiryMonths')?.value)||9;
+  const expiryWarnMonths=parseInt(document.getElementById('wExpiryWarnMonths')?.value)||0;
   const address=document.getElementById('wAddress')?.value.trim()||'';
   const notes=document.getElementById('wNotes')?.value.trim()||'';
   const incomeType=document.getElementById('wIncomeType')?.value||'';
@@ -1194,14 +1252,14 @@ function saveWorker(){
   const clientIds=[...document.querySelectorAll('#wClientPick input:checked')].map(el=>el.value);
   const schedule=DAYS.map((_,i)=>{ const type=document.getElementById(`wt${i}`).value; return {type,start:type==='work'?document.getElementById(`ws${i}`).value:null,end:type==='work'?document.getElementById(`we${i}`).value:null}; });
   if(editingWorkerIdx!==null){
-    workers[editingWorkerIdx]={...workers[editingWorkerIdx],name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,address,notes,incomeType,otherIncomeType,clientIds,schedule};
+    workers[editingWorkerIdx]={...workers[editingWorkerIdx],name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,address,notes,incomeType,otherIncomeType,clientIds,schedule};
     showToast(name+' updated!');
   } else {
     const token=genToken();
     // createdAt powers the Form 101 declaration date (aiFillForm101): the
     // signature date on a scanned worker's PDF should match when they were
     // actually onboarded, not whatever day the PDF happens to be (re)generated.
-    const newWorker={id:uid(),name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,address,notes,incomeType,otherIncomeType,clientIds,schedule,token,createdAt:new Date().toISOString()};
+    const newWorker={id:uid(),name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,address,notes,incomeType,otherIncomeType,clientIds,schedule,token,createdAt:new Date().toISOString()};
     workers.push(newWorker);
     showToast(name+' added! Copy their link from Edit.');
     // If this worker was created from an AI document scan, generate the
@@ -1388,7 +1446,7 @@ function renderWorkersPage(){
     const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
     const objBadges=objs.length?objs.map(o=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${o.color}22;border-radius:10px;margin-right:3px"><span style="width:6px;height:6px;border-radius:50%;background:${o.color}"></span>${esc(o.name)}</span>`).join(''):'<span style="color:var(--text3);font-size:12px">—</span>';
     return `<tr onclick="openWorkerCard(${wi})" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background=''">
-      <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><span style="font-size:13px;font-weight:600">${esc(w.name)}</span></div></td>
+      <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><span style="font-size:13px;font-weight:600">${esc(w.name)}</span>${expiryBadgeHtml(w)}</div></td>
       <td style="padding:10px 12px"><span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col}">${stMeta.label}</span></td>
       <td style="padding:10px 12px">${objBadges}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.phone||'—'}</td>
@@ -1409,6 +1467,7 @@ function openWorkerCard(wi){
   const stMeta=stMetaMap[w.status||'active'];
   const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
   const wh=workerTotalHours(w);
+  const expSt=workerExpiryStatus(w);
   document.getElementById('workerCardModal').innerHTML=`
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
       <div style="width:52px;height:52px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">${ini}</div>
@@ -1423,6 +1482,7 @@ function openWorkerCard(wi){
       ${w.email?`<div><i class="ti ti-mail"></i> ${esc(w.email)}</div>`:''}
       ${w.hourlyRate?`<div><i class="ti ti-coin"></i> ₪${w.hourlyRate}/h</div>`:''}
       ${w.startDate?`<div><i class="ti ti-calendar-event"></i> Started ${w.startDate}</div>`:''}
+      ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?'Срок истёк':'Срок приближается'} — ${expSt.deadline.toLocaleDateString('ru-RU')}</div>`:''}
       ${w.address?`<div><i class="ti ti-id"></i> ${esc(w.address)}</div>`:''}
       <div><i class="ti ti-clock-hour-4"></i> ${wh.toFixed(1)}h scheduled / week</div>
     </div>
@@ -1857,11 +1917,15 @@ function gateApp(runInitApp){
 // tenant login — they have only one firm, nothing to switch to).
 function renderAccountControl(s){
   const host = document.getElementById('accountControl');
+  const labelHost = document.getElementById('accountLabelCenter');
+  if(labelHost){
+    labelHost.innerHTML = s.role === 'superadmin'
+      ? 'Супер-админ <span>' + esc(s.viewingTenantName || s.viewingTenantId || '') + '</span>'
+      : 'Фирма <span>' + esc(s.username || '') + '</span>';
+  }
   if(!host) return;
-  const label = s.role === 'superadmin' ? ('Супер-админ · ' + esc(s.viewingTenantName || s.viewingTenantId || '')) : esc(s.username || '');
   host.innerHTML = `
     <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
-      <span>${label}</span>
       ${s.role==='superadmin' ? '<button class="btn sm" onclick="backToFirmsList()"><i class="ti ti-building-skyscraper"></i> Фирмы</button>' : ''}
       <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i></button>
     </div>`;
@@ -2298,6 +2362,28 @@ function renderDashboard(){
     }).join('');
   } else {
     missingEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">Everyone is present <i class="ti ti-check"></i></div>`;
+  }
+
+  // ── Contract-expiry warnings ─────────────────────────────────────────────
+  const expiring = workers.map(w=>({w, st:workerExpiryStatus(w)})).filter(x=>x.st);
+  const expiringWrap = document.getElementById('dashExpiringWrap');
+  expiringWrap.style.display = expiring.length ? 'block' : 'none';
+  if(expiring.length){
+    document.getElementById('dashExpiring').innerHTML = expiring.map(({w,st})=>{
+      const c=WORKER_COLORS[w.colorIdx%8], ini=w.name.slice(0,2).toUpperCase();
+      const overdue = st.level==='overdue';
+      const borderCol = overdue?'rgba(248,113,113,0.25)':'rgba(245,166,35,0.25)';
+      const dotCol = overdue?'var(--red)':'var(--amber)';
+      const textCol = overdue?'var(--red)':'var(--amber)';
+      return `<div style="background:var(--bg2);border:1px solid ${borderCol};border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
+        <div style="width:40px;height:40px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;position:relative">
+          ${ini}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:${dotCol};border:2px solid var(--bg2)"></span>
+        </div>
+        <div style="font-size:13px;font-weight:600">${esc(w.name)}</div>
+        <div style="font-size:11px;color:${textCol}">${overdue?'Срок истёк':'Срок приближается'}</div>
+        <div style="font-size:10px;color:var(--text3)">${st.deadline.toLocaleDateString('ru-RU')}</div>
+      </div>`;
+    }).join('');
   }
 
   // ── Today's punch log ───────────────────────────────────────────────────
