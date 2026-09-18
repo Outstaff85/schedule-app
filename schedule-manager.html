@@ -3184,7 +3184,11 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
         if(onStream&&'contents' in onStream) onStream.contents=new Uint8Array(0);
         const r=widget.getRectangle();
         const thickness=Math.max(1.1,r.height*0.16);
-        const pt=(fx,fy)=>({x:r.x+fx*r.width,y:r.y+fy*r.height});
+        // Nudge the whole checkmark ~1 CSS px right+up (0.75pt @72dpi) so it
+        // sits centered inside the printed box outline instead of reading
+        // slightly low/left of it.
+        const NUDGE=0.75;
+        const pt=(fx,fy)=>({x:r.x+fx*r.width+NUDGE,y:r.y+fy*r.height+NUDGE});
         const p1=pt(0.12,0.55), p2=pt(0.40,0.18), p3=pt(0.88,0.82);
         targetPage.drawLine({start:p1,end:p2,thickness,color:CHECK_BLUE,lineCap:PDFLib.LineCapStyle.Round});
         targetPage.drawLine({start:p2,end:p3,thickness,color:CHECK_BLUE,lineCap:PDFLib.LineCapStyle.Round});
