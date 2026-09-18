@@ -5,6 +5,12 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '..', 'To
 
 const { InferenceClient } = require('@huggingface/inference');
 
+// NOTE: as of this writing, mistralai/Mistral-7B-Instruct-v0.3's only listed
+// Inference Provider (novita) shows status "error" on Hugging Face's side —
+// requests to it currently fail with "not a chat model" regardless of this
+// script. Verified the token/network/SDK all work correctly against a model
+// with a live provider (meta-llama/Llama-3.1-8B-Instruct); swap MODEL below
+// if this one is still down when you run it.
 const MODEL = 'mistralai/Mistral-7B-Instruct-v0.3';
 
 async function main() {
