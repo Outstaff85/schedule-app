@@ -465,15 +465,25 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;
 function getQueue(){ try{return JSON.parse(localStorage.getItem(QUEUE_KEY)||'[]');}catch(e){return[];} }
 function saveQueue(q){ localStorage.setItem(QUEUE_KEY,JSON.stringify(q)); }
 
+// Multi-tenant: the backend has no login for workers, so it resolves which
+// firm a punch belongs to from the worker's OWN per-worker link token —
+// URL_TOKEN on a personal link, or the picked worker's own token in the
+// (legacy, no-token) picker-grid flow. Queued/offline entries carry their
+// own token so a flush after switching links still posts to the right firm.
+function _wpToken(){
+  return (typeof selectedWorker!=='undefined' && selectedWorker && selectedWorker.token) || URL_TOKEN || null;
+}
+
 async function gsSavePunch(entry){
   if(!navigator.onLine){ queueEntry(entry); return; }
   try{
-    const res=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'savePunch',secret:API_SECRET,data:entry})});
+    const res=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'savePunch',secret:API_SECRET,workerToken:entry.workerToken||_wpToken(),data:entry})});
     await res.json();
   }catch(e){ queueEntry(entry); }
 }
 
 function queueEntry(entry){
+  entry.workerToken = entry.workerToken || _wpToken();
   const q=getQueue(); q.push(entry); saveQueue(q);
   showOfflineBadge(q.length);
 }
@@ -483,7 +493,7 @@ async function flushQueue(){
   if(!q.length||!navigator.onLine) return;
   const failed=[];
   for(const e of q){
-    try{ const r=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'savePunch',secret:API_SECRET,data:e})}); await r.json(); }
+    try{ const r=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'savePunch',secret:API_SECRET,workerToken:e.workerToken||_wpToken(),data:e})}); await r.json(); }
     catch(err){ failed.push(e); }
   }
   saveQueue(failed);
