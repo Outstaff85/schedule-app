@@ -613,6 +613,22 @@
   <div class="modal" id="manualPunchModal" style="max-width:440px"></div>
 </div>
 
+<!-- Login gate: full-screen, opaque, above everything else. Shown by JS at
+     startup when there's no valid (non-expired) session; hides + the normal
+     app init runs only after a successful login. -->
+<div id="loginScreen" style="display:none;position:fixed;inset:0;z-index:1000;background:var(--bg1);align-items:center;justify-content:center">
+  <div style="width:100%;max-width:340px;padding:24px">
+    <div style="text-align:center;margin-bottom:22px">
+      <i class="ti ti-calendar-stats" style="font-size:32px;color:var(--accent)"></i>
+      <div style="font-size:19px;font-weight:700;margin-top:8px">Schedule Manager</div>
+    </div>
+    <div class="field"><label>Логин</label><input type="text" id="loginUsername" autocomplete="username" autofocus></div>
+    <div class="field"><label>Пароль</label><input type="password" id="loginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogin()"></div>
+    <div id="loginError" style="color:#ff6b78;font-size:13px;margin:2px 0 10px;min-height:1.2em"></div>
+    <button class="btn accent" style="width:100%" onclick="submitLogin()" id="loginBtn">Войти</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
