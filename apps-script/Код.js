@@ -57,6 +57,7 @@ function doPost(e) {
       case 'saveWorkerDoc':        return jsonResponse(saveWorkerDoc(body, tenantId));
       case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body, tenantId));
       case 'createUser':           return jsonResponse(createUser(body, auth));
+      case 'updateTenant':         return jsonResponse(updateTenant(body, auth));
       case 'listTenants':          return jsonResponse(listTenants(auth));
       case 'setTenantActive':      return jsonResponse(setTenantActive(body, auth));
       case 'deleteTenant':         return jsonResponse(deleteTenant(body, auth));
@@ -239,6 +240,32 @@ function createUser(body, auth) {
   usersSh.appendRow([userId, username, hashPassword(password, salt), salt, 'tenant', tenantId, true, now]);
 
   return { ok: true, userId: userId, tenantId: tenantId };
+}
+
+// Super-admin only: edits an existing firm's Tenants profile row (company
+// name, deductions file number, phone, address) — everything the create-firm
+// form collects except the login (username/password are not touched here).
+function updateTenant(body, auth) {
+  if (!auth.isSuperadmin) return { error: 'Только супер-админ может редактировать фирмы' };
+  const tenantId = body.tenantId;
+  if (!tenantId) return { error: 'Нет tenantId' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_TENANTS);
+  if (!sh || sh.getLastRow() < 2) return { error: 'Фирма не найдена' };
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const tCol = headers.indexOf('tenantId');
+  const fields = ['companyName', 'deductionsFileNumber', 'phone', 'street', 'streetNumber', 'city'];
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][tCol] === tenantId) {
+      fields.forEach(function(f) {
+        if (body[f] === undefined) return;
+        const col = headers.indexOf(f);
+        if (col !== -1) sh.getRange(i + 1, col + 1).setValue(body[f]);
+      });
+      return { ok: true };
+    }
+  }
+  return { error: 'Фирма не найдена' };
 }
 
 // Super-admin only: firms list for the admin "Firms" screen, enriched with
