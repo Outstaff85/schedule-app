@@ -2553,8 +2553,9 @@ async function autoPreAlignScan(b64,mediaType){
       im.src='data:'+upright.mediaType+';base64,'+upright.b64;
     });
     if(!dims) return upright;
+    const refined=await refineQuadCorners(upright.b64,upright.mediaType,corners);
     const toPx=p=>({x:p.x*dims.w,y:p.y*dims.h});
-    const quadPx={tl:toPx(corners.tl),tr:toPx(corners.tr),br:toPx(corners.br),bl:toPx(corners.bl),imgW:dims.w,imgH:dims.h};
+    const quadPx={tl:toPx(refined.tl),tr:toPx(refined.tr),br:toPx(refined.br),bl:toPx(refined.bl),imgW:dims.w,imgH:dims.h};
     return await warpQuadImage(upright.b64,upright.mediaType,quadPx);
   }catch(e){
     console.error(e);
