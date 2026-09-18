@@ -1882,7 +1882,7 @@ async function gsSave(data) {
 
 async function gsLoad() {
   try {
-    const res = await fetch(GS_URL + '?action=loadSchedule');
+    const res = await fetch(GS_URL + '?action=loadSchedule' + gsAuthQuery());
     const json = await res.json();
     if (json.workers){ lastLoadedSavedAt = json.savedAt || null; return json; }
     return null;
