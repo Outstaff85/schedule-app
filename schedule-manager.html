@@ -1860,12 +1860,16 @@ async function renderFirmsList(){
     __firmsCache = tenants;
     if(!tenants.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Фирм ещё нет — создайте первую.</div>'; return; }
     listEl.innerHTML = tenants.map(t => `
-      <div class="row" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);cursor:pointer" onclick="switchToTenant('${esc(t.tenantId)}')">
+      <div class="row" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);cursor:pointer;${t.active===false?'opacity:0.55':''}" onclick="switchToTenant('${esc(t.tenantId)}')">
         <div>
-          <div style="font-weight:600">${esc(t.companyName || '(без названия)')}</div>
+          <div style="font-weight:600">${esc(t.companyName || '(без названия)')}${t.active===false?' <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px">отключена</span>':''}</div>
           <div style="font-size:12px;color:var(--text2)">${t.workerCount||0} воркеров · ${t.clientCount||0} клиентов${t.savedAt?' · сохранено '+esc(new Date(t.savedAt).toLocaleString()):''}</div>
         </div>
-        <i class="ti ti-chevron-right"></i>
+        <div style="display:flex;align-items:center;gap:4px" onclick="event.stopPropagation()">
+          <button class="btn sm" onclick="toggleTenantActive('${esc(t.tenantId)}',${t.active===false})" title="${t.active===false?'Включить':'Отключить'}"><i class="ti ti-${t.active===false?'player-play':'player-pause'}"></i></button>
+          <button class="btn sm" onclick="confirmDeleteTenant('${esc(t.tenantId)}','${esc(t.companyName||t.tenantId)}')" title="Удалить" style="color:#ff6b78"><i class="ti ti-trash"></i></button>
+          <i class="ti ti-chevron-right"></i>
+        </div>
       </div>`).join('');
   }catch(e){ listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
 }

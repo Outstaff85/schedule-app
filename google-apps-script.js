@@ -58,6 +58,8 @@ function doPost(e) {
       case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body, tenantId));
       case 'createUser':           return jsonResponse(createUser(body, auth));
       case 'listTenants':          return jsonResponse(listTenants(auth));
+      case 'setTenantActive':      return jsonResponse(setTenantActive(body, auth));
+      case 'deleteTenant':         return jsonResponse(deleteTenant(body, auth));
       default:                     return jsonResponse({error: 'Unknown action: ' + body.action});
     }
   } catch(e) {
@@ -257,6 +259,18 @@ function listTenants(auth) {
   if (schSh && schSh.getLastRow() > 1) {
     schSh.getDataRange().getValues().slice(1).forEach(function(r) { byTenant[r[0]] = r; });
   }
+  // A tenant is "active" if it has at least one active login; a tenant with
+  // no Users row yet (shouldn't normally happen) reads as active by default.
+  const usersSh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_USERS);
+  const activeByTenant = {};
+  if (usersSh && usersSh.getLastRow() > 1) {
+    const uRows = usersSh.getDataRange().getValues();
+    const uHeaders = uRows[0];
+    const tCol = uHeaders.indexOf('tenantId'), aCol = uHeaders.indexOf('active');
+    uRows.slice(1).forEach(function(r) {
+      if (r[tCol]) activeByTenant[r[tCol]] = activeByTenant[r[tCol]] || r[aCol] === true;
+    });
+  }
   tenants.forEach(function(t) {
     const row = byTenant[t.tenantId];
     let workers = [], clients = [];
@@ -267,8 +281,110 @@ function listTenants(auth) {
     t.workerCount = workers.length;
     t.clientCount = clients.length;
     t.savedAt = row ? row[4] : null;
+    t.active = t.tenantId in activeByTenant ? activeByTenant[t.tenantId] : true;
   });
   return { tenants: tenants };
+}
+
+// Super-admin only: flips every login belonging to a firm active/inactive —
+// reversible. A deactivated login is rejected at login() ("Аккаунт отключён")
+// but all of that firm's data (schedule, punches, Drive docs) is untouched.
+// NOTE: an already-issued session token for that user keeps working until it
+// naturally expires (up to 24h) — sessions are stateless (see MULTI_TENANT_PLAN.md),
+// so there's no live revocation list to check on every request.
+function setTenantActive(body, auth) {
+  if (!auth.isSuperadmin) return { error: 'Только супер-админ' };
+  const tenantId = body.tenantId;
+  if (!tenantId) return { error: 'Нет tenantId' };
+  const active = !!body.active;
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_USERS);
+  if (!sh || sh.getLastRow() < 2) return { error: 'Нет пользователей' };
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const tCol = headers.indexOf('tenantId'), activeCol = headers.indexOf('active');
+  let updated = 0;
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][tCol] === tenantId) {
+      sh.getRange(i + 1, activeCol + 1).setValue(active);
+      updated++;
+    }
+  }
+  return { ok: true, updated: updated, active: active };
+}
+
+// Super-admin only: PERMANENTLY deletes a firm — its Tenants profile, every
+// Users login, its Schedule row, every PunchLog/PushSubscriptions row it
+// owns, and its Drive folder ("Schedule manager APP/<CompanyName>", trashed
+// — recoverable from Drive Trash for the usual ~30 days, same as any other
+// Drive delete, but not from within this app). Irreversible from the app's
+// own point of view. Backups rows are intentionally left alone — they're
+// dated snapshots, not live data, and pruning them isn't worth the risk of
+// deleting the wrong tenant's history by mistake.
+function deleteTenant(body, auth) {
+  if (!auth.isSuperadmin) return { error: 'Только супер-админ' };
+  const tenantId = body.tenantId;
+  if (!tenantId) return { error: 'Нет tenantId' };
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const removed = { tenant: false, users: 0, schedule: false, punches: 0, pushSubs: 0, drive: false };
+
+  const tenantsSh = ss.getSheetByName(SH_TENANTS);
+  let companyName = tenantId;
+  if (tenantsSh && tenantsSh.getLastRow() > 1) {
+    const rows = tenantsSh.getDataRange().getValues();
+    const tCol = rows[0].indexOf('tenantId'), nameCol = rows[0].indexOf('companyName');
+    for (let i = rows.length - 1; i >= 1; i--) {
+      if (rows[i][tCol] === tenantId) {
+        companyName = rows[i][nameCol] || tenantId;
+        tenantsSh.deleteRow(i + 1);
+        removed.tenant = true;
+      }
+    }
+  }
+
+  const usersSh = ss.getSheetByName(SH_USERS);
+  if (usersSh && usersSh.getLastRow() > 1) {
+    const rows = usersSh.getDataRange().getValues();
+    const tCol = rows[0].indexOf('tenantId');
+    for (let i = rows.length - 1; i >= 1; i--) {
+      if (rows[i][tCol] === tenantId) { usersSh.deleteRow(i + 1); removed.users++; }
+    }
+  }
+
+  const schSh = ss.getSheetByName(SH_SCHEDULE);
+  if (schSh && schSh.getLastRow() > 1) {
+    const rows = schSh.getDataRange().getValues();
+    for (let i = rows.length - 1; i >= 1; i--) {
+      if (rows[i][0] === tenantId) { schSh.deleteRow(i + 1); removed.schedule = true; }
+    }
+  }
+
+  const punchSh = ss.getSheetByName(SH_PUNCHLOG);
+  if (punchSh && punchSh.getLastRow() > 1) {
+    const rows = punchSh.getDataRange().getValues();
+    const tCol = rows[0].indexOf('TenantId');
+    for (let i = rows.length - 1; i >= 1; i--) {
+      if (tCol !== -1 && rows[i][tCol] === tenantId) { punchSh.deleteRow(i + 1); removed.punches++; }
+    }
+  }
+
+  const pushSh = ss.getSheetByName(SH_PUSH);
+  if (pushSh && pushSh.getLastRow() > 1) {
+    const rows = pushSh.getDataRange().getValues();
+    const tCol = rows[0].indexOf('TenantId');
+    for (let i = rows.length - 1; i >= 1; i--) {
+      if (tCol !== -1 && rows[i][tCol] === tenantId) { pushSh.deleteRow(i + 1); removed.pushSubs++; }
+    }
+  }
+
+  try {
+    const rootIter = DriveApp.getFoldersByName('Schedule manager APP');
+    if (rootIter.hasNext()) {
+      const companyIter = rootIter.next().getFoldersByName(companyName);
+      if (companyIter.hasNext()) { companyIter.next().setTrashed(true); removed.drive = true; }
+    }
+  } catch (e) {}
+
+  return { ok: true, removed: removed };
 }
 
 // Resolves a tenant from a WORKER's own per-worker punch-link token (the `t=`
