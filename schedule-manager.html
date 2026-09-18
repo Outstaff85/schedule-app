@@ -1840,7 +1840,9 @@ async function renderFirmsList(){
 function openCreateFirmForm(){
   ['firmUsername','firmPassword','firmCompanyName','firmDeductionsNo','firmPhone','firmStreet','firmStreetNumber','firmCity'].forEach(id => { document.getElementById(id).value=''; });
   document.getElementById('firmFormError').textContent = '';
-  document.getElementById('createFirmOverlay').style.display = 'flex';
+  // Shown/hidden via the .open class (closeModal() only ever removes that
+  // class) — matching every other overlay in the app, not an inline style.
+  document.getElementById('createFirmOverlay').classList.add('open');
 }
 async function submitCreateFirm(){
   const get = id => document.getElementById(id).value.trim();
