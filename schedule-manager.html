@@ -1488,7 +1488,7 @@ function openWorkerCard(wi){
       ${w.phone?`<div><i class="ti ti-phone"></i> ${esc(w.phone)}</div>`:''}
       ${w.email?`<div><i class="ti ti-mail"></i> ${esc(w.email)}</div>`:''}
       ${w.hourlyRate?`<div><i class="ti ti-coin"></i> ₪${w.hourlyRate}/h</div>`:''}
-      ${w.startDate?`<div><i class="ti ti-calendar-event"></i> Started ${w.startDate}</div>`:''}
+      ${w.startDate?`<div><i class="ti ti-calendar-event"></i> Started ${fmtDMY(w.startDate)}</div>`:''}
       ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?'Срок истёк':'Срок приближается'} — ${expSt.deadline.toLocaleDateString('ru-RU')}</div>`:''}
       ${w.address?`<div><i class="ti ti-id"></i> ${esc(w.address)}</div>`:''}
       <div><i class="ti ti-clock-hour-4"></i> ${wh.toFixed(1)}h scheduled / week</div>
