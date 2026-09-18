@@ -34,16 +34,34 @@ one without the other breaks the live app for the real "Odinson" tenant.
       firm and will fail against this backend — every real worker link is a
       personal token link per `CLAUDE.md`, so this may not matter in
       practice, but it hasn't been redesigned for multi-tenant.
-- [ ] **Step 3**: Form 101 section א (employer details) filled from the
-      tenant's profile; Drive storage split into one folder per firm.
+- [x] **Step 3**: Form 101 section א filled from the tenant's profile —
+      verified this template's section א also has zero real AcroForm fields
+      (same technique as `form101-field-map.md`'s other hand-drawn boxes),
+      hand-drawn via a small IIFE in `aiFillForm101()` right after
+      `TAX_YEAR_RECT`. Row native y=659.89–673.89 (height 14), columns
+      right-to-left: `NAME_RECT` (x 414.9–540.4, שם), `ADDRESS_RECT` (x
+      209.0–414.9, כתובת — `street + streetNumber + ', ' + city`), `PHONE_RECT`
+      (x 130.3–209.0, מספר טלפון), `DEDUCTIONS_RECT` (x 39.9–130.3, מספר תיק
+      ניכויים — 8-digit comb; the template already prints a fixed leading
+      "9", so the 8 comb cells are the user-entered digits after it). Reads
+      `getSession().viewingTenantProfile || tenantProfile` — the former is
+      cached by `switchToTenant()` from the already-fetched Firms list (a
+      super-admin's own login never carries a `tenantProfile`, since they
+      have no fixed tenant of their own); the latter comes from `login()` for
+      a normal tenant user. Drive storage: `saveWorkerDoc`/`deleteWorkerDoc`
+      now resolve a per-tenant `Schedule manager APP/<CompanyName>/Workers`
+      folder server-side via `_companyFolder(tenantId)` (company name read
+      from `Tenants`, never trusted from the client); the PDF filename also
+      gains a `_<CompanyName>` suffix for human browsing in Drive.
 
 ## Testing status
 
-**Steps 1-2 verified** — no access to the real Google Sheet from this
+**Steps 1-3 verified** — no access to the real Google Sheet/Drive from this
 environment, so instead: (1) a GAS environment shim (`SpreadsheetApp`/
-`Utilities`/`PropertiesService`/`ContentService` stubbed over in-memory
-state) runs the **actual** `apps-script/Код.js` unmodified under Node; 52
-automated checks cover login, session tokens (tampered/expired rejected),
+`Utilities`/`PropertiesService`/`ContentService`/`DriveApp` stubbed over
+in-memory state) runs the **actual** `apps-script/Код.js` unmodified under
+Node; 64 automated checks cover login, session tokens (tampered/expired
+rejected),
 superadmin vs tenant authorization, migration idempotency, and — the
 critical one — that one firm can never read or edit another firm's
 schedule/punches (including a direct attempt to delete another tenant's
