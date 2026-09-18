@@ -814,6 +814,38 @@ function groupPunchesIntoShifts(entries){
 }
 function isMidnight(s,e){ return !!s&&!!e&&toMins(e)<=toMins(s); }
 function workerTotalHours(w){ return w.schedule.reduce((s,sh)=>s+calcHours(sh.start,sh.end),0); }
+
+// ── Contract-expiry warning (per-worker, opt-in) ───────────────────────────────
+// A worker can optionally set expiryMonths (how many months after startDate
+// the deadline hits) and expiryWarnMonths (how many months before the
+// deadline to start warning). Returns null if the feature is off/unset for
+// this worker, or {level:'warning'|'overdue', deadline:Date} otherwise.
+// Single source of truth — used by every badge/section below.
+function workerExpiryStatus(w){
+  if(!w || !w.expiryEnabled || !w.startDate || !w.expiryMonths) return null;
+  const start = new Date(w.startDate+'T00:00:00');
+  if(isNaN(start)) return null;
+  const deadline = new Date(start);
+  deadline.setMonth(deadline.getMonth() + Number(w.expiryMonths));
+  const warnFrom = new Date(deadline);
+  warnFrom.setMonth(warnFrom.getMonth() - Number(w.expiryWarnMonths||0));
+  const now = new Date();
+  if(now >= deadline) return {level:'overdue', deadline};
+  if(now >= warnFrom) return {level:'warning', deadline};
+  return null;
+}
+// Compact inline badge (matches the existing VAC/FIRED badge styling) for
+// the sidebar chip and the Workers table row.
+function expiryBadgeHtml(w){
+  const st = workerExpiryStatus(w);
+  if(!st) return '';
+  const overdue = st.level==='overdue';
+  const color = overdue?'var(--red)':'var(--amber)';
+  const bg = overdue?'var(--red-bg)':'var(--amber-bg)';
+  const label = overdue?'СРОК ИСТЁК':'СКОРО ИСТЕКАЕТ';
+  const dateStr = st.deadline.toLocaleDateString('ru-RU');
+  return `<span title="Срок: ${dateStr}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:${bg};color:${color};margin-left:5px"><i class="ti ti-alert-triangle" style="font-size:9px"></i> ${label}</span>`;
+}
 // ── Pay rules (Israeli labour-law DEFAULTS — VERIFY against your real rules) ──
 // regularMax: hours at base rate. ot1Span: next N hours at the first OT tier.
 // Rates: weekday base x1.0 / OT1 x1.25 / OT2 x1.5 ; Saturday base x1.5 / x1.75 / x2.0.
