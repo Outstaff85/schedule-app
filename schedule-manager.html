@@ -2967,12 +2967,12 @@ function alignScanImage(b64,mediaType,align){
 async function onScanFilesSelected(fileList){
   const files=[...(fileList||[])];
   if(!files.length) return;
+  window.__aiScanImage=null;
+  window.__aiPacketOtherPages=[];
   const isPdf=f=>f.type==='application/pdf'||/\.pdf$/i.test(f.name||'');
   if(files.length===1 && !isPdf(files[0])) return onScanFileSelected(files[0]);
 
   const stage=document.getElementById('aiScanStage');
-  window.__aiScanImage=null;
-  window.__aiPacketOtherPages=[];
   stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
     +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
     +'<span>Читаю файлы…</span></div>';
