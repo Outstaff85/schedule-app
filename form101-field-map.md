@@ -73,6 +73,52 @@ literal `9` pre-printed in the "מספר תיק ניכויים" column) has **no
 fields at all** — it's a manual-fill table for additional employers, not
 part of the single-employer flow this app automates. Left untouched.
 
+## Checkbox marks (`chk()`)
+
+Checked boxes are drawn as a **blue checkmark** (two `page1.drawLine()` strokes,
+`rgb(0.09,0.32,0.85)`, `LineCapStyle.Round`) after blanking the widget's own
+"Yes" appearance stream — not a filled black square (the original style) and
+not the template's default X mark.
+
+## "שנת המס" (tax year) box — field rect doesn't match the printed box
+
+`tax_year`'s own AcroForm rect (250,746.89,289,759.89 — see table above) is
+**narrower and shifted relative to the actual printed box** next to the bold
+"שנת המס" heading (verified via `page.get_drawings()`: the real box's tick
+marks run from x=220.4 to x=285.3, baseline at native y≈742.49–755.49). Comb-
+filling the *field* left the year floating visibly above the box. Fixed the
+same way as the fake boxes above: hand-drawn via `drawCombRaw` at
+`TAX_YEAR_RECT = {x:220.4, y:742.49, width:64.9, height:13}`, size 11 — the
+AcroForm field itself is now left untouched/unset.
+
+## Worker-level Form 101 declarations (Add/Edit Worker modal)
+
+Two dropdowns on the worker record feed section ד/ה directly, independent of
+the AI scan:
+
+- **Income type** (`w.incomeType`: `monthly`/`secondary`/`partial`/`daily`/
+  `pension`/`scholarship`, default `daily`) → checks one of `cb_p1_4`–`cb_p1_9`
+  (section ד, income from *this* employer) via `INCOME_TYPE_CB` in
+  `aiFillForm101()`.
+- **Other income** (`w.otherIncomeType`: `none` or one of the same 6 types,
+  default `none`) → `'none'` checks `cb_p1_10`; a specific type checks
+  `cb_p1_11` plus its own box (`cb_p1_12`–`cb_p1_17`, section ה) via
+  `OTHER_INCOME_CB`.
+
+Both are worker-record fields (persisted by `saveWorker()`, shown to the user
+as short 2–3 word option labels), not scan-derived — set once per worker,
+reused on every PDF (re)generation for that worker.
+
+## "חבר קיבוץ/מושב שיתופי" (kibbutz member)
+
+Always checks `cb_p1_1` ("לא" — not a member), unconditionally, both scan
+paths — this app's worker population is never kibbutz members. See the
+page-1 table above for the full 3-box mapping (`cb_p1_1`/`cb_p1_2`/`cb_p1_3`),
+verified by correlating each checkbox widget's rect against the template's
+own printed "o" checkbox glyphs and adjacent word positions (`page.get_text
+('words')`), not guessed from a low-res crop — a plain visual read of this
+particular row is easy to get backwards.
+
 ## Signature & scanned-document image placement (no form field, drawn as images)
 
 - Signature: page 2, `SIG_RECT = {x:34.02, y:186, width:87.99, height:15}` — next to `sign_date`, both under "י. הצהרה".
