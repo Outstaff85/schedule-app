@@ -3736,14 +3736,16 @@ function reportError(message, source, stack){
 window.addEventListener('error', function(ev){ console.error('App error:', ev.error||ev.message); reportError(ev.message, (ev.filename||'')+':'+(ev.lineno||''), ev.error&&ev.error.stack); });
 window.addEventListener('unhandledrejection', function(ev){ const r=ev.reason; reportError((r&&r.message)||String(r), 'promise', r&&r.stack); });
 try{
-  loadData();
-  syncPicker();
-  render();
-  setSaveStatus('saved');
-  // Start on Dashboard
-  switchTab('dashboard');
-  // Check push subscription status
-  setTimeout(checkPushStatus, 1000);
+  gateApp(function(){
+    loadData();
+    syncPicker();
+    render();
+    setSaveStatus('saved');
+    // Start on Dashboard
+    switchTab('dashboard');
+    // Check push subscription status
+    setTimeout(checkPushStatus, 1000);
+  });
 }catch(err){
   console.error('Init failed:', err);
   try{ showToast('Ошибка инициализации — обновите страницу (F5)'); }catch(e){}
