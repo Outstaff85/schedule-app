@@ -3148,11 +3148,17 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     setT('sign_date',todayStr);
     if(isId){
       // Israeli ID: fill address, marital, work start, fund from aiId* inputs
+      if(no) drawCombRaw(no.replace(/\D/g,''),9,ID_BOX_RECT,9);
       const addr=_v('aiAddress'), city=_v('aiCity');
       if(addr){
-        const nm=addr.match(/^(.*?)(\d+)\s*$/)||addr.match(/^(\d+)\s+(.*?)$/);
         const writeStr=customFont?setH:setT;
-        if(nm){ writeStr('addr_street',nm[1].trim()); setT('addr_number',nm[2].trim()); }
+        // Street+number can be OCR'd in either order ("Rothschild 5" or
+        // "5 Rothschild") — track which pattern actually matched instead of
+        // assuming group 1 is always the street, or the two get swapped.
+        const mEnd=addr.match(/^(.*?)(\d+)\s*$/);
+        const mStart=!mEnd&&addr.match(/^(\d+)\s+(.*)$/);
+        if(mEnd){ writeStr('addr_street',mEnd[1].trim()); setT('addr_number',mEnd[2].trim()); }
+        else if(mStart){ writeStr('addr_street',mStart[2].trim()); setT('addr_number',mStart[1].trim()); }
         else writeStr('addr_street',addr);
       }
       (customFont?setH:setT)('addr_city',city);
