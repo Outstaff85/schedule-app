@@ -711,7 +711,10 @@ function loadWorkers(){
 }
 
 async function loadWorkersFromGS(){
-  const url = GS_URL+'?action=loadSchedule&t='+Date.now();
+  // Multi-tenant: resolvable only on a personal link (URL_TOKEN) — the
+  // legacy no-token picker-grid flow has no per-request way to name a firm
+  // and will fail against the multi-tenant backend (see MULTI_TENANT_PLAN.md).
+  const url = GS_URL+'?action=loadSchedule&t='+Date.now()+(URL_TOKEN?'&workerToken='+encodeURIComponent(URL_TOKEN):'');
   
   try{
     const res = await fetch(url, { method:'GET', redirect:'follow' });
