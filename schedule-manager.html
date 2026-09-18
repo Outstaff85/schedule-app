@@ -3131,10 +3131,21 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     const fillWorkStart=(isoDate)=>{
       if(!isoDate) return;
       const d=isoDate.split('-');
-      const ds=d[2]+'/'+d[1]+'/'+d[0];
       drawCombRaw(d[2]+d[1]+d[0],8,WORK_START_RECT,9);
-      setT('sign_date',ds);
     };
+    // "מספר זהות (9 ספרות)" in section ב (employee details) has no real
+    // AcroForm field on the template — only `id_top2` (a small running
+    // header on page 2) is a real field — so the Israeli ID number never
+    // showed up on page 1 at all. Hand-draw it like the other printed-only
+    // boxes. Foreign-passport holders correctly leave this box blank (they
+    // have no Israeli ID) and use the real `passport_no` field instead.
+    const ID_BOX_RECT={x:438,y:607.89,width:102,height:13};
+    // "תאריך" next to "חתימת המבקש/ת" (declaration section י) is the date
+    // this form is signed — not the work-start date — so it's set here,
+    // independently of fillWorkStart(), to today's date.
+    const today=new Date();
+    const todayStr=String(today.getDate()).padStart(2,'0')+'/'+String(today.getMonth()+1).padStart(2,'0')+'/'+today.getFullYear();
+    setT('sign_date',todayStr);
     if(isId){
       // Israeli ID: fill address, marital, work start, fund from aiId* inputs
       const addr=_v('aiAddress'), city=_v('aiCity');
