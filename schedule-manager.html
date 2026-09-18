@@ -3247,6 +3247,17 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     if(sex==='M') chk('sex_male'); else if(sex==='F') chk('sex_female');
     if(isIsraeli){ chk('resident_yes'); chk('resident_h'); }
     else { chk('resident_no'); chk('marital_single'); }
+    // "חבר קיבוץ/מושב שיתופי" (kibbutz/collective-moshav member) — this app's
+    // workers are never kibbutz members, so always mark "לא" (No). cb_p1_1
+    // is that checkbox (verified against the template's own printed glyph
+    // positions, not just field name — see form101-field-map.md).
+    chk('cb_p1_1');
+    // "ד. פרטים על הכנסותיי ממעסיק זה" (income type from THIS employer) —
+    // set from the worker's own Income-type dropdown (Add/Edit Worker
+    // modal), not the scan itself. Left blank if the worker hasn't set one.
+    const INCOME_TYPE_CB={monthly:'cb_p1_4',secondary:'cb_p1_5',partial:'cb_p1_6',daily:'cb_p1_7',pension:'cb_p1_8',scholarship:'cb_p1_9'};
+    const incomeCb=targetWorker&&INCOME_TYPE_CB[targetWorker.incomeType];
+    if(incomeCb) chk(incomeCb);
     // "תאריך תחילת העבודה בשנת המס" (work start date) has no underlying form
     // field on the template at all — just a printed comb box — so it's drawn
     // by hand.
