@@ -889,7 +889,7 @@ function fmtRange(d){ const e=new Date(d); e.setDate(e.getDate()+6); return fmtD
 // untouched if it doesn't look like an ISO date (so it degrades gracefully).
 function fmtDMY(dateStr){
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr||'');
-  return m ? `${m[3]}.${m[2]}.${m[1]}` : (dateStr||'');
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : (dateStr||'');
 }
 
 // --- Tab ---------------------------------------------------------------------
