@@ -2364,6 +2364,28 @@ function renderDashboard(){
     missingEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">Everyone is present <i class="ti ti-check"></i></div>`;
   }
 
+  // ── Contract-expiry warnings ─────────────────────────────────────────────
+  const expiring = workers.map(w=>({w, st:workerExpiryStatus(w)})).filter(x=>x.st);
+  const expiringWrap = document.getElementById('dashExpiringWrap');
+  expiringWrap.style.display = expiring.length ? 'block' : 'none';
+  if(expiring.length){
+    document.getElementById('dashExpiring').innerHTML = expiring.map(({w,st})=>{
+      const c=WORKER_COLORS[w.colorIdx%8], ini=w.name.slice(0,2).toUpperCase();
+      const overdue = st.level==='overdue';
+      const borderCol = overdue?'rgba(248,113,113,0.25)':'rgba(245,166,35,0.25)';
+      const dotCol = overdue?'var(--red)':'var(--amber)';
+      const textCol = overdue?'var(--red)':'var(--amber)';
+      return `<div style="background:var(--bg2);border:1px solid ${borderCol};border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
+        <div style="width:40px;height:40px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;position:relative">
+          ${ini}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:${dotCol};border:2px solid var(--bg2)"></span>
+        </div>
+        <div style="font-size:13px;font-weight:600">${esc(w.name)}</div>
+        <div style="font-size:11px;color:${textCol}">${overdue?'Срок истёк':'Срок приближается'}</div>
+        <div style="font-size:10px;color:var(--text3)">${st.deadline.toLocaleDateString('ru-RU')}</div>
+      </div>`;
+    }).join('');
+  }
+
   // ── Today's punch log ───────────────────────────────────────────────────
   const dashLogEl = document.getElementById('dashLog');
   if(!todayLog.length){
