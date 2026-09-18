@@ -4026,7 +4026,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
       showToast('Форма 101 скачана');
     }
   }catch(err){ console.error(err); showToast('Не удалось: '+(err&&err.message||'')); }
-  finally{ if(btn){ btn.disabled=false; btn.innerHTML=btnLabel; } }
+  finally{ if(btn){ btn.disabled=false; btn.innerHTML=btnLabel; } window.__aiPacketOtherPages=[]; }
 }
 
 let _pdfjsLoading=null;
