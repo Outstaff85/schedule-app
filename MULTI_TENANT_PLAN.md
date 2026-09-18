@@ -62,13 +62,20 @@ environment, so instead: (1) a GAS environment shim (`SpreadsheetApp`/
 in-memory state) runs the **actual** `apps-script/Код.js` unmodified under
 Node; 64 automated checks cover login, session tokens (tampered/expired
 rejected),
-superadmin vs tenant authorization, migration idempotency, and — the
-critical one — that one firm can never read or edit another firm's
-schedule/punches (including a direct attempt to delete another tenant's
-punch by ID, correctly denied). (2) that same backend served over local
-HTTP, with a local copy of `schedule-manager.html` pointed at it, driven
-through an actual browser: login → Firms screen → create firm (all Form-101
-profile fields) → switch into a firm → back to Firms.
+superadmin vs tenant authorization, migration idempotency, that one firm can
+never read or edit another firm's schedule/punches (including a direct
+attempt to delete another tenant's punch by ID, correctly denied), and that
+`saveWorkerDoc`/`deleteWorkerDoc` route two firms' uploads into two distinct
+`<CompanyName>/Workers` folders and never cross-trash each other's files. (2)
+that same backend served over local HTTP, with a local copy of
+`schedule-manager.html` pointed at it, driven through an actual browser:
+login → Firms screen → create firm (all Form-101 profile fields) → switch
+into a firm → back to Firms. (3) the section א coordinates were verified the
+same way as every other hand-drawn box in `form101-field-map.md` — filled
+with real-looking data via a standalone pdf-lib script (the exact same rect
+constants now in `aiFillForm101()`), rendered, and visually confirmed each
+field lands in its own cell under the right label, "9" + the 8-digit
+deductions number combed correctly after the template's fixed prefix.
 
 Three real bugs were caught and fixed this way (all in `schedule-manager.html`):
 1. `loginScreen`/`firmsScreen` used `var(--bg1)`, a CSS variable that doesn't
