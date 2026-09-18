@@ -1458,7 +1458,7 @@ function renderWorkersPage(){
       <td style="padding:10px 12px">${objBadges}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.phone||'—'}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.hourlyRate?('₪'+w.hourlyRate+'/h'):'—'}</td>
-      <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.startDate||'—'}</td>
+      <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.startDate?fmtDMY(w.startDate):'—'}</td>
       <td style="padding:10px 12px;text-align:center" onclick="event.stopPropagation()"><div style="display:flex;gap:4px;justify-content:center">
         <button class="btn sm" onclick="openEditWorker(${wi})" style="padding:3px 8px;font-size:11px"><i class="ti ti-edit"></i></button>
         <button class="btn sm red" onclick="deleteWorker(${wi})" style="padding:3px 8px;font-size:11px"><i class="ti ti-x"></i></button>
