@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A staff scheduling & GPS punch-clock PWA for a single client ("Odinson"), served as static files from Firebase Hosting. There is no build step, no bundler, no package.json, and no test suite — the two pages are self-contained HTML files with inline `<style>` and `<script>`.
 
+**In progress (branch `feature/multi-tenant`, not yet merged to `main`):** turning this into a multi-tenant app — a super-admin creates "firms" (tenants) with their own login, each firm's data is isolated. See `MULTI_TENANT_PLAN.md` for the full design and status. **Do not push this branch's backend changes to `main` on their own** — `apps-script/Код.js` already requires session tokens the current `main` frontend doesn't send yet, so deploying one half without the other breaks the live app for the real Odinson tenant (this happened once already; see `MULTI_TENANT_PLAN.md`'s opening warning). Everything below this notice still describes the single-tenant `main` branch as it's actually deployed today.
+
 - `schedule-manager.html` — the manager/admin app (shifts, workers, clients, payroll, exports). RTL, Hebrew (`lang="he"`), ~3200 lines.
 - `worker-punch.html` — the worker-facing clock-in/out app, opened via a per-worker tokenized link. ~1000 lines.
 - `service-worker.js` — PWA offline shell (network-first, cache fallback).
@@ -16,6 +18,7 @@ A staff scheduling & GPS punch-clock PWA for a single client ("Odinson"), served
 - `form101_fillable.pdf` — Israeli tax form template filled in-app via pdf-lib with fontkit support for Hebrew. See AI/document-scan flow below.
 - `form101-field-map.md` — verified field-by-field map of `form101_fillable.pdf` (every AcroForm field's name/rect/Hebrew label/meaning, plus the printed comb-boxes that have no form field and must be hand-drawn). Built by rendering the PDF and cross-checking coordinates against the visible labels — not guessed from the JS. **Consult and update this file whenever touching `aiFillForm101()` or the PDF template changes**; drift between this map and the code is what caused the "scanned passport → Form 101 fields land in the wrong place" bug it documents (see its "Known-fixed bugs" section).
 - `heebo-hebrew.ttf` — Heebo Hebrew+Latin TTF font subset (OFL licensed, bundled same-origin). Required for proper Hebrew glyph rendering in Form 101 PDF filling when embedding custom fonts via fontkit; loaded via `_loadHeeboFont()` (offline-safe, cache-first).
+- `MULTI_TENANT_PLAN.md` — design doc + status tracker for the in-progress multi-tenant/login feature (see the notice above). Data model, auth design, migration steps, and the Drive/Form-101 follow-up.
 
 ## Commands
 

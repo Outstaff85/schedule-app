@@ -1,12 +1,9 @@
 // ═══════════════════════════════════════════════════════════════
 //  Schedule Manager — Google Apps Script Backend
 //  (redeploy trigger: refreshed CLASP_CREDENTIALS 2026-09-18)
-//  No QR — GPS verification only
-//  CHANGES vs your version:
-//   • radius is always stored as a NUMBER (default 100m) on save AND load
-//   • new human-readable "Clients" tab shows Name/Address/Lat/Lng/Radius
-//   • wired up savePushSubscription in doPost (was defined but never reachable)
-//  PunchLog handling is UNCHANGED — your existing log is safe.
+//  Multi-tenant: every firm ("tenant") is isolated by TenantId. A super-admin
+//  can create firms and drill into any of them; a firm's own login only ever
+//  sees its own data. See MULTI_TENANT_PLAN.md for the full design.
 // ═══════════════════════════════════════════════════════════════
 
 const SH_SCHEDULE = 'Schedule';
@@ -16,42 +13,75 @@ const SH_CLIENTS  = 'Clients';
 const DEFAULT_RADIUS = 100; // ← standard geofence radius in metres
 const SH_BACKUP   = 'Backups';
 const SH_ERRORS   = 'Errors';
-// Shared key — MUST equal API_SECRET in schedule-manager.html / worker-punch.html.
+const SH_USERS    = 'Users';
+const SH_TENANTS  = 'Tenants';
+// Legacy shared key — still required for worker-punch.html's unauthenticated
+// (no-login) actions, alongside the worker's own per-worker token which is
+// what actually resolves the tenant. MUST equal API_SECRET in
+// schedule-manager.html / worker-punch.html.
 const API_SECRET  = 'odinson-7Kq2x9';
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // session "remembered" for a day
 
 // ── Entry points ──────────────────────────────────────────────────────────────
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
-    // Write actions require the shared secret (deterrent against random writes).
-    const WRITE = ['saveSchedule','savePunch','deletePunch','updatePunch','savePushSubscription','aiReadDoc','aiDetectAlign','saveWorkerDoc','deleteWorkerDoc'];
-    if (WRITE.indexOf(body.action) !== -1 && body.secret !== API_SECRET) {
-      return jsonResponse({error: 'Unauthorized'});
+
+    if (body.action === 'login') return jsonResponse(login(body));
+
+    // Every other action needs a resolved tenant, established one of two ways:
+    //  - a manager session token (schedule-manager.html, logged in as a firm
+    //    or as the super-admin, optionally drilling into `asTenantId`)
+    //  - a worker's own per-worker punch-link token + the legacy shared
+    //    secret (worker-punch.html, which never logs in)
+    const WORKER_ACTIONS = ['savePunch', 'updatePunch', 'deletePunch', 'savePushSubscription'];
+    let auth = null, tenantId = null;
+    if (WORKER_ACTIONS.indexOf(body.action) !== -1 && body.secret === API_SECRET && body.workerToken) {
+      tenantId = findTenantIdByWorkerToken(body.workerToken);
+      if (!tenantId) return jsonResponse({ error: 'Unknown worker link' });
+    } else {
+      auth = requireAuth(body);
+      tenantId = auth.tenantId;
     }
+
     switch (body.action) {
-      case 'saveSchedule':         return jsonResponse(saveSchedule(body.data, body.baseSavedAt));
-      case 'savePunch':            return jsonResponse(savePunch(body.data));
-      case 'deletePunch':          return jsonResponse(deletePunch(body.id));
-      case 'updatePunch':          return jsonResponse(updatePunch(body.data));
-      case 'calcSalary':           return jsonResponse(calcSalary(body.filter));
-      case 'savePushSubscription': return jsonResponse(savePushSubscription(body));
+      case 'saveSchedule':         return jsonResponse(saveSchedule(body.data, body.baseSavedAt, tenantId));
+      case 'savePunch':            return jsonResponse(savePunch(body.data, tenantId));
+      case 'deletePunch':          return jsonResponse(deletePunch(body.id, tenantId));
+      case 'updatePunch':          return jsonResponse(updatePunch(body.data, tenantId));
+      case 'calcSalary':           return jsonResponse(calcSalary(body.filter, tenantId));
+      case 'savePushSubscription': return jsonResponse(savePushSubscription(body, tenantId));
       case 'logError':             return jsonResponse(logError(body));
       case 'aiReadDoc':            return jsonResponse(aiReadDoc(body));
       case 'aiDetectAlign':        return jsonResponse(aiDetectAlign(body));
-      case 'saveWorkerDoc':        return jsonResponse(saveWorkerDoc(body));
-      case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body));
+      case 'saveWorkerDoc':        return jsonResponse(saveWorkerDoc(body, tenantId));
+      case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body, tenantId));
+      case 'createUser':           return jsonResponse(createUser(body, auth));
+      case 'listTenants':          return jsonResponse(listTenants(auth));
       default:                     return jsonResponse({error: 'Unknown action: ' + body.action});
     }
-  } catch(e) { return jsonResponse({error: e.toString()}); }
+  } catch(e) {
+    if (e && typeof e === 'object' && e.error) return jsonResponse(e); // thrown auth/validation errors
+    return jsonResponse({error: e.toString()});
+  }
 }
 
 function doGet(e) {
   try {
+    const action = e.parameter.action || 'loadSchedule';
+    let tenantId = null;
+    if (e.parameter.workerToken) {
+      tenantId = findTenantIdByWorkerToken(e.parameter.workerToken);
+      if (!tenantId) return jsonResponse({ error: 'Unknown worker link' });
+    } else {
+      const auth = requireAuth(e.parameter);
+      tenantId = auth.tenantId;
+    }
     let result;
-    switch (e.parameter.action || 'loadSchedule') {
-      case 'loadSchedule': result = loadSchedule();              break;
-      case 'loadPunchLog': result = loadPunchLog(e.parameter);   break;
-      case 'calcSalary':   result = calcSalary(e.parameter);     break;
+    switch (action) {
+      case 'loadSchedule': result = loadSchedule(tenantId);              break;
+      case 'loadPunchLog': result = loadPunchLog(e.parameter, tenantId); break;
+      case 'calcSalary':   result = calcSalary(e.parameter, tenantId);   break;
       default:             result = {error: 'Unknown action'};
     }
     const callback = e.parameter.callback;
@@ -61,13 +91,200 @@ function doGet(e) {
         .setMimeType(ContentService.MimeType.JAVASCRIPT);
     }
     return jsonResponse(result);
-  } catch(err) { return jsonResponse({error: err.toString()}); }
+  } catch(err) {
+    if (err && typeof err === 'object' && err.error) return jsonResponse(err);
+    return jsonResponse({error: err.toString()});
+  }
 }
 
 function jsonResponse(data) {
   return ContentService
     .createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ── Multi-tenant: auth (Users / Tenants) ───────────────────────────────────────
+// Passwords: SHA-256(password + ':' + per-user random salt), never stored in
+// plaintext. Sessions: stateless, HMAC-SHA256-signed "<payload>.<signature>"
+// tokens carrying {userId, username, role, tenantId, exp} — no Sessions sheet
+// to clean up, verified fresh on every request by recomputing the HMAC.
+
+function hashPassword(password, salt) {
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, password + ':' + salt, Utilities.Charset.UTF_8);
+  return digest.map(function(b) { const v = (b < 0 ? b + 256 : b).toString(16); return v.length === 1 ? '0' + v : v; }).join('');
+}
+function makeSalt() { return Utilities.getUuid(); }
+
+function _sessionSecret() {
+  const s = PropertiesService.getScriptProperties().getProperty('SESSION_SECRET');
+  if (!s) throw { error: 'SESSION_SECRET не задан в Script Properties — сгенерируйте случайную строку (например Utilities.getUuid() дважды подряд) и сохраните её там перед первым логином.' };
+  return s;
+}
+function _b64url(bytes) { return Utilities.base64EncodeWebSafe(bytes).replace(/=+$/, ''); }
+function _b64urlToBytes(s) {
+  const pad = s.length % 4 === 0 ? '' : '===='.slice(s.length % 4);
+  return Utilities.base64DecodeWebSafe(s + pad);
+}
+function createSessionToken(payload) {
+  const bodyB64 = _b64url(Utilities.newBlob(JSON.stringify(payload)).getBytes());
+  const sigB64 = _b64url(Utilities.computeHmacSha256Signature(bodyB64, _sessionSecret()));
+  return bodyB64 + '.' + sigB64;
+}
+function verifySessionToken(token) {
+  if (!token || token.indexOf('.') === -1) return null;
+  const parts = token.split('.');
+  const bodyB64 = parts[0], sigB64 = parts[1];
+  const expectedSig = _b64url(Utilities.computeHmacSha256Signature(bodyB64, _sessionSecret()));
+  if (expectedSig !== sigB64) return null; // tampered, or signed with an old secret
+  let payload;
+  try { payload = JSON.parse(Utilities.newBlob(_b64urlToBytes(bodyB64)).getDataAsString()); }
+  catch (e) { return null; }
+  if (!payload.exp || Date.now() > payload.exp) return null; // expired
+  return payload;
+}
+
+// Resolves {userId, role, tenantId, isSuperadmin} from body.token (works for
+// both POST body and GET e.parameter, both are plain objects). Honors
+// `asTenantId` so a super-admin session can drill into one specific firm.
+// Throws a plain {error} object (caught by doPost/doGet) if missing/invalid.
+function requireAuth(body) {
+  const payload = verifySessionToken(body.token);
+  if (!payload) throw { error: 'Сессия истекла или недействительна — войдите заново' };
+  const isSuperadmin = payload.role === 'superadmin';
+  const tenantId = (isSuperadmin && body.asTenantId) ? body.asTenantId : payload.tenantId;
+  return { userId: payload.userId, role: payload.role, tenantId: tenantId, isSuperadmin: isSuperadmin };
+}
+
+function login(body) {
+  const username = String(body.username || '').trim().toLowerCase();
+  const password = String(body.password || '');
+  if (!username || !password) return { error: 'Введите логин и пароль' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_USERS);
+  if (!sh || sh.getLastRow() < 2) return { error: 'Неверный логин или пароль' };
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const col = {}; headers.forEach(function(h, i) { col[h] = i; });
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (String(r[col.username]).trim().toLowerCase() !== username) continue;
+    if (r[col.active] === false) return { error: 'Аккаунт отключён' };
+    if (hashPassword(password, r[col.passwordSalt]) !== r[col.passwordHash]) return { error: 'Неверный логин или пароль' };
+    const tenantId = r[col.tenantId] || null;
+    const role = r[col.role] || 'tenant';
+    const payload = { userId: r[col.id], username: username, role: role, tenantId: tenantId, exp: Date.now() + SESSION_TTL_MS };
+    const token = createSessionToken(payload);
+    return {
+      ok: true, token: token, role: role, tenantId: tenantId, username: username,
+      tenantProfile: tenantId ? getTenantProfile(tenantId) : null,
+      expiresAt: payload.exp
+    };
+  }
+  return { error: 'Неверный логин или пароль' };
+}
+
+function getTenantProfile(tenantId) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_TENANTS);
+  if (!sh || sh.getLastRow() < 2) return null;
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const tCol = headers.indexOf('tenantId');
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][tCol] === tenantId) {
+      const o = {};
+      headers.forEach(function(h, i2) { o[h] = rows[i][i2]; });
+      return o;
+    }
+  }
+  return null;
+}
+
+// Super-admin only: creates a brand-new firm — a Tenants profile row (the
+// company data that also feeds Form 101 section א) plus its own Users login.
+function createUser(body, auth) {
+  if (!auth.isSuperadmin) return { error: 'Только супер-админ может создавать пользователей' };
+  const username = String(body.username || '').trim().toLowerCase();
+  const password = String(body.password || '');
+  if (!username || !password) return { error: 'Логин и пароль обязательны' };
+  if (password.length < 8) return { error: 'Пароль должен быть не короче 8 символов' };
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const usersSh = getOrCreateSheet(ss, SH_USERS);
+  ensureHeaders(usersSh, ['id', 'username', 'passwordHash', 'passwordSalt', 'role', 'tenantId', 'active', 'createdAt']);
+  if (usersSh.getLastRow() > 1) {
+    const existing = usersSh.getRange(2, 2, usersSh.getLastRow() - 1, 1).getValues();
+    if (existing.some(function(r) { return String(r[0]).trim().toLowerCase() === username; })) {
+      return { error: 'Такой логин уже существует' };
+    }
+  }
+
+  const tenantId = Utilities.getUuid();
+  const tenantsSh = getOrCreateSheet(ss, SH_TENANTS);
+  ensureHeaders(tenantsSh, ['tenantId', 'companyName', 'deductionsFileNumber', 'phone', 'street', 'streetNumber', 'city', 'createdAt']);
+  const now = new Date().toISOString();
+  tenantsSh.appendRow([
+    tenantId,
+    body.companyName || '',
+    body.deductionsFileNumber || '',
+    body.phone || '',
+    body.street || '',
+    body.streetNumber || '',
+    body.city || '',
+    now
+  ]);
+
+  const salt = makeSalt();
+  const userId = Utilities.getUuid();
+  usersSh.appendRow([userId, username, hashPassword(password, salt), salt, 'tenant', tenantId, true, now]);
+
+  return { ok: true, userId: userId, tenantId: tenantId };
+}
+
+// Super-admin only: firms list for the admin "Firms" screen, enriched with
+// basic stats read straight off each tenant's own Schedule row.
+function listTenants(auth) {
+  if (!auth.isSuperadmin) return { error: 'Только супер-админ' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_TENANTS);
+  if (!sh || sh.getLastRow() < 2) return { tenants: [] };
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const tenants = rows.slice(1).map(function(r) {
+    const o = {}; headers.forEach(function(h, i) { o[h] = r[i]; });
+    return o;
+  });
+
+  const schSh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_SCHEDULE);
+  const byTenant = {};
+  if (schSh && schSh.getLastRow() > 1) {
+    schSh.getDataRange().getValues().slice(1).forEach(function(r) { byTenant[r[0]] = r; });
+  }
+  tenants.forEach(function(t) {
+    const row = byTenant[t.tenantId];
+    let workers = [], clients = [];
+    if (row) {
+      try { workers = JSON.parse(row[1] || '[]'); } catch (e) {}
+      try { clients = JSON.parse(row[2] || '[]'); } catch (e) {}
+    }
+    t.workerCount = workers.length;
+    t.clientCount = clients.length;
+    t.savedAt = row ? row[4] : null;
+  });
+  return { tenants: tenants };
+}
+
+// Resolves a tenant from a WORKER's own per-worker punch-link token (the `t=`
+// URL param worker-punch.html reads) — scans every tenant's Schedule row for
+// a worker whose `token` field matches. This is how the unauthenticated
+// worker-punch.html flow stays correctly scoped without ever logging in.
+function findTenantIdByWorkerToken(workerToken) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_SCHEDULE);
+  if (!sh || sh.getLastRow() < 2) return null;
+  const rows = sh.getDataRange().getValues().slice(1);
+  for (let i = 0; i < rows.length; i++) {
+    let workers = [];
+    try { workers = JSON.parse(rows[i][1] || '[]'); } catch (e) {}
+    if (workers.some(function(w) { return w.token === workerToken; })) return rows[i][0];
+  }
+  return null;
 }
 
 // ── Clients: keep geofence fields as clean numbers ────────────────────────────
@@ -84,11 +301,32 @@ function normalizeClients(clients) {
   });
 }
 
-// ── SCHEDULE ──────────────────────────────────────────────────────────────────
-function saveSchedule(data, baseSavedAt) {
+// ── SCHEDULE (multi-tenant: one row per tenant) ────────────────────────────────
+const SCHEDULE_HEADERS = ['TenantId', 'workers', 'clients', 'weekStart', 'savedAt'];
+
+// Reads one tenant's row into {workers, clients, weekStart, savedAt, _row}.
+// _row (1-based sheet row number, or null if the tenant has no row yet) lets
+// saveSchedule() know whether to update in place or append.
+function readScheduleMap(sh, tenantId) {
+  if (!sh || sh.getLastRow() < 2) return { workers: [], clients: [], weekStart: null, savedAt: null, _row: null };
+  const rows = sh.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][0] === tenantId) {
+      let workers = [], clients = [];
+      try { workers = JSON.parse(rows[i][1] || '[]'); } catch (e) {}
+      try { clients = JSON.parse(rows[i][2] || '[]'); } catch (e) {}
+      return { workers: workers, clients: clients, weekStart: rows[i][3] || null, savedAt: rows[i][4] || null, _row: i + 1 };
+    }
+  }
+  return { workers: [], clients: [], weekStart: null, savedAt: null, _row: null };
+}
+
+function saveSchedule(data, baseSavedAt, tenantId) {
+  if (!tenantId) return { error: 'Нет активной фирмы (tenant)' };
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = getOrCreateSheet(ss, SH_SCHEDULE);
-  const current = readScheduleMap(sh);
+  ensureHeaders(sh, SCHEDULE_HEADERS);
+  const current = readScheduleMap(sh, tenantId);
 
   // Empty-payload guard: refuse to overwrite existing data with nothing.
   const incomingEmpty   = (!data.workers || !data.workers.length) && (!data.clients || !data.clients.length);
@@ -104,47 +342,55 @@ function saveSchedule(data, baseSavedAt) {
 
   const clients = normalizeClients(data.clients || []);
   const savedAt = new Date().toISOString();
-  sh.clearContents();
-  sh.getRange(1,1,1,2).setValues([['key','value']]);
-  sh.getRange(2,1,1,2).setValues([['workers',  JSON.stringify(data.workers || [])]]);
-  sh.getRange(3,1,1,2).setValues([['clients',  JSON.stringify(clients)]]);
-  sh.getRange(4,1,1,2).setValues([['weekStart', data.weekStart || '']]);
-  sh.getRange(5,1,1,2).setValues([['savedAt',  savedAt]]);
-  writeWorkersTable(sh, data.workers || []);
-  writeClientsTable(ss, clients);
+  const rowValues = [tenantId, JSON.stringify(data.workers || []), JSON.stringify(clients), data.weekStart || '', savedAt];
+  if (current._row) sh.getRange(current._row, 1, 1, SCHEDULE_HEADERS.length).setValues([rowValues]);
+  else sh.appendRow(rowValues);
   return {ok: true, savedAt: savedAt};
 }
 
-// Read the Schedule key/value sheet into {workers, clients, savedAt}.
-function readScheduleMap(sh){
-  const map = {};
-  if (sh && sh.getLastRow() >= 1) {
-    sh.getDataRange().getValues().slice(1).forEach(function(r){ if(r[0]) map[r[0]] = r[1]; });
-  }
-  var workers = [], clients = [];
-  try { workers = map.workers ? JSON.parse(map.workers) : []; } catch(e){}
-  try { clients = map.clients ? JSON.parse(map.clients) : []; } catch(e){}
-  return { workers: workers, clients: clients, savedAt: map.savedAt || null };
+function loadSchedule(tenantId) {
+  if (!tenantId) return { workers: [], clients: [], weekStart: null, savedAt: null };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_SCHEDULE);
+  const m = readScheduleMap(sh, tenantId);
+  return {
+    workers:   m.workers,
+    clients:   normalizeClients(m.clients),   // ← radius guaranteed numeric
+    weekStart: m.weekStart,
+    savedAt:   m.savedAt,
+  };
 }
 
 // ── Auto-backup ───────────────────────────────────────────────────────────────
-// Daily snapshot of the schedule (workers+clients) into a Backups sheet.
-// The schedule is the data most at risk from overwrite; PunchLog is append-only.
+// Daily snapshot of EVERY tenant's schedule (workers+clients) into a Backups
+// sheet, one row per tenant per day. The schedule is the data most at risk
+// from overwrite; PunchLog is append-only.
 function backupNow(){
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = getOrCreateSheet(ss, SH_BACKUP);
   if (sh.getLastRow() === 0) {
-    sh.appendRow(['When','Workers','Clients','Schedule JSON']);
-    sh.getRange(1,1,1,4).setFontWeight('bold').setBackground('#e8eaf0');
+    sh.appendRow(['When','TenantId','Workers','Clients','Schedule JSON']);
+    sh.getRange(1,1,1,5).setFontWeight('bold').setBackground('#e8eaf0');
     sh.setFrozenRows(1);
   }
-  const m = readScheduleMap(ss.getSheetByName(SH_SCHEDULE) || sh);
-  const json = JSON.stringify({ workers: m.workers, clients: m.clients, savedAt: m.savedAt });
-  sh.appendRow([ new Date().toISOString(), (m.workers||[]).length, (m.clients||[]).length,
-                 json.length < 48000 ? json : '(too large to store inline)' ]);
-  const extra = sh.getLastRow() - 1 - 30;   // keep last 30 snapshots
-  if (extra > 0) sh.deleteRows(2, extra);
-  return {ok:true, savedAt: m.savedAt};
+  const schSh = ss.getSheetByName(SH_SCHEDULE);
+  if (!schSh || schSh.getLastRow() < 2) return {ok:true, note:'no tenants yet'};
+  const rows = schSh.getDataRange().getValues().slice(1);
+  const when = new Date().toISOString();
+  rows.forEach(function(r) {
+    const tenantId = r[0];
+    const json = JSON.stringify({ workers: r[1], clients: r[2], savedAt: r[4] });
+    sh.appendRow([ when, tenantId, (JSON.parse(r[1]||'[]')).length, (JSON.parse(r[2]||'[]')).length,
+                   json.length < 48000 ? json : '(too large to store inline)' ]);
+  });
+  // keep last 30 snapshots PER TENANT
+  const all = sh.getDataRange().getValues();
+  const countByTenant = {};
+  for (let i = all.length - 1; i >= 1; i--) {
+    const t = all[i][1];
+    countByTenant[t] = (countByTenant[t] || 0) + 1;
+    if (countByTenant[t] > 30) sh.deleteRow(i + 1);
+  }
+  return {ok:true, tenants: rows.length};
 }
 
 function setupDailyBackup(){
@@ -156,71 +402,24 @@ function setupDailyBackup(){
 }
 
 // Manual restore: run with the row number from the Backups sheet (2 = newest).
+// Restores into the SAME tenant that row was backed up from.
 function restoreBackupRow(rowNum){
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(SH_BACKUP);
   if (!sh) return {error:'No Backups sheet'};
-  const json = sh.getRange(rowNum, 4).getValue();
+  const row = sh.getRange(rowNum, 1, 1, 5).getValues()[0];
+  const tenantId = row[1];
+  const json = row[4];
   if (!json) return {error:'No JSON in that row'};
   const d = JSON.parse(json);
-  return saveSchedule({ workers: d.workers||[], clients: d.clients||[], weekStart: d.weekStart||'' }, null);
+  return saveSchedule({ workers: d.workers||[], clients: d.clients||[], weekStart: d.weekStart||'' }, null, tenantId);
 }
 
-function loadSchedule() {
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_SCHEDULE);
-  if (!sh) return {workers:[], clients:[], weekStart:null};
-  const map = {};
-  sh.getDataRange().getValues().slice(1).forEach(r => { if(r[0]) map[r[0]] = r[1]; });
-  return {
-    workers:   map.workers  ? JSON.parse(map.workers)  : [],
-    clients:   map.clients  ? normalizeClients(JSON.parse(map.clients)) : [],   // ← radius guaranteed numeric
-    weekStart: map.weekStart || null,
-    savedAt:   map.savedAt  || null,
-  };
-}
-
-function writeWorkersTable(sh, workers) {
-  const headers = ['Name','Phone','Sun','Mon','Tue','Wed','Thu','Fri','Sat','Total Hours'];
-  sh.getRange(1,4,1,headers.length).setValues([headers]).setFontWeight('bold').setBackground('#e8eaf0');
-  if (!workers.length) return;
-  const rows = workers.map(w => {
-    const sched = (w.schedule||[]).map(s => s.type==='off' ? 'Day off' : (s.start||'')+'–'+(s.end||''));
-    const total = (w.schedule||[]).reduce((sum,s) => {
-      if(!s.start||!s.end) return sum;
-      const sm=toMins(s.start), em=toMins(s.end);
-      return sum + (em<=sm ? (1440-sm+em) : (em-sm));
-    }, 0) / 60;
-    return [w.name, w.phone||'', ...sched, total.toFixed(1)+'h'];
-  });
-  sh.getRange(2,4,rows.length,headers.length).setValues(rows);
-}
-
-// Human-readable Clients tab so you can SEE the geofence radius in the sheet.
-function writeClientsTable(ss, clients) {
-  const sh = getOrCreateSheet(ss, SH_CLIENTS);
-  sh.clearContents();
-  const headers = ['Name','Address','Latitude','Longitude','Radius (m)','Notes'];
-  sh.getRange(1,1,1,headers.length).setValues([headers]).setFontWeight('bold').setBackground('#e8eaf0');
-  if (clients.length) {
-    const rows = clients.map(c => [
-      c.name || '',
-      c.address || '',
-      c.lat != null ? c.lat : '',
-      c.lng != null ? c.lng : '',
-      c.radius != null ? c.radius : DEFAULT_RADIUS,
-      c.notes || '',
-    ]);
-    sh.getRange(2,1,rows.length,headers.length).setValues(rows);
-  }
-  sh.setFrozenRows(1);
-  try { sh.autoResizeColumns(1, headers.length); } catch(e) {}
-}
-
-// ── PUNCH LOG (unchanged from your version) ───────────────────────────────────
+// ── PUNCH LOG ──────────────────────────────────────────────────────────────────
 const PUNCH_HEADERS = [
   'ID','WorkerID','Worker','Type','Time','Date','Timestamp',
   'Site','Distance(m)','GPS Accuracy(m)','GPS Suspicious','GPS Warnings',
-  'Notes','EditedAt','ClientID'
+  'Notes','EditedAt','ClientID','TenantId'
 ];
 
 // One-time migration: appends the 'ClientID' header to an existing PunchLog
@@ -310,7 +509,121 @@ function formatPunchLogSheet(){
   return {ok:true, columns: lastCol};
 }
 
-function savePunch(entry) {
+// ── Multi-tenant migration ──────────────────────────────────────────────────
+// ONE-TIME setup, run manually from the Apps Script editor (Run ▸
+// migrateToMultiTenant, filling in the parameters below first — never commit
+// real credentials into this file). Steps:
+//  1. Creates a "Odinson" tenant from the pre-multi-tenant Schedule sheet
+//     (which used to be a single global {key,value} sheet).
+//  2. Backfills TenantId onto every existing PunchLog / PushSubscriptions row.
+//  3. Creates your super-admin login and the Odinson firm's own login.
+// Safe to re-run: skips any step whose target already exists.
+function migrateToMultiTenant(superadminUsername, superadminPassword, odinsonUsername, odinsonPassword) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const out = {};
+
+  // Reuse an existing Odinson tenant if this has already been run once.
+  const tenantsSh = getOrCreateSheet(ss, SH_TENANTS);
+  ensureHeaders(tenantsSh, ['tenantId', 'companyName', 'deductionsFileNumber', 'phone', 'street', 'streetNumber', 'city', 'createdAt']);
+  let odinsonTenantId = null;
+  if (tenantsSh.getLastRow() > 1) {
+    const rows = tenantsSh.getDataRange().getValues();
+    const nameCol = rows[0].indexOf('companyName');
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][nameCol] === 'Odinson') { odinsonTenantId = rows[i][0]; break; }
+    }
+  }
+  if (!odinsonTenantId) {
+    odinsonTenantId = Utilities.getUuid();
+    tenantsSh.appendRow([odinsonTenantId, 'Odinson', '', '', '', '', '', new Date().toISOString()]);
+    out.tenantCreated = odinsonTenantId;
+  } else {
+    out.tenantExisted = odinsonTenantId;
+  }
+
+  // Old Schedule sheet was a global 2-column {key,value} sheet — if it's still
+  // in that shape, read it once and rewrite as the new multi-tenant format
+  // with this row belonging to the Odinson tenant.
+  const schSh = getOrCreateSheet(ss, SH_SCHEDULE);
+  const firstHeaderCell = schSh.getLastRow() > 0 ? schSh.getRange(1, 1).getValue() : '';
+  if (firstHeaderCell === 'key') {
+    const map = {};
+    schSh.getDataRange().getValues().slice(1).forEach(function(r) { if (r[0]) map[r[0]] = r[1]; });
+    schSh.clearContents();
+    ensureHeaders(schSh, SCHEDULE_HEADERS);
+    schSh.appendRow([odinsonTenantId, map.workers || '[]', map.clients || '[]', map.weekStart || '', map.savedAt || new Date().toISOString()]);
+    out.scheduleMigrated = true;
+  } else {
+    ensureHeaders(schSh, SCHEDULE_HEADERS);
+    out.scheduleAlreadyMultiTenant = true;
+  }
+
+  // Backfill TenantId onto existing PunchLog rows that don't have one yet.
+  const punchSh = ss.getSheetByName(SH_PUNCHLOG);
+  if (punchSh && punchSh.getLastRow() > 1) {
+    const headers = punchSh.getRange(1, 1, 1, punchSh.getLastColumn()).getValues()[0];
+    let tCol = headers.indexOf('TenantId');
+    if (tCol === -1) {
+      tCol = headers.length;
+      punchSh.getRange(1, tCol + 1).setValue('TenantId').setFontWeight('bold').setBackground('#e8eaf0');
+    }
+    const lastRow = punchSh.getLastRow();
+    const existing = punchSh.getRange(2, tCol + 1, lastRow - 1, 1).getValues();
+    let backfilled = 0;
+    for (let i = 0; i < existing.length; i++) {
+      if (!existing[i][0]) { punchSh.getRange(i + 2, tCol + 1).setValue(odinsonTenantId); backfilled++; }
+    }
+    out.punchLogBackfilled = backfilled;
+  }
+
+  // Backfill TenantId onto existing PushSubscriptions rows.
+  const pushSh = ss.getSheetByName(SH_PUSH);
+  if (pushSh && pushSh.getLastRow() > 1) {
+    const headers = pushSh.getRange(1, 1, 1, pushSh.getLastColumn()).getValues()[0];
+    let tCol = headers.indexOf('TenantId');
+    if (tCol === -1) {
+      tCol = headers.length;
+      pushSh.getRange(1, tCol + 1).setValue('TenantId').setFontWeight('bold').setBackground('#e8eaf0');
+    }
+    const lastRow = pushSh.getLastRow();
+    const existing = pushSh.getRange(2, tCol + 1, lastRow - 1, 1).getValues();
+    let backfilled = 0;
+    for (let i = 0; i < existing.length; i++) {
+      if (!existing[i][0]) { pushSh.getRange(i + 2, tCol + 1).setValue(odinsonTenantId); backfilled++; }
+    }
+    out.pushSubsBackfilled = backfilled;
+  }
+
+  // Users: super-admin (no tenantId — sees everything) + Odinson's own login.
+  const usersSh = getOrCreateSheet(ss, SH_USERS);
+  ensureHeaders(usersSh, ['id', 'username', 'passwordHash', 'passwordSalt', 'role', 'tenantId', 'active', 'createdAt']);
+  const existingUsernames = usersSh.getLastRow() > 1
+    ? usersSh.getRange(2, 2, usersSh.getLastRow() - 1, 1).getValues().map(function(r) { return String(r[0]).toLowerCase(); })
+    : [];
+  const now = new Date().toISOString();
+  if (superadminUsername && superadminPassword && existingUsernames.indexOf(String(superadminUsername).toLowerCase()) === -1) {
+    const salt = makeSalt();
+    usersSh.appendRow([Utilities.getUuid(), String(superadminUsername).toLowerCase(), hashPassword(superadminPassword, salt), salt, 'superadmin', '', true, now]);
+    out.superadminCreated = true;
+  } else {
+    out.superadminSkipped = 'already exists or no username/password given';
+  }
+  if (odinsonUsername && odinsonPassword && existingUsernames.indexOf(String(odinsonUsername).toLowerCase()) === -1) {
+    const salt = makeSalt();
+    usersSh.appendRow([Utilities.getUuid(), String(odinsonUsername).toLowerCase(), hashPassword(odinsonPassword, salt), salt, 'tenant', odinsonTenantId, true, now]);
+    out.odinsonUserCreated = true;
+  } else {
+    out.odinsonUserSkipped = 'already exists or no username/password given';
+  }
+
+  out.ok = true;
+  out.odinsonTenantId = odinsonTenantId;
+  Logger.log(JSON.stringify(out));
+  return out;
+}
+
+function savePunch(entry, tenantId) {
+  if (!tenantId) return {error:'No tenant'};
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = getOrCreateSheet(ss, SH_PUNCHLOG);
   ensureHeaders(sh, PUNCH_HEADERS);
@@ -330,13 +643,15 @@ function savePunch(entry) {
     entry.notes       || '',
     '',
     entry.clientId     || '',
+    tenantId,
   ];
   sh.appendRow(row);
   colorPunchRow(sh, sh.getLastRow(), row[3]);
   return {ok: true, id: row[0]};
 }
 
-function loadPunchLog(filter) {
+function loadPunchLog(filter, tenantId) {
+  if (!tenantId) return {entries:[]};
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_PUNCHLOG);
   if (!sh || sh.getLastRow() < 2) return {entries:[]};
   const rows = sh.getDataRange().getValues();
@@ -360,42 +675,50 @@ function loadPunchLog(filter) {
       notes:         o['Notes'],
       editedAt:      o['EditedAt'],
       clientId:      o['ClientID'] || null,
+      tenantId:      o['TenantId'] || null,
     };
-  }).filter(e => e.workerId);
+  }).filter(e => e.workerId && e.tenantId === tenantId);
   if (filter && filter.worker) entries = entries.filter(e => e.workerName === filter.worker);
   if (filter && filter.date)   entries = entries.filter(e => e.date === filter.date);
   if (filter && filter.type)   entries = entries.filter(e => e.type === filter.type);
   return {entries};
 }
 
-function updatePunch(data) {
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_PUNCHLOG);
-  if (!sh) return {error:'Sheet not found'};
+// Finds a PunchLog row by ID, but only if it belongs to the given tenant —
+// prevents one firm from editing/deleting another firm's punch by guessing an ID.
+function _findPunchRow(sh, id, tenantId) {
   const rows = sh.getDataRange().getValues();
+  const tCol = rows[0].indexOf('TenantId');
   for (let i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]) === String(data.id)) {
-      const r = i + 1;
-      if (data.type)                    sh.getRange(r,4).setValue(data.type.toUpperCase());
-      if (data.time)                    sh.getRange(r,5).setValue(data.time);
-      if (data.site)                    sh.getRange(r,8).setValue(data.site);
-      if (data.notes !== undefined)     sh.getRange(r,13).setValue(data.notes);
-      if (data.clientId !== undefined)  sh.getRange(r,15).setValue(data.clientId || '');
-      sh.getRange(r,14).setValue(new Date().toISOString());
-      colorPunchRow(sh, r, sh.getRange(r,4).getValue());
-      return {ok: true};
-    }
+    if (String(rows[i][0]) === String(id) && rows[i][tCol] === tenantId) return i + 1;
   }
-  return {error:'Record not found'};
+  return null;
 }
 
-function deletePunch(id) {
+function updatePunch(data, tenantId) {
+  if (!tenantId) return {error:'No tenant'};
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_PUNCHLOG);
   if (!sh) return {error:'Sheet not found'};
-  const rows = sh.getDataRange().getValues();
-  for (let i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]) === String(id)) { sh.deleteRow(i+1); return {ok:true}; }
-  }
-  return {error:'Record not found'};
+  const r = _findPunchRow(sh, data.id, tenantId);
+  if (!r) return {error:'Record not found'};
+  if (data.type)                    sh.getRange(r,4).setValue(data.type.toUpperCase());
+  if (data.time)                    sh.getRange(r,5).setValue(data.time);
+  if (data.site)                    sh.getRange(r,8).setValue(data.site);
+  if (data.notes !== undefined)     sh.getRange(r,13).setValue(data.notes);
+  if (data.clientId !== undefined)  sh.getRange(r,15).setValue(data.clientId || '');
+  sh.getRange(r,14).setValue(new Date().toISOString());
+  colorPunchRow(sh, r, sh.getRange(r,4).getValue());
+  return {ok: true};
+}
+
+function deletePunch(id, tenantId) {
+  if (!tenantId) return {error:'No tenant'};
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_PUNCHLOG);
+  if (!sh) return {error:'Sheet not found'};
+  const r = _findPunchRow(sh, id, tenantId);
+  if (!r) return {error:'Record not found'};
+  sh.deleteRow(r);
+  return {ok:true};
 }
 
 function colorPunchRow(sh, rowNum, type) {
@@ -406,8 +729,8 @@ function colorPunchRow(sh, rowNum, type) {
 }
 
 // ── SALARY ────────────────────────────────────────────────────────────────────
-function calcSalary(filter) {
-  const {entries} = loadPunchLog(filter);
+function calcSalary(filter, tenantId) {
+  const {entries} = loadPunchLog(filter, tenantId);
   const byWorkerDate = {};
   entries.forEach(e => {
     const key = e.workerName + '|' + e.date;
@@ -432,27 +755,7 @@ function calcSalary(filter) {
     totalHours: +w.totalHours.toFixed(2),
     days: w.days.sort((a,b) => a.date<b.date?-1:1),
   }));
-  writeSalarySheet(SpreadsheetApp.getActiveSpreadsheet(), summary);
   return {summary};
-}
-
-function writeSalarySheet(ss, summary) {
-  const sh = getOrCreateSheet(ss, SH_SALARY);
-  sh.clearContents();
-  const headers = ['Worker','Date','Clock In','Clock Out','Hours'];
-  sh.getRange(1,1,1,5).setValues([headers]).setFontWeight('bold').setBackground('#e8eaf0');
-  let row = 2;
-  summary.forEach(w => {
-    w.days.forEach(d => {
-      sh.getRange(row,1,1,5).setValues([[w.worker, d.date, d.in||'—', d.out||'—', d.hours]]);
-      row++;
-    });
-    sh.getRange(row,1,1,5).setValues([['TOTAL: '+w.worker,'','','',w.totalHours]])
-      .setFontWeight('bold').setBackground('#fff9c4');
-    row += 2;
-  });
-  sh.setFrozenRows(1);
-  try { sh.autoResizeColumns(1,5); } catch(e) {}
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -473,26 +776,6 @@ function ensureHeaders(sh, headers) {
     sh.getRange(1,1,1,headers.length).setFontWeight('bold').setBackground('#e8eaf0');
     sh.setFrozenRows(1);
   }
-}
-
-// ── Test (run this once to confirm radius persists) ───────────────────────────
-function testSetup() {
-  Logger.log('Spreadsheet: ' + SpreadsheetApp.getActiveSpreadsheet().getName());
-  const testData = {
-    workers: [{id:'w1', name:'Raveendra', colorIdx:0, phone:'', clientIds:['c1'], schedule:[
-      {type:'work',start:'07:00',end:'15:00'},{type:'work',start:'09:00',end:'21:00'},
-      {type:'off',start:null,end:null},{type:'work',start:'07:00',end:'16:00'},
-      {type:'work',start:'07:00',end:'16:00'},{type:'work',start:'07:00',end:'18:00'},
-      {type:'work',start:'07:00',end:'18:00'}
-    ]}],
-    clients: [{id:'c1', name:'Office A', color:'#4f8ef7', address:'Tel Aviv',
-      lat:32.0853, lng:34.7818, radius:150, notes:''}],   // custom radius to prove persistence
-    weekStart: new Date().toISOString()
-  };
-  Logger.log('Save: ' + JSON.stringify(saveSchedule(testData)));
-  const loaded = loadSchedule();
-  Logger.log('Load radius (should be 150): ' + (loaded.clients[0] && loaded.clients[0].radius));
-  Logger.log('Done.');
 }
 
 // ── AI document reader (passport + Israeli ID via Anthropic Vision) ─────────────
@@ -664,17 +947,32 @@ function aiDetectAlign(body){
 
 // ── Worker document storage (Drive) ────────────────────────────────────────────
 // Saves an assembled worker PDF (Form 101 + signature + ID scan, combined
-// client-side) into Drive under "Schedule manager APP/Workers", named by the
-// client-supplied fileName (already built from the worker's name + doc number).
-// Re-uploading with the same fileName replaces the previous file, so this is
-// safe to call again after a re-scan without piling up duplicates.
-function saveWorkerDoc(body){
+// client-side) into Drive under "Schedule manager APP/<CompanyName>/Workers"
+// — one subfolder per firm, named from tenantId — never a client-supplied
+// path, so one firm can't write into another's folder by spoofing a name.
+// Named by the client-supplied fileName (already built from the worker's
+// name + doc number). Re-uploading with the same fileName replaces the
+// previous file, so this is safe to call again after a re-scan without
+// piling up duplicates.
+function _companyFolder(tenantId){
+  const rootIter = DriveApp.getFoldersByName('Schedule manager APP');
+  const root = rootIter.hasNext() ? rootIter.next() : DriveApp.createFolder('Schedule manager APP');
+  const profile = tenantId ? getTenantProfile(tenantId) : null;
+  // Drive folder names disallow '/' — anything else is fine, but strip
+  // control characters and trim so a blank/garbage company name still
+  // produces a usable folder instead of an empty or invalid one.
+  let companyName = ((profile && profile.companyName) || tenantId || 'Unknown').replace(/\//g,'-').trim();
+  if(!companyName) companyName = tenantId || 'Unknown';
+  const companyIter = root.getFoldersByName(companyName);
+  const companyFolder = companyIter.hasNext() ? companyIter.next() : root.createFolder(companyName);
+  const subIter = companyFolder.getFoldersByName('Workers');
+  return subIter.hasNext() ? subIter.next() : companyFolder.createFolder('Workers');
+}
+
+function saveWorkerDoc(body, tenantId){
   try{
     if(!body.fileBase64 || !body.fileName) return {error:'Нет fileBase64 или fileName'};
-    const rootIter = DriveApp.getFoldersByName('Schedule manager APP');
-    const root = rootIter.hasNext() ? rootIter.next() : DriveApp.createFolder('Schedule manager APP');
-    const subIter = root.getFoldersByName('Workers');
-    const folder = subIter.hasNext() ? subIter.next() : root.createFolder('Workers');
+    const folder = _companyFolder(tenantId);
 
     // Prefer trashing the exact previous file by ID (stable across rescans,
     // where the OCR'd name/doc-number baked into fileName can drift and no
@@ -725,20 +1023,17 @@ function extractDocNumberFromFileName(name){
 
 // Trashes a worker's stored PDF from Drive (called when the worker is deleted
 // in the app, so removing a worker doesn't leave orphaned documents behind).
-// Prefers a direct fileId; falls back to looking the file up by name inside
-// the same "Schedule manager APP/Workers" folder used by saveWorkerDoc.
-function deleteWorkerDoc(body){
+// Prefers a direct fileId (works regardless of which company folder it's in);
+// falls back to looking the file up by name inside that tenant's own
+// "Schedule manager APP/<CompanyName>/Workers" folder.
+function deleteWorkerDoc(body, tenantId){
   try{
     if(body.fileId){
       DriveApp.getFileById(body.fileId).setTrashed(true);
       return {ok:true};
     }
     if(body.fileName){
-      const rootIter = DriveApp.getFoldersByName('Schedule manager APP');
-      if(!rootIter.hasNext()) return {ok:true};
-      const subIter = rootIter.next().getFoldersByName('Workers');
-      if(!subIter.hasNext()) return {ok:true};
-      const folder = subIter.next();
+      const folder = _companyFolder(tenantId);
       const existing = folder.getFilesByName(body.fileName);
       while(existing.hasNext()) existing.next().setTrashed(true);
       return {ok:true};
@@ -773,58 +1068,68 @@ function logError(data){
 // ── Push Notifications ────────────────────────────────────────────────────────
 const SH_PUSH = 'PushSubscriptions';
 
-function savePushSubscription(data) {
+function savePushSubscription(data, tenantId) {
+  if (!tenantId) return {error:'No tenant'};
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = getOrCreateSheet(ss, SH_PUSH);
-  ensureHeaders(sh, ['WorkerName', 'Role', 'Endpoint', 'P256dh', 'Auth', 'SavedAt']);
+  ensureHeaders(sh, ['WorkerName', 'Role', 'Endpoint', 'P256dh', 'Auth', 'SavedAt', 'TenantId']);
   const sub  = data.subscription;
   const name = data.workerName || 'manager';
   const role = data.role || 'worker';
   const rows = sh.getLastRow() > 1 ? sh.getDataRange().getValues() : [];
   for (let i = 1; i < rows.length; i++) {
     if (rows[i][2] === sub.endpoint) {
-      sh.getRange(i+1, 1, 1, 6).setValues([[name, role, sub.endpoint, sub.keys?.p256dh||'', sub.keys?.auth||'', new Date().toISOString()]]);
+      sh.getRange(i+1, 1, 1, 7).setValues([[name, role, sub.endpoint, sub.keys?.p256dh||'', sub.keys?.auth||'', new Date().toISOString(), tenantId]]);
       return { ok: true, updated: true };
     }
   }
-  sh.appendRow([name, role, sub.endpoint, sub.keys?.p256dh||'', sub.keys?.auth||'', new Date().toISOString()]);
+  sh.appendRow([name, role, sub.endpoint, sub.keys?.p256dh||'', sub.keys?.auth||'', new Date().toISOString(), tenantId]);
   return { ok: true, saved: true };
 }
 
 // ── Scheduled trigger: runs every hour ────────────────────────────────────────
+// Loops every tenant's own Schedule row, so each firm's workers only get
+// reminders (and only match push subscriptions) within their own firm.
 function checkShiftReminders() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sh = ss.getSheetByName(SH_PUSH);
-  if (!sh || sh.getLastRow() < 2) return;
-  const { workers } = loadSchedule();
-  if (!workers.length) return;
+  const pushSh = ss.getSheetByName(SH_PUSH);
+  const schSh = ss.getSheetByName(SH_SCHEDULE);
+  if (!pushSh || pushSh.getLastRow() < 2 || !schSh || schSh.getLastRow() < 2) return;
+  const subs = pushSh.getDataRange().getValues().slice(1);
   const now    = new Date();
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const dayIdx = now.getDay();
-  const toNotify = workers.filter(w => {
-    const s = w.schedule?.[dayIdx];
-    if (!s || s.type === 'off' || !s.start) return false;
-    const [h, m] = s.start.split(':').map(Number);
-    const diff = (h*60+m) - nowMin;
-    return diff >= 50 && diff <= 70;
-  });
-  if (!toNotify.length) return;
-  const subs = sh.getDataRange().getValues().slice(1);
-  toNotify.forEach(worker => {
-    const workerSubs = subs.filter(row => row[0] === worker.name || row[1] === 'manager');
-    const s2 = worker.schedule[dayIdx];
-    workerSubs.forEach(row => {
-      try {
-        sendPushNotification(row[2], row[3], row[4], {
-          title: 'Shift Reminder — ' + worker.name,
-          body:  'Your shift starts at ' + s2.start + '. Tap to clock in!',
-          url:   '/worker-punch.html',
-          tag:   'shift-' + worker.name,
-        });
-      } catch(e) { Logger.log('Push failed for ' + worker.name + ': ' + e); }
+
+  schSh.getDataRange().getValues().slice(1).forEach(function(schRow) {
+    const tenantId = schRow[0];
+    let workers = [];
+    try { workers = JSON.parse(schRow[1] || '[]'); } catch (e) {}
+    if (!workers.length) return;
+    const toNotify = workers.filter(w => {
+      const s = w.schedule?.[dayIdx];
+      if (!s || s.type === 'off' || !s.start) return false;
+      const [h, m] = s.start.split(':').map(Number);
+      const diff = (h*60+m) - nowMin;
+      return diff >= 50 && diff <= 70;
     });
+    if (!toNotify.length) return;
+    const tenantSubs = subs.filter(row => row[6] === tenantId);
+    toNotify.forEach(worker => {
+      const workerSubs = tenantSubs.filter(row => row[0] === worker.name || row[1] === 'manager');
+      const s2 = worker.schedule[dayIdx];
+      workerSubs.forEach(row => {
+        try {
+          sendPushNotification(row[2], row[3], row[4], {
+            title: 'Shift Reminder — ' + worker.name,
+            body:  'Your shift starts at ' + s2.start + '. Tap to clock in!',
+            url:   '/worker-punch.html',
+            tag:   'shift-' + worker.name,
+          });
+        } catch(e) { Logger.log('Push failed for ' + worker.name + ': ' + e); }
+      });
+    });
+    Logger.log('[' + tenantId + '] Reminders sent to: ' + toNotify.map(w=>w.name).join(', '));
   });
-  Logger.log('Reminders sent to: ' + toNotify.map(w=>w.name).join(', '));
 }
 
 function sendPushNotification(endpoint, p256dh, auth, payload) {

@@ -364,6 +364,7 @@
         <div class="dropdown-item" onclick="exportJSON()"><i class="ti ti-braces"></i> JSON</div>
       </div>
     </div>
+    <div id="accountControl"></div>
   </div>
 </div>
 
@@ -611,6 +612,59 @@
 <!-- Manual Punch Modal -->
 <div class="overlay" id="manualPunchOverlay" onclick="if(event.target===this)closeModal('manualPunchOverlay')">
   <div class="modal" id="manualPunchModal" style="max-width:440px"></div>
+</div>
+
+<!-- Login gate: full-screen, opaque, above everything else. Shown by JS at
+     startup when there's no valid (non-expired) session; hides + the normal
+     app init runs only after a successful login. -->
+<div id="loginScreen" style="display:none;position:fixed;inset:0;z-index:1000;background:var(--bg);align-items:center;justify-content:center">
+  <div style="width:100%;max-width:340px;padding:24px">
+    <div style="text-align:center;margin-bottom:22px">
+      <i class="ti ti-calendar-stats" style="font-size:32px;color:var(--accent)"></i>
+      <div style="font-size:19px;font-weight:700;margin-top:8px">Schedule Manager</div>
+    </div>
+    <div class="field"><label>Логин</label><input type="text" id="loginUsername" autocomplete="username" autofocus></div>
+    <div class="field"><label>Пароль</label><input type="password" id="loginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogin()"></div>
+    <div id="loginError" style="color:#ff6b78;font-size:13px;margin:2px 0 10px;min-height:1.2em"></div>
+    <button class="btn accent" style="width:100%" onclick="submitLogin()" id="loginBtn">Войти</button>
+  </div>
+</div>
+
+<!-- Super-admin landing screen: pick a firm to open, or create a new one.
+     Shown instead of the normal app whenever a superadmin session has no
+     viewingTenantId picked yet (see gateApp() / backToFirmsList()). -->
+<div id="firmsScreen" style="display:none;position:fixed;inset:0;z-index:900;background:var(--bg);overflow-y:auto">
+  <div style="max-width:720px;margin:0 auto;padding:28px 20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+      <div style="font-size:20px;font-weight:700"><i class="ti ti-building-skyscraper"></i> Фирмы</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> Создать фирму</button>
+        <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i> Выйти</button>
+      </div>
+    </div>
+    <div id="firmsList" style="display:flex;flex-direction:column;gap:8px"></div>
+  </div>
+</div>
+
+<div class="overlay" id="createFirmOverlay" style="z-index:950" onclick="if(event.target===this)closeModal('createFirmOverlay')">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title">Новая фирма</div>
+    <div class="field"><label>Логин</label><input type="text" id="firmUsername" autocomplete="off"></div>
+    <div class="field"><label>Пароль (мин. 8 символов)</label><input type="password" id="firmPassword" autocomplete="new-password"></div>
+    <div class="field"><label>Название фирмы</label><input type="text" id="firmCompanyName"></div>
+    <div class="field"><label>מספר תיק ניכויים (8 цифр)</label><input type="text" id="firmDeductionsNo" maxlength="8" inputmode="numeric"></div>
+    <div class="field"><label>Телефон</label><input type="text" id="firmPhone"></div>
+    <div class="field-row">
+      <div class="field"><label>Улица</label><input type="text" id="firmStreet"></div>
+      <div class="field"><label>Номер дома</label><input type="text" id="firmStreetNumber"></div>
+    </div>
+    <div class="field"><label>Город</label><input type="text" id="firmCity"></div>
+    <div id="firmFormError" style="color:#ff6b78;font-size:13px;margin:2px 0 6px;min-height:1.2em"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('createFirmOverlay')">Отмена</button>
+      <button class="btn accent" onclick="submitCreateFirm()" id="createFirmBtn">Создать</button>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -1648,6 +1702,209 @@ const GS_URL = 'https://script.google.com/macros/s/AKfycbwfGCQs8TzGd38j-JU0ZdoHL
 // Shared key sent with write requests. NOTE: this file is public, so the key is
 // visible in source — it's a deterrent against random/bot writes, not real auth.
 const API_SECRET = 'odinson-7Kq2x9';
+
+// ── Multi-tenant session ────────────────────────────────────────────────────
+// Real auth for this app: a session is a signed token from the backend's
+// login action, kept in localStorage for 24h (SESSION_TTL_MS server-side).
+// role is 'superadmin' (sees every firm) or 'tenant' (sees only its own).
+// viewingTenantId is what every API call actually scopes to — for a normal
+// tenant user it's always their own tenantId; for a super-admin it starts
+// null (no firm picked yet) and changes when they pick one from the Firms
+// screen (switchToTenant()).
+const SESSION_KEY = 'schedMgr_session';
+function getSession(){
+  try{
+    const raw = localStorage.getItem(SESSION_KEY);
+    if(!raw) return null;
+    const s = JSON.parse(raw);
+    if(!s || !s.token || !s.expiresAt || Date.now() > s.expiresAt){ localStorage.removeItem(SESSION_KEY); return null; }
+    return s;
+  }catch(e){ return null; }
+}
+function saveSession(s){ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
+function clearSession(){ localStorage.removeItem(SESSION_KEY); }
+function logout(){ clearSession(); location.reload(); }
+
+// Merged into every backend request: the session token, plus asTenantId when
+// a super-admin has switched into a specific firm (omitted for a normal
+// tenant user — their own tenantId is already baked into their token).
+function gsAuth(){
+  const s = getSession();
+  if(!s) return {};
+  const out = { token: s.token };
+  if(s.role === 'superadmin' && s.viewingTenantId) out.asTenantId = s.viewingTenantId;
+  return out;
+}
+function gsAuthQuery(){
+  const a = gsAuth();
+  return Object.keys(a).map(k => '&' + k + '=' + encodeURIComponent(a[k])).join('');
+}
+
+// Session can expire (or get invalidated) while the tab stays open; every
+// call site above just swallows a failed save/load rather than knowing what
+// to do about it. Rather than thread a check through all dozen fetch(GS_URL,
+// ...) call sites, wrap fetch itself once: any GS_URL response carrying the
+// backend's exact "session expired" error clears the stale session and
+// reloads straight back to the login screen instead of silently failing.
+const SESSION_EXPIRED_ERROR = 'Сессия истекла или недействительна — войдите заново';
+(function(){
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = function(url, opts){
+    return _origFetch(url, opts).then(res => {
+      if (typeof url === 'string' && url.indexOf(GS_URL) === 0) {
+        res.clone().json().then(json => {
+          if (json && json.error === SESSION_EXPIRED_ERROR && getSession()){
+            clearSession();
+            showToast('Сессия истекла — войдите заново');
+            setTimeout(() => location.reload(), 1200);
+          }
+        }).catch(()=>{});
+      }
+      return res;
+    });
+  };
+})();
+
+async function submitLogin(){
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  const btn = document.getElementById('loginBtn');
+  errEl.textContent = '';
+  if(!username || !password){ errEl.textContent = 'Введите логин и пароль'; return; }
+  btn.disabled = true; btn.textContent = 'Вхожу…';
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'login', username, password }) });
+    const json = await res.json();
+    if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось войти'; return; }
+    saveSession({
+      token: json.token, role: json.role, tenantId: json.tenantId, username: json.username,
+      tenantProfile: json.tenantProfile, expiresAt: json.expiresAt,
+      viewingTenantId: json.tenantId, // a super-admin (tenantId null) picks one on the Firms screen
+    });
+    location.reload();
+  }catch(e){ errEl.textContent = 'Сеть недоступна, попробуйте ещё раз'; }
+  finally{ btn.disabled = false; btn.textContent = 'Войти'; }
+}
+
+// A super-admin drilling into one firm's normal view — every subsequent API
+// call sends asTenantId until they switch again or log out. Also caches that
+// firm's own profile (from the already-fetched Firms list — __firmsCache) as
+// viewingTenantProfile, since aiFillForm101() needs it for Form 101 section א
+// and a super-admin's own login never carries a tenantProfile (they have no
+// fixed tenant of their own).
+function switchToTenant(tenantId){
+  const s = getSession();
+  if(!s || s.role !== 'superadmin') return;
+  const t = __firmsCache.find(x => x.tenantId === tenantId);
+  s.viewingTenantId = tenantId;
+  s.viewingTenantName = (t && t.companyName) || tenantId;
+  s.viewingTenantProfile = t || null;
+  saveSession(s);
+  location.reload();
+}
+function backToFirmsList(){
+  const s = getSession();
+  if(!s || s.role !== 'superadmin') return;
+  s.viewingTenantId = null;
+  s.viewingTenantName = null;
+  saveSession(s);
+  location.reload();
+}
+
+// ── App gate: decides which of the three top-level screens to show ─────────
+// (1) no/expired session → #loginScreen, nothing else runs.
+// (2) super-admin with no firm picked yet → #firmsScreen.
+// (3) everyone else (a tenant login, or a super-admin who picked a firm) →
+//     the normal app — runInitApp() runs the pre-existing init sequence.
+// Called once at startup in place of the old unconditional init block.
+function gateApp(runInitApp){
+  const s = getSession();
+  if(!s){
+    document.getElementById('loginScreen').style.display = 'flex';
+    return;
+  }
+  if(s.role === 'superadmin' && !s.viewingTenantId){
+    document.getElementById('firmsScreen').style.display = 'block';
+    renderFirmsList();
+    return;
+  }
+  renderAccountControl(s);
+  runInitApp();
+}
+
+// Small titlebar control: who's logged in, and for a super-admin currently
+// viewing one firm, a way back to the Firms list (never shown to a normal
+// tenant login — they have only one firm, nothing to switch to).
+function renderAccountControl(s){
+  const host = document.getElementById('accountControl');
+  if(!host) return;
+  const label = s.role === 'superadmin' ? ('Супер-админ · ' + esc(s.viewingTenantName || s.viewingTenantId || '')) : esc(s.username || '');
+  host.innerHTML = `
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
+      <span>${label}</span>
+      ${s.role==='superadmin' ? '<button class="btn sm" onclick="backToFirmsList()"><i class="ti ti-building-skyscraper"></i> Фирмы</button>' : ''}
+      <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i></button>
+    </div>`;
+}
+
+let __firmsCache = [];
+async function renderFirmsList(){
+  const listEl = document.getElementById('firmsList');
+  listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'listTenants', ...gsAuth() }) });
+    const json = await res.json();
+    if(!json || json.error){ listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Ошибка загрузки')+'</div>'; return; }
+    const tenants = json.tenants || [];
+    __firmsCache = tenants;
+    if(!tenants.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Фирм ещё нет — создайте первую.</div>'; return; }
+    listEl.innerHTML = tenants.map(t => `
+      <div class="row" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);cursor:pointer" onclick="switchToTenant('${esc(t.tenantId)}')">
+        <div>
+          <div style="font-weight:600">${esc(t.companyName || '(без названия)')}</div>
+          <div style="font-size:12px;color:var(--text2)">${t.workerCount||0} воркеров · ${t.clientCount||0} клиентов${t.savedAt?' · сохранено '+esc(new Date(t.savedAt).toLocaleString()):''}</div>
+        </div>
+        <i class="ti ti-chevron-right"></i>
+      </div>`).join('');
+  }catch(e){ listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
+}
+
+function openCreateFirmForm(){
+  ['firmUsername','firmPassword','firmCompanyName','firmDeductionsNo','firmPhone','firmStreet','firmStreetNumber','firmCity'].forEach(id => { document.getElementById(id).value=''; });
+  document.getElementById('firmFormError').textContent = '';
+  // Shown/hidden via the .open class (closeModal() only ever removes that
+  // class) — matching every other overlay in the app, not an inline style.
+  document.getElementById('createFirmOverlay').classList.add('open');
+}
+async function submitCreateFirm(){
+  const get = id => document.getElementById(id).value.trim();
+  const username = get('firmUsername'), password = document.getElementById('firmPassword').value;
+  const errEl = document.getElementById('firmFormError');
+  const btn = document.getElementById('createFirmBtn');
+  errEl.textContent = '';
+  if(!username || !password){ errEl.textContent = 'Логин и пароль обязательны'; return; }
+  btn.disabled = true; btn.textContent = 'Создаю…';
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({
+      action:'createUser', ...gsAuth(),
+      username, password,
+      companyName: get('firmCompanyName'),
+      deductionsFileNumber: get('firmDeductionsNo'),
+      phone: get('firmPhone'),
+      street: get('firmStreet'),
+      streetNumber: get('firmStreetNumber'),
+      city: get('firmCity'),
+    })});
+    const json = await res.json();
+    if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось создать фирму'; return; }
+    closeModal('createFirmOverlay');
+    showToast('Фирма создана');
+    renderFirmsList();
+  }catch(e){ errEl.textContent = 'Сеть недоступна'; }
+  finally{ btn.disabled = false; btn.textContent = 'Создать'; }
+}
+
 // Optimistic concurrency: the savedAt value we last loaded from the DB.
 let lastLoadedSavedAt = null;
 
@@ -1661,7 +1918,7 @@ async function gsSave(data) {
   try {
     const res = await fetch(GS_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'saveSchedule', secret: API_SECRET, baseSavedAt: lastLoadedSavedAt, data })
+      body: JSON.stringify({ action: 'saveSchedule', secret: API_SECRET, ...gsAuth(), baseSavedAt: lastLoadedSavedAt, data })
     });
     const json = await res.json();
     if(json && json.conflict){
@@ -1677,7 +1934,7 @@ async function gsSave(data) {
 
 async function gsLoad() {
   try {
-    const res = await fetch(GS_URL + '?action=loadSchedule');
+    const res = await fetch(GS_URL + '?action=loadSchedule' + gsAuthQuery());
     const json = await res.json();
     if (json.workers){ lastLoadedSavedAt = json.savedAt || null; return json; }
     return null;
@@ -1688,7 +1945,7 @@ async function gsLoad() {
 // unsynced local entries are kept). Lets the admin see every worker's punches.
 async function gsLoadPunchLog(){
   try{
-    const res = await fetch(GS_URL + '?action=loadPunchLog');
+    const res = await fetch(GS_URL + '?action=loadPunchLog' + gsAuthQuery());
     const json = await res.json();
     return (json && json.entries) ? json.entries : null;
   }catch(e){ console.warn('GS punch load failed:', e); return null; }
@@ -1720,7 +1977,7 @@ async function gsSavePunch(entry) {
   try {
     await fetch(GS_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'savePunch', secret: API_SECRET, data: entry })
+      body: JSON.stringify({ action: 'savePunch', secret: API_SECRET, ...gsAuth(), data: entry })
     });
   } catch(e) { console.warn('GS punch save failed:', e); }
 }
@@ -1729,7 +1986,7 @@ async function gsDeletePunch(id) {
   try {
     await fetch(GS_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'deletePunch', secret: API_SECRET, id })
+      body: JSON.stringify({ action: 'deletePunch', secret: API_SECRET, ...gsAuth(), id })
     });
   } catch(e) { console.warn('GS delete failed:', e); }
 }
@@ -1738,7 +1995,7 @@ async function gsUpdatePunch(data) {
   try {
     await fetch(GS_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'updatePunch', secret: API_SECRET, data })
+      body: JSON.stringify({ action: 'updatePunch', secret: API_SECRET, ...gsAuth(), data })
     });
   } catch(e) { console.warn('GS update failed:', e); }
 }
@@ -1750,7 +2007,7 @@ async function gsDeleteWorkerDoc(fileId) {
   try {
     await fetch(GS_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'deleteWorkerDoc', secret: API_SECRET, fileId })
+      body: JSON.stringify({ action: 'deleteWorkerDoc', secret: API_SECRET, ...gsAuth(), fileId })
     });
   } catch(e) { console.warn('GS worker doc delete failed:', e); }
 }
@@ -2564,7 +2821,7 @@ async function autoPreAlignScan(b64,mediaType){
   try{
     const resp=await fetch(GS_URL,{
       method:'POST',
-      body:JSON.stringify({action:'aiDetectAlign',secret:API_SECRET,image:b64,mediaType:mediaType})
+      body:JSON.stringify({action:'aiDetectAlign',secret:API_SECRET,...gsAuth(),image:b64,mediaType:mediaType})
     });
     const json=await resp.json();
     const align=json&&json.ok&&json.align;
@@ -2605,7 +2862,7 @@ async function runOcr(b64,mediaType){
   try{
     const resp=await fetch(GS_URL,{
       method:'POST',
-      body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,image:b64,mediaType:mediaType})
+      body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:b64,mediaType:mediaType})
     });
     const json=await resp.json();
     if(!json||json.error){
@@ -3276,6 +3533,34 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     // coordinates instead, like the other printed-only boxes.
     const TAX_YEAR_RECT={x:220.4,y:742.49,width:64.9,height:13};
     drawCombRaw(String(new Date().getFullYear()),4,TAX_YEAR_RECT,11);
+    // "א. פרטי המעסיק" (employer details) — also has no real AcroForm fields
+    // (verified the same way as the boxes above: zero widgets in this row's
+    // y-range). Filled from the logged-in firm's own Tenants profile — for a
+    // super-admin viewing a specific firm, viewingTenantProfile (cached from
+    // the Firms list at switchToTenant()); for a normal tenant login,
+    // tenantProfile (returned once at login). Row native y=659.89..673.89;
+    // columns right-to-left: שם, כתובת, מספר טלפון, מספר תיק ניכויים (8
+    // digits — the template already prints a fixed leading "9").
+    (function(){
+      const session=getSession();
+      const profile=session&&(session.viewingTenantProfile||session.tenantProfile);
+      if(!profile) return;
+      const ROW={y:659.89,height:14};
+      const NAME_RECT={x:414.9,width:540.4-414.9,...ROW};
+      const ADDRESS_RECT={x:209.0,width:414.9-209.0,...ROW};
+      const PHONE_RECT={x:130.3,width:209.0-130.3,...ROW};
+      const DEDUCTIONS_RECT={x:39.9,width:130.3-39.9,...ROW};
+      const drawLeft=(text,rect,size)=>{
+        if(!text) return;
+        const th=stdFont.heightAtSize(size,{descender:false});
+        page1.drawText(String(text),{x:rect.x+2,y:rect.y+(rect.height-th)/2,size,font:stdFont});
+      };
+      drawLeft(profile.companyName,NAME_RECT,9);
+      const addr=[profile.street,profile.streetNumber].filter(Boolean).join(' ')+(profile.city?(profile.street||profile.streetNumber?', ':'')+profile.city:'');
+      drawLeft(addr,ADDRESS_RECT,9);
+      drawLeft(profile.phone,PHONE_RECT,9);
+      if(profile.deductionsFileNumber) drawCombRaw(String(profile.deductionsFileNumber).replace(/\D/g,''),8,DEDUCTIONS_RECT,10);
+    })();
     if(sex==='M') chk('sex_male'); else if(sex==='F') chk('sex_female');
     if(isIsraeli){ chk('resident_yes'); chk('resident_h'); }
     else { chk('resident_no'); chk('marital_single'); }
@@ -3415,11 +3700,17 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     // field themselves using the template's default (non-Hebrew) Helvetica DA.
     form.acroForm.dict.set(PDFLib.PDFName.of('NeedAppearances'), PDFLib.PDFBool.False);
     const out=await doc.save();
-    // <docNumber>_<given>_<surname>.pdf — the ID/passport number is the one
-    // stable part across rescans (used by the backend's automatic dedup in
-    // saveWorkerDoc), name parts are just for human-readable browsing in Drive.
+    // <docNumber>_<given>_<surname>_<companyName>.pdf — the ID/passport number
+    // is the one stable part across rescans (used by the backend's automatic
+    // dedup in saveWorkerDoc), name parts and company name are just for
+    // human-readable browsing in Drive (the actual per-company folder the
+    // backend saves into is resolved server-side from the tenant, not from
+    // this string — see _companyFolder() in apps-script/Код.js).
     const fnPart=s=>(s||'').replace(/[^A-Za-z0-9֐-׿]/g,'');
-    const fileName=(no?no.replace(/\D/g,''):'noid')+'_'+fnPart(given||'worker')+(surname?'_'+fnPart(surname):'')+'.pdf';
+    const __session=getSession();
+    const __profile=__session&&(__session.viewingTenantProfile||__session.tenantProfile);
+    const companySuffix=(__profile&&__profile.companyName)?'_'+fnPart(__profile.companyName):'';
+    const fileName=(no?no.replace(/\D/g,''):'noid')+'_'+fnPart(given||'worker')+(surname?'_'+fnPart(surname):'')+companySuffix+'.pdf';
     if(mode==='upload'){
       const fileBase64=bytesToBase64(out);
       // Worker (targetWorker) already resolved up top — reused here so a
@@ -3430,7 +3721,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
       const w=targetWorker;
       const resp=await fetch(GS_URL,{
         method:'POST',
-        body:JSON.stringify({action:'saveWorkerDoc',secret:API_SECRET,fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null})
+        body:JSON.stringify({action:'saveWorkerDoc',secret:API_SECRET,...gsAuth(),fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null})
       });
       const json=await resp.json();
       if(!json||json.error) throw new Error((json&&json.error)||'Сервер не ответил');
@@ -3531,14 +3822,16 @@ function reportError(message, source, stack){
 window.addEventListener('error', function(ev){ console.error('App error:', ev.error||ev.message); reportError(ev.message, (ev.filename||'')+':'+(ev.lineno||''), ev.error&&ev.error.stack); });
 window.addEventListener('unhandledrejection', function(ev){ const r=ev.reason; reportError((r&&r.message)||String(r), 'promise', r&&r.stack); });
 try{
-  loadData();
-  syncPicker();
-  render();
-  setSaveStatus('saved');
-  // Start on Dashboard
-  switchTab('dashboard');
-  // Check push subscription status
-  setTimeout(checkPushStatus, 1000);
+  gateApp(function(){
+    loadData();
+    syncPicker();
+    render();
+    setSaveStatus('saved');
+    // Start on Dashboard
+    switchTab('dashboard');
+    // Check push subscription status
+    setTimeout(checkPushStatus, 1000);
+  });
 }catch(err){
   console.error('Init failed:', err);
   try{ showToast('Ошибка инициализации — обновите страницу (F5)'); }catch(e){}
@@ -3572,7 +3865,7 @@ async function subscribeToPush(){
     });
     localStorage.setItem('pushSubscription', JSON.stringify(sub));
     // Save to GS
-    fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'savePushSubscription',secret:API_SECRET,subscription:JSON.parse(JSON.stringify(sub)),role:'manager'})});
+    fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'savePushSubscription',secret:API_SECRET,...gsAuth(),subscription:JSON.parse(JSON.stringify(sub)),role:'manager'})});
     showToast('Shift reminders enabled!');
     document.getElementById('pushBtn')?.remove();
   } catch(e){ showToast('Failed: '+e.message); console.error(e); }
