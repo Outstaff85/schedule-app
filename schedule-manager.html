@@ -3264,11 +3264,15 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     // have no Israeli ID) and use the real `passport_no` field instead.
     const ID_BOX_RECT={x:438,y:607.89,width:102,height:13};
     // "תאריך" next to "חתימת המבקש/ת" (declaration section י) is the date
-    // this form is signed — not the work-start date — so it's set here,
-    // independently of fillWorkStart(), to today's date.
-    const today=new Date();
-    const todayStr=String(today.getDate()).padStart(2,'0')+'/'+String(today.getMonth()+1).padStart(2,'0')+'/'+today.getFullYear();
-    setT('sign_date',todayStr);
+    // this form is signed — set to the worker's own createdAt (the day they
+    // were actually onboarded), not whatever day this PDF happens to be
+    // (re)generated/rescanned. Falls back to today only when there's no
+    // worker record yet to read a date from (e.g. a bare 'download' before
+    // the worker is saved) or for legacy workers saved before createdAt existed.
+    const signDateSrc=(targetWorker&&targetWorker.createdAt)?new Date(targetWorker.createdAt):new Date();
+    const signDate=isNaN(signDateSrc)?new Date():signDateSrc;
+    const signDateStr=String(signDate.getDate()).padStart(2,'0')+'/'+String(signDate.getMonth()+1).padStart(2,'0')+'/'+signDate.getFullYear();
+    setT('sign_date',signDateStr);
     if(isId){
       // Israeli ID: fill address, marital, work start, fund from aiId* inputs
       if(no) drawCombRaw(no.replace(/\D/g,''),9,ID_BOX_RECT,9);
