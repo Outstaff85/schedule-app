@@ -3508,6 +3508,34 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     // coordinates instead, like the other printed-only boxes.
     const TAX_YEAR_RECT={x:220.4,y:742.49,width:64.9,height:13};
     drawCombRaw(String(new Date().getFullYear()),4,TAX_YEAR_RECT,11);
+    // "א. פרטי המעסיק" (employer details) — also has no real AcroForm fields
+    // (verified the same way as the boxes above: zero widgets in this row's
+    // y-range). Filled from the logged-in firm's own Tenants profile — for a
+    // super-admin viewing a specific firm, viewingTenantProfile (cached from
+    // the Firms list at switchToTenant()); for a normal tenant login,
+    // tenantProfile (returned once at login). Row native y=659.89..673.89;
+    // columns right-to-left: שם, כתובת, מספר טלפון, מספר תיק ניכויים (8
+    // digits — the template already prints a fixed leading "9").
+    (function(){
+      const session=getSession();
+      const profile=session&&(session.viewingTenantProfile||session.tenantProfile);
+      if(!profile) return;
+      const ROW={y:659.89,height:14};
+      const NAME_RECT={x:414.9,width:540.4-414.9,...ROW};
+      const ADDRESS_RECT={x:209.0,width:414.9-209.0,...ROW};
+      const PHONE_RECT={x:130.3,width:209.0-130.3,...ROW};
+      const DEDUCTIONS_RECT={x:39.9,width:130.3-39.9,...ROW};
+      const drawLeft=(text,rect,size)=>{
+        if(!text) return;
+        const th=stdFont.heightAtSize(size,{descender:false});
+        page1.drawText(String(text),{x:rect.x+2,y:rect.y+(rect.height-th)/2,size,font:stdFont});
+      };
+      drawLeft(profile.companyName,NAME_RECT,9);
+      const addr=[profile.street,profile.streetNumber].filter(Boolean).join(' ')+(profile.city?(profile.street||profile.streetNumber?', ':'')+profile.city:'');
+      drawLeft(addr,ADDRESS_RECT,9);
+      drawLeft(profile.phone,PHONE_RECT,9);
+      if(profile.deductionsFileNumber) drawCombRaw(String(profile.deductionsFileNumber).replace(/\D/g,''),8,DEDUCTIONS_RECT,10);
+    })();
     if(sex==='M') chk('sex_male'); else if(sex==='F') chk('sex_female');
     if(isIsraeli){ chk('resident_yes'); chk('resident_h'); }
     else { chk('resident_no'); chk('marital_single'); }
