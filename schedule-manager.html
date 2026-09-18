@@ -1212,6 +1212,7 @@ function showWorkerModal(w){
 }
 function pickWColor(i){ selColorIdx=i; document.querySelectorAll('#wColorPick [data-ci]').forEach(el=>{ const idx=parseInt(el.dataset.ci); el.style.borderColor=idx===i?'white':'transparent'; el.style.transform=idx===i?'scale(1.2)':'scale(1)'; }); }
 function toggleDayTime(i){ const off=document.getElementById(`wt${i}`).value==='off'; ['ws','we'].forEach(p=>{ const el=document.getElementById(p+i); el.disabled=off; el.style.opacity=off?'0.3':'1'; }); }
+function toggleExpiryFields(){ const on=document.getElementById('wExpiryEnabled').checked; document.getElementById('wExpiryFields').style.display=on?'flex':'none'; }
 function filterClientPick(q){
   q=(q||'').trim().toLowerCase();
   let shown=0;
