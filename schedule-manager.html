@@ -1098,7 +1098,10 @@ function saveWorker(){
     showToast(name+' updated!');
   } else {
     const token=genToken();
-    const newWorker={id:uid(),name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,address,notes,clientIds,schedule,token};
+    // createdAt powers the Form 101 declaration date (aiFillForm101): the
+    // signature date on a scanned worker's PDF should match when they were
+    // actually onboarded, not whatever day the PDF happens to be (re)generated.
+    const newWorker={id:uid(),name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,address,notes,clientIds,schedule,token,createdAt:new Date().toISOString()};
     workers.push(newWorker);
     showToast(name+' added! Copy their link from Edit.');
     // If this worker was created from an AI document scan, generate the
