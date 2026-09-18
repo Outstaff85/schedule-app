@@ -3126,7 +3126,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     else { chk('resident_no'); chk('marital_single'); }
     // "תאריך תחילת העבודה בשנת המס" (work start date) has no underlying form
     // field on the template at all — just a printed comb box — so it's drawn
-    // by hand. sign_date is a real field.
+    // by hand.
     const WORK_START_RECT={x:30.75,y:450.42,width:90.64,height:21.01};
     const fillWorkStart=(isoDate)=>{
       if(!isoDate) return;
