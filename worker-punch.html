@@ -506,8 +506,8 @@ async function flushQueue(){
   const q=getQueue();        // flaky connection — without this guard, two overlapping runs
   if(!q.length||!navigator.onLine) return; // would both read the same queue and double-post every entry.
   _flushingQueue=true;
+  const failed=[];
   try{
-    const failed=[];
     for(const e of q){
       try{
         const r=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'savePunch',secret:API_SECRET,workerToken:e.workerToken||_wpToken(),data:e})});
