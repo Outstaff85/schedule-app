@@ -3029,11 +3029,12 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     setSize('surname',11); setSize('given_name',11); setSize('addr_street',11);
     setSize('addr_city',11); setSize('hf_name',10); setSize('id_top2',13);
     const setT=(n,v)=>{ try{ if(v) form.getTextField(n).setText(String(v)); }catch(e){} };
+    const CHECK_BLUE=PDFLib.rgb(0.09,0.32,0.85);
     const chk=(n)=>{
       try{
         const cb=form.getCheckBox(n);
         cb.check();
-        // Draw a plain filled square instead of the template's default X mark —
+        // Draw a blue checkmark instead of the template's default X mark —
         // blank the widget's own "Yes" appearance first so it doesn't peek
         // through underneath (same trick as the Hebrew text fix above).
         const widget=cb.acroField.getWidgets()[0];
@@ -3042,8 +3043,11 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
         const yesStream=yesRef&&doc.context.lookup(yesRef);
         if(yesStream&&'contents' in yesStream) yesStream.contents=new Uint8Array(0);
         const r=widget.getRectangle();
-        const pad=1.5;
-        page1.drawRectangle({x:r.x+pad,y:r.y+pad,width:r.width-pad*2,height:r.height-pad*2,color:PDFLib.rgb(0,0,0)});
+        const thickness=Math.max(1.1,r.height*0.16);
+        const pt=(fx,fy)=>({x:r.x+fx*r.width,y:r.y+fy*r.height});
+        const p1=pt(0.12,0.55), p2=pt(0.40,0.18), p3=pt(0.88,0.82);
+        page1.drawLine({start:p1,end:p2,thickness,color:CHECK_BLUE,lineCap:PDFLib.LineCapStyle.Round});
+        page1.drawLine({start:p2,end:p3,thickness,color:CHECK_BLUE,lineCap:PDFLib.LineCapStyle.Round});
       }catch(e){}
     };
     // A few boxes on the template (work-start date, the children table) have no
