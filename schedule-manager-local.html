@@ -646,7 +646,7 @@
   </div>
 </div>
 
-<div class="overlay" id="createFirmOverlay" onclick="if(event.target===this)closeModal('createFirmOverlay')">
+<div class="overlay" id="createFirmOverlay" style="z-index:950" onclick="if(event.target===this)closeModal('createFirmOverlay')">
   <div class="modal" style="max-width:420px">
     <div class="modal-title">Новая фирма</div>
     <div class="field"><label>Логин</label><input type="text" id="firmUsername" autocomplete="off"></div>
@@ -1740,6 +1740,31 @@ function gsAuthQuery(){
   return Object.keys(a).map(k => '&' + k + '=' + encodeURIComponent(a[k])).join('');
 }
 
+// Session can expire (or get invalidated) while the tab stays open; every
+// call site above just swallows a failed save/load rather than knowing what
+// to do about it. Rather than thread a check through all dozen fetch(GS_URL,
+// ...) call sites, wrap fetch itself once: any GS_URL response carrying the
+// backend's exact "session expired" error clears the stale session and
+// reloads straight back to the login screen instead of silently failing.
+const SESSION_EXPIRED_ERROR = 'Сессия истекла или недействительна — войдите заново';
+(function(){
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = function(url, opts){
+    return _origFetch(url, opts).then(res => {
+      if (typeof url === 'string' && url.indexOf(GS_URL) === 0) {
+        res.clone().json().then(json => {
+          if (json && json.error === SESSION_EXPIRED_ERROR && getSession()){
+            clearSession();
+            showToast('Сессия истекла — войдите заново');
+            setTimeout(() => location.reload(), 1200);
+          }
+        }).catch(()=>{});
+      }
+      return res;
+    });
+  };
+})();
+
 async function submitLogin(){
   const username = document.getElementById('loginUsername').value.trim();
   const password = document.getElementById('loginPassword').value;
@@ -1763,12 +1788,18 @@ async function submitLogin(){
 }
 
 // A super-admin drilling into one firm's normal view — every subsequent API
-// call sends asTenantId until they switch again or log out.
-function switchToTenant(tenantId, tenantName){
+// call sends asTenantId until they switch again or log out. Also caches that
+// firm's own profile (from the already-fetched Firms list — __firmsCache) as
+// viewingTenantProfile, since aiFillForm101() needs it for Form 101 section א
+// and a super-admin's own login never carries a tenantProfile (they have no
+// fixed tenant of their own).
+function switchToTenant(tenantId){
   const s = getSession();
   if(!s || s.role !== 'superadmin') return;
+  const t = __firmsCache.find(x => x.tenantId === tenantId);
   s.viewingTenantId = tenantId;
-  s.viewingTenantName = tenantName || tenantId;
+  s.viewingTenantName = (t && t.companyName) || tenantId;
+  s.viewingTenantProfile = t || null;
   saveSession(s);
   location.reload();
 }
@@ -1817,6 +1848,7 @@ function renderAccountControl(s){
     </div>`;
 }
 
+let __firmsCache = [];
 async function renderFirmsList(){
   const listEl = document.getElementById('firmsList');
   listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
@@ -1825,9 +1857,10 @@ async function renderFirmsList(){
     const json = await res.json();
     if(!json || json.error){ listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Ошибка загрузки')+'</div>'; return; }
     const tenants = json.tenants || [];
+    __firmsCache = tenants;
     if(!tenants.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Фирм ещё нет — создайте первую.</div>'; return; }
     listEl.innerHTML = tenants.map(t => `
-      <div class="row" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);cursor:pointer" onclick="switchToTenant('${esc(t.tenantId)}','${esc(t.companyName||t.tenantId)}')">
+      <div class="row" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);cursor:pointer" onclick="switchToTenant('${esc(t.tenantId)}')">
         <div>
           <div style="font-weight:600">${esc(t.companyName || '(без названия)')}</div>
           <div style="font-size:12px;color:var(--text2)">${t.workerCount||0} воркеров · ${t.clientCount||0} клиентов${t.savedAt?' · сохранено '+esc(new Date(t.savedAt).toLocaleString()):''}</div>
@@ -1840,7 +1873,9 @@ async function renderFirmsList(){
 function openCreateFirmForm(){
   ['firmUsername','firmPassword','firmCompanyName','firmDeductionsNo','firmPhone','firmStreet','firmStreetNumber','firmCity'].forEach(id => { document.getElementById(id).value=''; });
   document.getElementById('firmFormError').textContent = '';
-  document.getElementById('createFirmOverlay').style.display = 'flex';
+  // Shown/hidden via the .open class (closeModal() only ever removes that
+  // class) — matching every other overlay in the app, not an inline style.
+  document.getElementById('createFirmOverlay').classList.add('open');
 }
 async function submitCreateFirm(){
   const get = id => document.getElementById(id).value.trim();
@@ -3498,6 +3533,34 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     // coordinates instead, like the other printed-only boxes.
     const TAX_YEAR_RECT={x:220.4,y:742.49,width:64.9,height:13};
     drawCombRaw(String(new Date().getFullYear()),4,TAX_YEAR_RECT,11);
+    // "א. פרטי המעסיק" (employer details) — also has no real AcroForm fields
+    // (verified the same way as the boxes above: zero widgets in this row's
+    // y-range). Filled from the logged-in firm's own Tenants profile — for a
+    // super-admin viewing a specific firm, viewingTenantProfile (cached from
+    // the Firms list at switchToTenant()); for a normal tenant login,
+    // tenantProfile (returned once at login). Row native y=659.89..673.89;
+    // columns right-to-left: שם, כתובת, מספר טלפון, מספר תיק ניכויים (8
+    // digits — the template already prints a fixed leading "9").
+    (function(){
+      const session=getSession();
+      const profile=session&&(session.viewingTenantProfile||session.tenantProfile);
+      if(!profile) return;
+      const ROW={y:659.89,height:14};
+      const NAME_RECT={x:414.9,width:540.4-414.9,...ROW};
+      const ADDRESS_RECT={x:209.0,width:414.9-209.0,...ROW};
+      const PHONE_RECT={x:130.3,width:209.0-130.3,...ROW};
+      const DEDUCTIONS_RECT={x:39.9,width:130.3-39.9,...ROW};
+      const drawLeft=(text,rect,size)=>{
+        if(!text) return;
+        const th=stdFont.heightAtSize(size,{descender:false});
+        page1.drawText(String(text),{x:rect.x+2,y:rect.y+(rect.height-th)/2,size,font:stdFont});
+      };
+      drawLeft(profile.companyName,NAME_RECT,9);
+      const addr=[profile.street,profile.streetNumber].filter(Boolean).join(' ')+(profile.city?(profile.street||profile.streetNumber?', ':'')+profile.city:'');
+      drawLeft(addr,ADDRESS_RECT,9);
+      drawLeft(profile.phone,PHONE_RECT,9);
+      if(profile.deductionsFileNumber) drawCombRaw(String(profile.deductionsFileNumber).replace(/\D/g,''),8,DEDUCTIONS_RECT,10);
+    })();
     if(sex==='M') chk('sex_male'); else if(sex==='F') chk('sex_female');
     if(isIsraeli){ chk('resident_yes'); chk('resident_h'); }
     else { chk('resident_no'); chk('marital_single'); }
@@ -3637,11 +3700,17 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     // field themselves using the template's default (non-Hebrew) Helvetica DA.
     form.acroForm.dict.set(PDFLib.PDFName.of('NeedAppearances'), PDFLib.PDFBool.False);
     const out=await doc.save();
-    // <docNumber>_<given>_<surname>.pdf — the ID/passport number is the one
-    // stable part across rescans (used by the backend's automatic dedup in
-    // saveWorkerDoc), name parts are just for human-readable browsing in Drive.
+    // <docNumber>_<given>_<surname>_<companyName>.pdf — the ID/passport number
+    // is the one stable part across rescans (used by the backend's automatic
+    // dedup in saveWorkerDoc), name parts and company name are just for
+    // human-readable browsing in Drive (the actual per-company folder the
+    // backend saves into is resolved server-side from the tenant, not from
+    // this string — see _companyFolder() in apps-script/Код.js).
     const fnPart=s=>(s||'').replace(/[^A-Za-z0-9֐-׿]/g,'');
-    const fileName=(no?no.replace(/\D/g,''):'noid')+'_'+fnPart(given||'worker')+(surname?'_'+fnPart(surname):'')+'.pdf';
+    const __session=getSession();
+    const __profile=__session&&(__session.viewingTenantProfile||__session.tenantProfile);
+    const companySuffix=(__profile&&__profile.companyName)?'_'+fnPart(__profile.companyName):'';
+    const fileName=(no?no.replace(/\D/g,''):'noid')+'_'+fnPart(given||'worker')+(surname?'_'+fnPart(surname):'')+companySuffix+'.pdf';
     if(mode==='upload'){
       const fileBase64=bytesToBase64(out);
       // Worker (targetWorker) already resolved up top — reused here so a

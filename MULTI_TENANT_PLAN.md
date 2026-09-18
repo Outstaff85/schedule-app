@@ -24,12 +24,15 @@ one without the other breaks the live app for the real "Odinson" tenant.
       `gsAuth()` (POST body) / `gsAuthQuery()` (GET query string);
       `worker-punch.html` sends its own worker token (`_wpToken()` —
       `URL_TOKEN` on a personal link, or the picked worker's own `.token` in
-      the picker-grid flow) as `workerToken` with every read/write. **Known
-      gap**: no proactive redirect-to-login if a session expires mid-use —
-      an expired-session API error currently just fails that one call
-      silently rather than showing the login screen again; a full page
-      reload picks up the expired session correctly via `getSession()`.
-      **Known regression**: the legacy no-token picker-grid flow in
+      the picker-grid flow) as `workerToken` with every read/write. A single
+      `window.fetch` wrapper (near `gsAuth()`) watches every `GS_URL`
+      response for the backend's exact session-expired error and, when seen,
+      clears the stale session, toasts, and reloads to the login screen —
+      rather than threading that check through every individual call site.
+      Verified live: corrupted an active token mid-session, triggered
+      `gsSave()`, watched it toast and land back on the login screen with
+      `schedMgr_session` cleared. **Known regression**: the legacy no-token
+      picker-grid flow in
       `worker-punch.html` (`!URL_TOKEN`) has no per-request way to name a
       firm and will fail against this backend — every real worker link is a
       personal token link per `CLAUDE.md`, so this may not matter in
