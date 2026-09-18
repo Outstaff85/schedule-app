@@ -1958,6 +1958,47 @@ async function submitCreateFirm(){
   finally{ btn.disabled = false; btn.textContent = 'Создать'; }
 }
 
+let __editingFirmTenantId = null;
+function openEditFirmForm(tenantId){
+  const t = __firmsCache.find(x => x.tenantId === tenantId);
+  if(!t){ showToast('Фирма не найдена'); return; }
+  __editingFirmTenantId = tenantId;
+  document.getElementById('firmEditCompanyName').value = t.companyName || '';
+  document.getElementById('firmEditDeductionsNo').value = t.deductionsFileNumber || '';
+  document.getElementById('firmEditPhone').value = t.phone || '';
+  document.getElementById('firmEditStreet').value = t.street || '';
+  document.getElementById('firmEditStreetNumber').value = t.streetNumber || '';
+  document.getElementById('firmEditCity').value = t.city || '';
+  document.getElementById('firmEditFormError').textContent = '';
+  document.getElementById('editFirmOverlay').classList.add('open');
+}
+async function submitEditFirm(){
+  const get = id => document.getElementById(id).value.trim();
+  const errEl = document.getElementById('firmEditFormError');
+  const btn = document.getElementById('editFirmBtn');
+  errEl.textContent = '';
+  if(!__editingFirmTenantId){ errEl.textContent = 'Фирма не выбрана'; return; }
+  btn.disabled = true; btn.textContent = 'Сохраняю…';
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({
+      action:'updateTenant', ...gsAuth(),
+      tenantId: __editingFirmTenantId,
+      companyName: get('firmEditCompanyName'),
+      deductionsFileNumber: get('firmEditDeductionsNo'),
+      phone: get('firmEditPhone'),
+      street: get('firmEditStreet'),
+      streetNumber: get('firmEditStreetNumber'),
+      city: get('firmEditCity'),
+    })});
+    const json = await res.json();
+    if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось сохранить'; return; }
+    closeModal('editFirmOverlay');
+    showToast('Фирма обновлена');
+    renderFirmsList();
+  }catch(e){ errEl.textContent = 'Сеть недоступна'; }
+  finally{ btn.disabled = false; btn.textContent = 'Сохранить'; }
+}
+
 // Optimistic concurrency: the savedAt value we last loaded from the DB.
 let lastLoadedSavedAt = null;
 
