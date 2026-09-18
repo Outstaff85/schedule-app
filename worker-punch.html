@@ -1069,6 +1069,7 @@ async function subscribeWorkerPush(workerName){
     fetch(GS_URL_WP,{method:'POST',body:JSON.stringify({
       action:'savePushSubscription',
       secret:API_SECRET,
+      workerToken:_wpToken(),
       subscription:JSON.parse(JSON.stringify(sub)),
       role:'worker',
       workerName
