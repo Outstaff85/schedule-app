@@ -18,6 +18,7 @@ A staff scheduling & GPS punch-clock PWA for a single client ("Odinson"), served
 - `form101_fillable.pdf` — Israeli tax form template filled in-app via pdf-lib with fontkit support for Hebrew. See AI/document-scan flow below.
 - `form101-field-map.md` — verified field-by-field map of `form101_fillable.pdf` (every AcroForm field's name/rect/Hebrew label/meaning, plus the printed comb-boxes that have no form field and must be hand-drawn). Built by rendering the PDF and cross-checking coordinates against the visible labels — not guessed from the JS. **Consult and update this file whenever touching `aiFillForm101()` or the PDF template changes**; drift between this map and the code is what caused the "scanned passport → Form 101 fields land in the wrong place" bug it documents (see its "Known-fixed bugs" section).
 - `heebo-hebrew.ttf` — Heebo Hebrew+Latin TTF font subset (OFL licensed, bundled same-origin). Required for proper Hebrew glyph rendering in Form 101 PDF filling when embedding custom fonts via fontkit; loaded via `_loadHeeboFont()` (offline-safe, cache-first).
+- `MULTI_TENANT_PLAN.md` — design doc + status tracker for the in-progress multi-tenant/login feature (see the notice above). Data model, auth design, migration steps, and the Drive/Form-101 follow-up.
 
 ## Commands
 
