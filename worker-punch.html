@@ -873,7 +873,7 @@ function getLocation(){
   chip.innerHTML='<span class="loc-dot"></span><span>Checking GPS...</span>';
   locOk=false;
   if(!navigator.geolocation){ chip.className='loc-chip warn'; chip.innerHTML='<span class="loc-dot"></span><span>GPS not available</span>'; updateBigBtn(); return; }
-  if(!SITE.lat||!SITE.lng){ chip.className='loc-chip ok'; chip.innerHTML='<span class="loc-dot"></span><span>Location check skipped</span>'; locOk=true; updateBigBtn(); return; }
+  if(SITE.lat==null||SITE.lng==null){ chip.className='loc-chip ok'; chip.innerHTML='<span class="loc-dot"></span><span>Location check skipped</span>'; locOk=true; updateBigBtn(); return; }
   const t0=Date.now();
   navigator.geolocation.getCurrentPosition(pos=>{
     const elapsed=Date.now()-t0, a=analyseGps(pos);
