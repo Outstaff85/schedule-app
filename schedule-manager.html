@@ -2523,8 +2523,8 @@ function renderSalary(){
                   onchange="setWorkerShabbatRate('${e.workerId}',this.value);renderSalary()"
                   style="width:66px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
-              <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${base>0?'var(--green)':'var(--text3)'}">
-                ${base>0?'₪'+e.total.toFixed(0):'—'}
+              <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${e.total>0?'var(--green)':'var(--text3)'}">
+                ${e.total>0?'₪'+e.total.toFixed(0):'—'}
               </td>
             </tr>`;
           }).join('')}
