@@ -993,7 +993,7 @@ function renderWorkerList(){
     const rateStr=w.hourlyRate?(' · ₪'+w.hourlyRate+'/h'):'';
     h+=`<div class="worker-chip">
       <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${ini}</div>
-      <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">FIRED</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">VAC</span>':''}</div><div class="worker-hours">${wh.toFixed(1)}h${rateStr}</div></div>
+      <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">FIRED</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">VAC</span>':''}${expiryBadgeHtml(w)}</div><div class="worker-hours">${wh.toFixed(1)}h${rateStr}</div></div>
       <div class="worker-actions">
         <button class="worker-act-btn edit" onclick="openEditWorker(${wi})" title="Edit"><i class="ti ti-edit"></i></button>
         <button class="worker-act-btn edit" onclick="copyWorkerLink('${w.id}')" title="Copy punch link"><i class="ti ti-link"></i></button>
