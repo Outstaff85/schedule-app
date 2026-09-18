@@ -136,3 +136,18 @@ The service worker explicitly never intercepts requests to `script.google.com` (
 - Both files duplicate constants and helpers: `GS_URL`/`API_SECRET`, `reportError`, `showToast`, `getPunchLog`/`savePunchLog`, `urlB64ToUint8` (`worker-punch.html` has `urlB64ToUint8WP`), `esc()` function, and data analysis functions like `groupPunchesIntoShifts` and `analyzeDayPunches`. This duplication is intentional (no shared build). A fix in one file (API URL rotation, `esc()` improvement, payroll logic) must be mirrored in the other to avoid drift.
 - Push notifications: both files subscribe via `savePushSubscription` action; `service-worker.js` handles `push` events and `notificationclick`.
 - **Auto-deploy on commit:** `.claude/settings.json` runs a `PostToolUse` hook on `Write|Edit|NotebookEdit` that stages, commits (with co-author trailer), and pushes to `origin/HEAD` automatically after every file change made by Claude Code. Each push to `origin/main` triggers GitHub Actions deploy workflows (no manual `firebase deploy` or `clasp` commands needed).
+
+## Troubleshooting
+
+### "Deploy to Apps Script" CI fails with `invalid_grant` / `invalid_rapt`
+
+Failure looks like:
+```
+"error":"invalid_grant","error_description":"reauth related error (invalid_rapt)"
+```
+
+Cause: this is a Google Workspace account (`stas@odinson.ltd`), and Workspace periodically forces OAuth re-authentication for the Apps Script scopes `clasp` uses. That invalidates the refresh token stored in the `CLASP_CREDENTIALS` GitHub secret. The re-auth step is a real Google browser login — it cannot be scripted/automated away.
+
+Fix: run `scripts/refresh-clasp-login.sh` on a machine with a browser (not in CI). It logs in via the dedicated Web OAuth client at `H:\Tokens\Google api.json` (Cloud Console project `schedule-manager-498317`, redirect URI `http://localhost:8085`, already registered in Cloud Console — no need to touch the console again unless that client is deleted/recreated), pushes the fresh token to the `CLASP_CREDENTIALS` secret via `gh secret set`, then re-triggers the deploy via `gh workflow run "Deploy to Apps Script"` (`workflow_dispatch` trigger added to `deploy-apps-script.yml` for this purpose).
+
+Note: `clasp login --creds` requires a `redirect_uris` array *inside* the creds JSON itself (not just registered in Cloud Console) or it fails immediately with "Invalid redirect URL" before even opening a browser.
