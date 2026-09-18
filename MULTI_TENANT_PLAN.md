@@ -183,20 +183,24 @@ Properties) — `login()`/`requireAuth()` throw a clear error otherwise.
 **Done** (2026-09-18): `SESSION_SECRET` set on the real project
 (scriptId `1um51tx-6A5Ljyz2AqsuOQcJ1eaMVgAiSL3Bbt_pKzCEdvHY1ngG5vvdj`,
 confirmed matching `apps-script/.clasp.json`), via the `stas@odinson.ltd`
-account. Next: run `migrateToMultiTenant(...)` there, then this branch can
-be merged.
+account. This branch has since been merged to `main` (2026-09-18, PR #34).
 
-## Drive / Form 101 (Step 3, not yet built)
+## Drive / Form 101 (Step 3 — done, see Status above)
 
-- PDF storage moves from the single shared `Schedule manager APP/Workers`
+This section was the pre-implementation plan for Step 3; kept for the design
+rationale, but treat the Status entry above as authoritative for what was
+actually built and verified.
+
+- PDF storage moved from the single shared `Schedule manager APP/Workers`
   folder to `Schedule manager APP/<CompanyName>/Workers`, company name
   resolved server-side from the tenant's own `Tenants` row (never trusted
   from the client, so a tenant can't spoof another firm's folder).
-- Filename gains the company name: `<docNumber>_<given>_<surname>.pdf` →
+- Filename gained the company name: `<docNumber>_<given>_<surname>.pdf` →
   `<docNumber>_<given>_<surname>_<companyName>.pdf`.
 - Form 101 section א ("פרטי המעסיק") has **no real AcroForm fields** on the
   template (confirmed via `page.widgets()` — same situation as the page-1 ID
   box and tax-year box documented in `form101-field-map.md`) — `companyName`/
-  `deductionsFileNumber`/`phone`/address will need hand-drawn coordinates
-  found the same verified way (render + `page.get_drawings()` + crop) before
-  wiring into `aiFillForm101()`.
+  `deductionsFileNumber`/`phone`/address were hand-drawn at the coordinates
+  now recorded in the Status entry above (`NAME_RECT`/`ADDRESS_RECT`/
+  `PHONE_RECT`/`DEDUCTIONS_RECT`), found the same verified way (render +
+  `page.get_drawings()` + crop) and wired into `aiFillForm101()`.
