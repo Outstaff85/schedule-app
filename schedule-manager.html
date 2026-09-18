@@ -1461,6 +1461,7 @@ function openWorkerCard(wi){
   const stMeta=stMetaMap[w.status||'active'];
   const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
   const wh=workerTotalHours(w);
+  const expSt=workerExpiryStatus(w);
   document.getElementById('workerCardModal').innerHTML=`
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
       <div style="width:52px;height:52px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">${ini}</div>
