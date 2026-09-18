@@ -33,7 +33,7 @@ raw field list order.
 
 | Field | Type | Native rect (x, y0, x1, y1) | Label (Hebrew) | Meaning | Filled by code? |
 |---|---|---|---|---|---|
-| `tax_year` | Text (comb, 4) | 250,746.89,289,759.89 | שנת המס | Tax year | ✅ current year |
+| `tax_year` | Text (comb, 4) | 250,746.89,289,759.89 (**field rect — do not use, see below**) | שנת המס | Tax year | ✅ current year, but **hand-drawn**, not via the AcroForm field — see note below |
 | `aliyah` | Text | 30,607.89,115,620.89 | תאריך עליה | Aliyah date | ❌ not from AI scan (no source data) |
 | `dob` | Text (comb, 8, DDMMYYYY) | 120,606.89,206,620.89 | תאריך לידה | Date of birth | ✅ |
 | `given_name` | Text | 212,607.89,312,620.89 | שם פרטי | Given name | ✅ |
