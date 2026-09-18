@@ -1109,12 +1109,23 @@ function aiDetectAlign(body){
 // ── Worker document storage (Drive) ────────────────────────────────────────────
 // Saves an assembled worker PDF (Form 101 + signature + ID scan, combined
 // client-side) into Drive under "Schedule manager APP/<CompanyName>/Workers"
-// — one subfolder per firm, named from tenantId — never a client-supplied
-// path, so one firm can't write into another's folder by spoofing a name.
+// — one subfolder per firm, never a client-supplied path, so one firm can't
+// write into another's folder by spoofing a name.
 // Named by the client-supplied fileName (already built from the worker's
 // name + doc number). Re-uploading with the same fileName replaces the
 // previous file, so this is safe to call again after a re-scan without
 // piling up duplicates.
+//
+// The company folder is resolved by its STABLE Drive folder ID (cached on
+// the Tenants row, column `driveFolderId`), not by name — looking it up by
+// name broke as soon as a firm was renamed (updateTenant): the old folder
+// (and every document in it) could no longer be found under the new name,
+// so a fresh, empty folder got created instead of reusing the existing one.
+// Resolving by ID means a rename never orphans existing documents; this
+// function also self-heals the folder's on-disk name to match the tenant's
+// current companyName on every call (a single cheap Drive call, only fires
+// when the name actually drifted) as a safety net for tenants renamed
+// before this ID cache existed.
 function _companyFolder(tenantId){
   const rootIter = DriveApp.getFoldersByName('Schedule manager APP');
   const root = rootIter.hasNext() ? rootIter.next() : DriveApp.createFolder('Schedule manager APP');
@@ -1124,10 +1135,45 @@ function _companyFolder(tenantId){
   // produces a usable folder instead of an empty or invalid one.
   let companyName = ((profile && profile.companyName) || tenantId || 'Unknown').replace(/\//g,'-').trim();
   if(!companyName) companyName = tenantId || 'Unknown';
-  const companyIter = root.getFoldersByName(companyName);
-  const companyFolder = companyIter.hasNext() ? companyIter.next() : root.createFolder(companyName);
+
+  let companyFolder = null;
+  const cachedId = profile && profile.driveFolderId;
+  if(cachedId){
+    try{ companyFolder = DriveApp.getFolderById(cachedId); }
+    catch(e){ companyFolder = null; } // cached folder was trashed/deleted by hand — fall through and re-resolve by name
+  }
+  if(!companyFolder){
+    const companyIter = root.getFoldersByName(companyName);
+    companyFolder = companyIter.hasNext() ? companyIter.next() : root.createFolder(companyName);
+  }
+  if(tenantId) _setTenantDriveFolderId(tenantId, companyFolder.getId());
+  if(companyFolder.getName() !== companyName) companyFolder.setName(companyName);
+
   const subIter = companyFolder.getFoldersByName('Workers');
   return subIter.hasNext() ? subIter.next() : companyFolder.createFolder('Workers');
+}
+
+// Caches a tenant's company-folder Drive ID onto its Tenants row, adding the
+// `driveFolderId` column on first use (existing sheets don't pick up new
+// headers from ensureHeaders(), which only writes headers to a fully empty
+// sheet — so this adds the single missing column directly, once).
+function _setTenantDriveFolderId(tenantId, folderId){
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_TENANTS);
+  if(!sh || sh.getLastRow() < 2) return;
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  let col = headers.indexOf('driveFolderId');
+  if(col === -1){
+    col = headers.length;
+    sh.getRange(1, col + 1).setValue('driveFolderId').setFontWeight('bold').setBackground('#e8eaf0');
+  }
+  const tCol = headers.indexOf('tenantId');
+  for(let i = 1; i < rows.length; i++){
+    if(rows[i][tCol] === tenantId){
+      if(rows[i][col] !== folderId) sh.getRange(i + 1, col + 1).setValue(folderId);
+      return;
+    }
+  }
 }
 
 function saveWorkerDoc(body, tenantId){
