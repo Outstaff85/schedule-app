@@ -1664,6 +1664,85 @@ const GS_URL = 'https://script.google.com/macros/s/AKfycbwfGCQs8TzGd38j-JU0ZdoHL
 // Shared key sent with write requests. NOTE: this file is public, so the key is
 // visible in source — it's a deterrent against random/bot writes, not real auth.
 const API_SECRET = 'odinson-7Kq2x9';
+
+// ── Multi-tenant session ────────────────────────────────────────────────────
+// Real auth for this app: a session is a signed token from the backend's
+// login action, kept in localStorage for 24h (SESSION_TTL_MS server-side).
+// role is 'superadmin' (sees every firm) or 'tenant' (sees only its own).
+// viewingTenantId is what every API call actually scopes to — for a normal
+// tenant user it's always their own tenantId; for a super-admin it starts
+// null (no firm picked yet) and changes when they pick one from the Firms
+// screen (switchToTenant()).
+const SESSION_KEY = 'schedMgr_session';
+function getSession(){
+  try{
+    const raw = localStorage.getItem(SESSION_KEY);
+    if(!raw) return null;
+    const s = JSON.parse(raw);
+    if(!s || !s.token || !s.expiresAt || Date.now() > s.expiresAt){ localStorage.removeItem(SESSION_KEY); return null; }
+    return s;
+  }catch(e){ return null; }
+}
+function saveSession(s){ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
+function clearSession(){ localStorage.removeItem(SESSION_KEY); }
+function logout(){ clearSession(); location.reload(); }
+
+// Merged into every backend request: the session token, plus asTenantId when
+// a super-admin has switched into a specific firm (omitted for a normal
+// tenant user — their own tenantId is already baked into their token).
+function gsAuth(){
+  const s = getSession();
+  if(!s) return {};
+  const out = { token: s.token };
+  if(s.role === 'superadmin' && s.viewingTenantId) out.asTenantId = s.viewingTenantId;
+  return out;
+}
+function gsAuthQuery(){
+  const a = gsAuth();
+  return Object.keys(a).map(k => '&' + k + '=' + encodeURIComponent(a[k])).join('');
+}
+
+async function submitLogin(){
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  const btn = document.getElementById('loginBtn');
+  errEl.textContent = '';
+  if(!username || !password){ errEl.textContent = 'Введите логин и пароль'; return; }
+  btn.disabled = true; btn.textContent = 'Вхожу…';
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'login', username, password }) });
+    const json = await res.json();
+    if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось войти'; return; }
+    saveSession({
+      token: json.token, role: json.role, tenantId: json.tenantId, username: json.username,
+      tenantProfile: json.tenantProfile, expiresAt: json.expiresAt,
+      viewingTenantId: json.tenantId, // a super-admin (tenantId null) picks one on the Firms screen
+    });
+    location.reload();
+  }catch(e){ errEl.textContent = 'Сеть недоступна, попробуйте ещё раз'; }
+  finally{ btn.disabled = false; btn.textContent = 'Войти'; }
+}
+
+// A super-admin drilling into one firm's normal view — every subsequent API
+// call sends asTenantId until they switch again or log out.
+function switchToTenant(tenantId, tenantName){
+  const s = getSession();
+  if(!s || s.role !== 'superadmin') return;
+  s.viewingTenantId = tenantId;
+  s.viewingTenantName = tenantName || tenantId;
+  saveSession(s);
+  location.reload();
+}
+function backToFirmsList(){
+  const s = getSession();
+  if(!s || s.role !== 'superadmin') return;
+  s.viewingTenantId = null;
+  s.viewingTenantName = null;
+  saveSession(s);
+  location.reload();
+}
+
 // Optimistic concurrency: the savedAt value we last loaded from the DB.
 let lastLoadedSavedAt = null;
 
