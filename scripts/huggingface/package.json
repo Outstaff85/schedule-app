@@ -1,0 +1,14 @@
+{
+  "name": "schedule-app-hf-test",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Standalone test script for the Hugging Face Inference API — not part of the client-side app build.",
+  "main": "test-mistral.js",
+  "scripts": {
+    "test": "node test-mistral.js"
+  },
+  "dependencies": {
+    "@huggingface/inference": "^2.8.1",
+    "dotenv": "^16.4.5"
+  }
+}
