@@ -1866,7 +1866,7 @@ async function gsSave(data) {
   try {
     const res = await fetch(GS_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'saveSchedule', secret: API_SECRET, baseSavedAt: lastLoadedSavedAt, data })
+      body: JSON.stringify({ action: 'saveSchedule', secret: API_SECRET, ...gsAuth(), baseSavedAt: lastLoadedSavedAt, data })
     });
     const json = await res.json();
     if(json && json.conflict){
