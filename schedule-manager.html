@@ -1236,6 +1236,9 @@ function saveWorker(){
   const hourlyRate=parseFloat(document.getElementById('wRate')?.value)||0;
   const status=document.getElementById('wStatus')?.value||'active';
   const startDate=document.getElementById('wStartDate')?.value||'';
+  const expiryEnabled=document.getElementById('wExpiryEnabled')?.checked||false;
+  const expiryMonths=parseInt(document.getElementById('wExpiryMonths')?.value)||9;
+  const expiryWarnMonths=parseInt(document.getElementById('wExpiryWarnMonths')?.value)||0;
   const address=document.getElementById('wAddress')?.value.trim()||'';
   const notes=document.getElementById('wNotes')?.value.trim()||'';
   const incomeType=document.getElementById('wIncomeType')?.value||'';
