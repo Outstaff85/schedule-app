@@ -1,5 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
 //  Schedule Manager — Google Apps Script Backend
+//  (redeploy trigger: refreshed CLASP_CREDENTIALS 2026-09-18)
 //  No QR — GPS verification only
 //  CHANGES vs your version:
 //   • radius is always stored as a NUMBER (default 100m) on save AND load
