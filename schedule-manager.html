@@ -2602,6 +2602,98 @@ async function runOcr(b64,mediaType){
       +'<button class="btn sm" onclick="openAiScan()">Ещё раз</button></div>';
   }
 }
+// Sharpens the AI's rough corner guess the way a real scanner app does:
+// walk short strips perpendicular to each of the 4 sides, find where the
+// luminance jumps hardest (the true document/background edge) near each
+// sample point, fit a line through those edge points per side, then recompute
+// corners as line-line intersections. Pure client-side pixel math — no AI
+// call — so it only makes an already-decent guess more precise; if a side's
+// signal is too weak/noisy to trust (low contrast, busy background) that
+// side's two corners just fall back to the original AI guess instead of
+// risking a worse snap.
+function refineQuadCorners(b64,mediaType,cornersFrac){
+  return new Promise(resolve=>{
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        const REFDIM=1200;
+        const scale=Math.min(1,REFDIM/Math.max(img.naturalWidth,img.naturalHeight,1));
+        const w=Math.max(1,Math.round(img.naturalWidth*scale)), h=Math.max(1,Math.round(img.naturalHeight*scale));
+        const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+        const ctx=cv.getContext('2d',{willReadFrequently:true});
+        ctx.drawImage(img,0,0,w,h);
+        const data=ctx.getImageData(0,0,w,h).data;
+        const lum=(x,y)=>{
+          x=Math.max(0,Math.min(w-1,Math.round(x))); y=Math.max(0,Math.min(h-1,Math.round(y)));
+          const i=(y*w+x)*4;
+          return 0.299*data[i]+0.587*data[i+1]+0.114*data[i+2];
+        };
+        const toPx=p=>({x:p.x*w,y:p.y*h});
+        const Q={tl:toPx(cornersFrac.tl),tr:toPx(cornersFrac.tr),br:toPx(cornersFrac.br),bl:toPx(cornersFrac.bl)};
+        const SIDES=[['tl','tr'],['tr','br'],['br','bl'],['bl','tl']];
+        const N=12, MARGIN=0.18, SEARCH=Math.round(Math.max(w,h)*0.02)+6;
+        const sidePoints={};
+        for(const [a,b] of SIDES){
+          const A=Q[a],B=Q[b];
+          const dx=B.x-A.x, dy=B.y-A.y, len=Math.hypot(dx,dy)||1;
+          const nx=-dy/len, ny=dx/len; // unit normal, perpendicular to this side
+          const pts=[];
+          for(let i=0;i<N;i++){
+            const t=MARGIN+(1-2*MARGIN)*(i/(N-1));
+            const px=A.x+dx*t, py=A.y+dy*t;
+            let best=null,bestGrad=0;
+            for(let s=-SEARCH;s<=SEARCH;s++){
+              const g=Math.abs(lum(px+nx*(s+1),py+ny*(s+1))-lum(px+nx*(s-1),py+ny*(s-1)));
+              if(g>bestGrad){ bestGrad=g; best=s; }
+            }
+            if(best!=null&&bestGrad>18) pts.push({x:px+nx*best,y:py+ny*best});
+          }
+          sidePoints[a+b]=pts.length>=Math.ceil(N*0.5)?pts:null;
+        }
+        // Total-least-squares line fit (handles near-vertical/horizontal sides
+        // equally, unlike an ordinary y=mx+b regression): returns a line as
+        // ax+by=c with (a,b) the unit normal.
+        const fitLine=pts=>{
+          if(!pts) return null;
+          const n=pts.length;
+          const mx=pts.reduce((s,p)=>s+p.x,0)/n, my=pts.reduce((s,p)=>s+p.y,0)/n;
+          let sxx=0,syy=0,sxy=0;
+          for(const p of pts){ const dx=p.x-mx,dy=p.y-my; sxx+=dx*dx; syy+=dy*dy; sxy+=dx*dy; }
+          const theta=0.5*Math.atan2(2*sxy,sxx-syy);
+          const a=Math.sin(theta), b=-Math.cos(theta);
+          return {a,b,c:a*mx+b*my};
+        };
+        const lines={
+          top:fitLine(sidePoints.tltr), right:fitLine(sidePoints.trbr),
+          bottom:fitLine(sidePoints.brbl), left:fitLine(sidePoints.bltl)
+        };
+        const intersect=(L1,L2,fallback)=>{
+          if(!L1||!L2) return fallback;
+          const det=L1.a*L2.b-L2.a*L1.b;
+          if(Math.abs(det)<1e-6) return fallback;
+          const x=(L1.c*L2.b-L2.c*L1.b)/det, y=(L1.a*L2.c-L2.a*L1.c)/det;
+          return (isFinite(x)&&isFinite(y))?{x,y}:fallback;
+        };
+        const refined={
+          tl:intersect(lines.top,lines.left,Q.tl), tr:intersect(lines.top,lines.right,Q.tr),
+          br:intersect(lines.bottom,lines.right,Q.br), bl:intersect(lines.bottom,lines.left,Q.bl)
+        };
+        // A refined corner that lands far from the AI's own guess is more
+        // likely a bad line fit than a real correction — keep the original.
+        const maxDrift=0.12*Math.max(w,h);
+        const out={};
+        for(const k of ['tl','tr','br','bl']){
+          const r=refined[k], o=Q[k];
+          const ok=Math.hypot(r.x-o.x,r.y-o.y)<=maxDrift&&r.x>=-4&&r.y>=-4&&r.x<=w+4&&r.y<=h+4;
+          out[k]={x:(ok?r.x:o.x)/w,y:(ok?r.y:o.y)/h};
+        }
+        resolve(out);
+      }catch(e){ resolve(cornersFrac); }
+    };
+    img.onerror=()=>resolve(cornersFrac);
+    img.src='data:'+mediaType+';base64,'+b64;
+  });
+}
 function validQuadCorners(c){
   if(!c) return false;
   return [c.tl,c.tr,c.br,c.bl].every(p=>p&&typeof p.x==='number'&&typeof p.y==='number'&&p.x>=-0.1&&p.x<=1.1&&p.y>=-0.1&&p.y<=1.1);
