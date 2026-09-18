@@ -1874,6 +1874,35 @@ async function renderFirmsList(){
   }catch(e){ listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
 }
 
+// Reversible: flips every login belonging to this firm active/inactive.
+// nextActive is the state to SWITCH TO (opposite of the button's current icon).
+async function toggleTenantActive(tenantId, nextActive){
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'setTenantActive', ...gsAuth(), tenantId, active: nextActive }) });
+    const json = await res.json();
+    if(!json || json.error){ showToast((json&&json.error)||'Ошибка'); return; }
+    showToast(nextActive ? 'Фирма включена' : 'Фирма отключена');
+    renderFirmsList();
+  }catch(e){ showToast('Сеть недоступна'); }
+}
+
+// Irreversible: deletes the firm's profile, logins, schedule, punch history,
+// push subscriptions, and Drive folder. Two-step confirmation (a plain
+// confirm(), then typing the exact company name) — matches the weight of
+// what's being destroyed, not just a single accidental click.
+async function confirmDeleteTenant(tenantId, companyName){
+  if(!confirm('Удалить фирму «'+companyName+'» БЕЗВОЗВРАТНО? Будут удалены расписание, история пуанчей, документы в Drive и логины этой фирмы.')) return;
+  const typed = prompt('Чтобы подтвердить, введите точное название фирмы: '+companyName);
+  if(typed !== companyName){ showToast('Название не совпало — отменено'); return; }
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'deleteTenant', ...gsAuth(), tenantId }) });
+    const json = await res.json();
+    if(!json || json.error){ showToast((json&&json.error)||'Ошибка'); return; }
+    showToast('Фирма «'+companyName+'» удалена');
+    renderFirmsList();
+  }catch(e){ showToast('Сеть недоступна'); }
+}
+
 function openCreateFirmForm(){
   ['firmUsername','firmPassword','firmCompanyName','firmDeductionsNo','firmPhone','firmStreet','firmStreetNumber','firmCity'].forEach(id => { document.getElementById(id).value=''; });
   document.getElementById('firmFormError').textContent = '';
