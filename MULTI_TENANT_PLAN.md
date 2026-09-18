@@ -103,6 +103,22 @@ both halves are live together on `main`.
       existing Drive folder and keeps every previously-uploaded document (and
       future Form 101 saves) in place — no new folder, no data loss, and the
       only added cost is one extra cheap Drive lookup per doc save/edit.
+- [x] **Step 6 — cross-tenant Drive folder collision fix** (added
+      2026-09-19, full-project bug-fix pass): `companyName` uniqueness was
+      never enforced anywhere, so `_companyFolder()`'s by-name fallback (hit
+      whenever a tenant has no cached `driveFolderId` yet) could silently
+      adopt a *different* tenant's folder if two firms happened to share a
+      name — every worker doc either firm uploaded afterward would land in
+      one shared folder. Fixed by tagging each company folder with its
+      owning `tenantId` (Drive folder `description`, set/kept in sync by
+      `_companyFolder()` itself) — a by-name match is only adopted if it's
+      untagged (a legacy folder predating this tag) or already tagged as
+      the caller's own tenantId; a match tagged with someone else's
+      tenantId is left alone and a fresh folder is created instead.
+      `deleteTenant()`'s by-name trash fallback (for tenants with no cached
+      `driveFolderId`) got the same guard — a destructive trash must never
+      guess at a same-named folder that's actually tagged as another
+      tenant's.
 
 ## Testing status
 
