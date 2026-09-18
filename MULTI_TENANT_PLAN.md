@@ -39,9 +39,33 @@ one without the other breaks the live app for the real "Odinson" tenant.
 
 ## Testing status
 
-**Not yet tested against a live Apps Script deployment** — this was built
-from a sandboxed environment with no access to the real Google Sheet/Apps
-Script project. Before merging to `main`: deploy this branch's
+**Steps 1-2 verified** — no access to the real Google Sheet from this
+environment, so instead: (1) a GAS environment shim (`SpreadsheetApp`/
+`Utilities`/`PropertiesService`/`ContentService` stubbed over in-memory
+state) runs the **actual** `apps-script/Код.js` unmodified under Node; 52
+automated checks cover login, session tokens (tampered/expired rejected),
+superadmin vs tenant authorization, migration idempotency, and — the
+critical one — that one firm can never read or edit another firm's
+schedule/punches (including a direct attempt to delete another tenant's
+punch by ID, correctly denied). (2) that same backend served over local
+HTTP, with a local copy of `schedule-manager.html` pointed at it, driven
+through an actual browser: login → Firms screen → create firm (all Form-101
+profile fields) → switch into a firm → back to Firms.
+
+Three real bugs were caught and fixed this way (all in `schedule-manager.html`):
+1. `loginScreen`/`firmsScreen` used `var(--bg1)`, a CSS variable that doesn't
+   exist in this app (it's `--bg`) — their background was fully transparent,
+   so the real app underneath (titlebar, dashboard) showed through around
+   their content instead of being hidden.
+2. `#createFirmOverlay` (class `.overlay`, z-index 100) opened *behind*
+   `#firmsScreen` (z-index 900) and was invisible — needed an explicit
+   higher z-index (950).
+3. `openCreateFirmForm()` showed the modal via `style.display='flex'`, but
+   `closeModal()` (used everywhere else in the app) only ever removes the
+   `.open` class — so the modal, once opened, could never close. Fixed to
+   use `classList.add('open')` like every other overlay in the app.
+
+Before merging to `main`: deploy this branch's
 `apps-script/Код.js` to a **test** Apps Script project (or a temporary extra
 deployment of the real one) first, set `SESSION_SECRET`, run
 `migrateToMultiTenant(...)` there, and walk through login → Firms → create a
