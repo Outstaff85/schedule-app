@@ -1823,6 +1823,7 @@ function renderAccountControl(s){
     </div>`;
 }
 
+let __firmsCache = [];
 async function renderFirmsList(){
   const listEl = document.getElementById('firmsList');
   listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
@@ -1831,9 +1832,10 @@ async function renderFirmsList(){
     const json = await res.json();
     if(!json || json.error){ listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Ошибка загрузки')+'</div>'; return; }
     const tenants = json.tenants || [];
+    __firmsCache = tenants;
     if(!tenants.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Фирм ещё нет — создайте первую.</div>'; return; }
     listEl.innerHTML = tenants.map(t => `
-      <div class="row" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);cursor:pointer" onclick="switchToTenant('${esc(t.tenantId)}','${esc(t.companyName||t.tenantId)}')">
+      <div class="row" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);cursor:pointer" onclick="switchToTenant('${esc(t.tenantId)}')">
         <div>
           <div style="font-weight:600">${esc(t.companyName || '(без названия)')}</div>
           <div style="font-size:12px;color:var(--text2)">${t.workerCount||0} воркеров · ${t.clientCount||0} клиентов${t.savedAt?' · сохранено '+esc(new Date(t.savedAt).toLocaleString()):''}</div>
