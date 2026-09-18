@@ -3,7 +3,7 @@
 // Run: npm install && npm test   (from this scripts/huggingface/ folder)
 require('dotenv').config({ path: require('path').join(__dirname, '..', '..', 'Tokens', 'HuggingFace.env') });
 
-const { HfInference } = require('@huggingface/inference');
+const { InferenceClient } = require('@huggingface/inference');
 
 const MODEL = 'mistralai/Mistral-7B-Instruct-v0.3';
 
@@ -14,7 +14,7 @@ async function main() {
     process.exit(1);
   }
 
-  const hf = new HfInference(token);
+  const hf = new InferenceClient(token);
 
   console.log(`Sending a test chat request to ${MODEL}...`);
   const response = await hf.chatCompletion({
