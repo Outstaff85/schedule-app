@@ -884,6 +884,13 @@ function shiftPay(hours, w, isSat){
 }
 function fmtDate(d){ return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); }
 function fmtRange(d){ const e=new Date(d); e.setDate(e.getDate()+6); return fmtDate(d)+' – '+fmtDate(e); }
+// Formats a stored 'YYYY-MM-DD' date string (e.g. w.startDate, straight from
+// a <input type="date">) as 'DD.MM.YYYY' for display. Leaves the raw value
+// untouched if it doesn't look like an ISO date (so it degrades gracefully).
+function fmtDMY(dateStr){
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr||'');
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : (dateStr||'');
+}
 
 // --- Tab ---------------------------------------------------------------------
 function switchTab(tab){
@@ -1451,7 +1458,7 @@ function renderWorkersPage(){
       <td style="padding:10px 12px">${objBadges}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.phone||'—'}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.hourlyRate?('₪'+w.hourlyRate+'/h'):'—'}</td>
-      <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.startDate||'—'}</td>
+      <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.startDate?fmtDMY(w.startDate):'—'}</td>
       <td style="padding:10px 12px;text-align:center" onclick="event.stopPropagation()"><div style="display:flex;gap:4px;justify-content:center">
         <button class="btn sm" onclick="openEditWorker(${wi})" style="padding:3px 8px;font-size:11px"><i class="ti ti-edit"></i></button>
         <button class="btn sm red" onclick="deleteWorker(${wi})" style="padding:3px 8px;font-size:11px"><i class="ti ti-x"></i></button>
@@ -1481,7 +1488,7 @@ function openWorkerCard(wi){
       ${w.phone?`<div><i class="ti ti-phone"></i> ${esc(w.phone)}</div>`:''}
       ${w.email?`<div><i class="ti ti-mail"></i> ${esc(w.email)}</div>`:''}
       ${w.hourlyRate?`<div><i class="ti ti-coin"></i> ₪${w.hourlyRate}/h</div>`:''}
-      ${w.startDate?`<div><i class="ti ti-calendar-event"></i> Started ${w.startDate}</div>`:''}
+      ${w.startDate?`<div><i class="ti ti-calendar-event"></i> Started ${fmtDMY(w.startDate)}</div>`:''}
       ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?'Срок истёк':'Срок приближается'} — ${expSt.deadline.toLocaleDateString('ru-RU')}</div>`:''}
       ${w.address?`<div><i class="ti ti-id"></i> ${esc(w.address)}</div>`:''}
       <div><i class="ti ti-clock-hour-4"></i> ${wh.toFixed(1)}h scheduled / week</div>
@@ -2901,11 +2908,13 @@ function openAiScan(){
       <button class="btn sm" onclick="document.getElementById('aiScanFile').click()">
         <i class="ti ti-camera"></i> Загрузить фото / PDF
       </button>
-      <input type="file" id="aiScanFile" accept="image/*,application/pdf,.pdf"
-        style="display:none" onchange="onScanFileSelected(this.files[0])">
+      <input type="file" id="aiScanFile" accept="image/*,application/pdf,.pdf" multiple
+        style="display:none" onchange="onScanFilesSelected(this.files)">
       <div style="font-size:12px;color:var(--text3);line-height:1.5">
         Поддерживает: загранпаспорт, израильский теудат-зеут (обе стороны), PDF-скан.
         Паспорт может быть целиком — ИИ сам найдёт нужные поля.
+        Можно выбрать сразу несколько файлов (готовый пакет 101 + паспорт + контракт) —
+        старая Форма 101 в пакете будет заменена нашей, остальное сохранится как есть.
       </div>
     </div>`;
 }
@@ -2947,10 +2956,100 @@ function alignScanImage(b64,mediaType,align){
   });
 }
 
-// Step 1 of the scan flow: turn whatever the user picked (photo or PDF)
-// into a plain image, then auto-straighten it (autoPreAlignScan) before
-// sending it to the full OCR call — a flatter, cropped photo is easier for
-// the AI to read accurately than a raw, angled phone photo.
+// Entry point for the file picker (now `multiple`). A single non-PDF file
+// (the common case — one phone photo of an ID/passport) keeps the exact
+// existing single-photo flow (onScanFileSelected below), including the
+// manual crop/align editor. Anything else — a PDF (one or more pages) or
+// several files at once — is treated as a "ready packet": every page of
+// every file is expanded, classified, and reassembled in aiFillForm101()
+// (a fresh Form 101 is always generated there; any old Form-101-looking
+// page found here is simply dropped, never reused).
+async function onScanFilesSelected(fileList){
+  const files=[...(fileList||[])];
+  if(!files.length) return;
+  window.__aiScanImage=null;
+  window.__aiPacketOtherPages=[];
+  const isPdf=f=>f.type==='application/pdf'||/\.pdf$/i.test(f.name||'');
+  if(files.length===1 && !isPdf(files[0])) return onScanFileSelected(files[0]);
+
+  const stage=document.getElementById('aiScanStage');
+  stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
+    +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
+    +'<span>Читаю файлы…</span></div>';
+  try{
+    await _loadPdfJs();
+    // Expand every selected file into a flat, ordered list of page images
+    // ({b64, mediaType, text}) — text (from pdf.js's own text layer, free/
+    // local) is only used to spot an already-filled Form 101 page below.
+    const items=[];
+    for(const file of files){
+      if(isPdf(file)){
+        const buf=await file.arrayBuffer();
+        const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+        for(let n=1;n<=pdf.numPages;n++){
+          const page=await pdf.getPage(n);
+          const vp=page.getViewport({scale:2.5});
+          const cv=document.createElement('canvas'); cv.width=vp.width; cv.height=vp.height;
+          await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+          let text='';
+          try{ const tc=await page.getTextContent(); text=tc.items.map(it=>it.str).join(' '); }catch(e){}
+          items.push({b64:cv.toDataURL('image/png').split(',')[1], mediaType:'image/png', text});
+        }
+      } else {
+        const b64=await new Promise((res,rej)=>{
+          const r=new FileReader();
+          r.onload=()=>res(r.result.split(',')[1]);
+          r.onerror=rej; r.readAsDataURL(file);
+        });
+        items.push({b64, mediaType:file.type||'image/jpeg', text:''});
+      }
+    }
+    // Classify: drop pages that are already a filled Form 101 (we always
+    // generate our own, see aiFillForm101), find the first ID/passport page
+    // for the worker card, keep everything else ("contract" etc.) as-is.
+    let foundParsed=null;
+    const otherPages=[];
+    for(let i=0;i<items.length;i++){
+      const it=items[i];
+      stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
+        +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
+        +'<span>Читаю страницу '+(i+1)+' из '+items.length+'…</span></div>';
+      if(/כרטיס\s*עובד|0101\/130/.test(it.text||'')) continue; // старая Форма 101 — отбрасываем
+      if(!foundParsed){
+        try{
+          const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
+          const json=await resp.json();
+          const p=json&&json.parsed;
+          if(p&&(p.type==='israeli_id'||p.type==='passport')){
+            foundParsed=p;
+            window.__aiScanImage={b64:it.b64,mediaType:it.mediaType};
+            continue; // эта страница уже сохранена как window.__aiScanImage, в "прочие" не дублируем
+          }
+        }catch(e){ console.error(e); }
+      }
+      otherPages.push({b64:it.b64,mediaType:it.mediaType});
+    }
+    window.__aiPacketOtherPages=otherPages;
+    if(!foundParsed){
+      stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Не нашёл ID/паспорт в загруженных файлах<br><br>'
+        +'<button class="btn sm" onclick="openAiScan()">Ещё раз</button></div>';
+      return;
+    }
+    window.__aiParsed=foundParsed;
+    renderAiResult(foundParsed);
+  }catch(err){
+    console.error(err);
+    stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Ошибка: '
+      +(err&&err.message||'')+'<br><br>'
+      +'<button class="btn sm" onclick="openAiScan()">Ещё раз</button></div>';
+  }
+}
+
+// Step 1 of the single-photo scan flow: turn one picked photo/PDF page into
+// a plain image, then auto-straighten it (autoPreAlignScan) before sending
+// it to the full OCR call — a flatter, cropped photo is easier for the AI
+// to read accurately than a raw, angled phone photo. Reached either directly
+// (a single non-PDF file) or as "Заново" from the multi-file flow above.
 async function onScanFileSelected(file){
   if(!file) return;
   const stage=document.getElementById('aiScanStage');
@@ -3853,28 +3952,34 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
         page2.drawImage(sigImg,{x:SIG_RECT.x+(SIG_RECT.width-w)/2,y:SIG_RECT.y+(SIG_RECT.height-h)/2,width:w,height:h});
       }catch(e){}
     }
-    // Append the original scanned document (ID/passport photo) as an extra
-    // page, so the worker's whole file — Form 101 + ID copy — is one PDF
-    // instead of two separate downloads. Fit-to-page + a light frame/caption
-    // rather than pasting it in at native size/rotation as-is.
-    if(window.__aiScanImage){
+    // Append scanned page(s) as extra pages, so the worker's whole file —
+    // Form 101 + ID copy (+ any other pages from a multi-file "ready packet"
+    // upload, e.g. a contract) — is one PDF instead of several separate
+    // downloads. Fit-to-page + a light frame/caption rather than pasting in
+    // at native size/rotation as-is. stdFont is plain WinAnsi Helvetica — no
+    // Cyrillic support, so captions are Latin-only regardless of the app's
+    // Russian UI.
+    const appendScanPage=async(b64,mediaType,caption)=>{
       try{
-        const {b64:scanB64,mediaType:scanType}=window.__aiScanImage;
-        const scanBytes=Uint8Array.from(atob(scanB64),c=>c.charCodeAt(0));
-        const scanImg=/png/i.test(scanType)?await doc.embedPng(scanBytes):await doc.embedJpg(scanBytes);
+        const imgBytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
+        const img=/png/i.test(mediaType)?await doc.embedPng(imgBytes):await doc.embedJpg(imgBytes);
         const pw=page1.getWidth(), ph=page1.getHeight();
         const scanPage=doc.addPage([pw,ph]);
         const margin=40, capH=24;
         const maxW=pw-margin*2, maxH=ph-margin*2-capH;
-        const fit=Math.min(maxW/scanImg.width, maxH/scanImg.height, 1);
-        const w=scanImg.width*fit, h=scanImg.height*fit;
+        const fit=Math.min(maxW/img.width, maxH/img.height, 1);
+        const w=img.width*fit, h=img.height*fit;
         const x=(pw-w)/2, y=margin+(maxH-h)/2;
-        // stdFont is plain WinAnsi Helvetica — no Cyrillic support, so the
-        // caption has to be Latin-only regardless of the app's Russian UI.
-        scanPage.drawText('Document scan',{x:margin,y:ph-margin-16,size:12,font:stdFont,color:PDFLib.rgb(0.3,0.3,0.3)});
+        scanPage.drawText(caption,{x:margin,y:ph-margin-16,size:12,font:stdFont,color:PDFLib.rgb(0.3,0.3,0.3)});
         scanPage.drawRectangle({x:x-2,y:y-2,width:w+4,height:h+4,borderColor:PDFLib.rgb(0.7,0.7,0.7),borderWidth:1,color:PDFLib.rgb(1,1,1)});
-        scanPage.drawImage(scanImg,{x,y,width:w,height:h});
+        scanPage.drawImage(img,{x,y,width:w,height:h});
       }catch(e){}
+    };
+    if(window.__aiScanImage){
+      await appendScanPage(window.__aiScanImage.b64,window.__aiScanImage.mediaType,'Document scan');
+    }
+    if(Array.isArray(window.__aiPacketOtherPages)){
+      for(const p of window.__aiPacketOtherPages) await appendScanPage(p.b64,p.mediaType,'Document');
     }
     // Without this, viewers ignore our appearance streams and re-render every
     // field themselves using the template's default (non-Hebrew) Helvetica DA.
@@ -3921,7 +4026,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
       showToast('Форма 101 скачана');
     }
   }catch(err){ console.error(err); showToast('Не удалось: '+(err&&err.message||'')); }
-  finally{ if(btn){ btn.disabled=false; btn.innerHTML=btnLabel; } }
+  finally{ if(btn){ btn.disabled=false; btn.innerHTML=btnLabel; } window.__aiPacketOtherPages=[]; }
 }
 
 let _pdfjsLoading=null;
