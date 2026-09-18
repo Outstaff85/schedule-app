@@ -3370,12 +3370,12 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     const fileName=(no?no.replace(/\D/g,''):'noid')+'_'+fnPart(given||'worker')+(surname?'_'+fnPart(surname):'')+'.pdf';
     if(mode==='upload'){
       const fileBase64=bytesToBase64(out);
-      // Resolve the worker before uploading so a rescan can pass along the
-      // previous file's ID — the OCR'd name/doc-number baked into fileName can
-      // drift between scans, so name-based dedup on the backend alone isn't
-      // reliable; a known previousFileId lets it trash the exact old file.
-      const targetWorkerId=workerId||window.__aiRescanWorkerId||null;
-      const w=targetWorkerId?workers.find(x=>x.id===targetWorkerId):null;
+      // Worker (targetWorker) already resolved up top — reused here so a
+      // rescan can pass along the previous file's ID: the OCR'd name/doc-
+      // number baked into fileName can drift between scans, so name-based
+      // dedup on the backend alone isn't reliable; a known previousFileId
+      // lets it trash the exact old file.
+      const w=targetWorker;
       const resp=await fetch(GS_URL,{
         method:'POST',
         body:JSON.stringify({action:'saveWorkerDoc',secret:API_SECRET,fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null})
