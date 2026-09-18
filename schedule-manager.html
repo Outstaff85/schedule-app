@@ -3129,6 +3129,10 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     doc.registerFontkit(fontkit);
     const form=doc.getForm();
     const page1=doc.getPages()[0];
+    // Resolve the worker (if any) up front — the declaration date and income
+    // type below both read from the worker record, not just the scan inputs.
+    const targetWorkerId=workerId||window.__aiRescanWorkerId||null;
+    const targetWorker=targetWorkerId?workers.find(x=>x.id===targetWorkerId):null;
     // These fields default to a small shrink-to-fit size; force a bigger, fixed
     // size instead so the filled-in text is easy to read (each number chosen to
     // still fit the field's own box for a realistically long value).
