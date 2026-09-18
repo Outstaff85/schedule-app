@@ -423,10 +423,17 @@ function deleteTenant(body, auth) {
   }
 
   try {
-    const rootIter = DriveApp.getFoldersByName('Schedule manager APP');
-    if (rootIter.hasNext()) {
-      const companyIter = rootIter.next().getFoldersByName(companyName);
-      if (companyIter.hasNext()) { companyIter.next().setTrashed(true); removed.drive = true; }
+    if (driveFolderId) {
+      DriveApp.getFolderById(driveFolderId).setTrashed(true);
+      removed.drive = true;
+    } else {
+      // No cached ID (tenant renamed/created before driveFolderId existed,
+      // or never had any documents uploaded) — fall back to a name lookup.
+      const rootIter = DriveApp.getFoldersByName('Schedule manager APP');
+      if (rootIter.hasNext()) {
+        const companyIter = rootIter.next().getFoldersByName(companyName);
+        if (companyIter.hasNext()) { companyIter.next().setTrashed(true); removed.drive = true; }
+      }
     }
   } catch (e) {}
 
