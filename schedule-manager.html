@@ -3157,24 +3157,37 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     setSize('addr_city',11); setSize('hf_name',10); setSize('id_top2',13);
     const setT=(n,v)=>{ try{ if(v) form.getTextField(n).setText(String(v)); }catch(e){} };
     const CHECK_BLUE=PDFLib.rgb(0.09,0.32,0.85);
+    const allPages=doc.getPages();
+    // Most checkboxes live on page 1, but a few (resident_h) are on page 2 —
+    // drawing the checkmark unconditionally onto page1 silently drew it at
+    // that widget's (x,y) on the WRONG page, landing in page 1's blank
+    // margin while the real page-2 box stayed visibly empty. Resolve the
+    // widget's actual page via its /P reference instead of assuming page1.
+    const pageForWidget=(widget)=>{
+      const pRef=widget.P&&widget.P();
+      if(pRef){ const hit=allPages.find(pg=>pg.ref.toString()===pRef.toString()); if(hit) return hit; }
+      return page1;
+    };
     const chk=(n)=>{
       try{
         const cb=form.getCheckBox(n);
         cb.check();
         // Draw a blue checkmark instead of the template's default X mark —
-        // blank the widget's own "Yes" appearance first so it doesn't peek
-        // through underneath (same trick as the Hebrew text fix above).
+        // blank the widget's own on-state appearance first so it doesn't
+        // peek through underneath (same trick as the Hebrew text fix above).
         const widget=cb.acroField.getWidgets()[0];
+        const targetPage=pageForWidget(widget);
+        const onName=widget.getOnValue&&widget.getOnValue();
         const ap=widget.getAppearances();
-        const yesRef=ap&&ap.normal&&ap.normal.get&&ap.normal.get(PDFLib.PDFName.of('Yes'));
-        const yesStream=yesRef&&doc.context.lookup(yesRef);
-        if(yesStream&&'contents' in yesStream) yesStream.contents=new Uint8Array(0);
+        const onRef=onName&&ap&&ap.normal&&ap.normal.get&&ap.normal.get(onName);
+        const onStream=onRef&&doc.context.lookup(onRef);
+        if(onStream&&'contents' in onStream) onStream.contents=new Uint8Array(0);
         const r=widget.getRectangle();
         const thickness=Math.max(1.1,r.height*0.16);
         const pt=(fx,fy)=>({x:r.x+fx*r.width,y:r.y+fy*r.height});
         const p1=pt(0.12,0.55), p2=pt(0.40,0.18), p3=pt(0.88,0.82);
-        page1.drawLine({start:p1,end:p2,thickness,color:CHECK_BLUE,lineCap:PDFLib.LineCapStyle.Round});
-        page1.drawLine({start:p2,end:p3,thickness,color:CHECK_BLUE,lineCap:PDFLib.LineCapStyle.Round});
+        targetPage.drawLine({start:p1,end:p2,thickness,color:CHECK_BLUE,lineCap:PDFLib.LineCapStyle.Round});
+        targetPage.drawLine({start:p2,end:p3,thickness,color:CHECK_BLUE,lineCap:PDFLib.LineCapStyle.Round});
       }catch(e){}
     };
     // A few boxes on the template (work-start date, the children table) have no
