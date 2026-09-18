@@ -5,3 +5,5 @@ Screenshot_*.png
 Tokens/
 .env
 node_modules/
+*.log
+*-local.html
