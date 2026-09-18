@@ -24,7 +24,7 @@ function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
     // Write actions require the shared secret (deterrent against random writes).
-    const WRITE = ['saveSchedule','savePunch','deletePunch','updatePunch','savePushSubscription','aiReadDoc','saveWorkerDoc','deleteWorkerDoc'];
+    const WRITE = ['saveSchedule','savePunch','deletePunch','updatePunch','savePushSubscription','aiReadDoc','aiDetectAlign','saveWorkerDoc','deleteWorkerDoc'];
     if (WRITE.indexOf(body.action) !== -1 && body.secret !== API_SECRET) {
       return jsonResponse({error: 'Unauthorized'});
     }
@@ -37,6 +37,7 @@ function doPost(e) {
       case 'savePushSubscription': return jsonResponse(savePushSubscription(body));
       case 'logError':             return jsonResponse(logError(body));
       case 'aiReadDoc':            return jsonResponse(aiReadDoc(body));
+      case 'aiDetectAlign':        return jsonResponse(aiDetectAlign(body));
       case 'saveWorkerDoc':        return jsonResponse(saveWorkerDoc(body));
       case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body));
       default:                     return jsonResponse({error: 'Unknown action: ' + body.action});
@@ -589,6 +590,76 @@ function aiReadDoc(body){
   catch(e){ return {error:'AI вернул нечитаемый ответ', raw: String(text).slice(0,400)}; }
 
   return {ok: true, parsed: parsed};
+}
+
+// Fast, cheap pre-OCR pass: asks the AI ONLY for the document's rotation/
+// corners (no field extraction) so the client can auto-straighten the photo
+// locally BEFORE the full aiReadDoc call — a flatter, cropped image is
+// easier for that second call to read accurately than a raw, angled phone
+// photo. Kept as its own action (smaller prompt, smaller max_tokens, no
+// prompt-cache overhead) purely for speed/cost; the full aiReadDoc call
+// still returns its own imageAlign too, used to build the final scan image
+// embedded in the worker's PDF.
+function aiDetectAlign(body){
+  var props = PropertiesService.getScriptProperties();
+  var key   = props.getProperty('ANTHROPIC_API_KEY');
+  var model = props.getProperty('ANTHROPIC_MODEL') || 'claude-haiku-4-5-20251001';
+  if(!key)        return {error:'ANTHROPIC_API_KEY не задан в Script Properties'};
+  if(!body.image) return {error:'Нет изображения'};
+
+  var SYSTEM = 'You are looking at a photo of a passport or Israeli ID card (תעודת זהות). ' +
+    'Return ONLY valid JSON — no prose, no markdown, no code fences — describing how to straighten it: ' +
+    '{"rotate":0,"corners":{"tl":{"x":0,"y":0},"tr":{"x":1,"y":0},"br":{"x":1,"y":1},"bl":{"x":0,"y":1}}} ' +
+    '"rotate" is the clockwise degrees needed to make the document upright and right-reading, and MUST be exactly one of 0, 90, 180, 270 (use 0 if already upright); ' +
+    '"corners" are the document\'s four actual physical corners (tl/tr/br/bl = top-left/top-right/bottom-right/bottom-left AS THE DOCUMENT WILL APPEAR AFTER "rotate" is applied, but each point\'s x/y given as fractions, 0 to 1, of the ORIGINAL pre-rotation image width/height) — trace the document\'s true outline even if the photo was taken at an angle (so the four points form a skewed quadrilateral, not necessarily an axis-aligned rectangle), never cutting off any printed text, photo, or edge. ' +
+    'If the document already fills the frame, use the full-frame defaults shown above. ' +
+    'Return ONLY the JSON object, nothing else.';
+
+  var payload = {
+    model: model,
+    max_tokens: 200,
+    messages: [{
+      role: 'user',
+      content: [
+        {type: 'text', text: SYSTEM},
+        {type: 'image', source: {type: 'base64', media_type: body.mediaType || 'image/jpeg', data: body.image}},
+        {type: 'text', text: 'Return the JSON object only.'}
+      ]
+    }]
+  };
+
+  var opts = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01'
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  var res;
+  try { res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', opts); }
+  catch(e){ return {error:'Запрос к Anthropic не прошёл: ' + e}; }
+
+  var json;
+  try { json = JSON.parse(res.getContentText()); }
+  catch(e){ return {error:'Неверный ответ от Anthropic (HTTP ' + res.getResponseCode() + ')'}; }
+
+  if(json.error) return {error: json.error.message || 'Ошибка Anthropic'};
+
+  var text = '';
+  (json.content || []).forEach(function(c){ if(c.type === 'text') text += c.text; });
+
+  text = text.replace(/```json|```/g,'').trim();
+  var m = text.match(/\{[\s\S]*\}/);
+
+  var align;
+  try { align = JSON.parse(m ? m[0] : text); }
+  catch(e){ return {error:'AI вернул нечитаемый ответ', raw: String(text).slice(0,300)}; }
+
+  return {ok: true, align: align};
 }
 
 // ── Worker document storage (Drive) ────────────────────────────────────────────

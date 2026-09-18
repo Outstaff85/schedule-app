@@ -2481,9 +2481,9 @@ function alignScanImage(b64,mediaType,align){
 }
 
 // Step 1 of the scan flow: turn whatever the user picked (photo or PDF)
-// into a plain image and read it immediately — the AI itself now proposes
-// the document's corners (imageAlign.corners) in the same OCR call, so
-// there's no need for a separate pre-OCR manual straightening pass.
+// into a plain image, then auto-straighten it (autoPreAlignScan) before
+// sending it to the full OCR call — a flatter, cropped photo is easier for
+// the AI to read accurately than a raw, angled phone photo.
 async function onScanFileSelected(file){
   if(!file) return;
   const stage=document.getElementById('aiScanStage');
@@ -2510,7 +2510,8 @@ async function onScanFileSelected(file){
       });
       mediaType=file.type||'image/jpeg';
     }
-    runOcr(b64,mediaType);
+    const pre=await autoPreAlignScan(b64,mediaType);
+    runOcr(pre.b64,pre.mediaType);
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Ошибка: '
@@ -2519,8 +2520,51 @@ async function onScanFileSelected(file){
   }
 }
 
-// Step 2: send the raw photo/page straight to the AI (rotate/corner guessing
-// happens in the same request as field extraction — no extra Anthropic call).
+// Step 1.5: a fast, cheap AI call that reads ONLY the document's rotation
+// and corners (no field extraction), then auto-straightens the photo
+// locally — fully automatic, no user interaction — before the slower full
+// OCR call. Best-effort: any failure here (network error, bad AI response,
+// image decode failure) just falls through to OCR-ing the original photo
+// unchanged, so a hiccup here never blocks the scan.
+async function autoPreAlignScan(b64,mediaType){
+  const stage=document.getElementById('aiScanStage');
+  stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
+    +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
+    +'<span>Выравниваю фото…</span></div>';
+  try{
+    const resp=await fetch(GS_URL,{
+      method:'POST',
+      body:JSON.stringify({action:'aiDetectAlign',secret:API_SECRET,image:b64,mediaType:mediaType})
+    });
+    const json=await resp.json();
+    const align=json&&json.ok&&json.align;
+    if(!align) return {b64,mediaType};
+    const rotateDeg=[0,90,180,270].includes(align.rotate)?align.rotate:0;
+    const upright=rotateDeg?await alignScanImage(b64,mediaType,{rotate:rotateDeg,crop:{x0:0,y0:0,x1:1,y1:1}}):{b64,mediaType};
+    if(!validQuadCorners(align.corners)) return upright;
+    const corners={
+      tl:rotatePointFrac(align.corners.tl,rotateDeg), tr:rotatePointFrac(align.corners.tr,rotateDeg),
+      br:rotatePointFrac(align.corners.br,rotateDeg), bl:rotatePointFrac(align.corners.bl,rotateDeg)
+    };
+    const dims=await new Promise(res=>{
+      const im=new Image();
+      im.onload=()=>res({w:im.naturalWidth,h:im.naturalHeight});
+      im.onerror=()=>res(null);
+      im.src='data:'+upright.mediaType+';base64,'+upright.b64;
+    });
+    if(!dims) return upright;
+    const toPx=p=>({x:p.x*dims.w,y:p.y*dims.h});
+    const quadPx={tl:toPx(corners.tl),tr:toPx(corners.tr),br:toPx(corners.br),bl:toPx(corners.bl),imgW:dims.w,imgH:dims.h};
+    return await warpQuadImage(upright.b64,upright.mediaType,quadPx);
+  }catch(e){
+    console.error(e);
+    return {b64,mediaType};
+  }
+}
+
+// Step 2: send the (already auto-straightened) photo/page to the AI for
+// full field extraction — it also proposes its own imageAlign, used below
+// to pre-fill the manual corner editor for the final scan embedded in the PDF.
 async function runOcr(b64,mediaType){
   const stage=document.getElementById('aiScanStage');
   stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
