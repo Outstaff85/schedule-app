@@ -435,11 +435,17 @@ const _siteEff = URL_TOKEN ? null : _site;
 // Legacy long links carry their own &lat=&lng=; short token links don't (geo comes from DB).
 const _urlHasGeo = !!(params.get('lat') && params.get('lng'));
 
+// `||` on lat/lng would collapse a legitimate 0 coordinate (equator / prime
+// meridian — real for a site near e.g. Greenwich, Accra, or Lagos) to null,
+// silently disabling the geofence/anti-spoofing check below for that site.
+// `??` only falls through on null/undefined, so a real 0 stays 0.
+const _rawLat=_siteEff?.lat ?? params.get('lat');
+const _rawLng=_siteEff?.lng ?? params.get('lng');
 const SITE = {
   name:     _siteEff?.clientName || params.get('site') || 'Work Site',
   object:   '',
-  lat:      parseFloat(_siteEff?.lat    || params.get('lat')) || null,
-  lng:      parseFloat(_siteEff?.lng    || params.get('lng')) || null,
+  lat:      _rawLat!=null && _rawLat!=='' && !isNaN(parseFloat(_rawLat)) ? parseFloat(_rawLat) : null,
+  lng:      _rawLng!=null && _rawLng!=='' && !isNaN(parseFloat(_rawLng)) ? parseFloat(_rawLng) : null,
   radius:   parseInt(_siteEff?.radius   || params.get('r'))   || 100,
   clientId: _siteEff?.clientId || null,
 };
