@@ -3779,7 +3779,7 @@ async function subscribeToPush(){
     });
     localStorage.setItem('pushSubscription', JSON.stringify(sub));
     // Save to GS
-    fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'savePushSubscription',secret:API_SECRET,subscription:JSON.parse(JSON.stringify(sub)),role:'manager'})});
+    fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'savePushSubscription',secret:API_SECRET,...gsAuth(),subscription:JSON.parse(JSON.stringify(sub)),role:'manager'})});
     showToast('Shift reminders enabled!');
     document.getElementById('pushBtn')?.remove();
   } catch(e){ showToast('Failed: '+e.message); console.error(e); }
