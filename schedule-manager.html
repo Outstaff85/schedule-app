@@ -1780,6 +1780,79 @@ function backToFirmsList(){
   location.reload();
 }
 
+// ── App gate: decides which of the three top-level screens to show ─────────
+// (1) no/expired session → #loginScreen, nothing else runs.
+// (2) super-admin with no firm picked yet → #firmsScreen.
+// (3) everyone else (a tenant login, or a super-admin who picked a firm) →
+//     the normal app — runInitApp() runs the pre-existing init sequence.
+// Called once at startup in place of the old unconditional init block.
+function gateApp(runInitApp){
+  const s = getSession();
+  if(!s){
+    document.getElementById('loginScreen').style.display = 'flex';
+    return;
+  }
+  if(s.role === 'superadmin' && !s.viewingTenantId){
+    document.getElementById('firmsScreen').style.display = 'block';
+    renderFirmsList();
+    return;
+  }
+  runInitApp();
+}
+
+async function renderFirmsList(){
+  const listEl = document.getElementById('firmsList');
+  listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'listTenants', ...gsAuth() }) });
+    const json = await res.json();
+    if(!json || json.error){ listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Ошибка загрузки')+'</div>'; return; }
+    const tenants = json.tenants || [];
+    if(!tenants.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Фирм ещё нет — создайте первую.</div>'; return; }
+    listEl.innerHTML = tenants.map(t => `
+      <div class="row" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);cursor:pointer" onclick="switchToTenant('${esc(t.tenantId)}','${esc(t.companyName||t.tenantId)}')">
+        <div>
+          <div style="font-weight:600">${esc(t.companyName || '(без названия)')}</div>
+          <div style="font-size:12px;color:var(--text2)">${t.workerCount||0} воркеров · ${t.clientCount||0} клиентов${t.savedAt?' · сохранено '+esc(new Date(t.savedAt).toLocaleString()):''}</div>
+        </div>
+        <i class="ti ti-chevron-right"></i>
+      </div>`).join('');
+  }catch(e){ listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
+}
+
+function openCreateFirmForm(){
+  ['firmUsername','firmPassword','firmCompanyName','firmDeductionsNo','firmPhone','firmStreet','firmStreetNumber','firmCity'].forEach(id => { document.getElementById(id).value=''; });
+  document.getElementById('firmFormError').textContent = '';
+  document.getElementById('createFirmOverlay').style.display = 'flex';
+}
+async function submitCreateFirm(){
+  const get = id => document.getElementById(id).value.trim();
+  const username = get('firmUsername'), password = document.getElementById('firmPassword').value;
+  const errEl = document.getElementById('firmFormError');
+  const btn = document.getElementById('createFirmBtn');
+  errEl.textContent = '';
+  if(!username || !password){ errEl.textContent = 'Логин и пароль обязательны'; return; }
+  btn.disabled = true; btn.textContent = 'Создаю…';
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({
+      action:'createUser', ...gsAuth(),
+      username, password,
+      companyName: get('firmCompanyName'),
+      deductionsFileNumber: get('firmDeductionsNo'),
+      phone: get('firmPhone'),
+      street: get('firmStreet'),
+      streetNumber: get('firmStreetNumber'),
+      city: get('firmCity'),
+    })});
+    const json = await res.json();
+    if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось создать фирму'; return; }
+    closeModal('createFirmOverlay');
+    showToast('Фирма создана');
+    renderFirmsList();
+  }catch(e){ errEl.textContent = 'Сеть недоступна'; }
+  finally{ btn.disabled = false; btn.textContent = 'Создать'; }
+}
+
 // Optimistic concurrency: the savedAt value we last loaded from the DB.
 let lastLoadedSavedAt = null;
 
