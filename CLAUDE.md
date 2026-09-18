@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A staff scheduling & GPS punch-clock PWA for a single client ("Odinson"), served as static files from Firebase Hosting. There is no build step, no bundler, no package.json, and no test suite — the two pages are self-contained HTML files with inline `<style>` and `<script>`.
 
+**In progress (branch `feature/multi-tenant`, not yet merged to `main`):** turning this into a multi-tenant app — a super-admin creates "firms" (tenants) with their own login, each firm's data is isolated. See `MULTI_TENANT_PLAN.md` for the full design and status. **Do not push this branch's backend changes to `main` on their own** — `apps-script/Код.js` already requires session tokens the current `main` frontend doesn't send yet, so deploying one half without the other breaks the live app for the real Odinson tenant (this happened once already; see `MULTI_TENANT_PLAN.md`'s opening warning). Everything below this notice still describes the single-tenant `main` branch as it's actually deployed today.
+
 - `schedule-manager.html` — the manager/admin app (shifts, workers, clients, payroll, exports). RTL, Hebrew (`lang="he"`), ~3200 lines.
 - `worker-punch.html` — the worker-facing clock-in/out app, opened via a per-worker tokenized link. ~1000 lines.
 - `service-worker.js` — PWA offline shell (network-first, cache fallback).
