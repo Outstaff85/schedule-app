@@ -1893,7 +1893,7 @@ async function gsLoad() {
 // unsynced local entries are kept). Lets the admin see every worker's punches.
 async function gsLoadPunchLog(){
   try{
-    const res = await fetch(GS_URL + '?action=loadPunchLog');
+    const res = await fetch(GS_URL + '?action=loadPunchLog' + gsAuthQuery());
     const json = await res.json();
     return (json && json.entries) ? json.entries : null;
   }catch(e){ console.warn('GS punch load failed:', e); return null; }
