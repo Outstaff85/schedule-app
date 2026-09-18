@@ -629,6 +629,43 @@
   </div>
 </div>
 
+<!-- Super-admin landing screen: pick a firm to open, or create a new one.
+     Shown instead of the normal app whenever a superadmin session has no
+     viewingTenantId picked yet (see gateApp() / backToFirmsList()). -->
+<div id="firmsScreen" style="display:none;position:fixed;inset:0;z-index:900;background:var(--bg1);overflow-y:auto">
+  <div style="max-width:720px;margin:0 auto;padding:28px 20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+      <div style="font-size:20px;font-weight:700"><i class="ti ti-building-skyscraper"></i> Фирмы</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> Создать фирму</button>
+        <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i> Выйти</button>
+      </div>
+    </div>
+    <div id="firmsList" style="display:flex;flex-direction:column;gap:8px"></div>
+  </div>
+</div>
+
+<div class="overlay" id="createFirmOverlay" onclick="if(event.target===this)closeModal('createFirmOverlay')">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title">Новая фирма</div>
+    <div class="field"><label>Логин</label><input type="text" id="firmUsername" autocomplete="off"></div>
+    <div class="field"><label>Пароль (мин. 8 символов)</label><input type="password" id="firmPassword" autocomplete="new-password"></div>
+    <div class="field"><label>Название фирмы</label><input type="text" id="firmCompanyName"></div>
+    <div class="field"><label>מספר תיק ניכויים (8 цифр)</label><input type="text" id="firmDeductionsNo" maxlength="8" inputmode="numeric"></div>
+    <div class="field"><label>Телефон</label><input type="text" id="firmPhone"></div>
+    <div class="field-row">
+      <div class="field"><label>Улица</label><input type="text" id="firmStreet"></div>
+      <div class="field"><label>Номер дома</label><input type="text" id="firmStreetNumber"></div>
+    </div>
+    <div class="field"><label>Город</label><input type="text" id="firmCity"></div>
+    <div id="firmFormError" style="color:#ff6b78;font-size:13px;margin:2px 0 6px;min-height:1.2em"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('createFirmOverlay')">Отмена</button>
+      <button class="btn accent" onclick="submitCreateFirm()" id="createFirmBtn">Создать</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
