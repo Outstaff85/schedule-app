@@ -62,6 +62,24 @@ both halves are live together on `main`.
       folder server-side via `_companyFolder(tenantId)` (company name read
       from `Tenants`, never trusted from the client); the PDF filename also
       gains a `_<CompanyName>` suffix for human browsing in Drive.
+- [x] **Step 4 — firm lifecycle management** (added 2026-09-18, right after
+      the merge): super-admin Firms screen (`renderFirmsList()`) gained a
+      play/pause button and a trash button per firm row.
+      `toggleTenantActive(tenantId, nextActive)` calls `setTenantActive` —
+      reversible, flips the `active` column on every `Users` row for that
+      tenant; a deactivated login is rejected at `login()` with "Аккаунт
+      отключён" but the firm's schedule/punches/Drive docs are untouched
+      (an already-issued session token still works until its normal 24h
+      expiry, since sessions are stateless with no revocation list).
+      `confirmDeleteTenant(tenantId, companyName)` calls `deleteTenant` —
+      irreversible, gated by a `confirm()` plus typing the exact company
+      name; deletes the `Tenants` row, every `Users` login, the tenant's
+      `Schedule` row, every `PunchLog`/`PushSubscriptions` row carrying its
+      `TenantId`, and trashes its `Schedule manager APP/<CompanyName>` Drive
+      folder. `Backups` rows are deliberately left alone (dated snapshots,
+      not live data). `listTenants()` now also returns `t.active` per firm
+      (true if any of its logins are active, or if it has no `Users` rows
+      yet at all).
 
 ## Testing status
 
