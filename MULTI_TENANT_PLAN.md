@@ -1,13 +1,19 @@
 # Multi-tenant + login architecture
 
-Working design doc for turning this single-client app into a multi-tenant
-one: a super-admin creates "firms" (tenants), each firm logs in and only ever
-sees its own data. Built incrementally on the `feature/multi-tenant` branch —
-**never push straight to `main`** while this is in progress: a push to `main`
-auto-deploys both the Apps Script backend and Firebase Hosting immediately
-(see `CLAUDE.md`/`deploy.yml`/`deploy-apps-script.yml`), and the backend and
-frontend halves of this feature are not independently deployable — shipping
-one without the other breaks the live app for the real "Odinson" tenant.
+Design doc for the multi-tenant version of this app: a super-admin creates
+"firms" (tenants), each firm logs in and only ever sees its own data.
+
+**Merged to `main` 2026-09-18** (PR #34, `feature/multi-tenant` → `main`).
+The warning below applied while the feature was built incrementally on that
+branch and is kept for historical context — it no longer applies now that
+both halves are live together on `main`.
+
+> **(historical)** never push straight to `main` while this is in progress: a
+> push to `main` auto-deploys both the Apps Script backend and Firebase
+> Hosting immediately (see `CLAUDE.md`/`deploy.yml`/`deploy-apps-script.yml`),
+> and the backend and frontend halves of this feature are not independently
+> deployable — shipping one without the other breaks the live app for the
+> real "Odinson" tenant.
 
 ## Status
 
