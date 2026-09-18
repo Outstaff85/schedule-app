@@ -428,11 +428,19 @@ function deleteTenant(body, auth) {
       removed.drive = true;
     } else {
       // No cached ID (tenant renamed/created before driveFolderId existed,
-      // or never had any documents uploaded) — fall back to a name lookup.
+      // or never had any documents uploaded) — fall back to a name lookup,
+      // but only trash a match that's untagged (a legacy folder predating
+      // the ownership tag added by _companyFolder()) or explicitly tagged
+      // as this tenantId's own. A name collision with a DIFFERENT tenant's
+      // tagged folder is left alone — a destructive trash must never guess.
       const rootIter = DriveApp.getFoldersByName('Schedule manager APP');
       if (rootIter.hasNext()) {
         const companyIter = rootIter.next().getFoldersByName(companyName);
-        if (companyIter.hasNext()) { companyIter.next().setTrashed(true); removed.drive = true; }
+        while (companyIter.hasNext()) {
+          const cand = companyIter.next();
+          const desc = cand.getDescription() || '';
+          if (!desc || desc === tenantId) { cand.setTrashed(true); removed.drive = true; break; }
+        }
       }
     }
   } catch (e) {}
@@ -1151,10 +1159,27 @@ function _companyFolder(tenantId){
     catch(e){ companyFolder = null; } // cached folder was trashed/deleted by hand — fall through and re-resolve by name
   }
   if(!companyFolder){
+    // Two different tenants can legitimately share the same companyName
+    // (nothing enforces uniqueness) — blindly adopting the first
+    // name-matched folder would silently merge their documents into one
+    // folder. Each company folder we create tags itself with its owning
+    // tenantId (Drive folder description); only adopt a name match that's
+    // either untagged (a legacy folder predating this tag) or already
+    // tagged as ours — a match tagged with a DIFFERENT tenantId means the
+    // name collided with another firm, so we create our own folder instead.
     const companyIter = root.getFoldersByName(companyName);
-    companyFolder = companyIter.hasNext() ? companyIter.next() : root.createFolder(companyName);
+    let match = null;
+    while(companyIter.hasNext()){
+      const cand = companyIter.next();
+      const desc = cand.getDescription() || '';
+      if(!desc || desc === tenantId){ match = cand; break; }
+    }
+    companyFolder = match || root.createFolder(companyName);
   }
-  if(tenantId) _setTenantDriveFolderId(tenantId, companyFolder.getId());
+  if(tenantId){
+    _setTenantDriveFolderId(tenantId, companyFolder.getId());
+    try{ if(companyFolder.getDescription() !== tenantId) companyFolder.setDescription(tenantId); }catch(e){}
+  }
   if(companyFolder.getName() !== companyName) companyFolder.setName(companyName);
 
   const subIter = companyFolder.getFoldersByName('Workers');
