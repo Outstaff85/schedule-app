@@ -428,11 +428,19 @@ function deleteTenant(body, auth) {
       removed.drive = true;
     } else {
       // No cached ID (tenant renamed/created before driveFolderId existed,
-      // or never had any documents uploaded) — fall back to a name lookup.
+      // or never had any documents uploaded) — fall back to a name lookup,
+      // but only trash a match that's untagged (a legacy folder predating
+      // the ownership tag added by _companyFolder()) or explicitly tagged
+      // as this tenantId's own. A name collision with a DIFFERENT tenant's
+      // tagged folder is left alone — a destructive trash must never guess.
       const rootIter = DriveApp.getFoldersByName('Schedule manager APP');
       if (rootIter.hasNext()) {
         const companyIter = rootIter.next().getFoldersByName(companyName);
-        if (companyIter.hasNext()) { companyIter.next().setTrashed(true); removed.drive = true; }
+        while (companyIter.hasNext()) {
+          const cand = companyIter.next();
+          const desc = cand.getDescription() || '';
+          if (!desc || desc === tenantId) { cand.setTrashed(true); removed.drive = true; break; }
+        }
       }
     }
   } catch (e) {}
