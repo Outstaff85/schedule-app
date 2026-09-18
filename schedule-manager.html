@@ -1763,12 +1763,18 @@ async function submitLogin(){
 }
 
 // A super-admin drilling into one firm's normal view — every subsequent API
-// call sends asTenantId until they switch again or log out.
-function switchToTenant(tenantId, tenantName){
+// call sends asTenantId until they switch again or log out. Also caches that
+// firm's own profile (from the already-fetched Firms list — __firmsCache) as
+// viewingTenantProfile, since aiFillForm101() needs it for Form 101 section א
+// and a super-admin's own login never carries a tenantProfile (they have no
+// fixed tenant of their own).
+function switchToTenant(tenantId){
   const s = getSession();
   if(!s || s.role !== 'superadmin') return;
+  const t = __firmsCache.find(x => x.tenantId === tenantId);
   s.viewingTenantId = tenantId;
-  s.viewingTenantName = tenantName || tenantId;
+  s.viewingTenantName = (t && t.companyName) || tenantId;
+  s.viewingTenantProfile = t || null;
   saveSession(s);
   location.reload();
 }
