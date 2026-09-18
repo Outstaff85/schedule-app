@@ -947,20 +947,32 @@ function aiDetectAlign(body){
 
 // ── Worker document storage (Drive) ────────────────────────────────────────────
 // Saves an assembled worker PDF (Form 101 + signature + ID scan, combined
-// client-side) into Drive under "Schedule manager APP/Workers", named by the
-// client-supplied fileName (already built from the worker's name + doc number).
-// Re-uploading with the same fileName replaces the previous file, so this is
-// safe to call again after a re-scan without piling up duplicates.
-// NOTE: `tenantId` is accepted but not yet used to route into a per-company
-// Drive folder — that's a follow-up step (folder name = firm name, filename
-// gets the firm name appended). Still single shared "Workers" folder for now.
+// client-side) into Drive under "Schedule manager APP/<CompanyName>/Workers"
+// — one subfolder per firm, named from tenantId — never a client-supplied
+// path, so one firm can't write into another's folder by spoofing a name.
+// Named by the client-supplied fileName (already built from the worker's
+// name + doc number). Re-uploading with the same fileName replaces the
+// previous file, so this is safe to call again after a re-scan without
+// piling up duplicates.
+function _companyFolder(tenantId){
+  const rootIter = DriveApp.getFoldersByName('Schedule manager APP');
+  const root = rootIter.hasNext() ? rootIter.next() : DriveApp.createFolder('Schedule manager APP');
+  const profile = tenantId ? getTenantProfile(tenantId) : null;
+  // Drive folder names disallow '/' — anything else is fine, but strip
+  // control characters and trim so a blank/garbage company name still
+  // produces a usable folder instead of an empty or invalid one.
+  let companyName = ((profile && profile.companyName) || tenantId || 'Unknown').replace(/\//g,'-').trim();
+  if(!companyName) companyName = tenantId || 'Unknown';
+  const companyIter = root.getFoldersByName(companyName);
+  const companyFolder = companyIter.hasNext() ? companyIter.next() : root.createFolder(companyName);
+  const subIter = companyFolder.getFoldersByName('Workers');
+  return subIter.hasNext() ? subIter.next() : companyFolder.createFolder('Workers');
+}
+
 function saveWorkerDoc(body, tenantId){
   try{
     if(!body.fileBase64 || !body.fileName) return {error:'Нет fileBase64 или fileName'};
-    const rootIter = DriveApp.getFoldersByName('Schedule manager APP');
-    const root = rootIter.hasNext() ? rootIter.next() : DriveApp.createFolder('Schedule manager APP');
-    const subIter = root.getFoldersByName('Workers');
-    const folder = subIter.hasNext() ? subIter.next() : root.createFolder('Workers');
+    const folder = _companyFolder(tenantId);
 
     // Prefer trashing the exact previous file by ID (stable across rescans,
     // where the OCR'd name/doc-number baked into fileName can drift and no
@@ -1011,9 +1023,9 @@ function extractDocNumberFromFileName(name){
 
 // Trashes a worker's stored PDF from Drive (called when the worker is deleted
 // in the app, so removing a worker doesn't leave orphaned documents behind).
-// Prefers a direct fileId; falls back to looking the file up by name inside
-// the same "Schedule manager APP/Workers" folder used by saveWorkerDoc.
-// NOTE: `tenantId` reserved for the same per-company-folder follow-up as saveWorkerDoc.
+// Prefers a direct fileId (works regardless of which company folder it's in);
+// falls back to looking the file up by name inside that tenant's own
+// "Schedule manager APP/<CompanyName>/Workers" folder.
 function deleteWorkerDoc(body, tenantId){
   try{
     if(body.fileId){
@@ -1021,11 +1033,7 @@ function deleteWorkerDoc(body, tenantId){
       return {ok:true};
     }
     if(body.fileName){
-      const rootIter = DriveApp.getFoldersByName('Schedule manager APP');
-      if(!rootIter.hasNext()) return {ok:true};
-      const subIter = rootIter.next().getFoldersByName('Workers');
-      if(!subIter.hasNext()) return {ok:true};
-      const folder = subIter.next();
+      const folder = _companyFolder(tenantId);
       const existing = folder.getFilesByName(body.fileName);
       while(existing.hasNext()) existing.next().setTrashed(true);
       return {ok:true};

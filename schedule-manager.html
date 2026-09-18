@@ -3675,11 +3675,17 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     // field themselves using the template's default (non-Hebrew) Helvetica DA.
     form.acroForm.dict.set(PDFLib.PDFName.of('NeedAppearances'), PDFLib.PDFBool.False);
     const out=await doc.save();
-    // <docNumber>_<given>_<surname>.pdf — the ID/passport number is the one
-    // stable part across rescans (used by the backend's automatic dedup in
-    // saveWorkerDoc), name parts are just for human-readable browsing in Drive.
+    // <docNumber>_<given>_<surname>_<companyName>.pdf — the ID/passport number
+    // is the one stable part across rescans (used by the backend's automatic
+    // dedup in saveWorkerDoc), name parts and company name are just for
+    // human-readable browsing in Drive (the actual per-company folder the
+    // backend saves into is resolved server-side from the tenant, not from
+    // this string — see _companyFolder() in apps-script/Код.js).
     const fnPart=s=>(s||'').replace(/[^A-Za-z0-9֐-׿]/g,'');
-    const fileName=(no?no.replace(/\D/g,''):'noid')+'_'+fnPart(given||'worker')+(surname?'_'+fnPart(surname):'')+'.pdf';
+    const __session=getSession();
+    const __profile=__session&&(__session.viewingTenantProfile||__session.tenantProfile);
+    const companySuffix=(__profile&&__profile.companyName)?'_'+fnPart(__profile.companyName):'';
+    const fileName=(no?no.replace(/\D/g,''):'noid')+'_'+fnPart(given||'worker')+(surname?'_'+fnPart(surname):'')+companySuffix+'.pdf';
     if(mode==='upload'){
       const fileBase64=bytesToBase64(out);
       // Worker (targetWorker) already resolved up top — reused here so a
