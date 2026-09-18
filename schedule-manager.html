@@ -421,6 +421,12 @@
         <div id="dashMissing" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px"></div>
       </div>
 
+      <!-- Contract expiry warnings (hidden unless at least one worker is flagged) -->
+      <div style="margin-bottom:20px;display:none" id="dashExpiringWrap">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"><i class="ti ti-alert-triangle"></i> Истекает срок работы</div>
+        <div id="dashExpiring" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px"></div>
+      </div>
+
       <!-- Today's log -->
       <div style="margin-bottom:20px">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"><i class="ti ti-clipboard-text"></i> Today's Log</div>
