@@ -506,17 +506,18 @@ async function flushQueue(){
   const q=getQueue();        // flaky connection — without this guard, two overlapping runs
   if(!q.length||!navigator.onLine) return; // would both read the same queue and double-post every entry.
   _flushingQueue=true;
-  const failed=[];
-  for(const e of q){
-    try{
-      const r=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'savePunch',secret:API_SECRET,workerToken:e.workerToken||_wpToken(),data:e})});
-      const json=await r.json();
-      if(!json || json.error) failed.push(e);
+  try{
+    const failed=[];
+    for(const e of q){
+      try{
+        const r=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'savePunch',secret:API_SECRET,workerToken:e.workerToken||_wpToken(),data:e})});
+        const json=await r.json();
+        if(!json || json.error) failed.push(e);
+      }
+      catch(err){ failed.push(e); }
     }
-    catch(err){ failed.push(e); }
-  }
-  saveQueue(failed);
-  _flushingQueue=false;
+    saveQueue(failed);
+  } finally { _flushingQueue=false; }
   if(!failed.length){ hideOfflineBadge(); if(q.length) showSyncToast(q.length); }
 }
 
