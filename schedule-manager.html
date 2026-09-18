@@ -1740,6 +1740,31 @@ function gsAuthQuery(){
   return Object.keys(a).map(k => '&' + k + '=' + encodeURIComponent(a[k])).join('');
 }
 
+// Session can expire (or get invalidated) while the tab stays open; every
+// call site above just swallows a failed save/load rather than knowing what
+// to do about it. Rather than thread a check through all dozen fetch(GS_URL,
+// ...) call sites, wrap fetch itself once: any GS_URL response carrying the
+// backend's exact "session expired" error clears the stale session and
+// reloads straight back to the login screen instead of silently failing.
+const SESSION_EXPIRED_ERROR = 'Сессия истекла или недействительна — войдите заново';
+(function(){
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = function(url, opts){
+    return _origFetch(url, opts).then(res => {
+      if (typeof url === 'string' && url.indexOf(GS_URL) === 0) {
+        res.clone().json().then(json => {
+          if (json && json.error === SESSION_EXPIRED_ERROR && getSession()){
+            clearSession();
+            showToast('Сессия истекла — войдите заново');
+            setTimeout(() => location.reload(), 1200);
+          }
+        }).catch(()=>{});
+      }
+      return res;
+    });
+  };
+})();
+
 async function submitLogin(){
   const username = document.getElementById('loginUsername').value.trim();
   const password = document.getElementById('loginPassword').value;
