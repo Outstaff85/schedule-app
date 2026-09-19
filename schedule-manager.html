@@ -1898,6 +1898,59 @@ function backToFirmsList(){
   location.reload();
 }
 
+// ── Firm profile (Form 101 section א) ─────────────────────────────────────
+// Every generated Form 101 draws its employer block straight from the firm's
+// own Tenants row (see aiFillForm101). migrateToMultiTenant() created the
+// original firm with a placeholder name and blank phone/address/deductions
+// number, so a firm can sit on a half-empty profile and only discover it on a
+// printed form. These three helpers are the single source of truth for "is
+// this profile complete" — used by the titlebar control, the Form 101 panel,
+// and the super-admin's Firms list.
+const FIRM_PROFILE_FIELDS = [
+  {key:'companyName',          label:'Название фирмы'},
+  {key:'deductionsFileNumber', label:'מספר תיק ניכויים'},
+  {key:'phone',                label:'Телефон'},
+  {key:'street',               label:'Улица'},
+  {key:'city',                 label:'Город'},
+];
+function activeTenantProfile(){
+  const s = getSession();
+  return (s && (s.viewingTenantProfile || s.tenantProfile)) || null;
+}
+// Labels of the fields Form 101 would leave blank. No argument = the firm the
+// session is currently working in; pass a Tenants row to check another firm.
+function firmProfileMissing(profile){
+  const p = profile || activeTenantProfile();
+  if(!p) return FIRM_PROFILE_FIELDS.map(f => f.label);
+  return FIRM_PROFILE_FIELDS.filter(f => !String(p[f.key]==null?'':p[f.key]).trim()).map(f => f.label);
+}
+function firmProfileWarnHtml(){
+  const missing = firmProfileMissing();
+  if(!missing.length) return '';
+  return `<div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;border:1px solid #ffb020;border-radius:var(--radius-sm);background:rgba(255,176,32,0.08);font-size:12px;line-height:1.5;color:var(--text2)">
+    <i class="ti ti-alert-triangle" style="color:#ffb020;font-size:15px"></i>
+    <div style="flex:1;min-width:180px">Профиль фирмы неполный — в Форме 101 (раздел א «פרטי המעסיק») останутся пустыми: <b>${esc(missing.join(', '))}</b>.</div>
+    <button class="btn sm" onclick="openMyFirmForm()"><i class="ti ti-pencil"></i> Заполнить</button>
+  </div>`;
+}
+// Keeps the session's cached copy of the firm profile in step with a save —
+// the client only ever gets one at login, so without this a firm would have
+// to log out and back in before its own edit showed up on a Form 101. Only
+// touches the cache when the saved firm is the one currently being worked in.
+function cacheTenantProfile(tenantId, profile){
+  const s = getSession();
+  if(!s || !profile) return;
+  if(tenantId !== (s.viewingTenantId || s.tenantId)) return;
+  if(s.role === 'superadmin'){
+    s.viewingTenantProfile = profile;
+    s.viewingTenantName = profile.companyName || s.viewingTenantName;
+  } else {
+    s.tenantProfile = profile;
+  }
+  saveSession(s);
+  renderAccountControl(s);
+}
+
 // ── App gate: decides which of the three top-level screens to show ─────────
 // (1) no/expired session → #loginScreen, nothing else runs.
 // (2) super-admin with no firm picked yet → #firmsScreen.
