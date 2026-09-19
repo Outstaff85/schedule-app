@@ -913,14 +913,15 @@ function fmtDMY(dateStr){
 // --- Tab ---------------------------------------------------------------------
 function switchTab(tab){
   currentTab=tab;
-  ['dashboard','schedule','workers','clients','admin'].forEach(t=>{
+  ['dashboard','schedule','workers','clients','admin','accounting'].forEach(t=>{
     document.getElementById('tab'+t.charAt(0).toUpperCase()+t.slice(1))?.classList.toggle('active',tab===t);
     document.getElementById('section'+t.charAt(0).toUpperCase()+t.slice(1))?.classList.toggle('visible',tab===t);
   });
-  if(tab==='workers')   renderWorkersPage();
-  if(tab==='clients')   renderClientsPage();
-  if(tab==='admin')     renderAdmin();
-  if(tab==='dashboard') renderDashboard();
+  if(tab==='workers')    renderWorkersPage();
+  if(tab==='clients')    renderClientsPage();
+  if(tab==='admin')      renderAdmin();
+  if(tab==='dashboard')  renderDashboard();
+  if(tab==='accounting') renderAccounting();
 }
 
 // --- Week nav -----------------------------------------------------------------
