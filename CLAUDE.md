@@ -30,7 +30,7 @@ There is no npm/build/lint/test tooling. Development is edit-the-HTML-and-reload
   - `.github/workflows/deploy-apps-script.yml` — deploys Google Apps Script source (anything in `apps-script/`) via `clasp push --force` and `clasp deploy` to the configured Apps Script project (requires `CLASP_CREDENTIALS` and `CLASP_DEPLOYMENT_ID` GitHub secrets).
 - Routing: `firebase.json` rewrites `/` → `schedule-manager.html` and `/punch` → `worker-punch.html`.
 
-When bumping the service worker's cache (`CACHE` constant in `service-worker.js`, currently `schedule-mgr-v4`), increment the version string (e.g. `v4` → `v5`) or clients will keep serving stale cached HTML after deploy. PostToolUse hook auto-commits and pushes to main on every file edit (see `.claude/settings.json` for the hook configuration).
+When bumping the service worker's cache (`CACHE` constant in `service-worker.js`, currently `schedule-mgr-v5`), increment the version string (e.g. `v5` → `v6`) or clients will keep serving stale cached HTML after deploy. PostToolUse hook auto-commits and pushes to main on every file edit (see `.claude/settings.json` for the hook configuration).
 
 ## Architecture
 
