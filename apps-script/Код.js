@@ -20,7 +20,7 @@ const SH_TENANTS  = 'Tenants';
 // what actually resolves the tenant. MUST equal API_SECRET in
 // schedule-manager.html / worker-punch.html.
 const API_SECRET  = 'odinson-7Kq2x9';
-const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // session "remembered" for a day
+const SESSION_TTL_MS = 6 * 60 * 60 * 1000; // session "remembered" for 6 hours
 
 // ── Entry points ──────────────────────────────────────────────────────────────
 function doPost(e) {
