@@ -2087,18 +2087,51 @@ async function submitCreateFirm(){
 }
 
 let __editingFirmTenantId = null;
+// Set by the modal's own oninput — a late-arriving server refresh must never
+// overwrite what the user has already started typing.
+let __firmEditDirty = false;
+function fillFirmEditForm(p){
+  document.getElementById('firmEditCompanyName').value = p.companyName || '';
+  document.getElementById('firmEditDeductionsNo').value = p.deductionsFileNumber || '';
+  document.getElementById('firmEditPhone').value = p.phone || '';
+  document.getElementById('firmEditStreet').value = p.street || '';
+  document.getElementById('firmEditStreetNumber').value = p.streetNumber || '';
+  document.getElementById('firmEditCity').value = p.city || '';
+  __firmEditDirty = false;
+}
 function openEditFirmForm(tenantId){
   const t = __firmsCache.find(x => x.tenantId === tenantId);
   if(!t){ showToast('Фирма не найдена'); return; }
   __editingFirmTenantId = tenantId;
-  document.getElementById('firmEditCompanyName').value = t.companyName || '';
-  document.getElementById('firmEditDeductionsNo').value = t.deductionsFileNumber || '';
-  document.getElementById('firmEditPhone').value = t.phone || '';
-  document.getElementById('firmEditStreet').value = t.street || '';
-  document.getElementById('firmEditStreetNumber').value = t.streetNumber || '';
-  document.getElementById('firmEditCity').value = t.city || '';
+  document.getElementById('firmEditTitle').textContent = 'Редактировать фирму';
+  fillFirmEditForm(t);
   document.getElementById('firmEditFormError').textContent = '';
   document.getElementById('editFirmOverlay').classList.add('open');
+}
+
+// Self-service version of the same form, for the firm the session is working
+// in — a firm's own login can fill in its Form 101 employer data itself
+// instead of asking the super-admin. Prefills from the cached profile at once,
+// then refreshes from the server, since the cache is whatever login returned
+// and may be stale if the super-admin edited it since.
+async function openMyFirmForm(){
+  const s = getSession();
+  if(!s) return;
+  const tenantId = s.viewingTenantId || s.tenantId;
+  if(!tenantId){ showToast('Фирма не выбрана'); return; }
+  __editingFirmTenantId = tenantId;
+  document.getElementById('firmEditTitle').textContent = 'Данные фирмы';
+  fillFirmEditForm(activeTenantProfile() || {});
+  document.getElementById('firmEditFormError').textContent = '';
+  document.getElementById('editFirmOverlay').classList.add('open');
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'loadTenantProfile', ...gsAuth() }) });
+    const json = await res.json();
+    if(json && json.profile){
+      cacheTenantProfile(tenantId, json.profile);
+      if(!__firmEditDirty && __editingFirmTenantId === tenantId) fillFirmEditForm(json.profile);
+    }
+  }catch(e){}
 }
 async function submitEditFirm(){
   const get = id => document.getElementById(id).value.trim();
