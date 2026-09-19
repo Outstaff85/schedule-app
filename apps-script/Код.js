@@ -54,6 +54,7 @@ function doPost(e) {
       case 'logError':             return jsonResponse(logError(body));
       case 'aiReadDoc':            return jsonResponse(aiReadDoc(body));
       case 'aiDetectAlign':        return jsonResponse(aiDetectAlign(body));
+      case 'aiVerifyField':        return jsonResponse(aiVerifyField(body));
       case 'saveWorkerDoc':        return jsonResponse(saveWorkerDoc(body, tenantId));
       case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body, tenantId));
       case 'createUser':           return jsonResponse(createUser(body, auth));
@@ -225,7 +226,13 @@ function createUser(body, auth) {
   const tenantsSh = getOrCreateSheet(ss, SH_TENANTS);
   ensureHeaders(tenantsSh, ['tenantId', 'companyName', 'deductionsFileNumber', 'phone', 'street', 'streetNumber', 'city', 'createdAt']);
   const now = new Date().toISOString();
-  tenantsSh.appendRow([
+  // Written through a pre-formatted text range rather than appendRow: a plain
+  // append lets Sheets read a digit string as a number and drop the leading
+  // zero (see updateTenant), losing it on the firm's very first save.
+  const newRow = tenantsSh.getLastRow() + 1;
+  const range = tenantsSh.getRange(newRow, 1, 1, 8);
+  range.setNumberFormat('@');
+  range.setValues([[
     tenantId,
     body.companyName || '',
     body.deductionsFileNumber || '',
@@ -234,7 +241,7 @@ function createUser(body, auth) {
     body.streetNumber || '',
     body.city || '',
     now
-  ]);
+  ]]);
 
   const salt = makeSalt();
   const userId = Utilities.getUuid();
@@ -266,7 +273,15 @@ function updateTenant(body, auth) {
       fields.forEach(function(f) {
         if (body[f] === undefined) return;
         const col = headers.indexOf(f);
-        if (col !== -1) sh.getRange(i + 1, col + 1).setValue(body[f]);
+        if (col === -1) return;
+        // Format as plain text BEFORE writing: Sheets otherwise reads a digit
+        // string as a number and drops the leading zero, which silently turns
+        // an Israeli phone (03-…, 052-…) or an 8-digit תיק ניכויים starting
+        // with 0 into a shorter number — and that is what Form 101 prints.
+        // Order matters; formatting after setValue leaves it already coerced.
+        const cell = sh.getRange(i + 1, col + 1);
+        cell.setNumberFormat('@');
+        cell.setValue(body[f]);
       });
       // Keep the firm's Drive folder name in sync with a renamed company —
       // cheap (a single Drive API call) and a no-op if this tenant has no
@@ -996,6 +1011,11 @@ function aiReadDoc(body){
     'The back/appendix card (ספח) sometimes also lists the holder\'s registered children (ילדים) with their own name/ID/birth date rows — ' +
     'if such a section is present and populated, extract each child into the "children" array; if absent or empty, return "children":[]. ' +
     'If a field is not visible or unreadable use empty string. ' +
+    'Also include a top-level "fieldBoxes" object locating, on THIS image exactly as given to you (not the imageAlign-straightened version below), ' +
+    'the tight bounding box of each all-digit field you found a value for, among: idNo, dob, expiry, passportNo (whichever apply to this document type). ' +
+    'Each box is {"x0":0,"y0":0,"x1":1,"y1":1} — top-left and bottom-right corners, each coordinate a fraction 0 to 1 of THIS image\'s width/height — ' +
+    'tight around just the printed characters (a few pixels of margin, not the whole field label or surrounding box). ' +
+    'Omit a field from "fieldBoxes" entirely if you left its value empty. These boxes are used to re-crop and double-check exactly those digits, so precision matters more than for imageAlign. ' +
     'Also include a top-level "imageAlign" object (for both document types) describing how to straighten the ORIGINAL photo: ' +
     '{"rotate":0,"crop":{"x0":0,"y0":0,"x1":1,"y1":1},"corners":{"tl":{"x":0,"y":0},"tr":{"x":1,"y":0},"br":{"x":1,"y":1},"bl":{"x":0,"y":1}}} — ' +
     '"rotate" is the clockwise degrees needed to make the document upright and right-reading, and MUST be exactly one of 0, 90, 180, 270 (use 0 if already upright); ' +
@@ -1139,6 +1159,71 @@ function aiDetectAlign(body){
   catch(e){ return {error:'AI вернул нечитаемый ответ', raw: String(text).slice(0,300)}; }
 
   return {ok: true, align: align};
+}
+
+// Targeted re-read of one already-extracted digit field (idNo/dob/expiry/
+// passportNo), on a tight crop of just that field — built client-side from
+// aiReadDoc's own "fieldBoxes" and zoomed in, so the model sees the same
+// digits at much higher effective resolution than embedded in the full
+// document photo. A wrong digit in the ID number or a date corrupts a real
+// Form 101 submission, so this uses the same accuracy-first ANTHROPIC_MODEL
+// as aiReadDoc (not the cheap align model) — deliberately not optimized for
+// cost, same reasoning as aiReadDoc above. body.kind selects the expected
+// shape: 'digits9' (Israeli ID, exactly 9 digits), 'date' (DD/MM/YYYY), or
+// 'passportNo' (alphanumeric, format varies by issuing country).
+function aiVerifyField(body){
+  var props = PropertiesService.getScriptProperties();
+  var key   = props.getProperty('ANTHROPIC_API_KEY');
+  var model = props.getProperty('ANTHROPIC_MODEL') || 'claude-sonnet-5';
+  if(!key)        return {error:'ANTHROPIC_API_KEY не задан в Script Properties'};
+  if(!body.image) return {error:'Нет изображения'};
+
+  var ask = {
+    digits9:    'This is a tightly cropped, zoomed-in photo of a 9-digit Israeli ID number (מספר זהות). Read exactly what is printed, digit by digit — do not guess based on typical formats.',
+    date:       'This is a tightly cropped, zoomed-in photo of a date printed as DD/MM/YYYY (or DD.MM.YYYY). Read exactly what is printed, digit by digit.',
+    passportNo: 'This is a tightly cropped, zoomed-in photo of a passport number. Read exactly what is printed, character by character.'
+  }[body.kind] || 'This is a tightly cropped, zoomed-in photo of a short printed field. Read exactly what is printed, character by character.';
+
+  var SYSTEM = ask + ' Return ONLY the characters you see, nothing else — no prose, no labels, no markdown. ' +
+    'If genuinely illegible even zoomed in, return an empty string rather than guessing.';
+
+  var payload = {
+    model: model,
+    max_tokens: 50,
+    messages: [{
+      role: 'user',
+      content: [
+        {type: 'text', text: SYSTEM},
+        {type: 'image', source: {type: 'base64', media_type: body.mediaType || 'image/jpeg', data: body.image}}
+      ]
+    }]
+  };
+
+  var opts = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01'
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  var res;
+  try { res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', opts); }
+  catch(e){ return {error:'Запрос к Anthropic не прошёл: ' + e}; }
+
+  var json;
+  try { json = JSON.parse(res.getContentText()); }
+  catch(e){ return {error:'Неверный ответ от Anthropic (HTTP ' + res.getResponseCode() + ')'}; }
+
+  if(json.error) return {error: json.error.message || 'Ошибка Anthropic'};
+
+  var text = '';
+  (json.content || []).forEach(function(c){ if(c.type === 'text') text += c.text; });
+
+  return {ok: true, value: text.trim()};
 }
 
 // ── Worker document storage (Drive) ────────────────────────────────────────────

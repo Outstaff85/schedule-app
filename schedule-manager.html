@@ -1094,11 +1094,44 @@ function saveShift(wi,di){
 }
 
 // --- Worker Modal -------------------------------------------------------------
+// Address and document number used to share one field. Workers created from a
+// scan before the split carry the number inside `address` as "ת.ז. 123456789"
+// / "Passport AB123" — the exact shape aiToWorker() wrote — so these two read
+// it back out of there instead of showing a document number on the address
+// line. Saving such a worker once stores it properly in `docId`.
+const LEGACY_DOC_IN_ADDRESS = /^\s*(?:ת\.ז\.|Passport)\s*(\S+)\s*$/;
+function workerDocId(w){
+  if(w.docId) return w.docId;
+  const m = LEGACY_DOC_IN_ADDRESS.exec(w.address || '');
+  return m ? m[1] : '';
+}
+function workerAddress(w){
+  const addr = w.address || '';
+  if(w.docId) return addr;
+  return LEGACY_DOC_IN_ADDRESS.test(addr) ? '' : addr;
+}
+
 function openAddWorker(){ editingWorkerIdx=null; showWorkerModal({name:'',colorIdx:workers.length%8,phone:'',clientIds:[],schedule:DAYS.map(()=>({type:'work',start:'09:00',end:'17:00'}))}); }
 function openEditWorker(wi){ editingWorkerIdx=wi; showWorkerModal(workers[wi]); }
 
+// The weekly grid starts collapsed every time the modal opens, and saveWorker
+// only writes a schedule from it once it has been opened — so adding a worker
+// no longer silently fills their whole week with 09:00–17:00 shifts, and
+// editing one without touching the grid leaves their existing shifts alone.
+let __wScheduleOpen = false;
+function toggleWeeklySchedule(){
+  __wScheduleOpen = !__wScheduleOpen;
+  const wrap = document.getElementById('wScheduleWrap');
+  const chev = document.getElementById('wScheduleChevron');
+  const hint = document.getElementById('wScheduleHint');
+  if(wrap) wrap.style.display = __wScheduleOpen ? '' : 'none';
+  if(chev) chev.className = 'ti ti-chevron-' + (__wScheduleOpen ? 'up' : 'down');
+  if(hint) hint.style.display = __wScheduleOpen ? 'none' : '';
+}
+
 function showWorkerModal(w){
   selColorIdx=w.colorIdx||0;
+  __wScheduleOpen=false;
   document.getElementById('workerModal').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <div class="modal-title" style="margin-bottom:0">${editingWorkerIdx!==null?'Edit Worker':'Add New Worker'}</div>
@@ -1116,6 +1149,7 @@ function showWorkerModal(w){
       </div>
       <div id="contactsSuggestions" style="display:none;position:absolute;z-index:300;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);left:0;right:0;top:100%;max-height:240px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.5)"></div>
     </div>
+    <div class="field"><label>ID (Teudat Zehut)</label><input type="text" id="wDocId" value="${esc(workerDocId(w))}" placeholder="ת.ז. / passport number"></div>
     <div class="field"><label>Phone (optional)</label><input type="text" id="wPhone" value="${w.phone||''}" placeholder="+972..."></div>
     <div class="field"><label>Email (optional)</label><input type="text" id="wEmail" value="${w.email||''}" placeholder="worker@email.com"></div>
     <div class="field"><label>Hourly Rate (₪/h)</label><input type="number" id="wRate" value="${w.hourlyRate||''}" placeholder="e.g. 35" min="0" step="0.5"></div>
@@ -1166,7 +1200,8 @@ function showWorkerModal(w){
         </select>
       </div>
     </div>
-    <div class="field"><label>Address / ID (Teudat Zehut)</label><input type="text" id="wAddress" value="${w.address||''}" placeholder="Address or ID number"></div>
+    <div class="field"><label>Address</label><input type="text" id="wAddress" value="${esc(workerAddress(w))}" placeholder="Street and house number"></div>
+    <div class="field"><label>City</label><input type="text" id="wCity" value="${esc(w.city||'')}" placeholder="City"></div>
     <div class="field"><label>Notes</label><textarea id="wNotes" placeholder="Notes about this worker" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;padding:8px 10px;outline:none;min-height:56px;resize:vertical">${w.notes||''}</textarea></div>
     <div class="field"><label>Color</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap" id="wColorPick">
@@ -1184,8 +1219,16 @@ function showWorkerModal(w){
       </div>
       <div id="wClientEmpty" style="display:none;font-size:12px;color:var(--text3);padding:8px">Nothing found</div>
     </div>
-    <div class="field"><label>Weekly Schedule</label></div>
-    <div class="day-grid">
+    <div class="field" style="margin-bottom:6px">
+      <button class="btn sm" type="button" onclick="toggleWeeklySchedule()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
+        <span><i class="ti ti-calendar"></i> Weekly Schedule</span>
+        <i class="ti ti-chevron-down" id="wScheduleChevron"></i>
+      </button>
+      <div id="wScheduleHint" style="font-size:11px;color:var(--text3);margin-top:4px">
+        ${editingWorkerIdx!==null?'Расписание не изменится, пока не откроете.':'Не открывая — работник добавится без смен в расписании.'}
+      </div>
+    </div>
+    <div class="day-grid" id="wScheduleWrap" style="display:none">
       ${DAYS.map((d,i)=>`<div class="day-row">
         <span class="day-tag">${d}<br><span style="color:var(--accent)">${DAYS_HE[i]}</span></span>
         <select id="wt${i}" onchange="toggleDayTime(${i})">
@@ -1255,21 +1298,30 @@ function saveWorker(){
   const expiryEnabled=document.getElementById('wExpiryEnabled')?.checked||false;
   const expiryMonths=parseInt(document.getElementById('wExpiryMonths')?.value)||9;
   const expiryWarnMonths=parseInt(document.getElementById('wExpiryWarnMonths')?.value)||0;
+  const docId=document.getElementById('wDocId')?.value.trim()||'';
   const address=document.getElementById('wAddress')?.value.trim()||'';
+  const city=document.getElementById('wCity')?.value.trim()||'';
   const notes=document.getElementById('wNotes')?.value.trim()||'';
   const incomeType=document.getElementById('wIncomeType')?.value||'';
   const otherIncomeType=document.getElementById('wOtherIncomeType')?.value||'';
   const clientIds=[...document.querySelectorAll('#wClientPick input:checked')].map(el=>el.value);
-  const schedule=DAYS.map((_,i)=>{ const type=document.getElementById(`wt${i}`).value; return {type,start:type==='work'?document.getElementById(`ws${i}`).value:null,end:type==='work'?document.getElementById(`we${i}`).value:null}; });
+  // Only a grid the user actually opened decides the schedule. Left closed, an
+  // existing worker keeps the shifts they already had and a new one is created
+  // with none — added to the roster without being dropped into the week.
+  const schedule=__wScheduleOpen
+    ? DAYS.map((_,i)=>{ const type=document.getElementById(`wt${i}`).value; return {type,start:type==='work'?document.getElementById(`ws${i}`).value:null,end:type==='work'?document.getElementById(`we${i}`).value:null}; })
+    : (editingWorkerIdx!==null
+        ? workers[editingWorkerIdx].schedule
+        : DAYS.map(()=>({type:'off',start:null,end:null})));
   if(editingWorkerIdx!==null){
-    workers[editingWorkerIdx]={...workers[editingWorkerIdx],name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,address,notes,incomeType,otherIncomeType,clientIds,schedule};
+    workers[editingWorkerIdx]={...workers[editingWorkerIdx],name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,clientIds,schedule};
     showToast(name+' updated!');
   } else {
     const token=genToken();
     // createdAt powers the Form 101 declaration date (aiFillForm101): the
     // signature date on a scanned worker's PDF should match when they were
     // actually onboarded, not whatever day the PDF happens to be (re)generated.
-    const newWorker={id:uid(),name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,address,notes,incomeType,otherIncomeType,clientIds,schedule,token,createdAt:new Date().toISOString()};
+    const newWorker={id:uid(),name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,clientIds,schedule,token,createdAt:new Date().toISOString()};
     workers.push(newWorker);
     showToast(name+' added! Copy their link from Edit.');
     // If this worker was created from an AI document scan, generate the
@@ -1493,7 +1545,8 @@ function openWorkerCard(wi){
       ${w.hourlyRate?`<div><i class="ti ti-coin"></i> ₪${w.hourlyRate}/h</div>`:''}
       ${w.startDate?`<div><i class="ti ti-calendar-event"></i> Started ${fmtDMY(w.startDate)}</div>`:''}
       ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?'Срок истёк':'Срок приближается'} — ${expSt.deadline.toLocaleDateString('ru-RU')}</div>`:''}
-      ${w.address?`<div><i class="ti ti-id"></i> ${esc(w.address)}</div>`:''}
+      ${workerDocId(w)?`<div><i class="ti ti-id"></i> ${esc(workerDocId(w))}</div>`:''}
+      ${[workerAddress(w),w.city].filter(Boolean).length?`<div><i class="ti ti-map-pin"></i> ${esc([workerAddress(w),w.city].filter(Boolean).join(', '))}</div>`:''}
       <div><i class="ti ti-clock-hour-4"></i> ${wh.toFixed(1)}h scheduled / week</div>
     </div>
     ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
@@ -1990,9 +2043,14 @@ function renderAccountControl(s){
   const host = document.getElementById('accountControl');
   const labelHost = document.getElementById('accountLabelCenter');
   if(labelHost){
+    // A firm sees its own company name, the same thing a super-admin sees for
+    // it — the login name only stands in while the profile has no name yet.
+    // Reading it from the profile (not the session's fixed username) is also
+    // what makes a rename show up here as soon as cacheTenantProfile() lands.
+    const profile = activeTenantProfile();
     labelHost.innerHTML = s.role === 'superadmin'
       ? 'Супер-админ <span>' + esc(s.viewingTenantName || s.viewingTenantId || '') + '</span>'
-      : 'Фирма <span>' + esc(s.username || '') + '</span>';
+      : 'Фирма <span>' + esc((profile && profile.companyName) || s.username || '') + '</span>';
   }
   if(!host) return;
   const incomplete = firmProfileMissing().length > 0;
@@ -3113,6 +3171,17 @@ async function onScanFilesSelected(fileList){
     // generate our own, see aiFillForm101), find the first ID/passport page
     // for the worker card, keep everything else ("contract" etc.) as-is.
     let foundParsed=null;
+    // An Israeli ID's address/city/children live on a separate ספח (appendix)
+    // card — when that's a different photo than the front card (not the same
+    // combined shot), the loop used to stop calling aiReadDoc entirely after
+    // the front card was found, silently dropping the ספח into "other pages"
+    // (just appended to the final PDF) with its data never read. Once we know
+    // the front card is missing address/city, keep sending remaining pages
+    // through the same aiReadDoc call — a standalone ספח photo matches the
+    // same israeli_id shape (name/ID/address/city, no biometric fields) — and
+    // fold in whatever it finds, stopping as soon as it's found. Foreign
+    // passports have no ספח, so this never fires for that path.
+    let sefachNeeded=false;
     const otherPages=[];
     for(let i=0;i<items.length;i++){
       const it=items[i];
@@ -3126,9 +3195,27 @@ async function onScanFilesSelected(fileList){
           const json=await resp.json();
           const p=json&&json.parsed;
           if(p&&(p.type==='israeli_id'||p.type==='passport')){
-            foundParsed=p;
+            // Same zoomed-in digit re-check as the single-photo path (runOcr) —
+            // a wrong ID/date digit is just as costly whether it came from one
+            // photo or a multi-file packet.
+            foundParsed=p.fieldBoxes?await verifyDigitFields(p,it.b64,it.mediaType):p;
+            foundParsed=await verifyIdChecksum(foundParsed,it.b64,it.mediaType);
             window.__aiScanImage={b64:it.b64,mediaType:it.mediaType};
+            sefachNeeded=foundParsed.type==='israeli_id'&&(!foundParsed.address||!foundParsed.city);
             continue; // эта страница уже сохранена как window.__aiScanImage, в "прочие" не дублируем
+          }
+        }catch(e){ console.error(e); }
+      } else if(sefachNeeded){
+        try{
+          const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
+          const json=await resp.json();
+          const p=json&&json.parsed;
+          if(p&&p.type==='israeli_id'&&(p.address||p.city)){
+            if(!foundParsed.address) foundParsed.address=p.address||'';
+            if(!foundParsed.city) foundParsed.city=p.city||'';
+            if((!foundParsed.children||!foundParsed.children.length)&&Array.isArray(p.children)&&p.children.length) foundParsed.children=p.children;
+            sefachNeeded=false;
+            continue; // данные слиты в foundParsed, отдельной "прочей" страницей не дублируем
           }
         }catch(e){ console.error(e); }
       }
@@ -3234,6 +3321,126 @@ async function autoPreAlignScan(b64,mediaType){
   }
 }
 
+// Crops a tight fractional box {x0,y0,x1,y1} (as reported by aiReadDoc's own
+// "fieldBoxes", relative to the exact image bytes it was given) out of that
+// same image, upscaling small crops so the AI sees the digits at a real
+// pixel size instead of a handful of blurry pixels — same reasoning as the
+// MAXDIM bump above, just applied to one field instead of the whole photo.
+// Resolves null on any failure (bad box, decode error) — verifyField below
+// treats that as "skip this field", never as an error to surface to the user.
+function cropFieldImage(b64,mediaType,box){
+  return new Promise(resolve=>{
+    if(!box||typeof box.x0!=='number'||typeof box.x1!=='number'){ resolve(null); return; }
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        const iw=img.naturalWidth, ih=img.naturalHeight;
+        const clamp01=v=>Math.max(0,Math.min(1,typeof v==='number'?v:0));
+        // A little margin around the model's own (tight) box — helps it read
+        // digits that lean into the edge without including the field label.
+        const mx=(box.x1-box.x0)*0.15, my=(box.y1-box.y0)*0.5;
+        const x0=clamp01(box.x0-mx)*iw, y0=clamp01(box.y0-my)*ih;
+        const x1=clamp01(box.x1+mx)*iw, y1=clamp01(box.y1+my)*ih;
+        const cw=x1-x0, ch=y1-y0;
+        if(!(cw>2&&ch>2)) throw new Error('degenerate field box');
+        const MINW=500;
+        const scale=Math.max(1,MINW/cw);
+        const cv=document.createElement('canvas');
+        cv.width=Math.round(cw*scale); cv.height=Math.round(ch*scale);
+        const ctx=cv.getContext('2d');
+        ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+        ctx.drawImage(img,x0,y0,cw,ch,0,0,cv.width,cv.height);
+        resolve({b64:cv.toDataURL('image/png').split(',')[1],mediaType:'image/png'});
+      }catch(e){ resolve(null); }
+    };
+    img.onerror=()=>resolve(null);
+    img.src='data:'+mediaType+';base64,'+b64;
+  });
+}
+
+// One field's re-verification round-trip: crop -> aiVerifyField -> trimmed
+// text or null. Never throws — a network/AI failure here just means this
+// field's original aiReadDoc reading is kept, not blanked.
+async function verifyField(b64,mediaType,box,kind){
+  const crop=await cropFieldImage(b64,mediaType,box);
+  if(!crop) return null;
+  try{
+    const resp=await fetch(GS_URL,{
+      method:'POST',
+      body:JSON.stringify({action:'aiVerifyField',secret:API_SECRET,...gsAuth(),image:crop.b64,mediaType:crop.mediaType,kind})
+    });
+    const json=await resp.json();
+    return (json&&json.ok&&json.value)?json.value:null;
+  }catch(e){ console.error(e); return null; }
+}
+
+// Israeli ID check-digit validation (Luhn-style, the government's own
+// formula) — pure arithmetic, no AI call, instant and free. The 9th digit is
+// derived from the first eight, so this catches most single-digit OCR
+// misreads (the actual failure mode — a 3 read as an 8, say). It can't say
+// WHICH digit is wrong, and a two-digit swap can occasionally still pass,
+// so it's a strong signal, not a guarantee.
+function isValidIsraeliId(id){
+  if(!/^\d{9}$/.test(id)) return false;
+  let sum=0;
+  for(let i=0;i<9;i++){
+    const step=Number(id[i])*((i%2)+1); // alternating weight 1,2,1,2,...
+    sum+=step>9?step-9:step;
+  }
+  return sum%10===0;
+}
+
+// Cross-checks idNo against its own check digit after the digit-verification
+// pass above. A pass needs no further action. A fail gets exactly one more
+// targeted re-read of the same box (the check digit is free, so it's worth
+// spending one more AI call trying to fix it automatically) — if that still
+// doesn't check out, stop trying to fix it automatically and instead record
+// `idChecksumOk:false` so renderAiResult can flag the field for the human to
+// look at, rather than silently keeping a number that's provably wrong.
+async function verifyIdChecksum(parsed,b64,mediaType){
+  if(!parsed||parsed.type!=='israeli_id'||!parsed.idNo) return parsed;
+  if(isValidIsraeliId(parsed.idNo)){ parsed.idChecksumOk=true; return parsed; }
+  if(parsed.fieldBoxes&&parsed.fieldBoxes.idNo){
+    const retry=await verifyField(b64,mediaType,parsed.fieldBoxes.idNo,'digits9');
+    if(retry&&/^\d{9}$/.test(retry)) parsed.idNo=retry;
+  }
+  parsed.idChecksumOk=isValidIsraeliId(parsed.idNo);
+  return parsed;
+}
+
+// Re-verifies the pure-digit, form-critical fields (idNo/dob/expiry/
+// passportNo) that aiReadDoc reported a fieldBoxes entry for, replacing the
+// original value only when the zoomed-in re-read comes back in the expected
+// shape (9 digits for an Israeli ID, DD/MM/YYYY for a date) — a malformed or
+// empty re-read is discarded, keeping the original aiReadDoc value rather
+// than risking overwriting a correct reading with a worse one. Runs the
+// (few) field checks in parallel — independent crops of the same image, no
+// reason to serialize them.
+async function verifyDigitFields(parsed,b64,mediaType){
+  if(!parsed||!parsed.fieldBoxes) return parsed;
+  const isDigits9=s=>typeof s==='string'&&/^\d{9}$/.test(s);
+  const isDate=s=>typeof s==='string'&&/^\d{2}[\/.]\d{2}[\/.]\d{4}$/.test(s);
+  const jobs=[];
+  if(parsed.type==='israeli_id'){
+    if(parsed.fieldBoxes.idNo) jobs.push({field:'idNo',kind:'digits9'});
+    if(parsed.fieldBoxes.dob)  jobs.push({field:'dob',kind:'date'});
+  } else if(parsed.type==='passport'){
+    if(parsed.fieldBoxes.passportNo) jobs.push({field:'passportNo',kind:'passportNo'});
+    if(parsed.fieldBoxes.dob)        jobs.push({field:'dob',kind:'date'});
+    if(parsed.fieldBoxes.expiry)     jobs.push({field:'expiry',kind:'date'});
+  }
+  if(!jobs.length) return parsed;
+  const results=await Promise.all(jobs.map(j=>verifyField(b64,mediaType,parsed.fieldBoxes[j.field],j.kind)));
+  jobs.forEach((j,i)=>{
+    const val=results[i];
+    if(!val) return;
+    if(j.kind==='digits9'){ if(isDigits9(val)) parsed[j.field]=val; }
+    else if(j.kind==='date'){ if(isDate(val)) parsed[j.field]=val.replace(/\./g,'/'); }
+    else { parsed[j.field]=val; } // passportNo — format varies by country, trust the trimmed re-read
+  });
+  return parsed;
+}
+
 // Step 2: send the (already auto-straightened) photo/page to the AI for
 // full field extraction — it also proposes its own imageAlign, used below
 // to pre-fill the manual corner editor for the final scan embedded in the PDF.
@@ -3256,6 +3463,19 @@ async function runOcr(b64,mediaType){
       return;
     }
     window.__aiParsed=json.parsed;
+    // Re-verify the pure-digit, form-critical fields (ID number, dates) on a
+    // tight zoomed-in crop of exactly where aiReadDoc says it read them — a
+    // wrong digit here goes straight into a real Form 101, so this is worth
+    // one extra small AI call per field even though the main read already
+    // returned a value. Best-effort: never blocks the scan on failure, and
+    // never blanks a field that already had a plausible value.
+    if(json.parsed&&json.parsed.fieldBoxes){
+      stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
+        +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
+        +'<span>Перепроверяю цифры…</span></div>';
+      window.__aiParsed=await verifyDigitFields(json.parsed,b64,mediaType);
+    }
+    window.__aiParsed=await verifyIdChecksum(window.__aiParsed,b64,mediaType);
     const align=json.parsed&&json.parsed.imageAlign;
     const rotateDeg=align&&[0,90,180,270].includes(align.rotate)?align.rotate:0;
     // Fix gross orientation first so the quad editor below always works on an
@@ -3535,7 +3755,11 @@ function warpQuadToRect(img,quadSrcPx){
   const [tl,tr,br,bl]=quadSrcPx;
   const topLen=Math.hypot(tr.x-tl.x,tr.y-tl.y), botLen=Math.hypot(br.x-bl.x,br.y-bl.y);
   const leftLen=Math.hypot(bl.x-tl.x,bl.y-tl.y), rightLen=Math.hypot(br.x-tr.x,br.y-tr.y);
-  const MAXDIM=1400;
+  // Anthropic's vision models don't benefit past ~1568px on the long edge
+  // (internally resized above that) — this was capped lower (1400) than that
+  // ceiling for no real reason, losing detail on small print (dates, the
+  // 9-digit ID number) on a worn/creased card for no size or cost saving.
+  const MAXDIM=1568;
   let outW=Math.round((topLen+botLen)/2), outH=Math.round((leftLen+rightLen)/2);
   const scale=Math.min(1,MAXDIM/Math.max(outW,outH,1));
   outW=Math.max(20,Math.round(outW*scale)); outH=Math.max(20,Math.round(outH*scale));
@@ -3579,6 +3803,7 @@ function renderAiResult(p){
     h+=f('aiSurname','שם משפחה (Фамилия)',p.surname)
       +f('aiGiven','שם פרטי (Имя)',p.given)
       +f('aiIdNo','מספר זהות (9 цифр)',p.idNo)
+      +(p.idChecksumOk===false?'<div style="font-size:11px;color:var(--amber);margin:-4px 0 8px"><i class="ti ti-alert-triangle"></i> Номер не прошёл проверку контрольной цифры — перепроверьте вручную</div>':'')
       +f('aiDob','תאריך לידה (ДД/ММ/ГГГГ)',p.dob)
       +f('aiSex','מין (M/F)',p.sex)
       +f('aiAddress','כתובת (Адрес)',p.address)
@@ -3748,7 +3973,12 @@ function aiToWorker(isId){
   setTimeout(()=>{
     const set=(id,v)=>{ const el=document.getElementById(id); if(el&&v) el.value=v; };
     set('wName',name);
-    set('wAddress',(isId?'ת.ז. ':'Passport ')+no);
+    // The scan reads address and city as separate fields, so they go straight
+    // into their own boxes — the document number no longer rides along inside
+    // the address string the way it did when the two shared one field.
+    set('wDocId',no);
+    set('wAddress',_v('aiAddress'));
+    set('wCity',_v('aiCity'));
     set('wNotes',(isId?'Israeli citizen':'Nationality: '+nat)+' · DOB: '+dob+(exp?' · Expiry: '+exp:''));
   },60);
 }
