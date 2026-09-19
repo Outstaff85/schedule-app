@@ -195,9 +195,9 @@ clock in/out, before pointing production `GS_URL` at it.
   with a secret in Script Properties (`SESSION_SECRET` — generate once,
   e.g. two concatenated `Utilities.getUuid()` calls, and set it in the Apps
   Script project's Script Properties before the first login; `login()`
-  throws a clear error if it's missing). `exp` is `now + 24h`, matching the
-  "stay logged in for a day" requirement — checked fresh on every request, no
-  server-side expiry sweep needed.
+  throws a clear error if it's missing). `exp` is `now + 6h` (shortened from
+  the original 24h) — checked fresh on every request, no server-side expiry
+  sweep needed.
 - `requireAuth(body)` resolves `{userId, role, tenantId, isSuperadmin}` from
   `body.token` (works for both POST bodies and GET `e.parameter`, both plain
   objects) and honors `body.asTenantId` for super-admin drill-down. Throws
