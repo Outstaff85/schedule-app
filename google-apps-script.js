@@ -966,12 +966,18 @@ function ensureHeaders(sh, headers) {
 
 // ── AI document reader (passport + Israeli ID via Anthropic Vision) ─────────────
 // Ключ хранится в Script Properties: ANTHROPIC_API_KEY
-// Модель: ANTHROPIC_MODEL (по умолчанию claude-haiku-4-5-20251001)
-// Стоимость: ~$0.002 за скан (Haiku). Кэширует системный промпт (экономия ~10%).
+// Модель: ANTHROPIC_MODEL (по умолчанию claude-sonnet-5).
+// Здесь намеренно НЕ самая дешёвая модель: это единственный вызов, который
+// действительно читает поля документа, и его ошибка уезжает в реальную
+// налоговую Форму 101 (перепутанная цифра в ת.ז., потерянный ребёнок из ספח).
+// Разница в деньгах мизерная — порядка полцента за скан против Haiku, то есть
+// единицы долларов на сотню работников. Грубую задачу «повернуть и найти углы»
+// обслуживает aiDetectAlign ниже, и она осталась на Haiku.
+// Кэширует системный промпт (экономия ~10%).
 function aiReadDoc(body){
   var props = PropertiesService.getScriptProperties();
   var key   = props.getProperty('ANTHROPIC_API_KEY');
-  var model = props.getProperty('ANTHROPIC_MODEL') || 'claude-haiku-4-5-20251001';
+  var model = props.getProperty('ANTHROPIC_MODEL') || 'claude-sonnet-5';
   if(!key)        return {error:'ANTHROPIC_API_KEY не задан в Script Properties'};
   if(!body.image) return {error:'Нет изображения'};
 
@@ -1069,10 +1075,14 @@ function aiReadDoc(body){
 // prompt-cache overhead) purely for speed/cost; the full aiReadDoc call
 // still returns its own imageAlign too, used to build the final scan image
 // embedded in the worker's PDF.
+// Модель: ANTHROPIC_ALIGN_MODEL (по умолчанию Haiku) — намеренно отдельная
+// от ANTHROPIC_MODEL. Задача тут грубая (поворот кратно 90° и четыре угла),
+// более умная модель её не улучшит, поэтому апгрейд читающей модели не должен
+// автоматически удорожать этот предпроход.
 function aiDetectAlign(body){
   var props = PropertiesService.getScriptProperties();
   var key   = props.getProperty('ANTHROPIC_API_KEY');
-  var model = props.getProperty('ANTHROPIC_MODEL') || 'claude-haiku-4-5-20251001';
+  var model = props.getProperty('ANTHROPIC_ALIGN_MODEL') || 'claude-haiku-4-5-20251001';
   if(!key)        return {error:'ANTHROPIC_API_KEY не задан в Script Properties'};
   if(!body.image) return {error:'Нет изображения'};
 
