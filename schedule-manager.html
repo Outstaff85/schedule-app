@@ -1378,24 +1378,50 @@ async function saveWorker(){
   if(editingWorkerIdx!==null){
     workers[editingWorkerIdx]={...workers[editingWorkerIdx],name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,clientIds,schedule};
     showToast(name+' updated!');
-  } else {
-    const token=genToken();
-    // createdAt powers the Form 101 declaration date (aiFillForm101): the
-    // signature date on a scanned worker's PDF should match when they were
-    // actually onboarded, not whatever day the PDF happens to be (re)generated.
-    const newWorker={id:uid(),name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,clientIds,schedule,token,createdAt:new Date().toISOString()};
-    workers.push(newWorker);
-    showToast(name+' added! Copy their link from Edit.');
-    // If this worker was created from an AI document scan, generate the
-    // combined Form 101 + scan PDF and upload it to Drive in the background,
-    // then link the result onto this worker's record once it's done.
-    if(window.__aiPendingWorkerUpload!==undefined){
-      const isId=window.__aiPendingWorkerUpload;
-      window.__aiPendingWorkerUpload=undefined;
-      if(typeof autoUploadWithRetry==='function') autoUploadWithRetry(isId,newWorker.id);
+    closeModal('workerOverlay'); render(); autoSave();
+    return;
+  }
+  const token=genToken();
+  // createdAt powers the Form 101 declaration date (aiFillForm101): the
+  // signature date on a scanned worker's PDF should match when they were
+  // actually onboarded, not whatever day the PDF happens to be (re)generated.
+  const newWorker={id:uid(),name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,clientIds,schedule,token,createdAt:new Date().toISOString()};
+  workers.push(newWorker);
+  // Persisted and visible right away regardless of the scan-upload below —
+  // only the modal itself stays open a little longer in that case.
+  render(); autoSave();
+  showToast(name+' added! Copy their link from Edit.');
+  // If this worker was created from an AI document scan, generate the
+  // combined Form 101 + scan PDF and upload it to Drive — attended this
+  // time: the modal stays open (with a blocking spinner) until the upload
+  // genuinely finishes. A pure fire-and-forget background call used to let
+  // the manager close/background the tab right after the worker appeared
+  // "done," which mobile Chrome can then silently suspend mid-flight (no
+  // error, nothing to catch) before the CDN loads + PDF build + upload
+  // actually complete — the worker was created but no document ever landed,
+  // with nothing to show for it.
+  if(window.__aiPendingWorkerUpload!==undefined){
+    const isId=window.__aiPendingWorkerUpload;
+    window.__aiPendingWorkerUpload=undefined;
+    if(typeof autoUploadWithRetry==='function'){
+      showWorkerUploadingOverlay();
+      await autoUploadWithRetry(isId,newWorker.id);
     }
   }
-  closeModal('workerOverlay'); render(); autoSave();
+  closeModal('workerOverlay');
+}
+// Blocking "please wait" state for the Add Worker modal while the scanned
+// worker's Form 101 + document PDF uploads — replaces the modal's own
+// content so there's nothing left to click while genuinely waiting, and the
+// visible spinner is the signal to the manager not to navigate away yet.
+function showWorkerUploadingOverlay(){
+  const m=document.getElementById('workerModal');
+  if(!m) return;
+  m.innerHTML=`<div style="text-align:center;padding:30px 16px;color:var(--text2);font-size:14px">
+    <i class="ti ti-loader-2 spin" style="font-size:22px"></i><br><br>
+    <span>Загружаю документ, не закрывайте…</span>
+    <div class="progress-bar"></div>
+  </div>`;
 }
 
 function genToken(){
