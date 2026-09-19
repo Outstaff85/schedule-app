@@ -4368,10 +4368,18 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
       const ADDRESS_RECT={x:209.0,width:414.9-209.0,...ROW};
       const PHONE_RECT={x:130.3,width:209.0-130.3,...ROW};
       const DEDUCTIONS_RECT={x:39.9,width:130.3-39.9,...ROW};
+      // stdFont (plain WinAnsi Helvetica) can't encode Hebrew at all — it
+      // throws ("WinAnsi cannot encode ..."), aborting the whole PDF build,
+      // if the firm's own companyName/address/city is in Hebrew (the
+      // overwhelmingly common case for an Israeli company). Use the
+      // Hebrew-capable customFont (Heebo, embedded above) when it loaded —
+      // it renders plain Latin/ASCII text just as well, so this is a safe
+      // upgrade, not just a Hebrew-only special case.
       const drawLeft=(text,rect,size)=>{
         if(!text) return;
-        const th=stdFont.heightAtSize(size,{descender:false});
-        page1.drawText(String(text),{x:rect.x+2,y:rect.y+(rect.height-th)/2,size,font:stdFont});
+        const font=customFont||stdFont;
+        const th=font.heightAtSize(size,{descender:false});
+        page1.drawText(String(text),{x:rect.x+2,y:rect.y+(rect.height-th)/2,size,font});
       };
       drawLeft(profile.companyName,NAME_RECT,9);
       const addr=[profile.street,profile.streetNumber].filter(Boolean).join(' ')+(profile.city?(profile.street||profile.streetNumber?', ':'')+profile.city:'');
