@@ -3195,9 +3195,12 @@ async function onScanFilesSelected(fileList){
           const json=await resp.json();
           const p=json&&json.parsed;
           if(p&&(p.type==='israeli_id'||p.type==='passport')){
-            foundParsed=p;
+            // Same zoomed-in digit re-check as the single-photo path (runOcr) —
+            // a wrong ID/date digit is just as costly whether it came from one
+            // photo or a multi-file packet.
+            foundParsed=p.fieldBoxes?await verifyDigitFields(p,it.b64,it.mediaType):p;
             window.__aiScanImage={b64:it.b64,mediaType:it.mediaType};
-            sefachNeeded=p.type==='israeli_id'&&(!p.address||!p.city);
+            sefachNeeded=foundParsed.type==='israeli_id'&&(!foundParsed.address||!foundParsed.city);
             continue; // эта страница уже сохранена как window.__aiScanImage, в "прочие" не дублируем
           }
         }catch(e){ console.error(e); }
