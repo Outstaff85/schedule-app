@@ -3474,6 +3474,7 @@ async function runOcr(b64,mediaType){
         +'<span>Перепроверяю цифры…</span></div>';
       window.__aiParsed=await verifyDigitFields(json.parsed,b64,mediaType);
     }
+    window.__aiParsed=await verifyIdChecksum(window.__aiParsed,b64,mediaType);
     const align=json.parsed&&json.parsed.imageAlign;
     const rotateDeg=align&&[0,90,180,270].includes(align.rotate)?align.rotate:0;
     // Fix gross orientation first so the quad editor below always works on an
