@@ -242,13 +242,18 @@ function createUser(body, auth) {
   return { ok: true, userId: userId, tenantId: tenantId };
 }
 
-// Super-admin only: edits an existing firm's Tenants profile row (company
-// name, deductions file number, phone, address) — everything the create-firm
-// form collects except the login (username/password are not touched here).
+// Edits an existing firm's Tenants profile row (company name, deductions file
+// number, phone, address) — everything the create-firm form collects except
+// the login (username/password are not touched here). A super-admin may edit
+// any firm; a firm's own login may edit only itself (self-service, so a firm
+// whose profile the migration left blank can fill in its own Form 101
+// section א data without waiting for the super-admin).
 function updateTenant(body, auth) {
-  if (!auth.isSuperadmin) return { error: 'Только супер-админ может редактировать фирмы' };
-  const tenantId = body.tenantId;
+  const tenantId = body.tenantId || auth.tenantId;
   if (!tenantId) return { error: 'Нет tenantId' };
+  if (!auth.isSuperadmin && tenantId !== auth.tenantId) {
+    return { error: 'Можно редактировать только свою фирму' };
+  }
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_TENANTS);
   if (!sh || sh.getLastRow() < 2) return { error: 'Фирма не найдена' };
   const rows = sh.getDataRange().getValues();
