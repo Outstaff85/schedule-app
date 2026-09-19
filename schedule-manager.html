@@ -1184,7 +1184,8 @@ function showWorkerModal(w){
         </select>
       </div>
     </div>
-    <div class="field"><label>Address / ID (Teudat Zehut)</label><input type="text" id="wAddress" value="${w.address||''}" placeholder="Address or ID number"></div>
+    <div class="field"><label>Address</label><input type="text" id="wAddress" value="${esc(workerAddress(w))}" placeholder="Street and house number"></div>
+    <div class="field"><label>City</label><input type="text" id="wCity" value="${esc(w.city||'')}" placeholder="City"></div>
     <div class="field"><label>Notes</label><textarea id="wNotes" placeholder="Notes about this worker" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;padding:8px 10px;outline:none;min-height:56px;resize:vertical">${w.notes||''}</textarea></div>
     <div class="field"><label>Color</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap" id="wColorPick">
