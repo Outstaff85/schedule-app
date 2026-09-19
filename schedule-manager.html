@@ -1533,12 +1533,14 @@ function saveClient(){
   const lng=parseFloat(document.getElementById('cLng').value)||null;
   const radius=parseInt(document.getElementById('cRadius').value)||100;
   const mapsUrl=document.getElementById('cMapsUrl')?.value.trim()||'';
+  const rateVal=id=>{ const v=document.getElementById(id)?.value; return (v===''||v==null)?null:(parseFloat(v)||0); };
+  const defaultHourlyRate=rateVal('cDefRate'), defaultOtRate=rateVal('cDefOtRate'), defaultShabbatRate=rateVal('cDefShabRate');
   if(editingClientId){
     const idx=clients.findIndex(x=>x.id===editingClientId);
-    if(idx>=0) clients[idx]={...clients[idx],name,object,address,notes,color:selClientColor,lat,lng,radius,mapsUrl};
+    if(idx>=0) clients[idx]={...clients[idx],name,object,address,notes,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate};
     showToast(name+' updated!');
   } else {
-    clients.push({id:uid(),name,object,address,notes,color:selClientColor,lat,lng,radius,mapsUrl});
+    clients.push({id:uid(),name,object,address,notes,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate});
     showToast(name+' added!');
   }
   closeModal('clientOverlay'); renderClientsPage(); renderSidebarClients(); autoSave();
