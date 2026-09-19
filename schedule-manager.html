@@ -4541,6 +4541,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
       if(!json||json.error) throw new Error((json&&json.error)||'Сервер не ответил');
       if(w){
         w.docUrl=json.url; w.docSavedAt=new Date().toISOString(); w.docFileId=json.id;
+        w.docUploadFailed=false;
         render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
         showToast('Документы '+(w.name||'')+' сохранены в Google Drive');
         window.__aiRescanWorkerId=null;
@@ -4556,8 +4557,31 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     }
     // After the success toast's own 2.5s, so the two don't overwrite each other.
     if(firmMissing.length) setTimeout(()=>showToast('⚠ Профиль фирмы неполный — в Форме 101 пусто: '+firmMissing.join(', '),4000),2600);
-  }catch(err){ console.error(err); showToast('Не удалось: '+(err&&err.message||'')); }
+    return true;
+  }catch(err){
+    console.error(err);
+    showToast('Не удалось: '+(err&&err.message||''));
+    // Flag it on the worker (if one's resolved) so the "no document" badge
+    // in the workers list/card catches a silent background failure — the
+    // toast alone is easy to miss, especially on mobile where a flaky
+    // connection mid-upload is the most common trigger for this branch.
+    if(mode==='upload'&&targetWorker){ targetWorker.docUploadFailed=true; autoSave(); render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); }
+    return false;
+  }
   finally{ if(btn){ btn.disabled=false; btn.innerHTML=btnLabel; } window.__aiPacketOtherPages=[]; }
+}
+
+// Auto-generation right after a worker is created from a scan runs
+// unattended — nobody is watching for the failure toast — so it gets one
+// retry on failure (e.g. a transient CDN hiccup loading pdf-lib on a mobile
+// connection) before leaving the "no document" badge (docUploadFailed) for
+// the manager to notice and retry manually via "Пересканировать".
+async function autoUploadWithRetry(isId,workerId){
+  let ok=await aiFillForm101(isId,'upload',workerId,null);
+  if(!ok){
+    await new Promise(r=>setTimeout(r,1500));
+    ok=await aiFillForm101(isId,'upload',workerId,null);
+  }
 }
 
 let _pdfjsLoading=null;
