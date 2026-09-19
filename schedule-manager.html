@@ -3317,6 +3317,92 @@ async function autoPreAlignScan(b64,mediaType){
   }
 }
 
+// Crops a tight fractional box {x0,y0,x1,y1} (as reported by aiReadDoc's own
+// "fieldBoxes", relative to the exact image bytes it was given) out of that
+// same image, upscaling small crops so the AI sees the digits at a real
+// pixel size instead of a handful of blurry pixels — same reasoning as the
+// MAXDIM bump above, just applied to one field instead of the whole photo.
+// Resolves null on any failure (bad box, decode error) — verifyField below
+// treats that as "skip this field", never as an error to surface to the user.
+function cropFieldImage(b64,mediaType,box){
+  return new Promise(resolve=>{
+    if(!box||typeof box.x0!=='number'||typeof box.x1!=='number'){ resolve(null); return; }
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        const iw=img.naturalWidth, ih=img.naturalHeight;
+        const clamp01=v=>Math.max(0,Math.min(1,typeof v==='number'?v:0));
+        // A little margin around the model's own (tight) box — helps it read
+        // digits that lean into the edge without including the field label.
+        const mx=(box.x1-box.x0)*0.15, my=(box.y1-box.y0)*0.5;
+        const x0=clamp01(box.x0-mx)*iw, y0=clamp01(box.y0-my)*ih;
+        const x1=clamp01(box.x1+mx)*iw, y1=clamp01(box.y1+my)*ih;
+        const cw=x1-x0, ch=y1-y0;
+        if(!(cw>2&&ch>2)) throw new Error('degenerate field box');
+        const MINW=500;
+        const scale=Math.max(1,MINW/cw);
+        const cv=document.createElement('canvas');
+        cv.width=Math.round(cw*scale); cv.height=Math.round(ch*scale);
+        const ctx=cv.getContext('2d');
+        ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+        ctx.drawImage(img,x0,y0,cw,ch,0,0,cv.width,cv.height);
+        resolve({b64:cv.toDataURL('image/png').split(',')[1],mediaType:'image/png'});
+      }catch(e){ resolve(null); }
+    };
+    img.onerror=()=>resolve(null);
+    img.src='data:'+mediaType+';base64,'+b64;
+  });
+}
+
+// One field's re-verification round-trip: crop -> aiVerifyField -> trimmed
+// text or null. Never throws — a network/AI failure here just means this
+// field's original aiReadDoc reading is kept, not blanked.
+async function verifyField(b64,mediaType,box,kind){
+  const crop=await cropFieldImage(b64,mediaType,box);
+  if(!crop) return null;
+  try{
+    const resp=await fetch(GS_URL,{
+      method:'POST',
+      body:JSON.stringify({action:'aiVerifyField',secret:API_SECRET,...gsAuth(),image:crop.b64,mediaType:crop.mediaType,kind})
+    });
+    const json=await resp.json();
+    return (json&&json.ok&&json.value)?json.value:null;
+  }catch(e){ console.error(e); return null; }
+}
+
+// Re-verifies the pure-digit, form-critical fields (idNo/dob/expiry/
+// passportNo) that aiReadDoc reported a fieldBoxes entry for, replacing the
+// original value only when the zoomed-in re-read comes back in the expected
+// shape (9 digits for an Israeli ID, DD/MM/YYYY for a date) — a malformed or
+// empty re-read is discarded, keeping the original aiReadDoc value rather
+// than risking overwriting a correct reading with a worse one. Runs the
+// (few) field checks in parallel — independent crops of the same image, no
+// reason to serialize them.
+async function verifyDigitFields(parsed,b64,mediaType){
+  if(!parsed||!parsed.fieldBoxes) return parsed;
+  const isDigits9=s=>typeof s==='string'&&/^\d{9}$/.test(s);
+  const isDate=s=>typeof s==='string'&&/^\d{2}[\/.]\d{2}[\/.]\d{4}$/.test(s);
+  const jobs=[];
+  if(parsed.type==='israeli_id'){
+    if(parsed.fieldBoxes.idNo) jobs.push({field:'idNo',kind:'digits9'});
+    if(parsed.fieldBoxes.dob)  jobs.push({field:'dob',kind:'date'});
+  } else if(parsed.type==='passport'){
+    if(parsed.fieldBoxes.passportNo) jobs.push({field:'passportNo',kind:'passportNo'});
+    if(parsed.fieldBoxes.dob)        jobs.push({field:'dob',kind:'date'});
+    if(parsed.fieldBoxes.expiry)     jobs.push({field:'expiry',kind:'date'});
+  }
+  if(!jobs.length) return parsed;
+  const results=await Promise.all(jobs.map(j=>verifyField(b64,mediaType,parsed.fieldBoxes[j.field],j.kind)));
+  jobs.forEach((j,i)=>{
+    const val=results[i];
+    if(!val) return;
+    if(j.kind==='digits9'){ if(isDigits9(val)) parsed[j.field]=val; }
+    else if(j.kind==='date'){ if(isDate(val)) parsed[j.field]=val.replace(/\./g,'/'); }
+    else { parsed[j.field]=val; } // passportNo — format varies by country, trust the trimmed re-read
+  });
+  return parsed;
+}
+
 // Step 2: send the (already auto-straightened) photo/page to the AI for
 // full field extraction — it also proposes its own imageAlign, used below
 // to pre-fill the manual corner editor for the final scan embedded in the PDF.
