@@ -1591,6 +1591,19 @@ function renderWorkersPage(){
   }).join('');
 }
 
+const INCOME_TYPE_LABELS = {monthly:'Monthly salary',secondary:'2nd job salary',partial:'Partial salary',daily:'Daily wage',pension:'Pension',scholarship:'Scholarship'};
+const OTHER_INCOME_LABELS = {none:'No other income',monthly:'Monthly salary',secondary:'2nd job salary',partial:'Partial salary',daily:'Daily wage',pension:'Pension',scholarship:'Scholarship'};
+// Compact weekly-schedule strip for the worker card: one chip per day (Sun..Sat),
+// muted for days off, showing the shift's time range for working days.
+function workerScheduleStripHtml(w){
+  return (w.schedule||[]).map((sh,i)=>{
+    const isWork=sh&&sh.type==='work';
+    return `<div style="flex:1;min-width:58px;text-align:center;padding:6px 4px;border-radius:8px;background:${isWork?'var(--bg3)':'transparent'};border:1px solid ${isWork?'var(--border2)':'var(--border)'}">
+      <div style="font-size:10px;font-weight:700;color:${isWork?'var(--text2)':'var(--text3)'};text-transform:uppercase">${DAYS[i]}</div>
+      <div style="font-size:11px;color:${isWork?'var(--text)':'var(--text3)'};margin-top:2px;white-space:nowrap">${isWork?esc(sh.start||'')+'–'+esc(sh.end||''):'вых'}</div>
+    </div>`;
+  }).join('');
+}
 function openWorkerCard(wi){
   const w=workers[wi]; if(!w) return;
   const c=WORKER_COLORS[w.colorIdx%8], ini=w.name.slice(0,2).toUpperCase();
@@ -1599,6 +1612,7 @@ function openWorkerCard(wi){
   const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
   const wh=workerTotalHours(w);
   const expSt=workerExpiryStatus(w);
+  const punchLink=w.token?buildPunchLink(w):'';
   document.getElementById('workerCardModal').innerHTML=`
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
       <div style="width:52px;height:52px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">${ini}</div>
@@ -1611,22 +1625,42 @@ function openWorkerCard(wi){
     <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text2);margin-bottom:14px">
       ${w.phone?`<div><i class="ti ti-phone"></i> ${esc(w.phone)}</div>`:''}
       ${w.email?`<div><i class="ti ti-mail"></i> ${esc(w.email)}</div>`:''}
-      ${w.hourlyRate?`<div><i class="ti ti-coin"></i> ₪${w.hourlyRate}/h</div>`:''}
+      ${w.hourlyRate?`<div><i class="ti ti-coin"></i> Base ₪${w.hourlyRate}/h${w.otRate!=null?' · OT ₪'+w.otRate+'/h':''}${w.shabbatRate!=null?' · Shabbat ₪'+w.shabbatRate+'/h':''}</div>`:''}
       ${w.startDate?`<div><i class="ti ti-calendar-event"></i> Started ${fmtDMY(w.startDate)}</div>`:''}
       ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?'Срок истёк':'Срок приближается'} — ${expSt.deadline.toLocaleDateString('ru-RU')}</div>`:''}
       ${workerDocId(w)?`<div><i class="ti ti-id"></i> ${esc(workerDocId(w))}</div>`:''}
       ${[workerAddress(w),w.city].filter(Boolean).length?`<div><i class="ti ti-map-pin"></i> ${esc([workerAddress(w),w.city].filter(Boolean).join(', '))}</div>`:''}
+      ${w.incomeType&&INCOME_TYPE_LABELS[w.incomeType]?`<div><i class="ti ti-briefcase"></i> ${INCOME_TYPE_LABELS[w.incomeType]}</div>`:''}
+      ${w.otherIncomeType&&w.otherIncomeType!=='none'&&OTHER_INCOME_LABELS[w.otherIncomeType]?`<div><i class="ti ti-cash"></i> Other income: ${OTHER_INCOME_LABELS[w.otherIncomeType]}</div>`:''}
       <div><i class="ti ti-clock-hour-4"></i> ${wh.toFixed(1)}h scheduled / week</div>
+      ${w.docUrl?`<div><i class="ti ti-file-text"></i> Документ сохранён${w.docSavedAt?': '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</div>`:''}
     </div>
     ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
     <div style="margin-bottom:14px">
-      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Objects</div>
-      ${objs.length?objs.map(o=>`<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:4px 8px;background:${o.color}22;border-radius:12px;margin-right:5px;margin-bottom:5px"><span style="width:7px;height:7px;border-radius:50%;background:${o.color}"></span>${esc(o.name)}</span>`).join(''):'<span style="color:var(--text3);font-size:12px">Not assigned to any object</span>'}
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">График на неделе</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">${workerScheduleStripHtml(w)}</div>
     </div>
+    <div style="margin-bottom:14px">
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Objects &amp; rates</div>
+      ${objs.length?objs.map(o=>{
+        const r=effectiveRates(w,o.id);
+        const hasOverride=!!(w.clientRates&&w.clientRates[o.id]&&Object.values(w.clientRates[o.id]).some(v=>v!=null));
+        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:6px 8px;background:${o.color}11;border-radius:8px;margin-bottom:5px">
+          <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:7px;height:7px;border-radius:50%;background:${o.color};flex-shrink:0"></span>${esc(o.name)}${hasOverride?' <i class="ti ti-star-filled" style="font-size:10px;color:var(--amber)" title="Свой тариф на этом объекте"></i>':''}</span>
+          <span style="color:var(--text2);white-space:nowrap">₪${r.regRate}/h · OT ₪${r.otRate} · Shabbat ₪${r.shabbatRate}</span>
+        </div>`;
+      }).join(''):'<span style="color:var(--text3);font-size:12px">Not assigned to any object</span>'}
+    </div>
+    ${punchLink?`<div style="margin-bottom:14px">
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Ссылка для отметки</div>
+      <div style="display:flex;gap:6px">
+        <input type="text" readonly value="${esc(punchLink)}" onclick="this.select()" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text2);font-size:12px;padding:6px 8px;outline:none">
+        <button class="btn sm" onclick="copyWorkerLink('${w.id}')" title="Copy"><i class="ti ti-copy"></i></button>
+      </div>
+    </div>`:''}
     <div class="modal-actions">
       <button class="btn sm red" onclick="deleteWorkerFromCard(${wi})"><i class="ti ti-trash"></i> Delete</button>
       ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Скачать документ</a>`:''}
-      <button class="btn sm" onclick="copyWorkerLink('${w.id}')"><i class="ti ti-link"></i> Link</button>
       <button class="btn accent" onclick="closeModal('workerCardOverlay');openEditWorker(${wi})"><i class="ti ti-edit"></i> Edit</button>
     </div>`;
   document.getElementById('workerCardOverlay').classList.add('open');
