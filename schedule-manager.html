@@ -1794,7 +1794,7 @@ const API_SECRET = 'odinson-7Kq2x9';
 
 // ── Multi-tenant session ────────────────────────────────────────────────────
 // Real auth for this app: a session is a signed token from the backend's
-// login action, kept in localStorage for 24h (SESSION_TTL_MS server-side).
+// login action, kept in localStorage for 6h (SESSION_TTL_MS server-side).
 // role is 'superadmin' (sees every firm) or 'tenant' (sees only its own).
 // viewingTenantId is what every API call actually scopes to — for a normal
 // tenant user it's always their own tenantId; for a super-admin it starts
