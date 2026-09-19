@@ -335,7 +335,7 @@ function listTenants(auth) {
 // reversible. A deactivated login is rejected at login() ("Аккаунт отключён")
 // but all of that firm's data (schedule, punches, Drive docs) is untouched.
 // NOTE: an already-issued session token for that user keeps working until it
-// naturally expires (up to 24h) — sessions are stateless (see MULTI_TENANT_PLAN.md),
+// naturally expires (up to 6h) — sessions are stateless (see MULTI_TENANT_PLAN.md),
 // so there's no live revocation list to check on every request.
 function setTenantActive(body, auth) {
   if (!auth.isSuperadmin) return { error: 'Только супер-админ' };
