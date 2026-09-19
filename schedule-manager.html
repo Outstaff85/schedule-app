@@ -2632,8 +2632,11 @@ function renderDashboard(){
     }).join('') + (sorted.length>LOG_LIMIT?`<div style="text-align:center;padding:10px;border-top:1px solid var(--border)"><button class="btn sm" onclick="toggleLog()">${_logExpanded?'<i class="ti ti-chevron-up"></i> Show less':'<i class="ti ti-chevron-down"></i> Show all ('+sorted.length+')'}</button></div>`:'');
   }
 
-  // ── Salary calculation ──────────────────────────────────────────────────
+}
+
+function renderAccounting(){
   renderSalary();
+  renderRateMatrix();
 }
 
 function renderSalary(){
