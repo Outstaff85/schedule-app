@@ -1114,8 +1114,24 @@ function workerAddress(w){
 function openAddWorker(){ editingWorkerIdx=null; showWorkerModal({name:'',colorIdx:workers.length%8,phone:'',clientIds:[],schedule:DAYS.map(()=>({type:'work',start:'09:00',end:'17:00'}))}); }
 function openEditWorker(wi){ editingWorkerIdx=wi; showWorkerModal(workers[wi]); }
 
+// The weekly grid starts collapsed every time the modal opens, and saveWorker
+// only writes a schedule from it once it has been opened — so adding a worker
+// no longer silently fills their whole week with 09:00–17:00 shifts, and
+// editing one without touching the grid leaves their existing shifts alone.
+let __wScheduleOpen = false;
+function toggleWeeklySchedule(){
+  __wScheduleOpen = !__wScheduleOpen;
+  const wrap = document.getElementById('wScheduleWrap');
+  const chev = document.getElementById('wScheduleChevron');
+  const hint = document.getElementById('wScheduleHint');
+  if(wrap) wrap.style.display = __wScheduleOpen ? '' : 'none';
+  if(chev) chev.className = 'ti ti-chevron-' + (__wScheduleOpen ? 'up' : 'down');
+  if(hint) hint.style.display = __wScheduleOpen ? 'none' : '';
+}
+
 function showWorkerModal(w){
   selColorIdx=w.colorIdx||0;
+  __wScheduleOpen=false;
   document.getElementById('workerModal').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <div class="modal-title" style="margin-bottom:0">${editingWorkerIdx!==null?'Edit Worker':'Add New Worker'}</div>
