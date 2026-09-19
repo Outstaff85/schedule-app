@@ -877,6 +877,16 @@ function expiryBadgeHtml(w){
   const dateStr = st.deadline.toLocaleDateString('ru-RU');
   return `<span title="Срок: ${dateStr}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:${bg};color:${color};margin-left:5px"><i class="ti ti-alert-triangle" style="font-size:9px"></i> ${label}</span>`;
 }
+// Shown only for a worker whose background PDF-generation/upload (right
+// after creation from a scan, or a manual "Загрузить"/rescan) actually
+// failed — `docUploadFailed` is set by aiFillForm101()'s catch block and
+// cleared the moment an upload succeeds, so a worker who never went through
+// the scan/upload flow at all never gets this badge (no noise for firms not
+// using document storage).
+function docUploadFailedBadgeHtml(w){
+  if(!w.docUploadFailed) return '';
+  return `<span title="Не удалось сохранить документ в Google Drive — откройте карточку и пересканируйте" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px"><i class="ti ti-file-off" style="font-size:9px"></i> НЕТ ДОКУМЕНТА</span>`;
+}
 // ── Pay rules (Israeli labour-law DEFAULTS — VERIFY against your real rules) ──
 // regularMax: hours at base rate. ot1Span: next N hours at the first OT tier.
 // Rates: weekday base x1.0 / OT1 x1.25 / OT2 x1.5 ; Saturday base x1.5 / x1.75 / x2.0.
