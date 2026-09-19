@@ -1984,9 +1984,13 @@ function renderAccountControl(s){
       : 'Фирма <span>' + esc(s.username || '') + '</span>';
   }
   if(!host) return;
+  const incomplete = firmProfileMissing().length > 0;
   host.innerHTML = `
     <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
       ${s.role==='superadmin' ? '<button class="btn sm" onclick="backToFirmsList()"><i class="ti ti-building-skyscraper"></i> Фирмы</button>' : ''}
+      <button class="btn sm" onclick="openMyFirmForm()"${incomplete?' style="color:#ffb020;border-color:#ffb020"':''}
+        title="${incomplete?'Профиль фирмы неполный — данные для Формы 101':'Данные фирмы (для Формы 101)'}">
+        <i class="ti ti-${incomplete?'alert-triangle':'building'}"></i></button>
       <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i></button>
     </div>`;
 }
