@@ -576,6 +576,41 @@
       </div>
     </div>
 
+    <!-- Accounting Section -->
+    <div class="page-section" id="sectionAccounting">
+      <div class="page-header">
+        <div>
+          <div class="page-title"><i class="ti ti-cash"></i> Бухгалтерия</div>
+          <div class="page-sub">Расчёт зарплаты и тарифы по объектам</div>
+        </div>
+      </div>
+
+      <!-- Salary summary (moved here from Today) -->
+      <div style="margin-bottom:24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px"><i class="ti ti-cash"></i> Salary Calculation</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="salaryPeriod" onchange="renderAccounting()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:4px 8px;font-size:12px;outline:none">
+              <option value="week">This Week</option>
+              <option value="month">This Month</option>
+              <option value="all">All Time</option>
+            </select>
+            <button class="btn sm" onclick="exportSalaryCSV()"><i class="ti ti-upload"></i> Export</button>
+          </div>
+        </div>
+        <div id="dashSalary"></div>
+      </div>
+
+      <!-- Per-client rate matrix -->
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px"><i class="ti ti-adjustments"></i> Тарифы по объектам</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
+          Приоритет: свой тариф работника на объекте → тариф объекта по умолчанию → базовая ставка работника. Пусто — ничего не переопределено.
+        </div>
+        <div id="rateMatrixWrap"></div>
+      </div>
+    </div>
+
   </div>
 </div>
 
