@@ -88,8 +88,16 @@ not the template's default X mark.
 marks run from x=220.4 to x=285.3, baseline at native y≈742.49–755.49). Comb-
 filling the *field* left the year floating visibly above the box. Fixed the
 same way as the fake boxes above: hand-drawn via `drawCombRaw` at
-`TAX_YEAR_RECT = {x:220.4, y:742.49, width:64.9, height:13}`, size 11 — the
-AcroForm field itself is now left untouched/unset.
+`TAX_YEAR_RECT = {x:220.4, y:742.49, width:64.9, height:13}`, size 12.
+
+**Known-fixed bug — stray blue field highlight ("sliding blue square"):**
+leaving the real `tax_year` field unset but still present in the saved PDF
+meant it stayed a live, empty, interactive text field — Chrome's PDF viewer
+draws a light-blue highlight box over any such field, positioned at *that
+field's own* (mismatched) rect, visibly adrift from the hand-drawn digits
+sitting next to it. `aiFillForm101()` now calls
+`form.removeField(form.getTextField('tax_year'))` right after drawing the
+digits, so no empty interactive widget is left behind to be highlighted.
 
 ## Worker-level Form 101 declarations (Add/Edit Worker modal)
 
