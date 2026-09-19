@@ -3339,6 +3339,18 @@ async function runOcr(b64,mediaType){
       return;
     }
     window.__aiParsed=json.parsed;
+    // Re-verify the pure-digit, form-critical fields (ID number, dates) on a
+    // tight zoomed-in crop of exactly where aiReadDoc says it read them — a
+    // wrong digit here goes straight into a real Form 101, so this is worth
+    // one extra small AI call per field even though the main read already
+    // returned a value. Best-effort: never blocks the scan on failure, and
+    // never blanks a field that already had a plausible value.
+    if(json.parsed&&json.parsed.fieldBoxes){
+      stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
+        +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
+        +'<span>Перепроверяю цифры…</span></div>';
+      window.__aiParsed=await verifyDigitFields(json.parsed,b64,mediaType);
+    }
     const align=json.parsed&&json.parsed.imageAlign;
     const rotateDeg=align&&[0,90,180,270].includes(align.rotate)?align.rotate:0;
     // Fix gross orientation first so the quad editor below always works on an
