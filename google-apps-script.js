@@ -225,7 +225,13 @@ function createUser(body, auth) {
   const tenantsSh = getOrCreateSheet(ss, SH_TENANTS);
   ensureHeaders(tenantsSh, ['tenantId', 'companyName', 'deductionsFileNumber', 'phone', 'street', 'streetNumber', 'city', 'createdAt']);
   const now = new Date().toISOString();
-  tenantsSh.appendRow([
+  // Written through a pre-formatted text range rather than appendRow: a plain
+  // append lets Sheets read a digit string as a number and drop the leading
+  // zero (see updateTenant), losing it on the firm's very first save.
+  const newRow = tenantsSh.getLastRow() + 1;
+  const range = tenantsSh.getRange(newRow, 1, 1, 8);
+  range.setNumberFormat('@');
+  range.setValues([[
     tenantId,
     body.companyName || '',
     body.deductionsFileNumber || '',
@@ -234,7 +240,7 @@ function createUser(body, auth) {
     body.streetNumber || '',
     body.city || '',
     now
-  ]);
+  ]]);
 
   const salt = makeSalt();
   const userId = Utilities.getUuid();
@@ -266,7 +272,15 @@ function updateTenant(body, auth) {
       fields.forEach(function(f) {
         if (body[f] === undefined) return;
         const col = headers.indexOf(f);
-        if (col !== -1) sh.getRange(i + 1, col + 1).setValue(body[f]);
+        if (col === -1) return;
+        // Format as plain text BEFORE writing: Sheets otherwise reads a digit
+        // string as a number and drops the leading zero, which silently turns
+        // an Israeli phone (03-…, 052-…) or an 8-digit תיק ניכויים starting
+        // with 0 into a shorter number — and that is what Form 101 prints.
+        // Order matters; formatting after setValue leaves it already coerced.
+        const cell = sh.getRange(i + 1, col + 1);
+        cell.setNumberFormat('@');
+        cell.setValue(body[f]);
       });
       // Keep the firm's Drive folder name in sync with a renamed company —
       // cheap (a single Drive API call) and a no-op if this tenant has no
