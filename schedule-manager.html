@@ -1094,6 +1094,23 @@ function saveShift(wi,di){
 }
 
 // --- Worker Modal -------------------------------------------------------------
+// Address and document number used to share one field. Workers created from a
+// scan before the split carry the number inside `address` as "ת.ז. 123456789"
+// / "Passport AB123" — the exact shape aiToWorker() wrote — so these two read
+// it back out of there instead of showing a document number on the address
+// line. Saving such a worker once stores it properly in `docId`.
+const LEGACY_DOC_IN_ADDRESS = /^\s*(?:ת\.ז\.|Passport)\s*(\S+)\s*$/;
+function workerDocId(w){
+  if(w.docId) return w.docId;
+  const m = LEGACY_DOC_IN_ADDRESS.exec(w.address || '');
+  return m ? m[1] : '';
+}
+function workerAddress(w){
+  const addr = w.address || '';
+  if(w.docId) return addr;
+  return LEGACY_DOC_IN_ADDRESS.test(addr) ? '' : addr;
+}
+
 function openAddWorker(){ editingWorkerIdx=null; showWorkerModal({name:'',colorIdx:workers.length%8,phone:'',clientIds:[],schedule:DAYS.map(()=>({type:'work',start:'09:00',end:'17:00'}))}); }
 function openEditWorker(wi){ editingWorkerIdx=wi; showWorkerModal(workers[wi]); }
 
