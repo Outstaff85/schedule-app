@@ -1349,7 +1349,7 @@ function updateClientCount(){
   const n=document.querySelectorAll('#wClientPick input:checked').length;
   el.textContent=n?('· '+n+' selected'):'';
 }
-function saveWorker(){
+async function saveWorker(){
   const name=document.getElementById('wName').value.trim();
   if(!name){ document.getElementById('wName').focus(); return; }
   const phone=document.getElementById('wPhone').value.trim();
