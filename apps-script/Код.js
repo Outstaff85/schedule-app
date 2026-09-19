@@ -274,7 +274,10 @@ function updateTenant(body, auth) {
       if (body.companyName !== undefined) {
         try { _syncTenantDriveFolderName(tenantId, body.companyName); } catch (e) {}
       }
-      return { ok: true };
+      // The client caches this profile in its session (it only ever gets one
+      // at login), so hand back the saved row to refresh that cache instead
+      // of making the firm log out and back in to see its own edit.
+      return { ok: true, profile: getTenantProfile(tenantId) };
     }
   }
   return { error: 'Фирма не найдена' };
