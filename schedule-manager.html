@@ -1990,9 +1990,14 @@ function renderAccountControl(s){
   const host = document.getElementById('accountControl');
   const labelHost = document.getElementById('accountLabelCenter');
   if(labelHost){
+    // A firm sees its own company name, the same thing a super-admin sees for
+    // it — the login name only stands in while the profile has no name yet.
+    // Reading it from the profile (not the session's fixed username) is also
+    // what makes a rename show up here as soon as cacheTenantProfile() lands.
+    const profile = activeTenantProfile();
     labelHost.innerHTML = s.role === 'superadmin'
       ? 'Супер-админ <span>' + esc(s.viewingTenantName || s.viewingTenantId || '') + '</span>'
-      : 'Фирма <span>' + esc(s.username || '') + '</span>';
+      : 'Фирма <span>' + esc((profile && profile.companyName) || s.username || '') + '</span>';
   }
   if(!host) return;
   const incomplete = firmProfileMissing().length > 0;
