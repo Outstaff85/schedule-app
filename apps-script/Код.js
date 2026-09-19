@@ -1097,8 +1097,7 @@ function aiReadDoc(body){
     // surfacing that here turns "AI вернул нечитаемый ответ" (which reads
     // like a garbled/bad response) into an actionable "raise max_tokens"
     // signal instead of requiring a guess-and-check round every time.
-    var stopReason = (json.content && json.stop_reason) || null;
-    var truncated = stopReason === 'max_tokens';
+    var truncated = json.stop_reason === 'max_tokens';
     return {error: truncated ? 'Ответ ИИ обрезан лимитом max_tokens — увеличьте лимит' : 'AI вернул нечитаемый ответ', raw: String(text).slice(0,400)};
   }
 
