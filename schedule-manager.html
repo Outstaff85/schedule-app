@@ -877,6 +877,16 @@ function expiryBadgeHtml(w){
   const dateStr = st.deadline.toLocaleDateString('ru-RU');
   return `<span title="Срок: ${dateStr}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:${bg};color:${color};margin-left:5px"><i class="ti ti-alert-triangle" style="font-size:9px"></i> ${label}</span>`;
 }
+// Shown only for a worker whose background PDF-generation/upload (right
+// after creation from a scan, or a manual "Загрузить"/rescan) actually
+// failed — `docUploadFailed` is set by aiFillForm101()'s catch block and
+// cleared the moment an upload succeeds, so a worker who never went through
+// the scan/upload flow at all never gets this badge (no noise for firms not
+// using document storage).
+function docUploadFailedBadgeHtml(w){
+  if(!w.docUploadFailed) return '';
+  return `<span title="Не удалось сохранить документ в Google Drive — откройте карточку и пересканируйте" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px"><i class="ti ti-file-off" style="font-size:9px"></i> НЕТ ДОКУМЕНТА</span>`;
+}
 // ── Pay rules (Israeli labour-law DEFAULTS — VERIFY against your real rules) ──
 // regularMax: hours at base rate. ot1Span: next N hours at the first OT tier.
 // Rates: weekday base x1.0 / OT1 x1.25 / OT2 x1.5 ; Saturday base x1.5 / x1.75 / x2.0.
@@ -1061,7 +1071,7 @@ function renderWorkerList(){
     const rateStr=w.hourlyRate?(' · ₪'+w.hourlyRate+'/h'):'';
     h+=`<div class="worker-chip">
       <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${ini}</div>
-      <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">FIRED</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">VAC</span>':''}${expiryBadgeHtml(w)}</div><div class="worker-hours">${wh.toFixed(1)}h${rateStr}</div></div>
+      <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">FIRED</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">VAC</span>':''}${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div><div class="worker-hours">${wh.toFixed(1)}h${rateStr}</div></div>
       <div class="worker-actions">
         <button class="worker-act-btn edit" onclick="openEditWorker(${wi})" title="Edit"><i class="ti ti-edit"></i></button>
         <button class="worker-act-btn edit" onclick="copyWorkerLink('${w.id}')" title="Copy punch link"><i class="ti ti-link"></i></button>
@@ -1382,7 +1392,7 @@ function saveWorker(){
     if(window.__aiPendingWorkerUpload!==undefined){
       const isId=window.__aiPendingWorkerUpload;
       window.__aiPendingWorkerUpload=undefined;
-      if(typeof aiFillForm101==='function') aiFillForm101(isId,'upload',newWorker.id,null);
+      if(typeof autoUploadWithRetry==='function') autoUploadWithRetry(isId,newWorker.id);
     }
   }
   closeModal('workerOverlay'); render(); autoSave();
@@ -1577,7 +1587,7 @@ function renderWorkersPage(){
     const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
     const objBadges=objs.length?objs.map(o=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${o.color}22;border-radius:10px;margin-right:3px"><span style="width:6px;height:6px;border-radius:50%;background:${o.color}"></span>${esc(o.name)}</span>`).join(''):'<span style="color:var(--text3);font-size:12px">—</span>';
     return `<tr onclick="openWorkerCard(${wi})" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background=''">
-      <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><span style="font-size:13px;font-weight:600">${esc(w.name)}</span>${expiryBadgeHtml(w)}</div></td>
+      <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><span style="font-size:13px;font-weight:600">${esc(w.name)}</span>${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div></td>
       <td style="padding:10px 12px"><span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col}">${stMeta.label}</span></td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2);font-family:monospace">${workerDocId(w)?esc(workerDocId(w)):'—'}</td>
       <td style="padding:10px 12px">${objBadges}</td>
@@ -1620,7 +1630,7 @@ function openWorkerCard(wi){
       <div style="width:52px;height:52px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">${ini}</div>
       <div style="flex:1">
         <div style="font-size:18px;font-weight:700">${esc(w.name)}</div>
-        <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col};display:inline-block;margin-top:4px">${stMeta.label}</span>
+        <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col};display:inline-block;margin-top:4px">${stMeta.label}</span>${docUploadFailedBadgeHtml(w)}
       </div>
       <button class="btn sm" onclick="closeModal('workerCardOverlay')" title="Закрыть" style="flex-shrink:0;padding:0 8px"><i class="ti ti-x"></i></button>
     </div>
@@ -4195,6 +4205,11 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
   // this function also runs in the background from saveWorker(), where that
   // panel isn't on screen.
   let firmMissing=[];
+  // Hoisted above the try so the catch block (below) can still flag this
+  // worker's failed upload for the "no document" badge even when the
+  // failure happens before the assignment finishes (e.g. the pdf-lib CDN
+  // load itself, before targetWorker would otherwise be resolved).
+  let targetWorker=(workerId||window.__aiRescanWorkerId)?workers.find(x=>x.id===(workerId||window.__aiRescanWorkerId)):null;
   try{
     if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader-2 spin"></i> '+(mode==='upload'?'Загружаю…':'Готовлю…'); }
     await _loadPdfLib();
@@ -4206,10 +4221,6 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     doc.registerFontkit(fontkit);
     const form=doc.getForm();
     const page1=doc.getPages()[0];
-    // Resolve the worker (if any) up front — the declaration date and income
-    // type below both read from the worker record, not just the scan inputs.
-    const targetWorkerId=workerId||window.__aiRescanWorkerId||null;
-    const targetWorker=targetWorkerId?workers.find(x=>x.id===targetWorkerId):null;
     // These fields default to a small shrink-to-fit size; force a bigger, fixed
     // size instead so the filled-in text is easy to read (each number chosen to
     // still fit the field's own box for a realistically long value).
@@ -4357,10 +4368,18 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
       const ADDRESS_RECT={x:209.0,width:414.9-209.0,...ROW};
       const PHONE_RECT={x:130.3,width:209.0-130.3,...ROW};
       const DEDUCTIONS_RECT={x:39.9,width:130.3-39.9,...ROW};
+      // stdFont (plain WinAnsi Helvetica) can't encode Hebrew at all — it
+      // throws ("WinAnsi cannot encode ..."), aborting the whole PDF build,
+      // if the firm's own companyName/address/city is in Hebrew (the
+      // overwhelmingly common case for an Israeli company). Use the
+      // Hebrew-capable customFont (Heebo, embedded above) when it loaded —
+      // it renders plain Latin/ASCII text just as well, so this is a safe
+      // upgrade, not just a Hebrew-only special case.
       const drawLeft=(text,rect,size)=>{
         if(!text) return;
-        const th=stdFont.heightAtSize(size,{descender:false});
-        page1.drawText(String(text),{x:rect.x+2,y:rect.y+(rect.height-th)/2,size,font:stdFont});
+        const font=customFont||stdFont;
+        const th=font.heightAtSize(size,{descender:false});
+        page1.drawText(String(text),{x:rect.x+2,y:rect.y+(rect.height-th)/2,size,font});
       };
       drawLeft(profile.companyName,NAME_RECT,9);
       const addr=[profile.street,profile.streetNumber].filter(Boolean).join(' ')+(profile.city?(profile.street||profile.streetNumber?', ':'')+profile.city:'');
@@ -4540,6 +4559,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
       if(!json||json.error) throw new Error((json&&json.error)||'Сервер не ответил');
       if(w){
         w.docUrl=json.url; w.docSavedAt=new Date().toISOString(); w.docFileId=json.id;
+        w.docUploadFailed=false;
         render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
         showToast('Документы '+(w.name||'')+' сохранены в Google Drive');
         window.__aiRescanWorkerId=null;
@@ -4555,8 +4575,31 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     }
     // After the success toast's own 2.5s, so the two don't overwrite each other.
     if(firmMissing.length) setTimeout(()=>showToast('⚠ Профиль фирмы неполный — в Форме 101 пусто: '+firmMissing.join(', '),4000),2600);
-  }catch(err){ console.error(err); showToast('Не удалось: '+(err&&err.message||'')); }
+    return true;
+  }catch(err){
+    console.error(err);
+    showToast('Не удалось: '+(err&&err.message||''));
+    // Flag it on the worker (if one's resolved) so the "no document" badge
+    // in the workers list/card catches a silent background failure — the
+    // toast alone is easy to miss, especially on mobile where a flaky
+    // connection mid-upload is the most common trigger for this branch.
+    if(mode==='upload'&&targetWorker){ targetWorker.docUploadFailed=true; autoSave(); render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); }
+    return false;
+  }
   finally{ if(btn){ btn.disabled=false; btn.innerHTML=btnLabel; } window.__aiPacketOtherPages=[]; }
+}
+
+// Auto-generation right after a worker is created from a scan runs
+// unattended — nobody is watching for the failure toast — so it gets one
+// retry on failure (e.g. a transient CDN hiccup loading pdf-lib on a mobile
+// connection) before leaving the "no document" badge (docUploadFailed) for
+// the manager to notice and retry manually via "Пересканировать".
+async function autoUploadWithRetry(isId,workerId){
+  let ok=await aiFillForm101(isId,'upload',workerId,null);
+  if(!ok){
+    await new Promise(r=>setTimeout(r,1500));
+    ok=await aiFillForm101(isId,'upload',workerId,null);
+  }
 }
 
 let _pdfjsLoading=null;
