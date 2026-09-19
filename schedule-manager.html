@@ -4409,17 +4409,21 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
       // Hebrew-capable customFont (Heebo, embedded above) when it loaded —
       // it renders plain Latin/ASCII text just as well, so this is a safe
       // upgrade, not just a Hebrew-only special case.
-      const drawLeft=(text,rect,size)=>{
+      // Right-aligned (not left-aligned) — this row reads right-to-left like
+      // the rest of the Hebrew form, so the text should sit against each
+      // box's right edge, not its left.
+      const drawRight=(text,rect,size)=>{
         if(!text) return;
         const font=customFont||stdFont;
         const th=font.heightAtSize(size,{descender:false});
-        page1.drawText(String(text),{x:rect.x+2,y:rect.y+(rect.height-th)/2,size,font});
+        const tw=font.widthOfTextAtSize(String(text),size);
+        page1.drawText(String(text),{x:rect.x+rect.width-tw-2,y:rect.y+(rect.height-th)/2,size,font});
       };
-      drawLeft(profile.companyName,NAME_RECT,9);
+      drawRight(profile.companyName,NAME_RECT,11);
       const addr=[profile.street,profile.streetNumber].filter(Boolean).join(' ')+(profile.city?(profile.street||profile.streetNumber?', ':'')+profile.city:'');
-      drawLeft(addr,ADDRESS_RECT,9);
-      drawLeft(profile.phone,PHONE_RECT,9);
-      if(profile.deductionsFileNumber) drawCombRaw(String(profile.deductionsFileNumber).replace(/\D/g,''),8,DEDUCTIONS_RECT,10);
+      drawRight(addr,ADDRESS_RECT,11);
+      drawRight(profile.phone,PHONE_RECT,11);
+      if(profile.deductionsFileNumber) drawCombRaw(String(profile.deductionsFileNumber).replace(/\D/g,''),8,DEDUCTIONS_RECT,11);
     })();
     if(sex==='M') chk('sex_male'); else if(sex==='F') chk('sex_female');
     if(isIsraeli){ chk('resident_yes'); chk('resident_h'); }
