@@ -1026,7 +1026,14 @@ function aiReadDoc(body){
 
   var payload = {
     model: model,
-    max_tokens: 800,
+    // 800 was enough before fieldBoxes/imageAlign/children were added to the
+    // response schema; a real Israeli ID with an address, a couple of
+    // children, and pretty-printed whitespace can now run past that and get
+    // its JSON cut off mid-object (JSON.parse then fails below with "AI
+    // вернул нечитаемый ответ" even though the model answered fine, just
+    // got truncated). 1600 gives real headroom without materially changing
+    // per-scan cost (max_tokens only caps output, it doesn't force it).
+    max_tokens: 1600,
     messages: [{
       role: 'user',
       content: [
