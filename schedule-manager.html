@@ -1203,8 +1203,16 @@ function showWorkerModal(w){
       </div>
       <div id="wClientEmpty" style="display:none;font-size:12px;color:var(--text3);padding:8px">Nothing found</div>
     </div>
-    <div class="field"><label>Weekly Schedule</label></div>
-    <div class="day-grid">
+    <div class="field" style="margin-bottom:6px">
+      <button class="btn sm" type="button" onclick="toggleWeeklySchedule()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
+        <span><i class="ti ti-calendar"></i> Weekly Schedule</span>
+        <i class="ti ti-chevron-down" id="wScheduleChevron"></i>
+      </button>
+      <div id="wScheduleHint" style="font-size:11px;color:var(--text3);margin-top:4px">
+        ${editingWorkerIdx!==null?'Расписание не изменится, пока не откроете.':'Не открывая — работник добавится без смен в расписании.'}
+      </div>
+    </div>
+    <div class="day-grid" id="wScheduleWrap" style="display:none">
       ${DAYS.map((d,i)=>`<div class="day-row">
         <span class="day-tag">${d}<br><span style="color:var(--accent)">${DAYS_HE[i]}</span></span>
         <select id="wt${i}" onchange="toggleDayTime(${i})">
