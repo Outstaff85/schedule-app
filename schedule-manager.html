@@ -4374,7 +4374,15 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     // above the box instead of inside it. Hand-drawn at the box's real
     // coordinates instead, like the other printed-only boxes.
     const TAX_YEAR_RECT={x:220.4,y:742.49,width:64.9,height:13};
-    drawCombRaw(String(new Date().getFullYear()),4,TAX_YEAR_RECT,11);
+    drawCombRaw(String(new Date().getFullYear()),4,TAX_YEAR_RECT,12);
+    // The AcroForm field itself is left unset (its rect doesn't match the
+    // printed box, see above) but was still being left in the saved PDF as an
+    // empty, interactive text field — Chrome's PDF viewer highlights any such
+    // field with a light-blue box wherever ITS OWN (mismatched) rect sits,
+    // which visibly drifted from the hand-drawn digits next to it. Removing
+    // the field entirely (rather than just never filling it) gets rid of that
+    // stray highlight.
+    try{ form.removeField(form.getTextField('tax_year')); }catch(e){}
     // "א. פרטי המעסיק" (employer details) — also has no real AcroForm fields
     // (verified the same way as the boxes above: zero widgets in this row's
     // y-range). Filled from the logged-in firm's own Tenants profile — for a
