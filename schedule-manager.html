@@ -1924,7 +1924,7 @@ function firmProfileMissing(profile){
   if(!p) return FIRM_PROFILE_FIELDS.map(f => f.label);
   return FIRM_PROFILE_FIELDS.filter(f => !String(p[f.key]==null?'':p[f.key]).trim()).map(f => f.label);
 }
-function firmProfileWarnHtml(){
+function firmProfileWarnInner(){
   const missing = firmProfileMissing();
   if(!missing.length) return '';
   return `<div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;border:1px solid #ffb020;border-radius:var(--radius-sm);background:rgba(255,176,32,0.08);font-size:12px;line-height:1.5;color:var(--text2)">
@@ -1932,6 +1932,14 @@ function firmProfileWarnHtml(){
     <div style="flex:1;min-width:180px">Профиль фирмы неполный — в Форме 101 (раздел א «פרטי המעסיק») останутся пустыми: <b>${esc(missing.join(', '))}</b>.</div>
     <button class="btn sm" onclick="openMyFirmForm()"><i class="ti ti-pencil"></i> Заполнить</button>
   </div>`;
+}
+// Placeholder stays in the DOM even when the profile is complete, so saving
+// the profile can clear the warning in place without a full re-render.
+function firmProfileWarnHtml(){
+  return `<div class="firm-profile-warn">${firmProfileWarnInner()}</div>`;
+}
+function refreshFirmProfileWarnings(){
+  document.querySelectorAll('.firm-profile-warn').forEach(el => { el.innerHTML = firmProfileWarnInner(); });
 }
 // Keeps the session's cached copy of the firm profile in step with a save —
 // the client only ever gets one at login, so without this a firm would have
