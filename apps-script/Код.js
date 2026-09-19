@@ -1160,6 +1160,71 @@ function aiDetectAlign(body){
   return {ok: true, align: align};
 }
 
+// Targeted re-read of one already-extracted digit field (idNo/dob/expiry/
+// passportNo), on a tight crop of just that field — built client-side from
+// aiReadDoc's own "fieldBoxes" and zoomed in, so the model sees the same
+// digits at much higher effective resolution than embedded in the full
+// document photo. A wrong digit in the ID number or a date corrupts a real
+// Form 101 submission, so this uses the same accuracy-first ANTHROPIC_MODEL
+// as aiReadDoc (not the cheap align model) — deliberately not optimized for
+// cost, same reasoning as aiReadDoc above. body.kind selects the expected
+// shape: 'digits9' (Israeli ID, exactly 9 digits), 'date' (DD/MM/YYYY), or
+// 'passportNo' (alphanumeric, format varies by issuing country).
+function aiVerifyField(body){
+  var props = PropertiesService.getScriptProperties();
+  var key   = props.getProperty('ANTHROPIC_API_KEY');
+  var model = props.getProperty('ANTHROPIC_MODEL') || 'claude-sonnet-5';
+  if(!key)        return {error:'ANTHROPIC_API_KEY не задан в Script Properties'};
+  if(!body.image) return {error:'Нет изображения'};
+
+  var ask = {
+    digits9:    'This is a tightly cropped, zoomed-in photo of a 9-digit Israeli ID number (מספר זהות). Read exactly what is printed, digit by digit — do not guess based on typical formats.',
+    date:       'This is a tightly cropped, zoomed-in photo of a date printed as DD/MM/YYYY (or DD.MM.YYYY). Read exactly what is printed, digit by digit.',
+    passportNo: 'This is a tightly cropped, zoomed-in photo of a passport number. Read exactly what is printed, character by character.'
+  }[body.kind] || 'This is a tightly cropped, zoomed-in photo of a short printed field. Read exactly what is printed, character by character.';
+
+  var SYSTEM = ask + ' Return ONLY the characters you see, nothing else — no prose, no labels, no markdown. ' +
+    'If genuinely illegible even zoomed in, return an empty string rather than guessing.';
+
+  var payload = {
+    model: model,
+    max_tokens: 50,
+    messages: [{
+      role: 'user',
+      content: [
+        {type: 'text', text: SYSTEM},
+        {type: 'image', source: {type: 'base64', media_type: body.mediaType || 'image/jpeg', data: body.image}}
+      ]
+    }]
+  };
+
+  var opts = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01'
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  var res;
+  try { res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', opts); }
+  catch(e){ return {error:'Запрос к Anthropic не прошёл: ' + e}; }
+
+  var json;
+  try { json = JSON.parse(res.getContentText()); }
+  catch(e){ return {error:'Неверный ответ от Anthropic (HTTP ' + res.getResponseCode() + ')'}; }
+
+  if(json.error) return {error: json.error.message || 'Ошибка Anthropic'};
+
+  var text = '';
+  (json.content || []).forEach(function(c){ if(c.type === 'text') text += c.text; });
+
+  return {ok: true, value: text.trim()};
+}
+
 // ── Worker document storage (Drive) ────────────────────────────────────────────
 // Saves an assembled worker PDF (Form 101 + signature + ID scan, combined
 // client-side) into Drive under "Schedule manager APP/<CompanyName>/Workers"
