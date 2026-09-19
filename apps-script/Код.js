@@ -1022,18 +1022,20 @@ function aiReadDoc(body){
     '"corners" are the document\'s four actual physical corners (tl/tr/br/bl = top-left/top-right/bottom-right/bottom-left AS THE DOCUMENT WILL APPEAR AFTER "rotate" is applied, but each point\'s x/y given as fractions, 0 to 1, of the ORIGINAL pre-rotation image width/height) — trace the document\'s true outline even if the photo was taken at an angle (so the four points form a skewed quadrilateral, not necessarily an axis-aligned rectangle), never cutting off any printed text, photo, or edge; ' +
     '"crop" is a simple axis-aligned bounding box fallback covering the same area (x0/y0 top-left, x1/y1 bottom-right, each 0 to 1, measured against the same pre-rotation image) — kept only for older clients that don\'t use "corners". ' +
     'If the document already fills the frame, use the full-frame defaults shown above. ' +
-    'Return ONLY the JSON object.';
+    'Return ONLY the JSON object, compact with no extra whitespace or line breaks between fields.';
 
   var payload = {
     model: model,
-    // 800 was enough before fieldBoxes/imageAlign/children were added to the
-    // response schema; a real Israeli ID with an address, a couple of
-    // children, and pretty-printed whitespace can now run past that and get
-    // its JSON cut off mid-object (JSON.parse then fails below with "AI
-    // вернул нечитаемый ответ" even though the model answered fine, just
-    // got truncated). 1600 gives real headroom without materially changing
-    // per-scan cost (max_tokens only caps output, it doesn't force it).
-    max_tokens: 1600,
+    // 800, then 1600, both still got truncated in production on real scans —
+    // Hebrew text (names, addresses, children) is token-inefficient compared
+    // to Latin (Claude's tokenizer needs noticeably more tokens per Hebrew
+    // character), and despite the "no markdown" instruction the model can
+    // still pretty-print the JSON with indentation/newlines unless told
+    // explicitly to keep it compact (added to the prompt above). 3000 gives
+    // a large safety margin on top of that — max_tokens only caps output,
+    // it doesn't force the model to use that many, so this doesn't raise
+    // cost on scans that were already comfortably under the old limits.
+    max_tokens: 3000,
     messages: [{
       role: 'user',
       content: [
@@ -1089,7 +1091,15 @@ function aiReadDoc(body){
 
   var parsed;
   try { parsed = JSON.parse(m ? m[0] : text); }
-  catch(e){ return {error:'AI вернул нечитаемый ответ', raw: String(text).slice(0,400)}; }
+  catch(e){
+    // Anthropic reports stop_reason:'max_tokens' when the response was cut
+    // off by the max_tokens cap rather than the model finishing naturally —
+    // surfacing that here turns "AI вернул нечитаемый ответ" (which reads
+    // like a garbled/bad response) into an actionable "raise max_tokens"
+    // signal instead of requiring a guess-and-check round every time.
+    var truncated = json.stop_reason === 'max_tokens';
+    return {error: truncated ? 'Ответ ИИ обрезан лимитом max_tokens — увеличьте лимит' : 'AI вернул нечитаемый ответ', raw: String(text).slice(0,400)};
+  }
 
   return {ok: true, parsed: parsed};
 }
