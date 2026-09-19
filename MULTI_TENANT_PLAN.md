@@ -22,7 +22,7 @@ both halves are live together on `main`.
       `PushSubscriptions`, `login`/`createUser`/`listTenants` actions,
       `migrateToMultiTenant()` one-time migration function.
       (`apps-script/Код.js` / `google-apps-script.js`)
-- [x] **Step 2 — frontend**: login screen (`#loginScreen`) + 24h session
+- [x] **Step 2 — frontend**: login screen (`#loginScreen`) + 6h session
       (`schedMgr_session` in localStorage) in `schedule-manager.html`;
       super-admin "Firms" screen (`#firmsScreen`) + create-firm modal
       (`#createFirmOverlay`) + switcher (`switchToTenant()`/
@@ -69,7 +69,7 @@ both halves are live together on `main`.
       reversible, flips the `active` column on every `Users` row for that
       tenant; a deactivated login is rejected at `login()` with "Аккаунт
       отключён" but the firm's schedule/punches/Drive docs are untouched
-      (an already-issued session token still works until its normal 24h
+      (an already-issued session token still works until its normal 6h
       expiry, since sessions are stateless with no revocation list).
       `confirmDeleteTenant(tenantId, companyName)` calls `deleteTenant` —
       irreversible, gated by a `confirm()` plus typing the exact company
@@ -195,9 +195,9 @@ clock in/out, before pointing production `GS_URL` at it.
   with a secret in Script Properties (`SESSION_SECRET` — generate once,
   e.g. two concatenated `Utilities.getUuid()` calls, and set it in the Apps
   Script project's Script Properties before the first login; `login()`
-  throws a clear error if it's missing). `exp` is `now + 24h`, matching the
-  "stay logged in for a day" requirement — checked fresh on every request, no
-  server-side expiry sweep needed.
+  throws a clear error if it's missing). `exp` is `now + 6h` (shortened from
+  the original 24h) — checked fresh on every request, no server-side expiry
+  sweep needed.
 - `requireAuth(body)` resolves `{userId, role, tenantId, isSuperadmin}` from
   `body.token` (works for both POST bodies and GET `e.parameter`, both plain
   objects) and honors `body.asTenantId` for super-admin drill-down. Throws

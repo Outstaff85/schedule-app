@@ -20,7 +20,7 @@ const SH_TENANTS  = 'Tenants';
 // what actually resolves the tenant. MUST equal API_SECRET in
 // schedule-manager.html / worker-punch.html.
 const API_SECRET  = 'odinson-7Kq2x9';
-const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // session "remembered" for a day
+const SESSION_TTL_MS = 6 * 60 * 60 * 1000; // session "remembered" for 6 hours
 
 // ── Entry points ──────────────────────────────────────────────────────────────
 function doPost(e) {
@@ -58,6 +58,7 @@ function doPost(e) {
       case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body, tenantId));
       case 'createUser':           return jsonResponse(createUser(body, auth));
       case 'updateTenant':         return jsonResponse(updateTenant(body, auth));
+      case 'loadTenantProfile':    return jsonResponse({ ok: true, profile: tenantId ? getTenantProfile(tenantId) : null });
       case 'listTenants':          return jsonResponse(listTenants(auth));
       case 'setTenantActive':      return jsonResponse(setTenantActive(body, auth));
       case 'deleteTenant':         return jsonResponse(deleteTenant(body, auth));
@@ -242,13 +243,18 @@ function createUser(body, auth) {
   return { ok: true, userId: userId, tenantId: tenantId };
 }
 
-// Super-admin only: edits an existing firm's Tenants profile row (company
-// name, deductions file number, phone, address) — everything the create-firm
-// form collects except the login (username/password are not touched here).
+// Edits an existing firm's Tenants profile row (company name, deductions file
+// number, phone, address) — everything the create-firm form collects except
+// the login (username/password are not touched here). A super-admin may edit
+// any firm; a firm's own login may edit only itself (self-service, so a firm
+// whose profile the migration left blank can fill in its own Form 101
+// section א data without waiting for the super-admin).
 function updateTenant(body, auth) {
-  if (!auth.isSuperadmin) return { error: 'Только супер-админ может редактировать фирмы' };
-  const tenantId = body.tenantId;
+  const tenantId = body.tenantId || auth.tenantId;
   if (!tenantId) return { error: 'Нет tenantId' };
+  if (!auth.isSuperadmin && tenantId !== auth.tenantId) {
+    return { error: 'Можно редактировать только свою фирму' };
+  }
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_TENANTS);
   if (!sh || sh.getLastRow() < 2) return { error: 'Фирма не найдена' };
   const rows = sh.getDataRange().getValues();
@@ -269,7 +275,10 @@ function updateTenant(body, auth) {
       if (body.companyName !== undefined) {
         try { _syncTenantDriveFolderName(tenantId, body.companyName); } catch (e) {}
       }
-      return { ok: true };
+      // The client caches this profile in its session (it only ever gets one
+      // at login), so hand back the saved row to refresh that cache instead
+      // of making the firm log out and back in to see its own edit.
+      return { ok: true, profile: getTenantProfile(tenantId) };
     }
   }
   return { error: 'Фирма не найдена' };
@@ -335,7 +344,7 @@ function listTenants(auth) {
 // reversible. A deactivated login is rejected at login() ("Аккаунт отключён")
 // but all of that firm's data (schedule, punches, Drive docs) is untouched.
 // NOTE: an already-issued session token for that user keeps working until it
-// naturally expires (up to 24h) — sessions are stateless (see MULTI_TENANT_PLAN.md),
+// naturally expires (up to 6h) — sessions are stateless (see MULTI_TENANT_PLAN.md),
 // so there's no live revocation list to check on every request.
 function setTenantActive(body, auth) {
   if (!auth.isSuperadmin) return { error: 'Только супер-админ' };
@@ -957,12 +966,18 @@ function ensureHeaders(sh, headers) {
 
 // ── AI document reader (passport + Israeli ID via Anthropic Vision) ─────────────
 // Ключ хранится в Script Properties: ANTHROPIC_API_KEY
-// Модель: ANTHROPIC_MODEL (по умолчанию claude-haiku-4-5-20251001)
-// Стоимость: ~$0.002 за скан (Haiku). Кэширует системный промпт (экономия ~10%).
+// Модель: ANTHROPIC_MODEL (по умолчанию claude-sonnet-5).
+// Здесь намеренно НЕ самая дешёвая модель: это единственный вызов, который
+// действительно читает поля документа, и его ошибка уезжает в реальную
+// налоговую Форму 101 (перепутанная цифра в ת.ז., потерянный ребёнок из ספח).
+// Разница в деньгах мизерная — порядка полцента за скан против Haiku, то есть
+// единицы долларов на сотню работников. Грубую задачу «повернуть и найти углы»
+// обслуживает aiDetectAlign ниже, и она осталась на Haiku.
+// Кэширует системный промпт (экономия ~10%).
 function aiReadDoc(body){
   var props = PropertiesService.getScriptProperties();
   var key   = props.getProperty('ANTHROPIC_API_KEY');
-  var model = props.getProperty('ANTHROPIC_MODEL') || 'claude-haiku-4-5-20251001';
+  var model = props.getProperty('ANTHROPIC_MODEL') || 'claude-sonnet-5';
   if(!key)        return {error:'ANTHROPIC_API_KEY не задан в Script Properties'};
   if(!body.image) return {error:'Нет изображения'};
 
@@ -1060,10 +1075,14 @@ function aiReadDoc(body){
 // prompt-cache overhead) purely for speed/cost; the full aiReadDoc call
 // still returns its own imageAlign too, used to build the final scan image
 // embedded in the worker's PDF.
+// Модель: ANTHROPIC_ALIGN_MODEL (по умолчанию Haiku) — намеренно отдельная
+// от ANTHROPIC_MODEL. Задача тут грубая (поворот кратно 90° и четыре угла),
+// более умная модель её не улучшит, поэтому апгрейд читающей модели не должен
+// автоматически удорожать этот предпроход.
 function aiDetectAlign(body){
   var props = PropertiesService.getScriptProperties();
   var key   = props.getProperty('ANTHROPIC_API_KEY');
-  var model = props.getProperty('ANTHROPIC_MODEL') || 'claude-haiku-4-5-20251001';
+  var model = props.getProperty('ANTHROPIC_ALIGN_MODEL') || 'claude-haiku-4-5-20251001';
   if(!key)        return {error:'ANTHROPIC_API_KEY не задан в Script Properties'};
   if(!body.image) return {error:'Нет изображения'};
 

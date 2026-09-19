@@ -678,8 +678,11 @@
 </div>
 
 <div class="overlay" id="editFirmOverlay" style="z-index:950" onclick="if(event.target===this)closeModal('editFirmOverlay')">
-  <div class="modal" style="max-width:420px">
-    <div class="modal-title">Редактировать фирму</div>
+  <div class="modal" style="max-width:420px" oninput="__firmEditDirty=true">
+    <div class="modal-title" id="firmEditTitle">Редактировать фирму</div>
+    <div style="font-size:11px;color:var(--text3);line-height:1.5;margin:-6px 0 10px">
+      Эти данные подставляются в раздел א («פרטי המעסיק») каждой Формы 101.
+    </div>
     <div class="field"><label>Название фирмы</label><input type="text" id="firmEditCompanyName"></div>
     <div class="field"><label>מספר תיק ניכויים (8 цифр)</label><input type="text" id="firmEditDeductionsNo" maxlength="8" inputmode="numeric"></div>
     <div class="field"><label>Телефон</label><input type="text" id="firmEditPhone"></div>
@@ -1791,7 +1794,7 @@ const API_SECRET = 'odinson-7Kq2x9';
 
 // ── Multi-tenant session ────────────────────────────────────────────────────
 // Real auth for this app: a session is a signed token from the backend's
-// login action, kept in localStorage for 24h (SESSION_TTL_MS server-side).
+// login action, kept in localStorage for 6h (SESSION_TTL_MS server-side).
 // role is 'superadmin' (sees every firm) or 'tenant' (sees only its own).
 // viewingTenantId is what every API call actually scopes to — for a normal
 // tenant user it's always their own tenantId; for a super-admin it starts
@@ -1898,6 +1901,67 @@ function backToFirmsList(){
   location.reload();
 }
 
+// ── Firm profile (Form 101 section א) ─────────────────────────────────────
+// Every generated Form 101 draws its employer block straight from the firm's
+// own Tenants row (see aiFillForm101). migrateToMultiTenant() created the
+// original firm with a placeholder name and blank phone/address/deductions
+// number, so a firm can sit on a half-empty profile and only discover it on a
+// printed form. These three helpers are the single source of truth for "is
+// this profile complete" — used by the titlebar control, the Form 101 panel,
+// and the super-admin's Firms list.
+const FIRM_PROFILE_FIELDS = [
+  {key:'companyName',          label:'Название фирмы'},
+  {key:'deductionsFileNumber', label:'מספר תיק ניכויים'},
+  {key:'phone',                label:'Телефон'},
+  {key:'street',               label:'Улица'},
+  {key:'city',                 label:'Город'},
+];
+function activeTenantProfile(){
+  const s = getSession();
+  return (s && (s.viewingTenantProfile || s.tenantProfile)) || null;
+}
+// Labels of the fields Form 101 would leave blank. No argument = the firm the
+// session is currently working in; pass a Tenants row to check another firm.
+function firmProfileMissing(profile){
+  const p = profile || activeTenantProfile();
+  if(!p) return FIRM_PROFILE_FIELDS.map(f => f.label);
+  return FIRM_PROFILE_FIELDS.filter(f => !String(p[f.key]==null?'':p[f.key]).trim()).map(f => f.label);
+}
+function firmProfileWarnInner(){
+  const missing = firmProfileMissing();
+  if(!missing.length) return '';
+  return `<div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;border:1px solid #ffb020;border-radius:var(--radius-sm);background:rgba(255,176,32,0.08);font-size:12px;line-height:1.5;color:var(--text2)">
+    <i class="ti ti-alert-triangle" style="color:#ffb020;font-size:15px"></i>
+    <div style="flex:1;min-width:180px">Профиль фирмы неполный — в Форме 101 (раздел א «פרטי המעסיק») останутся пустыми: <b>${esc(missing.join(', '))}</b>.</div>
+    <button class="btn sm" onclick="openMyFirmForm()"><i class="ti ti-pencil"></i> Заполнить</button>
+  </div>`;
+}
+// Placeholder stays in the DOM even when the profile is complete, so saving
+// the profile can clear the warning in place without a full re-render.
+function firmProfileWarnHtml(){
+  return `<div class="firm-profile-warn">${firmProfileWarnInner()}</div>`;
+}
+function refreshFirmProfileWarnings(){
+  document.querySelectorAll('.firm-profile-warn').forEach(el => { el.innerHTML = firmProfileWarnInner(); });
+}
+// Keeps the session's cached copy of the firm profile in step with a save —
+// the client only ever gets one at login, so without this a firm would have
+// to log out and back in before its own edit showed up on a Form 101. Only
+// touches the cache when the saved firm is the one currently being worked in.
+function cacheTenantProfile(tenantId, profile){
+  const s = getSession();
+  if(!s || !profile) return;
+  if(tenantId !== (s.viewingTenantId || s.tenantId)) return;
+  if(s.role === 'superadmin'){
+    s.viewingTenantProfile = profile;
+    s.viewingTenantName = profile.companyName || s.viewingTenantName;
+  } else {
+    s.tenantProfile = profile;
+  }
+  saveSession(s);
+  renderAccountControl(s);
+}
+
 // ── App gate: decides which of the three top-level screens to show ─────────
 // (1) no/expired session → #loginScreen, nothing else runs.
 // (2) super-admin with no firm picked yet → #firmsScreen.
@@ -1931,9 +1995,13 @@ function renderAccountControl(s){
       : 'Фирма <span>' + esc(s.username || '') + '</span>';
   }
   if(!host) return;
+  const incomplete = firmProfileMissing().length > 0;
   host.innerHTML = `
     <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
       ${s.role==='superadmin' ? '<button class="btn sm" onclick="backToFirmsList()"><i class="ti ti-building-skyscraper"></i> Фирмы</button>' : ''}
+      <button class="btn sm" onclick="openMyFirmForm()"${incomplete?' style="color:#ffb020;border-color:#ffb020"':''}
+        title="${incomplete?'Профиль фирмы неполный — данные для Формы 101':'Данные фирмы (для Формы 101)'}">
+        <i class="ti ti-${incomplete?'alert-triangle':'building'}"></i></button>
       <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i></button>
     </div>`;
 }
@@ -1952,7 +2020,7 @@ async function renderFirmsList(){
     listEl.innerHTML = tenants.map(t => `
       <div class="row" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);cursor:pointer;${t.active===false?'opacity:0.55':''}" onclick="switchToTenant('${esc(t.tenantId)}')">
         <div>
-          <div style="font-weight:600">${esc(t.companyName || '(без названия)')}${t.active===false?' <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px">отключена</span>':''}</div>
+          <div style="font-weight:600">${esc(t.companyName || '(без названия)')}${t.active===false?' <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px">отключена</span>':''}${firmProfileMissing(t).length?` <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px" title="Не заполнено: ${esc(firmProfileMissing(t).join(', '))}">профиль неполный</span>`:''}</div>
           <div style="font-size:12px;color:var(--text2)">${t.workerCount||0} воркеров · ${t.clientCount||0} клиентов${t.savedAt?' · сохранено '+esc(new Date(t.savedAt).toLocaleString()):''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:4px" onclick="event.stopPropagation()">
@@ -2030,18 +2098,51 @@ async function submitCreateFirm(){
 }
 
 let __editingFirmTenantId = null;
+// Set by the modal's own oninput — a late-arriving server refresh must never
+// overwrite what the user has already started typing.
+let __firmEditDirty = false;
+function fillFirmEditForm(p){
+  document.getElementById('firmEditCompanyName').value = p.companyName || '';
+  document.getElementById('firmEditDeductionsNo').value = p.deductionsFileNumber || '';
+  document.getElementById('firmEditPhone').value = p.phone || '';
+  document.getElementById('firmEditStreet').value = p.street || '';
+  document.getElementById('firmEditStreetNumber').value = p.streetNumber || '';
+  document.getElementById('firmEditCity').value = p.city || '';
+  __firmEditDirty = false;
+}
 function openEditFirmForm(tenantId){
   const t = __firmsCache.find(x => x.tenantId === tenantId);
   if(!t){ showToast('Фирма не найдена'); return; }
   __editingFirmTenantId = tenantId;
-  document.getElementById('firmEditCompanyName').value = t.companyName || '';
-  document.getElementById('firmEditDeductionsNo').value = t.deductionsFileNumber || '';
-  document.getElementById('firmEditPhone').value = t.phone || '';
-  document.getElementById('firmEditStreet').value = t.street || '';
-  document.getElementById('firmEditStreetNumber').value = t.streetNumber || '';
-  document.getElementById('firmEditCity').value = t.city || '';
+  document.getElementById('firmEditTitle').textContent = 'Редактировать фирму';
+  fillFirmEditForm(t);
   document.getElementById('firmEditFormError').textContent = '';
   document.getElementById('editFirmOverlay').classList.add('open');
+}
+
+// Self-service version of the same form, for the firm the session is working
+// in — a firm's own login can fill in its Form 101 employer data itself
+// instead of asking the super-admin. Prefills from the cached profile at once,
+// then refreshes from the server, since the cache is whatever login returned
+// and may be stale if the super-admin edited it since.
+async function openMyFirmForm(){
+  const s = getSession();
+  if(!s) return;
+  const tenantId = s.viewingTenantId || s.tenantId;
+  if(!tenantId){ showToast('Фирма не выбрана'); return; }
+  __editingFirmTenantId = tenantId;
+  document.getElementById('firmEditTitle').textContent = 'Данные фирмы';
+  fillFirmEditForm(activeTenantProfile() || {});
+  document.getElementById('firmEditFormError').textContent = '';
+  document.getElementById('editFirmOverlay').classList.add('open');
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'loadTenantProfile', ...gsAuth() }) });
+    const json = await res.json();
+    if(json && json.profile){
+      cacheTenantProfile(tenantId, json.profile);
+      if(!__firmEditDirty && __editingFirmTenantId === tenantId) fillFirmEditForm(json.profile);
+    }
+  }catch(e){}
 }
 async function submitEditFirm(){
   const get = id => document.getElementById(id).value.trim();
@@ -2064,8 +2165,12 @@ async function submitEditFirm(){
     const json = await res.json();
     if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось сохранить'; return; }
     closeModal('editFirmOverlay');
-    showToast('Фирма обновлена');
-    renderFirmsList();
+    showToast('Данные фирмы сохранены');
+    cacheTenantProfile(__editingFirmTenantId, json.profile);
+    refreshFirmProfileWarnings();
+    // Only the super-admin has a Firms list to refresh (and the right to ask
+    // the backend for one) — a firm editing its own profile has no such screen.
+    if(getSession()?.role === 'superadmin') renderFirmsList();
   }catch(e){ errEl.textContent = 'Сеть недоступна'; }
   finally{ btn.disabled = false; btn.textContent = 'Сохранить'; }
 }
@@ -3506,6 +3611,7 @@ function renderAiResult(p){
   if(!isId) h+=`
     <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
       <div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="ti ti-file-text"></i> Форма 101</div>
+      ${firmProfileWarnHtml()}
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
         <label style="font-size:12px;color:var(--text2)">Дата начала работы:</label>
         <input type="date" id="aiPpWork" value="${new Date().toISOString().slice(0,10)}"
@@ -3535,6 +3641,7 @@ function renderAiResult(p){
   else h+=`
     <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
       <div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="ti ti-file-text"></i> Форма 101</div>
+      ${firmProfileWarnHtml()}
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
         <label style="font-size:12px;color:var(--text2)">Дата начала работы:</label>
         <input type="date" id="aiIdWork" value="${new Date().toISOString().slice(0,10)}"
@@ -3669,6 +3776,11 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
   // where `event` is the Add/Save Worker button, not a Form 101 button.
   const btn=btnEl!==undefined?btnEl:(event&&event.target?event.target.closest('button'):null);
   const btnLabel=btn?btn.innerHTML:'';
+  // Filled in by the employer-details block below, reported once the PDF is
+  // actually out — the Form 101 panel carries the same warning inline, but
+  // this function also runs in the background from saveWorker(), where that
+  // panel isn't on screen.
+  let firmMissing=[];
   try{
     if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader-2 spin"></i> '+(mode==='upload'?'Загружаю…':'Готовлю…'); }
     await _loadPdfLib();
@@ -3821,8 +3933,10 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     // columns right-to-left: שם, כתובת, מספר טלפון, מספר תיק ניכויים (8
     // digits — the template already prints a fixed leading "9").
     (function(){
-      const session=getSession();
-      const profile=session&&(session.viewingTenantProfile||session.tenantProfile);
+      const profile=activeTenantProfile();
+      // A blank field here just leaves its box empty on the printed form, which
+      // is easy to miss — remembered so the end of this function can say so.
+      firmMissing=firmProfileMissing(profile);
       if(!profile) return;
       const ROW={y:659.89,height:14};
       const NAME_RECT={x:414.9,width:540.4-414.9,...ROW};
@@ -4025,6 +4139,8 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
       setTimeout(()=>URL.revokeObjectURL(url),3000);
       showToast('Форма 101 скачана');
     }
+    // After the success toast's own 2.5s, so the two don't overwrite each other.
+    if(firmMissing.length) setTimeout(()=>showToast('⚠ Профиль фирмы неполный — в Форме 101 пусто: '+firmMissing.join(', '),4000),2600);
   }catch(err){ console.error(err); showToast('Не удалось: '+(err&&err.message||'')); }
   finally{ if(btn){ btn.disabled=false; btn.innerHTML=btnLabel; } window.__aiPacketOtherPages=[]; }
 }
