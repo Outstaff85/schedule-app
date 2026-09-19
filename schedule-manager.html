@@ -3803,6 +3803,7 @@ function renderAiResult(p){
     h+=f('aiSurname','שם משפחה (Фамилия)',p.surname)
       +f('aiGiven','שם פרטי (Имя)',p.given)
       +f('aiIdNo','מספר זהות (9 цифр)',p.idNo)
+      +(p.idChecksumOk===false?'<div style="font-size:11px;color:var(--amber);margin:-4px 0 8px"><i class="ti ti-alert-triangle"></i> Номер не прошёл проверку контрольной цифры — перепроверьте вручную</div>':'')
       +f('aiDob','תאריך לידה (ДД/ММ/ГГГГ)',p.dob)
       +f('aiSex','מין (M/F)',p.sex)
       +f('aiAddress','כתובת (Адрес)',p.address)
