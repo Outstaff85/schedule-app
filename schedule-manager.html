@@ -3373,6 +3373,40 @@ async function verifyField(b64,mediaType,box,kind){
   }catch(e){ console.error(e); return null; }
 }
 
+// Israeli ID check-digit validation (Luhn-style, the government's own
+// formula) — pure arithmetic, no AI call, instant and free. The 9th digit is
+// derived from the first eight, so this catches most single-digit OCR
+// misreads (the actual failure mode — a 3 read as an 8, say). It can't say
+// WHICH digit is wrong, and a two-digit swap can occasionally still pass,
+// so it's a strong signal, not a guarantee.
+function isValidIsraeliId(id){
+  if(!/^\d{9}$/.test(id)) return false;
+  let sum=0;
+  for(let i=0;i<9;i++){
+    const step=Number(id[i])*((i%2)+1); // alternating weight 1,2,1,2,...
+    sum+=step>9?step-9:step;
+  }
+  return sum%10===0;
+}
+
+// Cross-checks idNo against its own check digit after the digit-verification
+// pass above. A pass needs no further action. A fail gets exactly one more
+// targeted re-read of the same box (the check digit is free, so it's worth
+// spending one more AI call trying to fix it automatically) — if that still
+// doesn't check out, stop trying to fix it automatically and instead record
+// `idChecksumOk:false` so renderAiResult can flag the field for the human to
+// look at, rather than silently keeping a number that's provably wrong.
+async function verifyIdChecksum(parsed,b64,mediaType){
+  if(!parsed||parsed.type!=='israeli_id'||!parsed.idNo) return parsed;
+  if(isValidIsraeliId(parsed.idNo)){ parsed.idChecksumOk=true; return parsed; }
+  if(parsed.fieldBoxes&&parsed.fieldBoxes.idNo){
+    const retry=await verifyField(b64,mediaType,parsed.fieldBoxes.idNo,'digits9');
+    if(retry&&/^\d{9}$/.test(retry)) parsed.idNo=retry;
+  }
+  parsed.idChecksumOk=isValidIsraeliId(parsed.idNo);
+  return parsed;
+}
+
 // Re-verifies the pure-digit, form-critical fields (idNo/dob/expiry/
 // passportNo) that aiReadDoc reported a fieldBoxes entry for, replacing the
 // original value only when the zoomed-in re-read comes back in the expected
