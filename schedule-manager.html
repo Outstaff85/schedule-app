@@ -4252,8 +4252,8 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     // still fit the field's own box for a realistically long value).
     const fieldSizes={};
     const setSize=(n,size)=>{ fieldSizes[n]=size; try{ form.getTextField(n).acroField.setDefaultAppearance('/Helv '+size+' Tf 0 g'); }catch(e){} };
-    setSize('surname',11); setSize('given_name',11); setSize('addr_street',11);
-    setSize('addr_city',11); setSize('hf_name',10); setSize('id_top2',13);
+    setSize('surname',12); setSize('given_name',12); setSize('addr_street',12);
+    setSize('addr_city',12); setSize('hf_name',11); setSize('id_top2',14);
     const setT=(n,v)=>{ try{ if(v) form.getTextField(n).setText(String(v)); }catch(e){} };
     const CHECK_BLUE=PDFLib.rgb(0.09,0.32,0.85);
     const allPages=doc.getPages();
