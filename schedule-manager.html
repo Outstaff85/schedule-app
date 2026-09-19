@@ -1274,7 +1274,9 @@ function saveWorker(){
   const expiryEnabled=document.getElementById('wExpiryEnabled')?.checked||false;
   const expiryMonths=parseInt(document.getElementById('wExpiryMonths')?.value)||9;
   const expiryWarnMonths=parseInt(document.getElementById('wExpiryWarnMonths')?.value)||0;
+  const docId=document.getElementById('wDocId')?.value.trim()||'';
   const address=document.getElementById('wAddress')?.value.trim()||'';
+  const city=document.getElementById('wCity')?.value.trim()||'';
   const notes=document.getElementById('wNotes')?.value.trim()||'';
   const incomeType=document.getElementById('wIncomeType')?.value||'';
   const otherIncomeType=document.getElementById('wOtherIncomeType')?.value||'';
