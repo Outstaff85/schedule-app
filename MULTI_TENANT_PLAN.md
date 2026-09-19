@@ -22,7 +22,7 @@ both halves are live together on `main`.
       `PushSubscriptions`, `login`/`createUser`/`listTenants` actions,
       `migrateToMultiTenant()` one-time migration function.
       (`apps-script/Код.js` / `google-apps-script.js`)
-- [x] **Step 2 — frontend**: login screen (`#loginScreen`) + 24h session
+- [x] **Step 2 — frontend**: login screen (`#loginScreen`) + 6h session
       (`schedMgr_session` in localStorage) in `schedule-manager.html`;
       super-admin "Firms" screen (`#firmsScreen`) + create-firm modal
       (`#createFirmOverlay`) + switcher (`switchToTenant()`/
