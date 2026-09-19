@@ -91,13 +91,19 @@ same way as the fake boxes above: hand-drawn via `drawCombRaw` at
 `TAX_YEAR_RECT = {x:220.4, y:742.49, width:64.9, height:13}`, size 12.
 
 **Known-fixed bug — stray blue field highlight ("sliding blue square"):**
-leaving the real `tax_year` field unset but still present in the saved PDF
-meant it stayed a live, empty, interactive text field — Chrome's PDF viewer
-draws a light-blue highlight box over any such field, positioned at *that
-field's own* (mismatched) rect, visibly adrift from the hand-drawn digits
-sitting next to it. `aiFillForm101()` now calls
-`form.removeField(form.getTextField('tax_year'))` right after drawing the
-digits, so no empty interactive widget is left behind to be highlighted.
+leaving the real `tax_year` field unset but still present (and still
+editable) in the saved PDF meant it stayed a live, empty, interactive text
+field — Chrome's PDF viewer draws a light-blue highlight box over any such
+field, positioned at *that field's own* (mismatched) rect, visibly adrift
+from the hand-drawn digits sitting next to it. `aiFillForm101()` now calls
+`form.getTextField('tax_year').enableReadOnly()` right after drawing the
+digits, so the field is no longer treated as fillable and viewers stop
+highlighting it. (`form.removeField()` was tried first as the more obvious
+fix — it turns out to corrupt pdf-lib's save pass: the removed field's
+widget stays attached to the page's `Annots` array with a now-dangling
+parent-field reference, and pdf-lib throws inside `updateFieldAppearances`
+the next time it tries to auto-generate appearances at save time.
+`enableReadOnly()` has no such side effect.)
 
 ## "א. פרטי המעסיק" (employer details) row — right-aligned, no AcroForm fields
 
