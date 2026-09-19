@@ -1026,16 +1026,20 @@ function aiReadDoc(body){
 
   var payload = {
     model: model,
-    // 800, then 1600, both still got truncated in production on real scans —
-    // Hebrew text (names, addresses, children) is token-inefficient compared
-    // to Latin (Claude's tokenizer needs noticeably more tokens per Hebrew
-    // character), and despite the "no markdown" instruction the model can
-    // still pretty-print the JSON with indentation/newlines unless told
-    // explicitly to keep it compact (added to the prompt above). 3000 gives
-    // a large safety margin on top of that — max_tokens only caps output,
-    // it doesn't force the model to use that many, so this doesn't raise
-    // cost on scans that were already comfortably under the old limits.
-    max_tokens: 3000,
+    // 800, then 1600, then 3000 all still got truncated in production on
+    // real scans — Hebrew text (names, addresses, children) is token-
+    // inefficient compared to Latin (Claude's tokenizer needs noticeably
+    // more tokens per Hebrew character), and despite the "no markdown"
+    // instruction the model can still pretty-print the JSON with
+    // indentation/newlines unless told explicitly to keep it compact (added
+    // to the prompt above). claude-sonnet-5 supports up to 128,000 output
+    // tokens, and max_tokens is only a ceiling — it doesn't force the model
+    // to spend that many, so it doesn't raise cost on scans that were
+    // already comfortably under the old limits. 8000 is a very large margin
+    // for a structured single-document JSON extraction (realistically in
+    // the hundreds to low thousands of tokens) while staying far below the
+    // real ceiling.
+    max_tokens: 8000,
     messages: [{
       role: 'user',
       content: [
