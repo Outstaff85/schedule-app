@@ -354,6 +354,7 @@
     <div class="ttab" id="tabWorkers" onclick="switchTab('workers')"><span class="ic"><i class="ti ti-users-group"></i></span><span class="lb">Workers</span></div>
     <div class="ttab" id="tabClients" onclick="switchTab('clients')"><span class="ic"><i class="ti ti-users"></i></span><span class="lb">Clients</span></div>
     <div class="ttab admin" id="tabAdmin" onclick="switchTab('admin')"><span class="ic"><i class="ti ti-lock"></i></span><span class="lb">Admin</span></div>
+    <div class="ttab admin" id="tabAccounting" onclick="switchTab('accounting')"><span class="ic"><i class="ti ti-cash"></i></span><span class="lb">Бухгалтерия</span></div>
   </div>
   <div id="accountLabelCenter" class="account-label-center"></div>
   <div class="titlebar-actions">
@@ -433,21 +434,6 @@
         <div id="dashLog" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden"></div>
       </div>
 
-      <!-- Salary summary -->
-      <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px"><i class="ti ti-cash"></i> Salary Calculation</div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <select id="salaryPeriod" onchange="renderDashboard()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:4px 8px;font-size:12px;outline:none">
-              <option value="week">This Week</option>
-              <option value="month">This Month</option>
-              <option value="all">All Time</option>
-            </select>
-            <button class="btn sm" onclick="exportSalaryCSV()"><i class="ti ti-upload"></i> Export</button>
-          </div>
-        </div>
-        <div id="dashSalary"></div>
-      </div>
     </div>
 
     <div class="page-section visible" id="sectionSchedule">
@@ -491,11 +477,12 @@
         <span id="workersCount" style="font-size:13px;color:var(--text2);margin-left:auto"></span>
       </div>
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow-x:auto;-webkit-overflow-scrolling:touch">
-        <table style="width:100%;min-width:640px;border-collapse:collapse" id="workersTable">
+        <table style="width:100%;min-width:740px;border-collapse:collapse" id="workersTable">
           <thead>
             <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Worker</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Status</th>
+              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">ID / Паспорт</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Objects</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Phone</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Rate</th>
@@ -587,6 +574,41 @@
         </table>
         </div>
         <div id="adminEmpty" style="display:none;text-align:center;padding:40px;color:var(--text3);font-size:14px">No punch records found</div>
+      </div>
+    </div>
+
+    <!-- Accounting Section -->
+    <div class="page-section" id="sectionAccounting">
+      <div class="page-header">
+        <div>
+          <div class="page-title"><i class="ti ti-cash"></i> Бухгалтерия</div>
+          <div class="page-sub">Расчёт зарплаты и тарифы по объектам</div>
+        </div>
+      </div>
+
+      <!-- Salary summary (moved here from Today) -->
+      <div style="margin-bottom:24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px"><i class="ti ti-cash"></i> Salary Calculation</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="salaryPeriod" onchange="renderAccounting()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:4px 8px;font-size:12px;outline:none">
+              <option value="week">This Week</option>
+              <option value="month">This Month</option>
+              <option value="all">All Time</option>
+            </select>
+            <button class="btn sm" onclick="exportSalaryCSV()"><i class="ti ti-upload"></i> Export</button>
+          </div>
+        </div>
+        <div id="dashSalary"></div>
+      </div>
+
+      <!-- Per-client rate matrix -->
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px"><i class="ti ti-adjustments"></i> Тарифы по объектам</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
+          Приоритет: свой тариф работника на объекте → тариф объекта по умолчанию → базовая ставка работника. Пусто — ничего не переопределено.
+        </div>
+        <div id="rateMatrixWrap"></div>
       </div>
     </div>
 
@@ -868,22 +890,51 @@ function israeliDayPay(hours, rate, isSat){
   const regularPay=reg*rate*base, otPay=o1*rate*ot1+o2*rate*ot2;
   return { regularPay, otPay, total:regularPay+otPay, isSat };
 }
-// Effective per-hour rates: base tariff × surcharge, with optional manual per-worker override.
-function wRegRate(w){ const b=Number(w&&w.hourlyRate)||0; return (w&&w.regRate!=null&&w.regRate!=='')?Number(w.regRate):b; }
-function wOtRate(w){ const b=Number(w&&w.hourlyRate)||0; return (w&&w.otRate!=null&&w.otRate!=='')?Number(w.otRate):Math.round(b*PAY_RULES.otMult*100)/100; }
-function wShabRate(w){ const b=Number(w&&w.hourlyRate)||0; return (w&&w.shabbatRate!=null&&w.shabbatRate!=='')?Number(w.shabbatRate):Math.round(b*PAY_RULES.shabbatMult*100)/100; }
+// Effective per-hour rates for one shift, resolving a 3-tier priority chain —
+// most specific wins, each tier optional, falling through to the next:
+//   1. worker.clientRates[clientId] — this worker's own override for this
+//      specific client (set in the Бухгалтерия rate matrix).
+//   2. client.defaultHourlyRate/defaultOtRate/defaultShabbatRate — this
+//      client's own standard rate, if it has one.
+//   3. the worker's own base rate — hourlyRate, or its regRate/otRate/
+//      shabbatRate override — exactly as before this feature existed.
+// clientId is optional; omitting it (or a worker/client with no override at
+// any tier) falls straight through to tier 3, so this is a no-op for anyone
+// not using per-client rates. `has*Override` tells shiftPay() whether an
+// explicit flat OT/Shabbat rate was found at ANY tier (vs falling back to
+// the israeliDayPay law tiers) — the three tiers can't be told apart just by
+// comparing the resolved number to a law-tier calculation.
+function effectiveRates(w, clientId){
+  const ov = clientId && w && w.clientRates && w.clientRates[clientId];
+  const cl = clientId && clients.find(c=>c.id===clientId);
+  const base = Number(w&&w.hourlyRate)||0;
+  const pick=(ovVal,clVal,wVal,fallback)=>{
+    if(ovVal!=null&&ovVal!=='') return {val:Number(ovVal),has:true};
+    if(clVal!=null&&clVal!=='') return {val:Number(clVal),has:true};
+    if(wVal!=null&&wVal!=='') return {val:Number(wVal),has:true};
+    return {val:fallback,has:false};
+  };
+  const reg  = pick(ov&&ov.rate,        cl&&cl.defaultHourlyRate,  w&&w.regRate,     base);
+  const ot   = pick(ov&&ov.otRate,      cl&&cl.defaultOtRate,      w&&w.otRate,      Math.round(reg.val*PAY_RULES.otMult*100)/100);
+  const shab = pick(ov&&ov.shabbatRate, cl&&cl.defaultShabbatRate, w&&w.shabbatRate, Math.round(reg.val*PAY_RULES.shabbatMult*100)/100);
+  return {regRate:reg.val, otRate:ot.val, shabbatRate:shab.val, hasOtOverride:ot.has, hasShabbatOverride:shab.has};
+}
+function wRegRate(w,clientId){ return effectiveRates(w,clientId).regRate; }
+function wOtRate(w,clientId){ return effectiveRates(w,clientId).otRate; }
+function wShabRate(w,clientId){ return effectiveRates(w,clientId).shabbatRate; }
 // Pay for one shift's hours. Default: the israeliDayPay law tiers (125%/150% OT,
-// 150%/175%/200% Shabbat) applied to the worker's regular rate. A worker's manual
-// OT/Shabbat rate override replaces the law tiers with that single flat rate across
-// all OT/Shabbat hours of the shift, same as before this defaulted to the law.
-function shiftPay(hours, w, isSat){
-  const RM=PAY_RULES.regularMax, regRate=wRegRate(w);
+// 150%/175%/200% Shabbat) applied to the effective regular rate. An explicit flat
+// OT/Shabbat rate (at any tier above) replaces the law tiers with that single flat
+// rate across all OT/Shabbat hours of the shift, same as before this defaulted to
+// the law. clientId is optional — see effectiveRates() above.
+function shiftPay(hours, w, isSat, clientId){
+  const RM=PAY_RULES.regularMax, r=effectiveRates(w,clientId);
   if(isSat){
-    if(w && w.shabbatRate!=null && w.shabbatRate!=='') return hours*wShabRate(w);
-    return israeliDayPay(hours, regRate, true).total;
+    if(r.hasShabbatOverride) return hours*r.shabbatRate;
+    return israeliDayPay(hours, r.regRate, true).total;
   }
-  if(w && w.otRate!=null && w.otRate!=='') return Math.min(hours,RM)*regRate + Math.max(hours-RM,0)*wOtRate(w);
-  return israeliDayPay(hours, regRate, false).total;
+  if(r.hasOtOverride) return Math.min(hours,RM)*r.regRate + Math.max(hours-RM,0)*r.otRate;
+  return israeliDayPay(hours, r.regRate, false).total;
 }
 function fmtDate(d){ return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); }
 function fmtRange(d){ const e=new Date(d); e.setDate(e.getDate()+6); return fmtDate(d)+' – '+fmtDate(e); }
@@ -898,14 +949,15 @@ function fmtDMY(dateStr){
 // --- Tab ---------------------------------------------------------------------
 function switchTab(tab){
   currentTab=tab;
-  ['dashboard','schedule','workers','clients','admin'].forEach(t=>{
+  ['dashboard','schedule','workers','clients','admin','accounting'].forEach(t=>{
     document.getElementById('tab'+t.charAt(0).toUpperCase()+t.slice(1))?.classList.toggle('active',tab===t);
     document.getElementById('section'+t.charAt(0).toUpperCase()+t.slice(1))?.classList.toggle('visible',tab===t);
   });
-  if(tab==='workers')   renderWorkersPage();
-  if(tab==='clients')   renderClientsPage();
-  if(tab==='admin')     renderAdmin();
-  if(tab==='dashboard') renderDashboard();
+  if(tab==='workers')    renderWorkersPage();
+  if(tab==='clients')    renderClientsPage();
+  if(tab==='admin')      renderAdmin();
+  if(tab==='dashboard')  renderDashboard();
+  if(tab==='accounting') renderAccounting();
 }
 
 // --- Week nav -----------------------------------------------------------------
@@ -1386,6 +1438,18 @@ function showClientModal(c){
     <div class="field"><label>Address (optional)</label><input type="text" id="cAddr" value="${c.address||''}" placeholder="Address"></div>
     <div class="field"><label>Notes (optional)</label><input type="text" id="cNotes" value="${c.notes||''}" placeholder="Notes"></div>
     <div class="field">
+      <label><i class="ti ti-cash"></i> Тариф по умолчанию для объекта (optional)</label>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Применяется ко всем работникам на этом объекте, если у работника нет своего тарифа для него (см. Бухгалтерия → Тарифы по объектам)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div><label style="font-size:11px;color:var(--text3)">Regular ₪/h</label>
+          <input type="number" min="0" step="0.5" id="cDefRate" value="${c.defaultHourlyRate??''}" placeholder="—"></div>
+        <div><label style="font-size:11px;color:var(--text3)">OT ₪/h</label>
+          <input type="number" min="0" step="0.5" id="cDefOtRate" value="${c.defaultOtRate??''}" placeholder="—"></div>
+        <div><label style="font-size:11px;color:var(--text3)">Shabbat ₪/h</label>
+          <input type="number" min="0" step="0.5" id="cDefShabRate" value="${c.defaultShabbatRate??''}" placeholder="—"></div>
+      </div>
+    </div>
+    <div class="field">
       <label><i class="ti ti-map-pin"></i> Geolocation for Punch Clock</label>
       <div style="margin-bottom:8px">
         <label style="font-size:11px;color:var(--text3);margin-bottom:4px;display:block">Paste Google Maps link</label>
@@ -1470,12 +1534,14 @@ function saveClient(){
   const lng=parseFloat(document.getElementById('cLng').value)||null;
   const radius=parseInt(document.getElementById('cRadius').value)||100;
   const mapsUrl=document.getElementById('cMapsUrl')?.value.trim()||'';
+  const rateVal=id=>{ const v=document.getElementById(id)?.value; return (v===''||v==null)?null:(parseFloat(v)||0); };
+  const defaultHourlyRate=rateVal('cDefRate'), defaultOtRate=rateVal('cDefOtRate'), defaultShabbatRate=rateVal('cDefShabRate');
   if(editingClientId){
     const idx=clients.findIndex(x=>x.id===editingClientId);
-    if(idx>=0) clients[idx]={...clients[idx],name,object,address,notes,color:selClientColor,lat,lng,radius,mapsUrl};
+    if(idx>=0) clients[idx]={...clients[idx],name,object,address,notes,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate};
     showToast(name+' updated!');
   } else {
-    clients.push({id:uid(),name,object,address,notes,color:selClientColor,lat,lng,radius,mapsUrl});
+    clients.push({id:uid(),name,object,address,notes,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate});
     showToast(name+' added!');
   }
   closeModal('clientOverlay'); renderClientsPage(); renderSidebarClients(); autoSave();
@@ -1484,7 +1550,10 @@ function deleteClient(cid){
   const c=clients.find(x=>x.id===cid);
   if(!c||!confirm('Remove client "'+c.name+'"?'))return;
   clients=clients.filter(x=>x.id!==cid);
-  workers.forEach(w=>{ if(w.clientIds) w.clientIds=w.clientIds.filter(id=>id!==cid); });
+  workers.forEach(w=>{
+    if(w.clientIds) w.clientIds=w.clientIds.filter(id=>id!==cid);
+    if(w.clientRates&&w.clientRates[cid]) delete w.clientRates[cid];
+  });
   if(selectedClientId===cid) selectedClientId=null;
   renderClientsPage(); renderSidebarClients(); render(); autoSave(); showToast(c.name+' removed');
 }
@@ -1510,11 +1579,13 @@ function renderWorkersPage(){
     return `<tr onclick="openWorkerCard(${wi})" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background=''">
       <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><span style="font-size:13px;font-weight:600">${esc(w.name)}</span>${expiryBadgeHtml(w)}</div></td>
       <td style="padding:10px 12px"><span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col}">${stMeta.label}</span></td>
+      <td style="padding:10px 12px;font-size:13px;color:var(--text2);font-family:monospace">${workerDocId(w)?esc(workerDocId(w)):'—'}</td>
       <td style="padding:10px 12px">${objBadges}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.phone?esc(w.phone):'—'}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.hourlyRate?('₪'+w.hourlyRate+'/h'):'—'}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.startDate?fmtDMY(w.startDate):'—'}</td>
       <td style="padding:10px 12px;text-align:center" onclick="event.stopPropagation()"><div style="display:flex;gap:4px;justify-content:center">
+        ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" title="Скачать документ (PDF с Google Drive)" style="padding:3px 8px;font-size:11px"><i class="ti ti-download"></i></a>`:''}
         <button class="btn sm" onclick="openEditWorker(${wi})" style="padding:3px 8px;font-size:11px"><i class="ti ti-edit"></i></button>
         <button class="btn sm red" onclick="deleteWorker(${wi})" style="padding:3px 8px;font-size:11px"><i class="ti ti-x"></i></button>
       </div></td>
@@ -1522,6 +1593,19 @@ function renderWorkersPage(){
   }).join('');
 }
 
+const INCOME_TYPE_LABELS = {monthly:'Monthly salary',secondary:'2nd job salary',partial:'Partial salary',daily:'Daily wage',pension:'Pension',scholarship:'Scholarship'};
+const OTHER_INCOME_LABELS = {none:'No other income',monthly:'Monthly salary',secondary:'2nd job salary',partial:'Partial salary',daily:'Daily wage',pension:'Pension',scholarship:'Scholarship'};
+// Compact weekly-schedule strip for the worker card: one chip per day (Sun..Sat),
+// muted for days off, showing the shift's time range for working days.
+function workerScheduleStripHtml(w){
+  return (w.schedule||[]).map((sh,i)=>{
+    const isWork=sh&&sh.type==='work';
+    return `<div style="flex:1;min-width:58px;text-align:center;padding:6px 4px;border-radius:8px;background:${isWork?'var(--bg3)':'transparent'};border:1px solid ${isWork?'var(--border2)':'var(--border)'}">
+      <div style="font-size:10px;font-weight:700;color:${isWork?'var(--text2)':'var(--text3)'};text-transform:uppercase">${DAYS[i]}</div>
+      <div style="font-size:11px;color:${isWork?'var(--text)':'var(--text3)'};margin-top:2px;white-space:nowrap">${isWork?esc(sh.start||'')+'–'+esc(sh.end||''):'вых'}</div>
+    </div>`;
+  }).join('');
+}
 function openWorkerCard(wi){
   const w=workers[wi]; if(!w) return;
   const c=WORKER_COLORS[w.colorIdx%8], ini=w.name.slice(0,2).toUpperCase();
@@ -1530,6 +1614,7 @@ function openWorkerCard(wi){
   const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
   const wh=workerTotalHours(w);
   const expSt=workerExpiryStatus(w);
+  const punchLink=w.token?buildPunchLink(w):'';
   document.getElementById('workerCardModal').innerHTML=`
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
       <div style="width:52px;height:52px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">${ini}</div>
@@ -1542,22 +1627,42 @@ function openWorkerCard(wi){
     <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text2);margin-bottom:14px">
       ${w.phone?`<div><i class="ti ti-phone"></i> ${esc(w.phone)}</div>`:''}
       ${w.email?`<div><i class="ti ti-mail"></i> ${esc(w.email)}</div>`:''}
-      ${w.hourlyRate?`<div><i class="ti ti-coin"></i> ₪${w.hourlyRate}/h</div>`:''}
+      ${w.hourlyRate?`<div><i class="ti ti-coin"></i> Base ₪${w.hourlyRate}/h${w.otRate!=null?' · OT ₪'+w.otRate+'/h':''}${w.shabbatRate!=null?' · Shabbat ₪'+w.shabbatRate+'/h':''}</div>`:''}
       ${w.startDate?`<div><i class="ti ti-calendar-event"></i> Started ${fmtDMY(w.startDate)}</div>`:''}
       ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?'Срок истёк':'Срок приближается'} — ${expSt.deadline.toLocaleDateString('ru-RU')}</div>`:''}
       ${workerDocId(w)?`<div><i class="ti ti-id"></i> ${esc(workerDocId(w))}</div>`:''}
       ${[workerAddress(w),w.city].filter(Boolean).length?`<div><i class="ti ti-map-pin"></i> ${esc([workerAddress(w),w.city].filter(Boolean).join(', '))}</div>`:''}
+      ${w.incomeType&&INCOME_TYPE_LABELS[w.incomeType]?`<div><i class="ti ti-briefcase"></i> ${INCOME_TYPE_LABELS[w.incomeType]}</div>`:''}
+      ${w.otherIncomeType&&w.otherIncomeType!=='none'&&OTHER_INCOME_LABELS[w.otherIncomeType]?`<div><i class="ti ti-cash"></i> Other income: ${OTHER_INCOME_LABELS[w.otherIncomeType]}</div>`:''}
       <div><i class="ti ti-clock-hour-4"></i> ${wh.toFixed(1)}h scheduled / week</div>
+      ${w.docUrl?`<div><i class="ti ti-file-text"></i> Документ сохранён${w.docSavedAt?': '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</div>`:''}
     </div>
     ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
     <div style="margin-bottom:14px">
-      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Objects</div>
-      ${objs.length?objs.map(o=>`<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:4px 8px;background:${o.color}22;border-radius:12px;margin-right:5px;margin-bottom:5px"><span style="width:7px;height:7px;border-radius:50%;background:${o.color}"></span>${esc(o.name)}</span>`).join(''):'<span style="color:var(--text3);font-size:12px">Not assigned to any object</span>'}
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">График на неделе</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">${workerScheduleStripHtml(w)}</div>
     </div>
+    <div style="margin-bottom:14px">
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Objects &amp; rates</div>
+      ${objs.length?objs.map(o=>{
+        const r=effectiveRates(w,o.id);
+        const hasOverride=!!(w.clientRates&&w.clientRates[o.id]&&Object.values(w.clientRates[o.id]).some(v=>v!=null));
+        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:6px 8px;background:${o.color}11;border-radius:8px;margin-bottom:5px">
+          <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:7px;height:7px;border-radius:50%;background:${o.color};flex-shrink:0"></span>${esc(o.name)}${hasOverride?' <i class="ti ti-star-filled" style="font-size:10px;color:var(--amber)" title="Свой тариф на этом объекте"></i>':''}</span>
+          <span style="color:var(--text2);white-space:nowrap">₪${r.regRate}/h · OT ₪${r.otRate} · Shabbat ₪${r.shabbatRate}</span>
+        </div>`;
+      }).join(''):'<span style="color:var(--text3);font-size:12px">Not assigned to any object</span>'}
+    </div>
+    ${punchLink?`<div style="margin-bottom:14px">
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Ссылка для отметки</div>
+      <div style="display:flex;gap:6px">
+        <input type="text" readonly value="${esc(punchLink)}" onclick="this.select()" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text2);font-size:12px;padding:6px 8px;outline:none">
+        <button class="btn sm" onclick="copyWorkerLink('${w.id}')" title="Copy"><i class="ti ti-copy"></i></button>
+      </div>
+    </div>`:''}
     <div class="modal-actions">
       <button class="btn sm red" onclick="deleteWorkerFromCard(${wi})"><i class="ti ti-trash"></i> Delete</button>
       ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Скачать документ</a>`:''}
-      <button class="btn sm" onclick="copyWorkerLink('${w.id}')"><i class="ti ti-link"></i> Link</button>
       <button class="btn accent" onclick="closeModal('workerCardOverlay');openEditWorker(${wi})"><i class="ti ti-edit"></i> Edit</button>
     </div>`;
   document.getElementById('workerCardOverlay').classList.add('open');
@@ -2581,8 +2686,11 @@ function renderDashboard(){
     }).join('') + (sorted.length>LOG_LIMIT?`<div style="text-align:center;padding:10px;border-top:1px solid var(--border)"><button class="btn sm" onclick="toggleLog()">${_logExpanded?'<i class="ti ti-chevron-up"></i> Show less':'<i class="ti ti-chevron-down"></i> Show all ('+sorted.length+')'}</button></div>`:'');
   }
 
-  // ── Salary calculation ──────────────────────────────────────────────────
+}
+
+function renderAccounting(){
   renderSalary();
+  renderRateMatrix();
 }
 
 function renderSalary(){
@@ -2625,7 +2733,11 @@ function renderSalary(){
       else { byWorker[workerId].regH+=Math.min(h,RM); byWorker[workerId].otH+=Math.max(h-RM,0); }
       byWorker[workerId].hours+=h;
       byWorker[workerId].days++;
-      byWorker[workerId].total+=shiftPay(h,wc,isSat);
+      // The shift's own clientId (from its opening IN punch) picks up any
+      // per-client rate override — a worker who worked at two clients with
+      // different rates in the same period still gets each shift priced
+      // correctly, even though this table shows one summed row per worker.
+      byWorker[workerId].total+=shiftPay(h,wc,isSat,entries[0]&&entries[0].clientId);
     }
   });
 
@@ -2709,6 +2821,77 @@ function renderSalary(){
     </div>`;
 }
 
+// Per-worker-per-client rate override matrix (tier 1 of effectiveRates()).
+// One row per (worker, assigned client) pair; empty inputs mean "no override
+// here" and the placeholder shows what effectiveRates() would resolve to
+// (client default, tier 2, or the worker's own base rate, tier 3).
+function renderRateMatrix(){
+  const wrap=document.getElementById('rateMatrixWrap');
+  if(!wrap) return;
+  const rows=[];
+  workers.forEach(w=>{
+    (w.clientIds||[]).forEach(cid=>{
+      const cl=clients.find(c=>c.id===cid);
+      if(cl) rows.push({w,cl});
+    });
+  });
+  if(!rows.length){
+    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">Нет работников, привязанных к объектам</div>`;
+    return;
+  }
+  wrap.innerHTML=`
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table style="width:100%;border-collapse:collapse;min-width:640px">
+        <thead>
+          <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Worker</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Object</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Regular ₪/h</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--amber)">OT ₪/h</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--blue)">Shabbat ₪/h</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r,i)=>{
+            const ov=(r.w.clientRates&&r.w.clientRates[r.cl.id])||{};
+            const eff=effectiveRates(r.w,r.cl.id);
+            return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
+              <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.w.name)}</td>
+              <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${esc(r.cl.name)}</td>
+              <td style="padding:10px 12px;text-align:right">
+                <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${eff.regRate}" title="Пусто = ${eff.regRate} (тариф объекта или базовый)"
+                  onchange="setClientRateOverride('${r.w.id}','${r.cl.id}','rate',this.value)"
+                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+              </td>
+              <td style="padding:10px 12px;text-align:right">
+                <input type="number" value="${ov.otRate??''}" min="0" step="0.5" placeholder="${eff.otRate}" title="Пусто = ${eff.otRate}"
+                  onchange="setClientRateOverride('${r.w.id}','${r.cl.id}','otRate',this.value)"
+                  style="width:70px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+              </td>
+              <td style="padding:10px 12px;text-align:right">
+                <input type="number" value="${ov.shabbatRate??''}" min="0" step="0.5" placeholder="${eff.shabbatRate}" title="Пусто = ${eff.shabbatRate}"
+                  onchange="setClientRateOverride('${r.w.id}','${r.cl.id}','shabbatRate',this.value)"
+                  style="width:70px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>
+    </div>`;
+}
+function setClientRateOverride(wid,cid,field,val){
+  const w=workers.find(x=>x.id===wid);
+  if(!w) return;
+  if(!w.clientRates) w.clientRates={};
+  if(!w.clientRates[cid]) w.clientRates[cid]={};
+  w.clientRates[cid][field]=(val===''||val==null)?null:(parseFloat(val)||0);
+  if(Object.values(w.clientRates[cid]).every(v=>v==null)) delete w.clientRates[cid];
+  autoSave();
+  renderRateMatrix();
+}
+
 function setWorkerRate(wid,rate){
   const w=workers.find(x=>x.id===wid);
   if(w){ w.hourlyRate=parseFloat(rate)||0; autoSave(); }
@@ -2736,9 +2919,10 @@ function exportSalaryCSV(){
     const ins=d.entries.filter(x=>x.type==='in').map(x=>x.time).sort();
     const outs=d.entries.filter(x=>x.type==='out').map(x=>x.time).sort();
     const _w=workers.find(w=>w.id===d.wid);
-    const rate=_w?.hourlyRate||0;
+    const shiftClientId=d.entries[0]&&d.entries[0].clientId;
+    const rate=wRegRate(_w,shiftClientId);
     const isSat=d.date.getDay()===6;
-    const pay=shiftPay(res.hours,_w,isSat);
+    const pay=shiftPay(res.hours,_w,isSat,shiftClientId);
     const clientObj=punchClientObject(d.entries[0])||workerClientObject(d.wid);
     rows.push([d.worker, clientObj, d.date.toLocaleDateString('en-GB'), ins[0]||'', outs[outs.length-1]||'', res.hours.toFixed(2), rate, pay.toFixed(2), res.warnings.join('; ')]);
   });
