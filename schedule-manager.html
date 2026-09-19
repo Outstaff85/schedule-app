@@ -2781,6 +2781,77 @@ function renderSalary(){
     </div>`;
 }
 
+// Per-worker-per-client rate override matrix (tier 1 of effectiveRates()).
+// One row per (worker, assigned client) pair; empty inputs mean "no override
+// here" and the placeholder shows what effectiveRates() would resolve to
+// (client default, tier 2, or the worker's own base rate, tier 3).
+function renderRateMatrix(){
+  const wrap=document.getElementById('rateMatrixWrap');
+  if(!wrap) return;
+  const rows=[];
+  workers.forEach(w=>{
+    (w.clientIds||[]).forEach(cid=>{
+      const cl=clients.find(c=>c.id===cid);
+      if(cl) rows.push({w,cl});
+    });
+  });
+  if(!rows.length){
+    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">Нет работников, привязанных к объектам</div>`;
+    return;
+  }
+  wrap.innerHTML=`
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table style="width:100%;border-collapse:collapse;min-width:640px">
+        <thead>
+          <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Worker</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Object</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Regular ₪/h</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--amber)">OT ₪/h</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--blue)">Shabbat ₪/h</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r,i)=>{
+            const ov=(r.w.clientRates&&r.w.clientRates[r.cl.id])||{};
+            const eff=effectiveRates(r.w,r.cl.id);
+            return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
+              <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.w.name)}</td>
+              <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${esc(r.cl.name)}</td>
+              <td style="padding:10px 12px;text-align:right">
+                <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${eff.regRate}" title="Пусто = ${eff.regRate} (тариф объекта или базовый)"
+                  onchange="setClientRateOverride('${r.w.id}','${r.cl.id}','rate',this.value)"
+                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+              </td>
+              <td style="padding:10px 12px;text-align:right">
+                <input type="number" value="${ov.otRate??''}" min="0" step="0.5" placeholder="${eff.otRate}" title="Пусто = ${eff.otRate}"
+                  onchange="setClientRateOverride('${r.w.id}','${r.cl.id}','otRate',this.value)"
+                  style="width:70px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+              </td>
+              <td style="padding:10px 12px;text-align:right">
+                <input type="number" value="${ov.shabbatRate??''}" min="0" step="0.5" placeholder="${eff.shabbatRate}" title="Пусто = ${eff.shabbatRate}"
+                  onchange="setClientRateOverride('${r.w.id}','${r.cl.id}','shabbatRate',this.value)"
+                  style="width:70px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>
+    </div>`;
+}
+function setClientRateOverride(wid,cid,field,val){
+  const w=workers.find(x=>x.id===wid);
+  if(!w) return;
+  if(!w.clientRates) w.clientRates={};
+  if(!w.clientRates[cid]) w.clientRates[cid]={};
+  w.clientRates[cid][field]=(val===''||val==null)?null:(parseFloat(val)||0);
+  if(Object.values(w.clientRates[cid]).every(v=>v==null)) delete w.clientRates[cid];
+  autoSave();
+  renderRateMatrix();
+}
+
 function setWorkerRate(wid,rate){
   const w=workers.find(x=>x.id===wid);
   if(w){ w.hourlyRate=parseFloat(rate)||0; autoSave(); }
