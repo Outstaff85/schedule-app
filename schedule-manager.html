@@ -3774,7 +3774,12 @@ function aiToWorker(isId){
   setTimeout(()=>{
     const set=(id,v)=>{ const el=document.getElementById(id); if(el&&v) el.value=v; };
     set('wName',name);
-    set('wAddress',(isId?'ת.ז. ':'Passport ')+no);
+    // The scan reads address and city as separate fields, so they go straight
+    // into their own boxes — the document number no longer rides along inside
+    // the address string the way it did when the two shared one field.
+    set('wDocId',no);
+    set('wAddress',_v('aiAddress'));
+    set('wCity',_v('aiCity'));
     set('wNotes',(isId?'Israeli citizen':'Nationality: '+nat)+' · DOB: '+dob+(exp?' · Expiry: '+exp:''));
   },60);
 }
