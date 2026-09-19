@@ -868,22 +868,51 @@ function israeliDayPay(hours, rate, isSat){
   const regularPay=reg*rate*base, otPay=o1*rate*ot1+o2*rate*ot2;
   return { regularPay, otPay, total:regularPay+otPay, isSat };
 }
-// Effective per-hour rates: base tariff × surcharge, with optional manual per-worker override.
-function wRegRate(w){ const b=Number(w&&w.hourlyRate)||0; return (w&&w.regRate!=null&&w.regRate!=='')?Number(w.regRate):b; }
-function wOtRate(w){ const b=Number(w&&w.hourlyRate)||0; return (w&&w.otRate!=null&&w.otRate!=='')?Number(w.otRate):Math.round(b*PAY_RULES.otMult*100)/100; }
-function wShabRate(w){ const b=Number(w&&w.hourlyRate)||0; return (w&&w.shabbatRate!=null&&w.shabbatRate!=='')?Number(w.shabbatRate):Math.round(b*PAY_RULES.shabbatMult*100)/100; }
+// Effective per-hour rates for one shift, resolving a 3-tier priority chain —
+// most specific wins, each tier optional, falling through to the next:
+//   1. worker.clientRates[clientId] — this worker's own override for this
+//      specific client (set in the Бухгалтерия rate matrix).
+//   2. client.defaultHourlyRate/defaultOtRate/defaultShabbatRate — this
+//      client's own standard rate, if it has one.
+//   3. the worker's own base rate — hourlyRate, or its regRate/otRate/
+//      shabbatRate override — exactly as before this feature existed.
+// clientId is optional; omitting it (or a worker/client with no override at
+// any tier) falls straight through to tier 3, so this is a no-op for anyone
+// not using per-client rates. `has*Override` tells shiftPay() whether an
+// explicit flat OT/Shabbat rate was found at ANY tier (vs falling back to
+// the israeliDayPay law tiers) — the three tiers can't be told apart just by
+// comparing the resolved number to a law-tier calculation.
+function effectiveRates(w, clientId){
+  const ov = clientId && w && w.clientRates && w.clientRates[clientId];
+  const cl = clientId && clients.find(c=>c.id===clientId);
+  const base = Number(w&&w.hourlyRate)||0;
+  const pick=(ovVal,clVal,wVal,fallback)=>{
+    if(ovVal!=null&&ovVal!=='') return {val:Number(ovVal),has:true};
+    if(clVal!=null&&clVal!=='') return {val:Number(clVal),has:true};
+    if(wVal!=null&&wVal!=='') return {val:Number(wVal),has:true};
+    return {val:fallback,has:false};
+  };
+  const reg  = pick(ov&&ov.rate,        cl&&cl.defaultHourlyRate,  w&&w.regRate,     base);
+  const ot   = pick(ov&&ov.otRate,      cl&&cl.defaultOtRate,      w&&w.otRate,      Math.round(reg.val*PAY_RULES.otMult*100)/100);
+  const shab = pick(ov&&ov.shabbatRate, cl&&cl.defaultShabbatRate, w&&w.shabbatRate, Math.round(reg.val*PAY_RULES.shabbatMult*100)/100);
+  return {regRate:reg.val, otRate:ot.val, shabbatRate:shab.val, hasOtOverride:ot.has, hasShabbatOverride:shab.has};
+}
+function wRegRate(w,clientId){ return effectiveRates(w,clientId).regRate; }
+function wOtRate(w,clientId){ return effectiveRates(w,clientId).otRate; }
+function wShabRate(w,clientId){ return effectiveRates(w,clientId).shabbatRate; }
 // Pay for one shift's hours. Default: the israeliDayPay law tiers (125%/150% OT,
-// 150%/175%/200% Shabbat) applied to the worker's regular rate. A worker's manual
-// OT/Shabbat rate override replaces the law tiers with that single flat rate across
-// all OT/Shabbat hours of the shift, same as before this defaulted to the law.
-function shiftPay(hours, w, isSat){
-  const RM=PAY_RULES.regularMax, regRate=wRegRate(w);
+// 150%/175%/200% Shabbat) applied to the effective regular rate. An explicit flat
+// OT/Shabbat rate (at any tier above) replaces the law tiers with that single flat
+// rate across all OT/Shabbat hours of the shift, same as before this defaulted to
+// the law. clientId is optional — see effectiveRates() above.
+function shiftPay(hours, w, isSat, clientId){
+  const RM=PAY_RULES.regularMax, r=effectiveRates(w,clientId);
   if(isSat){
-    if(w && w.shabbatRate!=null && w.shabbatRate!=='') return hours*wShabRate(w);
-    return israeliDayPay(hours, regRate, true).total;
+    if(r.hasShabbatOverride) return hours*r.shabbatRate;
+    return israeliDayPay(hours, r.regRate, true).total;
   }
-  if(w && w.otRate!=null && w.otRate!=='') return Math.min(hours,RM)*regRate + Math.max(hours-RM,0)*wOtRate(w);
-  return israeliDayPay(hours, regRate, false).total;
+  if(r.hasOtOverride) return Math.min(hours,RM)*r.regRate + Math.max(hours-RM,0)*r.otRate;
+  return israeliDayPay(hours, r.regRate, false).total;
 }
 function fmtDate(d){ return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); }
 function fmtRange(d){ const e=new Date(d); e.setDate(e.getDate()+6); return fmtDate(d)+' – '+fmtDate(e); }
