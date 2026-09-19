@@ -3171,6 +3171,17 @@ async function onScanFilesSelected(fileList){
     // generate our own, see aiFillForm101), find the first ID/passport page
     // for the worker card, keep everything else ("contract" etc.) as-is.
     let foundParsed=null;
+    // An Israeli ID's address/city/children live on a separate ספח (appendix)
+    // card — when that's a different photo than the front card (not the same
+    // combined shot), the loop used to stop calling aiReadDoc entirely after
+    // the front card was found, silently dropping the ספח into "other pages"
+    // (just appended to the final PDF) with its data never read. Once we know
+    // the front card is missing address/city, keep sending remaining pages
+    // through the same aiReadDoc call — a standalone ספח photo matches the
+    // same israeli_id shape (name/ID/address/city, no biometric fields) — and
+    // fold in whatever it finds, stopping as soon as it's found. Foreign
+    // passports have no ספח, so this never fires for that path.
+    let sefachNeeded=false;
     const otherPages=[];
     for(let i=0;i<items.length;i++){
       const it=items[i];
@@ -3186,7 +3197,21 @@ async function onScanFilesSelected(fileList){
           if(p&&(p.type==='israeli_id'||p.type==='passport')){
             foundParsed=p;
             window.__aiScanImage={b64:it.b64,mediaType:it.mediaType};
+            sefachNeeded=p.type==='israeli_id'&&(!p.address||!p.city);
             continue; // эта страница уже сохранена как window.__aiScanImage, в "прочие" не дублируем
+          }
+        }catch(e){ console.error(e); }
+      } else if(sefachNeeded){
+        try{
+          const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
+          const json=await resp.json();
+          const p=json&&json.parsed;
+          if(p&&p.type==='israeli_id'&&(p.address||p.city)){
+            if(!foundParsed.address) foundParsed.address=p.address||'';
+            if(!foundParsed.city) foundParsed.city=p.city||'';
+            if((!foundParsed.children||!foundParsed.children.length)&&Array.isArray(p.children)&&p.children.length) foundParsed.children=p.children;
+            sefachNeeded=false;
+            continue; // данные слиты в foundParsed, отдельной "прочей" страницей не дублируем
           }
         }catch(e){ console.error(e); }
       }
