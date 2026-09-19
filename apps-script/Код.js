@@ -225,7 +225,13 @@ function createUser(body, auth) {
   const tenantsSh = getOrCreateSheet(ss, SH_TENANTS);
   ensureHeaders(tenantsSh, ['tenantId', 'companyName', 'deductionsFileNumber', 'phone', 'street', 'streetNumber', 'city', 'createdAt']);
   const now = new Date().toISOString();
-  tenantsSh.appendRow([
+  // Written through a pre-formatted text range rather than appendRow: a plain
+  // append lets Sheets read a digit string as a number and drop the leading
+  // zero (see updateTenant), losing it on the firm's very first save.
+  const newRow = tenantsSh.getLastRow() + 1;
+  const range = tenantsSh.getRange(newRow, 1, 1, 8);
+  range.setNumberFormat('@');
+  range.setValues([[
     tenantId,
     body.companyName || '',
     body.deductionsFileNumber || '',
@@ -234,7 +240,7 @@ function createUser(body, auth) {
     body.streetNumber || '',
     body.city || '',
     now
-  ]);
+  ]]);
 
   const salt = makeSalt();
   const userId = Utilities.getUuid();
