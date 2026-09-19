@@ -2154,8 +2154,12 @@ async function submitEditFirm(){
     const json = await res.json();
     if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось сохранить'; return; }
     closeModal('editFirmOverlay');
-    showToast('Фирма обновлена');
-    renderFirmsList();
+    showToast('Данные фирмы сохранены');
+    cacheTenantProfile(__editingFirmTenantId, json.profile);
+    refreshFirmProfileWarnings();
+    // Only the super-admin has a Firms list to refresh (and the right to ask
+    // the backend for one) — a firm editing its own profile has no such screen.
+    if(getSession()?.role === 'superadmin') renderFirmsList();
   }catch(e){ errEl.textContent = 'Сеть недоступна'; }
   finally{ btn.disabled = false; btn.textContent = 'Сохранить'; }
 }
