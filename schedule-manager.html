@@ -4518,7 +4518,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
       });
     } else {
       // Foreign passport: fill passport_no, work start, fund from aiPp* inputs
-      setComb('passport_no',13,no,9);
+      setComb('passport_no',13,no,10);
       fillWorkStart(document.getElementById('aiPpWork')?.value);
       const fund=document.getElementById('aiPpFund')?.value;
       if(fund){ chk('hf_yes'); (customFont?setH:setT)('hf_name',HEALTH_FUND_HE[fund]||fund); }
