@@ -1283,7 +1283,7 @@ function saveWorker(){
   const clientIds=[...document.querySelectorAll('#wClientPick input:checked')].map(el=>el.value);
   const schedule=DAYS.map((_,i)=>{ const type=document.getElementById(`wt${i}`).value; return {type,start:type==='work'?document.getElementById(`ws${i}`).value:null,end:type==='work'?document.getElementById(`we${i}`).value:null}; });
   if(editingWorkerIdx!==null){
-    workers[editingWorkerIdx]={...workers[editingWorkerIdx],name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,address,notes,incomeType,otherIncomeType,clientIds,schedule};
+    workers[editingWorkerIdx]={...workers[editingWorkerIdx],name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,clientIds,schedule};
     showToast(name+' updated!');
   } else {
     const token=genToken();
