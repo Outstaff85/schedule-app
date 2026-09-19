@@ -4195,6 +4195,11 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
   // this function also runs in the background from saveWorker(), where that
   // panel isn't on screen.
   let firmMissing=[];
+  // Hoisted above the try so the catch block (below) can still flag this
+  // worker's failed upload for the "no document" badge even when the
+  // failure happens before the assignment finishes (e.g. the pdf-lib CDN
+  // load itself, before targetWorker would otherwise be resolved).
+  let targetWorker=(workerId||window.__aiRescanWorkerId)?workers.find(x=>x.id===(workerId||window.__aiRescanWorkerId)):null;
   try{
     if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader-2 spin"></i> '+(mode==='upload'?'Загружаю…':'Готовлю…'); }
     await _loadPdfLib();
@@ -4206,10 +4211,6 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     doc.registerFontkit(fontkit);
     const form=doc.getForm();
     const page1=doc.getPages()[0];
-    // Resolve the worker (if any) up front — the declaration date and income
-    // type below both read from the worker record, not just the scan inputs.
-    const targetWorkerId=workerId||window.__aiRescanWorkerId||null;
-    const targetWorker=targetWorkerId?workers.find(x=>x.id===targetWorkerId):null;
     // These fields default to a small shrink-to-fit size; force a bigger, fixed
     // size instead so the filled-in text is easy to read (each number chosen to
     // still fit the field's own box for a realistically long value).
