@@ -678,8 +678,11 @@
 </div>
 
 <div class="overlay" id="editFirmOverlay" style="z-index:950" onclick="if(event.target===this)closeModal('editFirmOverlay')">
-  <div class="modal" style="max-width:420px">
-    <div class="modal-title">Редактировать фирму</div>
+  <div class="modal" style="max-width:420px" oninput="__firmEditDirty=true">
+    <div class="modal-title" id="firmEditTitle">Редактировать фирму</div>
+    <div style="font-size:11px;color:var(--text3);line-height:1.5;margin:-6px 0 10px">
+      Эти данные подставляются в раздел א («פרטי המעסיק») каждой Формы 101.
+    </div>
     <div class="field"><label>Название фирмы</label><input type="text" id="firmEditCompanyName"></div>
     <div class="field"><label>מספר תיק ניכויים (8 цифр)</label><input type="text" id="firmEditDeductionsNo" maxlength="8" inputmode="numeric"></div>
     <div class="field"><label>Телефон</label><input type="text" id="firmEditPhone"></div>
