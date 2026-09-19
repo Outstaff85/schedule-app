@@ -1091,7 +1091,15 @@ function aiReadDoc(body){
 
   var parsed;
   try { parsed = JSON.parse(m ? m[0] : text); }
-  catch(e){ return {error:'AI вернул нечитаемый ответ', raw: String(text).slice(0,400)}; }
+  catch(e){
+    // Anthropic reports stop_reason:'max_tokens' when the response was cut
+    // off by the max_tokens cap rather than the model finishing naturally —
+    // surfacing that here turns "AI вернул нечитаемый ответ" (which reads
+    // like a garbled/bad response) into an actionable "raise max_tokens"
+    // signal instead of requiring a guess-and-check round every time.
+    var truncated = json.stop_reason === 'max_tokens';
+    return {error: truncated ? 'Ответ ИИ обрезан лимитом max_tokens — увеличьте лимит' : 'AI вернул нечитаемый ответ', raw: String(text).slice(0,400)};
+  }
 
   return {ok: true, parsed: parsed};
 }
