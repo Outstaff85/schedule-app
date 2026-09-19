@@ -2769,9 +2769,10 @@ function exportSalaryCSV(){
     const ins=d.entries.filter(x=>x.type==='in').map(x=>x.time).sort();
     const outs=d.entries.filter(x=>x.type==='out').map(x=>x.time).sort();
     const _w=workers.find(w=>w.id===d.wid);
-    const rate=_w?.hourlyRate||0;
+    const shiftClientId=d.entries[0]&&d.entries[0].clientId;
+    const rate=wRegRate(_w,shiftClientId);
     const isSat=d.date.getDay()===6;
-    const pay=shiftPay(res.hours,_w,isSat);
+    const pay=shiftPay(res.hours,_w,isSat,shiftClientId);
     const clientObj=punchClientObject(d.entries[0])||workerClientObject(d.wid);
     rows.push([d.worker, clientObj, d.date.toLocaleDateString('en-GB'), ins[0]||'', outs[outs.length-1]||'', res.hours.toFixed(2), rate, pay.toFixed(2), res.warnings.join('; ')]);
   });
