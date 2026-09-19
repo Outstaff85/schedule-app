@@ -99,6 +99,20 @@ sitting next to it. `aiFillForm101()` now calls
 `form.removeField(form.getTextField('tax_year'))` right after drawing the
 digits, so no empty interactive widget is left behind to be highlighted.
 
+## "א. פרטי המעסיק" (employer details) row — right-aligned, no AcroForm fields
+
+Like the tax-year box, this row (native y=659.89..673.89; columns
+right-to-left: שם, כתובת, מספר טלפון, מספר תיק ניכויים) has zero underlying
+AcroForm widgets — verified the same way (zero widgets in this y-range) —
+so it's filled by hand from the logged-in firm's Tenants profile via
+`drawRight()` (`NAME_RECT`/`ADDRESS_RECT`/`PHONE_RECT`, size 11) and
+`drawCombRaw()` for the digits-only deductions-file box (`DEDUCTIONS_RECT`,
+size 11). `drawRight()` right-aligns each string against its box's right
+edge (`rect.x+rect.width-tw-2`) rather than left-aligning at `rect.x+2` —
+this row reads right-to-left like the rest of the Hebrew form, so Latin/
+Hebrew text alike should sit against the right edge of its column, not
+drift toward the box's (left) start.
+
 ## Worker-level Form 101 declarations (Add/Edit Worker modal)
 
 Two dropdowns on the worker record feed section ד/ה directly, independent of
