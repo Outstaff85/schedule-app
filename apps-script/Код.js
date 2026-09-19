@@ -1281,7 +1281,18 @@ function _companyFolder(tenantId){
   const cachedId = profile && profile.driveFolderId;
   if(cachedId){
     try{ companyFolder = DriveApp.getFolderById(cachedId); }
-    catch(e){ companyFolder = null; } // cached folder was trashed/deleted by hand — fall through and re-resolve by name
+    catch(e){ companyFolder = null; } // cached folder was PERMANENTLY deleted — fall through and re-resolve by name
+    // getFolderById() still succeeds for a folder sitting in Trash (only a
+    // permanent delete makes it throw, above) — so a manual/accidental
+    // trash of this folder used to go unnoticed: the code kept silently
+    // writing new worker docs into it forever, invisible in normal Drive
+    // browsing (a trashed folder never appears as a child of its parent)
+    // even though it stayed reachable — and searchable — by ID. Restore it
+    // in place instead of abandoning it, so existing files/history aren't
+    // orphaned and a second same-named folder never gets created.
+    if(companyFolder && companyFolder.isTrashed()){
+      try{ companyFolder.setTrashed(false); }catch(e){}
+    }
   }
   if(!companyFolder){
     // Two different tenants can legitimately share the same companyName
