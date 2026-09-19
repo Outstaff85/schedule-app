@@ -3618,7 +3618,11 @@ function warpQuadToRect(img,quadSrcPx){
   const [tl,tr,br,bl]=quadSrcPx;
   const topLen=Math.hypot(tr.x-tl.x,tr.y-tl.y), botLen=Math.hypot(br.x-bl.x,br.y-bl.y);
   const leftLen=Math.hypot(bl.x-tl.x,bl.y-tl.y), rightLen=Math.hypot(br.x-tr.x,br.y-tr.y);
-  const MAXDIM=1400;
+  // Anthropic's vision models don't benefit past ~1568px on the long edge
+  // (internally resized above that) — this was capped lower (1400) than that
+  // ceiling for no real reason, losing detail on small print (dates, the
+  // 9-digit ID number) on a worn/creased card for no size or cost saving.
+  const MAXDIM=1568;
   let outW=Math.round((topLen+botLen)/2), outH=Math.round((leftLen+rightLen)/2);
   const scale=Math.min(1,MAXDIM/Math.max(outW,outH,1));
   outW=Math.max(20,Math.round(outW*scale)); outH=Math.max(20,Math.round(outH*scale));
