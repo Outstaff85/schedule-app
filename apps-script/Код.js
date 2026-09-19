@@ -54,6 +54,7 @@ function doPost(e) {
       case 'logError':             return jsonResponse(logError(body));
       case 'aiReadDoc':            return jsonResponse(aiReadDoc(body));
       case 'aiDetectAlign':        return jsonResponse(aiDetectAlign(body));
+      case 'aiVerifyField':        return jsonResponse(aiVerifyField(body));
       case 'saveWorkerDoc':        return jsonResponse(saveWorkerDoc(body, tenantId));
       case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body, tenantId));
       case 'createUser':           return jsonResponse(createUser(body, auth));
