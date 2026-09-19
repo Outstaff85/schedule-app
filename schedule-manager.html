@@ -3776,6 +3776,11 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
   // where `event` is the Add/Save Worker button, not a Form 101 button.
   const btn=btnEl!==undefined?btnEl:(event&&event.target?event.target.closest('button'):null);
   const btnLabel=btn?btn.innerHTML:'';
+  // Filled in by the employer-details block below, reported once the PDF is
+  // actually out — the Form 101 panel carries the same warning inline, but
+  // this function also runs in the background from saveWorker(), where that
+  // panel isn't on screen.
+  let firmMissing=[];
   try{
     if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader-2 spin"></i> '+(mode==='upload'?'Загружаю…':'Готовлю…'); }
     await _loadPdfLib();
