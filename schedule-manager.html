@@ -3199,6 +3199,7 @@ async function onScanFilesSelected(fileList){
             // a wrong ID/date digit is just as costly whether it came from one
             // photo or a multi-file packet.
             foundParsed=p.fieldBoxes?await verifyDigitFields(p,it.b64,it.mediaType):p;
+            foundParsed=await verifyIdChecksum(foundParsed,it.b64,it.mediaType);
             window.__aiScanImage={b64:it.b64,mediaType:it.mediaType};
             sefachNeeded=foundParsed.type==='israeli_id'&&(!foundParsed.address||!foundParsed.city);
             continue; // эта страница уже сохранена как window.__aiScanImage, в "прочие" не дублируем
