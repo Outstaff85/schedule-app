@@ -47,6 +47,7 @@ Both HTML files talk to the **same** Google Apps Script Web App endpoint (`GS_UR
 - `login` — authenticate with username/password (no token required; returns session token, role, tenantId, tenantProfile, and expiry). Only reachable action without a prior session.
 - `createUser` (super-admin only) — create a new firm (tenant) with initial Users login; accepts companyName, deductionsFileNumber, phone, street, streetNumber, city, username, password; returns userId and tenantId.
 - `updateTenant` — edit firm profile (companyName, deductionsFileNumber, phone, street, streetNumber, city); super-admin can edit any firm, a firm's own login edits only itself. **Returns refreshed tenant profile** (`{ok: true, profile: {...}}`) — the client caches the profile once at login, so this response refreshes that cache without requiring re-login to see edits.
+- `loadTenantProfile` — fetch the current tenant's profile on-demand. Returns `{ok: true, profile: {...}}` if tenantId is set, or `{ok: true, profile: null}` for super-admin sessions with no active tenant context. Used to refresh the cached profile without requiring edit or re-login.
 - `listTenants` (super-admin only) — fetch all firms with their worker/client/active counts and last-save timestamp.
 - `setTenantActive` / `deleteTenant` (super-admin only) — activate/deactivate/delete firms and their logins.
 - `saveSchedule` — persist workers/clients/weekStart; includes optimistic concurrency control (rejects if `baseSavedAt` conflicts with server version). `clients.radius` always coerced to NUMBER (default 100m).
