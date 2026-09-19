@@ -4507,11 +4507,11 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
       const pageH=page1.getHeight();
       children.slice(0,10).forEach((c,i)=>{
         const rowY=pageH-CHILD_ROW_Y[i+1], rowH=CHILD_ROW_Y[i+1]-CHILD_ROW_Y[i];
-        if(c.idNo) drawCombRaw(String(c.idNo).replace(/\D/g,''),9,{x:CHILD_COLS.id.x,y:rowY,width:CHILD_COLS.id.width,height:rowH},8);
-        if(c.dob){ const dd=String(c.dob).replace(/\D/g,''); if(dd) drawCombRaw(dd,8,{x:CHILD_COLS.dob.x,y:rowY,width:CHILD_COLS.dob.width,height:rowH},8); }
+        if(c.idNo) drawCombRaw(String(c.idNo).replace(/\D/g,''),9,{x:CHILD_COLS.id.x,y:rowY,width:CHILD_COLS.id.width,height:rowH},9);
+        if(c.dob){ const dd=String(c.dob).replace(/\D/g,''); if(dd) drawCombRaw(dd,8,{x:CHILD_COLS.dob.x,y:rowY,width:CHILD_COLS.dob.width,height:rowH},9); }
         if(c.name){
           const nameFont=customFont||stdFont;
-          const size=8, th=nameFont.heightAtSize(size,{descender:false});
+          const size=9, th=nameFont.heightAtSize(size,{descender:false});
           const tw=nameFont.widthOfTextAtSize(String(c.name),size);
           page1.drawText(String(c.name),{x:CHILD_COLS.name.x+CHILD_COLS.name.width-tw-2,y:rowY+(rowH-th)/2,size,font:nameFont});
         }
