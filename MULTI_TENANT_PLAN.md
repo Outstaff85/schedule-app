@@ -69,7 +69,7 @@ both halves are live together on `main`.
       reversible, flips the `active` column on every `Users` row for that
       tenant; a deactivated login is rejected at `login()` with "Аккаунт
       отключён" but the firm's schedule/punches/Drive docs are untouched
-      (an already-issued session token still works until its normal 24h
+      (an already-issued session token still works until its normal 6h
       expiry, since sessions are stateless with no revocation list).
       `confirmDeleteTenant(tenantId, companyName)` calls `deleteTenant` —
       irreversible, gated by a `confirm()` plus typing the exact company
