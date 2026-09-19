@@ -3930,12 +3930,8 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     (function(){
       const profile=activeTenantProfile();
       // A blank field here just leaves its box empty on the printed form, which
-      // is easy to miss — surface it. The Form 101 panel shows the same warning
-      // inline, but this path also runs in the background from saveWorker(),
-      // where that panel isn't on screen. Fires after the success toast's own
-      // 2.5s so the two don't overwrite each other.
-      const missing=firmProfileMissing(profile);
-      if(missing.length) setTimeout(()=>showToast('⚠ Профиль фирмы неполный, в Форме 101 пусто: '+missing.join(', '),4000),2600);
+      // is easy to miss — remembered so the end of this function can say so.
+      firmMissing=firmProfileMissing(profile);
       if(!profile) return;
       const ROW={y:659.89,height:14};
       const NAME_RECT={x:414.9,width:540.4-414.9,...ROW};
