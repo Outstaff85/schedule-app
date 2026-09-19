@@ -1305,7 +1305,14 @@ function saveWorker(){
   const incomeType=document.getElementById('wIncomeType')?.value||'';
   const otherIncomeType=document.getElementById('wOtherIncomeType')?.value||'';
   const clientIds=[...document.querySelectorAll('#wClientPick input:checked')].map(el=>el.value);
-  const schedule=DAYS.map((_,i)=>{ const type=document.getElementById(`wt${i}`).value; return {type,start:type==='work'?document.getElementById(`ws${i}`).value:null,end:type==='work'?document.getElementById(`we${i}`).value:null}; });
+  // Only a grid the user actually opened decides the schedule. Left closed, an
+  // existing worker keeps the shifts they already had and a new one is created
+  // with none — added to the roster without being dropped into the week.
+  const schedule=__wScheduleOpen
+    ? DAYS.map((_,i)=>{ const type=document.getElementById(`wt${i}`).value; return {type,start:type==='work'?document.getElementById(`ws${i}`).value:null,end:type==='work'?document.getElementById(`we${i}`).value:null}; })
+    : (editingWorkerIdx!==null
+        ? workers[editingWorkerIdx].schedule
+        : DAYS.map(()=>({type:'off',start:null,end:null})));
   if(editingWorkerIdx!==null){
     workers[editingWorkerIdx]={...workers[editingWorkerIdx],name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,clientIds,schedule};
     showToast(name+' updated!');
