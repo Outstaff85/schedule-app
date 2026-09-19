@@ -4366,7 +4366,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
         else { fld.setText(String(v).replace(/[\u0590-\u05FF\uFB1D-\uFB4F]/g,'?')); }
       }catch(e){}
     };
-    setH('surname',surname); setH('given_name',given); setComb('dob',8,dob.replace(/\D/g,''),9);
+    setH('surname',surname); setH('given_name',given); setComb('dob',8,dob.replace(/\D/g,''),10);
     setT('id_top2',no);
     // The "tax_year" AcroForm field's own rect doesn't match its printed box
     // on this template (narrower and shifted up relative to the visible
