@@ -433,21 +433,6 @@
         <div id="dashLog" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden"></div>
       </div>
 
-      <!-- Salary summary -->
-      <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px"><i class="ti ti-cash"></i> Salary Calculation</div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <select id="salaryPeriod" onchange="renderDashboard()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:4px 8px;font-size:12px;outline:none">
-              <option value="week">This Week</option>
-              <option value="month">This Month</option>
-              <option value="all">All Time</option>
-            </select>
-            <button class="btn sm" onclick="exportSalaryCSV()"><i class="ti ti-upload"></i> Export</button>
-          </div>
-        </div>
-        <div id="dashSalary"></div>
-      </div>
     </div>
 
     <div class="page-section visible" id="sectionSchedule">
