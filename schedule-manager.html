@@ -2654,7 +2654,11 @@ function renderSalary(){
       else { byWorker[workerId].regH+=Math.min(h,RM); byWorker[workerId].otH+=Math.max(h-RM,0); }
       byWorker[workerId].hours+=h;
       byWorker[workerId].days++;
-      byWorker[workerId].total+=shiftPay(h,wc,isSat);
+      // The shift's own clientId (from its opening IN punch) picks up any
+      // per-client rate override — a worker who worked at two clients with
+      // different rates in the same period still gets each shift priced
+      // correctly, even though this table shows one summed row per worker.
+      byWorker[workerId].total+=shiftPay(h,wc,isSat,entries[0]&&entries[0].clientId);
     }
   });
 
