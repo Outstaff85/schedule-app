@@ -1549,7 +1549,10 @@ function deleteClient(cid){
   const c=clients.find(x=>x.id===cid);
   if(!c||!confirm('Remove client "'+c.name+'"?'))return;
   clients=clients.filter(x=>x.id!==cid);
-  workers.forEach(w=>{ if(w.clientIds) w.clientIds=w.clientIds.filter(id=>id!==cid); });
+  workers.forEach(w=>{
+    if(w.clientIds) w.clientIds=w.clientIds.filter(id=>id!==cid);
+    if(w.clientRates&&w.clientRates[cid]) delete w.clientRates[cid];
+  });
   if(selectedClientId===cid) selectedClientId=null;
   renderClientsPage(); renderSidebarClients(); render(); autoSave(); showToast(c.name+' removed');
 }
