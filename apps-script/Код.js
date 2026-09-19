@@ -58,6 +58,7 @@ function doPost(e) {
       case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body, tenantId));
       case 'createUser':           return jsonResponse(createUser(body, auth));
       case 'updateTenant':         return jsonResponse(updateTenant(body, auth));
+      case 'loadTenantProfile':    return jsonResponse({ ok: true, profile: tenantId ? getTenantProfile(tenantId) : null });
       case 'listTenants':          return jsonResponse(listTenants(auth));
       case 'setTenantActive':      return jsonResponse(setTenantActive(body, auth));
       case 'deleteTenant':         return jsonResponse(deleteTenant(body, auth));
