@@ -1377,10 +1377,13 @@ function toggleExpiryFields(){ const on=document.getElementById('wExpiryEnabled'
 // Collapsible disclosure around the expiry-warning checkbox+fields, mirroring
 // toggleWeeklySchedule()'s button/chevron pattern — collapsed by default
 // unless the worker already has the warning enabled (so an existing setting
-// stays visible without an extra click to find it again).
-let __wExpiryOpen = null;
+// stays visible without an extra click to find it again). Reset in
+// showWorkerModal() on every open, same as __wScheduleOpen — otherwise a
+// stale true/false left over from the previously edited worker could
+// silently disagree with what's actually rendered, needing an extra click
+// to take visible effect.
+let __wExpiryOpen = false;
 function toggleExpirySection(){
-  if(__wExpiryOpen===null) __wExpiryOpen = document.getElementById('wExpiryWrap')?.style.display !== 'none';
   __wExpiryOpen = !__wExpiryOpen;
   const wrap = document.getElementById('wExpiryWrap');
   const chev = document.getElementById('wExpiryChevron');
