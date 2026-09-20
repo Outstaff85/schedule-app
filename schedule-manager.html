@@ -4551,11 +4551,11 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
         const tw=font.widthOfTextAtSize(String(text),size);
         drawTextBold(page1,String(text),{x:rect.x+rect.width-tw-2,y:centerBaselineY(rect,size,font),size,font});
       };
-      drawRight(profile.companyName,NAME_RECT,14);
+      drawRight(profile.companyName,NAME_RECT,12);
       const addr=[profile.street,profile.streetNumber].filter(Boolean).join(' ')+(profile.city?(profile.street||profile.streetNumber?', ':'')+profile.city:'');
-      drawRight(addr,ADDRESS_RECT,14);
-      drawRight(profile.phone,PHONE_RECT,14);
-      if(profile.deductionsFileNumber) drawCombRaw(String(profile.deductionsFileNumber).replace(/\D/g,''),8,DEDUCTIONS_RECT,14);
+      drawRight(addr,ADDRESS_RECT,12);
+      drawRight(profile.phone,PHONE_RECT,12);
+      if(profile.deductionsFileNumber) drawCombRaw(String(profile.deductionsFileNumber).replace(/\D/g,''),8,DEDUCTIONS_RECT,12);
     })();
     if(sex==='M') chk('sex_male'); else if(sex==='F') chk('sex_female');
     if(isIsraeli){ chk('resident_yes'); chk('resident_h'); }
