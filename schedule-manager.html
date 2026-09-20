@@ -998,7 +998,12 @@ function render(){
   if(currentTab==='accounting') renderAccounting();
 }
 
-function getVisible(){ return selectedClientId ? workers.filter(w=>(w.clientIds||[]).includes(selectedClientId)) : workers; }
+// A worker with no 'work' day at all was never given a schedule (left the
+// Weekly Schedule editor closed on creation) — treat that as "manages their
+// own hours, doesn't belong in the combined roster" rather than showing them
+// as a row of day-offs in the All-clients view.
+function hasSchedule(w){ return (w.schedule||[]).some(s=>s.type==='work'); }
+function getVisible(){ return selectedClientId ? workers.filter(w=>(w.clientIds||[]).includes(selectedClientId)) : workers.filter(hasSchedule); }
 
 function renderStats(){
   const vis=getVisible();
