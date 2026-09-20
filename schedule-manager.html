@@ -1514,10 +1514,14 @@ function deleteWorker(wi){
   if(!confirm('Remove "'+w.name+'"?'))return;
   const n=w.name;
   const fileId=w.docFileId||extractDriveFileId(w.docUrl);
+  const assetsFileId=w.assetsFileId;
   workers.splice(wi,1);
   render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
   showToast(n+' removed');
   if(fileId) gsDeleteWorkerDoc(fileId);
+  // Same backend action trashes any file by ID regardless of type — reused
+  // here for the scan+signature sidecar so it doesn't outlive the worker.
+  if(assetsFileId) gsDeleteWorkerDoc(assetsFileId);
 }
 function deleteWorkerFromCard(wi){ closeModal('workerCardOverlay'); deleteWorker(wi); }
 
