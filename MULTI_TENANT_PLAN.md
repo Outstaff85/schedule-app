@@ -3,17 +3,7 @@
 Design doc for the multi-tenant version of this app: a super-admin creates
 "firms" (tenants), each firm logs in and only ever sees its own data.
 
-**Merged to `main` 2026-09-18** (PR #34, `feature/multi-tenant` → `main`).
-The warning below applied while the feature was built incrementally on that
-branch and is kept for historical context — it no longer applies now that
-both halves are live together on `main`.
-
-> **(historical)** never push straight to `main` while this is in progress: a
-> push to `main` auto-deploys both the Apps Script backend and Firebase
-> Hosting immediately (see `CLAUDE.md`/`deploy.yml`/`deploy-apps-script.yml`),
-> and the backend and frontend halves of this feature are not independently
-> deployable — shipping one without the other breaks the live app for the
-> real "Odinson" tenant.
+**Merged to `main` 2026-09-18** (PR #34, `feature/multi-tenant` → `main`); both halves are live together.
 
 ## Status
 
@@ -156,13 +146,6 @@ Three real bugs were caught and fixed this way (all in `schedule-manager.html`):
    `.open` class — so the modal, once opened, could never close. Fixed to
    use `classList.add('open')` like every other overlay in the app.
 
-**(historical, pre-merge checklist)** Before merging to `main`: deploy this
-branch's `apps-script/Код.js` to a **test** Apps Script project (or a
-temporary extra deployment of the real one) first, set `SESSION_SECRET`, run
-`migrateToMultiTenant(...)` there, and walk through login → Firms → create a
-firm → switch into it → save a schedule → open a worker's punch link →
-clock in/out, before pointing production `GS_URL` at it.
-
 ## Data model
 
 - **`Tenants`** — one row per firm, also the source for Form 101 section א:
@@ -242,22 +225,5 @@ Properties) — `login()`/`requireAuth()` throw a clear error otherwise.
 confirmed matching `apps-script/.clasp.json`), via the `stas@odinson.ltd`
 account. This branch has since been merged to `main` (2026-09-18, PR #34).
 
-## Drive / Form 101 (Step 3 — done, see Status above)
-
-This section was the pre-implementation plan for Step 3; kept for the design
-rationale, but treat the Status entry above as authoritative for what was
-actually built and verified.
-
-- PDF storage moved from the single shared `Schedule manager APP/Workers`
-  folder to `Schedule manager APP/<CompanyName>/Workers`, company name
-  resolved server-side from the tenant's own `Tenants` row (never trusted
-  from the client, so a tenant can't spoof another firm's folder).
-- Filename gained the company name: `<docNumber>_<given>_<surname>.pdf` →
-  `<docNumber>_<given>_<surname>_<companyName>.pdf`.
-- Form 101 section א ("פרטי המעסיק") has **no real AcroForm fields** on the
-  template (confirmed via `page.widgets()` — same situation as the page-1 ID
-  box and tax-year box documented in `form101-field-map.md`) — `companyName`/
-  `deductionsFileNumber`/`phone`/address were hand-drawn at the coordinates
-  now recorded in the Status entry above (`NAME_RECT`/`ADDRESS_RECT`/
-  `PHONE_RECT`/`DEDUCTIONS_RECT`), found the same verified way (render +
-  `page.get_drawings()` + crop) and wired into `aiFillForm101()`.
+Drive/Form 101 details (per-tenant folder, filename format, hand-drawn
+section א coordinates) are covered in Step 3 under Status above.
