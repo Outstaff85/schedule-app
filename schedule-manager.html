@@ -1771,13 +1771,6 @@ function openWorkerCard(wi){
         </div>`;
       }).join(''):'<span style="color:var(--text3);font-size:12px">Not assigned to any object</span>'}
     </div>
-    ${punchLink?`<div style="margin-bottom:14px">
-      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Ссылка для отметки</div>
-      <div style="display:flex;gap:6px">
-        <input type="text" readonly value="${esc(punchLink)}" onclick="this.select()" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text2);font-size:12px;padding:6px 8px;outline:none">
-        <button class="btn sm" onclick="copyWorkerLink('${w.id}')" title="Copy"><i class="ti ti-copy"></i></button>
-      </div>
-    </div>`:''}
     <div class="modal-actions">
       <button class="btn sm red" onclick="deleteWorkerFromCard(${wi})"><i class="ti ti-trash"></i> Delete</button>
       ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Скачать документ</a>`:''}
