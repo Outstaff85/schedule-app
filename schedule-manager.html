@@ -4667,10 +4667,20 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
         scanPage.drawImage(img,{x,y,width:w,height:h});
       }catch(e){}
     };
-    if(window.__aiScanImage){
-      await appendScanPage(window.__aiScanImage.b64,window.__aiScanImage.mediaType,'Document scan');
+    // Regenerating reads the scan image back from presetAssets (the Drive
+    // sidecar loaded by regenerateWorkerDoc()) instead of window.__aiScanImage
+    // — that global belongs to whichever scan session happens to be open in
+    // the browser right now, which is a DIFFERENT worker's data if a
+    // background regenerate for worker B fires while the manager is
+    // mid-scanning worker A.
+    const scanImage=isRegen?{b64:presetAssets.scanB64,mediaType:presetAssets.scanMediaType}:window.__aiScanImage;
+    if(scanImage){
+      await appendScanPage(scanImage.b64,scanImage.mediaType,'Document scan');
     }
-    if(Array.isArray(window.__aiPacketOtherPages)){
+    // Same reasoning — extra packet pages (a contract, etc.) aren't persisted
+    // by regenerateWorkerDoc(), so never attach whatever happens to be
+    // sitting in this global during a background regenerate.
+    if(!isRegen && Array.isArray(window.__aiPacketOtherPages)){
       for(const p of window.__aiPacketOtherPages) await appendScanPage(p.b64,p.mediaType,'Document');
     }
     // Without this, viewers ignore our appearance streams and re-render every
