@@ -125,9 +125,17 @@ reported directly with a screenshot of the field in edit mode:
    **on top of** the still-visible separate page drawing underneath —
    visibly garbled, overlapping text. Fixed by dropping the page-redraw
    entirely; `addNewHebrewField` now just does `setText()`+
-   `updateAppearances()`, accepting pdf-lib's known multi-word-RTL
-   last-glyph-drop bug as a smaller, rarer trade-off than double-rendered
-   text on every edit.
+   `updateAppearances()`. **This re-exposes pdf-lib's known multi-word-RTL
+   glyph-drop bug** — confirmed live: `employer_name` "אודינסון בע"מ"
+   rendered as "**ודינסון** בע"מ", missing the leading א (the visually
+   rightmost glyph in this right-aligned field, though the first character
+   typed — consistent with an alignment-width miscalculation pushing it
+   outside the field's BBox to be clipped, not the character being dropped
+   from the string). **Presented to the user as an explicit choice against
+   reverting; they chose to keep this** (real, editable field; occasional
+   dropped glyph when viewing) over the double-rendered-on-edit
+   alternative. Don't silently revert to the blank+redraw workaround —
+   that was tried and explicitly rejected.
 
 **Trade-off knowingly accepted:** a previous round of hand-drawn text let
 this app pick the *exact* pixel position of each character (including a
