@@ -1717,17 +1717,6 @@ function renderWorkersPage(){
 
 const INCOME_TYPE_LABELS = {monthly:'Monthly salary',secondary:'2nd job salary',partial:'Partial salary',daily:'Daily wage',pension:'Pension',scholarship:'Scholarship'};
 const OTHER_INCOME_LABELS = {none:'No other income',monthly:'Monthly salary',secondary:'2nd job salary',partial:'Partial salary',daily:'Daily wage',pension:'Pension',scholarship:'Scholarship'};
-// Compact weekly-schedule strip for the worker card: one chip per day (Sun..Sat),
-// muted for days off, showing the shift's time range for working days.
-function workerScheduleStripHtml(w){
-  return (w.schedule||[]).map((sh,i)=>{
-    const isWork=sh&&sh.type==='work';
-    return `<div style="flex:1;min-width:58px;text-align:center;padding:6px 4px;border-radius:8px;background:${isWork?'var(--bg3)':'transparent'};border:1px solid ${isWork?'var(--border2)':'var(--border)'}">
-      <div style="font-size:10px;font-weight:700;color:${isWork?'var(--text2)':'var(--text3)'};text-transform:uppercase">${DAYS[i]}</div>
-      <div style="font-size:11px;color:${isWork?'var(--text)':'var(--text3)'};margin-top:2px;white-space:nowrap">${isWork?esc(sh.start||'')+'–'+esc(sh.end||''):'вых'}</div>
-    </div>`;
-  }).join('');
-}
 function openWorkerCard(wi){
   const w=workers[wi]; if(!w) return;
   const c=WORKER_COLORS[w.colorIdx%8], ini=w.name.slice(0,2).toUpperCase();
