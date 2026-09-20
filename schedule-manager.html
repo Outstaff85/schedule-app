@@ -4356,8 +4356,8 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     const fieldSizes={};
     const setSize=(n,size)=>{ fieldSizes[n]=size; try{ form.getTextField(n).acroField.setDefaultAppearance('/Helv '+size+' Tf 0 g'); }catch(e){} };
     setSize('surname',10); setSize('given_name',10); setSize('addr_street',10);
-    setSize('addr_city',10); setSize('hf_name',10); setSize('id_top2',10);
-    setSize('sign_date',10);
+    setSize('addr_city',10); setSize('hf_name',10); setSize('id_top2',9);
+    setSize('sign_date',9);
     const setT=(n,v)=>{ try{ if(v) form.getTextField(n).setText(String(v)); }catch(e){} };
     const CHECK_BLUE=PDFLib.rgb(0.09,0.32,0.85);
     const allPages=doc.getPages();
@@ -4442,15 +4442,40 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // already ships (e.g. the mismatched native `tax_year` field is left
     // alone — this creates a second field, `tax_year_box`, at the box's
     // actual position).
+    // pdf-lib's addToPage() gives a brand-new field widget a default white
+    // /MK background (even with borderWidth:0, which only zeroes the border
+    // line, not the fill) — that background is an annotation, painted over
+    // the page's own content in the normal stacking order, so it silently
+    // hid this app's own manually-drawn text underneath it in real viewers
+    // (Adobe, Chrome) even though it looked fine in a page-content-only
+    // render that never draws annotations. Deleting /MK outright makes the
+    // widget fully transparent, matching how the template's own pre-existing
+    // fields behave (no visible box of their own — the printed page's own
+    // lines are what the user sees).
+    const stripWidgetChrome=(fld)=>{
+      try{
+        const widget=fld.acroField.getWidgets()[0];
+        widget.dict.delete(PDFLib.PDFName.of('MK'));
+      }catch(e){}
+    };
     const addNewCombField=(name,rect,maxLen,size,value)=>{
       if(!value) return;
       try{
         const fld=form.createTextField(name);
         fld.addToPage(page1,{x:rect.x,y:rect.y,width:rect.width,height:rect.height,borderWidth:0});
+        stripWidgetChrome(fld);
         fld.setMaxLength(maxLen);
         fld.enableCombing();
         fld.acroField.setDefaultAppearance('/Helv '+size+' Tf 0 g');
         fld.setText(String(value).slice(0,maxLen));
+        // A brand-new field's appearance stream isn't reliably generated just
+        // from setText()+the DA string alone — the form's own NeedAppearances
+        // is explicitly false (see setH()'s comment below), so a viewer that
+        // honors that (Adobe, Chrome's built-in viewer) shows a blank box
+        // instead of regenerating it live. Force pdf-lib to actually render
+        // the appearance stream now, against an embedded font it fully
+        // controls, the same way the Hebrew fields already do.
+        fld.updateAppearances(stdFont);
       }catch(e){}
     };
     // Same idea as addNewCombField, for a plain (non-combed) Hebrew-capable
@@ -4462,6 +4487,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       try{
         const fld=form.createTextField(name);
         fld.addToPage(page1,{x:rect.x,y:rect.y,width:rect.width,height:rect.height,borderWidth:0});
+        stripWidgetChrome(fld);
         fld.acroField.setDefaultAppearance('/Helv '+size+' Tf 0 g');
         if(rightAlign){ try{ fld.setAlignment(PDFLib.TextAlignment.Right); }catch(e){} }
         if(customFont){
@@ -4476,7 +4502,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
             const x=rightAlign?(r.x+r.width-tw-2):(r.x+2);
             page1.drawText(String(value),{x,y:r.y+(r.height-th)/2,size,font:customFont});
           }
-        } else fld.setText(String(value).replace(/[֐-׿יִ-ﭏ]/g,'?'));
+        } else { fld.setText(String(value).replace(/[֐-׿יִ-ﭏ]/g,'?')); fld.updateAppearances(stdFont); }
       }catch(e){}
     };
     // Hebrew-aware writer: uses embedded font if available, else ASCII fallback
@@ -4519,7 +4545,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // dob's own AcroForm rect matches its printed box (unlike tax_year
     // below), so — per user request to keep everything a real AcroForm
     // field where possible — it's filled through the field itself again.
-    setComb('dob',8,dob.replace(/\D/g,''),10);
+    setComb('dob',8,dob.replace(/\D/g,''),9);
     setT('id_top2',no);
     // The template's own "tax_year" AcroForm field's rect doesn't match its
     // printed box (narrower and shifted up relative to the visible "שנת המס"
@@ -4530,7 +4556,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // is created at the box's real coordinates instead — a real, editable
     // field the template just never shipped in the right place.
     const TAX_YEAR_RECT={x:220.4,y:742.49,width:64.9,height:13};
-    addNewCombField('tax_year_box',TAX_YEAR_RECT,4,10,String(new Date().getFullYear()));
+    addNewCombField('tax_year_box',TAX_YEAR_RECT,4,9,String(new Date().getFullYear()));
     // (`form.removeField()` was tried first for the mismatched native field —
     // it corrupts pdf-lib's save pass: the removed field's widget stays
     // attached to the page's Annots array with a now-dangling parent-field
@@ -4570,8 +4596,8 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       addNewHebrewField('employer_name',NAME_RECT,10,profile.companyName?profile.companyName+'   ':profile.companyName,true);
       const addr=[profile.street,profile.streetNumber].filter(Boolean).join(' ')+(profile.city?(profile.street||profile.streetNumber?', ':'')+profile.city:'');
       addNewHebrewField('employer_address',ADDRESS_RECT,10,addr?addr+'   ':addr,true);
-      addNewHebrewField('employer_phone',PHONE_RECT,10,profile.phone,true);
-      if(profile.deductionsFileNumber) addNewCombField('employer_deductions',DEDUCTIONS_RECT,8,10,String(profile.deductionsFileNumber).replace(/\D/g,''));
+      addNewHebrewField('employer_phone',PHONE_RECT,9,profile.phone,true);
+      if(profile.deductionsFileNumber) addNewCombField('employer_deductions',DEDUCTIONS_RECT,8,9,String(profile.deductionsFileNumber).replace(/\D/g,''));
     })();
     if(sex==='M') chk('sex_male'); else if(sex==='F') chk('sex_female');
     if(isIsraeli){ chk('resident_yes'); chk('resident_h'); }
@@ -4603,7 +4629,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     const fillWorkStart=(isoDate)=>{
       if(!isoDate) return;
       const d=isoDate.split('-');
-      addNewCombField('work_start_date',WORK_START_RECT,8,11,d[2]+d[1]+d[0]);
+      addNewCombField('work_start_date',WORK_START_RECT,8,10,d[2]+d[1]+d[0]);
     };
     // "מספר זהות (9 ספרות)" in section ב (employee details) has no real
     // AcroForm field on the template — only `id_top2` (a small running
@@ -4627,7 +4653,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // Israeli ID: fill address, marital, work start, fund — from the
       // worker's own persisted fields when regenerating (no scan overlay is
       // open in that case), otherwise from the live aiId* scan-panel inputs.
-      if(no) addNewCombField('id_box',ID_BOX_RECT,9,11,no.replace(/\D/g,''));
+      if(no) addNewCombField('id_box',ID_BOX_RECT,9,9,no.replace(/\D/g,''));
       const addr=isRegen?workerAddress(targetWorker||{}):_v('aiAddress');
       const city=isRegen?((targetWorker&&targetWorker.city)||''):_v('aiCity');
       if(addr){
@@ -4664,8 +4690,8 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // all 10 printed rows the template has room for.
       children.slice(0,10).forEach((c,i)=>{
         const rowY=pageH-CHILD_ROW_Y[i+1], rowH=CHILD_ROW_Y[i+1]-CHILD_ROW_Y[i];
-        if(c.idNo) addNewCombField('children_id_'+i,{x:CHILD_COLS.id.x,y:rowY,width:CHILD_COLS.id.width,height:rowH},9,11,String(c.idNo).replace(/\D/g,''));
-        if(c.dob){ const dd=String(c.dob).replace(/\D/g,''); if(dd) addNewCombField('children_dob_'+i,{x:CHILD_COLS.dob.x,y:rowY,width:CHILD_COLS.dob.width,height:rowH},8,11,dd); }
+        if(c.idNo) addNewCombField('children_id_'+i,{x:CHILD_COLS.id.x,y:rowY,width:CHILD_COLS.id.width,height:rowH},9,9,String(c.idNo).replace(/\D/g,''));
+        if(c.dob){ const dd=String(c.dob).replace(/\D/g,''); if(dd) addNewCombField('children_dob_'+i,{x:CHILD_COLS.dob.x,y:rowY,width:CHILD_COLS.dob.width,height:rowH},8,9,dd); }
         if(c.name) addNewHebrewField('children_name_'+i,{x:CHILD_COLS.name.x,y:rowY,width:CHILD_COLS.name.width,height:rowH},8,String(c.name),true);
       });
       // Write back every value actually used onto the worker record (only
@@ -4689,7 +4715,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     } else {
       // Foreign passport: fill passport_no, work start, fund — same
       // regen-vs-live-scan source split as the Israeli-ID branch above.
-      setComb('passport_no',13,no,11);
+      setComb('passport_no',13,no,9);
       const workStart=isRegen?((targetWorker&&targetWorker.workStartDate)||''):(document.getElementById('aiPpWork')?.value);
       fillWorkStart(workStart);
       const fund=isRegen?((targetWorker&&targetWorker.healthFund)||''):(document.getElementById('aiPpFund')?.value);

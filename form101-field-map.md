@@ -92,6 +92,31 @@ helpers:
 - **`addNewCombField(name, rect, maxLen, size, value)`** — `form.createTextField(name)` + `.addToPage(page1, {x,y,width,height,borderWidth:0})`, then `enableCombing()` + `setMaxLength()` + an explicit `size`. Used for digit boxes.
 - **`addNewHebrewField(name, rect, size, value, rightAlign)`** — same field creation, plus Hebrew-aware text via `customFont` (mirrors `setH()`'s own multi-word-RTL glyph-drop workaround) and, when `rightAlign` is set, `fld.setAlignment(PDFLib.TextAlignment.Right)` (pdf-lib's own native field alignment — right-aligns even single-word values, which never hit the multi-word manual-redraw fallback). Used for free-text boxes.
 
+**Two real bugs found in these two helpers, invisible to a page-content-only
+render (e.g. `page.get_pixmap()`) and only caught by dumping the raw PDF
+structure after the user reported a correctly-*positioned* field showing
+no/wrong text in a real viewer:**
+
+1. **Empty appearance stream.** `addNewCombField` called `setText()` and
+   relied on the `/Helv NNpt` DA string alone — for a *brand-new* field, with
+   the form's `NeedAppearances` explicitly `false`, that never actually
+   generates the field's `/AP /N` content stream. The raw xref dump showed
+   the XObject existing with the correct `/BBox`/`/Resources` but a literal
+   zero-byte stream (`Length 8`, decodes to `b''`). Fixed by calling
+   `fld.updateAppearances(stdFont)` right after `setText()`.
+2. **Default white `/MK` background hiding the manually-drawn text.**
+   `addToPage(..., {borderWidth:0})` only zeroes the border *line* — pdf-lib
+   still gives a new widget an opaque white `/MK /BG [1 1 1]` fill by
+   default, which paints as an annotation *on top of* the page's own content
+   (the normal stacking order for any compliant viewer). That silently hid
+   the manual multi-word-fallback text drawn onto the page underneath it —
+   invisible in a render that skips annotations, visible (as a blank white
+   box) in one that doesn't. Fixed with `stripWidgetChrome(fld)`, called
+   right after every `addToPage()`: it deletes `/MK` outright
+   (`fld.acroField.getWidgets()[0].dict.delete(PDFLib.PDFName.of('MK'))`),
+   making the widget fully transparent — matching how the template's own
+   pre-existing fields already behave.
+
 **Trade-off knowingly accepted:** a previous round of hand-drawn text let
 this app pick the *exact* pixel position of each character (including a
 `yNudge` to sit digits precisely on the template's printed comb dividers).
@@ -105,14 +130,16 @@ New fields created, one per box:
 
 | New field name | Box | Rect | Size |
 |---|---|---|---|
-| `tax_year_box` | שנת המס (tax year) | `{x:220.4, y:742.49, width:64.9, height:13}` | 10, comb 4 |
-| `id_box` | מספר זהות (Israeli ID, section ב) | `{x:438, y:607.89, width:102, height:13}` | 10, comb 9 |
-| `work_start_date` | תאריך תחילת העבודה בשנת המס | `{x:30.75, y:450.42, width:90.64, height:21.01}` | 10, comb 8 |
-| `employer_name` | א. פרטי המעסיק — שם | `{x:414.9, width:125.5, y:659.89, height:14}` | 10 (overflow risk, see below); value gets 3 trailing spaces to nudge it further left off the right edge |
-| `employer_address` | א. פרטי המעסיק — כתובת | `{x:209.0, width:205.9, y:659.89, height:14}` | 10 (overflow risk, see below); same 3-trailing-space nudge as `employer_name` |
-| `employer_phone` | א. פרטי המעסיק — מספר טלפון | `{x:130.3, width:78.7, y:659.89, height:14}` | 10 |
-| `employer_deductions` | א. פרטי המעסיק — מספר תיק ניכויים | `{x:39.9, width:90.4, y:659.89, height:14}` | 10, comb 8 |
-| `children_id_N` / `children_dob_N` / `children_name_N` | ג. פרטים על ילדיי, row N | `CHILD_ROW_Y[]`/`CHILD_COLS` in code | 10 (id/dob, comb) / 8 (name, overflow risk) |
+| `tax_year_box` | שנת המס (tax year) | `{x:220.4, y:742.49, width:64.9, height:13}` | 9, comb 4 |
+| `id_box` | מספר זהות (Israeli ID, section ב) | `{x:438, y:607.89, width:102, height:13}` | 9, comb 9 |
+| `work_start_date` | תאריך תחילת העבודה בשנת המס | `{x:30.75, y:450.42, width:90.64, height:21.01}` | **10** — the one digit field deliberately left larger than the rest (9pt), per explicit user request |
+| `employer_name` | א. פרטי המעסיק — שם | `{x:414.9, width:125.5, y:659.89, height:14}` | 10 (text, overflow risk, see below); value gets 3 trailing spaces to nudge it further left off the right edge |
+| `employer_address` | א. פרטי המעסיק — כתובת | `{x:209.0, width:205.9, y:659.89, height:14}` | 10 (text, overflow risk, see below); same 3-trailing-space nudge as `employer_name` |
+| `employer_phone` | א. פרטי המעסיק — מספר טלפון | `{x:130.3, width:78.7, y:659.89, height:14}` | 9 |
+| `employer_deductions` | א. פרטי המעסיק — מספר תיק ניכויים | `{x:39.9, width:90.4, y:659.89, height:14}` | 9, comb 8 |
+| `children_id_N` / `children_dob_N` / `children_name_N` | ג. פרטים על ילדיי, row N | `CHILD_ROW_Y[]`/`CHILD_COLS` in code | 9 (id/dob, comb) / 8 (name, text, overflow risk) |
+
+Text fields (Hebrew names/addresses: `surname`/`given_name`/`addr_street`/`addr_city`/`hf_name`/`employer_name`/`employer_address`) are 10pt; digit fields are 9pt except `work_start_date` (see above). `id_top2`/`sign_date`/`dob`/`passport_no` (existing template fields, sized via `setSize()`/`setComb()`) are 9pt too.
 
 **Why `tax_year` (the template's own field) is left blank + read-only:** its
 own rect (250,746.89,289,759.89) is narrower and shifted relative to the
