@@ -4355,8 +4355,8 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // still fit the field's own box for a realistically long value).
     const fieldSizes={};
     const setSize=(n,size)=>{ fieldSizes[n]=size; try{ form.getTextField(n).acroField.setDefaultAppearance('/Helv '+size+' Tf 0 g'); }catch(e){} };
-    setSize('surname',12); setSize('given_name',12); setSize('addr_street',12);
-    setSize('addr_city',12); setSize('hf_name',11); setSize('id_top2',14);
+    setSize('surname',11); setSize('given_name',11); setSize('addr_street',11);
+    setSize('addr_city',11); setSize('hf_name',10); setSize('id_top2',13);
     const setT=(n,v)=>{ try{ if(v) form.getTextField(n).setText(String(v)); }catch(e){} };
     const CHECK_BLUE=PDFLib.rgb(0.09,0.32,0.85);
     const allPages=doc.getPages();
@@ -4410,6 +4410,20 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       page.drawText(text,opts);
       page.drawText(text,{...opts,x:opts.x+BOLD_OFFSET});
     };
+    // Vertically centers a text baseline inside a box. heightAtSize(size,
+    // {descender:false}) gives ascent only (glyph height above the baseline);
+    // the plain heightAtSize(size) call gives ascent+descent. Centering with
+    // ascent alone (as this used to do) assumes nothing hangs below the
+    // baseline — wrong for any glyph that does (Hebrew ך/ן/ף/ץ, Latin g/y/q/p
+    // — final-nun in particular, common at the end of Hebrew words) — the
+    // descender then pokes out the bottom of the box, reading as off-center.
+    // Splitting the difference between ascent and descent centers the whole
+    // visual glyph box, not just its above-baseline portion.
+    const centerBaselineY=(rect,size,font)=>{
+      const ascent=font.heightAtSize(size,{descender:false});
+      const descent=font.heightAtSize(size)-ascent;
+      return rect.y+(rect.height-ascent+descent)/2;
+    };
     // A few boxes on the template (work-start date, the children table) have no
     // underlying form field at all — just printed comb boxes — so pdf-lib's
     // field-based combing can't reach them. Draw the characters ourselves,
@@ -4419,8 +4433,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       if(!text) return;
       const s=String(text).slice(0,maxLen);
       const cellW=rect.width/maxLen;
-      const th=stdFont.heightAtSize(size,{descender:false});
-      const y=rect.y+(rect.height-th)/2;
+      const y=centerBaselineY(rect,size,stdFont);
       for(let i=0;i<s.length;i++){
         const ch=s[i];
         const cw=stdFont.widthOfTextAtSize(ch,size);
@@ -4472,18 +4485,17 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
           const widget=fld.acroField.getWidgets()[0];
           const r=widget.getRectangle();
           const tw=customFont.widthOfTextAtSize(String(v),size);
-          const th=customFont.heightAtSize(size,{descender:false});
           // Blank the widget's own appearance instead of just painting over it —
           // its operators would otherwise still be composited underneath our
           // own page-level drawText, showing as a faint doubled stroke.
           const ap=widget.getAppearances();
           if(ap&&ap.normal&&'operators' in ap.normal) ap.normal.operators=[];
-          drawTextBold(page1,String(v),{x:r.x+r.width-tw-2,y:r.y+(r.height-th)/2,size,font:customFont});
+          drawTextBold(page1,String(v),{x:r.x+r.width-tw-2,y:centerBaselineY(r,size,customFont),size,font:customFont});
         }
         else { fld.setText(String(v).replace(/[\u0590-\u05FF\uFB1D-\uFB4F]/g,'?')); }
       }catch(e){}
     };
-    setH('surname',surname); setH('given_name',given); setComb('dob',8,dob.replace(/\D/g,''),10);
+    setH('surname',surname); setH('given_name',given); setComb('dob',8,dob.replace(/\D/g,''),9);
     setT('id_top2',no);
     // The "tax_year" AcroForm field's own rect doesn't match its printed box
     // on this template (narrower and shifted up relative to the visible
@@ -4491,7 +4503,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // above the box instead of inside it. Hand-drawn at the box's real
     // coordinates instead, like the other printed-only boxes.
     const TAX_YEAR_RECT={x:220.4,y:742.49,width:64.9,height:13};
-    drawCombRaw(String(new Date().getFullYear()),4,TAX_YEAR_RECT,12);
+    drawCombRaw(String(new Date().getFullYear()),4,TAX_YEAR_RECT,11);
     // The AcroForm field itself is left unset (its rect doesn't match the
     // printed box, see above) but was still being left in the saved PDF as an
     // empty, EDITABLE text field — Chrome's PDF viewer highlights any such
@@ -4536,15 +4548,14 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       const drawRight=(text,rect,size)=>{
         if(!text) return;
         const font=customFont||stdFont;
-        const th=font.heightAtSize(size,{descender:false});
         const tw=font.widthOfTextAtSize(String(text),size);
-        drawTextBold(page1,String(text),{x:rect.x+rect.width-tw-2,y:rect.y+(rect.height-th)/2,size,font});
+        drawTextBold(page1,String(text),{x:rect.x+rect.width-tw-2,y:centerBaselineY(rect,size,font),size,font});
       };
-      drawRight(profile.companyName,NAME_RECT,11);
+      drawRight(profile.companyName,NAME_RECT,14);
       const addr=[profile.street,profile.streetNumber].filter(Boolean).join(' ')+(profile.city?(profile.street||profile.streetNumber?', ':'')+profile.city:'');
-      drawRight(addr,ADDRESS_RECT,11);
-      drawRight(profile.phone,PHONE_RECT,11);
-      if(profile.deductionsFileNumber) drawCombRaw(String(profile.deductionsFileNumber).replace(/\D/g,''),8,DEDUCTIONS_RECT,11);
+      drawRight(addr,ADDRESS_RECT,14);
+      drawRight(profile.phone,PHONE_RECT,14);
+      if(profile.deductionsFileNumber) drawCombRaw(String(profile.deductionsFileNumber).replace(/\D/g,''),8,DEDUCTIONS_RECT,14);
     })();
     if(sex==='M') chk('sex_male'); else if(sex==='F') chk('sex_female');
     if(isIsraeli){ chk('resident_yes'); chk('resident_h'); }
@@ -4576,7 +4587,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     const fillWorkStart=(isoDate)=>{
       if(!isoDate) return;
       const d=isoDate.split('-');
-      drawCombRaw(d[2]+d[1]+d[0],8,WORK_START_RECT,10);
+      drawCombRaw(d[2]+d[1]+d[0],8,WORK_START_RECT,9);
     };
     // "מספר זהות (9 ספרות)" in section ב (employee details) has no real
     // AcroForm field on the template — only `id_top2` (a small running
@@ -4599,7 +4610,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // Israeli ID: fill address, marital, work start, fund — from the
       // worker's own persisted fields when regenerating (no scan overlay is
       // open in that case), otherwise from the live aiId* scan-panel inputs.
-      if(no) drawCombRaw(no.replace(/\D/g,''),9,ID_BOX_RECT,10);
+      if(no) drawCombRaw(no.replace(/\D/g,''),9,ID_BOX_RECT,9);
       const addr=isRegen?workerAddress(targetWorker||{}):_v('aiAddress');
       const city=isRegen?((targetWorker&&targetWorker.city)||''):_v('aiCity');
       if(addr){
@@ -4632,13 +4643,13 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       const pageH=page1.getHeight();
       children.slice(0,10).forEach((c,i)=>{
         const rowY=pageH-CHILD_ROW_Y[i+1], rowH=CHILD_ROW_Y[i+1]-CHILD_ROW_Y[i];
-        if(c.idNo) drawCombRaw(String(c.idNo).replace(/\D/g,''),9,{x:CHILD_COLS.id.x,y:rowY,width:CHILD_COLS.id.width,height:rowH},9);
-        if(c.dob){ const dd=String(c.dob).replace(/\D/g,''); if(dd) drawCombRaw(dd,8,{x:CHILD_COLS.dob.x,y:rowY,width:CHILD_COLS.dob.width,height:rowH},9); }
+        if(c.idNo) drawCombRaw(String(c.idNo).replace(/\D/g,''),9,{x:CHILD_COLS.id.x,y:rowY,width:CHILD_COLS.id.width,height:rowH},8);
+        if(c.dob){ const dd=String(c.dob).replace(/\D/g,''); if(dd) drawCombRaw(dd,8,{x:CHILD_COLS.dob.x,y:rowY,width:CHILD_COLS.dob.width,height:rowH},8); }
         if(c.name){
           const nameFont=customFont||stdFont;
-          const size=9, th=nameFont.heightAtSize(size,{descender:false});
+          const size=8;
           const tw=nameFont.widthOfTextAtSize(String(c.name),size);
-          drawTextBold(page1,String(c.name),{x:CHILD_COLS.name.x+CHILD_COLS.name.width-tw-2,y:rowY+(rowH-th)/2,size,font:nameFont});
+          drawTextBold(page1,String(c.name),{x:CHILD_COLS.name.x+CHILD_COLS.name.width-tw-2,y:centerBaselineY({y:rowY,height:rowH},size,nameFont),size,font:nameFont});
         }
       });
       // Write back every value actually used onto the worker record (only
@@ -4662,7 +4673,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     } else {
       // Foreign passport: fill passport_no, work start, fund — same
       // regen-vs-live-scan source split as the Israeli-ID branch above.
-      setComb('passport_no',13,no,10);
+      setComb('passport_no',13,no,9);
       const workStart=isRegen?((targetWorker&&targetWorker.workStartDate)||''):(document.getElementById('aiPpWork')?.value);
       fillWorkStart(workStart);
       const fund=isRegen?((targetWorker&&targetWorker.healthFund)||''):(document.getElementById('aiPpFund')?.value);
