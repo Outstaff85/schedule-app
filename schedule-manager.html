@@ -1210,6 +1210,17 @@ function toggleWeeklySchedule(){
   if(hint) hint.style.display = __wScheduleOpen ? 'none' : '';
 }
 
+// Same collapsed-by-default dropdown pattern as toggleWeeklySchedule above,
+// for the opt-in contract-expiry warning fields (moved below Notes).
+let __wExpiryOpen = false;
+function toggleExpiryWrap(){
+  __wExpiryOpen = !__wExpiryOpen;
+  const wrap = document.getElementById('wExpiryWrap');
+  const chev = document.getElementById('wExpiryChevron');
+  if(wrap) wrap.style.display = __wExpiryOpen ? '' : 'none';
+  if(chev) chev.className = 'ti ti-chevron-' + (__wExpiryOpen ? 'up' : 'down');
+}
+
 function showWorkerModal(w){
   selColorIdx=w.colorIdx||0;
   __wScheduleOpen=false;
