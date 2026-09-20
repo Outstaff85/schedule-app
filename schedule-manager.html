@@ -1211,7 +1211,10 @@ function toggleWeeklySchedule(){
 }
 
 // Same collapsed-by-default dropdown pattern as toggleWeeklySchedule above,
-// for the opt-in contract-expiry warning fields (moved below Notes).
+// for the opt-in contract-expiry warning fields (moved below Notes). Opening
+// the panel directly reveals the date fields (no separate "Enable warning"
+// checkbox click needed) and implicitly enables tracking via the hidden
+// wExpiryEnabled checkbox; collapsing again doesn't disable it.
 let __wExpiryOpen = false;
 function toggleExpiryWrap(){
   __wExpiryOpen = !__wExpiryOpen;
@@ -1219,32 +1222,50 @@ function toggleExpiryWrap(){
   const chev = document.getElementById('wExpiryChevron');
   if(wrap) wrap.style.display = __wExpiryOpen ? '' : 'none';
   if(chev) chev.className = 'ti ti-chevron-' + (__wExpiryOpen ? 'up' : 'down');
+  if(__wExpiryOpen){ const en=document.getElementById('wExpiryEnabled'); if(en) en.checked=true; }
+}
+
+// Same collapsed-by-default dropdown pattern, for all Form-101-related
+// fields (income type, other income, scan-derived name/marital/health-fund/
+// work-start-date) grouped together under one "Данные для Формы 101" toggle.
+let __wForm101Open = false;
+function toggleForm101Wrap(){
+  __wForm101Open = !__wForm101Open;
+  const wrap = document.getElementById('wForm101Wrap');
+  const chev = document.getElementById('wForm101Chevron');
+  if(wrap) wrap.style.display = __wForm101Open ? '' : 'none';
+  if(chev) chev.className = 'ti ti-chevron-' + (__wForm101Open ? 'up' : 'down');
 }
 
 function showWorkerModal(w){
   selColorIdx=w.colorIdx||0;
   __wScheduleOpen=false;
   __wExpiryOpen=false;
+  __wForm101Open=false;
   document.getElementById('workerModal').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <div class="modal-title" style="margin-bottom:0">${editingWorkerIdx!==null?'Edit Worker':'Add New Worker'}</div>
       <button class="btn sm" onclick="closeModal('workerOverlay')" title="Закрыть" style="flex-shrink:0;padding:0 8px"><i class="ti ti-x"></i></button>
     </div>
+    ${editingWorkerIdx!==null ? `
+    <div class="field">
+      <label><i class="ti ti-file-text"></i> Документы (Форма 101 + скан)</label>
+      <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" style="flex-shrink:0">
+          <i class="ti ti-download"></i> Скачать документы</a>`:''}
+        <button class="btn sm" style="flex-shrink:0" onclick="rescanWorkerDoc('${w.id}')">
+          <i class="ti ti-scan"></i> ${w.docUrl?'Пересканировать':'Сканировать документ'}</button>
+        <span style="font-size:11px;color:var(--text3)">${w.docSavedAt?'Сохранено: '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</span>
+      </div>
+    </div>` : ''}
     <div class="field" style="position:relative">
       <label>Name</label>
-      <div style="display:flex;gap:8px">
-        <input type="text" id="wName" value="${w.name||''}" placeholder="Worker name" autofocus
-          oninput="searchContacts(this.value)" autocomplete="off" style="flex:1">
-        <button class="btn sm" onclick="triggerContactsPicker()" type="button"
-          style="flex-shrink:0;background:rgba(66,133,244,0.12);border-color:rgba(66,133,244,0.3);color:#4285f4;white-space:nowrap;padding:0 10px">
-          <i class="ti ti-user"></i> Contacts
-        </button>
-      </div>
+      <input type="text" id="wName" value="${w.name||''}" placeholder="Worker name" autofocus
+        oninput="searchContacts(this.value)" autocomplete="off">
       <div id="contactsSuggestions" style="display:none;position:absolute;z-index:300;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);left:0;right:0;top:100%;max-height:240px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.5)"></div>
     </div>
     <div class="field"><label>ID (Teudat Zehut)</label><input type="text" id="wDocId" value="${esc(workerDocId(w))}" placeholder="ת.ז. / passport number"></div>
     <div class="field"><label>Phone (optional)</label><input type="text" id="wPhone" value="${w.phone||''}" placeholder="+972..."></div>
-    <div class="field"><label>Email (optional)</label><input type="text" id="wEmail" value="${w.email||''}" placeholder="worker@email.com"></div>
     <div class="field"><label>Hourly Rate (₪/h)</label><input type="number" id="wRate" value="${w.hourlyRate||''}" placeholder="e.g. 35" min="0" step="0.5"></div>
     <div class="field-row">
       <div class="field"><label>Status</label>
@@ -1256,31 +1277,6 @@ function showWorkerModal(w){
       </div>
       <div class="field"><label>Start date</label><input type="date" id="wStartDate" value="${w.startDate||''}"></div>
     </div>
-    <div class="field-row">
-      <div class="field"><label>Income type (Form 101, ד)</label>
-        <select id="wIncomeType">
-          <option value="">— not set —</option>
-          <option value="monthly" ${w.incomeType==='monthly'?'selected':''}>Monthly salary</option>
-          <option value="secondary" ${w.incomeType==='secondary'?'selected':''}>2nd job salary</option>
-          <option value="partial" ${w.incomeType==='partial'?'selected':''}>Partial salary</option>
-          <option value="daily" ${(w.incomeType||'daily')==='daily'?'selected':''}>Daily wage</option>
-          <option value="pension" ${w.incomeType==='pension'?'selected':''}>Pension</option>
-          <option value="scholarship" ${w.incomeType==='scholarship'?'selected':''}>Scholarship</option>
-        </select>
-      </div>
-      <div class="field"><label>Other income (Form 101, ה)</label>
-        <select id="wOtherIncomeType">
-          <option value="">— not set —</option>
-          <option value="none" ${(w.otherIncomeType||'none')==='none'?'selected':''}>No other income</option>
-          <option value="monthly" ${w.otherIncomeType==='monthly'?'selected':''}>Monthly salary</option>
-          <option value="secondary" ${w.otherIncomeType==='secondary'?'selected':''}>2nd job salary</option>
-          <option value="partial" ${w.otherIncomeType==='partial'?'selected':''}>Partial salary</option>
-          <option value="daily" ${w.otherIncomeType==='daily'?'selected':''}>Daily wage</option>
-          <option value="pension" ${w.otherIncomeType==='pension'?'selected':''}>Pension</option>
-          <option value="scholarship" ${w.otherIncomeType==='scholarship'?'selected':''}>Scholarship</option>
-        </select>
-      </div>
-    </div>
     <div class="field"><label>Address</label><input type="text" id="wAddress" value="${esc(workerAddress(w))}" placeholder="Street and house number"></div>
     <div class="field"><label>City</label><input type="text" id="wCity" value="${esc(w.city||'')}" placeholder="City"></div>
     <div class="field"><label>Notes</label><textarea id="wNotes" placeholder="Notes about this worker" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;padding:8px 10px;outline:none;min-height:56px;resize:vertical">${w.notes||''}</textarea></div>
@@ -1291,22 +1287,10 @@ function showWorkerModal(w){
       </button>
     </div>
     <div id="wExpiryWrap" style="display:none">
-      <div class="field-row">
-        <div class="field" style="display:flex;align-items:flex-end;padding-bottom:9px">
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400">
-            <input type="checkbox" id="wExpiryEnabled" ${w.expiryEnabled?'checked':''} onchange="toggleExpiryFields()" style="width:auto">
-            Enable warning
-          </label>
-        </div>
-      </div>
-      <div class="field-row" id="wExpiryFields" style="${w.expiryEnabled?'':'display:none'}">
+      <input type="checkbox" id="wExpiryEnabled" ${w.expiryEnabled?'checked':''} style="display:none">
+      <div class="field-row" id="wExpiryFields">
         <div class="field"><label>Months until deadline</label><input type="number" id="wExpiryMonths" min="1" step="1" value="${w.expiryMonths||9}"></div>
         <div class="field"><label>Warn this many months ahead</label><input type="number" id="wExpiryWarnMonths" min="0" step="1" value="${w.expiryWarnMonths??1}"></div>
-      </div>
-    </div>
-    <div class="field"><label>Color</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap" id="wColorPick">
-        ${WORKER_COLORS.map((c,i)=>`<div onclick="pickWColor(${i})" data-ci="${i}" style="width:24px;height:24px;border-radius:50%;background:${c.text};cursor:pointer;border:2px solid ${i===selColorIdx?'white':'transparent'};transition:all 0.15s;${i===selColorIdx?'transform:scale(1.2)':''}"></div>`).join('')}
       </div>
     </div>
     <div class="field"><label>Assign to Clients <span id="wClientCount" style="color:var(--text3);font-weight:400;font-size:12px"></span></label>
@@ -1352,9 +1336,39 @@ function showWorkerModal(w){
         : `<div style="font-size:11px;color:var(--amber);margin-top:4px"><i class="ti ti-alert-triangle"></i> Linked client has no location set — punch will NOT be geo-verified</div>`; })()}
       <div style="font-size:11px;color:var(--text3);margin-top:4px">Send this link to the worker. They save it as a bookmark.</div>
     </div>` : ''}
-    ${editingWorkerIdx!==null ? `
-    <div class="field">
-      <label><i class="ti ti-id-badge-2"></i> Данные для Формы 101</label>
+    <div class="field" style="margin-bottom:6px">
+      <button class="btn sm" type="button" onclick="toggleForm101Wrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
+        <span><i class="ti ti-id-badge-2"></i> Данные для Формы 101</span>
+        <i class="ti ti-chevron-down" id="wForm101Chevron"></i>
+      </button>
+    </div>
+    <div id="wForm101Wrap" style="display:none">
+      <div class="field-row">
+        <div class="field"><label>Income type (Form 101, ד)</label>
+          <select id="wIncomeType">
+            <option value="">— not set —</option>
+            <option value="monthly" ${w.incomeType==='monthly'?'selected':''}>Monthly salary</option>
+            <option value="secondary" ${w.incomeType==='secondary'?'selected':''}>2nd job salary</option>
+            <option value="partial" ${w.incomeType==='partial'?'selected':''}>Partial salary</option>
+            <option value="daily" ${(w.incomeType||'daily')==='daily'?'selected':''}>Daily wage</option>
+            <option value="pension" ${w.incomeType==='pension'?'selected':''}>Pension</option>
+            <option value="scholarship" ${w.incomeType==='scholarship'?'selected':''}>Scholarship</option>
+          </select>
+        </div>
+        <div class="field"><label>Other income (Form 101, ה)</label>
+          <select id="wOtherIncomeType">
+            <option value="">— not set —</option>
+            <option value="none" ${(w.otherIncomeType||'none')==='none'?'selected':''}>No other income</option>
+            <option value="monthly" ${w.otherIncomeType==='monthly'?'selected':''}>Monthly salary</option>
+            <option value="secondary" ${w.otherIncomeType==='secondary'?'selected':''}>2nd job salary</option>
+            <option value="partial" ${w.otherIncomeType==='partial'?'selected':''}>Partial salary</option>
+            <option value="daily" ${w.otherIncomeType==='daily'?'selected':''}>Daily wage</option>
+            <option value="pension" ${w.otherIncomeType==='pension'?'selected':''}>Pension</option>
+            <option value="scholarship" ${w.otherIncomeType==='scholarship'?'selected':''}>Scholarship</option>
+          </select>
+        </div>
+      </div>
+      ${editingWorkerIdx!==null ? `
       <div class="field-row">
         <div class="field"><label>Фамилия (как в скане)</label><input type="text" id="wDocSurname" value="${esc(w.docSurname||'')}"></div>
         <div class="field"><label>Имя (как в скане)</label><input type="text" id="wDocGiven" value="${esc(w.docGiven||'')}"></div>
@@ -1382,19 +1396,13 @@ function showWorkerModal(w){
       <div class="field"><label>Дата начала работы (Форма 101)</label><input type="date" id="wWorkStartDate" value="${w.workStartDate||''}"></div>
       <div style="font-size:11px;color:var(--text3);margin-top:2px">
         ${w.docUrl?'Изменение этих полей (или адреса/города/типа дохода выше) автоматически обновит уже загруженный документ в Google Drive.':'Заполняется автоматически при первом скане/генерации Формы 101 — до этого можно оставить пустым.'}
+      </div>` : ''}
+    </div>
+    <div class="field"><label>Color</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap" id="wColorPick">
+        ${WORKER_COLORS.map((c,i)=>`<div onclick="pickWColor(${i})" data-ci="${i}" style="width:24px;height:24px;border-radius:50%;background:${c.text};cursor:pointer;border:2px solid ${i===selColorIdx?'white':'transparent'};transition:all 0.15s;${i===selColorIdx?'transform:scale(1.2)':''}"></div>`).join('')}
       </div>
-    </div>` : ''}
-    ${editingWorkerIdx!==null ? `
-    <div class="field">
-      <label><i class="ti ti-file-text"></i> Документы (Форма 101 + скан)</label>
-      <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" style="flex-shrink:0">
-          <i class="ti ti-download"></i> Скачать документы</a>`:''}
-        <button class="btn sm" style="flex-shrink:0" onclick="rescanWorkerDoc('${w.id}')">
-          <i class="ti ti-scan"></i> ${w.docUrl?'Пересканировать':'Сканировать документ'}</button>
-        <span style="font-size:11px;color:var(--text3)">${w.docSavedAt?'Сохранено: '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</span>
-      </div>
-    </div>` : ''}
+    </div>
     <div class="modal-actions">
       ${editingWorkerIdx!==null?`<button class="btn" onclick="regenerateWorkerToken(${editingWorkerIdx})" style="background:var(--amber-bg);border-color:rgba(245,166,35,0.3);color:var(--amber)"><i class="ti ti-refresh"></i> New Token</button>`:''}
       <button class="btn accent" onclick="saveWorker()">${editingWorkerIdx!==null?'Save Changes':'Add Worker'}</button>
@@ -1404,7 +1412,6 @@ function showWorkerModal(w){
 }
 function pickWColor(i){ selColorIdx=i; document.querySelectorAll('#wColorPick [data-ci]').forEach(el=>{ const idx=parseInt(el.dataset.ci); el.style.borderColor=idx===i?'white':'transparent'; el.style.transform=idx===i?'scale(1.2)':'scale(1)'; }); }
 function toggleDayTime(i){ const off=document.getElementById(`wt${i}`).value==='off'; ['ws','we'].forEach(p=>{ const el=document.getElementById(p+i); el.disabled=off; el.style.opacity=off?'0.3':'1'; }); }
-function toggleExpiryFields(){ const on=document.getElementById('wExpiryEnabled').checked; document.getElementById('wExpiryFields').style.display=on?'flex':'none'; }
 function filterClientPick(q){
   q=(q||'').trim().toLowerCase();
   let shown=0;
@@ -1424,7 +1431,6 @@ async function saveWorker(){
   const name=document.getElementById('wName').value.trim();
   if(!name){ document.getElementById('wName').focus(); return; }
   const phone=document.getElementById('wPhone').value.trim();
-  const email=document.getElementById('wEmail')?.value.trim()||'';
   const hourlyRate=parseFloat(document.getElementById('wRate')?.value)||0;
   const status=document.getElementById('wStatus')?.value||'active';
   const startDate=document.getElementById('wStartDate')?.value||'';
@@ -1466,7 +1472,7 @@ async function saveWorker(){
     // to re-scan/re-upload by hand after a routine data correction.
     const FORM101_WATCHED_FIELDS=['docId','address','city','incomeType','otherIncomeType','docSurname','docGiven','maritalStatus','healthFund','workStartDate'];
     const before=FORM101_WATCHED_FIELDS.map(f=>prevW[f]);
-    workers[editingWorkerIdx]={...prevW,name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,workStartDate,clientIds,schedule};
+    workers[editingWorkerIdx]={...prevW,name,colorIdx:selColorIdx,phone,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,workStartDate,clientIds,schedule};
     const updated=workers[editingWorkerIdx];
     const after=FORM101_WATCHED_FIELDS.map(f=>updated[f]);
     showToast(name+' updated!');
@@ -1482,7 +1488,7 @@ async function saveWorker(){
   // createdAt powers the Form 101 declaration date (aiFillForm101): the
   // signature date on a scanned worker's PDF should match when they were
   // actually onboarded, not whatever day the PDF happens to be (re)generated.
-  const newWorker={id:uid(),name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,clientIds,schedule,token,createdAt:new Date().toISOString()};
+  const newWorker={id:uid(),name,colorIdx:selColorIdx,phone,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,clientIds,schedule,token,createdAt:new Date().toISOString()};
   workers.push(newWorker);
   // Persisted and visible right away regardless of the scan-upload below —
   // only the modal itself stays open a little longer in that case.
@@ -1751,7 +1757,6 @@ function openWorkerCard(wi){
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text2);margin-bottom:14px">
       ${w.phone?`<div><i class="ti ti-phone"></i> ${esc(w.phone)}</div>`:''}
-      ${w.email?`<div><i class="ti ti-mail"></i> ${esc(w.email)}</div>`:''}
       ${w.hourlyRate?`<div><i class="ti ti-coin"></i> Base ₪${w.hourlyRate}/h${w.otRate!=null?' · OT ₪'+w.otRate+'/h':''}${w.shabbatRate!=null?' · Shabbat ₪'+w.shabbatRate+'/h':''}</div>`:''}
       ${w.startDate?`<div><i class="ti ti-calendar-event"></i> Started ${fmtDMY(w.startDate)}</div>`:''}
       ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?'Срок истёк':'Срок приближается'} — ${expSt.deadline.toLocaleDateString('ru-RU')}</div>`:''}
@@ -4383,13 +4388,27 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
         const thickness=Math.max(1.1,r.height*0.16);
         // Nudge the whole checkmark ~1 CSS px right+up (0.75pt @72dpi) so it
         // sits centered inside the printed box outline instead of reading
-        // slightly low/left of it.
+        // slightly low/left of it. Page-1 boxes (almost every checkbox on the
+        // template) get an extra upward nudge on top of that — per user
+        // feedback they still read slightly low relative to the box outline;
+        // page-2's lone checkbox (resident_h) is left at the base nudge.
         const NUDGE=0.75;
-        const pt=(fx,fy)=>({x:r.x+fx*r.width+NUDGE,y:r.y+fy*r.height+NUDGE});
+        const PAGE1_EXTRA_Y=1.5;
+        const nudgeY=NUDGE+(targetPage===page1?PAGE1_EXTRA_Y:0);
+        const pt=(fx,fy)=>({x:r.x+fx*r.width+NUDGE,y:r.y+fy*r.height+nudgeY});
         const p1=pt(0.12,0.55), p2=pt(0.40,0.18), p3=pt(0.88,0.82);
         targetPage.drawLine({start:p1,end:p2,thickness,color:CHECK_BLUE,lineCap:PDFLib.LineCapStyle.Round});
         targetPage.drawLine({start:p2,end:p3,thickness,color:CHECK_BLUE,lineCap:PDFLib.LineCapStyle.Round});
       }catch(e){}
+    };
+    // No bold variant of Heebo is bundled (only the regular-weight TTF), so
+    // "bold" hand-drawn text is faked by drawing the same glyphs twice with a
+    // tiny horizontal offset — a standard cheap trick that visibly thickens
+    // regular-weight strokes without needing a separate bold font file.
+    const BOLD_OFFSET=0.3;
+    const drawTextBold=(page,text,opts)=>{
+      page.drawText(text,opts);
+      page.drawText(text,{...opts,x:opts.x+BOLD_OFFSET});
     };
     // A few boxes on the template (work-start date, the children table) have no
     // underlying form field at all — just printed comb boxes — so pdf-lib's
@@ -4406,7 +4425,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
         const ch=s[i];
         const cw=stdFont.widthOfTextAtSize(ch,size);
         const cx=rect.x+cellW*i+cellW/2-cw/2;
-        page1.drawText(ch,{x:cx,y,size,font:stdFont});
+        drawTextBold(page1,ch,{x:cx,y,size,font:stdFont});
       }
     };
     // Some fields (dob, tax_year, passport_no) are printed with a row of small
@@ -4444,22 +4463,22 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
           fld.setText(String(v)); fld.updateAppearances(customFont);
           // pdf-lib's auto-generated appearance can silently drop the last glyph
           // of multi-word RTL text (e.g. combining two Hebrew words loses a
-          // letter) — only happens with a space in the value, so only pay for
-          // the redraw fix there.
-          if(String(v).indexOf(' ')!==-1){
-            const size=fieldSizes[n]||8;
-            const widget=fld.acroField.getWidgets()[0];
-            const r=widget.getRectangle();
-            const tw=customFont.widthOfTextAtSize(String(v),size);
-            const th=customFont.heightAtSize(size,{descender:false});
-            // Blank the widget's own (buggy) appearance instead of just
-            // painting over it — the widget's operators still get composited
-            // with our own page-level drawText underneath a white rectangle,
-            // showing as a faint doubled/bold-looking stroke.
-            const ap=widget.getAppearances();
-            if(ap&&ap.normal&&'operators' in ap.normal) ap.normal.operators=[];
-            page1.drawText(String(v),{x:r.x+r.width-tw-2,y:r.y+(r.height-th)/2,size,font:customFont});
-          }
+          // letter) — used to only redraw when the value had a space, but the
+          // manual redraw below is now always run instead, both to make this
+          // field's positioning consistent regardless of word count and so the
+          // bold-via-double-draw trick (drawTextBold) can apply uniformly to
+          // every Hebrew field, not just multi-word ones.
+          const size=fieldSizes[n]||8;
+          const widget=fld.acroField.getWidgets()[0];
+          const r=widget.getRectangle();
+          const tw=customFont.widthOfTextAtSize(String(v),size);
+          const th=customFont.heightAtSize(size,{descender:false});
+          // Blank the widget's own appearance instead of just painting over it —
+          // its operators would otherwise still be composited underneath our
+          // own page-level drawText, showing as a faint doubled stroke.
+          const ap=widget.getAppearances();
+          if(ap&&ap.normal&&'operators' in ap.normal) ap.normal.operators=[];
+          drawTextBold(page1,String(v),{x:r.x+r.width-tw-2,y:r.y+(r.height-th)/2,size,font:customFont});
         }
         else { fld.setText(String(v).replace(/[\u0590-\u05FF\uFB1D-\uFB4F]/g,'?')); }
       }catch(e){}
@@ -4519,7 +4538,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
         const font=customFont||stdFont;
         const th=font.heightAtSize(size,{descender:false});
         const tw=font.widthOfTextAtSize(String(text),size);
-        page1.drawText(String(text),{x:rect.x+rect.width-tw-2,y:rect.y+(rect.height-th)/2,size,font});
+        drawTextBold(page1,String(text),{x:rect.x+rect.width-tw-2,y:rect.y+(rect.height-th)/2,size,font});
       };
       drawRight(profile.companyName,NAME_RECT,11);
       const addr=[profile.street,profile.streetNumber].filter(Boolean).join(' ')+(profile.city?(profile.street||profile.streetNumber?', ':'')+profile.city:'');
@@ -4619,7 +4638,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
           const nameFont=customFont||stdFont;
           const size=9, th=nameFont.heightAtSize(size,{descender:false});
           const tw=nameFont.widthOfTextAtSize(String(c.name),size);
-          page1.drawText(String(c.name),{x:CHILD_COLS.name.x+CHILD_COLS.name.width-tw-2,y:rowY+(rowH-th)/2,size,font:nameFont});
+          drawTextBold(page1,String(c.name),{x:CHILD_COLS.name.x+CHILD_COLS.name.width-tw-2,y:rowY+(rowH-th)/2,size,font:nameFont});
         }
       });
       // Write back every value actually used onto the worker record (only
@@ -5202,10 +5221,8 @@ function selectContact(idx, query){
   if(!c) return;
   const nameEl  = document.getElementById('wName');
   const phoneEl = document.getElementById('wPhone');
-  const emailEl = document.getElementById('wEmail');
   if(nameEl)  nameEl.value  = c.name;
   if(phoneEl) phoneEl.value = c.phone;
-  if(emailEl) emailEl.value = c.email;
   hideContactsSuggestions();
   showToast(''+c.name+' imported from Contacts');
 }
