@@ -36,6 +36,7 @@ OTHER_INCOME_CB = {"monthly": "cb_p1_13", "secondary": "cb_p1_15", "partial": "c
 CHECK_BLUE = (0.09, 0.32, 0.85)
 NUDGE = 0.75
 PAGE1_EXTRA_Y = 1.5
+CHECK_EXTRA_UP = 2.5  # per repeated user feedback the checkmarks kept reading slightly low — nudged up twice now, all pages
 
 # Rects below are copied verbatim from schedule-manager.html's pdf-lib version,
 # which uses PDF's native bottom-left-origin coordinates — converted to
@@ -49,6 +50,13 @@ DEDUCTIONS_RECT = (39.9, EMPLOYER_ROW["y"], 130.3 - 39.9, EMPLOYER_ROW["height"]
 WORK_START_RECT = (30.75, 450.42, 90.64, 21.01)
 ID_BOX_RECT = (438, 607.89, 102, 13)
 SIG_RECT = (34.02, 186, 87.99, 15)
+# "מספר טלפון נייד" (worker's own mobile number) — page 1, section ב row below
+# marital/resident status. No AcroForm field on the template (verified via
+# page.get_drawings()/get_text("words") — the row's own dividers put this box
+# at native x:28.7-205.4, y:305.8-328.0 in PyMuPDF's own top-origin space);
+# converted here to the same bottom-origin xywh convention as every other
+# custom RECT so it goes through the same pdf_rect() helper.
+WORKER_PHONE_RECT = (28.7, 841.89 - 328.0, 205.4 - 28.7, 328.0 - 305.8)
 # Already top-origin (see the commit history in CLAUDE.md / this port's notes):
 # row i spans CHILD_ROW_Y[i]..CHILD_ROW_Y[i+1] directly, no flip needed.
 CHILD_ROW_Y = [380.3115, 402.2011, 424.0908, 445.9803, 467.8701, 489.7587,
@@ -144,7 +152,7 @@ class Form101Builder:
 
         def pt(fx, fy_from_bottom):
             x = r.x0 + fx * r.width + NUDGE
-            y = r.y0 + (1 - fy_from_bottom) * r.height - NUDGE - extra_up
+            y = r.y0 + (1 - fy_from_bottom) * r.height - NUDGE - extra_up - CHECK_EXTRA_UP
             return pymupdf.Point(x, y)
 
         p1, p2, p3 = pt(0.12, 0.55), pt(0.40, 0.18), pt(0.88, 0.82)
@@ -215,13 +223,13 @@ def build_form101_pdf(p):
     dob, sex, no = p.get("dob"), p.get("sex"), p.get("no")
     is_israeli = bool(p.get("isIsraeli"))
 
-    b.set_hebrew("surname", surname, 10)
-    b.set_hebrew("given_name", given, 10)
-    b.set_comb("dob", (dob or "").replace("-", ""), 8, 9)
-    b.set_text("id_top2", no, 9)
+    b.set_hebrew("surname", surname, 11)
+    b.set_hebrew("given_name", given, 11)
+    b.set_comb("dob", re.sub(r"\D", "", dob or ""), 8, 10)
+    b.set_text("id_top2", no, 10)
 
     tax_year = str(date.today().year)
-    b.add_comb_field(page_h, b.page1, "tax_year_box", TAX_YEAR_RECT, 4, 9, tax_year)
+    b.add_comb_field(page_h, b.page1, "tax_year_box", TAX_YEAR_RECT, 4, 10, tax_year)
     if "tax_year" in b.widgets:
         _, w = b.widgets["tax_year"]
         w.field_flags = w.field_flags | pymupdf.PDF_FIELD_IS_READ_ONLY
@@ -230,16 +238,16 @@ def build_form101_pdf(p):
     employer = p.get("employer") or {}
     firm_missing = p.get("firmMissing") or []
     if employer:
-        b.add_hebrew_field(page_h, b.page1, "employer_name", NAME_RECT, 10, employer.get("companyName"))
+        b.add_hebrew_field(page_h, b.page1, "employer_name", NAME_RECT, 11, employer.get("companyName"))
         addr_parts = [employer.get("street"), employer.get("streetNumber")]
         addr = " ".join(x for x in addr_parts if x)
         if employer.get("city"):
             addr += (", " if addr else "") + employer["city"]
-        b.add_hebrew_field(page_h, b.page1, "employer_address", ADDRESS_RECT, 10, addr)
-        b.add_hebrew_field(page_h, b.page1, "employer_phone", PHONE_RECT, 9, employer.get("phone"))
+        b.add_hebrew_field(page_h, b.page1, "employer_address", ADDRESS_RECT, 11, addr)
+        b.add_hebrew_field(page_h, b.page1, "employer_phone", PHONE_RECT, 10, employer.get("phone"))
         if employer.get("deductionsFileNumber"):
             digits = re.sub(r"\D", "", str(employer["deductionsFileNumber"]))
-            b.add_comb_field(page_h, b.page1, "employer_deductions", DEDUCTIONS_RECT, 8, 9, digits)
+            b.add_comb_field(page_h, b.page1, "employer_deductions", DEDUCTIONS_RECT, 8, 10, digits)
 
     if sex == "M":
         b.check("sex_male")
@@ -268,21 +276,21 @@ def build_form101_pdf(p):
             return
         d = iso_date.split("-")
         if len(d) == 3:
-            b.add_comb_field(page_h, b.page1, "work_start_date", WORK_START_RECT, 8, 10,
+            b.add_comb_field(page_h, b.page1, "work_start_date", WORK_START_RECT, 8, 11,
                               d[2] + d[1] + d[0])
 
-    b.set_text("sign_date", p.get("signDate"), 9)
+    b.set_text("sign_date", p.get("signDate"), 10)
 
     if is_israeli:
         if no:
-            b.add_comb_field(page_h, b.page1, "id_box", ID_BOX_RECT, 9, 9, re.sub(r"\D", "", no))
+            b.add_comb_field(page_h, b.page1, "id_box", ID_BOX_RECT, 9, 10, re.sub(r"\D", "", no))
         addr = p.get("address")
         if addr:
             street, number = _split_street(addr)
-            b.set_hebrew("addr_street", street, 10)
+            b.set_hebrew("addr_street", street, 11)
             if number:
                 b.set_text("addr_number", number)
-        b.set_hebrew("addr_city", p.get("city"), 10)
+        b.set_hebrew("addr_city", p.get("city"), 11)
         marital = p.get("marital")
         if marital:
             b.check(marital)
@@ -290,14 +298,14 @@ def build_form101_pdf(p):
         fund = p.get("healthFund")
         if fund:
             b.check("hf_yes")
-            b.set_hebrew("hf_name", HEALTH_FUND_HE.get(fund, fund), 10)
+            b.set_hebrew("hf_name", HEALTH_FUND_HE.get(fund, fund), 11)
         for i, c in enumerate((p.get("children") or [])[:10]):
             row_y0, row_y1 = CHILD_ROW_Y[i], CHILD_ROW_Y[i + 1]
             row_h = row_y1 - row_y0
             if c.get("idNo"):
                 name = f"children_id_{i}"
                 rect = pymupdf.Rect(CHILD_COLS["id"][0], row_y0, CHILD_COLS["id"][0] + CHILD_COLS["id"][1], row_y1)
-                w = b._new_widget(b.page1, name, rect, 9, comb=True, max_len=9)
+                w = b._new_widget(b.page1, name, rect, 10, comb=True, max_len=9)
                 w.field_value = re.sub(r"\D", "", str(c["idNo"]))
                 b.page1.add_widget(w)
             if c.get("dob"):
@@ -305,25 +313,29 @@ def build_form101_pdf(p):
                 if dd:
                     name = f"children_dob_{i}"
                     rect = pymupdf.Rect(CHILD_COLS["dob"][0], row_y0, CHILD_COLS["dob"][0] + CHILD_COLS["dob"][1], row_y1)
-                    w = b._new_widget(b.page1, name, rect, 9, comb=True, max_len=8)
+                    w = b._new_widget(b.page1, name, rect, 10, comb=True, max_len=8)
                     w.field_value = dd
                     b.page1.add_widget(w)
             if c.get("name"):
                 name = f"children_name_{i}"
                 rect = pymupdf.Rect(CHILD_COLS["name"][0], row_y0, CHILD_COLS["name"][0] + CHILD_COLS["name"][1], row_y1)
-                w = b._new_widget(b.page1, name, rect, 8)
+                w = b._new_widget(b.page1, name, rect, 9)
                 w.field_value = str(c["name"])
                 b.page1.add_widget(w)
                 live = b._refetch(b.page1, name)
                 b._blank_appearance(b.page1, live)
                 b._draw_rtl_text(b.page1, rect, c["name"], 8, right_align=True)
     else:
-        b.set_comb("passport_no", no, 13, 9)
+        b.set_comb("passport_no", no, 13, 10)
         fill_work_start(p.get("workStart"))
         fund = p.get("healthFund")
         if fund:
             b.check("hf_yes")
-            b.set_hebrew("hf_name", HEALTH_FUND_HE.get(fund, fund), 10)
+            b.set_hebrew("hf_name", HEALTH_FUND_HE.get(fund, fund), 11)
+
+    phone = p.get("workerPhone")
+    if phone:
+        b.add_hebrew_field(page_h, b.page1, "worker_phone", WORKER_PHONE_RECT, 10, phone, right_align=True)
 
     sig_b64 = p.get("signaturePngBase64")
     if sig_b64:
@@ -353,7 +365,7 @@ def build_form101_pdf(p):
             w, h = pix.width * fit, pix.height * fit
             x, y = (pw - w) / 2, margin
             new_page.insert_text((margin, margin + 16), extra.get("caption", "Document scan"),
-                                  fontsize=12, color=(0.3, 0.3, 0.3))
+                                  fontsize=13, color=(0.3, 0.3, 0.3))
             new_page.draw_rect(pymupdf.Rect(x - 2, y - 2, x + w + 2, y + h + 2),
                                 color=(0.7, 0.7, 0.7), fill=(1, 1, 1), width=1)
             new_page.insert_image(pymupdf.Rect(x, y, x + w, y + h), pixmap=pix)

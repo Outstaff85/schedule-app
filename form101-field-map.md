@@ -148,16 +148,17 @@ New fields created, one per box:
 
 | New field name | Box | Rect | Size |
 |---|---|---|---|
-| `tax_year_box` | שנת המס (tax year) | `{x:220.4, y:742.49, width:64.9, height:13}` | 9, comb 4 |
-| `id_box` | מספר זהות (Israeli ID, section ב) | `{x:438, y:607.89, width:102, height:13}` | 9, comb 9 |
-| `work_start_date` | תאריך תחילת העבודה בשנת המס | `{x:30.75, y:450.42, width:90.64, height:21.01}` | **10** — the one digit field deliberately left larger than the rest (9pt), per explicit user request |
-| `employer_name` | א. פרטי המעסיק — שם | `{x:414.9, width:540.4-414.9-8, y:659.89, height:14}` (width pulled in 8pt from the printed box's true right edge, 540.4, to nudge the right-aligned text left — see below for why this is a rect change and not a value/space trick) | 10 (text, overflow risk, see below) |
-| `employer_address` | א. פרטי המעסיק — כתובת | `{x:209.0, width:414.9-209.0-8, y:659.89, height:14}` (same 8pt right-edge pull-in as `employer_name`) | 10 (text, overflow risk, see below) |
-| `employer_phone` | א. פרטי המעסיק — מספר טלפון | `{x:130.3, width:78.7, y:659.89, height:14}` | 9 |
-| `employer_deductions` | א. פרטי המעסיק — מספר תיק ניכויים | `{x:39.9, width:90.4, y:659.89, height:14}` | 9, comb 8 |
-| `children_id_N` / `children_dob_N` / `children_name_N` | ג. פרטים על ילדיי, row N | `CHILD_ROW_Y[]`/`CHILD_COLS` in code | 9 (id/dob, comb) / 8 (name, text, overflow risk) |
+| `tax_year_box` | שנת המס (tax year) | `{x:220.4, y:742.49, width:64.9, height:13}` | 10, comb 4 |
+| `id_box` | מספר זהות (Israeli ID, section ב) | `{x:438, y:607.89, width:102, height:13}` | 10, comb 9 |
+| `work_start_date` | תאריך תחילת העבודה בשנת המס | `{x:30.75, y:450.42, width:90.64, height:21.01}` | **11** — the one digit field deliberately left larger than the rest (10pt), per explicit user request |
+| `employer_name` | א. פרטי המעסיק — שם | `{x:414.9, width:540.4-414.9-8, y:659.89, height:14}` (width pulled in 8pt from the printed box's true right edge, 540.4, to nudge the right-aligned text left — see below for why this is a rect change and not a value/space trick) | 11 (text, overflow risk, see below) |
+| `employer_address` | א. פרטי המעסיק — כתובת | `{x:209.0, width:414.9-209.0-8, y:659.89, height:14}` (same 8pt right-edge pull-in as `employer_name`) | 11 (text, overflow risk, see below) |
+| `employer_phone` | א. פרטי המעסיק — מספר טלפון | `{x:130.3, width:78.7, y:659.89, height:14}` | 10 |
+| `employer_deductions` | א. פרטי המעסיק — מספר תיק ניכויים | `{x:39.9, width:90.4, y:659.89, height:14}` | 10, comb 8 |
+| `children_id_N` / `children_dob_N` / `children_name_N` | ג. פרטים על ילדיי, row N | `CHILD_ROW_Y[]`/`CHILD_COLS` in code | 10 (id/dob, comb) / 9 (name, text, overflow risk) |
+| `worker_phone` | ב. פרטי העובד/ת — מספר טלפון נייד | `{x:28.7, width:176.7, y:513.89, height:22.2}` (bottom-origin xywh; found via `page.get_drawings()`+`get_text("words")` in the Python port — the template ships no field here either) | 10 |
 
-Text fields (Hebrew names/addresses: `surname`/`given_name`/`addr_street`/`addr_city`/`hf_name`/`employer_name`/`employer_address`) are 10pt; digit fields are 9pt except `work_start_date` (see above). `id_top2`/`sign_date`/`dob`/`passport_no` (existing template fields, sized via `setSize()`/`setComb()`) are 9pt too.
+**Sizes above are from the Python/PyMuPDF port (`functions/main.py`), current as of the +1pt-across-the-board pass — every value in this table already reflects that bump.** Text fields (Hebrew names/addresses: `surname`/`given_name`/`addr_street`/`addr_city`/`hf_name`/`employer_name`/`employer_address`) are 11pt; digit fields are 10pt except `work_start_date` (see above, now 11pt). `id_top2`/`sign_date`/`dob`/`passport_no` (existing template fields) are 10pt too.
 
 **Why `tax_year` (the template's own field) is left blank + read-only:** its
 own rect (250,746.89,289,759.89) is narrower and shifted relative to the
