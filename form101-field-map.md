@@ -66,7 +66,7 @@ raw field list order.
 | `id_top2` | Text | 96,15.89,172,27.89 (native: 841.89−26.89=... see below) | מספר זהות (running page header, top of page 2) | ID/passport number, repeated as a page-2 header | ✅ — but this is **only** the header reference; it is NOT the same visual box as page 1's employee-details ID field above |
 | `resident_h` | Checkbox | 509.7,791.59,519.7,801.59 | ח.1 "אני תושב/ת ישראל" | Israeli-resident declaration (section ח, item 1) | ✅ Israeli-ID path only |
 | `cb_p2_1`…`cb_p2_18` | Checkbox | scattered, section ח items 2–16 and ט items 1–3 | other-income / disability / new-immigrant / alimony / military-service / study-completion declarations | Various tax-relief declaration checkboxes | ❌ none handled — these require facts a document scan cannot know (disability %, alimony court order, army discharge date, etc.); left blank for the worker/employer to fill by hand, as already noted in `CLAUDE.md` |
-| `sign_date` | Text | 150,186.89,215,199.89 | תאריך (next to "חתימת המבקש/ת", declaration section י) | **Date the form is signed/declared** | ⚠️ **was bugged twice** — first wrote the *work-start* date here via `fillWorkStart()` (fixed: decoupled). Then briefly used "today" (the PDF-generation date), which is wrong for a rescan of an existing worker done long after onboarding. **Now uses the worker's own `createdAt`** (set when the worker record is first saved — see `saveWorker()`) so a rescan still shows the original onboarding date; falls back to today only when there's no worker resolved yet (bare download before the worker is saved) or for legacy workers with no `createdAt`. |
+| `sign_date` | Text | 150,186.89,215,199.89 | תאריך (next to "חתימת המבקש/ת", declaration section י) | **Date the form is signed/declared** | ⚠️ **was bugged twice** — first wrote the *work-start* date here via `fillWorkStart()` (fixed: decoupled). Then briefly used "today" (the PDF-generation date), which is wrong for a rescan of an existing worker done long after onboarding. **Now uses the worker's own `createdAt`** (set when the worker record is first saved — see `saveWorker()`) so a rescan still shows the original onboarding date; falls back to today only when there's no worker resolved yet (bare download before the worker is saved) or for legacy workers with no `createdAt`. Font size explicitly set to 9pt via `setSize('sign_date',9)` (previously left at the template's own default, which read too small per user feedback). |
 
 Section ט row (`המעסיק המשלם/משלמת המשכורת` table, 3 blank rows with a
 literal `9` pre-printed in the "מספר תיק ניכויים" column) has **no AcroForm
@@ -111,16 +111,20 @@ Like the tax-year box, this row (native y=659.89..673.89; columns
 right-to-left: שם, כתובת, מספר טלפון, מספר תיק ניכויים) has zero underlying
 AcroForm widgets — verified the same way (zero widgets in this y-range) —
 so it's filled by hand from the logged-in firm's Tenants profile via
-`drawRight()` (`NAME_RECT`/`ADDRESS_RECT`/`PHONE_RECT`, size 12) and
-`drawCombRaw()` for the digits-only deductions-file box (`DEDUCTIONS_RECT`,
-size 12). `drawRight()` right-aligns each string against its box's right
-edge (`rect.x+rect.width-tw-2`) rather than left-aligning at `rect.x+2` —
-this row reads right-to-left like the rest of the Hebrew form, so Latin/
-Hebrew text alike should sit against the right edge of its column, not
-drift toward the box's (left) start. Both `drawRight()` and `drawCombRaw()`
-center their text's baseline vertically via a shared `centerBaselineY()`
-helper (ascent-only — a descent-aware version was tried and reverted per
-user feedback).
+`drawRight()` (`NAME_RECT` width 125.5 and `ADDRESS_RECT` width 205.9,
+size 10 — a longer company name/address overflowed its column at 12,
+since `drawRight` anchors to the right edge with no clip/shrink-to-fit,
+so overflow spills leftward into the neighboring column; `PHONE_RECT`
+width 78.7, fixed-width digits, no overflow risk, stays size 12) and
+`drawCombRaw()` for the digits-only deductions-file box (`DEDUCTIONS_RECT`
+width 90.4, size 12). `drawRight()` right-aligns each string against its
+box's right edge (`rect.x+rect.width-tw-2`) rather than left-aligning at
+`rect.x+2` — this row reads right-to-left like the rest of the Hebrew
+form, so Latin/Hebrew text alike should sit against the right edge of its
+column, not drift toward the box's (left) start. Both `drawRight()` and
+`drawCombRaw()` center their text's baseline vertically via a shared
+`centerBaselineY()` helper (ascent-only — a descent-aware version was
+tried and reverted per user feedback).
 
 ## Worker-level Form 101 declarations (Add/Edit Worker modal)
 
