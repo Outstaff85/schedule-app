@@ -88,7 +88,7 @@ not the template's default X mark.
 marks run from x=220.4 to x=285.3, baseline at native y≈742.49–755.49). Comb-
 filling the *field* left the year floating visibly above the box. Fixed the
 same way as the fake boxes above: hand-drawn via `drawCombRaw` at
-`TAX_YEAR_RECT = {x:220.4, y:742.49, width:64.9, height:13}`, size 12.
+`TAX_YEAR_RECT = {x:220.4, y:742.49, width:64.9, height:13}`, size 11.
 
 **Known-fixed bug — stray blue field highlight ("sliding blue square"):**
 leaving the real `tax_year` field unset but still present (and still
@@ -111,13 +111,17 @@ Like the tax-year box, this row (native y=659.89..673.89; columns
 right-to-left: שם, כתובת, מספר טלפון, מספר תיק ניכויים) has zero underlying
 AcroForm widgets — verified the same way (zero widgets in this y-range) —
 so it's filled by hand from the logged-in firm's Tenants profile via
-`drawRight()` (`NAME_RECT`/`ADDRESS_RECT`/`PHONE_RECT`, size 11) and
+`drawRight()` (`NAME_RECT`/`ADDRESS_RECT`/`PHONE_RECT`, size 12) and
 `drawCombRaw()` for the digits-only deductions-file box (`DEDUCTIONS_RECT`,
-size 11). `drawRight()` right-aligns each string against its box's right
+size 12). `drawRight()` right-aligns each string against its box's right
 edge (`rect.x+rect.width-tw-2`) rather than left-aligning at `rect.x+2` —
 this row reads right-to-left like the rest of the Hebrew form, so Latin/
 Hebrew text alike should sit against the right edge of its column, not
-drift toward the box's (left) start.
+drift toward the box's (left) start. Both `drawRight()` and `drawCombRaw()`
+center their text's baseline vertically via a shared `centerBaselineY()`
+helper that accounts for the font's descent as well as its ascent — a
+naive ascent-only centering pushed glyphs with a descender (Hebrew final
+`ך`/`ן`/`ף`/`ץ`, common at the end of Hebrew words) visibly low in the box.
 
 ## Worker-level Form 101 declarations (Add/Edit Worker modal)
 
