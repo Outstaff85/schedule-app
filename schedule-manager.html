@@ -1208,6 +1208,7 @@ function toggleWeeklySchedule(){
 function showWorkerModal(w){
   selColorIdx=w.colorIdx||0;
   __wScheduleOpen=false;
+  __wExpiryOpen=!!w.expiryEnabled;
   document.getElementById('workerModal').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <div class="modal-title" style="margin-bottom:0">${editingWorkerIdx!==null?'Edit Worker':'Add New Worker'}</div>
