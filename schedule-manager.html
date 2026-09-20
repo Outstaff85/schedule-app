@@ -1404,11 +1404,11 @@ async function saveWorker(){
   // survive between sessions and (b) can trigger a document regenerate below
   // when changed without re-scanning. Only present in the edit modal (see
   // showWorkerModal), so absent on a brand-new worker.
-  const docSurname=document.getElementById('wDocSurname')?.value.trim()??undefined;
-  const docGiven=document.getElementById('wDocGiven')?.value.trim()??undefined;
-  const maritalStatus=document.getElementById('wMaritalStatus')?.value??undefined;
-  const healthFund=document.getElementById('wHealthFund')?.value??undefined;
-  const workStartDate=document.getElementById('wWorkStartDate')?.value??undefined;
+  const docSurname=document.getElementById('wDocSurname')?.value.trim()||'';
+  const docGiven=document.getElementById('wDocGiven')?.value.trim()||'';
+  const maritalStatus=document.getElementById('wMaritalStatus')?.value||'';
+  const healthFund=document.getElementById('wHealthFund')?.value||'';
+  const workStartDate=document.getElementById('wWorkStartDate')?.value||'';
   const clientIds=[...document.querySelectorAll('#wClientPick input:checked')].map(el=>el.value);
   // Only a grid the user actually opened decides the schedule. Left closed, an
   // existing worker keeps the shifts they already had and a new one is created
