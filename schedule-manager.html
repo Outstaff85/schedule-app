@@ -4356,8 +4356,8 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     const fieldSizes={};
     const setSize=(n,size)=>{ fieldSizes[n]=size; try{ form.getTextField(n).acroField.setDefaultAppearance('/Helv '+size+' Tf 0 g'); }catch(e){} };
     setSize('surname',11); setSize('given_name',11); setSize('addr_street',11);
-    setSize('addr_city',11); setSize('hf_name',10); setSize('id_top2',13);
-    setSize('sign_date',9);
+    setSize('addr_city',11); setSize('hf_name',11); setSize('id_top2',11);
+    setSize('sign_date',11);
     const setT=(n,v)=>{ try{ if(v) form.getTextField(n).setText(String(v)); }catch(e){} };
     const CHECK_BLUE=PDFLib.rgb(0.09,0.32,0.85);
     const allPages=doc.getPages();
@@ -4495,7 +4495,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // no longer an independently-editable field in a PDF viewer, same as
     // tax_year. Rect verified in form101-field-map.md's own field table.
     const DOB_RECT={x:120,y:606.89,width:86,height:14};
-    if(dob) drawCombRaw(dob.replace(/\D/g,''),8,DOB_RECT,9,-1);
+    if(dob) drawCombRaw(dob.replace(/\D/g,''),8,DOB_RECT,11,-1);
     try{ form.getTextField('dob').enableReadOnly(); }catch(e){}
     // The "tax_year" AcroForm field's own rect doesn't match its printed box
     // on this template (narrower and shifted up relative to the visible
@@ -4554,8 +4554,8 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       drawRight(profile.companyName,NAME_RECT,10);
       const addr=[profile.street,profile.streetNumber].filter(Boolean).join(' ')+(profile.city?(profile.street||profile.streetNumber?', ':'')+profile.city:'');
       drawRight(addr,ADDRESS_RECT,10);
-      drawRight(profile.phone,PHONE_RECT,12);
-      if(profile.deductionsFileNumber) drawCombRaw(String(profile.deductionsFileNumber).replace(/\D/g,''),8,DEDUCTIONS_RECT,12);
+      drawRight(profile.phone,PHONE_RECT,11);
+      if(profile.deductionsFileNumber) drawCombRaw(String(profile.deductionsFileNumber).replace(/\D/g,''),8,DEDUCTIONS_RECT,11);
     })();
     if(sex==='M') chk('sex_male'); else if(sex==='F') chk('sex_female');
     if(isIsraeli){ chk('resident_yes'); chk('resident_h'); }
@@ -4587,7 +4587,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     const fillWorkStart=(isoDate)=>{
       if(!isoDate) return;
       const d=isoDate.split('-');
-      drawCombRaw(d[2]+d[1]+d[0],8,WORK_START_RECT,9,-1);
+      drawCombRaw(d[2]+d[1]+d[0],8,WORK_START_RECT,11,-1);
     };
     // "מספר זהות (9 ספרות)" in section ב (employee details) has no real
     // AcroForm field on the template — only `id_top2` (a small running
@@ -4610,7 +4610,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // Israeli ID: fill address, marital, work start, fund — from the
       // worker's own persisted fields when regenerating (no scan overlay is
       // open in that case), otherwise from the live aiId* scan-panel inputs.
-      if(no) drawCombRaw(no.replace(/\D/g,''),9,ID_BOX_RECT,9,-1);
+      if(no) drawCombRaw(no.replace(/\D/g,''),9,ID_BOX_RECT,11,-1);
       const addr=isRegen?workerAddress(targetWorker||{}):_v('aiAddress');
       const city=isRegen?((targetWorker&&targetWorker.city)||''):_v('aiCity');
       if(addr){
@@ -4643,8 +4643,8 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       const pageH=page1.getHeight();
       children.slice(0,10).forEach((c,i)=>{
         const rowY=pageH-CHILD_ROW_Y[i+1], rowH=CHILD_ROW_Y[i+1]-CHILD_ROW_Y[i];
-        if(c.idNo) drawCombRaw(String(c.idNo).replace(/\D/g,''),9,{x:CHILD_COLS.id.x,y:rowY,width:CHILD_COLS.id.width,height:rowH},8);
-        if(c.dob){ const dd=String(c.dob).replace(/\D/g,''); if(dd) drawCombRaw(dd,8,{x:CHILD_COLS.dob.x,y:rowY,width:CHILD_COLS.dob.width,height:rowH},8); }
+        if(c.idNo) drawCombRaw(String(c.idNo).replace(/\D/g,''),9,{x:CHILD_COLS.id.x,y:rowY,width:CHILD_COLS.id.width,height:rowH},11);
+        if(c.dob){ const dd=String(c.dob).replace(/\D/g,''); if(dd) drawCombRaw(dd,8,{x:CHILD_COLS.dob.x,y:rowY,width:CHILD_COLS.dob.width,height:rowH},11); }
         if(c.name){
           const nameFont=customFont||stdFont;
           const size=8;
@@ -4673,7 +4673,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     } else {
       // Foreign passport: fill passport_no, work start, fund — same
       // regen-vs-live-scan source split as the Israeli-ID branch above.
-      setComb('passport_no',13,no,9);
+      setComb('passport_no',13,no,11);
       const workStart=isRegen?((targetWorker&&targetWorker.workStartDate)||''):(document.getElementById('aiPpWork')?.value);
       fillWorkStart(workStart);
       const fund=isRegen?((targetWorker&&targetWorker.healthFund)||''):(document.getElementById('aiPpFund')?.value);

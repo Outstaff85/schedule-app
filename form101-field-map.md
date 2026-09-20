@@ -114,7 +114,8 @@ vertical-position control as `ID_BOX_RECT`/`WORK_START_RECT` below: pdf-lib's
 `setComb()` path computes a combed field's vertical position internally at
 save time with no exposed hook to nudge it, so matching those two boxes'
 `yNudge=-1` treatment required drawing it by hand instead, at
-`DOB_RECT = {x:120, y:606.89, width:86, height:14}`, size 9. Same read-only
+`DOB_RECT = {x:120, y:606.89, width:86, height:14}`, size 11 (unified with
+almost every other hand-drawn size, see below). Same read-only
 treatment as `tax_year` (`form.getTextField('dob').enableReadOnly()`) to
 avoid a stray empty-field highlight in PDF viewers. Trade-off knowingly
 accepted: `dob` is no longer independently editable as a form field in a
@@ -127,12 +128,13 @@ right-to-left: שם, כתובת, מספר טלפון, מספר תיק ניכוי
 AcroForm widgets — verified the same way (zero widgets in this y-range) —
 so it's filled by hand from the logged-in firm's Tenants profile via
 `drawRight()` (`NAME_RECT` width 125.5 and `ADDRESS_RECT` width 205.9,
-size 10 — a longer company name/address overflowed its column at 12,
-since `drawRight` anchors to the right edge with no clip/shrink-to-fit,
-so overflow spills leftward into the neighboring column; `PHONE_RECT`
-width 78.7, fixed-width digits, no overflow risk, stays size 12) and
-`drawCombRaw()` for the digits-only deductions-file box (`DEDUCTIONS_RECT`
-width 90.4, size 12). `drawRight()` right-aligns each string against its
+size 10 — the two deliberate exceptions to the 11pt unification below,
+since a longer company name/address overflowed its column at 12/11,
+`drawRight` anchoring to the right edge with no clip/shrink-to-fit, so
+overflow spills leftward into the neighboring column; `PHONE_RECT` width
+78.7, fixed-width digits, no overflow risk, is size 11 like everything
+else) and `drawCombRaw()` for the digits-only deductions-file box
+(`DEDUCTIONS_RECT` width 90.4, size 11). `drawRight()` right-aligns each string against its
 box's right edge (`rect.x+rect.width-tw-2`) rather than left-aligning at
 `rect.x+2` — this row reads right-to-left like the rest of the Hebrew
 form, so Latin/Hebrew text alike should sit against the right edge of its
