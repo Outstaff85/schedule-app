@@ -2,7 +2,8 @@
   "functions": [
     {
       "source": "functions",
-      "codebase": "default"
+      "codebase": "default",
+      "runtime": "python312"
     }
   ],
   "hosting": {
