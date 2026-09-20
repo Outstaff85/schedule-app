@@ -4480,9 +4480,16 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     };
     // Same idea as addNewCombField, for a plain (non-combed) Hebrew-capable
     // field — used for the employer name/address and children's names.
-    // Deliberately does NOT mirror setH()'s multi-word-RTL glyph-drop
-    // workaround (see the comment inside the function) — that was tried and
-    // reverted after it broke editing.
+    // Rewritten to exactly mirror setH()'s own pattern below (blank the
+    // widget's own buggy multi-word appearance, redraw the text onto the
+    // page instead) rather than the "just let pdf-lib's own appearance show"
+    // version tried previously — that version avoided a page/field double-
+    // render when editing, but re-exposed pdf-lib's known bug of dropping a
+    // glyph of multi-word RTL text on ordinary viewing (confirmed live:
+    // "אודינסון בע"מ" rendered missing its leading א). Per the user, the
+    // pre-existing template fields using setH()'s exact approach (worker
+    // name/address) show neither problem in practice, so this now follows
+    // that same proven pattern instead of trying to avoid it differently.
     const addNewHebrewField=(name,rect,size,value,rightAlign)=>{
       if(!value) return;
       try{
@@ -4491,20 +4498,20 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
         stripWidgetChrome(fld);
         fld.acroField.setDefaultAppearance('/Helv '+size+' Tf 0 g');
         if(rightAlign){ try{ fld.setAlignment(PDFLib.TextAlignment.Right); }catch(e){} }
-        // Unlike setH() below (which patches pre-existing template fields
-        // by blanking their appearance and redrawing the text separately
-        // onto the page), this is a genuinely new, fully-owned field — no
-        // separate page-level redraw. That was tried here too, but caused a
-        // real problem: this field is meant to stay a real, independently-
-        // editable field, and the moment a user actually clicks into it to
-        // edit, the browser shows its own live value on top of the still-
-        // visible separate page drawing — visibly garbled, overlapping
-        // text. Simpler and correct: let pdf-lib's own appearance be what's
-        // shown, in both view and edit mode, accepting its known bug of
-        // occasionally dropping the last glyph of multi-word RTL text (the
-        // same bug setH()'s workaround exists for) — a rarer, smaller
-        // problem than double-rendered text every time someone edits.
-        if(customFont){ fld.setText(String(value)); fld.updateAppearances(customFont); }
+        if(customFont){
+          fld.setText(String(value)); fld.updateAppearances(customFont);
+          // Same multi-word-RTL glyph-drop workaround as setH() below: only
+          // pay for the blank+redraw when the value actually has a space.
+          if(String(value).indexOf(' ')!==-1){
+            const widget=fld.acroField.getWidgets()[0];
+            const r=widget.getRectangle();
+            const tw=customFont.widthOfTextAtSize(String(value),size);
+            const ap=widget.getAppearances();
+            if(ap&&ap.normal&&'operators' in ap.normal) ap.normal.operators=[];
+            const x=rightAlign?(r.x+r.width-tw-2):(r.x+2);
+            page1.drawText(String(value),{x,y:centerBaselineY(r,size,customFont),size,font:customFont});
+          }
+        }
         else { fld.setText(String(value).replace(/[֐-׿יִ-ﭏ]/g,'?')); fld.updateAppearances(stdFont); }
       }catch(e){}
     };

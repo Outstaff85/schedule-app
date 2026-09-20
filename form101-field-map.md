@@ -90,7 +90,7 @@ brand-new, independently-editable field there instead, via two small
 helpers:
 
 - **`addNewCombField(name, rect, maxLen, size, value)`** — `form.createTextField(name)` + `.addToPage(page1, {x,y,width,height,borderWidth:0})`, then `enableCombing()` + `setMaxLength()` + an explicit `size`. Used for digit boxes.
-- **`addNewHebrewField(name, rect, size, value, rightAlign)`** — same field creation, plus Hebrew-aware text via `customFont`, and, when `rightAlign` is set, `fld.setAlignment(PDFLib.TextAlignment.Right)` (pdf-lib's own native field alignment). Used for free-text boxes. Unlike `setH()` (below), it does **not** work around pdf-lib's multi-word-RTL glyph-drop bug by blanking-and-redrawing onto the page — see bug 3 below for why that was tried and reverted.
+- **`addNewHebrewField(name, rect, size, value, rightAlign)`** — same field creation, plus Hebrew-aware text via `customFont`, and, when `rightAlign` is set, `fld.setAlignment(PDFLib.TextAlignment.Right)` (pdf-lib's own native field alignment). Used for free-text boxes. Mirrors `setH()`'s (below) multi-word-RTL glyph-drop workaround — see bug 3 below for the back-and-forth on whether it should.
 
 **Three real bugs found in these two helpers** — the first two invisible to a
 page-content-only render (e.g. `page.get_pixmap()`) and only caught by
@@ -116,26 +116,24 @@ reported directly with a screenshot of the field in edit mode:
    (`fld.acroField.getWidgets()[0].dict.delete(PDFLib.PDFName.of('MK'))`),
    making the widget fully transparent — matching how the template's own
    pre-existing fields already behave.
-3. **Multi-word page-redraw garbled the field when actually edited.**
+3. **Multi-word page-redraw vs. glyph-drop — three rounds, settled back on the redraw.**
    `addNewHebrewField` originally mirrored `setH()`'s workaround (blank the
    widget's appearance, `page1.drawText()` the value separately onto the
-   page) for `employer_name`/`employer_address`. That broke down because
-   these fields are meant to stay genuinely editable: clicking into one to
-   edit made the browser show its own live edit box (the field's raw value)
-   **on top of** the still-visible separate page drawing underneath —
-   visibly garbled, overlapping text. Fixed by dropping the page-redraw
-   entirely; `addNewHebrewField` now just does `setText()`+
-   `updateAppearances()`. **This re-exposes pdf-lib's known multi-word-RTL
-   glyph-drop bug** — confirmed live: `employer_name` "אודינסון בע"מ"
-   rendered as "**ודינסון** בע"מ", missing the leading א (the visually
-   rightmost glyph in this right-aligned field, though the first character
-   typed — consistent with an alignment-width miscalculation pushing it
-   outside the field's BBox to be clipped, not the character being dropped
-   from the string). **Presented to the user as an explicit choice against
-   reverting; they chose to keep this** (real, editable field; occasional
-   dropped glyph when viewing) over the double-rendered-on-edit
-   alternative. Don't silently revert to the blank+redraw workaround —
-   that was tried and explicitly rejected.
+   page) for `employer_name`/`employer_address`. **Round 1 → broke editing:**
+   clicking into one to edit made the browser show its own live edit box
+   (the field's raw value) **on top of** the still-visible separate page
+   drawing underneath — visibly garbled, overlapping text (user reported
+   this with a screenshot). **Round 2 → dropped the redraw entirely**, just
+   `setText()`+`updateAppearances()` — fixed editing, but re-exposed
+   pdf-lib's known multi-word-RTL glyph-drop bug on ordinary viewing:
+   confirmed live, `employer_name` "אודינסון בע"מ" rendered as "**ודינסון**
+   בע"מ", missing the leading א. Presented as an explicit trade-off; the
+   user initially chose to keep round 2 (dropped glyph over double-render).
+   **Round 3 (current, final) → user asked for a full rewrite** modeled
+   exactly on the pre-existing worker name/address fields (`setH()`, which
+   per the user's own testing shows neither problem in practice), so
+   `addNewHebrewField` is back to mirroring `setH()`'s blank+redraw
+   workaround, same as round 1's code.
 
 **Trade-off knowingly accepted:** a previous round of hand-drawn text let
 this app pick the *exact* pixel position of each character (including a
