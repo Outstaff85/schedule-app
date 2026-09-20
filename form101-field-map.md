@@ -119,9 +119,8 @@ this row reads right-to-left like the rest of the Hebrew form, so Latin/
 Hebrew text alike should sit against the right edge of its column, not
 drift toward the box's (left) start. Both `drawRight()` and `drawCombRaw()`
 center their text's baseline vertically via a shared `centerBaselineY()`
-helper that accounts for the font's descent as well as its ascent — a
-naive ascent-only centering pushed glyphs with a descender (Hebrew final
-`ך`/`ן`/`ף`/`ץ`, common at the end of Hebrew words) visibly low in the box.
+helper (ascent-only — a descent-aware version was tried and reverted per
+user feedback).
 
 ## Worker-level Form 101 declarations (Add/Edit Worker modal)
 

@@ -1420,19 +1420,29 @@ function deleteWorkerDoc(body, tenantId){
   }catch(e){ return {error: e.toString()}; }
 }
 
+// Sidecar JSON assets (raw scan + signature, see saveWorkerAssets() below)
+// live in their own "Assets" subfolder of the tenant's "Workers" folder,
+// separate from the worker-facing PDFs — so a manager browsing Drive only
+// sees documents meant to be opened, not internal regeneration data.
+function _workerAssetsFolder(tenantId){
+  const workersFolder = _companyFolder(tenantId);
+  const sub = workersFolder.getFoldersByName('Assets');
+  return sub.hasNext() ? sub.next() : workersFolder.createFolder('Assets');
+}
+
 // Stores the raw ID/passport scan image + signature PNG used to build a
-// worker's Form-101 PDF, as a small private JSON sidecar file in the same
-// Drive folder as the PDF itself (never shared — nothing ever opens it
-// directly, it's only ever read back by loadWorkerAssets() below). This is
-// what lets a LATER edit (income type, marital status, address, ...) on the
-// client regenerate the exact same PDF with the new values, without asking
-// the manager to re-scan the physical document — the scan/signature aren't
-// kept anywhere else (deliberately NOT in the Schedule sheet's workers JSON
-// blob, to avoid bloating it with a base64 image for every worker).
+// worker's Form-101 PDF, as a small private JSON sidecar file in its own
+// "Assets" subfolder (never shared — nothing ever opens it directly, it's
+// only ever read back by loadWorkerAssets() below). This is what lets a
+// LATER edit (income type, marital status, address, ...) on the client
+// regenerate the exact same PDF with the new values, without asking the
+// manager to re-scan the physical document — the scan/signature aren't kept
+// anywhere else (deliberately NOT in the Schedule sheet's workers JSON blob,
+// to avoid bloating it with a base64 image for every worker).
 function saveWorkerAssets(body, tenantId){
   try{
     if(!body.scanB64) return {error:'Нет scanB64'};
-    const folder = _companyFolder(tenantId);
+    const folder = _workerAssetsFolder(tenantId);
     // Same idempotent-replace pattern as saveWorkerDoc: trash the exact
     // previous sidecar by its stable ID before writing the new one, so a
     // regenerate never piles up old sidecars for the same worker.
