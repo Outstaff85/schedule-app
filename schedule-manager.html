@@ -630,6 +630,7 @@
     </div>
     <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.5">
       Читает загранпаспорт <b>и</b> израильский теудат-зеут (включая иврит). Фото уходит на твой сервер (Apps Script) и обрабатывается ИИ. Стоимость: ~$0.002 за скан.
+      <br><b>Снимай камерой телефона напрямую, не пересылай фото через мессенджер</b> — пересылка сжимает картинку, а ИИ и разбор мелких цифр (номер, даты) от этого страдают.
     </div>
     <div id="aiScanStage"></div>
   </div>
@@ -1470,7 +1471,7 @@ async function saveWorker(){
     // worker, the Drive copy is now stale relative to what's on screen.
     // Trigger a background regenerate so the manager never has to remember
     // to re-scan/re-upload by hand after a routine data correction.
-    const FORM101_WATCHED_FIELDS=['docId','address','city','incomeType','otherIncomeType','docSurname','docGiven','maritalStatus','healthFund','workStartDate'];
+    const FORM101_WATCHED_FIELDS=['docId','address','city','incomeType','otherIncomeType','docSurname','docGiven','maritalStatus','healthFund','workStartDate','phone'];
     const before=FORM101_WATCHED_FIELDS.map(f=>prevW[f]);
     workers[editingWorkerIdx]={...prevW,name,colorIdx:selColorIdx,phone,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,workStartDate,clientIds,schedule};
     const updated=workers[editingWorkerIdx];
@@ -3490,17 +3491,23 @@ async function onScanFilesSelected(fileList){
     // generate our own, see aiFillForm101), find the first ID/passport page
     // for the worker card, keep everything else ("contract" etc.) as-is.
     let foundParsed=null;
-    // An Israeli ID's address/city/children live on a separate ספח (appendix)
-    // card — when that's a different photo than the front card (not the same
-    // combined shot), the loop used to stop calling aiReadDoc entirely after
-    // the front card was found, silently dropping the ספח into "other pages"
-    // (just appended to the final PDF) with its data never read. Once we know
-    // the front card is missing address/city, keep sending remaining pages
-    // through the same aiReadDoc call — a standalone ספח photo matches the
-    // same israeli_id shape (name/ID/address/city, no biometric fields) — and
-    // fold in whatever it finds, stopping as soon as it's found. Foreign
-    // passports have no ספח, so this never fires for that path.
-    let sefachNeeded=false;
+    // An Israeli ID's biometric fields (dob, sex) live on the FRONT card, while
+    // address/city/children live on a separate ספח (appendix) card — either one
+    // can end up first in a multi-file selection. Originally this only checked
+    // for missing address/city, so a ספח-first upload (front card and back card
+    // as two separate files, ספח photographed/selected first) set foundParsed
+    // from the ספח alone — which already has address+city — so `sefachNeeded`
+    // came back false immediately and the actual front card was never sent
+    // through aiReadDoc at all: dob/sex silently stayed blank even though the
+    // front card was right there in "other pages". Generalized to track ANY
+    // missing core field (not just address/city) and keep checking subsequent
+    // pages — regardless of which physical card came first — merging in
+    // whatever each one contributes, until every core field is filled or pages
+    // run out. Foreign passports carry all their fields on one page, so this
+    // never fires for that path (nothing is ever missing after the first hit).
+    const CORE_FIELDS=['dob','sex','address','city'];
+    const missingCore=p=>p&&p.type==='israeli_id'&&CORE_FIELDS.some(f=>!p[f]);
+    let needMore=false;
     const otherPages=[];
     for(let i=0;i<items.length;i++){
       const it=items[i];
@@ -3520,22 +3527,22 @@ async function onScanFilesSelected(fileList){
             foundParsed=p.fieldBoxes?await verifyDigitFields(p,it.b64,it.mediaType):p;
             foundParsed=await verifyIdChecksum(foundParsed,it.b64,it.mediaType);
             window.__aiScanImage={b64:it.b64,mediaType:it.mediaType};
-            sefachNeeded=foundParsed.type==='israeli_id'&&(!foundParsed.address||!foundParsed.city);
+            needMore=missingCore(foundParsed);
             continue; // эта страница уже сохранена как window.__aiScanImage, в "прочие" не дублируем
           }
         }catch(e){ console.error(e); }
-      } else if(sefachNeeded){
+      } else if(needMore){
         try{
           const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
           const json=await resp.json();
           const p=json&&json.parsed;
-          if(p&&p.type==='israeli_id'&&(p.address||p.city)){
-            if(!foundParsed.address) foundParsed.address=p.address||'';
-            if(!foundParsed.city) foundParsed.city=p.city||'';
-            if((!foundParsed.children||!foundParsed.children.length)&&Array.isArray(p.children)&&p.children.length) foundParsed.children=p.children;
-            sefachNeeded=false;
-            continue; // данные слиты в foundParsed, отдельной "прочей" страницей не дублируем
+          let merged=false;
+          if(p&&p.type==='israeli_id'){
+            for(const f of CORE_FIELDS){ if(!foundParsed[f]&&p[f]){ foundParsed[f]=p[f]; merged=true; } }
+            if((!foundParsed.children||!foundParsed.children.length)&&Array.isArray(p.children)&&p.children.length){ foundParsed.children=p.children; merged=true; }
           }
+          needMore=missingCore(foundParsed);
+          if(merged) continue; // данные слиты в foundParsed, отдельной "прочей" страницей не дублируем
         }catch(e){ console.error(e); }
       }
       otherPages.push({b64:it.b64,mediaType:it.mediaType});
@@ -4179,6 +4186,12 @@ function renderAiResult(p){
       +f('aiSex','Пол (M/F)',p.sex)
       +f('aiExpiry','Срок действия (ДД/ММ/ГГГГ)',p.expiry);
   }
+  // Not read from the document (no ID/passport prints a phone number) — a
+  // plain manual field, same as the marital/health-fund/work-start pickers
+  // below. Printed on Form 101's own "מספר טלפון נייד" box (worker_phone,
+  // functions/main.py) and copied into the worker's general wPhone field by
+  // aiToWorker() below, so it only needs to be typed once here.
+  h+=f('aiPhone','מספר טלפון נייד (Телефон)','');
   const _v=id=>(document.getElementById(id)?.value||'').replace(/\s+/g,' ').trim();
   const SIG_PAD_HTML=`<div style="margin-top:10px;margin-bottom:10px">
     <label style="display:block;font-size:12px;color:var(--text2);margin-bottom:4px">Подпись работника (необязательно, вставится в Форму 101)</label>
@@ -4336,6 +4349,7 @@ function aiToWorker(isId){
     set('wDocId',no);
     set('wAddress',_v('aiAddress'));
     set('wCity',_v('aiCity'));
+    set('wPhone',_v('aiPhone'));
     set('wNotes',(isId?'Israeli citizen':'Nationality: '+nat)+' · DOB: '+dob+(exp?' · Expiry: '+exp:''));
   },60);
 }
@@ -4393,6 +4407,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     const payload={
       isId, isIsraeli, surname, given, dob, sex, no,
       signDate: signDateStr,
+      workerPhone: isRegen?((targetWorker&&targetWorker.phone)||''):_v('aiPhone'),
       incomeType: targetWorker&&targetWorker.incomeType,
       otherIncomeType: targetWorker&&targetWorker.otherIncomeType,
       employer: profile ? {
