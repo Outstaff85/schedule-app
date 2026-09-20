@@ -57,6 +57,8 @@ function doPost(e) {
       case 'aiVerifyField':        return jsonResponse(aiVerifyField(body));
       case 'saveWorkerDoc':        return jsonResponse(saveWorkerDoc(body, tenantId));
       case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body, tenantId));
+      case 'saveWorkerAssets':     return jsonResponse(saveWorkerAssets(body, tenantId));
+      case 'loadWorkerAssets':     return jsonResponse(loadWorkerAssets(body));
       case 'createUser':           return jsonResponse(createUser(body, auth));
       case 'updateTenant':         return jsonResponse(updateTenant(body, auth));
       case 'loadTenantProfile':    return jsonResponse({ ok: true, profile: tenantId ? getTenantProfile(tenantId) : null });
