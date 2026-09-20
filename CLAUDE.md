@@ -119,12 +119,16 @@ The service worker explicitly never intercepts requests to `script.google.com` (
   - `docId` — document number field (Israeli ID or passport number), stored separately from address
   - `city` — city name field (extracted from ID/passport scans), stored separately as its own field
   - `address` — now contains only the street address (no embedded document number)
-  - **Form-101-specific persistent fields** (NEW): these were previously scan-overlay-only, discarded after PDF generation; now stored in the worker object so that later edits can regenerate Form 101 PDFs without re-scanning:
-    - `docSurname` — worker's surname (from ID/passport scan)
-    - `docGiven` — worker's given/first name (from ID/passport scan)
-    - `maritalStatus` — marital status (persisted from Form 101 pre-fill UI, values: unmarried/married/divorced/widowed/null)
-    - `healthFund` — health fund code (persisted from Form 101 pre-fill UI, values: Clalit/Maccabi/Meuhedet/Leumit/null)
+  - **Form-101-specific persistent fields** (NEW): these were previously scan-overlay-only (read straight from the `#ai*` DOM inputs at generation time) and discarded the moment the PDF was built; now written back onto the worker object every time `aiFillForm101()` successfully uploads a document, so a later edit can regenerate the PDF without re-scanning (see "Automatic Form 101 regeneration" below):
+    - `docType` — `'israeli_id'` or `'passport'`, which branch generated this worker's document; tells `regenerateWorkerDoc()` which `isId` value to pass back in
+    - `docSurname` / `docGiven` — worker's surname/given name as read off the ID/passport scan
+    - `docDob` / `docSex` — date of birth (`DD/MM/YYYY` string) and sex (`'M'`/`'F'`) as read off the scan
+    - `docChildren` — (Israeli ID only) the array of `{name,idNo,dob}` extracted from the ID's ספח appendix, mirroring the scan-time `window.__aiScanChildren` global
+    - `maritalStatus` — one of the `marital_*` checkbox names (`marital_single`/`marital_married`/`marital_divorced`/`marital_widowed`) or `''`; Israeli ID only
+    - `healthFund` — health fund code (`Clalit`/`Maccabi`/`Meuhedet`/`Leumit`) or `''`
     - `workStartDate` — ISO date string when worker started (persisted from Form 101 pre-fill UI); distinct from `startDate` (worker hire date in the manager's schedule), this is when they began *this* job for tax/employment purposes
+    - `assetsFileId` — Drive file ID of the scan+signature sidecar saved by `saveWorkerAssets()`, read back by `regenerateWorkerDoc()`
+    `docSurname`/`docGiven`/`healthFund`/`workStartDate` (plus `maritalStatus`, Israeli-ID only) are also directly editable in the worker edit modal, in a "Данные для Формы 101" field group — so a manager can fix a typo or update these without a rescan.
   Three helper functions manage the data:
   - `workerDocId(w)` — returns the worker's document number from `w.docId` if set (new path), or extracts it from `w.address` using a regex pattern if the address still contains a legacy embedded document number. Returns empty string if neither is found. Used for display/UI (worker modal, form fields).
   - `workerAddress(w)` — returns the cleaned address: if `w.docId` is set (split happened), returns the full `w.address` as-is; if no `docId` yet (legacy data), strips the document number pattern from `w.address` to return only the true address. Returns empty string if the address was only a document number. Provides backward compatibility with workers created before the split.
