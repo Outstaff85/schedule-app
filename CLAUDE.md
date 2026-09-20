@@ -230,6 +230,18 @@ The service worker explicitly never intercepts requests to `script.google.com` (
 
 `createUser`/`updateTenant` (`google-apps-script.js`/`apps-script/Код.js`) both correctly guard against Google Sheets auto-coercing a digit string to a number (which drops a leading zero) via `range.setNumberFormat('@')` **before** `setValue()` — this protection works and is not the bug. What can still be wrong is **pre-existing data** written before this protection existed, or via a path that doesn't use it (e.g. `migrateToMultiTenant()`'s initial tenant row) — that phone/deductions cell is already stored as a plain Sheets number, permanently missing its leading zero, and stays that way until something rewrites it. Fix: open Super-admin → Фирмы → edit (pencil) that firm and re-save the phone/deductions field through the normal form — `updateTenant`'s protected write path fixes the stored value going forward (verified live for the Odinson tenant, whose phone had exactly this problem from its 2026-09-18 migration).
 
+### "Deploy Cloud Functions" CI fails with "Missing permissions required for functions deploy"
+
+Failure looks like:
+```
+Error: Missing permissions required for functions deploy. You must have permission
+iam.serviceAccounts.ActAs on service account schedule-odinson@appspot.gserviceaccount.com.
+```
+
+Confirmed live on the workflow's first-ever run (2026-09-21, manually triggered via `workflow_dispatch` right after `deploy-functions.yml` was merged — see its entry above). Cause: the `FIREBASE_SERVICE_ACCOUNT` secret was provisioned only for Hosting deploys (`deploy.yml`'s `FirebaseExtended/action-hosting-deploy@v0`) and was never granted the **Service Account User** role (`roles/iam.serviceAccountUser`) on `schedule-odinson@appspot.gserviceaccount.com` — the default runtime identity 2nd-gen Cloud Functions deploy under, which is a separate, narrower grant than general project IAM roles.
+
+Fix (GCP Console, needs a human with project IAM-admin rights — cannot be done via `gh`/CLI from this repo): go to IAM & Admin → Service Accounts → `schedule-odinson@appspot.gserviceaccount.com` → **Permissions** tab → **Grant Access** → add the identity behind the `FIREBASE_SERVICE_ACCOUNT` secret (its `client_email` field) → role **Service Account User**. This is *not* the same as adding a role on the project's main IAM page — it must be granted directly on that specific service account's own permissions tab, since `iam.serviceAccounts.ActAs` is a per-resource grant. After granting, re-run via `gh workflow run "Deploy Cloud Functions" --ref main` (or wait for the next push touching `functions/**`) to confirm.
+
 ### "Deploy to Apps Script" CI fails with `invalid_grant` / `invalid_rapt`
 
 Failure looks like:
