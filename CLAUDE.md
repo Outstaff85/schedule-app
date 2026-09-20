@@ -32,6 +32,8 @@ There is no npm/build/lint/test tooling. Development is edit-the-HTML-and-reload
 
 When bumping the service worker's cache (`CACHE` constant in `service-worker.js`, currently `schedule-mgr-v5`), increment the version string (e.g. `v5` → `v6`) or clients will keep serving stale cached HTML after deploy. PostToolUse hook auto-commits and pushes to main on every file edit (see `.claude/settings.json` for the hook configuration).
 
+**PR merge policy:** when a session's work has a pull request open, land it by actually merging that PR on GitHub (merge button or the GitHub API) — never by closing the PR after pushing the same content to `main` directly. Direct-to-main pushes from the per-edit auto-commit hook are fine for iterating within a branch; only merging the PR itself makes GitHub's merged/closed counts (and anyone watching the repo) reflect what actually shipped.
+
 ## Architecture
 
 ### Backend: Google Apps Script
