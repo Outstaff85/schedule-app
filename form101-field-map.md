@@ -90,12 +90,13 @@ brand-new, independently-editable field there instead, via two small
 helpers:
 
 - **`addNewCombField(name, rect, maxLen, size, value)`** — `form.createTextField(name)` + `.addToPage(page1, {x,y,width,height,borderWidth:0})`, then `enableCombing()` + `setMaxLength()` + an explicit `size`. Used for digit boxes.
-- **`addNewHebrewField(name, rect, size, value, rightAlign)`** — same field creation, plus Hebrew-aware text via `customFont` (mirrors `setH()`'s own multi-word-RTL glyph-drop workaround) and, when `rightAlign` is set, `fld.setAlignment(PDFLib.TextAlignment.Right)` (pdf-lib's own native field alignment — right-aligns even single-word values, which never hit the multi-word manual-redraw fallback). Used for free-text boxes.
+- **`addNewHebrewField(name, rect, size, value, rightAlign)`** — same field creation, plus Hebrew-aware text via `customFont`, and, when `rightAlign` is set, `fld.setAlignment(PDFLib.TextAlignment.Right)` (pdf-lib's own native field alignment). Used for free-text boxes. Unlike `setH()` (below), it does **not** work around pdf-lib's multi-word-RTL glyph-drop bug by blanking-and-redrawing onto the page — see bug 3 below for why that was tried and reverted.
 
-**Two real bugs found in these two helpers, invisible to a page-content-only
-render (e.g. `page.get_pixmap()`) and only caught by dumping the raw PDF
-structure after the user reported a correctly-*positioned* field showing
-no/wrong text in a real viewer:**
+**Three real bugs found in these two helpers** — the first two invisible to a
+page-content-only render (e.g. `page.get_pixmap()`) and only caught by
+dumping the raw PDF structure after the user reported a correctly-
+*positioned* field showing no/wrong text in a real viewer; the third
+reported directly with a screenshot of the field in edit mode:
 
 1. **Empty appearance stream.** `addNewCombField` called `setText()` and
    relied on the `/Helv NNpt` DA string alone — for a *brand-new* field, with
@@ -104,18 +105,29 @@ no/wrong text in a real viewer:**
    the XObject existing with the correct `/BBox`/`/Resources` but a literal
    zero-byte stream (`Length 8`, decodes to `b''`). Fixed by calling
    `fld.updateAppearances(stdFont)` right after `setText()`.
-2. **Default white `/MK` background hiding the manually-drawn text.**
-   `addToPage(..., {borderWidth:0})` only zeroes the border *line* — pdf-lib
-   still gives a new widget an opaque white `/MK /BG [1 1 1]` fill by
-   default, which paints as an annotation *on top of* the page's own content
-   (the normal stacking order for any compliant viewer). That silently hid
-   the manual multi-word-fallback text drawn onto the page underneath it —
-   invisible in a render that skips annotations, visible (as a blank white
-   box) in one that doesn't. Fixed with `stripWidgetChrome(fld)`, called
-   right after every `addToPage()`: it deletes `/MK` outright
+2. **Default white `/MK` background.** `addToPage(..., {borderWidth:0})`
+   only zeroes the border *line* — pdf-lib still gives a new widget an
+   opaque white `/MK /BG [1 1 1]` fill by default, which paints as an
+   annotation *on top of* the page's own content (the normal stacking order
+   for any compliant viewer) — silently hiding whatever's drawn underneath
+   it, invisible in a render that skips annotations, visible (as a blank
+   white box) in one that doesn't. Fixed with `stripWidgetChrome(fld)`,
+   called right after every `addToPage()`: it deletes `/MK` outright
    (`fld.acroField.getWidgets()[0].dict.delete(PDFLib.PDFName.of('MK'))`),
    making the widget fully transparent — matching how the template's own
    pre-existing fields already behave.
+3. **Multi-word page-redraw garbled the field when actually edited.**
+   `addNewHebrewField` originally mirrored `setH()`'s workaround (blank the
+   widget's appearance, `page1.drawText()` the value separately onto the
+   page) for `employer_name`/`employer_address`. That broke down because
+   these fields are meant to stay genuinely editable: clicking into one to
+   edit made the browser show its own live edit box (the field's raw value)
+   **on top of** the still-visible separate page drawing underneath —
+   visibly garbled, overlapping text. Fixed by dropping the page-redraw
+   entirely; `addNewHebrewField` now just does `setText()`+
+   `updateAppearances()`, accepting pdf-lib's known multi-word-RTL
+   last-glyph-drop bug as a smaller, rarer trade-off than double-rendered
+   text on every edit.
 
 **Trade-off knowingly accepted:** a previous round of hand-drawn text let
 this app pick the *exact* pixel position of each character (including a
@@ -133,8 +145,8 @@ New fields created, one per box:
 | `tax_year_box` | שנת המס (tax year) | `{x:220.4, y:742.49, width:64.9, height:13}` | 9, comb 4 |
 | `id_box` | מספר זהות (Israeli ID, section ב) | `{x:438, y:607.89, width:102, height:13}` | 9, comb 9 |
 | `work_start_date` | תאריך תחילת העבודה בשנת המס | `{x:30.75, y:450.42, width:90.64, height:21.01}` | **10** — the one digit field deliberately left larger than the rest (9pt), per explicit user request |
-| `employer_name` | א. פרטי המעסיק — שם | `{x:414.9, width:125.5, y:659.89, height:14}` | 10 (text, overflow risk, see below); value gets 3 trailing spaces to nudge it further left off the right edge |
-| `employer_address` | א. פרטי המעסיק — כתובת | `{x:209.0, width:205.9, y:659.89, height:14}` | 10 (text, overflow risk, see below); same 3-trailing-space nudge as `employer_name` |
+| `employer_name` | א. פרטי המעסיק — שם | `{x:414.9, width:540.4-414.9-8, y:659.89, height:14}` (width pulled in 8pt from the printed box's true right edge, 540.4, to nudge the right-aligned text left — see below for why this is a rect change and not a value/space trick) | 10 (text, overflow risk, see below) |
+| `employer_address` | א. פרטי המעסיק — כתובת | `{x:209.0, width:414.9-209.0-8, y:659.89, height:14}` (same 8pt right-edge pull-in as `employer_name`) | 10 (text, overflow risk, see below) |
 | `employer_phone` | א. פרטי המעסיק — מספר טלפון | `{x:130.3, width:78.7, y:659.89, height:14}` | 9 |
 | `employer_deductions` | א. פרטי המעסיק — מספר תיק ניכויים | `{x:39.9, width:90.4, y:659.89, height:14}` | 9, comb 8 |
 | `children_id_N` / `children_dob_N` / `children_name_N` | ג. פרטים על ילדיי, row N | `CHILD_ROW_Y[]`/`CHILD_COLS` in code | 9 (id/dob, comb) / 8 (name, text, overflow risk) |
@@ -161,12 +173,15 @@ bug, so it's filled straight through the real field via `setComb()`, same as
 **Why `employer_name`/`employer_address` were already 10pt before the rest
 came down to match:** a longer company name/address overflowed its column at
 12pt — `addNewHebrewField`'s right-alignment means overflow spills leftward
-into the neighboring column, not clipped. They also get 3 trailing spaces
-appended to their value, nudging the visible text further left off the right
-edge per user request. The children-table name field is 8pt for the same
-overflow reason (a long child's name in a 71pt-wide column) — never
-explicitly asked about, left untouched rather
-than assumed safe.
+into the neighboring column, not clipped. Their rect width is also pulled in
+8pt from the printed box's true right edge, nudging the visible text further
+left per user request (see the rect table above — a coordinate change, not a
+value trick: an earlier attempt appended 3 trailing spaces to the value
+instead, which only worked in a page-content-only render and did nothing in
+Chrome's own PDF viewer, which appears to trim trailing whitespace before
+measuring a live field for alignment). The children-table name field is 8pt
+for the same overflow reason (a long child's name in a 71pt-wide column) —
+never explicitly asked about, left untouched rather than assumed safe.
 
 ## Worker-level Form 101 declarations (Add/Edit Worker modal)
 
