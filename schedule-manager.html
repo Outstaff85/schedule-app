@@ -1226,18 +1226,6 @@ function showWorkerModal(w){
       <div class="field"><label>Start date</label><input type="date" id="wStartDate" value="${w.startDate||''}"></div>
     </div>
     <div class="field-row">
-      <div class="field" style="display:flex;align-items:flex-end;padding-bottom:9px">
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400">
-          <input type="checkbox" id="wExpiryEnabled" ${w.expiryEnabled?'checked':''} onchange="toggleExpiryFields()" style="width:auto">
-          Предупреждение об истечении срока
-        </label>
-      </div>
-    </div>
-    <div class="field-row" id="wExpiryFields" style="${w.expiryEnabled?'':'display:none'}">
-      <div class="field"><label>Через сколько месяцев наступает срок</label><input type="number" id="wExpiryMonths" min="1" step="1" value="${w.expiryMonths||9}"></div>
-      <div class="field"><label>За сколько месяцев предупреждать заранее</label><input type="number" id="wExpiryWarnMonths" min="0" step="1" value="${w.expiryWarnMonths??1}"></div>
-    </div>
-    <div class="field-row">
       <div class="field"><label>Income type (Form 101, ד)</label>
         <select id="wIncomeType">
           <option value="">— not set —</option>
