@@ -1737,10 +1737,6 @@ function openWorkerCard(wi){
     </div>
     ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
     <div style="margin-bottom:14px">
-      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">График на неделе</div>
-      <div style="display:flex;gap:4px;flex-wrap:wrap">${workerScheduleStripHtml(w)}</div>
-    </div>
-    <div style="margin-bottom:14px">
       <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Objects &amp; rates</div>
       ${objs.length?objs.map(o=>{
         const r=effectiveRates(w,o.id);
