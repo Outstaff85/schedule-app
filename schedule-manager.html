@@ -4776,6 +4776,52 @@ async function autoUploadWithRetry(isId,workerId){
   }
 }
 
+// Rebuilds and re-uploads a worker's Form-101 PDF using their CURRENTLY
+// saved data (address, income type, marital status, health fund, ...)
+// instead of what was true when they were first scanned — without asking
+// the manager to re-scan the physical ID/passport. Reads the scan+signature
+// back from the Drive sidecar saveWorkerAssets() cached at the last
+// successful generation. A worker who's never had a document generated (no
+// docUrl), or one whose document predates this feature (no assetsFileId),
+// has nothing to rebuild from — callers are expected to check for that
+// themselves (saveWorker() and regenerateAllWorkerDocs() both do), but this
+// also no-ops safely on its own if called anyway.
+async function regenerateWorkerDoc(workerId){
+  const w=workers.find(x=>x.id===workerId);
+  if(!w||!w.docUrl||!w.assetsFileId) return false;
+  try{
+    const resp=await fetch(GS_URL,{
+      method:'POST',
+      body:JSON.stringify({action:'loadWorkerAssets',secret:API_SECRET,...gsAuth(),fileId:w.assetsFileId})
+    });
+    const json=await resp.json();
+    if(!json||!json.ok) return false;
+    const isId=w.docType!=='passport';
+    return await aiFillForm101(isId,'upload',workerId,null,{scanB64:json.scanB64,scanMediaType:json.scanMediaType,sigPng:json.sigPng||null});
+  }catch(e){ return false; }
+}
+
+// Firm-profile edits change every worker's Form 101 employer-details row
+// (section א, פרטי המעסיק — company name/address/phone/deductions number),
+// so every already-generated document is now stale, not just the one worker
+// being edited. Sequential (not parallel) to avoid bursting the Apps Script
+// quota with a pile of simultaneous PDF builds + Drive writes when a firm
+// has many workers. Only called for the firm currently loaded into
+// `workers` (see submitEditFirm()) — there's nothing to regenerate for a
+// firm whose schedule isn't the one open right now.
+async function regenerateAllWorkerDocs(){
+  const targets=workers.filter(w=>w.docUrl&&w.assetsFileId);
+  if(!targets.length) return;
+  let done=0, failed=0;
+  for(const w of targets){
+    const ok=await regenerateWorkerDoc(w.id);
+    done++; if(!ok) failed++;
+  }
+  showToast(failed
+    ? ('Документы обновлены: '+(done-failed)+'/'+done+' (есть ошибки, см. пометки у сотрудников)')
+    : ('Документы всех сотрудников обновлены ('+done+')'));
+}
+
 let _pdfjsLoading=null;
 function _loadPdfJs(){
   if(window.pdfjsLib) return Promise.resolve();
