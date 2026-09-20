@@ -30,9 +30,11 @@ There is no npm/build/lint/test tooling. Development is edit-the-HTML-and-reload
   - `.github/workflows/deploy-apps-script.yml` — deploys Google Apps Script source (anything in `apps-script/`) via `clasp push --force` and `clasp deploy` to the configured Apps Script project (requires `CLASP_CREDENTIALS` and `CLASP_DEPLOYMENT_ID` GitHub secrets).
 - Routing: `firebase.json` rewrites `/` → `schedule-manager.html` and `/punch` → `worker-punch.html`.
 
-When bumping the service worker's cache (`CACHE` constant in `service-worker.js`, currently `schedule-mgr-v5`), increment the version string (e.g. `v5` → `v6`) or clients will keep serving stale cached HTML after deploy. PostToolUse hook auto-commits and pushes to main on every file edit (see `.claude/settings.json` for the hook configuration).
+When bumping the service worker's cache (`CACHE` constant in `service-worker.js`, currently `schedule-mgr-v5`), increment the version string (e.g. `v5` → `v6`) or clients will keep serving stale cached HTML after deploy. PostToolUse hook auto-commits and pushes to the **current branch** (`git push origin HEAD`, not hardcoded to `main`) on every file edit (see `.claude/settings.json` for the hook configuration) — so whichever branch is checked out is what receives the auto-commits.
 
-**PR merge policy:** when a session's work has a pull request open, land it by actually merging that PR on GitHub (merge button or the GitHub API) — never by closing the PR after pushing the same content to `main` directly. Direct-to-main pushes from the per-edit auto-commit hook are fine for iterating within a branch; only merging the PR itself makes GitHub's merged/closed counts (and anyone watching the repo) reflect what actually shipped.
+**Active work branch:** `My_Work_Befor_PR` is the standing work branch for this project — both local sessions and cloud sessions (claude.ai/code) should check it out (or start/resume the cloud session on it) at the beginning of work, instead of working directly on `main`. Do not create a new ad-hoc branch per session; keep using `My_Work_Befor_PR` until the user says otherwise. This keeps every edit hook auto-commit (local and cloud alike) landing in the same branch.
+
+**PR merge policy:** when a session's work has a pull request open, land it by actually merging that PR on GitHub (merge button or the GitHub API) — never by closing the PR after pushing the same content to `main` directly. Direct-to-main pushes from the per-edit auto-commit hook are fine for iterating within a branch; only merging the PR itself makes GitHub's merged/closed counts (and anyone watching the repo) reflect what actually shipped. `My_Work_Befor_PR` (see above) is where that iteration happens before the PR into `main` is merged.
 
 ## Architecture
 
