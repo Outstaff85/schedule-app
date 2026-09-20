@@ -358,9 +358,6 @@
   </div>
   <div id="accountLabelCenter" class="account-label-center"></div>
   <div class="titlebar-actions">
-    <div class="save-indicator saved" id="saveIndicator">
-      <div class="save-dot"></div><span>Saved</span>
-    </div>
     <div class="export-dropdown" id="exportDropdown">
       <button class="btn sm" onclick="toggleExportMenu()"><i class="ti ti-upload"></i> Export <i class="ti ti-chevron-down" style="font-size:13px;opacity:0.7"></i></button>
       <div class="dropdown-menu" id="exportMenu">
@@ -370,6 +367,9 @@
       </div>
     </div>
     <div id="accountControl"></div>
+    <div class="save-indicator saved" id="saveIndicator">
+      <div class="save-dot"></div><span>Saved</span>
+    </div>
   </div>
 </div>
 
@@ -982,6 +982,20 @@ function render(){
   const _wd=document.getElementById('weekDisplay'); if(_wd) _wd.textContent=fmtRange(weekStart);
   document.getElementById('pageSub').textContent=fmtRange(weekStart)+' · Drag ⠿ to reorder · Click shifts to edit';
   renderStats(); renderGanttHeader(); renderGanttBody(); renderWorkerList(); renderSidebarClients();
+  // render() only ever refreshed the Schedule tab's own pieces above — every
+  // other tab's table (Workers/Clients/Admin/Бухгалтерия) is rendered ONLY by
+  // switchTab() when the tab is first opened. Every place that mutates data
+  // (saveWorker, saveClient, deletePunch, ...) calls render() to reflect the
+  // change, but most of them sit ON one of those other tabs while doing it —
+  // so an edit silently didn't show up until switching away and back. A few
+  // call sites had already patched around this ad-hoc (search
+  // `currentTab==='admin'`) instead of fixing it here once for every tab and
+  // every mutation.
+  if(currentTab==='workers')    renderWorkersPage();
+  if(currentTab==='clients')    renderClientsPage();
+  if(currentTab==='admin')      renderAdmin();
+  if(currentTab==='dashboard')  renderDashboard();
+  if(currentTab==='accounting') renderAccounting();
 }
 
 function getVisible(){ return selectedClientId ? workers.filter(w=>(w.clientIds||[]).includes(selectedClientId)) : workers; }
@@ -1315,6 +1329,38 @@ function showWorkerModal(w){
     </div>` : ''}
     ${editingWorkerIdx!==null ? `
     <div class="field">
+      <label><i class="ti ti-id-badge-2"></i> Данные для Формы 101</label>
+      <div class="field-row">
+        <div class="field"><label>Фамилия (как в скане)</label><input type="text" id="wDocSurname" value="${esc(w.docSurname||'')}"></div>
+        <div class="field"><label>Имя (как в скане)</label><input type="text" id="wDocGiven" value="${esc(w.docGiven||'')}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Семейное положение</label>
+          <select id="wMaritalStatus">
+            <option value="" ${!w.maritalStatus?'selected':''}>— не заполнять —</option>
+            <option value="marital_single" ${w.maritalStatus==='marital_single'?'selected':''}>רווק/ה (Холост/а)</option>
+            <option value="marital_married" ${w.maritalStatus==='marital_married'?'selected':''}>נשוי/אה (Женат/замужем)</option>
+            <option value="marital_divorced" ${w.maritalStatus==='marital_divorced'?'selected':''}>גרוש/ה (Разведён/а)</option>
+            <option value="marital_widowed" ${w.maritalStatus==='marital_widowed'?'selected':''}>אלמן/ה (Вдовец/вдова)</option>
+          </select>
+        </div>
+        <div class="field"><label>Больничная касса</label>
+          <select id="wHealthFund">
+            <option value="" ${!w.healthFund?'selected':''}>— не заполнять —</option>
+            <option value="Clalit" ${w.healthFund==='Clalit'?'selected':''}>כללית (Клалит)</option>
+            <option value="Maccabi" ${w.healthFund==='Maccabi'?'selected':''}>מכבי (Маккаби)</option>
+            <option value="Meuhedet" ${w.healthFund==='Meuhedet'?'selected':''}>מאוחדת (Меухедет)</option>
+            <option value="Leumit" ${w.healthFund==='Leumit'?'selected':''}>לאומית (Леумит)</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><label>Дата начала работы (Форма 101)</label><input type="date" id="wWorkStartDate" value="${w.workStartDate||''}"></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:2px">
+        ${w.docUrl?'Изменение этих полей (или адреса/города/типа дохода выше) автоматически обновит уже загруженный документ в Google Drive.':'Заполняется автоматически при первом скане/генерации Формы 101 — до этого можно оставить пустым.'}
+      </div>
+    </div>` : ''}
+    ${editingWorkerIdx!==null ? `
+    <div class="field">
       <label><i class="ti ti-file-text"></i> Документы (Форма 101 + скан)</label>
       <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" style="flex-shrink:0">
@@ -1366,6 +1412,17 @@ async function saveWorker(){
   const notes=document.getElementById('wNotes')?.value.trim()||'';
   const incomeType=document.getElementById('wIncomeType')?.value||'';
   const otherIncomeType=document.getElementById('wOtherIncomeType')?.value||'';
+  // Form-101 fields that used to live only in the one-shot scan overlay
+  // (#aiIdMarital/#aiIdFund/#aiIdWork), read once at generation time and
+  // never seen again. Made permanent, editable worker fields so they (a)
+  // survive between sessions and (b) can trigger a document regenerate below
+  // when changed without re-scanning. Only present in the edit modal (see
+  // showWorkerModal), so absent on a brand-new worker.
+  const docSurname=document.getElementById('wDocSurname')?.value.trim()||'';
+  const docGiven=document.getElementById('wDocGiven')?.value.trim()||'';
+  const maritalStatus=document.getElementById('wMaritalStatus')?.value||'';
+  const healthFund=document.getElementById('wHealthFund')?.value||'';
+  const workStartDate=document.getElementById('wWorkStartDate')?.value||'';
   const clientIds=[...document.querySelectorAll('#wClientPick input:checked')].map(el=>el.value);
   // Only a grid the user actually opened decides the schedule. Left closed, an
   // existing worker keeps the shifts they already had and a new one is created
@@ -1376,9 +1433,24 @@ async function saveWorker(){
         ? workers[editingWorkerIdx].schedule
         : DAYS.map(()=>({type:'off',start:null,end:null})));
   if(editingWorkerIdx!==null){
-    workers[editingWorkerIdx]={...workers[editingWorkerIdx],name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,clientIds,schedule};
+    const prevW=workers[editingWorkerIdx];
+    // Fields that end up printed on this worker's Form-101 PDF — if any of
+    // them actually changed AND a document is already uploaded for this
+    // worker, the Drive copy is now stale relative to what's on screen.
+    // Trigger a background regenerate so the manager never has to remember
+    // to re-scan/re-upload by hand after a routine data correction.
+    const FORM101_WATCHED_FIELDS=['docId','address','city','incomeType','otherIncomeType','docSurname','docGiven','maritalStatus','healthFund','workStartDate'];
+    const before=FORM101_WATCHED_FIELDS.map(f=>prevW[f]);
+    workers[editingWorkerIdx]={...prevW,name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,workStartDate,clientIds,schedule};
+    const updated=workers[editingWorkerIdx];
+    const after=FORM101_WATCHED_FIELDS.map(f=>updated[f]);
     showToast(name+' updated!');
     closeModal('workerOverlay'); render(); autoSave();
+    if(updated.docUrl && updated.assetsFileId && before.some((v,i)=>v!==after[i])){
+      regenerateWorkerDoc(updated.id).then(ok=>{
+        showToast(ok?('Документ '+name+' обновлён'):('Не удалось обновить документ '+name));
+      });
+    }
     return;
   }
   const token=genToken();
@@ -1456,10 +1528,14 @@ function deleteWorker(wi){
   if(!confirm('Remove "'+w.name+'"?'))return;
   const n=w.name;
   const fileId=w.docFileId||extractDriveFileId(w.docUrl);
+  const assetsFileId=w.assetsFileId;
   workers.splice(wi,1);
   render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
   showToast(n+' removed');
   if(fileId) gsDeleteWorkerDoc(fileId);
+  // Same backend action trashes any file by ID regardless of type — reused
+  // here for the scan+signature sidecar so it doesn't outlive the worker.
+  if(assetsFileId) gsDeleteWorkerDoc(assetsFileId);
 }
 function deleteWorkerFromCard(wi){ closeModal('workerCardOverlay'); deleteWorker(wi); }
 
@@ -1631,17 +1707,6 @@ function renderWorkersPage(){
 
 const INCOME_TYPE_LABELS = {monthly:'Monthly salary',secondary:'2nd job salary',partial:'Partial salary',daily:'Daily wage',pension:'Pension',scholarship:'Scholarship'};
 const OTHER_INCOME_LABELS = {none:'No other income',monthly:'Monthly salary',secondary:'2nd job salary',partial:'Partial salary',daily:'Daily wage',pension:'Pension',scholarship:'Scholarship'};
-// Compact weekly-schedule strip for the worker card: one chip per day (Sun..Sat),
-// muted for days off, showing the shift's time range for working days.
-function workerScheduleStripHtml(w){
-  return (w.schedule||[]).map((sh,i)=>{
-    const isWork=sh&&sh.type==='work';
-    return `<div style="flex:1;min-width:58px;text-align:center;padding:6px 4px;border-radius:8px;background:${isWork?'var(--bg3)':'transparent'};border:1px solid ${isWork?'var(--border2)':'var(--border)'}">
-      <div style="font-size:10px;font-weight:700;color:${isWork?'var(--text2)':'var(--text3)'};text-transform:uppercase">${DAYS[i]}</div>
-      <div style="font-size:11px;color:${isWork?'var(--text)':'var(--text3)'};margin-top:2px;white-space:nowrap">${isWork?esc(sh.start||'')+'–'+esc(sh.end||''):'вых'}</div>
-    </div>`;
-  }).join('');
-}
 function openWorkerCard(wi){
   const w=workers[wi]; if(!w) return;
   const c=WORKER_COLORS[w.colorIdx%8], ini=w.name.slice(0,2).toUpperCase();
@@ -1650,7 +1715,6 @@ function openWorkerCard(wi){
   const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
   const wh=workerTotalHours(w);
   const expSt=workerExpiryStatus(w);
-  const punchLink=w.token?buildPunchLink(w):'';
   document.getElementById('workerCardModal').innerHTML=`
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
       <div style="width:52px;height:52px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">${ini}</div>
@@ -1675,10 +1739,6 @@ function openWorkerCard(wi){
     </div>
     ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
     <div style="margin-bottom:14px">
-      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">График на неделе</div>
-      <div style="display:flex;gap:4px;flex-wrap:wrap">${workerScheduleStripHtml(w)}</div>
-    </div>
-    <div style="margin-bottom:14px">
       <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Objects &amp; rates</div>
       ${objs.length?objs.map(o=>{
         const r=effectiveRates(w,o.id);
@@ -1689,13 +1749,6 @@ function openWorkerCard(wi){
         </div>`;
       }).join(''):'<span style="color:var(--text3);font-size:12px">Not assigned to any object</span>'}
     </div>
-    ${punchLink?`<div style="margin-bottom:14px">
-      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Ссылка для отметки</div>
-      <div style="display:flex;gap:6px">
-        <input type="text" readonly value="${esc(punchLink)}" onclick="this.select()" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text2);font-size:12px;padding:6px 8px;outline:none">
-        <button class="btn sm" onclick="copyWorkerLink('${w.id}')" title="Copy"><i class="ti ti-copy"></i></button>
-      </div>
-    </div>`:''}
     <div class="modal-actions">
       <button class="btn sm red" onclick="deleteWorkerFromCard(${wi})"><i class="ti ti-trash"></i> Delete</button>
       ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Скачать документ</a>`:''}
@@ -2370,6 +2423,15 @@ async function submitEditFirm(){
     // Only the super-admin has a Firms list to refresh (and the right to ask
     // the backend for one) — a firm editing its own profile has no such screen.
     if(getSession()?.role === 'superadmin') renderFirmsList();
+    // A firm-profile edit changes the employer-details row on every worker's
+    // Form 101 — regenerate them, but only when the edited firm is the one
+    // actually loaded into `workers` right now (self-service edit, or a
+    // super-admin currently drilled into that firm): there's nothing in
+    // memory to regenerate for a firm the super-admin edited from the Firms
+    // list without switching into it.
+    const __activeSession=getSession();
+    const __activeTenantId=__activeSession&&(__activeSession.viewingTenantId||__activeSession.tenantId);
+    if(__activeTenantId===__editingFirmTenantId) regenerateAllWorkerDocs();
   }catch(e){ errEl.textContent = 'Сеть недоступна'; }
   finally{ btn.disabled = false; btn.textContent = 'Сохранить'; }
 }
@@ -4213,12 +4275,28 @@ function bytesToBase64(bytes){
   return btoa(binary);
 }
 
-async function aiFillForm101(isId,mode,workerId,btnEl){
+// presetAssets ({scanB64,scanMediaType,sigPng}) is set only by
+// regenerateWorkerDoc() below, for rebuilding an already-uploaded document
+// after a later data edit — there's no live scan overlay open in that case,
+// so every value that would normally come from the #ai* scan-result inputs
+// is read from the worker's own persisted doc*/maritalStatus/healthFund/
+// workStartDate fields instead (populated by the write-back near the bottom
+// of this function, the first time each worker's document is generated).
+async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
   mode=mode||'download';
+  const isRegen=!!presetAssets;
   const _v=id=>(document.getElementById(id)?.value||'').replace(/\s+/g,' ').trim();
-  const surname=_v('aiSurname'), given=_v('aiGiven');
-  const dob=_v('aiDob'), sex=_v('aiSex');
-  const no = isId ? _v('aiIdNo') : _v('aiPassportNo');
+  // Hoisted above the try so the catch block (below) can still flag this
+  // worker's failed upload for the "no document" badge even when the
+  // failure happens before the assignment finishes (e.g. the pdf-lib CDN
+  // load itself, before targetWorker would otherwise be resolved) — and so
+  // the isRegen reads just below have a worker to read from.
+  let targetWorker=(workerId||window.__aiRescanWorkerId)?workers.find(x=>x.id===(workerId||window.__aiRescanWorkerId)):null;
+  const surname=isRegen?((targetWorker&&targetWorker.docSurname)||''):_v('aiSurname');
+  const given=isRegen?((targetWorker&&targetWorker.docGiven)||''):_v('aiGiven');
+  const dob=isRegen?((targetWorker&&targetWorker.docDob)||''):_v('aiDob');
+  const sex=isRegen?((targetWorker&&targetWorker.docSex)||''):_v('aiSex');
+  const no = isRegen ? (workerDocId(targetWorker||{})||'') : (isId ? _v('aiIdNo') : _v('aiPassportNo'));
   const nat = isId ? 'ISR' : _v('aiNat');
   const isIsraeli = isId || nat.toUpperCase()==='ISR';
   // Explicit btnEl (or a deliberate null) takes precedence over the implicit
@@ -4231,11 +4309,6 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
   // this function also runs in the background from saveWorker(), where that
   // panel isn't on screen.
   let firmMissing=[];
-  // Hoisted above the try so the catch block (below) can still flag this
-  // worker's failed upload for the "no document" badge even when the
-  // failure happens before the assignment finishes (e.g. the pdf-lib CDN
-  // load itself, before targetWorker would otherwise be resolved).
-  let targetWorker=(workerId||window.__aiRescanWorkerId)?workers.find(x=>x.id===(workerId||window.__aiRescanWorkerId)):null;
   try{
     if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader-2 spin"></i> '+(mode==='upload'?'Загружаю…':'Готовлю…'); }
     await _loadPdfLib();
@@ -4479,9 +4552,12 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     const signDateStr=String(signDate.getDate()).padStart(2,'0')+'/'+String(signDate.getMonth()+1).padStart(2,'0')+'/'+signDate.getFullYear();
     setT('sign_date',signDateStr);
     if(isId){
-      // Israeli ID: fill address, marital, work start, fund from aiId* inputs
+      // Israeli ID: fill address, marital, work start, fund — from the
+      // worker's own persisted fields when regenerating (no scan overlay is
+      // open in that case), otherwise from the live aiId* scan-panel inputs.
       if(no) drawCombRaw(no.replace(/\D/g,''),9,ID_BOX_RECT,10);
-      const addr=_v('aiAddress'), city=_v('aiCity');
+      const addr=isRegen?workerAddress(targetWorker||{}):_v('aiAddress');
+      const city=isRegen?((targetWorker&&targetWorker.city)||''):_v('aiCity');
       if(addr){
         const writeStr=customFont?setH:setT;
         // Street+number can be OCR'd in either order ("Rothschild 5" or
@@ -4494,10 +4570,11 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
         else writeStr('addr_street',addr);
       }
       (customFont?setH:setT)('addr_city',city);
-      const marital=document.getElementById('aiIdMarital')?.value;
+      const marital=isRegen?((targetWorker&&targetWorker.maritalStatus)||''):(document.getElementById('aiIdMarital')?.value);
       if(marital) chk(marital);
-      fillWorkStart(document.getElementById('aiIdWork')?.value);
-      const fund=document.getElementById('aiIdFund')?.value;
+      const workStart=isRegen?((targetWorker&&targetWorker.workStartDate)||''):(document.getElementById('aiIdWork')?.value);
+      fillWorkStart(workStart);
+      const fund=isRegen?((targetWorker&&targetWorker.healthFund)||''):(document.getElementById('aiIdFund')?.value);
       if(fund){ chk('hf_yes'); (customFont?setH:setT)('hf_name',HEALTH_FUND_HE[fund]||fund); }
       // Children table ("ג. פרטים על ילדיי...") — like the work-start box, this
       // is plain printed boxes with no form fields, filled by hand. Only the
@@ -4505,7 +4582,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
       // are registered there); the two "1"/"2" eligibility checkboxes on the
       // template require the parent's own declaration, not something a scan
       // can determine, so they're left blank for the user to mark by hand.
-      const children=Array.isArray(window.__aiScanChildren)?window.__aiScanChildren:[];
+      const children=isRegen?((targetWorker&&targetWorker.docChildren)||[]):(Array.isArray(window.__aiScanChildren)?window.__aiScanChildren:[]);
       const CHILD_ROW_Y=[380.3115,402.2011,424.0908,445.9803,467.8701,489.7587,511.6493,533.5380,555.4286,577.3173,599.2079];
       const CHILD_COLS={dob:{x:255.55,width:91.36},id:{x:346.91,width:101.9},name:{x:448.81,width:71.26}};
       const pageH=page1.getHeight();
@@ -4520,16 +4597,46 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
           page1.drawText(String(c.name),{x:CHILD_COLS.name.x+CHILD_COLS.name.width-tw-2,y:rowY+(rowH-th)/2,size,font:nameFont});
         }
       });
+      // Write back every value actually used onto the worker record (only
+      // when there's a real worker AND we're persisting a new document —
+      // a bare 'download' before the worker is saved, or a re-download of
+      // an unchanged document, has nothing useful to gain from this and
+      // would just add an autoSave the caller isn't expecting). This is
+      // what makes a LATER edit-and-regenerate possible without re-scanning:
+      // these become the baseline regenerateWorkerDoc() reads next time.
+      if(mode==='upload'&&targetWorker){
+        targetWorker.docType='israeli_id';
+        targetWorker.docSurname=surname; targetWorker.docGiven=given;
+        targetWorker.docDob=dob; targetWorker.docSex=sex;
+        if(addr) targetWorker.address=addr;
+        if(city) targetWorker.city=city;
+        if(marital) targetWorker.maritalStatus=marital;
+        if(workStart) targetWorker.workStartDate=workStart;
+        if(fund) targetWorker.healthFund=fund;
+        if(children.length) targetWorker.docChildren=children;
+      }
     } else {
-      // Foreign passport: fill passport_no, work start, fund from aiPp* inputs
+      // Foreign passport: fill passport_no, work start, fund — same
+      // regen-vs-live-scan source split as the Israeli-ID branch above.
       setComb('passport_no',13,no,10);
-      fillWorkStart(document.getElementById('aiPpWork')?.value);
-      const fund=document.getElementById('aiPpFund')?.value;
+      const workStart=isRegen?((targetWorker&&targetWorker.workStartDate)||''):(document.getElementById('aiPpWork')?.value);
+      fillWorkStart(workStart);
+      const fund=isRegen?((targetWorker&&targetWorker.healthFund)||''):(document.getElementById('aiPpFund')?.value);
       if(fund){ chk('hf_yes'); (customFont?setH:setT)('hf_name',HEALTH_FUND_HE[fund]||fund); }
+      if(mode==='upload'&&targetWorker){
+        targetWorker.docType='passport';
+        targetWorker.docSurname=surname; targetWorker.docGiven=given;
+        targetWorker.docDob=dob; targetWorker.docSex=sex;
+        if(workStart) targetWorker.workStartDate=workStart;
+        if(fund) targetWorker.healthFund=fund;
+      }
     }
     // Signature ("חתימת המבקש/ת") — page 2, no form field either (printed line
     // only), drawn as an image if the worker actually signed on the pad.
-    const sigPng=typeof getSignaturePng==='function'?getSignaturePng():null;
+    // Regenerating reuses whatever signature was captured the first time
+    // (there's no live pad to read from in that case) instead of trying to
+    // ask the worker to sign again for a routine data correction.
+    const sigPng=isRegen?(presetAssets.sigPng||null):(typeof getSignaturePng==='function'?getSignaturePng():null);
     if(sigPng){
       try{
         const sigBytes=await fetch(sigPng).then(r=>r.arrayBuffer());
@@ -4564,10 +4671,20 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
         scanPage.drawImage(img,{x,y,width:w,height:h});
       }catch(e){}
     };
-    if(window.__aiScanImage){
-      await appendScanPage(window.__aiScanImage.b64,window.__aiScanImage.mediaType,'Document scan');
+    // Regenerating reads the scan image back from presetAssets (the Drive
+    // sidecar loaded by regenerateWorkerDoc()) instead of window.__aiScanImage
+    // — that global belongs to whichever scan session happens to be open in
+    // the browser right now, which is a DIFFERENT worker's data if a
+    // background regenerate for worker B fires while the manager is
+    // mid-scanning worker A.
+    const scanImage=isRegen?{b64:presetAssets.scanB64,mediaType:presetAssets.scanMediaType}:window.__aiScanImage;
+    if(scanImage){
+      await appendScanPage(scanImage.b64,scanImage.mediaType,'Document scan');
     }
-    if(Array.isArray(window.__aiPacketOtherPages)){
+    // Same reasoning — extra packet pages (a contract, etc.) aren't persisted
+    // by regenerateWorkerDoc(), so never attach whatever happens to be
+    // sitting in this global during a background regenerate.
+    if(!isRegen && Array.isArray(window.__aiPacketOtherPages)){
       for(const p of window.__aiPacketOtherPages) await appendScanPage(p.b64,p.mediaType,'Document');
     }
     // Without this, viewers ignore our appearance streams and re-render every
@@ -4602,6 +4719,25 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
       if(w){
         w.docUrl=json.url; w.docSavedAt=new Date().toISOString(); w.docFileId=json.id;
         w.docUploadFailed=false;
+        // Cache the scan+signature that actually built this PDF as a small
+        // private Drive sidecar (never shown to anyone, just read back by
+        // regenerateWorkerDoc()) — this is what lets a LATER edit (income
+        // type, marital status, address, ...) rebuild the exact same PDF
+        // with the new values without asking the manager to re-scan the
+        // physical document. Best-effort: a failure here never rolls back
+        // the already-successful main upload above.
+        if(scanImage){
+          try{
+            const assetsResp=await fetch(GS_URL,{
+              method:'POST',
+              body:JSON.stringify({action:'saveWorkerAssets',secret:API_SECRET,...gsAuth(),
+                scanB64:scanImage.b64, scanMediaType:scanImage.mediaType, sigPng:sigPng||null,
+                fileNameBase:fileName.replace(/\.pdf$/,''), previousFileId:w.assetsFileId||null})
+            });
+            const assetsJson=await assetsResp.json();
+            if(assetsJson&&assetsJson.ok) w.assetsFileId=assetsJson.id;
+          }catch(e){}
+        }
         render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
         showToast('Документы '+(w.name||'')+' сохранены в Google Drive');
         window.__aiRescanWorkerId=null;
@@ -4642,6 +4778,52 @@ async function autoUploadWithRetry(isId,workerId){
     await new Promise(r=>setTimeout(r,1500));
     ok=await aiFillForm101(isId,'upload',workerId,null);
   }
+}
+
+// Rebuilds and re-uploads a worker's Form-101 PDF using their CURRENTLY
+// saved data (address, income type, marital status, health fund, ...)
+// instead of what was true when they were first scanned — without asking
+// the manager to re-scan the physical ID/passport. Reads the scan+signature
+// back from the Drive sidecar saveWorkerAssets() cached at the last
+// successful generation. A worker who's never had a document generated (no
+// docUrl), or one whose document predates this feature (no assetsFileId),
+// has nothing to rebuild from — callers are expected to check for that
+// themselves (saveWorker() and regenerateAllWorkerDocs() both do), but this
+// also no-ops safely on its own if called anyway.
+async function regenerateWorkerDoc(workerId){
+  const w=workers.find(x=>x.id===workerId);
+  if(!w||!w.docUrl||!w.assetsFileId) return false;
+  try{
+    const resp=await fetch(GS_URL,{
+      method:'POST',
+      body:JSON.stringify({action:'loadWorkerAssets',secret:API_SECRET,...gsAuth(),fileId:w.assetsFileId})
+    });
+    const json=await resp.json();
+    if(!json||!json.ok) return false;
+    const isId=w.docType!=='passport';
+    return await aiFillForm101(isId,'upload',workerId,null,{scanB64:json.scanB64,scanMediaType:json.scanMediaType,sigPng:json.sigPng||null});
+  }catch(e){ return false; }
+}
+
+// Firm-profile edits change every worker's Form 101 employer-details row
+// (section א, פרטי המעסיק — company name/address/phone/deductions number),
+// so every already-generated document is now stale, not just the one worker
+// being edited. Sequential (not parallel) to avoid bursting the Apps Script
+// quota with a pile of simultaneous PDF builds + Drive writes when a firm
+// has many workers. Only called for the firm currently loaded into
+// `workers` (see submitEditFirm()) — there's nothing to regenerate for a
+// firm whose schedule isn't the one open right now.
+async function regenerateAllWorkerDocs(){
+  const targets=workers.filter(w=>w.docUrl&&w.assetsFileId);
+  if(!targets.length) return;
+  let done=0, failed=0;
+  for(const w of targets){
+    const ok=await regenerateWorkerDoc(w.id);
+    done++; if(!ok) failed++;
+  }
+  showToast(failed
+    ? ('Документы обновлены: '+(done-failed)+'/'+done+' (есть ошибки, см. пометки у сотрудников)')
+    : ('Документы всех сотрудников обновлены ('+done+')'));
 }
 
 let _pdfjsLoading=null;

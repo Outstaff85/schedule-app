@@ -57,6 +57,8 @@ function doPost(e) {
       case 'aiVerifyField':        return jsonResponse(aiVerifyField(body));
       case 'saveWorkerDoc':        return jsonResponse(saveWorkerDoc(body, tenantId));
       case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body, tenantId));
+      case 'saveWorkerAssets':     return jsonResponse(saveWorkerAssets(body, tenantId));
+      case 'loadWorkerAssets':     return jsonResponse(loadWorkerAssets(body));
       case 'createUser':           return jsonResponse(createUser(body, auth));
       case 'updateTenant':         return jsonResponse(updateTenant(body, auth));
       case 'loadTenantProfile':    return jsonResponse({ ok: true, profile: tenantId ? getTenantProfile(tenantId) : null });
@@ -1415,6 +1417,49 @@ function deleteWorkerDoc(body, tenantId){
       return {ok:true};
     }
     return {error:'Нет fileId или fileName'};
+  }catch(e){ return {error: e.toString()}; }
+}
+
+// Stores the raw ID/passport scan image + signature PNG used to build a
+// worker's Form-101 PDF, as a small private JSON sidecar file in the same
+// Drive folder as the PDF itself (never shared — nothing ever opens it
+// directly, it's only ever read back by loadWorkerAssets() below). This is
+// what lets a LATER edit (income type, marital status, address, ...) on the
+// client regenerate the exact same PDF with the new values, without asking
+// the manager to re-scan the physical document — the scan/signature aren't
+// kept anywhere else (deliberately NOT in the Schedule sheet's workers JSON
+// blob, to avoid bloating it with a base64 image for every worker).
+function saveWorkerAssets(body, tenantId){
+  try{
+    if(!body.scanB64) return {error:'Нет scanB64'};
+    const folder = _companyFolder(tenantId);
+    // Same idempotent-replace pattern as saveWorkerDoc: trash the exact
+    // previous sidecar by its stable ID before writing the new one, so a
+    // regenerate never piles up old sidecars for the same worker.
+    if(body.previousFileId){
+      try{ DriveApp.getFileById(body.previousFileId).setTrashed(true); }catch(e){}
+    }
+    const payload = JSON.stringify({
+      scanB64: body.scanB64,
+      scanMediaType: body.scanMediaType || 'image/jpeg',
+      sigPng: body.sigPng || null,
+    });
+    const blob = Utilities.newBlob(payload, 'application/json', (body.fileNameBase || 'worker') + '_assets.json');
+    const file = folder.createFile(blob);
+    return {ok:true, id: file.getId()};
+  }catch(e){ return {error: e.toString()}; }
+}
+
+// Reads back the scan+signature sidecar saved by saveWorkerAssets() above,
+// so a later Form-101 regeneration (regenerateWorkerDoc() on the client) can
+// rebuild the exact same PDF — new field values, same source scan — without
+// asking the manager to re-scan the physical document.
+function loadWorkerAssets(body){
+  try{
+    if(!body.fileId) return {error:'Нет fileId'};
+    const file = DriveApp.getFileById(body.fileId);
+    const data = JSON.parse(file.getBlob().getDataAsString());
+    return {ok:true, scanB64: data.scanB64, scanMediaType: data.scanMediaType, sigPng: data.sigPng || null};
   }catch(e){ return {error: e.toString()}; }
 }
 
