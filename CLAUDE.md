@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**Session language:** the user communicates in Russian. Before starting any work, and throughout the session, Claude's own conversational output (explanations, status updates, questions) should be in Russian — this is independent of what language the app's UI/code is in (see the UI-text rule below).
+
+**UI text language:** all new user-facing UI text (tab labels, buttons, messages, etc.) added going forward must be in English, not Russian. The `Бухгалтерия` (Accounting) tab and its related labels were added in Russian by mistake — don't repeat that; new labels should be English even though most of the existing app is Hebrew (`lang="he"`) with that one Russian pocket. Existing Hebrew/Russian text doesn't need to be retranslated unless asked.
+
 ## What this is
 
 A staff scheduling & GPS punch-clock PWA for a single client ("Odinson"), served as static files from Firebase Hosting. There is no build step, no bundler, no package.json, and no test suite — the two pages are self-contained HTML files with inline `<style>` and `<script>`.
