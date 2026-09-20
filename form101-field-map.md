@@ -105,14 +105,14 @@ New fields created, one per box:
 
 | New field name | Box | Rect | Size |
 |---|---|---|---|
-| `tax_year_box` | שנת המס (tax year) | `{x:220.4, y:742.49, width:64.9, height:13}` | 11, comb 4 |
-| `id_box` | מספר זהות (Israeli ID, section ב) | `{x:438, y:607.89, width:102, height:13}` | 11, comb 9 |
-| `work_start_date` | תאריך תחילת העבודה בשנת המס | `{x:30.75, y:450.42, width:90.64, height:21.01}` | 11, comb 8 |
-| `employer_name` | א. פרטי המעסיק — שם | `{x:414.9, width:125.5, y:659.89, height:14}` | 10 (overflow risk, see below) |
-| `employer_address` | א. פרטי המעסיק — כתובת | `{x:209.0, width:205.9, y:659.89, height:14}` | 10 (overflow risk, see below) |
-| `employer_phone` | א. פרטי המעסיק — מספר טלפון | `{x:130.3, width:78.7, y:659.89, height:14}` | 11 |
-| `employer_deductions` | א. פרטי המעסיק — מספר תיק ניכויים | `{x:39.9, width:90.4, y:659.89, height:14}` | 11, comb 8 |
-| `children_id_N` / `children_dob_N` / `children_name_N` | ג. פרטים על ילדיי, row N | `CHILD_ROW_Y[]`/`CHILD_COLS` in code | 11 (id/dob, comb) / 8 (name, overflow risk) |
+| `tax_year_box` | שנת המס (tax year) | `{x:220.4, y:742.49, width:64.9, height:13}` | 10, comb 4 |
+| `id_box` | מספר זהות (Israeli ID, section ב) | `{x:438, y:607.89, width:102, height:13}` | 10, comb 9 |
+| `work_start_date` | תאריך תחילת העבודה בשנת המס | `{x:30.75, y:450.42, width:90.64, height:21.01}` | 10, comb 8 |
+| `employer_name` | א. פרטי המעסיק — שם | `{x:414.9, width:125.5, y:659.89, height:14}` | 10 (overflow risk, see below); value gets 3 trailing spaces to nudge it further left off the right edge |
+| `employer_address` | א. פרטי המעסיק — כתובת | `{x:209.0, width:205.9, y:659.89, height:14}` | 10 (overflow risk, see below); same 3-trailing-space nudge as `employer_name` |
+| `employer_phone` | א. פרטי המעסיק — מספר טלפון | `{x:130.3, width:78.7, y:659.89, height:14}` | 10 |
+| `employer_deductions` | א. פרטי המעסיק — מספר תיק ניכויים | `{x:39.9, width:90.4, y:659.89, height:14}` | 10, comb 8 |
+| `children_id_N` / `children_dob_N` / `children_name_N` | ג. פרטים על ילדיי, row N | `CHILD_ROW_Y[]`/`CHILD_COLS` in code | 10 (id/dob, comb) / 8 (name, overflow risk) |
 
 **Why `tax_year` (the template's own field) is left blank + read-only:** its
 own rect (250,746.89,289,759.89) is narrower and shifted relative to the
@@ -131,12 +131,14 @@ rect (120,606.89,206,620.89) **does** match its printed box — no positioning
 bug, so it's filled straight through the real field via `setComb()`, same as
 `passport_no`.
 
-**Why `employer_name`/`employer_address` are 10pt, smaller than everything
-else's 11pt:** a longer company name/address overflowed its column at 12pt
-(and still risks it at 11pt) — `addNewHebrewField`'s right-alignment means
-overflow spills leftward into the neighboring column, not clipped. The
-children-table name field is 8pt for the same reason (a long child's name in
-a 71pt-wide column) — never explicitly asked about, left untouched rather
+**Why `employer_name`/`employer_address` were already 10pt before the rest
+came down to match:** a longer company name/address overflowed its column at
+12pt — `addNewHebrewField`'s right-alignment means overflow spills leftward
+into the neighboring column, not clipped. They also get 3 trailing spaces
+appended to their value, nudging the visible text further left off the right
+edge per user request. The children-table name field is 8pt for the same
+overflow reason (a long child's name in a 71pt-wide column) — never
+explicitly asked about, left untouched rather
 than assumed safe.
 
 ## Worker-level Form 101 declarations (Add/Edit Worker modal)

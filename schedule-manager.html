@@ -4355,9 +4355,9 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // still fit the field's own box for a realistically long value).
     const fieldSizes={};
     const setSize=(n,size)=>{ fieldSizes[n]=size; try{ form.getTextField(n).acroField.setDefaultAppearance('/Helv '+size+' Tf 0 g'); }catch(e){} };
-    setSize('surname',11); setSize('given_name',11); setSize('addr_street',11);
-    setSize('addr_city',11); setSize('hf_name',11); setSize('id_top2',11);
-    setSize('sign_date',11);
+    setSize('surname',10); setSize('given_name',10); setSize('addr_street',10);
+    setSize('addr_city',10); setSize('hf_name',10); setSize('id_top2',10);
+    setSize('sign_date',10);
     const setT=(n,v)=>{ try{ if(v) form.getTextField(n).setText(String(v)); }catch(e){} };
     const CHECK_BLUE=PDFLib.rgb(0.09,0.32,0.85);
     const allPages=doc.getPages();
@@ -4519,7 +4519,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // dob's own AcroForm rect matches its printed box (unlike tax_year
     // below), so — per user request to keep everything a real AcroForm
     // field where possible — it's filled through the field itself again.
-    setComb('dob',8,dob.replace(/\D/g,''),11);
+    setComb('dob',8,dob.replace(/\D/g,''),10);
     setT('id_top2',no);
     // The template's own "tax_year" AcroForm field's rect doesn't match its
     // printed box (narrower and shifted up relative to the visible "שנת המס"
@@ -4530,7 +4530,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // is created at the box's real coordinates instead — a real, editable
     // field the template just never shipped in the right place.
     const TAX_YEAR_RECT={x:220.4,y:742.49,width:64.9,height:13};
-    addNewCombField('tax_year_box',TAX_YEAR_RECT,4,11,String(new Date().getFullYear()));
+    addNewCombField('tax_year_box',TAX_YEAR_RECT,4,10,String(new Date().getFullYear()));
     // (`form.removeField()` was tried first for the mismatched native field —
     // it corrupts pdf-lib's save pass: the removed field's widget stays
     // attached to the page's Annots array with a now-dangling parent-field
@@ -4562,11 +4562,16 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // addNewHebrewField()/addNewCombField() create brand-new ones. Right-
       // aligned (quadding + right-anchored multi-word fallback) since this
       // row reads right-to-left like the rest of the Hebrew form.
-      addNewHebrewField('employer_name',NAME_RECT,10,profile.companyName,true);
+      // 3 trailing spaces on name/address only, per user request to nudge
+      // these two specifically a bit further left off the right edge — right
+      // alignment (native + the manual multi-word fallback) both measure the
+      // full string including trailing spaces, so the visible text shifts
+      // left by their width without affecting phone/deductions.
+      addNewHebrewField('employer_name',NAME_RECT,10,profile.companyName?profile.companyName+'   ':profile.companyName,true);
       const addr=[profile.street,profile.streetNumber].filter(Boolean).join(' ')+(profile.city?(profile.street||profile.streetNumber?', ':'')+profile.city:'');
-      addNewHebrewField('employer_address',ADDRESS_RECT,10,addr,true);
-      addNewHebrewField('employer_phone',PHONE_RECT,11,profile.phone,true);
-      if(profile.deductionsFileNumber) addNewCombField('employer_deductions',DEDUCTIONS_RECT,8,11,String(profile.deductionsFileNumber).replace(/\D/g,''));
+      addNewHebrewField('employer_address',ADDRESS_RECT,10,addr?addr+'   ':addr,true);
+      addNewHebrewField('employer_phone',PHONE_RECT,10,profile.phone,true);
+      if(profile.deductionsFileNumber) addNewCombField('employer_deductions',DEDUCTIONS_RECT,8,10,String(profile.deductionsFileNumber).replace(/\D/g,''));
     })();
     if(sex==='M') chk('sex_male'); else if(sex==='F') chk('sex_female');
     if(isIsraeli){ chk('resident_yes'); chk('resident_h'); }
