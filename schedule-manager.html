@@ -4629,7 +4629,10 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     }
     // Signature ("חתימת המבקש/ת") — page 2, no form field either (printed line
     // only), drawn as an image if the worker actually signed on the pad.
-    const sigPng=typeof getSignaturePng==='function'?getSignaturePng():null;
+    // Regenerating reuses whatever signature was captured the first time
+    // (there's no live pad to read from in that case) instead of trying to
+    // ask the worker to sign again for a routine data correction.
+    const sigPng=isRegen?(presetAssets.sigPng||null):(typeof getSignaturePng==='function'?getSignaturePng():null);
     if(sigPng){
       try{
         const sigBytes=await fetch(sigPng).then(r=>r.arrayBuffer());
