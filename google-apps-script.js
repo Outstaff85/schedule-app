@@ -1463,7 +1463,7 @@ function loadWorkerAssets(body){
   }catch(e){ return {error: e.toString()}; }
 }
 
-// ── Error telemетрия ────────────────────────────────────────────────────────────
+// ── Error telemetry ────────────────────────────────────────────────────────────
 // Client-side errors land here so you can see failures without waiting for a complaint.
 function logError(data){
   try{
