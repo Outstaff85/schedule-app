@@ -4485,8 +4485,18 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
         else { fld.setText(String(v).replace(/[\u0590-\u05FF\uFB1D-\uFB4F]/g,'?')); }
       }catch(e){}
     };
-    setH('surname',surname); setH('given_name',given); setComb('dob',8,dob.replace(/\D/g,''),9);
+    setH('surname',surname); setH('given_name',given);
     setT('id_top2',no);
+    // `dob` used to be a real AcroForm field via setComb() — converted to a
+    // hand-drawn box (like tax_year/ID_BOX_RECT/WORK_START_RECT below) per
+    // user request, so it could get the same yNudge=-1 treatment as those
+    // fields (pdf-lib's own combed-field appearance generator exposes no
+    // y-position hook, so a real field couldn't be nudged). Trade-off: it's
+    // no longer an independently-editable field in a PDF viewer, same as
+    // tax_year. Rect verified in form101-field-map.md's own field table.
+    const DOB_RECT={x:120,y:606.89,width:86,height:14};
+    if(dob) drawCombRaw(dob.replace(/\D/g,''),8,DOB_RECT,9,-1);
+    try{ form.getTextField('dob').enableReadOnly(); }catch(e){}
     // The "tax_year" AcroForm field's own rect doesn't match its printed box
     // on this template (narrower and shifted up relative to the visible
     // "שנת המס" line), so combing through the field left the year floating
