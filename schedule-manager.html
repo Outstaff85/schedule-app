@@ -1221,10 +1221,23 @@ function toggleExpiryWrap(){
   if(chev) chev.className = 'ti ti-chevron-' + (__wExpiryOpen ? 'up' : 'down');
 }
 
+// Same collapsed-by-default dropdown pattern, for all Form-101-related
+// fields (income type, other income, scan-derived name/marital/health-fund/
+// work-start-date) grouped together under one "Данные для Формы 101" toggle.
+let __wForm101Open = false;
+function toggleForm101Wrap(){
+  __wForm101Open = !__wForm101Open;
+  const wrap = document.getElementById('wForm101Wrap');
+  const chev = document.getElementById('wForm101Chevron');
+  if(wrap) wrap.style.display = __wForm101Open ? '' : 'none';
+  if(chev) chev.className = 'ti ti-chevron-' + (__wForm101Open ? 'up' : 'down');
+}
+
 function showWorkerModal(w){
   selColorIdx=w.colorIdx||0;
   __wScheduleOpen=false;
   __wExpiryOpen=false;
+  __wForm101Open=false;
   document.getElementById('workerModal').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <div class="modal-title" style="margin-bottom:0">${editingWorkerIdx!==null?'Edit Worker':'Add New Worker'}</div>
@@ -1254,31 +1267,6 @@ function showWorkerModal(w){
         </select>
       </div>
       <div class="field"><label>Start date</label><input type="date" id="wStartDate" value="${w.startDate||''}"></div>
-    </div>
-    <div class="field-row">
-      <div class="field"><label>Income type (Form 101, ד)</label>
-        <select id="wIncomeType">
-          <option value="">— not set —</option>
-          <option value="monthly" ${w.incomeType==='monthly'?'selected':''}>Monthly salary</option>
-          <option value="secondary" ${w.incomeType==='secondary'?'selected':''}>2nd job salary</option>
-          <option value="partial" ${w.incomeType==='partial'?'selected':''}>Partial salary</option>
-          <option value="daily" ${(w.incomeType||'daily')==='daily'?'selected':''}>Daily wage</option>
-          <option value="pension" ${w.incomeType==='pension'?'selected':''}>Pension</option>
-          <option value="scholarship" ${w.incomeType==='scholarship'?'selected':''}>Scholarship</option>
-        </select>
-      </div>
-      <div class="field"><label>Other income (Form 101, ה)</label>
-        <select id="wOtherIncomeType">
-          <option value="">— not set —</option>
-          <option value="none" ${(w.otherIncomeType||'none')==='none'?'selected':''}>No other income</option>
-          <option value="monthly" ${w.otherIncomeType==='monthly'?'selected':''}>Monthly salary</option>
-          <option value="secondary" ${w.otherIncomeType==='secondary'?'selected':''}>2nd job salary</option>
-          <option value="partial" ${w.otherIncomeType==='partial'?'selected':''}>Partial salary</option>
-          <option value="daily" ${w.otherIncomeType==='daily'?'selected':''}>Daily wage</option>
-          <option value="pension" ${w.otherIncomeType==='pension'?'selected':''}>Pension</option>
-          <option value="scholarship" ${w.otherIncomeType==='scholarship'?'selected':''}>Scholarship</option>
-        </select>
-      </div>
     </div>
     <div class="field"><label>Address</label><input type="text" id="wAddress" value="${esc(workerAddress(w))}" placeholder="Street and house number"></div>
     <div class="field"><label>City</label><input type="text" id="wCity" value="${esc(w.city||'')}" placeholder="City"></div>
@@ -1351,9 +1339,39 @@ function showWorkerModal(w){
         : `<div style="font-size:11px;color:var(--amber);margin-top:4px"><i class="ti ti-alert-triangle"></i> Linked client has no location set — punch will NOT be geo-verified</div>`; })()}
       <div style="font-size:11px;color:var(--text3);margin-top:4px">Send this link to the worker. They save it as a bookmark.</div>
     </div>` : ''}
-    ${editingWorkerIdx!==null ? `
-    <div class="field">
-      <label><i class="ti ti-id-badge-2"></i> Данные для Формы 101</label>
+    <div class="field" style="margin-bottom:6px">
+      <button class="btn sm" type="button" onclick="toggleForm101Wrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
+        <span><i class="ti ti-id-badge-2"></i> Данные для Формы 101</span>
+        <i class="ti ti-chevron-down" id="wForm101Chevron"></i>
+      </button>
+    </div>
+    <div id="wForm101Wrap" style="display:none">
+      <div class="field-row">
+        <div class="field"><label>Income type (Form 101, ד)</label>
+          <select id="wIncomeType">
+            <option value="">— not set —</option>
+            <option value="monthly" ${w.incomeType==='monthly'?'selected':''}>Monthly salary</option>
+            <option value="secondary" ${w.incomeType==='secondary'?'selected':''}>2nd job salary</option>
+            <option value="partial" ${w.incomeType==='partial'?'selected':''}>Partial salary</option>
+            <option value="daily" ${(w.incomeType||'daily')==='daily'?'selected':''}>Daily wage</option>
+            <option value="pension" ${w.incomeType==='pension'?'selected':''}>Pension</option>
+            <option value="scholarship" ${w.incomeType==='scholarship'?'selected':''}>Scholarship</option>
+          </select>
+        </div>
+        <div class="field"><label>Other income (Form 101, ה)</label>
+          <select id="wOtherIncomeType">
+            <option value="">— not set —</option>
+            <option value="none" ${(w.otherIncomeType||'none')==='none'?'selected':''}>No other income</option>
+            <option value="monthly" ${w.otherIncomeType==='monthly'?'selected':''}>Monthly salary</option>
+            <option value="secondary" ${w.otherIncomeType==='secondary'?'selected':''}>2nd job salary</option>
+            <option value="partial" ${w.otherIncomeType==='partial'?'selected':''}>Partial salary</option>
+            <option value="daily" ${w.otherIncomeType==='daily'?'selected':''}>Daily wage</option>
+            <option value="pension" ${w.otherIncomeType==='pension'?'selected':''}>Pension</option>
+            <option value="scholarship" ${w.otherIncomeType==='scholarship'?'selected':''}>Scholarship</option>
+          </select>
+        </div>
+      </div>
+      ${editingWorkerIdx!==null ? `
       <div class="field-row">
         <div class="field"><label>Фамилия (как в скане)</label><input type="text" id="wDocSurname" value="${esc(w.docSurname||'')}"></div>
         <div class="field"><label>Имя (как в скане)</label><input type="text" id="wDocGiven" value="${esc(w.docGiven||'')}"></div>
@@ -1381,8 +1399,8 @@ function showWorkerModal(w){
       <div class="field"><label>Дата начала работы (Форма 101)</label><input type="date" id="wWorkStartDate" value="${w.workStartDate||''}"></div>
       <div style="font-size:11px;color:var(--text3);margin-top:2px">
         ${w.docUrl?'Изменение этих полей (или адреса/города/типа дохода выше) автоматически обновит уже загруженный документ в Google Drive.':'Заполняется автоматически при первом скане/генерации Формы 101 — до этого можно оставить пустым.'}
-      </div>
-    </div>` : ''}
+      </div>` : ''}
+    </div>
     ${editingWorkerIdx!==null ? `
     <div class="field">
       <label><i class="ti ti-file-text"></i> Документы (Форма 101 + скан)</label>
