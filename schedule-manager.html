@@ -4252,8 +4252,8 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     // still fit the field's own box for a realistically long value).
     const fieldSizes={};
     const setSize=(n,size)=>{ fieldSizes[n]=size; try{ form.getTextField(n).acroField.setDefaultAppearance('/Helv '+size+' Tf 0 g'); }catch(e){} };
-    setSize('surname',11); setSize('given_name',11); setSize('addr_street',11);
-    setSize('addr_city',11); setSize('hf_name',10); setSize('id_top2',13);
+    setSize('surname',12); setSize('given_name',12); setSize('addr_street',12);
+    setSize('addr_city',12); setSize('hf_name',11); setSize('id_top2',14);
     const setT=(n,v)=>{ try{ if(v) form.getTextField(n).setText(String(v)); }catch(e){} };
     const CHECK_BLUE=PDFLib.rgb(0.09,0.32,0.85);
     const allPages=doc.getPages();
@@ -4366,7 +4366,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
         else { fld.setText(String(v).replace(/[\u0590-\u05FF\uFB1D-\uFB4F]/g,'?')); }
       }catch(e){}
     };
-    setH('surname',surname); setH('given_name',given); setComb('dob',8,dob.replace(/\D/g,''),9);
+    setH('surname',surname); setH('given_name',given); setComb('dob',8,dob.replace(/\D/g,''),10);
     setT('id_top2',no);
     // The "tax_year" AcroForm field's own rect doesn't match its printed box
     // on this template (narrower and shifted up relative to the visible
@@ -4374,7 +4374,19 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     // above the box instead of inside it. Hand-drawn at the box's real
     // coordinates instead, like the other printed-only boxes.
     const TAX_YEAR_RECT={x:220.4,y:742.49,width:64.9,height:13};
-    drawCombRaw(String(new Date().getFullYear()),4,TAX_YEAR_RECT,11);
+    drawCombRaw(String(new Date().getFullYear()),4,TAX_YEAR_RECT,12);
+    // The AcroForm field itself is left unset (its rect doesn't match the
+    // printed box, see above) but was still being left in the saved PDF as an
+    // empty, EDITABLE text field — Chrome's PDF viewer highlights any such
+    // fillable field with a light-blue box wherever ITS OWN (mismatched) rect
+    // sits, which visibly drifted from the hand-drawn digits next to it.
+    // form.removeField() looked like the fix but corrupts pdf-lib's save
+    // pass (the field's widget stays attached to the page's Annots array
+    // with a now-dangling parent-field reference, throwing "Expected
+    // instance of..." inside updateFieldAppearances at save time). Marking
+    // it read-only instead is enough on its own to stop viewers from
+    // highlighting it, with no such side effect.
+    try{ form.getTextField('tax_year').enableReadOnly(); }catch(e){}
     // "א. פרטי המעסיק" (employer details) — also has no real AcroForm fields
     // (verified the same way as the boxes above: zero widgets in this row's
     // y-range). Filled from the logged-in firm's own Tenants profile — for a
@@ -4401,17 +4413,21 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
       // Hebrew-capable customFont (Heebo, embedded above) when it loaded —
       // it renders plain Latin/ASCII text just as well, so this is a safe
       // upgrade, not just a Hebrew-only special case.
-      const drawLeft=(text,rect,size)=>{
+      // Right-aligned (not left-aligned) — this row reads right-to-left like
+      // the rest of the Hebrew form, so the text should sit against each
+      // box's right edge, not its left.
+      const drawRight=(text,rect,size)=>{
         if(!text) return;
         const font=customFont||stdFont;
         const th=font.heightAtSize(size,{descender:false});
-        page1.drawText(String(text),{x:rect.x+2,y:rect.y+(rect.height-th)/2,size,font});
+        const tw=font.widthOfTextAtSize(String(text),size);
+        page1.drawText(String(text),{x:rect.x+rect.width-tw-2,y:rect.y+(rect.height-th)/2,size,font});
       };
-      drawLeft(profile.companyName,NAME_RECT,9);
+      drawRight(profile.companyName,NAME_RECT,11);
       const addr=[profile.street,profile.streetNumber].filter(Boolean).join(' ')+(profile.city?(profile.street||profile.streetNumber?', ':'')+profile.city:'');
-      drawLeft(addr,ADDRESS_RECT,9);
-      drawLeft(profile.phone,PHONE_RECT,9);
-      if(profile.deductionsFileNumber) drawCombRaw(String(profile.deductionsFileNumber).replace(/\D/g,''),8,DEDUCTIONS_RECT,10);
+      drawRight(addr,ADDRESS_RECT,11);
+      drawRight(profile.phone,PHONE_RECT,11);
+      if(profile.deductionsFileNumber) drawCombRaw(String(profile.deductionsFileNumber).replace(/\D/g,''),8,DEDUCTIONS_RECT,11);
     })();
     if(sex==='M') chk('sex_male'); else if(sex==='F') chk('sex_female');
     if(isIsraeli){ chk('resident_yes'); chk('resident_h'); }
@@ -4443,7 +4459,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     const fillWorkStart=(isoDate)=>{
       if(!isoDate) return;
       const d=isoDate.split('-');
-      drawCombRaw(d[2]+d[1]+d[0],8,WORK_START_RECT,9);
+      drawCombRaw(d[2]+d[1]+d[0],8,WORK_START_RECT,10);
     };
     // "מספר זהות (9 ספרות)" in section ב (employee details) has no real
     // AcroForm field on the template — only `id_top2` (a small running
@@ -4464,7 +4480,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
     setT('sign_date',signDateStr);
     if(isId){
       // Israeli ID: fill address, marital, work start, fund from aiId* inputs
-      if(no) drawCombRaw(no.replace(/\D/g,''),9,ID_BOX_RECT,9);
+      if(no) drawCombRaw(no.replace(/\D/g,''),9,ID_BOX_RECT,10);
       const addr=_v('aiAddress'), city=_v('aiCity');
       if(addr){
         const writeStr=customFont?setH:setT;
@@ -4495,18 +4511,18 @@ async function aiFillForm101(isId,mode,workerId,btnEl){
       const pageH=page1.getHeight();
       children.slice(0,10).forEach((c,i)=>{
         const rowY=pageH-CHILD_ROW_Y[i+1], rowH=CHILD_ROW_Y[i+1]-CHILD_ROW_Y[i];
-        if(c.idNo) drawCombRaw(String(c.idNo).replace(/\D/g,''),9,{x:CHILD_COLS.id.x,y:rowY,width:CHILD_COLS.id.width,height:rowH},8);
-        if(c.dob){ const dd=String(c.dob).replace(/\D/g,''); if(dd) drawCombRaw(dd,8,{x:CHILD_COLS.dob.x,y:rowY,width:CHILD_COLS.dob.width,height:rowH},8); }
+        if(c.idNo) drawCombRaw(String(c.idNo).replace(/\D/g,''),9,{x:CHILD_COLS.id.x,y:rowY,width:CHILD_COLS.id.width,height:rowH},9);
+        if(c.dob){ const dd=String(c.dob).replace(/\D/g,''); if(dd) drawCombRaw(dd,8,{x:CHILD_COLS.dob.x,y:rowY,width:CHILD_COLS.dob.width,height:rowH},9); }
         if(c.name){
           const nameFont=customFont||stdFont;
-          const size=8, th=nameFont.heightAtSize(size,{descender:false});
+          const size=9, th=nameFont.heightAtSize(size,{descender:false});
           const tw=nameFont.widthOfTextAtSize(String(c.name),size);
           page1.drawText(String(c.name),{x:CHILD_COLS.name.x+CHILD_COLS.name.width-tw-2,y:rowY+(rowH-th)/2,size,font:nameFont});
         }
       });
     } else {
       // Foreign passport: fill passport_no, work start, fund from aiPp* inputs
-      setComb('passport_no',13,no,9);
+      setComb('passport_no',13,no,10);
       fillWorkStart(document.getElementById('aiPpWork')?.value);
       const fund=document.getElementById('aiPpFund')?.value;
       if(fund){ chk('hf_yes'); (customFont?setH:setT)('hf_name',HEALTH_FUND_HE[fund]||fund); }
