@@ -4419,11 +4419,11 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // field-based combing can't reach them. Draw the characters ourselves,
     // evenly spaced across the given box, the same way native combing would.
     const stdFont = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
-    const drawCombRaw=(text,maxLen,rect,size)=>{
+    const drawCombRaw=(text,maxLen,rect,size,yNudge)=>{
       if(!text) return;
       const s=String(text).slice(0,maxLen);
       const cellW=rect.width/maxLen;
-      const y=centerBaselineY(rect,size,stdFont);
+      const y=centerBaselineY(rect,size,stdFont)+(yNudge||0);
       for(let i=0;i<s.length;i++){
         const ch=s[i];
         const cw=stdFont.widthOfTextAtSize(ch,size);
@@ -4577,7 +4577,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     const fillWorkStart=(isoDate)=>{
       if(!isoDate) return;
       const d=isoDate.split('-');
-      drawCombRaw(d[2]+d[1]+d[0],8,WORK_START_RECT,9);
+      drawCombRaw(d[2]+d[1]+d[0],8,WORK_START_RECT,9,-1);
     };
     // "מספר זהות (9 ספרות)" in section ב (employee details) has no real
     // AcroForm field on the template — only `id_top2` (a small running
@@ -4600,7 +4600,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // Israeli ID: fill address, marital, work start, fund — from the
       // worker's own persisted fields when regenerating (no scan overlay is
       // open in that case), otherwise from the live aiId* scan-panel inputs.
-      if(no) drawCombRaw(no.replace(/\D/g,''),9,ID_BOX_RECT,9);
+      if(no) drawCombRaw(no.replace(/\D/g,''),9,ID_BOX_RECT,9,-1);
       const addr=isRegen?workerAddress(targetWorker||{}):_v('aiAddress');
       const city=isRegen?((targetWorker&&targetWorker.city)||''):_v('aiCity');
       if(addr){
