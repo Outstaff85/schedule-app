@@ -31,7 +31,7 @@ There is no npm/build/lint/test tooling. Development is edit-the-HTML-and-reload
 
 - Local preview: `firebase emulators:start --only hosting` (uses `firebase.json` rewrites), or just open the HTML files directly in a browser.
 - Deploy: Push to `origin/main`; GitHub Actions workflows automatically deploy both static hosting and backend on every commit:
-  - `.github/workflows/deploy.yml` — deploys `schedule-manager.html`, `worker-punch.html`, and supporting files to Firebase Hosting (project alias `schedule-odinson`, see `.firebaserc`). **No manual `firebase deploy` step is used** — a push to main is what triggers the deploy.
+  - `.github/workflows/deploy.yml` — deploys `schedule-manager.html`, `worker-punch.html`, and supporting files to Firebase Hosting (project alias `schedule-odinson`, see `.firebaserc`). **No manual `firebase deploy` step is used** — a push to main is what triggers the deploy. This workflow does not cover `functions/` (the Python Cloud Functions) — those still need a manual `firebase deploy --only functions` (see "Form 101 PDF generation (server-side)" below); a session rooted outside this repo (see the auto-commit hook note above) may also end up running `firebase deploy --only hosting` manually since it can't rely on the push-triggers-deploy flow working as expected until that's confirmed.
   - `.github/workflows/deploy-apps-script.yml` — deploys Google Apps Script source (anything in `apps-script/`) via `clasp push --force` and `clasp deploy` to the configured Apps Script project (requires `CLASP_CREDENTIALS` and `CLASP_DEPLOYMENT_ID` GitHub secrets).
 - Routing: `firebase.json` rewrites `/` → `schedule-manager.html` and `/punch` → `worker-punch.html`.
 
