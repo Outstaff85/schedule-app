@@ -4715,6 +4715,25 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       if(w){
         w.docUrl=json.url; w.docSavedAt=new Date().toISOString(); w.docFileId=json.id;
         w.docUploadFailed=false;
+        // Cache the scan+signature that actually built this PDF as a small
+        // private Drive sidecar (never shown to anyone, just read back by
+        // regenerateWorkerDoc()) — this is what lets a LATER edit (income
+        // type, marital status, address, ...) rebuild the exact same PDF
+        // with the new values without asking the manager to re-scan the
+        // physical document. Best-effort: a failure here never rolls back
+        // the already-successful main upload above.
+        if(scanImage){
+          try{
+            const assetsResp=await fetch(GS_URL,{
+              method:'POST',
+              body:JSON.stringify({action:'saveWorkerAssets',secret:API_SECRET,...gsAuth(),
+                scanB64:scanImage.b64, scanMediaType:scanImage.mediaType, sigPng:sigPng||null,
+                fileNameBase:fileName.replace(/\.pdf$/,''), previousFileId:w.assetsFileId||null})
+            });
+            const assetsJson=await assetsResp.json();
+            if(assetsJson&&assetsJson.ok) w.assetsFileId=assetsJson.id;
+          }catch(e){}
+        }
         render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
         showToast('Документы '+(w.name||'')+' сохранены в Google Drive');
         window.__aiRescanWorkerId=null;
