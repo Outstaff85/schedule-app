@@ -2068,6 +2068,13 @@ const GS_URL = 'https://script.google.com/macros/s/AKfycbwfGCQs8TzGd38j-JU0ZdoHL
 // Shared key sent with write requests. NOTE: this file is public, so the key is
 // visible in source — it's a deterrent against random/bot writes, not real auth.
 const API_SECRET = 'odinson-7Kq2x9';
+// Server-side Form 101 PDF builder (Python + PyMuPDF Cloud Function) — replaces
+// the old client-side pdf-lib build, which had a confirmed bug dropping a
+// glyph of multi-word RTL (Hebrew) text. See functions/main.py.
+const FORM101_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/fill_form_101';
+// Scan preprocessing (OpenCV geometry + Pillow contrast/sharpness), tried
+// before the AI-seeded autoPreAlignScan() below — see preAlignScan().
+const PREPROCESS_SCAN_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/preprocess_scan';
 
 // ── Multi-tenant session ────────────────────────────────────────────────────
 // Real auth for this app: a session is a signed token from the backend's
@@ -3580,13 +3587,51 @@ async function onScanFileSelected(file){
       });
       mediaType=file.type||'image/jpeg';
     }
-    const pre=await autoPreAlignScan(b64,mediaType);
+    const pre=await preAlignScan(b64,mediaType);
+    if(pre.blurry){
+      stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Фото слишком размыто, снимите ещё раз<br><br>'
+        +'<button class="btn sm" onclick="openAiScan()">Ещё раз</button></div>';
+      return;
+    }
     runOcr(pre.b64,pre.mediaType);
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Ошибка: '
       +(err&&err.message||'')+'<br><br>'
       +'<button class="btn sm" onclick="openAiScan()">Ещё раз</button></div>';
+  }
+}
+
+// Step 1.4: tried BEFORE the AI-seeded autoPreAlignScan() below — a server-side
+// OpenCV+Pillow pass (functions/main.py, preprocess_scan) that (a) rejects an
+// obviously-too-blurry photo before any AI call is spent on it, and (b) when
+// it finds a confident document quad (see MIN_QUAD_AREA_FRAC there), crops
+// and straightens it itself, letting the caller skip the paid aiDetectAlign
+// Haiku call entirely. When it can't find a confident quad (low-contrast
+// background, etc.) it still returns a contrast/sharpness-enhanced image, and
+// the caller falls through to the unchanged autoPreAlignScan() below — so
+// that AI-seeded path (which alone knows how to correct an upside-down
+// photo — plain geometry can't) always stays available as the safety net.
+// Empirically tested (see CLAUDE.md) against real ID photos and synthetic
+// edge cases (rotation ambiguity, low-contrast background) before wiring
+// this in. Returns {b64,mediaType} to proceed with, or {blurry:true} if the
+// photo should be rejected outright.
+async function preAlignScan(b64,mediaType){
+  try{
+    const resp=await fetch(PREPROCESS_SCAN_FN_URL,{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({image:b64})
+    });
+    const json=await resp.json();
+    if(!resp.ok||!json||json.error) return autoPreAlignScan(b64,mediaType);
+    if(json.reason==='blurry') return {blurry:true};
+    if(!json.ok) return autoPreAlignScan(b64,mediaType);
+    const enhanced={b64:json.imageBase64,mediaType:json.mediaType||'image/jpeg'};
+    if(json.geometryApplied) return enhanced; // OpenCV already found+straightened the document — skip the AI call
+    return autoPreAlignScan(enhanced.b64,enhanced.mediaType); // enhanced but not geometry-corrected — AI still seeds the quad
+  }catch(e){
+    console.error(e);
+    return autoPreAlignScan(b64,mediaType); // network/decode hiccup — fall through fully unchanged
   }
 }
 
@@ -4295,16 +4340,6 @@ function aiToWorker(isId){
   },60);
 }
 
-// btoa(String.fromCharCode(...bytes)) blows the call-stack argument limit on
-// anything past a few tens of KB (a scanned photo easily exceeds that) —
-// convert in chunks instead.
-function bytesToBase64(bytes){
-  let binary='';
-  const chunk=0x8000;
-  for(let i=0;i<bytes.length;i+=chunk) binary+=String.fromCharCode.apply(null,bytes.subarray(i,i+chunk));
-  return btoa(binary);
-}
-
 // presetAssets ({scanB64,scanMediaType,sigPng}) is set only by
 // regenerateWorkerDoc() below, for rebuilding an already-uploaded document
 // after a later data edit — there's no live scan overlay open in that case,
@@ -4318,9 +4353,8 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
   const _v=id=>(document.getElementById(id)?.value||'').replace(/\s+/g,' ').trim();
   // Hoisted above the try so the catch block (below) can still flag this
   // worker's failed upload for the "no document" badge even when the
-  // failure happens before the assignment finishes (e.g. the pdf-lib CDN
-  // load itself, before targetWorker would otherwise be resolved) — and so
-  // the isRegen reads just below have a worker to read from.
+  // failure happens before the assignment finishes — and so the isRegen
+  // reads just below have a worker to read from.
   let targetWorker=(workerId||window.__aiRescanWorkerId)?workers.find(x=>x.id===(workerId||window.__aiRescanWorkerId)):null;
   const surname=isRegen?((targetWorker&&targetWorker.docSurname)||''):_v('aiSurname');
   const given=isRegen?((targetWorker&&targetWorker.docGiven)||''):_v('aiGiven');
@@ -4334,489 +4368,118 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
   // where `event` is the Add/Save Worker button, not a Form 101 button.
   const btn=btnEl!==undefined?btnEl:(event&&event.target?event.target.closest('button'):null);
   const btnLabel=btn?btn.innerHTML:'';
-  // Filled in by the employer-details block below, reported once the PDF is
-  // actually out — the Form 101 panel carries the same warning inline, but
-  // this function also runs in the background from saveWorker(), where that
-  // panel isn't on screen.
+  // Reported once the PDF is out — the Form 101 panel carries the same
+  // warning inline, but this function also runs in the background from
+  // saveWorker(), where that panel isn't on screen.
   let firmMissing=[];
   try{
     if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader-2 spin"></i> '+(mode==='upload'?'Загружаю…':'Готовлю…'); }
-    await _loadPdfLib();
-    await _loadFontkit();
-    const resp=await fetch('form101_fillable.pdf',{cache:'no-store'});
-    if(!resp.ok) throw new Error('form101_fillable.pdf не найден на сайте');
-    const bytes=await resp.arrayBuffer();
-    const doc=await PDFLib.PDFDocument.load(bytes);
-    doc.registerFontkit(fontkit);
-    const form=doc.getForm();
-    const page1=doc.getPages()[0];
-    // These fields default to a small shrink-to-fit size; force a bigger, fixed
-    // size instead so the filled-in text is easy to read (each number chosen to
-    // still fit the field's own box for a realistically long value).
-    const fieldSizes={};
-    const setSize=(n,size)=>{ fieldSizes[n]=size; try{ form.getTextField(n).acroField.setDefaultAppearance('/Helv '+size+' Tf 0 g'); }catch(e){} };
-    setSize('surname',10); setSize('given_name',10); setSize('addr_street',10);
-    setSize('addr_city',10); setSize('hf_name',10); setSize('id_top2',9);
-    setSize('sign_date',9);
-    const setT=(n,v)=>{ try{ if(v) form.getTextField(n).setText(String(v)); }catch(e){} };
-    const CHECK_BLUE=PDFLib.rgb(0.09,0.32,0.85);
-    const allPages=doc.getPages();
-    // Most checkboxes live on page 1, but a few (resident_h) are on page 2 —
-    // drawing the checkmark unconditionally onto page1 silently drew it at
-    // that widget's (x,y) on the WRONG page, landing in page 1's blank
-    // margin while the real page-2 box stayed visibly empty. Resolve the
-    // widget's actual page via its /P reference instead of assuming page1.
-    const pageForWidget=(widget)=>{
-      const pRef=widget.P&&widget.P();
-      if(pRef){ const hit=allPages.find(pg=>pg.ref.toString()===pRef.toString()); if(hit) return hit; }
-      return page1;
-    };
-    const chk=(n)=>{
-      try{
-        const cb=form.getCheckBox(n);
-        cb.check();
-        // Draw a blue checkmark instead of the template's default X mark —
-        // blank the widget's own on-state appearance first so it doesn't
-        // peek through underneath (same trick as the Hebrew text fix above).
-        const widget=cb.acroField.getWidgets()[0];
-        const targetPage=pageForWidget(widget);
-        const onName=widget.getOnValue&&widget.getOnValue();
-        const ap=widget.getAppearances();
-        const onRef=onName&&ap&&ap.normal&&ap.normal.get&&ap.normal.get(onName);
-        const onStream=onRef&&doc.context.lookup(onRef);
-        if(onStream&&'contents' in onStream) onStream.contents=new Uint8Array(0);
-        const r=widget.getRectangle();
-        const thickness=Math.max(1.1,r.height*0.16);
-        // Nudge the whole checkmark ~1 CSS px right+up (0.75pt @72dpi) so it
-        // sits centered inside the printed box outline instead of reading
-        // slightly low/left of it. Page-1 boxes (almost every checkbox on the
-        // template) get an extra upward nudge on top of that — per user
-        // feedback they still read slightly low relative to the box outline;
-        // page-2's lone checkbox (resident_h) is left at the base nudge.
-        const NUDGE=0.75;
-        const PAGE1_EXTRA_Y=1.5;
-        const nudgeY=NUDGE+(targetPage===page1?PAGE1_EXTRA_Y:0);
-        const pt=(fx,fy)=>({x:r.x+fx*r.width+NUDGE,y:r.y+fy*r.height+nudgeY});
-        const p1=pt(0.12,0.55), p2=pt(0.40,0.18), p3=pt(0.88,0.82);
-        targetPage.drawLine({start:p1,end:p2,thickness,color:CHECK_BLUE,lineCap:PDFLib.LineCapStyle.Round});
-        targetPage.drawLine({start:p2,end:p3,thickness,color:CHECK_BLUE,lineCap:PDFLib.LineCapStyle.Round});
-      }catch(e){}
-    };
-    // Plain (non-bold) draw — kept as its own name since callers throughout
-    // this function were written against it; reverted from a faux-bold
-    // double-draw trick per user feedback.
-    const drawTextBold=(page,text,opts)=>{
-      page.drawText(text,opts);
-    };
-    // Vertically centers a text baseline inside a box, using the font's
-    // ascent (cap-height, no descender) as the text's own height.
-    const centerBaselineY=(rect,size,font)=>{
-      const th=font.heightAtSize(size,{descender:false});
-      return rect.y+(rect.height-th)/2;
-    };
-    const stdFont = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
-    // Some fields (dob, tax_year, passport_no) are printed with a row of small
-    // per-character boxes on the template — combing spreads each character into
-    // its own box (and sizes it to fill that box) instead of one small run of
-    // text overlaid across the whole row.
-    const setComb=(n,maxLen,v,size)=>{
-      if(!v) return;
-      try{
-        const fld=form.getTextField(n);
-        fld.setMaxLength(maxLen);
-        fld.enableCombing();
-        // pdf-lib's own auto-sizing for combed fields picks a size that
-        // overflows the box vertically (it lands on fontSize === field
-        // height, ignoring the field's actual cap-height) — set an explicit,
-        // verified-safe size instead of trusting the auto-computed one.
-        fld.acroField.setDefaultAppearance('/Helv '+(size||8)+' Tf 0 g');
-        fld.setText(String(v).slice(0,maxLen));
-      }catch(e){}
-    };
-    // Several boxes on the template (tax year, ID number, work-start date,
-    // the employer-details row, the children table) are printed-only — no
-    // AcroForm widget exists there at all. Per user request these are now
-    // real, independently-editable fields instead of hand-drawn text: each
-    // gets a brand-new field created and positioned at the box's own
-    // coordinates. `name` must not collide with a field the template
-    // already ships (e.g. the mismatched native `tax_year` field is left
-    // alone — this creates a second field, `tax_year_box`, at the box's
-    // actual position).
-    // pdf-lib's addToPage() gives a brand-new field widget a default white
-    // /MK background (even with borderWidth:0, which only zeroes the border
-    // line, not the fill) — that background is an annotation, painted over
-    // the page's own content in the normal stacking order, so it silently
-    // hid this app's own manually-drawn text underneath it in real viewers
-    // (Adobe, Chrome) even though it looked fine in a page-content-only
-    // render that never draws annotations. Deleting /MK outright makes the
-    // widget fully transparent, matching how the template's own pre-existing
-    // fields behave (no visible box of their own — the printed page's own
-    // lines are what the user sees).
-    const stripWidgetChrome=(fld)=>{
-      try{
-        const widget=fld.acroField.getWidgets()[0];
-        widget.dict.delete(PDFLib.PDFName.of('MK'));
-      }catch(e){}
-    };
-    const addNewCombField=(name,rect,maxLen,size,value)=>{
-      if(!value) return;
-      try{
-        const fld=form.createTextField(name);
-        fld.addToPage(page1,{x:rect.x,y:rect.y,width:rect.width,height:rect.height,borderWidth:0});
-        stripWidgetChrome(fld);
-        fld.setMaxLength(maxLen);
-        fld.enableCombing();
-        fld.acroField.setDefaultAppearance('/Helv '+size+' Tf 0 g');
-        fld.setText(String(value).slice(0,maxLen));
-        // A brand-new field's appearance stream isn't reliably generated just
-        // from setText()+the DA string alone — the form's own NeedAppearances
-        // is explicitly false (see setH()'s comment below), so a viewer that
-        // honors that (Adobe, Chrome's built-in viewer) shows a blank box
-        // instead of regenerating it live. Force pdf-lib to actually render
-        // the appearance stream now, against an embedded font it fully
-        // controls, the same way the Hebrew fields already do.
-        fld.updateAppearances(stdFont);
-      }catch(e){}
-    };
-    // Same idea as addNewCombField, for a plain (non-combed) Hebrew-capable
-    // field — used for the employer name/address and children's names.
-    // Rewritten to exactly mirror setH()'s own pattern below (blank the
-    // widget's own buggy multi-word appearance, redraw the text onto the
-    // page instead) rather than the "just let pdf-lib's own appearance show"
-    // version tried previously — that version avoided a page/field double-
-    // render when editing, but re-exposed pdf-lib's known bug of dropping a
-    // glyph of multi-word RTL text on ordinary viewing (confirmed live:
-    // "אודינסון בע"מ" rendered missing its leading א). Per the user, the
-    // pre-existing template fields using setH()'s exact approach (worker
-    // name/address) show neither problem in practice, so this now follows
-    // that same proven pattern instead of trying to avoid it differently.
-    const addNewHebrewField=(name,rect,size,value,rightAlign)=>{
-      if(!value) return;
-      try{
-        const fld=form.createTextField(name);
-        fld.addToPage(page1,{x:rect.x,y:rect.y,width:rect.width,height:rect.height,borderWidth:0});
-        stripWidgetChrome(fld);
-        fld.acroField.setDefaultAppearance('/Helv '+size+' Tf 0 g');
-        if(rightAlign){ try{ fld.setAlignment(PDFLib.TextAlignment.Right); }catch(e){} }
-        if(customFont){
-          fld.setText(String(value)); fld.updateAppearances(customFont);
-          // Same multi-word-RTL glyph-drop workaround as setH() below: only
-          // pay for the blank+redraw when the value actually has a space.
-          if(String(value).indexOf(' ')!==-1){
-            const widget=fld.acroField.getWidgets()[0];
-            const r=widget.getRectangle();
-            const tw=customFont.widthOfTextAtSize(String(value),size);
-            const ap=widget.getAppearances();
-            if(ap&&ap.normal&&'operators' in ap.normal) ap.normal.operators=[];
-            const x=rightAlign?(r.x+r.width-tw-2):(r.x+2);
-            page1.drawText(String(value),{x,y:centerBaselineY(r,size,customFont),size,font:customFont});
-          }
-        }
-        else { fld.setText(String(value).replace(/[֐-׿יִ-ﭏ]/g,'?')); fld.updateAppearances(stdFont); }
-      }catch(e){}
-    };
-    // Hebrew-aware writer: uses embedded font if available, else ASCII fallback
-    const hebrewFont = await _loadHeeboFont().catch(()=>null);
-    let customFont=null;
-    if(hebrewFont){
-      try{ customFont=await doc.embedFont(hebrewFont,{subset:false}); }catch(e){ customFont=null; }
-    }
-    const setH=(n,v)=>{
-      if(!v) return;
-      try{
-        const fld=form.getTextField(n);
-        // setText must come BEFORE updateAppearances — the other order lets
-        // pdf-lib's save-time appearance refresh silently redo it with the
-        // default (non-Hebrew) font and undo this.
-        if(customFont){
-          fld.setText(String(v)); fld.updateAppearances(customFont);
-          // pdf-lib's auto-generated appearance can silently drop the last glyph
-          // of multi-word RTL text (e.g. combining two Hebrew words loses a
-          // letter) — only happens with a space in the value, so only pay for
-          // the redraw fix there.
-          if(String(v).indexOf(' ')!==-1){
-            const size=fieldSizes[n]||8;
-            const widget=fld.acroField.getWidgets()[0];
-            const r=widget.getRectangle();
-            const tw=customFont.widthOfTextAtSize(String(v),size);
-            // Blank the widget's own (buggy) appearance instead of just
-            // painting over it — the widget's operators still get composited
-            // with our own page-level drawText underneath a white rectangle,
-            // showing as a faint doubled/bold-looking stroke.
-            const ap=widget.getAppearances();
-            if(ap&&ap.normal&&'operators' in ap.normal) ap.normal.operators=[];
-            drawTextBold(page1,String(v),{x:r.x+r.width-tw-2,y:centerBaselineY(r,size,customFont),size,font:customFont});
-          }
-        }
-        else { fld.setText(String(v).replace(/[\u0590-\u05FF\uFB1D-\uFB4F]/g,'?')); }
-      }catch(e){}
-    };
-    setH('surname',surname); setH('given_name',given);
-    // dob's own AcroForm rect matches its printed box (unlike tax_year
-    // below), so — per user request to keep everything a real AcroForm
-    // field where possible — it's filled through the field itself again.
-    setComb('dob',8,dob.replace(/\D/g,''),9);
-    setT('id_top2',no);
-    // The template's own "tax_year" AcroForm field's rect doesn't match its
-    // printed box (narrower and shifted up relative to the visible "שנת המס"
-    // line) — combing through that field left the year floating above the
-    // box. Left unset + read-only (Chrome otherwise highlights any empty
-    // fillable field with a light-blue box at ITS OWN mismatched rect,
-    // drifting from the visible box) and a brand-new field, `tax_year_box`,
-    // is created at the box's real coordinates instead — a real, editable
-    // field the template just never shipped in the right place.
-    const TAX_YEAR_RECT={x:220.4,y:742.49,width:64.9,height:13};
-    addNewCombField('tax_year_box',TAX_YEAR_RECT,4,9,String(new Date().getFullYear()));
-    // (`form.removeField()` was tried first for the mismatched native field —
-    // it corrupts pdf-lib's save pass: the removed field's widget stays
-    // attached to the page's Annots array with a now-dangling parent-field
-    // reference, throwing "Expected instance of..." inside
-    // updateFieldAppearances at save time. `enableReadOnly()` has no such
-    // side effect.)
-    try{ form.getTextField('tax_year').enableReadOnly(); }catch(e){}
-    // "א. פרטי המעסיק" (employer details) — also has no real AcroForm fields
-    // (verified the same way as the boxes above: zero widgets in this row's
-    // y-range). Filled from the logged-in firm's own Tenants profile — for a
-    // super-admin viewing a specific firm, viewingTenantProfile (cached from
-    // the Firms list at switchToTenant()); for a normal tenant login,
-    // tenantProfile (returned once at login). Row native y=659.89..673.89;
-    // columns right-to-left: שם, כתובת, מספר טלפון, מספר תיק ניכויים (8
-    // digits — the template already prints a fixed leading "9").
-    (function(){
-      const profile=activeTenantProfile();
-      // A blank field here just leaves its box empty on the printed form, which
-      // is easy to miss — remembered so the end of this function can say so.
-      firmMissing=firmProfileMissing(profile);
-      if(!profile) return;
-      const ROW={y:659.89,height:14};
-      // NAME_RECT/ADDRESS_RECT's right edge is pulled in 8pt from the
-      // printed box's true right edge (540.4/414.9) — a left nudge that
-      // works in every viewer, unlike appending trailing spaces to the
-      // value (which some viewers, e.g. Chrome's built-in PDF.js, render
-      // live off the field's own alignment and trim before measuring,
-      // silently undoing that trick).
-      const NAME_RECT={x:414.9,width:540.4-414.9-8,...ROW};
-      const ADDRESS_RECT={x:209.0,width:414.9-209.0-8,...ROW};
-      const PHONE_RECT={x:130.3,width:209.0-130.3,...ROW};
-      const DEDUCTIONS_RECT={x:39.9,width:130.3-39.9,...ROW};
-      // Real, independently-editable AcroForm fields — the template ships
-      // none here at all (verified: zero widgets in this row's y-range), so
-      // addNewHebrewField()/addNewCombField() create brand-new ones. Right-
-      // aligned (pdf-lib's own field alignment) since this row reads
-      // right-to-left like the rest of the Hebrew form.
-      addNewHebrewField('employer_name',NAME_RECT,10,profile.companyName,true);
-      const addr=[profile.street,profile.streetNumber].filter(Boolean).join(' ')+(profile.city?(profile.street||profile.streetNumber?', ':'')+profile.city:'');
-      addNewHebrewField('employer_address',ADDRESS_RECT,10,addr,true);
-      addNewHebrewField('employer_phone',PHONE_RECT,9,profile.phone,true);
-      if(profile.deductionsFileNumber) addNewCombField('employer_deductions',DEDUCTIONS_RECT,8,9,String(profile.deductionsFileNumber).replace(/\D/g,''));
-    })();
-    if(sex==='M') chk('sex_male'); else if(sex==='F') chk('sex_female');
-    if(isIsraeli){ chk('resident_yes'); chk('resident_h'); }
-    else { chk('resident_no'); chk('marital_single'); }
-    // "חבר קיבוץ/מושב שיתופי" (kibbutz/collective-moshav member) — this app's
-    // workers are never kibbutz members, so always mark "לא" (No). cb_p1_1
-    // is that checkbox (verified against the template's own printed glyph
-    // positions, not just field name — see form101-field-map.md).
-    chk('cb_p1_1');
-    // "ד. פרטים על הכנסותיי ממעסיק זה" (income type from THIS employer) —
-    // set from the worker's own Income-type dropdown (Add/Edit Worker
-    // modal), not the scan itself. Left blank if the worker hasn't set one.
-    const INCOME_TYPE_CB={monthly:'cb_p1_4',secondary:'cb_p1_5',partial:'cb_p1_6',daily:'cb_p1_7',pension:'cb_p1_8',scholarship:'cb_p1_9'};
-    const incomeCb=targetWorker&&INCOME_TYPE_CB[targetWorker.incomeType];
-    if(incomeCb) chk(incomeCb);
-    // "ה. פרטים על הכנסות אחרות" (income from OTHER employers) — same idea,
-    // from the worker's Other-income dropdown. 'none' checks only "אין לי
-    // הכנסות אחרות"; any specific type checks "יש לי הכנסות אחרות" plus that
-    // type's own box (verified against the template's printed glyph
-    // positions — see form101-field-map.md).
-    const OTHER_INCOME_CB={monthly:'cb_p1_13',secondary:'cb_p1_15',partial:'cb_p1_17',daily:'cb_p1_12',pension:'cb_p1_14',scholarship:'cb_p1_16'};
-    const otherType=targetWorker&&targetWorker.otherIncomeType;
-    if(otherType==='none') chk('cb_p1_10');
-    else if(otherType&&OTHER_INCOME_CB[otherType]){ chk('cb_p1_11'); chk(OTHER_INCOME_CB[otherType]); }
-    // "תאריך תחילת העבודה בשנת המס" (work start date) has no underlying form
-    // field on the template at all — just a printed comb box — so a brand-new
-    // real field, `work_start_date`, is created there instead.
-    const WORK_START_RECT={x:30.75,y:450.42,width:90.64,height:21.01};
-    const fillWorkStart=(isoDate)=>{
-      if(!isoDate) return;
-      const d=isoDate.split('-');
-      addNewCombField('work_start_date',WORK_START_RECT,8,10,d[2]+d[1]+d[0]);
-    };
-    // "מספר זהות (9 ספרות)" in section ב (employee details) has no real
-    // AcroForm field on the template — only `id_top2` (a small running
-    // header on page 2) is a real field — so the Israeli ID number never
-    // showed up on page 1 at all. A brand-new real field, `id_box`, is
-    // created there instead. Foreign-passport holders correctly leave this
-    // box blank (they have no Israeli ID) and use the real `passport_no`
-    // field instead.
-    const ID_BOX_RECT={x:438,y:607.89,width:102,height:13};
-    // "תאריך" next to "חתימת המבקש/ת" (declaration section י) is the date
-    // this form is signed — set to the worker's own createdAt (the day they
-    // were actually onboarded), not whatever day this PDF happens to be
-    // (re)generated/rescanned. Falls back to today only when there's no
-    // worker record yet to read a date from (e.g. a bare 'download' before
-    // the worker is saved) or for legacy workers saved before createdAt existed.
+
+    // PDF construction itself (field placement, RTL Hebrew rendering, comb
+    // fields, checkboxes, employer block, children table, signature/scan
+    // pages) lives server-side now — see functions/main.py. It's a Python +
+    // PyMuPDF port of what used to run here via pdf-lib, moved off the
+    // client specifically because pdf-lib's own appearance-stream generator
+    // has a confirmed bug that silently drops a glyph of multi-word RTL
+    // (Hebrew) text; PyMuPDF has no such bug. This function still gathers
+    // every value exactly as before — only "build the PDF bytes" moved.
+    const profile=activeTenantProfile();
+    firmMissing=firmProfileMissing(profile);
+
     const signDateSrc=(targetWorker&&targetWorker.createdAt)?new Date(targetWorker.createdAt):new Date();
     const signDate=isNaN(signDateSrc)?new Date():signDateSrc;
     const signDateStr=String(signDate.getDate()).padStart(2,'0')+'/'+String(signDate.getMonth()+1).padStart(2,'0')+'/'+signDate.getFullYear();
-    setT('sign_date',signDateStr);
-    if(isId){
-      // Israeli ID: fill address, marital, work start, fund — from the
-      // worker's own persisted fields when regenerating (no scan overlay is
-      // open in that case), otherwise from the live aiId* scan-panel inputs.
-      if(no) addNewCombField('id_box',ID_BOX_RECT,9,9,no.replace(/\D/g,''));
-      const addr=isRegen?workerAddress(targetWorker||{}):_v('aiAddress');
-      const city=isRegen?((targetWorker&&targetWorker.city)||''):_v('aiCity');
-      if(addr){
-        const writeStr=customFont?setH:setT;
-        // Street+number can be OCR'd in either order ("Rothschild 5" or
-        // "5 Rothschild") — track which pattern actually matched instead of
-        // assuming group 1 is always the street, or the two get swapped.
-        const mEnd=addr.match(/^(.*?)(\d+)\s*$/);
-        const mStart=!mEnd&&addr.match(/^(\d+)\s+(.*)$/);
-        if(mEnd){ writeStr('addr_street',mEnd[1].trim()); setT('addr_number',mEnd[2].trim()); }
-        else if(mStart){ writeStr('addr_street',mStart[2].trim()); setT('addr_number',mStart[1].trim()); }
-        else writeStr('addr_street',addr);
-      }
-      (customFont?setH:setT)('addr_city',city);
-      const marital=isRegen?((targetWorker&&targetWorker.maritalStatus)||''):(document.getElementById('aiIdMarital')?.value);
-      if(marital) chk(marital);
-      const workStart=isRegen?((targetWorker&&targetWorker.workStartDate)||''):(document.getElementById('aiIdWork')?.value);
-      fillWorkStart(workStart);
-      const fund=isRegen?((targetWorker&&targetWorker.healthFund)||''):(document.getElementById('aiIdFund')?.value);
-      if(fund){ chk('hf_yes'); (customFont?setH:setT)('hf_name',HEALTH_FUND_HE[fund]||fund); }
-      // Children table ("ג. פרטים על ילדיי...") — like the work-start box, this
-      // is plain printed boxes with no form fields, filled by hand. Only the
-      // Israeli-ID scan path can surface children (from the ID's ספח, if any
-      // are registered there); the two "1"/"2" eligibility checkboxes on the
-      // template require the parent's own declaration, not something a scan
-      // can determine, so they're left blank for the user to mark by hand.
-      const children=isRegen?((targetWorker&&targetWorker.docChildren)||[]):(Array.isArray(window.__aiScanChildren)?window.__aiScanChildren:[]);
-      const CHILD_ROW_Y=[380.3115,402.2011,424.0908,445.9803,467.8701,489.7587,511.6493,533.5380,555.4286,577.3173,599.2079];
-      const CHILD_COLS={dob:{x:255.55,width:91.36},id:{x:346.91,width:101.9},name:{x:448.81,width:71.26}};
-      const pageH=page1.getHeight();
-      // Real, independently-editable fields — one set per child row that
-      // actually has data (children_id_0, children_dob_0, children_name_0,
-      // children_id_1, ...), created only as needed rather than pre-creating
-      // all 10 printed rows the template has room for.
-      children.slice(0,10).forEach((c,i)=>{
-        const rowY=pageH-CHILD_ROW_Y[i+1], rowH=CHILD_ROW_Y[i+1]-CHILD_ROW_Y[i];
-        if(c.idNo) addNewCombField('children_id_'+i,{x:CHILD_COLS.id.x,y:rowY,width:CHILD_COLS.id.width,height:rowH},9,9,String(c.idNo).replace(/\D/g,''));
-        if(c.dob){ const dd=String(c.dob).replace(/\D/g,''); if(dd) addNewCombField('children_dob_'+i,{x:CHILD_COLS.dob.x,y:rowY,width:CHILD_COLS.dob.width,height:rowH},8,9,dd); }
-        if(c.name) addNewHebrewField('children_name_'+i,{x:CHILD_COLS.name.x,y:rowY,width:CHILD_COLS.name.width,height:rowH},8,String(c.name),true);
-      });
-      // Write back every value actually used onto the worker record (only
-      // when there's a real worker AND we're persisting a new document —
-      // a bare 'download' before the worker is saved, or a re-download of
-      // an unchanged document, has nothing useful to gain from this and
-      // would just add an autoSave the caller isn't expecting). This is
-      // what makes a LATER edit-and-regenerate possible without re-scanning:
-      // these become the baseline regenerateWorkerDoc() reads next time.
-      if(mode==='upload'&&targetWorker){
-        targetWorker.docType='israeli_id';
-        targetWorker.docSurname=surname; targetWorker.docGiven=given;
-        targetWorker.docDob=dob; targetWorker.docSex=sex;
-        if(addr) targetWorker.address=addr;
-        if(city) targetWorker.city=city;
-        if(marital) targetWorker.maritalStatus=marital;
-        if(workStart) targetWorker.workStartDate=workStart;
-        if(fund) targetWorker.healthFund=fund;
-        if(children.length) targetWorker.docChildren=children;
-      }
-    } else {
-      // Foreign passport: fill passport_no, work start, fund — same
-      // regen-vs-live-scan source split as the Israeli-ID branch above.
-      setComb('passport_no',13,no,9);
-      const workStart=isRegen?((targetWorker&&targetWorker.workStartDate)||''):(document.getElementById('aiPpWork')?.value);
-      fillWorkStart(workStart);
-      const fund=isRegen?((targetWorker&&targetWorker.healthFund)||''):(document.getElementById('aiPpFund')?.value);
-      if(fund){ chk('hf_yes'); (customFont?setH:setT)('hf_name',HEALTH_FUND_HE[fund]||fund); }
-      if(mode==='upload'&&targetWorker){
-        targetWorker.docType='passport';
-        targetWorker.docSurname=surname; targetWorker.docGiven=given;
-        targetWorker.docDob=dob; targetWorker.docSex=sex;
-        if(workStart) targetWorker.workStartDate=workStart;
-        if(fund) targetWorker.healthFund=fund;
-      }
-    }
-    // Signature ("חתימת המבקש/ת") — page 2, no form field either (printed line
-    // only), drawn as an image if the worker actually signed on the pad.
-    // Regenerating reuses whatever signature was captured the first time
-    // (there's no live pad to read from in that case) instead of trying to
-    // ask the worker to sign again for a routine data correction.
-    const sigPng=isRegen?(presetAssets.sigPng||null):(typeof getSignaturePng==='function'?getSignaturePng():null);
-    if(sigPng){
-      try{
-        const sigBytes=await fetch(sigPng).then(r=>r.arrayBuffer());
-        const sigImg=await doc.embedPng(sigBytes);
-        const SIG_RECT={x:34.02,y:186,width:87.99,height:15};
-        const page2=doc.getPages()[1];
-        const scale=Math.min(SIG_RECT.width/sigImg.width, SIG_RECT.height/sigImg.height);
-        const w=sigImg.width*scale, h=sigImg.height*scale;
-        page2.drawImage(sigImg,{x:SIG_RECT.x+(SIG_RECT.width-w)/2,y:SIG_RECT.y+(SIG_RECT.height-h)/2,width:w,height:h});
-      }catch(e){}
-    }
-    // Append scanned page(s) as extra pages, so the worker's whole file —
-    // Form 101 + ID copy (+ any other pages from a multi-file "ready packet"
-    // upload, e.g. a contract) — is one PDF instead of several separate
-    // downloads. Fit-to-page + a light frame/caption rather than pasting in
-    // at native size/rotation as-is. stdFont is plain WinAnsi Helvetica — no
-    // Cyrillic support, so captions are Latin-only regardless of the app's
-    // Russian UI.
-    const appendScanPage=async(b64,mediaType,caption)=>{
-      try{
-        const imgBytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
-        const img=/png/i.test(mediaType)?await doc.embedPng(imgBytes):await doc.embedJpg(imgBytes);
-        const pw=page1.getWidth(), ph=page1.getHeight();
-        const scanPage=doc.addPage([pw,ph]);
-        const margin=40, capH=24;
-        const maxW=pw-margin*2, maxH=ph-margin*2-capH;
-        const fit=Math.min(maxW/img.width, maxH/img.height, 1);
-        const w=img.width*fit, h=img.height*fit;
-        const x=(pw-w)/2, y=margin+(maxH-h)/2;
-        scanPage.drawText(caption,{x:margin,y:ph-margin-16,size:12,font:stdFont,color:PDFLib.rgb(0.3,0.3,0.3)});
-        scanPage.drawRectangle({x:x-2,y:y-2,width:w+4,height:h+4,borderColor:PDFLib.rgb(0.7,0.7,0.7),borderWidth:1,color:PDFLib.rgb(1,1,1)});
-        scanPage.drawImage(img,{x,y,width:w,height:h});
-      }catch(e){}
+
+    const payload={
+      isId, isIsraeli, surname, given, dob, sex, no,
+      signDate: signDateStr,
+      incomeType: targetWorker&&targetWorker.incomeType,
+      otherIncomeType: targetWorker&&targetWorker.otherIncomeType,
+      employer: profile ? {
+        companyName: profile.companyName, street: profile.street, streetNumber: profile.streetNumber,
+        city: profile.city, phone: profile.phone, deductionsFileNumber: profile.deductionsFileNumber,
+      } : null,
     };
+
+    // Israeli ID: address, marital, work start, fund — from the worker's own
+    // persisted fields when regenerating (no scan overlay is open in that
+    // case), otherwise from the live aiId* scan-panel inputs. Same
+    // regen-vs-live-scan split for the foreign-passport branch below.
+    let addr,city,marital,workStart,fund,children;
+    if(isId){
+      addr=isRegen?workerAddress(targetWorker||{}):_v('aiAddress');
+      city=isRegen?((targetWorker&&targetWorker.city)||''):_v('aiCity');
+      marital=isRegen?((targetWorker&&targetWorker.maritalStatus)||''):(document.getElementById('aiIdMarital')?.value);
+      workStart=isRegen?((targetWorker&&targetWorker.workStartDate)||''):(document.getElementById('aiIdWork')?.value);
+      fund=isRegen?((targetWorker&&targetWorker.healthFund)||''):(document.getElementById('aiIdFund')?.value);
+      // Children table — only the Israeli-ID scan path can surface children
+      // (from the ID's ספח, if any are registered there).
+      children=isRegen?((targetWorker&&targetWorker.docChildren)||[]):(Array.isArray(window.__aiScanChildren)?window.__aiScanChildren:[]);
+      Object.assign(payload,{address:addr,city,marital,workStart,healthFund:fund,children});
+    } else {
+      workStart=isRegen?((targetWorker&&targetWorker.workStartDate)||''):(document.getElementById('aiPpWork')?.value);
+      fund=isRegen?((targetWorker&&targetWorker.healthFund)||''):(document.getElementById('aiPpFund')?.value);
+      Object.assign(payload,{workStart,healthFund:fund});
+    }
+
+    // Signature ("חתימת המבקש/ת") — drawn server-side as an image if the
+    // worker actually signed on the pad. Regenerating reuses whatever
+    // signature was captured the first time (there's no live pad to read
+    // from in that case) instead of asking the worker to sign again for a
+    // routine data correction. getSignaturePng() already returns a
+    // data: URL, so the base64 payload is just the part after the comma.
+    const sigPng=isRegen?(presetAssets.sigPng||null):(typeof getSignaturePng==='function'?getSignaturePng():null);
+    if(sigPng) payload.signaturePngBase64=sigPng.split(',')[1];
+
     // Regenerating reads the scan image back from presetAssets (the Drive
     // sidecar loaded by regenerateWorkerDoc()) instead of window.__aiScanImage
     // — that global belongs to whichever scan session happens to be open in
     // the browser right now, which is a DIFFERENT worker's data if a
     // background regenerate for worker B fires while the manager is
-    // mid-scanning worker A.
+    // mid-scanning worker A. Same reasoning for __aiPacketOtherPages (a
+    // contract, etc.) — never attach it during a background regenerate.
     const scanImage=isRegen?{b64:presetAssets.scanB64,mediaType:presetAssets.scanMediaType}:window.__aiScanImage;
-    if(scanImage){
-      await appendScanPage(scanImage.b64,scanImage.mediaType,'Document scan');
-    }
-    // Same reasoning — extra packet pages (a contract, etc.) aren't persisted
-    // by regenerateWorkerDoc(), so never attach whatever happens to be
-    // sitting in this global during a background regenerate.
+    const extraPages=[];
+    if(scanImage) extraPages.push({b64:scanImage.b64,mediaType:scanImage.mediaType,caption:'Document scan'});
     if(!isRegen && Array.isArray(window.__aiPacketOtherPages)){
-      for(const p of window.__aiPacketOtherPages) await appendScanPage(p.b64,p.mediaType,'Document');
+      for(const p of window.__aiPacketOtherPages) extraPages.push({b64:p.b64,mediaType:p.mediaType,caption:'Document'});
     }
-    // Without this, viewers ignore our appearance streams and re-render every
-    // field themselves using the template's default (non-Hebrew) Helvetica DA.
-    form.acroForm.dict.set(PDFLib.PDFName.of('NeedAppearances'), PDFLib.PDFBool.False);
-    const out=await doc.save();
-    // <docNumber>_<given>_<surname>_<companyName>.pdf — the ID/passport number
-    // is the one stable part across rescans (used by the backend's automatic
-    // dedup in saveWorkerDoc), name parts and company name are just for
-    // human-readable browsing in Drive (the actual per-company folder the
-    // backend saves into is resolved server-side from the tenant, not from
-    // this string — see _companyFolder() in apps-script/Код.js).
-    const fnPart=s=>(s||'').replace(/[^A-Za-z0-9֐-׿]/g,'');
-    const __session=getSession();
-    const __profile=__session&&(__session.viewingTenantProfile||__session.tenantProfile);
-    const companySuffix=(__profile&&__profile.companyName)?'_'+fnPart(__profile.companyName):'';
-    const fileName=(no?no.replace(/\D/g,''):'noid')+'_'+fnPart(given||'worker')+(surname?'_'+fnPart(surname):'')+companySuffix+'.pdf';
+    if(extraPages.length) payload.extraPages=extraPages;
+
+    const fnResp=await fetch(FORM101_FN_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const fnJson=await fnResp.json();
+    if(!fnResp.ok||fnJson.error) throw new Error(fnJson.error||'Не удалось построить PDF');
+    const out=Uint8Array.from(atob(fnJson.pdfBase64),c=>c.charCodeAt(0));
+    const fileName=fnJson.fileName;
+
+    // Write back every value actually used onto the worker record (only
+    // when there's a real worker AND we're persisting a new document — a
+    // bare 'download' before the worker is saved, or a re-download of an
+    // unchanged document, has nothing useful to gain from this and would
+    // just add an autoSave the caller isn't expecting). This is what makes
+    // a LATER edit-and-regenerate possible without re-scanning: these
+    // become the baseline regenerateWorkerDoc() reads next time.
+    if(mode==='upload'&&targetWorker){
+      targetWorker.docType=isId?'israeli_id':'passport';
+      targetWorker.docSurname=surname; targetWorker.docGiven=given;
+      targetWorker.docDob=dob; targetWorker.docSex=sex;
+      if(isId){
+        if(addr) targetWorker.address=addr;
+        if(city) targetWorker.city=city;
+        if(marital) targetWorker.maritalStatus=marital;
+        if(children&&children.length) targetWorker.docChildren=children;
+      }
+      if(workStart) targetWorker.workStartDate=workStart;
+      if(fund) targetWorker.healthFund=fund;
+    }
+
     if(mode==='upload'){
-      const fileBase64=bytesToBase64(out);
       // Worker (targetWorker) already resolved up top — reused here so a
       // rescan can pass along the previous file's ID: the OCR'd name/doc-
       // number baked into fileName can drift between scans, so name-based
       // dedup on the backend alone isn't reliable; a known previousFileId
       // lets it trash the exact old file.
+      const fileBase64=fnJson.pdfBase64;
       const w=targetWorker;
       const resp=await fetch(GS_URL,{
         method:'POST',
@@ -4948,47 +4611,11 @@ function _loadPdfJs(){
   return _pdfjsLoading;
 }
 // ===== Form 101: fill the fillable template from AI-scanned document data =====
-// Heebo Hebrew+Latin TTF, bundled same-origin (heebo-hebrew.ttf) so PDF filling
-// never depends on a third-party CDN being up — loaded once, cached in module scope.
-let _heeboFontBytes=null;
-async function _loadHeeboFont(){
-  if(_heeboFontBytes) return _heeboFontBytes;
-  try{
-    const r=await fetch('heebo-hebrew.ttf',{cache:'force-cache'});
-    if(!r.ok) return null;
-    _heeboFontBytes=await r.arrayBuffer();
-    return _heeboFontBytes;
-  }catch(e){ return null; }  // could not load — fallback to ASCII-safe mode
-}
-
-let _pdflibLoading=null;
-function _loadPdfLib(){
-  if(window.PDFLib) return Promise.resolve();
-  if(_pdflibLoading) return _pdflibLoading;
-  _pdflibLoading=new Promise((res,rej)=>{
-    const sc=document.createElement('script');
-    sc.src='https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
-    sc.onload=()=>res(); sc.onerror=()=>rej(new Error('pdf-lib CDN failed'));
-    document.head.appendChild(sc);
-  });
-  return _pdflibLoading;
-}
-// fontkit is required by pdf-lib to embed a custom (non-standard-14) font like Heebo.
-let _fontkitLoading=null;
-function _loadFontkit(){
-  if(window.fontkit) return Promise.resolve();
-  if(_fontkitLoading) return _fontkitLoading;
-  _fontkitLoading=new Promise((res,rej)=>{
-    const sc=document.createElement('script');
-    sc.src='https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js';
-    sc.onload=()=>res(); sc.onerror=()=>rej(new Error('fontkit CDN failed'));
-    document.head.appendChild(sc);
-  });
-  return _fontkitLoading;
-}
-// Hebrew label for each health-fund select value — the PDF's hf_name field must
-// show the Hebrew name, not the internal English value used for the <select>.
-const HEALTH_FUND_HE = {Clalit:'כללית', Maccabi:'מכבי', Meuhedet:'מאוחדת', Leumit:'לאומית'};
+// The actual PDF filling (pdf-lib + fontkit + the Heebo font, all loaded
+// client-side) moved server-side into a Python/PyMuPDF Cloud Function — see
+// FORM101_FN_URL above and functions/main.py. This client only assembles the
+// JSON payload now; the CDN loaders and Heebo font fetch that used to live
+// here are gone along with the client-side build they supported.
 
 // --- Init ---------------------------------------------------------------------
 // Error telemetry: send client errors to the GS Errors sheet (throttled, silent).

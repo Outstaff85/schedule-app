@@ -1,0 +1,7 @@
+firebase-functions
+firebase-admin
+pymupdf
+python-bidi
+opencv-python-headless
+Pillow
+numpy

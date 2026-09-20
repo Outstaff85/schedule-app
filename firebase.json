@@ -1,4 +1,10 @@
 {
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default"
+    }
+  ],
   "hosting": {
     "public": ".",
     "ignore": [
@@ -6,7 +12,12 @@
       ".firebaserc",
       "google-apps-script.js",
       "*.md",
-      "node_modules/**"
+      "node_modules/**",
+      "functions/**",
+      "Screenshot_*.jpg",
+      "Screenshot_*.png",
+      "Tokens/**",
+      ".env"
     ],
     "headers": [
       {
