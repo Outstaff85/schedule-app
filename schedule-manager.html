@@ -4401,28 +4401,17 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
         targetPage.drawLine({start:p2,end:p3,thickness,color:CHECK_BLUE,lineCap:PDFLib.LineCapStyle.Round});
       }catch(e){}
     };
-    // No bold variant of Heebo is bundled (only the regular-weight TTF), so
-    // "bold" hand-drawn text is faked by drawing the same glyphs twice with a
-    // tiny horizontal offset — a standard cheap trick that visibly thickens
-    // regular-weight strokes without needing a separate bold font file.
-    const BOLD_OFFSET=0.3;
+    // Plain (non-bold) draw — kept as its own name since callers throughout
+    // this function were written against it; reverted from a faux-bold
+    // double-draw trick per user feedback.
     const drawTextBold=(page,text,opts)=>{
       page.drawText(text,opts);
-      page.drawText(text,{...opts,x:opts.x+BOLD_OFFSET});
     };
-    // Vertically centers a text baseline inside a box. heightAtSize(size,
-    // {descender:false}) gives ascent only (glyph height above the baseline);
-    // the plain heightAtSize(size) call gives ascent+descent. Centering with
-    // ascent alone (as this used to do) assumes nothing hangs below the
-    // baseline — wrong for any glyph that does (Hebrew ך/ן/ף/ץ, Latin g/y/q/p
-    // — final-nun in particular, common at the end of Hebrew words) — the
-    // descender then pokes out the bottom of the box, reading as off-center.
-    // Splitting the difference between ascent and descent centers the whole
-    // visual glyph box, not just its above-baseline portion.
+    // Vertically centers a text baseline inside a box, using the font's
+    // ascent (cap-height, no descender) as the text's own height.
     const centerBaselineY=(rect,size,font)=>{
-      const ascent=font.heightAtSize(size,{descender:false});
-      const descent=font.heightAtSize(size)-ascent;
-      return rect.y+(rect.height-ascent+descent)/2;
+      const th=font.heightAtSize(size,{descender:false});
+      return rect.y+(rect.height-th)/2;
     };
     // A few boxes on the template (work-start date, the children table) have no
     // underlying form field at all — just printed comb boxes — so pdf-lib's
@@ -4476,21 +4465,21 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
           fld.setText(String(v)); fld.updateAppearances(customFont);
           // pdf-lib's auto-generated appearance can silently drop the last glyph
           // of multi-word RTL text (e.g. combining two Hebrew words loses a
-          // letter) — used to only redraw when the value had a space, but the
-          // manual redraw below is now always run instead, both to make this
-          // field's positioning consistent regardless of word count and so the
-          // bold-via-double-draw trick (drawTextBold) can apply uniformly to
-          // every Hebrew field, not just multi-word ones.
-          const size=fieldSizes[n]||8;
-          const widget=fld.acroField.getWidgets()[0];
-          const r=widget.getRectangle();
-          const tw=customFont.widthOfTextAtSize(String(v),size);
-          // Blank the widget's own appearance instead of just painting over it —
-          // its operators would otherwise still be composited underneath our
-          // own page-level drawText, showing as a faint doubled stroke.
-          const ap=widget.getAppearances();
-          if(ap&&ap.normal&&'operators' in ap.normal) ap.normal.operators=[];
-          drawTextBold(page1,String(v),{x:r.x+r.width-tw-2,y:centerBaselineY(r,size,customFont),size,font:customFont});
+          // letter) — only happens with a space in the value, so only pay for
+          // the redraw fix there.
+          if(String(v).indexOf(' ')!==-1){
+            const size=fieldSizes[n]||8;
+            const widget=fld.acroField.getWidgets()[0];
+            const r=widget.getRectangle();
+            const tw=customFont.widthOfTextAtSize(String(v),size);
+            // Blank the widget's own (buggy) appearance instead of just
+            // painting over it — the widget's operators still get composited
+            // with our own page-level drawText underneath a white rectangle,
+            // showing as a faint doubled/bold-looking stroke.
+            const ap=widget.getAppearances();
+            if(ap&&ap.normal&&'operators' in ap.normal) ap.normal.operators=[];
+            drawTextBold(page1,String(v),{x:r.x+r.width-tw-2,y:centerBaselineY(r,size,customFont),size,font:customFont});
+          }
         }
         else { fld.setText(String(v).replace(/[\u0590-\u05FF\uFB1D-\uFB4F]/g,'?')); }
       }catch(e){}
