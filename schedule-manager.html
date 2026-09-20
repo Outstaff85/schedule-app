@@ -4414,23 +4414,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       const th=font.heightAtSize(size,{descender:false});
       return rect.y+(rect.height-th)/2;
     };
-    // A few boxes on the template (work-start date, the children table) have no
-    // underlying form field at all — just printed comb boxes — so pdf-lib's
-    // field-based combing can't reach them. Draw the characters ourselves,
-    // evenly spaced across the given box, the same way native combing would.
     const stdFont = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
-    const drawCombRaw=(text,maxLen,rect,size,yNudge)=>{
-      if(!text) return;
-      const s=String(text).slice(0,maxLen);
-      const cellW=rect.width/maxLen;
-      const y=centerBaselineY(rect,size,stdFont)+(yNudge||0);
-      for(let i=0;i<s.length;i++){
-        const ch=s[i];
-        const cw=stdFont.widthOfTextAtSize(ch,size);
-        const cx=rect.x+cellW*i+cellW/2-cw/2;
-        drawTextBold(page1,ch,{x:cx,y,size,font:stdFont});
-      }
-    };
     // Some fields (dob, tax_year, passport_no) are printed with a row of small
     // per-character boxes on the template — combing spreads each character into
     // its own box (and sizes it to fill that box) instead of one small run of
@@ -4447,6 +4431,52 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
         // verified-safe size instead of trusting the auto-computed one.
         fld.acroField.setDefaultAppearance('/Helv '+(size||8)+' Tf 0 g');
         fld.setText(String(v).slice(0,maxLen));
+      }catch(e){}
+    };
+    // Several boxes on the template (tax year, ID number, work-start date,
+    // the employer-details row, the children table) are printed-only — no
+    // AcroForm widget exists there at all. Per user request these are now
+    // real, independently-editable fields instead of hand-drawn text: each
+    // gets a brand-new field created and positioned at the box's own
+    // coordinates. `name` must not collide with a field the template
+    // already ships (e.g. the mismatched native `tax_year` field is left
+    // alone — this creates a second field, `tax_year_box`, at the box's
+    // actual position).
+    const addNewCombField=(name,rect,maxLen,size,value)=>{
+      if(!value) return;
+      try{
+        const fld=form.createTextField(name);
+        fld.addToPage(page1,{x:rect.x,y:rect.y,width:rect.width,height:rect.height,borderWidth:0});
+        fld.setMaxLength(maxLen);
+        fld.enableCombing();
+        fld.acroField.setDefaultAppearance('/Helv '+size+' Tf 0 g');
+        fld.setText(String(value).slice(0,maxLen));
+      }catch(e){}
+    };
+    // Same idea as addNewCombField, for a plain (non-combed) Hebrew-capable
+    // field — used for the employer name/address and children's names.
+    // Mirrors setH()'s own multi-word-RTL glyph-drop workaround (pdf-lib's
+    // auto-appearance can lose the last glyph of multi-word Hebrew text).
+    const addNewHebrewField=(name,rect,size,value,rightAlign)=>{
+      if(!value) return;
+      try{
+        const fld=form.createTextField(name);
+        fld.addToPage(page1,{x:rect.x,y:rect.y,width:rect.width,height:rect.height,borderWidth:0});
+        fld.acroField.setDefaultAppearance('/Helv '+size+' Tf 0 g');
+        if(rightAlign){ try{ fld.setAlignment(PDFLib.TextAlignment.Right); }catch(e){} }
+        if(customFont){
+          fld.setText(String(value)); fld.updateAppearances(customFont);
+          if(String(value).indexOf(' ')!==-1){
+            const widget=fld.acroField.getWidgets()[0];
+            const r=widget.getRectangle();
+            const tw=customFont.widthOfTextAtSize(String(value),size);
+            const th=customFont.heightAtSize(size,{descender:false});
+            const ap=widget.getAppearances();
+            if(ap&&ap.normal&&'operators' in ap.normal) ap.normal.operators=[];
+            const x=rightAlign?(r.x+r.width-tw-2):(r.x+2);
+            page1.drawText(String(value),{x,y:r.y+(r.height-th)/2,size,font:customFont});
+          }
+        } else fld.setText(String(value).replace(/[֐-׿יִ-ﭏ]/g,'?'));
       }catch(e){}
     };
     // Hebrew-aware writer: uses embedded font if available, else ASCII fallback
@@ -4486,35 +4516,27 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       }catch(e){}
     };
     setH('surname',surname); setH('given_name',given);
+    // dob's own AcroForm rect matches its printed box (unlike tax_year
+    // below), so — per user request to keep everything a real AcroForm
+    // field where possible — it's filled through the field itself again.
+    setComb('dob',8,dob.replace(/\D/g,''),11);
     setT('id_top2',no);
-    // `dob` used to be a real AcroForm field via setComb() — converted to a
-    // hand-drawn box (like tax_year/ID_BOX_RECT/WORK_START_RECT below) per
-    // user request, so it could get the same yNudge=-1 treatment as those
-    // fields (pdf-lib's own combed-field appearance generator exposes no
-    // y-position hook, so a real field couldn't be nudged). Trade-off: it's
-    // no longer an independently-editable field in a PDF viewer, same as
-    // tax_year. Rect verified in form101-field-map.md's own field table.
-    const DOB_RECT={x:120,y:606.89,width:86,height:14};
-    if(dob) drawCombRaw(dob.replace(/\D/g,''),8,DOB_RECT,11,-1);
-    try{ form.getTextField('dob').enableReadOnly(); }catch(e){}
-    // The "tax_year" AcroForm field's own rect doesn't match its printed box
-    // on this template (narrower and shifted up relative to the visible
-    // "שנת המס" line), so combing through the field left the year floating
-    // above the box instead of inside it. Hand-drawn at the box's real
-    // coordinates instead, like the other printed-only boxes.
+    // The template's own "tax_year" AcroForm field's rect doesn't match its
+    // printed box (narrower and shifted up relative to the visible "שנת המס"
+    // line) — combing through that field left the year floating above the
+    // box. Left unset + read-only (Chrome otherwise highlights any empty
+    // fillable field with a light-blue box at ITS OWN mismatched rect,
+    // drifting from the visible box) and a brand-new field, `tax_year_box`,
+    // is created at the box's real coordinates instead — a real, editable
+    // field the template just never shipped in the right place.
     const TAX_YEAR_RECT={x:220.4,y:742.49,width:64.9,height:13};
-    drawCombRaw(String(new Date().getFullYear()),4,TAX_YEAR_RECT,11);
-    // The AcroForm field itself is left unset (its rect doesn't match the
-    // printed box, see above) but was still being left in the saved PDF as an
-    // empty, EDITABLE text field — Chrome's PDF viewer highlights any such
-    // fillable field with a light-blue box wherever ITS OWN (mismatched) rect
-    // sits, which visibly drifted from the hand-drawn digits next to it.
-    // form.removeField() looked like the fix but corrupts pdf-lib's save
-    // pass (the field's widget stays attached to the page's Annots array
-    // with a now-dangling parent-field reference, throwing "Expected
-    // instance of..." inside updateFieldAppearances at save time). Marking
-    // it read-only instead is enough on its own to stop viewers from
-    // highlighting it, with no such side effect.
+    addNewCombField('tax_year_box',TAX_YEAR_RECT,4,11,String(new Date().getFullYear()));
+    // (`form.removeField()` was tried first for the mismatched native field —
+    // it corrupts pdf-lib's save pass: the removed field's widget stays
+    // attached to the page's Annots array with a now-dangling parent-field
+    // reference, throwing "Expected instance of..." inside
+    // updateFieldAppearances at save time. `enableReadOnly()` has no such
+    // side effect.)
     try{ form.getTextField('tax_year').enableReadOnly(); }catch(e){}
     // "א. פרטי המעסיק" (employer details) — also has no real AcroForm fields
     // (verified the same way as the boxes above: zero widgets in this row's
@@ -4535,27 +4557,16 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       const ADDRESS_RECT={x:209.0,width:414.9-209.0,...ROW};
       const PHONE_RECT={x:130.3,width:209.0-130.3,...ROW};
       const DEDUCTIONS_RECT={x:39.9,width:130.3-39.9,...ROW};
-      // stdFont (plain WinAnsi Helvetica) can't encode Hebrew at all — it
-      // throws ("WinAnsi cannot encode ..."), aborting the whole PDF build,
-      // if the firm's own companyName/address/city is in Hebrew (the
-      // overwhelmingly common case for an Israeli company). Use the
-      // Hebrew-capable customFont (Heebo, embedded above) when it loaded —
-      // it renders plain Latin/ASCII text just as well, so this is a safe
-      // upgrade, not just a Hebrew-only special case.
-      // Right-aligned (not left-aligned) — this row reads right-to-left like
-      // the rest of the Hebrew form, so the text should sit against each
-      // box's right edge, not its left.
-      const drawRight=(text,rect,size)=>{
-        if(!text) return;
-        const font=customFont||stdFont;
-        const tw=font.widthOfTextAtSize(String(text),size);
-        drawTextBold(page1,String(text),{x:rect.x+rect.width-tw-2,y:centerBaselineY(rect,size,font),size,font});
-      };
-      drawRight(profile.companyName,NAME_RECT,10);
+      // Real, independently-editable AcroForm fields — the template ships
+      // none here at all (verified: zero widgets in this row's y-range), so
+      // addNewHebrewField()/addNewCombField() create brand-new ones. Right-
+      // aligned (quadding + right-anchored multi-word fallback) since this
+      // row reads right-to-left like the rest of the Hebrew form.
+      addNewHebrewField('employer_name',NAME_RECT,10,profile.companyName,true);
       const addr=[profile.street,profile.streetNumber].filter(Boolean).join(' ')+(profile.city?(profile.street||profile.streetNumber?', ':'')+profile.city:'');
-      drawRight(addr,ADDRESS_RECT,10);
-      drawRight(profile.phone,PHONE_RECT,11);
-      if(profile.deductionsFileNumber) drawCombRaw(String(profile.deductionsFileNumber).replace(/\D/g,''),8,DEDUCTIONS_RECT,11);
+      addNewHebrewField('employer_address',ADDRESS_RECT,10,addr,true);
+      addNewHebrewField('employer_phone',PHONE_RECT,11,profile.phone,true);
+      if(profile.deductionsFileNumber) addNewCombField('employer_deductions',DEDUCTIONS_RECT,8,11,String(profile.deductionsFileNumber).replace(/\D/g,''));
     })();
     if(sex==='M') chk('sex_male'); else if(sex==='F') chk('sex_female');
     if(isIsraeli){ chk('resident_yes'); chk('resident_h'); }
@@ -4581,20 +4592,21 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     if(otherType==='none') chk('cb_p1_10');
     else if(otherType&&OTHER_INCOME_CB[otherType]){ chk('cb_p1_11'); chk(OTHER_INCOME_CB[otherType]); }
     // "תאריך תחילת העבודה בשנת המס" (work start date) has no underlying form
-    // field on the template at all — just a printed comb box — so it's drawn
-    // by hand.
+    // field on the template at all — just a printed comb box — so a brand-new
+    // real field, `work_start_date`, is created there instead.
     const WORK_START_RECT={x:30.75,y:450.42,width:90.64,height:21.01};
     const fillWorkStart=(isoDate)=>{
       if(!isoDate) return;
       const d=isoDate.split('-');
-      drawCombRaw(d[2]+d[1]+d[0],8,WORK_START_RECT,11,-1);
+      addNewCombField('work_start_date',WORK_START_RECT,8,11,d[2]+d[1]+d[0]);
     };
     // "מספר זהות (9 ספרות)" in section ב (employee details) has no real
     // AcroForm field on the template — only `id_top2` (a small running
     // header on page 2) is a real field — so the Israeli ID number never
-    // showed up on page 1 at all. Hand-draw it like the other printed-only
-    // boxes. Foreign-passport holders correctly leave this box blank (they
-    // have no Israeli ID) and use the real `passport_no` field instead.
+    // showed up on page 1 at all. A brand-new real field, `id_box`, is
+    // created there instead. Foreign-passport holders correctly leave this
+    // box blank (they have no Israeli ID) and use the real `passport_no`
+    // field instead.
     const ID_BOX_RECT={x:438,y:607.89,width:102,height:13};
     // "תאריך" next to "חתימת המבקש/ת" (declaration section י) is the date
     // this form is signed — set to the worker's own createdAt (the day they
@@ -4610,7 +4622,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // Israeli ID: fill address, marital, work start, fund — from the
       // worker's own persisted fields when regenerating (no scan overlay is
       // open in that case), otherwise from the live aiId* scan-panel inputs.
-      if(no) drawCombRaw(no.replace(/\D/g,''),9,ID_BOX_RECT,11,-1);
+      if(no) addNewCombField('id_box',ID_BOX_RECT,9,11,no.replace(/\D/g,''));
       const addr=isRegen?workerAddress(targetWorker||{}):_v('aiAddress');
       const city=isRegen?((targetWorker&&targetWorker.city)||''):_v('aiCity');
       if(addr){
@@ -4641,16 +4653,15 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       const CHILD_ROW_Y=[380.3115,402.2011,424.0908,445.9803,467.8701,489.7587,511.6493,533.5380,555.4286,577.3173,599.2079];
       const CHILD_COLS={dob:{x:255.55,width:91.36},id:{x:346.91,width:101.9},name:{x:448.81,width:71.26}};
       const pageH=page1.getHeight();
+      // Real, independently-editable fields — one set per child row that
+      // actually has data (children_id_0, children_dob_0, children_name_0,
+      // children_id_1, ...), created only as needed rather than pre-creating
+      // all 10 printed rows the template has room for.
       children.slice(0,10).forEach((c,i)=>{
         const rowY=pageH-CHILD_ROW_Y[i+1], rowH=CHILD_ROW_Y[i+1]-CHILD_ROW_Y[i];
-        if(c.idNo) drawCombRaw(String(c.idNo).replace(/\D/g,''),9,{x:CHILD_COLS.id.x,y:rowY,width:CHILD_COLS.id.width,height:rowH},11);
-        if(c.dob){ const dd=String(c.dob).replace(/\D/g,''); if(dd) drawCombRaw(dd,8,{x:CHILD_COLS.dob.x,y:rowY,width:CHILD_COLS.dob.width,height:rowH},11); }
-        if(c.name){
-          const nameFont=customFont||stdFont;
-          const size=8;
-          const tw=nameFont.widthOfTextAtSize(String(c.name),size);
-          drawTextBold(page1,String(c.name),{x:CHILD_COLS.name.x+CHILD_COLS.name.width-tw-2,y:centerBaselineY({y:rowY,height:rowH},size,nameFont),size,font:nameFont});
-        }
+        if(c.idNo) addNewCombField('children_id_'+i,{x:CHILD_COLS.id.x,y:rowY,width:CHILD_COLS.id.width,height:rowH},9,11,String(c.idNo).replace(/\D/g,''));
+        if(c.dob){ const dd=String(c.dob).replace(/\D/g,''); if(dd) addNewCombField('children_dob_'+i,{x:CHILD_COLS.dob.x,y:rowY,width:CHILD_COLS.dob.width,height:rowH},8,11,dd); }
+        if(c.name) addNewHebrewField('children_name_'+i,{x:CHILD_COLS.name.x,y:rowY,width:CHILD_COLS.name.width,height:rowH},8,String(c.name),true);
       });
       // Write back every value actually used onto the worker record (only
       // when there's a real worker AND we're persisting a new document —

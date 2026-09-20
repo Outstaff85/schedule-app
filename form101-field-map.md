@@ -33,12 +33,12 @@ raw field list order.
 
 | Field | Type | Native rect (x, y0, x1, y1) | Label (Hebrew) | Meaning | Filled by code? |
 |---|---|---|---|---|---|
-| `tax_year` | Text (comb, 4) | 250,746.89,289,759.89 (**field rect — do not use, see below**) | שנת המס | Tax year | ✅ current year, but **hand-drawn**, not via the AcroForm field — see note below |
+| `tax_year` | Text (comb, 4) | 250,746.89,289,759.89 (**field rect doesn't match the printed box — left blank+read-only, see below**) | שנת המס | Tax year | ❌ left unset on purpose — a second field, `tax_year_box`, is created at the box's real coordinates instead (see below) |
 | `aliyah` | Text | 30,607.89,115,620.89 | תאריך עליה | Aliyah date | ❌ not from AI scan (no source data) |
-| `dob` | Text (comb, 8, DDMMYYYY) | 120,606.89,206,620.89 (**field rect — do not use, see below**) | תאריך לידה | Date of birth | ✅ but **hand-drawn** (`DOB_RECT`), not via the AcroForm field — converted from a real combed field per user request (see below), same reasoning as `tax_year` |
+| `dob` | Text (comb, 8, DDMMYYYY) | 120,606.89,206,620.89 | תאריך לידה | Date of birth | ✅ via the real AcroForm field (`setComb('dob',...)`) — its rect matches the printed box, no positioning issue |
 | `given_name` | Text | 212,607.89,312,620.89 | שם פרטי | Given name | ✅ |
 | `surname` | Text | 316,607.89,436,620.89 | שם משפחה | Surname | ✅ |
-| **(no field — printed comb box)** | — | **≈438,607.89,540,620.89** | **מספר זהות (9 ספרות)** | **Israeli ID number, 9 digits** | **❌ WAS MISSING — this is the main bug.** Only `id_top2` (page 2 running header) was filled; this box, the one actually inside "פרטי העובד/ת", stayed blank. Now drawn by hand via `drawCombRaw` (`ID_BOX_RECT`), Israeli-ID path only. |
+| **(template ships no field here)** | — | **≈438,607.89,540,620.89** | **מספר זהות (9 ספרות)** | **Israeli ID number, 9 digits** | **❌ WAS MISSING — this is the main bug.** Only `id_top2` (page 2 running header) was filled; this box, the one actually inside "פרטי העובד/ת", stayed blank. ✅ Now a real field, `id_box`, created on the fly at `ID_BOX_RECT` via `addNewCombField()`, Israeli-ID path only. |
 | `addr_zip` | Text | 32,582.89,118,594.89 | מיקוד | Zip | ❌ not collected from scan |
 | `addr_city` | Text | 120,583.89,198,594.89 | עיר/ישוב | City | ✅ (Israeli ID path only) |
 | `addr_number` | Text | 200,582.89,228,594.89 | מספר (house number) | House number | ✅ split out of scanned address string |
@@ -52,11 +52,11 @@ raw field list order.
 | `cb_p1_1` | Checkbox | 269.6,551.89,279.6,561.89 | חבר קיבוץ/מושב שיתופי: **לא** | "No" — not a kibbutz/collective-moshav member | ✅ always checked (`chk('cb_p1_1')`, both paths) — this app's workers are never kibbutz members |
 | `cb_p1_2` | Checkbox | 247.6,550.99,257.6,560.99 | חבר קיבוץ/מושב שיתופי: כן, הכנסותיי מועברות לקיבוץ | "Yes, income goes to the kibbutz" | ❌ not handled (mutually exclusive with `cb_p1_1`, never checked) |
 | `cb_p1_3` | Checkbox | 269.6,538.89,279.6,548.89 | חבר קיבוץ/מושב שיתופי: כן, הכנסותיי אינן מועברות לקיבוץ (8) | "Yes, income does NOT go to the kibbutz" | ❌ not handled |
-| **(no field — printed comb box)** | — | `WORK_START_RECT` = {x:30.75,y:450.42,w:90.64,h:21.01} | תאריך תחילת העבודה בשנת המס | Work-start date this tax year | ✅ hand-drawn (`fillWorkStart`) |
+| **(template ships no field here)** | — | `WORK_START_RECT` = {x:30.75,y:450.42,w:90.64,h:21.01} | תאריך תחילת העבודה בשנת המס | Work-start date this tax year | ✅ a real field, `work_start_date`, created on the fly (`fillWorkStart()` → `addNewCombField()`) |
 | `cb_p1_4`…`cb_p1_9` | Checkbox | y(top) 358–428, single column x≈237–247 | **ד. פרטים על הכנסותיי ממעסיק זה** — "אני מקבל/ת:" income type from *this* employer: `cb_p1_4`=משכורת חודש(2) monthly, `cb_p1_5`=משכורת בעד משרה נוספת(3) 2nd job, `cb_p1_6`=משכורת חלקית(4) partial, `cb_p1_7`=שכר עבודה עובד יומי(5) daily wage, `cb_p1_8`=קצבה(6) pension, `cb_p1_9`=מלגה(1) scholarship | Income type from this employer | ✅ from the worker's "Income type" dropdown (Add/Edit Worker modal, `w.incomeType`) via `INCOME_TYPE_CB` map in `aiFillForm101()`. Left unchecked if not set. |
 | `cb_p1_10`, `cb_p1_11` | Checkbox | 235.5,454.8–464.8 / 235.5,479.2–489.2 (top-coord) | **ה. פרטים על הכנסות אחרות** — `cb_p1_10`="אין לי הכנסות אחרות" (no other income), `cb_p1_11`="יש לי הכנסות אחרות כמפורט להלן:" (has other income, detailed below) | Other-income toggle | ✅ from `w.otherIncomeType`: `'none'` → `cb_p1_10` only; any specific type → `cb_p1_11` plus its type box below |
 | `cb_p1_12`…`cb_p1_17` | Checkbox | y(top) 490–523, two columns x≈118 (right col in RTL) and x≈236 (left col) | ה.'s own income-type sub-boxes, two per row: `cb_p1_12`=שכר עבודה עובד יומי(5) daily, `cb_p1_13`=משכורת חודש(2) monthly, `cb_p1_14`=קצבה(6) pension, `cb_p1_15`=משכורת בעד משרה נוספת(3) 2nd job, `cb_p1_16`=מלגה(1) scholarship, `cb_p1_17`=משכורת חלקית(4) partial | Other-income type | ✅ from `w.otherIncomeType` via `OTHER_INCOME_CB` map, only when it's not `'none'`/unset |
-| **children table rows 1–10** (no fields — printed comb boxes) | — | `CHILD_ROW_Y[]` / `CHILD_COLS` in code | ג. פרטים על ילדיי (name / ID / DOB per child) | Registered children from ID ספח | ✅ hand-drawn from `window.__aiScanChildren` (Israeli-ID path only) |
+| **children table rows 1–10** (template ships no fields here) | — | `CHILD_ROW_Y[]` / `CHILD_COLS` in code | ג. פרטים על ילדיי (name / ID / DOB per child) | Registered children from ID ספח | ✅ real fields created per row with data (`children_id_N`/`children_dob_N`/`children_name_N`), from `window.__aiScanChildren` (Israeli-ID path only) |
 | `cb_p1_18` / `cb_p1_19` | Checkbox | y≈116–125, x 281–291 / 408–419 | ו. פרטים על בן/בת הזוג: "אין"/"יש" bucket markers | Spouse-income section | ❌ not handled |
 
 ## Page 2 — real AcroForm fields
@@ -66,7 +66,7 @@ raw field list order.
 | `id_top2` | Text | 96,15.89,172,27.89 (native: 841.89−26.89=... see below) | מספר זהות (running page header, top of page 2) | ID/passport number, repeated as a page-2 header | ✅ — but this is **only** the header reference; it is NOT the same visual box as page 1's employee-details ID field above |
 | `resident_h` | Checkbox | 509.7,791.59,519.7,801.59 | ח.1 "אני תושב/ת ישראל" | Israeli-resident declaration (section ח, item 1) | ✅ Israeli-ID path only |
 | `cb_p2_1`…`cb_p2_18` | Checkbox | scattered, section ח items 2–16 and ט items 1–3 | other-income / disability / new-immigrant / alimony / military-service / study-completion declarations | Various tax-relief declaration checkboxes | ❌ none handled — these require facts a document scan cannot know (disability %, alimony court order, army discharge date, etc.); left blank for the worker/employer to fill by hand, as already noted in `CLAUDE.md` |
-| `sign_date` | Text | 150,186.89,215,199.89 | תאריך (next to "חתימת המבקש/ת", declaration section י) | **Date the form is signed/declared** | ⚠️ **was bugged twice** — first wrote the *work-start* date here via `fillWorkStart()` (fixed: decoupled). Then briefly used "today" (the PDF-generation date), which is wrong for a rescan of an existing worker done long after onboarding. **Now uses the worker's own `createdAt`** (set when the worker record is first saved — see `saveWorker()`) so a rescan still shows the original onboarding date; falls back to today only when there's no worker resolved yet (bare download before the worker is saved) or for legacy workers with no `createdAt`. Font size explicitly set to 9pt via `setSize('sign_date',9)` (previously left at the template's own default, which read too small per user feedback). |
+| `sign_date` | Text | 150,186.89,215,199.89 | תאריך (next to "חתימת המבקש/ת", declaration section י) | **Date the form is signed/declared** | ⚠️ **was bugged twice** — first wrote the *work-start* date here via `fillWorkStart()` (fixed: decoupled). Then briefly used "today" (the PDF-generation date), which is wrong for a rescan of an existing worker done long after onboarding. **Now uses the worker's own `createdAt`** (set when the worker record is first saved — see `saveWorker()`) so a rescan still shows the original onboarding date; falls back to today only when there's no worker resolved yet (bare download before the worker is saved) or for legacy workers with no `createdAt`. Font size explicitly set to 11pt via `setSize('sign_date',11)` (previously left at the template's own default, which read too small per user feedback; briefly 9pt before the 11pt unification, see CLAUDE.md). |
 
 Section ט row (`המעסיק המשלם/משלמת המשכורת` table, 3 blank rows with a
 literal `9` pre-printed in the "מספר תיק ניכויים" column) has **no AcroForm
@@ -80,68 +80,64 @@ Checked boxes are drawn as a **blue checkmark** (two `page1.drawLine()` strokes,
 "Yes" appearance stream — not a filled black square (the original style) and
 not the template's default X mark.
 
-## "שנת המס" (tax year) box — field rect doesn't match the printed box
+## Printed-only boxes — now filled via brand-new AcroForm fields
 
-`tax_year`'s own AcroForm rect (250,746.89,289,759.89 — see table above) is
-**narrower and shifted relative to the actual printed box** next to the bold
-"שנת המס" heading (verified via `page.get_drawings()`: the real box's tick
-marks run from x=220.4 to x=285.3, baseline at native y≈742.49–755.49). Comb-
-filling the *field* left the year floating visibly above the box. Fixed the
-same way as the fake boxes above: hand-drawn via `drawCombRaw` at
-`TAX_YEAR_RECT = {x:220.4, y:742.49, width:64.9, height:13}`, size 11.
+Several boxes on the template are printed lines/cells with **no AcroForm
+widget behind them at all** (verified: zero widgets in each box's y-range via
+`page.widgets()`). Per explicit user request ("хочу всё в AcroForm"),
+`aiFillForm101()` no longer draws plain text over these boxes — it creates a
+brand-new, independently-editable field there instead, via two small
+helpers:
 
-**Known-fixed bug — stray blue field highlight ("sliding blue square"):**
-leaving the real `tax_year` field unset but still present (and still
-editable) in the saved PDF meant it stayed a live, empty, interactive text
-field — Chrome's PDF viewer draws a light-blue highlight box over any such
-field, positioned at *that field's own* (mismatched) rect, visibly adrift
-from the hand-drawn digits sitting next to it. `aiFillForm101()` now calls
-`form.getTextField('tax_year').enableReadOnly()` right after drawing the
-digits, so the field is no longer treated as fillable and viewers stop
-highlighting it. (`form.removeField()` was tried first as the more obvious
-fix — it turns out to corrupt pdf-lib's save pass: the removed field's
-widget stays attached to the page's `Annots` array with a now-dangling
-parent-field reference, and pdf-lib throws inside `updateFieldAppearances`
-the next time it tries to auto-generate appearances at save time.
-`enableReadOnly()` has no such side effect.)
+- **`addNewCombField(name, rect, maxLen, size, value)`** — `form.createTextField(name)` + `.addToPage(page1, {x,y,width,height,borderWidth:0})`, then `enableCombing()` + `setMaxLength()` + an explicit `size`. Used for digit boxes.
+- **`addNewHebrewField(name, rect, size, value, rightAlign)`** — same field creation, plus Hebrew-aware text via `customFont` (mirrors `setH()`'s own multi-word-RTL glyph-drop workaround) and, when `rightAlign` is set, `fld.setAlignment(PDFLib.TextAlignment.Right)` (pdf-lib's own native field alignment — right-aligns even single-word values, which never hit the multi-word manual-redraw fallback). Used for free-text boxes.
 
-## `dob` (date of birth) — converted from a real field to hand-drawn
+**Trade-off knowingly accepted:** a previous round of hand-drawn text let
+this app pick the *exact* pixel position of each character (including a
+`yNudge` to sit digits precisely on the template's printed comb dividers).
+A real AcroForm field's internal text position is computed by pdf-lib, the
+same as any field the template ships with — that per-pixel control is gone.
+If a field's default position reads wrong, the fix now has to come from
+elsewhere (tuning the field's own rect, its font size, etc.), not a nudge
+constant.
 
-Unlike `tax_year`, `dob`'s own AcroForm rect **does** match its printed box
-(120,606.89,206,620.89) — there was no positioning bug to fix here. It was
-converted anyway, per explicit user request, to get the same `yNudge`
-vertical-position control as `ID_BOX_RECT`/`WORK_START_RECT` below: pdf-lib's
-`setComb()` path computes a combed field's vertical position internally at
-save time with no exposed hook to nudge it, so matching those two boxes'
-`yNudge=-1` treatment required drawing it by hand instead, at
-`DOB_RECT = {x:120, y:606.89, width:86, height:14}`, size 11 (unified with
-almost every other hand-drawn size, see below). Same read-only
-treatment as `tax_year` (`form.getTextField('dob').enableReadOnly()`) to
-avoid a stray empty-field highlight in PDF viewers. Trade-off knowingly
-accepted: `dob` is no longer independently editable as a form field in a
-PDF viewer, same as `tax_year`.
+New fields created, one per box:
 
-## "א. פרטי המעסיק" (employer details) row — right-aligned, no AcroForm fields
+| New field name | Box | Rect | Size |
+|---|---|---|---|
+| `tax_year_box` | שנת המס (tax year) | `{x:220.4, y:742.49, width:64.9, height:13}` | 11, comb 4 |
+| `id_box` | מספר זהות (Israeli ID, section ב) | `{x:438, y:607.89, width:102, height:13}` | 11, comb 9 |
+| `work_start_date` | תאריך תחילת העבודה בשנת המס | `{x:30.75, y:450.42, width:90.64, height:21.01}` | 11, comb 8 |
+| `employer_name` | א. פרטי המעסיק — שם | `{x:414.9, width:125.5, y:659.89, height:14}` | 10 (overflow risk, see below) |
+| `employer_address` | א. פרטי המעסיק — כתובת | `{x:209.0, width:205.9, y:659.89, height:14}` | 10 (overflow risk, see below) |
+| `employer_phone` | א. פרטי המעסיק — מספר טלפון | `{x:130.3, width:78.7, y:659.89, height:14}` | 11 |
+| `employer_deductions` | א. פרטי המעסיק — מספר תיק ניכויים | `{x:39.9, width:90.4, y:659.89, height:14}` | 11, comb 8 |
+| `children_id_N` / `children_dob_N` / `children_name_N` | ג. פרטים על ילדיי, row N | `CHILD_ROW_Y[]`/`CHILD_COLS` in code | 11 (id/dob, comb) / 8 (name, overflow risk) |
 
-Like the tax-year box, this row (native y=659.89..673.89; columns
-right-to-left: שם, כתובת, מספר טלפון, מספר תיק ניכויים) has zero underlying
-AcroForm widgets — verified the same way (zero widgets in this y-range) —
-so it's filled by hand from the logged-in firm's Tenants profile via
-`drawRight()` (`NAME_RECT` width 125.5 and `ADDRESS_RECT` width 205.9,
-size 10 — the two deliberate exceptions to the 11pt unification below,
-since a longer company name/address overflowed its column at 12/11,
-`drawRight` anchoring to the right edge with no clip/shrink-to-fit, so
-overflow spills leftward into the neighboring column; `PHONE_RECT` width
-78.7, fixed-width digits, no overflow risk, is size 11 like everything
-else) and `drawCombRaw()` for the digits-only deductions-file box
-(`DEDUCTIONS_RECT` width 90.4, size 11). `drawRight()` right-aligns each string against its
-box's right edge (`rect.x+rect.width-tw-2`) rather than left-aligning at
-`rect.x+2` — this row reads right-to-left like the rest of the Hebrew
-form, so Latin/Hebrew text alike should sit against the right edge of its
-column, not drift toward the box's (left) start. Both `drawRight()` and
-`drawCombRaw()` center their text's baseline vertically via a shared
-`centerBaselineY()` helper (ascent-only — a descent-aware version was
-tried and reverted per user feedback).
+**Why `tax_year` (the template's own field) is left blank + read-only:** its
+own rect (250,746.89,289,759.89) is narrower and shifted relative to the
+actual printed box (verified via `page.get_drawings()`: the real box's tick
+marks run x=220.4–285.3, native y≈742.49–755.49) — filling it left the year
+floating above the box. Rather than fight the mismatch, it's left unset and
+marked read-only (`form.getTextField('tax_year').enableReadOnly()` — Chrome's
+PDF viewer otherwise highlights any empty fillable field with a light-blue
+box at *its own* rect, drifting from the real digits next to it;
+`form.removeField()` was tried first and corrupts pdf-lib's save pass,
+throwing inside `updateFieldAppearances`), and `tax_year_box` is the field
+actually filled.
+
+**Why `dob` is *not* in this list:** unlike `tax_year`, `dob`'s own AcroForm
+rect (120,606.89,206,620.89) **does** match its printed box — no positioning
+bug, so it's filled straight through the real field via `setComb()`, same as
+`passport_no`.
+
+**Why `employer_name`/`employer_address` are 10pt, smaller than everything
+else's 11pt:** a longer company name/address overflowed its column at 12pt
+(and still risks it at 11pt) — `addNewHebrewField`'s right-alignment means
+overflow spills leftward into the neighboring column, not clipped. The
+children-table name field is 8pt for the same reason (a long child's name in
+a 71pt-wide column) — never explicitly asked about, left untouched rather
+than assumed safe.
 
 ## Worker-level Form 101 declarations (Add/Edit Worker modal)
 
@@ -178,8 +174,9 @@ particular row is easy to get backwards.
 
 ## Known-fixed bugs (see git history for the commit that applied these)
 
-1. **Page-1 ID number box was never filled** — added a hand-drawn comb-box
-   fill at the coordinates above, Israeli-ID path only (foreign-passport
+1. **Page-1 ID number box was never filled** — added a comb-box fill at the
+   coordinates above (originally hand-drawn, now the real `id_box` field —
+   see "Printed-only boxes" above), Israeli-ID path only (foreign-passport
    holders correctly leave this box blank per the form's own design and use
    `passport_no` instead).
 2. **`sign_date` was filled with the work-start date** instead of the actual
