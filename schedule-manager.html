@@ -982,6 +982,20 @@ function render(){
   const _wd=document.getElementById('weekDisplay'); if(_wd) _wd.textContent=fmtRange(weekStart);
   document.getElementById('pageSub').textContent=fmtRange(weekStart)+' · Drag ⠿ to reorder · Click shifts to edit';
   renderStats(); renderGanttHeader(); renderGanttBody(); renderWorkerList(); renderSidebarClients();
+  // render() only ever refreshed the Schedule tab's own pieces above — every
+  // other tab's table (Workers/Clients/Admin/Бухгалтерия) is rendered ONLY by
+  // switchTab() when the tab is first opened. Every place that mutates data
+  // (saveWorker, saveClient, deletePunch, ...) calls render() to reflect the
+  // change, but most of them sit ON one of those other tabs while doing it —
+  // so an edit silently didn't show up until switching away and back. A few
+  // call sites had already patched around this ad-hoc (search
+  // `currentTab==='admin'`) instead of fixing it here once for every tab and
+  // every mutation.
+  if(currentTab==='workers')    renderWorkersPage();
+  if(currentTab==='clients')    renderClientsPage();
+  if(currentTab==='admin')      renderAdmin();
+  if(currentTab==='dashboard')  renderDashboard();
+  if(currentTab==='accounting') renderAccounting();
 }
 
 function getVisible(){ return selectedClientId ? workers.filter(w=>(w.clientIds||[]).includes(selectedClientId)) : workers; }
