@@ -1315,6 +1315,38 @@ function showWorkerModal(w){
     </div>` : ''}
     ${editingWorkerIdx!==null ? `
     <div class="field">
+      <label><i class="ti ti-id-badge-2"></i> Данные для Формы 101</label>
+      <div class="field-row">
+        <div class="field"><label>Фамилия (как в скане)</label><input type="text" id="wDocSurname" value="${esc(w.docSurname||'')}"></div>
+        <div class="field"><label>Имя (как в скане)</label><input type="text" id="wDocGiven" value="${esc(w.docGiven||'')}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Семейное положение</label>
+          <select id="wMaritalStatus">
+            <option value="" ${!w.maritalStatus?'selected':''}>— не заполнять —</option>
+            <option value="marital_single" ${w.maritalStatus==='marital_single'?'selected':''}>רווק/ה (Холост/а)</option>
+            <option value="marital_married" ${w.maritalStatus==='marital_married'?'selected':''}>נשוי/אה (Женат/замужем)</option>
+            <option value="marital_divorced" ${w.maritalStatus==='marital_divorced'?'selected':''}>גרוש/ה (Разведён/а)</option>
+            <option value="marital_widowed" ${w.maritalStatus==='marital_widowed'?'selected':''}>אלמן/ה (Вдовец/вдова)</option>
+          </select>
+        </div>
+        <div class="field"><label>Больничная касса</label>
+          <select id="wHealthFund">
+            <option value="" ${!w.healthFund?'selected':''}>— не заполнять —</option>
+            <option value="Clalit" ${w.healthFund==='Clalit'?'selected':''}>כללית (Клалит)</option>
+            <option value="Maccabi" ${w.healthFund==='Maccabi'?'selected':''}>מכבי (Маккаби)</option>
+            <option value="Meuhedet" ${w.healthFund==='Meuhedet'?'selected':''}>מאוחדת (Меухедет)</option>
+            <option value="Leumit" ${w.healthFund==='Leumit'?'selected':''}>לאומית (Леумит)</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><label>Дата начала работы (Форма 101)</label><input type="date" id="wWorkStartDate" value="${w.workStartDate||''}"></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:2px">
+        ${w.docUrl?'Изменение этих полей (или адреса/города/типа дохода выше) автоматически обновит уже загруженный документ в Google Drive.':'Заполняется автоматически при первом скане/генерации Формы 101 — до этого можно оставить пустым.'}
+      </div>
+    </div>` : ''}
+    ${editingWorkerIdx!==null ? `
+    <div class="field">
       <label><i class="ti ti-file-text"></i> Документы (Форма 101 + скан)</label>
       <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" style="flex-shrink:0">
