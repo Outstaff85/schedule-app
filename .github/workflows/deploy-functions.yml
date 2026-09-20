@@ -1,0 +1,72 @@
+name: Deploy Cloud Functions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'functions/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build functions venv
+        working-directory: functions
+        run: |
+          python -m venv venv
+          venv/bin/pip install --upgrade pip
+          venv/bin/pip install -r requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm install -g firebase-tools
+
+      - name: Write service account credentials
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/gcp-sa.json"
+
+      - name: Deploy Cloud Functions
+        id: deploy
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa.json
+        run: firebase deploy --only functions --project schedule-odinson --non-interactive
+        continue-on-error: true
+
+      - name: Open/update an issue if deploy failed
+        if: steps.deploy.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          BODY="The **Deploy Cloud Functions** workflow failed. Failed run: $RUN_URL
+
+          Common causes for this specific workflow (new as of 2026-09-21):
+          - The `FIREBASE_SERVICE_ACCOUNT` secret (used for Hosting deploys) may lack the IAM roles Cloud Functions 2nd-gen deploys need: Cloud Functions Admin, Service Account User, Cloud Run Admin, Artifact Registry Writer, Eventarc Event Receiver. Grant these to the service account in GCP Console → IAM, project \`schedule-manager-498317\`.
+          - A dependency in \`functions/requirements.txt\` (e.g. \`opencv-python-headless\`) may have failed to build for the runtime Python version.
+          - The declared runtime (\`python312\` in \`firebase.json\`) may need bumping if Cloud Functions deprecates it.
+
+          Check the run log first — it will say which of these it is."
+
+          EXISTING=$(gh issue list --repo "$REPO" --search "Cloud Functions deploy failing in:title" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --repo "$REPO" --body "$BODY"
+          else
+            gh issue create --repo "$REPO" --title "Cloud Functions deploy failing" --body "$BODY"
+          fi
+
+      - name: Fail job if deploy failed
+        if: steps.deploy.outcome == 'failure'
+        run: exit 1
