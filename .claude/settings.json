@@ -10,11 +10,17 @@
             "if": "Edit(H:/schedule-app/**)",
             "command": "cd \"$CLAUDE_PROJECT_DIR\" && git add -A && git diff --cached --quiet || { git commit -q -m \"auto: update via Claude Code\" -m \"Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>\" && git push -q origin HEAD; }",
             "timeout": 60
-          },
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
           {
             "type": "agent",
-            "if": "Edit(H:/schedule-app/**)",
-            "prompt": "This edit was just auto-committed and pushed to origin/main by this repo's PostToolUse hook (no manual `firebase deploy` step is used anymore — a push to main is what triggers the GitHub Actions deploy to Firebase Hosting). Start by looking at exactly what changed in THIS commit — run `git show --stat HEAD` then `git diff HEAD~1 HEAD -- . ':!CLAUDE.md'` — and use that diff as your PRIMARY signal, reading only as much surrounding code as needed to understand it. Do not re-diff the whole codebase against all of CLAUDE.md from scratch each time; that is expensive and biases toward missing things. Update CLAUDE.md if this diff is doc-worthy. 'Doc-worthy' includes not just new commands/architecture/top-level files/a bumped service-worker cache version, but also real logic or behavior changes to a function CLAUDE.md already describes: an added/removed/changed parameter, a changed call signature, changed control flow, or a changed data shape (fields added/removed/renamed on an object the function reads or writes). If CLAUDE.md's description of a touched function or flow is now inaccurate or incomplete because of this diff, fix it. Only edit CLAUDE.md if something in this diff is actually doc-worthy; otherwise do nothing and exit quietly. If the diff alone lacks context (e.g. it's one step of a larger multi-step feature), you may check `git log --oneline -5` or skim the touched file's relevant section — but keep the investigation scoped to what this diff touched, not a full repo re-scan.",
+            "if": "Bash(gh pr create*)",
+            "statusMessage": "Checking CLAUDE.md against this PR's diff...",
+            "prompt": "A GitHub PR was just created for this repo (cd \"$CLAUDE_PROJECT_DIR\" first). Before the user reviews/merges it, check whether CLAUDE.md needs updating to reflect what THIS PR actually changed. Find the PR's base (usually main) and run `git diff origin/main...HEAD -- . ':!CLAUDE.md'` to see the full diff — use that as your primary signal, reading only as much surrounding code as needed to understand it; don't re-scan the whole repo against all of CLAUDE.md. 'Doc-worthy' means: new commands/architecture/top-level files, a bumped service-worker cache version, or a real logic/behavior change to a function CLAUDE.md already describes (added/removed/changed parameter, changed call signature, changed control flow, changed data shape). If something is doc-worthy, edit CLAUDE.md and commit+push that fix to the same branch (so it lands in the PR) with a plain message like 'Sync CLAUDE.md with this PR'. If nothing is doc-worthy, do nothing and exit quietly — do not touch CLAUDE.md, do not comment on the PR, do not merge anything.",
             "timeout": 180
           }
         ]
