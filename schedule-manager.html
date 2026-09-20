@@ -1244,7 +1244,6 @@ function showWorkerModal(w){
     </div>
     <div class="field"><label>ID (Teudat Zehut)</label><input type="text" id="wDocId" value="${esc(workerDocId(w))}" placeholder="ת.ז. / passport number"></div>
     <div class="field"><label>Phone (optional)</label><input type="text" id="wPhone" value="${w.phone||''}" placeholder="+972..."></div>
-    <div class="field"><label>Email (optional)</label><input type="text" id="wEmail" value="${w.email||''}" placeholder="worker@email.com"></div>
     <div class="field"><label>Hourly Rate (₪/h)</label><input type="number" id="wRate" value="${w.hourlyRate||''}" placeholder="e.g. 35" min="0" step="0.5"></div>
     <div class="field-row">
       <div class="field"><label>Status</label>
@@ -1424,7 +1423,6 @@ async function saveWorker(){
   const name=document.getElementById('wName').value.trim();
   if(!name){ document.getElementById('wName').focus(); return; }
   const phone=document.getElementById('wPhone').value.trim();
-  const email=document.getElementById('wEmail')?.value.trim()||'';
   const hourlyRate=parseFloat(document.getElementById('wRate')?.value)||0;
   const status=document.getElementById('wStatus')?.value||'active';
   const startDate=document.getElementById('wStartDate')?.value||'';
@@ -1466,7 +1464,7 @@ async function saveWorker(){
     // to re-scan/re-upload by hand after a routine data correction.
     const FORM101_WATCHED_FIELDS=['docId','address','city','incomeType','otherIncomeType','docSurname','docGiven','maritalStatus','healthFund','workStartDate'];
     const before=FORM101_WATCHED_FIELDS.map(f=>prevW[f]);
-    workers[editingWorkerIdx]={...prevW,name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,workStartDate,clientIds,schedule};
+    workers[editingWorkerIdx]={...prevW,name,colorIdx:selColorIdx,phone,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,workStartDate,clientIds,schedule};
     const updated=workers[editingWorkerIdx];
     const after=FORM101_WATCHED_FIELDS.map(f=>updated[f]);
     showToast(name+' updated!');
@@ -1482,7 +1480,7 @@ async function saveWorker(){
   // createdAt powers the Form 101 declaration date (aiFillForm101): the
   // signature date on a scanned worker's PDF should match when they were
   // actually onboarded, not whatever day the PDF happens to be (re)generated.
-  const newWorker={id:uid(),name,colorIdx:selColorIdx,phone,email,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,clientIds,schedule,token,createdAt:new Date().toISOString()};
+  const newWorker={id:uid(),name,colorIdx:selColorIdx,phone,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,clientIds,schedule,token,createdAt:new Date().toISOString()};
   workers.push(newWorker);
   // Persisted and visible right away regardless of the scan-upload below —
   // only the modal itself stays open a little longer in that case.
@@ -1751,7 +1749,6 @@ function openWorkerCard(wi){
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text2);margin-bottom:14px">
       ${w.phone?`<div><i class="ti ti-phone"></i> ${esc(w.phone)}</div>`:''}
-      ${w.email?`<div><i class="ti ti-mail"></i> ${esc(w.email)}</div>`:''}
       ${w.hourlyRate?`<div><i class="ti ti-coin"></i> Base ₪${w.hourlyRate}/h${w.otRate!=null?' · OT ₪'+w.otRate+'/h':''}${w.shabbatRate!=null?' · Shabbat ₪'+w.shabbatRate+'/h':''}</div>`:''}
       ${w.startDate?`<div><i class="ti ti-calendar-event"></i> Started ${fmtDMY(w.startDate)}</div>`:''}
       ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?'Срок истёк':'Срок приближается'} — ${expSt.deadline.toLocaleDateString('ru-RU')}</div>`:''}
@@ -5202,10 +5199,8 @@ function selectContact(idx, query){
   if(!c) return;
   const nameEl  = document.getElementById('wName');
   const phoneEl = document.getElementById('wPhone');
-  const emailEl = document.getElementById('wEmail');
   if(nameEl)  nameEl.value  = c.name;
   if(phoneEl) phoneEl.value = c.phone;
-  if(emailEl) emailEl.value = c.email;
   hideContactsSuggestions();
   showToast(''+c.name+' imported from Contacts');
 }
