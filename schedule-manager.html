@@ -354,7 +354,7 @@
     <div class="ttab" id="tabWorkers" onclick="switchTab('workers')"><span class="ic"><i class="ti ti-users-group"></i></span><span class="lb">Workers</span></div>
     <div class="ttab" id="tabClients" onclick="switchTab('clients')"><span class="ic"><i class="ti ti-users"></i></span><span class="lb">Clients</span></div>
     <div class="ttab admin" id="tabAdmin" onclick="switchTab('admin')"><span class="ic"><i class="ti ti-lock"></i></span><span class="lb">Admin</span></div>
-    <div class="ttab admin" id="tabAccounting" onclick="switchTab('accounting')"><span class="ic"><i class="ti ti-cash"></i></span><span class="lb">Бухгалтерия</span></div>
+    <div class="ttab admin" id="tabAccounting" onclick="switchTab('accounting')"><span class="ic"><i class="ti ti-cash"></i></span><span class="lb">Accounting</span></div>
   </div>
   <div id="accountLabelCenter" class="account-label-center"></div>
   <div class="titlebar-actions">
@@ -581,8 +581,8 @@
     <div class="page-section" id="sectionAccounting">
       <div class="page-header">
         <div>
-          <div class="page-title"><i class="ti ti-cash"></i> Бухгалтерия</div>
-          <div class="page-sub">Расчёт зарплаты и тарифы по объектам</div>
+          <div class="page-title"><i class="ti ti-cash"></i> Accounting</div>
+          <div class="page-sub">Salary calculation and per-client rates</div>
         </div>
       </div>
 
@@ -604,9 +604,9 @@
 
       <!-- Per-client rate matrix -->
       <div>
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px"><i class="ti ti-adjustments"></i> Тарифы по объектам</div>
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px"><i class="ti ti-adjustments"></i> Per-client rates</div>
         <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
-          Приоритет: свой тариф работника на объекте → тариф объекта по умолчанию → базовая ставка работника. Пусто — ничего не переопределено.
+          Priority: worker's own rate at this client → client's default rate → worker's base rate. Empty — nothing overridden.
         </div>
         <div id="rateMatrixWrap"></div>
       </div>
@@ -903,7 +903,7 @@ function israeliDayPay(hours, rate, isSat){
 // Effective per-hour rates for one shift, resolving a 3-tier priority chain —
 // most specific wins, each tier optional, falling through to the next:
 //   1. worker.clientRates[clientId] — this worker's own override for this
-//      specific client (set in the Бухгалтерия rate matrix).
+//      specific client (set in the Accounting rate matrix).
 //   2. client.defaultHourlyRate/defaultOtRate/defaultShabbatRate — this
 //      client's own standard rate, if it has one.
 //   3. the worker's own base rate — hourlyRate, or its regRate/otRate/
@@ -983,7 +983,7 @@ function render(){
   document.getElementById('pageSub').textContent=fmtRange(weekStart)+' · Drag ⠿ to reorder · Click shifts to edit';
   renderStats(); renderGanttHeader(); renderGanttBody(); renderWorkerList(); renderSidebarClients();
   // render() only ever refreshed the Schedule tab's own pieces above — every
-  // other tab's table (Workers/Clients/Admin/Бухгалтерия) is rendered ONLY by
+  // other tab's table (Workers/Clients/Admin/Accounting) is rendered ONLY by
   // switchTab() when the tab is first opened. Every place that mutates data
   // (saveWorker, saveClient, deletePunch, ...) calls render() to reflect the
   // change, but most of them sit ON one of those other tabs while doing it —
@@ -1575,8 +1575,8 @@ function showClientModal(c){
     <div class="field"><label>Address (optional)</label><input type="text" id="cAddr" value="${c.address||''}" placeholder="Address"></div>
     <div class="field"><label>Notes (optional)</label><input type="text" id="cNotes" value="${c.notes||''}" placeholder="Notes"></div>
     <div class="field">
-      <label><i class="ti ti-cash"></i> Тариф по умолчанию для объекта (optional)</label>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Применяется ко всем работникам на этом объекте, если у работника нет своего тарифа для него (см. Бухгалтерия → Тарифы по объектам)</div>
+      <label><i class="ti ti-cash"></i> Default rate for this client (optional)</label>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Applied to all workers at this client if a worker has no own rate for it (see Accounting → Per-client rates)</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
         <div><label style="font-size:11px;color:var(--text3)">Regular ₪/h</label>
           <input type="number" min="0" step="0.5" id="cDefRate" value="${c.defaultHourlyRate??''}" placeholder="—"></div>
@@ -1769,7 +1769,7 @@ function openWorkerCard(wi){
         const r=effectiveRates(w,o.id);
         const hasOverride=!!(w.clientRates&&w.clientRates[o.id]&&Object.values(w.clientRates[o.id]).some(v=>v!=null));
         return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:6px 8px;background:${o.color}11;border-radius:8px;margin-bottom:5px">
-          <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:7px;height:7px;border-radius:50%;background:${o.color};flex-shrink:0"></span>${esc(o.name)}${hasOverride?' <i class="ti ti-star-filled" style="font-size:10px;color:var(--amber)" title="Свой тариф на этом объекте"></i>':''}</span>
+          <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:7px;height:7px;border-radius:50%;background:${o.color};flex-shrink:0"></span>${esc(o.name)}${hasOverride?' <i class="ti ti-star-filled" style="font-size:10px;color:var(--amber)" title="Own rate at this client"></i>':''}</span>
           <span style="color:var(--text2);white-space:nowrap">₪${r.regRate}/h · OT ₪${r.otRate} · Shabbat ₪${r.shabbatRate}</span>
         </div>`;
       }).join(''):'<span style="color:var(--text3);font-size:12px">Not assigned to any object</span>'}
@@ -2875,7 +2875,7 @@ function renderSalary(){
   const grandTotal=entries.reduce((s,e)=>s+e.total,0);
   const shownEntries=_salExpanded?entries:entries.slice(0,4);
   const _allWarns=entries.flatMap(e=>(e.warns||[]).map(w=>e.worker+' — '+w));
-  const _reviewBanner=_allWarns.length?`<div style="background:var(--amber-bg);border:1px solid rgba(245,166,35,0.3);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px"><div style="color:var(--amber);font-weight:600;font-size:13px;margin-bottom:4px"><i class="ti ti-alert-triangle"></i> ${_allWarns.length} к проверке перед расчётом</div><div style="color:var(--text2);font-size:12px;line-height:1.6">${_allWarns.slice(0,12).map(w=>'• '+w).join('<br>')}${_allWarns.length>12?'<br>…ещё '+(_allWarns.length-12):''}</div></div>`:'';
+  const _reviewBanner=_allWarns.length?`<div style="background:var(--amber-bg);border:1px solid rgba(245,166,35,0.3);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px"><div style="color:var(--amber);font-weight:600;font-size:13px;margin-bottom:4px"><i class="ti ti-alert-triangle"></i> ${_allWarns.length} to review before calculating</div><div style="color:var(--text2);font-size:12px;line-height:1.6">${_allWarns.slice(0,12).map(w=>'• '+w).join('<br>')}${_allWarns.length>12?'<br>…'+(_allWarns.length-12)+' more':''}</div></div>`:'';
   salaryEl.innerHTML=_reviewBanner+`
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
@@ -2907,17 +2907,17 @@ function renderSalary(){
               </td>
               <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${e.hours.toFixed(1)}h</td>
               <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${regRate}" min="0" step="0.5" title="Базовый тариф (Regular ×1.0)"
+                <input type="number" value="${regRate}" min="0" step="0.5" title="Base rate (Regular ×1.0)"
                   onchange="setWorkerRate('${e.workerId}',this.value);renderSalary()"
                   style="width:66px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
               <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${otRate}" min="0" step="0.5" title="Ставка OT ₪/час · по умолчанию базовый ×${PAY_RULES.otMult}"
+                <input type="number" value="${otRate}" min="0" step="0.5" title="OT rate ₪/hour · default base ×${PAY_RULES.otMult}"
                   onchange="setWorkerOtRate('${e.workerId}',this.value);renderSalary()"
                   style="width:66px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
               <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${shabRate}" min="0" step="0.5" title="Ставка Shabbat ₪/час · по умолчанию базовый ×${PAY_RULES.shabbatMult}"
+                <input type="number" value="${shabRate}" min="0" step="0.5" title="Shabbat rate ₪/hour · default base ×${PAY_RULES.shabbatMult}"
                   onchange="setWorkerShabbatRate('${e.workerId}',this.value);renderSalary()"
                   style="width:66px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
@@ -2940,7 +2940,7 @@ function renderSalary(){
       </table>
       </div>
       ${entries.length>4?`<div style="text-align:center;padding:8px;border-top:1px solid var(--border)"><button class="btn sm" onclick="toggleSalary()">${_salExpanded?'<i class="ti ti-chevron-up"></i> Show less':'<i class="ti ti-chevron-down"></i> Show all ('+entries.length+')'}</button></div>`:''}
-      <div style="padding:8px 12px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">Ставки ₪/час редактируются вручную. По умолчанию: Regular = базовый тариф · OT = ×${PAY_RULES.otMult} · Shabbat = ×${PAY_RULES.shabbatMult}. Часы: Regular ≤8ч/день, свыше — OT; суббота — по ставке Shabbat.</div>
+      <div style="padding:8px 12px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">₪/hour rates are editable manually. Default: Regular = base rate · OT = ×${PAY_RULES.otMult} · Shabbat = ×${PAY_RULES.shabbatMult}. Hours: Regular ≤8h/day, above that — OT; Saturday — at the Shabbat rate.</div>
     </div>`;
 }
 
@@ -2959,7 +2959,7 @@ function renderRateMatrix(){
     });
   });
   if(!rows.length){
-    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">Нет работников, привязанных к объектам</div>`;
+    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No workers assigned to clients</div>`;
     return;
   }
   wrap.innerHTML=`
@@ -2983,17 +2983,17 @@ function renderRateMatrix(){
               <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.w.name)}</td>
               <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${esc(r.cl.name)}</td>
               <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${eff.regRate}" title="Пусто = ${eff.regRate} (тариф объекта или базовый)"
+                <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${eff.regRate}" title="Empty = ${eff.regRate} (client rate or base)"
                   onchange="setClientRateOverride('${r.w.id}','${r.cl.id}','rate',this.value)"
                   style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
               <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.otRate??''}" min="0" step="0.5" placeholder="${eff.otRate}" title="Пусто = ${eff.otRate}"
+                <input type="number" value="${ov.otRate??''}" min="0" step="0.5" placeholder="${eff.otRate}" title="Empty = ${eff.otRate}"
                   onchange="setClientRateOverride('${r.w.id}','${r.cl.id}','otRate',this.value)"
                   style="width:70px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
               <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.shabbatRate??''}" min="0" step="0.5" placeholder="${eff.shabbatRate}" title="Пусто = ${eff.shabbatRate}"
+                <input type="number" value="${ov.shabbatRate??''}" min="0" step="0.5" placeholder="${eff.shabbatRate}" title="Empty = ${eff.shabbatRate}"
                   onchange="setClientRateOverride('${r.w.id}','${r.cl.id}','shabbatRate',this.value)"
                   style="width:70px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
