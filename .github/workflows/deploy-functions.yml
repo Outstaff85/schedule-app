@@ -54,7 +54,7 @@ jobs:
           BODY="The **Deploy Cloud Functions** workflow failed. Failed run: $RUN_URL
 
           Common causes for this specific workflow (new as of 2026-09-21):
-          - The `FIREBASE_SERVICE_ACCOUNT` secret (used for Hosting deploys) may lack the IAM roles Cloud Functions 2nd-gen deploys need: Cloud Functions Admin, Service Account User, Cloud Run Admin, Artifact Registry Writer, Eventarc Event Receiver. Grant these to the service account in GCP Console → IAM, project \`schedule-manager-498317\`.
+          - The \`FIREBASE_SERVICE_ACCOUNT\` secret (used for Hosting deploys) may lack the IAM roles Cloud Functions 2nd-gen deploys need on the runtime service account (\`schedule-odinson@appspot.gserviceaccount.com\`) — most commonly just **Service Account User** (\`iam.serviceAccounts.ActAs\`), confirmed as the cause on the first real run (2026-09-21). Grant it at GCP Console → IAM, project \`schedule-odinson\` (grant access ON the \`schedule-odinson@appspot.gserviceaccount.com\` service account itself, not the project-level IAM page).
           - A dependency in \`functions/requirements.txt\` (e.g. \`opencv-python-headless\`) may have failed to build for the runtime Python version.
           - The declared runtime (\`python312\` in \`firebase.json\`) may need bumping if Cloud Functions deprecates it.
 
