@@ -2428,6 +2428,15 @@ async function submitEditFirm(){
     // Only the super-admin has a Firms list to refresh (and the right to ask
     // the backend for one) — a firm editing its own profile has no such screen.
     if(getSession()?.role === 'superadmin') renderFirmsList();
+    // A firm-profile edit changes the employer-details row on every worker's
+    // Form 101 — regenerate them, but only when the edited firm is the one
+    // actually loaded into `workers` right now (self-service edit, or a
+    // super-admin currently drilled into that firm): there's nothing in
+    // memory to regenerate for a firm the super-admin edited from the Firms
+    // list without switching into it.
+    const __activeSession=getSession();
+    const __activeTenantId=__activeSession&&(__activeSession.viewingTenantId||__activeSession.tenantId);
+    if(__activeTenantId===__editingFirmTenantId) regenerateAllWorkerDocs();
   }catch(e){ errEl.textContent = 'Сеть недоступна'; }
   finally{ btn.disabled = false; btn.textContent = 'Сохранить'; }
 }
