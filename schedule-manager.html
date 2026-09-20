@@ -4357,6 +4357,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     const setSize=(n,size)=>{ fieldSizes[n]=size; try{ form.getTextField(n).acroField.setDefaultAppearance('/Helv '+size+' Tf 0 g'); }catch(e){} };
     setSize('surname',11); setSize('given_name',11); setSize('addr_street',11);
     setSize('addr_city',11); setSize('hf_name',10); setSize('id_top2',13);
+    setSize('sign_date',9);
     const setT=(n,v)=>{ try{ if(v) form.getTextField(n).setText(String(v)); }catch(e){} };
     const CHECK_BLUE=PDFLib.rgb(0.09,0.32,0.85);
     const allPages=doc.getPages();
@@ -4540,9 +4541,9 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
         const tw=font.widthOfTextAtSize(String(text),size);
         drawTextBold(page1,String(text),{x:rect.x+rect.width-tw-2,y:centerBaselineY(rect,size,font),size,font});
       };
-      drawRight(profile.companyName,NAME_RECT,12);
+      drawRight(profile.companyName,NAME_RECT,10);
       const addr=[profile.street,profile.streetNumber].filter(Boolean).join(' ')+(profile.city?(profile.street||profile.streetNumber?', ':'')+profile.city:'');
-      drawRight(addr,ADDRESS_RECT,12);
+      drawRight(addr,ADDRESS_RECT,10);
       drawRight(profile.phone,PHONE_RECT,12);
       if(profile.deductionsFileNumber) drawCombRaw(String(profile.deductionsFileNumber).replace(/\D/g,''),8,DEDUCTIONS_RECT,12);
     })();
