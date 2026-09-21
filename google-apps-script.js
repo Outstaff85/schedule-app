@@ -1144,10 +1144,14 @@ function aiReadSefach(body){
     'ספח (appendix) insert, or the back of the newer plastic biometric ID card (תעודה ביומטרית). ' +
     'Do NOT try to determine a document "type" or read a photo/name/ID number — you already know this is specifically the address side. ' +
     'Extract exactly these fields and return ONLY valid JSON, no prose, no markdown, no code fences: ' +
-    '{"address":"street name only, from מען","houseNumber":"house/building number only, from מס\' בית","city":"city/town name, from ישוב","children":[{"name":"...","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}]} ' +
+    '{"type":"israeli_id","address":"street name only, from מען","houseNumber":"house/building number only, from מס\' בית","city":"city/town name, from ישוב","children":[{"name":"...","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}],"imageAlign":{"rotate":0,"corners":{"tl":{"x":0,"y":0},"tr":{"x":1,"y":0},"br":{"x":1,"y":1},"bl":{"x":0,"y":1}}}} ' +
+    '"type" is always the literal string "israeli_id" — always include it exactly as shown. ' +
     'Keep address/houseNumber/city strictly separate — never combine two of them into one field. ' +
     'The ילדים (children) section, if present and populated, goes in "children"; if absent or empty, return "children":[]. ' +
     'If a field is not visible or unreadable, use an empty string (or empty array for children) — never guess. ' +
+    '"imageAlign" describes how to straighten the ORIGINAL photo, same as for a full document read: ' +
+    '"rotate" is the clockwise degrees needed to make the card/page upright and right-reading, MUST be exactly one of 0, 90, 180, 270; ' +
+    '"corners" are the document\'s four actual physical corners (tl/tr/br/bl, AS THE DOCUMENT WILL APPEAR AFTER "rotate" is applied, each x/y a fraction 0 to 1 of the ORIGINAL pre-rotation image) — trace its true outline even if photographed at an angle, never cutting off any edge; if it already fills the frame upright, use the full-frame defaults shown above. ' +
     'Return ONLY the JSON object, compact with no extra whitespace or line breaks between fields.';
 
   var payload = {
