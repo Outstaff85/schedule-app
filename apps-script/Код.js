@@ -1018,6 +1018,7 @@ function aiReadDoc(body){
     'and put ישוב/city-name alone into the "city" field (e.g. "פתח תקווה") — do not mix them up or put the city in "address". ' +
     'The address side (paper ספח or biometric card back) sometimes also lists the holder\'s registered children (ילדים) with their own name/ID/birth date rows — ' +
     'if such a section is present and populated, extract each child into the "children" array; if absent or empty, return "children":[]. ' +
+    'Some ID variants also print a personal/marital status field (מצב אישי / מצב משפחתי — רווק/רווקה, נשוי/נשואה, גרוש/גרושה, אלמן/אלמנה): if visible anywhere on the document, put it in "maritalStatus" as exactly one of "single", "married", "divorced", "widowed" (translate whatever is printed into one of these four English words); if no such field is visible, return "maritalStatus":"" — do not guess. ' +
     'If a field is not visible or unreadable use empty string. ' +
     'Also include a top-level "fieldBoxes" object locating, on THIS image exactly as given to you (not the imageAlign-straightened version below), ' +
     'the tight bounding box of each all-digit field you found a value for, among: idNo, dob, expiry, passportNo (whichever apply to this document type). ' +
