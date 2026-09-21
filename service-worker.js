@@ -2,13 +2,15 @@
 // Strategy: TRUE network-first. Every online request goes to the server with
 // {cache:'no-store'} so the newest code/data is always used; the cache is only
 // a fallback when offline. The Apps Script API is never touched by the SW.
-const CACHE = 'schedule-mgr-v24';
+const CACHE = 'schedule-mgr-v25';
 const CORE = [
   './',
   './schedule-manager.html',
   './worker-punch.html',
   './manifest.json',
-  './manifest-punch.json'
+  './manifest-punch.json',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
 self.addEventListener('install', e => {
