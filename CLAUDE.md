@@ -52,6 +52,8 @@ When bumping the service worker's cache (`CACHE` constant in `service-worker.js`
 
 **PR merge policy:** when a session's work has a pull request open, land it by actually merging that PR on GitHub (merge button or the GitHub API) — never by closing the PR after pushing the same content to `main` directly. Direct-to-main pushes from the per-edit auto-commit hook are fine for iterating within a branch; only merging the PR itself makes GitHub's merged/closed counts (and anyone watching the repo) reflect what actually shipped. `My_Work_Befor_PR` (see above) is where that iteration happens before the PR into `main` is merged.
 
+**"Deploy" means open a PR and merge it — there is no other path to production.** Both hosting and Apps Script deploy workflows trigger on push to `main` (see Commands below); the per-edit auto-commit hook only ever pushes to `My_Work_Befor_PR`, and the force/direct-push-to-`main` block above means that branch can never reach `main` except through a PR. So when the user asks to deploy (or just says "да"/"делай" after being offered a deploy), the actual mechanism is: open a PR from `My_Work_Befor_PR` into `main` covering whatever has accumulated since the last one, ask for confirmation per the merge policy above, then merge it — that merge is what triggers the real deploy. This isn't a single literal instruction elsewhere in this file; it falls out of combining the branch/hook/block rules above, so it's worth stating plainly here. Don't open a fresh PR for every individual edit — batch accumulated changes into one PR per deploy request, same as every session so far has done.
+
 ## Architecture
 
 ### Backend: Google Apps Script
