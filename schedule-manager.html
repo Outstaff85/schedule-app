@@ -3823,7 +3823,7 @@ async function onScanFilesSelected(fileList){
     renderScanPagesPrompt();
   }catch(err){
     console.error(err);
-    stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Ошибка: '
+    stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
       +(err&&err.message||'')+'<br><br>'
       +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
   }
@@ -3869,7 +3869,7 @@ async function onScanFileSelected(file){
     runOcr(pre.b64,pre.mediaType);
   }catch(err){
     console.error(err);
-    stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Ошибка: '
+    stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
       +(err&&err.message||'')+'<br><br>'
       +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
   }
@@ -4167,7 +4167,7 @@ async function runOcr(b64,mediaType){
     renderScanQuadEditor(upright.b64,upright.mediaType,corners);
   }catch(err){
     console.error(err);
-    stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Ошибка: '
+    stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
       +(err&&err.message||'')+'<br><br>'
       +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
   }
