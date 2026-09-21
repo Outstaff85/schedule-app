@@ -4671,6 +4671,7 @@ async function autoUploadWithRetry(isId,workerId){
     await new Promise(r=>setTimeout(r,1500));
     ok=await aiFillForm101(isId,'upload',workerId,null);
   }
+  return ok;
 }
 
 // Rebuilds and re-uploads a worker's Form-101 PDF using their CURRENTLY
