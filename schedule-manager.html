@@ -1051,7 +1051,6 @@ function renderGanttBody(){
   vis.forEach(w=>{
     const wi=workers.indexOf(w);
     const c=WORKER_COLORS[w.colorIdx%8];
-    const ini=w.name.slice(0,2).toUpperCase();
     h+=`<div class="gantt-row" style="grid-template-columns:${cols}" draggable="true"
       data-wi="${wi}"
       ondragstart="dragStart(event,${wi})"
