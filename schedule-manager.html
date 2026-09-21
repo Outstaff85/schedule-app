@@ -3664,7 +3664,7 @@ async function onScanFilesSelected(fileList){
       return;
     }
     window.__aiParsed=foundParsed;
-    renderAiResult(foundParsed);
+    openWorkerModalFromScan(foundParsed);
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Ошибка: '
