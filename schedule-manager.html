@@ -3888,6 +3888,7 @@ async function onScanFileSelected(file){
       });
       mediaType=file.type||'image/jpeg';
     }
+    ({b64,mediaType}=await downscaleForUpload(b64,mediaType));
     const pre=await preAlignScan(b64,mediaType);
     if(pre.blurry){
       stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">התמונה מטושטשת מדי, צלמו שוב<br><br>'
@@ -3954,6 +3955,7 @@ async function onSefachFileSelected(file){
       });
       mediaType=file.type||'image/jpeg';
     }
+    ({b64,mediaType}=await downscaleForUpload(b64,mediaType));
     const pre=await preAlignScan(b64,mediaType);
     if(pre.blurry){
       stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">התמונה מטושטשת מדי, צלמו שוב<br><br>'
