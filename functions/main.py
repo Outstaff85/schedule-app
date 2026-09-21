@@ -321,7 +321,7 @@ def build_form101_pdf(p):
         if employer.get("city"):
             addr += (", " if addr else "") + employer["city"]
         b.set_hebrew("employer_address", addr, 11)
-        b.set_hebrew("employer_phone", employer.get("phone"), 10)
+        b.set_hebrew("employer_phone", employer.get("phone"), 10, right_align=False)
         if employer.get("deductionsFileNumber"):
             digits = re.sub(r"\D", "", str(employer["deductionsFileNumber"]))
             b.set_comb("employer_deductions", digits, 8, 11)
