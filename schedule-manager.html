@@ -3536,13 +3536,21 @@ async function onScanFilesSelected(fileList){
           const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
           const json=await resp.json();
           const p=json&&json.parsed;
-          let merged=false;
           if(p&&p.type==='israeli_id'){
-            for(const f of CORE_FIELDS){ if(!foundParsed[f]&&p[f]){ foundParsed[f]=p[f]; merged=true; } }
-            if((!foundParsed.children||!foundParsed.children.length)&&Array.isArray(p.children)&&p.children.length){ foundParsed.children=p.children; merged=true; }
+            for(const f of CORE_FIELDS){ if(!foundParsed[f]&&p[f]){ foundParsed[f]=p[f]; } }
+            if((!foundParsed.children||!foundParsed.children.length)&&Array.isArray(p.children)&&p.children.length){ foundParsed.children=p.children; }
+            // The ID number is printed on both the front card and the ספח —
+            // cross-check the two independent OCR reads as a free extra
+            // consistency signal (on top of, not instead of, the per-card
+            // checksum validation in verifyIdChecksum below).
+            if(p.idNo&&foundParsed.idNo) foundParsed.idSefachMismatch=(String(p.idNo).trim()!==String(foundParsed.idNo).trim());
           }
           needMore=missingCore(foundParsed);
-          if(merged) continue; // данные слиты в foundParsed, отдельной "прочей" страницей не дублируем
+          // Note: no `continue` here even when this page's data got merged —
+          // this page's own photo (commonly the ספח) still needs to fall
+          // through to the otherPages.push() below so it's kept in the
+          // assembled PDF. It used to be silently discarded once its data
+          // was merged in, so the ספח was read but never actually saved.
         }catch(e){ console.error(e); }
       }
       otherPages.push({b64:it.b64,mediaType:it.mediaType});
