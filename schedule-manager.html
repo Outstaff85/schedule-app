@@ -2375,7 +2375,7 @@ function gsAuthQuery(){
 // the user to the login screen mid-scan, losing all progress. Now the exact
 // same request is retried once first; only a second SESSION_EXPIRED_ERROR in
 // a row is treated as the session genuinely being gone.
-const SESSION_EXPIRED_ERROR = 'Сессия истекла или недействותиתна — войдите заново';
+const SESSION_EXPIRED_ERROR = 'Сессия истекла или недействительна — войдите заново';
 (function(){
   const _origFetch = window.fetch.bind(window);
   // url/opts are threaded through explicitly (not shared/mutable state) so
