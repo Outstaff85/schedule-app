@@ -1417,15 +1417,15 @@ function showWorkerModal(w){
     </div>
     ${editingWorkerIdx!==null && w.token ? `
     <div class="field">
-      <label><i class="ti ti-link"></i> Personal Punch Link</label>
+      <label><i class="ti ti-link"></i> קישור אישי להחתמה</label>
       <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <code style="font-size:11px;color:var(--blue);flex:1;word-break:break-all">${buildPunchLink(w)}</code>
-        <button class="btn sm" onclick="copyWorkerLink('${w.id}')" style="flex-shrink:0"><i class="ti ti-clipboard-text"></i> Copy</button>
+        <button class="btn sm" onclick="copyWorkerLink('${w.id}')" style="flex-shrink:0"><i class="ti ti-clipboard-text"></i> העתק</button>
       </div>
       ${(()=>{ const geo=(w.clientIds||[]).map(id=>clients.find(c=>c.id===id)).find(c=>c&&c.lat&&c.lng); return geo
-        ? `<div style="font-size:11px;color:var(--green);margin-top:4px"><i class="ti ti-map-pin"></i> Geofence: ${esc(geo.name)} · ${(geo.radius||100)}m</div>`
-        : `<div style="font-size:11px;color:var(--amber);margin-top:4px"><i class="ti ti-alert-triangle"></i> Linked client has no location set — punch will NOT be geo-verified</div>`; })()}
-      <div style="font-size:11px;color:var(--text3);margin-top:4px">Send this link to the worker. They save it as a bookmark.</div>
+        ? `<div style="font-size:11px;color:var(--green);margin-top:4px"><i class="ti ti-map-pin"></i> גדר גיאוגרפית: ${esc(geo.name)} · ${(geo.radius||100)}מ'</div>`
+        : `<div style="font-size:11px;color:var(--amber);margin-top:4px"><i class="ti ti-alert-triangle"></i> ללקוח המקושר אין מיקום מוגדר — ההחתמה לא תאומת גיאוגרפית</div>`; })()}
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">שלחו את הקישור לעובד. הוא ישמור אותו כסימניה.</div>
     </div>` : ''}
     <div class="field" style="margin-bottom:6px">
       <button class="btn sm" type="button" onclick="toggleForm101Wrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
