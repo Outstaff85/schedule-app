@@ -4623,10 +4623,8 @@ function renderScanPagesPrompt(){
           </div>`).join('')}
       </div>
       <input type="file" id="aiScanFileExtra" accept="image/*,application/pdf,.pdf" style="display:none" onchange="onScanFileSelected(this.files[0]); this.value='';">
-      <input type="file" id="aiScanFileSefach2" accept="image/*,application/pdf,.pdf" style="display:none" onchange="onSefachFileSelected(this.files[0]); this.value='';">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn sm" type="button" onclick="document.getElementById('aiScanFileExtra').click()"><i class="ti ti-plus"></i> הוסף עמוד</button>
-        <button class="btn sm" type="button" onclick="document.getElementById('aiScanFileSefach2').click()"><i class="ti ti-id-badge-2"></i> הוסף ספח בלבד (כתובת)</button>
         <button class="btn sm accent" type="button" onclick="finishScanPages()"><i class="ti ti-check"></i> סיום</button>
       </div>
     </div>`;
