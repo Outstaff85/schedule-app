@@ -4540,7 +4540,22 @@ function renderScanQuadEditor(b64,mediaType,cornersFrac){
       <button class="btn accent" onclick="confirmScanQuad()">סיום</button>
     </div>`;
   const img=document.getElementById('scanEditImg');
-  if(img.complete&&img.naturalWidth) initScanQuad(cornersFrac); else img.onload=()=>initScanQuad(cornersFrac);
+  // img.complete/naturalWidth can already be true synchronously right after
+  // the innerHTML assignment above (a data: URI needs no network fetch) —
+  // BEFORE the browser has laid out the freshly-inserted DOM. Reading
+  // img.clientWidth/clientHeight at that exact moment returned 0 (confirmed
+  // by direct reproduction), which locked window.__quadRect's imgW/imgH at 0
+  // forever: attachQuadDrag()'s move handler clamps every drag into
+  // [0,imgW]x[0,imgH], so a 0-sized box traps every corner at (0,0) no
+  // matter how the user drags them. warpQuadImage() then divides by that
+  // same 0 (naturalWidth/quadPx.imgW), producing NaN/degenerate output that
+  // throws inside confirmScanQuad()'s try — silently caught, falling back to
+  // the ORIGINAL uncropped photo. That's the exact "рамка не подгоняет фото"
+  // symptom: no error shown, crop just silently never applied. Deferring one
+  // animation frame (in both branches — onload can race the same way) lets
+  // layout actually happen first, so clientWidth/clientHeight are real.
+  const startQuad=()=>requestAnimationFrame(()=>initScanQuad(cornersFrac));
+  if(img.complete&&img.naturalWidth) startQuad(); else img.onload=startQuad;
 }
 function initScanQuad(cornersFrac){
   const img=document.getElementById('scanEditImg');
