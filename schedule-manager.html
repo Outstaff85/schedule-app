@@ -4645,7 +4645,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     if(mode==='upload'&&targetWorker){ targetWorker.docUploadFailed=true; autoSave(); render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); }
     return false;
   }
-  finally{ if(btn){ btn.disabled=false; btn.innerHTML=btnLabel; } window.__aiPacketOtherPages=[]; }
+  finally{ if(btn){ btn.disabled=false; btn.innerHTML=btnLabel; } window.__aiPacketOtherPages=[]; window.__wCapturedSigPng=undefined; }
 }
 
 // Auto-generation right after a worker is created from a scan runs
