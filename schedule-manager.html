@@ -1485,6 +1485,15 @@ async function saveWorker(){
     }
     return;
   }
+  // Duplicate-worker guard (new workers only — editing an existing one never
+  // hits this, see the early return above). Checked by docId (ID/passport
+  // number), not name: two different real people can share a name, but a
+  // document number is unique to one person, so an exact match is a strong
+  // signal — likely the same person being scanned/added twice by mistake.
+  if(docId){
+    const dup=workers.find(w=>workerDocId(w)===docId);
+    if(dup && !confirm('Работник с таким номером документа уже существует: '+(dup.name||'?')+'.\nВсё равно создать нового?')) return;
+  }
   const token=genToken();
   // createdAt powers the Form 101 declaration date (aiFillForm101): the
   // signature date on a scanned worker's PDF should match when they were
