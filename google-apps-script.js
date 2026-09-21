@@ -1014,8 +1014,9 @@ function aiReadDoc(body){
     'מען (street name), מס\' בית (house/building number), and ישוב (city/town name); or ' +
     '(2) the newer plastic biometric/smart ID card (תעודה ביומטרית) — a two-sided card where the FRONT has photo/name/ID number/dob and the BACK has the address printed directly on the same card (no separate paper insert exists for this format), often alongside a machine-readable zone. ' +
     'A photo showing ONLY a back/address side — no photo, no given/surname visible on it — is still type:"israeli_id": extract whatever IS visible on that particular photo (e.g. just address/city, or just children) and leave every other field an empty string; never refuse to classify it or return a different type just because one photo only shows part of the document. ' +
-    'Whichever format: combine מען/street-name and מס\' בית/house-number into the "address" field as "STREET NUMBER" (e.g. "יהודה הלוי 16"), ' +
-    'and put ישוב/city-name alone into the "city" field (e.g. "פתח תקווה") — do not mix them up or put the city in "address". ' +
+    'Whichever format: put מען/street-name ALONE into the "address" field (e.g. "יהודה הלוי" — no number), ' +
+    'put מס\' בית/house-number ALONE into the "houseNumber" field (e.g. "16" — digits only, no street name), ' +
+    'and put ישוב/city-name alone into the "city" field (e.g. "פתח תקווה") — keep all three separate, never combine two of them into one field or mix up which is which. ' +
     'The address side (paper ספח or biometric card back) sometimes also lists the holder\'s registered children (ילדים) with their own name/ID/birth date rows — ' +
     'if such a section is present and populated, extract each child into the "children" array; if absent or empty, return "children":[]. ' +
     'Some ID variants also print a personal/marital status field (מצב אישי / מצב משפחתי — רווק/רווקה, נשוי/נשואה, גרוש/גרושה, אלמן/אלמנה): if visible anywhere on the document, put it in "maritalStatus" as exactly one of "single", "married", "divorced", "widowed" (translate whatever is printed into one of these four English words); if no such field is visible, return "maritalStatus":"" — do not guess. ' +
