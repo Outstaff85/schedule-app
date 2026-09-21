@@ -1292,6 +1292,16 @@ let __wChildren = [];
 // __wChildren's pattern: seeded from the worker/OCR data when the modal
 // opens, then it's just in-memory state until saveWorker() persists it.
 let __wAvatarB64 = '';
+// Which document type this modal was opened with ('israeli_id'/'passport') —
+// there's no visible selector for it in the unified form, it just rides along
+// from the scan (or the existing worker record on edit). Without capturing it
+// here, saveWorker()'s commonFields had no way to read it back, so a brand-new
+// worker scanned from a foreign passport silently ended up with docType
+// undefined -> saveWorker()/aiFillForm101 both treat that as "not passport" ->
+// isId always true -> the Israeli-ID branch of Form 101 was built even for a
+// passport holder, and that wrong docType got permanently written back onto
+// the worker after the first successful upload.
+let __wDocType = 'israeli_id';
 function clearWorkerAvatar(){
   __wAvatarB64='';
   const img=document.getElementById('wAvatarImg');
@@ -1416,6 +1426,22 @@ function addChildRow(){ __wChildren.push({name:'',idNo:'',dob:''}); renderChildr
 function removeChildRow(i){ __wChildren.splice(i,1); renderChildrenRows(); }
 
 function showWorkerModal(w){
+  // A worker created before docGiven/docSurname existed (every worker predating
+  // today's unified-modal split) only ever had a single `name` field — never
+  // had docGiven/docSurname written to it. Without this fallback, opening such
+  // a worker showed BLANK "שם פרטי"/"שם משפחה" fields (docGiven/docSurname
+  // both undefined) despite w.name clearly having a value. A manager editing
+  // an unrelated field (phone, marital status, ...) and saving without
+  // noticing/refilling those blanked name fields hit saveWorker()'s "name
+  // required" guard silently: the whole save no-ops (nothing persisted, no
+  // toast, no Form 101 regeneration, just focus quietly moved back to the
+  // empty field) — confirmed by reproducing it directly. Deriving the split
+  // here (a local, display-only copy — never mutates the stored worker until
+  // an actual save) fixes it at the source for every legacy worker at once.
+  if(!w.docGiven&&!w.docSurname&&w.name){
+    const parts=String(w.name).trim().split(/\s+/);
+    w={...w,docGiven:parts[0]||'',docSurname:parts.slice(1).join(' ')};
+  }
   selColorIdx=w.colorIdx||0;
   __wScheduleOpen=false;
   __wExpiryOpen=false;
@@ -1423,6 +1449,7 @@ function showWorkerModal(w){
   __wClientsOpen=false;
   __wChildren=Array.isArray(w.docChildren)?w.docChildren.map(c=>({...c})):[];
   __wAvatarB64=w.avatarB64||'';
+  __wDocType=w.docType||'israeli_id';
   document.getElementById('workerModal').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <div class="modal-title" style="margin-bottom:0">${editingWorkerIdx!==null?'עריכת עובד':'הוספת עובד חדש'}</div>
@@ -1696,7 +1723,7 @@ async function saveWorker(){
   const commonFields={name,colorIdx:selColorIdx,phone,hourlyRate,status,startDate,workStartDate,docSex,
     expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,houseNumber,city,docDob,docExpiry,notes,
     incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,docChildren,clientIds,schedule,
-    avatarB64:__wAvatarB64};
+    avatarB64:__wAvatarB64,docType:__wDocType};
   if(editingWorkerIdx!==null){
     const prevW=workers[editingWorkerIdx];
     const isId=prevW.docType!=='passport';
@@ -4529,7 +4556,22 @@ function renderScanQuadEditor(b64,mediaType,cornersFrac){
       <button class="btn accent" onclick="confirmScanQuad()">סיום</button>
     </div>`;
   const img=document.getElementById('scanEditImg');
-  if(img.complete&&img.naturalWidth) initScanQuad(cornersFrac); else img.onload=()=>initScanQuad(cornersFrac);
+  // img.complete/naturalWidth can already be true synchronously right after
+  // the innerHTML assignment above (a data: URI needs no network fetch) —
+  // BEFORE the browser has laid out the freshly-inserted DOM. Reading
+  // img.clientWidth/clientHeight at that exact moment returned 0 (confirmed
+  // by direct reproduction), which locked window.__quadRect's imgW/imgH at 0
+  // forever: attachQuadDrag()'s move handler clamps every drag into
+  // [0,imgW]x[0,imgH], so a 0-sized box traps every corner at (0,0) no
+  // matter how the user drags them. warpQuadImage() then divides by that
+  // same 0 (naturalWidth/quadPx.imgW), producing NaN/degenerate output that
+  // throws inside confirmScanQuad()'s try — silently caught, falling back to
+  // the ORIGINAL uncropped photo. That's the exact "рамка не подгоняет фото"
+  // symptom: no error shown, crop just silently never applied. Deferring one
+  // animation frame (in both branches — onload can race the same way) lets
+  // layout actually happen first, so clientWidth/clientHeight are real.
+  const startQuad=()=>requestAnimationFrame(()=>initScanQuad(cornersFrac));
+  if(img.complete&&img.naturalWidth) startQuad(); else img.onload=startQuad;
 }
 function initScanQuad(cornersFrac){
   const img=document.getElementById('scanEditImg');
