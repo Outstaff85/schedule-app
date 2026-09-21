@@ -1866,8 +1866,8 @@ function renderWorkersPage(){
   }).join('');
 }
 
-const INCOME_TYPE_LABELS = {monthly:'Monthly salary',secondary:'2nd job salary',partial:'Partial salary',daily:'Daily wage',pension:'Pension',scholarship:'Scholarship'};
-const OTHER_INCOME_LABELS = {none:'No other income',monthly:'Monthly salary',secondary:'2nd job salary',partial:'Partial salary',daily:'Daily wage',pension:'Pension',scholarship:'Scholarship'};
+const INCOME_TYPE_LABELS = {monthly:'משכורת חודשית',secondary:'משרה נוספת',partial:'משרה חלקית',daily:'שכר יומי',pension:'פנסיה',scholarship:'מלגה'};
+const OTHER_INCOME_LABELS = {none:'אין הכנסה נוספת',monthly:'משכורת חודשית',secondary:'משרה נוספת',partial:'משרה חלקית',daily:'שכר יומי',pension:'פנסיה',scholarship:'מלגה'};
 function openWorkerCard(wi){
   const w=workers[wi]; if(!w) return;
   const c=WORKER_COLORS[w.colorIdx%8];
