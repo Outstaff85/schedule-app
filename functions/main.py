@@ -392,7 +392,7 @@ def build_form101_pdf(p):
         for extra, box in ((extra_pages[0], pymupdf.Rect(0, 0, pw, half_h)),
                             (extra_pages[1], pymupdf.Rect(0, half_h, pw, ph))):
             try:
-                _draw_extra_page_image(combo_page, extra, box)
+                _draw_extra_page_image(combo_page, extra, box, margin=24, cap_h=20, fontsize=12)
             except Exception:
                 pass
         remaining_pages = extra_pages[2:]
