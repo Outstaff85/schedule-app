@@ -3891,7 +3891,18 @@ async function onScanFileSelected(file){
         +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
       return;
     }
-    runOcr(pre.b64,pre.mediaType);
+    // Manual crop/straighten now happens BEFORE sending anything to the AI
+    // (added 2026-09-21, per user request) — previously the photo went
+    // straight to aiReadDoc and the corner-adjustment editor only appeared
+    // AFTER, seeded by the AI's own guessed corners. Full-frame default here
+    // (or whatever preAlignScan's own OpenCV pass already cropped to) is a
+    // fine starting point since the user reviews/adjusts it themselves
+    // either way — no AI call is spent guessing a starting rectangle
+    // anymore. window.__scanEditPurpose='preOcr' tells confirmScanQuad()/
+    // skipScanQuad() below to hand the *cropped* result to runOcr() next,
+    // instead of finishing the page immediately.
+    window.__scanEditPurpose='preOcr';
+    renderScanQuadEditor(pre.b64,pre.mediaType,{tl:{x:0,y:0},tr:{x:1,y:0},br:{x:1,y:1},bl:{x:0,y:1}});
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
