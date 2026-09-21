@@ -2898,8 +2898,8 @@ function autoSave(){
       const data = getDataObj();
       const json = JSON.stringify(data);
       // localStorage as cache only
-      localStorage.setItem(STORAGE_KEY, json);
-      localStorage.setItem(STORAGE_KEY+'_bak', json);
+      localStorage.setItem(STORAGE_KEY(), json);
+      localStorage.setItem(STORAGE_KEY()+'_bak', json);
       // Google Sheets is primary storage
       const ok = await gsSave(data);
       setSaveStatus('saved');
