@@ -41,7 +41,7 @@ jobs:
         id: deploy
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa.json
-        run: firebase deploy --only functions --project schedule-odinson --non-interactive
+        run: firebase deploy --only functions --project schedule-odinson --non-interactive --force
         continue-on-error: true
 
       - name: Open/update an issue if deploy failed
