@@ -220,21 +220,20 @@ def _split_street(addr):
     return addr, None
 
 
-def _draw_extra_page_image(page, extra, box):
+def _draw_extra_page_image(page, extra, box, margin=40, cap_h=24, fontsize=13):
     """Draws one extraPages entry (caption + bordered, fit-to-box image) inside
-    `box` on `page`. Used both for a full-page box (one image per page, the
-    original behavior) and for a half-page box (two images stacked on one
-    page — see build_form101_pdf's extraPages loop below)."""
+    `box` on `page`. Defaults match the original one-image-per-page sizing;
+    the half-page stacked case (see build_form101_pdf's extraPages loop below)
+    passes smaller values since each box is half the page's height."""
     img_bytes = base64.b64decode(extra["b64"])
-    margin, cap_h = 24, 20
     pix = pymupdf.Pixmap(img_bytes)
     max_w, max_h = box.width - margin * 2, box.height - margin * 2 - cap_h
     fit = min(max_w / pix.width, max_h / pix.height, 1)
     w, h = pix.width * fit, pix.height * fit
     x = box.x0 + (box.width - w) / 2
     y = box.y0 + margin + cap_h
-    page.insert_text((box.x0 + margin, box.y0 + margin + 14), extra.get("caption", "Document scan"),
-                      fontsize=12, color=(0.3, 0.3, 0.3))
+    page.insert_text((box.x0 + margin, box.y0 + margin + 16), extra.get("caption", "Document scan"),
+                      fontsize=fontsize, color=(0.3, 0.3, 0.3))
     page.draw_rect(pymupdf.Rect(x - 2, y - 2, x + w + 2, y + h + 2),
                     color=(0.7, 0.7, 0.7), fill=(1, 1, 1), width=1)
     page.insert_image(pymupdf.Rect(x, y, x + w, y + h), pixmap=pix)
