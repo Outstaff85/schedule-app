@@ -2014,17 +2014,28 @@ function openWorkerCard(wi){
       ${w.docUrl?`<div><i class="ti ti-file-text"></i> Документ сохранён${w.docSavedAt?': '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</div>`:''}
     </div>
     ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
-    <div style="margin-bottom:14px">
-      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Objects &amp; rates</div>
-      ${objs.length?objs.map(o=>{
+    ${objs.length?`
+    <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:10px">
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Objects</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${objs.map(o=>`<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:3px 8px;background:${o.color}22;border-radius:10px"><span style="width:6px;height:6px;border-radius:50%;background:${o.color};flex-shrink:0"></span>${esc(o.name)}</span>`).join('')}
+      </div>
+    </div>
+    <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:14px">
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Rates</div>
+      ${objs.map(o=>{
         const r=effectiveRates(w,o.id);
         const hasOverride=!!(w.clientRates&&w.clientRates[o.id]&&Object.values(w.clientRates[o.id]).some(v=>v!=null));
-        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:6px 8px;background:${o.color}11;border-radius:8px;margin-bottom:5px">
+        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:4px 0">
           <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:7px;height:7px;border-radius:50%;background:${o.color};flex-shrink:0"></span>${esc(o.name)}${hasOverride?' <i class="ti ti-star-filled" style="font-size:10px;color:var(--amber)" title="Own rate at this client"></i>':''}</span>
           <span style="color:var(--text2);white-space:nowrap">₪${r.regRate}/h · OT ₪${r.otRate} · Shabbat ₪${r.shabbatRate}</span>
         </div>`;
-      }).join(''):'<span style="color:var(--text3);font-size:12px">Not assigned to any object</span>'}
-    </div>
+      }).join('')}
+    </div>` : `
+    <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:14px">
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Objects &amp; rates</div>
+      <span style="color:var(--text3);font-size:12px">Not assigned to any object</span>
+    </div>`}
     <div class="modal-actions">
       <button class="btn sm red" onclick="deleteWorkerFromCard(${wi})"><i class="ti ti-trash"></i> Delete</button>
       ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Скачать документ</a>`:''}
@@ -2318,8 +2329,9 @@ const API_SECRET = 'odinson-7Kq2x9';
 // the old client-side pdf-lib build, which had a confirmed bug dropping a
 // glyph of multi-word RTL (Hebrew) text. See functions/main.py.
 const FORM101_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/fill_form_101';
-// Scan preprocessing (OpenCV geometry + Pillow contrast/sharpness), tried
-// before the AI-seeded autoPreAlignScan() below — see preAlignScan().
+// Scan preprocessing (OpenCV geometry + Pillow contrast/sharpness) — see
+// preAlignScan(). Its result now feeds straight into the manual
+// corner-adjustment editor (no AI-seeded alignment step in between anymore).
 const PREPROCESS_SCAN_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/preprocess_scan';
 
 // ── Multi-tenant session ────────────────────────────────────────────────────
@@ -3844,10 +3856,12 @@ async function onScanFilesSelected(fileList){
 }
 
 // Step 1 of the single-photo scan flow: turn one picked photo/PDF page into
-// a plain image, then auto-straighten it (autoPreAlignScan) before sending
-// it to the full OCR call — a flatter, cropped photo is easier for the AI
-// to read accurately than a raw, angled phone photo. Reached either directly
-// (a single non-PDF file) or as "Заново" from the multi-file flow above.
+// a plain image, run it through preAlignScan's blur-check/best-effort
+// OpenCV crop, then hand it to the manual corner-adjustment editor BEFORE
+// any AI call — the user crops/straightens it themselves, and only the
+// result gets sent to the full OCR call (runOcr, via confirmScanQuad's
+// __scanEditPurpose==='preOcr' branch). Reached either directly (a single
+// non-PDF file) or as "Заново" from the multi-file flow above.
 async function onScanFileSelected(file){
   if(!file) return;
   const stage=document.getElementById('aiScanStage');
@@ -3874,13 +3888,25 @@ async function onScanFileSelected(file){
       });
       mediaType=file.type||'image/jpeg';
     }
+    ({b64,mediaType}=await downscaleForUpload(b64,mediaType));
     const pre=await preAlignScan(b64,mediaType);
     if(pre.blurry){
       stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">התמונה מטושטשת מדי, צלמו שוב<br><br>'
         +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
       return;
     }
-    runOcr(pre.b64,pre.mediaType);
+    // Manual crop/straighten now happens BEFORE sending anything to the AI
+    // (added 2026-09-21, per user request) — previously the photo went
+    // straight to aiReadDoc and the corner-adjustment editor only appeared
+    // AFTER, seeded by the AI's own guessed corners. Full-frame default here
+    // (or whatever preAlignScan's own OpenCV pass already cropped to) is a
+    // fine starting point since the user reviews/adjusts it themselves
+    // either way — no AI call is spent guessing a starting rectangle
+    // anymore. window.__scanEditPurpose='preOcr' tells confirmScanQuad()/
+    // skipScanQuad() below to hand the *cropped* result to runOcr() next,
+    // instead of finishing the page immediately.
+    window.__scanEditPurpose='preOcr';
+    renderScanQuadEditor(pre.b64,pre.mediaType,{tl:{x:0,y:0},tr:{x:1,y:0},br:{x:1,y:1},bl:{x:0,y:1}});
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
@@ -3929,6 +3955,7 @@ async function onSefachFileSelected(file){
       });
       mediaType=file.type||'image/jpeg';
     }
+    ({b64,mediaType}=await downscaleForUpload(b64,mediaType));
     const pre=await preAlignScan(b64,mediaType);
     if(pre.blurry){
       stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">התמונה מטושטשת מדי, צלמו שוב<br><br>'
@@ -3981,6 +4008,13 @@ async function runSefachOcr(b64,mediaType){
       ? {tl:rotatePointFrac(align.corners.tl,rotateDeg),tr:rotatePointFrac(align.corners.tr,rotateDeg),
          br:rotatePointFrac(align.corners.br,rotateDeg),bl:rotatePointFrac(align.corners.bl,rotateDeg)}
       : {tl:{x:0,y:0},tr:{x:1,y:0},br:{x:1,y:1},bl:{x:0,y:1}};
+    // Unlike onScanFileSelected's now-pre-OCR editor, this one still runs
+    // AFTER the AI call (aiReadSefach already happened above) — tag it so
+    // confirmScanQuad()/skipScanQuad() finish the page directly instead of
+    // routing to runOcr(). No UI currently reaches this function (the
+    // "הוסף ספח בלבד" button was removed 2026-09-21, kept working in case
+    // it's re-added later), but it must stay correct either way.
+    window.__scanEditPurpose='sefach';
     renderScanQuadEditor(upright.b64,upright.mediaType,corners);
   }catch(err){
     console.error(err);
@@ -3990,20 +4024,49 @@ async function runSefachOcr(b64,mediaType){
   }
 }
 
-// Step 1.4: tried BEFORE the AI-seeded autoPreAlignScan() below — a server-side
-// OpenCV+Pillow pass (functions/main.py, preprocess_scan) that (a) rejects an
-// obviously-too-blurry photo before any AI call is spent on it, and (b) when
-// it finds a confident document quad (see MIN_QUAD_AREA_FRAC there), crops
-// and straightens it itself, letting the caller skip the paid aiDetectAlign
-// Haiku call entirely. When it can't find a confident quad (low-contrast
-// background, etc.) it still returns a contrast/sharpness-enhanced image, and
-// the caller falls through to the unchanged autoPreAlignScan() below — so
-// that AI-seeded path (which alone knows how to correct an upside-down
-// photo — plain geometry can't) always stays available as the safety net.
-// Empirically tested (see CLAUDE.md) against real ID photos and synthetic
-// edge cases (rotation ambiguity, low-contrast background) before wiring
-// this in. Returns {b64,mediaType} to proceed with, or {blurry:true} if the
-// photo should be rejected outright.
+// Downscales a photo client-side, BEFORE it's ever uploaded anywhere, to the
+// same ~1800px cap preprocess_scan already works at internally server-side
+// (MAX_WORK_DIM in functions/main.py) — the server throws away anything
+// above that resolution anyway, so uploading a full phone-camera-resolution
+// photo first (often 3000-4000px+, several MB) is pure wasted upload time on
+// the slowest leg of the whole pipeline (mobile network), only to have the
+// server immediately shrink it. Never upscales (a photo already at or below
+// the cap is returned untouched). Best-effort: any failure here just falls
+// through to uploading the original image unchanged, so a hiccup never
+// blocks the scan.
+const UPLOAD_MAX_DIM=1800;
+function downscaleForUpload(b64,mediaType){
+  return new Promise(resolve=>{
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        const iw=img.naturalWidth, ih=img.naturalHeight;
+        const scale=Math.min(1,UPLOAD_MAX_DIM/Math.max(iw,ih,1));
+        if(scale>=1){ resolve({b64,mediaType}); return; }
+        const cv=document.createElement('canvas');
+        cv.width=Math.round(iw*scale); cv.height=Math.round(ih*scale);
+        const ctx=cv.getContext('2d');
+        ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+        ctx.drawImage(img,0,0,cv.width,cv.height);
+        resolve({b64:cv.toDataURL('image/jpeg',0.9).split(',')[1],mediaType:'image/jpeg'});
+      }catch(e){ resolve({b64,mediaType}); }
+    };
+    img.onerror=()=>resolve({b64,mediaType});
+    img.src='data:'+mediaType+';base64,'+b64;
+  });
+}
+// Step 1.4: a server-side OpenCV+Pillow pass (functions/main.py,
+// preprocess_scan) that (a) rejects an obviously-too-blurry photo before any
+// AI call is spent on it, and (b) when it finds a confident document quad
+// (see MIN_QUAD_AREA_FRAC there), crops and straightens it itself. When it
+// can't find a confident quad (low-contrast background, etc.) it still
+// returns a contrast/sharpness-enhanced but uncropped image. Either way the
+// result just becomes the starting image for the manual corner-adjustment
+// editor now (no AI-seeded alignment step in between — see the function
+// body). Empirically tested (see CLAUDE.md) against real ID photos and
+// synthetic edge cases (rotation ambiguity, low-contrast background) before
+// wiring this in originally. Returns {b64,mediaType} to proceed with, or
+// {blurry:true} if the photo should be rejected outright.
 async function preAlignScan(b64,mediaType){
   try{
     const resp=await fetch(PREPROCESS_SCAN_FN_URL,{
@@ -4011,23 +4074,40 @@ async function preAlignScan(b64,mediaType){
       body:JSON.stringify({image:b64})
     });
     const json=await resp.json();
-    if(!resp.ok||!json||json.error) return autoPreAlignScan(b64,mediaType);
+    if(!resp.ok||!json||json.error) return {b64,mediaType};
     if(json.reason==='blurry') return {blurry:true};
-    if(!json.ok) return autoPreAlignScan(b64,mediaType);
-    const enhanced={b64:json.imageBase64,mediaType:json.mediaType||'image/jpeg'};
-    if(json.geometryApplied) return enhanced; // OpenCV already found+straightened the document — skip the AI call
-    return autoPreAlignScan(enhanced.b64,enhanced.mediaType); // enhanced but not geometry-corrected — AI still seeds the quad
+    if(!json.ok) return {b64,mediaType};
+    // Whatever OpenCV managed (cropped+straightened if it found a confident
+    // quad, otherwise just contrast/sharpness-enhanced) is now just the
+    // starting image for the user's own manual crop/rotate in
+    // renderScanQuadEditor — no AI call needed to seed a guess anymore
+    // (autoPreAlignScan/aiDetectAlign removed from this path 2026-09-21, per
+    // user request, now that the editor always runs and the user positions
+    // the rectangle themselves either way). Trade-off: aiDetectAlign was the
+    // only thing that could tell an upside-down photo from a right-side-up
+    // one (plain OpenCV geometry can't, see CLAUDE.md) — an upside-down
+    // photo no longer gets auto-corrected, but the editor's own rotate
+    // buttons (rotateScanQuad) let the user fix that by hand in one tap,
+    // which fits "I'll mark it myself" either way.
+    return {b64:json.imageBase64,mediaType:json.mediaType||'image/jpeg'};
   }catch(e){
     console.error(e);
-    return autoPreAlignScan(b64,mediaType); // network/decode hiccup — fall through fully unchanged
+    return {b64,mediaType}; // network/decode hiccup — fall through fully unchanged
   }
 }
 
-// Step 1.5: a fast, cheap AI call that reads ONLY the document's rotation
-// and corners (no field extraction), then auto-straightens the photo
-// locally — fully automatic, no user interaction — before the slower full
-// OCR call. Best-effort: any failure here (network error, bad AI response,
-// image decode failure) just falls through to OCR-ing the original photo
+// Step 1.5 — DORMANT since 2026-09-21 (no longer called by preAlignScan(),
+// kept in case it's wired back in later): a fast, cheap AI call that reads
+// ONLY the document's rotation and corners (no field extraction), then
+// auto-straightens the photo locally — fully automatic, no user interaction
+// — before the slower full OCR call. Was removed from the main flow because
+// the corner-adjustment editor now always runs before OCR and the user
+// positions the rectangle themselves, so an AI-guessed starting point (this
+// function's whole purpose) stopped being necessary; its one advantage over
+// plain OpenCV geometry — telling an upside-down photo from a right-side-up
+// one — is now handled by the editor's own manual rotate buttons instead.
+// Best-effort: any failure here (network error, bad AI response, image
+// decode failure) just falls through to OCR-ing the original photo
 // unchanged, so a hiccup here never blocks the scan.
 async function autoPreAlignScan(b64,mediaType){
   const stage=document.getElementById('aiScanStage');
@@ -4279,17 +4359,12 @@ async function runOcr(b64,mediaType){
       window.__aiParsed=await verifyDigitFields(json.parsed,b64,mediaType);
     }
     window.__aiParsed=await verifyIdChecksum(window.__aiParsed,b64,mediaType);
-    const align=json.parsed&&json.parsed.imageAlign;
-    const rotateDeg=align&&[0,90,180,270].includes(align.rotate)?align.rotate:0;
-    // Fix gross orientation first so the quad editor below always works on an
-    // upright image — corners (given against the pre-rotation photo) get the
-    // same rotation applied to their coordinates to stay in sync.
-    const upright=rotateDeg?await alignScanImage(b64,mediaType,{rotate:rotateDeg,crop:{x0:0,y0:0,x1:1,y1:1}}):{b64,mediaType};
-    const corners=validQuadCorners(align&&align.corners)
-      ? {tl:rotatePointFrac(align.corners.tl,rotateDeg),tr:rotatePointFrac(align.corners.tr,rotateDeg),
-         br:rotatePointFrac(align.corners.br,rotateDeg),bl:rotatePointFrac(align.corners.bl,rotateDeg)}
-      : {tl:{x:0,y:0},tr:{x:1,y:0},br:{x:1,y:1},bl:{x:0,y:1}};
-    renderScanQuadEditor(upright.b64,upright.mediaType,corners);
+    // No more corner-editor step here (removed 2026-09-21, per user
+    // request) — the photo was already manually cropped/straightened
+    // BEFORE this OCR call ran (see onScanFileSelected/confirmScanQuad), so
+    // b64/mediaType already IS the final, embed-ready image. aiReadDoc's own
+    // imageAlign is still returned by the backend but no longer used here.
+    finishPageScan({b64,mediaType});
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
@@ -4483,6 +4558,12 @@ async function rotateScanQuad(deg){
   const img=await alignScanImage(b64,mediaType,{rotate:deg,crop:{x0:0,y0:0,x1:1,y1:1}});
   renderScanQuadEditor(img.b64,img.mediaType,rotated);
 }
+// window.__scanEditPurpose tells these two where to go next: 'preOcr' (the
+// normal case now — see onScanFileSelected) means the user just finished
+// marking up a RAW photo, so the cropped result still needs to go through
+// runOcr() itself; anything else (only 'sefach', currently unreachable via
+// UI but kept working — see runSefachOcr) means OCR already ran and this is
+// finishing the page directly, same as before.
 async function confirmScanQuad(){
   const {b64,mediaType}=window.__scanEdit;
   const r=window.__quadRect;
@@ -4492,10 +4573,12 @@ async function confirmScanQuad(){
   let finalImg;
   try{ finalImg=await warpQuadImage(b64,mediaType,r); }
   catch(e){ console.error(e); finalImg={b64,mediaType}; }
-  finishPageScan(finalImg);
+  if(window.__scanEditPurpose==='preOcr') runOcr(finalImg.b64,finalImg.mediaType);
+  else finishPageScan(finalImg);
 }
 function skipScanQuad(){
-  finishPageScan(window.__scanEdit);
+  if(window.__scanEditPurpose==='preOcr') runOcr(window.__scanEdit.b64,window.__scanEdit.mediaType);
+  else finishPageScan(window.__scanEdit);
 }
 // Fields carried by an Israeli ID's ספח (appendix) card that the front side
 // doesn't have — shared between the multi-file batch path
@@ -4581,10 +4664,8 @@ function renderScanPagesPrompt(){
           </div>`).join('')}
       </div>
       <input type="file" id="aiScanFileExtra" accept="image/*,application/pdf,.pdf" style="display:none" onchange="onScanFileSelected(this.files[0]); this.value='';">
-      <input type="file" id="aiScanFileSefach2" accept="image/*,application/pdf,.pdf" style="display:none" onchange="onSefachFileSelected(this.files[0]); this.value='';">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn sm" type="button" onclick="document.getElementById('aiScanFileExtra').click()"><i class="ti ti-plus"></i> הוסף עמוד</button>
-        <button class="btn sm" type="button" onclick="document.getElementById('aiScanFileSefach2').click()"><i class="ti ti-id-badge-2"></i> הוסף ספח בלבד (כתובת)</button>
         <button class="btn sm accent" type="button" onclick="finishScanPages()"><i class="ti ti-check"></i> סיום</button>
       </div>
     </div>`;

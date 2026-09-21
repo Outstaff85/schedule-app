@@ -38,35 +38,17 @@ NUDGE = 0.75
 PAGE1_EXTRA_Y = 1.5
 CHECK_EXTRA_UP = 2.5  # per repeated user feedback the checkmarks kept reading slightly low — nudged up twice now, all pages
 
-# Rects below are copied verbatim from schedule-manager.html's pdf-lib version,
-# which uses PDF's native bottom-left-origin coordinates — converted to
-# PyMuPDF's top-left-origin ones via pdf_rect().
-TAX_YEAR_RECT = (220.4, 742.49, 64.9, 13)
-EMPLOYER_ROW = {"y": 659.89, "height": 14}
-NAME_RECT = (414.9, EMPLOYER_ROW["y"], 540.4 - 414.9 - 8, EMPLOYER_ROW["height"])
-ADDRESS_RECT = (209.0, EMPLOYER_ROW["y"], 414.9 - 209.0 - 8, EMPLOYER_ROW["height"])
-PHONE_RECT = (130.3, EMPLOYER_ROW["y"], 209.0 - 130.3, EMPLOYER_ROW["height"])
-DEDUCTIONS_RECT = (39.9, EMPLOYER_ROW["y"], 130.3 - 39.9, EMPLOYER_ROW["height"])
-WORK_START_RECT = (30.75, 450.42, 90.64, 21.01)
-ID_BOX_RECT = (438, 607.89, 102, 13)
 SIG_RECT = (34.02, 186, 87.99, 15)
-# "מספר טלפון נייד" (worker's own mobile number) — page 1, section ב row below
-# marital/resident status. No AcroForm field on the template (verified via
-# page.get_drawings()/get_text("words")). The original box (x:28.7-205.4,
-# y:305.8-328.0) spanned the whole row PLUS the printed label itself — the
-# label's own words ("מספר טלפון נייד") sit at x:148.0-202.5, y:306.1-317.7,
-# so right-aligning to the old x1=205.4 drew the phone digits straight on top
-# of that label instead of in the blank space to its left. Narrowed to just
-# that blank area (x1=142, a few pt clear of the label's x0=148.0) and to a
-# single text-line height (14pt, matching PHONE_RECT/EMPLOYER_ROW's own
-# convention) tightly around the label's own y-band, same technique as
-# `employer_phone` above.
-WORKER_PHONE_RECT = (28.7, 841.89 - 319.0, 142.0 - 28.7, 319.0 - 305.0)
-# Already top-origin (see the commit history in CLAUDE.md / this port's notes):
-# row i spans CHILD_ROW_Y[i]..CHILD_ROW_Y[i+1] directly, no flip needed.
-CHILD_ROW_Y = [380.3115, 402.2011, 424.0908, 445.9803, 467.8701, 489.7587,
-               511.6493, 533.5380, 555.4286, 577.3173, 599.2079]
-CHILD_COLS = {"dob": (255.55, 91.36), "id": (346.91, 101.9), "name": (448.81, 71.26)}
+# Children fields on the current template (added 2026-09-21, after the user
+# rebuilt the AcroForm markup themselves) — base (no suffix) + 1..5, six rows
+# total. Each row is FOUR separate fields (given name, surname, dob, ID/
+# passport number) rather than one combined "name" field, so a worker's
+# single c["name"] string is split on the first space — good enough for the
+# vast majority of names; an unusually multi-word surname could land
+# partially in the wrong field, but there's no per-child given/surname split
+# anywhere upstream (AI extraction, manual entry) to do better without a
+# larger data-model change.
+CHILD_FIELD_SUFFIXES = ["", "1", "2", "3", "4", "5"]
 
 
 def pdf_rect(page_h, x, y_bottom, width, height):
@@ -234,7 +216,19 @@ class Form101Builder:
 
     def finalize(self):
         catalog = self.doc.pdf_catalog()
-        self.doc.xref_set_key(catalog, "AcroForm/NeedAppearances", "false")
+        # xref_set_key's dotted "AcroForm/NeedAppearances" path only works
+        # when /AcroForm is embedded directly in the catalog dict — this
+        # template (added 2026-09-21) stores it as its own indirect object
+        # instead (a perfectly normal, common way to structure a PDF), which
+        # makes the dotted-path form fail with "path to 'NeedAppearances' has
+        # indirects". Resolve the AcroForm's own xref first and set the key
+        # directly on it instead.
+        kind, acroform_ref = self.doc.xref_get_key(catalog, "AcroForm")
+        if kind == "xref":
+            acroform_xref = int(acroform_ref.split()[0])
+            self.doc.xref_set_key(acroform_xref, "NeedAppearances", "false")
+        else:
+            self.doc.xref_set_key(catalog, "AcroForm/NeedAppearances", "false")
         return self.doc.tobytes()
 
 
@@ -283,25 +277,21 @@ def build_form101_pdf(p):
     b.set_text("id_top2", no, 10)
 
     tax_year = str(date.today().year)
-    b.add_comb_field(page_h, b.page1, "tax_year_box", TAX_YEAR_RECT, 4, 10, tax_year)
-    if "tax_year" in b.widgets:
-        _, w = b.widgets["tax_year"]
-        w.field_flags = w.field_flags | pymupdf.PDF_FIELD_IS_READ_ONLY
-        w.update()
+    b.set_comb("tax_year", tax_year, 4, 10)
 
     employer = p.get("employer") or {}
     firm_missing = p.get("firmMissing") or []
     if employer:
-        b.add_hebrew_field(page_h, b.page1, "employer_name", NAME_RECT, 11, employer.get("companyName"))
+        b.set_hebrew("employer_name", employer.get("companyName"), 11)
         addr_parts = [employer.get("street"), employer.get("streetNumber")]
         addr = " ".join(x for x in addr_parts if x)
         if employer.get("city"):
             addr += (", " if addr else "") + employer["city"]
-        b.add_hebrew_field(page_h, b.page1, "employer_address", ADDRESS_RECT, 11, addr)
-        b.add_hebrew_field(page_h, b.page1, "employer_phone", PHONE_RECT, 10, employer.get("phone"))
+        b.set_hebrew("employer_address", addr, 11)
+        b.set_hebrew("employer_phone", employer.get("phone"), 10)
         if employer.get("deductionsFileNumber"):
             digits = re.sub(r"\D", "", str(employer["deductionsFileNumber"]))
-            b.add_comb_field(page_h, b.page1, "employer_deductions", DEDUCTIONS_RECT, 8, 10, digits)
+            b.set_comb("employer_deductions", digits, 8, 10)
 
     if sex == "M":
         b.check("sex_male")
@@ -330,14 +320,20 @@ def build_form101_pdf(p):
             return
         d = iso_date.split("-")
         if len(d) == 3:
-            b.add_comb_field(page_h, b.page1, "work_start_date", WORK_START_RECT, 8, 11,
-                              d[2] + d[1] + d[0])
+            b.set_comb("Date_start_work", d[2] + d[1] + d[0], 8, 11)
 
     b.set_text("sign_date", p.get("signDate"), 10)
 
     if is_israeli:
         if no:
-            b.add_comb_field(page_h, b.page1, "id_box", ID_BOX_RECT, 9, 10, re.sub(r"\D", "", no))
+            # "employer_zeut_num" — despite the name (from the user's own
+            # AcroForm markup), this field sits right next to surname/
+            # given_name/dob/passport_no, not near anything employer-related,
+            # and its nearby printed label reads "9 digits, for those who
+            # don't have..." — a strong match for the WORKER's own Israeli ID
+            # number rather than an employer field. Using it as such; revisit
+            # if the field ever gets renamed to something clearer.
+            b.set_comb("employer_zeut_num", re.sub(r"\D", "", no), 9, 10)
         addr = p.get("address")
         if addr:
             street, number = _split_street(addr)
@@ -353,32 +349,29 @@ def build_form101_pdf(p):
         if fund:
             b.check("hf_yes")
             b.set_hebrew("hf_name", HEALTH_FUND_HE.get(fund, fund), 11)
-        for i, c in enumerate((p.get("children") or [])[:10]):
-            row_y0, row_y1 = CHILD_ROW_Y[i], CHILD_ROW_Y[i + 1]
-            row_h = row_y1 - row_y0
-            if c.get("idNo"):
-                name = f"children_id_{i}"
-                rect = pymupdf.Rect(CHILD_COLS["id"][0], row_y0, CHILD_COLS["id"][0] + CHILD_COLS["id"][1], row_y1)
-                w = b._new_widget(b.page1, name, rect, 10, comb=True, max_len=9)
-                w.field_value = re.sub(r"\D", "", str(c["idNo"]))
-                b.page1.add_widget(w)
+        for i, c in enumerate((p.get("children") or [])[:len(CHILD_FIELD_SUFFIXES)]):
+            suf = CHILD_FIELD_SUFFIXES[i]
+            full_name = str(c.get("name") or "").strip()
+            if full_name:
+                # Split on the first space: given name first, everything
+                # else treated as surname — matches the given/surname order
+                # already used for the worker's own name. See
+                # CHILD_FIELD_SUFFIXES's own comment for the tradeoff.
+                parts = full_name.split(None, 1)
+                given_n = parts[0]
+                surname_n = parts[1] if len(parts) > 1 else ""
+                if given_n:
+                    b.set_hebrew(f"child_given_name{suf}", given_n, 9)
+                if surname_n:
+                    b.set_hebrew(f"child_surname{suf}", surname_n, 9)
             if c.get("dob"):
                 dd = re.sub(r"\D", "", str(c["dob"]))
                 if dd:
-                    name = f"children_dob_{i}"
-                    rect = pymupdf.Rect(CHILD_COLS["dob"][0], row_y0, CHILD_COLS["dob"][0] + CHILD_COLS["dob"][1], row_y1)
-                    w = b._new_widget(b.page1, name, rect, 10, comb=True, max_len=8)
-                    w.field_value = dd
-                    b.page1.add_widget(w)
-            if c.get("name"):
-                name = f"children_name_{i}"
-                rect = pymupdf.Rect(CHILD_COLS["name"][0], row_y0, CHILD_COLS["name"][0] + CHILD_COLS["name"][1], row_y1)
-                w = b._new_widget(b.page1, name, rect, 9)
-                w.field_value = str(c["name"])
-                b.page1.add_widget(w)
-                live = b._refetch(b.page1, name)
-                b._blank_appearance(b.page1, live)
-                b._draw_rtl_text(b.page1, rect, c["name"], 8, right_align=True)
+                    b.set_comb(f"child_dob{suf}", dd, 8, 10)
+            if c.get("idNo"):
+                digits = re.sub(r"\D", "", str(c["idNo"]))
+                if digits:
+                    b.set_comb(f"child_passport_no{suf}", digits, 9, 10)
     else:
         b.set_comb("passport_no", no, 13, 10)
         fill_work_start(p.get("workStart"))
@@ -389,7 +382,7 @@ def build_form101_pdf(p):
 
     phone = p.get("workerPhone")
     if phone:
-        b.add_hebrew_field(page_h, b.page1, "worker_phone", WORKER_PHONE_RECT, 10, phone, right_align=True, bottom_align=True)
+        b.set_hebrew("worker_phone", phone, 10)
 
     sig_b64 = p.get("signaturePngBase64")
     if sig_b64:
