@@ -1142,9 +1142,11 @@ function aiReadSefach(body){
 
   var SYSTEM = 'You are looking at ONLY the address/ספח side of an Israeli ID — either the old paper ' +
     'ספח (appendix) insert, or the back of the newer plastic biometric ID card (תעודה ביומטרית). ' +
-    'Do NOT try to determine a document "type" or read a photo/name/ID number — you already know this is specifically the address side. ' +
+    'Do NOT try to determine a document "type" or read a photo/name — you already know this is specifically the address side, and those are not on it. ' +
+    'The ID number (מספר הזהות) IS sometimes also printed on this side (both the old paper ספח and the newer biometric card back often repeat it) — ' +
+    'if you can see it, read it too: it is used as a cross-check against the number read off the front of the same document, to catch an OCR misread on either side. ' +
     'Extract exactly these fields and return ONLY valid JSON, no prose, no markdown, no code fences: ' +
-    '{"type":"israeli_id","address":"street name only, from מען","houseNumber":"house/building number only, from מס\' בית","city":"city/town name, from ישוב","maritalStatus":"single, married, divorced, widowed, or empty","children":[{"name":"...","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}],"imageAlign":{"rotate":0,"corners":{"tl":{"x":0,"y":0},"tr":{"x":1,"y":0},"br":{"x":1,"y":1},"bl":{"x":0,"y":1}}}} ' +
+    '{"type":"israeli_id","idNo":"9-digit number from מספר הזהות if printed on this side, or empty","address":"street name only, from מען","houseNumber":"house/building number only, from מס\' בית","city":"city/town name, from ישוב","maritalStatus":"single, married, divorced, widowed, or empty","children":[{"name":"...","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}],"imageAlign":{"rotate":0,"corners":{"tl":{"x":0,"y":0},"tr":{"x":1,"y":0},"br":{"x":1,"y":1},"bl":{"x":0,"y":1}}}} ' +
     '"type" is always the literal string "israeli_id" — always include it exactly as shown. ' +
     'Write address/city/children names exactly as printed on the document, in the original language/script (Hebrew street and city names stay in Hebrew — never translate or transliterate into English). ' +
     'Concrete example of correctly split fields: if the document shows מען "יהודה הלוי", מס\' בית "16", and ישוב "פתח תקווה", return them as three separate fields — "address":"יהודה הלוי", "houseNumber":"16", "city":"פתח תקווה" — never combine any two of them into one string (e.g. never "address":"יהודה הלוי 16", never "city":"פתח תקווה 16"). ' +
