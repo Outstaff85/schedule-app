@@ -1569,15 +1569,29 @@ function showWorkerModal(w){
     </div>
     <div id="wForm101Wrap" style="display:none">
       <div class="field-row">
-        <div class="field"><label>מצב משפחתי</label>
-          <select id="wMaritalStatus">
-            <option value="" ${!w.maritalStatus?'selected':''}>— לא נבחר —</option>
-            <option value="marital_single" ${w.maritalStatus==='marital_single'?'selected':''}>רווק/ה</option>
-            <option value="marital_married" ${w.maritalStatus==='marital_married'?'selected':''}>נשוי/אה</option>
-            <option value="marital_divorced" ${w.maritalStatus==='marital_divorced'?'selected':''}>גרוש/ה</option>
-            <option value="marital_widowed" ${w.maritalStatus==='marital_widowed'?'selected':''}>אלמן/ה</option>
+        <div class="field"><label>סוג הכנסה (טופס 101)</label>
+          <select id="wIncomeType">
+            <option value="monthly" ${(w.incomeType||'monthly')==='monthly'?'selected':''}>משכורת חודשית</option>
+            <option value="secondary" ${w.incomeType==='secondary'?'selected':''}>משרה נוספת</option>
+            <option value="partial" ${w.incomeType==='partial'?'selected':''}>משרה חלקית</option>
+            <option value="daily" ${w.incomeType==='daily'?'selected':''}>שכר יומי</option>
+            <option value="pension" ${w.incomeType==='pension'?'selected':''}>פנסיה</option>
+            <option value="scholarship" ${w.incomeType==='scholarship'?'selected':''}>מלגה</option>
           </select>
         </div>
+        <div class="field"><label>הכנסה נוספת (טופס 101)</label>
+          <select id="wOtherIncomeType">
+            <option value="none" ${(w.otherIncomeType||'none')==='none'?'selected':''}>אין הכנסה נוספת</option>
+            <option value="monthly" ${w.otherIncomeType==='monthly'?'selected':''}>משכורת חודשית</option>
+            <option value="secondary" ${w.otherIncomeType==='secondary'?'selected':''}>משרה נוספת</option>
+            <option value="partial" ${w.otherIncomeType==='partial'?'selected':''}>משרה חלקית</option>
+            <option value="daily" ${w.otherIncomeType==='daily'?'selected':''}>שכר יומי</option>
+            <option value="pension" ${w.otherIncomeType==='pension'?'selected':''}>פנסיה</option>
+            <option value="scholarship" ${w.otherIncomeType==='scholarship'?'selected':''}>מלגה</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
         <div class="field"><label>קופת חולים</label>
           <select id="wHealthFund">
             <option value="" ${!w.healthFund?'selected':''}>— לא נבחר —</option>
