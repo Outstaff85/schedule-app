@@ -3881,11 +3881,14 @@ async function onScanFileSelected(file){
 // misclassifying the back of a biometric ID card (no photo/name on it)
 // even after several rounds of prompt tweaks aimed at that classification —
 // removing the need to classify is more robust than trying to make the
-// classification itself more reliable. Always MERGES into whatever primary
-// parsed record exists so far (creating a blank israeli_id shell if this is
-// literally the first thing scanned in the session, e.g. rescanning ONLY
-// the back of an existing worker) — a ספח photo is by definition
-// supplementary data, never treated as "the" primary document.
+// classification itself more reliable. Mirrors onScanFileSelected exactly
+// (blur-check pre-pass, then hand off to the AI call) — the actual merge-
+// vs-primary decision and the corner-adjustment/perspective-warp step are
+// shared with the general flow (runSefachOcr below hands off to the same
+// renderScanQuadEditor()/confirmScanQuad()/finishPageScan() pipeline runOcr
+// uses), so a ספח photo gets the exact same straightening treatment a
+// passport/front photo does — it was previously finalized straight off the
+// blur-check's rough crop, with no auto-align or manual corner fix at all.
 async function onSefachFileSelected(file){
   if(!file) return;
   const stage=document.getElementById('aiScanStage');
@@ -3918,12 +3921,30 @@ async function onSefachFileSelected(file){
         +'<button class="btn sm" onclick="renderScanPagesPrompt()">שוב</button></div>';
       return;
     }
-    stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
-      +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
-      +'<span>קורא ספח…</span></div>';
+    runSefachOcr(pre.b64,pre.mediaType);
+  }catch(err){
+    console.error(err);
+    stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
+      +(err&&err.message||'')+'<br><br>'
+      +'<button class="btn sm" onclick="renderScanPagesPrompt()">שוב</button></div>';
+  }
+}
+// aiReadSefach's own analog of runOcr() — same align/corner-editor handoff,
+// just a narrower AI call and no digit-field/checksum re-verification (the
+// ספח side has no ID number to verify). aiReadSefach's response always
+// includes type:"israeli_id" (hardcoded server-side, not detected) so the
+// shared finishPageScan()/mergeIsraeliIdFields() pipeline treats it exactly
+// like any other israeli_id page once the user confirms the corner edit.
+async function runSefachOcr(b64,mediaType){
+  const stage=document.getElementById('aiScanStage');
+  stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
+    +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
+    +'<span>קורא ספח…</span>'
+    +'<div class="progress-bar"></div></div>';
+  try{
     const resp=await fetch(GS_URL,{
       method:'POST',
-      body:JSON.stringify({action:'aiReadSefach',secret:API_SECRET,...gsAuth(),image:pre.b64,mediaType:pre.mediaType})
+      body:JSON.stringify({action:'aiReadSefach',secret:API_SECRET,...gsAuth(),image:b64,mediaType:mediaType})
     });
     const json=await resp.json();
     if(!json||json.error){
@@ -3932,19 +3953,15 @@ async function onSefachFileSelected(file){
         +'<button class="btn sm" onclick="renderScanPagesPrompt()">שוב</button></div>';
       return;
     }
-    const p=json.parsed||{};
-    const _nrm=s=>String(s||'').replace(/\s+/g,' ').trim();
-    if(!window.__aiPrimaryParsed) window.__aiPrimaryParsed={type:'israeli_id',surname:'',given:'',idNo:'',dob:'',sex:'',address:'',city:'',houseNumber:'',children:[]};
-    if(_nrm(p.address)) window.__aiPrimaryParsed.address=_nrm(p.address);
-    if(_nrm(p.houseNumber)) window.__aiPrimaryParsed.houseNumber=_nrm(p.houseNumber);
-    if(_nrm(p.city)) window.__aiPrimaryParsed.city=_nrm(p.city);
-    if(Array.isArray(p.children)&&p.children.length) window.__aiPrimaryParsed.children=p.children.map(c=>({name:_nrm(c.name),idNo:_nrm(c.idNo),dob:_nrm(c.dob)}));
-    window.__aiParsed=window.__aiPrimaryParsed;
-    if(!window.__aiScanPageThumbs) window.__aiScanPageThumbs=[];
-    if(!window.__aiPacketOtherPages) window.__aiPacketOtherPages=[];
-    window.__aiPacketOtherPages.push({b64:pre.b64,mediaType:pre.mediaType});
-    window.__aiScanPageThumbs.push({b64:pre.b64,mediaType:pre.mediaType});
-    renderScanPagesPrompt();
+    window.__aiParsed=json.parsed;
+    const align=json.parsed&&json.parsed.imageAlign;
+    const rotateDeg=align&&[0,90,180,270].includes(align.rotate)?align.rotate:0;
+    const upright=rotateDeg?await alignScanImage(b64,mediaType,{rotate:rotateDeg,crop:{x0:0,y0:0,x1:1,y1:1}}):{b64,mediaType};
+    const corners=validQuadCorners(align&&align.corners)
+      ? {tl:rotatePointFrac(align.corners.tl,rotateDeg),tr:rotatePointFrac(align.corners.tr,rotateDeg),
+         br:rotatePointFrac(align.corners.br,rotateDeg),bl:rotatePointFrac(align.corners.bl,rotateDeg)}
+      : {tl:{x:0,y:0},tr:{x:1,y:0},br:{x:1,y:1},bl:{x:0,y:1}};
+    renderScanQuadEditor(upright.b64,upright.mediaType,corners);
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
