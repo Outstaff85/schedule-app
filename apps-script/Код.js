@@ -53,6 +53,7 @@ function doPost(e) {
       case 'savePushSubscription': return jsonResponse(savePushSubscription(body, tenantId));
       case 'logError':             return jsonResponse(logError(body));
       case 'aiReadDoc':            return jsonResponse(aiReadDoc(body));
+      case 'aiReadSefach':         return jsonResponse(aiReadSefach(body));
       case 'aiDetectAlign':        return jsonResponse(aiDetectAlign(body));
       case 'aiVerifyField':        return jsonResponse(aiVerifyField(body));
       case 'saveWorkerDoc':        return jsonResponse(saveWorkerDoc(body, tenantId));
@@ -1112,6 +1113,86 @@ function aiReadDoc(body){
     // surfacing that here turns "AI вернул нечитаемый ответ" (which reads
     // like a garbled/bad response) into an actionable "raise max_tokens"
     // signal instead of requiring a guess-and-check round every time.
+    var truncated = json.stop_reason === 'max_tokens';
+    return {error: truncated ? 'Ответ ИИ обрезан лимитом max_tokens — увеличьте лимит' : 'AI вернул нечитаемый ответ', raw: String(text).slice(0,400)};
+  }
+
+  return {ok: true, parsed: parsed};
+}
+
+// Dedicated, narrow sibling of aiReadDoc for when the caller ALREADY knows
+// the photo is the address/ספח side of an Israeli ID (old paper insert or
+// the back of the newer biometric card) — the client's "הוסף ספח" button
+// (separate from the general "הוסף עמוד" — see schedule-manager.html's
+// openAiScan()) uses this instead of aiReadDoc specifically to sidestep
+// aiReadDoc's own type:"israeli_id" vs "passport" classification step
+// entirely. That classification kept being the actual failure point for
+// the back of a biometric card (no photo/name on it, easy for the model to
+// misjudge) even after repeated prompt tweaks to aiReadDoc telling it to
+// recognize the ospah/address side — removing the need to classify at all
+// is more robust than trying to make the classification more reliable.
+// Reuses the same accuracy-first ANTHROPIC_MODEL as aiReadDoc (not the
+// cheap Haiku align model) since this data flows into a real Form 101.
+function aiReadSefach(body){
+  var props = PropertiesService.getScriptProperties();
+  var key   = props.getProperty('ANTHROPIC_API_KEY');
+  var model = props.getProperty('ANTHROPIC_MODEL') || 'claude-sonnet-5';
+  if(!key)        return {error:'ANTHROPIC_API_KEY не задан в Script Properties'};
+  if(!body.image) return {error:'Нет изображения'};
+
+  var SYSTEM = 'You are looking at ONLY the address/ספח side of an Israeli ID — either the old paper ' +
+    'ספח (appendix) insert, or the back of the newer plastic biometric ID card (תעודה ביומטרית). ' +
+    'Do NOT try to determine a document "type" or read a photo/name/ID number — you already know this is specifically the address side. ' +
+    'Extract exactly these fields and return ONLY valid JSON, no prose, no markdown, no code fences: ' +
+    '{"address":"street name only, from מען","houseNumber":"house/building number only, from מס\' בית","city":"city/town name, from ישוב","children":[{"name":"...","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}]} ' +
+    'Keep address/houseNumber/city strictly separate — never combine two of them into one field. ' +
+    'The ילדים (children) section, if present and populated, goes in "children"; if absent or empty, return "children":[]. ' +
+    'If a field is not visible or unreadable, use an empty string (or empty array for children) — never guess. ' +
+    'Return ONLY the JSON object, compact with no extra whitespace or line breaks between fields.';
+
+  var payload = {
+    model: model,
+    max_tokens: 1500,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'text', text: SYSTEM, cache_control: {type: 'ephemeral'} },
+        { type: 'image', source: { type: 'base64', media_type: body.mediaType || 'image/jpeg', data: body.image } },
+        { type: 'text', text: 'Read this and return the JSON object only.' }
+      ]
+    }]
+  };
+
+  var opts = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'prompt-caching-2024-07-31'
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  var res;
+  try { res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', opts); }
+  catch(e){ return {error:'Запрос к Anthropic не прошёл: ' + e}; }
+
+  var json;
+  try { json = JSON.parse(res.getContentText()); }
+  catch(e){ return {error:'Неверный ответ от Anthropic (HTTP ' + res.getResponseCode() + ')'}; }
+
+  if(json.error) return {error: json.error.message || 'Ошибка Anthropic'};
+
+  var text = '';
+  (json.content || []).forEach(function(c){ if(c.type === 'text') text += c.text; });
+  text = text.replace(/```json|```/g,'').trim();
+  var m = text.match(/\{[\s\S]*\}/);
+
+  var parsed;
+  try { parsed = JSON.parse(m ? m[0] : text); }
+  catch(e){
     var truncated = json.stop_reason === 'max_tokens';
     return {error: truncated ? 'Ответ ИИ обрезан лимитом max_tokens — увеличьте лимит' : 'AI вернул нечитаемый ответ', raw: String(text).slice(0,400)};
   }
