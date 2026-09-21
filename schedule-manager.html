@@ -3558,6 +3558,7 @@ async function onScanFilesSelected(fileList){
   if(!files.length) return;
   window.__aiScanImage=null;
   window.__aiPacketOtherPages=[];
+  window.__aiAvatarB64=null;
   const isPdf=f=>f.type==='application/pdf'||/\.pdf$/i.test(f.name||'');
   if(files.length===1 && !isPdf(files[0])) return onScanFileSelected(files[0]);
 
