@@ -4298,10 +4298,11 @@ function renderAiResult(p){
 }
 
 // ===== Signature pad (canvas) for Form 101 =====
-// Draw-to-sign widget; mouse + touch. Cleared/re-initialized each time
-// renderAiResult rebuilds the panel, since the canvas element is replaced.
-function initSignaturePad(){
-  const cv=document.getElementById('aiSigCanvas');
+// Draw-to-sign widget; mouse + touch. Cleared/re-initialized each time the
+// host panel rebuilds, since the canvas element is replaced. Takes an
+// explicit canvas id — the unified worker modal uses 'wSigCanvas'.
+function initSignaturePad(canvasId){
+  const cv=document.getElementById(canvasId||'wSigCanvas');
   if(!cv) return;
   const ctx=cv.getContext('2d');
   ctx.strokeStyle='#000'; ctx.lineWidth=2.5; ctx.lineCap='round'; ctx.lineJoin='round';
@@ -4324,14 +4325,14 @@ function initSignaturePad(){
   cv.addEventListener('mousedown',start); cv.addEventListener('mousemove',move); window.addEventListener('mouseup',end);
   cv.addEventListener('touchstart',start,{passive:false}); cv.addEventListener('touchmove',move,{passive:false}); cv.addEventListener('touchend',end);
 }
-function clearSignaturePad(){
-  const cv=document.getElementById('aiSigCanvas');
+function clearSignaturePad(canvasId){
+  const cv=document.getElementById(canvasId||'wSigCanvas');
   if(!cv) return;
   cv.getContext('2d').clearRect(0,0,cv.width,cv.height);
   cv._sigDirty=false;
 }
-function getSignaturePng(){
-  const cv=document.getElementById('aiSigCanvas');
+function getSignaturePng(canvasId){
+  const cv=document.getElementById(canvasId||'wSigCanvas');
   if(!cv||!cv._sigDirty) return null;
   return cv.toDataURL('image/png');
 }
