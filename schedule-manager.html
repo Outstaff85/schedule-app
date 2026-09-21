@@ -3539,11 +3539,13 @@ async function onScanFilesSelected(fileList){
           if(p&&p.type==='israeli_id'){
             for(const f of CORE_FIELDS){ if(!foundParsed[f]&&p[f]){ foundParsed[f]=p[f]; } }
             if((!foundParsed.children||!foundParsed.children.length)&&Array.isArray(p.children)&&p.children.length){ foundParsed.children=p.children; }
-            // The ID number is printed on both the front card and the ספח —
-            // cross-check the two independent OCR reads as a free extra
-            // consistency signal (on top of, not instead of, the per-card
-            // checksum validation in verifyIdChecksum below).
-            if(p.idNo&&foundParsed.idNo) foundParsed.idSefachMismatch=(String(p.idNo).trim()!==String(foundParsed.idNo).trim());
+            // The ID number is also printed on the ספח, but per user feedback a
+            // raw cross-page OCR disagreement isn't itself warning-worthy — the
+            // ספח's own single read hasn't been through the same zoomed
+            // re-verification as foundParsed.idNo, so a mismatch here is more
+            // likely a ספח misread than a real problem. The existing checksum
+            // check (verifyIdChecksum, already run on foundParsed above) is the
+            // one signal that actually surfaces a warning; not duplicated here.
           }
           needMore=missingCore(foundParsed);
           // Note: no `continue` here even when this page's data got merged —
