@@ -4458,7 +4458,7 @@ function finishScanPages(){
 // scan flow itself) — showWorkerModal()/saveWorker() read them directly.
 function openWorkerModalFromScan(p){
   closeModal('aiScanOverlay');
-  if(!p){ showToast('Не удалось разобрать ответ ИИ'); return; }
+  if(!p){ showToast('לא ניתן לפענח את תגובת ה-AI'); return; }
   const isId=p.type==='israeli_id';
   const _nrm=s=>String(s||'').replace(/\s+/g,' ').trim();
   const ocrFields={
