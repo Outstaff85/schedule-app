@@ -2918,7 +2918,12 @@ function autoSave(){
 }
 
 async function loadData(){
-  // 1. Show cached data instantly while GS loads
+  // 1. Show cached data instantly while GS loads — read ONLY the
+  // tenant-scoped key (never the legacy unscoped one) so switching firms
+  // (switchToTenant()'s reload) never flashes a DIFFERENT firm's stale
+  // cache; a firm with no cache yet under its own key just skips this step
+  // and waits for the real Sheets response, which is preferable to showing
+  // the wrong firm's data.
   try{
     const raw = localStorage.getItem(STORAGE_KEY()) || localStorage.getItem(STORAGE_KEY()+'_bak');
     if(raw){
@@ -2934,7 +2939,9 @@ async function loadData(){
     if(gd){
       applyData(gd);
       render();
-      localStorage.setItem(STORAGE_KEY(), JSON.stringify(gd));
+      const gdJson = JSON.stringify(gd);
+      localStorage.setItem(STORAGE_KEY(), gdJson);
+      localStorage.setItem(STORAGE_KEY_BASE, gdJson); // legacy key for worker-punch.html's bridge, see autoSave()
       setSaveStatus('saved');
       syncPunchesFromGS();
     } else {
