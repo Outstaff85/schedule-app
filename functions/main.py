@@ -594,7 +594,7 @@ def preprocess_scan_image(image_bytes):
     # detector locks onto one rectangular contour and the other document is
     # simply gone by the time the user sees the editor, defeating the whole
     # point of the earlier "user crops first, manually" reorder (see
-    // CLAUDE.md's "manual crop/straighten now happens BEFORE the OCR call"
+    # CLAUDE.md's "manual crop/straighten now happens BEFORE the OCR call"
     # note). The functions themselves are left defined, dormant, in case a
     # single-document-only fast path is wanted again later. Only the blur
     # rejection and contrast/sharpness enhancement still run — the user
