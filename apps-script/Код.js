@@ -1449,12 +1449,31 @@ function saveWorkerAssets(body, tenantId){
     if(body.previousFileId){
       try{ DriveApp.getFileById(body.previousFileId).setTrashed(true); }catch(e){}
     }
+    const fileNameBase = body.fileNameBase || 'worker';
+    const fileName = fileNameBase + '_assets.json';
+    // Automatic dedup by document number, mirroring saveWorkerDoc's own dedup
+    // above. previousFileId only catches a rescan of the SAME worker record —
+    // but two separate worker records accidentally created for the same real
+    // person (no duplicate-worker check on creation) each get their own
+    // assetsFileId, so without this, every such "duplicate worker" scan piled
+    // up its own sidecar file forever, even though the PDF itself was already
+    // correctly deduped across worker records via this same trick.
+    const docNumber = extractDocNumberFromFileName(fileNameBase);
+    if(docNumber){
+      const all = folder.getFiles();
+      while(all.hasNext()){
+        const f = all.next();
+        if(f.getName() !== fileName && extractDocNumberFromFileName(f.getName()) === docNumber){
+          f.setTrashed(true);
+        }
+      }
+    }
     const payload = JSON.stringify({
       scanB64: body.scanB64,
       scanMediaType: body.scanMediaType || 'image/jpeg',
       sigPng: body.sigPng || null,
     });
-    const blob = Utilities.newBlob(payload, 'application/json', (body.fileNameBase || 'worker') + '_assets.json');
+    const blob = Utilities.newBlob(payload, 'application/json', fileName);
     const file = folder.createFile(blob);
     return {ok:true, id: file.getId()};
   }catch(e){ return {error: e.toString()}; }
