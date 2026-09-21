@@ -1494,32 +1494,38 @@ function updateClientCount(){
   el.textContent=n?('· '+n+' selected'):'';
 }
 async function saveWorker(){
-  const name=document.getElementById('wName').value.trim();
-  if(!name){ document.getElementById('wName').focus(); return; }
+  const docGiven=document.getElementById('wGiven').value.trim();
+  const docSurname=document.getElementById('wSurname').value.trim();
+  const name=(docGiven+' '+docSurname).trim();
+  if(!name){ document.getElementById('wGiven').focus(); return; }
   const phone=document.getElementById('wPhone').value.trim();
   const hourlyRate=parseFloat(document.getElementById('wRate')?.value)||0;
   const status=document.getElementById('wStatus')?.value||'active';
+  // One UI field ("תאריך תחילת עבודה") feeds both: startDate (schedule/Contract
+  // Expiry Warning calc) and workStartDate (Form 101's own start-date field).
   const startDate=document.getElementById('wStartDate')?.value||'';
+  const workStartDate=startDate;
+  const docSex=document.getElementById('wSex')?.value||'';
   const expiryEnabled=document.getElementById('wExpiryEnabled')?.checked||false;
   const expiryMonths=parseInt(document.getElementById('wExpiryMonths')?.value)||9;
   const expiryWarnMonths=parseInt(document.getElementById('wExpiryWarnMonths')?.value)||0;
   const docId=document.getElementById('wDocId')?.value.trim()||'';
   const address=document.getElementById('wAddress')?.value.trim()||'';
+  const houseNumber=document.getElementById('wHouseNumber')?.value.trim()||'';
   const city=document.getElementById('wCity')?.value.trim()||'';
+  const docDob=document.getElementById('wDob')?.value.trim()||'';
+  const docExpiry=document.getElementById('wDocExpiry')?.value.trim()||'';
   const notes=document.getElementById('wNotes')?.value.trim()||'';
   const incomeType=document.getElementById('wIncomeType')?.value||'';
   const otherIncomeType=document.getElementById('wOtherIncomeType')?.value||'';
-  // Form-101 fields that used to live only in the one-shot scan overlay
-  // (#aiIdMarital/#aiIdFund/#aiIdWork), read once at generation time and
-  // never seen again. Made permanent, editable worker fields so they (a)
-  // survive between sessions and (b) can trigger a document regenerate below
-  // when changed without re-scanning. Only present in the edit modal (see
-  // showWorkerModal), so absent on a brand-new worker.
-  const docSurname=document.getElementById('wDocSurname')?.value.trim()||'';
-  const docGiven=document.getElementById('wDocGiven')?.value.trim()||'';
   const maritalStatus=document.getElementById('wMaritalStatus')?.value||'';
   const healthFund=document.getElementById('wHealthFund')?.value||'';
-  const workStartDate=document.getElementById('wWorkStartDate')?.value||'';
+  // Manual fallback for when the ספח doesn't scan (or scans wrong) — whatever
+  // is in these rows at save time is what's persisted and what goes into the
+  // PDF. Rows with nothing typed in them are dropped.
+  const docChildren=__wChildren
+    .map(c=>({name:(c.name||'').trim(),idNo:(c.idNo||'').trim(),dob:(c.dob||'').trim()}))
+    .filter(c=>c.name||c.idNo||c.dob);
   const clientIds=[...document.querySelectorAll('#wClientPick input:checked')].map(el=>el.value);
   // Only a grid the user actually opened decides the schedule. Left closed, an
   // existing worker keeps the shifts they already had and a new one is created
@@ -1529,22 +1535,26 @@ async function saveWorker(){
     : (editingWorkerIdx!==null
         ? workers[editingWorkerIdx].schedule
         : DAYS.map(()=>({type:'off',start:null,end:null})));
+  const commonFields={name,colorIdx:selColorIdx,phone,hourlyRate,status,startDate,workStartDate,docSex,
+    expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,houseNumber,city,docDob,docExpiry,notes,
+    incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,docChildren,clientIds,schedule};
   if(editingWorkerIdx!==null){
     const prevW=workers[editingWorkerIdx];
+    const isId=prevW.docType!=='passport';
     // Fields that end up printed on this worker's Form-101 PDF — if any of
-    // them actually changed AND a document is already uploaded for this
-    // worker, the Drive copy is now stale relative to what's on screen.
-    // Trigger a background regenerate so the manager never has to remember
-    // to re-scan/re-upload by hand after a routine data correction.
-    const FORM101_WATCHED_FIELDS=['docId','address','city','incomeType','otherIncomeType','docSurname','docGiven','maritalStatus','healthFund','workStartDate','phone'];
-    const before=FORM101_WATCHED_FIELDS.map(f=>prevW[f]);
-    workers[editingWorkerIdx]={...prevW,name,colorIdx:selColorIdx,phone,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,workStartDate,clientIds,schedule};
-    const updated=workers[editingWorkerIdx];
-    const after=FORM101_WATCHED_FIELDS.map(f=>updated[f]);
+    // them actually changed, the Drive copy (if one exists) is now stale
+    // relative to what's on screen. Trigger a background regenerate so the
+    // manager never has to remember to re-upload by hand after a routine
+    // data correction. JSON.stringify handles docChildren (an array) too.
+    const FORM101_WATCHED_FIELDS=['docId','address','houseNumber','city','incomeType','otherIncomeType',
+      'docSurname','docGiven','maritalStatus','healthFund','workStartDate','phone','docSex','docDob','docChildren'];
+    const updated={...prevW,...commonFields};
+    const changed=FORM101_WATCHED_FIELDS.some(f=>JSON.stringify(prevW[f])!==JSON.stringify(updated[f]));
+    workers[editingWorkerIdx]=updated;
     showToast(name+' updated!');
     closeModal('workerOverlay'); render(); autoSave();
-    if(updated.docUrl && updated.assetsFileId && before.some((v,i)=>v!==after[i])){
-      regenerateWorkerDoc(updated.id).then(ok=>{
+    if(changed && typeof autoUploadWithRetry==='function'){
+      autoUploadWithRetry(isId,updated.id).then(ok=>{
         showToast(ok?('Документ '+name+' обновлён'):('Не удалось обновить документ '+name));
       });
     }
@@ -1560,31 +1570,29 @@ async function saveWorker(){
     if(dup && !confirm('Работник с таким номером документа уже существует: '+(dup.name||'?')+'.\nВсё равно создать нового?')) return;
   }
   const token=genToken();
+  // Capture the signature PNG before the modal's DOM is replaced by the
+  // uploading spinner below (showWorkerUploadingOverlay wipes #wSigCanvas,
+  // unlike closeModal — see getSignaturePng()'s fallback).
+  window.__wCapturedSigPng=getSignaturePng('wSigCanvas');
   // createdAt powers the Form 101 declaration date (aiFillForm101): the
   // signature date on a scanned worker's PDF should match when they were
   // actually onboarded, not whatever day the PDF happens to be (re)generated.
-  const newWorker={id:uid(),name,colorIdx:selColorIdx,phone,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,clientIds,schedule,token,createdAt:new Date().toISOString()};
+  const newWorker={id:uid(),...commonFields,token,createdAt:new Date().toISOString()};
   workers.push(newWorker);
-  // Persisted and visible right away regardless of the scan-upload below —
-  // only the modal itself stays open a little longer in that case.
+  // Persisted and visible right away regardless of the PDF upload below —
+  // only the modal itself stays open a little longer for that.
   render(); autoSave();
-  showToast(name+' added! Copy their link from Edit.');
-  // If this worker was created from an AI document scan, generate the
-  // combined Form 101 + scan PDF and upload it to Drive — attended this
-  // time: the modal stays open (with a blocking spinner) until the upload
-  // genuinely finishes. A pure fire-and-forget background call used to let
-  // the manager close/background the tab right after the worker appeared
-  // "done," which mobile Chrome can then silently suspend mid-flight (no
-  // error, nothing to catch) before the CDN loads + PDF build + upload
-  // actually complete — the worker was created but no document ever landed,
-  // with nothing to show for it.
-  if(window.__aiPendingWorkerUpload!==undefined){
-    const isId=window.__aiPendingWorkerUpload;
-    window.__aiPendingWorkerUpload=undefined;
-    if(typeof autoUploadWithRetry==='function'){
-      showWorkerUploadingOverlay();
-      await autoUploadWithRetry(isId,newWorker.id);
-    }
+  showToast(name+' added!');
+  // Every new worker (not just ones created from a scan) now gets a
+  // background-generated Form 101 PDF — the unified modal collects
+  // everything Form 101 needs regardless of entry point. Attended: the modal
+  // stays open (with a blocking spinner) until the upload genuinely
+  // finishes, so a manager can't background the tab mid-upload and lose it
+  // (mobile Chrome can silently suspend a fire-and-forget background call).
+  const isId=newWorker.docType!=='passport';
+  if(typeof autoUploadWithRetry==='function'){
+    showWorkerUploadingOverlay();
+    await autoUploadWithRetry(isId,newWorker.id);
   }
   closeModal('workerOverlay');
 }
