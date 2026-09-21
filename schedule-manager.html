@@ -4012,7 +4012,14 @@ async function runOcr(b64,mediaType){
       return;
     }
     window.__aiParsed=json.parsed;
-    window.__aiAvatarB64=json.parsed&&json.parsed.photoBox?await cropPortraitAvatar(b64,mediaType,json.parsed.photoBox):null;
+    // Only overwrite when THIS page actually yields a crop — in the
+    // multi-page loop (finishPageScan) a later page (e.g. ספח, which has no
+    // portrait photo) must not blank out an avatar already found on an
+    // earlier page in the same session.
+    if(json.parsed&&json.parsed.photoBox){
+      const avatarCrop=await cropPortraitAvatar(b64,mediaType,json.parsed.photoBox);
+      if(avatarCrop) window.__aiAvatarB64=avatarCrop;
+    }
     // Re-verify the pure-digit, form-critical fields (ID number, dates) on a
     // tight zoomed-in crop of exactly where aiReadDoc says it read them — a
     // wrong digit here goes straight into a real Form 101, so this is worth
