@@ -1294,8 +1294,111 @@ let __wChildren = [];
 let __wAvatarB64 = '';
 function clearWorkerAvatar(){
   __wAvatarB64='';
-  const wrap=document.getElementById('wAvatarWrap');
+  const img=document.getElementById('wAvatarImg');
+  if(img){ img.style.display='none'; img.src=''; }
+  const delBtn=document.getElementById('wAvatarDeleteBtn');
+  if(delBtn) delBtn.style.display='none';
+}
+// Manual avatar upload with a drag-to-position + zoom crop editor (as
+// opposed to the automatic photoBox crop from a document scan, see
+// cropPortraitAvatar) — lets a manager fix a bad auto-crop, or set an avatar
+// for a worker with no scanned document at all. __avatarCropState tracks the
+// live crop rectangle in the editor's own pixel space: {scale, minScale, tx,
+// ty, boxSize, naturalW, naturalH} — tx/ty are the image's top-left offset
+// (in CSS px) relative to the (always top-left-anchored) circular box.
+let __avatarCropState=null;
+function onAvatarFileSelected(file){
+  if(!file) return;
+  const r=new FileReader();
+  r.onload=()=>openAvatarCropEditor(r.result.split(',')[1],file.type||'image/jpeg');
+  r.onerror=()=>showToast('לא ניתן לקרוא את הקובץ');
+  r.readAsDataURL(file);
+}
+function openAvatarCropEditor(b64,mediaType){
+  const img=new Image();
+  img.onload=()=>{
+    const boxSize=200;
+    const minScale=boxSize/Math.min(img.naturalWidth,img.naturalHeight);
+    const scaledW=img.naturalWidth*minScale, scaledH=img.naturalHeight*minScale;
+    __avatarCropState={
+      scale:minScale, minScale, boxSize,
+      naturalW:img.naturalWidth, naturalH:img.naturalHeight,
+      tx:(boxSize-scaledW)/2, ty:(boxSize-scaledH)/2,
+    };
+    const cImg=document.getElementById('avatarCropImg');
+    cImg.src='data:'+mediaType+';base64,'+b64;
+    cImg.style.width=scaledW+'px'; cImg.style.height=scaledH+'px';
+    cImg.style.left=__avatarCropState.tx+'px'; cImg.style.top=__avatarCropState.ty+'px';
+    const zoom=document.getElementById('avatarCropZoom'); if(zoom) zoom.value=1;
+    document.getElementById('avatarCropWrap').style.display='flex';
+    attachAvatarCropDrag();
+  };
+  img.onerror=()=>showToast('לא ניתן לטעון את התמונה');
+  img.src='data:'+mediaType+';base64,'+b64;
+}
+function attachAvatarCropDrag(){
+  const box=document.getElementById('avatarCropBox');
+  if(!box||box.dataset.dragAttached) return;
+  box.dataset.dragAttached='1';
+  box.addEventListener('pointerdown',e=>{
+    e.preventDefault();
+    const st=__avatarCropState; if(!st) return;
+    const startX=e.clientX, startY=e.clientY, startTx=st.tx, startTy=st.ty;
+    const move=ev=>{
+      const scaledW=st.naturalW*st.scale, scaledH=st.naturalH*st.scale;
+      let tx=startTx+(ev.clientX-startX), ty=startTy+(ev.clientY-startY);
+      tx=Math.min(0,Math.max(st.boxSize-scaledW,tx));
+      ty=Math.min(0,Math.max(st.boxSize-scaledH,ty));
+      st.tx=tx; st.ty=ty;
+      const img=document.getElementById('avatarCropImg');
+      if(img){ img.style.left=tx+'px'; img.style.top=ty+'px'; }
+    };
+    const up=()=>{ window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); };
+    window.addEventListener('pointermove',move);
+    window.addEventListener('pointerup',up);
+  });
+}
+// Zooms around the box's own center point (not the image's top-left) so the
+// spot the manager is looking at stays put while the slider moves.
+function onAvatarCropZoom(val){
+  const st=__avatarCropState; if(!st) return;
+  const cx=st.boxSize/2, cy=st.boxSize/2;
+  const nx=(cx-st.tx)/st.scale, ny=(cy-st.ty)/st.scale;
+  st.scale=st.minScale*parseFloat(val);
+  const scaledW=st.naturalW*st.scale, scaledH=st.naturalH*st.scale;
+  let tx=cx-nx*st.scale, ty=cy-ny*st.scale;
+  tx=Math.min(0,Math.max(st.boxSize-scaledW,tx));
+  ty=Math.min(0,Math.max(st.boxSize-scaledH,ty));
+  st.tx=tx; st.ty=ty;
+  const img=document.getElementById('avatarCropImg');
+  if(img){ img.style.width=scaledW+'px'; img.style.height=scaledH+'px'; img.style.left=tx+'px'; img.style.top=ty+'px'; }
+}
+function closeAvatarCropEditor(){
+  const wrap=document.getElementById('avatarCropWrap');
   if(wrap) wrap.style.display='none';
+  __avatarCropState=null;
+}
+// Draws the visible circular region straight from the ORIGINAL image's
+// natural pixels (via the same <img>'s intrinsic size, unaffected by its
+// CSS display size) into a fresh AVATAR_SIZE canvas — precise regardless of
+// devicePixelRatio/browser zoom, since tx/ty/scale/boxSize are all defined
+// in our own coordinate system rather than read back off rendered pixels.
+function confirmAvatarCrop(){
+  const st=__avatarCropState;
+  const img=document.getElementById('avatarCropImg');
+  if(!st||!img) return;
+  const sx=(-st.tx)/st.scale, sy=(-st.ty)/st.scale, sSize=st.boxSize/st.scale;
+  const cv=document.createElement('canvas');
+  cv.width=AVATAR_SIZE; cv.height=AVATAR_SIZE;
+  const ctx=cv.getContext('2d');
+  ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+  ctx.drawImage(img,sx,sy,sSize,sSize,0,0,AVATAR_SIZE,AVATAR_SIZE);
+  __wAvatarB64=cv.toDataURL('image/jpeg',0.85).split(',')[1];
+  closeAvatarCropEditor();
+  const wImg=document.getElementById('wAvatarImg');
+  if(wImg){ wImg.src='data:image/jpeg;base64,'+__wAvatarB64; wImg.style.display='block'; }
+  const delBtn=document.getElementById('wAvatarDeleteBtn');
+  if(delBtn) delBtn.style.display='inline-flex';
 }
 function renderChildrenRows(){
   const wrap=document.getElementById('wChildrenRows');
