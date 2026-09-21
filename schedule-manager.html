@@ -3637,15 +3637,15 @@ function openAiScan(){
   document.getElementById('aiScanStage').innerHTML=`
     <div style="display:flex;flex-direction:column;gap:10px">
       <button class="btn sm" onclick="document.getElementById('aiScanFile').click()">
-        <i class="ti ti-camera"></i> Загрузить фото / PDF
+        <i class="ti ti-camera"></i> העלה תמונה / PDF
       </button>
       <input type="file" id="aiScanFile" accept="image/*,application/pdf,.pdf" multiple
         style="display:none" onchange="onScanFilesSelected(this.files)">
       <div style="font-size:12px;color:var(--text3);line-height:1.5">
-        Поддерживает: загранпаспорт, израильский теудат-зеут (обе стороны), PDF-скан.
-        Паспорт может быть целиком — ИИ сам найдёт нужные поля.
-        Можно выбрать сразу несколько файлов (готовый пакет 101 + паспорт + контракт) —
-        старая Форма 101 в пакете будет заменена нашей, остальное сохранится как есть.
+        תומך ב: דרכון זר, תעודת זהות ישראלית (שני הצדדים), סריקת PDF.
+        אפשר לצלם את הדרכון בשלמותו — ה-AI ימצא את השדות בעצמו.
+        אפשר לבחור כמה קבצים בבת אחת (חבילה מוכנה של טופס 101 + דרכון + חוזה) —
+        טופס 101 ישן בחבילה יוחלף בשלנו, השאר יישמר כמו שהוא.
       </div>
     </div>`;
 }
