@@ -4489,6 +4489,7 @@ function openWorkerModalFromScan(p){
   if(window.__aiAvatarB64) ocrFields.avatarB64=window.__aiAvatarB64;
   if(isId){
     setIfPresent(ocrFields,'address',p.address);
+    setIfPresent(ocrFields,'houseNumber',p.houseNumber);
     setIfPresent(ocrFields,'city',p.city);
     // Most Israeli ID documents don't print marital status at all — this
     // only fires on the rare variant that does (aiReadDoc's own prompt
