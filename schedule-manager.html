@@ -1591,17 +1591,6 @@ function showWorkerModal(w){
           </select>
         </div>
       </div>
-      <div class="field-row">
-        <div class="field"><label>קופת חולים</label>
-          <select id="wHealthFund">
-            <option value="" ${!w.healthFund?'selected':''}>— לא נבחר —</option>
-            <option value="Clalit" ${w.healthFund==='Clalit'?'selected':''}>כללית</option>
-            <option value="Maccabi" ${w.healthFund==='Maccabi'?'selected':''}>מכבי</option>
-            <option value="Meuhedet" ${w.healthFund==='Meuhedet'?'selected':''}>מאוחדת</option>
-            <option value="Leumit" ${w.healthFund==='Leumit'?'selected':''}>לאומית</option>
-          </select>
-        </div>
-      </div>
       <div class="field" style="margin-top:8px">
         <label>ילדים (ספח)</label>
         <div id="wChildrenRows"></div>
