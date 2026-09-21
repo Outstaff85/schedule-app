@@ -585,22 +585,28 @@ def preprocess_scan_image(image_bytes):
     if blur_variance < BLUR_VARIANCE_THRESHOLD:
         return {"ok": False, "reason": "blurry", "blurVariance": blur_variance}
 
-    quad = _find_document_quad(img)
-    geometry_applied = False
-    result = img
-    if quad is not None:
-        warped = _warp_quad(img, quad)
-        if warped is not None:
-            result = warped
-            geometry_applied = True
-
-    result = _enhance_contrast_sharpness(result)
+    # Geometric auto-crop (_find_document_quad/_warp_quad) is DELIBERATELY
+    # NOT applied here anymore (removed 2026-09-21, per user request) — it
+    # used to crop the photo down to whatever quad it found BEFORE the
+    # client's manual corner-adjustment editor ever ran, which silently
+    # discarded content when a single photo held two documents at once (e.g.
+    # a passport and its ספח insert photographed together): the geometry
+    # detector locks onto one rectangular contour and the other document is
+    # simply gone by the time the user sees the editor, defeating the whole
+    # point of the earlier "user crops first, manually" reorder (see
+    // CLAUDE.md's "manual crop/straighten now happens BEFORE the OCR call"
+    # note). The functions themselves are left defined, dormant, in case a
+    # single-document-only fast path is wanted again later. Only the blur
+    # rejection and contrast/sharpness enhancement still run — the user
+    # always gets the full (enhanced, downscaled) original photo to crop
+    # themselves.
+    result = _enhance_contrast_sharpness(img)
     ok, buf = cv2.imencode(".jpg", result, [cv2.IMWRITE_JPEG_QUALITY, 92])
     if not ok:
         return {"ok": False, "reason": "encode_failed"}
     return {
         "ok": True,
-        "geometryApplied": geometry_applied,
+        "geometryApplied": False,
         "imageBase64": base64.b64encode(buf.tobytes()).decode(),
         "mediaType": "image/jpeg",
     }
