@@ -4022,20 +4022,18 @@ async function runSefachOcr(b64,mediaType){
   }
 }
 
-// Step 1.4: tried BEFORE the AI-seeded autoPreAlignScan() below — a server-side
-// OpenCV+Pillow pass (functions/main.py, preprocess_scan) that (a) rejects an
-// obviously-too-blurry photo before any AI call is spent on it, and (b) when
-// it finds a confident document quad (see MIN_QUAD_AREA_FRAC there), crops
-// and straightens it itself, letting the caller skip the paid aiDetectAlign
-// Haiku call entirely. When it can't find a confident quad (low-contrast
-// background, etc.) it still returns a contrast/sharpness-enhanced image, and
-// the caller falls through to the unchanged autoPreAlignScan() below — so
-// that AI-seeded path (which alone knows how to correct an upside-down
-// photo — plain geometry can't) always stays available as the safety net.
-// Empirically tested (see CLAUDE.md) against real ID photos and synthetic
-// edge cases (rotation ambiguity, low-contrast background) before wiring
-// this in. Returns {b64,mediaType} to proceed with, or {blurry:true} if the
-// photo should be rejected outright.
+// Step 1.4: a server-side OpenCV+Pillow pass (functions/main.py,
+// preprocess_scan) that (a) rejects an obviously-too-blurry photo before any
+// AI call is spent on it, and (b) when it finds a confident document quad
+// (see MIN_QUAD_AREA_FRAC there), crops and straightens it itself. When it
+// can't find a confident quad (low-contrast background, etc.) it still
+// returns a contrast/sharpness-enhanced but uncropped image. Either way the
+// result just becomes the starting image for the manual corner-adjustment
+// editor now (no AI-seeded alignment step in between — see the function
+// body). Empirically tested (see CLAUDE.md) against real ID photos and
+// synthetic edge cases (rotation ambiguity, low-contrast background) before
+// wiring this in originally. Returns {b64,mediaType} to proceed with, or
+// {blurry:true} if the photo should be rejected outright.
 async function preAlignScan(b64,mediaType){
   try{
     const resp=await fetch(PREPROCESS_SCAN_FN_URL,{
