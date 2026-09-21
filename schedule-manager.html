@@ -3856,10 +3856,12 @@ async function onScanFilesSelected(fileList){
 }
 
 // Step 1 of the single-photo scan flow: turn one picked photo/PDF page into
-// a plain image, then auto-straighten it (autoPreAlignScan) before sending
-// it to the full OCR call — a flatter, cropped photo is easier for the AI
-// to read accurately than a raw, angled phone photo. Reached either directly
-// (a single non-PDF file) or as "Заново" from the multi-file flow above.
+// a plain image, run it through preAlignScan's blur-check/best-effort
+// OpenCV crop, then hand it to the manual corner-adjustment editor BEFORE
+// any AI call — the user crops/straightens it themselves, and only the
+// result gets sent to the full OCR call (runOcr, via confirmScanQuad's
+// __scanEditPurpose==='preOcr' branch). Reached either directly (a single
+// non-PDF file) or as "Заново" from the multi-file flow above.
 async function onScanFileSelected(file){
   if(!file) return;
   const stage=document.getElementById('aiScanStage');
