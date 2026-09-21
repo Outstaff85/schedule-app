@@ -1145,6 +1145,8 @@ function aiReadSefach(body){
     'Do NOT try to determine a document "type" or read a photo/name — you already know this is specifically the address side, and those are not on it. ' +
     'The ID number (מספר הזהות) IS sometimes also printed on this side (both the old paper ספח and the newer biometric card back often repeat it) — ' +
     'if you can see it, read it too: it is used as a cross-check against the number read off the front of the same document, to catch an OCR misread on either side. ' +
+    'The top-level "idNo" is specifically the DOCUMENT HOLDER\'s own number (the same one printed on the front of the card) — never a child\'s. ' +
+    'If the ילדים (children) section is present, each child there usually has their OWN separate מספר זהות printed next to their name — that number belongs ONLY inside that child\'s own entry in "children", never in the top-level "idNo" field, even if it is the first or only ID number you notice on the page. ' +
     'Extract exactly these fields and return ONLY valid JSON, no prose, no markdown, no code fences: ' +
     '{"type":"israeli_id","idNo":"9-digit number from מספר הזהות if printed on this side, or empty","address":"street name only, from מען","houseNumber":"house/building number only, from מס\' בית","city":"city/town name, from ישוב","maritalStatus":"single, married, divorced, widowed, or empty","children":[{"name":"...","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}],"imageAlign":{"rotate":0,"corners":{"tl":{"x":0,"y":0},"tr":{"x":1,"y":0},"br":{"x":1,"y":1},"bl":{"x":0,"y":1}}}} ' +
     '"type" is always the literal string "israeli_id" — always include it exactly as shown. ' +
