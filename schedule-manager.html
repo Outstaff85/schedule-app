@@ -1433,6 +1433,7 @@ function showWorkerModal(w){
   __wClientsOpen=false;
   __wChildren=Array.isArray(w.docChildren)?w.docChildren.map(c=>({...c})):[];
   __wAvatarB64=w.avatarB64||'';
+  __wDocType=w.docType||'israeli_id';
   document.getElementById('workerModal').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <div class="modal-title" style="margin-bottom:0">${editingWorkerIdx!==null?'עריכת עובד':'הוספת עובד חדש'}</div>
