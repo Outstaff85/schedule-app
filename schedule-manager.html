@@ -73,6 +73,7 @@
   .worker-chip{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--radius-sm);margin-bottom:3px;transition:all 0.15s;}
   .worker-chip:hover{background:var(--bg3);}
   .worker-avatar{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;}
+  .avatar-photo{width:100%;height:100%;border-radius:inherit;object-fit:cover;display:block;}
   .worker-info{flex:1;min-width:0;}
   .worker-name{font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .worker-hours{font-size:14px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -791,6 +792,15 @@ let clients = [
 // --- Utils --------------------------------------------------------------------
 function uid(){ return 'id'+Math.random().toString(36).slice(2,9); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// Shared inner content for every "colored circle" worker avatar spot: a
+// cropped portrait photo (see cropPortraitAvatar) when the worker has one,
+// falling back to the existing colored-initials look otherwise. The caller
+// still owns the outer circle (size/background/color) — this only fills it.
+function workerAvatarInner(w){
+  return w.avatarB64
+    ? `<img class="avatar-photo" src="data:image/jpeg;base64,${w.avatarB64}" alt="">`
+    : esc((w.name||'').slice(0,2).toUpperCase());
+}
 function getSundayOfWeek(d){ const c=new Date(d); c.setDate(c.getDate()-c.getDay()); c.setHours(0,0,0,0); return c; }
 function toMins(t){ if(!t)return null; const[h,m]=t.split(':').map(Number); return h*60+m; }
 function calcHours(s,e){ if(!s||!e)return 0; const sm=toMins(s),em=toMins(e); return em<=sm?(1440-sm+em)/60:(em-sm)/60; }
@@ -1041,7 +1051,6 @@ function renderGanttBody(){
   vis.forEach(w=>{
     const wi=workers.indexOf(w);
     const c=WORKER_COLORS[w.colorIdx%8];
-    const ini=w.name.slice(0,2).toUpperCase();
     h+=`<div class="gantt-row" style="grid-template-columns:${cols}" draggable="true"
       data-wi="${wi}"
       ondragstart="dragStart(event,${wi})"
@@ -1051,7 +1060,7 @@ function renderGanttBody(){
       ondragend="dragEnd(event)">`;
     h+=`<div class="gantt-name-cell">
       <span class="drag-handle">⠿</span>
-      <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${ini}</div>
+      <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${workerAvatarInner(w)}</div>
       <span>${esc(w.name)}</span>
     </div>`;
     w.schedule.forEach((sh,di)=>{
@@ -1088,10 +1097,10 @@ function renderWorkerList(){
   else if(sort==='status'){ const rank={active:0,vacation:1,fired:2}; list.sort((a,b)=>((rank[a.w.status||'active']??0)-(rank[b.w.status||'active']??0))||a.w.name.localeCompare(b.w.name)); }
   let h='';
   list.forEach(({w,wi})=>{
-    const c=WORKER_COLORS[w.colorIdx%8],wh=workerTotalHours(w),ini=w.name.slice(0,2).toUpperCase();
+    const c=WORKER_COLORS[w.colorIdx%8],wh=workerTotalHours(w);
     const rateStr=w.hourlyRate?(' · ₪'+w.hourlyRate+'/h'):'';
     h+=`<div class="worker-chip">
-      <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${ini}</div>
+      <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${workerAvatarInner(w)}</div>
       <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">FIRED</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">VAC</span>':''}${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div><div class="worker-hours">${wh.toFixed(1)}h${rateStr}</div></div>
       <div class="worker-actions">
         <button class="worker-act-btn edit" onclick="openEditWorker(${wi})" title="Edit"><i class="ti ti-edit"></i></button>
@@ -1211,6 +1220,7 @@ function openAddWorker(){
   editingWorkerIdx=null;
   window.__aiScanImage=null;
   window.__aiPacketOtherPages=[];
+  window.__aiAvatarB64=null;
   window.__wCapturedSigPng=undefined;
   showWorkerModal(blankWorkerDefaults());
 }
@@ -1277,6 +1287,16 @@ function toggleClientsWrap(){
 // what's written to w.docChildren and sent to the PDF.
 // This is the manual fallback when the ספח fails to scan or scans wrong.
 let __wChildren = [];
+// Worker avatar (portrait cropped from a document scan, see
+// cropPortraitAvatar) currently attached in the open modal — mirrors
+// __wChildren's pattern: seeded from the worker/OCR data when the modal
+// opens, then it's just in-memory state until saveWorker() persists it.
+let __wAvatarB64 = '';
+function clearWorkerAvatar(){
+  __wAvatarB64='';
+  const wrap=document.getElementById('wAvatarWrap');
+  if(wrap) wrap.style.display='none';
+}
 function renderChildrenRows(){
   const wrap=document.getElementById('wChildrenRows');
   if(!wrap) return;
@@ -1299,10 +1319,15 @@ function showWorkerModal(w){
   __wForm101Open=false;
   __wClientsOpen=false;
   __wChildren=Array.isArray(w.docChildren)?w.docChildren.map(c=>({...c})):[];
+  __wAvatarB64=w.avatarB64||'';
   document.getElementById('workerModal').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <div class="modal-title" style="margin-bottom:0">${editingWorkerIdx!==null?'Edit Worker':'Add New Worker'}</div>
       <button class="btn sm" onclick="closeModal('workerOverlay')" title="Закрыть" style="flex-shrink:0;padding:0 8px"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="field" id="wAvatarWrap" style="display:${__wAvatarB64?'flex':'none'};align-items:center;gap:10px">
+      <img id="wAvatarImg" src="${__wAvatarB64?('data:image/jpeg;base64,'+__wAvatarB64):''}" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1px solid var(--border2)">
+      <button class="btn sm" type="button" onclick="clearWorkerAvatar()"><i class="ti ti-trash"></i> Удалить фото</button>
     </div>
     ${editingWorkerIdx!==null ? `
     <div class="field">
@@ -1556,7 +1581,8 @@ async function saveWorker(){
         : DAYS.map(()=>({type:'off',start:null,end:null})));
   const commonFields={name,colorIdx:selColorIdx,phone,hourlyRate,status,startDate,workStartDate,docSex,
     expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,houseNumber,city,docDob,docExpiry,notes,
-    incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,docChildren,clientIds,schedule};
+    incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,docChildren,clientIds,schedule,
+    avatarB64:__wAvatarB64};
   if(editingWorkerIdx!==null){
     const prevW=workers[editingWorkerIdx];
     const isId=prevW.docType!=='passport';
@@ -1821,12 +1847,12 @@ function renderWorkersPage(){
   if(!list.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
   tbody.innerHTML=list.map(({w,wi})=>{
-    const c=WORKER_COLORS[w.colorIdx%8], ini=w.name.slice(0,2).toUpperCase();
+    const c=WORKER_COLORS[w.colorIdx%8];
     const stMeta=stMetaMap[w.status||'active'];
     const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
     const objBadges=objs.length?objs.map(o=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${o.color}22;border-radius:10px;margin-right:3px"><span style="width:6px;height:6px;border-radius:50%;background:${o.color}"></span>${esc(o.name)}</span>`).join(''):'<span style="color:var(--text3);font-size:12px">—</span>';
     return `<tr onclick="openWorkerCard(${wi})" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background=''">
-      <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><span style="font-size:13px;font-weight:600">${esc(w.name)}</span>${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div></td>
+      <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div><span style="font-size:13px;font-weight:600">${esc(w.name)}</span>${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div></td>
       <td style="padding:10px 12px"><span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col}">${stMeta.label}</span></td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2);font-family:monospace">${workerDocId(w)?esc(workerDocId(w)):'—'}</td>
       <td style="padding:10px 12px">${objBadges}</td>
@@ -1846,7 +1872,7 @@ const INCOME_TYPE_LABELS = {monthly:'Monthly salary',secondary:'2nd job salary',
 const OTHER_INCOME_LABELS = {none:'No other income',monthly:'Monthly salary',secondary:'2nd job salary',partial:'Partial salary',daily:'Daily wage',pension:'Pension',scholarship:'Scholarship'};
 function openWorkerCard(wi){
   const w=workers[wi]; if(!w) return;
-  const c=WORKER_COLORS[w.colorIdx%8], ini=w.name.slice(0,2).toUpperCase();
+  const c=WORKER_COLORS[w.colorIdx%8];
   const stMetaMap={active:{label:'Active',col:'var(--green)',bg:'var(--green-bg)'},vacation:{label:'On vacation',col:'var(--amber)',bg:'var(--amber-bg)'},fired:{label:'Fired',col:'var(--red)',bg:'var(--red-bg)'}};
   const stMeta=stMetaMap[w.status||'active'];
   const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
@@ -1854,7 +1880,7 @@ function openWorkerCard(wi){
   const expSt=workerExpiryStatus(w);
   document.getElementById('workerCardModal').innerHTML=`
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
-      <div style="width:52px;height:52px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">${ini}</div>
+      <div style="width:52px;height:52px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div>
       <div style="flex:1">
         <div style="font-size:18px;font-weight:700">${esc(w.name)}</div>
         <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col};display:inline-block;margin-top:4px">${stMeta.label}</span>${docUploadFailedBadgeHtml(w)}
@@ -2843,13 +2869,12 @@ function renderDashboard(){
   if(onSite.length){
     onSiteEl.innerHTML = onSite.map(w=>{
       const c=WORKER_COLORS[w.colorIdx%8];
-      const ini=w.name.slice(0,2).toUpperCase();
       const lastIn=latestOf(todayLog.filter(e=>e.workerId===w.id&&e.type==='in'));
       const sinceTime=lastIn?lastIn.time:'?';
       const shiftHours=w.schedule?.[todayIdx]?.end?calcHours(sinceTime,w.schedule[todayIdx].end).toFixed(1):'-';
       return `<div style="background:var(--bg2);border:1px solid rgba(62,207,142,0.25);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
         <div style="width:40px;height:40px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;position:relative">
-          ${ini}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--green);border:2px solid var(--bg2)"></span>
+          ${workerAvatarInner(w)}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--green);border:2px solid var(--bg2)"></span>
         </div>
         <div style="font-size:13px;font-weight:600">${esc(w.name)}</div>
         <div style="font-size:11px;color:var(--text2)">Since ${sinceTime}</div>
@@ -2865,11 +2890,10 @@ function renderDashboard(){
   if(missing.length){
     missingEl.innerHTML = missing.map(w=>{
       const c=WORKER_COLORS[w.colorIdx%8];
-      const ini=w.name.slice(0,2).toUpperCase();
       const sh=w.schedule?.[todayIdx];
       return `<div style="background:var(--bg2);border:1px solid rgba(248,113,113,0.25);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
         <div style="width:40px;height:40px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;position:relative;opacity:0.6">
-          ${ini}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--red);border:2px solid var(--bg2)"></span>
+          ${workerAvatarInner(w)}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--red);border:2px solid var(--bg2)"></span>
         </div>
         <div style="font-size:13px;font-weight:600">${esc(w.name)}</div>
         <div style="font-size:11px;color:var(--red)">Should be here</div>
@@ -2886,14 +2910,14 @@ function renderDashboard(){
   expiringWrap.style.display = expiring.length ? 'block' : 'none';
   if(expiring.length){
     document.getElementById('dashExpiring').innerHTML = expiring.map(({w,st})=>{
-      const c=WORKER_COLORS[w.colorIdx%8], ini=w.name.slice(0,2).toUpperCase();
+      const c=WORKER_COLORS[w.colorIdx%8];
       const overdue = st.level==='overdue';
       const borderCol = overdue?'rgba(248,113,113,0.25)':'rgba(245,166,35,0.25)';
       const dotCol = overdue?'var(--red)':'var(--amber)';
       const textCol = overdue?'var(--red)':'var(--amber)';
       return `<div style="background:var(--bg2);border:1px solid ${borderCol};border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
         <div style="width:40px;height:40px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;position:relative">
-          ${ini}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:${dotCol};border:2px solid var(--bg2)"></span>
+          ${workerAvatarInner(w)}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:${dotCol};border:2px solid var(--bg2)"></span>
         </div>
         <div style="font-size:13px;font-weight:600">${esc(w.name)}</div>
         <div style="font-size:11px;color:${textCol}">${overdue?'Срок истёк':'Срок приближается'}</div>
@@ -2913,7 +2937,7 @@ function renderDashboard(){
     dashLogEl.innerHTML=shown.map((e,i)=>{
       const wc=workers.find(w=>w.id===e.workerId);
       const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
-      const ini=e.workerName?.slice(0,2).toUpperCase()||'?';
+      const ini=wc?workerAvatarInner(wc):esc(e.workerName?.slice(0,2).toUpperCase()||'?');
       return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:${i<shown.length-1?'1px solid var(--border)':'none'}">
         <div style="width:30px;height:30px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div>
         <div style="flex:1">
@@ -3014,7 +3038,7 @@ function renderSalary(){
             const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
             const base=wc?.hourlyRate||0;
             const regRate=wRegRate(wc), otRate=wOtRate(wc), shabRate=wShabRate(wc);
-            const ini=e.worker.slice(0,2).toUpperCase();
+            const ini=wc?workerAvatarInner(wc):esc(e.worker.slice(0,2).toUpperCase());
             return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
               <td style="padding:10px 12px">
                 <div style="display:flex;align-items:center;gap:8px">
@@ -3264,7 +3288,7 @@ function renderClientLogs(){
 
     const workerRows = assignedWorkers.map(w=>{
       const wc = WORKER_COLORS[w.colorIdx%8];
-      const ini = w.name.slice(0,2).toUpperCase();
+      const ini = workerAvatarInner(w);
       const wLog = clientLog.filter(e=>e.workerId===w.id);
       const todayW = wLog.filter(e=>new Date(e.ts).toDateString()===todayStr);
       const lastEntry = latestOf(todayW);
@@ -3353,7 +3377,7 @@ function renderAdmin(){
   tbody.innerHTML=filtered.map((e,i)=>{
     const wc=workers.find(w=>w.id===e.workerId);
     const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
-    const ini=e.workerName?.slice(0,2).toUpperCase()||'?';
+    const ini=wc?workerAvatarInner(wc):esc(e.workerName?.slice(0,2).toUpperCase()||'?');
     const dateStr=new Date(e.ts).toLocaleDateString('en-GB');
     const wClients=wc?clients.filter(cl=>(wc.clientIds||[]).includes(cl.id)):[];
     const clientBadge=wClients.map(cl=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${cl.color}22;border-radius:10px;white-space:nowrap"><span style="width:6px;height:6px;border-radius:50%;background:${cl.color};flex-shrink:0"></span>${esc(cl.name)}</span>`).join(' ');
@@ -3557,6 +3581,7 @@ async function onScanFilesSelected(fileList){
   if(!files.length) return;
   window.__aiScanImage=null;
   window.__aiPacketOtherPages=[];
+  window.__aiAvatarB64=null;
   const isPdf=f=>f.type==='application/pdf'||/\.pdf$/i.test(f.name||'');
   if(files.length===1 && !isPdf(files[0])) return onScanFileSelected(files[0]);
 
@@ -3632,6 +3657,7 @@ async function onScanFilesSelected(fileList){
             foundParsed=p.fieldBoxes?await verifyDigitFields(p,it.b64,it.mediaType):p;
             foundParsed=await verifyIdChecksum(foundParsed,it.b64,it.mediaType);
             window.__aiScanImage={b64:it.b64,mediaType:it.mediaType};
+            window.__aiAvatarB64=p.photoBox?await cropPortraitAvatar(it.b64,it.mediaType,p.photoBox):null;
             needMore=missingCore(foundParsed);
             continue; // эта страница уже сохранена как window.__aiScanImage, в "прочие" не дублируем
           }
@@ -3837,6 +3863,46 @@ function cropFieldImage(b64,mediaType,box){
   });
 }
 
+// Crops the person's own portrait photo out of a document scan, given
+// aiReadDoc's "photoBox" (same coordinate space/convention as fieldBoxes
+// above, see cropFieldImage's comment). Unlike cropFieldImage (built for thin
+// text-field strips), this pads modestly on all sides and forces a SQUARE
+// output — expanding the shorter side around its own center, never
+// stretching — so it looks right as a round avatar, then downsizes to
+// AVATAR_SIZE and re-encodes as JPEG (a worker photo needs to render
+// instantly in list rows, not stay full-resolution). Resolves null on any
+// failure (missing/degenerate box, decode error) — same best-effort
+// convention as cropFieldImage: never blocks or fails the scan.
+const AVATAR_SIZE=160;
+function cropPortraitAvatar(b64,mediaType,box){
+  return new Promise(resolve=>{
+    if(!box||typeof box.x0!=='number'||typeof box.x1!=='number'){ resolve(null); return; }
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        const iw=img.naturalWidth, ih=img.naturalHeight;
+        const clamp01=v=>Math.max(0,Math.min(1,typeof v==='number'?v:0));
+        const padX=(box.x1-box.x0)*0.1, padY=(box.y1-box.y0)*0.1;
+        const x0=clamp01(box.x0-padX)*iw, y0=clamp01(box.y0-padY)*ih;
+        const x1=clamp01(box.x1+padX)*iw, y1=clamp01(box.y1+padY)*ih;
+        const cw=x1-x0, ch=y1-y0;
+        if(!(cw>4&&ch>4)) throw new Error('degenerate photo box');
+        const side=Math.min(Math.max(cw,ch),iw,ih);
+        let sx0=x0-(side-cw)/2, sy0=y0-(side-ch)/2;
+        sx0=Math.max(0,Math.min(iw-side,sx0)); sy0=Math.max(0,Math.min(ih-side,sy0));
+        const cv=document.createElement('canvas');
+        cv.width=AVATAR_SIZE; cv.height=AVATAR_SIZE;
+        const ctx=cv.getContext('2d');
+        ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+        ctx.drawImage(img,sx0,sy0,side,side,0,0,AVATAR_SIZE,AVATAR_SIZE);
+        resolve(cv.toDataURL('image/jpeg',0.85).split(',')[1]);
+      }catch(e){ resolve(null); }
+    };
+    img.onerror=()=>resolve(null);
+    img.src='data:'+mediaType+';base64,'+b64;
+  });
+}
+
 // One field's re-verification round-trip: crop -> aiVerifyField -> trimmed
 // text or null. Never throws — a network/AI failure here just means this
 // field's original aiReadDoc reading is kept, not blanked.
@@ -3942,6 +4008,7 @@ async function runOcr(b64,mediaType){
       return;
     }
     window.__aiParsed=json.parsed;
+    window.__aiAvatarB64=json.parsed&&json.parsed.photoBox?await cropPortraitAvatar(b64,mediaType,json.parsed.photoBox):null;
     // Re-verify the pure-digit, form-critical fields (ID number, dates) on a
     // tight zoomed-in crop of exactly where aiReadDoc says it read them — a
     // wrong digit here goes straight into a real Form 101, so this is worth
@@ -4197,6 +4264,10 @@ function openWorkerModalFromScan(p){
     // field in the modal below when the ID checksum check failed.
     idChecksumOk: p.idChecksumOk,
   };
+  // Only set the key when a portrait was actually cropped from this scan —
+  // an omitted key leaves an existing avatar (on a rescan) untouched instead
+  // of wiping it out just because this particular photo had no photoBox.
+  if(window.__aiAvatarB64) ocrFields.avatarB64=window.__aiAvatarB64;
   if(isId){
     ocrFields.address=_nrm(p.address);
     ocrFields.city=_nrm(p.city);

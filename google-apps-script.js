@@ -1018,6 +1018,7 @@ function aiReadDoc(body){
     'Each box is {"x0":0,"y0":0,"x1":1,"y1":1} — top-left and bottom-right corners, each coordinate a fraction 0 to 1 of THIS image\'s width/height — ' +
     'tight around just the printed characters (a few pixels of margin, not the whole field label or surrounding box). ' +
     'Omit a field from "fieldBoxes" entirely if you left its value empty. These boxes are used to re-crop and double-check exactly those digits, so precision matters more than for imageAlign. ' +
+    'Also include a top-level "photoBox" object (same coordinate space/convention as fieldBoxes above — fractions 0 to 1 of THIS image exactly as given) locating the person\'s own portrait photo printed on the document, if one is visible: {"x0":0,"y0":0,"x1":1,"y1":1}, tight around just the photo itself (not its printed frame/border, not the surrounding text). Omit "photoBox" entirely if no portrait photo is visible on this document. ' +
     'Also include a top-level "imageAlign" object (for both document types) describing how to straighten the ORIGINAL photo: ' +
     '{"rotate":0,"crop":{"x0":0,"y0":0,"x1":1,"y1":1},"corners":{"tl":{"x":0,"y":0},"tr":{"x":1,"y":0},"br":{"x":1,"y":1},"bl":{"x":0,"y":1}}} — ' +
     '"rotate" is the clockwise degrees needed to make the document upright and right-reading, and MUST be exactly one of 0, 90, 180, 270 (use 0 if already upright); ' +
