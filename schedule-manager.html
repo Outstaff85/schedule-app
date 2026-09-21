@@ -1426,6 +1426,22 @@ function addChildRow(){ __wChildren.push({name:'',idNo:'',dob:''}); renderChildr
 function removeChildRow(i){ __wChildren.splice(i,1); renderChildrenRows(); }
 
 function showWorkerModal(w){
+  // A worker created before docGiven/docSurname existed (every worker predating
+  // today's unified-modal split) only ever had a single `name` field — never
+  // had docGiven/docSurname written to it. Without this fallback, opening such
+  // a worker showed BLANK "שם פרטי"/"שם משפחה" fields (docGiven/docSurname
+  // both undefined) despite w.name clearly having a value. A manager editing
+  // an unrelated field (phone, marital status, ...) and saving without
+  // noticing/refilling those blanked name fields hit saveWorker()'s "name
+  // required" guard silently: the whole save no-ops (nothing persisted, no
+  // toast, no Form 101 regeneration, just focus quietly moved back to the
+  // empty field) — confirmed by reproducing it directly. Deriving the split
+  // here (a local, display-only copy — never mutates the stored worker until
+  // an actual save) fixes it at the source for every legacy worker at once.
+  if(!w.docGiven&&!w.docSurname&&w.name){
+    const parts=String(w.name).trim().split(/\s+/);
+    w={...w,docGiven:parts[0]||'',docSurname:parts.slice(1).join(' ')};
+  }
   selColorIdx=w.colorIdx||0;
   __wScheduleOpen=false;
   __wExpiryOpen=false;
