@@ -1472,6 +1472,13 @@ function saveWorkerAssets(body, tenantId){
       scanB64: body.scanB64,
       scanMediaType: body.scanMediaType || 'image/jpeg',
       sigPng: body.sigPng || null,
+      // Extra scanned pages (ספח appendix card, contract pages, etc.) from a
+      // multi-file scan packet. Without persisting these here too, only the
+      // very first PDF generation right after scanning ever included them —
+      // regenerateWorkerDoc() only had scanB64/sigPng to rebuild from, so any
+      // later regeneration (triggered by editing a watched Form-101 field)
+      // silently dropped the ספח/contract pages from the rebuilt PDF.
+      extraPages: Array.isArray(body.extraPages) ? body.extraPages : [],
     });
     const blob = Utilities.newBlob(payload, 'application/json', fileName);
     const file = folder.createFile(blob);
@@ -1488,7 +1495,7 @@ function loadWorkerAssets(body){
     if(!body.fileId) return {error:'Нет fileId'};
     const file = DriveApp.getFileById(body.fileId);
     const data = JSON.parse(file.getBlob().getDataAsString());
-    return {ok:true, scanB64: data.scanB64, scanMediaType: data.scanMediaType, sigPng: data.sigPng || null};
+    return {ok:true, scanB64: data.scanB64, scanMediaType: data.scanMediaType, sigPng: data.sigPng || null, extraPages: Array.isArray(data.extraPages) ? data.extraPages : []};
   }catch(e){ return {error: e.toString()}; }
 }
 

@@ -1178,8 +1178,9 @@ function saveShift(wi,di){
 // --- Worker Modal -------------------------------------------------------------
 // Address and document number used to share one field. Workers created from a
 // scan before the split carry the number inside `address` as "ת.ז. 123456789"
-// / "Passport AB123" — the exact shape aiToWorker() wrote — so these two read
-// it back out of there instead of showing a document number on the address
+// / "Passport AB123" (the shape the old scan-to-worker handoff used to write,
+// before it was folded into the unified worker modal) — so these two read it
+// back out of there instead of showing a document number on the address
 // line. Saving such a worker once stores it properly in `docId`.
 const LEGACY_DOC_IN_ADDRESS = /^\s*(?:ת\.ז\.|Passport)\s*(\S+)\s*$/;
 function workerDocId(w){
@@ -1193,7 +1194,25 @@ function workerAddress(w){
   return LEGACY_DOC_IN_ADDRESS.test(addr) ? '' : addr;
 }
 
-function openAddWorker(){ editingWorkerIdx=null; showWorkerModal({name:'',colorIdx:workers.length%8,phone:'',clientIds:[],schedule:DAYS.map(()=>({type:'work',start:'09:00',end:'17:00'}))}); }
+function blankWorkerDefaults(){
+  return {name:'',docGiven:'',docSurname:'',colorIdx:workers.length%8,phone:'',clientIds:[],
+    schedule:DAYS.map(()=>({type:'work',start:'09:00',end:'17:00'}))};
+}
+// Plain manual "Add Worker" (not the scan pipeline, which calls
+// showWorkerModal() directly after OCR with its own fresh scan data already
+// in these globals — see the scan-redirect logic below). Resets them here so
+// a leftover scan/signature from a PREVIOUS, unrelated worker's session
+// (e.g. the manager just created worker A from a scan a moment ago) never
+// silently attaches to worker B's PDF — saveWorker()'s new-worker path reads
+// these live globals directly (autoUploadWithRetry), unlike an edit-save
+// (which goes through the sidecar-based regenerateWorkerDoc() instead).
+function openAddWorker(){
+  editingWorkerIdx=null;
+  window.__aiScanImage=null;
+  window.__aiPacketOtherPages=[];
+  window.__wCapturedSigPng=undefined;
+  showWorkerModal(blankWorkerDefaults());
+}
 function openEditWorker(wi){ editingWorkerIdx=wi; showWorkerModal(workers[wi]); }
 
 // The weekly grid starts collapsed every time the modal opens, and saveWorker
@@ -1227,8 +1246,8 @@ function toggleExpiryWrap(){
 }
 
 // Same collapsed-by-default dropdown pattern, for all Form-101-related
-// fields (income type, other income, scan-derived name/marital/health-fund/
-// work-start-date) grouped together under one "Данные для Формы 101" toggle.
+// fields (income type, other income, marital/health-fund, children) grouped
+// together under one toggle.
 let __wForm101Open = false;
 function toggleForm101Wrap(){
   __wForm101Open = !__wForm101Open;
@@ -1238,11 +1257,47 @@ function toggleForm101Wrap(){
   if(chev) chev.className = 'ti ti-chevron-' + (__wForm101Open ? 'up' : 'down');
 }
 
+// Same collapsed-by-default dropdown pattern, for the client-assignment
+// checklist (previously always visible).
+let __wClientsOpen = false;
+function toggleClientsWrap(){
+  __wClientsOpen = !__wClientsOpen;
+  const wrap = document.getElementById('wClientsWrap');
+  const chev = document.getElementById('wClientsChevron');
+  if(wrap) wrap.style.display = __wClientsOpen ? '' : 'none';
+  if(chev) chev.className = 'ti ti-chevron-' + (__wClientsOpen ? 'up' : 'down');
+}
+
+// ===== Children (ספח) manual editor, inside the Form-101 dropdown =====
+// Backs w.docChildren. Pre-filled from a scan (openWorkerModalFromScan()
+// merges the OCR'd children into w.docChildren before opening this modal)
+// when the modal opens right after OCR, but from then on it's a normal
+// editable field like any other — whatever is in these rows at save time is
+// what's written to w.docChildren and sent to the PDF.
+// This is the manual fallback when the ספח fails to scan or scans wrong.
+let __wChildren = [];
+function renderChildrenRows(){
+  const wrap=document.getElementById('wChildrenRows');
+  if(!wrap) return;
+  wrap.innerHTML = __wChildren.map((c,i)=>`
+    <div class="field-row" style="grid-template-columns:2fr 1fr 1fr auto;align-items:end;gap:8px;margin-bottom:6px">
+      <div class="field" style="margin-bottom:0"><label>שם הילד/ה</label><input type="text" value="${esc(c.name||'')}" oninput="__wChildren[${i}].name=this.value"></div>
+      <div class="field" style="margin-bottom:0"><label>ת.ז.</label><input type="text" value="${esc(c.idNo||'')}" oninput="__wChildren[${i}].idNo=this.value"></div>
+      <div class="field" style="margin-bottom:0"><label>תאריך לידה</label><input type="text" placeholder="DD/MM/YYYY" value="${esc(c.dob||'')}" oninput="__wChildren[${i}].dob=this.value"></div>
+      <button class="btn sm" type="button" onclick="removeChildRow(${i})" style="flex-shrink:0"><i class="ti ti-trash"></i></button>
+    </div>`).join('')
+    + `<button class="btn sm" type="button" onclick="addChildRow()"><i class="ti ti-plus"></i> הוסף ילד/ה</button>`;
+}
+function addChildRow(){ __wChildren.push({name:'',idNo:'',dob:''}); renderChildrenRows(); }
+function removeChildRow(i){ __wChildren.splice(i,1); renderChildrenRows(); }
+
 function showWorkerModal(w){
   selColorIdx=w.colorIdx||0;
   __wScheduleOpen=false;
   __wExpiryOpen=false;
   __wForm101Open=false;
+  __wClientsOpen=false;
+  __wChildren=Array.isArray(w.docChildren)?w.docChildren.map(c=>({...c})):[];
   document.getElementById('workerModal').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <div class="modal-title" style="margin-bottom:0">${editingWorkerIdx!==null?'Edit Worker':'Add New Worker'}</div>
@@ -1259,16 +1314,20 @@ function showWorkerModal(w){
         <span style="font-size:11px;color:var(--text3)">${w.docSavedAt?'Сохранено: '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</span>
       </div>
     </div>` : ''}
-    <div class="field" style="position:relative">
-      <label>Name</label>
-      <input type="text" id="wName" value="${w.name||''}" placeholder="Worker name" autofocus
-        oninput="searchContacts(this.value)" autocomplete="off">
-      <div id="contactsSuggestions" style="display:none;position:absolute;z-index:300;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);left:0;right:0;top:100%;max-height:240px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.5)"></div>
-    </div>
-    <div class="field"><label>ID (Teudat Zehut)</label><input type="text" id="wDocId" value="${esc(workerDocId(w))}" placeholder="ת.ז. / passport number"></div>
-    <div class="field"><label>Phone (optional)</label><input type="text" id="wPhone" value="${w.phone||''}" placeholder="+972..."></div>
-    <div class="field"><label>Hourly Rate (₪/h)</label><input type="number" id="wRate" value="${w.hourlyRate||''}" placeholder="e.g. 35" min="0" step="0.5"></div>
     <div class="field-row">
+      <div class="field" style="position:relative"><label>שם פרטי</label>
+        <input type="text" id="wGiven" value="${esc(w.docGiven||'')}" placeholder="שם פרטי" autofocus
+          oninput="searchContacts(this.value)" autocomplete="off">
+        <div id="contactsSuggestions" style="display:none;position:absolute;z-index:300;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);left:0;right:0;top:100%;max-height:240px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.5)"></div>
+      </div>
+      <div class="field"><label>שם משפחה</label><input type="text" id="wSurname" value="${esc(w.docSurname||'')}" placeholder="שם משפחה"></div>
+    </div>
+    <div class="field"><label>מספר ת.ז./דרכון</label><input type="text" id="wDocId" value="${esc(workerDocId(w))}" placeholder="ת.ז. / passport number">
+      ${w.idChecksumOk===false?'<div style="font-size:11px;color:var(--amber);margin-top:2px"><i class="ti ti-alert-triangle"></i> Номер не прошёл проверку контрольной цифры — перепроверьте вручную</div>':''}
+    </div>
+    <div class="field"><label>טלפון</label><input type="text" id="wPhone" value="${w.phone||''}" placeholder="+972..."></div>
+    <div class="field-row">
+      <div class="field"><label>Hourly Rate (₪/h)</label><input type="number" id="wRate" value="${w.hourlyRate||''}" placeholder="e.g. 35" min="0" step="0.5"></div>
       <div class="field"><label>Status</label>
         <select id="wStatus">
           <option value="active" ${(w.status||'active')==='active'?'selected':''}>Active</option>
@@ -1276,25 +1335,30 @@ function showWorkerModal(w){
           <option value="fired" ${w.status==='fired'?'selected':''}>Fired</option>
         </select>
       </div>
-      <div class="field"><label>Start date</label><input type="date" id="wStartDate" value="${w.startDate||''}"></div>
     </div>
-    <div class="field"><label>Address</label><input type="text" id="wAddress" value="${esc(workerAddress(w))}" placeholder="Street and house number"></div>
-    <div class="field"><label>City</label><input type="text" id="wCity" value="${esc(w.city||'')}" placeholder="City"></div>
+    <div class="field"><label>תאריך תחילת עבודה</label><input type="date" id="wStartDate" value="${w.startDate||w.workStartDate||''}"></div>
+    <div class="field"><label>מין</label>
+      <select id="wSex">
+        <option value="" ${!w.docSex?'selected':''}>— לא נבחר —</option>
+        <option value="M" ${w.docSex==='M'?'selected':''}>זכר</option>
+        <option value="F" ${w.docSex==='F'?'selected':''}>נקבה</option>
+      </select>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>רחוב</label><input type="text" id="wAddress" value="${esc(workerAddress(w))}" placeholder="רחוב"></div>
+      <div class="field"><label>מספר בית</label><input type="text" id="wHouseNumber" value="${esc(w.houseNumber||'')}" placeholder="מספר בית"></div>
+    </div>
+    <div class="field"><label>עיר</label><input type="text" id="wCity" value="${esc(w.city||'')}" placeholder="עיר"></div>
+    <div class="field"><label>תאריך לידה</label><input type="text" id="wDob" value="${esc(w.docDob||'')}" placeholder="DD/MM/YYYY"></div>
+    <div class="field"><label>תוקף ת.ז./דרכון</label><input type="text" id="wDocExpiry" value="${esc(w.docExpiry||'')}" placeholder="DD/MM/YYYY"></div>
     <div class="field"><label>Notes</label><textarea id="wNotes" placeholder="Notes about this worker" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;padding:8px 10px;outline:none;min-height:56px;resize:vertical">${w.notes||''}</textarea></div>
     <div class="field" style="margin-bottom:6px">
-      <button class="btn sm" type="button" onclick="toggleExpiryWrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
-        <span><i class="ti ti-alert-triangle"></i> Contract Expiry Warning</span>
-        <i class="ti ti-chevron-down" id="wExpiryChevron"></i>
+      <button class="btn sm" type="button" onclick="toggleClientsWrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
+        <span><i class="ti ti-users"></i> לקוחות <span id="wClientCount" style="color:var(--text3);font-weight:400;font-size:12px"></span></span>
+        <i class="ti ti-chevron-down" id="wClientsChevron"></i>
       </button>
     </div>
-    <div id="wExpiryWrap" style="display:none">
-      <input type="checkbox" id="wExpiryEnabled" ${w.expiryEnabled?'checked':''} style="display:none">
-      <div class="field-row" id="wExpiryFields">
-        <div class="field"><label>Months until deadline</label><input type="number" id="wExpiryMonths" min="1" step="1" value="${w.expiryMonths||9}"></div>
-        <div class="field"><label>Warn this many months ahead</label><input type="number" id="wExpiryWarnMonths" min="0" step="1" value="${w.expiryWarnMonths??1}"></div>
-      </div>
-    </div>
-    <div class="field"><label>Assign to Clients <span id="wClientCount" style="color:var(--text3);font-weight:400;font-size:12px"></span></label>
+    <div id="wClientsWrap" style="display:none">
       ${clients.length>5?`<input type="text" id="wClientSearch" placeholder="Search clients / objects..." oninput="filterClientPick(this.value)" autocomplete="off" style="width:100%;margin-bottom:6px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">`:''}
       <div id="wClientPick" style="max-height:190px;overflow-y:auto;border:1px solid var(--border2);border-radius:var(--radius-sm);padding:4px;display:flex;flex-direction:column;gap:2px">
         ${clients.length?clients.map(c=>`<label class="wc-row" data-name="${(c.name+' '+(c.object||'')).toLowerCase().replace(/"/g,'')}" style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:var(--radius-sm);cursor:pointer">
@@ -1339,13 +1403,13 @@ function showWorkerModal(w){
     </div>` : ''}
     <div class="field" style="margin-bottom:6px">
       <button class="btn sm" type="button" onclick="toggleForm101Wrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
-        <span><i class="ti ti-id-badge-2"></i> Данные для Формы 101</span>
+        <span><i class="ti ti-id-badge-2"></i> נתונים נוספים לטופס 101</span>
         <i class="ti ti-chevron-down" id="wForm101Chevron"></i>
       </button>
     </div>
     <div id="wForm101Wrap" style="display:none">
       <div class="field-row">
-        <div class="field"><label>Income type (Form 101, ד)</label>
+        <div class="field"><label>סוג הכנסה (טופס 101)</label>
           <select id="wIncomeType">
             <option value="">— not set —</option>
             <option value="monthly" ${w.incomeType==='monthly'?'selected':''}>Monthly salary</option>
@@ -1356,7 +1420,7 @@ function showWorkerModal(w){
             <option value="scholarship" ${w.incomeType==='scholarship'?'selected':''}>Scholarship</option>
           </select>
         </div>
-        <div class="field"><label>Other income (Form 101, ה)</label>
+        <div class="field"><label>הכנסה נוספת (טופס 101)</label>
           <select id="wOtherIncomeType">
             <option value="">— not set —</option>
             <option value="none" ${(w.otherIncomeType||'none')==='none'?'selected':''}>No other income</option>
@@ -1369,47 +1433,66 @@ function showWorkerModal(w){
           </select>
         </div>
       </div>
-      ${editingWorkerIdx!==null ? `
       <div class="field-row">
-        <div class="field"><label>Фамилия (как в скане)</label><input type="text" id="wDocSurname" value="${esc(w.docSurname||'')}"></div>
-        <div class="field"><label>Имя (как в скане)</label><input type="text" id="wDocGiven" value="${esc(w.docGiven||'')}"></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>Семейное положение</label>
+        <div class="field"><label>מצב משפחתי</label>
           <select id="wMaritalStatus">
             <option value="" ${!w.maritalStatus?'selected':''}>— не заполнять —</option>
-            <option value="marital_single" ${w.maritalStatus==='marital_single'?'selected':''}>רווק/ה (Холост/а)</option>
-            <option value="marital_married" ${w.maritalStatus==='marital_married'?'selected':''}>נשוי/אה (Женат/замужем)</option>
-            <option value="marital_divorced" ${w.maritalStatus==='marital_divorced'?'selected':''}>גרוש/ה (Разведён/а)</option>
-            <option value="marital_widowed" ${w.maritalStatus==='marital_widowed'?'selected':''}>אלמן/ה (Вдовец/вдова)</option>
+            <option value="marital_single" ${w.maritalStatus==='marital_single'?'selected':''}>רווק/ה</option>
+            <option value="marital_married" ${w.maritalStatus==='marital_married'?'selected':''}>נשוי/אה</option>
+            <option value="marital_divorced" ${w.maritalStatus==='marital_divorced'?'selected':''}>גרוש/ה</option>
+            <option value="marital_widowed" ${w.maritalStatus==='marital_widowed'?'selected':''}>אלמן/ה</option>
           </select>
         </div>
-        <div class="field"><label>Больничная касса</label>
+        <div class="field"><label>קופת חולים</label>
           <select id="wHealthFund">
             <option value="" ${!w.healthFund?'selected':''}>— не заполнять —</option>
-            <option value="Clalit" ${w.healthFund==='Clalit'?'selected':''}>כללית (Клалит)</option>
-            <option value="Maccabi" ${w.healthFund==='Maccabi'?'selected':''}>מכבי (Маккаби)</option>
-            <option value="Meuhedet" ${w.healthFund==='Meuhedet'?'selected':''}>מאוחדת (Меухедет)</option>
-            <option value="Leumit" ${w.healthFund==='Leumit'?'selected':''}>לאומית (Леумит)</option>
+            <option value="Clalit" ${w.healthFund==='Clalit'?'selected':''}>כללית</option>
+            <option value="Maccabi" ${w.healthFund==='Maccabi'?'selected':''}>מכבי</option>
+            <option value="Meuhedet" ${w.healthFund==='Meuhedet'?'selected':''}>מאוחדת</option>
+            <option value="Leumit" ${w.healthFund==='Leumit'?'selected':''}>לאומית</option>
           </select>
         </div>
       </div>
-      <div class="field"><label>Дата начала работы (Форма 101)</label><input type="date" id="wWorkStartDate" value="${w.workStartDate||''}"></div>
+      <div class="field" style="margin-top:8px">
+        <label>ילדים (ספח)</label>
+        <div id="wChildrenRows"></div>
+      </div>
       <div style="font-size:11px;color:var(--text3);margin-top:2px">
-        ${w.docUrl?'Изменение этих полей (или адреса/города/типа дохода выше) автоматически обновит уже загруженный документ в Google Drive.':'Заполняется автоматически при первом скане/генерации Формы 101 — до этого можно оставить пустым.'}
-      </div>` : ''}
+        ${w.docUrl?'Изменение этих полей (или адреса/города/типа дохода выше) автоматически обновит уже загруженный документ в Google Drive.':'PDF Формы 101 соберётся автоматически при сохранении.'}
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:6px">
+      <button class="btn sm" type="button" onclick="toggleExpiryWrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
+        <span><i class="ti ti-alert-triangle"></i> Contract Expiry Warning</span>
+        <i class="ti ti-chevron-down" id="wExpiryChevron"></i>
+      </button>
+    </div>
+    <div id="wExpiryWrap" style="display:none">
+      <input type="checkbox" id="wExpiryEnabled" ${w.expiryEnabled?'checked':''} style="display:none">
+      <div class="field-row" id="wExpiryFields">
+        <div class="field"><label>Months until deadline</label><input type="number" id="wExpiryMonths" min="1" step="1" value="${w.expiryMonths||9}"></div>
+        <div class="field"><label>Warn this many months ahead</label><input type="number" id="wExpiryWarnMonths" min="0" step="1" value="${w.expiryWarnMonths??1}"></div>
+      </div>
     </div>
     <div class="field"><label>Color</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap" id="wColorPick">
         ${WORKER_COLORS.map((c,i)=>`<div onclick="pickWColor(${i})" data-ci="${i}" style="width:24px;height:24px;border-radius:50%;background:${c.text};cursor:pointer;border:2px solid ${i===selColorIdx?'white':'transparent'};transition:all 0.15s;${i===selColorIdx?'transform:scale(1.2)':''}"></div>`).join('')}
       </div>
     </div>
+    <div class="field" style="margin-top:10px;margin-bottom:10px">
+      <label style="display:block;font-size:12px;color:var(--text2);margin-bottom:4px">חתימה</label>
+      <canvas id="wSigCanvas" width="500" height="120"
+        style="width:100%;max-width:340px;height:90px;display:block;background:#fff;border:1px solid var(--border2);border-radius:var(--radius-sm);touch-action:none"></canvas>
+      <button class="btn sm" style="margin-top:6px" type="button" onclick="clearSignaturePad('wSigCanvas')"><i class="ti ti-eraser"></i> נקה חתימה</button>
+    </div>
     <div class="modal-actions">
       ${editingWorkerIdx!==null?`<button class="btn" onclick="regenerateWorkerToken(${editingWorkerIdx})" style="background:var(--amber-bg);border-color:rgba(245,166,35,0.3);color:var(--amber)"><i class="ti ti-refresh"></i> New Token</button>`:''}
-      <button class="btn accent" onclick="saveWorker()">${editingWorkerIdx!==null?'Save Changes':'Add Worker'}</button>
+      <button class="btn accent" onclick="saveWorker()">${editingWorkerIdx!==null?'שמור שינויים':'צור עובד'}</button>
     </div>`;
   document.getElementById('workerOverlay').classList.add('open');
   updateClientCount();
+  renderChildrenRows();
+  initSignaturePad('wSigCanvas');
 }
 function pickWColor(i){ selColorIdx=i; document.querySelectorAll('#wColorPick [data-ci]').forEach(el=>{ const idx=parseInt(el.dataset.ci); el.style.borderColor=idx===i?'white':'transparent'; el.style.transform=idx===i?'scale(1.2)':'scale(1)'; }); }
 function toggleDayTime(i){ const off=document.getElementById(`wt${i}`).value==='off'; ['ws','we'].forEach(p=>{ const el=document.getElementById(p+i); el.disabled=off; el.style.opacity=off?'0.3':'1'; }); }
@@ -1429,32 +1512,38 @@ function updateClientCount(){
   el.textContent=n?('· '+n+' selected'):'';
 }
 async function saveWorker(){
-  const name=document.getElementById('wName').value.trim();
-  if(!name){ document.getElementById('wName').focus(); return; }
+  const docGiven=document.getElementById('wGiven').value.trim();
+  const docSurname=document.getElementById('wSurname').value.trim();
+  const name=(docGiven+' '+docSurname).trim();
+  if(!name){ document.getElementById('wGiven').focus(); return; }
   const phone=document.getElementById('wPhone').value.trim();
   const hourlyRate=parseFloat(document.getElementById('wRate')?.value)||0;
   const status=document.getElementById('wStatus')?.value||'active';
+  // One UI field ("תאריך תחילת עבודה") feeds both: startDate (schedule/Contract
+  // Expiry Warning calc) and workStartDate (Form 101's own start-date field).
   const startDate=document.getElementById('wStartDate')?.value||'';
+  const workStartDate=startDate;
+  const docSex=document.getElementById('wSex')?.value||'';
   const expiryEnabled=document.getElementById('wExpiryEnabled')?.checked||false;
   const expiryMonths=parseInt(document.getElementById('wExpiryMonths')?.value)||9;
   const expiryWarnMonths=parseInt(document.getElementById('wExpiryWarnMonths')?.value)||0;
   const docId=document.getElementById('wDocId')?.value.trim()||'';
   const address=document.getElementById('wAddress')?.value.trim()||'';
+  const houseNumber=document.getElementById('wHouseNumber')?.value.trim()||'';
   const city=document.getElementById('wCity')?.value.trim()||'';
+  const docDob=document.getElementById('wDob')?.value.trim()||'';
+  const docExpiry=document.getElementById('wDocExpiry')?.value.trim()||'';
   const notes=document.getElementById('wNotes')?.value.trim()||'';
   const incomeType=document.getElementById('wIncomeType')?.value||'';
   const otherIncomeType=document.getElementById('wOtherIncomeType')?.value||'';
-  // Form-101 fields that used to live only in the one-shot scan overlay
-  // (#aiIdMarital/#aiIdFund/#aiIdWork), read once at generation time and
-  // never seen again. Made permanent, editable worker fields so they (a)
-  // survive between sessions and (b) can trigger a document regenerate below
-  // when changed without re-scanning. Only present in the edit modal (see
-  // showWorkerModal), so absent on a brand-new worker.
-  const docSurname=document.getElementById('wDocSurname')?.value.trim()||'';
-  const docGiven=document.getElementById('wDocGiven')?.value.trim()||'';
   const maritalStatus=document.getElementById('wMaritalStatus')?.value||'';
   const healthFund=document.getElementById('wHealthFund')?.value||'';
-  const workStartDate=document.getElementById('wWorkStartDate')?.value||'';
+  // Manual fallback for when the ספח doesn't scan (or scans wrong) — whatever
+  // is in these rows at save time is what's persisted and what goes into the
+  // PDF. Rows with nothing typed in them are dropped.
+  const docChildren=__wChildren
+    .map(c=>({name:(c.name||'').trim(),idNo:(c.idNo||'').trim(),dob:(c.dob||'').trim()}))
+    .filter(c=>c.name||c.idNo||c.dob);
   const clientIds=[...document.querySelectorAll('#wClientPick input:checked')].map(el=>el.value);
   // Only a grid the user actually opened decides the schedule. Left closed, an
   // existing worker keeps the shifts they already had and a new one is created
@@ -1464,21 +1553,29 @@ async function saveWorker(){
     : (editingWorkerIdx!==null
         ? workers[editingWorkerIdx].schedule
         : DAYS.map(()=>({type:'off',start:null,end:null})));
+  const commonFields={name,colorIdx:selColorIdx,phone,hourlyRate,status,startDate,workStartDate,docSex,
+    expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,houseNumber,city,docDob,docExpiry,notes,
+    incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,docChildren,clientIds,schedule};
   if(editingWorkerIdx!==null){
     const prevW=workers[editingWorkerIdx];
+    const isId=prevW.docType!=='passport';
     // Fields that end up printed on this worker's Form-101 PDF — if any of
-    // them actually changed AND a document is already uploaded for this
-    // worker, the Drive copy is now stale relative to what's on screen.
-    // Trigger a background regenerate so the manager never has to remember
-    // to re-scan/re-upload by hand after a routine data correction.
-    const FORM101_WATCHED_FIELDS=['docId','address','city','incomeType','otherIncomeType','docSurname','docGiven','maritalStatus','healthFund','workStartDate','phone'];
-    const before=FORM101_WATCHED_FIELDS.map(f=>prevW[f]);
-    workers[editingWorkerIdx]={...prevW,name,colorIdx:selColorIdx,phone,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,workStartDate,clientIds,schedule};
-    const updated=workers[editingWorkerIdx];
-    const after=FORM101_WATCHED_FIELDS.map(f=>updated[f]);
+    // them actually changed, the Drive copy (if one exists) is now stale
+    // relative to what's on screen. Trigger a background regenerate so the
+    // manager never has to remember to re-upload by hand after a routine
+    // data correction. JSON.stringify handles docChildren (an array) too.
+    const FORM101_WATCHED_FIELDS=['docId','address','houseNumber','city','incomeType','otherIncomeType',
+      'docSurname','docGiven','maritalStatus','healthFund','workStartDate','phone','docSex','docDob','docChildren'];
+    const updated={...prevW,...commonFields};
+    const changed=FORM101_WATCHED_FIELDS.some(f=>JSON.stringify(prevW[f])!==JSON.stringify(updated[f]));
+    workers[editingWorkerIdx]=updated;
     showToast(name+' updated!');
     closeModal('workerOverlay'); render(); autoSave();
-    if(updated.docUrl && updated.assetsFileId && before.some((v,i)=>v!==after[i])){
+    // regenerateWorkerDoc() (not autoUploadWithRetry) — it sources the scan
+    // image/signature from the Drive sidecar rather than the live
+    // window.__aiScanImage global, which could belong to an unrelated scan
+    // session the manager has open elsewhere right now.
+    if(changed){
       regenerateWorkerDoc(updated.id).then(ok=>{
         showToast(ok?('Документ '+name+' обновлён'):('Не удалось обновить документ '+name));
       });
@@ -1495,31 +1592,29 @@ async function saveWorker(){
     if(dup && !confirm('Работник с таким номером документа уже существует: '+(dup.name||'?')+'.\nВсё равно создать нового?')) return;
   }
   const token=genToken();
+  // Capture the signature PNG before the modal's DOM is replaced by the
+  // uploading spinner below (showWorkerUploadingOverlay wipes #wSigCanvas,
+  // unlike closeModal — see getSignaturePng()'s fallback).
+  window.__wCapturedSigPng=getSignaturePng('wSigCanvas');
   // createdAt powers the Form 101 declaration date (aiFillForm101): the
   // signature date on a scanned worker's PDF should match when they were
   // actually onboarded, not whatever day the PDF happens to be (re)generated.
-  const newWorker={id:uid(),name,colorIdx:selColorIdx,phone,hourlyRate,status,startDate,expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,city,notes,incomeType,otherIncomeType,clientIds,schedule,token,createdAt:new Date().toISOString()};
+  const newWorker={id:uid(),...commonFields,token,createdAt:new Date().toISOString()};
   workers.push(newWorker);
-  // Persisted and visible right away regardless of the scan-upload below —
-  // only the modal itself stays open a little longer in that case.
+  // Persisted and visible right away regardless of the PDF upload below —
+  // only the modal itself stays open a little longer for that.
   render(); autoSave();
-  showToast(name+' added! Copy their link from Edit.');
-  // If this worker was created from an AI document scan, generate the
-  // combined Form 101 + scan PDF and upload it to Drive — attended this
-  // time: the modal stays open (with a blocking spinner) until the upload
-  // genuinely finishes. A pure fire-and-forget background call used to let
-  // the manager close/background the tab right after the worker appeared
-  // "done," which mobile Chrome can then silently suspend mid-flight (no
-  // error, nothing to catch) before the CDN loads + PDF build + upload
-  // actually complete — the worker was created but no document ever landed,
-  // with nothing to show for it.
-  if(window.__aiPendingWorkerUpload!==undefined){
-    const isId=window.__aiPendingWorkerUpload;
-    window.__aiPendingWorkerUpload=undefined;
-    if(typeof autoUploadWithRetry==='function'){
-      showWorkerUploadingOverlay();
-      await autoUploadWithRetry(isId,newWorker.id);
-    }
+  showToast(name+' added!');
+  // Every new worker (not just ones created from a scan) now gets a
+  // background-generated Form 101 PDF — the unified modal collects
+  // everything Form 101 needs regardless of entry point. Attended: the modal
+  // stays open (with a blocking spinner) until the upload genuinely
+  // finishes, so a manager can't background the tab mid-upload and lose it
+  // (mobile Chrome can silently suspend a fire-and-forget background call).
+  const isId=newWorker.docType!=='passport';
+  if(typeof autoUploadWithRetry==='function'){
+    showWorkerUploadingOverlay();
+    await autoUploadWithRetry(isId,newWorker.id);
   }
   closeModal('workerOverlay');
 }
@@ -3573,7 +3668,7 @@ async function onScanFilesSelected(fileList){
       return;
     }
     window.__aiParsed=foundParsed;
-    renderAiResult(foundParsed);
+    openWorkerModalFromScan(foundParsed);
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Ошибка: '
@@ -3778,8 +3873,8 @@ function isValidIsraeliId(id){
 // targeted re-read of the same box (the check digit is free, so it's worth
 // spending one more AI call trying to fix it automatically) — if that still
 // doesn't check out, stop trying to fix it automatically and instead record
-// `idChecksumOk:false` so renderAiResult can flag the field for the human to
-// look at, rather than silently keeping a number that's provably wrong.
+// `idChecksumOk:false` so the worker modal can flag the field for the human
+// to look at, rather than silently keeping a number that's provably wrong.
 async function verifyIdChecksum(parsed,b64,mediaType){
   if(!parsed||parsed.type!=='israeli_id'||!parsed.idNo) return parsed;
   if(isValidIsraeliId(parsed.idNo)){ parsed.idChecksumOk=true; return parsed; }
@@ -4071,11 +4166,53 @@ async function confirmScanQuad(){
     +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br><span>Выравниваю скан…</span></div>';
   try{ window.__aiScanImage=await warpQuadImage(b64,mediaType,r); }
   catch(e){ console.error(e); window.__aiScanImage={b64,mediaType}; }
-  renderAiResult(window.__aiParsed);
+  openWorkerModalFromScan(window.__aiParsed);
 }
 function skipScanQuad(){
   window.__aiScanImage=window.__scanEdit;
-  renderAiResult(window.__aiParsed);
+  openWorkerModalFromScan(window.__aiParsed);
+}
+
+// Shared handoff from the scan pipeline into the unified worker modal, once
+// OCR + corner-confirmation are done — replaces the old separate
+// renderAiResult() result screen entirely. A rescan of an existing worker
+// (window.__aiRescanWorkerId, set by rescanWorkerDoc()) reopens THAT worker
+// in edit mode with fresh OCR values layered over their existing record; a
+// fresh scan opens a blank worker in add mode. window.__aiScanImage /
+// window.__aiPacketOtherPages are left untouched here (already set by the
+// scan flow itself) — showWorkerModal()/saveWorker() read them directly.
+function openWorkerModalFromScan(p){
+  closeModal('aiScanOverlay');
+  if(!p){ showToast('Не удалось разобрать ответ ИИ'); return; }
+  const isId=p.type==='israeli_id';
+  const _nrm=s=>String(s||'').replace(/\s+/g,' ').trim();
+  const ocrFields={
+    docType: isId?'israeli_id':'passport',
+    docGiven: _nrm(p.given), docSurname: _nrm(p.surname),
+    docId: _nrm(isId?p.idNo:p.passportNo),
+    docDob: _nrm(p.dob), docSex: _nrm(p.sex), docExpiry: _nrm(p.expiry),
+    // Display-only — not one of saveWorker()'s commonFields, so it never
+    // actually gets persisted onto the worker record; just flags the docId
+    // field in the modal below when the ID checksum check failed.
+    idChecksumOk: p.idChecksumOk,
+  };
+  if(isId){
+    ocrFields.address=_nrm(p.address);
+    ocrFields.city=_nrm(p.city);
+    if(Array.isArray(p.children)) ocrFields.docChildren=p.children.map(c=>({name:_nrm(c.name),idNo:_nrm(c.idNo),dob:_nrm(c.dob)}));
+  }
+  const rescanId=window.__aiRescanWorkerId;
+  window.__aiRescanWorkerId=null;
+  if(rescanId){
+    const idx=workers.findIndex(w=>w.id===rescanId);
+    if(idx>=0){
+      editingWorkerIdx=idx;
+      showWorkerModal({...workers[idx],...ocrFields});
+      return;
+    }
+  }
+  editingWorkerIdx=null;
+  showWorkerModal({...blankWorkerDefaults(),...ocrFields});
 }
 
 // Flattens the quadrilateral the user positioned into a plain rectangular
@@ -4166,142 +4303,12 @@ function warpQuadToRect(img,quadSrcPx){
   return outCv;
 }
 
-function renderAiResult(p){
-  if(!p){ document.getElementById('aiScanStage').innerHTML='<div style="color:#ff6b78;padding:14px">Не удалось разобрать ответ ИИ</div>'; return; }
-  const isId=p.type==='israeli_id';
-  const _nrm=s=>String(s||'').replace(/\s+/g,' ').trim();
-  window.__aiScanChildren=(isId&&Array.isArray(p.children))?p.children.map(c=>(
-    {name:_nrm(c.name),idNo:_nrm(c.idNo),dob:_nrm(c.dob)}
-  )):[];
-  const f=(id,label,val)=>`<div style="margin-bottom:8px">
-    <label style="display:block;font-size:12px;color:var(--text2);margin-bottom:3px">${label}</label>
-    <input id="${id}" value="${(val||'').replace(/"/g,'&quot;')}"
-      style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);
-      color:var(--text);padding:7px 10px;font-size:13px;outline:none">
-  </div>`;
-  let h='<div style="font-size:12px;color:var(--green);margin-bottom:10px">'
-    +'<i class="ti ti-check"></i> ИИ распознал: '+(isId?'Теудат Зеут 🇮🇱':'Загранпаспорт')+'</div>'
-    +'<div style="font-size:11px;color:var(--text2);margin-bottom:10px">Проверь и при необходимости поправь</div>';
-  if(isId){
-    h+=f('aiSurname','שם משפחה (Фамилия)',p.surname)
-      +f('aiGiven','שם פרטי (Имя)',p.given)
-      +f('aiIdNo','מספר זהות (9 цифр)',p.idNo)
-      +(p.idChecksumOk===false?'<div style="font-size:11px;color:var(--amber);margin:-4px 0 8px"><i class="ti ti-alert-triangle"></i> Номер не прошёл проверку контрольной цифры — перепроверьте вручную</div>':'')
-      +f('aiDob','תאריך לידה (ДД/ММ/ГГГГ)',p.dob)
-      +f('aiSex','מין (M/F)',p.sex)
-      +f('aiAddress','כתובת (Адрес)',p.address)
-      +f('aiCity','עיר (Город)',p.city)
-      +f('aiExpiry','תוקף (ДД/ММ/ГГГГ)',p.expiry);
-    if(window.__aiScanChildren.length)
-      h+='<div style="font-size:12px;color:var(--text2);margin-bottom:8px"><i class="ti ti-users"></i> Дети со ספח: '
-        +window.__aiScanChildren.map(c=>esc(c.name||'?')+(c.dob?' ('+esc(c.dob)+')':'')).join(', ')
-        +' — впишутся в форму 101 автоматически</div>';
-  } else {
-    h+=f('aiSurname','Фамилия (Surname)',p.surname)
-      +f('aiGiven','Имя (Given names)',p.given)
-      +f('aiPassportNo','Номер паспорта',p.passportNo)
-      +f('aiNat','Гражданство',p.nationality)
-      +f('aiDob','Дата рождения (ДД/ММ/ГГГГ)',p.dob)
-      +f('aiSex','Пол (M/F)',p.sex)
-      +f('aiExpiry','Срок действия (ДД/ММ/ГГГГ)',p.expiry);
-  }
-  // Not read from the document (no ID/passport prints a phone number) — a
-  // plain manual field, same as the marital/health-fund/work-start pickers
-  // below. Printed on Form 101's own "מספר טלפון נייד" box (worker_phone,
-  // functions/main.py) and copied into the worker's general wPhone field by
-  // aiToWorker() below, so it only needs to be typed once here.
-  h+=f('aiPhone','מספר טלפון נייד (Телефон)','');
-  const _v=id=>(document.getElementById(id)?.value||'').replace(/\s+/g,' ').trim();
-  const SIG_PAD_HTML=`<div style="margin-top:10px;margin-bottom:10px">
-    <label style="display:block;font-size:12px;color:var(--text2);margin-bottom:4px">Подпись работника (необязательно, вставится в Форму 101)</label>
-    <canvas id="aiSigCanvas" width="500" height="120"
-      style="width:100%;max-width:340px;height:90px;display:block;background:#fff;border:1px solid var(--border2);border-radius:var(--radius-sm);touch-action:none"></canvas>
-    <button class="btn sm" style="margin-top:6px" onclick="clearSignaturePad()"><i class="ti ti-eraser"></i> Очистить подпись</button>
-  </div>`;
-  h+=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-    <button class="btn sm" onclick="openAiScan()"><i class="ti ti-refresh"></i> Заново</button>
-    <button class="btn sm" onclick="aiToWorker(${JSON.stringify(isId)})">
-      <i class="ti ti-user-plus"></i> Создать работника</button>`;
-  if(!isId) h+=`
-    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-      <div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="ti ti-file-text"></i> Форма 101</div>
-      ${firmProfileWarnHtml()}
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-        <label style="font-size:12px;color:var(--text2)">Дата начала работы:</label>
-        <input type="date" id="aiPpWork" value="${new Date().toISOString().slice(0,10)}"
-          style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:5px 8px;font-size:13px;outline:none">
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-        <label style="font-size:12px;color:var(--text2)">Больничная касса:</label>
-        <select id="aiPpFund" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:5px 8px;font-size:13px;outline:none">
-          <option value="">— не заполнять —</option>
-          <option value="Clalit">כללית (Клалит)</option>
-          <option value="Maccabi">מכבי (Маккаби)</option>
-          <option value="Meuhedet">מאוחדת (Меухедет)</option>
-          <option value="Leumit">לאומית (Леумит)</option>
-        </select>
-      </div>
-      ${SIG_PAD_HTML}
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn sm" onclick="aiFillForm101(false,'download')">
-          <i class="ti ti-download" style="color:#4f8ef7"></i> Форма 101</button>
-        <button class="btn sm" onclick="aiFillForm101(false,'upload',window.__aiRescanWorkerId)">
-          <i class="ti ti-cloud-upload" style="color:#6dd6a0"></i> Загрузить</button>
-      </div>
-      <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:6px">
-        «Загрузить» соберёт Форму 101 + скан документа в один PDF и сохранит в Google Drive.
-      </div>
-    </div>`;
-  else h+=`
-    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-      <div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="ti ti-file-text"></i> Форма 101</div>
-      ${firmProfileWarnHtml()}
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-        <label style="font-size:12px;color:var(--text2)">Дата начала работы:</label>
-        <input type="date" id="aiIdWork" value="${new Date().toISOString().slice(0,10)}"
-          style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:5px 8px;font-size:13px;outline:none">
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-        <label style="font-size:12px;color:var(--text2)">Больничная касса:</label>
-        <select id="aiIdFund" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:5px 8px;font-size:13px;outline:none">
-          <option value="">— не заполнять —</option>
-          <option value="Clalit">כללית (Клалит)</option>
-          <option value="Maccabi">מכבי (Маккаби)</option>
-          <option value="Meuhedet">מאוחדת (Меухедет)</option>
-          <option value="Leumit">לאומית (Леумит)</option>
-        </select>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-        <label style="font-size:12px;color:var(--text2)">Семейное положение:</label>
-        <select id="aiIdMarital" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:5px 8px;font-size:13px;outline:none">
-          <option value="marital_single">רווק/ה (Холост/а)</option>
-          <option value="marital_married">נשוי/אה (Женат/замужем)</option>
-          <option value="marital_divorced">גרוש/ה (Разведён/а)</option>
-          <option value="marital_widowed">אלמן/ה (Вдовец/вдова)</option>
-        </select>
-      </div>
-      ${SIG_PAD_HTML}
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn sm" onclick="aiFillForm101(true,'download')">
-          <i class="ti ti-download" style="color:#4f8ef7"></i> Форма 101</button>
-        <button class="btn sm" onclick="aiFillForm101(true,'upload',window.__aiRescanWorkerId)">
-          <i class="ti ti-cloud-upload" style="color:#6dd6a0"></i> Загрузить</button>
-      </div>
-      <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:6px">
-        Подставит ת.ז., имя, дату рождения, адрес, гражданство (כן). Касса и семейное — по выбору.
-        «Загрузить» соберёт Форму 101 + скан документа в один PDF и сохранит в Google Drive.
-      </div>
-    </div>`;
-  h+='</div>';
-  document.getElementById('aiScanStage').innerHTML=h;
-  initSignaturePad();
-}
-
 // ===== Signature pad (canvas) for Form 101 =====
-// Draw-to-sign widget; mouse + touch. Cleared/re-initialized each time
-// renderAiResult rebuilds the panel, since the canvas element is replaced.
-function initSignaturePad(){
-  const cv=document.getElementById('aiSigCanvas');
+// Draw-to-sign widget; mouse + touch. Cleared/re-initialized each time the
+// host panel rebuilds, since the canvas element is replaced. Takes an
+// explicit canvas id — the unified worker modal uses 'wSigCanvas'.
+function initSignaturePad(canvasId){
+  const cv=document.getElementById(canvasId||'wSigCanvas');
   if(!cv) return;
   const ctx=cv.getContext('2d');
   ctx.strokeStyle='#000'; ctx.lineWidth=2.5; ctx.lineCap='round'; ctx.lineJoin='round';
@@ -4324,15 +4331,22 @@ function initSignaturePad(){
   cv.addEventListener('mousedown',start); cv.addEventListener('mousemove',move); window.addEventListener('mouseup',end);
   cv.addEventListener('touchstart',start,{passive:false}); cv.addEventListener('touchmove',move,{passive:false}); cv.addEventListener('touchend',end);
 }
-function clearSignaturePad(){
-  const cv=document.getElementById('aiSigCanvas');
+function clearSignaturePad(canvasId){
+  const cv=document.getElementById(canvasId||'wSigCanvas');
   if(!cv) return;
   cv.getContext('2d').clearRect(0,0,cv.width,cv.height);
   cv._sigDirty=false;
 }
-function getSignaturePng(){
-  const cv=document.getElementById('aiSigCanvas');
-  if(!cv||!cv._sigDirty) return null;
+function getSignaturePng(canvasId){
+  const cv=document.getElementById(canvasId||'wSigCanvas');
+  // showWorkerUploadingOverlay() replaces #workerModal's innerHTML (unlike
+  // closeModal(), which only hides via a CSS class and leaves the canvas
+  // alive) — so for a brand-new worker the canvas is already gone by the
+  // time the background upload gets around to reading it. saveWorker()
+  // captures the PNG into this stash right before showing that overlay;
+  // fall back to it when the live canvas no longer exists.
+  if(!cv) return window.__wCapturedSigPng ?? null;
+  if(!cv._sigDirty) return null;
   return cv.toDataURL('image/png');
 }
 
@@ -4345,57 +4359,32 @@ function rescanWorkerDoc(workerId){
   openAiScan();
 }
 
-function aiToWorker(isId){
-  const _v=id=>(document.getElementById(id)?.value||'').replace(/\s+/g,' ').trim();
-  const name=(_v('aiGiven')+' '+_v('aiSurname')).trim();
-  const no=isId?_v('aiIdNo'):_v('aiPassportNo');
-  const dob=_v('aiDob'), exp=_v('aiExpiry');
-  const nat=isId?'ISR':_v('aiNat');
-  // closeModal only hides the scan overlay (doesn't clear its DOM), so the
-  // aiSurname/aiGiven/etc inputs — and window.__aiScanImage — are still
-  // readable after this; saveWorker() uses that once the new worker is
-  // actually created, to generate+upload the combined PDF and link it back.
-  window.__aiPendingWorkerUpload=isId;
-  window.__aiRescanWorkerId=null;
-  closeModal('aiScanOverlay');
-  openAddWorker();
-  setTimeout(()=>{
-    const set=(id,v)=>{ const el=document.getElementById(id); if(el&&v) el.value=v; };
-    set('wName',name);
-    // The scan reads address and city as separate fields, so they go straight
-    // into their own boxes — the document number no longer rides along inside
-    // the address string the way it did when the two shared one field.
-    set('wDocId',no);
-    set('wAddress',_v('aiAddress'));
-    set('wCity',_v('aiCity'));
-    set('wPhone',_v('aiPhone'));
-    set('wNotes',(isId?'Israeli citizen':'Nationality: '+nat)+' · DOB: '+dob+(exp?' · Expiry: '+exp:''));
-  },60);
-}
-
-// presetAssets ({scanB64,scanMediaType,sigPng}) is set only by
-// regenerateWorkerDoc() below, for rebuilding an already-uploaded document
-// after a later data edit — there's no live scan overlay open in that case,
-// so every value that would normally come from the #ai* scan-result inputs
-// is read from the worker's own persisted doc*/maritalStatus/healthFund/
-// workStartDate fields instead (populated by the write-back near the bottom
-// of this function, the first time each worker's document is generated).
+// presetAssets ({scanB64,scanMediaType,sigPng,extraPages}) is set only by
+// regenerateWorkerDoc() below, to source the scan image/signature/extra
+// pages from the Drive sidecar instead of the live scan globals — used for a
+// background regenerate where nothing was just scanned in THIS browser
+// session (the live globals could easily belong to a different worker's scan
+// entirely, see regenerateWorkerDoc()'s own comment). Every plain DATA field
+// (name/address/marital/etc.) comes from `targetWorker` unconditionally now
+// — the unified worker modal (showWorkerModal/saveWorker) is the single
+// place that writes those onto the worker record, whether the worker came
+// from a scan or was entered by hand, so there's no more separate "live scan
+// panel" values to branch on for those.
 async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
   mode=mode||'download';
   const isRegen=!!presetAssets;
-  const _v=id=>(document.getElementById(id)?.value||'').replace(/\s+/g,' ').trim();
   // Hoisted above the try so the catch block (below) can still flag this
   // worker's failed upload for the "no document" badge even when the
-  // failure happens before the assignment finishes — and so the isRegen
-  // reads just below have a worker to read from.
+  // failure happens before the assignment finishes.
   let targetWorker=(workerId||window.__aiRescanWorkerId)?workers.find(x=>x.id===(workerId||window.__aiRescanWorkerId)):null;
-  const surname=isRegen?((targetWorker&&targetWorker.docSurname)||''):_v('aiSurname');
-  const given=isRegen?((targetWorker&&targetWorker.docGiven)||''):_v('aiGiven');
-  const dob=isRegen?((targetWorker&&targetWorker.docDob)||''):_v('aiDob');
-  const sex=isRegen?((targetWorker&&targetWorker.docSex)||''):_v('aiSex');
-  const no = isRegen ? (workerDocId(targetWorker||{})||'') : (isId ? _v('aiIdNo') : _v('aiPassportNo'));
-  const nat = isId ? 'ISR' : _v('aiNat');
-  const isIsraeli = isId || nat.toUpperCase()==='ISR';
+  const surname=(targetWorker&&targetWorker.docSurname)||'';
+  const given=(targetWorker&&targetWorker.docGiven)||'';
+  const dob=(targetWorker&&targetWorker.docDob)||'';
+  const sex=(targetWorker&&targetWorker.docSex)||'';
+  const no=workerDocId(targetWorker||{})||'';
+  // No separate "nationality" field in the unified form — isId (Israeli ID
+  // vs. foreign passport, matching w.docType) is the single source of truth.
+  const isIsraeli=isId;
   // Explicit btnEl (or a deliberate null) takes precedence over the implicit
   // global `event` — needed when this runs in the background from saveWorker(),
   // where `event` is the Add/Save Worker button, not a Form 101 button.
@@ -4426,7 +4415,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     const payload={
       isId, isIsraeli, surname, given, dob, sex, no,
       signDate: signDateStr,
-      workerPhone: isRegen?((targetWorker&&targetWorker.phone)||''):_v('aiPhone'),
+      workerPhone: (targetWorker&&targetWorker.phone)||'',
       incomeType: targetWorker&&targetWorker.incomeType,
       otherIncomeType: targetWorker&&targetWorker.otherIncomeType,
       employer: profile ? {
@@ -4435,34 +4424,33 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       } : null,
     };
 
-    // Israeli ID: address, marital, work start, fund — from the worker's own
-    // persisted fields when regenerating (no scan overlay is open in that
-    // case), otherwise from the live aiId* scan-panel inputs. Same
-    // regen-vs-live-scan split for the foreign-passport branch below.
+    // Israeli ID: address, marital, work start, fund, children — all from
+    // the worker record (saveWorker() already wrote everything the unified
+    // modal collected onto it before this function was ever called).
     let addr,city,marital,workStart,fund,children;
     if(isId){
-      addr=isRegen?workerAddress(targetWorker||{}):_v('aiAddress');
-      city=isRegen?((targetWorker&&targetWorker.city)||''):_v('aiCity');
-      marital=isRegen?((targetWorker&&targetWorker.maritalStatus)||''):(document.getElementById('aiIdMarital')?.value);
-      workStart=isRegen?((targetWorker&&targetWorker.workStartDate)||''):(document.getElementById('aiIdWork')?.value);
-      fund=isRegen?((targetWorker&&targetWorker.healthFund)||''):(document.getElementById('aiIdFund')?.value);
-      // Children table — only the Israeli-ID scan path can surface children
-      // (from the ID's ספח, if any are registered there).
-      children=isRegen?((targetWorker&&targetWorker.docChildren)||[]):(Array.isArray(window.__aiScanChildren)?window.__aiScanChildren:[]);
+      addr=workerAddress(targetWorker||{});
+      city=(targetWorker&&targetWorker.city)||'';
+      marital=(targetWorker&&targetWorker.maritalStatus)||'';
+      workStart=(targetWorker&&targetWorker.workStartDate)||'';
+      fund=(targetWorker&&targetWorker.healthFund)||'';
+      // Children table — only the Israeli-ID branch has one (from the ID's
+      // ספח, manually editable in the modal as a fallback for a failed scan).
+      children=(targetWorker&&targetWorker.docChildren)||[];
       Object.assign(payload,{address:addr,city,marital,workStart,healthFund:fund,children});
     } else {
-      workStart=isRegen?((targetWorker&&targetWorker.workStartDate)||''):(document.getElementById('aiPpWork')?.value);
-      fund=isRegen?((targetWorker&&targetWorker.healthFund)||''):(document.getElementById('aiPpFund')?.value);
+      workStart=(targetWorker&&targetWorker.workStartDate)||'';
+      fund=(targetWorker&&targetWorker.healthFund)||'';
       Object.assign(payload,{workStart,healthFund:fund});
     }
 
     // Signature ("חתימת המבקש/ת") — drawn server-side as an image if the
-    // worker actually signed on the pad. Regenerating reuses whatever
-    // signature was captured the first time (there's no live pad to read
-    // from in that case) instead of asking the worker to sign again for a
-    // routine data correction. getSignaturePng() already returns a
-    // data: URL, so the base64 payload is just the part after the comma.
-    const sigPng=isRegen?(presetAssets.sigPng||null):(typeof getSignaturePng==='function'?getSignaturePng():null);
+    // worker actually signed on the pad. Regenerating (isRegen) reuses
+    // whatever signature was captured the first time, from the Drive
+    // sidecar — there's no open modal to read a live pad from in that case.
+    // getSignaturePng() already returns a data: URL, so the base64 payload
+    // is just the part after the comma.
+    const sigPng=isRegen?(presetAssets.sigPng||null):(typeof getSignaturePng==='function'?getSignaturePng('wSigCanvas'):null);
     if(sigPng) payload.signaturePngBase64=sigPng.split(',')[1];
 
     // Regenerating reads the scan image back from presetAssets (the Drive
@@ -4470,14 +4458,18 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // — that global belongs to whichever scan session happens to be open in
     // the browser right now, which is a DIFFERENT worker's data if a
     // background regenerate for worker B fires while the manager is
-    // mid-scanning worker A. Same reasoning for __aiPacketOtherPages (a
-    // contract, etc.) — never attach it during a background regenerate.
-    const scanImage=isRegen?{b64:presetAssets.scanB64,mediaType:presetAssets.scanMediaType}:window.__aiScanImage;
+    // mid-scanning worker A (or just finished creating worker A from a scan
+    // and is now plain-adding worker B by hand — see openAddWorker()'s own
+    // reset of these globals). otherPagesToUse (ספח appendix card, contract
+    // pages, etc.) follows the same split: a fresh, just-saved worker reads
+    // them from window.__aiPacketOtherPages, a regenerate reads them from
+    // presetAssets.extraPages (persisted in the Drive sidecar by
+    // saveWorkerAssets() below).
+    const scanImage=isRegen?(presetAssets.scanB64?{b64:presetAssets.scanB64,mediaType:presetAssets.scanMediaType}:null):window.__aiScanImage;
+    const otherPagesToUse=isRegen?(Array.isArray(presetAssets.extraPages)?presetAssets.extraPages:[]):(Array.isArray(window.__aiPacketOtherPages)?window.__aiPacketOtherPages:[]);
     const extraPages=[];
     if(scanImage) extraPages.push({b64:scanImage.b64,mediaType:scanImage.mediaType,caption:'Document scan'});
-    if(!isRegen && Array.isArray(window.__aiPacketOtherPages)){
-      for(const p of window.__aiPacketOtherPages) extraPages.push({b64:p.b64,mediaType:p.mediaType,caption:'Document'});
-    }
+    for(const p of otherPagesToUse) extraPages.push({b64:p.b64,mediaType:p.mediaType,caption:'Document'});
     if(extraPages.length) payload.extraPages=extraPages;
 
     const fnResp=await fetch(FORM101_FN_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -4486,25 +4478,12 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     const out=Uint8Array.from(atob(fnJson.pdfBase64),c=>c.charCodeAt(0));
     const fileName=fnJson.fileName;
 
-    // Write back every value actually used onto the worker record (only
-    // when there's a real worker AND we're persisting a new document — a
-    // bare 'download' before the worker is saved, or a re-download of an
-    // unchanged document, has nothing useful to gain from this and would
-    // just add an autoSave the caller isn't expecting). This is what makes
-    // a LATER edit-and-regenerate possible without re-scanning: these
-    // become the baseline regenerateWorkerDoc() reads next time.
+    // docType is the one thing this function itself determines (which
+    // branch actually generated the PDF) rather than something the unified
+    // modal collects — everything else (name/address/marital/etc.) is
+    // already on targetWorker, written by saveWorker() before this ran.
     if(mode==='upload'&&targetWorker){
       targetWorker.docType=isId?'israeli_id':'passport';
-      targetWorker.docSurname=surname; targetWorker.docGiven=given;
-      targetWorker.docDob=dob; targetWorker.docSex=sex;
-      if(isId){
-        if(addr) targetWorker.address=addr;
-        if(city) targetWorker.city=city;
-        if(marital) targetWorker.maritalStatus=marital;
-        if(children&&children.length) targetWorker.docChildren=children;
-      }
-      if(workStart) targetWorker.workStartDate=workStart;
-      if(fund) targetWorker.healthFund=fund;
     }
 
     if(mode==='upload'){
@@ -4524,8 +4503,9 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       if(w){
         w.docUrl=json.url; w.docSavedAt=new Date().toISOString(); w.docFileId=json.id;
         w.docUploadFailed=false;
-        // Cache the scan+signature that actually built this PDF as a small
-        // private Drive sidecar (never shown to anyone, just read back by
+        // Cache the scan+signature (and any extra pages — ספח appendix card,
+        // contract, etc.) that actually built this PDF as a small private
+        // Drive sidecar (never shown to anyone, just read back by
         // regenerateWorkerDoc()) — this is what lets a LATER edit (income
         // type, marital status, address, ...) rebuild the exact same PDF
         // with the new values without asking the manager to re-scan the
@@ -4537,6 +4517,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
               method:'POST',
               body:JSON.stringify({action:'saveWorkerAssets',secret:API_SECRET,...gsAuth(),
                 scanB64:scanImage.b64, scanMediaType:scanImage.mediaType, sigPng:sigPng||null,
+                extraPages:otherPagesToUse,
                 fileNameBase:fileName.replace(/\.pdf$/,''), previousFileId:w.assetsFileId||null})
             });
             const assetsJson=await assetsResp.json();
@@ -4569,7 +4550,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     if(mode==='upload'&&targetWorker){ targetWorker.docUploadFailed=true; autoSave(); render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); }
     return false;
   }
-  finally{ if(btn){ btn.disabled=false; btn.innerHTML=btnLabel; } window.__aiPacketOtherPages=[]; }
+  finally{ if(btn){ btn.disabled=false; btn.innerHTML=btnLabel; } window.__aiPacketOtherPages=[]; window.__wCapturedSigPng=undefined; }
 }
 
 // Auto-generation right after a worker is created from a scan runs
@@ -4583,30 +4564,37 @@ async function autoUploadWithRetry(isId,workerId){
     await new Promise(r=>setTimeout(r,1500));
     ok=await aiFillForm101(isId,'upload',workerId,null);
   }
+  return ok;
 }
 
 // Rebuilds and re-uploads a worker's Form-101 PDF using their CURRENTLY
 // saved data (address, income type, marital status, health fund, ...)
-// instead of what was true when they were first scanned — without asking
-// the manager to re-scan the physical ID/passport. Reads the scan+signature
-// back from the Drive sidecar saveWorkerAssets() cached at the last
-// successful generation. A worker who's never had a document generated (no
-// docUrl), or one whose document predates this feature (no assetsFileId),
-// has nothing to rebuild from — callers are expected to check for that
-// themselves (saveWorker() and regenerateAllWorkerDocs() both do), but this
-// also no-ops safely on its own if called anyway.
+// instead of what was true when the document was last generated — without
+// asking the manager to re-scan the physical ID/passport. Reads the
+// scan+signature back from the Drive sidecar saveWorkerAssets() cached at
+// the last successful generation, when one exists (w.assetsFileId). This is
+// the SAFE way to auto-regenerate on a background edit — unlike calling
+// aiFillForm101 directly with no presetAssets (the "live" path), it never
+// touches window.__aiScanImage/__aiPacketOtherPages, which could easily
+// belong to a completely different worker's in-progress scan session. If
+// there's no sidecar yet (a worker whose document has never been generated
+// at all, or one predating this feature), it still proceeds — just with an
+// empty scan/signature, producing a plain data-only PDF.
 async function regenerateWorkerDoc(workerId){
   const w=workers.find(x=>x.id===workerId);
-  if(!w||!w.docUrl||!w.assetsFileId) return false;
+  if(!w) return false;
   try{
-    const resp=await fetch(GS_URL,{
-      method:'POST',
-      body:JSON.stringify({action:'loadWorkerAssets',secret:API_SECRET,...gsAuth(),fileId:w.assetsFileId})
-    });
-    const json=await resp.json();
-    if(!json||!json.ok) return false;
+    let assets={scanB64:null,scanMediaType:null,sigPng:null,extraPages:[]};
+    if(w.assetsFileId){
+      const resp=await fetch(GS_URL,{
+        method:'POST',
+        body:JSON.stringify({action:'loadWorkerAssets',secret:API_SECRET,...gsAuth(),fileId:w.assetsFileId})
+      });
+      const json=await resp.json();
+      if(json&&json.ok) assets={scanB64:json.scanB64,scanMediaType:json.scanMediaType,sigPng:json.sigPng||null,extraPages:Array.isArray(json.extraPages)?json.extraPages:[]};
+    }
     const isId=w.docType!=='passport';
-    return await aiFillForm101(isId,'upload',workerId,null,{scanB64:json.scanB64,scanMediaType:json.scanMediaType,sigPng:json.sigPng||null});
+    return await aiFillForm101(isId,'upload',workerId,null,assets);
   }catch(e){ return false; }
 }
 
@@ -4869,7 +4857,7 @@ function switchContactsAccount(idx){
       if(resp.error){ showToast('Auth failed: '+resp.error); return; }
       _gToken = resp.access_token;
       fetchContacts().then(()=>{
-        const query = document.getElementById('wName')?.value||'';
+        const query = document.getElementById('wGiven')?.value||'';
         showContactsSuggestions(query);
       });
     }
@@ -4944,9 +4932,12 @@ function showContactsSuggestions(query){
 function selectContact(idx, query){
   const c = window._contactMatches?.[idx];
   if(!c) return;
-  const nameEl  = document.getElementById('wName');
-  const phoneEl = document.getElementById('wPhone');
-  if(nameEl)  nameEl.value  = c.name;
+  const givenEl   = document.getElementById('wGiven');
+  const surnameEl = document.getElementById('wSurname');
+  const phoneEl   = document.getElementById('wPhone');
+  const parts=(c.name||'').trim().split(/\s+/);
+  if(givenEl)   givenEl.value   = parts.shift()||'';
+  if(surnameEl) surnameEl.value = parts.join(' ');
   if(phoneEl) phoneEl.value = c.phone;
   hideContactsSuggestions();
   showToast(''+c.name+' imported from Contacts');
