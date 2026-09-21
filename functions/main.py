@@ -308,14 +308,20 @@ def build_form101_pdf(p):
             return
         d = iso_date.split("-")
         if len(d) == 3:
-            b.add_comb_field(page_h, b.page1, "work_start_date", WORK_START_RECT, 8, 11,
-                              d[2] + d[1] + d[0])
+            b.set_comb("Date_start_work", d[2] + d[1] + d[0], 8, 11)
 
     b.set_text("sign_date", p.get("signDate"), 10)
 
     if is_israeli:
         if no:
-            b.add_comb_field(page_h, b.page1, "id_box", ID_BOX_RECT, 9, 10, re.sub(r"\D", "", no))
+            # "employer_zeut_num" — despite the name (from the user's own
+            # AcroForm markup), this field sits right next to surname/
+            # given_name/dob/passport_no, not near anything employer-related,
+            # and its nearby printed label reads "9 digits, for those who
+            # don't have..." — a strong match for the WORKER's own Israeli ID
+            # number rather than an employer field. Using it as such; revisit
+            # if the field ever gets renamed to something clearer.
+            b.set_comb("employer_zeut_num", re.sub(r"\D", "", no), 9, 10)
         addr = p.get("address")
         if addr:
             street, number = _split_street(addr)
