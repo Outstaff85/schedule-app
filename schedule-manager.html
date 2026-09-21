@@ -2916,7 +2916,7 @@ function autoSave(){
 async function loadData(){
   // 1. Show cached data instantly while GS loads
   try{
-    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(STORAGE_KEY+'_bak');
+    const raw = localStorage.getItem(STORAGE_KEY()) || localStorage.getItem(STORAGE_KEY()+'_bak');
     if(raw){
       const d = JSON.parse(raw);
       applyData(d);
