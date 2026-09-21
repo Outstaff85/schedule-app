@@ -2930,7 +2930,7 @@ async function loadData(){
     if(gd){
       applyData(gd);
       render();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(gd));
+      localStorage.setItem(STORAGE_KEY(), JSON.stringify(gd));
       setSaveStatus('saved');
       syncPunchesFromGS();
     } else {
