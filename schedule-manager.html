@@ -1348,8 +1348,8 @@ function showWorkerModal(w){
       </div>
       <div class="field"><label>שם משפחה</label><input type="text" id="wSurname" value="${esc(w.docSurname||'')}" placeholder="שם משפחה"></div>
     </div>
-    <div class="field"><label>מספר ת.ז./דרכון</label><input type="text" id="wDocId" value="${esc(workerDocId(w))}" placeholder="ת.ז. / passport number">
-      ${w.idChecksumOk===false?'<div style="font-size:11px;color:var(--amber);margin-top:2px"><i class="ti ti-alert-triangle"></i> Номер не прошёл проверку контрольной цифры — перепроверьте вручную</div>':''}
+    <div class="field"><label>מספר ת.ז./דרכון</label><input type="text" id="wDocId" value="${esc(workerDocId(w))}" placeholder="ת.ז. / מספר דרכון">
+      ${w.idChecksumOk===false?'<div style="font-size:11px;color:var(--amber);margin-top:2px"><i class="ti ti-alert-triangle"></i> המספר לא עבר בדיקת ספרת ביקורת — יש לבדוק ידנית</div>':''}
     </div>
     <div class="field"><label>טלפון</label><input type="text" id="wPhone" value="${w.phone||''}" placeholder="+972..."></div>
     <div class="field-row">
