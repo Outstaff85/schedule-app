@@ -2900,6 +2900,10 @@ function autoSave(){
       // localStorage as cache only
       localStorage.setItem(STORAGE_KEY(), json);
       localStorage.setItem(STORAGE_KEY()+'_bak', json);
+      // Also mirror under the legacy unscoped key — worker-punch.html's
+      // updateScheduleManager() (same-device convenience bridge) still reads
+      // that literal key and has no tenantId of its own to scope by.
+      localStorage.setItem(STORAGE_KEY_BASE, json);
       // Google Sheets is primary storage
       const ok = await gsSave(data);
       setSaveStatus('saved');
