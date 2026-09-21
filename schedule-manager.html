@@ -1280,6 +1280,8 @@ function showWorkerModal(w){
   __wScheduleOpen=false;
   __wExpiryOpen=false;
   __wForm101Open=false;
+  __wClientsOpen=false;
+  __wChildren=Array.isArray(w.docChildren)?w.docChildren.map(c=>({...c})):[];
   document.getElementById('workerModal').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <div class="modal-title" style="margin-bottom:0">${editingWorkerIdx!==null?'Edit Worker':'Add New Worker'}</div>
@@ -1296,16 +1298,18 @@ function showWorkerModal(w){
         <span style="font-size:11px;color:var(--text3)">${w.docSavedAt?'Сохранено: '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</span>
       </div>
     </div>` : ''}
-    <div class="field" style="position:relative">
-      <label>Name</label>
-      <input type="text" id="wName" value="${w.name||''}" placeholder="Worker name" autofocus
-        oninput="searchContacts(this.value)" autocomplete="off">
-      <div id="contactsSuggestions" style="display:none;position:absolute;z-index:300;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);left:0;right:0;top:100%;max-height:240px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.5)"></div>
-    </div>
-    <div class="field"><label>ID (Teudat Zehut)</label><input type="text" id="wDocId" value="${esc(workerDocId(w))}" placeholder="ת.ז. / passport number"></div>
-    <div class="field"><label>Phone (optional)</label><input type="text" id="wPhone" value="${w.phone||''}" placeholder="+972..."></div>
-    <div class="field"><label>Hourly Rate (₪/h)</label><input type="number" id="wRate" value="${w.hourlyRate||''}" placeholder="e.g. 35" min="0" step="0.5"></div>
     <div class="field-row">
+      <div class="field" style="position:relative"><label>שם פרטי</label>
+        <input type="text" id="wGiven" value="${esc(w.docGiven||'')}" placeholder="שם פרטי" autofocus
+          oninput="searchContacts(this.value)" autocomplete="off">
+        <div id="contactsSuggestions" style="display:none;position:absolute;z-index:300;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);left:0;right:0;top:100%;max-height:240px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.5)"></div>
+      </div>
+      <div class="field"><label>שם משפחה</label><input type="text" id="wSurname" value="${esc(w.docSurname||'')}" placeholder="שם משפחה"></div>
+    </div>
+    <div class="field"><label>מספר ת.ז./דרכון</label><input type="text" id="wDocId" value="${esc(workerDocId(w))}" placeholder="ת.ז. / passport number"></div>
+    <div class="field"><label>טלפון</label><input type="text" id="wPhone" value="${w.phone||''}" placeholder="+972..."></div>
+    <div class="field-row">
+      <div class="field"><label>Hourly Rate (₪/h)</label><input type="number" id="wRate" value="${w.hourlyRate||''}" placeholder="e.g. 35" min="0" step="0.5"></div>
       <div class="field"><label>Status</label>
         <select id="wStatus">
           <option value="active" ${(w.status||'active')==='active'?'selected':''}>Active</option>
@@ -1313,25 +1317,30 @@ function showWorkerModal(w){
           <option value="fired" ${w.status==='fired'?'selected':''}>Fired</option>
         </select>
       </div>
-      <div class="field"><label>Start date</label><input type="date" id="wStartDate" value="${w.startDate||''}"></div>
     </div>
-    <div class="field"><label>Address</label><input type="text" id="wAddress" value="${esc(workerAddress(w))}" placeholder="Street and house number"></div>
-    <div class="field"><label>City</label><input type="text" id="wCity" value="${esc(w.city||'')}" placeholder="City"></div>
+    <div class="field"><label>תאריך תחילת עבודה</label><input type="date" id="wStartDate" value="${w.startDate||w.workStartDate||''}"></div>
+    <div class="field"><label>מין</label>
+      <select id="wSex">
+        <option value="" ${!w.docSex?'selected':''}>— לא נבחר —</option>
+        <option value="M" ${w.docSex==='M'?'selected':''}>זכר</option>
+        <option value="F" ${w.docSex==='F'?'selected':''}>נקבה</option>
+      </select>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>רחוב</label><input type="text" id="wAddress" value="${esc(workerAddress(w))}" placeholder="רחוב"></div>
+      <div class="field"><label>מספר בית</label><input type="text" id="wHouseNumber" value="${esc(w.houseNumber||'')}" placeholder="מספר בית"></div>
+    </div>
+    <div class="field"><label>עיר</label><input type="text" id="wCity" value="${esc(w.city||'')}" placeholder="עיר"></div>
+    <div class="field"><label>תאריך לידה</label><input type="text" id="wDob" value="${esc(w.docDob||'')}" placeholder="DD/MM/YYYY"></div>
+    <div class="field"><label>תוקף ת.ז./דרכון</label><input type="text" id="wDocExpiry" value="${esc(w.docExpiry||'')}" placeholder="DD/MM/YYYY"></div>
     <div class="field"><label>Notes</label><textarea id="wNotes" placeholder="Notes about this worker" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;padding:8px 10px;outline:none;min-height:56px;resize:vertical">${w.notes||''}</textarea></div>
     <div class="field" style="margin-bottom:6px">
-      <button class="btn sm" type="button" onclick="toggleExpiryWrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
-        <span><i class="ti ti-alert-triangle"></i> Contract Expiry Warning</span>
-        <i class="ti ti-chevron-down" id="wExpiryChevron"></i>
+      <button class="btn sm" type="button" onclick="toggleClientsWrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
+        <span><i class="ti ti-users"></i> לקוחות <span id="wClientCount" style="color:var(--text3);font-weight:400;font-size:12px"></span></span>
+        <i class="ti ti-chevron-down" id="wClientsChevron"></i>
       </button>
     </div>
-    <div id="wExpiryWrap" style="display:none">
-      <input type="checkbox" id="wExpiryEnabled" ${w.expiryEnabled?'checked':''} style="display:none">
-      <div class="field-row" id="wExpiryFields">
-        <div class="field"><label>Months until deadline</label><input type="number" id="wExpiryMonths" min="1" step="1" value="${w.expiryMonths||9}"></div>
-        <div class="field"><label>Warn this many months ahead</label><input type="number" id="wExpiryWarnMonths" min="0" step="1" value="${w.expiryWarnMonths??1}"></div>
-      </div>
-    </div>
-    <div class="field"><label>Assign to Clients <span id="wClientCount" style="color:var(--text3);font-weight:400;font-size:12px"></span></label>
+    <div id="wClientsWrap" style="display:none">
       ${clients.length>5?`<input type="text" id="wClientSearch" placeholder="Search clients / objects..." oninput="filterClientPick(this.value)" autocomplete="off" style="width:100%;margin-bottom:6px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">`:''}
       <div id="wClientPick" style="max-height:190px;overflow-y:auto;border:1px solid var(--border2);border-radius:var(--radius-sm);padding:4px;display:flex;flex-direction:column;gap:2px">
         ${clients.length?clients.map(c=>`<label class="wc-row" data-name="${(c.name+' '+(c.object||'')).toLowerCase().replace(/"/g,'')}" style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:var(--radius-sm);cursor:pointer">
@@ -1376,13 +1385,13 @@ function showWorkerModal(w){
     </div>` : ''}
     <div class="field" style="margin-bottom:6px">
       <button class="btn sm" type="button" onclick="toggleForm101Wrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
-        <span><i class="ti ti-id-badge-2"></i> Данные для Формы 101</span>
+        <span><i class="ti ti-id-badge-2"></i> נתונים נוספים לטופס 101</span>
         <i class="ti ti-chevron-down" id="wForm101Chevron"></i>
       </button>
     </div>
     <div id="wForm101Wrap" style="display:none">
       <div class="field-row">
-        <div class="field"><label>Income type (Form 101, ד)</label>
+        <div class="field"><label>סוג הכנסה (טופס 101)</label>
           <select id="wIncomeType">
             <option value="">— not set —</option>
             <option value="monthly" ${w.incomeType==='monthly'?'selected':''}>Monthly salary</option>
@@ -1393,7 +1402,7 @@ function showWorkerModal(w){
             <option value="scholarship" ${w.incomeType==='scholarship'?'selected':''}>Scholarship</option>
           </select>
         </div>
-        <div class="field"><label>Other income (Form 101, ה)</label>
+        <div class="field"><label>הכנסה נוספת (טופס 101)</label>
           <select id="wOtherIncomeType">
             <option value="">— not set —</option>
             <option value="none" ${(w.otherIncomeType||'none')==='none'?'selected':''}>No other income</option>
@@ -1406,47 +1415,66 @@ function showWorkerModal(w){
           </select>
         </div>
       </div>
-      ${editingWorkerIdx!==null ? `
       <div class="field-row">
-        <div class="field"><label>Фамилия (как в скане)</label><input type="text" id="wDocSurname" value="${esc(w.docSurname||'')}"></div>
-        <div class="field"><label>Имя (как в скане)</label><input type="text" id="wDocGiven" value="${esc(w.docGiven||'')}"></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>Семейное положение</label>
+        <div class="field"><label>מצב משפחתי</label>
           <select id="wMaritalStatus">
             <option value="" ${!w.maritalStatus?'selected':''}>— не заполнять —</option>
-            <option value="marital_single" ${w.maritalStatus==='marital_single'?'selected':''}>רווק/ה (Холост/а)</option>
-            <option value="marital_married" ${w.maritalStatus==='marital_married'?'selected':''}>נשוי/אה (Женат/замужем)</option>
-            <option value="marital_divorced" ${w.maritalStatus==='marital_divorced'?'selected':''}>גרוש/ה (Разведён/а)</option>
-            <option value="marital_widowed" ${w.maritalStatus==='marital_widowed'?'selected':''}>אלמן/ה (Вдовец/вдова)</option>
+            <option value="marital_single" ${w.maritalStatus==='marital_single'?'selected':''}>רווק/ה</option>
+            <option value="marital_married" ${w.maritalStatus==='marital_married'?'selected':''}>נשוי/אה</option>
+            <option value="marital_divorced" ${w.maritalStatus==='marital_divorced'?'selected':''}>גרוש/ה</option>
+            <option value="marital_widowed" ${w.maritalStatus==='marital_widowed'?'selected':''}>אלמן/ה</option>
           </select>
         </div>
-        <div class="field"><label>Больничная касса</label>
+        <div class="field"><label>קופת חולים</label>
           <select id="wHealthFund">
             <option value="" ${!w.healthFund?'selected':''}>— не заполнять —</option>
-            <option value="Clalit" ${w.healthFund==='Clalit'?'selected':''}>כללית (Клалит)</option>
-            <option value="Maccabi" ${w.healthFund==='Maccabi'?'selected':''}>מכבי (Маккаби)</option>
-            <option value="Meuhedet" ${w.healthFund==='Meuhedet'?'selected':''}>מאוחדת (Меухедет)</option>
-            <option value="Leumit" ${w.healthFund==='Leumit'?'selected':''}>לאומית (Леумит)</option>
+            <option value="Clalit" ${w.healthFund==='Clalit'?'selected':''}>כללית</option>
+            <option value="Maccabi" ${w.healthFund==='Maccabi'?'selected':''}>מכבי</option>
+            <option value="Meuhedet" ${w.healthFund==='Meuhedet'?'selected':''}>מאוחדת</option>
+            <option value="Leumit" ${w.healthFund==='Leumit'?'selected':''}>לאומית</option>
           </select>
         </div>
       </div>
-      <div class="field"><label>Дата начала работы (Форма 101)</label><input type="date" id="wWorkStartDate" value="${w.workStartDate||''}"></div>
+      <div class="field" style="margin-top:8px">
+        <label>ילדים (ספח)</label>
+        <div id="wChildrenRows"></div>
+      </div>
       <div style="font-size:11px;color:var(--text3);margin-top:2px">
-        ${w.docUrl?'Изменение этих полей (или адреса/города/типа дохода выше) автоматически обновит уже загруженный документ в Google Drive.':'Заполняется автоматически при первом скане/генерации Формы 101 — до этого можно оставить пустым.'}
-      </div>` : ''}
+        ${w.docUrl?'Изменение этих полей (или адреса/города/типа дохода выше) автоматически обновит уже загруженный документ в Google Drive.':'PDF Формы 101 соберётся автоматически при сохранении.'}
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:6px">
+      <button class="btn sm" type="button" onclick="toggleExpiryWrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
+        <span><i class="ti ti-alert-triangle"></i> Contract Expiry Warning</span>
+        <i class="ti ti-chevron-down" id="wExpiryChevron"></i>
+      </button>
+    </div>
+    <div id="wExpiryWrap" style="display:none">
+      <input type="checkbox" id="wExpiryEnabled" ${w.expiryEnabled?'checked':''} style="display:none">
+      <div class="field-row" id="wExpiryFields">
+        <div class="field"><label>Months until deadline</label><input type="number" id="wExpiryMonths" min="1" step="1" value="${w.expiryMonths||9}"></div>
+        <div class="field"><label>Warn this many months ahead</label><input type="number" id="wExpiryWarnMonths" min="0" step="1" value="${w.expiryWarnMonths??1}"></div>
+      </div>
     </div>
     <div class="field"><label>Color</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap" id="wColorPick">
         ${WORKER_COLORS.map((c,i)=>`<div onclick="pickWColor(${i})" data-ci="${i}" style="width:24px;height:24px;border-radius:50%;background:${c.text};cursor:pointer;border:2px solid ${i===selColorIdx?'white':'transparent'};transition:all 0.15s;${i===selColorIdx?'transform:scale(1.2)':''}"></div>`).join('')}
       </div>
     </div>
+    <div class="field" style="margin-top:10px;margin-bottom:10px">
+      <label style="display:block;font-size:12px;color:var(--text2);margin-bottom:4px">חתימה</label>
+      <canvas id="wSigCanvas" width="500" height="120"
+        style="width:100%;max-width:340px;height:90px;display:block;background:#fff;border:1px solid var(--border2);border-radius:var(--radius-sm);touch-action:none"></canvas>
+      <button class="btn sm" style="margin-top:6px" type="button" onclick="clearSignaturePad('wSigCanvas')"><i class="ti ti-eraser"></i> נקה חתימה</button>
+    </div>
     <div class="modal-actions">
       ${editingWorkerIdx!==null?`<button class="btn" onclick="regenerateWorkerToken(${editingWorkerIdx})" style="background:var(--amber-bg);border-color:rgba(245,166,35,0.3);color:var(--amber)"><i class="ti ti-refresh"></i> New Token</button>`:''}
-      <button class="btn accent" onclick="saveWorker()">${editingWorkerIdx!==null?'Save Changes':'Add Worker'}</button>
+      <button class="btn accent" onclick="saveWorker()">${editingWorkerIdx!==null?'שמור שינויים':'צור עובד'}</button>
     </div>`;
   document.getElementById('workerOverlay').classList.add('open');
   updateClientCount();
+  renderChildrenRows();
+  initSignaturePad('wSigCanvas');
 }
 function pickWColor(i){ selColorIdx=i; document.querySelectorAll('#wColorPick [data-ci]').forEach(el=>{ const idx=parseInt(el.dataset.ci); el.style.borderColor=idx===i?'white':'transparent'; el.style.transform=idx===i?'scale(1.2)':'scale(1)'; }); }
 function toggleDayTime(i){ const off=document.getElementById(`wt${i}`).value==='off'; ['ws','we'].forEach(p=>{ const el=document.getElementById(p+i); el.disabled=off; el.style.opacity=off?'0.3':'1'; }); }
