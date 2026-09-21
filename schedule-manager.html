@@ -3038,7 +3038,7 @@ function renderSalary(){
             const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
             const base=wc?.hourlyRate||0;
             const regRate=wRegRate(wc), otRate=wOtRate(wc), shabRate=wShabRate(wc);
-            const ini=e.worker.slice(0,2).toUpperCase();
+            const ini=wc?workerAvatarInner(wc):esc(e.worker.slice(0,2).toUpperCase());
             return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
               <td style="padding:10px 12px">
                 <div style="display:flex;align-items:center;gap:8px">
