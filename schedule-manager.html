@@ -2890,11 +2890,10 @@ function renderDashboard(){
   if(missing.length){
     missingEl.innerHTML = missing.map(w=>{
       const c=WORKER_COLORS[w.colorIdx%8];
-      const ini=w.name.slice(0,2).toUpperCase();
       const sh=w.schedule?.[todayIdx];
       return `<div style="background:var(--bg2);border:1px solid rgba(248,113,113,0.25);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
         <div style="width:40px;height:40px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;position:relative;opacity:0.6">
-          ${ini}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--red);border:2px solid var(--bg2)"></span>
+          ${workerAvatarInner(w)}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--red);border:2px solid var(--bg2)"></span>
         </div>
         <div style="font-size:13px;font-weight:600">${esc(w.name)}</div>
         <div style="font-size:11px;color:var(--red)">Should be here</div>
