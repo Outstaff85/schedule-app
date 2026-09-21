@@ -3810,7 +3810,7 @@ async function onScanFilesSelected(fileList){
     window.__aiPacketOtherPages=otherPages;
     if(!foundParsed){
       stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Не нашёл ID/паспорт в загруженных файлах<br><br>'
-        +'<button class="btn sm" onclick="openAiScan()">Ещё раз</button></div>';
+        +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
       return;
     }
     window.__aiParsed=foundParsed;
@@ -3825,7 +3825,7 @@ async function onScanFilesSelected(fileList){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Ошибка: '
       +(err&&err.message||'')+'<br><br>'
-      +'<button class="btn sm" onclick="openAiScan()">Ещё раз</button></div>';
+      +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
   }
 }
 
@@ -3863,7 +3863,7 @@ async function onScanFileSelected(file){
     const pre=await preAlignScan(b64,mediaType);
     if(pre.blurry){
       stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Фото слишком размыто, снимите ещё раз<br><br>'
-        +'<button class="btn sm" onclick="openAiScan()">Ещё раз</button></div>';
+        +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
       return;
     }
     runOcr(pre.b64,pre.mediaType);
@@ -3871,7 +3871,7 @@ async function onScanFileSelected(file){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Ошибка: '
       +(err&&err.message||'')+'<br><br>'
-      +'<button class="btn sm" onclick="openAiScan()">Ещё раз</button></div>';
+      +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
   }
 }
 
@@ -4129,7 +4129,7 @@ async function runOcr(b64,mediaType){
     if(!json||json.error){
       stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Ошибка ИИ: '
         +((json&&json.error)||'нет ответа')+'<br><br>'
-        +'<button class="btn sm" onclick="openAiScan()">Ещё раз</button></div>';
+        +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
       return;
     }
     window.__aiParsed=json.parsed;
@@ -4169,7 +4169,7 @@ async function runOcr(b64,mediaType){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Ошибка: '
       +(err&&err.message||'')+'<br><br>'
-      +'<button class="btn sm" onclick="openAiScan()">Ещё раз</button></div>';
+      +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
   }
 }
 // Sharpens the AI's rough corner guess the way a real scanner app does:
