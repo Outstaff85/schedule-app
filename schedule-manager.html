@@ -1872,7 +1872,7 @@ const INCOME_TYPE_LABELS = {monthly:'Monthly salary',secondary:'2nd job salary',
 const OTHER_INCOME_LABELS = {none:'No other income',monthly:'Monthly salary',secondary:'2nd job salary',partial:'Partial salary',daily:'Daily wage',pension:'Pension',scholarship:'Scholarship'};
 function openWorkerCard(wi){
   const w=workers[wi]; if(!w) return;
-  const c=WORKER_COLORS[w.colorIdx%8], ini=w.name.slice(0,2).toUpperCase();
+  const c=WORKER_COLORS[w.colorIdx%8];
   const stMetaMap={active:{label:'Active',col:'var(--green)',bg:'var(--green-bg)'},vacation:{label:'On vacation',col:'var(--amber)',bg:'var(--amber-bg)'},fired:{label:'Fired',col:'var(--red)',bg:'var(--red-bg)'}};
   const stMeta=stMetaMap[w.status||'active'];
   const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
