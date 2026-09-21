@@ -53,6 +53,7 @@ function doPost(e) {
       case 'savePushSubscription': return jsonResponse(savePushSubscription(body, tenantId));
       case 'logError':             return jsonResponse(logError(body));
       case 'aiReadDoc':            return jsonResponse(aiReadDoc(body));
+      case 'aiReadSefach':         return jsonResponse(aiReadSefach(body));
       case 'aiDetectAlign':        return jsonResponse(aiDetectAlign(body));
       case 'aiVerifyField':        return jsonResponse(aiVerifyField(body));
       case 'saveWorkerDoc':        return jsonResponse(saveWorkerDoc(body, tenantId));
