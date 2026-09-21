@@ -337,32 +337,29 @@ def build_form101_pdf(p):
         if fund:
             b.check("hf_yes")
             b.set_hebrew("hf_name", HEALTH_FUND_HE.get(fund, fund), 11)
-        for i, c in enumerate((p.get("children") or [])[:10]):
-            row_y0, row_y1 = CHILD_ROW_Y[i], CHILD_ROW_Y[i + 1]
-            row_h = row_y1 - row_y0
-            if c.get("idNo"):
-                name = f"children_id_{i}"
-                rect = pymupdf.Rect(CHILD_COLS["id"][0], row_y0, CHILD_COLS["id"][0] + CHILD_COLS["id"][1], row_y1)
-                w = b._new_widget(b.page1, name, rect, 10, comb=True, max_len=9)
-                w.field_value = re.sub(r"\D", "", str(c["idNo"]))
-                b.page1.add_widget(w)
+        for i, c in enumerate((p.get("children") or [])[:len(CHILD_FIELD_SUFFIXES)]):
+            suf = CHILD_FIELD_SUFFIXES[i]
+            full_name = str(c.get("name") or "").strip()
+            if full_name:
+                # Split on the first space: given name first, everything
+                # else treated as surname — matches the given/surname order
+                # already used for the worker's own name. See
+                # CHILD_FIELD_SUFFIXES's own comment for the tradeoff.
+                parts = full_name.split(None, 1)
+                given_n = parts[0]
+                surname_n = parts[1] if len(parts) > 1 else ""
+                if given_n:
+                    b.set_hebrew(f"child_given_name{suf}", given_n, 9)
+                if surname_n:
+                    b.set_hebrew(f"child_surname{suf}", surname_n, 9)
             if c.get("dob"):
                 dd = re.sub(r"\D", "", str(c["dob"]))
                 if dd:
-                    name = f"children_dob_{i}"
-                    rect = pymupdf.Rect(CHILD_COLS["dob"][0], row_y0, CHILD_COLS["dob"][0] + CHILD_COLS["dob"][1], row_y1)
-                    w = b._new_widget(b.page1, name, rect, 10, comb=True, max_len=8)
-                    w.field_value = dd
-                    b.page1.add_widget(w)
-            if c.get("name"):
-                name = f"children_name_{i}"
-                rect = pymupdf.Rect(CHILD_COLS["name"][0], row_y0, CHILD_COLS["name"][0] + CHILD_COLS["name"][1], row_y1)
-                w = b._new_widget(b.page1, name, rect, 9)
-                w.field_value = str(c["name"])
-                b.page1.add_widget(w)
-                live = b._refetch(b.page1, name)
-                b._blank_appearance(b.page1, live)
-                b._draw_rtl_text(b.page1, rect, c["name"], 8, right_align=True)
+                    b.set_comb(f"child_dob{suf}", dd, 8, 10)
+            if c.get("idNo"):
+                digits = re.sub(r"\D", "", str(c["idNo"]))
+                if digits:
+                    b.set_comb(f"child_passport_no{suf}", digits, 9, 10)
     else:
         b.set_comb("passport_no", no, 13, 10)
         fill_work_start(p.get("workStart"))
@@ -373,7 +370,7 @@ def build_form101_pdf(p):
 
     phone = p.get("workerPhone")
     if phone:
-        b.add_hebrew_field(page_h, b.page1, "worker_phone", WORKER_PHONE_RECT, 10, phone, right_align=True, bottom_align=True)
+        b.set_hebrew("worker_phone", phone, 10)
 
     sig_b64 = p.get("signaturePngBase64")
     if sig_b64:
