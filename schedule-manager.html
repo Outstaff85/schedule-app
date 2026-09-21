@@ -1197,7 +1197,21 @@ function blankWorkerDefaults(){
   return {name:'',docGiven:'',docSurname:'',colorIdx:workers.length%8,phone:'',clientIds:[],
     schedule:DAYS.map(()=>({type:'work',start:'09:00',end:'17:00'}))};
 }
-function openAddWorker(){ editingWorkerIdx=null; showWorkerModal(blankWorkerDefaults()); }
+// Plain manual "Add Worker" (not the scan pipeline, which calls
+// showWorkerModal() directly after OCR with its own fresh scan data already
+// in these globals — see the scan-redirect logic below). Resets them here so
+// a leftover scan/signature from a PREVIOUS, unrelated worker's session
+// (e.g. the manager just created worker A from a scan a moment ago) never
+// silently attaches to worker B's PDF — saveWorker()'s new-worker path reads
+// these live globals directly (autoUploadWithRetry), unlike an edit-save
+// (which goes through the sidecar-based regenerateWorkerDoc() instead).
+function openAddWorker(){
+  editingWorkerIdx=null;
+  window.__aiScanImage=null;
+  window.__aiPacketOtherPages=[];
+  window.__wCapturedSigPng=undefined;
+  showWorkerModal(blankWorkerDefaults());
+}
 function openEditWorker(wi){ editingWorkerIdx=wi; showWorkerModal(workers[wi]); }
 
 // The weekly grid starts collapsed every time the modal opens, and saveWorker
