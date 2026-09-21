@@ -216,7 +216,19 @@ class Form101Builder:
 
     def finalize(self):
         catalog = self.doc.pdf_catalog()
-        self.doc.xref_set_key(catalog, "AcroForm/NeedAppearances", "false")
+        # xref_set_key's dotted "AcroForm/NeedAppearances" path only works
+        # when /AcroForm is embedded directly in the catalog dict — this
+        # template (added 2026-09-21) stores it as its own indirect object
+        # instead (a perfectly normal, common way to structure a PDF), which
+        # makes the dotted-path form fail with "path to 'NeedAppearances' has
+        # indirects". Resolve the AcroForm's own xref first and set the key
+        # directly on it instead.
+        kind, acroform_ref = self.doc.xref_get_key(catalog, "AcroForm")
+        if kind == "xref":
+            acroform_xref = int(acroform_ref.split()[0])
+            self.doc.xref_set_key(acroform_xref, "NeedAppearances", "false")
+        else:
+            self.doc.xref_set_key(catalog, "AcroForm/NeedAppearances", "false")
         return self.doc.tobytes()
 
 
