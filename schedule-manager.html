@@ -2014,17 +2014,28 @@ function openWorkerCard(wi){
       ${w.docUrl?`<div><i class="ti ti-file-text"></i> Документ сохранён${w.docSavedAt?': '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</div>`:''}
     </div>
     ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
-    <div style="margin-bottom:14px">
-      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Objects &amp; rates</div>
-      ${objs.length?objs.map(o=>{
+    ${objs.length?`
+    <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:10px">
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Objects</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${objs.map(o=>`<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:3px 8px;background:${o.color}22;border-radius:10px"><span style="width:6px;height:6px;border-radius:50%;background:${o.color};flex-shrink:0"></span>${esc(o.name)}</span>`).join('')}
+      </div>
+    </div>
+    <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:14px">
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Rates</div>
+      ${objs.map(o=>{
         const r=effectiveRates(w,o.id);
         const hasOverride=!!(w.clientRates&&w.clientRates[o.id]&&Object.values(w.clientRates[o.id]).some(v=>v!=null));
-        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:6px 8px;background:${o.color}11;border-radius:8px;margin-bottom:5px">
+        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:4px 0">
           <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:7px;height:7px;border-radius:50%;background:${o.color};flex-shrink:0"></span>${esc(o.name)}${hasOverride?' <i class="ti ti-star-filled" style="font-size:10px;color:var(--amber)" title="Own rate at this client"></i>':''}</span>
           <span style="color:var(--text2);white-space:nowrap">₪${r.regRate}/h · OT ₪${r.otRate} · Shabbat ₪${r.shabbatRate}</span>
         </div>`;
-      }).join(''):'<span style="color:var(--text3);font-size:12px">Not assigned to any object</span>'}
-    </div>
+      }).join('')}
+    </div>` : `
+    <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:14px">
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Objects &amp; rates</div>
+      <span style="color:var(--text3);font-size:12px">Not assigned to any object</span>
+    </div>`}
     <div class="modal-actions">
       <button class="btn sm red" onclick="deleteWorkerFromCard(${wi})"><i class="ti ti-trash"></i> Delete</button>
       ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Скачать документ</a>`:''}
