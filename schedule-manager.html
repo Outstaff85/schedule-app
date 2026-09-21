@@ -2888,7 +2888,7 @@ function autoSave(){
   // Glitch guard: don't overwrite existing data with a suddenly-empty state.
   if((!workers||!workers.length) && (!clients||!clients.length)){
     let hadData=false;
-    try{ const prev=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}'); hadData=(prev.workers&&prev.workers.length)||(prev.clients&&prev.clients.length); }catch(e){}
+    try{ const prev=JSON.parse(localStorage.getItem(STORAGE_KEY())||'{}'); hadData=(prev.workers&&prev.workers.length)||(prev.clients&&prev.clients.length); }catch(e){}
     if(hadData){ console.warn('Empty state but cache has data — skipping save'); setSaveStatus('saved'); showToast('\u26a0 Пустые данные — сохранение пропущено'); return; }
   }
   setSaveStatus('saving');
