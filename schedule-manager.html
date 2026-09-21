@@ -2329,8 +2329,9 @@ const API_SECRET = 'odinson-7Kq2x9';
 // the old client-side pdf-lib build, which had a confirmed bug dropping a
 // glyph of multi-word RTL (Hebrew) text. See functions/main.py.
 const FORM101_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/fill_form_101';
-// Scan preprocessing (OpenCV geometry + Pillow contrast/sharpness), tried
-// before the AI-seeded autoPreAlignScan() below — see preAlignScan().
+// Scan preprocessing (OpenCV geometry + Pillow contrast/sharpness) — see
+// preAlignScan(). Its result now feeds straight into the manual
+// corner-adjustment editor (no AI-seeded alignment step in between anymore).
 const PREPROCESS_SCAN_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/preprocess_scan';
 
 // ── Multi-tenant session ────────────────────────────────────────────────────
