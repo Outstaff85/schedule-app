@@ -4471,7 +4471,7 @@ function skipScanQuad(){
 // doesn't have — shared between the multi-file batch path
 // (onScanFilesSelected) and the new one-page-at-a-time loop below, so both
 // use the same definition of "still missing" / "worth merging in".
-const ID_CORE_FIELDS=['dob','sex','address','houseNumber','city'];
+const ID_CORE_FIELDS=['dob','sex','address','houseNumber','city','maritalStatus'];
 function mergeIsraeliIdFields(primary,extra){
   if(!primary||primary.type!=='israeli_id'||!extra||extra.type!=='israeli_id') return primary;
   for(const f of ID_CORE_FIELDS){ if(!primary[f]&&extra[f]) primary[f]=extra[f]; }
