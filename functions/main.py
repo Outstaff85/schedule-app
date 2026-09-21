@@ -415,7 +415,7 @@ def build_form101_pdf(p):
 
     phone = p.get("workerPhone")
     if phone:
-        b.set_hebrew("worker_phone", phone, 10)
+        b.set_hebrew("worker_phone", phone, 10, right_align=False)
 
     sig_b64 = p.get("signaturePngBase64")
     if sig_b64:
