@@ -1325,9 +1325,21 @@ function showWorkerModal(w){
       <div class="modal-title" style="margin-bottom:0">${editingWorkerIdx!==null?'עריכת עובד':'הוספת עובד חדש'}</div>
       <button class="btn sm" onclick="closeModal('workerOverlay')" title="סגור" style="flex-shrink:0;padding:0 8px"><i class="ti ti-x"></i></button>
     </div>
-    <div class="field" id="wAvatarWrap" style="display:${__wAvatarB64?'flex':'none'};align-items:center;gap:10px">
-      <img id="wAvatarImg" src="${__wAvatarB64?('data:image/jpeg;base64,'+__wAvatarB64):''}" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1px solid var(--border2)">
-      <button class="btn sm" type="button" onclick="clearWorkerAvatar()"><i class="ti ti-trash"></i> מחק תמונה</button>
+    <div class="field" id="wAvatarWrap" style="display:flex;align-items:center;gap:10px">
+      <img id="wAvatarImg" src="${__wAvatarB64?('data:image/jpeg;base64,'+__wAvatarB64):''}" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1px solid var(--border2);background:var(--bg3);display:${__wAvatarB64?'block':'none'}">
+      <button class="btn sm" type="button" onclick="document.getElementById('wAvatarFile').click()"><i class="ti ti-camera"></i> העלה תמונה</button>
+      <button class="btn sm" type="button" id="wAvatarDeleteBtn" onclick="clearWorkerAvatar()" style="display:${__wAvatarB64?'inline-flex':'none'}"><i class="ti ti-trash"></i> מחק תמונה</button>
+      <input type="file" id="wAvatarFile" accept="image/*" style="display:none" onchange="onAvatarFileSelected(this.files[0]); this.value='';">
+    </div>
+    <div class="field" id="avatarCropWrap" style="display:none;flex-direction:column;align-items:center;gap:8px;background:var(--bg3);border-radius:8px;padding:12px">
+      <div id="avatarCropBox" style="width:200px;height:200px;border-radius:50%;overflow:hidden;position:relative;background:#111;touch-action:none;cursor:grab">
+        <img id="avatarCropImg" style="position:absolute;left:0;top:0;user-select:none;-webkit-user-drag:none" draggable="false" alt="">
+      </div>
+      <input type="range" id="avatarCropZoom" min="1" max="3" step="0.01" value="1" oninput="onAvatarCropZoom(this.value)" style="width:200px">
+      <div style="display:flex;gap:8px">
+        <button class="btn sm" type="button" onclick="closeAvatarCropEditor()">ביטול</button>
+        <button class="btn sm accent" type="button" onclick="confirmAvatarCrop()">אישור</button>
+      </div>
     </div>
     ${editingWorkerIdx!==null ? `
     <div class="field">
