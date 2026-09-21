@@ -4587,6 +4587,10 @@ function openWorkerModalFromScan(p){
     // actually gets persisted onto the worker record; just flags the docId
     // field in the modal below when the ID checksum check failed.
     idChecksumOk: p.idChecksumOk,
+    // Same display-only treatment — set by finishPageScan() when a later
+    // page's own idNo read (e.g. from the ספח) disagreed with the primary
+    // one already captured from the front.
+    idMismatch: p.idMismatch,
   };
   setIfPresent(ocrFields,'docGiven',p.given);
   setIfPresent(ocrFields,'docSurname',p.surname);
