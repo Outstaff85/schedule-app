@@ -4455,28 +4455,31 @@ function aiToWorker(isId){
 }
 
 // presetAssets ({scanB64,scanMediaType,sigPng,extraPages}) is set only by
-// regenerateWorkerDoc() below, for rebuilding an already-uploaded document
-// after a later data edit — there's no live scan overlay open in that case,
-// so every value that would normally come from the #ai* scan-result inputs
-// is read from the worker's own persisted doc*/maritalStatus/healthFund/
-// workStartDate fields instead (populated by the write-back near the bottom
-// of this function, the first time each worker's document is generated).
+// regenerateWorkerDoc() below, to source the scan image/signature/extra
+// pages from the Drive sidecar instead of the live scan globals — used for a
+// background regenerate where nothing was just scanned in THIS browser
+// session (the live globals could easily belong to a different worker's scan
+// entirely, see regenerateWorkerDoc()'s own comment). Every plain DATA field
+// (name/address/marital/etc.) comes from `targetWorker` unconditionally now
+// — the unified worker modal (showWorkerModal/saveWorker) is the single
+// place that writes those onto the worker record, whether the worker came
+// from a scan or was entered by hand, so there's no more separate "live scan
+// panel" values to branch on for those.
 async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
   mode=mode||'download';
   const isRegen=!!presetAssets;
-  const _v=id=>(document.getElementById(id)?.value||'').replace(/\s+/g,' ').trim();
   // Hoisted above the try so the catch block (below) can still flag this
   // worker's failed upload for the "no document" badge even when the
-  // failure happens before the assignment finishes — and so the isRegen
-  // reads just below have a worker to read from.
+  // failure happens before the assignment finishes.
   let targetWorker=(workerId||window.__aiRescanWorkerId)?workers.find(x=>x.id===(workerId||window.__aiRescanWorkerId)):null;
-  const surname=isRegen?((targetWorker&&targetWorker.docSurname)||''):_v('aiSurname');
-  const given=isRegen?((targetWorker&&targetWorker.docGiven)||''):_v('aiGiven');
-  const dob=isRegen?((targetWorker&&targetWorker.docDob)||''):_v('aiDob');
-  const sex=isRegen?((targetWorker&&targetWorker.docSex)||''):_v('aiSex');
-  const no = isRegen ? (workerDocId(targetWorker||{})||'') : (isId ? _v('aiIdNo') : _v('aiPassportNo'));
-  const nat = isId ? 'ISR' : _v('aiNat');
-  const isIsraeli = isId || nat.toUpperCase()==='ISR';
+  const surname=(targetWorker&&targetWorker.docSurname)||'';
+  const given=(targetWorker&&targetWorker.docGiven)||'';
+  const dob=(targetWorker&&targetWorker.docDob)||'';
+  const sex=(targetWorker&&targetWorker.docSex)||'';
+  const no=workerDocId(targetWorker||{})||'';
+  // No separate "nationality" field in the unified form — isId (Israeli ID
+  // vs. foreign passport, matching w.docType) is the single source of truth.
+  const isIsraeli=isId;
   // Explicit btnEl (or a deliberate null) takes precedence over the implicit
   // global `event` — needed when this runs in the background from saveWorker(),
   // where `event` is the Add/Save Worker button, not a Form 101 button.
