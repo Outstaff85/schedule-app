@@ -1193,7 +1193,11 @@ function workerAddress(w){
   return LEGACY_DOC_IN_ADDRESS.test(addr) ? '' : addr;
 }
 
-function openAddWorker(){ editingWorkerIdx=null; showWorkerModal({name:'',colorIdx:workers.length%8,phone:'',clientIds:[],schedule:DAYS.map(()=>({type:'work',start:'09:00',end:'17:00'}))}); }
+function blankWorkerDefaults(){
+  return {name:'',docGiven:'',docSurname:'',colorIdx:workers.length%8,phone:'',clientIds:[],
+    schedule:DAYS.map(()=>({type:'work',start:'09:00',end:'17:00'}))};
+}
+function openAddWorker(){ editingWorkerIdx=null; showWorkerModal(blankWorkerDefaults()); }
 function openEditWorker(wi){ editingWorkerIdx=wi; showWorkerModal(workers[wi]); }
 
 // The weekly grid starts collapsed every time the modal opens, and saveWorker
