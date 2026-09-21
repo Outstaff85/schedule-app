@@ -1310,10 +1310,15 @@ function showWorkerModal(w){
   __wForm101Open=false;
   __wClientsOpen=false;
   __wChildren=Array.isArray(w.docChildren)?w.docChildren.map(c=>({...c})):[];
+  __wAvatarB64=w.avatarB64||'';
   document.getElementById('workerModal').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <div class="modal-title" style="margin-bottom:0">${editingWorkerIdx!==null?'Edit Worker':'Add New Worker'}</div>
       <button class="btn sm" onclick="closeModal('workerOverlay')" title="Закрыть" style="flex-shrink:0;padding:0 8px"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="field" id="wAvatarWrap" style="display:${__wAvatarB64?'flex':'none'};align-items:center;gap:10px">
+      <img id="wAvatarImg" src="${__wAvatarB64?('data:image/jpeg;base64,'+__wAvatarB64):''}" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1px solid var(--border2)">
+      <button class="btn sm" type="button" onclick="clearWorkerAvatar()"><i class="ti ti-trash"></i> Удалить фото</button>
     </div>
     ${editingWorkerIdx!==null ? `
     <div class="field">
