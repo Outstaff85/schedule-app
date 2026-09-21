@@ -3513,6 +3513,12 @@ function showToast(msg,dur){ const t=document.getElementById('toast'); t.textCon
 // ===== AI Document Scanner (Anthropic Vision via Apps Script proxy) =====
 function openAiScan(){
   document.getElementById('aiScanOverlay').classList.add('open');
+  // New scan session — the "review pages" screen (renderScanPagesPrompt)
+  // accumulates into these across possibly several photos (front + ספח +
+  // ...), so they must start empty every time the overlay opens, not just
+  // on the individual onScanFilesSelected()/onScanFileSelected() resets.
+  window.__aiScanPageThumbs=[];
+  window.__aiPrimaryParsed=null;
   document.getElementById('aiScanStage').innerHTML=`
     <div style="display:flex;flex-direction:column;gap:10px">
       <button class="btn sm" onclick="document.getElementById('aiScanFile').click()">
