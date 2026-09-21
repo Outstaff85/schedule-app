@@ -50,6 +50,19 @@ SIG_RECT = (34.02, 186, 87.99, 15)
 # larger data-model change.
 CHILD_FIELD_SUFFIXES = ["", "1", "2", "3", "4", "5"]
 
+# Small per-field position corrections layered on top of the template's own
+# AcroForm geometry — (dx, dy) in PDF points, added directly to the widget's
+# rect (page-space: x right, y DOWN) before any value is written. This moves
+# the actual field/annotation rectangle itself (so its generated appearance,
+# comb cell spacing, etc. all shift with it), as opposed to nudging where
+# hand-drawn text sits within an unchanged rect — the user specifically
+# wants the former. Add further per-field tweaks here rather than re-editing
+# the PDF template by hand.
+FIELD_RECT_NUDGES = {
+    "worker_phone": (3, 0),           # 3pt right, per user request
+    "employer_deductions": (0, 1),    # 1pt down, per user request (font size bumped at its set_comb() call site)
+}
+
 
 def pdf_rect(page_h, x, y_bottom, width, height):
     return pymupdf.Rect(x, page_h - y_bottom - height, x + width, page_h - y_bottom)
