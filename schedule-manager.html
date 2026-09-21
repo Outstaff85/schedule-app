@@ -4942,7 +4942,7 @@ function switchContactsAccount(idx){
       if(resp.error){ showToast('Auth failed: '+resp.error); return; }
       _gToken = resp.access_token;
       fetchContacts().then(()=>{
-        const query = document.getElementById('wName')?.value||'';
+        const query = document.getElementById('wGiven')?.value||'';
         showContactsSuggestions(query);
       });
     }
