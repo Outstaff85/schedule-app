@@ -2937,7 +2937,7 @@ function renderDashboard(){
     dashLogEl.innerHTML=shown.map((e,i)=>{
       const wc=workers.find(w=>w.id===e.workerId);
       const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
-      const ini=e.workerName?.slice(0,2).toUpperCase()||'?';
+      const ini=wc?workerAvatarInner(wc):esc(e.workerName?.slice(0,2).toUpperCase()||'?');
       return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:${i<shown.length-1?'1px solid var(--border)':'none'}">
         <div style="width:30px;height:30px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div>
         <div style="flex:1">
