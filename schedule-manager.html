@@ -4299,12 +4299,12 @@ function renderScanQuadEditor(b64,mediaType,cornersFrac){
       </svg>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-      <button class="btn sm" onclick="rotateScanQuad(270)" title="Повернуть влево"><i class="ti ti-rotate-2"></i></button>
-      <button class="btn sm" onclick="rotateScanQuad(90)" title="Повернуть вправо"><i class="ti ti-rotate-clockwise-2"></i></button>
+      <button class="btn sm" onclick="rotateScanQuad(270)" title="סובב שמאלה"><i class="ti ti-rotate-2"></i></button>
+      <button class="btn sm" onclick="rotateScanQuad(90)" title="סובב ימינה"><i class="ti ti-rotate-clockwise-2"></i></button>
     </div>
     <div class="modal-actions" style="margin-top:14px">
-      <button class="btn" onclick="skipScanQuad()">Пропустить</button>
-      <button class="btn accent" onclick="confirmScanQuad()">Готово</button>
+      <button class="btn" onclick="skipScanQuad()">דלג</button>
+      <button class="btn accent" onclick="confirmScanQuad()">סיום</button>
     </div>`;
   const img=document.getElementById('scanEditImg');
   if(img.complete&&img.naturalWidth) initScanQuad(cornersFrac); else img.onload=()=>initScanQuad(cornersFrac);
