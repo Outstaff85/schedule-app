@@ -1477,7 +1477,7 @@ function showWorkerModal(w){
         </select>
       </div>
     </div>
-    <div class="field"><label>תאריך תחילת עבודה</label><input type="date" id="wStartDate" value="${w.startDate||w.workStartDate||''}"></div>
+    <div class="field"><label>תאריך תחילת עבודה</label><input type="date" id="wStartDate" value="${w.startDate||w.workStartDate||new Date().toISOString().slice(0,10)}"></div>
     <div class="field"><label>מין</label>
       <select id="wSex">
         <option value="" ${!w.docSex?'selected':''}>— לא נבחר —</option>
