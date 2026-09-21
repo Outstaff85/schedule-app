@@ -1269,10 +1269,11 @@ function toggleClientsWrap(){
 }
 
 // ===== Children (ספח) manual editor, inside the Form-101 dropdown =====
-// Backs w.docChildren. Pre-filled from a scan (window.__aiScanChildren /
-// window.__aiParsed.children) when the modal opens right after OCR, but from
-// then on it's a normal editable field like any other — whatever is in these
-// rows at save time is what's written to w.docChildren and sent to the PDF.
+// Backs w.docChildren. Pre-filled from a scan (openWorkerModalFromScan()
+// merges the OCR'd children into w.docChildren before opening this modal)
+// when the modal opens right after OCR, but from then on it's a normal
+// editable field like any other — whatever is in these rows at save time is
+// what's written to w.docChildren and sent to the PDF.
 // This is the manual fallback when the ספח fails to scan or scans wrong.
 let __wChildren = [];
 function renderChildrenRows(){
