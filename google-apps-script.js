@@ -1146,6 +1146,7 @@ function aiReadSefach(body){
     'Extract exactly these fields and return ONLY valid JSON, no prose, no markdown, no code fences: ' +
     '{"type":"israeli_id","address":"street name only, from מען","houseNumber":"house/building number only, from מס\' בית","city":"city/town name, from ישוב","maritalStatus":"single, married, divorced, widowed, or empty","children":[{"name":"...","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}],"imageAlign":{"rotate":0,"corners":{"tl":{"x":0,"y":0},"tr":{"x":1,"y":0},"br":{"x":1,"y":1},"bl":{"x":0,"y":1}}}} ' +
     '"type" is always the literal string "israeli_id" — always include it exactly as shown. ' +
+    'Write address/city/children names exactly as printed on the document, in the original language/script (Hebrew street and city names stay in Hebrew, e.g. "address":"יהודה הלוי", "city":"פתח תקווה" — never translate or transliterate into English). ' +
     'Keep address/houseNumber/city strictly separate — never combine two of them into one field. ' +
     'The ילדים (children) section, if present and populated, goes in "children"; if absent or empty, return "children":[]. ' +
     'Some ID variants also print a personal/marital status field (מצב אישי / מצב משפחתי — רווק/רווקה, נשוי/נשואה, גרוש/גרושה, אלמן/אלמנה) on this same address side: if visible, put it in "maritalStatus" as exactly one of "single", "married", "divorced", "widowed"; if not visible, return "maritalStatus":"" — do not guess. ' +
