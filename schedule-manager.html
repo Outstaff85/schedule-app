@@ -4470,14 +4470,19 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // — that global belongs to whichever scan session happens to be open in
     // the browser right now, which is a DIFFERENT worker's data if a
     // background regenerate for worker B fires while the manager is
-    // mid-scanning worker A. Same reasoning for __aiPacketOtherPages (a
-    // contract, etc.) — never attach it during a background regenerate.
+    // mid-scanning worker A. otherPagesToUse (ספח appendix card, contract
+    // pages, etc.) follows the same split: a fresh scan reads them from
+    // window.__aiPacketOtherPages, a regenerate reads them from
+    // presetAssets.extraPages (persisted in the Drive sidecar by
+    // saveWorkerAssets() below) — previously regenerate never re-attached
+    // these at all, so any edit after the initial scan (address, phone,
+    // marital status, ...) silently dropped the ספח/contract pages from
+    // every PDF rebuilt after that point.
     const scanImage=isRegen?{b64:presetAssets.scanB64,mediaType:presetAssets.scanMediaType}:window.__aiScanImage;
+    const otherPagesToUse=isRegen?(Array.isArray(presetAssets.extraPages)?presetAssets.extraPages:[]):(Array.isArray(window.__aiPacketOtherPages)?window.__aiPacketOtherPages:[]);
     const extraPages=[];
     if(scanImage) extraPages.push({b64:scanImage.b64,mediaType:scanImage.mediaType,caption:'Document scan'});
-    if(!isRegen && Array.isArray(window.__aiPacketOtherPages)){
-      for(const p of window.__aiPacketOtherPages) extraPages.push({b64:p.b64,mediaType:p.mediaType,caption:'Document'});
-    }
+    for(const p of otherPagesToUse) extraPages.push({b64:p.b64,mediaType:p.mediaType,caption:'Document'});
     if(extraPages.length) payload.extraPages=extraPages;
 
     const fnResp=await fetch(FORM101_FN_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
