@@ -3837,6 +3837,46 @@ function cropFieldImage(b64,mediaType,box){
   });
 }
 
+// Crops the person's own portrait photo out of a document scan, given
+// aiReadDoc's "photoBox" (same coordinate space/convention as fieldBoxes
+// above, see cropFieldImage's comment). Unlike cropFieldImage (built for thin
+// text-field strips), this pads modestly on all sides and forces a SQUARE
+// output — expanding the shorter side around its own center, never
+// stretching — so it looks right as a round avatar, then downsizes to
+// AVATAR_SIZE and re-encodes as JPEG (a worker photo needs to render
+// instantly in list rows, not stay full-resolution). Resolves null on any
+// failure (missing/degenerate box, decode error) — same best-effort
+// convention as cropFieldImage: never blocks or fails the scan.
+const AVATAR_SIZE=160;
+function cropPortraitAvatar(b64,mediaType,box){
+  return new Promise(resolve=>{
+    if(!box||typeof box.x0!=='number'||typeof box.x1!=='number'){ resolve(null); return; }
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        const iw=img.naturalWidth, ih=img.naturalHeight;
+        const clamp01=v=>Math.max(0,Math.min(1,typeof v==='number'?v:0));
+        const padX=(box.x1-box.x0)*0.1, padY=(box.y1-box.y0)*0.1;
+        const x0=clamp01(box.x0-padX)*iw, y0=clamp01(box.y0-padY)*ih;
+        const x1=clamp01(box.x1+padX)*iw, y1=clamp01(box.y1+padY)*ih;
+        const cw=x1-x0, ch=y1-y0;
+        if(!(cw>4&&ch>4)) throw new Error('degenerate photo box');
+        const side=Math.min(Math.max(cw,ch),iw,ih);
+        let sx0=x0-(side-cw)/2, sy0=y0-(side-ch)/2;
+        sx0=Math.max(0,Math.min(iw-side,sx0)); sy0=Math.max(0,Math.min(ih-side,sy0));
+        const cv=document.createElement('canvas');
+        cv.width=AVATAR_SIZE; cv.height=AVATAR_SIZE;
+        const ctx=cv.getContext('2d');
+        ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+        ctx.drawImage(img,sx0,sy0,side,side,0,0,AVATAR_SIZE,AVATAR_SIZE);
+        resolve(cv.toDataURL('image/jpeg',0.85).split(',')[1]);
+      }catch(e){ resolve(null); }
+    };
+    img.onerror=()=>resolve(null);
+    img.src='data:'+mediaType+';base64,'+b64;
+  });
+}
+
 // One field's re-verification round-trip: crop -> aiVerifyField -> trimmed
 // text or null. Never throws — a network/AI failure here just means this
 // field's original aiReadDoc reading is kept, not blanked.
