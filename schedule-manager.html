@@ -4189,6 +4189,10 @@ function openWorkerModalFromScan(p){
     docGiven: _nrm(p.given), docSurname: _nrm(p.surname),
     docId: _nrm(isId?p.idNo:p.passportNo),
     docDob: _nrm(p.dob), docSex: _nrm(p.sex), docExpiry: _nrm(p.expiry),
+    // Display-only — not one of saveWorker()'s commonFields, so it never
+    // actually gets persisted onto the worker record; just flags the docId
+    // field in the modal below when the ID checksum check failed.
+    idChecksumOk: p.idChecksumOk,
   };
   if(isId){
     ocrFields.address=_nrm(p.address);
