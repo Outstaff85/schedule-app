@@ -5120,7 +5120,15 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
         // with the new values without asking the manager to re-scan the
         // physical document. Best-effort: a failure here never rolls back
         // the already-successful main upload above.
-        if(scanImage){
+        // Skip this on a regenerate (isRegen): the scan/signature/extraPages
+        // there came straight from loadWorkerAssets() a few seconds ago via
+        // this SAME w.assetsFileId — re-uploading them as a "new" sidecar
+        // would just be writing back the exact bytes just downloaded. A
+        // background regenerate (triggered by editing one watched text
+        // field, e.g. address) used to always pay for this redundant
+        // multi-MB download-then-reupload round trip on top of the PDF
+        // build itself, which is what made a single-field edit feel so slow.
+        if(scanImage&&!isRegen){
           try{
             const assetsResp=await fetch(GS_URL,{
               method:'POST',
