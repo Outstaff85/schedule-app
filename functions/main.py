@@ -149,6 +149,21 @@ class Form101Builder:
         w.field_value = str(value)
         w.update()
 
+    def set_text_centered(self, name, value, size=None):
+        """Same field kind as set_text (plain LTR, no RTL bug) but drawn by
+        hand (blank + redraw, same trick as set_hebrew) so it can be
+        centered — PyMuPDF's own generated appearance has no centering
+        option, only its own left-alignment default."""
+        if not value or name not in self.widgets:
+            return
+        page, w = self.widgets[name]
+        size = size or (w.text_fontsize or 8)
+        w.field_value = str(value)
+        w.text_fontsize = size
+        w.update()
+        self._blank_appearance(page, w)
+        self._draw_center_text(page, w.rect, value, size)
+
     def set_comb(self, name, value, max_len, size):
         if not value or name not in self.widgets:
             return
