@@ -378,22 +378,32 @@ def build_form101_pdf(p):
         except Exception:
             pass
 
-    for extra in (p.get("extraPages") or []):
+    extra_pages = p.get("extraPages") or []
+    pw, ph = b.page1.rect.width, b.page1.rect.height
+    # The first two extraPages entries are, in the overwhelming common case, the
+    # document's own two sides — the ID front ("Document scan") and its ספח
+    # appendix card (captioned "Document") — so they go stacked on ONE page
+    # instead of two separate ones. There's no explicit "this is the ספח" tag
+    # on an extraPages entry, so this is a heuristic keyed on position, not
+    # content; any further entries (a contract, etc.) still get one page each,
+    # unchanged from before.
+    if len(extra_pages) >= 2:
+        combo_page = b.doc.new_page(width=pw, height=ph)
+        half_h = ph / 2
+        for extra, box in ((extra_pages[0], pymupdf.Rect(0, 0, pw, half_h)),
+                            (extra_pages[1], pymupdf.Rect(0, half_h, pw, ph))):
+            try:
+                _draw_extra_page_image(combo_page, extra, box)
+            except Exception:
+                pass
+        remaining_pages = extra_pages[2:]
+    else:
+        remaining_pages = extra_pages
+
+    for extra in remaining_pages:
         try:
-            img_bytes = base64.b64decode(extra["b64"])
-            pw, ph = b.page1.rect.width, b.page1.rect.height
             new_page = b.doc.new_page(width=pw, height=ph)
-            margin, cap_h = 40, 24
-            pix = pymupdf.Pixmap(img_bytes)
-            max_w, max_h = pw - margin * 2, ph - margin * 2 - cap_h
-            fit = min(max_w / pix.width, max_h / pix.height, 1)
-            w, h = pix.width * fit, pix.height * fit
-            x, y = (pw - w) / 2, margin
-            new_page.insert_text((margin, margin + 16), extra.get("caption", "Document scan"),
-                                  fontsize=13, color=(0.3, 0.3, 0.3))
-            new_page.draw_rect(pymupdf.Rect(x - 2, y - 2, x + w + 2, y + h + 2),
-                                color=(0.7, 0.7, 0.7), fill=(1, 1, 1), width=1)
-            new_page.insert_image(pymupdf.Rect(x, y, x + w, y + h), pixmap=pix)
+            _draw_extra_page_image(new_page, extra, pymupdf.Rect(0, 0, pw, ph))
         except Exception:
             pass
 
