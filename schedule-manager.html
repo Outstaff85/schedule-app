@@ -4500,25 +4500,37 @@ function finishPageScan(finalImg){
   if(!window.__aiScanPageThumbs) window.__aiScanPageThumbs=[];
   if(!window.__aiPacketOtherPages) window.__aiPacketOtherPages=[];
   const isFirstPage=window.__aiScanPageThumbs.length===0;
+  const current=window.__aiParsed||{};
+  const isSefachRead=!!current.__isSefachScan;
+  const currentIdNo=/^\d{9}$/.test(current.idNo||'')?current.idNo:'';
   if(isFirstPage){
     window.__aiScanImage=finalImg;
-    window.__aiPrimaryParsed=window.__aiParsed;
-  } else {
-    // Cross-check the ID number against whatever this later page (typically
-    // the ספח, which often repeats מספר הזהות) reads for it — a genuine
-    // mismatch is worth surfacing to the human, but neither read is
-    // automatically trusted over the other: the primary's idNo already went
-    // through zoomed digit re-verification (verifyDigitFields) and this
-    // page's read did not, so a disagreement doesn't overwrite anything,
-    // it just sets a flag the worker modal shows as a warning (mirrors
-    // idChecksumOk below).
-    const newIdNo=window.__aiParsed&&window.__aiParsed.idNo;
-    if(window.__aiPrimaryParsed&&window.__aiPrimaryParsed.idNo&&newIdNo
-       &&/^\d{9}$/.test(newIdNo)&&/^\d{9}$/.test(window.__aiPrimaryParsed.idNo)
-       &&newIdNo!==window.__aiPrimaryParsed.idNo){
-      window.__aiPrimaryParsed.idMismatch=true;
+    window.__aiPrimaryParsed={...current};
+    // A ספח-only read's idNo is never authoritative on its own — it hasn't
+    // been through the zoomed digit re-verification a front scan's idNo
+    // gets (verifyDigitFields/verifyIdChecksum). Don't let it become this
+    // session's docId just because a rescan happened to scan the back
+    // first (the main real-world use of the "add ספח" button: fixing up
+    // an EXISTING worker who already has a verified docId — this is what
+    // stops that scan from silently overwriting it). Keep it aside purely
+    // to cross-check against a front page's idNo if one shows up later in
+    // the same session.
+    if(isSefachRead){
+      window.__aiPrimaryParsed.idNo='';
+      if(currentIdNo) window.__aiPendingSefachIdNo=currentIdNo;
     }
-    window.__aiPrimaryParsed=mergeIsraeliIdFields(window.__aiPrimaryParsed,window.__aiParsed);
+  } else {
+    const primary=window.__aiPrimaryParsed;
+    if(isSefachRead){
+      if(primary.idNo&&currentIdNo&&currentIdNo!==primary.idNo) primary.idMismatch=true;
+      else if(!primary.idNo&&currentIdNo) window.__aiPendingSefachIdNo=currentIdNo;
+    } else if(currentIdNo){
+      // A front-scan page's idNo is always authoritative over a ספח's —
+      // cross-check against any ספח read seen earlier in this session first.
+      if(window.__aiPendingSefachIdNo&&currentIdNo!==window.__aiPendingSefachIdNo) primary.idMismatch=true;
+      if(!primary.idNo) primary.idNo=currentIdNo;
+    }
+    window.__aiPrimaryParsed=mergeIsraeliIdFields(primary,current);
     window.__aiPacketOtherPages.push(finalImg);
   }
   window.__aiScanPageThumbs.push(finalImg);
