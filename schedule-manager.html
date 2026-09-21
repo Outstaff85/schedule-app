@@ -1486,6 +1486,29 @@ function showWorkerModal(w){
       </select>
     </div>
     <div class="field-row">
+      <div class="field"><label>סוג הכנסה (טופס 101)</label>
+        <select id="wIncomeType">
+          <option value="monthly" ${(w.incomeType||'monthly')==='monthly'?'selected':''}>משכורת חודשית</option>
+          <option value="secondary" ${w.incomeType==='secondary'?'selected':''}>משרה נוספת</option>
+          <option value="partial" ${w.incomeType==='partial'?'selected':''}>משרה חלקית</option>
+          <option value="daily" ${w.incomeType==='daily'?'selected':''}>שכר יומי</option>
+          <option value="pension" ${w.incomeType==='pension'?'selected':''}>פנסיה</option>
+          <option value="scholarship" ${w.incomeType==='scholarship'?'selected':''}>מלגה</option>
+        </select>
+      </div>
+      <div class="field"><label>הכנסה נוספת (טופס 101)</label>
+        <select id="wOtherIncomeType">
+          <option value="none" ${(w.otherIncomeType||'none')==='none'?'selected':''}>אין הכנסה נוספת</option>
+          <option value="monthly" ${w.otherIncomeType==='monthly'?'selected':''}>משכורת חודשית</option>
+          <option value="secondary" ${w.otherIncomeType==='secondary'?'selected':''}>משרה נוספת</option>
+          <option value="partial" ${w.otherIncomeType==='partial'?'selected':''}>משרה חלקית</option>
+          <option value="daily" ${w.otherIncomeType==='daily'?'selected':''}>שכר יומי</option>
+          <option value="pension" ${w.otherIncomeType==='pension'?'selected':''}>פנסיה</option>
+          <option value="scholarship" ${w.otherIncomeType==='scholarship'?'selected':''}>מלגה</option>
+        </select>
+      </div>
+    </div>
+    <div class="field-row">
       <div class="field"><label>רחוב</label><input type="text" id="wAddress" value="${esc(workerAddress(w))}" placeholder="רחוב"></div>
       <div class="field"><label>מספר בית</label><input type="text" id="wHouseNumber" value="${esc(w.houseNumber||'')}" placeholder="מספר בית"></div>
     </div>
