@@ -4236,13 +4236,88 @@ async function confirmScanQuad(){
   const stage=document.getElementById('aiScanStage');
   stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
     +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br><span>Выравниваю скан…</span></div>';
-  try{ window.__aiScanImage=await warpQuadImage(b64,mediaType,r); }
-  catch(e){ console.error(e); window.__aiScanImage={b64,mediaType}; }
-  openWorkerModalFromScan(window.__aiParsed);
+  let finalImg;
+  try{ finalImg=await warpQuadImage(b64,mediaType,r); }
+  catch(e){ console.error(e); finalImg={b64,mediaType}; }
+  finishPageScan(finalImg);
 }
 function skipScanQuad(){
-  window.__aiScanImage=window.__scanEdit;
-  openWorkerModalFromScan(window.__aiParsed);
+  finishPageScan(window.__scanEdit);
+}
+// Fields carried by an Israeli ID's ספח (appendix) card that the front side
+// doesn't have — shared between the multi-file batch path
+// (onScanFilesSelected) and the new one-page-at-a-time loop below, so both
+// use the same definition of "still missing" / "worth merging in".
+const ID_CORE_FIELDS=['dob','sex','address','city'];
+function mergeIsraeliIdFields(primary,extra){
+  if(!primary||primary.type!=='israeli_id'||!extra||extra.type!=='israeli_id') return primary;
+  for(const f of ID_CORE_FIELDS){ if(!primary[f]&&extra[f]) primary[f]=extra[f]; }
+  if((!primary.children||!primary.children.length)&&Array.isArray(extra.children)&&extra.children.length) primary.children=extra.children;
+  return primary;
+}
+// Called once a single page's OCR + corner-confirmation is done (whichever
+// page — first or an added one). The FIRST page scanned in this session
+// becomes the primary document (window.__aiScanImage / __aiPrimaryParsed);
+// every page after that only MERGES its blank-filling fields (address/city/
+// children — see mergeIsraeliIdFields) into the primary record and its own
+// image goes to window.__aiPacketOtherPages instead of replacing the
+// primary — this is what lets a separately-photographed ספח add its data
+// without wiping out the front card's name/dob/sex/ID number. Ends by
+// showing the review screen (add another page, or finish) rather than
+// jumping straight to the worker modal, so ספח (or a contract page, etc.)
+// can be added before the worker record is actually opened.
+function finishPageScan(finalImg){
+  if(!window.__aiScanPageThumbs) window.__aiScanPageThumbs=[];
+  if(!window.__aiPacketOtherPages) window.__aiPacketOtherPages=[];
+  const isFirstPage=window.__aiScanPageThumbs.length===0;
+  if(isFirstPage){
+    window.__aiScanImage=finalImg;
+    window.__aiPrimaryParsed=window.__aiParsed;
+  } else {
+    window.__aiPrimaryParsed=mergeIsraeliIdFields(window.__aiPrimaryParsed,window.__aiParsed);
+    window.__aiPacketOtherPages.push(finalImg);
+  }
+  window.__aiScanPageThumbs.push(finalImg);
+  renderScanPagesPrompt();
+}
+// Review screen shown after every page: a thumbnail strip of everything
+// scanned so far in this session, a button to scan one more page (front card,
+// ספח, contract...) through the exact same single-photo pipeline
+// (onScanFileSelected — blur-check, auto-align, OCR, manual corner editor),
+// and a "done" button that hands off to the worker modal. Card #1 (the
+// primary page) has no remove button — removing it would mean restarting the
+// whole session (rescan), which "Отмена"/closing the overlay already covers.
+function renderScanPagesPrompt(){
+  const stage=document.getElementById('aiScanStage');
+  const pages=window.__aiScanPageThumbs||[];
+  stage.innerHTML=`
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="font-size:12px;color:var(--text2)">נסרקו ${pages.length} עמוד${pages.length===1?'':'ים'}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${pages.map((p,i)=>`
+          <div style="position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--border2);flex-shrink:0">
+            <img src="data:${p.mediaType};base64,${p.b64}" style="width:100%;height:100%;object-fit:cover;display:block">
+            <span style="position:absolute;bottom:1px;left:1px;font-size:9px;background:rgba(0,0,0,0.6);color:#fff;padding:0 3px;border-radius:3px">${i+1}</span>
+            ${i>0?`<button type="button" onclick="removeExtraScanPage(${i})" style="position:absolute;top:1px;right:1px;width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,0.7);color:#fff;border:none;font-size:10px;line-height:1;cursor:pointer;padding:0">✕</button>`:''}
+          </div>`).join('')}
+      </div>
+      <input type="file" id="aiScanFileExtra" accept="image/*,application/pdf,.pdf" style="display:none" onchange="onScanFileSelected(this.files[0]); this.value='';">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn sm" type="button" onclick="document.getElementById('aiScanFileExtra').click()"><i class="ti ti-plus"></i> הוסף עמוד (למשל ספח)</button>
+        <button class="btn sm accent" type="button" onclick="finishScanPages()"><i class="ti ti-check"></i> סיום</button>
+      </div>
+    </div>`;
+}
+function removeExtraScanPage(i){
+  if(i<=0) return; // primary page — not removable here, see comment above
+  window.__aiScanPageThumbs.splice(i,1);
+  window.__aiPacketOtherPages.splice(i-1,1);
+  renderScanPagesPrompt();
+}
+function finishScanPages(){
+  const finalParsed=window.__aiPrimaryParsed||window.__aiParsed;
+  window.__aiParsed=finalParsed;
+  openWorkerModalFromScan(finalParsed);
 }
 
 // Shared handoff from the scan pipeline into the unified worker modal, once
