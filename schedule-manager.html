@@ -3709,6 +3709,7 @@ function openAiScan(){
   // on the individual onScanFilesSelected()/onScanFileSelected() resets.
   window.__aiScanPageThumbs=[];
   window.__aiPrimaryParsed=null;
+  window.__aiPageParsed=[];
   document.getElementById('aiScanStage').innerHTML=`
     <div style="display:flex;flex-direction:column;gap:10px">
       <button class="btn sm" onclick="document.getElementById('aiScanFile').click()">
@@ -3775,6 +3776,7 @@ async function onScanFilesSelected(fileList){
   if(!files.length) return;
   window.__aiScanImage=null;
   window.__aiPacketOtherPages=[];
+  window.__aiPageParsed=[];
   window.__aiAvatarB64=null;
   const isPdf=f=>f.type==='application/pdf'||/\.pdf$/i.test(f.name||'');
   if(files.length===1 && !isPdf(files[0])) return onScanFileSelected(files[0]);
@@ -3839,6 +3841,7 @@ async function onScanFilesSelected(fileList){
         +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
         +'<span>קורא עמוד '+(i+1)+' מתוך '+items.length+'…</span></div>';
       if(/כרטיס\s*עובד|0101\/130/.test(it.text||'')) continue; // старая Форма 101 — отбрасываем
+      let thisPageParsed=null;
       if(!foundParsed){
         try{
           const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
@@ -3853,6 +3856,7 @@ async function onScanFilesSelected(fileList){
             window.__aiScanImage={b64:it.b64,mediaType:it.mediaType};
             window.__aiAvatarB64=p.photoBox?await cropPortraitAvatar(it.b64,it.mediaType,p.photoBox):null;
             needMore=missingCore(foundParsed);
+            window.__aiPageParsed=[foundParsed]; // primary page's own data — parallel to __aiScanImage
             continue; // эта страница уже сохранена как window.__aiScanImage, в "прочие" не дублируем
           }
         }catch(e){ console.error(e); }
@@ -3862,8 +3866,14 @@ async function onScanFilesSelected(fileList){
           const json=await resp.json();
           const p=json&&json.parsed;
           if(p&&p.type==='israeli_id'){
-            for(const f of CORE_FIELDS){ if(!foundParsed[f]&&p[f]){ foundParsed[f]=p[f]; } }
-            if((!foundParsed.children||!foundParsed.children.length)&&Array.isArray(p.children)&&p.children.length){ foundParsed.children=p.children; }
+            // Reuse the same field list/merge the single-page-at-a-time flow
+            // uses (ID_CORE_FIELDS/mergeIsraeliIdFields), not just the four
+            // fields CORE_FIELDS/missingCore tracks for "keep looking at more
+            // pages" — this page's own read (p) already has houseNumber/
+            // maritalStatus available whenever it was worth OCR'ing at all,
+            // and the old hand-rolled loop here dropped both silently.
+            foundParsed=mergeIsraeliIdFields(foundParsed,p);
+            thisPageParsed=p;
             // The ID number is also printed on the ספח, but per user feedback a
             // raw cross-page OCR disagreement isn't itself warning-worthy — the
             // ספח's own single read hasn't been through the same zoomed
@@ -3880,6 +3890,11 @@ async function onScanFilesSelected(fileList){
           // was merged in, so the ספח was read but never actually saved.
         }catch(e){ console.error(e); }
       }
+      // Kept parallel to otherPages (both pushed exactly once per loop
+      // iteration that reaches here) so removeExtraScanPage() can rebuild
+      // foundParsed from scratch after a page is dropped — see
+      // rebuildPrimaryFromPages(). null for a page never sent through OCR.
+      window.__aiPageParsed.push(thisPageParsed);
       otherPages.push({b64:it.b64,mediaType:it.mediaType});
     }
     window.__aiPacketOtherPages=otherPages;
@@ -4655,6 +4670,61 @@ function mergeIsraeliIdFields(primary,extra){
   if((!primary.children||!primary.children.length)&&Array.isArray(extra.children)&&extra.children.length) primary.children=extra.children;
   return primary;
 }
+// Seeds a fresh primary record from the first-scanned page's raw parsed
+// data. Shared by finishPageScan() (normal flow) and rebuildPrimaryFromPages()
+// (replaying after a page is removed) so both compute the exact same result
+// for the same set of pages.
+function initPrimaryFromFirstPage(current){
+  current=current||{};
+  const isSefachRead=!!current.__isSefachScan;
+  const currentIdNo=/^\d{9}$/.test(current.idNo||'')?current.idNo:'';
+  const primary={...current};
+  window.__aiPendingSefachIdNo=null;
+  // A ספח-only read's idNo is never authoritative on its own — it hasn't
+  // been through the zoomed digit re-verification a front scan's idNo gets
+  // (verifyDigitFields/verifyIdChecksum). Keep it aside purely to cross-check
+  // against a front page's idNo if one shows up later in the same session.
+  if(isSefachRead){
+    primary.idNo='';
+    if(currentIdNo) window.__aiPendingSefachIdNo=currentIdNo;
+  }
+  return primary;
+}
+// Merges one later-scanned page's raw parsed data into the primary record.
+// Shared by finishPageScan() (normal incremental flow) and
+// rebuildPrimaryFromPages() (removeExtraScanPage()'s replay), so both compute
+// the exact same result for the same set of pages regardless of when/why
+// this runs. `current` may be null (a batch-scanned page that was never sent
+// through OCR because earlier pages already filled every field worth
+// re-scanning for) — a no-op in that case.
+function mergeScanPage(primary,current){
+  if(!current) return primary;
+  const isSefachRead=!!current.__isSefachScan;
+  const currentIdNo=/^\d{9}$/.test(current.idNo||'')?current.idNo:'';
+  if(isSefachRead){
+    if(primary.idNo&&currentIdNo&&currentIdNo!==primary.idNo) primary.idMismatch=true;
+    else if(!primary.idNo&&currentIdNo) window.__aiPendingSefachIdNo=currentIdNo;
+  } else if(currentIdNo){
+    // A front-scan page's idNo is always authoritative over a ספח's —
+    // cross-check against any ספח read seen earlier in this session first.
+    if(window.__aiPendingSefachIdNo&&currentIdNo!==window.__aiPendingSefachIdNo) primary.idMismatch=true;
+    if(!primary.idNo) primary.idNo=currentIdNo;
+  }
+  return mergeIsraeliIdFields(primary,current);
+}
+// Recomputes window.__aiPrimaryParsed from scratch out of window.__aiPageParsed
+// (each page's own raw parsed data, kept parallel to __aiScanPageThumbs) —
+// used after removeExtraScanPage() drops a page, so a bad/misread extra page's
+// contribution (address, city, house number, marital status, children,
+// idMismatch, ...) doesn't silently keep living on in the primary record just
+// because only the page's thumbnail was removed, not the data it merged in.
+function rebuildPrimaryFromPages(){
+  const pages=window.__aiPageParsed||[];
+  if(!pages.length){ window.__aiPrimaryParsed=null; return; }
+  let primary=initPrimaryFromFirstPage(pages[0]);
+  for(let i=1;i<pages.length;i++) primary=mergeScanPage(primary,pages[i]);
+  window.__aiPrimaryParsed=primary;
+}
 // Called once a single page's OCR + corner-confirmation is done (whichever
 // page — first or an added one). The FIRST page scanned in this session
 // becomes the primary document (window.__aiScanImage / __aiPrimaryParsed);
@@ -4669,40 +4739,17 @@ function mergeIsraeliIdFields(primary,extra){
 function finishPageScan(finalImg){
   if(!window.__aiScanPageThumbs) window.__aiScanPageThumbs=[];
   if(!window.__aiPacketOtherPages) window.__aiPacketOtherPages=[];
+  if(!window.__aiPageParsed) window.__aiPageParsed=[];
   const isFirstPage=window.__aiScanPageThumbs.length===0;
   const current=window.__aiParsed||{};
-  const isSefachRead=!!current.__isSefachScan;
-  const currentIdNo=/^\d{9}$/.test(current.idNo||'')?current.idNo:'';
   if(isFirstPage){
     window.__aiScanImage=finalImg;
-    window.__aiPrimaryParsed={...current};
-    // A ספח-only read's idNo is never authoritative on its own — it hasn't
-    // been through the zoomed digit re-verification a front scan's idNo
-    // gets (verifyDigitFields/verifyIdChecksum). Don't let it become this
-    // session's docId just because a rescan happened to scan the back
-    // first (the main real-world use of the "add ספח" button: fixing up
-    // an EXISTING worker who already has a verified docId — this is what
-    // stops that scan from silently overwriting it). Keep it aside purely
-    // to cross-check against a front page's idNo if one shows up later in
-    // the same session.
-    if(isSefachRead){
-      window.__aiPrimaryParsed.idNo='';
-      if(currentIdNo) window.__aiPendingSefachIdNo=currentIdNo;
-    }
+    window.__aiPrimaryParsed=initPrimaryFromFirstPage(current);
   } else {
-    const primary=window.__aiPrimaryParsed;
-    if(isSefachRead){
-      if(primary.idNo&&currentIdNo&&currentIdNo!==primary.idNo) primary.idMismatch=true;
-      else if(!primary.idNo&&currentIdNo) window.__aiPendingSefachIdNo=currentIdNo;
-    } else if(currentIdNo){
-      // A front-scan page's idNo is always authoritative over a ספח's —
-      // cross-check against any ספח read seen earlier in this session first.
-      if(window.__aiPendingSefachIdNo&&currentIdNo!==window.__aiPendingSefachIdNo) primary.idMismatch=true;
-      if(!primary.idNo) primary.idNo=currentIdNo;
-    }
-    window.__aiPrimaryParsed=mergeIsraeliIdFields(primary,current);
+    window.__aiPrimaryParsed=mergeScanPage(window.__aiPrimaryParsed,current);
     window.__aiPacketOtherPages.push(finalImg);
   }
+  window.__aiPageParsed.push(current);
   window.__aiScanPageThumbs.push(finalImg);
   renderScanPagesPrompt();
 }
@@ -4738,6 +4785,12 @@ function removeExtraScanPage(i){
   if(i<=0) return; // primary page — not removable here, see comment above
   window.__aiScanPageThumbs.splice(i,1);
   window.__aiPacketOtherPages.splice(i-1,1);
+  if(window.__aiPageParsed) window.__aiPageParsed.splice(i,1);
+  // Whatever this page's own data contributed to __aiPrimaryParsed (address,
+  // city, house number, marital status, children, an idMismatch flag, ...)
+  // must not silently survive just because only the thumbnail was removed —
+  // recompute the primary record from the pages that are actually still here.
+  rebuildPrimaryFromPages();
   renderScanPagesPrompt();
 }
 function finishScanPages(){
