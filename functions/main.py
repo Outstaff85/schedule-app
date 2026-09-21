@@ -148,7 +148,7 @@ class Form101Builder:
         self._blank_appearance(page, w, state="Yes")
         r = w.rect
         thickness = max(1.1, r.height * 0.16)
-        extra_up = PAGE1_EXTRA_Y if page == self.page1 else 0
+        extra_up = PAGE1_EXTRA_Y if page == self.page1 else -2.0  # page-2 checkbox (resident_h) sits too high vs page-1 ones; nudge down 2pt, isolated to page 2
 
         def pt(fx, fy_from_bottom):
             x = r.x0 + fx * r.width + NUDGE
