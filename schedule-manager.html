@@ -4241,6 +4241,10 @@ function openWorkerModalFromScan(p){
     // field in the modal below when the ID checksum check failed.
     idChecksumOk: p.idChecksumOk,
   };
+  // Only set the key when a portrait was actually cropped from this scan —
+  // an omitted key leaves an existing avatar (on a rescan) untouched instead
+  // of wiping it out just because this particular photo had no photoBox.
+  if(window.__aiAvatarB64) ocrFields.avatarB64=window.__aiAvatarB64;
   if(isId){
     ocrFields.address=_nrm(p.address);
     ocrFields.city=_nrm(p.city);
