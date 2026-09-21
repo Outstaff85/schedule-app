@@ -4729,7 +4729,14 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // modal collected onto it before this function was ever called).
     let addr,city,marital,workStart,fund,children;
     if(isId){
-      addr=workerAddress(targetWorker||{});
+      // workerAddress(w) is the street name only (see workerAddress()'s own
+      // comment) — the PDF's address box wants "street number" as one
+      // string (functions/main.py's _split_street() re-splits it back
+      // apart), so the house number has to be appended here explicitly.
+      // Previously this line dropped w.houseNumber entirely, silently
+      // omitting the house number from every Form 101 whether it came from
+      // a scan or was typed in by hand.
+      addr=(workerAddress(targetWorker||{})+' '+((targetWorker&&targetWorker.houseNumber)||'')).trim();
       city=(targetWorker&&targetWorker.city)||'';
       marital=(targetWorker&&targetWorker.maritalStatus)||'';
       workStart=(targetWorker&&targetWorker.workStartDate)||'';
