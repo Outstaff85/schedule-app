@@ -4363,7 +4363,7 @@ async function confirmScanQuad(){
   const r=window.__quadRect;
   const stage=document.getElementById('aiScanStage');
   stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
-    +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br><span>Выравниваю скан…</span></div>';
+    +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br><span>מיישר את הסריקה…</span></div>';
   let finalImg;
   try{ finalImg=await warpQuadImage(b64,mediaType,r); }
   catch(e){ console.error(e); finalImg={b64,mediaType}; }
