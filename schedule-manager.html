@@ -3839,7 +3839,7 @@ async function onScanFileSelected(file){
   const stage=document.getElementById('aiScanStage');
   stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
     +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
-    +'<span>Загружаю фото…</span></div>';
+    +'<span>מעלה תמונה…</span></div>';
   try{
     const isPdf=file.type==='application/pdf'||/\.pdf$/i.test(file.name||'');
     let b64, mediaType;
