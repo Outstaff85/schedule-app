@@ -4022,6 +4022,37 @@ async function runSefachOcr(b64,mediaType){
   }
 }
 
+// Downscales a photo client-side, BEFORE it's ever uploaded anywhere, to the
+// same ~1800px cap preprocess_scan already works at internally server-side
+// (MAX_WORK_DIM in functions/main.py) — the server throws away anything
+// above that resolution anyway, so uploading a full phone-camera-resolution
+// photo first (often 3000-4000px+, several MB) is pure wasted upload time on
+// the slowest leg of the whole pipeline (mobile network), only to have the
+// server immediately shrink it. Never upscales (a photo already at or below
+// the cap is returned untouched). Best-effort: any failure here just falls
+// through to uploading the original image unchanged, so a hiccup never
+// blocks the scan.
+const UPLOAD_MAX_DIM=1800;
+function downscaleForUpload(b64,mediaType){
+  return new Promise(resolve=>{
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        const iw=img.naturalWidth, ih=img.naturalHeight;
+        const scale=Math.min(1,UPLOAD_MAX_DIM/Math.max(iw,ih,1));
+        if(scale>=1){ resolve({b64,mediaType}); return; }
+        const cv=document.createElement('canvas');
+        cv.width=Math.round(iw*scale); cv.height=Math.round(ih*scale);
+        const ctx=cv.getContext('2d');
+        ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+        ctx.drawImage(img,0,0,cv.width,cv.height);
+        resolve({b64:cv.toDataURL('image/jpeg',0.9).split(',')[1],mediaType:'image/jpeg'});
+      }catch(e){ resolve({b64,mediaType}); }
+    };
+    img.onerror=()=>resolve({b64,mediaType});
+    img.src='data:'+mediaType+';base64,'+b64;
+  });
+}
 // Step 1.4: a server-side OpenCV+Pillow pass (functions/main.py,
 // preprocess_scan) that (a) rejects an obviously-too-blurry photo before any
 // AI call is spent on it, and (b) when it finds a confident document quad
