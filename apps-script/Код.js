@@ -1164,7 +1164,13 @@ function aiReadSefach(body){
 
   var payload = {
     model: model,
-    max_tokens: 1500,
+    // Was 1500 at launch; hit the same truncation pattern aiReadDoc did
+    // early on (800→1600→3000→8000) once the schema grew — this action
+    // picked up idNo, houseNumber, maritalStatus, and imageAlign (rotate +
+    // 4 corner points) on top of its original address/city/children fields
+    // the same day. Bumped 3x rather than guessing a new number from
+    // scratch, per user request.
+    max_tokens: 4500,
     messages: [{
       role: 'user',
       content: [
