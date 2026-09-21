@@ -4595,7 +4595,18 @@ function renderScanQuadEditor(b64,mediaType,cornersFrac){
   // isn't supported.
   const startQuad=()=>{
     const go=()=>requestAnimationFrame(()=>initScanQuad(cornersFrac));
-    if(img.decode) img.decode().then(go).catch(go); else go();
+    if(!img.decode){ go(); return; }
+    // img.decode() has been seen to never settle at all (neither resolve nor
+    // reject) for a large data: URI on some mobile browsers — left alone,
+    // that means initScanQuad()/attachQuadDrag() never run, the rectangle
+    // never becomes interactive, and dragging silently does nothing (the
+    // final crop then always falls back to whatever confirmScanQuad reads
+    // from a never-initialized/stale window.__quadRect). A capped wait
+    // guarantees the editor still becomes usable even when decode() hangs.
+    let started=false;
+    const once=()=>{ if(started) return; started=true; go(); };
+    img.decode().then(once).catch(once);
+    setTimeout(once,1200);
   };
   startQuad();
 }
