@@ -1486,13 +1486,32 @@ function showWorkerModal(w){
       </select>
     </div>
     <div class="field-row">
+      <div class="field"><label>מצב משפחתי</label>
+        <select id="wMaritalStatus">
+          <option value="" ${!w.maritalStatus?'selected':''}>— לא נבחר —</option>
+          <option value="marital_single" ${w.maritalStatus==='marital_single'?'selected':''}>רווק/ה</option>
+          <option value="marital_married" ${w.maritalStatus==='marital_married'?'selected':''}>נשוי/אה</option>
+          <option value="marital_divorced" ${w.maritalStatus==='marital_divorced'?'selected':''}>גרוש/ה</option>
+          <option value="marital_widowed" ${w.maritalStatus==='marital_widowed'?'selected':''}>אלמן/ה</option>
+        </select>
+      </div>
+      <div class="field"><label>קופת חולים</label>
+        <select id="wHealthFund">
+          <option value="" ${!w.healthFund?'selected':''}>— לא נבחר —</option>
+          <option value="Clalit" ${w.healthFund==='Clalit'?'selected':''}>כללית</option>
+          <option value="Maccabi" ${w.healthFund==='Maccabi'?'selected':''}>מכבי</option>
+          <option value="Meuhedet" ${w.healthFund==='Meuhedet'?'selected':''}>מאוחדת</option>
+          <option value="Leumit" ${w.healthFund==='Leumit'?'selected':''}>לאומית</option>
+        </select>
+      </div>
+    </div>
+    <div class="field-row">
       <div class="field"><label>רחוב</label><input type="text" id="wAddress" value="${esc(workerAddress(w))}" placeholder="רחוב"></div>
       <div class="field"><label>מספר בית</label><input type="text" id="wHouseNumber" value="${esc(w.houseNumber||'')}" placeholder="מספר בית"></div>
     </div>
     <div class="field"><label>עיר</label><input type="text" id="wCity" value="${esc(w.city||'')}" placeholder="עיר"></div>
     <div class="field"><label>תאריך לידה</label><input type="text" id="wDob" value="${esc(w.docDob||'')}" placeholder="DD/MM/YYYY"></div>
     <div class="field"><label>תוקף ת.ז./דרכון</label><input type="text" id="wDocExpiry" value="${esc(w.docExpiry||'')}" placeholder="DD/MM/YYYY"></div>
-    <div class="field"><label>הערות</label><textarea id="wNotes" placeholder="הערות על העובד" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;padding:8px 10px;outline:none;min-height:56px;resize:vertical">${w.notes||''}</textarea></div>
     <div class="field" style="margin-bottom:6px">
       <button class="btn sm" type="button" onclick="toggleClientsWrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
         <span><i class="ti ti-users"></i> לקוחות <span id="wClientCount" style="color:var(--text3);font-weight:400;font-size:12px"></span></span>
@@ -1572,26 +1591,6 @@ function showWorkerModal(w){
           </select>
         </div>
       </div>
-      <div class="field-row">
-        <div class="field"><label>מצב משפחתי</label>
-          <select id="wMaritalStatus">
-            <option value="" ${!w.maritalStatus?'selected':''}>— לא נבחר —</option>
-            <option value="marital_single" ${w.maritalStatus==='marital_single'?'selected':''}>רווק/ה</option>
-            <option value="marital_married" ${w.maritalStatus==='marital_married'?'selected':''}>נשוי/אה</option>
-            <option value="marital_divorced" ${w.maritalStatus==='marital_divorced'?'selected':''}>גרוש/ה</option>
-            <option value="marital_widowed" ${w.maritalStatus==='marital_widowed'?'selected':''}>אלמן/ה</option>
-          </select>
-        </div>
-        <div class="field"><label>קופת חולים</label>
-          <select id="wHealthFund">
-            <option value="" ${!w.healthFund?'selected':''}>— לא נבחר —</option>
-            <option value="Clalit" ${w.healthFund==='Clalit'?'selected':''}>כללית</option>
-            <option value="Maccabi" ${w.healthFund==='Maccabi'?'selected':''}>מכבי</option>
-            <option value="Meuhedet" ${w.healthFund==='Meuhedet'?'selected':''}>מאוחדת</option>
-            <option value="Leumit" ${w.healthFund==='Leumit'?'selected':''}>לאומית</option>
-          </select>
-        </div>
-      </div>
       <div class="field" style="margin-top:8px">
         <label>ילדים (ספח)</label>
         <div id="wChildrenRows"></div>
@@ -1624,6 +1623,7 @@ function showWorkerModal(w){
         style="width:100%;max-width:340px;height:90px;display:block;background:#fff;border:1px solid var(--border2);border-radius:var(--radius-sm);touch-action:none"></canvas>
       <button class="btn sm" style="margin-top:6px" type="button" onclick="clearSignaturePad('wSigCanvas')"><i class="ti ti-eraser"></i> נקה חתימה</button>
     </div>
+    <div class="field"><label>הערות</label><textarea id="wNotes" placeholder="הערות על העובד" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;padding:8px 10px;outline:none;min-height:56px;resize:vertical">${w.notes||''}</textarea></div>
     <div class="modal-actions">
       ${editingWorkerIdx!==null?`<button class="btn" onclick="regenerateWorkerToken(${editingWorkerIdx})" style="background:var(--amber-bg);border-color:rgba(245,166,35,0.3);color:var(--amber)"><i class="ti ti-refresh"></i> טוקן חדש</button>`:''}
       <button class="btn accent" onclick="saveWorker()">${editingWorkerIdx!==null?'שמור שינויים':'צור עובד'}</button>
@@ -4490,6 +4490,14 @@ function openWorkerModalFromScan(p){
   if(isId){
     setIfPresent(ocrFields,'address',p.address);
     setIfPresent(ocrFields,'city',p.city);
+    // Most Israeli ID documents don't print marital status at all — this
+    // only fires on the rare variant that does (aiReadDoc's own prompt
+    // returns "" when it's not visible, per setIfPresent above). Maps the
+    // AI's plain-English value onto the <select>'s own option values; an
+    // unrecognized/empty AI value leaves the field for manual entry, same
+    // as always.
+    const MARITAL_AI_MAP={single:'marital_single',married:'marital_married',divorced:'marital_divorced',widowed:'marital_widowed'};
+    if(p.maritalStatus&&MARITAL_AI_MAP[p.maritalStatus]) ocrFields.maritalStatus=MARITAL_AI_MAP[p.maritalStatus];
     if(Array.isArray(p.children)&&p.children.length) ocrFields.docChildren=p.children.map(c=>({name:_nrm(c.name),idNo:_nrm(c.idNo),dob:_nrm(c.dob)}));
   }
   const rescanId=window.__aiRescanWorkerId;
