@@ -3699,7 +3699,13 @@ async function onScanFilesSelected(fileList){
       return;
     }
     window.__aiParsed=foundParsed;
-    openWorkerModalFromScan(foundParsed);
+    window.__aiPrimaryParsed=foundParsed;
+    // Feeds the same review screen the single-page loop (finishPageScan)
+    // uses, so a batch selection (e.g. front+ospח chosen together from the
+    // gallery) can still add further pages or just finish from there,
+    // instead of jumping straight into the worker modal.
+    window.__aiScanPageThumbs=[window.__aiScanImage,...otherPages];
+    renderScanPagesPrompt();
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Ошибка: '
