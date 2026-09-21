@@ -1594,7 +1594,7 @@ async function saveWorker(){
     const updated={...prevW,...commonFields};
     const changed=FORM101_WATCHED_FIELDS.some(f=>JSON.stringify(prevW[f])!==JSON.stringify(updated[f]));
     workers[editingWorkerIdx]=updated;
-    showToast(name+' updated!');
+    showToast(name+' עודכן!');
     closeModal('workerOverlay'); render(); autoSave();
     // regenerateWorkerDoc() (not autoUploadWithRetry) — it sources the scan
     // image/signature from the Drive sidecar rather than the live
@@ -1602,7 +1602,7 @@ async function saveWorker(){
     // session the manager has open elsewhere right now.
     if(changed){
       regenerateWorkerDoc(updated.id).then(ok=>{
-        showToast(ok?('Документ '+name+' обновлён'):('Не удалось обновить документ '+name));
+        showToast(ok?('המסמך של '+name+' עודכן'):('עדכון המסמך של '+name+' נכשל'));
       });
     }
     return;
@@ -1614,7 +1614,7 @@ async function saveWorker(){
   // signal — likely the same person being scanned/added twice by mistake.
   if(docId){
     const dup=workers.find(w=>workerDocId(w)===docId);
-    if(dup && !confirm('Работник с таким номером документа уже существует: '+(dup.name||'?')+'.\nВсё равно создать нового?')) return;
+    if(dup && !confirm('כבר קיים עובד עם מספר מסמך זהה: '+(dup.name||'?')+'.\nליצור בכל זאת עובד חדש?')) return;
   }
   const token=genToken();
   // Capture the signature PNG before the modal's DOM is replaced by the
