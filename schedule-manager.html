@@ -2375,13 +2375,16 @@ function gsAuthQuery(){
 // the user to the login screen mid-scan, losing all progress. Now the exact
 // same request is retried once first; only a second SESSION_EXPIRED_ERROR in
 // a row is treated as the session genuinely being gone.
-const SESSION_EXPIRED_ERROR = 'Сессия истекла или недействительна — войдите заново';
+const SESSION_EXPIRED_ERROR = 'Сессия истекла или недействותиתна — войдите заново';
 (function(){
   const _origFetch = window.fetch.bind(window);
-  function checkExpired(res, isRetry){
+  // url/opts are threaded through explicitly (not shared/mutable state) so
+  // this stays correct when several GS_URL calls are in flight at once
+  // (verifyDigitFields() fires multiple aiVerifyField calls in parallel).
+  function checkExpired(url, opts, res, isRetry){
     return res.clone().json().then(json => {
       if (!(json && json.error === SESSION_EXPIRED_ERROR && getSession())) return res;
-      if (!isRetry) return _origFetch.apply(null, checkExpired.__lastArgs).then(retryRes => checkExpired(retryRes, true));
+      if (!isRetry) return _origFetch(url, opts).then(retryRes => checkExpired(url, opts, retryRes, true));
       clearSession();
       showToast('Сессия истекла — войдите заново');
       setTimeout(() => location.reload(), 1200);
@@ -2390,11 +2393,7 @@ const SESSION_EXPIRED_ERROR = 'Сессия истекла или недейст
   }
   window.fetch = function(url, opts){
     const isGsCall = typeof url === 'string' && url.indexOf(GS_URL) === 0;
-    return _origFetch(url, opts).then(res => {
-      if (!isGsCall) return res;
-      checkExpired.__lastArgs = [url, opts];
-      return checkExpired(res, false);
-    });
+    return _origFetch(url, opts).then(res => isGsCall ? checkExpired(url, opts, res, false) : res);
   };
 })();
 
