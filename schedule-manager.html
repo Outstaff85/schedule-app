@@ -1097,10 +1097,10 @@ function renderWorkerList(){
   else if(sort==='status'){ const rank={active:0,vacation:1,fired:2}; list.sort((a,b)=>((rank[a.w.status||'active']??0)-(rank[b.w.status||'active']??0))||a.w.name.localeCompare(b.w.name)); }
   let h='';
   list.forEach(({w,wi})=>{
-    const c=WORKER_COLORS[w.colorIdx%8],wh=workerTotalHours(w),ini=w.name.slice(0,2).toUpperCase();
+    const c=WORKER_COLORS[w.colorIdx%8],wh=workerTotalHours(w);
     const rateStr=w.hourlyRate?(' · ₪'+w.hourlyRate+'/h'):'';
     h+=`<div class="worker-chip">
-      <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${ini}</div>
+      <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${workerAvatarInner(w)}</div>
       <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">FIRED</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">VAC</span>':''}${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div><div class="worker-hours">${wh.toFixed(1)}h${rateStr}</div></div>
       <div class="worker-actions">
         <button class="worker-act-btn edit" onclick="openEditWorker(${wi})" title="Edit"><i class="ti ti-edit"></i></button>
