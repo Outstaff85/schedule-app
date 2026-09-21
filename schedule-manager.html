@@ -4490,6 +4490,14 @@ function openWorkerModalFromScan(p){
   if(isId){
     setIfPresent(ocrFields,'address',p.address);
     setIfPresent(ocrFields,'city',p.city);
+    // Most Israeli ID documents don't print marital status at all — this
+    // only fires on the rare variant that does (aiReadDoc's own prompt
+    // returns "" when it's not visible, per setIfPresent above). Maps the
+    // AI's plain-English value onto the <select>'s own option values; an
+    // unrecognized/empty AI value leaves the field for manual entry, same
+    // as always.
+    const MARITAL_AI_MAP={single:'marital_single',married:'marital_married',divorced:'marital_divorced',widowed:'marital_widowed'};
+    if(p.maritalStatus&&MARITAL_AI_MAP[p.maritalStatus]) ocrFields.maritalStatus=MARITAL_AI_MAP[p.maritalStatus];
     if(Array.isArray(p.children)&&p.children.length) ocrFields.docChildren=p.children.map(c=>({name:_nrm(c.name),idNo:_nrm(c.idNo),dob:_nrm(c.dob)}));
   }
   const rescanId=window.__aiRescanWorkerId;
