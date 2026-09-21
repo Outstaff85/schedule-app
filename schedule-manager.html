@@ -3862,7 +3862,7 @@ async function onScanFileSelected(file){
     }
     const pre=await preAlignScan(b64,mediaType);
     if(pre.blurry){
-      stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Фото слишком размыто, снимите ещё раз<br><br>'
+      stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">התמונה מטושטשת מדי, צלמו שוב<br><br>'
         +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
       return;
     }
