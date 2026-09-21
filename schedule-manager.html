@@ -4040,15 +4040,25 @@ async function preAlignScan(b64,mediaType){
       body:JSON.stringify({image:b64})
     });
     const json=await resp.json();
-    if(!resp.ok||!json||json.error) return autoPreAlignScan(b64,mediaType);
+    if(!resp.ok||!json||json.error) return {b64,mediaType};
     if(json.reason==='blurry') return {blurry:true};
-    if(!json.ok) return autoPreAlignScan(b64,mediaType);
-    const enhanced={b64:json.imageBase64,mediaType:json.mediaType||'image/jpeg'};
-    if(json.geometryApplied) return enhanced; // OpenCV already found+straightened the document — skip the AI call
-    return autoPreAlignScan(enhanced.b64,enhanced.mediaType); // enhanced but not geometry-corrected — AI still seeds the quad
+    if(!json.ok) return {b64,mediaType};
+    // Whatever OpenCV managed (cropped+straightened if it found a confident
+    // quad, otherwise just contrast/sharpness-enhanced) is now just the
+    // starting image for the user's own manual crop/rotate in
+    // renderScanQuadEditor — no AI call needed to seed a guess anymore
+    // (autoPreAlignScan/aiDetectAlign removed from this path 2026-09-21, per
+    // user request, now that the editor always runs and the user positions
+    // the rectangle themselves either way). Trade-off: aiDetectAlign was the
+    // only thing that could tell an upside-down photo from a right-side-up
+    // one (plain OpenCV geometry can't, see CLAUDE.md) — an upside-down
+    // photo no longer gets auto-corrected, but the editor's own rotate
+    // buttons (rotateScanQuad) let the user fix that by hand in one tap,
+    // which fits "I'll mark it myself" either way.
+    return {b64:json.imageBase64,mediaType:json.mediaType||'image/jpeg'};
   }catch(e){
     console.error(e);
-    return autoPreAlignScan(b64,mediaType); // network/decode hiccup — fall through fully unchanged
+    return {b64,mediaType}; // network/decode hiccup — fall through fully unchanged
   }
 }
 
