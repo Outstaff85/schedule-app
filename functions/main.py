@@ -511,6 +511,15 @@ BLUR_VARIANCE_THRESHOLD = 15.0  # below this (Laplacian variance) = reject as to
 # a moderate blur (small print starting to degrade) measured ~9 — 15 sits
 # between those last two, closer to "reject only once it's actually a problem"
 # than to "reject anything not perfectly crisp".
+# NOTE: this was calibrated on the RAW (pre-enhancement) photo. As of
+# 2026-09-21 the blur check runs AFTER _enhance_contrast_sharpness() (per
+# user request), whose Sharpness pass systematically inflates Laplacian
+# variance for any input — sharpening amplifies gradients that already
+# exist, it can't invent detail that isn't there, but a given genuinely-blurry
+# photo will now score somewhat higher than it would have pre-enhancement.
+# The threshold itself hasn't been re-measured against a real blurry photo
+# post-enhancement (no test images available here) — if an obviously-blurry
+# scan starts passing this check in practice, that's the number to raise.
 
 
 def _blur_variance(gray):
@@ -580,10 +589,6 @@ def preprocess_scan_image(image_bytes):
         return {"ok": False, "reason": "decode_failed"}
 
     img = _resize_max_dim(img, MAX_WORK_DIM)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    blur_variance = _blur_variance(gray)
-    if blur_variance < BLUR_VARIANCE_THRESHOLD:
-        return {"ok": False, "reason": "blurry", "blurVariance": blur_variance}
 
     # Geometric auto-crop (_find_document_quad/_warp_quad) is DELIBERATELY
     # NOT applied here anymore (removed 2026-09-21, per user request) — it
@@ -600,7 +605,16 @@ def preprocess_scan_image(image_bytes):
     # rejection and contrast/sharpness enhancement still run — the user
     # always gets the full (enhanced, downscaled) original photo to crop
     # themselves.
+    #
+    # Contrast/sharpness enhancement now runs BEFORE the blur check (per user
+    # request, 2026-09-21) rather than after — see BLUR_VARIANCE_THRESHOLD's
+    # own comment above for the trade-off this implies.
     result = _enhance_contrast_sharpness(img)
+    gray = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
+    blur_variance = _blur_variance(gray)
+    if blur_variance < BLUR_VARIANCE_THRESHOLD:
+        return {"ok": False, "reason": "blurry", "blurVariance": blur_variance}
+
     ok, buf = cv2.imencode(".jpg", result, [cv2.IMWRITE_JPEG_QUALITY, 92])
     if not ok:
         return {"ok": False, "reason": "encode_failed"}
