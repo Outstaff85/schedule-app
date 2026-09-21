@@ -1553,8 +1553,12 @@ async function saveWorker(){
     workers[editingWorkerIdx]=updated;
     showToast(name+' updated!');
     closeModal('workerOverlay'); render(); autoSave();
-    if(changed && typeof autoUploadWithRetry==='function'){
-      autoUploadWithRetry(isId,updated.id).then(ok=>{
+    // regenerateWorkerDoc() (not autoUploadWithRetry) — it sources the scan
+    // image/signature from the Drive sidecar rather than the live
+    // window.__aiScanImage global, which could belong to an unrelated scan
+    // session the manager has open elsewhere right now.
+    if(changed){
+      regenerateWorkerDoc(updated.id).then(ok=>{
         showToast(ok?('Документ '+name+' обновлён'):('Не удалось обновить документ '+name));
       });
     }
