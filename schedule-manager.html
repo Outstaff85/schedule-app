@@ -3634,6 +3634,7 @@ async function onScanFilesSelected(fileList){
             foundParsed=p.fieldBoxes?await verifyDigitFields(p,it.b64,it.mediaType):p;
             foundParsed=await verifyIdChecksum(foundParsed,it.b64,it.mediaType);
             window.__aiScanImage={b64:it.b64,mediaType:it.mediaType};
+            window.__aiAvatarB64=p.photoBox?await cropPortraitAvatar(it.b64,it.mediaType,p.photoBox):null;
             needMore=missingCore(foundParsed);
             continue; // эта страница уже сохранена как window.__aiScanImage, в "прочие" не дублируем
           }
