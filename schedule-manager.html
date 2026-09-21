@@ -4510,7 +4510,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     const payload={
       isId, isIsraeli, surname, given, dob, sex, no,
       signDate: signDateStr,
-      workerPhone: isRegen?((targetWorker&&targetWorker.phone)||''):_v('aiPhone'),
+      workerPhone: (targetWorker&&targetWorker.phone)||'',
       incomeType: targetWorker&&targetWorker.incomeType,
       otherIncomeType: targetWorker&&targetWorker.otherIncomeType,
       employer: profile ? {
@@ -4519,34 +4519,33 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       } : null,
     };
 
-    // Israeli ID: address, marital, work start, fund — from the worker's own
-    // persisted fields when regenerating (no scan overlay is open in that
-    // case), otherwise from the live aiId* scan-panel inputs. Same
-    // regen-vs-live-scan split for the foreign-passport branch below.
+    // Israeli ID: address, marital, work start, fund, children — all from
+    // the worker record (saveWorker() already wrote everything the unified
+    // modal collected onto it before this function was ever called).
     let addr,city,marital,workStart,fund,children;
     if(isId){
-      addr=isRegen?workerAddress(targetWorker||{}):_v('aiAddress');
-      city=isRegen?((targetWorker&&targetWorker.city)||''):_v('aiCity');
-      marital=isRegen?((targetWorker&&targetWorker.maritalStatus)||''):(document.getElementById('aiIdMarital')?.value);
-      workStart=isRegen?((targetWorker&&targetWorker.workStartDate)||''):(document.getElementById('aiIdWork')?.value);
-      fund=isRegen?((targetWorker&&targetWorker.healthFund)||''):(document.getElementById('aiIdFund')?.value);
-      // Children table — only the Israeli-ID scan path can surface children
-      // (from the ID's ספח, if any are registered there).
-      children=isRegen?((targetWorker&&targetWorker.docChildren)||[]):(Array.isArray(window.__aiScanChildren)?window.__aiScanChildren:[]);
+      addr=workerAddress(targetWorker||{});
+      city=(targetWorker&&targetWorker.city)||'';
+      marital=(targetWorker&&targetWorker.maritalStatus)||'';
+      workStart=(targetWorker&&targetWorker.workStartDate)||'';
+      fund=(targetWorker&&targetWorker.healthFund)||'';
+      // Children table — only the Israeli-ID branch has one (from the ID's
+      // ספח, manually editable in the modal as a fallback for a failed scan).
+      children=(targetWorker&&targetWorker.docChildren)||[];
       Object.assign(payload,{address:addr,city,marital,workStart,healthFund:fund,children});
     } else {
-      workStart=isRegen?((targetWorker&&targetWorker.workStartDate)||''):(document.getElementById('aiPpWork')?.value);
-      fund=isRegen?((targetWorker&&targetWorker.healthFund)||''):(document.getElementById('aiPpFund')?.value);
+      workStart=(targetWorker&&targetWorker.workStartDate)||'';
+      fund=(targetWorker&&targetWorker.healthFund)||'';
       Object.assign(payload,{workStart,healthFund:fund});
     }
 
     // Signature ("חתימת המבקש/ת") — drawn server-side as an image if the
-    // worker actually signed on the pad. Regenerating reuses whatever
-    // signature was captured the first time (there's no live pad to read
-    // from in that case) instead of asking the worker to sign again for a
-    // routine data correction. getSignaturePng() already returns a
-    // data: URL, so the base64 payload is just the part after the comma.
-    const sigPng=isRegen?(presetAssets.sigPng||null):(typeof getSignaturePng==='function'?getSignaturePng():null);
+    // worker actually signed on the pad. Regenerating (isRegen) reuses
+    // whatever signature was captured the first time, from the Drive
+    // sidecar — there's no open modal to read a live pad from in that case.
+    // getSignaturePng() already returns a data: URL, so the base64 payload
+    // is just the part after the comma.
+    const sigPng=isRegen?(presetAssets.sigPng||null):(typeof getSignaturePng==='function'?getSignaturePng('wSigCanvas'):null);
     if(sigPng) payload.signaturePngBase64=sigPng.split(',')[1];
 
     // Regenerating reads the scan image back from presetAssets (the Drive
@@ -4554,15 +4553,14 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // — that global belongs to whichever scan session happens to be open in
     // the browser right now, which is a DIFFERENT worker's data if a
     // background regenerate for worker B fires while the manager is
-    // mid-scanning worker A. otherPagesToUse (ספח appendix card, contract
-    // pages, etc.) follows the same split: a fresh scan reads them from
-    // window.__aiPacketOtherPages, a regenerate reads them from
+    // mid-scanning worker A (or just finished creating worker A from a scan
+    // and is now plain-adding worker B by hand — see openAddWorker()'s own
+    // reset of these globals). otherPagesToUse (ספח appendix card, contract
+    // pages, etc.) follows the same split: a fresh, just-saved worker reads
+    // them from window.__aiPacketOtherPages, a regenerate reads them from
     // presetAssets.extraPages (persisted in the Drive sidecar by
-    // saveWorkerAssets() below) — previously regenerate never re-attached
-    // these at all, so any edit after the initial scan (address, phone,
-    // marital status, ...) silently dropped the ספח/contract pages from
-    // every PDF rebuilt after that point.
-    const scanImage=isRegen?{b64:presetAssets.scanB64,mediaType:presetAssets.scanMediaType}:window.__aiScanImage;
+    // saveWorkerAssets() below).
+    const scanImage=isRegen?(presetAssets.scanB64?{b64:presetAssets.scanB64,mediaType:presetAssets.scanMediaType}:null):window.__aiScanImage;
     const otherPagesToUse=isRegen?(Array.isArray(presetAssets.extraPages)?presetAssets.extraPages:[]):(Array.isArray(window.__aiPacketOtherPages)?window.__aiPacketOtherPages:[]);
     const extraPages=[];
     if(scanImage) extraPages.push({b64:scanImage.b64,mediaType:scanImage.mediaType,caption:'Document scan'});
