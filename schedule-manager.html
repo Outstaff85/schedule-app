@@ -4461,24 +4461,36 @@ function openWorkerModalFromScan(p){
   if(!p){ showToast('לא ניתן לפענח את תגובת ה-AI'); return; }
   const isId=p.type==='israeli_id';
   const _nrm=s=>String(s||'').replace(/\s+/g,' ').trim();
+  // Only include a key when THIS scan actually found a value for it. A scan
+  // of just the back/ספח side of an ID has no name/dob/sex on it — for a
+  // FRESH worker that's fine (the field just stays blank, same as before),
+  // but for a RESCAN of an existing worker (ocrFields gets spread over
+  // {...workers[idx], ...ocrFields} below) an unconditional empty string
+  // used to silently overwrite already-correct data captured from an
+  // earlier scan of the front side. Mirrors the same guard already used for
+  // avatarB64 just below.
+  const setIfPresent=(obj,key,val)=>{ const v=_nrm(val); if(v) obj[key]=v; };
   const ocrFields={
     docType: isId?'israeli_id':'passport',
-    docGiven: _nrm(p.given), docSurname: _nrm(p.surname),
-    docId: _nrm(isId?p.idNo:p.passportNo),
-    docDob: _nrm(p.dob), docSex: _nrm(p.sex), docExpiry: _nrm(p.expiry),
     // Display-only — not one of saveWorker()'s commonFields, so it never
     // actually gets persisted onto the worker record; just flags the docId
     // field in the modal below when the ID checksum check failed.
     idChecksumOk: p.idChecksumOk,
   };
+  setIfPresent(ocrFields,'docGiven',p.given);
+  setIfPresent(ocrFields,'docSurname',p.surname);
+  setIfPresent(ocrFields,'docId',isId?p.idNo:p.passportNo);
+  setIfPresent(ocrFields,'docDob',p.dob);
+  setIfPresent(ocrFields,'docSex',p.sex);
+  setIfPresent(ocrFields,'docExpiry',p.expiry);
   // Only set the key when a portrait was actually cropped from this scan —
   // an omitted key leaves an existing avatar (on a rescan) untouched instead
   // of wiping it out just because this particular photo had no photoBox.
   if(window.__aiAvatarB64) ocrFields.avatarB64=window.__aiAvatarB64;
   if(isId){
-    ocrFields.address=_nrm(p.address);
-    ocrFields.city=_nrm(p.city);
-    if(Array.isArray(p.children)) ocrFields.docChildren=p.children.map(c=>({name:_nrm(c.name),idNo:_nrm(c.idNo),dob:_nrm(c.dob)}));
+    setIfPresent(ocrFields,'address',p.address);
+    setIfPresent(ocrFields,'city',p.city);
+    if(Array.isArray(p.children)&&p.children.length) ocrFields.docChildren=p.children.map(c=>({name:_nrm(c.name),idNo:_nrm(c.idNo),dob:_nrm(c.dob)}));
   }
   const rescanId=window.__aiRescanWorkerId;
   window.__aiRescanWorkerId=null;
