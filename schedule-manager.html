@@ -4497,6 +4497,20 @@ function finishPageScan(finalImg){
     window.__aiScanImage=finalImg;
     window.__aiPrimaryParsed=window.__aiParsed;
   } else {
+    // Cross-check the ID number against whatever this later page (typically
+    // the ספח, which often repeats מספר הזהות) reads for it — a genuine
+    // mismatch is worth surfacing to the human, but neither read is
+    // automatically trusted over the other: the primary's idNo already went
+    // through zoomed digit re-verification (verifyDigitFields) and this
+    // page's read did not, so a disagreement doesn't overwrite anything,
+    // it just sets a flag the worker modal shows as a warning (mirrors
+    // idChecksumOk below).
+    const newIdNo=window.__aiParsed&&window.__aiParsed.idNo;
+    if(window.__aiPrimaryParsed&&window.__aiPrimaryParsed.idNo&&newIdNo
+       &&/^\d{9}$/.test(newIdNo)&&/^\d{9}$/.test(window.__aiPrimaryParsed.idNo)
+       &&newIdNo!==window.__aiPrimaryParsed.idNo){
+      window.__aiPrimaryParsed.idMismatch=true;
+    }
     window.__aiPrimaryParsed=mergeIsraeliIdFields(window.__aiPrimaryParsed,window.__aiParsed);
     window.__aiPacketOtherPages.push(finalImg);
   }
