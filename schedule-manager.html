@@ -1408,8 +1408,8 @@ function showWorkerModal(w){
       ${DAYS.map((d,i)=>`<div class="day-row">
         <span class="day-tag">${d}<br><span style="color:var(--accent)">${DAYS_HE[i]}</span></span>
         <select id="wt${i}" onchange="toggleDayTime(${i})">
-          <option value="work" ${(w.schedule[i]?.type||'work')==='work'?'selected':''}>Work</option>
-          <option value="off"  ${w.schedule[i]?.type==='off'?'selected':''}>Off</option>
+          <option value="work" ${(w.schedule[i]?.type||'work')==='work'?'selected':''}>עבודה</option>
+          <option value="off"  ${w.schedule[i]?.type==='off'?'selected':''}>חופש</option>
         </select>
         <input type="time" id="ws${i}" value="${w.schedule[i]?.start||'09:00'}" ${w.schedule[i]?.type==='off'?'disabled style="opacity:0.3"':''}>
         <input type="time" id="we${i}" value="${w.schedule[i]?.end||'17:00'}"   ${w.schedule[i]?.type==='off'?'disabled style="opacity:0.3"':''}>
