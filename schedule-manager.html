@@ -4423,12 +4423,19 @@ async function runOcr(b64,mediaType){
       window.__aiParsed=await verifyDigitFields(json.parsed,b64,mediaType);
     }
     window.__aiParsed=await verifyIdChecksum(window.__aiParsed,b64,mediaType);
-    // No more corner-editor step here (removed 2026-09-21, per user
-    // request) — the photo was already manually cropped/straightened
-    // BEFORE this OCR call ran (see onScanFileSelected/confirmScanQuad), so
-    // b64/mediaType already IS the final, embed-ready image. aiReadDoc's own
-    // imageAlign is still returned by the backend but no longer used here.
-    finishPageScan({b64,mediaType});
+    // No AI-seeded corner editor step here (removed 2026-09-21, per user
+    // request) — the photo was already manually cropped/straightened BEFORE
+    // this OCR call ran (see onScanFileSelected/confirmScanQuad), so
+    // b64/mediaType already IS a usable, embed-ready image on its own.
+    // aiReadDoc's own imageAlign (rotate+corners) comes back for free in
+    // this SAME response — added 2026-09-21 as a fine TIGHTENING pass on top
+    // of the user's own crop (never a replacement: refineWithAiAlign() below
+    // falls back to the untouched b64/mediaType on any missing/implausible/
+    // failed alignment), since by this point the user has already isolated
+    // one document in frame — the AI can no longer confuse two documents the
+    // way the removed OpenCV auto-crop used to.
+    const finalImg=await refineWithAiAlign({b64,mediaType},json.parsed&&json.parsed.imageAlign);
+    finishPageScan(finalImg);
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
@@ -4531,6 +4538,43 @@ function refineQuadCorners(b64,mediaType,cornersFrac){
 function validQuadCorners(c){
   if(!c) return false;
   return [c.tl,c.tr,c.br,c.bl].every(p=>p&&typeof p.x==='number'&&typeof p.y==='number'&&p.x>=-0.1&&p.x<=1.1&&p.y>=-0.1&&p.y<=1.1);
+}
+// Shoelace-formula area of a fractional quad (tl/tr/br/bl in [0,1] space),
+// as a fraction of the full 1x1 frame — used by refineWithAiAlign() below to
+// reject an implausibly aggressive AI-guessed crop before trusting it.
+function quadAreaFrac(c){
+  const pts=[c.tl,c.tr,c.br,c.bl];
+  let area=0;
+  for(let i=0;i<4;i++){ const a=pts[i], b=pts[(i+1)%4]; area+=a.x*b.y-b.x*a.y; }
+  return Math.abs(area)/2;
+}
+// Best-effort fine-tightening pass on top of the user's own manual crop,
+// using aiReadDoc's own imageAlign.corners — which comes back for free in
+// the SAME response already fetched for field extraction, no extra AI call.
+// Deliberately ignores imageAlign.rotate: the user already oriented the
+// photo correctly via the corner editor's own rotate buttons before this
+// ran, and re-applying the AI's own rotate guess on top risks flipping an
+// already-correctly-oriented photo. Requires the guessed quad to cover at
+// least half the frame — a wildly wrong/implausible AI guess (mistaking a
+// smaller region, e.g. the portrait photo, for the whole document) must
+// never be trusted to crop away content the user deliberately kept when
+// they drew their own rectangle. Falls back to the untouched image on any
+// missing/implausible corners or a failed warp — this only ever tightens
+// the user's crop, never replaces or overrides it with something worse.
+async function refineWithAiAlign(finalImg,align){
+  if(!align||!validQuadCorners(align.corners)||quadAreaFrac(align.corners)<0.5) return finalImg;
+  const dims=await new Promise(res=>{
+    const im=new Image();
+    im.onload=()=>res({w:im.naturalWidth,h:im.naturalHeight});
+    im.onerror=()=>res(null);
+    im.src='data:'+finalImg.mediaType+';base64,'+finalImg.b64;
+  });
+  if(!dims) return finalImg;
+  const c=align.corners;
+  const toPx=p=>({x:p.x*dims.w,y:p.y*dims.h});
+  const quadPx={tl:toPx(c.tl),tr:toPx(c.tr),br:toPx(c.br),bl:toPx(c.bl),imgW:dims.w,imgH:dims.h};
+  try{ return await warpQuadImage(finalImg.b64,finalImg.mediaType,quadPx); }
+  catch(e){ console.error(e); return finalImg; }
 }
 // 0/90/180/270° rotation of a fraction-space point (x,y in [0,1]), matching
 // the pixel rotation alignScanImage performs on the image itself.
