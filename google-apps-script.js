@@ -1006,11 +1006,14 @@ function aiReadDoc(body){
     '{"type":"israeli_id","surname":"...","given":"...","idNo":"9-digit number","dob":"DD/MM/YYYY","sex":"M or F","address":"...","city":"...","expiry":"DD/MM/YYYY","children":[{"name":"...","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}]} ' +
     'Rules: dates always DD/MM/YYYY. Names exactly as printed. ' +
     'For Israeli ID the surname is שם משפחה, given name is שם פרטי, ID number is מספר זהות (9 digits). ' +
-    'The address is usually on the back/appendix card (ספח לתעודת זהות), which has THREE separate labeled rows: ' +
-    'מען (street name), מס\' בית (house/building number), and ישוב (city/town name). ' +
-    'Combine מען and מס\' בית into the "address" field as "STREET NUMBER" (e.g. "יהודה הלוי 16"), ' +
-    'and put ישוב alone into the "city" field (e.g. "פתח תקווה") — do not mix them up or put the city in "address". ' +
-    'The back/appendix card (ספח) sometimes also lists the holder\'s registered children (ילדים) with their own name/ID/birth date rows — ' +
+    'Israeli IDs exist in TWO physical formats — treat a photo of EITHER one as type:"israeli_id", whichever side of whichever format it happens to show: ' +
+    '(1) the older laminated ID card plus a SEPARATE paper ספח (appendix) insert carrying the address/children section, with THREE separate labeled rows: ' +
+    'מען (street name), מס\' בית (house/building number), and ישוב (city/town name); or ' +
+    '(2) the newer plastic biometric/smart ID card (תעודה ביומטרית) — a two-sided card where the FRONT has photo/name/ID number/dob and the BACK has the address printed directly on the same card (no separate paper insert exists for this format), often alongside a machine-readable zone. ' +
+    'A photo showing ONLY a back/address side — no photo, no given/surname visible on it — is still type:"israeli_id": extract whatever IS visible on that particular photo (e.g. just address/city, or just children) and leave every other field an empty string; never refuse to classify it or return a different type just because one photo only shows part of the document. ' +
+    'Whichever format: combine מען/street-name and מס\' בית/house-number into the "address" field as "STREET NUMBER" (e.g. "יהודה הלוי 16"), ' +
+    'and put ישוב/city-name alone into the "city" field (e.g. "פתח תקווה") — do not mix them up or put the city in "address". ' +
+    'The address side (paper ספח or biometric card back) sometimes also lists the holder\'s registered children (ילדים) with their own name/ID/birth date rows — ' +
     'if such a section is present and populated, extract each child into the "children" array; if absent or empty, return "children":[]. ' +
     'If a field is not visible or unreadable use empty string. ' +
     'Also include a top-level "fieldBoxes" object locating, on THIS image exactly as given to you (not the imageAlign-straightened version below), ' +
