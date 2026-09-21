@@ -4517,6 +4517,12 @@ async function rotateScanQuad(deg){
   const img=await alignScanImage(b64,mediaType,{rotate:deg,crop:{x0:0,y0:0,x1:1,y1:1}});
   renderScanQuadEditor(img.b64,img.mediaType,rotated);
 }
+// window.__scanEditPurpose tells these two where to go next: 'preOcr' (the
+// normal case now — see onScanFileSelected) means the user just finished
+// marking up a RAW photo, so the cropped result still needs to go through
+// runOcr() itself; anything else (only 'sefach', currently unreachable via
+// UI but kept working — see runSefachOcr) means OCR already ran and this is
+// finishing the page directly, same as before.
 async function confirmScanQuad(){
   const {b64,mediaType}=window.__scanEdit;
   const r=window.__quadRect;
@@ -4526,10 +4532,12 @@ async function confirmScanQuad(){
   let finalImg;
   try{ finalImg=await warpQuadImage(b64,mediaType,r); }
   catch(e){ console.error(e); finalImg={b64,mediaType}; }
-  finishPageScan(finalImg);
+  if(window.__scanEditPurpose==='preOcr') runOcr(finalImg.b64,finalImg.mediaType);
+  else finishPageScan(finalImg);
 }
 function skipScanQuad(){
-  finishPageScan(window.__scanEdit);
+  if(window.__scanEditPurpose==='preOcr') runOcr(window.__scanEdit.b64,window.__scanEdit.mediaType);
+  else finishPageScan(window.__scanEdit);
 }
 // Fields carried by an Israeli ID's ספח (appendix) card that the front side
 // doesn't have — shared between the multi-file batch path
