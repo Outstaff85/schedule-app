@@ -132,8 +132,17 @@ class Form101Builder:
 
     # ---- field writers (mirror setH/setT/setComb/addNew*Field in the JS) ---
 
-    def set_hebrew(self, name, value, size=None):
-        """Existing template field with Hebrew/RTL content."""
+    def set_hebrew(self, name, value, size=None, right_align=True):
+        """Existing template field with Hebrew/RTL content. right_align=False
+        is for the odd field that's actually plain LTR content (a phone
+        number) routed through this writer rather than set_text() only
+        because it still needs the blank+redraw treatment for some other
+        reason — see the worker_phone/employer_phone call sites, where the
+        default right-alignment anchored the digits against the template's
+        own printed "/" guide mark baked into that box (confirmed by
+        rendering the same box with an empty value — the "/" is static page
+        content, present either way), making the phone number look garbled/
+        overlapped rather than genuinely missing."""
         if not value or name not in self.widgets:
             return
         page, w = self.widgets[name]
@@ -142,7 +151,7 @@ class Form101Builder:
         w.text_fontsize = size
         w.update()
         self._blank_appearance(page, w)
-        self._draw_rtl_text(page, w.rect, value, size)
+        self._draw_rtl_text(page, w.rect, value, size, right_align=right_align)
 
     def set_text(self, name, value, size=None):
         """Existing template field with plain (LTR) content — no RTL bug, so
