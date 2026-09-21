@@ -1278,6 +1278,16 @@ function toggleClientsWrap(){
 // what's written to w.docChildren and sent to the PDF.
 // This is the manual fallback when the ספח fails to scan or scans wrong.
 let __wChildren = [];
+// Worker avatar (portrait cropped from a document scan, see
+// cropPortraitAvatar) currently attached in the open modal — mirrors
+// __wChildren's pattern: seeded from the worker/OCR data when the modal
+// opens, then it's just in-memory state until saveWorker() persists it.
+let __wAvatarB64 = '';
+function clearWorkerAvatar(){
+  __wAvatarB64='';
+  const wrap=document.getElementById('wAvatarWrap');
+  if(wrap) wrap.style.display='none';
+}
 function renderChildrenRows(){
   const wrap=document.getElementById('wChildrenRows');
   if(!wrap) return;
