@@ -792,6 +792,15 @@ let clients = [
 // --- Utils --------------------------------------------------------------------
 function uid(){ return 'id'+Math.random().toString(36).slice(2,9); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// Shared inner content for every "colored circle" worker avatar spot: a
+// cropped portrait photo (see cropPortraitAvatar) when the worker has one,
+// falling back to the existing colored-initials look otherwise. The caller
+// still owns the outer circle (size/background/color) — this only fills it.
+function workerAvatarInner(w){
+  return w.avatarB64
+    ? `<img class="avatar-photo" src="data:image/jpeg;base64,${w.avatarB64}" alt="">`
+    : esc((w.name||'').slice(0,2).toUpperCase());
+}
 function getSundayOfWeek(d){ const c=new Date(d); c.setDate(c.getDate()-c.getDay()); c.setHours(0,0,0,0); return c; }
 function toMins(t){ if(!t)return null; const[h,m]=t.split(':').map(Number); return h*60+m; }
 function calcHours(s,e){ if(!s||!e)return 0; const sm=toMins(s),em=toMins(e); return em<=sm?(1440-sm+em)/60:(em-sm)/60; }
