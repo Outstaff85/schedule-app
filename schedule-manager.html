@@ -1385,15 +1385,15 @@ function showWorkerModal(w){
       </button>
     </div>
     <div id="wClientsWrap" style="display:none">
-      ${clients.length>5?`<input type="text" id="wClientSearch" placeholder="Search clients / objects..." oninput="filterClientPick(this.value)" autocomplete="off" style="width:100%;margin-bottom:6px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">`:''}
+      ${clients.length>5?`<input type="text" id="wClientSearch" placeholder="חיפוש לקוחות / אובייקטים..." oninput="filterClientPick(this.value)" autocomplete="off" style="width:100%;margin-bottom:6px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">`:''}
       <div id="wClientPick" style="max-height:190px;overflow-y:auto;border:1px solid var(--border2);border-radius:var(--radius-sm);padding:4px;display:flex;flex-direction:column;gap:2px">
         ${clients.length?clients.map(c=>`<label class="wc-row" data-name="${(c.name+' '+(c.object||'')).toLowerCase().replace(/"/g,'')}" style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:var(--radius-sm);cursor:pointer">
           <input type="checkbox" value="${c.id}" ${(w.clientIds||[]).includes(c.id)?'checked':''} onchange="updateClientCount()" style="width:auto;padding:0;flex-shrink:0">
           <span style="width:8px;height:8px;border-radius:50%;background:${c.color};flex-shrink:0"></span>
           <span style="font-size:13px;color:var(--text)">${esc(c.name)}${c.object?`<span style="color:var(--text3);font-size:11px"> · ${esc(c.object)}</span>`:''}</span>
-        </label>`).join(''):'<span style="font-size:12px;color:var(--text3);padding:8px">No clients yet</span>'}
+        </label>`).join(''):'<span style="font-size:12px;color:var(--text3);padding:8px">אין לקוחות עדיין</span>'}
       </div>
-      <div id="wClientEmpty" style="display:none;font-size:12px;color:var(--text3);padding:8px">Nothing found</div>
+      <div id="wClientEmpty" style="display:none;font-size:12px;color:var(--text3);padding:8px">לא נמצא</div>
     </div>
     <div class="field" style="margin-bottom:6px">
       <button class="btn sm" type="button" onclick="toggleWeeklySchedule()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
