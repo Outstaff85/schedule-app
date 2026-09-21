@@ -101,10 +101,25 @@ class Form101Builder:
                 if state is None or m.group(1) == state:
                     page.parent.update_stream(int(m.group(2)), b"")
 
-    def _draw_rtl_text(self, page, rect, text, size, right_align=True):
+    def _draw_rtl_text(self, page, rect, text, size, right_align=True, bottom_align=False):
         disp = get_display(str(text))
         tw = self.font.text_length(disp, fontsize=size)
         x = (rect.x1 - 2 - tw) if right_align else (rect.x0 + 2)
+        asc = self.font.ascender * size
+        if bottom_align:
+            y = rect.y0 + asc + 1  # sit near the box's bottom edge, 1pt margin so the baseline isn't flush against the border
+        else:
+            y = rect.y0 + (rect.height - asc) / 2 + asc
+        page.insert_text((x, y), disp, fontname=FONT_NAME, fontsize=size, color=(0, 0, 0))
+
+    def _draw_center_text(self, page, rect, text, size):
+        """Center a short LTR value (e.g. a house number) both horizontally
+        and vertically within its box — same vertical math as
+        _draw_rtl_text's default (centered), just horizontal-centered
+        instead of left/right-anchored. No bidi needed (digits only)."""
+        disp = str(text)
+        tw = self.font.text_length(disp, fontsize=size)
+        x = rect.x0 + (rect.width - tw) / 2
         asc = self.font.ascender * size
         y = rect.y0 + (rect.height - asc) / 2 + asc
         page.insert_text((x, y), disp, fontname=FONT_NAME, fontsize=size, color=(0, 0, 0))
