@@ -4318,17 +4318,12 @@ async function runOcr(b64,mediaType){
       window.__aiParsed=await verifyDigitFields(json.parsed,b64,mediaType);
     }
     window.__aiParsed=await verifyIdChecksum(window.__aiParsed,b64,mediaType);
-    const align=json.parsed&&json.parsed.imageAlign;
-    const rotateDeg=align&&[0,90,180,270].includes(align.rotate)?align.rotate:0;
-    // Fix gross orientation first so the quad editor below always works on an
-    // upright image — corners (given against the pre-rotation photo) get the
-    // same rotation applied to their coordinates to stay in sync.
-    const upright=rotateDeg?await alignScanImage(b64,mediaType,{rotate:rotateDeg,crop:{x0:0,y0:0,x1:1,y1:1}}):{b64,mediaType};
-    const corners=validQuadCorners(align&&align.corners)
-      ? {tl:rotatePointFrac(align.corners.tl,rotateDeg),tr:rotatePointFrac(align.corners.tr,rotateDeg),
-         br:rotatePointFrac(align.corners.br,rotateDeg),bl:rotatePointFrac(align.corners.bl,rotateDeg)}
-      : {tl:{x:0,y:0},tr:{x:1,y:0},br:{x:1,y:1},bl:{x:0,y:1}};
-    renderScanQuadEditor(upright.b64,upright.mediaType,corners);
+    // No more corner-editor step here (removed 2026-09-21, per user
+    // request) — the photo was already manually cropped/straightened
+    // BEFORE this OCR call ran (see onScanFileSelected/confirmScanQuad), so
+    // b64/mediaType already IS the final, embed-ready image. aiReadDoc's own
+    // imageAlign is still returned by the backend but no longer used here.
+    finishPageScan({b64,mediaType});
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
