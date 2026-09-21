@@ -206,7 +206,7 @@ class Form101Builder:
         w.field_value = str(value)[:max_len]
         page.add_widget(w)
 
-    def add_hebrew_field(self, page_h, page, name, xywh, size, value, right_align=True):
+    def add_hebrew_field(self, page_h, page, name, xywh, size, value, right_align=True, bottom_align=False):
         if not value:
             return
         rect = pdf_rect(page_h, *xywh)
@@ -215,7 +215,7 @@ class Form101Builder:
         page.add_widget(w)
         live = self._refetch(page, name)
         self._blank_appearance(page, live)
-        self._draw_rtl_text(page, rect, value, size, right_align)
+        self._draw_rtl_text(page, rect, value, size, right_align, bottom_align)
 
     def finalize(self):
         catalog = self.doc.pdf_catalog()
