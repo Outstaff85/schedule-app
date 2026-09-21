@@ -4003,6 +4003,13 @@ async function runSefachOcr(b64,mediaType){
       ? {tl:rotatePointFrac(align.corners.tl,rotateDeg),tr:rotatePointFrac(align.corners.tr,rotateDeg),
          br:rotatePointFrac(align.corners.br,rotateDeg),bl:rotatePointFrac(align.corners.bl,rotateDeg)}
       : {tl:{x:0,y:0},tr:{x:1,y:0},br:{x:1,y:1},bl:{x:0,y:1}};
+    // Unlike onScanFileSelected's now-pre-OCR editor, this one still runs
+    // AFTER the AI call (aiReadSefach already happened above) — tag it so
+    // confirmScanQuad()/skipScanQuad() finish the page directly instead of
+    // routing to runOcr(). No UI currently reaches this function (the
+    // "הוסף ספח בלבד" button was removed 2026-09-21, kept working in case
+    // it's re-added later), but it must stay correct either way.
+    window.__scanEditPurpose='sefach';
     renderScanQuadEditor(upright.b64,upright.mediaType,corners);
   }catch(err){
     console.error(err);
