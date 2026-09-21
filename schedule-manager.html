@@ -4398,7 +4398,14 @@ function clearSignaturePad(canvasId){
 }
 function getSignaturePng(canvasId){
   const cv=document.getElementById(canvasId||'wSigCanvas');
-  if(!cv||!cv._sigDirty) return null;
+  // showWorkerUploadingOverlay() replaces #workerModal's innerHTML (unlike
+  // closeModal(), which only hides via a CSS class and leaves the canvas
+  // alive) — so for a brand-new worker the canvas is already gone by the
+  // time the background upload gets around to reading it. saveWorker()
+  // captures the PNG into this stash right before showing that overlay;
+  // fall back to it when the live canvas no longer exists.
+  if(!cv) return window.__wCapturedSigPng ?? null;
+  if(!cv._sigDirty) return null;
   return cv.toDataURL('image/png');
 }
 
