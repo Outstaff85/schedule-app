@@ -4288,7 +4288,7 @@ function renderScanQuadEditor(b64,mediaType,cornersFrac){
   window.__scanEdit={b64,mediaType};
   const stage=document.getElementById('aiScanStage');
   stage.innerHTML=`
-    <div style="font-size:12px;color:var(--text2);margin-bottom:8px">ИИ подставил рамку по краям документа — потяни за точки, чтобы поправить, затем «Готово».</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:8px">ה-AI סימן מסגרת סביב המסמך — גררו את הנקודות כדי לתקן, ואז «סיום».</div>
     <div id="scanEditWrap" style="position:relative;display:inline-block;max-width:100%;touch-action:none;background:#111;line-height:0">
       <img id="scanEditImg" src="data:${mediaType};base64,${b64}" draggable="false"
         style="display:block;max-width:100%;max-height:46vh;user-select:none;-webkit-user-drag:none">
