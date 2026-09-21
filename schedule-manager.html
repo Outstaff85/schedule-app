@@ -3955,6 +3955,12 @@ async function runSefachOcr(b64,mediaType){
       return;
     }
     window.__aiParsed=json.parsed;
+    // Tags this result as "a ספח-only read" for finishPageScan() below — its
+    // own idNo (if any) must never become authoritative on its own, only
+    // used as a cross-check against a front page's verified idNo, since it
+    // never went through verifyDigitFields/verifyIdChecksum the way a front
+    // scan's idNo did.
+    if(window.__aiParsed) window.__aiParsed.__isSefachScan=true;
     const align=json.parsed&&json.parsed.imageAlign;
     const rotateDeg=align&&[0,90,180,270].includes(align.rotate)?align.rotate:0;
     const upright=rotateDeg?await alignScanImage(b64,mediaType,{rotate:rotateDeg,crop:{x0:0,y0:0,x1:1,y1:1}}):{b64,mediaType};
