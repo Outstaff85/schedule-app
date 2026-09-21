@@ -4127,8 +4127,8 @@ async function runOcr(b64,mediaType){
     });
     const json=await resp.json();
     if(!json||json.error){
-      stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">Ошибка ИИ: '
-        +((json&&json.error)||'нет ответа')+'<br><br>'
+      stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאת AI: '
+        +((json&&json.error)||'אין תגובה')+'<br><br>'
         +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
       return;
     }
