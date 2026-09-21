@@ -4573,25 +4573,12 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     const out=Uint8Array.from(atob(fnJson.pdfBase64),c=>c.charCodeAt(0));
     const fileName=fnJson.fileName;
 
-    // Write back every value actually used onto the worker record (only
-    // when there's a real worker AND we're persisting a new document — a
-    // bare 'download' before the worker is saved, or a re-download of an
-    // unchanged document, has nothing useful to gain from this and would
-    // just add an autoSave the caller isn't expecting). This is what makes
-    // a LATER edit-and-regenerate possible without re-scanning: these
-    // become the baseline regenerateWorkerDoc() reads next time.
+    // docType is the one thing this function itself determines (which
+    // branch actually generated the PDF) rather than something the unified
+    // modal collects — everything else (name/address/marital/etc.) is
+    // already on targetWorker, written by saveWorker() before this ran.
     if(mode==='upload'&&targetWorker){
       targetWorker.docType=isId?'israeli_id':'passport';
-      targetWorker.docSurname=surname; targetWorker.docGiven=given;
-      targetWorker.docDob=dob; targetWorker.docSex=sex;
-      if(isId){
-        if(addr) targetWorker.address=addr;
-        if(city) targetWorker.city=city;
-        if(marital) targetWorker.maritalStatus=marital;
-        if(children&&children.length) targetWorker.docChildren=children;
-      }
-      if(workStart) targetWorker.workStartDate=workStart;
-      if(fund) targetWorker.healthFund=fund;
     }
 
     if(mode==='upload'){
