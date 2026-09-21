@@ -50,6 +50,19 @@ SIG_RECT = (34.02, 186, 87.99, 15)
 # larger data-model change.
 CHILD_FIELD_SUFFIXES = ["", "1", "2", "3", "4", "5"]
 
+# Small per-field position corrections layered on top of the template's own
+# AcroForm geometry — (dx, dy) in PDF points, added directly to the widget's
+# rect (page-space: x right, y DOWN) before any value is written. This moves
+# the actual field/annotation rectangle itself (so its generated appearance,
+# comb cell spacing, etc. all shift with it), as opposed to nudging where
+# hand-drawn text sits within an unchanged rect — the user specifically
+# wants the former. Add further per-field tweaks here rather than re-editing
+# the PDF template by hand.
+FIELD_RECT_NUDGES = {
+    "worker_phone": (3, 0),           # 3pt right, per user request
+    "employer_deductions": (0, 1),    # 1pt down, per user request (font size bumped at its set_comb() call site)
+}
+
 
 def pdf_rect(page_h, x, y_bottom, width, height):
     return pymupdf.Rect(x, page_h - y_bottom - height, x + width, page_h - y_bottom)
@@ -67,6 +80,17 @@ class Form101Builder:
         for page in self.doc:
             for w in page.widgets():
                 self.widgets[w.field_name] = (page, w)
+        self._apply_rect_nudges()
+
+    def _apply_rect_nudges(self):
+        for name, (dx, dy) in FIELD_RECT_NUDGES.items():
+            entry = self.widgets.get(name)
+            if not entry:
+                continue
+            page, w = entry
+            r = w.rect
+            w.rect = pymupdf.Rect(r.x0 + dx, r.y0 + dy, r.x1 + dx, r.y1 + dy)
+            w.update()
 
     # ---- low-level helpers -------------------------------------------------
 
@@ -291,7 +315,7 @@ def build_form101_pdf(p):
         b.set_hebrew("employer_phone", employer.get("phone"), 10)
         if employer.get("deductionsFileNumber"):
             digits = re.sub(r"\D", "", str(employer["deductionsFileNumber"]))
-            b.set_comb("employer_deductions", digits, 8, 10)
+            b.set_comb("employer_deductions", digits, 8, 11)
 
     if sex == "M":
         b.check("sex_male")
@@ -561,22 +585,28 @@ def preprocess_scan_image(image_bytes):
     if blur_variance < BLUR_VARIANCE_THRESHOLD:
         return {"ok": False, "reason": "blurry", "blurVariance": blur_variance}
 
-    quad = _find_document_quad(img)
-    geometry_applied = False
-    result = img
-    if quad is not None:
-        warped = _warp_quad(img, quad)
-        if warped is not None:
-            result = warped
-            geometry_applied = True
-
-    result = _enhance_contrast_sharpness(result)
+    # Geometric auto-crop (_find_document_quad/_warp_quad) is DELIBERATELY
+    # NOT applied here anymore (removed 2026-09-21, per user request) — it
+    # used to crop the photo down to whatever quad it found BEFORE the
+    # client's manual corner-adjustment editor ever ran, which silently
+    # discarded content when a single photo held two documents at once (e.g.
+    # a passport and its ספח insert photographed together): the geometry
+    # detector locks onto one rectangular contour and the other document is
+    # simply gone by the time the user sees the editor, defeating the whole
+    # point of the earlier "user crops first, manually" reorder (see
+    # CLAUDE.md's "manual crop/straighten now happens BEFORE the OCR call"
+    # note). The functions themselves are left defined, dormant, in case a
+    # single-document-only fast path is wanted again later. Only the blur
+    # rejection and contrast/sharpness enhancement still run — the user
+    # always gets the full (enhanced, downscaled) original photo to crop
+    # themselves.
+    result = _enhance_contrast_sharpness(img)
     ok, buf = cv2.imencode(".jpg", result, [cv2.IMWRITE_JPEG_QUALITY, 92])
     if not ok:
         return {"ok": False, "reason": "encode_failed"}
     return {
         "ok": True,
-        "geometryApplied": geometry_applied,
+        "geometryApplied": False,
         "imageBase64": base64.b64encode(buf.tobytes()).decode(),
         "mediaType": "image/jpeg",
     }

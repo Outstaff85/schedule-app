@@ -2320,7 +2320,18 @@ function exportJSON(){
 // Works as long as the file is always opened from the same path/browser.
 // On every change: auto-saves. On load: auto-restores.
 
-const STORAGE_KEY = 'schedMgr_v1';
+const STORAGE_KEY_BASE = 'schedMgr_v1';
+// Scoped per tenant (falls back to '_anon' pre-login) so switching firms
+// (super-admin switchToTenant(), which reloads the page) never flashes a
+// DIFFERENT firm's cached workers/clients before the real Sheets data for
+// the newly-selected firm arrives — the old single global key meant the
+// last-viewed firm's stale cache rendered first regardless of which firm
+// you actually switched to.
+function STORAGE_KEY(){
+  const s = getSession();
+  const tid = (s && (s.viewingTenantId || s.tenantId)) || '_anon';
+  return STORAGE_KEY_BASE + '_' + tid;
+}
 const GS_URL = 'https://script.google.com/macros/s/AKfycbwfGCQs8TzGd38j-JU0ZdoHLXdHITaG1QjUE3nAJDVB6uZR2_56hxV0Y4UgCs1bGYi_/exec';
 // Shared key sent with write requests. NOTE: this file is public, so the key is
 // visible in source — it's a deterrent against random/bot writes, not real auth.
@@ -2877,7 +2888,7 @@ function autoSave(){
   // Glitch guard: don't overwrite existing data with a suddenly-empty state.
   if((!workers||!workers.length) && (!clients||!clients.length)){
     let hadData=false;
-    try{ const prev=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}'); hadData=(prev.workers&&prev.workers.length)||(prev.clients&&prev.clients.length); }catch(e){}
+    try{ const prev=JSON.parse(localStorage.getItem(STORAGE_KEY())||'{}'); hadData=(prev.workers&&prev.workers.length)||(prev.clients&&prev.clients.length); }catch(e){}
     if(hadData){ console.warn('Empty state but cache has data — skipping save'); setSaveStatus('saved'); showToast('\u26a0 Пустые данные — сохранение пропущено'); return; }
   }
   setSaveStatus('saving');
@@ -2887,8 +2898,12 @@ function autoSave(){
       const data = getDataObj();
       const json = JSON.stringify(data);
       // localStorage as cache only
-      localStorage.setItem(STORAGE_KEY, json);
-      localStorage.setItem(STORAGE_KEY+'_bak', json);
+      localStorage.setItem(STORAGE_KEY(), json);
+      localStorage.setItem(STORAGE_KEY()+'_bak', json);
+      // Also mirror under the legacy unscoped key — worker-punch.html's
+      // updateScheduleManager() (same-device convenience bridge) still reads
+      // that literal key and has no tenantId of its own to scope by.
+      localStorage.setItem(STORAGE_KEY_BASE, json);
       // Google Sheets is primary storage
       const ok = await gsSave(data);
       setSaveStatus('saved');
@@ -2903,9 +2918,14 @@ function autoSave(){
 }
 
 async function loadData(){
-  // 1. Show cached data instantly while GS loads
+  // 1. Show cached data instantly while GS loads — read ONLY the
+  // tenant-scoped key (never the legacy unscoped one) so switching firms
+  // (switchToTenant()'s reload) never flashes a DIFFERENT firm's stale
+  // cache; a firm with no cache yet under its own key just skips this step
+  // and waits for the real Sheets response, which is preferable to showing
+  // the wrong firm's data.
   try{
-    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(STORAGE_KEY+'_bak');
+    const raw = localStorage.getItem(STORAGE_KEY()) || localStorage.getItem(STORAGE_KEY()+'_bak');
     if(raw){
       const d = JSON.parse(raw);
       applyData(d);
@@ -2919,7 +2939,9 @@ async function loadData(){
     if(gd){
       applyData(gd);
       render();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(gd));
+      const gdJson = JSON.stringify(gd);
+      localStorage.setItem(STORAGE_KEY(), gdJson);
+      localStorage.setItem(STORAGE_KEY_BASE, gdJson); // legacy key for worker-punch.html's bridge, see autoSave()
       setSaveStatus('saved');
       syncPunchesFromGS();
     } else {
