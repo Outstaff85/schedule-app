@@ -1227,8 +1227,8 @@ function toggleExpiryWrap(){
 }
 
 // Same collapsed-by-default dropdown pattern, for all Form-101-related
-// fields (income type, other income, scan-derived name/marital/health-fund/
-// work-start-date) grouped together under one "Данные для Формы 101" toggle.
+// fields (income type, other income, marital/health-fund, children) grouped
+// together under one toggle.
 let __wForm101Open = false;
 function toggleForm101Wrap(){
   __wForm101Open = !__wForm101Open;
@@ -1237,6 +1237,39 @@ function toggleForm101Wrap(){
   if(wrap) wrap.style.display = __wForm101Open ? '' : 'none';
   if(chev) chev.className = 'ti ti-chevron-' + (__wForm101Open ? 'up' : 'down');
 }
+
+// Same collapsed-by-default dropdown pattern, for the client-assignment
+// checklist (previously always visible).
+let __wClientsOpen = false;
+function toggleClientsWrap(){
+  __wClientsOpen = !__wClientsOpen;
+  const wrap = document.getElementById('wClientsWrap');
+  const chev = document.getElementById('wClientsChevron');
+  if(wrap) wrap.style.display = __wClientsOpen ? '' : 'none';
+  if(chev) chev.className = 'ti ti-chevron-' + (__wClientsOpen ? 'up' : 'down');
+}
+
+// ===== Children (ספח) manual editor, inside the Form-101 dropdown =====
+// Backs w.docChildren. Pre-filled from a scan (window.__aiScanChildren /
+// window.__aiParsed.children) when the modal opens right after OCR, but from
+// then on it's a normal editable field like any other — whatever is in these
+// rows at save time is what's written to w.docChildren and sent to the PDF.
+// This is the manual fallback when the ספח fails to scan or scans wrong.
+let __wChildren = [];
+function renderChildrenRows(){
+  const wrap=document.getElementById('wChildrenRows');
+  if(!wrap) return;
+  wrap.innerHTML = __wChildren.map((c,i)=>`
+    <div class="field-row" style="grid-template-columns:2fr 1fr 1fr auto;align-items:end;gap:8px;margin-bottom:6px">
+      <div class="field" style="margin-bottom:0"><label>שם הילד/ה</label><input type="text" value="${esc(c.name||'')}" oninput="__wChildren[${i}].name=this.value"></div>
+      <div class="field" style="margin-bottom:0"><label>ת.ז.</label><input type="text" value="${esc(c.idNo||'')}" oninput="__wChildren[${i}].idNo=this.value"></div>
+      <div class="field" style="margin-bottom:0"><label>תאריך לידה</label><input type="text" placeholder="DD/MM/YYYY" value="${esc(c.dob||'')}" oninput="__wChildren[${i}].dob=this.value"></div>
+      <button class="btn sm" type="button" onclick="removeChildRow(${i})" style="flex-shrink:0"><i class="ti ti-trash"></i></button>
+    </div>`).join('')
+    + `<button class="btn sm" type="button" onclick="addChildRow()"><i class="ti ti-plus"></i> הוסף ילד/ה</button>`;
+}
+function addChildRow(){ __wChildren.push({name:'',idNo:'',dob:''}); renderChildrenRows(); }
+function removeChildRow(i){ __wChildren.splice(i,1); renderChildrenRows(); }
 
 function showWorkerModal(w){
   selColorIdx=w.colorIdx||0;
