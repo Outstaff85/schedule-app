@@ -239,3 +239,9 @@ particular row is easy to get backwards.
    `(number)(street)` but the code unconditionally treated capture group 1 as
    the street and group 2 as the number, regardless of which branch actually
    matched. Fixed to track which pattern matched.
+4. **`resident_h` (the page-2 checkbox, ח.1) drew its checkmark too high**
+   relative to its box — the global `CHECK_EXTRA_UP` upward nudge (added for
+   page-1 checkboxes reading low) over-corrected on page 2, since page 2 never
+   got the offsetting `PAGE1_EXTRA_Y` downward pull page-1 checkboxes have.
+   Fixed in `Form101Builder.check()` by giving non-page-1 checkboxes their own
+   `extra_up = -2.0` (2pt push back down), isolated from page 1's checkboxes.
