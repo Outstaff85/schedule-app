@@ -4558,8 +4558,8 @@ function renderScanQuadEditor(b64,mediaType,cornersFrac){
         style="display:block;max-width:100%;max-height:46vh;user-select:none;-webkit-user-drag:none">
       <svg id="scanQuadSvg" style="position:absolute;left:0;top:0;width:100%;height:100%;touch-action:none">
         <polygon id="scanQuadPoly" points="" fill="rgba(79,142,247,0.15)" stroke="#4f8ef7" stroke-width="2"></polygon>
-        <circle class="quad-handle" data-c="tl" r="11"></circle><circle class="quad-handle" data-c="tr" r="11"></circle>
-        <circle class="quad-handle" data-c="br" r="11"></circle><circle class="quad-handle" data-c="bl" r="11"></circle>
+        <circle class="quad-handle" data-c="tl" r="20"></circle><circle class="quad-handle" data-c="tr" r="20"></circle>
+        <circle class="quad-handle" data-c="br" r="20"></circle><circle class="quad-handle" data-c="bl" r="20"></circle>
       </svg>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
@@ -4595,7 +4595,18 @@ function renderScanQuadEditor(b64,mediaType,cornersFrac){
   // isn't supported.
   const startQuad=()=>{
     const go=()=>requestAnimationFrame(()=>initScanQuad(cornersFrac));
-    if(img.decode) img.decode().then(go).catch(go); else go();
+    if(!img.decode){ go(); return; }
+    // img.decode() has been seen to never settle at all (neither resolve nor
+    // reject) for a large data: URI on some mobile browsers — left alone,
+    // that means initScanQuad()/attachQuadDrag() never run, the rectangle
+    // never becomes interactive, and dragging silently does nothing (the
+    // final crop then always falls back to whatever confirmScanQuad reads
+    // from a never-initialized/stale window.__quadRect). A capped wait
+    // guarantees the editor still becomes usable even when decode() hangs.
+    let started=false;
+    const once=()=>{ if(started) return; started=true; go(); };
+    img.decode().then(once).catch(once);
+    setTimeout(once,1200);
   };
   startQuad();
 }
