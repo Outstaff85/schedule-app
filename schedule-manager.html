@@ -4664,26 +4664,32 @@ async function autoUploadWithRetry(isId,workerId){
 
 // Rebuilds and re-uploads a worker's Form-101 PDF using their CURRENTLY
 // saved data (address, income type, marital status, health fund, ...)
-// instead of what was true when they were first scanned — without asking
-// the manager to re-scan the physical ID/passport. Reads the scan+signature
-// back from the Drive sidecar saveWorkerAssets() cached at the last
-// successful generation. A worker who's never had a document generated (no
-// docUrl), or one whose document predates this feature (no assetsFileId),
-// has nothing to rebuild from — callers are expected to check for that
-// themselves (saveWorker() and regenerateAllWorkerDocs() both do), but this
-// also no-ops safely on its own if called anyway.
+// instead of what was true when the document was last generated — without
+// asking the manager to re-scan the physical ID/passport. Reads the
+// scan+signature back from the Drive sidecar saveWorkerAssets() cached at
+// the last successful generation, when one exists (w.assetsFileId). This is
+// the SAFE way to auto-regenerate on a background edit — unlike calling
+// aiFillForm101 directly with no presetAssets (the "live" path), it never
+// touches window.__aiScanImage/__aiPacketOtherPages, which could easily
+// belong to a completely different worker's in-progress scan session. If
+// there's no sidecar yet (a worker whose document has never been generated
+// at all, or one predating this feature), it still proceeds — just with an
+// empty scan/signature, producing a plain data-only PDF.
 async function regenerateWorkerDoc(workerId){
   const w=workers.find(x=>x.id===workerId);
-  if(!w||!w.docUrl||!w.assetsFileId) return false;
+  if(!w) return false;
   try{
-    const resp=await fetch(GS_URL,{
-      method:'POST',
-      body:JSON.stringify({action:'loadWorkerAssets',secret:API_SECRET,...gsAuth(),fileId:w.assetsFileId})
-    });
-    const json=await resp.json();
-    if(!json||!json.ok) return false;
+    let assets={scanB64:null,scanMediaType:null,sigPng:null,extraPages:[]};
+    if(w.assetsFileId){
+      const resp=await fetch(GS_URL,{
+        method:'POST',
+        body:JSON.stringify({action:'loadWorkerAssets',secret:API_SECRET,...gsAuth(),fileId:w.assetsFileId})
+      });
+      const json=await resp.json();
+      if(json&&json.ok) assets={scanB64:json.scanB64,scanMediaType:json.scanMediaType,sigPng:json.sigPng||null,extraPages:Array.isArray(json.extraPages)?json.extraPages:[]};
+    }
     const isId=w.docType!=='passport';
-    return await aiFillForm101(isId,'upload',workerId,null,{scanB64:json.scanB64,scanMediaType:json.scanMediaType,sigPng:json.sigPng||null,extraPages:Array.isArray(json.extraPages)?json.extraPages:[]});
+    return await aiFillForm101(isId,'upload',workerId,null,assets);
   }catch(e){ return false; }
 }
 
