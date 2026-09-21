@@ -80,6 +80,17 @@ class Form101Builder:
         for page in self.doc:
             for w in page.widgets():
                 self.widgets[w.field_name] = (page, w)
+        self._apply_rect_nudges()
+
+    def _apply_rect_nudges(self):
+        for name, (dx, dy) in FIELD_RECT_NUDGES.items():
+            entry = self.widgets.get(name)
+            if not entry:
+                continue
+            page, w = entry
+            r = w.rect
+            w.rect = pymupdf.Rect(r.x0 + dx, r.y0 + dy, r.x1 + dx, r.y1 + dy)
+            w.update()
 
     # ---- low-level helpers -------------------------------------------------
 
