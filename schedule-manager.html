@@ -5017,9 +5017,12 @@ function showContactsSuggestions(query){
 function selectContact(idx, query){
   const c = window._contactMatches?.[idx];
   if(!c) return;
-  const nameEl  = document.getElementById('wName');
-  const phoneEl = document.getElementById('wPhone');
-  if(nameEl)  nameEl.value  = c.name;
+  const givenEl   = document.getElementById('wGiven');
+  const surnameEl = document.getElementById('wSurname');
+  const phoneEl   = document.getElementById('wPhone');
+  const parts=(c.name||'').trim().split(/\s+/);
+  if(givenEl)   givenEl.value   = parts.shift()||'';
+  if(surnameEl) surnameEl.value = parts.join(' ');
   if(phoneEl) phoneEl.value = c.phone;
   hideContactsSuggestions();
   showToast(''+c.name+' imported from Contacts');
