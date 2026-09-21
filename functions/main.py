@@ -101,10 +101,25 @@ class Form101Builder:
                 if state is None or m.group(1) == state:
                     page.parent.update_stream(int(m.group(2)), b"")
 
-    def _draw_rtl_text(self, page, rect, text, size, right_align=True):
+    def _draw_rtl_text(self, page, rect, text, size, right_align=True, bottom_align=False):
         disp = get_display(str(text))
         tw = self.font.text_length(disp, fontsize=size)
         x = (rect.x1 - 2 - tw) if right_align else (rect.x0 + 2)
+        asc = self.font.ascender * size
+        if bottom_align:
+            y = rect.y0 + asc + 1  # sit near the box's bottom edge, 1pt margin so the baseline isn't flush against the border
+        else:
+            y = rect.y0 + (rect.height - asc) / 2 + asc
+        page.insert_text((x, y), disp, fontname=FONT_NAME, fontsize=size, color=(0, 0, 0))
+
+    def _draw_center_text(self, page, rect, text, size):
+        """Center a short LTR value (e.g. a house number) both horizontally
+        and vertically within its box — same vertical math as
+        _draw_rtl_text's default (centered), just horizontal-centered
+        instead of left/right-anchored. No bidi needed (digits only)."""
+        disp = str(text)
+        tw = self.font.text_length(disp, fontsize=size)
+        x = rect.x0 + (rect.width - tw) / 2
         asc = self.font.ascender * size
         y = rect.y0 + (rect.height - asc) / 2 + asc
         page.insert_text((x, y), disp, fontname=FONT_NAME, fontsize=size, color=(0, 0, 0))
@@ -133,6 +148,21 @@ class Form101Builder:
             w.text_fontsize = size
         w.field_value = str(value)
         w.update()
+
+    def set_text_centered(self, name, value, size=None):
+        """Same field kind as set_text (plain LTR, no RTL bug) but drawn by
+        hand (blank + redraw, same trick as set_hebrew) so it can be
+        centered — PyMuPDF's own generated appearance has no centering
+        option, only its own left-alignment default."""
+        if not value or name not in self.widgets:
+            return
+        page, w = self.widgets[name]
+        size = size or (w.text_fontsize or 8)
+        w.field_value = str(value)
+        w.text_fontsize = size
+        w.update()
+        self._blank_appearance(page, w)
+        self._draw_center_text(page, w.rect, value, size)
 
     def set_comb(self, name, value, max_len, size):
         if not value or name not in self.widgets:
@@ -191,7 +221,7 @@ class Form101Builder:
         w.field_value = str(value)[:max_len]
         page.add_widget(w)
 
-    def add_hebrew_field(self, page_h, page, name, xywh, size, value, right_align=True):
+    def add_hebrew_field(self, page_h, page, name, xywh, size, value, right_align=True, bottom_align=False):
         if not value:
             return
         rect = pdf_rect(page_h, *xywh)
@@ -200,7 +230,7 @@ class Form101Builder:
         page.add_widget(w)
         live = self._refetch(page, name)
         self._blank_appearance(page, live)
-        self._draw_rtl_text(page, rect, value, size, right_align)
+        self._draw_rtl_text(page, rect, value, size, right_align, bottom_align)
 
     def finalize(self):
         catalog = self.doc.pdf_catalog()
@@ -313,7 +343,7 @@ def build_form101_pdf(p):
             street, number = _split_street(addr)
             b.set_hebrew("addr_street", street, 11)
             if number:
-                b.set_text("addr_number", number)
+                b.set_text_centered("addr_number", number)
         b.set_hebrew("addr_city", p.get("city"), 11)
         marital = p.get("marital")
         if marital:
@@ -359,7 +389,7 @@ def build_form101_pdf(p):
 
     phone = p.get("workerPhone")
     if phone:
-        b.add_hebrew_field(page_h, b.page1, "worker_phone", WORKER_PHONE_RECT, 10, phone, right_align=True)
+        b.add_hebrew_field(page_h, b.page1, "worker_phone", WORKER_PHONE_RECT, 10, phone, right_align=True, bottom_align=True)
 
     sig_b64 = p.get("signaturePngBase64")
     if sig_b64:
