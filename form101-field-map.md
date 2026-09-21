@@ -156,7 +156,7 @@ New fields created, one per box:
 | `employer_phone` | א. פרטי המעסיק — מספר טלפון | `{x:130.3, width:78.7, y:659.89, height:14}` | 10 |
 | `employer_deductions` | א. פרטי המעסיק — מספר תיק ניכויים | `{x:39.9, width:90.4, y:659.89, height:14}` | 10, comb 8 |
 | `children_id_N` / `children_dob_N` / `children_name_N` | ג. פרטים על ילדיי, row N | `CHILD_ROW_Y[]`/`CHILD_COLS` in code | 10 (id/dob, comb) / 9 (name, text, overflow risk) |
-| `worker_phone` | ב. פרטי העובד/ת — מספר טלפון נייד | `{x:28.7, width:176.7, y:513.89, height:22.2}` (bottom-origin xywh; found via `page.get_drawings()`+`get_text("words")` in the Python port — the template ships no field here either) | 10 |
+| `worker_phone` | ב. פרטי העובד/ת — מספר טלפון נייד | `{x:28.7, width:113.3, y:522.89, height:14}` (bottom-origin xywh; found via `page.get_drawings()`+`get_text("words")` in the Python port — the template ships no field here either). Narrowed 2026-09-21 from an earlier `{x:28.7, width:176.7, y:513.89, height:22.2}` that spanned the whole row *and* the printed label "מספר טלפון נייד" itself (label words at top-origin x:148.0-202.5, y:306.1-317.7) — right-aligning to the old wider box drew the phone digits on top of that label instead of in the blank space to its left. | 10 |
 
 **Sizes above are from the Python/PyMuPDF port (`functions/main.py`), current as of the +1pt-across-the-board pass — every value in this table already reflects that bump.** Text fields (Hebrew names/addresses: `surname`/`given_name`/`addr_street`/`addr_city`/`hf_name`/`employer_name`/`employer_address`) are 11pt; digit fields are 10pt except `work_start_date` (see above, now 11pt). `id_top2`/`sign_date`/`dob`/`passport_no` (existing template fields) are 10pt too.
 
@@ -239,3 +239,15 @@ particular row is easy to get backwards.
    `(number)(street)` but the code unconditionally treated capture group 1 as
    the street and group 2 as the number, regardless of which branch actually
    matched. Fixed to track which pattern matched.
+4. **`worker_phone` overlapped its own printed label** — the box was sized to
+   the whole row (176.7×22.2pt) instead of just the blank value area, so
+   right-aligned phone digits landed directly on top of the printed "מספר
+   טלפון נייד" label instead of to its left. Narrowed to `113.3×14pt`,
+   scoped to just the blank space before the label starts — same technique
+   `employer_phone`'s tightly-scoped box already used.
+5. **`resident_h` (the page-2 checkbox, ח.1) drew its checkmark too high**
+   relative to its box — the global `CHECK_EXTRA_UP` upward nudge (added for
+   page-1 checkboxes reading low) over-corrected on page 2, since page 2 never
+   got the offsetting `PAGE1_EXTRA_Y` downward pull page-1 checkboxes have.
+   Fixed in `Form101Builder.check()` by giving non-page-1 checkboxes their own
+   `extra_up = -2.0` (2pt push back down), isolated from page 1's checkboxes.

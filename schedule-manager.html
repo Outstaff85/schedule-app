@@ -1485,6 +1485,15 @@ async function saveWorker(){
     }
     return;
   }
+  // Duplicate-worker guard (new workers only — editing an existing one never
+  // hits this, see the early return above). Checked by docId (ID/passport
+  // number), not name: two different real people can share a name, but a
+  // document number is unique to one person, so an exact match is a strong
+  // signal — likely the same person being scanned/added twice by mistake.
+  if(docId){
+    const dup=workers.find(w=>workerDocId(w)===docId);
+    if(dup && !confirm('Работник с таким номером документа уже существует: '+(dup.name||'?')+'.\nВсё равно создать нового?')) return;
+  }
   const token=genToken();
   // createdAt powers the Form 101 declaration date (aiFillForm101): the
   // signature date on a scanned worker's PDF should match when they were
@@ -3536,13 +3545,23 @@ async function onScanFilesSelected(fileList){
           const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
           const json=await resp.json();
           const p=json&&json.parsed;
-          let merged=false;
           if(p&&p.type==='israeli_id'){
-            for(const f of CORE_FIELDS){ if(!foundParsed[f]&&p[f]){ foundParsed[f]=p[f]; merged=true; } }
-            if((!foundParsed.children||!foundParsed.children.length)&&Array.isArray(p.children)&&p.children.length){ foundParsed.children=p.children; merged=true; }
+            for(const f of CORE_FIELDS){ if(!foundParsed[f]&&p[f]){ foundParsed[f]=p[f]; } }
+            if((!foundParsed.children||!foundParsed.children.length)&&Array.isArray(p.children)&&p.children.length){ foundParsed.children=p.children; }
+            // The ID number is also printed on the ספח, but per user feedback a
+            // raw cross-page OCR disagreement isn't itself warning-worthy — the
+            // ספח's own single read hasn't been through the same zoomed
+            // re-verification as foundParsed.idNo, so a mismatch here is more
+            // likely a ספח misread than a real problem. The existing checksum
+            // check (verifyIdChecksum, already run on foundParsed above) is the
+            // one signal that actually surfaces a warning; not duplicated here.
           }
           needMore=missingCore(foundParsed);
-          if(merged) continue; // данные слиты в foundParsed, отдельной "прочей" страницей не дублируем
+          // Note: no `continue` here even when this page's data got merged —
+          // this page's own photo (commonly the ספח) still needs to fall
+          // through to the otherPages.push() below so it's kept in the
+          // assembled PDF. It used to be silently discarded once its data
+          // was merged in, so the ספח was read but never actually saved.
         }catch(e){ console.error(e); }
       }
       otherPages.push({b64:it.b64,mediaType:it.mediaType});

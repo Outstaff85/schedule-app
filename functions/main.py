@@ -52,11 +52,16 @@ ID_BOX_RECT = (438, 607.89, 102, 13)
 SIG_RECT = (34.02, 186, 87.99, 15)
 # "מספר טלפון נייד" (worker's own mobile number) — page 1, section ב row below
 # marital/resident status. No AcroForm field on the template (verified via
-# page.get_drawings()/get_text("words") — the row's own dividers put this box
-# at native x:28.7-205.4, y:305.8-328.0 in PyMuPDF's own top-origin space);
-# converted here to the same bottom-origin xywh convention as every other
-# custom RECT so it goes through the same pdf_rect() helper.
-WORKER_PHONE_RECT = (28.7, 841.89 - 328.0, 205.4 - 28.7, 328.0 - 305.8)
+# page.get_drawings()/get_text("words")). The original box (x:28.7-205.4,
+# y:305.8-328.0) spanned the whole row PLUS the printed label itself — the
+# label's own words ("מספר טלפון נייד") sit at x:148.0-202.5, y:306.1-317.7,
+# so right-aligning to the old x1=205.4 drew the phone digits straight on top
+# of that label instead of in the blank space to its left. Narrowed to just
+# that blank area (x1=142, a few pt clear of the label's x0=148.0) and to a
+# single text-line height (14pt, matching PHONE_RECT/EMPLOYER_ROW's own
+# convention) tightly around the label's own y-band, same technique as
+# `employer_phone` above.
+WORKER_PHONE_RECT = (28.7, 841.89 - 319.0, 142.0 - 28.7, 319.0 - 305.0)
 # Already top-origin (see the commit history in CLAUDE.md / this port's notes):
 # row i spans CHILD_ROW_Y[i]..CHILD_ROW_Y[i+1] directly, no flip needed.
 CHILD_ROW_Y = [380.3115, 402.2011, 424.0908, 445.9803, 467.8701, 489.7587,
@@ -148,7 +153,7 @@ class Form101Builder:
         self._blank_appearance(page, w, state="Yes")
         r = w.rect
         thickness = max(1.1, r.height * 0.16)
-        extra_up = PAGE1_EXTRA_Y if page == self.page1 else 0
+        extra_up = PAGE1_EXTRA_Y if page == self.page1 else -2.0  # page-2 checkbox (resident_h) sits too high vs page-1 ones; nudge down 2pt, isolated to page 2
 
         def pt(fx, fy_from_bottom):
             x = r.x0 + fx * r.width + NUDGE
