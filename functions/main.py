@@ -343,7 +343,7 @@ def build_form101_pdf(p):
             street, number = _split_street(addr)
             b.set_hebrew("addr_street", street, 11)
             if number:
-                b.set_text("addr_number", number)
+                b.set_text_centered("addr_number", number)
         b.set_hebrew("addr_city", p.get("city"), 11)
         marital = p.get("marital")
         if marital:
