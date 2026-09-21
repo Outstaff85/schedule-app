@@ -1847,7 +1847,7 @@ function renderWorkersPage(){
   if(!list.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
   tbody.innerHTML=list.map(({w,wi})=>{
-    const c=WORKER_COLORS[w.colorIdx%8], ini=w.name.slice(0,2).toUpperCase();
+    const c=WORKER_COLORS[w.colorIdx%8];
     const stMeta=stMetaMap[w.status||'active'];
     const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
     const objBadges=objs.length?objs.map(o=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${o.color}22;border-radius:10px;margin-right:3px"><span style="width:6px;height:6px;border-radius:50%;background:${o.color}"></span>${esc(o.name)}</span>`).join(''):'<span style="color:var(--text3);font-size:12px">—</span>';
