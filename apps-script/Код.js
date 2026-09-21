@@ -1006,6 +1006,9 @@ function aiReadDoc(body){
     '{"type":"israeli_id","surname":"...","given":"...","idNo":"9-digit number","dob":"DD/MM/YYYY","sex":"M or F","address":"...","city":"...","expiry":"DD/MM/YYYY","children":[{"name":"...","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}]} ' +
     'Rules: dates always DD/MM/YYYY. Names exactly as printed. ' +
     'For Israeli ID the surname is שם משפחה, given name is שם פרטי, ID number is מספר זהות (9 digits). ' +
+    'FIRST CHECK, before anything else, on every photo: does it show the three labeled fields מען (street), מס\' בית (house/building number), and ישוב (city/town)? ' +
+    'These three fields are always present on the address/ספח side of an Israeli ID — in BOTH the old paper-insert format and the new biometric-card-back format (see below) — and nowhere else. ' +
+    'Finding them is by itself sufficient and conclusive: immediately classify the photo as type:"israeli_id", regardless of whether a photo, name, or ID number is ALSO visible on it. Do this check before considering anything else about the image. ' +
     'Israeli IDs exist in TWO physical formats — treat a photo of EITHER one as type:"israeli_id", whichever side of whichever format it happens to show: ' +
     '(1) the older laminated ID card plus a SEPARATE paper ספח (appendix) insert carrying the address/children section, with THREE separate labeled rows: ' +
     'מען (street name), מס\' בית (house/building number), and ישוב (city/town name); or ' +
