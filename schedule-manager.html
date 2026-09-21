@@ -4063,11 +4063,18 @@ async function preAlignScan(b64,mediaType){
   }
 }
 
-// Step 1.5: a fast, cheap AI call that reads ONLY the document's rotation
-// and corners (no field extraction), then auto-straightens the photo
-// locally — fully automatic, no user interaction — before the slower full
-// OCR call. Best-effort: any failure here (network error, bad AI response,
-// image decode failure) just falls through to OCR-ing the original photo
+// Step 1.5 — DORMANT since 2026-09-21 (no longer called by preAlignScan(),
+// kept in case it's wired back in later): a fast, cheap AI call that reads
+// ONLY the document's rotation and corners (no field extraction), then
+// auto-straightens the photo locally — fully automatic, no user interaction
+// — before the slower full OCR call. Was removed from the main flow because
+// the corner-adjustment editor now always runs before OCR and the user
+// positions the rectangle themselves, so an AI-guessed starting point (this
+// function's whole purpose) stopped being necessary; its one advantage over
+// plain OpenCV geometry — telling an upside-down photo from a right-side-up
+// one — is now handled by the editor's own manual rotate buttons instead.
+// Best-effort: any failure here (network error, bad AI response, image
+// decode failure) just falls through to OCR-ing the original photo
 // unchanged, so a hiccup here never blocks the scan.
 async function autoPreAlignScan(b64,mediaType){
   const stage=document.getElementById('aiScanStage');
