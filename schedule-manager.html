@@ -2320,7 +2320,18 @@ function exportJSON(){
 // Works as long as the file is always opened from the same path/browser.
 // On every change: auto-saves. On load: auto-restores.
 
-const STORAGE_KEY = 'schedMgr_v1';
+const STORAGE_KEY_BASE = 'schedMgr_v1';
+// Scoped per tenant (falls back to '_anon' pre-login) so switching firms
+// (super-admin switchToTenant(), which reloads the page) never flashes a
+// DIFFERENT firm's cached workers/clients before the real Sheets data for
+// the newly-selected firm arrives — the old single global key meant the
+// last-viewed firm's stale cache rendered first regardless of which firm
+// you actually switched to.
+function STORAGE_KEY(){
+  const s = getSession();
+  const tid = (s && (s.viewingTenantId || s.tenantId)) || '_anon';
+  return STORAGE_KEY_BASE + '_' + tid;
+}
 const GS_URL = 'https://script.google.com/macros/s/AKfycbwfGCQs8TzGd38j-JU0ZdoHLXdHITaG1QjUE3nAJDVB6uZR2_56hxV0Y4UgCs1bGYi_/exec';
 // Shared key sent with write requests. NOTE: this file is public, so the key is
 // visible in source — it's a deterrent against random/bot writes, not real auth.
