@@ -1465,6 +1465,7 @@ function showWorkerModal(w){
     </div>
     <div class="field"><label>מספר ת.ז./דרכון</label><input type="text" id="wDocId" value="${esc(workerDocId(w))}" placeholder="ת.ז. / מספר דרכון">
       ${w.idChecksumOk===false?'<div style="font-size:11px;color:var(--amber);margin-top:2px"><i class="ti ti-alert-triangle"></i> המספר לא עבר בדיקת ספרת ביקורת — יש לבדוק ידנית</div>':''}
+      ${w.idMismatch?'<div style="font-size:11px;color:var(--amber);margin-top:2px"><i class="ti ti-alert-triangle"></i> המספר בספח לא תואם למספר בצד הקדמי — יש לבדוק ידנית</div>':''}
     </div>
     <div class="field"><label>טלפון</label><input type="text" id="wPhone" value="${w.phone||''}" placeholder="+972..."></div>
     <div class="field-row">
@@ -3641,17 +3642,11 @@ function openAiScan(){
       </button>
       <input type="file" id="aiScanFile" accept="image/*,application/pdf,.pdf" multiple
         style="display:none" onchange="onScanFilesSelected(this.files)">
-      <button class="btn sm" onclick="document.getElementById('aiScanFileSefach').click()">
-        <i class="ti ti-id-badge-2"></i> הוסף ספח בלבד (כתובת)
-      </button>
-      <input type="file" id="aiScanFileSefach" accept="image/*,application/pdf,.pdf"
-        style="display:none" onchange="onSefachFileSelected(this.files[0]); this.value='';">
       <div style="font-size:12px;color:var(--text3);line-height:1.5">
         תומך ב: דרכון זר, תעודת זהות ישראלית (שני הצדדים), סריקת PDF.
         אפשר לצלם את הדרכון בשלמותו — ה-AI ימצא את השדות בעצמו.
         אפשר לבחור כמה קבצים בבת אחת (חבילה מוכנה של טופס 101 + דרכון + חוזה) —
         טופס 101 ישן בחבילה יוחלף בשלנו, השאר יישמר כמו שהוא.
-        אם ה-AI לא מזהה נכון את צד הספח/כתובת — כפתור "הוסף ספח בלבד" קורא רק כתובת/עיר/ילדים, בלי לנסות לזהות סוג מסמך.
       </div>
     </div>`;
 }
@@ -3887,11 +3882,14 @@ async function onScanFileSelected(file){
 // misclassifying the back of a biometric ID card (no photo/name on it)
 // even after several rounds of prompt tweaks aimed at that classification —
 // removing the need to classify is more robust than trying to make the
-// classification itself more reliable. Always MERGES into whatever primary
-// parsed record exists so far (creating a blank israeli_id shell if this is
-// literally the first thing scanned in the session, e.g. rescanning ONLY
-// the back of an existing worker) — a ספח photo is by definition
-// supplementary data, never treated as "the" primary document.
+// classification itself more reliable. Mirrors onScanFileSelected exactly
+// (blur-check pre-pass, then hand off to the AI call) — the actual merge-
+// vs-primary decision and the corner-adjustment/perspective-warp step are
+// shared with the general flow (runSefachOcr below hands off to the same
+// renderScanQuadEditor()/confirmScanQuad()/finishPageScan() pipeline runOcr
+// uses), so a ספח photo gets the exact same straightening treatment a
+// passport/front photo does — it was previously finalized straight off the
+// blur-check's rough crop, with no auto-align or manual corner fix at all.
 async function onSefachFileSelected(file){
   if(!file) return;
   const stage=document.getElementById('aiScanStage');
@@ -3924,12 +3922,30 @@ async function onSefachFileSelected(file){
         +'<button class="btn sm" onclick="renderScanPagesPrompt()">שוב</button></div>';
       return;
     }
-    stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
-      +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
-      +'<span>קורא ספח…</span></div>';
+    runSefachOcr(pre.b64,pre.mediaType);
+  }catch(err){
+    console.error(err);
+    stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
+      +(err&&err.message||'')+'<br><br>'
+      +'<button class="btn sm" onclick="renderScanPagesPrompt()">שוב</button></div>';
+  }
+}
+// aiReadSefach's own analog of runOcr() — same align/corner-editor handoff,
+// just a narrower AI call and no digit-field/checksum re-verification (the
+// ספח side has no ID number to verify). aiReadSefach's response always
+// includes type:"israeli_id" (hardcoded server-side, not detected) so the
+// shared finishPageScan()/mergeIsraeliIdFields() pipeline treats it exactly
+// like any other israeli_id page once the user confirms the corner edit.
+async function runSefachOcr(b64,mediaType){
+  const stage=document.getElementById('aiScanStage');
+  stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
+    +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
+    +'<span>קורא ספח…</span>'
+    +'<div class="progress-bar"></div></div>';
+  try{
     const resp=await fetch(GS_URL,{
       method:'POST',
-      body:JSON.stringify({action:'aiReadSefach',secret:API_SECRET,...gsAuth(),image:pre.b64,mediaType:pre.mediaType})
+      body:JSON.stringify({action:'aiReadSefach',secret:API_SECRET,...gsAuth(),image:b64,mediaType:mediaType})
     });
     const json=await resp.json();
     if(!json||json.error){
@@ -3938,19 +3954,21 @@ async function onSefachFileSelected(file){
         +'<button class="btn sm" onclick="renderScanPagesPrompt()">שוב</button></div>';
       return;
     }
-    const p=json.parsed||{};
-    const _nrm=s=>String(s||'').replace(/\s+/g,' ').trim();
-    if(!window.__aiPrimaryParsed) window.__aiPrimaryParsed={type:'israeli_id',surname:'',given:'',idNo:'',dob:'',sex:'',address:'',city:'',houseNumber:'',children:[]};
-    if(_nrm(p.address)) window.__aiPrimaryParsed.address=_nrm(p.address);
-    if(_nrm(p.houseNumber)) window.__aiPrimaryParsed.houseNumber=_nrm(p.houseNumber);
-    if(_nrm(p.city)) window.__aiPrimaryParsed.city=_nrm(p.city);
-    if(Array.isArray(p.children)&&p.children.length) window.__aiPrimaryParsed.children=p.children.map(c=>({name:_nrm(c.name),idNo:_nrm(c.idNo),dob:_nrm(c.dob)}));
-    window.__aiParsed=window.__aiPrimaryParsed;
-    if(!window.__aiScanPageThumbs) window.__aiScanPageThumbs=[];
-    if(!window.__aiPacketOtherPages) window.__aiPacketOtherPages=[];
-    window.__aiPacketOtherPages.push({b64:pre.b64,mediaType:pre.mediaType});
-    window.__aiScanPageThumbs.push({b64:pre.b64,mediaType:pre.mediaType});
-    renderScanPagesPrompt();
+    window.__aiParsed=json.parsed;
+    // Tags this result as "a ספח-only read" for finishPageScan() below — its
+    // own idNo (if any) must never become authoritative on its own, only
+    // used as a cross-check against a front page's verified idNo, since it
+    // never went through verifyDigitFields/verifyIdChecksum the way a front
+    // scan's idNo did.
+    if(window.__aiParsed) window.__aiParsed.__isSefachScan=true;
+    const align=json.parsed&&json.parsed.imageAlign;
+    const rotateDeg=align&&[0,90,180,270].includes(align.rotate)?align.rotate:0;
+    const upright=rotateDeg?await alignScanImage(b64,mediaType,{rotate:rotateDeg,crop:{x0:0,y0:0,x1:1,y1:1}}):{b64,mediaType};
+    const corners=validQuadCorners(align&&align.corners)
+      ? {tl:rotatePointFrac(align.corners.tl,rotateDeg),tr:rotatePointFrac(align.corners.tr,rotateDeg),
+         br:rotatePointFrac(align.corners.br,rotateDeg),bl:rotatePointFrac(align.corners.bl,rotateDeg)}
+      : {tl:{x:0,y:0},tr:{x:1,y:0},br:{x:1,y:1},bl:{x:0,y:1}};
+    renderScanQuadEditor(upright.b64,upright.mediaType,corners);
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
@@ -4460,7 +4478,7 @@ function skipScanQuad(){
 // doesn't have — shared between the multi-file batch path
 // (onScanFilesSelected) and the new one-page-at-a-time loop below, so both
 // use the same definition of "still missing" / "worth merging in".
-const ID_CORE_FIELDS=['dob','sex','address','city'];
+const ID_CORE_FIELDS=['dob','sex','address','houseNumber','city','maritalStatus'];
 function mergeIsraeliIdFields(primary,extra){
   if(!primary||primary.type!=='israeli_id'||!extra||extra.type!=='israeli_id') return primary;
   for(const f of ID_CORE_FIELDS){ if(!primary[f]&&extra[f]) primary[f]=extra[f]; }
@@ -4482,11 +4500,37 @@ function finishPageScan(finalImg){
   if(!window.__aiScanPageThumbs) window.__aiScanPageThumbs=[];
   if(!window.__aiPacketOtherPages) window.__aiPacketOtherPages=[];
   const isFirstPage=window.__aiScanPageThumbs.length===0;
+  const current=window.__aiParsed||{};
+  const isSefachRead=!!current.__isSefachScan;
+  const currentIdNo=/^\d{9}$/.test(current.idNo||'')?current.idNo:'';
   if(isFirstPage){
     window.__aiScanImage=finalImg;
-    window.__aiPrimaryParsed=window.__aiParsed;
+    window.__aiPrimaryParsed={...current};
+    // A ספח-only read's idNo is never authoritative on its own — it hasn't
+    // been through the zoomed digit re-verification a front scan's idNo
+    // gets (verifyDigitFields/verifyIdChecksum). Don't let it become this
+    // session's docId just because a rescan happened to scan the back
+    // first (the main real-world use of the "add ספח" button: fixing up
+    // an EXISTING worker who already has a verified docId — this is what
+    // stops that scan from silently overwriting it). Keep it aside purely
+    // to cross-check against a front page's idNo if one shows up later in
+    // the same session.
+    if(isSefachRead){
+      window.__aiPrimaryParsed.idNo='';
+      if(currentIdNo) window.__aiPendingSefachIdNo=currentIdNo;
+    }
   } else {
-    window.__aiPrimaryParsed=mergeIsraeliIdFields(window.__aiPrimaryParsed,window.__aiParsed);
+    const primary=window.__aiPrimaryParsed;
+    if(isSefachRead){
+      if(primary.idNo&&currentIdNo&&currentIdNo!==primary.idNo) primary.idMismatch=true;
+      else if(!primary.idNo&&currentIdNo) window.__aiPendingSefachIdNo=currentIdNo;
+    } else if(currentIdNo){
+      // A front-scan page's idNo is always authoritative over a ספח's —
+      // cross-check against any ספח read seen earlier in this session first.
+      if(window.__aiPendingSefachIdNo&&currentIdNo!==window.__aiPendingSefachIdNo) primary.idMismatch=true;
+      if(!primary.idNo) primary.idNo=currentIdNo;
+    }
+    window.__aiPrimaryParsed=mergeIsraeliIdFields(primary,current);
     window.__aiPacketOtherPages.push(finalImg);
   }
   window.__aiScanPageThumbs.push(finalImg);
@@ -4562,6 +4606,10 @@ function openWorkerModalFromScan(p){
     // actually gets persisted onto the worker record; just flags the docId
     // field in the modal below when the ID checksum check failed.
     idChecksumOk: p.idChecksumOk,
+    // Same display-only treatment — set by finishPageScan() when a later
+    // page's own idNo read (e.g. from the ספח) disagreed with the primary
+    // one already captured from the front.
+    idMismatch: p.idMismatch,
   };
   setIfPresent(ocrFields,'docGiven',p.given);
   setIfPresent(ocrFields,'docSurname',p.surname);

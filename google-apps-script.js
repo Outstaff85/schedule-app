@@ -1007,6 +1007,7 @@ function aiReadDoc(body){
     '{"type":"israeli_id","surname":"...","given":"...","idNo":"9-digit number","dob":"DD/MM/YYYY","sex":"M or F","address":"street name only","houseNumber":"house/building number only","city":"...","expiry":"DD/MM/YYYY","maritalStatus":"single, married, divorced, widowed, or empty","children":[{"name":"...","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}]} ' +
     'Rules: dates always DD/MM/YYYY. Names exactly as printed. ' +
     'For Israeli ID the surname is שם משפחה, given name is שם פרטי, ID number is מספר זהות (9 digits). ' +
+    'The top-level "idNo" is specifically the DOCUMENT HOLDER\'s own number — never a child\'s. If a ילדים (children) section is visible (e.g. when this photo is of the ספח side), each child usually has their OWN separate מספר זהות printed next to their name; that number belongs ONLY inside that child\'s own entry in "children", never in the top-level "idNo" field. ' +
     'FIRST CHECK, before anything else, on every photo: does it show the three labeled fields מען (street), מס\' בית (house/building number), and ישוב (city/town)? ' +
     'These three fields are always present on the address/ספח side of an Israeli ID — in BOTH the old paper-insert format and the new biometric-card-back format (see below) — and nowhere else. ' +
     'Finding them is by itself sufficient and conclusive: immediately classify the photo as type:"israeli_id", regardless of whether a photo, name, or ID number is ALSO visible on it. Do this check before considering anything else about the image. ' +
@@ -1142,12 +1143,23 @@ function aiReadSefach(body){
 
   var SYSTEM = 'You are looking at ONLY the address/ספח side of an Israeli ID — either the old paper ' +
     'ספח (appendix) insert, or the back of the newer plastic biometric ID card (תעודה ביומטרית). ' +
-    'Do NOT try to determine a document "type" or read a photo/name/ID number — you already know this is specifically the address side. ' +
+    'Do NOT try to determine a document "type" or read a photo/name — you already know this is specifically the address side, and those are not on it. ' +
+    'The ID number (מספר הזהות) IS sometimes also printed on this side (both the old paper ספח and the newer biometric card back often repeat it) — ' +
+    'if you can see it, read it too: it is used as a cross-check against the number read off the front of the same document, to catch an OCR misread on either side. ' +
+    'The top-level "idNo" is specifically the DOCUMENT HOLDER\'s own number (the same one printed on the front of the card) — never a child\'s. ' +
+    'If the ילדים (children) section is present, each child there usually has their OWN separate מספר זהות printed next to their name — that number belongs ONLY inside that child\'s own entry in "children", never in the top-level "idNo" field, even if it is the first or only ID number you notice on the page. ' +
     'Extract exactly these fields and return ONLY valid JSON, no prose, no markdown, no code fences: ' +
-    '{"address":"street name only, from מען","houseNumber":"house/building number only, from מס\' בית","city":"city/town name, from ישוב","children":[{"name":"...","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}]} ' +
+    '{"type":"israeli_id","idNo":"9-digit number from מספר הזהות if printed on this side, or empty","address":"street name only, from מען","houseNumber":"house/building number only, from מס\' בית","city":"city/town name, from ישוב","maritalStatus":"single, married, divorced, widowed, or empty","children":[{"name":"...","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}],"imageAlign":{"rotate":0,"corners":{"tl":{"x":0,"y":0},"tr":{"x":1,"y":0},"br":{"x":1,"y":1},"bl":{"x":0,"y":1}}}} ' +
+    '"type" is always the literal string "israeli_id" — always include it exactly as shown. ' +
+    'Write address/city/children names exactly as printed on the document, in the original language/script (Hebrew street and city names stay in Hebrew — never translate or transliterate into English). ' +
+    'Concrete example of correctly split fields: if the document shows מען "יהודה הלוי", מס\' בית "16", and ישוב "פתח תקווה", return them as three separate fields — "address":"יהודה הלוי", "houseNumber":"16", "city":"פתח תקווה" — never combine any two of them into one string (e.g. never "address":"יהודה הלוי 16", never "city":"פתח תקווה 16"). ' +
     'Keep address/houseNumber/city strictly separate — never combine two of them into one field. ' +
     'The ילדים (children) section, if present and populated, goes in "children"; if absent or empty, return "children":[]. ' +
+    'Some ID variants also print a personal/marital status field (מצב אישי / מצב משפחתי — רווק/רווקה, נשוי/נשואה, גרוש/גרושה, אלמן/אלמנה) on this same address side: if visible, put it in "maritalStatus" as exactly one of "single", "married", "divorced", "widowed"; if not visible, return "maritalStatus":"" — do not guess. ' +
     'If a field is not visible or unreadable, use an empty string (or empty array for children) — never guess. ' +
+    '"imageAlign" describes how to straighten the ORIGINAL photo, same as for a full document read: ' +
+    '"rotate" is the clockwise degrees needed to make the card/page upright and right-reading, MUST be exactly one of 0, 90, 180, 270; ' +
+    '"corners" are the document\'s four actual physical corners (tl/tr/br/bl, AS THE DOCUMENT WILL APPEAR AFTER "rotate" is applied, each x/y a fraction 0 to 1 of the ORIGINAL pre-rotation image) — trace its true outline even if photographed at an angle, never cutting off any edge; if it already fills the frame upright, use the full-frame defaults shown above. ' +
     'Return ONLY the JSON object, compact with no extra whitespace or line breaks between fields.';
 
   var payload = {
