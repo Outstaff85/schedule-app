@@ -3377,7 +3377,7 @@ function renderAdmin(){
   tbody.innerHTML=filtered.map((e,i)=>{
     const wc=workers.find(w=>w.id===e.workerId);
     const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
-    const ini=e.workerName?.slice(0,2).toUpperCase()||'?';
+    const ini=wc?workerAvatarInner(wc):esc(e.workerName?.slice(0,2).toUpperCase()||'?');
     const dateStr=new Date(e.ts).toLocaleDateString('en-GB');
     const wClients=wc?clients.filter(cl=>(wc.clientIds||[]).includes(cl.id)):[];
     const clientBadge=wClients.map(cl=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${cl.color}22;border-radius:10px;white-space:nowrap"><span style="width:6px;height:6px;border-radius:50%;background:${cl.color};flex-shrink:0"></span>${esc(cl.name)}</span>`).join(' ');
