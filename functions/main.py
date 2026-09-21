@@ -265,25 +265,21 @@ def build_form101_pdf(p):
     b.set_text("id_top2", no, 10)
 
     tax_year = str(date.today().year)
-    b.add_comb_field(page_h, b.page1, "tax_year_box", TAX_YEAR_RECT, 4, 10, tax_year)
-    if "tax_year" in b.widgets:
-        _, w = b.widgets["tax_year"]
-        w.field_flags = w.field_flags | pymupdf.PDF_FIELD_IS_READ_ONLY
-        w.update()
+    b.set_comb("tax_year", tax_year, 4, 10)
 
     employer = p.get("employer") or {}
     firm_missing = p.get("firmMissing") or []
     if employer:
-        b.add_hebrew_field(page_h, b.page1, "employer_name", NAME_RECT, 11, employer.get("companyName"))
+        b.set_hebrew("employer_name", employer.get("companyName"), 11)
         addr_parts = [employer.get("street"), employer.get("streetNumber")]
         addr = " ".join(x for x in addr_parts if x)
         if employer.get("city"):
             addr += (", " if addr else "") + employer["city"]
-        b.add_hebrew_field(page_h, b.page1, "employer_address", ADDRESS_RECT, 11, addr)
-        b.add_hebrew_field(page_h, b.page1, "employer_phone", PHONE_RECT, 10, employer.get("phone"))
+        b.set_hebrew("employer_address", addr, 11)
+        b.set_hebrew("employer_phone", employer.get("phone"), 10)
         if employer.get("deductionsFileNumber"):
             digits = re.sub(r"\D", "", str(employer["deductionsFileNumber"]))
-            b.add_comb_field(page_h, b.page1, "employer_deductions", DEDUCTIONS_RECT, 8, 10, digits)
+            b.set_comb("employer_deductions", digits, 8, 10)
 
     if sex == "M":
         b.check("sex_male")
