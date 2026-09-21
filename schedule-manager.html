@@ -4162,11 +4162,49 @@ async function confirmScanQuad(){
     +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br><span>Выравниваю скан…</span></div>';
   try{ window.__aiScanImage=await warpQuadImage(b64,mediaType,r); }
   catch(e){ console.error(e); window.__aiScanImage={b64,mediaType}; }
-  renderAiResult(window.__aiParsed);
+  openWorkerModalFromScan(window.__aiParsed);
 }
 function skipScanQuad(){
   window.__aiScanImage=window.__scanEdit;
-  renderAiResult(window.__aiParsed);
+  openWorkerModalFromScan(window.__aiParsed);
+}
+
+// Shared handoff from the scan pipeline into the unified worker modal, once
+// OCR + corner-confirmation are done — replaces the old separate
+// renderAiResult() result screen entirely. A rescan of an existing worker
+// (window.__aiRescanWorkerId, set by rescanWorkerDoc()) reopens THAT worker
+// in edit mode with fresh OCR values layered over their existing record; a
+// fresh scan opens a blank worker in add mode. window.__aiScanImage /
+// window.__aiPacketOtherPages are left untouched here (already set by the
+// scan flow itself) — showWorkerModal()/saveWorker() read them directly.
+function openWorkerModalFromScan(p){
+  closeModal('aiScanOverlay');
+  if(!p){ showToast('Не удалось разобрать ответ ИИ'); return; }
+  const isId=p.type==='israeli_id';
+  const _nrm=s=>String(s||'').replace(/\s+/g,' ').trim();
+  const ocrFields={
+    docType: isId?'israeli_id':'passport',
+    docGiven: _nrm(p.given), docSurname: _nrm(p.surname),
+    docId: _nrm(isId?p.idNo:p.passportNo),
+    docDob: _nrm(p.dob), docSex: _nrm(p.sex), docExpiry: _nrm(p.expiry),
+  };
+  if(isId){
+    ocrFields.address=_nrm(p.address);
+    ocrFields.city=_nrm(p.city);
+    if(Array.isArray(p.children)) ocrFields.docChildren=p.children.map(c=>({name:_nrm(c.name),idNo:_nrm(c.idNo),dob:_nrm(c.dob)}));
+  }
+  const rescanId=window.__aiRescanWorkerId;
+  window.__aiRescanWorkerId=null;
+  if(rescanId){
+    const idx=workers.findIndex(w=>w.id===rescanId);
+    if(idx>=0){
+      editingWorkerIdx=idx;
+      showWorkerModal({...workers[idx],...ocrFields});
+      return;
+    }
+  }
+  editingWorkerIdx=null;
+  showWorkerModal({...blankWorkerDefaults(),...ocrFields});
 }
 
 // Flattens the quadrilateral the user positioned into a plain rectangular
