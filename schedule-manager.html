@@ -1060,7 +1060,7 @@ function renderGanttBody(){
       ondragend="dragEnd(event)">`;
     h+=`<div class="gantt-name-cell">
       <span class="drag-handle">⠿</span>
-      <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${ini}</div>
+      <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${workerAvatarInner(w)}</div>
       <span>${esc(w.name)}</span>
     </div>`;
     w.schedule.forEach((sh,di)=>{
