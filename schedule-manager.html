@@ -1707,7 +1707,7 @@ async function saveWorker(){
   const commonFields={name,colorIdx:selColorIdx,phone,hourlyRate,status,startDate,workStartDate,docSex,
     expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,houseNumber,city,docDob,docExpiry,notes,
     incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,docChildren,clientIds,schedule,
-    avatarB64:__wAvatarB64};
+    avatarB64:__wAvatarB64,docType:__wDocType};
   if(editingWorkerIdx!==null){
     const prevW=workers[editingWorkerIdx];
     const isId=prevW.docType!=='passport';
