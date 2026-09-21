@@ -3871,8 +3871,8 @@ function isValidIsraeliId(id){
 // targeted re-read of the same box (the check digit is free, so it's worth
 // spending one more AI call trying to fix it automatically) — if that still
 // doesn't check out, stop trying to fix it automatically and instead record
-// `idChecksumOk:false` so renderAiResult can flag the field for the human to
-// look at, rather than silently keeping a number that's provably wrong.
+// `idChecksumOk:false` so the worker modal can flag the field for the human
+// to look at, rather than silently keeping a number that's provably wrong.
 async function verifyIdChecksum(parsed,b64,mediaType){
   if(!parsed||parsed.type!=='israeli_id'||!parsed.idNo) return parsed;
   if(isValidIsraeliId(parsed.idNo)){ parsed.idChecksumOk=true; return parsed; }
