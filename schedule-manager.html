@@ -3985,6 +3985,7 @@ async function runOcr(b64,mediaType){
       return;
     }
     window.__aiParsed=json.parsed;
+    window.__aiAvatarB64=json.parsed&&json.parsed.photoBox?await cropPortraitAvatar(b64,mediaType,json.parsed.photoBox):null;
     // Re-verify the pure-digit, form-critical fields (ID number, dates) on a
     // tight zoomed-in crop of exactly where aiReadDoc says it read them — a
     // wrong digit here goes straight into a real Form 101, so this is worth
