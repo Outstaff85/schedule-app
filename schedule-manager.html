@@ -1662,11 +1662,11 @@ function genToken(){
 }
 
 function regenerateWorkerToken(wi){
-  if(!confirm('Generate new token? The old link will stop working.')) return;
+  if(!confirm('ליצור טוקן חדש? הקישור הישן יפסיק לעבוד.')) return;
   workers[wi].token = genToken();
   autoSave();
   openEditWorker(wi);
-  showToast('New token generated — copy and resend the link!');
+  showToast('טוקן חדש נוצר — העתיקו ושלחו את הקישור מחדש!');
 }
 
 function buildPunchLink(w){
