@@ -4207,7 +4207,17 @@ async function verifyDigitFields(parsed,b64,mediaType){
   const isDate=s=>typeof s==='string'&&/^\d{2}[\/.]\d{2}[\/.]\d{4}$/.test(s);
   const jobs=[];
   if(parsed.type==='israeli_id'){
-    if(parsed.fieldBoxes.idNo) jobs.push({field:'idNo',kind:'digits9'});
+    // Skip the zoomed idNo re-read when the RAW extraction already passes
+    // its own Luhn-style check digit (isValidIsraeliId, below) — a passing
+    // checksum on a plausible read is already a strong correctness signal
+    // (a random OCR digit swap essentially never happens to still produce
+    // a valid check digit), so this saves a whole AI round-trip in the
+    // common case where the first read was already right. verifyIdChecksum()
+    // still runs afterward and independently re-verifies/flags this exact
+    // same way whether this job ran or not — nothing here weakens that check,
+    // it just avoids redundantly re-confirming a number that's already
+    // provably consistent.
+    if(parsed.fieldBoxes.idNo && !isValidIsraeliId(parsed.idNo)) jobs.push({field:'idNo',kind:'digits9'});
     if(parsed.fieldBoxes.dob)  jobs.push({field:'dob',kind:'date'});
   } else if(parsed.type==='passport'){
     if(parsed.fieldBoxes.passportNo) jobs.push({field:'passportNo',kind:'passportNo'});
