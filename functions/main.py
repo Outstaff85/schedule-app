@@ -315,7 +315,7 @@ def build_form101_pdf(p):
         b.set_hebrew("employer_phone", employer.get("phone"), 10)
         if employer.get("deductionsFileNumber"):
             digits = re.sub(r"\D", "", str(employer["deductionsFileNumber"]))
-            b.set_comb("employer_deductions", digits, 8, 10)
+            b.set_comb("employer_deductions", digits, 8, 11)
 
     if sex == "M":
         b.check("sex_male")
