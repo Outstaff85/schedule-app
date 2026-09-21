@@ -2869,13 +2869,12 @@ function renderDashboard(){
   if(onSite.length){
     onSiteEl.innerHTML = onSite.map(w=>{
       const c=WORKER_COLORS[w.colorIdx%8];
-      const ini=w.name.slice(0,2).toUpperCase();
       const lastIn=latestOf(todayLog.filter(e=>e.workerId===w.id&&e.type==='in'));
       const sinceTime=lastIn?lastIn.time:'?';
       const shiftHours=w.schedule?.[todayIdx]?.end?calcHours(sinceTime,w.schedule[todayIdx].end).toFixed(1):'-';
       return `<div style="background:var(--bg2);border:1px solid rgba(62,207,142,0.25);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
         <div style="width:40px;height:40px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;position:relative">
-          ${ini}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--green);border:2px solid var(--bg2)"></span>
+          ${workerAvatarInner(w)}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--green);border:2px solid var(--bg2)"></span>
         </div>
         <div style="font-size:13px;font-weight:600">${esc(w.name)}</div>
         <div style="font-size:11px;color:var(--text2)">Since ${sinceTime}</div>
