@@ -1487,18 +1487,18 @@ function showWorkerModal(w){
     </div>
     <div class="field" style="margin-bottom:6px">
       <button class="btn sm" type="button" onclick="toggleExpiryWrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
-        <span><i class="ti ti-alert-triangle"></i> Contract Expiry Warning</span>
+        <span><i class="ti ti-alert-triangle"></i> התראת תוקף חוזה</span>
         <i class="ti ti-chevron-down" id="wExpiryChevron"></i>
       </button>
     </div>
     <div id="wExpiryWrap" style="display:none">
       <input type="checkbox" id="wExpiryEnabled" ${w.expiryEnabled?'checked':''} style="display:none">
       <div class="field-row" id="wExpiryFields">
-        <div class="field"><label>Months until deadline</label><input type="number" id="wExpiryMonths" min="1" step="1" value="${w.expiryMonths||9}"></div>
-        <div class="field"><label>Warn this many months ahead</label><input type="number" id="wExpiryWarnMonths" min="0" step="1" value="${w.expiryWarnMonths??1}"></div>
+        <div class="field"><label>חודשים עד למועד האחרון</label><input type="number" id="wExpiryMonths" min="1" step="1" value="${w.expiryMonths||9}"></div>
+        <div class="field"><label>התראה כמה חודשים מראש</label><input type="number" id="wExpiryWarnMonths" min="0" step="1" value="${w.expiryWarnMonths??1}"></div>
       </div>
     </div>
-    <div class="field"><label>Color</label>
+    <div class="field"><label>צבע</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap" id="wColorPick">
         ${WORKER_COLORS.map((c,i)=>`<div onclick="pickWColor(${i})" data-ci="${i}" style="width:24px;height:24px;border-radius:50%;background:${c.text};cursor:pointer;border:2px solid ${i===selColorIdx?'white':'transparent'};transition:all 0.15s;${i===selColorIdx?'transform:scale(1.2)':''}"></div>`).join('')}
       </div>
