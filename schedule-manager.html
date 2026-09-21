@@ -3288,7 +3288,7 @@ function renderClientLogs(){
 
     const workerRows = assignedWorkers.map(w=>{
       const wc = WORKER_COLORS[w.colorIdx%8];
-      const ini = w.name.slice(0,2).toUpperCase();
+      const ini = workerAvatarInner(w);
       const wLog = clientLog.filter(e=>e.workerId===w.id);
       const todayW = wLog.filter(e=>new Date(e.ts).toDateString()===todayStr);
       const lastEntry = latestOf(todayW);
