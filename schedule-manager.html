@@ -1292,6 +1292,16 @@ let __wChildren = [];
 // __wChildren's pattern: seeded from the worker/OCR data when the modal
 // opens, then it's just in-memory state until saveWorker() persists it.
 let __wAvatarB64 = '';
+// Which document type this modal was opened with ('israeli_id'/'passport') —
+// there's no visible selector for it in the unified form, it just rides along
+// from the scan (or the existing worker record on edit). Without capturing it
+// here, saveWorker()'s commonFields had no way to read it back, so a brand-new
+// worker scanned from a foreign passport silently ended up with docType
+// undefined -> saveWorker()/aiFillForm101 both treat that as "not passport" ->
+// isId always true -> the Israeli-ID branch of Form 101 was built even for a
+// passport holder, and that wrong docType got permanently written back onto
+// the worker after the first successful upload.
+let __wDocType = 'israeli_id';
 function clearWorkerAvatar(){
   __wAvatarB64='';
   const img=document.getElementById('wAvatarImg');
