@@ -334,6 +334,13 @@
     background: var(--bg3); overflow: hidden; margin-top: 10px; }
   .progress-bar::after { content: ''; position: absolute; top: 0; left: -40%; width: 40%; height: 100%;
     background: var(--accent); border-radius: 2px; animation: barSlide 1.1s ease-in-out infinite; }
+  /* Determinate variant (real 0%→100%, not the sliding indeterminate one
+     above) — used where we actually know a fraction, e.g. page i of N in
+     processAllPendingPages(). The fill is a plain width-styled child div. */
+  .progress-bar-real { position: relative; width: 100%; height: 4px; border-radius: 2px;
+    background: var(--bg3); overflow: hidden; margin-top: 10px; }
+  .progress-bar-real > div { height: 100%; background: var(--accent); border-radius: 2px;
+    transition: width 0.25s ease; }
 
   /* ── Scan corner (quad) editor ── */
   .quad-handle { fill: var(--accent); stroke: #fff; stroke-width: 2; cursor: grab; touch-action: none; }
@@ -4919,9 +4926,11 @@ async function processAllPendingPages(){
   const otherPages=resuming?window.__aiPacketOtherPages.slice():[];
   let pageParsed=resuming?window.__aiPageParsed.slice():[];
   for(let i=0;i<queue.length;i++){
+    const pct=Math.round((i/queue.length)*100);
     stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
       +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
-      +'<span>מעבד עמוד '+(i+1)+' מתוך '+queue.length+'…</span></div>';
+      +'<span>מעבד עמוד '+(i+1)+' מתוך '+queue.length+'… ('+pct+'%)</span>'
+      +'<div class="progress-bar-real"><div style="width:'+pct+'%"></div></div></div>';
     let it=queue[i];
     let pre;
     try{ pre=await preAlignScan(it.b64,it.mediaType); }
@@ -4984,6 +4993,10 @@ async function processAllPendingPages(){
     pageParsed.push(thisPageParsed);
     otherPages.push(it);
   }
+  stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
+    +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
+    +'<span>הושלם (100%)</span>'
+    +'<div class="progress-bar-real"><div style="width:100%"></div></div></div>';
   window.__pendingScanPages=[];
   window.__aiPacketOtherPages=otherPages;
   window.__aiPageParsed=pageParsed;
