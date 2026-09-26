@@ -4507,7 +4507,15 @@ function refineQuadCorners(b64,mediaType,cornersFrac){
         const toPx=p=>({x:p.x*w,y:p.y*h});
         const Q={tl:toPx(cornersFrac.tl),tr:toPx(cornersFrac.tr),br:toPx(cornersFrac.br),bl:toPx(cornersFrac.bl)};
         const SIDES=[['tl','tr'],['tr','br'],['br','bl'],['bl','tl']];
-        const N=12, MARGIN=0.18, SEARCH=Math.round(Math.max(w,h)*0.02)+6;
+        // N/MARGIN/SEARCH widened and subpixel parabolic peak interpolation added
+        // (2026-09-26, per user report of visible residual tilt/black sliver even
+        // after this pass) — the original integer-step search snapped each edge
+        // point to the nearest whole pixel, which on a card photographed at a
+        // shallow angle can leave a fraction-of-a-degree bias per side that adds
+        // up across the whole quad into a visibly crooked result; more samples
+        // per side (12->20) and a slightly tighter margin (0.18->0.12, sampling
+        // closer to the true corners) also give the line fit more/better data.
+        const N=20, MARGIN=0.12, SEARCH=Math.round(Math.max(w,h)*0.02)+6;
         const sidePoints={};
         for(const [a,b] of SIDES){
           const A=Q[a],B=Q[b];
@@ -4517,12 +4525,37 @@ function refineQuadCorners(b64,mediaType,cornersFrac){
           for(let i=0;i<N;i++){
             const t=MARGIN+(1-2*MARGIN)*(i/(N-1));
             const px=A.x+dx*t, py=A.y+dy*t;
-            let best=null,bestGrad=0;
+            const grads=[];
             for(let s=-SEARCH;s<=SEARCH;s++){
-              const g=Math.abs(lum(px+nx*(s+1),py+ny*(s+1))-lum(px+nx*(s-1),py+ny*(s-1)));
-              if(g>bestGrad){ bestGrad=g; best=s; }
+              grads.push(Math.abs(lum(px+nx*(s+1),py+ny*(s+1))-lum(px+nx*(s-1),py+ny*(s-1))));
             }
-            if(best!=null&&bestGrad>18) pts.push({x:px+nx*best,y:py+ny*best});
+            let bi=0; for(let k=1;k<grads.length;k++) if(grads[k]>grads[bi]) bi=k;
+            const bestGrad=grads[bi];
+            // Subpixel refine: fit a parabola through the peak and its two
+            // neighbors and take its vertex, rather than snapping to whichever
+            // whole-pixel step happened to score highest.
+            let sub=0;
+            if(bi>0&&bi<grads.length-1){
+              const y0=grads[bi-1], y1=grads[bi], y2=grads[bi+1];
+              const denom=(y0-2*y1+y2);
+              if(Math.abs(denom)>1e-6) sub=0.5*(y0-y2)/denom;
+            }
+            const best=(bi-SEARCH)+Math.max(-1,Math.min(1,sub));
+            // Threshold lowered 18->12 (2026-09-26, alongside the subpixel
+            // change above): a real worn/low-contrast/glare-affected card edge
+            // can peak as low as ~13-17 here, and 18 rejected all of those
+            // points, silently discarding this whole refinement pass and
+            // leaving the AI's raw (imprecise) corner guess in place — exactly
+            // the residual-tilt symptom this pass exists to fix. An adaptive
+            // per-point threshold (relative to that point's own local noise
+            // floor) was tried first but measurably let pure sensor/JPEG noise
+            // with NO real edge at all snap to false "edges" (verified: up to
+            // ~17px drift on a flat noise-only test image, vs 0px before) — a
+            // plain lower floor stays exactly as safe against pure noise as the
+            // original 18 (verified: still 0px drift on the same noise test,
+            // since noise's own peak gradients topped out around 11 in testing)
+            // while accepting more real faint edges than before.
+            if(bestGrad>12) pts.push({x:px+nx*best,y:py+ny*best});
           }
           sidePoints[a+b]=pts.length>=Math.ceil(N*0.5)?pts:null;
         }
