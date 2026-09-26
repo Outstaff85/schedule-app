@@ -582,25 +582,61 @@ def _blur_variance(gray):
     return float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
 
+def _auto_canny(gray, sigma=0.33):
+    """Median-based auto-thresholding Canny (a well-known standard trick) —
+    fixed thresholds (the old 50/150) work fine on a clean, evenly-lit
+    synthetic test card but are exactly the kind of number that stops
+    generalizing on a real phone photo (uneven lighting, glare off a
+    laminated ID, a worn/scuffed card, JPEG compression noise) — a real
+    photo can easily sit at a very different overall brightness/contrast
+    than the fixed thresholds assume, causing Canny to find far too few or
+    far too many edges and never settle on a clean 4-point contour. Deriving
+    the thresholds from the image's own median intensity instead adapts to
+    each individual photo's exposure automatically."""
+    m = float(np.median(gray))
+    lower = int(max(0, (1.0 - sigma) * m))
+    upper = int(min(255, (1.0 + sigma) * m))
+    return cv2.Canny(gray, lower, upper)
+
+
 def _find_document_quad(img_bgr):
     h, w = img_bgr.shape[:2]
     frame_area = h * w
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-    blur = cv2.GaussianBlur(gray, (5, 5), 0)
-    edges = cv2.Canny(blur, 50, 150)
+    # CLAHE (local contrast normalization) before edge detection only —
+    # doesn't touch the actual output image, just makes the document's own
+    # edges easier to separate from a glare/shadow-uneven real background
+    # than plain global GaussianBlur alone would.
+    gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
+    # bilateralFilter smooths real sensor/JPEG noise while keeping the
+    # document's own straight edges sharp (unlike a plain Gaussian blur,
+    # which softens noise and true edges alike) — noisy real photos were the
+    # one category plain GaussianBlur here still missed a confident quad on.
+    denoised = cv2.bilateralFilter(gray, d=9, sigmaColor=40, sigmaSpace=60)
+    edges = _auto_canny(denoised)
     edges = cv2.dilate(edges, np.ones((5, 5), np.uint8), iterations=2)
     contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     contours = sorted(contours, key=cv2.contourArea, reverse=True)[:8]
+    best_fallback = None
     for c in contours:
-        peri = cv2.arcLength(c, True)
-        approx = cv2.approxPolyDP(c, 0.02 * peri, True)
-        if len(approx) != 4 or not cv2.isContourConvex(approx):
-            continue
-        area = cv2.contourArea(approx)
+        area = cv2.contourArea(c)
         if area < MIN_QUAD_AREA_FRAC * frame_area or area > MAX_QUAD_AREA_FRAC * frame_area:
             continue
-        return approx.reshape(4, 2).astype(np.float32)
-    return None
+        peri = cv2.arcLength(c, True)
+        approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+        if len(approx) == 4 and cv2.isContourConvex(approx):
+            return approx.reshape(4, 2).astype(np.float32)
+        # Real photos routinely lose the clean-4-point case above (a rounded
+        # card corner, motion blur, or compression noise turns one straight
+        # edge into 5-6 slightly-bent approx points) — the largest
+        # plausibly-sized contour's own minimum-area rotated rectangle is a
+        # forgiving fallback for exactly that case, still gated by the same
+        # area bounds as the strict path above, so a low-confidence match
+        # still can't win. Only the single largest candidate is kept (loop
+        # already runs largest-area-first).
+        if best_fallback is None:
+            best_fallback = cv2.boxPoints(cv2.minAreaRect(c)).astype(np.float32)
+    return best_fallback
 
 
 def _order_quad(quad):
