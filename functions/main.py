@@ -11,6 +11,7 @@ multi-word text), every Hebrew-capable field here is unconditionally corrected
 with bidi.algorithm.get_display() and drawn by hand — see draw_rtl_text().
 """
 import base64
+import io
 import json
 import pathlib
 import re
@@ -37,6 +38,18 @@ CHECK_BLUE = (0.09, 0.32, 0.85)
 NUDGE = 0.75
 PAGE1_EXTRA_Y = 1.5
 CHECK_EXTRA_UP = 2.5  # per repeated user feedback the checkmarks kept reading slightly low — nudged up twice now, all pages
+
+# PDF-embed image optimization (added 2026-09-26, per user request) — applies
+# ONLY here, at final PDF assembly, never earlier in the scan pipeline: OCR
+# (aiReadDoc) and digit-field verification (aiVerifyField) have both already
+# run upstream on the full-resolution scan by the time build_form101_pdf()
+# ever sees it (see CLAUDE.md's AI document scan flow), so shrinking the copy
+# that gets embedded here can't affect field-extraction accuracy — it only
+# affects the generated PDF's file size. The raw, unshrunk scan is preserved
+# separately in the Drive asset sidecar (saveWorkerAssets) for any future
+# regeneration, so this is a one-way, presentation-only downscale.
+EMBED_DPI = 150  # comfortably legible on paper/screen; far below native phone-camera resolution
+EMBED_JPEG_QUALITY = 82
 
 SIG_RECT = (34.02, 186, 87.99, 15)
 # Children fields on the current template (added 2026-09-21, after the user
@@ -253,7 +266,12 @@ class Form101Builder:
             self.doc.xref_set_key(acroform_xref, "NeedAppearances", "false")
         else:
             self.doc.xref_set_key(catalog, "AcroForm/NeedAppearances", "false")
-        return self.doc.tobytes()
+        # garbage=4 drops unused/duplicate objects (the biggest win on a doc
+        # with several embedded scan/signature images), deflate*=True compresses
+        # any stream that isn't already, clean=True repacks page content more
+        # compactly. Pure container-level cleanup — doesn't touch pixel data,
+        # safe to always apply.
+        return self.doc.tobytes(garbage=4, deflate=True, deflate_images=True, clean=True)
 
 
 def _split_street(addr):
@@ -268,23 +286,52 @@ def _split_street(addr):
     return addr, None
 
 
+def _shrink_for_embed(img_bytes, target_w_pt, target_h_pt, dpi=EMBED_DPI, jpeg_quality=EMBED_JPEG_QUALITY):
+    """Downscales+recompresses an image to just what's needed to look sharp at
+    `dpi` inside a `target_w_pt` x `target_h_pt` PDF box — see EMBED_DPI's own
+    comment above for why this is safe to do at this specific call site.
+    Preserves transparency (re-encodes as PNG) if the source has an alpha
+    channel (the hand-drawn signature); otherwise re-encodes as JPEG. Never
+    upscales. Returns (bytes, width_px, height_px), or (img_bytes, None, None)
+    unchanged on any decode failure — a corrupt/unsupported image must never
+    sink PDF generation, callers fall back to the original bytes+Pixmap in
+    that case."""
+    try:
+        im = Image.open(io.BytesIO(img_bytes))
+        has_alpha = im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info)
+        im = im.convert("RGBA" if has_alpha else "RGB")
+        target_px = (max(1, int(target_w_pt / 72 * dpi)), max(1, int(target_h_pt / 72 * dpi)))
+        im.thumbnail(target_px, Image.LANCZOS)
+        buf = io.BytesIO()
+        if has_alpha:
+            im.save(buf, format="PNG", optimize=True)
+        else:
+            im.save(buf, format="JPEG", quality=jpeg_quality, optimize=True)
+        return buf.getvalue(), im.width, im.height
+    except Exception:
+        return img_bytes, None, None
+
+
 def _draw_extra_page_image(page, extra, box, margin=40, cap_h=24, fontsize=13):
     """Draws one extraPages entry (caption + bordered, fit-to-box image) inside
     `box` on `page`. Defaults match the original one-image-per-page sizing;
     the half-page stacked case (see build_form101_pdf's extraPages loop below)
     passes smaller values since each box is half the page's height."""
     img_bytes = base64.b64decode(extra["b64"])
-    pix = pymupdf.Pixmap(img_bytes)
     max_w, max_h = box.width - margin * 2, box.height - margin * 2 - cap_h
-    fit = min(max_w / pix.width, max_h / pix.height, 1)
-    w, h = pix.width * fit, pix.height * fit
+    embed_bytes, iw, ih = _shrink_for_embed(img_bytes, max_w, max_h)
+    if iw is None:
+        pix = pymupdf.Pixmap(img_bytes)
+        embed_bytes, iw, ih = img_bytes, pix.width, pix.height
+    fit = min(max_w / iw, max_h / ih, 1)
+    w, h = iw * fit, ih * fit
     x = box.x0 + (box.width - w) / 2
     y = box.y0 + margin + cap_h
     page.insert_text((box.x0 + margin, box.y0 + margin + 16), extra.get("caption", "Document scan"),
                       fontsize=fontsize, color=(0.3, 0.3, 0.3))
     page.draw_rect(pymupdf.Rect(x - 2, y - 2, x + w + 2, y + h + 2),
                     color=(0.7, 0.7, 0.7), fill=(1, 1, 1), width=1)
-    page.insert_image(pymupdf.Rect(x, y, x + w, y + h), pixmap=pix)
+    page.insert_image(pymupdf.Rect(x, y, x + w, y + h), stream=embed_bytes)
 
 
 def build_form101_pdf(p):
@@ -413,14 +460,17 @@ def build_form101_pdf(p):
         try:
             sig_bytes = base64.b64decode(sig_b64)
             rect = pdf_rect(page_h, *SIG_RECT)
-            pix = pymupdf.Pixmap(sig_bytes)
-            scale = min(rect.width / pix.width, rect.height / pix.height)
-            w, h = pix.width * scale, pix.height * scale
+            embed_bytes, sw, sh = _shrink_for_embed(sig_bytes, rect.width, rect.height)
+            if sw is None:
+                pix = pymupdf.Pixmap(sig_bytes)
+                embed_bytes, sw, sh = sig_bytes, pix.width, pix.height
+            scale = min(rect.width / sw, rect.height / sh)
+            w, h = sw * scale, sh * scale
             img_rect = pymupdf.Rect(
                 rect.x0 + (rect.width - w) / 2, rect.y0 + (rect.height - h) / 2,
                 rect.x0 + (rect.width - w) / 2 + w, rect.y0 + (rect.height - h) / 2 + h,
             )
-            b.page2.insert_image(img_rect, pixmap=pix)
+            b.page2.insert_image(img_rect, stream=embed_bytes)
         except Exception:
             pass
 

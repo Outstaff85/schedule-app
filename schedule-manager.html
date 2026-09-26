@@ -3710,6 +3710,7 @@ function openAiScan(){
   window.__aiScanPageThumbs=[];
   window.__aiPrimaryParsed=null;
   window.__aiPageParsed=[];
+  window.__pendingScanPages=[]; // not-yet-processed crops queued by processAllPendingPages() — see its own comment
   document.getElementById('aiScanStage').innerHTML=`
     <div style="display:flex;flex-direction:column;gap:10px">
       <button class="btn sm" onclick="document.getElementById('aiScanFile').click()">
@@ -3831,8 +3832,8 @@ async function onScanFilesSelected(fileList){
     // whatever each one contributes, until every core field is filled or pages
     // run out. Foreign passports carry all their fields on one page, so this
     // never fires for that path (nothing is ever missing after the first hit).
-    const CORE_FIELDS=['dob','sex','address','city'];
-    const missingCore=p=>p&&p.type==='israeli_id'&&CORE_FIELDS.some(f=>!p[f]);
+    // CORE_FIELDS/missingCore are module-scope now (shared with
+    // processAllPendingPages() below) — see their own comment.
     let needMore=false;
     const otherPages=[];
     for(let i=0;i<items.length;i++){
@@ -3920,12 +3921,14 @@ async function onScanFilesSelected(fileList){
 }
 
 // Step 1 of the single-photo scan flow: turn one picked photo/PDF page into
-// a plain image, run it through preAlignScan's blur-check/best-effort
-// OpenCV crop, then hand it to the manual corner-adjustment editor BEFORE
-// any AI call — the user crops/straightens it themselves, and only the
-// result gets sent to the full OCR call (runOcr, via confirmScanQuad's
-// __scanEditPurpose==='preOcr' branch). Reached either directly (a single
-// non-PDF file) or as "Заново" from the multi-file flow above.
+// a plain image and hand it straight to the manual corner-adjustment editor
+// — no server call at all yet. The cropped result is queued (see
+// confirmScanQuad's __scanEditPurpose==='collectPage' branch) rather than
+// processed immediately; processAllPendingPages() sends the whole queue
+// through preAlignScan/OCR together once the user is done adding pages.
+// Reached either directly (a single non-PDF file), as "Заново" from the
+// multi-file flow above, or from the pending/review screens' own "add page"
+// buttons (renderPendingPagesPrompt/renderScanPagesPrompt).
 async function onScanFileSelected(file){
   if(!file) return;
   const stage=document.getElementById('aiScanStage');
@@ -3953,20 +3956,17 @@ async function onScanFileSelected(file){
       mediaType=file.type||'image/jpeg';
     }
     ({b64,mediaType}=await downscaleForUpload(b64,mediaType));
-    // Manual crop/straighten now runs BEFORE preAlignScan (moved 2026-09-26,
-    // per user request, for server economy) — the editor works on the raw
-    // downscaled photo (no contrast/sharpness boost yet), and warpQuadImage's
-    // crop shrinks the frame down to just the document *before* it's ever
-    // sent to preAlignScan, so that server call's resize/enhance/blur-check
-    // all run over far fewer pixels than when they covered the whole photo
-    // including background. Trade-off, accepted deliberately: the user now
-    // crops on a slightly duller image (no pre-boost), and a blurry photo is
-    // only caught by confirmScanQuad()/skipScanQuad() below — AFTER the user
-    // has already positioned the rectangle — instead of immediately here.
-    // window.__scanEditPurpose='preOcr' tells confirmScanQuad()/
-    // skipScanQuad() below to run preAlignScan then hand the cropped result
-    // to runOcr() next, instead of finishing the page immediately.
-    window.__scanEditPurpose='preOcr';
+    // Manual crop/straighten runs BEFORE any server call (moved 2026-09-26,
+    // per user request) — the editor works on the raw downscaled photo (no
+    // contrast/sharpness boost yet, no upload). window.__scanEditPurpose=
+    // 'collectPage' tells confirmScanQuad()/skipScanQuad() below to just add
+    // the cropped result to window.__pendingScanPages and show the pending-
+    // pages queue (renderPendingPagesPrompt) — NOT to send anything to the
+    // server yet. This lets the user crop as many pages as they want (front
+    // card, ספח, contract, ...) with zero network calls in between; only
+    // processAllPendingPages() (triggered by that screen's "process" button)
+    // sends the whole queue through preAlignScan/aiReadDoc, once, in one go.
+    window.__scanEditPurpose='collectPage';
     renderScanQuadEditor(b64,mediaType,{tl:{x:0,y:0},tr:{x:1,y:0},br:{x:1,y:1},bl:{x:0,y:1}});
   }catch(err){
     console.error(err);
@@ -4697,13 +4697,19 @@ async function rotateScanQuad(deg){
 }
 // window.__scanEditPurpose tells these two where to go next: 'preOcr' (the
 // normal case now — see onScanFileSelected) means the user just finished
-// marking up a RAW, not-yet-enhanced photo, so the cropped result still
-// needs to go through preAlignScan() (contrast/sharpness + blur-check, now
-// running on the small cropped image instead of the whole frame — see
-// onScanFileSelected's comment) and then runOcr(); anything else (only
-// 'sefach', currently unreachable via UI but kept working — see
-// runSefachOcr) means OCR already ran and this is finishing the page
-// directly, same as before.
+// marking up a RAW, not-yet-enhanced photo — the cropped result is queued
+// (window.__pendingScanPages) for later batch processing, NOT sent anywhere
+// yet (see onScanFileSelected's comment and processAllPendingPages() below);
+// anything else (only 'sefach', currently unreachable via UI but kept
+// working — see runSefachOcr) means OCR already ran and this is finishing
+// the page directly, same as before.
+//
+// _preAlignThenOcr()/runOcr() (below) are DORMANT as of 2026-09-26 — nothing
+// in the live UI sets __scanEditPurpose='preOcr' anymore (onScanFileSelected
+// now always uses 'collectPage'), so neither function is currently reached.
+// Left defined, working, in case an immediate single-page-no-batch fast path
+// is wanted again later; processAllPendingPages() below does its own
+// preAlignScan+aiReadDoc call per queued page rather than calling these.
 async function _preAlignThenOcr(b64,mediaType){
   const stage=document.getElementById('aiScanStage');
   stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
@@ -4725,18 +4731,30 @@ async function confirmScanQuad(){
   let finalImg;
   try{ finalImg=await warpQuadImage(b64,mediaType,r); }
   catch(e){ console.error(e); finalImg={b64,mediaType}; }
-  if(window.__scanEditPurpose==='preOcr') _preAlignThenOcr(finalImg.b64,finalImg.mediaType);
-  else finishPageScan(finalImg);
+  if(window.__scanEditPurpose==='collectPage'){
+    if(!window.__pendingScanPages) window.__pendingScanPages=[];
+    window.__pendingScanPages.push(finalImg);
+    renderPendingPagesPrompt();
+  } else finishPageScan(finalImg);
 }
 function skipScanQuad(){
-  if(window.__scanEditPurpose==='preOcr') _preAlignThenOcr(window.__scanEdit.b64,window.__scanEdit.mediaType);
-  else finishPageScan(window.__scanEdit);
+  if(window.__scanEditPurpose==='collectPage'){
+    if(!window.__pendingScanPages) window.__pendingScanPages=[];
+    window.__pendingScanPages.push(window.__scanEdit);
+    renderPendingPagesPrompt();
+  } else finishPageScan(window.__scanEdit);
 }
 // Fields carried by an Israeli ID's ספח (appendix) card that the front side
 // doesn't have — shared between the multi-file batch path
 // (onScanFilesSelected) and the new one-page-at-a-time loop below, so both
 // use the same definition of "still missing" / "worth merging in".
 const ID_CORE_FIELDS=['dob','sex','address','houseNumber','city','maritalStatus'];
+// The narrower subset worth re-scanning MORE pages for (not just merging
+// whatever a page happens to have) — shared by onScanFilesSelected (the
+// no-crop multi-file batch path) and processAllPendingPages() (the
+// manual-crop-then-batch path) so both use the same "keep looking" gate.
+const CORE_FIELDS=['dob','sex','address','city'];
+const missingCore=p=>p&&p.type==='israeli_id'&&CORE_FIELDS.some(f=>!p[f]);
 function mergeIsraeliIdFields(primary,extra){
   if(!primary||primary.type!=='israeli_id'||!extra||extra.type!=='israeli_id') return primary;
   for(const f of ID_CORE_FIELDS){ if(!primary[f]&&extra[f]) primary[f]=extra[f]; }
@@ -4826,13 +4844,150 @@ function finishPageScan(finalImg){
   window.__aiScanPageThumbs.push(finalImg);
   renderScanPagesPrompt();
 }
-// Review screen shown after every page: a thumbnail strip of everything
-// scanned so far in this session, a button to scan one more page (front card,
-// ספח, contract...) through the exact same single-photo pipeline
-// (onScanFileSelected — blur-check, auto-align, OCR, manual corner editor),
-// and a "done" button that hands off to the worker modal. Card #1 (the
-// primary page) has no remove button — removing it would mean restarting the
-// whole session (rescan), which "Отмена"/closing the overlay already covers.
+// Pending-pages queue (added 2026-09-26, per user request): shown while the
+// user is still cropping pages, BEFORE any of them has touched the server.
+// window.__pendingScanPages holds { b64, mediaType } entries straight out of
+// warpQuadImage/the raw skipped photo — no preAlignScan, no aiReadDoc yet.
+// "Добавить страницу" re-enters onScanFileSelected (crop only, still no
+// network call); "Обработать" hands the whole queue to
+// processAllPendingPages() in one shot. Every thumbnail is removable here
+// (unlike renderScanPagesPrompt()'s card #1) since nothing has been
+// classified as "the primary page" yet at this stage — that only happens
+// once processAllPendingPages() actually reads the documents.
+function renderPendingPagesPrompt(){
+  const stage=document.getElementById('aiScanStage');
+  const pages=window.__pendingScanPages||[];
+  stage.innerHTML=`
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="font-size:12px;color:var(--text2)">${pages.length} תמונות ממתינות לעיבוד</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${pages.map((p,i)=>`
+          <div style="position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--border2);flex-shrink:0">
+            <img src="data:${p.mediaType};base64,${p.b64}" style="width:100%;height:100%;object-fit:cover;display:block">
+            <span style="position:absolute;bottom:1px;left:1px;font-size:9px;background:rgba(0,0,0,0.6);color:#fff;padding:0 3px;border-radius:3px">${i+1}</span>
+            <button type="button" onclick="removePendingScanPage(${i})" style="position:absolute;top:1px;right:1px;width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,0.7);color:#fff;border:none;font-size:10px;line-height:1;cursor:pointer;padding:0">✕</button>
+          </div>`).join('')}
+      </div>
+      <input type="file" id="aiScanFilePending" accept="image/*,application/pdf,.pdf" style="display:none" onchange="onScanFileSelected(this.files[0]); this.value='';">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn sm" type="button" onclick="document.getElementById('aiScanFilePending').click()"><i class="ti ti-plus"></i> הוסף עמוד</button>
+        <button class="btn sm accent" type="button" ${pages.length?'':'disabled'} onclick="processAllPendingPages()"><i class="ti ti-check"></i> עבד ${pages.length||''} עמודים</button>
+      </div>
+    </div>`;
+}
+function removePendingScanPage(i){
+  if(!window.__pendingScanPages) return;
+  window.__pendingScanPages.splice(i,1);
+  renderPendingPagesPrompt();
+}
+// Sends the WHOLE pending queue through preAlignScan+aiReadDoc, once, page by
+// page — this is the one point in the whole "collect first, process later"
+// flow that actually talks to the server. Mirrors onScanFilesSelected's own
+// classify/merge loop (first israeli_id/passport page found becomes primary,
+// verified via verifyDigitFields/verifyIdChecksum; later pages merge missing
+// core fields via mergeIsraeliIdFields until none are missing; anything past
+// that point is kept as-is with no further AI call) rather than reusing
+// finishPageScan()'s naive "first page scanned = primary" rule, which has no
+// way to recover if an ospח or contract photo happens to get cropped first —
+// exactly the bug CORE_FIELDS/missingCore's own comment already describes
+// for the batch-file path.
+// Resumable: if the user already finished one batch and is now adding more
+// pages from renderScanPagesPrompt()'s own "add page" button (which also
+// goes through onScanFileSelected → the pending queue, same as the first
+// batch), this picks up the EXISTING primary/otherPages/pageParsed instead of
+// starting over, so a second small batch just extends the first one.
+//
+// One blurry page aborts the loop and is dropped from the queue on its own —
+// per user decision, the rest of the (already-cropped) queue is preserved
+// rather than losing the whole batch over one bad photo.
+async function processAllPendingPages(){
+  const queue=(window.__pendingScanPages||[]).slice();
+  if(!queue.length) return;
+  const stage=document.getElementById('aiScanStage');
+  if(!window.__aiScanPageThumbs) window.__aiScanPageThumbs=[];
+  if(!window.__aiPacketOtherPages) window.__aiPacketOtherPages=[];
+  if(!window.__aiPageParsed) window.__aiPageParsed=[];
+  const resuming=window.__aiScanPageThumbs.length>0;
+  let foundParsed=resuming?(window.__aiPrimaryParsed||window.__aiParsed||null):null;
+  let needMore=missingCore(foundParsed);
+  const otherPages=resuming?window.__aiPacketOtherPages.slice():[];
+  let pageParsed=resuming?window.__aiPageParsed.slice():[];
+  for(let i=0;i<queue.length;i++){
+    stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
+      +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
+      +'<span>מעבד עמוד '+(i+1)+' מתוך '+queue.length+'…</span></div>';
+    let it=queue[i];
+    let pre;
+    try{ pre=await preAlignScan(it.b64,it.mediaType); }
+    catch(e){ console.error(e); pre={b64:it.b64,mediaType:it.mediaType}; }
+    if(pre.blurry){
+      // Drop just this one offending page from the real queue (not our local
+      // `queue` copy) and stop — everything already processed this run stays
+      // committed (assembled below), everything still-pending in the queue
+      // (this page excluded) is preserved for another "process" attempt.
+      const realIdx=window.__pendingScanPages.indexOf(it);
+      if(realIdx>=0) window.__pendingScanPages.splice(realIdx,1);
+      window.__aiPacketOtherPages=otherPages;
+      window.__aiPageParsed=pageParsed;
+      if(foundParsed){ window.__aiParsed=foundParsed; window.__aiPrimaryParsed=foundParsed; }
+      stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">תמונה '+(i+1)+' מטושטשת מדי, הוסרה מהתור. צלמו אותה מחדש<br><br>'
+        +'<button class="btn sm" onclick="renderPendingPagesPrompt()">חזרה לתור</button></div>';
+      return;
+    }
+    it={b64:pre.b64,mediaType:pre.mediaType};
+    let thisPageParsed=null;
+    if(!foundParsed){
+      try{
+        const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
+        const json=await resp.json();
+        const p=json&&json.parsed;
+        if(p&&(p.type==='israeli_id'||p.type==='passport')){
+          foundParsed=p.fieldBoxes?await verifyDigitFields(p,it.b64,it.mediaType):p;
+          foundParsed=await verifyIdChecksum(foundParsed,it.b64,it.mediaType);
+          window.__aiScanImage=it;
+          window.__aiAvatarB64=p.photoBox?await cropPortraitAvatar(it.b64,it.mediaType,p.photoBox):null;
+          needMore=missingCore(foundParsed);
+          pageParsed=[foundParsed];
+          continue; // this page's image is __aiScanImage — not duplicated into otherPages
+        }
+      }catch(e){ console.error(e); }
+    } else if(needMore){
+      try{
+        const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
+        const json=await resp.json();
+        const p=json&&json.parsed;
+        if(p&&p.type==='israeli_id'){
+          foundParsed=mergeIsraeliIdFields(foundParsed,p);
+          thisPageParsed=p;
+        }
+        needMore=missingCore(foundParsed);
+      }catch(e){ console.error(e); }
+    }
+    pageParsed.push(thisPageParsed);
+    otherPages.push(it);
+  }
+  window.__pendingScanPages=[];
+  window.__aiPacketOtherPages=otherPages;
+  window.__aiPageParsed=pageParsed;
+  if(!foundParsed){
+    stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">לא נמצאה תעודת זהות/דרכון בתמונות שהועלו<br><br>'
+      +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
+    return;
+  }
+  window.__aiParsed=foundParsed;
+  window.__aiPrimaryParsed=foundParsed;
+  window.__aiScanPageThumbs=[window.__aiScanImage,...otherPages];
+  renderScanPagesPrompt();
+}
+// Review screen shown after a batch of pages has actually been processed
+// (processAllPendingPages()): a thumbnail strip of everything read so far in
+// this session, a button to crop and queue one more page (front card, ספח,
+// contract...) — this goes through onScanFileSelected → the SAME pending-
+// pages queue as the first batch (renderPendingPagesPrompt), not straight
+// back to the server, so "one more page" after review still batches — and a
+// "done" button that hands off to the worker modal. Card #1 (the primary
+// page) has no remove button — removing it would mean restarting the whole
+// session (rescan), which "Отмена"/closing the overlay already covers.
 function renderScanPagesPrompt(){
   const stage=document.getElementById('aiScanStage');
   const pages=window.__aiScanPageThumbs||[];
