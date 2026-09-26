@@ -4570,15 +4570,24 @@ function quadAreaFrac(c){
 // Deliberately ignores imageAlign.rotate: the user already oriented the
 // photo correctly via the corner editor's own rotate buttons before this
 // ran, and re-applying the AI's own rotate guess on top risks flipping an
-// already-correctly-oriented photo. Requires the guessed quad to cover at
-// least half the frame — a wildly wrong/implausible AI guess (mistaking a
-// smaller region, e.g. the portrait photo, for the whole document) must
-// never be trusted to crop away content the user deliberately kept when
-// they drew their own rectangle. Falls back to the untouched image on any
-// missing/implausible corners or a failed warp — this only ever tightens
-// the user's crop, never replaces or overrides it with something worse.
+// already-correctly-oriented photo.
+// Trust floor lowered from 50% to 8% of frame (2026-09-26, per real-world
+// testing) — the 50% floor assumed the user's manual crop already left
+// mostly-document in frame (a pure TIGHTENING pass), but real usage crops
+// far more loosely (a real photo tested: card occupying ~20-35% of the
+// manually-cropped frame, black background making up the rest) — that
+// floor rejected the AI's own CORRECT card-boundary guess every time,
+// exactly the case this was meant to help with. The classical OpenCV
+// detector (preprocess_scan, server-side) independently struggles on this
+// same real photo (verified: neither Canny-edge nor brightness-threshold
+// segmentation reliably closes a clean contour around a card on an
+// uneven/non-pure-black real background) — a vision-model guess is the
+// more robust source of truth here, so it deserves a floor that only
+// guards against a truly degenerate case (AI locking onto a small internal
+// sub-element, e.g. just the portrait photo, typically far under 8% of
+// even a rough crop), not one that assumes the crop was already tight.
 async function refineWithAiAlign(finalImg,align){
-  if(!align||!validQuadCorners(align.corners)||quadAreaFrac(align.corners)<0.5) return finalImg;
+  if(!align||!validQuadCorners(align.corners)||quadAreaFrac(align.corners)<0.08) return finalImg;
   const dims=await new Promise(res=>{
     const im=new Image();
     im.onload=()=>res({w:im.naturalWidth,h:im.naturalHeight});
