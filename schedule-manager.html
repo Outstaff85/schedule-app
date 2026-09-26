@@ -3953,24 +3953,21 @@ async function onScanFileSelected(file){
       mediaType=file.type||'image/jpeg';
     }
     ({b64,mediaType}=await downscaleForUpload(b64,mediaType));
-    const pre=await preAlignScan(b64,mediaType);
-    if(pre.blurry){
-      stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">התמונה מטושטשת מדי, צלמו שוב<br><br>'
-        +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
-      return;
-    }
-    // Manual crop/straighten now happens BEFORE sending anything to the AI
-    // (added 2026-09-21, per user request) — previously the photo went
-    // straight to aiReadDoc and the corner-adjustment editor only appeared
-    // AFTER, seeded by the AI's own guessed corners. Full-frame default here
-    // (or whatever preAlignScan's own OpenCV pass already cropped to) is a
-    // fine starting point since the user reviews/adjusts it themselves
-    // either way — no AI call is spent guessing a starting rectangle
-    // anymore. window.__scanEditPurpose='preOcr' tells confirmScanQuad()/
-    // skipScanQuad() below to hand the *cropped* result to runOcr() next,
-    // instead of finishing the page immediately.
+    // Manual crop/straighten now runs BEFORE preAlignScan (moved 2026-09-26,
+    // per user request, for server economy) — the editor works on the raw
+    // downscaled photo (no contrast/sharpness boost yet), and warpQuadImage's
+    // crop shrinks the frame down to just the document *before* it's ever
+    // sent to preAlignScan, so that server call's resize/enhance/blur-check
+    // all run over far fewer pixels than when they covered the whole photo
+    // including background. Trade-off, accepted deliberately: the user now
+    // crops on a slightly duller image (no pre-boost), and a blurry photo is
+    // only caught by confirmScanQuad()/skipScanQuad() below — AFTER the user
+    // has already positioned the rectangle — instead of immediately here.
+    // window.__scanEditPurpose='preOcr' tells confirmScanQuad()/
+    // skipScanQuad() below to run preAlignScan then hand the cropped result
+    // to runOcr() next, instead of finishing the page immediately.
     window.__scanEditPurpose='preOcr';
-    renderScanQuadEditor(pre.b64,pre.mediaType,{tl:{x:0,y:0},tr:{x:1,y:0},br:{x:1,y:1},bl:{x:0,y:1}});
+    renderScanQuadEditor(b64,mediaType,{tl:{x:0,y:0},tr:{x:1,y:0},br:{x:1,y:1},bl:{x:0,y:1}});
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
@@ -4121,16 +4118,23 @@ function downscaleForUpload(b64,mediaType){
 }
 // Step 1.4: a server-side OpenCV+Pillow pass (functions/main.py,
 // preprocess_scan) that (a) rejects an obviously-too-blurry photo before any
-// AI call is spent on it, and (b) when it finds a confident document quad
-// (see MIN_QUAD_AREA_FRAC there), crops and straightens it itself. When it
-// can't find a confident quad (low-contrast background, etc.) it still
-// returns a contrast/sharpness-enhanced but uncropped image. Either way the
-// result just becomes the starting image for the manual corner-adjustment
-// editor now (no AI-seeded alignment step in between — see the function
-// body). Empirically tested (see CLAUDE.md) against real ID photos and
-// synthetic edge cases (rotation ambiguity, low-contrast background) before
-// wiring this in originally. Returns {b64,mediaType} to proceed with, or
-// {blurry:true} if the photo should be rejected outright.
+// AI call is spent on it, and (b) contrast/sharpness-enhances what's left.
+// Geometric auto-crop is defined server-side but deliberately dormant (see
+// preprocess_scan_image's own comment in functions/main.py) — the user always
+// crops by hand in renderScanQuadEditor instead.
+// Moved (2026-09-26, per user request, for server economy) to run AFTER the
+// user's own manual crop/warp instead of before: onScanFileSelected now hands
+// the RAW downscaled photo straight to renderScanQuadEditor, and this
+// function only runs once confirmScanQuad()/skipScanQuad() have already
+// produced the small, cropped-to-just-the-document image — so its resize/
+// enhance/blur-check all work over far fewer pixels than when they covered
+// the whole photo including background. Returns {b64,mediaType} to proceed
+// with, or {blurry:true} if the (already-cropped) photo should be rejected.
+// NOTE: BLUR_VARIANCE_THRESHOLD in functions/main.py was calibrated against
+// a full-frame photo, not a cropped-to-document one — the pixel population
+// feeding the Laplacian-variance calc changed with this reorder, so that
+// threshold may need re-verification against a real blurry photo cropped the
+// same way, same as the pre-existing pre/post-enhancement calibration note.
 async function preAlignScan(b64,mediaType){
   try{
     const resp=await fetch(PREPROCESS_SCAN_FN_URL,{
@@ -4141,18 +4145,6 @@ async function preAlignScan(b64,mediaType){
     if(!resp.ok||!json||json.error) return {b64,mediaType};
     if(json.reason==='blurry') return {blurry:true};
     if(!json.ok) return {b64,mediaType};
-    // Whatever OpenCV managed (cropped+straightened if it found a confident
-    // quad, otherwise just contrast/sharpness-enhanced) is now just the
-    // starting image for the user's own manual crop/rotate in
-    // renderScanQuadEditor — no AI call needed to seed a guess anymore
-    // (autoPreAlignScan/aiDetectAlign removed from this path 2026-09-21, per
-    // user request, now that the editor always runs and the user positions
-    // the rectangle themselves either way). Trade-off: aiDetectAlign was the
-    // only thing that could tell an upside-down photo from a right-side-up
-    // one (plain OpenCV geometry can't, see CLAUDE.md) — an upside-down
-    // photo no longer gets auto-corrected, but the editor's own rotate
-    // buttons (rotateScanQuad) let the user fix that by hand in one tap,
-    // which fits "I'll mark it myself" either way.
     return {b64:json.imageBase64,mediaType:json.mediaType||'image/jpeg'};
   }catch(e){
     console.error(e);
@@ -4705,10 +4697,25 @@ async function rotateScanQuad(deg){
 }
 // window.__scanEditPurpose tells these two where to go next: 'preOcr' (the
 // normal case now — see onScanFileSelected) means the user just finished
-// marking up a RAW photo, so the cropped result still needs to go through
-// runOcr() itself; anything else (only 'sefach', currently unreachable via
-// UI but kept working — see runSefachOcr) means OCR already ran and this is
-// finishing the page directly, same as before.
+// marking up a RAW, not-yet-enhanced photo, so the cropped result still
+// needs to go through preAlignScan() (contrast/sharpness + blur-check, now
+// running on the small cropped image instead of the whole frame — see
+// onScanFileSelected's comment) and then runOcr(); anything else (only
+// 'sefach', currently unreachable via UI but kept working — see
+// runSefachOcr) means OCR already ran and this is finishing the page
+// directly, same as before.
+async function _preAlignThenOcr(b64,mediaType){
+  const stage=document.getElementById('aiScanStage');
+  stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
+    +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br><span>משפר איכות…</span></div>';
+  const pre=await preAlignScan(b64,mediaType);
+  if(pre.blurry){
+    stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">התמונה מטושטשת מדי, צלמו שוב<br><br>'
+      +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
+    return;
+  }
+  runOcr(pre.b64,pre.mediaType);
+}
 async function confirmScanQuad(){
   const {b64,mediaType}=window.__scanEdit;
   const r=window.__quadRect;
@@ -4718,11 +4725,11 @@ async function confirmScanQuad(){
   let finalImg;
   try{ finalImg=await warpQuadImage(b64,mediaType,r); }
   catch(e){ console.error(e); finalImg={b64,mediaType}; }
-  if(window.__scanEditPurpose==='preOcr') runOcr(finalImg.b64,finalImg.mediaType);
+  if(window.__scanEditPurpose==='preOcr') _preAlignThenOcr(finalImg.b64,finalImg.mediaType);
   else finishPageScan(finalImg);
 }
 function skipScanQuad(){
-  if(window.__scanEditPurpose==='preOcr') runOcr(window.__scanEdit.b64,window.__scanEdit.mediaType);
+  if(window.__scanEditPurpose==='preOcr') _preAlignThenOcr(window.__scanEdit.b64,window.__scanEdit.mediaType);
   else finishPageScan(window.__scanEdit);
 }
 // Fields carried by an Israeli ID's ספח (appendix) card that the front side

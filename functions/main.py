@@ -488,20 +488,17 @@ def fill_form_101(req: https_fn.Request) -> https_fn.Response:
 
 
 # ===== Scan preprocessing: OpenCV geometry + Pillow enhancement =====
-# Tried BEFORE the client's existing AI-seeded alignment (aiDetectAlign,
-# schedule-manager.html) — if this finds a confident document quad, the
-# client skips that Haiku call entirely; if not, it falls back to the
-# unchanged AI-seeded flow (which then still gets this function's
-# contrast/sharpness-enhanced image as its input, so that part of the
-# improvement applies either way). See CLAUDE.md for the full design
-# rationale and the empirical tests (synthetic + real ID photos) that shaped
-# the confidence thresholds below — plain OpenCV contour detection was
-# confirmed to (a) have no way to tell an upside-down document from a
-# right-side-up one (geometry alone can't read text) and (b) fail outright
-# on a low-contrast background (locks onto a small internal box instead of
-# the document's true outline) — both failure modes are exactly what the
-# area-fraction + convexity checks below are guarding against; anything that
-# doesn't clear them falls back to the client's existing AI path unchanged.
+# Called by the client's preAlignScan() (schedule-manager.html) AFTER the
+# user's own manual corner-adjustment editor has already cropped/warped the
+# photo down to just the document (reordered 2026-09-26, per user request,
+# for server economy — see preAlignScan()'s own comment) — this function no
+# longer ever sees the full original frame with background, only the small
+# already-cropped image, so its resize/enhance/blur-check all run over far
+# fewer pixels than before. The geometric auto-crop below (_find_document_quad/
+# _warp_quad) is unused for that same reason (see preprocess_scan_image) and
+# was already dormant before this reorder — see CLAUDE.md for the empirical
+# tests (synthetic + real ID photos) that originally shaped the confidence
+# thresholds below, back when this ran on the full frame.
 MAX_WORK_DIM = 1800  # generous margin above the 1568px Claude Vision actually benefits from
 MIN_QUAD_AREA_FRAC = 0.20
 MAX_QUAD_AREA_FRAC = 0.98
@@ -511,15 +508,19 @@ BLUR_VARIANCE_THRESHOLD = 15.0  # below this (Laplacian variance) = reject as to
 # a moderate blur (small print starting to degrade) measured ~9 — 15 sits
 # between those last two, closer to "reject only once it's actually a problem"
 # than to "reject anything not perfectly crisp".
-# NOTE: this was calibrated on the RAW (pre-enhancement) photo. As of
-# 2026-09-21 the blur check runs AFTER _enhance_contrast_sharpness() (per
+# NOTE: this was calibrated on a RAW (pre-enhancement), FULL-FRAME photo. As
+# of 2026-09-21 the blur check runs AFTER _enhance_contrast_sharpness() (per
 # user request), whose Sharpness pass systematically inflates Laplacian
 # variance for any input — sharpening amplifies gradients that already
 # exist, it can't invent detail that isn't there, but a given genuinely-blurry
 # photo will now score somewhat higher than it would have pre-enhancement.
-# The threshold itself hasn't been re-measured against a real blurry photo
-# post-enhancement (no test images available here) — if an obviously-blurry
-# scan starts passing this check in practice, that's the number to raise.
+# As of 2026-09-26 this also only ever runs on the small image the user has
+# already cropped down to just the document (see this function's own header
+# comment) — a different pixel population again (no background, higher
+# document-fill fraction) than what the number below was originally measured
+# against. Neither variable has been re-measured with real test images in
+# this environment — if an obviously-blurry scan starts passing this check
+# in practice, that's the number to raise.
 
 
 def _blur_variance(gray):
@@ -591,20 +592,20 @@ def preprocess_scan_image(image_bytes):
     img = _resize_max_dim(img, MAX_WORK_DIM)
 
     # Geometric auto-crop (_find_document_quad/_warp_quad) is DELIBERATELY
-    # NOT applied here anymore (removed 2026-09-21, per user request) — it
-    # used to crop the photo down to whatever quad it found BEFORE the
-    # client's manual corner-adjustment editor ever ran, which silently
-    # discarded content when a single photo held two documents at once (e.g.
-    # a passport and its ספח insert photographed together): the geometry
+    # NOT applied here (removed 2026-09-21, per user request) — it used to
+    # crop the photo down to whatever quad it found BEFORE the client's
+    # manual corner-adjustment editor ever ran, which silently discarded
+    # content when a single photo held two documents at once (e.g. a
+    # passport and its ספח insert photographed together): the geometry
     # detector locks onto one rectangular contour and the other document is
-    # simply gone by the time the user sees the editor, defeating the whole
-    # point of the earlier "user crops first, manually" reorder (see
-    # CLAUDE.md's "manual crop/straighten now happens BEFORE the OCR call"
-    # note). The functions themselves are left defined, dormant, in case a
-    # single-document-only fast path is wanted again later. Only the blur
-    # rejection and contrast/sharpness enhancement still run — the user
-    # always gets the full (enhanced, downscaled) original photo to crop
-    # themselves.
+    # simply gone by the time the user sees the editor. As of 2026-09-26 this
+    # function only ever runs AFTER that manual editor (see this module's
+    # header comment and preAlignScan() in schedule-manager.html) — the input
+    # here is already the user's own crop of a single document, so a second,
+    # automatic crop attempt has no case left to solve; the functions
+    # themselves are left defined, dormant, in case a different fast path
+    # wants them later. Only the blur rejection and contrast/sharpness
+    # enhancement still run, now on that already-cropped image.
     #
     # Contrast/sharpness enhancement now runs BEFORE the blur check (per user
     # request, 2026-09-21) rather than after — see BLUR_VARIANCE_THRESHOLD's
