@@ -4176,19 +4176,23 @@ async function preAlignScan(b64,mediaType){
   }
 }
 
-// Step 1.5 — DORMANT since 2026-09-21 (no longer called by preAlignScan(),
-// kept in case it's wired back in later): a fast, cheap AI call that reads
-// ONLY the document's rotation and corners (no field extraction), then
-// auto-straightens the photo locally — fully automatic, no user interaction
-// — before the slower full OCR call. Was removed from the main flow because
-// the corner-adjustment editor now always runs before OCR and the user
-// positions the rectangle themselves, so an AI-guessed starting point (this
-// function's whole purpose) stopped being necessary; its one advantage over
-// plain OpenCV geometry — telling an upside-down photo from a right-side-up
-// one — is now handled by the editor's own manual rotate buttons instead.
-// Best-effort: any failure here (network error, bad AI response, image
-// decode failure) just falls through to OCR-ing the original photo
-// unchanged, so a hiccup here never blocks the scan.
+// Step 1.5 — REVIVED 2026-09-26 (was dormant 2026-09-21 through today): a
+// fast, cheap AI call (aiDetectAlign, Haiku) that reads ONLY the document's
+// rotation and corners (no field extraction), then auto-straightens the
+// photo — now called from processAllPendingPages() on each queued page,
+// right before preAlignScan()'s classical-CV attempt. It was originally
+// removed because the manual corner-adjustment editor runs before OCR now
+// and the user positions the rectangle themselves, so an AI-guessed
+// starting point seemed unnecessary — but real-world testing this same day
+// showed manual crops routinely staying rough (card occupying ~20-35% of
+// frame, not tightly boxed) and the classical OpenCV detector genuinely
+// failing to find a clean document contour on an actual real photo (uneven
+// background, real lighting) even after hardening — a vision-model read is
+// inherently more robust on messy real photos than hand-tuned edge
+// heuristics, and cheap enough (small prompt, no field extraction, Haiku)
+// to run on every queued page. Best-effort: any failure here (network
+// error, bad AI response, image decode failure) just falls through to the
+// original image unchanged, so a hiccup here never blocks the scan.
 async function autoPreAlignScan(b64,mediaType){
   const stage=document.getElementById('aiScanStage');
   stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
@@ -4627,8 +4631,8 @@ function renderScanQuadEditor(b64,mediaType,cornersFrac){
         style="display:block;max-width:100%;max-height:46vh;user-select:none;-webkit-user-drag:none">
       <svg id="scanQuadSvg" style="position:absolute;left:0;top:0;width:100%;height:100%;touch-action:none">
         <polygon id="scanQuadPoly" points="" fill="rgba(79,142,247,0.15)" stroke="#4f8ef7" stroke-width="2"></polygon>
-        <circle class="quad-handle" data-c="tl" r="20"></circle><circle class="quad-handle" data-c="tr" r="20"></circle>
-        <circle class="quad-handle" data-c="br" r="20"></circle><circle class="quad-handle" data-c="bl" r="20"></circle>
+        <circle class="quad-handle" data-c="tl" r="18"></circle><circle class="quad-handle" data-c="tr" r="18"></circle>
+        <circle class="quad-handle" data-c="br" r="18"></circle><circle class="quad-handle" data-c="bl" r="18"></circle>
       </svg>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
@@ -4694,9 +4698,16 @@ function paintQuad(){
   if(!r) return;
   const poly=document.getElementById('scanQuadPoly');
   if(poly) poly.setAttribute('points',[r.tl,r.tr,r.br,r.bl].map(p=>p.x+','+p.y).join(' '));
+  const cx=(r.tl.x+r.tr.x+r.br.x+r.bl.x)/4, cy=(r.tl.y+r.tr.y+r.br.y+r.bl.y)/4;
+  const inset=3.5;
   ['tl','tr','br','bl'].forEach(k=>{
     const c=document.querySelector('.quad-handle[data-c="'+k+'"]');
-    if(c){ c.setAttribute('cx',r[k].x); c.setAttribute('cy',r[k].y); }
+    if(!c) return;
+    const p=r[k];
+    const dx=cx-p.x, dy=cy-p.y;
+    const dist=Math.hypot(dx,dy)||1;
+    const vx=p.x+dx/dist*inset, vy=p.y+dy/dist*inset;
+    c.setAttribute('cx',vx); c.setAttribute('cy',vy);
   });
 }
 function attachQuadDrag(){
@@ -4958,6 +4969,19 @@ async function processAllPendingPages(){
       +'<span>מעבד עמוד '+(i+1)+' מתוך '+queue.length+'… ('+pct+'%)</span>'
       +'<div class="progress-bar-real"><div style="width:'+pct+'%"></div></div></div>';
     let it=queue[i];
+    // Cheap Haiku-based corner detection (autoPreAlignScan/aiDetectAlign,
+    // revived 2026-09-26 — see its own comment for the full history) runs
+    // BEFORE preAlignScan's classical-CV attempt: a real-photo diagnostic
+    // this same day showed the OpenCV detector (_find_document_quad)
+    // failing to close a clean contour on an actual scan (uneven, non-pure-
+    // black real background) even after hardening — a vision-model read is
+    // inherently more robust on messy real photos than hand-tuned edge
+    // heuristics, and this is cheap enough (small prompt, no field
+    // extraction, Haiku) to run on every queued page. preAlignScan's own
+    // classical-CV pass still runs afterward as a harmless no-cost fallback
+    // (it already safely no-ops when it can't find a confident quad).
+    try{ it=await autoPreAlignScan(it.b64,it.mediaType); }
+    catch(e){ console.error(e); }
     let pre;
     try{ pre=await preAlignScan(it.b64,it.mediaType); }
     catch(e){ console.error(e); pre={b64:it.b64,mediaType:it.mediaType}; }
