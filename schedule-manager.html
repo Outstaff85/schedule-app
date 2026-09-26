@@ -3735,6 +3735,7 @@ function openAiScan(){
   window.__aiPrimaryParsed=null;
   window.__aiPageParsed=[];
   window.__pendingScanPages=[]; // not-yet-processed crops queued by processAllPendingPages() — see its own comment
+  window.__scanDebugLog=[]; // TEMPORARY diagnostic log — see pushScanDebug()'s own comment
   document.getElementById('aiScanStage').innerHTML=`
     <div style="display:flex;flex-direction:column;gap:10px">
       <button class="btn sm" onclick="document.getElementById('aiScanFile').click()">
@@ -4193,6 +4194,18 @@ async function preAlignScan(b64,mediaType){
 // to run on every queued page. Best-effort: any failure here (network
 // error, bad AI response, image decode failure) just falls through to the
 // original image unchanged, so a hiccup here never blocks the scan.
+// TEMPORARY diagnostic log (2026-09-26) — the user reports the embedded scan
+// photo still isn't coming out cropped/straightened in production despite
+// autoPreAlignScan()/aiDetectAlign being wired in, and this can't be
+// reproduced from here (would need a real, paid Anthropic API call against a
+// real photo). Records what the AI actually returned at each decision point
+// so the next real-device scan's result can be inspected via the debug block
+// renderScanPagesPrompt() prints — remove __scanDebugLog and its render once
+// the root cause is found and fixed.
+window.__scanDebugLog=window.__scanDebugLog||[];
+function pushScanDebug(step,info){
+  try{ window.__scanDebugLog.push(step+': '+JSON.stringify(info)); }catch(e){}
+}
 async function autoPreAlignScan(b64,mediaType){
   const stage=document.getElementById('aiScanStage');
   stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
@@ -4205,14 +4218,15 @@ async function autoPreAlignScan(b64,mediaType){
     });
     const json=await resp.json();
     const align=json&&json.ok&&json.align;
-    if(!align) return {b64,mediaType};
+    if(!align){ pushScanDebug('aiDetectAlign',{ok:false,response:json}); return {b64,mediaType}; }
     const rotateDeg=[0,90,180,270].includes(align.rotate)?align.rotate:0;
     const upright=rotateDeg?await alignScanImage(b64,mediaType,{rotate:rotateDeg,crop:{x0:0,y0:0,x1:1,y1:1}}):{b64,mediaType};
-    if(!validQuadCorners(align.corners)) return upright;
+    if(!validQuadCorners(align.corners)){ pushScanDebug('aiDetectAlign',{ok:true,rotate:rotateDeg,invalidCorners:align.corners}); return upright; }
     const corners={
       tl:rotatePointFrac(align.corners.tl,rotateDeg), tr:rotatePointFrac(align.corners.tr,rotateDeg),
       br:rotatePointFrac(align.corners.br,rotateDeg), bl:rotatePointFrac(align.corners.bl,rotateDeg)
     };
+    pushScanDebug('aiDetectAlign',{ok:true,rotate:rotateDeg,areaFrac:quadAreaFrac(corners).toFixed(3),corners});
     const dims=await new Promise(res=>{
       const im=new Image();
       im.onload=()=>res({w:im.naturalWidth,h:im.naturalHeight});
@@ -4226,6 +4240,7 @@ async function autoPreAlignScan(b64,mediaType){
     return await warpQuadImage(upright.b64,upright.mediaType,quadPx);
   }catch(e){
     console.error(e);
+    pushScanDebug('aiDetectAlign',{ok:false,exception:String(e)});
     return {b64,mediaType};
   }
 }
@@ -4591,7 +4606,10 @@ function quadAreaFrac(c){
 // sub-element, e.g. just the portrait photo, typically far under 8% of
 // even a rough crop), not one that assumes the crop was already tight.
 async function refineWithAiAlign(finalImg,align){
-  if(!align||!validQuadCorners(align.corners)||quadAreaFrac(align.corners)<0.08) return finalImg;
+  if(!align||!validQuadCorners(align.corners)){ pushScanDebug('refineWithAiAlign',{skipped:'no/invalid corners',align}); return finalImg; }
+  const areaFrac=quadAreaFrac(align.corners);
+  if(areaFrac<0.08){ pushScanDebug('refineWithAiAlign',{skipped:'below trust floor',areaFrac:areaFrac.toFixed(3),corners:align.corners}); return finalImg; }
+  pushScanDebug('refineWithAiAlign',{applied:true,areaFrac:areaFrac.toFixed(3),corners:align.corners});
   const dims=await new Promise(res=>{
     const im=new Image();
     im.onload=()=>res({w:im.naturalWidth,h:im.naturalHeight});
@@ -5072,6 +5090,7 @@ async function processAllPendingPages(){
 function renderScanPagesPrompt(){
   const stage=document.getElementById('aiScanStage');
   const pages=window.__aiScanPageThumbs||[];
+  const debugLines=window.__scanDebugLog||[];
   stage.innerHTML=`
     <div style="display:flex;flex-direction:column;gap:10px">
       <div style="font-size:12px;color:var(--text2)">נסרקו ${pages.length} עמוד${pages.length===1?'':'ים'}</div>
@@ -5088,6 +5107,7 @@ function renderScanPagesPrompt(){
         <button class="btn sm" type="button" onclick="document.getElementById('aiScanFileExtra').click()"><i class="ti ti-plus"></i> הוסף עמוד</button>
         <button class="btn sm accent" type="button" onclick="finishScanPages()"><i class="ti ti-check"></i> סיום</button>
       </div>
+      ${debugLines.length?`<div style="font-size:10px;font-family:monospace;color:#ffb020;background:var(--bg2);border:1px solid #ffb020;border-radius:6px;padding:6px;white-space:pre-wrap;word-break:break-all;max-height:160px;overflow:auto">DEBUG (временно, для диагностики):\n${esc(debugLines.join('\n'))}</div>`:''}
     </div>`;
 }
 function removeExtraScanPage(i){
