@@ -1745,6 +1745,23 @@ async function saveWorker(){
     const changed=FORM101_WATCHED_FIELDS.some(f=>JSON.stringify(prevW[f])!==JSON.stringify(updated[f]));
     workers[editingWorkerIdx]=updated;
     showToast(name+' עודכן!');
+    // This save follows a fresh physical rescan of THIS worker in THIS
+    // session (rescanWorkerDoc() -> openWorkerModalFromScan() set this a
+    // few screens ago) — the manager just captured brand-new photos, so the
+    // regenerated PDF must actually use them (window.__aiScanImage/
+    // __aiPacketOtherPages, upload path), not the Drive sidecar's OLD images
+    // from whenever this worker was first scanned. Without this branch every
+    // rescan silently fell through to the plain-edit path below, which reads
+    // the sidecar and discards the fresh scan entirely — the manager could
+    // rescan a hundred times and the PDF's embedded photo would never change.
+    const justRescanned=window.__aiRescannedWorkerId===updated.id;
+    window.__aiRescannedWorkerId=null;
+    if(justRescanned){
+      showWorkerUploadingOverlay();
+      await autoUploadWithRetry(isId,updated.id);
+      closeModal('workerOverlay'); render(); autoSave();
+      return;
+    }
     closeModal('workerOverlay'); render(); autoSave();
     // regenerateWorkerDoc() (not autoUploadWithRetry) — it sources the scan
     // image/signature from the Drive sidecar rather than the live
@@ -5121,6 +5138,15 @@ function openWorkerModalFromScan(p){
     const idx=workers.findIndex(w=>w.id===rescanId);
     if(idx>=0){
       editingWorkerIdx=idx;
+      // Survives until saveWorker() consumes it (unlike window.__aiRescanWorkerId
+      // above, which is cleared immediately here) — saveWorker() runs later,
+      // after the manager reviews/edits fields in the modal and presses save,
+      // and needs to know THEN whether this specific edit session started from
+      // a fresh physical rescan (use the live window.__aiScanImage/
+      // __aiPacketOtherPages, upload path) or is just a plain field edit on an
+      // existing worker (use the Drive sidecar, regenerate path). See
+      // saveWorker()'s own comment at the matching check.
+      window.__aiRescannedWorkerId=rescanId;
       showWorkerModal({...workers[idx],...ocrFields});
       return;
     }
