@@ -4907,7 +4907,13 @@ async function processAllPendingPages(){
   if(!window.__aiScanPageThumbs) window.__aiScanPageThumbs=[];
   if(!window.__aiPacketOtherPages) window.__aiPacketOtherPages=[];
   if(!window.__aiPageParsed) window.__aiPageParsed=[];
-  const resuming=window.__aiScanPageThumbs.length>0;
+  // Resuming detection reads __aiPrimaryParsed/__aiParsed directly rather than
+  // __aiScanPageThumbs.length — a blurry-page abort below commits __aiPrimaryParsed
+  // (partial progress) but does NOT populate __aiScanPageThumbs (that only happens
+  // on this function's own full-success tail), so checking the thumbs array here
+  // made a resumed "process" after an abort wrongly look like a fresh start,
+  // discarding the already-found primary record and re-reading pages from scratch.
+  const resuming=!!(window.__aiPrimaryParsed||window.__aiParsed);
   let foundParsed=resuming?(window.__aiPrimaryParsed||window.__aiParsed||null):null;
   let needMore=missingCore(foundParsed);
   const otherPages=resuming?window.__aiPacketOtherPages.slice():[];
@@ -4921,12 +4927,15 @@ async function processAllPendingPages(){
     try{ pre=await preAlignScan(it.b64,it.mediaType); }
     catch(e){ console.error(e); pre={b64:it.b64,mediaType:it.mediaType}; }
     if(pre.blurry){
-      // Drop just this one offending page from the real queue (not our local
-      // `queue` copy) and stop — everything already processed this run stays
-      // committed (assembled below), everything still-pending in the queue
-      // (this page excluded) is preserved for another "process" attempt.
-      const realIdx=window.__pendingScanPages.indexOf(it);
-      if(realIdx>=0) window.__pendingScanPages.splice(realIdx,1);
+      // `queue` is a snapshot (.slice() above) of window.__pendingScanPages
+      // taken before this loop started — pages at indices 0..i-1 have already
+      // been consumed into foundParsed/otherPages this run, and the page at i
+      // is the blurry one being dropped, so the real queue must become
+      // whatever comes AFTER it (queue.slice(i+1)), not just "everything minus
+      // the one blurry item" — leaving the already-consumed prefix in
+      // window.__pendingScanPages made a later "process" reprocess (and
+      // duplicate into otherPages) pages that were already merged in.
+      window.__pendingScanPages=queue.slice(i+1);
       window.__aiPacketOtherPages=otherPages;
       window.__aiPageParsed=pageParsed;
       if(foundParsed){ window.__aiParsed=foundParsed; window.__aiPrimaryParsed=foundParsed; }
