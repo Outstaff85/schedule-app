@@ -545,10 +545,15 @@ def fill_form_101(req: https_fn.Request) -> https_fn.Response:
 # longer ever sees the full original frame with background, only the small
 # already-cropped image, so its resize/enhance/blur-check all run over far
 # fewer pixels than before. The geometric auto-crop below (_find_document_quad/
-# _warp_quad) is unused for that same reason (see preprocess_scan_image) and
-# was already dormant before this reorder — see CLAUDE.md for the empirical
-# tests (synthetic + real ID photos) that originally shaped the confidence
-# thresholds below, back when this ran on the full frame.
+# _warp_quad) is RE-ENABLED (2026-09-26, see preprocess_scan_image's own
+# comment) — it's what actually tightens a rough manual crop now, since the
+# client-side AI-based tightening pass (refineWithAiAlign) turned out to
+# reject exactly this case (its own safety check requires the guessed quad
+# to cover ≥50% of the frame, which a rough manual crop routinely fails).
+# See CLAUDE.md for the empirical tests (synthetic + real ID photos) that
+# originally shaped the confidence thresholds below, back when this ran on
+# the full, un-cropped frame — the thresholds themselves are unchanged, only
+# what they're now applied to (an already-single-document image) differs.
 MAX_WORK_DIM = 1800  # generous margin above the 1568px Claude Vision actually benefits from
 MIN_QUAD_AREA_FRAC = 0.20
 MAX_QUAD_AREA_FRAC = 0.98
@@ -641,22 +646,34 @@ def preprocess_scan_image(image_bytes):
 
     img = _resize_max_dim(img, MAX_WORK_DIM)
 
-    # Geometric auto-crop (_find_document_quad/_warp_quad) is DELIBERATELY
-    # NOT applied here (removed 2026-09-21, per user request) — it used to
-    # crop the photo down to whatever quad it found BEFORE the client's
-    # manual corner-adjustment editor ever ran, which silently discarded
-    # content when a single photo held two documents at once (e.g. a
-    # passport and its ספח insert photographed together): the geometry
-    # detector locks onto one rectangular contour and the other document is
-    # simply gone by the time the user sees the editor. As of 2026-09-26 this
-    # function only ever runs AFTER that manual editor (see this module's
-    # header comment and preAlignScan() in schedule-manager.html) — the input
-    # here is already the user's own crop of a single document, so a second,
-    # automatic crop attempt has no case left to solve; the functions
-    # themselves are left defined, dormant, in case a different fast path
-    # wants them later. Only the blur rejection and contrast/sharpness
-    # enhancement still run, now on that already-cropped image.
-    #
+    # Geometric auto-crop (_find_document_quad/_warp_quad) — RE-ENABLED
+    # 2026-09-26, per user request: real scans were coming out with the
+    # manual crop's own huge background/skew untouched — refineWithAiAlign's
+    # own tightening pass (schedule-manager.html) requires the AI's guessed
+    # quad to cover at least half the frame before trusting it, and a rough
+    # manual crop (card occupying a third of the frame, at an angle) fails
+    # that safety check every time, so nothing ever got tightened in
+    # practice. This function is SAFE to auto-crop again for a different
+    # reason than why it was disabled on 2026-09-21: it used to run BEFORE
+    # the client's manual corner-adjustment editor, so the geometry detector
+    # could lock onto one document out of two photographed together (e.g. a
+    # passport and its ספח insert) and silently discard the other before the
+    # user ever saw it. Since 2026-09-26 this function only ever runs AFTER
+    # that manual editor (see this module's header comment and
+    # preAlignScan() in schedule-manager.html) — the input here is already
+    # the user's own (however rough) crop of a SINGLE document, so there is
+    # no second document left to lose. A confident quad match tightens the
+    # crop down to just the card; anything that doesn't clear
+    # MIN_QUAD_AREA_FRAC/MAX_QUAD_AREA_FRAC/convexity below leaves the image
+    # untouched, same safety net the client-side AI tightening pass has.
+    geometry_applied = False
+    quad = _find_document_quad(img)
+    if quad is not None:
+        warped = _warp_quad(img, quad)
+        if warped is not None:
+            img = warped
+            geometry_applied = True
+
     # Contrast/sharpness enhancement now runs BEFORE the blur check (per user
     # request, 2026-09-21) rather than after — see BLUR_VARIANCE_THRESHOLD's
     # own comment above for the trade-off this implies.
@@ -671,7 +688,7 @@ def preprocess_scan_image(image_bytes):
         return {"ok": False, "reason": "encode_failed"}
     return {
         "ok": True,
-        "geometryApplied": False,
+        "geometryApplied": geometry_applied,
         "imageBase64": base64.b64encode(buf.tobytes()).decode(),
         "mediaType": "image/jpeg",
     }
