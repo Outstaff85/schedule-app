@@ -4953,8 +4953,16 @@ async function processAllPendingPages(){
         if(p&&(p.type==='israeli_id'||p.type==='passport')){
           foundParsed=p.fieldBoxes?await verifyDigitFields(p,it.b64,it.mediaType):p;
           foundParsed=await verifyIdChecksum(foundParsed,it.b64,it.mediaType);
-          window.__aiScanImage=it;
+          // Avatar crop uses photoBox coordinates, which are relative to `it`
+          // as sent to aiReadDoc — must run BEFORE refineWithAiAlign below
+          // changes the image's coordinate space.
           window.__aiAvatarB64=p.photoBox?await cropPortraitAvatar(it.b64,it.mediaType,p.photoBox):null;
+          // Free tightening pass on the user's own manual crop, using
+          // imageAlign from this SAME aiReadDoc response — no extra AI call,
+          // matches runOcr()'s dormant single-page equivalent (see its own
+          // comment). Falls back to the untouched `it` on any missing/
+          // implausible corners or a failed warp.
+          window.__aiScanImage=await refineWithAiAlign(it,p.imageAlign);
           needMore=missingCore(foundParsed);
           pageParsed=[foundParsed];
           continue; // this page's image is __aiScanImage — not duplicated into otherPages
@@ -4968,6 +4976,7 @@ async function processAllPendingPages(){
         if(p&&p.type==='israeli_id'){
           foundParsed=mergeIsraeliIdFields(foundParsed,p);
           thisPageParsed=p;
+          it=await refineWithAiAlign(it,p.imageAlign);
         }
         needMore=missingCore(foundParsed);
       }catch(e){ console.error(e); }
