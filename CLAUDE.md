@@ -36,7 +36,7 @@ No npm/build/lint/test tooling — edit the HTML and reload.
   - `.github/workflows/deploy.yml` — Firebase Hosting (project `schedule-odinson`).
   - `.github/workflows/deploy-apps-script.yml` — `clasp push --force && clasp deploy` for `apps-script/` (needs `CLASP_CREDENTIALS`/`CLASP_DEPLOYMENT_ID` secrets).
   - `.github/workflows/deploy-functions.yml` — deploys `functions/` on any push touching `functions/**`, or via manual `workflow_dispatch`. Builds a fresh venv in CI. `firebase.json`'s `functions[0].runtime` is pinned to `"python312"` for a deterministic runtime. On failure it opens/updates a GitHub Issue with likely causes — see Troubleshooting below for the known IAM permission gaps.
-- When bumping the service worker's cache (`CACHE` constant in `service-worker.js`), increment the version string or clients keep serving stale HTML after deploy. Current version: v37 (as of 2026-09-27).
+- When bumping the service worker's cache (`CACHE` constant in `service-worker.js`), increment the version string or clients keep serving stale HTML after deploy. Current version: v38 (as of 2026-09-27).
 - `firebase.json`'s hosting `ignore` list must include `functions/**`, or `firebase deploy --only hosting` sweeps the entire `functions/venv` into the public hosting bucket.
 
 ### Git workflow (enforced by hooks in `.claude/settings.json`)
@@ -68,6 +68,7 @@ Both HTML files talk to the same Apps Script Web App endpoint (`GS_URL`, hardcod
 - Drive/documents: `saveWorkerDoc` (stores the assembled Form 101 PDF under `Schedule manager APP/<CompanyName>/Workers`, deduped by the ID/passport number extracted from the filename via `extractDocNumberFromFileName()`; accepts `previousFileId` to trash the exact old file), `deleteWorkerDoc` (by `fileId` or `fileName`, **requires `tenantId` to guard against cross-tenant file access**), `saveWorkerAssets`/`loadWorkerAssets` (a private JSON sidecar in a `Workers/Assets` subfolder holding the raw scan image + signature + extra pages, so a later field edit can regenerate the same PDF without re-scanning; also deduped by document number; **`loadWorkerAssets` requires `tenantId` parameter for cross-tenant security — validates via `_fileBelongsToTenant()` that the file belongs to the caller's firm**).
 - `logError` — client error telemetry.
 - `authFailure` — **unauthenticated on purpose** (only checks `body.secret === API_SECRET`, never calls `requireAuth`): reports a client-observed session-token rejection. Can't go through `logError` itself, since that action requires a valid session — exactly what's in question when this fires. See "Session-expiry false logouts" below.
+- `loadErrors` (GET) — **super-admin only** (`auth.isSuperadmin`, checked inside the function itself since the Errors sheet has no `tenantId` column and mixes every firm's errors together): returns the last ~100 `Errors` sheet rows, newest first, for the manager UI's Errors screen (see Client-side section).
 
 **Sheets:** `Schedule` (key/value: workers JSON, clients JSON, weekStart, savedAt), `PunchLog` (append-only, includes `ClientID`, `GPS Accuracy(m)`, `GPS Suspicious`, `GPS Warnings`), `Salary` (computed dynamically), `Clients`, `PushSubscriptions`, `Backups` (daily snapshot), `Errors` (last 500).
 
@@ -95,6 +96,7 @@ Both HTML files talk to the same Apps Script Web App endpoint (`GS_URL`, hardcod
 - **Punch `clientId` tracking:** punches store the client's ID (not just a site name string), so payroll/history stay accurate even if worker-client assignments or client names change later. `punchSite(e)`/`punchClientObject(e)`/`workerClientName(id)` resolve display name vs. historical-at-punch-time client.
 - Admin punch log filters by `workerId`/`clientId` (not name), so two workers sharing a name don't collapse together.
 - Exports: `exportExcel` (SheetJS/xlsx from CDN), `exportPDF`, `exportJSON`, `exportSalaryCSV`, `exportPunchCSV` — salary export goes through `groupPunchesIntoShifts()` like everything else.
+- **Errors screen** (`#errorsScreen`, added 2026-09-27, super-admin only): `openErrorsScreen()`/`closeErrorsScreen()`/`loadErrorsList()` — a simple table of the last ~100 `Errors` sheet rows (`loadErrors` GET action), reachable via an "Ошибки" button on the Firms screen and in `renderAccountControl()` next to the super-admin's "Фирмы" button. Overlays whatever screen was already showing; closing it just hides the overlay, no re-render needed underneath. Gated super-admin-only because the sheet has no `tenantId` column (see Backend section) — never add this button/screen for a normal tenant login without first adding tenant scoping both here and server-side.
 
 #### Worker modal (`showWorkerModal()`)
 
