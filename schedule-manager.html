@@ -2440,25 +2440,59 @@ function gsAuthQuery(){
 // backend's exact "session expired" error clears the stale session and
 // reloads straight back to the login screen instead of silently failing.
 //
-// Retries once before giving up (added 2026-09-21): a scan does a burst of
-// several GS_URL calls back to back — aiDetectAlign, aiReadDoc/aiReadSefach,
-// and verifyDigitFields() fires multiple aiVerifyField calls in PARALLEL via
-// Promise.all — and a single transient hiccup on any one of them (not an
-// actually-dead token, which doesn't change from one request to the next a
-// few hundred ms apart) used to immediately nuke the whole session and kick
-// the user to the login screen mid-scan, losing all progress. Now the exact
-// same request is retried once first; only a second SESSION_EXPIRED_ERROR in
-// a row is treated as the session genuinely being gone.
+// Retries before giving up (added 2026-09-21, widened 2026-09-27): a scan
+// does a burst of several GS_URL calls back to back — aiDetectAlign,
+// aiReadDoc/aiReadSefach, and verifyDigitFields() fires multiple
+// aiVerifyField calls in PARALLEL via Promise.all — and a single transient
+// hiccup on any one of them (not an actually-dead token, which doesn't
+// change from one request to the next a few hundred ms apart) used to
+// immediately nuke the whole session and kick the user to the login screen
+// mid-scan, losing all progress. Now the exact same request is retried up
+// to twice more (3 attempts total), with a short delay before the last
+// retry — a single immediate retry (the 2026-09-21 fix) wasn't always
+// enough to clear whatever the underlying hiccup was (reported 2026-09-27:
+// still happening on the very first scan request right after a fresh
+// login, i.e. nowhere near real 6h token expiry); a small delay gives a
+// transient backend/network blip more time to pass. Only a third
+// SESSION_EXPIRED_ERROR in a row is treated as the session genuinely being
+// gone. Every rejection (including ones that recover on retry) is reported
+// via reportAuthFailure() below — an unauthenticated diagnostic call (since
+// logError itself requires a valid session, which is exactly what's in
+// question) — so a real recurrence leaves a trail in the Errors sheet
+// instead of being invisible.
 const SESSION_EXPIRED_ERROR = 'Сессия истекла или недействительна — войдите заново';
+const SESSION_RETRY_DELAYS_MS = [0, 500]; // attempt 2 immediate, attempt 3 after a short pause
 (function(){
   const _origFetch = window.fetch.bind(window);
+  // Fire-and-forget, unauthenticated diagnostic report of a rejected token —
+  // see authFailure's own comment server-side for why this can't just go
+  // through the normal logError action (that one requires a valid session,
+  // which is exactly what's in question here). failedAction is read from the
+  // ORIGINAL request's own body so the Errors sheet shows which endpoint
+  // actually got rejected (aiReadDoc vs. a routine saveSchedule, etc.).
+  function reportAuthFailure(opts, attempt, outcome){
+    let failedAction;
+    try{ failedAction = JSON.parse((opts&&opts.body)||'{}').action; }catch(e){}
+    try{
+      _origFetch(GS_URL,{method:'POST',body:JSON.stringify({
+        action:'authFailure', secret:API_SECRET,
+        failedAction: failedAction, attempt: attempt, outcome: outcome, page: location.pathname
+      })}).catch(()=>{});
+    }catch(e){}
+  }
   // url/opts are threaded through explicitly (not shared/mutable state) so
   // this stays correct when several GS_URL calls are in flight at once
   // (verifyDigitFields() fires multiple aiVerifyField calls in parallel).
-  function checkExpired(url, opts, res, isRetry){
+  function checkExpired(url, opts, res, attempt){
     return res.clone().json().then(json => {
       if (!(json && json.error === SESSION_EXPIRED_ERROR && getSession())) return res;
-      if (!isRetry) return _origFetch(url, opts).then(retryRes => checkExpired(url, opts, retryRes, true));
+      if (attempt < SESSION_RETRY_DELAYS_MS.length){
+        const delay = SESSION_RETRY_DELAYS_MS[attempt];
+        const retry = () => _origFetch(url, opts).then(retryRes => checkExpired(url, opts, retryRes, attempt+1));
+        reportAuthFailure(opts, attempt, 'retrying');
+        return delay > 0 ? new Promise(r=>setTimeout(r, delay)).then(retry) : retry();
+      }
+      reportAuthFailure(opts, attempt, 'logged-out');
       clearSession();
       showToast('Сессия истекла — войдите заново');
       setTimeout(() => location.reload(), 1200);
@@ -2467,7 +2501,7 @@ const SESSION_EXPIRED_ERROR = 'Сессия истекла или недейст
   }
   window.fetch = function(url, opts){
     const isGsCall = typeof url === 'string' && url.indexOf(GS_URL) === 0;
-    return _origFetch(url, opts).then(res => isGsCall ? checkExpired(url, opts, res, false) : res);
+    return _origFetch(url, opts).then(res => isGsCall ? checkExpired(url, opts, res, 0) : res);
   };
 })();
 
@@ -2826,6 +2860,10 @@ async function gsSave(data) {
       showToast('\u26a0 Данные изменены в другом месте — обновляю');
       const fresh = await gsLoad();
       if(fresh){ applyData(fresh); render(); }
+      return false;
+    }
+    if(json && json.tooLarge){
+      showToast('\u26a0 Слишком много данных для сохранения — обратитесь к разработчику', 6000);
       return false;
     }
     if(json && json.ok && json.savedAt) lastLoadedSavedAt = json.savedAt;
@@ -5719,44 +5757,47 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // lets it trash the exact old file.
       const fileBase64=fnJson.pdfBase64;
       const w=targetWorker;
-      const resp=await fetch(GS_URL,{
+      // saveWorkerDoc (the PDF) and saveWorkerAssets (the scan/signature
+      // sidecar) write to two different Drive files and don't depend on each
+      // other's result (the sidecar's own previousFileId is w.assetsFileId,
+      // unrelated to the PDF's fileId) — fired concurrently (2026-09-27,
+      // optimization) instead of one full round-trip after the other, since
+      // this whole call runs behind a blocking "please wait" overlay for new
+      // workers/rescans. Skipped on a regenerate (isRegen) same as before —
+      // see the comment below that used to sit next to the sequential call.
+      const docPromise=fetch(GS_URL,{
         method:'POST',
         body:JSON.stringify({action:'saveWorkerDoc',secret:API_SECRET,...gsAuth(),fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null})
-      });
-      const json=await resp.json();
+      }).then(r=>r.json());
+      // Cache the scan+signature (and any extra pages — ספח appendix card,
+      // contract, etc.) that actually built this PDF as a small private
+      // Drive sidecar (never shown to anyone, just read back by
+      // regenerateWorkerDoc()) — this is what lets a LATER edit (income
+      // type, marital status, address, ...) rebuild the exact same PDF
+      // with the new values without asking the manager to re-scan the
+      // physical document. Best-effort: a failure here never rolls back
+      // the main upload.
+      // Skip this on a regenerate (isRegen): the scan/signature/extraPages
+      // there came straight from loadWorkerAssets() a few seconds ago via
+      // this SAME w.assetsFileId — re-uploading them as a "new" sidecar
+      // would just be writing back the exact bytes just downloaded. A
+      // background regenerate (triggered by editing one watched text
+      // field, e.g. address) used to always pay for this redundant
+      // multi-MB download-then-reupload round trip on top of the PDF
+      // build itself, which is what made a single-field edit feel so slow.
+      const assetsPromise=(scanImage&&!isRegen&&w)?fetch(GS_URL,{
+        method:'POST',
+        body:JSON.stringify({action:'saveWorkerAssets',secret:API_SECRET,...gsAuth(),
+          scanB64:scanImage.b64, scanMediaType:scanImage.mediaType, sigPng:sigPng||null,
+          extraPages:otherPagesToUse,
+          fileNameBase:fileName.replace(/\.pdf$/,''), previousFileId:w.assetsFileId||null})
+      }).then(r=>r.json()).catch(()=>null):Promise.resolve(null);
+      const [json,assetsJson]=await Promise.all([docPromise,assetsPromise]);
       if(!json||json.error) throw new Error((json&&json.error)||'Сервер не ответил');
       if(w){
         w.docUrl=json.url; w.docSavedAt=new Date().toISOString(); w.docFileId=json.id;
         w.docUploadFailed=false;
-        // Cache the scan+signature (and any extra pages — ספח appendix card,
-        // contract, etc.) that actually built this PDF as a small private
-        // Drive sidecar (never shown to anyone, just read back by
-        // regenerateWorkerDoc()) — this is what lets a LATER edit (income
-        // type, marital status, address, ...) rebuild the exact same PDF
-        // with the new values without asking the manager to re-scan the
-        // physical document. Best-effort: a failure here never rolls back
-        // the already-successful main upload above.
-        // Skip this on a regenerate (isRegen): the scan/signature/extraPages
-        // there came straight from loadWorkerAssets() a few seconds ago via
-        // this SAME w.assetsFileId — re-uploading them as a "new" sidecar
-        // would just be writing back the exact bytes just downloaded. A
-        // background regenerate (triggered by editing one watched text
-        // field, e.g. address) used to always pay for this redundant
-        // multi-MB download-then-reupload round trip on top of the PDF
-        // build itself, which is what made a single-field edit feel so slow.
-        if(scanImage&&!isRegen){
-          try{
-            const assetsResp=await fetch(GS_URL,{
-              method:'POST',
-              body:JSON.stringify({action:'saveWorkerAssets',secret:API_SECRET,...gsAuth(),
-                scanB64:scanImage.b64, scanMediaType:scanImage.mediaType, sigPng:sigPng||null,
-                extraPages:otherPagesToUse,
-                fileNameBase:fileName.replace(/\.pdf$/,''), previousFileId:w.assetsFileId||null})
-            });
-            const assetsJson=await assetsResp.json();
-            if(assetsJson&&assetsJson.ok) w.assetsFileId=assetsJson.id;
-          }catch(e){}
-        }
+        if(assetsJson&&assetsJson.ok) w.assetsFileId=assetsJson.id;
         render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
         showToast('Документы '+(w.name||'')+' сохранены в Google Drive');
         window.__aiRescanWorkerId=null;
