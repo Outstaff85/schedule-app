@@ -28,6 +28,13 @@ function doPost(e) {
     const body = JSON.parse(e.postData.contents);
 
     if (body.action === 'login') return jsonResponse(login(body));
+    // Unauthenticated on purpose (2026-09-27): reports a client-side session-
+    // expired rejection so it lands in the Errors sheet even though the very
+    // thing being reported is that the caller's token was just rejected —
+    // routing it through the normal logError action (which itself requires
+    // requireAuth to pass) would be a chicken-and-egg problem. See
+    // reportAuthFailure() client-side.
+    if (body.action === 'authFailure' && body.secret === API_SECRET) return jsonResponse(authFailure(body));
 
     // Every other action needs a resolved tenant, established one of two ways:
     //  - a manager session token (schedule-manager.html, logged in as a firm
@@ -1645,6 +1652,21 @@ function logError(data){
     if (extra > 0) sh.deleteRows(2, extra);
     return {ok:true};
   }catch(e){ return {error:e.toString()}; }
+}
+
+// Client-reported "your token was just rejected" event — see doPost's own
+// comment on why this is unauthenticated and routed separately from
+// logError. Reuses logError()'s sheet-writing so both land in the same
+// Errors sheet/rotation; message packs in the failing action name, which
+// retry attempt this was, and the eventual outcome (retrying vs logged-out)
+// so a real recurrence is diagnosable from the sheet alone.
+function authFailure(body){
+  return logError({
+    page: body.page,
+    message: 'Auth rejected (client-reported): action=' + (body.failedAction || '?') +
+      ', attempt=' + body.attempt + ', outcome=' + (body.outcome || '?'),
+    source: 'authFailure'
+  });
 }
 
 // ── Push Notifications ────────────────────────────────────────────────────────

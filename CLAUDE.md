@@ -36,7 +36,7 @@ No npm/build/lint/test tooling — edit the HTML and reload.
   - `.github/workflows/deploy.yml` — Firebase Hosting (project `schedule-odinson`).
   - `.github/workflows/deploy-apps-script.yml` — `clasp push --force && clasp deploy` for `apps-script/` (needs `CLASP_CREDENTIALS`/`CLASP_DEPLOYMENT_ID` secrets).
   - `.github/workflows/deploy-functions.yml` — deploys `functions/` on any push touching `functions/**`, or via manual `workflow_dispatch`. Builds a fresh venv in CI. `firebase.json`'s `functions[0].runtime` is pinned to `"python312"` for a deterministic runtime. On failure it opens/updates a GitHub Issue with likely causes — see Troubleshooting below for the known IAM permission gaps.
-- When bumping the service worker's cache (`CACHE` constant in `service-worker.js`), increment the version string or clients keep serving stale HTML after deploy. Current version: v36 (as of 2026-09-27).
+- When bumping the service worker's cache (`CACHE` constant in `service-worker.js`), increment the version string or clients keep serving stale HTML after deploy. Current version: v37 (as of 2026-09-27).
 - `firebase.json`'s hosting `ignore` list must include `functions/**`, or `firebase deploy --only hosting` sweeps the entire `functions/venv` into the public hosting bucket.
 
 ### Git workflow (enforced by hooks in `.claude/settings.json`)
@@ -67,6 +67,7 @@ Both HTML files talk to the same Apps Script Web App endpoint (`GS_URL`, hardcod
   - `aiReadSefach` — narrow sibling of `aiReadDoc` for when the photo is known to be the address/ospח side of an Israeli ID (avoids `aiReadDoc`'s front/back type misclassification). Always returns `type:"israeli_id"`.
 - Drive/documents: `saveWorkerDoc` (stores the assembled Form 101 PDF under `Schedule manager APP/<CompanyName>/Workers`, deduped by the ID/passport number extracted from the filename via `extractDocNumberFromFileName()`; accepts `previousFileId` to trash the exact old file), `deleteWorkerDoc` (by `fileId` or `fileName`, **requires `tenantId` to guard against cross-tenant file access**), `saveWorkerAssets`/`loadWorkerAssets` (a private JSON sidecar in a `Workers/Assets` subfolder holding the raw scan image + signature + extra pages, so a later field edit can regenerate the same PDF without re-scanning; also deduped by document number; **`loadWorkerAssets` requires `tenantId` parameter for cross-tenant security — validates via `_fileBelongsToTenant()` that the file belongs to the caller's firm**).
 - `logError` — client error telemetry.
+- `authFailure` — **unauthenticated on purpose** (only checks `body.secret === API_SECRET`, never calls `requireAuth`): reports a client-observed session-token rejection. Can't go through `logError` itself, since that action requires a valid session — exactly what's in question when this fires. See "Session-expiry false logouts" below.
 
 **Sheets:** `Schedule` (key/value: workers JSON, clients JSON, weekStart, savedAt), `PunchLog` (append-only, includes `ClientID`, `GPS Accuracy(m)`, `GPS Suspicious`, `GPS Warnings`), `Salary` (computed dynamically), `Clients`, `PushSubscriptions`, `Backups` (daily snapshot), `Errors` (last 500).
 
@@ -163,6 +164,16 @@ Single screen for adding a worker by hand, editing an existing one, and reviewin
 - Push notifications: both subscribe via `savePushSubscription`; `service-worker.js` handles `push`/`notificationclick`.
 
 ## Troubleshooting
+
+### Session-expiry false logouts during document scan (reported 2026-09-27, mitigated, not fully root-caused)
+
+**Symptom:** a manager gets kicked to the login screen ("as if the session dropped") specifically while uploading a scan — reported to happen right after a *fresh* login (not near the real 6h token TTL) and right after selecting/uploading the photo (before OCR review, i.e. the very first `aiReadDoc` round-trip of the scan — most consistent with the multi-file/PDF path, `onScanFilesSelected()`, which calls `aiReadDoc` immediately per page with no manual-crop step in between).
+
+**What was ruled out:** real 6h session expiry (happens on a fresh login too); a string mismatch between the client's `SESSION_EXPIRED_ERROR` and the backend's literal error text (byte-compared, identical); `SESSION_SECRET` rotation (would break every request, not just scan ones); request/JSON-parse corruption from a large base64 image (would surface as a generic parse error, not the literal "session expired" text the user actually sees).
+
+**Root cause not yet confirmed** — a real production recurrence with server-side telemetry is needed. Two things ship in the meantime:
+- **Widened retry** (`schedule-manager.html`'s `fetch` wrapper, was: retry once immediately, added 2026-09-21): now retries up to twice more (3 attempts total) before giving up, with a short delay before the last retry (`SESSION_RETRY_DELAYS_MS = [0, 500]`) — a single immediate retry wasn't enough to clear whatever transient hiccup this is, and a scan's burst of parallel/sequential `aiDetectAlign`/`aiReadDoc`/`aiVerifyField` calls is exactly the worst case for a spurious mid-flow logout to lose real user progress.
+- **`authFailure` diagnostic** (new POST action, unauthenticated by design — see Backend section) — every time a GS_URL call gets rejected as "session expired," the client fire-and-forget-reports the failing action name, which retry attempt it was, and the outcome (`retrying` vs `logged-out`) to the `Errors` sheet. **Next real recurrence: check the `Errors` sheet for `source=authFailure` rows** — the `failedAction` there is the actual trigger (confirm it's `aiReadDoc`/`aiDetectAlign`/etc. as suspected, not something unrelated), and whether it recovers on retry (`outcome=retrying` followed by a normal request) vs. genuinely never recovers (three `retrying`/`logged-out` rows in a row) is the key fact still missing to actually root-cause this.
 
 ### A tenant's phone / deductions file number prints without its leading zero on Form 101
 
