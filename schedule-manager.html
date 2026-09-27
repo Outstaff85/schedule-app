@@ -4515,7 +4515,7 @@ function refineQuadCorners(b64,mediaType,cornersFrac){
         // up across the whole quad into a visibly crooked result; more samples
         // per side (12->20) and a slightly tighter margin (0.18->0.12, sampling
         // closer to the true corners) also give the line fit more/better data.
-        const N=20, MARGIN=0.12, SEARCH=Math.round(Math.max(w,h)*0.02)+6;
+        const N=20, MARGIN=0.12, SEARCH=Math.round(Math.max(w,h)*0.04)+6;
         const sidePoints={};
         for(const [a,b] of SIDES){
           const A=Q[a],B=Q[b];
@@ -4589,7 +4589,18 @@ function refineQuadCorners(b64,mediaType,cornersFrac){
         };
         // A refined corner that lands far from the AI's own guess is more
         // likely a bad line fit than a real correction — keep the original.
-        const maxDrift=0.12*Math.max(w,h);
+        // Raised 0.12->0.35 (2026-09-27) — real-world testing showed a card
+        // with a busy surface pattern (e.g. an Israeli ID's holographic
+        // watermark) can push aiDetectAlign's initial guess off by well over
+        // 12% of the frame on one or more corners; the OLD floor then
+        // rejected just THAT corner's (perfectly accurate, verified <1px
+        // error in testing) correction while accepting the other three,
+        // producing an inconsistent, visibly warped quad — worse than either
+        // the fully raw guess or the fully corrected one. 0.35 comfortably
+        // covers the corrections seen in testing (up to ~11% of frame) while
+        // the separate in-bounds check right below still rejects a truly
+        // wild intersection (near-parallel lines projecting far off-canvas).
+        const maxDrift=0.35*Math.max(w,h);
         const out={};
         for(const k of ['tl','tr','br','bl']){
           const r=refined[k], o=Q[k];
