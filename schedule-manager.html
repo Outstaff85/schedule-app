@@ -4667,6 +4667,94 @@ async function refineWithAiAlign(finalImg,align){
   try{ return await warpQuadImage(finalImg.b64,finalImg.mediaType,quadPx); }
   catch(e){ console.error(e); return finalImg; }
 }
+// Final self-tightening pass (2026-09-27, real-device test) — a thin
+// background sliver was still visible in the final embedded photo despite
+// aiDetectAlign finding a reasonable quad and refineWithAiAlign applying its
+// own tightening: the debug log showed refineWithAiAlign's own corners were
+// full-width (x:0 to x:1, i.e. no horizontal change at all) that particular
+// run, so whatever thin left/right sliver survived autoPreAlignScan's own
+// corner detection was never re-examined afterward — only the AI-guessed
+// crop rect got applied, never a fresh pixel-level check of the (by now
+// nearly-final) image's own edges. Runs unconditionally on the result of
+// every page's alignment chain, regardless of whether refineWithAiAlign
+// itself fired: starts from a small fixed inward margin (the sliver, if any,
+// is expected to be thin at this point) and reuses refineQuadCorners' own
+// real-edge-detection (with its existing safe no-op fallback on low/no
+// signal, verified elsewhere against pure noise) to trim it if a confident
+// edge is found just inside that margin. Skips the extra warp+re-encode
+// entirely when nothing meaningful was found (refined ~= the starting
+// guess), so a photo that's already tight pays no extra cost.
+// Each of the 4 sides is checked FULLY INDEPENDENTLY here (unlike
+// refineQuadCorners' line-intersection approach, which needs BOTH sides
+// meeting at a corner to have a signal before it can move that corner at
+// all) — real-device testing found exactly the case this misses: a photo
+// already perfectly cropped top/bottom (no edge signal there at all, correct
+// fallback: unchanged) but with a thin left/right background sliver still
+// left over — since every corner touches one horizontal + one vertical side,
+// requiring an intersection meant the well-detected left/right edges could
+// never move a corner on their own, and the sliver survived untouched. This
+// function instead treats the image as already axis-aligned (a safe
+// assumption at this late a stage, after the full perspective warp already
+// ran) and finds each side's own inward position independently — a side
+// with no confident signal just keeps its starting margin, with no
+// dependency on any other side.
+function _scanSideEdge(lum,w,h,axis,fixedFrac,alongLo,alongHi,inwardSign,startFrac){
+  const N=16, SEARCH=Math.round(Math.max(w,h)*0.06)+8;
+  const alongLen=(axis==='x')?h:w;
+  const offsets=[];
+  for(let i=0;i<N;i++){
+    const t=alongLo+(alongHi-alongLo)*(i/(N-1));
+    const along=t*alongLen;
+    const fixedPx=fixedFrac*((axis==='x')?w:h);
+    const grads=[];
+    for(let s=-SEARCH;s<=SEARCH;s++){
+      const p=fixedPx+inwardSign*s;
+      const g=(axis==='x')?Math.abs(lum(p+1,along)-lum(p-1,along)):Math.abs(lum(along,p+1)-lum(along,p-1));
+      grads.push(g);
+    }
+    let bi=0; for(let k=1;k<grads.length;k++) if(grads[k]>grads[bi]) bi=k;
+    const sorted=grads.slice().sort((a,b)=>a-b), medianGrad=sorted[Math.floor(sorted.length/2)];
+    if(grads[bi]>12&&grads[bi]>2*medianGrad){
+      let sub=0;
+      if(bi>0&&bi<grads.length-1){ const y0=grads[bi-1],y1=grads[bi],y2=grads[bi+1]; const den=y0-2*y1+y2; if(Math.abs(den)>1e-6) sub=0.5*(y0-y2)/den; }
+      offsets.push((bi-SEARCH)+Math.max(-1,Math.min(1,sub)));
+    }
+  }
+  if(offsets.length<Math.ceil(N*0.4)) return null; // not enough signal — leave this side alone
+  offsets.sort((a,b)=>a-b);
+  const medianOffset=offsets[Math.floor(offsets.length/2)];
+  return startFrac+(inwardSign*medianOffset)/((axis==='x')?w:h);
+}
+async function finalTightenPass(img){
+  if(!img||!img.b64) return img;
+  const dims=await new Promise(res=>{
+    const im=new Image();
+    im.onload=()=>res({w:im.naturalWidth,h:im.naturalHeight});
+    im.onerror=()=>res(null);
+    im.src='data:'+img.mediaType+';base64,'+img.b64;
+  });
+  if(!dims) return img;
+  const w=dims.w,h=dims.h;
+  const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+  const ctx=cv.getContext('2d',{willReadFrequently:true});
+  const decoded=await new Promise(res=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>res(null); im.src='data:'+img.mediaType+';base64,'+img.b64; });
+  if(!decoded) return img;
+  ctx.drawImage(decoded,0,0,w,h);
+  const data=ctx.getImageData(0,0,w,h).data;
+  const lum=(x,y)=>{ x=Math.max(0,Math.min(w-1,Math.round(x))); y=Math.max(0,Math.min(h-1,Math.round(y))); const i=(y*w+x)*4; return 0.299*data[i]+0.587*data[i+1]+0.114*data[i+2]; };
+  const margin=0.03;
+  // inwardSign=+1 means "search toward larger coordinates from this edge" (left/top), -1 means toward smaller (right/bottom).
+  const left=_scanSideEdge(lum,w,h,'x',margin,0.1,0.9,+1,margin);
+  const right=_scanSideEdge(lum,w,h,'x',1-margin,0.1,0.9,-1,1-margin);
+  const top=_scanSideEdge(lum,w,h,'y',margin,0.1,0.9,+1,margin);
+  const bottom=_scanSideEdge(lum,w,h,'y',1-margin,0.1,0.9,-1,1-margin);
+  const x0=left!=null?left:0, x1=right!=null?right:1, y0=top!=null?top:0, y1=bottom!=null?bottom:1;
+  if(x0<0.005&&x1>0.995&&y0<0.005&&y1>0.995){ pushScanDebug('finalTightenPass',{skipped:'no meaningful edge found'}); return img; }
+  pushScanDebug('finalTightenPass',{applied:true,box:{x0,y0,x1,y1}});
+  const quadPx={tl:{x:x0*w,y:y0*h},tr:{x:x1*w,y:y0*h},br:{x:x1*w,y:y1*h},bl:{x:x0*w,y:y1*h},imgW:w,imgH:h};
+  try{ return await warpQuadImage(img.b64,img.mediaType,quadPx); }
+  catch(e){ console.error(e); return img; }
+}
 // 0/90/180/270° rotation of a fraction-space point (x,y in [0,1]), matching
 // the pixel rotation alignScanImage performs on the image itself.
 function rotatePointFrac(pt,deg){
@@ -5127,7 +5215,7 @@ async function processAllPendingPages(){
           // matches runOcr()'s dormant single-page equivalent (see its own
           // comment). Falls back to the untouched `it` on any missing/
           // implausible corners or a failed warp.
-          window.__aiScanImage=await refineWithAiAlign(it,p.imageAlign);
+          window.__aiScanImage=await finalTightenPass(await refineWithAiAlign(it,p.imageAlign));
           needMore=missingCore(foundParsed);
           pageParsed=[foundParsed];
           continue; // this page's image is __aiScanImage — not duplicated into otherPages
@@ -5146,6 +5234,11 @@ async function processAllPendingPages(){
         needMore=missingCore(foundParsed);
       }catch(e){ console.error(e); }
     }
+    // A page needing no aiReadDoc call at all (every core field already
+    // complete by the time it's reached) never runs refineWithAiAlign — but
+    // finalTightenPass is independent of aiReadDoc's imageAlign, so it still
+    // applies here to catch a residual background sliver on this page too.
+    it=await finalTightenPass(it);
     pageParsed.push(thisPageParsed);
     otherPages.push(it);
   }
