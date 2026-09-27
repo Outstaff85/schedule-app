@@ -5554,7 +5554,26 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // presetAssets.extraPages (persisted in the Drive sidecar by
     // saveWorkerAssets() below).
     const scanImage=isRegen?(presetAssets.scanB64?{b64:presetAssets.scanB64,mediaType:presetAssets.scanMediaType}:null):window.__aiScanImage;
-    const otherPagesToUse=isRegen?(Array.isArray(presetAssets.extraPages)?presetAssets.extraPages:[]):(Array.isArray(window.__aiPacketOtherPages)?window.__aiPacketOtherPages:[]);
+    let otherPagesToUse=isRegen?(Array.isArray(presetAssets.extraPages)?presetAssets.extraPages:[]):(Array.isArray(window.__aiPacketOtherPages)?window.__aiPacketOtherPages:[]);
+    // Rescanning an existing worker who already had extra pages (ספח appendix,
+    // a contract, ...) saved from a PRIOR scan session, where THIS session
+    // only recaptured the primary page (window.__aiPacketOtherPages is empty):
+    // those previously-saved extra pages must not be silently discarded just
+    // because the manager didn't re-scan them again today. Before this fix,
+    // the rescan path (added 2026-09-26 to fix the primary photo going stale)
+    // always wrote otherPagesToUse — even when empty — into the new Drive
+    // sidecar via saveWorkerAssets(..., previousFileId: w.assetsFileId), which
+    // trashes the OLD sidecar, permanently losing whatever extra pages it had.
+    // Carrying the old sidecar's extraPages forward here (only when this
+    // session captured none itself) preserves them across a rescan that's
+    // only meant to refresh the front card.
+    if(!isRegen&&!otherPagesToUse.length&&targetWorker&&targetWorker.assetsFileId){
+      try{
+        const oldResp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'loadWorkerAssets',secret:API_SECRET,...gsAuth(),fileId:targetWorker.assetsFileId})});
+        const oldJson=await oldResp.json();
+        if(oldJson&&oldJson.ok&&Array.isArray(oldJson.extraPages)&&oldJson.extraPages.length) otherPagesToUse=oldJson.extraPages;
+      }catch(e){}
+    }
     const extraPages=[];
     if(scanImage) extraPages.push({b64:scanImage.b64,mediaType:scanImage.mediaType,caption:'Document scan'});
     for(const p of otherPagesToUse) extraPages.push({b64:p.b64,mediaType:p.mediaType,caption:'Document'});
