@@ -4515,7 +4515,7 @@ function refineQuadCorners(b64,mediaType,cornersFrac){
         // up across the whole quad into a visibly crooked result; more samples
         // per side (12->20) and a slightly tighter margin (0.18->0.12, sampling
         // closer to the true corners) also give the line fit more/better data.
-        const N=20, MARGIN=0.12, SEARCH=Math.round(Math.max(w,h)*0.02)+6;
+        const N=20, MARGIN=0.12, SEARCH=Math.round(Math.max(w,h)*0.04)+6;
         const sidePoints={};
         for(const [a,b] of SIDES){
           const A=Q[a],B=Q[b];
@@ -4589,7 +4589,18 @@ function refineQuadCorners(b64,mediaType,cornersFrac){
         };
         // A refined corner that lands far from the AI's own guess is more
         // likely a bad line fit than a real correction — keep the original.
-        const maxDrift=0.12*Math.max(w,h);
+        // Raised 0.12->0.35 (2026-09-27) — real-world testing showed a card
+        // with a busy surface pattern (e.g. an Israeli ID's holographic
+        // watermark) can push aiDetectAlign's initial guess off by well over
+        // 12% of the frame on one or more corners; the OLD floor then
+        // rejected just THAT corner's (perfectly accurate, verified <1px
+        // error in testing) correction while accepting the other three,
+        // producing an inconsistent, visibly warped quad — worse than either
+        // the fully raw guess or the fully corrected one. 0.35 comfortably
+        // covers the corrections seen in testing (up to ~11% of frame) while
+        // the separate in-bounds check right below still rejects a truly
+        // wild intersection (near-parallel lines projecting far off-canvas).
+        const maxDrift=0.35*Math.max(w,h);
         const out={};
         for(const k of ['tl','tr','br','bl']){
           const r=refined[k], o=Q[k];
@@ -4682,8 +4693,12 @@ function renderScanQuadEditor(b64,mediaType,cornersFrac){
         style="display:block;max-width:100%;max-height:46vh;user-select:none;-webkit-user-drag:none">
       <svg id="scanQuadSvg" style="position:absolute;left:0;top:0;width:100%;height:100%;touch-action:none">
         <polygon id="scanQuadPoly" points="" fill="rgba(79,142,247,0.15)" stroke="#4f8ef7" stroke-width="2"></polygon>
-        <circle class="quad-handle" data-c="tl" r="15"></circle><circle class="quad-handle" data-c="tr" r="15"></circle>
-        <circle class="quad-handle" data-c="br" r="15"></circle><circle class="quad-handle" data-c="bl" r="15"></circle>
+        <line class="quad-side-handle" data-side="top" stroke="transparent" stroke-width="24"></line>
+        <line class="quad-side-handle" data-side="right" stroke="transparent" stroke-width="24"></line>
+        <line class="quad-side-handle" data-side="bottom" stroke="transparent" stroke-width="24"></line>
+        <line class="quad-side-handle" data-side="left" stroke="transparent" stroke-width="24"></line>
+        <circle class="quad-handle" data-c="tl" r="13"></circle><circle class="quad-handle" data-c="tr" r="13"></circle>
+        <circle class="quad-handle" data-c="br" r="13"></circle><circle class="quad-handle" data-c="bl" r="13"></circle>
       </svg>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
@@ -4744,13 +4759,28 @@ function initScanQuad(cornersFrac){
   paintQuad();
   attachQuadDrag();
 }
+// SIDE_CORNERS maps each edge's drag handle to the two true corners it
+// translates together — shared by paintQuad() (to draw the invisible drag
+// line along that edge) and attachQuadDrag() (to move both endpoints as one
+// rigid unit, "sliding" that whole side in/out without touching the corners
+// of the adjacent sides).
+const SIDE_CORNERS={top:['tl','tr'],right:['tr','br'],bottom:['br','bl'],left:['bl','tl']};
 function paintQuad(){
   const r=window.__quadRect;
   if(!r) return;
   const poly=document.getElementById('scanQuadPoly');
   if(poly) poly.setAttribute('points',[r.tl,r.tr,r.br,r.bl].map(p=>p.x+','+p.y).join(' '));
+  Object.keys(SIDE_CORNERS).forEach(side=>{
+    const [a,b]=SIDE_CORNERS[side];
+    const line=document.querySelector('.quad-side-handle[data-side="'+side+'"]');
+    if(line){ line.setAttribute('x1',r[a].x); line.setAttribute('y1',r[a].y); line.setAttribute('x2',r[b].x); line.setAttribute('y2',r[b].y); }
+  });
   const cx=(r.tl.x+r.tr.x+r.br.x+r.bl.x)/4, cy=(r.tl.y+r.tr.y+r.br.y+r.bl.y)/4;
-  const inset=3.5;
+  // Corner handles drawn inset from the true corner toward the quad's own
+  // centroid — 6.5pt as of 2026-09-27 (up from 3.5pt, per user request: still
+  // hard to grab a corner sitting right at the photo's edge). Purely visual;
+  // window.__quadRect[key] (the true corner used for cropping) is untouched.
+  const inset=6.5;
   ['tl','tr','br','bl'].forEach(k=>{
     const c=document.querySelector('.quad-handle[data-c="'+k+'"]');
     if(!c) return;
@@ -4773,6 +4803,31 @@ function attachQuadDrag(){
         const rect=wrap.getBoundingClientRect();
         const r=window.__quadRect;
         r[key]={x:Math.max(0,Math.min(r.imgW,ev.clientX-rect.left)),y:Math.max(0,Math.min(r.imgH,ev.clientY-rect.top))};
+        paintQuad();
+      };
+      const up=()=>{ window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); };
+      window.addEventListener('pointermove',move);
+      window.addEventListener('pointerup',up);
+    });
+  });
+  // Whole-edge drag (added 2026-09-27, per user request — "let me move the
+  // whole horizontal/vertical line, not just one corner at a time"): grabbing
+  // the line between two corners translates BOTH of them by the same pointer
+  // delta, sliding that entire side in/out as a rigid unit while the other
+  // two corners (and thus the adjacent sides) stay put — the standard
+  // photo-crop-tool "drag an edge" gesture, useful when a whole side needs
+  // the same nudge rather than fixing each of its two corners separately.
+  svg.querySelectorAll('.quad-side-handle').forEach(h=>{
+    h.addEventListener('pointerdown',e=>{
+      e.preventDefault(); e.stopPropagation();
+      const [ka,kb]=SIDE_CORNERS[h.dataset.side];
+      const r=window.__quadRect;
+      const start={x:e.clientX,y:e.clientY};
+      const orig={a:{...r[ka]},b:{...r[kb]}};
+      const move=ev=>{
+        const dx=ev.clientX-start.x, dy=ev.clientY-start.y;
+        const clamp=p=>({x:Math.max(0,Math.min(r.imgW,p.x+dx)),y:Math.max(0,Math.min(r.imgH,p.y+dy))});
+        r[ka]=clamp(orig.a); r[kb]=clamp(orig.b);
         paintQuad();
       };
       const up=()=>{ window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); };
