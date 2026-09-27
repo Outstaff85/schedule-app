@@ -3735,7 +3735,6 @@ function openAiScan(){
   window.__aiPrimaryParsed=null;
   window.__aiPageParsed=[];
   window.__pendingScanPages=[]; // not-yet-processed crops queued by processAllPendingPages() — see its own comment
-  window.__scanDebugLog=[]; // TEMPORARY diagnostic log — see pushScanDebug()'s own comment
   document.getElementById('aiScanStage').innerHTML=`
     <div style="display:flex;flex-direction:column;gap:10px">
       <button class="btn sm" onclick="document.getElementById('aiScanFile').click()">
@@ -4194,18 +4193,6 @@ async function preAlignScan(b64,mediaType){
 // to run on every queued page. Best-effort: any failure here (network
 // error, bad AI response, image decode failure) just falls through to the
 // original image unchanged, so a hiccup here never blocks the scan.
-// TEMPORARY diagnostic log (2026-09-26) — the user reports the embedded scan
-// photo still isn't coming out cropped/straightened in production despite
-// autoPreAlignScan()/aiDetectAlign being wired in, and this can't be
-// reproduced from here (would need a real, paid Anthropic API call against a
-// real photo). Records what the AI actually returned at each decision point
-// so the next real-device scan's result can be inspected via the debug block
-// renderScanPagesPrompt() prints — remove __scanDebugLog and its render once
-// the root cause is found and fixed.
-window.__scanDebugLog=window.__scanDebugLog||[];
-function pushScanDebug(step,info){
-  try{ window.__scanDebugLog.push(step+': '+JSON.stringify(info)); }catch(e){}
-}
 async function autoPreAlignScan(b64,mediaType){
   const stage=document.getElementById('aiScanStage');
   stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
@@ -4218,15 +4205,14 @@ async function autoPreAlignScan(b64,mediaType){
     });
     const json=await resp.json();
     const align=json&&json.ok&&json.align;
-    if(!align){ pushScanDebug('aiDetectAlign',{ok:false,response:json}); return {b64,mediaType}; }
+    if(!align) return {b64,mediaType};
     const rotateDeg=[0,90,180,270].includes(align.rotate)?align.rotate:0;
     const upright=rotateDeg?await alignScanImage(b64,mediaType,{rotate:rotateDeg,crop:{x0:0,y0:0,x1:1,y1:1}}):{b64,mediaType};
-    if(!validQuadCorners(align.corners)){ pushScanDebug('aiDetectAlign',{ok:true,rotate:rotateDeg,invalidCorners:align.corners}); return upright; }
+    if(!validQuadCorners(align.corners)) return upright;
     const corners={
       tl:rotatePointFrac(align.corners.tl,rotateDeg), tr:rotatePointFrac(align.corners.tr,rotateDeg),
       br:rotatePointFrac(align.corners.br,rotateDeg), bl:rotatePointFrac(align.corners.bl,rotateDeg)
     };
-    pushScanDebug('aiDetectAlign',{ok:true,rotate:rotateDeg,areaFrac:quadAreaFrac(corners).toFixed(3),corners});
     const dims=await new Promise(res=>{
       const im=new Image();
       im.onload=()=>res({w:im.naturalWidth,h:im.naturalHeight});
@@ -4235,12 +4221,18 @@ async function autoPreAlignScan(b64,mediaType){
     });
     if(!dims) return upright;
     const refined=await refineQuadCorners(upright.b64,upright.mediaType,corners);
+    // Skip the warp+JPEG-re-encode entirely when the refined quad is already
+    // the untouched full frame (2026-09-27, optimization) — a real scan photo
+    // typically goes through several of these warp passes in sequence
+    // (autoPreAlignScan -> refineWithAiAlign -> finalTightenPass -> the PDF
+    // embed step's own resize), each one a needless JPEG generation-loss
+    // round-trip when the corners describe no actual crop/rotation at all.
+    if(_isNearIdentityQuad(refined)) return upright;
     const toPx=p=>({x:p.x*dims.w,y:p.y*dims.h});
     const quadPx={tl:toPx(refined.tl),tr:toPx(refined.tr),br:toPx(refined.br),bl:toPx(refined.bl),imgW:dims.w,imgH:dims.h};
     return await warpQuadImage(upright.b64,upright.mediaType,quadPx);
   }catch(e){
     console.error(e);
-    pushScanDebug('aiDetectAlign',{ok:false,exception:String(e)});
     return {b64,mediaType};
   }
 }
@@ -4627,6 +4619,19 @@ function quadAreaFrac(c){
   for(let i=0;i<4;i++){ const a=pts[i], b=pts[(i+1)%4]; area+=a.x*b.y-b.x*a.y; }
   return Math.abs(area)/2;
 }
+// True when a fractional quad is (within a tiny tolerance) exactly the
+// untouched full frame — {tl:(0,0),tr:(1,0),br:(1,1),bl:(0,1)} — used to skip
+// a warpQuadImage() call that would just re-encode the image as a lossy
+// no-op copy. A real scan photo passes through several of these tightening
+// passes in sequence; skipping the ones that have nothing to actually crop
+// avoids needless JPEG generation loss and CPU time.
+function _isNearIdentityQuad(c,eps){
+  eps=eps||0.01;
+  return Math.abs(c.tl.x-0)<eps&&Math.abs(c.tl.y-0)<eps&&
+    Math.abs(c.tr.x-1)<eps&&Math.abs(c.tr.y-0)<eps&&
+    Math.abs(c.br.x-1)<eps&&Math.abs(c.br.y-1)<eps&&
+    Math.abs(c.bl.x-0)<eps&&Math.abs(c.bl.y-1)<eps;
+}
 // Best-effort fine-tightening pass on top of the user's own manual crop,
 // using aiReadDoc's own imageAlign.corners — which comes back for free in
 // the SAME response already fetched for field extraction, no extra AI call.
@@ -4650,10 +4655,13 @@ function quadAreaFrac(c){
 // sub-element, e.g. just the portrait photo, typically far under 8% of
 // even a rough crop), not one that assumes the crop was already tight.
 async function refineWithAiAlign(finalImg,align){
-  if(!align||!validQuadCorners(align.corners)){ pushScanDebug('refineWithAiAlign',{skipped:'no/invalid corners',align}); return finalImg; }
+  if(!align||!validQuadCorners(align.corners)) return finalImg;
   const areaFrac=quadAreaFrac(align.corners);
-  if(areaFrac<0.08){ pushScanDebug('refineWithAiAlign',{skipped:'below trust floor',areaFrac:areaFrac.toFixed(3),corners:align.corners}); return finalImg; }
-  pushScanDebug('refineWithAiAlign',{applied:true,areaFrac:areaFrac.toFixed(3),corners:align.corners});
+  if(areaFrac<0.08) return finalImg;
+  // Skip the warp+JPEG-re-encode when the AI's own corners already describe
+  // the untouched full frame (2026-09-27, optimization — see
+  // _isNearIdentityQuad's own comment in autoPreAlignScan).
+  if(_isNearIdentityQuad(align.corners)) return finalImg;
   const dims=await new Promise(res=>{
     const im=new Image();
     im.onload=()=>res({w:im.naturalWidth,h:im.naturalHeight});
@@ -4749,8 +4757,7 @@ async function finalTightenPass(img){
   const top=_scanSideEdge(lum,w,h,'y',margin,0.1,0.9,+1,margin);
   const bottom=_scanSideEdge(lum,w,h,'y',1-margin,0.1,0.9,-1,1-margin);
   const x0=left!=null?left:0, x1=right!=null?right:1, y0=top!=null?top:0, y1=bottom!=null?bottom:1;
-  if(x0<0.005&&x1>0.995&&y0<0.005&&y1>0.995){ pushScanDebug('finalTightenPass',{skipped:'no meaningful edge found'}); return img; }
-  pushScanDebug('finalTightenPass',{applied:true,box:{x0,y0,x1,y1}});
+  if(x0<0.005&&x1>0.995&&y0<0.005&&y1>0.995) return img;
   const quadPx={tl:{x:x0*w,y:y0*h},tr:{x:x1*w,y:y0*h},br:{x:x1*w,y:y1*h},bl:{x:x0*w,y:y1*h},imgW:w,imgH:h};
   try{ return await warpQuadImage(img.b64,img.mediaType,quadPx); }
   catch(e){ console.error(e); return img; }
@@ -5206,6 +5213,17 @@ async function processAllPendingPages(){
         if(p&&(p.type==='israeli_id'||p.type==='passport')){
           foundParsed=p.fieldBoxes?await verifyDigitFields(p,it.b64,it.mediaType):p;
           foundParsed=await verifyIdChecksum(foundParsed,it.b64,it.mediaType);
+          // Routed through initPrimaryFromFirstPage() (2026-09-27, unifying
+          // with rebuildPrimaryFromPages()'s own logic — see that function's
+          // comment) rather than used directly: this flow's own pages are
+          // never __isSefachScan-tagged (only the dedicated aiReadSefach path
+          // sets that), so the only practical effect here is resetting any
+          // stale window.__aiPendingSefachIdNo left over from elsewhere in the
+          // tab — cheap, harmless hygiene, and keeps this branch computing the
+          // exact same shape of primary record removeExtraScanPage()'s replay
+          // (rebuildPrimaryFromPages) would, so removing a later page never
+          // recomputes the primary any differently than how it was first built.
+          foundParsed=initPrimaryFromFirstPage(foundParsed);
           // Avatar crop uses photoBox coordinates, which are relative to `it`
           // as sent to aiReadDoc — must run BEFORE refineWithAiAlign below
           // changes the image's coordinate space.
@@ -5227,7 +5245,16 @@ async function processAllPendingPages(){
         const json=await resp.json();
         const p=json&&json.parsed;
         if(p&&p.type==='israeli_id'){
-          foundParsed=mergeIsraeliIdFields(foundParsed,p);
+          // mergeScanPage() (2026-09-27, was mergeIsraeliIdFields() directly)
+          // — unifies with rebuildPrimaryFromPages()'s own merge logic (used
+          // when a page is later removed via removeExtraScanPage(), see its
+          // comment) so removing a page never recomputes the primary record
+          // any differently than how this loop first built it. Also a real
+          // fix on its own: mergeIsraeliIdFields() alone never backfills a
+          // missing idNo from a later page (idNo isn't in ID_CORE_FIELDS),
+          // silently leaving it blank even when a later-scanned page read it
+          // fine; mergeScanPage() does.
+          foundParsed=mergeScanPage(foundParsed,p);
           thisPageParsed=p;
           it=await refineWithAiAlign(it,p.imageAlign);
         }
@@ -5271,7 +5298,6 @@ async function processAllPendingPages(){
 function renderScanPagesPrompt(){
   const stage=document.getElementById('aiScanStage');
   const pages=window.__aiScanPageThumbs||[];
-  const debugLines=window.__scanDebugLog||[];
   stage.innerHTML=`
     <div style="display:flex;flex-direction:column;gap:10px">
       <div style="font-size:12px;color:var(--text2)">נסרקו ${pages.length} עמוד${pages.length===1?'':'ים'}</div>
@@ -5288,7 +5314,6 @@ function renderScanPagesPrompt(){
         <button class="btn sm" type="button" onclick="document.getElementById('aiScanFileExtra').click()"><i class="ti ti-plus"></i> הוסף עמוד</button>
         <button class="btn sm accent" type="button" onclick="finishScanPages()"><i class="ti ti-check"></i> סיום</button>
       </div>
-      ${debugLines.length?`<div style="font-size:10px;font-family:monospace;color:#ffb020;background:var(--bg2);border:1px solid #ffb020;border-radius:6px;padding:6px;white-space:pre-wrap;word-break:break-all;max-height:160px;overflow:auto">DEBUG (временно, для диагностики):\n${esc(debugLines.join('\n'))}</div>`:''}
     </div>`;
 }
 function removeExtraScanPage(i){
