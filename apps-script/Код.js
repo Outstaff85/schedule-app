@@ -59,7 +59,7 @@ function doPost(e) {
       case 'saveWorkerDoc':        return jsonResponse(saveWorkerDoc(body, tenantId));
       case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body, tenantId));
       case 'saveWorkerAssets':     return jsonResponse(saveWorkerAssets(body, tenantId));
-      case 'loadWorkerAssets':     return jsonResponse(loadWorkerAssets(body));
+      case 'loadWorkerAssets':     return jsonResponse(loadWorkerAssets(body, tenantId));
       case 'createUser':           return jsonResponse(createUser(body, auth));
       case 'updateTenant':         return jsonResponse(updateTenant(body, auth));
       case 'loadTenantProfile':    return jsonResponse({ ok: true, profile: tenantId ? getTenantProfile(tenantId) : null });
@@ -1515,7 +1515,15 @@ function extractDocNumberFromFileName(name){
 function deleteWorkerDoc(body, tenantId){
   try{
     if(body.fileId){
-      DriveApp.getFileById(body.fileId).setTrashed(true);
+      const file = DriveApp.getFileById(body.fileId);
+      // Cross-tenant guard (added 2026-09-27): a Drive fileId by itself proves
+      // nothing about which firm it belongs to — without this check, any
+      // authenticated firm could trash another firm's worker PDF/asset sidecar
+      // just by supplying its fileId (e.g. one leaked into client-side error
+      // telemetry). Only allow trashing a file that actually lives inside
+      // THIS tenant's own Workers or Workers/Assets folder.
+      if(!_fileBelongsToTenant(file, tenantId)) return {error:'Файл не принадлежит этой фирме'};
+      file.setTrashed(true);
       return {ok:true};
     }
     if(body.fileName){
@@ -1526,6 +1534,23 @@ function deleteWorkerDoc(body, tenantId){
     }
     return {error:'Нет fileId или fileName'};
   }catch(e){ return {error: e.toString()}; }
+}
+// True if `file` sits directly inside this tenant's own Workers folder or its
+// Workers/Assets subfolder — the only two places a worker PDF or asset
+// sidecar is ever created (saveWorkerDoc/saveWorkerAssets). Used to reject a
+// fileId that doesn't actually belong to the calling tenant before reading or
+// trashing it (see deleteWorkerDoc/loadWorkerAssets).
+function _fileBelongsToTenant(file, tenantId){
+  try{
+    const workersFolder = _companyFolder(tenantId);
+    const assetsFolder = _workerAssetsFolder(tenantId);
+    const parents = file.getParents();
+    while(parents.hasNext()){
+      const pid = parents.next().getId();
+      if(pid === workersFolder.getId() || pid === assetsFolder.getId()) return true;
+    }
+  }catch(e){}
+  return false;
 }
 
 // Sidecar JSON assets (raw scan + signature, see saveWorkerAssets() below)
@@ -1598,10 +1623,14 @@ function saveWorkerAssets(body, tenantId){
 // so a later Form-101 regeneration (regenerateWorkerDoc() on the client) can
 // rebuild the exact same PDF — new field values, same source scan — without
 // asking the manager to re-scan the physical document.
-function loadWorkerAssets(body){
+function loadWorkerAssets(body, tenantId){
   try{
     if(!body.fileId) return {error:'Нет fileId'};
     const file = DriveApp.getFileById(body.fileId);
+    // Cross-tenant guard — see deleteWorkerDoc's own comment on _fileBelongsToTenant.
+    // Without this, this sidecar (a worker's raw ID/passport scan + signature)
+    // could be read by ANY authenticated firm that supplies its fileId.
+    if(!_fileBelongsToTenant(file, tenantId)) return {error:'Файл не принадлежит этой фирме'};
     const data = JSON.parse(file.getBlob().getDataAsString());
     return {ok:true, scanB64: data.scanB64, scanMediaType: data.scanMediaType, sigPng: data.sigPng || null, extraPages: Array.isArray(data.extraPages) ? data.extraPages : []};
   }catch(e){ return {error: e.toString()}; }

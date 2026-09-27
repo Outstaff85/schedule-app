@@ -682,33 +682,24 @@ def preprocess_scan_image(image_bytes):
 
     img = _resize_max_dim(img, MAX_WORK_DIM)
 
-    # Geometric auto-crop (_find_document_quad/_warp_quad) — RE-ENABLED
-    # 2026-09-26, per user request: real scans were coming out with the
-    # manual crop's own huge background/skew untouched — refineWithAiAlign's
-    # own tightening pass (schedule-manager.html) requires the AI's guessed
-    # quad to cover at least half the frame before trusting it, and a rough
-    # manual crop (card occupying a third of the frame, at an angle) fails
-    # that safety check every time, so nothing ever got tightened in
-    # practice. This function is SAFE to auto-crop again for a different
-    # reason than why it was disabled on 2026-09-21: it used to run BEFORE
-    # the client's manual corner-adjustment editor, so the geometry detector
-    # could lock onto one document out of two photographed together (e.g. a
-    # passport and its ספח insert) and silently discard the other before the
-    # user ever saw it. Since 2026-09-26 this function only ever runs AFTER
-    # that manual editor (see this module's header comment and
-    # preAlignScan() in schedule-manager.html) — the input here is already
-    # the user's own (however rough) crop of a SINGLE document, so there is
-    # no second document left to lose. A confident quad match tightens the
-    # crop down to just the card; anything that doesn't clear
-    # MIN_QUAD_AREA_FRAC/MAX_QUAD_AREA_FRAC/convexity below leaves the image
-    # untouched, same safety net the client-side AI tightening pass has.
+    # Geometric auto-crop (_find_document_quad/_warp_quad) — DORMANT again as
+    # of 2026-09-27. It was re-enabled 2026-09-26 because the client-side
+    # tightening (refineWithAiAlign) wasn't yet trustworthy enough on a rough
+    # manual crop. Since then, autoPreAlignScan() (aiDetectAlign, a real
+    # vision-model read) plus refineQuadCorners()'s hardened pixel-refinement
+    # plus finalTightenPass()'s independent per-side check now run on the
+    # client BEFORE this endpoint ever sees the image — by the time a photo
+    # gets here it is normally already tightly cropped to just the document.
+    # Running this classical-CV quad detector on an ALREADY near-final crop
+    # is not just redundant (a wasted CLAHE/bilateral/Canny/contour pass on
+    # every scan) but a real regression risk: with little to no background
+    # left to find a document/background boundary against, it can lock onto
+    # a strong internal element instead (the photo, the chip icon, a text
+    # block) and crop INTO the document. Left defined below, unused, in case
+    # a future regression in the client-side pipeline makes this worth
+    # reviving again — see this same pattern's own precedent in
+    # schedule-manager.html (_preAlignThenOcr()/runOcr()).
     geometry_applied = False
-    quad = _find_document_quad(img)
-    if quad is not None:
-        warped = _warp_quad(img, quad)
-        if warped is not None:
-            img = warped
-            geometry_applied = True
 
     # Contrast/sharpness enhancement now runs BEFORE the blur check (per user
     # request, 2026-09-21) rather than after — see BLUR_VARIANCE_THRESHOLD's
