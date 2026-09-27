@@ -49,7 +49,6 @@ function doPost(e) {
       case 'savePunch':            return jsonResponse(savePunch(body.data, tenantId));
       case 'deletePunch':          return jsonResponse(deletePunch(body.id, tenantId));
       case 'updatePunch':          return jsonResponse(updatePunch(body.data, tenantId));
-      case 'calcSalary':           return jsonResponse(calcSalary(body.filter, tenantId));
       case 'savePushSubscription': return jsonResponse(savePushSubscription(body, tenantId));
       case 'logError':             return jsonResponse(logError(body));
       case 'aiReadDoc':            return jsonResponse(aiReadDoc(body));
@@ -89,7 +88,6 @@ function doGet(e) {
     switch (action) {
       case 'loadSchedule': result = loadSchedule(tenantId);              break;
       case 'loadPunchLog': result = loadPunchLog(e.parameter, tenantId); break;
-      case 'calcSalary':   result = calcSalary(e.parameter, tenantId);   break;
       default:             result = {error: 'Unknown action'};
     }
     const callback = e.parameter.callback;
@@ -546,7 +544,21 @@ function saveSchedule(data, baseSavedAt, tenantId) {
 
   const clients = normalizeClients(data.clients || []);
   const savedAt = new Date().toISOString();
-  const rowValues = [tenantId, JSON.stringify(data.workers || []), JSON.stringify(clients), data.weekStart || '', savedAt];
+  const workersJson = JSON.stringify(data.workers || []);
+  const clientsJson = JSON.stringify(clients);
+  // Sheets cell size guard (2026-09-27) — the whole workers/clients array is
+  // stored as ONE JSON blob per cell (see this sheet's own header comment),
+  // rewritten in full on every save; a Sheets cell silently rejects content
+  // past ~50,000 characters (a real Google Sheets API exception, not
+  // something this function used to check for). A growing roster with many
+  // worker photos (avatarB64) could hit that limit — catching it here with a
+  // clear, actionable error is far better than a cryptic Sheets API
+  // exception surfacing to the manager mid-save. 45,000 leaves margin.
+  const CELL_SAFE_LIMIT = 45000;
+  if (workersJson.length > CELL_SAFE_LIMIT || clientsJson.length > CELL_SAFE_LIMIT) {
+    return { error: 'Слишком много данных для сохранения (лимит ячейки Google Sheets) — обратитесь к разработчику', tooLarge: true };
+  }
+  const rowValues = [tenantId, workersJson, clientsJson, data.weekStart || '', savedAt];
   if (current._row) sh.getRange(current._row, 1, 1, SCHEDULE_HEADERS.length).setValues([rowValues]);
   else sh.appendRow(rowValues);
   return {ok: true, savedAt: savedAt};
@@ -932,42 +944,7 @@ function colorPunchRow(sh, rowNum, type) {
   } catch(e) {}
 }
 
-// ── SALARY ────────────────────────────────────────────────────────────────────
-function calcSalary(filter, tenantId) {
-  const {entries} = loadPunchLog(filter, tenantId);
-  const byWorkerDate = {};
-  entries.forEach(e => {
-    const key = e.workerName + '|' + e.date;
-    if (!byWorkerDate[key]) byWorkerDate[key] = {worker:e.workerName, date:e.date, ins:[], outs:[]};
-    if (e.type==='in')  byWorkerDate[key].ins.push(e.time);
-    if (e.type==='out') byWorkerDate[key].outs.push(e.time);
-  });
-  const byWorker = {};
-  Object.values(byWorkerDate).forEach(({worker,date,ins,outs}) => {
-    if (!byWorker[worker]) byWorker[worker] = {worker, totalHours:0, days:[]};
-    const inTime=ins[0]||null, outTime=outs[0]||null;
-    let hours=0;
-    if (inTime && outTime) {
-      const sm=toMins(inTime), em=toMins(outTime);
-      hours = (em<=sm ? (1440-sm+em) : (em-sm)) / 60;
-    }
-    byWorker[worker].totalHours += hours;
-    byWorker[worker].days.push({date, in:inTime, out:outTime, hours:+hours.toFixed(2)});
-  });
-  const summary = Object.values(byWorker).map(w => ({
-    worker: w.worker,
-    totalHours: +w.totalHours.toFixed(2),
-    days: w.days.sort((a,b) => a.date<b.date?-1:1),
-  }));
-  return {summary};
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function toMins(t) {
-  if (!t) return 0;
-  const [h,m] = t.split(':').map(Number);
-  return h*60 + m;
-}
 
 function _TZ_(){ return SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone() || 'Asia/Jerusalem'; }
 function getOrCreateSheet(ss, name) {
@@ -1475,11 +1452,19 @@ function saveWorkerDoc(body, tenantId){
     // rescans, even when OCR reads the name slightly differently each time.
     // Trash every other file in the folder sharing that same number so a
     // rescan can never pile up as a duplicate, regardless of naming drift.
+    // searchFiles() with a "title contains" query (2026-09-27, optimization)
+    // instead of folder.getFiles() — the old version pulled EVERY file in the
+    // folder over the API just to check its name locally, an O(n) Drive-API
+    // cost per save that grows with the roster; letting Drive's own index do
+    // the filtering server-side only fetches files that could plausibly
+    // match. docNumber is guaranteed all-digits (extractDocNumberFromFileName
+    // only ever returns a \d{5,} run), so no quote-escaping is needed in the
+    // query string.
     const docNumber = extractDocNumberFromFileName(body.fileName);
     if(docNumber){
-      const all = folder.getFiles();
-      while(all.hasNext()){
-        const f = all.next();
+      const matches = folder.searchFiles("title contains '" + docNumber + "'");
+      while(matches.hasNext()){
+        const f = matches.next();
         if(f.getName() !== body.fileName && extractDocNumberFromFileName(f.getName()) === docNumber){
           f.setTrashed(true);
         }
@@ -1591,11 +1576,14 @@ function saveWorkerAssets(body, tenantId){
     // assetsFileId, so without this, every such "duplicate worker" scan piled
     // up its own sidecar file forever, even though the PDF itself was already
     // correctly deduped across worker records via this same trick.
+    // searchFiles() with a "title contains" query (2026-09-27, optimization
+    // — see saveWorkerDoc's own comment on the same change) instead of
+    // folder.getFiles(), which pulled every file in the Assets subfolder.
     const docNumber = extractDocNumberFromFileName(fileNameBase);
     if(docNumber){
-      const all = folder.getFiles();
-      while(all.hasNext()){
-        const f = all.next();
+      const matches = folder.searchFiles("title contains '" + docNumber + "'");
+      while(matches.hasNext()){
+        const f = matches.next();
         if(f.getName() !== fileName && extractDocNumberFromFileName(f.getName()) === docNumber){
           f.setTrashed(true);
         }

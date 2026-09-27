@@ -2828,6 +2828,10 @@ async function gsSave(data) {
       if(fresh){ applyData(fresh); render(); }
       return false;
     }
+    if(json && json.tooLarge){
+      showToast('\u26a0 Слишком много данных для сохранения — обратитесь к разработчику', 6000);
+      return false;
+    }
     if(json && json.ok && json.savedAt) lastLoadedSavedAt = json.savedAt;
     return !!(json && json.ok === true);
   } catch(e) { console.warn('GS save failed:', e); return false; }
@@ -5719,44 +5723,47 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // lets it trash the exact old file.
       const fileBase64=fnJson.pdfBase64;
       const w=targetWorker;
-      const resp=await fetch(GS_URL,{
+      // saveWorkerDoc (the PDF) and saveWorkerAssets (the scan/signature
+      // sidecar) write to two different Drive files and don't depend on each
+      // other's result (the sidecar's own previousFileId is w.assetsFileId,
+      // unrelated to the PDF's fileId) — fired concurrently (2026-09-27,
+      // optimization) instead of one full round-trip after the other, since
+      // this whole call runs behind a blocking "please wait" overlay for new
+      // workers/rescans. Skipped on a regenerate (isRegen) same as before —
+      // see the comment below that used to sit next to the sequential call.
+      const docPromise=fetch(GS_URL,{
         method:'POST',
         body:JSON.stringify({action:'saveWorkerDoc',secret:API_SECRET,...gsAuth(),fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null})
-      });
-      const json=await resp.json();
+      }).then(r=>r.json());
+      // Cache the scan+signature (and any extra pages — ספח appendix card,
+      // contract, etc.) that actually built this PDF as a small private
+      // Drive sidecar (never shown to anyone, just read back by
+      // regenerateWorkerDoc()) — this is what lets a LATER edit (income
+      // type, marital status, address, ...) rebuild the exact same PDF
+      // with the new values without asking the manager to re-scan the
+      // physical document. Best-effort: a failure here never rolls back
+      // the main upload.
+      // Skip this on a regenerate (isRegen): the scan/signature/extraPages
+      // there came straight from loadWorkerAssets() a few seconds ago via
+      // this SAME w.assetsFileId — re-uploading them as a "new" sidecar
+      // would just be writing back the exact bytes just downloaded. A
+      // background regenerate (triggered by editing one watched text
+      // field, e.g. address) used to always pay for this redundant
+      // multi-MB download-then-reupload round trip on top of the PDF
+      // build itself, which is what made a single-field edit feel so slow.
+      const assetsPromise=(scanImage&&!isRegen&&w)?fetch(GS_URL,{
+        method:'POST',
+        body:JSON.stringify({action:'saveWorkerAssets',secret:API_SECRET,...gsAuth(),
+          scanB64:scanImage.b64, scanMediaType:scanImage.mediaType, sigPng:sigPng||null,
+          extraPages:otherPagesToUse,
+          fileNameBase:fileName.replace(/\.pdf$/,''), previousFileId:w.assetsFileId||null})
+      }).then(r=>r.json()).catch(()=>null):Promise.resolve(null);
+      const [json,assetsJson]=await Promise.all([docPromise,assetsPromise]);
       if(!json||json.error) throw new Error((json&&json.error)||'Сервер не ответил');
       if(w){
         w.docUrl=json.url; w.docSavedAt=new Date().toISOString(); w.docFileId=json.id;
         w.docUploadFailed=false;
-        // Cache the scan+signature (and any extra pages — ספח appendix card,
-        // contract, etc.) that actually built this PDF as a small private
-        // Drive sidecar (never shown to anyone, just read back by
-        // regenerateWorkerDoc()) — this is what lets a LATER edit (income
-        // type, marital status, address, ...) rebuild the exact same PDF
-        // with the new values without asking the manager to re-scan the
-        // physical document. Best-effort: a failure here never rolls back
-        // the already-successful main upload above.
-        // Skip this on a regenerate (isRegen): the scan/signature/extraPages
-        // there came straight from loadWorkerAssets() a few seconds ago via
-        // this SAME w.assetsFileId — re-uploading them as a "new" sidecar
-        // would just be writing back the exact bytes just downloaded. A
-        // background regenerate (triggered by editing one watched text
-        // field, e.g. address) used to always pay for this redundant
-        // multi-MB download-then-reupload round trip on top of the PDF
-        // build itself, which is what made a single-field edit feel so slow.
-        if(scanImage&&!isRegen){
-          try{
-            const assetsResp=await fetch(GS_URL,{
-              method:'POST',
-              body:JSON.stringify({action:'saveWorkerAssets',secret:API_SECRET,...gsAuth(),
-                scanB64:scanImage.b64, scanMediaType:scanImage.mediaType, sigPng:sigPng||null,
-                extraPages:otherPagesToUse,
-                fileNameBase:fileName.replace(/\.pdf$/,''), previousFileId:w.assetsFileId||null})
-            });
-            const assetsJson=await assetsResp.json();
-            if(assetsJson&&assetsJson.ok) w.assetsFileId=assetsJson.id;
-          }catch(e){}
-        }
+        if(assetsJson&&assetsJson.ok) w.assetsFileId=assetsJson.id;
         render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
         showToast('Документы '+(w.name||'')+' сохранены в Google Drive');
         window.__aiRescanWorkerId=null;
