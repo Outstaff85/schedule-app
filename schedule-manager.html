@@ -2071,28 +2071,6 @@ function openWorkerCard(wi){
       </div>
       <button class="btn sm" onclick="closeModal('workerCardOverlay')" title="Закрыть" style="flex-shrink:0;padding:0 8px"><i class="ti ti-x"></i></button>
     </div>
-    ${objs.length?`
-    <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:10px">
-      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Objects</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px">
-        ${objs.map(o=>`<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:3px 8px;background:${o.color}22;border-radius:10px"><span style="width:6px;height:6px;border-radius:50%;background:${o.color};flex-shrink:0"></span>${esc(o.name)}</span>`).join('')}
-      </div>
-    </div>
-    <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:14px">
-      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Rates</div>
-      ${objs.map(o=>{
-        const r=effectiveRates(w,o.id);
-        const hasOverride=!!(w.clientRates&&w.clientRates[o.id]&&Object.values(w.clientRates[o.id]).some(v=>v!=null));
-        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:4px 0">
-          <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:7px;height:7px;border-radius:50%;background:${o.color};flex-shrink:0"></span>${esc(o.name)}${hasOverride?' <i class="ti ti-star-filled" style="font-size:10px;color:var(--amber)" title="Own rate at this client"></i>':''}</span>
-          <span style="color:var(--text2);white-space:nowrap">₪${r.regRate}/h · OT ₪${r.otRate} · Shabbat ₪${r.shabbatRate}</span>
-        </div>`;
-      }).join('')}
-    </div>` : `
-    <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:14px">
-      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Objects &amp; rates</div>
-      <span style="color:var(--text3);font-size:12px">Not assigned to any object</span>
-    </div>`}
     <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text2);margin-bottom:14px">
       ${w.phone?`<div><i class="ti ti-phone"></i> ${esc(w.phone)}</div>`:''}
       ${w.hourlyRate?`<div><i class="ti ti-coin"></i> Base ₪${w.hourlyRate}/h${w.otRate!=null?' · OT ₪'+w.otRate+'/h':''}${w.shabbatRate!=null?' · Shabbat ₪'+w.shabbatRate+'/h':''}</div>`:''}
@@ -2104,6 +2082,12 @@ function openWorkerCard(wi){
       ${w.otherIncomeType&&w.otherIncomeType!=='none'&&OTHER_INCOME_LABELS[w.otherIncomeType]?`<div><i class="ti ti-cash"></i> Other income: ${OTHER_INCOME_LABELS[w.otherIncomeType]}</div>`:''}
       <div><i class="ti ti-clock-hour-4"></i> ${wh.toFixed(1)}h scheduled / week</div>
       ${w.docUrl?`<div><i class="ti ti-file-text"></i> Документ сохранён${w.docSavedAt?': '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</div>`:''}
+      ${objs.length?`<div><i class="ti ti-building"></i> ${objs.map(o=>`<span style="color:${o.color}">${esc(o.name)}</span>`).join(', ')}</div>
+      ${objs.map(o=>{
+        const r=effectiveRates(w,o.id);
+        const hasOverride=!!(w.clientRates&&w.clientRates[o.id]&&Object.values(w.clientRates[o.id]).some(v=>v!=null));
+        return `<div><i class="ti ti-currency-shekel"></i> ${esc(o.name)}: ₪${r.regRate}/h · OT ₪${r.otRate} · Shabbat ₪${r.shabbatRate}${hasOverride?' <i class="ti ti-star-filled" style="font-size:10px;color:var(--amber)" title="Own rate at this client"></i>':''}</div>`;
+      }).join('')}` : `<div><i class="ti ti-building-off"></i> Not assigned to any object</div>`}
     </div>
     ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
     <div class="modal-actions">
