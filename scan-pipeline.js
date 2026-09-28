@@ -987,6 +987,21 @@ async function refineWithAiAlign(finalImg,align){
   // the untouched full frame (2026-09-27, optimization — see
   // _isNearIdentityQuad's own comment in autoPreAlignScan).
   if(_isNearIdentityQuad(align.corners)) return finalImg;
+  // Local pixel-level verification (2026-09-28) — this function used to warp
+  // straight to the AI's own reported corners with no further check, unlike
+  // autoPreAlignScan() (which always runs an AI guess through
+  // refineQuadCorners() before trusting it). That asymmetry was a real,
+  // confirmed gap: on a real worn ID card, aiReadDoc's imageAlign.corners
+  // came back significantly off (the exact photo isn't reproducible here —
+  // no live AI call — but refineQuadCorners run directly against the real
+  // image, starting from an independently-verified-accurate guess, still
+  // needed real correction, confirming this specific document's edges are
+  // genuinely hard to place from a single vision read). Running the AI's
+  // corners through the same local refinement autoPreAlignScan already
+  // trusts gives this path the same real-pixel sanity check instead of
+  // blind faith in a single AI call.
+  const refined=await refineQuadCorners(finalImg.b64,finalImg.mediaType,align.corners);
+  if(_isNearIdentityQuad(refined)) return finalImg;
   const dims=await new Promise(res=>{
     const im=new Image();
     im.onload=()=>res({w:im.naturalWidth,h:im.naturalHeight});
@@ -994,9 +1009,8 @@ async function refineWithAiAlign(finalImg,align){
     im.src='data:'+finalImg.mediaType+';base64,'+finalImg.b64;
   });
   if(!dims) return finalImg;
-  const c=align.corners;
   const toPx=p=>({x:p.x*dims.w,y:p.y*dims.h});
-  const quadPx={tl:toPx(c.tl),tr:toPx(c.tr),br:toPx(c.br),bl:toPx(c.bl),imgW:dims.w,imgH:dims.h};
+  const quadPx={tl:toPx(refined.tl),tr:toPx(refined.tr),br:toPx(refined.br),bl:toPx(refined.bl),imgW:dims.w,imgH:dims.h};
   try{ return await warpQuadImage(finalImg.b64,finalImg.mediaType,quadPx); }
   catch(e){ console.error(e); return finalImg; }
 }
