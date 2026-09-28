@@ -681,10 +681,29 @@
       <div style="font-size:20px;font-weight:700"><i class="ti ti-building-skyscraper"></i> Фирмы</div>
       <div style="display:flex;gap:8px">
         <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> Создать фирму</button>
+        <button class="btn sm" onclick="openErrorsScreen()"><i class="ti ti-alert-circle"></i> Ошибки</button>
         <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i> Выйти</button>
       </div>
     </div>
     <div id="firmsList" style="display:flex;flex-direction:column;gap:8px"></div>
+  </div>
+</div>
+
+<!-- Super-admin diagnostics: last ~100 rows of the shared Errors sheet (every
+     firm's client-side errors + authFailure reports land in one sheet with
+     no tenantId column — see loadErrors()'s own comment server-side for why
+     this screen is superadmin-only). Overlays whatever screen was showing;
+     "Назад" just hides it again, no re-render of the underlying screen needed. -->
+<div id="errorsScreen" style="display:none;position:fixed;inset:0;z-index:960;background:var(--bg);overflow-y:auto">
+  <div style="max-width:960px;margin:0 auto;padding:28px 20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+      <div style="font-size:20px;font-weight:700"><i class="ti ti-alert-circle"></i> Ошибки (последние 100)</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn sm" onclick="loadErrorsList()"><i class="ti ti-refresh"></i> Обновить</button>
+        <button class="btn sm" onclick="closeErrorsScreen()"><i class="ti ti-x"></i> Закрыть</button>
+      </div>
+    </div>
+    <div id="errorsList" style="display:flex;flex-direction:column;gap:6px"></div>
   </div>
 </div>
 
@@ -2655,6 +2674,7 @@ function renderAccountControl(s){
   host.innerHTML = `
     <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
       ${s.role==='superadmin' ? '<button class="btn sm" onclick="backToFirmsList()"><i class="ti ti-building-skyscraper"></i> Фирмы</button>' : ''}
+      ${s.role==='superadmin' ? '<button class="btn sm" onclick="openErrorsScreen()"><i class="ti ti-alert-circle"></i> Ошибки</button>' : ''}
       <button class="btn sm" onclick="openMyFirmForm()"${incomplete?' style="color:#ffb020;border-color:#ffb020"':''}
         title="${incomplete?'Профиль фирмы неполный — данные для Формы 101':'Данные фирмы (для Формы 101)'}">
         <i class="ti ti-${incomplete?'alert-triangle':'building'}"></i></button>
@@ -2685,6 +2705,39 @@ async function renderFirmsList(){
           <button class="btn sm" onclick="confirmDeleteTenant('${esc(t.tenantId)}','${esc(t.companyName||t.tenantId)}')" title="Удалить" style="color:#ff6b78"><i class="ti ti-trash"></i></button>
           <i class="ti ti-chevron-right"></i>
         </div>
+      </div>`).join('');
+  }catch(e){ listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
+}
+
+// Super-admin-only diagnostics screen (see errorsScreen's own HTML comment
+// and loadErrors()'s server-side comment for why this is superadmin-only —
+// the Errors sheet has no tenantId column, so a normal tenant login must
+// never reach this). Overlays whatever's currently showing; closeErrorsScreen
+// just hides it again since nothing underneath needs to change.
+function openErrorsScreen(){
+  document.getElementById('errorsScreen').style.display = 'block';
+  loadErrorsList();
+}
+function closeErrorsScreen(){
+  document.getElementById('errorsScreen').style.display = 'none';
+}
+async function loadErrorsList(){
+  const listEl = document.getElementById('errorsList');
+  listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
+  try{
+    const res = await fetch(GS_URL + '?action=loadErrors' + gsAuthQuery());
+    const json = await res.json();
+    if(!json || json.error){ listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Ошибка загрузки')+'</div>'; return; }
+    const rows = json.rows || [];
+    if(!rows.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Ошибок нет.</div>'; return; }
+    listEl.innerHTML = rows.map(r => `
+      <div style="padding:10px 12px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:12px">
+        <div style="display:flex;gap:10px;color:var(--text2);margin-bottom:4px">
+          <span>${esc(r.when ? new Date(r.when).toLocaleString() : '')}</span>
+          <span>${esc(r.page||'')}</span>
+          ${r.source ? '<span style="font-weight:600">'+esc(r.source)+'</span>' : ''}
+        </div>
+        <div style="word-break:break-word">${esc(r.message||'')}</div>
       </div>`).join('');
   }catch(e){ listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
 }

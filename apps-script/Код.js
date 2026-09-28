@@ -83,18 +83,23 @@ function doPost(e) {
 function doGet(e) {
   try {
     const action = e.parameter.action || 'loadSchedule';
-    let tenantId = null;
+    let tenantId = null, auth = null;
     if (e.parameter.workerToken) {
       tenantId = findTenantIdByWorkerToken(e.parameter.workerToken);
       if (!tenantId) return jsonResponse({ error: 'Unknown worker link' });
     } else {
-      const auth = requireAuth(e.parameter);
+      auth = requireAuth(e.parameter);
       tenantId = auth.tenantId;
     }
     let result;
     switch (action) {
       case 'loadSchedule': result = loadSchedule(tenantId);              break;
       case 'loadPunchLog': result = loadPunchLog(e.parameter, tenantId); break;
+      // Super-admin only — the Errors sheet has no tenantId column (errors
+      // from every firm land in the same sheet), so a normal tenant login
+      // must never see this. See CLAUDE.md's "Session-expiry false logouts"
+      // troubleshooting entry for why this exists.
+      case 'loadErrors':   result = loadErrors(auth);                    break;
       default:             result = {error: 'Unknown action'};
     }
     const callback = e.parameter.callback;
@@ -1667,6 +1672,23 @@ function authFailure(body){
       ', attempt=' + body.attempt + ', outcome=' + (body.outcome || '?'),
     source: 'authFailure'
   });
+}
+
+// Super-admin-only read of the Errors sheet (schedule-manager.html's Errors
+// screen). The sheet has no tenantId column — errors from every firm land
+// in the same rows — so this must never be reachable by a normal tenant
+// login; doGet's own case comment on 'loadErrors' explains why.
+function loadErrors(auth){
+  if (!auth || !auth.isSuperadmin) return { error: 'Доступ только для супер-админа' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_ERRORS);
+  if (!sh || sh.getLastRow() < 2) return { rows: [] };
+  const lastRow = sh.getLastRow();
+  const startRow = Math.max(2, lastRow - 99); // last 100 rows
+  const values = sh.getRange(startRow, 1, lastRow - startRow + 1, 7).getValues();
+  const rows = values.map(function(r) {
+    return { when: r[0], page: r[1], role: r[2], worker: r[3], message: r[4], source: r[5], stack: r[6] };
+  }).reverse(); // newest first
+  return { rows: rows };
 }
 
 // ── Push Notifications ────────────────────────────────────────────────────────
