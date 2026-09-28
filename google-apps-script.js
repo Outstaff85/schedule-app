@@ -62,6 +62,7 @@ function doPost(e) {
       case 'aiReadSefach':         return jsonResponse(aiReadSefach(body));
       case 'aiDetectAlign':        return jsonResponse(aiDetectAlign(body));
       case 'aiVerifyField':        return jsonResponse(aiVerifyField(body));
+      case 'aiVerifyFields':       return jsonResponse(aiVerifyFields(body));
       case 'saveWorkerDoc':        return jsonResponse(saveWorkerDoc(body, tenantId));
       case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body, tenantId));
       case 'saveWorkerAssets':     return jsonResponse(saveWorkerAssets(body, tenantId));
@@ -884,9 +885,31 @@ function loadPunchLog(filter, tenantId) {
   if (!sh || sh.getLastRow() < 2) return {entries:[]};
   const rows = sh.getDataRange().getValues();
   const headers = rows[0];
-  let entries = rows.slice(1).map(row => {
+  const col = {}; headers.forEach(function(h,i){ col[h]=i; });
+  // Optimization (2026-09-28): PunchLog is append-only and interleaves every
+  // firm's rows chronologically (no per-tenant sheet split), so this always
+  // reads the WHOLE sheet — that part is unavoidable without a bigger data
+  // model change. What WAS avoidable: the old code ran the expensive per-row
+  // mapping (object construction + Utilities.formatDate, a real timezone
+  // lookup) over every row in the sheet, THEN threw away everything that
+  // didn't belong to this tenant. Filtering by tenantId/worker/type on the
+  // raw row values FIRST — cheap column lookups, no formatting — means only
+  // the rows that actually belong to this request ever pay for the mapping
+  // step, which is most of the cost as the sheet grows across every firm's
+  // history. filter.date stays a post-map filter since a raw cell can be a
+  // Date object OR an already-formatted string and needs the same
+  // normalization the mapped entries themselves get, to match a 'dd/MM/yyyy'
+  // filter string correctly either way.
+  const matchingRows = rows.slice(1).filter(function(row){
+    if (!row[col['WorkerID']]) return false;
+    if ((row[col['TenantId']] || null) !== tenantId) return false;
+    if (filter && filter.worker && row[col['Worker']] !== filter.worker) return false;
+    if (filter && filter.type && String(row[col['Type']]||'').toLowerCase() !== filter.type) return false;
+    return true;
+  });
+  let entries = matchingRows.map(function(row){
     const o = {};
-    headers.forEach((h,i) => o[h] = row[i]);
+    headers.forEach(function(h,i){ o[h] = row[i]; });
     return {
       id:            o['ID'],
       workerId:      o['WorkerID'],
@@ -905,10 +928,8 @@ function loadPunchLog(filter, tenantId) {
       clientId:      o['ClientID'] || null,
       tenantId:      o['TenantId'] || null,
     };
-  }).filter(e => e.workerId && e.tenantId === tenantId);
-  if (filter && filter.worker) entries = entries.filter(e => e.workerName === filter.worker);
-  if (filter && filter.date)   entries = entries.filter(e => e.date === filter.date);
-  if (filter && filter.type)   entries = entries.filter(e => e.type === filter.type);
+  });
+  if (filter && filter.date) entries = entries.filter(e => e.date === filter.date);
   return {entries};
 }
 
@@ -1344,6 +1365,77 @@ function aiVerifyField(body){
   (json.content || []).forEach(function(c){ if(c.type === 'text') text += c.text; });
 
   return {ok: true, value: text.trim()};
+}
+
+// Batched sibling of aiVerifyField (added 2026-09-28, optimization) — the
+// client used to fire 2-3 aiVerifyField calls in Promise.all for one scanned
+// page (idNo/dob, or passportNo/dob/expiry), each a full separate Apps
+// Script execution + Anthropic round-trip. That's the worst moment for Apps
+// Script's per-account concurrent-execution quota to get stressed, since a
+// batch of several queued pages can already have other aiReadDoc/
+// aiDetectAlign calls in flight — a contributing suspect in the
+// session-drop-during-scan issue (see CLAUDE.md's own troubleshooting
+// entry). One Anthropic call with all the crops does the same job.
+// body.jobs: [{field, kind, image, mediaType}, ...]. Returns {ok:true,
+// values:{field:value,...}} — a field missing from the model's JSON (or the
+// whole parse failing) just means that field keeps its original OCR value
+// client-side, same fallback behavior as a single aiVerifyField failing.
+function aiVerifyFields(body){
+  var props = PropertiesService.getScriptProperties();
+  var key   = props.getProperty('ANTHROPIC_API_KEY');
+  var model = props.getProperty('ANTHROPIC_MODEL') || 'claude-sonnet-5';
+  if(!key) return {error:'ANTHROPIC_API_KEY не задан в Script Properties'};
+  var jobs = body.jobs || [];
+  if(!jobs.length) return {ok:true, values:{}};
+
+  var kindAsk = {
+    digits9:    'a 9-digit Israeli ID number (מספר זהות)',
+    date:       'a date printed as DD/MM/YYYY (or DD.MM.YYYY)',
+    passportNo: 'a passport number'
+  };
+  var content = [{
+    type: 'text',
+    text: 'Each of the following ' + jobs.length + ' images is a tightly cropped, zoomed-in photo of a ' +
+      'short printed field from an ID document, labeled by its field name below. Read exactly what is ' +
+      'printed in each, character by character — do not guess based on typical formats. If a field is ' +
+      'genuinely illegible even zoomed in, use an empty string for it rather than guessing. ' +
+      'Respond with ONLY a compact JSON object mapping each field name to its value, nothing else — ' +
+      'no prose, no markdown fences.'
+  }];
+  jobs.forEach(function(j){
+    content.push({type: 'text', text: 'Field "' + j.field + '": ' + (kindAsk[j.kind] || 'a short printed field') + '.'});
+    content.push({type: 'image', source: {type: 'base64', media_type: j.mediaType || 'image/jpeg', data: j.image}});
+  });
+
+  var payload = {
+    model: model,
+    max_tokens: 200,
+    messages: [{role: 'user', content: content}]
+  };
+  var opts = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {'x-api-key': key, 'anthropic-version': '2023-06-01'},
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  var res;
+  try { res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', opts); }
+  catch(e){ return {error:'Запрос к Anthropic не прошёл: ' + e}; }
+
+  var json;
+  try { json = JSON.parse(res.getContentText()); }
+  catch(e){ return {error:'Неверный ответ от Anthropic (HTTP ' + res.getResponseCode() + ')'}; }
+  if(json.error) return {error: json.error.message || 'Ошибка Anthropic'};
+
+  var text = '';
+  (json.content || []).forEach(function(c){ if(c.type === 'text') text += c.text; });
+  var values;
+  try { values = JSON.parse(text.trim().replace(/^```(?:json)?/,'').replace(/```$/,'').trim()); }
+  catch(e){ return {ok:true, values:{}}; } // malformed JSON — caller keeps original OCR values, same as a failed single field
+
+  return {ok: true, values: (values && typeof values === 'object') ? values : {}};
 }
 
 // ── Worker document storage (Drive) ────────────────────────────────────────────

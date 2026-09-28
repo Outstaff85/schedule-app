@@ -4421,6 +4421,29 @@ async function verifyField(b64,mediaType,box,kind){
   }catch(e){ console.error(e); return null; }
 }
 
+// Batched sibling of verifyField (added 2026-09-28, optimization) — see
+// aiVerifyFields' own server-side comment for why: this replaces N parallel
+// aiVerifyField round-trips (N separate Apps Script executions) with one
+// Apps Script call carrying all the crops. jobs: [{field,kind,box}, ...].
+// Returns a plain {field: value} map; a field the model couldn't read (or a
+// totally failed/malformed response) is simply absent, same as verifyField
+// returning null for that field — callers already treat a missing value as
+// "keep the original OCR reading."
+async function verifyFieldsBatch(jobs,b64,mediaType){
+  const crops=await Promise.all(jobs.map(j=>cropFieldImage(b64,mediaType,j.box)));
+  const ready=jobs.map((j,i)=>({field:j.field,kind:j.kind,crop:crops[i]})).filter(j=>j.crop);
+  if(!ready.length) return {};
+  try{
+    const resp=await fetch(GS_URL,{
+      method:'POST',
+      body:JSON.stringify({action:'aiVerifyFields',secret:API_SECRET,...gsAuth(),
+        jobs:ready.map(j=>({field:j.field,kind:j.kind,image:j.crop.b64,mediaType:j.crop.mediaType}))})
+    });
+    const json=await resp.json();
+    return (json&&json.ok&&json.values)?json.values:{};
+  }catch(e){ console.error(e); return {}; }
+}
+
 // Israeli ID check-digit validation (Luhn-style, the government's own
 // formula) — pure arithmetic, no AI call, instant and free. The 9th digit is
 // derived from the first eight, so this catches most single-digit OCR
@@ -4460,9 +4483,11 @@ async function verifyIdChecksum(parsed,b64,mediaType){
 // original value only when the zoomed-in re-read comes back in the expected
 // shape (9 digits for an Israeli ID, DD/MM/YYYY for a date) — a malformed or
 // empty re-read is discarded, keeping the original aiReadDoc value rather
-// than risking overwriting a correct reading with a worse one. Runs the
-// (few) field checks in parallel — independent crops of the same image, no
-// reason to serialize them.
+// than risking overwriting a correct reading with a worse one. The (few)
+// field checks go through ONE combined AI call (verifyFieldsBatch, 2026-09-28
+// optimization — was Promise.all over separate verifyField calls, one Apps
+// Script execution each; see verifyFieldsBatch's/aiVerifyFields' own
+// comments for why that mattered).
 async function verifyDigitFields(parsed,b64,mediaType){
   if(!parsed||!parsed.fieldBoxes) return parsed;
   const isDigits9=s=>typeof s==='string'&&/^\d{9}$/.test(s);
@@ -4487,9 +4512,9 @@ async function verifyDigitFields(parsed,b64,mediaType){
     if(parsed.fieldBoxes.expiry)     jobs.push({field:'expiry',kind:'date'});
   }
   if(!jobs.length) return parsed;
-  const results=await Promise.all(jobs.map(j=>verifyField(b64,mediaType,parsed.fieldBoxes[j.field],j.kind)));
-  jobs.forEach((j,i)=>{
-    const val=results[i];
+  const values=await verifyFieldsBatch(jobs.map(j=>({field:j.field,kind:j.kind,box:parsed.fieldBoxes[j.field]})),b64,mediaType);
+  jobs.forEach(j=>{
+    const val=values[j.field];
     if(!val) return;
     if(j.kind==='digits9'){ if(isDigits9(val)) parsed[j.field]=val; }
     else if(j.kind==='date'){ if(isDate(val)) parsed[j.field]=val.replace(/\./g,'/'); }
