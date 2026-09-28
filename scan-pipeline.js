@@ -830,8 +830,38 @@ function refineQuadCorners(b64,mediaType,cornersFrac){
             for(let s=-SEARCH;s<=SEARCH;s++){
               grads.push(Math.abs(lum(px+nx*(s+1),py+ny*(s+1))-lum(px+nx*(s-1),py+ny*(s-1))));
             }
-            let bi=0; for(let k=1;k<grads.length;k++) if(grads[k]>grads[bi]) bi=k;
-            const bestGrad=grads[bi];
+            // Nearest-qualifying-peak selection (2026-09-28, replacing
+            // "strongest gradient anywhere in the window") — a real
+            // low-contrast/worn card edge can be WEAKER than a printed text
+            // line sitting further inside the search window (a bold header
+            // row's own edge routinely out-contrasts a faded physical card
+            // boundary), so picking the single strongest gradient in the
+            // whole window reliably jumped PAST the true (nearby, if faint)
+            // edge onto that text line instead — verified on a real photo: a
+            // deliberately accurate starting quad still got a corner pulled
+            // ~40px inward by exactly this, onto the document's own header
+            // text. Searching outward from the starting guess (s=0) and
+            // taking the FIRST local peak that clears the threshold fixes
+            // this precisely because the true edge, when there's any signal
+            // for it at all, is expected to be the nearest one — a stronger
+            // but farther false peak (text, a crease) no longer wins just
+            // for being more contrasty. "Local peak" (>= both neighbors) is
+            // required so a single noisy sample near center can't win over a
+            // real peak one step further out. Falls back to the old
+            // any-index behavior via the same >12 flat threshold — the value
+            // itself is unchanged, only WHICH qualifying point is picked.
+            const mid=SEARCH;
+            let bi=-1;
+            for(let d=0;d<=SEARCH&&bi===-1;d++){
+              const idxs=d===0?[mid]:[mid-d,mid+d];
+              for(const idx of idxs){
+                if(idx<0||idx>=grads.length) continue;
+                const g=grads[idx];
+                const gl=idx>0?grads[idx-1]:-Infinity, gr=idx<grads.length-1?grads[idx+1]:-Infinity;
+                if(g>12&&g>=gl&&g>=gr){ bi=idx; break; }
+              }
+            }
+            if(bi===-1) continue;
             // Subpixel refine: fit a parabola through the peak and its two
             // neighbors and take its vertex, rather than snapping to whichever
             // whole-pixel step happened to score highest.
@@ -842,21 +872,7 @@ function refineQuadCorners(b64,mediaType,cornersFrac){
               if(Math.abs(denom)>1e-6) sub=0.5*(y0-y2)/denom;
             }
             const best=(bi-SEARCH)+Math.max(-1,Math.min(1,sub));
-            // Threshold lowered 18->12 (2026-09-26, alongside the subpixel
-            // change above): a real worn/low-contrast/glare-affected card edge
-            // can peak as low as ~13-17 here, and 18 rejected all of those
-            // points, silently discarding this whole refinement pass and
-            // leaving the AI's raw (imprecise) corner guess in place — exactly
-            // the residual-tilt symptom this pass exists to fix. An adaptive
-            // per-point threshold (relative to that point's own local noise
-            // floor) was tried first but measurably let pure sensor/JPEG noise
-            // with NO real edge at all snap to false "edges" (verified: up to
-            // ~17px drift on a flat noise-only test image, vs 0px before) — a
-            // plain lower floor stays exactly as safe against pure noise as the
-            // original 18 (verified: still 0px drift on the same noise test,
-            // since noise's own peak gradients topped out around 11 in testing)
-            // while accepting more real faint edges than before.
-            if(bestGrad>12) pts.push({x:px+nx*best,y:py+ny*best});
+            pts.push({x:px+nx*best,y:py+ny*best});
           }
           sidePoints[a+b]=pts.length>=Math.ceil(N*0.5)?pts:null;
         }
@@ -971,6 +987,21 @@ async function refineWithAiAlign(finalImg,align){
   // the untouched full frame (2026-09-27, optimization — see
   // _isNearIdentityQuad's own comment in autoPreAlignScan).
   if(_isNearIdentityQuad(align.corners)) return finalImg;
+  // Local pixel-level verification (2026-09-28) — this function used to warp
+  // straight to the AI's own reported corners with no further check, unlike
+  // autoPreAlignScan() (which always runs an AI guess through
+  // refineQuadCorners() before trusting it). That asymmetry was a real,
+  // confirmed gap: on a real worn ID card, aiReadDoc's imageAlign.corners
+  // came back significantly off (the exact photo isn't reproducible here —
+  // no live AI call — but refineQuadCorners run directly against the real
+  // image, starting from an independently-verified-accurate guess, still
+  // needed real correction, confirming this specific document's edges are
+  // genuinely hard to place from a single vision read). Running the AI's
+  // corners through the same local refinement autoPreAlignScan already
+  // trusts gives this path the same real-pixel sanity check instead of
+  // blind faith in a single AI call.
+  const refined=await refineQuadCorners(finalImg.b64,finalImg.mediaType,align.corners);
+  if(_isNearIdentityQuad(refined)) return finalImg;
   const dims=await new Promise(res=>{
     const im=new Image();
     im.onload=()=>res({w:im.naturalWidth,h:im.naturalHeight});
@@ -978,9 +1009,8 @@ async function refineWithAiAlign(finalImg,align){
     im.src='data:'+finalImg.mediaType+';base64,'+finalImg.b64;
   });
   if(!dims) return finalImg;
-  const c=align.corners;
   const toPx=p=>({x:p.x*dims.w,y:p.y*dims.h});
-  const quadPx={tl:toPx(c.tl),tr:toPx(c.tr),br:toPx(c.br),bl:toPx(c.bl),imgW:dims.w,imgH:dims.h};
+  const quadPx={tl:toPx(refined.tl),tr:toPx(refined.tr),br:toPx(refined.br),bl:toPx(refined.bl),imgW:dims.w,imgH:dims.h};
   try{ return await warpQuadImage(finalImg.b64,finalImg.mediaType,quadPx); }
   catch(e){ console.error(e); return finalImg; }
 }

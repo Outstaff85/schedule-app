@@ -2071,19 +2071,6 @@ function openWorkerCard(wi){
       </div>
       <button class="btn sm" onclick="closeModal('workerCardOverlay')" title="Закрыть" style="flex-shrink:0;padding:0 8px"><i class="ti ti-x"></i></button>
     </div>
-    <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text2);margin-bottom:14px">
-      ${w.phone?`<div><i class="ti ti-phone"></i> ${esc(w.phone)}</div>`:''}
-      ${w.hourlyRate?`<div><i class="ti ti-coin"></i> Base ₪${w.hourlyRate}/h${w.otRate!=null?' · OT ₪'+w.otRate+'/h':''}${w.shabbatRate!=null?' · Shabbat ₪'+w.shabbatRate+'/h':''}</div>`:''}
-      ${w.startDate?`<div><i class="ti ti-calendar-event"></i> Started ${fmtDMY(w.startDate)}</div>`:''}
-      ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?'Срок истёк':'Срок приближается'} — ${expSt.deadline.toLocaleDateString('ru-RU')}</div>`:''}
-      ${workerDocId(w)?`<div><i class="ti ti-id"></i> ${esc(workerDocId(w))}</div>`:''}
-      ${[workerAddress(w),w.city].filter(Boolean).length?`<div><i class="ti ti-map-pin"></i> ${esc([workerAddress(w),w.city].filter(Boolean).join(', '))}</div>`:''}
-      ${w.incomeType&&INCOME_TYPE_LABELS[w.incomeType]?`<div><i class="ti ti-briefcase"></i> ${INCOME_TYPE_LABELS[w.incomeType]}</div>`:''}
-      ${w.otherIncomeType&&w.otherIncomeType!=='none'&&OTHER_INCOME_LABELS[w.otherIncomeType]?`<div><i class="ti ti-cash"></i> Other income: ${OTHER_INCOME_LABELS[w.otherIncomeType]}</div>`:''}
-      <div><i class="ti ti-clock-hour-4"></i> ${wh.toFixed(1)}h scheduled / week</div>
-      ${w.docUrl?`<div><i class="ti ti-file-text"></i> Документ сохранён${w.docSavedAt?': '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</div>`:''}
-    </div>
-    ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
     ${objs.length?`
     <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:10px">
       <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Objects</div>
@@ -2106,6 +2093,19 @@ function openWorkerCard(wi){
       <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Objects &amp; rates</div>
       <span style="color:var(--text3);font-size:12px">Not assigned to any object</span>
     </div>`}
+    <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text2);margin-bottom:14px">
+      ${w.phone?`<div><i class="ti ti-phone"></i> ${esc(w.phone)}</div>`:''}
+      ${w.hourlyRate?`<div><i class="ti ti-coin"></i> Base ₪${w.hourlyRate}/h${w.otRate!=null?' · OT ₪'+w.otRate+'/h':''}${w.shabbatRate!=null?' · Shabbat ₪'+w.shabbatRate+'/h':''}</div>`:''}
+      ${w.startDate?`<div><i class="ti ti-calendar-event"></i> Started ${fmtDMY(w.startDate)}</div>`:''}
+      ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?'Срок истёк':'Срок приближается'} — ${expSt.deadline.toLocaleDateString('ru-RU')}</div>`:''}
+      ${workerDocId(w)?`<div><i class="ti ti-id"></i> ${esc(workerDocId(w))}</div>`:''}
+      ${[[workerAddress(w),w.houseNumber].filter(Boolean).join(' '),w.city].filter(Boolean).length?`<div><i class="ti ti-map-pin"></i> ${esc([[workerAddress(w),w.houseNumber].filter(Boolean).join(' '),w.city].filter(Boolean).join(', '))}</div>`:''}
+      ${w.incomeType&&INCOME_TYPE_LABELS[w.incomeType]?`<div><i class="ti ti-briefcase"></i> ${INCOME_TYPE_LABELS[w.incomeType]}</div>`:''}
+      ${w.otherIncomeType&&w.otherIncomeType!=='none'&&OTHER_INCOME_LABELS[w.otherIncomeType]?`<div><i class="ti ti-cash"></i> Other income: ${OTHER_INCOME_LABELS[w.otherIncomeType]}</div>`:''}
+      <div><i class="ti ti-clock-hour-4"></i> ${wh.toFixed(1)}h scheduled / week</div>
+      ${w.docUrl?`<div><i class="ti ti-file-text"></i> Документ сохранён${w.docSavedAt?': '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</div>`:''}
+    </div>
+    ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
     <div class="modal-actions">
       <button class="btn sm red" onclick="deleteWorkerFromCard(${wi})"><i class="ti ti-trash"></i> Delete</button>
       ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Скачать документ</a>`:''}
