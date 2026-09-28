@@ -14,7 +14,8 @@ A staff scheduling & GPS punch-clock PWA for a single client ("Odinson"), served
 
 ### Files
 
-- `schedule-manager.html` — the manager/admin app (shifts, workers, clients, payroll, exports). RTL, Hebrew (`lang="he"`), ~5000+ lines.
+- `schedule-manager.html` — the manager/admin app (shifts, workers, clients, payroll, exports). RTL, Hebrew (`lang="he"`), ~4500+ lines. Lazy-loads `scan-pipeline.js` on first scan to avoid parsing the document-scanning code (~100KB, corner editor, alignment/OCR orchestration, field verification, etc.) on every page load.
+- `scan-pipeline.js` — document-scanning pipeline, lazy-loaded by `schedule-manager.html` (added 2026-09-28). Contains the corner editor (`renderScanQuadEditor`/`initScanQuad`/`attachQuadDrag`), alignment (`autoPreAlignScan`/`refineQuadCorners`/`refineWithAiAlign`/`finalTightenPass`), OCR calls and field verification, and all related helpers. Loaded once via `ensureScanPipelineLoaded()` and executed in global scope — every function becomes an ordinary global after load, exactly as if it were still inline in `schedule-manager.html`. **Entry points** (always in the main HTML file): `startNewScan()` (new manual scan, async wrapper around `openAiScan()`) and `rescanWorkerDoc(workerId)` (rescan existing worker, async wrapper around `openAiScan()` with `__aiRescanWorkerId` set). Both become async in the main file to handle the load promise, though `openAiScan()` itself (defined in the pipeline once loaded) remains synchronous.
 - `worker-punch.html` — the worker-facing clock-in/out app, opened via a per-worker tokenized link.
 - `service-worker.js` — PWA offline shell (network-first, cache fallback). Never intercepts `script.google.com` — the API always goes straight to network.
 - `manifest.json` / `manifest-punch.json` — installable-PWA manifests for the two apps.
@@ -36,7 +37,7 @@ No npm/build/lint/test tooling — edit the HTML and reload.
   - `.github/workflows/deploy.yml` — Firebase Hosting (project `schedule-odinson`).
   - `.github/workflows/deploy-apps-script.yml` — `clasp push --force && clasp deploy` for `apps-script/` (needs `CLASP_CREDENTIALS`/`CLASP_DEPLOYMENT_ID` secrets).
   - `.github/workflows/deploy-functions.yml` — deploys `functions/` on any push touching `functions/**`, or via manual `workflow_dispatch`. Builds a fresh venv in CI. `firebase.json`'s `functions[0].runtime` is pinned to `"python312"` for a deterministic runtime. On failure it opens/updates a GitHub Issue with likely causes — see Troubleshooting below for the known IAM permission gaps.
-- When bumping the service worker's cache (`CACHE` constant in `service-worker.js`), increment the version string or clients keep serving stale HTML after deploy. Current version: v39 (as of 2026-09-28).
+- When bumping the service worker's cache (`CACHE` constant in `service-worker.js`), increment the version string or clients keep serving stale HTML after deploy. Current version: v40 (as of 2026-09-28, bumped when `scan-pipeline.js` was added).
 - `firebase.json`'s hosting `ignore` list must include `functions/**`, or `firebase deploy --only hosting` sweeps the entire `functions/venv` into the public hosting bucket.
 
 ### Git workflow (enforced by hooks in `.claude/settings.json`)
@@ -102,6 +103,7 @@ Both HTML files talk to the same Apps Script Web App endpoint (`GS_URL`, hardcod
 - Admin punch log filters by `workerId`/`clientId` (not name), so two workers sharing a name don't collapse together.
 - Exports: `exportExcel` (SheetJS/xlsx from CDN), `exportPDF`, `exportJSON`, `exportSalaryCSV`, `exportPunchCSV` — salary export goes through `groupPunchesIntoShifts()` like everything else.
 - **Errors screen** (`#errorsScreen`, added 2026-09-27, super-admin only): `openErrorsScreen()`/`closeErrorsScreen()`/`loadErrorsList()` — a simple table of the last ~100 `Errors` sheet rows (`loadErrors` GET action), reachable via an "Ошибки" button on the Firms screen and in `renderAccountControl()` next to the super-admin's "Фирмы" button. Overlays whatever screen was already showing; closing it just hides the overlay, no re-render needed underneath. Gated super-admin-only because the sheet has no `tenantId` column (see Backend section) — never add this button/screen for a normal tenant login without first adding tenant scoping both here and server-side.
+- **Scan pipeline entry points** (added 2026-09-28, now async): `startNewScan()` and `rescanWorkerDoc(workerId)` are now async functions in `schedule-manager.html` that call `ensureScanPipelineLoaded()` before delegating to `openAiScan()` (defined in the lazy-loaded `scan-pipeline.js`). Manual-scan buttons and the rescan action now `await` these calls.
 
 #### Worker modal (`showWorkerModal()`)
 
