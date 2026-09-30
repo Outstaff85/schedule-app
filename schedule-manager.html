@@ -5039,7 +5039,11 @@ function openSalaryExportModal(){
   const period=document.getElementById('salaryPeriod')?.value||'week';
   document.getElementById('salaryExportModal').innerHTML = `
     <div class="modal-title">Export salary</div>
-    <div style="font-size:13px;color:var(--text2);margin-bottom:14px">Period: <b>${esc(SALARY_PERIOD_LABELS[period]||period)}</b></div>
+    <div class="field"><label>Period</label>
+      <select id="salaryExportPeriod" style="width:100%">
+        ${salaryExportPeriodOptions().map(([v,l])=>`<option value="${esc(v)}" ${v===period?'selected':''}>${esc(l)}</option>`).join('')}
+      </select>
+    </div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal('salaryExportOverlay')">Cancel</button>
       <button class="btn sm" onclick="runSalaryExport('csv')"><i class="ti ti-file-text"></i> CSV</button>
@@ -5048,15 +5052,37 @@ function openSalaryExportModal(){
     </div>`;
   document.getElementById('salaryExportOverlay').classList.add('open');
 }
+// Period choices for the export modal: the same This Week / This Month /
+// All Time the salary table offers, plus each of the 12 previous calendar
+// months by name ('m:YYYY-MM') so a closed month can be exported directly.
+function salaryExportPeriodOptions(){
+  const now=new Date(), opts=[['week',SALARY_PERIOD_LABELS.week],['month',SALARY_PERIOD_LABELS.month]];
+  for(let i=1;i<=12;i++){
+    const d=new Date(now.getFullYear(), now.getMonth()-i, 1);
+    opts.push(['m:'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'), d.toLocaleDateString('en-GB',{month:'long',year:'numeric'})]);
+  }
+  opts.push(['all',SALARY_PERIOD_LABELS.all]);
+  return opts;
+}
+function salaryPeriodLabel(period){
+  const o=salaryExportPeriodOptions().find(([v])=>v===period);
+  return o ? o[1] : period;
+}
 function runSalaryExport(format){
+  const period=document.getElementById('salaryExportPeriod')?.value || document.getElementById('salaryPeriod')?.value || 'week';
   closeModal('salaryExportOverlay');
-  exportSalary(format);
+  exportSalary(format, period);
 }
 function buildSalaryExportRows(period){
   const log=getPunchLog(); const now=new Date();
   let filtered=log;
   if(period==='week'){ const ws=new Date(now); ws.setDate(ws.getDate()-ws.getDay()); ws.setHours(0,0,0,0); filtered=log.filter(e=>new Date(e.ts)>=ws); }
   else if(period==='month'){ filtered=log.filter(e=>new Date(e.ts)>=new Date(now.getFullYear(),now.getMonth(),1)); }
+  else if(/^m:\d{4}-\d{2}$/.test(period)){
+    const [y,m]=period.slice(2).split('-').map(Number);
+    const from=new Date(y,m-1,1), to=new Date(y,m,1);
+    filtered=log.filter(e=>{ const d=new Date(e.ts); return d>=from && d<to; });
+  }
   const byWorkerPunches={};
   filtered.forEach(e=>{ (byWorkerPunches[e.workerId]=byWorkerPunches[e.workerId]||[]).push(e); });
   const byWD={};
@@ -5081,14 +5107,14 @@ function buildSalaryExportRows(period){
   });
   return rows;
 }
-function exportSalary(format){
-  const period=document.getElementById('salaryPeriod')?.value||'week';
+function exportSalary(format, period){
+  period=period||document.getElementById('salaryPeriod')?.value||'week';
   const now=new Date();
   const rows=buildSalaryExportRows(period);
   const header=['Worker','Object/Client','Supplier','Date','First In','Last Out','Hours','Rate (\u20aa/h)','Day Pay (\u20aa)','Notes'];
   const toArr=r=>[r.worker, r.client, r.supplier, r.date, r.firstIn, r.lastOut, r.hours.toFixed(2), r.rate, r.pay.toFixed(2), r.notes];
   const totalHours=rows.reduce((s,r)=>s+r.hours,0), totalPay=rows.reduce((s,r)=>s+r.pay,0);
-  const fname='salary-'+period+'-'+now.toISOString().slice(0,10);
+  const fname='salary-'+(period.startsWith('m:')?period.slice(2):period+'-'+localYMD(now));
   if(format==='excel'){
     if(typeof XLSX==='undefined'){ showToast('Excel library not loaded'); return; }
     const aoa=[header, ...rows.map(toArr), ['','','','','','Total',totalHours.toFixed(2),'',totalPay.toFixed(2),'']];
@@ -5096,7 +5122,7 @@ function exportSalary(format){
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Salary');
     XLSX.writeFile(wb, fname+'.xlsx');
   } else if(format==='pdf'){
-    const title='Salary — '+(SALARY_PERIOD_LABELS[period]||period);
+    const title='Salary — '+salaryPeriodLabel(period);
     const rowsHtml=rows.map(r=>'<tr>'+toArr(r).map(v=>`<td>${esc(String(v))}</td>`).join('')+'</tr>').join('');
     const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(title)}</title>
       <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #ccc;padding:5px 8px;text-align:left}th{background:#f0f0f0}tfoot td{font-weight:bold}</style>
