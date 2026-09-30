@@ -2674,15 +2674,11 @@ function renderClientsPage(){
 
   grid.innerHTML=clients.map(c=>{
     const assigned=workers.filter(w=>(w.clientIds||[]).includes(c.id));
-    const hasGeo=c.lat&&c.lng;
     return `<div class="client-card">
       <div class="client-card-header">
         <div class="client-card-dot" style="background:${c.color}"></div>
         <div><div class="client-card-name">${esc(c.name)}</div>${c.companyNumber?`<div class="client-card-info"><i class="ti ti-id"></i> ח.פ ${esc(c.companyNumber)}</div>`:''}${c.object?`<div class="client-card-info"><i class="ti ti-building"></i> ${esc(c.object)}</div>`:''}${c.address?`<div class="client-card-info"><i class="ti ti-map-pin"></i> ${esc(c.address)}</div>`:''}</div>
       </div>
-      ${hasGeo?`<div style="font-size:12px;color:var(--green);background:var(--green-bg);border-radius:6px;padding:5px 8px">
-        <i class="ti ti-gps"></i> GPS: ${Number(c.lat).toFixed(4)}, ${Number(c.lng).toFixed(4)} · radius ${c.radius||100}m
-      </div>`:`<div style="font-size:12px;color:var(--text3)"><i class="ti ti-map-pin-off"></i> No geolocation — edit to add</div>`}
 
       <div style="font-size:12px;color:var(--text2)"><strong style="color:var(--text)">Workers:</strong> ${assigned.length?assigned.map(w=>`<span style="color:${WORKER_COLORS[w.colorIdx%8].text}">${esc(w.name)}</span>`).join(', '):'None assigned'}</div>
       <div class="client-card-actions">
