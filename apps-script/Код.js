@@ -107,8 +107,8 @@ function doGet(e) {
     }
     let result;
     switch (action) {
-      case 'loadSchedule': result = loadSchedule(tenantId);              break;
-      case 'loadPunchLog': result = loadPunchLog(e.parameter, tenantId); break;
+      case 'loadSchedule': result = loadSchedule(tenantId, auth);              break;
+      case 'loadPunchLog': result = loadPunchLog(e.parameter, tenantId, auth); break;
       // Super-admin only — the Errors sheet has no tenantId column (errors
       // from every firm land in the same sheet), so a normal tenant login
       // must never see this. See CLAUDE.md's "Session-expiry false logouts"
@@ -785,13 +785,52 @@ function saveSchedule(data, baseSavedAt, tenantId, auth) {
   return {ok: true, savedAt: savedAt};
 }
 
-function loadSchedule(tenantId) {
+// Allow-list sanitizer for role==='supplier' (Admin/Roles plan, stage 11) —
+// builds a NEW object from an explicit list of permitted fields rather than
+// deleting forbidden ones from a copy, so a field added to the worker model
+// later is excluded by default unless someone deliberately adds it here. NEVER
+// includes hourlyRate/otRate/shabbatRate/clientRates (the worker's real wage)
+// or any client-rate field — a supplier sees which client/object (by name,
+// via clientIds — the client LIST itself is separately stripped down to just
+// id+name in loadSchedule below) a worker is assigned to, never what that
+// client pays or what the worker earns there. `supplierRate` replaces the raw
+// `supplierRates` map with just this supplier's own flat commission number
+// (see stage 12) — safe to hand over since it's already scoped to their own
+// worker and their own agency, not a peek at another supplier's rate.
+function _stripWorkerForSupplier(w, supplierId){
+  const o = {};
+  ['id','name','docGiven','docSurname','docId','docType','docDob','docSex','address','houseNumber','city',
+   'maritalStatus','healthFund','workStartDate','phone','docChildren','clientIds','supplierId','token',
+   'startDate','expiryEnabled','expiryMonths','expiryWarnMonths','docUrl','docFileId','assetsFileId',
+   'avatarB64','colorIdx','notes','createdAt','schedule'
+  ].forEach(function(k){ if(w[k]!==undefined) o[k]=w[k]; });
+  const rates = w.supplierRates && w.supplierRates[supplierId];
+  o.supplierRate = (rates && rates.rate!=null) ? rates.rate : null;
+  return o;
+}
+// Same allow-list principle for clients — a supplier only ever needs to know
+// WHICH site a worker is assigned to (to show a readable name), never that
+// client's own billing/rate data.
+function _stripClientForSupplier(c){ return { id: c.id, name: c.name, object: c.object||null }; }
+
+function loadSchedule(tenantId, auth) {
   if (!tenantId) return { workers: [], clients: [], suppliers: [], weekStart: null, savedAt: null };
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_SCHEDULE);
   const m = readScheduleMap(sh, tenantId);
+  const clients = normalizeClients(m.clients); // ← radius guaranteed numeric
+  if (auth && auth.role === 'supplier') {
+    const workers = m.workers.filter(function(w){ return w.supplierId === auth.supplierId; });
+    return {
+      workers:   workers.map(function(w){ return _stripWorkerForSupplier(w, auth.supplierId); }),
+      clients:   clients.map(_stripClientForSupplier),
+      suppliers: [], // a supplier never needs the full supplier directory, only its own commission (already on each worker above)
+      weekStart: m.weekStart,
+      savedAt:   m.savedAt,
+    };
+  }
   return {
     workers:   m.workers,
-    clients:   normalizeClients(m.clients),   // ← radius guaranteed numeric
+    clients:   clients,
     suppliers: m.suppliers,
     weekStart: m.weekStart,
     savedAt:   m.savedAt,
@@ -1223,10 +1262,22 @@ function savePunch(entry, tenantId) {
   return {ok: true, id: row[0]};
 }
 
-function loadPunchLog(filter, tenantId) {
+function loadPunchLog(filter, tenantId, auth) {
   if (!tenantId) return {entries:[]};
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(_punchSheetName(tenantId));
   if (!sh || sh.getLastRow() < 2) return {entries:[]};
+  // Admin/Roles plan, stage 11: a supplier login only ever sees punches
+  // belonging to ITS OWN workers — resolved by reading this tenant's own
+  // worker list (Schedule sheet) and keeping only the ids whose supplierId
+  // matches, same allow-list-by-worker-id principle _stripWorkerForSupplier()
+  // uses in loadSchedule() above.
+  let supplierWorkerIds = null;
+  if (auth && auth.role === 'supplier') {
+    const schSh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_SCHEDULE);
+    const m = readScheduleMap(schSh, tenantId);
+    supplierWorkerIds = {};
+    m.workers.forEach(function(w){ if (w.supplierId === auth.supplierId) supplierWorkerIds[w.id] = true; });
+  }
   const rows = sh.getDataRange().getValues();
   const headers = rows[0];
   const col = {}; headers.forEach(function(h,i){ col[h]=i; });
@@ -1245,12 +1296,13 @@ function loadPunchLog(filter, tenantId) {
     if (col['TenantId'] != null && row[col['TenantId']] && row[col['TenantId']] !== tenantId) return false;
     if (filter && filter.worker && row[col['Worker']] !== filter.worker) return false;
     if (filter && filter.type && String(row[col['Type']]||'').toLowerCase() !== filter.type) return false;
+    if (supplierWorkerIds && !supplierWorkerIds[row[col['WorkerID']]]) return false;
     return true;
   });
   let entries = matchingRows.map(function(row){
     const o = {};
     headers.forEach(function(h,i){ o[h] = row[i]; });
-    return {
+    const base = {
       id:            o['ID'],
       workerId:      o['WorkerID'],
       workerName:    o['Worker'],
@@ -1259,15 +1311,21 @@ function loadPunchLog(filter, tenantId) {
       date:          (o['Date'] instanceof Date) ? Utilities.formatDate(o['Date'], _TZ_(), 'dd/MM/yyyy') : o['Date'],
       ts:            (o['Timestamp'] instanceof Date) ? o['Timestamp'].toISOString() : o['Timestamp'],
       site:          o['Site'],
-      dist:          o['Distance(m)'] !== '' ? Number(o['Distance(m)']) : null,
-      gpsAccuracy:   o['GPS Accuracy(m)'] !== '' ? Number(o['GPS Accuracy(m)']) : null,
-      gpsSuspicious: o['GPS Suspicious'] === 'YES',
-      gpsWarnings:   o['GPS Warnings'] ? String(o['GPS Warnings']).split('; ').filter(Boolean) : [],
-      notes:         o['Notes'],
-      editedAt:      o['EditedAt'],
       clientId:      o['ClientID'] || null,
-      tenantId:      o['TenantId'] || null,
     };
+    // Admin/Roles plan, stage 11: GPS fields (exact location, accuracy, spoof
+    // flags) and internal editing metadata are never handed to a supplier —
+    // IN/OUT time + which site is all it needs. Every other role gets the
+    // full record, unchanged.
+    if (auth && auth.role === 'supplier') return base;
+    base.dist          = o['Distance(m)'] !== '' ? Number(o['Distance(m)']) : null;
+    base.gpsAccuracy   = o['GPS Accuracy(m)'] !== '' ? Number(o['GPS Accuracy(m)']) : null;
+    base.gpsSuspicious = o['GPS Suspicious'] === 'YES';
+    base.gpsWarnings   = o['GPS Warnings'] ? String(o['GPS Warnings']).split('; ').filter(Boolean) : [];
+    base.notes         = o['Notes'];
+    base.editedAt      = o['EditedAt'];
+    base.tenantId      = o['TenantId'] || null;
+    return base;
   });
   if (filter && filter.date) entries = entries.filter(e => e.date === filter.date);
   return {entries};
