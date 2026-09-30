@@ -2670,19 +2670,17 @@ function gsAuth(){
 // (callers here already check `json.error` themselves) — only a true
 // network failure or an unparseable response rejects.
 //
-// BUG FIX (2026-10-01): this used to call xhr.setRequestHeader('Content-Type',
-// 'application/json'), which every other GS_URL call in this file deliberately
-// avoids — a fetch()/XHR request only stays a CORS "simple request" (no
-// preflight) when it has no explicit Content-Type (the browser then defaults
-// to text/plain). Apps Script Web Apps only implement doGet()/doPost(), never
-// doOptions(), so a request that DOES trigger a preflight gets its OPTIONS
-// blocked by the browser before the real POST is ever sent — surfacing to the
-// caller as a bare, uninformative "network error"/"network unavailable" with
-// nothing in the Apps Script logs, since the server never even saw it. This
-// is exactly why saveWorkerDoc/saveWorkerAssets (the only two calls routed
-// through xhrPostJSON) started failing while every other GS_URL call kept
-// working fine. Fixed by dropping the header, matching the plain fetch(GS_URL,
-// {method:'POST',body:...}) calls elsewhere in this file.
+// BUG FIX (2026-10-01, part 1): this used to call xhr.setRequestHeader(
+// 'Content-Type','application/json'), which every other GS_URL call in this
+// file deliberately avoids — a fetch()/XHR request only stays a CORS "simple
+// request" (no preflight) when it has no explicit Content-Type (the browser
+// then defaults to text/plain). Apps Script Web Apps only implement
+// doGet()/doPost(), never doOptions(), so a request that DOES trigger a
+// preflight gets its OPTIONS blocked by the browser before the real POST is
+// ever sent — surfacing to the caller as a bare "network error" with nothing
+// in the Apps Script logs, since the server never even saw it. Fixed by
+// dropping the header, matching the plain fetch(GS_URL,{method:'POST',...})
+// calls elsewhere in this file.
 //
 // Also, unlike those calls, xhrPostJSON() used to bypass the window.fetch
 // wrapper below entirely (raw XMLHttpRequest never goes through fetch()), so
@@ -2692,12 +2690,24 @@ function gsAuth(){
 // gets. Now mirrors it: up to SESSION_RETRY_DELAYS_MS.length extra attempts
 // on the exact SESSION_EXPIRED_ERROR text, then clears the session and
 // reloads to the login screen, same as checkExpired() below.
-function xhrPostJSON(url,bodyObj,onProgress,_attempt){
+//
+// BUG FIX (2026-10-01, part 2): removing the Content-Type header alone was
+// NOT enough — "network error" kept recurring. Root cause: per the
+// Fetch/XHR spec, attaching ANY listener to xhr.upload (e.g. `onprogress`,
+// which this function used to do whenever a caller passed onProgress) forces
+// a cross-origin request into CORS-preflight mode, completely independent of
+// headers — the "upload listener flag" is its own, separate preflight
+// trigger. So real byte-level upload progress against a bare XHR is
+// fundamentally incompatible with GS_URL (no doOptions() to answer that
+// preflight) no matter what headers are/aren't set. xhrPostJSON() no longer
+// accepts/attaches an upload listener at all — callers wanting a progress
+// bar against GS_URL must fake one (see aiFillForm101()'s own ticker) rather
+// than ask XHR for real bytes, which this specific server can never support.
+function xhrPostJSON(url,bodyObj,_attempt){
   const attempt=_attempt||0;
   return new Promise((resolve,reject)=>{
     const xhr=new XMLHttpRequest();
     xhr.open('POST',url);
-    if(onProgress) xhr.upload.onprogress=e=>{ if(e.lengthComputable) onProgress(e.loaded,e.total); };
     xhr.onload=()=>{
       let json;
       try{ json=JSON.parse(xhr.responseText); }
@@ -2707,7 +2717,7 @@ function xhrPostJSON(url,bodyObj,onProgress,_attempt){
         if(attempt < SESSION_RETRY_DELAYS_MS.length){
           const delay=SESSION_RETRY_DELAYS_MS[attempt];
           reportAuthFailureXhr(bodyObj&&bodyObj.action, attempt, 'retrying');
-          const retry=()=>xhrPostJSON(url,bodyObj,onProgress,attempt+1).then(resolve,reject);
+          const retry=()=>xhrPostJSON(url,bodyObj,attempt+1).then(resolve,reject);
           delay>0?setTimeout(retry,delay):retry();
           return;
         }
@@ -4377,6 +4387,12 @@ function getSignaturePng(canvasId){
 async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
   mode=mode||'download';
   const isRegen=!!presetAssets;
+  // Hoisted to function scope (not just the upload-mode block below) so the
+  // catch{} can clear it too — otherwise a genuine network failure (docPromise
+  // actually rejecting, not just resolving with an error) skips the normal
+  // stopFakeProgress() call and leaks a running setInterval forever.
+  let __fakeTickTimer=null;
+  const stopFakeProgress=()=>{ if(__fakeTickTimer){ clearInterval(__fakeTickTimer); __fakeTickTimer=null; } };
   // Only the blocking new-worker/rescan upload path (mode==='upload' &&
   // !isRegen) has #workerModal replaced by showWorkerUploadingOverlay()
   // beforehand — a background regenerate (isRegen, called from
@@ -4530,20 +4546,25 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // lets it trash the exact old file.
       const fileBase64=fnJson.pdfBase64;
       const w=targetWorker;
-      // Real byte-level upload progress (added 2026-09-30, per user request
-      // — see xhrPostJSON's own comment for why fetch() can't do this) —
-      // docPromise/assetsPromise upload concurrently, so their progress is
-      // combined by total bytes across both, not just whichever finishes
-      // first; the 20-90% range leaves room for "building PDF" (0%) before
-      // and "done" (100%) after, so the bar visibly moves at every stage.
-      let docLoaded=0,docTotal=0,assetsLoaded=0,assetsTotal=0;
-      const reportUploadProgress=()=>{
+      // Progress bar (2026-09-30, real byte-level via xhr.upload.onprogress;
+      // REVERTED 2026-10-01 — see xhrPostJSON()'s own comment: merely
+      // attaching an xhr.upload listener forces a CORS preflight on a
+      // cross-origin request regardless of headers, and Apps Script has no
+      // doOptions() to answer it — so real upload-byte progress against
+      // GS_URL can never work, headers or not. Uses a fake ticker instead:
+      // creeps from 20% toward a soft ceiling (85%) while the request is in
+      // flight, jumps straight to 100% once both calls actually resolve —
+      // still visibly moving (not a static spinner), just not byte-accurate.
+      const startFakeProgress=()=>{
         if(!showBlockingProgress) return;
-        const total=docTotal+assetsTotal;
-        const frac=total>0?(docLoaded+assetsLoaded)/total:0;
-        renderWorkerUploadProgress('מעלה ל-Google Drive, נא לא לסגור…',20+Math.round(frac*70));
+        let pct=20;
+        renderWorkerUploadProgress('מעלה ל-Google Drive, נא לא לסגור…',pct);
+        __fakeTickTimer=setInterval(()=>{
+          pct=Math.min(85,pct+Math.max(1,Math.round((85-pct)*0.15)));
+          renderWorkerUploadProgress('מעלה ל-Google Drive, נא לא לסגור…',pct);
+        },350);
       };
-      if(showBlockingProgress) renderWorkerUploadProgress('מעלה ל-Google Drive, נא לא לסגור…',20);
+      startFakeProgress();
       // saveWorkerDoc (the PDF) and saveWorkerAssets (the scan/signature
       // sidecar) write to two different Drive files and don't depend on each
       // other's result (the sidecar's own previousFileId is w.assetsFileId,
@@ -4553,8 +4574,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // workers/rescans. Skipped on a regenerate (isRegen) same as before —
       // see the comment below that used to sit next to the sequential call.
       const docPromise=xhrPostJSON(GS_URL,
-        {action:'saveWorkerDoc',secret:API_SECRET,...gsAuth(),fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null},
-        (loaded,total)=>{ docLoaded=loaded; docTotal=total; reportUploadProgress(); });
+        {action:'saveWorkerDoc',secret:API_SECRET,...gsAuth(),fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null});
       // Cache the scan+signature (and any extra pages — ספח appendix card,
       // contract, etc.) that actually built this PDF as a small private
       // Drive sidecar (never shown to anyone, just read back by
@@ -4575,10 +4595,10 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
         {action:'saveWorkerAssets',secret:API_SECRET,...gsAuth(),
           scanB64:scanImage.b64, scanMediaType:scanImage.mediaType, sigPng:sigPng||null,
           extraPages:otherPagesToUse,
-          fileNameBase:fileName.replace(/\.pdf$/,''), previousFileId:w.assetsFileId||null},
-        (loaded,total)=>{ assetsLoaded=loaded; assetsTotal=total; reportUploadProgress(); }
+          fileNameBase:fileName.replace(/\.pdf$/,''), previousFileId:w.assetsFileId||null}
       ).catch(()=>null):Promise.resolve(null);
       const [json,assetsJson]=await Promise.all([docPromise,assetsPromise]);
+      stopFakeProgress();
       if(!json||json.error) throw new Error((json&&json.error)||'Сервер не ответил');
       if(showBlockingProgress) renderWorkerUploadProgress('הועלה בהצלחה',100);
       if(w){
@@ -4602,6 +4622,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     if(firmMissing.length) setTimeout(()=>showToast('⚠ Профиль фирмы неполный — в Форме 101 пусто: '+firmMissing.join(', '),4000),2600);
     return true;
   }catch(err){
+    stopFakeProgress();
     console.error(err);
     showToast('Не удалось: '+(err&&err.message||''));
     // Flag it on the worker (if one's resolved) so the "no document" badge
