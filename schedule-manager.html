@@ -3677,17 +3677,31 @@ function closeErrorsScreen(){
 // targetId parametrized 2026-10-02 (Admin/Roles plan stage 5) — same reuse
 // pattern as renderFirmsList() above, feeds either the standalone
 // #errorsScreen or the admin panel's Errors tab (#adminErrorsList).
+//
+// Copy button (added 2026-09-30, per request): each error card gets a small
+// top-right icon button that copies that one error's full text (timestamp +
+// page + source + message) to the clipboard — useful for pasting a row into
+// a bug report/chat without manually selecting wrapped text. Rows are kept
+// in __errorsRowsByTarget, keyed by targetId (the standalone screen and the
+// admin-panel tab load independently, same pattern loadErrorsList() already
+// follows for its own target parametrization), so the button's onclick can
+// just pass back the row index rather than re-serializing the whole error
+// into an inline attribute (awkward/fragile with newlines and quotes).
+let __errorsRowsByTarget = {};
 async function loadErrorsList(targetId){
-  const listEl = document.getElementById(targetId||'errorsList');
+  targetId = targetId || 'errorsList';
+  const listEl = document.getElementById(targetId);
   listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
   try{
     const res = await fetch(GS_URL + '?action=loadErrors' + gsAuthQuery());
     const json = await res.json();
     if(!json || json.error){ listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Ошибка загрузки')+'</div>'; return; }
     const rows = json.rows || [];
+    __errorsRowsByTarget[targetId] = rows;
     if(!rows.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Ошибок нет.</div>'; return; }
-    listEl.innerHTML = rows.map(r => `
-      <div style="padding:10px 12px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:12px">
+    listEl.innerHTML = rows.map((r,i) => `
+      <div style="position:relative;padding:10px 40px 10px 12px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:12px">
+        <button class="btn sm" title="Копировать ошибку" onclick="copyErrorRow('${targetId}',${i})" style="position:absolute;top:6px;right:6px;padding:4px 6px;min-width:0"><i class="ti ti-copy"></i></button>
         <div style="display:flex;gap:10px;color:var(--text2);margin-bottom:4px">
           <span>${esc(r.when ? new Date(r.when).toLocaleString() : '')}</span>
           <span>${esc(r.page||'')}</span>
@@ -3696,6 +3710,29 @@ async function loadErrorsList(targetId){
         <div style="word-break:break-word">${esc(r.message||'')}</div>
       </div>`).join('');
   }catch(e){ listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
+}
+function errorRowText(r){
+  const head = [r.when ? new Date(r.when).toLocaleString() : '', r.page||'', r.source||''].filter(Boolean).join(' · ');
+  return head + (head && r.message ? '\n' : '') + (r.message||'');
+}
+async function copyErrorRow(targetId, idx){
+  const r = (__errorsRowsByTarget[targetId]||[])[idx];
+  if(!r) return;
+  const text = errorRowText(r);
+  try{
+    await navigator.clipboard.writeText(text);
+    showToast('Скопировано');
+  }catch(e){
+    // Fallback for contexts where the async Clipboard API is unavailable/denied.
+    try{
+      const ta=document.createElement('textarea');
+      ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showToast('Скопировано');
+    }catch(e2){ showToast('Не удалось скопировать'); }
+  }
 }
 
 // Reversible: flips every login belonging to this firm active/inactive.
