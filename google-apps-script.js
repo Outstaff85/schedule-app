@@ -90,6 +90,9 @@ function doPost(e) {
       case 'savePendingHoursBatch': return jsonResponse(savePendingHoursBatch(body, tenantId, auth));
       case 'approvePendingHours':  return jsonResponse(approvePendingHours(body, tenantId, auth));
       case 'rejectPendingHours':   return jsonResponse(rejectPendingHours(body, tenantId, auth));
+      case 'supplierAddWorker':    return jsonResponse(supplierAddWorker(body, tenantId, auth));
+      case 'supplierUpdateWorker': return jsonResponse(supplierUpdateWorker(body, tenantId, auth));
+      case 'supplierDeleteWorker': return jsonResponse(supplierDeleteWorker(body, tenantId, auth));
       default:                     return jsonResponse({error: 'Unknown action: ' + body.action});
     }
   } catch(e) {
@@ -788,6 +791,70 @@ function saveSchedule(data, baseSavedAt, tenantId, auth) {
   if (current._row) sh.getRange(current._row, 1, 1, SCHEDULE_HEADERS.length).setValues([rowValues]);
   else sh.appendRow(rowValues);
   return {ok: true, savedAt: savedAt};
+}
+function _writeScheduleRow(sh, current, tenantId, workers, clients, suppliers, weekStart){
+  const savedAt = new Date().toISOString();
+  const rowValues = [tenantId, JSON.stringify(workers), JSON.stringify(clients), weekStart||'', savedAt, JSON.stringify(suppliers)];
+  if (current._row) sh.getRange(current._row, 1, 1, SCHEDULE_HEADERS.length).setValues([rowValues]);
+  else sh.appendRow(rowValues);
+  return savedAt;
+}
+
+// ── Supplier-portal worker CRUD (Admin/Roles plan, stage 16) ───────────────────
+// A supplier login is NEVER allowed to call saveSchedule() directly — that
+// action replaces the tenant's ENTIRE workers/clients/suppliers blob in one
+// write, which would let a supplier overwrite data belonging to every other
+// worker/client/agency in the firm, not just its own. These three actions
+// are the deliberately narrow substitute: each one loads the full Schedule
+// map server-side, touches only ONE worker record the caller's own
+// supplierId actually owns, through an explicit field allow-list (contact/
+// personal-info fields only — never hourlyRate/otRate/shabbatRate/
+// clientRates/clientIds/supplierRates, the same wage-privacy boundary
+// _stripWorkerForSupplier() already enforces on reads), then writes the
+// whole map back via the same _writeScheduleRow() helper saveSchedule()
+// itself uses — no parallel write path, no risk of drifting from the real
+// Schedule-sheet format.
+function _supplierWorkerAllowedFields(){
+  return ['docGiven','docSurname','phone','docId','address','houseNumber','city','docDob','docSex',
+    'maritalStatus','healthFund','startDate','notes','status'];
+}
+function supplierAddWorker(body, tenantId, auth){
+  if (!tenantId) return {error:'No tenant'};
+  if (!auth || auth.role !== 'supplier') throw {error:'Только для роли поставщика'};
+  const sh = getOrCreateSheet(SpreadsheetApp.getActiveSpreadsheet(), SH_SCHEDULE);
+  ensureHeaders(sh, SCHEDULE_HEADERS);
+  const current = readScheduleMap(sh, tenantId);
+  const w = { id: Utilities.getUuid(), supplierId: auth.supplierId, clientIds: [], schedule: [] };
+  _supplierWorkerAllowedFields().forEach(function(f){ if (body.worker && body.worker[f] != null) w[f] = body.worker[f]; });
+  w.name = ((w.docGiven||'') + ' ' + (w.docSurname||'')).trim();
+  const workers = current.workers.concat([w]);
+  _writeScheduleRow(sh, current, tenantId, workers, current.clients, current.suppliers, current.weekStart);
+  return {ok:true, worker: _stripWorkerForSupplier(w, auth.supplierId)};
+}
+function supplierUpdateWorker(body, tenantId, auth){
+  if (!tenantId) return {error:'No tenant'};
+  if (!auth || auth.role !== 'supplier') throw {error:'Только для роли поставщика'};
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_SCHEDULE);
+  const current = readScheduleMap(sh, tenantId);
+  const idx = current.workers.findIndex(function(w){ return w.id === body.workerId && w.supplierId === auth.supplierId; });
+  if (idx === -1) return {error:'Работник не найден'};
+  const w = current.workers[idx];
+  _supplierWorkerAllowedFields().forEach(function(f){ if (body.worker && body.worker[f] != null) w[f] = body.worker[f]; });
+  w.name = ((w.docGiven||'') + ' ' + (w.docSurname||'')).trim();
+  current.workers[idx] = w;
+  _writeScheduleRow(sh, current, tenantId, current.workers, current.clients, current.suppliers, current.weekStart);
+  return {ok:true, worker: _stripWorkerForSupplier(w, auth.supplierId)};
+}
+function supplierDeleteWorker(body, tenantId, auth){
+  if (!tenantId) return {error:'No tenant'};
+  if (!auth || auth.role !== 'supplier') throw {error:'Только для роли поставщика'};
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_SCHEDULE);
+  const current = readScheduleMap(sh, tenantId);
+  const before = current.workers.length;
+  const workers = current.workers.filter(function(w){ return !(w.id === body.workerId && w.supplierId === auth.supplierId); });
+  if (workers.length === before) return {error:'Работник не найден'};
+  _writeScheduleRow(sh, current, tenantId, workers, current.clients, current.suppliers, current.weekStart);
+  return {ok:true};
 }
 
 // Allow-list sanitizer for role==='supplier' (Admin/Roles plan, stage 11) —
