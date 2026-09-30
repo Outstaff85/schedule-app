@@ -1827,16 +1827,24 @@ async function saveWorker(){
 }
 // Blocking "please wait" state for the Add Worker modal while the scanned
 // worker's Form 101 + document PDF uploads — replaces the modal's own
-// content so there's nothing left to click while genuinely waiting, and the
-// visible spinner is the signal to the manager not to navigate away yet.
-function showWorkerUploadingOverlay(){
+// content so there's nothing left to click while genuinely waiting.
+// Real-time progress bar (added 2026-09-30, per user request, matching the
+// scan modal's own renderScanProgress() — see its own comment) — this used
+// to be a plain indeterminate `.progress-bar` for the whole wait; now it's a
+// real `.progress-bar-real` percentage, advanced by aiFillForm101() itself
+// at its two real phases (PDF build, then the actual Google Drive upload)
+// instead of sitting static the whole time.
+function renderWorkerUploadProgress(label,pct){
   const m=document.getElementById('workerModal');
   if(!m) return;
   m.innerHTML=`<div style="text-align:center;padding:30px 16px;color:var(--text2);font-size:14px">
     <i class="ti ti-loader-2 spin" style="font-size:22px"></i><br><br>
-    <span>מעלה מסמך, נא לא לסגור…</span>
-    <div class="progress-bar"></div>
+    <span>${label} (${pct}%)</span>
+    <div class="progress-bar-real"><div style="width:${pct}%"></div></div>
   </div>`;
+}
+function showWorkerUploadingOverlay(){
+  renderWorkerUploadProgress('בונה PDF, נא לא לסגור…',0);
 }
 
 function genToken(){
@@ -3905,6 +3913,12 @@ function getSignaturePng(canvasId){
 async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
   mode=mode||'download';
   const isRegen=!!presetAssets;
+  // Only the blocking new-worker/rescan upload path (mode==='upload' &&
+  // !isRegen) has #workerModal replaced by showWorkerUploadingOverlay()
+  // beforehand — a background regenerate (isRegen, called from
+  // regenerateWorkerDoc() after the modal's already closed) must never touch
+  // #workerModal's content.
+  const showBlockingProgress=mode==='upload'&&!isRegen;
   // Hoisted above the try so the catch block (below) can still flag this
   // worker's failed upload for the "no document" badge even when the
   // failure happens before the assignment finishes.
@@ -4050,6 +4064,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // number baked into fileName can drift between scans, so name-based
       // dedup on the backend alone isn't reliable; a known previousFileId
       // lets it trash the exact old file.
+      if(showBlockingProgress) renderWorkerUploadProgress('מעלה ל-Google Drive, נא לא לסגור…',55);
       const fileBase64=fnJson.pdfBase64;
       const w=targetWorker;
       // saveWorkerDoc (the PDF) and saveWorkerAssets (the scan/signature
@@ -4089,6 +4104,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       }).then(r=>r.json()).catch(()=>null):Promise.resolve(null);
       const [json,assetsJson]=await Promise.all([docPromise,assetsPromise]);
       if(!json||json.error) throw new Error((json&&json.error)||'Сервер не ответил');
+      if(showBlockingProgress) renderWorkerUploadProgress('הועלה בהצלחה',100);
       if(w){
         w.docUrl=json.url; w.docSavedAt=new Date().toISOString(); w.docFileId=json.id;
         w.docUploadFailed=false;
