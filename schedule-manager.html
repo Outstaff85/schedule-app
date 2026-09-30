@@ -754,6 +754,24 @@
 <div class="overlay" id="clientBillOverlay" style="z-index:110">
   <div class="modal" id="clientBillModal" style="max-width:420px"></div>
 </div>
+<div class="overlay" id="mapPickOverlay" style="z-index:110">
+  <div class="modal" style="max-width:640px;width:100%">
+    <div class="modal-title">Pick location</div>
+    <div id="mapPickSearch" style="margin-bottom:8px"></div>
+    <div id="mapPickMap" style="width:100%;height:360px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg3)"></div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn sm" type="button" onclick="mapPickUseMyLocation()"><i class="ti ti-current-location"></i> Use my location</button>
+      <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px">Radius (m)
+        <input type="number" id="mapPickRadius" min="10" step="5" style="width:80px" oninput="mapPickSetRadius(this.value)"></label>
+      <span id="mapPickCoords" style="font-size:12px;color:var(--text2);margin-left:auto"></span>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:6px">Search an address, or tap the map / drag the pin. The circle is the punch-clock radius.</div>
+    <div class="modal-actions">
+      <button class="btn" type="button" onclick="closeModal('mapPickOverlay')">Cancel</button>
+      <button class="btn accent" type="button" id="mapPickSave" onclick="saveMapPick()" disabled>Use this location</button>
+    </div>
+  </div>
+</div>
 <div class="overlay" id="supplierOverlay" onclick="if(event.target===this)closeModal('supplierOverlay')">
   <div class="modal" id="supplierModal"></div>
 </div>
@@ -2203,8 +2221,11 @@ function showClientModal(c){
     </div>
     <div class="field">
       <label><i class="ti ti-map-pin"></i> Geolocation for Punch Clock</label>
+      <button class="btn ${c.lat?'sm':'accent'}" type="button" onclick="openMapPicker()" style="width:100%;justify-content:center;margin-bottom:10px">
+        <i class="ti ti-map-2"></i> ${c.lat?'Change location on map':'Pick location on map'}
+      </button>
       <div style="margin-bottom:8px">
-        <label style="font-size:11px;color:var(--text3);margin-bottom:4px;display:block">Paste Google Maps link</label>
+        <label style="font-size:11px;color:var(--text3);margin-bottom:4px;display:block">…or paste a Google Maps link</label>
         <input type="text" id="cMapsUrl" placeholder="https://maps.google.com/..." value="${esc(c.mapsUrl||'')}" oninput="parseGoogleMapsUrl(this.value)" style="font-size:12px">
         <div style="font-size:11px;color:var(--text3);margin-top:4px">Open Google Maps → right-click on location → copy link or coordinates</div>
       </div>
@@ -2274,6 +2295,117 @@ function updateLocStatus(){
     el.style.color='var(--text2)';
     el.textContent='';
   }
+}
+// ── Client geolocation map picker (Google Maps JavaScript API) ─────────────
+// "Pick location on map" in the client modal: search box (Places
+// autocomplete), tap/drag pin, live radius circle, "Use my location". Writes
+// back into the modal's cLat/cLng/cRadius/cMapsUrl inputs — the paste-a-link
+// path below it still works as before. The Maps script is lazy-loaded only
+// when the picker first opens. Needs GOOGLE_MAPS_API_KEY (a browser key
+// restricted by HTTP referrer to this app's domains, with Maps JavaScript API,
+// Places API (New) and Geocoding API enabled); without one the button falls
+// back to opening Google Maps in a new tab so the link can be pasted.
+const GOOGLE_MAPS_API_KEY = '';
+const MAP_PICK_DEFAULT_CENTER = {lat:32.0853, lng:34.7818}; // Tel Aviv
+let _gmapsLoading = null;
+let __mapPick = { map:null, marker:null, circle:null, pos:null };
+function loadGoogleMaps(){
+  if(window.google && google.maps && google.maps.importLibrary) return Promise.resolve();
+  if(_gmapsLoading) return _gmapsLoading;
+  _gmapsLoading = new Promise((resolve,reject)=>{
+    window.__gmapsReady = ()=>resolve();
+    const s=document.createElement('script');
+    s.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(GOOGLE_MAPS_API_KEY)+'&v=weekly&loading=async&callback=__gmapsReady';
+    s.async=true;
+    s.onerror=()=>{ _gmapsLoading=null; reject(new Error('Google Maps failed to load')); };
+    document.head.appendChild(s);
+  });
+  return _gmapsLoading;
+}
+// Google calls this global on an invalid/unauthorized key.
+window.gm_authFailure = function(){ showToast('Google Maps key rejected — check GOOGLE_MAPS_API_KEY and its allowed domains',5000); };
+async function openMapPicker(){
+  const lat=parseFloat(document.getElementById('cLat')?.value), lng=parseFloat(document.getElementById('cLng')?.value);
+  const addr=(document.getElementById('cAddr')?.value||'').trim() || (document.getElementById('cName')?.value||'').trim();
+  if(!GOOGLE_MAPS_API_KEY){
+    const q = !isNaN(lat)&&!isNaN(lng) ? lat+','+lng : (addr||'Israel');
+    window.open('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q),'_blank');
+    showToast('Pick the point in Google Maps, copy the link and paste it here',4000);
+    return;
+  }
+  document.getElementById('mapPickRadius').value = document.getElementById('cRadius')?.value || 100;
+  document.getElementById('mapPickSave').disabled = true;
+  document.getElementById('mapPickCoords').textContent = '';
+  document.getElementById('mapPickOverlay').classList.add('open');
+  try{ await loadGoogleMaps(); }catch(e){ showToast(e.message); closeModal('mapPickOverlay'); return; }
+  const {Map, Circle} = await google.maps.importLibrary('maps');
+  const {Marker} = await google.maps.importLibrary('marker');
+  __mapPick = { map:null, marker:null, circle:null, pos:null };
+  const hasPos = !isNaN(lat)&&!isNaN(lng);
+  const map = new Map(document.getElementById('mapPickMap'), {
+    center: hasPos?{lat,lng}:MAP_PICK_DEFAULT_CENTER, zoom: hasPos?17:12,
+    mapTypeControl:false, streetViewControl:false, fullscreenControl:false, clickableIcons:false, gestureHandling:'greedy'
+  });
+  __mapPick.map = map;
+  // Classic Marker (not AdvancedMarkerElement) — the advanced one requires a
+  // Cloud-configured Map ID; this keeps setup to just the API key.
+  __mapPick.marker = new Marker({ map, draggable:true, visible:false });
+  __mapPick.circle = new Circle({ map, visible:false, strokeColor:'#4f8cff', strokeWeight:2, fillColor:'#4f8cff', fillOpacity:0.15, clickable:false });
+  __mapPick.marker.addListener('dragend', e=>mapPickSetPos(e.latLng.lat(), e.latLng.lng(), false));
+  map.addListener('click', e=>mapPickSetPos(e.latLng.lat(), e.latLng.lng(), false));
+  if(hasPos) mapPickSetPos(lat,lng,false);
+  else if(addr){
+    try{
+      const {Geocoder} = await google.maps.importLibrary('geocoding');
+      new Geocoder().geocode({address:addr, region:'il'}, (res,status)=>{
+        if(status==='OK' && res[0] && !__mapPick.pos){ map.setCenter(res[0].geometry.location); map.setZoom(17); }
+      });
+    }catch(e){}
+  }
+  // Places search box (new PlaceAutocompleteElement). Older builds fire
+  // 'gmp-placeselect' with event.place, newer 'gmp-select' with
+  // event.placePrediction — handle both.
+  const searchHost=document.getElementById('mapPickSearch'); searchHost.innerHTML='';
+  try{
+    const {PlaceAutocompleteElement} = await google.maps.importLibrary('places');
+    const ac = new PlaceAutocompleteElement({ includedRegionCodes:['il'] });
+    ac.style.width='100%';
+    searchHost.appendChild(ac);
+    const onPlace = async place=>{
+      if(!place) return;
+      await place.fetchFields({fields:['location','formattedAddress']});
+      if(place.location) mapPickSetPos(place.location.lat(), place.location.lng(), true);
+    };
+    ac.addEventListener('gmp-select', e=>onPlace(e.placePrediction && e.placePrediction.toPlace()));
+    ac.addEventListener('gmp-placeselect', e=>onPlace(e.place));
+  }catch(e){ searchHost.innerHTML='<div style="font-size:12px;color:var(--text3)">Address search unavailable — tap the map instead</div>'; }
+}
+function mapPickSetPos(lat,lng,recenter){
+  __mapPick.pos={lat,lng};
+  const p={lat,lng};
+  __mapPick.marker.setPosition(p); __mapPick.marker.setVisible(true);
+  __mapPick.circle.setCenter(p); __mapPick.circle.setRadius(Number(document.getElementById('mapPickRadius').value)||100); __mapPick.circle.setVisible(true);
+  if(recenter){ __mapPick.map.setCenter(p); __mapPick.map.setZoom(17); }
+  document.getElementById('mapPickCoords').textContent=lat.toFixed(5)+', '+lng.toFixed(5);
+  document.getElementById('mapPickSave').disabled=false;
+}
+function mapPickSetRadius(v){ if(__mapPick.circle) __mapPick.circle.setRadius(Number(v)||100); }
+function mapPickUseMyLocation(){
+  if(!navigator.geolocation){ showToast('Geolocation not supported on this device'); return; }
+  navigator.geolocation.getCurrentPosition(
+    pos=>{ mapPickSetPos(pos.coords.latitude,pos.coords.longitude,true); showToast('Accuracy ±'+Math.round(pos.coords.accuracy)+' m'); },
+    err=>showToast('Could not get location: '+err.message),
+    {enableHighAccuracy:true, timeout:15000, maximumAge:0});
+}
+function saveMapPick(){
+  const p=__mapPick.pos; if(!p) return;
+  const lat=+p.lat.toFixed(6), lng=+p.lng.toFixed(6);
+  document.getElementById('cLat').value=lat;
+  document.getElementById('cLng').value=lng;
+  document.getElementById('cRadius').value=Number(document.getElementById('mapPickRadius').value)||100;
+  const u=document.getElementById('cMapsUrl'); if(u) u.value='https://www.google.com/maps?q='+lat+','+lng;
+  updateLocStatus();
+  closeModal('mapPickOverlay');
 }
 function pickCColor(col){ selClientColor=col; document.querySelectorAll('#cColorPick [data-color]').forEach(el=>{ el.style.borderColor=el.dataset.color===col?'white':'transparent'; el.style.transform=el.dataset.color===col?'scale(1.2)':'scale(1)'; }); }
 // ── Client billing-rate popup ───────────────────────────────────────────────
