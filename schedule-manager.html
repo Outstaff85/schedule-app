@@ -1327,6 +1327,17 @@ function toggleClientsWrap(){
   if(wrap) wrap.style.display = __wClientsOpen ? '' : 'none';
   if(chev) chev.className = 'ti ti-chevron-' + (__wClientsOpen ? 'up' : 'down');
 }
+// Same collapsed-by-default pattern, for the worker's own bank requisites
+// (bank/branch/account number) — a separate section, not mixed into the
+// client picker, per request ("отдельная вкладка внутри карточки").
+let __wBankOpen = false;
+function toggleBankWrap(){
+  __wBankOpen = !__wBankOpen;
+  const wrap = document.getElementById('wBankWrap');
+  const chev = document.getElementById('wBankChevron');
+  if(wrap) wrap.style.display = __wBankOpen ? '' : 'none';
+  if(chev) chev.className = 'ti ti-chevron-' + (__wBankOpen ? 'up' : 'down');
+}
 
 // ===== Children (ספח) manual editor, inside the Form-101 dropdown =====
 // Backs w.docChildren. Pre-filled from a scan (openWorkerModalFromScan()
@@ -1496,6 +1507,7 @@ function showWorkerModal(w){
   __wExpiryOpen=false;
   __wForm101Open=false;
   __wClientsOpen=false;
+  __wBankOpen=false;
   __wChildren=Array.isArray(w.docChildren)?w.docChildren.map(c=>({...c})):[];
   __wAvatarB64=w.avatarB64||'';
   __wDocType=w.docType||'israeli_id';
@@ -1605,6 +1617,26 @@ function showWorkerModal(w){
         </label>`).join(''):'<span style="font-size:12px;color:var(--text3);padding:8px">אין לקוחות עדיין</span>'}
       </div>
       <div id="wClientEmpty" style="display:none;font-size:12px;color:var(--text3);padding:8px">לא נמצא</div>
+    </div>
+    <div class="field">
+      <label><i class="ti ti-truck-delivery"></i> Supplier (optional)</label>
+      <select id="wSupplierId" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:10px;outline:none">
+        <option value="">— None —</option>
+        ${suppliers.map(s=>`<option value="${s.id}" ${w.supplierId===s.id?'selected':''}>${esc(s.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field" style="margin-bottom:6px">
+      <button class="btn sm" type="button" onclick="toggleBankWrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
+        <span><i class="ti ti-building-bank"></i> Bank details <span id="wBankSummary" style="color:var(--text3);font-weight:400;font-size:12px">${w.bank||w.bankAccountNumber?'· set':''}</span></span>
+        <i class="ti ti-chevron-down" id="wBankChevron"></i>
+      </button>
+    </div>
+    <div id="wBankWrap" style="display:none">
+      <div class="field-row">
+        <div class="field"><label>Bank</label><input type="text" id="wBank" value="${esc(w.bank||'')}" placeholder="Bank name"></div>
+        <div class="field"><label>Branch</label><input type="text" id="wBankBranch" value="${esc(w.bankBranch||'')}" placeholder="Branch #"></div>
+      </div>
+      <div class="field"><label>Account number</label><input type="text" id="wBankAccountNumber" value="${esc(w.bankAccountNumber||'')}" placeholder="Account #"></div>
     </div>
     <div class="field" style="margin-bottom:6px">
       <button class="btn sm" type="button" onclick="toggleWeeklySchedule()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
@@ -1761,6 +1793,10 @@ async function saveWorker(){
     .map(c=>({name:(c.name||'').trim(),idNo:(c.idNo||'').trim(),dob:(c.dob||'').trim()}))
     .filter(c=>c.name||c.idNo||c.dob);
   const clientIds=[...document.querySelectorAll('#wClientPick input:checked')].map(el=>el.value);
+  const supplierId=document.getElementById('wSupplierId')?.value||null;
+  const bank=document.getElementById('wBank')?.value.trim()||'';
+  const bankBranch=document.getElementById('wBankBranch')?.value.trim()||'';
+  const bankAccountNumber=document.getElementById('wBankAccountNumber')?.value.trim()||'';
   // Only a grid the user actually opened decides the schedule. Left closed, an
   // existing worker keeps the shifts they already had and a new one is created
   // with none — added to the roster without being dropped into the week.
@@ -1772,6 +1808,7 @@ async function saveWorker(){
   const commonFields={name,colorIdx:selColorIdx,phone,hourlyRate,status,startDate,workStartDate,docSex,
     expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,houseNumber,city,docDob,docExpiry,notes,
     incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,docChildren,clientIds,schedule,
+    supplierId,bank,bankBranch,bankAccountNumber,
     avatarB64:__wAvatarB64,docType:__wDocType};
   if(editingWorkerIdx!==null){
     const prevW=workers[editingWorkerIdx];
