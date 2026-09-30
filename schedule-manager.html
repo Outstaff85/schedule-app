@@ -3813,6 +3813,7 @@ function importDataBackup(){
 
 // --- Dashboard -------------------------------------------------------------------
 let _logExpanded=false, _salExpanded=false;
+let __lastSalaryEntries=[];
 function toggleLog(){ _logExpanded=!_logExpanded; renderDashboard(); }
 function toggleSalary(){ _salExpanded=!_salExpanded; renderSalary(); }
 function renderDashboard(){
@@ -4025,6 +4026,7 @@ function renderSalary(){
 
   const salaryEl=document.getElementById('dashSalary');
   const entries=Object.values(byWorker);
+  __lastSalaryEntries=entries;
   if(!entries.length){
     salaryEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No punch data for this period</div>`;
     renderSupplierPayable(entries);
@@ -4109,6 +4111,22 @@ function renderSalary(){
 // same figures shown in the table above) by the worker's assigned supplier —
 // purely a re-grouping of existing correct numbers, never a separate payroll
 // calculation, so it can't drift from the canonical shiftPay()/effectiveRates() math.
+// Default flat commission (₪/h) a supplier is paid when no override is set
+// for a given worker — see setSupplierRateOverride()/SUPPLIER_DEFAULT_RATE's
+// own comment below for why this is a single flat number, not a rate tier.
+const SUPPLIER_DEFAULT_RATE = 5;
+function supplierCommissionRate(w, supplierId){
+  const ov = w.supplierRates && w.supplierRates[supplierId];
+  return (ov && ov.rate!=null) ? ov.rate : SUPPLIER_DEFAULT_RATE;
+}
+// "Payable by supplier" = hours × the supplier's own flat commission rate —
+// deliberately NOT e.total (the worker's real wage, computed via
+// effectiveRates()/shiftPay()) — see this file's own standing principle:
+// a supplier must never see what a worker actually earns, only what the
+// FIRM owes the AGENCY for that worker's hours. Changed 2026-10-02 (Admin/
+// Roles plan stage 12) — this table used to (incorrectly, by today's
+// standard) sum the worker's real pay per supplier, which is exactly the
+// number a supplier-role login must never be handed.
 function renderSupplierPayable(entries){
   const wrap=document.getElementById('supplierPayableWrap');
   if(!wrap) return;
@@ -4124,7 +4142,7 @@ function renderSupplierPayable(entries){
     if(!sid){ unassigned.hours+=e.hours; unassigned.total+=e.total; return; }
     if(!bySupplier[sid]) bySupplier[sid]={hours:0,total:0};
     bySupplier[sid].hours+=e.hours;
-    bySupplier[sid].total+=e.total;
+    bySupplier[sid].total+=e.hours*supplierCommissionRate(wc,sid);
   });
   const rows=suppliers.filter(s=>bySupplier[s.id]).map(s=>({sup:s,...bySupplier[s.id]}));
   if(!rows.length && !unassigned.total){
@@ -4230,12 +4248,16 @@ function setClientRateOverride(wid,cid,field,val){
   renderRateMatrix();
 }
 
-// Per-worker-per-supplier rate matrix. Unlike clientRates, this is REFERENCE
-// ONLY: suppliers have no place in effectiveRates()'s tier chain (a worker's
-// pay is driven by which client they worked at, not which supplier/agency
-// employs them), so supplierRates never feeds shiftPay()/effectiveRates() —
-// see renderSupplierPayable() above for the actual payable-by-supplier total,
-// which reuses the real computed pay instead of this override value.
+// Per-worker-per-supplier FLAT commission matrix (Admin/Roles plan stage 12,
+// 2026-10-02 — narrowed from a 3-column rate/OT/Shabbat matrix to a single
+// flat rate). A supplier has no concept of overtime/Shabbat tiers (unlike a
+// worker's real wage, which does) — it's simply hours × one flat ₪/h
+// commission the firm pays the agency, defaulting to SUPPLIER_DEFAULT_RATE
+// (5) when not explicitly overridden. Still REFERENCE/independent of
+// effectiveRates()'s tier chain — a worker's real pay is driven by which
+// client they worked at, never by which supplier/agency employs them; see
+// renderSupplierPayable() above for where this rate actually gets used (the
+// payable-by-supplier total), never shiftPay()/effectiveRates() itself.
 function renderSupplierRateMatrix(){
   const wrap=document.getElementById('supplierRateMatrixWrap');
   if(!wrap) return;
@@ -4247,37 +4269,24 @@ function renderSupplierRateMatrix(){
   wrap.innerHTML=`
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-      <table style="width:100%;border-collapse:collapse;min-width:640px">
+      <table style="width:100%;border-collapse:collapse;min-width:420px">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
             <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Worker</th>
             <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Supplier</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Regular ₪/h</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--amber)">OT ₪/h</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--blue)">Shabbat ₪/h</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Commission ₪/h</th>
           </tr>
         </thead>
         <tbody>
           ${rows.map((r,i)=>{
             const ov=(r.w.supplierRates&&r.w.supplierRates[r.sup.id])||{};
-            const regRate=wRegRate(r.w), otRate=wOtRate(r.w), shabRate=wShabRate(r.w);
             return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
               <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.w.name)}</td>
               <td style="padding:10px 12px;font-size:13px;color:var(--text2)"><span style="color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></span> ${esc(r.sup.name)}</td>
               <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${regRate}" title="Reference only — empty = worker's own base rate (${regRate})"
+                <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${SUPPLIER_DEFAULT_RATE}" title="Empty = default (${SUPPLIER_DEFAULT_RATE} ₪/h)"
                   onchange="setSupplierRateOverride('${r.w.id}','${r.sup.id}','rate',this.value)"
                   style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
-              </td>
-              <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.otRate??''}" min="0" step="0.5" placeholder="${otRate}" title="Reference only — empty = ${otRate}"
-                  onchange="setSupplierRateOverride('${r.w.id}','${r.sup.id}','otRate',this.value)"
-                  style="width:70px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:right;outline:none">
-              </td>
-              <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.shabbatRate??''}" min="0" step="0.5" placeholder="${shabRate}" title="Reference only — empty = ${shabRate}"
-                  onchange="setSupplierRateOverride('${r.w.id}','${r.sup.id}','shabbatRate',this.value)"
-                  style="width:70px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
             </tr>`;
           }).join('')}
@@ -4295,6 +4304,7 @@ function setSupplierRateOverride(wid,sid,field,val){
   if(Object.values(w.supplierRates[sid]).every(v=>v==null)) delete w.supplierRates[sid];
   autoSave();
   renderSupplierRateMatrix();
+  renderSupplierPayable(__lastSalaryEntries||[]);
 }
 
 function setWorkerRate(wid,rate){
