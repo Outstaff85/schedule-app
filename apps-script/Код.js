@@ -59,42 +59,48 @@ function doPost(e) {
       tenantId = auth.tenantId;
     }
 
+    // Collected into `result` (rather than returning from each case
+    // directly) so every authenticated response passes through
+    // _withRefreshedToken() once, in one place — see requireAuth()'s own
+    // comment for why (sliding session expiration).
+    let result;
     switch (body.action) {
-      case 'saveSchedule':         return jsonResponse(saveSchedule(body.data, body.baseSavedAt, tenantId, auth));
-      case 'savePunch':            return jsonResponse(savePunch(body.data, tenantId));
-      case 'deletePunch':          return jsonResponse(deletePunch(body.id, tenantId));
-      case 'updatePunch':          return jsonResponse(updatePunch(body.data, tenantId));
-      case 'savePushSubscription': return jsonResponse(savePushSubscription(body, tenantId));
-      case 'logError':             return jsonResponse(logError(body));
-      case 'aiReadDoc':            return jsonResponse(aiReadDoc(body));
-      case 'aiReadSefach':         return jsonResponse(aiReadSefach(body));
-      case 'aiDetectAlign':        return jsonResponse(aiDetectAlign(body));
-      case 'aiVerifyField':        return jsonResponse(aiVerifyField(body));
-      case 'aiVerifyFields':       return jsonResponse(aiVerifyFields(body));
-      case 'aiReadHoursTable':     return jsonResponse(auth && auth.role === 'supplier' ? {error:'Недоступно для роли поставщика'} : aiReadHoursTable(body));
-      case 'saveWorkerDoc':        return jsonResponse(saveWorkerDoc(body, tenantId));
-      case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body, tenantId));
-      case 'saveWorkerAssets':     return jsonResponse(saveWorkerAssets(body, tenantId));
-      case 'loadWorkerAssets':     return jsonResponse(loadWorkerAssets(body, tenantId));
-      case 'createUser':           return jsonResponse(createUser(body, auth));
-      case 'listUsers':            return jsonResponse(listUsers(auth));
-      case 'createTenantUser':     return jsonResponse(createTenantUser(body, auth));
-      case 'updateUser':           return jsonResponse(updateUser(body, auth));
-      case 'resetUserPassword':    return jsonResponse(resetUserPassword(body, auth));
-      case 'deleteUser':           return jsonResponse(deleteUser(body, auth));
-      case 'updateTenant':         return jsonResponse(updateTenant(body, auth));
-      case 'loadTenantProfile':    return jsonResponse({ ok: true, profile: tenantId ? getTenantProfile(tenantId) : null });
-      case 'listTenants':          return jsonResponse(listTenants(auth));
-      case 'setTenantActive':      return jsonResponse(setTenantActive(body, auth));
-      case 'deleteTenant':         return jsonResponse(deleteTenant(body, auth));
-      case 'savePendingHoursBatch': return jsonResponse(savePendingHoursBatch(body, tenantId, auth));
-      case 'approvePendingHours':  return jsonResponse(approvePendingHours(body, tenantId, auth));
-      case 'rejectPendingHours':   return jsonResponse(rejectPendingHours(body, tenantId, auth));
-      case 'supplierAddWorker':    return jsonResponse(supplierAddWorker(body, tenantId, auth));
-      case 'supplierUpdateWorker': return jsonResponse(supplierUpdateWorker(body, tenantId, auth));
-      case 'supplierDeleteWorker': return jsonResponse(supplierDeleteWorker(body, tenantId, auth));
-      default:                     return jsonResponse({error: 'Unknown action: ' + body.action});
+      case 'saveSchedule':         result = saveSchedule(body.data, body.baseSavedAt, tenantId, auth); break;
+      case 'savePunch':            result = savePunch(body.data, tenantId); break;
+      case 'deletePunch':          result = deletePunch(body.id, tenantId); break;
+      case 'updatePunch':          result = updatePunch(body.data, tenantId); break;
+      case 'savePushSubscription': result = savePushSubscription(body, tenantId); break;
+      case 'logError':             result = logError(body); break;
+      case 'aiReadDoc':            result = aiReadDoc(body); break;
+      case 'aiReadSefach':         result = aiReadSefach(body); break;
+      case 'aiDetectAlign':        result = aiDetectAlign(body); break;
+      case 'aiVerifyField':        result = aiVerifyField(body); break;
+      case 'aiVerifyFields':       result = aiVerifyFields(body); break;
+      case 'aiReadHoursTable':     result = (auth && auth.role === 'supplier') ? {error:'Недоступно для роли поставщика'} : aiReadHoursTable(body); break;
+      case 'saveWorkerDoc':        result = saveWorkerDoc(body, tenantId); break;
+      case 'deleteWorkerDoc':      result = deleteWorkerDoc(body, tenantId); break;
+      case 'saveWorkerAssets':     result = saveWorkerAssets(body, tenantId); break;
+      case 'loadWorkerAssets':     result = loadWorkerAssets(body, tenantId); break;
+      case 'createUser':           result = createUser(body, auth); break;
+      case 'listUsers':            result = listUsers(auth); break;
+      case 'createTenantUser':     result = createTenantUser(body, auth); break;
+      case 'updateUser':           result = updateUser(body, auth); break;
+      case 'resetUserPassword':    result = resetUserPassword(body, auth); break;
+      case 'deleteUser':           result = deleteUser(body, auth); break;
+      case 'updateTenant':         result = updateTenant(body, auth); break;
+      case 'loadTenantProfile':    result = { ok: true, profile: tenantId ? getTenantProfile(tenantId) : null }; break;
+      case 'listTenants':          result = listTenants(auth); break;
+      case 'setTenantActive':      result = setTenantActive(body, auth); break;
+      case 'deleteTenant':         result = deleteTenant(body, auth); break;
+      case 'savePendingHoursBatch': result = savePendingHoursBatch(body, tenantId, auth); break;
+      case 'approvePendingHours':  result = approvePendingHours(body, tenantId, auth); break;
+      case 'rejectPendingHours':   result = rejectPendingHours(body, tenantId, auth); break;
+      case 'supplierAddWorker':    result = supplierAddWorker(body, tenantId, auth); break;
+      case 'supplierUpdateWorker': result = supplierUpdateWorker(body, tenantId, auth); break;
+      case 'supplierDeleteWorker': result = supplierDeleteWorker(body, tenantId, auth); break;
+      default:                     result = {error: 'Unknown action: ' + body.action};
     }
+    return jsonResponse(_withRefreshedToken(result, auth));
   } catch(e) {
     if (e && typeof e === 'object' && e.error) return jsonResponse(e); // thrown auth/validation errors
     return jsonResponse({error: e.toString()});
@@ -124,6 +130,7 @@ function doGet(e) {
       case 'loadPendingHours': result = loadPendingHours(tenantId, auth); break;
       default:             result = {error: 'Unknown action'};
     }
+    result = _withRefreshedToken(result, auth);
     const callback = e.parameter.callback;
     if (callback) {
       return ContentService
@@ -188,15 +195,50 @@ function verifySessionToken(token) {
 // plain objects). Honors `asTenantId` so a super-admin session can drill into
 // one specific firm. Throws a plain {error} object (caught by doPost/doGet)
 // if missing/invalid.
+//
+// Sliding expiration (added 2026-09-30, reported bug: a manager doing a long
+// worker-document scan+upload could get kicked to the login screen mid-task
+// even on a session that was fresh at login time — the 6h TTL was a hard
+// wall from login, never extended by activity, so the single longest-running
+// flow in the app was also the one most likely to straddle it). Every
+// authenticated request now gets a freshly-reissued token (same identity,
+// new `exp` = now + SESSION_TTL_MS) attached to `auth.refreshedToken`/
+// `auth.refreshedExpiresAt` — doPost()/doGet() thread it onto every response
+// via `_withRefreshedToken()` below, and the client (gsAuth() callers via the
+// window.fetch wrapper, and xhrPostJSON() for the upload path specifically)
+// overwrites its stored token with it. A session only actually expires after
+// SESSION_TTL_MS of real inactivity, not from the wall-clock since login.
+// Rebuilt from the verified payload (not from the possibly-`asTenantId`-
+// overridden `tenantId` below) so drilling into another firm as super-admin
+// never bakes that temporary view into the renewed token.
 function requireAuth(body) {
   const payload = verifySessionToken(body.token);
   if (!payload) throw { error: 'Сессия истекла или недействительна — войдите заново' };
   const isSuperadmin = payload.role === 'superadmin';
   const tenantId = (isSuperadmin && body.asTenantId) ? body.asTenantId : payload.tenantId;
+  const refreshedExpiresAt = Date.now() + SESSION_TTL_MS;
+  const refreshedToken = createSessionToken({
+    userId: payload.userId, username: payload.username, role: payload.role, tenantId: payload.tenantId,
+    permissions: payload.permissions, supplierId: payload.supplierId, exp: refreshedExpiresAt,
+  });
   return {
     userId: payload.userId, username: payload.username, role: payload.role, tenantId: tenantId, isSuperadmin: isSuperadmin,
     permissions: payload.permissions || '*', supplierId: payload.supplierId || null,
+    refreshedToken: refreshedToken, refreshedExpiresAt: refreshedExpiresAt,
   };
+}
+
+// Merges requireAuth()'s renewed token onto an action's result object, right
+// before it goes out over the wire — see requireAuth()'s own comment for the
+// sliding-expiration design. `auth` is null for the unauthenticated worker-
+// punch-link actions (nothing to refresh there); `result` is always the
+// plain object every action already returns.
+function _withRefreshedToken(result, auth) {
+  if (auth && auth.refreshedToken && result && typeof result === 'object') {
+    result.refreshedToken = auth.refreshedToken;
+    result.refreshedExpiresAt = auth.refreshedExpiresAt;
+  }
+  return result;
 }
 
 // Server-side gate for `staff` actions — see requireAuth()'s own comment.

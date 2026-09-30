@@ -2997,6 +2997,29 @@ function saveSession(s){ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
 function clearSession(){ localStorage.removeItem(SESSION_KEY); }
 function logout(){ clearSession(); location.reload(); }
 
+// Sliding session expiration (added 2026-09-30 — reported bug: a manager
+// could get kicked to the login screen mid worker-document scan/upload even
+// right after a fresh login, because the 6h TTL was a hard wall from login
+// time, never extended by activity, and scan+upload is the single
+// longest-running flow in the app — the one most likely to straddle it).
+// requireAuth() on the backend now reissues a fresh token (same identity,
+// renewed exp) on every authenticated request and attaches it to the
+// response as `refreshedToken`/`refreshedExpiresAt` — this overwrites the
+// stored session with it so the token never ages past what the LAST request
+// saw, only real inactivity for a full SESSION_TTL_MS lets it actually
+// expire. Called from both the window.fetch wrapper below (covers every
+// plain fetch(GS_URL,...) call) and xhrPostJSON() (the raw-XHR upload path,
+// which never goes through window.fetch) — see each call site's own
+// comment.
+function applyRefreshedToken(json){
+  if(!json || !json.refreshedToken) return;
+  const s=getSession();
+  if(!s) return;
+  s.token=json.refreshedToken;
+  s.expiresAt=json.refreshedExpiresAt;
+  saveSession(s);
+}
+
 // Merged into every backend request: the session token, plus asTenantId when
 // a super-admin has switched into a specific firm (omitted for a normal
 // tenant user — their own tenantId is already baked into their token).
@@ -3078,6 +3101,8 @@ function xhrPostJSON(url,bodyObj,onProgress,_attempt){
         clearSession();
         showToast('Сессия истекла — войдите заново');
         setTimeout(()=>location.reload(),1200);
+      } else {
+        applyRefreshedToken(json); // sliding expiration — see its own comment near getSession()/clearSession()
       }
       resolve(json);
     };
@@ -3157,7 +3182,10 @@ const SESSION_RETRY_DELAYS_MS = [0, 500]; // attempt 2 immediate, attempt 3 afte
   // (verifyDigitFields() fires multiple aiVerifyField calls in parallel).
   function checkExpired(url, opts, res, attempt){
     return res.clone().json().then(json => {
-      if (!(json && json.error === SESSION_EXPIRED_ERROR && getSession())) return res;
+      if (!(json && json.error === SESSION_EXPIRED_ERROR && getSession())){
+        applyRefreshedToken(json); // sliding expiration — see its own comment
+        return res;
+      }
       if (attempt < SESSION_RETRY_DELAYS_MS.length){
         const delay = SESSION_RETRY_DELAYS_MS[attempt];
         const retry = () => _origFetch(url, opts).then(retryRes => checkExpired(url, opts, retryRes, attempt+1));
