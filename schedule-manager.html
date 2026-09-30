@@ -639,6 +639,21 @@
         </div>
         <div id="rateMatrixWrap"></div>
       </div>
+
+      <!-- Per-supplier rate matrix (informational — does not feed payroll math) -->
+      <div style="margin-top:24px">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px"><i class="ti ti-truck-delivery"></i> Per-supplier rates</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
+          Reference only — placeholders show the worker's own base rate. Payroll totals below always use the worker's actual pay (client/base rate), never this value.
+        </div>
+        <div id="supplierRateMatrixWrap"></div>
+      </div>
+
+      <!-- Payable by supplier summary -->
+      <div style="margin-top:24px">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px"><i class="ti ti-report-money"></i> Payable by supplier</div>
+        <div id="supplierPayableWrap"></div>
+      </div>
     </div>
 
   </div>
@@ -3474,6 +3489,7 @@ function renderDashboard(){
 function renderAccounting(){
   renderSalary();
   renderRateMatrix();
+  renderSupplierRateMatrix();
 }
 
 function renderSalary(){
@@ -3528,6 +3544,7 @@ function renderSalary(){
   const entries=Object.values(byWorker);
   if(!entries.length){
     salaryEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No punch data for this period</div>`;
+    renderSupplierPayable(entries);
     return;
   }
 
@@ -3602,6 +3619,61 @@ function renderSalary(){
       ${entries.length>4?`<div style="text-align:center;padding:8px;border-top:1px solid var(--border)"><button class="btn sm" onclick="toggleSalary()">${_salExpanded?'<i class="ti ti-chevron-up"></i> Show less':'<i class="ti ti-chevron-down"></i> Show all ('+entries.length+')'}</button></div>`:''}
       <div style="padding:8px 12px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">₪/hour rates are editable manually. Default: Regular = base rate · OT = ×${PAY_RULES.otMult} · Shabbat = ×${PAY_RULES.shabbatMult}. Hours: Regular ≤8h/day, above that — OT; Saturday — at the Shabbat rate.</div>
     </div>`;
+  renderSupplierPayable(entries);
+}
+
+// Groups the already-computed per-worker pay totals (byWorker[...].total, the
+// same figures shown in the table above) by the worker's assigned supplier —
+// purely a re-grouping of existing correct numbers, never a separate payroll
+// calculation, so it can't drift from the canonical shiftPay()/effectiveRates() math.
+function renderSupplierPayable(entries){
+  const wrap=document.getElementById('supplierPayableWrap');
+  if(!wrap) return;
+  if(!entries.length){
+    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No punch data for this period</div>`;
+    return;
+  }
+  const bySupplier={};
+  let unassigned={hours:0,total:0};
+  entries.forEach(e=>{
+    const wc=workers.find(w=>w.id===e.workerId);
+    const sid=wc&&wc.supplierId;
+    if(!sid){ unassigned.hours+=e.hours; unassigned.total+=e.total; return; }
+    if(!bySupplier[sid]) bySupplier[sid]={hours:0,total:0};
+    bySupplier[sid].hours+=e.hours;
+    bySupplier[sid].total+=e.total;
+  });
+  const rows=suppliers.filter(s=>bySupplier[s.id]).map(s=>({sup:s,...bySupplier[s.id]}));
+  if(!rows.length && !unassigned.total){
+    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No workers with a supplier assigned had activity this period</div>`;
+    return;
+  }
+  wrap.innerHTML=`
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table style="width:100%;border-collapse:collapse;min-width:420px">
+        <thead>
+          <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Supplier</th>
+            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">Hours</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Payable</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
+            <td style="padding:10px 12px;font-size:13px;font-weight:600"><span style="color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></span> ${esc(r.sup.name)}</td>
+            <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)}h</td>
+            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
+          </tr>`).join('')}
+          ${unassigned.total?`<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:10px 12px;font-size:13px;color:var(--text3)">No supplier assigned</td>
+            <td style="padding:10px 12px;text-align:center;font-size:13px;color:var(--text3)">${unassigned.hours.toFixed(1)}h</td>
+            <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text3)">₪${unassigned.total.toFixed(0)}</td>
+          </tr>`:''}
+        </tbody>
+      </table>
+      </div>
+    </div>`;
 }
 
 // Per-worker-per-client rate override matrix (tier 1 of effectiveRates()).
@@ -3673,6 +3745,73 @@ function setClientRateOverride(wid,cid,field,val){
   if(Object.values(w.clientRates[cid]).every(v=>v==null)) delete w.clientRates[cid];
   autoSave();
   renderRateMatrix();
+}
+
+// Per-worker-per-supplier rate matrix. Unlike clientRates, this is REFERENCE
+// ONLY: suppliers have no place in effectiveRates()'s tier chain (a worker's
+// pay is driven by which client they worked at, not which supplier/agency
+// employs them), so supplierRates never feeds shiftPay()/effectiveRates() —
+// see renderSupplierPayable() above for the actual payable-by-supplier total,
+// which reuses the real computed pay instead of this override value.
+function renderSupplierRateMatrix(){
+  const wrap=document.getElementById('supplierRateMatrixWrap');
+  if(!wrap) return;
+  const rows=workers.filter(w=>w.supplierId).map(w=>({w,sup:suppliers.find(s=>s.id===w.supplierId)})).filter(r=>r.sup);
+  if(!rows.length){
+    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No workers assigned to a supplier</div>`;
+    return;
+  }
+  wrap.innerHTML=`
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table style="width:100%;border-collapse:collapse;min-width:640px">
+        <thead>
+          <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Worker</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Supplier</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Regular ₪/h</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--amber)">OT ₪/h</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--blue)">Shabbat ₪/h</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r,i)=>{
+            const ov=(r.w.supplierRates&&r.w.supplierRates[r.sup.id])||{};
+            const regRate=wRegRate(r.w), otRate=wOtRate(r.w), shabRate=wShabRate(r.w);
+            return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
+              <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.w.name)}</td>
+              <td style="padding:10px 12px;font-size:13px;color:var(--text2)"><span style="color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></span> ${esc(r.sup.name)}</td>
+              <td style="padding:10px 12px;text-align:right">
+                <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${regRate}" title="Reference only — empty = worker's own base rate (${regRate})"
+                  onchange="setSupplierRateOverride('${r.w.id}','${r.sup.id}','rate',this.value)"
+                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+              </td>
+              <td style="padding:10px 12px;text-align:right">
+                <input type="number" value="${ov.otRate??''}" min="0" step="0.5" placeholder="${otRate}" title="Reference only — empty = ${otRate}"
+                  onchange="setSupplierRateOverride('${r.w.id}','${r.sup.id}','otRate',this.value)"
+                  style="width:70px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+              </td>
+              <td style="padding:10px 12px;text-align:right">
+                <input type="number" value="${ov.shabbatRate??''}" min="0" step="0.5" placeholder="${shabRate}" title="Reference only — empty = ${shabRate}"
+                  onchange="setSupplierRateOverride('${r.w.id}','${r.sup.id}','shabbatRate',this.value)"
+                  style="width:70px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>
+    </div>`;
+}
+function setSupplierRateOverride(wid,sid,field,val){
+  const w=workers.find(x=>x.id===wid);
+  if(!w) return;
+  if(!w.supplierRates) w.supplierRates={};
+  if(!w.supplierRates[sid]) w.supplierRates[sid]={};
+  w.supplierRates[sid][field]=(val===''||val==null)?null:(parseFloat(val)||0);
+  if(Object.values(w.supplierRates[sid]).every(v=>v==null)) delete w.supplierRates[sid];
+  autoSave();
+  renderSupplierRateMatrix();
 }
 
 function setWorkerRate(wid,rate){
