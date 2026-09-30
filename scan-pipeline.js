@@ -509,9 +509,9 @@ async function autoPreAlignScan(b64,mediaType){
     // Skip the warp+JPEG-re-encode entirely when the refined quad is already
     // the untouched full frame (2026-09-27, optimization) — a real scan photo
     // typically goes through several of these warp passes in sequence
-    // (autoPreAlignScan -> refineWithAiAlign -> finalTightenPass -> the PDF
-    // embed step's own resize), each one a needless JPEG generation-loss
-    // round-trip when the corners describe no actual crop/rotation at all.
+    // (autoPreAlignScan -> finalTightenPass -> the PDF embed step's own
+    // resize), each one a needless JPEG generation-loss round-trip when the
+    // corners describe no actual crop/rotation at all.
     if(_isNearIdentityQuad(refined)) return upright;
     const toPx=p=>({x:p.x*dims.w,y:p.y*dims.h});
     const quadPx={tl:toPx(refined.tl),tr:toPx(refined.tr),br:toPx(refined.br),bl:toPx(refined.bl),imgW:dims.w,imgH:dims.h};
@@ -763,14 +763,11 @@ async function runOcr(b64,mediaType){
     // request) — the photo was already manually cropped/straightened BEFORE
     // this OCR call ran (see onScanFileSelected/confirmScanQuad), so
     // b64/mediaType already IS a usable, embed-ready image on its own.
-    // aiReadDoc's own imageAlign (rotate+corners) comes back for free in
-    // this SAME response — added 2026-09-21 as a fine TIGHTENING pass on top
-    // of the user's own crop (never a replacement: refineWithAiAlign() below
-    // falls back to the untouched b64/mediaType on any missing/implausible/
-    // failed alignment), since by this point the user has already isolated
-    // one document in frame — the AI can no longer confuse two documents the
-    // way the removed OpenCV auto-crop used to.
-    const finalImg=await refineWithAiAlign({b64,mediaType},json.parsed&&json.parsed.imageAlign);
+    // aiReadDoc's own imageAlign no longer feeds a second geometric tightening
+    // pass here (refineWithAiAlign() removed 2026-09-30 — see its own removal
+    // note near finalTightenPass) — used as-is, matching
+    // processAllPendingPages()'s own no-longer-tightened primary/merge pages.
+    const finalImg={b64,mediaType};
     finishPageScan(finalImg);
   }catch(err){
     console.error(err);
@@ -935,15 +932,6 @@ function validQuadCorners(c){
   if(!c) return false;
   return [c.tl,c.tr,c.br,c.bl].every(p=>p&&typeof p.x==='number'&&typeof p.y==='number'&&p.x>=-0.1&&p.x<=1.1&&p.y>=-0.1&&p.y<=1.1);
 }
-// Shoelace-formula area of a fractional quad (tl/tr/br/bl in [0,1] space),
-// as a fraction of the full 1x1 frame — used by refineWithAiAlign() below to
-// reject an implausibly aggressive AI-guessed crop before trusting it.
-function quadAreaFrac(c){
-  const pts=[c.tl,c.tr,c.br,c.bl];
-  let area=0;
-  for(let i=0;i<4;i++){ const a=pts[i], b=pts[(i+1)%4]; area+=a.x*b.y-b.x*a.y; }
-  return Math.abs(area)/2;
-}
 // True when a fractional quad is (within a tiny tolerance) exactly the
 // untouched full frame — {tl:(0,0),tr:(1,0),br:(1,1),bl:(0,1)} — used to skip
 // a warpQuadImage() call that would just re-encode the image as a lossy
@@ -957,63 +945,19 @@ function _isNearIdentityQuad(c,eps){
     Math.abs(c.br.x-1)<eps&&Math.abs(c.br.y-1)<eps&&
     Math.abs(c.bl.x-0)<eps&&Math.abs(c.bl.y-1)<eps;
 }
-// Best-effort fine-tightening pass on top of the user's own manual crop,
-// using aiReadDoc's own imageAlign.corners — which comes back for free in
-// the SAME response already fetched for field extraction, no extra AI call.
-// Deliberately ignores imageAlign.rotate: the user already oriented the
-// photo correctly via the corner editor's own rotate buttons before this
-// ran, and re-applying the AI's own rotate guess on top risks flipping an
-// already-correctly-oriented photo.
-// Trust floor lowered from 50% to 8% of frame (2026-09-26, per real-world
-// testing) — the 50% floor assumed the user's manual crop already left
-// mostly-document in frame (a pure TIGHTENING pass), but real usage crops
-// far more loosely (a real photo tested: card occupying ~20-35% of the
-// manually-cropped frame, black background making up the rest) — that
-// floor rejected the AI's own CORRECT card-boundary guess every time,
-// exactly the case this was meant to help with. The classical OpenCV
-// detector (preprocess_scan, server-side) independently struggles on this
-// same real photo (verified: neither Canny-edge nor brightness-threshold
-// segmentation reliably closes a clean contour around a card on an
-// uneven/non-pure-black real background) — a vision-model guess is the
-// more robust source of truth here, so it deserves a floor that only
-// guards against a truly degenerate case (AI locking onto a small internal
-// sub-element, e.g. just the portrait photo, typically far under 8% of
-// even a rough crop), not one that assumes the crop was already tight.
-async function refineWithAiAlign(finalImg,align){
-  if(!align||!validQuadCorners(align.corners)) return finalImg;
-  const areaFrac=quadAreaFrac(align.corners);
-  if(areaFrac<0.08) return finalImg;
-  // Skip the warp+JPEG-re-encode when the AI's own corners already describe
-  // the untouched full frame (2026-09-27, optimization — see
-  // _isNearIdentityQuad's own comment in autoPreAlignScan).
-  if(_isNearIdentityQuad(align.corners)) return finalImg;
-  // Local pixel-level verification (2026-09-28) — this function used to warp
-  // straight to the AI's own reported corners with no further check, unlike
-  // autoPreAlignScan() (which always runs an AI guess through
-  // refineQuadCorners() before trusting it). That asymmetry was a real,
-  // confirmed gap: on a real worn ID card, aiReadDoc's imageAlign.corners
-  // came back significantly off (the exact photo isn't reproducible here —
-  // no live AI call — but refineQuadCorners run directly against the real
-  // image, starting from an independently-verified-accurate guess, still
-  // needed real correction, confirming this specific document's edges are
-  // genuinely hard to place from a single vision read). Running the AI's
-  // corners through the same local refinement autoPreAlignScan already
-  // trusts gives this path the same real-pixel sanity check instead of
-  // blind faith in a single AI call.
-  const refined=await refineQuadCorners(finalImg.b64,finalImg.mediaType,align.corners);
-  if(_isNearIdentityQuad(refined)) return finalImg;
-  const dims=await new Promise(res=>{
-    const im=new Image();
-    im.onload=()=>res({w:im.naturalWidth,h:im.naturalHeight});
-    im.onerror=()=>res(null);
-    im.src='data:'+finalImg.mediaType+';base64,'+finalImg.b64;
-  });
-  if(!dims) return finalImg;
-  const toPx=p=>({x:p.x*dims.w,y:p.y*dims.h});
-  const quadPx={tl:toPx(refined.tl),tr:toPx(refined.tr),br:toPx(refined.br),bl:toPx(refined.bl),imgW:dims.w,imgH:dims.h};
-  try{ return await warpQuadImage(finalImg.b64,finalImg.mediaType,quadPx); }
-  catch(e){ console.error(e); return finalImg; }
-}
+// refineWithAiAlign() removed (2026-09-30, per user request) — it re-warped
+// on top of aiReadDoc's own imageAlign.corners, a SECOND AI-guessed quad
+// arriving after the already-AI-guessed-and-locally-refined crop from
+// autoPreAlignScan(). Tested against a real front-ID photo with a
+// realistic imprecise second guess (the exact magnitude documented in this
+// function's own now-removed history, remapped into the post-autoPreAlignScan
+// coordinate frame): this step cropped off the card's header row and part of
+// the left-edge text that autoPreAlignScan's own crop had kept intact —
+// trusting a second, independently-imprecise AI guess for a FINAL crop is a
+// real net risk, not just redundant work. finalTightenPass() below (pure
+// local pixel math, no AI call, and independently verified safe on
+// already-tight/noise images) is enough of a safety net on its own now that
+// its own edge-selection bug is fixed (see its own "over-crop fix" note).
 // Final self-tightening pass (2026-09-27, real-device test) — a thin
 // background sliver was still visible in the final embedded photo despite
 // aiDetectAlign finding a reasonable quad and refineWithAiAlign applying its
@@ -1583,15 +1527,14 @@ async function processAllPendingPages(){
           // recomputes the primary any differently than how it was first built.
           foundParsed=initPrimaryFromFirstPage(foundParsed);
           // Avatar crop uses photoBox coordinates, which are relative to `it`
-          // as sent to aiReadDoc — must run BEFORE refineWithAiAlign below
-          // changes the image's coordinate space.
+          // as sent to aiReadDoc — must run before finalTightenPass below
+          // could change the image's coordinate space.
           window.__aiAvatarB64=p.photoBox?await cropPortraitAvatar(it.b64,it.mediaType,p.photoBox):null;
-          // Free tightening pass on the user's own manual crop, using
-          // imageAlign from this SAME aiReadDoc response — no extra AI call,
-          // matches runOcr()'s dormant single-page equivalent (see its own
-          // comment). Falls back to the untouched `it` on any missing/
-          // implausible corners or a failed warp.
-          window.__aiScanImage=await finalTightenPass(await refineWithAiAlign(it,p.imageAlign));
+          // p.imageAlign is no longer used for a second geometric tightening
+          // pass here (refineWithAiAlign() removed 2026-09-30 — see its own
+          // removal note near finalTightenPass); finalTightenPass alone
+          // (pure local pixel math, no AI call) tightens `it` below.
+          window.__aiScanImage=await finalTightenPass(it);
           needMore=missingCore(foundParsed);
           pageParsed=[foundParsed];
           continue; // this page's image is __aiScanImage — not duplicated into otherPages
@@ -1614,15 +1557,15 @@ async function processAllPendingPages(){
           // fine; mergeScanPage() does.
           foundParsed=mergeScanPage(foundParsed,p);
           thisPageParsed=p;
-          it=await refineWithAiAlign(it,p.imageAlign);
         }
         needMore=missingCore(foundParsed);
       }catch(e){ console.error(e); }
     }
-    // A page needing no aiReadDoc call at all (every core field already
-    // complete by the time it's reached) never runs refineWithAiAlign — but
-    // finalTightenPass is independent of aiReadDoc's imageAlign, so it still
-    // applies here to catch a residual background sliver on this page too.
+    // finalTightenPass (pure local pixel math, no AI call) runs on every
+    // page regardless of which branch above ran (or none at all, for a page
+    // needing no aiReadDoc call because every core field was already
+    // complete) — it's the only geometric tightening pass left after
+    // refineWithAiAlign()'s removal (2026-09-30, see its own removal note).
     it=await finalTightenPass(it);
     pageParsed.push(thisPageParsed);
     otherPages.push(it);
