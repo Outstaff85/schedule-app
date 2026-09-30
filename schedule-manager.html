@@ -362,6 +362,7 @@
     <div class="ttab" id="tabSchedule" onclick="switchTab('schedule')"><span class="ic"><i class="ti ti-calendar"></i></span><span class="lb">Schedule</span></div>
     <div class="ttab" id="tabWorkers" onclick="switchTab('workers')"><span class="ic"><i class="ti ti-users-group"></i></span><span class="lb">Workers</span></div>
     <div class="ttab" id="tabClients" onclick="switchTab('clients')"><span class="ic"><i class="ti ti-users"></i></span><span class="lb">Clients</span></div>
+    <div class="ttab" id="tabSuppliers" onclick="switchTab('suppliers')"><span class="ic"><i class="ti ti-truck-delivery"></i></span><span class="lb">Suppliers</span></div>
     <div class="ttab admin" id="tabAdmin" onclick="switchTab('admin')"><span class="ic"><i class="ti ti-lock"></i></span><span class="lb">Admin</span></div>
     <div class="ttab admin" id="tabAccounting" onclick="switchTab('accounting')"><span class="ic"><i class="ti ti-cash"></i></span><span class="lb">Accounting</span></div>
   </div>
@@ -516,6 +517,17 @@
       <div class="clients-grid" id="clientsGrid"></div>
     </div>
 
+    <div class="page-section" id="sectionSuppliers">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Suppliers</div>
+          <div class="page-sub">Manage staffing suppliers and assigned workers</div>
+        </div>
+        <button class="btn sm" onclick="openAddSupplier()"><i class="ti ti-plus"></i> Add Supplier</button>
+      </div>
+      <div class="clients-grid" id="suppliersGrid"></div>
+    </div>
+
     <!-- Admin Section -->
     <div class="page-section" id="sectionAdmin">
       <div class="page-header">
@@ -646,6 +658,9 @@
 <div class="overlay" id="clientOverlay" onclick="if(event.target===this)closeModal('clientOverlay')">
   <div class="modal" id="clientModal"></div>
 </div>
+<div class="overlay" id="supplierOverlay" onclick="if(event.target===this)closeModal('supplierOverlay')">
+  <div class="modal" id="supplierModal"></div>
+</div>
 
 <!-- Manual Punch Modal -->
 <div class="overlay" id="manualPunchOverlay" onclick="if(event.target===this)closeModal('manualPunchOverlay')">
@@ -772,8 +787,10 @@ let saveTimer        = null;
 let currentTab       = 'schedule';
 let editingWorkerIdx = null;
 let editingClientId  = null;
+let editingSupplierId = null;
 let selColorIdx      = 0;
 let selClientColor   = CLIENT_COLORS[0];
+let selSupplierColor = CLIENT_COLORS[0];
 let dragSrcWi        = null;
 
 let workers = [
@@ -1001,12 +1018,13 @@ function fmtDMY(dateStr){
 // --- Tab ---------------------------------------------------------------------
 function switchTab(tab){
   currentTab=tab;
-  ['dashboard','schedule','workers','clients','admin','accounting'].forEach(t=>{
+  ['dashboard','schedule','workers','clients','suppliers','admin','accounting'].forEach(t=>{
     document.getElementById('tab'+t.charAt(0).toUpperCase()+t.slice(1))?.classList.toggle('active',tab===t);
     document.getElementById('section'+t.charAt(0).toUpperCase()+t.slice(1))?.classList.toggle('visible',tab===t);
   });
   if(tab==='workers')    renderWorkersPage();
   if(tab==='clients')    renderClientsPage();
+  if(tab==='suppliers')  renderSuppliersPage();
   if(tab==='admin')      renderAdmin();
   if(tab==='dashboard')  renderDashboard();
   if(tab==='accounting') renderAccounting();
@@ -1035,6 +1053,7 @@ function render(){
   // every mutation.
   if(currentTab==='workers')    renderWorkersPage();
   if(currentTab==='clients')    renderClientsPage();
+  if(currentTab==='suppliers')  renderSuppliersPage();
   if(currentTab==='admin')      renderAdmin();
   if(currentTab==='dashboard')  renderDashboard();
   if(currentTab==='accounting') renderAccounting();
@@ -2135,6 +2154,96 @@ function renderClientsPage(){
 
         <button class="btn sm" style="background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)" onclick="openManualPunch('${c.id}')"><i class="ti ti-clock"></i> Punch Clock</button>
         <button class="btn sm red" onclick="deleteClient('${c.id}')">&#x2715; Remove</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// --- Suppliers ----------------------------------------------------------------
+// Mirrors the Clients tab above (same grid/card CSS classes, same CRUD
+// shape) — a supplier is a staffing agency a worker is linked to via
+// w.supplierId (single, unlike the many-to-many clientIds), see the
+// `suppliers` global's own comment for the field list.
+function openAddSupplier(){ editingSupplierId=null; selSupplierColor=CLIENT_COLORS[suppliers.length%CLIENT_COLORS.length]; showSupplierModal({name:'',color:selSupplierColor,phone:'',notes:'',bank:'',bankBranch:'',accountNumber:'',companyNumber:''}); }
+function openEditSupplier(sid){ editingSupplierId=sid; const s=suppliers.find(x=>x.id===sid); selSupplierColor=s.color; showSupplierModal(s); }
+function showSupplierModal(s){
+  document.getElementById('supplierModal').innerHTML=`
+    <div class="modal-title">${editingSupplierId?'Edit Supplier':'Add New Supplier'}</div>
+    <div class="field"><label>Name</label><input type="text" id="sName" value="${esc(s.name||'')}" placeholder="Supplier name" autofocus></div>
+    <div class="field"><label>Phone (optional)</label><input type="text" id="sPhone" value="${esc(s.phone||'')}" placeholder="Phone"></div>
+    <div class="field"><label>Notes (optional)</label><input type="text" id="sNotes" value="${esc(s.notes||'')}" placeholder="Notes"></div>
+    <div class="field">
+      <label><i class="ti ti-building-bank"></i> Bank details (optional)</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div><label style="font-size:11px;color:var(--text3)">Bank</label>
+          <input type="text" id="sBank" value="${esc(s.bank||'')}" placeholder="Bank name"></div>
+        <div><label style="font-size:11px;color:var(--text3)">Branch</label>
+          <input type="text" id="sBankBranch" value="${esc(s.bankBranch||'')}" placeholder="Branch #"></div>
+        <div><label style="font-size:11px;color:var(--text3)">Account #</label>
+          <input type="text" id="sAccountNumber" value="${esc(s.accountNumber||'')}" placeholder="Account #"></div>
+      </div>
+    </div>
+    <div class="field"><label>ח.פ (Company Number, optional)</label><input type="text" id="sCompanyNumber" value="${esc(s.companyNumber||'')}" placeholder="512345678"></div>
+    <div class="field"><label>Color</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap" id="sColorPick">
+        ${CLIENT_COLORS.map(col=>`<div onclick="pickSColor('${col}')" data-color="${col}" style="width:24px;height:24px;border-radius:50%;background:${col};cursor:pointer;border:2px solid ${col===selSupplierColor?'white':'transparent'};transition:all 0.15s;${col===selSupplierColor?'transform:scale(1.2)':''}"></div>`).join('')}
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('supplierOverlay')">Cancel</button>
+      <button class="btn accent" onclick="saveSupplier()">${editingSupplierId?'Save Changes':'Add Supplier'}</button>
+    </div>`;
+  document.getElementById('supplierOverlay').classList.add('open');
+}
+function pickSColor(col){ selSupplierColor=col; document.querySelectorAll('#sColorPick [data-color]').forEach(el=>{ el.style.borderColor=el.dataset.color===col?'white':'transparent'; el.style.transform=el.dataset.color===col?'scale(1.2)':'scale(1)'; }); }
+function saveSupplier(){
+  const name=document.getElementById('sName').value.trim();
+  if(!name){ document.getElementById('sName').focus(); return; }
+  const phone=document.getElementById('sPhone').value.trim();
+  const notes=document.getElementById('sNotes').value.trim();
+  const bank=document.getElementById('sBank').value.trim();
+  const bankBranch=document.getElementById('sBankBranch').value.trim();
+  const accountNumber=document.getElementById('sAccountNumber').value.trim();
+  const companyNumber=document.getElementById('sCompanyNumber').value.trim();
+  if(editingSupplierId){
+    const idx=suppliers.findIndex(x=>x.id===editingSupplierId);
+    if(idx>=0) suppliers[idx]={...suppliers[idx],name,phone,notes,bank,bankBranch,accountNumber,companyNumber,color:selSupplierColor};
+    showToast(name+' updated!');
+  } else {
+    suppliers.push({id:uid(),name,phone,notes,bank,bankBranch,accountNumber,companyNumber,color:selSupplierColor});
+    showToast(name+' added!');
+  }
+  closeModal('supplierOverlay'); renderSuppliersPage(); autoSave();
+}
+function deleteSupplier(sid){
+  const s=suppliers.find(x=>x.id===sid);
+  if(!s||!confirm('Remove supplier "'+s.name+'"?'))return;
+  suppliers=suppliers.filter(x=>x.id!==sid);
+  workers.forEach(w=>{
+    if(w.supplierId===sid) w.supplierId=null;
+    if(w.supplierRates&&w.supplierRates[sid]) delete w.supplierRates[sid];
+  });
+  renderSuppliersPage(); render(); autoSave(); showToast(s.name+' removed');
+}
+function renderSuppliersPage(){
+  const grid=document.getElementById('suppliersGrid');
+  if(!grid) return;
+  if(!suppliers.length){ grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:14px">No suppliers yet. Click "+ Add Supplier" to create one.</div>'; return; }
+
+  grid.innerHTML=suppliers.map(s=>{
+    const assigned=workers.filter(w=>w.supplierId===s.id);
+    return `<div class="client-card">
+      <div class="client-card-header">
+        <div class="client-card-dot" style="background:${s.color}"></div>
+        <div><div class="client-card-name">${esc(s.name)}</div>${s.phone?`<div class="client-card-info"><i class="ti ti-phone"></i> ${esc(s.phone)}</div>`:''}</div>
+      </div>
+      ${s.notes?`<div style="font-size:12px;color:var(--text2)">${esc(s.notes)}</div>`:''}
+      ${s.bank?`<div style="font-size:12px;color:var(--text2)"><i class="ti ti-building-bank"></i> ${esc(s.bank)}${s.bankBranch?' · branch '+esc(s.bankBranch):''}${s.accountNumber?' · '+esc(s.accountNumber):''}</div>`:''}
+      ${s.companyNumber?`<div style="font-size:12px;color:var(--text2)"><i class="ti ti-id"></i> ח.פ ${esc(s.companyNumber)}</div>`:''}
+      <div style="font-size:12px;color:var(--text2)"><strong style="color:var(--text)">Workers:</strong> ${assigned.length?assigned.map(w=>`<span style="color:${WORKER_COLORS[w.colorIdx%8].text}">${esc(w.name)}</span>`).join(', '):'None assigned'}</div>
+      <div class="client-card-actions">
+        <button class="btn sm" onclick="openEditSupplier('${s.id}')"><i class="ti ti-edit"></i> Edit</button>
+        <button class="btn sm red" onclick="deleteSupplier('${s.id}')">&#x2715; Remove</button>
       </div>
     </div>`;
   }).join('');
