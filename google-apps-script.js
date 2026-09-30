@@ -1712,6 +1712,45 @@ function ensureHeaders(sh, headers) {
 
 // ── AI document reader (passport + Israeli ID via Anthropic Vision) ─────────────
 // Ключ хранится в Script Properties: ANTHROPIC_API_KEY
+// Field map for Israeli ID pages, shared by aiReadDoc and aiReadSefach.
+// Built from real scans of the three pages (biometric card front, biometric
+// card back, paper ספח). Fields are identified by their printed label, never
+// by what the value looks like.
+var IL_ID_FIELD_MAP =
+  'ISRAELI DOCUMENTS come as three different pages, all type "israeli_id": ' +
+  '(A) FRONT of the biometric card (header תעודת זהות / מדינת ישראל, portrait photo, chip): שם המשפחה, השם הפרטי, תאריך הלידה, תאריך הנפקה, בתוקף עד, מספר הזהות. It has no sex, no address and no children. ' +
+  '(B) BACK of the biometric card (header רשות האוכלוסין וההגירה, a QR code, no portrait): מספר הזהות, שם המשפחה, השם הפרטי, שם האב, שם האם, שם הסב, המין, מקום הלידה, המעמד, מספר הכרטיס. It has NO address and no children. ' +
+  '(C) the paper ספח (header ספח לתעודת זהות, a folded sheet used with both the biometric card and the older laminated card): the holder\'s ID number and names, the address (המען, מס\' בית, מס\' דירה, הישוב), המצב האישי, the spouse (בן/בת הזוג), and one ילד/ילדה block per child. ' +
+  'The older laminated card is also "israeli_id": its front has the portrait, names, שם האב/שם האם, date and place of birth, sex, issue date and ID number, and no expiry date. ' +
+  'Decide what each value is ONLY from the printed label next to it, never from what the value looks like — e.g. a street can be named after a city ("חיפה" in the המען row is a street, not a city). ' +
+  'NAMES: שם המשפחה → "surname", השם הפרטי → "given" (the holder\'s own current names). Never use שם האב, שם האם, שם הסב (father, mother, grandfather), שם המשפחה הקודם, השם הפרטי הקודם, שם נעורים (previous and maiden names), or any spouse or child name as the holder\'s name. If a name is printed in both Hebrew and Latin letters, return the Hebrew. ' +
+  'ID NUMBER: מספר הזהות → "idNo". It is printed in space-separated groups like "0 1234567 8" (first digit, seven digits, check digit) — join the groups into one 9-digit string ("012345678"), keeping leading zeros. The same number may appear several times on a page (also as a faint laser copy) — it is one number. ' +
+  'מספר הכרטיס (the 9-digit card number on the card back) and the 7-digit מיקוד (postal code) are NOT the ID number — never return them as an ID. ' +
+  'DATES: תאריך הלידה → "dob"; בתוקף עד / תאריך תפוגה → "expiry"; תאריך הנפקה / ניתן ב (issue date) is never the dob or expiry — ignore it. ' +
+  'Each date is usually printed twice: a Hebrew-calendar date in letters (like ט"ו בניסן התשנ"ה) and a Gregorian date in digits (like 5.4.1995 or 05.04.1995) — use ONLY the Gregorian digits, written as DD/MM/YYYY with leading zeros (5.4.1995 → 05/04/1995). ' +
+  'SEX: המין / מין → "sex": ז or זכר = "M", נ or נקבה = "F". Never infer it from a name or from a gendered word such as נשוי/נשואה. ' +
+  'ADDRESS (ספח only): המען → "address" (street name only), מס\' בית → "houseNumber" (digits only), הישוב → "city". מס\' דירה (apartment number) is NOT the house number, and the 7-digit מיקוד is not part of the address — leave both out. מקום הלידה (place of birth), המעמד (status) and the issuing office are never the address or city. ' +
+  'Keep the three strictly separate: מען "יהודה הלוי", מס\' בית "16", ישוב "פתח תקווה" become "address":"יהודה הלוי","houseNumber":"16","city":"פתח תקווה" — never combined, never swapped. ' +
+  'MARITAL STATUS: המצב האישי → "maritalStatus", exactly one of "single" (רווק/רווקה), "married" (נשוי/נשואה), "divorced" (גרוש/גרושה), "widowed" (אלמן/אלמנה); empty string if not printed — do not guess. ' +
+  'SPOUSE: מס\' הזהות של בן/בת הזוג, שם המשפחה של בן/בת הזוג, השם הפרטי של בן/בת הזוג belong to the spouse — never use them for the holder and never add the spouse to "children". ' +
+  'CHILDREN: each ילד/ילדה block on the ספח is one child. Inside a block, "מספר זהות בעל התעודה" is the HOLDER\'s own number repeated — NOT the child\'s; the child\'s own number is the separate מספר הזהות row lower in the same block. ' +
+  'For each child return "name" = the child\'s given name, one space, then surname (from that block\'s השם הפרטי and שם המשפחה, e.g. "נועה כהן"), "idNo" = the child\'s own 9-digit number (groups joined as above), "dob" = that block\'s Gregorian תאריך הלידה. No ילד/ילדה blocks → "children":[]. ' +
+  'The top-level "idNo" is always the holder\'s own number — never a child\'s, the spouse\'s, or the card number. ' +
+  'Write all Hebrew values exactly as printed, in Hebrew — never translate or transliterate. ';
+
+// Field map for foreign passports (photo page), used by aiReadDoc. Built from
+// real scans (Indian, Thai): bilingual labels, titles printed with the name,
+// a national-ID field next to the passport number, and a 2-line MRZ.
+var PASSPORT_FIELD_MAP =
+  'PASSPORT (photo page; labels are usually bilingual — English plus the national language): ' +
+  'Surname → "surname". Given Name(s) / Name → "given" (all given names in the printed order), in Latin letters. Drop a title printed with the name (MR., MRS., MS., MISS). Ignore a copy of the name in a non-Latin script (e.g. a "Name in Thai" row). If the passport has no surname, leave "surname" empty rather than splitting the given names. ' +
+  'Passport No. → "passportNo", exactly as printed (letters and digits, no spaces). Personal No. / Identification No. / national ID number (often 10-14 digits) is NOT the passport number. ' +
+  'Date of Birth → "dob", Date of Expiry → "expiry"; Date of Issue is never the dob or expiry — ignore it. Dates like "03 JAN 1980" or "29/01/1995" become DD/MM/YYYY ("03/01/1980"). ' +
+  'Sex → "sex" (M or F). Nationality → "nationality" as printed in Latin letters (e.g. "INDIAN"). "issuer" = Issuing Authority if printed, otherwise Place of Issue. Place of Birth, Height, Type and Country Code are not needed. ' +
+  'MRZ: the two lines of 44 characters with "<" fillers at the bottom of the page. Line 2: characters 1-9 = passport number (padded with "<" if shorter), character 10 = its check digit, 11-13 = nationality code, 14-19 = birth date YYMMDD, 20 = check digit, 21 = sex, 22-27 = expiry YYMMDD, 28 = check digit, then optional personal data. ' +
+  'So the passport number is characters 1-9 WITHOUT the "<" padding and WITHOUT character 10: "X1234567<3IND..." → "X1234567"; "AB12345674THA..." → "AB1234567". ' +
+  'Use line 2 to cross-check passportNo, dob, sex and expiry: if a printed character is unclear, covered by a stamp, fingerprint or hologram, or conflicts with the MRZ, use the MRZ value. For YY years pick the century that gives a plausible adult birth date, and an expiry within about 10 years of today. Take names from the printed fields, not the MRZ. ';
+
 // Модель: ANTHROPIC_MODEL (по умолчанию claude-sonnet-5).
 // Здесь намеренно НЕ самая дешёвая модель: это единственный вызов, который
 // действительно читает поля документа, и его ошибка уезжает в реальную
@@ -1731,59 +1770,19 @@ function aiReadDoc(body){
     'Extract ALL relevant fields and return ONLY valid JSON — no prose, no markdown, no code fences. ' +
     'For a foreign PASSPORT return: ' +
     '{"type":"passport","surname":"...","given":"...","passportNo":"...","nationality":"...","dob":"DD/MM/YYYY","sex":"M or F","expiry":"DD/MM/YYYY","issuer":"..."} ' +
-    'For an ISRAELI ID (תעודת זהות / biometric passport) return: ' +
-    '{"type":"israeli_id","surname":"...","given":"...","idNo":"9-digit number","dob":"DD/MM/YYYY","sex":"M or F","address":"street name only","houseNumber":"house/building number only","city":"...","expiry":"DD/MM/YYYY","maritalStatus":"single, married, divorced, widowed, or empty","children":[{"name":"...","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}]} ' +
-    'Rules: dates always DD/MM/YYYY. Names exactly as printed. ' +
-    'For Israeli ID the surname is שם משפחה, given name is שם פרטי, ID number is מספר זהות (9 digits). ' +
-    // Field map: which printed label means what, and the look-alike labels
-    // that must NOT be used for a field. Built from the labels themselves
-    // rather than positions, since layouts differ between ID generations.
-    'FIELD MAP — ISRAELI ID (any format/side). Use the printed Hebrew label to decide what each value is: ' +
-    'שם משפחה → "surname". שם פרטי → "given". ' +
-    'שם האב (father\'s name) and שם האם (mother\'s name) are the PARENTS\' names — never put them in "given" or "surname". ' +
-    'שם משפחה קודם / שמות קודמים (previous names) — never use as "surname". ' +
-    'If a name is printed both in Hebrew and in Latin letters, return the Hebrew version. ' +
-    'מספר זהות / ת.ז. → "idNo": exactly 9 digits, keep leading zeros; on older cards the last (check) digit is sometimes printed separately after a dash or in its own box (ס"ב) — join it to the other 8 so the result is 9 digits. ' +
-    'תאריך לידה → "dob". תאריך הנפקה / תאריך מתן (issue date) is NOT the expiry and NOT the birth date — never return it. ' +
-    'תאריך תפוגה / בתוקף עד / תוקף → "expiry"; if the card shows no expiry field (older laminated cards have none), return "expiry":"". ' +
-    'מין → "sex": ז or זכר = "M", נ or נקבה = "F"; never infer sex from the name. ' +
-    'מקום לידה (place of birth) and מקום הנפקה / לשכה (issuing office) are NOT the address or the city — never put them in "address" or "city"; the address comes ONLY from מען / מס\' בית / ישוב. ' +
-    'המצב האישי / מצב אישי → "maritalStatus". ' +
-    'Dates may also appear in the Hebrew calendar (e.g. letters like ט"ו בניסן תשנ"ה) — ignore those and use only the Gregorian date. ' +
-    'On the ספח, a spouse row (בן/בת זוג) may show the spouse\'s name and ID number — the spouse is never the holder (not "idNo", not "given"/"surname") and never a child (not in "children"). ' +
-    'FIELD MAP — FOREIGN PASSPORT (labels are usually bilingual, e.g. English/French plus the national language): ' +
-    'Surname / Nom → "surname". Given names / Prénoms → "given" (keep all given names, in the order printed). ' +
-    'Passport No. / Document No. / No. du passeport → "passportNo" — NOT the "Personal No." / national ID number field that some passports also print. ' +
-    'Date of birth → "dob". Date of expiry / Date d\'expiration → "expiry". Date of issue / Date de délivrance is NOT the expiry — never return it. ' +
-    'Sex → "sex" (M or F). Nationality → "nationality". Issuing authority / Authority / Issuing State → "issuer". ' +
-    'Printed dates like "12 JAN 1990", "12.01.1990" or "12 JAN/JAN 90" are always converted to DD/MM/YYYY. ' +
-    'Most passports have a machine-readable zone (MRZ): two lines of 44 characters with "<" fillers at the bottom of the photo page. ' +
-    'Line 2 holds, in order: passport number (first 9 characters, "<" = padding) + check digit, nationality (3 letters), birth date YYMMDD + check digit, sex (M/F), expiry date YYMMDD + check digit. ' +
-    'Use the MRZ as a cross-check for passportNo, dob, sex and expiry: if a character in the printed field is unclear or conflicts with the MRZ, prefer the MRZ value. ' +
-    'For MRZ years, choose the century that makes the holder a plausible working-age adult for dob, and a date within the next 20 years or the recent past for expiry. ' +
-    'Take names from the printed fields, not the MRZ (the MRZ drops accents and truncates long names). ' +
-    'The top-level "idNo" is specifically the DOCUMENT HOLDER\'s own number — never a child\'s. If a ילדים (children) section is visible (e.g. when this photo is of the ספח side), each child usually has their OWN separate מספר זהות printed next to their name; that number belongs ONLY inside that child\'s own entry in "children", never in the top-level "idNo" field. ' +
-    'FIRST CHECK, before anything else, on every photo: does it show the three labeled fields מען (street), מס\' בית (house/building number), and ישוב (city/town)? ' +
-    'These three fields are always present on the address/ספח side of an Israeli ID — in BOTH the old paper-insert format and the new biometric-card-back format (see below) — and nowhere else. ' +
-    'Finding them is by itself sufficient and conclusive: immediately classify the photo as type:"israeli_id", regardless of whether a photo, name, or ID number is ALSO visible on it. Do this check before considering anything else about the image. ' +
-    'Israeli IDs exist in TWO physical formats — treat a photo of EITHER one as type:"israeli_id", whichever side of whichever format it happens to show: ' +
-    '(1) the older laminated ID card plus a SEPARATE paper ספח (appendix) insert carrying the address/children section, with THREE separate labeled rows: ' +
-    'מען (street name), מס\' בית (house/building number), and ישוב (city/town name); or ' +
-    '(2) the newer plastic biometric/smart ID card (תעודה ביומטרית) — a two-sided card where the FRONT has photo/name/ID number/dob and the BACK has the address printed directly on the same card (no separate paper insert exists for this format), often alongside a machine-readable zone. ' +
-    'A photo showing ONLY a back/address side — no photo, no given/surname visible on it — is still type:"israeli_id": extract whatever IS visible on that particular photo (e.g. just address/city, or just children) and leave every other field an empty string; never refuse to classify it or return a different type just because one photo only shows part of the document. ' +
-    'Whichever format: put מען/street-name ALONE into the "address" field (e.g. "יהודה הלוי" — no number), ' +
-    'put מס\' בית/house-number ALONE into the "houseNumber" field (e.g. "16" — digits only, no street name), ' +
-    'and put ישוב/city-name alone into the "city" field (e.g. "פתח תקווה") — keep all three separate, never combine two of them into one field or mix up which is which. ' +
-    'The address side (paper ספח or biometric card back) sometimes also lists the holder\'s registered children (ילדים) with their own name/ID/birth date rows — ' +
-    'if such a section is present and populated, extract each child into the "children" array; if absent or empty, return "children":[]. ' +
-    'Some ID variants also print a personal/marital status field (מצב אישי / מצב משפחתי — רווק/רווקה, נשוי/נשואה, גרוש/גרושה, אלמן/אלמנה): if visible anywhere on the document, put it in "maritalStatus" as exactly one of "single", "married", "divorced", "widowed" (translate whatever is printed into one of these four English words); if no such field is visible, return "maritalStatus":"" — do not guess. ' +
+    'For an ISRAELI ID (any page: card front, card back, or ספח) return: ' +
+    '{"type":"israeli_id","surname":"...","given":"...","idNo":"9-digit number","dob":"DD/MM/YYYY","sex":"M or F","address":"street name only","houseNumber":"house/building number only","city":"...","expiry":"DD/MM/YYYY","maritalStatus":"single, married, divorced, widowed, or empty","children":[{"name":"given surname","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}]} ' +
+    'Rules: dates always DD/MM/YYYY with leading zeros. Names exactly as printed. ' +
+    IL_ID_FIELD_MAP +
+    'Any photo showing the המען / מס\' בית / הישוב rows is a ספח and is type "israeli_id", even without a portrait. A photo showing only part of a document is still "israeli_id": fill what that page shows and leave every other field empty. ' +
+    PASSPORT_FIELD_MAP +
     'If a field is not visible or unreadable use empty string. ' +
     'Also include a top-level "fieldBoxes" object locating, on THIS image exactly as given to you (not the imageAlign-straightened version below), ' +
     'the tight bounding box of each all-digit field you found a value for, among: idNo, dob, expiry, passportNo (whichever apply to this document type). ' +
     'Each box is {"x0":0,"y0":0,"x1":1,"y1":1} — top-left and bottom-right corners, each coordinate a fraction 0 to 1 of THIS image\'s width/height — ' +
     'tight around just the printed characters (a few pixels of margin, not the whole field label or surrounding box). ' +
-    'Omit a field from "fieldBoxes" entirely if you left its value empty. These boxes are used to re-crop and double-check exactly those digits, so precision matters more than for imageAlign. ' +
-    'Also include a top-level "photoBox" object (same coordinate space/convention as fieldBoxes above — fractions 0 to 1 of THIS image exactly as given) locating the person\'s own portrait photo printed on the document, if one is visible: {"x0":0,"y0":0,"x1":1,"y1":1}, tight around just the photo itself (not its printed frame/border, not the surrounding text). Omit "photoBox" entirely if no portrait photo is visible on this document. ' +
+    'Box the printed field, never the MRZ line; for idNo box the clearest single copy of the number. Omit a field from "fieldBoxes" entirely if you left its value empty. These boxes are used to re-crop and double-check exactly those digits, so precision matters more than for imageAlign. ' +
+    'Also include a top-level "photoBox" object (same coordinate space/convention as fieldBoxes above — fractions 0 to 1 of THIS image exactly as given) locating the person\'s own portrait photo printed on the document, if one is visible: {"x0":0,"y0":0,"x1":1,"y1":1}, tight around just the photo itself (not its printed frame/border, not the surrounding text). If a second, smaller or faded "ghost" copy of the portrait is also printed, box the main (largest) portrait. Omit "photoBox" entirely if no portrait photo is visible on this document. ' +
     'Also include a top-level "imageAlign" object (for both document types) describing how to straighten the ORIGINAL photo: ' +
     '{"rotate":0,"crop":{"x0":0,"y0":0,"x1":1,"y1":1},"corners":{"tl":{"x":0,"y":0},"tr":{"x":1,"y":0},"br":{"x":1,"y":1},"bl":{"x":0,"y":1}}} — ' +
     '"rotate" is the clockwise degrees needed to make the document upright and right-reading, and MUST be exactly one of 0, 90, 180, 270 (use 0 if already upright); ' +
@@ -1896,24 +1895,14 @@ function aiReadSefach(body){
   if(!key)        return {error:'ANTHROPIC_API_KEY не задан в Script Properties'};
   if(!body.image) return {error:'Нет изображения'};
 
-  var SYSTEM = 'You are looking at ONLY the address/ספח side of an Israeli ID — either the old paper ' +
-    'ספח (appendix) insert, or the back of the newer plastic biometric ID card (תעודה ביומטרית). ' +
-    'Do NOT try to determine a document "type" or read a photo/name — you already know this is specifically the address side, and those are not on it. ' +
-    'The ID number (מספר הזהות) IS sometimes also printed on this side (both the old paper ספח and the newer biometric card back often repeat it) — ' +
-    'if you can see it, read it too: it is used as a cross-check against the number read off the front of the same document, to catch an OCR misread on either side. ' +
-    'The top-level "idNo" is specifically the DOCUMENT HOLDER\'s own number (the same one printed on the front of the card) — never a child\'s. ' +
-    'If the ילדים (children) section is present, each child there usually has their OWN separate מספר זהות printed next to their name — that number belongs ONLY inside that child\'s own entry in "children", never in the top-level "idNo" field, even if it is the first or only ID number you notice on the page. ' +
+  var SYSTEM = 'You are looking at an EXTRA page of an Israeli ID whose front was already read: either the paper ספח (C below) or the BACK of the biometric card (B below). ' +
+    'Do NOT determine a document type or look for a portrait — you already know what this is. ' +
     'Extract exactly these fields and return ONLY valid JSON, no prose, no markdown, no code fences: ' +
-    '{"type":"israeli_id","idNo":"9-digit number from מספר הזהות if printed on this side, or empty","address":"street name only, from מען","houseNumber":"house/building number only, from מס\' בית","city":"city/town name, from ישוב","maritalStatus":"single, married, divorced, widowed, or empty","sex":"M, F, or empty","children":[{"name":"...","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}],"imageAlign":{"rotate":0,"corners":{"tl":{"x":0,"y":0},"tr":{"x":1,"y":0},"br":{"x":1,"y":1},"bl":{"x":0,"y":1}}}} ' +
-    '"type" is always the literal string "israeli_id" — always include it exactly as shown. ' +
-    'Write address/city/children names exactly as printed on the document, in the original language/script (Hebrew street and city names stay in Hebrew — never translate or transliterate into English). ' +
-    'Concrete example of correctly split fields: if the document shows מען "יהודה הלוי", מס\' בית "16", and ישוב "פתח תקווה", return them as three separate fields — "address":"יהודה הלוי", "houseNumber":"16", "city":"פתח תקווה" — never combine any two of them into one string (e.g. never "address":"יהודה הלוי 16", never "city":"פתח תקווה 16"). ' +
-    'Keep address/houseNumber/city strictly separate — never combine two of them into one field. ' +
-    'The ילדים (children) section, if present and populated, goes in "children"; if absent or empty, return "children":[]. ' +
-    'A spouse row (בן/בת זוג) may show the spouse\'s name and ID number — the spouse is never the holder (not "idNo") and never a child (not in "children"). ' +
-    'מקום לידה (place of birth) is NOT the address or city — the address comes ONLY from מען / מס\' בית / ישוב. ' +
-    'Some ID variants also print a personal/marital status field (המצב האישי / מצב אישי / מצב משפחתי — רווק/רווקה, נשוי/נשואה, גרוש/גרושה, אלמן/אלמנה) on this same address side: if visible, put it in "maritalStatus" as exactly one of "single", "married", "divorced", "widowed"; if not visible, return "maritalStatus":"" — do not guess. ' +
-    'The holder\'s sex field (המין / מין) may also be printed on this side: ז or זכר means male → "sex":"M"; נ or נקבה means female → "sex":"F"; if not visible, return "sex":"" — never infer sex from a name or from a gendered marital-status word. ' +
+    '{"type":"israeli_id","idNo":"holder\'s 9-digit number, or empty","address":"street name only","houseNumber":"house/building number only","city":"city/town name","maritalStatus":"single, married, divorced, widowed, or empty","sex":"M, F, or empty","children":[{"name":"given surname","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}],"imageAlign":{"rotate":0,"corners":{"tl":{"x":0,"y":0},"tr":{"x":1,"y":0},"br":{"x":1,"y":1},"bl":{"x":0,"y":1}}}} ' +
+    '"type" is always the literal string "israeli_id". ' +
+    'The holder\'s ID number is used only as a cross-check against the front, so read it if printed. ' +
+    'The biometric card back has no address and no children — for that page return address, houseNumber, city and maritalStatus as empty strings and "children":[]; read idNo and sex from it. ' +
+    IL_ID_FIELD_MAP +
     'If a field is not visible or unreadable, use an empty string (or empty array for children) — never guess. ' +
     '"imageAlign" describes how to straighten the ORIGINAL photo, same as for a full document read: ' +
     '"rotate" is the clockwise degrees needed to make the card/page upright and right-reading, MUST be exactly one of 0, 90, 180, 270; ' +
