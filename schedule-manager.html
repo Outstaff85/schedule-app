@@ -768,7 +768,11 @@
       <button class="btn sm" id="adminTabBtn_profile" onclick="switchAdminTab('profile')"><i class="ti ti-building"></i> Profile</button>
     </div>
     <div id="adminTab_firms" style="display:none">
-      <div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> New firm</button></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px">
+        <button class="btn sm" onclick="toggleSuperadminAccounting()"><i class="ti ti-cash"></i> Payable summary (all firms)</button>
+        <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> New firm</button>
+      </div>
+      <div id="superadminAccountingWrap" style="display:none;margin-bottom:16px"></div>
       <div id="adminFirmsList" style="display:flex;flex-direction:column;gap:8px"></div>
     </div>
     <div id="adminTab_users" style="display:none">
@@ -3306,6 +3310,86 @@ async function deleteUserConfirm(id, username){
     showToast('User deleted');
     renderAdminUsers();
   }catch(e){ showToast('Network error'); }
+}
+
+// ── Superadmin cross-firm payable summary (Admin/Roles plan, stage 10) ─────
+// Deliberately reuses the exact same canonical payroll functions every
+// firm's own Accounting tab uses (groupPunchesIntoShifts/shiftPay) — never a
+// reimplementation server-side or otherwise, per this file's own standing
+// rule against touching/duplicating that math casually. For each cached firm
+// (__firmsCache, populated by renderFirmsList()), fetches that tenant's own
+// schedule (for worker rate data) + this week's punch log via an explicit
+// asTenantId override in the request — NOT by switching the session's own
+// viewingTenantId/reloading, so browsing this summary never disturbs the
+// admin's actual "currently open" firm. Per-firm total only (hours + payable
+// this week); drilling into a specific supplier's own breakdown is done by
+// switching into that firm (switchToTenant(), already exists) and using its
+// own Accounting tab's payable-by-supplier table — no reason to duplicate
+// that table's rendering here too.
+let __superadminAccountingOpen = false;
+function toggleSuperadminAccounting(){
+  __superadminAccountingOpen = !__superadminAccountingOpen;
+  const wrap = document.getElementById('superadminAccountingWrap');
+  wrap.style.display = __superadminAccountingOpen ? 'block' : 'none';
+  if(__superadminAccountingOpen) renderSuperadminAccounting();
+}
+async function fetchForTenant(action, tenantId){
+  const s = getSession();
+  const q = 'token='+encodeURIComponent(s.token)+'&asTenantId='+encodeURIComponent(tenantId)+'&action='+action;
+  const res = await fetch(GS_URL+'?'+q);
+  return res.json();
+}
+async function renderSuperadminAccounting(){
+  const wrap = document.getElementById('superadminAccountingWrap');
+  wrap.innerHTML = '<div style="color:var(--text2);font-size:13px">Loading every firm\'s this-week payable — this can take a moment…</div>';
+  if(!__firmsCache.length){ wrap.innerHTML = '<div style="color:var(--text2);font-size:13px">No firms yet.</div>'; return; }
+  const ws = new Date(); ws.setDate(ws.getDate()-ws.getDay()); ws.setHours(0,0,0,0);
+  const rows = [];
+  for(const t of __firmsCache){
+    try{
+      const [schJson, logJson] = await Promise.all([
+        fetchForTenant('loadSchedule', t.tenantId),
+        fetchForTenant('loadPunchLog', t.tenantId),
+      ]);
+      const fWorkers = schJson.workers || [];
+      const entries = (logJson.entries || []).filter(e => new Date(e.ts) >= ws);
+      const byWorkerPunches = {};
+      entries.forEach(e => { (byWorkerPunches[e.workerId]=byWorkerPunches[e.workerId]||[]).push(e); });
+      let totalHours = 0, totalPay = 0;
+      Object.entries(byWorkerPunches).forEach(([wid, list]) => {
+        const wc = fWorkers.find(w => w.id === wid);
+        groupPunchesIntoShifts(list).forEach(bucket => {
+          const res = analyzeDayPunches(bucket.entries, bucket.date);
+          if(res.hours > 0){
+            totalHours += res.hours;
+            const isSat = bucket.date.getDay() === 6;
+            totalPay += shiftPay(res.hours, wc, isSat, bucket.entries[0] && bucket.entries[0].clientId);
+          }
+        });
+      });
+      rows.push({ name: t.companyName || t.tenantId, hours: totalHours, pay: totalPay });
+    }catch(e){ rows.push({ name: t.companyName || t.tenantId, hours: 0, pay: 0, error: true }); }
+  }
+  const grandHours = rows.reduce((s,r)=>s+r.hours,0), grandPay = rows.reduce((s,r)=>s+r.pay,0);
+  wrap.innerHTML = `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:var(--text2)">Firm</th>
+        <th style="padding:8px 12px;text-align:center;font-size:12px;color:var(--text2)">Hours (this week)</th>
+        <th style="padding:8px 12px;text-align:right;font-size:12px;color:var(--text2)">Payable</th>
+      </tr></thead>
+      <tbody>${rows.map(r=>`<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:8px 12px;font-size:13px;font-weight:600">${esc(r.name)}${r.error?' <span style="color:#ff6b78;font-size:11px">(load failed)</span>':''}</td>
+        <td style="padding:8px 12px;text-align:center;font-size:13px">${r.hours.toFixed(1)}h</td>
+        <td style="padding:8px 12px;text-align:right;font-size:13px;font-weight:700;color:var(--green)">₪${r.pay.toFixed(0)}</td>
+      </tr>`).join('')}</tbody>
+      <tfoot><tr style="background:var(--bg3);border-top:2px solid var(--border)">
+        <td style="padding:8px 12px;font-size:13px;font-weight:700">TOTAL</td>
+        <td style="padding:8px 12px;text-align:center;font-size:13px;font-weight:700">${grandHours.toFixed(1)}h</td>
+        <td style="padding:8px 12px;text-align:right;font-size:14px;font-weight:800;color:var(--green)">₪${grandPay.toFixed(0)}</td>
+      </tr></tfoot>
+    </table>
+  </div>`;
 }
 
 function openErrorsScreen(){
