@@ -1059,13 +1059,32 @@ function _scanSideEdge(lum,w,h,axis,fixedFrac,alongLo,alongHi,inwardSign,startFr
       const g=(axis==='x')?Math.abs(lum(p+1,along)-lum(p-1,along)):Math.abs(lum(along,p+1)-lum(along,p-1));
       grads.push(g);
     }
-    let bi=0; for(let k=1;k<grads.length;k++) if(grads[k]>grads[bi]) bi=k;
     const sorted=grads.slice().sort((a,b)=>a-b), medianGrad=sorted[Math.floor(sorted.length/2)];
-    if(grads[bi]>12&&grads[bi]>2*medianGrad){
-      let sub=0;
-      if(bi>0&&bi<grads.length-1){ const y0=grads[bi-1],y1=grads[bi],y2=grads[bi+1]; const den=y0-2*y1+y2; if(Math.abs(den)>1e-6) sub=0.5*(y0-y2)/den; }
-      offsets.push((bi-SEARCH)+Math.max(-1,Math.min(1,sub)));
+    // Nearest-qualifying-peak selection (2026-09-30, porting refineQuadCorners'
+    // 2026-09-28 fix, which this sibling function never received) — picking
+    // the single strongest gradient anywhere in the window let a bold printed
+    // header/footer line out-contrast the card's own faint physical edge,
+    // pulling the final crop past the true boundary into the document itself
+    // (reported on a real front-ID scan: header text visibly clipped on the
+    // left edge). Search outward from the starting position (mid=SEARCH) and
+    // take the first local peak that clears both the flat floor and the
+    // relative-to-median check — a nearer, real edge no longer loses to a
+    // stronger but farther false one just for being fainter.
+    const mid=SEARCH;
+    let bi=-1;
+    for(let d=0;d<=SEARCH&&bi===-1;d++){
+      const idxs=d===0?[mid]:[mid-d,mid+d];
+      for(const idx of idxs){
+        if(idx<0||idx>=grads.length) continue;
+        const g=grads[idx];
+        const gl=idx>0?grads[idx-1]:-Infinity, gr=idx<grads.length-1?grads[idx+1]:-Infinity;
+        if(g>12&&g>2*medianGrad&&g>=gl&&g>=gr){ bi=idx; break; }
+      }
     }
+    if(bi===-1) continue;
+    let sub=0;
+    if(bi>0&&bi<grads.length-1){ const y0=grads[bi-1],y1=grads[bi],y2=grads[bi+1]; const den=y0-2*y1+y2; if(Math.abs(den)>1e-6) sub=0.5*(y0-y2)/den; }
+    offsets.push((bi-SEARCH)+Math.max(-1,Math.min(1,sub)));
   }
   if(offsets.length<Math.ceil(N*0.4)) return null; // not enough signal — leave this side alone
   offsets.sort((a,b)=>a-b);
