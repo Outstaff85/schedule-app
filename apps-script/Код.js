@@ -60,7 +60,7 @@ function doPost(e) {
     }
 
     switch (body.action) {
-      case 'saveSchedule':         return jsonResponse(saveSchedule(body.data, body.baseSavedAt, tenantId));
+      case 'saveSchedule':         return jsonResponse(saveSchedule(body.data, body.baseSavedAt, tenantId, auth));
       case 'savePunch':            return jsonResponse(savePunch(body.data, tenantId));
       case 'deletePunch':          return jsonResponse(deletePunch(body.id, tenantId));
       case 'updatePunch':          return jsonResponse(updatePunch(body.data, tenantId));
@@ -728,8 +728,18 @@ function readScheduleMap(sh, tenantId) {
   return { workers: [], clients: [], suppliers: [], weekStart: null, savedAt: null, _row: null };
 }
 
-function saveSchedule(data, baseSavedAt, tenantId) {
+function saveSchedule(data, baseSavedAt, tenantId, auth) {
   if (!tenantId) return { error: 'Нет активной фирмы (tenant)' };
+  // 'schedule' is the practical gate for this whole action (Admin/Roles plan,
+  // stage 9) even though it writes workers/clients/suppliers together, not
+  // just the week grid — saveSchedule() is a single bundled write for the
+  // entire data model (see readScheduleMap()'s own comment), so there's no
+  // finer-grained action to gate 'workers'/'clients'/'suppliers' separately
+  // against; a staff login without 'schedule' simply can't write ANY of it.
+  // auth is undefined for the one caller that predates this parameter
+  // (there are none left, but kept optional rather than a hard throw here —
+  // requirePermission() itself already no-ops for every non-staff role).
+  if (auth) requirePermission(auth, 'schedule');
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = getOrCreateSheet(ss, SH_SCHEDULE);
   ensureHeaders(sh, SCHEDULE_HEADERS);
