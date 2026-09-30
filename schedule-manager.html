@@ -637,10 +637,6 @@
       <div class="modal-title" style="margin-bottom:0"><i class="ti ti-sparkles" style="color:var(--green)"></i> Скан паспорта</div>
       <button class="btn sm" onclick="closeModal('aiScanOverlay')"><i class="ti ti-x"></i></button>
     </div>
-    <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.5">
-      Читает загранпаспорт <b>и</b> израильский теудат-зеут (включая иврит). Фото уходит на твой сервер (Apps Script) и обрабатывается ИИ. Стоимость: ~$0.002 за скан.
-      <br><b>Снимай камерой телефона напрямую, не пересылай фото через мессенджер</b> — пересылка сжимает картинку, а ИИ и разбор мелких цифр (номер, даты) от этого страдают.
-    </div>
     <div id="aiScanStage"></div>
   </div>
 </div>
@@ -1831,16 +1827,24 @@ async function saveWorker(){
 }
 // Blocking "please wait" state for the Add Worker modal while the scanned
 // worker's Form 101 + document PDF uploads — replaces the modal's own
-// content so there's nothing left to click while genuinely waiting, and the
-// visible spinner is the signal to the manager not to navigate away yet.
-function showWorkerUploadingOverlay(){
+// content so there's nothing left to click while genuinely waiting.
+// Real-time progress bar (added 2026-09-30, per user request, matching the
+// scan modal's own renderScanProgress() — see its own comment) — this used
+// to be a plain indeterminate `.progress-bar` for the whole wait; now it's a
+// real `.progress-bar-real` percentage, advanced by aiFillForm101() itself
+// at its two real phases (PDF build, then the actual Google Drive upload)
+// instead of sitting static the whole time.
+function renderWorkerUploadProgress(label,pct){
   const m=document.getElementById('workerModal');
   if(!m) return;
   m.innerHTML=`<div style="text-align:center;padding:30px 16px;color:var(--text2);font-size:14px">
     <i class="ti ti-loader-2 spin" style="font-size:22px"></i><br><br>
-    <span>מעלה מסמך, נא לא לסגור…</span>
-    <div class="progress-bar"></div>
+    <span>${label} (${pct}%)</span>
+    <div class="progress-bar-real"><div style="width:${pct}%"></div></div>
   </div>`;
+}
+function showWorkerUploadingOverlay(){
+  renderWorkerUploadProgress('בונה PDF, נא לא לסגור…',0);
 }
 
 function genToken(){
@@ -2430,6 +2434,28 @@ function gsAuth(){
   const out = { token: s.token };
   if(s.role === 'superadmin' && s.viewingTenantId) out.asTenantId = s.viewingTenantId;
   return out;
+}
+// XHR-based POST with real upload-byte progress (added 2026-09-30, per user
+// request — `fetch()` gives no signal at all while a large body is still
+// being sent, only "request sent" then "response received"; XHR's own
+// `upload.onprogress` reports genuine bytes-sent-over-the-wire, which
+// matters on a slow mobile connection uploading a multi-MB PDF/scan photo.
+// Deliberately mirrors fetch()'s own non-throwing-on-HTTP-error behavior
+// (callers here already check `json.error` themselves) — only a true
+// network failure or an unparseable response rejects.
+function xhrPostJSON(url,bodyObj,onProgress){
+  return new Promise((resolve,reject)=>{
+    const xhr=new XMLHttpRequest();
+    xhr.open('POST',url);
+    xhr.setRequestHeader('Content-Type','application/json');
+    if(onProgress) xhr.upload.onprogress=e=>{ if(e.lengthComputable) onProgress(e.loaded,e.total); };
+    xhr.onload=()=>{
+      try{ resolve(JSON.parse(xhr.responseText)); }
+      catch(e){ reject(e); }
+    };
+    xhr.onerror=()=>reject(new Error('network error'));
+    xhr.send(JSON.stringify(bodyObj));
+  });
 }
 function gsAuthQuery(){
   const a = gsAuth();
@@ -3909,6 +3935,12 @@ function getSignaturePng(canvasId){
 async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
   mode=mode||'download';
   const isRegen=!!presetAssets;
+  // Only the blocking new-worker/rescan upload path (mode==='upload' &&
+  // !isRegen) has #workerModal replaced by showWorkerUploadingOverlay()
+  // beforehand — a background regenerate (isRegen, called from
+  // regenerateWorkerDoc() after the modal's already closed) must never touch
+  // #workerModal's content.
+  const showBlockingProgress=mode==='upload'&&!isRegen;
   // Hoisted above the try so the catch block (below) can still flag this
   // worker's failed upload for the "no document" badge even when the
   // failure happens before the assignment finishes.
@@ -4056,6 +4088,20 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // lets it trash the exact old file.
       const fileBase64=fnJson.pdfBase64;
       const w=targetWorker;
+      // Real byte-level upload progress (added 2026-09-30, per user request
+      // — see xhrPostJSON's own comment for why fetch() can't do this) —
+      // docPromise/assetsPromise upload concurrently, so their progress is
+      // combined by total bytes across both, not just whichever finishes
+      // first; the 20-90% range leaves room for "building PDF" (0%) before
+      // and "done" (100%) after, so the bar visibly moves at every stage.
+      let docLoaded=0,docTotal=0,assetsLoaded=0,assetsTotal=0;
+      const reportUploadProgress=()=>{
+        if(!showBlockingProgress) return;
+        const total=docTotal+assetsTotal;
+        const frac=total>0?(docLoaded+assetsLoaded)/total:0;
+        renderWorkerUploadProgress('מעלה ל-Google Drive, נא לא לסגור…',20+Math.round(frac*70));
+      };
+      if(showBlockingProgress) renderWorkerUploadProgress('מעלה ל-Google Drive, נא לא לסגור…',20);
       // saveWorkerDoc (the PDF) and saveWorkerAssets (the scan/signature
       // sidecar) write to two different Drive files and don't depend on each
       // other's result (the sidecar's own previousFileId is w.assetsFileId,
@@ -4064,10 +4110,9 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // this whole call runs behind a blocking "please wait" overlay for new
       // workers/rescans. Skipped on a regenerate (isRegen) same as before —
       // see the comment below that used to sit next to the sequential call.
-      const docPromise=fetch(GS_URL,{
-        method:'POST',
-        body:JSON.stringify({action:'saveWorkerDoc',secret:API_SECRET,...gsAuth(),fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null})
-      }).then(r=>r.json());
+      const docPromise=xhrPostJSON(GS_URL,
+        {action:'saveWorkerDoc',secret:API_SECRET,...gsAuth(),fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null},
+        (loaded,total)=>{ docLoaded=loaded; docTotal=total; reportUploadProgress(); });
       // Cache the scan+signature (and any extra pages — ספח appendix card,
       // contract, etc.) that actually built this PDF as a small private
       // Drive sidecar (never shown to anyone, just read back by
@@ -4084,15 +4129,16 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // field, e.g. address) used to always pay for this redundant
       // multi-MB download-then-reupload round trip on top of the PDF
       // build itself, which is what made a single-field edit feel so slow.
-      const assetsPromise=(scanImage&&!isRegen&&w)?fetch(GS_URL,{
-        method:'POST',
-        body:JSON.stringify({action:'saveWorkerAssets',secret:API_SECRET,...gsAuth(),
+      const assetsPromise=(scanImage&&!isRegen&&w)?xhrPostJSON(GS_URL,
+        {action:'saveWorkerAssets',secret:API_SECRET,...gsAuth(),
           scanB64:scanImage.b64, scanMediaType:scanImage.mediaType, sigPng:sigPng||null,
           extraPages:otherPagesToUse,
-          fileNameBase:fileName.replace(/\.pdf$/,''), previousFileId:w.assetsFileId||null})
-      }).then(r=>r.json()).catch(()=>null):Promise.resolve(null);
+          fileNameBase:fileName.replace(/\.pdf$/,''), previousFileId:w.assetsFileId||null},
+        (loaded,total)=>{ assetsLoaded=loaded; assetsTotal=total; reportUploadProgress(); }
+      ).catch(()=>null):Promise.resolve(null);
       const [json,assetsJson]=await Promise.all([docPromise,assetsPromise]);
       if(!json||json.error) throw new Error((json&&json.error)||'Сервер не ответил');
+      if(showBlockingProgress) renderWorkerUploadProgress('הועלה בהצלחה',100);
       if(w){
         w.docUrl=json.url; w.docSavedAt=new Date().toISOString(); w.docFileId=json.id;
         w.docUploadFailed=false;
