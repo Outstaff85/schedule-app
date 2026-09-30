@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Session language:** the user communicates in Russian. Claude's own conversational output (explanations, status updates, questions) should be in Russian throughout — independent of what language the app's UI/code is in.
 
-**UI text language:** all new user-facing UI text (tab labels, buttons, messages) must be in English going forward. Most of the existing app is Hebrew (`lang="he"`); the `Бухгалтерия` (Accounting) tab is a Russian pocket added by mistake — don't repeat that. Existing Hebrew/Russian text doesn't need retranslating unless asked. **Exception:** the worker modal's Form 101 fields (e.g. the spouse block) stay in Hebrew, matching the form and the rest of that modal — per user request 2026-09-30.
+**UI text language:** all new user-facing UI text (tab labels, buttons, messages, form labels) must be in **Hebrew** going forward (changed from English per user request 2026-09-30), matching the app's `lang="he"` RTL layout. Some UI added earlier is in English, and the `Бухгалтерия` (Accounting) tab is a Russian pocket added by mistake. Leave existing English/Russian text as is unless asked to translate it.
 
 ## What this is
 
