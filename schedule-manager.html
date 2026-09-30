@@ -660,6 +660,15 @@
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px"><i class="ti ti-report-money"></i> Payable by supplier</div>
         <div id="supplierPayableWrap"></div>
       </div>
+
+      <!-- Billable by client (client's own rateMode — tiered or fixed — independent of the worker's real wage above) -->
+      <div style="margin-top:24px">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px"><i class="ti ti-building-store"></i> Billable by client</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
+          What each client owes the firm, per that client's own pricing mode (tiered Israeli OT rates, or a flat rate). Independent of the worker's own wage above.
+        </div>
+        <div id="clientBillableWrap"></div>
+      </div>
     </div>
 
   </div>
@@ -1109,6 +1118,21 @@ function shiftPay(hours, w, isSat, clientId){
   }
   if(r.hasOtOverride) return Math.min(hours,RM)*r.regRate + Math.max(hours-RM,0)*r.otRate;
   return israeliDayPay(hours, r.regRate, false).total;
+}
+// What a CLIENT is billed for one shift's hours — a figure entirely separate
+// from shiftPay() above (the worker's own legally-owed wage). client.rateMode
+// ('tiered', the default, or 'fixed') never changes what the worker earns;
+// it only changes how the client invoice line is computed:
+//   'tiered' — the Israeli OT/Shabbat law tiers (israeliDayPay), applied to
+//              the client's OWN default rate (client.defaultHourlyRate), not
+//              the worker's rate — same law shape, independent number.
+//   'fixed'  — a flat client.fixedBillRate ₪/h, no OT/Shabbat tiers at all.
+// A client with neither a rateMode nor a defaultHourlyRate/fixedBillRate set
+// bills 0 — this never blocks payroll, it's purely an informational figure.
+function clientBillPay(hours, client, isSat){
+  if(!client) return 0;
+  if(client.rateMode==='fixed') return hours*(Number(client.fixedBillRate)||0);
+  return israeliDayPay(hours, Number(client.defaultHourlyRate)||0, isSat).total;
 }
 function fmtDate(d){ return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); }
 function fmtRange(d){ const e=new Date(d); e.setDate(e.getDate()+6); return fmtDate(d)+' – '+fmtDate(e); }
@@ -1704,6 +1728,7 @@ function showWorkerModal(w){
         </select>
       </div>
     </div>
+    <div class="field"><label>Travel allowance (₪ per work day, optional)</label><input type="number" id="wTravelAllowance" value="${w.travelAllowance||''}" placeholder="0" min="0" step="0.5"></div>
     <div class="field"><label>תאריך תחילת עבודה</label><input type="date" id="wStartDate" value="${w.startDate||w.workStartDate||new Date().toISOString().slice(0,10)}"></div>
     <div class="field"><label>מין</label>
       <select id="wSex">
@@ -1904,6 +1929,7 @@ async function saveWorker(){
   if(!name){ document.getElementById('wGiven').focus(); return; }
   const phone=document.getElementById('wPhone').value.trim();
   const hourlyRate=parseFloat(document.getElementById('wRate')?.value)||0;
+  const travelAllowance=parseFloat(document.getElementById('wTravelAllowance')?.value)||0;
   const status=document.getElementById('wStatus')?.value||'active';
   // One UI field ("תאריך תחילת עבודה") feeds both: startDate (schedule/Contract
   // Expiry Warning calc) and workStartDate (Form 101's own start-date field).
@@ -1943,7 +1969,7 @@ async function saveWorker(){
     : (editingWorkerIdx!==null
         ? workers[editingWorkerIdx].schedule
         : DAYS.map(()=>({type:'off',start:null,end:null})));
-  const commonFields={name,colorIdx:selColorIdx,phone,hourlyRate,status,startDate,workStartDate,docSex,
+  const commonFields={name,colorIdx:selColorIdx,phone,hourlyRate,travelAllowance,status,startDate,workStartDate,docSex,
     expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,houseNumber,city,docDob,docExpiry,notes,
     incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,docChildren,clientIds,schedule,
     supplierId,bank,bankBranch,bankAccountNumber,
@@ -2116,6 +2142,18 @@ function showClientModal(c){
       </div>
     </div>
     <div class="field">
+      <label><i class="ti ti-receipt"></i> Client billing mode</label>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">What's billed to this client (Accounting → Billable by client). Never affects the worker's own wage above.</div>
+      <select id="cRateMode" onchange="onClientRateModeChange()" style="width:100%">
+        <option value="tiered" ${(c.rateMode||'tiered')==='tiered'?'selected':''}>Tiered (Israeli OT/Shabbat rates, using the client's own rate above)</option>
+        <option value="fixed" ${c.rateMode==='fixed'?'selected':''}>Fixed rate (flat ₪/h, no OT/Shabbat tiers)</option>
+      </select>
+      <div id="cFixedBillRateWrap" style="margin-top:8px;${c.rateMode==='fixed'?'':'display:none'}">
+        <label style="font-size:11px;color:var(--text3)">Fixed billing rate ₪/h</label>
+        <input type="number" min="0" step="0.5" id="cFixedBillRate" value="${c.fixedBillRate??''}" placeholder="—">
+      </div>
+    </div>
+    <div class="field">
       <label><i class="ti ti-map-pin"></i> Geolocation for Punch Clock</label>
       <div style="margin-bottom:8px">
         <label style="font-size:11px;color:var(--text3);margin-bottom:4px;display:block">Paste Google Maps link</label>
@@ -2190,6 +2228,11 @@ function updateLocStatus(){
   }
 }
 function pickCColor(col){ selClientColor=col; document.querySelectorAll('#cColorPick [data-color]').forEach(el=>{ el.style.borderColor=el.dataset.color===col?'white':'transparent'; el.style.transform=el.dataset.color===col?'scale(1.2)':'scale(1)'; }); }
+function onClientRateModeChange(){
+  const mode=document.getElementById('cRateMode')?.value;
+  const wrap=document.getElementById('cFixedBillRateWrap');
+  if(wrap) wrap.style.display = mode==='fixed' ? '' : 'none';
+}
 function saveClient(){
   const name=document.getElementById('cName').value.trim();
   if(!name){ document.getElementById('cName').focus(); return; }
@@ -2203,12 +2246,14 @@ function saveClient(){
   const mapsUrl=document.getElementById('cMapsUrl')?.value.trim()||'';
   const rateVal=id=>{ const v=document.getElementById(id)?.value; return (v===''||v==null)?null:(parseFloat(v)||0); };
   const defaultHourlyRate=rateVal('cDefRate'), defaultOtRate=rateVal('cDefOtRate'), defaultShabbatRate=rateVal('cDefShabRate');
+  const rateMode=document.getElementById('cRateMode')?.value==='fixed'?'fixed':'tiered';
+  const fixedBillRate=rateVal('cFixedBillRate');
   if(editingClientId){
     const idx=clients.findIndex(x=>x.id===editingClientId);
-    if(idx>=0) clients[idx]={...clients[idx],name,object,address,notes,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate};
+    if(idx>=0) clients[idx]={...clients[idx],name,object,address,notes,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate};
     showToast(name+' updated!');
   } else {
-    clients.push({id:uid(),name,object,address,notes,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate});
+    clients.push({id:uid(),name,object,address,notes,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate});
     showToast(name+' added!');
   }
   closeModal('clientOverlay'); renderClientsPage(); renderSidebarClients(); autoSave();
@@ -3814,6 +3859,7 @@ function importDataBackup(){
 // --- Dashboard -------------------------------------------------------------------
 let _logExpanded=false, _salExpanded=false;
 let __lastSalaryEntries=[];
+let __lastClientBillEntries=[];
 function toggleLog(){ _logExpanded=!_logExpanded; renderDashboard(); }
 function toggleSalary(){ _salExpanded=!_salExpanded; renderSalary(); }
 function renderDashboard(){
@@ -4003,8 +4049,9 @@ function renderSalary(){
 
   // Sum hours + Israeli pay per worker, flagging anomalies
   const byWorker={};
+  const byClient={};
   Object.values(byWorkerDay).forEach(({worker,workerId,date,entries})=>{
-    if(!byWorker[workerId]) byWorker[workerId]={worker,workerId,hours:0,days:0,regH:0,otH:0,shabH:0,total:0,warns:[]};
+    if(!byWorker[workerId]) byWorker[workerId]={worker,workerId,hours:0,days:0,regH:0,otH:0,shabH:0,total:0,travel:0,warns:[]};
     const _res=analyzeDayPunches(entries,date);
     const _dstr=date.toLocaleDateString('en-GB');
     _res.warnings.forEach(wn=> byWorker[workerId].warns.push(_dstr+': '+wn));
@@ -4016,13 +4063,25 @@ function renderSalary(){
       else { byWorker[workerId].regH+=Math.min(h,RM); byWorker[workerId].otH+=Math.max(h-RM,0); }
       byWorker[workerId].hours+=h;
       byWorker[workerId].days++;
+      byWorker[workerId].travel+=Number(wc&&wc.travelAllowance)||0;
       // The shift's own clientId (from its opening IN punch) picks up any
       // per-client rate override — a worker who worked at two clients with
       // different rates in the same period still gets each shift priced
       // correctly, even though this table shows one summed row per worker.
-      byWorker[workerId].total+=shiftPay(h,wc,isSat,entries[0]&&entries[0].clientId);
+      const cid=entries[0]&&entries[0].clientId;
+      byWorker[workerId].total+=shiftPay(h,wc,isSat,cid);
+      // Billable-by-client — a parallel, independent figure (see
+      // clientBillPay()'s own comment); never derived from/feeding the
+      // worker's own wage line above.
+      if(cid){
+        if(!byClient[cid]) byClient[cid]={hours:0,total:0};
+        const cl=clients.find(c=>c.id===cid);
+        byClient[cid].hours+=h;
+        byClient[cid].total+=clientBillPay(h,cl,isSat);
+      }
     }
   });
+  __lastClientBillEntries=Object.entries(byClient).map(([clientId,v])=>({clientId,...v}));
 
   const salaryEl=document.getElementById('dashSalary');
   const entries=Object.values(byWorker);
@@ -4030,11 +4089,12 @@ function renderSalary(){
   if(!entries.length){
     salaryEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No punch data for this period</div>`;
     renderSupplierPayable(entries);
+    renderClientBillable(__lastClientBillEntries);
     return;
   }
 
   const totalHours=entries.reduce((s,e)=>s+e.hours,0);
-  const grandTotal=entries.reduce((s,e)=>s+e.total,0);
+  const grandTotal=entries.reduce((s,e)=>s+e.total+e.travel,0);
   const shownEntries=_salExpanded?entries:entries.slice(0,4);
   const _allWarns=entries.flatMap(e=>(e.warns||[]).map(w=>e.worker+' — '+w));
   const _reviewBanner=_allWarns.length?`<div style="background:var(--amber-bg);border:1px solid rgba(245,166,35,0.3);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px"><div style="color:var(--amber);font-weight:600;font-size:13px;margin-bottom:4px"><i class="ti ti-alert-triangle"></i> ${_allWarns.length} to review before calculating</div><div style="color:var(--text2);font-size:12px;line-height:1.6">${_allWarns.slice(0,12).map(w=>'• '+w).join('<br>')}${_allWarns.length>12?'<br>…'+(_allWarns.length-12)+' more':''}</div></div>`:'';
@@ -4049,6 +4109,7 @@ function renderSalary(){
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Regular ₪/h</th>
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--amber)">OT ₪/h</th>
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--blue)">Shabbat ₪/h</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Travel ₪</th>
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Total Pay</th>
           </tr>
         </thead>
@@ -4083,8 +4144,11 @@ function renderSalary(){
                   onchange="setWorkerShabbatRate('${e.workerId}',this.value);renderSalary()"
                   style="width:66px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
-              <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${e.total>0?'var(--green)':'var(--text3)'}">
-                ${e.total>0?'₪'+e.total.toFixed(0):'—'}
+              <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)">
+                ${e.travel>0?'₪'+e.travel.toFixed(0):'—'}
+              </td>
+              <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${(e.total+e.travel)>0?'var(--green)':'var(--text3)'}">
+                ${(e.total+e.travel)>0?'₪'+(e.total+e.travel).toFixed(0):'—'}
               </td>
             </tr>`;
           }).join('')}
@@ -4093,7 +4157,7 @@ function renderSalary(){
           <tr style="background:var(--bg3);border-top:2px solid var(--border)">
             <td style="padding:10px 12px;font-size:13px;font-weight:600;color:var(--text2)">TOTAL</td>
             <td style="padding:10px 12px;text-align:center;font-size:14px;font-weight:700;color:var(--text)">${totalHours.toFixed(1)}h</td>
-            <td colspan="3"></td>
+            <td colspan="4"></td>
             <td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">
               ₪${grandTotal.toFixed(0)}
             </td>
@@ -4102,9 +4166,10 @@ function renderSalary(){
       </table>
       </div>
       ${entries.length>4?`<div style="text-align:center;padding:8px;border-top:1px solid var(--border)"><button class="btn sm" onclick="toggleSalary()">${_salExpanded?'<i class="ti ti-chevron-up"></i> Show less':'<i class="ti ti-chevron-down"></i> Show all ('+entries.length+')'}</button></div>`:''}
-      <div style="padding:8px 12px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">₪/hour rates are editable manually. Default: Regular = base rate · OT = ×${PAY_RULES.otMult} · Shabbat = ×${PAY_RULES.shabbatMult}. Hours: Regular ≤8h/day, above that — OT; Saturday — at the Shabbat rate.</div>
+      <div style="padding:8px 12px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">₪/hour rates are editable manually. Default: Regular = base rate · OT = ×${PAY_RULES.otMult} · Shabbat = ×${PAY_RULES.shabbatMult}. Hours: Regular ≤8h/day, above that — OT; Saturday — at the Shabbat rate. Travel = worker's flat per-work-day travel allowance.</div>
     </div>`;
   renderSupplierPayable(entries);
+  renderClientBillable(__lastClientBillEntries);
 }
 
 // Groups the already-computed per-worker pay totals (byWorker[...].total, the
@@ -4171,6 +4236,49 @@ function renderSupplierPayable(entries){
             <td style="padding:10px 12px;text-align:center;font-size:13px;color:var(--text3)">${unassigned.hours.toFixed(1)}h</td>
             <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text3)">₪${unassigned.total.toFixed(0)}</td>
           </tr>`:''}
+        </tbody>
+      </table>
+      </div>
+    </div>`;
+}
+
+// "Billable by client" — what each client owes the firm, computed via
+// clientBillPay() (tiered law rates off the client's own default rate, or a
+// flat fixedBillRate — see that function's own comment). Deliberately NEVER
+// contains supplier data (suppliers[]/supplierId/supplierRates/commission)
+// anywhere — the standing Client<->Supplier isolation principle (Admin/Roles
+// plan): any client-facing surface must never see a supplier exists.
+function renderClientBillable(entries){
+  const wrap=document.getElementById('clientBillableWrap');
+  if(!wrap) return;
+  if(!entries.length){
+    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No punch data for this period</div>`;
+    return;
+  }
+  const rows=entries.map(e=>({cl:clients.find(c=>c.id===e.clientId),...e})).filter(r=>r.cl);
+  if(!rows.length){
+    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No billable activity this period</div>`;
+    return;
+  }
+  wrap.innerHTML=`
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table style="width:100%;border-collapse:collapse;min-width:420px">
+        <thead>
+          <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Client</th>
+            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">Hours</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Mode</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Billable</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
+            <td style="padding:10px 12px;font-size:13px;font-weight:600"><span style="color:${r.cl.color}"><i class="ti ti-building-store"></i></span> ${esc(r.cl.name)}</td>
+            <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)}h</td>
+            <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${r.cl.rateMode==='fixed'?'Fixed':'Tiered'}</td>
+            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
+          </tr>`).join('')}
         </tbody>
       </table>
       </div>
