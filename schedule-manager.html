@@ -2117,6 +2117,27 @@ async function saveWorker(){
     incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,docChildren,clientIds,schedule,
     supplierId,bank,bankBranch,bankAccountNumber,
     avatarB64:__wAvatarB64,docType:__wDocType};
+  // Duplicate guard for a NEW worker (checked by document number — unique to
+  // one person, unlike a name). Never creates a second record for the same
+  // document: a duplicate's Form 101 upload would dedupe by that number in
+  // Drive and trash the original worker's PDF. Instead offer to fold what was
+  // entered into the existing worker — only non-empty values overwrite, the
+  // existing schedule/status/color are kept, clients are merged — and carry
+  // on through the normal edit path below.
+  if(editingWorkerIdx===null && docId){
+    const dupIdx=workers.findIndex(w=>workerDocId(w)===docId);
+    if(dupIdx>=0){
+      const dup=workers[dupIdx];
+      if(!confirm('A worker with this document number already exists: '+(dup.name||'?')+'.\nOK — update that worker with the data entered here.\nCancel — go back and edit.')) return;
+      const isBlank=v=>v===''||v==null||(Array.isArray(v)&&!v.length);
+      Object.keys(commonFields).forEach(k=>{ if(isBlank(commonFields[k])) delete commonFields[k]; });
+      ['schedule','status','colorIdx'].forEach(k=>delete commonFields[k]);
+      if(commonFields.clientIds) commonFields.clientIds=[...new Set([...(dup.clientIds||[]),...commonFields.clientIds])];
+      editingWorkerIdx=dupIdx;
+      // A live scan in this session → regenerate from the fresh images.
+      if(window.__aiScanImage) window.__aiRescannedWorkerId=dup.id;
+    }
+  }
   if(editingWorkerIdx!==null){
     const prevW=workers[editingWorkerIdx];
     const isId=prevW.docType!=='passport';
@@ -2165,10 +2186,6 @@ async function saveWorker(){
   // number), not name: two different real people can share a name, but a
   // document number is unique to one person, so an exact match is a strong
   // signal — likely the same person being scanned/added twice by mistake.
-  if(docId){
-    const dup=workers.find(w=>workerDocId(w)===docId);
-    if(dup && !confirm('כבר קיים עובד עם מספר מסמך זהה: '+(dup.name||'?')+'.\nליצור בכל זאת עובד חדש?')) return;
-  }
   const token=genToken();
   // Capture the signature PNG before the modal's DOM is replaced by the
   // uploading spinner below (showWorkerUploadingOverlay wipes #wSigCanvas,
@@ -3471,12 +3488,12 @@ function xhrPostJSON(url,bodyObj,onProgress,_attempt){
       if(json && json.error===SESSION_EXPIRED_ERROR && getSession()){
         if(attempt < SESSION_RETRY_DELAYS_MS.length){
           const delay=SESSION_RETRY_DELAYS_MS[attempt];
-          reportAuthFailureXhr(bodyObj&&bodyObj.action, attempt, 'retrying');
-          const retry=()=>xhrPostJSON(url,bodyObj,onProgress,attempt+1).then(resolve,reject);
+          reportAuthFailureXhr(bodyObj&&bodyObj.action, attempt, 'retrying', bodyObj&&bodyObj.token);
+          const retry=()=>{ const s=getSession(); const b=(s&&bodyObj&&('token' in bodyObj))?{...bodyObj,token:s.token}:bodyObj; return xhrPostJSON(url,b,onProgress,attempt+1).then(resolve,reject); };
           delay>0?setTimeout(retry,delay):retry();
           return;
         }
-        reportAuthFailureXhr(bodyObj&&bodyObj.action, attempt, 'logged-out');
+        reportAuthFailureXhr(bodyObj&&bodyObj.action, attempt, 'logged-out', bodyObj&&bodyObj.token);
         clearSession();
         showToast('Сессия истекла — войдите заново');
         setTimeout(()=>location.reload(),1200);
@@ -3494,13 +3511,14 @@ function xhrPostJSON(url,bodyObj,onProgress,_attempt){
 // _origFetch) so xhrPostJSON() has no dependency on that IIFE having already
 // run/defined its closures; a plain unauthenticated fire-and-forget POST,
 // same shape/fields as the fetch-based one.
-function reportAuthFailureXhr(failedAction, attempt, outcome){
+function reportAuthFailureXhr(failedAction, attempt, outcome, sentToken){
   try{
     const xhr=new XMLHttpRequest();
     xhr.open('POST',GS_URL);
     xhr.send(JSON.stringify({
       action:'authFailure', secret:API_SECRET,
-      failedAction: failedAction, attempt: attempt, outcome: outcome, page: location.pathname
+      failedAction: failedAction, attempt: attempt, outcome: outcome, page: location.pathname,
+      sentToken: sentToken||'', viaProxy: true, hasSession: !!getSession()
     }));
   }catch(e){}
 }
@@ -3546,15 +3564,38 @@ const SESSION_RETRY_DELAYS_MS = [0, 500]; // attempt 2 immediate, attempt 3 afte
   // which is exactly what's in question here). failedAction is read from the
   // ORIGINAL request's own body so the Errors sheet shows which endpoint
   // actually got rejected (aiReadDoc vs. a routine saveSchedule, etc.).
-  function reportAuthFailure(opts, attempt, outcome){
-    let failedAction;
-    try{ failedAction = JSON.parse((opts&&opts.body)||'{}').action; }catch(e){}
+  function reportAuthFailure(opts, attempt, outcome, url){
+    let failedAction, sentToken, bodyKB;
+    try{
+      const raw=(opts&&opts.body)||'';
+      bodyKB=Math.round(raw.length/1024);
+      const b=JSON.parse(raw||'{}'); failedAction=b.action; sentToken=b.token;
+    }catch(e){}
+    if(!failedAction && url){ try{ const u=new URL(url); failedAction=u.searchParams.get('action'); sentToken=u.searchParams.get('token'); }catch(e){} }
     try{
       _origFetch(GS_URL,{method:'POST',body:JSON.stringify({
         action:'authFailure', secret:API_SECRET,
-        failedAction: failedAction, attempt: attempt, outcome: outcome, page: location.pathname
+        failedAction: failedAction, attempt: attempt, outcome: outcome, page: location.pathname,
+        // Diagnostics: the server re-checks this token and logs WHY it failed
+        // (missing / bad signature / expired / malformed) — never logs it.
+        sentToken: sentToken||'', bodyKB: bodyKB, hasSession: !!getSession()
       })}).catch(()=>{});
     }catch(e){}
+  }
+  // Retry with whatever token is stored NOW (it may have been refreshed by a
+  // concurrent response since this request was built), not the original.
+  function withCurrentToken(url, opts){
+    const s=getSession(); if(!s) return {url, opts};
+    try{
+      if(opts && typeof opts.body==='string'){
+        const b=JSON.parse(opts.body);
+        if(b && 'token' in b){ b.token=s.token; return {url, opts:{...opts, body:JSON.stringify(b)}}; }
+      }
+      if(typeof url==='string' && url.indexOf('token=')!==-1){
+        const u=new URL(url); u.searchParams.set('token', s.token); return {url:u.toString(), opts};
+      }
+    }catch(e){}
+    return {url, opts};
   }
   // url/opts are threaded through explicitly (not shared/mutable state) so
   // this stays correct when several GS_URL calls are in flight at once
@@ -3567,11 +3608,11 @@ const SESSION_RETRY_DELAYS_MS = [0, 500]; // attempt 2 immediate, attempt 3 afte
       }
       if (attempt < SESSION_RETRY_DELAYS_MS.length){
         const delay = SESSION_RETRY_DELAYS_MS[attempt];
-        const retry = () => _origFetch(url, opts).then(retryRes => checkExpired(url, opts, retryRes, attempt+1));
-        reportAuthFailure(opts, attempt, 'retrying');
+        const retry = () => { const r=withCurrentToken(url, opts); return _origFetch(r.url, r.opts).then(retryRes => checkExpired(r.url, r.opts, retryRes, attempt+1)); };
+        reportAuthFailure(opts, attempt, 'retrying', url);
         return delay > 0 ? new Promise(r=>setTimeout(r, delay)).then(retry) : retry();
       }
-      reportAuthFailure(opts, attempt, 'logged-out');
+      reportAuthFailure(opts, attempt, 'logged-out', url);
       clearSession();
       showToast('Сессия истекла — войдите заново');
       setTimeout(() => location.reload(), 1200);

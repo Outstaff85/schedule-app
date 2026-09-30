@@ -172,7 +172,12 @@ async function onScanFilesSelected(fileList){
         }catch(e){ console.error(e); }
       } else if(needMore){
         try{
-          const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
+          // needMore is only ever true after an Israeli-ID primary (see
+          // missingCore), so this extra page is the ספח/address side: read it
+          // with the narrow aiReadSefach (smaller prompt/output, always
+          // type:israeli_id) instead of the full aiReadDoc, which re-derived
+          // type/fieldBoxes/photoBox for nothing and was noticeably slower.
+          const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadSefach',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
           const json=await resp.json();
           const p=json&&json.parsed;
           if(p&&p.type==='israeli_id'){
@@ -1579,8 +1584,10 @@ async function processAllPendingPages(){
       }catch(e){ console.error(e); }
     } else if(needMore){
       try{
-        renderScanProgress('ה-AI קורא את המסמך… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.45));
-        const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
+        renderScanProgress('ה-AI קורא את הספח… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.45));
+        // Same as the multi-file path: an extra page after an Israeli-ID
+        // primary is the ספח — narrow aiReadSefach, not the full aiReadDoc.
+        const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadSefach',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
         const json=await resp.json();
         const p=json&&json.parsed;
         if(p&&p.type==='israeli_id'){
@@ -1728,8 +1735,18 @@ function openWorkerModalFromScan(p){
     if(p.maritalStatus&&MARITAL_AI_MAP[p.maritalStatus]) ocrFields.maritalStatus=MARITAL_AI_MAP[p.maritalStatus];
     if(Array.isArray(p.children)&&p.children.length) ocrFields.docChildren=p.children.map(c=>({name:_nrm(c.name),idNo:_nrm(c.idNo),dob:_nrm(c.dob)}));
   }
-  const rescanId=window.__aiRescanWorkerId;
+  let rescanId=window.__aiRescanWorkerId;
   window.__aiRescanWorkerId=null;
+  // A NEW scan whose document number matches an existing worker is the same
+  // person scanned again — treat it exactly like rescanWorkerDoc() of that
+  // worker (keeps their phone/clients/rates/schedule, re-uploads the PDF over
+  // their own Drive file, carries their old ספח forward if this scan has
+  // none) instead of opening a blank "new worker" that would become a
+  // duplicate record and, on upload, trash the original's Drive document.
+  if(!rescanId && ocrFields.docId){
+    const dup=workers.find(w=>workerDocId(w)===ocrFields.docId);
+    if(dup){ rescanId=dup.id; showToast('Existing worker found ('+(dup.name||ocrFields.docId)+') — updating their record',4000); }
+  }
   if(rescanId){
     const idx=workers.findIndex(w=>w.id===rescanId);
     if(idx>=0){

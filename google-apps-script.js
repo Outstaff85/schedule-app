@@ -2537,9 +2537,28 @@ function authFailure(body){
   return logError({
     page: body.page,
     message: 'Auth rejected (client-reported): action=' + (body.failedAction || '?') +
-      ', attempt=' + body.attempt + ', outcome=' + (body.outcome || '?'),
+      ', attempt=' + body.attempt + ', outcome=' + (body.outcome || '?') +
+      ', reason=' + _tokenRejectReason(body.sentToken) +
+      (body.bodyKB != null ? ', bodyKB=' + body.bodyKB : '') +
+      (body.viaProxy ? ', viaProxy' : '') +
+      (body.hasSession === false ? ', noClientSession' : ''),
     source: 'authFailure'
   });
+}
+// Why would verifySessionToken() reject this token? For authFailure
+// diagnostics only — returns a short reason string, never the token itself.
+function _tokenRejectReason(token) {
+  if (!token) return 'missing';
+  if (String(token).indexOf('.') === -1) return 'malformed';
+  const parts = String(token).split('.');
+  let expectedSig;
+  try { expectedSig = _b64url(Utilities.computeHmacSha256Signature(parts[0], _sessionSecret())); } catch (e) { return 'no-secret'; }
+  if (expectedSig !== parts[1]) return 'bad-signature';
+  let payload;
+  try { payload = JSON.parse(Utilities.newBlob(_b64urlToBytes(parts[0])).getDataAsString()); } catch (e) { return 'unparseable'; }
+  if (!payload.exp) return 'no-exp';
+  if (Date.now() > payload.exp) return 'expired ' + Math.round((Date.now() - payload.exp) / 60000) + 'min ago';
+  return 'valid-now';
 }
 
 // Super-admin-only read of the Errors sheet (schedule-manager.html's Errors
