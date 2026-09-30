@@ -15,6 +15,14 @@ const SH_BACKUP   = 'Backups';
 const SH_ERRORS   = 'Errors';
 const SH_USERS    = 'Users';
 const SH_TENANTS  = 'Tenants';
+// Added 2026-10-02 (Admin/Roles plan, stage 3): 'permissions' (JSON array of
+// allowed sections, e.g. ["workers","accounting"], or the literal string '*'
+// for full access — the default for every pre-existing login) and
+// 'supplierId' (only set for role==='supplier', nullable otherwise). Roles:
+// superadmin | tenant_admin | staff | supplier (was superadmin | tenant —
+// 'tenant' is kept as a legacy alias, normalized to 'tenant_admin' at login
+// time in login() below, no data migration of existing rows required).
+const USERS_HEADERS = ['id','username','passwordHash','passwordSalt','role','tenantId','active','createdAt','permissions','supplierId'];
 // Legacy shared key — still required for worker-punch.html's unauthenticated
 // (no-login) actions, alongside the worker's own per-worker token which is
 // what actually resolves the tenant. MUST equal API_SECRET in
@@ -162,16 +170,33 @@ function verifySessionToken(token) {
   return payload;
 }
 
-// Resolves {userId, role, tenantId, isSuperadmin} from body.token (works for
-// both POST body and GET e.parameter, both are plain objects). Honors
-// `asTenantId` so a super-admin session can drill into one specific firm.
-// Throws a plain {error} object (caught by doPost/doGet) if missing/invalid.
+// Resolves {userId, role, tenantId, isSuperadmin, permissions, supplierId}
+// from body.token (works for both POST body and GET e.parameter, both are
+// plain objects). Honors `asTenantId` so a super-admin session can drill into
+// one specific firm. Throws a plain {error} object (caught by doPost/doGet)
+// if missing/invalid.
 function requireAuth(body) {
   const payload = verifySessionToken(body.token);
   if (!payload) throw { error: 'Сессия истекла или недействительна — войдите заново' };
   const isSuperadmin = payload.role === 'superadmin';
   const tenantId = (isSuperadmin && body.asTenantId) ? body.asTenantId : payload.tenantId;
-  return { userId: payload.userId, role: payload.role, tenantId: tenantId, isSuperadmin: isSuperadmin };
+  return {
+    userId: payload.userId, role: payload.role, tenantId: tenantId, isSuperadmin: isSuperadmin,
+    permissions: payload.permissions || '*', supplierId: payload.supplierId || null,
+  };
+}
+
+// Server-side gate for `staff` actions — see requireAuth()'s own comment.
+// superadmin/tenant_admin/supplier bypass this entirely (their access is
+// governed elsewhere: tenant scoping, or the supplier field-allowlist in
+// stage 11), this only narrows what a `staff` login can invoke. `section` is
+// one of workers/clients/suppliers/schedule/accounting/exports — matching
+// the same names the client's hasPermission() checks.
+function requirePermission(auth, section) {
+  if (auth.role !== 'staff') return; // not gated for any other role
+  const perms = auth.permissions;
+  const allowed = perms === '*' || (Array.isArray(perms) && perms.indexOf(section) !== -1);
+  if (!allowed) throw { error: 'Недостаточно прав для этого действия' };
 }
 
 function login(body) {
@@ -189,11 +214,27 @@ function login(body) {
     if (r[col.active] === false) return { error: 'Аккаунт отключён' };
     if (hashPassword(password, r[col.passwordSalt]) !== r[col.passwordHash]) return { error: 'Неверный логин или пароль' };
     const tenantId = r[col.tenantId] || null;
-    const role = r[col.role] || 'tenant';
-    const payload = { userId: r[col.id], username: username, role: role, tenantId: tenantId, exp: Date.now() + SESSION_TTL_MS };
+    // 'tenant' is the legacy role name for what's now called 'tenant_admin'
+    // (Admin/Roles plan, stage 3) — normalized here at login time so every
+    // NEW session/token always carries the current name, without needing to
+    // rewrite the raw cell value on however many existing rows.
+    let role = r[col.role] || 'tenant_admin';
+    if (role === 'tenant') role = 'tenant_admin';
+    // permissions column may not exist yet on an old row/sheet (pre-migration)
+    // — '*' (full access) is the safe default so no existing login loses
+    // access the moment this column is introduced.
+    const rawPerms = col.permissions != null ? r[col.permissions] : '';
+    let permissions = '*';
+    if (rawPerms && rawPerms !== '*') { try { permissions = JSON.parse(rawPerms); } catch(e) { permissions = '*'; } }
+    const supplierId = (col.supplierId != null ? r[col.supplierId] : '') || null;
+    const payload = {
+      userId: r[col.id], username: username, role: role, tenantId: tenantId,
+      permissions: permissions, supplierId: supplierId, exp: Date.now() + SESSION_TTL_MS,
+    };
     const token = createSessionToken(payload);
     return {
       ok: true, token: token, role: role, tenantId: tenantId, username: username,
+      permissions: permissions, supplierId: supplierId,
       tenantProfile: tenantId ? getTenantProfile(tenantId) : null,
       expiresAt: payload.exp
     };
@@ -228,7 +269,7 @@ function createUser(body, auth) {
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const usersSh = getOrCreateSheet(ss, SH_USERS);
-  ensureHeaders(usersSh, ['id', 'username', 'passwordHash', 'passwordSalt', 'role', 'tenantId', 'active', 'createdAt']);
+  ensureHeaders(usersSh, USERS_HEADERS);
   if (usersSh.getLastRow() > 1) {
     const existing = usersSh.getRange(2, 2, usersSh.getLastRow() - 1, 1).getValues();
     if (existing.some(function(r) { return String(r[0]).trim().toLowerCase() === username; })) {
@@ -259,7 +300,9 @@ function createUser(body, auth) {
 
   const salt = makeSalt();
   const userId = Utilities.getUuid();
-  usersSh.appendRow([userId, username, hashPassword(password, salt), salt, 'tenant', tenantId, true, now]);
+  // 'tenant_admin' (was 'tenant') — the firm's own owner login, full access
+  // within its own firm by default (permissions:'*'). See USERS_HEADERS.
+  usersSh.appendRow([userId, username, hashPassword(password, salt), salt, 'tenant_admin', tenantId, true, now, '*', '']);
 
   return { ok: true, userId: userId, tenantId: tenantId };
 }
@@ -674,6 +717,34 @@ const PUNCH_HEADERS = [
   'Site','Distance(m)','GPS Accuracy(m)','GPS Suspicious','GPS Warnings',
   'Notes','EditedAt','ClientID','TenantId'
 ];
+
+// One-time migration (2026-10-02, Admin/Roles plan stage 3): appends the
+// 'permissions'/'supplierId' headers to an existing Users sheet that predates
+// them, and backfills permissions='*' on every existing row so no
+// pre-existing login loses access the moment this column exists (an empty
+// permissions cell is ALSO treated as '*' by login() itself, so this backfill
+// is a belt-and-suspenders visibility aid in the sheet, not strictly required
+// for correctness). Never touches passwordHash/passwordSalt/any other column.
+// Safe to re-run.
+function migrateUsersAddPermissionsColumns(){
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_USERS);
+  if (!sh || sh.getLastRow() === 0) return {ok:true, note:'sheet empty or missing, nothing to migrate'};
+  const headers = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
+  let permCol = headers.indexOf('permissions');
+  let supCol = headers.indexOf('supplierId');
+  let added = [];
+  if (permCol === -1) { permCol = headers.length; sh.getRange(1, permCol+1).setValue('permissions').setFontWeight('bold').setBackground('#e8eaf0'); added.push('permissions'); }
+  if (supCol === -1) { supCol = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].length; sh.getRange(1, supCol+1).setValue('supplierId').setFontWeight('bold').setBackground('#e8eaf0'); added.push('supplierId'); }
+  let backfilled = 0;
+  if (sh.getLastRow() > 1) {
+    const lastRow = sh.getLastRow();
+    const existing = sh.getRange(2, permCol+1, lastRow-1, 1).getValues();
+    for (let i = 0; i < existing.length; i++) {
+      if (!existing[i][0]) { sh.getRange(i+2, permCol+1).setValue('*'); backfilled++; }
+    }
+  }
+  return {ok:true, addedColumns: added, backfilledPermissions: backfilled};
+}
 
 // One-time migration: appends the 'ClientID' header to an existing PunchLog
 // sheet that predates this column, without touching any existing rows/columns.
