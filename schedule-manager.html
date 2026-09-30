@@ -348,6 +348,17 @@
   /* ── Scan corner (quad) editor ── */
   .quad-handle { fill: var(--accent); stroke: #fff; stroke-width: 2; cursor: grab; touch-action: none; }
   .quad-handle:active { cursor: grabbing; }
+  .view-toggle{display:inline-flex;border:1px solid var(--border2);border-radius:var(--radius-sm);overflow:hidden}
+  .view-toggle button{background:var(--bg3);border:none;color:var(--text2);padding:6px 10px;cursor:pointer;font-size:15px;line-height:1}
+  .view-toggle button+button{border-left:1px solid var(--border2)}
+  .view-toggle button.active{background:var(--blue-bg);color:var(--blue)}
+  .workers-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+  .wcard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:10px;transition:border-color .15s}
+  .wcard:hover{border-color:var(--border2)}
+  .wcard-rows{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:12px}
+  .wcard-rows .k{color:var(--text3);white-space:nowrap}
+  .wcard-rows .v{color:var(--text);min-width:0;overflow-wrap:anywhere}
+  .workers-group-title{grid-column:1/-1;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--text2);margin-top:6px}
   .quad-side-handle { stroke: #fff; stroke-width: 5; stroke-linecap: round; filter: drop-shadow(0 0 2px rgba(0,0,0,.6)); }
 
 </style>
@@ -502,8 +513,13 @@
           <option value="supplier">Group by supplier</option>
         </select>
         <span id="workersCount" style="font-size:13px;color:var(--text2);margin-left:auto"></span>
+        <div class="view-toggle" role="group" aria-label="Layout">
+          <button type="button" id="workersViewList" onclick="setWorkersView('list')" title="List"><i class="ti ti-list"></i></button>
+          <button type="button" id="workersViewCards" onclick="setWorkersView('cards')" title="Cards"><i class="ti ti-layout-grid"></i></button>
+        </div>
       </div>
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <div id="workersCards" class="workers-cards" style="display:none"></div>
+      <div id="workersTableWrap" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow-x:auto;-webkit-overflow-scrolling:touch">
         <table style="width:100%;min-width:740px;border-collapse:collapse" id="workersTable">
           <thead>
             <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
@@ -2518,6 +2534,57 @@ function fillFilterSelect(selectId, items, allLabel){
   el.innerHTML=`<option value="">${allLabel}</option>`+items.map(i=>`<option value="${i.id}">${esc(i.name)}</option>`).join('');
   if(items.some(i=>i.id===prev)) el.value=prev;
 }
+// Workers tab layout: 'list' (the table) or 'cards'. Remembered per browser.
+function getWorkersView(){ try{ return localStorage.getItem('workersView')==='cards'?'cards':'list'; }catch(e){ return 'list'; } }
+function setWorkersView(v){ try{ localStorage.setItem('workersView',v); }catch(e){} renderWorkersPage(); }
+// Hours worked this calendar month, per worker — the same canonical shift
+// pairing (getWorkerMonthShifts → groupPunchesIntoShifts/analyzeDayPunches)
+// the hours export uses, so the card can never disagree with it.
+function workersMonthHours(){
+  const now=new Date(), y=now.getFullYear(), m=now.getMonth(), out={};
+  workers.forEach(w=>{ out[w.id]=getWorkerMonthShifts(w.id,y,m).reduce((s,x)=>s+x.hours,0); });
+  return out;
+}
+function renderWorkerCardsHtml(list,groupBy,stMetaMap){
+  if(!list.length) return '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:14px">No workers found</div>';
+  const hours=workersMonthHours();
+  const monthName=new Date().toLocaleDateString('en-GB',{month:'long'});
+  const badge=(o)=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${esc(o.color)}22;border-radius:10px;margin:0 3px 3px 0"><span style="width:6px;height:6px;border-radius:50%;background:${esc(o.color)}"></span>${esc(o.name)}</span>`;
+  const dash='<span style="color:var(--text3)">—</span>';
+  const card=({w,wi})=>{
+    const c=WORKER_COLORS[w.colorIdx%8];
+    const st=stMetaMap[w.status||'active'];
+    const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
+    const sup=suppliers.find(s=>s.id===w.supplierId);
+    const h=hours[w.id]||0;
+    return `<div class="wcard" onclick="openWorkerCard(${wi})">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:38px;height:38px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div>
+        <div style="min-width:0;flex:1">
+          <div style="font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(w.name)}</div>
+          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${st.bg};color:${st.col}">${st.label}</span>${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}
+        </div>
+      </div>
+      <div class="wcard-rows">
+        <span class="k"><i class="ti ti-id"></i> ID / Passport</span><span class="v" style="font-family:monospace">${workerDocId(w)?esc(workerDocId(w)):dash}</span>
+        <span class="k"><i class="ti ti-coin"></i> Rate</span><span class="v">${w.hourlyRate?('₪'+esc(w.hourlyRate)+'/h'):dash}</span>
+        <span class="k"><i class="ti ti-clock-hour-4"></i> Hours (${esc(monthName)})</span><span class="v" style="font-weight:700;color:${h>0?'var(--green)':'var(--text3)'}">${h.toFixed(1)}h</span>
+        <span class="k"><i class="ti ti-building"></i> Clients</span><span class="v">${objs.length?objs.map(badge).join(''):dash}</span>
+        <span class="k"><i class="ti ti-truck-delivery"></i> Supplier</span><span class="v">${sup?badge(sup):dash}</span>
+        <span class="k"><i class="ti ti-calendar-event"></i> Start date</span><span class="v">${w.startDate?esc(fmtDMY(w.startDate)):dash}</span>
+      </div>
+    </div>`;
+  };
+  if(!groupBy) return list.map(card).join('');
+  const groups=groupBy==='client'
+    ? [...clients.map(c=>({name:c.name,color:c.color,items:list.filter(x=>(x.w.clientIds||[]).includes(c.id))})),
+       {name:'No client assigned',color:null,items:list.filter(x=>!(x.w.clientIds||[]).length)}]
+    : [...suppliers.map(s=>({name:s.name,color:s.color,items:list.filter(x=>x.w.supplierId===s.id)})),
+       {name:'No supplier assigned',color:null,items:list.filter(x=>!x.w.supplierId)}];
+  return groups.filter(g=>g.items.length).map(g=>
+    `<div class="workers-group-title">${g.color?`<span style="width:8px;height:8px;border-radius:50%;background:${esc(g.color)}"></span>`:''}${esc(g.name)} <span style="color:var(--text3);font-weight:400">(${g.items.length})</span></div>`+g.items.map(card).join('')
+  ).join('');
+}
 function renderWorkersPage(){
   fillFilterSelect('workersFilterClient', clients, 'All clients');
   fillFilterSelect('workersFilterSupplier', suppliers, 'All suppliers');
@@ -2536,6 +2603,16 @@ function renderWorkersPage(){
     return (x.w.name||'').toLowerCase().includes(q) || (x.w.phone||'').toLowerCase().includes(q) || objNames.toLowerCase().includes(q);
   });
   document.getElementById('workersCount').textContent=list.length+' worker'+(list.length!==1?'s':'');
+  const view=getWorkersView();
+  document.getElementById('workersViewList')?.classList.toggle('active',view==='list');
+  document.getElementById('workersViewCards')?.classList.toggle('active',view==='cards');
+  const cardsBox=document.getElementById('workersCards'), tableWrap=document.getElementById('workersTableWrap');
+  if(view==='cards'){
+    tableWrap.style.display='none'; cardsBox.style.display='grid';
+    cardsBox.innerHTML=renderWorkerCardsHtml(list,groupBy,stMetaMap);
+    return;
+  }
+  cardsBox.style.display='none'; tableWrap.style.display='';
   const tbody=document.getElementById('workersTableBody'), empty=document.getElementById('workersEmpty');
   if(!list.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
