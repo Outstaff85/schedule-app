@@ -444,6 +444,21 @@ function downscaleForUpload(b64,mediaType){
 // feeding the Laplacian-variance calc changed with this reorder, so that
 // threshold may need re-verification against a real blurry photo cropped the
 // same way, same as the pre-existing pre/post-enhancement calibration note.
+// Renders the scan stage as a spinner + label + a REAL (percentage-driven)
+// progress bar, added 2026-09-30 per user request — processAllPendingPages()
+// used to overwrite the stage with a plain spinner+text at each internal
+// sub-step (align/enhance/read/tighten), which looked stuck since only the
+// per-PAGE percentage advanced, not anything within a page's own multi-step
+// pipeline. Called at each real sub-step boundary below so the bar visibly
+// advances in real time instead of jumping only between pages.
+function renderScanProgress(label,pct){
+  const stage=document.getElementById('aiScanStage');
+  if(!stage) return;
+  stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
+    +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
+    +'<span>'+label+' ('+pct+'%)</span>'
+    +'<div class="progress-bar-real"><div style="width:'+pct+'%"></div></div></div>';
+}
 async function preAlignScan(b64,mediaType){
   try{
     const resp=await fetch(PREPROCESS_SCAN_FN_URL,{
@@ -479,10 +494,6 @@ async function preAlignScan(b64,mediaType){
 // error, bad AI response, image decode failure) just falls through to the
 // original image unchanged, so a hiccup here never blocks the scan.
 async function autoPreAlignScan(b64,mediaType){
-  const stage=document.getElementById('aiScanStage');
-  stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
-    +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
-    +'<span>מיישר את התמונה…</span></div>';
   try{
     const resp=await fetch(GS_URL,{
       method:'POST',
@@ -1465,12 +1476,14 @@ async function processAllPendingPages(){
   let needMore=missingCore(foundParsed);
   const otherPages=resuming?window.__aiPacketOtherPages.slice():[];
   let pageParsed=resuming?window.__aiPageParsed.slice():[];
+  // Sub-step progress within each page (added 2026-09-30, per user request)
+  // — pageBasePct/pageSpanPct turn "page i of N" into a real, continuously
+  // advancing percentage across that page's own align/enhance/read/tighten
+  // steps, instead of the bar only jumping once per whole page.
   for(let i=0;i<queue.length;i++){
-    const pct=Math.round((i/queue.length)*100);
-    stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
-      +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
-      +'<span>מעבד עמוד '+(i+1)+' מתוך '+queue.length+'… ('+pct+'%)</span>'
-      +'<div class="progress-bar-real"><div style="width:'+pct+'%"></div></div></div>';
+    const pageBasePct=(i/queue.length)*100, pageSpanPct=100/queue.length;
+    const subPct=frac=>Math.round(pageBasePct+pageSpanPct*frac);
+    renderScanProgress('מיישר את התמונה… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0));
     let it=queue[i];
     // Cheap Haiku-based corner detection (autoPreAlignScan/aiDetectAlign,
     // revived 2026-09-26 — see its own comment for the full history) runs
@@ -1485,6 +1498,7 @@ async function processAllPendingPages(){
     // (it already safely no-ops when it can't find a confident quad).
     try{ it=await autoPreAlignScan(it.b64,it.mediaType); }
     catch(e){ console.error(e); }
+    renderScanProgress('משפר איכות… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.25));
     let pre;
     try{ pre=await preAlignScan(it.b64,it.mediaType); }
     catch(e){ console.error(e); pre={b64:it.b64,mediaType:it.mediaType}; }
@@ -1509,10 +1523,12 @@ async function processAllPendingPages(){
     let thisPageParsed=null;
     if(!foundParsed){
       try{
+        renderScanProgress('ה-AI קורא את המסמך… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.45));
         const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
         const json=await resp.json();
         const p=json&&json.parsed;
         if(p&&(p.type==='israeli_id'||p.type==='passport')){
+          if(p.fieldBoxes) renderScanProgress('בודק שוב את הספרות… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.7));
           foundParsed=p.fieldBoxes?await verifyDigitFields(p,it.b64,it.mediaType):p;
           foundParsed=await verifyIdChecksum(foundParsed,it.b64,it.mediaType);
           // Routed through initPrimaryFromFirstPage() (2026-09-27, unifying
@@ -1534,6 +1550,7 @@ async function processAllPendingPages(){
           // pass here (refineWithAiAlign() removed 2026-09-30 — see its own
           // removal note near finalTightenPass); finalTightenPass alone
           // (pure local pixel math, no AI call) tightens `it` below.
+          renderScanProgress('מחדד קצוות… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.9));
           window.__aiScanImage=await finalTightenPass(it);
           needMore=missingCore(foundParsed);
           pageParsed=[foundParsed];
@@ -1542,6 +1559,7 @@ async function processAllPendingPages(){
       }catch(e){ console.error(e); }
     } else if(needMore){
       try{
+        renderScanProgress('ה-AI קורא את המסמך… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.45));
         const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
         const json=await resp.json();
         const p=json&&json.parsed;
@@ -1566,14 +1584,12 @@ async function processAllPendingPages(){
     // needing no aiReadDoc call because every core field was already
     // complete) — it's the only geometric tightening pass left after
     // refineWithAiAlign()'s removal (2026-09-30, see its own removal note).
+    renderScanProgress('מחדד קצוות… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.9));
     it=await finalTightenPass(it);
     pageParsed.push(thisPageParsed);
     otherPages.push(it);
   }
-  stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
-    +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
-    +'<span>הושלם (100%)</span>'
-    +'<div class="progress-bar-real"><div style="width:100%"></div></div></div>';
+  renderScanProgress('הושלם',100);
   window.__pendingScanPages=[];
   window.__aiPacketOtherPages=otherPages;
   window.__aiPageParsed=pageParsed;
