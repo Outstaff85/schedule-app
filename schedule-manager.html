@@ -39,7 +39,9 @@
   .titlebar .brand img{width:28px;height:28px;border-radius:8px;}
   .titlebar .logo{font-size:16px;font-weight:600;color:var(--text);letter-spacing:-0.3px;align-self:center;white-space:nowrap;}
   .titlebar .logo span{color:var(--accent);}
-  .account-label-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:16px;font-weight:600;color:var(--text);letter-spacing:-0.3px;white-space:nowrap;pointer-events:none;}
+  .account-label-center{margin-left:auto;align-self:center;max-width:260px;overflow:hidden;text-overflow:ellipsis;font-size:13px;font-weight:500;color:var(--text2);white-space:nowrap;padding:0 8px;}
+  .account-label-center:empty{display:none;}
+  .account-label-center + .titlebar-actions{margin-left:0;}
   .account-label-center span{color:var(--accent);}
   .top-tabs{display:flex;gap:2px;align-items:stretch;}
   .ttab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:70px;padding:0 12px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text2);transition:all 0.15s;}
@@ -212,7 +214,8 @@
     .ttab .ic { font-size: 16px; }
     .ttab .lb { font-size: 11px; }
     .titlebar-actions { margin-left: auto; gap: 4px; flex-wrap: wrap; }
-    .account-label-center { display: none; }
+    .account-label-center { order: 2; width: 100%; max-width: none; margin-left: 0; padding: 0; font-size: 12px; }
+    .account-label-center + .titlebar-actions { margin-left: auto; }
     .save-indicator { font-size: 10px; }
     .btn.sm { font-size: 11px; padding: 5px 10px; min-height: 34px; }
     .dropdown-menu { right: 0; left: auto; min-width: 180px; }
@@ -674,7 +677,7 @@
               <option value="month">This Month</option>
               <option value="all">All Time</option>
             </select>
-            <button class="btn sm" onclick="exportSalaryCSV()"><i class="ti ti-upload"></i> Export</button>
+            <button class="btn sm" onclick="openSalaryExportModal()"><i class="ti ti-upload"></i> Export</button>
           </div>
         </div>
         <div id="dashSalary"></div>
@@ -753,6 +756,9 @@
 </div>
 <div class="overlay" id="hoursImportOverlay" onclick="if(event.target===this)closeModal('hoursImportOverlay')">
   <div class="modal" id="hoursImportModal" style="max-width:440px"></div>
+</div>
+<div class="overlay" id="salaryExportOverlay" onclick="if(event.target===this)closeModal('salaryExportOverlay')">
+  <div class="modal" id="salaryExportModal" style="max-width:360px"></div>
 </div>
 <div class="overlay" id="hoursExportOverlay" onclick="if(event.target===this)closeModal('hoursExportOverlay')">
   <div class="modal" id="hoursExportModal" style="max-width:360px"></div>
@@ -3362,16 +3368,19 @@ function renderAccountControl(s){
     // it — the login name only stands in while the profile has no name yet.
     // Reading it from the profile (not the session's fixed username) is also
     // what makes a rename show up here as soon as cacheTenantProfile() lands.
+    // Shows both WHO is logged in (username) and WHICH firm is active, on
+    // desktop (centered) and mobile (own full-width row under the brand).
     const profile = activeTenantProfile();
-    labelHost.innerHTML = s.role === 'superadmin'
-      ? 'Супер-админ <span>' + esc(s.viewingTenantName || s.viewingTenantId || '') + '</span>'
-      : 'Фирма <span>' + esc((profile && profile.companyName) || s.username || '') + '</span>';
+    const firm = s.role === 'superadmin'
+      ? (s.viewingTenantName || s.viewingTenantId || 'Super-admin')
+      : ((profile && profile.companyName) || '');
+    labelHost.innerHTML = '<i class="ti ti-user"></i> ' + esc(s.username || '')
+      + (firm ? ' · <span>' + esc(firm) + '</span>' : '');
   }
   if(!host) return;
   const incomplete = firmProfileMissing().length > 0;
   host.innerHTML = `
     <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
-      ${s.role==='superadmin' ? '<button class="btn sm" onclick="backToFirmsList()"><i class="ti ti-building-skyscraper"></i> Фирмы</button>' : ''}
       <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i></button>
     </div>`;
   // The gear button that used to open the separate #adminScreen modal was
@@ -4801,8 +4810,29 @@ function setWorkerRate(wid,rate){
 function setWorkerOtRate(wid,val){ const w=workers.find(x=>x.id===wid); if(w){ w.otRate=(val===''||val==null)?null:(parseFloat(val)||0); autoSave(); } }
 function setWorkerShabbatRate(wid,val){ const w=workers.find(x=>x.id===wid); if(w){ w.shabbatRate=(val===''||val==null)?null:(parseFloat(val)||0); autoSave(); } }
 
-function exportSalaryCSV(){
+// Salary export — Accounting tab's "Export" button opens a format picker
+// (Excel / PDF / CSV); all three share buildSalaryExportRows(), which pairs
+// punches via the canonical groupPunchesIntoShifts()/analyzeDayPunches()/
+// shiftPay() — the formats differ only in how the same rows are written out.
+const SALARY_PERIOD_LABELS={week:'This Week',month:'This Month',all:'All Time'};
+function openSalaryExportModal(){
   const period=document.getElementById('salaryPeriod')?.value||'week';
+  document.getElementById('salaryExportModal').innerHTML = `
+    <div class="modal-title">Export salary</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:14px">Period: <b>${esc(SALARY_PERIOD_LABELS[period]||period)}</b></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('salaryExportOverlay')">Cancel</button>
+      <button class="btn sm" onclick="runSalaryExport('csv')"><i class="ti ti-file-text"></i> CSV</button>
+      <button class="btn sm" onclick="runSalaryExport('excel')"><i class="ti ti-file-spreadsheet"></i> Excel</button>
+      <button class="btn accent" onclick="runSalaryExport('pdf')"><i class="ti ti-file-type-pdf"></i> PDF</button>
+    </div>`;
+  document.getElementById('salaryExportOverlay').classList.add('open');
+}
+function runSalaryExport(format){
+  closeModal('salaryExportOverlay');
+  exportSalary(format);
+}
+function buildSalaryExportRows(period){
   const log=getPunchLog(); const now=new Date();
   let filtered=log;
   if(period==='week'){ const ws=new Date(now); ws.setDate(ws.getDate()-ws.getDay()); ws.setHours(0,0,0,0); filtered=log.filter(e=>new Date(e.ts)>=ws); }
@@ -4815,7 +4845,7 @@ function exportSalaryCSV(){
       byWD[wid+'|'+i]={worker:list[0].workerName,wid,date:bucket.date,entries:bucket.entries};
     });
   });
-  const rows=[['Worker','Object/Client','Supplier','Date','First In','Last Out','Hours','Rate (\u20aa/h)','Day Pay (\u20aa)','Notes']];
+  const rows=[];
   Object.values(byWD).sort((a,b)=> a.worker<b.worker?-1 : a.worker>b.worker?1 : (a.date-b.date)).forEach(d=>{
     const res=analyzeDayPunches(d.entries,d.date);
     const ins=d.entries.filter(x=>x.type==='in').map(x=>x.time).sort();
@@ -4827,13 +4857,46 @@ function exportSalaryCSV(){
     const pay=shiftPay(res.hours,_w,isSat,shiftClientId);
     const clientObj=punchClientObject(d.entries[0])||workerClientObject(d.wid);
     const supName=suppliers.find(s=>s.id===_w?.supplierId)?.name||'';
-    rows.push([d.worker, clientObj, supName, d.date.toLocaleDateString('en-GB'), ins[0]||'', outs[outs.length-1]||'', res.hours.toFixed(2), rate, pay.toFixed(2), res.warnings.join('; ')]);
+    rows.push({worker:d.worker, client:clientObj, supplier:supName, date:d.date.toLocaleDateString('en-GB'), firstIn:ins[0]||'', lastOut:outs[outs.length-1]||'', hours:res.hours, rate, pay, notes:res.warnings.join('; ')});
   });
-  const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
-  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const url=URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download='salary-'+period+'-'+now.toISOString().slice(0,10)+'.csv'; a.click(); URL.revokeObjectURL(url);
+  return rows;
+}
+function exportSalary(format){
+  const period=document.getElementById('salaryPeriod')?.value||'week';
+  const now=new Date();
+  const rows=buildSalaryExportRows(period);
+  const header=['Worker','Object/Client','Supplier','Date','First In','Last Out','Hours','Rate (\u20aa/h)','Day Pay (\u20aa)','Notes'];
+  const toArr=r=>[r.worker, r.client, r.supplier, r.date, r.firstIn, r.lastOut, r.hours.toFixed(2), r.rate, r.pay.toFixed(2), r.notes];
+  const totalHours=rows.reduce((s,r)=>s+r.hours,0), totalPay=rows.reduce((s,r)=>s+r.pay,0);
+  const fname='salary-'+period+'-'+now.toISOString().slice(0,10);
+  if(format==='excel'){
+    if(typeof XLSX==='undefined'){ showToast('Excel library not loaded'); return; }
+    const aoa=[header, ...rows.map(toArr), ['','','','','','Total',totalHours.toFixed(2),'',totalPay.toFixed(2),'']];
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Salary');
+    XLSX.writeFile(wb, fname+'.xlsx');
+  } else if(format==='pdf'){
+    const title='Salary — '+(SALARY_PERIOD_LABELS[period]||period);
+    const rowsHtml=rows.map(r=>'<tr>'+toArr(r).map(v=>`<td>${esc(String(v))}</td>`).join('')+'</tr>').join('');
+    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(title)}</title>
+      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #ccc;padding:5px 8px;text-align:left}th{background:#f0f0f0}tfoot td{font-weight:bold}</style>
+      </head><body><h2>${esc(title)}</h2>
+      <table><thead><tr>${header.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
+      <tbody>${rowsHtml}</tbody>
+      <tfoot><tr><td colspan="6">Total</td><td>${totalHours.toFixed(2)}</td><td></td><td>${totalPay.toFixed(2)}</td><td></td></tr></tfoot>
+      </table></body></html>`;
+    const win=window.open('','_blank');
+    if(!win){ showToast('Pop-up blocked — allow pop-ups to export PDF'); return; }
+    win.document.write(html); win.document.close(); setTimeout(()=>win.print(),400);
+  } else {
+    const csv=[header, ...rows.map(toArr)].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=fname+'.csv'; a.click(); URL.revokeObjectURL(url);
+  }
   showToast('Salary exported!');
 }
+// Kept for any existing caller — CSV straight through, no picker.
+function exportSalaryCSV(){ exportSalary('csv'); }
 
 // --- Shifts table → PDF/Excel export module (Admin/Roles plan, stage 15) -------
 // Shared by the firm's own Accounting tab (below) and, per the plan, the
