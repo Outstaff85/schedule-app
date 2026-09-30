@@ -2176,6 +2176,7 @@ function openWorkerCard(wi){
   const stMetaMap={active:{label:'Active',col:'var(--green)',bg:'var(--green-bg)'},vacation:{label:'On vacation',col:'var(--amber)',bg:'var(--amber-bg)'},fired:{label:'Fired',col:'var(--red)',bg:'var(--red-bg)'}};
   const stMeta=stMetaMap[w.status||'active'];
   const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
+  const sup=suppliers.find(s=>s.id===w.supplierId);
   const wh=workerTotalHours(w);
   const expSt=workerExpiryStatus(w);
   document.getElementById('workerCardModal').innerHTML=`
@@ -2204,6 +2205,7 @@ function openWorkerCard(wi){
         const hasOverride=!!(w.clientRates&&w.clientRates[o.id]&&Object.values(w.clientRates[o.id]).some(v=>v!=null));
         return `<div><i class="ti ti-currency-shekel"></i> ${esc(o.name)}: ₪${r.regRate}/h · OT ₪${r.otRate} · Shabbat ₪${r.shabbatRate}${hasOverride?' <i class="ti ti-star-filled" style="font-size:10px;color:var(--amber)" title="Own rate at this client"></i>':''}</div>`;
       }).join('')}` : `<div><i class="ti ti-building-off"></i> Not assigned to any object</div>`}
+      ${sup?`<div><i class="ti ti-truck-delivery"></i> <span style="color:${sup.color}">${esc(sup.name)}</span></div>`:''}
     </div>
     ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
     <div class="modal-actions">
