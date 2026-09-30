@@ -335,6 +335,19 @@ def _draw_extra_page_image(page, extra, box, margin=40, cap_h=24, fontsize=13):
     page.insert_image(pymupdf.Rect(x, y, x + w, y + h), stream=embed_bytes)
 
 
+def _ddmmyyyy(value):
+    """'1.2.2018', '01/02/2018' or '2018-02-01' -> '01022018' for the 8-box
+    date combs; anything else falls back to its digits."""
+    s = str(value or "").strip()
+    m = re.fullmatch(r"(\d{1,2})\D(\d{1,2})\D(\d{4})", s)
+    if m:
+        return m.group(1).zfill(2) + m.group(2).zfill(2) + m.group(3)
+    m = re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})", s)
+    if m:
+        return m.group(3).zfill(2) + m.group(2).zfill(2) + m.group(1)
+    return re.sub(r"\D", "", s)
+
+
 # Section ו (spouse) checkboxes, verified by position on the template:
 # cb_p1_22 "אין לבן/בת הזוג כל הכנסה", cb_p1_23 "יש לבן/בת הזוג הכנסה",
 # then its type: cb_p1_24 "עבודה/קצבה/עסק", cb_p1_25 "הכנסה אחרת".
@@ -354,7 +367,7 @@ def fill_spouse(b, sp):
     elif ident:
         # Not an Israeli ID — the passport box is for spouses without one.
         b.set_comb("spouse_passport_no", ident.upper(), 13, 10)
-    b.set_comb("spouse_dob", re.sub(r"\D", "", sp.get("dob") or ""), 8, 10)
+    b.set_comb("spouse_dob", _ddmmyyyy(sp.get("dob")), 8, 10)
     for cb in SPOUSE_INCOME_CB.get(sp.get("income"), []):
         b.check(cb)
 
@@ -369,7 +382,7 @@ def build_form101_pdf(p):
 
     b.set_hebrew("surname", surname, 11)
     b.set_hebrew("given_name", given, 11)
-    b.set_comb("dob", re.sub(r"\D", "", dob or ""), 8, 10)
+    b.set_comb("dob", _ddmmyyyy(dob), 8, 10)
     b.set_text("id_top2", no, 10)
 
     tax_year = str(date.today().year)
@@ -433,13 +446,6 @@ def build_form101_pdf(p):
             # number rather than an employer field. Using it as such; revisit
             # if the field ever gets renamed to something clearer.
             b.set_comb("employer_zeut_num", re.sub(r"\D", "", no), 9, 10)
-        addr = p.get("address")
-        if addr:
-            street, number = _split_street(addr)
-            b.set_hebrew("addr_street", street, 11)
-            if number:
-                b.set_text_centered("addr_number", number)
-        b.set_hebrew("addr_city", p.get("city"), 11)
         marital = p.get("marital")
         if marital:
             b.check(marital)
@@ -448,29 +454,6 @@ def build_form101_pdf(p):
         if fund:
             b.check("hf_yes")
             b.set_hebrew("hf_name", HEALTH_FUND_HE.get(fund, fund), 11)
-        for i, c in enumerate((p.get("children") or [])[:len(CHILD_FIELD_SUFFIXES)]):
-            suf = CHILD_FIELD_SUFFIXES[i]
-            full_name = str(c.get("name") or "").strip()
-            if full_name:
-                # Split on the first space: given name first, everything
-                # else treated as surname — matches the given/surname order
-                # already used for the worker's own name. See
-                # CHILD_FIELD_SUFFIXES's own comment for the tradeoff.
-                parts = full_name.split(None, 1)
-                given_n = parts[0]
-                surname_n = parts[1] if len(parts) > 1 else ""
-                if given_n:
-                    b.set_hebrew(f"child_given_name{suf}", given_n, 9)
-                if surname_n:
-                    b.set_hebrew(f"child_surname{suf}", surname_n, 9)
-            if c.get("dob"):
-                dd = re.sub(r"\D", "", str(c["dob"]))
-                if dd:
-                    b.set_comb(f"child_dob{suf}", dd, 8, 10)
-            if c.get("idNo"):
-                digits = re.sub(r"\D", "", str(c["idNo"]))
-                if digits:
-                    b.set_comb(f"child_passport_no{suf}", digits, 9, 10)
     else:
         b.set_comb("passport_no", no, 13, 10)
         fill_work_start(p.get("workStart"))
@@ -478,6 +461,40 @@ def build_form101_pdf(p):
         if fund:
             b.check("hf_yes")
             b.set_hebrew("hf_name", HEALTH_FUND_HE.get(fund, fund), 11)
+
+    # Address in Israel and children — both document types (a foreign
+    # worker fills them in by hand; an Israeli ID worker gets them from the ספח).
+    addr = p.get("address")
+    if addr:
+        street, number = _split_street(addr)
+        b.set_hebrew("addr_street", street, 11)
+        if number:
+            b.set_text_centered("addr_number", number)
+    b.set_hebrew("addr_city", p.get("city"), 11)
+    for i, c in enumerate((p.get("children") or [])[:len(CHILD_FIELD_SUFFIXES)]):
+        suf = CHILD_FIELD_SUFFIXES[i]
+        full_name = str(c.get("name") or "").strip()
+        if full_name:
+            # Split on the first space: given name first, everything
+            # else treated as surname — matches the given/surname order
+            # already used for the worker's own name. See
+            # CHILD_FIELD_SUFFIXES's own comment for the tradeoff.
+            parts = full_name.split(None, 1)
+            given_n = parts[0]
+            surname_n = parts[1] if len(parts) > 1 else ""
+            if given_n:
+                b.set_hebrew(f"child_given_name{suf}", given_n, 9)
+            if surname_n:
+                b.set_hebrew(f"child_surname{suf}", surname_n, 9)
+        if c.get("dob"):
+            dd = _ddmmyyyy(c["dob"])
+            if dd:
+                b.set_comb(f"child_dob{suf}", dd, 8, 10)
+        if c.get("idNo"):
+            # Israeli ID digits, or a foreign child's passport number.
+            ident = re.sub(r"[^0-9A-Za-z]", "", str(c["idNo"])).upper()
+            if ident:
+                b.set_comb(f"child_passport_no{suf}", ident, 9, 10)
 
     phone = p.get("workerPhone")
     if phone:

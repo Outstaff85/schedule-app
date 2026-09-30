@@ -6028,7 +6028,12 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // A foreign-passport worker defaults to single server-side unless a
       // status was set (e.g. married with a spouse entered).
       marital=(targetWorker&&targetWorker.maritalStatus)||'';
-      Object.assign(payload,{workStart,healthFund:fund,marital});
+      // Address in Israel and children, typed in by hand for a foreign
+      // worker — printed in the same boxes as for an Israeli ID.
+      addr=(workerAddress(targetWorker||{})+' '+((targetWorker&&targetWorker.houseNumber)||'')).trim();
+      city=(targetWorker&&targetWorker.city)||'';
+      children=(targetWorker&&targetWorker.docChildren)||[];
+      Object.assign(payload,{workStart,healthFund:fund,marital,address:addr,city,children});
     }
     // Form 101 section ו (spouse), either document type.
     const tw=targetWorker||{};
