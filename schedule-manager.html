@@ -711,6 +711,9 @@
 <div class="overlay" id="hoursImportOverlay" onclick="if(event.target===this)closeModal('hoursImportOverlay')">
   <div class="modal" id="hoursImportModal" style="max-width:440px"></div>
 </div>
+<div class="overlay" id="hoursExportOverlay" onclick="if(event.target===this)closeModal('hoursExportOverlay')">
+  <div class="modal" id="hoursExportModal" style="max-width:360px"></div>
+</div>
 
 <!-- Manual Punch Modal -->
 <div class="overlay" id="manualPunchOverlay" onclick="if(event.target===this)closeModal('manualPunchOverlay')">
@@ -2399,6 +2402,7 @@ function openWorkerCard(wi){
       <button class="btn sm red" onclick="deleteWorkerFromCard(${wi})"><i class="ti ti-trash"></i> Delete</button>
       ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Скачать документ</a>`:''}
       ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursImportModal('${w.id}')"><i class="ti ti-file-upload"></i> Upload hours</button>`:''}
+      ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursExportModal('${w.id}')"><i class="ti ti-file-export"></i> Export hours</button>`:''}
       <button class="btn accent" onclick="closeModal('workerCardOverlay');openEditWorker(${wi})"><i class="ti ti-edit"></i> Edit</button>
     </div>`;
   document.getElementById('workerCardOverlay').classList.add('open');
@@ -2545,6 +2549,31 @@ async function submitHoursImportBatch(){
     showToast(json.count+' shift(s) uploaded — pending approval');
     closeModal('hoursImportOverlay');
   }catch(e){ showToast('Upload failed: '+e.message); }
+}
+
+// Detail-mode export entry point (stage 15's exportShiftsDetail) for one
+// worker — a compact month-picker rather than reusing the import overlay,
+// since this flow needs no file at all.
+function openHoursExportModal(workerId){
+  const now = new Date();
+  const monthOptions = Array.from({length:12}, (_,i)=>{
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    return `<option value="${d.getFullYear()}-${d.getMonth()}">${esc(d.toLocaleDateString('en-GB',{month:'long',year:'numeric'}))}</option>`;
+  }).join('');
+  document.getElementById('hoursExportModal').innerHTML = `
+    <div class="modal-title">Export hours</div>
+    <div class="field"><label>Month</label><select id="hoursExportMonth">${monthOptions}</select></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('hoursExportOverlay')">Cancel</button>
+      <button class="btn sm" onclick="runHoursExport('${workerId}','excel')"><i class="ti ti-file-spreadsheet"></i> Excel</button>
+      <button class="btn accent" onclick="runHoursExport('${workerId}','pdf')"><i class="ti ti-file-type-pdf"></i> PDF</button>
+    </div>`;
+  document.getElementById('hoursExportOverlay').classList.add('open');
+}
+function runHoursExport(workerId, format){
+  const [year, month] = document.getElementById('hoursExportMonth').value.split('-').map(Number);
+  exportShiftsDetail(workerId, year, month, format);
+  closeModal('hoursExportOverlay');
 }
 
 function renderClientsPage(){
@@ -4016,6 +4045,7 @@ function importDataBackup(){
 let _logExpanded=false, _salExpanded=false;
 let __lastSalaryEntries=[];
 let __lastClientBillEntries=[];
+let __lastSupplierPayableRows=[];
 function toggleLog(){ _logExpanded=!_logExpanded; renderDashboard(); }
 function toggleSalary(){ _salExpanded=!_salExpanded; renderSalary(); }
 function renderDashboard(){
@@ -4371,7 +4401,14 @@ function renderSupplierPayable(entries){
     wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No workers with a supplier assigned had activity this period</div>`;
     return;
   }
+  // Stage 15: same {label,hours,rate,total} shape exportPayableSummary()
+  // expects — built here once so the export buttons below never recompute.
+  __lastSupplierPayableRows = rows.map(r=>({ label:r.sup.name, hours:r.hours, rate:'commission', total:r.total }));
   wrap.innerHTML=`
+    <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:6px">
+      <button class="btn sm" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:'Payable by supplier',filename:'payable-by-supplier',format:'excel'})"><i class="ti ti-file-spreadsheet"></i> Excel</button>
+      <button class="btn sm" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:'Payable by supplier',filename:'payable-by-supplier',format:'pdf'})"><i class="ti ti-file-type-pdf"></i> PDF</button>
+    </div>
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
       <table style="width:100%;border-collapse:collapse;min-width:420px">
@@ -4679,6 +4716,89 @@ function exportSalaryCSV(){
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const url=URL.createObjectURL(blob);
   const a=document.createElement('a'); a.href=url; a.download='salary-'+period+'-'+now.toISOString().slice(0,10)+'.csv'; a.click(); URL.revokeObjectURL(url);
   showToast('Salary exported!');
+}
+
+// --- Shifts table → PDF/Excel export module (Admin/Roles plan, stage 15) -------
+// Shared by the firm's own Accounting tab (below) and, per the plan, the
+// future supplier portal (stage 16, which will get its own copy of these
+// same two functions — this file duplicates helpers across HTML files on
+// purpose, see CLAUDE.md's "Shared conventions" note). Two modes, built from
+// already-computed data only — groupPunchesIntoShifts()/analyzeDayPunches()
+// for the detail mode, and whatever hours×rate figures the caller already
+// computed (renderSalary()/renderSupplierPayable()/renderClientBillable())
+// for the summary mode — never a new/independent calculation of its own.
+// "PDF" follows this file's own existing convention (exportPDF() above):
+// a styled print-ready page opened via window.open()+window.print(), not a
+// PDF-generation library — no new dependency introduced for this stage.
+
+// Detail mode: one worker, one calendar month, Date/In/Out/Hours per shift.
+function getWorkerMonthShifts(workerId, year, month){
+  const log = getPunchLog().filter(e=>e.workerId===workerId);
+  return groupPunchesIntoShifts(log)
+    .filter(b => b.date.getFullYear()===year && b.date.getMonth()===month)
+    .map(b => {
+      const res = analyzeDayPunches(b.entries, b.date);
+      const ins = b.entries.filter(x=>x.type==='in').map(x=>x.time).sort();
+      const outs = b.entries.filter(x=>x.type==='out').map(x=>x.time).sort();
+      return { date: b.date, inTime: ins[0]||'', outTime: outs[outs.length-1]||'', hours: res.hours };
+    })
+    .sort((a,b)=>a.date-b.date);
+}
+function exportShiftsDetail(workerId, year, month, format){
+  const w = workers.find(x=>x.id===workerId);
+  const shifts = getWorkerMonthShifts(workerId, year, month);
+  const monthLabel = new Date(year, month, 1).toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  const totalHours = shifts.reduce((s,x)=>s+x.hours,0);
+  const fname = 'hours-'+(w?w.name.replace(/\s+/g,'_'):workerId)+'-'+year+'-'+String(month+1).padStart(2,'0');
+  if(format==='excel'){
+    const aoa=[['Date','In','Out','Hours']];
+    shifts.forEach(s=>aoa.push([s.date.toLocaleDateString('en-GB'), s.inTime, s.outTime, s.hours.toFixed(2)]));
+    aoa.push(['','','Total', totalHours.toFixed(2)]);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Hours');
+    XLSX.writeFile(wb, fname+'.xlsx');
+  } else {
+    const rowsHtml = shifts.map(s=>`<tr><td>${s.date.toLocaleDateString('en-GB')}</td><td>${esc(s.inTime)}</td><td>${esc(s.outTime)}</td><td>${s.hours.toFixed(2)}</td></tr>`).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Hours — ${esc(w?w.name:'')}</title>
+      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px;text-align:left}th{background:#f0f0f0}tfoot td{font-weight:bold}</style>
+      </head><body><h2>${esc(w?w.name:'')} — ${esc(monthLabel)}</h2>
+      <table><thead><tr><th>Date</th><th>In</th><th>Out</th><th>Hours</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+      <tfoot><tr><td colspan="3">Total</td><td>${totalHours.toFixed(2)}</td></tr></tfoot>
+      </table></body></html>`;
+    const win=window.open('','_blank'); win.document.write(html); win.document.close(); setTimeout(()=>win.print(),400);
+  }
+  showToast('Hours exported');
+}
+// Summary mode: rows the caller already computed — {label, hours, rate,
+// total} — hours×rate=payable (for the firm's own workers, or a supplier's
+// flat commission). `rate` is purely informational (a tiered worker's rate
+// varies by day, so the caller may pass a string like "varies" there);
+// `total` is always the real, already-correct figure from the source table.
+function exportPayableSummary(rows, opts){
+  opts = opts||{};
+  const title = opts.title || 'Payable summary';
+  const fname = opts.filename || 'payable-summary';
+  const grand = rows.reduce((s,r)=>s+r.total,0);
+  if(opts.format==='excel'){
+    const aoa=[['Label','Hours','Rate','Total']];
+    rows.forEach(r=>aoa.push([r.label, r.hours.toFixed(2), r.rate, r.total.toFixed(2)]));
+    aoa.push(['','','Total', grand.toFixed(2)]);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Summary');
+    XLSX.writeFile(wb, fname+'.xlsx');
+  } else {
+    const rowsHtml = rows.map(r=>`<tr><td>${esc(r.label)}</td><td>${r.hours.toFixed(2)}</td><td>${esc(String(r.rate))}</td><td>${r.total.toFixed(2)}</td></tr>`).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(title)}</title>
+      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px;text-align:left}th{background:#f0f0f0}tfoot td{font-weight:bold}</style>
+      </head><body><h2>${esc(title)}</h2>
+      <table><thead><tr><th>Label</th><th>Hours</th><th>Rate</th><th>Total</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+      <tfoot><tr><td colspan="3">Total</td><td>${grand.toFixed(2)}</td></tr></tfoot>
+      </table></body></html>`;
+    const win=window.open('','_blank'); win.document.write(html); win.document.close(); setTimeout(()=>win.print(),400);
+  }
+  showToast('Summary exported');
 }
 
 // --- Worker punch history (shown in worker modal) ------------------------------
