@@ -2508,11 +2508,12 @@ function exportExcel(){
     ws['!cols']=[{wch:16},{wch:14},...DAYS.map(()=>({wch:22})),{wch:13}];
     XLSX.utils.book_append_sheet(wb,ws,'Schedule');
 
-    const statsRows=[['Statistics',fmtRange(weekStart)],[],['Worker','Hours','Shifts','Days Off','Clients'],
+    const statsRows=[['Statistics',fmtRange(weekStart)],[],['Worker','Hours','Shifts','Days Off','Clients','Supplier'],
       ...exW.map(w=>{ const cn=clients.filter(c=>(w.clientIds||[]).includes(c.id)).map(c=>c.name).join(', ');
-        return [w.name,workerTotalHours(w).toFixed(1),w.schedule.filter(s=>s.type==='work').length,w.schedule.filter(s=>s.type==='off').length,cn||'Unassigned']; })];
+        const sn=suppliers.find(s=>s.id===w.supplierId)?.name||'';
+        return [w.name,workerTotalHours(w).toFixed(1),w.schedule.filter(s=>s.type==='work').length,w.schedule.filter(s=>s.type==='off').length,cn||'Unassigned',sn]; })];
     const ws2=XLSX.utils.aoa_to_sheet(statsRows);
-    ws2['!cols']=[{wch:18},{wch:10},{wch:8},{wch:10},{wch:28}];
+    ws2['!cols']=[{wch:18},{wch:10},{wch:8},{wch:10},{wch:28},{wch:20}];
     XLSX.utils.book_append_sheet(wb,ws2,'Statistics');
 
     const fname='Schedule_'+weekStart.toISOString().slice(0,10)+'.xlsx';
@@ -3835,7 +3836,7 @@ function exportSalaryCSV(){
       byWD[wid+'|'+i]={worker:list[0].workerName,wid,date:bucket.date,entries:bucket.entries};
     });
   });
-  const rows=[['Worker','Object/Client','Date','First In','Last Out','Hours','Rate (\u20aa/h)','Day Pay (\u20aa)','Notes']];
+  const rows=[['Worker','Object/Client','Supplier','Date','First In','Last Out','Hours','Rate (\u20aa/h)','Day Pay (\u20aa)','Notes']];
   Object.values(byWD).sort((a,b)=> a.worker<b.worker?-1 : a.worker>b.worker?1 : (a.date-b.date)).forEach(d=>{
     const res=analyzeDayPunches(d.entries,d.date);
     const ins=d.entries.filter(x=>x.type==='in').map(x=>x.time).sort();
@@ -3846,7 +3847,8 @@ function exportSalaryCSV(){
     const isSat=d.date.getDay()===6;
     const pay=shiftPay(res.hours,_w,isSat,shiftClientId);
     const clientObj=punchClientObject(d.entries[0])||workerClientObject(d.wid);
-    rows.push([d.worker, clientObj, d.date.toLocaleDateString('en-GB'), ins[0]||'', outs[outs.length-1]||'', res.hours.toFixed(2), rate, pay.toFixed(2), res.warnings.join('; ')]);
+    const supName=suppliers.find(s=>s.id===_w?.supplierId)?.name||'';
+    rows.push([d.worker, clientObj, supName, d.date.toLocaleDateString('en-GB'), ins[0]||'', outs[outs.length-1]||'', res.hours.toFixed(2), rate, pay.toFixed(2), res.warnings.join('; ')]);
   });
   const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const url=URL.createObjectURL(blob);
@@ -4134,17 +4136,22 @@ function deletePunchEntry(id){
 function exportPunchCSV(){
   const log = getPunchLog();
   if(!log.length){ showToast('No records to export'); return; }
-  const rows=[['Worker','Type','Time','Date','Site','Distance(m)','GPS Accuracy','Notes','Edited']];
-  log.forEach(e=>rows.push([
-    e.workerName||'',
-    e.type?.toUpperCase()||'',
-    e.time||'',
-    new Date(e.ts).toLocaleDateString('en-GB'),
-    punchSite(e),
-    e.dist!=null?e.dist:'',
-    e.notes||'',
-    e.editedAt?new Date(e.editedAt).toLocaleString():''
-  ]));
+  const rows=[['Worker','Supplier','Type','Time','Date','Site','Distance(m)','GPS Accuracy','Notes','Edited']];
+  log.forEach(e=>{
+    const _w=workers.find(w=>w.id===e.workerId);
+    const supName=suppliers.find(s=>s.id===_w?.supplierId)?.name||'';
+    rows.push([
+      e.workerName||'',
+      supName,
+      e.type?.toUpperCase()||'',
+      e.time||'',
+      new Date(e.ts).toLocaleDateString('en-GB'),
+      punchSite(e),
+      e.dist!=null?e.dist:'',
+      e.notes||'',
+      e.editedAt?new Date(e.editedAt).toLocaleString():''
+    ]);
+  });
   const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
   const url=URL.createObjectURL(blob);
