@@ -37,7 +37,8 @@
     ],
     "rewrites": [
       { "source": "/", "destination": "/schedule-manager.html" },
-      { "source": "/punch", "destination": "/worker-punch.html" }
+      { "source": "/punch", "destination": "/worker-punch.html" },
+      { "source": "/supplier", "destination": "/supplier-portal.html" }
     ]
   }
 }

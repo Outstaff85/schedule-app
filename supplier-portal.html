@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f1117">
+<link rel="icon" href="icon-192.png" type="image/png">
+<title>Supplier Portal</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* Supplier Portal — a deliberately separate, lighter file (not an embedded
+   mode inside schedule-manager.html) — see CLAUDE.md's "supplier-portal.html"
+   entry for why: a clean security boundary between the manager app (full
+   worker/client rate data) and a supplier login (which must never see any
+   of it). Duplicates conventions/constants from schedule-manager.html on
+   purpose, same as worker-punch.html already does — see "Shared conventions
+   across both files" in CLAUDE.md. */
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+:root{
+  --bg:#0f1117;--bg2:#181c27;--bg3:#1e2333;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#eef0f8;--text2:#7c84a0;--text3:#3a4060;
+  --green:#6dd6a0;--green-bg:rgba(109,214,160,0.12);
+  --red:#ff4f5e;--red-bg:rgba(255,79,94,0.12);
+  --amber:#f5a623;--amber-bg:rgba(245,166,35,0.12);
+  --accent:#4f8ef7;--radius:12px;--radius-sm:8px;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM Sans',-apple-system,sans-serif;}
+body{padding-bottom:40px;}
+.btn{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
+.btn.sm{padding:5px 10px;font-size:12px;}
+.btn.accent{background:var(--accent);border-color:var(--accent);color:#fff;}
+.btn.red{background:var(--red-bg);border-color:rgba(255,79,94,0.3);color:var(--red);}
+.field{margin-bottom:12px;}
+.field label{display:block;font-size:11px;color:var(--text2);margin-bottom:4px;}
+.field input,.field select{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:8px 10px;font-size:13px;outline:none;}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:500;padding:16px;}
+.overlay.open{display:flex;}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:20px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto;}
+.modal-title{font-size:16px;font-weight:700;margin-bottom:14px;}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap;}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;}
+.tabs{display:flex;gap:6px;padding:12px 16px;border-bottom:1px solid var(--border);overflow-x:auto;}
+.tab-btn{background:none;border:none;color:var(--text2);padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;border-radius:var(--radius-sm);white-space:nowrap;}
+.tab-btn.active{background:var(--bg3);color:var(--text);}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(100px);background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:10px 18px;border-radius:var(--radius-sm);font-size:13px;z-index:900;transition:transform 0.25s;}
+.toast.show{transform:translateX(-50%) translateY(0);}
+table{width:100%;border-collapse:collapse;}
+th,td{padding:8px 10px;text-align:left;font-size:13px;border-bottom:1px solid var(--border);}
+th{color:var(--text2);font-size:11px;text-transform:uppercase;}
+</style>
+</head>
+<body>
+
+<div id="loginScreen" style="display:flex;position:fixed;inset:0;z-index:1000;background:var(--bg);align-items:center;justify-content:center">
+  <div style="width:100%;max-width:340px;padding:24px">
+    <div style="text-align:center;margin-bottom:22px">
+      <i class="ti ti-truck-delivery" style="font-size:32px;color:var(--accent)"></i>
+      <div style="font-size:18px;font-weight:700;margin-top:8px">Supplier Portal</div>
+    </div>
+    <div class="field"><label>Username</label><input type="text" id="loginUsername" autocomplete="username"></div>
+    <div class="field"><label>Password</label><input type="password" id="loginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogin()"></div>
+    <div id="loginError" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px"></div>
+    <button class="btn accent" style="width:100%;justify-content:center" onclick="submitLogin()">Log in</button>
+  </div>
+</div>
+
+<div id="appRoot" style="display:none">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border)">
+    <div style="font-size:16px;font-weight:700"><i class="ti ti-truck-delivery"></i> Supplier Portal</div>
+    <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i> Log out</button>
+  </div>
+  <div class="tabs">
+    <button class="tab-btn" id="tabBtn_dashboard" onclick="switchTab('dashboard')">Dashboard</button>
+    <button class="tab-btn" id="tabBtn_workers" onclick="switchTab('workers')">My Workers</button>
+    <button class="tab-btn" id="tabBtn_hours" onclick="switchTab('hours')">My Hours</button>
+  </div>
+
+  <div id="sectionDashboard" style="padding:16px;display:none">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:16px">
+      <div class="card"><div style="color:var(--text2);font-size:11px">On site now</div><div id="dashOnSite" style="font-size:22px;font-weight:700;color:var(--green)">0</div></div>
+      <div class="card"><div style="color:var(--text2);font-size:11px">My workers</div><div id="dashTotal" style="font-size:22px;font-weight:700">0</div></div>
+    </div>
+    <div class="card">
+      <div style="font-weight:600;margin-bottom:8px">Today's log</div>
+      <div id="dashLog" style="font-size:13px;color:var(--text2)"></div>
+    </div>
+  </div>
+
+  <div id="sectionWorkers" style="padding:16px;display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-weight:600">My Workers</div>
+      <button class="btn sm accent" onclick="openAddWorkerModal()"><i class="ti ti-plus"></i> Add worker</button>
+    </div>
+    <div id="workersList"></div>
+  </div>
+
+  <div id="sectionHours" style="padding:16px;display:none">
+    <div class="field"><label>Month</label><select id="hoursExportMonthSel"></select></div>
+    <div class="field"><label>Worker (for detailed export)</label><select id="hoursExportWorkerSel"></select></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <button class="btn sm" onclick="runDetailExport('excel')"><i class="ti ti-file-spreadsheet"></i> Detail (Excel)</button>
+      <button class="btn sm" onclick="runDetailExport('pdf')"><i class="ti ti-file-type-pdf"></i> Detail (PDF)</button>
+      <button class="btn sm accent" onclick="runSummaryExport('excel')"><i class="ti ti-file-spreadsheet"></i> Summary (Excel)</button>
+      <button class="btn sm accent" onclick="runSummaryExport('pdf')"><i class="ti ti-file-type-pdf"></i> Summary (PDF)</button>
+    </div>
+    <div id="hoursSummaryPreview"></div>
+  </div>
+</div>
+
+<div class="overlay" id="workerOverlay" onclick="if(event.target===this)closeModal('workerOverlay')">
+  <div class="modal" id="workerModal"></div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+// ── Shared constants/helpers duplicated from schedule-manager.html on
+// purpose (see CLAUDE.md "Shared conventions across both files") ───────────
+const GS_URL = 'https://script.google.com/macros/s/AKfycbwfGCQs8TzGd38j-JU0ZdoHLXdHITaG1QjUE3nAJDVB6uZR2_56hxV0Y4UgCs1bGYi_/exec';
+const API_SECRET = 'odinson-7Kq2x9';
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function showToast(msg,dur){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),dur||2500); }
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+
+// Same shift-pairing logic as schedule-manager.html's own
+// groupPunchesIntoShifts()/analyzeDayPunches() — duplicated here rather than
+// imported (no shared build in this codebase).
+function groupPunchesIntoShifts(entries){
+  const chrono=[...entries].sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+  const buckets=[]; let cur=null;
+  chrono.forEach(e=>{
+    if(e.type==='in'){ if(cur) buckets.push(cur); cur={date:new Date(e.ts),entries:[e]}; }
+    else { if(!cur) cur={date:new Date(e.ts),entries:[]}; cur.entries.push(e); buckets.push(cur); cur=null; }
+  });
+  if(cur) buckets.push(cur);
+  return buckets;
+}
+function toMins(t){ if(!t) return 0; const [h,m]=t.split(':').map(Number); return h*60+(m||0); }
+function roundMins(m){ return m; }
+function analyzeDayPunches(entries,date){
+  const chrono=[...entries].sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+  let hours=0, openIn=null; const warnings=[];
+  chrono.forEach(e=>{
+    if(e.type==='in'){ openIn=e; }
+    else if(e.type==='out'){
+      if(!openIn) return;
+      if(!openIn.time||!e.time){ openIn=null; return; }
+      let dur=toMins(e.time)-toMins(openIn.time); if(dur<0) dur+=1440;
+      hours+=dur/60; openIn=null;
+    }
+  });
+  return {hours,warnings};
+}
+
+// ── Session (own localStorage key — never shares schedule-manager.html's,
+// so a supplier login and a manager login on the same device/browser never
+// collide) ───────────────────────────────────────────────────────────────
+const SESSION_KEY = 'supplierPortal_session';
+function getSession(){
+  try{
+    const raw = localStorage.getItem(SESSION_KEY);
+    if(!raw) return null;
+    const s = JSON.parse(raw);
+    if(!s||!s.token||!s.expiresAt||Date.now()>s.expiresAt){ localStorage.removeItem(SESSION_KEY); return null; }
+    return s;
+  }catch(e){ return null; }
+}
+function saveSession(s){ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
+function clearSession(){ localStorage.removeItem(SESSION_KEY); }
+function logout(){ clearSession(); location.reload(); }
+function gsAuth(){ const s=getSession(); return s ? {token:s.token} : {}; }
+
+async function submitLogin(){
+  const username=document.getElementById('loginUsername').value.trim();
+  const password=document.getElementById('loginPassword').value;
+  const errEl=document.getElementById('loginError');
+  errEl.textContent='';
+  if(!username||!password){ errEl.textContent='Enter username and password'; return; }
+  try{
+    const res=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'login',username,password})});
+    const json=await res.json();
+    if(json.error){ errEl.textContent=json.error; return; }
+    if(json.role!=='supplier'){ errEl.textContent='This login is not a supplier account'; return; }
+    saveSession({ token:json.token, role:json.role, tenantId:json.tenantId, supplierId:json.supplierId, username:json.username, expiresAt:json.expiresAt });
+    gateApp();
+  }catch(e){ errEl.textContent='Network error'; }
+}
+
+// ── Data (already pre-filtered/sanitized server-side for role==='supplier'
+// — see apps-script/Код.js loadSchedule()/loadPunchLog() stage 11: no
+// hourlyRate/otRate/shabbatRate/clientRates, no client billing data, no GPS
+// fields ever reach this page at all) ───────────────────────────────────
+let myWorkers=[], myClients=[], punchLog=[];
+async function loadData(){
+  const [schRes, plRes] = await Promise.all([
+    fetch(GS_URL+'?'+new URLSearchParams({action:'loadSchedule', ...gsAuth()})),
+    fetch(GS_URL+'?'+new URLSearchParams({action:'loadPunchLog', ...gsAuth()})),
+  ]);
+  const sch = await schRes.json();
+  const pl = await plRes.json();
+  myWorkers = sch.workers||[];
+  myClients = sch.clients||[];
+  punchLog = pl.entries||[];
+}
+
+function gateApp(){
+  const s=getSession();
+  if(!s){ document.getElementById('loginScreen').style.display='flex'; document.getElementById('appRoot').style.display='none'; return; }
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('appRoot').style.display='block';
+  loadData().then(()=>{ switchTab('dashboard'); });
+}
+
+function switchTab(tab){
+  ['dashboard','workers','hours'].forEach(t=>{
+    document.getElementById('section'+t[0].toUpperCase()+t.slice(1)).style.display = t===tab?'block':'none';
+    document.getElementById('tabBtn_'+t).classList.toggle('active', t===tab);
+  });
+  if(tab==='dashboard') renderDashboard();
+  if(tab==='workers') renderWorkersList();
+  if(tab==='hours') renderHoursTab();
+}
+
+// ── Dashboard (mini, own-workers-only real-time view — no GPS, since the
+// server never sends it to this role) ──────────────────────────────────
+function lastEntryFor(workerId){
+  const list = punchLog.filter(e=>e.workerId===workerId).sort((a,b)=>new Date(b.ts)-new Date(a.ts));
+  return list[0]||null;
+}
+function renderDashboard(){
+  document.getElementById('dashTotal').textContent = myWorkers.length;
+  const onSite = myWorkers.filter(w=>{ const e=lastEntryFor(w.id); return e && e.type==='in'; });
+  document.getElementById('dashOnSite').textContent = onSite.length;
+  const today = new Date().toDateString();
+  const todays = punchLog.filter(e=>new Date(e.ts).toDateString()===today).sort((a,b)=>new Date(b.ts)-new Date(a.ts));
+  const logEl = document.getElementById('dashLog');
+  if(!todays.length){ logEl.textContent='No activity today'; return; }
+  logEl.innerHTML = todays.map(e=>{
+    const w = myWorkers.find(x=>x.id===e.workerId);
+    return `<div>${esc(w?w.name:e.workerName)} — ${e.type.toUpperCase()} ${esc(e.time)}</div>`;
+  }).join('');
+}
+
+// ── My Workers (list/add/edit/delete via the narrow supplierAddWorker/
+// supplierUpdateWorker/supplierDeleteWorker backend actions — never
+// saveSchedule(), which a supplier role is never allowed to call) ────────
+function clientName(id){ const c=myClients.find(x=>x.id===id); return c?c.name:''; }
+function renderWorkersList(){
+  const el=document.getElementById('workersList');
+  if(!myWorkers.length){ el.innerHTML=`<div style="color:var(--text3);padding:16px 0">No workers yet</div>`; return; }
+  el.innerHTML=`<table><thead><tr><th>Name</th><th>Phone</th><th>Object</th><th>Commission</th><th></th></tr></thead><tbody>
+    ${myWorkers.map(w=>`<tr>
+      <td>${esc(w.name)}</td>
+      <td>${esc(w.phone||'')}</td>
+      <td>${(w.clientIds||[]).map(clientName).filter(Boolean).join(', ')}</td>
+      <td>${w.supplierRate!=null?'₪'+w.supplierRate+'/h':'—'}</td>
+      <td style="white-space:nowrap">
+        <button class="btn sm" onclick="openEditWorkerModal('${w.id}')"><i class="ti ti-edit"></i></button>
+        <button class="btn sm red" onclick="deleteWorker('${w.id}')"><i class="ti ti-trash"></i></button>
+      </td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+function openAddWorkerModal(){ renderWorkerModal(null); document.getElementById('workerOverlay').classList.add('open'); }
+function openEditWorkerModal(id){ renderWorkerModal(myWorkers.find(w=>w.id===id)); document.getElementById('workerOverlay').classList.add('open'); }
+// Deliberately a plain manual-entry form, not the AI document-scan module —
+// full parity with schedule-manager.html's scan pipeline (openAiScan()/
+// scan-pipeline.js, deeply coupled to that file's own globals and the
+// Form-101 PDF generation flow) was out of scope for this stage; a supplier
+// can still fully onboard a worker by hand. Documented here as a known,
+// deliberate scope reduction rather than a half-built AI integration.
+function renderWorkerModal(w){
+  w = w || {};
+  // Same fallback schedule-manager.html's own showWorkerModal() uses: a
+  // worker record that predates the docGiven/docSurname split only has
+  // `name` — derive the split for display so editing doesn't silently fail
+  // the "name required" guard on save.
+  const given = w.docGiven != null ? w.docGiven : (w.name||'').split(' ')[0]||'';
+  const surname = w.docSurname != null ? w.docSurname : (w.name||'').split(' ').slice(1).join(' ');
+  document.getElementById('workerModal').innerHTML = `
+    <div class="modal-title">${w.id?'Edit':'Add'} Worker</div>
+    <div class="field"><label>Given name</label><input id="wfGiven" value="${esc(given)}"></div>
+    <div class="field"><label>Surname</label><input id="wfSurname" value="${esc(surname)}"></div>
+    <div class="field"><label>Phone</label><input id="wfPhone" value="${esc(w.phone||'')}"></div>
+    <div class="field"><label>ID / Passport number</label><input id="wfDocId" value="${esc(w.docId||'')}"></div>
+    <div class="field"><label>Address</label><input id="wfAddress" value="${esc(w.address||'')}"></div>
+    <div class="field"><label>City</label><input id="wfCity" value="${esc(w.city||'')}"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('workerOverlay')">Cancel</button>
+      <button class="btn accent" onclick="saveWorkerModal('${w.id||''}')">Save</button>
+    </div>`;
+}
+async function saveWorkerModal(id){
+  const worker = {
+    docGiven: document.getElementById('wfGiven').value.trim(),
+    docSurname: document.getElementById('wfSurname').value.trim(),
+    phone: document.getElementById('wfPhone').value.trim(),
+    docId: document.getElementById('wfDocId').value.trim(),
+    address: document.getElementById('wfAddress').value.trim(),
+    city: document.getElementById('wfCity').value.trim(),
+  };
+  if(!worker.docGiven){ showToast('Name required'); return; }
+  const action = id ? 'supplierUpdateWorker' : 'supplierAddWorker';
+  const body = id ? { action, ...gsAuth(), workerId:id, worker } : { action, ...gsAuth(), worker };
+  try{
+    const res = await fetch(GS_URL,{method:'POST',body:JSON.stringify(body)});
+    const json = await res.json();
+    if(json.error){ showToast(json.error); return; }
+    showToast('Saved');
+    closeModal('workerOverlay');
+    await loadData();
+    renderWorkersList();
+  }catch(e){ showToast('Failed: '+e.message); }
+}
+async function deleteWorker(id){
+  if(!confirm('Remove this worker?')) return;
+  try{
+    const res = await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'supplierDeleteWorker', ...gsAuth(), workerId:id})});
+    const json = await res.json();
+    if(json.error){ showToast(json.error); return; }
+    showToast('Removed');
+    await loadData();
+    renderWorkersList();
+  }catch(e){ showToast('Failed: '+e.message); }
+}
+
+// ── My Hours (stage 15's shared export module, duplicated here per this
+// codebase's own "duplicate across files" convention — operates on this
+// page's own fetched punchLog/myWorkers, tariff = the worker's own flat
+// supplierRate/commission, never a real wage figure) ──────────────────
+function getWorkerMonthShifts(workerId, year, month){
+  const log = punchLog.filter(e=>e.workerId===workerId);
+  return groupPunchesIntoShifts(log)
+    .filter(b => b.date.getFullYear()===year && b.date.getMonth()===month)
+    .map(b => {
+      const res = analyzeDayPunches(b.entries, b.date);
+      const ins = b.entries.filter(x=>x.type==='in').map(x=>x.time).sort();
+      const outs = b.entries.filter(x=>x.type==='out').map(x=>x.time).sort();
+      return { date: b.date, inTime: ins[0]||'', outTime: outs[outs.length-1]||'', hours: res.hours };
+    })
+    .sort((a,b)=>a.date-b.date);
+}
+function exportShiftsDetail(workerId, year, month, format){
+  const w = myWorkers.find(x=>x.id===workerId);
+  const shifts = getWorkerMonthShifts(workerId, year, month);
+  const monthLabel = new Date(year, month, 1).toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  const totalHours = shifts.reduce((s,x)=>s+x.hours,0);
+  const fname = 'hours-'+(w?w.name.replace(/\s+/g,'_'):workerId)+'-'+year+'-'+String(month+1).padStart(2,'0');
+  if(format==='excel'){
+    const aoa=[['Date','In','Out','Hours']];
+    shifts.forEach(s=>aoa.push([s.date.toLocaleDateString('en-GB'), s.inTime, s.outTime, s.hours.toFixed(2)]));
+    aoa.push(['','','Total', totalHours.toFixed(2)]);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Hours');
+    XLSX.writeFile(wb, fname+'.xlsx');
+  } else {
+    const rowsHtml = shifts.map(s=>`<tr><td>${s.date.toLocaleDateString('en-GB')}</td><td>${esc(s.inTime)}</td><td>${esc(s.outTime)}</td><td>${s.hours.toFixed(2)}</td></tr>`).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Hours — ${esc(w?w.name:'')}</title>
+      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px}th{background:#f0f0f0}</style>
+      </head><body><h2>${esc(w?w.name:'')} — ${esc(monthLabel)}</h2>
+      <table><thead><tr><th>Date</th><th>In</th><th>Out</th><th>Hours</th></tr></thead>
+      <tbody>${rowsHtml}</tbody></table></body></html>`;
+    const win=window.open('','_blank'); win.document.write(html); win.document.close(); setTimeout(()=>win.print(),400);
+  }
+  showToast('Hours exported');
+}
+function exportPayableSummary(rows, opts){
+  opts = opts||{};
+  const grand = rows.reduce((s,r)=>s+r.total,0);
+  if(opts.format==='excel'){
+    const aoa=[['Worker','Hours','Commission','Total']];
+    rows.forEach(r=>aoa.push([r.label, r.hours.toFixed(2), r.rate, r.total.toFixed(2)]));
+    aoa.push(['','','Total', grand.toFixed(2)]);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Summary');
+    XLSX.writeFile(wb, (opts.filename||'summary')+'.xlsx');
+  } else {
+    const rowsHtml = rows.map(r=>`<tr><td>${esc(r.label)}</td><td>${r.hours.toFixed(2)}</td><td>${esc(String(r.rate))}</td><td>${r.total.toFixed(2)}</td></tr>`).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(opts.title||'Summary')}</title>
+      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px}th{background:#f0f0f0}</style>
+      </head><body><h2>${esc(opts.title||'Summary')}</h2>
+      <table><thead><tr><th>Worker</th><th>Hours</th><th>Commission</th><th>Total</th></tr></thead>
+      <tbody>${rowsHtml}</tbody></table></body></html>`;
+    const win=window.open('','_blank'); win.document.write(html); win.document.close(); setTimeout(()=>win.print(),400);
+  }
+  showToast('Summary exported');
+}
+function renderHoursTab(){
+  const now=new Date();
+  const monthSel=document.getElementById('hoursExportMonthSel');
+  monthSel.innerHTML = Array.from({length:12}, (_,i)=>{
+    const d=new Date(now.getFullYear(), now.getMonth()-i, 1);
+    return `<option value="${d.getFullYear()}-${d.getMonth()}">${esc(d.toLocaleDateString('en-GB',{month:'long',year:'numeric'}))}</option>`;
+  }).join('');
+  const workerSel=document.getElementById('hoursExportWorkerSel');
+  workerSel.innerHTML = myWorkers.map(w=>`<option value="${w.id}">${esc(w.name)}</option>`).join('');
+}
+function runDetailExport(format){
+  const workerId = document.getElementById('hoursExportWorkerSel').value;
+  const [year,month] = document.getElementById('hoursExportMonthSel').value.split('-').map(Number);
+  exportShiftsDetail(workerId, year, month, format);
+}
+function runSummaryExport(format){
+  const [year,month] = document.getElementById('hoursExportMonthSel').value.split('-').map(Number);
+  const rows = myWorkers.map(w=>{
+    const shifts = getWorkerMonthShifts(w.id, year, month);
+    const hours = shifts.reduce((s,x)=>s+x.hours,0);
+    const rate = w.supplierRate!=null ? w.supplierRate : 5;
+    return { label: w.name, hours, rate, total: hours*rate };
+  }).filter(r=>r.hours>0);
+  exportPayableSummary(rows, { title:'My hours — payable summary', filename:'my-hours-summary', format });
+}
+
+gateApp();
+</script>
+</body>
+</html>

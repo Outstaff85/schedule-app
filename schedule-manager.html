@@ -660,6 +660,24 @@
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px"><i class="ti ti-report-money"></i> Payable by supplier</div>
         <div id="supplierPayableWrap"></div>
       </div>
+
+      <!-- Billable by client (client's own rateMode — tiered or fixed — independent of the worker's real wage above) -->
+      <div style="margin-top:24px">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px"><i class="ti ti-building-store"></i> Billable by client</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
+          What each client owes the firm, per that client's own pricing mode (tiered Israeli OT rates, or a flat rate). Independent of the worker's own wage above.
+        </div>
+        <div id="clientBillableWrap"></div>
+      </div>
+
+      <!-- Hours-import approval queue (Admin/Roles plan, stage 14) -->
+      <div style="margin-top:24px">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px"><i class="ti ti-file-check"></i> Pending hours (uploaded, awaiting approval)</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
+          Uploaded via a worker's "Upload hours" button. Nothing here counts toward payroll until approved.
+        </div>
+        <div id="pendingHoursWrap"></div>
+      </div>
     </div>
 
   </div>
@@ -689,6 +707,12 @@
 </div>
 <div class="overlay" id="supplierOverlay" onclick="if(event.target===this)closeModal('supplierOverlay')">
   <div class="modal" id="supplierModal"></div>
+</div>
+<div class="overlay" id="hoursImportOverlay" onclick="if(event.target===this)closeModal('hoursImportOverlay')">
+  <div class="modal" id="hoursImportModal" style="max-width:440px"></div>
+</div>
+<div class="overlay" id="hoursExportOverlay" onclick="if(event.target===this)closeModal('hoursExportOverlay')">
+  <div class="modal" id="hoursExportModal" style="max-width:360px"></div>
 </div>
 
 <!-- Manual Punch Modal -->
@@ -744,6 +768,82 @@
       </div>
     </div>
     <div id="errorsList" style="display:flex;flex-direction:column;gap:6px"></div>
+  </div>
+</div>
+
+<!-- Consolidated admin panel (added 2026-10-02, Admin/Roles plan stage 5) —
+     replaces the scattered "Фирмы"/"Ошибки"/"Данные фирмы" header buttons
+     (removed from renderAccountControl() in stage 7) with one entry point.
+     Tab visibility is role-gated in openAdminScreen(): superadmin sees all
+     four; tenant_admin sees Users + Profile only (Firms/Errors are
+     superadmin-only cross-tenant views, unrelated to a single firm). Reuses
+     renderFirmsList()/loadErrorsList() (parametrized above) and the existing
+     openMyFirmForm() modal rather than re-implementing any of them. -->
+<div id="adminScreen" style="display:none;position:fixed;inset:0;z-index:970;background:var(--bg);overflow-y:auto">
+  <div style="max-width:960px;margin:0 auto;padding:28px 20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+      <div style="font-size:20px;font-weight:700"><i class="ti ti-settings"></i> Admin</div>
+      <button class="btn sm" onclick="closeAdminScreen()"><i class="ti ti-x"></i> Close</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:18px;border-bottom:1px solid var(--border2);padding-bottom:10px" id="adminTabBar">
+      <button class="btn sm" id="adminTabBtn_firms" onclick="switchAdminTab('firms')"><i class="ti ti-building-skyscraper"></i> Firms</button>
+      <button class="btn sm" id="adminTabBtn_users" onclick="switchAdminTab('users')"><i class="ti ti-users"></i> Users</button>
+      <button class="btn sm" id="adminTabBtn_errors" onclick="switchAdminTab('errors')"><i class="ti ti-alert-circle"></i> Errors</button>
+      <button class="btn sm" id="adminTabBtn_profile" onclick="switchAdminTab('profile')"><i class="ti ti-building"></i> Profile</button>
+    </div>
+    <div id="adminTab_firms" style="display:none">
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px">
+        <button class="btn sm" onclick="toggleSuperadminAccounting()"><i class="ti ti-cash"></i> Payable summary (all firms)</button>
+        <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> New firm</button>
+      </div>
+      <div id="superadminAccountingWrap" style="display:none;margin-bottom:16px"></div>
+      <div id="adminFirmsList" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+    <div id="adminTab_users" style="display:none">
+      <div id="adminUsersWrap"></div>
+    </div>
+    <div id="adminTab_errors" style="display:none">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="loadErrorsList('adminErrorsList')"><i class="ti ti-refresh"></i> Refresh</button></div>
+      <div id="adminErrorsList" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+    <div id="adminTab_profile" style="display:none">
+      <div style="color:var(--text2);font-size:13px;margin-bottom:10px">Company profile data used on Form 101.</div>
+      <button class="btn accent" onclick="openMyFirmForm()"><i class="ti ti-building"></i> Edit company profile</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create/edit staff/supplier user (Admin panel, Users tab — added 2026-10-02,
+     Admin/Roles plan stage 6). Single form for both create and edit, same
+     pattern as the worker modal — __editingUserId null means "create". -->
+<div class="overlay" id="userFormOverlay" style="z-index:980" onclick="if(event.target===this)closeModal('userFormOverlay')">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title" id="userFormTitle">New user</div>
+    <div class="field"><label>Username</label><input type="text" id="userFormUsername" autocomplete="off"></div>
+    <div class="field" id="userFormPasswordField"><label>Password (min. 8 chars)</label><input type="password" id="userFormPassword" autocomplete="new-password"></div>
+    <div class="field"><label>Role</label>
+      <select id="userFormRole" onchange="onUserFormRoleChange()">
+        <option value="staff">Staff</option>
+        <option value="supplier">Supplier</option>
+      </select>
+    </div>
+    <div class="field" id="userFormSupplierField" style="display:none"><label>Supplier</label><select id="userFormSupplierId"></select></div>
+    <div class="field" id="userFormPermsField">
+      <label>Permissions</label>
+      <div style="display:flex;flex-direction:column;gap:4px;font-size:13px">
+        <label><input type="checkbox" value="schedule" class="userFormPermCb"> Schedule</label>
+        <label><input type="checkbox" value="workers" class="userFormPermCb"> Workers</label>
+        <label><input type="checkbox" value="clients" class="userFormPermCb"> Clients</label>
+        <label><input type="checkbox" value="suppliers" class="userFormPermCb"> Suppliers</label>
+        <label><input type="checkbox" value="accounting" class="userFormPermCb"> Accounting</label>
+        <label><input type="checkbox" value="exports" class="userFormPermCb"> Exports</label>
+      </div>
+    </div>
+    <div id="userFormError" style="color:#ff6b78;font-size:13px;margin:2px 0 6px;min-height:1.2em"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('userFormOverlay')">Cancel</button>
+      <button class="btn accent" id="userFormSaveBtn" onclick="submitUserForm()">Save</button>
+    </div>
   </div>
 </div>
 
@@ -1034,6 +1134,21 @@ function shiftPay(hours, w, isSat, clientId){
   if(r.hasOtOverride) return Math.min(hours,RM)*r.regRate + Math.max(hours-RM,0)*r.otRate;
   return israeliDayPay(hours, r.regRate, false).total;
 }
+// What a CLIENT is billed for one shift's hours — a figure entirely separate
+// from shiftPay() above (the worker's own legally-owed wage). client.rateMode
+// ('tiered', the default, or 'fixed') never changes what the worker earns;
+// it only changes how the client invoice line is computed:
+//   'tiered' — the Israeli OT/Shabbat law tiers (israeliDayPay), applied to
+//              the client's OWN default rate (client.defaultHourlyRate), not
+//              the worker's rate — same law shape, independent number.
+//   'fixed'  — a flat client.fixedBillRate ₪/h, no OT/Shabbat tiers at all.
+// A client with neither a rateMode nor a defaultHourlyRate/fixedBillRate set
+// bills 0 — this never blocks payroll, it's purely an informational figure.
+function clientBillPay(hours, client, isSat){
+  if(!client) return 0;
+  if(client.rateMode==='fixed') return hours*(Number(client.fixedBillRate)||0);
+  return israeliDayPay(hours, Number(client.defaultHourlyRate)||0, isSat).total;
+}
 function fmtDate(d){ return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); }
 function fmtRange(d){ const e=new Date(d); e.setDate(e.getDate()+6); return fmtDate(d)+' – '+fmtDate(e); }
 // Formats a stored 'YYYY-MM-DD' date string (e.g. w.startDate, straight from
@@ -1045,6 +1160,39 @@ function fmtDMY(dateStr){
 }
 
 // --- Tab ---------------------------------------------------------------------
+// ── Permission gating (Admin/Roles plan, stage 8) ───────────────────────────
+// Client-side visibility only — the actual enforcement is server-side
+// (requirePermission(), stage 9), this just hides what a staff login has no
+// business seeing so they aren't clicking into a dead end. superadmin/
+// tenant_admin/supplier all bypass this (supplier never reaches this nav at
+// all — it gets its own separate supplier-portal.html, stage 16).
+function hasPermission(section){
+  const s = getSession();
+  if(!s || s.role !== 'staff') return true;
+  const perms = s.permissions;
+  return perms === '*' || (Array.isArray(perms) && perms.indexOf(section) !== -1);
+}
+// Maps each nav tab to the permission section that gates it. 'admin' (the
+// punch-log viewer tab, not to be confused with the new #adminScreen panel)
+// rides on the 'workers' permission — it's operational worker oversight, not
+// a separate concept the plan's PERMISSION_SECTIONS ever called out on its
+// own. 'dashboard' has no entry — the Today/real-time overview is never
+// gated, every logged-in staff member can always see it.
+const NAV_TAB_PERMISSION = { schedule:'schedule', workers:'workers', clients:'clients', suppliers:'suppliers', admin:'workers', accounting:'accounting' };
+function applyNavPermissions(){
+  Object.keys(NAV_TAB_PERMISSION).forEach(tab=>{
+    const el = document.getElementById('tab'+tab.charAt(0).toUpperCase()+tab.slice(1));
+    if(!el) return;
+    el.style.display = hasPermission(NAV_TAB_PERMISSION[tab]) ? '' : 'none';
+  });
+  // If the tab we're currently sitting on just got hidden (e.g. permissions
+  // changed and the page re-initialized), fall back to Dashboard rather than
+  // leaving a blank/inaccessible section visible.
+  if(currentTab && NAV_TAB_PERMISSION[currentTab] && !hasPermission(NAV_TAB_PERMISSION[currentTab])){
+    switchTab('dashboard');
+  }
+}
+
 function switchTab(tab){
   currentTab=tab;
   ['dashboard','schedule','workers','clients','suppliers','admin','accounting'].forEach(t=>{
@@ -1595,6 +1743,7 @@ function showWorkerModal(w){
         </select>
       </div>
     </div>
+    <div class="field"><label>Travel allowance (₪ per work day, optional)</label><input type="number" id="wTravelAllowance" value="${w.travelAllowance||''}" placeholder="0" min="0" step="0.5"></div>
     <div class="field"><label>תאריך תחילת עבודה</label><input type="date" id="wStartDate" value="${w.startDate||w.workStartDate||new Date().toISOString().slice(0,10)}"></div>
     <div class="field"><label>מין</label>
       <select id="wSex">
@@ -1795,6 +1944,7 @@ async function saveWorker(){
   if(!name){ document.getElementById('wGiven').focus(); return; }
   const phone=document.getElementById('wPhone').value.trim();
   const hourlyRate=parseFloat(document.getElementById('wRate')?.value)||0;
+  const travelAllowance=parseFloat(document.getElementById('wTravelAllowance')?.value)||0;
   const status=document.getElementById('wStatus')?.value||'active';
   // One UI field ("תאריך תחילת עבודה") feeds both: startDate (schedule/Contract
   // Expiry Warning calc) and workStartDate (Form 101's own start-date field).
@@ -1834,7 +1984,7 @@ async function saveWorker(){
     : (editingWorkerIdx!==null
         ? workers[editingWorkerIdx].schedule
         : DAYS.map(()=>({type:'off',start:null,end:null})));
-  const commonFields={name,colorIdx:selColorIdx,phone,hourlyRate,status,startDate,workStartDate,docSex,
+  const commonFields={name,colorIdx:selColorIdx,phone,hourlyRate,travelAllowance,status,startDate,workStartDate,docSex,
     expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,houseNumber,city,docDob,docExpiry,notes,
     incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,docChildren,clientIds,schedule,
     supplierId,bank,bankBranch,bankAccountNumber,
@@ -2007,6 +2157,18 @@ function showClientModal(c){
       </div>
     </div>
     <div class="field">
+      <label><i class="ti ti-receipt"></i> Client billing mode</label>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">What's billed to this client (Accounting → Billable by client). Never affects the worker's own wage above.</div>
+      <select id="cRateMode" onchange="onClientRateModeChange()" style="width:100%">
+        <option value="tiered" ${(c.rateMode||'tiered')==='tiered'?'selected':''}>Tiered (Israeli OT/Shabbat rates, using the client's own rate above)</option>
+        <option value="fixed" ${c.rateMode==='fixed'?'selected':''}>Fixed rate (flat ₪/h, no OT/Shabbat tiers)</option>
+      </select>
+      <div id="cFixedBillRateWrap" style="margin-top:8px;${c.rateMode==='fixed'?'':'display:none'}">
+        <label style="font-size:11px;color:var(--text3)">Fixed billing rate ₪/h</label>
+        <input type="number" min="0" step="0.5" id="cFixedBillRate" value="${c.fixedBillRate??''}" placeholder="—">
+      </div>
+    </div>
+    <div class="field">
       <label><i class="ti ti-map-pin"></i> Geolocation for Punch Clock</label>
       <div style="margin-bottom:8px">
         <label style="font-size:11px;color:var(--text3);margin-bottom:4px;display:block">Paste Google Maps link</label>
@@ -2081,6 +2243,11 @@ function updateLocStatus(){
   }
 }
 function pickCColor(col){ selClientColor=col; document.querySelectorAll('#cColorPick [data-color]').forEach(el=>{ el.style.borderColor=el.dataset.color===col?'white':'transparent'; el.style.transform=el.dataset.color===col?'scale(1.2)':'scale(1)'; }); }
+function onClientRateModeChange(){
+  const mode=document.getElementById('cRateMode')?.value;
+  const wrap=document.getElementById('cFixedBillRateWrap');
+  if(wrap) wrap.style.display = mode==='fixed' ? '' : 'none';
+}
 function saveClient(){
   const name=document.getElementById('cName').value.trim();
   if(!name){ document.getElementById('cName').focus(); return; }
@@ -2094,12 +2261,14 @@ function saveClient(){
   const mapsUrl=document.getElementById('cMapsUrl')?.value.trim()||'';
   const rateVal=id=>{ const v=document.getElementById(id)?.value; return (v===''||v==null)?null:(parseFloat(v)||0); };
   const defaultHourlyRate=rateVal('cDefRate'), defaultOtRate=rateVal('cDefOtRate'), defaultShabbatRate=rateVal('cDefShabRate');
+  const rateMode=document.getElementById('cRateMode')?.value==='fixed'?'fixed':'tiered';
+  const fixedBillRate=rateVal('cFixedBillRate');
   if(editingClientId){
     const idx=clients.findIndex(x=>x.id===editingClientId);
-    if(idx>=0) clients[idx]={...clients[idx],name,object,address,notes,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate};
+    if(idx>=0) clients[idx]={...clients[idx],name,object,address,notes,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate};
     showToast(name+' updated!');
   } else {
-    clients.push({id:uid(),name,object,address,notes,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate});
+    clients.push({id:uid(),name,object,address,notes,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate});
     showToast(name+' added!');
   }
   closeModal('clientOverlay'); renderClientsPage(); renderSidebarClients(); autoSave();
@@ -2232,9 +2401,179 @@ function openWorkerCard(wi){
     <div class="modal-actions">
       <button class="btn sm red" onclick="deleteWorkerFromCard(${wi})"><i class="ti ti-trash"></i> Delete</button>
       ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Скачать документ</a>`:''}
+      ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursImportModal('${w.id}')"><i class="ti ti-file-upload"></i> Upload hours</button>`:''}
+      ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursExportModal('${w.id}')"><i class="ti ti-file-export"></i> Export hours</button>`:''}
       <button class="btn accent" onclick="closeModal('workerCardOverlay');openEditWorker(${wi})"><i class="ti ti-edit"></i> Edit</button>
     </div>`;
   document.getElementById('workerCardOverlay').classList.add('open');
+}
+
+// --- Hours import (Admin/Roles plan, stage 14) ---------------------------------
+// Upload PDF/photo/Excel with a worker's hours, tied to a client — parsed
+// entries land in a server-side PENDING queue (savePendingHoursBatch), never
+// straight into PunchLog/payroll. A human (tenant_admin/superadmin) must
+// explicitly approve the batch (see renderPendingHours() in the Accounting
+// tab below) before it counts toward any salary calculation — this is the
+// anti-fraud boundary the user explicitly asked for, which is also exactly
+// why the supplier role never gets this button at all (see supplier-portal
+// plan, stage 16) and the server itself rejects a supplier-role caller.
+let __hoursImportWorkerId = null;
+let __hoursImportEntries = [];
+let __hoursImportFileName = '';
+function openHoursImportModal(workerId){
+  __hoursImportWorkerId = workerId;
+  __hoursImportEntries = [];
+  __hoursImportFileName = '';
+  renderHoursImportModal();
+  document.getElementById('hoursImportOverlay').classList.add('open');
+}
+function renderHoursImportModal(){
+  const w = workers.find(x=>x.id===__hoursImportWorkerId);
+  if(!w) return;
+  const clientOptions = (w.clientIds||[]).map(id=>clients.find(c=>c.id===id)).filter(Boolean);
+  const allClients = clientOptions.length ? clientOptions : clients;
+  document.getElementById('hoursImportModal').innerHTML = `
+    <div class="modal-title">Upload hours — ${esc(w.name)}</div>
+    <div class="field"><label>Client / object</label>
+      <select id="hoursImportClient">
+        ${allClients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>File (Excel: Date/In/Out columns, or a photo/scan of a timesheet)</label>
+      <input type="file" id="hoursImportFile" accept=".xlsx,.xls,.csv,image/*" onchange="onHoursImportFileSelected(this.files[0])">
+    </div>
+    <div id="hoursImportPreview" style="font-size:12px;color:var(--text3);min-height:20px"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('hoursImportOverlay')">Cancel</button>
+      <button class="btn accent" id="hoursImportSubmitBtn" disabled onclick="submitHoursImportBatch()"><i class="ti ti-upload"></i> Upload for approval</button>
+    </div>`;
+}
+function renderHoursImportPreview(status){
+  const el = document.getElementById('hoursImportPreview');
+  if(!el) return;
+  if(status){ el.textContent = status; return; }
+  if(!__hoursImportEntries.length){ el.textContent = ''; return; }
+  el.innerHTML = `<div style="color:var(--text2);margin-bottom:4px">${__hoursImportEntries.length} shift(s) found:</div>` +
+    __hoursImportEntries.slice(0,10).map(en=>`<div>${esc(en.date)} · ${esc(en.inTime)}${en.outTime?'–'+esc(en.outTime):' (open)'}</div>`).join('') +
+    (__hoursImportEntries.length>10?`<div>…${__hoursImportEntries.length-10} more</div>`:'');
+  document.getElementById('hoursImportSubmitBtn').disabled = false;
+}
+async function onHoursImportFileSelected(file){
+  if(!file) return;
+  __hoursImportEntries = [];
+  __hoursImportFileName = file.name;
+  document.getElementById('hoursImportSubmitBtn').disabled = true;
+  const isSpreadsheet = /\.(xlsx|xls|csv)$/i.test(file.name);
+  try{
+    if(isSpreadsheet){
+      renderHoursImportPreview('Parsing spreadsheet…');
+      __hoursImportEntries = await parseHoursExcelFile(file);
+    } else {
+      renderHoursImportPreview('Reading with AI…');
+      __hoursImportEntries = await parseHoursImageFile(file);
+    }
+  }catch(err){
+    showToast('Could not parse file: '+(err&&err.message||err));
+    renderHoursImportPreview('');
+    return;
+  }
+  if(!__hoursImportEntries.length){ showToast('No shifts recognized in this file'); }
+  renderHoursImportPreview();
+}
+// Fixed template: a header row containing Date/In/Out (or Дата/Вход/Выход),
+// case-insensitive, in any column order. cellDates:true so an Excel date
+// serial comes back as a real JS Date we can format ourselves, matching the
+// dd/MM/yyyy convention PunchLog itself already uses everywhere else.
+function parseHoursExcelFile(file){
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.onerror = ()=>reject(new Error('read failed'));
+    reader.onload = ()=>{
+      try{
+        const wb = XLSX.read(reader.result, {type:'array', cellDates:true});
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, {header:1, defval:''});
+        if(!rows.length){ resolve([]); return; }
+        const header = rows[0].map(h=>String(h||'').trim().toLowerCase());
+        const dateIdx = header.findIndex(h=>['date','дата'].includes(h));
+        const inIdx   = header.findIndex(h=>['in','вход'].includes(h));
+        const outIdx  = header.findIndex(h=>['out','выход'].includes(h));
+        if(dateIdx===-1||inIdx===-1){ reject(new Error('Expected Date/In(/Out) columns')); return; }
+        const fmtDate = v=>{
+          if(v instanceof Date) return String(v.getDate()).padStart(2,'0')+'/'+String(v.getMonth()+1).padStart(2,'0')+'/'+v.getFullYear();
+          return String(v||'').trim();
+        };
+        const fmtTime = v=>{
+          if(v instanceof Date) return String(v.getHours()).padStart(2,'0')+':'+String(v.getMinutes()).padStart(2,'0');
+          return String(v||'').trim();
+        };
+        const entries = rows.slice(1)
+          .filter(r=>r[dateIdx]!=='' && r[dateIdx]!=null)
+          .map(r=>({ date: fmtDate(r[dateIdx]), inTime: fmtTime(r[inIdx]), outTime: outIdx!==-1?fmtTime(r[outIdx]):'' }));
+        resolve(entries);
+      }catch(e){ reject(e); }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+// AI-vision path for a photographed/scanned timesheet (images only for now —
+// a multi-page scan-PDF would need page rendering this feature doesn't do
+// yet; a manager can screenshot/photograph each page instead as a practical
+// workaround). Uses the same aiReadHoursTable backend action added alongside
+// this stage; never writes anything itself — only returns entries for the
+// caller to route through the approval queue below.
+function parseHoursImageFile(file){
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.onerror = ()=>reject(new Error('read failed'));
+    reader.onload = async ()=>{
+      try{
+        const b64 = reader.result.split(',')[1];
+        const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'aiReadHoursTable', ...gsAuth(), image:b64, mediaType: file.type||'image/jpeg' }) });
+        const json = await res.json();
+        if(json.error) throw new Error(json.error);
+        resolve(json.entries||[]);
+      }catch(e){ reject(e); }
+    };
+    reader.readAsDataURL(file);
+  });
+}
+async function submitHoursImportBatch(){
+  const clientId = document.getElementById('hoursImportClient')?.value || '';
+  if(!__hoursImportEntries.length) return;
+  const entries = __hoursImportEntries.map(en=>({ workerId: __hoursImportWorkerId, clientId, date: en.date, inTime: en.inTime, outTime: en.outTime||'' }));
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'savePendingHoursBatch', ...gsAuth(), entries, fileName: __hoursImportFileName }) });
+    const json = await res.json();
+    if(json.error){ showToast(json.error); return; }
+    showToast(json.count+' shift(s) uploaded — pending approval');
+    closeModal('hoursImportOverlay');
+  }catch(e){ showToast('Upload failed: '+e.message); }
+}
+
+// Detail-mode export entry point (stage 15's exportShiftsDetail) for one
+// worker — a compact month-picker rather than reusing the import overlay,
+// since this flow needs no file at all.
+function openHoursExportModal(workerId){
+  const now = new Date();
+  const monthOptions = Array.from({length:12}, (_,i)=>{
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    return `<option value="${d.getFullYear()}-${d.getMonth()}">${esc(d.toLocaleDateString('en-GB',{month:'long',year:'numeric'}))}</option>`;
+  }).join('');
+  document.getElementById('hoursExportModal').innerHTML = `
+    <div class="modal-title">Export hours</div>
+    <div class="field"><label>Month</label><select id="hoursExportMonth">${monthOptions}</select></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('hoursExportOverlay')">Cancel</button>
+      <button class="btn sm" onclick="runHoursExport('${workerId}','excel')"><i class="ti ti-file-spreadsheet"></i> Excel</button>
+      <button class="btn accent" onclick="runHoursExport('${workerId}','pdf')"><i class="ti ti-file-type-pdf"></i> PDF</button>
+    </div>`;
+  document.getElementById('hoursExportOverlay').classList.add('open');
+}
+function runHoursExport(workerId, format){
+  const [year, month] = document.getElementById('hoursExportMonth').value.split('-').map(Number);
+  exportShiftsDetail(workerId, year, month, format);
+  closeModal('hoursExportOverlay');
 }
 
 function renderClientsPage(){
@@ -2628,6 +2967,13 @@ const FORM101_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/
 // preAlignScan(). Its result now feeds straight into the manual
 // corner-adjustment editor (no AI-seeded alignment step in between anymore).
 const PREPROCESS_SCAN_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/preprocess_scan';
+// CORS-friendly proxy for saveWorkerDoc/saveWorkerAssets (added 2026-10-02) —
+// see xhrPostJSON()'s own comment for the full story: a real xhr.upload
+// listener against GS_URL directly can never work (forces a CORS preflight
+// Apps Script can't answer), so those two calls go through this Cloud
+// Function instead, which answers CORS properly and relays server-to-server
+// to GS_URL. functions/main.py's gs_upload_proxy() is the server side.
+const GS_UPLOAD_PROXY_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/gs_upload_proxy';
 
 // ── Multi-tenant session ────────────────────────────────────────────────────
 // Real auth for this app: a session is a signed token from the backend's
@@ -2670,19 +3016,17 @@ function gsAuth(){
 // (callers here already check `json.error` themselves) — only a true
 // network failure or an unparseable response rejects.
 //
-// BUG FIX (2026-10-01): this used to call xhr.setRequestHeader('Content-Type',
-// 'application/json'), which every other GS_URL call in this file deliberately
-// avoids — a fetch()/XHR request only stays a CORS "simple request" (no
-// preflight) when it has no explicit Content-Type (the browser then defaults
-// to text/plain). Apps Script Web Apps only implement doGet()/doPost(), never
-// doOptions(), so a request that DOES trigger a preflight gets its OPTIONS
-// blocked by the browser before the real POST is ever sent — surfacing to the
-// caller as a bare, uninformative "network error"/"network unavailable" with
-// nothing in the Apps Script logs, since the server never even saw it. This
-// is exactly why saveWorkerDoc/saveWorkerAssets (the only two calls routed
-// through xhrPostJSON) started failing while every other GS_URL call kept
-// working fine. Fixed by dropping the header, matching the plain fetch(GS_URL,
-// {method:'POST',body:...}) calls elsewhere in this file.
+// BUG FIX (2026-10-01, part 1): this used to call xhr.setRequestHeader(
+// 'Content-Type','application/json'), which every other GS_URL call in this
+// file deliberately avoids — a fetch()/XHR request only stays a CORS "simple
+// request" (no preflight) when it has no explicit Content-Type (the browser
+// then defaults to text/plain). Apps Script Web Apps only implement
+// doGet()/doPost(), never doOptions(), so a request that DOES trigger a
+// preflight gets its OPTIONS blocked by the browser before the real POST is
+// ever sent — surfacing to the caller as a bare "network error" with nothing
+// in the Apps Script logs, since the server never even saw it. Fixed by
+// dropping the header, matching the plain fetch(GS_URL,{method:'POST',...})
+// calls elsewhere in this file.
 //
 // Also, unlike those calls, xhrPostJSON() used to bypass the window.fetch
 // wrapper below entirely (raw XMLHttpRequest never goes through fetch()), so
@@ -2692,6 +3036,26 @@ function gsAuth(){
 // gets. Now mirrors it: up to SESSION_RETRY_DELAYS_MS.length extra attempts
 // on the exact SESSION_EXPIRED_ERROR text, then clears the session and
 // reloads to the login screen, same as checkExpired() below.
+//
+// BUG FIX (2026-10-01, part 2): removing the Content-Type header alone was
+// NOT enough — "network error" kept recurring. Root cause: per the
+// Fetch/XHR spec, attaching ANY listener to xhr.upload (e.g. `onprogress`)
+// forces a cross-origin request into CORS-preflight mode, completely
+// independent of headers — the "upload listener flag" is its own, separate
+// preflight trigger. Real byte-level upload progress against a bare XHR to
+// GS_URL directly is fundamentally impossible (no doOptions() to answer that
+// preflight). Temporarily replaced with a fake ticker in aiFillForm101().
+//
+// FIX (2026-10-02): real progress restored via GS_UPLOAD_PROXY_URL — a Cloud
+// Function (functions/main.py's gs_upload_proxy()) that DOES answer CORS
+// preflight correctly and relays server-to-server to Apps Script. Callers
+// wanting real progress now pass GS_UPLOAD_PROXY_URL as `url` (not GS_URL
+// directly) plus an `onProgress` callback; xhrPostJSON() only attaches the
+// upload listener when one is actually requested, so every other GS_URL
+// caller (which passes no onProgress) still avoids the preflight trigger.
+// Session-expiry retry/logout applies whenever the JSON response carries the
+// exact SESSION_EXPIRED_ERROR text, regardless of which URL produced it —
+// the proxy relays Apps Script's own error text unchanged.
 function xhrPostJSON(url,bodyObj,onProgress,_attempt){
   const attempt=_attempt||0;
   return new Promise((resolve,reject)=>{
@@ -2702,8 +3066,7 @@ function xhrPostJSON(url,bodyObj,onProgress,_attempt){
       let json;
       try{ json=JSON.parse(xhr.responseText); }
       catch(e){ reject(e); return; }
-      const isGsCall = url===GS_URL;
-      if(isGsCall && json && json.error===SESSION_EXPIRED_ERROR && getSession()){
+      if(json && json.error===SESSION_EXPIRED_ERROR && getSession()){
         if(attempt < SESSION_RETRY_DELAYS_MS.length){
           const delay=SESSION_RETRY_DELAYS_MS[attempt];
           reportAuthFailureXhr(bodyObj&&bodyObj.action, attempt, 'retrying');
@@ -2829,6 +3192,9 @@ async function submitLogin(){
     saveSession({
       token: json.token, role: json.role, tenantId: json.tenantId, username: json.username,
       tenantProfile: json.tenantProfile, expiresAt: json.expiresAt,
+      // permissions/supplierId added 2026-10-02 (Admin/Roles plan stage 3
+      // server-side, stage 8 client-side) — see hasPermission()'s own comment.
+      permissions: json.permissions, supplierId: json.supplierId,
       viewingTenantId: json.tenantId, // a super-admin (tenantId null) picks one on the Firms screen
     });
     location.reload();
@@ -2964,17 +3330,24 @@ function renderAccountControl(s){
   host.innerHTML = `
     <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
       ${s.role==='superadmin' ? '<button class="btn sm" onclick="backToFirmsList()"><i class="ti ti-building-skyscraper"></i> Фирмы</button>' : ''}
-      ${s.role==='superadmin' ? '<button class="btn sm" onclick="openErrorsScreen()"><i class="ti ti-alert-circle"></i> Ошибки</button>' : ''}
-      <button class="btn sm" onclick="openMyFirmForm()"${incomplete?' style="color:#ffb020;border-color:#ffb020"':''}
-        title="${incomplete?'Профиль фирмы неполный — данные для Формы 101':'Данные фирмы (для Формы 101)'}">
-        <i class="ti ti-${incomplete?'alert-triangle':'building'}"></i></button>
+      ${(s.role==='superadmin'||s.role==='tenant_admin') ? '<button class="btn sm" onclick="openAdminScreen()"'+(incomplete?' style="color:#ffb020;border-color:#ffb020"':'')+' title="Admin"><i class="ti ti-settings"></i></button>' : ''}
       <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i></button>
     </div>`;
 }
 
 let __firmsCache = [];
-async function renderFirmsList(){
-  const listEl = document.getElementById('firmsList');
+// Remembers which container the list is currently rendered into, so the
+// toggle/delete actions below (which call renderFirmsList() with no target)
+// refresh the right one regardless of whether the list is showing on the
+// super-admin's own landing screen or inside the admin panel's Firms tab.
+let __firmsListTarget = 'firmsList';
+// targetId parametrized 2026-10-02 (Admin/Roles plan stage 5) so the same
+// render logic feeds both the super-admin's own landing screen (#firmsList,
+// the default) and the new consolidated admin panel's Firms tab
+// (#adminFirmsList) without duplicating this function.
+async function renderFirmsList(targetId){
+  __firmsListTarget = targetId || 'firmsList';
+  const listEl = document.getElementById(__firmsListTarget);
   listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
   try{
     const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'listTenants', ...gsAuth() }) });
@@ -3004,15 +3377,263 @@ async function renderFirmsList(){
 // the Errors sheet has no tenantId column, so a normal tenant login must
 // never reach this). Overlays whatever's currently showing; closeErrorsScreen
 // just hides it again since nothing underneath needs to change.
+// Consolidated admin panel (2026-10-02, Admin/Roles plan stage 5). Tab
+// visibility: superadmin sees all four; tenant_admin sees Users + Profile
+// only (Firms/Errors are cross-tenant superadmin-only views — see
+// listTenants()/loadErrors() server-side, both already gated there too, this
+// is just the matching client-side visibility). staff/supplier never reach
+// this screen at all (no button opens it for them — see renderAccountControl()).
+function openAdminScreen(){
+  const s = getSession();
+  if(!s) return;
+  const isSuper = s.role === 'superadmin';
+  document.getElementById('adminTabBtn_firms').style.display = isSuper ? '' : 'none';
+  document.getElementById('adminTabBtn_errors').style.display = isSuper ? '' : 'none';
+  document.getElementById('adminScreen').style.display = 'block';
+  switchAdminTab(isSuper ? 'firms' : 'users');
+}
+function closeAdminScreen(){
+  document.getElementById('adminScreen').style.display = 'none';
+}
+function switchAdminTab(tab){
+  ['firms','users','errors','profile'].forEach(t=>{
+    document.getElementById('adminTab_'+t).style.display = t===tab ? 'block' : 'none';
+    const btn = document.getElementById('adminTabBtn_'+t);
+    if(btn) btn.classList.toggle('accent', t===tab);
+  });
+  if(tab==='firms') renderFirmsList('adminFirmsList');
+  else if(tab==='errors') loadErrorsList('adminErrorsList');
+  else if(tab==='users') renderAdminUsers();
+}
+// ── Users tab (Admin panel, added 2026-10-02, Admin/Roles plan stage 6) ────
+// Scoped to the CURRENTLY ACTIVE firm — same mental model as everything else
+// in the app (a super-admin managing another firm's users switches firms
+// first via the Firms tab, rather than this tab showing every firm's users
+// mixed together). listUsers() itself returns every firm's users for a
+// superadmin (by backend design — see its own comment), filtered down to one
+// firm here client-side.
+const PERMISSION_SECTIONS = ['schedule','workers','clients','suppliers','accounting','exports'];
+let __editingUserId = null;
+function activeTenantIdForAdmin(){
+  const s = getSession();
+  if(!s) return null;
+  return s.role === 'superadmin' ? s.viewingTenantId : s.tenantId;
+}
+async function renderAdminUsers(){
+  const el = document.getElementById('adminUsersWrap');
+  if(!el) return;
+  el.innerHTML = '<div style="color:var(--text2);font-size:13px">Loading…</div>';
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'listUsers', ...gsAuth() }) });
+    const json = await res.json();
+    if(!json || json.error){ el.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Load failed')+'</div>'; return; }
+    const tenantId = activeTenantIdForAdmin();
+    const users = (json.users||[]).filter(u => u.tenantId === tenantId);
+    const rows = users.map(u => {
+      const sup = u.role==='supplier' ? (suppliers||[]).find(s=>s.id===u.supplierId) : null;
+      const permsLabel = u.role!=='staff' ? '' : (u.permissions==='*' ? 'Full access' : (Array.isArray(u.permissions)?u.permissions.join(', '):'—'));
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);${u.active===false?'opacity:0.55':''}">
+        <div>
+          <div style="font-weight:600">${esc(u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(u.role)})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">inactive</span>':''}</div>
+          <div style="font-size:12px;color:var(--text2)">${u.role==='supplier' ? (sup?esc(sup.name):'—') : esc(permsLabel)}</div>
+        </div>
+        <div style="display:flex;gap:4px">
+          <button class="btn sm" onclick="openEditUserForm('${esc(u.id)}')" title="Edit"><i class="ti ti-pencil"></i></button>
+          <button class="btn sm" onclick="resetUserPasswordPrompt('${esc(u.id)}')" title="Reset password"><i class="ti ti-key"></i></button>
+          <button class="btn sm" onclick="deleteUserConfirm('${esc(u.id)}','${esc(u.username)}')" title="Delete" style="color:#ff6b78"><i class="ti ti-trash"></i></button>
+        </div>
+      </div>`;
+    }).join('');
+    el.innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="openCreateUserForm()"><i class="ti ti-plus"></i> New user</button></div>`
+      + (users.length ? `<div style="display:flex;flex-direction:column;gap:8px">${rows}</div>` : '<div style="color:var(--text2);font-size:13px">No staff/supplier users yet.</div>');
+  }catch(e){ el.innerHTML = '<div style="color:#ff6b78">Network error</div>'; }
+}
+function fillUserFormSupplierSelect(selectedId){
+  const sel = document.getElementById('userFormSupplierId');
+  sel.innerHTML = (suppliers||[]).map(s => `<option value="${esc(s.id)}"${s.id===selectedId?' selected':''}>${esc(s.name)}</option>`).join('');
+}
+function onUserFormRoleChange(){
+  const role = document.getElementById('userFormRole').value;
+  document.getElementById('userFormSupplierField').style.display = role==='supplier' ? '' : 'none';
+  document.getElementById('userFormPermsField').style.display = role==='supplier' ? 'none' : '';
+  if(role==='supplier') fillUserFormSupplierSelect(null);
+}
+function openCreateUserForm(){
+  __editingUserId = null;
+  document.getElementById('userFormTitle').textContent = 'New user';
+  document.getElementById('userFormUsername').value = '';
+  document.getElementById('userFormUsername').disabled = false;
+  document.getElementById('userFormPassword').value = '';
+  document.getElementById('userFormPasswordField').style.display = '';
+  document.getElementById('userFormRole').value = 'staff';
+  document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = false);
+  document.getElementById('userFormError').textContent = '';
+  onUserFormRoleChange();
+  document.getElementById('userFormOverlay').classList.add('open');
+}
+async function openEditUserForm(id){
+  const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'listUsers', ...gsAuth() }) });
+  const json = await res.json();
+  const u = (json.users||[]).find(x => x.id === id);
+  if(!u){ showToast('User not found'); return; }
+  __editingUserId = id;
+  document.getElementById('userFormTitle').textContent = 'Edit ' + u.username;
+  document.getElementById('userFormUsername').value = u.username;
+  document.getElementById('userFormUsername').disabled = true; // username is immutable post-creation
+  document.getElementById('userFormPassword').value = '';
+  document.getElementById('userFormPasswordField').style.display = 'none'; // use resetUserPasswordPrompt() instead
+  document.getElementById('userFormRole').value = u.role;
+  document.getElementById('userFormError').textContent = '';
+  onUserFormRoleChange();
+  if(u.role==='supplier') fillUserFormSupplierSelect(u.supplierId);
+  const perms = u.permissions==='*' ? PERMISSION_SECTIONS.slice() : (Array.isArray(u.permissions)?u.permissions:[]);
+  document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = perms.indexOf(cb.value)!==-1);
+  document.getElementById('userFormOverlay').classList.add('open');
+}
+async function submitUserForm(){
+  const errEl = document.getElementById('userFormError');
+  errEl.textContent = '';
+  const role = document.getElementById('userFormRole').value;
+  const permissions = Array.from(document.querySelectorAll('.userFormPermCb:checked')).map(cb=>cb.value);
+  const supplierId = document.getElementById('userFormSupplierId').value;
+  const btn = document.getElementById('userFormSaveBtn');
+  btn.disabled = true;
+  try{
+    if(__editingUserId){
+      const body = { action:'updateUser', ...gsAuth(), id: __editingUserId, active: true };
+      if(role==='supplier') body.supplierId = supplierId; else body.permissions = permissions;
+      const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify(body) });
+      const json = await res.json();
+      if(!json || json.error){ errEl.textContent = (json&&json.error)||'Save failed'; return; }
+    } else {
+      const username = document.getElementById('userFormUsername').value.trim();
+      const password = document.getElementById('userFormPassword').value;
+      if(!username || !password){ errEl.textContent = 'Username and password required'; return; }
+      const body = { action:'createTenantUser', ...gsAuth(), username, password, role };
+      if(role==='supplier') body.supplierId = supplierId; else body.permissions = permissions;
+      const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify(body) });
+      const json = await res.json();
+      if(!json || json.error){ errEl.textContent = (json&&json.error)||'Create failed'; return; }
+    }
+    closeModal('userFormOverlay');
+    showToast('Saved');
+    renderAdminUsers();
+  }catch(e){ errEl.textContent = 'Network error'; }
+  finally{ btn.disabled = false; }
+}
+async function resetUserPasswordPrompt(id){
+  const password = prompt('New password (min. 8 characters):');
+  if(!password) return;
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'resetUserPassword', ...gsAuth(), id, password }) });
+    const json = await res.json();
+    if(!json || json.error){ showToast((json&&json.error)||'Failed'); return; }
+    showToast('Password updated');
+  }catch(e){ showToast('Network error'); }
+}
+async function deleteUserConfirm(id, username){
+  if(!confirm('Delete user "'+username+'"?')) return;
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'deleteUser', ...gsAuth(), id }) });
+    const json = await res.json();
+    if(!json || json.error){ showToast((json&&json.error)||'Failed'); return; }
+    showToast('User deleted');
+    renderAdminUsers();
+  }catch(e){ showToast('Network error'); }
+}
+
+// ── Superadmin cross-firm payable summary (Admin/Roles plan, stage 10) ─────
+// Deliberately reuses the exact same canonical payroll functions every
+// firm's own Accounting tab uses (groupPunchesIntoShifts/shiftPay) — never a
+// reimplementation server-side or otherwise, per this file's own standing
+// rule against touching/duplicating that math casually. For each cached firm
+// (__firmsCache, populated by renderFirmsList()), fetches that tenant's own
+// schedule (for worker rate data) + this week's punch log via an explicit
+// asTenantId override in the request — NOT by switching the session's own
+// viewingTenantId/reloading, so browsing this summary never disturbs the
+// admin's actual "currently open" firm. Per-firm total only (hours + payable
+// this week); drilling into a specific supplier's own breakdown is done by
+// switching into that firm (switchToTenant(), already exists) and using its
+// own Accounting tab's payable-by-supplier table — no reason to duplicate
+// that table's rendering here too.
+let __superadminAccountingOpen = false;
+function toggleSuperadminAccounting(){
+  __superadminAccountingOpen = !__superadminAccountingOpen;
+  const wrap = document.getElementById('superadminAccountingWrap');
+  wrap.style.display = __superadminAccountingOpen ? 'block' : 'none';
+  if(__superadminAccountingOpen) renderSuperadminAccounting();
+}
+async function fetchForTenant(action, tenantId){
+  const s = getSession();
+  const q = 'token='+encodeURIComponent(s.token)+'&asTenantId='+encodeURIComponent(tenantId)+'&action='+action;
+  const res = await fetch(GS_URL+'?'+q);
+  return res.json();
+}
+async function renderSuperadminAccounting(){
+  const wrap = document.getElementById('superadminAccountingWrap');
+  wrap.innerHTML = '<div style="color:var(--text2);font-size:13px">Loading every firm\'s this-week payable — this can take a moment…</div>';
+  if(!__firmsCache.length){ wrap.innerHTML = '<div style="color:var(--text2);font-size:13px">No firms yet.</div>'; return; }
+  const ws = new Date(); ws.setDate(ws.getDate()-ws.getDay()); ws.setHours(0,0,0,0);
+  const rows = [];
+  for(const t of __firmsCache){
+    try{
+      const [schJson, logJson] = await Promise.all([
+        fetchForTenant('loadSchedule', t.tenantId),
+        fetchForTenant('loadPunchLog', t.tenantId),
+      ]);
+      const fWorkers = schJson.workers || [];
+      const entries = (logJson.entries || []).filter(e => new Date(e.ts) >= ws);
+      const byWorkerPunches = {};
+      entries.forEach(e => { (byWorkerPunches[e.workerId]=byWorkerPunches[e.workerId]||[]).push(e); });
+      let totalHours = 0, totalPay = 0;
+      Object.entries(byWorkerPunches).forEach(([wid, list]) => {
+        const wc = fWorkers.find(w => w.id === wid);
+        groupPunchesIntoShifts(list).forEach(bucket => {
+          const res = analyzeDayPunches(bucket.entries, bucket.date);
+          if(res.hours > 0){
+            totalHours += res.hours;
+            const isSat = bucket.date.getDay() === 6;
+            totalPay += shiftPay(res.hours, wc, isSat, bucket.entries[0] && bucket.entries[0].clientId);
+          }
+        });
+      });
+      rows.push({ name: t.companyName || t.tenantId, hours: totalHours, pay: totalPay });
+    }catch(e){ rows.push({ name: t.companyName || t.tenantId, hours: 0, pay: 0, error: true }); }
+  }
+  const grandHours = rows.reduce((s,r)=>s+r.hours,0), grandPay = rows.reduce((s,r)=>s+r.pay,0);
+  wrap.innerHTML = `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:var(--text2)">Firm</th>
+        <th style="padding:8px 12px;text-align:center;font-size:12px;color:var(--text2)">Hours (this week)</th>
+        <th style="padding:8px 12px;text-align:right;font-size:12px;color:var(--text2)">Payable</th>
+      </tr></thead>
+      <tbody>${rows.map(r=>`<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:8px 12px;font-size:13px;font-weight:600">${esc(r.name)}${r.error?' <span style="color:#ff6b78;font-size:11px">(load failed)</span>':''}</td>
+        <td style="padding:8px 12px;text-align:center;font-size:13px">${r.hours.toFixed(1)}h</td>
+        <td style="padding:8px 12px;text-align:right;font-size:13px;font-weight:700;color:var(--green)">₪${r.pay.toFixed(0)}</td>
+      </tr>`).join('')}</tbody>
+      <tfoot><tr style="background:var(--bg3);border-top:2px solid var(--border)">
+        <td style="padding:8px 12px;font-size:13px;font-weight:700">TOTAL</td>
+        <td style="padding:8px 12px;text-align:center;font-size:13px;font-weight:700">${grandHours.toFixed(1)}h</td>
+        <td style="padding:8px 12px;text-align:right;font-size:14px;font-weight:800;color:var(--green)">₪${grandPay.toFixed(0)}</td>
+      </tr></tfoot>
+    </table>
+  </div>`;
+}
+
 function openErrorsScreen(){
   document.getElementById('errorsScreen').style.display = 'block';
-  loadErrorsList();
+  loadErrorsList('errorsList');
 }
 function closeErrorsScreen(){
   document.getElementById('errorsScreen').style.display = 'none';
 }
-async function loadErrorsList(){
-  const listEl = document.getElementById('errorsList');
+// targetId parametrized 2026-10-02 (Admin/Roles plan stage 5) — same reuse
+// pattern as renderFirmsList() above, feeds either the standalone
+// #errorsScreen or the admin panel's Errors tab (#adminErrorsList).
+async function loadErrorsList(targetId){
+  const listEl = document.getElementById(targetId||'errorsList');
   listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
   try{
     const res = await fetch(GS_URL + '?action=loadErrors' + gsAuthQuery());
@@ -3040,7 +3661,7 @@ async function toggleTenantActive(tenantId, nextActive){
     const json = await res.json();
     if(!json || json.error){ showToast((json&&json.error)||'Ошибка'); return; }
     showToast(nextActive ? 'Фирма включена' : 'Фирма отключена');
-    renderFirmsList();
+    renderFirmsList(__firmsListTarget);
   }catch(e){ showToast('Сеть недоступна'); }
 }
 
@@ -3057,7 +3678,7 @@ async function confirmDeleteTenant(tenantId, companyName){
     const json = await res.json();
     if(!json || json.error){ showToast((json&&json.error)||'Ошибка'); return; }
     showToast('Фирма «'+companyName+'» удалена');
-    renderFirmsList();
+    renderFirmsList(__firmsListTarget);
   }catch(e){ showToast('Сеть недоступна'); }
 }
 
@@ -3091,7 +3712,7 @@ async function submitCreateFirm(){
     if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось создать фирму'; return; }
     closeModal('createFirmOverlay');
     showToast('Фирма создана');
-    renderFirmsList();
+    renderFirmsList(__firmsListTarget);
   }catch(e){ errEl.textContent = 'Сеть недоступна'; }
   finally{ btn.disabled = false; btn.textContent = 'Создать'; }
 }
@@ -3169,7 +3790,7 @@ async function submitEditFirm(){
     refreshFirmProfileWarnings();
     // Only the super-admin has a Firms list to refresh (and the right to ask
     // the backend for one) — a firm editing its own profile has no such screen.
-    if(getSession()?.role === 'superadmin') renderFirmsList();
+    if(getSession()?.role === 'superadmin') renderFirmsList(__firmsListTarget);
     // A firm-profile edit changes the employer-details row on every worker's
     // Form 101 — regenerate them, but only when the edited firm is the one
     // actually loaded into `workers` right now (self-service edit, or a
@@ -3422,6 +4043,9 @@ function importDataBackup(){
 
 // --- Dashboard -------------------------------------------------------------------
 let _logExpanded=false, _salExpanded=false;
+let __lastSalaryEntries=[];
+let __lastClientBillEntries=[];
+let __lastSupplierPayableRows=[];
 function toggleLog(){ _logExpanded=!_logExpanded; renderDashboard(); }
 function toggleSalary(){ _salExpanded=!_salExpanded; renderSalary(); }
 function renderDashboard(){
@@ -3582,6 +4206,7 @@ function renderAccounting(){
   renderSalary();
   renderRateMatrix();
   renderSupplierRateMatrix();
+  renderPendingHours();
 }
 
 function renderSalary(){
@@ -3611,8 +4236,9 @@ function renderSalary(){
 
   // Sum hours + Israeli pay per worker, flagging anomalies
   const byWorker={};
+  const byClient={};
   Object.values(byWorkerDay).forEach(({worker,workerId,date,entries})=>{
-    if(!byWorker[workerId]) byWorker[workerId]={worker,workerId,hours:0,days:0,regH:0,otH:0,shabH:0,total:0,warns:[]};
+    if(!byWorker[workerId]) byWorker[workerId]={worker,workerId,hours:0,days:0,regH:0,otH:0,shabH:0,total:0,travel:0,warns:[]};
     const _res=analyzeDayPunches(entries,date);
     const _dstr=date.toLocaleDateString('en-GB');
     _res.warnings.forEach(wn=> byWorker[workerId].warns.push(_dstr+': '+wn));
@@ -3624,24 +4250,38 @@ function renderSalary(){
       else { byWorker[workerId].regH+=Math.min(h,RM); byWorker[workerId].otH+=Math.max(h-RM,0); }
       byWorker[workerId].hours+=h;
       byWorker[workerId].days++;
+      byWorker[workerId].travel+=Number(wc&&wc.travelAllowance)||0;
       // The shift's own clientId (from its opening IN punch) picks up any
       // per-client rate override — a worker who worked at two clients with
       // different rates in the same period still gets each shift priced
       // correctly, even though this table shows one summed row per worker.
-      byWorker[workerId].total+=shiftPay(h,wc,isSat,entries[0]&&entries[0].clientId);
+      const cid=entries[0]&&entries[0].clientId;
+      byWorker[workerId].total+=shiftPay(h,wc,isSat,cid);
+      // Billable-by-client — a parallel, independent figure (see
+      // clientBillPay()'s own comment); never derived from/feeding the
+      // worker's own wage line above.
+      if(cid){
+        if(!byClient[cid]) byClient[cid]={hours:0,total:0};
+        const cl=clients.find(c=>c.id===cid);
+        byClient[cid].hours+=h;
+        byClient[cid].total+=clientBillPay(h,cl,isSat);
+      }
     }
   });
+  __lastClientBillEntries=Object.entries(byClient).map(([clientId,v])=>({clientId,...v}));
 
   const salaryEl=document.getElementById('dashSalary');
   const entries=Object.values(byWorker);
+  __lastSalaryEntries=entries;
   if(!entries.length){
     salaryEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No punch data for this period</div>`;
     renderSupplierPayable(entries);
+    renderClientBillable(__lastClientBillEntries);
     return;
   }
 
   const totalHours=entries.reduce((s,e)=>s+e.hours,0);
-  const grandTotal=entries.reduce((s,e)=>s+e.total,0);
+  const grandTotal=entries.reduce((s,e)=>s+e.total+e.travel,0);
   const shownEntries=_salExpanded?entries:entries.slice(0,4);
   const _allWarns=entries.flatMap(e=>(e.warns||[]).map(w=>e.worker+' — '+w));
   const _reviewBanner=_allWarns.length?`<div style="background:var(--amber-bg);border:1px solid rgba(245,166,35,0.3);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px"><div style="color:var(--amber);font-weight:600;font-size:13px;margin-bottom:4px"><i class="ti ti-alert-triangle"></i> ${_allWarns.length} to review before calculating</div><div style="color:var(--text2);font-size:12px;line-height:1.6">${_allWarns.slice(0,12).map(w=>'• '+w).join('<br>')}${_allWarns.length>12?'<br>…'+(_allWarns.length-12)+' more':''}</div></div>`:'';
@@ -3656,6 +4296,7 @@ function renderSalary(){
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Regular ₪/h</th>
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--amber)">OT ₪/h</th>
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--blue)">Shabbat ₪/h</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Travel ₪</th>
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Total Pay</th>
           </tr>
         </thead>
@@ -3690,8 +4331,11 @@ function renderSalary(){
                   onchange="setWorkerShabbatRate('${e.workerId}',this.value);renderSalary()"
                   style="width:66px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
-              <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${e.total>0?'var(--green)':'var(--text3)'}">
-                ${e.total>0?'₪'+e.total.toFixed(0):'—'}
+              <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)">
+                ${e.travel>0?'₪'+e.travel.toFixed(0):'—'}
+              </td>
+              <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${(e.total+e.travel)>0?'var(--green)':'var(--text3)'}">
+                ${(e.total+e.travel)>0?'₪'+(e.total+e.travel).toFixed(0):'—'}
               </td>
             </tr>`;
           }).join('')}
@@ -3700,7 +4344,7 @@ function renderSalary(){
           <tr style="background:var(--bg3);border-top:2px solid var(--border)">
             <td style="padding:10px 12px;font-size:13px;font-weight:600;color:var(--text2)">TOTAL</td>
             <td style="padding:10px 12px;text-align:center;font-size:14px;font-weight:700;color:var(--text)">${totalHours.toFixed(1)}h</td>
-            <td colspan="3"></td>
+            <td colspan="4"></td>
             <td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">
               ₪${grandTotal.toFixed(0)}
             </td>
@@ -3709,15 +4353,32 @@ function renderSalary(){
       </table>
       </div>
       ${entries.length>4?`<div style="text-align:center;padding:8px;border-top:1px solid var(--border)"><button class="btn sm" onclick="toggleSalary()">${_salExpanded?'<i class="ti ti-chevron-up"></i> Show less':'<i class="ti ti-chevron-down"></i> Show all ('+entries.length+')'}</button></div>`:''}
-      <div style="padding:8px 12px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">₪/hour rates are editable manually. Default: Regular = base rate · OT = ×${PAY_RULES.otMult} · Shabbat = ×${PAY_RULES.shabbatMult}. Hours: Regular ≤8h/day, above that — OT; Saturday — at the Shabbat rate.</div>
+      <div style="padding:8px 12px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">₪/hour rates are editable manually. Default: Regular = base rate · OT = ×${PAY_RULES.otMult} · Shabbat = ×${PAY_RULES.shabbatMult}. Hours: Regular ≤8h/day, above that — OT; Saturday — at the Shabbat rate. Travel = worker's flat per-work-day travel allowance.</div>
     </div>`;
   renderSupplierPayable(entries);
+  renderClientBillable(__lastClientBillEntries);
 }
 
 // Groups the already-computed per-worker pay totals (byWorker[...].total, the
 // same figures shown in the table above) by the worker's assigned supplier —
 // purely a re-grouping of existing correct numbers, never a separate payroll
 // calculation, so it can't drift from the canonical shiftPay()/effectiveRates() math.
+// Default flat commission (₪/h) a supplier is paid when no override is set
+// for a given worker — see setSupplierRateOverride()/SUPPLIER_DEFAULT_RATE's
+// own comment below for why this is a single flat number, not a rate tier.
+const SUPPLIER_DEFAULT_RATE = 5;
+function supplierCommissionRate(w, supplierId){
+  const ov = w.supplierRates && w.supplierRates[supplierId];
+  return (ov && ov.rate!=null) ? ov.rate : SUPPLIER_DEFAULT_RATE;
+}
+// "Payable by supplier" = hours × the supplier's own flat commission rate —
+// deliberately NOT e.total (the worker's real wage, computed via
+// effectiveRates()/shiftPay()) — see this file's own standing principle:
+// a supplier must never see what a worker actually earns, only what the
+// FIRM owes the AGENCY for that worker's hours. Changed 2026-10-02 (Admin/
+// Roles plan stage 12) — this table used to (incorrectly, by today's
+// standard) sum the worker's real pay per supplier, which is exactly the
+// number a supplier-role login must never be handed.
 function renderSupplierPayable(entries){
   const wrap=document.getElementById('supplierPayableWrap');
   if(!wrap) return;
@@ -3733,14 +4394,21 @@ function renderSupplierPayable(entries){
     if(!sid){ unassigned.hours+=e.hours; unassigned.total+=e.total; return; }
     if(!bySupplier[sid]) bySupplier[sid]={hours:0,total:0};
     bySupplier[sid].hours+=e.hours;
-    bySupplier[sid].total+=e.total;
+    bySupplier[sid].total+=e.hours*supplierCommissionRate(wc,sid);
   });
   const rows=suppliers.filter(s=>bySupplier[s.id]).map(s=>({sup:s,...bySupplier[s.id]}));
   if(!rows.length && !unassigned.total){
     wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No workers with a supplier assigned had activity this period</div>`;
     return;
   }
+  // Stage 15: same {label,hours,rate,total} shape exportPayableSummary()
+  // expects — built here once so the export buttons below never recompute.
+  __lastSupplierPayableRows = rows.map(r=>({ label:r.sup.name, hours:r.hours, rate:'commission', total:r.total }));
   wrap.innerHTML=`
+    <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:6px">
+      <button class="btn sm" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:'Payable by supplier',filename:'payable-by-supplier',format:'excel'})"><i class="ti ti-file-spreadsheet"></i> Excel</button>
+      <button class="btn sm" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:'Payable by supplier',filename:'payable-by-supplier',format:'pdf'})"><i class="ti ti-file-type-pdf"></i> PDF</button>
+    </div>
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
       <table style="width:100%;border-collapse:collapse;min-width:420px">
@@ -3766,6 +4434,117 @@ function renderSupplierPayable(entries){
       </table>
       </div>
     </div>`;
+}
+
+// "Billable by client" — what each client owes the firm, computed via
+// clientBillPay() (tiered law rates off the client's own default rate, or a
+// flat fixedBillRate — see that function's own comment). Deliberately NEVER
+// contains supplier data (suppliers[]/supplierId/supplierRates/commission)
+// anywhere — the standing Client<->Supplier isolation principle (Admin/Roles
+// plan): any client-facing surface must never see a supplier exists.
+function renderClientBillable(entries){
+  const wrap=document.getElementById('clientBillableWrap');
+  if(!wrap) return;
+  if(!entries.length){
+    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No punch data for this period</div>`;
+    return;
+  }
+  const rows=entries.map(e=>({cl:clients.find(c=>c.id===e.clientId),...e})).filter(r=>r.cl);
+  if(!rows.length){
+    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No billable activity this period</div>`;
+    return;
+  }
+  wrap.innerHTML=`
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table style="width:100%;border-collapse:collapse;min-width:420px">
+        <thead>
+          <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Client</th>
+            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">Hours</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Mode</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Billable</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
+            <td style="padding:10px 12px;font-size:13px;font-weight:600"><span style="color:${r.cl.color}"><i class="ti ti-building-store"></i></span> ${esc(r.cl.name)}</td>
+            <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)}h</td>
+            <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${r.cl.rateMode==='fixed'?'Fixed':'Tiered'}</td>
+            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      </div>
+    </div>`;
+}
+
+// Hours-import approval queue (Admin/Roles plan, stage 14). Any non-supplier
+// role can SEE this list (server already tenant-scopes it), but Approve/
+// Reject buttons only render for tenant_admin/superadmin — mirrors the
+// server-side requirePendingHoursApprover() gate exactly, so a staff login
+// sees a read-only view of what it (or a colleague) uploaded, never a way
+// to self-approve its own hours.
+async function renderPendingHours(){
+  const wrap=document.getElementById('pendingHoursWrap');
+  if(!wrap) return;
+  const s=getSession();
+  const canApprove = s && (s.role==='tenant_admin'||s.role==='superadmin');
+  let json;
+  try{
+    const res = await fetch(GS_URL+'?'+new URLSearchParams({ action:'loadPendingHours', ...gsAuth() }));
+    json = await res.json();
+  }catch(e){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">Could not load</div>`; return; }
+  const batches=(json.batches||[]).filter(b=>b.status==='pending');
+  if(!batches.length){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">Nothing pending</div>`; return; }
+  wrap.innerHTML=`
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table style="width:100%;border-collapse:collapse;min-width:520px">
+        <thead>
+          <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">File</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Uploaded by</th>
+            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">Shifts</th>
+            ${canApprove?'<th style="padding:10px 12px"></th>':''}
+          </tr>
+        </thead>
+        <tbody>
+          ${batches.map(b=>{
+            const w = workers.find(x=>x.id===(b.entries[0]&&b.entries[0].workerId));
+            return `<tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:10px 12px;font-size:13px">${esc(b.fileName||'—')}${w?' · '+esc(w.name):''}</td>
+              <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${esc(b.uploadedBy||'—')}</td>
+              <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600">${b.entries.length}</td>
+              ${canApprove?`<td style="padding:10px 12px;text-align:right;white-space:nowrap">
+                <button class="btn sm" style="color:var(--green)" onclick="approveHoursBatch('${b.batchId}')"><i class="ti ti-check"></i></button>
+                <button class="btn sm red" onclick="rejectHoursBatch('${b.batchId}')"><i class="ti ti-x"></i></button>
+              </td>`:''}
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>
+    </div>`;
+}
+async function approveHoursBatch(batchId){
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'approvePendingHours', ...gsAuth(), batchId }) });
+    const json = await res.json();
+    if(json.error){ showToast(json.error); return; }
+    showToast(json.created+' shift(s) approved');
+    renderPendingHours(); renderSalary();
+  }catch(e){ showToast('Failed: '+e.message); }
+}
+async function rejectHoursBatch(batchId){
+  if(!confirm('Reject this batch?')) return;
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'rejectPendingHours', ...gsAuth(), batchId }) });
+    const json = await res.json();
+    if(json.error){ showToast(json.error); return; }
+    showToast('Batch rejected');
+    renderPendingHours();
+  }catch(e){ showToast('Failed: '+e.message); }
 }
 
 // Per-worker-per-client rate override matrix (tier 1 of effectiveRates()).
@@ -3839,12 +4618,16 @@ function setClientRateOverride(wid,cid,field,val){
   renderRateMatrix();
 }
 
-// Per-worker-per-supplier rate matrix. Unlike clientRates, this is REFERENCE
-// ONLY: suppliers have no place in effectiveRates()'s tier chain (a worker's
-// pay is driven by which client they worked at, not which supplier/agency
-// employs them), so supplierRates never feeds shiftPay()/effectiveRates() —
-// see renderSupplierPayable() above for the actual payable-by-supplier total,
-// which reuses the real computed pay instead of this override value.
+// Per-worker-per-supplier FLAT commission matrix (Admin/Roles plan stage 12,
+// 2026-10-02 — narrowed from a 3-column rate/OT/Shabbat matrix to a single
+// flat rate). A supplier has no concept of overtime/Shabbat tiers (unlike a
+// worker's real wage, which does) — it's simply hours × one flat ₪/h
+// commission the firm pays the agency, defaulting to SUPPLIER_DEFAULT_RATE
+// (5) when not explicitly overridden. Still REFERENCE/independent of
+// effectiveRates()'s tier chain — a worker's real pay is driven by which
+// client they worked at, never by which supplier/agency employs them; see
+// renderSupplierPayable() above for where this rate actually gets used (the
+// payable-by-supplier total), never shiftPay()/effectiveRates() itself.
 function renderSupplierRateMatrix(){
   const wrap=document.getElementById('supplierRateMatrixWrap');
   if(!wrap) return;
@@ -3856,37 +4639,24 @@ function renderSupplierRateMatrix(){
   wrap.innerHTML=`
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-      <table style="width:100%;border-collapse:collapse;min-width:640px">
+      <table style="width:100%;border-collapse:collapse;min-width:420px">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
             <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Worker</th>
             <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Supplier</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Regular ₪/h</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--amber)">OT ₪/h</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--blue)">Shabbat ₪/h</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Commission ₪/h</th>
           </tr>
         </thead>
         <tbody>
           ${rows.map((r,i)=>{
             const ov=(r.w.supplierRates&&r.w.supplierRates[r.sup.id])||{};
-            const regRate=wRegRate(r.w), otRate=wOtRate(r.w), shabRate=wShabRate(r.w);
             return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
               <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.w.name)}</td>
               <td style="padding:10px 12px;font-size:13px;color:var(--text2)"><span style="color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></span> ${esc(r.sup.name)}</td>
               <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${regRate}" title="Reference only — empty = worker's own base rate (${regRate})"
+                <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${SUPPLIER_DEFAULT_RATE}" title="Empty = default (${SUPPLIER_DEFAULT_RATE} ₪/h)"
                   onchange="setSupplierRateOverride('${r.w.id}','${r.sup.id}','rate',this.value)"
                   style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
-              </td>
-              <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.otRate??''}" min="0" step="0.5" placeholder="${otRate}" title="Reference only — empty = ${otRate}"
-                  onchange="setSupplierRateOverride('${r.w.id}','${r.sup.id}','otRate',this.value)"
-                  style="width:70px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:right;outline:none">
-              </td>
-              <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.shabbatRate??''}" min="0" step="0.5" placeholder="${shabRate}" title="Reference only — empty = ${shabRate}"
-                  onchange="setSupplierRateOverride('${r.w.id}','${r.sup.id}','shabbatRate',this.value)"
-                  style="width:70px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
             </tr>`;
           }).join('')}
@@ -3904,6 +4674,7 @@ function setSupplierRateOverride(wid,sid,field,val){
   if(Object.values(w.supplierRates[sid]).every(v=>v==null)) delete w.supplierRates[sid];
   autoSave();
   renderSupplierRateMatrix();
+  renderSupplierPayable(__lastSalaryEntries||[]);
 }
 
 function setWorkerRate(wid,rate){
@@ -3945,6 +4716,89 @@ function exportSalaryCSV(){
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const url=URL.createObjectURL(blob);
   const a=document.createElement('a'); a.href=url; a.download='salary-'+period+'-'+now.toISOString().slice(0,10)+'.csv'; a.click(); URL.revokeObjectURL(url);
   showToast('Salary exported!');
+}
+
+// --- Shifts table → PDF/Excel export module (Admin/Roles plan, stage 15) -------
+// Shared by the firm's own Accounting tab (below) and, per the plan, the
+// future supplier portal (stage 16, which will get its own copy of these
+// same two functions — this file duplicates helpers across HTML files on
+// purpose, see CLAUDE.md's "Shared conventions" note). Two modes, built from
+// already-computed data only — groupPunchesIntoShifts()/analyzeDayPunches()
+// for the detail mode, and whatever hours×rate figures the caller already
+// computed (renderSalary()/renderSupplierPayable()/renderClientBillable())
+// for the summary mode — never a new/independent calculation of its own.
+// "PDF" follows this file's own existing convention (exportPDF() above):
+// a styled print-ready page opened via window.open()+window.print(), not a
+// PDF-generation library — no new dependency introduced for this stage.
+
+// Detail mode: one worker, one calendar month, Date/In/Out/Hours per shift.
+function getWorkerMonthShifts(workerId, year, month){
+  const log = getPunchLog().filter(e=>e.workerId===workerId);
+  return groupPunchesIntoShifts(log)
+    .filter(b => b.date.getFullYear()===year && b.date.getMonth()===month)
+    .map(b => {
+      const res = analyzeDayPunches(b.entries, b.date);
+      const ins = b.entries.filter(x=>x.type==='in').map(x=>x.time).sort();
+      const outs = b.entries.filter(x=>x.type==='out').map(x=>x.time).sort();
+      return { date: b.date, inTime: ins[0]||'', outTime: outs[outs.length-1]||'', hours: res.hours };
+    })
+    .sort((a,b)=>a.date-b.date);
+}
+function exportShiftsDetail(workerId, year, month, format){
+  const w = workers.find(x=>x.id===workerId);
+  const shifts = getWorkerMonthShifts(workerId, year, month);
+  const monthLabel = new Date(year, month, 1).toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  const totalHours = shifts.reduce((s,x)=>s+x.hours,0);
+  const fname = 'hours-'+(w?w.name.replace(/\s+/g,'_'):workerId)+'-'+year+'-'+String(month+1).padStart(2,'0');
+  if(format==='excel'){
+    const aoa=[['Date','In','Out','Hours']];
+    shifts.forEach(s=>aoa.push([s.date.toLocaleDateString('en-GB'), s.inTime, s.outTime, s.hours.toFixed(2)]));
+    aoa.push(['','','Total', totalHours.toFixed(2)]);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Hours');
+    XLSX.writeFile(wb, fname+'.xlsx');
+  } else {
+    const rowsHtml = shifts.map(s=>`<tr><td>${s.date.toLocaleDateString('en-GB')}</td><td>${esc(s.inTime)}</td><td>${esc(s.outTime)}</td><td>${s.hours.toFixed(2)}</td></tr>`).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Hours — ${esc(w?w.name:'')}</title>
+      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px;text-align:left}th{background:#f0f0f0}tfoot td{font-weight:bold}</style>
+      </head><body><h2>${esc(w?w.name:'')} — ${esc(monthLabel)}</h2>
+      <table><thead><tr><th>Date</th><th>In</th><th>Out</th><th>Hours</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+      <tfoot><tr><td colspan="3">Total</td><td>${totalHours.toFixed(2)}</td></tr></tfoot>
+      </table></body></html>`;
+    const win=window.open('','_blank'); win.document.write(html); win.document.close(); setTimeout(()=>win.print(),400);
+  }
+  showToast('Hours exported');
+}
+// Summary mode: rows the caller already computed — {label, hours, rate,
+// total} — hours×rate=payable (for the firm's own workers, or a supplier's
+// flat commission). `rate` is purely informational (a tiered worker's rate
+// varies by day, so the caller may pass a string like "varies" there);
+// `total` is always the real, already-correct figure from the source table.
+function exportPayableSummary(rows, opts){
+  opts = opts||{};
+  const title = opts.title || 'Payable summary';
+  const fname = opts.filename || 'payable-summary';
+  const grand = rows.reduce((s,r)=>s+r.total,0);
+  if(opts.format==='excel'){
+    const aoa=[['Label','Hours','Rate','Total']];
+    rows.forEach(r=>aoa.push([r.label, r.hours.toFixed(2), r.rate, r.total.toFixed(2)]));
+    aoa.push(['','','Total', grand.toFixed(2)]);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Summary');
+    XLSX.writeFile(wb, fname+'.xlsx');
+  } else {
+    const rowsHtml = rows.map(r=>`<tr><td>${esc(r.label)}</td><td>${r.hours.toFixed(2)}</td><td>${esc(String(r.rate))}</td><td>${r.total.toFixed(2)}</td></tr>`).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(title)}</title>
+      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px;text-align:left}th{background:#f0f0f0}tfoot td{font-weight:bold}</style>
+      </head><body><h2>${esc(title)}</h2>
+      <table><thead><tr><th>Label</th><th>Hours</th><th>Rate</th><th>Total</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+      <tfoot><tr><td colspan="3">Total</td><td>${grand.toFixed(2)}</td></tr></tfoot>
+      </table></body></html>`;
+    const win=window.open('','_blank'); win.document.write(html); win.document.close(); setTimeout(()=>win.print(),400);
+  }
+  showToast('Summary exported');
 }
 
 // --- Worker punch history (shown in worker modal) ------------------------------
@@ -4530,8 +5384,13 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // lets it trash the exact old file.
       const fileBase64=fnJson.pdfBase64;
       const w=targetWorker;
-      // Real byte-level upload progress (added 2026-09-30, per user request
-      // — see xhrPostJSON's own comment for why fetch() can't do this) —
+      // Progress bar (2026-09-30, real byte-level via xhr.upload.onprogress —
+      // briefly REPLACED 2026-10-01 with a fake ticker after discovering a
+      // bare XHR to GS_URL can never carry a real upload listener without
+      // triggering a CORS preflight Apps Script can't answer; RESTORED
+      // 2026-10-02 via GS_UPLOAD_PROXY_URL, a Cloud Function that answers
+      // that preflight correctly and relays server-to-server to Apps Script
+      // — see xhrPostJSON()'s and GS_UPLOAD_PROXY_URL's own comments).
       // docPromise/assetsPromise upload concurrently, so their progress is
       // combined by total bytes across both, not just whichever finishes
       // first; the 20-90% range leaves room for "building PDF" (0%) before
@@ -4552,7 +5411,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // this whole call runs behind a blocking "please wait" overlay for new
       // workers/rescans. Skipped on a regenerate (isRegen) same as before —
       // see the comment below that used to sit next to the sequential call.
-      const docPromise=xhrPostJSON(GS_URL,
+      const docPromise=xhrPostJSON(GS_UPLOAD_PROXY_URL,
         {action:'saveWorkerDoc',secret:API_SECRET,...gsAuth(),fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null},
         (loaded,total)=>{ docLoaded=loaded; docTotal=total; reportUploadProgress(); });
       // Cache the scan+signature (and any extra pages — ספח appendix card,
@@ -4571,7 +5430,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // field, e.g. address) used to always pay for this redundant
       // multi-MB download-then-reupload round trip on top of the PDF
       // build itself, which is what made a single-field edit feel so slow.
-      const assetsPromise=(scanImage&&!isRegen&&w)?xhrPostJSON(GS_URL,
+      const assetsPromise=(scanImage&&!isRegen&&w)?xhrPostJSON(GS_UPLOAD_PROXY_URL,
         {action:'saveWorkerAssets',secret:API_SECRET,...gsAuth(),
           scanB64:scanImage.b64, scanMediaType:scanImage.mediaType, sigPng:sigPng||null,
           extraPages:otherPagesToUse,
@@ -4714,6 +5573,7 @@ try{
     syncPicker();
     render();
     setSaveStatus('saved');
+    applyNavPermissions();
     // Start on Dashboard
     switchTab('dashboard');
     // Check push subscription status

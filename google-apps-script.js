@@ -15,6 +15,14 @@ const SH_BACKUP   = 'Backups';
 const SH_ERRORS   = 'Errors';
 const SH_USERS    = 'Users';
 const SH_TENANTS  = 'Tenants';
+// Added 2026-10-02 (Admin/Roles plan, stage 3): 'permissions' (JSON array of
+// allowed sections, e.g. ["workers","accounting"], or the literal string '*'
+// for full access — the default for every pre-existing login) and
+// 'supplierId' (only set for role==='supplier', nullable otherwise). Roles:
+// superadmin | tenant_admin | staff | supplier (was superadmin | tenant —
+// 'tenant' is kept as a legacy alias, normalized to 'tenant_admin' at login
+// time in login() below, no data migration of existing rows required).
+const USERS_HEADERS = ['id','username','passwordHash','passwordSalt','role','tenantId','active','createdAt','permissions','supplierId'];
 // Legacy shared key — still required for worker-punch.html's unauthenticated
 // (no-login) actions, alongside the worker's own per-worker token which is
 // what actually resolves the tenant. MUST equal API_SECRET in
@@ -52,7 +60,7 @@ function doPost(e) {
     }
 
     switch (body.action) {
-      case 'saveSchedule':         return jsonResponse(saveSchedule(body.data, body.baseSavedAt, tenantId));
+      case 'saveSchedule':         return jsonResponse(saveSchedule(body.data, body.baseSavedAt, tenantId, auth));
       case 'savePunch':            return jsonResponse(savePunch(body.data, tenantId));
       case 'deletePunch':          return jsonResponse(deletePunch(body.id, tenantId));
       case 'updatePunch':          return jsonResponse(updatePunch(body.data, tenantId));
@@ -63,16 +71,28 @@ function doPost(e) {
       case 'aiDetectAlign':        return jsonResponse(aiDetectAlign(body));
       case 'aiVerifyField':        return jsonResponse(aiVerifyField(body));
       case 'aiVerifyFields':       return jsonResponse(aiVerifyFields(body));
+      case 'aiReadHoursTable':     return jsonResponse(auth && auth.role === 'supplier' ? {error:'Недоступно для роли поставщика'} : aiReadHoursTable(body));
       case 'saveWorkerDoc':        return jsonResponse(saveWorkerDoc(body, tenantId));
       case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body, tenantId));
       case 'saveWorkerAssets':     return jsonResponse(saveWorkerAssets(body, tenantId));
       case 'loadWorkerAssets':     return jsonResponse(loadWorkerAssets(body, tenantId));
       case 'createUser':           return jsonResponse(createUser(body, auth));
+      case 'listUsers':            return jsonResponse(listUsers(auth));
+      case 'createTenantUser':     return jsonResponse(createTenantUser(body, auth));
+      case 'updateUser':           return jsonResponse(updateUser(body, auth));
+      case 'resetUserPassword':    return jsonResponse(resetUserPassword(body, auth));
+      case 'deleteUser':           return jsonResponse(deleteUser(body, auth));
       case 'updateTenant':         return jsonResponse(updateTenant(body, auth));
       case 'loadTenantProfile':    return jsonResponse({ ok: true, profile: tenantId ? getTenantProfile(tenantId) : null });
       case 'listTenants':          return jsonResponse(listTenants(auth));
       case 'setTenantActive':      return jsonResponse(setTenantActive(body, auth));
       case 'deleteTenant':         return jsonResponse(deleteTenant(body, auth));
+      case 'savePendingHoursBatch': return jsonResponse(savePendingHoursBatch(body, tenantId, auth));
+      case 'approvePendingHours':  return jsonResponse(approvePendingHours(body, tenantId, auth));
+      case 'rejectPendingHours':   return jsonResponse(rejectPendingHours(body, tenantId, auth));
+      case 'supplierAddWorker':    return jsonResponse(supplierAddWorker(body, tenantId, auth));
+      case 'supplierUpdateWorker': return jsonResponse(supplierUpdateWorker(body, tenantId, auth));
+      case 'supplierDeleteWorker': return jsonResponse(supplierDeleteWorker(body, tenantId, auth));
       default:                     return jsonResponse({error: 'Unknown action: ' + body.action});
     }
   } catch(e) {
@@ -94,13 +114,14 @@ function doGet(e) {
     }
     let result;
     switch (action) {
-      case 'loadSchedule': result = loadSchedule(tenantId);              break;
-      case 'loadPunchLog': result = loadPunchLog(e.parameter, tenantId); break;
+      case 'loadSchedule': result = loadSchedule(tenantId, auth);              break;
+      case 'loadPunchLog': result = loadPunchLog(e.parameter, tenantId, auth); break;
       // Super-admin only — the Errors sheet has no tenantId column (errors
       // from every firm land in the same sheet), so a normal tenant login
       // must never see this. See CLAUDE.md's "Session-expiry false logouts"
       // troubleshooting entry for why this exists.
       case 'loadErrors':   result = loadErrors(auth);                    break;
+      case 'loadPendingHours': result = loadPendingHours(tenantId, auth); break;
       default:             result = {error: 'Unknown action'};
     }
     const callback = e.parameter.callback;
@@ -162,16 +183,33 @@ function verifySessionToken(token) {
   return payload;
 }
 
-// Resolves {userId, role, tenantId, isSuperadmin} from body.token (works for
-// both POST body and GET e.parameter, both are plain objects). Honors
-// `asTenantId` so a super-admin session can drill into one specific firm.
-// Throws a plain {error} object (caught by doPost/doGet) if missing/invalid.
+// Resolves {userId, role, tenantId, isSuperadmin, permissions, supplierId}
+// from body.token (works for both POST body and GET e.parameter, both are
+// plain objects). Honors `asTenantId` so a super-admin session can drill into
+// one specific firm. Throws a plain {error} object (caught by doPost/doGet)
+// if missing/invalid.
 function requireAuth(body) {
   const payload = verifySessionToken(body.token);
   if (!payload) throw { error: 'Сессия истекла или недействительна — войдите заново' };
   const isSuperadmin = payload.role === 'superadmin';
   const tenantId = (isSuperadmin && body.asTenantId) ? body.asTenantId : payload.tenantId;
-  return { userId: payload.userId, role: payload.role, tenantId: tenantId, isSuperadmin: isSuperadmin };
+  return {
+    userId: payload.userId, username: payload.username, role: payload.role, tenantId: tenantId, isSuperadmin: isSuperadmin,
+    permissions: payload.permissions || '*', supplierId: payload.supplierId || null,
+  };
+}
+
+// Server-side gate for `staff` actions — see requireAuth()'s own comment.
+// superadmin/tenant_admin/supplier bypass this entirely (their access is
+// governed elsewhere: tenant scoping, or the supplier field-allowlist in
+// stage 11), this only narrows what a `staff` login can invoke. `section` is
+// one of workers/clients/suppliers/schedule/accounting/exports — matching
+// the same names the client's hasPermission() checks.
+function requirePermission(auth, section) {
+  if (auth.role !== 'staff') return; // not gated for any other role
+  const perms = auth.permissions;
+  const allowed = perms === '*' || (Array.isArray(perms) && perms.indexOf(section) !== -1);
+  if (!allowed) throw { error: 'Недостаточно прав для этого действия' };
 }
 
 function login(body) {
@@ -189,11 +227,27 @@ function login(body) {
     if (r[col.active] === false) return { error: 'Аккаунт отключён' };
     if (hashPassword(password, r[col.passwordSalt]) !== r[col.passwordHash]) return { error: 'Неверный логин или пароль' };
     const tenantId = r[col.tenantId] || null;
-    const role = r[col.role] || 'tenant';
-    const payload = { userId: r[col.id], username: username, role: role, tenantId: tenantId, exp: Date.now() + SESSION_TTL_MS };
+    // 'tenant' is the legacy role name for what's now called 'tenant_admin'
+    // (Admin/Roles plan, stage 3) — normalized here at login time so every
+    // NEW session/token always carries the current name, without needing to
+    // rewrite the raw cell value on however many existing rows.
+    let role = r[col.role] || 'tenant_admin';
+    if (role === 'tenant') role = 'tenant_admin';
+    // permissions column may not exist yet on an old row/sheet (pre-migration)
+    // — '*' (full access) is the safe default so no existing login loses
+    // access the moment this column is introduced.
+    const rawPerms = col.permissions != null ? r[col.permissions] : '';
+    let permissions = '*';
+    if (rawPerms && rawPerms !== '*') { try { permissions = JSON.parse(rawPerms); } catch(e) { permissions = '*'; } }
+    const supplierId = (col.supplierId != null ? r[col.supplierId] : '') || null;
+    const payload = {
+      userId: r[col.id], username: username, role: role, tenantId: tenantId,
+      permissions: permissions, supplierId: supplierId, exp: Date.now() + SESSION_TTL_MS,
+    };
     const token = createSessionToken(payload);
     return {
       ok: true, token: token, role: role, tenantId: tenantId, username: username,
+      permissions: permissions, supplierId: supplierId,
       tenantProfile: tenantId ? getTenantProfile(tenantId) : null,
       expiresAt: payload.exp
     };
@@ -228,7 +282,7 @@ function createUser(body, auth) {
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const usersSh = getOrCreateSheet(ss, SH_USERS);
-  ensureHeaders(usersSh, ['id', 'username', 'passwordHash', 'passwordSalt', 'role', 'tenantId', 'active', 'createdAt']);
+  ensureHeaders(usersSh, USERS_HEADERS);
   if (usersSh.getLastRow() > 1) {
     const existing = usersSh.getRange(2, 2, usersSh.getLastRow() - 1, 1).getValues();
     if (existing.some(function(r) { return String(r[0]).trim().toLowerCase() === username; })) {
@@ -259,9 +313,140 @@ function createUser(body, auth) {
 
   const salt = makeSalt();
   const userId = Utilities.getUuid();
-  usersSh.appendRow([userId, username, hashPassword(password, salt), salt, 'tenant', tenantId, true, now]);
+  // 'tenant_admin' (was 'tenant') — the firm's own owner login, full access
+  // within its own firm by default (permissions:'*'). See USERS_HEADERS.
+  usersSh.appendRow([userId, username, hashPassword(password, salt), salt, 'tenant_admin', tenantId, true, now, '*', '']);
 
   return { ok: true, userId: userId, tenantId: tenantId };
+}
+
+// ── User CRUD (Admin/Roles plan, stage 4) ───────────────────────────────────
+// These manage `staff`/`supplier` sub-users under an EXISTING firm — distinct
+// from createUser() above, which creates a brand-new firm plus its owner
+// (tenant_admin) login in one shot. A firm's own tenant_admin can now add/
+// manage its own staff/supplier logins without needing the super-admin.
+
+// Returns every column except the password hash/salt — those never leave the
+// server. superadmin sees every firm's users; tenant_admin sees only its own.
+function listUsers(auth) {
+  if (!auth.isSuperadmin && auth.role !== 'tenant_admin') return { error: 'Недостаточно прав' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_USERS);
+  if (!sh || sh.getLastRow() < 2) return { users: [] };
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const col = {}; headers.forEach(function(h,i){ col[h]=i; });
+  const users = rows.slice(1)
+    .filter(function(r){ return auth.isSuperadmin || r[col.tenantId] === auth.tenantId; })
+    .map(function(r){
+      return {
+        id: r[col.id], username: r[col.username],
+        role: r[col.role] === 'tenant' ? 'tenant_admin' : r[col.role],
+        tenantId: r[col.tenantId] || null,
+        active: r[col.active],
+        createdAt: r[col.createdAt],
+        permissions: (function(){ const v = col.permissions!=null?r[col.permissions]:''; if(!v||v==='*') return '*'; try{ return JSON.parse(v); }catch(e){ return '*'; } })(),
+        supplierId: (col.supplierId!=null ? r[col.supplierId] : '') || null,
+      };
+    });
+  return { users: users };
+}
+
+// Creates a staff/supplier login under an EXISTING firm. tenantId defaults to
+// the caller's own firm (tenant_admin can only ever create users for itself);
+// a superadmin may pass an explicit tenantId to create one for any firm.
+// Deliberately does NOT allow role 'tenant_admin'/'superadmin' here — those
+// come only from createUser() (new firm) or direct sheet edits, keeping this
+// action's blast radius limited to the two genuinely-scoped-down roles.
+function createTenantUser(body, auth) {
+  if (!auth.isSuperadmin && auth.role !== 'tenant_admin') return { error: 'Недостаточно прав' };
+  const tenantId = auth.isSuperadmin ? (body.tenantId || auth.tenantId) : auth.tenantId;
+  if (!tenantId) return { error: 'Нет tenantId' };
+  const role = body.role;
+  if (role !== 'staff' && role !== 'supplier') return { error: 'Роль должна быть staff или supplier' };
+  const username = String(body.username || '').trim().toLowerCase();
+  const password = String(body.password || '');
+  if (!username || !password) return { error: 'Логин и пароль обязательны' };
+  if (password.length < 8) return { error: 'Пароль должен быть не короче 8 символов' };
+  if (role === 'supplier' && !body.supplierId) return { error: 'Для роли supplier нужно выбрать поставщика' };
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const usersSh = getOrCreateSheet(ss, SH_USERS);
+  ensureHeaders(usersSh, USERS_HEADERS);
+  if (usersSh.getLastRow() > 1) {
+    const existing = usersSh.getRange(2, 2, usersSh.getLastRow() - 1, 1).getValues();
+    if (existing.some(function(r) { return String(r[0]).trim().toLowerCase() === username; })) {
+      return { error: 'Такой логин уже существует' };
+    }
+  }
+  const permissions = role === 'supplier' ? '' : (Array.isArray(body.permissions) ? JSON.stringify(body.permissions) : '*');
+  const salt = makeSalt();
+  const userId = Utilities.getUuid();
+  const now = new Date().toISOString();
+  usersSh.appendRow([userId, username, hashPassword(password, salt), salt, role, tenantId, true, now, permissions, role === 'supplier' ? body.supplierId : '']);
+  return { ok: true, userId: userId };
+}
+
+// Edits role/permissions/supplierId/active/username on an existing staff/
+// supplier user — never touches password (see resetUserPassword below) and
+// never touches a tenant_admin/superadmin row's role (use the sheet directly
+// for that, an intentionally rare/manual operation).
+function updateUser(body, auth) {
+  if (!auth.isSuperadmin && auth.role !== 'tenant_admin') return { error: 'Недостаточно прав' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_USERS);
+  if (!sh || sh.getLastRow() < 2) return { error: 'Sheet not found' };
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const col = {}; headers.forEach(function(h,i){ col[h]=i; });
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][col.id] !== body.id) continue;
+    if (!auth.isSuperadmin && rows[i][col.tenantId] !== auth.tenantId) return { error: 'Можно редактировать только пользователей своей фирмы' };
+    const curRole = rows[i][col.role] === 'tenant' ? 'tenant_admin' : rows[i][col.role];
+    if (curRole === 'tenant_admin' || curRole === 'superadmin') return { error: 'Эта роль редактируется только напрямую в таблице' };
+    const r = i + 1;
+    if (body.permissions !== undefined) sh.getRange(r, col.permissions+1).setValue(Array.isArray(body.permissions) ? JSON.stringify(body.permissions) : '*');
+    if (body.supplierId !== undefined) sh.getRange(r, col.supplierId+1).setValue(body.supplierId || '');
+    if (body.active !== undefined) sh.getRange(r, col.active+1).setValue(!!body.active);
+    return { ok: true };
+  }
+  return { error: 'Пользователь не найден' };
+}
+
+function resetUserPassword(body, auth) {
+  if (!auth.isSuperadmin && auth.role !== 'tenant_admin') return { error: 'Недостаточно прав' };
+  const password = String(body.password || '');
+  if (password.length < 8) return { error: 'Пароль должен быть не короче 8 символов' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_USERS);
+  if (!sh || sh.getLastRow() < 2) return { error: 'Sheet not found' };
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const col = {}; headers.forEach(function(h,i){ col[h]=i; });
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][col.id] !== body.id) continue;
+    if (!auth.isSuperadmin && rows[i][col.tenantId] !== auth.tenantId) return { error: 'Можно редактировать только пользователей своей фирмы' };
+    const salt = makeSalt();
+    sh.getRange(i+1, col.passwordHash+1).setValue(hashPassword(password, salt));
+    sh.getRange(i+1, col.passwordSalt+1).setValue(salt);
+    return { ok: true };
+  }
+  return { error: 'Пользователь не найден' };
+}
+
+function deleteUser(body, auth) {
+  if (!auth.isSuperadmin && auth.role !== 'tenant_admin') return { error: 'Недостаточно прав' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_USERS);
+  if (!sh || sh.getLastRow() < 2) return { error: 'Sheet not found' };
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const col = {}; headers.forEach(function(h,i){ col[h]=i; });
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][col.id] !== body.id) continue;
+    if (!auth.isSuperadmin && rows[i][col.tenantId] !== auth.tenantId) return { error: 'Можно удалять только пользователей своей фирмы' };
+    const curRole = rows[i][col.role] === 'tenant' ? 'tenant_admin' : rows[i][col.role];
+    if (curRole === 'tenant_admin' || curRole === 'superadmin') return { error: 'Эту роль нельзя удалить отсюда' };
+    sh.deleteRow(i + 1);
+    return { ok: true };
+  }
+  return { error: 'Пользователь не найден' };
 }
 
 // Edits an existing firm's Tenants profile row (company name, deductions file
@@ -442,12 +627,20 @@ function deleteTenant(body, auth) {
     }
   }
 
-  const punchSh = ss.getSheetByName(SH_PUNCHLOG);
-  if (punchSh && punchSh.getLastRow() > 1) {
-    const rows = punchSh.getDataRange().getValues();
+  // 2026-10-02: PunchLog is now one sheet per tenant (_punchSheetName()), so
+  // deleting a firm's punches is just deleting its own sheet(s) outright —
+  // no more row-by-row scan. Still handles a pre-migration tenant whose rows
+  // might still be sitting in the old shared SH_PUNCHLOG (row-scan fallback).
+  const ownPunchSh = ss.getSheetByName(_punchSheetName(tenantId));
+  if (ownPunchSh) { removed.punches = ownPunchSh.getLastRow() - 1; ss.deleteSheet(ownPunchSh); }
+  const ownArchiveSh = ss.getSheetByName(_punchArchiveSheetName(tenantId));
+  if (ownArchiveSh) { removed.punches += Math.max(0, ownArchiveSh.getLastRow() - 1); ss.deleteSheet(ownArchiveSh); }
+  const legacyPunchSh = ss.getSheetByName(SH_PUNCHLOG);
+  if (legacyPunchSh && legacyPunchSh.getLastRow() > 1) {
+    const rows = legacyPunchSh.getDataRange().getValues();
     const tCol = rows[0].indexOf('TenantId');
     for (let i = rows.length - 1; i >= 1; i--) {
-      if (tCol !== -1 && rows[i][tCol] === tenantId) { punchSh.deleteRow(i + 1); removed.punches++; }
+      if (tCol !== -1 && rows[i][tCol] === tenantId) { legacyPunchSh.deleteRow(i + 1); removed.punches++; }
     }
   }
 
@@ -543,8 +736,18 @@ function readScheduleMap(sh, tenantId) {
   return { workers: [], clients: [], suppliers: [], weekStart: null, savedAt: null, _row: null };
 }
 
-function saveSchedule(data, baseSavedAt, tenantId) {
+function saveSchedule(data, baseSavedAt, tenantId, auth) {
   if (!tenantId) return { error: 'Нет активной фирмы (tenant)' };
+  // 'schedule' is the practical gate for this whole action (Admin/Roles plan,
+  // stage 9) even though it writes workers/clients/suppliers together, not
+  // just the week grid — saveSchedule() is a single bundled write for the
+  // entire data model (see readScheduleMap()'s own comment), so there's no
+  // finer-grained action to gate 'workers'/'clients'/'suppliers' separately
+  // against; a staff login without 'schedule' simply can't write ANY of it.
+  // auth is undefined for the one caller that predates this parameter
+  // (there are none left, but kept optional rather than a hard throw here —
+  // requirePermission() itself already no-ops for every non-staff role).
+  if (auth) requirePermission(auth, 'schedule');
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = getOrCreateSheet(ss, SH_SCHEDULE);
   ensureHeaders(sh, SCHEDULE_HEADERS);
@@ -589,14 +792,117 @@ function saveSchedule(data, baseSavedAt, tenantId) {
   else sh.appendRow(rowValues);
   return {ok: true, savedAt: savedAt};
 }
+function _writeScheduleRow(sh, current, tenantId, workers, clients, suppliers, weekStart){
+  const savedAt = new Date().toISOString();
+  const rowValues = [tenantId, JSON.stringify(workers), JSON.stringify(clients), weekStart||'', savedAt, JSON.stringify(suppliers)];
+  if (current._row) sh.getRange(current._row, 1, 1, SCHEDULE_HEADERS.length).setValues([rowValues]);
+  else sh.appendRow(rowValues);
+  return savedAt;
+}
 
-function loadSchedule(tenantId) {
+// ── Supplier-portal worker CRUD (Admin/Roles plan, stage 16) ───────────────────
+// A supplier login is NEVER allowed to call saveSchedule() directly — that
+// action replaces the tenant's ENTIRE workers/clients/suppliers blob in one
+// write, which would let a supplier overwrite data belonging to every other
+// worker/client/agency in the firm, not just its own. These three actions
+// are the deliberately narrow substitute: each one loads the full Schedule
+// map server-side, touches only ONE worker record the caller's own
+// supplierId actually owns, through an explicit field allow-list (contact/
+// personal-info fields only — never hourlyRate/otRate/shabbatRate/
+// clientRates/clientIds/supplierRates, the same wage-privacy boundary
+// _stripWorkerForSupplier() already enforces on reads), then writes the
+// whole map back via the same _writeScheduleRow() helper saveSchedule()
+// itself uses — no parallel write path, no risk of drifting from the real
+// Schedule-sheet format.
+function _supplierWorkerAllowedFields(){
+  return ['docGiven','docSurname','phone','docId','address','houseNumber','city','docDob','docSex',
+    'maritalStatus','healthFund','startDate','notes','status'];
+}
+function supplierAddWorker(body, tenantId, auth){
+  if (!tenantId) return {error:'No tenant'};
+  if (!auth || auth.role !== 'supplier') throw {error:'Только для роли поставщика'};
+  const sh = getOrCreateSheet(SpreadsheetApp.getActiveSpreadsheet(), SH_SCHEDULE);
+  ensureHeaders(sh, SCHEDULE_HEADERS);
+  const current = readScheduleMap(sh, tenantId);
+  const w = { id: Utilities.getUuid(), supplierId: auth.supplierId, clientIds: [], schedule: [] };
+  _supplierWorkerAllowedFields().forEach(function(f){ if (body.worker && body.worker[f] != null) w[f] = body.worker[f]; });
+  w.name = ((w.docGiven||'') + ' ' + (w.docSurname||'')).trim();
+  const workers = current.workers.concat([w]);
+  _writeScheduleRow(sh, current, tenantId, workers, current.clients, current.suppliers, current.weekStart);
+  return {ok:true, worker: _stripWorkerForSupplier(w, auth.supplierId)};
+}
+function supplierUpdateWorker(body, tenantId, auth){
+  if (!tenantId) return {error:'No tenant'};
+  if (!auth || auth.role !== 'supplier') throw {error:'Только для роли поставщика'};
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_SCHEDULE);
+  const current = readScheduleMap(sh, tenantId);
+  const idx = current.workers.findIndex(function(w){ return w.id === body.workerId && w.supplierId === auth.supplierId; });
+  if (idx === -1) return {error:'Работник не найден'};
+  const w = current.workers[idx];
+  _supplierWorkerAllowedFields().forEach(function(f){ if (body.worker && body.worker[f] != null) w[f] = body.worker[f]; });
+  w.name = ((w.docGiven||'') + ' ' + (w.docSurname||'')).trim();
+  current.workers[idx] = w;
+  _writeScheduleRow(sh, current, tenantId, current.workers, current.clients, current.suppliers, current.weekStart);
+  return {ok:true, worker: _stripWorkerForSupplier(w, auth.supplierId)};
+}
+function supplierDeleteWorker(body, tenantId, auth){
+  if (!tenantId) return {error:'No tenant'};
+  if (!auth || auth.role !== 'supplier') throw {error:'Только для роли поставщика'};
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_SCHEDULE);
+  const current = readScheduleMap(sh, tenantId);
+  const before = current.workers.length;
+  const workers = current.workers.filter(function(w){ return !(w.id === body.workerId && w.supplierId === auth.supplierId); });
+  if (workers.length === before) return {error:'Работник не найден'};
+  _writeScheduleRow(sh, current, tenantId, workers, current.clients, current.suppliers, current.weekStart);
+  return {ok:true};
+}
+
+// Allow-list sanitizer for role==='supplier' (Admin/Roles plan, stage 11) —
+// builds a NEW object from an explicit list of permitted fields rather than
+// deleting forbidden ones from a copy, so a field added to the worker model
+// later is excluded by default unless someone deliberately adds it here. NEVER
+// includes hourlyRate/otRate/shabbatRate/clientRates (the worker's real wage)
+// or any client-rate field — a supplier sees which client/object (by name,
+// via clientIds — the client LIST itself is separately stripped down to just
+// id+name in loadSchedule below) a worker is assigned to, never what that
+// client pays or what the worker earns there. `supplierRate` replaces the raw
+// `supplierRates` map with just this supplier's own flat commission number
+// (see stage 12) — safe to hand over since it's already scoped to their own
+// worker and their own agency, not a peek at another supplier's rate.
+function _stripWorkerForSupplier(w, supplierId){
+  const o = {};
+  ['id','name','docGiven','docSurname','docId','docType','docDob','docSex','address','houseNumber','city',
+   'maritalStatus','healthFund','workStartDate','phone','docChildren','clientIds','supplierId','token',
+   'startDate','expiryEnabled','expiryMonths','expiryWarnMonths','docUrl','docFileId','assetsFileId',
+   'avatarB64','colorIdx','notes','createdAt','schedule'
+  ].forEach(function(k){ if(w[k]!==undefined) o[k]=w[k]; });
+  const rates = w.supplierRates && w.supplierRates[supplierId];
+  o.supplierRate = (rates && rates.rate!=null) ? rates.rate : null;
+  return o;
+}
+// Same allow-list principle for clients — a supplier only ever needs to know
+// WHICH site a worker is assigned to (to show a readable name), never that
+// client's own billing/rate data.
+function _stripClientForSupplier(c){ return { id: c.id, name: c.name, object: c.object||null }; }
+
+function loadSchedule(tenantId, auth) {
   if (!tenantId) return { workers: [], clients: [], suppliers: [], weekStart: null, savedAt: null };
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_SCHEDULE);
   const m = readScheduleMap(sh, tenantId);
+  const clients = normalizeClients(m.clients); // ← radius guaranteed numeric
+  if (auth && auth.role === 'supplier') {
+    const workers = m.workers.filter(function(w){ return w.supplierId === auth.supplierId; });
+    return {
+      workers:   workers.map(function(w){ return _stripWorkerForSupplier(w, auth.supplierId); }),
+      clients:   clients.map(_stripClientForSupplier),
+      suppliers: [], // a supplier never needs the full supplier directory, only its own commission (already on each worker above)
+      weekStart: m.weekStart,
+      savedAt:   m.savedAt,
+    };
+  }
   return {
     workers:   m.workers,
-    clients:   normalizeClients(m.clients),   // ← radius guaranteed numeric
+    clients:   clients,
     suppliers: m.suppliers,
     weekStart: m.weekStart,
     savedAt:   m.savedAt,
@@ -666,6 +972,34 @@ const PUNCH_HEADERS = [
   'Site','Distance(m)','GPS Accuracy(m)','GPS Suspicious','GPS Warnings',
   'Notes','EditedAt','ClientID','TenantId'
 ];
+
+// One-time migration (2026-10-02, Admin/Roles plan stage 3): appends the
+// 'permissions'/'supplierId' headers to an existing Users sheet that predates
+// them, and backfills permissions='*' on every existing row so no
+// pre-existing login loses access the moment this column exists (an empty
+// permissions cell is ALSO treated as '*' by login() itself, so this backfill
+// is a belt-and-suspenders visibility aid in the sheet, not strictly required
+// for correctness). Never touches passwordHash/passwordSalt/any other column.
+// Safe to re-run.
+function migrateUsersAddPermissionsColumns(){
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_USERS);
+  if (!sh || sh.getLastRow() === 0) return {ok:true, note:'sheet empty or missing, nothing to migrate'};
+  const headers = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
+  let permCol = headers.indexOf('permissions');
+  let supCol = headers.indexOf('supplierId');
+  let added = [];
+  if (permCol === -1) { permCol = headers.length; sh.getRange(1, permCol+1).setValue('permissions').setFontWeight('bold').setBackground('#e8eaf0'); added.push('permissions'); }
+  if (supCol === -1) { supCol = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].length; sh.getRange(1, supCol+1).setValue('supplierId').setFontWeight('bold').setBackground('#e8eaf0'); added.push('supplierId'); }
+  let backfilled = 0;
+  if (sh.getLastRow() > 1) {
+    const lastRow = sh.getLastRow();
+    const existing = sh.getRange(2, permCol+1, lastRow-1, 1).getValues();
+    for (let i = 0; i < existing.length; i++) {
+      if (!existing[i][0]) { sh.getRange(i+2, permCol+1).setValue('*'); backfilled++; }
+    }
+  }
+  return {ok:true, addedColumns: added, backfilledPermissions: backfilled};
+}
 
 // One-time migration: appends the 'ClientID' header to an existing PunchLog
 // sheet that predates this column, without touching any existing rows/columns.
@@ -752,6 +1086,101 @@ function formatPunchLogSheet(){
   sh.setFrozenRows(1);
   try { sh.autoResizeColumns(1, lastCol); } catch(e) {}
   return {ok:true, columns: lastCol};
+}
+
+// ONE-TIME migration (2026-10-02, run manually from the Apps Script editor):
+// splits the old shared SH_PUNCHLOG sheet (every tenant's rows interleaved
+// chronologically, see loadPunchLog()'s own comment for why that became a
+// scaling problem) into one PunchLog_<tenantId> sheet per firm. Groups every
+// row by its TenantId column, appends each group's rows (in original order)
+// to that tenant's own sheet via getOrCreateSheet()/ensureHeaders() — the
+// exact same helpers savePunch() itself uses, so a migrated sheet is
+// byte-for-byte the same shape a freshly-written one would be. Does NOT
+// delete/clear the old SH_PUNCHLOG sheet — leaves it in place as a safety
+// net; rename/archive it by hand once the new per-tenant sheets are verified.
+// Safe to re-run: re-running after a successful migration finds SH_PUNCHLOG
+// still full (never cleared) and would duplicate rows, so this checks each
+// new sheet's row count first and skips any tenant whose sheet already has
+// data, rather than blindly re-appending.
+function migratePunchLogToPerTenantSheets(){
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const oldSh = ss.getSheetByName(SH_PUNCHLOG);
+  if (!oldSh || oldSh.getLastRow() < 2) return {ok:true, note:'no legacy PunchLog data to migrate'};
+  const rows = oldSh.getDataRange().getValues();
+  const headers = rows[0];
+  const tCol = headers.indexOf('TenantId');
+  if (tCol === -1) return {error:'Legacy PunchLog has no TenantId column — run migrateToMultiTenant() first'};
+  const byTenant = {};
+  for (let i = 1; i < rows.length; i++) {
+    const t = rows[i][tCol];
+    if (!t) continue; // orphan row with no tenant — left in the legacy sheet, not migrated
+    (byTenant[t] = byTenant[t] || []).push(rows[i]);
+  }
+  const result = {};
+  Object.keys(byTenant).forEach(function(tenantId){
+    const sh = getOrCreateSheet(ss, _punchSheetName(tenantId));
+    ensureHeaders(sh, PUNCH_HEADERS);
+    if (sh.getLastRow() > 1) { result[tenantId] = 'skipped (already has ' + (sh.getLastRow()-1) + ' rows)'; return; }
+    const tenantRows = byTenant[tenantId];
+    sh.getRange(2, 1, tenantRows.length, headers.length).setValues(tenantRows);
+    result[tenantId] = 'migrated ' + tenantRows.length + ' rows';
+  });
+  return {ok:true, tenants: result};
+}
+
+// Archives punches older than ~12 months out of a tenant's live PunchLog_
+// sheet into a parallel PunchLogArchive_ sheet, keeping the live sheet's size
+// (and therefore loadPunchLog()'s read cost) bounded for a long-running firm
+// regardless of how many years of history they accumulate. Salary/accounting
+// queries almost never look back further than the current/previous month, so
+// the archive is a separate, rarely-read sheet rather than deleted data.
+// Called per-tenant from archiveOldPunchesAllTenants() below (the actual
+// scheduled trigger), not directly, so a single run covers every firm.
+function archiveOldPunches(tenantId, cutoffDate){
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(_punchSheetName(tenantId));
+  if (!sh || sh.getLastRow() < 2) return {ok:true, archived:0};
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const tsCol = headers.indexOf('Timestamp');
+  const toArchive = [];
+  const keepRows = [headers];
+  for (let i = 1; i < rows.length; i++) {
+    const ts = rows[i][tsCol];
+    const d = (ts instanceof Date) ? ts : new Date(ts);
+    if (!isNaN(d) && d < cutoffDate) toArchive.push(rows[i]); else keepRows.push(rows[i]);
+  }
+  if (!toArchive.length) return {ok:true, archived:0};
+  const archiveSh = getOrCreateSheet(ss, _punchArchiveSheetName(tenantId));
+  ensureHeaders(archiveSh, PUNCH_HEADERS);
+  archiveSh.getRange(archiveSh.getLastRow()+1, 1, toArchive.length, headers.length).setValues(toArchive);
+  sh.clearContents();
+  sh.getRange(1, 1, keepRows.length, headers.length).setValues(keepRows);
+  return {ok:true, archived: toArchive.length};
+}
+
+// Scheduled trigger target (weekly, see setupPunchArchiveTrigger()) — runs
+// archiveOldPunches() for every tenant that has its own PunchLog_ sheet.
+function archiveOldPunchesAllTenants(){
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - 1);
+  const result = {};
+  ss.getSheets().forEach(function(sh){
+    const name = sh.getName();
+    if (name.indexOf('PunchLog_') !== 0) return; // skip PunchLogArchive_ and the legacy shared sheet too
+    const tenantId = name.substring('PunchLog_'.length);
+    result[tenantId] = archiveOldPunches(tenantId, cutoff);
+  });
+  return {ok:true, tenants: result};
+}
+
+function setupPunchArchiveTrigger(){
+  ScriptApp.getProjectTriggers().forEach(function(t){
+    if (t.getHandlerFunction() === 'archiveOldPunchesAllTenants') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('archiveOldPunchesAllTenants').timeBased().everyDays(7).atHour(3).create();
+  Logger.log('Weekly PunchLog archive trigger created (runs ~03:00, every 7 days).');
 }
 
 // ── Multi-tenant migration ──────────────────────────────────────────────────
@@ -867,10 +1296,20 @@ function migrateToMultiTenant(superadminUsername, superadminPassword, odinsonUse
   return out;
 }
 
+// PunchLog is split one-sheet-per-tenant (2026-10-02) — see this function's
+// own history in CLAUDE.md for why: a single shared PunchLog sheet made every
+// loadPunchLog() call read every firm's ENTIRE history combined, so the cost
+// of one firm's growth was paid by every other firm's requests too. Sheet
+// name intentionally keeps the tenantId raw (not hashed/sanitized) — tenantId
+// is always a UUID from Utilities.getUuid(), never user-controlled text, so
+// it's already a safe sheet name.
+function _punchSheetName(tenantId) { return 'PunchLog_' + tenantId; }
+function _punchArchiveSheetName(tenantId) { return 'PunchLogArchive_' + tenantId; }
+
 function savePunch(entry, tenantId) {
   if (!tenantId) return {error:'No tenant'};
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sh = getOrCreateSheet(ss, SH_PUNCHLOG);
+  const sh = getOrCreateSheet(ss, _punchSheetName(tenantId));
   ensureHeaders(sh, PUNCH_HEADERS);
   const row = [
     entry.id          || Date.now(),
@@ -895,38 +1334,47 @@ function savePunch(entry, tenantId) {
   return {ok: true, id: row[0]};
 }
 
-function loadPunchLog(filter, tenantId) {
+function loadPunchLog(filter, tenantId, auth) {
   if (!tenantId) return {entries:[]};
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_PUNCHLOG);
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(_punchSheetName(tenantId));
   if (!sh || sh.getLastRow() < 2) return {entries:[]};
+  // Admin/Roles plan, stage 11: a supplier login only ever sees punches
+  // belonging to ITS OWN workers — resolved by reading this tenant's own
+  // worker list (Schedule sheet) and keeping only the ids whose supplierId
+  // matches, same allow-list-by-worker-id principle _stripWorkerForSupplier()
+  // uses in loadSchedule() above.
+  let supplierWorkerIds = null;
+  if (auth && auth.role === 'supplier') {
+    const schSh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_SCHEDULE);
+    const m = readScheduleMap(schSh, tenantId);
+    supplierWorkerIds = {};
+    m.workers.forEach(function(w){ if (w.supplierId === auth.supplierId) supplierWorkerIds[w.id] = true; });
+  }
   const rows = sh.getDataRange().getValues();
   const headers = rows[0];
   const col = {}; headers.forEach(function(h,i){ col[h]=i; });
-  // Optimization (2026-09-28): PunchLog is append-only and interleaves every
-  // firm's rows chronologically (no per-tenant sheet split), so this always
-  // reads the WHOLE sheet — that part is unavoidable without a bigger data
-  // model change. What WAS avoidable: the old code ran the expensive per-row
-  // mapping (object construction + Utilities.formatDate, a real timezone
-  // lookup) over every row in the sheet, THEN threw away everything that
-  // didn't belong to this tenant. Filtering by tenantId/worker/type on the
-  // raw row values FIRST — cheap column lookups, no formatting — means only
-  // the rows that actually belong to this request ever pay for the mapping
-  // step, which is most of the cost as the sheet grows across every firm's
-  // history. filter.date stays a post-map filter since a raw cell can be a
-  // Date object OR an already-formatted string and needs the same
-  // normalization the mapped entries themselves get, to match a 'dd/MM/yyyy'
-  // filter string correctly either way.
+  // Optimization (2026-09-28, superseded 2026-10-02 by the per-tenant sheet
+  // split above): this sheet now ALREADY only contains this tenant's own
+  // rows, so the old TenantId-column filter is redundant (kept as a no-op
+  // safety check below, cheap, in case a row somehow got TenantId wrong) —
+  // the real win from 2026-09-28 (filtering worker/type on raw row values
+  // BEFORE the expensive per-row mapping/date-formatting) still applies and
+  // still matters, just now over one tenant's own history instead of every
+  // firm's combined. filter.date stays a post-map filter since a raw cell
+  // can be a Date object OR an already-formatted string and needs the same
+  // normalization the mapped entries themselves get.
   const matchingRows = rows.slice(1).filter(function(row){
     if (!row[col['WorkerID']]) return false;
-    if ((row[col['TenantId']] || null) !== tenantId) return false;
+    if (col['TenantId'] != null && row[col['TenantId']] && row[col['TenantId']] !== tenantId) return false;
     if (filter && filter.worker && row[col['Worker']] !== filter.worker) return false;
     if (filter && filter.type && String(row[col['Type']]||'').toLowerCase() !== filter.type) return false;
+    if (supplierWorkerIds && !supplierWorkerIds[row[col['WorkerID']]]) return false;
     return true;
   });
   let entries = matchingRows.map(function(row){
     const o = {};
     headers.forEach(function(h,i){ o[h] = row[i]; });
-    return {
+    const base = {
       id:            o['ID'],
       workerId:      o['WorkerID'],
       workerName:    o['Worker'],
@@ -935,36 +1383,43 @@ function loadPunchLog(filter, tenantId) {
       date:          (o['Date'] instanceof Date) ? Utilities.formatDate(o['Date'], _TZ_(), 'dd/MM/yyyy') : o['Date'],
       ts:            (o['Timestamp'] instanceof Date) ? o['Timestamp'].toISOString() : o['Timestamp'],
       site:          o['Site'],
-      dist:          o['Distance(m)'] !== '' ? Number(o['Distance(m)']) : null,
-      gpsAccuracy:   o['GPS Accuracy(m)'] !== '' ? Number(o['GPS Accuracy(m)']) : null,
-      gpsSuspicious: o['GPS Suspicious'] === 'YES',
-      gpsWarnings:   o['GPS Warnings'] ? String(o['GPS Warnings']).split('; ').filter(Boolean) : [],
-      notes:         o['Notes'],
-      editedAt:      o['EditedAt'],
       clientId:      o['ClientID'] || null,
-      tenantId:      o['TenantId'] || null,
     };
+    // Admin/Roles plan, stage 11: GPS fields (exact location, accuracy, spoof
+    // flags) and internal editing metadata are never handed to a supplier —
+    // IN/OUT time + which site is all it needs. Every other role gets the
+    // full record, unchanged.
+    if (auth && auth.role === 'supplier') return base;
+    base.dist          = o['Distance(m)'] !== '' ? Number(o['Distance(m)']) : null;
+    base.gpsAccuracy   = o['GPS Accuracy(m)'] !== '' ? Number(o['GPS Accuracy(m)']) : null;
+    base.gpsSuspicious = o['GPS Suspicious'] === 'YES';
+    base.gpsWarnings   = o['GPS Warnings'] ? String(o['GPS Warnings']).split('; ').filter(Boolean) : [];
+    base.notes         = o['Notes'];
+    base.editedAt      = o['EditedAt'];
+    base.tenantId      = o['TenantId'] || null;
+    return base;
   });
   if (filter && filter.date) entries = entries.filter(e => e.date === filter.date);
   return {entries};
 }
 
-// Finds a PunchLog row by ID, but only if it belongs to the given tenant —
-// prevents one firm from editing/deleting another firm's punch by guessing an ID.
-function _findPunchRow(sh, id, tenantId) {
+// Finds a punch row by ID in this tenant's OWN sheet — no tenantId check
+// needed on the row itself any more (2026-10-02: the sheet is already scoped
+// to one tenant by name, unlike the old shared PunchLog), so a wrong-tenant
+// ID simply isn't found here at all rather than being found-then-rejected.
+function _findPunchRow(sh, id) {
   const rows = sh.getDataRange().getValues();
-  const tCol = rows[0].indexOf('TenantId');
   for (let i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]) === String(id) && rows[i][tCol] === tenantId) return i + 1;
+    if (String(rows[i][0]) === String(id)) return i + 1;
   }
   return null;
 }
 
 function updatePunch(data, tenantId) {
   if (!tenantId) return {error:'No tenant'};
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_PUNCHLOG);
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(_punchSheetName(tenantId));
   if (!sh) return {error:'Sheet not found'};
-  const r = _findPunchRow(sh, data.id, tenantId);
+  const r = _findPunchRow(sh, data.id);
   if (!r) return {error:'Record not found'};
   if (data.type)                    sh.getRange(r,4).setValue(data.type.toUpperCase());
   if (data.time)                    sh.getRange(r,5).setValue(data.time);
@@ -978,9 +1433,9 @@ function updatePunch(data, tenantId) {
 
 function deletePunch(id, tenantId) {
   if (!tenantId) return {error:'No tenant'};
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_PUNCHLOG);
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(_punchSheetName(tenantId));
   if (!sh) return {error:'Sheet not found'};
-  const r = _findPunchRow(sh, id, tenantId);
+  const r = _findPunchRow(sh, id);
   if (!r) return {error:'Record not found'};
   sh.deleteRow(r);
   return {ok:true};
@@ -991,6 +1446,139 @@ function colorPunchRow(sh, rowNum, type) {
     const color = type==='IN' ? '#e8f5e9' : type==='OUT' ? '#ffebee' : '#ffffff';
     sh.getRange(rowNum, 1, 1, PUNCH_HEADERS.length).setBackground(color);
   } catch(e) {}
+}
+
+// ── Hours import — approval queue (Admin/Roles plan, stage 14) ─────────────────
+// A manager/staff upload of hours parsed from a file (Excel/photo/scan-PDF —
+// the client does the parsing, this only stores the result) never lands
+// directly in PunchLog. Each parsed shift becomes a 'pending' row here first;
+// only an explicit approvePendingHours() call by tenant_admin/superadmin
+// turns it into real PunchLog entries that feed payroll — see
+// requirePendingHoursApprover() below for why this exists (anti-fraud: a
+// supplier must never be able to fabricate its own hours, and even a
+// trusted staff upload gets a human second look before it touches pay).
+// One sheet per tenant, same pattern as PunchLog_<tenantId> above.
+function _pendingHoursSheetName(tenantId) { return 'PendingHours_' + tenantId; }
+const PENDING_HOURS_HEADERS = ['RowId','BatchId','WorkerId','ClientId','Date','InTime','OutTime','UploadedBy','UploadedAt','FileName','Status'];
+
+// role==='supplier' is explicitly forbidden from EVER calling either the
+// upload or the approve/reject action below — the plan's own anti-fraud
+// requirement (a supplier must never be able to inject its own hours).
+// Every other role (staff/tenant_admin/superadmin) may upload freely.
+function savePendingHoursBatch(body, tenantId, auth) {
+  if (!tenantId) return {error:'No tenant'};
+  if (auth && auth.role === 'supplier') throw {error:'Недоступно для роли поставщика'};
+  const entries = Array.isArray(body.entries) ? body.entries : [];
+  if (!entries.length) return {error:'Нет распознанных смен для загрузки'};
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = getOrCreateSheet(ss, _pendingHoursSheetName(tenantId));
+  ensureHeaders(sh, PENDING_HOURS_HEADERS);
+  const batchId = Utilities.getUuid();
+  const uploadedAt = new Date().toISOString();
+  const uploadedBy = (auth && (auth.username || auth.userId)) || '';
+  const rows = entries.map(function(en){
+    return [
+      Utilities.getUuid(), batchId, en.workerId || '', en.clientId || '',
+      en.date || '', en.inTime || '', en.outTime || '',
+      uploadedBy, uploadedAt, body.fileName || '', 'pending',
+    ];
+  });
+  sh.getRange(sh.getLastRow()+1, 1, rows.length, PENDING_HOURS_HEADERS.length).setValues(rows);
+  return {ok:true, batchId: batchId, count: rows.length};
+}
+
+// Any non-supplier role may LIST pending batches (tenant scoping — the sheet
+// itself — already restricts this to one firm); only tenant_admin/superadmin
+// may actually approve/reject (requirePendingHoursApprover below).
+function loadPendingHours(tenantId, auth) {
+  if (!tenantId) return {batches:[]};
+  if (auth && auth.role === 'supplier') throw {error:'Недоступно для роли поставщика'};
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(_pendingHoursSheetName(tenantId));
+  if (!sh || sh.getLastRow() < 2) return {batches:[]};
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const col = {}; headers.forEach(function(h,i){ col[h]=i; });
+  const byBatch = {};
+  rows.slice(1).forEach(function(row){
+    const batchId = row[col['BatchId']];
+    if (!byBatch[batchId]) {
+      byBatch[batchId] = {
+        batchId: batchId, fileName: row[col['FileName']], uploadedBy: row[col['UploadedBy']],
+        uploadedAt: row[col['UploadedAt']], status: row[col['Status']], entries: [],
+      };
+    }
+    byBatch[batchId].entries.push({
+      rowId: row[col['RowId']], workerId: row[col['WorkerId']], clientId: row[col['ClientId']] || null,
+      date: row[col['Date']], inTime: row[col['InTime']], outTime: row[col['OutTime']],
+    });
+  });
+  return {batches: Object.values(byBatch)};
+}
+
+function requirePendingHoursApprover(auth) {
+  if (!auth || (auth.role !== 'tenant_admin' && auth.role !== 'superadmin')) {
+    throw {error:'Подтверждать загруженные часы может только владелец фирмы или супер-админ'};
+  }
+}
+
+// Turns every 'pending' row of one batch into real PunchLog entries (via the
+// same savePunch() every other punch goes through — never a parallel write
+// path) and flips the pending rows to 'approved'. Two PunchLog rows per
+// shift (IN+OUT), tagged in Notes so an approved-import punch is visibly
+// distinguishable from a GPS-verified one, and deliberately carrying no
+// GPS/distance fields at all (there are none to carry — this data never came
+// from a phone's geolocation).
+function approvePendingHours(body, tenantId, auth) {
+  if (!tenantId) return {error:'No tenant'};
+  requirePendingHoursApprover(auth);
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(_pendingHoursSheetName(tenantId));
+  if (!sh || sh.getLastRow() < 2) return {error:'Пакет не найден'};
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const col = {}; headers.forEach(function(h,i){ col[h]=i; });
+  const schSh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_SCHEDULE);
+  const m = readScheduleMap(schSh, tenantId);
+  const workerById = {}; m.workers.forEach(function(w){ workerById[w.id]=w; });
+  let created = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (row[col['BatchId']] !== body.batchId || row[col['Status']] !== 'pending') continue;
+    const workerId = row[col['WorkerId']], w = workerById[workerId];
+    const note = 'Imported' + (row[col['FileName']] ? (' from ' + row[col['FileName']]) : '');
+    const dateStr = row[col['Date']];
+    const tsFor = function(timeStr){
+      const d = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(dateStr);
+      if (!d || !timeStr) return new Date().toISOString();
+      return new Date(Number(d[3]), Number(d[2])-1, Number(d[1]),
+        Number((timeStr.split(':')[0])||0), Number((timeStr.split(':')[1])||0)).toISOString();
+    };
+    savePunch({ workerId: workerId, workerName: w ? w.name : '', type: 'in', time: row[col['InTime']],
+      date: dateStr, ts: tsFor(row[col['InTime']]), clientId: row[col['ClientId']] || '', notes: note }, tenantId);
+    if (row[col['OutTime']]) {
+      savePunch({ workerId: workerId, workerName: w ? w.name : '', type: 'out', time: row[col['OutTime']],
+        date: dateStr, ts: tsFor(row[col['OutTime']]), clientId: row[col['ClientId']] || '', notes: note }, tenantId);
+    }
+    sh.getRange(i+1, col['Status']+1).setValue('approved');
+    created++;
+  }
+  return {ok:true, created: created};
+}
+
+function rejectPendingHours(body, tenantId, auth) {
+  if (!tenantId) return {error:'No tenant'};
+  requirePendingHoursApprover(auth);
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(_pendingHoursSheetName(tenantId));
+  if (!sh || sh.getLastRow() < 2) return {error:'Пакет не найден'};
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const col = {}; headers.forEach(function(h,i){ col[h]=i; });
+  let rejected = 0;
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][col['BatchId']] !== body.batchId || rows[i][col['Status']] !== 'pending') continue;
+    sh.getRange(i+1, col['Status']+1).setValue('rejected');
+    rejected++;
+  }
+  return {ok:true, rejected: rejected};
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1381,6 +1969,72 @@ function aiVerifyField(body){
   (json.content || []).forEach(function(c){ if(c.type === 'text') text += c.text; });
 
   return {ok: true, value: text.trim()};
+}
+
+// Reads a photographed/scanned hours timesheet (Admin/Roles plan, stage 14 —
+// the AI-vision half of the hours-import feature; the Excel half is parsed
+// entirely client-side via SheetJS, no AI call at all). Uses the same
+// accuracy-first ANTHROPIC_MODEL as aiReadDoc/aiVerifyField — a misread
+// digit here corrupts real payroll hours, same reasoning as those. Returns
+// entries only; the CALLER is responsible for routing them through
+// savePendingHoursBatch() — this function never writes anything itself, so
+// a bad read can't silently reach PunchLog without the approval queue.
+function aiReadHoursTable(body){
+  var props = PropertiesService.getScriptProperties();
+  var key   = props.getProperty('ANTHROPIC_API_KEY');
+  var model = props.getProperty('ANTHROPIC_MODEL') || 'claude-sonnet-5';
+  if(!key)        return {error:'ANTHROPIC_API_KEY не задан в Script Properties'};
+  if(!body.image) return {error:'Нет изображения'};
+
+  var SYSTEM = 'This is a photo or scan of a work-hours timesheet (a table of dates with clock-in/clock-out times, ' +
+    'or a simple handwritten/printed log of work days and hours). Extract every row as JSON — ONLY valid JSON, no prose, no markdown: ' +
+    '{"entries":[{"date":"DD/MM/YYYY","inTime":"HH:MM","outTime":"HH:MM"}, ...]}. ' +
+    'Read dates and times exactly as printed/written — do not guess or invent values. ' +
+    'If a row has no clear out-time (e.g. still open), set "outTime" to an empty string. ' +
+    'Skip rows that are clearly not a work entry (totals, headers, blank rows). ' +
+    'Return ONLY the JSON object, nothing else.';
+
+  var payload = {
+    model: model,
+    max_tokens: 4000,
+    messages: [{
+      role: 'user',
+      content: [
+        {type: 'text', text: SYSTEM},
+        {type: 'image', source: {type: 'base64', media_type: body.mediaType || 'image/jpeg', data: body.image}},
+        {type: 'text', text: 'Return the JSON object only.'}
+      ]
+    }]
+  };
+
+  var opts = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  var res;
+  try { res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', opts); }
+  catch(e){ return {error:'Запрос к Anthropic не прошёл: ' + e}; }
+
+  var json;
+  try { json = JSON.parse(res.getContentText()); }
+  catch(e){ return {error:'Неверный ответ от Anthropic (HTTP ' + res.getResponseCode() + ')'}; }
+
+  if(json.error) return {error: json.error.message || 'Ошибка Anthropic'};
+
+  var text = '';
+  (json.content || []).forEach(function(c){ if(c.type === 'text') text += c.text; });
+  text = text.replace(/```json|```/g,'').trim();
+  var m = text.match(/\{[\s\S]*\}/);
+
+  var parsed;
+  try { parsed = JSON.parse(m ? m[0] : text); }
+  catch(e){ return {error:'AI вернул нечитаемый ответ', raw: String(text).slice(0,300)}; }
+
+  return {ok: true, entries: Array.isArray(parsed.entries) ? parsed.entries : []};
 }
 
 // Batched sibling of aiVerifyField (added 2026-09-28, optimization) — the
