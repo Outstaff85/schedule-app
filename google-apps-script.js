@@ -1735,6 +1735,33 @@ function aiReadDoc(body){
     '{"type":"israeli_id","surname":"...","given":"...","idNo":"9-digit number","dob":"DD/MM/YYYY","sex":"M or F","address":"street name only","houseNumber":"house/building number only","city":"...","expiry":"DD/MM/YYYY","maritalStatus":"single, married, divorced, widowed, or empty","children":[{"name":"...","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}]} ' +
     'Rules: dates always DD/MM/YYYY. Names exactly as printed. ' +
     'For Israeli ID the surname is שם משפחה, given name is שם פרטי, ID number is מספר זהות (9 digits). ' +
+    // Field map: which printed label means what, and the look-alike labels
+    // that must NOT be used for a field. Built from the labels themselves
+    // rather than positions, since layouts differ between ID generations.
+    'FIELD MAP — ISRAELI ID (any format/side). Use the printed Hebrew label to decide what each value is: ' +
+    'שם משפחה → "surname". שם פרטי → "given". ' +
+    'שם האב (father\'s name) and שם האם (mother\'s name) are the PARENTS\' names — never put them in "given" or "surname". ' +
+    'שם משפחה קודם / שמות קודמים (previous names) — never use as "surname". ' +
+    'If a name is printed both in Hebrew and in Latin letters, return the Hebrew version. ' +
+    'מספר זהות / ת.ז. → "idNo": exactly 9 digits, keep leading zeros; on older cards the last (check) digit is sometimes printed separately after a dash or in its own box (ס"ב) — join it to the other 8 so the result is 9 digits. ' +
+    'תאריך לידה → "dob". תאריך הנפקה / תאריך מתן (issue date) is NOT the expiry and NOT the birth date — never return it. ' +
+    'תאריך תפוגה / בתוקף עד / תוקף → "expiry"; if the card shows no expiry field (older laminated cards have none), return "expiry":"". ' +
+    'מין → "sex": ז or זכר = "M", נ or נקבה = "F"; never infer sex from the name. ' +
+    'מקום לידה (place of birth) and מקום הנפקה / לשכה (issuing office) are NOT the address or the city — never put them in "address" or "city"; the address comes ONLY from מען / מס\' בית / ישוב. ' +
+    'המצב האישי / מצב אישי → "maritalStatus". ' +
+    'Dates may also appear in the Hebrew calendar (e.g. letters like ט"ו בניסן תשנ"ה) — ignore those and use only the Gregorian date. ' +
+    'On the ספח, a spouse row (בן/בת זוג) may show the spouse\'s name and ID number — the spouse is never the holder (not "idNo", not "given"/"surname") and never a child (not in "children"). ' +
+    'FIELD MAP — FOREIGN PASSPORT (labels are usually bilingual, e.g. English/French plus the national language): ' +
+    'Surname / Nom → "surname". Given names / Prénoms → "given" (keep all given names, in the order printed). ' +
+    'Passport No. / Document No. / No. du passeport → "passportNo" — NOT the "Personal No." / national ID number field that some passports also print. ' +
+    'Date of birth → "dob". Date of expiry / Date d\'expiration → "expiry". Date of issue / Date de délivrance is NOT the expiry — never return it. ' +
+    'Sex → "sex" (M or F). Nationality → "nationality". Issuing authority / Authority / Issuing State → "issuer". ' +
+    'Printed dates like "12 JAN 1990", "12.01.1990" or "12 JAN/JAN 90" are always converted to DD/MM/YYYY. ' +
+    'Most passports have a machine-readable zone (MRZ): two lines of 44 characters with "<" fillers at the bottom of the photo page. ' +
+    'Line 2 holds, in order: passport number (first 9 characters, "<" = padding) + check digit, nationality (3 letters), birth date YYMMDD + check digit, sex (M/F), expiry date YYMMDD + check digit. ' +
+    'Use the MRZ as a cross-check for passportNo, dob, sex and expiry: if a character in the printed field is unclear or conflicts with the MRZ, prefer the MRZ value. ' +
+    'For MRZ years, choose the century that makes the holder a plausible working-age adult for dob, and a date within the next 20 years or the recent past for expiry. ' +
+    'Take names from the printed fields, not the MRZ (the MRZ drops accents and truncates long names). ' +
     'The top-level "idNo" is specifically the DOCUMENT HOLDER\'s own number — never a child\'s. If a ילדים (children) section is visible (e.g. when this photo is of the ספח side), each child usually has their OWN separate מספר זהות printed next to their name; that number belongs ONLY inside that child\'s own entry in "children", never in the top-level "idNo" field. ' +
     'FIRST CHECK, before anything else, on every photo: does it show the three labeled fields מען (street), מס\' בית (house/building number), and ישוב (city/town)? ' +
     'These three fields are always present on the address/ספח side of an Israeli ID — in BOTH the old paper-insert format and the new biometric-card-back format (see below) — and nowhere else. ' +
@@ -1883,6 +1910,8 @@ function aiReadSefach(body){
     'Concrete example of correctly split fields: if the document shows מען "יהודה הלוי", מס\' בית "16", and ישוב "פתח תקווה", return them as three separate fields — "address":"יהודה הלוי", "houseNumber":"16", "city":"פתח תקווה" — never combine any two of them into one string (e.g. never "address":"יהודה הלוי 16", never "city":"פתח תקווה 16"). ' +
     'Keep address/houseNumber/city strictly separate — never combine two of them into one field. ' +
     'The ילדים (children) section, if present and populated, goes in "children"; if absent or empty, return "children":[]. ' +
+    'A spouse row (בן/בת זוג) may show the spouse\'s name and ID number — the spouse is never the holder (not "idNo") and never a child (not in "children"). ' +
+    'מקום לידה (place of birth) is NOT the address or city — the address comes ONLY from מען / מס\' בית / ישוב. ' +
     'Some ID variants also print a personal/marital status field (המצב האישי / מצב אישי / מצב משפחתי — רווק/רווקה, נשוי/נשואה, גרוש/גרושה, אלמן/אלמנה) on this same address side: if visible, put it in "maritalStatus" as exactly one of "single", "married", "divorced", "widowed"; if not visible, return "maritalStatus":"" — do not guess. ' +
     'The holder\'s sex field (המין / מין) may also be printed on this side: ז or זכר means male → "sex":"M"; נ or נקבה means female → "sex":"F"; if not visible, return "sex":"" — never infer sex from a name or from a gendered marital-status word. ' +
     'If a field is not visible or unreadable, use an empty string (or empty array for children) — never guess. ' +
