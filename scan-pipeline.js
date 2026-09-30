@@ -676,12 +676,27 @@ function isValidIsraeliId(id){
 // doesn't check out, stop trying to fix it automatically and instead record
 // `idChecksumOk:false` so the worker modal can flag the field for the human
 // to look at, rather than silently keeping a number that's provably wrong.
+// Israeli documents print numbers in space-separated groups ("0 1234567 8")
+// and dates without leading zeros ("5.4.1995"); both AI reads and zoomed
+// re-reads are normalized here so the format checks below don't discard
+// an otherwise correct value.
+function _normScanDigits(s){
+  const t=String(s==null?'':s).replace(/[\s\-]/g,'');
+  return /^\d+$/.test(t)?t:String(s==null?'':s).trim();
+}
+function _normScanDate(s){
+  const t=String(s==null?'':s).trim();
+  const m=t.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/);
+  return m?m[1].padStart(2,'0')+'/'+m[2].padStart(2,'0')+'/'+m[3]:t;
+}
 async function verifyIdChecksum(parsed,b64,mediaType){
   if(!parsed||parsed.type!=='israeli_id'||!parsed.idNo) return parsed;
+  if(parsed.idNo) parsed.idNo=_normScanDigits(parsed.idNo);
   if(isValidIsraeliId(parsed.idNo)){ parsed.idChecksumOk=true; return parsed; }
   if(parsed.fieldBoxes&&parsed.fieldBoxes.idNo){
     const retry=await verifyField(b64,mediaType,parsed.fieldBoxes.idNo,'digits9');
-    if(retry&&/^\d{9}$/.test(retry)) parsed.idNo=retry;
+    const retryN=retry&&_normScanDigits(retry);
+    if(retryN&&/^\d{9}$/.test(retryN)) parsed.idNo=retryN;
   }
   parsed.idChecksumOk=isValidIsraeliId(parsed.idNo);
   return parsed;
@@ -723,11 +738,11 @@ async function verifyDigitFields(parsed,b64,mediaType){
   if(!jobs.length) return parsed;
   const values=await verifyFieldsBatch(jobs.map(j=>({field:j.field,kind:j.kind,box:parsed.fieldBoxes[j.field]})),b64,mediaType);
   jobs.forEach(j=>{
-    const val=values[j.field];
-    if(!val) return;
-    if(j.kind==='digits9'){ if(isDigits9(val)) parsed[j.field]=val; }
-    else if(j.kind==='date'){ if(isDate(val)) parsed[j.field]=val.replace(/\./g,'/'); }
-    else { parsed[j.field]=val; } // passportNo — format varies by country, trust the trimmed re-read
+    const raw=values[j.field];
+    if(!raw) return;
+    if(j.kind==='digits9'){ const val=_normScanDigits(raw); if(isDigits9(val)) parsed[j.field]=val; }
+    else if(j.kind==='date'){ const val=_normScanDate(raw); if(isDate(val)) parsed[j.field]=val.replace(/\./g,'/'); }
+    else { parsed[j.field]=String(raw).replace(/[\s<]/g,'').toUpperCase(); } // passportNo — format varies by country
   });
   return parsed;
 }
@@ -1716,10 +1731,10 @@ function openWorkerModalFromScan(p){
   };
   setIfPresent(ocrFields,'docGiven',p.given);
   setIfPresent(ocrFields,'docSurname',p.surname);
-  setIfPresent(ocrFields,'docId',isId?p.idNo:p.passportNo);
-  setIfPresent(ocrFields,'docDob',p.dob);
+  setIfPresent(ocrFields,'docId',isId?_normScanDigits(p.idNo):p.passportNo);
+  setIfPresent(ocrFields,'docDob',_normScanDate(p.dob));
   setIfPresent(ocrFields,'docSex',p.sex);
-  setIfPresent(ocrFields,'docExpiry',p.expiry);
+  setIfPresent(ocrFields,'docExpiry',_normScanDate(p.expiry));
   // Only set the key when a portrait was actually cropped from this scan —
   // an omitted key leaves an existing avatar (on a rescan) untouched instead
   // of wiping it out just because this particular photo had no photoBox.
@@ -1736,13 +1751,13 @@ function openWorkerModalFromScan(p){
     // as always.
     const MARITAL_AI_MAP={single:'marital_single',married:'marital_married',divorced:'marital_divorced',widowed:'marital_widowed'};
     if(p.maritalStatus&&MARITAL_AI_MAP[p.maritalStatus]) ocrFields.maritalStatus=MARITAL_AI_MAP[p.maritalStatus];
-    if(Array.isArray(p.children)&&p.children.length) ocrFields.docChildren=p.children.map(c=>({name:_nrm(c.name),idNo:_nrm(c.idNo),dob:_nrm(c.dob)}));
+    if(Array.isArray(p.children)&&p.children.length) ocrFields.docChildren=p.children.map(c=>({name:_nrm(c.name),idNo:_normScanDigits(_nrm(c.idNo)),dob:_normScanDate(_nrm(c.dob))}));
     // Spouse (ספח → Form 101 section ו). A spouse on the ספח means married,
     // so an unread marital status is filled in accordingly.
     const sp=p.spouse||{};
     setIfPresent(ocrFields,'spouseSurname',sp.surname);
     setIfPresent(ocrFields,'spouseGiven',sp.given);
-    setIfPresent(ocrFields,'spouseId',sp.idNo);
+    setIfPresent(ocrFields,'spouseId',_normScanDigits(sp.idNo));
     if((ocrFields.spouseSurname||ocrFields.spouseGiven||ocrFields.spouseId)&&!ocrFields.maritalStatus) ocrFields.maritalStatus='marital_married';
   }
   let rescanId=window.__aiRescanWorkerId;

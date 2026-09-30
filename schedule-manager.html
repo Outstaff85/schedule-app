@@ -1929,21 +1929,21 @@ function showWorkerModal(w){
       </div>
     </div>
     <div id="wSpouseWrap" style="display:${w.maritalStatus==='marital_married'?'block':'none'};border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:12px">
-      <div style="font-weight:600;font-size:13px;margin-bottom:8px"><i class="ti ti-heart"></i> Spouse (Form 101, section ו)</div>
+      <div style="font-weight:600;font-size:13px;margin-bottom:8px"><i class="ti ti-heart"></i> פרטי בן/בת הזוג</div>
       <div class="field-row">
-        <div class="field"><label>Spouse surname</label><input type="text" id="wSpouseSurname" value="${esc(w.spouseSurname||'')}"></div>
-        <div class="field"><label>Spouse given name</label><input type="text" id="wSpouseGiven" value="${esc(w.spouseGiven||'')}"></div>
+        <div class="field"><label>שם משפחה</label><input type="text" id="wSpouseSurname" value="${esc(w.spouseSurname||'')}"></div>
+        <div class="field"><label>שם פרטי</label><input type="text" id="wSpouseGiven" value="${esc(w.spouseGiven||'')}"></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Spouse ID / passport no.</label><input type="text" id="wSpouseId" value="${esc(w.spouseId||'')}" inputmode="numeric"></div>
-        <div class="field"><label>Spouse date of birth</label><input type="text" id="wSpouseDob" value="${esc(w.spouseDob||'')}" placeholder="DD/MM/YYYY"></div>
+        <div class="field"><label>מספר זהות / דרכון</label><input type="text" id="wSpouseId" value="${esc(w.spouseId||'')}" inputmode="numeric"></div>
+        <div class="field"><label>תאריך לידה</label><input type="text" id="wSpouseDob" value="${esc(w.spouseDob||'')}" placeholder="DD/MM/YYYY"></div>
       </div>
-      <div class="field"><label>Spouse income</label>
+      <div class="field"><label>הכנסת בן/בת הזוג</label>
         <select id="wSpouseIncome">
-          <option value="" ${!w.spouseIncome?'selected':''}>— Not set —</option>
-          <option value="none" ${w.spouseIncome==='none'?'selected':''}>No income</option>
-          <option value="work" ${w.spouseIncome==='work'?'selected':''}>Has income: work / pension / business</option>
-          <option value="other" ${w.spouseIncome==='other'?'selected':''}>Has income: other</option>
+          <option value="" ${!w.spouseIncome?'selected':''}>— לא נבחר —</option>
+          <option value="none" ${w.spouseIncome==='none'?'selected':''}>אין לבן/בת הזוג כל הכנסה</option>
+          <option value="work" ${w.spouseIncome==='work'?'selected':''}>יש הכנסה: עבודה/קצבה/עסק</option>
+          <option value="other" ${w.spouseIncome==='other'?'selected':''}>יש הכנסה: הכנסה אחרת</option>
         </select>
       </div>
     </div>

@@ -1719,8 +1719,8 @@ function ensureHeaders(sh, headers) {
 var IL_ID_FIELD_MAP =
   'ISRAELI DOCUMENTS come as three different pages, all type "israeli_id": ' +
   '(A) FRONT of the biometric card (header תעודת זהות / מדינת ישראל, portrait photo, chip): שם המשפחה, השם הפרטי, תאריך הלידה, תאריך הנפקה, בתוקף עד, מספר הזהות. It has no sex, no address and no children. ' +
-  '(B) BACK of the biometric card (header רשות האוכלוסין וההגירה, a QR code, no portrait): מספר הזהות, שם המשפחה, השם הפרטי, שם האב, שם האם, שם הסב, המין, מקום הלידה, המעמד, מספר הכרטיס. It has NO address and no children. ' +
-  '(C) the paper ספח (header ספח לתעודת זהות, a folded sheet used with both the biometric card and the older laminated card): the holder\'s ID number and names, the address (המען, מס\' בית, מס\' דירה, הישוב), המצב האישי, the spouse (בן/בת הזוג), and one ילד/ילדה block per child. ' +
+  '(B) BACK of the biometric card (header רשות האוכלוסין וההגירה, a QR code, no portrait): מספר הזהות, שם המשפחה, השם הפרטי, שם האב, שם האם, שם הסב, המין, מקום הלידה, מעמד / המעמד, מספר הכרטיס. It has NO address and no children. ' +
+  '(C) the paper ספח (header ספח לתעודת זהות, a folded sheet used with both the biometric card and the older laminated card): the holder\'s ID number and names, the address (המען, מס\' בית, מס\' דירה, הישוב), המצב האישי, the spouse (בן/בת הזוג), and one ילד/ילדה block per child. The sheet is split into several panels, and each panel repeats the holder\'s מספר הזהות at its top — it is still one number. Older paper ספח versions list the children as rows of a table (ילדים: שם, מספר זהות, תאריך לידה) instead of blocks — each row is one child. ' +
   'OLDER LAMINATED CARD (paper card in a plastic sleeve, portrait on the left, violet menorah stamps) is also "israeli_id". Its field labels are pre-printed very faintly and are usually unreadable, so identify its values by their FIXED ORDER in the right-hand column, top to bottom: ' +
   '1) מספר הזהות (grouped digits, top right), 2) surname → "surname", 3) given name → "given", 4) father\'s name (שם האב — ignore), 5) mother\'s name (שם האם — ignore), 6) date of birth → "dob" (Gregorian digits, with a Hebrew-calendar date beside it), 7) place of birth (usually a country, e.g. ישראל — ignore), 8) sex (זכר/נקבה → "sex"), 9) issuing office (a city name at the bottom right — NOT the holder\'s city, ignore). ' +
   'At the bottom left: status (e.g. אזרחות ישראלית — ignore) and the issue date (ignore). Some of these cards also carry a separate, often underlined, date on the very bottom line, later than the issue date — that is the expiry → "expiry"; if there is no such date, return "expiry":"". ' +
@@ -1731,7 +1731,7 @@ var IL_ID_FIELD_MAP =
   'מספר הכרטיס (the 9-digit card number on the card back, bottom right under the QR code), קוד אבטחה (the security code printed vertically on the card back\'s edge), small serial numbers printed along a card edge, and the 7-digit מיקוד (postal code) are NOT the ID number — never return them as an ID. ' +
   'DATES: תאריך הלידה → "dob"; בתוקף עד / תאריך תפוגה → "expiry"; תאריך הנפקה / ניתן ב (issue date) is never the dob or expiry — ignore it. ' +
   'Each date is usually printed twice: a Hebrew-calendar date in letters (like ט"ו בניסן התשנ"ה) and a Gregorian date in digits (like 5.4.1995 or 05.04.1995) — use ONLY the Gregorian digits, written as DD/MM/YYYY with leading zeros (5.4.1995 → 05/04/1995). ' +
-  'SEX: המין / מין → "sex": ז or זכר = "M", נ or נקבה = "F". Never infer it from a name or from a gendered word such as נשוי/נשואה. ' +
+  'SEX: המין / מין → "sex": ז or זכר = "M", נ or נקבה = "F". Never infer it from a name or from a gendered word such as נשוי/נשואה. The holder\'s sex is printed only on the card back and on the older laminated card; on the ספח, המין appears only inside ילד/ילדה blocks and is the CHILD\'s sex — never return it as the holder\'s "sex" (return "sex":"" for a ספח page). ' +
   'ADDRESS (ספח only): המען → "address" (street name only), מס\' בית → "houseNumber" (digits only), הישוב → "city". מס\' דירה (apartment number) is NOT the house number, and the 7-digit מיקוד is not part of the address — leave both out. מקום הלידה (place of birth), המעמד (status) and the issuing office are never the address or city. ' +
   'Keep the three strictly separate: מען "יהודה הלוי", מס\' בית "16", ישוב "פתח תקווה" become "address":"יהודה הלוי","houseNumber":"16","city":"פתח תקווה" — never combined, never swapped. ' +
   'MARITAL STATUS: המצב האישי → "maritalStatus", exactly one of "single" (רווק/רווקה), "married" (נשוי/נשואה), "divorced" (גרוש/גרושה), "widowed" (אלמן/אלמנה); empty string if not printed — do not guess. ' +
@@ -1750,7 +1750,7 @@ var PASSPORT_FIELD_MAP =
   'Passport No. → "passportNo", exactly as printed (letters and digits, no spaces). Personal No. / Identification No. / national ID number (often 10-14 digits) is NOT the passport number. ' +
   'Date of Birth → "dob", Date of Expiry → "expiry"; Date of Issue is never the dob or expiry — ignore it. Dates like "03 JAN 1980" or "29/01/1995" become DD/MM/YYYY ("03/01/1980"). ' +
   'Sex → "sex" (M or F). Nationality → "nationality" as printed in Latin letters (e.g. "INDIAN"). "issuer" = Issuing Authority if printed, otherwise Place of Issue. Place of Birth, Height, Type and Country Code are not needed. ' +
-  'MRZ: the two lines of 44 characters with "<" fillers at the bottom of the page. Line 2: characters 1-9 = passport number (padded with "<" if shorter), character 10 = its check digit, 11-13 = nationality code, 14-19 = birth date YYMMDD, 20 = check digit, 21 = sex, 22-27 = expiry YYMMDD, 28 = check digit, then optional personal data. ' +
+  'MRZ: the two lines of 44 characters with "<" fillers at the bottom of the page. Line 2: characters 1-9 = passport number (padded with "<" if shorter), character 10 = its check digit, 11-13 = nationality code, 14-19 = birth date YYMMDD, 20 = check digit, 21 = sex (M, F, or "<" meaning unspecified → "sex":""), 22-27 = expiry YYMMDD, 28 = check digit, then optional personal data. ' +
   'So the passport number is characters 1-9 WITHOUT the "<" padding and WITHOUT character 10: "X1234567<3IND..." → "X1234567"; "AB12345674THA..." → "AB1234567". ' +
   'Use line 2 to cross-check passportNo, dob, sex and expiry: if a printed character is unclear, covered by a stamp, fingerprint or hologram, or conflicts with the MRZ, use the MRZ value. For YY years pick the century that gives a plausible adult birth date, and an expiry within about 10 years of today. Take names from the printed fields, not the MRZ. ';
 
@@ -2060,9 +2060,9 @@ function aiVerifyField(body){
   if(!body.image) return {error:'Нет изображения'};
 
   var ask = {
-    digits9:    'This is a tightly cropped, zoomed-in photo of a 9-digit Israeli ID number (מספר זהות). Read exactly what is printed, digit by digit — do not guess based on typical formats.',
-    date:       'This is a tightly cropped, zoomed-in photo of a date printed as DD/MM/YYYY (or DD.MM.YYYY). Read exactly what is printed, digit by digit.',
-    passportNo: 'This is a tightly cropped, zoomed-in photo of a passport number. Read exactly what is printed, character by character.'
+    digits9:    'This is a tightly cropped, zoomed-in photo of a 9-digit Israeli ID number (מספר זהות). Read exactly what is printed, digit by digit — do not guess based on typical formats. It is often printed in space-separated groups (e.g. "0 1234567 8") — return the digits joined, with no spaces.',
+    date:       'This is a tightly cropped, zoomed-in photo of a date. Read exactly what is printed, digit by digit, and return it as DD/MM/YYYY with leading zeros (a printed 5.4.1995 → 05/04/1995; a month name like JAN → 01). If a Hebrew-calendar date in letters is also visible, ignore it and return only the Gregorian date.',
+    passportNo: 'This is a tightly cropped, zoomed-in photo of a passport number. Read exactly what is printed, character by character, and return letters and digits only, with no spaces.'
   }[body.kind] || 'This is a tightly cropped, zoomed-in photo of a short printed field. Read exactly what is printed, character by character.';
 
   var SYSTEM = ask + ' Return ONLY the characters you see, nothing else — no prose, no labels, no markdown. ' +
@@ -2195,9 +2195,9 @@ function aiVerifyFields(body){
   if(!jobs.length) return {ok:true, values:{}};
 
   var kindAsk = {
-    digits9:    'a 9-digit Israeli ID number (מספר זהות)',
-    date:       'a date printed as DD/MM/YYYY (or DD.MM.YYYY)',
-    passportNo: 'a passport number'
+    digits9:    'a 9-digit Israeli ID number (מספר זהות), often printed in space-separated groups — return the 9 digits joined, no spaces',
+    date:       'a date — return it as DD/MM/YYYY with leading zeros (5.4.1995 → 05/04/1995, JAN → 01), Gregorian only, ignoring any Hebrew-calendar date in letters',
+    passportNo: 'a passport number — letters and digits only, no spaces'
   };
   var content = [{
     type: 'text',
