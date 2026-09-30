@@ -751,6 +751,9 @@
 <div class="overlay" id="clientOverlay" onclick="if(event.target===this)closeModal('clientOverlay')">
   <div class="modal" id="clientModal"></div>
 </div>
+<div class="overlay" id="clientBillOverlay" style="z-index:110">
+  <div class="modal" id="clientBillModal" style="max-width:420px"></div>
+</div>
 <div class="overlay" id="supplierOverlay" onclick="if(event.target===this)closeModal('supplierOverlay')">
   <div class="modal" id="supplierModal"></div>
 </div>
@@ -1137,16 +1140,29 @@ function shiftPay(hours, w, isSat, clientId){
 // from shiftPay() above (the worker's own legally-owed wage). client.rateMode
 // ('tiered', the default, or 'fixed') never changes what the worker earns;
 // it only changes how the client invoice line is computed:
-//   'tiered' — the Israeli OT/Shabbat law tiers (israeliDayPay), applied to
-//              the client's OWN default rate (client.defaultHourlyRate), not
-//              the worker's rate — same law shape, independent number.
+//   'tiered' — client.billRate (the client's own billing rate, set in the
+//              client modal's billing-rate popup; falls back to the legacy
+//              defaultHourlyRate for clients saved before billRate existed)
+//              through the Israeli OT/Shabbat law tiers (israeliDayPay) —
+//              unless a flat billOtRate / billShabbatRate is set, applied the
+//              same way shiftPay() applies a worker's own OT/Shabbat override.
 //   'fixed'  — a flat client.fixedBillRate ₪/h, no OT/Shabbat tiers at all.
-// A client with neither a rateMode nor a defaultHourlyRate/fixedBillRate set
-// bills 0 — this never blocks payroll, it's purely an informational figure.
+// A client with no billing rate set bills 0 — this never blocks payroll,
+// it's purely an informational figure.
+function clientBillRate(client){
+  const v = client && (client.billRate!=null && client.billRate!=='' ? client.billRate : client.defaultHourlyRate);
+  return Number(v)||0;
+}
 function clientBillPay(hours, client, isSat){
   if(!client) return 0;
   if(client.rateMode==='fixed') return hours*(Number(client.fixedBillRate)||0);
-  return israeliDayPay(hours, Number(client.defaultHourlyRate)||0, isSat).total;
+  const rate=clientBillRate(client), has=v=>v!=null&&v!=='';
+  if(isSat){
+    if(has(client.billShabbatRate)) return hours*Number(client.billShabbatRate);
+    return israeliDayPay(hours, rate, true).total;
+  }
+  if(has(client.billOtRate)){ const RM=PAY_RULES.regularMax; return Math.min(hours,RM)*rate + Math.max(hours-RM,0)*Number(client.billOtRate); }
+  return israeliDayPay(hours, rate, false).total;
 }
 function fmtDate(d){ return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); }
 function fmtRange(d){ const e=new Date(d); e.setDate(e.getDate()+6); return fmtDate(d)+' – '+fmtDate(e); }
@@ -2143,13 +2159,17 @@ function deleteWorkerFromCard(wi){ closeModal('workerCardOverlay'); deleteWorker
 function openAddClient(){ editingClientId=null; selClientColor=CLIENT_COLORS[clients.length%CLIENT_COLORS.length]; showClientModal({name:'',color:selClientColor,address:'',notes:''}); }
 function openEditClient(cid){ editingClientId=cid; const c=clients.find(x=>x.id===cid); selClientColor=c.color; showClientModal(c); }
 function showClientModal(c){
+  // Billing settings live in __cBill while the modal is open — edited via the
+  // billing-rate popup (openClientBillRatePopup), written back by saveClient().
+  __cBill = { rateMode: c.rateMode==='fixed'?'fixed':'tiered', fixedBillRate: c.fixedBillRate??null,
+    billRate: (c.billRate!=null&&c.billRate!=='') ? c.billRate : (c.defaultHourlyRate??null),
+    billOtRate: c.billOtRate??null, billShabbatRate: c.billShabbatRate??null };
   document.getElementById('clientModal').innerHTML=`
     <div class="modal-title">${editingClientId?'Edit Client':'Add New Client'}</div>
-    <div class="field"><label>Name</label><input type="text" id="cName" value="${c.name||''}" placeholder="Client name" autofocus></div>
-    <div class="field"><label>Object</label><input type="text" id="cObject" value="${c.object||''}" placeholder="Object / branch name"></div>
-    <div class="field"><label>Address (optional)</label><input type="text" id="cAddr" value="${c.address||''}" placeholder="Address"></div>
-    <div class="field"><label>Notes (optional)</label><input type="text" id="cNotes" value="${c.notes||''}" placeholder="Notes"></div>
+    <div class="field"><label>Name</label><input type="text" id="cName" value="${esc(c.name||'')}" placeholder="Client name" autofocus></div>
     <div class="field"><label>ח.פ (Company Number, optional)</label><input type="text" id="cCompanyNumber" value="${esc(c.companyNumber||'')}" placeholder="512345678"></div>
+    <div class="field"><label>Object</label><input type="text" id="cObject" value="${esc(c.object||'')}" placeholder="Object / branch name"></div>
+    <div class="field"><label>Address (optional)</label><input type="text" id="cAddr" value="${esc(c.address||'')}" placeholder="Address"></div>
     <div class="field">
       <label><i class="ti ti-cash"></i> Default rate for this client (optional)</label>
       <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Applied to all workers at this client if a worker has no own rate for it (see Accounting → Per-client rates)</div>
@@ -2166,19 +2186,19 @@ function showClientModal(c){
       <label><i class="ti ti-receipt"></i> Client billing mode</label>
       <div style="font-size:11px;color:var(--text3);margin-bottom:6px">What's billed to this client (Accounting → Billable by client). Never affects the worker's own wage above.</div>
       <select id="cRateMode" onchange="onClientRateModeChange()" style="width:100%">
-        <option value="tiered" ${(c.rateMode||'tiered')==='tiered'?'selected':''}>Tiered (Israeli OT/Shabbat rates, using the client's own rate above)</option>
-        <option value="fixed" ${c.rateMode==='fixed'?'selected':''}>Fixed rate (flat ₪/h, no OT/Shabbat tiers)</option>
+        <option value="tiered" ${__cBill.rateMode==='tiered'?'selected':''}>With overtime (Israeli OT/Shabbat tiers)</option>
+        <option value="fixed" ${__cBill.rateMode==='fixed'?'selected':''}>Fixed rate (flat ₪/h, no OT/Shabbat)</option>
       </select>
-      <div id="cFixedBillRateWrap" style="margin-top:8px;${c.rateMode==='fixed'?'':'display:none'}">
-        <label style="font-size:11px;color:var(--text3)">Fixed billing rate ₪/h</label>
-        <input type="number" min="0" step="0.5" id="cFixedBillRate" value="${c.fixedBillRate??''}" placeholder="—">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px">
+        <div id="cBillSummary" style="font-size:12px;color:var(--text2)">${clientBillSummary()}</div>
+        <button class="btn sm" type="button" onclick="openClientBillRatePopup()"><i class="ti ti-pencil"></i> Edit rate</button>
       </div>
     </div>
     <div class="field">
       <label><i class="ti ti-map-pin"></i> Geolocation for Punch Clock</label>
       <div style="margin-bottom:8px">
         <label style="font-size:11px;color:var(--text3);margin-bottom:4px;display:block">Paste Google Maps link</label>
-        <input type="text" id="cMapsUrl" placeholder="https://maps.google.com/..." value="${c.mapsUrl||''}" oninput="parseGoogleMapsUrl(this.value)" style="font-size:12px">
+        <input type="text" id="cMapsUrl" placeholder="https://maps.google.com/..." value="${esc(c.mapsUrl||'')}" oninput="parseGoogleMapsUrl(this.value)" style="font-size:12px">
         <div style="font-size:11px;color:var(--text3);margin-top:4px">Open Google Maps → right-click on location → copy link or coordinates</div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
@@ -2249,17 +2269,77 @@ function updateLocStatus(){
   }
 }
 function pickCColor(col){ selClientColor=col; document.querySelectorAll('#cColorPick [data-color]').forEach(el=>{ el.style.borderColor=el.dataset.color===col?'white':'transparent'; el.style.transform=el.dataset.color===col?'scale(1.2)':'scale(1)'; }); }
+// ── Client billing-rate popup ───────────────────────────────────────────────
+// Picking a billing mode in the client modal immediately pops up the matching
+// rate form: 'fixed' → one flat ₪/h; 'tiered' (with overtime) → Regular plus
+// optional flat OT / Shabbat ₪/h (empty = law tiers ×1.25/×1.5 and ×1.5–×2.0
+// off Regular). These are the CLIENT's billing rates only — the worker-pay
+// "Default rate" block in the same modal is a separate set of fields.
+let __cBill = { rateMode:'tiered', fixedBillRate:null, billRate:null, billOtRate:null, billShabbatRate:null };
+let __cBillPrevMode = 'tiered';
+const fmtRate=v=>(v==null||v==='')?null:('₪'+Number(v)+'/h');
+function clientBillSummary(){
+  if(__cBill.rateMode==='fixed') return fmtRate(__cBill.fixedBillRate) ? 'Fixed '+fmtRate(__cBill.fixedBillRate) : '<span style="color:var(--amber)">Rate not set</span>';
+  if(!fmtRate(__cBill.billRate)) return '<span style="color:var(--amber)">Rate not set</span>';
+  return 'Regular '+fmtRate(__cBill.billRate)
+    +' · OT '+(fmtRate(__cBill.billOtRate)||'law tiers')
+    +' · Shabbat '+(fmtRate(__cBill.billShabbatRate)||'law tiers');
+}
 function onClientRateModeChange(){
-  const mode=document.getElementById('cRateMode')?.value;
-  const wrap=document.getElementById('cFixedBillRateWrap');
-  if(wrap) wrap.style.display = mode==='fixed' ? '' : 'none';
+  const sel=document.getElementById('cRateMode');
+  __cBillPrevMode=__cBill.rateMode;
+  __cBill.rateMode = sel.value==='fixed' ? 'fixed' : 'tiered';
+  const sum=document.getElementById('cBillSummary'); if(sum) sum.innerHTML=clientBillSummary();
+  openClientBillRatePopup(true);
+}
+function openClientBillRatePopup(fromModeChange){
+  const b=__cBill, v=x=>x??'';
+  const inp=(id,val,label)=>`<div><label style="font-size:11px;color:var(--text3)">${label}</label><input type="number" min="0" step="0.5" id="${id}" value="${v(val)}" placeholder="—"></div>`;
+  document.getElementById('clientBillModal').innerHTML = b.rateMode==='fixed' ? `
+    <div class="modal-title">Fixed billing rate</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Flat ₪ per hour billed to the client — no overtime or Shabbat tiers.</div>
+    <div class="field">${inp('cbFixed',b.fixedBillRate,'Rate ₪/h')}</div>
+    <div class="modal-actions">
+      <button class="btn" type="button" onclick="cancelClientBillRatePopup(${fromModeChange?'true':'false'})">Cancel</button>
+      <button class="btn accent" type="button" onclick="saveClientBillRatePopup()">Save</button>
+    </div>` : `
+    <div class="modal-title">Billing rate with overtime</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Billed to the client. Leave OT / Shabbat empty to use the Israeli law tiers off the regular rate (OT ×1.25 then ×1.5; Shabbat ×1.5–×2.0).</div>
+    <div class="field" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      ${inp('cbReg',b.billRate,'Regular ₪/h')}${inp('cbOt',b.billOtRate,'OT ₪/h')}${inp('cbShab',b.billShabbatRate,'Shabbat ₪/h')}
+    </div>
+    <div class="modal-actions">
+      <button class="btn" type="button" onclick="cancelClientBillRatePopup(${fromModeChange?'true':'false'})">Cancel</button>
+      <button class="btn accent" type="button" onclick="saveClientBillRatePopup()">Save</button>
+    </div>`;
+  document.getElementById('clientBillOverlay').classList.add('open');
+  setTimeout(()=>document.querySelector('#clientBillModal input')?.focus(),50);
+}
+function cancelClientBillRatePopup(revertMode){
+  // Cancelling the popup that a mode switch opened undoes that switch too,
+  // so the modal never ends up in a mode with no rate entered by accident.
+  if(revertMode){
+    __cBill.rateMode=__cBillPrevMode;
+    const sel=document.getElementById('cRateMode'); if(sel) sel.value=__cBill.rateMode;
+    const sum=document.getElementById('cBillSummary'); if(sum) sum.innerHTML=clientBillSummary();
+  }
+  closeModal('clientBillOverlay');
+}
+function saveClientBillRatePopup(){
+  const num=id=>{ const x=document.getElementById(id)?.value; return (x===''||x==null)?null:(parseFloat(x)||0); };
+  if(__cBill.rateMode==='fixed'){
+    __cBill.fixedBillRate=num('cbFixed');
+  } else {
+    __cBill.billRate=num('cbReg'); __cBill.billOtRate=num('cbOt'); __cBill.billShabbatRate=num('cbShab');
+  }
+  const sum=document.getElementById('cBillSummary'); if(sum) sum.innerHTML=clientBillSummary();
+  closeModal('clientBillOverlay');
 }
 function saveClient(){
   const name=document.getElementById('cName').value.trim();
   if(!name){ document.getElementById('cName').focus(); return; }
   const object=document.getElementById('cObject')?.value.trim()||'';
   const address=document.getElementById('cAddr').value.trim();
-  const notes=document.getElementById('cNotes').value.trim();
   const companyNumber=document.getElementById('cCompanyNumber')?.value.trim()||'';
   const lat=parseFloat(document.getElementById('cLat').value)||null;
   const lng=parseFloat(document.getElementById('cLng').value)||null;
@@ -2267,14 +2347,13 @@ function saveClient(){
   const mapsUrl=document.getElementById('cMapsUrl')?.value.trim()||'';
   const rateVal=id=>{ const v=document.getElementById(id)?.value; return (v===''||v==null)?null:(parseFloat(v)||0); };
   const defaultHourlyRate=rateVal('cDefRate'), defaultOtRate=rateVal('cDefOtRate'), defaultShabbatRate=rateVal('cDefShabRate');
-  const rateMode=document.getElementById('cRateMode')?.value==='fixed'?'fixed':'tiered';
-  const fixedBillRate=rateVal('cFixedBillRate');
+  const {rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate}=__cBill;
   if(editingClientId){
     const idx=clients.findIndex(x=>x.id===editingClientId);
-    if(idx>=0) clients[idx]={...clients[idx],name,object,address,notes,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate};
+    if(idx>=0) clients[idx]={...clients[idx],name,object,address,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate};
     showToast(name+' updated!');
   } else {
-    clients.push({id:uid(),name,object,address,notes,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate});
+    clients.push({id:uid(),name,object,address,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate});
     showToast(name+' added!');
   }
   closeModal('clientOverlay'); renderClientsPage(); renderSidebarClients(); autoSave();
@@ -2592,9 +2671,8 @@ function renderClientsPage(){
     return `<div class="client-card">
       <div class="client-card-header">
         <div class="client-card-dot" style="background:${c.color}"></div>
-        <div><div class="client-card-name">${esc(c.name)}</div>${c.object?`<div class="client-card-info"><i class="ti ti-building"></i> ${esc(c.object)}</div>`:''}${c.address?`<div class="client-card-info"><i class="ti ti-map-pin"></i> ${esc(c.address)}</div>`:''}</div>
+        <div><div class="client-card-name">${esc(c.name)}</div>${c.companyNumber?`<div class="client-card-info"><i class="ti ti-id"></i> ח.פ ${esc(c.companyNumber)}</div>`:''}${c.object?`<div class="client-card-info"><i class="ti ti-building"></i> ${esc(c.object)}</div>`:''}${c.address?`<div class="client-card-info"><i class="ti ti-map-pin"></i> ${esc(c.address)}</div>`:''}</div>
       </div>
-      ${c.notes?`<div style="font-size:12px;color:var(--text2)">${esc(c.notes)}</div>`:''}
       ${hasGeo?`<div style="font-size:12px;color:var(--green);background:var(--green-bg);border-radius:6px;padding:5px 8px">
         <i class="ti ti-gps"></i> GPS: ${Number(c.lat).toFixed(4)}, ${Number(c.lng).toFixed(4)} · radius ${c.radius||100}m
       </div>`:`<div style="font-size:12px;color:var(--text3)"><i class="ti ti-map-pin-off"></i> No geolocation — edit to add</div>`}
@@ -2615,14 +2693,14 @@ function renderClientsPage(){
 // shape) — a supplier is a staffing agency a worker is linked to via
 // w.supplierId (single, unlike the many-to-many clientIds), see the
 // `suppliers` global's own comment for the field list.
-function openAddSupplier(){ editingSupplierId=null; selSupplierColor=CLIENT_COLORS[suppliers.length%CLIENT_COLORS.length]; showSupplierModal({name:'',color:selSupplierColor,phone:'',notes:'',bank:'',bankBranch:'',accountNumber:'',companyNumber:''}); }
+function openAddSupplier(){ editingSupplierId=null; selSupplierColor=CLIENT_COLORS[suppliers.length%CLIENT_COLORS.length]; showSupplierModal({name:'',color:selSupplierColor,phone:'',bank:'',bankBranch:'',accountNumber:'',companyNumber:''}); }
 function openEditSupplier(sid){ editingSupplierId=sid; const s=suppliers.find(x=>x.id===sid); selSupplierColor=s.color; showSupplierModal(s); }
 function showSupplierModal(s){
   document.getElementById('supplierModal').innerHTML=`
     <div class="modal-title">${editingSupplierId?'Edit Supplier':'Add New Supplier'}</div>
     <div class="field"><label>Name</label><input type="text" id="sName" value="${esc(s.name||'')}" placeholder="Supplier name" autofocus></div>
+    <div class="field"><label>ח.פ (Company Number, optional)</label><input type="text" id="sCompanyNumber" value="${esc(s.companyNumber||'')}" placeholder="512345678"></div>
     <div class="field"><label>Phone (optional)</label><input type="text" id="sPhone" value="${esc(s.phone||'')}" placeholder="Phone"></div>
-    <div class="field"><label>Notes (optional)</label><input type="text" id="sNotes" value="${esc(s.notes||'')}" placeholder="Notes"></div>
     <div class="field">
       <label><i class="ti ti-building-bank"></i> Bank details (optional)</label>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
@@ -2634,7 +2712,6 @@ function showSupplierModal(s){
           <input type="text" id="sAccountNumber" value="${esc(s.accountNumber||'')}" placeholder="Account #"></div>
       </div>
     </div>
-    <div class="field"><label>ח.פ (Company Number, optional)</label><input type="text" id="sCompanyNumber" value="${esc(s.companyNumber||'')}" placeholder="512345678"></div>
     <div class="field"><label>Color</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap" id="sColorPick">
         ${CLIENT_COLORS.map(col=>`<div onclick="pickSColor('${col}')" data-color="${col}" style="width:24px;height:24px;border-radius:50%;background:${col};cursor:pointer;border:2px solid ${col===selSupplierColor?'white':'transparent'};transition:all 0.15s;${col===selSupplierColor?'transform:scale(1.2)':''}"></div>`).join('')}
@@ -2651,17 +2728,16 @@ function saveSupplier(){
   const name=document.getElementById('sName').value.trim();
   if(!name){ document.getElementById('sName').focus(); return; }
   const phone=document.getElementById('sPhone').value.trim();
-  const notes=document.getElementById('sNotes').value.trim();
   const bank=document.getElementById('sBank').value.trim();
   const bankBranch=document.getElementById('sBankBranch').value.trim();
   const accountNumber=document.getElementById('sAccountNumber').value.trim();
   const companyNumber=document.getElementById('sCompanyNumber').value.trim();
   if(editingSupplierId){
     const idx=suppliers.findIndex(x=>x.id===editingSupplierId);
-    if(idx>=0) suppliers[idx]={...suppliers[idx],name,phone,notes,bank,bankBranch,accountNumber,companyNumber,color:selSupplierColor};
+    if(idx>=0) suppliers[idx]={...suppliers[idx],name,phone,bank,bankBranch,accountNumber,companyNumber,color:selSupplierColor};
     showToast(name+' updated!');
   } else {
-    suppliers.push({id:uid(),name,phone,notes,bank,bankBranch,accountNumber,companyNumber,color:selSupplierColor});
+    suppliers.push({id:uid(),name,phone,bank,bankBranch,accountNumber,companyNumber,color:selSupplierColor});
     showToast(name+' added!');
   }
   closeModal('supplierOverlay'); renderSuppliersPage(); autoSave();
@@ -2686,11 +2762,9 @@ function renderSuppliersPage(){
     return `<div class="client-card">
       <div class="client-card-header">
         <div class="client-card-dot" style="background:${s.color}"></div>
-        <div><div class="client-card-name">${esc(s.name)}</div>${s.phone?`<div class="client-card-info"><i class="ti ti-phone"></i> ${esc(s.phone)}</div>`:''}</div>
+        <div><div class="client-card-name">${esc(s.name)}</div>${s.companyNumber?`<div class="client-card-info"><i class="ti ti-id"></i> ח.פ ${esc(s.companyNumber)}</div>`:''}${s.phone?`<div class="client-card-info"><i class="ti ti-phone"></i> ${esc(s.phone)}</div>`:''}</div>
       </div>
-      ${s.notes?`<div style="font-size:12px;color:var(--text2)">${esc(s.notes)}</div>`:''}
       ${s.bank?`<div style="font-size:12px;color:var(--text2)"><i class="ti ti-building-bank"></i> ${esc(s.bank)}${s.bankBranch?' · branch '+esc(s.bankBranch):''}${s.accountNumber?' · '+esc(s.accountNumber):''}</div>`:''}
-      ${s.companyNumber?`<div style="font-size:12px;color:var(--text2)"><i class="ti ti-id"></i> ח.פ ${esc(s.companyNumber)}</div>`:''}
       <div style="font-size:12px;color:var(--text2)"><strong style="color:var(--text)">Workers:</strong> ${assigned.length?assigned.map(w=>`<span style="color:${WORKER_COLORS[w.colorIdx%8].text}">${esc(w.name)}</span>`).join(', '):'None assigned'}</div>
       <div class="client-card-actions">
         <button class="btn sm" onclick="openEditSupplier('${s.id}')"><i class="ti ti-edit"></i> Edit</button>
