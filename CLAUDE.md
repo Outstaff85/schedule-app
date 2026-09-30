@@ -38,7 +38,7 @@ No npm/build/lint/test tooling — edit the HTML and reload.
   - `.github/workflows/deploy.yml` — Firebase Hosting (project `schedule-odinson`).
   - `.github/workflows/deploy-apps-script.yml` — `clasp push --force && clasp deploy` for `apps-script/` (needs `CLASP_CREDENTIALS`/`CLASP_DEPLOYMENT_ID` secrets).
   - `.github/workflows/deploy-functions.yml` — deploys `functions/` on any push touching `functions/**`, or via manual `workflow_dispatch`. Builds a fresh venv in CI. `firebase.json`'s `functions[0].runtime` is pinned to `"python312"` for a deterministic runtime. On failure it opens/updates a GitHub Issue with likely causes — see Troubleshooting below for the known IAM permission gaps.
-- When bumping the service worker's cache (`CACHE` constant in `service-worker.js`), increment the version string or clients keep serving stale HTML after deploy. Current version: v77 (as of 2026-10-01, bumped for the Weekly Schedule current-week fix and removing GPS from client cards).
+- When bumping the service worker's cache (`CACHE` constant in `service-worker.js`), increment the version string or clients keep serving stale HTML after deploy. Current version: v78 (as of 2026-10-01, bumped for the salary-export month picker).
 - `firebase.json`'s hosting `ignore` list must include `functions/**`, or `firebase deploy --only hosting` sweeps the entire `functions/venv` into the public hosting bucket.
 
 ### Git workflow (enforced by hooks in `.claude/settings.json`)
