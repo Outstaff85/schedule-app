@@ -542,19 +542,37 @@
       <div class="clients-grid" id="suppliersGrid"></div>
     </div>
 
-    <!-- Admin Section -->
+    <!-- Admin Section — merged 2026-09-30 with the formerly-separate
+         #adminScreen gear-button panel (Firms/Users/Errors/Profile) into one
+         set of sub-tabs here, replacing the header's gear button. See
+         HISTORY.md for why two "Admin" surfaces existed in the first place
+         and setupAdminPaneBar()'s own comment for the merged role-gating. -->
     <div class="page-section" id="sectionAdmin">
       <div class="page-header">
         <div>
-          <div class="page-title"><i class="ti ti-lock"></i> Admin Panel</div>
-          <div class="page-sub">Punch log — view, edit and export all attendance records</div>
+          <div class="page-title"><i class="ti ti-lock"></i> Admin</div>
+          <div class="page-sub" id="adminPageSub">Punch log — view, edit and export all attendance records</div>
         </div>
-        <div style="display:flex;gap:8px">
+        <div style="display:flex;gap:8px" id="adminHeaderActions">
           <button class="btn sm" onclick="exportPunchCSV()"><i class="ti ti-upload" style="color:var(--green)"></i> Export CSV</button>
           <button class="btn sm red" onclick="clearPunchLog()"><i class="ti ti-trash"></i> Clear Log</button>
         </div>
       </div>
 
+      <!-- Admin sub-tab bar. Punch Log is always reachable (this whole tab is
+           already gated by NAV_TAB_PERMISSION('workers') for a staff login);
+           Firms/Errors/Users/Profile visibility is set per-role by
+           setupAdminPaneBar() below, mirroring what openAdminScreen() used
+           to gate for its own gear-button modal. -->
+      <div style="display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border2);padding-bottom:10px;flex-wrap:wrap" id="adminPaneBar">
+        <button class="btn sm" id="adminPaneBtn_punchlog" onclick="switchAdminPane('punchlog')"><i class="ti ti-clipboard-text"></i> Punch Log</button>
+        <button class="btn sm" id="adminPaneBtn_firms" onclick="switchAdminPane('firms')"><i class="ti ti-building-skyscraper"></i> Firms</button>
+        <button class="btn sm" id="adminPaneBtn_users" onclick="switchAdminPane('users')"><i class="ti ti-users"></i> Users</button>
+        <button class="btn sm" id="adminPaneBtn_errors" onclick="switchAdminPane('errors')"><i class="ti ti-alert-circle"></i> Errors</button>
+        <button class="btn sm" id="adminPaneBtn_profile" onclick="switchAdminPane('profile')"><i class="ti ti-building"></i> Profile</button>
+      </div>
+
+      <div id="adminPane_punchlog">
       <!-- Stats row -->
       <div id="adminStats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:20px"></div>
 
@@ -609,6 +627,31 @@
         </table>
         </div>
         <div id="adminEmpty" style="display:none;text-align:center;padding:40px;color:var(--text3);font-size:14px">No punch records found</div>
+      </div>
+      </div>
+
+      <!-- Panes moved here from the old standalone #adminScreen modal
+           (2026-09-30) — content unchanged, just re-hosted; still reuses
+           renderFirmsList()/loadErrorsList() (parametrized) and
+           openMyFirmForm() rather than re-implementing any of them. -->
+      <div id="adminPane_firms" style="display:none">
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px">
+          <button class="btn sm" onclick="toggleSuperadminAccounting()"><i class="ti ti-cash"></i> Payable summary (all firms)</button>
+          <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> New firm</button>
+        </div>
+        <div id="superadminAccountingWrap" style="display:none;margin-bottom:16px"></div>
+        <div id="adminFirmsList" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+      <div id="adminPane_users" style="display:none">
+        <div id="adminUsersWrap"></div>
+      </div>
+      <div id="adminPane_errors" style="display:none">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="loadErrorsList('adminErrorsList')"><i class="ti ti-refresh"></i> Refresh</button></div>
+        <div id="adminErrorsList" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+      <div id="adminPane_profile" style="display:none">
+        <div style="color:var(--text2);font-size:13px;margin-bottom:10px">Company profile data used on Form 101.</div>
+        <button class="btn accent" onclick="openMyFirmForm()"><i class="ti ti-building"></i> Edit company profile</button>
       </div>
     </div>
 
@@ -771,47 +814,6 @@
   </div>
 </div>
 
-<!-- Consolidated admin panel (added 2026-10-02, Admin/Roles plan stage 5) —
-     replaces the scattered "Фирмы"/"Ошибки"/"Данные фирмы" header buttons
-     (removed from renderAccountControl() in stage 7) with one entry point.
-     Tab visibility is role-gated in openAdminScreen(): superadmin sees all
-     four; tenant_admin sees Users + Profile only (Firms/Errors are
-     superadmin-only cross-tenant views, unrelated to a single firm). Reuses
-     renderFirmsList()/loadErrorsList() (parametrized above) and the existing
-     openMyFirmForm() modal rather than re-implementing any of them. -->
-<div id="adminScreen" style="display:none;position:fixed;inset:0;z-index:970;background:var(--bg);overflow-y:auto">
-  <div style="max-width:960px;margin:0 auto;padding:28px 20px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
-      <div style="font-size:20px;font-weight:700"><i class="ti ti-settings"></i> Admin</div>
-      <button class="btn sm" onclick="closeAdminScreen()"><i class="ti ti-x"></i> Close</button>
-    </div>
-    <div style="display:flex;gap:6px;margin-bottom:18px;border-bottom:1px solid var(--border2);padding-bottom:10px" id="adminTabBar">
-      <button class="btn sm" id="adminTabBtn_firms" onclick="switchAdminTab('firms')"><i class="ti ti-building-skyscraper"></i> Firms</button>
-      <button class="btn sm" id="adminTabBtn_users" onclick="switchAdminTab('users')"><i class="ti ti-users"></i> Users</button>
-      <button class="btn sm" id="adminTabBtn_errors" onclick="switchAdminTab('errors')"><i class="ti ti-alert-circle"></i> Errors</button>
-      <button class="btn sm" id="adminTabBtn_profile" onclick="switchAdminTab('profile')"><i class="ti ti-building"></i> Profile</button>
-    </div>
-    <div id="adminTab_firms" style="display:none">
-      <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px">
-        <button class="btn sm" onclick="toggleSuperadminAccounting()"><i class="ti ti-cash"></i> Payable summary (all firms)</button>
-        <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> New firm</button>
-      </div>
-      <div id="superadminAccountingWrap" style="display:none;margin-bottom:16px"></div>
-      <div id="adminFirmsList" style="display:flex;flex-direction:column;gap:8px"></div>
-    </div>
-    <div id="adminTab_users" style="display:none">
-      <div id="adminUsersWrap"></div>
-    </div>
-    <div id="adminTab_errors" style="display:none">
-      <div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="loadErrorsList('adminErrorsList')"><i class="ti ti-refresh"></i> Refresh</button></div>
-      <div id="adminErrorsList" style="display:flex;flex-direction:column;gap:6px"></div>
-    </div>
-    <div id="adminTab_profile" style="display:none">
-      <div style="color:var(--text2);font-size:13px;margin-bottom:10px">Company profile data used on Form 101.</div>
-      <button class="btn accent" onclick="openMyFirmForm()"><i class="ti ti-building"></i> Edit company profile</button>
-    </div>
-  </div>
-</div>
 
 <!-- Create/edit staff/supplier user (Admin panel, Users tab — added 2026-10-02,
      Admin/Roles plan stage 6). Single form for both create and edit, same
@@ -847,33 +849,21 @@
   </div>
 </div>
 
-<div class="overlay" id="createFirmOverlay" style="z-index:950" onclick="if(event.target===this)closeModal('createFirmOverlay')">
-  <div class="modal" style="max-width:420px">
-    <div class="modal-title">Новая фирма</div>
-    <div class="field"><label>Логин</label><input type="text" id="firmUsername" autocomplete="off"></div>
-    <div class="field"><label>Пароль (мин. 8 символов)</label><input type="password" id="firmPassword" autocomplete="new-password"></div>
-    <div class="field"><label>Название фирмы</label><input type="text" id="firmCompanyName"></div>
-    <div class="field"><label>מספר תיק ניכויים (8 цифр)</label><input type="text" id="firmDeductionsNo" maxlength="8" inputmode="numeric"></div>
-    <div class="field"><label>Телефон</label><input type="text" id="firmPhone"></div>
-    <div class="field-row">
-      <div class="field"><label>Улица</label><input type="text" id="firmStreet"></div>
-      <div class="field"><label>Номер дома</label><input type="text" id="firmStreetNumber"></div>
-    </div>
-    <div class="field"><label>Город</label><input type="text" id="firmCity"></div>
-    <div id="firmFormError" style="color:#ff6b78;font-size:13px;margin:2px 0 6px;min-height:1.2em"></div>
-    <div class="modal-actions">
-      <button class="btn" onclick="closeModal('createFirmOverlay')">Отмена</button>
-      <button class="btn accent" onclick="submitCreateFirm()" id="createFirmBtn">Создать</button>
-    </div>
-  </div>
-</div>
-
+<!-- One shared modal for creating a new firm, super-admin editing an
+     existing firm, and a firm's own self-service profile edit — merged
+     2026-09-30 (previously two overlays, createFirmOverlay/editFirmOverlay,
+     with near-duplicate profile fields; only the login fields were genuinely
+     create-only — see HISTORY.md). __firmFormMode ('create'|'edit') picks
+     submitEditFirm()'s backend action; openCreateFirmForm() shows the
+     login fields, openEditFirmForm()/openMyFirmForm() hide them. -->
 <div class="overlay" id="editFirmOverlay" style="z-index:950" onclick="if(event.target===this)closeModal('editFirmOverlay')">
   <div class="modal" style="max-width:420px" oninput="__firmEditDirty=true">
     <div class="modal-title" id="firmEditTitle">Редактировать фирму</div>
     <div style="font-size:11px;color:var(--text3);line-height:1.5;margin:-6px 0 10px">
       Эти данные подставляются в раздел א («פרטי המעסיק») каждой Формы 101.
     </div>
+    <div class="field" id="firmEditUsernameField" style="display:none"><label>Логин</label><input type="text" id="firmEditUsername" autocomplete="off"></div>
+    <div class="field" id="firmEditPasswordField" style="display:none"><label>Пароль (мин. 8 символов)</label><input type="password" id="firmEditPassword" autocomplete="new-password"></div>
     <div class="field"><label>Название фирмы</label><input type="text" id="firmEditCompanyName"></div>
     <div class="field"><label>מספר תיק ניכויים (8 цифр)</label><input type="text" id="firmEditDeductionsNo" maxlength="8" inputmode="numeric"></div>
     <div class="field"><label>Телефон</label><input type="text" id="firmEditPhone"></div>
@@ -1173,11 +1163,14 @@ function hasPermission(section){
   return perms === '*' || (Array.isArray(perms) && perms.indexOf(section) !== -1);
 }
 // Maps each nav tab to the permission section that gates it. 'admin' (the
-// punch-log viewer tab, not to be confused with the new #adminScreen panel)
-// rides on the 'workers' permission — it's operational worker oversight, not
-// a separate concept the plan's PERMISSION_SECTIONS ever called out on its
-// own. 'dashboard' has no entry — the Today/real-time overview is never
-// gated, every logged-in staff member can always see it.
+// tab itself — punch log by default, plus Firms/Users/Errors/Profile
+// sub-panes for tenant_admin/superadmin, merged 2026-09-30, see
+// setupAdminPaneBar()) rides on the 'workers' permission — it's operational
+// worker oversight, not a separate concept the plan's PERMISSION_SECTIONS
+// ever called out on its own; a staff login only ever sees the Punch Log
+// pane regardless, the extra panes are gated separately by role. 'dashboard'
+// has no entry — the Today/real-time overview is never gated, every
+// logged-in staff member can always see it.
 const NAV_TAB_PERMISSION = { schedule:'schedule', workers:'workers', clients:'clients', suppliers:'suppliers', admin:'workers', accounting:'accounting' };
 function applyNavPermissions(){
   Object.keys(NAV_TAB_PERMISSION).forEach(tab=>{
@@ -1202,7 +1195,11 @@ function switchTab(tab){
   if(tab==='workers')    renderWorkersPage();
   if(tab==='clients')    renderClientsPage();
   if(tab==='suppliers')  renderSuppliersPage();
-  if(tab==='admin')      renderAdmin();
+  // setupAdminPaneBar() (role-gated pane visibility + default pane) only
+  // runs here, on an actual tab switch — NOT from render()'s own
+  // per-mutation renderAdmin() call below, or clicking into e.g. the Firms
+  // pane would get silently reset back to Punch Log on every unrelated save.
+  if(tab==='admin')      { renderAdmin(); setupAdminPaneBar(); }
   if(tab==='dashboard')  renderDashboard();
   if(tab==='accounting') renderAccounting();
 }
@@ -2997,6 +2994,29 @@ function saveSession(s){ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
 function clearSession(){ localStorage.removeItem(SESSION_KEY); }
 function logout(){ clearSession(); location.reload(); }
 
+// Sliding session expiration (added 2026-09-30 — reported bug: a manager
+// could get kicked to the login screen mid worker-document scan/upload even
+// right after a fresh login, because the 6h TTL was a hard wall from login
+// time, never extended by activity, and scan+upload is the single
+// longest-running flow in the app — the one most likely to straddle it).
+// requireAuth() on the backend now reissues a fresh token (same identity,
+// renewed exp) on every authenticated request and attaches it to the
+// response as `refreshedToken`/`refreshedExpiresAt` — this overwrites the
+// stored session with it so the token never ages past what the LAST request
+// saw, only real inactivity for a full SESSION_TTL_MS lets it actually
+// expire. Called from both the window.fetch wrapper below (covers every
+// plain fetch(GS_URL,...) call) and xhrPostJSON() (the raw-XHR upload path,
+// which never goes through window.fetch) — see each call site's own
+// comment.
+function applyRefreshedToken(json){
+  if(!json || !json.refreshedToken) return;
+  const s=getSession();
+  if(!s) return;
+  s.token=json.refreshedToken;
+  s.expiresAt=json.refreshedExpiresAt;
+  saveSession(s);
+}
+
 // Merged into every backend request: the session token, plus asTenantId when
 // a super-admin has switched into a specific firm (omitted for a normal
 // tenant user — their own tenantId is already baked into their token).
@@ -3056,11 +3076,28 @@ function gsAuth(){
 // Session-expiry retry/logout applies whenever the JSON response carries the
 // exact SESSION_EXPIRED_ERROR text, regardless of which URL produced it —
 // the proxy relays Apps Script's own error text unchanged.
+//
+// BUG FIX (2026-09-30): the real cause of the reported "kicked out mid-
+// upload" symptom — nothing to do with session TTL. Since every real caller
+// now targets GS_UPLOAD_PROXY_URL (a Flask-based Cloud Function), not GS_URL
+// directly, the no-Content-Type rule above no longer serves its original
+// purpose (avoiding a CORS preflight Apps Script can't answer — the proxy
+// answers preflight fine) and was actively harmful: Flask/Werkzeug's
+// `request.get_json()` on the server refuses to parse a body whose
+// Content-Type isn't application/json, silently treating it as `{}` — so
+// the token/action never arrived server-side at all, and Apps Script's
+// requireAuth() correctly (if misleadingly) rejected the empty body as
+// "session expired," even seconds after a fresh login. Fixed server-side
+// too (gs_upload_proxy() now parses with force=True, see its own comment)
+// — this client-side header is restored as defense in depth, gated to only
+// the proxy target so a hypothetical future caller against bare GS_URL
+// still avoids the preflight trigger this header causes there.
 function xhrPostJSON(url,bodyObj,onProgress,_attempt){
   const attempt=_attempt||0;
   return new Promise((resolve,reject)=>{
     const xhr=new XMLHttpRequest();
     xhr.open('POST',url);
+    if(url===GS_UPLOAD_PROXY_URL) xhr.setRequestHeader('Content-Type','application/json');
     if(onProgress) xhr.upload.onprogress=e=>{ if(e.lengthComputable) onProgress(e.loaded,e.total); };
     xhr.onload=()=>{
       let json;
@@ -3078,6 +3115,8 @@ function xhrPostJSON(url,bodyObj,onProgress,_attempt){
         clearSession();
         showToast('Сессия истекла — войдите заново');
         setTimeout(()=>location.reload(),1200);
+      } else {
+        applyRefreshedToken(json); // sliding expiration — see its own comment near getSession()/clearSession()
       }
       resolve(json);
     };
@@ -3157,7 +3196,10 @@ const SESSION_RETRY_DELAYS_MS = [0, 500]; // attempt 2 immediate, attempt 3 afte
   // (verifyDigitFields() fires multiple aiVerifyField calls in parallel).
   function checkExpired(url, opts, res, attempt){
     return res.clone().json().then(json => {
-      if (!(json && json.error === SESSION_EXPIRED_ERROR && getSession())) return res;
+      if (!(json && json.error === SESSION_EXPIRED_ERROR && getSession())){
+        applyRefreshedToken(json); // sliding expiration — see its own comment
+        return res;
+      }
       if (attempt < SESSION_RETRY_DELAYS_MS.length){
         const delay = SESSION_RETRY_DELAYS_MS[attempt];
         const retry = () => _origFetch(url, opts).then(retryRes => checkExpired(url, opts, retryRes, attempt+1));
@@ -3330,9 +3372,14 @@ function renderAccountControl(s){
   host.innerHTML = `
     <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
       ${s.role==='superadmin' ? '<button class="btn sm" onclick="backToFirmsList()"><i class="ti ti-building-skyscraper"></i> Фирмы</button>' : ''}
-      ${(s.role==='superadmin'||s.role==='tenant_admin') ? '<button class="btn sm" onclick="openAdminScreen()"'+(incomplete?' style="color:#ffb020;border-color:#ffb020"':'')+' title="Admin"><i class="ti ti-settings"></i></button>' : ''}
       <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i></button>
     </div>`;
+  // The gear button that used to open the separate #adminScreen modal was
+  // removed 2026-09-30 (its content merged into the Admin nav tab's own
+  // sub-panes — see setupAdminPaneBar()) — its "profile incomplete" amber
+  // warning moves to the Admin tab's own icon instead, so the cue isn't lost.
+  const tabAdminIcon = document.querySelector('#tabAdmin .ic i');
+  if(tabAdminIcon) tabAdminIcon.style.color = ((s.role==='superadmin'||s.role==='tenant_admin') && incomplete) ? '#ffb020' : '';
 }
 
 let __firmsCache = [];
@@ -3377,33 +3424,55 @@ async function renderFirmsList(targetId){
 // the Errors sheet has no tenantId column, so a normal tenant login must
 // never reach this). Overlays whatever's currently showing; closeErrorsScreen
 // just hides it again since nothing underneath needs to change.
-// Consolidated admin panel (2026-10-02, Admin/Roles plan stage 5). Tab
-// visibility: superadmin sees all four; tenant_admin sees Users + Profile
-// only (Firms/Errors are cross-tenant superadmin-only views — see
-// listTenants()/loadErrors() server-side, both already gated there too, this
-// is just the matching client-side visibility). staff/supplier never reach
-// this screen at all (no button opens it for them — see renderAccountControl()).
-function openAdminScreen(){
+//
+// Admin tab sub-panes (merged 2026-09-30 into the pre-existing Admin nav tab
+// — previously the gear-button-only #adminScreen modal; the nav tab and the
+// modal were two separately-named "Admin" surfaces, a known source of
+// confusion — see HISTORY.md). setupAdminPaneBar() replaces openAdminScreen()
+// and is called once from switchTab() when the Admin tab is opened (not from
+// render()'s own per-mutation refresh of that tab — see switchTab()'s own
+// comment on why renderAdmin() alone runs there). Pane visibility: Punch Log
+// is always reachable (the tab itself is already gated by
+// NAV_TAB_PERMISSION('workers') for a staff login); Firms/Errors are
+// superadmin-only cross-tenant views (see listTenants()/loadErrors()
+// server-side, both already gated there too — this only matches the
+// client-side visibility); Users/Profile are tenant_admin+superadmin. A
+// plain staff login sees only the Punch Log pane/button, same as before this
+// merge. Defaults to the Punch Log pane for every role — that's the one
+// thing every role that reaches this tab already had, so it stays the least-
+// surprising landing view.
+function setupAdminPaneBar(){
   const s = getSession();
   if(!s) return;
   const isSuper = s.role === 'superadmin';
-  document.getElementById('adminTabBtn_firms').style.display = isSuper ? '' : 'none';
-  document.getElementById('adminTabBtn_errors').style.display = isSuper ? '' : 'none';
-  document.getElementById('adminScreen').style.display = 'block';
-  switchAdminTab(isSuper ? 'firms' : 'users');
+  const isAdminRole = isSuper || s.role === 'tenant_admin';
+  document.getElementById('adminPaneBtn_firms').style.display = isSuper ? '' : 'none';
+  document.getElementById('adminPaneBtn_errors').style.display = isSuper ? '' : 'none';
+  document.getElementById('adminPaneBtn_users').style.display = isAdminRole ? '' : 'none';
+  document.getElementById('adminPaneBtn_profile').style.display = isAdminRole ? '' : 'none';
+  switchAdminPane('punchlog');
 }
-function closeAdminScreen(){
-  document.getElementById('adminScreen').style.display = 'none';
-}
-function switchAdminTab(tab){
-  ['firms','users','errors','profile'].forEach(t=>{
-    document.getElementById('adminTab_'+t).style.display = t===tab ? 'block' : 'none';
-    const btn = document.getElementById('adminTabBtn_'+t);
-    if(btn) btn.classList.toggle('accent', t===tab);
+const ADMIN_PANE_SUBTITLES = {
+  punchlog: 'Punch log — view, edit and export all attendance records',
+  firms: 'Firms (super-admin)',
+  users: 'Staff and supplier logins for this firm',
+  errors: 'Last ~100 client-side errors, every firm',
+  profile: 'Company profile data used on Form 101',
+};
+function switchAdminPane(pane){
+  ['punchlog','firms','users','errors','profile'].forEach(p=>{
+    const el = document.getElementById('adminPane_'+p);
+    if(el) el.style.display = p===pane ? 'block' : 'none';
+    const btn = document.getElementById('adminPaneBtn_'+p);
+    if(btn) btn.classList.toggle('accent', p===pane);
   });
-  if(tab==='firms') renderFirmsList('adminFirmsList');
-  else if(tab==='errors') loadErrorsList('adminErrorsList');
-  else if(tab==='users') renderAdminUsers();
+  const actions = document.getElementById('adminHeaderActions');
+  if(actions) actions.style.display = pane==='punchlog' ? 'flex' : 'none';
+  const sub = document.getElementById('adminPageSub');
+  if(sub) sub.textContent = ADMIN_PANE_SUBTITLES[pane] || '';
+  if(pane==='firms') renderFirmsList('adminFirmsList');
+  else if(pane==='errors') loadErrorsList('adminErrorsList');
+  else if(pane==='users') renderAdminUsers();
 }
 // ── Users tab (Admin panel, added 2026-10-02, Admin/Roles plan stage 6) ────
 // Scoped to the CURRENTLY ACTIVE firm — same mental model as everything else
@@ -3632,17 +3701,31 @@ function closeErrorsScreen(){
 // targetId parametrized 2026-10-02 (Admin/Roles plan stage 5) — same reuse
 // pattern as renderFirmsList() above, feeds either the standalone
 // #errorsScreen or the admin panel's Errors tab (#adminErrorsList).
+//
+// Copy button (added 2026-09-30, per request): each error card gets a small
+// top-right icon button that copies that one error's full text (timestamp +
+// page + source + message) to the clipboard — useful for pasting a row into
+// a bug report/chat without manually selecting wrapped text. Rows are kept
+// in __errorsRowsByTarget, keyed by targetId (the standalone screen and the
+// admin-panel tab load independently, same pattern loadErrorsList() already
+// follows for its own target parametrization), so the button's onclick can
+// just pass back the row index rather than re-serializing the whole error
+// into an inline attribute (awkward/fragile with newlines and quotes).
+let __errorsRowsByTarget = {};
 async function loadErrorsList(targetId){
-  const listEl = document.getElementById(targetId||'errorsList');
+  targetId = targetId || 'errorsList';
+  const listEl = document.getElementById(targetId);
   listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
   try{
     const res = await fetch(GS_URL + '?action=loadErrors' + gsAuthQuery());
     const json = await res.json();
     if(!json || json.error){ listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Ошибка загрузки')+'</div>'; return; }
     const rows = json.rows || [];
+    __errorsRowsByTarget[targetId] = rows;
     if(!rows.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Ошибок нет.</div>'; return; }
-    listEl.innerHTML = rows.map(r => `
-      <div style="padding:10px 12px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:12px">
+    listEl.innerHTML = rows.map((r,i) => `
+      <div style="position:relative;padding:10px 40px 10px 12px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:12px">
+        <button class="btn sm" title="Копировать ошибку" onclick="copyErrorRow('${targetId}',${i})" style="position:absolute;top:6px;right:6px;padding:4px 6px;min-width:0"><i class="ti ti-copy"></i></button>
         <div style="display:flex;gap:10px;color:var(--text2);margin-bottom:4px">
           <span>${esc(r.when ? new Date(r.when).toLocaleString() : '')}</span>
           <span>${esc(r.page||'')}</span>
@@ -3651,6 +3734,29 @@ async function loadErrorsList(targetId){
         <div style="word-break:break-word">${esc(r.message||'')}</div>
       </div>`).join('');
   }catch(e){ listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
+}
+function errorRowText(r){
+  const head = [r.when ? new Date(r.when).toLocaleString() : '', r.page||'', r.source||''].filter(Boolean).join(' · ');
+  return head + (head && r.message ? '\n' : '') + (r.message||'');
+}
+async function copyErrorRow(targetId, idx){
+  const r = (__errorsRowsByTarget[targetId]||[])[idx];
+  if(!r) return;
+  const text = errorRowText(r);
+  try{
+    await navigator.clipboard.writeText(text);
+    showToast('Скопировано');
+  }catch(e){
+    // Fallback for contexts where the async Clipboard API is unavailable/denied.
+    try{
+      const ta=document.createElement('textarea');
+      ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showToast('Скопировано');
+    }catch(e2){ showToast('Не удалось скопировать'); }
+  }
 }
 
 // Reversible: flips every login belonging to this firm active/inactive.
@@ -3682,42 +3788,12 @@ async function confirmDeleteTenant(tenantId, companyName){
   }catch(e){ showToast('Сеть недоступна'); }
 }
 
-function openCreateFirmForm(){
-  ['firmUsername','firmPassword','firmCompanyName','firmDeductionsNo','firmPhone','firmStreet','firmStreetNumber','firmCity'].forEach(id => { document.getElementById(id).value=''; });
-  document.getElementById('firmFormError').textContent = '';
-  // Shown/hidden via the .open class (closeModal() only ever removes that
-  // class) — matching every other overlay in the app, not an inline style.
-  document.getElementById('createFirmOverlay').classList.add('open');
-}
-async function submitCreateFirm(){
-  const get = id => document.getElementById(id).value.trim();
-  const username = get('firmUsername'), password = document.getElementById('firmPassword').value;
-  const errEl = document.getElementById('firmFormError');
-  const btn = document.getElementById('createFirmBtn');
-  errEl.textContent = '';
-  if(!username || !password){ errEl.textContent = 'Логин и пароль обязательны'; return; }
-  btn.disabled = true; btn.textContent = 'Создаю…';
-  try{
-    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({
-      action:'createUser', ...gsAuth(),
-      username, password,
-      companyName: get('firmCompanyName'),
-      deductionsFileNumber: get('firmDeductionsNo'),
-      phone: get('firmPhone'),
-      street: get('firmStreet'),
-      streetNumber: get('firmStreetNumber'),
-      city: get('firmCity'),
-    })});
-    const json = await res.json();
-    if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось создать фирму'; return; }
-    closeModal('createFirmOverlay');
-    showToast('Фирма создана');
-    renderFirmsList(__firmsListTarget);
-  }catch(e){ errEl.textContent = 'Сеть недоступна'; }
-  finally{ btn.disabled = false; btn.textContent = 'Создать'; }
-}
-
 let __editingFirmTenantId = null;
+// 'create' (openCreateFirmForm) picks the createUser action and shows the
+// login fields in submitEditFirm(); 'edit' (openEditFirmForm/openMyFirmForm)
+// picks updateTenant and hides them — see the shared modal's own HTML
+// comment for why this single form replaced two near-duplicate overlays.
+let __firmFormMode = 'edit';
 // Set by the modal's own oninput — a late-arriving server refresh must never
 // overwrite what the user has already started typing.
 let __firmEditDirty = false;
@@ -3730,12 +3806,29 @@ function fillFirmEditForm(p){
   document.getElementById('firmEditCity').value = p.city || '';
   __firmEditDirty = false;
 }
+function openCreateFirmForm(){
+  __editingFirmTenantId = null;
+  __firmFormMode = 'create';
+  document.getElementById('firmEditTitle').textContent = 'Новая фирма';
+  fillFirmEditForm({});
+  document.getElementById('firmEditUsername').value = '';
+  document.getElementById('firmEditPassword').value = '';
+  document.getElementById('firmEditUsernameField').style.display = '';
+  document.getElementById('firmEditPasswordField').style.display = '';
+  document.getElementById('editFirmBtn').textContent = 'Создать';
+  document.getElementById('firmEditFormError').textContent = '';
+  document.getElementById('editFirmOverlay').classList.add('open');
+}
 function openEditFirmForm(tenantId){
   const t = __firmsCache.find(x => x.tenantId === tenantId);
   if(!t){ showToast('Фирма не найдена'); return; }
   __editingFirmTenantId = tenantId;
+  __firmFormMode = 'edit';
   document.getElementById('firmEditTitle').textContent = 'Редактировать фирму';
   fillFirmEditForm(t);
+  document.getElementById('firmEditUsernameField').style.display = 'none';
+  document.getElementById('firmEditPasswordField').style.display = 'none';
+  document.getElementById('editFirmBtn').textContent = 'Сохранить';
   document.getElementById('firmEditFormError').textContent = '';
   document.getElementById('editFirmOverlay').classList.add('open');
 }
@@ -3751,8 +3844,12 @@ async function openMyFirmForm(){
   const tenantId = s.viewingTenantId || s.tenantId;
   if(!tenantId){ showToast('Фирма не выбрана'); return; }
   __editingFirmTenantId = tenantId;
+  __firmFormMode = 'edit';
   document.getElementById('firmEditTitle').textContent = 'Данные фирмы';
   fillFirmEditForm(activeTenantProfile() || {});
+  document.getElementById('firmEditUsernameField').style.display = 'none';
+  document.getElementById('firmEditPasswordField').style.display = 'none';
+  document.getElementById('editFirmBtn').textContent = 'Сохранить';
   document.getElementById('firmEditFormError').textContent = '';
   document.getElementById('editFirmOverlay').classList.add('open');
   try{
@@ -3769,18 +3866,38 @@ async function submitEditFirm(){
   const errEl = document.getElementById('firmEditFormError');
   const btn = document.getElementById('editFirmBtn');
   errEl.textContent = '';
+  const profileFields = {
+    companyName: get('firmEditCompanyName'),
+    deductionsFileNumber: get('firmEditDeductionsNo'),
+    phone: get('firmEditPhone'),
+    street: get('firmEditStreet'),
+    streetNumber: get('firmEditStreetNumber'),
+    city: get('firmEditCity'),
+  };
+  if(__firmFormMode === 'create'){
+    const username = get('firmEditUsername'), password = document.getElementById('firmEditPassword').value;
+    if(!username || !password){ errEl.textContent = 'Логин и пароль обязательны'; return; }
+    btn.disabled = true; btn.textContent = 'Создаю…';
+    try{
+      const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({
+        action:'createUser', ...gsAuth(), username, password, ...profileFields,
+      })});
+      const json = await res.json();
+      if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось создать фирму'; return; }
+      closeModal('editFirmOverlay');
+      showToast('Фирма создана');
+      renderFirmsList(__firmsListTarget);
+    }catch(e){ errEl.textContent = 'Сеть недоступна'; }
+    finally{ btn.disabled = false; btn.textContent = 'Создать'; }
+    return;
+  }
   if(!__editingFirmTenantId){ errEl.textContent = 'Фирма не выбрана'; return; }
   btn.disabled = true; btn.textContent = 'Сохраняю…';
   try{
     const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({
       action:'updateTenant', ...gsAuth(),
       tenantId: __editingFirmTenantId,
-      companyName: get('firmEditCompanyName'),
-      deductionsFileNumber: get('firmEditDeductionsNo'),
-      phone: get('firmEditPhone'),
-      street: get('firmEditStreet'),
-      streetNumber: get('firmEditStreetNumber'),
-      city: get('firmEditCity'),
+      ...profileFields,
     })});
     const json = await res.json();
     if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось сохранить'; return; }

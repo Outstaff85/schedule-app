@@ -172,6 +172,31 @@ function clearSession(){ localStorage.removeItem(SESSION_KEY); }
 function logout(){ clearSession(); location.reload(); }
 function gsAuth(){ const s=getSession(); return s ? {token:s.token} : {}; }
 
+// Sliding session expiration (added 2026-09-30, mirrors schedule-manager.html's
+// own fix — see requireAuth()'s comment in apps-script/Код.js): the backend
+// now reissues a fresh token on every authenticated request and attaches it
+// to the response as refreshedToken/refreshedExpiresAt. Picked up here via a
+// thin window.fetch wrapper (this file never had schedule-manager.html's
+// retry-then-logout logic, so none is added here either — only the token
+// pickup, to stay in scope) so a long-open supplier session doesn't hit the
+// hard 6h wall while actively in use.
+(function(){
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = function(url, opts){
+    const isGsCall = typeof url === 'string' && url.indexOf(GS_URL) === 0;
+    return _origFetch(url, opts).then(res => {
+      if(!isGsCall) return res;
+      res.clone().json().then(json => {
+        if(json && json.refreshedToken){
+          const s=getSession();
+          if(s){ s.token=json.refreshedToken; s.expiresAt=json.refreshedExpiresAt; saveSession(s); }
+        }
+      }).catch(()=>{});
+      return res;
+    });
+  };
+})();
+
 async function submitLogin(){
   const username=document.getElementById('loginUsername').value.trim();
   const password=document.getElementById('loginPassword').value;
