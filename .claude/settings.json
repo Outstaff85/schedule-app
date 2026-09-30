@@ -33,7 +33,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "if": "Write(H:/schedule-app/**)||Edit(H:/schedule-app/**)||NotebookEdit(H:/schedule-app/**)",
+            "if": "Write(**/schedule-app/**)||Edit(**/schedule-app/**)||NotebookEdit(**/schedule-app/**)",
             "command": "cd \"$CLAUDE_PROJECT_DIR\" && git add -A && git diff --cached --quiet || { git commit -q -m \"auto: update via Claude Code\" -m \"Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>\" && git push -q origin HEAD; }",
             "timeout": 60
           }
