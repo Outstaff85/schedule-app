@@ -747,6 +747,44 @@
   </div>
 </div>
 
+<!-- Consolidated admin panel (added 2026-10-02, Admin/Roles plan stage 5) —
+     replaces the scattered "Фирмы"/"Ошибки"/"Данные фирмы" header buttons
+     (removed from renderAccountControl() in stage 7) with one entry point.
+     Tab visibility is role-gated in openAdminScreen(): superadmin sees all
+     four; tenant_admin sees Users + Profile only (Firms/Errors are
+     superadmin-only cross-tenant views, unrelated to a single firm). Reuses
+     renderFirmsList()/loadErrorsList() (parametrized above) and the existing
+     openMyFirmForm() modal rather than re-implementing any of them. -->
+<div id="adminScreen" style="display:none;position:fixed;inset:0;z-index:970;background:var(--bg);overflow-y:auto">
+  <div style="max-width:960px;margin:0 auto;padding:28px 20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+      <div style="font-size:20px;font-weight:700"><i class="ti ti-settings"></i> Admin</div>
+      <button class="btn sm" onclick="closeAdminScreen()"><i class="ti ti-x"></i> Close</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:18px;border-bottom:1px solid var(--border2);padding-bottom:10px" id="adminTabBar">
+      <button class="btn sm" id="adminTabBtn_firms" onclick="switchAdminTab('firms')"><i class="ti ti-building-skyscraper"></i> Firms</button>
+      <button class="btn sm" id="adminTabBtn_users" onclick="switchAdminTab('users')"><i class="ti ti-users"></i> Users</button>
+      <button class="btn sm" id="adminTabBtn_errors" onclick="switchAdminTab('errors')"><i class="ti ti-alert-circle"></i> Errors</button>
+      <button class="btn sm" id="adminTabBtn_profile" onclick="switchAdminTab('profile')"><i class="ti ti-building"></i> Profile</button>
+    </div>
+    <div id="adminTab_firms" style="display:none">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> New firm</button></div>
+      <div id="adminFirmsList" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+    <div id="adminTab_users" style="display:none">
+      <div id="adminUsersWrap"></div>
+    </div>
+    <div id="adminTab_errors" style="display:none">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="loadErrorsList('adminErrorsList')"><i class="ti ti-refresh"></i> Refresh</button></div>
+      <div id="adminErrorsList" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+    <div id="adminTab_profile" style="display:none">
+      <div style="color:var(--text2);font-size:13px;margin-bottom:10px">Company profile data used on Form 101.</div>
+      <button class="btn accent" onclick="openMyFirmForm()"><i class="ti ti-building"></i> Edit company profile</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="createFirmOverlay" style="z-index:950" onclick="if(event.target===this)closeModal('createFirmOverlay')">
   <div class="modal" style="max-width:420px">
     <div class="modal-title">Новая фирма</div>
@@ -2988,17 +3026,24 @@ function renderAccountControl(s){
   host.innerHTML = `
     <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
       ${s.role==='superadmin' ? '<button class="btn sm" onclick="backToFirmsList()"><i class="ti ti-building-skyscraper"></i> Фирмы</button>' : ''}
-      ${s.role==='superadmin' ? '<button class="btn sm" onclick="openErrorsScreen()"><i class="ti ti-alert-circle"></i> Ошибки</button>' : ''}
-      <button class="btn sm" onclick="openMyFirmForm()"${incomplete?' style="color:#ffb020;border-color:#ffb020"':''}
-        title="${incomplete?'Профиль фирмы неполный — данные для Формы 101':'Данные фирмы (для Формы 101)'}">
-        <i class="ti ti-${incomplete?'alert-triangle':'building'}"></i></button>
+      ${(s.role==='superadmin'||s.role==='tenant_admin') ? '<button class="btn sm" onclick="openAdminScreen()"'+(incomplete?' style="color:#ffb020;border-color:#ffb020"':'')+' title="Admin"><i class="ti ti-settings"></i></button>' : ''}
       <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i></button>
     </div>`;
 }
 
 let __firmsCache = [];
-async function renderFirmsList(){
-  const listEl = document.getElementById('firmsList');
+// Remembers which container the list is currently rendered into, so the
+// toggle/delete actions below (which call renderFirmsList() with no target)
+// refresh the right one regardless of whether the list is showing on the
+// super-admin's own landing screen or inside the admin panel's Firms tab.
+let __firmsListTarget = 'firmsList';
+// targetId parametrized 2026-10-02 (Admin/Roles plan stage 5) so the same
+// render logic feeds both the super-admin's own landing screen (#firmsList,
+// the default) and the new consolidated admin panel's Firms tab
+// (#adminFirmsList) without duplicating this function.
+async function renderFirmsList(targetId){
+  __firmsListTarget = targetId || 'firmsList';
+  const listEl = document.getElementById(__firmsListTarget);
   listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
   try{
     const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'listTenants', ...gsAuth() }) });
@@ -3028,15 +3073,52 @@ async function renderFirmsList(){
 // the Errors sheet has no tenantId column, so a normal tenant login must
 // never reach this). Overlays whatever's currently showing; closeErrorsScreen
 // just hides it again since nothing underneath needs to change.
+// Consolidated admin panel (2026-10-02, Admin/Roles plan stage 5). Tab
+// visibility: superadmin sees all four; tenant_admin sees Users + Profile
+// only (Firms/Errors are cross-tenant superadmin-only views — see
+// listTenants()/loadErrors() server-side, both already gated there too, this
+// is just the matching client-side visibility). staff/supplier never reach
+// this screen at all (no button opens it for them — see renderAccountControl()).
+function openAdminScreen(){
+  const s = getSession();
+  if(!s) return;
+  const isSuper = s.role === 'superadmin';
+  document.getElementById('adminTabBtn_firms').style.display = isSuper ? '' : 'none';
+  document.getElementById('adminTabBtn_errors').style.display = isSuper ? '' : 'none';
+  document.getElementById('adminScreen').style.display = 'block';
+  switchAdminTab(isSuper ? 'firms' : 'users');
+}
+function closeAdminScreen(){
+  document.getElementById('adminScreen').style.display = 'none';
+}
+function switchAdminTab(tab){
+  ['firms','users','errors','profile'].forEach(t=>{
+    document.getElementById('adminTab_'+t).style.display = t===tab ? 'block' : 'none';
+    const btn = document.getElementById('adminTabBtn_'+t);
+    if(btn) btn.classList.toggle('accent', t===tab);
+  });
+  if(tab==='firms') renderFirmsList('adminFirmsList');
+  else if(tab==='errors') loadErrorsList('adminErrorsList');
+  else if(tab==='users') renderAdminUsers();
+}
+// Placeholder — real implementation lands in stage 6 (Users tab CRUD UI).
+function renderAdminUsers(){
+  const el = document.getElementById('adminUsersWrap');
+  if(el) el.innerHTML = '<div style="color:var(--text2);font-size:13px">Coming soon.</div>';
+}
+
 function openErrorsScreen(){
   document.getElementById('errorsScreen').style.display = 'block';
-  loadErrorsList();
+  loadErrorsList('errorsList');
 }
 function closeErrorsScreen(){
   document.getElementById('errorsScreen').style.display = 'none';
 }
-async function loadErrorsList(){
-  const listEl = document.getElementById('errorsList');
+// targetId parametrized 2026-10-02 (Admin/Roles plan stage 5) — same reuse
+// pattern as renderFirmsList() above, feeds either the standalone
+// #errorsScreen or the admin panel's Errors tab (#adminErrorsList).
+async function loadErrorsList(targetId){
+  const listEl = document.getElementById(targetId||'errorsList');
   listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
   try{
     const res = await fetch(GS_URL + '?action=loadErrors' + gsAuthQuery());
@@ -3064,7 +3146,7 @@ async function toggleTenantActive(tenantId, nextActive){
     const json = await res.json();
     if(!json || json.error){ showToast((json&&json.error)||'Ошибка'); return; }
     showToast(nextActive ? 'Фирма включена' : 'Фирма отключена');
-    renderFirmsList();
+    renderFirmsList(__firmsListTarget);
   }catch(e){ showToast('Сеть недоступна'); }
 }
 
@@ -3081,7 +3163,7 @@ async function confirmDeleteTenant(tenantId, companyName){
     const json = await res.json();
     if(!json || json.error){ showToast((json&&json.error)||'Ошибка'); return; }
     showToast('Фирма «'+companyName+'» удалена');
-    renderFirmsList();
+    renderFirmsList(__firmsListTarget);
   }catch(e){ showToast('Сеть недоступна'); }
 }
 
@@ -3115,7 +3197,7 @@ async function submitCreateFirm(){
     if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось создать фирму'; return; }
     closeModal('createFirmOverlay');
     showToast('Фирма создана');
-    renderFirmsList();
+    renderFirmsList(__firmsListTarget);
   }catch(e){ errEl.textContent = 'Сеть недоступна'; }
   finally{ btn.disabled = false; btn.textContent = 'Создать'; }
 }
@@ -3193,7 +3275,7 @@ async function submitEditFirm(){
     refreshFirmProfileWarnings();
     // Only the super-admin has a Firms list to refresh (and the right to ask
     // the backend for one) — a firm editing its own profile has no such screen.
-    if(getSession()?.role === 'superadmin') renderFirmsList();
+    if(getSession()?.role === 'superadmin') renderFirmsList(__firmsListTarget);
     // A firm-profile edit changes the employer-details row on every worker's
     // Form 101 — regenerate them, but only when the edited firm is the one
     // actually loaded into `workers` right now (self-service edit, or a
