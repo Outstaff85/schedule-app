@@ -362,6 +362,7 @@
     <div class="ttab" id="tabSchedule" onclick="switchTab('schedule')"><span class="ic"><i class="ti ti-calendar"></i></span><span class="lb">Schedule</span></div>
     <div class="ttab" id="tabWorkers" onclick="switchTab('workers')"><span class="ic"><i class="ti ti-users-group"></i></span><span class="lb">Workers</span></div>
     <div class="ttab" id="tabClients" onclick="switchTab('clients')"><span class="ic"><i class="ti ti-users"></i></span><span class="lb">Clients</span></div>
+    <div class="ttab" id="tabSuppliers" onclick="switchTab('suppliers')"><span class="ic"><i class="ti ti-truck-delivery"></i></span><span class="lb">Suppliers</span></div>
     <div class="ttab admin" id="tabAdmin" onclick="switchTab('admin')"><span class="ic"><i class="ti ti-lock"></i></span><span class="lb">Admin</span></div>
     <div class="ttab admin" id="tabAccounting" onclick="switchTab('accounting')"><span class="ic"><i class="ti ti-cash"></i></span><span class="lb">Accounting</span></div>
   </div>
@@ -431,6 +432,12 @@
         <div id="dashMissing" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px"></div>
       </div>
 
+      <!-- Workers by supplier -->
+      <div style="margin-bottom:20px">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"><i class="ti ti-truck-delivery"></i> Workers by Supplier</div>
+        <div id="dashSuppliers" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px"></div>
+      </div>
+
       <!-- Contract expiry warnings (hidden unless at least one worker is flagged) -->
       <div style="margin-bottom:20px;display:none" id="dashExpiringWrap">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"><i class="ti ti-alert-triangle"></i> Истекает срок работы</div>
@@ -483,6 +490,13 @@
           <option value="vacation">On vacation</option>
           <option value="fired">Fired</option>
         </select>
+        <select id="workersFilterClient" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none"></select>
+        <select id="workersFilterSupplier" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none"></select>
+        <select id="workersGroupBy" onchange="renderWorkersPage()" title="Group by" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
+          <option value="">No grouping</option>
+          <option value="client">Group by client</option>
+          <option value="supplier">Group by supplier</option>
+        </select>
         <span id="workersCount" style="font-size:13px;color:var(--text2);margin-left:auto"></span>
       </div>
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow-x:auto;-webkit-overflow-scrolling:touch">
@@ -493,6 +507,7 @@
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Status</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">ID / Паспорт</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Objects</th>
+              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Supplier</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Phone</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Rate</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Start date</th>
@@ -514,6 +529,17 @@
         <button class="btn sm" onclick="openAddClient()"><i class="ti ti-plus"></i> Add Client</button>
       </div>
       <div class="clients-grid" id="clientsGrid"></div>
+    </div>
+
+    <div class="page-section" id="sectionSuppliers">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Suppliers</div>
+          <div class="page-sub">Manage staffing suppliers and assigned workers</div>
+        </div>
+        <button class="btn sm" onclick="openAddSupplier()"><i class="ti ti-plus"></i> Add Supplier</button>
+      </div>
+      <div class="clients-grid" id="suppliersGrid"></div>
     </div>
 
     <!-- Admin Section -->
@@ -619,6 +645,21 @@
         </div>
         <div id="rateMatrixWrap"></div>
       </div>
+
+      <!-- Per-supplier rate matrix (informational — does not feed payroll math) -->
+      <div style="margin-top:24px">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px"><i class="ti ti-truck-delivery"></i> Per-supplier rates</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
+          Reference only — placeholders show the worker's own base rate. Payroll totals below always use the worker's actual pay (client/base rate), never this value.
+        </div>
+        <div id="supplierRateMatrixWrap"></div>
+      </div>
+
+      <!-- Payable by supplier summary -->
+      <div style="margin-top:24px">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px"><i class="ti ti-report-money"></i> Payable by supplier</div>
+        <div id="supplierPayableWrap"></div>
+      </div>
     </div>
 
   </div>
@@ -645,6 +686,9 @@
 </div>
 <div class="overlay" id="clientOverlay" onclick="if(event.target===this)closeModal('clientOverlay')">
   <div class="modal" id="clientModal"></div>
+</div>
+<div class="overlay" id="supplierOverlay" onclick="if(event.target===this)closeModal('supplierOverlay')">
+  <div class="modal" id="supplierModal"></div>
 </div>
 
 <!-- Manual Punch Modal -->
@@ -772,8 +816,10 @@ let saveTimer        = null;
 let currentTab       = 'schedule';
 let editingWorkerIdx = null;
 let editingClientId  = null;
+let editingSupplierId = null;
 let selColorIdx      = 0;
 let selClientColor   = CLIENT_COLORS[0];
+let selSupplierColor = CLIENT_COLORS[0];
 let dragSrcWi        = null;
 
 let workers = [
@@ -810,6 +856,14 @@ let clients = [
   {id:'c1',name:'Office A',color:'#4f8ef7',address:'Tel Aviv',notes:''},
   {id:'c2',name:'Mall B',  color:'#3ecf8e',address:'Jerusalem',notes:''},
 ];
+
+// Suppliers (added 2026-09-30) — same shape/lifecycle as `clients` (a plain
+// array persisted in the same tenant-scoped Schedule blob, see saveSchedule's
+// own comment). {id,name,color,phone,notes,bank,bankBranch,accountNumber,
+// companyNumber}. A worker is linked via w.supplierId (single, not an array
+// like clientIds — a worker has one supplying agency but can work for
+// several clients).
+let suppliers = [];
 
 // --- Utils --------------------------------------------------------------------
 function uid(){ return 'id'+Math.random().toString(36).slice(2,9); }
@@ -993,12 +1047,13 @@ function fmtDMY(dateStr){
 // --- Tab ---------------------------------------------------------------------
 function switchTab(tab){
   currentTab=tab;
-  ['dashboard','schedule','workers','clients','admin','accounting'].forEach(t=>{
+  ['dashboard','schedule','workers','clients','suppliers','admin','accounting'].forEach(t=>{
     document.getElementById('tab'+t.charAt(0).toUpperCase()+t.slice(1))?.classList.toggle('active',tab===t);
     document.getElementById('section'+t.charAt(0).toUpperCase()+t.slice(1))?.classList.toggle('visible',tab===t);
   });
   if(tab==='workers')    renderWorkersPage();
   if(tab==='clients')    renderClientsPage();
+  if(tab==='suppliers')  renderSuppliersPage();
   if(tab==='admin')      renderAdmin();
   if(tab==='dashboard')  renderDashboard();
   if(tab==='accounting') renderAccounting();
@@ -1027,6 +1082,7 @@ function render(){
   // every mutation.
   if(currentTab==='workers')    renderWorkersPage();
   if(currentTab==='clients')    renderClientsPage();
+  if(currentTab==='suppliers')  renderSuppliersPage();
   if(currentTab==='admin')      renderAdmin();
   if(currentTab==='dashboard')  renderDashboard();
   if(currentTab==='accounting') renderAccounting();
@@ -1300,6 +1356,17 @@ function toggleClientsWrap(){
   if(wrap) wrap.style.display = __wClientsOpen ? '' : 'none';
   if(chev) chev.className = 'ti ti-chevron-' + (__wClientsOpen ? 'up' : 'down');
 }
+// Same collapsed-by-default pattern, for the worker's own bank requisites
+// (bank/branch/account number) — a separate section, not mixed into the
+// client picker, per request ("отдельная вкладка внутри карточки").
+let __wBankOpen = false;
+function toggleBankWrap(){
+  __wBankOpen = !__wBankOpen;
+  const wrap = document.getElementById('wBankWrap');
+  const chev = document.getElementById('wBankChevron');
+  if(wrap) wrap.style.display = __wBankOpen ? '' : 'none';
+  if(chev) chev.className = 'ti ti-chevron-' + (__wBankOpen ? 'up' : 'down');
+}
 
 // ===== Children (ספח) manual editor, inside the Form-101 dropdown =====
 // Backs w.docChildren. Pre-filled from a scan (openWorkerModalFromScan()
@@ -1469,6 +1536,7 @@ function showWorkerModal(w){
   __wExpiryOpen=false;
   __wForm101Open=false;
   __wClientsOpen=false;
+  __wBankOpen=false;
   __wChildren=Array.isArray(w.docChildren)?w.docChildren.map(c=>({...c})):[];
   __wAvatarB64=w.avatarB64||'';
   __wDocType=w.docType||'israeli_id';
@@ -1578,6 +1646,26 @@ function showWorkerModal(w){
         </label>`).join(''):'<span style="font-size:12px;color:var(--text3);padding:8px">אין לקוחות עדיין</span>'}
       </div>
       <div id="wClientEmpty" style="display:none;font-size:12px;color:var(--text3);padding:8px">לא נמצא</div>
+    </div>
+    <div class="field">
+      <label><i class="ti ti-truck-delivery"></i> Supplier (optional)</label>
+      <select id="wSupplierId" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:10px;outline:none">
+        <option value="">— None —</option>
+        ${suppliers.map(s=>`<option value="${s.id}" ${w.supplierId===s.id?'selected':''}>${esc(s.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field" style="margin-bottom:6px">
+      <button class="btn sm" type="button" onclick="toggleBankWrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
+        <span><i class="ti ti-building-bank"></i> Bank details <span id="wBankSummary" style="color:var(--text3);font-weight:400;font-size:12px">${w.bank||w.bankAccountNumber?'· set':''}</span></span>
+        <i class="ti ti-chevron-down" id="wBankChevron"></i>
+      </button>
+    </div>
+    <div id="wBankWrap" style="display:none">
+      <div class="field-row">
+        <div class="field"><label>Bank</label><input type="text" id="wBank" value="${esc(w.bank||'')}" placeholder="Bank name"></div>
+        <div class="field"><label>Branch</label><input type="text" id="wBankBranch" value="${esc(w.bankBranch||'')}" placeholder="Branch #"></div>
+      </div>
+      <div class="field"><label>Account number</label><input type="text" id="wBankAccountNumber" value="${esc(w.bankAccountNumber||'')}" placeholder="Account #"></div>
     </div>
     <div class="field" style="margin-bottom:6px">
       <button class="btn sm" type="button" onclick="toggleWeeklySchedule()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
@@ -1734,6 +1822,10 @@ async function saveWorker(){
     .map(c=>({name:(c.name||'').trim(),idNo:(c.idNo||'').trim(),dob:(c.dob||'').trim()}))
     .filter(c=>c.name||c.idNo||c.dob);
   const clientIds=[...document.querySelectorAll('#wClientPick input:checked')].map(el=>el.value);
+  const supplierId=document.getElementById('wSupplierId')?.value||null;
+  const bank=document.getElementById('wBank')?.value.trim()||'';
+  const bankBranch=document.getElementById('wBankBranch')?.value.trim()||'';
+  const bankAccountNumber=document.getElementById('wBankAccountNumber')?.value.trim()||'';
   // Only a grid the user actually opened decides the schedule. Left closed, an
   // existing worker keeps the shifts they already had and a new one is created
   // with none — added to the roster without being dropped into the week.
@@ -1745,6 +1837,7 @@ async function saveWorker(){
   const commonFields={name,colorIdx:selColorIdx,phone,hourlyRate,status,startDate,workStartDate,docSex,
     expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,houseNumber,city,docDob,docExpiry,notes,
     incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,docChildren,clientIds,schedule,
+    supplierId,bank,bankBranch,bankAccountNumber,
     avatarB64:__wAvatarB64,docType:__wDocType};
   if(editingWorkerIdx!==null){
     const prevW=workers[editingWorkerIdx];
@@ -1900,6 +1993,7 @@ function showClientModal(c){
     <div class="field"><label>Object</label><input type="text" id="cObject" value="${c.object||''}" placeholder="Object / branch name"></div>
     <div class="field"><label>Address (optional)</label><input type="text" id="cAddr" value="${c.address||''}" placeholder="Address"></div>
     <div class="field"><label>Notes (optional)</label><input type="text" id="cNotes" value="${c.notes||''}" placeholder="Notes"></div>
+    <div class="field"><label>ח.פ (Company Number, optional)</label><input type="text" id="cCompanyNumber" value="${esc(c.companyNumber||'')}" placeholder="512345678"></div>
     <div class="field">
       <label><i class="ti ti-cash"></i> Default rate for this client (optional)</label>
       <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Applied to all workers at this client if a worker has no own rate for it (see Accounting → Per-client rates)</div>
@@ -1993,6 +2087,7 @@ function saveClient(){
   const object=document.getElementById('cObject')?.value.trim()||'';
   const address=document.getElementById('cAddr').value.trim();
   const notes=document.getElementById('cNotes').value.trim();
+  const companyNumber=document.getElementById('cCompanyNumber')?.value.trim()||'';
   const lat=parseFloat(document.getElementById('cLat').value)||null;
   const lng=parseFloat(document.getElementById('cLng').value)||null;
   const radius=parseInt(document.getElementById('cRadius').value)||100;
@@ -2001,10 +2096,10 @@ function saveClient(){
   const defaultHourlyRate=rateVal('cDefRate'), defaultOtRate=rateVal('cDefOtRate'), defaultShabbatRate=rateVal('cDefShabRate');
   if(editingClientId){
     const idx=clients.findIndex(x=>x.id===editingClientId);
-    if(idx>=0) clients[idx]={...clients[idx],name,object,address,notes,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate};
+    if(idx>=0) clients[idx]={...clients[idx],name,object,address,notes,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate};
     showToast(name+' updated!');
   } else {
-    clients.push({id:uid(),name,object,address,notes,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate});
+    clients.push({id:uid(),name,object,address,notes,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate});
     showToast(name+' added!');
   }
   closeModal('clientOverlay'); renderClientsPage(); renderSidebarClients(); autoSave();
@@ -2020,12 +2115,28 @@ function deleteClient(cid){
   if(selectedClientId===cid) selectedClientId=null;
   renderClientsPage(); renderSidebarClients(); render(); autoSave(); showToast(c.name+' removed');
 }
+// Keeps a <select>'s options in sync with a source array (clients/suppliers)
+// while preserving whatever the user already had picked — called on every
+// renderWorkersPage() since clients/suppliers can change between renders.
+function fillFilterSelect(selectId, items, allLabel){
+  const el=document.getElementById(selectId); if(!el) return;
+  const prev=el.value;
+  el.innerHTML=`<option value="">${allLabel}</option>`+items.map(i=>`<option value="${i.id}">${esc(i.name)}</option>`).join('');
+  if(items.some(i=>i.id===prev)) el.value=prev;
+}
 function renderWorkersPage(){
+  fillFilterSelect('workersFilterClient', clients, 'All clients');
+  fillFilterSelect('workersFilterSupplier', suppliers, 'All suppliers');
   const q=(document.getElementById('workersSearch')?.value||'').trim().toLowerCase();
   const stFilter=document.getElementById('workersFilterStatus')?.value||'';
+  const clientFilter=document.getElementById('workersFilterClient')?.value||'';
+  const supplierFilter=document.getElementById('workersFilterSupplier')?.value||'';
+  const groupBy=document.getElementById('workersGroupBy')?.value||'';
   const stMetaMap={active:{label:'Active',col:'var(--green)',bg:'var(--green-bg)'},vacation:{label:'On vacation',col:'var(--amber)',bg:'var(--amber-bg)'},fired:{label:'Fired',col:'var(--red)',bg:'var(--red-bg)'}};
   let list=workers.map((w,wi)=>({w,wi}));
   if(stFilter) list=list.filter(x=>(x.w.status||'active')===stFilter);
+  if(clientFilter) list=list.filter(x=>(x.w.clientIds||[]).includes(clientFilter));
+  if(supplierFilter) list=list.filter(x=>x.w.supplierId===supplierFilter);
   if(q) list=list.filter(x=>{
     const objNames=(x.w.clientIds||[]).map(id=>clients.find(c=>c.id===id)?.name||'').join(' ');
     return (x.w.name||'').toLowerCase().includes(q) || (x.w.phone||'').toLowerCase().includes(q) || objNames.toLowerCase().includes(q);
@@ -2034,16 +2145,20 @@ function renderWorkersPage(){
   const tbody=document.getElementById('workersTableBody'), empty=document.getElementById('workersEmpty');
   if(!list.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
-  tbody.innerHTML=list.map(({w,wi})=>{
+
+  const rowHtml=({w,wi})=>{
     const c=WORKER_COLORS[w.colorIdx%8];
     const stMeta=stMetaMap[w.status||'active'];
     const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
     const objBadges=objs.length?objs.map(o=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${o.color}22;border-radius:10px;margin-right:3px"><span style="width:6px;height:6px;border-radius:50%;background:${o.color}"></span>${esc(o.name)}</span>`).join(''):'<span style="color:var(--text3);font-size:12px">—</span>';
+    const sup=suppliers.find(s=>s.id===w.supplierId);
+    const supBadge=sup?`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${sup.color}22;border-radius:10px"><span style="width:6px;height:6px;border-radius:50%;background:${sup.color}"></span>${esc(sup.name)}</span>`:'<span style="color:var(--text3);font-size:12px">—</span>';
     return `<tr onclick="openWorkerCard(${wi})" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background=''">
       <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div><span style="font-size:13px;font-weight:600">${esc(w.name)}</span>${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div></td>
       <td style="padding:10px 12px"><span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col}">${stMeta.label}</span></td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2);font-family:monospace">${workerDocId(w)?esc(workerDocId(w)):'—'}</td>
       <td style="padding:10px 12px">${objBadges}</td>
+      <td style="padding:10px 12px">${supBadge}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.phone?esc(w.phone):'—'}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.hourlyRate?('₪'+w.hourlyRate+'/h'):'—'}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.startDate?fmtDMY(w.startDate):'—'}</td>
@@ -2053,7 +2168,25 @@ function renderWorkersPage(){
         <button class="btn sm red" onclick="deleteWorker(${wi})" style="padding:3px 8px;font-size:11px"><i class="ti ti-x"></i></button>
       </div></td>
     </tr>`;
-  }).join('');
+  };
+  const groupHeaderHtml=(name,color,count)=>`<tr><td colspan="8" style="padding:8px 12px;background:var(--bg3);font-size:12px;font-weight:700;color:var(--text2)"><span style="display:inline-flex;align-items:center;gap:6px">${color?`<span style="width:8px;height:8px;border-radius:50%;background:${color}"></span>`:''}${esc(name)} <span style="color:var(--text3);font-weight:400">(${count})</span></span></td></tr>`;
+
+  if(!groupBy){
+    tbody.innerHTML=list.map(rowHtml).join('');
+    return;
+  }
+  // Grouped view: a client-group worker can appear in MULTIPLE groups (a
+  // worker can have several clientIds — that's the real many-to-many
+  // relationship, not a bug); a supplier-group worker appears in exactly one
+  // (or "Unassigned"), matching w.supplierId being single-valued.
+  const groups=groupBy==='client'
+    ? [...clients.map(c=>({id:c.id,name:c.name,color:c.color,items:list.filter(x=>(x.w.clientIds||[]).includes(c.id))})),
+       {id:null,name:'No client assigned',color:null,items:list.filter(x=>!(x.w.clientIds||[]).length)}]
+    : [...suppliers.map(s=>({id:s.id,name:s.name,color:s.color,items:list.filter(x=>x.w.supplierId===s.id)})),
+       {id:null,name:'No supplier assigned',color:null,items:list.filter(x=>!x.w.supplierId)}];
+  tbody.innerHTML=groups.filter(g=>g.items.length).map(g=>
+    groupHeaderHtml(g.name,g.color,g.items.length)+g.items.map(rowHtml).join('')
+  ).join('');
 }
 
 const INCOME_TYPE_LABELS = {monthly:'משכורת חודשית',secondary:'משרה נוספת',partial:'משרה חלקית',daily:'שכר יומי',pension:'פנסיה',scholarship:'מלגה'};
@@ -2064,6 +2197,7 @@ function openWorkerCard(wi){
   const stMetaMap={active:{label:'Active',col:'var(--green)',bg:'var(--green-bg)'},vacation:{label:'On vacation',col:'var(--amber)',bg:'var(--amber-bg)'},fired:{label:'Fired',col:'var(--red)',bg:'var(--red-bg)'}};
   const stMeta=stMetaMap[w.status||'active'];
   const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
+  const sup=suppliers.find(s=>s.id===w.supplierId);
   const wh=workerTotalHours(w);
   const expSt=workerExpiryStatus(w);
   document.getElementById('workerCardModal').innerHTML=`
@@ -2092,6 +2226,7 @@ function openWorkerCard(wi){
         const hasOverride=!!(w.clientRates&&w.clientRates[o.id]&&Object.values(w.clientRates[o.id]).some(v=>v!=null));
         return `<div><i class="ti ti-currency-shekel"></i> ${esc(o.name)}: ₪${r.regRate}/h · OT ₪${r.otRate} · Shabbat ₪${r.shabbatRate}${hasOverride?' <i class="ti ti-star-filled" style="font-size:10px;color:var(--amber)" title="Own rate at this client"></i>':''}</div>`;
       }).join('')}` : `<div><i class="ti ti-building-off"></i> Not assigned to any object</div>`}
+      ${sup?`<div><i class="ti ti-truck-delivery"></i> <span style="color:${sup.color}">${esc(sup.name)}</span></div>`:''}
     </div>
     ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
     <div class="modal-actions">
@@ -2125,6 +2260,96 @@ function renderClientsPage(){
 
         <button class="btn sm" style="background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)" onclick="openManualPunch('${c.id}')"><i class="ti ti-clock"></i> Punch Clock</button>
         <button class="btn sm red" onclick="deleteClient('${c.id}')">&#x2715; Remove</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// --- Suppliers ----------------------------------------------------------------
+// Mirrors the Clients tab above (same grid/card CSS classes, same CRUD
+// shape) — a supplier is a staffing agency a worker is linked to via
+// w.supplierId (single, unlike the many-to-many clientIds), see the
+// `suppliers` global's own comment for the field list.
+function openAddSupplier(){ editingSupplierId=null; selSupplierColor=CLIENT_COLORS[suppliers.length%CLIENT_COLORS.length]; showSupplierModal({name:'',color:selSupplierColor,phone:'',notes:'',bank:'',bankBranch:'',accountNumber:'',companyNumber:''}); }
+function openEditSupplier(sid){ editingSupplierId=sid; const s=suppliers.find(x=>x.id===sid); selSupplierColor=s.color; showSupplierModal(s); }
+function showSupplierModal(s){
+  document.getElementById('supplierModal').innerHTML=`
+    <div class="modal-title">${editingSupplierId?'Edit Supplier':'Add New Supplier'}</div>
+    <div class="field"><label>Name</label><input type="text" id="sName" value="${esc(s.name||'')}" placeholder="Supplier name" autofocus></div>
+    <div class="field"><label>Phone (optional)</label><input type="text" id="sPhone" value="${esc(s.phone||'')}" placeholder="Phone"></div>
+    <div class="field"><label>Notes (optional)</label><input type="text" id="sNotes" value="${esc(s.notes||'')}" placeholder="Notes"></div>
+    <div class="field">
+      <label><i class="ti ti-building-bank"></i> Bank details (optional)</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div><label style="font-size:11px;color:var(--text3)">Bank</label>
+          <input type="text" id="sBank" value="${esc(s.bank||'')}" placeholder="Bank name"></div>
+        <div><label style="font-size:11px;color:var(--text3)">Branch</label>
+          <input type="text" id="sBankBranch" value="${esc(s.bankBranch||'')}" placeholder="Branch #"></div>
+        <div><label style="font-size:11px;color:var(--text3)">Account #</label>
+          <input type="text" id="sAccountNumber" value="${esc(s.accountNumber||'')}" placeholder="Account #"></div>
+      </div>
+    </div>
+    <div class="field"><label>ח.פ (Company Number, optional)</label><input type="text" id="sCompanyNumber" value="${esc(s.companyNumber||'')}" placeholder="512345678"></div>
+    <div class="field"><label>Color</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap" id="sColorPick">
+        ${CLIENT_COLORS.map(col=>`<div onclick="pickSColor('${col}')" data-color="${col}" style="width:24px;height:24px;border-radius:50%;background:${col};cursor:pointer;border:2px solid ${col===selSupplierColor?'white':'transparent'};transition:all 0.15s;${col===selSupplierColor?'transform:scale(1.2)':''}"></div>`).join('')}
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('supplierOverlay')">Cancel</button>
+      <button class="btn accent" onclick="saveSupplier()">${editingSupplierId?'Save Changes':'Add Supplier'}</button>
+    </div>`;
+  document.getElementById('supplierOverlay').classList.add('open');
+}
+function pickSColor(col){ selSupplierColor=col; document.querySelectorAll('#sColorPick [data-color]').forEach(el=>{ el.style.borderColor=el.dataset.color===col?'white':'transparent'; el.style.transform=el.dataset.color===col?'scale(1.2)':'scale(1)'; }); }
+function saveSupplier(){
+  const name=document.getElementById('sName').value.trim();
+  if(!name){ document.getElementById('sName').focus(); return; }
+  const phone=document.getElementById('sPhone').value.trim();
+  const notes=document.getElementById('sNotes').value.trim();
+  const bank=document.getElementById('sBank').value.trim();
+  const bankBranch=document.getElementById('sBankBranch').value.trim();
+  const accountNumber=document.getElementById('sAccountNumber').value.trim();
+  const companyNumber=document.getElementById('sCompanyNumber').value.trim();
+  if(editingSupplierId){
+    const idx=suppliers.findIndex(x=>x.id===editingSupplierId);
+    if(idx>=0) suppliers[idx]={...suppliers[idx],name,phone,notes,bank,bankBranch,accountNumber,companyNumber,color:selSupplierColor};
+    showToast(name+' updated!');
+  } else {
+    suppliers.push({id:uid(),name,phone,notes,bank,bankBranch,accountNumber,companyNumber,color:selSupplierColor});
+    showToast(name+' added!');
+  }
+  closeModal('supplierOverlay'); renderSuppliersPage(); autoSave();
+}
+function deleteSupplier(sid){
+  const s=suppliers.find(x=>x.id===sid);
+  if(!s||!confirm('Remove supplier "'+s.name+'"?'))return;
+  suppliers=suppliers.filter(x=>x.id!==sid);
+  workers.forEach(w=>{
+    if(w.supplierId===sid) w.supplierId=null;
+    if(w.supplierRates&&w.supplierRates[sid]) delete w.supplierRates[sid];
+  });
+  renderSuppliersPage(); render(); autoSave(); showToast(s.name+' removed');
+}
+function renderSuppliersPage(){
+  const grid=document.getElementById('suppliersGrid');
+  if(!grid) return;
+  if(!suppliers.length){ grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:14px">No suppliers yet. Click "+ Add Supplier" to create one.</div>'; return; }
+
+  grid.innerHTML=suppliers.map(s=>{
+    const assigned=workers.filter(w=>w.supplierId===s.id);
+    return `<div class="client-card">
+      <div class="client-card-header">
+        <div class="client-card-dot" style="background:${s.color}"></div>
+        <div><div class="client-card-name">${esc(s.name)}</div>${s.phone?`<div class="client-card-info"><i class="ti ti-phone"></i> ${esc(s.phone)}</div>`:''}</div>
+      </div>
+      ${s.notes?`<div style="font-size:12px;color:var(--text2)">${esc(s.notes)}</div>`:''}
+      ${s.bank?`<div style="font-size:12px;color:var(--text2)"><i class="ti ti-building-bank"></i> ${esc(s.bank)}${s.bankBranch?' · branch '+esc(s.bankBranch):''}${s.accountNumber?' · '+esc(s.accountNumber):''}</div>`:''}
+      ${s.companyNumber?`<div style="font-size:12px;color:var(--text2)"><i class="ti ti-id"></i> ח.פ ${esc(s.companyNumber)}</div>`:''}
+      <div style="font-size:12px;color:var(--text2)"><strong style="color:var(--text)">Workers:</strong> ${assigned.length?assigned.map(w=>`<span style="color:${WORKER_COLORS[w.colorIdx%8].text}">${esc(w.name)}</span>`).join(', '):'None assigned'}</div>
+      <div class="client-card-actions">
+        <button class="btn sm" onclick="openEditSupplier('${s.id}')"><i class="ti ti-edit"></i> Edit</button>
+        <button class="btn sm red" onclick="deleteSupplier('${s.id}')">&#x2715; Remove</button>
       </div>
     </div>`;
   }).join('');
@@ -2289,11 +2514,12 @@ function exportExcel(){
     ws['!cols']=[{wch:16},{wch:14},...DAYS.map(()=>({wch:22})),{wch:13}];
     XLSX.utils.book_append_sheet(wb,ws,'Schedule');
 
-    const statsRows=[['Statistics',fmtRange(weekStart)],[],['Worker','Hours','Shifts','Days Off','Clients'],
+    const statsRows=[['Statistics',fmtRange(weekStart)],[],['Worker','Hours','Shifts','Days Off','Clients','Supplier'],
       ...exW.map(w=>{ const cn=clients.filter(c=>(w.clientIds||[]).includes(c.id)).map(c=>c.name).join(', ');
-        return [w.name,workerTotalHours(w).toFixed(1),w.schedule.filter(s=>s.type==='work').length,w.schedule.filter(s=>s.type==='off').length,cn||'Unassigned']; })];
+        const sn=suppliers.find(s=>s.id===w.supplierId)?.name||'';
+        return [w.name,workerTotalHours(w).toFixed(1),w.schedule.filter(s=>s.type==='work').length,w.schedule.filter(s=>s.type==='off').length,cn||'Unassigned',sn]; })];
     const ws2=XLSX.utils.aoa_to_sheet(statsRows);
-    ws2['!cols']=[{wch:18},{wch:10},{wch:8},{wch:10},{wch:28}];
+    ws2['!cols']=[{wch:18},{wch:10},{wch:8},{wch:10},{wch:28},{wch:20}];
     XLSX.utils.book_append_sheet(wb,ws2,'Statistics');
 
     const fname='Schedule_'+weekStart.toISOString().slice(0,10)+'.xlsx';
@@ -3027,12 +3253,13 @@ function setSaveStatus(s){
 }
 
 function getDataObj(){
-  return {workers, clients, weekStart: weekStart.toISOString(), savedAt: new Date().toISOString()};
+  return {workers, clients, suppliers, weekStart: weekStart.toISOString(), savedAt: new Date().toISOString()};
 }
 
 function applyData(d){
   if(d.workers) workers=d.workers.map(w=>({id:w.id||uid(),clientIds:w.clientIds||[],token:w.token||genToken(),status:w.status||'active',...w}));
   if(d.clients) clients=d.clients;
+  if(d.suppliers) suppliers=d.suppliers;
   if(d.weekStart) weekStart=new Date(d.weekStart);
 }
 
@@ -3264,11 +3491,43 @@ function renderDashboard(){
     }).join('') + (sorted.length>LOG_LIMIT?`<div style="text-align:center;padding:10px;border-top:1px solid var(--border)"><button class="btn sm" onclick="toggleLog()">${_logExpanded?'<i class="ti ti-chevron-up"></i> Show less':'<i class="ti ti-chevron-down"></i> Show all ('+sorted.length+')'}</button></div>`:'');
   }
 
+  renderDashSuppliers();
+}
+
+// ── Workers-by-supplier widget (Dashboard) ──────────────────────────────────
+// Purely a headcount overview (how many workers each supplier currently has
+// assigned, plus an unassigned bucket) — no punch/pay data, unlike the
+// Accounting tab's payable-by-supplier summary above.
+function renderDashSuppliers(){
+  const wrap=document.getElementById('dashSuppliers');
+  if(!wrap) return;
+  const counts={};
+  let unassigned=0;
+  workers.forEach(w=>{
+    if(w.supplierId) counts[w.supplierId]=(counts[w.supplierId]||0)+1;
+    else unassigned++;
+  });
+  const rows=suppliers.filter(s=>counts[s.id]).map(s=>({sup:s,count:counts[s.id]}));
+  if(!rows.length && !unassigned){
+    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No workers yet</div>`;
+    return;
+  }
+  wrap.innerHTML = rows.map(r=>`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
+      <div style="width:40px;height:40px;border-radius:50%;background:${r.sup.color}22;color:${r.sup.color};display:flex;align-items:center;justify-content:center;font-size:16px"><i class="ti ti-truck-delivery"></i></div>
+      <div style="font-size:13px;font-weight:600">${esc(r.sup.name)}</div>
+      <div style="font-size:11px;color:var(--text2)">${r.count} worker${r.count===1?'':'s'}</div>
+    </div>`).join('')
+    + (unassigned?`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;opacity:0.7">
+      <div style="width:40px;height:40px;border-radius:50%;background:var(--bg3);color:var(--text3);display:flex;align-items:center;justify-content:center;font-size:16px"><i class="ti ti-truck-delivery"></i></div>
+      <div style="font-size:13px;font-weight:600;color:var(--text3)">No supplier</div>
+      <div style="font-size:11px;color:var(--text3)">${unassigned} worker${unassigned===1?'':'s'}</div>
+    </div>`:'');
 }
 
 function renderAccounting(){
   renderSalary();
   renderRateMatrix();
+  renderSupplierRateMatrix();
 }
 
 function renderSalary(){
@@ -3323,6 +3582,7 @@ function renderSalary(){
   const entries=Object.values(byWorker);
   if(!entries.length){
     salaryEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No punch data for this period</div>`;
+    renderSupplierPayable(entries);
     return;
   }
 
@@ -3397,6 +3657,61 @@ function renderSalary(){
       ${entries.length>4?`<div style="text-align:center;padding:8px;border-top:1px solid var(--border)"><button class="btn sm" onclick="toggleSalary()">${_salExpanded?'<i class="ti ti-chevron-up"></i> Show less':'<i class="ti ti-chevron-down"></i> Show all ('+entries.length+')'}</button></div>`:''}
       <div style="padding:8px 12px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">₪/hour rates are editable manually. Default: Regular = base rate · OT = ×${PAY_RULES.otMult} · Shabbat = ×${PAY_RULES.shabbatMult}. Hours: Regular ≤8h/day, above that — OT; Saturday — at the Shabbat rate.</div>
     </div>`;
+  renderSupplierPayable(entries);
+}
+
+// Groups the already-computed per-worker pay totals (byWorker[...].total, the
+// same figures shown in the table above) by the worker's assigned supplier —
+// purely a re-grouping of existing correct numbers, never a separate payroll
+// calculation, so it can't drift from the canonical shiftPay()/effectiveRates() math.
+function renderSupplierPayable(entries){
+  const wrap=document.getElementById('supplierPayableWrap');
+  if(!wrap) return;
+  if(!entries.length){
+    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No punch data for this period</div>`;
+    return;
+  }
+  const bySupplier={};
+  let unassigned={hours:0,total:0};
+  entries.forEach(e=>{
+    const wc=workers.find(w=>w.id===e.workerId);
+    const sid=wc&&wc.supplierId;
+    if(!sid){ unassigned.hours+=e.hours; unassigned.total+=e.total; return; }
+    if(!bySupplier[sid]) bySupplier[sid]={hours:0,total:0};
+    bySupplier[sid].hours+=e.hours;
+    bySupplier[sid].total+=e.total;
+  });
+  const rows=suppliers.filter(s=>bySupplier[s.id]).map(s=>({sup:s,...bySupplier[s.id]}));
+  if(!rows.length && !unassigned.total){
+    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No workers with a supplier assigned had activity this period</div>`;
+    return;
+  }
+  wrap.innerHTML=`
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table style="width:100%;border-collapse:collapse;min-width:420px">
+        <thead>
+          <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Supplier</th>
+            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">Hours</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Payable</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
+            <td style="padding:10px 12px;font-size:13px;font-weight:600"><span style="color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></span> ${esc(r.sup.name)}</td>
+            <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)}h</td>
+            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
+          </tr>`).join('')}
+          ${unassigned.total?`<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:10px 12px;font-size:13px;color:var(--text3)">No supplier assigned</td>
+            <td style="padding:10px 12px;text-align:center;font-size:13px;color:var(--text3)">${unassigned.hours.toFixed(1)}h</td>
+            <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text3)">₪${unassigned.total.toFixed(0)}</td>
+          </tr>`:''}
+        </tbody>
+      </table>
+      </div>
+    </div>`;
 }
 
 // Per-worker-per-client rate override matrix (tier 1 of effectiveRates()).
@@ -3470,6 +3785,73 @@ function setClientRateOverride(wid,cid,field,val){
   renderRateMatrix();
 }
 
+// Per-worker-per-supplier rate matrix. Unlike clientRates, this is REFERENCE
+// ONLY: suppliers have no place in effectiveRates()'s tier chain (a worker's
+// pay is driven by which client they worked at, not which supplier/agency
+// employs them), so supplierRates never feeds shiftPay()/effectiveRates() —
+// see renderSupplierPayable() above for the actual payable-by-supplier total,
+// which reuses the real computed pay instead of this override value.
+function renderSupplierRateMatrix(){
+  const wrap=document.getElementById('supplierRateMatrixWrap');
+  if(!wrap) return;
+  const rows=workers.filter(w=>w.supplierId).map(w=>({w,sup:suppliers.find(s=>s.id===w.supplierId)})).filter(r=>r.sup);
+  if(!rows.length){
+    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No workers assigned to a supplier</div>`;
+    return;
+  }
+  wrap.innerHTML=`
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table style="width:100%;border-collapse:collapse;min-width:640px">
+        <thead>
+          <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Worker</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Supplier</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Regular ₪/h</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--amber)">OT ₪/h</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--blue)">Shabbat ₪/h</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r,i)=>{
+            const ov=(r.w.supplierRates&&r.w.supplierRates[r.sup.id])||{};
+            const regRate=wRegRate(r.w), otRate=wOtRate(r.w), shabRate=wShabRate(r.w);
+            return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
+              <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.w.name)}</td>
+              <td style="padding:10px 12px;font-size:13px;color:var(--text2)"><span style="color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></span> ${esc(r.sup.name)}</td>
+              <td style="padding:10px 12px;text-align:right">
+                <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${regRate}" title="Reference only — empty = worker's own base rate (${regRate})"
+                  onchange="setSupplierRateOverride('${r.w.id}','${r.sup.id}','rate',this.value)"
+                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+              </td>
+              <td style="padding:10px 12px;text-align:right">
+                <input type="number" value="${ov.otRate??''}" min="0" step="0.5" placeholder="${otRate}" title="Reference only — empty = ${otRate}"
+                  onchange="setSupplierRateOverride('${r.w.id}','${r.sup.id}','otRate',this.value)"
+                  style="width:70px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+              </td>
+              <td style="padding:10px 12px;text-align:right">
+                <input type="number" value="${ov.shabbatRate??''}" min="0" step="0.5" placeholder="${shabRate}" title="Reference only — empty = ${shabRate}"
+                  onchange="setSupplierRateOverride('${r.w.id}','${r.sup.id}','shabbatRate',this.value)"
+                  style="width:70px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>
+    </div>`;
+}
+function setSupplierRateOverride(wid,sid,field,val){
+  const w=workers.find(x=>x.id===wid);
+  if(!w) return;
+  if(!w.supplierRates) w.supplierRates={};
+  if(!w.supplierRates[sid]) w.supplierRates[sid]={};
+  w.supplierRates[sid][field]=(val===''||val==null)?null:(parseFloat(val)||0);
+  if(Object.values(w.supplierRates[sid]).every(v=>v==null)) delete w.supplierRates[sid];
+  autoSave();
+  renderSupplierRateMatrix();
+}
+
 function setWorkerRate(wid,rate){
   const w=workers.find(x=>x.id===wid);
   if(w){ w.hourlyRate=parseFloat(rate)||0; autoSave(); }
@@ -3491,7 +3873,7 @@ function exportSalaryCSV(){
       byWD[wid+'|'+i]={worker:list[0].workerName,wid,date:bucket.date,entries:bucket.entries};
     });
   });
-  const rows=[['Worker','Object/Client','Date','First In','Last Out','Hours','Rate (\u20aa/h)','Day Pay (\u20aa)','Notes']];
+  const rows=[['Worker','Object/Client','Supplier','Date','First In','Last Out','Hours','Rate (\u20aa/h)','Day Pay (\u20aa)','Notes']];
   Object.values(byWD).sort((a,b)=> a.worker<b.worker?-1 : a.worker>b.worker?1 : (a.date-b.date)).forEach(d=>{
     const res=analyzeDayPunches(d.entries,d.date);
     const ins=d.entries.filter(x=>x.type==='in').map(x=>x.time).sort();
@@ -3502,7 +3884,8 @@ function exportSalaryCSV(){
     const isSat=d.date.getDay()===6;
     const pay=shiftPay(res.hours,_w,isSat,shiftClientId);
     const clientObj=punchClientObject(d.entries[0])||workerClientObject(d.wid);
-    rows.push([d.worker, clientObj, d.date.toLocaleDateString('en-GB'), ins[0]||'', outs[outs.length-1]||'', res.hours.toFixed(2), rate, pay.toFixed(2), res.warnings.join('; ')]);
+    const supName=suppliers.find(s=>s.id===_w?.supplierId)?.name||'';
+    rows.push([d.worker, clientObj, supName, d.date.toLocaleDateString('en-GB'), ins[0]||'', outs[outs.length-1]||'', res.hours.toFixed(2), rate, pay.toFixed(2), res.warnings.join('; ')]);
   });
   const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const url=URL.createObjectURL(blob);
@@ -3790,17 +4173,22 @@ function deletePunchEntry(id){
 function exportPunchCSV(){
   const log = getPunchLog();
   if(!log.length){ showToast('No records to export'); return; }
-  const rows=[['Worker','Type','Time','Date','Site','Distance(m)','GPS Accuracy','Notes','Edited']];
-  log.forEach(e=>rows.push([
-    e.workerName||'',
-    e.type?.toUpperCase()||'',
-    e.time||'',
-    new Date(e.ts).toLocaleDateString('en-GB'),
-    punchSite(e),
-    e.dist!=null?e.dist:'',
-    e.notes||'',
-    e.editedAt?new Date(e.editedAt).toLocaleString():''
-  ]));
+  const rows=[['Worker','Supplier','Type','Time','Date','Site','Distance(m)','GPS Accuracy','Notes','Edited']];
+  log.forEach(e=>{
+    const _w=workers.find(w=>w.id===e.workerId);
+    const supName=suppliers.find(s=>s.id===_w?.supplierId)?.name||'';
+    rows.push([
+      e.workerName||'',
+      supName,
+      e.type?.toUpperCase()||'',
+      e.time||'',
+      new Date(e.ts).toLocaleDateString('en-GB'),
+      punchSite(e),
+      e.dist!=null?e.dist:'',
+      e.notes||'',
+      e.editedAt?new Date(e.editedAt).toLocaleString():''
+    ]);
+  });
   const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
   const url=URL.createObjectURL(blob);
