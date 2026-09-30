@@ -1908,6 +1908,7 @@ function showClientModal(c){
     <div class="field"><label>Object</label><input type="text" id="cObject" value="${c.object||''}" placeholder="Object / branch name"></div>
     <div class="field"><label>Address (optional)</label><input type="text" id="cAddr" value="${c.address||''}" placeholder="Address"></div>
     <div class="field"><label>Notes (optional)</label><input type="text" id="cNotes" value="${c.notes||''}" placeholder="Notes"></div>
+    <div class="field"><label>ח.פ (Company Number, optional)</label><input type="text" id="cCompanyNumber" value="${esc(c.companyNumber||'')}" placeholder="512345678"></div>
     <div class="field">
       <label><i class="ti ti-cash"></i> Default rate for this client (optional)</label>
       <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Applied to all workers at this client if a worker has no own rate for it (see Accounting → Per-client rates)</div>
@@ -2001,6 +2002,7 @@ function saveClient(){
   const object=document.getElementById('cObject')?.value.trim()||'';
   const address=document.getElementById('cAddr').value.trim();
   const notes=document.getElementById('cNotes').value.trim();
+  const companyNumber=document.getElementById('cCompanyNumber')?.value.trim()||'';
   const lat=parseFloat(document.getElementById('cLat').value)||null;
   const lng=parseFloat(document.getElementById('cLng').value)||null;
   const radius=parseInt(document.getElementById('cRadius').value)||100;
@@ -2009,10 +2011,10 @@ function saveClient(){
   const defaultHourlyRate=rateVal('cDefRate'), defaultOtRate=rateVal('cDefOtRate'), defaultShabbatRate=rateVal('cDefShabRate');
   if(editingClientId){
     const idx=clients.findIndex(x=>x.id===editingClientId);
-    if(idx>=0) clients[idx]={...clients[idx],name,object,address,notes,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate};
+    if(idx>=0) clients[idx]={...clients[idx],name,object,address,notes,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate};
     showToast(name+' updated!');
   } else {
-    clients.push({id:uid(),name,object,address,notes,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate});
+    clients.push({id:uid(),name,object,address,notes,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate});
     showToast(name+' added!');
   }
   closeModal('clientOverlay'); renderClientsPage(); renderSidebarClients(); autoSave();

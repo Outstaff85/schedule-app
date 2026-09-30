@@ -2,7 +2,7 @@
 // Strategy: TRUE network-first. Every online request goes to the server with
 // {cache:'no-store'} so the newest code/data is always used; the cache is only
 // a fallback when offline. The Apps Script API is never touched by the SW.
-const CACHE = 'schedule-mgr-v50';
+const CACHE = 'schedule-mgr-v51';
 const CORE = [
   './',
   './schedule-manager.html',
