@@ -785,6 +785,40 @@
   </div>
 </div>
 
+<!-- Create/edit staff/supplier user (Admin panel, Users tab — added 2026-10-02,
+     Admin/Roles plan stage 6). Single form for both create and edit, same
+     pattern as the worker modal — __editingUserId null means "create". -->
+<div class="overlay" id="userFormOverlay" style="z-index:980" onclick="if(event.target===this)closeModal('userFormOverlay')">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title" id="userFormTitle">New user</div>
+    <div class="field"><label>Username</label><input type="text" id="userFormUsername" autocomplete="off"></div>
+    <div class="field" id="userFormPasswordField"><label>Password (min. 8 chars)</label><input type="password" id="userFormPassword" autocomplete="new-password"></div>
+    <div class="field"><label>Role</label>
+      <select id="userFormRole" onchange="onUserFormRoleChange()">
+        <option value="staff">Staff</option>
+        <option value="supplier">Supplier</option>
+      </select>
+    </div>
+    <div class="field" id="userFormSupplierField" style="display:none"><label>Supplier</label><select id="userFormSupplierId"></select></div>
+    <div class="field" id="userFormPermsField">
+      <label>Permissions</label>
+      <div style="display:flex;flex-direction:column;gap:4px;font-size:13px">
+        <label><input type="checkbox" value="schedule" class="userFormPermCb"> Schedule</label>
+        <label><input type="checkbox" value="workers" class="userFormPermCb"> Workers</label>
+        <label><input type="checkbox" value="clients" class="userFormPermCb"> Clients</label>
+        <label><input type="checkbox" value="suppliers" class="userFormPermCb"> Suppliers</label>
+        <label><input type="checkbox" value="accounting" class="userFormPermCb"> Accounting</label>
+        <label><input type="checkbox" value="exports" class="userFormPermCb"> Exports</label>
+      </div>
+    </div>
+    <div id="userFormError" style="color:#ff6b78;font-size:13px;margin:2px 0 6px;min-height:1.2em"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('userFormOverlay')">Cancel</button>
+      <button class="btn accent" id="userFormSaveBtn" onclick="submitUserForm()">Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="createFirmOverlay" style="z-index:950" onclick="if(event.target===this)closeModal('createFirmOverlay')">
   <div class="modal" style="max-width:420px">
     <div class="modal-title">Новая фирма</div>
@@ -3101,10 +3135,141 @@ function switchAdminTab(tab){
   else if(tab==='errors') loadErrorsList('adminErrorsList');
   else if(tab==='users') renderAdminUsers();
 }
-// Placeholder — real implementation lands in stage 6 (Users tab CRUD UI).
-function renderAdminUsers(){
+// ── Users tab (Admin panel, added 2026-10-02, Admin/Roles plan stage 6) ────
+// Scoped to the CURRENTLY ACTIVE firm — same mental model as everything else
+// in the app (a super-admin managing another firm's users switches firms
+// first via the Firms tab, rather than this tab showing every firm's users
+// mixed together). listUsers() itself returns every firm's users for a
+// superadmin (by backend design — see its own comment), filtered down to one
+// firm here client-side.
+const PERMISSION_SECTIONS = ['schedule','workers','clients','suppliers','accounting','exports'];
+let __editingUserId = null;
+function activeTenantIdForAdmin(){
+  const s = getSession();
+  if(!s) return null;
+  return s.role === 'superadmin' ? s.viewingTenantId : s.tenantId;
+}
+async function renderAdminUsers(){
   const el = document.getElementById('adminUsersWrap');
-  if(el) el.innerHTML = '<div style="color:var(--text2);font-size:13px">Coming soon.</div>';
+  if(!el) return;
+  el.innerHTML = '<div style="color:var(--text2);font-size:13px">Loading…</div>';
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'listUsers', ...gsAuth() }) });
+    const json = await res.json();
+    if(!json || json.error){ el.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Load failed')+'</div>'; return; }
+    const tenantId = activeTenantIdForAdmin();
+    const users = (json.users||[]).filter(u => u.tenantId === tenantId);
+    const rows = users.map(u => {
+      const sup = u.role==='supplier' ? (suppliers||[]).find(s=>s.id===u.supplierId) : null;
+      const permsLabel = u.role!=='staff' ? '' : (u.permissions==='*' ? 'Full access' : (Array.isArray(u.permissions)?u.permissions.join(', '):'—'));
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);${u.active===false?'opacity:0.55':''}">
+        <div>
+          <div style="font-weight:600">${esc(u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(u.role)})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">inactive</span>':''}</div>
+          <div style="font-size:12px;color:var(--text2)">${u.role==='supplier' ? (sup?esc(sup.name):'—') : esc(permsLabel)}</div>
+        </div>
+        <div style="display:flex;gap:4px">
+          <button class="btn sm" onclick="openEditUserForm('${esc(u.id)}')" title="Edit"><i class="ti ti-pencil"></i></button>
+          <button class="btn sm" onclick="resetUserPasswordPrompt('${esc(u.id)}')" title="Reset password"><i class="ti ti-key"></i></button>
+          <button class="btn sm" onclick="deleteUserConfirm('${esc(u.id)}','${esc(u.username)}')" title="Delete" style="color:#ff6b78"><i class="ti ti-trash"></i></button>
+        </div>
+      </div>`;
+    }).join('');
+    el.innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="openCreateUserForm()"><i class="ti ti-plus"></i> New user</button></div>`
+      + (users.length ? `<div style="display:flex;flex-direction:column;gap:8px">${rows}</div>` : '<div style="color:var(--text2);font-size:13px">No staff/supplier users yet.</div>');
+  }catch(e){ el.innerHTML = '<div style="color:#ff6b78">Network error</div>'; }
+}
+function fillUserFormSupplierSelect(selectedId){
+  const sel = document.getElementById('userFormSupplierId');
+  sel.innerHTML = (suppliers||[]).map(s => `<option value="${esc(s.id)}"${s.id===selectedId?' selected':''}>${esc(s.name)}</option>`).join('');
+}
+function onUserFormRoleChange(){
+  const role = document.getElementById('userFormRole').value;
+  document.getElementById('userFormSupplierField').style.display = role==='supplier' ? '' : 'none';
+  document.getElementById('userFormPermsField').style.display = role==='supplier' ? 'none' : '';
+  if(role==='supplier') fillUserFormSupplierSelect(null);
+}
+function openCreateUserForm(){
+  __editingUserId = null;
+  document.getElementById('userFormTitle').textContent = 'New user';
+  document.getElementById('userFormUsername').value = '';
+  document.getElementById('userFormUsername').disabled = false;
+  document.getElementById('userFormPassword').value = '';
+  document.getElementById('userFormPasswordField').style.display = '';
+  document.getElementById('userFormRole').value = 'staff';
+  document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = false);
+  document.getElementById('userFormError').textContent = '';
+  onUserFormRoleChange();
+  document.getElementById('userFormOverlay').classList.add('open');
+}
+async function openEditUserForm(id){
+  const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'listUsers', ...gsAuth() }) });
+  const json = await res.json();
+  const u = (json.users||[]).find(x => x.id === id);
+  if(!u){ showToast('User not found'); return; }
+  __editingUserId = id;
+  document.getElementById('userFormTitle').textContent = 'Edit ' + u.username;
+  document.getElementById('userFormUsername').value = u.username;
+  document.getElementById('userFormUsername').disabled = true; // username is immutable post-creation
+  document.getElementById('userFormPassword').value = '';
+  document.getElementById('userFormPasswordField').style.display = 'none'; // use resetUserPasswordPrompt() instead
+  document.getElementById('userFormRole').value = u.role;
+  document.getElementById('userFormError').textContent = '';
+  onUserFormRoleChange();
+  if(u.role==='supplier') fillUserFormSupplierSelect(u.supplierId);
+  const perms = u.permissions==='*' ? PERMISSION_SECTIONS.slice() : (Array.isArray(u.permissions)?u.permissions:[]);
+  document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = perms.indexOf(cb.value)!==-1);
+  document.getElementById('userFormOverlay').classList.add('open');
+}
+async function submitUserForm(){
+  const errEl = document.getElementById('userFormError');
+  errEl.textContent = '';
+  const role = document.getElementById('userFormRole').value;
+  const permissions = Array.from(document.querySelectorAll('.userFormPermCb:checked')).map(cb=>cb.value);
+  const supplierId = document.getElementById('userFormSupplierId').value;
+  const btn = document.getElementById('userFormSaveBtn');
+  btn.disabled = true;
+  try{
+    if(__editingUserId){
+      const body = { action:'updateUser', ...gsAuth(), id: __editingUserId, active: true };
+      if(role==='supplier') body.supplierId = supplierId; else body.permissions = permissions;
+      const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify(body) });
+      const json = await res.json();
+      if(!json || json.error){ errEl.textContent = (json&&json.error)||'Save failed'; return; }
+    } else {
+      const username = document.getElementById('userFormUsername').value.trim();
+      const password = document.getElementById('userFormPassword').value;
+      if(!username || !password){ errEl.textContent = 'Username and password required'; return; }
+      const body = { action:'createTenantUser', ...gsAuth(), username, password, role };
+      if(role==='supplier') body.supplierId = supplierId; else body.permissions = permissions;
+      const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify(body) });
+      const json = await res.json();
+      if(!json || json.error){ errEl.textContent = (json&&json.error)||'Create failed'; return; }
+    }
+    closeModal('userFormOverlay');
+    showToast('Saved');
+    renderAdminUsers();
+  }catch(e){ errEl.textContent = 'Network error'; }
+  finally{ btn.disabled = false; }
+}
+async function resetUserPasswordPrompt(id){
+  const password = prompt('New password (min. 8 characters):');
+  if(!password) return;
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'resetUserPassword', ...gsAuth(), id, password }) });
+    const json = await res.json();
+    if(!json || json.error){ showToast((json&&json.error)||'Failed'); return; }
+    showToast('Password updated');
+  }catch(e){ showToast('Network error'); }
+}
+async function deleteUserConfirm(id, username){
+  if(!confirm('Delete user "'+username+'"?')) return;
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'deleteUser', ...gsAuth(), id }) });
+    const json = await res.json();
+    if(!json || json.error){ showToast((json&&json.error)||'Failed'); return; }
+    showToast('User deleted');
+    renderAdminUsers();
+  }catch(e){ showToast('Network error'); }
 }
 
 function openErrorsScreen(){
