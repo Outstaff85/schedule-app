@@ -1232,8 +1232,11 @@ function switchTab(tab){
 function prevWeek(){ weekStart.setDate(weekStart.getDate()-7); syncPicker(); render(); }
 function nextWeek(){ weekStart.setDate(weekStart.getDate()+7); syncPicker(); render(); }
 function goToday(){ weekStart=getSundayOfWeek(new Date()); syncPicker(); render(); }
-function syncPicker(){ document.getElementById('datePicker').value=weekStart.toISOString().slice(0,10); }
-function onDateChange(){ weekStart=getSundayOfWeek(new Date(document.getElementById('datePicker').value)); render(); }
+// Local-date YYYY-MM-DD — toISOString() is UTC, which in Israel (UTC+2/+3)
+// turns Sunday 00:00 local into the previous Saturday's date.
+function localYMD(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function syncPicker(){ document.getElementById('datePicker').value=localYMD(weekStart); }
+function onDateChange(){ const v=document.getElementById('datePicker').value; if(!v) return; weekStart=getSundayOfWeek(new Date(v+'T00:00')); render(); }
 
 // --- Render -------------------------------------------------------------------
 function render(){
@@ -4146,7 +4149,11 @@ function applyData(d){
   if(d.workers) workers=d.workers.map(w=>({id:w.id||uid(),clientIds:w.clientIds||[],token:w.token||genToken(),status:w.status||'active',...w}));
   if(d.clients) clients=d.clients;
   if(d.suppliers) suppliers=d.suppliers;
-  if(d.weekStart) weekStart=new Date(d.weekStart);
+  // d.weekStart (the week that was on screen at the last save) is deliberately
+  // NOT restored — the Weekly Schedule always opens on the current week, and a
+  // background re-load mustn't yank the manager off a week they navigated to.
+  // Shifts are stored per weekday (w.schedule[0..6]), not per date, so the
+  // week shown only changes the date labels, never which shifts exist.
 }
 
 function autoSave(){
