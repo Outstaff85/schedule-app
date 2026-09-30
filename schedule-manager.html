@@ -3619,8 +3619,11 @@ const SESSION_RETRY_DELAYS_MS = [0, 500]; // attempt 2 immediate, attempt 3 afte
       return res;
     }).catch(()=>res);
   }
+  // Telemetry calls must never trigger the session-expired logout flow.
+  const NO_LOGOUT_ACTIONS = ['logError','authFailure','login'];
   window.fetch = function(url, opts){
-    const isGsCall = typeof url === 'string' && url.indexOf(GS_URL) === 0;
+    let isGsCall = typeof url === 'string' && url.indexOf(GS_URL) === 0;
+    if(isGsCall){ try{ const a=JSON.parse((opts&&opts.body)||'{}').action; if(NO_LOGOUT_ACTIONS.indexOf(a)!==-1) isGsCall=false; }catch(e){} }
     return _origFetch(url, opts).then(res => isGsCall ? checkExpired(url, opts, res, 0) : res);
   };
 })();
@@ -6236,9 +6239,9 @@ function reportError(message, source, stack){
     if(_errSent[key] && nowT-_errSent[key]<60000) return;     // dedupe same error within 1 min
     _errSent[key]=nowT; _errCount++;
     fetch(GS_URL,{method:'POST',body:JSON.stringify({
-      action:'logError',
+      action:'logError', secret:API_SECRET, ...gsAuth(),
       page:(location.pathname.split('/').pop()||location.href),
-      role:'manager', worker:'',
+      role:'manager', worker:(getSession()||{}).username||'',
       message:String(message||'').slice(0,500),
       source:String(source||'').slice(0,300),
       stack:String(stack||'').slice(0,1200)

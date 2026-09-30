@@ -43,6 +43,14 @@ function doPost(e) {
     // requireAuth to pass) would be a chicken-and-egg problem. See
     // reportAuthFailure() client-side.
     if (body.action === 'authFailure' && body.secret === API_SECRET) return jsonResponse(authFailure(body));
+    // Client error telemetry is accepted with just the shared secret too — it
+    // must work regardless of session state (a worker punch page has no
+    // session at all, and a manager's report can race an expiring token).
+    // Before 2026-10-01 schedule-manager's reportError() sent no token, the
+    // server answered "session expired", and the client's fetch wrapper then
+    // logged the user out on EVERY client-side JS error — the real cause of
+    // the "kicked to login mid-scan" reports (see CLAUDE.md Troubleshooting).
+    if (body.action === 'logError' && body.secret === API_SECRET) return jsonResponse(logError(body));
 
     // Every other action needs a resolved tenant, established one of two ways:
     //  - a manager session token (schedule-manager.html, logged in as a firm
