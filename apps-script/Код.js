@@ -76,6 +76,11 @@ function doPost(e) {
       case 'saveWorkerAssets':     return jsonResponse(saveWorkerAssets(body, tenantId));
       case 'loadWorkerAssets':     return jsonResponse(loadWorkerAssets(body, tenantId));
       case 'createUser':           return jsonResponse(createUser(body, auth));
+      case 'listUsers':            return jsonResponse(listUsers(auth));
+      case 'createTenantUser':     return jsonResponse(createTenantUser(body, auth));
+      case 'updateUser':           return jsonResponse(updateUser(body, auth));
+      case 'resetUserPassword':    return jsonResponse(resetUserPassword(body, auth));
+      case 'deleteUser':           return jsonResponse(deleteUser(body, auth));
       case 'updateTenant':         return jsonResponse(updateTenant(body, auth));
       case 'loadTenantProfile':    return jsonResponse({ ok: true, profile: tenantId ? getTenantProfile(tenantId) : null });
       case 'listTenants':          return jsonResponse(listTenants(auth));
@@ -305,6 +310,135 @@ function createUser(body, auth) {
   usersSh.appendRow([userId, username, hashPassword(password, salt), salt, 'tenant_admin', tenantId, true, now, '*', '']);
 
   return { ok: true, userId: userId, tenantId: tenantId };
+}
+
+// ── User CRUD (Admin/Roles plan, stage 4) ───────────────────────────────────
+// These manage `staff`/`supplier` sub-users under an EXISTING firm — distinct
+// from createUser() above, which creates a brand-new firm plus its owner
+// (tenant_admin) login in one shot. A firm's own tenant_admin can now add/
+// manage its own staff/supplier logins without needing the super-admin.
+
+// Returns every column except the password hash/salt — those never leave the
+// server. superadmin sees every firm's users; tenant_admin sees only its own.
+function listUsers(auth) {
+  if (!auth.isSuperadmin && auth.role !== 'tenant_admin') return { error: 'Недостаточно прав' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_USERS);
+  if (!sh || sh.getLastRow() < 2) return { users: [] };
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const col = {}; headers.forEach(function(h,i){ col[h]=i; });
+  const users = rows.slice(1)
+    .filter(function(r){ return auth.isSuperadmin || r[col.tenantId] === auth.tenantId; })
+    .map(function(r){
+      return {
+        id: r[col.id], username: r[col.username],
+        role: r[col.role] === 'tenant' ? 'tenant_admin' : r[col.role],
+        tenantId: r[col.tenantId] || null,
+        active: r[col.active],
+        createdAt: r[col.createdAt],
+        permissions: (function(){ const v = col.permissions!=null?r[col.permissions]:''; if(!v||v==='*') return '*'; try{ return JSON.parse(v); }catch(e){ return '*'; } })(),
+        supplierId: (col.supplierId!=null ? r[col.supplierId] : '') || null,
+      };
+    });
+  return { users: users };
+}
+
+// Creates a staff/supplier login under an EXISTING firm. tenantId defaults to
+// the caller's own firm (tenant_admin can only ever create users for itself);
+// a superadmin may pass an explicit tenantId to create one for any firm.
+// Deliberately does NOT allow role 'tenant_admin'/'superadmin' here — those
+// come only from createUser() (new firm) or direct sheet edits, keeping this
+// action's blast radius limited to the two genuinely-scoped-down roles.
+function createTenantUser(body, auth) {
+  if (!auth.isSuperadmin && auth.role !== 'tenant_admin') return { error: 'Недостаточно прав' };
+  const tenantId = auth.isSuperadmin ? (body.tenantId || auth.tenantId) : auth.tenantId;
+  if (!tenantId) return { error: 'Нет tenantId' };
+  const role = body.role;
+  if (role !== 'staff' && role !== 'supplier') return { error: 'Роль должна быть staff или supplier' };
+  const username = String(body.username || '').trim().toLowerCase();
+  const password = String(body.password || '');
+  if (!username || !password) return { error: 'Логин и пароль обязательны' };
+  if (password.length < 8) return { error: 'Пароль должен быть не короче 8 символов' };
+  if (role === 'supplier' && !body.supplierId) return { error: 'Для роли supplier нужно выбрать поставщика' };
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const usersSh = getOrCreateSheet(ss, SH_USERS);
+  ensureHeaders(usersSh, USERS_HEADERS);
+  if (usersSh.getLastRow() > 1) {
+    const existing = usersSh.getRange(2, 2, usersSh.getLastRow() - 1, 1).getValues();
+    if (existing.some(function(r) { return String(r[0]).trim().toLowerCase() === username; })) {
+      return { error: 'Такой логин уже существует' };
+    }
+  }
+  const permissions = role === 'supplier' ? '' : (Array.isArray(body.permissions) ? JSON.stringify(body.permissions) : '*');
+  const salt = makeSalt();
+  const userId = Utilities.getUuid();
+  const now = new Date().toISOString();
+  usersSh.appendRow([userId, username, hashPassword(password, salt), salt, role, tenantId, true, now, permissions, role === 'supplier' ? body.supplierId : '']);
+  return { ok: true, userId: userId };
+}
+
+// Edits role/permissions/supplierId/active/username on an existing staff/
+// supplier user — never touches password (see resetUserPassword below) and
+// never touches a tenant_admin/superadmin row's role (use the sheet directly
+// for that, an intentionally rare/manual operation).
+function updateUser(body, auth) {
+  if (!auth.isSuperadmin && auth.role !== 'tenant_admin') return { error: 'Недостаточно прав' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_USERS);
+  if (!sh || sh.getLastRow() < 2) return { error: 'Sheet not found' };
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const col = {}; headers.forEach(function(h,i){ col[h]=i; });
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][col.id] !== body.id) continue;
+    if (!auth.isSuperadmin && rows[i][col.tenantId] !== auth.tenantId) return { error: 'Можно редактировать только пользователей своей фирмы' };
+    const curRole = rows[i][col.role] === 'tenant' ? 'tenant_admin' : rows[i][col.role];
+    if (curRole === 'tenant_admin' || curRole === 'superadmin') return { error: 'Эта роль редактируется только напрямую в таблице' };
+    const r = i + 1;
+    if (body.permissions !== undefined) sh.getRange(r, col.permissions+1).setValue(Array.isArray(body.permissions) ? JSON.stringify(body.permissions) : '*');
+    if (body.supplierId !== undefined) sh.getRange(r, col.supplierId+1).setValue(body.supplierId || '');
+    if (body.active !== undefined) sh.getRange(r, col.active+1).setValue(!!body.active);
+    return { ok: true };
+  }
+  return { error: 'Пользователь не найден' };
+}
+
+function resetUserPassword(body, auth) {
+  if (!auth.isSuperadmin && auth.role !== 'tenant_admin') return { error: 'Недостаточно прав' };
+  const password = String(body.password || '');
+  if (password.length < 8) return { error: 'Пароль должен быть не короче 8 символов' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_USERS);
+  if (!sh || sh.getLastRow() < 2) return { error: 'Sheet not found' };
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const col = {}; headers.forEach(function(h,i){ col[h]=i; });
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][col.id] !== body.id) continue;
+    if (!auth.isSuperadmin && rows[i][col.tenantId] !== auth.tenantId) return { error: 'Можно редактировать только пользователей своей фирмы' };
+    const salt = makeSalt();
+    sh.getRange(i+1, col.passwordHash+1).setValue(hashPassword(password, salt));
+    sh.getRange(i+1, col.passwordSalt+1).setValue(salt);
+    return { ok: true };
+  }
+  return { error: 'Пользователь не найден' };
+}
+
+function deleteUser(body, auth) {
+  if (!auth.isSuperadmin && auth.role !== 'tenant_admin') return { error: 'Недостаточно прав' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_USERS);
+  if (!sh || sh.getLastRow() < 2) return { error: 'Sheet not found' };
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const col = {}; headers.forEach(function(h,i){ col[h]=i; });
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][col.id] !== body.id) continue;
+    if (!auth.isSuperadmin && rows[i][col.tenantId] !== auth.tenantId) return { error: 'Можно удалять только пользователей своей фирмы' };
+    const curRole = rows[i][col.role] === 'tenant' ? 'tenant_admin' : rows[i][col.role];
+    if (curRole === 'tenant_admin' || curRole === 'superadmin') return { error: 'Эту роль нельзя удалить отсюда' };
+    sh.deleteRow(i + 1);
+    return { ok: true };
+  }
+  return { error: 'Пользователь не найден' };
 }
 
 // Edits an existing firm's Tenants profile row (company name, deductions file
