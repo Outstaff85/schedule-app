@@ -2669,19 +2669,73 @@ function gsAuth(){
 // Deliberately mirrors fetch()'s own non-throwing-on-HTTP-error behavior
 // (callers here already check `json.error` themselves) — only a true
 // network failure or an unparseable response rejects.
-function xhrPostJSON(url,bodyObj,onProgress){
+//
+// BUG FIX (2026-10-01): this used to call xhr.setRequestHeader('Content-Type',
+// 'application/json'), which every other GS_URL call in this file deliberately
+// avoids — a fetch()/XHR request only stays a CORS "simple request" (no
+// preflight) when it has no explicit Content-Type (the browser then defaults
+// to text/plain). Apps Script Web Apps only implement doGet()/doPost(), never
+// doOptions(), so a request that DOES trigger a preflight gets its OPTIONS
+// blocked by the browser before the real POST is ever sent — surfacing to the
+// caller as a bare, uninformative "network error"/"network unavailable" with
+// nothing in the Apps Script logs, since the server never even saw it. This
+// is exactly why saveWorkerDoc/saveWorkerAssets (the only two calls routed
+// through xhrPostJSON) started failing while every other GS_URL call kept
+// working fine. Fixed by dropping the header, matching the plain fetch(GS_URL,
+// {method:'POST',body:...}) calls elsewhere in this file.
+//
+// Also, unlike those calls, xhrPostJSON() used to bypass the window.fetch
+// wrapper below entirely (raw XMLHttpRequest never goes through fetch()), so
+// a genuinely-expired/invalid session token on one of these two calls just
+// surfaced as a raw "Сессия истекла…" error thrown out of aiFillForm101()
+// instead of the same retry-then-clean-logout flow every other GS_URL call
+// gets. Now mirrors it: up to SESSION_RETRY_DELAYS_MS.length extra attempts
+// on the exact SESSION_EXPIRED_ERROR text, then clears the session and
+// reloads to the login screen, same as checkExpired() below.
+function xhrPostJSON(url,bodyObj,onProgress,_attempt){
+  const attempt=_attempt||0;
   return new Promise((resolve,reject)=>{
     const xhr=new XMLHttpRequest();
     xhr.open('POST',url);
-    xhr.setRequestHeader('Content-Type','application/json');
     if(onProgress) xhr.upload.onprogress=e=>{ if(e.lengthComputable) onProgress(e.loaded,e.total); };
     xhr.onload=()=>{
-      try{ resolve(JSON.parse(xhr.responseText)); }
-      catch(e){ reject(e); }
+      let json;
+      try{ json=JSON.parse(xhr.responseText); }
+      catch(e){ reject(e); return; }
+      const isGsCall = url===GS_URL;
+      if(isGsCall && json && json.error===SESSION_EXPIRED_ERROR && getSession()){
+        if(attempt < SESSION_RETRY_DELAYS_MS.length){
+          const delay=SESSION_RETRY_DELAYS_MS[attempt];
+          reportAuthFailureXhr(bodyObj&&bodyObj.action, attempt, 'retrying');
+          const retry=()=>xhrPostJSON(url,bodyObj,onProgress,attempt+1).then(resolve,reject);
+          delay>0?setTimeout(retry,delay):retry();
+          return;
+        }
+        reportAuthFailureXhr(bodyObj&&bodyObj.action, attempt, 'logged-out');
+        clearSession();
+        showToast('Сессия истекла — войдите заново');
+        setTimeout(()=>location.reload(),1200);
+      }
+      resolve(json);
     };
     xhr.onerror=()=>reject(new Error('network error'));
     xhr.send(JSON.stringify(bodyObj));
   });
+}
+// Raw-XHR sibling of the fetch-based reportAuthFailure() inside the session-
+// expiry IIFE below — deliberately NOT using fetch() (even the un-wrapped
+// _origFetch) so xhrPostJSON() has no dependency on that IIFE having already
+// run/defined its closures; a plain unauthenticated fire-and-forget POST,
+// same shape/fields as the fetch-based one.
+function reportAuthFailureXhr(failedAction, attempt, outcome){
+  try{
+    const xhr=new XMLHttpRequest();
+    xhr.open('POST',GS_URL);
+    xhr.send(JSON.stringify({
+      action:'authFailure', secret:API_SECRET,
+      failedAction: failedAction, attempt: attempt, outcome: outcome, page: location.pathname
+    }));
+  }catch(e){}
 }
 function gsAuthQuery(){
   const a = gsAuth();
