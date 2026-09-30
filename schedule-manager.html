@@ -1117,6 +1117,39 @@ function fmtDMY(dateStr){
 }
 
 // --- Tab ---------------------------------------------------------------------
+// ── Permission gating (Admin/Roles plan, stage 8) ───────────────────────────
+// Client-side visibility only — the actual enforcement is server-side
+// (requirePermission(), stage 9), this just hides what a staff login has no
+// business seeing so they aren't clicking into a dead end. superadmin/
+// tenant_admin/supplier all bypass this (supplier never reaches this nav at
+// all — it gets its own separate supplier-portal.html, stage 16).
+function hasPermission(section){
+  const s = getSession();
+  if(!s || s.role !== 'staff') return true;
+  const perms = s.permissions;
+  return perms === '*' || (Array.isArray(perms) && perms.indexOf(section) !== -1);
+}
+// Maps each nav tab to the permission section that gates it. 'admin' (the
+// punch-log viewer tab, not to be confused with the new #adminScreen panel)
+// rides on the 'workers' permission — it's operational worker oversight, not
+// a separate concept the plan's PERMISSION_SECTIONS ever called out on its
+// own. 'dashboard' has no entry — the Today/real-time overview is never
+// gated, every logged-in staff member can always see it.
+const NAV_TAB_PERMISSION = { schedule:'schedule', workers:'workers', clients:'clients', suppliers:'suppliers', admin:'workers', accounting:'accounting' };
+function applyNavPermissions(){
+  Object.keys(NAV_TAB_PERMISSION).forEach(tab=>{
+    const el = document.getElementById('tab'+tab.charAt(0).toUpperCase()+tab.slice(1));
+    if(!el) return;
+    el.style.display = hasPermission(NAV_TAB_PERMISSION[tab]) ? '' : 'none';
+  });
+  // If the tab we're currently sitting on just got hidden (e.g. permissions
+  // changed and the page re-initialized), fall back to Dashboard rather than
+  // leaving a blank/inaccessible section visible.
+  if(currentTab && NAV_TAB_PERMISSION[currentTab] && !hasPermission(NAV_TAB_PERMISSION[currentTab])){
+    switchTab('dashboard');
+  }
+}
+
 function switchTab(tab){
   currentTab=tab;
   ['dashboard','schedule','workers','clients','suppliers','admin','accounting'].forEach(t=>{
@@ -2925,6 +2958,9 @@ async function submitLogin(){
     saveSession({
       token: json.token, role: json.role, tenantId: json.tenantId, username: json.username,
       tenantProfile: json.tenantProfile, expiresAt: json.expiresAt,
+      // permissions/supplierId added 2026-10-02 (Admin/Roles plan stage 3
+      // server-side, stage 8 client-side) — see hasPermission()'s own comment.
+      permissions: json.permissions, supplierId: json.supplierId,
       viewingTenantId: json.tenantId, // a super-admin (tenantId null) picks one on the Firms screen
     });
     location.reload();
@@ -4990,6 +5026,7 @@ try{
     syncPicker();
     render();
     setSaveStatus('saved');
+    applyNavPermissions();
     // Start on Dashboard
     switchTab('dashboard');
     // Check push subscription status
