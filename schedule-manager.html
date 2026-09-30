@@ -505,6 +505,11 @@
           <option value="vacation">On vacation</option>
           <option value="fired">Fired</option>
         </select>
+        <select id="workersFilterDocs" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
+          <option value="">All documents</option>
+          <option value="incomplete">Documents incomplete</option>
+          <option value="expiring">ID expired / expiring</option>
+        </select>
         <select id="workersFilterClient" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none"></select>
         <select id="workersFilterSupplier" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none"></select>
         <select id="workersGroupBy" onchange="renderWorkersPage()" title="Group by" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
@@ -1110,6 +1115,65 @@ function expiryBadgeHtml(w){
 function docUploadFailedBadgeHtml(w){
   if(!w.docUploadFailed) return '';
   return `<span title="Не удалось сохранить документ в Google Drive — откройте карточку и пересканируйте" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px"><i class="ti ti-file-off" style="font-size:9px"></i> НЕТ ДОКУМЕНТА</span>`;
+}
+// ── Worker document completeness ────────────────────────────────────────────
+// One status per worker, used by the Workers list/cards badge, the cards'
+// "Documents" row, the worker card, and the "Documents incomplete" filter.
+//   missing — ID/passport number (workerDocId), Form 101 PDF (w.docUrl), the
+//     raw scan (w.assetsFileId — the Drive sidecar is only ever written when a
+//     scan image exists), signature and, for an Israeli ID, the ספח page.
+//     Signature/ספח are only known for documents saved since these flags
+//     existed (w.docHasSignature / w.docExtraPages, set by aiFillForm101() on
+//     every successful save); older records are treated as unknown, not missing.
+//   expiry — w.docExpiry (ID/passport validity) already past → error; within
+//     DOC_EXPIRY_WARN_MONTHS → warning.
+//   failed — w.docUploadFailed (last Drive upload failed) → error.
+const DOC_EXPIRY_WARN_MONTHS = 3;
+function parseDocDate(s){
+  s=String(s||'').trim();
+  let m=s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/);
+  if(m) return new Date(+m[3],+m[2]-1,+m[1]);
+  m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return new Date(+m[1],+m[2]-1,+m[3]);
+  return null;
+}
+function workerDocStatus(w){
+  const missing=[];
+  if(!workerDocId(w)) missing.push('ID/passport no.');
+  if(!w.docUrl) missing.push('Form 101');
+  if(!w.assetsFileId) missing.push('document scan');
+  if(w.docHasSignature===false) missing.push('signature');
+  if((w.docType||'israeli_id')==='israeli_id' && w.docExtraPages===0) missing.push('ספח (ID appendix)');
+  let expiry=null;
+  const d=parseDocDate(w.docExpiry);
+  if(d && !isNaN(d)){
+    const today=new Date(); today.setHours(0,0,0,0);
+    const warnAt=new Date(today); warnAt.setMonth(warnAt.getMonth()+DOC_EXPIRY_WARN_MONTHS);
+    if(d<today) expiry={level:'error',date:d,text:'ID/passport expired '+d.toLocaleDateString('en-GB')};
+    else if(d<=warnAt) expiry={level:'warn',date:d,text:'ID/passport expires '+d.toLocaleDateString('en-GB')};
+  }
+  const failed=!!w.docUploadFailed;
+  const level = (failed || (expiry&&expiry.level==='error')) ? 'error' : ((missing.length||expiry) ? 'warn' : 'ok');
+  const lines=[];
+  if(failed) lines.push('Last upload to Google Drive failed');
+  if(missing.length) lines.push('Missing: '+missing.join(', '));
+  if(expiry) lines.push(expiry.text);
+  return {level, missing, expiry, failed, lines};
+}
+// Compact list/cards badge — nothing when documents are complete.
+function docStatusBadgeHtml(w){
+  const s=workerDocStatus(w);
+  if(s.level==='ok') return '';
+  const red=s.level==='error';
+  const label = s.failed ? 'UPLOAD FAILED' : (s.expiry&&s.expiry.level==='error') ? 'ID EXPIRED' : 'DOCS';
+  return `<span title="${esc(s.lines.join(' · '))}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(${red?'--red-bg':'--amber-bg'});color:var(${red?'--red':'--amber'});margin-left:5px;white-space:nowrap"><i class="ti ti-${red?'file-off':'file-alert'}" style="font-size:9px"></i> ${label}</span>`;
+}
+// Full one-line summary for the worker card / cards view.
+function docStatusSummaryHtml(w){
+  const s=workerDocStatus(w);
+  if(s.level==='ok') return `<span style="color:var(--green)"><i class="ti ti-circle-check"></i> Complete</span>`;
+  const col=s.level==='error'?'var(--red)':'var(--amber)';
+  return `<span style="color:${col}">${s.lines.map(esc).join('<br>')}</span>`;
 }
 // ── Pay rules (Israeli labour-law DEFAULTS — VERIFY against your real rules) ──
 // regularMax: hours at base rate. ot1Span: next N hours at the first OT tier.
@@ -2562,7 +2626,7 @@ function renderWorkerCardsHtml(list,groupBy,stMetaMap){
         <div style="width:38px;height:38px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div>
         <div style="min-width:0;flex:1">
           <div style="font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(w.name)}</div>
-          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${st.bg};color:${st.col}">${st.label}</span>${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}
+          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${st.bg};color:${st.col}">${st.label}</span>${expiryBadgeHtml(w)}${docStatusBadgeHtml(w)}
         </div>
       </div>
       <div class="wcard-rows">
@@ -2572,6 +2636,7 @@ function renderWorkerCardsHtml(list,groupBy,stMetaMap){
         <span class="k"><i class="ti ti-building"></i> Clients</span><span class="v">${objs.length?objs.map(badge).join(''):dash}</span>
         <span class="k"><i class="ti ti-truck-delivery"></i> Supplier</span><span class="v">${sup?badge(sup):dash}</span>
         <span class="k"><i class="ti ti-calendar-event"></i> Start date</span><span class="v">${w.startDate?esc(fmtDMY(w.startDate)):dash}</span>
+        <span class="k"><i class="ti ti-files"></i> Documents</span><span class="v">${docStatusSummaryHtml(w)}</span>
       </div>
     </div>`;
   };
@@ -2598,6 +2663,9 @@ function renderWorkersPage(){
   if(stFilter) list=list.filter(x=>(x.w.status||'active')===stFilter);
   if(clientFilter) list=list.filter(x=>(x.w.clientIds||[]).includes(clientFilter));
   if(supplierFilter) list=list.filter(x=>x.w.supplierId===supplierFilter);
+  const docsFilter=document.getElementById('workersFilterDocs')?.value||'';
+  if(docsFilter==='incomplete') list=list.filter(x=>workerDocStatus(x.w).level!=='ok');
+  else if(docsFilter==='expiring') list=list.filter(x=>!!workerDocStatus(x.w).expiry);
   if(q) list=list.filter(x=>{
     const objNames=(x.w.clientIds||[]).map(id=>clients.find(c=>c.id===id)?.name||'').join(' ');
     return (x.w.name||'').toLowerCase().includes(q) || (x.w.phone||'').toLowerCase().includes(q) || objNames.toLowerCase().includes(q);
@@ -2625,7 +2693,7 @@ function renderWorkersPage(){
     const sup=suppliers.find(s=>s.id===w.supplierId);
     const supBadge=sup?`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${sup.color}22;border-radius:10px"><span style="width:6px;height:6px;border-radius:50%;background:${sup.color}"></span>${esc(sup.name)}</span>`:'<span style="color:var(--text3);font-size:12px">—</span>';
     return `<tr onclick="openWorkerCard(${wi})" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background=''">
-      <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div><span style="font-size:13px;font-weight:600">${esc(w.name)}</span>${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div></td>
+      <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div><span style="font-size:13px;font-weight:600">${esc(w.name)}</span>${expiryBadgeHtml(w)}${docStatusBadgeHtml(w)}</div></td>
       <td style="padding:10px 12px"><span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col}">${stMeta.label}</span></td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2);font-family:monospace">${workerDocId(w)?esc(workerDocId(w)):'—'}</td>
       <td style="padding:10px 12px">${objBadges}</td>
@@ -2676,7 +2744,7 @@ function openWorkerCard(wi){
       <div style="width:52px;height:52px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div>
       <div style="flex:1">
         <div style="font-size:18px;font-weight:700">${esc(w.name)}</div>
-        <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col};display:inline-block;margin-top:4px">${stMeta.label}</span>${docUploadFailedBadgeHtml(w)}
+        <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col};display:inline-block;margin-top:4px">${stMeta.label}</span>${docStatusBadgeHtml(w)}
       </div>
       <button class="btn sm" onclick="closeModal('workerCardOverlay')" title="Закрыть" style="flex-shrink:0;padding:0 8px"><i class="ti ti-x"></i></button>
     </div>
@@ -2686,6 +2754,7 @@ function openWorkerCard(wi){
       ${w.startDate?`<div><i class="ti ti-calendar-event"></i> Started ${fmtDMY(w.startDate)}</div>`:''}
       ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?'Срок истёк':'Срок приближается'} — ${expSt.deadline.toLocaleDateString('ru-RU')}</div>`:''}
       ${workerDocId(w)?`<div><i class="ti ti-id"></i> ${esc(workerDocId(w))}</div>`:''}
+      <div style="display:flex;gap:6px"><i class="ti ti-files" style="margin-top:2px"></i><span>Documents: ${docStatusSummaryHtml(w)}</span></div>
       ${[[workerAddress(w),w.houseNumber].filter(Boolean).join(' '),w.city].filter(Boolean).length?`<div><i class="ti ti-map-pin"></i> ${esc([[workerAddress(w),w.houseNumber].filter(Boolean).join(' '),w.city].filter(Boolean).join(', '))}</div>`:''}
       ${w.incomeType&&INCOME_TYPE_LABELS[w.incomeType]?`<div><i class="ti ti-briefcase"></i> ${INCOME_TYPE_LABELS[w.incomeType]}</div>`:''}
       ${w.otherIncomeType&&w.otherIncomeType!=='none'&&OTHER_INCOME_LABELS[w.otherIncomeType]?`<div><i class="ti ti-cash"></i> Other income: ${OTHER_INCOME_LABELS[w.otherIncomeType]}</div>`:''}
@@ -6010,6 +6079,10 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
         w.docUrl=json.url; w.docSavedAt=new Date().toISOString(); w.docFileId=json.id;
         w.docUploadFailed=false;
         if(assetsJson&&assetsJson.ok) w.assetsFileId=assetsJson.id;
+        // Completeness flags for workerDocStatus(): what this saved document
+        // actually contains (on a regenerate these come from the sidecar).
+        w.docHasSignature=!!sigPng;
+        w.docExtraPages=Array.isArray(otherPagesToUse)?otherPagesToUse.length:0;
         render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
         showToast('Документы '+(w.name||'')+' сохранены в Google Drive');
         window.__aiRescanWorkerId=null;
