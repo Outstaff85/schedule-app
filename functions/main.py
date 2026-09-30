@@ -20,6 +20,7 @@ from datetime import date
 import cv2
 import numpy as np
 import pymupdf
+import requests
 from bidi.algorithm import get_display
 from firebase_functions import https_fn, options
 from PIL import Image, ImageEnhance
@@ -533,6 +534,46 @@ def fill_form_101(req: https_fn.Request) -> https_fn.Response:
             "firmMissing": firm_missing,
         })
         return https_fn.Response(body, status=200, mimetype="application/json")
+    except Exception as e:
+        return https_fn.Response(json.dumps({"error": str(e)}), status=500, mimetype="application/json")
+
+
+# GS_URL mirrors the const of the same name in schedule-manager.html — kept as
+# a plain literal here (not read from an env var) to match how the rest of
+# this file already hardcodes its own external endpoints/paths; update both
+# places together if the Apps Script deployment URL ever rotates.
+GS_URL = "https://script.google.com/macros/s/AKfycbwfGCQs8TzGd38j-JU0ZdoHLXdHITaG1QjUE3nAJDVB6uZR2_56hxV0Y4UgCs1bGYi_/exec"
+
+
+@https_fn.on_request(
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]),
+    memory=options.MemoryOption.MB_512,
+    timeout_sec=120,
+)
+def gs_upload_proxy(req: https_fn.Request) -> https_fn.Response:
+    """CORS-friendly proxy for the two GS_URL actions that need real
+    upload-byte progress (saveWorkerDoc/saveWorkerAssets in aiFillForm101()'s
+    upload path) — see xhrPostJSON()'s own comment in schedule-manager.html
+    for the full story: a browser XHR straight to script.google.com can never
+    carry a real xhr.upload.onprogress listener, because attaching one forces
+    a CORS preflight (per spec, independent of headers) and Apps Script Web
+    Apps have no doOptions() to answer it. This Cloud Function DOES answer
+    CORS preflight correctly (same CorsOptions pattern as fill_form_101 above
+    and preprocess_scan below), so the browser talks to THIS with a real
+    upload listener attached; this function then does a plain server-to-server
+    POST to Apps Script — no browser, no CORS involved at all between two
+    servers — and relays the response back to the browser byte-for-byte.
+    Deliberately generic (forwards whatever JSON body it's given) rather than
+    two action-specific functions, since all it does is relay; the actual
+    action/secret/token/payload validation still happens where it always did,
+    inside Apps Script's own doPost().
+    """
+    if req.method != "POST":
+        return https_fn.Response(json.dumps({"error": "POST only"}), status=405, mimetype="application/json")
+    try:
+        payload = req.get_json(silent=True) or {}
+        resp = requests.post(GS_URL, json=payload, timeout=100)
+        return https_fn.Response(resp.text, status=200, mimetype="application/json")
     except Exception as e:
         return https_fn.Response(json.dumps({"error": str(e)}), status=500, mimetype="application/json")
 
