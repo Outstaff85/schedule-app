@@ -517,23 +517,30 @@ function normalizeClients(clients) {
 }
 
 // ── SCHEDULE (multi-tenant: one row per tenant) ────────────────────────────────
-const SCHEDULE_HEADERS = ['TenantId', 'workers', 'clients', 'weekStart', 'savedAt'];
+// `suppliers` (added 2026-09-30) follows the exact same schema-less-JSON-blob
+// pattern as `clients` — appended as the LAST column so existing rows'
+// positional reads (workers/clients/weekStart/savedAt) stay unaffected; old
+// rows simply have nothing in this column, which readScheduleMap below
+// treats as an empty array, same as it already does for a missing/malformed
+// workers or clients cell.
+const SCHEDULE_HEADERS = ['TenantId', 'workers', 'clients', 'weekStart', 'savedAt', 'suppliers'];
 
-// Reads one tenant's row into {workers, clients, weekStart, savedAt, _row}.
+// Reads one tenant's row into {workers, clients, suppliers, weekStart, savedAt, _row}.
 // _row (1-based sheet row number, or null if the tenant has no row yet) lets
 // saveSchedule() know whether to update in place or append.
 function readScheduleMap(sh, tenantId) {
-  if (!sh || sh.getLastRow() < 2) return { workers: [], clients: [], weekStart: null, savedAt: null, _row: null };
+  if (!sh || sh.getLastRow() < 2) return { workers: [], clients: [], suppliers: [], weekStart: null, savedAt: null, _row: null };
   const rows = sh.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
     if (rows[i][0] === tenantId) {
-      let workers = [], clients = [];
+      let workers = [], clients = [], suppliers = [];
       try { workers = JSON.parse(rows[i][1] || '[]'); } catch (e) {}
       try { clients = JSON.parse(rows[i][2] || '[]'); } catch (e) {}
-      return { workers: workers, clients: clients, weekStart: rows[i][3] || null, savedAt: rows[i][4] || null, _row: i + 1 };
+      try { suppliers = JSON.parse(rows[i][5] || '[]'); } catch (e) {}
+      return { workers: workers, clients: clients, suppliers: suppliers, weekStart: rows[i][3] || null, savedAt: rows[i][4] || null, _row: i + 1 };
     }
   }
-  return { workers: [], clients: [], weekStart: null, savedAt: null, _row: null };
+  return { workers: [], clients: [], suppliers: [], weekStart: null, savedAt: null, _row: null };
 }
 
 function saveSchedule(data, baseSavedAt, tenantId) {
@@ -544,6 +551,9 @@ function saveSchedule(data, baseSavedAt, tenantId) {
   const current = readScheduleMap(sh, tenantId);
 
   // Empty-payload guard: refuse to overwrite existing data with nothing.
+  // Suppliers deliberately excluded from this guard's "has data" check —
+  // a firm with only workers/clients but no suppliers yet is a completely
+  // normal, common state, not a sign of an accidentally-cleared payload.
   const incomingEmpty   = (!data.workers || !data.workers.length) && (!data.clients || !data.clients.length);
   const currentHasData  = (current.workers && current.workers.length) || (current.clients && current.clients.length);
   if (incomingEmpty && currentHasData) {
@@ -559,6 +569,7 @@ function saveSchedule(data, baseSavedAt, tenantId) {
   const savedAt = new Date().toISOString();
   const workersJson = JSON.stringify(data.workers || []);
   const clientsJson = JSON.stringify(clients);
+  const suppliersJson = JSON.stringify(data.suppliers || []);
   // Sheets cell size guard (2026-09-27) — the whole workers/clients array is
   // stored as ONE JSON blob per cell (see this sheet's own header comment),
   // rewritten in full on every save; a Sheets cell silently rejects content
@@ -567,23 +578,26 @@ function saveSchedule(data, baseSavedAt, tenantId) {
   // worker photos (avatarB64) could hit that limit — catching it here with a
   // clear, actionable error is far better than a cryptic Sheets API
   // exception surfacing to the manager mid-save. 45,000 leaves margin.
+  // suppliersJson included in the same guard (2026-09-30) — same one-JSON-
+  // blob-per-cell storage, same limit applies.
   const CELL_SAFE_LIMIT = 45000;
-  if (workersJson.length > CELL_SAFE_LIMIT || clientsJson.length > CELL_SAFE_LIMIT) {
+  if (workersJson.length > CELL_SAFE_LIMIT || clientsJson.length > CELL_SAFE_LIMIT || suppliersJson.length > CELL_SAFE_LIMIT) {
     return { error: 'Слишком много данных для сохранения (лимит ячейки Google Sheets) — обратитесь к разработчику', tooLarge: true };
   }
-  const rowValues = [tenantId, workersJson, clientsJson, data.weekStart || '', savedAt];
+  const rowValues = [tenantId, workersJson, clientsJson, data.weekStart || '', savedAt, suppliersJson];
   if (current._row) sh.getRange(current._row, 1, 1, SCHEDULE_HEADERS.length).setValues([rowValues]);
   else sh.appendRow(rowValues);
   return {ok: true, savedAt: savedAt};
 }
 
 function loadSchedule(tenantId) {
-  if (!tenantId) return { workers: [], clients: [], weekStart: null, savedAt: null };
+  if (!tenantId) return { workers: [], clients: [], suppliers: [], weekStart: null, savedAt: null };
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_SCHEDULE);
   const m = readScheduleMap(sh, tenantId);
   return {
     workers:   m.workers,
     clients:   normalizeClients(m.clients),   // ← radius guaranteed numeric
+    suppliers: m.suppliers,
     weekStart: m.weekStart,
     savedAt:   m.savedAt,
   };
@@ -597,8 +611,8 @@ function backupNow(){
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = getOrCreateSheet(ss, SH_BACKUP);
   if (sh.getLastRow() === 0) {
-    sh.appendRow(['When','TenantId','Workers','Clients','Schedule JSON']);
-    sh.getRange(1,1,1,5).setFontWeight('bold').setBackground('#e8eaf0');
+    sh.appendRow(['When','TenantId','Workers','Clients','Suppliers','Schedule JSON']);
+    sh.getRange(1,1,1,6).setFontWeight('bold').setBackground('#e8eaf0');
     sh.setFrozenRows(1);
   }
   const schSh = ss.getSheetByName(SH_SCHEDULE);
@@ -607,8 +621,10 @@ function backupNow(){
   const when = new Date().toISOString();
   rows.forEach(function(r) {
     const tenantId = r[0];
-    const json = JSON.stringify({ workers: r[1], clients: r[2], savedAt: r[4] });
+    // r[5] (suppliers) is absent on any row saved before 2026-09-30 — '[]' fallback.
+    const json = JSON.stringify({ workers: r[1], clients: r[2], suppliers: r[5] || '[]', savedAt: r[4] });
     sh.appendRow([ when, tenantId, (JSON.parse(r[1]||'[]')).length, (JSON.parse(r[2]||'[]')).length,
+                   (JSON.parse(r[5]||'[]')).length,
                    json.length < 48000 ? json : '(too large to store inline)' ]);
   });
   // keep last 30 snapshots PER TENANT

@@ -811,6 +811,14 @@ let clients = [
   {id:'c2',name:'Mall B',  color:'#3ecf8e',address:'Jerusalem',notes:''},
 ];
 
+// Suppliers (added 2026-09-30) — same shape/lifecycle as `clients` (a plain
+// array persisted in the same tenant-scoped Schedule blob, see saveSchedule's
+// own comment). {id,name,color,phone,notes,bank,bankBranch,accountNumber,
+// companyNumber}. A worker is linked via w.supplierId (single, not an array
+// like clientIds — a worker has one supplying agency but can work for
+// several clients).
+let suppliers = [];
+
 // --- Utils --------------------------------------------------------------------
 function uid(){ return 'id'+Math.random().toString(36).slice(2,9); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -3027,12 +3035,13 @@ function setSaveStatus(s){
 }
 
 function getDataObj(){
-  return {workers, clients, weekStart: weekStart.toISOString(), savedAt: new Date().toISOString()};
+  return {workers, clients, suppliers, weekStart: weekStart.toISOString(), savedAt: new Date().toISOString()};
 }
 
 function applyData(d){
   if(d.workers) workers=d.workers.map(w=>({id:w.id||uid(),clientIds:w.clientIds||[],token:w.token||genToken(),status:w.status||'active',...w}));
   if(d.clients) clients=d.clients;
+  if(d.suppliers) suppliers=d.suppliers;
   if(d.weekStart) weekStart=new Date(d.weekStart);
 }
 
