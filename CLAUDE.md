@@ -38,7 +38,7 @@ No npm/build/lint/test tooling — edit the HTML and reload.
   - `.github/workflows/deploy.yml` — Firebase Hosting (project `schedule-odinson`).
   - `.github/workflows/deploy-apps-script.yml` — `clasp push --force && clasp deploy` for `apps-script/` (needs `CLASP_CREDENTIALS`/`CLASP_DEPLOYMENT_ID` secrets).
   - `.github/workflows/deploy-functions.yml` — deploys `functions/` on any push touching `functions/**`, or via manual `workflow_dispatch`. Builds a fresh venv in CI. `firebase.json`'s `functions[0].runtime` is pinned to `"python312"` for a deterministic runtime. On failure it opens/updates a GitHub Issue with likely causes — see Troubleshooting below for the known IAM permission gaps.
-- When bumping the service worker's cache (`CACHE` constant in `service-worker.js`), increment the version string or clients keep serving stale HTML after deploy. Current version: v78 (as of 2026-10-01, bumped for the salary-export month picker).
+- When bumping the service worker's cache (`CACHE` constant in `service-worker.js`), increment the version string or clients keep serving stale HTML after deploy. Current version: v79 (as of 2026-10-01, bumped for the salary-export month picker and the scan corner-editor touch targets).
 - `firebase.json`'s hosting `ignore` list must include `functions/**`, or `firebase deploy --only hosting` sweeps the entire `functions/venv` into the public hosting bucket.
 
 ### Git workflow (enforced by hooks in `.claude/settings.json`)
@@ -179,7 +179,7 @@ Single screen for adding a worker by hand, editing an existing one, and reviewin
 
 → `renderScanPagesPrompt()` → `openWorkerModalFromScan()`.
 
-- The corner editor runs **before** OCR — the user positions the rectangle on the raw photo, no AI-guessed starting rectangle. `renderScanQuadEditor()` waits on `img.decode()` (capped at 1.2s) then one more `requestAnimationFrame` before reading `clientWidth/clientHeight`, falling back to the uncropped original if decode never settles. 4 corner drag handles (radius 13) plus 4 invisible whole-edge drag lines (`.quad-side-handle`) let the user adjust either one corner or a whole side at once.
+- The corner editor runs **before** OCR — the user positions the rectangle on the raw photo, no AI-guessed starting rectangle. `renderScanQuadEditor()` waits on `img.decode()` (capped at 1.2s) then one more `requestAnimationFrame` before reading `clientWidth/clientHeight`, falling back to the uncropped original if decode never settles. 4 corner handles (radius 13) plus a white grip bar at each edge's midpoint (`.quad-side-handle`, visual only) let the user drag one corner or slide a whole side. Hit-testing is not on the SVG shapes: `attachQuadDrag()` listens on the whole `#scanEditWrap` (the photo plus a `QUAD_PAD`=18px dark margin, so an edge lying on the photo border can be grabbed from outside) and `quadHitTest()` picks the nearest corner within `QUAD_CORNER_HIT`=36px, else the nearest edge within `QUAD_EDGE_HIT`=32px; pointer capture + `pointercancel` keep touch drags reliable.
 - `renderScanProgress(label,pct)` shows real sub-step progress (`#aiScanStage`) through align/enhance/read/verify/tighten, not just start/done.
 - Multi-file/multi-page uploads (`onScanFilesSelected`) skip the manual crop step entirely — each page goes straight to `aiReadDoc` for classification, landing in the same `renderScanPagesPrompt()` review screen.
 - Worker's own mobile number is a plain modal field (`#wPhone`), not scanned.

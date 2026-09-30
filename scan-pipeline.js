@@ -1096,15 +1096,15 @@ function renderScanQuadEditor(b64,mediaType,cornersFrac){
   const stage=document.getElementById('aiScanStage');
   stage.innerHTML=`
     <div style="font-size:12px;color:var(--text2);margin-bottom:8px">ה-AI סימן מסגרת סביב המסמך — גררו את הנקודות כדי לתקן, ואז «סיום».</div>
-    <div id="scanEditWrap" style="position:relative;display:inline-block;max-width:100%;touch-action:none;background:#111;line-height:0">
+    <div id="scanEditWrap" style="position:relative;display:inline-block;max-width:100%;touch-action:none;background:#111;line-height:0;padding:${QUAD_PAD}px;box-sizing:border-box;user-select:none;-webkit-user-select:none">
       <img id="scanEditImg" src="data:${mediaType};base64,${b64}" draggable="false"
-        style="display:block;max-width:100%;max-height:46vh;user-select:none;-webkit-user-drag:none">
-      <svg id="scanQuadSvg" style="position:absolute;left:0;top:0;width:100%;height:100%;touch-action:none">
+        style="display:block;max-width:100%;max-height:46vh;user-select:none;-webkit-user-drag:none;pointer-events:none">
+      <svg id="scanQuadSvg" style="position:absolute;left:${QUAD_PAD}px;top:${QUAD_PAD}px;width:calc(100% - ${2*QUAD_PAD}px);height:calc(100% - ${2*QUAD_PAD}px);overflow:visible;touch-action:none;pointer-events:none">
         <polygon id="scanQuadPoly" points="" fill="rgba(79,142,247,0.15)" stroke="#4f8ef7" stroke-width="2"></polygon>
-        <line class="quad-side-handle" data-side="top" stroke="transparent" stroke-width="40"></line>
-        <line class="quad-side-handle" data-side="right" stroke="transparent" stroke-width="40"></line>
-        <line class="quad-side-handle" data-side="bottom" stroke="transparent" stroke-width="40"></line>
-        <line class="quad-side-handle" data-side="left" stroke="transparent" stroke-width="40"></line>
+        <line class="quad-side-handle" data-side="top"></line>
+        <line class="quad-side-handle" data-side="right"></line>
+        <line class="quad-side-handle" data-side="bottom"></line>
+        <line class="quad-side-handle" data-side="left"></line>
         <circle class="quad-handle" data-c="tl" r="13"></circle><circle class="quad-handle" data-c="tr" r="13"></circle>
         <circle class="quad-handle" data-c="br" r="13"></circle><circle class="quad-handle" data-c="bl" r="13"></circle>
       </svg>
@@ -1173,6 +1173,29 @@ function initScanQuad(cornersFrac){
 // rigid unit, "sliding" that whole side in/out without touching the corners
 // of the adjacent sides).
 const SIDE_CORNERS={top:['tl','tr'],right:['tr','br'],bottom:['br','bl'],left:['bl','tl']};
+// Touch targets (2026-10-01, per user report: fingers kept missing the edge
+// lines). Hit-testing is no longer done on the SVG shapes themselves — a thin
+// transparent stroke is unreliable on mobile, and an edge sitting on the
+// photo's border had half its target outside the image. Instead the whole
+// wrap (photo + a QUAD_PAD dark margin around it, so a border edge can be
+// grabbed from outside) takes the pointerdown and picks the nearest corner
+// within QUAD_CORNER_HIT px, else the nearest edge within QUAD_EDGE_HIT px.
+const QUAD_PAD=18, QUAD_CORNER_HIT=36, QUAD_EDGE_HIT=32;
+function _distToSeg(p,a,b){
+  const vx=b.x-a.x, vy=b.y-a.y, len2=vx*vx+vy*vy||1;
+  const t=Math.max(0,Math.min(1,((p.x-a.x)*vx+(p.y-a.y)*vy)/len2));
+  return Math.hypot(p.x-(a.x+t*vx), p.y-(a.y+t*vy));
+}
+// Returns {corner:'tl'|…} or {side:'top'|…} or null for a point in image px.
+function quadHitTest(p){
+  const r=window.__quadRect; if(!r) return null;
+  let best=null, bd=Infinity;
+  ['tl','tr','br','bl'].forEach(k=>{ const d=Math.hypot(p.x-r[k].x,p.y-r[k].y); if(d<bd){ bd=d; best=k; } });
+  if(bd<=QUAD_CORNER_HIT) return {corner:best};
+  best=null; bd=Infinity;
+  Object.keys(SIDE_CORNERS).forEach(s=>{ const [a,b]=SIDE_CORNERS[s]; const d=_distToSeg(p,r[a],r[b]); if(d<bd){ bd=d; best=s; } });
+  return bd<=QUAD_EDGE_HIT ? {side:best} : null;
+}
 function paintQuad(){
   const r=window.__quadRect;
   if(!r) return;
@@ -1181,7 +1204,14 @@ function paintQuad(){
   Object.keys(SIDE_CORNERS).forEach(side=>{
     const [a,b]=SIDE_CORNERS[side];
     const line=document.querySelector('.quad-side-handle[data-side="'+side+'"]');
-    if(line){ line.setAttribute('x1',r[a].x); line.setAttribute('y1',r[a].y); line.setAttribute('x2',r[b].x); line.setAttribute('y2',r[b].y); }
+    // Short white grip bar centred on each edge — just a visual cue that the
+    // whole side can be dragged; hit-testing is in quadHitTest().
+    if(line){
+      const mx=(r[a].x+r[b].x)/2, my=(r[a].y+r[b].y)/2;
+      const len=Math.hypot(r[b].x-r[a].x,r[b].y-r[a].y)||1, half=Math.min(18,len/4);
+      const ux=(r[b].x-r[a].x)/len*half, uy=(r[b].y-r[a].y)/len*half;
+      line.setAttribute('x1',mx-ux); line.setAttribute('y1',my-uy); line.setAttribute('x2',mx+ux); line.setAttribute('y2',my+uy);
+    }
   });
   const cx=(r.tl.x+r.tr.x+r.br.x+r.bl.x)/4, cy=(r.tl.y+r.tr.y+r.br.y+r.bl.y)/4;
   // Corner handles drawn inset from the true corner toward the quad's own
@@ -1200,48 +1230,38 @@ function paintQuad(){
   });
 }
 function attachQuadDrag(){
-  const svg=document.getElementById('scanQuadSvg');
-  if(!svg) return;
-  svg.querySelectorAll('.quad-handle').forEach(h=>{
-    h.addEventListener('pointerdown',e=>{
-      e.preventDefault(); e.stopPropagation();
-      const key=h.dataset.c;
-      const wrap=document.getElementById('scanEditWrap');
-      const move=ev=>{
-        const rect=wrap.getBoundingClientRect();
-        const r=window.__quadRect;
-        r[key]={x:Math.max(0,Math.min(r.imgW,ev.clientX-rect.left)),y:Math.max(0,Math.min(r.imgH,ev.clientY-rect.top))};
+  const wrap=document.getElementById('scanEditWrap');
+  const img=document.getElementById('scanEditImg');
+  if(!wrap||!img||wrap.dataset.dragBound) return;
+  wrap.dataset.dragBound='1';
+  // Point in image-local px (the coordinate space of window.__quadRect).
+  const local=ev=>{ const rc=img.getBoundingClientRect(); return {x:ev.clientX-rc.left, y:ev.clientY-rc.top}; };
+  wrap.addEventListener('pointerdown',e=>{
+    const r=window.__quadRect; if(!r) return;
+    const hit=quadHitTest(local(e));
+    if(!hit) return;
+    e.preventDefault(); e.stopPropagation();
+    try{ wrap.setPointerCapture(e.pointerId); }catch(_){}
+    const clamp=p=>({x:Math.max(0,Math.min(r.imgW,p.x)),y:Math.max(0,Math.min(r.imgH,p.y))});
+    let move;
+    if(hit.corner){
+      const key=hit.corner;
+      move=ev=>{ r[key]=clamp(local(ev)); paintQuad(); };
+    } else {
+      // Whole-edge drag (added 2026-09-27): both corners of that side move by
+      // the same pointer delta — a rigid slide in/out, adjacent corners stay.
+      const [ka,kb]=SIDE_CORNERS[hit.side];
+      const start=local(e), orig={a:{...r[ka]},b:{...r[kb]}};
+      move=ev=>{
+        const p=local(ev), dx=p.x-start.x, dy=p.y-start.y;
+        r[ka]=clamp({x:orig.a.x+dx,y:orig.a.y+dy}); r[kb]=clamp({x:orig.b.x+dx,y:orig.b.y+dy});
         paintQuad();
       };
-      const up=()=>{ window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); };
-      window.addEventListener('pointermove',move);
-      window.addEventListener('pointerup',up);
-    });
-  });
-  // Whole-edge drag (added 2026-09-27, per user request — "let me move the
-  // whole horizontal/vertical line, not just one corner at a time"): grabbing
-  // the line between two corners translates BOTH of them by the same pointer
-  // delta, sliding that entire side in/out as a rigid unit while the other
-  // two corners (and thus the adjacent sides) stay put — the standard
-  // photo-crop-tool "drag an edge" gesture, useful when a whole side needs
-  // the same nudge rather than fixing each of its two corners separately.
-  svg.querySelectorAll('.quad-side-handle').forEach(h=>{
-    h.addEventListener('pointerdown',e=>{
-      e.preventDefault(); e.stopPropagation();
-      const [ka,kb]=SIDE_CORNERS[h.dataset.side];
-      const r=window.__quadRect;
-      const start={x:e.clientX,y:e.clientY};
-      const orig={a:{...r[ka]},b:{...r[kb]}};
-      const move=ev=>{
-        const dx=ev.clientX-start.x, dy=ev.clientY-start.y;
-        const clamp=p=>({x:Math.max(0,Math.min(r.imgW,p.x+dx)),y:Math.max(0,Math.min(r.imgH,p.y+dy))});
-        r[ka]=clamp(orig.a); r[kb]=clamp(orig.b);
-        paintQuad();
-      };
-      const up=()=>{ window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); };
-      window.addEventListener('pointermove',move);
-      window.addEventListener('pointerup',up);
-    });
+    }
+    const end=()=>{ wrap.removeEventListener('pointermove',move); wrap.removeEventListener('pointerup',end); wrap.removeEventListener('pointercancel',end); };
+    wrap.addEventListener('pointermove',move);
+    wrap.addEventListener('pointerup',end);
+    wrap.addEventListener('pointercancel',end);
   });
 }
 async function rotateScanQuad(deg){
