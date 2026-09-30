@@ -335,6 +335,30 @@ def _draw_extra_page_image(page, extra, box, margin=40, cap_h=24, fontsize=13):
     page.insert_image(pymupdf.Rect(x, y, x + w, y + h), stream=embed_bytes)
 
 
+# Section ו (spouse) checkboxes, verified by position on the template:
+# cb_p1_22 "אין לבן/בת הזוג כל הכנסה", cb_p1_23 "יש לבן/בת הזוג הכנסה",
+# then its type: cb_p1_24 "עבודה/קצבה/עסק", cb_p1_25 "הכנסה אחרת".
+SPOUSE_INCOME_CB = {"none": ["cb_p1_22"], "work": ["cb_p1_23", "cb_p1_24"], "other": ["cb_p1_23", "cb_p1_25"]}
+
+
+def fill_spouse(b, sp):
+    """Form 101 section ו. `spouse_employer_deductions` is the spouse's ID
+    number box despite its name (it sits under "מספר זהות (9 ספרות)")."""
+    if not sp:
+        return
+    b.set_hebrew("spouse_surname", sp.get("surname"), 11)
+    b.set_hebrew("spouse_given_name", sp.get("given"), 11)
+    ident = re.sub(r"\s", "", str(sp.get("idNo") or ""))
+    if re.fullmatch(r"\d{8,9}", ident):
+        b.set_comb("spouse_employer_deductions", ident.zfill(9), 9, 10)
+    elif ident:
+        # Not an Israeli ID — the passport box is for spouses without one.
+        b.set_comb("spouse_passport_no", ident.upper(), 13, 10)
+    b.set_comb("spouse_dob", re.sub(r"\D", "", sp.get("dob") or ""), 8, 10)
+    for cb in SPOUSE_INCOME_CB.get(sp.get("income"), []):
+        b.check(cb)
+
+
 def build_form101_pdf(p):
     b = Form101Builder()
     page_h = b.page1.rect.height
@@ -374,8 +398,11 @@ def build_form101_pdf(p):
         b.check("resident_h")
     else:
         b.check("resident_no")
-        b.check("marital_single")
+        # Foreign-passport worker: single unless a status was set by hand.
+        b.check(p.get("marital") or "marital_single")
     b.check("cb_p1_1")  # kibbutz member — always "No" for this app's workers
+
+    fill_spouse(b, p.get("spouse"))
 
     income_cb = INCOME_TYPE_CB.get(p.get("incomeType"))
     if income_cb:

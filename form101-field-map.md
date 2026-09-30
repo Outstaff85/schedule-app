@@ -57,7 +57,14 @@ raw field list order.
 | `cb_p1_10`, `cb_p1_11` | Checkbox | 235.5,454.8–464.8 / 235.5,479.2–489.2 (top-coord) | **ה. פרטים על הכנסות אחרות** — `cb_p1_10`="אין לי הכנסות אחרות" (no other income), `cb_p1_11`="יש לי הכנסות אחרות כמפורט להלן:" (has other income, detailed below) | Other-income toggle | ✅ from `w.otherIncomeType`: `'none'` → `cb_p1_10` only; any specific type → `cb_p1_11` plus its type box below |
 | `cb_p1_12`…`cb_p1_17` | Checkbox | y(top) 490–523, two columns x≈118 (right col in RTL) and x≈236 (left col) | ה.'s own income-type sub-boxes, two per row: `cb_p1_12`=שכר עבודה עובד יומי(5) daily, `cb_p1_13`=משכורת חודש(2) monthly, `cb_p1_14`=קצבה(6) pension, `cb_p1_15`=משכורת בעד משרה נוספת(3) 2nd job, `cb_p1_16`=מלגה(1) scholarship, `cb_p1_17`=משכורת חלקית(4) partial | Other-income type | ✅ from `w.otherIncomeType` via `OTHER_INCOME_CB` map, only when it's not `'none'`/unset |
 | **children table rows 1–10** (template ships no fields here) | — | `CHILD_ROW_Y[]` / `CHILD_COLS` in code | ג. פרטים על ילדיי (name / ID / DOB per child) | Registered children from ID ספח | ✅ real fields created per row with data (`children_id_N`/`children_dob_N`/`children_name_N`), from `window.__aiScanChildren` (Israeli-ID path only) |
-| `cb_p1_18` / `cb_p1_19` | Checkbox | y≈116–125, x 281–291 / 408–419 | ו. פרטים על בן/בת הזוג: "אין"/"יש" bucket markers | Spouse-income section | ❌ not handled |
+| `spouse_employer_deductions` | Text (comb, 9) | top-coord 439.3,696.2,538.7,710.2 | ו. מספר זהות (9 ספרות) | **Spouse's** Israeli ID (misleading name, verified by position) | ✅ `fill_spouse()` in `functions/main.py`, zero-padded to 9 |
+| `spouse_surname` / `spouse_given_name` | Text | top-coord y≈695.5–709.5, x 316–436 / 211–312 | ו. שם משפחה / שם פרטי | Spouse names | ✅ |
+| `spouse_dob` | Text (comb) | top-coord 119.7,696.5,209.1,710.5 | ו. תאריך לידה | Spouse DOB (DDMMYYYY) | ✅ manual entry only (the ספח has no spouse DOB) |
+| `spouse_aliyah` | Text | top-coord 28.5,696.2,117.9,710.2 | ו. תאריך עליה | Spouse aliyah date | ❌ no source data |
+| `spouse_passport_no` | Text (comb, 13) | top-coord 421.8,720.8,538.1,734.8 | ו. מספר דרכון (למי שאין מספר זהות) | Spouse passport | ✅ when the spouse number is not 8-9 digits |
+| `cb_p1_22` / `cb_p1_23` | Checkbox | top-coord y≈716–726, x 408.5 / 281.1 | ו. אין לבן/בת הזוג כל הכנסה / יש לבן/בת הזוג הכנסה | Spouse has income? | ✅ from `w.spouseIncome` (`none` → 22; `work`/`other` → 23) |
+| `cb_p1_24` / `cb_p1_25` | Checkbox | top-coord y≈717, x 158.5 / 79.2 | ו. ...מ: עבודה/קצבה/עסק / הכנסה אחרת | Spouse income type | ✅ `work` → 24, `other` → 25 |
+| `cb_p1_18` / `cb_p1_19` | Checkbox | top-coord y≈535–569, x≈234 | (section ה area, not the spouse section — previously mislabeled here) | — | ❌ not handled |
 
 ## Page 2 — real AcroForm fields
 

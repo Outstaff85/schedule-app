@@ -1735,7 +1735,7 @@ var IL_ID_FIELD_MAP =
   'ADDRESS (ספח only): המען → "address" (street name only), מס\' בית → "houseNumber" (digits only), הישוב → "city". מס\' דירה (apartment number) is NOT the house number, and the 7-digit מיקוד is not part of the address — leave both out. מקום הלידה (place of birth), המעמד (status) and the issuing office are never the address or city. ' +
   'Keep the three strictly separate: מען "יהודה הלוי", מס\' בית "16", ישוב "פתח תקווה" become "address":"יהודה הלוי","houseNumber":"16","city":"פתח תקווה" — never combined, never swapped. ' +
   'MARITAL STATUS: המצב האישי → "maritalStatus", exactly one of "single" (רווק/רווקה), "married" (נשוי/נשואה), "divorced" (גרוש/גרושה), "widowed" (אלמן/אלמנה); empty string if not printed — do not guess. ' +
-  'SPOUSE: מס\' הזהות של בן/בת הזוג, שם המשפחה של בן/בת הזוג, השם הפרטי של בן/בת הזוג belong to the spouse — never use them for the holder and never add the spouse to "children". ' +
+  'SPOUSE (ספח only): מס\' הזהות של בן/בת הזוג → "spouse"."idNo" (groups joined into 9 digits), שם המשפחה של בן/בת הזוג → "spouse"."surname", השם הפרטי של בן/בת הזוג → "spouse"."given". These belong ONLY in "spouse" — never in the holder\'s own idNo/surname/given and never in "children". If no spouse rows are filled in (or the page has none, e.g. a card front or back), return "spouse":{"surname":"","given":"","idNo":""}. ' +
   'CHILDREN: each ילד/ילדה block on the ספח is one child. Inside a block, "מספר זהות בעל התעודה" is the HOLDER\'s own number repeated — NOT the child\'s; the child\'s own number is the separate מספר הזהות row lower in the same block. ' +
   'For each child return "name" = the child\'s given name, one space, then surname (from that block\'s השם הפרטי and שם המשפחה, e.g. "נועה כהן"), "idNo" = the child\'s own 9-digit number (groups joined as above), "dob" = that block\'s Gregorian תאריך הלידה. No ילד/ילדה blocks → "children":[]. ' +
   'The top-level "idNo" is always the holder\'s own number — never a child\'s, the spouse\'s, or the card number. ' +
@@ -1774,7 +1774,7 @@ function aiReadDoc(body){
     'For a foreign PASSPORT return: ' +
     '{"type":"passport","surname":"...","given":"...","passportNo":"...","nationality":"...","dob":"DD/MM/YYYY","sex":"M or F","expiry":"DD/MM/YYYY","issuer":"..."} ' +
     'For an ISRAELI ID (any page: card front, card back, or ספח) return: ' +
-    '{"type":"israeli_id","surname":"...","given":"...","idNo":"9-digit number","dob":"DD/MM/YYYY","sex":"M or F","address":"street name only","houseNumber":"house/building number only","city":"...","expiry":"DD/MM/YYYY","maritalStatus":"single, married, divorced, widowed, or empty","children":[{"name":"given surname","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}]} ' +
+    '{"type":"israeli_id","surname":"...","given":"...","idNo":"9-digit number","dob":"DD/MM/YYYY","sex":"M or F","address":"street name only","houseNumber":"house/building number only","city":"...","expiry":"DD/MM/YYYY","maritalStatus":"single, married, divorced, widowed, or empty","spouse":{"surname":"...","given":"...","idNo":"9-digit number or empty"},"children":[{"name":"given surname","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}]} ' +
     'Rules: dates always DD/MM/YYYY with leading zeros. Names exactly as printed. ' +
     IL_ID_FIELD_MAP +
     'Any photo showing the המען / מס\' בית / הישוב rows is a ספח and is type "israeli_id", even without a portrait. A photo showing only part of a document is still "israeli_id": fill what that page shows and leave every other field empty. ' +
@@ -1901,10 +1901,10 @@ function aiReadSefach(body){
   var SYSTEM = 'You are looking at an EXTRA page of an Israeli ID whose front was already read: either the paper ספח (C below) or the BACK of the biometric card (B below). ' +
     'Do NOT determine a document type or look for a portrait — you already know what this is. ' +
     'Extract exactly these fields and return ONLY valid JSON, no prose, no markdown, no code fences: ' +
-    '{"type":"israeli_id","idNo":"holder\'s 9-digit number, or empty","address":"street name only","houseNumber":"house/building number only","city":"city/town name","maritalStatus":"single, married, divorced, widowed, or empty","sex":"M, F, or empty","children":[{"name":"given surname","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}],"imageAlign":{"rotate":0,"corners":{"tl":{"x":0,"y":0},"tr":{"x":1,"y":0},"br":{"x":1,"y":1},"bl":{"x":0,"y":1}}}} ' +
+    '{"type":"israeli_id","idNo":"holder\'s 9-digit number, or empty","address":"street name only","houseNumber":"house/building number only","city":"city/town name","maritalStatus":"single, married, divorced, widowed, or empty","sex":"M, F, or empty","spouse":{"surname":"...","given":"...","idNo":"9-digit number or empty"},"children":[{"name":"given surname","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}],"imageAlign":{"rotate":0,"corners":{"tl":{"x":0,"y":0},"tr":{"x":1,"y":0},"br":{"x":1,"y":1},"bl":{"x":0,"y":1}}}} ' +
     '"type" is always the literal string "israeli_id". ' +
     'The holder\'s ID number is used only as a cross-check against the front, so read it if printed. ' +
-    'The biometric card back has no address and no children — for that page return address, houseNumber, city and maritalStatus as empty strings and "children":[]; read idNo and sex from it. ' +
+    'The biometric card back has no address and no children — for that page return address, houseNumber, city and maritalStatus as empty strings, an empty "spouse" and "children":[]; read idNo and sex from it. ' +
     IL_ID_FIELD_MAP +
     'If a field is not visible or unreadable, use an empty string (or empty array for children) — never guess. ' +
     '"imageAlign" describes how to straighten the ORIGINAL photo, same as for a full document read: ' +

@@ -1659,6 +1659,11 @@ function pickFirstWClientSuggest(){ const m=wClientMatches(); if(m.length) addWC
 // (bank/branch/account number) — a separate section, not mixed into the
 // client picker, per request ("отдельная вкладка внутри карточки").
 let __wBankOpen = false;
+// Spouse block in the worker modal is only relevant when married.
+function onWMaritalChange(){
+  const wrap=document.getElementById('wSpouseWrap');
+  if(wrap) wrap.style.display=document.getElementById('wMaritalStatus')?.value==='marital_married'?'block':'none';
+}
 function toggleBankWrap(){
   __wBankOpen = !__wBankOpen;
   const wrap = document.getElementById('wBankWrap');
@@ -1905,7 +1910,7 @@ function showWorkerModal(w){
     </div>
     <div class="field-row">
       <div class="field"><label>מצב משפחתי</label>
-        <select id="wMaritalStatus">
+        <select id="wMaritalStatus" onchange="onWMaritalChange()">
           <option value="" ${!w.maritalStatus?'selected':''}>— לא נבחר —</option>
           <option value="marital_single" ${w.maritalStatus==='marital_single'?'selected':''}>רווק/ה</option>
           <option value="marital_married" ${w.maritalStatus==='marital_married'?'selected':''}>נשוי/אה</option>
@@ -1920,6 +1925,25 @@ function showWorkerModal(w){
           <option value="Maccabi" ${w.healthFund==='Maccabi'?'selected':''}>מכבי</option>
           <option value="Meuhedet" ${w.healthFund==='Meuhedet'?'selected':''}>מאוחדת</option>
           <option value="Leumit" ${w.healthFund==='Leumit'?'selected':''}>לאומית</option>
+        </select>
+      </div>
+    </div>
+    <div id="wSpouseWrap" style="display:${w.maritalStatus==='marital_married'?'block':'none'};border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:12px">
+      <div style="font-weight:600;font-size:13px;margin-bottom:8px"><i class="ti ti-heart"></i> Spouse (Form 101, section ו)</div>
+      <div class="field-row">
+        <div class="field"><label>Spouse surname</label><input type="text" id="wSpouseSurname" value="${esc(w.spouseSurname||'')}"></div>
+        <div class="field"><label>Spouse given name</label><input type="text" id="wSpouseGiven" value="${esc(w.spouseGiven||'')}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Spouse ID / passport no.</label><input type="text" id="wSpouseId" value="${esc(w.spouseId||'')}" inputmode="numeric"></div>
+        <div class="field"><label>Spouse date of birth</label><input type="text" id="wSpouseDob" value="${esc(w.spouseDob||'')}" placeholder="DD/MM/YYYY"></div>
+      </div>
+      <div class="field"><label>Spouse income</label>
+        <select id="wSpouseIncome">
+          <option value="" ${!w.spouseIncome?'selected':''}>— Not set —</option>
+          <option value="none" ${w.spouseIncome==='none'?'selected':''}>No income</option>
+          <option value="work" ${w.spouseIncome==='work'?'selected':''}>Has income: work / pension / business</option>
+          <option value="other" ${w.spouseIncome==='other'?'selected':''}>Has income: other</option>
         </select>
       </div>
     </div>
@@ -2091,8 +2115,16 @@ async function saveWorker(){
   const notes=document.getElementById('wNotes')?.value.trim()||'';
   const incomeType=document.getElementById('wIncomeType')?.value||'';
   const otherIncomeType=document.getElementById('wOtherIncomeType')?.value||'';
-  const maritalStatus=document.getElementById('wMaritalStatus')?.value||'';
+  const maritalStatusSel=document.getElementById('wMaritalStatus')?.value||'';
   const healthFund=document.getElementById('wHealthFund')?.value||'';
+  // Form 101 section ו. Filling in a spouse implies married, so an unset
+  // marital status is saved as married.
+  const spouseSurname=document.getElementById('wSpouseSurname')?.value.trim()||'';
+  const spouseGiven=document.getElementById('wSpouseGiven')?.value.trim()||'';
+  const spouseId=document.getElementById('wSpouseId')?.value.trim()||'';
+  const spouseDob=document.getElementById('wSpouseDob')?.value.trim()||'';
+  const spouseIncome=document.getElementById('wSpouseIncome')?.value||'';
+  const maritalStatus=(!maritalStatusSel&&(spouseSurname||spouseGiven||spouseId))?'marital_married':maritalStatusSel;
   // Manual fallback for when the ספח doesn't scan (or scans wrong) — whatever
   // is in these rows at save time is what's persisted and what goes into the
   // PDF. Rows with nothing typed in them are dropped.
@@ -2115,6 +2147,7 @@ async function saveWorker(){
   const commonFields={name,colorIdx:selColorIdx,phone,hourlyRate,travelAllowance,status,startDate,workStartDate,docSex,
     expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,houseNumber,city,docDob,docExpiry,notes,
     incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,docChildren,clientIds,schedule,
+    spouseSurname,spouseGiven,spouseId,spouseDob,spouseIncome,
     supplierId,bank,bankBranch,bankAccountNumber,
     avatarB64:__wAvatarB64,docType:__wDocType};
   // Duplicate guard for a NEW worker (checked by document number — unique to
@@ -2147,7 +2180,8 @@ async function saveWorker(){
     // manager never has to remember to re-upload by hand after a routine
     // data correction. JSON.stringify handles docChildren (an array) too.
     const FORM101_WATCHED_FIELDS=['docId','address','houseNumber','city','incomeType','otherIncomeType',
-      'docSurname','docGiven','maritalStatus','healthFund','workStartDate','phone','docSex','docDob','docChildren'];
+      'docSurname','docGiven','maritalStatus','healthFund','workStartDate','phone','docSex','docDob','docChildren',
+      'spouseSurname','spouseGiven','spouseId','spouseDob','spouseIncome'];
     const updated={...prevW,...commonFields};
     const changed=FORM101_WATCHED_FIELDS.some(f=>JSON.stringify(prevW[f])!==JSON.stringify(updated[f]));
     workers[editingWorkerIdx]=updated;
@@ -5991,7 +6025,15 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     } else {
       workStart=(targetWorker&&targetWorker.workStartDate)||'';
       fund=(targetWorker&&targetWorker.healthFund)||'';
-      Object.assign(payload,{workStart,healthFund:fund});
+      // A foreign-passport worker defaults to single server-side unless a
+      // status was set (e.g. married with a spouse entered).
+      marital=(targetWorker&&targetWorker.maritalStatus)||'';
+      Object.assign(payload,{workStart,healthFund:fund,marital});
+    }
+    // Form 101 section ו (spouse), either document type.
+    const tw=targetWorker||{};
+    if(tw.spouseSurname||tw.spouseGiven||tw.spouseId||tw.spouseDob||tw.spouseIncome){
+      payload.spouse={surname:tw.spouseSurname||'',given:tw.spouseGiven||'',idNo:tw.spouseId||'',dob:tw.spouseDob||'',income:tw.spouseIncome||''};
     }
 
     // Signature ("חתימת המבקש/ת") — drawn server-side as an image if the

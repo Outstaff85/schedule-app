@@ -1342,6 +1342,9 @@ function mergeIsraeliIdFields(primary,extra){
   if(!primary||primary.type!=='israeli_id'||!extra||extra.type!=='israeli_id') return primary;
   for(const f of ID_CORE_FIELDS){ if(!primary[f]&&extra[f]) primary[f]=extra[f]; }
   if((!primary.children||!primary.children.length)&&Array.isArray(extra.children)&&extra.children.length) primary.children=extra.children;
+  // Spouse rows (ספח only) — taken whole from the first page that has any.
+  const hasSpouse=sp=>sp&&(sp.surname||sp.given||sp.idNo);
+  if(!hasSpouse(primary.spouse)&&hasSpouse(extra.spouse)) primary.spouse=extra.spouse;
   return primary;
 }
 // Seeds a fresh primary record from the first-scanned page's raw parsed
@@ -1734,6 +1737,13 @@ function openWorkerModalFromScan(p){
     const MARITAL_AI_MAP={single:'marital_single',married:'marital_married',divorced:'marital_divorced',widowed:'marital_widowed'};
     if(p.maritalStatus&&MARITAL_AI_MAP[p.maritalStatus]) ocrFields.maritalStatus=MARITAL_AI_MAP[p.maritalStatus];
     if(Array.isArray(p.children)&&p.children.length) ocrFields.docChildren=p.children.map(c=>({name:_nrm(c.name),idNo:_nrm(c.idNo),dob:_nrm(c.dob)}));
+    // Spouse (ספח → Form 101 section ו). A spouse on the ספח means married,
+    // so an unread marital status is filled in accordingly.
+    const sp=p.spouse||{};
+    setIfPresent(ocrFields,'spouseSurname',sp.surname);
+    setIfPresent(ocrFields,'spouseGiven',sp.given);
+    setIfPresent(ocrFields,'spouseId',sp.idNo);
+    if((ocrFields.spouseSurname||ocrFields.spouseGiven||ocrFields.spouseId)&&!ocrFields.maritalStatus) ocrFields.maritalStatus='marital_married';
   }
   let rescanId=window.__aiRescanWorkerId;
   window.__aiRescanWorkerId=null;
