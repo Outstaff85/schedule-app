@@ -39,7 +39,9 @@
   .titlebar .brand img{width:28px;height:28px;border-radius:8px;}
   .titlebar .logo{font-size:16px;font-weight:600;color:var(--text);letter-spacing:-0.3px;align-self:center;white-space:nowrap;}
   .titlebar .logo span{color:var(--accent);}
-  .account-label-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:16px;font-weight:600;color:var(--text);letter-spacing:-0.3px;white-space:nowrap;pointer-events:none;}
+  .account-label-center{margin-left:auto;align-self:center;max-width:260px;overflow:hidden;text-overflow:ellipsis;font-size:13px;font-weight:500;color:var(--text2);white-space:nowrap;padding:0 8px;}
+  .account-label-center:empty{display:none;}
+  .account-label-center + .titlebar-actions{margin-left:0;}
   .account-label-center span{color:var(--accent);}
   .top-tabs{display:flex;gap:2px;align-items:stretch;}
   .ttab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:70px;padding:0 12px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text2);transition:all 0.15s;}
@@ -212,7 +214,8 @@
     .ttab .ic { font-size: 16px; }
     .ttab .lb { font-size: 11px; }
     .titlebar-actions { margin-left: auto; gap: 4px; flex-wrap: wrap; }
-    .account-label-center { display: none; }
+    .account-label-center { order: 2; width: 100%; max-width: none; margin-left: 0; padding: 0; font-size: 12px; }
+    .account-label-center + .titlebar-actions { margin-left: auto; }
     .save-indicator { font-size: 10px; }
     .btn.sm { font-size: 11px; padding: 5px 10px; min-height: 34px; }
     .dropdown-menu { right: 0; left: auto; min-width: 180px; }
@@ -555,7 +558,7 @@
         </div>
         <div style="display:flex;gap:8px" id="adminHeaderActions">
           <button class="btn sm" onclick="exportPunchCSV()"><i class="ti ti-upload" style="color:var(--green)"></i> Export CSV</button>
-          <button class="btn sm red" onclick="clearPunchLog()"><i class="ti ti-trash"></i> Clear Log</button>
+          <button class="btn sm red" id="adminClearLogBtn" onclick="clearPunchLog()"><i class="ti ti-trash"></i> Clear Log</button>
         </div>
       </div>
 
@@ -674,7 +677,7 @@
               <option value="month">This Month</option>
               <option value="all">All Time</option>
             </select>
-            <button class="btn sm" onclick="exportSalaryCSV()"><i class="ti ti-upload"></i> Export</button>
+            <button class="btn sm" onclick="openSalaryExportModal()"><i class="ti ti-upload"></i> Export</button>
           </div>
         </div>
         <div id="dashSalary"></div>
@@ -748,11 +751,20 @@
 <div class="overlay" id="clientOverlay" onclick="if(event.target===this)closeModal('clientOverlay')">
   <div class="modal" id="clientModal"></div>
 </div>
+<div class="overlay" id="clientBillOverlay" style="z-index:110">
+  <div class="modal" id="clientBillModal" style="max-width:420px"></div>
+</div>
 <div class="overlay" id="supplierOverlay" onclick="if(event.target===this)closeModal('supplierOverlay')">
   <div class="modal" id="supplierModal"></div>
 </div>
 <div class="overlay" id="hoursImportOverlay" onclick="if(event.target===this)closeModal('hoursImportOverlay')">
   <div class="modal" id="hoursImportModal" style="max-width:440px"></div>
+</div>
+<div class="overlay" id="clearLogOverlay" onclick="if(event.target===this)closeModal('clearLogOverlay')">
+  <div class="modal" id="clearLogModal" style="max-width:400px"></div>
+</div>
+<div class="overlay" id="salaryExportOverlay" onclick="if(event.target===this)closeModal('salaryExportOverlay')">
+  <div class="modal" id="salaryExportModal" style="max-width:360px"></div>
 </div>
 <div class="overlay" id="hoursExportOverlay" onclick="if(event.target===this)closeModal('hoursExportOverlay')">
   <div class="modal" id="hoursExportModal" style="max-width:360px"></div>
@@ -788,7 +800,6 @@
       <div style="font-size:20px;font-weight:700"><i class="ti ti-building-skyscraper"></i> Фирмы</div>
       <div style="display:flex;gap:8px">
         <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> Создать фирму</button>
-        <button class="btn sm" onclick="openErrorsScreen()"><i class="ti ti-alert-circle"></i> Ошибки</button>
         <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i> Выйти</button>
       </div>
     </div>
@@ -1128,16 +1139,29 @@ function shiftPay(hours, w, isSat, clientId){
 // from shiftPay() above (the worker's own legally-owed wage). client.rateMode
 // ('tiered', the default, or 'fixed') never changes what the worker earns;
 // it only changes how the client invoice line is computed:
-//   'tiered' — the Israeli OT/Shabbat law tiers (israeliDayPay), applied to
-//              the client's OWN default rate (client.defaultHourlyRate), not
-//              the worker's rate — same law shape, independent number.
+//   'tiered' — client.billRate (the client's own billing rate, set in the
+//              client modal's billing-rate popup; falls back to the legacy
+//              defaultHourlyRate for clients saved before billRate existed)
+//              through the Israeli OT/Shabbat law tiers (israeliDayPay) —
+//              unless a flat billOtRate / billShabbatRate is set, applied the
+//              same way shiftPay() applies a worker's own OT/Shabbat override.
 //   'fixed'  — a flat client.fixedBillRate ₪/h, no OT/Shabbat tiers at all.
-// A client with neither a rateMode nor a defaultHourlyRate/fixedBillRate set
-// bills 0 — this never blocks payroll, it's purely an informational figure.
+// A client with no billing rate set bills 0 — this never blocks payroll,
+// it's purely an informational figure.
+function clientBillRate(client){
+  const v = client && (client.billRate!=null && client.billRate!=='' ? client.billRate : client.defaultHourlyRate);
+  return Number(v)||0;
+}
 function clientBillPay(hours, client, isSat){
   if(!client) return 0;
   if(client.rateMode==='fixed') return hours*(Number(client.fixedBillRate)||0);
-  return israeliDayPay(hours, Number(client.defaultHourlyRate)||0, isSat).total;
+  const rate=clientBillRate(client), has=v=>v!=null&&v!=='';
+  if(isSat){
+    if(has(client.billShabbatRate)) return hours*Number(client.billShabbatRate);
+    return israeliDayPay(hours, rate, true).total;
+  }
+  if(has(client.billOtRate)){ const RM=PAY_RULES.regularMax; return Math.min(hours,RM)*rate + Math.max(hours-RM,0)*Number(client.billOtRate); }
+  return israeliDayPay(hours, rate, false).total;
 }
 function fmtDate(d){ return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); }
 function fmtRange(d){ const e=new Date(d); e.setDate(e.getDate()+6); return fmtDate(d)+' – '+fmtDate(e); }
@@ -1491,16 +1515,44 @@ function toggleForm101Wrap(){
   if(chev) chev.className = 'ti ti-chevron-' + (__wForm101Open ? 'up' : 'down');
 }
 
-// Same collapsed-by-default dropdown pattern, for the client-assignment
-// checklist (previously always visible).
-let __wClientsOpen = false;
-function toggleClientsWrap(){
-  __wClientsOpen = !__wClientsOpen;
-  const wrap = document.getElementById('wClientsWrap');
-  const chev = document.getElementById('wClientsChevron');
-  if(wrap) wrap.style.display = __wClientsOpen ? '' : 'none';
-  if(chev) chev.className = 'ti ti-chevron-' + (__wClientsOpen ? 'up' : 'down');
+// Worker modal client picker — selected clients as removable chips plus a
+// search box whose suggestion list shows at most a short scrollable list of
+// NOT-yet-selected matches, so the modal stays compact however many clients
+// the firm has (the old full checkbox list grew with the roster). Same
+// modal/picker for manual add, edit, and the post-scan create flow
+// (openWorkerModalFromScan() → showWorkerModal()).
+let __wClientIds = [];
+function renderWClientChips(){
+  const box=document.getElementById('wClientChips'); if(!box) return;
+  const sel=__wClientIds.map(id=>clients.find(c=>c.id===id)).filter(Boolean);
+  box.innerHTML=sel.map(c=>`<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;border-radius:999px;background:var(--bg3);border:1px solid var(--border2);font-size:12px;max-width:100%">
+      <span style="width:8px;height:8px;border-radius:50%;background:${esc(c.color)};flex-shrink:0"></span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}${c.object?`<span style="color:var(--text3)"> · ${esc(c.object)}</span>`:''}</span>
+      <button type="button" onclick="removeWClient('${esc(c.id)}')" title="Remove" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:0 2px;font-size:14px;line-height:1">&times;</button>
+    </span>`).join('');
+  const cnt=document.getElementById('wClientCount'); if(cnt) cnt.textContent=sel.length?('('+sel.length+')'):'';
 }
+function wClientMatches(){
+  const q=(document.getElementById('wClientSearch')?.value||'').trim().toLowerCase();
+  return clients.filter(c=>!__wClientIds.includes(c.id) && (!q || (c.name+' '+(c.object||'')).toLowerCase().includes(q)));
+}
+function renderWClientSuggest(){
+  const box=document.getElementById('wClientSuggest'); if(!box) return;
+  const list=wClientMatches();
+  box.innerHTML=list.length ? list.map(c=>`<div onmousedown="event.preventDefault();addWClient('${esc(c.id)}')" style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;font-size:13px" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+      <span style="width:8px;height:8px;border-radius:50%;background:${esc(c.color)};flex-shrink:0"></span>
+      <span>${esc(c.name)}${c.object?`<span style="color:var(--text3);font-size:11px"> · ${esc(c.object)}</span>`:''}</span>
+    </div>`).join('') : `<div style="padding:8px 10px;font-size:12px;color:var(--text3)">${clients.length===__wClientIds.length?'All clients added':'Not found'}</div>`;
+  box.style.display='block';
+}
+function hideWClientSuggest(){ const box=document.getElementById('wClientSuggest'); if(box) box.style.display='none'; }
+function addWClient(id){
+  if(!__wClientIds.includes(id)) __wClientIds.push(id);
+  const inp=document.getElementById('wClientSearch'); if(inp){ inp.value=''; inp.focus(); }
+  renderWClientChips(); renderWClientSuggest();
+}
+function removeWClient(id){ __wClientIds=__wClientIds.filter(x=>x!==id); renderWClientChips(); }
+function pickFirstWClientSuggest(){ const m=wClientMatches(); if(m.length) addWClient(m[0].id); }
 // Same collapsed-by-default pattern, for the worker's own bank requisites
 // (bank/branch/account number) — a separate section, not mixed into the
 // client picker, per request ("отдельная вкладка внутри карточки").
@@ -1680,7 +1732,7 @@ function showWorkerModal(w){
   __wScheduleOpen=false;
   __wExpiryOpen=false;
   __wForm101Open=false;
-  __wClientsOpen=false;
+  __wClientIds=(w.clientIds||[]).filter(id=>clients.some(c=>c.id===id));
   __wBankOpen=false;
   __wChildren=Array.isArray(w.docChildren)?w.docChildren.map(c=>({...c})):[];
   __wAvatarB64=w.avatarB64||'';
@@ -1776,22 +1828,14 @@ function showWorkerModal(w){
     <div class="field"><label>עיר</label><input type="text" id="wCity" value="${esc(w.city||'')}" placeholder="עיר"></div>
     <div class="field"><label>תאריך לידה</label><input type="text" id="wDob" value="${esc(w.docDob||'')}" placeholder="DD/MM/YYYY"></div>
     <div class="field"><label>תוקף ת.ז./דרכון</label><input type="text" id="wDocExpiry" value="${esc(w.docExpiry||'')}" placeholder="DD/MM/YYYY"></div>
-    <div class="field" style="margin-bottom:6px">
-      <button class="btn sm" type="button" onclick="toggleClientsWrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
-        <span><i class="ti ti-users"></i> לקוחות <span id="wClientCount" style="color:var(--text3);font-weight:400;font-size:12px"></span></span>
-        <i class="ti ti-chevron-down" id="wClientsChevron"></i>
-      </button>
-    </div>
-    <div id="wClientsWrap" style="display:none">
-      ${clients.length>5?`<input type="text" id="wClientSearch" placeholder="חיפוש לקוחות / אובייקטים..." oninput="filterClientPick(this.value)" autocomplete="off" style="width:100%;margin-bottom:6px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">`:''}
-      <div id="wClientPick" style="max-height:190px;overflow-y:auto;border:1px solid var(--border2);border-radius:var(--radius-sm);padding:4px;display:flex;flex-direction:column;gap:2px">
-        ${clients.length?clients.map(c=>`<label class="wc-row" data-name="${(c.name+' '+(c.object||'')).toLowerCase().replace(/"/g,'')}" style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:var(--radius-sm);cursor:pointer">
-          <input type="checkbox" value="${c.id}" ${(w.clientIds||[]).includes(c.id)?'checked':''} onchange="updateClientCount()" style="width:auto;padding:0;flex-shrink:0">
-          <span style="width:8px;height:8px;border-radius:50%;background:${c.color};flex-shrink:0"></span>
-          <span style="font-size:13px;color:var(--text)">${esc(c.name)}${c.object?`<span style="color:var(--text3);font-size:11px"> · ${esc(c.object)}</span>`:''}</span>
-        </label>`).join(''):'<span style="font-size:12px;color:var(--text3);padding:8px">אין לקוחות עדיין</span>'}
-      </div>
-      <div id="wClientEmpty" style="display:none;font-size:12px;color:var(--text3);padding:8px">לא נמצא</div>
+    <div class="field">
+      <label><i class="ti ti-users"></i> לקוחות <span id="wClientCount" style="color:var(--text3);font-weight:400;font-size:12px"></span></label>
+      <div id="wClientChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
+      ${clients.length?`<input type="text" id="wClientSearch" placeholder="+ Add client / object…" autocomplete="off"
+        oninput="renderWClientSuggest()" onfocus="renderWClientSuggest()" onblur="setTimeout(hideWClientSuggest,150)"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();pickFirstWClientSuggest();}else if(event.key==='Escape'){this.blur();}">
+      <div id="wClientSuggest" style="display:none;max-height:200px;overflow-y:auto;border:1px solid var(--border2);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);background:var(--bg2)"></div>`
+      :'<span style="font-size:12px;color:var(--text3)">No clients yet</span>'}
     </div>
     <div class="field">
       <label><i class="ti ti-truck-delivery"></i> Supplier (optional)</label>
@@ -1913,27 +1957,12 @@ function showWorkerModal(w){
       <button class="btn accent" onclick="saveWorker()">${editingWorkerIdx!==null?'שמור שינויים':'צור עובד'}</button>
     </div>`;
   document.getElementById('workerOverlay').classList.add('open');
-  updateClientCount();
+  renderWClientChips();
   renderChildrenRows();
   initSignaturePad('wSigCanvas');
 }
 function pickWColor(i){ selColorIdx=i; document.querySelectorAll('#wColorPick [data-ci]').forEach(el=>{ const idx=parseInt(el.dataset.ci); el.style.borderColor=idx===i?'white':'transparent'; el.style.transform=idx===i?'scale(1.2)':'scale(1)'; }); }
 function toggleDayTime(i){ const off=document.getElementById(`wt${i}`).value==='off'; ['ws','we'].forEach(p=>{ const el=document.getElementById(p+i); el.disabled=off; el.style.opacity=off?'0.3':'1'; }); }
-function filterClientPick(q){
-  q=(q||'').trim().toLowerCase();
-  let shown=0;
-  document.querySelectorAll('#wClientPick .wc-row').forEach(row=>{
-    const match=!q || (row.getAttribute('data-name')||'').includes(q);
-    row.style.display=match?'flex':'none';
-    if(match) shown++;
-  });
-  const empty=document.getElementById('wClientEmpty'); if(empty) empty.style.display=shown?'none':'block';
-}
-function updateClientCount(){
-  const el=document.getElementById('wClientCount'); if(!el) return;
-  const n=document.querySelectorAll('#wClientPick input:checked').length;
-  el.textContent=n?('· '+n+' selected'):'';
-}
 async function saveWorker(){
   const docGiven=document.getElementById('wGiven').value.trim();
   const docSurname=document.getElementById('wSurname').value.trim();
@@ -1968,7 +1997,7 @@ async function saveWorker(){
   const docChildren=__wChildren
     .map(c=>({name:(c.name||'').trim(),idNo:(c.idNo||'').trim(),dob:(c.dob||'').trim()}))
     .filter(c=>c.name||c.idNo||c.dob);
-  const clientIds=[...document.querySelectorAll('#wClientPick input:checked')].map(el=>el.value);
+  const clientIds=[...__wClientIds];
   const supplierId=document.getElementById('wSupplierId')?.value||null;
   const bank=document.getElementById('wBank')?.value.trim()||'';
   const bankBranch=document.getElementById('wBankBranch')?.value.trim()||'';
@@ -2134,13 +2163,17 @@ function deleteWorkerFromCard(wi){ closeModal('workerCardOverlay'); deleteWorker
 function openAddClient(){ editingClientId=null; selClientColor=CLIENT_COLORS[clients.length%CLIENT_COLORS.length]; showClientModal({name:'',color:selClientColor,address:'',notes:''}); }
 function openEditClient(cid){ editingClientId=cid; const c=clients.find(x=>x.id===cid); selClientColor=c.color; showClientModal(c); }
 function showClientModal(c){
+  // Billing settings live in __cBill while the modal is open — edited via the
+  // billing-rate popup (openClientBillRatePopup), written back by saveClient().
+  __cBill = { rateMode: c.rateMode==='fixed'?'fixed':'tiered', fixedBillRate: c.fixedBillRate??null,
+    billRate: (c.billRate!=null&&c.billRate!=='') ? c.billRate : (c.defaultHourlyRate??null),
+    billOtRate: c.billOtRate??null, billShabbatRate: c.billShabbatRate??null };
   document.getElementById('clientModal').innerHTML=`
     <div class="modal-title">${editingClientId?'Edit Client':'Add New Client'}</div>
-    <div class="field"><label>Name</label><input type="text" id="cName" value="${c.name||''}" placeholder="Client name" autofocus></div>
-    <div class="field"><label>Object</label><input type="text" id="cObject" value="${c.object||''}" placeholder="Object / branch name"></div>
-    <div class="field"><label>Address (optional)</label><input type="text" id="cAddr" value="${c.address||''}" placeholder="Address"></div>
-    <div class="field"><label>Notes (optional)</label><input type="text" id="cNotes" value="${c.notes||''}" placeholder="Notes"></div>
+    <div class="field"><label>Name</label><input type="text" id="cName" value="${esc(c.name||'')}" placeholder="Client name" autofocus></div>
     <div class="field"><label>ח.פ (Company Number, optional)</label><input type="text" id="cCompanyNumber" value="${esc(c.companyNumber||'')}" placeholder="512345678"></div>
+    <div class="field"><label>Object</label><input type="text" id="cObject" value="${esc(c.object||'')}" placeholder="Object / branch name"></div>
+    <div class="field"><label>Address (optional)</label><input type="text" id="cAddr" value="${esc(c.address||'')}" placeholder="Address"></div>
     <div class="field">
       <label><i class="ti ti-cash"></i> Default rate for this client (optional)</label>
       <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Applied to all workers at this client if a worker has no own rate for it (see Accounting → Per-client rates)</div>
@@ -2157,19 +2190,19 @@ function showClientModal(c){
       <label><i class="ti ti-receipt"></i> Client billing mode</label>
       <div style="font-size:11px;color:var(--text3);margin-bottom:6px">What's billed to this client (Accounting → Billable by client). Never affects the worker's own wage above.</div>
       <select id="cRateMode" onchange="onClientRateModeChange()" style="width:100%">
-        <option value="tiered" ${(c.rateMode||'tiered')==='tiered'?'selected':''}>Tiered (Israeli OT/Shabbat rates, using the client's own rate above)</option>
-        <option value="fixed" ${c.rateMode==='fixed'?'selected':''}>Fixed rate (flat ₪/h, no OT/Shabbat tiers)</option>
+        <option value="tiered" ${__cBill.rateMode==='tiered'?'selected':''}>With overtime (Israeli OT/Shabbat tiers)</option>
+        <option value="fixed" ${__cBill.rateMode==='fixed'?'selected':''}>Fixed rate (flat ₪/h, no OT/Shabbat)</option>
       </select>
-      <div id="cFixedBillRateWrap" style="margin-top:8px;${c.rateMode==='fixed'?'':'display:none'}">
-        <label style="font-size:11px;color:var(--text3)">Fixed billing rate ₪/h</label>
-        <input type="number" min="0" step="0.5" id="cFixedBillRate" value="${c.fixedBillRate??''}" placeholder="—">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px">
+        <div id="cBillSummary" style="font-size:12px;color:var(--text2)">${clientBillSummary()}</div>
+        <button class="btn sm" type="button" onclick="openClientBillRatePopup()"><i class="ti ti-pencil"></i> Edit rate</button>
       </div>
     </div>
     <div class="field">
       <label><i class="ti ti-map-pin"></i> Geolocation for Punch Clock</label>
       <div style="margin-bottom:8px">
         <label style="font-size:11px;color:var(--text3);margin-bottom:4px;display:block">Paste Google Maps link</label>
-        <input type="text" id="cMapsUrl" placeholder="https://maps.google.com/..." value="${c.mapsUrl||''}" oninput="parseGoogleMapsUrl(this.value)" style="font-size:12px">
+        <input type="text" id="cMapsUrl" placeholder="https://maps.google.com/..." value="${esc(c.mapsUrl||'')}" oninput="parseGoogleMapsUrl(this.value)" style="font-size:12px">
         <div style="font-size:11px;color:var(--text3);margin-top:4px">Open Google Maps → right-click on location → copy link or coordinates</div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
@@ -2240,17 +2273,77 @@ function updateLocStatus(){
   }
 }
 function pickCColor(col){ selClientColor=col; document.querySelectorAll('#cColorPick [data-color]').forEach(el=>{ el.style.borderColor=el.dataset.color===col?'white':'transparent'; el.style.transform=el.dataset.color===col?'scale(1.2)':'scale(1)'; }); }
+// ── Client billing-rate popup ───────────────────────────────────────────────
+// Picking a billing mode in the client modal immediately pops up the matching
+// rate form: 'fixed' → one flat ₪/h; 'tiered' (with overtime) → Regular plus
+// optional flat OT / Shabbat ₪/h (empty = law tiers ×1.25/×1.5 and ×1.5–×2.0
+// off Regular). These are the CLIENT's billing rates only — the worker-pay
+// "Default rate" block in the same modal is a separate set of fields.
+let __cBill = { rateMode:'tiered', fixedBillRate:null, billRate:null, billOtRate:null, billShabbatRate:null };
+let __cBillPrevMode = 'tiered';
+const fmtRate=v=>(v==null||v==='')?null:('₪'+Number(v)+'/h');
+function clientBillSummary(){
+  if(__cBill.rateMode==='fixed') return fmtRate(__cBill.fixedBillRate) ? 'Fixed '+fmtRate(__cBill.fixedBillRate) : '<span style="color:var(--amber)">Rate not set</span>';
+  if(!fmtRate(__cBill.billRate)) return '<span style="color:var(--amber)">Rate not set</span>';
+  return 'Regular '+fmtRate(__cBill.billRate)
+    +' · OT '+(fmtRate(__cBill.billOtRate)||'law tiers')
+    +' · Shabbat '+(fmtRate(__cBill.billShabbatRate)||'law tiers');
+}
 function onClientRateModeChange(){
-  const mode=document.getElementById('cRateMode')?.value;
-  const wrap=document.getElementById('cFixedBillRateWrap');
-  if(wrap) wrap.style.display = mode==='fixed' ? '' : 'none';
+  const sel=document.getElementById('cRateMode');
+  __cBillPrevMode=__cBill.rateMode;
+  __cBill.rateMode = sel.value==='fixed' ? 'fixed' : 'tiered';
+  const sum=document.getElementById('cBillSummary'); if(sum) sum.innerHTML=clientBillSummary();
+  openClientBillRatePopup(true);
+}
+function openClientBillRatePopup(fromModeChange){
+  const b=__cBill, v=x=>x??'';
+  const inp=(id,val,label)=>`<div><label style="font-size:11px;color:var(--text3)">${label}</label><input type="number" min="0" step="0.5" id="${id}" value="${v(val)}" placeholder="—"></div>`;
+  document.getElementById('clientBillModal').innerHTML = b.rateMode==='fixed' ? `
+    <div class="modal-title">Fixed billing rate</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Flat ₪ per hour billed to the client — no overtime or Shabbat tiers.</div>
+    <div class="field">${inp('cbFixed',b.fixedBillRate,'Rate ₪/h')}</div>
+    <div class="modal-actions">
+      <button class="btn" type="button" onclick="cancelClientBillRatePopup(${fromModeChange?'true':'false'})">Cancel</button>
+      <button class="btn accent" type="button" onclick="saveClientBillRatePopup()">Save</button>
+    </div>` : `
+    <div class="modal-title">Billing rate with overtime</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Billed to the client. Leave OT / Shabbat empty to use the Israeli law tiers off the regular rate (OT ×1.25 then ×1.5; Shabbat ×1.5–×2.0).</div>
+    <div class="field" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      ${inp('cbReg',b.billRate,'Regular ₪/h')}${inp('cbOt',b.billOtRate,'OT ₪/h')}${inp('cbShab',b.billShabbatRate,'Shabbat ₪/h')}
+    </div>
+    <div class="modal-actions">
+      <button class="btn" type="button" onclick="cancelClientBillRatePopup(${fromModeChange?'true':'false'})">Cancel</button>
+      <button class="btn accent" type="button" onclick="saveClientBillRatePopup()">Save</button>
+    </div>`;
+  document.getElementById('clientBillOverlay').classList.add('open');
+  setTimeout(()=>document.querySelector('#clientBillModal input')?.focus(),50);
+}
+function cancelClientBillRatePopup(revertMode){
+  // Cancelling the popup that a mode switch opened undoes that switch too,
+  // so the modal never ends up in a mode with no rate entered by accident.
+  if(revertMode){
+    __cBill.rateMode=__cBillPrevMode;
+    const sel=document.getElementById('cRateMode'); if(sel) sel.value=__cBill.rateMode;
+    const sum=document.getElementById('cBillSummary'); if(sum) sum.innerHTML=clientBillSummary();
+  }
+  closeModal('clientBillOverlay');
+}
+function saveClientBillRatePopup(){
+  const num=id=>{ const x=document.getElementById(id)?.value; return (x===''||x==null)?null:(parseFloat(x)||0); };
+  if(__cBill.rateMode==='fixed'){
+    __cBill.fixedBillRate=num('cbFixed');
+  } else {
+    __cBill.billRate=num('cbReg'); __cBill.billOtRate=num('cbOt'); __cBill.billShabbatRate=num('cbShab');
+  }
+  const sum=document.getElementById('cBillSummary'); if(sum) sum.innerHTML=clientBillSummary();
+  closeModal('clientBillOverlay');
 }
 function saveClient(){
   const name=document.getElementById('cName').value.trim();
   if(!name){ document.getElementById('cName').focus(); return; }
   const object=document.getElementById('cObject')?.value.trim()||'';
   const address=document.getElementById('cAddr').value.trim();
-  const notes=document.getElementById('cNotes').value.trim();
   const companyNumber=document.getElementById('cCompanyNumber')?.value.trim()||'';
   const lat=parseFloat(document.getElementById('cLat').value)||null;
   const lng=parseFloat(document.getElementById('cLng').value)||null;
@@ -2258,14 +2351,13 @@ function saveClient(){
   const mapsUrl=document.getElementById('cMapsUrl')?.value.trim()||'';
   const rateVal=id=>{ const v=document.getElementById(id)?.value; return (v===''||v==null)?null:(parseFloat(v)||0); };
   const defaultHourlyRate=rateVal('cDefRate'), defaultOtRate=rateVal('cDefOtRate'), defaultShabbatRate=rateVal('cDefShabRate');
-  const rateMode=document.getElementById('cRateMode')?.value==='fixed'?'fixed':'tiered';
-  const fixedBillRate=rateVal('cFixedBillRate');
+  const {rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate}=__cBill;
   if(editingClientId){
     const idx=clients.findIndex(x=>x.id===editingClientId);
-    if(idx>=0) clients[idx]={...clients[idx],name,object,address,notes,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate};
+    if(idx>=0) clients[idx]={...clients[idx],name,object,address,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate};
     showToast(name+' updated!');
   } else {
-    clients.push({id:uid(),name,object,address,notes,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate});
+    clients.push({id:uid(),name,object,address,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate});
     showToast(name+' added!');
   }
   closeModal('clientOverlay'); renderClientsPage(); renderSidebarClients(); autoSave();
@@ -2583,9 +2675,8 @@ function renderClientsPage(){
     return `<div class="client-card">
       <div class="client-card-header">
         <div class="client-card-dot" style="background:${c.color}"></div>
-        <div><div class="client-card-name">${esc(c.name)}</div>${c.object?`<div class="client-card-info"><i class="ti ti-building"></i> ${esc(c.object)}</div>`:''}${c.address?`<div class="client-card-info"><i class="ti ti-map-pin"></i> ${esc(c.address)}</div>`:''}</div>
+        <div><div class="client-card-name">${esc(c.name)}</div>${c.companyNumber?`<div class="client-card-info"><i class="ti ti-id"></i> ח.פ ${esc(c.companyNumber)}</div>`:''}${c.object?`<div class="client-card-info"><i class="ti ti-building"></i> ${esc(c.object)}</div>`:''}${c.address?`<div class="client-card-info"><i class="ti ti-map-pin"></i> ${esc(c.address)}</div>`:''}</div>
       </div>
-      ${c.notes?`<div style="font-size:12px;color:var(--text2)">${esc(c.notes)}</div>`:''}
       ${hasGeo?`<div style="font-size:12px;color:var(--green);background:var(--green-bg);border-radius:6px;padding:5px 8px">
         <i class="ti ti-gps"></i> GPS: ${Number(c.lat).toFixed(4)}, ${Number(c.lng).toFixed(4)} · radius ${c.radius||100}m
       </div>`:`<div style="font-size:12px;color:var(--text3)"><i class="ti ti-map-pin-off"></i> No geolocation — edit to add</div>`}
@@ -2606,14 +2697,14 @@ function renderClientsPage(){
 // shape) — a supplier is a staffing agency a worker is linked to via
 // w.supplierId (single, unlike the many-to-many clientIds), see the
 // `suppliers` global's own comment for the field list.
-function openAddSupplier(){ editingSupplierId=null; selSupplierColor=CLIENT_COLORS[suppliers.length%CLIENT_COLORS.length]; showSupplierModal({name:'',color:selSupplierColor,phone:'',notes:'',bank:'',bankBranch:'',accountNumber:'',companyNumber:''}); }
+function openAddSupplier(){ editingSupplierId=null; selSupplierColor=CLIENT_COLORS[suppliers.length%CLIENT_COLORS.length]; showSupplierModal({name:'',color:selSupplierColor,phone:'',bank:'',bankBranch:'',accountNumber:'',companyNumber:''}); }
 function openEditSupplier(sid){ editingSupplierId=sid; const s=suppliers.find(x=>x.id===sid); selSupplierColor=s.color; showSupplierModal(s); }
 function showSupplierModal(s){
   document.getElementById('supplierModal').innerHTML=`
     <div class="modal-title">${editingSupplierId?'Edit Supplier':'Add New Supplier'}</div>
     <div class="field"><label>Name</label><input type="text" id="sName" value="${esc(s.name||'')}" placeholder="Supplier name" autofocus></div>
+    <div class="field"><label>ח.פ (Company Number, optional)</label><input type="text" id="sCompanyNumber" value="${esc(s.companyNumber||'')}" placeholder="512345678"></div>
     <div class="field"><label>Phone (optional)</label><input type="text" id="sPhone" value="${esc(s.phone||'')}" placeholder="Phone"></div>
-    <div class="field"><label>Notes (optional)</label><input type="text" id="sNotes" value="${esc(s.notes||'')}" placeholder="Notes"></div>
     <div class="field">
       <label><i class="ti ti-building-bank"></i> Bank details (optional)</label>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
@@ -2625,7 +2716,6 @@ function showSupplierModal(s){
           <input type="text" id="sAccountNumber" value="${esc(s.accountNumber||'')}" placeholder="Account #"></div>
       </div>
     </div>
-    <div class="field"><label>ח.פ (Company Number, optional)</label><input type="text" id="sCompanyNumber" value="${esc(s.companyNumber||'')}" placeholder="512345678"></div>
     <div class="field"><label>Color</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap" id="sColorPick">
         ${CLIENT_COLORS.map(col=>`<div onclick="pickSColor('${col}')" data-color="${col}" style="width:24px;height:24px;border-radius:50%;background:${col};cursor:pointer;border:2px solid ${col===selSupplierColor?'white':'transparent'};transition:all 0.15s;${col===selSupplierColor?'transform:scale(1.2)':''}"></div>`).join('')}
@@ -2642,17 +2732,16 @@ function saveSupplier(){
   const name=document.getElementById('sName').value.trim();
   if(!name){ document.getElementById('sName').focus(); return; }
   const phone=document.getElementById('sPhone').value.trim();
-  const notes=document.getElementById('sNotes').value.trim();
   const bank=document.getElementById('sBank').value.trim();
   const bankBranch=document.getElementById('sBankBranch').value.trim();
   const accountNumber=document.getElementById('sAccountNumber').value.trim();
   const companyNumber=document.getElementById('sCompanyNumber').value.trim();
   if(editingSupplierId){
     const idx=suppliers.findIndex(x=>x.id===editingSupplierId);
-    if(idx>=0) suppliers[idx]={...suppliers[idx],name,phone,notes,bank,bankBranch,accountNumber,companyNumber,color:selSupplierColor};
+    if(idx>=0) suppliers[idx]={...suppliers[idx],name,phone,bank,bankBranch,accountNumber,companyNumber,color:selSupplierColor};
     showToast(name+' updated!');
   } else {
-    suppliers.push({id:uid(),name,phone,notes,bank,bankBranch,accountNumber,companyNumber,color:selSupplierColor});
+    suppliers.push({id:uid(),name,phone,bank,bankBranch,accountNumber,companyNumber,color:selSupplierColor});
     showToast(name+' added!');
   }
   closeModal('supplierOverlay'); renderSuppliersPage(); autoSave();
@@ -2677,11 +2766,9 @@ function renderSuppliersPage(){
     return `<div class="client-card">
       <div class="client-card-header">
         <div class="client-card-dot" style="background:${s.color}"></div>
-        <div><div class="client-card-name">${esc(s.name)}</div>${s.phone?`<div class="client-card-info"><i class="ti ti-phone"></i> ${esc(s.phone)}</div>`:''}</div>
+        <div><div class="client-card-name">${esc(s.name)}</div>${s.companyNumber?`<div class="client-card-info"><i class="ti ti-id"></i> ח.פ ${esc(s.companyNumber)}</div>`:''}${s.phone?`<div class="client-card-info"><i class="ti ti-phone"></i> ${esc(s.phone)}</div>`:''}</div>
       </div>
-      ${s.notes?`<div style="font-size:12px;color:var(--text2)">${esc(s.notes)}</div>`:''}
       ${s.bank?`<div style="font-size:12px;color:var(--text2)"><i class="ti ti-building-bank"></i> ${esc(s.bank)}${s.bankBranch?' · branch '+esc(s.bankBranch):''}${s.accountNumber?' · '+esc(s.accountNumber):''}</div>`:''}
-      ${s.companyNumber?`<div style="font-size:12px;color:var(--text2)"><i class="ti ti-id"></i> ח.פ ${esc(s.companyNumber)}</div>`:''}
       <div style="font-size:12px;color:var(--text2)"><strong style="color:var(--text)">Workers:</strong> ${assigned.length?assigned.map(w=>`<span style="color:${WORKER_COLORS[w.colorIdx%8].text}">${esc(w.name)}</span>`).join(', '):'None assigned'}</div>
       <div class="client-card-actions">
         <button class="btn sm" onclick="openEditSupplier('${s.id}')"><i class="ti ti-edit"></i> Edit</button>
@@ -3362,16 +3449,19 @@ function renderAccountControl(s){
     // it — the login name only stands in while the profile has no name yet.
     // Reading it from the profile (not the session's fixed username) is also
     // what makes a rename show up here as soon as cacheTenantProfile() lands.
+    // Shows both WHO is logged in (username) and WHICH firm is active, on
+    // desktop (centered) and mobile (own full-width row under the brand).
     const profile = activeTenantProfile();
-    labelHost.innerHTML = s.role === 'superadmin'
-      ? 'Супер-админ <span>' + esc(s.viewingTenantName || s.viewingTenantId || '') + '</span>'
-      : 'Фирма <span>' + esc((profile && profile.companyName) || s.username || '') + '</span>';
+    const firm = s.role === 'superadmin'
+      ? (s.viewingTenantName || s.viewingTenantId || 'Super-admin')
+      : ((profile && profile.companyName) || '');
+    labelHost.innerHTML = '<i class="ti ti-user"></i> ' + esc(s.username || '')
+      + (firm ? ' · <span>' + esc(firm) + '</span>' : '');
   }
   if(!host) return;
   const incomplete = firmProfileMissing().length > 0;
   host.innerHTML = `
     <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
-      ${s.role==='superadmin' ? '<button class="btn sm" onclick="backToFirmsList()"><i class="ti ti-building-skyscraper"></i> Фирмы</button>' : ''}
       <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i></button>
     </div>`;
   // The gear button that used to open the separate #adminScreen modal was
@@ -3450,6 +3540,10 @@ function setupAdminPaneBar(){
   document.getElementById('adminPaneBtn_errors').style.display = isSuper ? '' : 'none';
   document.getElementById('adminPaneBtn_users').style.display = isAdminRole ? '' : 'none';
   document.getElementById('adminPaneBtn_profile').style.display = isAdminRole ? '' : 'none';
+  // Clear Log deletes from the database — owner/super-admin only, matching
+  // deletePunchesByMonths()'s server-side gate.
+  const clearBtn = document.getElementById('adminClearLogBtn');
+  if(clearBtn) clearBtn.style.display = isAdminRole ? '' : 'none';
   switchAdminPane('punchlog');
 }
 const ADMIN_PANE_SUBTITLES = {
@@ -4801,8 +4895,29 @@ function setWorkerRate(wid,rate){
 function setWorkerOtRate(wid,val){ const w=workers.find(x=>x.id===wid); if(w){ w.otRate=(val===''||val==null)?null:(parseFloat(val)||0); autoSave(); } }
 function setWorkerShabbatRate(wid,val){ const w=workers.find(x=>x.id===wid); if(w){ w.shabbatRate=(val===''||val==null)?null:(parseFloat(val)||0); autoSave(); } }
 
-function exportSalaryCSV(){
+// Salary export — Accounting tab's "Export" button opens a format picker
+// (Excel / PDF / CSV); all three share buildSalaryExportRows(), which pairs
+// punches via the canonical groupPunchesIntoShifts()/analyzeDayPunches()/
+// shiftPay() — the formats differ only in how the same rows are written out.
+const SALARY_PERIOD_LABELS={week:'This Week',month:'This Month',all:'All Time'};
+function openSalaryExportModal(){
   const period=document.getElementById('salaryPeriod')?.value||'week';
+  document.getElementById('salaryExportModal').innerHTML = `
+    <div class="modal-title">Export salary</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:14px">Period: <b>${esc(SALARY_PERIOD_LABELS[period]||period)}</b></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('salaryExportOverlay')">Cancel</button>
+      <button class="btn sm" onclick="runSalaryExport('csv')"><i class="ti ti-file-text"></i> CSV</button>
+      <button class="btn sm" onclick="runSalaryExport('excel')"><i class="ti ti-file-spreadsheet"></i> Excel</button>
+      <button class="btn accent" onclick="runSalaryExport('pdf')"><i class="ti ti-file-type-pdf"></i> PDF</button>
+    </div>`;
+  document.getElementById('salaryExportOverlay').classList.add('open');
+}
+function runSalaryExport(format){
+  closeModal('salaryExportOverlay');
+  exportSalary(format);
+}
+function buildSalaryExportRows(period){
   const log=getPunchLog(); const now=new Date();
   let filtered=log;
   if(period==='week'){ const ws=new Date(now); ws.setDate(ws.getDate()-ws.getDay()); ws.setHours(0,0,0,0); filtered=log.filter(e=>new Date(e.ts)>=ws); }
@@ -4815,7 +4930,7 @@ function exportSalaryCSV(){
       byWD[wid+'|'+i]={worker:list[0].workerName,wid,date:bucket.date,entries:bucket.entries};
     });
   });
-  const rows=[['Worker','Object/Client','Supplier','Date','First In','Last Out','Hours','Rate (\u20aa/h)','Day Pay (\u20aa)','Notes']];
+  const rows=[];
   Object.values(byWD).sort((a,b)=> a.worker<b.worker?-1 : a.worker>b.worker?1 : (a.date-b.date)).forEach(d=>{
     const res=analyzeDayPunches(d.entries,d.date);
     const ins=d.entries.filter(x=>x.type==='in').map(x=>x.time).sort();
@@ -4827,13 +4942,46 @@ function exportSalaryCSV(){
     const pay=shiftPay(res.hours,_w,isSat,shiftClientId);
     const clientObj=punchClientObject(d.entries[0])||workerClientObject(d.wid);
     const supName=suppliers.find(s=>s.id===_w?.supplierId)?.name||'';
-    rows.push([d.worker, clientObj, supName, d.date.toLocaleDateString('en-GB'), ins[0]||'', outs[outs.length-1]||'', res.hours.toFixed(2), rate, pay.toFixed(2), res.warnings.join('; ')]);
+    rows.push({worker:d.worker, client:clientObj, supplier:supName, date:d.date.toLocaleDateString('en-GB'), firstIn:ins[0]||'', lastOut:outs[outs.length-1]||'', hours:res.hours, rate, pay, notes:res.warnings.join('; ')});
   });
-  const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
-  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const url=URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download='salary-'+period+'-'+now.toISOString().slice(0,10)+'.csv'; a.click(); URL.revokeObjectURL(url);
+  return rows;
+}
+function exportSalary(format){
+  const period=document.getElementById('salaryPeriod')?.value||'week';
+  const now=new Date();
+  const rows=buildSalaryExportRows(period);
+  const header=['Worker','Object/Client','Supplier','Date','First In','Last Out','Hours','Rate (\u20aa/h)','Day Pay (\u20aa)','Notes'];
+  const toArr=r=>[r.worker, r.client, r.supplier, r.date, r.firstIn, r.lastOut, r.hours.toFixed(2), r.rate, r.pay.toFixed(2), r.notes];
+  const totalHours=rows.reduce((s,r)=>s+r.hours,0), totalPay=rows.reduce((s,r)=>s+r.pay,0);
+  const fname='salary-'+period+'-'+now.toISOString().slice(0,10);
+  if(format==='excel'){
+    if(typeof XLSX==='undefined'){ showToast('Excel library not loaded'); return; }
+    const aoa=[header, ...rows.map(toArr), ['','','','','','Total',totalHours.toFixed(2),'',totalPay.toFixed(2),'']];
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Salary');
+    XLSX.writeFile(wb, fname+'.xlsx');
+  } else if(format==='pdf'){
+    const title='Salary — '+(SALARY_PERIOD_LABELS[period]||period);
+    const rowsHtml=rows.map(r=>'<tr>'+toArr(r).map(v=>`<td>${esc(String(v))}</td>`).join('')+'</tr>').join('');
+    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(title)}</title>
+      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #ccc;padding:5px 8px;text-align:left}th{background:#f0f0f0}tfoot td{font-weight:bold}</style>
+      </head><body><h2>${esc(title)}</h2>
+      <table><thead><tr>${header.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
+      <tbody>${rowsHtml}</tbody>
+      <tfoot><tr><td colspan="6">Total</td><td>${totalHours.toFixed(2)}</td><td></td><td>${totalPay.toFixed(2)}</td><td></td></tr></tfoot>
+      </table></body></html>`;
+    const win=window.open('','_blank');
+    if(!win){ showToast('Pop-up blocked — allow pop-ups to export PDF'); return; }
+    win.document.write(html); win.document.close(); setTimeout(()=>win.print(),400);
+  } else {
+    const csv=[header, ...rows.map(toArr)].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=fname+'.csv'; a.click(); URL.revokeObjectURL(url);
+  }
   showToast('Salary exported!');
 }
+// Kept for any existing caller — CSV straight through, no picker.
+function exportSalaryCSV(){ exportSalary('csv'); }
 
 // --- Shifts table → PDF/Excel export module (Admin/Roles plan, stage 15) -------
 // Shared by the firm's own Accounting tab (below) and, per the plan, the
@@ -5223,16 +5371,78 @@ function exportPunchCSV(){
   showToast('CSV exported!');
 }
 
+// Admin → Punch Log → "Clear Log": pick whole months, then delete them from
+// the database (deletePunchesByMonths — live + archive sheets) AND the local
+// cache. A CSV backup of exactly the rows being deleted is downloaded first.
+// Months are keyed 'yyyy-MM' from the punch's own `date` (dd/MM/yyyy, the
+// server-formatted field — same one the backend groups by), falling back to ts.
+function punchMonthKey(e){
+  const m=String(e.date||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(m) return m[3]+'-'+m[2].padStart(2,'0');
+  const d=new Date(e.ts);
+  return isNaN(d) ? null : d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+}
 function clearPunchLog(){
-  const n=getPunchLog().length;
-  if(!n){ showToast('Лог уже пуст'); return; }
-  // Safety: auto-export a backup CSV before clearing.
-  try{ exportPunchCSV(); }catch(e){}
-  const ans=prompt('Это очистит локальный журнал отметок ('+n+' записей). Записи в Google-таблице останутся.\nВведите DELETE чтобы подтвердить:');
-  if(ans!=='DELETE'){ showToast('Отменено'); return; }
-  savePunchLog([]);
-  renderAdmin();
-  showToast('Локальный журнал очищен (бэкап выгружен)');
+  const log=getPunchLog();
+  if(!log.length){ showToast('Log is already empty'); return; }
+  const counts={};
+  log.forEach(e=>{ const k=punchMonthKey(e); if(k) counts[k]=(counts[k]||0)+1; });
+  const months=Object.keys(counts).sort().reverse();
+  const label=k=>{ const [y,m]=k.split('-').map(Number); return new Date(y,m-1,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'}); };
+  document.getElementById('clearLogModal').innerHTML = `
+    <div class="modal-title">Clear punch log</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Selected months are deleted permanently from the database (including the archive). A CSV backup of the deleted records is downloaded first.</div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:8px;cursor:pointer">
+      <input type="checkbox" id="clearLogAll" onchange="document.querySelectorAll('.clear-log-month').forEach(c=>c.checked=this.checked);updateClearLogCount()"> Select all
+    </label>
+    <div style="max-height:260px;overflow-y:auto;border:1px solid var(--border2);border-radius:var(--radius-sm);padding:6px 10px;margin-bottom:12px">
+      ${months.map(k=>`<label style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;font-size:13px;cursor:pointer">
+        <span style="display:flex;align-items:center;gap:8px"><input type="checkbox" class="clear-log-month" value="${esc(k)}" onchange="updateClearLogCount()"> ${esc(label(k))}</span>
+        <span style="color:var(--text3);font-size:12px">${counts[k]} record${counts[k]===1?'':'s'}</span>
+      </label>`).join('')}
+    </div>
+    <div class="field"><label>Type DELETE to confirm</label><input type="text" id="clearLogConfirm" autocomplete="off" oninput="updateClearLogCount()"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('clearLogOverlay')">Cancel</button>
+      <button class="btn red" id="clearLogSubmit" onclick="submitClearPunchLog()" disabled><i class="ti ti-trash"></i> Delete</button>
+    </div>`;
+  document.getElementById('clearLogOverlay').classList.add('open');
+}
+function selectedClearLogMonths(){
+  return [...document.querySelectorAll('.clear-log-month:checked')].map(c=>c.value);
+}
+function updateClearLogCount(){
+  const months=selectedClearLogMonths();
+  const n=getPunchLog().filter(e=>months.includes(punchMonthKey(e))).length;
+  const btn=document.getElementById('clearLogSubmit');
+  if(!btn) return;
+  btn.innerHTML='<i class="ti ti-trash"></i> Delete'+(months.length?' '+n+' record'+(n===1?'':'s'):'');
+  btn.disabled=!months.length || document.getElementById('clearLogConfirm').value!=='DELETE';
+}
+async function submitClearPunchLog(){
+  const months=selectedClearLogMonths();
+  if(!months.length || document.getElementById('clearLogConfirm').value!=='DELETE') return;
+  const btn=document.getElementById('clearLogSubmit');
+  btn.disabled=true; btn.textContent='Deleting…';
+  const all=getPunchLog();
+  const doomed=all.filter(e=>months.includes(punchMonthKey(e)));
+  // Backup first: exportPunchCSV() reads getPunchLog(), so point it at just
+  // the rows being deleted for the duration of the call.
+  if(doomed.length){
+    try{ savePunchLog(doomed); exportPunchCSV(); }catch(e){} finally{ savePunchLog(all); }
+  }
+  try{
+    const res=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'deletePunchesByMonths',...gsAuth(),months})});
+    const json=await res.json();
+    if(!json || json.error){ showToast('Delete failed: '+((json&&json.error)||'unknown error')); btn.disabled=false; updateClearLogCount(); return; }
+    savePunchLog(getPunchLog().filter(e=>!months.includes(punchMonthKey(e))));
+    closeModal('clearLogOverlay');
+    renderAdmin();
+    if(currentTab==='accounting') renderAccounting();
+    showToast(json.deleted+' records deleted from the database (backup downloaded)',3500);
+  }catch(e){
+    showToast('Delete failed: '+e.message); btn.disabled=false; updateClearLogCount();
+  }
 }
 
 // --- Toast ------------------------------------------------------------------------------------------------------------------------------------

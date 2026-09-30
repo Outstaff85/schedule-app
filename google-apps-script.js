@@ -69,6 +69,7 @@ function doPost(e) {
       case 'savePunch':            result = savePunch(body.data, tenantId); break;
       case 'deletePunch':          result = deletePunch(body.id, tenantId); break;
       case 'updatePunch':          result = updatePunch(body.data, tenantId); break;
+      case 'deletePunchesByMonths': result = deletePunchesByMonths(body, tenantId, auth); break;
       case 'savePushSubscription': result = savePushSubscription(body, tenantId); break;
       case 'logError':             result = logError(body); break;
       case 'aiReadDoc':            result = aiReadDoc(body); break;
@@ -1481,6 +1482,69 @@ function deletePunch(id, tenantId) {
   if (!r) return {error:'Record not found'};
   sh.deleteRow(r);
   return {ok:true};
+}
+
+// Bulk delete of a firm's punches for whole calendar months (Admin → Punch
+// Log → "Clear Log"). body.months = ['yyyy-MM', ...]. Removes matching rows
+// from BOTH this tenant's live PunchLog_<tenantId> sheet and its
+// PunchLogArchive_<tenantId> sheet, so a month older than the archive
+// cutoff is really gone too. A row's month is taken from its 'Date' column
+// (dd/MM/yyyy, or a Date cell formatted in the spreadsheet's TZ) — the same
+// field the client groups by — falling back to 'Timestamp'. Irreversible, so
+// gated to tenant_admin/superadmin (a staff login may see the log but not
+// wipe it); the client exports a CSV backup of the affected rows first.
+function _punchRowMonth(row, col) {
+  const dv = col['Date'] != null ? row[col['Date']] : null;
+  if (dv instanceof Date) return Utilities.formatDate(dv, _TZ_(), 'yyyy-MM');
+  const m = String(dv || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return m[3] + '-' + ('0' + m[2]).slice(-2);
+  const tv = col['Timestamp'] != null ? row[col['Timestamp']] : null;
+  const d = (tv instanceof Date) ? tv : new Date(tv);
+  return isNaN(d) ? null : Utilities.formatDate(d, _TZ_(), 'yyyy-MM');
+}
+function _deletePunchMonthsFromSheet(sh, monthSet) {
+  if (!sh || sh.getLastRow() < 2) return 0;
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const col = {}; headers.forEach(function(h,i){ col[h]=i; });
+  const keep = [headers];
+  let removed = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const mo = _punchRowMonth(rows[i], col);
+    if (mo && monthSet[mo]) removed++; else keep.push(rows[i]);
+  }
+  if (!removed) return 0;
+  // Rewrite in one pass (same approach as archiveOldPunches()) instead of
+  // deleteRow() per match, which is one Sheets API call per row.
+  // clearContents() leaves row backgrounds in place, so recolor every row
+  // by its new type (same palette as colorPunchRow()) in one call, and blank
+  // the now-empty tail rows that used to hold the deleted punches.
+  const oldLast = rows.length;
+  sh.clearContents();
+  sh.getRange(1, 1, keep.length, headers.length).setValues(keep);
+  try {
+    const typeCol = col['Type'];
+    const bg = keep.slice(1).map(function(r){
+      const c = r[typeCol]==='IN' ? '#e8f5e9' : r[typeCol]==='OUT' ? '#ffebee' : '#ffffff';
+      return headers.map(function(){ return c; });
+    });
+    if (bg.length) sh.getRange(2, 1, bg.length, headers.length).setBackgrounds(bg);
+    if (oldLast > keep.length) sh.getRange(keep.length + 1, 1, oldLast - keep.length, headers.length).setBackground(null);
+  } catch(e) {}
+  return removed;
+}
+function deletePunchesByMonths(body, tenantId, auth) {
+  if (!tenantId) return {error:'No tenant'};
+  if (!auth || (auth.role !== 'tenant_admin' && auth.role !== 'superadmin')) {
+    return {error:'Only the firm owner or super-admin can delete punch records'};
+  }
+  const months = (body.months || []).filter(function(m){ return /^\d{4}-\d{2}$/.test(String(m)); });
+  if (!months.length) return {error:'No months selected'};
+  const monthSet = {}; months.forEach(function(m){ monthSet[m] = true; });
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const live = _deletePunchMonthsFromSheet(ss.getSheetByName(_punchSheetName(tenantId)), monthSet);
+  const archived = _deletePunchMonthsFromSheet(ss.getSheetByName(_punchArchiveSheetName(tenantId)), monthSet);
+  return {ok:true, deleted: live + archived, deletedLive: live, deletedArchive: archived};
 }
 
 function colorPunchRow(sh, rowNum, type) {
