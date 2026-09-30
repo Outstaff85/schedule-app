@@ -3079,11 +3079,28 @@ function gsAuth(){
 // Session-expiry retry/logout applies whenever the JSON response carries the
 // exact SESSION_EXPIRED_ERROR text, regardless of which URL produced it —
 // the proxy relays Apps Script's own error text unchanged.
+//
+// BUG FIX (2026-09-30): the real cause of the reported "kicked out mid-
+// upload" symptom — nothing to do with session TTL. Since every real caller
+// now targets GS_UPLOAD_PROXY_URL (a Flask-based Cloud Function), not GS_URL
+// directly, the no-Content-Type rule above no longer serves its original
+// purpose (avoiding a CORS preflight Apps Script can't answer — the proxy
+// answers preflight fine) and was actively harmful: Flask/Werkzeug's
+// `request.get_json()` on the server refuses to parse a body whose
+// Content-Type isn't application/json, silently treating it as `{}` — so
+// the token/action never arrived server-side at all, and Apps Script's
+// requireAuth() correctly (if misleadingly) rejected the empty body as
+// "session expired," even seconds after a fresh login. Fixed server-side
+// too (gs_upload_proxy() now parses with force=True, see its own comment)
+// — this client-side header is restored as defense in depth, gated to only
+// the proxy target so a hypothetical future caller against bare GS_URL
+// still avoids the preflight trigger this header causes there.
 function xhrPostJSON(url,bodyObj,onProgress,_attempt){
   const attempt=_attempt||0;
   return new Promise((resolve,reject)=>{
     const xhr=new XMLHttpRequest();
     xhr.open('POST',url);
+    if(url===GS_UPLOAD_PROXY_URL) xhr.setRequestHeader('Content-Type','application/json');
     if(onProgress) xhr.upload.onprogress=e=>{ if(e.lengthComputable) onProgress(e.loaded,e.total); };
     xhr.onload=()=>{
       let json;

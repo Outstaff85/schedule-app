@@ -526,7 +526,10 @@ def fill_form_101(req: https_fn.Request) -> https_fn.Response:
     if req.method != "POST":
         return https_fn.Response(json.dumps({"error": "POST only"}), status=405, mimetype="application/json")
     try:
-        payload = req.get_json(silent=True) or {}
+        # force=True: don't depend on the caller's Content-Type header to
+        # decide whether to parse — see gs_upload_proxy()'s own comment for
+        # the real bug this caused there when a caller omitted it.
+        payload = req.get_json(silent=True, force=True) or {}
         pdf_bytes, file_name, firm_missing = build_form101_pdf(payload)
         body = json.dumps({
             "pdfBase64": base64.b64encode(pdf_bytes).decode(),
@@ -567,11 +570,30 @@ def gs_upload_proxy(req: https_fn.Request) -> https_fn.Response:
     two action-specific functions, since all it does is relay; the actual
     action/secret/token/payload validation still happens where it always did,
     inside Apps Script's own doPost().
+
+    BUG FIX (2026-09-30): `xhrPostJSON()` deliberately sends no explicit
+    Content-Type header (a holdover from when it posted straight to Apps
+    Script, where it doesn't matter) — the browser then defaults to
+    `text/plain`. Flask/Werkzeug's `get_json(silent=True)` without
+    `force=True` refuses to parse a body whose Content-Type isn't
+    `application/json`/`*+json` and just returns `None`, so `payload` was
+    silently `{}` on every call here — no `action`, no `token` — which this
+    function then forwarded to Apps Script as an empty POST body. Apps
+    Script's `requireAuth({})` sees `body.token === undefined` and correctly
+    (if misleadingly) throws "session expired", even on a session that's
+    seconds old — this was reported as a mid-upload logout and initially
+    misdiagnosed as a real TTL issue (see CLAUDE.md Troubleshooting) before
+    the `Errors` sheet's `authFailure` diagnostic (`action=saveWorkerDoc,
+    outcome=retrying`) pointed at this function specifically. `force=True`
+    parses the body regardless of Content-Type — the bytes are always valid
+    JSON (the client always sends `JSON.stringify(bodyObj)`), so nothing
+    about the real validation below changes, only whether the header is
+    trusted to decide that.
     """
     if req.method != "POST":
         return https_fn.Response(json.dumps({"error": "POST only"}), status=405, mimetype="application/json")
     try:
-        payload = req.get_json(silent=True) or {}
+        payload = req.get_json(silent=True, force=True) or {}
         resp = requests.post(GS_URL, json=payload, timeout=100)
         return https_fn.Response(resp.text, status=200, mimetype="application/json")
     except Exception as e:
@@ -771,7 +793,8 @@ def preprocess_scan(req: https_fn.Request) -> https_fn.Response:
     if req.method != "POST":
         return https_fn.Response(json.dumps({"error": "POST only"}), status=405, mimetype="application/json")
     try:
-        payload = req.get_json(silent=True) or {}
+        # force=True — see gs_upload_proxy()'s own comment.
+        payload = req.get_json(silent=True, force=True) or {}
         b64 = payload.get("image")
         if not b64:
             return https_fn.Response(json.dumps({"error": "no image"}), status=400, mimetype="application/json")
