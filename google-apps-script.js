@@ -442,12 +442,20 @@ function deleteTenant(body, auth) {
     }
   }
 
-  const punchSh = ss.getSheetByName(SH_PUNCHLOG);
-  if (punchSh && punchSh.getLastRow() > 1) {
-    const rows = punchSh.getDataRange().getValues();
+  // 2026-10-02: PunchLog is now one sheet per tenant (_punchSheetName()), so
+  // deleting a firm's punches is just deleting its own sheet(s) outright —
+  // no more row-by-row scan. Still handles a pre-migration tenant whose rows
+  // might still be sitting in the old shared SH_PUNCHLOG (row-scan fallback).
+  const ownPunchSh = ss.getSheetByName(_punchSheetName(tenantId));
+  if (ownPunchSh) { removed.punches = ownPunchSh.getLastRow() - 1; ss.deleteSheet(ownPunchSh); }
+  const ownArchiveSh = ss.getSheetByName(_punchArchiveSheetName(tenantId));
+  if (ownArchiveSh) { removed.punches += Math.max(0, ownArchiveSh.getLastRow() - 1); ss.deleteSheet(ownArchiveSh); }
+  const legacyPunchSh = ss.getSheetByName(SH_PUNCHLOG);
+  if (legacyPunchSh && legacyPunchSh.getLastRow() > 1) {
+    const rows = legacyPunchSh.getDataRange().getValues();
     const tCol = rows[0].indexOf('TenantId');
     for (let i = rows.length - 1; i >= 1; i--) {
-      if (tCol !== -1 && rows[i][tCol] === tenantId) { punchSh.deleteRow(i + 1); removed.punches++; }
+      if (tCol !== -1 && rows[i][tCol] === tenantId) { legacyPunchSh.deleteRow(i + 1); removed.punches++; }
     }
   }
 
@@ -754,6 +762,101 @@ function formatPunchLogSheet(){
   return {ok:true, columns: lastCol};
 }
 
+// ONE-TIME migration (2026-10-02, run manually from the Apps Script editor):
+// splits the old shared SH_PUNCHLOG sheet (every tenant's rows interleaved
+// chronologically, see loadPunchLog()'s own comment for why that became a
+// scaling problem) into one PunchLog_<tenantId> sheet per firm. Groups every
+// row by its TenantId column, appends each group's rows (in original order)
+// to that tenant's own sheet via getOrCreateSheet()/ensureHeaders() — the
+// exact same helpers savePunch() itself uses, so a migrated sheet is
+// byte-for-byte the same shape a freshly-written one would be. Does NOT
+// delete/clear the old SH_PUNCHLOG sheet — leaves it in place as a safety
+// net; rename/archive it by hand once the new per-tenant sheets are verified.
+// Safe to re-run: re-running after a successful migration finds SH_PUNCHLOG
+// still full (never cleared) and would duplicate rows, so this checks each
+// new sheet's row count first and skips any tenant whose sheet already has
+// data, rather than blindly re-appending.
+function migratePunchLogToPerTenantSheets(){
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const oldSh = ss.getSheetByName(SH_PUNCHLOG);
+  if (!oldSh || oldSh.getLastRow() < 2) return {ok:true, note:'no legacy PunchLog data to migrate'};
+  const rows = oldSh.getDataRange().getValues();
+  const headers = rows[0];
+  const tCol = headers.indexOf('TenantId');
+  if (tCol === -1) return {error:'Legacy PunchLog has no TenantId column — run migrateToMultiTenant() first'};
+  const byTenant = {};
+  for (let i = 1; i < rows.length; i++) {
+    const t = rows[i][tCol];
+    if (!t) continue; // orphan row with no tenant — left in the legacy sheet, not migrated
+    (byTenant[t] = byTenant[t] || []).push(rows[i]);
+  }
+  const result = {};
+  Object.keys(byTenant).forEach(function(tenantId){
+    const sh = getOrCreateSheet(ss, _punchSheetName(tenantId));
+    ensureHeaders(sh, PUNCH_HEADERS);
+    if (sh.getLastRow() > 1) { result[tenantId] = 'skipped (already has ' + (sh.getLastRow()-1) + ' rows)'; return; }
+    const tenantRows = byTenant[tenantId];
+    sh.getRange(2, 1, tenantRows.length, headers.length).setValues(tenantRows);
+    result[tenantId] = 'migrated ' + tenantRows.length + ' rows';
+  });
+  return {ok:true, tenants: result};
+}
+
+// Archives punches older than ~12 months out of a tenant's live PunchLog_
+// sheet into a parallel PunchLogArchive_ sheet, keeping the live sheet's size
+// (and therefore loadPunchLog()'s read cost) bounded for a long-running firm
+// regardless of how many years of history they accumulate. Salary/accounting
+// queries almost never look back further than the current/previous month, so
+// the archive is a separate, rarely-read sheet rather than deleted data.
+// Called per-tenant from archiveOldPunchesAllTenants() below (the actual
+// scheduled trigger), not directly, so a single run covers every firm.
+function archiveOldPunches(tenantId, cutoffDate){
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(_punchSheetName(tenantId));
+  if (!sh || sh.getLastRow() < 2) return {ok:true, archived:0};
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const tsCol = headers.indexOf('Timestamp');
+  const toArchive = [];
+  const keepRows = [headers];
+  for (let i = 1; i < rows.length; i++) {
+    const ts = rows[i][tsCol];
+    const d = (ts instanceof Date) ? ts : new Date(ts);
+    if (!isNaN(d) && d < cutoffDate) toArchive.push(rows[i]); else keepRows.push(rows[i]);
+  }
+  if (!toArchive.length) return {ok:true, archived:0};
+  const archiveSh = getOrCreateSheet(ss, _punchArchiveSheetName(tenantId));
+  ensureHeaders(archiveSh, PUNCH_HEADERS);
+  archiveSh.getRange(archiveSh.getLastRow()+1, 1, toArchive.length, headers.length).setValues(toArchive);
+  sh.clearContents();
+  sh.getRange(1, 1, keepRows.length, headers.length).setValues(keepRows);
+  return {ok:true, archived: toArchive.length};
+}
+
+// Scheduled trigger target (weekly, see setupPunchArchiveTrigger()) — runs
+// archiveOldPunches() for every tenant that has its own PunchLog_ sheet.
+function archiveOldPunchesAllTenants(){
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - 1);
+  const result = {};
+  ss.getSheets().forEach(function(sh){
+    const name = sh.getName();
+    if (name.indexOf('PunchLog_') !== 0) return; // skip PunchLogArchive_ and the legacy shared sheet too
+    const tenantId = name.substring('PunchLog_'.length);
+    result[tenantId] = archiveOldPunches(tenantId, cutoff);
+  });
+  return {ok:true, tenants: result};
+}
+
+function setupPunchArchiveTrigger(){
+  ScriptApp.getProjectTriggers().forEach(function(t){
+    if (t.getHandlerFunction() === 'archiveOldPunchesAllTenants') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('archiveOldPunchesAllTenants').timeBased().everyDays(7).atHour(3).create();
+  Logger.log('Weekly PunchLog archive trigger created (runs ~03:00, every 7 days).');
+}
+
 // ── Multi-tenant migration ──────────────────────────────────────────────────
 // ONE-TIME setup, run manually from the Apps Script editor (Run ▸
 // migrateToMultiTenant, filling in the parameters below first — never commit
@@ -867,10 +970,20 @@ function migrateToMultiTenant(superadminUsername, superadminPassword, odinsonUse
   return out;
 }
 
+// PunchLog is split one-sheet-per-tenant (2026-10-02) — see this function's
+// own history in CLAUDE.md for why: a single shared PunchLog sheet made every
+// loadPunchLog() call read every firm's ENTIRE history combined, so the cost
+// of one firm's growth was paid by every other firm's requests too. Sheet
+// name intentionally keeps the tenantId raw (not hashed/sanitized) — tenantId
+// is always a UUID from Utilities.getUuid(), never user-controlled text, so
+// it's already a safe sheet name.
+function _punchSheetName(tenantId) { return 'PunchLog_' + tenantId; }
+function _punchArchiveSheetName(tenantId) { return 'PunchLogArchive_' + tenantId; }
+
 function savePunch(entry, tenantId) {
   if (!tenantId) return {error:'No tenant'};
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sh = getOrCreateSheet(ss, SH_PUNCHLOG);
+  const sh = getOrCreateSheet(ss, _punchSheetName(tenantId));
   ensureHeaders(sh, PUNCH_HEADERS);
   const row = [
     entry.id          || Date.now(),
@@ -897,28 +1010,24 @@ function savePunch(entry, tenantId) {
 
 function loadPunchLog(filter, tenantId) {
   if (!tenantId) return {entries:[]};
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_PUNCHLOG);
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(_punchSheetName(tenantId));
   if (!sh || sh.getLastRow() < 2) return {entries:[]};
   const rows = sh.getDataRange().getValues();
   const headers = rows[0];
   const col = {}; headers.forEach(function(h,i){ col[h]=i; });
-  // Optimization (2026-09-28): PunchLog is append-only and interleaves every
-  // firm's rows chronologically (no per-tenant sheet split), so this always
-  // reads the WHOLE sheet — that part is unavoidable without a bigger data
-  // model change. What WAS avoidable: the old code ran the expensive per-row
-  // mapping (object construction + Utilities.formatDate, a real timezone
-  // lookup) over every row in the sheet, THEN threw away everything that
-  // didn't belong to this tenant. Filtering by tenantId/worker/type on the
-  // raw row values FIRST — cheap column lookups, no formatting — means only
-  // the rows that actually belong to this request ever pay for the mapping
-  // step, which is most of the cost as the sheet grows across every firm's
-  // history. filter.date stays a post-map filter since a raw cell can be a
-  // Date object OR an already-formatted string and needs the same
-  // normalization the mapped entries themselves get, to match a 'dd/MM/yyyy'
-  // filter string correctly either way.
+  // Optimization (2026-09-28, superseded 2026-10-02 by the per-tenant sheet
+  // split above): this sheet now ALREADY only contains this tenant's own
+  // rows, so the old TenantId-column filter is redundant (kept as a no-op
+  // safety check below, cheap, in case a row somehow got TenantId wrong) —
+  // the real win from 2026-09-28 (filtering worker/type on raw row values
+  // BEFORE the expensive per-row mapping/date-formatting) still applies and
+  // still matters, just now over one tenant's own history instead of every
+  // firm's combined. filter.date stays a post-map filter since a raw cell
+  // can be a Date object OR an already-formatted string and needs the same
+  // normalization the mapped entries themselves get.
   const matchingRows = rows.slice(1).filter(function(row){
     if (!row[col['WorkerID']]) return false;
-    if ((row[col['TenantId']] || null) !== tenantId) return false;
+    if (col['TenantId'] != null && row[col['TenantId']] && row[col['TenantId']] !== tenantId) return false;
     if (filter && filter.worker && row[col['Worker']] !== filter.worker) return false;
     if (filter && filter.type && String(row[col['Type']]||'').toLowerCase() !== filter.type) return false;
     return true;
@@ -949,22 +1058,23 @@ function loadPunchLog(filter, tenantId) {
   return {entries};
 }
 
-// Finds a PunchLog row by ID, but only if it belongs to the given tenant —
-// prevents one firm from editing/deleting another firm's punch by guessing an ID.
-function _findPunchRow(sh, id, tenantId) {
+// Finds a punch row by ID in this tenant's OWN sheet — no tenantId check
+// needed on the row itself any more (2026-10-02: the sheet is already scoped
+// to one tenant by name, unlike the old shared PunchLog), so a wrong-tenant
+// ID simply isn't found here at all rather than being found-then-rejected.
+function _findPunchRow(sh, id) {
   const rows = sh.getDataRange().getValues();
-  const tCol = rows[0].indexOf('TenantId');
   for (let i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]) === String(id) && rows[i][tCol] === tenantId) return i + 1;
+    if (String(rows[i][0]) === String(id)) return i + 1;
   }
   return null;
 }
 
 function updatePunch(data, tenantId) {
   if (!tenantId) return {error:'No tenant'};
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_PUNCHLOG);
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(_punchSheetName(tenantId));
   if (!sh) return {error:'Sheet not found'};
-  const r = _findPunchRow(sh, data.id, tenantId);
+  const r = _findPunchRow(sh, data.id);
   if (!r) return {error:'Record not found'};
   if (data.type)                    sh.getRange(r,4).setValue(data.type.toUpperCase());
   if (data.time)                    sh.getRange(r,5).setValue(data.time);
@@ -978,9 +1088,9 @@ function updatePunch(data, tenantId) {
 
 function deletePunch(id, tenantId) {
   if (!tenantId) return {error:'No tenant'};
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_PUNCHLOG);
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(_punchSheetName(tenantId));
   if (!sh) return {error:'Sheet not found'};
-  const r = _findPunchRow(sh, id, tenantId);
+  const r = _findPunchRow(sh, id);
   if (!r) return {error:'Record not found'};
   sh.deleteRow(r);
   return {ok:true};
