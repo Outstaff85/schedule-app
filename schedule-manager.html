@@ -669,6 +669,15 @@
         </div>
         <div id="clientBillableWrap"></div>
       </div>
+
+      <!-- Hours-import approval queue (Admin/Roles plan, stage 14) -->
+      <div style="margin-top:24px">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px"><i class="ti ti-file-check"></i> Pending hours (uploaded, awaiting approval)</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
+          Uploaded via a worker's "Upload hours" button. Nothing here counts toward payroll until approved.
+        </div>
+        <div id="pendingHoursWrap"></div>
+      </div>
     </div>
 
   </div>
@@ -698,6 +707,9 @@
 </div>
 <div class="overlay" id="supplierOverlay" onclick="if(event.target===this)closeModal('supplierOverlay')">
   <div class="modal" id="supplierModal"></div>
+</div>
+<div class="overlay" id="hoursImportOverlay" onclick="if(event.target===this)closeModal('hoursImportOverlay')">
+  <div class="modal" id="hoursImportModal" style="max-width:440px"></div>
 </div>
 
 <!-- Manual Punch Modal -->
@@ -2386,9 +2398,153 @@ function openWorkerCard(wi){
     <div class="modal-actions">
       <button class="btn sm red" onclick="deleteWorkerFromCard(${wi})"><i class="ti ti-trash"></i> Delete</button>
       ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Скачать документ</a>`:''}
+      ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursImportModal('${w.id}')"><i class="ti ti-file-upload"></i> Upload hours</button>`:''}
       <button class="btn accent" onclick="closeModal('workerCardOverlay');openEditWorker(${wi})"><i class="ti ti-edit"></i> Edit</button>
     </div>`;
   document.getElementById('workerCardOverlay').classList.add('open');
+}
+
+// --- Hours import (Admin/Roles plan, stage 14) ---------------------------------
+// Upload PDF/photo/Excel with a worker's hours, tied to a client — parsed
+// entries land in a server-side PENDING queue (savePendingHoursBatch), never
+// straight into PunchLog/payroll. A human (tenant_admin/superadmin) must
+// explicitly approve the batch (see renderPendingHours() in the Accounting
+// tab below) before it counts toward any salary calculation — this is the
+// anti-fraud boundary the user explicitly asked for, which is also exactly
+// why the supplier role never gets this button at all (see supplier-portal
+// plan, stage 16) and the server itself rejects a supplier-role caller.
+let __hoursImportWorkerId = null;
+let __hoursImportEntries = [];
+let __hoursImportFileName = '';
+function openHoursImportModal(workerId){
+  __hoursImportWorkerId = workerId;
+  __hoursImportEntries = [];
+  __hoursImportFileName = '';
+  renderHoursImportModal();
+  document.getElementById('hoursImportOverlay').classList.add('open');
+}
+function renderHoursImportModal(){
+  const w = workers.find(x=>x.id===__hoursImportWorkerId);
+  if(!w) return;
+  const clientOptions = (w.clientIds||[]).map(id=>clients.find(c=>c.id===id)).filter(Boolean);
+  const allClients = clientOptions.length ? clientOptions : clients;
+  document.getElementById('hoursImportModal').innerHTML = `
+    <div class="modal-title">Upload hours — ${esc(w.name)}</div>
+    <div class="field"><label>Client / object</label>
+      <select id="hoursImportClient">
+        ${allClients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>File (Excel: Date/In/Out columns, or a photo/scan of a timesheet)</label>
+      <input type="file" id="hoursImportFile" accept=".xlsx,.xls,.csv,image/*" onchange="onHoursImportFileSelected(this.files[0])">
+    </div>
+    <div id="hoursImportPreview" style="font-size:12px;color:var(--text3);min-height:20px"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('hoursImportOverlay')">Cancel</button>
+      <button class="btn accent" id="hoursImportSubmitBtn" disabled onclick="submitHoursImportBatch()"><i class="ti ti-upload"></i> Upload for approval</button>
+    </div>`;
+}
+function renderHoursImportPreview(status){
+  const el = document.getElementById('hoursImportPreview');
+  if(!el) return;
+  if(status){ el.textContent = status; return; }
+  if(!__hoursImportEntries.length){ el.textContent = ''; return; }
+  el.innerHTML = `<div style="color:var(--text2);margin-bottom:4px">${__hoursImportEntries.length} shift(s) found:</div>` +
+    __hoursImportEntries.slice(0,10).map(en=>`<div>${esc(en.date)} · ${esc(en.inTime)}${en.outTime?'–'+esc(en.outTime):' (open)'}</div>`).join('') +
+    (__hoursImportEntries.length>10?`<div>…${__hoursImportEntries.length-10} more</div>`:'');
+  document.getElementById('hoursImportSubmitBtn').disabled = false;
+}
+async function onHoursImportFileSelected(file){
+  if(!file) return;
+  __hoursImportEntries = [];
+  __hoursImportFileName = file.name;
+  document.getElementById('hoursImportSubmitBtn').disabled = true;
+  const isSpreadsheet = /\.(xlsx|xls|csv)$/i.test(file.name);
+  try{
+    if(isSpreadsheet){
+      renderHoursImportPreview('Parsing spreadsheet…');
+      __hoursImportEntries = await parseHoursExcelFile(file);
+    } else {
+      renderHoursImportPreview('Reading with AI…');
+      __hoursImportEntries = await parseHoursImageFile(file);
+    }
+  }catch(err){
+    showToast('Could not parse file: '+(err&&err.message||err));
+    renderHoursImportPreview('');
+    return;
+  }
+  if(!__hoursImportEntries.length){ showToast('No shifts recognized in this file'); }
+  renderHoursImportPreview();
+}
+// Fixed template: a header row containing Date/In/Out (or Дата/Вход/Выход),
+// case-insensitive, in any column order. cellDates:true so an Excel date
+// serial comes back as a real JS Date we can format ourselves, matching the
+// dd/MM/yyyy convention PunchLog itself already uses everywhere else.
+function parseHoursExcelFile(file){
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.onerror = ()=>reject(new Error('read failed'));
+    reader.onload = ()=>{
+      try{
+        const wb = XLSX.read(reader.result, {type:'array', cellDates:true});
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, {header:1, defval:''});
+        if(!rows.length){ resolve([]); return; }
+        const header = rows[0].map(h=>String(h||'').trim().toLowerCase());
+        const dateIdx = header.findIndex(h=>['date','дата'].includes(h));
+        const inIdx   = header.findIndex(h=>['in','вход'].includes(h));
+        const outIdx  = header.findIndex(h=>['out','выход'].includes(h));
+        if(dateIdx===-1||inIdx===-1){ reject(new Error('Expected Date/In(/Out) columns')); return; }
+        const fmtDate = v=>{
+          if(v instanceof Date) return String(v.getDate()).padStart(2,'0')+'/'+String(v.getMonth()+1).padStart(2,'0')+'/'+v.getFullYear();
+          return String(v||'').trim();
+        };
+        const fmtTime = v=>{
+          if(v instanceof Date) return String(v.getHours()).padStart(2,'0')+':'+String(v.getMinutes()).padStart(2,'0');
+          return String(v||'').trim();
+        };
+        const entries = rows.slice(1)
+          .filter(r=>r[dateIdx]!=='' && r[dateIdx]!=null)
+          .map(r=>({ date: fmtDate(r[dateIdx]), inTime: fmtTime(r[inIdx]), outTime: outIdx!==-1?fmtTime(r[outIdx]):'' }));
+        resolve(entries);
+      }catch(e){ reject(e); }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+// AI-vision path for a photographed/scanned timesheet (images only for now —
+// a multi-page scan-PDF would need page rendering this feature doesn't do
+// yet; a manager can screenshot/photograph each page instead as a practical
+// workaround). Uses the same aiReadHoursTable backend action added alongside
+// this stage; never writes anything itself — only returns entries for the
+// caller to route through the approval queue below.
+function parseHoursImageFile(file){
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.onerror = ()=>reject(new Error('read failed'));
+    reader.onload = async ()=>{
+      try{
+        const b64 = reader.result.split(',')[1];
+        const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'aiReadHoursTable', ...gsAuth(), image:b64, mediaType: file.type||'image/jpeg' }) });
+        const json = await res.json();
+        if(json.error) throw new Error(json.error);
+        resolve(json.entries||[]);
+      }catch(e){ reject(e); }
+    };
+    reader.readAsDataURL(file);
+  });
+}
+async function submitHoursImportBatch(){
+  const clientId = document.getElementById('hoursImportClient')?.value || '';
+  if(!__hoursImportEntries.length) return;
+  const entries = __hoursImportEntries.map(en=>({ workerId: __hoursImportWorkerId, clientId, date: en.date, inTime: en.inTime, outTime: en.outTime||'' }));
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'savePendingHoursBatch', ...gsAuth(), entries, fileName: __hoursImportFileName }) });
+    const json = await res.json();
+    if(json.error){ showToast(json.error); return; }
+    showToast(json.count+' shift(s) uploaded — pending approval');
+    closeModal('hoursImportOverlay');
+  }catch(e){ showToast('Upload failed: '+e.message); }
 }
 
 function renderClientsPage(){
@@ -4020,6 +4176,7 @@ function renderAccounting(){
   renderSalary();
   renderRateMatrix();
   renderSupplierRateMatrix();
+  renderPendingHours();
 }
 
 function renderSalary(){
@@ -4283,6 +4440,74 @@ function renderClientBillable(entries){
       </table>
       </div>
     </div>`;
+}
+
+// Hours-import approval queue (Admin/Roles plan, stage 14). Any non-supplier
+// role can SEE this list (server already tenant-scopes it), but Approve/
+// Reject buttons only render for tenant_admin/superadmin — mirrors the
+// server-side requirePendingHoursApprover() gate exactly, so a staff login
+// sees a read-only view of what it (or a colleague) uploaded, never a way
+// to self-approve its own hours.
+async function renderPendingHours(){
+  const wrap=document.getElementById('pendingHoursWrap');
+  if(!wrap) return;
+  const s=getSession();
+  const canApprove = s && (s.role==='tenant_admin'||s.role==='superadmin');
+  let json;
+  try{
+    const res = await fetch(GS_URL+'?'+new URLSearchParams({ action:'loadPendingHours', ...gsAuth() }));
+    json = await res.json();
+  }catch(e){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">Could not load</div>`; return; }
+  const batches=(json.batches||[]).filter(b=>b.status==='pending');
+  if(!batches.length){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">Nothing pending</div>`; return; }
+  wrap.innerHTML=`
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table style="width:100%;border-collapse:collapse;min-width:520px">
+        <thead>
+          <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">File</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Uploaded by</th>
+            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">Shifts</th>
+            ${canApprove?'<th style="padding:10px 12px"></th>':''}
+          </tr>
+        </thead>
+        <tbody>
+          ${batches.map(b=>{
+            const w = workers.find(x=>x.id===(b.entries[0]&&b.entries[0].workerId));
+            return `<tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:10px 12px;font-size:13px">${esc(b.fileName||'—')}${w?' · '+esc(w.name):''}</td>
+              <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${esc(b.uploadedBy||'—')}</td>
+              <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600">${b.entries.length}</td>
+              ${canApprove?`<td style="padding:10px 12px;text-align:right;white-space:nowrap">
+                <button class="btn sm" style="color:var(--green)" onclick="approveHoursBatch('${b.batchId}')"><i class="ti ti-check"></i></button>
+                <button class="btn sm red" onclick="rejectHoursBatch('${b.batchId}')"><i class="ti ti-x"></i></button>
+              </td>`:''}
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>
+    </div>`;
+}
+async function approveHoursBatch(batchId){
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'approvePendingHours', ...gsAuth(), batchId }) });
+    const json = await res.json();
+    if(json.error){ showToast(json.error); return; }
+    showToast(json.created+' shift(s) approved');
+    renderPendingHours(); renderSalary();
+  }catch(e){ showToast('Failed: '+e.message); }
+}
+async function rejectHoursBatch(batchId){
+  if(!confirm('Reject this batch?')) return;
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'rejectPendingHours', ...gsAuth(), batchId }) });
+    const json = await res.json();
+    if(json.error){ showToast(json.error); return; }
+    showToast('Batch rejected');
+    renderPendingHours();
+  }catch(e){ showToast('Failed: '+e.message); }
 }
 
 // Per-worker-per-client rate override matrix (tier 1 of effectiveRates()).

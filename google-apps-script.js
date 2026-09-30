@@ -71,6 +71,7 @@ function doPost(e) {
       case 'aiDetectAlign':        return jsonResponse(aiDetectAlign(body));
       case 'aiVerifyField':        return jsonResponse(aiVerifyField(body));
       case 'aiVerifyFields':       return jsonResponse(aiVerifyFields(body));
+      case 'aiReadHoursTable':     return jsonResponse(auth && auth.role === 'supplier' ? {error:'Недоступно для роли поставщика'} : aiReadHoursTable(body));
       case 'saveWorkerDoc':        return jsonResponse(saveWorkerDoc(body, tenantId));
       case 'deleteWorkerDoc':      return jsonResponse(deleteWorkerDoc(body, tenantId));
       case 'saveWorkerAssets':     return jsonResponse(saveWorkerAssets(body, tenantId));
@@ -86,6 +87,9 @@ function doPost(e) {
       case 'listTenants':          return jsonResponse(listTenants(auth));
       case 'setTenantActive':      return jsonResponse(setTenantActive(body, auth));
       case 'deleteTenant':         return jsonResponse(deleteTenant(body, auth));
+      case 'savePendingHoursBatch': return jsonResponse(savePendingHoursBatch(body, tenantId, auth));
+      case 'approvePendingHours':  return jsonResponse(approvePendingHours(body, tenantId, auth));
+      case 'rejectPendingHours':   return jsonResponse(rejectPendingHours(body, tenantId, auth));
       default:                     return jsonResponse({error: 'Unknown action: ' + body.action});
     }
   } catch(e) {
@@ -114,6 +118,7 @@ function doGet(e) {
       // must never see this. See CLAUDE.md's "Session-expiry false logouts"
       // troubleshooting entry for why this exists.
       case 'loadErrors':   result = loadErrors(auth);                    break;
+      case 'loadPendingHours': result = loadPendingHours(tenantId, auth); break;
       default:             result = {error: 'Unknown action'};
     }
     const callback = e.parameter.callback;
@@ -186,7 +191,7 @@ function requireAuth(body) {
   const isSuperadmin = payload.role === 'superadmin';
   const tenantId = (isSuperadmin && body.asTenantId) ? body.asTenantId : payload.tenantId;
   return {
-    userId: payload.userId, role: payload.role, tenantId: tenantId, isSuperadmin: isSuperadmin,
+    userId: payload.userId, username: payload.username, role: payload.role, tenantId: tenantId, isSuperadmin: isSuperadmin,
     permissions: payload.permissions || '*', supplierId: payload.supplierId || null,
   };
 }
@@ -1376,6 +1381,139 @@ function colorPunchRow(sh, rowNum, type) {
   } catch(e) {}
 }
 
+// ── Hours import — approval queue (Admin/Roles plan, stage 14) ─────────────────
+// A manager/staff upload of hours parsed from a file (Excel/photo/scan-PDF —
+// the client does the parsing, this only stores the result) never lands
+// directly in PunchLog. Each parsed shift becomes a 'pending' row here first;
+// only an explicit approvePendingHours() call by tenant_admin/superadmin
+// turns it into real PunchLog entries that feed payroll — see
+// requirePendingHoursApprover() below for why this exists (anti-fraud: a
+// supplier must never be able to fabricate its own hours, and even a
+// trusted staff upload gets a human second look before it touches pay).
+// One sheet per tenant, same pattern as PunchLog_<tenantId> above.
+function _pendingHoursSheetName(tenantId) { return 'PendingHours_' + tenantId; }
+const PENDING_HOURS_HEADERS = ['RowId','BatchId','WorkerId','ClientId','Date','InTime','OutTime','UploadedBy','UploadedAt','FileName','Status'];
+
+// role==='supplier' is explicitly forbidden from EVER calling either the
+// upload or the approve/reject action below — the plan's own anti-fraud
+// requirement (a supplier must never be able to inject its own hours).
+// Every other role (staff/tenant_admin/superadmin) may upload freely.
+function savePendingHoursBatch(body, tenantId, auth) {
+  if (!tenantId) return {error:'No tenant'};
+  if (auth && auth.role === 'supplier') throw {error:'Недоступно для роли поставщика'};
+  const entries = Array.isArray(body.entries) ? body.entries : [];
+  if (!entries.length) return {error:'Нет распознанных смен для загрузки'};
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = getOrCreateSheet(ss, _pendingHoursSheetName(tenantId));
+  ensureHeaders(sh, PENDING_HOURS_HEADERS);
+  const batchId = Utilities.getUuid();
+  const uploadedAt = new Date().toISOString();
+  const uploadedBy = (auth && (auth.username || auth.userId)) || '';
+  const rows = entries.map(function(en){
+    return [
+      Utilities.getUuid(), batchId, en.workerId || '', en.clientId || '',
+      en.date || '', en.inTime || '', en.outTime || '',
+      uploadedBy, uploadedAt, body.fileName || '', 'pending',
+    ];
+  });
+  sh.getRange(sh.getLastRow()+1, 1, rows.length, PENDING_HOURS_HEADERS.length).setValues(rows);
+  return {ok:true, batchId: batchId, count: rows.length};
+}
+
+// Any non-supplier role may LIST pending batches (tenant scoping — the sheet
+// itself — already restricts this to one firm); only tenant_admin/superadmin
+// may actually approve/reject (requirePendingHoursApprover below).
+function loadPendingHours(tenantId, auth) {
+  if (!tenantId) return {batches:[]};
+  if (auth && auth.role === 'supplier') throw {error:'Недоступно для роли поставщика'};
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(_pendingHoursSheetName(tenantId));
+  if (!sh || sh.getLastRow() < 2) return {batches:[]};
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const col = {}; headers.forEach(function(h,i){ col[h]=i; });
+  const byBatch = {};
+  rows.slice(1).forEach(function(row){
+    const batchId = row[col['BatchId']];
+    if (!byBatch[batchId]) {
+      byBatch[batchId] = {
+        batchId: batchId, fileName: row[col['FileName']], uploadedBy: row[col['UploadedBy']],
+        uploadedAt: row[col['UploadedAt']], status: row[col['Status']], entries: [],
+      };
+    }
+    byBatch[batchId].entries.push({
+      rowId: row[col['RowId']], workerId: row[col['WorkerId']], clientId: row[col['ClientId']] || null,
+      date: row[col['Date']], inTime: row[col['InTime']], outTime: row[col['OutTime']],
+    });
+  });
+  return {batches: Object.values(byBatch)};
+}
+
+function requirePendingHoursApprover(auth) {
+  if (!auth || (auth.role !== 'tenant_admin' && auth.role !== 'superadmin')) {
+    throw {error:'Подтверждать загруженные часы может только владелец фирмы или супер-админ'};
+  }
+}
+
+// Turns every 'pending' row of one batch into real PunchLog entries (via the
+// same savePunch() every other punch goes through — never a parallel write
+// path) and flips the pending rows to 'approved'. Two PunchLog rows per
+// shift (IN+OUT), tagged in Notes so an approved-import punch is visibly
+// distinguishable from a GPS-verified one, and deliberately carrying no
+// GPS/distance fields at all (there are none to carry — this data never came
+// from a phone's geolocation).
+function approvePendingHours(body, tenantId, auth) {
+  if (!tenantId) return {error:'No tenant'};
+  requirePendingHoursApprover(auth);
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(_pendingHoursSheetName(tenantId));
+  if (!sh || sh.getLastRow() < 2) return {error:'Пакет не найден'};
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const col = {}; headers.forEach(function(h,i){ col[h]=i; });
+  const schSh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_SCHEDULE);
+  const m = readScheduleMap(schSh, tenantId);
+  const workerById = {}; m.workers.forEach(function(w){ workerById[w.id]=w; });
+  let created = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (row[col['BatchId']] !== body.batchId || row[col['Status']] !== 'pending') continue;
+    const workerId = row[col['WorkerId']], w = workerById[workerId];
+    const note = 'Imported' + (row[col['FileName']] ? (' from ' + row[col['FileName']]) : '');
+    const dateStr = row[col['Date']];
+    const tsFor = function(timeStr){
+      const d = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(dateStr);
+      if (!d || !timeStr) return new Date().toISOString();
+      return new Date(Number(d[3]), Number(d[2])-1, Number(d[1]),
+        Number((timeStr.split(':')[0])||0), Number((timeStr.split(':')[1])||0)).toISOString();
+    };
+    savePunch({ workerId: workerId, workerName: w ? w.name : '', type: 'in', time: row[col['InTime']],
+      date: dateStr, ts: tsFor(row[col['InTime']]), clientId: row[col['ClientId']] || '', notes: note }, tenantId);
+    if (row[col['OutTime']]) {
+      savePunch({ workerId: workerId, workerName: w ? w.name : '', type: 'out', time: row[col['OutTime']],
+        date: dateStr, ts: tsFor(row[col['OutTime']]), clientId: row[col['ClientId']] || '', notes: note }, tenantId);
+    }
+    sh.getRange(i+1, col['Status']+1).setValue('approved');
+    created++;
+  }
+  return {ok:true, created: created};
+}
+
+function rejectPendingHours(body, tenantId, auth) {
+  if (!tenantId) return {error:'No tenant'};
+  requirePendingHoursApprover(auth);
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(_pendingHoursSheetName(tenantId));
+  if (!sh || sh.getLastRow() < 2) return {error:'Пакет не найден'};
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  const col = {}; headers.forEach(function(h,i){ col[h]=i; });
+  let rejected = 0;
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][col['BatchId']] !== body.batchId || rows[i][col['Status']] !== 'pending') continue;
+    sh.getRange(i+1, col['Status']+1).setValue('rejected');
+    rejected++;
+  }
+  return {ok:true, rejected: rejected};
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function _TZ_(){ return SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone() || 'Asia/Jerusalem'; }
@@ -1764,6 +1902,72 @@ function aiVerifyField(body){
   (json.content || []).forEach(function(c){ if(c.type === 'text') text += c.text; });
 
   return {ok: true, value: text.trim()};
+}
+
+// Reads a photographed/scanned hours timesheet (Admin/Roles plan, stage 14 —
+// the AI-vision half of the hours-import feature; the Excel half is parsed
+// entirely client-side via SheetJS, no AI call at all). Uses the same
+// accuracy-first ANTHROPIC_MODEL as aiReadDoc/aiVerifyField — a misread
+// digit here corrupts real payroll hours, same reasoning as those. Returns
+// entries only; the CALLER is responsible for routing them through
+// savePendingHoursBatch() — this function never writes anything itself, so
+// a bad read can't silently reach PunchLog without the approval queue.
+function aiReadHoursTable(body){
+  var props = PropertiesService.getScriptProperties();
+  var key   = props.getProperty('ANTHROPIC_API_KEY');
+  var model = props.getProperty('ANTHROPIC_MODEL') || 'claude-sonnet-5';
+  if(!key)        return {error:'ANTHROPIC_API_KEY не задан в Script Properties'};
+  if(!body.image) return {error:'Нет изображения'};
+
+  var SYSTEM = 'This is a photo or scan of a work-hours timesheet (a table of dates with clock-in/clock-out times, ' +
+    'or a simple handwritten/printed log of work days and hours). Extract every row as JSON — ONLY valid JSON, no prose, no markdown: ' +
+    '{"entries":[{"date":"DD/MM/YYYY","inTime":"HH:MM","outTime":"HH:MM"}, ...]}. ' +
+    'Read dates and times exactly as printed/written — do not guess or invent values. ' +
+    'If a row has no clear out-time (e.g. still open), set "outTime" to an empty string. ' +
+    'Skip rows that are clearly not a work entry (totals, headers, blank rows). ' +
+    'Return ONLY the JSON object, nothing else.';
+
+  var payload = {
+    model: model,
+    max_tokens: 4000,
+    messages: [{
+      role: 'user',
+      content: [
+        {type: 'text', text: SYSTEM},
+        {type: 'image', source: {type: 'base64', media_type: body.mediaType || 'image/jpeg', data: body.image}},
+        {type: 'text', text: 'Return the JSON object only.'}
+      ]
+    }]
+  };
+
+  var opts = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  var res;
+  try { res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', opts); }
+  catch(e){ return {error:'Запрос к Anthropic не прошёл: ' + e}; }
+
+  var json;
+  try { json = JSON.parse(res.getContentText()); }
+  catch(e){ return {error:'Неверный ответ от Anthropic (HTTP ' + res.getResponseCode() + ')'}; }
+
+  if(json.error) return {error: json.error.message || 'Ошибка Anthropic'};
+
+  var text = '';
+  (json.content || []).forEach(function(c){ if(c.type === 'text') text += c.text; });
+  text = text.replace(/```json|```/g,'').trim();
+  var m = text.match(/\{[\s\S]*\}/);
+
+  var parsed;
+  try { parsed = JSON.parse(m ? m[0] : text); }
+  catch(e){ return {error:'AI вернул нечитаемый ответ', raw: String(text).slice(0,300)}; }
+
+  return {ok: true, entries: Array.isArray(parsed.entries) ? parsed.entries : []};
 }
 
 // Batched sibling of aiVerifyField (added 2026-09-28, optimization) — the
