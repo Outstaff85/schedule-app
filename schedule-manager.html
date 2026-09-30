@@ -484,6 +484,13 @@
           <option value="vacation">On vacation</option>
           <option value="fired">Fired</option>
         </select>
+        <select id="workersFilterClient" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none"></select>
+        <select id="workersFilterSupplier" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none"></select>
+        <select id="workersGroupBy" onchange="renderWorkersPage()" title="Group by" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
+          <option value="">No grouping</option>
+          <option value="client">Group by client</option>
+          <option value="supplier">Group by supplier</option>
+        </select>
         <span id="workersCount" style="font-size:13px;color:var(--text2);margin-left:auto"></span>
       </div>
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow-x:auto;-webkit-overflow-scrolling:touch">
@@ -494,6 +501,7 @@
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Status</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">ID / Паспорт</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Objects</th>
+              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Supplier</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Phone</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Rate</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Start date</th>
@@ -2086,12 +2094,28 @@ function deleteClient(cid){
   if(selectedClientId===cid) selectedClientId=null;
   renderClientsPage(); renderSidebarClients(); render(); autoSave(); showToast(c.name+' removed');
 }
+// Keeps a <select>'s options in sync with a source array (clients/suppliers)
+// while preserving whatever the user already had picked — called on every
+// renderWorkersPage() since clients/suppliers can change between renders.
+function fillFilterSelect(selectId, items, allLabel){
+  const el=document.getElementById(selectId); if(!el) return;
+  const prev=el.value;
+  el.innerHTML=`<option value="">${allLabel}</option>`+items.map(i=>`<option value="${i.id}">${esc(i.name)}</option>`).join('');
+  if(items.some(i=>i.id===prev)) el.value=prev;
+}
 function renderWorkersPage(){
+  fillFilterSelect('workersFilterClient', clients, 'All clients');
+  fillFilterSelect('workersFilterSupplier', suppliers, 'All suppliers');
   const q=(document.getElementById('workersSearch')?.value||'').trim().toLowerCase();
   const stFilter=document.getElementById('workersFilterStatus')?.value||'';
+  const clientFilter=document.getElementById('workersFilterClient')?.value||'';
+  const supplierFilter=document.getElementById('workersFilterSupplier')?.value||'';
+  const groupBy=document.getElementById('workersGroupBy')?.value||'';
   const stMetaMap={active:{label:'Active',col:'var(--green)',bg:'var(--green-bg)'},vacation:{label:'On vacation',col:'var(--amber)',bg:'var(--amber-bg)'},fired:{label:'Fired',col:'var(--red)',bg:'var(--red-bg)'}};
   let list=workers.map((w,wi)=>({w,wi}));
   if(stFilter) list=list.filter(x=>(x.w.status||'active')===stFilter);
+  if(clientFilter) list=list.filter(x=>(x.w.clientIds||[]).includes(clientFilter));
+  if(supplierFilter) list=list.filter(x=>x.w.supplierId===supplierFilter);
   if(q) list=list.filter(x=>{
     const objNames=(x.w.clientIds||[]).map(id=>clients.find(c=>c.id===id)?.name||'').join(' ');
     return (x.w.name||'').toLowerCase().includes(q) || (x.w.phone||'').toLowerCase().includes(q) || objNames.toLowerCase().includes(q);
@@ -2100,16 +2124,20 @@ function renderWorkersPage(){
   const tbody=document.getElementById('workersTableBody'), empty=document.getElementById('workersEmpty');
   if(!list.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
-  tbody.innerHTML=list.map(({w,wi})=>{
+
+  const rowHtml=({w,wi})=>{
     const c=WORKER_COLORS[w.colorIdx%8];
     const stMeta=stMetaMap[w.status||'active'];
     const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
     const objBadges=objs.length?objs.map(o=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${o.color}22;border-radius:10px;margin-right:3px"><span style="width:6px;height:6px;border-radius:50%;background:${o.color}"></span>${esc(o.name)}</span>`).join(''):'<span style="color:var(--text3);font-size:12px">—</span>';
+    const sup=suppliers.find(s=>s.id===w.supplierId);
+    const supBadge=sup?`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${sup.color}22;border-radius:10px"><span style="width:6px;height:6px;border-radius:50%;background:${sup.color}"></span>${esc(sup.name)}</span>`:'<span style="color:var(--text3);font-size:12px">—</span>';
     return `<tr onclick="openWorkerCard(${wi})" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background=''">
       <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div><span style="font-size:13px;font-weight:600">${esc(w.name)}</span>${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div></td>
       <td style="padding:10px 12px"><span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col}">${stMeta.label}</span></td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2);font-family:monospace">${workerDocId(w)?esc(workerDocId(w)):'—'}</td>
       <td style="padding:10px 12px">${objBadges}</td>
+      <td style="padding:10px 12px">${supBadge}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.phone?esc(w.phone):'—'}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.hourlyRate?('₪'+w.hourlyRate+'/h'):'—'}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.startDate?fmtDMY(w.startDate):'—'}</td>
@@ -2119,7 +2147,25 @@ function renderWorkersPage(){
         <button class="btn sm red" onclick="deleteWorker(${wi})" style="padding:3px 8px;font-size:11px"><i class="ti ti-x"></i></button>
       </div></td>
     </tr>`;
-  }).join('');
+  };
+  const groupHeaderHtml=(name,color,count)=>`<tr><td colspan="8" style="padding:8px 12px;background:var(--bg3);font-size:12px;font-weight:700;color:var(--text2)"><span style="display:inline-flex;align-items:center;gap:6px">${color?`<span style="width:8px;height:8px;border-radius:50%;background:${color}"></span>`:''}${esc(name)} <span style="color:var(--text3);font-weight:400">(${count})</span></span></td></tr>`;
+
+  if(!groupBy){
+    tbody.innerHTML=list.map(rowHtml).join('');
+    return;
+  }
+  // Grouped view: a client-group worker can appear in MULTIPLE groups (a
+  // worker can have several clientIds — that's the real many-to-many
+  // relationship, not a bug); a supplier-group worker appears in exactly one
+  // (or "Unassigned"), matching w.supplierId being single-valued.
+  const groups=groupBy==='client'
+    ? [...clients.map(c=>({id:c.id,name:c.name,color:c.color,items:list.filter(x=>(x.w.clientIds||[]).includes(c.id))})),
+       {id:null,name:'No client assigned',color:null,items:list.filter(x=>!(x.w.clientIds||[]).length)}]
+    : [...suppliers.map(s=>({id:s.id,name:s.name,color:s.color,items:list.filter(x=>x.w.supplierId===s.id)})),
+       {id:null,name:'No supplier assigned',color:null,items:list.filter(x=>!x.w.supplierId)}];
+  tbody.innerHTML=groups.filter(g=>g.items.length).map(g=>
+    groupHeaderHtml(g.name,g.color,g.items.length)+g.items.map(rowHtml).join('')
+  ).join('');
 }
 
 const INCOME_TYPE_LABELS = {monthly:'משכורת חודשית',secondary:'משרה נוספת',partial:'משרה חלקית',daily:'שכר יומי',pension:'פנסיה',scholarship:'מלגה'};
