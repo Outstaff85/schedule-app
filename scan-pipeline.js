@@ -1146,10 +1146,10 @@ function renderScanQuadEditor(b64,mediaType,cornersFrac){
         style="display:block;max-width:100%;max-height:46vh;user-select:none;-webkit-user-drag:none">
       <svg id="scanQuadSvg" style="position:absolute;left:0;top:0;width:100%;height:100%;touch-action:none">
         <polygon id="scanQuadPoly" points="" fill="rgba(79,142,247,0.15)" stroke="#4f8ef7" stroke-width="2"></polygon>
-        <line class="quad-side-handle" data-side="top" stroke="transparent" stroke-width="24"></line>
-        <line class="quad-side-handle" data-side="right" stroke="transparent" stroke-width="24"></line>
-        <line class="quad-side-handle" data-side="bottom" stroke="transparent" stroke-width="24"></line>
-        <line class="quad-side-handle" data-side="left" stroke="transparent" stroke-width="24"></line>
+        <line class="quad-side-handle" data-side="top" stroke="transparent" stroke-width="40"></line>
+        <line class="quad-side-handle" data-side="right" stroke="transparent" stroke-width="40"></line>
+        <line class="quad-side-handle" data-side="bottom" stroke="transparent" stroke-width="40"></line>
+        <line class="quad-side-handle" data-side="left" stroke="transparent" stroke-width="40"></line>
         <circle class="quad-handle" data-c="tl" r="13"></circle><circle class="quad-handle" data-c="tr" r="13"></circle>
         <circle class="quad-handle" data-c="br" r="13"></circle><circle class="quad-handle" data-c="bl" r="13"></circle>
       </svg>
