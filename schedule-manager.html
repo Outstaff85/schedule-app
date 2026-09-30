@@ -1515,16 +1515,44 @@ function toggleForm101Wrap(){
   if(chev) chev.className = 'ti ti-chevron-' + (__wForm101Open ? 'up' : 'down');
 }
 
-// Same collapsed-by-default dropdown pattern, for the client-assignment
-// checklist (previously always visible).
-let __wClientsOpen = false;
-function toggleClientsWrap(){
-  __wClientsOpen = !__wClientsOpen;
-  const wrap = document.getElementById('wClientsWrap');
-  const chev = document.getElementById('wClientsChevron');
-  if(wrap) wrap.style.display = __wClientsOpen ? '' : 'none';
-  if(chev) chev.className = 'ti ti-chevron-' + (__wClientsOpen ? 'up' : 'down');
+// Worker modal client picker — selected clients as removable chips plus a
+// search box whose suggestion list shows at most a short scrollable list of
+// NOT-yet-selected matches, so the modal stays compact however many clients
+// the firm has (the old full checkbox list grew with the roster). Same
+// modal/picker for manual add, edit, and the post-scan create flow
+// (openWorkerModalFromScan() → showWorkerModal()).
+let __wClientIds = [];
+function renderWClientChips(){
+  const box=document.getElementById('wClientChips'); if(!box) return;
+  const sel=__wClientIds.map(id=>clients.find(c=>c.id===id)).filter(Boolean);
+  box.innerHTML=sel.map(c=>`<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;border-radius:999px;background:var(--bg3);border:1px solid var(--border2);font-size:12px;max-width:100%">
+      <span style="width:8px;height:8px;border-radius:50%;background:${esc(c.color)};flex-shrink:0"></span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}${c.object?`<span style="color:var(--text3)"> · ${esc(c.object)}</span>`:''}</span>
+      <button type="button" onclick="removeWClient('${esc(c.id)}')" title="Remove" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:0 2px;font-size:14px;line-height:1">&times;</button>
+    </span>`).join('');
+  const cnt=document.getElementById('wClientCount'); if(cnt) cnt.textContent=sel.length?('('+sel.length+')'):'';
 }
+function wClientMatches(){
+  const q=(document.getElementById('wClientSearch')?.value||'').trim().toLowerCase();
+  return clients.filter(c=>!__wClientIds.includes(c.id) && (!q || (c.name+' '+(c.object||'')).toLowerCase().includes(q)));
+}
+function renderWClientSuggest(){
+  const box=document.getElementById('wClientSuggest'); if(!box) return;
+  const list=wClientMatches();
+  box.innerHTML=list.length ? list.map(c=>`<div onmousedown="event.preventDefault();addWClient('${esc(c.id)}')" style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;font-size:13px" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+      <span style="width:8px;height:8px;border-radius:50%;background:${esc(c.color)};flex-shrink:0"></span>
+      <span>${esc(c.name)}${c.object?`<span style="color:var(--text3);font-size:11px"> · ${esc(c.object)}</span>`:''}</span>
+    </div>`).join('') : `<div style="padding:8px 10px;font-size:12px;color:var(--text3)">${clients.length===__wClientIds.length?'All clients added':'Not found'}</div>`;
+  box.style.display='block';
+}
+function hideWClientSuggest(){ const box=document.getElementById('wClientSuggest'); if(box) box.style.display='none'; }
+function addWClient(id){
+  if(!__wClientIds.includes(id)) __wClientIds.push(id);
+  const inp=document.getElementById('wClientSearch'); if(inp){ inp.value=''; inp.focus(); }
+  renderWClientChips(); renderWClientSuggest();
+}
+function removeWClient(id){ __wClientIds=__wClientIds.filter(x=>x!==id); renderWClientChips(); }
+function pickFirstWClientSuggest(){ const m=wClientMatches(); if(m.length) addWClient(m[0].id); }
 // Same collapsed-by-default pattern, for the worker's own bank requisites
 // (bank/branch/account number) — a separate section, not mixed into the
 // client picker, per request ("отдельная вкладка внутри карточки").
@@ -1704,7 +1732,7 @@ function showWorkerModal(w){
   __wScheduleOpen=false;
   __wExpiryOpen=false;
   __wForm101Open=false;
-  __wClientsOpen=false;
+  __wClientIds=(w.clientIds||[]).filter(id=>clients.some(c=>c.id===id));
   __wBankOpen=false;
   __wChildren=Array.isArray(w.docChildren)?w.docChildren.map(c=>({...c})):[];
   __wAvatarB64=w.avatarB64||'';
@@ -1800,22 +1828,14 @@ function showWorkerModal(w){
     <div class="field"><label>עיר</label><input type="text" id="wCity" value="${esc(w.city||'')}" placeholder="עיר"></div>
     <div class="field"><label>תאריך לידה</label><input type="text" id="wDob" value="${esc(w.docDob||'')}" placeholder="DD/MM/YYYY"></div>
     <div class="field"><label>תוקף ת.ז./דרכון</label><input type="text" id="wDocExpiry" value="${esc(w.docExpiry||'')}" placeholder="DD/MM/YYYY"></div>
-    <div class="field" style="margin-bottom:6px">
-      <button class="btn sm" type="button" onclick="toggleClientsWrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
-        <span><i class="ti ti-users"></i> לקוחות <span id="wClientCount" style="color:var(--text3);font-weight:400;font-size:12px"></span></span>
-        <i class="ti ti-chevron-down" id="wClientsChevron"></i>
-      </button>
-    </div>
-    <div id="wClientsWrap" style="display:none">
-      ${clients.length>5?`<input type="text" id="wClientSearch" placeholder="חיפוש לקוחות / אובייקטים..." oninput="filterClientPick(this.value)" autocomplete="off" style="width:100%;margin-bottom:6px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">`:''}
-      <div id="wClientPick" style="max-height:190px;overflow-y:auto;border:1px solid var(--border2);border-radius:var(--radius-sm);padding:4px;display:flex;flex-direction:column;gap:2px">
-        ${clients.length?clients.map(c=>`<label class="wc-row" data-name="${(c.name+' '+(c.object||'')).toLowerCase().replace(/"/g,'')}" style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:var(--radius-sm);cursor:pointer">
-          <input type="checkbox" value="${c.id}" ${(w.clientIds||[]).includes(c.id)?'checked':''} onchange="updateClientCount()" style="width:auto;padding:0;flex-shrink:0">
-          <span style="width:8px;height:8px;border-radius:50%;background:${c.color};flex-shrink:0"></span>
-          <span style="font-size:13px;color:var(--text)">${esc(c.name)}${c.object?`<span style="color:var(--text3);font-size:11px"> · ${esc(c.object)}</span>`:''}</span>
-        </label>`).join(''):'<span style="font-size:12px;color:var(--text3);padding:8px">אין לקוחות עדיין</span>'}
-      </div>
-      <div id="wClientEmpty" style="display:none;font-size:12px;color:var(--text3);padding:8px">לא נמצא</div>
+    <div class="field">
+      <label><i class="ti ti-users"></i> לקוחות <span id="wClientCount" style="color:var(--text3);font-weight:400;font-size:12px"></span></label>
+      <div id="wClientChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
+      ${clients.length?`<input type="text" id="wClientSearch" placeholder="+ Add client / object…" autocomplete="off"
+        oninput="renderWClientSuggest()" onfocus="renderWClientSuggest()" onblur="setTimeout(hideWClientSuggest,150)"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();pickFirstWClientSuggest();}else if(event.key==='Escape'){this.blur();}">
+      <div id="wClientSuggest" style="display:none;max-height:200px;overflow-y:auto;border:1px solid var(--border2);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);background:var(--bg2)"></div>`
+      :'<span style="font-size:12px;color:var(--text3)">No clients yet</span>'}
     </div>
     <div class="field">
       <label><i class="ti ti-truck-delivery"></i> Supplier (optional)</label>
@@ -1937,27 +1957,12 @@ function showWorkerModal(w){
       <button class="btn accent" onclick="saveWorker()">${editingWorkerIdx!==null?'שמור שינויים':'צור עובד'}</button>
     </div>`;
   document.getElementById('workerOverlay').classList.add('open');
-  updateClientCount();
+  renderWClientChips();
   renderChildrenRows();
   initSignaturePad('wSigCanvas');
 }
 function pickWColor(i){ selColorIdx=i; document.querySelectorAll('#wColorPick [data-ci]').forEach(el=>{ const idx=parseInt(el.dataset.ci); el.style.borderColor=idx===i?'white':'transparent'; el.style.transform=idx===i?'scale(1.2)':'scale(1)'; }); }
 function toggleDayTime(i){ const off=document.getElementById(`wt${i}`).value==='off'; ['ws','we'].forEach(p=>{ const el=document.getElementById(p+i); el.disabled=off; el.style.opacity=off?'0.3':'1'; }); }
-function filterClientPick(q){
-  q=(q||'').trim().toLowerCase();
-  let shown=0;
-  document.querySelectorAll('#wClientPick .wc-row').forEach(row=>{
-    const match=!q || (row.getAttribute('data-name')||'').includes(q);
-    row.style.display=match?'flex':'none';
-    if(match) shown++;
-  });
-  const empty=document.getElementById('wClientEmpty'); if(empty) empty.style.display=shown?'none':'block';
-}
-function updateClientCount(){
-  const el=document.getElementById('wClientCount'); if(!el) return;
-  const n=document.querySelectorAll('#wClientPick input:checked').length;
-  el.textContent=n?('· '+n+' selected'):'';
-}
 async function saveWorker(){
   const docGiven=document.getElementById('wGiven').value.trim();
   const docSurname=document.getElementById('wSurname').value.trim();
@@ -1992,7 +1997,7 @@ async function saveWorker(){
   const docChildren=__wChildren
     .map(c=>({name:(c.name||'').trim(),idNo:(c.idNo||'').trim(),dob:(c.dob||'').trim()}))
     .filter(c=>c.name||c.idNo||c.dob);
-  const clientIds=[...document.querySelectorAll('#wClientPick input:checked')].map(el=>el.value);
+  const clientIds=[...__wClientIds];
   const supplierId=document.getElementById('wSupplierId')?.value||null;
   const bank=document.getElementById('wBank')?.value.trim()||'';
   const bankBranch=document.getElementById('wBankBranch')?.value.trim()||'';
