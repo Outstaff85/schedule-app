@@ -2939,7 +2939,7 @@ async function submitWorkerDocUpload(){
     const added=results.map((r,i)=>(r&&r.ok)?{id:'d'+Date.now().toString(36)+i+Math.random().toString(36).slice(2,6),type,name:prepared[i].fileName,fileId:r.id,url:r.url,mediaType:prepared[i].mediaType,uploadedAt:now,expiry}:null).filter(Boolean);
     const cur=workers.find(x=>x.id===w.id);
     if(cur&&added.length){ cur.docs=[...(cur.docs||[]),...added]; autoSave(); render(); }
-    if(failed.length){ status.textContent=failed.length+' file(s) failed: '+((failed[0]&&failed[0].error)||'network error'); btn.disabled=false; return; }
+    if(failed.length){ status.textContent=failed.length+' file(s) failed: '+((failed[0]&&failed[0].error)||'network error'); reportError(status.textContent,'saveWorkerFile',''); btn.disabled=false; return; }
     closeModal('workerDocOverlay');
     showToast(added.length+' document'+(added.length>1?'s':'')+' uploaded');
     const wi=workers.findIndex(x=>x.id===w.id); if(wi>=0) openWorkerCard(wi);
@@ -6717,7 +6717,7 @@ function markFreshContent(screen){
 }
 function reportError(message, source, stack){
   try{
-    if(_errCount>20) return;                                  // hard cap per session
+    if(_errCount>40) return;                                  // hard cap per session
     const key=String(message||'').slice(0,120), nowT=Date.now();
     if(_errSent[key] && nowT-_errSent[key]<60000) return;     // dedupe same error within 1 min
     _errSent[key]=nowT; _errCount++;
@@ -6731,7 +6731,34 @@ function reportError(message, source, stack){
     })}).catch(()=>{});
   }catch(e){}
 }
-window.addEventListener('error', function(ev){ console.error('App error:', ev.error||ev.message); reportError(ev.message, (ev.filename||'')+':'+(ev.lineno||''), ev.error&&ev.error.stack); });
+// Caught failures (2026-10-01): window 'error'/'unhandledrejection' only see
+// errors nobody handled. Most failures are handled — a toast, a console
+// error, a red line in a form — and never reached the Errors sheet. These
+// hooks send them too: console.error/console.warn, toasts that read like an
+// error, and the error lines of the forms below (same 1-minute dedupe and
+// per-session cap as reportError()).
+const _origConsoleError=console.error.bind(console), _origConsoleWarn=console.warn.bind(console);
+function _consoleArgsText(args){
+  let stack='';
+  const msg=Array.from(args).map(a=>{
+    if(a instanceof Error){ stack=stack||a.stack||''; return a.message; }
+    if(a && typeof a==='object'){ try{ return JSON.stringify(a).slice(0,200); }catch(e){ return String(a); } }
+    return String(a);
+  }).join(' ');
+  return {msg,stack};
+}
+console.error=function(...args){ _origConsoleError(...args); try{ const t=_consoleArgsText(args); reportError(t.msg,'console.error',t.stack); }catch(e){} };
+console.warn=function(...args){ _origConsoleWarn(...args); try{ const t=_consoleArgsText(args); reportError(t.msg,'console.warn',t.stack); }catch(e){} };
+const ERROR_TOAST_RE=/fail|could not|error|offline|denied|invalid|ошибк|не удал|недоступ|нет прав|истекл|\u26a0|⚠/i;
+const _origShowToast=showToast;
+showToast=function(msg,dur){ _origShowToast(msg,dur); try{ if(ERROR_TOAST_RE.test(String(msg||''))) reportError(String(msg),'toast',''); }catch(e){} };
+function watchErrorLine(id){
+  const el=document.getElementById(id); if(!el||typeof MutationObserver==='undefined') return;
+  new MutationObserver(()=>{ const t=(el.textContent||'').trim(); if(t) reportError(t,'form:'+id,''); })
+    .observe(el,{childList:true,characterData:true,subtree:true});
+}
+['firmEditFormError','userFormError'].forEach(watchErrorLine);
+window.addEventListener('error', function(ev){ _origConsoleError('App error:', ev.error||ev.message); reportError(ev.message, (ev.filename||'')+':'+(ev.lineno||''), ev.error&&ev.error.stack); });
 window.addEventListener('unhandledrejection', function(ev){ const r=ev.reason; reportError((r&&r.message)||String(r), 'promise', r&&r.stack); });
 try{
   gateApp(function(){
