@@ -3498,6 +3498,42 @@ const GS_URL = 'https://script.google.com/macros/s/AKfycbwfGCQs8TzGd38j-JU0ZdoHL
 // Shared key sent with write requests. NOTE: this file is public, so the key is
 // visible in source — it's a deterrent against random/bot writes, not real auth.
 const API_SECRET = 'odinson-7Kq2x9';
+
+// ── Data backend (FIRESTORE_PLAN.md stage 4) ───────────────────────────────
+// 'sheets' (default): Google Sheets through Apps Script, as always.
+// 'firestore': login, workers/clients/suppliers and punches go to Firestore
+// through firestore-backend.js. A per-device switch while the move is being
+// tested: open the app with ?backend=firestore to turn it on for this device,
+// ?backend=sheets to turn it off. Everything not moved yet (AI scan, Form 101
+// and documents in Drive, the Admin panes, hours import) keeps using Apps
+// Script with the session token from the parallel Apps Script login.
+const BACKEND = (function(){
+  try{
+    const q = new URLSearchParams(location.search).get('backend');
+    if(q === 'firestore') localStorage.setItem('backend', 'firestore');
+    else if(q === 'sheets') localStorage.removeItem('backend');
+    return localStorage.getItem('backend') === 'firestore' ? 'firestore' : 'sheets';
+  }catch(e){ return 'sheets'; }
+})();
+let __fsBackend = null;
+function loadFirestoreBackend(){
+  if(__fsBackend) return __fsBackend;
+  __fsBackend = new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = 'firestore-backend.js';
+    el.onload = () => window.initFirestoreBackend().then(resolve, reject);
+    el.onerror = () => reject(new Error('firestore-backend.js failed to load'));
+    document.head.appendChild(el);
+  }).catch(e => { __fsBackend = null; throw e; });
+  return __fsBackend;
+}
+// Starts loading right away in Firestore mode, so the SDK is ready by the
+// time loadData() or the login form needs it.
+if(BACKEND === 'firestore') loadFirestoreBackend().catch(e => console.warn('Firestore backend:', e));
+function fsTenantId(){
+  const s = getSession();
+  return s ? (s.viewingTenantId || s.tenantId) : null;
+}
 // Server-side Form 101 PDF builder (Python + PyMuPDF Cloud Function) — replaces
 // the old client-side pdf-lib build, which had a confirmed bug dropping a
 // glyph of multi-word RTL (Hebrew) text. See functions/main.py.
@@ -3534,7 +3570,12 @@ function getSession(){
 }
 function saveSession(s){ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
 function clearSession(){ localStorage.removeItem(SESSION_KEY); }
-function logout(){ try{ localStorage.removeItem(FIRMS_CACHE_KEY); }catch(e){} clearAdminCaches(); clearSession(); location.reload(); }
+async function logout(){
+  try{ localStorage.removeItem(FIRMS_CACHE_KEY); }catch(e){}
+  clearAdminCaches(); clearSession();
+  if(BACKEND === 'firestore'){ try{ await (await loadFirestoreBackend()).signOut(); }catch(e){} }
+  location.reload();
+}
 
 // Sliding session expiration (added 2026-09-30 — reported bug: a manager
 // could get kicked to the login screen mid worker-document scan/upload even
@@ -3828,6 +3869,11 @@ async function submitLogin(){
   errEl.textContent = '';
   if(!username || !password){ errEl.textContent = 'Введите логин и пароль'; return; }
   btn.disabled = true; btn.textContent = 'Вхожу…';
+  if(BACKEND === 'firestore'){
+    try{ await submitLoginFirestore(username, password, errEl); }
+    finally{ btn.disabled = false; btn.textContent = 'Войти'; }
+    return;
+  }
   try{
     const t0 = Date.now();
     // One retry (2026-10-01): an Apps Script error page or a dropped
@@ -3859,6 +3905,35 @@ async function submitLogin(){
     location.reload();
   }catch(e){ errEl.textContent = 'Сеть недоступна, попробуйте ещё раз'; }
   finally{ btn.disabled = false; btn.textContent = 'Войти'; }
+}
+
+// Firestore mode: the login Cloud Function signs this device in to Firebase,
+// and the Apps Script login runs alongside it, because the parts not moved
+// yet (AI scan, Drive documents, Admin panes) still need an Apps Script
+// session token. The app opens once the Firebase sign-in succeeds; without
+// the Apps Script token those parts answer "session expired" until the
+// next login.
+async function submitLoginFirestore(username, password, errEl){
+  const t0 = Date.now();
+  let backend;
+  try{ backend = await loadFirestoreBackend(); }
+  catch(e){ errEl.textContent = 'Не удалось загрузить Firebase — проверьте сеть'; return; }
+  const gsLogin = fetch(GS_URL, {method:'POST', body: JSON.stringify({action:'login', username, password})})
+    .then(r => r.json()).catch(() => null);
+  let fb;
+  try{ fb = await backend.login(username, password); }
+  catch(e){ errEl.textContent = 'Сеть недоступна — попробуйте ещё раз'; return; }
+  if(!fb || fb.error){ errEl.textContent = (fb && fb.error) || 'Не удалось войти'; return; }
+  const gs = await gsLogin;
+  if(gs && Array.isArray(gs.tenants)) saveFirmsCache(gs.tenants);
+  try{ sessionStorage.setItem('pendingLoginTiming', JSON.stringify({t0, loginMs:Date.now()-t0, pingMs:null, pingDone:false})); }catch(e){}
+  saveSession({
+    backend: 'firestore', uid: fb.uid,
+    token: (gs && gs.token) || '', expiresAt: (gs && gs.expiresAt) || Date.now() + 6*3600e3,
+    role: fb.role, tenantId: fb.tenantId, username: fb.username, tenantProfile: fb.tenantProfile,
+    permissions: fb.permissions, supplierId: fb.supplierId, viewingTenantId: fb.tenantId,
+  });
+  location.reload();
 }
 
 // A super-admin drilling into one firm's normal view — every subsequent API
@@ -3954,7 +4029,10 @@ function cacheTenantProfile(tenantId, profile){
 //     the normal app — runInitApp() runs the pre-existing init sequence.
 // Called once at startup in place of the old unconditional init block.
 function gateApp(runInitApp){
-  const s = getSession();
+  let s = getSession();
+  // A session made on the other backend (the switch was flipped) has no
+  // Firebase sign-in, or no reason to keep one: log in again.
+  if(s && (s.backend === 'firestore') !== (BACKEND === 'firestore')){ clearSession(); s = null; }
   if(!s){
     document.getElementById('loginScreen').style.display = 'flex';
     // Wake a cold Apps Script instance while the user types, so the login
@@ -3990,7 +4068,8 @@ function renderAccountControl(s){
       ? (s.viewingTenantName || s.viewingTenantId || 'Super-admin')
       : ((profile && profile.companyName) || '');
     labelHost.innerHTML = '<i class="ti ti-user"></i> ' + esc(s.username || '')
-      + (firm ? ' · <span>' + esc(firm) + '</span>' : '');
+      + (firm ? ' · <span>' + esc(firm) + '</span>' : '')
+      + (BACKEND === 'firestore' ? ' · <b style="color:var(--amber)">Firestore</b>' : '');
   }
   if(!host) return;
   const incomplete = firmProfileMissing().length > 0;
@@ -4743,6 +4822,10 @@ async function gsSave(data) {
     console.warn('Empty payload — skipping GS save');
     return false;
   }
+  if(BACKEND === 'firestore'){
+    try{ const r = await (await loadFirestoreBackend()).saveSchedule(fsTenantId(), data); return !!(r && r.ok); }
+    catch(e){ console.warn('Firestore save failed:', e); return false; }
+  }
   try {
     const res = await fetch(GS_URL, {
       method: 'POST',
@@ -4772,6 +4855,14 @@ async function gsSave(data) {
 // fails the reason goes to the Errors sheet (`gsLoad.lastError`).
 const GS_LOAD_RETRY_DELAYS_MS=[1000,3000];
 async function gsLoad() {
+  if(BACKEND === 'firestore'){
+    try{
+      const b = await loadFirestoreBackend();
+      // The Firebase sign-in is gone (site data cleared, signed out elsewhere): log in again.
+      if(!b.currentUser()){ clearSession(); location.reload(); return null; }
+      const d = await b.loadSchedule(fsTenantId()); lastLoadedSavedAt = d.savedAt || null; gsLoad.lastError=''; return d; }
+    catch(e){ gsLoad.lastError = 'Firestore: ' + ((e && e.message) || e); reportError('loadSchedule failed: ' + gsLoad.lastError, 'gsLoad', ''); return null; }
+  }
   let reason='';
   for(let attempt=0; attempt<=GS_LOAD_RETRY_DELAYS_MS.length; attempt++){
     if(attempt) await new Promise(r=>setTimeout(r,GS_LOAD_RETRY_DELAYS_MS[attempt-1]));
@@ -4793,6 +4884,16 @@ async function gsLoad() {
 // Pull all punches from the DB and merge with local (DB is authoritative;
 // unsynced local entries are kept). Lets the admin see every worker's punches.
 async function gsLoadPunchLog(){
+  // Firestore: a live listener — the first snapshot is the load, and every
+  // later change (a worker's punch on another device) is merged in at once.
+  if(BACKEND === 'firestore'){
+    try{
+      return await (await loadFirestoreBackend()).listenPunches(fsTenantId(), entries => {
+        mergeRemotePunches(entries);
+        if(currentTab === 'dashboard') renderDashboard();
+      });
+    }catch(e){ console.warn('Firestore punch load failed: ' + ((e && e.message) || e)); return null; }
+  }
   // Same retries as gsLoad() (2026-10-01): one Apps Script error page used to
   // drop the whole punch sync for that app open.
   let reason='';
@@ -4814,6 +4915,9 @@ async function gsLoadPunchLog(){
 async function syncPunchesFromGS(){
   const remote = await gsLoadPunchLog();
   if(!remote) return;
+  mergeRemotePunches(remote);
+}
+function mergeRemotePunches(remote){
   const local = getPunchLog();
   const byId = {};
   remote.forEach(e=>{
@@ -4835,6 +4939,10 @@ async function syncPunchesFromGS(){
 }
 
 async function gsSavePunch(entry) {
+  if(BACKEND === 'firestore'){
+    try{ await (await loadFirestoreBackend()).savePunch(fsTenantId(), entry); }catch(e){ console.warn('Firestore punch save failed:', e); }
+    return;
+  }
   try {
     await fetch(GS_URL, {
       method: 'POST',
@@ -4844,6 +4952,10 @@ async function gsSavePunch(entry) {
 }
 
 async function gsDeletePunch(id) {
+  if(BACKEND === 'firestore'){
+    try{ await (await loadFirestoreBackend()).deletePunch(fsTenantId(), id); }catch(e){ console.warn('Firestore delete failed:', e); }
+    return;
+  }
   try {
     await fetch(GS_URL, {
       method: 'POST',
@@ -4853,6 +4965,10 @@ async function gsDeletePunch(id) {
 }
 
 async function gsUpdatePunch(data) {
+  if(BACKEND === 'firestore'){
+    try{ await (await loadFirestoreBackend()).updatePunch(fsTenantId(), data); }catch(e){ console.warn('Firestore update failed:', e); }
+    return;
+  }
   try {
     await fetch(GS_URL, {
       method: 'POST',
@@ -6866,7 +6982,7 @@ function reportTiming(kind, totalMs, details){
     const s=getSession()||{};
     queueTelemetry({type:'timing', kind, totalMs:Math.round(totalMs),
       tenantId:s.viewingTenantId||s.tenantId||'', user:s.username||'', role:s.role||'',
-      details:Object.assign({device:/Mobi|Android|iPhone/i.test(navigator.userAgent)?'mobile':'desktop'},details||{})});
+      details:Object.assign({device:/Mobi|Android|iPhone/i.test(navigator.userAgent)?'mobile':'desktop', backend:BACKEND},details||{})});
   }catch(e){}
 }
 // Login → first content → fresh data, measured across the reload that

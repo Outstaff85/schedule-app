@@ -200,9 +200,11 @@ def _migrate_users(db, rows, report):
 # ── One firm ─────────────────────────────────────────────────────────────────
 
 def _docs_by_id(items, kind, problems):
-    """[{id,...}] -> {id: cleaned data}; reports bad ids, duplicates, nested lists."""
+    """[{id,...}] -> {id: cleaned data}; reports bad ids, duplicates, nested lists.
+    sortIndex keeps the sheet order (the app lists workers/clients/suppliers
+    in array order; Firestore has none of its own)."""
     out = {}
-    for it in items or []:
+    for pos, it in enumerate(items or []):
         if not isinstance(it, dict) or not _valid_id(it.get("id")):
             problems.append(f"{kind} without a usable id skipped: {str(it)[:80]}")
             continue
@@ -212,6 +214,7 @@ def _docs_by_id(items, kind, problems):
         data = _clean(it, problems, f"{kind} {doc_id}")
         if _has_nested_list(data):
             continue  # already reported by _clean
+        data["sortIndex"] = pos
         out[doc_id] = data
     return out
 
