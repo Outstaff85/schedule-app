@@ -676,7 +676,7 @@
         <div id="adminErrorsList" style="display:flex;flex-direction:column;gap:6px"></div>
       </div>
       <div id="adminPane_timings" style="display:none">
-        <div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="loadTimingsPane()"><i class="ti ti-refresh"></i> Refresh</button></div>
+        <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px"><button class="btn sm" onclick="copyAllTimings()"><i class="ti ti-copy"></i> Copy all</button><button class="btn sm" onclick="loadTimingsPane()"><i class="ti ti-refresh"></i> Refresh</button></div>
         <div id="adminTimingsWrap"></div>
       </div>
       <div id="adminPane_profile" style="display:none">
@@ -1853,6 +1853,7 @@ function addChildRow(){ __wChildren.push({name:'',idNo:'',dob:''}); renderChildr
 function removeChildRow(i){ __wChildren.splice(i,1); renderChildrenRows(); }
 
 function showWorkerModal(w){
+  warmCloudFunctions([FORM101_FN_URL,GS_UPLOAD_PROXY_URL]); // saving builds and uploads the Form 101
   // A worker created before docGiven/docSurname existed (every worker predating
   // today's unified-modal split) only ever had a single `name` field — never
   // had docGiven/docSurname written to it. Without this fallback, opening such
@@ -4361,7 +4362,7 @@ function renderErrorsRows(listEl, targetId, rows){
 const TIMING_PHASES = {
   login: [['loginRequestMs','Login request'],['firstContentMs','First content'],['pingMs','Wake-up ping']],
   open:  [['firstContentMs','First content']],
-  scan:  [['prepMs','Align + enhance'],['primaryReadMs','AI read'],['verifyMs','Digit re-check'],['extraWaitMs','Wait for ספח']],
+  scan:  [['alignMs','AI align'],['enhanceMs','Enhance (server)'],['primaryReadMs','AI read'],['verifyMs','Digit re-check'],['extraWaitMs','Wait for ספח']],
   scanFiles: [['prepMs','Prepare files'],['classifyMs','Classify pages'],['primaryReadMs','AI read'],['verifyMs','Digit re-check'],['extraWaitMs','Wait for ספח']],
 };
 function _pct(arr,p){ if(!arr.length) return null; const a=[...arr].sort((x,y)=>x-y); return a[Math.min(a.length-1,Math.floor(p*(a.length-1)+0.5))]; }
@@ -4379,14 +4380,34 @@ async function loadTimingsPane(){
     renderTimingsPane(el,json.rows||[]);
   }catch(e){ if(!cached) el.innerHTML='<div style="color:#ff6b78">Network error</div>'; }
 }
+const TIMING_KIND_LABEL={login:'Login → fresh data',open:'App open',scan:'Scan (camera)',scanFiles:'Scan (files)'};
+let __timingsRows=[], __timingsSummaryText='';
+function _timingFirmName(id){ const firms=(__firmsCache&&__firmsCache.length)?__firmsCache:(loadFirmsCache()||[]); const t=firms.find(x=>x.tenantId===id); return t?(t.companyName||id):(id||'—'); }
+// One measurement as plain text (what the per-row copy button copies).
+function timingRowText(r){
+  const d=r.details||{};
+  const steps=(TIMING_PHASES[r.kind]||[]).map(([key,label])=>typeof d[key]==='number'?`${label} ${_sec(d[key])}`:'').filter(Boolean).join(' · ');
+  const head=[new Date(r.when).toLocaleString(),TIMING_KIND_LABEL[r.kind]||r.kind,_timingFirmName(r.tenantId),r.user||'',d.device||'',d.pages?d.pages+' page(s)':'',d.aborted||''].filter(Boolean).join(' · ');
+  return head+'\n'+_sec(r.totalMs)+(steps?' — '+steps:'')+(d.kinds?'\nPage kinds: '+d.kinds.join(', '):'');
+}
+function copyTimingRow(i){ const r=__timingsRows[i]; if(r) copyTextToClipboard(timingRowText(r)); }
+function copyAllTimings(){
+  if(!__timingsRows.length){ showToast('Nothing to copy'); return; }
+  copyTextToClipboard((__timingsSummaryText?__timingsSummaryText+'\n\n':'')+'Latest:\n'+__timingsRows.slice(0,50).map(timingRowText).join('\n\n'));
+}
 function renderTimingsPane(el,rows){
+  __timingsRows=rows; __timingsSummaryText='';
   if(!rows.length){ el.innerHTML='<div style="color:var(--text2);font-size:13px">No measurements yet — they appear after the next login, app open or scan.</div>'; return; }
   const weekAgo=Date.now()-7*864e5;
   const recent=rows.filter(r=>new Date(r.when).getTime()>=weekAgo&&!(r.details&&r.details.aborted));
   const kinds=['login','open','scan','scanFiles'].filter(k=>recent.some(r=>r.kind===k));
-  const firms=(__firmsCache&&__firmsCache.length)?__firmsCache:(loadFirmsCache()||[]);
-  const firmName=id=>{ const t=firms.find(x=>x.tenantId===id); return t?(t.companyName||id):(id||'—'); };
-  const KIND_LABEL={login:'Login → fresh data',open:'App open',scan:'Scan (camera)',scanFiles:'Scan (files)'};
+  const firmName=_timingFirmName;
+  const KIND_LABEL=TIMING_KIND_LABEL;
+  __timingsSummaryText='Last 7 days (median / 90%):\n'+kinds.map(k=>{
+    const rs=recent.filter(r=>r.kind===k), tot=rs.map(r=>r.totalMs);
+    const steps=(TIMING_PHASES[k]||[]).map(([key,label])=>{ const v=rs.map(r=>r.details&&r.details[key]).filter(x=>typeof x==='number'); return v.length?`${label} ${_sec(_pct(v,0.5))}`:''; }).filter(Boolean).join(' · ');
+    return `${KIND_LABEL[k]||k}: ${rs.length}× · median ${_sec(_pct(tot,0.5))} · 90% ${_sec(_pct(tot,0.9))}${steps?' · '+steps:''}`;
+  }).join('\n');
   const summary=kinds.map(k=>{
     const rs=recent.filter(r=>r.kind===k), tot=rs.map(r=>r.totalMs);
     const phases=(TIMING_PHASES[k]||[]).map(([key,label])=>{ const v=rs.map(r=>r.details&&r.details[key]).filter(x=>typeof x==='number'); return v.length?`${esc(label)} ${_sec(_pct(v,0.5))}`:''; }).filter(Boolean).join(' · ');
@@ -4394,10 +4415,11 @@ function renderTimingsPane(el,rows){
       <td style="padding:6px 8px;text-align:center;font-weight:600">${_sec(_pct(tot,0.5))}</td><td style="padding:6px 8px;text-align:center">${_sec(_pct(tot,0.9))}</td>
       <td style="padding:6px 8px;font-size:11px;color:var(--text2)">${phases}</td></tr>`;
   }).join('');
-  const list=rows.slice(0,50).map(r=>{
+  const list=rows.slice(0,50).map((r,i)=>{
     const d=r.details||{};
     const extra=(TIMING_PHASES[r.kind]||[]).map(([key,label])=>typeof d[key]==='number'?`${esc(label)} ${_sec(d[key])}`:'').filter(Boolean).join(' · ');
-    return `<div style="padding:8px 10px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:12px">
+    return `<div style="position:relative;padding:8px 40px 8px 10px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:12px">
+      <button class="btn sm" title="Copy" onclick="copyTimingRow(${i})" style="position:absolute;top:6px;right:6px;padding:4px 6px;min-width:0"><i class="ti ti-copy"></i></button>
       <div style="display:flex;gap:10px;flex-wrap:wrap;color:var(--text2)"><span>${esc(new Date(r.when).toLocaleString())}</span><span style="font-weight:600;color:var(--text)">${esc(KIND_LABEL[r.kind]||r.kind)}</span>
         <span>${esc(firmName(r.tenantId))}</span><span>${esc(r.user||'')}</span><span>${esc(d.device||'')}</span>${d.pages?`<span>${d.pages} page(s)</span>`:''}${d.aborted?`<span style="color:#ffb020">${esc(d.aborted)}</span>`:''}</div>
       <div><b>${_sec(r.totalMs)}</b>${extra?' — '+extra:''}</div></div>`;
@@ -4414,7 +4436,10 @@ function errorRowText(r){
 async function copyErrorRow(targetId, idx){
   const r = (__errorsRowsByTarget[targetId]||[])[idx];
   if(!r) return;
-  const text = errorRowText(r);
+  await copyTextToClipboard(errorRowText(r));
+}
+// Shared by the Errors and Timings panes' copy buttons.
+async function copyTextToClipboard(text){
   try{
     await navigator.clipboard.writeText(text);
     showToast('Скопировано');
@@ -6185,7 +6210,25 @@ function ensureScanPipelineLoaded(){
 }
 // New-scan entry point (the "Скан паспорта" button) — awaits the
 // pipeline before calling openAiScan(), which only exists once it's loaded.
+// Cloud Function warm-up (2026-10-01): a cold preprocess_scan /
+// fill_form_101 / gs_upload_proxy instance costs seconds on first use (the
+// Timings pane showed ~4-5s in "Enhance (server)"). These {"ping":true} calls
+// wake them while the user is still photographing or filling the form; the
+// functions answer a ping at once without doing any work. At most once per
+// URL per 4 minutes. Results are kept in __fnWarm for the scan timing.
+const __fnWarm={};
+function warmCloudFunctions(urls){
+  const now=Date.now();
+  for(const url of urls){
+    const w=__fnWarm[url];
+    if(w&&now-w.at<240000) continue;
+    const rec={at:now,ms:null}; __fnWarm[url]=rec;
+    fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:'{"ping":true}'})
+      .then(()=>{ rec.ms=Date.now()-rec.at; }).catch(()=>{});
+  }
+}
 async function startNewScan(){
+  warmCloudFunctions([PREPROCESS_SCAN_FN_URL,FORM101_FN_URL,GS_UPLOAD_PROXY_URL]);
   try{ await ensureScanPipelineLoaded(); }
   catch(e){ showToast('Не удалось загрузить модуль скана — проверьте соединение'); return; }
   window.__aiRescanWorkerId=null;
@@ -6197,6 +6240,7 @@ async function startNewScan(){
 // same await-before-call treatment; the function body itself is otherwise
 // unchanged.
 async function rescanWorkerDoc(workerId){
+  warmCloudFunctions([PREPROCESS_SCAN_FN_URL,FORM101_FN_URL,GS_UPLOAD_PROXY_URL]);
   try{ await ensureScanPipelineLoaded(); }
   catch(e){ showToast('Не удалось загрузить модуль скана — проверьте соединение'); return; }
   window.__aiRescanWorkerId=workerId;

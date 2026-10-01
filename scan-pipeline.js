@@ -18,6 +18,15 @@ function openAiScan(){
   // on the individual onScanFilesSelected()/onScanFileSelected() resets.
   window.__aiScanPageThumbs=[];
   window.__aiPrimaryParsed=null;
+  // __aiParsed/__aiScanImage too (2026-10-01): a previous scan's result left
+  // in __aiParsed made processAllPendingPages() treat the NEXT scan as a
+  // continuation of the previous worker — the new page became an "extra
+  // page" of the old record, and with no primary image the review screen
+  // crashed at 100% ("Cannot read properties of null (reading 'mediaType')").
+  window.__aiParsed=null;
+  window.__aiScanImage=null;
+  window.__aiPacketOtherPages=[];
+  window.__aiAvatarB64=null;
   window.__aiPageParsed=[];
   window.__pendingScanPages=[]; // not-yet-processed crops queued by processAllPendingPages() — see its own comment
   document.getElementById('aiScanStage').innerHTML=`
@@ -1551,14 +1560,16 @@ async function processAllPendingPages(){
   // on this function's own full-success tail), so checking the thumbs array here
   // made a resumed "process" after an abort wrongly look like a fresh start,
   // discarding the already-found primary record and re-reading pages from scratch.
-  const resuming=!!(window.__aiPrimaryParsed||window.__aiParsed);
+  // A resumed run must also have its primary page image — a primary record
+  // without one can only be stale state from another scan, never resume it.
+  const resuming=!!((window.__aiPrimaryParsed||window.__aiParsed)&&window.__aiScanImage);
   let foundParsed=resuming?(window.__aiPrimaryParsed||window.__aiParsed||null):null;
   let needMore=missingCore(foundParsed);
   const otherPages=resuming?window.__aiPacketOtherPages.slice():[];
   let pageParsed=resuming?window.__aiPageParsed.slice():[];
   const total=queue.length;
   // Speed telemetry (reportTiming → Admin → Timings): whole run + phases.
-  const tm={t0:Date.now(),prepMs:0,primaryReadMs:0,verifyMs:0,extraWaitMs:0};
+  const tm={t0:Date.now(),prepMs:0,alignMs:0,enhanceMs:0,primaryReadMs:0,verifyMs:0,extraWaitMs:0};
 
   // Phase 1 — align (cheap Haiku corners, see autoPreAlignScan) and enhance
   // + blur-check (preprocess_scan) all pages concurrently.
@@ -1566,11 +1577,15 @@ async function processAllPendingPages(){
   renderScanProgress('מיישר ומשפר את התמונות… (0 מתוך '+total+')',2);
   const prepared=await Promise.all(queue.map(async q=>{
     let it=q;
+    const as=Date.now();
     try{ it=await autoPreAlignScan(it.b64,it.mediaType); }
     catch(e){ console.error(e); }
+    const es=Date.now();
+    tm.alignMs=Math.max(tm.alignMs,es-as); // pages run in parallel: the slowest page is what the user waits for
     let pre;
     try{ pre=await preAlignScan(it.b64,it.mediaType); }
     catch(e){ console.error(e); pre={b64:it.b64,mediaType:it.mediaType}; }
+    tm.enhanceMs=Math.max(tm.enhanceMs,Date.now()-es);
     prepDone++;
     renderScanProgress('מיישר ומשפר את התמונות… ('+prepDone+' מתוך '+total+')',Math.round(40*prepDone/total));
     return {...pre,kind:it.kind||null};
@@ -1580,7 +1595,9 @@ async function processAllPendingPages(){
   tm.prepMs=Date.now()-tm.t0;
   const blurIdx=prepared.findIndex(x=>x&&x.blurry);
   const scanTiming=extra=>{ if(typeof reportTiming==='function') reportTiming('scan',Date.now()-tm.t0,Object.assign({pages:total,
-    kinds:prepared.map(x=>x&&x.kind||'?'),prepMs:tm.prepMs,primaryReadMs:tm.primaryReadMs,verifyMs:tm.verifyMs,extraWaitMs:tm.extraWaitMs,
+    kinds:prepared.map(x=>x&&x.kind||'?'),prepMs:tm.prepMs,alignMs:tm.alignMs,enhanceMs:tm.enhanceMs,
+    // Was the enhance server already warm? (warmCloudFunctions ping result)
+    enhancePingMs:((typeof __fnWarm!=='undefined'&&__fnWarm[PREPROCESS_SCAN_FN_URL])||{}).ms??null,primaryReadMs:tm.primaryReadMs,verifyMs:tm.verifyMs,extraWaitMs:tm.extraWaitMs,
     docType:foundParsed&&foundParsed.type||''},extra||{})); };
   const usable=(blurIdx>=0?prepared.slice(0,blurIdx):prepared).map(x=>({b64:x.b64,mediaType:x.mediaType,kind:x.kind}));
 
@@ -1691,9 +1708,9 @@ function renderScanPagesPrompt(){
   const pages=window.__aiScanPageThumbs||[];
   stage.innerHTML=`
     <div style="display:flex;flex-direction:column;gap:10px">
-      <div style="font-size:12px;color:var(--text2)">נסרקו ${pages.length} עמוד${pages.length===1?'':'ים'}</div>
+      <div style="font-size:12px;color:var(--text2)">נסרקו ${pages.filter(Boolean).length} עמוד${pages.filter(Boolean).length===1?'':'ים'}</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px">
-        ${pages.map((p,i)=>`
+        ${pages.map((p,i)=>!p?'':`
           <div style="position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--border2);flex-shrink:0">
             <img src="data:${p.mediaType};base64,${p.b64}" style="width:100%;height:100%;object-fit:cover;display:block">
             <span style="position:absolute;bottom:1px;left:1px;font-size:9px;background:rgba(0,0,0,0.6);color:#fff;padding:0 3px;border-radius:3px">${i+1}</span>
