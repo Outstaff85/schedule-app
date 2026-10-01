@@ -285,3 +285,133 @@ def test_http_login_and_users_admin():
     time.sleep(1.1)
     auth.revoke_refresh_tokens("u-admin1")
     assert _call(main.users_admin, {"action": "listUsers"}, {"Authorization": "Bearer " + id_token})[0] == 401
+
+
+# ── Apps Script session token (stage 5) ──────────────────────────────────────
+
+GS_SECRET = "test-session-secret-1"
+
+VERIFY_JS = r"""
+const vm = require('vm'), fs = require('fs'), crypto = require('crypto');
+const [src, secret, token] = process.argv.slice(1);
+const signed = buf => Array.from(buf).map(b => b > 127 ? b - 256 : b);
+const ctx = {
+  PropertiesService: {getScriptProperties: () => ({getProperty: () => secret})},
+  Utilities: {
+    computeHmacSha256Signature: (v, k) => signed(crypto.createHmac('sha256', Buffer.from(k, 'utf8')).update(Buffer.from(v, 'utf8')).digest()),
+    base64EncodeWebSafe: b => Buffer.from(b.map(x => x & 255)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_'),
+    base64DecodeWebSafe: s => signed(Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64')),
+    newBlob: x => ({getBytes: () => signed(Buffer.from(x, 'utf8')), getDataAsString: () => Buffer.from(x.map(b => b & 255)).toString('utf8')}),
+  },
+};
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync(src, 'utf8'), ctx);
+process.stdout.write(JSON.stringify(ctx.verifySessionToken(token)));
+"""
+
+
+def apps_script_verify(token, secret=GS_SECRET):
+    import subprocess
+    src = os.path.join(os.path.dirname(__file__), "..", "..", "apps-script", "Код.js")
+    out = subprocess.run(["node", "-e", VERIFY_JS, src, secret, token], capture_output=True, text=True, check=True)
+    return json.loads(out.stdout)
+
+
+def test_login_hands_out_an_apps_script_token():
+    r = core.login(DB, "staff1", "staff-pass-1", mint, gs_secret=GS_SECRET)
+    assert r["ok"] and r["gsToken"] and r["gsExpiresAt"] > time.time() * 1000
+    p = apps_script_verify(r["gsToken"])
+    assert p["userId"] == "u-staff1" and p["role"] == "staff" and p["tenantId"] == T1
+    assert p["permissions"] == ["schedule", "workers"] and p["supplierId"] is None and p["exp"] == r["gsExpiresAt"]
+    boss = apps_script_verify(core.login(DB, "boss", "boss-pass-1", mint, gs_secret=GS_SECRET)["gsToken"])
+    assert boss["role"] == "superadmin" and boss["tenantId"] is None and boss["permissions"] == "*"
+    owner = apps_script_verify(core.login(DB, "owner1", "owner-pass-1", mint, gs_secret=GS_SECRET)["gsToken"])
+    assert owner["role"] == "tenant_admin"     # the legacy 'tenant' role is normalized
+    sup = apps_script_verify(core.login(DB, "sup1", "sup-pass-11", mint, gs_secret=GS_SECRET)["gsToken"])
+    assert sup["supplierId"] == "s-1" and sup["permissions"] == "*"   # as Apps Script reads an empty cell
+    # A wrong secret or an expired token is rejected by Apps Script.
+    assert apps_script_verify(r["gsToken"], secret="other-secret") is None
+    old, _ = core.gs_session_token("u-staff1", {"role": "staff"}, GS_SECRET, now_ms=1000)
+    assert apps_script_verify(old) is None
+    # Without the secret there is no Apps Script token.
+    assert "gsToken" not in core.login(DB, "staff1", "staff-pass-1", mint)
+
+
+def test_http_login_uses_the_secret(monkeypatch):
+    import main
+    monkeypatch.setenv("GS_SESSION_SECRET", GS_SECRET)
+    status, lg = _call(main.login, {"username": "owner1", "password": "owner-pass-1"})
+    assert status == 200 and apps_script_verify(lg["gsToken"])["userId"] == "u-admin1"
+
+
+# ── Firms ────────────────────────────────────────────────────────────────────
+
+def test_list_tenants():
+    DB.collection("tenants").document(T1).collection("workers").document("w1").set({"name": "A"})
+    DB.collection("tenants").document(T1).collection("workers").document("w2").set({"name": "B"})
+    DB.collection("tenants").document(T1).collection("settings").document("schedule").set({"savedAt": "S1"})
+    DB.collection("tenants").document(T2).set({"companyName": "Firm Two", "active": False})
+    r = core.list_tenants(DB, SUPER)
+    one = next(t for t in r["tenants"] if t["tenantId"] == T1)
+    assert one["companyName"] == "Firm One" and one["phone"] == "0501234567" and one["workerCount"] == 2
+    assert one["clientCount"] == 0 and one["savedAt"] == "S1" and one["active"] is True
+    assert next(t for t in r["tenants"] if t["tenantId"] == T2)["active"] is False
+    assert core.list_tenants(DB, ADMIN1)["error"] == "Только супер-админ"
+
+
+def test_set_tenant_active():
+    rv = Revokes()
+    assert core.set_tenant_active(DB, ADMIN1, {"tenantId": T1, "active": False}, rv)["error"]
+    r = core.set_tenant_active(DB, SUPER, {"tenantId": T1, "active": False}, rv)
+    assert r == {"ok": True, "updated": 3, "active": False}
+    assert core.login(DB, "owner1", "owner-pass-1", mint)["error"] == "Аккаунт отключён"
+    assert DB.collection("tenants").document(T1).get().get("active") is False
+    assert len(rv) == 3
+    core.set_tenant_active(DB, SUPER, {"tenantId": T1, "active": True}, rv)
+    assert core.login(DB, "owner1", "owner-pass-1", mint)["ok"] and len(rv) == 3   # turning on revokes nothing
+
+
+def test_delete_tenant():
+    rv = Revokes()
+    DB.collection("tenants").document(T1).collection("workers").document("w1").set({"name": "A"})
+    DB.collection("workerTokens").document("tok1").set({"tenantId": T1, "workerId": "w1"})
+    DB.collection("workerTokens").document("tok9").set({"tenantId": T2, "workerId": "w9"})
+    assert core.delete_tenant(DB, ADMIN1, {"tenantId": T1}, rv)["error"]
+    r = core.delete_tenant(DB, SUPER, {"tenantId": T1}, rv)
+    assert r == {"ok": True, "removed": {"tenant": True, "users": 3}}
+    assert not DB.collection("tenants").document(T1).get().exists
+    assert not DB.collection("tenants").document(T1).collection("workers").document("w1").get().exists
+    assert not DB.collection("usernames").document("owner1").get().exists
+    assert not DB.collection("authSecrets").document("u-staff1").get().exists
+    assert not DB.collection("workerTokens").document("tok1").get().exists
+    assert DB.collection("workerTokens").document("tok9").get().exists
+    assert DB.collection("users").document("u-admin2").get().exists and len(rv) == 3
+
+
+def test_update_and_load_tenant_profile():
+    r = core.update_tenant(DB, ADMIN1, {"companyName": "Firm 1b", "phone": "0509999999", "tenantId": T2})
+    assert r["ok"] and r["profile"]["companyName"] == "Firm 1b" and r["profile"]["tenantId"] == T1
+    assert DB.collection("tenants").document(T1).get().get("deductionsFileNumber") == "012345678"   # untouched
+    assert core.update_tenant(DB, STAFF1, {"companyName": "x"})["error"]
+    assert core.update_tenant(DB, SUPER, {"tenantId": "missing", "city": "x"})["error"] == "Фирма не найдена"
+    assert core.update_tenant(DB, dict(SUPER, tenantId=T1), {"city": "Haifa"})["profile"]["city"] == "Haifa"
+    assert core.load_tenant_profile(DB, STAFF1, {})["profile"]["phone"] == "0509999999"
+    assert core.load_tenant_profile(DB, SUPER, {})["profile"] is None
+    assert core.run_action(DB, ADMIN1, {"action": "loadTenantProfile"}, Revokes())["profile"]["companyName"] == "Firm 1b"
+
+
+def test_http_superadmin_acts_on_the_viewed_firm():
+    import main
+    lg = core.login(DB, "boss", "boss-pass-1", mint)
+    url = (f"http://{os.environ['FIREBASE_AUTH_EMULATOR_HOST']}/identitytoolkit.googleapis.com/v1/"
+           "accounts:signInWithCustomToken?key=fake")
+    req = urllib.request.Request(url, data=json.dumps({"token": lg["token"], "returnSecureToken": True}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    id_token = json.loads(urllib.request.urlopen(req).read())["idToken"]
+    hdr = {"Authorization": "Bearer " + id_token}
+    status, out = _call(main.users_admin, {"action": "createTenantUser", "asTenantId": T2, "role": "staff",
+                                           "username": "t2staff", "password": "t2-pass-11"}, hdr)
+    assert status == 200 and out["ok"]
+    assert DB.collection("users").document(out["userId"]).get().get("tenantId") == T2
+    assert _call(main.users_admin, {"action": "loadTenantProfile", "asTenantId": T1}, hdr)[1]["profile"]["companyName"] == "Firm One"
+    assert any(t["tenantId"] == T1 for t in _call(main.users_admin, {"action": "listTenants"}, hdr)[1]["tenants"])
