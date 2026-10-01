@@ -1571,6 +1571,41 @@ async function processAllPendingPages(){
   // Speed telemetry (reportTiming → Admin → Timings): whole run + phases.
   const tm={t0:Date.now(),prepMs:0,alignMs:0,enhanceMs:0,primaryReadMs:0,verifyMs:0,extraWaitMs:0};
 
+  // Early primary read (2026-10-01): on a fresh scan the first page is read —
+  // and its digits re-checked, its portrait cropped — straight away, on the
+  // page as the user cropped it in the corner editor, while Phase 1 aligns
+  // and enhances every page. The read used to wait for Phase 1 (~4.5s AI
+  // align + ~1.7s enhance). fieldBoxes/photoBox coordinates belong to the
+  // image that was read, so the re-check and avatar crop use that same raw
+  // crop; the stored scan image is still the aligned, enhanced, tightened
+  // page. The multi-file path already reads un-enhanced pages the same way.
+  // If page 1 turns out blurry or not an ID document, the result is unused.
+  let earlyPrimary=null, earlyRead=null;
+  if(!foundParsed&&queue[0]){
+    const raw={b64:queue[0].b64,mediaType:queue[0].mediaType};
+    // The bare read, on its own, so the following pages' ספח reads can start
+    // as soon as it is known the first page lacks address/family fields.
+    earlyRead=(async()=>{
+      const rs=Date.now();
+      const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:raw.b64,mediaType:raw.mediaType})});
+      const json=await resp.json();
+      tm.primaryReadMs=Date.now()-rs;
+      return json&&json.parsed||null;
+    })();
+    earlyRead.catch(()=>{});
+    earlyPrimary=(async()=>{
+      const p=await earlyRead;
+      if(!(p&&(p.type==='israeli_id'||p.type==='passport'))) return {p:p||null};
+      const vs=Date.now();
+      let v=p.fieldBoxes?await verifyDigitFields(p,raw.b64,raw.mediaType):p;
+      v=await verifyIdChecksum(v,raw.b64,raw.mediaType);
+      tm.verifyMs=Date.now()-vs;
+      const avatar=p.photoBox?await cropPortraitAvatar(raw.b64,raw.mediaType,p.photoBox):null;
+      return {p,verified:v,avatar};
+    })();
+    earlyPrimary.catch(()=>{}); // awaited (and its error handled) in Phase 2
+  }
+
   // Phase 1 — align (cheap Haiku corners, see autoPreAlignScan) and enhance
   // + blur-check (preprocess_scan) all pages concurrently.
   let prepDone=0;
@@ -1598,19 +1633,40 @@ async function processAllPendingPages(){
     kinds:prepared.map(x=>x&&x.kind||'?'),prepMs:tm.prepMs,alignMs:tm.alignMs,enhanceMs:tm.enhanceMs,
     // Was the enhance server already warm? (warmCloudFunctions ping result)
     enhancePingMs:((typeof __fnWarm!=='undefined'&&__fnWarm[PREPROCESS_SCAN_FN_URL])||{}).ms??null,primaryReadMs:tm.primaryReadMs,verifyMs:tm.verifyMs,extraWaitMs:tm.extraWaitMs,
-    docType:foundParsed&&foundParsed.type||''},extra||{})); };
+    docType:foundParsed&&foundParsed.type||'',earlyRead:!!earlyPrimary},extra||{})); };
   const usable=(blurIdx>=0?prepared.slice(0,blurIdx):prepared).map(x=>({b64:x.b64,mediaType:x.mediaType,kind:x.kind}));
 
   // Phase 2 — reads.
   const sefachReads=new Map();
   const prefetchSefachFrom=start=>{ for(let j=start;j<usable.length;j++){ const rd=extraPageReader(usable[j].kind); if(rd&&!sefachReads.has(j)) sefachReads.set(j,rd(usable[j])); } };
   if(foundParsed&&needMore) prefetchSefachFrom(0); // resumed session: every queued page is an extra page
+  if(earlyRead&&usable.length>1&&!isNonIdKind(usable[0].kind)){
+    earlyRead.then(p=>{ if(p&&(p.type==='israeli_id'||p.type==='passport')&&missingCore(p)) prefetchSefachFrom(1); }).catch(()=>{});
+  }
   const readPct=i=>Math.round(40+50*(i+1)/Math.max(1,usable.length));
   for(let i=0;i<usable.length;i++){
     let it=usable[i];
     const kind=it.kind;
     it={b64:it.b64,mediaType:it.mediaType};
     let thisPageParsed=null;
+    if(i===0&&earlyPrimary&&!foundParsed&&!isNonIdKind(kind)){
+      try{
+        renderScanProgress('ה-AI קורא את המסמך… (עמוד 1 מתוך '+total+')',Math.max(45,readPct(i)-30));
+        const r=await earlyPrimary;
+        if(r&&r.verified){
+          if(missingCore(r.p)) prefetchSefachFrom(1);
+          foundParsed=initPrimaryFromFirstPage(r.verified);
+          window.__aiAvatarB64=r.avatar;
+          renderScanProgress('מחדד קצוות… (עמוד 1 מתוך '+total+')',readPct(i));
+          window.__aiScanImage=await finalTightenPass(it);
+          needMore=missingCore(foundParsed);
+          pageParsed=[foundParsed];
+          continue;
+        }
+      }catch(e){ console.error(e); }
+      // Early read found no ID/passport: fall through and read the aligned,
+      // enhanced page the usual way.
+    }
     if(!foundParsed&&!isNonIdKind(kind)){
       try{
         renderScanProgress('ה-AI קורא את המסמך… (עמוד '+(i+1)+' מתוך '+total+')',Math.max(45,readPct(i)-30));
