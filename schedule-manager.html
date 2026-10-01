@@ -3526,7 +3526,7 @@ function getSession(){
 }
 function saveSession(s){ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
 function clearSession(){ localStorage.removeItem(SESSION_KEY); }
-function logout(){ clearSession(); location.reload(); }
+function logout(){ try{ localStorage.removeItem(FIRMS_CACHE_KEY); }catch(e){} clearAdminCaches(); clearSession(); location.reload(); }
 
 // Sliding session expiration (added 2026-09-30 — reported bug: a manager
 // could get kicked to the login screen mid worker-document scan/upload even
@@ -3792,6 +3792,9 @@ async function submitLogin(){
     const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'login', username, password }) });
     const json = await res.json();
     if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось войти'; return; }
+    // A super-admin's login reply already carries the Firms list — cached so
+    // the Firms screen right after the reload renders without another call.
+    if(Array.isArray(json.tenants)) saveFirmsCache(json.tenants);
     saveSession({
       token: json.token, role: json.role, tenantId: json.tenantId, username: json.username,
       tenantProfile: json.tenantProfile, expiresAt: json.expiresAt,
@@ -3901,6 +3904,9 @@ function gateApp(runInitApp){
   const s = getSession();
   if(!s){
     document.getElementById('loginScreen').style.display = 'flex';
+    // Wake a cold Apps Script instance while the user types, so the login
+    // request itself doesn't pay the cold start (doGet 'ping', no auth).
+    fetch(GS_URL+'?action=ping').catch(()=>{});
     return;
   }
   if(s.role === 'superadmin' && !s.viewingTenantId){
@@ -3956,18 +3962,22 @@ let __firmsListTarget = 'firmsList';
 // render logic feeds both the super-admin's own landing screen (#firmsList,
 // the default) and the new consolidated admin panel's Firms tab
 // (#adminFirmsList) without duplicating this function.
-async function renderFirmsList(targetId){
-  __firmsListTarget = targetId || 'firmsList';
-  const listEl = document.getElementById(__firmsListTarget);
-  listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
-  try{
-    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'listTenants', ...gsAuth() }) });
-    const json = await res.json();
-    if(!json || json.error){ listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Ошибка загрузки')+'</div>'; return; }
-    const tenants = json.tenants || [];
-    __firmsCache = tenants;
-    if(!tenants.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Фирм ещё нет — создайте первую.</div>'; return; }
-    listEl.innerHTML = tenants.map(t => `
+// The Firms list is cached (localStorage) and shown at once; the fresh copy
+// from listTenants replaces it when it arrives (2026-10-01 — opening the
+// list used to wait on a full round-trip every time).
+const FIRMS_CACHE_KEY = 'firmsCache_v1';
+// Same show-cached-then-refresh pattern for the Admin Users / Errors panes.
+// Keys start with ADMIN_CACHE_PREFIX so logout() can drop them all.
+const ADMIN_CACHE_PREFIX = 'adminCache_';
+function saveAdminCache(key, value){ try{ localStorage.setItem(ADMIN_CACHE_PREFIX+key, JSON.stringify(value)); }catch(e){} }
+function loadAdminCache(key){ try{ return JSON.parse(localStorage.getItem(ADMIN_CACHE_PREFIX+key)||'null'); }catch(e){ return null; } }
+function clearAdminCaches(){ try{ Object.keys(localStorage).filter(k=>k.startsWith(ADMIN_CACHE_PREFIX)).forEach(k=>localStorage.removeItem(k)); }catch(e){} }
+function saveFirmsCache(tenants){ try{ localStorage.setItem(FIRMS_CACHE_KEY, JSON.stringify(tenants||[])); }catch(e){} }
+function loadFirmsCache(){ try{ const v=JSON.parse(localStorage.getItem(FIRMS_CACHE_KEY)||'null'); return Array.isArray(v)?v:null; }catch(e){ return null; } }
+function renderFirmsRows(listEl, tenants){
+  __firmsCache = tenants;
+  if(!tenants.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Фирм ещё нет — создайте первую.</div>'; return; }
+  listEl.innerHTML = tenants.map(t => `
       <div class="row" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);cursor:pointer;${t.active===false?'opacity:0.55':''}" onclick="switchToTenant('${esc(t.tenantId)}')">
         <div>
           <div style="font-weight:600">${esc(t.companyName || '(без названия)')}${t.active===false?' <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px">отключена</span>':''}${firmProfileMissing(t).length?` <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px" title="Не заполнено: ${esc(firmProfileMissing(t).join(', '))}">профиль неполный</span>`:''}</div>
@@ -3980,7 +3990,21 @@ async function renderFirmsList(targetId){
           <i class="ti ti-chevron-right"></i>
         </div>
       </div>`).join('');
-  }catch(e){ listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
+}
+async function renderFirmsList(targetId){
+  __firmsListTarget = targetId || 'firmsList';
+  const listEl = document.getElementById(__firmsListTarget);
+  const cached = loadFirmsCache();
+  if(cached) renderFirmsRows(listEl, cached);
+  else listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'listTenants', ...gsAuth() }) });
+    const json = await res.json();
+    if(!json || json.error){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Ошибка загрузки')+'</div>'; return; }
+    const tenants = json.tenants || [];
+    saveFirmsCache(tenants);
+    renderFirmsRows(listEl, tenants);
+  }catch(e){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
 }
 
 // Super-admin-only diagnostics screen (see errorsScreen's own HTML comment
@@ -4059,13 +4083,22 @@ function activeTenantIdForAdmin(){
 async function renderAdminUsers(){
   const el = document.getElementById('adminUsersWrap');
   if(!el) return;
-  el.innerHTML = '<div style="color:var(--text2);font-size:13px">Loading…</div>';
+  const tenantId = activeTenantIdForAdmin();
+  const cacheKey = 'users_'+tenantId;
+  const cached = loadAdminCache(cacheKey);
+  if(Array.isArray(cached)) renderAdminUsersRows(el, cached);
+  else el.innerHTML = '<div style="color:var(--text2);font-size:13px">Loading…</div>';
   try{
     const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'listUsers', ...gsAuth() }) });
     const json = await res.json();
-    if(!json || json.error){ el.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Load failed')+'</div>'; return; }
-    const tenantId = activeTenantIdForAdmin();
+    if(!json || json.error){ if(!cached) el.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Load failed')+'</div>'; return; }
     const users = (json.users||[]).filter(u => u.tenantId === tenantId);
+    saveAdminCache(cacheKey, users);
+    renderAdminUsersRows(el, users);
+  }catch(e){ if(!cached) el.innerHTML = '<div style="color:#ff6b78">Network error</div>'; }
+}
+// Draws the Users pane from an already-filtered user list (cached or fresh).
+function renderAdminUsersRows(el, users){
     const rows = users.map(u => {
       const sup = u.role==='supplier' ? (suppliers||[]).find(s=>s.id===u.supplierId) : null;
       const permsLabel = u.role!=='staff' ? '' : (u.permissions==='*' ? 'Full access' : (Array.isArray(u.permissions)?u.permissions.join(', '):'—'));
@@ -4083,7 +4116,6 @@ async function renderAdminUsers(){
     }).join('');
     el.innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="openCreateUserForm()"><i class="ti ti-plus"></i> New user</button></div>`
       + (users.length ? `<div style="display:flex;flex-direction:column;gap:8px">${rows}</div>` : '<div style="color:var(--text2);font-size:13px">No staff/supplier users yet.</div>');
-  }catch(e){ el.innerHTML = '<div style="color:#ff6b78">Network error</div>'; }
 }
 function fillUserFormSupplierSelect(selectedId){
   const sel = document.getElementById('userFormSupplierId');
@@ -4283,12 +4315,20 @@ let __errorsRowsByTarget = {};
 async function loadErrorsList(targetId){
   targetId = targetId || 'errorsList';
   const listEl = document.getElementById(targetId);
-  listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
+  const cached = loadAdminCache('errors');
+  if(Array.isArray(cached)) renderErrorsRows(listEl, targetId, cached);
+  else listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
   try{
     const res = await fetch(GS_URL + '?action=loadErrors' + gsAuthQuery());
     const json = await res.json();
-    if(!json || json.error){ listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Ошибка загрузки')+'</div>'; return; }
+    if(!json || json.error){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Ошибка загрузки')+'</div>'; return; }
     const rows = json.rows || [];
+    saveAdminCache('errors', rows);
+    renderErrorsRows(listEl, targetId, rows);
+  }catch(e){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
+}
+// Draws the Errors list from rows (cached or fresh).
+function renderErrorsRows(listEl, targetId, rows){
     __errorsRowsByTarget[targetId] = rows;
     if(!rows.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Ошибок нет.</div>'; return; }
     listEl.innerHTML = rows.map((r,i) => `
@@ -4301,7 +4341,6 @@ async function loadErrorsList(targetId){
         </div>
         <div style="word-break:break-word">${esc(r.message||'')}</div>
       </div>`).join('');
-  }catch(e){ listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
 }
 function errorRowText(r){
   const head = [r.when ? new Date(r.when).toLocaleString() : '', r.page||'', r.source||''].filter(Boolean).join(' · ');
