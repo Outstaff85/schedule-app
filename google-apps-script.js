@@ -51,6 +51,9 @@ function doPost(e) {
     // logged the user out on EVERY client-side JS error — the real cause of
     // the "kicked to login mid-scan" reports (see CLAUDE.md Troubleshooting).
     if (body.action === 'logError' && body.secret === API_SECRET) return jsonResponse(logError(body));
+    // Speed telemetry (login / app open / scan timings) — same secret-only
+    // acceptance as logError, never affects the user's session.
+    if (body.action === 'logTiming' && body.secret === API_SECRET) return jsonResponse(logTiming(body));
 
     // Every other action needs a resolved tenant, established one of two ways:
     //  - a manager session token (schedule-manager.html, logged in as a firm
@@ -140,6 +143,7 @@ function doGet(e) {
       // must never see this. See CLAUDE.md's "Session-expiry false logouts"
       // troubleshooting entry for why this exists.
       case 'loadErrors':   result = loadErrors(auth);                    break;
+      case 'loadTimings':  result = loadTimings(auth);                   break;
       case 'loadPendingHours': result = loadPendingHours(tenantId, auth); break;
       default:             result = {error: 'Unknown action'};
     }
@@ -2611,6 +2615,42 @@ function logError(data){
     if (extra > 0) sh.deleteRows(2, extra);
     return {ok:true};
   }catch(e){ return {error:e.toString()}; }
+}
+
+// ── Speed telemetry (2026-10-01) ─────────────────────────────────────────────
+// One row per measured operation: login, app open, scan. Shown to the
+// super-admin in Admin → Timings (loadTimings). Keeps the last 2000 rows.
+const SH_TIMINGS = 'Timings';
+function logTiming(data){
+  try{
+    const sh = getOrCreateSheet(SpreadsheetApp.getActiveSpreadsheet(), SH_TIMINGS);
+    if (sh.getLastRow() === 0) {
+      sh.appendRow(['When','Kind','TotalMs','TenantId','User','Role','Details']);
+      sh.getRange(1,1,1,7).setFontWeight('bold').setBackground('#e8f5e9');
+      sh.setFrozenRows(1);
+    }
+    const clip = function(v,n){ return String(v==null?'':v).slice(0,n); };
+    sh.appendRow([
+      new Date().toISOString(), clip(data.kind,40), Math.max(0, Math.round(Number(data.totalMs)||0)),
+      clip(data.tenantId,80), clip(data.user,80), clip(data.role,40), clip(JSON.stringify(data.details||{}),1500)
+    ]);
+    const extra = sh.getLastRow() - 1 - 2000;
+    if (extra > 0) sh.deleteRows(2, extra);
+    return {ok:true};
+  }catch(e){ return {error:e.toString()}; }
+}
+function loadTimings(auth){
+  if (!auth || !auth.isSuperadmin) return { error: 'Доступ только для супер-админа' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_TIMINGS);
+  if (!sh || sh.getLastRow() < 2) return { rows: [] };
+  const lastRow = sh.getLastRow();
+  const startRow = Math.max(2, lastRow - 499); // last 500 rows
+  const values = sh.getRange(startRow, 1, lastRow - startRow + 1, 7).getValues();
+  const rows = values.map(function(r){
+    let details = {}; try { details = JSON.parse(r[6] || '{}'); } catch (e) {}
+    return { when: r[0], kind: r[1], totalMs: Number(r[2]) || 0, tenantId: r[3], user: r[4], role: r[5], details: details };
+  }).reverse();
+  return { rows: rows };
 }
 
 // Client-reported "your token was just rejected" event — see doPost's own
