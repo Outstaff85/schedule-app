@@ -3782,7 +3782,7 @@ const SESSION_RETRY_DELAYS_MS = [0, 500]; // attempt 2 immediate, attempt 3 afte
     }).catch(()=>res);
   }
   // Telemetry calls must never trigger the session-expired logout flow.
-  const NO_LOGOUT_ACTIONS = ['logError','authFailure','login','logTiming'];
+  const NO_LOGOUT_ACTIONS = ['logError','authFailure','login','logTiming','logBatch'];
   // Every Apps Script call is watched (2026-10-01): one slower than
   // SLOW_GS_CALL_MS is sent to the Timings sheet as kind "gs:<action>", and a
   // reply that is an HTML page instead of JSON (Apps Script's own error page —
@@ -3828,8 +3828,19 @@ async function submitLogin(){
   btn.disabled = true; btn.textContent = 'Вхожу…';
   try{
     const t0 = Date.now();
-    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'login', username, password }) });
-    const json = await res.json();
+    // One retry (2026-10-01): an Apps Script error page or a dropped
+    // connection used to end in "Сеть недоступна" at the first attempt.
+    let json = null, lastErr = '';
+    for(let attempt=0; attempt<2 && !json; attempt++){
+      if(attempt){ btn.textContent = 'Повторяю…'; await new Promise(r=>setTimeout(r,1500)); }
+      try{
+        const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'login', username, password }) });
+        const text = await res.text();
+        try{ json = JSON.parse(text); }
+        catch(e){ lastErr = 'Google вернул ошибку (HTTP '+res.status+')'; reportError('login returned HTML (HTTP '+res.status+', '+(Date.now()-t0)+'ms): '+text.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,300),'login',''); }
+      }catch(e){ lastErr = 'Сеть недоступна'; }
+    }
+    if(!json){ errEl.textContent = lastErr + ' — попробуйте ещё раз'; return; }
     try{ sessionStorage.setItem('pendingLoginTiming', JSON.stringify({t0, loginMs:Date.now()-t0, pingMs:window.__pingMs==null?null:window.__pingMs, pingDone:window.__pingMs!=null})); }catch(e){}
     if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось войти'; return; }
     // A super-admin's login reply already carries the Firms list — cached so
@@ -6769,14 +6780,41 @@ async function regenerateAllWorkerDocs(){
 let _errSent={}, _errCount=0;
 // ── Speed telemetry (2026-10-01) ───────────────────────────────────────────
 // Fire-and-forget; lands in the Timings sheet, shown in Admin → Timings.
+// Telemetry queue (2026-10-01): errors and timings are no longer sent one
+// request each. Every Apps Script request is a separate execution plus a
+// sheet write, and on a busy app open they competed with the requests the
+// user is waiting for (login, loadSchedule). Items are collected and sent as
+// one `logBatch` request: the first send waits TELEMETRY_FIRST_FLUSH_MS after
+// page load, later ones go out every TELEMETRY_FLUSH_MS, and whatever is left
+// goes out with sendBeacon when the page is hidden or closed.
+const TELEMETRY_FIRST_FLUSH_MS=8000, TELEMETRY_FLUSH_MS=5000;
+let __telemetryQueue=[], __telemetryTimer=null;
+function queueTelemetry(item){
+  __telemetryQueue.push(item);
+  if(__telemetryQueue.length>50) __telemetryQueue.splice(0,__telemetryQueue.length-50);
+  if(!__telemetryTimer){
+    const sinceLoad=performance.now();
+    __telemetryTimer=setTimeout(flushTelemetry, Math.max(TELEMETRY_FLUSH_MS, TELEMETRY_FIRST_FLUSH_MS-sinceLoad));
+  }
+}
+function flushTelemetry(viaBeacon){
+  clearTimeout(__telemetryTimer); __telemetryTimer=null;
+  if(!__telemetryQueue.length) return;
+  const items=__telemetryQueue; __telemetryQueue=[];
+  const body=JSON.stringify({action:'logBatch', secret:API_SECRET, items});
+  try{
+    if(viaBeacon===true && navigator.sendBeacon && navigator.sendBeacon(GS_URL, new Blob([body],{type:'text/plain'}))) return;
+    fetch(GS_URL,{method:'POST',body}).catch(()=>{});
+  }catch(e){}
+}
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') flushTelemetry(true); });
+window.addEventListener('pagehide',()=>flushTelemetry(true));
 function reportTiming(kind, totalMs, details){
   try{
     const s=getSession()||{};
-    fetch(GS_URL,{method:'POST',body:JSON.stringify({
-      action:'logTiming', secret:API_SECRET, kind, totalMs:Math.round(totalMs),
+    queueTelemetry({type:'timing', kind, totalMs:Math.round(totalMs),
       tenantId:s.viewingTenantId||s.tenantId||'', user:s.username||'', role:s.role||'',
-      details:Object.assign({device:/Mobi|Android|iPhone/i.test(navigator.userAgent)?'mobile':'desktop'},details||{})
-    })}).catch(()=>{});
+      details:Object.assign({device:/Mobi|Android|iPhone/i.test(navigator.userAgent)?'mobile':'desktop'},details||{})});
   }catch(e){}
 }
 // Login → first content → fresh data, measured across the reload that
@@ -6805,14 +6843,12 @@ function reportError(message, source, stack){
     const key=String(message||'').slice(0,120), nowT=Date.now();
     if(_errSent[key] && nowT-_errSent[key]<60000) return;     // dedupe same error within 1 min
     _errSent[key]=nowT; _errCount++;
-    fetch(GS_URL,{method:'POST',body:JSON.stringify({
-      action:'logError', secret:API_SECRET, ...gsAuth(),
+    queueTelemetry({type:'error',
       page:(location.pathname.split('/').pop()||location.href),
       role:'manager', worker:(getSession()||{}).username||'',
       message:String(message||'').slice(0,500),
       source:String(source||'').slice(0,300),
-      stack:String(stack||'').slice(0,1200)
-    })}).catch(()=>{});
+      stack:String(stack||'').slice(0,1200)});
   }catch(e){}
 }
 // Caught failures (2026-10-01): window 'error'/'unhandledrejection' only see

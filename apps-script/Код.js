@@ -54,6 +54,10 @@ function doPost(e) {
     // Speed telemetry (login / app open / scan timings) — same secret-only
     // acceptance as logError, never affects the user's session.
     if (body.action === 'logTiming' && body.secret === API_SECRET) return jsonResponse(logTiming(body));
+    // Batched telemetry (2026-10-01): the manager app sends its errors and
+    // timings together, one request and one write per sheet instead of one
+    // execution per event.
+    if (body.action === 'logBatch' && body.secret === API_SECRET) return jsonResponse(logBatch(body));
 
     // Every other action needs a resolved tenant, established one of two ways:
     //  - a manager session token (schedule-manager.html, logged in as a firm
@@ -2639,6 +2643,35 @@ function logTiming(data){
     if (extra > 0) sh.deleteRows(2, extra);
     return {ok:true};
   }catch(e){ return {error:e.toString()}; }
+}
+// Appends many telemetry rows at once: {items:[{type:'error'|'timing', ...}]}.
+// Same columns, clipping and row caps as logError()/logTiming().
+function logBatch(body){
+  try{
+    const items = Array.isArray(body.items) ? body.items.slice(0, 60) : [];
+    const clip = function(v,n){ return String(v==null?'':v).slice(0,n); };
+    const now = new Date().toISOString();
+    const errRows = items.filter(function(i){ return i && i.type === 'error'; }).map(function(d){
+      return [now, clip(d.page,200), clip(d.role,40), clip(d.worker,80), clip(d.message,500), clip(d.source,300), clip(d.stack,1200)];
+    });
+    const timRows = items.filter(function(i){ return i && i.type === 'timing'; }).map(function(d){
+      return [now, clip(d.kind,40), Math.max(0, Math.round(Number(d.totalMs)||0)), clip(d.tenantId,80), clip(d.user,80), clip(d.role,40), clip(JSON.stringify(d.details||{}),1500)];
+    });
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (errRows.length) _appendCapped(getOrCreateSheet(ss, SH_ERRORS), ['When','Page','Role','Worker','Message','Source','Stack'], '#ffebee', errRows, 500);
+    if (timRows.length) _appendCapped(getOrCreateSheet(ss, SH_TIMINGS), ['When','Kind','TotalMs','TenantId','User','Role','Details'], '#e8f5e9', timRows, 2000);
+    return {ok:true, errors: errRows.length, timings: timRows.length};
+  }catch(e){ return {error:e.toString()}; }
+}
+function _appendCapped(sh, headers, color, rows, keep){
+  if (sh.getLastRow() === 0) {
+    sh.appendRow(headers);
+    sh.getRange(1,1,1,headers.length).setFontWeight('bold').setBackground(color);
+    sh.setFrozenRows(1);
+  }
+  sh.getRange(sh.getLastRow() + 1, 1, rows.length, headers.length).setValues(rows);
+  const extra = sh.getLastRow() - 1 - keep;
+  if (extra > 0) sh.deleteRows(2, extra);
 }
 function loadTimings(auth){
   if (!auth || !auth.isSuperadmin) return { error: 'Доступ только для супер-админа' };
