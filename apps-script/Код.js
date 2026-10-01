@@ -115,6 +115,7 @@ function doPost(e) {
       case 'supplierAddWorker':    result = supplierAddWorker(body, tenantId, auth); break;
       case 'supplierUpdateWorker': result = supplierUpdateWorker(body, tenantId, auth); break;
       case 'supplierDeleteWorker': result = supplierDeleteWorker(body, tenantId, auth); break;
+      case 'exportForMigration':   result = exportForMigration(body, auth); break;
       default:                     result = {error: 'Unknown action: ' + body.action};
     }
     return jsonResponse(_withRefreshedToken(result, auth));
@@ -1475,9 +1476,11 @@ function savePunch(entry, tenantId) {
   return {ok: true, id: row[0]};
 }
 
-function loadPunchLog(filter, tenantId, auth) {
+// sheetName (optional) reads another sheet of the same shape instead — the
+// firm's PunchLogArchive_ sheet, for exportForMigration().
+function loadPunchLog(filter, tenantId, auth, sheetName) {
   if (!tenantId) return {entries:[]};
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(_punchSheetName(tenantId));
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName || _punchSheetName(tenantId));
   if (!sh || sh.getLastRow() < 2) return {entries:[]};
   // Admin/Roles plan, stage 11: a supplier login only ever sees punches
   // belonging to ITS OWN workers — resolved by reading this tenant's own
@@ -1717,6 +1720,71 @@ function loadPendingHours(tenantId, auth) {
     });
   });
   return {batches: Object.values(byBatch)};
+}
+
+// ── Firestore migration export (FIRESTORE_PLAN.md stage 3) ──────────────────
+// Super-admin only. Called by the migrate_from_sheets Cloud Function
+// (functions-auth/migrate.py), never by the app itself. part 'meta': every
+// login, with its password hash and salt (so nobody's password changes after
+// the move), plus every firm profile; part 'tenant': one firm's workers (photos
+// merged back in), clients, suppliers, live + archived punches and pending
+// hours. Read-only: nothing in the sheets is changed.
+function _migCell(v, fmt) {
+  if (v instanceof Date) return fmt ? Utilities.formatDate(v, _TZ_(), fmt) : v.toISOString();
+  return v;
+}
+function _migSheetObjects(sh) {
+  if (!sh || sh.getLastRow() < 2) return [];
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0];
+  return rows.slice(1).map(function(r) {
+    const o = {};
+    headers.forEach(function(h, i) { if (h) o[h] = _migCell(r[i]); });
+    return o;
+  });
+}
+function exportForMigration(body, auth) {
+  if (!auth || !auth.isSuperadmin) return { error: 'Только супер-админ' };
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (body.part === 'meta') {
+    const schSh = ss.getSheetByName(SH_SCHEDULE);
+    const scheduleTenantIds = (schSh && schSh.getLastRow() > 1)
+      ? schSh.getRange(2, 1, schSh.getLastRow() - 1, 1).getValues().map(function(r) { return r[0]; }).filter(Boolean)
+      : [];
+    return {
+      ok: true,
+      users: _migSheetObjects(ss.getSheetByName(SH_USERS)),
+      tenants: _migSheetObjects(ss.getSheetByName(SH_TENANTS)),
+      scheduleTenantIds: scheduleTenantIds,
+    };
+  }
+  if (body.part === 'tenant') {
+    const t = body.tenantId;
+    if (!t) return { error: 'Нет tenantId' };
+    const m = readScheduleMap(ss.getSheetByName(SH_SCHEDULE), t);
+    const pending = loadPendingHours(t, auth).batches.map(function(b) {
+      b.uploadedAt = _migCell(b.uploadedAt);
+      b.entries.forEach(function(e) {
+        e.date = _migCell(e.date, 'dd/MM/yyyy');
+        e.inTime = _migCell(e.inTime, 'HH:mm');
+        e.outTime = _migCell(e.outTime, 'HH:mm');
+      });
+      return b;
+    });
+    return {
+      ok: true,
+      tenantId: t,
+      workers: _mergeAvatars(m.workers, t),
+      clients: normalizeClients(m.clients),
+      suppliers: m.suppliers,
+      weekStart: _migCell(m.weekStart),
+      savedAt: _migCell(m.savedAt),
+      punches: loadPunchLog(null, t, auth).entries,
+      archivedPunches: loadPunchLog(null, t, auth, _punchArchiveSheetName(t)).entries,
+      pendingHours: pending,
+    };
+  }
+  return { error: 'Unknown part' };
 }
 
 function requirePendingHoursApprover(auth) {

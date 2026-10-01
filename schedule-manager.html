@@ -661,10 +661,12 @@
            renderFirmsList()/loadErrorsList() (parametrized) and
            openMyFirmForm() rather than re-implementing any of them. -->
       <div id="adminPane_firms" style="display:none">
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px">
+        <div style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <button class="btn sm" onclick="runFirestoreMigration()"><i class="ti ti-database-export"></i> Copy to Firestore</button>
           <button class="btn sm" onclick="toggleSuperadminAccounting()"><i class="ti ti-cash"></i> Payable summary (all firms)</button>
           <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> New firm</button>
         </div>
+        <div id="firestoreMigrationWrap" style="display:none;margin-bottom:16px"></div>
         <div id="superadminAccountingWrap" style="display:none;margin-bottom:16px"></div>
         <div id="adminFirmsList" style="display:flex;flex-direction:column;gap:8px"></div>
       </div>
@@ -4362,6 +4364,56 @@ async function renderSuperadminAccounting(){
         <td style="padding:8px 12px;text-align:center;font-size:13px;font-weight:700">${grandHours.toFixed(1)}h</td>
         <td style="padding:8px 12px;text-align:right;font-size:14px;font-weight:800;color:var(--green)">₪${grandPay.toFixed(0)}</td>
       </tr></tfoot>
+    </table>
+  </div>`;
+}
+
+// Firestore migration (FIRESTORE_PLAN.md stage 3, super-admin): copies every
+// firm from the sheets into Firestore through the migrate_from_sheets function
+// (functions-auth/migrate.py) and shows sheet vs Firestore counts per firm.
+// The sheets are only read, the app keeps running on them, and a re-run just
+// brings Firestore level with the sheets again.
+const MIGRATE_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/migrate_from_sheets';
+async function runFirestoreMigration(){
+  const s = getSession();
+  if(!s || s.role !== 'superadmin') return;
+  if(!confirm('Copy all firms from Google Sheets to Firestore?\n\nThe sheets are not changed and the app keeps working on them. Running it again just updates Firestore.')) return;
+  const wrap = document.getElementById('firestoreMigrationWrap');
+  wrap.style.display = 'block';
+  wrap.innerHTML = '<div style="color:var(--text2);font-size:13px">Copying every firm to Firestore — this can take a minute…</div>';
+  try{
+    const res = await fetch(MIGRATE_FN_URL, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({gsToken: s.token})});
+    const r = await res.json();
+    if(r.error){ wrap.innerHTML = `<div style="color:var(--red);font-size:13px">Copy failed: ${esc(r.error)}</div>`; return; }
+    wrap.innerHTML = migrationReportHtml(r);
+  }catch(e){
+    wrap.innerHTML = `<div style="color:var(--red);font-size:13px">Copy failed: ${esc(e.message||String(e))}</div>`;
+  }
+}
+function migrationReportHtml(r){
+  const KINDS = ['workers','clients','suppliers','punches','pendingHours'];
+  const LABEL = {workers:'Workers', clients:'Clients', suppliers:'Suppliers', punches:'Punches', pendingHours:'Pending hours'};
+  const cell = c => !c ? '<td style="padding:6px 10px;text-align:center;font-size:12px;color:var(--text3)">—</td>'
+    : `<td style="padding:6px 10px;text-align:center;font-size:12px;${c.sheet===c.firestore?'':'color:var(--red);font-weight:700'}">${c.sheet} → ${c.firestore}</td>`;
+  const notes = list => (list||[]).map(x=>`<div style="font-size:11px;margin-top:2px">${esc(x)}</div>`).join('');
+  const rows = (r.tenants||[]).map(t => `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:6px 10px;font-size:13px;font-weight:600">${t.ok?'<i class="ti ti-check" style="color:var(--green)"></i>':'<i class="ti ti-alert-triangle" style="color:var(--red)"></i>'} ${esc(t.name||t.tenantId)}
+        <div style="color:var(--red)">${notes(t.errors)}</div><div style="color:var(--amber)">${notes(t.warnings)}</div></td>
+      ${KINDS.map(k=>cell(t[k])).join('')}
+    </tr>`).join('');
+  const u = r.users || {sheet:0, firestore:0};
+  return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:auto">
+    <div style="padding:10px 12px;font-size:13px;font-weight:700;${r.ok?'color:var(--green)':'color:var(--amber)'}">
+      ${r.ok?'Copied — every count matches.':'Copied with problems — see the marked rows.'}
+      <span style="color:var(--text2);font-weight:400"> Logins ${u.sheet} → ${u.firestore} · ${r.seconds}s${r.tenantsRemoved?` · ${r.tenantsRemoved} firm(s) no longer in the sheets removed`:''}</span>
+      <div style="color:var(--red);font-weight:400">${notes(r.errors)}</div><div style="color:var(--amber);font-weight:400">${notes(r.warnings)}</div>
+    </div>
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
+        <th style="padding:6px 10px;text-align:left;font-size:12px;color:var(--text2)">Firm</th>
+        ${KINDS.map(k=>`<th style="padding:6px 10px;text-align:center;font-size:12px;color:var(--text2)">${LABEL[k]}<div style="font-weight:400;font-size:10px">sheets → Firestore</div></th>`).join('')}
+      </tr></thead>
+      <tbody>${rows}</tbody>
     </table>
   </div>`;
 }
