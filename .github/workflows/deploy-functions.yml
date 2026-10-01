@@ -7,6 +7,9 @@ on:
       - 'functions/**'
       - 'functions-auth/**'
       - 'tests/auth/**'
+      # tests/auth/test_ai.py checks functions-auth/ai_prompts.json against the
+      # Apps Script prompts: a prompt edited there must fail here until regenerated.
+      - 'apps-script/Код.js'
   workflow_dispatch: {}
 
 permissions:

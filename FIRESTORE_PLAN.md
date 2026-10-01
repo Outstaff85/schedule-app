@@ -128,9 +128,16 @@ errors/{id}, timings/{id}              журналы (читает только
    - Отметка работника сразу видна у менеджера в режиме Firestore.
    - Проверено в браузере: 19 проверок (работник → менеджер вживую, чужая отметка отклоняется,
      поставщик видит только своих), тесты функций — 38.
-7. **ИИ и файлы.** `aiReadDoc` / `aiReadSefach` / `aiDetectAlign` / `aiVerifyFields` /
-   `aiReadHoursTable` переезжают в Python-функции: минус 1–3 с на каждый вызов ИИ. Форма 101,
-   сканы и документы работников загружаются прямо в Firebase Storage (с настоящим прогрессом загрузки).
+7. **ИИ и файлы.**
+   - **7а ✅ ИИ:** в режиме Firestore все шесть вызовов ИИ (`aiReadDoc`, `aiReadSefach`,
+     `aiDetectAlign`, `aiVerifyField`, `aiVerifyFields`, `aiReadHoursTable`) идут в функцию
+     `ai_read` (ключ — секрет `ANTHROPIC_API_KEY`). Это порт кода Apps Script: те же запросы к
+     Anthropic, та же обработка ответов. Тексты промптов не переписаны вручную, а сгенерированы
+     из `Код.js` (`functions-auth/ai_prompts.json`); тест запускает настоящий код Apps Script и
+     требует побайтно одинаковых запросов и результатов (68 сценариев). Минус задержка Apps
+     Script на каждом вызове ИИ во время скана.
+   - **7б (следующий шаг) файлы:** форма 101, сканы с подписью и документы работников —
+     в Firebase Storage вместо Drive.
 8. **Переключение.** Повторный прогон переноса прямо перед переключением (займёт минуты), затем
    `BACKEND = firestore`. Apps Script остаётся только для чтения ещё на 1–2 недели как запасной
    вариант, потом отключается. Включаем ежедневные бэкапы Firestore (встроенная функция, хранение
@@ -149,8 +156,7 @@ errors/{id}, timings/{id}              журналы (читает только
       в Secret Manager. Деплой-аккаунту `firebase-adminsdk-…` нужна роль **Secret Manager Admin**.
 - [ ] Этап 4: веб-приложение Firebase в проекте (Project settings → Your apps → Web), иначе
       `/__/firebase/init.json` на сайте пустой и режим Firestore не стартует.
-- [ ] Этап 7: ключ Anthropic в **Secret Manager** (`ANTHROPIC_API_KEY`), сейчас он лежит
-      в Script Properties Apps Script.
+- [x] Этап 7: ключ Anthropic в **Secret Manager** (`ANTHROPIC_API_KEY`).
 - [ ] Этап 8: включить ежедневные бэкапы Firestore (Firestore → Disaster recovery).
 - [ ] Оповещение о расходах (Billing → Budgets), например $20/мес.
 

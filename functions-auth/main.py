@@ -15,6 +15,8 @@ database. The logic itself is in core.py.
   punch        POST {action, token, ...}: the worker punch link (portal.py, stage 6)
   supplier     POST {action, ...} with "Authorization: Bearer <ID token>" of a
                supplier login: the supplier portal (portal.py, stage 6)
+  ai_read      POST {action, image, ...} with a manager's ID token: the AI
+               document reading actions (ai.py, stage 7)
 
 Minting custom tokens needs the runtime service account to hold
 "Service Account Token Creator" (granted 2026-10-01).
@@ -29,6 +31,7 @@ from firebase_admin import auth, firestore
 from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
 
+import ai
 import core
 import portal
 import migrate as migration
@@ -39,6 +42,7 @@ _CORS = options.CorsOptions(cors_origins="*", cors_methods=["post"])
 # Apps Script's SESSION_SECRET, so login can hand out an Apps Script session
 # token too (core.gs_session_token). Secret Manager: GS_SESSION_SECRET.
 GS_SESSION_SECRET = SecretParam("GS_SESSION_SECRET")
+ANTHROPIC_API_KEY = SecretParam("ANTHROPIC_API_KEY")
 _db_client = None
 
 
@@ -196,5 +200,31 @@ def supplier(req: https_fn.Request) -> https_fn.Response:
               "supplierId": decoded.get("supplierId")}
     try:
         return _json(portal.supplier_action(_db(), caller, _body(req)))
+    except Exception as e:
+        return _json({"error": str(e)}, 500)
+
+
+def _anthropic_post(url, payload, headers):
+    resp = requests.post(url, json=payload, headers=headers, timeout=110)
+    return resp.status_code, resp.text
+
+
+@https_fn.on_request(cors=_CORS, timeout_sec=120, memory=options.MemoryOption.MB_512, secrets=[ANTHROPIC_API_KEY])
+def ai_read(req: https_fn.Request) -> https_fn.Response:
+    """AI document reading for the manager app in Firestore mode — the same
+    actions, requests and replies as the Apps Script ones (ai.py). Manager
+    logins only: a supplier never scans or imports hours."""
+    if req.method != "POST":
+        return _json({"error": "POST only"}, 405)
+    body = _body(req)
+    if body.get("ping") is True:
+        return _json({"ok": True, "warm": True})
+    decoded = _verified(req)
+    if not decoded:
+        return _json({"error": E_SESSION}, 401)
+    if decoded.get("role") not in ("superadmin", "tenant_admin", "staff"):
+        return _json({"error": "Недоступно для роли поставщика"})
+    try:
+        return _json(ai.run(str(body.get("action") or ""), body, (ANTHROPIC_API_KEY.value or "").strip(), _anthropic_post))
     except Exception as e:
         return _json({"error": str(e)}, 500)

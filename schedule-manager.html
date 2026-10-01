@@ -3859,7 +3859,9 @@ const SESSION_RETRY_DELAYS_MS = [0, 500]; // attempt 2 immediate, attempt 3 afte
   const FS_ACTIONS = ['listTenants','setTenantActive','deleteTenant','createUser','updateTenant','loadTenantProfile',
     'listUsers','createTenantUser','updateUser','resetUserPassword','deleteUser','loadErrors','loadTimings',
     'loadSchedule','loadPunchLog','deletePunchesByMonths','savePendingHoursBatch','loadPendingHours',
-    'approvePendingHours','rejectPendingHours','logBatch','logError','logTiming'];
+    'approvePendingHours','rejectPendingHours','logBatch','logError','logTiming',
+    // Stage 7: the AI document reads go to the ai_read function.
+    'aiReadDoc','aiReadSefach','aiDetectAlign','aiVerifyField','aiVerifyFields','aiReadHoursTable'];
   function gsParams(url, opts){
     try{ if(opts && typeof opts.body === 'string') return JSON.parse(opts.body); }catch(e){}
     try{ return Object.fromEntries(new URL(url).searchParams); }catch(e){ return {}; }
@@ -6555,6 +6557,9 @@ function ensureScanPipelineLoaded(){
 // functions answer a ping at once without doing any work. At most once per
 // URL per 4 minutes. Results are kept in __fnWarm for the scan timing.
 const __fnWarm={};
+// In Firestore mode the AI reads go to the ai_read function (stage 7), so it is woken too.
+const AI_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/ai_read';
+function SCAN_WARM_URLS(){ return [PREPROCESS_SCAN_FN_URL,FORM101_FN_URL,GS_UPLOAD_PROXY_URL].concat(BACKEND==='firestore'?[AI_FN_URL]:[]); }
 function warmCloudFunctions(urls){
   const now=Date.now();
   for(const url of urls){
@@ -6566,7 +6571,7 @@ function warmCloudFunctions(urls){
   }
 }
 async function startNewScan(){
-  warmCloudFunctions([PREPROCESS_SCAN_FN_URL,FORM101_FN_URL,GS_UPLOAD_PROXY_URL]);
+  warmCloudFunctions(SCAN_WARM_URLS());
   try{ await ensureScanPipelineLoaded(); }
   catch(e){ showToast('Не удалось загрузить модуль скана — проверьте соединение'); return; }
   window.__aiRescanWorkerId=null;
@@ -6578,7 +6583,7 @@ async function startNewScan(){
 // same await-before-call treatment; the function body itself is otherwise
 // unchanged.
 async function rescanWorkerDoc(workerId){
-  warmCloudFunctions([PREPROCESS_SCAN_FN_URL,FORM101_FN_URL,GS_UPLOAD_PROXY_URL]);
+  warmCloudFunctions(SCAN_WARM_URLS());
   try{ await ensureScanPipelineLoaded(); }
   catch(e){ showToast('Не удалось загрузить модуль скана — проверьте соединение'); return; }
   window.__aiRescanWorkerId=workerId;
