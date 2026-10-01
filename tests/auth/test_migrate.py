@@ -47,10 +47,10 @@ def base_sheets():
         T1: {
             "ok": True, "tenantId": T1, "weekStart": "2026-09-27", "savedAt": "2026-10-01T10:00:00.000Z",
             "workers": [
-                {"id": "w1", "name": "Avi Cohen", "token": "tok1", "clientIds": ["c1"], "avatarB64": "AAAA",
+                {"id": "w1", "name": "Avi Cohen", "colorIdx": 0, "status": "active", "token": "tok1", "clientIds": ["c1"], "avatarB64": "AAAA",
                  "schedule": [{"type": "work", "start": "08:00", "end": "17:00"}] * 7,
                  "clientRates": {"c1": {"rate": 50}}, "supplierId": "sp1"},
-                {"id": "w2", "name": "Dana Levi", "token": "tok2", "clientIds": [], "schedule": []},
+                {"id": "w2", "name": "Dana Levi", "colorIdx": 1, "status": "active", "token": "tok2", "clientIds": [], "schedule": []},
             ],
             "clients": [{"id": "c1", "name": "Site A", "radius": 150, "lat": 32.1, "lng": 34.8}],
             "suppliers": [{"id": "sp1", "name": "Agency", "accountNumber": "000123"}],
@@ -107,6 +107,7 @@ def test_full_copy_and_report():
     assert t1["pendingHours"] == {"sheet": 1, "firestore": 1}
 
     w1 = tdoc(T1, "workers", "w1").get().to_dict()
+    assert w1["sortIndex"] == 0 and tdoc(T1, "workers", "w2").get().get("sortIndex") == 1
     assert w1["avatarB64"] == "AAAA" and w1["clientRates"]["c1"]["rate"] == 50 and len(w1["schedule"]) == 7
     assert DB.collection("workerTokens").document("tok1").get().to_dict() == {"tenantId": T1, "workerId": "w1"}
     assert tdoc(T1, "suppliers", "sp1").get().get("accountNumber") == "000123"
