@@ -1,0 +1,67 @@
+name: Deploy Firestore and Storage rules
+
+# Firestore migration (FIRESTORE_PLAN.md stage 1): tests the security rules on
+# the emulators, then deploys firestore.rules, firestore.indexes.json and
+# storage.rules. A failing rules test stops the deploy.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'firestore.rules'
+      - 'firestore.indexes.json'
+      - 'storage.rules'
+      - 'tests/rules/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Test security rules on the emulators
+        working-directory: tests/rules
+        run: |
+          npm install
+          npm test
+
+      - name: Write service account credentials
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/gcp-sa.json"
+
+      - name: Deploy rules and indexes
+        id: deploy
+        working-directory: tests/rules
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa.json
+        run: npx firebase deploy --config ../../firebase.json --only firestore:rules,firestore:indexes,storage --project schedule-odinson --non-interactive
+        continue-on-error: true
+
+      - name: Open/update an issue if deploy failed
+        if: steps.deploy.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TITLE="Firestore/Storage rules deploy failing"
+          BODY="The **Deploy Firestore and Storage rules** workflow failed (the rules tests passed; the deploy step did not). Failed run: $RUN_URL
+
+          Likely causes:
+          - The \`FIREBASE_SERVICE_ACCOUNT\` service account lacks **Firebase Rules Admin** (rules) or **Cloud Datastore Index Admin** (indexes). Grant both at GCP Console → IAM, project \`schedule-odinson\`, then re-run this workflow.
+          - Firebase Storage is not enabled yet (Firebase Console → Build → Storage → Get started), so there is no bucket to attach \`storage.rules\` to."
+          NUM=$(gh issue list --repo "$REPO" --state open --search "\"$TITLE\" in:title" --json number --jq '.[0].number')
+          if [ -n "$NUM" ]; then gh issue comment "$NUM" --repo "$REPO" --body "$BODY"; else gh issue create --repo "$REPO" --title "$TITLE" --body "$BODY"; fi
+          exit 1

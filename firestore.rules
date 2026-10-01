@@ -1,0 +1,105 @@
+rules_version = '2';
+
+// Firestore security rules — see FIRESTORE_PLAN.md for the data model.
+//
+// Sign-in is a custom token from the `login` Cloud Function, whose claims
+// carry who the caller is:
+//   role      'superadmin' | 'tenant_admin' | 'staff' | 'supplier'
+//   tenantId  the caller's firm (absent for a superadmin)
+//   perms     list of sections a staff login may use, ['*'] = all
+//   supplierId  only for role 'supplier'
+//
+// These rules mirror the Apps Script checks they replace:
+//   - a firm sees only its own data, a superadmin sees every firm;
+//   - workers/clients/suppliers/settings are written by tenant_admin or by
+//     staff with 'schedule' (saveSchedule's requirePermission gate);
+//   - punches: any manager-side login of the firm (savePunch/updatePunch/
+//     deletePunch had no role gate); bulk month deletion is a function;
+//   - pending hours: anyone of the firm may submit, only tenant_admin or
+//     superadmin may approve/reject (requirePendingHoursApprover);
+//   - a supplier never reads Firestore directly: wages and GPS can't be
+//     hidden field-by-field, so the supplier portal goes through functions
+//     that strip them (_stripWorkerForSupplier / _stripClientForSupplier);
+//   - users, password hashes and worker punch-link tokens are function-only.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function role() { return request.auth.token.role; }
+    function isSuper() { return signedIn() && role() == 'superadmin'; }
+    function member(t) { return signedIn() && request.auth.token.tenantId == t; }
+    function isTenantAdmin(t) { return member(t) && role() == 'tenant_admin'; }
+    function isAdmin(t) { return isSuper() || isTenantAdmin(t); }
+    function staffCan(t, section) {
+      return member(t) && role() == 'staff'
+        && request.auth.token.perms is list
+        && (('*' in request.auth.token.perms) || (section in request.auth.token.perms));
+    }
+    // Manager-side logins of the firm (never a supplier).
+    function manager(t) { return isSuper() || (member(t) && role() in ['tenant_admin', 'staff']); }
+    function scheduleWriter(t) { return isAdmin(t) || staffCan(t, 'schedule'); }
+
+    // Firm profile fields a tenant_admin may edit on their own firm
+    // (updateTenant). Activation and counters stay superadmin/function-only.
+    function onlyProfileFields() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['companyName', 'deductionsFileNumber', 'phone', 'street', 'streetNumber', 'city']);
+    }
+
+    match /tenants/{t} {
+      allow read: if manager(t);
+      allow update: if isSuper() || (isTenantAdmin(t) && onlyProfileFields());
+      allow create, delete: if isSuper();
+
+      match /workers/{id} {
+        allow read: if manager(t);
+        allow write: if scheduleWriter(t);
+      }
+      match /clients/{id} {
+        allow read: if manager(t);
+        allow write: if scheduleWriter(t);
+      }
+      match /suppliers/{id} {
+        allow read: if manager(t);
+        allow write: if scheduleWriter(t);
+      }
+      match /settings/{id} {
+        allow read: if manager(t);
+        allow write: if scheduleWriter(t);
+      }
+      match /punches/{id} {
+        allow read, create, update, delete: if manager(t);
+      }
+      match /pendingHours/{id} {
+        allow read: if manager(t);
+        // Submitted as pending by the caller themself; nothing reaches payroll
+        // until a tenant_admin/superadmin approves it.
+        allow create: if manager(t)
+          && request.resource.data.status == 'pending'
+          && request.resource.data.createdBy == request.auth.uid;
+        allow update, delete: if isAdmin(t);
+      }
+    }
+
+    // Login profile (role, tenant, permissions). Written only by functions.
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isSuper() || isTenantAdmin(resource.data.tenantId));
+      allow write: if false;
+    }
+
+    // Function-only: password hashes, worker punch-link tokens, push subscriptions.
+    match /authSecrets/{uid} { allow read, write: if false; }
+    match /workerTokens/{token} { allow read, write: if false; }
+    match /pushSubscriptions/{id} { allow read, write: if false; }
+
+    // Telemetry: any signed-in caller may append, only a superadmin may read.
+    match /errors/{id} {
+      allow create: if signedIn();
+      allow read: if isSuper();
+    }
+    match /timings/{id} {
+      allow create: if signedIn();
+      allow read: if isSuper();
+    }
+  }
+}

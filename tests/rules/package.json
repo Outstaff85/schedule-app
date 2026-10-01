@@ -1,0 +1,13 @@
+{
+  "name": "schedule-app-rules-tests",
+  "private": true,
+  "description": "Firestore/Storage security-rules tests (FIRESTORE_PLAN.md stage 1). Run: npm install && npm test",
+  "scripts": {
+    "test": "firebase emulators:exec --only firestore,storage --project demo-schedule \"node --test rules.test.mjs\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase": "^12.19.0",
+    "firebase-tools": "^15.32.1"
+  }
+}

@@ -18,27 +18,68 @@
       "Screenshot_*.jpg",
       "Screenshot_*.png",
       "Tokens/**",
-      ".env"
+      ".env",
+      "firestore.rules",
+      "firestore.indexes.json",
+      "storage.rules",
+      "tests/**"
     ],
     "headers": [
       {
         "source": "/service-worker.js",
         "headers": [
-          { "key": "Cache-Control", "value": "no-cache" },
-          { "key": "Service-Worker-Allowed", "value": "/" }
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Service-Worker-Allowed",
+            "value": "/"
+          }
         ]
       },
       {
         "source": "/**/*.html",
         "headers": [
-          { "key": "Cache-Control", "value": "no-cache, must-revalidate" }
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, must-revalidate"
+          }
         ]
       }
     ],
     "rewrites": [
-      { "source": "/", "destination": "/schedule-manager.html" },
-      { "source": "/punch", "destination": "/worker-punch.html" },
-      { "source": "/supplier", "destination": "/supplier-portal.html" }
+      {
+        "source": "/",
+        "destination": "/schedule-manager.html"
+      },
+      {
+        "source": "/punch",
+        "destination": "/worker-punch.html"
+      },
+      {
+        "source": "/supplier",
+        "destination": "/supplier-portal.html"
+      }
     ]
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "emulators": {
+    "firestore": {
+      "port": 8080
+    },
+    "storage": {
+      "port": 9199
+    },
+    "ui": {
+      "enabled": false
+    },
+    "singleProjectMode": true
   }
 }
