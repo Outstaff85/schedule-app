@@ -1981,9 +1981,17 @@ function aiDetectAlign(body){
   if(!key)        return {error:'ANTHROPIC_API_KEY не задан в Script Properties'};
   if(!body.image) return {error:'Нет изображения'};
 
-  var SYSTEM = 'You are looking at a photo of a passport or Israeli ID card (תעודת זהות). ' +
-    'Return ONLY valid JSON — no prose, no markdown, no code fences — describing how to straighten it: ' +
-    '{"rotate":0,"corners":{"tl":{"x":0,"y":0},"tr":{"x":1,"y":0},"br":{"x":1,"y":1},"bl":{"x":0,"y":1}}} ' +
+  // "kind" (2026-10-01) classifies the page in the same cheap call, so the
+  // client only sends real ID pages to the expensive readers and attaches a
+  // contract or any other page without reading it.
+  var SYSTEM = 'You are looking at a photo of a document page — usually a passport or Israeli ID card (תעודת זהות), sometimes another page. ' +
+    'Return ONLY valid JSON — no prose, no markdown, no code fences — describing what it is and how to straighten it: ' +
+    '{"kind":"id_front","rotate":0,"corners":{"tl":{"x":0,"y":0},"tr":{"x":1,"y":0},"br":{"x":1,"y":1},"bl":{"x":0,"y":1}}} ' +
+    '"kind" is exactly one of: "id_front" (Israeli ID card front, or the older laminated card: portrait + names + ID number), ' +
+    '"id_back" (back of the biometric Israeli ID card: header רשות האוכלוסין וההגירה, QR code, no portrait), ' +
+    '"sefach" (the paper ספח לתעודת זהות appendix: address rows מען/מס\' בית/ישוב, spouse, children), ' +
+    '"passport" (a passport photo page, any country), "contract" (an employment contract or any other multi-paragraph text document), ' +
+    '"other" (anything else, e.g. a visa, a permit, a form, a receipt). ' +
     '"rotate" is the clockwise degrees needed to make the document upright and right-reading, and MUST be exactly one of 0, 90, 180, 270 (use 0 if already upright); ' +
     '"corners" are the document\'s four actual physical corners (tl/tr/br/bl = top-left/top-right/bottom-right/bottom-left AS THE DOCUMENT WILL APPEAR AFTER "rotate" is applied, but each point\'s x/y given as fractions, 0 to 1, of the ORIGINAL pre-rotation image width/height) — trace the document\'s true outline even if the photo was taken at an angle (so the four points form a skewed quadrilateral, not necessarily an axis-aligned rectangle), never cutting off any printed text, photo, or edge. ' +
     'If the document already fills the frame, use the full-frame defaults shown above. ' +

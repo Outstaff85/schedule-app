@@ -88,6 +88,7 @@ async function onScanFilesSelected(fileList){
   window.__aiPacketOtherPages=[];
   window.__aiPageParsed=[];
   window.__aiAvatarB64=null;
+  window.__aiPendingSefachIdNo=null; // mergeScanPage()'s cross-check must not see a previous session's value
   const isPdf=f=>f.type==='application/pdf'||/\.pdf$/i.test(f.name||'');
   if(files.length===1 && !isPdf(files[0])) return onScanFileSelected(files[0]);
 
@@ -122,6 +123,9 @@ async function onScanFilesSelected(fileList){
     // CORE_FIELDS/missingCore are module-scope now (shared with
     // processAllPendingPages() below) — see their own comment.
     const isForm101Page=it=>/כרטיס\s*עובד|0101\/130/.test(it.text||'');
+    // Page types from the cheap Haiku classifier, all pages at once — a
+    // contract/other page is attached without an expensive AI read.
+    await Promise.all(items.map(async it=>{ it.kind=isForm101Page(it)?null:await classifyPage(it); }));
     const sefachReads=new Map();
     let needMore=false;
     const otherPages=[];
@@ -132,7 +136,7 @@ async function onScanFilesSelected(fileList){
         +'<span>קורא עמוד '+(i+1)+' מתוך '+items.length+'…</span></div>';
       if(isForm101Page(it)) continue; // старая Форма 101 — отбрасываем
       let thisPageParsed=null;
-      if(!foundParsed){
+      if(!foundParsed&&!isNonIdKind(it.kind)){
         try{
           const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
           const json=await resp.json();
@@ -140,7 +144,7 @@ async function onScanFilesSelected(fileList){
           if(p&&(p.type==='israeli_id'||p.type==='passport')){
             // Start the following pages' ספח reads now, in parallel with this
             // page's digit re-check (merged in page order below, unchanged).
-            if(missingCore(p)) for(let j=i+1;j<items.length;j++) if(!isForm101Page(items[j])) sefachReads.set(j,readSefachPage(items[j]));
+            if(missingCore(p)) for(let j=i+1;j<items.length;j++){ const rd=extraPageReader(items[j].kind); if(rd&&!isForm101Page(items[j])) sefachReads.set(j,rd(items[j])); }
             // Same zoomed-in digit re-check as the single-photo path (runOcr) —
             // a wrong ID/date digit is just as costly whether it came from one
             // photo or a multi-file packet.
@@ -160,7 +164,8 @@ async function onScanFilesSelected(fileList){
           // with the narrow aiReadSefach (smaller prompt/output, always
           // type:israeli_id) instead of the full aiReadDoc, which re-derived
           // type/fieldBoxes/photoBox for nothing and was noticeably slower.
-          const p=sefachReads.has(i)?await sefachReads.get(i):await readSefachPage(it);
+          const rd=extraPageReader(it.kind);
+          const p=sefachReads.has(i)?await sefachReads.get(i):(rd?await rd(it):null);
           if(p&&p.type==='israeli_id'){
             // Reuse the same field list/merge the single-page-at-a-time flow
             // uses (ID_CORE_FIELDS/mergeIsraeliIdFields), not just the four
@@ -168,7 +173,7 @@ async function onScanFilesSelected(fileList){
             // pages" — this page's own read (p) already has houseNumber/
             // maritalStatus available whenever it was worth OCR'ing at all,
             // and the old hand-rolled loop here dropped both silently.
-            foundParsed=mergeIsraeliIdFields(foundParsed,p);
+            foundParsed=mergeScanPage(foundParsed,p);
             thisPageParsed=p;
             // The ID number is also printed on the ספח, but per user feedback a
             // raw cross-page OCR disagreement isn't itself warning-worthy — the
@@ -460,7 +465,15 @@ async function preAlignScan(b64,mediaType){
 // to run on every queued page. Best-effort: any failure here (network
 // error, bad AI response, image decode failure) just falls through to the
 // original image unchanged, so a hiccup here never blocks the scan.
+// Returns {b64,mediaType,kind}: kind is aiDetectAlign's page type
+// (id_front/id_back/sefach/passport/contract/other) or null when unknown.
 async function autoPreAlignScan(b64,mediaType){
+  const meta={kind:null};
+  const out=await _autoPreAlignCore(b64,mediaType,meta);
+  return {...out,kind:meta.kind};
+}
+const PAGE_KINDS=['id_front','id_back','sefach','passport','contract','other'];
+async function _autoPreAlignCore(b64,mediaType,meta){
   try{
     const resp=await fetch(GS_URL,{
       method:'POST',
@@ -468,6 +481,7 @@ async function autoPreAlignScan(b64,mediaType){
     });
     const json=await resp.json();
     const align=json&&json.ok&&json.align;
+    if(align&&PAGE_KINDS.includes(align.kind)) meta.kind=align.kind;
     if(!align) return {b64,mediaType};
     const rotateDeg=[0,90,180,270].includes(align.rotate)?align.rotate:0;
     const upright=rotateDeg?await alignScanImage(b64,mediaType,{rotate:rotateDeg,crop:{x0:0,y0:0,x1:1,y1:1}}):{b64,mediaType};
@@ -1367,6 +1381,11 @@ function mergeScanPage(primary,current){
     if(window.__aiPendingSefachIdNo&&currentIdNo!==window.__aiPendingSefachIdNo) primary.idMismatch=true;
     if(!primary.idNo) primary.idNo=currentIdNo;
   }
+  // A front page read after the ספח (or card back) also brings the names
+  // and expiry, which only the front carries.
+  if(!isSefachRead&&primary&&primary.type==='israeli_id'&&current.type==='israeli_id'){
+    for(const f of ['given','surname','expiry']) if(!primary[f]&&current[f]) primary[f]=current[f];
+  }
   return mergeIsraeliIdFields(primary,current);
 }
 // Recomputes window.__aiPrimaryParsed from scratch out of window.__aiPageParsed
@@ -1473,6 +1492,31 @@ function readSefachPage(it){
     .then(r=>r.json()).then(j=>(j&&j.parsed)||null)
     .catch(e=>{ console.error(e); return null; });
 }
+// Page type only (aiDetectAlign's "kind"), for the multi-file path, which
+// skips alignment. null when the call fails or the answer isn't a known kind.
+function classifyPage(it){
+  return fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiDetectAlign',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})})
+    .then(r=>r.json()).then(j=>{ const k=j&&j.ok&&j.align&&j.align.kind; return PAGE_KINDS.includes(k)?k:null; })
+    .catch(e=>{ console.error(e); return null; });
+}
+// An extra Israeli-ID front page (e.g. the ספח was scanned first): read
+// with the full aiReadDoc, since aiReadSefach doesn't read names or dob.
+function readFrontPage(it){
+  return fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})})
+    .then(r=>r.json()).then(j=>{ const p=j&&j.parsed; return p&&p.type==='israeli_id'?p:null; })
+    .catch(e=>{ console.error(e); return null; });
+}
+// Which reader an EXTRA page (after the primary) gets, by aiDetectAlign's
+// page kind: a contract, a passport or any other page is attached without an
+// AI read; an ID front gets the full read; a ספח, a card back or an unknown
+// page (kind missing — classification failed) gets aiReadSefach as before.
+function extraPageReader(kind){
+  if(kind==='contract'||kind==='other'||kind==='passport') return null;
+  if(kind==='id_front') return readFrontPage;
+  return readSefachPage;
+}
+// A contract or other non-ID page is never sent to aiReadDoc as a primary.
+const isNonIdKind=kind=>kind==='contract'||kind==='other';
 // Speed (2026-10-01): pages are no longer processed strictly one after
 // another. Phase 1 straightens + enhances EVERY queued page at once
 // (aiDetectAlign + preprocess_scan, independent per page). Phase 2 reads:
@@ -1514,22 +1558,24 @@ async function processAllPendingPages(){
     catch(e){ console.error(e); pre={b64:it.b64,mediaType:it.mediaType}; }
     prepDone++;
     renderScanProgress('מיישר ומשפר את התמונות… ('+prepDone+' מתוך '+total+')',Math.round(40*prepDone/total));
-    return pre;
+    return {...pre,kind:it.kind||null};
   }));
   // A blurry page stops the run there, exactly like the old loop: pages
   // before it are read and merged, it is dropped, pages after it stay queued.
   const blurIdx=prepared.findIndex(x=>x&&x.blurry);
-  const usable=(blurIdx>=0?prepared.slice(0,blurIdx):prepared).map(x=>({b64:x.b64,mediaType:x.mediaType}));
+  const usable=(blurIdx>=0?prepared.slice(0,blurIdx):prepared).map(x=>({b64:x.b64,mediaType:x.mediaType,kind:x.kind}));
 
   // Phase 2 — reads.
   const sefachReads=new Map();
-  const prefetchSefachFrom=start=>{ for(let j=start;j<usable.length;j++) if(!sefachReads.has(j)) sefachReads.set(j,readSefachPage(usable[j])); };
+  const prefetchSefachFrom=start=>{ for(let j=start;j<usable.length;j++){ const rd=extraPageReader(usable[j].kind); if(rd&&!sefachReads.has(j)) sefachReads.set(j,rd(usable[j])); } };
   if(foundParsed&&needMore) prefetchSefachFrom(0); // resumed session: every queued page is an extra page
   const readPct=i=>Math.round(40+50*(i+1)/Math.max(1,usable.length));
   for(let i=0;i<usable.length;i++){
     let it=usable[i];
+    const kind=it.kind;
+    it={b64:it.b64,mediaType:it.mediaType};
     let thisPageParsed=null;
-    if(!foundParsed){
+    if(!foundParsed&&!isNonIdKind(kind)){
       try{
         renderScanProgress('ה-AI קורא את המסמך… (עמוד '+(i+1)+' מתוך '+total+')',Math.max(45,readPct(i)-30));
         const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
@@ -1562,7 +1608,8 @@ async function processAllPendingPages(){
       // Same as the multi-file path: an extra page after an Israeli-ID
       // primary is the ספח (or the card back) — narrow aiReadSefach, usually
       // already in flight from the prefetch above.
-      const p=sefachReads.has(i)?await sefachReads.get(i):await readSefachPage(it);
+      const rd=extraPageReader(kind);
+      const p=sefachReads.has(i)?await sefachReads.get(i):(rd?await rd(it):null);
       if(p&&p.type==='israeli_id'){
         // mergeScanPage() — same merge rebuildPrimaryFromPages() replays when
         // a page is removed later, and it also backfills a missing idNo.
