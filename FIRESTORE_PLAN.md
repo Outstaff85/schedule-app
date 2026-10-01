@@ -1,6 +1,6 @@
 # План миграции на Firestore
 
-Переезд базы данных с Google Sheets + Apps Script на **Firestore (Standard, регион `me-west1`)**
+Переезд базы данных с Google Sheets + Apps Script на **Firestore (Standard, регион `europe-west3`, Франкфурт)**
 в проекте Firebase `schedule-odinson`. Сайт (Hosting) и Cloud Functions остаются там же, где сейчас.
 
 ## Зачем
@@ -77,7 +77,7 @@ errors/{id}, timings/{id}              журналы (читает только
    Тесты на эмуляторе (`tests/rules`, `npm install && npm test`): 12 сценариев — изоляция фирм,
    каждая роль × каждая коллекция, поставщик без прямого доступа, очередь часов, профиль фирмы,
    закрытые коллекции, журналы, Storage. Приложение пока не трогаем.
-2. **Вход.** ✅ Папка `functions-auth/` — отдельный набор функций в регионе `me-west1` (рядом с базой),
+2. **Вход.** ✅ Папка `functions-auth/` — отдельный набор функций в регионе `europe-west3` (Франкфурт, рядом с базой),
    чтобы вход не грузил тяжёлые OpenCV/PyMuPDF из `functions/`:
    - `login` — проверяет пароль, выдаёт custom token с правами;
    - `users_admin` — `listUsers` / `createUser` (новая фирма) / `createTenantUser` / `updateUser` /
@@ -110,7 +110,7 @@ errors/{id}, timings/{id}              журналы (читает только
 
 ## Что понадобится от вас по ходу
 
-- [x] Firestore (Standard, `me-west1`) и вход Email/Password включены.
+- [x] Firestore (Standard, `europe-west3` — Франкфурт) и вход Email/Password включены.
 - [x] **Firebase Storage** включён; деплой-аккаунту выданы Firebase Rules Admin, Cloud Datastore
       Index Admin и Cloud Storage for Firebase Admin.
 - [x] Этап 2: роль **Service Account Token Creator** у сервисного аккаунта функций.

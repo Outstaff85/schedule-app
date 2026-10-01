@@ -2,7 +2,7 @@
 
 A codebase of its own (firebase.json, codebase "auth"), separate from
 functions/: that one imports OpenCV and PyMuPDF at load time, which a login
-would pay on every cold start. Region me-west1, next to the Firestore
+would pay on every cold start. Region europe-west3 (Frankfurt), next to the Firestore
 database. The logic itself is in core.py.
 
   login        POST {username, password} -> Firebase custom token + profile
@@ -22,7 +22,7 @@ from firebase_functions import https_fn, options
 
 import core
 
-options.set_global_options(region="me-west1", memory=options.MemoryOption.MB_256)
+options.set_global_options(region="europe-west3", memory=options.MemoryOption.MB_256)
 
 _CORS = options.CorsOptions(cors_origins="*", cors_methods=["post"])
 _db_client = None
