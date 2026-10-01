@@ -1780,18 +1780,15 @@ function aiReadDoc(body){
     'Any photo showing the המען / מס\' בית / הישוב rows is a ספח and is type "israeli_id", even without a portrait. A photo showing only part of a document is still "israeli_id": fill what that page shows and leave every other field empty. ' +
     PASSPORT_FIELD_MAP +
     'If a field is not visible or unreadable use empty string. ' +
-    'Also include a top-level "fieldBoxes" object locating, on THIS image exactly as given to you (not the imageAlign-straightened version below), ' +
+    'Also include a top-level "fieldBoxes" object locating, on THIS image exactly as given to you, ' +
     'the tight bounding box of each all-digit field you found a value for, among: idNo, dob, expiry, passportNo (whichever apply to this document type). ' +
     'Each box is {"x0":0,"y0":0,"x1":1,"y1":1} — top-left and bottom-right corners, each coordinate a fraction 0 to 1 of THIS image\'s width/height — ' +
     'tight around just the printed characters (a few pixels of margin, not the whole field label or surrounding box). ' +
-    'Box the printed field, never the MRZ line; for idNo box the clearest single copy of the number. Omit a field from "fieldBoxes" entirely if you left its value empty. These boxes are used to re-crop and double-check exactly those digits, so precision matters more than for imageAlign. ' +
+    'Box the printed field, never the MRZ line; for idNo box the clearest single copy of the number. Omit a field from "fieldBoxes" entirely if you left its value empty. These boxes are used to re-crop and double-check exactly those digits, so precision matters. ' +
     'Also include a top-level "photoBox" object (same coordinate space/convention as fieldBoxes above — fractions 0 to 1 of THIS image exactly as given) locating the person\'s own portrait photo printed on the document, if one is visible: {"x0":0,"y0":0,"x1":1,"y1":1}, tight around just the photo itself (not its printed frame/border, not the surrounding text). If a second, smaller or faded "ghost" copy of the portrait is also printed, box the main (largest) portrait. Omit "photoBox" entirely if no portrait photo is visible on this document. ' +
-    'Also include a top-level "imageAlign" object (for both document types) describing how to straighten the ORIGINAL photo: ' +
-    '{"rotate":0,"crop":{"x0":0,"y0":0,"x1":1,"y1":1},"corners":{"tl":{"x":0,"y":0},"tr":{"x":1,"y":0},"br":{"x":1,"y":1},"bl":{"x":0,"y":1}}} — ' +
-    '"rotate" is the clockwise degrees needed to make the document upright and right-reading, and MUST be exactly one of 0, 90, 180, 270 (use 0 if already upright); ' +
-    '"corners" are the document\'s four actual physical corners (tl/tr/br/bl = top-left/top-right/bottom-right/bottom-left AS THE DOCUMENT WILL APPEAR AFTER "rotate" is applied, but each point\'s x/y given as fractions, 0 to 1, of the ORIGINAL pre-rotation image width/height) — trace the document\'s true outline even if the photo was taken at an angle (so the four points form a skewed quadrilateral, not necessarily an axis-aligned rectangle), never cutting off any printed text, photo, or edge; ' +
-    '"crop" is a simple axis-aligned bounding box fallback covering the same area (x0/y0 top-left, x1/y1 bottom-right, each 0 to 1, measured against the same pre-rotation image) — kept only for older clients that don\'t use "corners". ' +
-    'If the document already fills the frame, use the full-frame defaults shown above. ' +
+    // imageAlign was dropped from the output (2026-10-01): the client
+    // straightens pages itself (aiDetectAlign + finalTightenPass) and no live
+    // path read it, so it was only extra output tokens per scan.
     'Return ONLY the JSON object, compact with no extra whitespace or line breaks between fields.';
 
   var payload = {
@@ -1901,15 +1898,12 @@ function aiReadSefach(body){
   var SYSTEM = 'You are looking at an EXTRA page of an Israeli ID whose front was already read: either the paper ספח (C below) or the BACK of the biometric card (B below). ' +
     'Do NOT determine a document type or look for a portrait — you already know what this is. ' +
     'Extract exactly these fields and return ONLY valid JSON, no prose, no markdown, no code fences: ' +
-    '{"type":"israeli_id","idNo":"holder\'s 9-digit number, or empty","address":"street name only","houseNumber":"house/building number only","city":"city/town name","maritalStatus":"single, married, divorced, widowed, or empty","sex":"M, F, or empty","spouse":{"surname":"...","given":"...","idNo":"9-digit number or empty"},"children":[{"name":"given surname","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}],"imageAlign":{"rotate":0,"corners":{"tl":{"x":0,"y":0},"tr":{"x":1,"y":0},"br":{"x":1,"y":1},"bl":{"x":0,"y":1}}}} ' +
+    '{"type":"israeli_id","idNo":"holder\'s 9-digit number, or empty","address":"street name only","houseNumber":"house/building number only","city":"city/town name","maritalStatus":"single, married, divorced, widowed, or empty","sex":"M, F, or empty","spouse":{"surname":"...","given":"...","idNo":"9-digit number or empty"},"children":[{"name":"given surname","idNo":"9-digit number or empty","dob":"DD/MM/YYYY"}]} ' +
     '"type" is always the literal string "israeli_id". ' +
     'The holder\'s ID number is used only as a cross-check against the front, so read it if printed. ' +
     'The biometric card back has no address and no children — for that page return address, houseNumber, city and maritalStatus as empty strings, an empty "spouse" and "children":[]; read idNo and sex from it. ' +
     IL_ID_FIELD_MAP +
     'If a field is not visible or unreadable, use an empty string (or empty array for children) — never guess. ' +
-    '"imageAlign" describes how to straighten the ORIGINAL photo, same as for a full document read: ' +
-    '"rotate" is the clockwise degrees needed to make the card/page upright and right-reading, MUST be exactly one of 0, 90, 180, 270; ' +
-    '"corners" are the document\'s four actual physical corners (tl/tr/br/bl, AS THE DOCUMENT WILL APPEAR AFTER "rotate" is applied, each x/y a fraction 0 to 1 of the ORIGINAL pre-rotation image) — trace its true outline even if photographed at an angle, never cutting off any edge; if it already fills the frame upright, use the full-frame defaults shown above. ' +
     'Return ONLY the JSON object, compact with no extra whitespace or line breaks between fields.';
 
   var payload = {

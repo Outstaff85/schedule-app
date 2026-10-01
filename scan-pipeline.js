@@ -143,6 +143,12 @@ async function onScanFilesSelected(fileList){
     // never fires for that path (nothing is ever missing after the first hit).
     // CORE_FIELDS/missingCore are module-scope now (shared with
     // processAllPendingPages() below) — see their own comment.
+    // Shrink every page to the AI's useful resolution before any upload —
+    // raw phone photos and 2.5x-rendered PDF pages are several MB each
+    // (same downscaleForUpload() the single-photo path already uses).
+    await Promise.all(items.map(async it=>{ const d=await downscaleForUpload(it.b64,it.mediaType); it.b64=d.b64; it.mediaType=d.mediaType; }));
+    const isForm101Page=it=>/כרטיס\s*עובד|0101\/130/.test(it.text||'');
+    const sefachReads=new Map();
     let needMore=false;
     const otherPages=[];
     for(let i=0;i<items.length;i++){
@@ -150,7 +156,7 @@ async function onScanFilesSelected(fileList){
       stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
         +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
         +'<span>קורא עמוד '+(i+1)+' מתוך '+items.length+'…</span></div>';
-      if(/כרטיס\s*עובד|0101\/130/.test(it.text||'')) continue; // старая Форма 101 — отбрасываем
+      if(isForm101Page(it)) continue; // старая Форма 101 — отбрасываем
       let thisPageParsed=null;
       if(!foundParsed){
         try{
@@ -158,6 +164,9 @@ async function onScanFilesSelected(fileList){
           const json=await resp.json();
           const p=json&&json.parsed;
           if(p&&(p.type==='israeli_id'||p.type==='passport')){
+            // Start the following pages' ספח reads now, in parallel with this
+            // page's digit re-check (merged in page order below, unchanged).
+            if(missingCore(p)) for(let j=i+1;j<items.length;j++) if(!isForm101Page(items[j])) sefachReads.set(j,readSefachPage(items[j]));
             // Same zoomed-in digit re-check as the single-photo path (runOcr) —
             // a wrong ID/date digit is just as costly whether it came from one
             // photo or a multi-file packet.
@@ -177,9 +186,7 @@ async function onScanFilesSelected(fileList){
           // with the narrow aiReadSefach (smaller prompt/output, always
           // type:israeli_id) instead of the full aiReadDoc, which re-derived
           // type/fieldBoxes/photoBox for nothing and was noticeably slower.
-          const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadSefach',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
-          const json=await resp.json();
-          const p=json&&json.parsed;
+          const p=sefachReads.has(i)?await sefachReads.get(i):await readSefachPage(it);
           if(p&&p.type==='israeli_id'){
             // Reuse the same field list/merge the single-page-at-a-time flow
             // uses (ID_CORE_FIELDS/mergeIsraeliIdFields), not just the four
@@ -1504,6 +1511,21 @@ function removePendingScanPage(i){
 // One blurry page aborts the loop and is dropped from the queue on its own —
 // per user decision, the rest of the (already-cropped) queue is preserved
 // rather than losing the whole batch over one bad photo.
+// One extra-page read with the narrow aiReadSefach (ספח or biometric card
+// back). Never throws — a failed read resolves null, same as "nothing found".
+function readSefachPage(it){
+  return fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadSefach',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})})
+    .then(r=>r.json()).then(j=>(j&&j.parsed)||null)
+    .catch(e=>{ console.error(e); return null; });
+}
+// Speed (2026-10-01): pages are no longer processed strictly one after
+// another. Phase 1 straightens + enhances EVERY queued page at once
+// (aiDetectAlign + preprocess_scan, independent per page). Phase 2 reads:
+// the primary page through aiReadDoc, and as soon as it is known to be an
+// Israeli ID that still misses core fields, the following pages' aiReadSefach
+// reads start in the background while the primary's digits are re-verified.
+// Results are still merged strictly in page order with the same needMore
+// rule, so the merged record is identical to the old sequential loop.
 async function processAllPendingPages(){
   const queue=(window.__pendingScanPages||[]).slice();
   if(!queue.length) return;
@@ -1522,81 +1544,58 @@ async function processAllPendingPages(){
   let needMore=missingCore(foundParsed);
   const otherPages=resuming?window.__aiPacketOtherPages.slice():[];
   let pageParsed=resuming?window.__aiPageParsed.slice():[];
-  // Sub-step progress within each page (added 2026-09-30, per user request)
-  // — pageBasePct/pageSpanPct turn "page i of N" into a real, continuously
-  // advancing percentage across that page's own align/enhance/read/tighten
-  // steps, instead of the bar only jumping once per whole page.
-  for(let i=0;i<queue.length;i++){
-    const pageBasePct=(i/queue.length)*100, pageSpanPct=100/queue.length;
-    const subPct=frac=>Math.round(pageBasePct+pageSpanPct*frac);
-    renderScanProgress('מיישר את התמונה… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0));
-    let it=queue[i];
-    // Cheap Haiku-based corner detection (autoPreAlignScan/aiDetectAlign,
-    // revived 2026-09-26 — see its own comment for the full history) runs
-    // BEFORE preAlignScan's classical-CV attempt: a real-photo diagnostic
-    // this same day showed the OpenCV detector (_find_document_quad)
-    // failing to close a clean contour on an actual scan (uneven, non-pure-
-    // black real background) even after hardening — a vision-model read is
-    // inherently more robust on messy real photos than hand-tuned edge
-    // heuristics, and this is cheap enough (small prompt, no field
-    // extraction, Haiku) to run on every queued page. preAlignScan's own
-    // classical-CV pass still runs afterward as a harmless no-cost fallback
-    // (it already safely no-ops when it can't find a confident quad).
+  const total=queue.length;
+
+  // Phase 1 — align (cheap Haiku corners, see autoPreAlignScan) and enhance
+  // + blur-check (preprocess_scan) all pages concurrently.
+  let prepDone=0;
+  renderScanProgress('מיישר ומשפר את התמונות… (0 מתוך '+total+')',2);
+  const prepared=await Promise.all(queue.map(async q=>{
+    let it=q;
     try{ it=await autoPreAlignScan(it.b64,it.mediaType); }
     catch(e){ console.error(e); }
-    renderScanProgress('משפר איכות… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.25));
     let pre;
     try{ pre=await preAlignScan(it.b64,it.mediaType); }
     catch(e){ console.error(e); pre={b64:it.b64,mediaType:it.mediaType}; }
-    if(pre.blurry){
-      // `queue` is a snapshot (.slice() above) of window.__pendingScanPages
-      // taken before this loop started — pages at indices 0..i-1 have already
-      // been consumed into foundParsed/otherPages this run, and the page at i
-      // is the blurry one being dropped, so the real queue must become
-      // whatever comes AFTER it (queue.slice(i+1)), not just "everything minus
-      // the one blurry item" — leaving the already-consumed prefix in
-      // window.__pendingScanPages made a later "process" reprocess (and
-      // duplicate into otherPages) pages that were already merged in.
-      window.__pendingScanPages=queue.slice(i+1);
-      window.__aiPacketOtherPages=otherPages;
-      window.__aiPageParsed=pageParsed;
-      if(foundParsed){ window.__aiParsed=foundParsed; window.__aiPrimaryParsed=foundParsed; }
-      stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">תמונה '+(i+1)+' מטושטשת מדי, הוסרה מהתור. צלמו אותה מחדש<br><br>'
-        +'<button class="btn sm" onclick="renderPendingPagesPrompt()">חזרה לתור</button></div>';
-      return;
-    }
-    it={b64:pre.b64,mediaType:pre.mediaType};
+    prepDone++;
+    renderScanProgress('מיישר ומשפר את התמונות… ('+prepDone+' מתוך '+total+')',Math.round(40*prepDone/total));
+    return pre;
+  }));
+  // A blurry page stops the run there, exactly like the old loop: pages
+  // before it are read and merged, it is dropped, pages after it stay queued.
+  const blurIdx=prepared.findIndex(x=>x&&x.blurry);
+  const usable=(blurIdx>=0?prepared.slice(0,blurIdx):prepared).map(x=>({b64:x.b64,mediaType:x.mediaType}));
+
+  // Phase 2 — reads.
+  const sefachReads=new Map();
+  const prefetchSefachFrom=start=>{ for(let j=start;j<usable.length;j++) if(!sefachReads.has(j)) sefachReads.set(j,readSefachPage(usable[j])); };
+  if(foundParsed&&needMore) prefetchSefachFrom(0); // resumed session: every queued page is an extra page
+  const readPct=i=>Math.round(40+50*(i+1)/Math.max(1,usable.length));
+  for(let i=0;i<usable.length;i++){
+    let it=usable[i];
     let thisPageParsed=null;
     if(!foundParsed){
       try{
-        renderScanProgress('ה-AI קורא את המסמך… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.45));
+        renderScanProgress('ה-AI קורא את המסמך… (עמוד '+(i+1)+' מתוך '+total+')',Math.max(45,readPct(i)-30));
         const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
         const json=await resp.json();
         const p=json&&json.parsed;
         if(p&&(p.type==='israeli_id'||p.type==='passport')){
-          if(p.fieldBoxes) renderScanProgress('בודק שוב את הספרות… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.7));
+          // Start the following pages' ספח reads now, so they run while this
+          // page's digits are being re-verified below.
+          if(missingCore(p)) prefetchSefachFrom(i+1);
+          if(p.fieldBoxes) renderScanProgress('בודק שוב את הספרות… (עמוד '+(i+1)+' מתוך '+total+')',Math.max(55,readPct(i)-20));
           foundParsed=p.fieldBoxes?await verifyDigitFields(p,it.b64,it.mediaType):p;
           foundParsed=await verifyIdChecksum(foundParsed,it.b64,it.mediaType);
-          // Routed through initPrimaryFromFirstPage() (2026-09-27, unifying
-          // with rebuildPrimaryFromPages()'s own logic — see that function's
-          // comment) rather than used directly: this flow's own pages are
-          // never __isSefachScan-tagged (only the dedicated aiReadSefach path
-          // sets that), so the only practical effect here is resetting any
-          // stale window.__aiPendingSefachIdNo left over from elsewhere in the
-          // tab — cheap, harmless hygiene, and keeps this branch computing the
-          // exact same shape of primary record removeExtraScanPage()'s replay
-          // (rebuildPrimaryFromPages) would, so removing a later page never
-          // recomputes the primary any differently than how it was first built.
+          // Routed through initPrimaryFromFirstPage() so this computes the
+          // same primary record removeExtraScanPage()'s replay
+          // (rebuildPrimaryFromPages) would.
           foundParsed=initPrimaryFromFirstPage(foundParsed);
           // Avatar crop uses photoBox coordinates, which are relative to `it`
           // as sent to aiReadDoc — must run before finalTightenPass below
           // could change the image's coordinate space.
           window.__aiAvatarB64=p.photoBox?await cropPortraitAvatar(it.b64,it.mediaType,p.photoBox):null;
-          // p.imageAlign is no longer used for a second geometric tightening
-          // pass here (refineWithAiAlign() removed 2026-09-30 — see its own
-          // removal note near finalTightenPass); finalTightenPass alone
-          // (pure local pixel math, no AI call) tightens `it` below.
-          renderScanProgress('מחדד קצוות… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.9));
+          renderScanProgress('מחדד קצוות… (עמוד '+(i+1)+' מתוך '+total+')',readPct(i));
           window.__aiScanImage=await finalTightenPass(it);
           needMore=missingCore(foundParsed);
           pageParsed=[foundParsed];
@@ -1604,38 +1603,36 @@ async function processAllPendingPages(){
         }
       }catch(e){ console.error(e); }
     } else if(needMore){
-      try{
-        renderScanProgress('ה-AI קורא את הספח… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.45));
-        // Same as the multi-file path: an extra page after an Israeli-ID
-        // primary is the ספח — narrow aiReadSefach, not the full aiReadDoc.
-        const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadSefach',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
-        const json=await resp.json();
-        const p=json&&json.parsed;
-        if(p&&p.type==='israeli_id'){
-          // mergeScanPage() (2026-09-27, was mergeIsraeliIdFields() directly)
-          // — unifies with rebuildPrimaryFromPages()'s own merge logic (used
-          // when a page is later removed via removeExtraScanPage(), see its
-          // comment) so removing a page never recomputes the primary record
-          // any differently than how this loop first built it. Also a real
-          // fix on its own: mergeIsraeliIdFields() alone never backfills a
-          // missing idNo from a later page (idNo isn't in ID_CORE_FIELDS),
-          // silently leaving it blank even when a later-scanned page read it
-          // fine; mergeScanPage() does.
-          foundParsed=mergeScanPage(foundParsed,p);
-          thisPageParsed=p;
-        }
-        needMore=missingCore(foundParsed);
-      }catch(e){ console.error(e); }
+      renderScanProgress('ה-AI קורא את הספח… (עמוד '+(i+1)+' מתוך '+total+')',Math.max(60,readPct(i)-10));
+      // Same as the multi-file path: an extra page after an Israeli-ID
+      // primary is the ספח (or the card back) — narrow aiReadSefach, usually
+      // already in flight from the prefetch above.
+      const p=sefachReads.has(i)?await sefachReads.get(i):await readSefachPage(it);
+      if(p&&p.type==='israeli_id'){
+        // mergeScanPage() — same merge rebuildPrimaryFromPages() replays when
+        // a page is removed later, and it also backfills a missing idNo.
+        foundParsed=mergeScanPage(foundParsed,p);
+        thisPageParsed=p;
+      }
+      needMore=missingCore(foundParsed);
     }
     // finalTightenPass (pure local pixel math, no AI call) runs on every
-    // page regardless of which branch above ran (or none at all, for a page
-    // needing no aiReadDoc call because every core field was already
-    // complete) — it's the only geometric tightening pass left after
-    // refineWithAiAlign()'s removal (2026-09-30, see its own removal note).
-    renderScanProgress('מחדד קצוות… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.9));
+    // extra page too.
+    renderScanProgress('מחדד קצוות… (עמוד '+(i+1)+' מתוך '+total+')',readPct(i));
     it=await finalTightenPass(it);
     pageParsed.push(thisPageParsed);
     otherPages.push(it);
+  }
+  if(blurIdx>=0){
+    // `queue` is a snapshot taken before this run: pages before blurIdx were
+    // consumed above, the blurry one is dropped, the rest stay queued.
+    window.__pendingScanPages=queue.slice(blurIdx+1);
+    window.__aiPacketOtherPages=otherPages;
+    window.__aiPageParsed=pageParsed;
+    if(foundParsed){ window.__aiParsed=foundParsed; window.__aiPrimaryParsed=foundParsed; }
+    stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">תמונה '+(blurIdx+1)+' מטושטשת מדי, הוסרה מהתור. צלמו אותה מחדש<br><br>'
+      +'<button class="btn sm" onclick="renderPendingPagesPrompt()">חזרה לתור</button></div>';
+    return;
   }
   renderScanProgress('הושלם',100);
   window.__pendingScanPages=[];
