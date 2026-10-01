@@ -101,7 +101,9 @@ async function onScanFilesSelected(fileList){
     // in parallel (shared filesToUploadPages(), schedule-manager.html).
     // text (pdf.js's own text layer, free/local) is only used to spot an
     // already-filled Form 101 page below.
+    const tm={t0:Date.now(),prepMs:0,classifyMs:0,primaryReadMs:0,verifyMs:0,extraWaitMs:0};
     const items=await filesToUploadPages(files);
+    tm.prepMs=Date.now()-tm.t0;
     // Classify: drop pages that are already a filled Form 101 (we always
     // generate our own, see aiFillForm101), find the first ID/passport page
     // for the worker card, keep everything else ("contract" etc.) as-is.
@@ -125,7 +127,9 @@ async function onScanFilesSelected(fileList){
     const isForm101Page=it=>/כרטיס\s*עובד|0101\/130/.test(it.text||'');
     // Page types from the cheap Haiku classifier, all pages at once — a
     // contract/other page is attached without an expensive AI read.
+    const cs=Date.now();
     await Promise.all(items.map(async it=>{ it.kind=isForm101Page(it)?null:await classifyPage(it); }));
+    tm.classifyMs=Date.now()-cs;
     const sefachReads=new Map();
     let needMore=false;
     const otherPages=[];
@@ -138,8 +142,10 @@ async function onScanFilesSelected(fileList){
       let thisPageParsed=null;
       if(!foundParsed&&!isNonIdKind(it.kind)){
         try{
+          const rs=Date.now();
           const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
           const json=await resp.json();
+          tm.primaryReadMs+=Date.now()-rs;
           const p=json&&json.parsed;
           if(p&&(p.type==='israeli_id'||p.type==='passport')){
             // Start the following pages' ספח reads now, in parallel with this
@@ -148,8 +154,10 @@ async function onScanFilesSelected(fileList){
             // Same zoomed-in digit re-check as the single-photo path (runOcr) —
             // a wrong ID/date digit is just as costly whether it came from one
             // photo or a multi-file packet.
+            const vs=Date.now();
             foundParsed=p.fieldBoxes?await verifyDigitFields(p,it.b64,it.mediaType):p;
             foundParsed=await verifyIdChecksum(foundParsed,it.b64,it.mediaType);
+            tm.verifyMs+=Date.now()-vs;
             window.__aiScanImage={b64:it.b64,mediaType:it.mediaType};
             window.__aiAvatarB64=p.photoBox?await cropPortraitAvatar(it.b64,it.mediaType,p.photoBox):null;
             needMore=missingCore(foundParsed);
@@ -165,7 +173,9 @@ async function onScanFilesSelected(fileList){
           // type:israeli_id) instead of the full aiReadDoc, which re-derived
           // type/fieldBoxes/photoBox for nothing and was noticeably slower.
           const rd=extraPageReader(it.kind);
+          const ws=Date.now();
           const p=sefachReads.has(i)?await sefachReads.get(i):(rd?await rd(it):null);
+          tm.extraWaitMs+=Date.now()-ws;
           if(p&&p.type==='israeli_id'){
             // Reuse the same field list/merge the single-page-at-a-time flow
             // uses (ID_CORE_FIELDS/mergeIsraeliIdFields), not just the four
@@ -199,6 +209,9 @@ async function onScanFilesSelected(fileList){
       otherPages.push({b64:it.b64,mediaType:it.mediaType});
     }
     window.__aiPacketOtherPages=otherPages;
+    if(typeof reportTiming==='function') reportTiming('scanFiles',Date.now()-tm.t0,{files:files.length,pages:items.length,
+      kinds:items.map(x=>x.kind||'?'),prepMs:tm.prepMs,classifyMs:tm.classifyMs,primaryReadMs:tm.primaryReadMs,verifyMs:tm.verifyMs,
+      extraWaitMs:tm.extraWaitMs,docType:foundParsed&&foundParsed.type||'',aborted:foundParsed?undefined:'no-document'});
     if(!foundParsed){
       stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">לא נמצאה תעודת זהות/דרכון בקבצים שהועלו<br><br>'
         +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
@@ -1544,6 +1557,8 @@ async function processAllPendingPages(){
   const otherPages=resuming?window.__aiPacketOtherPages.slice():[];
   let pageParsed=resuming?window.__aiPageParsed.slice():[];
   const total=queue.length;
+  // Speed telemetry (reportTiming → Admin → Timings): whole run + phases.
+  const tm={t0:Date.now(),prepMs:0,primaryReadMs:0,verifyMs:0,extraWaitMs:0};
 
   // Phase 1 — align (cheap Haiku corners, see autoPreAlignScan) and enhance
   // + blur-check (preprocess_scan) all pages concurrently.
@@ -1562,7 +1577,11 @@ async function processAllPendingPages(){
   }));
   // A blurry page stops the run there, exactly like the old loop: pages
   // before it are read and merged, it is dropped, pages after it stay queued.
+  tm.prepMs=Date.now()-tm.t0;
   const blurIdx=prepared.findIndex(x=>x&&x.blurry);
+  const scanTiming=extra=>{ if(typeof reportTiming==='function') reportTiming('scan',Date.now()-tm.t0,Object.assign({pages:total,
+    kinds:prepared.map(x=>x&&x.kind||'?'),prepMs:tm.prepMs,primaryReadMs:tm.primaryReadMs,verifyMs:tm.verifyMs,extraWaitMs:tm.extraWaitMs,
+    docType:foundParsed&&foundParsed.type||''},extra||{})); };
   const usable=(blurIdx>=0?prepared.slice(0,blurIdx):prepared).map(x=>({b64:x.b64,mediaType:x.mediaType,kind:x.kind}));
 
   // Phase 2 — reads.
@@ -1578,16 +1597,20 @@ async function processAllPendingPages(){
     if(!foundParsed&&!isNonIdKind(kind)){
       try{
         renderScanProgress('ה-AI קורא את המסמך… (עמוד '+(i+1)+' מתוך '+total+')',Math.max(45,readPct(i)-30));
+        const rs=Date.now();
         const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
         const json=await resp.json();
+        tm.primaryReadMs+=Date.now()-rs;
         const p=json&&json.parsed;
         if(p&&(p.type==='israeli_id'||p.type==='passport')){
           // Start the following pages' ספח reads now, so they run while this
           // page's digits are being re-verified below.
           if(missingCore(p)) prefetchSefachFrom(i+1);
           if(p.fieldBoxes) renderScanProgress('בודק שוב את הספרות… (עמוד '+(i+1)+' מתוך '+total+')',Math.max(55,readPct(i)-20));
+          const vs=Date.now();
           foundParsed=p.fieldBoxes?await verifyDigitFields(p,it.b64,it.mediaType):p;
           foundParsed=await verifyIdChecksum(foundParsed,it.b64,it.mediaType);
+          tm.verifyMs+=Date.now()-vs;
           // Routed through initPrimaryFromFirstPage() so this computes the
           // same primary record removeExtraScanPage()'s replay
           // (rebuildPrimaryFromPages) would.
@@ -1609,7 +1632,9 @@ async function processAllPendingPages(){
       // primary is the ספח (or the card back) — narrow aiReadSefach, usually
       // already in flight from the prefetch above.
       const rd=extraPageReader(kind);
+      const ws=Date.now();
       const p=sefachReads.has(i)?await sefachReads.get(i):(rd?await rd(it):null);
+      tm.extraWaitMs+=Date.now()-ws;
       if(p&&p.type==='israeli_id'){
         // mergeScanPage() — same merge rebuildPrimaryFromPages() replays when
         // a page is removed later, and it also backfills a missing idNo.
@@ -1632,11 +1657,13 @@ async function processAllPendingPages(){
     window.__aiPacketOtherPages=otherPages;
     window.__aiPageParsed=pageParsed;
     if(foundParsed){ window.__aiParsed=foundParsed; window.__aiPrimaryParsed=foundParsed; }
+    scanTiming({aborted:'blurry'});
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">תמונה '+(blurIdx+1)+' מטושטשת מדי, הוסרה מהתור. צלמו אותה מחדש<br><br>'
       +'<button class="btn sm" onclick="renderPendingPagesPrompt()">חזרה לתור</button></div>';
     return;
   }
   renderScanProgress('הושלם',100);
+  scanTiming(foundParsed?{}:{aborted:'no-document'});
   window.__pendingScanPages=[];
   window.__aiPacketOtherPages=otherPages;
   window.__aiPageParsed=pageParsed;

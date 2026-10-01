@@ -594,6 +594,7 @@
         <button class="btn sm" id="adminPaneBtn_firms" onclick="switchAdminPane('firms')"><i class="ti ti-building-skyscraper"></i> Firms</button>
         <button class="btn sm" id="adminPaneBtn_users" onclick="switchAdminPane('users')"><i class="ti ti-users"></i> Users</button>
         <button class="btn sm" id="adminPaneBtn_errors" onclick="switchAdminPane('errors')"><i class="ti ti-alert-circle"></i> Errors</button>
+        <button class="btn sm" id="adminPaneBtn_timings" onclick="switchAdminPane('timings')"><i class="ti ti-stopwatch"></i> Timings</button>
         <button class="btn sm" id="adminPaneBtn_profile" onclick="switchAdminPane('profile')"><i class="ti ti-building"></i> Profile</button>
       </div>
 
@@ -673,6 +674,10 @@
       <div id="adminPane_errors" style="display:none">
         <div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="loadErrorsList('adminErrorsList')"><i class="ti ti-refresh"></i> Refresh</button></div>
         <div id="adminErrorsList" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+      <div id="adminPane_timings" style="display:none">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="loadTimingsPane()"><i class="ti ti-refresh"></i> Refresh</button></div>
+        <div id="adminTimingsWrap"></div>
       </div>
       <div id="adminPane_profile" style="display:none">
         <div style="color:var(--text2);font-size:13px;margin-bottom:10px">Company profile data used on Form 101.</div>
@@ -3772,7 +3777,7 @@ const SESSION_RETRY_DELAYS_MS = [0, 500]; // attempt 2 immediate, attempt 3 afte
     }).catch(()=>res);
   }
   // Telemetry calls must never trigger the session-expired logout flow.
-  const NO_LOGOUT_ACTIONS = ['logError','authFailure','login'];
+  const NO_LOGOUT_ACTIONS = ['logError','authFailure','login','logTiming'];
   window.fetch = function(url, opts){
     let isGsCall = typeof url === 'string' && url.indexOf(GS_URL) === 0;
     if(isGsCall){ try{ const a=JSON.parse((opts&&opts.body)||'{}').action; if(NO_LOGOUT_ACTIONS.indexOf(a)!==-1) isGsCall=false; }catch(e){} }
@@ -3789,8 +3794,10 @@ async function submitLogin(){
   if(!username || !password){ errEl.textContent = 'Введите логин и пароль'; return; }
   btn.disabled = true; btn.textContent = 'Вхожу…';
   try{
+    const t0 = Date.now();
     const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'login', username, password }) });
     const json = await res.json();
+    try{ sessionStorage.setItem('pendingLoginTiming', JSON.stringify({t0, loginMs:Date.now()-t0, pingMs:window.__pingMs==null?null:window.__pingMs, pingDone:window.__pingMs!=null})); }catch(e){}
     if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось войти'; return; }
     // A super-admin's login reply already carries the Firms list — cached so
     // the Firms screen right after the reload renders without another call.
@@ -3906,7 +3913,8 @@ function gateApp(runInitApp){
     document.getElementById('loginScreen').style.display = 'flex';
     // Wake a cold Apps Script instance while the user types, so the login
     // request itself doesn't pay the cold start (doGet 'ping', no auth).
-    fetch(GS_URL+'?action=ping').catch(()=>{});
+    const pingT0=Date.now();
+    fetch(GS_URL+'?action=ping').then(()=>{ window.__pingMs=Date.now()-pingT0; }).catch(()=>{});
     return;
   }
   if(s.role === 'superadmin' && !s.viewingTenantId){
@@ -3995,7 +4003,8 @@ async function renderFirmsList(targetId){
   __firmsListTarget = targetId || 'firmsList';
   const listEl = document.getElementById(__firmsListTarget);
   const cached = loadFirmsCache();
-  if(cached) renderFirmsRows(listEl, cached);
+  const isLanding = __firmsListTarget==='firmsList';
+  if(cached){ renderFirmsRows(listEl, cached); if(isLanding) markFirstContent(); }
   else listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
   try{
     const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'listTenants', ...gsAuth() }) });
@@ -4004,6 +4013,7 @@ async function renderFirmsList(targetId){
     const tenants = json.tenants || [];
     saveFirmsCache(tenants);
     renderFirmsRows(listEl, tenants);
+    if(isLanding) markFreshContent('firms');
   }catch(e){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
 }
 
@@ -4036,6 +4046,7 @@ function setupAdminPaneBar(){
   const isAdminRole = isSuper || s.role === 'tenant_admin';
   document.getElementById('adminPaneBtn_firms').style.display = isSuper ? '' : 'none';
   document.getElementById('adminPaneBtn_errors').style.display = isSuper ? '' : 'none';
+  document.getElementById('adminPaneBtn_timings').style.display = isSuper ? '' : 'none';
   document.getElementById('adminPaneBtn_users').style.display = isAdminRole ? '' : 'none';
   document.getElementById('adminPaneBtn_profile').style.display = isAdminRole ? '' : 'none';
   // Clear Log deletes from the database — owner/super-admin only, matching
@@ -4049,10 +4060,11 @@ const ADMIN_PANE_SUBTITLES = {
   firms: 'Firms (super-admin)',
   users: 'Staff and supplier logins for this firm',
   errors: 'Last ~100 client-side errors, every firm',
+  timings: 'How long login, app open and scans take (real devices, every firm)',
   profile: 'Company profile data used on Form 101',
 };
 function switchAdminPane(pane){
-  ['punchlog','firms','users','errors','profile'].forEach(p=>{
+  ['punchlog','firms','users','errors','timings','profile'].forEach(p=>{
     const el = document.getElementById('adminPane_'+p);
     if(el) el.style.display = p===pane ? 'block' : 'none';
     const btn = document.getElementById('adminPaneBtn_'+p);
@@ -4064,6 +4076,7 @@ function switchAdminPane(pane){
   if(sub) sub.textContent = ADMIN_PANE_SUBTITLES[pane] || '';
   if(pane==='firms') renderFirmsList('adminFirmsList');
   else if(pane==='errors') loadErrorsList('adminErrorsList');
+  else if(pane==='timings') loadTimingsPane();
   else if(pane==='users') renderAdminUsers();
 }
 // ── Users tab (Admin panel, added 2026-10-02, Admin/Roles plan stage 6) ────
@@ -4341,6 +4354,58 @@ function renderErrorsRows(listEl, targetId, rows){
         </div>
         <div style="word-break:break-word">${esc(r.message||'')}</div>
       </div>`).join('');
+}
+// ── Admin → Timings (super-admin) ─────────────────────────────────────────
+// Summary per kind over the last 7 days (median / 90th percentile of the
+// total and of each phase), then the latest 50 measurements.
+const TIMING_PHASES = {
+  login: [['loginRequestMs','Login request'],['firstContentMs','First content'],['pingMs','Wake-up ping']],
+  open:  [['firstContentMs','First content']],
+  scan:  [['prepMs','Align + enhance'],['primaryReadMs','AI read'],['verifyMs','Digit re-check'],['extraWaitMs','Wait for ספח']],
+  scanFiles: [['prepMs','Prepare files'],['classifyMs','Classify pages'],['primaryReadMs','AI read'],['verifyMs','Digit re-check'],['extraWaitMs','Wait for ספח']],
+};
+function _pct(arr,p){ if(!arr.length) return null; const a=[...arr].sort((x,y)=>x-y); return a[Math.min(a.length-1,Math.floor(p*(a.length-1)+0.5))]; }
+const _sec=ms=>ms==null?'—':(ms/1000).toFixed(1)+'s';
+async function loadTimingsPane(){
+  const el=document.getElementById('adminTimingsWrap'); if(!el) return;
+  const cached=loadAdminCache('timings');
+  if(Array.isArray(cached)) renderTimingsPane(el,cached);
+  else el.innerHTML='<div style="color:var(--text2);font-size:13px">Loading…</div>';
+  try{
+    const res=await fetch(GS_URL+'?action=loadTimings'+gsAuthQuery());
+    const json=await res.json();
+    if(!json||json.error){ if(!cached) el.innerHTML='<div style="color:#ff6b78">'+esc((json&&json.error)||'Load failed')+'</div>'; return; }
+    saveAdminCache('timings',json.rows||[]);
+    renderTimingsPane(el,json.rows||[]);
+  }catch(e){ if(!cached) el.innerHTML='<div style="color:#ff6b78">Network error</div>'; }
+}
+function renderTimingsPane(el,rows){
+  if(!rows.length){ el.innerHTML='<div style="color:var(--text2);font-size:13px">No measurements yet — they appear after the next login, app open or scan.</div>'; return; }
+  const weekAgo=Date.now()-7*864e5;
+  const recent=rows.filter(r=>new Date(r.when).getTime()>=weekAgo&&!(r.details&&r.details.aborted));
+  const kinds=['login','open','scan','scanFiles'].filter(k=>recent.some(r=>r.kind===k));
+  const firms=(__firmsCache&&__firmsCache.length)?__firmsCache:(loadFirmsCache()||[]);
+  const firmName=id=>{ const t=firms.find(x=>x.tenantId===id); return t?(t.companyName||id):(id||'—'); };
+  const KIND_LABEL={login:'Login → fresh data',open:'App open',scan:'Scan (camera)',scanFiles:'Scan (files)'};
+  const summary=kinds.map(k=>{
+    const rs=recent.filter(r=>r.kind===k), tot=rs.map(r=>r.totalMs);
+    const phases=(TIMING_PHASES[k]||[]).map(([key,label])=>{ const v=rs.map(r=>r.details&&r.details[key]).filter(x=>typeof x==='number'); return v.length?`${esc(label)} ${_sec(_pct(v,0.5))}`:''; }).filter(Boolean).join(' · ');
+    return `<tr><td style="padding:6px 8px;font-weight:600">${esc(KIND_LABEL[k]||k)}</td><td style="padding:6px 8px;text-align:center">${rs.length}</td>
+      <td style="padding:6px 8px;text-align:center;font-weight:600">${_sec(_pct(tot,0.5))}</td><td style="padding:6px 8px;text-align:center">${_sec(_pct(tot,0.9))}</td>
+      <td style="padding:6px 8px;font-size:11px;color:var(--text2)">${phases}</td></tr>`;
+  }).join('');
+  const list=rows.slice(0,50).map(r=>{
+    const d=r.details||{};
+    const extra=(TIMING_PHASES[r.kind]||[]).map(([key,label])=>typeof d[key]==='number'?`${esc(label)} ${_sec(d[key])}`:'').filter(Boolean).join(' · ');
+    return `<div style="padding:8px 10px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:12px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;color:var(--text2)"><span>${esc(new Date(r.when).toLocaleString())}</span><span style="font-weight:600;color:var(--text)">${esc(KIND_LABEL[r.kind]||r.kind)}</span>
+        <span>${esc(firmName(r.tenantId))}</span><span>${esc(r.user||'')}</span><span>${esc(d.device||'')}</span>${d.pages?`<span>${d.pages} page(s)</span>`:''}${d.aborted?`<span style="color:#ffb020">${esc(d.aborted)}</span>`:''}</div>
+      <div><b>${_sec(r.totalMs)}</b>${extra?' — '+extra:''}</div></div>`;
+  }).join('');
+  el.innerHTML=`${kinds.length?`<div style="font-size:13px;font-weight:600;margin-bottom:6px">Last 7 days (median / 90%)</div>
+    <div style="overflow-x:auto;margin-bottom:14px"><table style="width:100%;border-collapse:collapse;font-size:12px">
+    <tr style="color:var(--text2);text-align:left"><th style="padding:6px 8px">What</th><th style="padding:6px 8px">Count</th><th style="padding:6px 8px">Median</th><th style="padding:6px 8px">90%</th><th style="padding:6px 8px">Median by step</th></tr>${summary}</table></div>`:''}
+    <div style="font-size:13px;font-weight:600;margin-bottom:6px">Latest</div><div style="display:flex;flex-direction:column;gap:6px">${list}</div>`;
 }
 function errorRowText(r){
   const head = [r.when ? new Date(r.when).toLocaleString() : '', r.page||'', r.source||''].filter(Boolean).join(' · ');
@@ -4712,6 +4777,7 @@ async function loadData(){
       const d = JSON.parse(raw);
       applyData(d);
       render();
+      markFirstContent();
     }
   }catch(e){}
 
@@ -4721,6 +4787,7 @@ async function loadData(){
     if(gd){
       applyData(gd);
       render();
+      markFreshContent('app');
       const gdJson = JSON.stringify(gd);
       localStorage.setItem(STORAGE_KEY(), gdJson);
       localStorage.setItem(STORAGE_KEY_BASE, gdJson); // legacy key for worker-punch.html's bridge, see autoSave()
@@ -6536,6 +6603,38 @@ async function regenerateAllWorkerDocs(){
 // --- Init ---------------------------------------------------------------------
 // Error telemetry: send client errors to the GS Errors sheet (throttled, silent).
 let _errSent={}, _errCount=0;
+// ── Speed telemetry (2026-10-01) ───────────────────────────────────────────
+// Fire-and-forget; lands in the Timings sheet, shown in Admin → Timings.
+function reportTiming(kind, totalMs, details){
+  try{
+    const s=getSession()||{};
+    fetch(GS_URL,{method:'POST',body:JSON.stringify({
+      action:'logTiming', secret:API_SECRET, kind, totalMs:Math.round(totalMs),
+      tenantId:s.viewingTenantId||s.tenantId||'', user:s.username||'', role:s.role||'',
+      details:Object.assign({device:/Mobi|Android|iPhone/i.test(navigator.userAgent)?'mobile':'desktop'},details||{})
+    })}).catch(()=>{});
+  }catch(e){}
+}
+// Login → first content → fresh data, measured across the reload that
+// follows a login (submitLogin stores its start in sessionStorage). Without
+// a pending login it measures a plain app open from page start instead.
+// markFirstContent(): cached or fresh content first painted;
+// markFreshContent(screen): fresh server data shown — reports once per page.
+const __pageStartEpoch=Math.round(performance.timeOrigin||Date.now());
+let __firstContentAt=null, __openTimingSent=false;
+function markFirstContent(){ if(!__firstContentAt) __firstContentAt=Date.now(); }
+function markFreshContent(screen){
+  if(__openTimingSent) return; __openTimingSent=true;
+  markFirstContent();
+  const now=Date.now();
+  let pending=null; try{ pending=JSON.parse(sessionStorage.getItem('pendingLoginTiming')||'null'); sessionStorage.removeItem('pendingLoginTiming'); }catch(e){}
+  if(pending&&pending.t0&&now-pending.t0<120000){
+    reportTiming('login', now-pending.t0, {screen, loginRequestMs:pending.loginMs, firstContentMs:__firstContentAt-pending.t0,
+      reloadToFreshMs:now-__pageStartEpoch, pingMs:pending.pingMs, pingDoneBeforeClick:pending.pingDone});
+  } else {
+    reportTiming('open', now-__pageStartEpoch, {screen, firstContentMs:__firstContentAt-__pageStartEpoch});
+  }
+}
 function reportError(message, source, stack){
   try{
     if(_errCount>20) return;                                  // hard cap per session
