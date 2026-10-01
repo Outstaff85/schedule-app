@@ -2862,7 +2862,7 @@ function renderHoursImportModal(){
       </select>
     </div>
     <div class="field"><label>File (Excel: Date/In/Out columns, or a photo/scan of a timesheet)</label>
-      <input type="file" id="hoursImportFile" accept=".xlsx,.xls,.csv,image/*" onchange="onHoursImportFileSelected(this.files[0])">
+      <input type="file" id="hoursImportFile" accept=".xlsx,.xls,.csv,image/*,application/pdf,.pdf" multiple onchange="onHoursImportFileSelected(this.files)">
     </div>
     <div id="hoursImportPreview" style="font-size:12px;color:var(--text3);min-height:20px"></div>
     <div class="modal-actions">
@@ -2880,20 +2880,26 @@ function renderHoursImportPreview(status){
     (__hoursImportEntries.length>10?`<div>…${__hoursImportEntries.length-10} more</div>`:'');
   document.getElementById('hoursImportSubmitBtn').disabled = false;
 }
-async function onHoursImportFileSelected(file){
-  if(!file) return;
+// Accepts one file or several (FileList/array). Spreadsheets are parsed
+// locally; images and PDFs go through the shared filesToUploadPages()
+// (shrunk before upload, PDFs page by page) and every page is read by
+// aiReadHoursTable in parallel. Entries keep file/page order.
+async function onHoursImportFileSelected(fileOrList){
+  const files=fileOrList instanceof File?[fileOrList]:[...(fileOrList||[])];
+  if(!files.length) return;
   __hoursImportEntries = [];
-  __hoursImportFileName = file.name;
+  __hoursImportFileName = files.map(f=>f.name).join(', ');
   document.getElementById('hoursImportSubmitBtn').disabled = true;
-  const isSpreadsheet = /\.(xlsx|xls|csv)$/i.test(file.name);
+  const isSpreadsheet = f=>/\.(xlsx|xls|csv)$/i.test(f.name);
   try{
-    if(isSpreadsheet){
-      renderHoursImportPreview('Parsing spreadsheet…');
-      __hoursImportEntries = await parseHoursExcelFile(file);
-    } else {
-      renderHoursImportPreview('Reading with AI…');
-      __hoursImportEntries = await parseHoursImageFile(file);
-    }
+    renderHoursImportPreview(files.some(f=>!isSpreadsheet(f))?'Reading with AI…':'Parsing spreadsheet…');
+    const perFile = await Promise.all(files.map(async f=>{
+      if(isSpreadsheet(f)) return parseHoursExcelFile(f);
+      const pages = await fileToUploadPages(f);
+      const perPage = await Promise.all(pages.map(parseHoursImagePage));
+      return perPage.flat();
+    }));
+    __hoursImportEntries = perFile.flat();
   }catch(err){
     showToast('Could not parse file: '+(err&&err.message||err));
     renderHoursImportPreview('');
@@ -2944,21 +2950,12 @@ function parseHoursExcelFile(file){
 // workaround). Uses the same aiReadHoursTable backend action added alongside
 // this stage; never writes anything itself — only returns entries for the
 // caller to route through the approval queue below.
-function parseHoursImageFile(file){
-  return new Promise((resolve,reject)=>{
-    const reader = new FileReader();
-    reader.onerror = ()=>reject(new Error('read failed'));
-    reader.onload = async ()=>{
-      try{
-        const b64 = reader.result.split(',')[1];
-        const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'aiReadHoursTable', ...gsAuth(), image:b64, mediaType: file.type||'image/jpeg' }) });
-        const json = await res.json();
-        if(json.error) throw new Error(json.error);
-        resolve(json.entries||[]);
-      }catch(e){ reject(e); }
-    };
-    reader.readAsDataURL(file);
-  });
+// One already-prepared page image ({b64,mediaType}) -> its shift entries.
+async function parseHoursImagePage(pg){
+  const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'aiReadHoursTable', ...gsAuth(), image:pg.b64, mediaType:pg.mediaType }) });
+  const json = await res.json();
+  if(json.error) throw new Error(json.error);
+  return json.entries||[];
 }
 async function submitHoursImportBatch(){
   const clientId = document.getElementById('hoursImportClient')?.value || '';
@@ -5847,6 +5844,87 @@ const AVATAR_SIZE=160; // shared with scan-pipeline.js's cropPortraitAvatar() an
 // touch scanning at all. Every function in it becomes an ordinary global
 // once loaded, exactly as if it were still inline here.
 let _scanPipelineLoading=null;
+// --- Upload preparation (shared by every file upload) -------------------------
+// Rule for any feature that sends files to the server (scans, hours import,
+// and anything added later): expand files with filesToUploadPages() — every
+// file in parallel, PDFs page by page — which shrinks each image to
+// UPLOAD_MAX_DIM before it leaves the device, then send the pages' requests
+// in parallel (Promise.all) rather than one after another.
+// Anthropic's vision models don't use more than ~1568px on the long edge, so
+// a full phone photo (3000-4000px+, several MB) is pure upload time on the
+// slowest leg (mobile network). Never upscales; any failure falls through to
+// the original image so a hiccup never blocks an upload.
+const UPLOAD_MAX_DIM=1800;
+function downscaleForUpload(b64,mediaType){
+  return new Promise(resolve=>{
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        const iw=img.naturalWidth, ih=img.naturalHeight;
+        const scale=Math.min(1,UPLOAD_MAX_DIM/Math.max(iw,ih,1));
+        if(scale>=1){ resolve({b64,mediaType}); return; }
+        const cv=document.createElement('canvas');
+        cv.width=Math.round(iw*scale); cv.height=Math.round(ih*scale);
+        const ctx=cv.getContext('2d');
+        ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+        ctx.drawImage(img,0,0,cv.width,cv.height);
+        resolve({b64:cv.toDataURL('image/jpeg',0.9).split(',')[1],mediaType:'image/jpeg'});
+      }catch(e){ resolve({b64,mediaType}); }
+    };
+    img.onerror=()=>resolve({b64,mediaType});
+    img.src='data:'+mediaType+';base64,'+b64;
+  });
+}
+let _pdfjsLoading=null;
+function _loadPdfJs(){
+  if(window.pdfjsLib) return Promise.resolve();
+  if(_pdfjsLoading) return _pdfjsLoading;
+  _pdfjsLoading=new Promise((res,rej)=>{
+    const sc=document.createElement('script');
+    sc.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    sc.onload=()=>{ try{ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }catch(e){} res(); };
+    sc.onerror=()=>{ _pdfjsLoading=null; rej(new Error('pdf.js CDN failed')); };
+    document.head.appendChild(sc);
+  });
+  return _pdfjsLoading;
+}
+function isPdfFile(f){ return !!f&&(f.type==='application/pdf'||/\.pdf$/i.test(f.name||'')); }
+function _readFileB64(file){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>res(r.result.split(',')[1]);
+    r.onerror=()=>rej(new Error('read failed'));
+    r.readAsDataURL(file);
+  });
+}
+// One file -> its pages as upload-ready images [{b64,mediaType,text,fileName}].
+// An image is one page; a PDF is rendered page by page (pdf.js, scale 2.5,
+// pages rendered in parallel) with its text layer kept in `text`.
+async function fileToUploadPages(file){
+  if(isPdfFile(file)){
+    await _loadPdfJs();
+    const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+    const nums=Array.from({length:pdf.numPages},(_,i)=>i+1);
+    return Promise.all(nums.map(async n=>{
+      const page=await pdf.getPage(n);
+      const vp=page.getViewport({scale:2.5});
+      const cv=document.createElement('canvas'); cv.width=vp.width; cv.height=vp.height;
+      await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+      let text='';
+      try{ const tc=await page.getTextContent(); text=tc.items.map(it=>it.str).join(' '); }catch(e){}
+      const d=await downscaleForUpload(cv.toDataURL('image/png').split(',')[1],'image/png');
+      return {b64:d.b64,mediaType:d.mediaType,text,fileName:file.name||''};
+    }));
+  }
+  const d=await downscaleForUpload(await _readFileB64(file),file.type||'image/jpeg');
+  return [{b64:d.b64,mediaType:d.mediaType,text:'',fileName:file.name||''}];
+}
+// Many files -> one flat, ordered page list; all files processed in parallel.
+async function filesToUploadPages(files){
+  const perFile=await Promise.all([...(files||[])].map(fileToUploadPages));
+  return perFile.flat();
+}
+
 function ensureScanPipelineLoaded(){
   if(window.__scanPipelineReady) return Promise.resolve();
   if(_scanPipelineLoading) return _scanPipelineLoading;

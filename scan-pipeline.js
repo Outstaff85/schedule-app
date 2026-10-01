@@ -96,33 +96,11 @@ async function onScanFilesSelected(fileList){
     +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
     +'<span>קורא קבצים…</span></div>';
   try{
-    await _loadPdfJs();
-    // Expand every selected file into a flat, ordered list of page images
-    // ({b64, mediaType, text}) — text (from pdf.js's own text layer, free/
-    // local) is only used to spot an already-filled Form 101 page below.
-    const items=[];
-    for(const file of files){
-      if(isPdf(file)){
-        const buf=await file.arrayBuffer();
-        const pdf=await pdfjsLib.getDocument({data:buf}).promise;
-        for(let n=1;n<=pdf.numPages;n++){
-          const page=await pdf.getPage(n);
-          const vp=page.getViewport({scale:2.5});
-          const cv=document.createElement('canvas'); cv.width=vp.width; cv.height=vp.height;
-          await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
-          let text='';
-          try{ const tc=await page.getTextContent(); text=tc.items.map(it=>it.str).join(' '); }catch(e){}
-          items.push({b64:cv.toDataURL('image/png').split(',')[1], mediaType:'image/png', text});
-        }
-      } else {
-        const b64=await new Promise((res,rej)=>{
-          const r=new FileReader();
-          r.onload=()=>res(r.result.split(',')[1]);
-          r.onerror=rej; r.readAsDataURL(file);
-        });
-        items.push({b64, mediaType:file.type||'image/jpeg', text:''});
-      }
-    }
+    // Every page of every file, expanded and shrunk for upload, all files
+    // in parallel (shared filesToUploadPages(), schedule-manager.html).
+    // text (pdf.js's own text layer, free/local) is only used to spot an
+    // already-filled Form 101 page below.
+    const items=await filesToUploadPages(files);
     // Classify: drop pages that are already a filled Form 101 (we always
     // generate our own, see aiFillForm101), find the first ID/passport page
     // for the worker card, keep everything else ("contract" etc.) as-is.
@@ -143,10 +121,6 @@ async function onScanFilesSelected(fileList){
     // never fires for that path (nothing is ever missing after the first hit).
     // CORE_FIELDS/missingCore are module-scope now (shared with
     // processAllPendingPages() below) — see their own comment.
-    // Shrink every page to the AI's useful resolution before any upload —
-    // raw phone photos and 2.5x-rendered PDF pages are several MB each
-    // (same downscaleForUpload() the single-photo path already uses).
-    await Promise.all(items.map(async it=>{ const d=await downscaleForUpload(it.b64,it.mediaType); it.b64=d.b64; it.mediaType=d.mediaType; }));
     const isForm101Page=it=>/כרטיס\s*עובד|0101\/130/.test(it.text||'');
     const sefachReads=new Map();
     let needMore=false;
@@ -416,27 +390,8 @@ async function runSefachOcr(b64,mediaType){
 // the cap is returned untouched). Best-effort: any failure here just falls
 // through to uploading the original image unchanged, so a hiccup never
 // blocks the scan.
-const UPLOAD_MAX_DIM=1800;
-function downscaleForUpload(b64,mediaType){
-  return new Promise(resolve=>{
-    const img=new Image();
-    img.onload=()=>{
-      try{
-        const iw=img.naturalWidth, ih=img.naturalHeight;
-        const scale=Math.min(1,UPLOAD_MAX_DIM/Math.max(iw,ih,1));
-        if(scale>=1){ resolve({b64,mediaType}); return; }
-        const cv=document.createElement('canvas');
-        cv.width=Math.round(iw*scale); cv.height=Math.round(ih*scale);
-        const ctx=cv.getContext('2d');
-        ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
-        ctx.drawImage(img,0,0,cv.width,cv.height);
-        resolve({b64:cv.toDataURL('image/jpeg',0.9).split(',')[1],mediaType:'image/jpeg'});
-      }catch(e){ resolve({b64,mediaType}); }
-    };
-    img.onerror=()=>resolve({b64,mediaType});
-    img.src='data:'+mediaType+';base64,'+b64;
-  });
-}
+// UPLOAD_MAX_DIM / downscaleForUpload() live in schedule-manager.html now
+// (shared upload preparation, used by every file upload in the app).
 // Step 1.4: a server-side OpenCV+Pillow pass (functions/main.py,
 // preprocess_scan) that (a) rejects an obviously-too-blurry photo before any
 // AI call is spent on it, and (b) contrast/sharpness-enhances what's left.
@@ -1882,16 +1837,4 @@ function warpQuadToRect(img,quadSrcPx){
 }
 
 
-let _pdfjsLoading=null;
-function _loadPdfJs(){
-  if(window.pdfjsLib) return Promise.resolve();
-  if(_pdfjsLoading) return _pdfjsLoading;
-  _pdfjsLoading=new Promise((res,rej)=>{
-    const sc=document.createElement('script');
-    sc.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-    sc.onload=()=>{ try{ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }catch(e){} res(); };
-    sc.onerror=()=>rej(new Error('pdf.js CDN failed'));
-    document.head.appendChild(sc);
-  });
-  return _pdfjsLoading;
-}
+// _loadPdfJs() lives in schedule-manager.html (shared upload preparation).
