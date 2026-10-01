@@ -1,9 +1,10 @@
 {
   "name": "schedule-app-rules-tests",
   "private": true,
-  "description": "Firestore/Storage security-rules tests (FIRESTORE_PLAN.md stage 1). Run: npm install && npm test",
+  "description": "Firestore/Storage security-rules tests (FIRESTORE_PLAN.md stage 1) and login/user-management tests (stage 2). Run: npm install && npm test; PYTHON=<venv python with firebase-admin, pytest> npm run test:auth",
   "scripts": {
-    "test": "firebase emulators:exec --only firestore,storage --project demo-schedule \"node --test rules.test.mjs\""
+    "test": "firebase emulators:exec --only firestore,storage --project demo-schedule \"node --test rules.test.mjs\"",
+    "test:auth": "firebase emulators:exec --only firestore,auth --project demo-schedule \"${PYTHON:-python3} -m pytest ../auth -q\""
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",

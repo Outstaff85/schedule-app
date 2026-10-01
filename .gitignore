@@ -7,3 +7,5 @@ Tokens/
 node_modules/
 *.log
 *-local.html
+__pycache__/
+*.pyc

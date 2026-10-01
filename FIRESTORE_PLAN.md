@@ -1,6 +1,6 @@
 # План миграции на Firestore
 
-Переезд базы данных с Google Sheets + Apps Script на **Firestore (Standard, регион `me-west1`)**
+Переезд базы данных с Google Sheets + Apps Script на **Firestore (Standard, регион `europe-west3`, Франкфурт)**
 в проекте Firebase `schedule-odinson`. Сайт (Hosting) и Cloud Functions остаются там же, где сейчас.
 
 ## Зачем
@@ -38,7 +38,8 @@ tenants/{tenantId}/pendingHours/{batchId}  очередь импорта час�
 tenants/{tenantId}/settings/schedule   weekStart и прочие мелкие настройки
 users/{uid}                            username, tenantId, role, permissions, supplierId, active
                                        (хэш пароля — только в закрытой коллекции, см. «Вход»)
-authSecrets/{uid}                      passwordHash, passwordSalt — клиенту недоступно никогда
+authSecrets/{uid}                      algo, salt, hash, счётчик неверных попыток — клиенту недоступно никогда
+usernames/{username}                   { uid } — уникальность логина и быстрый поиск при входе
 workerTokens/{token}                   { tenantId, workerId } — для ссылки работника на отметки
 pushSubscriptions/{id}
 errors/{id}, timings/{id}              журналы (читает только superadmin)
@@ -76,9 +77,15 @@ errors/{id}, timings/{id}              журналы (читает только
    Тесты на эмуляторе (`tests/rules`, `npm install && npm test`): 12 сценариев — изоляция фирм,
    каждая роль × каждая коллекция, поставщик без прямого доступа, очередь часов, профиль фирмы,
    закрытые коллекции, журналы, Storage. Приложение пока не трогаем.
-2. **Вход.** Функции `login` (custom token) и управление пользователями (создать, изменить права,
-   сбросить пароль, удалить — то, что сейчас `createUser` / `createTenantUser` / `updateUser` /
-   `resetUserPassword` / `deleteUser`).
+2. **Вход.** ✅ Папка `functions-auth/` — отдельный набор функций в регионе `europe-west3` (Франкфурт, рядом с базой),
+   чтобы вход не грузил тяжёлые OpenCV/PyMuPDF из `functions/`:
+   - `login` — проверяет пароль, выдаёт custom token с правами;
+   - `users_admin` — `listUsers` / `createUser` (новая фирма) / `createTenantUser` / `updateUser` /
+     `resetUserPassword` / `deleteUser` с теми же правилами и текстами ошибок, что в Apps Script.
+   Старый хэш пароля при первом входе заменяется на scrypt. После 5 неверных паролей подряд вход
+   закрыт на 5 минут. Изменение прав, сброс пароля или удаление пользователя завершают его сессии.
+   Тесты: `tests/auth` на эмуляторах Firestore и Auth (13 сценариев), в CI перед деплоем функций.
+   Приложение пока не трогаем: пользователи появятся в Firestore на этапе 3.
 3. **Перенос данных.** Действие Apps Script `exportForMigration` (только superadmin) отдаёт все листы,
    функция `migrate_from_sheets` раскладывает их в Firestore. Запуск можно повторять: документы
    пишутся по тем же id, дублей не будет. Сначала прогон на копии, со сверкой количества работников,
@@ -103,10 +110,10 @@ errors/{id}, timings/{id}              журналы (читает только
 
 ## Что понадобится от вас по ходу
 
-- [x] Firestore (Standard, `me-west1`) и вход Email/Password включены.
-- [ ] **Firebase Storage** включить (Build → Storage → Get started, Production mode, регион `me-west1`).
-- [ ] Этап 2: роль **Service Account Token Creator** для сервисного аккаунта функций — без неё
-      функция не может выдавать токены входа. Ссылку и шаги дам на этом этапе.
+- [x] Firestore (Standard, `europe-west3` — Франкфурт) и вход Email/Password включены.
+- [x] **Firebase Storage** включён; деплой-аккаунту выданы Firebase Rules Admin, Cloud Datastore
+      Index Admin и Cloud Storage for Firebase Admin.
+- [x] Этап 2: роль **Service Account Token Creator** у сервисного аккаунта функций.
 - [ ] Этап 7: ключ Anthropic в **Secret Manager** (`ANTHROPIC_API_KEY`), сейчас он лежит
       в Script Properties Apps Script.
 - [ ] Этап 8: включить ежедневные бэкапы Firestore (Firestore → Disaster recovery).
