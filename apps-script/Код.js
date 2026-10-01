@@ -708,6 +708,8 @@ function deleteTenant(body, auth) {
   // deleting a firm's punches is just deleting its own sheet(s) outright —
   // no more row-by-row scan. Still handles a pre-migration tenant whose rows
   // might still be sitting in the old shared SH_PUNCHLOG (row-scan fallback).
+  const avatarSh = ss.getSheetByName(_avatarSheetName(tenantId));
+  if (avatarSh) ss.deleteSheet(avatarSh);
   const ownPunchSh = ss.getSheetByName(_punchSheetName(tenantId));
   if (ownPunchSh) { removed.punches = ownPunchSh.getLastRow() - 1; ss.deleteSheet(ownPunchSh); }
   const ownArchiveSh = ss.getSheetByName(_punchArchiveSheetName(tenantId));
@@ -852,7 +854,10 @@ function saveSchedule(data, baseSavedAt, tenantId, auth) {
   }
 
   const clients = normalizeClients(data.clients || []);
-  const workersJson = JSON.stringify(data.workers || []);
+  // Worker photos live in their own per-firm sheet (2026-10-01), not in the
+  // workers JSON cell — see _splitAvatars().
+  const split = _splitAvatars(data.workers || []);
+  const workersJson = JSON.stringify(split.workers);
   const clientsJson = JSON.stringify(clients);
   const suppliersJson = JSON.stringify(data.suppliers || []);
   // Sheets cell size guard (2026-09-27) — the whole workers/clients array is
@@ -873,7 +878,8 @@ function saveSchedule(data, baseSavedAt, tenantId, auth) {
   // grew to 8 columns (workerCount/clientCount) while this function still
   // wrote 6 values into an 8-column range, so every save of an existing firm
   // threw and nothing reached the sheet.
-  const savedAt = _writeScheduleRow(sh, current, tenantId, data.workers || [], clients, data.suppliers || [], data.weekStart);
+  const savedAt = _writeScheduleRow(sh, current, tenantId, split.workers, clients, data.suppliers || [], data.weekStart);
+  _syncAvatars(ss, tenantId, split.avatars);
   return {ok: true, savedAt: savedAt};
 }
 function _writeScheduleRow(sh, current, tenantId, workers, clients, suppliers, weekStart){
@@ -972,10 +978,58 @@ function _stripWorkerForSupplier(w, supplierId){
 // client's own billing/rate data.
 function _stripClientForSupplier(c){ return { id: c.id, name: c.name, object: c.object||null }; }
 
+// ── Worker photos (2026-10-01) ────────────────────────────────────────────────
+// A worker's avatarB64 (~10k characters each) used to sit inside the workers
+// JSON, which is ONE Sheets cell per firm (50,000-character limit): about 4-5
+// workers with photos made every save fail as "too large". Photos now live in
+// a per-firm sheet Avatars_<tenantId>, one row per worker (WorkerId, Avatar).
+// saveSchedule() strips them out of the JSON and syncs the sheet;
+// loadSchedule() merges them back, so the client sees the same worker objects
+// as before. A row saved before this change still carries inline photos —
+// they are read as-is and moved on that firm's next save.
+const AVATAR_HEADERS = ['WorkerId', 'Avatar'];
+const AVATAR_MAX_CHARS = 49000;
+function _avatarSheetName(tenantId) { return 'Avatars_' + tenantId; }
+function _splitAvatars(workers) {
+  const avatars = {};
+  const slim = (workers || []).map(function(w) {
+    if (!w || !w.avatarB64) return w;
+    if (w.id && String(w.avatarB64).length <= AVATAR_MAX_CHARS) avatars[w.id] = String(w.avatarB64);
+    const o = Object.assign({}, w); delete o.avatarB64; return o;
+  });
+  return { workers: slim, avatars: avatars };
+}
+function _readAvatars(tenantId) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(_avatarSheetName(tenantId));
+  const map = {};
+  if (!sh || sh.getLastRow() < 2) return map;
+  sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues().forEach(function(r) { if (r[0] && r[1]) map[r[0]] = String(r[1]); });
+  return map;
+}
+function _mergeAvatars(workers, tenantId) {
+  const map = _readAvatars(tenantId);
+  if (!Object.keys(map).length) return workers;
+  return workers.map(function(w) { return (w && map[w.id]) ? Object.assign({}, w, { avatarB64: map[w.id] }) : w; });
+}
+// Rewrites the firm's photo sheet only when the set of photos changed.
+function _syncAvatars(ss, tenantId, avatars) {
+  const current = _readAvatars(tenantId);
+  const ids = Object.keys(avatars).sort(), curIds = Object.keys(current).sort();
+  const same = ids.length === curIds.length && ids.every(function(id, i) { return id === curIds[i] && avatars[id] === current[id]; });
+  if (same) return;
+  const sh = getOrCreateSheet(ss, _avatarSheetName(tenantId));
+  if (sh.getLastRow() === 0) { sh.appendRow(AVATAR_HEADERS); sh.setFrozenRows(1); }
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, 2).clearContent();
+  if (ids.length) sh.getRange(2, 1, ids.length, 2).setValues(ids.map(function(id) { return [id, avatars[id]]; }));
+}
+
 function loadSchedule(tenantId, auth) {
   if (!tenantId) return { workers: [], clients: [], suppliers: [], weekStart: null, savedAt: null };
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_SCHEDULE);
   const m = readScheduleMap(sh, tenantId);
+  // Photos only for logged-in callers — a worker's punch link (auth null)
+  // never shows them, so it skips the extra sheet read.
+  if (auth) m.workers = _mergeAvatars(m.workers, tenantId);
   const clients = normalizeClients(m.clients); // ← radius guaranteed numeric
   if (auth && auth.role === 'supplier') {
     const workers = m.workers.filter(function(w){ return w.supplierId === auth.supplierId; });
