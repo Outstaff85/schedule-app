@@ -2760,67 +2760,9 @@ function savePushSubscription(data, tenantId) {
   return { ok: true, saved: true };
 }
 
-// ── Scheduled trigger: runs every hour ────────────────────────────────────────
-// Loops every tenant's own Schedule row, so each firm's workers only get
-// reminders (and only match push subscriptions) within their own firm.
-function checkShiftReminders() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const pushSh = ss.getSheetByName(SH_PUSH);
-  const schSh = ss.getSheetByName(SH_SCHEDULE);
-  if (!pushSh || pushSh.getLastRow() < 2 || !schSh || schSh.getLastRow() < 2) return;
-  const subs = pushSh.getDataRange().getValues().slice(1);
-  const now    = new Date();
-  const nowMin = now.getHours() * 60 + now.getMinutes();
-  const dayIdx = now.getDay();
-
-  schSh.getDataRange().getValues().slice(1).forEach(function(schRow) {
-    const tenantId = schRow[0];
-    let workers = [];
-    try { workers = JSON.parse(schRow[1] || '[]'); } catch (e) {}
-    if (!workers.length) return;
-    const toNotify = workers.filter(w => {
-      const s = w.schedule?.[dayIdx];
-      if (!s || s.type === 'off' || !s.start) return false;
-      const [h, m] = s.start.split(':').map(Number);
-      const diff = (h*60+m) - nowMin;
-      return diff >= 50 && diff <= 70;
-    });
-    if (!toNotify.length) return;
-    const tenantSubs = subs.filter(row => row[6] === tenantId);
-    toNotify.forEach(worker => {
-      const workerSubs = tenantSubs.filter(row => row[0] === worker.name || row[1] === 'manager');
-      const s2 = worker.schedule[dayIdx];
-      workerSubs.forEach(row => {
-        try {
-          sendPushNotification(row[2], row[3], row[4], {
-            title: 'Shift Reminder — ' + worker.name,
-            body:  'Your shift starts at ' + s2.start + '. Tap to clock in!',
-            url:   '/worker-punch.html',
-            tag:   'shift-' + worker.name,
-          });
-        } catch(e) { Logger.log('Push failed for ' + worker.name + ': ' + e); }
-      });
-    });
-    Logger.log('[' + tenantId + '] Reminders sent to: ' + toNotify.map(w=>w.name).join(', '));
-  });
-}
-
-function sendPushNotification(endpoint, p256dh, auth, payload) {
-  const options = {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'TTL': '86400' },
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true,
-  };
-  const resp = UrlFetchApp.fetch(endpoint, options);
-  Logger.log('Push response: ' + resp.getResponseCode());
-  return resp.getResponseCode();
-}
-
-function setupHourlyTrigger() {
-  ScriptApp.getProjectTriggers().forEach(t => {
-    if (t.getHandlerFunction() === 'checkShiftReminders') ScriptApp.deleteTrigger(t);
-  });
-  ScriptApp.newTrigger('checkShiftReminders').timeBased().everyHours(1).create();
-  Logger.log('Hourly trigger created!');
-}
+// ── Shift reminders: switched off (2026-10-01, by request) ──────────────────
+// The hourly push reminder ("your shift starts in an hour") is no longer used.
+// This stub stays only so the old hourly trigger, until it is deleted in the
+// Apps Script editor (Triggers → ⋮ → Delete trigger), ends at once instead of
+// failing with "function not found". Nothing creates the trigger any more.
+function checkShiftReminders() {}
