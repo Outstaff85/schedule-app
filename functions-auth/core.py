@@ -24,11 +24,14 @@ change their password; it is replaced by an scrypt hash on the first
 successful login. New and reset passwords are scrypt straight away.
 """
 
+import base64
 import hashlib
 import hmac
+import json
 import secrets
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 from google.cloud.firestore_v1.base_query import FieldFilter
@@ -106,12 +109,63 @@ def claims_for(user):
     return claims
 
 
+# ── Apps Script session token ────────────────────────────────────────────────
+# Until every part of the app has moved off Apps Script (stages 6-7), a
+# Firestore-mode login also needs an Apps Script session token. The login
+# function mints it itself — the same HMAC-SHA256 "<payload>.<signature>"
+# format as Apps Script createSessionToken(), signed with its SESSION_SECRET
+# (Secret Manager GS_SESSION_SECRET) — so the login never waits for Apps Script.
+
+GS_SESSION_TTL_MS = 6 * 60 * 60 * 1000   # Apps Script SESSION_TTL_MS
+
+
+def _b64url(raw):
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+
+def gs_session_token(uid, user, secret, now_ms=None):
+    """(token, expiresAt ms) that Apps Script verifySessionToken() accepts."""
+    now_ms = int(time.time() * 1000) if now_ms is None else now_ms
+    role = _norm_role(user.get("role"))
+    perms = user.get("permissions")
+    exp = now_ms + GS_SESSION_TTL_MS
+    payload = {
+        "userId": uid, "username": user.get("username"), "role": role,
+        "tenantId": user.get("tenantId") or None,
+        # Apps Script login() reads an empty cell (a supplier's) as '*'.
+        "permissions": "*" if perms in (None, "", "*") else perms,
+        "supplierId": user.get("supplierId") or None, "exp": exp,
+    }
+    body = _b64url(json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+    sig = _b64url(hmac.new(secret.encode("utf-8"), body.encode("utf-8"), hashlib.sha256).digest())
+    return body + "." + sig, exp
+
+
 # ── Login ────────────────────────────────────────────────────────────────────
 
-def login(db, username, password, mint_token, now=None):
+def _secret_shape(secret):
+    """What a refused password says about the stored hash, without the hash:
+    a wrong length or a non-hex character means the copy went wrong."""
+    h, salt = str(secret.get("hash") or ""), str(secret.get("salt") or "")
+    return (f"algo={secret.get('algo') or 'sha256'} hashLen={len(h)} "
+            f"hashHex={all(c in '0123456789abcdefABCDEF' for c in h)} saltLen={len(salt)}")
+
+
+def login(db, username, password, mint_token, now=None, on_refused=None, gs_secret=None):
     """mint_token(uid, claims) -> str (firebase_admin.auth.create_custom_token
     in production). Returns the same fields Apps Script login() returned, with
-    `token` now a Firebase custom token for signInWithCustomToken()."""
+    `token` now a Firebase custom token for signInWithCustomToken().
+    on_refused(username, reason) is told why a login was refused (main.py
+    writes it to the errors collection); the user still only sees the
+    usual "wrong login or password". With gs_secret the reply also carries
+    gsToken/gsExpiresAt, an Apps Script session token for the same user."""
+    def refused(reason, msg=E_BAD_LOGIN):
+        if on_refused:
+            try:
+                on_refused(username, reason)
+            except Exception:
+                pass
+        return {"error": msg}
     now = time.time() if now is None else now
     username = _norm_username(username)
     password = str(password or "")
@@ -120,30 +174,30 @@ def login(db, username, password, mint_token, now=None):
 
     name_doc = db.collection("usernames").document(username).get()
     if not name_doc.exists:
-        return {"error": E_BAD_LOGIN}
+        return refused("no such username (usernames/{name} missing)")
     uid = name_doc.get("uid")
     user_snap = db.collection("users").document(uid).get()
     secret_ref = db.collection("authSecrets").document(uid)
     secret_snap = secret_ref.get()
     if not user_snap.exists or not secret_snap.exists:
-        return {"error": E_BAD_LOGIN}
+        return refused(f"users doc exists={user_snap.exists}, authSecrets doc exists={secret_snap.exists}")
     user = user_snap.to_dict()
     secret = secret_snap.to_dict()
 
     if user.get("active") is False:
-        return {"error": "Аккаунт отключён"}
+        return refused("account inactive", "Аккаунт отключён")
 
     fails = int(secret.get("failCount") or 0)
     last_fail = float(secret.get("lastFailAt") or 0)
     if fails >= LOCK_AFTER_FAILS and now - last_fail < LOCK_SECONDS:
         wait_min = max(1, int((LOCK_SECONDS - (now - last_fail) + 59) // 60))
-        return {"error": f"Слишком много неверных попыток — подождите {wait_min} мин."}
+        return refused("locked after wrong passwords", f"Слишком много неверных попыток — подождите {wait_min} мин.")
 
     if not verify_password(password, secret):
         # The counter restarts once the lock window has passed.
         fails = fails + 1 if now - last_fail < LOCK_SECONDS else 1
         secret_ref.update({"failCount": fails, "lastFailAt": now})
-        return {"error": E_BAD_LOGIN}
+        return refused(f"password mismatch ({_secret_shape(secret)}, failCount={fails})")
 
     update = {"failCount": 0, "lastFailAt": 0}
     if secret.get("algo") != "scrypt":
@@ -159,7 +213,11 @@ def login(db, username, password, mint_token, now=None):
         if t.exists:
             profile = dict(t.to_dict(), tenantId=tenant_id)
     perms = user.get("permissions")
+    gs = {}
+    if gs_secret:
+        gs["gsToken"], gs["gsExpiresAt"] = gs_session_token(uid, user, gs_secret, int(now * 1000))
     return {
+        **gs,
         "ok": True,
         "token": mint_token(uid, claims),
         "uid": uid,
@@ -354,7 +412,119 @@ def delete_user(db, caller, body, revoke):
     return {"ok": True}
 
 
+# ── Firms (Apps Script listTenants / setTenantActive / deleteTenant /
+#    updateTenant / loadTenantProfile) ───────────────────────────────────────
+
+def _target_tenant(caller, body):
+    """The firm an action is about: a superadmin names one (tenantId, or the
+    firm it is viewing), a firm's own login is always its own firm."""
+    if _is_super(caller):
+        return body.get("tenantId") or caller.get("tenantId")
+    return caller.get("tenantId")
+
+
+def _profile(tid, data):
+    out = {k: "" if data.get(k) is None else str(data.get(k)) for k in PROFILE_FIELDS}
+    out.update(tenantId=tid, createdAt=data.get("createdAt") or "")
+    return out
+
+
+def list_tenants(db, caller):
+    if not _is_super(caller):
+        return {"error": "Только супер-админ"}
+    snaps = list(db.collection("tenants").stream())
+
+    def one(snap):
+        ref = snap.reference
+        t = dict(_profile(snap.id, snap.to_dict()), active=snap.to_dict().get("active", True))
+        t["workerCount"] = int(ref.collection("workers").count().get()[0][0].value)
+        t["clientCount"] = int(ref.collection("clients").count().get()[0][0].value)
+        st = ref.collection("settings").document("schedule").get()
+        t["savedAt"] = (st.to_dict() or {}).get("savedAt") if st.exists else None
+        return t
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        tenants = list(pool.map(one, snaps))
+    tenants.sort(key=lambda t: (t.get("createdAt") or "", t["tenantId"]))
+    return {"tenants": tenants}
+
+
+def _tenant_users(db, tid):
+    return list(db.collection("users").where(filter=FieldFilter("tenantId", "==", tid)).stream())
+
+
+def set_tenant_active(db, caller, body, revoke):
+    if not _is_super(caller):
+        return {"error": "Только супер-админ"}
+    tid = body.get("tenantId")
+    if not tid:
+        return {"error": "Нет tenantId"}
+    active = bool(body.get("active"))
+    users = _tenant_users(db, tid)
+    batch = db.batch()
+    batch.set(db.collection("tenants").document(tid), {"active": active}, merge=True)
+    for u in users:
+        batch.update(u.reference, {"active": active})
+    batch.commit()
+    if not active:
+        for u in users:
+            revoke(u.id)
+    return {"ok": True, "updated": len(users), "active": active}
+
+
+def delete_tenant(db, caller, body, revoke):
+    """The firm and everything under it, its logins and worker links. Its
+    Drive folder (Apps Script) is not touched."""
+    if not _is_super(caller):
+        return {"error": "Только супер-админ"}
+    tid = body.get("tenantId")
+    if not tid:
+        return {"error": "Нет tenantId"}
+    ref = db.collection("tenants").document(tid)
+    existed = ref.get().exists
+    db.recursive_delete(ref)
+    users = _tenant_users(db, tid)
+    batch = db.batch()
+    for u in users:
+        batch.delete(u.reference)
+        batch.delete(db.collection("authSecrets").document(u.id))
+        name = (u.to_dict() or {}).get("username")
+        if name:
+            batch.delete(db.collection("usernames").document(name))
+    for t in db.collection("workerTokens").where(filter=FieldFilter("tenantId", "==", tid)).stream():
+        batch.delete(t.reference)
+    batch.commit()
+    for u in users:
+        revoke(u.id, delete=True)
+    return {"ok": True, "removed": {"tenant": existed, "users": len(users)}}
+
+
+def update_tenant(db, caller, body):
+    tid = _target_tenant(caller, body)
+    if not tid:
+        return {"error": "Нет tenantId"}
+    if not _is_super(caller) and (caller.get("role") != "tenant_admin" or tid != caller.get("tenantId")):
+        return {"error": "Можно редактировать только свою фирму"}
+    ref = db.collection("tenants").document(tid)
+    if not ref.get().exists:
+        return {"error": "Фирма не найдена"}
+    upd = {k: str(body[k]) for k in PROFILE_FIELDS if body.get(k) is not None}
+    if upd:
+        ref.update(upd)
+    return {"ok": True, "profile": _profile(tid, ref.get().to_dict())}
+
+
+def load_tenant_profile(db, caller, body):
+    tid = _target_tenant(caller, body)
+    snap = db.collection("tenants").document(tid).get() if tid else None
+    return {"ok": True, "profile": _profile(tid, snap.to_dict()) if snap and snap.exists else None}
+
+
 ACTIONS = {
+    "listTenants": lambda db, c, b, r: list_tenants(db, c),
+    "setTenantActive": set_tenant_active,
+    "deleteTenant": delete_tenant,
+    "updateTenant": lambda db, c, b, r: update_tenant(db, c, b),
+    "loadTenantProfile": lambda db, c, b, r: load_tenant_profile(db, c, b),
     "listUsers": lambda db, c, b, r: list_users(db, c),
     "createUser": lambda db, c, b, r: create_firm(db, c, b),
     "createTenantUser": lambda db, c, b, r: create_tenant_user(db, c, b),

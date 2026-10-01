@@ -8,7 +8,8 @@ database. The logic itself is in core.py.
   login        POST {username, password} -> Firebase custom token + profile
   users_admin  POST {action, ...} with "Authorization: Bearer <ID token>":
                listUsers, createUser (new firm), createTenantUser,
-               updateUser, resetUserPassword, deleteUser
+               updateUser, resetUserPassword, deleteUser, listTenants,
+               setTenantActive, deleteTenant, updateTenant, loadTenantProfile
   migrate_from_sheets  POST {gsToken} (a super-admin's Apps Script session
                token): copies the sheets into Firestore (migrate.py, stage 3)
 
@@ -23,6 +24,7 @@ import requests
 import firebase_admin
 from firebase_admin import auth, firestore
 from firebase_functions import https_fn, options
+from firebase_functions.params import SecretParam
 
 import core
 import migrate as migration
@@ -30,6 +32,9 @@ import migrate as migration
 options.set_global_options(region="europe-west3", memory=options.MemoryOption.MB_256)
 
 _CORS = options.CorsOptions(cors_origins="*", cors_methods=["post"])
+# Apps Script's SESSION_SECRET, so login can hand out an Apps Script session
+# token too (core.gs_session_token). Secret Manager: GS_SESSION_SECRET.
+GS_SESSION_SECRET = SecretParam("GS_SESSION_SECRET")
 _db_client = None
 
 
@@ -62,13 +67,23 @@ def _revoke(uid, delete=False):
         pass
 
 
+def _log_refused(username, reason):
+    """Why a login was refused, for the super-admin (Firestore errors
+    collection, readable only by a superadmin). Never the password or hash."""
+    from datetime import datetime, timezone
+    _db().collection("errors").add({
+        "when": datetime.now(timezone.utc).isoformat(), "source": "login",
+        "user": username, "message": "login refused: " + reason,
+    })
+
+
 def _body(req):
     # force=True: parse regardless of Content-Type (see gs_upload_proxy in
     # functions/main.py for the bug a missing header caused).
     return req.get_json(silent=True, force=True) or {}
 
 
-@https_fn.on_request(cors=_CORS, timeout_sec=30, min_instances=0)
+@https_fn.on_request(cors=_CORS, timeout_sec=30, min_instances=0, secrets=[GS_SESSION_SECRET])
 def login(req: https_fn.Request) -> https_fn.Response:
     if req.method != "POST":
         return _json({"error": "POST only"}, 405)
@@ -77,7 +92,8 @@ def login(req: https_fn.Request) -> https_fn.Response:
         _db()
         return _json({"ok": True, "warm": True})
     try:
-        return _json(core.login(_db(), body.get("username"), body.get("password"), _mint))
+        return _json(core.login(_db(), body.get("username"), body.get("password"), _mint,
+                                on_refused=_log_refused, gs_secret=(GS_SESSION_SECRET.value or "").strip() or None))
     except Exception as e:
         return _json({"error": "Login failed: " + str(e)}, 500)
 
@@ -95,9 +111,12 @@ def users_admin(req: https_fn.Request) -> https_fn.Response:
         decoded = auth.verify_id_token(id_token, check_revoked=True)
     except Exception:
         return _json({"error": "Сессия истекла или недействительна — войдите заново"}, 401)
+    body = _body(req)
     caller = {"uid": decoded["uid"], "role": decoded.get("role"), "tenantId": decoded.get("tenantId")}
+    if caller["role"] == "superadmin":
+        caller["tenantId"] = body.get("asTenantId") or None  # the firm it is viewing
     try:
-        return _json(core.run_action(_db(), caller, _body(req), _revoke))
+        return _json(core.run_action(_db(), caller, body, _revoke))
     except Exception as e:
         return _json({"error": str(e)}, 500)
 

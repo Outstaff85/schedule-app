@@ -3515,6 +3515,7 @@ const BACKEND = (function(){
     return localStorage.getItem('backend') === 'firestore' ? 'firestore' : 'sheets';
   }catch(e){ return 'sheets'; }
 })();
+const LOGIN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/login';
 let __fsBackend = null;
 function loadFirestoreBackend(){
   if(__fsBackend) return __fsBackend;
@@ -3849,10 +3850,40 @@ const SESSION_RETRY_DELAYS_MS = [0, 500]; // attempt 2 immediate, attempt 3 afte
       }).catch(()=>{});
     }
   }
+  // Firestore mode (FIRESTORE_PLAN.md stage 5): these Apps Script actions —
+  // the Admin panes, telemetry, punch-month clearing, the hours queue, and the
+  // super-admin summary's per-firm loads — are answered by firestore-backend.js
+  // handleAction() (Firestore, or the users_admin function) in the same JSON
+  // shape, so their call sites stay as they are. A null answer (telemetry
+  // before sign-in) falls through to Apps Script.
+  const FS_ACTIONS = ['listTenants','setTenantActive','deleteTenant','createUser','updateTenant','loadTenantProfile',
+    'listUsers','createTenantUser','updateUser','resetUserPassword','deleteUser','loadErrors','loadTimings',
+    'loadSchedule','loadPunchLog','deletePunchesByMonths','savePendingHoursBatch','loadPendingHours',
+    'approvePendingHours','rejectPendingHours','logBatch','logError','logTiming'];
+  function gsParams(url, opts){
+    try{ if(opts && typeof opts.body === 'string') return JSON.parse(opts.body); }catch(e){}
+    try{ return Object.fromEntries(new URL(url).searchParams); }catch(e){ return {}; }
+  }
+  const jsonResponse = obj => new Response(JSON.stringify(obj), {status:200, headers:{'Content-Type':'application/json'}});
+  async function fsRoute(action, url, opts){
+    const s = getSession() || {};
+    const ctx = {role: s.role, username: s.username, tenantId: s.viewingTenantId || s.tenantId};
+    try{
+      const b = await loadFirestoreBackend();
+      const json = await b.handleAction(action, gsParams(url, opts), ctx, () => _origFetch(url, opts).then(r => r.json()));
+      return json == null ? null : jsonResponse(json);
+    }catch(e){
+      console.warn('Firestore ' + action + ' failed:', e);
+      return jsonResponse({error: 'Firestore: ' + ((e && e.message) || e)});
+    }
+  }
   window.fetch = function(url, opts){
     const isGs = typeof url === 'string' && url.indexOf(GS_URL) === 0;
     let isGsCall = isGs, action = '';
     if(isGs){ action=gsActionOf(url, opts); if(NO_LOGOUT_ACTIONS.indexOf(action)!==-1) isGsCall=false; }
+    if(isGs && BACKEND === 'firestore' && FS_ACTIONS.indexOf(action) !== -1){
+      return fsRoute(action, url, opts).then(res => res || _origFetch(url, opts));
+    }
     const t0=Date.now();
     return _origFetch(url, opts).then(res => {
       if(isGs) try{ watchGsReply(action, t0, res); }catch(e){}
@@ -3907,26 +3938,25 @@ async function submitLogin(){
   finally{ btn.disabled = false; btn.textContent = 'Войти'; }
 }
 
-// Firestore mode: the login Cloud Function signs this device in to Firebase,
-// and the Apps Script login runs alongside it, because the parts not moved
-// yet (AI scan, Drive documents, Admin panes) still need an Apps Script
-// session token. The app opens once the Firebase sign-in succeeds; without
-// the Apps Script token those parts answer "session expired" until the
-// next login.
+// Firestore mode: the login Cloud Function signs this device in to Firebase
+// and also hands out an Apps Script session token (gsToken, signed with Apps
+// Script's own secret) for the parts not moved yet — AI scan, Drive
+// documents. Only when it can't (no secret configured) does the app log in
+// to Apps Script as well, the slow path.
 async function submitLoginFirestore(username, password, errEl){
   const t0 = Date.now();
   let backend;
   try{ backend = await loadFirestoreBackend(); }
   catch(e){ errEl.textContent = 'Не удалось загрузить Firebase — проверьте сеть'; return; }
-  const gsLogin = fetch(GS_URL, {method:'POST', body: JSON.stringify({action:'login', username, password})})
-    .then(r => r.json()).catch(() => null);
   let fb;
   try{ fb = await backend.login(username, password); }
   catch(e){ errEl.textContent = 'Сеть недоступна — попробуйте ещё раз'; return; }
   if(!fb || fb.error){ errEl.textContent = (fb && fb.error) || 'Не удалось войти'; return; }
-  const gs = await gsLogin;
-  if(gs && Array.isArray(gs.tenants)) saveFirmsCache(gs.tenants);
-  try{ sessionStorage.setItem('pendingLoginTiming', JSON.stringify({t0, loginMs:Date.now()-t0, pingMs:null, pingDone:false})); }catch(e){}
+  let gs = fb.gsToken ? {token: fb.gsToken, expiresAt: fb.gsExpiresAt} : null;
+  if(!gs){
+    try{ gs = await (await fetch(GS_URL, {method:'POST', body: JSON.stringify({action:'login', username, password})})).json(); }catch(e){}
+  }
+  try{ sessionStorage.setItem('pendingLoginTiming', JSON.stringify({t0, loginMs:Date.now()-t0, pingMs:window.__pingMs==null?null:window.__pingMs, pingDone:window.__pingMs!=null})); }catch(e){}
   saveSession({
     backend: 'firestore', uid: fb.uid,
     token: (gs && gs.token) || '', expiresAt: (gs && gs.expiresAt) || Date.now() + 6*3600e3,
@@ -4038,7 +4068,10 @@ function gateApp(runInitApp){
     // Wake a cold Apps Script instance while the user types, so the login
     // request itself doesn't pay the cold start (doGet 'ping', no auth).
     const pingT0=Date.now();
-    fetch(GS_URL+'?action=ping').then(()=>{ window.__pingMs=Date.now()-pingT0; }).catch(()=>{});
+    const ping = BACKEND === 'firestore'
+      ? fetch(LOGIN_FN_URL, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{"ping":true}'})
+      : fetch(GS_URL+'?action=ping');
+    ping.then(()=>{ window.__pingMs=Date.now()-pingT0; }).catch(()=>{});
     return;
   }
   if(s.role === 'superadmin' && !s.viewingTenantId){
@@ -4581,7 +4614,7 @@ function _timingFirmName(id){ const firms=(__firmsCache&&__firmsCache.length)?__
 function timingRowText(r){
   const d=r.details||{};
   const steps=(TIMING_PHASES[r.kind]||[]).map(([key,label])=>typeof d[key]==='number'?`${label} ${_sec(d[key])}`:'').filter(Boolean).join(' · ');
-  const head=[new Date(r.when).toLocaleString(),timingKindLabel(r.kind),_timingFirmName(r.tenantId),r.user||'',d.device||'',d.pages?d.pages+' page(s)':'',d.aborted||''].filter(Boolean).join(' · ');
+  const head=[new Date(r.when).toLocaleString(),_timingKeyLabel(_timingKey(r)),_timingFirmName(r.tenantId),r.user||'',d.device||'',d.pages?d.pages+' page(s)':'',d.aborted||''].filter(Boolean).join(' · ');
   return head+'\n'+_sec(r.totalMs)+(steps?' — '+steps:'')+(d.kinds?'\nPage kinds: '+d.kinds.join(', '):'');
 }
 function copyTimingRow(i){ const r=__timingsRows[i]; if(r) copyTextToClipboard(timingRowText(r)); }
@@ -4589,23 +4622,29 @@ function copyAllTimings(){
   if(!__timingsRows.length){ showToast('Nothing to copy'); return; }
   copyTextToClipboard((__timingsSummaryText?__timingsSummaryText+'\n\n':'')+'Latest:\n'+__timingsRows.slice(0,50).map(timingRowText).join('\n\n'));
 }
+// Firestore-mode measurements are summarized on their own row
+// ("… · Firestore"), next to the same kind on the sheets.
+const _isFsTiming = r => !!(r.details && r.details.backend === 'firestore');
+function _timingKey(r){ return r.kind + (_isFsTiming(r) ? '|fs' : ''); }
+function _timingKeyLabel(key){ const [k, fs] = String(key).split('|'); return timingKindLabel(k) + (fs ? ' · Firestore' : ''); }
 function renderTimingsPane(el,rows){
   __timingsRows=rows; __timingsSummaryText='';
   if(!rows.length){ el.innerHTML='<div style="color:var(--text2);font-size:13px">No measurements yet — they appear after the next login, app open or scan.</div>'; return; }
   const weekAgo=Date.now()-7*864e5;
   const recent=rows.filter(r=>new Date(r.when).getTime()>=weekAgo&&!(r.details&&r.details.aborted));
-  const kinds=['login','open','scan','scanFiles'].filter(k=>recent.some(r=>r.kind===k)).concat([...new Set(recent.map(r=>r.kind).filter(k=>String(k).indexOf('gs:')===0))].sort());
+  const baseKinds=['login','open','scan','scanFiles'].filter(k=>recent.some(r=>r.kind===k)).concat([...new Set(recent.map(r=>r.kind).filter(k=>String(k).indexOf('gs:')===0))].sort());
+  const kinds=[]; baseKinds.forEach(k=>{ [k, k+'|fs'].forEach(key=>{ if(recent.some(r=>_timingKey(r)===key)) kinds.push(key); }); });
   const firmName=_timingFirmName;
   const KIND_LABEL=TIMING_KIND_LABEL;
   __timingsSummaryText='Last 7 days (median / 90%):\n'+kinds.map(k=>{
-    const rs=recent.filter(r=>r.kind===k), tot=rs.map(r=>r.totalMs);
-    const steps=(TIMING_PHASES[k]||[]).map(([key,label])=>{ const v=rs.map(r=>r.details&&r.details[key]).filter(x=>typeof x==='number'); return v.length?`${label} ${_sec(_pct(v,0.5))}`:''; }).filter(Boolean).join(' · ');
-    return `${timingKindLabel(k)}: ${rs.length}× · median ${_sec(_pct(tot,0.5))} · 90% ${_sec(_pct(tot,0.9))}${steps?' · '+steps:''}`;
+    const rs=recent.filter(r=>_timingKey(r)===k), tot=rs.map(r=>r.totalMs);
+    const steps=(TIMING_PHASES[k.split('|')[0]]||[]).map(([key,label])=>{ const v=rs.map(r=>r.details&&r.details[key]).filter(x=>typeof x==='number'); return v.length?`${label} ${_sec(_pct(v,0.5))}`:''; }).filter(Boolean).join(' · ');
+    return `${_timingKeyLabel(k)}: ${rs.length}× · median ${_sec(_pct(tot,0.5))} · 90% ${_sec(_pct(tot,0.9))}${steps?' · '+steps:''}`;
   }).join('\n');
   const summary=kinds.map(k=>{
-    const rs=recent.filter(r=>r.kind===k), tot=rs.map(r=>r.totalMs);
-    const phases=(TIMING_PHASES[k]||[]).map(([key,label])=>{ const v=rs.map(r=>r.details&&r.details[key]).filter(x=>typeof x==='number'); return v.length?`${esc(label)} ${_sec(_pct(v,0.5))}`:''; }).filter(Boolean).join(' · ');
-    return `<tr><td style="padding:6px 8px;font-weight:600">${esc(timingKindLabel(k))}</td><td style="padding:6px 8px;text-align:center">${rs.length}</td>
+    const rs=recent.filter(r=>_timingKey(r)===k), tot=rs.map(r=>r.totalMs);
+    const phases=(TIMING_PHASES[k.split('|')[0]]||[]).map(([key,label])=>{ const v=rs.map(r=>r.details&&r.details[key]).filter(x=>typeof x==='number'); return v.length?`${esc(label)} ${_sec(_pct(v,0.5))}`:''; }).filter(Boolean).join(' · ');
+    return `<tr><td style="padding:6px 8px;font-weight:600">${esc(_timingKeyLabel(k))}</td><td style="padding:6px 8px;text-align:center">${rs.length}</td>
       <td style="padding:6px 8px;text-align:center;font-weight:600">${_sec(_pct(tot,0.5))}</td><td style="padding:6px 8px;text-align:center">${_sec(_pct(tot,0.9))}</td>
       <td style="padding:6px 8px;font-size:11px;color:var(--text2)">${phases}</td></tr>`;
   }).join('');
@@ -4614,7 +4653,7 @@ function renderTimingsPane(el,rows){
     const extra=(TIMING_PHASES[r.kind]||[]).map(([key,label])=>typeof d[key]==='number'?`${esc(label)} ${_sec(d[key])}`:'').filter(Boolean).join(' · ');
     return `<div style="position:relative;padding:8px 40px 8px 10px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:12px">
       <button class="btn sm" title="Copy" onclick="copyTimingRow(${i})" style="position:absolute;top:6px;right:6px;padding:4px 6px;min-width:0"><i class="ti ti-copy"></i></button>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;color:var(--text2)"><span>${esc(new Date(r.when).toLocaleString())}</span><span style="font-weight:600;color:var(--text)">${esc(timingKindLabel(r.kind))}</span>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;color:var(--text2)"><span>${esc(new Date(r.when).toLocaleString())}</span><span style="font-weight:600;color:var(--text)">${esc(_timingKeyLabel(_timingKey(r)))}</span>
         <span>${esc(firmName(r.tenantId))}</span><span>${esc(r.user||'')}</span><span>${esc(d.device||'')}</span>${d.pages?`<span>${d.pages} page(s)</span>`:''}${d.aborted?`<span style="color:#ffb020">${esc(d.aborted)}</span>`:''}</div>
       <div><b>${_sec(r.totalMs)}</b>${extra?' — '+extra:''}</div></div>`;
   }).join('');
@@ -6971,7 +7010,7 @@ function flushTelemetry(viaBeacon){
   const items=__telemetryQueue; __telemetryQueue=[];
   const body=JSON.stringify({action:'logBatch', secret:API_SECRET, items});
   try{
-    if(viaBeacon===true && navigator.sendBeacon && navigator.sendBeacon(GS_URL, new Blob([body],{type:'text/plain'}))) return;
+    if(viaBeacon===true && BACKEND!=='firestore' && navigator.sendBeacon && navigator.sendBeacon(GS_URL, new Blob([body],{type:'text/plain'}))) return;
     fetch(GS_URL,{method:'POST',body}).catch(()=>{});
   }catch(e){}
 }

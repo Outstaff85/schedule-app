@@ -109,8 +109,16 @@ errors/{id}, timings/{id}              журналы (читает только
      «Copy to Firestore» перезаписывает Firestore данными из таблицы. До этапа 8 режим —
      для проверки, рабочие данные ведём в таблице.
    - Проверено в браузере на настоящем Firebase SDK с эмуляторами Firestore и Auth (25 проверок).
-5. **Админка.** Фирмы, пользователи, профиль, журналы ошибок и замеров, очистка отметок по месяцам,
-   очередь импорта часов.
+5. **Админка.** ✅ В режиме Firestore на Firestore и функцию `users_admin` переехали:
+   фирмы (список, вкл/выкл, удаление, создание), пользователи, профиль фирмы, журналы ошибок и
+   замеров (показываются вместе со строками из таблицы), очистка отметок по месяцам, очередь
+   импорта часов (загрузка, список, подтверждение, отклонение), сводка супер-админа по фирмам.
+   Вход больше не ждёт Apps Script: функция `login` сама выдаёт токен Apps Script для частей,
+   которые ещё не переехали (секрет `GS_SESSION_SECRET` в Secret Manager). В Admin → Timings
+   замеры режима Firestore идут отдельными строками («… · Firestore»).
+   В Apps Script в режиме Firestore остаются: ИИ-скан, форма 101 и документы в Drive, Copy to
+   Firestore, ссылка работника. Удаление фирмы в режиме Firestore не трогает её папку в Drive.
+   Проверено в браузере на эмуляторах (56 проверок) и тестами функций (28).
 6. **Ссылка работника и портал поставщика** через функции `punch` и `supplier_*`.
 7. **ИИ и файлы.** `aiReadDoc` / `aiReadSefach` / `aiDetectAlign` / `aiVerifyFields` /
    `aiReadHoursTable` переезжают в Python-функции: минус 1–3 с на каждый вызов ИИ. Форма 101,
@@ -129,6 +137,8 @@ errors/{id}, timings/{id}              журналы (читает только
 - [x] **Firebase Storage** включён; деплой-аккаунту выданы Firebase Rules Admin, Cloud Datastore
       Index Admin и Cloud Storage for Firebase Admin.
 - [x] Этап 2: роль **Service Account Token Creator** у сервисного аккаунта функций.
+- [x] Этап 5: секрет `GS_SESSION_SECRET` (значение `SESSION_SECRET` из Script Properties Apps Script)
+      в Secret Manager. Деплой-аккаунту `firebase-adminsdk-…` нужна роль **Secret Manager Admin**.
 - [ ] Этап 4: веб-приложение Firebase в проекте (Project settings → Your apps → Web), иначе
       `/__/firebase/init.json` на сайте пустой и режим Firestore не стартует.
 - [ ] Этап 7: ключ Anthropic в **Secret Manager** (`ANTHROPIC_API_KEY`), сейчас он лежит
