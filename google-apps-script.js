@@ -848,7 +848,6 @@ function saveSchedule(data, baseSavedAt, tenantId, auth) {
   }
 
   const clients = normalizeClients(data.clients || []);
-  const savedAt = new Date().toISOString();
   const workersJson = JSON.stringify(data.workers || []);
   const clientsJson = JSON.stringify(clients);
   const suppliersJson = JSON.stringify(data.suppliers || []);
@@ -866,9 +865,11 @@ function saveSchedule(data, baseSavedAt, tenantId, auth) {
   if (workersJson.length > CELL_SAFE_LIMIT || clientsJson.length > CELL_SAFE_LIMIT || suppliersJson.length > CELL_SAFE_LIMIT) {
     return { error: 'Слишком много данных для сохранения (лимит ячейки Google Sheets) — обратитесь к разработчику', tooLarge: true };
   }
-  const rowValues = [tenantId, workersJson, clientsJson, data.weekStart || '', savedAt, suppliersJson];
-  if (current._row) sh.getRange(current._row, 1, 1, SCHEDULE_HEADERS.length).setValues([rowValues]);
-  else sh.appendRow(rowValues);
+  // Same row writer as every other Schedule write (2026-10-01): SCHEDULE_HEADERS
+  // grew to 8 columns (workerCount/clientCount) while this function still
+  // wrote 6 values into an 8-column range, so every save of an existing firm
+  // threw and nothing reached the sheet.
+  const savedAt = _writeScheduleRow(sh, current, tenantId, data.workers || [], clients, data.suppliers || [], data.weekStart);
   return {ok: true, savedAt: savedAt};
 }
 function _writeScheduleRow(sh, current, tenantId, workers, clients, suppliers, weekStart){

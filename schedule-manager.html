@@ -4640,6 +4640,7 @@ async function gsSave(data) {
     const json = await res.json();
     if(json && json.conflict){
       showToast('\u26a0 Данные изменены в другом месте — обновляю');
+      try{ localStorage.removeItem(UNSAVED_KEY()); }catch(e){} // the server version is taken on purpose
       const fresh = await gsLoad();
       if(fresh){ applyData(fresh); render(); }
       return false;
@@ -4776,6 +4777,31 @@ function applyData(d){
   // week shown only changes the date labels, never which shifts exist.
 }
 
+// Set while local changes have not reached Google Sheets yet (2026-10-01).
+// loadData() then keeps the local data and saves it, instead of replacing it
+// with the older server copy — that replacement is how a newly added worker
+// vanished from the list when its save had failed.
+function UNSAVED_KEY(){ return STORAGE_KEY()+'_unsaved'; }
+// The flag holds when the save started; one older than 3 days is ignored, so a
+// device that was offline for long can't push stale data over newer edits.
+function hasUnsavedLocal(){ try{ const t=+localStorage.getItem(UNSAVED_KEY()); return t>0 && Date.now()-t<3*864e5 && !!localStorage.getItem(STORAGE_KEY()); }catch(e){ return false; } }
+// Apply a fresh server load, unless local changes are still unsaved.
+function applyServerLoad(gd){
+  if(hasUnsavedLocal()){
+    // gsLoad() already moved lastLoadedSavedAt to the server's version, so
+    // this save is not refused as a conflict.
+    showToast('Unsaved changes found on this device — saving them now',4000);
+    autoSave();
+    return false;
+  }
+  applyData(gd);
+  render();
+  const gdJson = JSON.stringify(gd);
+  localStorage.setItem(STORAGE_KEY(), gdJson);
+  localStorage.setItem(STORAGE_KEY_BASE, gdJson); // legacy key for worker-punch.html's bridge, see autoSave()
+  return true;
+}
+
 function autoSave(){
   // Glitch guard: don't overwrite existing data with a suddenly-empty state.
   if((!workers||!workers.length) && (!clients||!clients.length)){
@@ -4797,7 +4823,9 @@ function autoSave(){
       // that literal key and has no tenantId of its own to scope by.
       localStorage.setItem(STORAGE_KEY_BASE, json);
       // Google Sheets is primary storage
+      try{ localStorage.setItem(UNSAVED_KEY(),String(Date.now())); }catch(e){}
       const ok = await gsSave(data);
+      if(ok){ try{ localStorage.removeItem(UNSAVED_KEY()); }catch(e){} }
       setSaveStatus('saved');
       if(ok) showToast('Saved to Google Sheets');
       else showToast('GS save failed — saved locally');
@@ -4830,12 +4858,8 @@ async function loadData(){
   try{
     const gd = await gsLoad();
     if(gd){
-      applyData(gd);
-      render();
+      applyServerLoad(gd);
       markFreshContent('app');
-      const gdJson = JSON.stringify(gd);
-      localStorage.setItem(STORAGE_KEY(), gdJson);
-      localStorage.setItem(STORAGE_KEY_BASE, gdJson); // legacy key for worker-punch.html's bridge, see autoSave()
       setSaveStatus('saved');
       syncPunchesFromGS();
     } else {
@@ -4857,7 +4881,7 @@ function retryLoadDataWhenBack(){
     if(document.visibilityState==='hidden' || navigator.onLine===false) return;
     window.removeEventListener('online',again); document.removeEventListener('visibilitychange',again);
     const gd=await gsLoad(); __loadRetryArmed=false;
-    if(gd){ applyData(gd); render(); markFreshContent('app'); try{ const j=JSON.stringify(gd); localStorage.setItem(STORAGE_KEY(),j); localStorage.setItem(STORAGE_KEY_BASE,j); }catch(e){} syncPunchesFromGS(); showToast('Data loaded'); }
+    if(gd){ try{ if(applyServerLoad(gd)) showToast('Data loaded'); }catch(e){} markFreshContent('app'); syncPunchesFromGS(); }
   };
   window.addEventListener('online',again); document.addEventListener('visibilitychange',again);
   setTimeout(again,15000);
