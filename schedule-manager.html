@@ -3783,10 +3783,38 @@ const SESSION_RETRY_DELAYS_MS = [0, 500]; // attempt 2 immediate, attempt 3 afte
   }
   // Telemetry calls must never trigger the session-expired logout flow.
   const NO_LOGOUT_ACTIONS = ['logError','authFailure','login','logTiming'];
+  // Every Apps Script call is watched (2026-10-01): one slower than
+  // SLOW_GS_CALL_MS is sent to the Timings sheet as kind "gs:<action>", and a
+  // reply that is an HTML page instead of JSON (Apps Script's own error page —
+  // quota, timeout, "too many simultaneous invocations") goes to the Errors
+  // sheet with that page's text, not just "Unexpected token '<'".
+  const SLOW_GS_CALL_MS = 2500;
+  function gsActionOf(url, opts){
+    try{ const a=JSON.parse((opts&&opts.body)||'{}').action; if(a) return a; }catch(e){}
+    try{ return new URL(url).searchParams.get('action')||'loadSchedule'; }catch(e){ return ''; }
+  }
+  function watchGsReply(action, t0, res){
+    if(NO_LOGOUT_ACTIONS.indexOf(action)!==-1) return;
+    const ms=Date.now()-t0;
+    if(ms>=SLOW_GS_CALL_MS) try{ reportTiming('gs:'+action, ms, {status:res.status}); }catch(e){}
+    const ct=(res.headers&&res.headers.get('content-type'))||'';
+    if(ct && !/json|javascript/i.test(ct)){
+      res.clone().text().then(t=>{
+        const title=(t.match(/<title>([^<]*)<\/title>/i)||[])[1]||'';
+        const body=t.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi,' ').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
+        reportError('GS '+action+' returned HTML (HTTP '+res.status+', '+ms+'ms): '+(title?title+' — ':'')+body.slice(0,300),'gsHtml','');
+      }).catch(()=>{});
+    }
+  }
   window.fetch = function(url, opts){
-    let isGsCall = typeof url === 'string' && url.indexOf(GS_URL) === 0;
-    if(isGsCall){ try{ const a=JSON.parse((opts&&opts.body)||'{}').action; if(NO_LOGOUT_ACTIONS.indexOf(a)!==-1) isGsCall=false; }catch(e){} }
-    return _origFetch(url, opts).then(res => isGsCall ? checkExpired(url, opts, res, 0) : res);
+    const isGs = typeof url === 'string' && url.indexOf(GS_URL) === 0;
+    let isGsCall = isGs, action = '';
+    if(isGs){ action=gsActionOf(url, opts); if(NO_LOGOUT_ACTIONS.indexOf(action)!==-1) isGsCall=false; }
+    const t0=Date.now();
+    return _origFetch(url, opts).then(res => {
+      if(isGs) try{ watchGsReply(action, t0, res); }catch(e){}
+      return isGsCall ? checkExpired(url, opts, res, 0) : res;
+    });
   };
 })();
 
@@ -4059,6 +4087,25 @@ function setupAdminPaneBar(){
   const clearBtn = document.getElementById('adminClearLogBtn');
   if(clearBtn) clearBtn.style.display = isAdminRole ? '' : 'none';
   switchAdminPane('punchlog');
+  if(isAdminRole) prefetchAdminUsers();
+}
+// Loads the Users list in the background as soon as the Admin tab opens
+// (2026-10-01), so the Users pane usually draws at once instead of waiting
+// for a slow Apps Script reply. renderAdminUsers() shares the same request
+// while it is still in flight, so opening Users early never sends a second one.
+let __usersFetch=null;
+function fetchAdminUsers(){
+  if(__usersFetch) return __usersFetch;
+  __usersFetch=fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'listUsers',...gsAuth()})})
+    .then(res=>res.json())
+    .finally(()=>{ __usersFetch=null; });
+  return __usersFetch;
+}
+function prefetchAdminUsers(){
+  const tenantId=activeTenantIdForAdmin();
+  fetchAdminUsers().then(json=>{
+    if(json && !json.error) saveAdminCache('users_'+tenantId,(json.users||[]).filter(u=>u.tenantId===tenantId));
+  }).catch(()=>{});
 }
 const ADMIN_PANE_SUBTITLES = {
   punchlog: 'Punch log — view, edit and export all attendance records',
@@ -4107,8 +4154,7 @@ async function renderAdminUsers(){
   if(Array.isArray(cached)) renderAdminUsersRows(el, cached);
   else el.innerHTML = '<div style="color:var(--text2);font-size:13px">Loading…</div>';
   try{
-    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'listUsers', ...gsAuth() }) });
-    const json = await res.json();
+    const json = await fetchAdminUsers();
     if(!json || json.error){ if(!cached) el.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Load failed')+'</div>'; return; }
     const users = (json.users||[]).filter(u => u.tenantId === tenantId);
     saveAdminCache(cacheKey, users);
@@ -4385,13 +4431,15 @@ async function loadTimingsPane(){
   }catch(e){ if(!cached) el.innerHTML='<div style="color:#ff6b78">Network error</div>'; }
 }
 const TIMING_KIND_LABEL={login:'Login → fresh data',open:'App open',scan:'Scan (camera)',scanFiles:'Scan (files)'};
+// Slow Apps Script calls arrive as kind "gs:<action>" (see watchGsReply()).
+function timingKindLabel(k){ return TIMING_KIND_LABEL[k] || (String(k).indexOf('gs:')===0 ? 'Slow call: '+k.slice(3) : k); }
 let __timingsRows=[], __timingsSummaryText='';
 function _timingFirmName(id){ const firms=(__firmsCache&&__firmsCache.length)?__firmsCache:(loadFirmsCache()||[]); const t=firms.find(x=>x.tenantId===id); return t?(t.companyName||id):(id||'—'); }
 // One measurement as plain text (what the per-row copy button copies).
 function timingRowText(r){
   const d=r.details||{};
   const steps=(TIMING_PHASES[r.kind]||[]).map(([key,label])=>typeof d[key]==='number'?`${label} ${_sec(d[key])}`:'').filter(Boolean).join(' · ');
-  const head=[new Date(r.when).toLocaleString(),TIMING_KIND_LABEL[r.kind]||r.kind,_timingFirmName(r.tenantId),r.user||'',d.device||'',d.pages?d.pages+' page(s)':'',d.aborted||''].filter(Boolean).join(' · ');
+  const head=[new Date(r.when).toLocaleString(),timingKindLabel(r.kind),_timingFirmName(r.tenantId),r.user||'',d.device||'',d.pages?d.pages+' page(s)':'',d.aborted||''].filter(Boolean).join(' · ');
   return head+'\n'+_sec(r.totalMs)+(steps?' — '+steps:'')+(d.kinds?'\nPage kinds: '+d.kinds.join(', '):'');
 }
 function copyTimingRow(i){ const r=__timingsRows[i]; if(r) copyTextToClipboard(timingRowText(r)); }
@@ -4404,18 +4452,18 @@ function renderTimingsPane(el,rows){
   if(!rows.length){ el.innerHTML='<div style="color:var(--text2);font-size:13px">No measurements yet — they appear after the next login, app open or scan.</div>'; return; }
   const weekAgo=Date.now()-7*864e5;
   const recent=rows.filter(r=>new Date(r.when).getTime()>=weekAgo&&!(r.details&&r.details.aborted));
-  const kinds=['login','open','scan','scanFiles'].filter(k=>recent.some(r=>r.kind===k));
+  const kinds=['login','open','scan','scanFiles'].filter(k=>recent.some(r=>r.kind===k)).concat([...new Set(recent.map(r=>r.kind).filter(k=>String(k).indexOf('gs:')===0))].sort());
   const firmName=_timingFirmName;
   const KIND_LABEL=TIMING_KIND_LABEL;
   __timingsSummaryText='Last 7 days (median / 90%):\n'+kinds.map(k=>{
     const rs=recent.filter(r=>r.kind===k), tot=rs.map(r=>r.totalMs);
     const steps=(TIMING_PHASES[k]||[]).map(([key,label])=>{ const v=rs.map(r=>r.details&&r.details[key]).filter(x=>typeof x==='number'); return v.length?`${label} ${_sec(_pct(v,0.5))}`:''; }).filter(Boolean).join(' · ');
-    return `${KIND_LABEL[k]||k}: ${rs.length}× · median ${_sec(_pct(tot,0.5))} · 90% ${_sec(_pct(tot,0.9))}${steps?' · '+steps:''}`;
+    return `${timingKindLabel(k)}: ${rs.length}× · median ${_sec(_pct(tot,0.5))} · 90% ${_sec(_pct(tot,0.9))}${steps?' · '+steps:''}`;
   }).join('\n');
   const summary=kinds.map(k=>{
     const rs=recent.filter(r=>r.kind===k), tot=rs.map(r=>r.totalMs);
     const phases=(TIMING_PHASES[k]||[]).map(([key,label])=>{ const v=rs.map(r=>r.details&&r.details[key]).filter(x=>typeof x==='number'); return v.length?`${esc(label)} ${_sec(_pct(v,0.5))}`:''; }).filter(Boolean).join(' · ');
-    return `<tr><td style="padding:6px 8px;font-weight:600">${esc(KIND_LABEL[k]||k)}</td><td style="padding:6px 8px;text-align:center">${rs.length}</td>
+    return `<tr><td style="padding:6px 8px;font-weight:600">${esc(timingKindLabel(k))}</td><td style="padding:6px 8px;text-align:center">${rs.length}</td>
       <td style="padding:6px 8px;text-align:center;font-weight:600">${_sec(_pct(tot,0.5))}</td><td style="padding:6px 8px;text-align:center">${_sec(_pct(tot,0.9))}</td>
       <td style="padding:6px 8px;font-size:11px;color:var(--text2)">${phases}</td></tr>`;
   }).join('');
@@ -4424,7 +4472,7 @@ function renderTimingsPane(el,rows){
     const extra=(TIMING_PHASES[r.kind]||[]).map(([key,label])=>typeof d[key]==='number'?`${esc(label)} ${_sec(d[key])}`:'').filter(Boolean).join(' · ');
     return `<div style="position:relative;padding:8px 40px 8px 10px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:12px">
       <button class="btn sm" title="Copy" onclick="copyTimingRow(${i})" style="position:absolute;top:6px;right:6px;padding:4px 6px;min-width:0"><i class="ti ti-copy"></i></button>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;color:var(--text2)"><span>${esc(new Date(r.when).toLocaleString())}</span><span style="font-weight:600;color:var(--text)">${esc(KIND_LABEL[r.kind]||r.kind)}</span>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;color:var(--text2)"><span>${esc(new Date(r.when).toLocaleString())}</span><span style="font-weight:600;color:var(--text)">${esc(timingKindLabel(r.kind))}</span>
         <span>${esc(firmName(r.tenantId))}</span><span>${esc(r.user||'')}</span><span>${esc(d.device||'')}</span>${d.pages?`<span>${d.pages} page(s)</span>`:''}${d.aborted?`<span style="color:#ffb020">${esc(d.aborted)}</span>`:''}</div>
       <div><b>${_sec(r.totalMs)}</b>${extra?' — '+extra:''}</div></div>`;
   }).join('');
@@ -4682,11 +4730,23 @@ async function gsLoad() {
 // Pull all punches from the DB and merge with local (DB is authoritative;
 // unsynced local entries are kept). Lets the admin see every worker's punches.
 async function gsLoadPunchLog(){
-  try{
-    const res = await fetch(GS_URL + '?action=loadPunchLog' + gsAuthQuery());
-    const json = await res.json();
-    return (json && json.entries) ? json.entries : null;
-  }catch(e){ console.warn('GS punch load failed:', e); return null; }
+  // Same retries as gsLoad() (2026-10-01): one Apps Script error page used to
+  // drop the whole punch sync for that app open.
+  let reason='';
+  for(let attempt=0; attempt<=GS_LOAD_RETRY_DELAYS_MS.length; attempt++){
+    if(attempt) await new Promise(r=>setTimeout(r,GS_LOAD_RETRY_DELAYS_MS[attempt-1]));
+    try{
+      const res = await fetch(GS_URL + '?action=loadPunchLog' + gsAuthQuery());
+      const text = await res.text();
+      let json=null;
+      try{ json=JSON.parse(text); }catch(e){ reason='HTTP '+res.status+', not JSON'; continue; }
+      if(json && json.entries) return json.entries;
+      reason=(json&&json.error)?String(json.error):'no entries in reply';
+      if(json&&json.error===SESSION_EXPIRED_ERROR) break;
+    }catch(e){ reason='network: '+((e&&e.message)||e); }
+  }
+  console.warn('GS punch load failed: '+reason);
+  return null;
 }
 async function syncPunchesFromGS(){
   const remote = await gsLoadPunchLog();
