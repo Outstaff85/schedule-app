@@ -9,6 +9,8 @@ database. The logic itself is in core.py.
   users_admin  POST {action, ...} with "Authorization: Bearer <ID token>":
                listUsers, createUser (new firm), createTenantUser,
                updateUser, resetUserPassword, deleteUser
+  migrate_from_sheets  POST {gsToken} (a super-admin's Apps Script session
+               token): copies the sheets into Firestore (migrate.py, stage 3)
 
 Minting custom tokens needs the runtime service account to hold
 "Service Account Token Creator" (granted 2026-10-01).
@@ -16,11 +18,14 @@ Minting custom tokens needs the runtime service account to hold
 
 import json
 
+import requests
+
 import firebase_admin
 from firebase_admin import auth, firestore
 from firebase_functions import https_fn, options
 
 import core
+import migrate as migration
 
 options.set_global_options(region="europe-west3", memory=options.MemoryOption.MB_256)
 
@@ -95,3 +100,36 @@ def users_admin(req: https_fn.Request) -> https_fn.Response:
         return _json(core.run_action(_db(), caller, _body(req), _revoke))
     except Exception as e:
         return _json({"error": str(e)}, 500)
+
+
+# Same deployment as GS_URL in schedule-manager.html and functions/main.py;
+# update all three together if it ever rotates.
+GS_URL = "https://script.google.com/macros/s/AKfycbwfGCQs8TzGd38j-JU0ZdoHLXdHITaG1QjUE3nAJDVB6uZR2_56hxV0Y4UgCs1bGYi_/exec"
+
+
+@https_fn.on_request(cors=_CORS, timeout_sec=540, memory=options.MemoryOption.GB_1)
+def migrate_from_sheets(req: https_fn.Request) -> https_fn.Response:
+    """Copies the Google Sheets data into Firestore and returns a per-firm
+    report (sheet vs Firestore counts). Authorization is the caller's Apps
+    Script session token: exportForMigration answers only a super-admin's,
+    so nothing is read or written for anyone else."""
+    if req.method != "POST":
+        return _json({"error": "POST only"}, 405)
+    gs_token = str(_body(req).get("gsToken") or "")
+    if not gs_token:
+        return _json({"error": "Сессия истекла или недействительна — войдите заново"}, 401)
+
+    def fetch(part, tenant_id=None):
+        body = {"action": "exportForMigration", "token": gs_token, "part": part}
+        if tenant_id:
+            body["tenantId"] = tenant_id
+        resp = requests.post(GS_URL, json=body, timeout=240)
+        try:
+            return resp.json()
+        except ValueError:
+            return {"error": f"Apps Script replied HTTP {resp.status_code}, not JSON"}
+
+    try:
+        return _json(migration.migrate(_db(), fetch))
+    except Exception as e:
+        return _json({"error": "Migration failed: " + str(e)}, 500)
