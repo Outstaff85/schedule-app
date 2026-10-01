@@ -20,7 +20,8 @@ rules_version = '2';
 //   - a supplier never reads Firestore directly: wages and GPS can't be
 //     hidden field-by-field, so the supplier portal goes through functions
 //     that strip them (_stripWorkerForSupplier / _stripClientForSupplier);
-//   - users, password hashes and worker punch-link tokens are function-only.
+//   - users, password hashes, usernames and worker punch-link tokens are
+//     function-only.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -87,8 +88,10 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Function-only: password hashes, worker punch-link tokens, push subscriptions.
+    // Function-only: password hashes, the username -> uid index (keeps
+    // usernames unique), worker punch-link tokens, push subscriptions.
     match /authSecrets/{uid} { allow read, write: if false; }
+    match /usernames/{name} { allow read, write: if false; }
     match /workerTokens/{token} { allow read, write: if false; }
     match /pushSubscriptions/{id} { allow read, write: if false; }
 
