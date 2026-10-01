@@ -456,6 +456,31 @@ const GS_URL = 'https://script.google.com/macros/s/AKfycbwfGCQs8TzGd38j-JU0ZdoHL
 const API_SECRET = 'odinson-7Kq2x9';
 const QUEUE_KEY = 'punchQueue';
 
+// ── Data backend (FIRESTORE_PLAN.md stage 6) — the same per-device switch as
+// schedule-manager.html (?backend=firestore / ?backend=sheets, one
+// localStorage key on this domain). In Firestore mode the page talks to the
+// punch Cloud Function, which hands out only this worker and their sites and
+// accepts punches for this worker only; offline queueing is unchanged.
+const BACKEND = (function(){
+  try{
+    const q = new URLSearchParams(location.search).get('backend');
+    if(q === 'firestore') localStorage.setItem('backend', 'firestore');
+    else if(q === 'sheets') localStorage.removeItem('backend');
+    return localStorage.getItem('backend') === 'firestore' ? 'firestore' : 'sheets';
+  }catch(e){ return 'sheets'; }
+})();
+const PUNCH_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/punch';
+function punchFn(body){
+  return fetch(PUNCH_FN_URL, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+}
+// One punch to the server, either backend; the reply is {ok} or {error}.
+function postPunch(e){
+  const token = e.workerToken || _wpToken();
+  return BACKEND === 'firestore'
+    ? punchFn({action:'savePunch', token, data:e})
+    : fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'savePunch',secret:API_SECRET,workerToken:token,data:e})});
+}
+
 const WORKER_COLORS=[
   {bg:'rgba(109,214,160,0.2)', text:'#6dd6a0'},
   {bg:'rgba(79,142,247,0.2)', text:'#4f8ef7'},
@@ -484,7 +509,7 @@ function _wpToken(){
 async function gsSavePunch(entry){
   if(!navigator.onLine){ queueEntry(entry); return; }
   try{
-    const res=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'savePunch',secret:API_SECRET,workerToken:entry.workerToken||_wpToken(),data:entry})});
+    const res=await postPunch(entry);
     const json=await res.json();
     // Apps Script always answers HTTP 200, even for a logical failure (bad
     // token, deactivated firm) — it reports that via json.error, not the
@@ -511,7 +536,7 @@ async function flushQueue(){
   try{
     for(const e of q){
       try{
-        const r=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'savePunch',secret:API_SECRET,workerToken:e.workerToken||_wpToken(),data:e})});
+        const r=await postPunch(e);
         const json=await r.json();
         if(!json || json.error) failed.push(e);
       }
@@ -739,7 +764,7 @@ async function loadWorkersFromGS(){
   const url = GS_URL+'?action=loadSchedule&t='+Date.now()+(URL_TOKEN?'&workerToken='+encodeURIComponent(URL_TOKEN):'');
   
   try{
-    const res = await fetch(url, { method:'GET', redirect:'follow' });
+    const res = BACKEND === 'firestore' ? await punchFn({action:'load', token: URL_TOKEN}) : await fetch(url, { method:'GET', redirect:'follow' });
     const text = await res.text();
     const data = JSON.parse(text);
     if(data.workers&&data.workers.length){
@@ -756,6 +781,7 @@ async function loadWorkersFromGS(){
       return true;
     }
   }catch(e){ console.warn('GS load failed:', e.message); }
+  if(BACKEND === 'firestore') return false; // the JSONP fallback below is Apps Script only
 
   // Method 2: jsonp-style via script tag
   return new Promise((resolve)=>{
@@ -1074,7 +1100,8 @@ function reportError(message, source, stack){
     const key=String(message||'').slice(0,120), nowT=Date.now();
     if(_errSent[key] && nowT-_errSent[key]<60000) return;
     _errSent[key]=nowT; _errCount++;
-    fetch(GS_URL,{method:'POST',body:JSON.stringify({
+    const send = BACKEND === 'firestore' ? (b => punchFn(b)) : (b => fetch(GS_URL,{method:'POST',body:JSON.stringify(b)}));
+    send({
       action:'logError', secret:API_SECRET,
       page:(location.pathname.split('/').pop()||location.href),
       role:'worker',
@@ -1082,7 +1109,7 @@ function reportError(message, source, stack){
       message:String(message||'').slice(0,500),
       source:String(source||'').slice(0,300),
       stack:String(stack||'').slice(0,1200)
-    })}).catch(()=>{});
+    }).catch(()=>{});
   }catch(e){}
 }
 window.addEventListener('error', function(ev){ reportError(ev.message, (ev.filename||'')+':'+(ev.lineno||''), ev.error&&ev.error.stack); });
@@ -1112,14 +1139,9 @@ async function subscribeWorkerPush(workerName){
       applicationServerKey: urlB64ToUint8WP(VAPID_PUBLIC_KEY)
     });
     // Save with worker name to GS
-    fetch(GS_URL_WP,{method:'POST',body:JSON.stringify({
-      action:'savePushSubscription',
-      secret:API_SECRET,
-      workerToken:_wpToken(),
-      subscription:JSON.parse(JSON.stringify(sub)),
-      role:'worker',
-      workerName
-    })});
+    const subBody = {action:'savePushSubscription', subscription:JSON.parse(JSON.stringify(sub)), role:'worker', workerName};
+    if(BACKEND === 'firestore') punchFn(Object.assign({token:_wpToken()}, subBody));
+    else fetch(GS_URL_WP,{method:'POST',body:JSON.stringify(Object.assign({secret:API_SECRET, workerToken:_wpToken()}, subBody))});
   } catch(e){ console.warn('Worker push failed:',e); }
 }
 

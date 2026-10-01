@@ -12,6 +12,9 @@ database. The logic itself is in core.py.
                setTenantActive, deleteTenant, updateTenant, loadTenantProfile
   migrate_from_sheets  POST {gsToken} (a super-admin's Apps Script session
                token): copies the sheets into Firestore (migrate.py, stage 3)
+  punch        POST {action, token, ...}: the worker punch link (portal.py, stage 6)
+  supplier     POST {action, ...} with "Authorization: Bearer <ID token>" of a
+               supplier login: the supplier portal (portal.py, stage 6)
 
 Minting custom tokens needs the runtime service account to hold
 "Service Account Token Creator" (granted 2026-10-01).
@@ -27,6 +30,7 @@ from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
 
 import core
+import portal
 import migrate as migration
 
 options.set_global_options(region="europe-west3", memory=options.MemoryOption.MB_256)
@@ -98,19 +102,29 @@ def login(req: https_fn.Request) -> https_fn.Response:
         return _json({"error": "Login failed: " + str(e)}, 500)
 
 
+def _verified(req):
+    """The caller's verified ID token, or None (missing, bad, revoked)."""
+    header = req.headers.get("Authorization", "")
+    id_token = header[7:] if header.startswith("Bearer ") else ""
+    if not id_token:
+        return None
+    _db()  # initializes the Admin SDK
+    try:
+        return auth.verify_id_token(id_token, check_revoked=True)
+    except Exception:
+        return None
+
+
+E_SESSION = "Сессия истекла или недействительна — войдите заново"
+
+
 @https_fn.on_request(cors=_CORS, timeout_sec=60)
 def users_admin(req: https_fn.Request) -> https_fn.Response:
     if req.method != "POST":
         return _json({"error": "POST only"}, 405)
-    header = req.headers.get("Authorization", "")
-    id_token = header[7:] if header.startswith("Bearer ") else ""
-    if not id_token:
-        return _json({"error": "Сессия истекла или недействительна — войдите заново"}, 401)
-    _db()  # initializes the Admin SDK
-    try:
-        decoded = auth.verify_id_token(id_token, check_revoked=True)
-    except Exception:
-        return _json({"error": "Сессия истекла или недействительна — войдите заново"}, 401)
+    decoded = _verified(req)
+    if not decoded:
+        return _json({"error": E_SESSION}, 401)
     body = _body(req)
     caller = {"uid": decoded["uid"], "role": decoded.get("role"), "tenantId": decoded.get("tenantId")}
     if caller["role"] == "superadmin":
@@ -152,3 +166,35 @@ def migrate_from_sheets(req: https_fn.Request) -> https_fn.Response:
         return _json(migration.migrate(_db(), fetch))
     except Exception as e:
         return _json({"error": "Migration failed: " + str(e)}, 500)
+
+
+@https_fn.on_request(cors=_CORS, timeout_sec=30)
+def punch(req: https_fn.Request) -> https_fn.Response:
+    """Worker punch link (worker-punch.html in Firestore mode). No login: the
+    link token picks the worker, and only that worker's data goes out."""
+    if req.method != "POST":
+        return _json({"error": "POST only"}, 405)
+    body = _body(req)
+    if body.get("ping") is True:
+        _db()
+        return _json({"ok": True, "warm": True})
+    try:
+        return _json(portal.punch_action(_db(), body))
+    except Exception as e:
+        return _json({"error": str(e)}, 500)
+
+
+@https_fn.on_request(cors=_CORS, timeout_sec=60)
+def supplier(req: https_fn.Request) -> https_fn.Response:
+    """Supplier portal (supplier-portal.html in Firestore mode)."""
+    if req.method != "POST":
+        return _json({"error": "POST only"}, 405)
+    decoded = _verified(req)
+    if not decoded:
+        return _json({"error": E_SESSION}, 401)
+    caller = {"uid": decoded["uid"], "role": decoded.get("role"), "tenantId": decoded.get("tenantId"),
+              "supplierId": decoded.get("supplierId")}
+    try:
+        return _json(portal.supplier_action(_db(), caller, _body(req)))
+    except Exception as e:
+        return _json({"error": str(e)}, 500)

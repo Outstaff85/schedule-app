@@ -169,8 +169,41 @@ function getSession(){
 }
 function saveSession(s){ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
 function clearSession(){ localStorage.removeItem(SESSION_KEY); }
-function logout(){ clearSession(); location.reload(); }
+async function logout(){
+  clearSession();
+  if(BACKEND === 'firestore'){ try{ await (await loadFirestoreBackend()).signOut(); }catch(e){} }
+  location.reload();
+}
 function gsAuth(){ const s=getSession(); return s ? {token:s.token} : {}; }
+
+// ── Data backend (FIRESTORE_PLAN.md stage 6) — same per-device switch as
+// schedule-manager.html (?backend=firestore / ?backend=sheets, one shared
+// localStorage key on this domain). In Firestore mode the login goes through
+// the login function and this page's five Apps Script actions go to the
+// supplier function, which applies the same allow-lists as Apps Script.
+const BACKEND = (function(){
+  try{
+    const q = new URLSearchParams(location.search).get('backend');
+    if(q === 'firestore') localStorage.setItem('backend', 'firestore');
+    else if(q === 'sheets') localStorage.removeItem('backend');
+    return localStorage.getItem('backend') === 'firestore' ? 'firestore' : 'sheets';
+  }catch(e){ return 'sheets'; }
+})();
+const SUPPLIER_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/supplier';
+const SUPPLIER_FN_ACTIONS = ['loadSchedule','loadPunchLog','supplierAddWorker','supplierUpdateWorker','supplierDeleteWorker'];
+let __fsBackend = null;
+function loadFirestoreBackend(){
+  if(__fsBackend) return __fsBackend;
+  __fsBackend = new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = 'firestore-backend.js';
+    el.onload = () => window.initFirestoreBackend().then(resolve, reject);
+    el.onerror = () => reject(new Error('firestore-backend.js failed to load'));
+    document.head.appendChild(el);
+  }).catch(e => { __fsBackend = null; throw e; });
+  return __fsBackend;
+}
+if(BACKEND === 'firestore') loadFirestoreBackend().catch(e => console.warn('Firestore backend:', e));
 
 // Sliding session expiration (added 2026-09-30, mirrors schedule-manager.html's
 // own fix — see requireAuth()'s comment in apps-script/Код.js): the backend
@@ -182,8 +215,20 @@ function gsAuth(){ const s=getSession(); return s ? {token:s.token} : {}; }
 // hard 6h wall while actively in use.
 (function(){
   const _origFetch = window.fetch.bind(window);
+  function gsParams(url, opts){
+    try{ if(opts && typeof opts.body === 'string') return JSON.parse(opts.body); }catch(e){}
+    try{ return Object.fromEntries(new URL(url).searchParams); }catch(e){ return {}; }
+  }
   window.fetch = function(url, opts){
     const isGsCall = typeof url === 'string' && url.indexOf(GS_URL) === 0;
+    if(isGsCall && BACKEND === 'firestore'){
+      const params = gsParams(url, opts);
+      if(SUPPLIER_FN_ACTIONS.indexOf(params.action) !== -1){
+        delete params.token;
+        return loadFirestoreBackend().then(b => b.idToken()).then(idToken => _origFetch(SUPPLIER_FN_URL, {method:'POST',
+          headers:{'Content-Type':'application/json', Authorization:'Bearer ' + idToken}, body: JSON.stringify(params)}));
+      }
+    }
     return _origFetch(url, opts).then(res => {
       if(!isGsCall) return res;
       res.clone().json().then(json => {
@@ -203,6 +248,18 @@ async function submitLogin(){
   const errEl=document.getElementById('loginError');
   errEl.textContent='';
   if(!username||!password){ errEl.textContent='Enter username and password'; return; }
+  if(BACKEND === 'firestore'){
+    try{
+      const b = await loadFirestoreBackend();
+      const json = await b.login(username, password);
+      if(json.error){ errEl.textContent=json.error; return; }
+      if(json.role!=='supplier'){ await b.signOut(); errEl.textContent='This login is not a supplier account'; return; }
+      saveSession({ backend:'firestore', token: json.gsToken || 'firebase', role:json.role, tenantId:json.tenantId,
+        supplierId:json.supplierId, username:json.username, expiresAt: Date.now() + 30*864e5 });
+      gateApp();
+    }catch(e){ errEl.textContent='Network error'; }
+    return;
+  }
   try{
     const res=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'login',username,password})});
     const json=await res.json();
@@ -230,8 +287,13 @@ async function loadData(){
   punchLog = pl.entries||[];
 }
 
-function gateApp(){
-  const s=getSession();
+async function gateApp(){
+  let s=getSession();
+  // A session from the other backend, or a Firebase sign-in that is gone: log in again.
+  if(s && (s.backend === 'firestore') !== (BACKEND === 'firestore')){ clearSession(); s=null; }
+  if(s && BACKEND === 'firestore'){
+    try{ if(!(await loadFirestoreBackend()).currentUser()){ clearSession(); s=null; } }catch(e){}
+  }
   if(!s){ document.getElementById('loginScreen').style.display='flex'; document.getElementById('appRoot').style.display='none'; return; }
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('appRoot').style.display='block';

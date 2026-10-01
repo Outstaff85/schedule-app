@@ -14,6 +14,7 @@
 //   listenPunches(t, onChange)  live punches of the last 13 months; resolves
 //                               with the first snapshot's entries
 //   savePunch / updatePunch / deletePunch
+//   idToken()                   the signed-in user's ID token (supplier portal)
 //   handleAction(action, params)   stage 5: answers an Apps Script action
 //                               (Admin panes, telemetry, hours queue) in the
 //                               same JSON shape, or null to leave it to Apps Script
@@ -346,6 +347,7 @@
     return {
       login, loadSchedule, saveSchedule, listenPunches, savePunch, updatePunch, deletePunch, handleAction,
       currentUser: () => auth.currentUser,
+      idToken: () => auth.currentUser ? auth.currentUser.getIdToken() : Promise.resolve(null),
       signOut: () => { if(punchUnsub) punchUnsub(); return authMod.signOut(auth); },
     };
   };
