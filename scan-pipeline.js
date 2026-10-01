@@ -88,6 +88,7 @@ async function onScanFilesSelected(fileList){
   window.__aiPacketOtherPages=[];
   window.__aiPageParsed=[];
   window.__aiAvatarB64=null;
+  window.__aiPendingSefachIdNo=null; // mergeScanPage()'s cross-check must not see a previous session's value
   const isPdf=f=>f.type==='application/pdf'||/\.pdf$/i.test(f.name||'');
   if(files.length===1 && !isPdf(files[0])) return onScanFileSelected(files[0]);
 
@@ -96,33 +97,11 @@ async function onScanFilesSelected(fileList){
     +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
     +'<span>קורא קבצים…</span></div>';
   try{
-    await _loadPdfJs();
-    // Expand every selected file into a flat, ordered list of page images
-    // ({b64, mediaType, text}) — text (from pdf.js's own text layer, free/
-    // local) is only used to spot an already-filled Form 101 page below.
-    const items=[];
-    for(const file of files){
-      if(isPdf(file)){
-        const buf=await file.arrayBuffer();
-        const pdf=await pdfjsLib.getDocument({data:buf}).promise;
-        for(let n=1;n<=pdf.numPages;n++){
-          const page=await pdf.getPage(n);
-          const vp=page.getViewport({scale:2.5});
-          const cv=document.createElement('canvas'); cv.width=vp.width; cv.height=vp.height;
-          await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
-          let text='';
-          try{ const tc=await page.getTextContent(); text=tc.items.map(it=>it.str).join(' '); }catch(e){}
-          items.push({b64:cv.toDataURL('image/png').split(',')[1], mediaType:'image/png', text});
-        }
-      } else {
-        const b64=await new Promise((res,rej)=>{
-          const r=new FileReader();
-          r.onload=()=>res(r.result.split(',')[1]);
-          r.onerror=rej; r.readAsDataURL(file);
-        });
-        items.push({b64, mediaType:file.type||'image/jpeg', text:''});
-      }
-    }
+    // Every page of every file, expanded and shrunk for upload, all files
+    // in parallel (shared filesToUploadPages(), schedule-manager.html).
+    // text (pdf.js's own text layer, free/local) is only used to spot an
+    // already-filled Form 101 page below.
+    const items=await filesToUploadPages(files);
     // Classify: drop pages that are already a filled Form 101 (we always
     // generate our own, see aiFillForm101), find the first ID/passport page
     // for the worker card, keep everything else ("contract" etc.) as-is.
@@ -143,6 +122,11 @@ async function onScanFilesSelected(fileList){
     // never fires for that path (nothing is ever missing after the first hit).
     // CORE_FIELDS/missingCore are module-scope now (shared with
     // processAllPendingPages() below) — see their own comment.
+    const isForm101Page=it=>/כרטיס\s*עובד|0101\/130/.test(it.text||'');
+    // Page types from the cheap Haiku classifier, all pages at once — a
+    // contract/other page is attached without an expensive AI read.
+    await Promise.all(items.map(async it=>{ it.kind=isForm101Page(it)?null:await classifyPage(it); }));
+    const sefachReads=new Map();
     let needMore=false;
     const otherPages=[];
     for(let i=0;i<items.length;i++){
@@ -150,14 +134,17 @@ async function onScanFilesSelected(fileList){
       stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
         +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
         +'<span>קורא עמוד '+(i+1)+' מתוך '+items.length+'…</span></div>';
-      if(/כרטיס\s*עובד|0101\/130/.test(it.text||'')) continue; // старая Форма 101 — отбрасываем
+      if(isForm101Page(it)) continue; // старая Форма 101 — отбрасываем
       let thisPageParsed=null;
-      if(!foundParsed){
+      if(!foundParsed&&!isNonIdKind(it.kind)){
         try{
           const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
           const json=await resp.json();
           const p=json&&json.parsed;
           if(p&&(p.type==='israeli_id'||p.type==='passport')){
+            // Start the following pages' ספח reads now, in parallel with this
+            // page's digit re-check (merged in page order below, unchanged).
+            if(missingCore(p)) for(let j=i+1;j<items.length;j++){ const rd=extraPageReader(items[j].kind); if(rd&&!isForm101Page(items[j])) sefachReads.set(j,rd(items[j])); }
             // Same zoomed-in digit re-check as the single-photo path (runOcr) —
             // a wrong ID/date digit is just as costly whether it came from one
             // photo or a multi-file packet.
@@ -172,9 +159,13 @@ async function onScanFilesSelected(fileList){
         }catch(e){ console.error(e); }
       } else if(needMore){
         try{
-          const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
-          const json=await resp.json();
-          const p=json&&json.parsed;
+          // needMore is only ever true after an Israeli-ID primary (see
+          // missingCore), so this extra page is the ספח/address side: read it
+          // with the narrow aiReadSefach (smaller prompt/output, always
+          // type:israeli_id) instead of the full aiReadDoc, which re-derived
+          // type/fieldBoxes/photoBox for nothing and was noticeably slower.
+          const rd=extraPageReader(it.kind);
+          const p=sefachReads.has(i)?await sefachReads.get(i):(rd?await rd(it):null);
           if(p&&p.type==='israeli_id'){
             // Reuse the same field list/merge the single-page-at-a-time flow
             // uses (ID_CORE_FIELDS/mergeIsraeliIdFields), not just the four
@@ -182,7 +173,7 @@ async function onScanFilesSelected(fileList){
             // pages" — this page's own read (p) already has houseNumber/
             // maritalStatus available whenever it was worth OCR'ing at all,
             // and the old hand-rolled loop here dropped both silently.
-            foundParsed=mergeIsraeliIdFields(foundParsed,p);
+            foundParsed=mergeScanPage(foundParsed,p);
             thisPageParsed=p;
             // The ID number is also printed on the ספח, but per user feedback a
             // raw cross-page OCR disagreement isn't itself warning-worthy — the
@@ -404,27 +395,8 @@ async function runSefachOcr(b64,mediaType){
 // the cap is returned untouched). Best-effort: any failure here just falls
 // through to uploading the original image unchanged, so a hiccup never
 // blocks the scan.
-const UPLOAD_MAX_DIM=1800;
-function downscaleForUpload(b64,mediaType){
-  return new Promise(resolve=>{
-    const img=new Image();
-    img.onload=()=>{
-      try{
-        const iw=img.naturalWidth, ih=img.naturalHeight;
-        const scale=Math.min(1,UPLOAD_MAX_DIM/Math.max(iw,ih,1));
-        if(scale>=1){ resolve({b64,mediaType}); return; }
-        const cv=document.createElement('canvas');
-        cv.width=Math.round(iw*scale); cv.height=Math.round(ih*scale);
-        const ctx=cv.getContext('2d');
-        ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
-        ctx.drawImage(img,0,0,cv.width,cv.height);
-        resolve({b64:cv.toDataURL('image/jpeg',0.9).split(',')[1],mediaType:'image/jpeg'});
-      }catch(e){ resolve({b64,mediaType}); }
-    };
-    img.onerror=()=>resolve({b64,mediaType});
-    img.src='data:'+mediaType+';base64,'+b64;
-  });
-}
+// UPLOAD_MAX_DIM / downscaleForUpload() live in schedule-manager.html now
+// (shared upload preparation, used by every file upload in the app).
 // Step 1.4: a server-side OpenCV+Pillow pass (functions/main.py,
 // preprocess_scan) that (a) rejects an obviously-too-blurry photo before any
 // AI call is spent on it, and (b) contrast/sharpness-enhances what's left.
@@ -493,7 +465,15 @@ async function preAlignScan(b64,mediaType){
 // to run on every queued page. Best-effort: any failure here (network
 // error, bad AI response, image decode failure) just falls through to the
 // original image unchanged, so a hiccup here never blocks the scan.
+// Returns {b64,mediaType,kind}: kind is aiDetectAlign's page type
+// (id_front/id_back/sefach/passport/contract/other) or null when unknown.
 async function autoPreAlignScan(b64,mediaType){
+  const meta={kind:null};
+  const out=await _autoPreAlignCore(b64,mediaType,meta);
+  return {...out,kind:meta.kind};
+}
+const PAGE_KINDS=['id_front','id_back','sefach','passport','contract','other'];
+async function _autoPreAlignCore(b64,mediaType,meta){
   try{
     const resp=await fetch(GS_URL,{
       method:'POST',
@@ -501,6 +481,7 @@ async function autoPreAlignScan(b64,mediaType){
     });
     const json=await resp.json();
     const align=json&&json.ok&&json.align;
+    if(align&&PAGE_KINDS.includes(align.kind)) meta.kind=align.kind;
     if(!align) return {b64,mediaType};
     const rotateDeg=[0,90,180,270].includes(align.rotate)?align.rotate:0;
     const upright=rotateDeg?await alignScanImage(b64,mediaType,{rotate:rotateDeg,crop:{x0:0,y0:0,x1:1,y1:1}}):{b64,mediaType};
@@ -671,12 +652,27 @@ function isValidIsraeliId(id){
 // doesn't check out, stop trying to fix it automatically and instead record
 // `idChecksumOk:false` so the worker modal can flag the field for the human
 // to look at, rather than silently keeping a number that's provably wrong.
+// Israeli documents print numbers in space-separated groups ("0 1234567 8")
+// and dates without leading zeros ("5.4.1995"); both AI reads and zoomed
+// re-reads are normalized here so the format checks below don't discard
+// an otherwise correct value.
+function _normScanDigits(s){
+  const t=String(s==null?'':s).replace(/[\s\-]/g,'');
+  return /^\d+$/.test(t)?t:String(s==null?'':s).trim();
+}
+function _normScanDate(s){
+  const t=String(s==null?'':s).trim();
+  const m=t.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/);
+  return m?m[1].padStart(2,'0')+'/'+m[2].padStart(2,'0')+'/'+m[3]:t;
+}
 async function verifyIdChecksum(parsed,b64,mediaType){
   if(!parsed||parsed.type!=='israeli_id'||!parsed.idNo) return parsed;
+  if(parsed.idNo) parsed.idNo=_normScanDigits(parsed.idNo);
   if(isValidIsraeliId(parsed.idNo)){ parsed.idChecksumOk=true; return parsed; }
   if(parsed.fieldBoxes&&parsed.fieldBoxes.idNo){
     const retry=await verifyField(b64,mediaType,parsed.fieldBoxes.idNo,'digits9');
-    if(retry&&/^\d{9}$/.test(retry)) parsed.idNo=retry;
+    const retryN=retry&&_normScanDigits(retry);
+    if(retryN&&/^\d{9}$/.test(retryN)) parsed.idNo=retryN;
   }
   parsed.idChecksumOk=isValidIsraeliId(parsed.idNo);
   return parsed;
@@ -697,6 +693,9 @@ async function verifyDigitFields(parsed,b64,mediaType){
   const isDigits9=s=>typeof s==='string'&&/^\d{9}$/.test(s);
   const isDate=s=>typeof s==='string'&&/^\d{2}[\/.]\d{2}[\/.]\d{4}$/.test(s);
   const jobs=[];
+  // Join a grouped ID ("0 1234567 8") first, so a correct read passes the
+  // checksum below and skips the extra zoomed AI re-read.
+  if(parsed.type==='israeli_id'&&parsed.idNo) parsed.idNo=_normScanDigits(parsed.idNo);
   if(parsed.type==='israeli_id'){
     // Skip the zoomed idNo re-read when the RAW extraction already passes
     // its own Luhn-style check digit (isValidIsraeliId, below) — a passing
@@ -718,11 +717,11 @@ async function verifyDigitFields(parsed,b64,mediaType){
   if(!jobs.length) return parsed;
   const values=await verifyFieldsBatch(jobs.map(j=>({field:j.field,kind:j.kind,box:parsed.fieldBoxes[j.field]})),b64,mediaType);
   jobs.forEach(j=>{
-    const val=values[j.field];
-    if(!val) return;
-    if(j.kind==='digits9'){ if(isDigits9(val)) parsed[j.field]=val; }
-    else if(j.kind==='date'){ if(isDate(val)) parsed[j.field]=val.replace(/\./g,'/'); }
-    else { parsed[j.field]=val; } // passportNo — format varies by country, trust the trimmed re-read
+    const raw=values[j.field];
+    if(!raw) return;
+    if(j.kind==='digits9'){ const val=_normScanDigits(raw); if(isDigits9(val)) parsed[j.field]=val; }
+    else if(j.kind==='date'){ const val=_normScanDate(raw); if(isDate(val)) parsed[j.field]=val.replace(/\./g,'/'); }
+    else { parsed[j.field]=String(raw).replace(/[\s<]/g,'').toUpperCase(); } // passportNo — format varies by country
   });
   return parsed;
 }
@@ -1096,15 +1095,15 @@ function renderScanQuadEditor(b64,mediaType,cornersFrac){
   const stage=document.getElementById('aiScanStage');
   stage.innerHTML=`
     <div style="font-size:12px;color:var(--text2);margin-bottom:8px">ה-AI סימן מסגרת סביב המסמך — גררו את הנקודות כדי לתקן, ואז «סיום».</div>
-    <div id="scanEditWrap" style="position:relative;display:inline-block;max-width:100%;touch-action:none;background:#111;line-height:0">
+    <div id="scanEditWrap" style="position:relative;display:inline-block;max-width:100%;touch-action:none;background:#111;line-height:0;padding:${QUAD_PAD}px;box-sizing:border-box;user-select:none;-webkit-user-select:none">
       <img id="scanEditImg" src="data:${mediaType};base64,${b64}" draggable="false"
-        style="display:block;max-width:100%;max-height:46vh;user-select:none;-webkit-user-drag:none">
-      <svg id="scanQuadSvg" style="position:absolute;left:0;top:0;width:100%;height:100%;touch-action:none">
+        style="display:block;max-width:100%;max-height:46vh;user-select:none;-webkit-user-drag:none;pointer-events:none">
+      <svg id="scanQuadSvg" style="position:absolute;left:${QUAD_PAD}px;top:${QUAD_PAD}px;width:calc(100% - ${2*QUAD_PAD}px);height:calc(100% - ${2*QUAD_PAD}px);overflow:visible;touch-action:none;pointer-events:none">
         <polygon id="scanQuadPoly" points="" fill="rgba(79,142,247,0.15)" stroke="#4f8ef7" stroke-width="2"></polygon>
-        <line class="quad-side-handle" data-side="top" stroke="transparent" stroke-width="40"></line>
-        <line class="quad-side-handle" data-side="right" stroke="transparent" stroke-width="40"></line>
-        <line class="quad-side-handle" data-side="bottom" stroke="transparent" stroke-width="40"></line>
-        <line class="quad-side-handle" data-side="left" stroke="transparent" stroke-width="40"></line>
+        <line class="quad-side-handle" data-side="top"></line>
+        <line class="quad-side-handle" data-side="right"></line>
+        <line class="quad-side-handle" data-side="bottom"></line>
+        <line class="quad-side-handle" data-side="left"></line>
         <circle class="quad-handle" data-c="tl" r="13"></circle><circle class="quad-handle" data-c="tr" r="13"></circle>
         <circle class="quad-handle" data-c="br" r="13"></circle><circle class="quad-handle" data-c="bl" r="13"></circle>
       </svg>
@@ -1173,6 +1172,29 @@ function initScanQuad(cornersFrac){
 // rigid unit, "sliding" that whole side in/out without touching the corners
 // of the adjacent sides).
 const SIDE_CORNERS={top:['tl','tr'],right:['tr','br'],bottom:['br','bl'],left:['bl','tl']};
+// Touch targets (2026-10-01, per user report: fingers kept missing the edge
+// lines). Hit-testing is no longer done on the SVG shapes themselves — a thin
+// transparent stroke is unreliable on mobile, and an edge sitting on the
+// photo's border had half its target outside the image. Instead the whole
+// wrap (photo + a QUAD_PAD dark margin around it, so a border edge can be
+// grabbed from outside) takes the pointerdown and picks the nearest corner
+// within QUAD_CORNER_HIT px, else the nearest edge within QUAD_EDGE_HIT px.
+const QUAD_PAD=18, QUAD_CORNER_HIT=36, QUAD_EDGE_HIT=32;
+function _distToSeg(p,a,b){
+  const vx=b.x-a.x, vy=b.y-a.y, len2=vx*vx+vy*vy||1;
+  const t=Math.max(0,Math.min(1,((p.x-a.x)*vx+(p.y-a.y)*vy)/len2));
+  return Math.hypot(p.x-(a.x+t*vx), p.y-(a.y+t*vy));
+}
+// Returns {corner:'tl'|…} or {side:'top'|…} or null for a point in image px.
+function quadHitTest(p){
+  const r=window.__quadRect; if(!r) return null;
+  let best=null, bd=Infinity;
+  ['tl','tr','br','bl'].forEach(k=>{ const d=Math.hypot(p.x-r[k].x,p.y-r[k].y); if(d<bd){ bd=d; best=k; } });
+  if(bd<=QUAD_CORNER_HIT) return {corner:best};
+  best=null; bd=Infinity;
+  Object.keys(SIDE_CORNERS).forEach(s=>{ const [a,b]=SIDE_CORNERS[s]; const d=_distToSeg(p,r[a],r[b]); if(d<bd){ bd=d; best=s; } });
+  return bd<=QUAD_EDGE_HIT ? {side:best} : null;
+}
 function paintQuad(){
   const r=window.__quadRect;
   if(!r) return;
@@ -1181,7 +1203,14 @@ function paintQuad(){
   Object.keys(SIDE_CORNERS).forEach(side=>{
     const [a,b]=SIDE_CORNERS[side];
     const line=document.querySelector('.quad-side-handle[data-side="'+side+'"]');
-    if(line){ line.setAttribute('x1',r[a].x); line.setAttribute('y1',r[a].y); line.setAttribute('x2',r[b].x); line.setAttribute('y2',r[b].y); }
+    // Short white grip bar centred on each edge — just a visual cue that the
+    // whole side can be dragged; hit-testing is in quadHitTest().
+    if(line){
+      const mx=(r[a].x+r[b].x)/2, my=(r[a].y+r[b].y)/2;
+      const len=Math.hypot(r[b].x-r[a].x,r[b].y-r[a].y)||1, half=Math.min(18,len/4);
+      const ux=(r[b].x-r[a].x)/len*half, uy=(r[b].y-r[a].y)/len*half;
+      line.setAttribute('x1',mx-ux); line.setAttribute('y1',my-uy); line.setAttribute('x2',mx+ux); line.setAttribute('y2',my+uy);
+    }
   });
   const cx=(r.tl.x+r.tr.x+r.br.x+r.bl.x)/4, cy=(r.tl.y+r.tr.y+r.br.y+r.bl.y)/4;
   // Corner handles drawn inset from the true corner toward the quad's own
@@ -1200,48 +1229,38 @@ function paintQuad(){
   });
 }
 function attachQuadDrag(){
-  const svg=document.getElementById('scanQuadSvg');
-  if(!svg) return;
-  svg.querySelectorAll('.quad-handle').forEach(h=>{
-    h.addEventListener('pointerdown',e=>{
-      e.preventDefault(); e.stopPropagation();
-      const key=h.dataset.c;
-      const wrap=document.getElementById('scanEditWrap');
-      const move=ev=>{
-        const rect=wrap.getBoundingClientRect();
-        const r=window.__quadRect;
-        r[key]={x:Math.max(0,Math.min(r.imgW,ev.clientX-rect.left)),y:Math.max(0,Math.min(r.imgH,ev.clientY-rect.top))};
+  const wrap=document.getElementById('scanEditWrap');
+  const img=document.getElementById('scanEditImg');
+  if(!wrap||!img||wrap.dataset.dragBound) return;
+  wrap.dataset.dragBound='1';
+  // Point in image-local px (the coordinate space of window.__quadRect).
+  const local=ev=>{ const rc=img.getBoundingClientRect(); return {x:ev.clientX-rc.left, y:ev.clientY-rc.top}; };
+  wrap.addEventListener('pointerdown',e=>{
+    const r=window.__quadRect; if(!r) return;
+    const hit=quadHitTest(local(e));
+    if(!hit) return;
+    e.preventDefault(); e.stopPropagation();
+    try{ wrap.setPointerCapture(e.pointerId); }catch(_){}
+    const clamp=p=>({x:Math.max(0,Math.min(r.imgW,p.x)),y:Math.max(0,Math.min(r.imgH,p.y))});
+    let move;
+    if(hit.corner){
+      const key=hit.corner;
+      move=ev=>{ r[key]=clamp(local(ev)); paintQuad(); };
+    } else {
+      // Whole-edge drag (added 2026-09-27): both corners of that side move by
+      // the same pointer delta — a rigid slide in/out, adjacent corners stay.
+      const [ka,kb]=SIDE_CORNERS[hit.side];
+      const start=local(e), orig={a:{...r[ka]},b:{...r[kb]}};
+      move=ev=>{
+        const p=local(ev), dx=p.x-start.x, dy=p.y-start.y;
+        r[ka]=clamp({x:orig.a.x+dx,y:orig.a.y+dy}); r[kb]=clamp({x:orig.b.x+dx,y:orig.b.y+dy});
         paintQuad();
       };
-      const up=()=>{ window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); };
-      window.addEventListener('pointermove',move);
-      window.addEventListener('pointerup',up);
-    });
-  });
-  // Whole-edge drag (added 2026-09-27, per user request — "let me move the
-  // whole horizontal/vertical line, not just one corner at a time"): grabbing
-  // the line between two corners translates BOTH of them by the same pointer
-  // delta, sliding that entire side in/out as a rigid unit while the other
-  // two corners (and thus the adjacent sides) stay put — the standard
-  // photo-crop-tool "drag an edge" gesture, useful when a whole side needs
-  // the same nudge rather than fixing each of its two corners separately.
-  svg.querySelectorAll('.quad-side-handle').forEach(h=>{
-    h.addEventListener('pointerdown',e=>{
-      e.preventDefault(); e.stopPropagation();
-      const [ka,kb]=SIDE_CORNERS[h.dataset.side];
-      const r=window.__quadRect;
-      const start={x:e.clientX,y:e.clientY};
-      const orig={a:{...r[ka]},b:{...r[kb]}};
-      const move=ev=>{
-        const dx=ev.clientX-start.x, dy=ev.clientY-start.y;
-        const clamp=p=>({x:Math.max(0,Math.min(r.imgW,p.x+dx)),y:Math.max(0,Math.min(r.imgH,p.y+dy))});
-        r[ka]=clamp(orig.a); r[kb]=clamp(orig.b);
-        paintQuad();
-      };
-      const up=()=>{ window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); };
-      window.addEventListener('pointermove',move);
-      window.addEventListener('pointerup',up);
-    });
+    }
+    const end=()=>{ wrap.removeEventListener('pointermove',move); wrap.removeEventListener('pointerup',end); wrap.removeEventListener('pointercancel',end); };
+    wrap.addEventListener('pointermove',move);
+    wrap.addEventListener('pointerup',end);
+    wrap.addEventListener('pointercancel',end);
   });
 }
 async function rotateScanQuad(deg){
@@ -1317,6 +1336,9 @@ function mergeIsraeliIdFields(primary,extra){
   if(!primary||primary.type!=='israeli_id'||!extra||extra.type!=='israeli_id') return primary;
   for(const f of ID_CORE_FIELDS){ if(!primary[f]&&extra[f]) primary[f]=extra[f]; }
   if((!primary.children||!primary.children.length)&&Array.isArray(extra.children)&&extra.children.length) primary.children=extra.children;
+  // Spouse rows (ספח only) — taken whole from the first page that has any.
+  const hasSpouse=sp=>sp&&(sp.surname||sp.given||sp.idNo);
+  if(!hasSpouse(primary.spouse)&&hasSpouse(extra.spouse)) primary.spouse=extra.spouse;
   return primary;
 }
 // Seeds a fresh primary record from the first-scanned page's raw parsed
@@ -1358,6 +1380,11 @@ function mergeScanPage(primary,current){
     // cross-check against any ספח read seen earlier in this session first.
     if(window.__aiPendingSefachIdNo&&currentIdNo!==window.__aiPendingSefachIdNo) primary.idMismatch=true;
     if(!primary.idNo) primary.idNo=currentIdNo;
+  }
+  // A front page read after the ספח (or card back) also brings the names
+  // and expiry, which only the front carries.
+  if(!isSefachRead&&primary&&primary.type==='israeli_id'&&current.type==='israeli_id'){
+    for(const f of ['given','surname','expiry']) if(!primary[f]&&current[f]) primary[f]=current[f];
   }
   return mergeIsraeliIdFields(primary,current);
 }
@@ -1458,6 +1485,46 @@ function removePendingScanPage(i){
 // One blurry page aborts the loop and is dropped from the queue on its own —
 // per user decision, the rest of the (already-cropped) queue is preserved
 // rather than losing the whole batch over one bad photo.
+// One extra-page read with the narrow aiReadSefach (ספח or biometric card
+// back). Never throws — a failed read resolves null, same as "nothing found".
+function readSefachPage(it){
+  return fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadSefach',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})})
+    .then(r=>r.json()).then(j=>(j&&j.parsed)||null)
+    .catch(e=>{ console.error(e); return null; });
+}
+// Page type only (aiDetectAlign's "kind"), for the multi-file path, which
+// skips alignment. null when the call fails or the answer isn't a known kind.
+function classifyPage(it){
+  return fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiDetectAlign',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})})
+    .then(r=>r.json()).then(j=>{ const k=j&&j.ok&&j.align&&j.align.kind; return PAGE_KINDS.includes(k)?k:null; })
+    .catch(e=>{ console.error(e); return null; });
+}
+// An extra Israeli-ID front page (e.g. the ספח was scanned first): read
+// with the full aiReadDoc, since aiReadSefach doesn't read names or dob.
+function readFrontPage(it){
+  return fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})})
+    .then(r=>r.json()).then(j=>{ const p=j&&j.parsed; return p&&p.type==='israeli_id'?p:null; })
+    .catch(e=>{ console.error(e); return null; });
+}
+// Which reader an EXTRA page (after the primary) gets, by aiDetectAlign's
+// page kind: a contract, a passport or any other page is attached without an
+// AI read; an ID front gets the full read; a ספח, a card back or an unknown
+// page (kind missing — classification failed) gets aiReadSefach as before.
+function extraPageReader(kind){
+  if(kind==='contract'||kind==='other'||kind==='passport') return null;
+  if(kind==='id_front') return readFrontPage;
+  return readSefachPage;
+}
+// A contract or other non-ID page is never sent to aiReadDoc as a primary.
+const isNonIdKind=kind=>kind==='contract'||kind==='other';
+// Speed (2026-10-01): pages are no longer processed strictly one after
+// another. Phase 1 straightens + enhances EVERY queued page at once
+// (aiDetectAlign + preprocess_scan, independent per page). Phase 2 reads:
+// the primary page through aiReadDoc, and as soon as it is known to be an
+// Israeli ID that still misses core fields, the following pages' aiReadSefach
+// reads start in the background while the primary's digits are re-verified.
+// Results are still merged strictly in page order with the same needMore
+// rule, so the merged record is identical to the old sequential loop.
 async function processAllPendingPages(){
   const queue=(window.__pendingScanPages||[]).slice();
   if(!queue.length) return;
@@ -1476,81 +1543,60 @@ async function processAllPendingPages(){
   let needMore=missingCore(foundParsed);
   const otherPages=resuming?window.__aiPacketOtherPages.slice():[];
   let pageParsed=resuming?window.__aiPageParsed.slice():[];
-  // Sub-step progress within each page (added 2026-09-30, per user request)
-  // — pageBasePct/pageSpanPct turn "page i of N" into a real, continuously
-  // advancing percentage across that page's own align/enhance/read/tighten
-  // steps, instead of the bar only jumping once per whole page.
-  for(let i=0;i<queue.length;i++){
-    const pageBasePct=(i/queue.length)*100, pageSpanPct=100/queue.length;
-    const subPct=frac=>Math.round(pageBasePct+pageSpanPct*frac);
-    renderScanProgress('מיישר את התמונה… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0));
-    let it=queue[i];
-    // Cheap Haiku-based corner detection (autoPreAlignScan/aiDetectAlign,
-    // revived 2026-09-26 — see its own comment for the full history) runs
-    // BEFORE preAlignScan's classical-CV attempt: a real-photo diagnostic
-    // this same day showed the OpenCV detector (_find_document_quad)
-    // failing to close a clean contour on an actual scan (uneven, non-pure-
-    // black real background) even after hardening — a vision-model read is
-    // inherently more robust on messy real photos than hand-tuned edge
-    // heuristics, and this is cheap enough (small prompt, no field
-    // extraction, Haiku) to run on every queued page. preAlignScan's own
-    // classical-CV pass still runs afterward as a harmless no-cost fallback
-    // (it already safely no-ops when it can't find a confident quad).
+  const total=queue.length;
+
+  // Phase 1 — align (cheap Haiku corners, see autoPreAlignScan) and enhance
+  // + blur-check (preprocess_scan) all pages concurrently.
+  let prepDone=0;
+  renderScanProgress('מיישר ומשפר את התמונות… (0 מתוך '+total+')',2);
+  const prepared=await Promise.all(queue.map(async q=>{
+    let it=q;
     try{ it=await autoPreAlignScan(it.b64,it.mediaType); }
     catch(e){ console.error(e); }
-    renderScanProgress('משפר איכות… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.25));
     let pre;
     try{ pre=await preAlignScan(it.b64,it.mediaType); }
     catch(e){ console.error(e); pre={b64:it.b64,mediaType:it.mediaType}; }
-    if(pre.blurry){
-      // `queue` is a snapshot (.slice() above) of window.__pendingScanPages
-      // taken before this loop started — pages at indices 0..i-1 have already
-      // been consumed into foundParsed/otherPages this run, and the page at i
-      // is the blurry one being dropped, so the real queue must become
-      // whatever comes AFTER it (queue.slice(i+1)), not just "everything minus
-      // the one blurry item" — leaving the already-consumed prefix in
-      // window.__pendingScanPages made a later "process" reprocess (and
-      // duplicate into otherPages) pages that were already merged in.
-      window.__pendingScanPages=queue.slice(i+1);
-      window.__aiPacketOtherPages=otherPages;
-      window.__aiPageParsed=pageParsed;
-      if(foundParsed){ window.__aiParsed=foundParsed; window.__aiPrimaryParsed=foundParsed; }
-      stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">תמונה '+(i+1)+' מטושטשת מדי, הוסרה מהתור. צלמו אותה מחדש<br><br>'
-        +'<button class="btn sm" onclick="renderPendingPagesPrompt()">חזרה לתור</button></div>';
-      return;
-    }
-    it={b64:pre.b64,mediaType:pre.mediaType};
+    prepDone++;
+    renderScanProgress('מיישר ומשפר את התמונות… ('+prepDone+' מתוך '+total+')',Math.round(40*prepDone/total));
+    return {...pre,kind:it.kind||null};
+  }));
+  // A blurry page stops the run there, exactly like the old loop: pages
+  // before it are read and merged, it is dropped, pages after it stay queued.
+  const blurIdx=prepared.findIndex(x=>x&&x.blurry);
+  const usable=(blurIdx>=0?prepared.slice(0,blurIdx):prepared).map(x=>({b64:x.b64,mediaType:x.mediaType,kind:x.kind}));
+
+  // Phase 2 — reads.
+  const sefachReads=new Map();
+  const prefetchSefachFrom=start=>{ for(let j=start;j<usable.length;j++){ const rd=extraPageReader(usable[j].kind); if(rd&&!sefachReads.has(j)) sefachReads.set(j,rd(usable[j])); } };
+  if(foundParsed&&needMore) prefetchSefachFrom(0); // resumed session: every queued page is an extra page
+  const readPct=i=>Math.round(40+50*(i+1)/Math.max(1,usable.length));
+  for(let i=0;i<usable.length;i++){
+    let it=usable[i];
+    const kind=it.kind;
+    it={b64:it.b64,mediaType:it.mediaType};
     let thisPageParsed=null;
-    if(!foundParsed){
+    if(!foundParsed&&!isNonIdKind(kind)){
       try{
-        renderScanProgress('ה-AI קורא את המסמך… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.45));
+        renderScanProgress('ה-AI קורא את המסמך… (עמוד '+(i+1)+' מתוך '+total+')',Math.max(45,readPct(i)-30));
         const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
         const json=await resp.json();
         const p=json&&json.parsed;
         if(p&&(p.type==='israeli_id'||p.type==='passport')){
-          if(p.fieldBoxes) renderScanProgress('בודק שוב את הספרות… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.7));
+          // Start the following pages' ספח reads now, so they run while this
+          // page's digits are being re-verified below.
+          if(missingCore(p)) prefetchSefachFrom(i+1);
+          if(p.fieldBoxes) renderScanProgress('בודק שוב את הספרות… (עמוד '+(i+1)+' מתוך '+total+')',Math.max(55,readPct(i)-20));
           foundParsed=p.fieldBoxes?await verifyDigitFields(p,it.b64,it.mediaType):p;
           foundParsed=await verifyIdChecksum(foundParsed,it.b64,it.mediaType);
-          // Routed through initPrimaryFromFirstPage() (2026-09-27, unifying
-          // with rebuildPrimaryFromPages()'s own logic — see that function's
-          // comment) rather than used directly: this flow's own pages are
-          // never __isSefachScan-tagged (only the dedicated aiReadSefach path
-          // sets that), so the only practical effect here is resetting any
-          // stale window.__aiPendingSefachIdNo left over from elsewhere in the
-          // tab — cheap, harmless hygiene, and keeps this branch computing the
-          // exact same shape of primary record removeExtraScanPage()'s replay
-          // (rebuildPrimaryFromPages) would, so removing a later page never
-          // recomputes the primary any differently than how it was first built.
+          // Routed through initPrimaryFromFirstPage() so this computes the
+          // same primary record removeExtraScanPage()'s replay
+          // (rebuildPrimaryFromPages) would.
           foundParsed=initPrimaryFromFirstPage(foundParsed);
           // Avatar crop uses photoBox coordinates, which are relative to `it`
           // as sent to aiReadDoc — must run before finalTightenPass below
           // could change the image's coordinate space.
           window.__aiAvatarB64=p.photoBox?await cropPortraitAvatar(it.b64,it.mediaType,p.photoBox):null;
-          // p.imageAlign is no longer used for a second geometric tightening
-          // pass here (refineWithAiAlign() removed 2026-09-30 — see its own
-          // removal note near finalTightenPass); finalTightenPass alone
-          // (pure local pixel math, no AI call) tightens `it` below.
-          renderScanProgress('מחדד קצוות… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.9));
+          renderScanProgress('מחדד קצוות… (עמוד '+(i+1)+' מתוך '+total+')',readPct(i));
           window.__aiScanImage=await finalTightenPass(it);
           needMore=missingCore(foundParsed);
           pageParsed=[foundParsed];
@@ -1558,36 +1604,37 @@ async function processAllPendingPages(){
         }
       }catch(e){ console.error(e); }
     } else if(needMore){
-      try{
-        renderScanProgress('ה-AI קורא את המסמך… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.45));
-        const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
-        const json=await resp.json();
-        const p=json&&json.parsed;
-        if(p&&p.type==='israeli_id'){
-          // mergeScanPage() (2026-09-27, was mergeIsraeliIdFields() directly)
-          // — unifies with rebuildPrimaryFromPages()'s own merge logic (used
-          // when a page is later removed via removeExtraScanPage(), see its
-          // comment) so removing a page never recomputes the primary record
-          // any differently than how this loop first built it. Also a real
-          // fix on its own: mergeIsraeliIdFields() alone never backfills a
-          // missing idNo from a later page (idNo isn't in ID_CORE_FIELDS),
-          // silently leaving it blank even when a later-scanned page read it
-          // fine; mergeScanPage() does.
-          foundParsed=mergeScanPage(foundParsed,p);
-          thisPageParsed=p;
-        }
-        needMore=missingCore(foundParsed);
-      }catch(e){ console.error(e); }
+      renderScanProgress('ה-AI קורא את הספח… (עמוד '+(i+1)+' מתוך '+total+')',Math.max(60,readPct(i)-10));
+      // Same as the multi-file path: an extra page after an Israeli-ID
+      // primary is the ספח (or the card back) — narrow aiReadSefach, usually
+      // already in flight from the prefetch above.
+      const rd=extraPageReader(kind);
+      const p=sefachReads.has(i)?await sefachReads.get(i):(rd?await rd(it):null);
+      if(p&&p.type==='israeli_id'){
+        // mergeScanPage() — same merge rebuildPrimaryFromPages() replays when
+        // a page is removed later, and it also backfills a missing idNo.
+        foundParsed=mergeScanPage(foundParsed,p);
+        thisPageParsed=p;
+      }
+      needMore=missingCore(foundParsed);
     }
     // finalTightenPass (pure local pixel math, no AI call) runs on every
-    // page regardless of which branch above ran (or none at all, for a page
-    // needing no aiReadDoc call because every core field was already
-    // complete) — it's the only geometric tightening pass left after
-    // refineWithAiAlign()'s removal (2026-09-30, see its own removal note).
-    renderScanProgress('מחדד קצוות… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.9));
+    // extra page too.
+    renderScanProgress('מחדד קצוות… (עמוד '+(i+1)+' מתוך '+total+')',readPct(i));
     it=await finalTightenPass(it);
     pageParsed.push(thisPageParsed);
     otherPages.push(it);
+  }
+  if(blurIdx>=0){
+    // `queue` is a snapshot taken before this run: pages before blurIdx were
+    // consumed above, the blurry one is dropped, the rest stay queued.
+    window.__pendingScanPages=queue.slice(blurIdx+1);
+    window.__aiPacketOtherPages=otherPages;
+    window.__aiPageParsed=pageParsed;
+    if(foundParsed){ window.__aiParsed=foundParsed; window.__aiPrimaryParsed=foundParsed; }
+    stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">תמונה '+(blurIdx+1)+' מטושטשת מדי, הוסרה מהתור. צלמו אותה מחדש<br><br>'
+      +'<button class="btn sm" onclick="renderPendingPagesPrompt()">חזרה לתור</button></div>';
+    return;
   }
   renderScanProgress('הושלם',100);
   window.__pendingScanPages=[];
@@ -1686,10 +1733,10 @@ function openWorkerModalFromScan(p){
   };
   setIfPresent(ocrFields,'docGiven',p.given);
   setIfPresent(ocrFields,'docSurname',p.surname);
-  setIfPresent(ocrFields,'docId',isId?p.idNo:p.passportNo);
-  setIfPresent(ocrFields,'docDob',p.dob);
+  setIfPresent(ocrFields,'docId',isId?_normScanDigits(p.idNo):p.passportNo);
+  setIfPresent(ocrFields,'docDob',_normScanDate(p.dob));
   setIfPresent(ocrFields,'docSex',p.sex);
-  setIfPresent(ocrFields,'docExpiry',p.expiry);
+  setIfPresent(ocrFields,'docExpiry',_normScanDate(p.expiry));
   // Only set the key when a portrait was actually cropped from this scan —
   // an omitted key leaves an existing avatar (on a rescan) untouched instead
   // of wiping it out just because this particular photo had no photoBox.
@@ -1706,10 +1753,27 @@ function openWorkerModalFromScan(p){
     // as always.
     const MARITAL_AI_MAP={single:'marital_single',married:'marital_married',divorced:'marital_divorced',widowed:'marital_widowed'};
     if(p.maritalStatus&&MARITAL_AI_MAP[p.maritalStatus]) ocrFields.maritalStatus=MARITAL_AI_MAP[p.maritalStatus];
-    if(Array.isArray(p.children)&&p.children.length) ocrFields.docChildren=p.children.map(c=>({name:_nrm(c.name),idNo:_nrm(c.idNo),dob:_nrm(c.dob)}));
+    if(Array.isArray(p.children)&&p.children.length) ocrFields.docChildren=p.children.map(c=>({name:_nrm(c.name),idNo:_normScanDigits(_nrm(c.idNo)),dob:_normScanDate(_nrm(c.dob))}));
+    // Spouse (ספח → Form 101 section ו). A spouse on the ספח means married,
+    // so an unread marital status is filled in accordingly.
+    const sp=p.spouse||{};
+    setIfPresent(ocrFields,'spouseSurname',sp.surname);
+    setIfPresent(ocrFields,'spouseGiven',sp.given);
+    setIfPresent(ocrFields,'spouseId',_normScanDigits(sp.idNo));
+    if((ocrFields.spouseSurname||ocrFields.spouseGiven||ocrFields.spouseId)&&!ocrFields.maritalStatus) ocrFields.maritalStatus='marital_married';
   }
-  const rescanId=window.__aiRescanWorkerId;
+  let rescanId=window.__aiRescanWorkerId;
   window.__aiRescanWorkerId=null;
+  // A NEW scan whose document number matches an existing worker is the same
+  // person scanned again — treat it exactly like rescanWorkerDoc() of that
+  // worker (keeps their phone/clients/rates/schedule, re-uploads the PDF over
+  // their own Drive file, carries their old ספח forward if this scan has
+  // none) instead of opening a blank "new worker" that would become a
+  // duplicate record and, on upload, trash the original's Drive document.
+  if(!rescanId && ocrFields.docId){
+    const dup=workers.find(w=>workerDocId(w)===ocrFields.docId);
+    if(dup){ rescanId=dup.id; showToast('Existing worker found ('+(dup.name||ocrFields.docId)+') — updating their record',4000); }
+  }
   if(rescanId){
     const idx=workers.findIndex(w=>w.id===rescanId);
     if(idx>=0){
@@ -1820,16 +1884,4 @@ function warpQuadToRect(img,quadSrcPx){
 }
 
 
-let _pdfjsLoading=null;
-function _loadPdfJs(){
-  if(window.pdfjsLib) return Promise.resolve();
-  if(_pdfjsLoading) return _pdfjsLoading;
-  _pdfjsLoading=new Promise((res,rej)=>{
-    const sc=document.createElement('script');
-    sc.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-    sc.onload=()=>{ try{ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }catch(e){} res(); };
-    sc.onerror=()=>rej(new Error('pdf.js CDN failed'));
-    document.head.appendChild(sc);
-  });
-  return _pdfjsLoading;
-}
+// _loadPdfJs() lives in schedule-manager.html (shared upload preparation).

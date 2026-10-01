@@ -1075,7 +1075,7 @@ function reportError(message, source, stack){
     if(_errSent[key] && nowT-_errSent[key]<60000) return;
     _errSent[key]=nowT; _errCount++;
     fetch(GS_URL,{method:'POST',body:JSON.stringify({
-      action:'logError',
+      action:'logError', secret:API_SECRET,
       page:(location.pathname.split('/').pop()||location.href),
       role:'worker',
       worker:(typeof selectedWorker!=='undefined'&&selectedWorker&&selectedWorker.name)||(URL_TOKEN?('token:'+String(URL_TOKEN).slice(0,4)):''),
