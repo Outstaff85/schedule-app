@@ -2939,7 +2939,7 @@ async function submitWorkerDocUpload(){
     const added=results.map((r,i)=>(r&&r.ok)?{id:'d'+Date.now().toString(36)+i+Math.random().toString(36).slice(2,6),type,name:prepared[i].fileName,fileId:r.id,url:r.url,mediaType:prepared[i].mediaType,uploadedAt:now,expiry}:null).filter(Boolean);
     const cur=workers.find(x=>x.id===w.id);
     if(cur&&added.length){ cur.docs=[...(cur.docs||[]),...added]; autoSave(); render(); }
-    if(failed.length){ status.textContent=failed.length+' file(s) failed: '+((failed[0]&&failed[0].error)||'network error'); btn.disabled=false; return; }
+    if(failed.length){ status.textContent=failed.length+' file(s) failed: '+((failed[0]&&failed[0].error)||'network error'); reportError(status.textContent,'saveWorkerFile',''); btn.disabled=false; return; }
     closeModal('workerDocOverlay');
     showToast(added.length+' document'+(added.length>1?'s':'')+' uploaded');
     const wi=workers.findIndex(x=>x.id===w.id); if(wi>=0) openWorkerCard(wi);
@@ -3632,10 +3632,14 @@ function gsAuth(){
 // — this client-side header is restored as defense in depth, gated to only
 // the proxy target so a hypothetical future caller against bare GS_URL
 // still avoids the preflight trigger this header causes there.
+// Uploads still running; the new-app-version reload waits for them (below).
+let __uploadsInFlight=0;
 function xhrPostJSON(url,bodyObj,onProgress,_attempt){
   const attempt=_attempt||0;
   return new Promise((resolve,reject)=>{
     const xhr=new XMLHttpRequest();
+    __uploadsInFlight++;
+    xhr.addEventListener('loadend',()=>{ __uploadsInFlight=Math.max(0,__uploadsInFlight-1); });
     xhr.open('POST',url);
     if(url===GS_UPLOAD_PROXY_URL) xhr.setRequestHeader('Content-Type','application/json');
     if(onProgress) xhr.upload.onprogress=e=>{ if(e.lengthComputable) onProgress(e.loaded,e.total); };
@@ -4636,6 +4640,7 @@ async function gsSave(data) {
     const json = await res.json();
     if(json && json.conflict){
       showToast('\u26a0 Данные изменены в другом месте — обновляю');
+      try{ localStorage.removeItem(UNSAVED_KEY()); }catch(e){} // the server version is taken on purpose
       const fresh = await gsLoad();
       if(fresh){ applyData(fresh); render(); }
       return false;
@@ -4649,13 +4654,29 @@ async function gsSave(data) {
   } catch(e) { console.warn('GS save failed:', e); return false; }
 }
 
+// Retries (2026-10-01): on a phone, picking a file from the camera/gallery
+// can make the browser drop and reload the tab, and the first request right
+// after coming back often fails. One failed attempt used to show
+// "Could not load from GS" at once; now it retries, and if every attempt
+// fails the reason goes to the Errors sheet (`gsLoad.lastError`).
+const GS_LOAD_RETRY_DELAYS_MS=[1000,3000];
 async function gsLoad() {
-  try {
-    const res = await fetch(GS_URL + '?action=loadSchedule' + gsAuthQuery());
-    const json = await res.json();
-    if (json.workers){ lastLoadedSavedAt = json.savedAt || null; return json; }
-    return null;
-  } catch(e) { console.warn('GS load failed:', e); return null; }
+  let reason='';
+  for(let attempt=0; attempt<=GS_LOAD_RETRY_DELAYS_MS.length; attempt++){
+    if(attempt) await new Promise(r=>setTimeout(r,GS_LOAD_RETRY_DELAYS_MS[attempt-1]));
+    try {
+      const res = await fetch(GS_URL + '?action=loadSchedule' + gsAuthQuery());
+      const text = await res.text();
+      let json=null;
+      try{ json=JSON.parse(text); }catch(e){ reason='HTTP '+res.status+', not JSON: '+text.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,200); continue; }
+      if (json && json.workers){ lastLoadedSavedAt = json.savedAt || null; gsLoad.lastError=''; return json; }
+      reason=(json&&json.error)?String(json.error):'HTTP '+res.status+', no workers in reply';
+      if(json&&json.error===SESSION_EXPIRED_ERROR) break;
+    } catch(e) { reason='network: '+((e&&e.message)||e); console.warn('GS load failed:', e); }
+  }
+  gsLoad.lastError=reason;
+  reportError('loadSchedule failed: '+reason, 'gsLoad', '');
+  return null;
 }
 
 // Pull all punches from the DB and merge with local (DB is authoritative;
@@ -4756,6 +4777,31 @@ function applyData(d){
   // week shown only changes the date labels, never which shifts exist.
 }
 
+// Set while local changes have not reached Google Sheets yet (2026-10-01).
+// loadData() then keeps the local data and saves it, instead of replacing it
+// with the older server copy — that replacement is how a newly added worker
+// vanished from the list when its save had failed.
+function UNSAVED_KEY(){ return STORAGE_KEY()+'_unsaved'; }
+// The flag holds when the save started; one older than 3 days is ignored, so a
+// device that was offline for long can't push stale data over newer edits.
+function hasUnsavedLocal(){ try{ const t=+localStorage.getItem(UNSAVED_KEY()); return t>0 && Date.now()-t<3*864e5 && !!localStorage.getItem(STORAGE_KEY()); }catch(e){ return false; } }
+// Apply a fresh server load, unless local changes are still unsaved.
+function applyServerLoad(gd){
+  if(hasUnsavedLocal()){
+    // gsLoad() already moved lastLoadedSavedAt to the server's version, so
+    // this save is not refused as a conflict.
+    showToast('Unsaved changes found on this device — saving them now',4000);
+    autoSave();
+    return false;
+  }
+  applyData(gd);
+  render();
+  const gdJson = JSON.stringify(gd);
+  localStorage.setItem(STORAGE_KEY(), gdJson);
+  localStorage.setItem(STORAGE_KEY_BASE, gdJson); // legacy key for worker-punch.html's bridge, see autoSave()
+  return true;
+}
+
 function autoSave(){
   // Glitch guard: don't overwrite existing data with a suddenly-empty state.
   if((!workers||!workers.length) && (!clients||!clients.length)){
@@ -4777,7 +4823,9 @@ function autoSave(){
       // that literal key and has no tenantId of its own to scope by.
       localStorage.setItem(STORAGE_KEY_BASE, json);
       // Google Sheets is primary storage
+      try{ localStorage.setItem(UNSAVED_KEY(),String(Date.now())); }catch(e){}
       const ok = await gsSave(data);
+      if(ok){ try{ localStorage.removeItem(UNSAVED_KEY()); }catch(e){} }
       setSaveStatus('saved');
       if(ok) showToast('Saved to Google Sheets');
       else showToast('GS save failed — saved locally');
@@ -4810,21 +4858,33 @@ async function loadData(){
   try{
     const gd = await gsLoad();
     if(gd){
-      applyData(gd);
-      render();
+      applyServerLoad(gd);
       markFreshContent('app');
-      const gdJson = JSON.stringify(gd);
-      localStorage.setItem(STORAGE_KEY(), gdJson);
-      localStorage.setItem(STORAGE_KEY_BASE, gdJson); // legacy key for worker-punch.html's bridge, see autoSave()
       setSaveStatus('saved');
       syncPunchesFromGS();
     } else {
-      showToast('Could not load from GS');
+      showToast('Could not load from Google — showing saved data'+(gsLoad.lastError?' ('+gsLoad.lastError.slice(0,80)+')':''),6000);
+      retryLoadDataWhenBack();
     }
   }catch(e){
     console.error('GS load failed',e);
     showToast('Offline — using cached data');
   }
+}
+
+// After a failed load, try again once the device is back online or the tab
+// is shown again, so cached data doesn't stay on screen until a manual reload.
+let __loadRetryArmed=false;
+function retryLoadDataWhenBack(){
+  if(__loadRetryArmed) return; __loadRetryArmed=true;
+  const again=async()=>{
+    if(document.visibilityState==='hidden' || navigator.onLine===false) return;
+    window.removeEventListener('online',again); document.removeEventListener('visibilitychange',again);
+    const gd=await gsLoad(); __loadRetryArmed=false;
+    if(gd){ try{ if(applyServerLoad(gd)) showToast('Data loaded'); }catch(e){} markFreshContent('app'); syncPunchesFromGS(); }
+  };
+  window.addEventListener('online',again); document.addEventListener('visibilitychange',again);
+  setTimeout(again,15000);
 }
 
 function timeSince(date){
@@ -6681,7 +6741,7 @@ function markFreshContent(screen){
 }
 function reportError(message, source, stack){
   try{
-    if(_errCount>20) return;                                  // hard cap per session
+    if(_errCount>40) return;                                  // hard cap per session
     const key=String(message||'').slice(0,120), nowT=Date.now();
     if(_errSent[key] && nowT-_errSent[key]<60000) return;     // dedupe same error within 1 min
     _errSent[key]=nowT; _errCount++;
@@ -6695,7 +6755,34 @@ function reportError(message, source, stack){
     })}).catch(()=>{});
   }catch(e){}
 }
-window.addEventListener('error', function(ev){ console.error('App error:', ev.error||ev.message); reportError(ev.message, (ev.filename||'')+':'+(ev.lineno||''), ev.error&&ev.error.stack); });
+// Caught failures (2026-10-01): window 'error'/'unhandledrejection' only see
+// errors nobody handled. Most failures are handled — a toast, a console
+// error, a red line in a form — and never reached the Errors sheet. These
+// hooks send them too: console.error/console.warn, toasts that read like an
+// error, and the error lines of the forms below (same 1-minute dedupe and
+// per-session cap as reportError()).
+const _origConsoleError=console.error.bind(console), _origConsoleWarn=console.warn.bind(console);
+function _consoleArgsText(args){
+  let stack='';
+  const msg=Array.from(args).map(a=>{
+    if(a instanceof Error){ stack=stack||a.stack||''; return a.message; }
+    if(a && typeof a==='object'){ try{ return JSON.stringify(a).slice(0,200); }catch(e){ return String(a); } }
+    return String(a);
+  }).join(' ');
+  return {msg,stack};
+}
+console.error=function(...args){ _origConsoleError(...args); try{ const t=_consoleArgsText(args); reportError(t.msg,'console.error',t.stack); }catch(e){} };
+console.warn=function(...args){ _origConsoleWarn(...args); try{ const t=_consoleArgsText(args); reportError(t.msg,'console.warn',t.stack); }catch(e){} };
+const ERROR_TOAST_RE=/fail|could not|error|offline|denied|invalid|ошибк|не удал|недоступ|нет прав|истекл|\u26a0|⚠/i;
+const _origShowToast=showToast;
+showToast=function(msg,dur){ _origShowToast(msg,dur); try{ if(ERROR_TOAST_RE.test(String(msg||''))) reportError(String(msg),'toast',''); }catch(e){} };
+function watchErrorLine(id){
+  const el=document.getElementById(id); if(!el||typeof MutationObserver==='undefined') return;
+  new MutationObserver(()=>{ const t=(el.textContent||'').trim(); if(t) reportError(t,'form:'+id,''); })
+    .observe(el,{childList:true,characterData:true,subtree:true});
+}
+['firmEditFormError','userFormError'].forEach(watchErrorLine);
+window.addEventListener('error', function(ev){ _origConsoleError('App error:', ev.error||ev.message); reportError(ev.message, (ev.filename||'')+':'+(ev.lineno||''), ev.error&&ev.error.stack); });
 window.addEventListener('unhandledrejection', function(ev){ const r=ev.reason; reportError((r&&r.message)||String(r), 'promise', r&&r.stack); });
 try{
   gateApp(function(){
@@ -6781,7 +6868,11 @@ if('serviceWorker' in navigator){
   const _hadController=!!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener('controllerchange',()=>{
     if(_swRefreshing) return; _swRefreshing=true;
-    if(_hadController) window.location.reload();
+    if(!_hadController) return;
+    // Don't reload mid-upload (a deploy while a document is uploading used to
+    // cut the upload off); wait until every upload has finished.
+    const reloadWhenIdle=()=>{ if(typeof __uploadsInFlight!=='undefined' && __uploadsInFlight>0) setTimeout(reloadWhenIdle,1000); else window.location.reload(); };
+    reloadWhenIdle();
   });
   window.addEventListener('load',()=>{
     navigator.serviceWorker.register('service-worker.js',{updateViaCache:'none'})
