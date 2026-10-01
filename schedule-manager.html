@@ -3526,7 +3526,7 @@ function getSession(){
 }
 function saveSession(s){ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
 function clearSession(){ localStorage.removeItem(SESSION_KEY); }
-function logout(){ clearSession(); location.reload(); }
+function logout(){ try{ localStorage.removeItem(FIRMS_CACHE_KEY); }catch(e){} clearSession(); location.reload(); }
 
 // Sliding session expiration (added 2026-09-30 — reported bug: a manager
 // could get kicked to the login screen mid worker-document scan/upload even
@@ -3792,6 +3792,9 @@ async function submitLogin(){
     const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'login', username, password }) });
     const json = await res.json();
     if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось войти'; return; }
+    // A super-admin's login reply already carries the Firms list — cached so
+    // the Firms screen right after the reload renders without another call.
+    if(Array.isArray(json.tenants)) saveFirmsCache(json.tenants);
     saveSession({
       token: json.token, role: json.role, tenantId: json.tenantId, username: json.username,
       tenantProfile: json.tenantProfile, expiresAt: json.expiresAt,
@@ -3901,6 +3904,9 @@ function gateApp(runInitApp){
   const s = getSession();
   if(!s){
     document.getElementById('loginScreen').style.display = 'flex';
+    // Wake a cold Apps Script instance while the user types, so the login
+    // request itself doesn't pay the cold start (doGet 'ping', no auth).
+    fetch(GS_URL+'?action=ping').catch(()=>{});
     return;
   }
   if(s.role === 'superadmin' && !s.viewingTenantId){
@@ -3956,18 +3962,16 @@ let __firmsListTarget = 'firmsList';
 // render logic feeds both the super-admin's own landing screen (#firmsList,
 // the default) and the new consolidated admin panel's Firms tab
 // (#adminFirmsList) without duplicating this function.
-async function renderFirmsList(targetId){
-  __firmsListTarget = targetId || 'firmsList';
-  const listEl = document.getElementById(__firmsListTarget);
-  listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
-  try{
-    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'listTenants', ...gsAuth() }) });
-    const json = await res.json();
-    if(!json || json.error){ listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Ошибка загрузки')+'</div>'; return; }
-    const tenants = json.tenants || [];
-    __firmsCache = tenants;
-    if(!tenants.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Фирм ещё нет — создайте первую.</div>'; return; }
-    listEl.innerHTML = tenants.map(t => `
+// The Firms list is cached (localStorage) and shown at once; the fresh copy
+// from listTenants replaces it when it arrives (2026-10-01 — opening the
+// list used to wait on a full round-trip every time).
+const FIRMS_CACHE_KEY = 'firmsCache_v1';
+function saveFirmsCache(tenants){ try{ localStorage.setItem(FIRMS_CACHE_KEY, JSON.stringify(tenants||[])); }catch(e){} }
+function loadFirmsCache(){ try{ const v=JSON.parse(localStorage.getItem(FIRMS_CACHE_KEY)||'null'); return Array.isArray(v)?v:null; }catch(e){ return null; } }
+function renderFirmsRows(listEl, tenants){
+  __firmsCache = tenants;
+  if(!tenants.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Фирм ещё нет — создайте первую.</div>'; return; }
+  listEl.innerHTML = tenants.map(t => `
       <div class="row" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);cursor:pointer;${t.active===false?'opacity:0.55':''}" onclick="switchToTenant('${esc(t.tenantId)}')">
         <div>
           <div style="font-weight:600">${esc(t.companyName || '(без названия)')}${t.active===false?' <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px">отключена</span>':''}${firmProfileMissing(t).length?` <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px" title="Не заполнено: ${esc(firmProfileMissing(t).join(', '))}">профиль неполный</span>`:''}</div>
@@ -3980,7 +3984,21 @@ async function renderFirmsList(targetId){
           <i class="ti ti-chevron-right"></i>
         </div>
       </div>`).join('');
-  }catch(e){ listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
+}
+async function renderFirmsList(targetId){
+  __firmsListTarget = targetId || 'firmsList';
+  const listEl = document.getElementById(__firmsListTarget);
+  const cached = loadFirmsCache();
+  if(cached) renderFirmsRows(listEl, cached);
+  else listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
+  try{
+    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'listTenants', ...gsAuth() }) });
+    const json = await res.json();
+    if(!json || json.error){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Ошибка загрузки')+'</div>'; return; }
+    const tenants = json.tenants || [];
+    saveFirmsCache(tenants);
+    renderFirmsRows(listEl, tenants);
+  }catch(e){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
 }
 
 // Super-admin-only diagnostics screen (see errorsScreen's own HTML comment

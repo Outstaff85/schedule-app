@@ -120,6 +120,9 @@ function doPost(e) {
 function doGet(e) {
   try {
     const action = e.parameter.action || 'loadSchedule';
+    // Warm-up call from the login screen: wakes a cold Apps Script instance
+    // while the user is still typing, so the real login request is fast.
+    if (action === 'ping') return jsonResponse({ ok: true });
     let tenantId = null, auth = null;
     if (e.parameter.workerToken) {
       tenantId = findTenantIdByWorkerToken(e.parameter.workerToken);
@@ -301,6 +304,9 @@ function login(body) {
       ok: true, token: token, role: role, tenantId: tenantId, username: username,
       permissions: permissions, supplierId: supplierId,
       tenantProfile: tenantId ? getTenantProfile(tenantId) : null,
+      // A super-admin lands on the Firms list right after login — sending it
+      // here saves that screen a second round-trip.
+      tenants: role === 'superadmin' ? (listTenants({ isSuperadmin: true }).tenants || []) : undefined,
       expiresAt: payload.exp
     };
   }
@@ -574,10 +580,26 @@ function listTenants(auth) {
     return o;
   });
 
+  // Only the small columns are read (tenantId, savedAt, workerCount,
+  // clientCount) — never the workers/clients JSON, which carries every
+  // worker's avatar and made this the slow part of opening the Firms list.
+  // A row saved before the count columns existed is parsed once as before.
   const schSh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_SCHEDULE);
   const byTenant = {};
   if (schSh && schSh.getLastRow() > 1) {
-    schSh.getDataRange().getValues().slice(1).forEach(function(r) { byTenant[r[0]] = r; });
+    const n = schSh.getLastRow() - 1;
+    const ids = schSh.getRange(2, 1, n, 1).getValues();
+    const saved = schSh.getRange(2, 5, n, 1).getValues();
+    const counts = schSh.getLastColumn() >= 8 ? schSh.getRange(2, 7, n, 2).getValues() : null;
+    for (let i = 0; i < n; i++) {
+      let wc = counts ? counts[i][0] : '', cc = counts ? counts[i][1] : '';
+      if (wc === '' || cc === '') {
+        const wcJson = schSh.getRange(i + 2, 2, 1, 2).getValues()[0];
+        try { wc = JSON.parse(wcJson[0] || '[]').length; } catch (e) { wc = 0; }
+        try { cc = JSON.parse(wcJson[1] || '[]').length; } catch (e) { cc = 0; }
+      }
+      byTenant[ids[i][0]] = { savedAt: saved[i][0], workerCount: Number(wc) || 0, clientCount: Number(cc) || 0 };
+    }
   }
   // A tenant is "active" if it has at least one active login; a tenant with
   // no Users row yet (shouldn't normally happen) reads as active by default.
@@ -593,14 +615,9 @@ function listTenants(auth) {
   }
   tenants.forEach(function(t) {
     const row = byTenant[t.tenantId];
-    let workers = [], clients = [];
-    if (row) {
-      try { workers = JSON.parse(row[1] || '[]'); } catch (e) {}
-      try { clients = JSON.parse(row[2] || '[]'); } catch (e) {}
-    }
-    t.workerCount = workers.length;
-    t.clientCount = clients.length;
-    t.savedAt = row ? row[4] : null;
+    t.workerCount = row ? row.workerCount : 0;
+    t.clientCount = row ? row.clientCount : 0;
+    t.savedAt = row ? row.savedAt : null;
     t.active = t.tenantId in activeByTenant ? activeByTenant[t.tenantId] : true;
   });
   return { tenants: tenants };
@@ -768,21 +785,27 @@ function normalizeClients(clients) {
 // rows simply have nothing in this column, which readScheduleMap below
 // treats as an empty array, same as it already does for a missing/malformed
 // workers or clients cell.
-const SCHEDULE_HEADERS = ['TenantId', 'workers', 'clients', 'weekStart', 'savedAt', 'suppliers'];
+// workerCount/clientCount (2026-10-01) let listTenants() show the Firms list
+// without parsing every firm's workers JSON (avatars included).
+const SCHEDULE_HEADERS = ['TenantId', 'workers', 'clients', 'weekStart', 'savedAt', 'suppliers', 'workerCount', 'clientCount'];
 
 // Reads one tenant's row into {workers, clients, suppliers, weekStart, savedAt, _row}.
 // _row (1-based sheet row number, or null if the tenant has no row yet) lets
 // saveSchedule() know whether to update in place or append.
 function readScheduleMap(sh, tenantId) {
   if (!sh || sh.getLastRow() < 2) return { workers: [], clients: [], suppliers: [], weekStart: null, savedAt: null, _row: null };
-  const rows = sh.getDataRange().getValues();
-  for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] === tenantId) {
+  // Find the firm's row from the TenantId column alone, then read only that
+  // row (2026-10-01) — reading the whole sheet pulled every firm's workers
+  // JSON, avatars included, on every load and save.
+  const ids = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (ids[i][0] === tenantId) {
+      const row = sh.getRange(i + 2, 1, 1, 6).getValues()[0];
       let workers = [], clients = [], suppliers = [];
-      try { workers = JSON.parse(rows[i][1] || '[]'); } catch (e) {}
-      try { clients = JSON.parse(rows[i][2] || '[]'); } catch (e) {}
-      try { suppliers = JSON.parse(rows[i][5] || '[]'); } catch (e) {}
-      return { workers: workers, clients: clients, suppliers: suppliers, weekStart: rows[i][3] || null, savedAt: rows[i][4] || null, _row: i + 1 };
+      try { workers = JSON.parse(row[1] || '[]'); } catch (e) {}
+      try { clients = JSON.parse(row[2] || '[]'); } catch (e) {}
+      try { suppliers = JSON.parse(row[5] || '[]'); } catch (e) {}
+      return { workers: workers, clients: clients, suppliers: suppliers, weekStart: row[3] || null, savedAt: row[4] || null, _row: i + 2 };
     }
   }
   return { workers: [], clients: [], suppliers: [], weekStart: null, savedAt: null, _row: null };
@@ -846,7 +869,10 @@ function saveSchedule(data, baseSavedAt, tenantId, auth) {
 }
 function _writeScheduleRow(sh, current, tenantId, workers, clients, suppliers, weekStart){
   const savedAt = new Date().toISOString();
-  const rowValues = [tenantId, JSON.stringify(workers), JSON.stringify(clients), weekStart||'', savedAt, JSON.stringify(suppliers)];
+  const rowValues = [tenantId, JSON.stringify(workers), JSON.stringify(clients), weekStart||'', savedAt, JSON.stringify(suppliers),
+    (workers||[]).length, (clients||[]).length];
+  // An existing sheet only got its headers once; name the newer count columns.
+  if (sh.getRange(1, 7).getValue() !== 'workerCount') sh.getRange(1, 7, 1, 2).setValues([['workerCount', 'clientCount']]);
   if (current._row) sh.getRange(current._row, 1, 1, SCHEDULE_HEADERS.length).setValues([rowValues]);
   else sh.appendRow(rowValues);
   return savedAt;
