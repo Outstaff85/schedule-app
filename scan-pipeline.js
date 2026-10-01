@@ -1595,7 +1595,9 @@ async function processAllPendingPages(){
   tm.prepMs=Date.now()-tm.t0;
   const blurIdx=prepared.findIndex(x=>x&&x.blurry);
   const scanTiming=extra=>{ if(typeof reportTiming==='function') reportTiming('scan',Date.now()-tm.t0,Object.assign({pages:total,
-    kinds:prepared.map(x=>x&&x.kind||'?'),prepMs:tm.prepMs,alignMs:tm.alignMs,enhanceMs:tm.enhanceMs,primaryReadMs:tm.primaryReadMs,verifyMs:tm.verifyMs,extraWaitMs:tm.extraWaitMs,
+    kinds:prepared.map(x=>x&&x.kind||'?'),prepMs:tm.prepMs,alignMs:tm.alignMs,enhanceMs:tm.enhanceMs,
+    // Was the enhance server already warm? (warmCloudFunctions ping result)
+    enhancePingMs:((typeof __fnWarm!=='undefined'&&__fnWarm[PREPROCESS_SCAN_FN_URL])||{}).ms??null,primaryReadMs:tm.primaryReadMs,verifyMs:tm.verifyMs,extraWaitMs:tm.extraWaitMs,
     docType:foundParsed&&foundParsed.type||''},extra||{})); };
   const usable=(blurIdx>=0?prepared.slice(0,blurIdx):prepared).map(x=>({b64:x.b64,mediaType:x.mediaType,kind:x.kind}));
 

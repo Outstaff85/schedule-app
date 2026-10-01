@@ -561,6 +561,16 @@ def build_form101_pdf(p):
 options.set_global_options(region="us-central1")
 
 
+def _ping_response(payload):
+    """Warm-up call from the app ({"ping": true}, 2026-10-01): wakes a cold
+    instance while the user is still taking photos / filling the worker
+    form, so the real request that follows doesn't pay the cold start.
+    Returns a response for a ping, None otherwise."""
+    if isinstance(payload, dict) and payload.get("ping") is True:
+        return https_fn.Response(json.dumps({"ok": True, "warm": True}), status=200, mimetype="application/json")
+    return None
+
+
 @https_fn.on_request(
     cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]),
     memory=options.MemoryOption.MB_512,
@@ -574,6 +584,9 @@ def fill_form_101(req: https_fn.Request) -> https_fn.Response:
         # decide whether to parse — see gs_upload_proxy()'s own comment for
         # the real bug this caused there when a caller omitted it.
         payload = req.get_json(silent=True, force=True) or {}
+        pong = _ping_response(payload)
+        if pong:
+            return pong
         pdf_bytes, file_name, firm_missing = build_form101_pdf(payload)
         body = json.dumps({
             "pdfBase64": base64.b64encode(pdf_bytes).decode(),
@@ -638,6 +651,9 @@ def gs_upload_proxy(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response(json.dumps({"error": "POST only"}), status=405, mimetype="application/json")
     try:
         payload = req.get_json(silent=True, force=True) or {}
+        pong = _ping_response(payload)  # answered here, never relayed to Apps Script
+        if pong:
+            return pong
         resp = requests.post(GS_URL, json=payload, timeout=100)
         return https_fn.Response(resp.text, status=200, mimetype="application/json")
     except Exception as e:
@@ -839,6 +855,9 @@ def preprocess_scan(req: https_fn.Request) -> https_fn.Response:
     try:
         # force=True — see gs_upload_proxy()'s own comment.
         payload = req.get_json(silent=True, force=True) or {}
+        pong = _ping_response(payload)
+        if pong:
+            return pong
         b64 = payload.get("image")
         if not b64:
             return https_fn.Response(json.dumps({"error": "no image"}), status=400, mimetype="application/json")

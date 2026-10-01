@@ -1853,6 +1853,7 @@ function addChildRow(){ __wChildren.push({name:'',idNo:'',dob:''}); renderChildr
 function removeChildRow(i){ __wChildren.splice(i,1); renderChildrenRows(); }
 
 function showWorkerModal(w){
+  warmCloudFunctions([FORM101_FN_URL,GS_UPLOAD_PROXY_URL]); // saving builds and uploads the Form 101
   // A worker created before docGiven/docSurname existed (every worker predating
   // today's unified-modal split) only ever had a single `name` field — never
   // had docGiven/docSurname written to it. Without this fallback, opening such
@@ -6209,7 +6210,25 @@ function ensureScanPipelineLoaded(){
 }
 // New-scan entry point (the "Скан паспорта" button) — awaits the
 // pipeline before calling openAiScan(), which only exists once it's loaded.
+// Cloud Function warm-up (2026-10-01): a cold preprocess_scan /
+// fill_form_101 / gs_upload_proxy instance costs seconds on first use (the
+// Timings pane showed ~4-5s in "Enhance (server)"). These {"ping":true} calls
+// wake them while the user is still photographing or filling the form; the
+// functions answer a ping at once without doing any work. At most once per
+// URL per 4 minutes. Results are kept in __fnWarm for the scan timing.
+const __fnWarm={};
+function warmCloudFunctions(urls){
+  const now=Date.now();
+  for(const url of urls){
+    const w=__fnWarm[url];
+    if(w&&now-w.at<240000) continue;
+    const rec={at:now,ms:null}; __fnWarm[url]=rec;
+    fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:'{"ping":true}'})
+      .then(()=>{ rec.ms=Date.now()-rec.at; }).catch(()=>{});
+  }
+}
 async function startNewScan(){
+  warmCloudFunctions([PREPROCESS_SCAN_FN_URL,FORM101_FN_URL,GS_UPLOAD_PROXY_URL]);
   try{ await ensureScanPipelineLoaded(); }
   catch(e){ showToast('Не удалось загрузить модуль скана — проверьте соединение'); return; }
   window.__aiRescanWorkerId=null;
@@ -6221,6 +6240,7 @@ async function startNewScan(){
 // same await-before-call treatment; the function body itself is otherwise
 // unchanged.
 async function rescanWorkerDoc(workerId){
+  warmCloudFunctions([PREPROCESS_SCAN_FN_URL,FORM101_FN_URL,GS_UPLOAD_PROXY_URL]);
   try{ await ensureScanPipelineLoaded(); }
   catch(e){ showToast('Не удалось загрузить модуль скана — проверьте соединение'); return; }
   window.__aiRescanWorkerId=workerId;
