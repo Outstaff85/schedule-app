@@ -717,6 +717,9 @@ async function verifyDigitFields(parsed,b64,mediaType){
   const isDigits9=s=>typeof s==='string'&&/^\d{9}$/.test(s);
   const isDate=s=>typeof s==='string'&&/^\d{2}[\/.]\d{2}[\/.]\d{4}$/.test(s);
   const jobs=[];
+  // Join a grouped ID ("0 1234567 8") first, so a correct read passes the
+  // checksum below and skips the extra zoomed AI re-read.
+  if(parsed.type==='israeli_id'&&parsed.idNo) parsed.idNo=_normScanDigits(parsed.idNo);
   if(parsed.type==='israeli_id'){
     // Skip the zoomed idNo re-read when the RAW extraction already passes
     // its own Luhn-style check digit (isValidIsraeliId, below) — a passing
