@@ -88,6 +88,7 @@ function doPost(e) {
       case 'aiReadHoursTable':     result = (auth && auth.role === 'supplier') ? {error:'Недоступно для роли поставщика'} : aiReadHoursTable(body); break;
       case 'saveWorkerDoc':        result = saveWorkerDoc(body, tenantId); break;
       case 'deleteWorkerDoc':      result = deleteWorkerDoc(body, tenantId); break;
+      case 'saveWorkerFile':       result = saveWorkerFile(body, tenantId, auth); break;
       case 'saveWorkerAssets':     result = saveWorkerAssets(body, tenantId); break;
       case 'loadWorkerAssets':     result = loadWorkerAssets(body, tenantId); break;
       case 'createUser':           result = createUser(body, auth); break;
@@ -2441,10 +2442,11 @@ function _fileBelongsToTenant(file, tenantId){
   try{
     const workersFolder = _companyFolder(tenantId);
     const assetsFolder = _workerAssetsFolder(tenantId);
+    const docsFolder = _workerDocumentsFolder(tenantId);
     const parents = file.getParents();
     while(parents.hasNext()){
       const pid = parents.next().getId();
-      if(pid === workersFolder.getId() || pid === assetsFolder.getId()) return true;
+      if(pid === workersFolder.getId() || pid === assetsFolder.getId() || pid === docsFolder.getId()) return true;
     }
   }catch(e){}
   return false;
@@ -2458,6 +2460,32 @@ function _workerAssetsFolder(tenantId){
   const workersFolder = _companyFolder(tenantId);
   const sub = workersFolder.getFoldersByName('Assets');
   return sub.hasNext() ? sub.next() : workersFolder.createFolder('Assets');
+}
+
+// Worker documents uploaded from the worker card (contract, visa, work
+// permit, other — 2026-10-01) live in their own "Documents" subfolder of the
+// tenant's "Workers" folder. Only the file is stored here; its type, expiry
+// date and Drive id/url are kept on the worker record (w.docs) client-side.
+function _workerDocumentsFolder(tenantId){
+  const workersFolder = _companyFolder(tenantId);
+  const sub = workersFolder.getFoldersByName('Documents');
+  return sub.hasNext() ? sub.next() : workersFolder.createFolder('Documents');
+}
+// Saves one worker document file. body: {fileBase64, fileName, mimeType}.
+// Deleting goes through deleteWorkerDoc({fileId}), whose tenant check
+// (_fileBelongsToTenant) covers this folder too.
+function saveWorkerFile(body, tenantId, auth){
+  try{
+    requirePermission(auth, 'workers');
+    if(!body.fileBase64 || !body.fileName) return {error:'Missing fileBase64 or fileName'};
+    const folder = _workerDocumentsFolder(tenantId);
+    const bytes = Utilities.base64Decode(body.fileBase64);
+    const blob = Utilities.newBlob(bytes, body.mimeType || 'application/octet-stream', String(body.fileName).slice(0, 200));
+    const file = folder.createFile(blob);
+    // Same link-only sharing as the Form 101 PDF, so the app can open it.
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return {ok:true, id: file.getId(), url: file.getUrl()};
+  }catch(e){ return {error: (e && e.error) || String(e)}; }
 }
 
 // Stores the raw ID/passport scan image + signature PNG used to build a

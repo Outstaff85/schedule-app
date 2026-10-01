@@ -797,6 +797,9 @@
 <div class="overlay" id="supplierOverlay" onclick="if(event.target===this)closeModal('supplierOverlay')">
   <div class="modal" id="supplierModal"></div>
 </div>
+<div class="overlay" id="workerDocOverlay" style="z-index:960" onclick="if(event.target===this)closeModal('workerDocOverlay')">
+  <div class="modal" id="workerDocModal" style="max-width:420px"></div>
+</div>
 <div class="overlay" id="hoursImportOverlay" onclick="if(event.target===this)closeModal('hoursImportOverlay')">
   <div class="modal" id="hoursImportModal" style="max-width:440px"></div>
 </div>
@@ -1129,6 +1132,28 @@ function docUploadFailedBadgeHtml(w){
 //     DOC_EXPIRY_WARN_MONTHS → warning.
 //   failed — w.docUploadFailed (last Drive upload failed) → error.
 const DOC_EXPIRY_WARN_MONTHS = 3;
+// Worker documents uploaded from the worker card (w.docs, 2026-10-01):
+// [{id, type, name, fileId, url, mediaType, uploadedAt, expiry:'YYYY-MM-DD'|''}].
+// Files live in Drive (Workers/Documents, saveWorkerFile); only this
+// metadata is on the worker record. Warn this many days before expiry.
+const WORKER_DOC_TYPES = {contract:'Contract', visa:'Visa', work_permit:'Work permit', other:'Other'};
+const WORKER_DOC_WARN_DAYS = {contract:30, visa:60, work_permit:60, other:30};
+function workerDocExpiries(w){
+  const today=new Date(); today.setHours(0,0,0,0);
+  const out=[], seen=new Set();
+  for(const d of (w.docs||[])){
+    const date=parseDocDate(d.expiry);
+    if(!date||isNaN(date)) continue;
+    // One reminder per document, not per file (a visa uploaded as front +
+    // back shares its type and expiry).
+    const key=d.type+'|'+d.expiry; if(seen.has(key)) continue; seen.add(key);
+    const label=WORKER_DOC_TYPES[d.type]||'Document';
+    const warnAt=new Date(today); warnAt.setDate(warnAt.getDate()+(WORKER_DOC_WARN_DAYS[d.type]||30));
+    if(date<today) out.push({doc:d,level:'error',date,text:label+' expired '+date.toLocaleDateString('en-GB')});
+    else if(date<=warnAt) out.push({doc:d,level:'warn',date,text:label+' expires '+date.toLocaleDateString('en-GB')});
+  }
+  return out.sort((a,b)=>a.date-b.date);
+}
 function parseDocDate(s){
   s=String(s||'').trim();
   let m=s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/);
@@ -1153,19 +1178,23 @@ function workerDocStatus(w){
     else if(d<=warnAt) expiry={level:'warn',date:d,text:'ID/passport expires '+d.toLocaleDateString('en-GB')};
   }
   const failed=!!w.docUploadFailed;
-  const level = (failed || (expiry&&expiry.level==='error')) ? 'error' : ((missing.length||expiry) ? 'warn' : 'ok');
+  const docExpiries=workerDocExpiries(w);
+  const docExpired=docExpiries.find(x=>x.level==='error')||null;
+  const level = (failed || (expiry&&expiry.level==='error') || docExpired) ? 'error' : ((missing.length||expiry||docExpiries.length) ? 'warn' : 'ok');
   const lines=[];
   if(failed) lines.push('Last upload to Google Drive failed');
   if(missing.length) lines.push('Missing: '+missing.join(', '));
   if(expiry) lines.push(expiry.text);
-  return {level, missing, expiry, failed, lines};
+  for(const x of docExpiries) lines.push(x.text);
+  return {level, missing, expiry, docExpiries, docExpired, failed, lines};
 }
 // Compact list/cards badge — nothing when documents are complete.
 function docStatusBadgeHtml(w){
   const s=workerDocStatus(w);
   if(s.level==='ok') return '';
   const red=s.level==='error';
-  const label = s.failed ? 'UPLOAD FAILED' : (s.expiry&&s.expiry.level==='error') ? 'ID EXPIRED' : 'DOCS';
+  const label = s.failed ? 'UPLOAD FAILED' : (s.expiry&&s.expiry.level==='error') ? 'ID EXPIRED'
+    : s.docExpired ? (WORKER_DOC_TYPES[s.docExpired.doc.type]||'Document').toUpperCase()+' EXPIRED' : 'DOCS';
   return `<span title="${esc(s.lines.join(' · '))}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(${red?'--red-bg':'--amber-bg'});color:var(${red?'--red':'--amber'});margin-left:5px;white-space:nowrap"><i class="ti ti-${red?'file-off':'file-alert'}" style="font-size:9px"></i> ${label}</span>`;
 }
 // Full one-line summary for the worker card / cards view.
@@ -2302,6 +2331,7 @@ function deleteWorker(wi){
   const n=w.name;
   const fileId=w.docFileId||extractDriveFileId(w.docUrl);
   const assetsFileId=w.assetsFileId;
+  const docFileIds=(w.docs||[]).map(d=>d.fileId).filter(Boolean);
   workers.splice(wi,1);
   render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
   showToast(n+' removed');
@@ -2309,6 +2339,7 @@ function deleteWorker(wi){
   // Same backend action trashes any file by ID regardless of type — reused
   // here for the scan+signature sidecar so it doesn't outlive the worker.
   if(assetsFileId) gsDeleteWorkerDoc(assetsFileId);
+  docFileIds.forEach(gsDeleteWorkerDoc); // contract/visa/permit files
 }
 function deleteWorkerFromCard(wi){ closeModal('workerCardOverlay'); deleteWorker(wi); }
 
@@ -2716,7 +2747,7 @@ function renderWorkersPage(){
   if(supplierFilter) list=list.filter(x=>x.w.supplierId===supplierFilter);
   const docsFilter=document.getElementById('workersFilterDocs')?.value||'';
   if(docsFilter==='incomplete') list=list.filter(x=>workerDocStatus(x.w).level!=='ok');
-  else if(docsFilter==='expiring') list=list.filter(x=>!!workerDocStatus(x.w).expiry);
+  else if(docsFilter==='expiring') list=list.filter(x=>{ const st=workerDocStatus(x.w); return !!st.expiry||st.docExpiries.length>0; });
   if(q) list=list.filter(x=>{
     const objNames=(x.w.clientIds||[]).map(id=>clients.find(c=>c.id===id)?.name||'').join(' ');
     return (x.w.name||'').toLowerCase().includes(q) || (x.w.phone||'').toLowerCase().includes(q) || objNames.toLowerCase().includes(q);
@@ -2820,6 +2851,7 @@ function openWorkerCard(wi){
       ${sup?`<div><i class="ti ti-truck-delivery"></i> <span style="color:${sup.color}">${esc(sup.name)}</span></div>`:''}
     </div>
     ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
+    ${workerDocsSectionHtml(w)}
     <div class="modal-actions">
       <button class="btn sm red" onclick="deleteWorkerFromCard(${wi})"><i class="ti ti-trash"></i> Delete</button>
       ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Скачать документ</a>`:''}
@@ -2828,6 +2860,95 @@ function openWorkerCard(wi){
       <button class="btn accent" onclick="closeModal('workerCardOverlay');openEditWorker(${wi})"><i class="ti ti-edit"></i> Edit</button>
     </div>`;
   document.getElementById('workerCardOverlay').classList.add('open');
+}
+
+// --- Worker documents (contract / visa / work permit / other) -----------------
+// Separate from the Form 101 scan: uploaded here, stored in Drive
+// (saveWorkerFile -> Workers/Documents), listed on the worker card with
+// their expiry. Expiry reminders flow through workerDocStatus() (badges,
+// the "expiring" filter) and the Today tab's expiry cards.
+function workerDocsSectionHtml(w){
+  const exp=new Map(workerDocExpiries(w).map(x=>[x.doc.id,x]));
+  const docs=[...(w.docs||[])].sort((a,b)=>String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||'')));
+  const rows=docs.map(d=>{
+    const x=exp.get(d.id);
+    const col=x?(x.level==='error'?'var(--red)':'var(--amber)'):'var(--text3)';
+    const exText=d.expiry?((x&&x.level==='error')?'Expired ':'Expires ')+fmtDMY(d.expiry):'No expiry date';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border)">
+      <i class="ti ti-${d.type==='contract'?'file-certificate':d.type==='other'?'file':'id-badge-2'}" style="color:var(--text2)"></i>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600">${esc(WORKER_DOC_TYPES[d.type]||'Document')}</div>
+        <a href="${esc(d.url||'#')}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);word-break:break-all">${esc(d.name||'file')}</a>
+        <div style="font-size:11px;color:${col}">${esc(exText)}</div>
+      </div>
+      ${hasPermission('workers')?`<button class="btn sm" title="Delete" onclick="deleteWorkerFile('${esc(w.id)}','${esc(d.id)}')" style="padding:0 8px"><i class="ti ti-trash"></i></button>`:''}
+    </div>`;
+  }).join('');
+  return `<div style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div style="font-size:13px;font-weight:700"><i class="ti ti-folder"></i> Documents</div>
+      ${hasPermission('workers')?`<button class="btn sm" onclick="openWorkerDocUpload('${esc(w.id)}')"><i class="ti ti-upload"></i> Add document</button>`:''}
+    </div>
+    ${rows||'<div style="font-size:12px;color:var(--text3)">No documents yet — contract, visa, work permit…</div>'}
+  </div>`;
+}
+let __workerDocUploadId=null;
+function openWorkerDocUpload(workerId){
+  const w=workers.find(x=>x.id===workerId); if(!w) return;
+  __workerDocUploadId=workerId;
+  document.getElementById('workerDocModal').innerHTML=`
+    <div class="modal-title">Add document — ${esc(w.name)}</div>
+    <div class="field"><label>Type</label>
+      <select id="wdType">${Object.entries(WORKER_DOC_TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>
+    </div>
+    <div class="field"><label>Expiry date (optional — reminder before it expires)</label><input type="date" id="wdExpiry"></div>
+    <div class="field"><label>Files (several at once is fine — PDF or photos)</label><input type="file" id="wdFiles" multiple accept="application/pdf,.pdf,image/*,.doc,.docx"></div>
+    <div id="wdStatus" style="font-size:12px;color:var(--text2);min-height:1.2em;margin-bottom:6px"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('workerDocOverlay')">Cancel</button>
+      <button class="btn accent" id="wdSubmit" onclick="submitWorkerDocUpload()"><i class="ti ti-upload"></i> Upload</button>
+    </div>`;
+  document.getElementById('workerDocOverlay').classList.add('open');
+}
+// Every selected file is prepared (images shrunk) and uploaded in parallel,
+// through the upload proxy so the progress is real bytes.
+async function submitWorkerDocUpload(){
+  const w=workers.find(x=>x.id===__workerDocUploadId); if(!w) return;
+  const files=[...(document.getElementById('wdFiles').files||[])];
+  const type=document.getElementById('wdType').value;
+  const expiry=document.getElementById('wdExpiry').value||'';
+  const status=document.getElementById('wdStatus'), btn=document.getElementById('wdSubmit');
+  if(!files.length){ status.textContent='Choose at least one file'; return; }
+  btn.disabled=true;
+  status.textContent='Preparing '+files.length+' file'+(files.length>1?'s':'')+'…';
+  try{
+    const prepared=await Promise.all(files.map(fileForStorage));
+    const loaded=new Array(prepared.length).fill(0), totals=new Array(prepared.length).fill(0);
+    const tick=()=>{ const t=totals.reduce((a,b)=>a+b,0); status.textContent='Uploading… '+(t?Math.round(100*loaded.reduce((a,b)=>a+b,0)/t):0)+'%'; };
+    const results=await Promise.all(prepared.map((f,i)=>xhrPostJSON(GS_UPLOAD_PROXY_URL,
+      {action:'saveWorkerFile',secret:API_SECRET,...gsAuth(),fileBase64:f.b64,fileName:f.fileName,mimeType:f.mediaType},
+      (l,t)=>{ loaded[i]=l; totals[i]=t; tick(); })));
+    const failed=results.filter(r=>!r||r.error);
+    const now=new Date().toISOString();
+    const added=results.map((r,i)=>(r&&r.ok)?{id:'d'+Date.now().toString(36)+i+Math.random().toString(36).slice(2,6),type,name:prepared[i].fileName,fileId:r.id,url:r.url,mediaType:prepared[i].mediaType,uploadedAt:now,expiry}:null).filter(Boolean);
+    const cur=workers.find(x=>x.id===w.id);
+    if(cur&&added.length){ cur.docs=[...(cur.docs||[]),...added]; autoSave(); render(); }
+    if(failed.length){ status.textContent=failed.length+' file(s) failed: '+((failed[0]&&failed[0].error)||'network error'); btn.disabled=false; return; }
+    closeModal('workerDocOverlay');
+    showToast(added.length+' document'+(added.length>1?'s':'')+' uploaded');
+    const wi=workers.findIndex(x=>x.id===w.id); if(wi>=0) openWorkerCard(wi);
+  }catch(e){
+    status.textContent='Upload failed: '+(e&&e.message||e); btn.disabled=false;
+  }
+}
+async function deleteWorkerFile(workerId,docId){
+  const w=workers.find(x=>x.id===workerId); if(!w) return;
+  const d=(w.docs||[]).find(x=>x.id===docId); if(!d) return;
+  if(!confirm('Delete '+(WORKER_DOC_TYPES[d.type]||'document')+' "'+d.name+'"?')) return;
+  w.docs=(w.docs||[]).filter(x=>x.id!==docId);
+  autoSave(); render();
+  if(d.fileId) gsDeleteWorkerDoc(d.fileId);
+  const wi=workers.findIndex(x=>x.id===workerId); if(wi>=0) openWorkerCard(wi);
 }
 
 // --- Hours import (Admin/Roles plan, stage 14) ---------------------------------
@@ -4691,13 +4812,19 @@ function renderDashboard(){
   }
 
   // ── Contract-expiry warnings ─────────────────────────────────────────────
-  const expiring = workers.map(w=>({w, st:workerExpiryStatus(w)})).filter(x=>x.st);
+  // Contract-term warnings plus expiring/expired worker documents (visa,
+  // work permit, contract file — workerDocExpiries()), one card each.
+  const expiring = [
+    ...workers.map(w=>({w, st:workerExpiryStatus(w)})).filter(x=>x.st)
+      .map(({w,st})=>({w, overdue:st.level==='overdue', label:st.level==='overdue'?'Срок истёк':'Срок приближается', date:st.deadline})),
+    ...workers.flatMap(w=>workerDocExpiries(w).map(x=>({w, overdue:x.level==='error',
+      label:(WORKER_DOC_TYPES[x.doc.type]||'Document')+(x.level==='error'?' expired':' expires'), date:x.date}))),
+  ];
   const expiringWrap = document.getElementById('dashExpiringWrap');
   expiringWrap.style.display = expiring.length ? 'block' : 'none';
   if(expiring.length){
-    document.getElementById('dashExpiring').innerHTML = expiring.map(({w,st})=>{
+    document.getElementById('dashExpiring').innerHTML = expiring.map(({w,overdue,label,date})=>{
       const c=WORKER_COLORS[w.colorIdx%8];
-      const overdue = st.level==='overdue';
       const borderCol = overdue?'rgba(248,113,113,0.25)':'rgba(245,166,35,0.25)';
       const dotCol = overdue?'var(--red)':'var(--amber)';
       const textCol = overdue?'var(--red)':'var(--amber)';
@@ -4706,8 +4833,8 @@ function renderDashboard(){
           ${workerAvatarInner(w)}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:${dotCol};border:2px solid var(--bg2)"></span>
         </div>
         <div style="font-size:13px;font-weight:600">${esc(w.name)}</div>
-        <div style="font-size:11px;color:${textCol}">${overdue?'Срок истёк':'Срок приближается'}</div>
-        <div style="font-size:10px;color:var(--text3)">${st.deadline.toLocaleDateString('ru-RU')}</div>
+        <div style="font-size:11px;color:${textCol}">${esc(label)}</div>
+        <div style="font-size:10px;color:var(--text3)">${date.toLocaleDateString('en-GB')}</div>
       </div>`;
     }).join('');
   }
@@ -5918,6 +6045,19 @@ async function fileToUploadPages(file){
   }
   const d=await downscaleForUpload(await _readFileB64(file),file.type||'image/jpeg');
   return [{b64:d.b64,mediaType:d.mediaType,text:'',fileName:file.name||''}];
+}
+// One file prepared for STORAGE (kept as a single file, unlike the per-page
+// AI path above): an image is shrunk like every upload, anything else (PDF,
+// Word, ...) is sent as-is. -> {b64, mediaType, fileName}
+async function fileForStorage(file){
+  const raw=await _readFileB64(file);
+  const type=file.type||'application/octet-stream';
+  if(/^image\//.test(type)){
+    const d=await downscaleForUpload(raw,type);
+    const name=d.mediaType===type?file.name:String(file.name||'image').replace(/\.[^.]+$/,'')+'.jpg';
+    return {b64:d.b64,mediaType:d.mediaType,fileName:name};
+  }
+  return {b64:raw,mediaType:type,fileName:file.name||'document'};
 }
 // Many files -> one flat, ordered page list; all files processed in parallel.
 async function filesToUploadPages(files){
