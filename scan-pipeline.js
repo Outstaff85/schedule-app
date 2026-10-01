@@ -18,6 +18,15 @@ function openAiScan(){
   // on the individual onScanFilesSelected()/onScanFileSelected() resets.
   window.__aiScanPageThumbs=[];
   window.__aiPrimaryParsed=null;
+  // __aiParsed/__aiScanImage too (2026-10-01): a previous scan's result left
+  // in __aiParsed made processAllPendingPages() treat the NEXT scan as a
+  // continuation of the previous worker — the new page became an "extra
+  // page" of the old record, and with no primary image the review screen
+  // crashed at 100% ("Cannot read properties of null (reading 'mediaType')").
+  window.__aiParsed=null;
+  window.__aiScanImage=null;
+  window.__aiPacketOtherPages=[];
+  window.__aiAvatarB64=null;
   window.__aiPageParsed=[];
   window.__pendingScanPages=[]; // not-yet-processed crops queued by processAllPendingPages() — see its own comment
   document.getElementById('aiScanStage').innerHTML=`
@@ -1551,7 +1560,9 @@ async function processAllPendingPages(){
   // on this function's own full-success tail), so checking the thumbs array here
   // made a resumed "process" after an abort wrongly look like a fresh start,
   // discarding the already-found primary record and re-reading pages from scratch.
-  const resuming=!!(window.__aiPrimaryParsed||window.__aiParsed);
+  // A resumed run must also have its primary page image — a primary record
+  // without one can only be stale state from another scan, never resume it.
+  const resuming=!!((window.__aiPrimaryParsed||window.__aiParsed)&&window.__aiScanImage);
   let foundParsed=resuming?(window.__aiPrimaryParsed||window.__aiParsed||null):null;
   let needMore=missingCore(foundParsed);
   const otherPages=resuming?window.__aiPacketOtherPages.slice():[];
@@ -1691,9 +1702,9 @@ function renderScanPagesPrompt(){
   const pages=window.__aiScanPageThumbs||[];
   stage.innerHTML=`
     <div style="display:flex;flex-direction:column;gap:10px">
-      <div style="font-size:12px;color:var(--text2)">נסרקו ${pages.length} עמוד${pages.length===1?'':'ים'}</div>
+      <div style="font-size:12px;color:var(--text2)">נסרקו ${pages.filter(Boolean).length} עמוד${pages.filter(Boolean).length===1?'':'ים'}</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px">
-        ${pages.map((p,i)=>`
+        ${pages.map((p,i)=>!p?'':`
           <div style="position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--border2);flex-shrink:0">
             <img src="data:${p.mediaType};base64,${p.b64}" style="width:100%;height:100%;object-fit:cover;display:block">
             <span style="position:absolute;bottom:1px;left:1px;font-size:9px;background:rgba(0,0,0,0.6);color:#fff;padding:0 3px;border-radius:3px">${i+1}</span>
