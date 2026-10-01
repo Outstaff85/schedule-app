@@ -15,8 +15,8 @@
 //                               with the first snapshot's entries
 //   savePunch / updatePunch / deletePunch
 //   idToken()                   the signed-in user's ID token (supplier portal)
-//   handleAction(action, params)   stage 5: answers an Apps Script action
-//                               (Admin panes, telemetry, hours queue) in the
+//   handleAction(action, params)   stages 5, 7: answers an Apps Script action
+//                               (Admin panes, telemetry, hours queue, AI reads) in the
 //                               same JSON shape, or null to leave it to Apps Script
 //
 // Documents are the same objects the app keeps in memory: one per worker,
@@ -28,6 +28,9 @@
   const FB_CDN = 'https://www.gstatic.com/firebasejs/' + FB_VERSION + '/';
   const LOGIN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/login';
   const USERS_ADMIN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/users_admin';
+  const AI_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/ai_read';
+  // Stage 7: the AI document actions, answered by the ai_read function.
+  const AI_ACTIONS = ['aiReadDoc','aiReadSefach','aiDetectAlign','aiVerifyField','aiVerifyFields','aiReadHoursTable'];
   // Apps Script actions answered by the users_admin function instead.
   const FUNCTION_ACTIONS = ['listTenants','setTenantActive','deleteTenant','createUser','updateTenant',
     'loadTenantProfile','listUsers','createTenantUser','updateUser','resetUserPassword','deleteUser'];
@@ -201,9 +204,9 @@
     // ── Stage 5: Apps Script actions answered from Firestore ──────────────
     // params: the action's request body (POST) or query (GET), as the app
     // built it — including token/asTenantId from gsAuth(). ctx: who is asking.
-    async function callUsersAdmin(params){
+    async function callUsersAdmin(params, url = USERS_ADMIN_URL){
       const idToken = await auth.currentUser.getIdToken();
-      const res = await fetch(USERS_ADMIN_URL, {method:'POST',
+      const res = await fetch(url, {method:'POST',
         headers:{'Content-Type':'application/json', Authorization:'Bearer ' + idToken},
         body: JSON.stringify(Object.assign({}, params, {token: undefined, secret: undefined}))});
       try{ return await res.json(); }catch(e){ return {error:'Сервер вернул ошибку (HTTP ' + res.status + ')'}; }
@@ -330,6 +333,7 @@
       if(['logBatch','logError','logTiming'].includes(action)) return auth.currentUser ? writeTelemetry(params) : null;
       if(!auth.currentUser) return null;
       if(FUNCTION_ACTIONS.includes(action)) return callUsersAdmin(params);
+      if(AI_ACTIONS.includes(action)) return callUsersAdmin(params, AI_FN_URL);
       switch(action){
         case 'loadErrors':  return ctx.role === 'superadmin' ? readLog('errors', 100, gsFetch().then(j => j.rows || [])) : {error:'Доступ только для супер-админа'};
         case 'loadTimings': return ctx.role === 'superadmin' ? readLog('timings', 500, gsFetch().then(j => j.rows || [])) : {error:'Доступ только для супер-админа'};
