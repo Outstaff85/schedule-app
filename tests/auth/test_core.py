@@ -110,6 +110,20 @@ def test_legacy_password_logs_in_and_is_upgraded():
     assert core.login(DB, "owner1", "owner-pass-X", mint)["error"] == core.E_BAD_LOGIN
 
 
+def test_refusal_reasons_are_reported():
+    seen = []
+    log = lambda user, reason: seen.append((user, reason))
+    core.login(DB, "nobody", "whatever-1", mint, on_refused=log)
+    core.login(DB, "owner1", "wrong-pass", mint, on_refused=log)
+    DB.collection("users").document("u-staff1").update({"active": False})
+    core.login(DB, "staff1", "staff-pass-1", mint, on_refused=log)
+    assert seen[0] == ("nobody", "no such username (usernames/{name} missing)")
+    assert seen[1][0] == "owner1" and "password mismatch" in seen[1][1]
+    assert "algo=sha256 hashLen=64 hashHex=True saltLen=" in seen[1][1] and "wrong-pass" not in seen[1][1]
+    assert seen[2] == ("staff1", "account inactive")
+    assert core.login(DB, "owner1", "owner-pass-1", mint, on_refused=log)["ok"] and len(seen) == 3
+
+
 def test_unknown_user_and_empty_fields():
     assert core.login(DB, "nobody", "whatever-1", mint)["error"] == core.E_BAD_LOGIN
     assert core.login(DB, "", "", mint)["error"] == "Введите логин и пароль"
@@ -251,6 +265,8 @@ def test_http_login_and_users_admin():
     status, lg = _call(main.login, {"username": "owner1", "password": "owner-pass-1"})
     assert status == 200 and lg["ok"]
     assert _call(main.login, {"username": "owner1", "password": "nope-nope"})[1]["error"] == core.E_BAD_LOGIN
+    logged = [d.to_dict() for d in DB.collection("errors").stream()]
+    assert any(e["source"] == "login" and e["user"] == "owner1" and "password mismatch" in e["message"] for e in logged)
 
     url = (f"http://{os.environ['FIREBASE_AUTH_EMULATOR_HOST']}/identitytoolkit.googleapis.com/v1/"
            "accounts:signInWithCustomToken?key=fake")

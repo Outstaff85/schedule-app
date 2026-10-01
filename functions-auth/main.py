@@ -62,6 +62,16 @@ def _revoke(uid, delete=False):
         pass
 
 
+def _log_refused(username, reason):
+    """Why a login was refused, for the super-admin (Firestore errors
+    collection, readable only by a superadmin). Never the password or hash."""
+    from datetime import datetime, timezone
+    _db().collection("errors").add({
+        "when": datetime.now(timezone.utc).isoformat(), "source": "login",
+        "user": username, "message": "login refused: " + reason,
+    })
+
+
 def _body(req):
     # force=True: parse regardless of Content-Type (see gs_upload_proxy in
     # functions/main.py for the bug a missing header caused).
@@ -77,7 +87,7 @@ def login(req: https_fn.Request) -> https_fn.Response:
         _db()
         return _json({"ok": True, "warm": True})
     try:
-        return _json(core.login(_db(), body.get("username"), body.get("password"), _mint))
+        return _json(core.login(_db(), body.get("username"), body.get("password"), _mint, on_refused=_log_refused))
     except Exception as e:
         return _json({"error": "Login failed: " + str(e)}, 500)
 

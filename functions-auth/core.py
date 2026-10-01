@@ -108,10 +108,28 @@ def claims_for(user):
 
 # ── Login ────────────────────────────────────────────────────────────────────
 
-def login(db, username, password, mint_token, now=None):
+def _secret_shape(secret):
+    """What a refused password says about the stored hash, without the hash:
+    a wrong length or a non-hex character means the copy went wrong."""
+    h, salt = str(secret.get("hash") or ""), str(secret.get("salt") or "")
+    return (f"algo={secret.get('algo') or 'sha256'} hashLen={len(h)} "
+            f"hashHex={all(c in '0123456789abcdefABCDEF' for c in h)} saltLen={len(salt)}")
+
+
+def login(db, username, password, mint_token, now=None, on_refused=None):
     """mint_token(uid, claims) -> str (firebase_admin.auth.create_custom_token
     in production). Returns the same fields Apps Script login() returned, with
-    `token` now a Firebase custom token for signInWithCustomToken()."""
+    `token` now a Firebase custom token for signInWithCustomToken().
+    on_refused(username, reason) is told why a login was refused (main.py
+    writes it to the errors collection); the user still only sees the
+    usual "wrong login or password"."""
+    def refused(reason, msg=E_BAD_LOGIN):
+        if on_refused:
+            try:
+                on_refused(username, reason)
+            except Exception:
+                pass
+        return {"error": msg}
     now = time.time() if now is None else now
     username = _norm_username(username)
     password = str(password or "")
@@ -120,30 +138,30 @@ def login(db, username, password, mint_token, now=None):
 
     name_doc = db.collection("usernames").document(username).get()
     if not name_doc.exists:
-        return {"error": E_BAD_LOGIN}
+        return refused("no such username (usernames/{name} missing)")
     uid = name_doc.get("uid")
     user_snap = db.collection("users").document(uid).get()
     secret_ref = db.collection("authSecrets").document(uid)
     secret_snap = secret_ref.get()
     if not user_snap.exists or not secret_snap.exists:
-        return {"error": E_BAD_LOGIN}
+        return refused(f"users doc exists={user_snap.exists}, authSecrets doc exists={secret_snap.exists}")
     user = user_snap.to_dict()
     secret = secret_snap.to_dict()
 
     if user.get("active") is False:
-        return {"error": "Аккаунт отключён"}
+        return refused("account inactive", "Аккаунт отключён")
 
     fails = int(secret.get("failCount") or 0)
     last_fail = float(secret.get("lastFailAt") or 0)
     if fails >= LOCK_AFTER_FAILS and now - last_fail < LOCK_SECONDS:
         wait_min = max(1, int((LOCK_SECONDS - (now - last_fail) + 59) // 60))
-        return {"error": f"Слишком много неверных попыток — подождите {wait_min} мин."}
+        return refused("locked after wrong passwords", f"Слишком много неверных попыток — подождите {wait_min} мин.")
 
     if not verify_password(password, secret):
         # The counter restarts once the lock window has passed.
         fails = fails + 1 if now - last_fail < LOCK_SECONDS else 1
         secret_ref.update({"failCount": fails, "lastFailAt": now})
-        return {"error": E_BAD_LOGIN}
+        return refused(f"password mismatch ({_secret_shape(secret)}, failCount={fails})")
 
     update = {"failCount": 0, "lastFailAt": 0}
     if secret.get("algo") != "scrypt":
