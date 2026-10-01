@@ -1569,7 +1569,7 @@ async function processAllPendingPages(){
   let pageParsed=resuming?window.__aiPageParsed.slice():[];
   const total=queue.length;
   // Speed telemetry (reportTiming → Admin → Timings): whole run + phases.
-  const tm={t0:Date.now(),prepMs:0,primaryReadMs:0,verifyMs:0,extraWaitMs:0};
+  const tm={t0:Date.now(),prepMs:0,alignMs:0,enhanceMs:0,primaryReadMs:0,verifyMs:0,extraWaitMs:0};
 
   // Phase 1 — align (cheap Haiku corners, see autoPreAlignScan) and enhance
   // + blur-check (preprocess_scan) all pages concurrently.
@@ -1577,11 +1577,15 @@ async function processAllPendingPages(){
   renderScanProgress('מיישר ומשפר את התמונות… (0 מתוך '+total+')',2);
   const prepared=await Promise.all(queue.map(async q=>{
     let it=q;
+    const as=Date.now();
     try{ it=await autoPreAlignScan(it.b64,it.mediaType); }
     catch(e){ console.error(e); }
+    const es=Date.now();
+    tm.alignMs=Math.max(tm.alignMs,es-as); // pages run in parallel: the slowest page is what the user waits for
     let pre;
     try{ pre=await preAlignScan(it.b64,it.mediaType); }
     catch(e){ console.error(e); pre={b64:it.b64,mediaType:it.mediaType}; }
+    tm.enhanceMs=Math.max(tm.enhanceMs,Date.now()-es);
     prepDone++;
     renderScanProgress('מיישר ומשפר את התמונות… ('+prepDone+' מתוך '+total+')',Math.round(40*prepDone/total));
     return {...pre,kind:it.kind||null};
@@ -1591,7 +1595,7 @@ async function processAllPendingPages(){
   tm.prepMs=Date.now()-tm.t0;
   const blurIdx=prepared.findIndex(x=>x&&x.blurry);
   const scanTiming=extra=>{ if(typeof reportTiming==='function') reportTiming('scan',Date.now()-tm.t0,Object.assign({pages:total,
-    kinds:prepared.map(x=>x&&x.kind||'?'),prepMs:tm.prepMs,primaryReadMs:tm.primaryReadMs,verifyMs:tm.verifyMs,extraWaitMs:tm.extraWaitMs,
+    kinds:prepared.map(x=>x&&x.kind||'?'),prepMs:tm.prepMs,alignMs:tm.alignMs,enhanceMs:tm.enhanceMs,primaryReadMs:tm.primaryReadMs,verifyMs:tm.verifyMs,extraWaitMs:tm.extraWaitMs,
     docType:foundParsed&&foundParsed.type||''},extra||{})); };
   const usable=(blurIdx>=0?prepared.slice(0,blurIdx):prepared).map(x=>({b64:x.b64,mediaType:x.mediaType,kind:x.kind}));
 

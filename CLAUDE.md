@@ -152,7 +152,7 @@ Both HTML files talk to the same Apps Script Web App endpoint (`GS_URL`, hardcod
   - `login`: `submitLogin()` keeps its start time in sessionStorage `pendingLoginTiming` across the reload. Details are `loginRequestMs`, `firstContentMs`, `reloadToFreshMs`, `pingMs` and `pingDoneBeforeClick`.
   - `open`: an app open with an existing session, measured from `performance.timeOrigin`.
   - Both `login` and `open` are reported once per page, by `markFreshContent()` from `loadData()` or the landing `renderFirmsList()`. `markFirstContent()` marks when cached or fresh content was first painted.
-  - `scan` (`processAllPendingPages()`): `prepMs`, `primaryReadMs`, `verifyMs`, `extraWaitMs`, the page kinds and `aborted`.
+  - `scan` (`processAllPendingPages()`): `prepMs` (split into `alignMs`, the AI align call, and `enhanceMs`, the `preprocess_scan` Cloud Function; each is the slowest page's, since pages run in parallel), `primaryReadMs`, `verifyMs`, `extraWaitMs`, the page kinds and `aborted`.
   - `scanFiles` (`onScanFilesSelected()`): the same, plus `classifyMs`.
   - Every kind also carries `device` (mobile/desktop).
   

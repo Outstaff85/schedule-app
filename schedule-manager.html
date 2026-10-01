@@ -4361,7 +4361,7 @@ function renderErrorsRows(listEl, targetId, rows){
 const TIMING_PHASES = {
   login: [['loginRequestMs','Login request'],['firstContentMs','First content'],['pingMs','Wake-up ping']],
   open:  [['firstContentMs','First content']],
-  scan:  [['prepMs','Align + enhance'],['primaryReadMs','AI read'],['verifyMs','Digit re-check'],['extraWaitMs','Wait for ספח']],
+  scan:  [['alignMs','AI align'],['enhanceMs','Enhance (server)'],['primaryReadMs','AI read'],['verifyMs','Digit re-check'],['extraWaitMs','Wait for ספח']],
   scanFiles: [['prepMs','Prepare files'],['classifyMs','Classify pages'],['primaryReadMs','AI read'],['verifyMs','Digit re-check'],['extraWaitMs','Wait for ספח']],
 };
 function _pct(arr,p){ if(!arr.length) return null; const a=[...arr].sort((x,y)=>x-y); return a[Math.min(a.length-1,Math.floor(p*(a.length-1)+0.5))]; }
