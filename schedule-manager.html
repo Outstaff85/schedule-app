@@ -1124,7 +1124,7 @@ function expiryBadgeHtml(w){
 // using document storage).
 function docUploadFailedBadgeHtml(w){
   if(!w.docUploadFailed) return '';
-  return `<span title="Не удалось сохранить документ в Google Drive — откройте карточку и пересканируйте" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px"><i class="ti ti-file-off" style="font-size:9px"></i> НЕТ ДОКУМЕНТА</span>`;
+  return `<span title="Не удалось сохранить документ в ${DOC_STORE} — откройте карточку и пересканируйте" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px"><i class="ti ti-file-off" style="font-size:9px"></i> НЕТ ДОКУМЕНТА</span>`;
 }
 // ── Worker document completeness ────────────────────────────────────────────
 // One status per worker, used by the Workers list/cards badge, the cards'
@@ -1141,7 +1141,8 @@ function docUploadFailedBadgeHtml(w){
 const DOC_EXPIRY_WARN_MONTHS = 3;
 // Worker documents uploaded from the worker card (w.docs, 2026-10-01):
 // [{id, type, name, fileId, url, mediaType, uploadedAt, expiry:'YYYY-MM-DD'|''}].
-// Files live in Drive (Workers/Documents, saveWorkerFile); only this
+// Files live in Drive (Workers/Documents, saveWorkerFile), or in Firestore
+// mode in Storage (tenants/<t>/workers/<id>/docs, stage 7b); only this
 // metadata is on the worker record. Warn this many days before expiry.
 const WORKER_DOC_TYPES = {contract:'Contract', visa:'Visa', work_permit:'Work permit', other:'Other'};
 const WORKER_DOC_WARN_DAYS = {contract:30, visa:60, work_permit:60, other:30};
@@ -1189,7 +1190,7 @@ function workerDocStatus(w){
   const docExpired=docExpiries.find(x=>x.level==='error')||null;
   const level = (failed || (expiry&&expiry.level==='error') || docExpired) ? 'error' : ((missing.length||expiry||docExpiries.length) ? 'warn' : 'ok');
   const lines=[];
-  if(failed) lines.push('Last upload to Google Drive failed');
+  if(failed) lines.push('Last upload to '+DOC_STORE+' failed');
   if(missing.length) lines.push('Missing: '+missing.join(', '));
   if(expiry) lines.push(expiry.text);
   for(const x of docExpiries) lines.push(x.text);
@@ -2087,7 +2088,7 @@ function showWorkerModal(w){
         <div id="wChildrenRows"></div>
       </div>
       <div style="font-size:11px;color:var(--text3);margin-top:2px">
-        ${w.docUrl?'שינוי שדות אלו (או כתובת/עיר/סוג הכנסה למעלה) יעדכן אוטומטית את המסמך השמור ב-Google Drive.':'קובץ ה-PDF של טופס 101 ייבנה אוטומטית בעת השמירה.'}
+        ${w.docUrl?'שינוי שדות אלו (או כתובת/עיר/סוג הכנסה למעלה) יעדכן אוטומטית את המסמך השמור ב-'+DOC_STORE+'.':'קובץ ה-PDF של טופס 101 ייבנה אוטומטית בעת השמירה.'}
       </div>
     </div>
     <div class="field" style="margin-bottom:6px">
@@ -2792,7 +2793,7 @@ function renderWorkersPage(){
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.hourlyRate?('₪'+w.hourlyRate+'/h'):'—'}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.startDate?fmtDMY(w.startDate):'—'}</td>
       <td style="padding:10px 12px;text-align:center" onclick="event.stopPropagation()"><div style="display:flex;gap:4px;justify-content:center">
-        ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" title="Скачать документ (PDF с Google Drive)" style="padding:3px 8px;font-size:11px"><i class="ti ti-download"></i></a>`:''}
+        ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" title="Скачать документ (PDF с ${DOC_STORE})" style="padding:3px 8px;font-size:11px"><i class="ti ti-download"></i></a>`:''}
         <button class="btn sm" onclick="openEditWorker(${wi})" style="padding:3px 8px;font-size:11px"><i class="ti ti-edit"></i></button>
         <button class="btn sm red" onclick="deleteWorker(${wi})" style="padding:3px 8px;font-size:11px"><i class="ti ti-x"></i></button>
       </div></td>
@@ -2934,7 +2935,7 @@ async function submitWorkerDocUpload(){
     const loaded=new Array(prepared.length).fill(0), totals=new Array(prepared.length).fill(0);
     const tick=()=>{ const t=totals.reduce((a,b)=>a+b,0); status.textContent='Uploading… '+(t?Math.round(100*loaded.reduce((a,b)=>a+b,0)/t):0)+'%'; };
     const results=await Promise.all(prepared.map((f,i)=>xhrPostJSON(GS_UPLOAD_PROXY_URL,
-      {action:'saveWorkerFile',secret:API_SECRET,...gsAuth(),fileBase64:f.b64,fileName:f.fileName,mimeType:f.mediaType},
+      {action:'saveWorkerFile',secret:API_SECRET,...gsAuth(),workerId:w.id,fileBase64:f.b64,fileName:f.fileName,mimeType:f.mediaType},
       (l,t)=>{ loaded[i]=l; totals[i]=t; tick(); })));
     const failed=results.filter(r=>!r||r.error);
     const now=new Date().toISOString();
@@ -3535,6 +3536,28 @@ function fsTenantId(){
   const s = getSession();
   return s ? (s.viewingTenantId || s.tenantId) : null;
 }
+// Stage 7b: in Firestore mode the Form 101 PDF, the scan sidecar and worker
+// documents are uploaded to Firebase Storage (firestore-backend.js
+// uploadWorkerFile, real byte progress) instead of Drive. xhrPostJSON() hands
+// these actions here, with the same {ok,id,url} reply, so the callers are
+// unchanged. The id is the Storage path; loadWorkerAssets/deleteWorkerDoc
+// for such an id go to the users_admin function, and a Drive id (a file
+// saved before the switch) still goes to Apps Script, so old links keep
+// working. The file being replaced (previousFileId) is deleted after the new
+// one is up, wherever it lives.
+const FS_UPLOAD_ACTIONS = ['saveWorkerDoc','saveWorkerAssets','saveWorkerFile'];
+const DOC_STORE = BACKEND === 'firestore' ? 'Firebase Storage' : 'Google Drive';
+async function fsUpload(bodyObj, onProgress){
+  __uploadsInFlight++;
+  try{
+    const b = await loadFirestoreBackend();
+    const json = await b.uploadWorkerFile(fsTenantId(), bodyObj, onProgress);
+    if(json && json.ok && bodyObj.previousFileId && bodyObj.previousFileId !== json.id) gsDeleteWorkerDoc(bodyObj.previousFileId);
+    return json;
+  }catch(e){
+    return {error: 'Storage: ' + ((e && (e.code || e.message)) || e)};
+  }finally{ __uploadsInFlight = Math.max(0, __uploadsInFlight - 1); }
+}
 // Server-side Form 101 PDF builder (Python + PyMuPDF Cloud Function) — replaces
 // the old client-side pdf-lib build, which had a confirmed bug dropping a
 // glyph of multi-word RTL (Hebrew) text. See functions/main.py.
@@ -3679,6 +3702,7 @@ function gsAuth(){
 // Uploads still running; the new-app-version reload waits for them (below).
 let __uploadsInFlight=0;
 function xhrPostJSON(url,bodyObj,onProgress,_attempt){
+  if(BACKEND==='firestore'&&bodyObj&&FS_UPLOAD_ACTIONS.indexOf(bodyObj.action)!==-1) return fsUpload(bodyObj,onProgress);
   const attempt=_attempt||0;
   return new Promise((resolve,reject)=>{
     const xhr=new XMLHttpRequest();
@@ -3860,6 +3884,8 @@ const SESSION_RETRY_DELAYS_MS = [0, 500]; // attempt 2 immediate, attempt 3 afte
     'listUsers','createTenantUser','updateUser','resetUserPassword','deleteUser','loadErrors','loadTimings',
     'loadSchedule','loadPunchLog','deletePunchesByMonths','savePendingHoursBatch','loadPendingHours',
     'approvePendingHours','rejectPendingHours','logBatch','logError','logTiming',
+    // Stage 7b: a file whose id is a Storage path (Drive ids fall through).
+    'loadWorkerAssets','deleteWorkerDoc',
     // Stage 7: the AI document reads go to the ai_read function.
     'aiReadDoc','aiReadSefach','aiDetectAlign','aiVerifyField','aiVerifyFields','aiReadHoursTable'];
   function gsParams(url, opts){
@@ -6837,9 +6863,9 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
         if(!showBlockingProgress) return;
         const total=docTotal+assetsTotal;
         const frac=total>0?(docLoaded+assetsLoaded)/total:0;
-        renderWorkerUploadProgress('מעלה ל-Google Drive, נא לא לסגור…',20+Math.round(frac*70));
+        renderWorkerUploadProgress('מעלה ל-'+DOC_STORE+', נא לא לסגור…',20+Math.round(frac*70));
       };
-      if(showBlockingProgress) renderWorkerUploadProgress('מעלה ל-Google Drive, נא לא לסגור…',20);
+      if(showBlockingProgress) renderWorkerUploadProgress('מעלה ל-'+DOC_STORE+', נא לא לסגור…',20);
       // saveWorkerDoc (the PDF) and saveWorkerAssets (the scan/signature
       // sidecar) write to two different Drive files and don't depend on each
       // other's result (the sidecar's own previousFileId is w.assetsFileId,
@@ -6849,7 +6875,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // workers/rescans. Skipped on a regenerate (isRegen) same as before —
       // see the comment below that used to sit next to the sequential call.
       const docPromise=xhrPostJSON(GS_UPLOAD_PROXY_URL,
-        {action:'saveWorkerDoc',secret:API_SECRET,...gsAuth(),fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null},
+        {action:'saveWorkerDoc',secret:API_SECRET,...gsAuth(),workerId:w&&w.id,fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null},
         (loaded,total)=>{ docLoaded=loaded; docTotal=total; reportUploadProgress(); });
       // Cache the scan+signature (and any extra pages — ספח appendix card,
       // contract, etc.) that actually built this PDF as a small private
@@ -6868,7 +6894,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // multi-MB download-then-reupload round trip on top of the PDF
       // build itself, which is what made a single-field edit feel so slow.
       const assetsPromise=(scanImage&&!isRegen&&w)?xhrPostJSON(GS_UPLOAD_PROXY_URL,
-        {action:'saveWorkerAssets',secret:API_SECRET,...gsAuth(),
+        {action:'saveWorkerAssets',secret:API_SECRET,...gsAuth(),workerId:w.id,
           scanB64:scanImage.b64, scanMediaType:scanImage.mediaType, sigPng:sigPng||null,
           extraPages:otherPagesToUse,
           fileNameBase:fileName.replace(/\.pdf$/,''), previousFileId:w.assetsFileId||null},
@@ -6886,9 +6912,9 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
         w.docHasSignature=!!sigPng;
         w.docExtraPages=Array.isArray(otherPagesToUse)?otherPagesToUse.length:0;
         render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
-        showToast('Документы '+(w.name||'')+' сохранены в Google Drive');
+        showToast('Документы '+(w.name||'')+' сохранены в '+DOC_STORE);
         window.__aiRescanWorkerId=null;
-      } else showToast('Файл сохранён в Google Drive');
+      } else showToast('Файл сохранён в '+DOC_STORE);
     } else {
       const blob=new Blob([out],{type:'application/pdf'});
       const url=URL.createObjectURL(blob);
