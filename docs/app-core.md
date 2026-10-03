@@ -67,13 +67,12 @@ A weekly roster.
   3. A super-admin with no firm picked → `#firmsScreen` (`renderFirmsList()`).
   4. Otherwise → `renderAccountControl(s)` and the init sequence: `loadData()`, `render()`, `applyNavPermissions()`, `switchTab('dashboard')`, `checkPushStatus`.
 - **`submitLogin()`:**
-  - in Firestore mode it calls `submitLoginFirestore()`. That runs `backend.login()` (the `login` function, then a Firebase custom-token sign-in) and takes the Apps Script token from the reply (`gsToken`). It logs in to Apps Script separately only when there is none;
-  - in Sheets mode it POSTs `action:'login'` to Apps Script, with one retry after 1.5 s on an HTML reply or a network error;
+  - `submitLoginFirestore()` runs `backend.login()` (the `login` function, then a Firebase custom-token sign-in) and optionally takes an Apps Script token from the reply (`gsToken`, for parts not yet moved to Firestore). If not provided, the app tries to log in to Apps Script separately (slower path);
   - a super-admin reply's `tenants` list is cached (`saveFirmsCache`);
-  - either way it saves the session and reloads; the login timing is kept in `sessionStorage.pendingLoginTiming`.
+  - saves the session and reloads; the login timing is kept in `sessionStorage.pendingLoginTiming`.
 - **Firms:** `switchToTenant(tenantId)` (super-admin) sets `viewingTenantId` / Name / Profile and reloads. `backToFirmsList()` has no UI caller.
-- **`logout()`** clears the Firms and admin caches and the session, signs out of Firebase (Firestore mode), and reloads.
-- **Requests:** `gsAuth()` → `{token}`, plus `asTenantId` for a super-admin viewing a firm; `gsAuthQuery()` is the same as a query string. `applyRefreshedToken(json)` stores a `refreshedToken` / `refreshedExpiresAt` from any Apps Script reply (sliding expiry).
+- **`logout()`** clears the Firms and admin caches and the session, signs out of Firebase, and reloads.
+- **Requests:** `gsAuth()` → `{asTenantId}` (only for a super-admin viewing a firm; otherwise `{}`); `gsAuthQuery()` is the same as a query string.
 - **Firm profile** (Form 101 employer block):
   - `FIRM_PROFILE_FIELDS` — company name, deductions file, phone, street, city;
   - `activeTenantProfile()`, `firmProfileMissing()`, `firmProfileWarnHtml()` / `refreshFirmProfileWarnings()`;
