@@ -1,4 +1,4 @@
-"""Stage 6 tests: worker punch link and supplier portal (functions-auth/portal.py)
+"""Tests for the punch link and the supplier portal (functions-auth/portal.py)
 on the Firestore + Auth emulators."""
 
 from test_core import DB, _clear  # noqa: F401 — also initializes the Admin SDK
@@ -103,6 +103,7 @@ def test_supplier_sees_only_own_workers_stripped():
     w = r["workers"][0]
     assert w["supplierRate"] == 7 and w["phone"] == "0501111111"
     assert "hourlyRate" not in w and "supplierRates" not in w and "sortIndex" not in w
+    assert "token" not in w and "docUrl" not in w and "docFileId" not in w and "assetsFileId" not in w
     assert {"id": "c1", "name": "Site A", "object": "Gate 1"} in r["clients"]
     assert "billRate" not in str(r["clients"]) and "lat" not in str(r["clients"]) and r["suppliers"] == []
 

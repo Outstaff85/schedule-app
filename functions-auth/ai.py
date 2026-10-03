@@ -1,15 +1,11 @@
-"""AI document reading on Cloud Functions (FIRESTORE_PLAN.md stage 7).
+"""AI document reading (the ai_read function).
 
-A port of the Apps Script actions aiReadDoc, aiReadSefach, aiDetectAlign,
-aiVerifyField, aiVerifyFields and aiReadHoursTable (apps-script/Код.js): the
-same Anthropic requests, the same reply handling, the same result shapes, so
-the app's scan code doesn't change. The prompt texts are not retyped here —
-ai_prompts.json is generated from Код.js (tests/auth/apps_script_ai.js), and
-tests/auth/test_ai.py checks every request and result against the Apps Script
-code itself, so the two can't drift apart.
-
-Calling from a Cloud Function instead of Apps Script saves Apps Script's own
-1-3 s per call (and its concurrent-execution limit during a scan burst).
+The actions aiReadDoc, aiReadSefach, aiDetectAlign, aiVerifyField,
+aiVerifyFields and aiReadHoursTable: the Anthropic request for each, and the
+reply handling and result shape the app's scan code expects. The prompt
+texts are in ai_prompts.json — edit them there. tests/auth/test_ai.py checks
+every request and result against ai_golden.json (recorded from the original
+Apps Script actions).
 """
 
 import json
@@ -20,8 +16,8 @@ from pathlib import Path
 PROMPTS = json.loads(Path(__file__).with_name("ai_prompts.json").read_text(encoding="utf-8"))
 
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
-# Same defaults as the Apps Script Script Properties ANTHROPIC_MODEL /
-# ANTHROPIC_ALIGN_MODEL; override with the function's environment variables.
+# Defaults; override with the function's environment variables ANTHROPIC_MODEL /
+# ANTHROPIC_ALIGN_MODEL.
 DEFAULT_MODEL = "claude-sonnet-5"
 DEFAULT_ALIGN_MODEL = "claude-haiku-4-5-20251001"
 
@@ -43,7 +39,7 @@ def _image(body):
 
 
 def build_request(action, body, model, align_model):
-    """(payload, extra headers) Apps Script would send, or (None, error)."""
+    """(payload, extra headers) to send to Anthropic, or (None, error)."""
     cached = {"anthropic-beta": "prompt-caching-2024-07-31"}
     if action == "aiVerifyFields":
         jobs = body.get("jobs") or []
@@ -84,14 +80,14 @@ def build_request(action, body, model, align_model):
 
 
 def _first_object(text):
-    """Apps Script: strip ```json fences, then take the first {...} span."""
+    """Strip ```json fences, then take the first {...} span."""
     text = re.sub(r"```json|```", "", text).strip()
     m = re.search(r"\{[\s\S]*\}", text)
     return json.loads(m.group(0) if m else text), text
 
 
 def parse_reply(action, status, raw):
-    """What Apps Script returns for this Anthropic reply."""
+    """The result the app gets for this Anthropic reply."""
     try:
         reply = json.loads(raw)
     except ValueError:

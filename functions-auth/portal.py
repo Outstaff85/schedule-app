@@ -1,4 +1,4 @@
-"""Worker punch link and supplier portal on Firestore (FIRESTORE_PLAN.md stage 6).
+"""Worker punch link and supplier portal.
 
 Neither caller may read Firestore directly (firestore.rules): a worker has no
 login at all, only the token in their personal link, and a supplier must never
@@ -17,9 +17,10 @@ supplier_action(db, caller, body)  supplier-portal.html; caller from the ID toke
   loadSchedule / loadPunchLog      only the supplier's own workers, stripped
   supplierAddWorker / supplierUpdateWorker / supplierDeleteWorker
 
-The same allow-lists as Apps Script _stripWorkerForSupplier /
-_stripClientForSupplier / _supplierWorkerAllowedFields, and the same reply
-shapes, so the pages stay as they are.
+A supplier gets workers through the SUPPLIER_WORKER_FIELDS allow-list: never
+a wage, never the worker's punch-link token (a supplier must not be able to
+punch for its workers), never a link to their stored files. It may edit only
+SUPPLIER_EDITABLE.
 """
 
 import hashlib
@@ -142,9 +143,9 @@ def punch_action(db, body):
 
 SUPPLIER_WORKER_FIELDS = ("id", "name", "docGiven", "docSurname", "docId", "docType", "docDob", "docSex",
                           "address", "houseNumber", "city", "maritalStatus", "healthFund", "workStartDate",
-                          "phone", "docChildren", "clientIds", "supplierId", "token", "startDate",
-                          "expiryEnabled", "expiryMonths", "expiryWarnMonths", "docUrl", "docFileId",
-                          "assetsFileId", "avatarB64", "colorIdx", "notes", "createdAt", "schedule")
+                          "phone", "docChildren", "clientIds", "supplierId", "startDate",
+                          "expiryEnabled", "expiryMonths", "expiryWarnMonths",
+                          "avatarB64", "colorIdx", "notes", "createdAt", "schedule")
 SUPPLIER_EDITABLE = ("docGiven", "docSurname", "phone", "docId", "address", "houseNumber", "city", "docDob",
                      "docSex", "maritalStatus", "healthFund", "startDate", "notes", "status")
 SUPPLIER_PUNCH_FIELDS = ("id", "workerId", "workerName", "type", "time", "date", "site", "clientId")

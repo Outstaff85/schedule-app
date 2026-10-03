@@ -1,6 +1,6 @@
-"""Stage 7b tests: reading and deleting worker files in Storage
+"""Tests for reading and deleting worker files in Storage
 (functions-auth/files.py). The bucket is an in-memory stand-in: files.py only
-calls blob(path).exists()/download_as_bytes()/delete()."""
+calls blob(path).exists()/download_as_bytes()/delete() and list_blobs(prefix)."""
 
 import json
 import os
@@ -39,11 +39,14 @@ class Bucket:
     def blob(self, path):
         return Blob(self.store, path)
 
+    def list_blobs(self, prefix=""):
+        return [Blob(self.store, p) for p in list(self.store) if p.startswith(prefix)]
+
 
 ADMIN = {"role": "tenant_admin", "tenantId": T1}
 
 
-def test_load_assets_same_shape_as_apps_script():
+def test_load_assets_reply_shape():
     r = files.run(Bucket(), ADMIN, {"action": "loadWorkerAssets", "fileId": ASSETS})
     assert r == {"ok": True, "scanB64": "SCAN", "scanMediaType": "image/jpeg", "sigPng": "SIG",
                  "extraPages": [{"b64": "P2", "mediaType": "image/jpeg"}]}
@@ -87,3 +90,11 @@ def test_supplier_and_missing_refused():
     assert files.run(Bucket(), ADMIN, {"action": "loadWorkerAssets"}) == {"error": files.E_NO_FILE}
     assert files.run(Bucket(), ADMIN, {"action": "loadWorkerAssets",
                                        "fileId": f"tenants/{T1}/workers/w1/assets/gone.json"}) == {"error": files.E_NOT_FOUND}
+
+
+def test_delete_tenant_files_only_that_firm():
+    b = Bucket()
+    assert files.delete_tenant_files(b, T1) == 2
+    assert list(b.store) == [OTHER]
+    assert files.delete_tenant_files(b, "") == 0 and files.delete_tenant_files(b, "a/b") == 0
+    assert list(b.store) == [OTHER]

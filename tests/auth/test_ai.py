@@ -1,15 +1,14 @@
-"""Stage 7 tests: functions-auth/ai.py against the real Apps Script AI actions.
+"""Tests for functions-auth/ai.py (the ai_read function).
 
-Every request ai.py would send to Anthropic, and every result it returns for a
-given Anthropic reply, must equal what apps-script/Код.js does (run in Node by
-apps_script_ai.js). ai_prompts.json must equal a fresh extraction from Код.js.
+Every request ai.py sends to Anthropic, and every result it returns for a
+given Anthropic reply, must equal ai_golden.json: the requests and results of
+the original Apps Script AI actions, recorded from apps-script/Код.js (run in
+Node) before Apps Script was removed. The prompts live in ai_prompts.json.
 """
 
 import json
 import os
-import subprocess
 import sys
-import tempfile
 
 import pytest
 
@@ -18,17 +17,14 @@ sys.path.insert(0, os.path.join(HERE, "..", "..", "functions-auth"))
 
 import ai  # noqa: E402
 
-TOOL = os.path.join(HERE, "apps_script_ai.js")
 MODEL, ALIGN = "claude-sonnet-5", "claude-haiku-4-5-20251001"
+with open(os.path.join(HERE, "ai_golden.json"), encoding="utf-8") as f:
+    GOLDEN = json.load(f)
 
 
 def apps_script(action, body, reply='{"content":[{"type":"text","text":"{}"}]}', status=200):
-    with tempfile.TemporaryDirectory() as d:
-        bf, rf = os.path.join(d, "b.json"), os.path.join(d, "r.json")
-        open(bf, "w", encoding="utf-8").write(json.dumps(body, ensure_ascii=False))
-        open(rf, "w", encoding="utf-8").write(reply)
-        out = subprocess.run(["node", TOOL, "run", action, bf, rf, str(status)], capture_output=True, text=True, check=True)
-    return json.loads(out.stdout)
+    """The recorded Apps Script request and result for this case."""
+    return GOLDEN[json.dumps([action, body, reply, status], ensure_ascii=False, sort_keys=True)]
 
 
 def python(action, body, reply='{"content":[{"type":"text","text":"{}"}]}', status=200):
@@ -41,9 +37,9 @@ def python(action, body, reply='{"content":[{"type":"text","text":"{}"}]}', stat
     return {"request": sent[0] if sent else None, "result": result}
 
 
-def test_prompts_file_matches_apps_script():
-    out = subprocess.run(["node", TOOL, "prompts"], capture_output=True, text=True, check=True).stdout
-    assert json.loads(out) == ai.PROMPTS, "regenerate: node tests/auth/apps_script_ai.js prompts > functions-auth/ai_prompts.json"
+def test_prompts_file_has_every_prompt():
+    for k in ("readDoc", "readSefach", "detectAlign", "verifyField", "readHoursTable", "verifyFieldsHead", "verifyFieldsKind"):
+        assert k in ai.PROMPTS
 
 
 REQUESTS = [
