@@ -53,14 +53,14 @@ A weekly roster.
 
 ## Login and session
 
-- **Session:** `localStorage.schedMgr_session` (`SESSION_KEY`). `getSession()` returns `null` and clears the session when it has no token or `expiresAt` has passed.
+- **Session:** `localStorage.schedMgr_session` (`SESSION_KEY`). `getSession()` returns `null` and clears the session when it has no `uid`.
 - **Session fields:**
-  - `token` — the Apps Script session token;
-  - `expiresAt`;
+  - `uid` — the Firebase user ID;
   - `role` — `superadmin` / `tenant_admin` / `staff` / `supplier`;
   - `tenantId`, `username`, `tenantProfile`, `permissions`, `supplierId`;
   - `viewingTenantId` (and `viewingTenantName` / `viewingTenantProfile` for a super-admin);
-  - in Firestore mode also `backend:'firestore'` and `uid`.
+  - `token` — optional, the Apps Script session token (older logins or concurrent Apps Script calls);
+  - `expiresAt` — optional, when `token` expires.
 - **`gateApp(runInitApp)`** decides the screen:
   1. If the session was made on the other backend, it is cleared.
   2. No session → `#loginScreen`, and a warm-up ping. In Firestore mode it is `{ping:true}` to the `login` function, otherwise `?action=ping` to Apps Script. Its time is kept in `window.__pingMs`.

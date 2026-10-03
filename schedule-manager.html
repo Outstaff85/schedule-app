@@ -3512,30 +3512,13 @@ function STORAGE_KEY(){
   const tid = (s && (s.viewingTenantId || s.tenantId)) || '_anon';
   return STORAGE_KEY_BASE + '_' + tid;
 }
-const GS_URL = 'https://script.google.com/macros/s/AKfycbwfGCQs8TzGd38j-JU0ZdoHLXdHITaG1QjUE3nAJDVB6uZR2_56hxV0Y4UgCs1bGYi_/exec';
-// Shared key sent with write requests. NOTE: this file is public, so the key is
-// visible in source — it's a deterrent against random/bot writes, not real auth.
-const API_SECRET = 'odinson-7Kq2x9';
-
-// ── Data backend (docs/firestore-plan.md stage 4) ───────────────────────────────
-// 'sheets' (default): Google Sheets through Apps Script, as always.
-// 'firestore': login, workers/clients/suppliers and punches go to Firestore
-// through firestore-backend.js. A per-device switch while the move is being
-// tested: open the app with ?backend=firestore to turn it on for this device,
-// ?backend=sheets to turn it off. Everything not moved yet (AI scan, Form 101
-// and documents in Drive, the Admin panes, hours import) keeps using Apps
-// Script with the session token from the parallel Apps Script login.
-// Data backend. Firestore for everyone since stage 8 (docs/firestore-plan.md);
-// ?backend=sheets keeps this device on Google Sheets/Apps Script (the
-// fallback while it is still kept), ?backend=firestore returns it.
-const BACKEND = (function(){
-  try{
-    const q = new URLSearchParams(location.search).get('backend');
-    if(q === 'sheets') localStorage.setItem('backend', 'sheets');
-    else if(q === 'firestore') localStorage.removeItem('backend');
-    return localStorage.getItem('backend') === 'sheets' ? 'sheets' : 'firestore';
-  }catch(e){ return 'firestore'; }
-})();
+// Every data call in this file is written as fetch(API_URL, {method:'POST',
+// body: JSON.stringify({action, ...})}) or fetch(API_URL + '?action=...').
+// API_URL is not a server: the window.fetch wrapper below answers each such
+// call from firestore-backend.js (Firestore, Storage, or the Cloud Functions
+// it calls) in the JSON shape the call site expects, so the call sites stay
+// simple. An action nothing answers gets {error:'Unknown action: …'}.
+const API_URL = 'api://app';
 const LOGIN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/login';
 let __fsBackend = null;
 function loadFirestoreBackend(){
@@ -3549,25 +3532,21 @@ function loadFirestoreBackend(){
   }).catch(e => { __fsBackend = null; throw e; });
   return __fsBackend;
 }
-// Starts loading right away in Firestore mode, so the SDK is ready by the
-// time loadData() or the login form needs it.
-if(BACKEND === 'firestore') loadFirestoreBackend().catch(e => console.warn('Firestore backend:', e));
+// Starts loading right away, so the SDK is ready by the time loadData() or
+// the login form needs it.
+loadFirestoreBackend().catch(e => console.warn('Firestore backend:', e));
 function fsTenantId(){
   const s = getSession();
   return s ? (s.viewingTenantId || s.tenantId) : null;
 }
-// Stage 7b: in Firestore mode the Form 101 PDF, the scan sidecar and worker
-// documents are uploaded to Firebase Storage (firestore-backend.js
-// uploadWorkerFile, real byte progress) instead of Drive. xhrPostJSON() hands
-// these actions here, with the same {ok,id,url} reply, so the callers are
-// unchanged. The id is the Storage path; loadWorkerAssets/deleteWorkerDoc
-// for such an id go to the users_admin function, and a Drive id (a file
-// saved before the switch) still goes to Apps Script, so old links keep
-// working. The file being replaced (previousFileId) is deleted after the new
-// one is up, wherever it lives.
+// Worker files — the Form 101 PDF, the scan sidecar and worker documents —
+// are uploaded to Firebase Storage (firestore-backend.js uploadWorkerFile,
+// real byte progress). uploadWorkerFile() below returns {ok,id,url}; the id
+// is the Storage path. The file being replaced (previousFileId) is deleted
+// after the new one is up.
 const FS_UPLOAD_ACTIONS = ['saveWorkerDoc','saveWorkerAssets','saveWorkerFile'];
-const DOC_STORE = BACKEND === 'firestore' ? 'Firebase Storage' : 'Google Drive';
-async function fsUpload(bodyObj, onProgress){
+const DOC_STORE = 'Firebase Storage';
+async function uploadWorkerFile(bodyObj, onProgress){
   __uploadsInFlight++;
   try{
     const b = await loadFirestoreBackend();
@@ -3586,18 +3565,14 @@ const FORM101_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/
 // preAlignScan(). Its result now feeds straight into the manual
 // corner-adjustment editor (no AI-seeded alignment step in between anymore).
 const PREPROCESS_SCAN_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/preprocess_scan';
-// CORS-friendly proxy for saveWorkerDoc/saveWorkerAssets (added 2026-10-02) —
-// see xhrPostJSON()'s own comment for the full story: a real xhr.upload
-// listener against GS_URL directly can never work (forces a CORS preflight
-// Apps Script can't answer), so those two calls go through this Cloud
-// Function instead, which answers CORS properly and relays server-to-server
-// to GS_URL. functions/main.py's gs_upload_proxy() is the server side.
-const GS_UPLOAD_PROXY_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/gs_upload_proxy';
 
 // ── Multi-tenant session ────────────────────────────────────────────────────
-// Real auth for this app: a session is a signed token from the backend's
-// login action, kept in localStorage for 6h (SESSION_TTL_MS server-side).
-// role is 'superadmin' (sees every firm) or 'tenant' (sees only its own).
+// The login function signs the device in to Firebase (the real auth: the
+// security rules and the functions check the Firebase ID token). The session
+// below only remembers who that is — uid, role, firm, permissions — for the
+// UI; gateApp()/gsLoad() send the user back to login when the Firebase
+// sign-in is gone. role is 'superadmin' (sees every firm), 'tenant_admin' or
+// 'staff' (own firm only).
 // viewingTenantId is what every API call actually scopes to — for a normal
 // tenant user it's always their own tenantId; for a super-admin it starts
 // null (no firm picked yet) and changes when they pick one from the Firms
@@ -3608,7 +3583,7 @@ function getSession(){
     const raw = localStorage.getItem(SESSION_KEY);
     if(!raw) return null;
     const s = JSON.parse(raw);
-    if(!s || !s.token || !s.expiresAt || Date.now() > s.expiresAt){ localStorage.removeItem(SESSION_KEY); return null; }
+    if(!s || !s.uid){ localStorage.removeItem(SESSION_KEY); return null; }
     return s;
   }catch(e){ return null; }
 }
@@ -3617,161 +3592,23 @@ function clearSession(){ localStorage.removeItem(SESSION_KEY); }
 async function logout(){
   try{ localStorage.removeItem(FIRMS_CACHE_KEY); }catch(e){}
   clearAdminCaches(); clearSession();
-  if(BACKEND === 'firestore'){ try{ await (await loadFirestoreBackend()).signOut(); }catch(e){} }
+  try{ await (await loadFirestoreBackend()).signOut(); }catch(e){}
   location.reload();
 }
 
-// Sliding session expiration (added 2026-09-30 — reported bug: a manager
-// could get kicked to the login screen mid worker-document scan/upload even
-// right after a fresh login, because the 6h TTL was a hard wall from login
-// time, never extended by activity, and scan+upload is the single
-// longest-running flow in the app — the one most likely to straddle it).
-// requireAuth() on the backend now reissues a fresh token (same identity,
-// renewed exp) on every authenticated request and attaches it to the
-// response as `refreshedToken`/`refreshedExpiresAt` — this overwrites the
-// stored session with it so the token never ages past what the LAST request
-// saw, only real inactivity for a full SESSION_TTL_MS lets it actually
-// expire. Called from both the window.fetch wrapper below (covers every
-// plain fetch(GS_URL,...) call) and xhrPostJSON() (the raw-XHR upload path,
-// which never goes through window.fetch) — see each call site's own
-// comment.
-function applyRefreshedToken(json){
-  if(!json || !json.refreshedToken) return;
-  const s=getSession();
-  if(!s) return;
-  s.token=json.refreshedToken;
-  s.expiresAt=json.refreshedExpiresAt;
-  saveSession(s);
-}
 
-// Merged into every backend request: the session token, plus asTenantId when
-// a super-admin has switched into a specific firm (omitted for a normal
-// tenant user — their own tenantId is already baked into their token).
+// Merged into every data request: asTenantId when a super-admin has switched
+// into a specific firm (omitted for a firm's own login — firestore-backend.js
+// then uses the session's own firm).
 function gsAuth(){
   const s = getSession();
   if(!s) return {};
-  const out = { token: s.token };
+  const out = {};
   if(s.role === 'superadmin' && s.viewingTenantId) out.asTenantId = s.viewingTenantId;
   return out;
 }
-// XHR-based POST with real upload-byte progress (added 2026-09-30, per user
-// request — `fetch()` gives no signal at all while a large body is still
-// being sent, only "request sent" then "response received"; XHR's own
-// `upload.onprogress` reports genuine bytes-sent-over-the-wire, which
-// matters on a slow mobile connection uploading a multi-MB PDF/scan photo.
-// Deliberately mirrors fetch()'s own non-throwing-on-HTTP-error behavior
-// (callers here already check `json.error` themselves) — only a true
-// network failure or an unparseable response rejects.
-//
-// BUG FIX (2026-10-01, part 1): this used to call xhr.setRequestHeader(
-// 'Content-Type','application/json'), which every other GS_URL call in this
-// file deliberately avoids — a fetch()/XHR request only stays a CORS "simple
-// request" (no preflight) when it has no explicit Content-Type (the browser
-// then defaults to text/plain). Apps Script Web Apps only implement
-// doGet()/doPost(), never doOptions(), so a request that DOES trigger a
-// preflight gets its OPTIONS blocked by the browser before the real POST is
-// ever sent — surfacing to the caller as a bare "network error" with nothing
-// in the Apps Script logs, since the server never even saw it. Fixed by
-// dropping the header, matching the plain fetch(GS_URL,{method:'POST',...})
-// calls elsewhere in this file.
-//
-// Also, unlike those calls, xhrPostJSON() used to bypass the window.fetch
-// wrapper below entirely (raw XMLHttpRequest never goes through fetch()), so
-// a genuinely-expired/invalid session token on one of these two calls just
-// surfaced as a raw "Сессия истекла…" error thrown out of aiFillForm101()
-// instead of the same retry-then-clean-logout flow every other GS_URL call
-// gets. Now mirrors it: up to SESSION_RETRY_DELAYS_MS.length extra attempts
-// on the exact SESSION_EXPIRED_ERROR text, then clears the session and
-// reloads to the login screen, same as checkExpired() below.
-//
-// BUG FIX (2026-10-01, part 2): removing the Content-Type header alone was
-// NOT enough — "network error" kept recurring. Root cause: per the
-// Fetch/XHR spec, attaching ANY listener to xhr.upload (e.g. `onprogress`)
-// forces a cross-origin request into CORS-preflight mode, completely
-// independent of headers — the "upload listener flag" is its own, separate
-// preflight trigger. Real byte-level upload progress against a bare XHR to
-// GS_URL directly is fundamentally impossible (no doOptions() to answer that
-// preflight). Temporarily replaced with a fake ticker in aiFillForm101().
-//
-// FIX (2026-10-02): real progress restored via GS_UPLOAD_PROXY_URL — a Cloud
-// Function (functions/main.py's gs_upload_proxy()) that DOES answer CORS
-// preflight correctly and relays server-to-server to Apps Script. Callers
-// wanting real progress now pass GS_UPLOAD_PROXY_URL as `url` (not GS_URL
-// directly) plus an `onProgress` callback; xhrPostJSON() only attaches the
-// upload listener when one is actually requested, so every other GS_URL
-// caller (which passes no onProgress) still avoids the preflight trigger.
-// Session-expiry retry/logout applies whenever the JSON response carries the
-// exact SESSION_EXPIRED_ERROR text, regardless of which URL produced it —
-// the proxy relays Apps Script's own error text unchanged.
-//
-// BUG FIX (2026-09-30): the real cause of the reported "kicked out mid-
-// upload" symptom — nothing to do with session TTL. Since every real caller
-// now targets GS_UPLOAD_PROXY_URL (a Flask-based Cloud Function), not GS_URL
-// directly, the no-Content-Type rule above no longer serves its original
-// purpose (avoiding a CORS preflight Apps Script can't answer — the proxy
-// answers preflight fine) and was actively harmful: Flask/Werkzeug's
-// `request.get_json()` on the server refuses to parse a body whose
-// Content-Type isn't application/json, silently treating it as `{}` — so
-// the token/action never arrived server-side at all, and Apps Script's
-// requireAuth() correctly (if misleadingly) rejected the empty body as
-// "session expired," even seconds after a fresh login. Fixed server-side
-// too (gs_upload_proxy() now parses with force=True, see its own comment)
-// — this client-side header is restored as defense in depth, gated to only
-// the proxy target so a hypothetical future caller against bare GS_URL
-// still avoids the preflight trigger this header causes there.
 // Uploads still running; the new-app-version reload waits for them (below).
 let __uploadsInFlight=0;
-function xhrPostJSON(url,bodyObj,onProgress,_attempt){
-  if(BACKEND==='firestore'&&bodyObj&&FS_UPLOAD_ACTIONS.indexOf(bodyObj.action)!==-1) return fsUpload(bodyObj,onProgress);
-  const attempt=_attempt||0;
-  return new Promise((resolve,reject)=>{
-    const xhr=new XMLHttpRequest();
-    __uploadsInFlight++;
-    xhr.addEventListener('loadend',()=>{ __uploadsInFlight=Math.max(0,__uploadsInFlight-1); });
-    xhr.open('POST',url);
-    if(url===GS_UPLOAD_PROXY_URL) xhr.setRequestHeader('Content-Type','application/json');
-    if(onProgress) xhr.upload.onprogress=e=>{ if(e.lengthComputable) onProgress(e.loaded,e.total); };
-    xhr.onload=()=>{
-      let json;
-      try{ json=JSON.parse(xhr.responseText); }
-      catch(e){ reject(e); return; }
-      if(json && json.error===SESSION_EXPIRED_ERROR && getSession()){
-        if(attempt < SESSION_RETRY_DELAYS_MS.length){
-          const delay=SESSION_RETRY_DELAYS_MS[attempt];
-          reportAuthFailureXhr(bodyObj&&bodyObj.action, attempt, 'retrying', bodyObj&&bodyObj.token);
-          const retry=()=>{ const s=getSession(); const b=(s&&bodyObj&&('token' in bodyObj))?{...bodyObj,token:s.token}:bodyObj; return xhrPostJSON(url,b,onProgress,attempt+1).then(resolve,reject); };
-          delay>0?setTimeout(retry,delay):retry();
-          return;
-        }
-        reportAuthFailureXhr(bodyObj&&bodyObj.action, attempt, 'logged-out', bodyObj&&bodyObj.token);
-        clearSession();
-        showToast('Сессия истекла — войдите заново');
-        setTimeout(()=>location.reload(),1200);
-      } else {
-        applyRefreshedToken(json); // sliding expiration — see its own comment near getSession()/clearSession()
-      }
-      resolve(json);
-    };
-    xhr.onerror=()=>reject(new Error('network error'));
-    xhr.send(JSON.stringify(bodyObj));
-  });
-}
-// Raw-XHR sibling of the fetch-based reportAuthFailure() inside the session-
-// expiry IIFE below — deliberately NOT using fetch() (even the un-wrapped
-// _origFetch) so xhrPostJSON() has no dependency on that IIFE having already
-// run/defined its closures; a plain unauthenticated fire-and-forget POST,
-// same shape/fields as the fetch-based one.
-function reportAuthFailureXhr(failedAction, attempt, outcome, sentToken){
-  try{
-    const xhr=new XMLHttpRequest();
-    xhr.open('POST',GS_URL);
-    xhr.send(JSON.stringify({
-      action:'authFailure', secret:API_SECRET,
-      failedAction: failedAction, attempt: attempt, outcome: outcome, page: location.pathname,
-      sentToken: sentToken||'', viaProxy: true, hasSession: !!getSession()
-    }));
-  }catch(e){}
-}
 function gsAuthQuery(){
   const a = gsAuth();
   return Object.keys(a).map(k => '&' + k + '=' + encodeURIComponent(a[k])).join('');
