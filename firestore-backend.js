@@ -11,8 +11,10 @@
 //   signOut()
 //   loadSchedule(t)             {workers, clients, suppliers, weekStart, savedAt}
 //   saveSchedule(t, data)       writes only the documents that changed
-//   listenPunches(t, onChange)  live punches of the last 13 months; resolves
-//                               with the first snapshot's entries
+//   listenPunches(t, onChange, since)  live punches from `since` (the app
+//                               passes the start of this month minus a week);
+//                               resolves with the first snapshot's entries
+//   punchesBetween(t, from, to) one-time read of older punches, on demand
 //   savePunch / updatePunch / deletePunch
 //   idToken()                   the signed-in user's ID token (supplier portal)
 //   uploadWorkerFile(t, body, onProgress)   stage 7b: saveWorkerDoc /
@@ -184,9 +186,9 @@
     }
 
     let punchUnsub = null;
-    function listenPunches(t, onChange){
+    function listenPunches(t, onChange, since){
       if(punchUnsub) punchUnsub();
-      const since = new Date(); since.setMonth(since.getMonth() - PUNCH_MONTHS); since.setDate(1); since.setHours(0,0,0,0);
+      if(!since){ since = new Date(); since.setMonth(since.getMonth() - PUNCH_MONTHS); since.setDate(1); since.setHours(0,0,0,0); }
       const q = F.query(col(t,'punches'), F.where('ts', '>=', F.Timestamp.fromDate(since)));
       return new Promise((resolve, reject) => {
         let first = true;
@@ -198,6 +200,20 @@
           else onChange(entries);
         }, err => { if(first){ first = false; reject(err); } else console.warn('Punch listener stopped:', err); });
       });
+    }
+    // Older punches, read once when the app needs them (a past month's
+    // salary, an export, Clear Log): [from, to).
+    async function punchesBetween(t, from, to){
+      const snap = await F.getDocs(F.query(col(t,'punches'),
+        F.where('ts','>=',F.Timestamp.fromDate(from)), F.where('ts','<',F.Timestamp.fromDate(to))));
+      return snap.docs.map(punchFromDoc);
+    }
+    // Punches an approved hours batch wrote (ids imp-<batch>-<row>-in|out).
+    async function punchesOfBatch(t, batchId){
+      const pre = 'imp-' + batchId + '-';
+      const snap = await F.getDocs(F.query(col(t,'punches'),
+        F.where(F.documentId(),'>=',pre), F.where(F.documentId(),'<',pre + '\uf8ff')));
+      return snap.docs.map(punchFromDoc);
     }
     async function savePunch(t, entry){
       await F.setDoc(F.doc(db,'tenants',t,'punches',String(entry.id)), punchDoc(entry));
@@ -333,8 +349,10 @@
       await F.updateDoc(ref, {status:'rejected'});
       return {ok:true, rejected: (snap.data().rows || []).length};
     }
+    // Another firm's punches for the super-admin summary (this week): the
+    // same window the app keeps live — this month, plus the week before it.
     async function punchesOnce(t){
-      const since = new Date(); since.setMonth(since.getMonth() - PUNCH_MONTHS); since.setDate(1); since.setHours(0,0,0,0);
+      const since = new Date(); since.setDate(1); since.setHours(0,0,0,0); since.setDate(since.getDate() - 7);
       const snap = await F.getDocs(F.query(col(t,'punches'), F.where('ts','>=',F.Timestamp.fromDate(since))));
       return {entries: snap.docs.map(punchFromDoc)};
     }
@@ -407,7 +425,7 @@
     }
 
     return {
-      login, loadSchedule, saveSchedule, listenPunches, savePunch, updatePunch, deletePunch, handleAction,
+      login, loadSchedule, saveSchedule, listenPunches, punchesBetween, punchesOfBatch, savePunch, updatePunch, deletePunch, handleAction,
       uploadWorkerFile, UPLOAD_ACTIONS, isStoragePath,
       currentUser: () => auth.currentUser,
       idToken: () => auth.currentUser ? auth.currentUser.getIdToken() : Promise.resolve(null),

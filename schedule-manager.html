@@ -348,6 +348,11 @@
   /* ── Scan corner (quad) editor ── */
   .quad-handle { fill: var(--accent); stroke: #fff; stroke-width: 2; cursor: grab; touch-action: none; }
   .quad-handle:active { cursor: grabbing; }
+  /* Filter dropdowns: a small caption says what each one filters, and one
+     with a choice made is highlighted, so it is clear without opening them. */
+  .filter-field{display:inline-flex;flex-direction:column;gap:3px}
+  .filter-cap{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;padding-left:2px}
+  .filter-field select.filter-on{border-color:var(--accent)!important;color:var(--accent)!important}
   .view-toggle{display:inline-flex;border:1px solid var(--border2);border-radius:var(--radius-sm);overflow:hidden}
   .view-toggle button{background:var(--bg3);border:none;color:var(--text2);padding:6px 10px;cursor:pointer;font-size:15px;line-height:1}
   .view-toggle button+button{border-left:1px solid var(--border2)}
@@ -497,26 +502,26 @@
         <button class="btn sm" onclick="openAddWorker()"><i class="ti ti-plus"></i> Add Worker</button>
         <button class="btn sm" onclick="startNewScan()" style="border-color:rgba(109,214,160,0.4);color:var(--green)"><i class="ti ti-sparkles"></i> Скан паспорта</button>
       </div>
-      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:flex-end">
         <input type="text" id="workersSearch" placeholder="Search by name, phone, object..." oninput="renderWorkersPage()" style="flex:1;min-width:180px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
-        <select id="workersFilterStatus" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
+        <label class="filter-field"><span class="filter-cap">Status</span><select id="workersFilterStatus" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
           <option value="">All statuses</option>
           <option value="active">Active</option>
           <option value="vacation">On vacation</option>
           <option value="fired">Fired</option>
-        </select>
-        <select id="workersFilterDocs" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
+        </select></label>
+        <label class="filter-field"><span class="filter-cap">Documents</span><select id="workersFilterDocs" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
           <option value="">All documents</option>
           <option value="incomplete">Documents incomplete</option>
           <option value="expiring">ID expired / expiring</option>
-        </select>
-        <select id="workersFilterClient" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none"></select>
-        <select id="workersFilterSupplier" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none"></select>
-        <select id="workersGroupBy" onchange="renderWorkersPage()" title="Group by" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
+        </select></label>
+        <label class="filter-field"><span class="filter-cap">Client</span><select id="workersFilterClient" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none"></select></label>
+        <label class="filter-field"><span class="filter-cap">Supplier</span><select id="workersFilterSupplier" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none"></select></label>
+        <label class="filter-field"><span class="filter-cap">Group by</span><select id="workersGroupBy" onchange="renderWorkersPage()" title="Group by" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
           <option value="">No grouping</option>
           <option value="client">Group by client</option>
           <option value="supplier">Group by supplier</option>
-        </select>
+        </select></label>
         <span id="workersCount" style="font-size:13px;color:var(--text2);margin-left:auto"></span>
         <div class="view-toggle" role="group" aria-label="Layout">
           <button type="button" id="workersViewList" onclick="setWorkersView('list')" title="List"><i class="ti ti-list"></i></button>
@@ -579,8 +584,8 @@
           <div class="page-sub" id="adminPageSub">Punch log — view, edit and export all attendance records</div>
         </div>
         <div style="display:flex;gap:8px" id="adminHeaderActions">
-          <button class="btn sm" onclick="exportPunchCSV()"><i class="ti ti-upload" style="color:var(--green)"></i> Export CSV</button>
-          <button class="btn sm red" id="adminClearLogBtn" onclick="clearPunchLog()"><i class="ti ti-trash"></i> Clear Log</button>
+          <button class="btn sm" onclick="ensureAllPunches().then(exportPunchCSV)"><i class="ti ti-upload" style="color:var(--green)"></i> Export CSV</button>
+          <button class="btn sm red" id="adminClearLogBtn" onclick="ensureAllPunches().then(clearPunchLog)"><i class="ti ti-trash"></i> Clear Log</button>
         </div>
       </div>
 
@@ -609,21 +614,21 @@
       </div>
 
       <!-- Filter bar (punch log view) -->
-      <div id="adminFilters" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
-        <select id="adminFilterWorker" onchange="renderAdmin()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none">
+      <div id="adminFilters" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:flex-end">
+        <label class="filter-field"><span class="filter-cap">Worker</span><select id="adminFilterWorker" onchange="renderAdmin()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none">
           <option value="">All workers</option>
-        </select>
-        <select id="adminFilterClient" onchange="renderAdmin()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none">
+        </select></label>
+        <label class="filter-field"><span class="filter-cap">Client</span><select id="adminFilterClient" onchange="renderAdmin()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none">
           <option value="">All clients</option>
-        </select>
-        <select id="adminFilterDate" onchange="renderAdmin()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none">
+        </select></label>
+        <label class="filter-field"><span class="filter-cap">Date</span><select id="adminFilterDate" onchange="renderAdmin()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none">
           <option value="">All dates</option>
-        </select>
-        <select id="adminFilterType" onchange="renderAdmin()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none">
+        </select></label>
+        <label class="filter-field"><span class="filter-cap">Type</span><select id="adminFilterType" onchange="renderAdmin()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none">
           <option value="">All types</option>
           <option value="in">Punch IN</option>
           <option value="out">Punch OUT</option>
-        </select>
+        </select></label>
         <span id="adminCount" style="font-size:13px;color:var(--text2);margin-left:auto"></span>
       </div>
 
@@ -653,6 +658,7 @@
         </table>
         </div>
         <div id="adminEmpty" style="display:none;text-align:center;padding:40px;color:var(--text3);font-size:14px">No punch records found</div>
+        <div id="adminOlder" style="display:none;justify-content:center;align-items:center;flex-wrap:wrap;gap:8px;padding:10px;font-size:12px;color:var(--text2)"></div>
       </div>
       </div>
 
@@ -702,7 +708,7 @@
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px"><i class="ti ti-cash"></i> Salary Calculation</div>
           <div style="display:flex;gap:8px;align-items:center">
-            <select id="salaryPeriod" onchange="renderAccounting()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:4px 8px;font-size:12px;outline:none">
+            <select id="salaryPeriod" onchange="onSalaryPeriodChange()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:4px 8px;font-size:12px;outline:none">
               <option value="week">This Week</option>
               <option value="month">This Month</option>
               <option value="all">All Time</option>
@@ -2684,21 +2690,30 @@ function deleteClient(cid){
 // Keeps a <select>'s options in sync with a source array (clients/suppliers)
 // while preserving whatever the user already had picked — called on every
 // renderWorkersPage() since clients/suppliers can change between renders.
+// Highlights every caption-labelled filter that has a choice made.
+function markActiveFilters(){
+  document.querySelectorAll('.filter-field select').forEach(el=>el.classList.toggle('filter-on', !!el.value));
+}
+document.addEventListener('change', e=>{ if(e.target.closest && e.target.closest('.filter-field')) markActiveFilters(); });
 function fillFilterSelect(selectId, items, allLabel){
   const el=document.getElementById(selectId); if(!el) return;
   const prev=el.value;
   el.innerHTML=`<option value="">${allLabel}</option>`+items.map(i=>`<option value="${i.id}">${esc(i.name)}</option>`).join('');
   if(items.some(i=>i.id===prev)) el.value=prev;
 }
-// Workers tab layout: 'list' (the table) or 'cards'. Remembered per browser.
-function getWorkersView(){ try{ return localStorage.getItem('workersView')==='cards'?'cards':'list'; }catch(e){ return 'list'; } }
+// Workers tab layout: 'cards' (the default) or 'list' (the table), once
+// the user picks it. Remembered per browser.
+function getWorkersView(){ try{ return localStorage.getItem('workersView')==='list'?'list':'cards'; }catch(e){ return 'cards'; } }
 function setWorkersView(v){ try{ localStorage.setItem('workersView',v); }catch(e){} renderWorkersPage(); }
 // Hours worked this calendar month, per worker — the same canonical shift
 // pairing (getWorkerMonthShifts → groupPunchesIntoShifts/analyzeDayPunches)
 // the hours export uses, so the card can never disagree with it.
+// The punch log is read (parsed) once and split by worker: reading it once
+// per worker made the cards view take over a second at 150 workers.
 function workersMonthHours(){
-  const now=new Date(), y=now.getFullYear(), m=now.getMonth(), out={};
-  workers.forEach(w=>{ out[w.id]=getWorkerMonthShifts(w.id,y,m).reduce((s,x)=>s+x.hours,0); });
+  const now=new Date(), y=now.getFullYear(), m=now.getMonth(), out={}, byWorker={};
+  getPunchLog().forEach(e=>{ (byWorker[e.workerId]||(byWorker[e.workerId]=[])).push(e); });
+  workers.forEach(w=>{ out[w.id]=getWorkerMonthShifts(w.id,y,m,byWorker[w.id]||[]).reduce((s,x)=>s+x.hours,0); });
   return out;
 }
 function renderWorkerCardsHtml(list,groupBy,stMetaMap){
@@ -3120,10 +3135,11 @@ function openHoursExportModal(workerId){
     </div>`;
   document.getElementById('hoursExportOverlay').classList.add('open');
 }
-function runHoursExport(workerId, format){
+async function runHoursExport(workerId, format){
   const [year, month] = document.getElementById('hoursExportMonth').value.split('-').map(Number);
-  exportShiftsDetail(workerId, year, month, format);
   closeModal('hoursExportOverlay');
+  await ensurePunchesSince(new Date(year, month, 0));
+  exportShiftsDetail(workerId, year, month, format);
 }
 
 function renderClientsPage(){
@@ -4648,7 +4664,7 @@ async function loadErrorsList(targetId){
 function renderErrorsRows(listEl, targetId, rows){
     __errorsRowsByTarget[targetId] = rows;
     if(!rows.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Ошибок нет.</div>'; return; }
-    listEl.innerHTML = rows.map((r,i) => `
+    renderPagedList(listEl, 'errors:' + targetId, '', rows, (r,i) => `
       <div style="position:relative;padding:10px 40px 10px 12px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:12px">
         <button class="btn sm" title="Копировать ошибку" onclick="copyErrorRow('${targetId}',${i})" style="position:absolute;top:6px;right:6px;padding:4px 6px;min-width:0"><i class="ti ti-copy"></i></button>
         <div style="display:flex;gap:10px;color:var(--text2);margin-bottom:4px">
@@ -4657,7 +4673,7 @@ function renderErrorsRows(listEl, targetId, rows){
           ${r.source ? '<span style="font-weight:600">'+esc(r.source)+'</span>' : ''}
         </div>
         <div style="word-break:break-word">${esc(r.message||'')}</div>
-      </div>`).join('');
+      </div>`);
 }
 // ── Admin → Timings (super-admin) ─────────────────────────────────────────
 // Summary per kind over the last 7 days (median / 90th percentile of the
@@ -4726,7 +4742,7 @@ function renderTimingsPane(el,rows){
       <td style="padding:6px 8px;text-align:center;font-weight:600">${_sec(_pct(tot,0.5))}</td><td style="padding:6px 8px;text-align:center">${_sec(_pct(tot,0.9))}</td>
       <td style="padding:6px 8px;font-size:11px;color:var(--text2)">${phases}</td></tr>`;
   }).join('');
-  const list=rows.slice(0,50).map((r,i)=>{
+  const rowHtml=(r,i)=>{
     const d=r.details||{};
     const extra=(TIMING_PHASES[r.kind]||[]).map(([key,label])=>typeof d[key]==='number'?`${esc(label)} ${_sec(d[key])}`:'').filter(Boolean).join(' · ');
     return `<div style="position:relative;padding:8px 40px 8px 10px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:12px">
@@ -4734,11 +4750,12 @@ function renderTimingsPane(el,rows){
       <div style="display:flex;gap:10px;flex-wrap:wrap;color:var(--text2)"><span>${esc(new Date(r.when).toLocaleString())}</span><span style="font-weight:600;color:var(--text)">${esc(_timingKeyLabel(_timingKey(r)))}</span>
         <span>${esc(firmName(r.tenantId))}</span><span>${esc(r.user||'')}</span><span>${esc(d.device||'')}</span>${d.pages?`<span>${d.pages} page(s)</span>`:''}${d.aborted?`<span style="color:#ffb020">${esc(d.aborted)}</span>`:''}</div>
       <div><b>${_sec(r.totalMs)}</b>${extra?' — '+extra:''}</div></div>`;
-  }).join('');
+  };
   el.innerHTML=`${kinds.length?`<div style="font-size:13px;font-weight:600;margin-bottom:6px">Last 7 days (median / 90%)</div>
     <div style="overflow-x:auto;margin-bottom:14px"><table style="width:100%;border-collapse:collapse;font-size:12px">
     <tr style="color:var(--text2);text-align:left"><th style="padding:6px 8px">What</th><th style="padding:6px 8px">Count</th><th style="padding:6px 8px">Median</th><th style="padding:6px 8px">90%</th><th style="padding:6px 8px">Median by step</th></tr>${summary}</table></div>`:''}
-    <div style="font-size:13px;font-weight:600;margin-bottom:6px">Latest</div><div style="display:flex;flex-direction:column;gap:6px">${list}</div>`;
+    <div style="font-size:13px;font-weight:600;margin-bottom:6px">Latest</div><div id="timingsLatestList" style="display:flex;flex-direction:column;gap:6px"></div>`;
+  renderPagedList(document.getElementById('timingsLatestList'), 'timings', '', rows, rowHtml);
 }
 function errorRowText(r){
   const head = [r.when ? new Date(r.when).toLocaleString() : '', r.page||'', r.source||''].filter(Boolean).join(' · ');
@@ -5000,15 +5017,58 @@ async function gsLoad() {
 
 // Pull all punches from the DB and merge with local (DB is authoritative;
 // unsynced local entries are kept). Lets the admin see every worker's punches.
+// Firestore mode keeps only recent punches: the live listener covers this
+// month plus the week before it (punchWindowStart() — enough for "This week"
+// and for a shift that started before the 1st). Older months are read once,
+// when something asks for them (ensurePunchesSince(): a past month's salary,
+// an export, Clear Log, "Load earlier" in the punch log), and they stay only
+// for this app open: on the next open the cache is trimmed back to the
+// window, so localStorage never fills up with years of punches.
+function punchWindowStart(){
+  const d=new Date(); d.setDate(1); d.setHours(0,0,0,0); d.setDate(d.getDate()-7); return d;
+}
+let __punchLoadedFrom = null;          // Firestore mode: earliest punch time loaded this app open
+let __punchEnsureChain = Promise.resolve(true);
+const ALL_PUNCHES_FROM = new Date(2000,0,1);
+function ensurePunchesSince(from){
+  if(BACKEND !== 'firestore' || !from) return Promise.resolve(true);
+  __punchEnsureChain = __punchEnsureChain.then(async () => {
+    const have = __punchLoadedFrom || punchWindowStart();
+    if(from >= have) return true;
+    showToast(from <= ALL_PUNCHES_FROM ? 'Loading the whole punch history…' : 'Loading earlier punches…', 1500);
+    try{
+      const older = await (await loadFirestoreBackend()).punchesBetween(fsTenantId(), from, have);
+      __punchLoadedFrom = from;
+      mergeRemotePunches(older);
+      return true;
+    }catch(e){
+      showToast('Could not load earlier punches: ' + ((e && e.message) || e));
+      return false;
+    }
+  });
+  return __punchEnsureChain;
+}
+function ensureAllPunches(){ return ensurePunchesSince(ALL_PUNCHES_FROM); }
+// Start of the period a salary/export choice needs ('week', 'month',
+// 'm:YYYY-MM', 'all'); a day early, so a shift that started the evening
+// before stays whole.
+function periodPunchStart(period){
+  const now=new Date();
+  if(period==='all') return ALL_PUNCHES_FROM;
+  if(/^m:\d{4}-\d{2}$/.test(period)){ const [y,m]=period.slice(2).split('-').map(Number); return new Date(y,m-1,0); }
+  return null; // week / this month: inside the live window
+}
 async function gsLoadPunchLog(){
   // Firestore: a live listener — the first snapshot is the load, and every
   // later change (a worker's punch on another device) is merged in at once.
   if(BACKEND === 'firestore'){
     try{
+      const since = punchWindowStart();
+      if(!__punchLoadedFrom || __punchLoadedFrom > since) __punchLoadedFrom = since;
       return await (await loadFirestoreBackend()).listenPunches(fsTenantId(), entries => {
         mergeRemotePunches(entries);
         if(currentTab === 'dashboard') renderDashboard();
-      });
+      }, since);
     }catch(e){ console.warn('Firestore punch load failed: ' + ((e && e.message) || e)); return null; }
   }
   // Same retries as gsLoad() (2026-10-01): one Apps Script error page used to
@@ -5050,7 +5110,10 @@ function mergeRemotePunches(remote){
     }
     if(e.id!=null) byId[e.id]=e;
   });
-  local.forEach(e=>{ if(e && e.id!=null && !(e.id in byId)) byId[e.id] = e; });
+  // Firestore mode: cached rows older than what this app open has loaded are
+  // dropped (they were the old 13-month cache, or loaded on demand last time).
+  const keepFrom = BACKEND === 'firestore' ? (__punchLoadedFrom || punchWindowStart()).getTime() : -Infinity;
+  local.forEach(e=>{ if(e && e.id!=null && !(e.id in byId) && !(new Date(e.ts).getTime() < keepFrom)) byId[e.id] = e; });
   savePunchLog(Object.values(byId));
   if(currentTab==='admin') renderAdmin();
 }
@@ -5451,7 +5514,22 @@ function renderAccounting(){
   renderPendingHours();
 }
 
+// The salary period list: This Week / This Month / each of the 12 previous
+// months / All Time (the same choices as the export). A past month or All
+// Time loads those punches first (ensurePunchesSince, Firestore mode).
+function fillSalaryPeriodSelect(){
+  const sel=document.getElementById('salaryPeriod'); if(!sel || sel.dataset.filled) return;
+  const cur=sel.value||'week';
+  sel.innerHTML=salaryExportPeriodOptions().map(([v,l])=>`<option value="${esc(v)}" ${v===cur?'selected':''}>${esc(l)}</option>`).join('');
+  sel.dataset.filled='1';
+}
+async function onSalaryPeriodChange(){
+  const period=document.getElementById('salaryPeriod')?.value||'week';
+  await ensurePunchesSince(periodPunchStart(period));
+  renderAccounting();
+}
 function renderSalary(){
+  fillSalaryPeriodSelect();
   const period   = document.getElementById('salaryPeriod')?.value||'week';
   const log      = getPunchLog();
   const now      = new Date();
@@ -5463,6 +5541,10 @@ function renderSalary(){
   } else if(period==='month'){
     const ms=new Date(now.getFullYear(),now.getMonth(),1);
     filtered=log.filter(e=>new Date(e.ts)>=ms);
+  } else if(/^m:\d{4}-\d{2}$/.test(period)){
+    const [y,m]=period.slice(2).split('-').map(Number);
+    const from=new Date(y,m-1,1), to=new Date(y,m,1);
+    filtered=log.filter(e=>{ const d=new Date(e.ts); return d>=from && d<to; });
   }
 
   // Pair IN/OUT per worker into shifts (workerId-keyed so two workers who share a
@@ -5775,6 +5857,15 @@ async function approveHoursBatch(batchId){
     const json = await res.json();
     if(json.error){ showToast(json.error); return; }
     showToast(json.created+' shift(s) approved');
+    // Firestore mode: approved hours are often for a past month, older than
+    // the live window — load back to the earliest of them so they show.
+    if(BACKEND==='firestore' && json.created){
+      try{
+        const made=await (await loadFirestoreBackend()).punchesOfBatch(fsTenantId(), batchId);
+        const first=made.map(e=>new Date(e.ts)).filter(d=>!isNaN(d)).sort((a,b)=>a-b)[0];
+        if(first) await ensurePunchesSince(new Date(first.getFullYear(), first.getMonth(), first.getDate()-1));
+      }catch(e){ console.warn('Loading approved punches failed:', e); }
+    }
     renderPendingHours(); renderSalary();
   }catch(e){ showToast('Failed: '+e.message); }
 }
@@ -5964,9 +6055,10 @@ function salaryPeriodLabel(period){
   const o=salaryExportPeriodOptions().find(([v])=>v===period);
   return o ? o[1] : period;
 }
-function runSalaryExport(format){
+async function runSalaryExport(format){
   const period=document.getElementById('salaryExportPeriod')?.value || document.getElementById('salaryPeriod')?.value || 'week';
   closeModal('salaryExportOverlay');
+  await ensurePunchesSince(periodPunchStart(period));
   exportSalary(format, period);
 }
 function buildSalaryExportRows(period){
@@ -6054,8 +6146,8 @@ function exportSalaryCSV(){ exportSalary('csv'); }
 // PDF-generation library — no new dependency introduced for this stage.
 
 // Detail mode: one worker, one calendar month, Date/In/Out/Hours per shift.
-function getWorkerMonthShifts(workerId, year, month){
-  const log = getPunchLog().filter(e=>e.workerId===workerId);
+function getWorkerMonthShifts(workerId, year, month, workerLog){
+  const log = workerLog || getPunchLog().filter(e=>e.workerId===workerId);
   return groupPunchesIntoShifts(log)
     .filter(b => b.date.getFullYear()===year && b.date.getMonth()===month)
     .map(b => {
@@ -6258,6 +6350,48 @@ function renderClientLogs(){
   }).join('');
 }
 
+// Long lists (punch log, errors, timings) draw LIST_PAGE rows at first; the
+// next page is added when the "Show more" row scrolls into view (or is
+// clicked). Drawing every row at once was what made these panes slow, not
+// the data itself, which is already loaded. `sig` describes what is listed
+// (filters): while it stays the same, a redraw (new punch, refresh) keeps
+// what was already opened; a new filter starts again from the first page.
+const LIST_PAGE = 10;
+const __pagedLists = {};
+function renderPagedList(el, key, sig, items, rowHtml, opts){
+  opts = opts || {};
+  const st = __pagedLists[key] && __pagedLists[key].sig === sig ? __pagedLists[key] : (__pagedLists[key] = {sig, shown: LIST_PAGE});
+  if(st.observer){ st.observer.disconnect(); st.observer = null; }
+  const n = Math.min(items.length, st.shown);
+  el.innerHTML = items.slice(0, n).map((it, i) => rowHtml(it, i)).join('') + pagedMoreHtml(items.length - n, opts);
+  wirePagedMore(el, key, items, rowHtml, opts);
+}
+function pagedMoreHtml(left, opts){
+  if(left <= 0) return '';
+  const btn = `<button class="btn sm paged-more-btn" style="margin:6px auto;display:flex"><i class="ti ti-chevron-down"></i> Show more (${left} left)</button>`;
+  return opts.table ? `<tr class="paged-more"><td colspan="${opts.colspan||20}" style="padding:4px">${btn}</td></tr>` : `<div class="paged-more">${btn}</div>`;
+}
+function wirePagedMore(el, key, items, rowHtml, opts){
+  const more = el.querySelector(':scope > .paged-more');
+  if(!more) return;
+  const st = __pagedLists[key];
+  const next = () => {
+    if(st.observer){ st.observer.disconnect(); st.observer = null; }
+    const from = st.shown;
+    st.shown += LIST_PAGE;
+    const to = Math.min(items.length, st.shown);
+    more.insertAdjacentHTML('beforebegin', items.slice(from, to).map((it, i) => rowHtml(it, from + i)).join(''));
+    more.remove();
+    el.insertAdjacentHTML('beforeend', pagedMoreHtml(items.length - to, opts));
+    wirePagedMore(el, key, items, rowHtml, opts);
+  };
+  more.querySelector('button').onclick = next;
+  if('IntersectionObserver' in window){
+    st.observer = new IntersectionObserver(entries => { if(entries.some(e => e.isIntersecting)) next(); }, {rootMargin: '200px'});
+    st.observer.observe(more);
+  }
+}
+
 function renderAdmin(){
   const log = getPunchLog();
   const filterWorker = document.getElementById('adminFilterWorker')?.value||'';
@@ -6286,6 +6420,7 @@ function renderAdmin(){
   filtered=[...filtered].reverse();
 
   document.getElementById('adminCount').textContent=filtered.length+' record'+(filtered.length!==1?'s':'');
+  renderAdminOlder();
 
   const statsEl=document.getElementById('adminStats');
   const totalIn=log.filter(e=>e.type==='in').length, totalOut=log.filter(e=>e.type==='out').length;
@@ -6300,7 +6435,7 @@ function renderAdmin(){
   const tbody=document.getElementById('adminTableBody'), empty=document.getElementById('adminEmpty');
   if(!filtered.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
-  tbody.innerHTML=filtered.map((e,i)=>{
+  renderPagedList(tbody, 'punchLog', [filterWorker,filterClient,filterDate,filterType].join('|'), filtered, (e,i)=>{
     const wc=workers.find(w=>w.id===e.workerId);
     const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
     const ini=wc?workerAvatarInner(wc):esc(e.workerName?.slice(0,2).toUpperCase()||'?');
@@ -6325,7 +6460,22 @@ function renderAdmin(){
         <button class="btn sm red" onclick="deletePunchEntry(${e.id})" style="padding:3px 8px;font-size:11px"><i class="ti ti-x"></i></button>
       </div></td>
     </tr>`;
-  }).join('');
+  }, {table:true, colspan:8});
+}
+// Firestore mode: under the punch log, how far back it goes and buttons to
+// load earlier punches (one more month, or everything).
+function renderAdminOlder(){
+  const el=document.getElementById('adminOlder'); if(!el) return;
+  if(BACKEND!=='firestore' || !__punchLoadedFrom || __punchLoadedFrom<=ALL_PUNCHES_FROM){ el.style.display='none'; return; }
+  el.style.display='flex';
+  el.innerHTML=`<span>Showing punches from ${esc(__punchLoadedFrom.toLocaleDateString('en-GB'))}</span>
+    <button class="btn sm" onclick="loadEarlierPunchMonth()"><i class="ti ti-history"></i> Load earlier month</button>
+    <button class="btn sm" onclick="ensureAllPunches().then(renderAdmin)">Load all history</button>`;
+}
+function loadEarlierPunchMonth(){
+  // To the 1st of the month already partly loaded, or the month before it.
+  const f=__punchLoadedFrom||punchWindowStart();
+  ensurePunchesSince(new Date(f.getFullYear(), f.getMonth()-(f.getDate()===1?1:0), 1)).then(renderAdmin);
 }
 function editPunchEntry(id){
   const log = getPunchLog();
