@@ -575,7 +575,7 @@
     <!-- Admin Section — merged 2026-09-30 with the formerly-separate
          #adminScreen gear-button panel (Firms/Users/Errors/Profile) into one
          set of sub-tabs here, replacing the header's gear button. See
-         HISTORY.md for why two "Admin" surfaces existed in the first place
+         docs/history.md for why two "Admin" surfaces existed in the first place
          and setupAdminPaneBar()'s own comment for the merged role-gating. -->
     <div class="page-section" id="sectionAdmin">
       <div class="page-header">
@@ -921,7 +921,7 @@
      existing firm, and a firm's own self-service profile edit — merged
      2026-09-30 (previously two overlays, createFirmOverlay/editFirmOverlay,
      with near-duplicate profile fields; only the login fields were genuinely
-     create-only — see HISTORY.md). __firmFormMode ('create'|'edit') picks
+     create-only — see docs/history.md). __firmFormMode ('create'|'edit') picks
      submitEditFirm()'s backend action; openCreateFirmForm() shows the
      login fields, openEditFirmForm()/openMyFirmForm() hide them. -->
 <div class="overlay" id="editFirmOverlay" style="z-index:950" onclick="if(event.target===this)closeModal('editFirmOverlay')">
@@ -3517,7 +3517,7 @@ const GS_URL = 'https://script.google.com/macros/s/AKfycbwfGCQs8TzGd38j-JU0ZdoHL
 // visible in source — it's a deterrent against random/bot writes, not real auth.
 const API_SECRET = 'odinson-7Kq2x9';
 
-// ── Data backend (FIRESTORE_PLAN.md stage 4) ───────────────────────────────
+// ── Data backend (docs/firestore-plan.md stage 4) ───────────────────────────────
 // 'sheets' (default): Google Sheets through Apps Script, as always.
 // 'firestore': login, workers/clients/suppliers and punches go to Firestore
 // through firestore-backend.js. A per-device switch while the move is being
@@ -3525,7 +3525,7 @@ const API_SECRET = 'odinson-7Kq2x9';
 // ?backend=sheets to turn it off. Everything not moved yet (AI scan, Form 101
 // and documents in Drive, the Admin panes, hours import) keeps using Apps
 // Script with the session token from the parallel Apps Script login.
-// Data backend. Firestore for everyone since stage 8 (FIRESTORE_PLAN.md);
+// Data backend. Firestore for everyone since stage 8 (docs/firestore-plan.md);
 // ?backend=sheets keeps this device on Google Sheets/Apps Script (the
 // fallback while it is still kept), ?backend=firestore returns it.
 const BACKEND = (function(){
@@ -3894,7 +3894,7 @@ const SESSION_RETRY_DELAYS_MS = [0, 500]; // attempt 2 immediate, attempt 3 afte
       }).catch(()=>{});
     }
   }
-  // Firestore mode (FIRESTORE_PLAN.md stage 5): these Apps Script actions —
+  // Firestore mode (docs/firestore-plan.md stage 5): these Apps Script actions —
   // the Admin panes, telemetry, punch-month clearing, the hours queue, and the
   // super-admin summary's per-firm loads — are answered by firestore-backend.js
   // handleAction() (Firestore, or the users_admin function) in the same JSON
@@ -4232,7 +4232,7 @@ async function renderFirmsList(targetId){
 // Admin tab sub-panes (merged 2026-09-30 into the pre-existing Admin nav tab
 // — previously the gear-button-only #adminScreen modal; the nav tab and the
 // modal were two separately-named "Admin" surfaces, a known source of
-// confusion — see HISTORY.md). setupAdminPaneBar() replaces openAdminScreen()
+// confusion — see docs/history.md). setupAdminPaneBar() replaces openAdminScreen()
 // and is called once from switchTab() when the Admin tab is opened (not from
 // render()'s own per-mutation refresh of that tab — see switchTab()'s own
 // comment on why renderAdmin() alone runs there). Pane visibility: Punch Log
@@ -4528,7 +4528,7 @@ async function renderSuperadminAccounting(){
   </div>`;
 }
 
-// Firestore migration (FIRESTORE_PLAN.md stage 3, super-admin): copies every
+// Firestore migration (docs/firestore-plan.md stage 3, super-admin): copies every
 // firm from the sheets into Firestore through the migrate_from_sheets function
 // (functions-auth/migrate.py) and shows sheet vs Firestore counts per firm.
 // The sheets are only read, the app keeps running on them, and a re-run just

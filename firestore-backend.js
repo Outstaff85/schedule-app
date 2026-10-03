@@ -1,8 +1,9 @@
-// Firestore data layer (FIRESTORE_PLAN.md stage 4).
+// Firestore data layer (docs/firestore-plan.md stage 4).
 //
-// Loaded by schedule-manager.html's loadFirestoreBackend() only when the
-// device runs with BACKEND === 'firestore'; with the default 'sheets' this
-// file is never fetched. It defines one global, initFirestoreBackend(),
+// Loaded by loadFirestoreBackend() in schedule-manager.html and
+// supplier-portal.html when the device runs with BACKEND === 'firestore' (the
+// default since stage 8; ?backend=sheets never fetches this file). It defines
+// one global, initFirestoreBackend(),
 // which loads the Firebase SDK from the CDN, signs in state, and returns the
 // API the app's gs* functions dispatch to:
 //

@@ -456,12 +456,12 @@ const GS_URL = 'https://script.google.com/macros/s/AKfycbwfGCQs8TzGd38j-JU0ZdoHL
 const API_SECRET = 'odinson-7Kq2x9';
 const QUEUE_KEY = 'punchQueue';
 
-// ── Data backend (FIRESTORE_PLAN.md stage 6) — the same per-device switch as
+// ── Data backend (docs/firestore-plan.md stage 6) — the same per-device switch as
 // schedule-manager.html (?backend=firestore / ?backend=sheets, one
 // localStorage key on this domain). In Firestore mode the page talks to the
 // punch Cloud Function, which hands out only this worker and their sites and
 // accepts punches for this worker only; offline queueing is unchanged.
-// Data backend. Firestore for everyone since stage 8 (FIRESTORE_PLAN.md);
+// Data backend. Firestore for everyone since stage 8 (docs/firestore-plan.md);
 // ?backend=sheets keeps this device on Google Sheets/Apps Script (the
 // fallback while it is still kept), ?backend=firestore returns it.
 const BACKEND = (function(){
@@ -763,7 +763,7 @@ function loadWorkers(){
 async function loadWorkersFromGS(){
   // Multi-tenant: resolvable only on a personal link (URL_TOKEN) — the
   // legacy no-token picker-grid flow has no per-request way to name a firm
-  // and will fail against the multi-tenant backend (see MULTI_TENANT_PLAN.md).
+  // and will fail against the multi-tenant backend (see docs/multi-tenant-plan.md).
   const url = GS_URL+'?action=loadSchedule&t='+Date.now()+(URL_TOKEN?'&workerToken='+encodeURIComponent(URL_TOKEN):'');
   
   try{
