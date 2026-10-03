@@ -65,9 +65,9 @@ A single non-PDF file → `onScanFileSelected(file)`:
      - **Extra pages.** While an Israeli-ID primary is still missing a core field (`missingCore`: dob, sex, address, city), extra pages are read with `extraPageReader(kind)`:
        - `passport` → no AI read;
        - `id_front` → `readFrontPage` (`aiReadDoc`);
-       - everything else (`sefach`, `id_back`, `contract`, `other`, unknown) → `readSefachPage` (`aiReadSefach`). `contract`/`other` are read too because the align model often files the paper ספח under them.
+       - everything else (`sefach`, `id_back`, `contract`, `other`, unknown) → `readSefachPage` (`aiReadSefach`). This includes `contract` and `other` because the align model often files the paper ספח (a printed form) under those kinds.
        
-       These reads start in the background (`prefetchSefachFrom`) as soon as the primary is known to be missing fields. They are merged in page order with `mergeScanPage()`. Every extra page also goes through `finalTightenPass()` and is kept in `__aiPacketOtherPages`.
+       These reads start in the background (`prefetchSefachFrom`) as soon as the primary is known to be missing fields. They are merged in page order with `mergeScanPage()`. Every extra page also goes through `finalTightenPass()` and is kept in `__aiPacketOtherPages`. Extra pages are read only while the primary still misses core fields, so a real contract costs one read at most, and `aiReadSefach` returns nothing for it.
    - **A blurry page** stops the run there: earlier pages are kept, the blurry one is dropped, later ones stay queued. The message says which page.
    - **Progress** shows through `renderScanProgress(label, pct)`; a `scan` timing is reported.
 4. **Review screen** — `renderScanPagesPrompt()`: thumbnails (page 1 is not removable), "Add page" (back to step 1 and the queue), "Done" → `finishScanPages()` → `openWorkerModalFromScan()`. `removeExtraScanPage(i)` drops a page and recomputes the primary from the remaining pages (`rebuildPrimaryFromPages()`, which replays `initPrimaryFromFirstPage` + `mergeScanPage` over `__aiPageParsed`).
