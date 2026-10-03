@@ -1,15 +1,15 @@
 # App core (schedule-manager.html)
 
-The manager app's skeleton: the page layout, global state, tabs and rendering, the Schedule tab, login and session, data loading and saving, the request wrapper, telemetry, PWA. Module-specific code is in the other docs.
+The manager app's skeleton: the page layout, global state, tabs and rendering, the Schedule tab, login and session, data loading and saving, the data-call dispatcher, uploads, telemetry, PWA. Module-specific code is in the other docs.
 
-`schedule-manager.html` is one file: CSS and markup (lines ~1–950), then one inline `<script>`. There are no modules — every function is a global. It lazy-loads three files:
+`schedule-manager.html` is one file: CSS and markup (lines ~1–950), then one inline `<script>`. There are no modules — every function is a global. It loads three more files:
+- `firestore-backend.js` — at startup, the data layer, [backend.md](backend.md);
 - `scan-pipeline.js` — on the first scan, [scan.md](scan.md);
-- `firestore-backend.js` — Firestore mode, [backend.md](backend.md);
 - pdf.js — when a PDF is read, [scan.md](scan.md).
 
 ## Layout
 
-- **Titlebar:** brand; the account label (`#accountLabelCenter`: `user · firm · Firestore`); the **Export** dropdown (`exportExcel`, `exportPDF`, `exportJSON` — the Schedule week, below); `#accountControl` (logout); the save indicator (`setSaveStatus`). An Install button (`ensureInstallButton`) and, if push is enabled, an alerts button are prepended at runtime.
+- **Titlebar:** brand; the account label (`#accountLabelCenter`: `user · firm`); the **Export** dropdown (`exportExcel`, `exportPDF`, `exportJSON` — the Schedule week, below); `#accountControl` (logout); the save indicator (`setSaveStatus`). An Install button (`ensureInstallButton`) and, if push is enabled, an alerts button are prepended at runtime.
 - **Tabs** (`.ttab`): Today (`dashboard`), Schedule, Workers, Clients, Suppliers, Admin, Accounting. Each has a `#section<Name>`.
 - **Sidebar** (Schedule): the worker list (`renderWorkerList`) and the client filter (`renderSidebarClients`).
 - **Full-screen overlays:** `#loginScreen`, `#firmsScreen` (super-admin with no firm picked), `#errorsScreen` (no UI caller left).
@@ -53,61 +53,30 @@ A weekly roster.
 
 ## Login and session
 
-- **Session:** `localStorage.schedMgr_session` (`SESSION_KEY`). `getSession()` returns `null` and clears the session when it has no `uid`.
-- **Session fields:**
-  - `uid` — the Firebase user ID;
-  - `role` — `superadmin` / `tenant_admin` / `staff` / `supplier`;
-  - `tenantId`, `username`, `tenantProfile`, `permissions`, `supplierId`;
-  - `viewingTenantId` (and `viewingTenantName` / `viewingTenantProfile` for a super-admin);
-  - `token` — optional, the Apps Script session token (older logins or concurrent Apps Script calls);
-  - `expiresAt` — optional, when `token` expires.
+- **Session:** `localStorage.schedMgr_session` (`SESSION_KEY`). It only remembers who is signed in; the real authentication is the Firebase sign-in (the rules and the functions check the Firebase ID token). `getSession()` returns `null` and clears the session when it has no `uid` (a session from before the move off Apps Script has none, so that user logs in once more).
+- **Session fields:** `uid` (the Firebase user), `role` (`superadmin` / `tenant_admin` / `staff`), `tenantId`, `username`, `tenantProfile`, `permissions`, `supplierId`, `viewingTenantId` (and `viewingTenantName` / `viewingTenantProfile` for a super-admin).
 - **`gateApp(runInitApp)`** decides the screen:
-  1. If the session was made on the other backend, it is cleared.
-  2. No session → `#loginScreen`, and a warm-up ping. In Firestore mode it is `{ping:true}` to the `login` function, otherwise `?action=ping` to Apps Script. Its time is kept in `window.__pingMs`.
-  3. A super-admin with no firm picked → `#firmsScreen` (`renderFirmsList()`).
-  4. Otherwise → `renderAccountControl(s)` and the init sequence: `loadData()`, `render()`, `applyNavPermissions()`, `switchTab('dashboard')`, `checkPushStatus`.
-- **`submitLogin()`:**
-  - `submitLoginFirestore()` runs `backend.login()` (the `login` function, then a Firebase custom-token sign-in) and optionally takes an Apps Script token from the reply (`gsToken`, for parts not yet moved to Firestore). If not provided, the app tries to log in to Apps Script separately (slower path);
-  - a super-admin reply's `tenants` list is cached (`saveFirmsCache`);
-  - saves the session and reloads; the login timing is kept in `sessionStorage.pendingLoginTiming`.
+  1. No session → `#loginScreen`, and a warm-up `{ping:true}` to the `login` function; its time is kept in `window.__pingMs`.
+  2. A super-admin with no firm picked → `#firmsScreen` (`renderFirmsList()`).
+  3. Otherwise → `renderAccountControl(s)` and the init sequence: `loadData()`, `render()`, `applyNavPermissions()`, `switchTab('dashboard')`, `checkPushStatus`.
+- **`submitLogin()`:** `firestore-backend.js` `login()` — the `login` function checks the password and returns a custom token, then the device signs in to Firebase with it. The session is saved, the login timing kept in `sessionStorage.pendingLoginTiming`, and the page reloads.
 - **Firms:** `switchToTenant(tenantId)` (super-admin) sets `viewingTenantId` / Name / Profile and reloads. `backToFirmsList()` has no UI caller.
 - **`logout()`** clears the Firms and admin caches and the session, signs out of Firebase, and reloads.
-- **Requests:** `gsAuth()` → `{asTenantId}` (only for a super-admin viewing a firm; otherwise `{}`); `gsAuthQuery()` is the same as a query string.
+- **Requests:** `gsAuth()` → `{asTenantId}` for a super-admin viewing a firm, otherwise `{}`; `gsAuthQuery()` is the same as a query string.
 - **Firm profile** (Form 101 employer block):
   - `FIRM_PROFILE_FIELDS` — company name, deductions file, phone, street, city;
   - `activeTenantProfile()`, `firmProfileMissing()`, `firmProfileWarnHtml()` / `refreshFirmProfileWarnings()`;
   - `cacheTenantProfile(tenantId, profile)` keeps the session copy current after an edit;
   - an incomplete profile colors the Admin tab icon amber (`renderAccountControl`).
 
-## Firestore-only operation
+## Data calls
 
-- **Backend loading:** `loadFirestoreBackend()` loads `firestore-backend.js` at startup (one shared promise, always runs). `fsTenantId()` is the firm being worked in. `DOC_STORE = 'Firebase Storage'`.
-- **Data operations:**
-  - `gsLoad` / `gsSave` / `gsLoadPunchLog` / `gsSavePunch` / `gsUpdatePunch` / `gsDeletePunch` call the backend directly;
-  - Apps Script actions in `FS_ACTIONS` are answered by `handleAction()` through the fetch wrapper (below);
-  - uploads go to Storage (`uploadWorkerFile()`).
-
-See [backend.md](backend.md).
-
-## Request wrapper (`window.fetch`)
-
-An IIFE wraps `fetch` for every URL starting with `GS_URL` (Apps Script web app, but also used for Firestore routing):
-
-1. **Firestore routing.** An action in `FS_ACTIONS` goes to `fsRoute()` → `handleAction()` (the Firestore backend). The FS_ACTIONS are:
-   - the firms and users actions;
-   - `loadErrors` / `loadTimings`, telemetry;
-   - `loadSchedule` / `loadPunchLog` (another firm);
-   - `deletePunchesByMonths`, the hours queue;
-   - `loadWorkerAssets` / `deleteWorkerDoc` (Storage ids);
-   - the six AI actions.
-   
-   A `null` answer falls through to Apps Script; an exception becomes `{error:'Firestore: …'}`.
-2. **Monitoring.** `watchGsReply()` sends a call slower than `SLOW_GS_CALL_MS` (2500 ms) to Timings as `gs:<action>`, and an HTML reply (an Apps Script error page) to Errors as `gsHtml`.
-3. **Session expiry.** `checkExpired()`: when a reply's `error` is exactly `SESSION_EXPIRED_ERROR`, the request is retried with the token stored now (`withCurrentToken`). Retries follow `SESSION_RETRY_DELAYS_MS` = `[0, 500]`, so 3 attempts in total. Each rejection is reported (`authFailure`, unauthenticated); after the last one the session is cleared and the page reloads. Telemetry and login (`NO_LOGOUT_ACTIONS`) never trigger this.
-
-**`uploadWorkerFile(body, onProgress)`** is the upload path with real byte progress. The upload actions (`FS_UPLOAD_ACTIONS`: `saveWorkerDoc`, `saveWorkerAssets`, `saveWorkerFile`) call `uploadWorkerFile()` (Firebase Storage).
-
-`__uploadsInFlight` counts running uploads; a new-version reload waits for it to reach 0.
+- **Direct calls:** `gsLoad` / `gsSave` / `gsLoadPunchLog` / `gsSavePunch` / `gsUpdatePunch` / `gsDeletePunch` / `gsDeleteWorkerDoc` call `firestore-backend.js` for `fsTenantId()` (the firm being worked in). The names are old; there is no other backend.
+- **The dispatcher (`API_URL`):** every other data call is written as `fetch(API_URL, {method:'POST', body: JSON.stringify({action, ...})})` or `fetch(API_URL + '?action=…')`. `API_URL` (`'api://app'`) is not a server: a `window.fetch` wrapper sends the call to `firestore-backend.js` `handleAction(action, params, ctx)` and returns its answer as a JSON `Response`. It covers the firms and users actions, Errors / Timings, telemetry, `deletePunchesByMonths`, the hours queue, another firm's `loadSchedule` / `loadPunchLog`, `loadWorkerAssets` / `deleteWorkerDoc`, and the six AI actions ([backend.md](backend.md) has the list). Any other `fetch` passes through untouched.
+  - An action nothing answers → `{error:'Unknown action: …'}`; an exception → `{error:'Firestore: …'}`.
+  - A call slower than 2500 ms (`SLOW_API_CALL_MS`) goes to Timings as `gs:<action>`.
+  - A reply whose `error` is exactly `SESSION_EXPIRED_ERROR` (the functions refused the Firebase ID token — signed out, or revoked after a rights change) clears the session and reloads to the login screen. Telemetry and login never trigger this.
+- **Uploads:** `uploadWorkerFile(body, onProgress)` — `saveWorkerDoc` / `saveWorkerAssets` / `saveWorkerFile` (`FS_UPLOAD_ACTIONS`) go to Storage through `firestore-backend.js`, with real byte progress, and reply `{ok, id, url}`. The replaced file (`previousFileId`) is deleted afterwards (`gsDeleteWorkerDoc`). `DOC_STORE` = `'Firebase Storage'` names the store in the UI. `__uploadsInFlight` counts running uploads; a new-version reload waits for it to reach 0.
 
 ## Loading and saving data
 
@@ -115,19 +84,13 @@ An IIFE wraps `fetch` for every URL starting with `GS_URL` (Apps Script web app,
 - **`loadData()`:**
   1. Draw the cache at once (`applyData`, `render`, `markFirstContent`).
   2. `gsLoad()`. On success → `applyServerLoad()`, `markFreshContent('app')`, `syncPunchesFromGS()`. On failure → a toast with the reason and `retryLoadDataWhenBack()` (on `online`, on the tab becoming visible, or after 15 s).
-- **`gsLoad()`:**
-  - Firestore mode: `backend.loadSchedule(fsTenantId())`; with no Firebase user the session is cleared and the page reloads;
-  - Sheets mode: `GET ?action=loadSchedule` with retries after 1 s and 3 s (`GS_LOAD_RETRY_DELAYS_MS`), sending the reason to Errors when all attempts fail (`gsLoad.lastError`);
-  - it sets `lastLoadedSavedAt`.
+- **`gsLoad()`:** `backend.loadSchedule(fsTenantId())`. With no Firebase user the session is cleared and the page reloads. A failure is kept in `gsLoad.lastError` and sent to Errors.
 - **`applyData(d)`** fills `workers` (defaults: `id`, `clientIds`, `token`, `status`), `clients` and `suppliers`.
 - **`applyServerLoad(gd)`:** if this device has unsaved changes (`hasUnsavedLocal()`, the `UNSAVED_KEY()` flag younger than 3 days), it keeps them and calls `autoSave()` instead of applying the server copy. Otherwise it applies the server data and writes the cache.
 - **`autoSave()`:**
   - it refuses to save an empty state over a cache that had data;
   - it debounces 800 ms, then writes the cache, sets `UNSAVED_KEY()` and calls `gsSave(getDataObj())`; the flag is cleared on success.
-- **`gsSave(data)`:**
-  - it refuses a payload with no workers and no clients;
-  - Firestore mode: `backend.saveSchedule()`, which writes only changed documents;
-  - Sheets mode: `saveSchedule` with `baseSavedAt`. On `conflict` it reloads and takes the server version (clearing the unsaved flag); on `tooLarge` it shows a toast.
+- **`gsSave(data)`:** refuses a payload with no workers and no clients; otherwise `backend.saveSchedule()`, which writes only the changed documents (two managers editing different workers never overwrite each other). Toasts: "Saved" / "Save failed — kept on this device".
 - **Shortcut:** Ctrl/Cmd+S saves.
 - **Unused:** `exportDataBackup()` / `importDataBackup()` (JSON file backup) have no UI caller.
 
@@ -140,11 +103,11 @@ Punches have their own path (`gsLoadPunchLog`, `mergeRemotePunches`, month windo
   - every `console.error` / `console.warn` (wrapped);
   - toasts matching `ERROR_TOAST_RE`;
   - the form error lines `firmEditFormError` / `userFormError` (`watchErrorLine`, a MutationObserver).
-- **Timings:** `reportTiming(kind, totalMs, details)` adds `device` and `backend`. Kinds:
+- **Timings:** `reportTiming(kind, totalMs, details)` adds `device`. Kinds:
   - `login` / `open` — `markFirstContent()` / `markFreshContent(screen)`, once per page;
   - `scan` / `scanFiles` — [scan.md](scan.md);
   - `gs:<action>` — slow calls.
-- **Sending:** both go into a queue (`queueTelemetry`). `flushTelemetry()` sends it as one `logBatch`: first 8 s after load, then every 5 s, and on page hide. On hide, Sheets mode uses `sendBeacon`. In Firestore mode `logBatch` becomes Firestore `errors` / `timings` documents.
+- **Sending:** both go into a queue (`queueTelemetry`). `flushTelemetry()` sends it as one `logBatch` through the dispatcher: first 8 s after load, then every 5 s, and on page hide. It becomes Firestore `errors` / `timings` documents (one batch write); before the Firebase sign-in it is dropped.
 
 Shown in Admin → Errors / Timings ([admin.md](admin.md)).
 
@@ -152,12 +115,12 @@ Shown in Admin → Errors / Timings ([admin.md](admin.md)).
 
 - **Service worker:** `service-worker.js` (cache `schedule-mgr-vNNN` — bump the number on every deploy that changes the app).
   - Network-first, with `cache:'no-store'`; the cache is only the offline fallback.
-  - It never touches POSTs, `script.google.com`, or other origins.
+  - It never touches POSTs or other origins (Firebase, Cloud Functions, CDNs).
   - An offline navigation falls back to the matching page.
   - It also has push / notificationclick handlers.
 - **Registration:** the page registers the worker with `updateViaCache:'none'` and calls `reg.update()`. When a new version takes control (`controllerchange`) it reloads once, after uploads finish.
 - **Install:** `beforeinstallprompt` → the Install button; iOS gets instructions in a toast.
-- **Push:** `PUSH_ENABLED = false`. The subscribe code (`subscribeToPush`, `savePushSubscription`) exists but the button is hidden — no sender exists.
+- **Push:** `PUSH_ENABLED = false`. `subscribeToPush` exists (it keeps the subscription only in `localStorage`) but the button is hidden — no sender exists.
 - **Manifests:** `manifest.json` (manager, start `./schedule-manager.html`) and `manifest-punch.json` (`./worker-punch.html`).
 
 ## Google Contacts (worker modal)
