@@ -13,6 +13,8 @@ database. The logic itself is in core.py.
                loadWorkerAssets, deleteWorkerDoc for files in Storage (files.py, stage 7b)
   migrate_from_sheets  POST {gsToken} (a super-admin's Apps Script session
                token): copies the sheets into Firestore (migrate.py, stage 3)
+  migrate_files  POST {gsToken}: moves worker files from Drive to Storage
+               (filemove.py, stage 8)
   punch        POST {action, token, ...}: the worker punch link (portal.py, stage 6)
   supplier     POST {action, ...} with "Authorization: Bearer <ID token>" of a
                supplier login: the supplier portal (portal.py, stage 6)
@@ -34,6 +36,7 @@ from firebase_functions.params import SecretParam
 
 import ai
 import core
+import filemove
 import files
 import portal
 import migrate as migration
@@ -175,6 +178,36 @@ def migrate_from_sheets(req: https_fn.Request) -> https_fn.Response:
         return _json(migration.migrate(_db(), fetch))
     except Exception as e:
         return _json({"error": "Migration failed: " + str(e)}, 500)
+
+
+@https_fn.on_request(cors=_CORS, timeout_sec=540, memory=options.MemoryOption.GB_1)
+def migrate_files(req: https_fn.Request) -> https_fn.Response:
+    """Moves worker files (Form 101 PDFs, scan sidecars, documents) from Drive
+    to Storage and points the worker records at the copies (filemove.py).
+    Same authorization as migrate_from_sheets: every read goes through Apps
+    Script exportForMigration, which answers only a super-admin's token."""
+    if req.method != "POST":
+        return _json({"error": "POST only"}, 405)
+    gs_token = str(_body(req).get("gsToken") or "")
+    if not gs_token:
+        return _json({"error": E_SESSION}, 401)
+
+    def fetch(part, tenant_id=None, file_id=None):
+        body = {"action": "exportForMigration", "token": gs_token, "part": part}
+        if tenant_id:
+            body["tenantId"] = tenant_id
+        if file_id:
+            body["fileId"] = file_id
+        resp = requests.post(GS_URL, json=body, timeout=120)
+        try:
+            return resp.json()
+        except ValueError:
+            return {"error": f"Apps Script replied HTTP {resp.status_code}, not JSON"}
+
+    try:
+        return _json(filemove.move_all(_db(), storage.bucket(), fetch))
+    except Exception as e:
+        return _json({"error": "File move failed: " + str(e)}, 500)
 
 
 @https_fn.on_request(cors=_CORS, timeout_sec=30)

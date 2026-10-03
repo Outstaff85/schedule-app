@@ -181,13 +181,16 @@ function gsAuth(){ const s=getSession(); return s ? {token:s.token} : {}; }
 // localStorage key on this domain). In Firestore mode the login goes through
 // the login function and this page's five Apps Script actions go to the
 // supplier function, which applies the same allow-lists as Apps Script.
+// Data backend. Firestore for everyone since stage 8 (FIRESTORE_PLAN.md);
+// ?backend=sheets keeps this device on Google Sheets/Apps Script (the
+// fallback while it is still kept), ?backend=firestore returns it.
 const BACKEND = (function(){
   try{
     const q = new URLSearchParams(location.search).get('backend');
-    if(q === 'firestore') localStorage.setItem('backend', 'firestore');
-    else if(q === 'sheets') localStorage.removeItem('backend');
-    return localStorage.getItem('backend') === 'firestore' ? 'firestore' : 'sheets';
-  }catch(e){ return 'sheets'; }
+    if(q === 'sheets') localStorage.setItem('backend', 'sheets');
+    else if(q === 'firestore') localStorage.removeItem('backend');
+    return localStorage.getItem('backend') === 'sheets' ? 'sheets' : 'firestore';
+  }catch(e){ return 'firestore'; }
 })();
 const SUPPLIER_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/supplier';
 const SUPPLIER_FN_ACTIONS = ['loadSchedule','loadPunchLog','supplierAddWorker','supplierUpdateWorker','supplierDeleteWorker'];
