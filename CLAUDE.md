@@ -63,7 +63,7 @@ Code comments in `functions*/`, `apps-script/`, the rules and `tests/` may still
 - A `PostToolUse` hook auto-commits and pushes every file edit to the **current branch** (`git push origin HEAD`). This only fires in a session whose working directory *is* this repo at session start.
 - A `PreToolUse` hook blocks any `git push` that force-pushes, targets `main` by name, or runs while the current branch is `main`.
 - A `SessionStart` hook injects `git status --short` + current branch as context.
-- A `PostToolUse` hook on `gh pr create*` checks the PR's diff against CLAUDE.md and `docs/*.md` and updates them via an agent.
+- A `PostToolUse` hook on `gh pr create*` or the GitHub MCP `create_pull_request` tool checks the PR's diff against CLAUDE.md and `docs/*.md` and updates them via an agent.
 - **"Deploy" means: open a PR from the work branch into `main` covering everything accumulated since the last one, then merge it — merging is what triggers the real deploy.** Never push/reset directly to `main`. Batch accumulated changes into one PR per deploy request rather than one PR per edit.
 - **Never merge a PR without asking the user first.** Pushing to the feature branch needs no confirmation; merging to `main` always does.
 
