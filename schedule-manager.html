@@ -2696,9 +2696,12 @@ function setWorkersView(v){ try{ localStorage.setItem('workersView',v); }catch(e
 // Hours worked this calendar month, per worker — the same canonical shift
 // pairing (getWorkerMonthShifts → groupPunchesIntoShifts/analyzeDayPunches)
 // the hours export uses, so the card can never disagree with it.
+// The punch log is read (parsed) once and split by worker: reading it once
+// per worker made the cards view take over a second at 150 workers.
 function workersMonthHours(){
-  const now=new Date(), y=now.getFullYear(), m=now.getMonth(), out={};
-  workers.forEach(w=>{ out[w.id]=getWorkerMonthShifts(w.id,y,m).reduce((s,x)=>s+x.hours,0); });
+  const now=new Date(), y=now.getFullYear(), m=now.getMonth(), out={}, byWorker={};
+  getPunchLog().forEach(e=>{ (byWorker[e.workerId]||(byWorker[e.workerId]=[])).push(e); });
+  workers.forEach(w=>{ out[w.id]=getWorkerMonthShifts(w.id,y,m,byWorker[w.id]||[]).reduce((s,x)=>s+x.hours,0); });
   return out;
 }
 function renderWorkerCardsHtml(list,groupBy,stMetaMap){
@@ -6055,8 +6058,8 @@ function exportSalaryCSV(){ exportSalary('csv'); }
 // PDF-generation library — no new dependency introduced for this stage.
 
 // Detail mode: one worker, one calendar month, Date/In/Out/Hours per shift.
-function getWorkerMonthShifts(workerId, year, month){
-  const log = getPunchLog().filter(e=>e.workerId===workerId);
+function getWorkerMonthShifts(workerId, year, month, workerLog){
+  const log = workerLog || getPunchLog().filter(e=>e.workerId===workerId);
   return groupPunchesIntoShifts(log)
     .filter(b => b.date.getFullYear()===year && b.date.getMonth()===month)
     .map(b => {
