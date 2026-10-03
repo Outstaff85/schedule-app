@@ -461,13 +461,16 @@ const QUEUE_KEY = 'punchQueue';
 // localStorage key on this domain). In Firestore mode the page talks to the
 // punch Cloud Function, which hands out only this worker and their sites and
 // accepts punches for this worker only; offline queueing is unchanged.
+// Data backend. Firestore for everyone since stage 8 (FIRESTORE_PLAN.md);
+// ?backend=sheets keeps this device on Google Sheets/Apps Script (the
+// fallback while it is still kept), ?backend=firestore returns it.
 const BACKEND = (function(){
   try{
     const q = new URLSearchParams(location.search).get('backend');
-    if(q === 'firestore') localStorage.setItem('backend', 'firestore');
-    else if(q === 'sheets') localStorage.removeItem('backend');
-    return localStorage.getItem('backend') === 'firestore' ? 'firestore' : 'sheets';
-  }catch(e){ return 'sheets'; }
+    if(q === 'sheets') localStorage.setItem('backend', 'sheets');
+    else if(q === 'firestore') localStorage.removeItem('backend');
+    return localStorage.getItem('backend') === 'sheets' ? 'sheets' : 'firestore';
+  }catch(e){ return 'firestore'; }
 })();
 const PUNCH_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/punch';
 function punchFn(body){

@@ -663,6 +663,7 @@
       <div id="adminPane_firms" style="display:none">
         <div style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-bottom:10px">
           <button class="btn sm" onclick="runFirestoreMigration()"><i class="ti ti-database-export"></i> Copy to Firestore</button>
+          <button class="btn sm" onclick="runFileMove()"><i class="ti ti-files"></i> Move files to Firebase</button>
           <button class="btn sm" onclick="toggleSuperadminAccounting()"><i class="ti ti-cash"></i> Payable summary (all firms)</button>
           <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> New firm</button>
         </div>
@@ -3508,13 +3509,16 @@ const API_SECRET = 'odinson-7Kq2x9';
 // ?backend=sheets to turn it off. Everything not moved yet (AI scan, Form 101
 // and documents in Drive, the Admin panes, hours import) keeps using Apps
 // Script with the session token from the parallel Apps Script login.
+// Data backend. Firestore for everyone since stage 8 (FIRESTORE_PLAN.md);
+// ?backend=sheets keeps this device on Google Sheets/Apps Script (the
+// fallback while it is still kept), ?backend=firestore returns it.
 const BACKEND = (function(){
   try{
     const q = new URLSearchParams(location.search).get('backend');
-    if(q === 'firestore') localStorage.setItem('backend', 'firestore');
-    else if(q === 'sheets') localStorage.removeItem('backend');
-    return localStorage.getItem('backend') === 'firestore' ? 'firestore' : 'sheets';
-  }catch(e){ return 'sheets'; }
+    if(q === 'sheets') localStorage.setItem('backend', 'sheets');
+    else if(q === 'firestore') localStorage.removeItem('backend');
+    return localStorage.getItem('backend') === 'sheets' ? 'sheets' : 'firestore';
+  }catch(e){ return 'firestore'; }
 })();
 const LOGIN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/login';
 let __fsBackend = null;
@@ -4517,7 +4521,12 @@ const MIGRATE_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net
 async function runFirestoreMigration(){
   const s = getSession();
   if(!s || s.role !== 'superadmin') return;
-  if(!confirm('Copy all firms from Google Sheets to Firestore?\n\nThe sheets are not changed and the app keeps working on them. Running it again just updates Firestore.')) return;
+  // Since the switch (stage 8) the app writes to Firestore, so a copy now
+  // replaces everything entered since then with the older sheet data.
+  if(BACKEND === 'firestore'){
+    const typed = prompt('The app now works on Firestore. Copying from Google Sheets REPLACES the Firestore data with the older sheet data — everything entered since the switch is lost.\n\nType REPLACE to copy anyway.');
+    if(typed !== 'REPLACE') return;
+  } else if(!confirm('Copy all firms from Google Sheets to Firestore?\n\nThe sheets are not changed and the app keeps working on them. Running it again just updates Firestore.')) return;
   const wrap = document.getElementById('firestoreMigrationWrap');
   wrap.style.display = 'block';
   wrap.innerHTML = '<div style="color:var(--text2);font-size:13px">Copying every firm to Firestore — this can take a minute…</div>';
@@ -4529,6 +4538,47 @@ async function runFirestoreMigration(){
   }catch(e){
     wrap.innerHTML = `<div style="color:var(--red);font-size:13px">Copy failed: ${esc(e.message||String(e))}</div>`;
   }
+}
+// Stage 8: moves worker files (Form 101 PDFs, scan sidecars, documents) from
+// Drive to Firebase Storage — migrate_files (functions-auth/filemove.py).
+// Drive is left as it is; a second run moves only what is still on Drive,
+// and a run that hits the time limit says so (partial) — run it again.
+const MIGRATE_FILES_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/migrate_files';
+async function runFileMove(){
+  const s = getSession();
+  if(!s || s.role !== 'superadmin') return;
+  if(!confirm('Copy every worker file (Form 101, scans, documents) from Google Drive to Firebase Storage?\n\nThe files in Drive are not changed or deleted. Running it again moves only what is left.')) return;
+  const wrap = document.getElementById('firestoreMigrationWrap');
+  wrap.style.display = 'block';
+  wrap.innerHTML = '<div style="color:var(--text2);font-size:13px">Moving files to Firebase — this can take a few minutes…</div>';
+  try{
+    const res = await fetch(MIGRATE_FILES_FN_URL, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({gsToken: s.token})});
+    const r = await res.json();
+    if(r.error){ wrap.innerHTML = `<div style="color:var(--red);font-size:13px">File move failed: ${esc(r.error)}</div>`; return; }
+    wrap.innerHTML = fileMoveReportHtml(r);
+    if(BACKEND === 'firestore') loadData(); // the worker records now point at the copies
+  }catch(e){
+    wrap.innerHTML = `<div style="color:var(--red);font-size:13px">File move failed: ${esc(e.message||String(e))}</div>`;
+  }
+}
+function fileMoveReportHtml(r){
+  const td = (v, style) => `<td style="padding:6px 10px;text-align:center;font-size:12px;${style||''}">${v}</td>`;
+  const rows = (r.tenants||[]).map(t => `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:6px 10px;font-size:13px;font-weight:600">${t.errors.length?'<i class="ti ti-alert-triangle" style="color:var(--red)"></i>':'<i class="ti ti-check" style="color:var(--green)"></i>'} ${esc(t.name||t.tenantId)}
+        ${t.errors.map(x=>`<div style="font-size:11px;color:var(--red)">${esc(x)}</div>`).join('')}</td>
+      ${td(t.workers)}${td(t.moved)}${td(t.missing, t.missing?'color:var(--amber)':'')}${td(t.left, t.left?'color:var(--amber);font-weight:700':'')}
+    </tr>`).join('');
+  const head = r.partial ? 'Not finished — the time ran out. Press "Move files to Firebase" again to move the rest.'
+    : r.ok ? 'Done — every file found in Drive is now in Firebase.' : 'Done with errors — see the marked rows.';
+  return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:auto">
+    <div style="padding:10px 12px;font-size:13px;font-weight:700;${r.ok&&!r.partial?'color:var(--green)':'color:var(--amber)'}">${head}
+      <span style="color:var(--text2);font-weight:400"> · ${r.seconds}s</span></div>
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
+        ${['Firm','Workers','Moved','Not in Drive','Left'].map((h,i)=>`<th style="padding:6px 10px;text-align:${i?'center':'left'};font-size:12px;color:var(--text2)">${h}</th>`).join('')}
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
 }
 function migrationReportHtml(r){
   const KINDS = ['workers','clients','suppliers','punches','pendingHours'];

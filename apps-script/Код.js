@@ -1758,6 +1758,17 @@ function exportForMigration(body, auth) {
       scheduleTenantIds: scheduleTenantIds,
     };
   }
+  // One worker file (Form 101 PDF, scan sidecar, document) for the move to
+  // Firebase Storage (migrate_files, stage 8): only a file inside that firm's
+  // own Workers folders, read-only — nothing is trashed here.
+  if (body.part === 'file') {
+    if (!body.tenantId || !body.fileId) return { error: 'Нет tenantId или fileId' };
+    let file;
+    try { file = DriveApp.getFileById(String(body.fileId)); } catch (e) { return { error: 'Файл не найден', missing: true }; }
+    if (!_fileBelongsToTenant(file, body.tenantId)) return { error: 'Файл не принадлежит этой фирме' };
+    const blob = file.getBlob();
+    return { ok: true, name: file.getName(), mimeType: blob.getContentType(), b64: Utilities.base64Encode(blob.getBytes()) };
+  }
   if (body.part === 'tenant') {
     const t = body.tenantId;
     if (!t) return { error: 'Нет tenantId' };
