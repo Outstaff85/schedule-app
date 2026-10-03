@@ -89,9 +89,9 @@ def _body(req):
     return req.get_json(silent=True, force=True) or {}
 
 
-# min_instances=1: one instance is always warm, so a login never waits for a
-# cold start (10-30 s after idle in the Timings pane). A small standing cost.
-@https_fn.on_request(cors=_CORS, timeout_sec=30, min_instances=1)
+# min_instances=0: no standing cost; after a long idle the first login waits
+# for a cold start (10-30 s in the Timings pane). Set 1 to keep one warm.
+@https_fn.on_request(cors=_CORS, timeout_sec=30, min_instances=0)
 def login(req: https_fn.Request) -> https_fn.Response:
     if req.method != "POST":
         return _json({"error": "POST only"}, 405)
