@@ -15,6 +15,9 @@
 //                               with the first snapshot's entries
 //   savePunch / updatePunch / deletePunch
 //   idToken()                   the signed-in user's ID token (supplier portal)
+//   uploadWorkerFile(t, body, onProgress)   stage 7b: saveWorkerDoc /
+//                               saveWorkerAssets / saveWorkerFile into Storage,
+//                               same reply shape as Apps Script ({ok,id,url})
 //   handleAction(action, params)   stages 5, 7: answers an Apps Script action
 //                               (Admin panes, telemetry, hours queue, AI reads) in the
 //                               same JSON shape, or null to leave it to Apps Script
@@ -34,6 +37,13 @@
   // Apps Script actions answered by the users_admin function instead.
   const FUNCTION_ACTIONS = ['listTenants','setTenantActive','deleteTenant','createUser','updateTenant',
     'loadTenantProfile','listUsers','createTenantUser','updateUser','resetUserPassword','deleteUser'];
+  // Stage 7b: file uploads that go to Storage instead of Drive.
+  const UPLOAD_ACTIONS = ['saveWorkerDoc','saveWorkerAssets','saveWorkerFile'];
+  // Reading/deleting a file that is in Storage (its id is the object path)
+  // goes through users_admin (functions-auth/files.py); a Drive id still goes
+  // to Apps Script, so files saved before the switch keep working.
+  const STORAGE_FILE_ACTIONS = ['loadWorkerAssets','deleteWorkerDoc'];
+  const isStoragePath = id => typeof id === 'string' && id.indexOf('tenants/') === 0;
   const PUNCH_MONTHS = 13;            // like the live PunchLog sheet (~12 months + this one)
   const BATCH_LIMIT = 450;            // Firestore allows 500 writes per batch
 
@@ -63,20 +73,23 @@
   }
 
   window.initFirestoreBackend = async function(){
-    const [appMod, authMod, fsMod] = await Promise.all([
+    const [appMod, authMod, fsMod, stMod] = await Promise.all([
       import(FB_CDN + 'firebase-app.js'),
       import(FB_CDN + 'firebase-auth.js'),
       import(FB_CDN + 'firebase-firestore.js'),
+      import(FB_CDN + 'firebase-storage.js'),
     ]);
     const app = appMod.initializeApp(await webConfig());
     const auth = authMod.getAuth(app);
     const db = fsMod.getFirestore(app);
+    const storage = stMod.getStorage(app);
     const F = fsMod;
     // Emulators for tests: localStorage fsEmulator = '127.0.0.1' (host).
     const emu = localStorage.getItem('fsEmulator');
     if(emu){
       F.connectFirestoreEmulator(db, emu, 8080);
       authMod.connectAuthEmulator(auth, 'http://' + emu + ':9099', {disableWarnings:true});
+      stMod.connectStorageEmulator(storage, emu, 9199);
     }
     await auth.authStateReady();
 
@@ -326,6 +339,50 @@
       return {entries: snap.docs.map(punchFromDoc)};
     }
 
+    // ── Stage 7b: worker files in Storage ────────────────────────────────
+    // tenants/<t>/workers/<workerId>/{form101,assets,docs}/<time>-<name>.
+    // The object path is the file's id on the worker record (docFileId,
+    // assetsFileId, docs[].fileId); the PDF and documents also get a download
+    // URL (docUrl, docs[].url) the app opens like the old Drive link.
+    function safeName(name){
+      return String(name || 'file').replace(/[\/\\#?\[\]*\u0000-\u001f]/g, '_').slice(0, 150) || 'file';
+    }
+    function b64Bytes(b64){
+      const bin = atob(String(b64 || ''));
+      const out = new Uint8Array(bin.length);
+      for(let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    }
+    async function uploadWorkerFile(t, body, onProgress){
+      if(!auth.currentUser) return {error:'Сессия истекла или недействительна — войдите заново'};
+      if(!t) return {error:'Нет фирмы'};
+      const action = body.action;
+      let kind, name, bytes, type;
+      if(action === 'saveWorkerDoc'){
+        if(!body.fileBase64 || !body.fileName) return {error:'Нет fileBase64 или fileName'};
+        kind = 'form101'; name = body.fileName; bytes = b64Bytes(body.fileBase64); type = body.mimeType || 'application/pdf';
+      } else if(action === 'saveWorkerAssets'){
+        if(!body.scanB64) return {error:'Нет scanB64'};
+        kind = 'assets'; name = (body.fileNameBase || 'worker') + '_assets.json'; type = 'application/json';
+        bytes = new TextEncoder().encode(JSON.stringify({scanB64: body.scanB64, scanMediaType: body.scanMediaType || 'image/jpeg',
+          sigPng: body.sigPng || null, extraPages: Array.isArray(body.extraPages) ? body.extraPages : []}));
+      } else if(action === 'saveWorkerFile'){
+        if(!body.fileBase64 || !body.fileName) return {error:'Missing fileBase64 or fileName'};
+        kind = 'docs'; name = body.fileName; bytes = b64Bytes(body.fileBase64); type = body.mimeType || 'application/octet-stream';
+      } else return {error:'Unknown action'};
+      const wid = safeName(body.workerId || '_');
+      const path = 'tenants/' + t + '/workers/' + wid + '/' + kind + '/' + Date.now() + '-' + safeName(name);
+      const ref = stMod.ref(storage, path);
+      const meta = {contentType: type, customMetadata: {workerId: String(body.workerId || ''), kind}};
+      if(kind !== 'assets') meta.contentDisposition = "inline; filename*=UTF-8''" + encodeURIComponent(safeName(name));
+      await new Promise((resolve, reject) => {
+        const task = stMod.uploadBytesResumable(ref, bytes, meta);
+        task.on('state_changed', snap => { if(onProgress) onProgress(snap.bytesTransferred, snap.totalBytes); }, reject, resolve);
+      });
+      if(kind === 'assets') return {ok:true, id: path};
+      return {ok:true, id: path, url: await stMod.getDownloadURL(ref)};
+    }
+
     // ctx: {role, username, tenantId (the firm being worked in)}; gsFetch():
     // the same request to Apps Script, for the Errors/Timings merge.
     async function handleAction(action, params, ctx, gsFetch){
@@ -334,6 +391,7 @@
       if(!auth.currentUser) return null;
       if(FUNCTION_ACTIONS.includes(action)) return callUsersAdmin(params);
       if(AI_ACTIONS.includes(action)) return callUsersAdmin(params, AI_FN_URL);
+      if(STORAGE_FILE_ACTIONS.includes(action)) return isStoragePath(params.fileId) ? callUsersAdmin(params) : null;
       switch(action){
         case 'loadErrors':  return ctx.role === 'superadmin' ? readLog('errors', 100, gsFetch().then(j => j.rows || [])) : {error:'Доступ только для супер-админа'};
         case 'loadTimings': return ctx.role === 'superadmin' ? readLog('timings', 500, gsFetch().then(j => j.rows || [])) : {error:'Доступ только для супер-админа'};
@@ -350,6 +408,7 @@
 
     return {
       login, loadSchedule, saveSchedule, listenPunches, savePunch, updatePunch, deletePunch, handleAction,
+      uploadWorkerFile, UPLOAD_ACTIONS, isStoragePath,
       currentUser: () => auth.currentUser,
       idToken: () => auth.currentUser ? auth.currentUser.getIdToken() : Promise.resolve(null),
       signOut: () => { if(punchUnsub) punchUnsub(); return authMod.signOut(auth); },

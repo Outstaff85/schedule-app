@@ -9,7 +9,8 @@ database. The logic itself is in core.py.
   users_admin  POST {action, ...} with "Authorization: Bearer <ID token>":
                listUsers, createUser (new firm), createTenantUser,
                updateUser, resetUserPassword, deleteUser, listTenants,
-               setTenantActive, deleteTenant, updateTenant, loadTenantProfile
+               setTenantActive, deleteTenant, updateTenant, loadTenantProfile;
+               loadWorkerAssets, deleteWorkerDoc for files in Storage (files.py, stage 7b)
   migrate_from_sheets  POST {gsToken} (a super-admin's Apps Script session
                token): copies the sheets into Firestore (migrate.py, stage 3)
   punch        POST {action, token, ...}: the worker punch link (portal.py, stage 6)
@@ -27,12 +28,13 @@ import json
 import requests
 
 import firebase_admin
-from firebase_admin import auth, firestore
+from firebase_admin import auth, firestore, storage
 from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
 
 import ai
 import core
+import files
 import portal
 import migrate as migration
 
@@ -134,6 +136,9 @@ def users_admin(req: https_fn.Request) -> https_fn.Response:
     if caller["role"] == "superadmin":
         caller["tenantId"] = body.get("asTenantId") or None  # the firm it is viewing
     try:
+        if body.get("action") in files.ACTIONS:
+            caller["perms"] = decoded.get("perms")
+            return _json(files.run(storage.bucket(), caller, body))
         return _json(core.run_action(_db(), caller, body, _revoke))
     except Exception as e:
         return _json({"error": str(e)}, 500)
