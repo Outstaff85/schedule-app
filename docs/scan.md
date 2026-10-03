@@ -38,7 +38,7 @@ All of them are sent as `fetch(API_URL, …)`; the dispatcher passes them to the
 |---|---|---|
 | `aiReadDoc` | `ANTHROPIC_MODEL` | Full read of the main page: `type` (`israeli_id` / `passport`), names, numbers, dates, sex, address, children, spouse; `fieldBoxes` (boxes of the digit fields); `photoBox` (the portrait) |
 | `aiReadSefach` | `ANTHROPIC_MODEL` | An extra Israeli-ID page (ספח or card back): address, house number, city, marital status, sex, spouse, children, `idNo` for cross-check. Always `type:'israeli_id'` |
-| `aiDetectAlign` | `ANTHROPIC_ALIGN_MODEL` (Haiku) | Rotation, 4 corners and the page `kind`: `id_front` / `id_back` / `sefach` / `passport` / `contract` / `other` |
+| `aiDetectAlign` | `ANTHROPIC_ALIGN_MODEL` (Haiku) | Rotation, 4 corners and the page `kind`: `id_front` / `id_back` / `sefach` / `passport` / `contract` / `other`. A failed call leaves the page as cropped; the error goes to Admin → Errors as `console.warn('aiDetectAlign failed: …')` (`readSefachPage` does the same for `aiReadSefach`) |
 | `aiVerifyFields` | `ANTHROPIC_MODEL` | Batched zoomed re-read of several digit fields |
 | `aiVerifyField` | `ANTHROPIC_MODEL` | One zoomed re-read (the ID retry) |
 
@@ -63,9 +63,9 @@ A single non-PDF file → `onScanFileSelected(file)`:
        - the avatar crop (`cropPortraitAvatar`);
        - `finalTightenPass()` for the stored image `__aiScanImage`.
      - **Extra pages.** While an Israeli-ID primary is still missing a core field (`missingCore`: dob, sex, address, city), extra pages are read with `extraPageReader(kind)`:
-       - `contract` / `other` / `passport` → no AI read;
+       - `passport` → no AI read;
        - `id_front` → `readFrontPage` (`aiReadDoc`);
-       - `sefach` / `id_back` / unknown → `readSefachPage` (`aiReadSefach`).
+       - everything else (`sefach`, `id_back`, `contract`, `other`, unknown) → `readSefachPage` (`aiReadSefach`). `contract`/`other` are read too because the align model often files the paper ספח under them.
        
        These reads start in the background (`prefetchSefachFrom`) as soon as the primary is known to be missing fields. They are merged in page order with `mergeScanPage()`. Every extra page also goes through `finalTightenPass()` and is kept in `__aiPacketOtherPages`.
    - **A blurry page** stops the run there: earlier pages are kept, the blurry one is dropped, later ones stay queued. The message says which page.

@@ -11,6 +11,7 @@ Apps Script actions).
 import json
 import os
 import re
+import time
 from pathlib import Path
 
 PROMPTS = json.loads(Path(__file__).with_name("ai_prompts.json").read_text(encoding="utf-8"))
@@ -26,6 +27,13 @@ ACTIONS = ("aiReadDoc", "aiReadSefach", "aiDetectAlign", "aiVerifyField", "aiVer
 E_NO_IMAGE = "Нет изображения"
 E_UNREADABLE = "AI вернул нечитаемый ответ"
 E_TRUNCATED = "Ответ ИИ обрезан лимитом max_tokens — увеличьте лимит"
+
+# A busy Anthropic (HTTP 429 / 5xx / 529, or an overloaded_error reply) or a
+# dropped connection is tried again after these pauses (seconds). Scans send
+# several reads at once, so a burst can hit a rate limit; one failed align or
+# ספח read used to leave the page crooked or its address empty.
+RETRY_PAUSES = (1.5, 4)
+_sleep = time.sleep
 
 
 def models():
@@ -65,7 +73,7 @@ def build_request(action, body, model, align_model):
             _image(body),
             {"type": "text", "text": "Read this and return the JSON object only."}]}]}, cached
     if action == "aiDetectAlign":
-        return {"model": align_model, "max_tokens": 200, "messages": [{"role": "user", "content": [
+        return {"model": align_model, "max_tokens": 400, "messages": [{"role": "user", "content": [
             {"type": "text", "text": PROMPTS["detectAlign"]}, _image(body),
             {"type": "text", "text": "Return the JSON object only."}]}]}, {}
     if action == "aiVerifyField":
@@ -132,8 +140,25 @@ def run(action, body, key, post, model=None, align_model=None):
     if payload is None:
         return {"ok": True, "values": {}} if action == "aiVerifyFields" and extra is None else {"error": extra}
     headers = dict({"x-api-key": key, "anthropic-version": "2023-06-01"}, **extra)
+    for attempt in range(len(RETRY_PAUSES) + 1):
+        last = attempt == len(RETRY_PAUSES)
+        try:
+            status, raw = post(ANTHROPIC_URL, payload, headers)
+        except Exception as e:  # network
+            if last:
+                return {"error": "Запрос к Anthropic не прошёл: " + str(e)}
+        else:
+            if last or not _busy(status, raw):
+                return parse_reply(action, status, raw)
+        _sleep(RETRY_PAUSES[attempt])
+
+
+def _busy(status, raw):
+    """A reply worth trying again: rate limit, overload or a server error."""
+    if status == 429 or status >= 500:
+        return True
     try:
-        status, raw = post(ANTHROPIC_URL, payload, headers)
-    except Exception as e:  # network
-        return {"error": "Запрос к Anthropic не прошёл: " + str(e)}
-    return parse_reply(action, status, raw)
+        err = (json.loads(raw) or {}).get("error")
+    except (ValueError, AttributeError):
+        return False
+    return isinstance(err, dict) and err.get("type") in ("overloaded_error", "rate_limit_error", "api_error")

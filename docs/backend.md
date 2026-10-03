@@ -71,7 +71,7 @@ A separate codebase so a login never loads OpenCV/PyMuPDF. `main.py` holds the H
 | `users_admin` | `Bearer <ID token>`, checked with `check_revoked` | `core.run_action`, `files.run` | a superadmin's firm = `asTenantId`; after `deleteTenant` also `files.delete_tenant_files` |
 | `punch` | the worker link token | `portal.punch_action` | 30 s; `{ping:true}` |
 | `supplier` | `Bearer <ID token>` of a supplier | `portal.supplier_action` | |
-| `ai_read` | `Bearer <ID token>`, role superadmin/tenant_admin/staff | `ai.run` | 120 s, 512 MB; secret `ANTHROPIC_API_KEY`; `{ping:true}` |
+| `ai_read` | `Bearer <ID token>`, role superadmin/tenant_admin/staff | `ai.run` | 300 s, 512 MB; secret `ANTHROPIC_API_KEY`; `{ping:true}` |
 
 Minting custom tokens needs the runtime service account to hold "Service Account Token Creator".
 
@@ -122,12 +122,13 @@ The six AI actions: the Anthropic request for each, the reply handling and the r
 |---|---|---|---|
 | `aiReadDoc` | `ANTHROPIC_MODEL` | 8000 | passport or Israeli ID fields, `fieldBoxes`, `photoBox`, `children`, `spouse`; system prompt cached |
 | `aiReadSefach` | `ANTHROPIC_MODEL` | 4500 | an extra Israeli page: address, house number, city, marital status, sex, spouse, children, idNo |
-| `aiDetectAlign` | `ANTHROPIC_ALIGN_MODEL` | 200 | `{kind, rotate (0/90/180/270), corners {tl,tr,br,bl} as fractions}` |
+| `aiDetectAlign` | `ANTHROPIC_ALIGN_MODEL` | 400 | `{kind, rotate (0/90/180/270), corners {tl,tr,br,bl} as fractions}` |
 | `aiVerifyField` | `ANTHROPIC_MODEL` | 50 | one zoomed field (`digits9`, `date`, `passportNo`); empty when unreadable |
 | `aiVerifyFields` | `ANTHROPIC_MODEL` | 200 | several fields in one call: `{values:{field:value}}` |
 | `aiReadHoursTable` | `ANTHROPIC_MODEL` | 4000 | `{entries:[{date, inTime, outTime}]}` from a timesheet photo |
 
 - Models: env `ANTHROPIC_MODEL` (default `claude-sonnet-5`) and `ANTHROPIC_ALIGN_MODEL` (default `claude-haiku-4-5-20251001`). Errors: "AI вернул нечитаемый ответ"; "Ответ ИИ обрезан лимитом max_tokens" when `stop_reason` is `max_tokens`.
+- Retries: a busy reply (HTTP 429 or 5xx, an `overloaded_error` / `rate_limit_error` / `api_error` body) or a network error is sent again after 1.5 s, then 4 s (`RETRY_PAUSES`); the third answer is returned as is. Each Anthropic request times out after 90 s.
 - **Prompts** live in `functions-auth/ai_prompts.json` — edit them there. The Israeli and passport rules (page kinds A/B/C and the old laminated card's fixed field order, joined ID groups, Gregorian dates only, holder vs spouse vs child numbers, the MRZ cross-check) are in `readDoc` / `readSefach`.
 - **Tests:** `tests/auth/test_ai.py` compares every request and result with `tests/auth/ai_golden.json`, recorded from the original Apps Script actions. A prompt edit therefore fails `test_same_request` until the golden file is updated for the new prompt.
 
