@@ -39,18 +39,6 @@
         ]
       },
       {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "agent",
-            "if": "Bash(gh pr create*)",
-            "statusMessage": "Checking CLAUDE.md and docs/*.md against this PR's diff...",
-            "prompt": "A GitHub PR was just created for this repo (cd \"$CLAUDE_PROJECT_DIR\" first). Before the user reviews/merges it, check whether the docs need updating to reflect what THIS PR actually changed. Find the PR's base (usually main) and run `git diff origin/main...HEAD -- . ':!CLAUDE.md' ':!docs'` to see the full diff — use that as your primary signal, reading only as much surrounding code as needed to understand it; don't re-scan the whole repo. The docs are split by module: CLAUDE.md is a short index (global rules, the doc table, git workflow) and the current-state description of each part lives in docs/*.md — app-core.md (schedule-manager.html shell, login, fetch wrapper, load/save, uploads, telemetry), workers.md, clients.md, suppliers.md, accounting.md (payroll math, Accounting tab, hours queue, exports, Today tab), admin.md (Admin tab, punch log loading), scan.md (scan-pipeline.js), form101.md (+ form101-field-map.md for field rects), punch.md (worker-punch.html), supplier-portal.md, backend.md (firestore-backend.js, functions-auth, functions/, rules, indexes, tests, CI), apps-script.md (apps-script/Код.js). docs/history.md is the chronological/narrative record. Route each doc-worthy fact to the file that covers that code. The module docs describe ONLY the current state, tersely — what a function does now, its data shapes, who may call it — never a 'first we tried X, then Y' account; that kind of trail (an approach that was tried, found wanting and changed) goes to docs/history.md. A plain 'implemented X' is a module-doc fact, not history. 'Doc-worthy' means: a new or removed function/file/tab, a changed parameter, control flow, data shape or permission of something a doc describes, a bumped service-worker cache version (CLAUDE.md), or a new module (add a docs/*.md file and a row to CLAUDE.md's index). Check what you write against the code: the docs must match the code exactly. If something is doc-worthy, edit the right file(s) and commit+push that fix to the same branch (so it lands in the PR) with a plain message like 'Sync docs with this PR'. If nothing is doc-worthy, do nothing and exit quietly — do not touch any doc, do not comment on the PR, do not merge anything.",
-            "timeout": 180
-          }
-        ]
-      },
-      {
         "matcher": "mcp__github__create_pull_request",
         "hooks": [
           {

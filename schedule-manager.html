@@ -668,12 +668,9 @@
            openMyFirmForm() rather than re-implementing any of them. -->
       <div id="adminPane_firms" style="display:none">
         <div style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-          <button class="btn sm" onclick="runFirestoreMigration()"><i class="ti ti-database-export"></i> Copy to Firestore</button>
-          <button class="btn sm" onclick="runFileMove()"><i class="ti ti-files"></i> Move files to Firebase</button>
           <button class="btn sm" onclick="toggleSuperadminAccounting()"><i class="ti ti-cash"></i> Payable summary (all firms)</button>
           <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> New firm</button>
         </div>
-        <div id="firestoreMigrationWrap" style="display:none;margin-bottom:16px"></div>
         <div id="superadminAccountingWrap" style="display:none;margin-bottom:16px"></div>
         <div id="adminFirmsList" style="display:flex;flex-direction:column;gap:8px"></div>
       </div>
@@ -864,8 +861,8 @@
   </div>
 </div>
 
-<!-- Super-admin diagnostics: last ~100 rows of the shared Errors sheet (every
-     firm's client-side errors + authFailure reports land in one sheet with
+<!-- Super-admin diagnostics: last ~100 rows of the shared errors collection
+     (every firm's client-side errors land in one collection with
      no tenantId column — see loadErrors()'s own comment server-side for why
      this screen is superadmin-only). Overlays whatever screen was showing;
      "Назад" just hides it again, no re-render of the underlying screen needed. -->
@@ -1137,19 +1134,18 @@ function docUploadFailedBadgeHtml(w){
 // One status per worker, used by the Workers list/cards badge, the cards'
 // "Documents" row, the worker card, and the "Documents incomplete" filter.
 //   missing — ID/passport number (workerDocId), Form 101 PDF (w.docUrl), the
-//     raw scan (w.assetsFileId — the Drive sidecar is only ever written when a
+//     raw scan (w.assetsFileId — the scan sidecar is only ever written when a
 //     scan image exists), signature and, for an Israeli ID, the ספח page.
 //     Signature/ספח are only known for documents saved since these flags
 //     existed (w.docHasSignature / w.docExtraPages, set by aiFillForm101() on
 //     every successful save); older records are treated as unknown, not missing.
 //   expiry — w.docExpiry (ID/passport validity) already past → error; within
 //     DOC_EXPIRY_WARN_MONTHS → warning.
-//   failed — w.docUploadFailed (last Drive upload failed) → error.
+//   failed — w.docUploadFailed (last upload failed) → error.
 const DOC_EXPIRY_WARN_MONTHS = 3;
 // Worker documents uploaded from the worker card (w.docs, 2026-10-01):
 // [{id, type, name, fileId, url, mediaType, uploadedAt, expiry:'YYYY-MM-DD'|''}].
-// Files live in Drive (Workers/Documents, saveWorkerFile), or in Firestore
-// mode in Storage (tenants/<t>/workers/<id>/docs, stage 7b); only this
+// Files live in Storage (tenants/<t>/workers/<id>/docs); only this
 // metadata is on the worker record. Warn this many days before expiry.
 const WORKER_DOC_TYPES = {contract:'Contract', visa:'Visa', work_permit:'Work permit', other:'Other'};
 const WORKER_DOC_WARN_DAYS = {contract:30, visa:60, work_permit:60, other:30};
@@ -1863,7 +1859,7 @@ function addChildRow(){ __wChildren.push({name:'',idNo:'',dob:''}); renderChildr
 function removeChildRow(i){ __wChildren.splice(i,1); renderChildrenRows(); }
 
 function showWorkerModal(w){
-  warmCloudFunctions([FORM101_FN_URL,GS_UPLOAD_PROXY_URL]); // saving builds and uploads the Form 101
+  warmCloudFunctions([FORM101_FN_URL]); // saving builds the Form 101
   // A worker created before docGiven/docSurname existed (every worker predating
   // today's unified-modal split) only ever had a single `name` field — never
   // had docGiven/docSurname written to it. Without this fallback, opening such
@@ -2197,8 +2193,8 @@ async function saveWorker(){
     avatarB64:__wAvatarB64,docType:__wDocType};
   // Duplicate guard for a NEW worker (checked by document number — unique to
   // one person, unlike a name). Never creates a second record for the same
-  // document: a duplicate's Form 101 upload would dedupe by that number in
-  // Drive and trash the original worker's PDF. Instead offer to fold what was
+  // document: two records would carry two diverging Form 101s for one
+  // person. Instead offer to fold what was
   // entered into the existing worker — only non-empty values overwrite, the
   // existing schedule/status/color are kept, clients are merged — and carry
   // on through the normal edit path below.
@@ -2220,7 +2216,7 @@ async function saveWorker(){
     const prevW=workers[editingWorkerIdx];
     const isId=prevW.docType!=='passport';
     // Fields that end up printed on this worker's Form-101 PDF — if any of
-    // them actually changed, the Drive copy (if one exists) is now stale
+    // them actually changed, the stored copy (if one exists) is now stale
     // relative to what's on screen. Trigger a background regenerate so the
     // manager never has to remember to re-upload by hand after a routine
     // data correction. JSON.stringify handles docChildren (an array) too.
@@ -2235,7 +2231,7 @@ async function saveWorker(){
     // session (rescanWorkerDoc() -> openWorkerModalFromScan() set this a
     // few screens ago) — the manager just captured brand-new photos, so the
     // regenerated PDF must actually use them (window.__aiScanImage/
-    // __aiPacketOtherPages, upload path), not the Drive sidecar's OLD images
+    // __aiPacketOtherPages, upload path), not the Storage sidecar's OLD images
     // from whenever this worker was first scanned. Without this branch every
     // rescan silently fell through to the plain-edit path below, which reads
     // the sidecar and discards the fresh scan entirely — the manager could
@@ -2250,7 +2246,7 @@ async function saveWorker(){
     }
     closeModal('workerOverlay'); render(); autoSave();
     // regenerateWorkerDoc() (not autoUploadWithRetry) — it sources the scan
-    // image/signature from the Drive sidecar rather than the live
+    // image/signature from the Storage sidecar rather than the live
     // window.__aiScanImage global, which could belong to an unrelated scan
     // session the manager has open elsewhere right now.
     if(changed){
@@ -2299,7 +2295,7 @@ async function saveWorker(){
 // scan modal's own renderScanProgress() — see its own comment) — this used
 // to be a plain indeterminate `.progress-bar` for the whole wait; now it's a
 // real `.progress-bar-real` percentage, advanced by aiFillForm101() itself
-// at its two real phases (PDF build, then the actual Google Drive upload)
+// at its two real phases (PDF build, then the actual Storage upload)
 // instead of sitting static the whole time.
 function renderWorkerUploadProgress(label,pct){
   const m=document.getElementById('workerModal');
@@ -2345,7 +2341,7 @@ function deleteWorker(wi){
   const w=workers[wi];
   if(!confirm('Remove "'+w.name+'"?'))return;
   const n=w.name;
-  const fileId=w.docFileId||extractDriveFileId(w.docUrl);
+  const fileId=w.docFileId;
   const assetsFileId=w.assetsFileId;
   const docFileIds=(w.docs||[]).map(d=>d.fileId).filter(Boolean);
   workers.splice(wi,1);
@@ -2888,8 +2884,8 @@ function openWorkerCard(wi){
 }
 
 // --- Worker documents (contract / visa / work permit / other) -----------------
-// Separate from the Form 101 scan: uploaded here, stored in Drive
-// (saveWorkerFile -> Workers/Documents), listed on the worker card with
+// Separate from the Form 101 scan: uploaded here, stored in Storage
+// (saveWorkerFile -> tenants/<t>/workers/<id>/docs), listed on the worker card with
 // their expiry. Expiry reminders flow through workerDocStatus() (badges,
 // the "expiring" filter) and the Today tab's expiry cards.
 function workerDocsSectionHtml(w){
@@ -2950,8 +2946,8 @@ async function submitWorkerDocUpload(){
     const prepared=await Promise.all(files.map(fileForStorage));
     const loaded=new Array(prepared.length).fill(0), totals=new Array(prepared.length).fill(0);
     const tick=()=>{ const t=totals.reduce((a,b)=>a+b,0); status.textContent='Uploading… '+(t?Math.round(100*loaded.reduce((a,b)=>a+b,0)/t):0)+'%'; };
-    const results=await Promise.all(prepared.map((f,i)=>xhrPostJSON(GS_UPLOAD_PROXY_URL,
-      {action:'saveWorkerFile',secret:API_SECRET,...gsAuth(),workerId:w.id,fileBase64:f.b64,fileName:f.fileName,mimeType:f.mediaType},
+    const results=await Promise.all(prepared.map((f,i)=>uploadWorkerFile(
+      {action:'saveWorkerFile',...gsAuth(),workerId:w.id,fileBase64:f.b64,fileName:f.fileName,mimeType:f.mediaType},
       (l,t)=>{ loaded[i]=l; totals[i]=t; tick(); })));
     const failed=results.filter(r=>!r||r.error);
     const now=new Date().toISOString();
@@ -3098,7 +3094,7 @@ function parseHoursExcelFile(file){
 // caller to route through the approval queue below.
 // One already-prepared page image ({b64,mediaType}) -> its shift entries.
 async function parseHoursImagePage(pg){
-  const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'aiReadHoursTable', ...gsAuth(), image:pg.b64, mediaType:pg.mediaType }) });
+  const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'aiReadHoursTable', ...gsAuth(), image:pg.b64, mediaType:pg.mediaType }) });
   const json = await res.json();
   if(json.error) throw new Error(json.error);
   return json.entries||[];
@@ -3108,7 +3104,7 @@ async function submitHoursImportBatch(){
   if(!__hoursImportEntries.length) return;
   const entries = __hoursImportEntries.map(en=>({ workerId: __hoursImportWorkerId, clientId, date: en.date, inTime: en.inTime, outTime: en.outTime||'' }));
   try{
-    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'savePendingHoursBatch', ...gsAuth(), entries, fileName: __hoursImportFileName }) });
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'savePendingHoursBatch', ...gsAuth(), entries, fileName: __hoursImportFileName }) });
     const json = await res.json();
     if(json.error){ showToast(json.error); return; }
     showToast(json.count+' shift(s) uploaded — pending approval');
@@ -3354,7 +3350,6 @@ function saveManualPunch(cid){
   log.push(entry);
   savePunchLog(log);
 
-  // Sync to Google Sheets
   gsSavePunch(entry);
 
   closeModal('manualPunchOverlay');
@@ -3614,169 +3609,53 @@ function gsAuthQuery(){
   return Object.keys(a).map(k => '&' + k + '=' + encodeURIComponent(a[k])).join('');
 }
 
-// Session can expire (or get invalidated) while the tab stays open; every
-// call site above just swallows a failed save/load rather than knowing what
-// to do about it. Rather than thread a check through all dozen fetch(GS_URL,
-// ...) call sites, wrap fetch itself once: any GS_URL response carrying the
-// backend's exact "session expired" error clears the stale session and
-// reloads straight back to the login screen instead of silently failing.
-//
-// Retries before giving up (added 2026-09-21, widened 2026-09-27): a scan
-// does a burst of several GS_URL calls back to back — aiDetectAlign,
-// aiReadDoc/aiReadSefach, and verifyDigitFields() fires multiple
-// aiVerifyField calls in PARALLEL via Promise.all — and a single transient
-// hiccup on any one of them (not an actually-dead token, which doesn't
-// change from one request to the next a few hundred ms apart) used to
-// immediately nuke the whole session and kick the user to the login screen
-// mid-scan, losing all progress. Now the exact same request is retried up
-// to twice more (3 attempts total), with a short delay before the last
-// retry — a single immediate retry (the 2026-09-21 fix) wasn't always
-// enough to clear whatever the underlying hiccup was (reported 2026-09-27:
-// still happening on the very first scan request right after a fresh
-// login, i.e. nowhere near real 6h token expiry); a small delay gives a
-// transient backend/network blip more time to pass. Only a third
-// SESSION_EXPIRED_ERROR in a row is treated as the session genuinely being
-// gone. Every rejection (including ones that recover on retry) is reported
-// via reportAuthFailure() below — an unauthenticated diagnostic call (since
-// logError itself requires a valid session, which is exactly what's in
-// question) — so a real recurrence leaves a trail in the Errors sheet
-// instead of being invisible.
+// The data-call dispatcher. Every fetch(API_URL…) call in this file (and in
+// scan-pipeline.js) is answered by firestore-backend.js handleAction() —
+// Firestore, Storage, or the users_admin / ai_read functions it calls — and
+// comes back as a JSON Response, so the call sites read it like any reply.
+// A reply with the exact "session expired" text (the functions refused the
+// Firebase ID token: signed out, revoked after a rights change) clears the
+// session and returns to the login screen. A call slower than
+// SLOW_API_CALL_MS goes to the Timings pane as kind "gs:<action>".
 const SESSION_EXPIRED_ERROR = 'Сессия истекла или недействительна — войдите заново';
-const SESSION_RETRY_DELAYS_MS = [0, 500]; // attempt 2 immediate, attempt 3 after a short pause
 (function(){
   const _origFetch = window.fetch.bind(window);
-  // Fire-and-forget, unauthenticated diagnostic report of a rejected token —
-  // see authFailure's own comment server-side for why this can't just go
-  // through the normal logError action (that one requires a valid session,
-  // which is exactly what's in question here). failedAction is read from the
-  // ORIGINAL request's own body so the Errors sheet shows which endpoint
-  // actually got rejected (aiReadDoc vs. a routine saveSchedule, etc.).
-  function reportAuthFailure(opts, attempt, outcome, url){
-    let failedAction, sentToken, bodyKB;
-    try{
-      const raw=(opts&&opts.body)||'';
-      bodyKB=Math.round(raw.length/1024);
-      const b=JSON.parse(raw||'{}'); failedAction=b.action; sentToken=b.token;
-    }catch(e){}
-    if(!failedAction && url){ try{ const u=new URL(url); failedAction=u.searchParams.get('action'); sentToken=u.searchParams.get('token'); }catch(e){} }
-    try{
-      _origFetch(GS_URL,{method:'POST',body:JSON.stringify({
-        action:'authFailure', secret:API_SECRET,
-        failedAction: failedAction, attempt: attempt, outcome: outcome, page: location.pathname,
-        // Diagnostics: the server re-checks this token and logs WHY it failed
-        // (missing / bad signature / expired / malformed) — never logs it.
-        sentToken: sentToken||'', bodyKB: bodyKB, hasSession: !!getSession()
-      })}).catch(()=>{});
-    }catch(e){}
-  }
-  // Retry with whatever token is stored NOW (it may have been refreshed by a
-  // concurrent response since this request was built), not the original.
-  function withCurrentToken(url, opts){
-    const s=getSession(); if(!s) return {url, opts};
-    try{
-      if(opts && typeof opts.body==='string'){
-        const b=JSON.parse(opts.body);
-        if(b && 'token' in b){ b.token=s.token; return {url, opts:{...opts, body:JSON.stringify(b)}}; }
-      }
-      if(typeof url==='string' && url.indexOf('token=')!==-1){
-        const u=new URL(url); u.searchParams.set('token', s.token); return {url:u.toString(), opts};
-      }
-    }catch(e){}
-    return {url, opts};
-  }
-  // url/opts are threaded through explicitly (not shared/mutable state) so
-  // this stays correct when several GS_URL calls are in flight at once
-  // (verifyDigitFields() fires multiple aiVerifyField calls in parallel).
-  function checkExpired(url, opts, res, attempt){
-    return res.clone().json().then(json => {
-      if (!(json && json.error === SESSION_EXPIRED_ERROR && getSession())){
-        applyRefreshedToken(json); // sliding expiration — see its own comment
-        return res;
-      }
-      if (attempt < SESSION_RETRY_DELAYS_MS.length){
-        const delay = SESSION_RETRY_DELAYS_MS[attempt];
-        const retry = () => { const r=withCurrentToken(url, opts); return _origFetch(r.url, r.opts).then(retryRes => checkExpired(r.url, r.opts, retryRes, attempt+1)); };
-        reportAuthFailure(opts, attempt, 'retrying', url);
-        return delay > 0 ? new Promise(r=>setTimeout(r, delay)).then(retry) : retry();
-      }
-      reportAuthFailure(opts, attempt, 'logged-out', url);
-      clearSession();
-      showToast('Сессия истекла — войдите заново');
-      setTimeout(() => location.reload(), 1200);
-      return res;
-    }).catch(()=>res);
-  }
-  // Telemetry calls must never trigger the session-expired logout flow.
-  const NO_LOGOUT_ACTIONS = ['logError','authFailure','login','logTiming','logBatch'];
-  // Every Apps Script call is watched (2026-10-01): one slower than
-  // SLOW_GS_CALL_MS is sent to the Timings sheet as kind "gs:<action>", and a
-  // reply that is an HTML page instead of JSON (Apps Script's own error page —
-  // quota, timeout, "too many simultaneous invocations") goes to the Errors
-  // sheet with that page's text, not just "Unexpected token '<'".
-  const SLOW_GS_CALL_MS = 2500;
-  function gsActionOf(url, opts){
-    try{ const a=JSON.parse((opts&&opts.body)||'{}').action; if(a) return a; }catch(e){}
-    try{ return new URL(url).searchParams.get('action')||'loadSchedule'; }catch(e){ return ''; }
-  }
-  function watchGsReply(action, t0, res){
-    if(NO_LOGOUT_ACTIONS.indexOf(action)!==-1) return;
-    const ms=Date.now()-t0;
-    if(ms>=SLOW_GS_CALL_MS) try{ reportTiming('gs:'+action, ms, {status:res.status}); }catch(e){}
-    const ct=(res.headers&&res.headers.get('content-type'))||'';
-    if(ct && !/json|javascript/i.test(ct)){
-      res.clone().text().then(t=>{
-        const title=(t.match(/<title>([^<]*)<\/title>/i)||[])[1]||'';
-        const body=t.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi,' ').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
-        reportError('GS '+action+' returned HTML (HTTP '+res.status+', '+ms+'ms): '+(title?title+' — ':'')+body.slice(0,300),'gsHtml','');
-      }).catch(()=>{});
-    }
-  }
-  // Firestore mode (docs/firestore-plan.md stage 5): these Apps Script actions —
-  // the Admin panes, telemetry, punch-month clearing, the hours queue, and the
-  // super-admin summary's per-firm loads — are answered by firestore-backend.js
-  // handleAction() (Firestore, or the users_admin function) in the same JSON
-  // shape, so their call sites stay as they are. A null answer (telemetry
-  // before sign-in) falls through to Apps Script.
-  const FS_ACTIONS = ['listTenants','setTenantActive','deleteTenant','createUser','updateTenant','loadTenantProfile',
-    'listUsers','createTenantUser','updateUser','resetUserPassword','deleteUser','loadErrors','loadTimings',
-    'loadSchedule','loadPunchLog','deletePunchesByMonths','savePendingHoursBatch','loadPendingHours',
-    'approvePendingHours','rejectPendingHours','logBatch','logError','logTiming',
-    // Stage 7b: a file whose id is a Storage path (Drive ids fall through).
-    'loadWorkerAssets','deleteWorkerDoc',
-    // Stage 7: the AI document reads go to the ai_read function.
-    'aiReadDoc','aiReadSefach','aiDetectAlign','aiVerifyField','aiVerifyFields','aiReadHoursTable'];
-  function gsParams(url, opts){
+  // Telemetry and login never trigger the session-expired logout.
+  const NO_LOGOUT_ACTIONS = ['logError','login','logTiming','logBatch'];
+  const SLOW_API_CALL_MS = 2500;
+  function apiParams(url, opts){
     try{ if(opts && typeof opts.body === 'string') return JSON.parse(opts.body); }catch(e){}
     try{ return Object.fromEntries(new URL(url).searchParams); }catch(e){ return {}; }
   }
   const jsonResponse = obj => new Response(JSON.stringify(obj), {status:200, headers:{'Content-Type':'application/json'}});
-  async function fsRoute(action, url, opts){
+  async function route(url, opts){
+    const params = apiParams(url, opts);
+    const action = params.action || 'loadSchedule';
     const s = getSession() || {};
     const ctx = {role: s.role, username: s.username, tenantId: s.viewingTenantId || s.tenantId};
-    try{
-      const b = await loadFirestoreBackend();
-      const json = await b.handleAction(action, gsParams(url, opts), ctx, () => _origFetch(url, opts).then(r => r.json()));
-      return json == null ? null : jsonResponse(json);
-    }catch(e){
-      console.warn('Firestore ' + action + ' failed:', e);
-      return jsonResponse({error: 'Firestore: ' + ((e && e.message) || e)});
+    const t0 = Date.now();
+    let json;
+    try{ json = await (await loadFirestoreBackend()).handleAction(action, params, ctx); }
+    catch(e){ console.warn(action + ' failed:', e); json = {error: 'Firestore: ' + ((e && e.message) || e)}; }
+    if(json == null) json = {error: 'Unknown action: ' + action};
+    const quiet = NO_LOGOUT_ACTIONS.indexOf(action) !== -1;
+    const ms = Date.now() - t0;
+    if(!quiet && ms >= SLOW_API_CALL_MS) try{ reportTiming('gs:' + action, ms, {}); }catch(e){}
+    if(!quiet && json && json.error === SESSION_EXPIRED_ERROR && getSession()){
+      clearSession();
+      showToast('Сессия истекла — войдите заново');
+      setTimeout(() => location.reload(), 1200);
     }
+    return jsonResponse(json);
   }
   window.fetch = function(url, opts){
-    const isGs = typeof url === 'string' && url.indexOf(GS_URL) === 0;
-    let isGsCall = isGs, action = '';
-    if(isGs){ action=gsActionOf(url, opts); if(NO_LOGOUT_ACTIONS.indexOf(action)!==-1) isGsCall=false; }
-    if(isGs && BACKEND === 'firestore' && FS_ACTIONS.indexOf(action) !== -1){
-      return fsRoute(action, url, opts).then(res => res || _origFetch(url, opts));
-    }
-    const t0=Date.now();
-    return _origFetch(url, opts).then(res => {
-      if(isGs) try{ watchGsReply(action, t0, res); }catch(e){}
-      return isGsCall ? checkExpired(url, opts, res, 0) : res;
-    });
+    if(typeof url === 'string' && url.indexOf(API_URL) === 0) return route(url, opts);
+    return _origFetch(url, opts);
   };
 })();
 
+// The login Cloud Function checks the password and signs this device in to
+// Firebase (firestore-backend.js login()); the session keeps who that is.
 async function submitLogin(){
   const username = document.getElementById('loginUsername').value.trim();
   const password = document.getElementById('loginPassword').value;
@@ -3785,70 +3664,23 @@ async function submitLogin(){
   errEl.textContent = '';
   if(!username || !password){ errEl.textContent = 'Введите логин и пароль'; return; }
   btn.disabled = true; btn.textContent = 'Вхожу…';
-  if(BACKEND === 'firestore'){
-    try{ await submitLoginFirestore(username, password, errEl); }
-    finally{ btn.disabled = false; btn.textContent = 'Войти'; }
-    return;
-  }
   try{
     const t0 = Date.now();
-    // One retry (2026-10-01): an Apps Script error page or a dropped
-    // connection used to end in "Сеть недоступна" at the first attempt.
-    let json = null, lastErr = '';
-    for(let attempt=0; attempt<2 && !json; attempt++){
-      if(attempt){ btn.textContent = 'Повторяю…'; await new Promise(r=>setTimeout(r,1500)); }
-      try{
-        const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'login', username, password }) });
-        const text = await res.text();
-        try{ json = JSON.parse(text); }
-        catch(e){ lastErr = 'Google вернул ошибку (HTTP '+res.status+')'; reportError('login returned HTML (HTTP '+res.status+', '+(Date.now()-t0)+'ms): '+text.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,300),'login',''); }
-      }catch(e){ lastErr = 'Сеть недоступна'; }
-    }
-    if(!json){ errEl.textContent = lastErr + ' — попробуйте ещё раз'; return; }
+    let backend;
+    try{ backend = await loadFirestoreBackend(); }
+    catch(e){ errEl.textContent = 'Не удалось загрузить Firebase — проверьте сеть'; return; }
+    let fb;
+    try{ fb = await backend.login(username, password); }
+    catch(e){ errEl.textContent = 'Сеть недоступна — попробуйте ещё раз'; return; }
+    if(!fb || fb.error){ errEl.textContent = (fb && fb.error) || 'Не удалось войти'; return; }
     try{ sessionStorage.setItem('pendingLoginTiming', JSON.stringify({t0, loginMs:Date.now()-t0, pingMs:window.__pingMs==null?null:window.__pingMs, pingDone:window.__pingMs!=null})); }catch(e){}
-    if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось войти'; return; }
-    // A super-admin's login reply already carries the Firms list — cached so
-    // the Firms screen right after the reload renders without another call.
-    if(Array.isArray(json.tenants)) saveFirmsCache(json.tenants);
     saveSession({
-      token: json.token, role: json.role, tenantId: json.tenantId, username: json.username,
-      tenantProfile: json.tenantProfile, expiresAt: json.expiresAt,
-      // permissions/supplierId added 2026-10-02 (Admin/Roles plan stage 3
-      // server-side, stage 8 client-side) — see hasPermission()'s own comment.
-      permissions: json.permissions, supplierId: json.supplierId,
-      viewingTenantId: json.tenantId, // a super-admin (tenantId null) picks one on the Firms screen
+      uid: fb.uid, role: fb.role, tenantId: fb.tenantId, username: fb.username, tenantProfile: fb.tenantProfile,
+      permissions: fb.permissions, supplierId: fb.supplierId,
+      viewingTenantId: fb.tenantId, // a super-admin (tenantId null) picks one on the Firms screen
     });
     location.reload();
-  }catch(e){ errEl.textContent = 'Сеть недоступна, попробуйте ещё раз'; }
-  finally{ btn.disabled = false; btn.textContent = 'Войти'; }
-}
-
-// Firestore mode: the login Cloud Function signs this device in to Firebase
-// and also hands out an Apps Script session token (gsToken, signed with Apps
-// Script's own secret) for the parts not moved yet — AI scan, Drive
-// documents. Only when it can't (no secret configured) does the app log in
-// to Apps Script as well, the slow path.
-async function submitLoginFirestore(username, password, errEl){
-  const t0 = Date.now();
-  let backend;
-  try{ backend = await loadFirestoreBackend(); }
-  catch(e){ errEl.textContent = 'Не удалось загрузить Firebase — проверьте сеть'; return; }
-  let fb;
-  try{ fb = await backend.login(username, password); }
-  catch(e){ errEl.textContent = 'Сеть недоступна — попробуйте ещё раз'; return; }
-  if(!fb || fb.error){ errEl.textContent = (fb && fb.error) || 'Не удалось войти'; return; }
-  let gs = fb.gsToken ? {token: fb.gsToken, expiresAt: fb.gsExpiresAt} : null;
-  if(!gs){
-    try{ gs = await (await fetch(GS_URL, {method:'POST', body: JSON.stringify({action:'login', username, password})})).json(); }catch(e){}
-  }
-  try{ sessionStorage.setItem('pendingLoginTiming', JSON.stringify({t0, loginMs:Date.now()-t0, pingMs:window.__pingMs==null?null:window.__pingMs, pingDone:window.__pingMs!=null})); }catch(e){}
-  saveSession({
-    backend: 'firestore', uid: fb.uid,
-    token: (gs && gs.token) || '', expiresAt: (gs && gs.expiresAt) || Date.now() + 6*3600e3,
-    role: fb.role, tenantId: fb.tenantId, username: fb.username, tenantProfile: fb.tenantProfile,
-    permissions: fb.permissions, supplierId: fb.supplierId, viewingTenantId: fb.tenantId,
-  });
-  location.reload();
+  }finally{ btn.disabled = false; btn.textContent = 'Войти'; }
 }
 
 // A super-admin drilling into one firm's normal view — every subsequent API
@@ -3945,18 +3777,13 @@ function cacheTenantProfile(tenantId, profile){
 // Called once at startup in place of the old unconditional init block.
 function gateApp(runInitApp){
   let s = getSession();
-  // A session made on the other backend (the switch was flipped) has no
-  // Firebase sign-in, or no reason to keep one: log in again.
-  if(s && (s.backend === 'firestore') !== (BACKEND === 'firestore')){ clearSession(); s = null; }
   if(!s){
     document.getElementById('loginScreen').style.display = 'flex';
-    // Wake a cold Apps Script instance while the user types, so the login
-    // request itself doesn't pay the cold start (doGet 'ping', no auth).
+    // Wake a cold login function while the user types, so the login request
+    // itself doesn't pay the cold start.
     const pingT0=Date.now();
-    const ping = BACKEND === 'firestore'
-      ? fetch(LOGIN_FN_URL, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{"ping":true}'})
-      : fetch(GS_URL+'?action=ping');
-    ping.then(()=>{ window.__pingMs=Date.now()-pingT0; }).catch(()=>{});
+    fetch(LOGIN_FN_URL, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{"ping":true}'})
+    .then(()=>{ window.__pingMs=Date.now()-pingT0; }).catch(()=>{});
     return;
   }
   if(s.role === 'superadmin' && !s.viewingTenantId){
@@ -3986,8 +3813,7 @@ function renderAccountControl(s){
       ? (s.viewingTenantName || s.viewingTenantId || 'Super-admin')
       : ((profile && profile.companyName) || '');
     labelHost.innerHTML = '<i class="ti ti-user"></i> ' + esc(s.username || '')
-      + (firm ? ' · <span>' + esc(firm) + '</span>' : '')
-      + (BACKEND === 'firestore' ? ' · <b style="color:var(--amber)">Firestore</b>' : '');
+      + (firm ? ' · <span>' + esc(firm) + '</span>' : '');
   }
   if(!host) return;
   const incomplete = firmProfileMissing().length > 0;
@@ -4050,7 +3876,7 @@ async function renderFirmsList(targetId){
   if(cached){ renderFirmsRows(listEl, cached); if(isLanding) markFirstContent(); }
   else listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
   try{
-    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'listTenants', ...gsAuth() }) });
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'listTenants', ...gsAuth() }) });
     const json = await res.json();
     if(!json || json.error){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Ошибка загрузки')+'</div>'; return; }
     const tenants = json.tenants || [];
@@ -4101,12 +3927,12 @@ function setupAdminPaneBar(){
 }
 // Loads the Users list in the background as soon as the Admin tab opens
 // (2026-10-01), so the Users pane usually draws at once instead of waiting
-// for a slow Apps Script reply. renderAdminUsers() shares the same request
+// for a slow reply. renderAdminUsers() shares the same request
 // while it is still in flight, so opening Users early never sends a second one.
 let __usersFetch=null;
 function fetchAdminUsers(){
   if(__usersFetch) return __usersFetch;
-  __usersFetch=fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'listUsers',...gsAuth()})})
+  __usersFetch=fetch(API_URL,{method:'POST',body:JSON.stringify({action:'listUsers',...gsAuth()})})
     .then(res=>res.json())
     .finally(()=>{ __usersFetch=null; });
   return __usersFetch;
@@ -4215,7 +4041,7 @@ function openCreateUserForm(){
   document.getElementById('userFormOverlay').classList.add('open');
 }
 async function openEditUserForm(id){
-  const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'listUsers', ...gsAuth() }) });
+  const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'listUsers', ...gsAuth() }) });
   const json = await res.json();
   const u = (json.users||[]).find(x => x.id === id);
   if(!u){ showToast('User not found'); return; }
@@ -4245,7 +4071,7 @@ async function submitUserForm(){
     if(__editingUserId){
       const body = { action:'updateUser', ...gsAuth(), id: __editingUserId, active: true };
       if(role==='supplier') body.supplierId = supplierId; else body.permissions = permissions;
-      const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify(body) });
+      const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(body) });
       const json = await res.json();
       if(!json || json.error){ errEl.textContent = (json&&json.error)||'Save failed'; return; }
     } else {
@@ -4254,7 +4080,7 @@ async function submitUserForm(){
       if(!username || !password){ errEl.textContent = 'Username and password required'; return; }
       const body = { action:'createTenantUser', ...gsAuth(), username, password, role };
       if(role==='supplier') body.supplierId = supplierId; else body.permissions = permissions;
-      const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify(body) });
+      const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(body) });
       const json = await res.json();
       if(!json || json.error){ errEl.textContent = (json&&json.error)||'Create failed'; return; }
     }
@@ -4268,7 +4094,7 @@ async function resetUserPasswordPrompt(id){
   const password = prompt('New password (min. 8 characters):');
   if(!password) return;
   try{
-    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'resetUserPassword', ...gsAuth(), id, password }) });
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'resetUserPassword', ...gsAuth(), id, password }) });
     const json = await res.json();
     if(!json || json.error){ showToast((json&&json.error)||'Failed'); return; }
     showToast('Password updated');
@@ -4277,7 +4103,7 @@ async function resetUserPasswordPrompt(id){
 async function deleteUserConfirm(id, username){
   if(!confirm('Delete user "'+username+'"?')) return;
   try{
-    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'deleteUser', ...gsAuth(), id }) });
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'deleteUser', ...gsAuth(), id }) });
     const json = await res.json();
     if(!json || json.error){ showToast((json&&json.error)||'Failed'); return; }
     showToast('User deleted');
@@ -4307,9 +4133,8 @@ function toggleSuperadminAccounting(){
   if(__superadminAccountingOpen) renderSuperadminAccounting();
 }
 async function fetchForTenant(action, tenantId){
-  const s = getSession();
-  const q = 'token='+encodeURIComponent(s.token)+'&asTenantId='+encodeURIComponent(tenantId)+'&action='+action;
-  const res = await fetch(GS_URL+'?'+q);
+  const q = 'asTenantId='+encodeURIComponent(tenantId)+'&action='+action;
+  const res = await fetch(API_URL+'?'+q);
   return res.json();
 }
 async function renderSuperadminAccounting(){
@@ -4365,101 +4190,6 @@ async function renderSuperadminAccounting(){
   </div>`;
 }
 
-// Firestore migration (docs/firestore-plan.md stage 3, super-admin): copies every
-// firm from the sheets into Firestore through the migrate_from_sheets function
-// (functions-auth/migrate.py) and shows sheet vs Firestore counts per firm.
-// The sheets are only read, the app keeps running on them, and a re-run just
-// brings Firestore level with the sheets again.
-const MIGRATE_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/migrate_from_sheets';
-async function runFirestoreMigration(){
-  const s = getSession();
-  if(!s || s.role !== 'superadmin') return;
-  // Since the switch (stage 8) the app writes to Firestore, so a copy now
-  // replaces everything entered since then with the older sheet data.
-  if(BACKEND === 'firestore'){
-    const typed = prompt('The app now works on Firestore. Copying from Google Sheets REPLACES the Firestore data with the older sheet data — everything entered since the switch is lost.\n\nType REPLACE to copy anyway.');
-    if(typed !== 'REPLACE') return;
-  } else if(!confirm('Copy all firms from Google Sheets to Firestore?\n\nThe sheets are not changed and the app keeps working on them. Running it again just updates Firestore.')) return;
-  const wrap = document.getElementById('firestoreMigrationWrap');
-  wrap.style.display = 'block';
-  wrap.innerHTML = '<div style="color:var(--text2);font-size:13px">Copying every firm to Firestore — this can take a minute…</div>';
-  try{
-    const res = await fetch(MIGRATE_FN_URL, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({gsToken: s.token})});
-    const r = await res.json();
-    if(r.error){ wrap.innerHTML = `<div style="color:var(--red);font-size:13px">Copy failed: ${esc(r.error)}</div>`; return; }
-    wrap.innerHTML = migrationReportHtml(r);
-  }catch(e){
-    wrap.innerHTML = `<div style="color:var(--red);font-size:13px">Copy failed: ${esc(e.message||String(e))}</div>`;
-  }
-}
-// Stage 8: moves worker files (Form 101 PDFs, scan sidecars, documents) from
-// Drive to Firebase Storage — migrate_files (functions-auth/filemove.py).
-// Drive is left as it is; a second run moves only what is still on Drive,
-// and a run that hits the time limit says so (partial) — run it again.
-const MIGRATE_FILES_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/migrate_files';
-async function runFileMove(){
-  const s = getSession();
-  if(!s || s.role !== 'superadmin') return;
-  if(!confirm('Copy every worker file (Form 101, scans, documents) from Google Drive to Firebase Storage?\n\nThe files in Drive are not changed or deleted. Running it again moves only what is left.')) return;
-  const wrap = document.getElementById('firestoreMigrationWrap');
-  wrap.style.display = 'block';
-  wrap.innerHTML = '<div style="color:var(--text2);font-size:13px">Moving files to Firebase — this can take a few minutes…</div>';
-  try{
-    const res = await fetch(MIGRATE_FILES_FN_URL, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({gsToken: s.token})});
-    const r = await res.json();
-    if(r.error){ wrap.innerHTML = `<div style="color:var(--red);font-size:13px">File move failed: ${esc(r.error)}</div>`; return; }
-    wrap.innerHTML = fileMoveReportHtml(r);
-    if(BACKEND === 'firestore') loadData(); // the worker records now point at the copies
-  }catch(e){
-    wrap.innerHTML = `<div style="color:var(--red);font-size:13px">File move failed: ${esc(e.message||String(e))}</div>`;
-  }
-}
-function fileMoveReportHtml(r){
-  const td = (v, style) => `<td style="padding:6px 10px;text-align:center;font-size:12px;${style||''}">${v}</td>`;
-  const rows = (r.tenants||[]).map(t => `<tr style="border-bottom:1px solid var(--border)">
-      <td style="padding:6px 10px;font-size:13px;font-weight:600">${t.errors.length?'<i class="ti ti-alert-triangle" style="color:var(--red)"></i>':'<i class="ti ti-check" style="color:var(--green)"></i>'} ${esc(t.name||t.tenantId)}
-        ${t.errors.map(x=>`<div style="font-size:11px;color:var(--red)">${esc(x)}</div>`).join('')}</td>
-      ${td(t.workers)}${td(t.moved)}${td(t.missing, t.missing?'color:var(--amber)':'')}${td(t.left, t.left?'color:var(--amber);font-weight:700':'')}
-    </tr>`).join('');
-  const head = r.partial ? 'Not finished — the time ran out. Press "Move files to Firebase" again to move the rest.'
-    : r.ok ? 'Done — every file found in Drive is now in Firebase.' : 'Done with errors — see the marked rows.';
-  return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:auto">
-    <div style="padding:10px 12px;font-size:13px;font-weight:700;${r.ok&&!r.partial?'color:var(--green)':'color:var(--amber)'}">${head}
-      <span style="color:var(--text2);font-weight:400"> · ${r.seconds}s</span></div>
-    <table style="width:100%;border-collapse:collapse">
-      <thead><tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-        ${['Firm','Workers','Moved','Not in Drive','Left'].map((h,i)=>`<th style="padding:6px 10px;text-align:${i?'center':'left'};font-size:12px;color:var(--text2)">${h}</th>`).join('')}
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table></div>`;
-}
-function migrationReportHtml(r){
-  const KINDS = ['workers','clients','suppliers','punches','pendingHours'];
-  const LABEL = {workers:'Workers', clients:'Clients', suppliers:'Suppliers', punches:'Punches', pendingHours:'Pending hours'};
-  const cell = c => !c ? '<td style="padding:6px 10px;text-align:center;font-size:12px;color:var(--text3)">—</td>'
-    : `<td style="padding:6px 10px;text-align:center;font-size:12px;${c.sheet===c.firestore?'':'color:var(--red);font-weight:700'}">${c.sheet} → ${c.firestore}</td>`;
-  const notes = list => (list||[]).map(x=>`<div style="font-size:11px;margin-top:2px">${esc(x)}</div>`).join('');
-  const rows = (r.tenants||[]).map(t => `<tr style="border-bottom:1px solid var(--border)">
-      <td style="padding:6px 10px;font-size:13px;font-weight:600">${t.ok?'<i class="ti ti-check" style="color:var(--green)"></i>':'<i class="ti ti-alert-triangle" style="color:var(--red)"></i>'} ${esc(t.name||t.tenantId)}
-        <div style="color:var(--red)">${notes(t.errors)}</div><div style="color:var(--amber)">${notes(t.warnings)}</div></td>
-      ${KINDS.map(k=>cell(t[k])).join('')}
-    </tr>`).join('');
-  const u = r.users || {sheet:0, firestore:0};
-  return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:auto">
-    <div style="padding:10px 12px;font-size:13px;font-weight:700;${r.ok?'color:var(--green)':'color:var(--amber)'}">
-      ${r.ok?'Copied — every count matches.':'Copied with problems — see the marked rows.'}
-      <span style="color:var(--text2);font-weight:400"> Logins ${u.sheet} → ${u.firestore} · ${r.seconds}s${r.tenantsRemoved?` · ${r.tenantsRemoved} firm(s) no longer in the sheets removed`:''}</span>
-      <div style="color:var(--red);font-weight:400">${notes(r.errors)}</div><div style="color:var(--amber);font-weight:400">${notes(r.warnings)}</div>
-    </div>
-    <table style="width:100%;border-collapse:collapse">
-      <thead><tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-        <th style="padding:6px 10px;text-align:left;font-size:12px;color:var(--text2)">Firm</th>
-        ${KINDS.map(k=>`<th style="padding:6px 10px;text-align:center;font-size:12px;color:var(--text2)">${LABEL[k]}<div style="font-weight:400;font-size:10px">sheets → Firestore</div></th>`).join('')}
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-  </div>`;
-}
 
 function openErrorsScreen(){
   document.getElementById('errorsScreen').style.display = 'block';
@@ -4489,7 +4219,7 @@ async function loadErrorsList(targetId){
   if(Array.isArray(cached)) renderErrorsRows(listEl, targetId, cached);
   else listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
   try{
-    const res = await fetch(GS_URL + '?action=loadErrors' + gsAuthQuery());
+    const res = await fetch(API_URL + '?action=loadErrors' + gsAuthQuery());
     const json = await res.json();
     if(!json || json.error){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Ошибка загрузки')+'</div>'; return; }
     const rows = json.rows || [];
@@ -4529,7 +4259,7 @@ async function loadTimingsPane(){
   if(Array.isArray(cached)) renderTimingsPane(el,cached);
   else el.innerHTML='<div style="color:var(--text2);font-size:13px">Loading…</div>';
   try{
-    const res=await fetch(GS_URL+'?action=loadTimings'+gsAuthQuery());
+    const res=await fetch(API_URL+'?action=loadTimings'+gsAuthQuery());
     const json=await res.json();
     if(!json||json.error){ if(!cached) el.innerHTML='<div style="color:#ff6b78">'+esc((json&&json.error)||'Load failed')+'</div>'; return; }
     saveAdminCache('timings',json.rows||[]);
@@ -4537,7 +4267,7 @@ async function loadTimingsPane(){
   }catch(e){ if(!cached) el.innerHTML='<div style="color:#ff6b78">Network error</div>'; }
 }
 const TIMING_KIND_LABEL={login:'Login → fresh data',open:'App open',scan:'Scan (camera)',scanFiles:'Scan (files)'};
-// Slow Apps Script calls arrive as kind "gs:<action>" (see watchGsReply()).
+// Slow data calls arrive as kind "gs:<action>" (see the fetch wrapper).
 function timingKindLabel(k){ return TIMING_KIND_LABEL[k] || (String(k).indexOf('gs:')===0 ? 'Slow call: '+k.slice(3) : k); }
 let __timingsRows=[], __timingsSummaryText='';
 function _timingFirmName(id){ const firms=(__firmsCache&&__firmsCache.length)?__firmsCache:(loadFirmsCache()||[]); const t=firms.find(x=>x.tenantId===id); return t?(t.companyName||id):(id||'—'); }
@@ -4553,18 +4283,15 @@ function copyAllTimings(){
   if(!__timingsRows.length){ showToast('Nothing to copy'); return; }
   copyTextToClipboard((__timingsSummaryText?__timingsSummaryText+'\n\n':'')+'Latest:\n'+__timingsRows.slice(0,50).map(timingRowText).join('\n\n'));
 }
-// Firestore-mode measurements are summarized on their own row
-// ("… · Firestore"), next to the same kind on the sheets.
-const _isFsTiming = r => !!(r.details && r.details.backend === 'firestore');
-function _timingKey(r){ return r.kind + (_isFsTiming(r) ? '|fs' : ''); }
-function _timingKeyLabel(key){ const [k, fs] = String(key).split('|'); return timingKindLabel(k) + (fs ? ' · Firestore' : ''); }
+function _timingKey(r){ return r.kind; }
+function _timingKeyLabel(key){ return timingKindLabel(key); }
 function renderTimingsPane(el,rows){
   __timingsRows=rows; __timingsSummaryText='';
   if(!rows.length){ el.innerHTML='<div style="color:var(--text2);font-size:13px">No measurements yet — they appear after the next login, app open or scan.</div>'; return; }
   const weekAgo=Date.now()-7*864e5;
   const recent=rows.filter(r=>new Date(r.when).getTime()>=weekAgo&&!(r.details&&r.details.aborted));
   const baseKinds=['login','open','scan','scanFiles'].filter(k=>recent.some(r=>r.kind===k)).concat([...new Set(recent.map(r=>r.kind).filter(k=>String(k).indexOf('gs:')===0))].sort());
-  const kinds=[]; baseKinds.forEach(k=>{ [k, k+'|fs'].forEach(key=>{ if(recent.some(r=>_timingKey(r)===key)) kinds.push(key); }); });
+  const kinds=baseKinds;
   const firmName=_timingFirmName;
   const KIND_LABEL=TIMING_KIND_LABEL;
   __timingsSummaryText='Last 7 days (median / 90%):\n'+kinds.map(k=>{
@@ -4625,7 +4352,7 @@ async function copyTextToClipboard(text){
 // nextActive is the state to SWITCH TO (opposite of the button's current icon).
 async function toggleTenantActive(tenantId, nextActive){
   try{
-    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'setTenantActive', ...gsAuth(), tenantId, active: nextActive }) });
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'setTenantActive', ...gsAuth(), tenantId, active: nextActive }) });
     const json = await res.json();
     if(!json || json.error){ showToast((json&&json.error)||'Ошибка'); return; }
     showToast(nextActive ? 'Фирма включена' : 'Фирма отключена');
@@ -4634,15 +4361,15 @@ async function toggleTenantActive(tenantId, nextActive){
 }
 
 // Irreversible: deletes the firm's profile, logins, schedule, punch history,
-// push subscriptions, and Drive folder. Two-step confirmation (a plain
+// and every worker file in Storage. Two-step confirmation (a plain
 // confirm(), then typing the exact company name) — matches the weight of
 // what's being destroyed, not just a single accidental click.
 async function confirmDeleteTenant(tenantId, companyName){
-  if(!confirm('Удалить фирму «'+companyName+'» БЕЗВОЗВРАТНО? Будут удалены расписание, история пуанчей, документы в Drive и логины этой фирмы.')) return;
+  if(!confirm('Удалить фирму «'+companyName+'» БЕЗВОЗВРАТНО? Будут удалены расписание, история пуанчей, файлы работников и логины этой фирмы.')) return;
   const typed = prompt('Чтобы подтвердить, введите точное название фирмы: '+companyName);
   if(typed !== companyName){ showToast('Название не совпало — отменено'); return; }
   try{
-    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'deleteTenant', ...gsAuth(), tenantId }) });
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'deleteTenant', ...gsAuth(), tenantId }) });
     const json = await res.json();
     if(!json || json.error){ showToast((json&&json.error)||'Ошибка'); return; }
     showToast('Фирма «'+companyName+'» удалена');
@@ -4715,7 +4442,7 @@ async function openMyFirmForm(){
   document.getElementById('firmEditFormError').textContent = '';
   document.getElementById('editFirmOverlay').classList.add('open');
   try{
-    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'loadTenantProfile', ...gsAuth() }) });
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'loadTenantProfile', ...gsAuth() }) });
     const json = await res.json();
     if(json && json.profile){
       cacheTenantProfile(tenantId, json.profile);
@@ -4741,7 +4468,7 @@ async function submitEditFirm(){
     if(!username || !password){ errEl.textContent = 'Логин и пароль обязательны'; return; }
     btn.disabled = true; btn.textContent = 'Создаю…';
     try{
-      const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({
+      const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({
         action:'createUser', ...gsAuth(), username, password, ...profileFields,
       })});
       const json = await res.json();
@@ -4756,7 +4483,7 @@ async function submitEditFirm(){
   if(!__editingFirmTenantId){ errEl.textContent = 'Фирма не выбрана'; return; }
   btn.disabled = true; btn.textContent = 'Сохраняю…';
   try{
-    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({
       action:'updateTenant', ...gsAuth(),
       tenantId: __editingFirmTenantId,
       ...profileFields,
@@ -4786,75 +4513,31 @@ async function submitEditFirm(){
 // Optimistic concurrency: the savedAt value we last loaded from the DB.
 let lastLoadedSavedAt = null;
 
-// ── Google Sheets Sync ────────────────────────────────────────────────────────
+// ── Data sync (Firestore) ────────────────────────────────────────────────────────
 async function gsSave(data) {
-  // Empty-payload guard: never push an empty dataset (would wipe the sheet).
+  // Empty-payload guard: never push an empty dataset (would delete every record).
   if((!data.workers||!data.workers.length) && (!data.clients||!data.clients.length)){
-    console.warn('Empty payload — skipping GS save');
+    console.warn('Empty payload — skipping save');
     return false;
   }
-  if(BACKEND === 'firestore'){
-    try{ const r = await (await loadFirestoreBackend()).saveSchedule(fsTenantId(), data); return !!(r && r.ok); }
-    catch(e){ console.warn('Firestore save failed:', e); return false; }
-  }
-  try {
-    const res = await fetch(GS_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action: 'saveSchedule', secret: API_SECRET, ...gsAuth(), baseSavedAt: lastLoadedSavedAt, data })
-    });
-    const json = await res.json();
-    if(json && json.conflict){
-      showToast('\u26a0 Данные изменены в другом месте — обновляю');
-      try{ localStorage.removeItem(UNSAVED_KEY()); }catch(e){} // the server version is taken on purpose
-      const fresh = await gsLoad();
-      if(fresh){ applyData(fresh); render(); }
-      return false;
-    }
-    if(json && json.tooLarge){
-      showToast('\u26a0 Слишком много данных для сохранения — обратитесь к разработчику', 6000);
-      return false;
-    }
-    if(json && json.ok && json.savedAt) lastLoadedSavedAt = json.savedAt;
-    return !!(json && json.ok === true);
-  } catch(e) { console.warn('GS save failed:', e); return false; }
+  try{ const r = await (await loadFirestoreBackend()).saveSchedule(fsTenantId(), data); return !!(r && r.ok); }
+  catch(e){ console.warn('Firestore save failed:', e); return false; }
 }
 
-// Retries (2026-10-01): on a phone, picking a file from the camera/gallery
-// can make the browser drop and reload the tab, and the first request right
-// after coming back often fails. One failed attempt used to show
-// "Could not load from GS" at once; now it retries, and if every attempt
-// fails the reason goes to the Errors sheet (`gsLoad.lastError`).
-const GS_LOAD_RETRY_DELAYS_MS=[1000,3000];
+// The firm's workers, clients and suppliers. A failure leaves its reason in
+// gsLoad.lastError and the Errors pane; loadData() then keeps the cache.
 async function gsLoad() {
-  if(BACKEND === 'firestore'){
-    try{
-      const b = await loadFirestoreBackend();
-      // The Firebase sign-in is gone (site data cleared, signed out elsewhere): log in again.
-      if(!b.currentUser()){ clearSession(); location.reload(); return null; }
-      const d = await b.loadSchedule(fsTenantId()); lastLoadedSavedAt = d.savedAt || null; gsLoad.lastError=''; return d; }
-    catch(e){ gsLoad.lastError = 'Firestore: ' + ((e && e.message) || e); reportError('loadSchedule failed: ' + gsLoad.lastError, 'gsLoad', ''); return null; }
-  }
-  let reason='';
-  for(let attempt=0; attempt<=GS_LOAD_RETRY_DELAYS_MS.length; attempt++){
-    if(attempt) await new Promise(r=>setTimeout(r,GS_LOAD_RETRY_DELAYS_MS[attempt-1]));
-    try {
-      const res = await fetch(GS_URL + '?action=loadSchedule' + gsAuthQuery());
-      const text = await res.text();
-      let json=null;
-      try{ json=JSON.parse(text); }catch(e){ reason='HTTP '+res.status+', not JSON: '+text.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,200); continue; }
-      if (json && json.workers){ lastLoadedSavedAt = json.savedAt || null; gsLoad.lastError=''; return json; }
-      reason=(json&&json.error)?String(json.error):'HTTP '+res.status+', no workers in reply';
-      if(json&&json.error===SESSION_EXPIRED_ERROR) break;
-    } catch(e) { reason='network: '+((e&&e.message)||e); console.warn('GS load failed:', e); }
-  }
-  gsLoad.lastError=reason;
-  reportError('loadSchedule failed: '+reason, 'gsLoad', '');
-  return null;
+  try{
+    const b = await loadFirestoreBackend();
+    // The Firebase sign-in is gone (site data cleared, signed out elsewhere): log in again.
+    if(!b.currentUser()){ clearSession(); location.reload(); return null; }
+    const d = await b.loadSchedule(fsTenantId()); lastLoadedSavedAt = d.savedAt || null; gsLoad.lastError=''; return d; }
+  catch(e){ gsLoad.lastError = 'Firestore: ' + ((e && e.message) || e); reportError('loadSchedule failed: ' + gsLoad.lastError, 'gsLoad', ''); return null; }
 }
 
 // Pull all punches from the DB and merge with local (DB is authoritative;
 // unsynced local entries are kept). Lets the admin see every worker's punches.
-// Firestore mode keeps only recent punches: the live listener covers this
+// Only recent punches are kept: the live listener covers this
 // month plus the week before it (punchWindowStart() — enough for "This week"
 // and for a shift that started before the 1st). Older months are read once,
 // when something asks for them (ensurePunchesSince(): a past month's salary,
@@ -4864,11 +4547,11 @@ async function gsLoad() {
 function punchWindowStart(){
   const d=new Date(); d.setDate(1); d.setHours(0,0,0,0); d.setDate(d.getDate()-7); return d;
 }
-let __punchLoadedFrom = null;          // Firestore mode: earliest punch time loaded this app open
+let __punchLoadedFrom = null;          // earliest punch time loaded this app open
 let __punchEnsureChain = Promise.resolve(true);
 const ALL_PUNCHES_FROM = new Date(2000,0,1);
 function ensurePunchesSince(from){
-  if(BACKEND !== 'firestore' || !from) return Promise.resolve(true);
+  if(!from) return Promise.resolve(true);
   __punchEnsureChain = __punchEnsureChain.then(async () => {
     const have = __punchLoadedFrom || punchWindowStart();
     if(from >= have) return true;
@@ -4896,35 +4579,16 @@ function periodPunchStart(period){
   return null; // week / this month: inside the live window
 }
 async function gsLoadPunchLog(){
-  // Firestore: a live listener — the first snapshot is the load, and every
-  // later change (a worker's punch on another device) is merged in at once.
-  if(BACKEND === 'firestore'){
-    try{
-      const since = punchWindowStart();
-      if(!__punchLoadedFrom || __punchLoadedFrom > since) __punchLoadedFrom = since;
-      return await (await loadFirestoreBackend()).listenPunches(fsTenantId(), entries => {
-        mergeRemotePunches(entries);
-        if(currentTab === 'dashboard') renderDashboard();
-      }, since);
-    }catch(e){ console.warn('Firestore punch load failed: ' + ((e && e.message) || e)); return null; }
-  }
-  // Same retries as gsLoad() (2026-10-01): one Apps Script error page used to
-  // drop the whole punch sync for that app open.
-  let reason='';
-  for(let attempt=0; attempt<=GS_LOAD_RETRY_DELAYS_MS.length; attempt++){
-    if(attempt) await new Promise(r=>setTimeout(r,GS_LOAD_RETRY_DELAYS_MS[attempt-1]));
-    try{
-      const res = await fetch(GS_URL + '?action=loadPunchLog' + gsAuthQuery());
-      const text = await res.text();
-      let json=null;
-      try{ json=JSON.parse(text); }catch(e){ reason='HTTP '+res.status+', not JSON'; continue; }
-      if(json && json.entries) return json.entries;
-      reason=(json&&json.error)?String(json.error):'no entries in reply';
-      if(json&&json.error===SESSION_EXPIRED_ERROR) break;
-    }catch(e){ reason='network: '+((e&&e.message)||e); }
-  }
-  console.warn('GS punch load failed: '+reason);
-  return null;
+  // A live listener — the first snapshot is the load, and every later change
+  // (a worker's punch on another device) is merged in at once.
+  try{
+    const since = punchWindowStart();
+    if(!__punchLoadedFrom || __punchLoadedFrom > since) __punchLoadedFrom = since;
+    return await (await loadFirestoreBackend()).listenPunches(fsTenantId(), entries => {
+      mergeRemotePunches(entries);
+      if(currentTab === 'dashboard') renderDashboard();
+    }, since);
+  }catch(e){ console.warn('Firestore punch load failed: ' + ((e && e.message) || e)); return null; }
 }
 async function syncPunchesFromGS(){
   const remote = await gsLoadPunchLog();
@@ -4936,7 +4600,6 @@ function mergeRemotePunches(remote){
   const byId = {};
   remote.forEach(e=>{
     if(!e) return;
-    // Google Sheets can turn a "HH:MM" time cell into a 1899 date-time on round-trip.
     // Rebuild the display time from the authoritative ISO timestamp (admin's local tz),
     // falling back to extracting HH:MM from whatever string we got.
     const d = e.ts ? new Date(e.ts) : null;
@@ -4947,69 +4610,35 @@ function mergeRemotePunches(remote){
     }
     if(e.id!=null) byId[e.id]=e;
   });
-  // Firestore mode: cached rows older than what this app open has loaded are
-  // dropped (they were the old 13-month cache, or loaded on demand last time).
-  const keepFrom = BACKEND === 'firestore' ? (__punchLoadedFrom || punchWindowStart()).getTime() : -Infinity;
+  // Cached rows older than what this app open has loaded are dropped (loaded
+  // on demand last time), so the cache never grows past what is in use.
+  const keepFrom = (__punchLoadedFrom || punchWindowStart()).getTime();
   local.forEach(e=>{ if(e && e.id!=null && !(e.id in byId) && !(new Date(e.ts).getTime() < keepFrom)) byId[e.id] = e; });
   savePunchLog(Object.values(byId));
   if(currentTab==='admin') renderAdmin();
 }
 
 async function gsSavePunch(entry) {
-  if(BACKEND === 'firestore'){
-    try{ await (await loadFirestoreBackend()).savePunch(fsTenantId(), entry); }catch(e){ console.warn('Firestore punch save failed:', e); }
-    return;
-  }
-  try {
-    await fetch(GS_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action: 'savePunch', secret: API_SECRET, ...gsAuth(), data: entry })
-    });
-  } catch(e) { console.warn('GS punch save failed:', e); }
+  try{ await (await loadFirestoreBackend()).savePunch(fsTenantId(), entry); }catch(e){ console.warn('Firestore punch save failed:', e); }
 }
 
 async function gsDeletePunch(id) {
-  if(BACKEND === 'firestore'){
-    try{ await (await loadFirestoreBackend()).deletePunch(fsTenantId(), id); }catch(e){ console.warn('Firestore delete failed:', e); }
-    return;
-  }
-  try {
-    await fetch(GS_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action: 'deletePunch', secret: API_SECRET, ...gsAuth(), id })
-    });
-  } catch(e) { console.warn('GS delete failed:', e); }
+  try{ await (await loadFirestoreBackend()).deletePunch(fsTenantId(), id); }catch(e){ console.warn('Firestore delete failed:', e); }
 }
 
 async function gsUpdatePunch(data) {
-  if(BACKEND === 'firestore'){
-    try{ await (await loadFirestoreBackend()).updatePunch(fsTenantId(), data); }catch(e){ console.warn('Firestore update failed:', e); }
-    return;
-  }
-  try {
-    await fetch(GS_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action: 'updatePunch', secret: API_SECRET, ...gsAuth(), data })
-    });
-  } catch(e) { console.warn('GS update failed:', e); }
+  try{ await (await loadFirestoreBackend()).updatePunch(fsTenantId(), data); }catch(e){ console.warn('Firestore update failed:', e); }
 }
 
-// Best-effort: trashes a worker's stored PDF in Drive. Called when the worker
-// itself is deleted, so removing a worker doesn't leave an orphaned file in
-// the "Schedule manager APP/Workers" folder. Never blocks worker removal.
+// Best-effort: deletes a worker's stored file in Storage (the replaced Form
+// 101 or sidecar, or every file of a deleted worker). Never blocks anything.
 async function gsDeleteWorkerDoc(fileId) {
   try {
-    await fetch(GS_URL, {
+    await fetch(API_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'deleteWorkerDoc', secret: API_SECRET, ...gsAuth(), fileId })
+      body: JSON.stringify({ action: 'deleteWorkerDoc', ...gsAuth(), fileId })
     });
-  } catch(e) { console.warn('GS worker doc delete failed:', e); }
-}
-// Older worker records only have docUrl (no docFileId) — Drive file URLs
-// embed the ID as .../d/<id>/... so it can be recovered from the link.
-function extractDriveFileId(url){
-  const m = url && url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-  return m ? m[1] : null;
+  } catch(e) { console.warn('Worker file delete failed:', e); }
 }
 
 function setSaveStatus(s){
@@ -5033,7 +4662,7 @@ function applyData(d){
   // week shown only changes the date labels, never which shifts exist.
 }
 
-// Set while local changes have not reached Google Sheets yet (2026-10-01).
+// Set while local changes have not reached the server yet (2026-10-01).
 // loadData() then keeps the local data and saves it, instead of replacing it
 // with the older server copy — that replacement is how a newly added worker
 // vanished from the list when its save had failed.
@@ -5078,13 +4707,13 @@ function autoSave(){
       // updateScheduleManager() (same-device convenience bridge) still reads
       // that literal key and has no tenantId of its own to scope by.
       localStorage.setItem(STORAGE_KEY_BASE, json);
-      // Google Sheets is primary storage
+      // Firestore is the primary storage
       try{ localStorage.setItem(UNSAVED_KEY(),String(Date.now())); }catch(e){}
       const ok = await gsSave(data);
       if(ok){ try{ localStorage.removeItem(UNSAVED_KEY()); }catch(e){} }
       setSaveStatus('saved');
-      if(ok) showToast('Saved to Google Sheets');
-      else showToast('GS save failed — saved locally');
+      if(ok) showToast('Saved');
+      else showToast('Save failed — kept on this device');
     }catch(e){
       console.error('Save failed',e);
       setSaveStatus('saved');
@@ -5094,7 +4723,7 @@ function autoSave(){
 }
 
 async function loadData(){
-  // 1. Show cached data instantly while GS loads — read ONLY the
+  // 1. Show cached data instantly while the server loads — read ONLY the
   // tenant-scoped key (never the legacy unscoped one) so switching firms
   // (switchToTenant()'s reload) never flashes a DIFFERENT firm's stale
   // cache; a firm with no cache yet under its own key just skips this step
@@ -5110,7 +4739,7 @@ async function loadData(){
     }
   }catch(e){}
 
-  // 2. Always load from Google Sheets (primary source)
+  // 2. Always load from Firestore (primary source)
   try{
     const gd = await gsLoad();
     if(gd){
@@ -5119,11 +4748,11 @@ async function loadData(){
       setSaveStatus('saved');
       syncPunchesFromGS();
     } else {
-      showToast('Could not load from Google — showing saved data'+(gsLoad.lastError?' ('+gsLoad.lastError.slice(0,80)+')':''),6000);
+      showToast('Could not load from the server — showing saved data'+(gsLoad.lastError?' ('+gsLoad.lastError.slice(0,80)+')':''),6000);
       retryLoadDataWhenBack();
     }
   }catch(e){
-    console.error('GS load failed',e);
+    console.error('Load failed',e);
     showToast('Offline — using cached data');
   }
 }
@@ -5653,7 +5282,7 @@ async function renderPendingHours(){
   const canApprove = s && (s.role==='tenant_admin'||s.role==='superadmin');
   let json;
   try{
-    const res = await fetch(GS_URL+'?'+new URLSearchParams({ action:'loadPendingHours', ...gsAuth() }));
+    const res = await fetch(API_URL+'?'+new URLSearchParams({ action:'loadPendingHours', ...gsAuth() }));
     json = await res.json();
   }catch(e){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">Could not load</div>`; return; }
   const batches=(json.batches||[]).filter(b=>b.status==='pending');
@@ -5690,13 +5319,13 @@ async function renderPendingHours(){
 }
 async function approveHoursBatch(batchId){
   try{
-    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'approvePendingHours', ...gsAuth(), batchId }) });
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'approvePendingHours', ...gsAuth(), batchId }) });
     const json = await res.json();
     if(json.error){ showToast(json.error); return; }
     showToast(json.created+' shift(s) approved');
-    // Firestore mode: approved hours are often for a past month, older than
-    // the live window — load back to the earliest of them so they show.
-    if(BACKEND==='firestore' && json.created){
+    // Approved hours are often for a past month, older than the live window
+    // — load back to the earliest of them so they show.
+    if(json.created){
       try{
         const made=await (await loadFirestoreBackend()).punchesOfBatch(fsTenantId(), batchId);
         const first=made.map(e=>new Date(e.ts)).filter(d=>!isNaN(d)).sort((a,b)=>a-b)[0];
@@ -5709,7 +5338,7 @@ async function approveHoursBatch(batchId){
 async function rejectHoursBatch(batchId){
   if(!confirm('Reject this batch?')) return;
   try{
-    const res = await fetch(GS_URL, { method:'POST', body: JSON.stringify({ action:'rejectPendingHours', ...gsAuth(), batchId }) });
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'rejectPendingHours', ...gsAuth(), batchId }) });
     const json = await res.json();
     if(json.error){ showToast(json.error); return; }
     showToast('Batch rejected');
@@ -6303,7 +5932,7 @@ function renderAdmin(){
 // load earlier punches (one more month, or everything).
 function renderAdminOlder(){
   const el=document.getElementById('adminOlder'); if(!el) return;
-  if(BACKEND!=='firestore' || !__punchLoadedFrom || __punchLoadedFrom<=ALL_PUNCHES_FROM){ el.style.display='none'; return; }
+  if(!__punchLoadedFrom || __punchLoadedFrom<=ALL_PUNCHES_FROM){ el.style.display='none'; return; }
   el.style.display='flex';
   el.innerHTML=`<span>Showing punches from ${esc(__punchLoadedFrom.toLocaleDateString('en-GB'))}</span>
     <button class="btn sm" onclick="loadEarlierPunchMonth()"><i class="ti ti-history"></i> Load earlier month</button>
@@ -6416,7 +6045,7 @@ function exportPunchCSV(){
 }
 
 // Admin → Punch Log → "Clear Log": pick whole months, then delete them from
-// the database (deletePunchesByMonths — live + archive sheets) AND the local
+// the database (deletePunchesByMonths) AND the local
 // cache. A CSV backup of exactly the rows being deleted is downloaded first.
 // Months are keyed 'yyyy-MM' from the punch's own `date` (dd/MM/yyyy, the
 // server-formatted field — same one the backend groups by), falling back to ts.
@@ -6476,7 +6105,7 @@ async function submitClearPunchLog(){
     try{ savePunchLog(doomed); exportPunchCSV(); }catch(e){} finally{ savePunchLog(all); }
   }
   try{
-    const res=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'deletePunchesByMonths',...gsAuth(),months})});
+    const res=await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'deletePunchesByMonths',...gsAuth(),months})});
     const json=await res.json();
     if(!json || json.error){ showToast('Delete failed: '+((json&&json.error)||'unknown error')); btn.disabled=false; updateClearLogCount(); return; }
     savePunchLog(getPunchLog().filter(e=>!months.includes(punchMonthKey(e))));
@@ -6620,9 +6249,9 @@ function ensureScanPipelineLoaded(){
 // functions answer a ping at once without doing any work. At most once per
 // URL per 4 minutes. Results are kept in __fnWarm for the scan timing.
 const __fnWarm={};
-// In Firestore mode the AI reads go to the ai_read function (stage 7), so it is woken too.
+// The AI reads go to the ai_read function, so it is woken too.
 const AI_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/ai_read';
-function SCAN_WARM_URLS(){ return [PREPROCESS_SCAN_FN_URL,FORM101_FN_URL,GS_UPLOAD_PROXY_URL].concat(BACKEND==='firestore'?[AI_FN_URL]:[]); }
+function SCAN_WARM_URLS(){ return [PREPROCESS_SCAN_FN_URL,FORM101_FN_URL,AI_FN_URL]; }
 function warmCloudFunctions(urls){
   const now=Date.now();
   for(const url of urls){
@@ -6706,7 +6335,7 @@ function getSignaturePng(canvasId){
 // once the upload lands, or when a fresh untagged scan is started.
 // presetAssets ({scanB64,scanMediaType,sigPng,extraPages}) is set only by
 // regenerateWorkerDoc() below, to source the scan image/signature/extra
-// pages from the Drive sidecar instead of the live scan globals — used for a
+// pages from the Storage sidecar instead of the live scan globals — used for a
 // background regenerate where nothing was just scanned in THIS browser
 // session (the live globals could easily belong to a different worker's scan
 // entirely, see regenerateWorkerDoc()'s own comment). Every plain DATA field
@@ -6817,14 +6446,14 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
 
     // Signature ("חתימת המבקש/ת") — drawn server-side as an image if the
     // worker actually signed on the pad. Regenerating (isRegen) reuses
-    // whatever signature was captured the first time, from the Drive
+    // whatever signature was captured the first time, from the Storage
     // sidecar — there's no open modal to read a live pad from in that case.
     // getSignaturePng() already returns a data: URL, so the base64 payload
     // is just the part after the comma.
     const sigPng=isRegen?(presetAssets.sigPng||null):(typeof getSignaturePng==='function'?getSignaturePng('wSigCanvas'):null);
     if(sigPng) payload.signaturePngBase64=sigPng.split(',')[1];
 
-    // Regenerating reads the scan image back from presetAssets (the Drive
+    // Regenerating reads the scan image back from presetAssets (the Storage
     // sidecar loaded by regenerateWorkerDoc()) instead of window.__aiScanImage
     // — that global belongs to whichever scan session happens to be open in
     // the browser right now, which is a DIFFERENT worker's data if a
@@ -6834,7 +6463,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // reset of these globals). otherPagesToUse (ספח appendix card, contract
     // pages, etc.) follows the same split: a fresh, just-saved worker reads
     // them from window.__aiPacketOtherPages, a regenerate reads them from
-    // presetAssets.extraPages (persisted in the Drive sidecar by
+    // presetAssets.extraPages (persisted in the Storage sidecar by
     // saveWorkerAssets() below).
     const scanImage=isRegen?(presetAssets.scanB64?{b64:presetAssets.scanB64,mediaType:presetAssets.scanMediaType}:null):window.__aiScanImage;
     let otherPagesToUse=isRegen?(Array.isArray(presetAssets.extraPages)?presetAssets.extraPages:[]):(Array.isArray(window.__aiPacketOtherPages)?window.__aiPacketOtherPages:[]);
@@ -6844,7 +6473,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // those previously-saved extra pages must not be silently discarded just
     // because the manager didn't re-scan them again today. Before this fix,
     // the rescan path (added 2026-09-26 to fix the primary photo going stale)
-    // always wrote otherPagesToUse — even when empty — into the new Drive
+    // always wrote otherPagesToUse — even when empty — into the new Storage
     // sidecar via saveWorkerAssets(..., previousFileId: w.assetsFileId), which
     // trashes the OLD sidecar, permanently losing whatever extra pages it had.
     // Carrying the old sidecar's extraPages forward here (only when this
@@ -6852,7 +6481,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // only meant to refresh the front card.
     if(!isRegen&&!otherPagesToUse.length&&targetWorker&&targetWorker.assetsFileId){
       try{
-        const oldResp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'loadWorkerAssets',secret:API_SECRET,...gsAuth(),fileId:targetWorker.assetsFileId})});
+        const oldResp=await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'loadWorkerAssets',...gsAuth(),fileId:targetWorker.assetsFileId})});
         const oldJson=await oldResp.json();
         if(oldJson&&oldJson.ok&&Array.isArray(oldJson.extraPages)&&oldJson.extraPages.length) otherPagesToUse=oldJson.extraPages;
       }catch(e){}
@@ -6884,13 +6513,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // lets it trash the exact old file.
       const fileBase64=fnJson.pdfBase64;
       const w=targetWorker;
-      // Progress bar (2026-09-30, real byte-level via xhr.upload.onprogress —
-      // briefly REPLACED 2026-10-01 with a fake ticker after discovering a
-      // bare XHR to GS_URL can never carry a real upload listener without
-      // triggering a CORS preflight Apps Script can't answer; RESTORED
-      // 2026-10-02 via GS_UPLOAD_PROXY_URL, a Cloud Function that answers
-      // that preflight correctly and relays server-to-server to Apps Script
-      // — see xhrPostJSON()'s and GS_UPLOAD_PROXY_URL's own comments).
+      // Progress bar: real byte-level progress from the Storage upload.
       // docPromise/assetsPromise upload concurrently, so their progress is
       // combined by total bytes across both, not just whichever finishes
       // first; the 20-90% range leaves room for "building PDF" (0%) before
@@ -6904,19 +6527,19 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       };
       if(showBlockingProgress) renderWorkerUploadProgress('מעלה ל-'+DOC_STORE+', נא לא לסגור…',20);
       // saveWorkerDoc (the PDF) and saveWorkerAssets (the scan/signature
-      // sidecar) write to two different Drive files and don't depend on each
+      // sidecar) write to two different Storage files and don't depend on each
       // other's result (the sidecar's own previousFileId is w.assetsFileId,
       // unrelated to the PDF's fileId) — fired concurrently (2026-09-27,
       // optimization) instead of one full round-trip after the other, since
       // this whole call runs behind a blocking "please wait" overlay for new
       // workers/rescans. Skipped on a regenerate (isRegen) same as before —
       // see the comment below that used to sit next to the sequential call.
-      const docPromise=xhrPostJSON(GS_UPLOAD_PROXY_URL,
-        {action:'saveWorkerDoc',secret:API_SECRET,...gsAuth(),workerId:w&&w.id,fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null},
+      const docPromise=uploadWorkerFile(
+        {action:'saveWorkerDoc',...gsAuth(),workerId:w&&w.id,fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null},
         (loaded,total)=>{ docLoaded=loaded; docTotal=total; reportUploadProgress(); });
       // Cache the scan+signature (and any extra pages — ספח appendix card,
       // contract, etc.) that actually built this PDF as a small private
-      // Drive sidecar (never shown to anyone, just read back by
+      // Storage sidecar (never shown to anyone, just read back by
       // regenerateWorkerDoc()) — this is what lets a LATER edit (income
       // type, marital status, address, ...) rebuild the exact same PDF
       // with the new values without asking the manager to re-scan the
@@ -6930,8 +6553,8 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // field, e.g. address) used to always pay for this redundant
       // multi-MB download-then-reupload round trip on top of the PDF
       // build itself, which is what made a single-field edit feel so slow.
-      const assetsPromise=(scanImage&&!isRegen&&w)?xhrPostJSON(GS_UPLOAD_PROXY_URL,
-        {action:'saveWorkerAssets',secret:API_SECRET,...gsAuth(),workerId:w.id,
+      const assetsPromise=(scanImage&&!isRegen&&w)?uploadWorkerFile(
+        {action:'saveWorkerAssets',...gsAuth(),workerId:w.id,
           scanB64:scanImage.b64, scanMediaType:scanImage.mediaType, sigPng:sigPng||null,
           extraPages:otherPagesToUse,
           fileNameBase:fileName.replace(/\.pdf$/,''), previousFileId:w.assetsFileId||null},
@@ -6995,7 +6618,7 @@ async function autoUploadWithRetry(isId,workerId){
 // saved data (address, income type, marital status, health fund, ...)
 // instead of what was true when the document was last generated — without
 // asking the manager to re-scan the physical ID/passport. Reads the
-// scan+signature back from the Drive sidecar saveWorkerAssets() cached at
+// scan+signature back from the Storage sidecar saveWorkerAssets() cached at
 // the last successful generation, when one exists (w.assetsFileId). This is
 // the SAFE way to auto-regenerate on a background edit — unlike calling
 // aiFillForm101 directly with no presetAssets (the "live" path), it never
@@ -7010,9 +6633,9 @@ async function regenerateWorkerDoc(workerId){
   try{
     let assets={scanB64:null,scanMediaType:null,sigPng:null,extraPages:[]};
     if(w.assetsFileId){
-      const resp=await fetch(GS_URL,{
+      const resp=await fetch(API_URL,{
         method:'POST',
-        body:JSON.stringify({action:'loadWorkerAssets',secret:API_SECRET,...gsAuth(),fileId:w.assetsFileId})
+        body:JSON.stringify({action:'loadWorkerAssets',...gsAuth(),fileId:w.assetsFileId})
       });
       const json=await resp.json();
       if(json&&json.ok) assets={scanB64:json.scanB64,scanMediaType:json.scanMediaType,sigPng:json.sigPng||null,extraPages:Array.isArray(json.extraPages)?json.extraPages:[]};
@@ -7025,8 +6648,8 @@ async function regenerateWorkerDoc(workerId){
 // Firm-profile edits change every worker's Form 101 employer-details row
 // (section א, פרטי המעסיק — company name/address/phone/deductions number),
 // so every already-generated document is now stale, not just the one worker
-// being edited. Sequential (not parallel) to avoid bursting the Apps Script
-// quota with a pile of simultaneous PDF builds + Drive writes when a firm
+// being edited. Sequential (not parallel) to avoid a burst of simultaneous
+// PDF builds + Storage uploads when a firm
 // has many workers. Only called for the firm currently loaded into
 // `workers` (see submitEditFirm()) — there's nothing to regenerate for a
 // firm whose schedule isn't the one open right now.
@@ -7051,17 +6674,16 @@ async function regenerateAllWorkerDocs(){
 // here are gone along with the client-side build they supported.
 
 // --- Init ---------------------------------------------------------------------
-// Error telemetry: send client errors to the GS Errors sheet (throttled, silent).
+// Error telemetry: send client errors to the errors collection (throttled, silent).
 let _errSent={}, _errCount=0;
 // ── Speed telemetry (2026-10-01) ───────────────────────────────────────────
-// Fire-and-forget; lands in the Timings sheet, shown in Admin → Timings.
-// Telemetry queue (2026-10-01): errors and timings are no longer sent one
-// request each. Every Apps Script request is a separate execution plus a
-// sheet write, and on a busy app open they competed with the requests the
-// user is waiting for (login, loadSchedule). Items are collected and sent as
-// one `logBatch` request: the first send waits TELEMETRY_FIRST_FLUSH_MS after
-// page load, later ones go out every TELEMETRY_FLUSH_MS, and whatever is left
-// goes out with sendBeacon when the page is hidden or closed.
+// Fire-and-forget; lands in the timings collection, shown in Admin → Timings.
+// Telemetry queue: errors and timings are collected and written as one
+// `logBatch` (one Firestore batch write), so they never compete with the
+// requests the user is waiting for: the first send waits
+// TELEMETRY_FIRST_FLUSH_MS after page load, later ones go out every
+// TELEMETRY_FLUSH_MS, and whatever is left goes out when the page is hidden
+// or closed. Nothing is sent before the Firebase sign-in.
 const TELEMETRY_FIRST_FLUSH_MS=8000, TELEMETRY_FLUSH_MS=5000;
 let __telemetryQueue=[], __telemetryTimer=null;
 function queueTelemetry(item){
@@ -7076,10 +6698,9 @@ function flushTelemetry(viaBeacon){
   clearTimeout(__telemetryTimer); __telemetryTimer=null;
   if(!__telemetryQueue.length) return;
   const items=__telemetryQueue; __telemetryQueue=[];
-  const body=JSON.stringify({action:'logBatch', secret:API_SECRET, items});
+  const body=JSON.stringify({action:'logBatch', items});
   try{
-    if(viaBeacon===true && BACKEND!=='firestore' && navigator.sendBeacon && navigator.sendBeacon(GS_URL, new Blob([body],{type:'text/plain'}))) return;
-    fetch(GS_URL,{method:'POST',body}).catch(()=>{});
+    fetch(API_URL,{method:'POST',body}).catch(()=>{});
   }catch(e){}
 }
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') flushTelemetry(true); });
@@ -7089,7 +6710,7 @@ function reportTiming(kind, totalMs, details){
     const s=getSession()||{};
     queueTelemetry({type:'timing', kind, totalMs:Math.round(totalMs),
       tenantId:s.viewingTenantId||s.tenantId||'', user:s.username||'', role:s.role||'',
-      details:Object.assign({device:/Mobi|Android|iPhone/i.test(navigator.userAgent)?'mobile':'desktop', backend:BACKEND},details||{})});
+      details:Object.assign({device:/Mobi|Android|iPhone/i.test(navigator.userAgent)?'mobile':'desktop'},details||{})});
   }catch(e){}
 }
 // Login → first content → fresh data, measured across the reload that
@@ -7199,8 +6820,6 @@ async function subscribeToPush(){
       applicationServerKey: urlB64ToUint8(VAPID_PUBLIC_KEY)
     });
     localStorage.setItem('pushSubscription', JSON.stringify(sub));
-    // Save to GS
-    fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'savePushSubscription',secret:API_SECRET,...gsAuth(),subscription:JSON.parse(JSON.stringify(sub)),role:'manager'})});
     showToast('Shift reminders enabled!');
     document.getElementById('pushBtn')?.remove();
   } catch(e){ showToast('Failed: '+e.message); console.error(e); }
