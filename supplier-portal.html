@@ -11,12 +11,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 /* Supplier Portal — a deliberately separate, lighter file (not an embedded
-   mode inside schedule-manager.html) — see CLAUDE.md's "supplier-portal.html"
-   entry for why: a clean security boundary between the manager app (full
+   mode inside schedule-manager.html) — see docs/supplier-portal.md for
+   why: a clean security boundary between the manager app (full
    worker/client rate data) and a supplier login (which must never see any
    of it). Duplicates conventions/constants from schedule-manager.html on
-   purpose, same as worker-punch.html already does — see "Shared conventions
-   across both files" in CLAUDE.md. */
+   purpose, same as worker-punch.html already does — see the rules in CLAUDE.md. */
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 :root{
   --bg:#0f1117;--bg2:#181c27;--bg3:#1e2333;
@@ -117,9 +116,7 @@ th{color:var(--text2);font-size:11px;text-transform:uppercase;}
 
 <script>
 // ── Shared constants/helpers duplicated from schedule-manager.html on
-// purpose (see CLAUDE.md "Shared conventions across both files") ───────────
-const GS_URL = 'https://script.google.com/macros/s/AKfycbwfGCQs8TzGd38j-JU0ZdoHLXdHITaG1QjUE3nAJDVB6uZR2_56hxV0Y4UgCs1bGYi_/exec';
-const API_SECRET = 'odinson-7Kq2x9';
+// purpose (see the rules in CLAUDE.md) ───────────
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function showToast(msg,dur){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),dur||2500); }
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
@@ -163,7 +160,7 @@ function getSession(){
     const raw = localStorage.getItem(SESSION_KEY);
     if(!raw) return null;
     const s = JSON.parse(raw);
-    if(!s||!s.token||!s.expiresAt||Date.now()>s.expiresAt){ localStorage.removeItem(SESSION_KEY); return null; }
+    if(!s||!s.uid||s.role!=='supplier'){ localStorage.removeItem(SESSION_KEY); return null; }
     return s;
   }catch(e){ return null; }
 }
@@ -171,29 +168,16 @@ function saveSession(s){ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
 function clearSession(){ localStorage.removeItem(SESSION_KEY); }
 async function logout(){
   clearSession();
-  if(BACKEND === 'firestore'){ try{ await (await loadFirestoreBackend()).signOut(); }catch(e){} }
+  try{ await (await loadFirestoreBackend()).signOut(); }catch(e){}
   location.reload();
 }
-function gsAuth(){ const s=getSession(); return s ? {token:s.token} : {}; }
 
-// ── Data backend (docs/firestore-plan.md stage 6) — same per-device switch as
-// schedule-manager.html (?backend=firestore / ?backend=sheets, one shared
-// localStorage key on this domain). In Firestore mode the login goes through
-// the login function and this page's five Apps Script actions go to the
-// supplier function, which applies the same allow-lists as Apps Script.
-// Data backend. Firestore for everyone since stage 8 (docs/firestore-plan.md);
-// ?backend=sheets keeps this device on Google Sheets/Apps Script (the
-// fallback while it is still kept), ?backend=firestore returns it.
-const BACKEND = (function(){
-  try{
-    const q = new URLSearchParams(location.search).get('backend');
-    if(q === 'sheets') localStorage.setItem('backend', 'sheets');
-    else if(q === 'firestore') localStorage.removeItem('backend');
-    return localStorage.getItem('backend') === 'sheets' ? 'sheets' : 'firestore';
-  }catch(e){ return 'firestore'; }
-})();
+// ── Backend. The login goes through the login function (firestore-backend.js
+// login(), which signs this device in to Firebase); every data call goes to
+// the supplier function (functions-auth/portal.py) with the Firebase ID
+// token. That function hands out only this supplier's own workers and
+// punches, through the same allow-lists as the rest of the app.
 const SUPPLIER_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/supplier';
-const SUPPLIER_FN_ACTIONS = ['loadSchedule','loadPunchLog','supplierAddWorker','supplierUpdateWorker','supplierDeleteWorker'];
 let __fsBackend = null;
 function loadFirestoreBackend(){
   if(__fsBackend) return __fsBackend;
@@ -206,44 +190,14 @@ function loadFirestoreBackend(){
   }).catch(e => { __fsBackend = null; throw e; });
   return __fsBackend;
 }
-if(BACKEND === 'firestore') loadFirestoreBackend().catch(e => console.warn('Firestore backend:', e));
-
-// Sliding session expiration (added 2026-09-30, mirrors schedule-manager.html's
-// own fix — see requireAuth()'s comment in apps-script/Код.js): the backend
-// now reissues a fresh token on every authenticated request and attaches it
-// to the response as refreshedToken/refreshedExpiresAt. Picked up here via a
-// thin window.fetch wrapper (this file never had schedule-manager.html's
-// retry-then-logout logic, so none is added here either — only the token
-// pickup, to stay in scope) so a long-open supplier session doesn't hit the
-// hard 6h wall while actively in use.
-(function(){
-  const _origFetch = window.fetch.bind(window);
-  function gsParams(url, opts){
-    try{ if(opts && typeof opts.body === 'string') return JSON.parse(opts.body); }catch(e){}
-    try{ return Object.fromEntries(new URL(url).searchParams); }catch(e){ return {}; }
-  }
-  window.fetch = function(url, opts){
-    const isGsCall = typeof url === 'string' && url.indexOf(GS_URL) === 0;
-    if(isGsCall && BACKEND === 'firestore'){
-      const params = gsParams(url, opts);
-      if(SUPPLIER_FN_ACTIONS.indexOf(params.action) !== -1){
-        delete params.token;
-        return loadFirestoreBackend().then(b => b.idToken()).then(idToken => _origFetch(SUPPLIER_FN_URL, {method:'POST',
-          headers:{'Content-Type':'application/json', Authorization:'Bearer ' + idToken}, body: JSON.stringify(params)}));
-      }
-    }
-    return _origFetch(url, opts).then(res => {
-      if(!isGsCall) return res;
-      res.clone().json().then(json => {
-        if(json && json.refreshedToken){
-          const s=getSession();
-          if(s){ s.token=json.refreshedToken; s.expiresAt=json.refreshedExpiresAt; saveSession(s); }
-        }
-      }).catch(()=>{});
-      return res;
-    });
-  };
-})();
+loadFirestoreBackend().catch(e => console.warn('Firestore backend:', e));
+// One supplier action; resolves with the JSON reply ({error} on refusal).
+async function supplierCall(body){
+  const idToken = await (await loadFirestoreBackend()).idToken();
+  const res = await fetch(SUPPLIER_FN_URL, {method:'POST',
+    headers:{'Content-Type':'application/json', Authorization:'Bearer ' + idToken}, body: JSON.stringify(body)});
+  return res.json();
+}
 
 async function submitLogin(){
   const username=document.getElementById('loginUsername').value.trim();
@@ -251,40 +205,22 @@ async function submitLogin(){
   const errEl=document.getElementById('loginError');
   errEl.textContent='';
   if(!username||!password){ errEl.textContent='Enter username and password'; return; }
-  if(BACKEND === 'firestore'){
-    try{
-      const b = await loadFirestoreBackend();
-      const json = await b.login(username, password);
-      if(json.error){ errEl.textContent=json.error; return; }
-      if(json.role!=='supplier'){ await b.signOut(); errEl.textContent='This login is not a supplier account'; return; }
-      saveSession({ backend:'firestore', token: json.gsToken || 'firebase', role:json.role, tenantId:json.tenantId,
-        supplierId:json.supplierId, username:json.username, expiresAt: Date.now() + 30*864e5 });
-      gateApp();
-    }catch(e){ errEl.textContent='Network error'; }
-    return;
-  }
   try{
-    const res=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'login',username,password})});
-    const json=await res.json();
+    const b = await loadFirestoreBackend();
+    const json = await b.login(username, password);
     if(json.error){ errEl.textContent=json.error; return; }
-    if(json.role!=='supplier'){ errEl.textContent='This login is not a supplier account'; return; }
-    saveSession({ token:json.token, role:json.role, tenantId:json.tenantId, supplierId:json.supplierId, username:json.username, expiresAt:json.expiresAt });
+    if(json.role!=='supplier'){ await b.signOut(); errEl.textContent='This login is not a supplier account'; return; }
+    saveSession({ uid: json.uid, role: json.role, tenantId: json.tenantId, supplierId: json.supplierId, username: json.username });
     gateApp();
   }catch(e){ errEl.textContent='Network error'; }
 }
 
-// ── Data (already pre-filtered/sanitized server-side for role==='supplier'
-// — see apps-script/Код.js loadSchedule()/loadPunchLog() stage 11: no
-// hourlyRate/otRate/shabbatRate/clientRates, no client billing data, no GPS
-// fields ever reach this page at all) ───────────────────────────────────
+// ── Data (already allow-listed by the supplier function — portal.py
+// strip_worker(): no hourlyRate/otRate/shabbatRate/clientRates, no client
+// billing data, no GPS fields ever reach this page at all) ──────────────
 let myWorkers=[], myClients=[], punchLog=[];
 async function loadData(){
-  const [schRes, plRes] = await Promise.all([
-    fetch(GS_URL+'?'+new URLSearchParams({action:'loadSchedule', ...gsAuth()})),
-    fetch(GS_URL+'?'+new URLSearchParams({action:'loadPunchLog', ...gsAuth()})),
-  ]);
-  const sch = await schRes.json();
-  const pl = await plRes.json();
+  const [sch, pl] = await Promise.all([supplierCall({action:'loadSchedule'}), supplierCall({action:'loadPunchLog'})]);
   myWorkers = sch.workers||[];
   myClients = sch.clients||[];
   punchLog = pl.entries||[];
@@ -292,9 +228,8 @@ async function loadData(){
 
 async function gateApp(){
   let s=getSession();
-  // A session from the other backend, or a Firebase sign-in that is gone: log in again.
-  if(s && (s.backend === 'firestore') !== (BACKEND === 'firestore')){ clearSession(); s=null; }
-  if(s && BACKEND === 'firestore'){
+  // The Firebase sign-in is gone (site data cleared, signed out): log in again.
+  if(s){
     try{ if(!(await loadFirestoreBackend()).currentUser()){ clearSession(); s=null; } }catch(e){}
   }
   if(!s){ document.getElementById('loginScreen').style.display='flex'; document.getElementById('appRoot').style.display='none'; return; }
@@ -393,10 +328,9 @@ async function saveWorkerModal(id){
   };
   if(!worker.docGiven){ showToast('Name required'); return; }
   const action = id ? 'supplierUpdateWorker' : 'supplierAddWorker';
-  const body = id ? { action, ...gsAuth(), workerId:id, worker } : { action, ...gsAuth(), worker };
+  const body = id ? { action, workerId:id, worker } : { action, worker };
   try{
-    const res = await fetch(GS_URL,{method:'POST',body:JSON.stringify(body)});
-    const json = await res.json();
+    const json = await supplierCall(body);
     if(json.error){ showToast(json.error); return; }
     showToast('Saved');
     closeModal('workerOverlay');
@@ -407,8 +341,7 @@ async function saveWorkerModal(id){
 async function deleteWorker(id){
   if(!confirm('Remove this worker?')) return;
   try{
-    const res = await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'supplierDeleteWorker', ...gsAuth(), workerId:id})});
-    const json = await res.json();
+    const json = await supplierCall({action:'supplierDeleteWorker', workerId:id});
     if(json.error){ showToast(json.error); return; }
     showToast('Removed');
     await loadData();

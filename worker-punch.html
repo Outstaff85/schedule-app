@@ -451,37 +451,18 @@ const SITE = {
   clientId: _siteEff?.clientId || null,
 };
 
-const GS_URL = 'https://script.google.com/macros/s/AKfycbwfGCQs8TzGd38j-JU0ZdoHLXdHITaG1QjUE3nAJDVB6uZR2_56hxV0Y4UgCs1bGYi_/exec';
-// Must match API_SECRET in Code.gs (deterrent; public file, not real auth).
-const API_SECRET = 'odinson-7Kq2x9';
 const QUEUE_KEY = 'punchQueue';
 
-// ── Data backend (docs/firestore-plan.md stage 6) — the same per-device switch as
-// schedule-manager.html (?backend=firestore / ?backend=sheets, one
-// localStorage key on this domain). In Firestore mode the page talks to the
-// punch Cloud Function, which hands out only this worker and their sites and
-// accepts punches for this worker only; offline queueing is unchanged.
-// Data backend. Firestore for everyone since stage 8 (docs/firestore-plan.md);
-// ?backend=sheets keeps this device on Google Sheets/Apps Script (the
-// fallback while it is still kept), ?backend=firestore returns it.
-const BACKEND = (function(){
-  try{
-    const q = new URLSearchParams(location.search).get('backend');
-    if(q === 'sheets') localStorage.setItem('backend', 'sheets');
-    else if(q === 'firestore') localStorage.removeItem('backend');
-    return localStorage.getItem('backend') === 'sheets' ? 'sheets' : 'firestore';
-  }catch(e){ return 'firestore'; }
-})();
+// The page talks only to the punch Cloud Function (functions-auth/portal.py),
+// which hands out only this worker and their sites and accepts punches for
+// this worker only. There is no login: the link token is the credential.
 const PUNCH_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/punch';
 function punchFn(body){
   return fetch(PUNCH_FN_URL, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
 }
-// One punch to the server, either backend; the reply is {ok} or {error}.
+// One punch to the server; the reply is {ok} or {error}.
 function postPunch(e){
-  const token = e.workerToken || _wpToken();
-  return BACKEND === 'firestore'
-    ? punchFn({action:'savePunch', token, data:e})
-    : fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'savePunch',secret:API_SECRET,workerToken:token,data:e})});
+  return punchFn({action:'savePunch', token: e.workerToken || _wpToken(), data:e});
 }
 
 const WORKER_COLORS=[
@@ -514,11 +495,9 @@ async function gsSavePunch(entry){
   try{
     const res=await postPunch(entry);
     const json=await res.json();
-    // Apps Script always answers HTTP 200, even for a logical failure (bad
-    // token, deactivated firm) — it reports that via json.error, not the
-    // HTTP status, so res.ok alone can't tell success from failure. Without
-    // this check, a rejected save looked identical to a real success and
-    // the punch was silently lost instead of queued for retry.
+    // A refusal (unknown link, bad punch) comes back as json.error, so the
+    // reply is checked, not just the HTTP status; a refused punch is queued
+    // for a retry instead of being lost.
     if(!json || json.error){ queueEntry(entry); }
   }catch(e){ queueEntry(entry); }
 }
@@ -756,20 +735,18 @@ function loadWorkers(){
       if(workers.length) return;
     }
   }catch(e){}
-  // Priority 3: load from Google Sheets
+  // Priority 3: load from the server (init() calls loadWorkersFromGS())
   workers=[];
 }
 
 async function loadWorkersFromGS(){
-  // Multi-tenant: resolvable only on a personal link (URL_TOKEN) — the
-  // legacy no-token picker-grid flow has no per-request way to name a firm
-  // and will fail against the multi-tenant backend (see docs/multi-tenant-plan.md).
-  const url = GS_URL+'?action=loadSchedule&t='+Date.now()+(URL_TOKEN?'&workerToken='+encodeURIComponent(URL_TOKEN):'');
-  
+  // Resolvable only on a personal link (URL_TOKEN): the old no-token
+  // picker-grid flow has no way to name a firm, so it only works from the
+  // same-device cache (see docs/multi-tenant-plan.md).
+  if(!URL_TOKEN) return false;
   try{
-    const res = BACKEND === 'firestore' ? await punchFn({action:'load', token: URL_TOKEN}) : await fetch(url, { method:'GET', redirect:'follow' });
-    const text = await res.text();
-    const data = JSON.parse(text);
+    const res = await punchFn({action:'load', token: URL_TOKEN});
+    const data = JSON.parse(await res.text());
     if(data.workers&&data.workers.length){
       let list = data.workers;
       allClients = data.clients||[];
@@ -780,33 +757,10 @@ async function loadWorkersFromGS(){
       }
       workers=list.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null,clientIds:w.clientIds||[]}));
       localStorage.setItem('schedMgr_v1', JSON.stringify(data));
-      console.log('GS loaded:', workers.length, 'workers');
       return true;
     }
-  }catch(e){ console.warn('GS load failed:', e.message); }
-  if(BACKEND === 'firestore') return false; // the JSONP fallback below is Apps Script only
-
-  // Method 2: jsonp-style via script tag
-  return new Promise((resolve)=>{
-    const cb = 'gsCallback_'+Date.now();
-    window[cb] = (data)=>{
-      try{
-        if(data.workers&&data.workers.length){
-          allClients=data.clients||[];
-          workers=data.workers.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null,clientIds:w.clientIds||[]}));
-          localStorage.setItem('schedMgr_v1', JSON.stringify(data));
-          console.log('GS loaded (method 2):', workers.length, 'workers');
-          resolve(true);
-        } else { resolve(false); }
-      }catch(e){ resolve(false); }
-      delete window[cb];
-    };
-    const script = document.createElement('script');
-    script.src = GS_URL+'?action=loadSchedule&callback='+cb+'&t='+Date.now()+(URL_TOKEN?'&workerToken='+encodeURIComponent(URL_TOKEN):'');
-    script.onerror = ()=>{ resolve(false); delete window[cb]; };
-    setTimeout(()=>{ resolve(false); delete window[cb]; }, 8000);
-    document.head.appendChild(script);
-  });
+  }catch(e){ console.warn('Worker load failed:', e.message); }
+  return false;
 }
 
 function showScreen(id){
@@ -1095,7 +1049,7 @@ function openHistory(){
   }).join('');
 }
 
-// Error telemetry: send client errors to the GS Errors sheet (throttled, silent).
+// Error telemetry: send client errors to the errors collection (throttled, silent).
 let _errSent={}, _errCount=0;
 function reportError(message, source, stack){
   try{
@@ -1103,9 +1057,8 @@ function reportError(message, source, stack){
     const key=String(message||'').slice(0,120), nowT=Date.now();
     if(_errSent[key] && nowT-_errSent[key]<60000) return;
     _errSent[key]=nowT; _errCount++;
-    const send = BACKEND === 'firestore' ? (b => punchFn(b)) : (b => fetch(GS_URL,{method:'POST',body:JSON.stringify(b)}));
-    send({
-      action:'logError', secret:API_SECRET,
+    punchFn({
+      action:'logError',
       page:(location.pathname.split('/').pop()||location.href),
       role:'worker',
       worker:(typeof selectedWorker!=='undefined'&&selectedWorker&&selectedWorker.name)||(URL_TOKEN?('token:'+String(URL_TOKEN).slice(0,4)):''),
@@ -1119,34 +1072,6 @@ window.addEventListener('error', function(ev){ reportError(ev.message, (ev.filen
 window.addEventListener('unhandledrejection', function(ev){ const r=ev.reason; reportError((r&&r.message)||String(r), 'promise', r&&r.stack); });
 try{ init(); }catch(err){ console.error('init failed',err); reportError('init failed: '+(err&&err.message), 'init', err&&err.stack); showInvalidLink('Что-то пошло не так','Обновите страницу. Если не помогает — обратитесь к менеджеру.','ti-alert-triangle'); }
 
-// ── Push Subscription (worker) ────────────────────────────────────
-const VAPID_PUBLIC_KEY = 'BBju9uoDfcpB0ZIPWhCyvUxg4lLwYVFy4QadSnvx6ImaafKK0pxalntUz5JmkH3Tc9wq9yymBucOf_U5i9o8t7w';
-const GS_URL_WP = 'https://script.google.com/macros/s/AKfycbwfGCQs8TzGd38j-JU0ZdoHLXdHITaG1QjUE3nAJDVB6uZR2_56hxV0Y4UgCs1bGYi_/exec';
-
-function urlB64ToUint8WP(b64){
-  const pad='='.repeat((4-b64.length%4)%4);
-  const raw=atob((b64+pad).replace(/-/g,'+').replace(/_/g,'/'));
-  return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
-}
-
-async function subscribeWorkerPush(workerName){
-  if(!('PushManager' in window)) return;
-  try{
-    const perm = await Notification.requestPermission();
-    if(perm !== 'granted') return;
-    const reg = await navigator.serviceWorker.ready;
-    const existing = await reg.pushManager.getSubscription();
-    if(existing) return; // already subscribed
-    const sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlB64ToUint8WP(VAPID_PUBLIC_KEY)
-    });
-    // Save with worker name to GS
-    const subBody = {action:'savePushSubscription', subscription:JSON.parse(JSON.stringify(sub)), role:'worker', workerName};
-    if(BACKEND === 'firestore') punchFn(Object.assign({token:_wpToken()}, subBody));
-    else fetch(GS_URL_WP,{method:'POST',body:JSON.stringify(Object.assign({secret:API_SECRET, workerToken:_wpToken()}, subBody))});
-  } catch(e){ console.warn('Worker push failed:',e); }
-}
 
 // ── PWA service worker: always-fresh, auto-reload on new version ───────────
 if('serviceWorker' in navigator){
