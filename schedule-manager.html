@@ -4648,7 +4648,7 @@ async function loadErrorsList(targetId){
 function renderErrorsRows(listEl, targetId, rows){
     __errorsRowsByTarget[targetId] = rows;
     if(!rows.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Ошибок нет.</div>'; return; }
-    listEl.innerHTML = rows.map((r,i) => `
+    renderPagedList(listEl, 'errors:' + targetId, '', rows, (r,i) => `
       <div style="position:relative;padding:10px 40px 10px 12px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:12px">
         <button class="btn sm" title="Копировать ошибку" onclick="copyErrorRow('${targetId}',${i})" style="position:absolute;top:6px;right:6px;padding:4px 6px;min-width:0"><i class="ti ti-copy"></i></button>
         <div style="display:flex;gap:10px;color:var(--text2);margin-bottom:4px">
@@ -4657,7 +4657,7 @@ function renderErrorsRows(listEl, targetId, rows){
           ${r.source ? '<span style="font-weight:600">'+esc(r.source)+'</span>' : ''}
         </div>
         <div style="word-break:break-word">${esc(r.message||'')}</div>
-      </div>`).join('');
+      </div>`);
 }
 // ── Admin → Timings (super-admin) ─────────────────────────────────────────
 // Summary per kind over the last 7 days (median / 90th percentile of the
@@ -4726,7 +4726,7 @@ function renderTimingsPane(el,rows){
       <td style="padding:6px 8px;text-align:center;font-weight:600">${_sec(_pct(tot,0.5))}</td><td style="padding:6px 8px;text-align:center">${_sec(_pct(tot,0.9))}</td>
       <td style="padding:6px 8px;font-size:11px;color:var(--text2)">${phases}</td></tr>`;
   }).join('');
-  const list=rows.slice(0,50).map((r,i)=>{
+  const rowHtml=(r,i)=>{
     const d=r.details||{};
     const extra=(TIMING_PHASES[r.kind]||[]).map(([key,label])=>typeof d[key]==='number'?`${esc(label)} ${_sec(d[key])}`:'').filter(Boolean).join(' · ');
     return `<div style="position:relative;padding:8px 40px 8px 10px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:12px">
@@ -4734,11 +4734,12 @@ function renderTimingsPane(el,rows){
       <div style="display:flex;gap:10px;flex-wrap:wrap;color:var(--text2)"><span>${esc(new Date(r.when).toLocaleString())}</span><span style="font-weight:600;color:var(--text)">${esc(_timingKeyLabel(_timingKey(r)))}</span>
         <span>${esc(firmName(r.tenantId))}</span><span>${esc(r.user||'')}</span><span>${esc(d.device||'')}</span>${d.pages?`<span>${d.pages} page(s)</span>`:''}${d.aborted?`<span style="color:#ffb020">${esc(d.aborted)}</span>`:''}</div>
       <div><b>${_sec(r.totalMs)}</b>${extra?' — '+extra:''}</div></div>`;
-  }).join('');
+  };
   el.innerHTML=`${kinds.length?`<div style="font-size:13px;font-weight:600;margin-bottom:6px">Last 7 days (median / 90%)</div>
     <div style="overflow-x:auto;margin-bottom:14px"><table style="width:100%;border-collapse:collapse;font-size:12px">
     <tr style="color:var(--text2);text-align:left"><th style="padding:6px 8px">What</th><th style="padding:6px 8px">Count</th><th style="padding:6px 8px">Median</th><th style="padding:6px 8px">90%</th><th style="padding:6px 8px">Median by step</th></tr>${summary}</table></div>`:''}
-    <div style="font-size:13px;font-weight:600;margin-bottom:6px">Latest</div><div style="display:flex;flex-direction:column;gap:6px">${list}</div>`;
+    <div style="font-size:13px;font-weight:600;margin-bottom:6px">Latest</div><div id="timingsLatestList" style="display:flex;flex-direction:column;gap:6px"></div>`;
+  renderPagedList(document.getElementById('timingsLatestList'), 'timings', '', rows, rowHtml);
 }
 function errorRowText(r){
   const head = [r.when ? new Date(r.when).toLocaleString() : '', r.page||'', r.source||''].filter(Boolean).join(' · ');
@@ -6258,6 +6259,48 @@ function renderClientLogs(){
   }).join('');
 }
 
+// Long lists (punch log, errors, timings) draw LIST_PAGE rows at first; the
+// next page is added when the "Show more" row scrolls into view (or is
+// clicked). Drawing every row at once was what made these panes slow, not
+// the data itself, which is already loaded. `sig` describes what is listed
+// (filters): while it stays the same, a redraw (new punch, refresh) keeps
+// what was already opened; a new filter starts again from the first page.
+const LIST_PAGE = 10;
+const __pagedLists = {};
+function renderPagedList(el, key, sig, items, rowHtml, opts){
+  opts = opts || {};
+  const st = __pagedLists[key] && __pagedLists[key].sig === sig ? __pagedLists[key] : (__pagedLists[key] = {sig, shown: LIST_PAGE});
+  if(st.observer){ st.observer.disconnect(); st.observer = null; }
+  const n = Math.min(items.length, st.shown);
+  el.innerHTML = items.slice(0, n).map((it, i) => rowHtml(it, i)).join('') + pagedMoreHtml(items.length - n, opts);
+  wirePagedMore(el, key, items, rowHtml, opts);
+}
+function pagedMoreHtml(left, opts){
+  if(left <= 0) return '';
+  const btn = `<button class="btn sm paged-more-btn" style="margin:6px auto;display:flex"><i class="ti ti-chevron-down"></i> Show more (${left} left)</button>`;
+  return opts.table ? `<tr class="paged-more"><td colspan="${opts.colspan||20}" style="padding:4px">${btn}</td></tr>` : `<div class="paged-more">${btn}</div>`;
+}
+function wirePagedMore(el, key, items, rowHtml, opts){
+  const more = el.querySelector(':scope > .paged-more');
+  if(!more) return;
+  const st = __pagedLists[key];
+  const next = () => {
+    if(st.observer){ st.observer.disconnect(); st.observer = null; }
+    const from = st.shown;
+    st.shown += LIST_PAGE;
+    const to = Math.min(items.length, st.shown);
+    more.insertAdjacentHTML('beforebegin', items.slice(from, to).map((it, i) => rowHtml(it, from + i)).join(''));
+    more.remove();
+    el.insertAdjacentHTML('beforeend', pagedMoreHtml(items.length - to, opts));
+    wirePagedMore(el, key, items, rowHtml, opts);
+  };
+  more.querySelector('button').onclick = next;
+  if('IntersectionObserver' in window){
+    st.observer = new IntersectionObserver(entries => { if(entries.some(e => e.isIntersecting)) next(); }, {rootMargin: '200px'});
+    st.observer.observe(more);
+  }
+}
+
 function renderAdmin(){
   const log = getPunchLog();
   const filterWorker = document.getElementById('adminFilterWorker')?.value||'';
@@ -6300,7 +6343,7 @@ function renderAdmin(){
   const tbody=document.getElementById('adminTableBody'), empty=document.getElementById('adminEmpty');
   if(!filtered.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
-  tbody.innerHTML=filtered.map((e,i)=>{
+  renderPagedList(tbody, 'punchLog', [filterWorker,filterClient,filterDate,filterType].join('|'), filtered, (e,i)=>{
     const wc=workers.find(w=>w.id===e.workerId);
     const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
     const ini=wc?workerAvatarInner(wc):esc(e.workerName?.slice(0,2).toUpperCase()||'?');
@@ -6325,7 +6368,7 @@ function renderAdmin(){
         <button class="btn sm red" onclick="deletePunchEntry(${e.id})" style="padding:3px 8px;font-size:11px"><i class="ti ti-x"></i></button>
       </div></td>
     </tr>`;
-  }).join('');
+  }, {table:true, colspan:8});
 }
 function editPunchEntry(id){
   const log = getPunchLog();
