@@ -79,14 +79,13 @@ A weekly roster.
   - `cacheTenantProfile(tenantId, profile)` keeps the session copy current after an edit;
   - an incomplete profile colors the Admin tab icon amber (`renderAccountControl`).
 
-## Backend switch (`BACKEND`)
+## Firestore-only operation
 
-- **Choosing the backend:** `'firestore'` by default. `?backend=sheets` stores `localStorage.backend='sheets'` (the Apps Script fallback); `?backend=firestore` clears it. Firestore mode loads `firestore-backend.js` at once (`loadFirestoreBackend()`, one shared promise). `fsTenantId()` is the firm being worked in.
-- **Firestore mode:**
+- **Backend loading:** `loadFirestoreBackend()` loads `firestore-backend.js` at startup (one shared promise, always runs). `fsTenantId()` is the firm being worked in. `DOC_STORE = 'Firebase Storage'`.
+- **Data operations:**
   - `gsLoad` / `gsSave` / `gsLoadPunchLog` / `gsSavePunch` / `gsUpdatePunch` / `gsDeletePunch` call the backend directly;
   - Apps Script actions in `FS_ACTIONS` are answered by `handleAction()` through the fetch wrapper (below);
-  - uploads go to Storage (`fsUpload`);
-  - `DOC_STORE` names the file store in UI text.
+  - uploads go to Storage (`uploadWorkerFile()`).
 
 See [backend.md](backend.md).
 
