@@ -89,7 +89,9 @@ def _body(req):
     return req.get_json(silent=True, force=True) or {}
 
 
-@https_fn.on_request(cors=_CORS, timeout_sec=30, min_instances=0)
+# min_instances=1: one instance is always warm, so a login never waits for a
+# cold start (10-30 s after idle in the Timings pane). A small standing cost.
+@https_fn.on_request(cors=_CORS, timeout_sec=30, min_instances=1)
 def login(req: https_fn.Request) -> https_fn.Response:
     if req.method != "POST":
         return _json({"error": "POST only"}, 405)
