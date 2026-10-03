@@ -4,7 +4,7 @@ Clients (sites/objects where workers work): the Clients tab, the client modal, t
 
 ## Data: the client record
 
-Global `clients` array. It is saved with the schedule; in Firestore mode each client is one document `tenants/{t}/clients/{id}`.
+Global `clients` array. It is saved with the schedule; each client is one document `tenants/{t}/clients/{id}`.
 
 | Field | Meaning |
 |---|---|
@@ -58,7 +58,7 @@ Worker pay and client billing are separate sets of fields. Billing never changes
 ## Manual punch (client card → Punch Clock)
 
 - `openManualPunch(cid)` opens `#manualPunchOverlay`: a worker select (workers assigned to this client, or everyone if none), IN/OUT (`setMpType`), date, time and a note.
-- `saveManualPunch(cid)` creates the punch `{id: Date.now(), workerId, workerName, type, time, date (en-GB), ts, site, clientId, dist:null, gpsVerified:false, manual:true, notes, gpsWarnings:['Manual entry by manager']}`. It adds the punch to the local punch log and sends it with `gsSavePunch()` (Firestore or Apps Script — see [app-core.md](app-core.md)).
+- `saveManualPunch(cid)` creates the punch `{id: Date.now(), workerId, workerName, type, time, date (en-GB), ts, site, clientId, dist:null, gpsVerified:false, manual:true, notes, gpsWarnings:['Manual entry by manager']}`. It adds the punch to the local punch log and sends it to Firestore with `gsSavePunch()` (see [app-core.md](app-core.md)).
 - `openPunchClock(cid)` (stores the client in `localStorage.punchClockSite` and opens `worker-punch.html`) is defined but has no caller.
 
 ## Where clients are used elsewhere

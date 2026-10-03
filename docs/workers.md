@@ -4,7 +4,7 @@ The Workers tab, the worker modal (add / edit / review after a scan), the worker
 
 ## Data: the worker record
 
-One object per worker in the global `workers` array. It is saved as part of the schedule (see [app-core.md](app-core.md) → saving); in Firestore mode it is one document `tenants/{t}/workers/{id}`.
+One object per worker in the global `workers` array. It is saved as part of the schedule (see [app-core.md](app-core.md) → saving); it is one document `tenants/{t}/workers/{id}`.
 
 | Field | Meaning |
 |---|---|
@@ -34,7 +34,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
 | `docChildren` | `[{name, idNo, dob}]` |
 | `spouseSurname`, `spouseGiven`, `spouseId`, `spouseDob`, `spouseIncome` (`''`/`none`/`work`/`other`) | Form 101 section ו |
 | `avatarB64` | 160×160 JPEG portrait (base64) |
-| `docUrl`, `docFileId`, `docSavedAt` | the Form 101 PDF (Drive id, or a Storage path `tenants/…`) |
+| `docUrl`, `docFileId`, `docSavedAt` | the Form 101 PDF (download URL, Storage path `tenants/…`) |
 | `assetsFileId` | the scan sidecar (scan + signature + extra pages) used to rebuild the PDF |
 | `docHasSignature`, `docExtraPages` | written by `aiFillForm101()` on each successful save |
 | `docUploadFailed` | last PDF upload failed |
@@ -124,7 +124,7 @@ One form for add, edit and post-scan review. Labels of every Form 101 field are 
 
 ### Deleting (`deleteWorker(wi)`)
 
-It removes the worker and saves, then best-effort deletes their files through `gsDeleteWorkerDoc()`: the PDF (`docFileId`, or the id parsed from `docUrl` by `extractDriveFileId`), the sidecar, and every `docs[].fileId`.
+It removes the worker and saves, then best-effort deletes their files through `gsDeleteWorkerDoc()`: the PDF (`docFileId`), the sidecar, and every `docs[].fileId`.
 
 ## Punch link
 
@@ -137,7 +137,7 @@ These are separate from the Form 101 scan, and their labels are English.
 - `openWorkerDocUpload(workerId)` opens `#workerDocOverlay`: type (`WORKER_DOC_TYPES`), an optional expiry date, and several files.
 - `submitWorkerDocUpload()`:
   - prepares every file with `fileForStorage()` (images shrunk);
-  - uploads them in parallel with `xhrPostJSON(GS_UPLOAD_PROXY_URL, {action:'saveWorkerFile', workerId, …}, onProgress)`. In Firestore mode this goes to Storage, otherwise to Drive through the proxy — see [backend.md](backend.md);
+  - uploads them in parallel to Storage with `uploadWorkerFile({action:'saveWorkerFile', workerId, …}, onProgress)` — see [app-core.md](app-core.md) → Data calls;
   - appends `{id, type, name, fileId, url, mediaType, uploadedAt, expiry}` to `w.docs`, then saves.
 - `deleteWorkerFile(workerId, docId)` removes the entry and deletes the file.
 

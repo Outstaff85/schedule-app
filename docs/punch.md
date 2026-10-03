@@ -2,20 +2,17 @@
 
 The worker-facing clock-in/out page, routed at `/punch`. A worker opens a personal link `…/punch?t=<token>` (built by `buildPunchLink(w)` in the manager app, see [workers.md](workers.md)). There is no login: the token is the only credential. One inline `<script>`, no modules; it duplicates `esc()`, `getPunchLog`/`savePunchLog`, `reportError` and the shift pairing on purpose (see CLAUDE.md → rules that apply everywhere).
 
-The server side of this page is the `punch` Cloud Function (Firestore mode) or Apps Script with `workerToken` (Sheets mode) — see [backend.md](backend.md) and [apps-script.md](apps-script.md).
+## Server
 
-## Backend switch
+The page talks only to the `punch` Cloud Function (`PUNCH_FN_URL` = `https://europe-west3-schedule-odinson.cloudfunctions.net/punch`; `punchFn(body)` posts JSON) — see [backend.md](backend.md) → `portal.py`:
 
-`BACKEND` is `'firestore'` unless this device stored `localStorage.backend='sheets'` (`?backend=sheets`; `?backend=firestore` clears it) — the same key the manager app uses.
+| Call | Body |
+|---|---|
+| Load the worker and sites | `{action:'load', token}` |
+| Save a punch (`postPunch(e)`) | `{action:'savePunch', token: e.workerToken or the link's, data: e}` |
+| Error telemetry | `{action:'logError', …}` |
 
-| | Firestore | Sheets |
-|---|---|---|
-| Load the worker and sites | `punchFn({action:'load', token})` | `GET GS_URL?action=loadSchedule&workerToken=…`, then a JSONP fallback (`<script>` with `callback=`, 8 s) |
-| Save a punch | `punchFn({action:'savePunch', token, data})` | `POST {action:'savePunch', secret:API_SECRET, workerToken, data}` |
-| Error telemetry | `punchFn({action:'logError', …})` | `POST {action:'logError', secret, …}` |
-| Push subscription | `punchFn({action:'savePushSubscription', token, …})` | `POST` to `GS_URL_WP` with `secret` + `workerToken` |
-
-`PUNCH_FN_URL` = `https://europe-west3-schedule-odinson.cloudfunctions.net/punch`; `punchFn(body)` posts JSON. `postPunch(e)` picks the backend for one punch.
+The function hands out only this worker and their sites, and accepts punches for this worker only.
 
 ## URL parameters and the site
 
@@ -32,11 +29,11 @@ The server side of this page is the `punch` Cloud Function (Firestore mode) or A
 1. `loadWorkers()` reads the worker list from `punchClockSite.workers`, else the legacy cache `localStorage.schedMgr_v1` (or `scheduleManagerData`), filtered to `SITE.clientId` when set (falls back to all if that is empty). Workers are reduced to `{id, name, colorIdx, token, clientIds}`.
 2. **Personal link:**
    - token found in the cache → `goToPunchDirect()` at once (works offline), then, if online, `verifyAndRefresh()` in the background: reloads from the server; a token that is gone (regenerated or the worker removed) → "Invalid Link" screen at once; otherwise the geofence is re-resolved unless the URL or the object picker fixed it;
-   - not in the cache, online → "Verifying…", `loadWorkersFromGS()`, then the punch screen, "Invalid Link", or "Connection problem";
+   - not in the cache, online → "Verifying…", `loadWorkersFromGS()`, then the punch screen, "Invalid Link" (the function answered "Unknown worker link"), or "Connection problem" (no answer);
    - not in the cache, offline → "No connection — open this link once while online".
-3. **No token:** the worker grid (`screenWorker`, `renderWorkerGrid()`), refreshed in the background. This old picker flow cannot name a firm, so against the multi-tenant backend it only works from the local cache.
+3. **No token:** the worker grid (`screenWorker`, `renderWorkerGrid()`). This old picker flow cannot name a firm, so it only works from the same-device cache (`loadWorkersFromGS()` does nothing without a token).
 
-`loadWorkersFromGS()` writes the whole reply to `localStorage.schedMgr_v1`, which is how the next open works offline. A crash in `init()` is reported and shows "Что-то пошло не так".
+`loadWorkersFromGS()` answers `true` when the server answered — with this worker, or with "Unknown worker link" (then `workers` is empty, so the link is revoked) — and `false` when it could not be reached. It writes the whole reply to `localStorage.schedMgr_v1`, which is how the next open works offline. A crash in `init()` is reported and shows "Что-то пошло не так".
 
 ## Screens
 
@@ -61,16 +58,16 @@ Constants: `GPS_MAX_ACCURACY` = 150 m, `GPS_REQUEST_MS` = 800 ms, `GPS_MAX_SPEED
 
 - Ignored without `locOk`; a second tap within 4 s gets "Подождите пару секунд".
 - **IN or OUT** = the opposite of the worker's last punch across all days (`getLastEntry`, latest `ts`), so an overnight shift closes correctly.
-- The entry: `{id: Date.now(), workerId, workerName, type, time:'HH:MM', ts, site, clientId, dist, lat, lng, gpsVerified, geoSkipped, manual:false, gpsAccuracy, gpsSuspicious, gpsWarnings, gpsElapsed}`. `lat`/`lng` are sent only when the site has a geofence. **No `date` is sent:** Apps Script fills it from `ts` (Asia/Jerusalem); the `punch` function stores `day: null` and the app goes by `ts`.
+- The entry: `{id: Date.now(), workerId, workerName, type, time:'HH:MM', ts, site, clientId, dist, lat, lng, gpsVerified, geoSkipped, manual:false, gpsAccuracy, gpsSuspicious, gpsWarnings, gpsElapsed}`. `lat`/`lng` are sent only when the site has a geofence. No `date` is sent: the `punch` function takes the day from `ts` in Israel time.
 - Saved to `localStorage.punchLog` first, then `gsSavePunch()`.
 - On OUT, `updateScheduleManager()` writes today's shift start/end into the same-device `schedMgr_v1` cache (a leftover bridge to the manager app on the same device).
 
 ## Offline queue
 
-- `gsSavePunch()` queues the punch (`localStorage.punchQueue`, `QUEUE_KEY`) when offline, on a network error, or when the reply has `error` (Apps Script answers HTTP 200 for a refused punch).
+- `gsSavePunch()` queues the punch (`localStorage.punchQueue`, `QUEUE_KEY`) when offline, on a network error, or when the reply has `error` (a refusal comes back as `{error}`, so the reply is checked, not just the HTTP status).
 - `queueEntry()` stamps the entry with its `workerToken`, so a later flush posts to the right firm.
 - `flushQueue()` runs on `online` and on `load`, one punch at a time, keeps the failed ones; `_flushingQueue` stops two runs from double-posting. The badge "Offline — N punches queued" shows until the queue is empty, then "Synced N offline punches".
-- Re-sending is harmless: the `punch` function writes the punch under its own id (`set`), so a duplicate is the same document. Apps Script appends a row each time.
+- Re-sending is harmless: the `punch` function writes the punch under its own id (`set`), so a duplicate is the same document.
 
 ## History (`openHistory()`)
 
@@ -79,5 +76,5 @@ Only this device's `punchLog` for the selected worker. Punches are sorted by `ts
 ## Telemetry and push
 
 - `reportError()` — at most 21 per page, the same message at most once a minute; sent with `role:'worker'` and the worker's name (or the first 4 characters of the token). Wired to `error` and `unhandledrejection`.
-- `subscribeWorkerPush(workerName)` — defined but **nothing calls it**; push reminders are off (`checkShiftReminders()` is an empty stub, see [apps-script.md](apps-script.md)). `service-worker.js` still has `push` / `notificationclick` handlers for the future.
+- Push: the page does not subscribe (no sender exists). The `punch` function still accepts `savePushSubscription`, and `service-worker.js` still has `push` / `notificationclick` handlers for the future.
 - The service worker is registered with `updateViaCache:'none'` and the page reloads when a new version takes control.

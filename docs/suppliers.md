@@ -4,7 +4,7 @@ Suppliers are staffing agencies a worker comes through. This file covers the Sup
 
 ## Data
 
-The global `suppliers` array. It is saved with the schedule; in Firestore mode each supplier is one document `tenants/{t}/suppliers/{id}`.
+The global `suppliers` array. It is saved with the schedule; each supplier is one document `tenants/{t}/suppliers/{id}`.
 
 `{id, name, color, phone, bank, bankBranch, accountNumber, companyNumber}` — `companyNumber` is the ח.פ. All of them are plain text, so leading zeros are kept. An older `notes` field may exist but is not shown.
 

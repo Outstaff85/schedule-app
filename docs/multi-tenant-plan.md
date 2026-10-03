@@ -1,5 +1,7 @@
 # Multi-tenant + login architecture
 
+> **Historical.** This design was built on Apps Script / Google Sheets; the app now runs on Firestore and Cloud Functions, and Apps Script was removed 2026-10-03. The tenant model (firms, roles, per-firm isolation) carried over; the current implementation is in [backend.md](backend.md).
+
 Design doc for the multi-tenant version of this app: a super-admin creates
 "firms" (tenants), each firm logs in and only ever sees its own data.
 

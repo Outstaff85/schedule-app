@@ -152,3 +152,16 @@ Cause: the 2026-10-01 login-speed change grew `SCHEDULE_HEADERS` to 8 columns (`
 
 On a phone, opening the camera/gallery to pick a file can make the browser drop and reload the tab; the first `loadSchedule` right after coming back often failed, and `gsLoad()` turned any failure (network, Apps Script HTML error page, quota) into an immediate "Could not load from GS" toast. Now `gsLoad()` and `gsLoadPunchLog()` retry twice (`GS_LOAD_RETRY_DELAYS_MS` 1s, 3s), and only if every attempt fails does it show the reason in the toast and send `loadSchedule failed: <reason>` to the Errors sheet (`reportError`, `gsLoad.lastError`). `retryLoadDataWhenBack()` then tries again when the device is online / the tab is visible again (or after 15s). The new-app-version (service worker `controllerchange`) reload now waits while any `xhrPostJSON()` upload is in flight (`__uploadsInFlight`), so a deploy no longer cuts off a document upload. If it recurs, the Errors row's reason says which case it is.
 
+
+
+## Apps Script removed (2026-10-03)
+
+After every firm was copied to Firestore ("Copy to Firestore") and every worker file moved from Drive to Storage ("Move files to Firebase", all firms at "Left 0"), the Apps Script backend was removed entirely:
+
+- **Gone:** `apps-script/` (`Код.js`, `appsscript.json`, `.clasp.json`), its copy `google-apps-script.js`, the `deploy-apps-script.yml` workflow and `scripts/refresh-clasp-login.sh`; the per-device `?backend=sheets` switch in all three pages; the Apps Script session token (`gsToken`, minted by the `login` function with `GS_SESSION_SECRET`) and the sliding-token refresh; `API_SECRET`; the `gs_upload_proxy` function (CORS relay to Apps Script); the `migrate_from_sheets` and `migrate_files` functions with their Admin → Firms buttons; the Errors / Timings merge with the sheets; the punch page's JSONP fallback.
+- **Why it was safe:** the data and files were already in Firestore and Storage, and Firestore had been the default since stage 8. Old Drive file ids were all replaced by Storage paths by the file move.
+- **AI tests:** `tests/auth/test_ai.py` used to run the real Apps Script AI actions in Node and require identical requests. Before deleting `Код.js` every test case was run once and recorded in `tests/auth/ai_golden.json`; the test now compares against that file. `functions-auth/ai_prompts.json` stopped being generated and became the source of the prompts.
+- **Left in place:** the spreadsheet (as an archive), the Apps Script deployment (until archived by hand in the Apps Script editor), the Secret Manager secret `GS_SESSION_SECRET` (unused), and the `workerTokens` collection (unused, still denied by the rules).
+- **Fixed along the way:** the punch link showed "Connection problem" instead of "Invalid Link" for an unknown or regenerated token (the `punch` function answers `Unknown worker link`, which the page treated as no answer), so a regenerated link kept working from the device cache; and punches from the link were saved with `day: null` (the page sends no date) — the function now takes the day from the punch time in Israel.
+
+The full Apps Script code and the earlier docs describing it (`docs/apps-script.md`) are in git history before this change.

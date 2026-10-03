@@ -1,5 +1,7 @@
 # План миграции на Firestore
 
+> **Выполнено.** Миграция завершена; Apps Script и режим Google Sheets удалены 2026-10-03 (см. [history.md](history.md)). Ниже — исходный план, как исторический документ. Текущее устройство — [backend.md](backend.md).
+
 Переезд базы данных с Google Sheets + Apps Script на **Firestore (Standard, регион `europe-west3`, Франкфурт)**
 в проекте Firebase `schedule-odinson`. Сайт (Hosting) и Cloud Functions остаются там же, где сейчас.
 

@@ -6256,7 +6256,7 @@ function ensureScanPipelineLoaded(){
 // New-scan entry point (the "Скан паспорта" button) — awaits the
 // pipeline before calling openAiScan(), which only exists once it's loaded.
 // Cloud Function warm-up (2026-10-01): a cold preprocess_scan /
-// fill_form_101 / gs_upload_proxy instance costs seconds on first use (the
+// fill_form_101 / ai_read instance costs seconds on first use (the
 // Timings pane showed ~4-5s in "Enhance (server)"). These {"ping":true} calls
 // wake them while the user is still photographing or filling the form; the
 // functions answer a ping at once without doing any work. At most once per

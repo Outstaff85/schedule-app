@@ -3,7 +3,7 @@
 How a worker's Form 101 PDF is built, stored and rebuilt.
 - The client assembles a JSON payload (`aiFillForm101()` in `schedule-manager.html`).
 - The Cloud Function `fill_form_101` (`functions/main.py`, PyMuPDF, region us-central1) fills the template and returns the PDF.
-- The client stores the PDF and a scan sidecar — in Firebase Storage (Firestore mode) or Drive (Sheets mode).
+- The client stores the PDF and a scan sidecar in Firebase Storage.
 
 **Before touching field rects or the template:** read and update [form101-field-map.md](form101-field-map.md) (every AcroForm field: name, rect, Hebrew label, meaning).
 
@@ -87,15 +87,14 @@ Missing firm-profile fields (`firmProfileMissing`) are shown as a toast after th
 
 The PDF and the sidecar are uploaded at the same time; the progress bar runs 20–90 %, combined over both uploads.
 
-| What | Action | Firestore mode | Sheets mode |
-|---|---|---|---|
-| PDF | `saveWorkerDoc` `{fileBase64, fileName, previousFileId, workerId}` | Storage `tenants/<t>/workers/<id>/form101/<ms>-<name>` | Drive `Schedule manager APP/<firm>/Workers` |
-| Sidecar (scan, signature, extra pages as JSON) | `saveWorkerAssets` `{scanB64, scanMediaType, sigPng, extraPages, fileNameBase, previousFileId}` | Storage `…/assets/` (no URL) | Drive `Workers/Assets` (not shared) |
+| What | Action | Stored at |
+|---|---|---|
+| PDF | `saveWorkerDoc` `{fileBase64, fileName, previousFileId, workerId}` | Storage `tenants/<t>/workers/<id>/form101/<ms>-<name>`, with a download URL |
+| Sidecar (scan, signature, extra pages as JSON) | `saveWorkerAssets` `{scanB64, scanMediaType, sigPng, extraPages, fileNameBase, previousFileId}` | Storage `…/assets/` (no URL) |
 
 - **Sidecar:** written only when there is a scan image, and not on a background rebuild.
 - **The worker record after a successful save:** `docUrl`, `docFileId`, `docSavedAt`, `assetsFileId`, `docHasSignature`, `docExtraPages`; `docUploadFailed` is set to `false`.
-- **Replacing the old file:** the file being replaced (`previousFileId`) is deleted after the new one is up. In Storage it is deleted through `users_admin`; in Drive Apps Script moves it to the trash.
-- **Duplicates in Drive:** Apps Script also trashes other files in the folder with the same document number.
+- **Replacing the old file:** the file being replaced (`previousFileId`) is deleted after the new one is up, through `users_admin`.
 - **Failure:** any error sets `docUploadFailed = true`, which shows the UPLOAD FAILED / NO DOCUMENT badge, and a toast.
 
-Upload mechanics (`xhrPostJSON`, `fsUpload`, the proxy): [app-core.md](app-core.md) and [backend.md](backend.md).
+Upload mechanics (`uploadWorkerFile`): [app-core.md](app-core.md) and [backend.md](backend.md).

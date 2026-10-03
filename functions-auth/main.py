@@ -84,8 +84,8 @@ def _log_refused(username, reason):
 
 
 def _body(req):
-    # force=True: parse regardless of Content-Type (see gs_upload_proxy in
-    # functions/main.py for the bug a missing header caused).
+    # force=True: parse regardless of Content-Type (Flask's get_json() otherwise
+    # returns None for a text/plain body).
     return req.get_json(silent=True, force=True) or {}
 
 

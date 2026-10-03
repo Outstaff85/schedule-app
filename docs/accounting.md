@@ -83,7 +83,7 @@ One row per (worker, assigned client). Empty inputs show the resolved rate as a 
 - **Payable by supplier:** `renderSupplierPayable(entries)`:
   - per supplier, hours × commission (never the worker's wage); stored in `__lastSupplierPayableRows` for the export buttons;
   - Excel / PDF buttons → `exportPayableSummary()`;
-  - the **"No supplier assigned" row** shows those workers' hours and their **real pay total** (`e.total`), not a commission.
+  - the **"No supplier assigned" row** shows those workers' hours only; its payable is "—" (nothing is owed to a supplier for them, and a wage never appears in this table).
 
 ### Billable by client (`renderClientBillable(entries)`)
 
@@ -91,9 +91,9 @@ Per client: hours, mode (Fixed / Tiered) and the billable total. It never shows 
 
 ### Pending hours (approval queue)
 
-- **List:** `renderPendingHours()` sends `loadPendingHours` and lists batches with status `pending`: file, worker, uploaded by, shift count. Firestore mode answers from `tenants/{t}/pendingHours`; Apps Script from the `PendingHours_<t>` sheet.
+- **List:** `renderPendingHours()` sends `loadPendingHours` and lists batches with status `pending`: file, worker, uploaded by, shift count. The batches are `tenants/{t}/pendingHours` documents.
 - **Who may approve:** Approve / Reject buttons show only for `tenant_admin` and `superadmin` (the server checks the same). `staff` sees the list read-only; a `supplier` is refused everywhere.
-- **Approving:** `approveHoursBatch(id)` → `approvePendingHours` creates IN and OUT punches per row, with no GPS fields and the note `Imported from <file>`. Approving again creates nothing. In Firestore mode the app then reads the batch's punches (`punchesOfBatch`) and loads back to the earliest of them, so a past month shows up.
+- **Approving:** `approveHoursBatch(id)` → `approvePendingHours` creates IN and OUT punches per row, with no GPS fields and the note `Imported from <file>`. Approving again creates nothing. The app then reads the batch's punches (`punchesOfBatch`) and loads back to the earliest of them, so a past month shows up.
 - **Rejecting:** `rejectHoursBatch(id)` → `rejectPendingHours` marks the batch rejected and creates nothing.
 
 Uploading the hours (worker card) is in [workers.md](workers.md).
@@ -127,6 +127,6 @@ Real-time attendance from the punch log and today's schedule; `renderDashboard()
 ## Super-admin cross-firm summary
 
 Admin → Firms → "Payable summary (all firms)" (`toggleSuperadminAccounting()` → `renderSuperadminAccounting()`).
-- For each cached firm, `fetchForTenant('loadSchedule'|'loadPunchLog', tenantId)` sends GET requests with an explicit `asTenantId`, so the firm being viewed does not change.
+- For each cached firm, `fetchForTenant('loadSchedule'|'loadPunchLog', tenantId)` reads that firm with an explicit `asTenantId`, so the firm being viewed does not change. Punches: this month plus the week before.
 - It computes this week's hours and `shiftPay` per firm with the canonical functions and shows a table with a grand total.
-- **Limitation:** tier 2 of `effectiveRates()` reads the global `clients` — the firm currently loaded — not the other firm's clients.
+- Tier 2 of `effectiveRates()` reads the global `clients`, so while a firm's pay is computed its own clients stand in for the loaded firm's, and are swapped back right after.

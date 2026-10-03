@@ -12,50 +12,47 @@ A staff scheduling & GPS punch-clock PWA for a single client ("Odinson"), served
 
 Multi-tenant: a super-admin creates firms (tenants), each with its own logins and isolated data. Roles: `superadmin`, `tenant_admin`, `staff` (per-section permissions), `supplier` (own workers only).
 
-Data runs on **Firestore + Firebase Storage + Cloud Functions** by default (since stage 8). The original **Google Apps Script + Google Sheets** backend is still deployed as the per-device fallback (`?backend=sheets`), the migration source, and the store of files saved to Drive before the switch.
+The backend is **Firestore + Firebase Storage + Cloud Functions**, and nothing else. The original Google Apps Script / Google Sheets backend was removed on 2026-10-03 (see docs/history.md); don't add calls to it.
 
 ## Documentation index — read before you touch
 
 | Read | Before touching |
 |---|---|
-| [docs/app-core.md](docs/app-core.md) | `schedule-manager.html` shell: login/session, tabs and `render()`, the Schedule tab, the backend switch, the `window.fetch` wrapper and Firestore routing, load/save/cache, uploads (`xhrPostJSON`), telemetry, PWA |
+| [docs/app-core.md](docs/app-core.md) | `schedule-manager.html` shell: login/session, tabs and `render()`, the Schedule tab, data calls (the `fetch(API_URL)` dispatcher), load/save/cache, uploads (`uploadWorkerFile`), telemetry, PWA |
 | [docs/workers.md](docs/workers.md) | the worker record, Workers tab (cards/list, filters), worker card, worker modal and `saveWorker()`, worker documents, hours import/export from the card, punch links |
 | [docs/clients.md](docs/clients.md) | the client record, Clients tab and modal, billing modes, map picker, manual punch |
 | [docs/suppliers.md](docs/suppliers.md) | the supplier record and Suppliers tab |
 | [docs/accounting.md](docs/accounting.md) | **payroll math** (`groupPunchesIntoShifts`, `analyzeDayPunches`, `effectiveRates`, `shiftPay`, `israeliDayPay`), Accounting tab, supplier commission, client billing, hours approval queue, exports, Today tab, super-admin summary |
-| [docs/admin.md](docs/admin.md) | Admin tab: punch log (month-window loading, paging, Clear Log), Firms, Users, Errors, Timings, Profile, Copy to Firestore, Move files to Firebase |
+| [docs/admin.md](docs/admin.md) | Admin tab: punch log (month-window loading, filters, paging, Clear Log), Firms, Users, Errors, Timings, Profile |
 | [docs/scan.md](docs/scan.md) | `scan-pipeline.js` and the scan entry points: corner editor, alignment, AI reads, digit verification, page merging |
 | [docs/form101.md](docs/form101.md) | `aiFillForm101()`, `fill_form_101` (`functions/main.py`), storing the PDF and sidecar |
 | [docs/form101-field-map.md](docs/form101-field-map.md) | **any** Form 101 field rect or the PDF template — keep this map in sync with `functions/main.py` |
 | [docs/punch.md](docs/punch.md) | `worker-punch.html` (worker link, GPS checks, offline queue) |
 | [docs/supplier-portal.md](docs/supplier-portal.md) | `supplier-portal.html` and what a supplier may see/write |
-| [docs/backend.md](docs/backend.md) | `firestore-backend.js`, `functions-auth/*`, `functions/` proxies, Firestore data model, `firestore.rules`/`storage.rules`/indexes, tests, CI deploys, deploy troubleshooting |
-| [docs/apps-script.md](docs/apps-script.md) | `apps-script/Код.js` (and its copy `google-apps-script.js`): endpoints, sheets, AI prompts, Drive files, telemetry, migration export |
-| [docs/firestore-plan.md](docs/firestore-plan.md) | the Firestore move: stages, decisions |
-| [docs/multi-tenant-plan.md](docs/multi-tenant-plan.md) | the multi-tenant design |
+| [docs/backend.md](docs/backend.md) | `firestore-backend.js`, `functions-auth/*` (login, users/firms, punch link, supplier portal, AI reads + prompts), `functions/`, the Firestore data model, `firestore.rules`/`storage.rules`/indexes, tests, CI deploys, deploy troubleshooting |
+| [docs/firestore-plan.md](docs/firestore-plan.md) | the (finished) move off Sheets: stages, decisions — historical |
+| [docs/multi-tenant-plan.md](docs/multi-tenant-plan.md) | the original multi-tenant design — historical |
 | [docs/history.md](docs/history.md) | why things are the way they are: reverted approaches, debugging trails, fixed incidents |
 
-Code comments in `functions*/`, `apps-script/`, the rules and `tests/` may still name these files by their old root paths (`FIRESTORE_PLAN.md`, `MULTI_TENANT_PLAN.md`, `HISTORY.md`, `form101-field-map.md`) or point at sections of the former long CLAUDE.md — the content is now in the files above.
+Some code comments (the rules, `tests/`, older parts of the pages) still name these files by their old root paths (`FIRESTORE_PLAN.md`, `MULTI_TENANT_PLAN.md`, `HISTORY.md`, `form101-field-map.md`) or point at sections of the former long CLAUDE.md — the content is now in the files above.
 
 ## Files
 
-- `schedule-manager.html` — the manager/admin app (all tabs). Lazy-loads `scan-pipeline.js` on the first scan and `firestore-backend.js` in Firestore mode.
+- `schedule-manager.html` — the manager/admin app (all tabs). Loads `firestore-backend.js` at startup and `scan-pipeline.js` on the first scan.
 - `scan-pipeline.js` — the document-scan pipeline, run in the page's global scope.
 - `firestore-backend.js` — the browser Firestore/Storage layer (`initFirestoreBackend()`), shared by the manager app and the supplier portal.
 - `worker-punch.html` (`/punch`), `supplier-portal.html` (`/supplier`) — the worker and supplier pages.
-- `service-worker.js` — PWA shell (network-first); never intercepts `script.google.com`. `manifest.json`, `manifest-punch.json`.
-- `functions/` — Python Cloud Functions, us-central1: `fill_form_101`, `preprocess_scan`, `gs_upload_proxy`; `functions/assets/` holds the PDF template and font (re-sync from the root copies `form101_fillable.pdf` / `heebo-hebrew.ttf` if those change).
-- `functions-auth/` — Python Cloud Functions, europe-west3: `login`, `users_admin`, `punch`, `supplier`, `ai_read`, `migrate_from_sheets`, `migrate_files`.
-- `apps-script/` — the deployed Apps Script project (`Код.js`, `appsscript.json`, `.clasp.json`); `google-apps-script.js` is an identical copy.
-- `firestore.rules`, `storage.rules`, `firestore.indexes.json`; `tests/rules/` (rules tests + the npm scripts that run `tests/auth/`); `tests/auth/` (functions tests).
-- `scripts/refresh-clasp-login.sh` — refreshes the clasp token secret (see docs/apps-script.md).
+- `service-worker.js` — PWA shell (network-first, same-origin GETs only). `manifest.json`, `manifest-punch.json`.
+- `functions/` — Python Cloud Functions, us-central1: `fill_form_101`, `preprocess_scan`; `functions/assets/` holds the PDF template and font (re-sync from the root copies `form101_fillable.pdf` / `heebo-hebrew.ttf` if those change).
+- `functions-auth/` — Python Cloud Functions, europe-west3: `login`, `users_admin`, `punch`, `supplier`, `ai_read`; the AI prompts are `functions-auth/ai_prompts.json`.
+- `firestore.rules`, `storage.rules`, `firestore.indexes.json`; `tests/rules/` (rules tests + the npm scripts that run `tests/auth/`); `tests/auth/` (functions tests, incl. `ai_golden.json`).
 
 ## Commands
 
 - Local preview: `firebase emulators:start --only hosting`, or open the HTML files directly.
 - Rules tests: `cd tests/rules && npm install && npm test`. Functions tests: `cd tests/rules && PYTHON=<python with firebase-admin, pytest> npm run test:auth`.
 - Deploying `functions/` by hand needs `functions/venv` first (`python -m venv venv && pip install -r requirements.txt`); CI builds its own.
-- **Deploy = merge to `main`.** GitHub Actions: Hosting on every push to `main`; functions, rules and Apps Script on pushes touching their paths (details in docs/backend.md).
+- **Deploy = merge to `main`.** GitHub Actions: Hosting on every push to `main`; functions and rules on pushes touching their paths (details in docs/backend.md).
 
 ### Git workflow (enforced by hooks in `.claude/settings.json`)
 
@@ -71,15 +68,15 @@ Code comments in `functions*/`, `apps-script/`, the rules and `tests/` may still
 
 - **XSS:** every `${...}` that puts data into HTML goes through `esc()`. Each page has its own identical `esc()`; keep them the same.
 - **No modules or build:** everything is global functions/consts in one inline `<script>` per page (plus the two lazy-loaded `.js` files, which also run as globals). Follow that style.
-- **Duplicated on purpose:** `GS_URL`/`API_SECRET`, `esc()`, `reportError`, `showToast`, `getPunchLog`/`savePunchLog`, the shift pairing (`groupPunchesIntoShifts`/`analyzeDayPunches`) exist in more than one page. A fix in one must be mirrored in the others. `GS_URL` is also in `functions/main.py` and `functions-auth/main.py`.
+- **Duplicated on purpose:** `esc()`, `reportError`, `showToast`, `getPunchLog`/`savePunchLog`, `loadFirestoreBackend()`, the shift pairing (`groupPunchesIntoShifts`/`analyzeDayPunches`) exist in more than one page. A fix in one must be mirrored in the others.
 - **Payroll:** hours and pay only through the canonical functions in docs/accounting.md — never a second calculation. Supplier commission and client billing are separate figures that never change a worker's pay.
-- **Firm data isolation:** a firm sees only its own data; a supplier never receives wages, client billing or GPS (server-side allow-lists, docs/supplier-portal.md); a client entity never gets a login and no client-facing surface shows supplier data.
+- **Firm data isolation:** a firm sees only its own data; a supplier never receives wages, client billing, GPS, a worker's punch-link token or file links (server-side allow-lists, docs/supplier-portal.md); a client entity never gets a login and no client-facing surface shows supplier data.
 - **Form 101:** see the language rule above; field positions only via docs/form101-field-map.md.
-- **AI prompts** live in `apps-script/Код.js`; after editing one, regenerate `functions-auth/ai_prompts.json` (`node tests/auth/apps_script_ai.js prompts > functions-auth/ai_prompts.json`).
+- **AI prompts** live in `functions-auth/ai_prompts.json`; `tests/auth/test_ai.py` checks every request against `tests/auth/ai_golden.json`, so a prompt edit also updates that file (docs/backend.md).
 - **Uploads:** new upload features go through the shared helpers (`filesToUploadPages`/`fileToUploadPages`/`downscaleForUpload`/`fileForStorage`) and send per-page requests in parallel (docs/scan.md).
-- **Service worker:** when `service-worker.js` changes, bump its `CACHE` version (now `schedule-mgr-v105`), or clients keep stale files.
+- **Service worker:** when `service-worker.js` changes, bump its `CACHE` version (now `schedule-mgr-v106`), or clients keep stale files.
 - **Hosting ignore** in `firebase.json` must keep `functions/**` (otherwise the venv is uploaded publicly), `functions-auth/**`, `tests/**`, `docs/**`, `*.md` and the rules files.
-- **Secrets** live in Secret Manager (`GS_SESSION_SECRET`, `ANTHROPIC_API_KEY`) and Apps Script Script Properties — never in the repo, never asked for in chat.
+- **Secrets** live in Secret Manager (`ANTHROPIC_API_KEY`) — never in the repo, never asked for in chat.
 
 ## Keeping the docs true
 

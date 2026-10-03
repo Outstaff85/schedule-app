@@ -10,7 +10,7 @@ The worker modal that the scan opens is in [workers.md](workers.md); the PDF bui
 - **`rescanWorkerDoc(workerId)`** — "Scan / Rescan" in the worker modal; sets `window.__aiRescanWorkerId`.
 
 Both:
-1. warm the Cloud Functions (`warmCloudFunctions(SCAN_WARM_URLS())` — `{"ping":true}` to `preprocess_scan`, `fill_form_101`, `gs_upload_proxy`, plus `ai_read` in Firestore mode; at most once per URL every 4 min, results in `__fnWarm`);
+1. warm the Cloud Functions (`warmCloudFunctions(SCAN_WARM_URLS())` — `{"ping":true}` to `preprocess_scan`, `fill_form_101` and `ai_read`; at most once per URL every 4 min, results in `__fnWarm`);
 2. load the pipeline (`ensureScanPipelineLoaded()`);
 3. call `openAiScan()`.
 
@@ -32,7 +32,7 @@ The file input accepts images and PDFs, several at once.
 
 ## The AI calls
 
-All of them are Apps Script actions sent with `fetch(GS_URL, …)`. In Firestore mode the fetch wrapper sends them to the `ai_read` Cloud Function instead, with the same requests and replies ([backend.md](backend.md)).
+All of them are sent as `fetch(API_URL, …)`; the dispatcher passes them to the `ai_read` Cloud Function ([backend.md](backend.md) → `ai.py`).
 
 | Action | Model | Used for |
 |---|---|---|
@@ -42,7 +42,7 @@ All of them are Apps Script actions sent with `fetch(GS_URL, …)`. In Firestore
 | `aiVerifyFields` | `ANTHROPIC_MODEL` | Batched zoomed re-read of several digit fields |
 | `aiVerifyField` | `ANTHROPIC_MODEL` | One zoomed re-read (the ID retry) |
 
-The prompts live in Apps Script (`IL_ID_FIELD_MAP`, `PASSPORT_FIELD_MAP`) — see [apps-script.md](apps-script.md).
+The prompts live in `functions-auth/ai_prompts.json` — see [backend.md](backend.md).
 
 ## Path A — one photo (with the corner editor)
 
