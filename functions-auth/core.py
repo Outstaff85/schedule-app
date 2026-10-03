@@ -1,12 +1,12 @@
-"""Login and user management on Firestore (FIRESTORE_PLAN.md, stage 2).
+"""Login, user and firm management on Firestore.
 
 Pure logic, no HTTP: main.py wraps it in Cloud Functions, and
 tests/auth/test_core.py runs it against the Firestore and Auth emulators.
 Every function takes the Firestore client and returns a plain dict — either
-the result or {"error": "..."} — matching the Apps Script actions it
-replaces (login, createUser, listUsers, createTenantUser, updateUser,
-resetUserPassword, deleteUser), with the same Russian error texts the app
-already shows.
+the result or {"error": "..."} — for the actions login, createUser (a new
+firm), listUsers, createTenantUser, updateUser, resetUserPassword,
+deleteUser, listTenants, setTenantActive, deleteTenant, updateTenant and
+loadTenantProfile, with the Russian error texts the app shows.
 
 Collections (see firestore.rules — all of these are function-only except
 users/{uid}, which its owner, a superadmin or the firm's tenant_admin may read):
@@ -18,16 +18,14 @@ users/{uid}, which its owner, a superadmin or the firm's tenant_admin may read):
                       if it already exists
   tenants/{tenantId}  firm profile (createFirm)
 
-Passwords: users migrated from the Users sheet keep their Apps Script hash
-(algo 'sha256' = SHA-256 hex of password + ':' + salt), so nobody has to
-change their password; it is replaced by an scrypt hash on the first
-successful login. New and reset passwords are scrypt straight away.
+Passwords: scrypt. A user who has not logged in since the move off Google
+Sheets still has the old hash (algo 'sha256' = SHA-256 hex of
+password + ':' + salt); it is replaced by an scrypt hash on their first
+successful login.
 """
 
-import base64
 import hashlib
 import hmac
-import json
 import secrets
 import time
 import uuid
@@ -62,7 +60,7 @@ def _norm_username(v):
 
 
 def _norm_role(role):
-    # 'tenant' is the legacy name for 'tenant_admin' (Apps Script login()).
+    # 'tenant' is the legacy name for 'tenant_admin'.
     role = role or "tenant_admin"
     return "tenant_admin" if role == "tenant" else role
 
@@ -84,7 +82,7 @@ def verify_password(password, secret):
     if secret.get("algo") == "scrypt":
         got = hashlib.scrypt(password.encode("utf-8"), salt=salt.encode("utf-8"),
                              n=SCRYPT_N, r=SCRYPT_R, p=SCRYPT_P, dklen=32).hex()
-    else:  # 'sha256' — Apps Script hashPassword()
+    else:  # 'sha256' — the old hash, replaced on the first login
         got = hashlib.sha256((password + ":" + salt).encode("utf-8")).hexdigest()
     return hmac.compare_digest(got, want.lower())
 
@@ -109,38 +107,6 @@ def claims_for(user):
     return claims
 
 
-# ── Apps Script session token ────────────────────────────────────────────────
-# Until every part of the app has moved off Apps Script (stages 6-7), a
-# Firestore-mode login also needs an Apps Script session token. The login
-# function mints it itself — the same HMAC-SHA256 "<payload>.<signature>"
-# format as Apps Script createSessionToken(), signed with its SESSION_SECRET
-# (Secret Manager GS_SESSION_SECRET) — so the login never waits for Apps Script.
-
-GS_SESSION_TTL_MS = 6 * 60 * 60 * 1000   # Apps Script SESSION_TTL_MS
-
-
-def _b64url(raw):
-    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
-
-
-def gs_session_token(uid, user, secret, now_ms=None):
-    """(token, expiresAt ms) that Apps Script verifySessionToken() accepts."""
-    now_ms = int(time.time() * 1000) if now_ms is None else now_ms
-    role = _norm_role(user.get("role"))
-    perms = user.get("permissions")
-    exp = now_ms + GS_SESSION_TTL_MS
-    payload = {
-        "userId": uid, "username": user.get("username"), "role": role,
-        "tenantId": user.get("tenantId") or None,
-        # Apps Script login() reads an empty cell (a supplier's) as '*'.
-        "permissions": "*" if perms in (None, "", "*") else perms,
-        "supplierId": user.get("supplierId") or None, "exp": exp,
-    }
-    body = _b64url(json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
-    sig = _b64url(hmac.new(secret.encode("utf-8"), body.encode("utf-8"), hashlib.sha256).digest())
-    return body + "." + sig, exp
-
-
 # ── Login ────────────────────────────────────────────────────────────────────
 
 def _secret_shape(secret):
@@ -151,14 +117,12 @@ def _secret_shape(secret):
             f"hashHex={all(c in '0123456789abcdefABCDEF' for c in h)} saltLen={len(salt)}")
 
 
-def login(db, username, password, mint_token, now=None, on_refused=None, gs_secret=None):
+def login(db, username, password, mint_token, now=None, on_refused=None):
     """mint_token(uid, claims) -> str (firebase_admin.auth.create_custom_token
-    in production). Returns the same fields Apps Script login() returned, with
-    `token` now a Firebase custom token for signInWithCustomToken().
-    on_refused(username, reason) is told why a login was refused (main.py
-    writes it to the errors collection); the user still only sees the
-    usual "wrong login or password". With gs_secret the reply also carries
-    gsToken/gsExpiresAt, an Apps Script session token for the same user."""
+    in production). `token` in the reply is a Firebase custom token for
+    signInWithCustomToken(). on_refused(username, reason) is told why a login
+    was refused (main.py writes it to the errors collection); the user still
+    only sees the usual "wrong login or password"."""
     def refused(reason, msg=E_BAD_LOGIN):
         if on_refused:
             try:
@@ -213,11 +177,7 @@ def login(db, username, password, mint_token, now=None, on_refused=None, gs_secr
         if t.exists:
             profile = dict(t.to_dict(), tenantId=tenant_id)
     perms = user.get("permissions")
-    gs = {}
-    if gs_secret:
-        gs["gsToken"], gs["gsExpiresAt"] = gs_session_token(uid, user, gs_secret, int(now * 1000))
     return {
-        **gs,
         "ok": True,
         "token": mint_token(uid, claims),
         "uid": uid,
@@ -300,7 +260,7 @@ def list_users(db, caller):
 
 
 def create_firm(db, caller, body):
-    """Apps Script createUser(): a new firm profile plus its tenant_admin."""
+    """createUser: a new firm profile plus its tenant_admin."""
     if not _is_super(caller):
         return {"error": "Только супер-админ может создавать пользователей"}
     username = _norm_username(body.get("username"))
@@ -412,7 +372,7 @@ def delete_user(db, caller, body, revoke):
     return {"ok": True}
 
 
-# ── Firms (Apps Script listTenants / setTenantActive / deleteTenant /
+# ── Firms (listTenants / setTenantActive / deleteTenant /
 #    updateTenant / loadTenantProfile) ───────────────────────────────────────
 
 def _target_tenant(caller, body):
@@ -472,8 +432,8 @@ def set_tenant_active(db, caller, body, revoke):
 
 
 def delete_tenant(db, caller, body, revoke):
-    """The firm and everything under it, its logins and worker links. Its
-    Drive folder (Apps Script) is not touched."""
+    """The firm and everything under it, and its logins. Its Storage files
+    are deleted by main.py (files.delete_tenant_files)."""
     if not _is_super(caller):
         return {"error": "Только супер-админ"}
     tid = body.get("tenantId")
@@ -490,8 +450,6 @@ def delete_tenant(db, caller, body, revoke):
         name = (u.to_dict() or {}).get("username")
         if name:
             batch.delete(db.collection("usernames").document(name))
-    for t in db.collection("workerTokens").where(filter=FieldFilter("tenantId", "==", tid)).stream():
-        batch.delete(t.reference)
     batch.commit()
     for u in users:
         revoke(u.id, delete=True)

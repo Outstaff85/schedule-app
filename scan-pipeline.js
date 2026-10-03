@@ -1,15 +1,15 @@
 // scan-pipeline.js — AI document-scan pipeline for schedule-manager.html,
 // lazy-loaded on demand (added 2026-09-28, optimization) — see
 // ensureScanPipelineLoaded() in schedule-manager.html for the loader and
-// CLAUDE.md's "Lazy-loaded scan pipeline" note for the full design.
+// docs/scan.md for the full design.
 // This file shares the SAME global scope as schedule-manager.html once
 // loaded (a plain <script src>, not an ES module) — every function here is
 // a normal global, exactly as if it were still inline in the main file, and
-// it freely calls shared helpers (esc, showToast, GS_URL, API_SECRET,
+// it freely calls shared helpers (esc, showToast, API_URL,
 // gsAuth, AVATAR_SIZE, ...) that live there. Do not add import/export here;
-// see CLAUDE.md's "No modules/imports" convention.
+// see CLAUDE.md (no modules).
 
-// ===== AI Document Scanner (Anthropic Vision via Apps Script proxy) =====
+// ===== AI Document Scanner (Anthropic Vision via the ai_read function) =====
 function openAiScan(){
   document.getElementById('aiScanOverlay').classList.add('open');
   // New scan session — the "review pages" screen (renderScanPagesPrompt)
@@ -152,7 +152,7 @@ async function onScanFilesSelected(fileList){
       if(!foundParsed&&!isNonIdKind(it.kind)){
         try{
           const rs=Date.now();
-          const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
+          const resp=await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',...gsAuth(),image:it.b64,mediaType:it.mediaType})});
           const json=await resp.json();
           tm.primaryReadMs+=Date.now()-rs;
           const p=json&&json.parsed;
@@ -366,9 +366,9 @@ async function runSefachOcr(b64,mediaType){
     +'<span>קורא ספח…</span>'
     +'<div class="progress-bar"></div></div>';
   try{
-    const resp=await fetch(GS_URL,{
+    const resp=await fetch(API_URL,{
       method:'POST',
-      body:JSON.stringify({action:'aiReadSefach',secret:API_SECRET,...gsAuth(),image:b64,mediaType:mediaType})
+      body:JSON.stringify({action:'aiReadSefach',...gsAuth(),image:b64,mediaType:mediaType})
     });
     const json=await resp.json();
     if(!json||json.error){
@@ -497,9 +497,9 @@ async function autoPreAlignScan(b64,mediaType){
 const PAGE_KINDS=['id_front','id_back','sefach','passport','contract','other'];
 async function _autoPreAlignCore(b64,mediaType,meta){
   try{
-    const resp=await fetch(GS_URL,{
+    const resp=await fetch(API_URL,{
       method:'POST',
-      body:JSON.stringify({action:'aiDetectAlign',secret:API_SECRET,...gsAuth(),image:b64,mediaType:mediaType})
+      body:JSON.stringify({action:'aiDetectAlign',...gsAuth(),image:b64,mediaType:mediaType})
     });
     const json=await resp.json();
     const align=json&&json.ok&&json.align;
@@ -619,9 +619,9 @@ async function verifyField(b64,mediaType,box,kind){
   const crop=await cropFieldImage(b64,mediaType,box);
   if(!crop) return null;
   try{
-    const resp=await fetch(GS_URL,{
+    const resp=await fetch(API_URL,{
       method:'POST',
-      body:JSON.stringify({action:'aiVerifyField',secret:API_SECRET,...gsAuth(),image:crop.b64,mediaType:crop.mediaType,kind})
+      body:JSON.stringify({action:'aiVerifyField',...gsAuth(),image:crop.b64,mediaType:crop.mediaType,kind})
     });
     const json=await resp.json();
     return (json&&json.ok&&json.value)?json.value:null;
@@ -630,8 +630,7 @@ async function verifyField(b64,mediaType,box,kind){
 
 // Batched sibling of verifyField (added 2026-09-28, optimization) — see
 // aiVerifyFields' own server-side comment for why: this replaces N parallel
-// aiVerifyField round-trips (N separate Apps Script executions) with one
-// Apps Script call carrying all the crops. jobs: [{field,kind,box}, ...].
+// aiVerifyField round-trips with one ai_read call carrying all the crops. jobs: [{field,kind,box}, ...].
 // Returns a plain {field: value} map; a field the model couldn't read (or a
 // totally failed/malformed response) is simply absent, same as verifyField
 // returning null for that field — callers already treat a missing value as
@@ -641,9 +640,9 @@ async function verifyFieldsBatch(jobs,b64,mediaType){
   const ready=jobs.map((j,i)=>({field:j.field,kind:j.kind,crop:crops[i]})).filter(j=>j.crop);
   if(!ready.length) return {};
   try{
-    const resp=await fetch(GS_URL,{
+    const resp=await fetch(API_URL,{
       method:'POST',
-      body:JSON.stringify({action:'aiVerifyFields',secret:API_SECRET,...gsAuth(),
+      body:JSON.stringify({action:'aiVerifyFields',...gsAuth(),
         jobs:ready.map(j=>({field:j.field,kind:j.kind,image:j.crop.b64,mediaType:j.crop.mediaType}))})
     });
     const json=await resp.json();
@@ -758,9 +757,9 @@ async function runOcr(b64,mediaType){
     +'<span>ה-AI קורא את המסמך…</span>'
     +'<div class="progress-bar"></div></div>';
   try{
-    const resp=await fetch(GS_URL,{
+    const resp=await fetch(API_URL,{
       method:'POST',
-      body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:b64,mediaType:mediaType})
+      body:JSON.stringify({action:'aiReadDoc',...gsAuth(),image:b64,mediaType:mediaType})
     });
     const json=await resp.json();
     if(!json||json.error){
@@ -1510,21 +1509,21 @@ function removePendingScanPage(i){
 // One extra-page read with the narrow aiReadSefach (ספח or biometric card
 // back). Never throws — a failed read resolves null, same as "nothing found".
 function readSefachPage(it){
-  return fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadSefach',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})})
+  return fetch(API_URL,{method:'POST',body:JSON.stringify({action:'aiReadSefach',...gsAuth(),image:it.b64,mediaType:it.mediaType})})
     .then(r=>r.json()).then(j=>(j&&j.parsed)||null)
     .catch(e=>{ console.error(e); return null; });
 }
 // Page type only (aiDetectAlign's "kind"), for the multi-file path, which
 // skips alignment. null when the call fails or the answer isn't a known kind.
 function classifyPage(it){
-  return fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiDetectAlign',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})})
+  return fetch(API_URL,{method:'POST',body:JSON.stringify({action:'aiDetectAlign',...gsAuth(),image:it.b64,mediaType:it.mediaType})})
     .then(r=>r.json()).then(j=>{ const k=j&&j.ok&&j.align&&j.align.kind; return PAGE_KINDS.includes(k)?k:null; })
     .catch(e=>{ console.error(e); return null; });
 }
 // An extra Israeli-ID front page (e.g. the ספח was scanned first): read
 // with the full aiReadDoc, since aiReadSefach doesn't read names or dob.
 function readFrontPage(it){
-  return fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})})
+  return fetch(API_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',...gsAuth(),image:it.b64,mediaType:it.mediaType})})
     .then(r=>r.json()).then(j=>{ const p=j&&j.parsed; return p&&p.type==='israeli_id'?p:null; })
     .catch(e=>{ console.error(e); return null; });
 }
@@ -1587,7 +1586,7 @@ async function processAllPendingPages(){
     // as soon as it is known the first page lacks address/family fields.
     earlyRead=(async()=>{
       const rs=Date.now();
-      const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:raw.b64,mediaType:raw.mediaType})});
+      const resp=await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',...gsAuth(),image:raw.b64,mediaType:raw.mediaType})});
       const json=await resp.json();
       tm.primaryReadMs=Date.now()-rs;
       return json&&json.parsed||null;
@@ -1671,7 +1670,7 @@ async function processAllPendingPages(){
       try{
         renderScanProgress('ה-AI קורא את המסמך… (עמוד '+(i+1)+' מתוך '+total+')',Math.max(45,readPct(i)-30));
         const rs=Date.now();
-        const resp=await fetch(GS_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',secret:API_SECRET,...gsAuth(),image:it.b64,mediaType:it.mediaType})});
+        const resp=await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',...gsAuth(),image:it.b64,mediaType:it.mediaType})});
         const json=await resp.json();
         tm.primaryReadMs+=Date.now()-rs;
         const p=json&&json.parsed;
@@ -1867,9 +1866,9 @@ function openWorkerModalFromScan(p){
   // A NEW scan whose document number matches an existing worker is the same
   // person scanned again — treat it exactly like rescanWorkerDoc() of that
   // worker (keeps their phone/clients/rates/schedule, re-uploads the PDF over
-  // their own Drive file, carries their old ספח forward if this scan has
+  // their own stored file, carries their old ספח forward if this scan has
   // none) instead of opening a blank "new worker" that would become a
-  // duplicate record and, on upload, trash the original's Drive document.
+  // duplicate record and, on upload, replace the original's document.
   if(!rescanId && ocrFields.docId){
     const dup=workers.find(w=>workerDocId(w)===ocrFields.docId);
     if(dup){ rescanId=dup.id; showToast('Existing worker found ('+(dup.name||ocrFields.docId)+') — updating their record',4000); }
@@ -1884,7 +1883,7 @@ function openWorkerModalFromScan(p){
       // and needs to know THEN whether this specific edit session started from
       // a fresh physical rescan (use the live window.__aiScanImage/
       // __aiPacketOtherPages, upload path) or is just a plain field edit on an
-      // existing worker (use the Drive sidecar, regenerate path). See
+      // existing worker (use the Storage sidecar, regenerate path). See
       // saveWorker()'s own comment at the matching check.
       window.__aiRescannedWorkerId=rescanId;
       showWorkerModal({...workers[idx],...ocrFields});

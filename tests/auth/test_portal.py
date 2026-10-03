@@ -1,4 +1,4 @@
-"""Stage 6 tests: worker punch link and supplier portal (functions-auth/portal.py)
+"""Tests for the punch link and the supplier portal (functions-auth/portal.py)
 on the Firestore + Auth emulators."""
 
 from test_core import DB, _clear  # noqa: F401 — also initializes the Admin SDK
@@ -66,6 +66,11 @@ def test_save_punch():
     # The same punch again (offline queue retry) is the same document.
     assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": data})["ok"]
     assert len(list(DB.collection("tenants").document(T1).collection("punches").stream())) == 1
+    # The punch page sends no date: the day is the punch time's date in Israel
+    # (22:30 UTC on 30/09 is already 1/10 there).
+    late = {"id": "late1", "workerId": "w1", "type": "out", "ts": "2026-09-30T22:30:00.000Z"}
+    assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": late})["ok"]
+    assert P(T1, "late1").get().to_dict()["day"] == "2026-10-01"
 
 
 def test_a_link_cannot_punch_for_someone_else():
@@ -103,6 +108,7 @@ def test_supplier_sees_only_own_workers_stripped():
     w = r["workers"][0]
     assert w["supplierRate"] == 7 and w["phone"] == "0501111111"
     assert "hourlyRate" not in w and "supplierRates" not in w and "sortIndex" not in w
+    assert "token" not in w and "docUrl" not in w and "docFileId" not in w and "assetsFileId" not in w
     assert {"id": "c1", "name": "Site A", "object": "Gate 1"} in r["clients"]
     assert "billRate" not in str(r["clients"]) and "lat" not in str(r["clients"]) and r["suppliers"] == []
 

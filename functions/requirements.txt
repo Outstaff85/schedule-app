@@ -5,4 +5,3 @@ python-bidi
 opencv-python-headless
 Pillow
 numpy
-requests

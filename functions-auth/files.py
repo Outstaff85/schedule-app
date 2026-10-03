@@ -1,4 +1,4 @@
-"""Worker files on Firebase Storage (FIRESTORE_PLAN.md stage 7b).
+"""Worker files on Firebase Storage.
 
 In Firestore mode the browser uploads the Form 101 PDF, the scan sidecar
 (assets JSON) and worker documents straight to Storage with the Firebase SDK
@@ -7,12 +7,14 @@ decide who may write). Reading the sidecar back and deleting a file go
 through here instead: a browser download from the bucket needs a CORS setup
 on the bucket, which this way never has to be made by hand.
 
-  loadWorkerAssets  {fileId: <storage path>} -> same reply as Apps Script
+  loadWorkerAssets  {fileId: <storage path>} -> {ok, scanB64, scanMediaType, sigPng, extraPages}
   deleteWorkerDoc   {fileId: <storage path>} -> {ok: true}
 
 A fileId is the object's path, tenants/<tenantId>/workers/...; only a path in
-the caller's own firm is accepted (a superadmin's: the firm it is viewing),
-the same guard Apps Script's _fileBelongsToTenant gives Drive files.
+the caller's own firm is accepted (a superadmin's: the firm it is viewing).
+
+delete_tenant_files(bucket, tenant_id) removes every file of a firm; main.py
+calls it after users_admin deleteTenant.
 """
 
 import json
@@ -65,3 +67,14 @@ def run(bucket, caller, body):
     return {"ok": True, "scanB64": data.get("scanB64"), "scanMediaType": data.get("scanMediaType"),
             "sigPng": data.get("sigPng") or None,
             "extraPages": data.get("extraPages") if isinstance(data.get("extraPages"), list) else []}
+
+
+def delete_tenant_files(bucket, tenant_id):
+    """Deletes every object under tenants/<tenant_id>/ and returns how many."""
+    if not tenant_id or "/" in str(tenant_id):
+        return 0
+    n = 0
+    for blob in bucket.list_blobs(prefix="tenants/" + str(tenant_id) + "/"):
+        blob.delete()
+        n += 1
+    return n

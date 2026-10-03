@@ -1,8 +1,9 @@
 // Schedule Manager — offline app shell (PWA)
 // Strategy: TRUE network-first. Every online request goes to the server with
 // {cache:'no-store'} so the newest code/data is always used; the cache is only
-// a fallback when offline. The Apps Script API is never touched by the SW.
-const CACHE = 'schedule-mgr-v105';
+// a fallback when offline. Data calls (Firebase, Cloud Functions) go to other
+// origins and are never touched by the SW.
+const CACHE = 'schedule-mgr-v106';
 const CORE = [
   './',
   './schedule-manager.html',
@@ -29,9 +30,8 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const req = e.request;
-  if (req.method !== 'GET') return;                               // never touch POSTs (Sheets writes)
+  if (req.method !== 'GET') return;                               // never touch POSTs
   const url = new URL(req.url);
-  if (url.hostname.indexOf('script.google.com') !== -1) return;   // API: always straight to network
   if (url.origin !== self.location.origin) return;                // 3rd-party (fonts/CDN): let the browser handle it
 
   const isNav = req.mode === 'navigate';

@@ -1,10 +1,10 @@
-// Firestore data layer (FIRESTORE_PLAN.md stage 4).
+// Firestore data layer — the app's whole backend in the browser.
 //
-// Loaded by schedule-manager.html's loadFirestoreBackend() only when the
-// device runs with BACKEND === 'firestore'; with the default 'sheets' this
-// file is never fetched. It defines one global, initFirestoreBackend(),
-// which loads the Firebase SDK from the CDN, signs in state, and returns the
-// API the app's gs* functions dispatch to:
+// Loaded by loadFirestoreBackend() in schedule-manager.html and
+// supplier-portal.html. It defines one global, initFirestoreBackend(), which
+// loads the Firebase SDK from the CDN, restores the sign-in state, and
+// returns the API the app's gs* functions and its fetch(API_URL) dispatcher
+// use:
 //
 //   login(username, password)   login Cloud Function -> custom token -> Firebase sign-in
 //   currentUser()               the signed-in Firebase user, or null
@@ -17,36 +17,34 @@
 //   punchesBetween(t, from, to) one-time read of older punches, on demand
 //   savePunch / updatePunch / deletePunch
 //   idToken()                   the signed-in user's ID token (supplier portal)
-//   uploadWorkerFile(t, body, onProgress)   stage 7b: saveWorkerDoc /
-//                               saveWorkerAssets / saveWorkerFile into Storage,
-//                               same reply shape as Apps Script ({ok,id,url})
-//   handleAction(action, params)   stages 5, 7: answers an Apps Script action
-//                               (Admin panes, telemetry, hours queue, AI reads) in the
-//                               same JSON shape, or null to leave it to Apps Script
+//   uploadWorkerFile(t, body, onProgress)   saveWorkerDoc / saveWorkerAssets /
+//                               saveWorkerFile into Storage, replying {ok,id,url}
+//   handleAction(action, params, ctx)   answers one named data action (Admin
+//                               panes, telemetry, hours queue, AI reads, another
+//                               firm's data) with a JSON reply, or null when no
+//                               such action exists
 //
 // Documents are the same objects the app keeps in memory: one per worker,
 // client, supplier (plus sortIndex, the array position) and one per punch
-// (ts as a Timestamp, day 'yyyy-MM-dd', archived). See functions-auth/
-// migrate.py, which wrote them first.
+// (ts as a Timestamp, day 'yyyy-MM-dd', archived).
 (function(){
   const FB_VERSION = '12.19.0';
   const FB_CDN = 'https://www.gstatic.com/firebasejs/' + FB_VERSION + '/';
   const LOGIN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/login';
   const USERS_ADMIN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/users_admin';
   const AI_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/ai_read';
-  // Stage 7: the AI document actions, answered by the ai_read function.
+  // The AI document actions, answered by the ai_read function.
   const AI_ACTIONS = ['aiReadDoc','aiReadSefach','aiDetectAlign','aiVerifyField','aiVerifyFields','aiReadHoursTable'];
-  // Apps Script actions answered by the users_admin function instead.
+  // Actions answered by the users_admin function.
   const FUNCTION_ACTIONS = ['listTenants','setTenantActive','deleteTenant','createUser','updateTenant',
     'loadTenantProfile','listUsers','createTenantUser','updateUser','resetUserPassword','deleteUser'];
-  // Stage 7b: file uploads that go to Storage instead of Drive.
+  // File uploads, straight to Storage.
   const UPLOAD_ACTIONS = ['saveWorkerDoc','saveWorkerAssets','saveWorkerFile'];
-  // Reading/deleting a file that is in Storage (its id is the object path)
-  // goes through users_admin (functions-auth/files.py); a Drive id still goes
-  // to Apps Script, so files saved before the switch keep working.
+  // Reading/deleting a file in Storage (its id is the object path) goes
+  // through users_admin (functions-auth/files.py).
   const STORAGE_FILE_ACTIONS = ['loadWorkerAssets','deleteWorkerDoc'];
   const isStoragePath = id => typeof id === 'string' && id.indexOf('tenants/') === 0;
-  const PUNCH_MONTHS = 13;            // like the live PunchLog sheet (~12 months + this one)
+  const PUNCH_MONTHS = 13;            // listenPunches() default window when no `since` is given
   const BATCH_LIMIT = 450;            // Firestore allows 500 writes per batch
 
   // Web config: Firebase Hosting serves the project's own at this path; a
@@ -142,8 +140,8 @@
 
     // Writes the workers/clients/suppliers that differ from what was last
     // loaded or saved, and deletes the ones that are gone. Each document is
-    // its own record now, so two managers editing different workers no longer
-    // overwrite each other (the sheet stored the whole firm in one cell).
+    // its own record, so two managers editing different workers never
+    // overwrite each other.
     async function saveSchedule(t, data){
       if(knownTenant !== t) await loadSchedule(t); // never diff against another firm
       const ops = [], next = {};
@@ -230,9 +228,9 @@
       return {ok:true};
     }
 
-    // ── Stage 5: Apps Script actions answered from Firestore ──────────────
+    // ── Named data actions (handleAction) ────────────────────────────────
     // params: the action's request body (POST) or query (GET), as the app
-    // built it — including token/asTenantId from gsAuth(). ctx: who is asking.
+    // built it — including asTenantId from gsAuth(). ctx: who is asking.
     async function callUsersAdmin(params, url = USERS_ADMIN_URL){
       const idToken = await auth.currentUser.getIdToken();
       const res = await fetch(url, {method:'POST',
@@ -256,14 +254,10 @@
       await batch.commit();
       return {ok:true};
     }
-    // Errors / Timings panes: the Firestore rows (this mode, login refusals)
-    // merged with the sheet's (the other mode), newest first. A slow or
-    // failing Apps Script read just leaves its half out.
-    async function readLog(name, max, gsRows){
+    // Errors / Timings panes: the newest rows first.
+    async function readLog(name, max){
       const snap = await F.getDocs(F.query(F.collection(db, name), F.orderBy('when','desc'), F.limit(max)));
-      const mine = snap.docs.map(d => d.data());
-      const other = await Promise.race([gsRows.catch(() => []), new Promise(r => setTimeout(() => r([]), 8000))]);
-      return {rows: mine.concat(other || []).sort((a,b) => String(b.when).localeCompare(String(a.when))).slice(0, max)};
+      return {rows: snap.docs.map(d => d.data())};
     }
     async function deletePunchesByMonths(t, ctx, months){
       if(ctx.role !== 'tenant_admin' && ctx.role !== 'superadmin') return {error:'Only the firm owner or super-admin can delete punch records'};
@@ -287,8 +281,8 @@
       }
       return {ok:true, deleted: list.length};
     }
-    // Hours-import queue (Apps Script savePendingHoursBatch / loadPendingHours
-    // / approvePendingHours / rejectPendingHours). One document per batch.
+    // Hours-import queue (savePendingHoursBatch / loadPendingHours /
+    // approvePendingHours / rejectPendingHours). One document per batch.
     async function savePendingHours(t, ctx, params){
       if(ctx.role === 'supplier') return {error:'Недоступно для роли поставщика'};
       const entries = Array.isArray(params.entries) ? params.entries : [];
@@ -357,11 +351,11 @@
       return {entries: snap.docs.map(punchFromDoc)};
     }
 
-    // ── Stage 7b: worker files in Storage ────────────────────────────────
+    // ── Worker files in Storage ──────────────────────────────────────────
     // tenants/<t>/workers/<workerId>/{form101,assets,docs}/<time>-<name>.
     // The object path is the file's id on the worker record (docFileId,
     // assetsFileId, docs[].fileId); the PDF and documents also get a download
-    // URL (docUrl, docs[].url) the app opens like the old Drive link.
+    // URL (docUrl, docs[].url) the app opens directly.
     function safeName(name){
       return String(name || 'file').replace(/[\/\\#?\[\]*\u0000-\u001f]/g, '_').slice(0, 150) || 'file';
     }
@@ -401,18 +395,22 @@
       return {ok:true, id: path, url: await stMod.getDownloadURL(ref)};
     }
 
-    // ctx: {role, username, tenantId (the firm being worked in)}; gsFetch():
-    // the same request to Apps Script, for the Errors/Timings merge.
-    async function handleAction(action, params, ctx, gsFetch){
+    // ctx: {role, username, tenantId (the firm being worked in)}.
+    async function handleAction(action, params, ctx){
       const t = params.asTenantId || ctx.tenantId;
-      if(['logBatch','logError','logTiming'].includes(action)) return auth.currentUser ? writeTelemetry(params) : null;
-      if(!auth.currentUser) return null;
+      // Telemetry before the Firebase sign-in has nowhere to go: dropped.
+      if(['logBatch','logError','logTiming'].includes(action)) return auth.currentUser ? writeTelemetry(params) : {ok:false, skipped:true};
+      if(!auth.currentUser) return {error:'Сессия истекла или недействительна — войдите заново'};
       if(FUNCTION_ACTIONS.includes(action)) return callUsersAdmin(params);
       if(AI_ACTIONS.includes(action)) return callUsersAdmin(params, AI_FN_URL);
-      if(STORAGE_FILE_ACTIONS.includes(action)) return isStoragePath(params.fileId) ? callUsersAdmin(params) : null;
+      if(STORAGE_FILE_ACTIONS.includes(action)){
+        if(isStoragePath(params.fileId)) return callUsersAdmin(params);
+        // Not a Storage path: nothing of ours to delete, nothing to read.
+        return action === 'deleteWorkerDoc' ? {ok:true} : {error:'Файл не найден'};
+      }
       switch(action){
-        case 'loadErrors':  return ctx.role === 'superadmin' ? readLog('errors', 100, gsFetch().then(j => j.rows || [])) : {error:'Доступ только для супер-админа'};
-        case 'loadTimings': return ctx.role === 'superadmin' ? readLog('timings', 500, gsFetch().then(j => j.rows || [])) : {error:'Доступ только для супер-админа'};
+        case 'loadErrors':  return ctx.role === 'superadmin' ? readLog('errors', 100) : {error:'Доступ только для супер-админа'};
+        case 'loadTimings': return ctx.role === 'superadmin' ? readLog('timings', 500) : {error:'Доступ только для супер-админа'};
         case 'loadSchedule': return loadSchedule(t, false);
         case 'loadPunchLog': return punchesOnce(t);
         case 'deletePunchesByMonths': return deletePunchesByMonths(t, ctx, params.months);

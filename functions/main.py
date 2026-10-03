@@ -20,7 +20,6 @@ from datetime import date
 import cv2
 import numpy as np
 import pymupdf
-import requests
 from bidi.algorithm import get_display
 from firebase_functions import https_fn, options
 from PIL import Image, ImageEnhance
@@ -44,7 +43,7 @@ CHECK_EXTRA_UP = 2.5  # per repeated user feedback the checkmarks kept reading s
 # ONLY here, at final PDF assembly, never earlier in the scan pipeline: OCR
 # (aiReadDoc) and digit-field verification (aiVerifyField) have both already
 # run upstream on the full-resolution scan by the time build_form101_pdf()
-# ever sees it (see CLAUDE.md's AI document scan flow), so shrinking the copy
+# ever sees it (see docs/scan.md), so shrinking the copy
 # that gets embedded here can't affect field-extraction accuracy — it only
 # affects the generated PDF's file size. The raw, unshrunk scan is preserved
 # separately in the Drive asset sidecar (saveWorkerAssets) for any future
@@ -580,9 +579,8 @@ def fill_form_101(req: https_fn.Request) -> https_fn.Response:
     if req.method != "POST":
         return https_fn.Response(json.dumps({"error": "POST only"}), status=405, mimetype="application/json")
     try:
-        # force=True: don't depend on the caller's Content-Type header to
-        # decide whether to parse — see gs_upload_proxy()'s own comment for
-        # the real bug this caused there when a caller omitted it.
+        # force=True: parse the JSON body whatever Content-Type the caller sent
+        # (Flask's get_json() otherwise returns None for text/plain).
         payload = req.get_json(silent=True, force=True) or {}
         pong = _ping_response(payload)
         if pong:
@@ -598,68 +596,6 @@ def fill_form_101(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response(json.dumps({"error": str(e)}), status=500, mimetype="application/json")
 
 
-# GS_URL mirrors the const of the same name in schedule-manager.html — kept as
-# a plain literal here (not read from an env var) to match how the rest of
-# this file already hardcodes its own external endpoints/paths; update both
-# places together if the Apps Script deployment URL ever rotates.
-GS_URL = "https://script.google.com/macros/s/AKfycbwfGCQs8TzGd38j-JU0ZdoHLXdHITaG1QjUE3nAJDVB6uZR2_56hxV0Y4UgCs1bGYi_/exec"
-
-
-@https_fn.on_request(
-    cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]),
-    memory=options.MemoryOption.MB_512,
-    timeout_sec=120,
-)
-def gs_upload_proxy(req: https_fn.Request) -> https_fn.Response:
-    """CORS-friendly proxy for the two GS_URL actions that need real
-    upload-byte progress (saveWorkerDoc/saveWorkerAssets in aiFillForm101()'s
-    upload path) — see xhrPostJSON()'s own comment in schedule-manager.html
-    for the full story: a browser XHR straight to script.google.com can never
-    carry a real xhr.upload.onprogress listener, because attaching one forces
-    a CORS preflight (per spec, independent of headers) and Apps Script Web
-    Apps have no doOptions() to answer it. This Cloud Function DOES answer
-    CORS preflight correctly (same CorsOptions pattern as fill_form_101 above
-    and preprocess_scan below), so the browser talks to THIS with a real
-    upload listener attached; this function then does a plain server-to-server
-    POST to Apps Script — no browser, no CORS involved at all between two
-    servers — and relays the response back to the browser byte-for-byte.
-    Deliberately generic (forwards whatever JSON body it's given) rather than
-    two action-specific functions, since all it does is relay; the actual
-    action/secret/token/payload validation still happens where it always did,
-    inside Apps Script's own doPost().
-
-    BUG FIX (2026-09-30): `xhrPostJSON()` deliberately sends no explicit
-    Content-Type header (a holdover from when it posted straight to Apps
-    Script, where it doesn't matter) — the browser then defaults to
-    `text/plain`. Flask/Werkzeug's `get_json(silent=True)` without
-    `force=True` refuses to parse a body whose Content-Type isn't
-    `application/json`/`*+json` and just returns `None`, so `payload` was
-    silently `{}` on every call here — no `action`, no `token` — which this
-    function then forwarded to Apps Script as an empty POST body. Apps
-    Script's `requireAuth({})` sees `body.token === undefined` and correctly
-    (if misleadingly) throws "session expired", even on a session that's
-    seconds old — this was reported as a mid-upload logout and initially
-    misdiagnosed as a real TTL issue (see CLAUDE.md Troubleshooting) before
-    the `Errors` sheet's `authFailure` diagnostic (`action=saveWorkerDoc,
-    outcome=retrying`) pointed at this function specifically. `force=True`
-    parses the body regardless of Content-Type — the bytes are always valid
-    JSON (the client always sends `JSON.stringify(bodyObj)`), so nothing
-    about the real validation below changes, only whether the header is
-    trusted to decide that.
-    """
-    if req.method != "POST":
-        return https_fn.Response(json.dumps({"error": "POST only"}), status=405, mimetype="application/json")
-    try:
-        payload = req.get_json(silent=True, force=True) or {}
-        pong = _ping_response(payload)  # answered here, never relayed to Apps Script
-        if pong:
-            return pong
-        resp = requests.post(GS_URL, json=payload, timeout=100)
-        return https_fn.Response(resp.text, status=200, mimetype="application/json")
-    except Exception as e:
-        return https_fn.Response(json.dumps({"error": str(e)}), status=500, mimetype="application/json")
-
-
 # ===== Scan preprocessing: OpenCV geometry + Pillow enhancement =====
 # Called by the client's preAlignScan() (schedule-manager.html) AFTER the
 # user's own manual corner-adjustment editor has already cropped/warped the
@@ -668,12 +604,9 @@ def gs_upload_proxy(req: https_fn.Request) -> https_fn.Response:
 # longer ever sees the full original frame with background, only the small
 # already-cropped image, so its resize/enhance/blur-check all run over far
 # fewer pixels than before. The geometric auto-crop below (_find_document_quad/
-# _warp_quad) is RE-ENABLED (2026-09-26, see preprocess_scan_image's own
-# comment) — it's what actually tightens a rough manual crop now, since the
-# client-side AI-based tightening pass (refineWithAiAlign) turned out to
-# reject exactly this case (its own safety check requires the guessed quad
-# to cover ≥50% of the frame, which a rough manual crop routinely fails).
-# See CLAUDE.md for the empirical tests (synthetic + real ID photos) that
+# _warp_quad) is DORMANT — see preprocess_scan_image()'s own comment; the
+# client tightens the crop before this runs. See docs/history.md for the
+# empirical tests (synthetic + real ID photos) that
 # originally shaped the confidence thresholds below, back when this ran on
 # the full, un-cropped frame — the thresholds themselves are unchanged, only
 # what they're now applied to (an already-single-document image) differs.
@@ -681,7 +614,7 @@ MAX_WORK_DIM = 1800  # generous margin above the 1568px Claude Vision actually b
 MIN_QUAD_AREA_FRAC = 0.20
 MAX_QUAD_AREA_FRAC = 0.98
 BLUR_VARIANCE_THRESHOLD = 15.0  # below this (Laplacian variance) = reject as too blurry to bother reading
-# Calibrated against a real Israeli ID photo (see CLAUDE.md): the sharp original
+# Calibrated against a real Israeli ID photo (see docs/history.md): the sharp original
 # measured ~130, a mild Gaussian blur (still fully legible by eye) measured ~28,
 # a moderate blur (small print starting to degrade) measured ~9 — 15 sits
 # between those last two, closer to "reject only once it's actually a problem"
@@ -853,7 +786,7 @@ def preprocess_scan(req: https_fn.Request) -> https_fn.Response:
     if req.method != "POST":
         return https_fn.Response(json.dumps({"error": "POST only"}), status=405, mimetype="application/json")
     try:
-        # force=True — see gs_upload_proxy()'s own comment.
+        # force=True — see fill_form_101.
         payload = req.get_json(silent=True, force=True) or {}
         pong = _ping_response(payload)
         if pong:

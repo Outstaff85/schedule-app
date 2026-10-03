@@ -1,4 +1,4 @@
-"""Worker punch link and supplier portal on Firestore (FIRESTORE_PLAN.md stage 6).
+"""Worker punch link and supplier portal.
 
 Neither caller may read Firestore directly (firestore.rules): a worker has no
 login at all, only the token in their personal link, and a supplier must never
@@ -17,15 +17,17 @@ supplier_action(db, caller, body)  supplier-portal.html; caller from the ID toke
   loadSchedule / loadPunchLog      only the supplier's own workers, stripped
   supplierAddWorker / supplierUpdateWorker / supplierDeleteWorker
 
-The same allow-lists as Apps Script _stripWorkerForSupplier /
-_stripClientForSupplier / _supplierWorkerAllowedFields, and the same reply
-shapes, so the pages stay as they are.
+A supplier gets workers through the SUPPLIER_WORKER_FIELDS allow-list: never
+a wage, never the worker's punch-link token (a supplier must not be able to
+punch for its workers), never a link to their stored files. It may edit only
+SUPPLIER_EDITABLE.
 """
 
 import hashlib
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from google.cloud.firestore_v1.base_query import FieldFilter
 
@@ -35,6 +37,7 @@ PUNCH_FIELDS = ("workerName", "type", "time", "date", "site", "dist", "gpsAccura
 SITE_FIELDS = ("id", "name", "object", "lat", "lng", "radius")
 
 E_LINK = "Unknown worker link"
+TZ = ZoneInfo("Asia/Jerusalem")
 
 
 def _clip(v, n):
@@ -103,9 +106,12 @@ def _save_punch(db, tid, w, data):
     doc = {k: data.get(k) for k in PUNCH_FIELDS if data.get(k) is not None}
     doc["type"] = str(data.get("type")).lower()
     doc["gpsWarnings"] = [_clip(x, 200) for x in (data.get("gpsWarnings") or [])][:20]
-    doc.update(id=data.get("id") if data.get("id") is not None else pid, workerId=w.id,
-               day=_day(data.get("date")), archived=False)
     ts = _to_dt(data.get("ts")) or datetime.now(timezone.utc)
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    # The page sends no date: the day is the punch time's date in Israel.
+    doc.update(id=data.get("id") if data.get("id") is not None else pid, workerId=w.id,
+               day=_day(data.get("date")) or ts.astimezone(TZ).strftime("%Y-%m-%d"), archived=False)
     doc["ts"] = ts
     ref.set(doc)  # idempotent: a queued punch sent twice is the same document
     return {"ok": True, "id": doc["id"]}
@@ -142,9 +148,9 @@ def punch_action(db, body):
 
 SUPPLIER_WORKER_FIELDS = ("id", "name", "docGiven", "docSurname", "docId", "docType", "docDob", "docSex",
                           "address", "houseNumber", "city", "maritalStatus", "healthFund", "workStartDate",
-                          "phone", "docChildren", "clientIds", "supplierId", "token", "startDate",
-                          "expiryEnabled", "expiryMonths", "expiryWarnMonths", "docUrl", "docFileId",
-                          "assetsFileId", "avatarB64", "colorIdx", "notes", "createdAt", "schedule")
+                          "phone", "docChildren", "clientIds", "supplierId", "startDate",
+                          "expiryEnabled", "expiryMonths", "expiryWarnMonths",
+                          "avatarB64", "colorIdx", "notes", "createdAt", "schedule")
 SUPPLIER_EDITABLE = ("docGiven", "docSurname", "phone", "docId", "address", "houseNumber", "city", "docDob",
                      "docSex", "maritalStatus", "healthFund", "startDate", "notes", "status")
 SUPPLIER_PUNCH_FIELDS = ("id", "workerId", "workerName", "type", "time", "date", "site", "clientId")
