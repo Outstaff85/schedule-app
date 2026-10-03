@@ -1,4 +1,4 @@
-# Suppliers
+# Suppliers 
 
 Suppliers are staffing agencies a worker comes through. This file covers the Suppliers tab and modal, and how suppliers feed the rest of the app. Code is in `schedule-manager.html`; the supplier's own login page is [supplier-portal.md](supplier-portal.md).
 
