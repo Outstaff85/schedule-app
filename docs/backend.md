@@ -67,7 +67,7 @@ A separate codebase so a login never loads OpenCV/PyMuPDF. `main.py` holds the H
 
 | Function | Auth | Module | Notes |
 |---|---|---|---|
-| `login` | none | `core.login` | 30 s; `min_instances=1` — one instance always warm, so a login never waits for a cold start; `{ping:true}` |
+| `login` | none | `core.login` | 30 s; `min_instances=0` (no standing cost; the login screen's `{ping:true}` wakes it while the user types, but after a long idle the first login can still wait for a cold start) |
 | `users_admin` | `Bearer <ID token>`, checked with `check_revoked` | `core.run_action`, `files.run` | a superadmin's firm = `asTenantId`; after `deleteTenant` also `files.delete_tenant_files` |
 | `punch` | the worker link token | `portal.punch_action` | 30 s; `{ping:true}` |
 | `supplier` | `Bearer <ID token>` of a supplier | `portal.supplier_action` | |
