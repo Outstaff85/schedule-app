@@ -4154,17 +4154,24 @@ async function renderSuperadminAccounting(){
       const byWorkerPunches = {};
       entries.forEach(e => { (byWorkerPunches[e.workerId]=byWorkerPunches[e.workerId]||[]).push(e); });
       let totalHours = 0, totalPay = 0;
-      Object.entries(byWorkerPunches).forEach(([wid, list]) => {
-        const wc = fWorkers.find(w => w.id === wid);
-        groupPunchesIntoShifts(list).forEach(bucket => {
-          const res = analyzeDayPunches(bucket.entries, bucket.date);
-          if(res.hours > 0){
-            totalHours += res.hours;
-            const isSat = bucket.date.getDay() === 6;
-            totalPay += shiftPay(res.hours, wc, isSat, bucket.entries[0] && bucket.entries[0].clientId);
-          }
+      // effectiveRates() reads the global `clients` (tier 2: the client's
+      // default rate) — so this firm's own clients stand in while its pay is
+      // computed, then the loaded firm's come back. No await in between.
+      const ownClients = clients;
+      clients = schJson.clients || [];
+      try{
+        Object.entries(byWorkerPunches).forEach(([wid, list]) => {
+          const wc = fWorkers.find(w => w.id === wid);
+          groupPunchesIntoShifts(list).forEach(bucket => {
+            const res = analyzeDayPunches(bucket.entries, bucket.date);
+            if(res.hours > 0){
+              totalHours += res.hours;
+              const isSat = bucket.date.getDay() === 6;
+              totalPay += shiftPay(res.hours, wc, isSat, bucket.entries[0] && bucket.entries[0].clientId);
+            }
+          });
         });
-      });
+      }finally{ clients = ownClients; }
       rows.push({ name: t.companyName || t.tenantId, hours: totalHours, pay: totalPay });
     }catch(e){ rows.push({ name: t.companyName || t.tenantId, hours: 0, pay: 0, error: true }); }
   }
@@ -5177,17 +5184,19 @@ function renderSupplierPayable(entries){
     return;
   }
   const bySupplier={};
-  let unassigned={hours:0,total:0};
+  // Workers with no supplier: their hours are shown, but nothing is payable
+  // to a supplier for them (never their wage — that is the salary table).
+  let unassigned={hours:0};
   entries.forEach(e=>{
     const wc=workers.find(w=>w.id===e.workerId);
     const sid=wc&&wc.supplierId;
-    if(!sid){ unassigned.hours+=e.hours; unassigned.total+=e.total; return; }
+    if(!sid){ unassigned.hours+=e.hours; return; }
     if(!bySupplier[sid]) bySupplier[sid]={hours:0,total:0};
     bySupplier[sid].hours+=e.hours;
     bySupplier[sid].total+=e.hours*supplierCommissionRate(wc,sid);
   });
   const rows=suppliers.filter(s=>bySupplier[s.id]).map(s=>({sup:s,...bySupplier[s.id]}));
-  if(!rows.length && !unassigned.total){
+  if(!rows.length && !unassigned.hours){
     wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No workers with a supplier assigned had activity this period</div>`;
     return;
   }
@@ -5215,10 +5224,10 @@ function renderSupplierPayable(entries){
             <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)}h</td>
             <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
           </tr>`).join('')}
-          ${unassigned.total?`<tr style="border-bottom:1px solid var(--border)">
+          ${unassigned.hours?`<tr style="border-bottom:1px solid var(--border)">
             <td style="padding:10px 12px;font-size:13px;color:var(--text3)">No supplier assigned</td>
             <td style="padding:10px 12px;text-align:center;font-size:13px;color:var(--text3)">${unassigned.hours.toFixed(1)}h</td>
-            <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text3)">₪${unassigned.total.toFixed(0)}</td>
+            <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text3)">—</td>
           </tr>`:''}
         </tbody>
       </table>
@@ -5876,14 +5885,17 @@ function renderAdmin(){
   const clientSel = document.getElementById('adminFilterClient');
   if(clientSel){ const cur=clientSel.value; clientSel.innerHTML='<option value="">All clients</option>'+clients.map(c=>`<option value="${c.id}" ${c.id===cur?'selected':''}>${esc(c.name)}</option>`).join(''); }
   const dateSel = document.getElementById('adminFilterDate');
-  if(dateSel){ const cur2=dateSel.value; const dates=[...new Set(log.map(e=>new Date(e.ts).toLocaleDateString('en-GB')))].sort().reverse(); dateSel.innerHTML='<option value="">All dates</option>'+dates.map(d=>`<option value="${d}" ${d===cur2?'selected':''}>${d}</option>`).join(''); }
+  // Newest day first, by the real date (the dd/mm/yyyy labels don't sort as text).
+  if(dateSel){ const cur2=dateSel.value; const byDay=new Map(); log.forEach(e=>{ const d=new Date(e.ts); if(isNaN(d)) return; const k=d.toLocaleDateString('en-GB'); const t=new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime(); if(!byDay.has(k)) byDay.set(k,t); }); const dates=[...byDay.entries()].sort((a,b)=>b[1]-a[1]).map(x=>x[0]); dateSel.innerHTML='<option value="">All dates</option>'+dates.map(d=>`<option value="${d}" ${d===cur2?'selected':''}>${d}</option>`).join(''); }
 
   let filtered=log;
   if(filterWorker) filtered=filtered.filter(e=>e.workerId===filterWorker);
-  if(filterClient){ const ids=workers.filter(w=>(w.clientIds||[]).includes(filterClient)).map(w=>w.id); filtered=filtered.filter(e=>ids.includes(e.workerId)); }
+  // A punch belongs to the client it was recorded at (clientId); one saved
+  // without a clientId falls back to the worker's current assignment.
+  if(filterClient){ const ids=workers.filter(w=>(w.clientIds||[]).includes(filterClient)).map(w=>w.id); filtered=filtered.filter(e=>e.clientId ? e.clientId===filterClient : ids.includes(e.workerId)); }
   if(filterDate) filtered=filtered.filter(e=>new Date(e.ts).toLocaleDateString('en-GB')===filterDate);
   if(filterType) filtered=filtered.filter(e=>e.type===filterType);
-  filtered=[...filtered].reverse();
+  filtered=[...filtered].sort((a,b)=>new Date(b.ts)-new Date(a.ts));
 
   document.getElementById('adminCount').textContent=filtered.length+' record'+(filtered.length!==1?'s':'');
   renderAdminOlder();
@@ -6031,6 +6043,7 @@ function exportPunchCSV(){
       new Date(e.ts).toLocaleDateString('en-GB'),
       punchSite(e),
       e.dist!=null?e.dist:'',
+      e.gpsAccuracy!=null?Math.round(e.gpsAccuracy):'',
       e.notes||'',
       e.editedAt?new Date(e.editedAt).toLocaleString():''
     ]);

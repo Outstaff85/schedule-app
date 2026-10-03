@@ -747,6 +747,9 @@ async function loadWorkersFromGS(){
   try{
     const res = await punchFn({action:'load', token: URL_TOKEN});
     const data = JSON.parse(await res.text());
+    // The server answered but does not know this link (regenerated or the
+    // worker removed): no workers, so init()/verifyAndRefresh() revoke it.
+    if(data.error==='Unknown worker link'){ workers=[]; return true; }
     if(data.workers&&data.workers.length){
       let list = data.workers;
       allClients = data.clients||[];

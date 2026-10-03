@@ -27,6 +27,7 @@ import hashlib
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from google.cloud.firestore_v1.base_query import FieldFilter
 
@@ -36,6 +37,7 @@ PUNCH_FIELDS = ("workerName", "type", "time", "date", "site", "dist", "gpsAccura
 SITE_FIELDS = ("id", "name", "object", "lat", "lng", "radius")
 
 E_LINK = "Unknown worker link"
+TZ = ZoneInfo("Asia/Jerusalem")
 
 
 def _clip(v, n):
@@ -104,9 +106,12 @@ def _save_punch(db, tid, w, data):
     doc = {k: data.get(k) for k in PUNCH_FIELDS if data.get(k) is not None}
     doc["type"] = str(data.get("type")).lower()
     doc["gpsWarnings"] = [_clip(x, 200) for x in (data.get("gpsWarnings") or [])][:20]
-    doc.update(id=data.get("id") if data.get("id") is not None else pid, workerId=w.id,
-               day=_day(data.get("date")), archived=False)
     ts = _to_dt(data.get("ts")) or datetime.now(timezone.utc)
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    # The page sends no date: the day is the punch time's date in Israel.
+    doc.update(id=data.get("id") if data.get("id") is not None else pid, workerId=w.id,
+               day=_day(data.get("date")) or ts.astimezone(TZ).strftime("%Y-%m-%d"), archived=False)
     doc["ts"] = ts
     ref.set(doc)  # idempotent: a queued punch sent twice is the same document
     return {"ok": True, "id": doc["id"]}

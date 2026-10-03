@@ -66,6 +66,11 @@ def test_save_punch():
     # The same punch again (offline queue retry) is the same document.
     assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": data})["ok"]
     assert len(list(DB.collection("tenants").document(T1).collection("punches").stream())) == 1
+    # The punch page sends no date: the day is the punch time's date in Israel
+    # (22:30 UTC on 30/09 is already 1/10 there).
+    late = {"id": "late1", "workerId": "w1", "type": "out", "ts": "2026-09-30T22:30:00.000Z"}
+    assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": late})["ok"]
+    assert P(T1, "late1").get().to_dict()["day"] == "2026-10-01"
 
 
 def test_a_link_cannot_punch_for_someone_else():
