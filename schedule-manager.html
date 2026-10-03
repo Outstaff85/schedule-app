@@ -2701,8 +2701,9 @@ function fillFilterSelect(selectId, items, allLabel){
   el.innerHTML=`<option value="">${allLabel}</option>`+items.map(i=>`<option value="${i.id}">${esc(i.name)}</option>`).join('');
   if(items.some(i=>i.id===prev)) el.value=prev;
 }
-// Workers tab layout: 'list' (the table) or 'cards'. Remembered per browser.
-function getWorkersView(){ try{ return localStorage.getItem('workersView')==='cards'?'cards':'list'; }catch(e){ return 'list'; } }
+// Workers tab layout: 'cards' (the default) or 'list' (the table), once
+// the user picks it. Remembered per browser.
+function getWorkersView(){ try{ return localStorage.getItem('workersView')==='list'?'list':'cards'; }catch(e){ return 'cards'; } }
 function setWorkersView(v){ try{ localStorage.setItem('workersView',v); }catch(e){} renderWorkersPage(); }
 // Hours worked this calendar month, per worker — the same canonical shift
 // pairing (getWorkerMonthShifts → groupPunchesIntoShifts/analyzeDayPunches)
