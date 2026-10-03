@@ -91,9 +91,9 @@ See [backend.md](backend.md).
 
 ## Request wrapper (`window.fetch`)
 
-An IIFE wraps `fetch` for every URL starting with `GS_URL` (the Apps Script web app):
+An IIFE wraps `fetch` for every URL starting with `GS_URL` (Apps Script web app, but also used for Firestore routing):
 
-1. **Firestore routing.** In Firestore mode an action in `FS_ACTIONS` goes to `fsRoute()` → `handleAction()`. The FS_ACTIONS are:
+1. **Firestore routing.** An action in `FS_ACTIONS` goes to `fsRoute()` → `handleAction()` (the Firestore backend). The FS_ACTIONS are:
    - the firms and users actions;
    - `loadErrors` / `loadTimings`, telemetry;
    - `loadSchedule` / `loadPunchLog` (another firm);
@@ -105,10 +105,7 @@ An IIFE wraps `fetch` for every URL starting with `GS_URL` (the Apps Script web 
 2. **Monitoring.** `watchGsReply()` sends a call slower than `SLOW_GS_CALL_MS` (2500 ms) to Timings as `gs:<action>`, and an HTML reply (an Apps Script error page) to Errors as `gsHtml`.
 3. **Session expiry.** `checkExpired()`: when a reply's `error` is exactly `SESSION_EXPIRED_ERROR`, the request is retried with the token stored now (`withCurrentToken`). Retries follow `SESSION_RETRY_DELAYS_MS` = `[0, 500]`, so 3 attempts in total. Each rejection is reported (`authFailure`, unauthenticated); after the last one the session is cleared and the page reloads. Telemetry and login (`NO_LOGOUT_ACTIONS`) never trigger this.
 
-**`xhrPostJSON(url, body, onProgress)`** is the upload path with real byte progress. In Firestore mode the upload actions (`FS_UPLOAD_ACTIONS`: `saveWorkerDoc`, `saveWorkerAssets`, `saveWorkerFile`) go to `fsUpload()` (Storage). Otherwise it is an XHR to `GS_UPLOAD_PROXY_URL` (a Cloud Function that relays to Apps Script):
-- `Content-Type: application/json` is sent only to the proxy;
-- the upload listener is attached only when `onProgress` is passed (a listener forces a CORS preflight, which Apps Script cannot answer);
-- it has the same session-expiry retry, with `reportAuthFailureXhr`.
+**`uploadWorkerFile(body, onProgress)`** is the upload path with real byte progress. The upload actions (`FS_UPLOAD_ACTIONS`: `saveWorkerDoc`, `saveWorkerAssets`, `saveWorkerFile`) call `uploadWorkerFile()` (Firebase Storage).
 
 `__uploadsInFlight` counts running uploads; a new-version reload waits for it to reach 0.
 
