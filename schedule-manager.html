@@ -155,9 +155,6 @@
   /* Modal */
   .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:100;align-items:center;justify-content:center;}
   .overlay.open{display:flex;}
-  /* The close ✕ every open modal gets, top right, staying in view while the
-     modal scrolls (ensureModalCloseButtons; the same in supplier-portal.html). */
-  .modal-x{position:sticky;top:0;float:right;z-index:6;margin:-12px -12px 4px 10px;width:32px;height:32px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;line-height:1;padding:0;}
   .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto;}
   .modal-title{font-size:19px;font-weight:600;color:var(--text);margin-bottom:18px;letter-spacing:-0.3px;}
   .field{margin-bottom:14px;}
@@ -836,13 +833,13 @@
 </div>
 
 <!-- Modals -->
-<div class="overlay" id="editOverlay" onclick="if(event.target===this)closeModal('editOverlay')">
+<div class="overlay" id="editOverlay">
   <div class="modal" id="editModal"></div>
 </div>
-<div class="overlay" id="workerOverlay" onclick="if(event.target===this)closeModal('workerOverlay')">
+<div class="overlay" id="workerOverlay">
   <div class="modal" id="workerModal"></div>
 </div>
-<div class="overlay" id="aiScanOverlay" onclick="if(event.target===this)closeModal('aiScanOverlay')">
+<div class="overlay" id="aiScanOverlay">
   <div class="modal" style="width:680px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <div class="modal-title" style="margin-bottom:0"><i class="ti ti-sparkles" style="color:var(--green)"></i> Скан паспорта</div>
@@ -850,10 +847,10 @@
     <div id="aiScanStage"></div>
   </div>
 </div>
-<div class="overlay" id="workerCardOverlay" onclick="if(event.target===this)closeModal('workerCardOverlay')">
+<div class="overlay" id="workerCardOverlay">
   <div class="modal" id="workerCardModal" style="width:440px"></div>
 </div>
-<div class="overlay" id="clientOverlay" onclick="if(event.target===this)closeModal('clientOverlay')">
+<div class="overlay" id="clientOverlay">
   <div class="modal" id="clientModal"></div>
 </div>
 <div class="overlay" id="clientBillOverlay" style="z-index:110">
@@ -872,32 +869,31 @@
     </div>
     <div style="font-size:11px;color:var(--text3);margin-top:6px">Search an address, or tap the map / drag the pin. The circle is the punch-clock radius.</div>
     <div class="modal-actions">
-      <button class="btn" type="button" onclick="closeModal('mapPickOverlay')">Cancel</button>
       <button class="btn accent" type="button" id="mapPickSave" onclick="saveMapPick()" disabled>Use this location</button>
     </div>
   </div>
 </div>
-<div class="overlay" id="supplierOverlay" onclick="if(event.target===this)closeModal('supplierOverlay')">
+<div class="overlay" id="supplierOverlay">
   <div class="modal" id="supplierModal"></div>
 </div>
-<div class="overlay" id="workerDocOverlay" style="z-index:960" onclick="if(event.target===this)closeModal('workerDocOverlay')">
+<div class="overlay" id="workerDocOverlay" style="z-index:960">
   <div class="modal" id="workerDocModal" style="max-width:420px"></div>
 </div>
-<div class="overlay" id="hoursImportOverlay" onclick="if(event.target===this)closeModal('hoursImportOverlay')">
+<div class="overlay" id="hoursImportOverlay">
   <div class="modal" id="hoursImportModal" style="max-width:440px"></div>
 </div>
-<div class="overlay" id="clearLogOverlay" onclick="if(event.target===this)closeModal('clearLogOverlay')">
+<div class="overlay" id="clearLogOverlay">
   <div class="modal" id="clearLogModal" style="max-width:400px"></div>
 </div>
-<div class="overlay" id="salaryExportOverlay" onclick="if(event.target===this)closeModal('salaryExportOverlay')">
+<div class="overlay" id="salaryExportOverlay">
   <div class="modal" id="salaryExportModal" style="max-width:360px"></div>
 </div>
-<div class="overlay" id="hoursExportOverlay" onclick="if(event.target===this)closeModal('hoursExportOverlay')">
+<div class="overlay" id="hoursExportOverlay">
   <div class="modal" id="hoursExportModal" style="max-width:360px"></div>
 </div>
 
 <!-- Manual Punch Modal -->
-<div class="overlay" id="manualPunchOverlay" onclick="if(event.target===this)closeModal('manualPunchOverlay')">
+<div class="overlay" id="manualPunchOverlay">
   <div class="modal" id="manualPunchModal" style="max-width:440px"></div>
 </div>
 
@@ -955,7 +951,7 @@
 <!-- Create/edit staff/supplier user (Admin panel, Users tab — added 2026-10-02,
      Admin/Roles plan stage 6). Single form for both create and edit, same
      pattern as the worker modal — __editingUserId null means "create". -->
-<div class="overlay" id="userFormOverlay" style="z-index:980" onclick="if(event.target===this)closeModal('userFormOverlay')">
+<div class="overlay" id="userFormOverlay" style="z-index:980">
   <div class="modal" style="max-width:420px">
     <div class="modal-title" id="userFormTitle">New user</div>
     <div class="field"><label>Username</label><input type="text" id="userFormUsername" autocomplete="off"></div>
@@ -980,7 +976,6 @@
     </div>
     <div id="userFormError" style="color:#ff6b78;font-size:13px;margin:2px 0 6px;min-height:1.2em"></div>
     <div class="modal-actions">
-      <button class="btn" onclick="closeModal('userFormOverlay')">Cancel</button>
       <button class="btn accent" id="userFormSaveBtn" onclick="submitUserForm()">Save</button>
     </div>
   </div>
@@ -993,7 +988,7 @@
      create-only — see docs/history.md). __firmFormMode ('create'|'edit') picks
      submitEditFirm()'s backend action; openCreateFirmForm() shows the
      login fields, openEditFirmForm()/openMyFirmForm() hide them. -->
-<div class="overlay" id="editFirmOverlay" style="z-index:950" onclick="if(event.target===this)closeModal('editFirmOverlay')">
+<div class="overlay" id="editFirmOverlay" style="z-index:950">
   <div class="modal" style="max-width:420px" oninput="__firmEditDirty=true">
     <div class="modal-title" id="firmEditTitle">Редактировать фирму</div>
     <div style="font-size:11px;color:var(--text3);line-height:1.5;margin:-6px 0 10px">
@@ -1011,7 +1006,6 @@
     <div class="field"><label>עיר</label><input type="text" id="firmEditCity"></div>
     <div id="firmEditFormError" style="color:#ff6b78;font-size:13px;margin:2px 0 6px;min-height:1.2em"></div>
     <div class="modal-actions">
-      <button class="btn" onclick="closeModal('editFirmOverlay')">Отмена</button>
       <button class="btn accent" onclick="submitEditFirm()" id="editFirmBtn">Сохранить</button>
     </div>
   </div>
@@ -1623,7 +1617,6 @@ function openEditShift(wi,di){
       <div id="hBadge"></div>
     </div>
     <div class="modal-actions">
-      <button class="btn" onclick="closeModal('editOverlay')">Cancel</button>
       <button class="btn accent" onclick="saveShift(${wi},${di})">Save</button>
     </div>`;
   document.getElementById('editOverlay').classList.add('open');
@@ -2850,7 +2843,6 @@ function showClientModal(c){
       </div>
     </div>
     <div class="modal-actions">
-      <button class="btn" onclick="closeModal('clientOverlay')">Cancel</button>
       <button class="btn accent" onclick="saveClient()">${editingClientId?'Save Changes':'Add Client'}</button>
     </div>`;
   document.getElementById('clientOverlay').classList.add('open');
@@ -3044,7 +3036,6 @@ function openClientBillRatePopup(fromModeChange){
     <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Flat ₪ per hour billed to the client — no overtime or Shabbat tiers.</div>
     <div class="field">${inp('cbFixed',b.fixedBillRate,'Rate ₪/h')}</div>
     <div class="modal-actions">
-      <button class="btn" type="button" onclick="cancelClientBillRatePopup(${fromModeChange?'true':'false'})">Cancel</button>
       <button class="btn accent" type="button" onclick="saveClientBillRatePopup()">Save</button>
     </div>` : `
     <div class="modal-title">Billing rate with overtime</div>
@@ -3053,10 +3044,13 @@ function openClientBillRatePopup(fromModeChange){
       ${inp('cbReg',b.billRate,'Regular ₪/h')}${inp('cbOt',b.billOtRate,'OT ₪/h')}${inp('cbShab',b.billShabbatRate,'Shabbat ₪/h')}
     </div>
     <div class="modal-actions">
-      <button class="btn" type="button" onclick="cancelClientBillRatePopup(${fromModeChange?'true':'false'})">Cancel</button>
       <button class="btn accent" type="button" onclick="saveClientBillRatePopup()">Save</button>
     </div>`;
-  document.getElementById('clientBillOverlay').classList.add('open');
+  // Closing it (a tap outside) cancels: a popup opened by a mode switch
+  // undoes that switch (cancelClientBillRatePopup).
+  const ov=document.getElementById('clientBillOverlay');
+  ov.__onUserClose=()=>cancelClientBillRatePopup(!!fromModeChange);
+  ov.classList.add('open');
   setTimeout(()=>document.querySelector('#clientBillModal input')?.focus(),50);
 }
 function cancelClientBillRatePopup(revertMode){
@@ -3370,7 +3364,6 @@ function openWorkerDocUpload(workerId){
     <div class="field"><label>Files (several at once is fine — PDF or photos)</label><input type="file" id="wdFiles" multiple accept="application/pdf,.pdf,image/*,.doc,.docx"></div>
     <div id="wdStatus" style="font-size:12px;color:var(--text2);min-height:1.2em;margin-bottom:6px"></div>
     <div class="modal-actions">
-      <button class="btn" onclick="closeModal('workerDocOverlay')">Cancel</button>
       <button class="btn accent" id="wdSubmit" onclick="submitWorkerDocUpload()"><i class="ti ti-upload"></i> Upload</button>
     </div>`;
   document.getElementById('workerDocOverlay').classList.add('open');
@@ -3452,7 +3445,6 @@ function renderHoursImportModal(){
     </div>
     <div id="hoursImportPreview" style="font-size:12px;color:var(--text3);min-height:20px"></div>
     <div class="modal-actions">
-      <button class="btn" onclick="closeModal('hoursImportOverlay')">Cancel</button>
       <button class="btn accent" id="hoursImportSubmitBtn" disabled onclick="submitHoursImportBatch()"><i class="ti ti-upload"></i> Upload for approval</button>
     </div>`;
 }
@@ -3569,7 +3561,6 @@ function openHoursExportModal(workerId){
     <div class="modal-title">Export hours</div>
     <div class="field"><label>Month</label><select id="hoursExportMonth">${monthOptions}</select></div>
     <div class="modal-actions">
-      <button class="btn" onclick="closeModal('hoursExportOverlay')">Cancel</button>
       <button class="btn sm" onclick="runHoursExport('${workerId}','excel')"><i class="ti ti-file-spreadsheet"></i> Excel</button>
       <button class="btn accent" onclick="runHoursExport('${workerId}','pdf')"><i class="ti ti-file-type-pdf"></i> PDF</button>
     </div>`;
@@ -3635,7 +3626,6 @@ function showSupplierModal(s){
       </div>
     </div>
     <div class="modal-actions">
-      <button class="btn" onclick="closeModal('supplierOverlay')">Cancel</button>
       <button class="btn accent" onclick="saveSupplier()">${editingSupplierId?'Save Changes':'Add Supplier'}</button>
     </div>`;
   document.getElementById('supplierOverlay').classList.add('open');
@@ -3737,7 +3727,6 @@ function openManualPunch(cid){
       <i class="ti ti-edit"></i> Manual entry — GPS not verified
     </div>
     <div class="modal-actions">
-      <button class="btn" onclick="closeModal('manualPunchOverlay')">Cancel</button>
       <button class="btn accent" onclick="saveManualPunch('${cid}')">Save Punch</button>
     </div>`;
 
@@ -3822,20 +3811,23 @@ function openPunchClock(cid){
 
 // --- Modal close --------------------------------------------------------------
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
-// Every open modal gets a close ✕ in its top right corner (per user request
-// 2026-10-04: "in all windows, top right"). One observer adds it whenever an
-// overlay opens or its modal is redrawn, so no modal has to draw its own;
-// it calls closeModal(<overlay id>) like the backdrop tap. The same code is
-// in schedule-manager.html and supplier-portal.html.
-function ensureModalCloseButtons(){
-  document.querySelectorAll('.overlay.open > .modal').forEach(m=>{
-    if(m.querySelector(':scope > .modal-x')) return;
-    const id=m.parentElement.id;
-    if(!id) return;
-    m.insertAdjacentHTML('afterbegin',`<button type="button" class="modal-x" aria-label="Close" title="Close" onclick="closeModal('${id}')">✕</button>`);
-  });
-}
-new MutationObserver(ensureModalCloseButtons).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});
+// Every modal closes on a tap anywhere outside it — on the dark backdrop,
+// including where the card or row that opened it was (per user request
+// 2026-10-04, for every modal; modals have no ✕ and no Cancel button). Only
+// when the press also started on the backdrop, so a drag that starts inside
+// the modal (selecting text, moving a map pin) and ends outside doesn't close
+// it. The topmost open overlay is the one under the tap, so a modal over
+// another closes alone. An overlay whose closing must undo something sets
+// overlay.__onUserClose (e.g. the client billing-rate popup reverts the rate
+// mode); otherwise closeModal(id). The same code is in schedule-manager.html
+// and supplier-portal.html.
+let _overlayDownOn=null;
+document.addEventListener('pointerdown',e=>{ _overlayDownOn=e.target; },true);
+document.addEventListener('click',e=>{
+  const t=e.target;
+  if(!(t&&t.classList&&t.classList.contains('overlay')&&t.classList.contains('open')&&_overlayDownOn===t&&t.id)) return;
+  if(typeof t.__onUserClose==='function') t.__onUserClose(); else closeModal(t.id);
+});
 
 
 // --- Export dropdown ----------------------------------------------------------
@@ -6084,7 +6076,6 @@ function openSalaryExportModal(){
       </select>
     </div>
     <div class="modal-actions">
-      <button class="btn" onclick="closeModal('salaryExportOverlay')">Cancel</button>
       <button class="btn sm" onclick="runSalaryExport('csv')"><i class="ti ti-file-text"></i> CSV</button>
       <button class="btn sm" onclick="runSalaryExport('excel')"><i class="ti ti-file-spreadsheet"></i> Excel</button>
       <button class="btn accent" onclick="runSalaryExport('pdf')"><i class="ti ti-file-type-pdf"></i> PDF</button>
@@ -6595,7 +6586,6 @@ function editPunchEntry(id){
       <input type="text" id="epNotes" value="${e.notes||''}" placeholder="Optional note">
     </div>
     <div class="modal-actions">
-      <button class="btn" onclick="closeModal('editOverlay')">Cancel</button>
       <button class="btn accent" onclick="savePunchEntry(${id})">Save Changes</button>
     </div>`;
   document.getElementById('editOverlay').classList.add('open');
@@ -6698,7 +6688,6 @@ function clearPunchLog(){
     </div>
     <div class="field"><label>Type DELETE to confirm</label><input type="text" id="clearLogConfirm" autocomplete="off" oninput="updateClearLogCount()"></div>
     <div class="modal-actions">
-      <button class="btn" onclick="closeModal('clearLogOverlay')">Cancel</button>
       <button class="btn red" id="clearLogSubmit" onclick="submitClearPunchLog()" disabled><i class="ti ti-trash"></i> Delete</button>
     </div>`;
   document.getElementById('clearLogOverlay').classList.add('open');
