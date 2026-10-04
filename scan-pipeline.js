@@ -113,6 +113,9 @@ async function onScanFilesSelected(fileList){
     // already-filled Form 101 page below.
     const tm={t0:Date.now(),prepMs:0,classifyMs:0,primaryReadMs:0,verifyMs:0,extraWaitMs:0};
     const items=await filesToUploadPages(files);
+    // A photo's high-resolution twin for the zoomed field crops (no
+    // geometry steps on this path: pages are read as picked).
+    for(const it of items){ it.hi=_hiPage(it.orig); delete it.orig; }
     tm.prepMs=Date.now()-tm.t0;
     // Classify: drop pages that are already a filled Form 101 (we always
     // generate our own, see aiFillForm101), find the first ID/passport page
@@ -165,9 +168,12 @@ async function onScanFilesSelected(fileList){
             // a wrong ID/date digit is just as costly whether it came from one
             // photo or a multi-file packet.
             const vs=Date.now();
-            foundParsed=p.fieldBoxes?await verifyDigitFields(p,it.b64,it.mediaType):p;
-            foundParsed=await verifyIdChecksum(foundParsed,it.b64,it.mediaType);
+            foundParsed=p.fieldBoxes?await verifyDigitFields(p,it.b64,it.mediaType,it.hi):p;
+            foundParsed=await verifyIdChecksum(foundParsed,it.b64,it.mediaType,it.hi);
             tm.verifyMs+=Date.now()-vs;
+            // Same seeding as the other paths (it also picks the holder's name
+            // from the readings, _resolveScanNames).
+            foundParsed=initPrimaryFromFirstPage(foundParsed);
             window.__aiScanImage={b64:it.b64,mediaType:it.mediaType};
             window.__aiAvatarB64=p.photoBox?await cropPortraitAvatar(it.b64,it.mediaType,p.photoBox):null;
             needMore=missingCore(foundParsed);
@@ -278,6 +284,9 @@ async function onScanFileSelected(file){
       });
       mediaType=file.type||'image/jpeg';
     }
+    // The photo as taken is kept on the device for sharper zoom crops of the
+    // fields (_hiFieldCrop); only the shrunk copy is uploaded.
+    window.__scanEditOrig={b64,mediaType};
     ({b64,mediaType}=await downscaleForUpload(b64,mediaType));
     // Manual crop/straighten runs BEFORE any server call (moved 2026-09-26,
     // per user request) — the editor works on the raw downscaled photo (no
@@ -490,10 +499,12 @@ async function preAlignScan(b64,mediaType){
 // original image unchanged, so a hiccup here never blocks the scan.
 // Returns {b64,mediaType,kind}: kind is aiDetectAlign's page type
 // (id_front/id_back/sefach/passport/contract/other) or null when unknown.
+// Also returns ops: the rotation and warp it applied, so a page's high-
+// resolution twin can be straightened the same way (_hiWith).
 async function autoPreAlignScan(b64,mediaType){
-  const meta={kind:null};
+  const meta={kind:null,ops:[]};
   const out=await _autoPreAlignCore(b64,mediaType,meta);
-  return {...out,kind:meta.kind};
+  return {...out,kind:meta.kind,ops:meta.ops};
 }
 const PAGE_KINDS=['id_front','id_back','sefach','passport','contract','other'];
 async function _autoPreAlignCore(b64,mediaType,meta){
@@ -509,6 +520,7 @@ async function _autoPreAlignCore(b64,mediaType,meta){
     if(!align) return {b64,mediaType};
     const rotateDeg=[0,90,180,270].includes(align.rotate)?align.rotate:0;
     const upright=rotateDeg?await alignScanImage(b64,mediaType,{rotate:rotateDeg,crop:{x0:0,y0:0,x1:1,y1:1}}):{b64,mediaType};
+    if(rotateDeg&&upright.b64!==b64) meta.ops.push({rotate:rotateDeg});
     if(!validQuadCorners(align.corners)) return upright;
     const corners={
       tl:rotatePointFrac(align.corners.tl,rotateDeg), tr:rotatePointFrac(align.corners.tr,rotateDeg),
@@ -531,11 +543,100 @@ async function _autoPreAlignCore(b64,mediaType,meta){
     if(_isNearIdentityQuad(refined)) return upright;
     const toPx=p=>({x:p.x*dims.w,y:p.y*dims.h});
     const quadPx={tl:toPx(refined.tl),tr:toPx(refined.tr),br:toPx(refined.br),bl:toPx(refined.bl),imgW:dims.w,imgH:dims.h};
-    return await warpQuadImage(upright.b64,upright.mediaType,quadPx);
+    const warped=await warpQuadImage(upright.b64,upright.mediaType,quadPx);
+    meta.ops.push({quad:quadPx});
+    return warped;
   }catch(e){
     console.error(e);
     return {b64,mediaType};
   }
+}
+
+// Sharper zoom crops (2026-10-04). The page that is read was shrunk to
+// UPLOAD_MAX_DIM on the device, so a name line is ~25-30 px tall and a
+// zoomed crop of it is only a stretched copy: look-alike letters (ד/ר, ו/ז)
+// lose the stroke that tells them apart. The photo as taken stays on the
+// device instead: a page carries a "high-resolution twin" (hi) — that photo
+// plus the geometry steps the page went through (the corner editor's warp,
+// autoPreAlignScan's rotation and warp; preprocess_scan keeps the geometry).
+// _hiFieldCrop maps a field box of the page back through those steps onto
+// the photo and cuts the field out of it there — only that small region is
+// warped, so it costs a fraction of a second, and only the crop is uploaded.
+// No twin, an undecodable photo or one no sharper than the page → the page's
+// own crop (cropFieldImage), as before.
+const SCAN_CROP_MINW=500, SCAN_CROP_MAXW=1100;
+function _hiPage(orig){ return orig&&orig.b64&&orig.b64.length<30e6?{src:orig,ops:[]}:null; }
+function _hiWith(hi,...ops){ return hi?{src:hi.src,ops:[...hi.ops,...ops]}:null; }
+function _imgDims(img){
+  return new Promise(res=>{ const im=new Image(); im.onload=()=>res({w:im.naturalWidth,h:im.naturalHeight}); im.onerror=()=>res(null); im.src='data:'+img.mediaType+';base64,'+img.b64; });
+}
+// The photo, decoded once and shared by every crop of it.
+function _hiSource(hi){
+  if(!hi) return Promise.resolve(null);
+  if(!hi.src.__img) hi.src.__img=new Promise(res=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>res(null); im.src='data:'+hi.src.mediaType+';base64,'+hi.src.b64; });
+  return hi.src.__img;
+}
+// A point of the page (fractions) → the same point on the photo (fractions):
+// the page's geometry steps undone last to first. A quad step is the warp's
+// own homography (unit square → quad, see warpQuadToRect); a rotation is
+// undone by the opposite rotation.
+function _hiMapPoint(hi,pt){
+  let p={x:pt.x,y:pt.y};
+  for(let i=hi.ops.length-1;i>=0;i--){
+    const op=hi.ops[i];
+    if(op.rotate) p=rotatePointFrac(p,(360-op.rotate)%360);
+    else if(op.quad){
+      const q=op.quad, H=computeSquareToQuadHomography([q.tl,q.tr,q.br,q.bl]), m=applyHomography(H,p.x,p.y);
+      p={x:m.x/q.imgW,y:m.y/q.imgH};
+    }
+  }
+  return p;
+}
+// box: fractions of the page; page: {w,h} of the page that was read.
+// → {b64,mediaType} of the field cut from the photo, or null.
+async function _hiFieldCrop(hi,box,page){
+  if(!hi||!page||!box||typeof box.x0!=='number'||typeof box.x1!=='number') return null;
+  const img=await _hiSource(hi); if(!img) return null;
+  const iw=img.naturalWidth, ih=img.naturalHeight;
+  const clamp01=v=>Math.max(0,Math.min(1,typeof v==='number'?v:0));
+  // The same margin cropFieldImage adds around the reader's tight box.
+  const mx=(box.x1-box.x0)*0.15, my=(box.y1-box.y0)*0.5;
+  const b={x0:clamp01(box.x0-mx),y0:clamp01(box.y0-my),x1:clamp01(box.x1+mx),y1:clamp01(box.y1+my)};
+  const pw=(b.x1-b.x0)*page.w, ph=(b.y1-b.y0)*page.h;
+  if(!(pw>2&&ph>2)) return null;
+  const at=(x,y)=>{ const f=_hiMapPoint(hi,{x,y}); return {x:f.x*iw,y:f.y*ih}; };
+  const q=[at(b.x0,b.y0),at(b.x1,b.y0),at(b.x1,b.y1),at(b.x0,b.y1)];
+  const srcW=(Math.hypot(q[1].x-q[0].x,q[1].y-q[0].y)+Math.hypot(q[2].x-q[3].x,q[2].y-q[3].y))/2;
+  if(!(srcW>=pw*1.2)) return null; // the photo is no sharper here
+  const outW=Math.round(Math.min(Math.max(srcW,SCAN_CROP_MINW),SCAN_CROP_MAXW)), outH=Math.max(8,Math.round(outW*ph/pw));
+  // Only the region under the field is copied out of the photo and warped.
+  const xs=q.map(p=>p.x), ys=q.map(p=>p.y);
+  const rx0=Math.max(0,Math.floor(Math.min(...xs))-2), ry0=Math.max(0,Math.floor(Math.min(...ys))-2);
+  const rx1=Math.min(iw,Math.ceil(Math.max(...xs))+2), ry1=Math.min(ih,Math.ceil(Math.max(...ys))+2);
+  const rw=rx1-rx0, rh=ry1-ry0;
+  if(!(rw>2&&rh>2)) return null;
+  const rc=document.createElement('canvas'); rc.width=rw; rc.height=rh;
+  const rctx=rc.getContext('2d'); rctx.drawImage(img,rx0,ry0,rw,rh,0,0,rw,rh);
+  const src=rctx.getImageData(0,0,rw,rh).data;
+  const H=computeSquareToQuadHomography(q.map(p=>({x:p.x-rx0,y:p.y-ry0})));
+  const out=document.createElement('canvas'); out.width=outW; out.height=outH;
+  const octx=out.getContext('2d'), od=octx.createImageData(outW,outH), o=od.data;
+  for(let j=0;j<outH;j++){
+    const v=j/((outH-1)||1);
+    for(let i=0;i<outW;i++){
+      const m=applyHomography(H,i/((outW-1)||1),v);
+      const [r,g,bl]=bilinearSample(src,rw,rh,Math.max(0,Math.min(rw-1,m.x)),Math.max(0,Math.min(rh-1,m.y)));
+      const k=(j*outW+i)*4; o[k]=r; o[k+1]=g; o[k+2]=bl; o[k+3]=255;
+    }
+  }
+  octx.putImageData(od,0,0);
+  return {b64:out.toDataURL('image/jpeg',0.92).split(',')[1],mediaType:'image/jpeg'};
+}
+// One field's crop for a zoomed re-read: from the photo when the page has a
+// twin, else from the page itself.
+async function _fieldCrop(b64,mediaType,box,hi,page){
+  if(hi&&page){ try{ const c=await _hiFieldCrop(hi,box,page); if(c) return c; }catch(e){ console.error(e); } }
+  return cropFieldImage(b64,mediaType,box);
 }
 
 // Crops a tight fractional box {x0,y0,x1,y1} (as reported by aiReadDoc's own
@@ -560,14 +661,18 @@ function cropFieldImage(b64,mediaType,box){
         const x1=clamp01(box.x1+mx)*iw, y1=clamp01(box.y1+my)*ih;
         const cw=x1-x0, ch=y1-y0;
         if(!(cw>2&&ch>2)) throw new Error('degenerate field box');
-        const MINW=500;
-        const scale=Math.max(1,MINW/cw);
+        // Small crops are enlarged to MINW; a crop from the high-resolution
+        // twin is already sharp and is only capped at MAXW (upload size).
+        const MINW=SCAN_CROP_MINW, MAXW=SCAN_CROP_MAXW;
+        const scale=Math.min(Math.max(1,MINW/cw),MAXW/cw);
         const cv=document.createElement('canvas');
         cv.width=Math.round(cw*scale); cv.height=Math.round(ch*scale);
         const ctx=cv.getContext('2d');
         ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
         ctx.drawImage(img,x0,y0,cw,ch,0,0,cv.width,cv.height);
-        resolve({b64:cv.toDataURL('image/png').split(',')[1],mediaType:'image/png'});
+        resolve(cv.width>MINW+50
+          ?{b64:cv.toDataURL('image/jpeg',0.92).split(',')[1],mediaType:'image/jpeg'}
+          :{b64:cv.toDataURL('image/png').split(',')[1],mediaType:'image/png'});
       }catch(e){ resolve(null); }
     };
     img.onerror=()=>resolve(null);
@@ -617,8 +722,9 @@ function cropPortraitAvatar(b64,mediaType,box){
 // One field's re-verification round-trip: crop -> aiVerifyField -> trimmed
 // text or null. Never throws — a network/AI failure here just means this
 // field's original aiReadDoc reading is kept, not blanked.
-async function verifyField(b64,mediaType,box,kind){
-  const crop=await cropFieldImage(b64,mediaType,box);
+async function verifyField(b64,mediaType,box,kind,hi){
+  const page=hi?await _imgDims({b64,mediaType}):null;
+  const crop=await _fieldCrop(b64,mediaType,box,hi,page);
   if(!crop) return null;
   try{
     const resp=await fetch(API_URL,{
@@ -637,8 +743,9 @@ async function verifyField(b64,mediaType,box,kind){
 // totally failed/malformed response) is simply absent, same as verifyField
 // returning null for that field — callers already treat a missing value as
 // "keep the original OCR reading."
-async function verifyFieldsBatch(jobs,b64,mediaType){
-  const crops=await Promise.all(jobs.map(j=>cropFieldImage(b64,mediaType,j.box)));
+async function verifyFieldsBatch(jobs,b64,mediaType,hi){
+  const page=hi?await _imgDims({b64,mediaType}):null;
+  const crops=await Promise.all(jobs.map(j=>_fieldCrop(b64,mediaType,j.box,hi,page)));
   const ready=jobs.map((j,i)=>({field:j.field,kind:j.kind,crop:crops[i]})).filter(j=>j.crop);
   if(!ready.length) return {};
   try{
@@ -688,14 +795,14 @@ function _normScanDate(s){
   const m=t.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/);
   return m?m[1].padStart(2,'0')+'/'+m[2].padStart(2,'0')+'/'+m[3]:t;
 }
-async function verifyIdChecksum(parsed,b64,mediaType){
+async function verifyIdChecksum(parsed,b64,mediaType,hi){
   if(!parsed||parsed.type!=='israeli_id'||!parsed.idNo) return parsed;
   if(parsed.idNo) parsed.idNo=_normScanDigits(parsed.idNo);
   if(isValidIsraeliId(parsed.idNo)){ parsed.idChecksumOk=true; return parsed; }
   // Not when verifyDigitFields already re-read this same box zoomed: a second
   // read of the same crop just repeats the first (one AI call saved).
   if(parsed.fieldBoxes&&parsed.fieldBoxes.idNo&&!parsed.__idZoomed){
-    const retry=await verifyField(b64,mediaType,parsed.fieldBoxes.idNo,'digits9');
+    const retry=await verifyField(b64,mediaType,parsed.fieldBoxes.idNo,'digits9',hi);
     const retryN=retry&&_normScanDigits(retry);
     if(retryN&&/^\d{9}$/.test(retryN)) parsed.idNo=retryN;
   }
@@ -713,7 +820,7 @@ async function verifyIdChecksum(parsed,b64,mediaType){
 // optimization — was Promise.all over separate verifyField calls, one Apps
 // Script execution each; see verifyFieldsBatch's/aiVerifyFields' own
 // comments for why that mattered).
-async function verifyDigitFields(parsed,b64,mediaType){
+async function verifyDigitFields(parsed,b64,mediaType,hi){
   if(!parsed||!parsed.fieldBoxes) return parsed;
   const jobs=[];
   // Join a grouped ID ("0 1234567 8") first, so a correct read passes the
@@ -733,7 +840,7 @@ async function verifyDigitFields(parsed,b64,mediaType){
   }
   _pushTextJobs(parsed,jobs);
   if(!jobs.length) return parsed;
-  const values=await verifyFieldsBatch(jobs.map(j=>({field:j.field,kind:j.kind,box:parsed.fieldBoxes[j.field]})),b64,mediaType);
+  const values=await verifyFieldsBatch(jobs.map(j=>({field:j.field,kind:j.kind,box:parsed.fieldBoxes[j.field]})),b64,mediaType,hi);
   jobs.forEach(j=>_applyZoomedRead(parsed,j,values[j.field]));
   return parsed;
 }
@@ -751,9 +858,14 @@ function _pushTextJobs(parsed,jobs){
     jobs.push({field:f,kind});
   }
 }
-// The zoomed read wins over the first read when it is readable; when the two
-// differ the field is listed in parsed.__uncertain, and the worker modal
-// frames it "check this" (markScanUncertain).
+// Digits and dates: the zoomed read wins over the first read when it is
+// readable. Text (names, street, town, house number): the zoomed read is
+// kept beside the first read in parsed.__zoom and never replaces it on its
+// own — the names are then picked from all their readings
+// (_resolveScanNames); for the address fields the first read stays. When
+// the two differ the field is listed in parsed.__uncertain, and the worker
+// modal frames it "check this" (markScanUncertain).
+const _ZOOM_TEXT_KINDS=['hebrewText','latinName','houseNumber'];
 function _applyZoomedRead(parsed,j,raw){
   if(!raw) return;
   const before=parsed[j.field];
@@ -775,16 +887,124 @@ function _applyZoomedRead(parsed,j,raw){
   else val=String(raw).replace(/\s+/g,' ').trim();
   if(!val) return;
   const norm=v=>String(v||'').replace(/[\s.\/-]/g,'').toUpperCase();
-  if(before&&norm(before)!==norm(val)) (parsed.__uncertain=parsed.__uncertain||[]).includes(j.field)||parsed.__uncertain.push(j.field);
+  const differs=before&&norm(before)!==norm(val);
+  if(_ZOOM_TEXT_KINDS.includes(j.kind)){
+    (parsed.__zoom=parsed.__zoom||{})[j.field]=val;
+    if(_SCAN_NAME_FIELDS.includes(j.field)) return; // decided by _resolveScanNames
+    if(differs) (parsed.__uncertain=parsed.__uncertain||[]).includes(j.field)||parsed.__uncertain.push(j.field);
+    return;
+  }
+  if(differs) (parsed.__uncertain=parsed.__uncertain||[]).includes(j.field)||parsed.__uncertain.push(j.field);
   parsed[j.field]=val;
 }
+
+// ── The holder's name, picked from every reading of it (2026-10-04) ──
+// Readings: the front page's full read ("full"), its zoomed re-read from the
+// high-resolution twin ("zoom"), and the ספח / card back's own copy of the
+// holder's name ("sefach", aiReadSefach). References: the same name spelled
+// in Latin letters on the page (latinSurname/latinGiven — an Israeli
+// passport) and the MRZ name line (mrzName). Order of decision:
+//   1. all readings agree → that value;
+//   2. a reference decides: the reading whose letters match it best, when
+//      that match is clearly better than the others' (ד→D, ר→R: a misread
+//      ד/ר no longer matches the Latin spelling);
+//   3. two readings agree against a third → the majority;
+//   4. otherwise the full read stays, and the field is marked "check this".
+// Reads and references are collected on the primary record (__names) by
+// initPrimaryFromFirstPage / mergeScanPage, so a page removed later is
+// replayed the same way (rebuildPrimaryFromPages).
+const _SCAN_NAME_FIELDS=['given','surname'];
+function _mrzNames(line){
+  let s=String(line||'').toUpperCase().replace(/[^A-Z<]/g,'');
+  if(s.length>39&&/^[A-Z][A-Z<][A-Z<]{3}/.test(s)) s=s.slice(5); // the whole line was copied
+  if(!s.includes('<<')) return null;
+  const [sur,...rest]=s.split('<<');
+  const clean=v=>v.replace(/</g,' ').replace(/\s+/g,' ').trim();
+  return {surname:clean(sur),given:clean(rest.join(' '))};
+}
+function _addScanNameReads(primary,page){
+  if(!primary||!page||page.type!==primary.type) return;
+  const n=primary.__names||{reads:{given:[],surname:[]},refs:{given:[],surname:[]}};
+  const next={reads:{},refs:{}}; // copy: primary records are shallow copies of each other
+  const sefach=!!(page.__fromSefachReader||page.__isSefachScan);
+  const mrz=_mrzNames(page.mrzName);
+  for(const f of _SCAN_NAME_FIELDS){
+    const reads=[...n.reads[f]], refs=[...n.refs[f]];
+    // __full: the page's own first read — a stored page 1 is the primary
+    // record itself, whose given/surname are already the picked values.
+    const own=page.__full&&f in page.__full?page.__full[f]:page[f];
+    if(own) reads.push({v:own,src:sefach?'sefach':'full'});
+    if(!sefach&&page.__zoom&&page.__zoom[f]) reads.push({v:page.__zoom[f],src:'zoom'});
+    const latin=f==='surname'?page.latinSurname:page.latinGiven;
+    if(primary.type!=='passport'&&latin) refs.push(latin);
+    if(mrz&&mrz[f]) refs.push(mrz[f]);
+    next.reads[f]=reads; next.refs[f]=refs;
+  }
+  primary.__names=next;
+}
+// Hebrew letters → consonant classes of their usual Latin spelling; א ה ו י ע
+// are vowels/silent there and are dropped, as are Latin vowels.
+const _HEB_SKEL={'ב':'B','ג':'G','ד':'D','ז':'Z','ח':'X','ט':'T','כ':'K','ך':'K','ל':'L','מ':'M','ם':'M','נ':'N','ן':'N','ס':'S','פ':'P','ף':'P','צ':'C','ץ':'C','ק':'K','ר':'R','ש':'S','ת':'T'};
+function _hebSkeleton(v){ return [...String(v||'')].map(c=>_HEB_SKEL[c]||'').join(''); }
+function _latSkeleton(v){
+  return String(v||'').toUpperCase().replace(/[^A-Z]/g,'')
+    .replace(/SCH|SH/g,'S').replace(/CH|KH/g,'X').replace(/PH/g,'P').replace(/TZ|TS/g,'#').replace(/CK/g,'K')
+    .replace(/[AEIOUYHW]/g,'').replace(/V/g,'B').replace(/F/g,'P').replace(/[CQ]/g,'K').replace(/J/g,'G').replace(/#/g,'C');
+}
+function _editDistance(a,b){
+  const m=a.length, n=b.length; let prev=Array.from({length:n+1},(_,j)=>j);
+  for(let i=1;i<=m;i++){ const cur=[i]; for(let j=1;j<=n;j++) cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1)); prev=cur; }
+  return prev[n];
+}
+function _nameRefDistance(v,ref,latin){
+  if(latin){
+    const a=String(v||'').toUpperCase().replace(/[^A-Z]/g,''), r=String(ref||'').toUpperCase().replace(/[^A-Z]/g,'');
+    return _editDistance(r.length>=30?a.slice(0,r.length):a,r); // a long MRZ name may be cut short
+  }
+  return _editDistance(_hebSkeleton(v),_latSkeleton(ref));
+}
+function _pickScanName(reads,refs,latin){
+  const key=v=>String(v||'').replace(/[\s\-'"׳״.,]/g,'').toUpperCase();
+  const groups=[];
+  for(const r of reads){
+    const k=key(r.v); if(!k) continue;
+    let g=groups.find(x=>x.k===k);
+    if(!g){ g={k,v:String(r.v).replace(/\s+/g,' ').trim(),n:0,srcs:[]}; groups.push(g); }
+    g.n++; g.srcs.push(r.src);
+  }
+  if(!groups.length) return null;
+  const refList=refs.filter(r=>key(r));
+  const len=g=>latin?g.k.length:_hebSkeleton(g.v).length;
+  const tol=g=>Math.max(1,Math.floor(len(g)/3)); // spelling noise allowed against a reference
+  const scored=refList.length?groups.map(g=>({g,d:Math.min(...refList.map(r=>_nameRefDistance(g.v,r,latin)))})).sort((a,b)=>a.d-b.d):null;
+  // Every reading agrees: taken, but "check this" when the reference
+  // spelling doesn't match it (all readings misread alike).
+  if(groups.length===1) return {v:groups[0].v,unsure:!!scored&&scored[0].d>tol(groups[0])};
+  if(scored&&scored[0].d<scored[1].d&&scored[0].d<=tol(scored[0].g)) return {v:scored[0].g.v,unsure:false};
+  const byN=[...groups].sort((a,b)=>b.n-a.n);
+  if(byN[0].n>=2&&byN[0].n>byN[1].n) return {v:byN[0].v,unsure:false};
+  const first=groups.find(g=>g.srcs.includes('full'))||groups[0];
+  return {v:first.v,unsure:true};
+}
+function _resolveScanNames(primary){
+  if(!primary||!primary.__names) return primary;
+  const unsure=(primary.__uncertain||[]).filter(f=>!_SCAN_NAME_FIELDS.includes(f));
+  for(const f of _SCAN_NAME_FIELDS){
+    const r=_pickScanName(primary.__names.reads[f],primary.__names.refs[f],primary.type==='passport');
+    if(!r) continue;
+    primary[f]=r.v;
+    if(r.unsure) unsure.push(f);
+  }
+  primary.__uncertain=unsure;
+  return primary;
+}
 // The ספח read's address fields, re-read zoomed the same way.
-async function verifySefachFields(parsed,b64,mediaType){
+async function verifySefachFields(parsed,b64,mediaType,hi){
   if(!parsed||!parsed.fieldBoxes) return parsed;
   const jobs=[];
   _pushTextJobs(parsed,jobs);
   if(!jobs.length) return parsed;
-  const values=await verifyFieldsBatch(jobs.map(j=>({field:j.field,kind:j.kind,box:parsed.fieldBoxes[j.field]})),b64,mediaType);
+  const values=await verifyFieldsBatch(jobs.map(j=>({field:j.field,kind:j.kind,box:parsed.fieldBoxes[j.field]})),b64,mediaType,hi);
   jobs.forEach(j=>_applyZoomedRead(parsed,j,values[j.field]));
   return parsed;
 }
@@ -1341,13 +1561,15 @@ async function confirmScanQuad(){
   stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
     +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br><span>מיישר את הסריקה…</span></div>';
   let finalImg;
-  try{ finalImg=await warpQuadImage(b64,mediaType,r); }
-  catch(e){ console.error(e); finalImg={b64,mediaType}; }
+  try{ finalImg=await warpQuadImage(b64,mediaType,r); finalImg.hi=_hiWith(_hiPage(window.__scanEditOrig),{quad:r}); }
+  catch(e){ console.error(e); finalImg={b64,mediaType,hi:_hiPage(window.__scanEditOrig)}; }
+  window.__scanEditOrig=null;
   if(window.__scanEditPurpose==='collectPage') _queueScanPage(finalImg);
   else finishPageScan(finalImg);
 }
 function skipScanQuad(){
-  if(window.__scanEditPurpose==='collectPage') _queueScanPage(window.__scanEdit);
+  const hi=_hiPage(window.__scanEditOrig); window.__scanEditOrig=null;
+  if(window.__scanEditPurpose==='collectPage') _queueScanPage({...window.__scanEdit,hi});
   else finishPageScan(window.__scanEdit);
 }
 // A cropped page joins the queue. When it was taken by tapping a page to
@@ -1358,7 +1580,7 @@ function skipScanQuad(){
 function _queueScanPage(img){
   if(!window.__pendingScanPages) window.__pendingScanPages=[];
   const rep=window.__scanReplace; window.__scanReplace=null;
-  const page={b64:img.b64,mediaType:img.mediaType};
+  const page={b64:img.b64,mediaType:img.mediaType,hi:img.hi||null};
   if(rep&&rep.screen==='review'&&(window.__aiScanPageThumbs||[])[rep.idx]){ _replaceReviewPage(rep.idx,page); return; }
   if(rep&&rep.screen==='queue'&&rep.idx<window.__pendingScanPages.length) window.__pendingScanPages.splice(rep.idx,1,page);
   else window.__pendingScanPages.push(page);
@@ -1379,15 +1601,15 @@ async function _replaceReviewPage(i,img){
     const al=await autoPreAlignScan(img.b64,img.mediaType);
     const pre=await preAlignScan(al.b64,al.mediaType);
     if(pre.blurry) return back('התמונה מטושטשת מדי — צלמו שוב');
-    const page={b64:pre.b64,mediaType:pre.mediaType};
+    const page={b64:pre.b64,mediaType:pre.mediaType}, hi=_hiWith(img.hi,...(al.ops||[]));
     if(i===0){
       renderScanProgress('ה-AI קורא את המסמך…',50);
       const json=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',...gsAuth(),image:page.b64,mediaType:page.mediaType})})).json();
       const p=json&&json.parsed;
       if(!(p&&(p.type==='israeli_id'||p.type==='passport'))) return back('לא זוהה מסמך זהות בתמונה — העמוד הקודם נשאר');
       renderScanProgress('בודק שוב את הספרות…',70);
-      let v=p.fieldBoxes?await verifyDigitFields(p,page.b64,page.mediaType):p;
-      v=await verifyIdChecksum(v,page.b64,page.mediaType);
+      let v=p.fieldBoxes?await verifyDigitFields(p,page.b64,page.mediaType,hi):p;
+      v=await verifyIdChecksum(v,page.b64,page.mediaType,hi);
       // photoBox belongs to the image that was read — crop before tightening.
       window.__aiAvatarB64=p.photoBox?await cropPortraitAvatar(page.b64,page.mediaType,p.photoBox):null;
       renderScanProgress('מחדד קצוות…',90);
@@ -1398,7 +1620,7 @@ async function _replaceReviewPage(i,img){
     } else {
       renderScanProgress('ה-AI קורא את העמוד…',60);
       const rd=extraPageReader(al.kind);
-      const p=rd?await rd(page):null;
+      const p=rd?await rd({...page,hi}):null;
       renderScanProgress('מחדד קצוות…',90);
       const final=await finalTightenPass(page);
       window.__aiScanPageThumbs[i]=final;
@@ -1454,7 +1676,10 @@ function initPrimaryFromFirstPage(current){
     primary.idNo='';
     if(currentIdNo) window.__aiPendingSefachIdNo=currentIdNo;
   }
-  return primary;
+  primary.__names=null;
+  primary.__full=current.__full||{given:current.given||'',surname:current.surname||''};
+  _addScanNameReads(primary,current);
+  return _resolveScanNames(primary);
 }
 // Merges one later-scanned page's raw parsed data into the primary record.
 // Shared by finishPageScan() (normal incremental flow) and
@@ -1481,7 +1706,9 @@ function mergeScanPage(primary,current){
   if(!isSefachRead&&primary&&primary.type==='israeli_id'&&current.type==='israeli_id'){
     for(const f of ['given','surname','expiry']) if(!primary[f]&&current[f]) primary[f]=current[f];
   }
-  return mergeIsraeliIdFields(primary,current);
+  mergeIsraeliIdFields(primary,current);
+  _addScanNameReads(primary,current);
+  return _resolveScanNames(primary);
 }
 // Recomputes window.__aiPrimaryParsed from scratch out of window.__aiPageParsed
 // (each page's own raw parsed data, kept parallel to __aiScanPageThumbs) —
@@ -1609,7 +1836,7 @@ function removePendingScanPage(i){
 // back). Never throws — a failed read resolves null, same as "nothing found".
 function readSefachPage(it){
   return fetch(API_URL,{method:'POST',body:JSON.stringify({action:'aiReadSefach',...gsAuth(),image:it.b64,mediaType:it.mediaType})})
-    .then(r=>r.json()).then(j=>{ if(j&&j.error) console.warn('aiReadSefach failed: '+j.error); const p=j&&j.parsed; return p?verifySefachFields(p,it.b64,it.mediaType):null; })
+    .then(r=>r.json()).then(j=>{ if(j&&j.error) console.warn('aiReadSefach failed: '+j.error); const p=j&&j.parsed; if(p) p.__fromSefachReader=true; return p?verifySefachFields(p,it.b64,it.mediaType,it.hi):null; })
     .catch(e=>{ console.error(e); return null; });
 }
 // Page type only (aiDetectAlign's "kind"), for the multi-file path, which
@@ -1687,7 +1914,9 @@ async function processAllPendingPages(){
   // If page 1 turns out blurry or not an ID document, the result is unused.
   let earlyPrimary=null, earlyRead=null;
   if(!foundParsed&&queue[0]){
-    const raw={b64:queue[0].b64,mediaType:queue[0].mediaType};
+    const raw={b64:queue[0].b64,mediaType:queue[0].mediaType}, rawHi=queue[0].hi||null;
+    // The photo is decoded while the page is being read.
+    _hiSource(rawHi);
     // The bare read, on its own, so the following pages' ספח reads can start
     // as soon as it is known the first page lacks address/family fields.
     earlyRead=(async()=>{
@@ -1702,8 +1931,8 @@ async function processAllPendingPages(){
       const p=await earlyRead;
       if(!(p&&(p.type==='israeli_id'||p.type==='passport'))) return {p:p||null};
       const vs=Date.now();
-      let v=p.fieldBoxes?await verifyDigitFields(p,raw.b64,raw.mediaType):p;
-      v=await verifyIdChecksum(v,raw.b64,raw.mediaType);
+      let v=p.fieldBoxes?await verifyDigitFields(p,raw.b64,raw.mediaType,rawHi):p;
+      v=await verifyIdChecksum(v,raw.b64,raw.mediaType,rawHi);
       tm.verifyMs=Date.now()-vs;
       const avatar=p.photoBox?await cropPortraitAvatar(raw.b64,raw.mediaType,p.photoBox):null;
       return {p,verified:v,avatar};
@@ -1728,7 +1957,7 @@ async function processAllPendingPages(){
     tm.enhanceMs=Math.max(tm.enhanceMs,Date.now()-es);
     prepDone++;
     renderScanProgress('מיישר ומשפר את התמונות… ('+prepDone+' מתוך '+total+')',Math.round(40*prepDone/total));
-    return {...pre,kind:it.kind||null};
+    return {...pre,kind:it.kind||null,hi:_hiWith(q.hi,...(it.ops||[]))};
   }));
   // A blurry page stops the run there, exactly like the old loop: pages
   // before it are read and merged, it is dropped, pages after it stay queued.
@@ -1739,7 +1968,7 @@ async function processAllPendingPages(){
     // Was the enhance server already warm? (warmCloudFunctions ping result)
     enhancePingMs:((typeof __fnWarm!=='undefined'&&__fnWarm[PREPROCESS_SCAN_FN_URL])||{}).ms??null,primaryReadMs:tm.primaryReadMs,verifyMs:tm.verifyMs,extraWaitMs:tm.extraWaitMs,
     docType:foundParsed&&foundParsed.type||'',earlyRead:!!earlyPrimary},extra||{})); };
-  const usable=(blurIdx>=0?prepared.slice(0,blurIdx):prepared).map(x=>({b64:x.b64,mediaType:x.mediaType,kind:x.kind}));
+  const usable=(blurIdx>=0?prepared.slice(0,blurIdx):prepared).map(x=>({b64:x.b64,mediaType:x.mediaType,kind:x.kind,hi:x.hi||null}));
 
   // Phase 2 — reads.
   const sefachReads=new Map();
@@ -1751,8 +1980,8 @@ async function processAllPendingPages(){
   const readPct=i=>Math.round(40+50*(i+1)/Math.max(1,usable.length));
   for(let i=0;i<usable.length;i++){
     let it=usable[i];
-    const kind=it.kind;
-    it={b64:it.b64,mediaType:it.mediaType};
+    const kind=it.kind, hi=it.hi;
+    it={b64:it.b64,mediaType:it.mediaType}; // stored pages never carry the twin
     let thisPageParsed=null;
     if(i===0&&earlyPrimary&&!foundParsed&&!isNonIdKind(kind)){
       try{
@@ -1786,8 +2015,8 @@ async function processAllPendingPages(){
           if(missingCore(p)) prefetchSefachFrom(i+1);
           if(p.fieldBoxes) renderScanProgress('בודק שוב את הספרות… (עמוד '+(i+1)+' מתוך '+total+')',Math.max(55,readPct(i)-20));
           const vs=Date.now();
-          foundParsed=p.fieldBoxes?await verifyDigitFields(p,it.b64,it.mediaType):p;
-          foundParsed=await verifyIdChecksum(foundParsed,it.b64,it.mediaType);
+          foundParsed=p.fieldBoxes?await verifyDigitFields(p,it.b64,it.mediaType,hi):p;
+          foundParsed=await verifyIdChecksum(foundParsed,it.b64,it.mediaType,hi);
           tm.verifyMs+=Date.now()-vs;
           // Routed through initPrimaryFromFirstPage() so this computes the
           // same primary record removeExtraScanPage()'s replay
@@ -1811,7 +2040,7 @@ async function processAllPendingPages(){
       // already in flight from the prefetch above.
       const rd=extraPageReader(kind);
       const ws=Date.now();
-      const p=sefachReads.has(i)?await sefachReads.get(i):(rd?await rd(it):null);
+      const p=sefachReads.has(i)?await sefachReads.get(i):(rd?await rd({...it,hi}):null);
       tm.extraWaitMs+=Date.now()-ws;
       if(p&&p.type==='israeli_id'){
         // mergeScanPage() — same merge rebuildPrimaryFromPages() replays when
