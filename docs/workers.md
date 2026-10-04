@@ -80,7 +80,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
 
 Read-only summary, as flat icon + text rows:
 - phone; rates; start date; contract warning; ID; document status;
-- with `hasPermission('workers')`: a "Scan / Rescan" button at the end of the header, beside the modal's close ✕ (`rescanFromWorkerCard(wi)`: closes the card, opens the worker modal and the scan over it). Under Documents, one amber row per scan field still missing (`cardMissingScanRowsHtml`). When the worker has a saved scan (`assetsFileId`), tapping a row searches it for that field (`findScanFieldFromCard` → `findScanField`). A value found is saved on the worker (`autoSave`, `name` rebuilt for a name field), and the Form 101 is rebuilt (`regenerateWorkerDoc`). Not found → the row says so, with a link to photograph the page again;
+- with `hasPermission('workers')`: a "Scan / Rescan" button at the end of the header (`rescanFromWorkerCard(wi)`: closes the card, opens the worker modal and the scan over it). Under Documents, one amber row per scan field still missing (`cardMissingScanRowsHtml`). When the worker has a saved scan (`assetsFileId`), tapping a row searches it for that field (`findScanFieldFromCard` → `findScanField`). A value found is saved on the worker (`autoSave`, `name` rebuilt for a name field), and the Form 101 is rebuilt (`regenerateWorkerDoc`). Not found → the row says so, with a link to photograph the page again;
 - address with house number and city; income types; scheduled hours per week; "document saved";
 - the clients (labelled "Clients:"), and each assigned client with the effective rates there (`effectiveRates(w, clientId)`, a star when the worker has their own override); the supplier, labelled "Supplier:";
 - notes;

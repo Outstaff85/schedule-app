@@ -37,9 +37,6 @@ body{padding-bottom:40px;}
 .field input,.field select{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:8px 10px;font-size:13px;outline:none;}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:500;padding:16px;}
 .overlay.open{display:flex;}
-  /* The close ✕ every open modal gets, top right, staying in view while the
-     modal scrolls (ensureModalCloseButtons; the same in supplier-portal.html). */
-  .modal-x{position:sticky;top:0;float:right;z-index:6;margin:-12px -12px 4px 10px;width:32px;height:32px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;line-height:1;padding:0;}
 .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:20px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto;}
 .modal-title{font-size:16px;font-weight:700;margin-bottom:14px;}
 .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap;}
@@ -162,31 +159,22 @@ function showNewVersionBar(){
 }
 startVersionWatch(()=>[location.pathname,'firestore-backend.js']);
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
-// Every open modal gets a close ✕ in its top right corner (per user request
-// 2026-10-04: "in all windows, top right"). One observer adds it whenever an
-// overlay opens or its modal is redrawn, so no modal has to draw its own;
-// it calls closeModal(<overlay id>) like the backdrop tap. The same code is
-// in schedule-manager.html and supplier-portal.html.
-function ensureModalCloseButtons(){
-  document.querySelectorAll('.overlay.open > .modal').forEach(m=>{
-    if(m.querySelector(':scope > .modal-x')) return;
-    const id=m.parentElement.id;
-    if(!id) return;
-    m.insertAdjacentHTML('afterbegin',`<button type="button" class="modal-x" aria-label="Close" title="Close" onclick="closeModal('${id}')">✕</button>`);
-  });
-}
-new MutationObserver(ensureModalCloseButtons).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});
-// A tap anywhere outside the modal — on the dark backdrop, including where the
-// card or row that opened it was — closes it too (per user request
-// 2026-10-04, for every modal). Only when the press also started on the
-// backdrop, so a drag that starts inside the modal (selecting text, moving a
-// map pin) and ends outside doesn't close it. The topmost open overlay is
-// the one under the tap, so a modal over another closes alone.
+// Every modal closes on a tap anywhere outside it — on the dark backdrop,
+// including where the card or row that opened it was (per user request
+// 2026-10-04, for every modal; modals have no ✕ and no Cancel button). Only
+// when the press also started on the backdrop, so a drag that starts inside
+// the modal (selecting text, moving a map pin) and ends outside doesn't close
+// it. The topmost open overlay is the one under the tap, so a modal over
+// another closes alone. An overlay whose closing must undo something sets
+// overlay.__onUserClose (e.g. the client billing-rate popup reverts the rate
+// mode); otherwise closeModal(id). The same code is in schedule-manager.html
+// and supplier-portal.html.
 let _overlayDownOn=null;
 document.addEventListener('pointerdown',e=>{ _overlayDownOn=e.target; },true);
 document.addEventListener('click',e=>{
   const t=e.target;
-  if(t&&t.classList&&t.classList.contains('overlay')&&t.classList.contains('open')&&_overlayDownOn===t&&t.id) closeModal(t.id);
+  if(!(t&&t.classList&&t.classList.contains('overlay')&&t.classList.contains('open')&&_overlayDownOn===t&&t.id)) return;
+  if(typeof t.__onUserClose==='function') t.__onUserClose(); else closeModal(t.id);
 });
 
 
@@ -454,7 +442,6 @@ function renderWorkerModal(w){
     <div class="field"><label>Address</label><input id="wfAddress" value="${esc(w.address||'')}"></div>
     <div class="field"><label>City</label><input id="wfCity" value="${esc(w.city||'')}"></div>
     <div class="modal-actions">
-      <button class="btn" onclick="closeModal('workerOverlay')">Cancel</button>
       <button class="btn accent" onclick="saveWorkerModal('${w.id||''}')">Save</button>
     </div>`;
 }
