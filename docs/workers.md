@@ -74,7 +74,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
 
 Read-only summary, as flat icon + text rows:
 - phone; rates; start date; contract warning; ID; document status;
-- with `hasPermission('workers')`: a "Scan / Rescan" button (`rescanFromWorkerCard(wi)`: closes the card, opens the worker modal and the scan over it), and the scan fields still missing (`missingScanFieldsHtml`);
+- with `hasPermission('workers')`: a "Scan / Rescan" button (`rescanFromWorkerCard(wi)`: closes the card, opens the worker modal and the scan over it). Below it, one amber row per scan field still missing (`cardMissingScanRowsHtml`). When the worker has a saved scan (`assetsFileId`), tapping a row searches it for that field (`findScanFieldFromCard` → `findScanField`). A value found is saved on the worker (`autoSave`, `name` rebuilt for a name field), and the Form 101 is rebuilt (`regenerateWorkerDoc`). Not found → the row says so, with a link to photograph the page again;
 - address with house number and city; income types; scheduled hours per week; "document saved";
 - each assigned client with the effective rates there (`effectiveRates(w, clientId)`, a star when the worker has their own override); the supplier;
 - notes;
@@ -92,7 +92,10 @@ One form for add, edit and post-scan review. Labels of every Form 101 field are 
   - module state is reset: `__wScheduleOpen`, `__wExpiryOpen`, `__wForm101Open`, `__wBankOpen` (all collapsed); `__wClientIds`; `__wChildren`; `__wAvatarB64`; `__wDocType`.
 - **Sections:**
   - **Avatar.** Upload a photo, then crop it in the editor: `openAvatarCropEditor`, drag (`attachAvatarCropDrag`), zoom (`onAvatarCropZoom`), confirm (`confirmAvatarCrop` → 160 px JPEG, `AVATAR_SIZE`). Or delete it (`clearWorkerAvatar`).
-  - **Documents** (new and existing workers). Download the PDF (existing workers), "Scan / Rescan" → `rescanFromWorkerModal()`, and the scan fields still missing. `workerMissingScanFields(w)` lists given name, surname, ID or passport number, date of birth and sex, plus street, house number and city for an Israeli ID.
+  - **Documents** (new and existing workers). Download the PDF (existing workers), "Scan / Rescan" → `rescanFromWorkerModal()`, and the scan fields still missing. `SCAN_FIND_FIELDS` is the list of scan fields: given name, surname, ID or passport number, date of birth and sex, plus street, house number and city for an Israeli ID. For each it records the input, the page (front or ספח), the Hebrew label, and the zoomed re-read kind for digits and dates. `workerMissingScanKeys` / `workerMissingScanFields` give the ones a worker lacks.
+    - **Field search** (`markScanMissingFields()`, run after the modal is drawn and after a draft is put back). When the worker has a scan to search (`workerHasScanPages`), every empty scan field gets an amber frame (`.scan-missing`), placeholder "🔍 לחצו לחיפוש בסריקה".
+    - Tapping a marked field (`_scanFieldTap`) runs `findScanField(w, key, docType)`. Found → the value is filled and the frame turns green for a moment. Not found → a hint under the field with a link to `rescanFromWorkerModal()`, and further taps no longer search. Typing clears the mark.
+    - `findScanField` takes the photos from `workerScanPages(w)`: the scan in memory when it belongs to this modal, else the Storage sidecar (`loadWorkerAssets`, cached per file). It sends up to 4, the field's own page first, to `aiFindField`. Digits and dates found with a box are re-read zoomed (`verifyField`), then normalized: ID digits, `DD/MM/YYYY`, sex `M`/`F`.
     - `rescanFromWorkerModal()` keeps the form as a draft (`window.__wDraft`: field values by id, children, clients, avatar, colour, signature) and opens the scan over the modal.
     - Which scan opens: the review screen of the scan still in memory when the modal came from it (a new worker, or this worker just rescanned); otherwise a new scan of this worker (`__aiRescanWorkerId`).
     - When the scan finishes, `openWorkerModalFromScan()` redraws the modal and calls `applyWorkerDraft()`: a field that had a value keeps it, an empty one takes the scan's value.

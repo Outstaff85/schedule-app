@@ -34,7 +34,7 @@
   const USERS_ADMIN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/users_admin';
   const AI_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/ai_read';
   // The AI document actions, answered by the ai_read function.
-  const AI_ACTIONS = ['aiReadDoc','aiReadSefach','aiDetectAlign','aiVerifyField','aiVerifyFields','aiReadHoursTable'];
+  const AI_ACTIONS = ['aiReadDoc','aiReadSefach','aiDetectAlign','aiVerifyField','aiVerifyFields','aiReadHoursTable','aiFindField'];
   // Actions answered by the users_admin function.
   const FUNCTION_ACTIONS = ['listTenants','setTenantActive','deleteTenant','createUser','updateTenant',
     'loadTenantProfile','listUsers','createTenantUser','updateUser','resetUserPassword','deleteUser'];

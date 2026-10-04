@@ -193,3 +193,38 @@ def test_gives_up_after_three_tries():
 def test_real_error_is_not_tried_again():
     post, sent = _replies((400, '{"error":{"type":"invalid_request_error","message":"bad"}}'), GOOD)
     assert ai.run("aiReadDoc", {"image": "I"}, "KEY", post, MODEL, ALIGN) == {"error": "bad"} and len(sent) == 1
+
+
+def _find(body, reply='{"content":[{"type":"text","text":"{\\"value\\":\\"חיפה\\",\\"page\\":1,\\"box\\":{\\"x0\\":0.1,\\"y0\\":0.2,\\"x1\\":0.3,\\"y1\\":0.25}}"}]}'):
+    sent = []
+
+    def post(url, payload, headers):
+        sent.append(payload)
+        return 200, reply
+    return ai.run("aiFindField", body, "KEY", post, MODEL, ALIGN), sent
+
+
+def test_find_field_request_and_result():
+    r, sent = _find({"field": "city", "docType": "israeli_id",
+                     "images": [{"image": "F"}, {"image": "S", "mediaType": "image/png"}]})
+    assert r == {"ok": True, "found": {"value": "חיפה", "page": 1, "box": {"x0": 0.1, "y0": 0.2, "x1": 0.3, "y1": 0.25}}}
+    p = sent[0]
+    assert p["model"] == MODEL and p["max_tokens"] == 300
+    text = p["messages"][0]["content"][0]["text"]
+    assert "ישוב" in text and "2 photo(s)" in text and "ספח appendix" in text and "{" in text
+    imgs = [c for c in p["messages"][0]["content"] if c["type"] == "image"]
+    assert [i["source"]["data"] for i in imgs] == ["F", "S"] and imgs[1]["source"]["media_type"] == "image/png"
+
+
+def test_find_field_passport_label_and_page_cap():
+    r, sent = _find({"field": "docId", "docType": "passport", "images": [{"image": str(i)} for i in range(6)]})
+    text = sent[0]["messages"][0]["content"][0]["text"]
+    assert "passport number" in text and "מספר זהות" not in text
+    assert len([c for c in sent[0]["messages"][0]["content"] if c["type"] == "image"]) == ai.FIND_MAX_PAGES
+
+
+def test_find_field_refusals_and_not_found():
+    assert _find({"field": "salary", "images": [{"image": "F"}]})[0] == {"error": "Unknown field"}
+    assert _find({"field": "city", "images": []})[0] == {"error": ai.E_NO_IMAGE}
+    r, _ = _find({"field": "city", "images": [{"image": "F"}]}, '{"content":[{"type":"text","text":"{\\"value\\":\\"\\"}"}]}')
+    assert r == {"ok": True, "found": {"value": "", "page": None, "box": None}}

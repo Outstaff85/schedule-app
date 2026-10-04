@@ -42,6 +42,7 @@ All of them are sent as `fetch(API_URL, …)`; the dispatcher passes them to the
 | `aiDetectAlign` | `ANTHROPIC_ALIGN_MODEL` (Haiku) | Rotation, 4 corners and the page `kind`: `id_front` / `id_back` / `sefach` / `passport` / `contract` / `other`. A failed call leaves the page as cropped; the error goes to Admin → Errors as `console.warn('aiDetectAlign failed: …')` (`readSefachPage` does the same for `aiReadSefach`) |
 | `aiVerifyFields` | `ANTHROPIC_MODEL` | Batched zoomed re-read of several digit fields |
 | `aiVerifyField` | `ANTHROPIC_MODEL` | One zoomed re-read (the ID retry) |
+| `aiFindField` | `ANTHROPIC_MODEL` | One missing field searched for on the worker's page photos, from the worker modal or card ([workers.md](workers.md) → field search) |
 
 The prompts live in `functions-auth/ai_prompts.json` — see [backend.md](backend.md).
 
