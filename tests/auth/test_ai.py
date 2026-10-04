@@ -255,6 +255,15 @@ def test_reads_ask_for_boxes_of_every_field():
     assert "address, houseNumber, city that you found a value for" in ai.PROMPTS["readSefach"]
 
 
+def test_reads_return_name_cross_checks():
+    # The scan picks the holder's name by comparing readings (scan-pipeline.js
+    # _resolveScanNames): the ספח / card back's own copy, the Latin spelling
+    # and the MRZ name line.
+    assert '"surname":"holder\'s surname, or empty","given":"holder\'s given name, or empty"' in ai.PROMPTS["readSefach"]
+    for key in ('"latinSurname"', '"latinGiven"', '"mrzName"'):
+        assert key in ai.PROMPTS["readDoc"]
+
+
 def test_find_several_fields_in_one_request():
     reply = '{"content":[{"type":"text","text":"{\\"fields\\":{\\"city\\":{\\"value\\":\\"חיפה\\",\\"page\\":1},\\"address\\":{\\"value\\":\\"\\"}}}"}]}'
     r, sent = _find({"fields": ["city", "address"], "images": [{"image": "F"}, {"image": "S"}]}, reply)
