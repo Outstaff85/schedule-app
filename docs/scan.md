@@ -94,7 +94,7 @@ The pages are not aligned, enhanced or tightened in this path.
 
 - **Normalizing:** `_normScanDigits(s)` joins grouped digits (`0 1234567 8` → `012345678`); `_normScanDate(s)` pads to `DD/MM/YYYY`.
 - **`verifyDigitFields(parsed, b64, mediaType)`** builds jobs from `fieldBoxes`:
-  - Israeli ID: `idNo` and `dob` (`__idZoomed` is set, so `verifyIdChecksum` does not read the same box again);
+  - Israeli ID: `idNo` and `dob` (all re-read every time in the same call; `__idZoomed` is set, so `verifyIdChecksum` does not read the same box again);
   - passport: `passportNo`, `dob`, `expiry`;
   - both (`_pushTextJobs`): every boxed `given`, `surname`, `address` and `city` (`hebrewText`; a passport's names `latinName`) and `houseNumber` (`houseNumber`). All of them go in the same one call. A field left empty is searched for after the scan instead (`autoFindMissingScanFields`, [workers.md](workers.md)).
   
