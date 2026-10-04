@@ -146,6 +146,7 @@ Shown in Admin → Errors / Timings ([admin.md](admin.md)).
   - An offline navigation falls back to the matching page.
   - It also has push / notificationclick handlers.
 - **Registration:** the page registers the worker with `updateViaCache:'none'` and calls `reg.update()`. When a new version takes control (`controllerchange`) it reloads once, after uploads finish.
+- **New version check** (`startVersionWatch(files)` / `showNewVersionBar()`; the same code in the worker and supplier pages). An app left open keeps the code it loaded, even after a deploy. When the page comes back to the screen (`visibilitychange`), and every 30 min while it is shown, the files it runs are asked for their ETag with `HEAD` and `cache:'no-store'` (the service worker only handles GET): here the page itself, `firestore-backend.js`, and `scan-pipeline.js` once loaded. The first answer is the baseline; a changed ETag shows a bar "A new version is available — Update" (reload) with a ✕. Nothing reloads on its own. Offline or a failed request: nothing happens.
 - **Install:** `beforeinstallprompt` → the Install button; iOS gets instructions in a toast.
 - **Push:** `PUSH_ENABLED = false`. `subscribeToPush` exists (it keeps the subscription only in `localStorage`) but the button is hidden — no sender exists.
 - **Manifests:** `manifest.json` (manager, start `./schedule-manager.html`) and `manifest-punch.json` (`./worker-punch.html`).
@@ -156,4 +157,4 @@ Typing in the given-name field calls `searchContacts()`. Once contacts have been
 
 ## Hosting and routes
 
-Firebase Hosting serves the repo root as static files (`firebase.json`; tests, functions, md files and rules are ignored). Rewrites: `/` → `schedule-manager.html`, `/punch` → `worker-punch.html`, `/supplier` → `supplier-portal.html`. `*.html` and `*.js` (including `service-worker.js`, `scan-pipeline.js`, `firestore-backend.js`) are served `no-cache`, so a deploy reaches the next page load. Deploying = merging to `main` (GitHub Actions; see [backend.md](backend.md)).
+Firebase Hosting serves the repo root as static files (`firebase.json`; tests, functions, md files and rules are ignored). Rewrites: `/` → `schedule-manager.html`, `/punch` → `worker-punch.html`, `/supplier` → `supplier-portal.html`. `*.html` and `*.js` (including `service-worker.js`, `scan-pipeline.js`, `firestore-backend.js`), and the routes `/`, `/punch` and `/supplier` themselves, are served `no-cache`, so a deploy reaches the next page load. Deploying = merging to `main` (GitHub Actions; see [backend.md](backend.md)).

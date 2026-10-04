@@ -78,3 +78,4 @@ Only this device's `punchLog` for the selected worker. Punches are sorted by `ts
 - `reportError()` — at most 21 per page, the same message at most once a minute; sent with `role:'worker'` and the worker's name (or the first 4 characters of the token). Wired to `error` and `unhandledrejection`.
 - Push: the page does not subscribe (no sender exists). The `punch` function still accepts `savePushSubscription`, and `service-worker.js` still has `push` / `notificationclick` handlers for the future.
 - The service worker is registered with `updateViaCache:'none'` and the page reloads when a new version takes control.
+- New version check: `startVersionWatch` watches the page itself and shows the "A new version is available — Update" bar after a deploy (the same code as the manager app, [app-core.md](app-core.md) → PWA).

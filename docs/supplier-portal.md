@@ -34,6 +34,10 @@ Who creates a supplier login and how: [admin.md](admin.md) → Users pane. The s
 
 Hours use local copies of `groupPunchesIntoShifts` / `analyzeDayPunches` (simplified: no warnings, no rounding) and `getWorkerMonthShifts`. They are never wages.
 
+## New version check
+
+`startVersionWatch` watches the page and `firestore-backend.js` and shows the "A new version is available — Update" bar after a deploy (the same code as the manager app, [app-core.md](app-core.md) → PWA).
+
 ## What a supplier can write
 
 Only the three actions:

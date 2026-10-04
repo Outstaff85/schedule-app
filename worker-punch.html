@@ -968,6 +968,45 @@ function getLastEntry(log,wid){ const es=log.filter(e=>e.workerId===wid); if(!es
 function haversine(a,b,c,d){ const R=6371000,dL=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180,x=Math.sin(dL/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dl/2)**2; return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x)); }
 function updateScheduleManager(wid,s,e){ try{ const k='schedMgr_v1',r=localStorage.getItem(k)||localStorage.getItem('scheduleManagerData'); if(!r)return; const d=JSON.parse(r),w=d.workers?.find(x=>x.id===wid); if(w){w.schedule[new Date().getDay()]={type:'work',start:s,end:e};localStorage.setItem(k,JSON.stringify(d));} }catch(e){} }
 function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3500); }
+// ── New version check (2026-10-04; the same code in schedule-manager.html,
+// worker-punch.html and supplier-portal.html). An app left open — a PWA in
+// the background — keeps running the code it loaded, even after a deploy.
+// When the page comes back to the screen, and every 30 min while it is
+// shown, the files it runs are asked for their ETag (HEAD: the service
+// worker only handles GET, and cache:'no-store' skips the HTTP cache). The
+// first answer is the baseline; a changed ETag later means a deploy, and a
+// bar offers to reload. Nothing reloads on its own (typed data stays).
+function startVersionWatch(files){
+  let base=null, shown=false;
+  const tags=async()=>{
+    const out={};
+    for(const f of files()){
+      const r=await fetch(f,{method:'HEAD',cache:'no-store'});
+      if(!r.ok) return null;
+      out[f]=r.headers.get('etag')||r.headers.get('last-modified')||'';
+    }
+    return out;
+  };
+  const check=async()=>{
+    if(shown||document.visibilityState!=='visible'||navigator.onLine===false) return;
+    try{
+      const t=await tags(); if(!t) return;
+      if(!base){ base=t; return; }
+      for(const f in t){ if(!(f in base)){ base[f]=t[f]; continue; } if(t[f]&&base[f]&&t[f]!==base[f]){ shown=true; showNewVersionBar(); return; } }
+    }catch(e){}
+  };
+  document.addEventListener('visibilitychange',check);
+  setInterval(check,30*60*1000);
+  check();
+}
+function showNewVersionBar(){
+  if(document.getElementById('newVersionBar')) return;
+  document.body.insertAdjacentHTML('beforeend',`<div id="newVersionBar" style="position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:100000;display:flex;align-items:center;gap:10px;max-width:calc(100% - 32px);box-sizing:border-box;padding:10px 12px 10px 16px;border-radius:12px;background:#1f6feb;color:#fff;font:600 14px/1.3 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.35)">
+    <span>A new version is available</span>
+    <button type="button" onclick="location.reload()" style="border:0;border-radius:8px;padding:6px 12px;background:#fff;color:#1f6feb;font:inherit;cursor:pointer">Update</button>
+    <button type="button" aria-label="Close" onclick="this.parentElement.remove()" style="border:0;background:none;color:#fff;font:inherit;font-size:18px;cursor:pointer;padding:0 4px">✕</button></div>`);
+}
+startVersionWatch(()=>[location.pathname]);
 
 // Site shown in history: keep a recorded site only if it's one of THIS worker's
 // own clients; otherwise show the client the worker is attached to.
