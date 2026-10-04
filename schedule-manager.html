@@ -5062,11 +5062,12 @@ function renderTimingsPane(el,rows){
     `${x.label}: ${x.count}× · median ${_sec(x.median)} · 90% ${_sec(x.p90)}${x.steps.length?' · '+x.steps.map(([l,v])=>l+' '+_sec(v)).join(' · '):''}`).join('\n'):'';
   if(!rows.length){ el.innerHTML='<div style="color:var(--text2);font-size:13px">No measurements — '+esc(pr.label)+'.</div>'; return; }
   const p90=Object.fromEntries(__timingsSummary.map(x=>[x.kind,x.p90]));
-  const cards=__timingsSummary.map(x=>`<div class="tm-card">
+  // One card per kind; slow data calls add a kind each, so the cards page by 10 too.
+  const cardHtml=x=>`<div class="tm-card">
       <div class="tm-card-head">${esc(x.label)}<span>${x.count}×</span></div>
       <div class="tm-card-vals">median <b>${_sec(x.median)}</b> · 90% ${_sec(x.p90)}</div>
       ${x.steps.map(([l,v])=>`<span class="tm-pill">${esc(l)} ${_sec(v)}</span>`).join('')}
-    </div>`).join('');
+    </div>`;
   // A run slower than its kind's 90% is marked amber.
   const rowHtml=(r,i)=>{
     const d=r.details||{}, slow=p90[r.kind]!=null&&r.totalMs>p90[r.kind];
@@ -5079,9 +5080,10 @@ function renderTimingsPane(el,rows){
     </div>`;
   };
   el.innerHTML=`<div style="font-size:12px;color:var(--text2);margin-bottom:6px">${esc(pr.label)} · ${rows.length} measurement${rows.length===1?'':'s'} · median / 90%</div>
-    ${cards?`<div class="tm-cards">${cards}</div>`:''}
+    ${__timingsSummary.length?`<div id="timingsCards" class="tm-cards"></div>`:''}
     <div style="font-size:12px;color:var(--text2);margin-bottom:6px">All measurements, newest first</div>
     <div id="timingsLatestList" class="log-box"></div>`;
+  if(__timingsSummary.length) renderPagedList(document.getElementById('timingsCards'), 'timingCards', pr.key, __timingsSummary, cardHtml, {grid:true});
   renderPagedList(document.getElementById('timingsLatestList'), 'timings', pr.key, rows, rowHtml);
 }
 // Print: the picked period of the Errors or Timings pane as a plain page.
