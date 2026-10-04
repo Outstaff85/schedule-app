@@ -966,9 +966,9 @@
         <option value="supplier">Supplier</option>
       </select>
     </div>
+    <div class="field"><label id="userFormFullNameLabel">Full name</label><input type="text" id="userFormFullName" autocomplete="off" maxlength="80"></div>
+    <div class="field"><label>Phone</label><input type="tel" id="userFormPhone" autocomplete="off" maxlength="40"></div>
     <div id="userFormHrFields" style="display:none">
-      <div class="field"><label>Full name</label><input type="text" id="userFormFullName" autocomplete="off" maxlength="80"></div>
-      <div class="field"><label>Phone</label><input type="tel" id="userFormPhone" autocomplete="off" maxlength="40"></div>
       <div class="field"><label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" id="userFormOwnOnly" checked> Only own workers (unchecked: sees every worker of the firm)</label></div>
     </div>
     <div class="field" id="userFormSupplierField" style="display:none"><label>Supplier</label><select id="userFormSupplierId"></select></div>
@@ -1020,6 +1020,7 @@
     <div style="font-size:11px;color:var(--text3);line-height:1.5;margin:-6px 0 10px">
       פרטים אלה מודפסים בחלק א׳ („פרטי המעסיק”) של כל טופס 101.
     </div>
+    <div class="field" id="firmEditOwnerNameField" style="display:none"><label>Owner name</label><input type="text" id="firmEditOwnerName" autocomplete="off" maxlength="80"></div>
     <div class="field" id="firmEditUsernameField" style="display:none"><label>Логин</label><input type="text" id="firmEditUsername" autocomplete="off"></div>
     <div class="field" id="firmEditPasswordField" style="display:none"><label>Пароль (мин. 8 символов)</label><input type="password" id="firmEditPassword" autocomplete="new-password"></div>
     <div class="field"><label>שם המעסיק</label><input type="text" id="firmEditCompanyName"></div>
@@ -4340,7 +4341,9 @@ function renderAccountControl(s){
     const firm = s.role === 'superadmin'
       ? (s.viewingTenantName || s.viewingTenantId || 'Super-admin')
       : ((profile && profile.companyName) || '');
-    labelHost.innerHTML = '<i class="ti ti-user"></i> ' + esc(s.username || '')
+    // The person's name (fullName), the login only while it has none; a
+    // tap on it changes the name (editMyName).
+    labelHost.innerHTML = '<span onclick="editMyName()" style="cursor:pointer" title="Change your name"><i class="ti ti-user"></i> ' + esc(s.fullName || s.username || '') + '</span>'
       + (firm ? ' · <span>' + esc(firm) + '</span>' : '');
   }
   if(!host) return;
@@ -4355,6 +4358,19 @@ function renderAccountControl(s){
   // warning moves to the Admin tab's own icon instead, so the cue isn't lost.
   const tabAdminIcon = document.querySelector('#tabAdmin .ic i');
   if(tabAdminIcon) tabAdminIcon.style.color = ((s.role==='superadmin'||s.role==='tenant_admin') && incomplete) ? '#ffb020' : '';
+}
+
+async function editMyName(){
+  const s = getSession(); if(!s) return;
+  const name = prompt('Your name (shown at the top instead of the login):', s.fullName || '');
+  if(name === null) return;
+  try{
+    const json = await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'updateMyName', fullName: name.trim()})})).json();
+    if(!json || json.error){ showToast((json && json.error) || 'Not saved'); return; }
+    s.fullName = json.fullName; saveSession(s);
+    renderAccountControl(s);
+    showToast('Saved');
+  }catch(e){ showToast('Network error'); }
 }
 
 let __firmsCache = [];
@@ -4577,10 +4593,11 @@ function renderAdminUsersRows(el, users){
     const row = u => {
       const sup = u.role==='supplier' ? (suppliers||[]).find(s=>s.id===u.supplierId) : null;
       const permsLabel = (u.role!=='staff' && u.role!=='hr') ? '' : (u.permissions==='*' ? 'Full access' : (Array.isArray(u.permissions)?u.permissions.join(', '):'—'));
-      const hrLine = u.role!=='hr' ? '' : `<div style="font-size:12px;color:var(--text2)">${esc(u.fullName||'')}${u.phone?' · '+esc(u.phone):''} · ${hrWorkerCount(u.id)} workers${u.ownOnly===false?' · sees all workers':''}</div>`;
+      const hrLine = u.role!=='hr' ? '' : `<div style="font-size:12px;color:var(--text2)">${hrWorkerCount(u.id)} workers${u.ownOnly===false?' · sees all workers':''}</div>`;
       return `<div class="tap-edit" onclick="if(isPlainTap(event,this))openEditUserForm('${esc(u.id)}')" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);${u.active===false?'opacity:0.55':''}">
         <div>
-          <div style="font-weight:600">${esc(u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(u.role)})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">inactive</span>':''}</div>
+          <div style="font-weight:600">${esc(u.fullName||u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(u.role)})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">inactive</span>':''}</div>
+          <div style="font-size:11px;color:var(--text3)">login: ${esc(u.username)}${u.phone?' · '+esc(u.phone):''}</div>
           ${hrLine}<div style="font-size:12px;color:var(--text2)">${u.role==='supplier' ? (sup?esc(sup.name):'—') : esc(permsLabel)}</div>
         </div>
         <div style="display:flex;gap:4px">
@@ -4601,6 +4618,7 @@ function onUserFormRoleChange(fromUser){
   document.getElementById('userFormSupplierField').style.display = role==='supplier' ? '' : 'none';
   document.getElementById('userFormPermsField').style.display = role==='supplier' ? 'none' : '';
   document.getElementById('userFormHrFields').style.display = role==='hr' ? '' : 'none';
+  document.getElementById('userFormFullNameLabel').textContent = role==='hr' ? 'Full name (required)' : 'Full name';
   document.getElementById('userFormHrWorkersField').style.display = role==='hr' && __editingUserId ? '' : 'none';
   if(role==='supplier') fillUserFormSupplierSelect(null);
   // A new HR login starts with the Workers section only.
@@ -4659,10 +4677,10 @@ async function submitUserForm(){
   const btn = document.getElementById('userFormSaveBtn');
   btn.disabled = true;
   try{
-    const hrFields = role!=='hr' ? {} : {
+    const hrFields = {
       fullName: document.getElementById('userFormFullName').value.trim(),
-      phone: document.getElementById('userFormPhone').value.trim(),
-      ownOnly: document.getElementById('userFormOwnOnly').checked };
+      phone: document.getElementById('userFormPhone').value.trim() };
+    if(role==='hr') hrFields.ownOnly = document.getElementById('userFormOwnOnly').checked;
     if(role==='hr' && !hrFields.fullName){ errEl.textContent = 'Full name required for an HR login'; return; }
     if(__editingUserId){
       const password = document.getElementById('userFormPassword').value;
@@ -5154,6 +5172,8 @@ function openCreateFirmForm(){
   fillFirmEditForm({});
   document.getElementById('firmEditUsername').value = '';
   document.getElementById('firmEditPassword').value = '';
+  document.getElementById('firmEditOwnerName').value = '';
+  document.getElementById('firmEditOwnerNameField').style.display = '';
   document.getElementById('firmEditUsernameField').style.display = '';
   document.getElementById('firmEditPasswordField').style.display = '';
   document.getElementById('editFirmBtn').textContent = 'Создать';
@@ -5168,6 +5188,7 @@ function openEditFirmForm(tenantId){
   document.getElementById('firmEditTitle').textContent = 'Редактировать фирму';
   fillFirmEditForm(t);
   document.getElementById('firmEditUsernameField').style.display = 'none';
+  document.getElementById('firmEditOwnerNameField').style.display = 'none';
   document.getElementById('firmEditPasswordField').style.display = 'none';
   document.getElementById('editFirmBtn').textContent = 'Сохранить';
   document.getElementById('firmEditFormError').textContent = '';
@@ -5189,6 +5210,7 @@ async function openMyFirmForm(){
   document.getElementById('firmEditTitle').textContent = 'Данные фирмы';
   fillFirmEditForm(activeTenantProfile() || {});
   document.getElementById('firmEditUsernameField').style.display = 'none';
+  document.getElementById('firmEditOwnerNameField').style.display = 'none';
   document.getElementById('firmEditPasswordField').style.display = 'none';
   document.getElementById('editFirmBtn').textContent = 'Сохранить';
   document.getElementById('firmEditFormError').textContent = '';
@@ -5221,7 +5243,7 @@ async function submitEditFirm(){
     btn.disabled = true; btn.textContent = 'Создаю…';
     try{
       const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({
-        action:'createUser', ...gsAuth(), username, password, ...profileFields,
+        action:'createUser', ...gsAuth(), username, password, ownerName: get('firmEditOwnerName'), ...profileFields,
       })});
       const json = await res.json();
       if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось создать фирму'; return; }

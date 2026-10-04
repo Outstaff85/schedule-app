@@ -408,3 +408,23 @@ def test_check_worker_doc_answers_only_yes_or_no():
     assert core.check_worker_doc(DB, hr, {"docId": "999"}) == {"ok": True, "exists": False}
     assert core.check_worker_doc(DB, ADMIN2, {"docId": "012345678"})["exists"] is False  # other firm
     assert core.check_worker_doc(DB, {"uid": "s", "role": "supplier", "tenantId": T1}, {"docId": "1"})["error"] == core.E_NO_RIGHTS
+
+
+def test_full_name_for_every_role_and_update_my_name():
+    owner = {"uid": "u-own", "role": "tenant_admin", "tenantId": "t-n"}
+    seed_legacy("u-own", "ownern", "owner-pass-1", role="tenant_admin", tenantId="t-n", permissions="*")
+    r = core.create_tenant_user(DB, owner, {"role": "staff", "username": "st1", "password": "staff-pass-1",
+                                            "fullName": "  Dana Staff ", "phone": "050"})
+    d = DB.collection("users").document(r["userId"]).get().to_dict()
+    assert d["fullName"] == "Dana Staff" and d["phone"] == "050"
+    assert core.login(DB, "st1", "staff-pass-1", lambda u, c: "tok")["fullName"] == "Dana Staff"
+    # staff may clear its name; an HR may not
+    assert core.update_user(DB, owner, {"id": r["userId"], "fullName": ""}, lambda u: None)["ok"]
+    assert DB.collection("users").document(r["userId"]).get().to_dict()["fullName"] == ""
+    # anyone sets their own name, owner included
+    assert core.update_my_name(DB, owner, {"fullName": "Avi Owner"}) == {"ok": True, "fullName": "Avi Owner"}
+    assert [u["fullName"] for u in core.list_users(DB, owner)["users"] if u["id"] == "u-own"] == ["Avi Owner"]
+    assert core.update_my_name(DB, {"uid": "nobody", "role": "staff"}, {"fullName": "x"})["error"]
+    # a new firm's owner gets the name given at creation
+    f = core.create_firm(DB, {"uid": "s", "role": "superadmin"}, {"username": "newowner", "password": "new-pass-11", "ownerName": "Moshe"})
+    assert DB.collection("users").document(f["userId"]).get().to_dict()["fullName"] == "Moshe"
