@@ -49,7 +49,7 @@ The prompts live in `functions-auth/ai_prompts.json` — see [backend.md](backen
 A single non-PDF file → `onScanFileSelected(file)`:
 
 1. **Downscale** the photo (`downscaleForUpload`), then open the corner editor on the raw photo, with no server call yet (`__scanEditPurpose='collectPage'`). See "Corner editor" below.
-2. **Confirm or skip.** `confirmScanQuad()` perspective-warps the quad flat (`warpQuadImage`); `skipScanQuad()` keeps the photo as-is. Either way the page is pushed to `__pendingScanPages` and the queue screen shows (`renderPendingPagesPrompt()`: thumbnails, remove, "Add page", "Process N pages").
+2. **Confirm or skip.** `confirmScanQuad()` perspective-warps the quad flat (`warpQuadImage`); `skipScanQuad()` keeps the photo as-is. Either way the page is pushed to `__pendingScanPages` and the queue screen shows (`renderPendingPagesPrompt()`: the same page grid and buttons as the review screen — "Add page", "Process N pages").
 3. **`processAllPendingPages()`** — the only step that talks to the server:
    - **Resume:** if a primary record and its image already exist (pages added after a first batch), the run continues that record.
    - **Early read** (fresh scan): page 1 is sent to `aiReadDoc` straight away, as cropped. If it is an ID or passport, its digits are re-checked and the portrait is cropped from that same image, while Phase 1 runs.
@@ -70,7 +70,11 @@ A single non-PDF file → `onScanFileSelected(file)`:
        These reads start in the background (`prefetchSefachFrom`) as soon as the primary is known to be missing fields. They are merged in page order with `mergeScanPage()`. Every extra page also goes through `finalTightenPass()` and is kept in `__aiPacketOtherPages`. Extra pages are read only while the primary still misses core fields, so a real contract costs one read at most, and `aiReadSefach` returns nothing for it.
    - **A blurry page** stops the run there: earlier pages are kept, the blurry one is dropped, later ones stay queued. The message says which page.
    - **Progress** shows through `renderScanProgress(label, pct)`; a `scan` timing is reported.
-4. **Review screen** — `renderScanPagesPrompt()`: 96 px thumbnails showing each page whole (`object-fit:contain`, so leftover background is visible; page 1 is not removable), "Add page" (back to step 1 and the queue), "Done" → `finishScanPages()` → `openWorkerModalFromScan()`. `removeExtraScanPage(i)` drops a page and recomputes the primary from the remaining pages (`rebuildPrimaryFromPages()`, which replays `initPrimaryFromFirstPage` + `mergeScanPage` over `__aiPageParsed`).
+4. **Review screen** — `renderScanPagesPrompt()`. The page grid is shared with the queue screen (`_scanPagesGrid`): at least 180 px per page (one per row on a phone), each page shown whole (`object-fit:contain`, so leftover background is visible), and a ✕ on every page. The two equal buttons are pinned to the bottom of the modal (`_scanPagesButtons`): "Add page" (back to step 1 and the queue) and "Done" → `finishScanPages()` → `openWorkerModalFromScan()`. Removing pages:
+   - `removeExtraScanPage(i)` drops page i and recomputes the primary from the remaining pages (`rebuildPrimaryFromPages()`, which replays `initPrimaryFromFirstPage` + `mergeScanPage` over `__aiPageParsed`).
+   - For page 1 it calls `removePrimaryScanPage()`: after a confirm, the scan state is reset (`openAiScan()`) and the remaining pages go back to the queue to be read again; with none left, the scan starts over.
+
+   The scan modal is 680 px wide.
 
 ## Path B — several files or a PDF (no corner editor)
 
