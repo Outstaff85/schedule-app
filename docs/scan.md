@@ -16,9 +16,11 @@ Both:
 3. call `openAiScan()`.
 
 `openAiScan()` opens `#aiScanOverlay` and resets every per-scan global:
-`__aiScanPageThumbs`, `__aiPrimaryParsed`, `__aiParsed`, `__aiScanImage`, `__aiPacketOtherPages`, `__aiAvatarB64`, `__aiPageParsed`, `__pendingScanPages`.
+`__aiScanPageThumbs`, `__aiPrimaryParsed`, `__aiParsed`, `__aiScanImage`, `__aiPacketOtherPages`, `__aiAvatarB64`, `__aiPageParsed`, `__pendingScanPages`, `__scanReplace`.
 
-The file input accepts images and PDFs, several at once.
+There is no separate upload screen: it opens straight on the page queue (`renderPendingPagesPrompt()`). The queue then shows the empty "+" tile and a short note on the supported documents. The file input accepts images and PDFs, several at once (`_onScanFilesPicked`):
+- several files picked on a fresh, empty scan go to the packet path (`onScanFilesSelected`, Path B);
+- otherwise one file at a time goes to `onScanFileSelected` (Path A); with several, only the first is used, with a toast.
 
 ## Upload preparation (schedule-manager.html, shared by every upload)
 

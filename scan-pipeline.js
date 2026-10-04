@@ -30,20 +30,20 @@ function openAiScan(){
   window.__aiPageParsed=[];
   window.__pendingScanPages=[]; // not-yet-processed crops queued by processAllPendingPages() — see its own comment
   window.__scanReplace=null; // a page's "scan again" in progress — see _queueScanPage()
-  document.getElementById('aiScanStage').innerHTML=`
-    <div style="display:flex;flex-direction:column;gap:10px">
-      <button class="btn sm" onclick="document.getElementById('aiScanFile').click()">
-        <i class="ti ti-camera"></i> העלה תמונה / PDF
-      </button>
-      <input type="file" id="aiScanFile" accept="image/*,application/pdf,.pdf" multiple
-        style="display:none" onchange="onScanFilesSelected(this.files)">
-      <div style="font-size:12px;color:var(--text3);line-height:1.5">
-        תומך ב: דרכון זר, תעודת זהות ישראלית (שני הצדדים), סריקת PDF.
-        אפשר לצלם את הדרכון בשלמותו — ה-AI ימצא את השדות בעצמו.
-        אפשר לבחור כמה קבצים בבת אחת (חבילה מוכנה של טופס 101 + דרכון + חוזה) —
-        טופס 101 ישן בחבילה יוחלף בשלנו, השאר יישמר כמו שהוא.
-      </div>
-    </div>`;
+  // The scan opens straight on the page queue: an empty "+" tile to add the
+  // first photo (no separate upload screen).
+  renderPendingPagesPrompt();
+}
+// The page screens' file input. Several files picked at once on a fresh,
+// empty scan go through the ready-made-packet path (onScanFilesSelected:
+// Form 101 + passport + contract, ...); otherwise one photo at a time goes
+// through the corner editor into the queue.
+function _onScanFilesPicked(files){
+  if(!files||!files.length) return;
+  const fresh=!(window.__pendingScanPages||[]).length&&!window.__aiScanImage&&!window.__scanReplace;
+  if(files.length>1&&fresh){ onScanFilesSelected(files); return; }
+  if(files.length>1) showToast('הוסיפו עמוד אחד בכל פעם — נוסף הראשון',4000);
+  onScanFileSelected(files[0]);
 }
 
 // Straightens/crops the scanned photo using the AI's reported rotation +
@@ -1564,7 +1564,7 @@ function _scanPagesGrid(pages,removeFn,screen,inputId){
 // The screen's main action, full width, pinned to the bottom of the
 // scrolling modal; plus the hidden file input the tiles use.
 function _scanPagesButtons(inputId,mainLabel,mainOnclick,mainDisabled){
-  return `<input type="file" id="${inputId}" accept="image/*,application/pdf,.pdf" style="display:none" onchange="onScanFileSelected(this.files[0]); this.value='';">
+  return `<input type="file" id="${inputId}" accept="image/*,application/pdf,.pdf" multiple style="display:none" onchange="_onScanFilesPicked(this.files); this.value='';">
     <div style="position:sticky;bottom:-1px;background:var(--bg2);padding:8px 0">
       <button class="btn accent" type="button" style="width:100%;justify-content:center;min-height:46px;font-size:15px" ${mainDisabled?'disabled':''} onclick="${mainOnclick}"><i class="ti ti-check"></i> ${mainLabel}</button>
     </div>`;
@@ -1574,7 +1574,8 @@ function renderPendingPagesPrompt(){
   const pages=window.__pendingScanPages||[];
   stage.innerHTML=`
     <div style="display:flex;flex-direction:column;gap:12px">
-      <div style="font-size:13px;color:var(--text2)">${pages.length} תמונות ממתינות לעיבוד</div>
+      ${pages.length||window.__aiScanImage?`<div style="font-size:13px;color:var(--text2)">${pages.length} תמונות ממתינות לעיבוד</div>`
+        :`<div dir="rtl" style="font-size:12px;color:var(--text3);line-height:1.5">לחצו על + כדי לצלם או להעלות את המסמך. תומך ב: דרכון זר, תעודת זהות ישראלית (שני הצדדים), סריקת PDF. אפשר לבחור כמה קבצים בבת אחת (חבילה מוכנה של טופס 101 + דרכון + חוזה) — טופס 101 ישן בחבילה יוחלף בשלנו.</div>`}
       ${_scanPagesGrid(pages,'removePendingScanPage','queue','aiScanFilePending')}
       ${_scanPagesButtons('aiScanFilePending','עבד '+(pages.length||'')+' עמודים','processAllPendingPages()',!pages.length)}
     </div>`;
