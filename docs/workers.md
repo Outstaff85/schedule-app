@@ -46,6 +46,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
 **Toolbar** (`.workers-head`, `.workers-toolbar`):
 - "Add Worker" and "Скан паспорта" — on a phone, two equal buttons across the width;
 - the search box with the list/cards toggle beside it;
+- a **Filters** button next to the search (`toggleWorkersFilters`): the filters are hidden until it is tapped (the open state is kept on this device, `localStorage.workersFiltersOpen`); the button shows how many are set. Each set filter shows as a chip under the search (`renderWorkersFilterChips`); its ✕ clears that filter (`clearWorkersFilter`);
 - the filters (Status, Documents, Client, Supplier, Group by) — one row of five on a computer; two columns on a phone, with Group by across, and no captions (each select's first option names it);
 - the worker count.
 
