@@ -4201,10 +4201,9 @@ function firmProfileMissing(profile){
 function firmProfileWarnInner(){
   const missing = firmProfileMissing();
   if(!missing.length) return '';
-  return `<div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;border:1px solid #ffb020;border-radius:var(--radius-sm);background:rgba(255,176,32,0.08);font-size:12px;line-height:1.5;color:var(--text2)">
+  return `<div class="tap-edit" onclick="if(isPlainTap(event,this))openMyFirmForm()" style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;border:1px solid #ffb020;border-radius:var(--radius-sm);background:rgba(255,176,32,0.08);font-size:12px;line-height:1.5;color:var(--text2)">
     <i class="ti ti-alert-triangle" style="color:#ffb020;font-size:15px"></i>
     <div style="flex:1;min-width:180px">Профиль фирмы неполный — в Форме 101 (раздел א «פרטי המעסיק») останутся пустыми: <b>${esc(missing.join(', '))}</b>.</div>
-    <button class="btn sm" onclick="openMyFirmForm()"><i class="ti ti-pencil"></i> Заполнить</button>
   </div>`;
 }
 // Placeholder stays in the DOM even when the profile is complete, so saving
