@@ -836,13 +836,13 @@
 </div>
 
 <!-- Modals -->
-<div class="overlay" id="editOverlay" onclick="if(event.target===this)closeModal('editOverlay')">
+<div class="overlay" id="editOverlay">
   <div class="modal" id="editModal"></div>
 </div>
-<div class="overlay" id="workerOverlay" onclick="if(event.target===this)closeModal('workerOverlay')">
+<div class="overlay" id="workerOverlay">
   <div class="modal" id="workerModal"></div>
 </div>
-<div class="overlay" id="aiScanOverlay" onclick="if(event.target===this)closeModal('aiScanOverlay')">
+<div class="overlay" id="aiScanOverlay">
   <div class="modal" style="width:680px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <div class="modal-title" style="margin-bottom:0"><i class="ti ti-sparkles" style="color:var(--green)"></i> Скан паспорта</div>
@@ -850,10 +850,10 @@
     <div id="aiScanStage"></div>
   </div>
 </div>
-<div class="overlay" id="workerCardOverlay" onclick="if(event.target===this)closeModal('workerCardOverlay')">
+<div class="overlay" id="workerCardOverlay">
   <div class="modal" id="workerCardModal" style="width:440px"></div>
 </div>
-<div class="overlay" id="clientOverlay" onclick="if(event.target===this)closeModal('clientOverlay')">
+<div class="overlay" id="clientOverlay">
   <div class="modal" id="clientModal"></div>
 </div>
 <div class="overlay" id="clientBillOverlay" style="z-index:110">
@@ -877,27 +877,27 @@
     </div>
   </div>
 </div>
-<div class="overlay" id="supplierOverlay" onclick="if(event.target===this)closeModal('supplierOverlay')">
+<div class="overlay" id="supplierOverlay">
   <div class="modal" id="supplierModal"></div>
 </div>
-<div class="overlay" id="workerDocOverlay" style="z-index:960" onclick="if(event.target===this)closeModal('workerDocOverlay')">
+<div class="overlay" id="workerDocOverlay" style="z-index:960">
   <div class="modal" id="workerDocModal" style="max-width:420px"></div>
 </div>
-<div class="overlay" id="hoursImportOverlay" onclick="if(event.target===this)closeModal('hoursImportOverlay')">
+<div class="overlay" id="hoursImportOverlay">
   <div class="modal" id="hoursImportModal" style="max-width:440px"></div>
 </div>
-<div class="overlay" id="clearLogOverlay" onclick="if(event.target===this)closeModal('clearLogOverlay')">
+<div class="overlay" id="clearLogOverlay">
   <div class="modal" id="clearLogModal" style="max-width:400px"></div>
 </div>
-<div class="overlay" id="salaryExportOverlay" onclick="if(event.target===this)closeModal('salaryExportOverlay')">
+<div class="overlay" id="salaryExportOverlay">
   <div class="modal" id="salaryExportModal" style="max-width:360px"></div>
 </div>
-<div class="overlay" id="hoursExportOverlay" onclick="if(event.target===this)closeModal('hoursExportOverlay')">
+<div class="overlay" id="hoursExportOverlay">
   <div class="modal" id="hoursExportModal" style="max-width:360px"></div>
 </div>
 
 <!-- Manual Punch Modal -->
-<div class="overlay" id="manualPunchOverlay" onclick="if(event.target===this)closeModal('manualPunchOverlay')">
+<div class="overlay" id="manualPunchOverlay">
   <div class="modal" id="manualPunchModal" style="max-width:440px"></div>
 </div>
 
@@ -955,7 +955,7 @@
 <!-- Create/edit staff/supplier user (Admin panel, Users tab — added 2026-10-02,
      Admin/Roles plan stage 6). Single form for both create and edit, same
      pattern as the worker modal — __editingUserId null means "create". -->
-<div class="overlay" id="userFormOverlay" style="z-index:980" onclick="if(event.target===this)closeModal('userFormOverlay')">
+<div class="overlay" id="userFormOverlay" style="z-index:980">
   <div class="modal" style="max-width:420px">
     <div class="modal-title" id="userFormTitle">New user</div>
     <div class="field"><label>Username</label><input type="text" id="userFormUsername" autocomplete="off"></div>
@@ -993,7 +993,7 @@
      create-only — see docs/history.md). __firmFormMode ('create'|'edit') picks
      submitEditFirm()'s backend action; openCreateFirmForm() shows the
      login fields, openEditFirmForm()/openMyFirmForm() hide them. -->
-<div class="overlay" id="editFirmOverlay" style="z-index:950" onclick="if(event.target===this)closeModal('editFirmOverlay')">
+<div class="overlay" id="editFirmOverlay" style="z-index:950">
   <div class="modal" style="max-width:420px" oninput="__firmEditDirty=true">
     <div class="modal-title" id="firmEditTitle">Редактировать фирму</div>
     <div style="font-size:11px;color:var(--text3);line-height:1.5;margin:-6px 0 10px">
@@ -3836,6 +3836,18 @@ function ensureModalCloseButtons(){
   });
 }
 new MutationObserver(ensureModalCloseButtons).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});
+// A tap anywhere outside the modal — on the dark backdrop, including where the
+// card or row that opened it was — closes it too (per user request
+// 2026-10-04, for every modal). Only when the press also started on the
+// backdrop, so a drag that starts inside the modal (selecting text, moving a
+// map pin) and ends outside doesn't close it. The topmost open overlay is
+// the one under the tap, so a modal over another closes alone.
+let _overlayDownOn=null;
+document.addEventListener('pointerdown',e=>{ _overlayDownOn=e.target; },true);
+document.addEventListener('click',e=>{
+  const t=e.target;
+  if(t&&t.classList&&t.classList.contains('overlay')&&t.classList.contains('open')&&_overlayDownOn===t&&t.id) closeModal(t.id);
+});
 
 
 // --- Export dropdown ----------------------------------------------------------

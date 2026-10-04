@@ -112,7 +112,7 @@ th{color:var(--text2);font-size:11px;text-transform:uppercase;}
   </div>
 </div>
 
-<div class="overlay" id="workerOverlay" onclick="if(event.target===this)closeModal('workerOverlay')">
+<div class="overlay" id="workerOverlay">
   <div class="modal" id="workerModal"></div>
 </div>
 <div id="toast" class="toast"></div>
@@ -176,6 +176,18 @@ function ensureModalCloseButtons(){
   });
 }
 new MutationObserver(ensureModalCloseButtons).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});
+// A tap anywhere outside the modal — on the dark backdrop, including where the
+// card or row that opened it was — closes it too (per user request
+// 2026-10-04, for every modal). Only when the press also started on the
+// backdrop, so a drag that starts inside the modal (selecting text, moving a
+// map pin) and ends outside doesn't close it. The topmost open overlay is
+// the one under the tap, so a modal over another closes alone.
+let _overlayDownOn=null;
+document.addEventListener('pointerdown',e=>{ _overlayDownOn=e.target; },true);
+document.addEventListener('click',e=>{
+  const t=e.target;
+  if(t&&t.classList&&t.classList.contains('overlay')&&t.classList.contains('open')&&_overlayDownOn===t&&t.id) closeModal(t.id);
+});
 
 
 // Same shift-pairing logic as schedule-manager.html's own

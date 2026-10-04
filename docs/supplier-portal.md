@@ -36,7 +36,7 @@ Hours use local copies of `groupPunchesIntoShifts` / `analyzeDayPunches` (simpli
 
 ## Modals
 
-The worker modal gets the same top-right close ✕ as the manager app's modals (`ensureModalCloseButtons`, [app-core.md](app-core.md) → Layout).
+The worker modal gets the same top-right close ✕ and backdrop close as the manager app's modals (`ensureModalCloseButtons`, [app-core.md](app-core.md) → Layout).
 
 ## New version check
 
