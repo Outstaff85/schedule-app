@@ -1,0 +1,48 @@
+# HR logins (role `hr`)
+
+An HR manager's login inside one firm: it works with the workers assigned to it. This file is the architecture end to end — who creates it, what it sees, how ownership is stored and enforced at each layer. The Users pane UI itself is in [admin.md](admin.md), the worker record in [workers.md](workers.md), the rules and functions in full in [backend.md](backend.md).
+
+## The model
+
+- **Ownership = `workers/{id}.hrId`** — the uid of the HR login the worker belongs to, or absent (no HR). One worker has at most one HR. Workers created before HR existed have none until the owner assigns them.
+- **Punches carry a copy: `punches/{id}.hrId`** — the worker's HR when the punch was written. Firestore rules can't look up the worker for every punch in a query, so the punch holds the field the rules (and the HR's query) filter on. A reassignment rewrites it (below).
+- **Pending hours batches** are owned by `createdBy` (the uploader's uid), as for every role.
+- **The login:** `users/{uid}` with `role:'hr'`, `permissions` (sections, default `['workers']`), `fullName` (required), `phone`, `ownOnly` (default true). Login puts into the custom token the claims `role`, `tenantId`, `perms` and `own` (= `ownOnly`); the reply also gives `ownOnly`, `fullName`, kept in the app session.
+
+## Two kinds of HR
+
+| | "Only own workers" on (`own:true`, default) | off (`own:false`) |
+|---|---|---|
+| Workers | only `hrId == uid`: read, add (always with its own `hrId`), edit, delete | the whole firm, like staff; may add with no `hrId` or its own |
+| Punches | only `hrId == uid` | the whole firm |
+| Pending hours | uploads (pending, the owner approves); sees only its own batches | uploads; sees all |
+| Clients, suppliers, settings, firm doc | read; clients / suppliers written only with that section | same |
+| Worker files (Storage) | uploads stamped with `hrId` metadata; reads back only those; other reads / deletes through `users_admin` with an ownership check | like staff |
+| Tabs | its sections; never Today or Admin | same |
+
+No HR, of either kind, can change a worker's `hrId` — only the owner (`tenant_admin`) or a super-admin assigns.
+
+## Who does what
+
+- **Create / edit the HR:** Admin → Users (owner, super-admin) → `createTenantUser` / `updateUser` (`functions-auth/core.py`). A change of sections or of `ownOnly` revokes the HR's sessions (new claims on the next login); name and phone don't.
+- **Assign workers:** the HR's card in Users (its worker list with Unassign, "Add workers" bulk picker) or the worker modal's HR field. Both go through `assignWorkersToHr(ids, hrId)` in `schedule-manager.html`: sets `hrId` on the workers, `autoSave()`, then `setPunchesHr` (`firestore-backend.js`, owner / super-admin only) rewrites `hrId` on every punch of those workers — so the new HR sees the history and the old one loses it.
+- **A worker added by an HR** gets `hrId` = its uid in `saveWorker()`.
+
+## Enforcement, layer by layer
+
+1. **Firestore rules** (`firestore.rules`): helpers `isHr`, `hrMine` (own), `hrAll` (not own), `hrCan(t, section)`, `oldHr()` / `newHr()`. `manager(t)` includes `hrAll`. Workers: `hrMine` only where `oldHr()`/`newHr()` equal its uid; no HR write may change `hrId`. Punches: `hrMine` only with `hrId == uid`. Pending hours: `hrMine` reads only `createdBy == uid`.
+2. **Queries** (`firestore-backend.js`): the rules check the query itself, so for an own-workers HR (`hrOnly()` from the token claims, `myClaims()`) every read of workers / punches adds `where('hrId','==',uid)` and pending hours `where('createdBy','==',uid)`. Index: punches `hrId + ts`. `saveSchedule` diffs only what it loaded, so it never touches other HRs' workers, and skips clients / suppliers without that section (`mayWrite`).
+3. **Stamping punches:** the punch link (`portal._save_punch`, from the worker document — never from the page), the app (`punchDoc`, from the worker's current `hrId` kept in `workerHr` after each load / save), approved hours (`approvePendingHours`, from the workers it reads).
+4. **Storage** (`storage.rules`): uploads by staff / hr with `workers`; an own-workers HR must set `customMetadata.hrId` = its uid (done by `uploadWorkerFile`) and may read only files carrying it (the download link after an upload). Reads of the scan sidecar and deletes go through `users_admin` → `files.py`, which for an own-workers HR checks the worker's `hrId` (`worker_hr(wid)` in `main.py`). The rules avoid a cross-service Firestore lookup on purpose.
+5. **Functions:** `checkWorkerDoc` (`core.py`) — a new worker's document number is checked across the whole firm and the answer is only `{exists}`, so an HR learns nothing about workers it can't see. `ai_read` accepts `hr`.
+6. **App UI** (visibility only): `hasPermission` limits `hr` like staff; `tabAllowed` / `HR_HIDDEN_TABS` hide Today and Admin; `homeTab()` lands it on its first tab; the HR field and HR names show only to the owner / super-admin; cached punches of a worker it no longer has are dropped (`mergeRemotePunches`).
+
+## Tests
+
+- Rules: `tests/rules/rules.test.mjs` — identities `hrOwn`, `hrOwnClients`, `hrAll`, `hrOwnB`; the HR block covers workers, punches, pending hours, shared data, owner assignment and Storage.
+- Functions: `tests/auth/test_core.py` (`test_hr_user_create_login_update`, `test_check_worker_doc_answers_only_yes_or_no`), `test_files.py` (`test_hr_own_only_reaches_its_own_workers_files`), `test_portal.py` (`test_save_punch_stamps_the_workers_hr_never_the_pages`).
+
+## Known limits
+
+- A worker's past punches move with `setPunchesHr` only when the assignment is made in the app; an `hrId` written any other way leaves the punches as they were.
+- Files uploaded before a reassignment keep the old HR in their metadata; the new HR still opens them through their stored links and `users_admin`.
