@@ -19,5 +19,48 @@
   "date": "a date — return it as DD/MM/YYYY with leading zeros (5.4.1995 → 05/04/1995, JAN → 01), Gregorian only, ignoring any Hebrew-calendar date in letters",
   "passportNo": "a passport number — letters and digits only, no spaces",
   "*": "a short printed field"
+ },
+ "findField": "You are given {N} photo(s) of the pages of one person's {DOC}. Find ONLY this one field: {LABEL} — {HINT}. Look at every photo, including small, faint or partly covered print. Return ONLY valid JSON — no prose, no markdown, no code fences: {\"value\":\"...\",\"page\":0,\"box\":{\"x0\":0,\"y0\":0,\"x1\":1,\"y1\":1}} where \"page\" is the 0-based number of the photo you read it on and \"box\" is a tight box around the value itself (not its printed label), as fractions 0 to 1 of that photo's width and height. If the field is not printed on these photos or you cannot read it with confidence, return {\"value\":\"\"}. Never guess.",
+ "findFieldDoc": {
+  "israeli_id": "Israeli ID card (תעודת זהות) and its ספח appendix",
+  "passport": "passport"
+ },
+ "findFieldFields": {
+  "docGiven": {
+   "label": "שם פרטי",
+   "hint": "the holder's given (first) name exactly as printed — Hebrew on an Israeli ID, Latin letters on a foreign passport"
+  },
+  "docSurname": {
+   "label": "שם משפחה",
+   "hint": "the holder's surname (family name) exactly as printed — Hebrew on an Israeli ID, Latin letters on a foreign passport"
+  },
+  "docId": {
+   "label": "מספר זהות",
+   "hint": "the holder's 9-digit Israeli ID number, digits only",
+   "passport": {
+    "label": "passport number",
+    "hint": "the passport number, letters and digits only, no spaces"
+   }
+  },
+  "docDob": {
+   "label": "תאריך לידה",
+   "hint": "the holder's date of birth in the Gregorian calendar as DD/MM/YYYY (ignore Hebrew-calendar dates)"
+  },
+  "docSex": {
+   "label": "מין",
+   "hint": "the holder's sex: return M for male (ז / זכר / M) or F for female (נ / נקבה / F)"
+  },
+  "address": {
+   "label": "רחוב",
+   "hint": "the street name of the holder's address (מען) on the ספח, in Hebrew, without the house number"
+  },
+  "houseNumber": {
+   "label": "מס' בית",
+   "hint": "the house number of the holder's address on the ספח"
+  },
+  "city": {
+   "label": "ישוב",
+   "hint": "the city or town (ישוב) of the holder's address on the ספח, in Hebrew"
+  }
  }
 }

@@ -54,7 +54,7 @@ It returns:
 - `logBatch` / `logError` / `logTiming` → `errors` / `timings` documents (max 60 per batch, fields clipped); before the Firebase sign-in → `{ok:false, skipped:true}`.
 - Any other action before the sign-in → the session-expired error.
 - Users and firms (`listTenants, setTenantActive, deleteTenant, createUser, updateTenant, loadTenantProfile, listUsers, createTenantUser, updateUser, resetUserPassword, deleteUser`) → `users_admin` with the ID token.
-- The AI actions (`aiReadDoc, aiReadSefach, aiDetectAlign, aiVerifyField, aiVerifyFields, aiReadHoursTable`) → `ai_read`.
+- The AI actions (`aiReadDoc, aiReadSefach, aiDetectAlign, aiVerifyField, aiVerifyFields, aiReadHoursTable, aiFindField`) → `ai_read`.
 - `loadWorkerAssets` / `deleteWorkerDoc` → `users_admin` for a `tenants/…` id. Any other id: delete answers `{ok:true}` (nothing of ours to delete), load answers "Файл не найден".
 - `loadErrors` (100) / `loadTimings` (500) — super-admin only, newest first.
 - `loadSchedule` / `loadPunchLog` for another firm (super-admin summary): `loadSchedule(t, false)`; punches from the 1st of this month minus 7 days (`punchesOnce`).
@@ -116,7 +116,7 @@ See [punch.md](punch.md) and [supplier-portal.md](supplier-portal.md) for the pa
 
 ### `ai.py` — `ai_read`
 
-The six AI actions: the Anthropic request for each, the reply handling and the result shape the scan code expects ([scan.md](scan.md)).
+The seven AI actions: the Anthropic request for each, the reply handling and the result shape the scan code expects ([scan.md](scan.md)).
 
 | Action | Model | `max_tokens` | Returns |
 |---|---|---|---|
@@ -126,6 +126,7 @@ The six AI actions: the Anthropic request for each, the reply handling and the r
 | `aiVerifyField` | `ANTHROPIC_MODEL` | 50 | one zoomed field (`digits9`, `date`, `passportNo`); empty when unreadable |
 | `aiVerifyFields` | `ANTHROPIC_MODEL` | 200 | several fields in one call: `{values:{field:value}}` |
 | `aiReadHoursTable` | `ANTHROPIC_MODEL` | 4000 | `{entries:[{date, inTime, outTime}]}` from a timesheet photo |
+| `aiFindField` | `ANTHROPIC_MODEL` | 300 | `{found:{value, page, box}}` — one field (`field` key, `docType`) searched on up to 4 page photos (`images:[{image, mediaType}]`); label and hint come from `ai_prompts.json` `findFieldFields`, never from the caller; `value` is empty when not found |
 
 - Models: env `ANTHROPIC_MODEL` (default `claude-sonnet-5`) and `ANTHROPIC_ALIGN_MODEL` (default `claude-haiku-4-5-20251001`). Errors: "AI вернул нечитаемый ответ"; "Ответ ИИ обрезан лимитом max_tokens" when `stop_reason` is `max_tokens`.
 - Retries: a busy reply (HTTP 429 or 5xx, an `overloaded_error` / `rate_limit_error` / `api_error` body) or a network error is sent again after 1.5 s, then 4 s (`RETRY_PAUSES`); the third answer is returned as is. Each Anthropic request times out after 90 s. The `ai_read` function timeout is 300 s.

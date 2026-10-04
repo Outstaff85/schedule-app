@@ -1,7 +1,7 @@
 """AI document reading (the ai_read function).
 
 The actions aiReadDoc, aiReadSefach, aiDetectAlign, aiVerifyField,
-aiVerifyFields and aiReadHoursTable: the Anthropic request for each, and the
+aiVerifyFields, aiReadHoursTable and aiFindField: the Anthropic request for each, and the
 reply handling and result shape the app's scan code expects. The prompt
 texts are in ai_prompts.json — edit them there. tests/auth/test_ai.py checks
 every request and result against ai_golden.json (recorded from the original
@@ -22,7 +22,10 @@ ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 DEFAULT_MODEL = "claude-sonnet-5"
 DEFAULT_ALIGN_MODEL = "claude-haiku-4-5-20251001"
 
-ACTIONS = ("aiReadDoc", "aiReadSefach", "aiDetectAlign", "aiVerifyField", "aiVerifyFields", "aiReadHoursTable")
+ACTIONS = ("aiReadDoc", "aiReadSefach", "aiDetectAlign", "aiVerifyField", "aiVerifyFields", "aiReadHoursTable", "aiFindField")
+
+# aiFindField: at most this many page photos per request.
+FIND_MAX_PAGES = 4
 
 E_NO_IMAGE = "Нет изображения"
 E_UNREADABLE = "AI вернул нечитаемый ответ"
@@ -60,6 +63,8 @@ def build_request(action, body, model, align_model):
             content.append({"type": "text", "text": 'Field "' + str(j.get("field")) + '": ' + kinds.get(j.get("kind"), kinds["*"]) + "."})
             content.append(_image(j))
         return {"model": model, "max_tokens": 200, "messages": [{"role": "user", "content": content}]}, {}
+    if action == "aiFindField":
+        return _find_field_request(body, model)
     if not body.get("image"):
         return None, E_NO_IMAGE
     if action == "aiReadDoc":
@@ -85,6 +90,29 @@ def build_request(action, body, model, align_model):
             {"type": "text", "text": PROMPTS["readHoursTable"]}, _image(body),
             {"type": "text", "text": "Return the JSON object only."}]}]}, {}
     return None, "Unknown action"
+
+
+def _find_field_request(body, model):
+    """One field searched for on the worker's page photos: the field key and
+    document type pick the label and hint from ai_prompts.json (never text
+    from the caller)."""
+    spec = PROMPTS["findFieldFields"].get(str(body.get("field") or ""))
+    if not spec:
+        return None, "Unknown field"
+    doc = "passport" if body.get("docType") == "passport" else "israeli_id"
+    if doc == "passport" and isinstance(spec.get("passport"), dict):
+        spec = spec["passport"]
+    pages = [p for p in (body.get("images") or []) if isinstance(p, dict) and p.get("image")][:FIND_MAX_PAGES]
+    if not pages:
+        return None, E_NO_IMAGE
+    text = (PROMPTS["findField"].replace("{N}", str(len(pages))).replace("{DOC}", PROMPTS["findFieldDoc"][doc])
+            .replace("{LABEL}", spec["label"]).replace("{HINT}", spec["hint"]))
+    content = [{"type": "text", "text": text}]
+    for i, p in enumerate(pages):
+        content.append({"type": "text", "text": "Photo " + str(i) + ":"})
+        content.append(_image(p))
+    content.append({"type": "text", "text": "Return the JSON object only."})
+    return {"model": model, "max_tokens": 300, "messages": [{"role": "user", "content": content}]}, {}
 
 
 def _first_object(text):
@@ -123,6 +151,10 @@ def parse_reply(action, status, raw):
         return {"error": E_UNREADABLE, "raw": cleaned[:300]}
     if action == "aiDetectAlign":
         return {"ok": True, "align": parsed}
+    if action == "aiFindField":
+        found = parsed if isinstance(parsed, dict) else {}
+        return {"ok": True, "found": {"value": str(found.get("value") or "").strip(), "page": found.get("page"),
+                                      "box": found.get("box") if isinstance(found.get("box"), dict) else None}}
     if action == "aiReadHoursTable":
         entries = parsed.get("entries") if isinstance(parsed, dict) else None
         return {"ok": True, "entries": entries if isinstance(entries, list) else []}

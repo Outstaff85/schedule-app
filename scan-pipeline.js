@@ -1310,29 +1310,67 @@ function skipScanQuad(){
   if(window.__scanEditPurpose==='collectPage') _queueScanPage(window.__scanEdit);
   else finishPageScan(window.__scanEdit);
 }
-// A cropped page joins the queue. When it was taken with a page's "scan
-// again" button (window.__scanReplace = {screen, idx}), it takes that page's
-// place: on the queue screen it simply replaces it; on the review screen the
-// old page is dropped only now (a cancelled photo keeps it) and the new one
-// is queued to be read — page 1 together with the remaining pages, so the
-// set is read again with the new page first.
+// A cropped page joins the queue. When it was taken by tapping a page to
+// scan it again (window.__scanReplace = {screen, idx}), it takes that page's
+// place instead: on the queue screen it simply replaces it (nothing has been
+// read yet); on the review screen only this one page is read again
+// (_replaceReviewPage) — the other pages keep their reads.
 function _queueScanPage(img){
   if(!window.__pendingScanPages) window.__pendingScanPages=[];
   const rep=window.__scanReplace; window.__scanReplace=null;
   const page={b64:img.b64,mediaType:img.mediaType};
+  if(rep&&rep.screen==='review'&&(window.__aiScanPageThumbs||[])[rep.idx]){ _replaceReviewPage(rep.idx,page); return; }
   if(rep&&rep.screen==='queue'&&rep.idx<window.__pendingScanPages.length) window.__pendingScanPages.splice(rep.idx,1,page);
-  else if(rep&&rep.screen==='review'&&rep.idx===0){
-    const rest=(window.__aiScanPageThumbs||[]).slice(1).filter(Boolean).map(p=>({b64:p.b64,mediaType:p.mediaType}));
-    const queued=window.__pendingScanPages.slice();
-    openAiScan();
-    window.__pendingScanPages=[page,...rest,...queued];
-  } else {
-    if(rep&&rep.screen==='review') _dropReviewPage(rep.idx);
-    window.__pendingScanPages.push(page);
-  }
+  else window.__pendingScanPages.push(page);
   renderPendingPagesPrompt();
 }
-// "Scan again" under a page: take a new photo for it (see _queueScanPage).
+// Replaces page i on the review screen with a new photo and reads only that
+// photo: aligned and enhanced like any page (autoPreAlignScan, preAlignScan),
+// then page 1 gets the full read (aiReadDoc, digit re-check, portrait crop)
+// and any other page the reader its kind calls for (extraPageReader). The
+// worker's record is then rebuilt from every page's own read
+// (rebuildPrimaryFromPages), so the other pages are not read again. A blurry
+// photo, or a page 1 that doesn't read as an ID or passport, leaves the old
+// page in place.
+async function _replaceReviewPage(i,img){
+  const back=msg=>{ if(msg) showToast(msg,4000); renderScanPagesPrompt(); };
+  try{
+    renderScanProgress('מיישר ומשפר את התמונה…',20);
+    const al=await autoPreAlignScan(img.b64,img.mediaType);
+    const pre=await preAlignScan(al.b64,al.mediaType);
+    if(pre.blurry) return back('התמונה מטושטשת מדי — צלמו שוב');
+    const page={b64:pre.b64,mediaType:pre.mediaType};
+    if(i===0){
+      renderScanProgress('ה-AI קורא את המסמך…',50);
+      const json=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',...gsAuth(),image:page.b64,mediaType:page.mediaType})})).json();
+      const p=json&&json.parsed;
+      if(!(p&&(p.type==='israeli_id'||p.type==='passport'))) return back('לא זוהה מסמך זהות בתמונה — העמוד הקודם נשאר');
+      renderScanProgress('בודק שוב את הספרות…',70);
+      let v=p.fieldBoxes?await verifyDigitFields(p,page.b64,page.mediaType):p;
+      v=await verifyIdChecksum(v,page.b64,page.mediaType);
+      // photoBox belongs to the image that was read — crop before tightening.
+      window.__aiAvatarB64=p.photoBox?await cropPortraitAvatar(page.b64,page.mediaType,p.photoBox):null;
+      renderScanProgress('מחדד קצוות…',90);
+      const final=await finalTightenPass(page);
+      window.__aiScanImage=final;
+      window.__aiScanPageThumbs[0]=final;
+      window.__aiPageParsed[0]=v;
+    } else {
+      renderScanProgress('ה-AI קורא את העמוד…',60);
+      const rd=extraPageReader(al.kind);
+      const p=rd?await rd(page):null;
+      renderScanProgress('מחדד קצוות…',90);
+      const final=await finalTightenPass(page);
+      window.__aiScanPageThumbs[i]=final;
+      window.__aiPacketOtherPages[i-1]=final;
+      window.__aiPageParsed[i]=(p&&p.type==='israeli_id')?p:null;
+    }
+    rebuildPrimaryFromPages();
+    window.__aiParsed=window.__aiPrimaryParsed;
+    back();
+  }catch(e){ console.error(e); back('הסריקה החוזרת נכשלה — העמוד הקודם נשאר'); }
+}
+// Tapping a page: take a new photo for it (see _queueScanPage).
 function rescanScanPage(screen,i){
   window.__scanReplace={screen,idx:i};
   const input=document.getElementById(screen==='queue'?'aiScanFilePending':'aiScanFileExtra');
@@ -1416,6 +1454,9 @@ function rebuildPrimaryFromPages(){
   if(!pages.length){ window.__aiPrimaryParsed=null; return; }
   let primary=initPrimaryFromFirstPage(pages[0]);
   for(let i=1;i<pages.length;i++) primary=mergeScanPage(primary,pages[i]);
+  // Page 1 without a read of its own (a page kept without an AI read) — the
+  // document type comes from the first page that has one.
+  if(!primary.type){ const t=pages.find(p=>p&&p.type); if(t) primary.type=t.type; }
   window.__aiPrimaryParsed=primary;
 }
 // Called once a single page's OCR + corner-confirmation is done (whichever
@@ -1458,30 +1499,34 @@ function finishPageScan(finalImg){
 // once processAllPendingPages() actually reads the documents.
 // Page thumbnails for the queue and review screens: large, each page shown
 // whole (object-fit:contain, so leftover background is visible before
-// saving), a remove ✕ on every page and a "scan again" button under it.
-// removeFn is the global called with the page index; screen is 'queue' or
-// 'review' (rescanScanPage).
-function _scanPagesGrid(pages,removeFn,screen){
+// saving). Tapping a page scans it again (rescanScanPage) — a translucent
+// round "refresh" sign sits in its middle; the ✕ in the corner removes it.
+// The last tile is an empty dashed slot with a translucent "+" that adds a
+// page. removeFn is the global called with the page index; screen is 'queue'
+// or 'review'; inputId is that screen's hidden file input.
+const _SCAN_ICON_REFRESH='<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 5v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 19v-4h-4"/></svg>';
+const _SCAN_ICON_PLUS='<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
+function _scanPagesGrid(pages,removeFn,screen,inputId){
+  const sign=(icon,bg)=>`<span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:60px;height:60px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;pointer-events:none">${icon}</span>`;
   return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">
     ${pages.map((p,i)=>!p?'':`
-      <div style="display:flex;flex-direction:column;gap:6px">
-      <div style="position:relative;aspect-ratio:4/3;border-radius:10px;overflow:hidden;border:1px solid var(--border2);background:#fff">
+      <div onclick="rescanScanPage('${screen}',${i})" title="סרוק שוב" style="position:relative;aspect-ratio:4/3;border-radius:10px;overflow:hidden;border:1px solid var(--border2);background:#fff;cursor:pointer">
         <img src="data:${esc(p.mediaType)};base64,${esc(p.b64)}" style="width:100%;height:100%;object-fit:contain;display:block">
+        ${sign(_SCAN_ICON_REFRESH,'rgba(0,0,0,0.35)')}
         <span style="position:absolute;bottom:4px;left:4px;font-size:12px;background:rgba(0,0,0,0.65);color:#fff;padding:1px 7px;border-radius:5px">${i+1}</span>
-        <button type="button" onclick="${removeFn}(${i})" title="הסר" style="position:absolute;top:4px;right:4px;width:30px;height:30px;border-radius:50%;background:rgba(0,0,0,0.7);color:#fff;border:none;font-size:16px;line-height:1;cursor:pointer;padding:0">✕</button>
-      </div>
-      <button class="btn sm" type="button" style="justify-content:center;min-height:36px" onclick="rescanScanPage('${screen}',${i})"><i class="ti ti-camera-rotate"></i> סרוק שוב</button>
+        <button type="button" onclick="event.stopPropagation();${removeFn}(${i})" title="הסר" style="position:absolute;top:4px;right:4px;width:30px;height:30px;border-radius:50%;background:rgba(0,0,0,0.7);color:#fff;border:none;font-size:16px;line-height:1;cursor:pointer;padding:0">✕</button>
       </div>`).join('')}
+      <div onclick="window.__scanReplace=null;document.getElementById('${inputId}').click()" title="הוסף עמוד" style="position:relative;aspect-ratio:4/3;border-radius:10px;border:2px dashed var(--border2);background:rgba(255,255,255,0.03);cursor:pointer">
+        ${sign(_SCAN_ICON_PLUS,'rgba(255,255,255,0.18)')}
+      </div>
   </div>`;
 }
-// The two actions under the thumbnails, equal size side by side, pinned to
-// the bottom of the scrolling modal.
+// The screen's main action, full width, pinned to the bottom of the
+// scrolling modal; plus the hidden file input the tiles use.
 function _scanPagesButtons(inputId,mainLabel,mainOnclick,mainDisabled){
-  const st='flex:1;justify-content:center;min-height:46px;font-size:15px';
   return `<input type="file" id="${inputId}" accept="image/*,application/pdf,.pdf" style="display:none" onchange="onScanFileSelected(this.files[0]); this.value='';">
-    <div style="display:flex;gap:10px;position:sticky;bottom:-1px;background:var(--bg2);padding:8px 0">
-      <button class="btn" type="button" style="${st}" onclick="window.__scanReplace=null;document.getElementById('${inputId}').click()"><i class="ti ti-plus"></i> הוסף עמוד</button>
-      <button class="btn accent" type="button" style="${st}" ${mainDisabled?'disabled':''} onclick="${mainOnclick}"><i class="ti ti-check"></i> ${mainLabel}</button>
+    <div style="position:sticky;bottom:-1px;background:var(--bg2);padding:8px 0">
+      <button class="btn accent" type="button" style="width:100%;justify-content:center;min-height:46px;font-size:15px" ${mainDisabled?'disabled':''} onclick="${mainOnclick}"><i class="ti ti-check"></i> ${mainLabel}</button>
     </div>`;
 }
 function renderPendingPagesPrompt(){
@@ -1490,7 +1535,7 @@ function renderPendingPagesPrompt(){
   stage.innerHTML=`
     <div style="display:flex;flex-direction:column;gap:12px">
       <div style="font-size:13px;color:var(--text2)">${pages.length} תמונות ממתינות לעיבוד</div>
-      ${_scanPagesGrid(pages,'removePendingScanPage','queue')}
+      ${_scanPagesGrid(pages,'removePendingScanPage','queue','aiScanFilePending')}
       ${_scanPagesButtons('aiScanFilePending','עבד '+(pages.length||'')+' עמודים','processAllPendingPages()',!pages.length)}
     </div>`;
 }
@@ -1780,7 +1825,7 @@ function renderScanPagesPrompt(){
   stage.innerHTML=`
     <div style="display:flex;flex-direction:column;gap:12px">
       <div style="font-size:13px;color:var(--text2)">נסרקו ${n} עמוד${n===1?'':'ים'}</div>
-      ${_scanPagesGrid(pages,'removeExtraScanPage','review')}
+      ${_scanPagesGrid(pages,'removeExtraScanPage','review','aiScanFileExtra')}
       ${_scanPagesButtons('aiScanFileExtra','סיום','finishScanPages()',!n)}
     </div>`;
 }
@@ -1801,18 +1846,24 @@ function _dropReviewPage(i){
   // recompute the primary record from the pages that are actually still here.
   rebuildPrimaryFromPages();
 }
-// Removing page 1 (the primary: names, ID number, portrait) can't be done by
-// splicing — the next page may be a ספח read with no names. The remaining
-// pages go back to the queue as they are and the whole set is read again
-// (processAllPendingPages picks the new primary); with no pages left the
-// scan starts over.
+// Removing page 1 (the primary): the next page becomes page 1 and the record
+// is rebuilt from the remaining pages' own reads — nothing is read again.
+// Names, ID number and portrait came from the removed page, so a ספח left
+// alone gives an address-only record; tapping "+" adds a new front page, or
+// tapping the new page 1 scans it again. With no pages left the scan starts
+// over.
 function removePrimaryScanPage(){
-  const rest=(window.__aiScanPageThumbs||[]).slice(1).filter(Boolean);
-  if(rest.length&&!confirm('להסיר את העמוד הראשי? שאר העמודים ייקראו מחדש.')) return;
-  openAiScan();
-  if(!rest.length) return;
-  window.__pendingScanPages=rest.map(p=>({b64:p.b64,mediaType:p.mediaType}));
-  renderPendingPagesPrompt();
+  const thumbs=window.__aiScanPageThumbs||[];
+  if(thumbs.filter(Boolean).length<=1){ openAiScan(); return; }
+  if(!confirm('להסיר את העמוד הראשי (שם, ת.ז., תמונה)?')) return;
+  thumbs.shift();
+  window.__aiPacketOtherPages.shift();
+  if(window.__aiPageParsed) window.__aiPageParsed.shift();
+  window.__aiScanImage=thumbs[0];
+  window.__aiAvatarB64=null;
+  rebuildPrimaryFromPages();
+  window.__aiParsed=window.__aiPrimaryParsed;
+  renderScanPagesPrompt();
 }
 function finishScanPages(){
   const finalParsed=window.__aiPrimaryParsed||window.__aiParsed;
