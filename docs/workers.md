@@ -13,7 +13,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
 | `docGiven`, `docSurname` | given name, surname (Latin for a foreign passport) |
 | `colorIdx` | index into `WORKER_COLORS` (8 colors) |
 | `phone`, `notes` | |
-| `status` | `active` / `vacation` / `fired` |
+| `status` | `active` / `vacation` / `fired` (shown as פעיל / בחופשה / לא פעיל, Active / On vacation / Inactive) |
 | `hourlyRate` | base ₪/h. Optional overrides `regRate`, `otRate`, `shabbatRate` (set in Accounting) |
 | `clientRates` | `{clientId: {rate, otRate, shabbatRate}}` — per-client override, see [accounting.md](accounting.md) |
 | `travelAllowance` | ₪ per day worked, added on top of pay |
@@ -60,7 +60,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
   
   All filters combine (AND). In client grouping a worker appears under every client they have; in supplier grouping, under one (or "No supplier assigned").
 - **View:** `getWorkersView()` returns `cards` unless `localStorage.workersView === 'list'`; `setWorkersView(v)` stores the choice.
-  - Cards — `renderWorkerCardsHtml(list, groupBy, stMetaMap)`. Each card shows avatar, name, status, contract and document badges, ID/passport, rate, hours this month, clients, supplier, start date and document status. Hours come from `workersMonthHours()`, which parses the punch log once, splits it by worker and sums `getWorkerMonthShifts()` — the same shift pairing as payroll.
+  - Cards — `renderWorkerCards(box, list, groupBy, stMetaMap, sig)`. Each card shows avatar, name, status, contract and document badges, ID/passport, rate, hours this month, clients, supplier, start date and document status. Hours come from `workersMonthHours()`, which parses the punch log once, splits it by worker and sums `getWorkerMonthShifts()` — the same shift pairing as payroll.
   - List — a table with columns Worker / Status / ID / Objects / Supplier / Phone / Rate / Start / actions (PDF download, delete). A tap on the row opens the worker card; a tap on the card opens the edit form.
   - Clicking a card or row opens `openWorkerCard(wi)`.
 
@@ -109,7 +109,8 @@ One form for add, edit and post-scan review. Labels of every Form 101 field are 
     - Which scan opens: the review screen of the scan still in memory when the modal came from it (a new worker, or this worker just rescanned); otherwise a new scan of this worker (`__aiRescanWorkerId`).
     - When the scan finishes, `openWorkerModalFromScan()` redraws the modal and calls `applyWorkerDraft()`: a field that had a value keeps it, an empty one takes the scan's value.
     - `openAddWorker`, `openEditWorker`, `startNewScan` and `rescanWorkerDoc` clear the draft.
-  - **Personal data.** Name, ID/passport, phone, rate, status, travel allowance, start date, sex, marital status, health fund. The spouse block (`#wSpouseWrap`, shown only for married — `onWMaritalChange()`). Address, house number, city, date of birth, ID expiry.
+  - **Status** — three buttons at the right end of the photo row (`.status-seg`: פעיל / בחופשה / לא פעיל, `setWStatus(v)`), the value in the hidden `#wStatus` that the save and the scan draft read.
+  - **Personal data**, two short fields per line: first + last name; ID/passport + phone; marital status + health fund (the spouse block below them); date of birth + ID expiry; street + house no. + city (one line of three); hourly rate + travel ₪/day; start date + sex. The spouse block: `#wSpouseWrap`, shown only for married (`onWMaritalChange()`).
   - **Clients.** Chips plus a search box: `renderWClientChips`, `renderWClientSuggest` (only clients not yet added), `addWClient`, `removeWClient`. Enter picks the first match (`pickFirstWClientSuggest`).
   - **Supplier.** A `<select>` (`wSupplierId`).
   - **Bank details.** A collapsible block (`toggleBankWrap`).
@@ -149,7 +150,7 @@ Started from the faint red ✕ in a worker tile's top-right corner (`.wcard-del`
 
 ## Punch link
 
-`buildPunchLink(w)` → `https://odinson.ltd/worker-punch.html?t=<token>`; `copyWorkerLink(wid)` copies it. See [punch.md](punch.md).
+`buildPunchLink(w)` → `https://odinson.ltd/worker-punch.html?t=<token>`; `copyWorkerLink(wid)` copies it. In the worker modal (existing workers) the link block ("קישור אישי להחתמה", with the geofence note) sits right after the signature pad. See [punch.md](punch.md).
 
 ## Worker documents (contract, visa, work permit, other)
 
