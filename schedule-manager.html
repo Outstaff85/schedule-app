@@ -2865,64 +2865,59 @@ function showClientModal(c){
   __cBill = { rateMode: c.rateMode==='fixed'?'fixed':'tiered', fixedBillRate: c.fixedBillRate??null,
     billRate: (c.billRate!=null&&c.billRate!=='') ? c.billRate : (c.defaultHourlyRate??null),
     billOtRate: c.billOtRate??null, billShabbatRate: c.billShabbatRate??null };
-  document.getElementById('clientModal').innerHTML=`
-    <div class="modal-title">${editingClientId?'Edit Client':'Add New Client'}</div>
-    <div class="field"><label>Name</label><input type="text" id="cName" value="${esc(c.name||'')}" placeholder="Client name" autofocus></div>
-    <div class="field"><label>ח.פ (Company Number, optional)</label><input type="text" id="cCompanyNumber" value="${esc(c.companyNumber||'')}" placeholder="512345678"></div>
-    <div class="field"><label>Object</label><input type="text" id="cObject" value="${esc(c.object||'')}" placeholder="Object / branch name"></div>
-    <div class="field"><label>Address (optional)</label><input type="text" id="cAddr" value="${esc(c.address||'')}" placeholder="Address"></div>
+  // The client card is in Hebrew (per user request 2026-10-04).
+  document.getElementById('clientModal').innerHTML=`<div dir="rtl">
+    <div class="modal-title">${editingClientId?'עריכת לקוח':'לקוח חדש'}</div>
+    <div class="field"><label>שם הלקוח</label><input type="text" id="cName" value="${esc(c.name||'')}" placeholder="שם הלקוח" autofocus></div>
+    <div class="field"><label>ח.פ (לא חובה)</label><input type="text" id="cCompanyNumber" value="${esc(c.companyNumber||'')}" placeholder="512345678"></div>
+    <div class="field"><label>אתר / סניף</label><input type="text" id="cObject" value="${esc(c.object||'')}" placeholder="שם האתר או הסניף"></div>
+    <div class="field"><label>כתובת (לא חובה)</label><input type="text" id="cAddr" value="${esc(c.address||'')}" placeholder="כתובת"></div>
     <div class="field">
-      <label><i class="ti ti-cash"></i> Default rate for this client (optional)</label>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Applied to all workers at this client if a worker has no own rate for it (see Accounting → Per-client rates)</div>
+      <label><i class="ti ti-cash"></i> שכר העובד אצל לקוח זה (₪ לשעה)</label>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">כל העובדים אצל הלקוח מקבלים את התעריף הזה, אלא אם לעובד יש תעריף משלו.</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-        <div><label style="font-size:11px;color:var(--text3)">Regular ₪/h</label>
+        <div><label style="font-size:11px;color:var(--text3)">רגיל</label>
           <input type="number" min="0" step="0.5" id="cDefRate" value="${c.defaultHourlyRate??''}" placeholder="—"></div>
-        <div><label style="font-size:11px;color:var(--text3)">OT ₪/h</label>
+        <div><label style="font-size:11px;color:var(--text3)">שעות נוספות</label>
           <input type="number" min="0" step="0.5" id="cDefOtRate" value="${c.defaultOtRate??''}" placeholder="—"></div>
-        <div><label style="font-size:11px;color:var(--text3)">Shabbat ₪/h</label>
+        <div><label style="font-size:11px;color:var(--text3)">שבת</label>
           <input type="number" min="0" step="0.5" id="cDefShabRate" value="${c.defaultShabbatRate??''}" placeholder="—"></div>
       </div>
     </div>
     <div class="field">
-      <label><i class="ti ti-receipt"></i> Client billing mode</label>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">What's billed to this client (Accounting → Billable by client). Never affects the worker's own wage above.</div>
+      <label><i class="ti ti-receipt"></i> תשלום הלקוח לחברה (₪ לשעה)</label>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">כמה הלקוח משלם לנו. לא משנה את שכר העובד.</div>
       <select id="cRateMode" onchange="onClientRateModeChange()" style="width:100%">
-        <option value="tiered" ${__cBill.rateMode==='tiered'?'selected':''}>With overtime (Israeli OT/Shabbat tiers)</option>
-        <option value="fixed" ${__cBill.rateMode==='fixed'?'selected':''}>Fixed rate (flat ₪/h, no OT/Shabbat)</option>
+        <option value="tiered" ${__cBill.rateMode==='tiered'?'selected':''}>עם שעות נוספות ושבת (לפי החוק)</option>
+        <option value="fixed" ${__cBill.rateMode==='fixed'?'selected':''}>תעריף קבוע (בלי תוספות)</option>
       </select>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px">
         <div id="cBillSummary" style="font-size:12px;color:var(--text2)">${clientBillSummary()}</div>
-        <button class="btn sm" type="button" onclick="openClientBillRatePopup()"><i class="ti ti-pencil"></i> Edit rate</button>
+        <button class="btn sm" type="button" onclick="openClientBillRatePopup()"><i class="ti ti-pencil"></i> עריכה</button>
       </div>
     </div>
     <div class="field">
-      <label><i class="ti ti-map-pin"></i> Geolocation for Punch Clock</label>
+      <label><i class="ti ti-map-pin"></i> מיקום לשעון הנוכחות</label>
       <button class="btn ${c.lat?'sm':'accent'}" type="button" onclick="openMapPicker()" style="width:100%;justify-content:center;margin-bottom:10px">
-        <i class="ti ti-map-2"></i> ${c.lat?'Change location on map':'Pick location on map'}
+        <i class="ti ti-map-2"></i> ${c.lat?'שינוי מיקום במפה':'בחירת מיקום במפה'}
       </button>
       <div style="margin-bottom:8px">
-        <label style="font-size:11px;color:var(--text3);margin-bottom:4px;display:block">…or paste a Google Maps link</label>
-        <input type="text" id="cMapsUrl" placeholder="https://maps.google.com/..." value="${esc(c.mapsUrl||'')}" oninput="parseGoogleMapsUrl(this.value)" style="font-size:12px">
-        <div style="font-size:11px;color:var(--text3);margin-top:4px">Open Google Maps → right-click on location → copy link or coordinates</div>
+        <label style="font-size:11px;color:var(--text3);margin-bottom:4px;display:block">או הדבקת קישור מ-Google Maps</label>
+        <input type="text" id="cMapsUrl" dir="ltr" placeholder="https://maps.google.com/..." value="${esc(c.mapsUrl||'')}" oninput="parseGoogleMapsUrl(this.value)" style="font-size:12px">
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
-        <div><label style="font-size:11px;color:var(--text3)">Latitude</label>
-          <input type="number" step="any" id="cLat" value="${c.lat||''}" placeholder="32.0853" oninput="updateLocStatus()"></div>
-        <div><label style="font-size:11px;color:var(--text3)">Longitude</label>
-          <input type="number" step="any" id="cLng" value="${c.lng||''}" placeholder="34.7818" oninput="updateLocStatus()"></div>
-        <div><label style="font-size:11px;color:var(--text3)">Radius (m)</label>
-          <input type="number" id="cRadius" value="${c.radius||100}" placeholder="100"></div>
-      </div>
-      <div id="cLocStatus" style="font-size:12px;min-height:18px;padding:4px 0;color:var(--text2)">${c.lat?'<i class="ti ti-circle-check"></i> Location set: '+Number(c.lat).toFixed(5)+', '+Number(c.lng).toFixed(5):''}</div>
+      <input type="hidden" id="cLat" value="${c.lat||''}"><input type="hidden" id="cLng" value="${c.lng||''}">
+      <div style="margin-bottom:8px;max-width:140px"><label style="font-size:11px;color:var(--text3)">רדיוס (מטרים)</label>
+        <input type="number" id="cRadius" value="${c.radius||100}" placeholder="100"></div>
+      <div id="cLocStatus" style="font-size:12px;min-height:18px;padding:4px 0;color:${c.lat?'var(--green)':'var(--text2)'}">${c.lat?locSetHtml(c.lat,c.lng):''}</div>
     </div>
-    <div class="field"><label>Color</label>
+    <div class="field"><label>צבע</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap" id="cColorPick">
         ${CLIENT_COLORS.map(col=>`<div onclick="pickCColor('${col}')" data-color="${col}" style="width:24px;height:24px;border-radius:50%;background:${col};cursor:pointer;border:2px solid ${col===selClientColor?'white':'transparent'};transition:all 0.15s;${col===selClientColor?'transform:scale(1.2)':''}"></div>`).join('')}
       </div>
     </div>
     <div class="modal-actions">
-      <button class="btn accent" onclick="saveClient()">${editingClientId?'Save Changes':'Add Client'}</button>
-    </div>`;
+      <button class="btn accent" onclick="saveClient()">${editingClientId?'שמירה':'הוספת לקוח'}</button>
+    </div></div>`;
   document.getElementById('clientOverlay').classList.add('open');
 }
 
@@ -2954,10 +2949,11 @@ function parseGoogleMapsUrl(url){
   const el=document.getElementById('cLocStatus');
   if(url.length>10){
     el.style.color='var(--amber)';
-    el.textContent="Could not parse — try right-click → What's here? on Google Maps and paste those coordinates";
+    el.textContent='הקישור לא זוהה — ב-Google Maps לחצו לחיצה ימנית על המקום והדביקו את הקואורדינטות';
   }
 }
 
+function locSetHtml(lat,lng){ return '<i class="ti ti-circle-check"></i> המיקום נקבע: <span dir="ltr">'+Number(lat).toFixed(5)+', '+Number(lng).toFixed(5)+'</span>'; }
 function updateLocStatus(){
   const lat=document.getElementById('cLat')?.value;
   const lng=document.getElementById('cLng')?.value;
@@ -2965,7 +2961,7 @@ function updateLocStatus(){
   if(!el)return;
   if(lat&&lng&&!isNaN(parseFloat(lat))&&!isNaN(parseFloat(lng))){
     el.style.color='var(--green)';
-    el.innerHTML='<i class="ti ti-circle-check"></i> Location set: '+Number(lat).toFixed(5)+', '+Number(lng).toFixed(5);
+    el.innerHTML=locSetHtml(lat,lng);
   } else {
     el.style.color='var(--text2)';
     el.textContent='';
@@ -3093,11 +3089,13 @@ let __cBill = { rateMode:'tiered', fixedBillRate:null, billRate:null, billOtRate
 let __cBillPrevMode = 'tiered';
 const fmtRate=v=>(v==null||v==='')?null:('₪'+Number(v)+'/h');
 function clientBillSummary(){
-  if(__cBill.rateMode==='fixed') return fmtRate(__cBill.fixedBillRate) ? 'Fixed '+fmtRate(__cBill.fixedBillRate) : '<span style="color:var(--amber)">Rate not set</span>';
-  if(!fmtRate(__cBill.billRate)) return '<span style="color:var(--amber)">Rate not set</span>';
-  return 'Regular '+fmtRate(__cBill.billRate)
-    +' · OT '+(fmtRate(__cBill.billOtRate)||'law tiers')
-    +' · Shabbat '+(fmtRate(__cBill.billShabbatRate)||'law tiers');
+  const r=v=>'₪'+Number(v);
+  const set=v=>v!=null&&v!=='';
+  if(__cBill.rateMode==='fixed') return set(__cBill.fixedBillRate) ? 'קבוע '+r(__cBill.fixedBillRate) : '<span style="color:var(--amber)">לא הוגדר תעריף</span>';
+  if(!set(__cBill.billRate)) return '<span style="color:var(--amber)">לא הוגדר תעריף</span>';
+  return 'רגיל '+r(__cBill.billRate)
+    +' · נוספות '+(set(__cBill.billOtRate)?r(__cBill.billOtRate):'לפי החוק')
+    +' · שבת '+(set(__cBill.billShabbatRate)?r(__cBill.billShabbatRate):'לפי החוק');
 }
 function onClientRateModeChange(){
   const sel=document.getElementById('cRateMode');
@@ -3109,21 +3107,21 @@ function onClientRateModeChange(){
 function openClientBillRatePopup(fromModeChange){
   const b=__cBill, v=x=>x??'';
   const inp=(id,val,label)=>`<div><label style="font-size:11px;color:var(--text3)">${label}</label><input type="number" min="0" step="0.5" id="${id}" value="${v(val)}" placeholder="—"></div>`;
-  document.getElementById('clientBillModal').innerHTML = b.rateMode==='fixed' ? `
-    <div class="modal-title">Fixed billing rate</div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Flat ₪ per hour billed to the client — no overtime or Shabbat tiers.</div>
-    <div class="field">${inp('cbFixed',b.fixedBillRate,'Rate ₪/h')}</div>
+  document.getElementById('clientBillModal').innerHTML = b.rateMode==='fixed' ? `<div dir="rtl">
+    <div class="modal-title">תעריף קבוע ללקוח</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">₪ לשעה שהלקוח משלם לנו, בלי שעות נוספות ושבת.</div>
+    <div class="field">${inp('cbFixed',b.fixedBillRate,'₪ לשעה')}</div>
     <div class="modal-actions">
-      <button class="btn accent" type="button" onclick="saveClientBillRatePopup()">Save</button>
-    </div>` : `
-    <div class="modal-title">Billing rate with overtime</div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Billed to the client. Leave OT / Shabbat empty to use the Israeli law tiers off the regular rate (OT ×1.25 then ×1.5; Shabbat ×1.5–×2.0).</div>
+      <button class="btn accent" type="button" onclick="saveClientBillRatePopup()">שמירה</button>
+    </div></div>` : `<div dir="rtl">
+    <div class="modal-title">תשלום הלקוח עם שעות נוספות</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">כמה הלקוח משלם לנו לשעה. נוספות / שבת ריקים = לפי החוק מהתעריף הרגיל (נוספות ×1.25 ואז ×1.5, שבת ×1.5–×2).</div>
     <div class="field" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-      ${inp('cbReg',b.billRate,'Regular ₪/h')}${inp('cbOt',b.billOtRate,'OT ₪/h')}${inp('cbShab',b.billShabbatRate,'Shabbat ₪/h')}
+      ${inp('cbReg',b.billRate,'רגיל')}${inp('cbOt',b.billOtRate,'שעות נוספות')}${inp('cbShab',b.billShabbatRate,'שבת')}
     </div>
     <div class="modal-actions">
-      <button class="btn accent" type="button" onclick="saveClientBillRatePopup()">Save</button>
-    </div>`;
+      <button class="btn accent" type="button" onclick="saveClientBillRatePopup()">שמירה</button>
+    </div></div>`;
   // Closing it (a tap outside) cancels: a popup opened by a mode switch
   // undoes that switch (cancelClientBillRatePopup).
   const ov=document.getElementById('clientBillOverlay');

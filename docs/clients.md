@@ -27,19 +27,20 @@ Worker pay and client billing are separate sets of fields. Billing never changes
 
 ## Client modal (`showClientModal(c)`, `#clientModal`)
 
-`openAddClient()` / `openEditClient(cid)` set `editingClientId` and the color, then open the modal.
+`openAddClient()` / `openEditClient(cid)` set `editingClientId` and the color, then open the modal. The modal and its billing-rate popup are in Hebrew, right to left (per user request 2026-10-04).
 
-- **Fields:** Name, ח.פ, Object, Address.
-- **Worker-pay defaults:** the three default rates (Regular / OT / Shabbat).
+- **Fields:** שם הלקוח, ח.פ, אתר / סניף, כתובת.
+- **Worker pay at this client** ("שכר העובד אצל לקוח זה"): the three default rates (Regular / OT / Shabbat) every worker at this client gets unless the worker has an own rate for it.
+- **What the client pays the firm** ("תשלום הלקוח לחברה") — the billing mode below; never changes a worker's pay.
 - **Client billing mode** (`#cRateMode`):
   - picking a mode (`onClientRateModeChange()`) opens the billing-rate popup at once (`openClientBillRatePopup(true)`):
     - `fixed` → one flat ₪/h (`cbFixed`);
     - `tiered` → Regular / OT / Shabbat (`cbReg`, `cbOt`, `cbShab`);
-  - values are kept in `__cBill` while the modal is open, summarized by `clientBillSummary()`, and edited again through "Edit rate";
+  - values are kept in `__cBill` while the modal is open, summarized by `clientBillSummary()`, and edited again through "עריכה";
   - `saveClientBillRatePopup()` stores them;
   - `cancelClientBillRatePopup(true)` (cancelling a popup opened by a mode switch) puts the previous mode back (`__cBillPrevMode`);
   - `__cBill.billRate` falls back to `defaultHourlyRate` for clients saved before `billRate` existed.
-- **Geolocation:** set it on the map (below), by pasting a Google Maps link (`parseGoogleMapsUrl()` understands `@lat,lng`, `?q=`, `?ll=`, `/lat,lng` and a plain `lat, lng`), or by typing Latitude / Longitude / Radius. `updateLocStatus()` shows the result.
+- **Geolocation:** set it on the map (below), by pasting a Google Maps link (`parseGoogleMapsUrl()` understands `@lat,lng`, `?q=`, `?ll=`, `/lat,lng` and a plain `lat, lng`), The coordinates are hidden inputs (`cLat`, `cLng`) filled by those two — there are no Latitude / Longitude fields to type; only the radius (`cRadius`) is typed. `updateLocStatus()` / `locSetHtml()` show the result ("המיקום נקבע: lat, lng").
 - **Color** (`pickCColor`).
 
 `saveClient()` builds the record from the fields plus `__cBill`. It updates in place or pushes a new client (`uid()`), then saves. `deleteClient(cid)` removes the client, removes its id from every worker's `clientIds` and `clientRates`, clears the Schedule sidebar filter if it was this client, and saves.
