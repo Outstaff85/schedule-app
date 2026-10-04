@@ -398,7 +398,9 @@ def build_form101_pdf(p):
         b.set_hebrew("employer_address", addr, 11)
         b.set_hebrew("employer_phone", employer.get("phone"), 10)
         if employer.get("deductionsFileNumber"):
-            digits = re.sub(r"\D", "", str(employer["deductionsFileNumber"]))
+            # The form prints the leading "9" of the 9-digit deductions file
+            # number itself; its 8 boxes take the rest — the LAST 8 digits.
+            digits = re.sub(r"\D", "", str(employer["deductionsFileNumber"]))[-8:]
             b.set_comb("employer_deductions", digits, 8, 11)
 
     if sex == "M":

@@ -1,16 +1,18 @@
 # Admin tab
 
-The Admin tab (`#sectionAdmin`) and the punch-log data behind it: the punch log, firms (super-admin), users, errors, timings and the firm profile. Code is in `schedule-manager.html`.
+The Admin tab (`#sectionAdmin`) and the punch-log data behind it: the punch log, firms (every firm for the super-admin, the own firm for an owner), users, errors and timings. Code is in `schedule-manager.html`.
 
 ## Panes and who sees them
 
-`switchTab('admin')` → `renderAdmin()` + `setupAdminPaneBar()`. The pane bar (`switchAdminPane(pane)`):
+`switchTab('admin')` → `setupAdminPaneBar()`. The tab opens with **no section** (`#adminPane_none`, "Choose a section"): nothing is drawn or loaded until a section button is tapped (`switchAdminPane(pane)`, kept in `__adminPane` while the app stays open). `renderAdmin()` draws only while Punch Log is the open section.
 
 | Pane | Who |
 |---|---|
-| Punch Log (default) | everyone who can open the tab — the tab needs the `workers` permission |
-| Firms, Errors, Timings | `superadmin` |
-| Users, Profile | `superadmin`, `tenant_admin` |
+| Punch Log | everyone who can open the tab — the tab needs the `workers` permission |
+| Firms, Users | `superadmin`, `tenant_admin` |
+| Errors, Timings | `superadmin` |
+
+Layout (`.admin-pane-bar`): the section buttons in a row on a computer, a 3-column grid on a phone. The header buttons (`.head-actions`) are two equal buttons across the width on a phone.
 
 The header buttons **Export CSV** and **Clear Log** show only on the Punch Log pane; Clear Log is only for `tenant_admin` and `superadmin`. Opening the tab as an owner also preloads the user list (`prefetchAdminUsers()`). The pane subtitles are in `ADMIN_PANE_SUBTITLES`.
 
@@ -36,9 +38,9 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
 
 ## Punch Log pane
 
-- **Stats:** Total IN, Total OUT, Today and Total (over what is loaded).
-- **Views:** Punch Log (`setAdminView('log')`) or By Client (`setAdminView('clients')`).
-- **Filters** (each with a caption, see [workers.md](workers.md)):
+- **Stats:** Total IN, Total OUT, Today and Total (over what is loaded) — four in a row, smaller on a phone.
+- **Views:** Log (`setAdminView('log')`) or By Client (`setAdminView('clients')`), with the record count on the same line (`.admin-log-bar`).
+- **Filters** (`.filters-grid`, `--cols:4` — one row on a computer, two columns without captions on a phone; see [workers.md](workers.md)):
   - Worker — the workers that appear in the log;
   - Client — the punch's own `clientId` (where it was recorded); a punch saved without one falls back to the worker's current clients;
   - Date — the days that have punches, as `en-GB` strings, newest day first (sorted by the real date);
@@ -56,7 +58,11 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
   2. `submitClearPunchLog()` downloads a CSV of exactly those rows first.
   3. Then `deletePunchesByMonths` runs (by `day`, or `ts` for a punch without `day`), and the rows are dropped from the local cache.
 
-## Firms pane (super-admin)
+## Firms pane
+
+**Firm owner** (`tenant_admin`): the own firm only (`renderOwnFirmCard`). The card shows the Form 101 fields (name, deductions file, phone, address), which of them are missing, and **Edit** (`openMyFirmForm`). It is drawn from the session's profile, then from `refreshTenantProfile(0)`. The super-admin buttons (`#adminFirmsSuperBar`) are hidden. There is no separate Profile pane.
+
+**Super-admin:**
 
 - **List:** `renderFirmsList('adminFirmsList')` — the same function draws the super-admin's landing screen (`#firmsList`).
   - It draws the cached list first (`localStorage.firmsCache_v1`), then `listTenants`.
@@ -69,7 +75,7 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
   - fields: company name, deductions file number, phone, street, street number, city;
   - Create (`openCreateFirmForm`) also asks for the owner's username and password → `createUser`;
   - Edit (`openEditFirmForm`, or `openMyFirmForm` for the firm's own profile) → `updateTenant`;
-  - after saving: `cacheTenantProfile`, `refreshFirmProfileWarnings`, and `regenerateAllWorkerDocs()` when the edited firm is the one loaded (every worker's Form 101 employer block changes);
+  - after saving: `cacheTenantProfile`, `refreshFirmProfileWarnings`, and `regenerateAllWorkerDocs()` when the edited firm is the one loaded (every worker's Form 101 employer block changes). For another firm, the rebuild waits until that firm is opened here (`form101Regen:<tenantId>`, `maybeRegenAfterFirmEdit`);
   - `openMyFirmForm()` prefills from the session and refreshes with `loadTenantProfile`, without overwriting what the user already typed (`__firmEditDirty`).
 - **Buttons:**
   - **Payable summary (all firms)** — [accounting.md](accounting.md);
@@ -109,7 +115,3 @@ Rows are compact: one bordered box (`.log-box`), one row per entry (`.log-row`),
 - **all measurements**, newest first, paged by 10. Each row shows time, kind and total on the first line (a total above its kind's 90% is amber), the steps under it, then firm, user, device, pages and page kinds. Each row has a copy button (`copyTimingRow`).
 
 "Copy all" (`copyAllTimings`) copies the summary and every measurement of the period as text. Kinds and how they are measured: [app-core.md](app-core.md) → Telemetry.
-
-## Profile pane (owner, super-admin)
-
-One button, "Edit company profile" → `openMyFirmForm()`. The profile fills the Form 101 employer block ([form101.md](form101.md)). An incomplete profile colors the Admin tab icon amber.

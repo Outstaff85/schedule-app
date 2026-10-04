@@ -161,7 +161,7 @@ New fields created, one per box:
 | `employer_name` | א. פרטי המעסיק — שם | `{x:414.9, width:540.4-414.9-8, y:659.89, height:14}` (width pulled in 8pt from the printed box's true right edge, 540.4, to nudge the right-aligned text left — see below for why this is a rect change and not a value/space trick) | 11 (text, overflow risk, see below) |
 | `employer_address` | א. פרטי המעסיק — כתובת | `{x:209.0, width:414.9-209.0-8, y:659.89, height:14}` (same 8pt right-edge pull-in as `employer_name`) | 11 (text, overflow risk, see below) |
 | `employer_phone` | א. פרטי המעסיק — מספר טלפון | `{x:130.3, width:78.7, y:659.89, height:14}` | 10 |
-| `employer_deductions` | א. פרטי המעסיק — מספר תיק ניכויים | `{x:39.9, width:90.4, y:659.89, height:14}` | 10, comb 8 |
+| `employer_deductions` | א. פרטי המעסיק — מספר תיק ניכויים | `{x:39.9, width:90.4, y:659.89, height:14}` | 10, comb 8 — the template prints the leading 9; the last 8 digits go in |
 | `children_id_N` / `children_dob_N` / `children_name_N` | ג. פרטים על ילדיי, row N | `CHILD_ROW_Y[]`/`CHILD_COLS` in code | 10 (id/dob, comb) / 9 (name, text, overflow risk) |
 | `worker_phone` | ב. פרטי העובד/ת — מספר טלפון נייד | `{x:28.7, width:113.3, y:522.89, height:14}` (bottom-origin xywh; found via `page.get_drawings()`+`get_text("words")` in the Python port — the template ships no field here either). Narrowed 2026-09-21 from an earlier `{x:28.7, width:176.7, y:513.89, height:22.2}` that spanned the whole row *and* the printed label "מספר טלפון נייד" itself (label words at top-origin x:148.0-202.5, y:306.1-317.7) — right-aligning to the old wider box drew the phone digits on top of that label instead of in the blank space to its left. | 10 |
 

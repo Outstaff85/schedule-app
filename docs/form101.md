@@ -32,7 +32,7 @@ Everything comes from the saved worker record, `targetWorker`:
 | `surname`, `given`, `dob`, `sex`, `no` | the worker's ID or passport fields (`no` = `workerDocId`) |
 | `signDate` | `DD/MM/YYYY` of `createdAt` (else today) |
 | `workerPhone`, `incomeType`, `otherIncomeType` | worker |
-| `employer` | `{companyName, street, streetNumber, city, phone, deductionsFileNumber}` from `activeTenantProfile()` |
+| `employer` | `{companyName, street, streetNumber, city, phone, deductionsFileNumber}` from the firm profile, refreshed from the server first when the session's copy is over 5 minutes old (`refreshTenantProfile`; also run 4 s after the app opens). A super-admin's edit of another firm marks it (`form101Regen:<tenantId>` in `localStorage`); that firm's Form 101s are rebuilt the next time this device opens it (`maybeRegenAfterFirmEdit`) |
 | `address` | street + house number in one string |
 | `city`, `marital`, `workStart` (`workStartDate`), `healthFund`, `children` | worker — for both document types |
 | `spouse` | `{surname, given, idNo, dob, income}` when any spouse field is set |
@@ -54,7 +54,7 @@ Missing firm-profile fields (`firmProfileMissing`) are shown as a toast after th
   - **Position fixes:** `FIELD_RECT_NUDGES` moves individual field rects — `worker_phone` +3 pt right, `employer_deductions` +1 pt down. Add new fixes here, not in the template.
 - **What is filled:**
   - **Header:** surname and given name; date of birth (`_ddmmyyyy` → 8 boxes, zero-padded); `id_top2`; tax year = the current year.
-  - **Employer:** name, address (street + number + city), phone, deductions file (digits only, 8 boxes).
+  - **Employer:** name, address (street + number + city), phone, deductions file — digits only, the last 8 in the 8 boxes (the form prints the leading 9 itself).
   - **Sex:** `sex_male` / `sex_female`. Kibbutz member `cb_p1_1` is always ticked ("no").
   - **Israeli ID:**
     - `resident_yes` and `resident_h`;

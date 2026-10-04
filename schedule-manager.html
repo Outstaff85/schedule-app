@@ -382,16 +382,34 @@
   .workers-toolbar{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
   .workers-search-row{display:flex;gap:8px;align-items:stretch}
   .workers-search-row input{flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:8px 10px;font-size:13px;outline:none}
-  .workers-filters{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
-  .workers-filters .filter-field{display:flex;min-width:0}
-  .workers-filters select{width:100%;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 8px;font-size:13px;outline:none;text-overflow:ellipsis}
+  /* Filter rows everywhere (Workers, Admin): one row of --cols on a
+     computer; two columns without captions on a phone, an odd last one
+     across. */
+  .filters-grid{display:grid;grid-template-columns:repeat(var(--cols,4),minmax(0,1fr));gap:8px}
+  .filters-grid .filter-field{display:flex;min-width:0}
+  .filters-grid select{width:100%;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 8px;font-size:13px;outline:none;text-overflow:ellipsis}
   .workers-count{font-size:12px;color:var(--text2)}
+  /* A pane's top row: period/select + buttons; on a phone the select takes
+     the first line and the buttons share the second equally. */
+  .pane-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:10px}
+  .pane-toolbar select{flex:1;min-width:150px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none}
+  /* Admin section buttons; head actions. */
+  .admin-pane-bar{display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border2);padding-bottom:10px;flex-wrap:wrap}
+  .head-actions{display:flex;gap:8px}
+  .admin-log-bar{display:flex;align-items:center;gap:6px;margin-bottom:10px}
+  .admin-log-bar .workers-count{margin-left:auto}
   @media (max-width:700px){
-    .workers-head .workers-actions{width:100%}
-    .workers-head .workers-actions .btn{flex:1;justify-content:center;min-height:40px}
-    .workers-filters{grid-template-columns:1fr 1fr}
-    .workers-filters .filter-field:last-child{grid-column:1/-1}
-    .workers-filters .filter-cap{display:none}
+    .workers-head .workers-actions,.page-header .head-actions{width:100%}
+    .workers-head .workers-actions .btn,.page-header .head-actions .btn{flex:1;justify-content:center;min-height:40px}
+    .filters-grid{grid-template-columns:1fr 1fr}
+    .filters-grid .filter-field:last-child:nth-child(odd){grid-column:1/-1}
+    .filters-grid .filter-cap{display:none}
+    .pane-toolbar select{flex-basis:100%}
+    .pane-toolbar .btn{flex:1;justify-content:center;min-height:36px}
+    .admin-pane-bar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+    .admin-pane-bar .btn{justify-content:center;padding:7px 4px}
+    #adminStats{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:6px!important;margin-bottom:12px!important}
+    #adminStats .stat-card{padding:8px 6px}
   }
   .view-toggle button{background:var(--bg3);border:none;color:var(--text2);padding:6px 10px;cursor:pointer;font-size:15px;line-height:1}
   .view-toggle button+button{border-left:1px solid var(--border2)}
@@ -551,7 +569,7 @@
             <button type="button" id="workersViewCards" onclick="setWorkersView('cards')" title="Cards"><i class="ti ti-layout-grid"></i></button>
           </div>
         </div>
-        <div class="workers-filters">
+        <div class="filters-grid" style="--cols:5">
           <label class="filter-field"><span class="filter-cap">Status</span><select id="workersFilterStatus" onchange="renderWorkersPage()">
             <option value="">All statuses</option>
             <option value="active">Active</option>
@@ -626,9 +644,9 @@
       <div class="page-header">
         <div>
           <div class="page-title"><i class="ti ti-lock"></i> Admin</div>
-          <div class="page-sub" id="adminPageSub">Punch log — view, edit and export all attendance records</div>
+          <div class="page-sub" id="adminPageSub">Choose a section</div>
         </div>
-        <div style="display:flex;gap:8px" id="adminHeaderActions">
+        <div class="head-actions" id="adminHeaderActions" style="display:none">
           <button class="btn sm" onclick="ensureAllPunches().then(exportPunchCSV)"><i class="ti ti-upload" style="color:var(--green)"></i> Export CSV</button>
           <button class="btn sm red" id="adminClearLogBtn" onclick="ensureAllPunches().then(clearPunchLog)"><i class="ti ti-trash"></i> Clear Log</button>
         </div>
@@ -639,42 +657,42 @@
            Firms/Errors/Users/Profile visibility is set per-role by
            setupAdminPaneBar() below, mirroring what openAdminScreen() used
            to gate for its own gear-button modal. -->
-      <div style="display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border2);padding-bottom:10px;flex-wrap:wrap" id="adminPaneBar">
+      <div class="admin-pane-bar" id="adminPaneBar">
         <button class="btn sm" id="adminPaneBtn_punchlog" onclick="switchAdminPane('punchlog')"><i class="ti ti-clipboard-text"></i> Punch Log</button>
         <button class="btn sm" id="adminPaneBtn_firms" onclick="switchAdminPane('firms')"><i class="ti ti-building-skyscraper"></i> Firms</button>
         <button class="btn sm" id="adminPaneBtn_users" onclick="switchAdminPane('users')"><i class="ti ti-users"></i> Users</button>
         <button class="btn sm" id="adminPaneBtn_errors" onclick="switchAdminPane('errors')"><i class="ti ti-alert-circle"></i> Errors</button>
         <button class="btn sm" id="adminPaneBtn_timings" onclick="switchAdminPane('timings')"><i class="ti ti-stopwatch"></i> Timings</button>
-        <button class="btn sm" id="adminPaneBtn_profile" onclick="switchAdminPane('profile')"><i class="ti ti-building"></i> Profile</button>
       </div>
 
-      <div id="adminPane_punchlog">
+      <div id="adminPane_none" style="color:var(--text3);font-size:13px;padding:8px 0">Choose a section above — nothing is loaded until you do.</div>
+      <div id="adminPane_punchlog" style="display:none">
       <!-- Stats row -->
       <div id="adminStats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:20px"></div>
 
-      <!-- View toggle -->
-      <div style="display:flex;gap:6px;margin-bottom:16px">
-        <button id="adminViewLog" class="btn sm" onclick="setAdminView('log')" style="background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)"><i class="ti ti-clipboard-text"></i> Punch Log</button>
+      <!-- View toggle + count -->
+      <div class="admin-log-bar">
+        <button id="adminViewLog" class="btn sm" onclick="setAdminView('log')" style="background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)"><i class="ti ti-clipboard-text"></i> Log</button>
         <button id="adminViewClients" class="btn sm" onclick="setAdminView('clients')"><i class="ti ti-users"></i> By Client</button>
+        <span id="adminCount" class="workers-count"></span>
       </div>
 
       <!-- Filter bar (punch log view) -->
-      <div id="adminFilters" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:flex-end">
-        <label class="filter-field"><span class="filter-cap">Worker</span><select id="adminFilterWorker" onchange="renderAdmin()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none">
+      <div id="adminFilters" class="filters-grid" style="--cols:4;margin-bottom:12px">
+        <label class="filter-field"><span class="filter-cap">Worker</span><select id="adminFilterWorker" onchange="renderAdmin()">
           <option value="">All workers</option>
         </select></label>
-        <label class="filter-field"><span class="filter-cap">Client</span><select id="adminFilterClient" onchange="renderAdmin()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none">
+        <label class="filter-field"><span class="filter-cap">Client</span><select id="adminFilterClient" onchange="renderAdmin()">
           <option value="">All clients</option>
         </select></label>
-        <label class="filter-field"><span class="filter-cap">Date</span><select id="adminFilterDate" onchange="renderAdmin()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none">
+        <label class="filter-field"><span class="filter-cap">Date</span><select id="adminFilterDate" onchange="renderAdmin()">
           <option value="">All dates</option>
         </select></label>
-        <label class="filter-field"><span class="filter-cap">Type</span><select id="adminFilterType" onchange="renderAdmin()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none">
+        <label class="filter-field"><span class="filter-cap">Type</span><select id="adminFilterType" onchange="renderAdmin()">
           <option value="">All types</option>
           <option value="in">Punch IN</option>
           <option value="out">Punch OUT</option>
         </select></label>
-        <span id="adminCount" style="font-size:13px;color:var(--text2);margin-left:auto"></span>
       </div>
 
       <!-- Client logs view -->
@@ -712,7 +730,7 @@
            renderFirmsList()/loadErrorsList() (parametrized) and
            openMyFirmForm() rather than re-implementing any of them. -->
       <div id="adminPane_firms" style="display:none">
-        <div style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <div id="adminFirmsSuperBar" style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-bottom:10px">
           <button class="btn sm" onclick="toggleSuperadminAccounting()"><i class="ti ti-cash"></i> Payable summary (all firms)</button>
           <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> New firm</button>
         </div>
@@ -723,8 +741,8 @@
         <div id="adminUsersWrap"></div>
       </div>
       <div id="adminPane_errors" style="display:none">
-        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:10px">
-          <select id="adminErrorsPeriod" onchange="loadErrorsList('adminErrorsList')" style="flex:1;min-width:150px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none"></select>
+        <div class="pane-toolbar">
+          <select id="adminErrorsPeriod" onchange="loadErrorsList('adminErrorsList')"></select>
           <button class="btn sm" onclick="copyAllErrors('adminErrorsList')"><i class="ti ti-copy"></i> Copy all</button>
           <button class="btn sm" onclick="printLogPane('errors')"><i class="ti ti-printer"></i> Print</button>
           <button class="btn sm" onclick="loadErrorsList('adminErrorsList')"><i class="ti ti-refresh"></i> Refresh</button>
@@ -732,17 +750,13 @@
         <div id="adminErrorsList"></div>
       </div>
       <div id="adminPane_timings" style="display:none">
-        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:10px">
-          <select id="adminTimingsPeriod" onchange="loadTimingsPane()" style="flex:1;min-width:150px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none"></select>
+        <div class="pane-toolbar">
+          <select id="adminTimingsPeriod" onchange="loadTimingsPane()"></select>
           <button class="btn sm" onclick="copyAllTimings()"><i class="ti ti-copy"></i> Copy all</button>
           <button class="btn sm" onclick="printLogPane('timings')"><i class="ti ti-printer"></i> Print</button>
           <button class="btn sm" onclick="loadTimingsPane()"><i class="ti ti-refresh"></i> Refresh</button>
         </div>
         <div id="adminTimingsWrap"></div>
-      </div>
-      <div id="adminPane_profile" style="display:none">
-        <div style="color:var(--text2);font-size:13px;margin-bottom:10px">Company profile data used on Form 101.</div>
-        <button class="btn accent" onclick="openMyFirmForm()"><i class="ti ti-building"></i> Edit company profile</button>
       </div>
     </div>
 
@@ -1417,7 +1431,7 @@ function switchTab(tab){
   // runs here, on an actual tab switch — NOT from render()'s own
   // per-mutation renderAdmin() call below, or clicking into e.g. the Firms
   // pane would get silently reset back to Punch Log on every unrelated save.
-  if(tab==='admin')      { renderAdmin(); setupAdminPaneBar(); }
+  if(tab==='admin')      setupAdminPaneBar();
   if(tab==='dashboard')  renderDashboard();
   if(tab==='accounting') renderAccounting();
 }
@@ -4139,6 +4153,9 @@ function gateApp(runInitApp){
   }
   renderAccountControl(s);
   runInitApp();
+  // A fresh firm profile for this device's Form 101s (see refreshTenantProfile),
+  // once the Firebase sign-in has had time to come back.
+  setTimeout(() => refreshTenantProfile(0), 4000);
 }
 
 // Small titlebar control: who's logged in, and for a super-admin currently
@@ -4217,6 +4234,7 @@ function renderFirmsRows(listEl, tenants){
 async function renderFirmsList(targetId){
   __firmsListTarget = targetId || 'firmsList';
   const listEl = document.getElementById(__firmsListTarget);
+  if(getSession()?.role !== 'superadmin'){ renderOwnFirmCard(listEl); return; }
   const cached = loadFirmsCache();
   const isLanding = __firmsListTarget==='firmsList';
   if(cached){ renderFirmsRows(listEl, cached); if(isLanding) markFirstContent(); }
@@ -4230,6 +4248,43 @@ async function renderFirmsList(targetId){
     renderFirmsRows(listEl, tenants);
     if(isLanding) markFreshContent('firms');
   }catch(e){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
+}
+
+// A firm owner's Firms pane: their own firm only — the fields Form 101
+// prints, what is missing, and Edit (openMyFirmForm). Drawn from the cached
+// profile, then from a fresh read.
+async function renderOwnFirmCard(listEl){
+  const draw = p => {
+    p = p || {};
+    const missing = firmProfileMissing(p);
+    const addr = [[p.street, p.streetNumber].filter(Boolean).join(' '), p.city].filter(Boolean).join(', ');
+    const row = (k, v) => `<div style="display:flex;gap:8px;font-size:13px"><span style="color:var(--text3);min-width:130px">${k}</span><span>${v ? esc(v) : '<span style="color:#ffb020">—</span>'}</span></div>`;
+    listEl.innerHTML = `<div style="padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:6px">
+      ${row('Название фирмы', p.companyName)}${row('מספר תיק ניכויים', p.deductionsFileNumber)}${row('Телефон', p.phone)}${row('Адрес', addr)}
+      ${missing.length ? `<div style="font-size:12px;color:#ffb020"><i class="ti ti-alert-triangle"></i> В Форме 101 останутся пустыми: ${esc(missing.join(', '))}</div>` : `<div style="font-size:12px;color:var(--green)"><i class="ti ti-check"></i> Всё, что нужно для Формы 101, заполнено</div>`}
+      <div><button class="btn sm accent" onclick="openMyFirmForm()"><i class="ti ti-pencil"></i> Редактировать</button></div>
+    </div>`;
+  };
+  draw(activeTenantProfile());
+  const p = await refreshTenantProfile(0);
+  if(p && listEl.isConnected) draw(p);
+}
+// Form 101's employer block comes from the session's copy of the firm
+// profile. A login keeps the copy it got at sign-in, so a change made
+// elsewhere (the super-admin's Firms list) would not reach this device's
+// PDFs: refresh it from the server when the app opens and before a PDF is
+// built, at most once per maxAgeMs (0 = now).
+let __profileFetchedAt = 0;
+async function refreshTenantProfile(maxAgeMs){
+  const s = getSession();
+  const t = s && (s.viewingTenantId || s.tenantId);
+  if(!t) return activeTenantProfile();
+  if(maxAgeMs && Date.now() - __profileFetchedAt < maxAgeMs) return activeTenantProfile();
+  try{
+    const json = await (await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'loadTenantProfile', ...gsAuth() }) })).json();
+    if(json && json.profile){ __profileFetchedAt = Date.now(); cacheTenantProfile(t, json.profile); refreshFirmProfileWarnings(); return json.profile; }
+  }catch(e){}
+  return activeTenantProfile();
 }
 
 // Super-admin-only diagnostics screen (see errorsScreen's own HTML comment
@@ -4259,16 +4314,19 @@ function setupAdminPaneBar(){
   if(!s) return;
   const isSuper = s.role === 'superadmin';
   const isAdminRole = isSuper || s.role === 'tenant_admin';
-  document.getElementById('adminPaneBtn_firms').style.display = isSuper ? '' : 'none';
+  // Firms: every firm for the super-admin; the firm's own card for its owner
+  // (the one place to edit the company data Form 101 prints).
+  document.getElementById('adminPaneBtn_firms').style.display = isAdminRole ? '' : 'none';
+  const superBar = document.getElementById('adminFirmsSuperBar');
+  if(superBar) superBar.style.display = isSuper ? 'flex' : 'none';
   document.getElementById('adminPaneBtn_errors').style.display = isSuper ? '' : 'none';
   document.getElementById('adminPaneBtn_timings').style.display = isSuper ? '' : 'none';
   document.getElementById('adminPaneBtn_users').style.display = isAdminRole ? '' : 'none';
-  document.getElementById('adminPaneBtn_profile').style.display = isAdminRole ? '' : 'none';
   // Clear Log deletes from the database — owner/super-admin only, matching
   // deletePunchesByMonths()'s server-side gate.
   const clearBtn = document.getElementById('adminClearLogBtn');
   if(clearBtn) clearBtn.style.display = isAdminRole ? '' : 'none';
-  switchAdminPane('punchlog');
+  switchAdminPane(__adminPane);
   if(isAdminRole) prefetchAdminUsers();
 }
 // Loads the Users list in the background as soon as the Admin tab opens
@@ -4291,14 +4349,20 @@ function prefetchAdminUsers(){
 }
 const ADMIN_PANE_SUBTITLES = {
   punchlog: 'Punch log — view, edit and export all attendance records',
-  firms: 'Firms (super-admin)',
+  firms: 'Firm details — the employer block printed on every Form 101',
   users: 'Staff and supplier logins for this firm',
-  errors: 'Last ~100 client-side errors, every firm',
+  errors: 'Client-side errors by period, every firm',
   timings: 'How long login, app open and scans take (real devices, every firm)',
-  profile: 'Company profile data used on Form 101',
 };
+// The Admin tab opens with no section (adminPane_none): nothing is drawn or
+// loaded until a section button is tapped. The chosen section is kept while
+// the app stays open.
+let __adminPane=null;
 function switchAdminPane(pane){
-  ['punchlog','firms','users','errors','timings','profile'].forEach(p=>{
+  __adminPane=pane||null;
+  const none=document.getElementById('adminPane_none');
+  if(none) none.style.display=__adminPane?'none':'block';
+  ['punchlog','firms','users','errors','timings'].forEach(p=>{
     const el = document.getElementById('adminPane_'+p);
     if(el) el.style.display = p===pane ? 'block' : 'none';
     const btn = document.getElementById('adminPaneBtn_'+p);
@@ -4307,8 +4371,9 @@ function switchAdminPane(pane){
   const actions = document.getElementById('adminHeaderActions');
   if(actions) actions.style.display = pane==='punchlog' ? 'flex' : 'none';
   const sub = document.getElementById('adminPageSub');
-  if(sub) sub.textContent = ADMIN_PANE_SUBTITLES[pane] || '';
-  if(pane==='firms') renderFirmsList('adminFirmsList');
+  if(sub) sub.textContent = ADMIN_PANE_SUBTITLES[pane] || 'Choose a section';
+  if(pane==='punchlog'){ if(_adminView==='clients') renderClientLogs(); else renderAdmin(); }
+  else if(pane==='firms') renderFirmsList('adminFirmsList');
   else if(pane==='errors') loadErrorsList('adminErrorsList');
   else if(pane==='timings') loadTimingsPane();
   else if(pane==='users') renderAdminUsers();
@@ -4931,6 +4996,13 @@ async function submitEditFirm(){
     const __activeSession=getSession();
     const __activeTenantId=__activeSession&&(__activeSession.viewingTenantId||__activeSession.tenantId);
     if(__activeTenantId===__editingFirmTenantId) regenerateAllWorkerDocs();
+    else {
+      // Another firm, edited from the Firms list: its workers aren't loaded
+      // here, so their Form 101s are rebuilt the next time this device opens
+      // that firm (checked in maybeRegenAfterFirmEdit()).
+      try{ localStorage.setItem('form101Regen:'+__editingFirmTenantId,'1'); }catch(e){}
+      showToast('Сохранено. Формы 101 работников этой фирмы обновятся, когда вы её откроете', 5000);
+    }
   }catch(e){ errEl.textContent = 'Сеть недоступна'; }
   finally{ btn.disabled = false; btn.textContent = 'Сохранить'; }
 }
@@ -5172,6 +5244,7 @@ async function loadData(){
       markFreshContent('app');
       setSaveStatus('saved');
       syncPunchesFromGS();
+      maybeRegenAfterFirmEdit();
     } else {
       showToast('Could not load from the server — showing saved data'+(gsLoad.lastError?' ('+gsLoad.lastError.slice(0,80)+')':''),6000);
       retryLoadDataWhenBack();
@@ -5191,7 +5264,7 @@ function retryLoadDataWhenBack(){
     if(document.visibilityState==='hidden' || navigator.onLine===false) return;
     window.removeEventListener('online',again); document.removeEventListener('visibilitychange',again);
     const gd=await gsLoad(); __loadRetryArmed=false;
-    if(gd){ try{ if(applyServerLoad(gd)) showToast('Data loaded'); }catch(e){} markFreshContent('app'); syncPunchesFromGS(); }
+    if(gd){ try{ if(applyServerLoad(gd)) showToast('Data loaded'); }catch(e){} markFreshContent('app'); syncPunchesFromGS(); maybeRegenAfterFirmEdit(); }
   };
   window.addEventListener('online',again); document.addEventListener('visibilitychange',again);
   setTimeout(again,15000);
@@ -6154,7 +6227,7 @@ function setAdminView(view){
   if(view==='log'){
     logBtn.style.cssText='background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)';
     cliBtn.style.cssText='';
-    if(filters) filters.style.display='flex';
+    if(filters) filters.style.display='';
     if(tableWrap) tableWrap.style.display='block';
     if(cliView) cliView.style.display='none';
     renderAdmin();
@@ -6304,6 +6377,7 @@ function _pagedOnScroll(){
 window.addEventListener('scroll', _pagedOnScroll, {capture:true, passive:true});
 
 function renderAdmin(){
+  if(__adminPane!=='punchlog') return; // drawn only while the Punch Log section is open
   const log = getPunchLog();
   const filterWorker = document.getElementById('adminFilterWorker')?.value||'';
   const filterClient = document.getElementById('adminFilterClient')?.value||'';
@@ -6836,7 +6910,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // has a confirmed bug that silently drops a glyph of multi-word RTL
     // (Hebrew) text; PyMuPDF has no such bug. This function still gathers
     // every value exactly as before — only "build the PDF bytes" moved.
-    const profile=activeTenantProfile();
+    const profile=await refreshTenantProfile(5*60*1000);
     firmMissing=firmProfileMissing(profile);
 
     const signDateSrc=(targetWorker&&targetWorker.createdAt)?new Date(targetWorker.createdAt):new Date();
@@ -7096,6 +7170,16 @@ async function regenerateWorkerDoc(workerId){
   }catch(e){ return false; }
 }
 
+// A firm whose details were edited from the Firms list while another firm
+// was open: rebuild its workers' Form 101s once its data is loaded here.
+function maybeRegenAfterFirmEdit(){
+  const s=getSession(), t=s&&(s.viewingTenantId||s.tenantId);
+  if(!t) return;
+  let flag=null; try{ flag=localStorage.getItem('form101Regen:'+t); }catch(e){}
+  if(!flag) return;
+  try{ localStorage.removeItem('form101Regen:'+t); }catch(e){}
+  refreshTenantProfile(0).then(()=>regenerateAllWorkerDocs());
+}
 // Firm-profile edits change every worker's Form 101 employer-details row
 // (section א, פרטי המעסיק — company name/address/phone/deductions number),
 // so every already-generated document is now stale, not just the one worker
