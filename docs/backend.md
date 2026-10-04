@@ -163,6 +163,8 @@ Rules:
 
 Conditions for `concurrency` > 1: requests run in threads of one process, so a handler keeps no per-request state in globals, and a shared object is created once under a lock (`_db()` with `threading.Lock`). A new function that receives parallel calls copies these settings and conditions.
 
+**Proposing it.** When new work brings a similar case (several independent AI or server calls, sent one after another, or a function that will receive parallel calls), the pattern is proposed to the user in chat first — what would run at once, which function settings — and applied once they agree.
+
 ## Cloud Functions — `functions/` (codebase `default`, us-central1)
 
 - `fill_form_101` — builds the Form 101 PDF ([form101.md](form101.md)).
