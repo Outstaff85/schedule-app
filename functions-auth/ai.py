@@ -92,27 +92,37 @@ def build_request(action, body, model, align_model):
     return None, "Unknown action"
 
 
-def _find_field_request(body, model):
-    """One field searched for on the worker's page photos: the field key and
-    document type pick the label and hint from ai_prompts.json (never text
-    from the caller)."""
-    spec = PROMPTS["findFieldFields"].get(str(body.get("field") or ""))
-    if not spec:
-        return None, "Unknown field"
-    doc = "passport" if body.get("docType") == "passport" else "israeli_id"
-    if doc == "passport" and isinstance(spec.get("passport"), dict):
+def _field_spec(key, doc):
+    spec = PROMPTS["findFieldFields"].get(str(key or ""))
+    if spec and doc == "passport" and isinstance(spec.get("passport"), dict):
         spec = spec["passport"]
+    return spec
+
+
+def _find_field_request(body, model):
+    """Fields searched for on the worker's page photos: "field" (one) or
+    "fields" (several, one request). The field keys and document type pick
+    the labels and hints from ai_prompts.json (never text from the caller)."""
+    doc = "passport" if body.get("docType") == "passport" else "israeli_id"
+    many = isinstance(body.get("fields"), list)
+    keys = [str(k) for k in body.get("fields")] if many else [body.get("field")]
+    specs = [(k, _field_spec(k, doc)) for k in keys]
+    if not specs or any(not sp for _, sp in specs):
+        return None, "Unknown field"
     pages = [p for p in (body.get("images") or []) if isinstance(p, dict) and p.get("image")][:FIND_MAX_PAGES]
     if not pages:
         return None, E_NO_IMAGE
-    text = (PROMPTS["findField"].replace("{N}", str(len(pages))).replace("{DOC}", PROMPTS["findFieldDoc"][doc])
-            .replace("{LABEL}", spec["label"]).replace("{HINT}", spec["hint"]))
+    head = PROMPTS["findFields" if many else "findField"].replace("{N}", str(len(pages))).replace("{DOC}", PROMPTS["findFieldDoc"][doc])
+    if many:
+        text = head.replace("{LIST}", "\n".join('"' + k + '": ' + sp["label"] + " — " + sp["hint"] for k, sp in specs))
+    else:
+        text = head.replace("{LABEL}", specs[0][1]["label"]).replace("{HINT}", specs[0][1]["hint"])
     content = [{"type": "text", "text": text}]
     for i, p in enumerate(pages):
         content.append({"type": "text", "text": "Photo " + str(i) + ":"})
         content.append(_image(p))
     content.append({"type": "text", "text": "Return the JSON object only."})
-    return {"model": model, "max_tokens": 300, "messages": [{"role": "user", "content": content}]}, {}
+    return {"model": model, "max_tokens": 300 + 150 * (len(specs) - 1), "messages": [{"role": "user", "content": content}]}, {}
 
 
 def _first_object(text):
@@ -152,9 +162,13 @@ def parse_reply(action, status, raw):
     if action == "aiDetectAlign":
         return {"ok": True, "align": parsed}
     if action == "aiFindField":
-        found = parsed if isinstance(parsed, dict) else {}
-        return {"ok": True, "found": {"value": str(found.get("value") or "").strip(), "page": found.get("page"),
-                                      "box": found.get("box") if isinstance(found.get("box"), dict) else None}}
+        def one(found):
+            found = found if isinstance(found, dict) else {}
+            return {"value": str(found.get("value") or "").strip(), "page": found.get("page"),
+                    "box": found.get("box") if isinstance(found.get("box"), dict) else None}
+        if isinstance(parsed, dict) and isinstance(parsed.get("fields"), dict):
+            return {"ok": True, "found": {str(k): one(v) for k, v in parsed["fields"].items()}}
+        return {"ok": True, "found": one(parsed)}
     if action == "aiReadHoursTable":
         entries = parsed.get("entries") if isinstance(parsed, dict) else None
         return {"ok": True, "entries": entries if isinstance(entries, list) else []}

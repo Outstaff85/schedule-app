@@ -692,7 +692,9 @@ async function verifyIdChecksum(parsed,b64,mediaType){
   if(!parsed||parsed.type!=='israeli_id'||!parsed.idNo) return parsed;
   if(parsed.idNo) parsed.idNo=_normScanDigits(parsed.idNo);
   if(isValidIsraeliId(parsed.idNo)){ parsed.idChecksumOk=true; return parsed; }
-  if(parsed.fieldBoxes&&parsed.fieldBoxes.idNo){
+  // Not when verifyDigitFields already re-read this same box zoomed: a second
+  // read of the same crop just repeats the first (one AI call saved).
+  if(parsed.fieldBoxes&&parsed.fieldBoxes.idNo&&!parsed.__idZoomed){
     const retry=await verifyField(b64,mediaType,parsed.fieldBoxes.idNo,'digits9');
     const retryN=retry&&_normScanDigits(retry);
     if(retryN&&/^\d{9}$/.test(retryN)) parsed.idNo=retryN;
@@ -728,27 +730,31 @@ async function verifyDigitFields(parsed,b64,mediaType){
     // same way whether this job ran or not — nothing here weakens that check,
     // it just avoids redundantly re-confirming a number that's already
     // provably consistent.
-    if(parsed.fieldBoxes.idNo && !isValidIsraeliId(parsed.idNo)) jobs.push({field:'idNo',kind:'digits9'});
+    if(parsed.fieldBoxes.idNo && !isValidIsraeliId(parsed.idNo)){ jobs.push({field:'idNo',kind:'digits9'}); parsed.__idZoomed=true; }
     if(parsed.fieldBoxes.dob)  jobs.push({field:'dob',kind:'date'});
   } else if(parsed.type==='passport'){
     if(parsed.fieldBoxes.passportNo) jobs.push({field:'passportNo',kind:'passportNo'});
     if(parsed.fieldBoxes.dob)        jobs.push({field:'dob',kind:'date'});
     if(parsed.fieldBoxes.expiry)     jobs.push({field:'expiry',kind:'date'});
   }
-  _pushTextJobs(parsed,jobs);
+  _pushUnsureJobs(parsed,jobs);
   if(!jobs.length) return parsed;
   const values=await verifyFieldsBatch(jobs.map(j=>({field:j.field,kind:j.kind,box:parsed.fieldBoxes[j.field]})),b64,mediaType);
   jobs.forEach(j=>_applyZoomedRead(parsed,j,values[j.field]));
   return parsed;
 }
-// Text fields re-read zoomed too (2026-10-04): every name and address field
-// the read boxed (fieldBoxes) goes into the same batched aiVerifyFields call
-// as the digits — Hebrew names/streets/towns as hebrewText, a passport's
-// Latin names as latinName, the house number as houseNumber.
+// The important digits above are always re-read zoomed. A name or address
+// field is re-read zoomed only when the read itself listed it as unsure
+// (parsed.unsure: glare, blur, faint print) and boxed it — in the same
+// batched aiVerifyFields call: Hebrew names/streets/towns as hebrewText, a
+// passport's Latin names as latinName, the house number as houseNumber. A
+// field left empty is searched for after the scan instead
+// (autoFindMissingScanFields in the worker modal).
 const _TEXT_VERIFY_FIELDS=['given','surname','address','houseNumber','city'];
-function _pushTextJobs(parsed,jobs){
+function _pushUnsureJobs(parsed,jobs){
+  const unsure=Array.isArray(parsed.unsure)?parsed.unsure:[];
   for(const f of _TEXT_VERIFY_FIELDS){
-    if(!parsed.fieldBoxes||!parsed.fieldBoxes[f]||!String(parsed[f]||'').trim()) continue;
+    if(!unsure.includes(f)||!parsed.fieldBoxes||!parsed.fieldBoxes[f]||!String(parsed[f]||'').trim()) continue;
     const kind=f==='houseNumber'?'houseNumber':(parsed.type==='passport'&&(f==='given'||f==='surname'))?'latinName':'hebrewText';
     jobs.push({field:f,kind});
   }
@@ -770,11 +776,11 @@ function _applyZoomedRead(parsed,j,raw){
   if(before&&norm(before)!==norm(val)) (parsed.__uncertain=parsed.__uncertain||[]).includes(j.field)||parsed.__uncertain.push(j.field);
   parsed[j.field]=val;
 }
-// The ספח read's own address boxes, re-read zoomed the same way.
+// The ספח read's address fields it was unsure of, re-read zoomed the same way.
 async function verifySefachFields(parsed,b64,mediaType){
   if(!parsed||!parsed.fieldBoxes) return parsed;
   const jobs=[];
-  _pushTextJobs(parsed,jobs);
+  _pushUnsureJobs(parsed,jobs);
   if(!jobs.length) return parsed;
   const values=await verifyFieldsBatch(jobs.map(j=>({field:j.field,kind:j.kind,box:parsed.fieldBoxes[j.field]})),b64,mediaType);
   jobs.forEach(j=>_applyZoomedRead(parsed,j,values[j.field]));
@@ -2007,12 +2013,14 @@ function openWorkerModalFromScan(p){
       window.__aiRescannedWorkerId=rescanId;
       showWorkerModal({...workers[idx],...ocrFields});
       if(typeof applyWorkerDraft==='function') applyWorkerDraft(); // a rescan started from the open modal
+      if(typeof autoFindMissingScanFields==='function') autoFindMissingScanFields();
       return;
     }
   }
   editingWorkerIdx=null;
   showWorkerModal({...blankWorkerDefaults(),...ocrFields});
   if(typeof applyWorkerDraft==='function') applyWorkerDraft();
+  if(typeof autoFindMissingScanFields==='function') autoFindMissingScanFields();
 }
 
 // Flattens the quadrilateral the user positioned into a plain rectangular

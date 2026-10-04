@@ -253,3 +253,14 @@ def test_text_kinds_for_zoomed_reads():
 def test_reads_ask_for_boxes_of_every_field():
     assert "given, surname, address, houseNumber, city" in ai.PROMPTS["readDoc"]
     assert "address, houseNumber, city that you found a value for" in ai.PROMPTS["readSefach"]
+    assert '"unsure" array' in ai.PROMPTS["readDoc"] and '"unsure" array' in ai.PROMPTS["readSefach"]
+
+
+def test_find_several_fields_in_one_request():
+    reply = '{"content":[{"type":"text","text":"{\\"fields\\":{\\"city\\":{\\"value\\":\\"חיפה\\",\\"page\\":1},\\"address\\":{\\"value\\":\\"\\"}}}"}]}'
+    r, sent = _find({"fields": ["city", "address"], "images": [{"image": "F"}, {"image": "S"}]}, reply)
+    assert r == {"ok": True, "found": {"city": {"value": "חיפה", "page": 1, "box": None},
+                                       "address": {"value": "", "page": None, "box": None}}}
+    text = sent[0]["messages"][0]["content"][0]["text"]
+    assert len(sent) == 1 and '"city": ישוב' in text and '"address": רחוב' in text and sent[0]["max_tokens"] == 450
+    assert _find({"fields": ["city", "salary"], "images": [{"image": "F"}]})[0] == {"error": "Unknown field"}

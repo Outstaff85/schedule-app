@@ -1660,38 +1660,56 @@ async function workerScanPages(w){
   return __scanPagesCache[w.assetsFileId]={front:{b64:j.scanB64,mediaType:j.scanMediaType||'image/jpeg'},
     others:(j.extraPages||[]).filter(p=>p&&p.b64)};
 }
-// Searches the worker's page photos for one field (aiFindField, the field's
-// own page first); a value found with a box is re-read zoomed (verifyField)
-// and the zoomed read wins. Resolves {value, unsure} — unsure when the two
-// reads disagreed — with value '' when not found; null when there is no scan
-// to search.
-async function findScanField(w,key,docType){
-  const f=SCAN_FIND_FIELDS[key];
+// Searches the worker's page photos for one or more fields in ONE aiFindField
+// request (the photos are the expensive part, so they go once). Each value
+// found with a box is re-read zoomed — one batched aiVerifyFields per page —
+// and the zoomed read wins. Resolves {key: {value, unsure}} (unsure: the two
+// reads disagreed; value '' when not found), or null when there is no scan.
+async function findScanFields(w,keys,docType){
   const pages=await workerScanPages(w);
-  if(!pages) return null;
+  if(!pages||!keys.length) return null;
   await ensureScanPipelineLoaded();
-  const list=(f.page==='sefach'?[...pages.others,pages.front]:[pages.front,...pages.others]).filter(Boolean).slice(0,4);
-  const j=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'aiFindField',...gsAuth(),field:key,docType,
+  // The fields' own page first: ספח pages for the address, else the front.
+  const sefachFirst=keys.every(k=>SCAN_FIND_FIELDS[k].page==='sefach');
+  const list=(sefachFirst?[...pages.others,pages.front]:[pages.front,...pages.others]).filter(Boolean).slice(0,4);
+  const j=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'aiFindField',...gsAuth(),fields:keys,docType,
     images:list.map(p=>({image:p.b64,mediaType:p.mediaType}))})})).json();
   if(j&&j.error) console.warn('aiFindField failed: '+j.error);
-  let v=String(j&&j.ok&&j.found&&j.found.value||'').trim();
-  if(!v) return {value:'',unsure:false};
-  const kind=docType==='passport'&&f.passportKind||f.kind;
-  const pg=list[j.found.page], box=j.found.box;
-  let unsure=false;
-  if(kind&&pg&&box){
-    try{
-      const z=String(await verifyField(pg.b64,pg.mediaType,box,kind)||'').replace(/\s+/g,' ').trim();
-      const norm=x=>x.replace(/[\s.\/-]/g,'').toUpperCase();
-      if(z){ unsure=norm(z)!==norm(v); v=z; }
-    }catch(e){ console.error(e); }
+  const found=(j&&j.ok&&j.found)||{};
+  const out={}, zoom=new Map(); // page index -> zoom jobs
+  for(const k of keys){
+    const f=SCAN_FIND_FIELDS[k], hit=found[k]||{};
+    out[k]={value:String(hit.value||'').trim(),unsure:false};
+    const kind=docType==='passport'&&f.passportKind||f.kind;
+    if(out[k].value&&kind&&hit.box&&list[hit.page]){
+      if(!zoom.has(hit.page)) zoom.set(hit.page,[]);
+      zoom.get(hit.page).push({field:k,kind,box:hit.box});
+    }
   }
-  if(key==='docId'&&docType!=='passport') v=_normScanDigits(v);
-  else if(key==='docId') v=v.replace(/\s/g,'').toUpperCase();
-  if(key==='docDob') v=_normScanDate(v)||v;
-  if(key==='docSex') v=/^[mז]/i.test(v)?'M':/^[fנ]/i.test(v)?'F':'';
-  if(key==='houseNumber') v=v.replace(/\s/g,'');
-  return {value:v,unsure};
+  const norm=x=>String(x||'').replace(/[\s.\/-]/g,'').toUpperCase();
+  await Promise.all([...zoom].map(async([pi,jobs])=>{
+    try{
+      const vals=await verifyFieldsBatch(jobs,list[pi].b64,list[pi].mediaType);
+      for(const jb of jobs){
+        const z=String(vals[jb.field]||'').replace(/\s+/g,' ').trim();
+        if(z){ out[jb.field].unsure=norm(z)!==norm(out[jb.field].value); out[jb.field].value=z; }
+      }
+    }catch(e){ console.error(e); }
+  }));
+  for(const k of keys){
+    let v=out[k].value;
+    if(k==='docId'&&docType!=='passport') v=_normScanDigits(v);
+    else if(k==='docId') v=v.replace(/\s/g,'').toUpperCase();
+    if(k==='docDob') v=_normScanDate(v)||v;
+    if(k==='docSex') v=/^[mז]/i.test(v)?'M':/^[fנ]/i.test(v)?'F':'';
+    if(k==='houseNumber') v=v.replace(/\s/g,'');
+    out[k].value=v;
+  }
+  return out;
+}
+async function findScanField(w,key,docType){
+  const r=await findScanFields(w,[key],docType);
+  return r&&r[key];
 }
 // Worker modal: fields whose two scan reads disagreed (w.__scanCheck, from
 // the scan) get an amber frame and "check" note until edited.
@@ -1745,15 +1763,40 @@ function _unmarkScanField(el){
 function _scanFieldTyped(e){ if(String(e.currentTarget.value||'').trim()) _unmarkScanField(e.currentTarget); }
 async function _scanFieldTap(e){
   const el=e.currentTarget;
-  if(el.dataset.scanBusy) return;
-  if(String(el.value||'').trim()){ _unmarkScanField(el); return; }
-  if(el.tagName==='SELECT') e.preventDefault();
-  const key=el.dataset.scanField;
-  el.dataset.scanBusy='1'; el.classList.add('scan-busy'); el.readOnly=true;
-  if(el.tagName!=='SELECT') el.placeholder='מחפש בסריקה…';
+  if(el.tagName==='SELECT'&&!el.dataset.scanBusy&&!String(el.value||'').trim()) e.preventDefault();
+  return _searchScanField(el);
+}
+// Second pass right after a scan: every field the scan left empty is
+// searched for on its own (aiFindField + zoomed re-read), as if tapped. A
+// field still not found keeps its frame and the "not found" hint.
+// All empty fields go in one search. Street / house number / city are left
+// out when the scan has no page besides the front (no ספח to find them on).
+async function autoFindMissingScanFields(){
   const w=editingWorkerIdx!==null?workers[editingWorkerIdx]:null;
-  let r=null;
-  try{ r=await findScanField(w,key,__wDocType); }catch(err){ console.error(err); }
+  const pages=workerScanLive(w)?{others:(window.__aiPacketOtherPages||[]).filter(p=>p&&p.b64)}:null;
+  const els=[...document.querySelectorAll('#workerModal .scan-missing')]
+    .filter(el=>!(pages&&!pages.others.length&&SCAN_FIND_FIELDS[el.dataset.scanField].page==='sefach'));
+  return _searchScanFields(els);
+}
+function _searchScanField(el){ return _searchScanFields([el]); }
+async function _searchScanFields(els){
+  els=els.filter(el=>{
+    if(el.dataset.scanBusy) return false;
+    if(String(el.value||'').trim()){ _unmarkScanField(el); return false; }
+    return true;
+  });
+  if(!els.length) return;
+  for(const el of els){
+    el.dataset.scanBusy='1'; el.classList.add('scan-busy'); el.readOnly=true;
+    if(el.tagName!=='SELECT') el.placeholder='מחפש בסריקה…';
+  }
+  const w=editingWorkerIdx!==null?workers[editingWorkerIdx]:null;
+  let res=null;
+  try{ res=await findScanFields(w,els.map(el=>el.dataset.scanField),__wDocType); }catch(err){ console.error(err); }
+  for(const el of els) _applyScanFieldResult(el,res&&res[el.dataset.scanField]);
+}
+function _applyScanFieldResult(el,r){
+  const key=el.dataset.scanField;
   el.readOnly=false; delete el.dataset.scanBusy;
   if(!document.body.contains(el)) return; // the modal was closed or redrawn meanwhile
   if(r&&r.value){
