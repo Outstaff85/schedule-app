@@ -128,8 +128,9 @@ The scan images stay in `__aiScanImage` / `__aiPacketOtherPages` for the upload.
 ## Image geometry helpers
 
 - `warpQuadImage(b64, mediaType, quadPx)` → `warpQuadToRect()` — a true perspective warp (homography, bilinear sampling), long edge capped at 1568 px, JPEG 0.92.
-- `refineQuadCorners()` snaps an approximate quad to real edges on a ≤1200 px copy. Searching outward, it takes the first edge strong enough, not the strongest one in the window. A side with a weak signal keeps the original corners.
-- `finalTightenPass(img)` checks each of the 4 sides independently from a 3 % margin (`_scanSideEdge`, median of 16 samples) and trims a thin background sliver. Nothing changes when no confident edge is found.
+- **Card edge test** (`_edgeTools`): a colour jump counts as the card's edge only when the strip just inside it (3–10 px) has the card's colour (the median colour of the card's middle) and the strips outside it (3–10 px and 14–24 px) do not. Printed text near the edge (the ID front's header line and vertical number) fails it, and so does table clutter.
+- `refineQuadCorners()` snaps an approximate quad to real edges on a ≤1200 px copy. For each of 20 samples per side it searches ±(4 % + 6 px) from the guess for the nearest jump that passes the card edge test, then takes the strongest jump within 4 px. Lines are fitted robustly (refit on inliers); a side with fewer than 40 % of its samples on one line keeps the AI's corners.
+- `finalTightenPass(img)` checks each of the 4 sides independently (`_tightenSide`): 24 samples go from the image border inward (at most 6 %) and take the first jump that passes the card edge test. The side is trimmed only when at least half the samples found an edge and most agree. An already tight page, or a card the colour of the background, is left untouched.
 - `alignScanImage()` rotates by 0/90/180/270° and crops a box; `rotatePointFrac()` maps corners to match.
 - `cropPortraitAvatar(b64, mediaType, photoBox)` → a square 160 px JPEG (`AVATAR_SIZE`).
 
