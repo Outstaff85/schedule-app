@@ -71,7 +71,7 @@ A separate codebase so a login never loads OpenCV/PyMuPDF. `main.py` holds the H
 | `users_admin` | `Bearer <ID token>`, checked with `check_revoked` | `core.run_action`, `files.run` | a superadmin's firm = `asTenantId`; after `deleteTenant` also `files.delete_tenant_files` |
 | `punch` | the worker link token | `portal.punch_action` | 30 s; `{ping:true}` |
 | `supplier` | `Bearer <ID token>` of a supplier | `portal.supplier_action` | |
-| `ai_read` | `Bearer <ID token>`, role superadmin/tenant_admin/staff | `ai.run` | 300 s, 512 MB; secret `ANTHROPIC_API_KEY`; `{ping:true}` |
+| `ai_read` | `Bearer <ID token>`, role superadmin/tenant_admin/staff | `ai.run` | 300 s, 512 MB, 1 CPU, up to 20 requests at once per instance (a scan's parallel calls share one warm instance); secret `ANTHROPIC_API_KEY`; `{ping:true}` |
 
 Minting custom tokens needs the runtime service account to hold "Service Account Token Creator".
 
