@@ -2545,10 +2545,14 @@ function showWorkerModal(w){
         <input type="time" id="we${i}" value="${w.schedule[i]?.end||'17:00'}"   ${w.schedule[i]?.type==='off'?'disabled style="opacity:0.3"':''}>
       </div>`).join('')}
     </div>
-    <div class="field" style="margin-bottom:6px">
-      <button class="btn sm" type="button" onclick="toggleForm101Wrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
+    <div class="field-row" style="margin-bottom:6px">
+      <button class="btn sm w-toggle" type="button" onclick="toggleForm101Wrap()">
         <span><i class="ti ti-id-badge-2"></i> נתונים נוספים לטופס 101</span>
         <i class="ti ti-chevron-down" id="wForm101Chevron"></i>
+      </button>
+      <button class="btn sm w-toggle" type="button" onclick="toggleExpiryWrap()">
+        <span><i class="ti ti-alert-triangle"></i> התראת תוקף חוזה</span>
+        <i class="ti ti-chevron-down" id="wExpiryChevron"></i>
       </button>
     </div>
     <div id="wForm101Wrap" style="display:none">
@@ -2579,6 +2583,13 @@ function showWorkerModal(w){
         ${w.docUrl?'שינוי שדות אלו (או כתובת/עיר/סוג הכנסה למעלה) יעדכן אוטומטית את המסמך השמור ב-'+DOC_STORE+'.':'קובץ ה-PDF של טופס 101 ייבנה אוטומטית בעת השמירה.'}
       </div>
     </div>
+    <div id="wExpiryWrap" style="display:none">
+      <input type="checkbox" id="wExpiryEnabled" ${w.expiryEnabled?'checked':''} style="display:none">
+      <div class="field-row stack-phone" id="wExpiryFields">
+        <div class="field"><label>חודשים עד למועד האחרון</label><input type="number" id="wExpiryMonths" min="1" step="1" value="${w.expiryMonths||9}"></div>
+        <div class="field"><label>התראה כמה חודשים מראש</label><input type="number" id="wExpiryWarnMonths" min="0" step="1" value="${w.expiryWarnMonths??1}"></div>
+      </div>
+    </div>
     <div class="field-row" style="margin-bottom:6px">
       <button class="btn sm w-toggle" type="button" onclick="toggleWPanel('spouse')"><span><i class="ti ti-heart"></i> <span id="wSpouseLabel">בן/בת הזוג</span></span><i class="ti ti-chevron-down" id="wSpouseChevron"></i></button>
       <button class="btn sm w-toggle" type="button" onclick="toggleWPanel('children')"><span><i class="ti ti-mood-kid"></i> <span id="wChildrenLabel">ילדים</span></span><i class="ti ti-chevron-down" id="wChildrenChevron"></i></button>
@@ -2605,19 +2616,6 @@ function showWorkerModal(w){
     <div id="wChildrenWrap" class="w-panel" style="display:none">
       <div style="font-weight:600;font-size:13px;margin-bottom:8px"><i class="ti ti-mood-kid"></i> ילדים (ספח)</div>
       <div id="wChildrenRows"></div>
-    </div>
-    <div class="field" style="margin-bottom:6px">
-      <button class="btn sm" type="button" onclick="toggleExpiryWrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
-        <span><i class="ti ti-alert-triangle"></i> התראת תוקף חוזה</span>
-        <i class="ti ti-chevron-down" id="wExpiryChevron"></i>
-      </button>
-    </div>
-    <div id="wExpiryWrap" style="display:none">
-      <input type="checkbox" id="wExpiryEnabled" ${w.expiryEnabled?'checked':''} style="display:none">
-      <div class="field-row stack-phone" id="wExpiryFields">
-        <div class="field"><label>חודשים עד למועד האחרון</label><input type="number" id="wExpiryMonths" min="1" step="1" value="${w.expiryMonths||9}"></div>
-        <div class="field"><label>התראה כמה חודשים מראש</label><input type="number" id="wExpiryWarnMonths" min="0" step="1" value="${w.expiryWarnMonths??1}"></div>
-      </div>
     </div>
     <div class="field" style="margin-top:10px;margin-bottom:10px">
       <label style="display:block;font-size:12px;color:var(--text2);margin-bottom:4px">חתימה</label>
@@ -3289,7 +3287,7 @@ function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
         <span class="k"><i class="ti ti-clock-hour-4"></i> Hours (${esc(monthName)})</span><span class="v" style="font-weight:700;color:${h>0?'var(--green)':'var(--text3)'}">${h.toFixed(1)}h</span>
         <span class="k"><i class="ti ti-building"></i> Clients</span><span class="v">${objs.length?objs.map(badge).join(''):dash}</span>
         <span class="k"><i class="ti ti-truck-delivery"></i> Supplier</span><span class="v">${sup?badge(sup):dash}</span>
-        ${showHr?`<span class="k"><i class="ti ti-user-shield"></i> HR</span><span class="v">${w.hrId?esc(hrNameOf(w.hrId)||'—'):dash}</span>`:''}
+        ${showHr?`<span class="k"><i class="ti ti-user-shield"></i> HR</span><span class="v">${w.hrId?badge({name:hrNameOf(w.hrId)||'—',color:hrColor(w.hrId)}):dash}</span>`:''}
         <span class="k"><i class="ti ti-calendar-event"></i> Start date</span><span class="v">${w.startDate?esc(fmtDMY(w.startDate)):dash}</span>
         <span class="k"><i class="ti ti-files"></i> Documents</span><span class="v">${docStatusSummaryHtml(w)}</span>
       </div>
@@ -3415,7 +3413,7 @@ function openWorkerCard(wi){
         return `<div><i class="ti ti-currency-shekel"></i> ${esc(o.name)}: ₪${r.regRate}/h · OT ₪${r.otRate} · Shabbat ₪${r.shabbatRate}${hasOverride?' <i class="ti ti-star-filled" style="font-size:10px;color:var(--amber)" title="Own rate at this client"></i>':''}</div>`;
       }).join('')}` : `<div><i class="ti ti-building-off"></i> Not assigned to any object</div>`}
       ${sup?`<div><i class="ti ti-truck-delivery"></i> Supplier: <span style="color:${sup.color}">${esc(sup.name)}</span></div>`:''}
-      ${isFirmAdminSession()?`<div><i class="ti ti-user-shield"></i> HR: ${w.hrId?esc(hrNameOf(w.hrId)||'—'):'<span style="color:var(--text3)">none</span>'}</div>`:''}
+      ${isFirmAdminSession()?`<div><i class="ti ti-user-shield"></i> HR: ${w.hrId?`<span style="color:${esc(hrColor(w.hrId))}">${esc(hrNameOf(w.hrId)||'—')}</span>`:'<span style="color:var(--text3)">none</span>'}</div>`:''}
     </div>
     ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
     ${workerDocsSectionHtml(w)}
@@ -4818,6 +4816,12 @@ function hrUsers(){
 function hrNameOf(id){
   const u = hrUsers().find(x => x.id===id);
   return u ? (u.fullName || u.username) : '';
+}
+// Each HR gets a steady color from the client palette (picked by its uid),
+// shown like a supplier's badge on the worker tile and card.
+function hrColor(id){
+  let h=0; for(const ch of String(id||'')) h=(h*31+ch.charCodeAt(0))>>>0;
+  return CLIENT_COLORS[h%CLIENT_COLORS.length];
 }
 function hrWorkerCount(id){ return workers.filter(w => w.hrId===id).length; }
 // Sets the HR of these workers (null = none), saves, and moves their punches.

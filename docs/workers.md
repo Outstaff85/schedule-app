@@ -60,7 +60,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
   
   All filters combine (AND). In client grouping a worker appears under every client they have; in supplier grouping, under one (or "No supplier assigned").
 - **View:** `getWorkersView()` returns `cards` unless `localStorage.workersView === 'list'`; `setWorkersView(v)` stores the choice.
-  - Cards — `renderWorkerCards(box, list, groupBy, stMetaMap, sig)`. Each card shows avatar, name, status, contract and document badges, ID/passport, rate, hours this month, clients, supplier, HR (owner / super-admin only: the HR login's name, `hrNameOf`), start date and document status. Hours come from `workersMonthHours()`, which parses the punch log once, splits it by worker and sums `getWorkerMonthShifts()` — the same shift pairing as payroll.
+  - Cards — `renderWorkerCards(box, list, groupBy, stMetaMap, sig)`. Each card shows avatar, name, status, contract and document badges, ID/passport, rate, hours this month, clients, supplier, HR (owner / super-admin only: the HR login's name as a colored badge like the supplier's, `hrNameOf` / `hrColor` — a steady color picked from `CLIENT_COLORS` by the HR's uid), start date and document status. Hours come from `workersMonthHours()`, which parses the punch log once, splits it by worker and sums `getWorkerMonthShifts()` — the same shift pairing as payroll.
   - List — a table with columns Worker / Status / ID / Objects / Supplier / Phone / Rate / Start / actions (PDF download, delete). A tap on the row opens the worker card; a tap on the card opens the edit form.
   - Clicking a card or row opens `openWorkerCard(wi)`.
 
@@ -115,9 +115,8 @@ One form for add, edit and post-scan review. Labels of every Form 101 field are 
   - **Supplier.** A `<select>` (`wSupplierId`).
   - **Bank details.** A collapsible block (`toggleBankWrap`).
   - **Weekly schedule.** Collapsible (`toggleWeeklySchedule`). It is only written on save if it was opened: a new worker gets all days off, an existing one keeps their shifts.
-  - **Form 101 block.** Collapsible (`toggleForm101Wrap`): income types.
-  - **Spouse and children.** Two buttons side by side under it (`toggleWPanel('spouse'|'children')`), each opening a framed panel: the spouse fields (`#wSpouseWrap`) and the children rows (`#wChildrenWrap`; `renderChildrenRows`, `addChildRow`, `removeChildRow` — the name across, then ID / passport, date of birth and delete on one line). Both are closed when the modal opens; the buttons show "✓" for a filled-in spouse and the number of children (`updateWPanelLabels`). Picking "married" opens the spouse panel (`onWMaritalChange`).
-  - **Contract-term warning.** Collapsible (`toggleExpiryWrap`); opening it enables the warning.
+  - **Form 101 block and contract-term warning.** Two buttons side by side (`toggleForm101Wrap`: income types; `toggleExpiryWrap`: opening it enables the warning), their panels under them.
+  - **Spouse and children.** Two buttons side by side under those (`toggleWPanel('spouse'|'children')`), each opening a framed panel: the spouse fields (`#wSpouseWrap`) and the children rows (`#wChildrenWrap`; `renderChildrenRows`, `addChildRow`, `removeChildRow` — the name across, then ID / passport, date of birth and delete on one line). Both are closed when the modal opens; the buttons show "✓" for a filled-in spouse and the number of children (`updateWPanelLabels`). Picking "married" opens the spouse panel (`onWMaritalChange`).
   - **Signature, notes.** No color picker — a new worker gets the next `WORKER_COLORS` color (`blankWorkerDefaults`), an edited one keeps its color; the signature pad (`wSigCanvas`, see [form101.md](form101.md)); notes; a new punch-link token (`regenerateWorkerToken`).
 
 ### Saving (`saveWorker()`)
