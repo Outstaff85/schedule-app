@@ -35,7 +35,7 @@ There is no separate upload screen: it opens straight on the page queue (`render
 
 ## The AI calls
 
-All of them are sent as `fetch(API_URL, …)`; the dispatcher passes them to the `ai_read` Cloud Function ([backend.md](backend.md) → `ai.py`).
+All of them are sent as `fetch(API_URL, …)`; the dispatcher passes them to the `ai_read` Cloud Function ([backend.md](backend.md) → `ai.py`). Independent calls are sent in parallel, and `ai_read` serves them from one instance — the pattern, client and server, is in [backend.md](backend.md) → Parallel AI calls.
 
 | Action | Model | Used for |
 |---|---|---|

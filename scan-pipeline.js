@@ -1648,6 +1648,10 @@ const isNonIdKind=kind=>kind==='contract'||kind==='other';
 // reads start in the background while the primary's digits are re-verified.
 // Results are still merged strictly in page order with the same needMore
 // rule, so the merged record is identical to the old sequential loop.
+// Pattern (docs/backend.md → Parallel AI calls): independent requests start
+// at once, the code waits only where a step needs a result; ai_read
+// (cpu=1, concurrency=20) serves them from one warm instance. Parallel
+// sending changes the time only, never the number of AI calls.
 async function processAllPendingPages(){
   const queue=(window.__pendingScanPages||[]).slice();
   if(!queue.length) return;

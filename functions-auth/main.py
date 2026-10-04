@@ -186,10 +186,16 @@ def _anthropic_post(url, payload, headers):
     return resp.status_code, resp.text
 
 
-# cpu=1 + concurrency=20: one instance serves a whole scan's parallel calls
-# (align ×2, read, re-check, ספח) — the requests mostly wait on Anthropic.
-# With the default (a third of a CPU, one request per instance) each parallel
-# call needed an instance of its own, and a cold one cost 5-20 s.
+# Pattern: a function that receives parallel AI calls (docs/backend.md →
+# Parallel AI calls). The page sends a scan's independent requests at once
+# (align ×2, read, zoom re-checks, ספח); one warm instance serves them all:
+#   cpu=1          a full CPU (the default third makes cold starts slow)
+#   concurrency=20 up to 20 requests per instance (the default 1 started an
+#                  instance per parallel call, a cold one cost 5-20 s); the
+#                  requests mostly wait on Anthropic, so 20 fit
+#   min_instances  0 (default): an idle function costs nothing
+# Requests run in threads: no per-request state in globals, shared objects
+# are created once under a lock (_db). Copy this for a new such function.
 @https_fn.on_request(cors=_CORS, timeout_sec=300, memory=options.MemoryOption.MB_512, cpu=1, concurrency=20,
                      secrets=[ANTHROPIC_API_KEY])
 def ai_read(req: https_fn.Request) -> https_fn.Response:
