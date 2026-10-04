@@ -1433,25 +1433,38 @@ function finishPageScan(finalImg){
 // (unlike renderScanPagesPrompt()'s card #1) since nothing has been
 // classified as "the primary page" yet at this stage — that only happens
 // once processAllPendingPages() actually reads the documents.
+// Page thumbnails for the queue and review screens: large, each page shown
+// whole (object-fit:contain, so leftover background is visible before
+// saving), a remove ✕ on every page. removeFn is the global called with the
+// page index.
+function _scanPagesGrid(pages,removeFn){
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">
+    ${pages.map((p,i)=>!p?'':`
+      <div style="position:relative;aspect-ratio:4/3;border-radius:10px;overflow:hidden;border:1px solid var(--border2);background:#fff">
+        <img src="data:${esc(p.mediaType)};base64,${esc(p.b64)}" style="width:100%;height:100%;object-fit:contain;display:block">
+        <span style="position:absolute;bottom:4px;left:4px;font-size:12px;background:rgba(0,0,0,0.65);color:#fff;padding:1px 7px;border-radius:5px">${i+1}</span>
+        <button type="button" onclick="${removeFn}(${i})" title="הסר" style="position:absolute;top:4px;right:4px;width:30px;height:30px;border-radius:50%;background:rgba(0,0,0,0.7);color:#fff;border:none;font-size:16px;line-height:1;cursor:pointer;padding:0">✕</button>
+      </div>`).join('')}
+  </div>`;
+}
+// The two actions under the thumbnails, equal size side by side, pinned to
+// the bottom of the scrolling modal.
+function _scanPagesButtons(inputId,mainLabel,mainOnclick,mainDisabled){
+  const st='flex:1;justify-content:center;min-height:46px;font-size:15px';
+  return `<input type="file" id="${inputId}" accept="image/*,application/pdf,.pdf" style="display:none" onchange="onScanFileSelected(this.files[0]); this.value='';">
+    <div style="display:flex;gap:10px;position:sticky;bottom:-1px;background:var(--bg2);padding:8px 0">
+      <button class="btn" type="button" style="${st}" onclick="document.getElementById('${inputId}').click()"><i class="ti ti-plus"></i> הוסף עמוד</button>
+      <button class="btn accent" type="button" style="${st}" ${mainDisabled?'disabled':''} onclick="${mainOnclick}"><i class="ti ti-check"></i> ${mainLabel}</button>
+    </div>`;
+}
 function renderPendingPagesPrompt(){
   const stage=document.getElementById('aiScanStage');
   const pages=window.__pendingScanPages||[];
   stage.innerHTML=`
-    <div style="display:flex;flex-direction:column;gap:10px">
-      <div style="font-size:12px;color:var(--text2)">${pages.length} תמונות ממתינות לעיבוד</div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px">
-        ${pages.map((p,i)=>`
-          <div style="position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--border2);flex-shrink:0">
-            <img src="data:${p.mediaType};base64,${p.b64}" style="width:100%;height:100%;object-fit:cover;display:block">
-            <span style="position:absolute;bottom:1px;left:1px;font-size:9px;background:rgba(0,0,0,0.6);color:#fff;padding:0 3px;border-radius:3px">${i+1}</span>
-            <button type="button" onclick="removePendingScanPage(${i})" style="position:absolute;top:1px;right:1px;width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,0.7);color:#fff;border:none;font-size:10px;line-height:1;cursor:pointer;padding:0">✕</button>
-          </div>`).join('')}
-      </div>
-      <input type="file" id="aiScanFilePending" accept="image/*,application/pdf,.pdf" style="display:none" onchange="onScanFileSelected(this.files[0]); this.value='';">
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn sm" type="button" onclick="document.getElementById('aiScanFilePending').click()"><i class="ti ti-plus"></i> הוסף עמוד</button>
-        <button class="btn sm accent" type="button" ${pages.length?'':'disabled'} onclick="processAllPendingPages()"><i class="ti ti-check"></i> עבד ${pages.length||''} עמודים</button>
-      </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:13px;color:var(--text2)">${pages.length} תמונות ממתינות לעיבוד</div>
+      ${_scanPagesGrid(pages,'removePendingScanPage')}
+      ${_scanPagesButtons('aiScanFilePending','עבד '+(pages.length||'')+' עמודים','processAllPendingPages()',!pages.length)}
     </div>`;
 }
 function removePendingScanPage(i){
@@ -1731,32 +1744,21 @@ async function processAllPendingPages(){
 // contract...) — this goes through onScanFileSelected → the SAME pending-
 // pages queue as the first batch (renderPendingPagesPrompt), not straight
 // back to the server, so "one more page" after review still batches — and a
-// "done" button that hands off to the worker modal. Card #1 (the primary
-// page) has no remove button — removing it would mean restarting the whole
-// session (rescan), which "Отмена"/closing the overlay already covers.
+// "done" button that hands off to the worker modal. Every page has a remove
+// ✕; removing page 1 (the primary) re-queues the rest (removePrimaryScanPage).
 function renderScanPagesPrompt(){
   const stage=document.getElementById('aiScanStage');
   const pages=window.__aiScanPageThumbs||[];
+  const n=pages.filter(Boolean).length;
   stage.innerHTML=`
-    <div style="display:flex;flex-direction:column;gap:10px">
-      <div style="font-size:12px;color:var(--text2)">נסרקו ${pages.filter(Boolean).length} עמוד${pages.filter(Boolean).length===1?'':'ים'}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px">
-        ${pages.map((p,i)=>!p?'':`
-          <div style="position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--border2);flex-shrink:0">
-            <img src="data:${p.mediaType};base64,${p.b64}" style="width:100%;height:100%;object-fit:cover;display:block">
-            <span style="position:absolute;bottom:1px;left:1px;font-size:9px;background:rgba(0,0,0,0.6);color:#fff;padding:0 3px;border-radius:3px">${i+1}</span>
-            ${i>0?`<button type="button" onclick="removeExtraScanPage(${i})" style="position:absolute;top:1px;right:1px;width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,0.7);color:#fff;border:none;font-size:10px;line-height:1;cursor:pointer;padding:0">✕</button>`:''}
-          </div>`).join('')}
-      </div>
-      <input type="file" id="aiScanFileExtra" accept="image/*,application/pdf,.pdf" style="display:none" onchange="onScanFileSelected(this.files[0]); this.value='';">
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn sm" type="button" onclick="document.getElementById('aiScanFileExtra').click()"><i class="ti ti-plus"></i> הוסף עמוד</button>
-        <button class="btn sm accent" type="button" onclick="finishScanPages()"><i class="ti ti-check"></i> סיום</button>
-      </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:13px;color:var(--text2)">נסרקו ${n} עמוד${n===1?'':'ים'}</div>
+      ${_scanPagesGrid(pages,'removeExtraScanPage')}
+      ${_scanPagesButtons('aiScanFileExtra','סיום','finishScanPages()',!n)}
     </div>`;
 }
 function removeExtraScanPage(i){
-  if(i<=0) return; // primary page — not removable here, see comment above
+  if(i===0){ removePrimaryScanPage(); return; }
   window.__aiScanPageThumbs.splice(i,1);
   window.__aiPacketOtherPages.splice(i-1,1);
   if(window.__aiPageParsed) window.__aiPageParsed.splice(i,1);
@@ -1766,6 +1768,19 @@ function removeExtraScanPage(i){
   // recompute the primary record from the pages that are actually still here.
   rebuildPrimaryFromPages();
   renderScanPagesPrompt();
+}
+// Removing page 1 (the primary: names, ID number, portrait) can't be done by
+// splicing — the next page may be a ספח read with no names. The remaining
+// pages go back to the queue as they are and the whole set is read again
+// (processAllPendingPages picks the new primary); with no pages left the
+// scan starts over.
+function removePrimaryScanPage(){
+  const rest=(window.__aiScanPageThumbs||[]).slice(1).filter(Boolean);
+  if(rest.length&&!confirm('להסיר את העמוד הראשי? שאר העמודים ייקראו מחדש.')) return;
+  openAiScan();
+  if(!rest.length) return;
+  window.__pendingScanPages=rest.map(p=>({b64:p.b64,mediaType:p.mediaType}));
+  renderPendingPagesPrompt();
 }
 function finishScanPages(){
   const finalParsed=window.__aiPrimaryParsed||window.__aiParsed;
