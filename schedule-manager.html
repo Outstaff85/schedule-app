@@ -175,6 +175,9 @@
   label.check-chip .chip-hint{font-size:12px;font-weight:400;color:var(--text2);line-height:1.35;}
   .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
   .field-row > *{min-width:0;}
+  .w-toggle{width:100%;display:flex;justify-content:space-between;align-items:center;}
+  .w-panel{border:1px solid var(--border2);border-radius:10px;padding:10px 12px;margin-bottom:12px;}
+  .w-child{padding-bottom:8px;border-bottom:1px solid var(--border);}
   .status-seg{display:inline-flex;border:1px solid var(--border2);border-radius:var(--radius-sm);overflow:hidden;flex-shrink:0;}
   .status-seg button{background:var(--bg3);border:none;color:var(--text2);font-size:12px;font-weight:600;padding:7px 10px;cursor:pointer;font-family:inherit;}
   .status-seg button+button{border-left:1px solid var(--border2);}
@@ -2103,6 +2106,7 @@ function applyWorkerDraft(){
     const cv=document.getElementById('wSigCanvas');
     if(cv){ const im=new Image(); im.onload=()=>{ cv.getContext('2d').drawImage(im,0,0); cv._sigDirty=true; }; im.src=d.sig; }
   }
+  updateWPanelLabels();
   markScanMissingFields();
 }
 
@@ -2191,9 +2195,26 @@ function pickFirstWClientSuggest(){ const m=wClientMatches(); if(m.length) addWC
 // client picker, per request ("отдельная вкладка внутри карточки").
 let __wBankOpen = false;
 // Spouse block in the worker modal is only relevant when married.
+// Spouse and children: framed panels behind two buttons side by side (closed
+// when the modal opens); the buttons say what is filled in.
+function toggleWPanel(which, open){
+  const wrap=document.getElementById(which==='spouse'?'wSpouseWrap':'wChildrenWrap');
+  const chev=document.getElementById(which==='spouse'?'wSpouseChevron':'wChildrenChevron');
+  if(!wrap) return;
+  const show=open!=null?open:wrap.style.display==='none';
+  wrap.style.display=show?'block':'none';
+  if(chev) chev.className='ti ti-chevron-'+(show?'up':'down');
+}
+function updateWPanelLabels(){
+  const sp=document.getElementById('wSpouseLabel'), ch=document.getElementById('wChildrenLabel');
+  const filled=['wSpouseSurname','wSpouseGiven','wSpouseId','wSpouseDob'].some(id=>(document.getElementById(id)?.value||'').trim());
+  if(sp) sp.textContent='בן/בת הזוג'+(filled?' ✓':'');
+  const n=__wChildren.filter(c=>(c.name||c.idNo||c.dob||'').trim()).length;
+  if(ch) ch.textContent='ילדים'+(n?' ('+n+')':'');
+}
+// Married opens the spouse panel.
 function onWMaritalChange(){
-  const wrap=document.getElementById('wSpouseWrap');
-  if(wrap) wrap.style.display=document.getElementById('wMaritalStatus')?.value==='marital_married'?'block':'none';
+  if(document.getElementById('wMaritalStatus')?.value==='marital_married') toggleWPanel('spouse',true);
 }
 function toggleBankWrap(){
   __wBankOpen = !__wBankOpen;
@@ -2339,13 +2360,14 @@ function renderChildrenRows(){
   const wrap=document.getElementById('wChildrenRows');
   if(!wrap) return;
   wrap.innerHTML = __wChildren.map((c,i)=>`
-    <div class="field-row" style="grid-template-columns:2fr 1fr 1fr auto;align-items:end;gap:8px;margin-bottom:6px">
-      <div class="field" style="margin-bottom:0"><label>שם הילד/ה</label><input type="text" value="${esc(c.name||'')}" oninput="__wChildren[${i}].name=this.value"></div>
-      <div class="field" style="margin-bottom:0"><label>ת.ז.</label><input type="text" value="${esc(c.idNo||'')}" oninput="__wChildren[${i}].idNo=this.value"></div>
-      <div class="field" style="margin-bottom:0"><label>תאריך לידה</label><input type="text" placeholder="DD/MM/YYYY" value="${esc(c.dob||'')}" oninput="__wChildren[${i}].dob=this.value"></div>
+    <div class="field-row w-child" style="grid-template-columns:1fr 1fr auto;align-items:end;gap:8px;margin-bottom:8px">
+      <div class="field" style="margin-bottom:0;grid-column:1/-1"><label>שם הילד/ה</label><input type="text" value="${esc(c.name||'')}" oninput="__wChildren[${i}].name=this.value;updateWPanelLabels()"></div>
+      <div class="field" style="margin-bottom:0"><label>ת.ז.</label><input type="text" value="${esc(c.idNo||'')}" oninput="__wChildren[${i}].idNo=this.value;updateWPanelLabels()"></div>
+      <div class="field" style="margin-bottom:0"><label>תאריך לידה</label><input type="text" placeholder="DD/MM/YYYY" value="${esc(c.dob||'')}" oninput="__wChildren[${i}].dob=this.value;updateWPanelLabels()"></div>
       <button class="btn sm" type="button" onclick="removeChildRow(${i})" style="flex-shrink:0"><i class="ti ti-trash"></i></button>
     </div>`).join('')
     + `<button class="btn sm" type="button" onclick="addChildRow()"><i class="ti ti-plus"></i> הוסף ילד/ה</button>`;
+  updateWPanelLabels();
 }
 function addChildRow(){ __wChildren.push({name:'',idNo:'',dob:''}); renderChildrenRows(); }
 function removeChildRow(i){ __wChildren.splice(i,1); renderChildrenRows(); }
@@ -2455,25 +2477,6 @@ function showWorkerModal(w){
         </select>
       </div>
     </div>
-    <div id="wSpouseWrap" style="display:${w.maritalStatus==='marital_married'?'block':'none'};border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:12px">
-      <div style="font-weight:600;font-size:13px;margin-bottom:8px"><i class="ti ti-heart"></i> פרטי בן/בת הזוג</div>
-      <div class="field-row">
-        <div class="field"><label>שם משפחה</label><input type="text" id="wSpouseSurname" value="${esc(w.spouseSurname||'')}"></div>
-        <div class="field"><label>שם פרטי</label><input type="text" id="wSpouseGiven" value="${esc(w.spouseGiven||'')}"></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>מספר זהות / דרכון</label><input type="text" id="wSpouseId" value="${esc(w.spouseId||'')}" inputmode="numeric"></div>
-        <div class="field"><label>תאריך לידה</label><input type="text" id="wSpouseDob" value="${esc(w.spouseDob||'')}" placeholder="DD/MM/YYYY"></div>
-      </div>
-      <div class="field"><label>הכנסת בן/בת הזוג</label>
-        <select id="wSpouseIncome">
-          <option value="" ${!w.spouseIncome?'selected':''}>— לא נבחר —</option>
-          <option value="none" ${w.spouseIncome==='none'?'selected':''}>אין לבן/בת הזוג כל הכנסה</option>
-          <option value="work" ${w.spouseIncome==='work'?'selected':''}>יש הכנסה: עבודה/קצבה/עסק</option>
-          <option value="other" ${w.spouseIncome==='other'?'selected':''}>יש הכנסה: הכנסה אחרת</option>
-        </select>
-      </div>
-    </div>
     <div class="field-row">
       <div class="field"><label>תאריך לידה</label><input type="text" id="wDob" value="${esc(w.docDob||'')}" placeholder="DD/MM/YYYY"></div>
       <div class="field"><label>תוקף ת.ז./דרכון</label><input type="text" id="wDocExpiry" value="${esc(w.docExpiry||'')}" placeholder="DD/MM/YYYY"></div>
@@ -2580,13 +2583,36 @@ function showWorkerModal(w){
           </select>
         </div>
       </div>
-      <div class="field" style="margin-top:8px">
-        <label>ילדים (ספח)</label>
-        <div id="wChildrenRows"></div>
-      </div>
       <div style="font-size:11px;color:var(--text3);margin-top:2px">
         ${w.docUrl?'שינוי שדות אלו (או כתובת/עיר/סוג הכנסה למעלה) יעדכן אוטומטית את המסמך השמור ב-'+DOC_STORE+'.':'קובץ ה-PDF של טופס 101 ייבנה אוטומטית בעת השמירה.'}
       </div>
+    </div>
+    <div class="field-row" style="margin-bottom:6px">
+      <button class="btn sm w-toggle" type="button" onclick="toggleWPanel('spouse')"><span><i class="ti ti-heart"></i> <span id="wSpouseLabel">בן/בת הזוג</span></span><i class="ti ti-chevron-down" id="wSpouseChevron"></i></button>
+      <button class="btn sm w-toggle" type="button" onclick="toggleWPanel('children')"><span><i class="ti ti-mood-kid"></i> <span id="wChildrenLabel">ילדים</span></span><i class="ti ti-chevron-down" id="wChildrenChevron"></i></button>
+    </div>
+    <div id="wSpouseWrap" class="w-panel" style="display:none" oninput="updateWPanelLabels()" onchange="updateWPanelLabels()">
+      <div style="font-weight:600;font-size:13px;margin-bottom:8px"><i class="ti ti-heart"></i> פרטי בן/בת הזוג</div>
+      <div class="field-row">
+        <div class="field"><label>שם משפחה</label><input type="text" id="wSpouseSurname" value="${esc(w.spouseSurname||'')}"></div>
+        <div class="field"><label>שם פרטי</label><input type="text" id="wSpouseGiven" value="${esc(w.spouseGiven||'')}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>מספר זהות / דרכון</label><input type="text" id="wSpouseId" value="${esc(w.spouseId||'')}" inputmode="numeric"></div>
+        <div class="field"><label>תאריך לידה</label><input type="text" id="wSpouseDob" value="${esc(w.spouseDob||'')}" placeholder="DD/MM/YYYY"></div>
+      </div>
+      <div class="field"><label>הכנסת בן/בת הזוג</label>
+        <select id="wSpouseIncome">
+          <option value="" ${!w.spouseIncome?'selected':''}>— לא נבחר —</option>
+          <option value="none" ${w.spouseIncome==='none'?'selected':''}>אין לבן/בת הזוג כל הכנסה</option>
+          <option value="work" ${w.spouseIncome==='work'?'selected':''}>יש הכנסה: עבודה/קצבה/עסק</option>
+          <option value="other" ${w.spouseIncome==='other'?'selected':''}>יש הכנסה: הכנסה אחרת</option>
+        </select>
+      </div>
+    </div>
+    <div id="wChildrenWrap" class="w-panel" style="display:none">
+      <div style="font-weight:600;font-size:13px;margin-bottom:8px"><i class="ti ti-mood-kid"></i> ילדים (ספח)</div>
+      <div id="wChildrenRows"></div>
     </div>
     <div class="field" style="margin-bottom:6px">
       <button class="btn sm" type="button" onclick="toggleExpiryWrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
