@@ -19,8 +19,9 @@ Both:
 `__aiScanPageThumbs`, `__aiPrimaryParsed`, `__aiParsed`, `__aiScanImage`, `__aiPacketOtherPages`, `__aiAvatarB64`, `__aiPageParsed`, `__pendingScanPages`, `__scanReplace`.
 
 There is no separate upload screen: it opens straight on the page queue (`renderPendingPagesPrompt()`). The queue then shows the empty "+" tile and a short note on the supported documents. The file input accepts images and PDFs, several at once (`_onScanFilesPicked`):
-- several files picked on a fresh, empty scan go to the packet path (`onScanFilesSelected`, Path B);
-- otherwise one file at a time goes to `onScanFileSelected` (Path A); with several, only the first is used, with a toast.
+- one photo → `onScanFileSelected` (Path A, through the corner editor);
+- several files, or a PDF → `_queueScanFiles`: every page of every file (`filesToUploadPages`; a shrunk photo keeps its original as the page's photo twin) becomes a queue tile of its own, in order, without the corner editor — Phase 1 aligns it like any page. A page whose text looks like an old filled Form 101 (`כרטיס עובד` / `0101/130`) is left out, with a toast;
+- taking a new photo for a tile (`__scanReplace`) uses the first file only.
 
 ## Upload preparation (schedule-manager.html, shared by every upload)
 
@@ -66,7 +67,7 @@ A single non-PDF file → `onScanFileSelected(file)`:
        - `initPrimaryFromFirstPage()`;
        - the avatar crop (`cropPortraitAvatar`);
        - `finalTightenPass()` for the stored image `__aiScanImage`.
-     - **Extra pages.** Which following pages get a read is `extraReadWanted(primary, kind)`: after an Israeli-ID primary, while it is still missing a core field (`missingCore`: dob, sex, address, city); after a passport, only pages of kind `sefach` or `id_back` (`PASSPORT_EXTRA_KINDS` — see Merging pages → passport + ספח). They are read with `extraPageReader(kind)`:
+     - **Extra pages.** Which following pages get a read is `extraReadWanted(primary, kind)`: after an Israeli-ID primary, every page of kind `sefach` (the ספח is a folded sheet, often photographed in parts, and the children or spouse can be on a later part), and any page while the primary is still missing a core field (`missingCore`: dob, sex, address, city); after a passport, only pages of kind `sefach` or `id_back` (`PASSPORT_EXTRA_KINDS` — see Merging pages → passport + ספח). They are read with `extraPageReader(kind)`:
        - `passport` → no AI read;
        - `id_front` → `readFrontPage` (`aiReadDoc`);
        - everything else (`sefach`, `id_back`, `contract`, `other`, unknown) → `readSefachPage` (`aiReadSefach`). This includes `contract` and `other` because the align model often files the paper ספח (a printed form) under those kinds.
@@ -82,7 +83,7 @@ A single non-PDF file → `onScanFileSelected(file)`:
 
 ## Path B — several files or a PDF (no corner editor)
 
-`onScanFilesSelected(files)` (also the entry for one PDF):
+`onScanFilesSelected(files)` — no longer reached from the UI (several files and PDFs go to the queue, see Entry points); kept working:
 
 1. Expand every page (`filesToUploadPages`). An image that was shrunk keeps its original (`orig`), which becomes the page's photo twin (`hi`, no geometry steps).
 2. A page whose text looks like an old filled Form 101 (`כרטיס עובד` or `0101/130`) is dropped.
@@ -114,7 +115,7 @@ The pages are not aligned, enhanced or tightened in this path.
 
 - **Fields:**
   - `ID_CORE_FIELDS` = dob, sex, address, houseNumber, city, maritalStatus — filled only where the primary is empty (`mergeIsraeliIdFields`);
-  - children — taken when the primary has none;
+  - children — from every page, each child once (by ID number, else name);
   - spouse — taken from the first page that has one.
 - **ID number from a ספח:** an `idNo` read from a ספח (`__isSefachScan`) is never trusted on its own. It is kept in `__aiPendingSefachIdNo` to cross-check a front page; a disagreement sets `idMismatch`.
 - **Front page after the ספח:** it also fills an empty `given`, `surname` and `expiry`.
@@ -156,7 +157,7 @@ The scan images stay in `__aiScanImage` / `__aiPacketOtherPages` for the upload.
 - `refineQuadCorners(b64, mediaType, corners, opts)` snaps an approximate quad to real edges on a ≤1200 px copy. For each of 20 samples per side it searches from the guess (`opts.inward` / `opts.outward`, default 4 % + 6 px each way) for the nearest jump that passes the card edge test, then takes the strongest jump within 4 px. Each side's line is fitted robustly (refit on inliers, at least 40 % of the samples) and kept only if the edge test passes on the line at 60 % of the sample positions. A side without such a line keeps the guess's side; the other sides still move their corners along it.
 - `finalTightenPass(img)` is `refineQuadCorners` run from the whole frame, searching up to 15 % inward. It trims a background sliver or a wider tilted band (a strip of table under the card) along its tilt. An already tight page, or a card the colour of the background, is left untouched.
 - `alignScanImage()` rotates by 0/90/180/270° and crops a box; `rotatePointFrac()` maps corners to match.
-- `cropPortraitAvatar(b64, mediaType, photoBox)` → a square 160 px JPEG (`AVATAR_SIZE`).
+- `cropPortraitAvatar(b64, mediaType, photoBox)` → a square 160 px JPEG (`AVATAR_SIZE`), black and white (`grayscaleCanvas`, schedule-manager.html).
 
 ## Unreachable code kept
 

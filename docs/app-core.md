@@ -127,12 +127,13 @@ Punches have their own path (`gsLoadPunchLog`, `mergeRemotePunches`, month windo
 
 - **Errors:** `reportError(message, source, stack)` — at most 40 per page, the same message at most once a minute. It is fed by:
   - `window` `error` and `unhandledrejection`;
-  - every `console.error` / `console.warn` (wrapped), except the Firestore SDK's reconnect warnings (`SDK_RECONNECT_NOISE_RE`: the live listener's stream "transport errored" / "Could not reach Cloud Firestore backend" — the SDK reconnects by itself);
+  - every `console.error` / `console.warn` (wrapped), except the Firestore SDK's reconnect warnings (`SDK_RECONNECT_NOISE_RE`: the live listener's stream "transport errored" / "Could not reach Cloud Firestore backend" — the SDK reconnects by itself) and Google Maps' notice that `google.maps.Marker` (the client map picker's pin) is deprecated (`MAPS_MARKER_NOTICE_RE` — it still works; moving to `AdvancedMarkerElement` needs a Map ID from the Google Cloud console);
   - toasts matching `ERROR_TOAST_RE`;
   - the form error lines `firmEditFormError` / `userFormError` (`watchErrorLine`, a MutationObserver).
 - **Timings:** `reportTiming(kind, totalMs, details)` adds `device`. Kinds:
   - `login` / `open` — `markFirstContent()` / `markFreshContent(screen)`, once per page;
   - `scan` / `scanFiles` — [scan.md](scan.md);
+  - `form101` — every Form 101 build (`aiFillForm101`): the build time and what the form carried, as flags and counts only (`regen`, `docType`, `spouse`, `spouseNames`, `children`, `marital`, `extraPages`) — no personal data;
   - `gs:<action>` — slow calls.
 - **Sending:** both go into a queue (`queueTelemetry`). `flushTelemetry()` sends it as one `logBatch` through the dispatcher: first 8 s after load, then every 5 s, and on page hide. It becomes Firestore `errors` / `timings` documents (one batch write); before the Firebase sign-in it is dropped.
 

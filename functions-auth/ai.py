@@ -74,7 +74,10 @@ def build_request(action, body, model, align_model):
             _image(body),
             {"type": "text", "text": "Read this document and return the JSON object only."}]}]}, cached
     if action == "aiReadSefach":
-        return {"model": model, "max_tokens": 4500, "messages": [{"role": "user", "content": [
+        # A real ספח answer is ~0.5-1.5k tokens; 3000 leaves room for many
+        # children and cuts a runaway answer short (a truncated one is
+        # salvaged, _salvage_object).
+        return {"model": model, "max_tokens": 3000, "messages": [{"role": "user", "content": [
             {"type": "text", "text": PROMPTS["readSefach"], "cache_control": {"type": "ephemeral"}},
             _image(body),
             {"type": "text", "text": "Read this and return the JSON object only."}]}]}, cached
@@ -133,6 +136,46 @@ def _first_object(text):
     return json.loads(m.group(0) if m else text), text
 
 
+def _salvage_object(text):
+    """A reply cut off by max_tokens: the longest prefix of its JSON object
+    that ends after a complete value, with the open brackets closed — so the
+    fields that came in full (address, spouse, the children listed so far)
+    are kept instead of the whole read being lost. None when nothing parses."""
+    start = text.find("{")
+    if start < 0:
+        return None
+    cuts, stack, in_str, esc = [], [], False, False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+        elif ch in "}]":
+            if stack:
+                stack.pop()
+            if not stack:
+                break
+        elif ch == ",":
+            cuts.append((i, list(stack)))
+    for pos, open_ in reversed(cuts[-300:]):
+        try:
+            obj = json.loads(text[start:pos] + "".join(reversed(open_)))
+        except ValueError:
+            continue
+        if isinstance(obj, dict):
+            return obj
+    return None
+
+
 def parse_reply(action, status, raw):
     """The result the app gets for this Anthropic reply."""
     try:
@@ -158,6 +201,11 @@ def parse_reply(action, status, raw):
         cleaned = re.sub(r"```json|```", "", text).strip()
         if action in ("aiReadDoc", "aiReadSefach"):
             truncated = reply.get("stop_reason") == "max_tokens"
+            salvaged = _salvage_object(cleaned) if truncated else None
+            if salvaged is not None:
+                if action == "aiReadSefach":
+                    salvaged["type"] = "israeli_id"
+                return {"ok": True, "parsed": salvaged, "truncated": True}
             return {"error": E_TRUNCATED if truncated else E_UNREADABLE, "raw": cleaned[:400]}
         return {"error": E_UNREADABLE, "raw": cleaned[:300]}
     if action == "aiDetectAlign":
