@@ -87,7 +87,7 @@ Read-only summary, as flat icon + text rows:
 - notes;
 - the Documents section (`workerDocsSectionHtml(w)`).
 
-Buttons: **Add document** (`openWorkerDocUpload`, only with `hasPermission('workers')`; the Documents section itself has no add button), Download document, **Upload hours** (with `hasPermission('workers')`) and **Export hours** (with `workers` and `exports`). There is no Edit button: a tap anywhere on the card other than a button, link or field (`isPlainTap`) closes it and opens the edit form (`openEditWorker`).
+**Status** — three small pills right under the card's header, at the right (Active / Vacation / Inactive, a colored dot each, the chosen one filled; `setWorkerStatus(wi, v)` saves at once and redraws the card). Without the workers permission the card shows a plain status badge instead. Buttons: **Add document** (`openWorkerDocUpload`, only with `hasPermission('workers')`; the Documents section itself has no add button), Download document, **Upload hours** (with `hasPermission('workers')`) and **Export hours** (with `workers` and `exports`). There is no Edit button: a tap anywhere on the card other than a button, link or field (`isPlainTap`) closes it and opens the edit form (`openEditWorker`).
 
 ## Worker modal (`showWorkerModal(w)`, `#workerModal`)
 
@@ -109,7 +109,7 @@ One form for add, edit and post-scan review. Labels of every Form 101 field are 
     - Which scan opens: the review screen of the scan still in memory when the modal came from it (a new worker, or this worker just rescanned); otherwise a new scan of this worker (`__aiRescanWorkerId`).
     - When the scan finishes, `openWorkerModalFromScan()` redraws the modal and calls `applyWorkerDraft()`: a field that had a value keeps it, an empty one takes the scan's value.
     - `openAddWorker`, `openEditWorker`, `startNewScan` and `rescanWorkerDoc` clear the draft.
-  - **Status** — three buttons on the title's line, at the right (title left); the Form 101 saved date ("נשמר: …") sits under them (`.status-seg`: פעיל / בחופשה / לא פעיל, `setWStatus(v)`), the value in the hidden `#wStatus` that the save and the scan draft read.
+  - **Saved date** — the Form 101 saved date ("נשמר: …") on the title's line, at the right. The status is not in this form: it is set on the worker card.
   - **Personal data**, two short fields per line: first + last name; ID/passport + sex; marital status + health fund; date of birth + ID expiry; street + house no. + city (one line of three); hourly rate + travel ₪/day; start date + phone. The hourly rate is the same field as the base rate in Accounting → Salary (`setWorkerRate`); a client's default rate or the worker's per-client rate wins over it in pay (`effectiveRates`, [accounting.md](accounting.md)).
   - **Clients.** Chips plus a search box: `renderWClientChips`, `renderWClientSuggest` (only clients not yet added), `addWClient`, `removeWClient`. Enter picks the first match (`pickFirstWClientSuggest`).
   - **Supplier.** A `<select>` (`wSupplierId`).

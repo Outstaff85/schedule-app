@@ -178,12 +178,17 @@
   .w-toggle{width:100%;display:flex;justify-content:space-between;align-items:center;}
   .w-panel{border:1px solid var(--border2);border-radius:10px;padding:10px 12px;margin-bottom:12px;}
   .w-child{padding-bottom:8px;border-bottom:1px solid var(--border);}
-  .status-seg{display:inline-flex;border:1px solid var(--border2);border-radius:var(--radius-sm);overflow:hidden;flex-shrink:0;}
-  .status-seg button{background:var(--bg3);border:none;color:var(--text2);font-size:12px;font-weight:600;padding:7px 10px;cursor:pointer;font-family:inherit;}
-  .status-seg button+button{border-left:1px solid var(--border2);}
-  .status-seg button.on[data-st="active"]{background:var(--green-bg);color:var(--green);}
-  .status-seg button.on[data-st="vacation"]{background:var(--amber-bg);color:var(--amber);}
-  .status-seg button.on[data-st="fired"]{background:var(--red-bg);color:var(--red);}
+  /* Worker status on the card: three small pills, a colored dot each; the
+     chosen one is filled in its color. */
+  .status-pills{display:inline-flex;gap:4px;padding:3px;background:var(--bg3);border:1px solid var(--border2);border-radius:999px;}
+  .status-pills button{display:inline-flex;align-items:center;gap:5px;background:none;border:none;border-radius:999px;color:var(--text2);font:600 11px/1 inherit;font-family:inherit;padding:5px 9px;cursor:pointer;}
+  .status-pills button i{width:7px;height:7px;border-radius:50%;background:var(--text3);}
+  .status-pills button[data-st="active"] i{background:var(--green);}
+  .status-pills button[data-st="vacation"] i{background:var(--amber);}
+  .status-pills button[data-st="fired"] i{background:var(--red);}
+  .status-pills button.on[data-st="active"]{background:var(--green-bg);color:var(--green);}
+  .status-pills button.on[data-st="vacation"]{background:var(--amber-bg);color:var(--amber);}
+  .status-pills button.on[data-st="fired"]{background:var(--red-bg);color:var(--red);}
   .hours-badge{display:inline-block;font-size:14px;color:var(--green);background:var(--green-bg);border-radius:4px;padding:3px 8px;margin-top:6px;font-family:'DM Mono','Heebo',Consolas,monospace;}
   .modal-actions{display:flex;gap:8px;margin-top:20px;justify-content:flex-end;}
   .day-grid{display:flex;flex-direction:column;gap:6px;}
@@ -2092,7 +2097,6 @@ function applyWorkerDraft(){
     if(v&&typeof v==='object'){ el.checked=v.checked; continue; }
     if(v!==''&&v!=null){ el.value=v; _clearScanCheck(el); }
   }
-  if(d.vals.wStatus) setWStatus(d.vals.wStatus);
   if(d.children.length){ __wChildren=d.children; renderChildrenRows(); }
   if(d.clientIds.length){ __wClientIds=d.clientIds.filter(id=>clients.some(c=>c.id===id)); renderWClientChips(); }
   if(d.avatar&&!__wAvatarB64){
@@ -2405,10 +2409,6 @@ function showWorkerModal(w){
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px">
       <div class="modal-title" style="margin-bottom:0">${editingWorkerIdx!==null?'עריכת עובד':'הוספת עובד חדש'}</div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-        <div class="status-seg" role="radiogroup" aria-label="סטטוס">
-          <input type="hidden" id="wStatus" value="${esc(w.status||'active')}">
-          ${[['active','פעיל'],['vacation','בחופשה'],['fired','לא פעיל']].map(([v,l])=>`<button type="button" data-st="${v}" class="${(w.status||'active')===v?'on':''}" onclick="setWStatus('${v}')">${l}</button>`).join('')}
-        </div>
         ${editingWorkerIdx!==null&&w.docSavedAt?`<span style="font-size:11px;color:var(--text3)">נשמר: ${esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU'))}</span>`:''}
       </div>
     </div>
@@ -2659,7 +2659,8 @@ async function saveWorker(){
   const phone=document.getElementById('wPhone').value.trim();
   const hourlyRate=parseFloat(document.getElementById('wRate')?.value)||0;
   const travelAllowance=parseFloat(document.getElementById('wTravelAllowance')?.value)||0;
-  const status=document.getElementById('wStatus')?.value||'active';
+  // Status is set on the worker card (setWorkerStatus), not in this form.
+  const status=editingWorkerIdx!==null?(workers[editingWorkerIdx].status||'active'):'active';
   // One UI field ("תאריך תחילת עבודה") feeds both: startDate (schedule/Contract
   // Expiry Warning calc) and workStartDate (Form 101's own start-date field).
   const startDate=document.getElementById('wStartDate')?.value||'';
@@ -2853,12 +2854,12 @@ function showWorkerUploadingOverlay(){
   renderWorkerUploadProgress('בונה PDF, נא לא לסגור…',0);
 }
 
-// Worker status: three buttons in the modal's photo row; the value lives in
-// the hidden #wStatus that saveWorker() and the scan draft read.
-function setWStatus(v){
-  const inp=document.getElementById('wStatus'); if(!inp) return;
-  inp.value=v;
-  document.querySelectorAll('.status-seg [data-st]').forEach(b=>b.classList.toggle('on',b.dataset.st===v));
+// Worker status: three pills in the worker card's header; a tap saves at once.
+function setWorkerStatus(wi, v){
+  const w=workers[wi]; if(!w||(w.status||'active')===v) return;
+  w.status=v;
+  render(); autoSave();
+  openWorkerCard(wi);
 }
 function genToken(){
   return Math.random().toString(36).slice(2,6)+Math.random().toString(36).slice(2,6);
@@ -3387,12 +3388,17 @@ function openWorkerCard(wi){
   document.getElementById('workerCardModal').innerHTML=`
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
       <div style="width:52px;height:52px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div>
-      <div style="flex:1">
-        <div style="font-size:18px;font-weight:700">${esc(w.name)}</div>
-        <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col};display:inline-block;margin-top:4px">${stMeta.label}</span>${docStatusBadgeHtml(w)}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:18px;font-weight:700;overflow:hidden;text-overflow:ellipsis">${esc(w.name)}</div>
+        ${hasPermission('workers')?'':`<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col};display:inline-block;margin-top:4px">${stMeta.label}</span>`}${docStatusBadgeHtml(w)}
       </div>
       ${hasPermission('workers')?`<button class="btn sm" type="button" onclick="rescanFromWorkerCard(${wi})" style="flex-shrink:0"><i class="ti ti-scan"></i> ${w.docUrl?'סריקה חוזרת':'סרוק מסמך'}</button>`:''}
     </div>
+    ${hasPermission('workers')?`<div style="display:flex;justify-content:flex-end;margin:-6px 0 14px">
+      <div class="status-pills" role="radiogroup" aria-label="Status">
+        ${[['active','Active'],['vacation','Vacation'],['fired','Inactive']].map(([v,l])=>`<button type="button" data-st="${v}" class="${(w.status||'active')===v?'on':''}" onclick="setWorkerStatus(${wi},'${v}')" title="Set status: ${l}"><i></i>${l}</button>`).join('')}
+      </div>
+    </div>`:''}
     <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text2);margin-bottom:14px">
       ${w.phone?`<div><i class="ti ti-phone"></i> ${esc(w.phone)}</div>`:''}
       ${w.hourlyRate?`<div><i class="ti ti-coin"></i> Base ₪${w.hourlyRate}/h${w.otRate!=null?' · OT ₪'+w.otRate+'/h':''}${w.shabbatRate!=null?' · Shabbat ₪'+w.shabbatRate+'/h':''}</div>`:''}
