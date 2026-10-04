@@ -37,10 +37,10 @@ All of them are sent as `fetch(API_URL, …)`; the dispatcher passes them to the
 
 | Action | Model | Used for |
 |---|---|---|
-| `aiReadDoc` | `ANTHROPIC_MODEL` | Full read of the main page: `type` (`israeli_id` / `passport`), names, numbers, dates, sex, address, children, spouse; `fieldBoxes` (boxes of the digit fields); `photoBox` (the portrait) |
-| `aiReadSefach` | `ANTHROPIC_MODEL` | An extra Israeli-ID page (ספח or card back): address, house number, city, marital status, sex, spouse, children, `idNo` for cross-check. Always `type:'israeli_id'` |
+| `aiReadDoc` | `ANTHROPIC_MODEL` | Full read of the main page: `type` (`israeli_id` / `passport`), names, numbers, dates, sex, address, children, spouse; `fieldBoxes` (boxes of the digit fields and of given name, surname, address, house number, city); `unsure` (the fields it could not read with full confidence); `photoBox` (the portrait) |
+| `aiReadSefach` | `ANTHROPIC_MODEL` | An extra Israeli-ID page (ספח or card back): address, house number, city, marital status, sex, spouse, children, `idNo` for cross-check; `fieldBoxes` and `unsure` for address, house number, city. Always `type:'israeli_id'` |
 | `aiDetectAlign` | `ANTHROPIC_ALIGN_MODEL` (Haiku) | Rotation, 4 corners and the page `kind`: `id_front` / `id_back` / `sefach` / `passport` / `contract` / `other`. A failed call leaves the page as cropped; the error goes to Admin → Errors as `console.warn('aiDetectAlign failed: …')` (`readSefachPage` does the same for `aiReadSefach`) |
-| `aiVerifyFields` | `ANTHROPIC_MODEL` | Batched zoomed re-read of several digit fields |
+| `aiVerifyFields` | `ANTHROPIC_MODEL` | Batched zoomed re-read of several fields (kinds `digits9`, `date`, `passportNo`, `hebrewText`, `latinName`, `houseNumber`) |
 | `aiVerifyField` | `ANTHROPIC_MODEL` | One zoomed re-read (the ID retry) |
 | `aiFindField` | `ANTHROPIC_MODEL` | One missing field searched for on the worker's page photos, from the worker modal or card ([workers.md](workers.md) → field search) |
 
@@ -95,10 +95,13 @@ The pages are not aligned, enhanced or tightened in this path.
 - **Normalizing:** `_normScanDigits(s)` joins grouped digits (`0 1234567 8` → `012345678`); `_normScanDate(s)` pads to `DD/MM/YYYY`.
 - **`verifyDigitFields(parsed, b64, mediaType)`** builds jobs from `fieldBoxes`:
   - Israeli ID: `idNo` (only when its checksum fails) and `dob`;
-  - passport: `passportNo`, `dob`, `expiry`.
+  - passport: `passportNo`, `dob`, `expiry`;
+  - both (`_pushUnsureJobs`): only the name and address fields the read itself listed in `parsed.unsure` (glare, blur, faint print) and boxed. `given`, `surname`, `address` and `city` use `hebrewText` (a passport's names `latinName`); `houseNumber` uses `houseNumber`. A field read with confidence is not re-read. A field left empty is searched for after the scan instead (`autoFindMissingScanFields`, [workers.md](workers.md)).
   
-  `verifyFieldsBatch()` crops each box with a margin and scales it to at least 500 px wide (`cropFieldImage`), then sends one `aiVerifyFields`. A value replaces the original only when it has the right shape: 9 digits, `DD/MM/YYYY`, or an uppercased passport number.
-- **`verifyIdChecksum(parsed, …)`** uses `isValidIsraeliId(id)` (check digit). If it fails, one `aiVerifyField` retry of the ID box follows. The result is `parsed.idChecksumOk`; a still-failing number shows an amber warning in the modal.
+  `verifyFieldsBatch()` crops each box with a margin and scales it to at least 500 px wide (`cropFieldImage`), then sends one `aiVerifyFields` for all of them. `_applyZoomedRead` takes the zoomed value when it is readable and has the right shape (9 digits, `DD/MM/YYYY`, an uppercased passport number, a house number without spaces, text with single spaces). When it differs from the first read, the field goes into `parsed.__uncertain`.
+- **`verifySefachFields(parsed, b64, mediaType)`** does the same for the ספח read's address, house number and city it listed as unsure. It runs in `readSefachPage` and `runSefachOcr`.
+- **"Check this" marks:** `openWorkerModalFromScan` collects the uncertain fields whose value is the one on screen (`_scanUncertainKeys` over `__aiPageParsed`) into `ocrFields.__scanCheck`. The modal frames them in amber with a note (`markScanUncertain`) until the field is edited. This is display only and never saved.
+- **`verifyIdChecksum(parsed, …)`** uses `isValidIsraeliId(id)` (check digit). If it fails, one `aiVerifyField` retry of the ID box follows, unless `verifyDigitFields` already re-read that box zoomed (`parsed.__idZoomed`). The result is `parsed.idChecksumOk`; a still-failing number shows an amber warning in the modal.
 
 ## Merging pages
 
