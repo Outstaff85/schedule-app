@@ -7447,8 +7447,13 @@ function _consoleArgsText(args){
 // connection cut by the carrier — and then reconnects by itself. Not a
 // failure, so not reported (it filled the Errors pane every few minutes).
 const SDK_RECONNECT_NOISE_RE=/@firebase\/firestore:.*(transport errored|Could not reach Cloud Firestore backend|stream .* (closed|errored))/i;
-console.error=function(...args){ _origConsoleError(...args); try{ const t=_consoleArgsText(args); if(!SDK_RECONNECT_NOISE_RE.test(t.msg)) reportError(t.msg,'console.error',t.stack); }catch(e){} };
-console.warn=function(...args){ _origConsoleWarn(...args); try{ const t=_consoleArgsText(args); if(!SDK_RECONNECT_NOISE_RE.test(t.msg)) reportError(t.msg,'console.warn',t.stack); }catch(e){} };
+// Google Maps' notice that google.maps.Marker (the client map picker's pin)
+// is deprecated — it still works, and Google gives 12 months' notice before
+// removing it; not an app error, so not reported either.
+const MAPS_MARKER_NOTICE_RE=/google\.maps\.Marker is deprecated/;
+const _consoleNoise=msg=>SDK_RECONNECT_NOISE_RE.test(msg)||MAPS_MARKER_NOTICE_RE.test(msg);
+console.error=function(...args){ _origConsoleError(...args); try{ const t=_consoleArgsText(args); if(!_consoleNoise(t.msg)) reportError(t.msg,'console.error',t.stack); }catch(e){} };
+console.warn=function(...args){ _origConsoleWarn(...args); try{ const t=_consoleArgsText(args); if(!_consoleNoise(t.msg)) reportError(t.msg,'console.warn',t.stack); }catch(e){} };
 const ERROR_TOAST_RE=/fail|could not|error|offline|denied|invalid|ошибк|не удал|недоступ|нет прав|истекл|\u26a0|⚠/i;
 const _origShowToast=showToast;
 showToast=function(msg,dur){ _origShowToast(msg,dur); try{ if(ERROR_TOAST_RE.test(String(msg||''))) reportError(String(msg),'toast',''); }catch(e){} };
