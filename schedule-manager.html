@@ -432,6 +432,10 @@
   .workers-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
   .wcard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:10px;transition:border-color .15s}
   .wcard:hover{border-color:var(--border2)}
+  .wcard{position:relative}
+  /* Delete: a faint red ✕ in the tile's top-right corner (deleteWorker asks first). */
+  .wcard-del{position:absolute;top:6px;right:6px;background:none;border:none;color:var(--red);opacity:.4;font-size:16px;line-height:1;padding:6px;border-radius:6px;cursor:pointer;transition:opacity .15s,background .15s}
+  .wcard-del:hover{opacity:1;background:var(--bg3)}
   .wcard-rows{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:12px}
   .wcard-rows .k{color:var(--text3);white-space:nowrap}
   .wcard-rows .v{color:var(--text);min-width:0;overflow-wrap:anywhere}
@@ -2837,7 +2841,7 @@ function copyWorkerLink(wid){
 }
 function deleteWorker(wi){
   const w=workers[wi];
-  if(!confirm('Remove "'+w.name+'"?'))return;
+  if(!confirm('Delete worker "'+w.name+'"?\n\nTheir Form 101, scans and documents are deleted too. This cannot be undone. Punches and hours stay.'))return;
   const n=w.name;
   const fileId=w.docFileId;
   const assetsFileId=w.assetsFileId;
@@ -2851,7 +2855,6 @@ function deleteWorker(wi){
   if(assetsFileId) gsDeleteWorkerDoc(assetsFileId);
   docFileIds.forEach(gsDeleteWorkerDoc); // contract/visa/permit files
 }
-function deleteWorkerFromCard(wi){ closeModal('workerCardOverlay'); deleteWorker(wi); }
 
 // --- Client Modal -------------------------------------------------------------
 function openAddClient(){ editingClientId=null; selClientColor=CLIENT_COLORS[clients.length%CLIENT_COLORS.length]; showClientModal({name:'',color:selClientColor,address:'',notes:''}); }
@@ -3226,7 +3229,8 @@ function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
     const sup=suppliers.find(s=>s.id===w.supplierId);
     const h=hours[w.id]||0;
     return `<div class="wcard" onclick="openWorkerCard(${wi})">
-      <div style="display:flex;align-items:center;gap:10px">
+      ${hasPermission('workers')?`<button class="wcard-del" type="button" title="Delete worker" onclick="event.stopPropagation();deleteWorker(${wi})">✕</button>`:''}
+      <div style="display:flex;align-items:center;gap:10px;padding-right:22px">
         <div style="width:38px;height:38px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div>
         <div style="min-width:0;flex:1">
           <div style="font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(w.name)}</div>
@@ -3369,7 +3373,6 @@ function openWorkerCard(wi){
     ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
     ${workerDocsSectionHtml(w)}
     <div class="modal-actions">
-      <button class="btn sm red" onclick="deleteWorkerFromCard(${wi})"><i class="ti ti-trash"></i> Delete</button>
       ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Скачать документ</a>`:''}
       ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursImportModal('${w.id}')"><i class="ti ti-file-upload"></i> Upload hours</button>`:''}
       ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursExportModal('${w.id}')"><i class="ti ti-file-export"></i> Export hours</button>`:''}

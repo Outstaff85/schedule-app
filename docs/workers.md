@@ -87,7 +87,7 @@ Read-only summary, as flat icon + text rows:
 - notes;
 - the Documents section (`workerDocsSectionHtml(w)`).
 
-Buttons: Delete, Download document, **Upload hours** and **Export hours** (both only with `hasPermission('workers')`). There is no Edit button: a tap anywhere on the card other than a button, link or field (`isPlainTap`) closes it and opens the edit form (`openEditWorker`).
+Buttons: Download document, **Upload hours** and **Export hours** (both only with `hasPermission('workers')`). There is no Edit button: a tap anywhere on the card other than a button, link or field (`isPlainTap`) closes it and opens the edit form (`openEditWorker`).
 
 ## Worker modal (`showWorkerModal(w)`, `#workerModal`)
 
@@ -145,7 +145,7 @@ One form for add, edit and post-scan review. Labels of every Form 101 field are 
 
 ### Deleting (`deleteWorker(wi)`)
 
-It removes the worker and saves, then best-effort deletes their files through `gsDeleteWorkerDoc()`: the PDF (`docFileId`), the sidecar, and every `docs[].fileId`.
+Started from the faint red ✕ in a worker tile's top-right corner (`.wcard-del`, only with `hasPermission('workers')`; the worker card has no Delete button) or the ✕ in the list view's row. It first asks for confirmation (the worker's Form 101, scans and documents go too, punches and hours stay). It removes the worker and saves, then best-effort deletes their files through `gsDeleteWorkerDoc()`: the PDF (`docFileId`), the sidecar, and every `docs[].fileId`.
 
 ## Punch link
 
