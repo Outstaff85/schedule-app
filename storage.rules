@@ -3,9 +3,13 @@ rules_version = '2';
 // Firebase Storage rules — Form 101 PDFs, scan sidecars and worker documents
 // (contract, visa, work permit) under tenants/{tenantId}/... (FIRESTORE_PLAN.md).
 // Same identities as firestore.rules (custom-token claims from `login`):
-// manager-side logins of the firm read, tenant_admin or staff with the
+// manager-side logins of the firm read, tenant_admin or staff/hr with the
 // 'workers' permission write (saveWorkerFile's requirePermission gate), a
 // superadmin can do both for any firm. Suppliers have no direct access.
+// An "own workers" hr login (claim own) uploads like a workers writer but
+// reads and deletes through users_admin (files.py), which checks the
+// worker's hrId — these rules can't see Firestore without a cross-service
+// lookup.
 service firebase.storage {
   match /b/{bucket}/o {
 
@@ -13,17 +17,21 @@ service firebase.storage {
     function role() { return request.auth.token.role; }
     function isSuper() { return signedIn() && role() == 'superadmin'; }
     function member(t) { return signedIn() && request.auth.token.tenantId == t; }
-    function manager(t) { return isSuper() || (member(t) && role() in ['tenant_admin', 'staff']); }
+    function hrAll(t) { return member(t) && role() == 'hr' && request.auth.token.own != true; }
+    function manager(t) { return isSuper() || (member(t) && role() in ['tenant_admin', 'staff']) || hrAll(t); }
+    function workersPerm() {
+      return request.auth.token.perms is list
+        && (('*' in request.auth.token.perms) || ('workers' in request.auth.token.perms));
+    }
     function workersWriter(t) {
       return isSuper()
         || (member(t) && role() == 'tenant_admin')
-        || (member(t) && role() == 'staff' && request.auth.token.perms is list
-            && (('*' in request.auth.token.perms) || ('workers' in request.auth.token.perms)));
+        || (member(t) && role() in ['staff', 'hr'] && workersPerm());
     }
 
     match /tenants/{t}/{path=**} {
       allow read: if manager(t);
-      allow delete: if workersWriter(t);
+      allow delete: if workersWriter(t) && (role() != 'hr' || hrAll(t));
       // 25 MB per file is far above a Form 101 PDF or a phone photo.
       allow create, update: if workersWriter(t) && request.resource.size < 25 * 1024 * 1024;
     }
