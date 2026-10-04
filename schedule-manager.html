@@ -806,7 +806,7 @@
               <option value="month">This Month</option>
               <option value="all">All Time</option>
             </select>
-            <button class="btn sm" onclick="openSalaryExportModal()"><i class="ti ti-upload"></i> Export</button>
+            <button class="btn sm perm-exports" onclick="openSalaryExportModal()"><i class="ti ti-upload"></i> Export</button>
           </div>
         </div>
         <div id="dashSalary"></div>
@@ -1002,12 +1002,12 @@
     <div class="field" id="userFormPermsField">
       <label>Sections</label>
       <div class="check-grid">
-        <label class="check-chip"><input type="checkbox" value="schedule" class="userFormPermCb"><span class="chip-text">Schedule</span></label>
-        <label class="check-chip"><input type="checkbox" value="workers" class="userFormPermCb"><span class="chip-text">Workers</span></label>
-        <label class="check-chip"><input type="checkbox" value="clients" class="userFormPermCb"><span class="chip-text">Clients</span></label>
-        <label class="check-chip"><input type="checkbox" value="suppliers" class="userFormPermCb"><span class="chip-text">Suppliers</span></label>
-        <label class="check-chip"><input type="checkbox" value="accounting" class="userFormPermCb"><span class="chip-text">Accounting</span></label>
-        <label class="check-chip"><input type="checkbox" value="exports" class="userFormPermCb"><span class="chip-text">Exports</span></label>
+        <label class="check-chip"><input type="checkbox" value="schedule" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-calendar"></i> Schedule</span><span class="chip-hint">Schedule tab</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="workers" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-users-group"></i> Workers</span><span class="chip-hint">Workers tab</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="clients" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-users"></i> Clients</span><span class="chip-hint">Clients tab</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="suppliers" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-truck-delivery"></i> Suppliers</span><span class="chip-hint">Suppliers tab</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="accounting" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-cash"></i> Accounting</span><span class="chip-hint">Accounting tab</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="exports" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-upload"></i> Export</span><span class="chip-hint">Export button</span></span></label>
       </div>
     </div>
     <div class="field" id="userFormHrFields" style="display:none">
@@ -1477,6 +1477,8 @@ function applyNavPermissions(){
     if(!el) return;
     el.style.display = tabAllowed(tab) ? '' : 'none';
   });
+  // The Export section: the header Export menu and the salary export.
+  document.querySelectorAll('#exportDropdown, .perm-exports').forEach(el => { el.style.display = hasPermission('exports') ? '' : 'none'; });
   // If the tab we're currently sitting on just got hidden (e.g. permissions
   // changed and the page re-initialized), fall back to the home tab rather
   // than leaving a blank/inaccessible section visible.

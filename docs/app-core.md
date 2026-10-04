@@ -38,7 +38,7 @@ Shared helpers:
   - `hasPermission(section)` — only a `staff` or `hr` role is limited by its `permissions` (`'*'` or a list); every other role passes;
   - `NAV_TAB_PERMISSION` maps tabs to sections: schedule, workers, clients, suppliers, accounting, and `admin` → `workers`. Today is never gated, except for HR;
   - `tabAllowed(tab)` adds the HR rule: an `hr` login never gets Today or Admin (`HR_HIDDEN_TABS`); `homeTab()` is Today for everyone else and the first allowed tab (Workers by default) for HR;
-  - `applyNavPermissions()` hides tabs (Today included) and moves off a hidden tab to `homeTab()`.
+  - `applyNavPermissions()` hides tabs (Today included) and moves off a hidden tab to `homeTab()`; without the `exports` section it also hides the header Export menu and the salary export (`.perm-exports`).
 
 ## Schedule tab (`#sectionSchedule`)
 
