@@ -332,6 +332,22 @@
   /* ── Loading spinner + progress bar (AI scan, Form 101 generation) ── */
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   .spin { display: inline-block; animation: spin 0.8s linear infinite; }
+  /* Errors / Timings: compact rows in one bordered box, summary cards. */
+  .log-box { background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius-sm); overflow: hidden; }
+  .log-row { position: relative; padding: 6px 36px 6px 10px; font-size: 12px; line-height: 1.4; border-top: 1px solid var(--border); }
+  .log-row:first-child { border-top: none; }
+  .log-meta { display: flex; flex-wrap: wrap; gap: 0 8px; color: var(--text3); font-size: 11px; }
+  .log-when { font-family: monospace; color: var(--text2); }
+  .log-main { color: var(--text); }
+  .log-sub { color: var(--text2); font-size: 11px; }
+  .log-copy { position: absolute; top: 5px; right: 5px; padding: 2px 5px !important; min-width: 0; min-height: 0 !important; font-size: 11px !important; }
+  .tm-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-bottom: 14px; }
+  .tm-card { background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius-sm); padding: 8px 10px; font-size: 12px; }
+  .tm-card-head { display: flex; justify-content: space-between; gap: 6px; font-weight: 600; }
+  .tm-card-head span { color: var(--text3); font-weight: 400; }
+  .tm-card-vals { margin: 3px 0 4px; color: var(--text2); }
+  .tm-card-vals b { font-size: 15px; color: var(--text); }
+  .tm-pill { display: inline-block; background: var(--bg3); border-radius: 10px; padding: 1px 7px; margin: 0 4px 3px 0; font-size: 10.5px; color: var(--text2); }
   /* A worker-modal field the scan left empty: tap it to search the scan for it. */
   .scan-missing { border-color: var(--amber) !important; box-shadow: 0 0 0 2px rgba(245,166,35,0.25); cursor: pointer; }
   .scan-busy { opacity: 0.6; }
@@ -360,6 +376,41 @@
   .filter-cap{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;padding-left:2px}
   .filter-field select.filter-on{border-color:var(--accent)!important;color:var(--accent)!important}
   .view-toggle{display:inline-flex;border:1px solid var(--border2);border-radius:var(--radius-sm);overflow:hidden}
+  /* Workers tab toolbar: actions, search + layout toggle, then the filters in
+     one row on a computer and two columns on a phone. */
+  .workers-actions{display:flex;gap:8px}
+  .workers-toolbar{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+  .workers-search-row{display:flex;gap:8px;align-items:stretch}
+  .workers-search-row input{flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:8px 10px;font-size:13px;outline:none}
+  /* Filter rows everywhere (Workers, Admin): one row of --cols on a
+     computer; two columns without captions on a phone, an odd last one
+     across. */
+  .filters-grid{display:grid;grid-template-columns:repeat(var(--cols,4),minmax(0,1fr));gap:8px}
+  .filters-grid .filter-field{display:flex;min-width:0}
+  .filters-grid select{width:100%;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 8px;font-size:13px;outline:none;text-overflow:ellipsis}
+  .workers-count{font-size:12px;color:var(--text2)}
+  /* A pane's top row: period/select + buttons; on a phone the select takes
+     the first line and the buttons share the second equally. */
+  .pane-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:10px}
+  .pane-toolbar select{flex:1;min-width:150px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none}
+  /* Admin section buttons; head actions. */
+  .admin-pane-bar{display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border2);padding-bottom:10px;flex-wrap:wrap}
+  .head-actions{display:flex;gap:8px}
+  .admin-log-bar{display:flex;align-items:center;gap:6px;margin-bottom:10px}
+  .admin-log-bar .workers-count{margin-left:auto}
+  @media (max-width:700px){
+    .workers-head .workers-actions,.page-header .head-actions{width:100%}
+    .workers-head .workers-actions .btn,.page-header .head-actions .btn{flex:1;justify-content:center;min-height:40px}
+    .filters-grid{grid-template-columns:1fr 1fr}
+    .filters-grid .filter-field:last-child:nth-child(odd){grid-column:1/-1}
+    .filters-grid .filter-cap{display:none}
+    .pane-toolbar select{flex-basis:100%}
+    .pane-toolbar .btn{flex:1;justify-content:center;min-height:36px}
+    .admin-pane-bar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+    .admin-pane-bar .btn{justify-content:center;padding:7px 4px}
+    #adminStats{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:6px!important;margin-bottom:12px!important}
+    #adminStats .stat-card{padding:8px 6px}
+  }
   .view-toggle button{background:var(--bg3);border:none;color:var(--text2);padding:6px 10px;cursor:pointer;font-size:15px;line-height:1}
   .view-toggle button+button{border-left:1px solid var(--border2)}
   .view-toggle button.active{background:var(--blue-bg);color:var(--blue)}
@@ -500,39 +551,45 @@
     </div>
 
     <div class="page-section" id="sectionWorkers">
-      <div class="page-header">
+      <div class="page-header workers-head">
         <div>
           <div class="page-title">Workers</div>
           <div class="page-sub">All worker details, status and history</div>
         </div>
-        <button class="btn sm" onclick="openAddWorker()"><i class="ti ti-plus"></i> Add Worker</button>
-        <button class="btn sm" onclick="startNewScan()" style="border-color:rgba(109,214,160,0.4);color:var(--green)"><i class="ti ti-sparkles"></i> Скан паспорта</button>
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:flex-end">
-        <input type="text" id="workersSearch" placeholder="Search by name, phone, object..." oninput="renderWorkersPage()" style="flex:1;min-width:180px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
-        <label class="filter-field"><span class="filter-cap">Status</span><select id="workersFilterStatus" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
-          <option value="">All statuses</option>
-          <option value="active">Active</option>
-          <option value="vacation">On vacation</option>
-          <option value="fired">Fired</option>
-        </select></label>
-        <label class="filter-field"><span class="filter-cap">Documents</span><select id="workersFilterDocs" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
-          <option value="">All documents</option>
-          <option value="incomplete">Documents incomplete</option>
-          <option value="expiring">ID expired / expiring</option>
-        </select></label>
-        <label class="filter-field"><span class="filter-cap">Client</span><select id="workersFilterClient" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none"></select></label>
-        <label class="filter-field"><span class="filter-cap">Supplier</span><select id="workersFilterSupplier" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none"></select></label>
-        <label class="filter-field"><span class="filter-cap">Group by</span><select id="workersGroupBy" onchange="renderWorkersPage()" title="Group by" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
-          <option value="">No grouping</option>
-          <option value="client">Group by client</option>
-          <option value="supplier">Group by supplier</option>
-        </select></label>
-        <span id="workersCount" style="font-size:13px;color:var(--text2);margin-left:auto"></span>
-        <div class="view-toggle" role="group" aria-label="Layout">
-          <button type="button" id="workersViewList" onclick="setWorkersView('list')" title="List"><i class="ti ti-list"></i></button>
-          <button type="button" id="workersViewCards" onclick="setWorkersView('cards')" title="Cards"><i class="ti ti-layout-grid"></i></button>
+        <div class="workers-actions">
+          <button class="btn sm" onclick="openAddWorker()"><i class="ti ti-plus"></i> Add Worker</button>
+          <button class="btn sm" onclick="startNewScan()" style="border-color:rgba(109,214,160,0.4);color:var(--green)"><i class="ti ti-sparkles"></i> Скан паспорта</button>
         </div>
+      </div>
+      <div class="workers-toolbar">
+        <div class="workers-search-row">
+          <input type="text" id="workersSearch" placeholder="Search by name, phone, object..." oninput="renderWorkersPage()">
+          <div class="view-toggle" role="group" aria-label="Layout">
+            <button type="button" id="workersViewList" onclick="setWorkersView('list')" title="List"><i class="ti ti-list"></i></button>
+            <button type="button" id="workersViewCards" onclick="setWorkersView('cards')" title="Cards"><i class="ti ti-layout-grid"></i></button>
+          </div>
+        </div>
+        <div class="filters-grid" style="--cols:5">
+          <label class="filter-field"><span class="filter-cap">Status</span><select id="workersFilterStatus" onchange="renderWorkersPage()">
+            <option value="">All statuses</option>
+            <option value="active">Active</option>
+            <option value="vacation">On vacation</option>
+            <option value="fired">Fired</option>
+          </select></label>
+          <label class="filter-field"><span class="filter-cap">Documents</span><select id="workersFilterDocs" onchange="renderWorkersPage()">
+            <option value="">All documents</option>
+            <option value="incomplete">Documents incomplete</option>
+            <option value="expiring">ID expired / expiring</option>
+          </select></label>
+          <label class="filter-field"><span class="filter-cap">Client</span><select id="workersFilterClient" onchange="renderWorkersPage()"></select></label>
+          <label class="filter-field"><span class="filter-cap">Supplier</span><select id="workersFilterSupplier" onchange="renderWorkersPage()"></select></label>
+          <label class="filter-field"><span class="filter-cap">Group by</span><select id="workersGroupBy" onchange="renderWorkersPage()" title="Group by">
+            <option value="">No grouping</option>
+            <option value="client">Group by client</option>
+            <option value="supplier">Group by supplier</option>
+          </select></label>
+        </div>
+        <div id="workersCount" class="workers-count"></div>
       </div>
       <div id="workersCards" class="workers-cards" style="display:none"></div>
       <div id="workersTableWrap" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow-x:auto;-webkit-overflow-scrolling:touch">
@@ -587,9 +644,9 @@
       <div class="page-header">
         <div>
           <div class="page-title"><i class="ti ti-lock"></i> Admin</div>
-          <div class="page-sub" id="adminPageSub">Punch log — view, edit and export all attendance records</div>
+          <div class="page-sub" id="adminPageSub">Choose a section</div>
         </div>
-        <div style="display:flex;gap:8px" id="adminHeaderActions">
+        <div class="head-actions" id="adminHeaderActions" style="display:none">
           <button class="btn sm" onclick="ensureAllPunches().then(exportPunchCSV)"><i class="ti ti-upload" style="color:var(--green)"></i> Export CSV</button>
           <button class="btn sm red" id="adminClearLogBtn" onclick="ensureAllPunches().then(clearPunchLog)"><i class="ti ti-trash"></i> Clear Log</button>
         </div>
@@ -600,42 +657,42 @@
            Firms/Errors/Users/Profile visibility is set per-role by
            setupAdminPaneBar() below, mirroring what openAdminScreen() used
            to gate for its own gear-button modal. -->
-      <div style="display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border2);padding-bottom:10px;flex-wrap:wrap" id="adminPaneBar">
+      <div class="admin-pane-bar" id="adminPaneBar">
         <button class="btn sm" id="adminPaneBtn_punchlog" onclick="switchAdminPane('punchlog')"><i class="ti ti-clipboard-text"></i> Punch Log</button>
         <button class="btn sm" id="adminPaneBtn_firms" onclick="switchAdminPane('firms')"><i class="ti ti-building-skyscraper"></i> Firms</button>
         <button class="btn sm" id="adminPaneBtn_users" onclick="switchAdminPane('users')"><i class="ti ti-users"></i> Users</button>
         <button class="btn sm" id="adminPaneBtn_errors" onclick="switchAdminPane('errors')"><i class="ti ti-alert-circle"></i> Errors</button>
         <button class="btn sm" id="adminPaneBtn_timings" onclick="switchAdminPane('timings')"><i class="ti ti-stopwatch"></i> Timings</button>
-        <button class="btn sm" id="adminPaneBtn_profile" onclick="switchAdminPane('profile')"><i class="ti ti-building"></i> Profile</button>
       </div>
 
-      <div id="adminPane_punchlog">
+      <div id="adminPane_none" style="color:var(--text3);font-size:13px;padding:8px 0">Choose a section above — nothing is loaded until you do.</div>
+      <div id="adminPane_punchlog" style="display:none">
       <!-- Stats row -->
       <div id="adminStats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:20px"></div>
 
-      <!-- View toggle -->
-      <div style="display:flex;gap:6px;margin-bottom:16px">
-        <button id="adminViewLog" class="btn sm" onclick="setAdminView('log')" style="background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)"><i class="ti ti-clipboard-text"></i> Punch Log</button>
+      <!-- View toggle + count -->
+      <div class="admin-log-bar">
+        <button id="adminViewLog" class="btn sm" onclick="setAdminView('log')" style="background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)"><i class="ti ti-clipboard-text"></i> Log</button>
         <button id="adminViewClients" class="btn sm" onclick="setAdminView('clients')"><i class="ti ti-users"></i> By Client</button>
+        <span id="adminCount" class="workers-count"></span>
       </div>
 
       <!-- Filter bar (punch log view) -->
-      <div id="adminFilters" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:flex-end">
-        <label class="filter-field"><span class="filter-cap">Worker</span><select id="adminFilterWorker" onchange="renderAdmin()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none">
+      <div id="adminFilters" class="filters-grid" style="--cols:4;margin-bottom:12px">
+        <label class="filter-field"><span class="filter-cap">Worker</span><select id="adminFilterWorker" onchange="renderAdmin()">
           <option value="">All workers</option>
         </select></label>
-        <label class="filter-field"><span class="filter-cap">Client</span><select id="adminFilterClient" onchange="renderAdmin()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none">
+        <label class="filter-field"><span class="filter-cap">Client</span><select id="adminFilterClient" onchange="renderAdmin()">
           <option value="">All clients</option>
         </select></label>
-        <label class="filter-field"><span class="filter-cap">Date</span><select id="adminFilterDate" onchange="renderAdmin()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none">
+        <label class="filter-field"><span class="filter-cap">Date</span><select id="adminFilterDate" onchange="renderAdmin()">
           <option value="">All dates</option>
         </select></label>
-        <label class="filter-field"><span class="filter-cap">Type</span><select id="adminFilterType" onchange="renderAdmin()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none">
+        <label class="filter-field"><span class="filter-cap">Type</span><select id="adminFilterType" onchange="renderAdmin()">
           <option value="">All types</option>
           <option value="in">Punch IN</option>
           <option value="out">Punch OUT</option>
         </select></label>
-        <span id="adminCount" style="font-size:13px;color:var(--text2);margin-left:auto"></span>
       </div>
 
       <!-- Client logs view -->
@@ -673,7 +730,7 @@
            renderFirmsList()/loadErrorsList() (parametrized) and
            openMyFirmForm() rather than re-implementing any of them. -->
       <div id="adminPane_firms" style="display:none">
-        <div style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <div id="adminFirmsSuperBar" style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-bottom:10px">
           <button class="btn sm" onclick="toggleSuperadminAccounting()"><i class="ti ti-cash"></i> Payable summary (all firms)</button>
           <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> New firm</button>
         </div>
@@ -684,16 +741,22 @@
         <div id="adminUsersWrap"></div>
       </div>
       <div id="adminPane_errors" style="display:none">
-        <div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="loadErrorsList('adminErrorsList')"><i class="ti ti-refresh"></i> Refresh</button></div>
-        <div id="adminErrorsList" style="display:flex;flex-direction:column;gap:6px"></div>
+        <div class="pane-toolbar">
+          <select id="adminErrorsPeriod" onchange="loadErrorsList('adminErrorsList')"></select>
+          <button class="btn sm" onclick="copyAllErrors('adminErrorsList')"><i class="ti ti-copy"></i> Copy all</button>
+          <button class="btn sm" onclick="printLogPane('errors')"><i class="ti ti-printer"></i> Print</button>
+          <button class="btn sm" onclick="loadErrorsList('adminErrorsList')"><i class="ti ti-refresh"></i> Refresh</button>
+        </div>
+        <div id="adminErrorsList"></div>
       </div>
       <div id="adminPane_timings" style="display:none">
-        <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px"><button class="btn sm" onclick="copyAllTimings()"><i class="ti ti-copy"></i> Copy all</button><button class="btn sm" onclick="loadTimingsPane()"><i class="ti ti-refresh"></i> Refresh</button></div>
+        <div class="pane-toolbar">
+          <select id="adminTimingsPeriod" onchange="loadTimingsPane()"></select>
+          <button class="btn sm" onclick="copyAllTimings()"><i class="ti ti-copy"></i> Copy all</button>
+          <button class="btn sm" onclick="printLogPane('timings')"><i class="ti ti-printer"></i> Print</button>
+          <button class="btn sm" onclick="loadTimingsPane()"><i class="ti ti-refresh"></i> Refresh</button>
+        </div>
         <div id="adminTimingsWrap"></div>
-      </div>
-      <div id="adminPane_profile" style="display:none">
-        <div style="color:var(--text2);font-size:13px;margin-bottom:10px">Company profile data used on Form 101.</div>
-        <button class="btn accent" onclick="openMyFirmForm()"><i class="ti ti-building"></i> Edit company profile</button>
       </div>
     </div>
 
@@ -1368,7 +1431,7 @@ function switchTab(tab){
   // runs here, on an actual tab switch — NOT from render()'s own
   // per-mutation renderAdmin() call below, or clicking into e.g. the Firms
   // pane would get silently reset back to Punch Log on every unrelated save.
-  if(tab==='admin')      { renderAdmin(); setupAdminPaneBar(); }
+  if(tab==='admin')      setupAdminPaneBar();
   if(tab==='dashboard')  renderDashboard();
   if(tab==='accounting') renderAccounting();
 }
@@ -1442,8 +1505,9 @@ function renderGanttBody(){
   const cols='170px repeat(7,1fr)';
   const body=document.getElementById('ganttBody');
   const vis=getVisible();
-  let h='';
-  vis.forEach(w=>{
+  // One schedule row per worker, paged like every other list.
+  renderPagedList(body,'gantt',String(selectedClientId||''),vis,w=>{
+    let h='';
     const wi=workers.indexOf(w);
     const c=WORKER_COLORS[w.colorIdx%8];
     h+=`<div class="gantt-row" style="grid-template-columns:${cols}" draggable="true"
@@ -1469,8 +1533,8 @@ function renderGanttBody(){
       h+=`</div>`;
     });
     h+=`</div>`;
+    return h;
   });
-  body.innerHTML=h;
 }
 
 function hourTicks(){
@@ -1490,11 +1554,10 @@ function renderWorkerList(){
   if(sort==='name')       list.sort((a,b)=>a.w.name.localeCompare(b.w.name));
   else if(sort==='hours') list.sort((a,b)=>workerTotalHours(b.w)-workerTotalHours(a.w));
   else if(sort==='status'){ const rank={active:0,vacation:1,fired:2}; list.sort((a,b)=>((rank[a.w.status||'active']??0)-(rank[b.w.status||'active']??0))||a.w.name.localeCompare(b.w.name)); }
-  let h='';
-  list.forEach(({w,wi})=>{
+  renderPagedList(el,'sideWorkers',sort,list,({w,wi})=>{
     const c=WORKER_COLORS[w.colorIdx%8],wh=workerTotalHours(w);
     const rateStr=w.hourlyRate?(' · ₪'+w.hourlyRate+'/h'):'';
-    h+=`<div class="worker-chip">
+    return `<div class="worker-chip">
       <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${workerAvatarInner(w)}</div>
       <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">FIRED</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">VAC</span>':''}${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div><div class="worker-hours">${wh.toFixed(1)}h${rateStr}</div></div>
       <div class="worker-actions">
@@ -1504,12 +1567,11 @@ function renderWorkerList(){
       </div>
     </div>`;
   });
-  el.innerHTML=h;
 }
 
 function renderSidebarClients(){
   const el=document.getElementById('sidebarClientList'); if(!el) return;
-  let h=`<div class="client-chip ${!selectedClientId?'selected':''}" onclick="filterByClient(null)">
+  const head=`<div class="client-chip ${!selectedClientId?'selected':''}" onclick="filterByClient(null)">
     <div class="client-dot" style="background:var(--text2)"></div>
     <span class="client-name-label">All clients</span>
   </div>`;
@@ -1517,13 +1579,10 @@ function renderSidebarClients(){
   const csort=document.getElementById('clientSort')?.value||'name';
   if(csort==='name')          cl.sort((a,b)=>a.name.localeCompare(b.name));
   else if(csort==='workers')  cl.sort((a,b)=>workers.filter(w=>(w.clientIds||[]).includes(b.id)).length-workers.filter(w=>(w.clientIds||[]).includes(a.id)).length);
-  cl.forEach(c=>{
-    h+=`<div class="client-chip ${selectedClientId===c.id?'selected':''}" onclick="filterByClient('${c.id}')">
+  renderPagedList(el,'sideClients',csort,cl,c=>`<div class="client-chip ${selectedClientId===c.id?'selected':''}" onclick="filterByClient('${c.id}')">
       <div class="client-dot" style="background:${c.color}"></div>
       <span class="client-name-label">${esc(c.name)}</span>
-    </div>`;
-  });
-  el.innerHTML=h;
+    </div>`,{head});
 }
 
 function filterByClient(cid){ selectedClientId=cid; render(); }
@@ -2997,8 +3056,10 @@ function workersMonthHours(){
   workers.forEach(w=>{ out[w.id]=getWorkerMonthShifts(w.id,y,m,byWorker[w.id]||[]).reduce((s,x)=>s+x.hours,0); });
   return out;
 }
-function renderWorkerCardsHtml(list,groupBy,stMetaMap){
-  if(!list.length) return '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:14px">No workers found</div>';
+// The workers as card tiles, paged by LIST_PAGE (renderPagedList). Grouped,
+// each group's title is one more tile in the flat list.
+function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
+  if(!list.length){ box.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:14px">No workers found</div>'; return; }
   const hours=workersMonthHours();
   const monthName=new Date().toLocaleDateString('en-GB',{month:'long'});
   const badge=(o)=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${esc(o.color)}22;border-radius:10px;margin:0 3px 3px 0"><span style="width:6px;height:6px;border-radius:50%;background:${esc(o.color)}"></span>${esc(o.name)}</span>`;
@@ -3028,15 +3089,21 @@ function renderWorkerCardsHtml(list,groupBy,stMetaMap){
       </div>
     </div>`;
   };
-  if(!groupBy) return list.map(card).join('');
+  const title=g=>`<div class="workers-group-title">${g.color?`<span style="width:8px;height:8px;border-radius:50%;background:${esc(g.color)}"></span>`:''}${esc(g.name)} <span style="color:var(--text3);font-weight:400">(${g.count})</span></div>`;
+  renderPagedList(box,'workersCards',sig,workersGroupedItems(list,groupBy),it=>it.group?title(it.group):card(it),{grid:true});
+}
+// The worker list flattened for paging: with a grouping, each group's
+// header is an item ({group:{name,color,count}}) followed by its workers. A
+// client-group worker can appear in several groups (several clientIds); a
+// supplier-group worker in exactly one.
+function workersGroupedItems(list,groupBy){
+  if(!groupBy) return list;
   const groups=groupBy==='client'
     ? [...clients.map(c=>({name:c.name,color:c.color,items:list.filter(x=>(x.w.clientIds||[]).includes(c.id))})),
        {name:'No client assigned',color:null,items:list.filter(x=>!(x.w.clientIds||[]).length)}]
     : [...suppliers.map(s=>({name:s.name,color:s.color,items:list.filter(x=>x.w.supplierId===s.id)})),
        {name:'No supplier assigned',color:null,items:list.filter(x=>!x.w.supplierId)}];
-  return groups.filter(g=>g.items.length).map(g=>
-    `<div class="workers-group-title">${g.color?`<span style="width:8px;height:8px;border-radius:50%;background:${esc(g.color)}"></span>`:''}${esc(g.name)} <span style="color:var(--text3);font-weight:400">(${g.items.length})</span></div>`+g.items.map(card).join('')
-  ).join('');
+  return groups.filter(g=>g.items.length).flatMap(g=>[{group:{name:g.name,color:g.color,count:g.items.length}},...g.items]);
 }
 function renderWorkersPage(){
   fillFilterSelect('workersFilterClient', clients, 'All clients');
@@ -3063,9 +3130,10 @@ function renderWorkersPage(){
   document.getElementById('workersViewList')?.classList.toggle('active',view==='list');
   document.getElementById('workersViewCards')?.classList.toggle('active',view==='cards');
   const cardsBox=document.getElementById('workersCards'), tableWrap=document.getElementById('workersTableWrap');
+  const sig=[q,stFilter,clientFilter,supplierFilter,docsFilter,groupBy].join('|');
   if(view==='cards'){
     tableWrap.style.display='none'; cardsBox.style.display='grid';
-    cardsBox.innerHTML=renderWorkerCardsHtml(list,groupBy,stMetaMap);
+    renderWorkerCards(cardsBox,list,groupBy,stMetaMap,sig);
     return;
   }
   cardsBox.style.display='none'; tableWrap.style.display='';
@@ -3098,22 +3166,8 @@ function renderWorkersPage(){
   };
   const groupHeaderHtml=(name,color,count)=>`<tr><td colspan="8" style="padding:8px 12px;background:var(--bg3);font-size:12px;font-weight:700;color:var(--text2)"><span style="display:inline-flex;align-items:center;gap:6px">${color?`<span style="width:8px;height:8px;border-radius:50%;background:${color}"></span>`:''}${esc(name)} <span style="color:var(--text3);font-weight:400">(${count})</span></span></td></tr>`;
 
-  if(!groupBy){
-    tbody.innerHTML=list.map(rowHtml).join('');
-    return;
-  }
-  // Grouped view: a client-group worker can appear in MULTIPLE groups (a
-  // worker can have several clientIds — that's the real many-to-many
-  // relationship, not a bug); a supplier-group worker appears in exactly one
-  // (or "Unassigned"), matching w.supplierId being single-valued.
-  const groups=groupBy==='client'
-    ? [...clients.map(c=>({id:c.id,name:c.name,color:c.color,items:list.filter(x=>(x.w.clientIds||[]).includes(c.id))})),
-       {id:null,name:'No client assigned',color:null,items:list.filter(x=>!(x.w.clientIds||[]).length)}]
-    : [...suppliers.map(s=>({id:s.id,name:s.name,color:s.color,items:list.filter(x=>x.w.supplierId===s.id)})),
-       {id:null,name:'No supplier assigned',color:null,items:list.filter(x=>!x.w.supplierId)}];
-  tbody.innerHTML=groups.filter(g=>g.items.length).map(g=>
-    groupHeaderHtml(g.name,g.color,g.items.length)+g.items.map(rowHtml).join('')
-  ).join('');
+  renderPagedList(tbody,'workersTable',sig,workersGroupedItems(list,groupBy),
+    it=>it.group?groupHeaderHtml(it.group.name,it.group.color,it.group.count):rowHtml(it),{table:true,colspan:9});
 }
 
 const INCOME_TYPE_LABELS = {monthly:'משכורת חודשית',secondary:'משרה נוספת',partial:'משרה חלקית',daily:'שכר יומי',pension:'פנסיה',scholarship:'מלגה'};
@@ -3168,6 +3222,7 @@ function openWorkerCard(wi){
       ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursExportModal('${w.id}')"><i class="ti ti-file-export"></i> Export hours</button>`:''}
       <button class="btn accent" onclick="closeModal('workerCardOverlay');openEditWorker(${wi})"><i class="ti ti-edit"></i> Edit</button>
     </div>`;
+  pageWorkerDocs(document.getElementById('workerCardModal'),w.id);
   document.getElementById('workerCardOverlay').classList.add('open');
 }
 
@@ -3188,7 +3243,7 @@ function rescanFromWorkerCard(wi){
 function workerDocsSectionHtml(w){
   const exp=new Map(workerDocExpiries(w).map(x=>[x.doc.id,x]));
   const docs=[...(w.docs||[])].sort((a,b)=>String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||'')));
-  const rows=docs.map(d=>{
+  const row=d=>{
     const x=exp.get(d.id);
     const col=x?(x.level==='error'?'var(--red)':'var(--amber)'):'var(--text3)';
     const exText=d.expiry?((x&&x.level==='error')?'Expired ':'Expires ')+fmtDMY(d.expiry):'No expiry date';
@@ -3201,14 +3256,22 @@ function workerDocsSectionHtml(w){
       </div>
       ${hasPermission('workers')?`<button class="btn sm" title="Delete" onclick="deleteWorkerFile('${esc(w.id)}','${esc(d.id)}')" style="padding:0 8px"><i class="ti ti-trash"></i></button>`:''}
     </div>`;
-  }).join('');
+  };
+  // The rows are paged into .worker-docs-rows once the card is on screen.
+  __workerDocsPending={docs,row};
   return `<div style="margin-bottom:14px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
       <div style="font-size:13px;font-weight:700"><i class="ti ti-folder"></i> Documents</div>
       ${hasPermission('workers')?`<button class="btn sm" onclick="openWorkerDocUpload('${esc(w.id)}')"><i class="ti ti-upload"></i> Add document</button>`:''}
     </div>
-    ${rows||'<div style="font-size:12px;color:var(--text3)">No documents yet — contract, visa, work permit…</div>'}
+    ${docs.length?'<div class="worker-docs-rows"></div>':'<div style="font-size:12px;color:var(--text3)">No documents yet — contract, visa, work permit…</div>'}
   </div>`;
+}
+let __workerDocsPending=null;
+function pageWorkerDocs(root,workerId){
+  const p=__workerDocsPending; __workerDocsPending=null;
+  const el=root&&root.querySelector('.worker-docs-rows');
+  if(p&&el) renderPagedList(el,'workerDocs',workerId,p.docs,p.row);
 }
 let __workerDocUploadId=null;
 function openWorkerDocUpload(workerId){
@@ -3439,7 +3502,7 @@ function renderClientsPage(){
   const grid=document.getElementById('clientsGrid');
   if(!clients.length){ grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:14px">No clients yet. Click "+ Add Client" to create one.</div>'; return; }
 
-  grid.innerHTML=clients.map(c=>{
+  renderPagedList(grid,'clients','',clients,c=>{
     const assigned=workers.filter(w=>(w.clientIds||[]).includes(c.id));
     return `<div class="client-card">
       <div class="client-card-header">
@@ -3455,7 +3518,7 @@ function renderClientsPage(){
         <button class="btn sm red" onclick="deleteClient('${c.id}')">&#x2715; Remove</button>
       </div>
     </div>`;
-  }).join('');
+  },{grid:true});
 }
 
 // --- Suppliers ----------------------------------------------------------------
@@ -3527,7 +3590,7 @@ function renderSuppliersPage(){
   if(!grid) return;
   if(!suppliers.length){ grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:14px">No suppliers yet. Click "+ Add Supplier" to create one.</div>'; return; }
 
-  grid.innerHTML=suppliers.map(s=>{
+  renderPagedList(grid,'suppliers','',suppliers,s=>{
     const assigned=workers.filter(w=>w.supplierId===s.id);
     return `<div class="client-card">
       <div class="client-card-header">
@@ -3541,7 +3604,7 @@ function renderSuppliersPage(){
         <button class="btn sm red" onclick="deleteSupplier('${s.id}')">&#x2715; Remove</button>
       </div>
     </div>`;
-  }).join('');
+  },{grid:true});
 }
 
 function openManualPunch(cid){
@@ -4090,6 +4153,9 @@ function gateApp(runInitApp){
   }
   renderAccountControl(s);
   runInitApp();
+  // A fresh firm profile for this device's Form 101s (see refreshTenantProfile),
+  // once the Firebase sign-in has had time to come back.
+  setTimeout(() => refreshTenantProfile(0), 4000);
 }
 
 // Small titlebar control: who's logged in, and for a super-admin currently
@@ -4151,7 +4217,7 @@ function loadFirmsCache(){ try{ const v=JSON.parse(localStorage.getItem(FIRMS_CA
 function renderFirmsRows(listEl, tenants){
   __firmsCache = tenants;
   if(!tenants.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Фирм ещё нет — создайте первую.</div>'; return; }
-  listEl.innerHTML = tenants.map(t => `
+  renderPagedList(listEl, 'firms:' + listEl.id, '', tenants, t => `
       <div class="row" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);cursor:pointer;${t.active===false?'opacity:0.55':''}" onclick="switchToTenant('${esc(t.tenantId)}')">
         <div>
           <div style="font-weight:600">${esc(t.companyName || '(без названия)')}${t.active===false?' <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px">отключена</span>':''}${firmProfileMissing(t).length?` <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px" title="Не заполнено: ${esc(firmProfileMissing(t).join(', '))}">профиль неполный</span>`:''}</div>
@@ -4163,11 +4229,12 @@ function renderFirmsRows(listEl, tenants){
           <button class="btn sm" onclick="confirmDeleteTenant('${esc(t.tenantId)}','${esc(t.companyName||t.tenantId)}')" title="Удалить" style="color:#ff6b78"><i class="ti ti-trash"></i></button>
           <i class="ti ti-chevron-right"></i>
         </div>
-      </div>`).join('');
+      </div>`);
 }
 async function renderFirmsList(targetId){
   __firmsListTarget = targetId || 'firmsList';
   const listEl = document.getElementById(__firmsListTarget);
+  if(getSession()?.role !== 'superadmin'){ renderOwnFirmCard(listEl); return; }
   const cached = loadFirmsCache();
   const isLanding = __firmsListTarget==='firmsList';
   if(cached){ renderFirmsRows(listEl, cached); if(isLanding) markFirstContent(); }
@@ -4181,6 +4248,43 @@ async function renderFirmsList(targetId){
     renderFirmsRows(listEl, tenants);
     if(isLanding) markFreshContent('firms');
   }catch(e){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
+}
+
+// A firm owner's Firms pane: their own firm only — the fields Form 101
+// prints, what is missing, and Edit (openMyFirmForm). Drawn from the cached
+// profile, then from a fresh read.
+async function renderOwnFirmCard(listEl){
+  const draw = p => {
+    p = p || {};
+    const missing = firmProfileMissing(p);
+    const addr = [[p.street, p.streetNumber].filter(Boolean).join(' '), p.city].filter(Boolean).join(', ');
+    const row = (k, v) => `<div style="display:flex;gap:8px;font-size:13px"><span style="color:var(--text3);min-width:130px">${k}</span><span>${v ? esc(v) : '<span style="color:#ffb020">—</span>'}</span></div>`;
+    listEl.innerHTML = `<div style="padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:6px">
+      ${row('Название фирмы', p.companyName)}${row('מספר תיק ניכויים', p.deductionsFileNumber)}${row('Телефон', p.phone)}${row('Адрес', addr)}
+      ${missing.length ? `<div style="font-size:12px;color:#ffb020"><i class="ti ti-alert-triangle"></i> В Форме 101 останутся пустыми: ${esc(missing.join(', '))}</div>` : `<div style="font-size:12px;color:var(--green)"><i class="ti ti-check"></i> Всё, что нужно для Формы 101, заполнено</div>`}
+      <div><button class="btn sm accent" onclick="openMyFirmForm()"><i class="ti ti-pencil"></i> Редактировать</button></div>
+    </div>`;
+  };
+  draw(activeTenantProfile());
+  const p = await refreshTenantProfile(0);
+  if(p && listEl.isConnected) draw(p);
+}
+// Form 101's employer block comes from the session's copy of the firm
+// profile. A login keeps the copy it got at sign-in, so a change made
+// elsewhere (the super-admin's Firms list) would not reach this device's
+// PDFs: refresh it from the server when the app opens and before a PDF is
+// built, at most once per maxAgeMs (0 = now).
+let __profileFetchedAt = 0;
+async function refreshTenantProfile(maxAgeMs){
+  const s = getSession();
+  const t = s && (s.viewingTenantId || s.tenantId);
+  if(!t) return activeTenantProfile();
+  if(maxAgeMs && Date.now() - __profileFetchedAt < maxAgeMs) return activeTenantProfile();
+  try{
+    const json = await (await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'loadTenantProfile', ...gsAuth() }) })).json();
+    if(json && json.profile){ __profileFetchedAt = Date.now(); cacheTenantProfile(t, json.profile); refreshFirmProfileWarnings(); return json.profile; }
+  }catch(e){}
+  return activeTenantProfile();
 }
 
 // Super-admin-only diagnostics screen (see errorsScreen's own HTML comment
@@ -4210,16 +4314,19 @@ function setupAdminPaneBar(){
   if(!s) return;
   const isSuper = s.role === 'superadmin';
   const isAdminRole = isSuper || s.role === 'tenant_admin';
-  document.getElementById('adminPaneBtn_firms').style.display = isSuper ? '' : 'none';
+  // Firms: every firm for the super-admin; the firm's own card for its owner
+  // (the one place to edit the company data Form 101 prints).
+  document.getElementById('adminPaneBtn_firms').style.display = isAdminRole ? '' : 'none';
+  const superBar = document.getElementById('adminFirmsSuperBar');
+  if(superBar) superBar.style.display = isSuper ? 'flex' : 'none';
   document.getElementById('adminPaneBtn_errors').style.display = isSuper ? '' : 'none';
   document.getElementById('adminPaneBtn_timings').style.display = isSuper ? '' : 'none';
   document.getElementById('adminPaneBtn_users').style.display = isAdminRole ? '' : 'none';
-  document.getElementById('adminPaneBtn_profile').style.display = isAdminRole ? '' : 'none';
   // Clear Log deletes from the database — owner/super-admin only, matching
   // deletePunchesByMonths()'s server-side gate.
   const clearBtn = document.getElementById('adminClearLogBtn');
   if(clearBtn) clearBtn.style.display = isAdminRole ? '' : 'none';
-  switchAdminPane('punchlog');
+  switchAdminPane(__adminPane);
   if(isAdminRole) prefetchAdminUsers();
 }
 // Loads the Users list in the background as soon as the Admin tab opens
@@ -4242,14 +4349,20 @@ function prefetchAdminUsers(){
 }
 const ADMIN_PANE_SUBTITLES = {
   punchlog: 'Punch log — view, edit and export all attendance records',
-  firms: 'Firms (super-admin)',
+  firms: 'Firm details — the employer block printed on every Form 101',
   users: 'Staff and supplier logins for this firm',
-  errors: 'Last ~100 client-side errors, every firm',
+  errors: 'Client-side errors by period, every firm',
   timings: 'How long login, app open and scans take (real devices, every firm)',
-  profile: 'Company profile data used on Form 101',
 };
+// The Admin tab opens with no section (adminPane_none): nothing is drawn or
+// loaded until a section button is tapped. The chosen section is kept while
+// the app stays open.
+let __adminPane=null;
 function switchAdminPane(pane){
-  ['punchlog','firms','users','errors','timings','profile'].forEach(p=>{
+  __adminPane=pane||null;
+  const none=document.getElementById('adminPane_none');
+  if(none) none.style.display=__adminPane?'none':'block';
+  ['punchlog','firms','users','errors','timings'].forEach(p=>{
     const el = document.getElementById('adminPane_'+p);
     if(el) el.style.display = p===pane ? 'block' : 'none';
     const btn = document.getElementById('adminPaneBtn_'+p);
@@ -4258,8 +4371,9 @@ function switchAdminPane(pane){
   const actions = document.getElementById('adminHeaderActions');
   if(actions) actions.style.display = pane==='punchlog' ? 'flex' : 'none';
   const sub = document.getElementById('adminPageSub');
-  if(sub) sub.textContent = ADMIN_PANE_SUBTITLES[pane] || '';
-  if(pane==='firms') renderFirmsList('adminFirmsList');
+  if(sub) sub.textContent = ADMIN_PANE_SUBTITLES[pane] || 'Choose a section';
+  if(pane==='punchlog'){ if(_adminView==='clients') renderClientLogs(); else renderAdmin(); }
+  else if(pane==='firms') renderFirmsList('adminFirmsList');
   else if(pane==='errors') loadErrorsList('adminErrorsList');
   else if(pane==='timings') loadTimingsPane();
   else if(pane==='users') renderAdminUsers();
@@ -4296,7 +4410,7 @@ async function renderAdminUsers(){
 }
 // Draws the Users pane from an already-filtered user list (cached or fresh).
 function renderAdminUsersRows(el, users){
-    const rows = users.map(u => {
+    const row = u => {
       const sup = u.role==='supplier' ? (suppliers||[]).find(s=>s.id===u.supplierId) : null;
       const permsLabel = u.role!=='staff' ? '' : (u.permissions==='*' ? 'Full access' : (Array.isArray(u.permissions)?u.permissions.join(', '):'—'));
       return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);${u.active===false?'opacity:0.55':''}">
@@ -4310,9 +4424,10 @@ function renderAdminUsersRows(el, users){
           <button class="btn sm" onclick="deleteUserConfirm('${esc(u.id)}','${esc(u.username)}')" title="Delete" style="color:#ff6b78"><i class="ti ti-trash"></i></button>
         </div>
       </div>`;
-    }).join('');
+    };
     el.innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="openCreateUserForm()"><i class="ti ti-plus"></i> New user</button></div>`
-      + (users.length ? `<div style="display:flex;flex-direction:column;gap:8px">${rows}</div>` : '<div style="color:var(--text2);font-size:13px">No staff/supplier users yet.</div>');
+      + (users.length ? `<div class="admin-users-rows" style="display:flex;flex-direction:column;gap:8px"></div>` : '<div style="color:var(--text2);font-size:13px">No staff/supplier users yet.</div>');
+    if(users.length) renderPagedList(el.querySelector('.admin-users-rows'), 'users', '', users, row);
 }
 function fillUserFormSupplierSelect(selectedId){
   const sel = document.getElementById('userFormSupplierId');
@@ -4480,11 +4595,7 @@ async function renderSuperadminAccounting(){
         <th style="padding:8px 12px;text-align:center;font-size:12px;color:var(--text2)">Hours (this week)</th>
         <th style="padding:8px 12px;text-align:right;font-size:12px;color:var(--text2)">Payable</th>
       </tr></thead>
-      <tbody>${rows.map(r=>`<tr style="border-bottom:1px solid var(--border)">
-        <td style="padding:8px 12px;font-size:13px;font-weight:600">${esc(r.name)}${r.error?' <span style="color:#ff6b78;font-size:11px">(load failed)</span>':''}</td>
-        <td style="padding:8px 12px;text-align:center;font-size:13px">${r.hours.toFixed(1)}h</td>
-        <td style="padding:8px 12px;text-align:right;font-size:13px;font-weight:700;color:var(--green)">₪${r.pay.toFixed(0)}</td>
-      </tr>`).join('')}</tbody>
+      <tbody class="paged-firmSummary"></tbody>
       <tfoot><tr style="background:var(--bg3);border-top:2px solid var(--border)">
         <td style="padding:8px 12px;font-size:13px;font-weight:700">TOTAL</td>
         <td style="padding:8px 12px;text-align:center;font-size:13px;font-weight:700">${grandHours.toFixed(1)}h</td>
@@ -4492,6 +4603,11 @@ async function renderSuperadminAccounting(){
       </tr></tfoot>
     </table>
   </div>`;
+  renderPagedList(wrap.querySelector('.paged-firmSummary'),'firmSummary','',rows,r=>`<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:8px 12px;font-size:13px;font-weight:600">${esc(r.name)}${r.error?' <span style="color:#ff6b78;font-size:11px">(load failed)</span>':''}</td>
+        <td style="padding:8px 12px;text-align:center;font-size:13px">${r.hours.toFixed(1)}h</td>
+        <td style="padding:8px 12px;text-align:right;font-size:13px;font-weight:700;color:var(--green)">₪${r.pay.toFixed(0)}</td>
+      </tr>`,{table:true,colspan:3});
 }
 
 
@@ -4516,35 +4632,74 @@ function closeErrorsScreen(){
 // just pass back the row index rather than re-serializing the whole error
 // into an inline attribute (awkward/fragile with newlines and quotes).
 let __errorsRowsByTarget = {};
+// ── Errors / Timings: the period picker ─────────────────────────────────
+// Both panes load one period at a time: the last 7 or 30 days, or a calendar
+// month (this one and the 11 before it). Copy all and Print take only that
+// period's rows.
+function logPeriodOptions(){
+  const now=new Date(), opts=[['30d','Last 30 days'],['7d','Last 7 days']];
+  for(let i=0;i<12;i++){
+    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    opts.push(['m:'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),d.toLocaleDateString('en-GB',{month:'long',year:'numeric'})]);
+  }
+  return opts;
+}
+function fillLogPeriodSelect(id){
+  const sel=document.getElementById(id);
+  if(!sel||sel.options.length) return;
+  sel.innerHTML=logPeriodOptions().map(([v,l])=>`<option value="${v}">${esc(l)}</option>`).join('');
+}
+// {key, from, to, label} for a picker value; from/to are ISO times.
+function logPeriodRange(v){
+  v=v||'30d';
+  const opt=logPeriodOptions().find(o=>o[0]===v)||['30d','Last 30 days'];
+  let from, to=null;
+  if(v==='7d'||v==='30d') from=new Date(Date.now()-(v==='7d'?7:30)*864e5);
+  else { const [y,m]=v.slice(2).split('-').map(Number); from=new Date(y,m-1,1); to=new Date(y,m,1); }
+  return {key:v, from:from.toISOString(), to:to?to.toISOString():null, label:opt[1]};
+}
+function logPeriodQuery(pr){ return '&from='+encodeURIComponent(pr.from)+(pr.to?'&to='+encodeURIComponent(pr.to):''); }
+// Short date-time for the compact rows: 04.10 10:18.
+function _shortWhen(w){ const d=new Date(w); return isNaN(d)?'':d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit'}).replace('/','.')+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); }
+let __errorsPeriod={};
 async function loadErrorsList(targetId){
   targetId = targetId || 'errorsList';
   const listEl = document.getElementById(targetId);
-  const cached = loadAdminCache('errors');
+  const pickerId = targetId==='adminErrorsList' ? 'adminErrorsPeriod' : null;
+  if(pickerId) fillLogPeriodSelect(pickerId);
+  const pr = pickerId ? logPeriodRange(document.getElementById(pickerId).value) : null;
+  __errorsPeriod[targetId] = pr;
+  const cacheKey = 'errors' + (pr ? ':' + pr.key : '');
+  const cached = loadAdminCache(cacheKey);
   if(Array.isArray(cached)) renderErrorsRows(listEl, targetId, cached);
   else listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
   try{
-    const res = await fetch(API_URL + '?action=loadErrors' + gsAuthQuery());
+    const res = await fetch(API_URL + '?action=loadErrors' + gsAuthQuery() + (pr ? logPeriodQuery(pr) : ''));
     const json = await res.json();
     if(!json || json.error){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Ошибка загрузки')+'</div>'; return; }
     const rows = json.rows || [];
-    saveAdminCache('errors', rows);
+    saveAdminCache(cacheKey, rows);
     renderErrorsRows(listEl, targetId, rows);
   }catch(e){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
 }
-// Draws the Errors list from rows (cached or fresh).
+// Draws the Errors list from rows (cached or fresh): one bordered box, a
+// compact row per error (time · page · source, then the message), paged by 10.
 function renderErrorsRows(listEl, targetId, rows){
     __errorsRowsByTarget[targetId] = rows;
-    if(!rows.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Ошибок нет.</div>'; return; }
-    renderPagedList(listEl, 'errors:' + targetId, '', rows, (r,i) => `
-      <div style="position:relative;padding:10px 40px 10px 12px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:12px">
-        <button class="btn sm" title="Копировать ошибку" onclick="copyErrorRow('${targetId}',${i})" style="position:absolute;top:6px;right:6px;padding:4px 6px;min-width:0"><i class="ti ti-copy"></i></button>
-        <div style="display:flex;gap:10px;color:var(--text2);margin-bottom:4px">
-          <span>${esc(r.when ? new Date(r.when).toLocaleString() : '')}</span>
-          <span>${esc(r.page||'')}</span>
-          ${r.source ? '<span style="font-weight:600">'+esc(r.source)+'</span>' : ''}
-        </div>
-        <div style="word-break:break-word">${esc(r.message||'')}</div>
+    const pr = __errorsPeriod[targetId];
+    if(!rows.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Ошибок нет'+(pr?' — '+esc(pr.label):'')+'.</div>'; return; }
+    listEl.innerHTML = `<div style="font-size:12px;color:var(--text2);margin-bottom:6px">${rows.length} error${rows.length===1?'':'s'}${pr?' · '+esc(pr.label):''}</div><div class="log-box errors-rows"></div>`;
+    renderPagedList(listEl.querySelector('.errors-rows'), 'errors:' + targetId, pr ? pr.key : '', rows, (r,i) => `
+      <div class="log-row">
+        <button class="btn sm log-copy" title="Копировать ошибку" onclick="copyErrorRow('${targetId}',${i})"><i class="ti ti-copy"></i></button>
+        <div class="log-meta"><span class="log-when">${esc(_shortWhen(r.when))}</span>${r.page?`<span>${esc(r.page)}</span>`:''}${r.source?`<span style="font-weight:600">${esc(r.source)}</span>`:''}${r.user||r.worker?`<span>${esc(r.user||r.worker)}</span>`:''}</div>
+        <div class="log-main" style="word-break:break-word">${esc(r.message||'')}</div>
       </div>`);
+}
+function copyAllErrors(targetId){
+  const rows = __errorsRowsByTarget[targetId] || [], pr = __errorsPeriod[targetId];
+  if(!rows.length){ showToast('Nothing to copy'); return; }
+  copyTextToClipboard((pr ? 'Errors — ' + pr.label + ' (' + rows.length + ')\n\n' : '') + rows.map(errorRowText).join('\n\n'));
 }
 // ── Admin → Timings (super-admin) ─────────────────────────────────────────
 // Summary per kind over the last 7 days (median / 90th percentile of the
@@ -4557,73 +4712,104 @@ const TIMING_PHASES = {
 };
 function _pct(arr,p){ if(!arr.length) return null; const a=[...arr].sort((x,y)=>x-y); return a[Math.min(a.length-1,Math.floor(p*(a.length-1)+0.5))]; }
 const _sec=ms=>ms==null?'—':(ms/1000).toFixed(1)+'s';
+let __timingsPeriod=null;
 async function loadTimingsPane(){
   const el=document.getElementById('adminTimingsWrap'); if(!el) return;
-  const cached=loadAdminCache('timings');
+  fillLogPeriodSelect('adminTimingsPeriod');
+  const pr=logPeriodRange((document.getElementById('adminTimingsPeriod')||{}).value);
+  __timingsPeriod=pr;
+  const cacheKey='timings:'+pr.key;
+  const cached=loadAdminCache(cacheKey);
   if(Array.isArray(cached)) renderTimingsPane(el,cached);
   else el.innerHTML='<div style="color:var(--text2);font-size:13px">Loading…</div>';
   try{
-    const res=await fetch(API_URL+'?action=loadTimings'+gsAuthQuery());
+    const res=await fetch(API_URL+'?action=loadTimings'+gsAuthQuery()+logPeriodQuery(pr));
     const json=await res.json();
     if(!json||json.error){ if(!cached) el.innerHTML='<div style="color:#ff6b78">'+esc((json&&json.error)||'Load failed')+'</div>'; return; }
-    saveAdminCache('timings',json.rows||[]);
+    saveAdminCache(cacheKey,json.rows||[]);
     renderTimingsPane(el,json.rows||[]);
   }catch(e){ if(!cached) el.innerHTML='<div style="color:#ff6b78">Network error</div>'; }
 }
 const TIMING_KIND_LABEL={login:'Login → fresh data',open:'App open',scan:'Scan (camera)',scanFiles:'Scan (files)'};
 // Slow data calls arrive as kind "gs:<action>" (see the fetch wrapper).
 function timingKindLabel(k){ return TIMING_KIND_LABEL[k] || (String(k).indexOf('gs:')===0 ? 'Slow call: '+k.slice(3) : k); }
-let __timingsRows=[], __timingsSummaryText='';
+let __timingsRows=[], __timingsSummaryText='', __timingsSummary=[];
 function _timingFirmName(id){ const firms=(__firmsCache&&__firmsCache.length)?__firmsCache:(loadFirmsCache()||[]); const t=firms.find(x=>x.tenantId===id); return t?(t.companyName||id):(id||'—'); }
+function _timingSteps(kind,d){ return (TIMING_PHASES[kind]||[]).map(([key,label])=>typeof d[key]==='number'?[label,d[key]]:null).filter(Boolean); }
 // One measurement as plain text (what the per-row copy button copies).
 function timingRowText(r){
   const d=r.details||{};
-  const steps=(TIMING_PHASES[r.kind]||[]).map(([key,label])=>typeof d[key]==='number'?`${label} ${_sec(d[key])}`:'').filter(Boolean).join(' · ');
-  const head=[new Date(r.when).toLocaleString(),_timingKeyLabel(_timingKey(r)),_timingFirmName(r.tenantId),r.user||'',d.device||'',d.pages?d.pages+' page(s)':'',d.aborted||''].filter(Boolean).join(' · ');
+  const steps=_timingSteps(r.kind,d).map(([l,v])=>`${l} ${_sec(v)}`).join(' · ');
+  const head=[new Date(r.when).toLocaleString(),timingKindLabel(r.kind),_timingFirmName(r.tenantId),r.user||'',d.device||'',d.pages?d.pages+' page(s)':'',d.aborted||''].filter(Boolean).join(' · ');
   return head+'\n'+_sec(r.totalMs)+(steps?' — '+steps:'')+(d.kinds?'\nPage kinds: '+d.kinds.join(', '):'');
 }
 function copyTimingRow(i){ const r=__timingsRows[i]; if(r) copyTextToClipboard(timingRowText(r)); }
 function copyAllTimings(){
   if(!__timingsRows.length){ showToast('Nothing to copy'); return; }
-  copyTextToClipboard((__timingsSummaryText?__timingsSummaryText+'\n\n':'')+'Latest:\n'+__timingsRows.slice(0,50).map(timingRowText).join('\n\n'));
+  copyTextToClipboard((__timingsSummaryText?__timingsSummaryText+'\n\n':'')+'All measurements ('+__timingsRows.length+'):\n'+__timingsRows.map(timingRowText).join('\n\n'));
 }
-function _timingKey(r){ return r.kind; }
-function _timingKeyLabel(key){ return timingKindLabel(key); }
+// Summary per kind over the picked period (finished runs only): count,
+// median and 90% of the total, median of each step.
+function _timingsSummary(rows){
+  const done=rows.filter(r=>!(r.details&&r.details.aborted));
+  const kinds=['login','open','scan','scanFiles'].filter(k=>done.some(r=>r.kind===k))
+    .concat([...new Set(done.map(r=>r.kind).filter(k=>String(k).indexOf('gs:')===0))].sort());
+  return kinds.map(k=>{
+    const rs=done.filter(r=>r.kind===k), tot=rs.map(r=>r.totalMs);
+    const steps=(TIMING_PHASES[k]||[]).map(([key,label])=>{ const v=rs.map(r=>r.details&&r.details[key]).filter(x=>typeof x==='number'); return v.length?[label,_pct(v,0.5)]:null; }).filter(Boolean);
+    return {kind:k,label:timingKindLabel(k),count:rs.length,median:_pct(tot,0.5),p90:_pct(tot,0.9),steps};
+  });
+}
 function renderTimingsPane(el,rows){
-  __timingsRows=rows; __timingsSummaryText='';
-  if(!rows.length){ el.innerHTML='<div style="color:var(--text2);font-size:13px">No measurements yet — they appear after the next login, app open or scan.</div>'; return; }
-  const weekAgo=Date.now()-7*864e5;
-  const recent=rows.filter(r=>new Date(r.when).getTime()>=weekAgo&&!(r.details&&r.details.aborted));
-  const baseKinds=['login','open','scan','scanFiles'].filter(k=>recent.some(r=>r.kind===k)).concat([...new Set(recent.map(r=>r.kind).filter(k=>String(k).indexOf('gs:')===0))].sort());
-  const kinds=baseKinds;
-  const firmName=_timingFirmName;
-  const KIND_LABEL=TIMING_KIND_LABEL;
-  __timingsSummaryText='Last 7 days (median / 90%):\n'+kinds.map(k=>{
-    const rs=recent.filter(r=>_timingKey(r)===k), tot=rs.map(r=>r.totalMs);
-    const steps=(TIMING_PHASES[k.split('|')[0]]||[]).map(([key,label])=>{ const v=rs.map(r=>r.details&&r.details[key]).filter(x=>typeof x==='number'); return v.length?`${label} ${_sec(_pct(v,0.5))}`:''; }).filter(Boolean).join(' · ');
-    return `${_timingKeyLabel(k)}: ${rs.length}× · median ${_sec(_pct(tot,0.5))} · 90% ${_sec(_pct(tot,0.9))}${steps?' · '+steps:''}`;
-  }).join('\n');
-  const summary=kinds.map(k=>{
-    const rs=recent.filter(r=>_timingKey(r)===k), tot=rs.map(r=>r.totalMs);
-    const phases=(TIMING_PHASES[k.split('|')[0]]||[]).map(([key,label])=>{ const v=rs.map(r=>r.details&&r.details[key]).filter(x=>typeof x==='number'); return v.length?`${esc(label)} ${_sec(_pct(v,0.5))}`:''; }).filter(Boolean).join(' · ');
-    return `<tr><td style="padding:6px 8px;font-weight:600">${esc(_timingKeyLabel(k))}</td><td style="padding:6px 8px;text-align:center">${rs.length}</td>
-      <td style="padding:6px 8px;text-align:center;font-weight:600">${_sec(_pct(tot,0.5))}</td><td style="padding:6px 8px;text-align:center">${_sec(_pct(tot,0.9))}</td>
-      <td style="padding:6px 8px;font-size:11px;color:var(--text2)">${phases}</td></tr>`;
-  }).join('');
+  const pr=__timingsPeriod||logPeriodRange('30d');
+  __timingsRows=rows;
+  __timingsSummary=_timingsSummary(rows);
+  __timingsSummaryText=__timingsSummary.length?pr.label+' (median / 90%):\n'+__timingsSummary.map(x=>
+    `${x.label}: ${x.count}× · median ${_sec(x.median)} · 90% ${_sec(x.p90)}${x.steps.length?' · '+x.steps.map(([l,v])=>l+' '+_sec(v)).join(' · '):''}`).join('\n'):'';
+  if(!rows.length){ el.innerHTML='<div style="color:var(--text2);font-size:13px">No measurements — '+esc(pr.label)+'.</div>'; return; }
+  const p90=Object.fromEntries(__timingsSummary.map(x=>[x.kind,x.p90]));
+  const cards=__timingsSummary.map(x=>`<div class="tm-card">
+      <div class="tm-card-head">${esc(x.label)}<span>${x.count}×</span></div>
+      <div class="tm-card-vals">median <b>${_sec(x.median)}</b> · 90% ${_sec(x.p90)}</div>
+      ${x.steps.map(([l,v])=>`<span class="tm-pill">${esc(l)} ${_sec(v)}</span>`).join('')}
+    </div>`).join('');
+  // A run slower than its kind's 90% is marked amber.
   const rowHtml=(r,i)=>{
-    const d=r.details||{};
-    const extra=(TIMING_PHASES[r.kind]||[]).map(([key,label])=>typeof d[key]==='number'?`${esc(label)} ${_sec(d[key])}`:'').filter(Boolean).join(' · ');
-    return `<div style="position:relative;padding:8px 40px 8px 10px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:12px">
-      <button class="btn sm" title="Copy" onclick="copyTimingRow(${i})" style="position:absolute;top:6px;right:6px;padding:4px 6px;min-width:0"><i class="ti ti-copy"></i></button>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;color:var(--text2)"><span>${esc(new Date(r.when).toLocaleString())}</span><span style="font-weight:600;color:var(--text)">${esc(_timingKeyLabel(_timingKey(r)))}</span>
-        <span>${esc(firmName(r.tenantId))}</span><span>${esc(r.user||'')}</span><span>${esc(d.device||'')}</span>${d.pages?`<span>${d.pages} page(s)</span>`:''}${d.aborted?`<span style="color:#ffb020">${esc(d.aborted)}</span>`:''}</div>
-      <div><b>${_sec(r.totalMs)}</b>${extra?' — '+extra:''}</div></div>`;
+    const d=r.details||{}, slow=p90[r.kind]!=null&&r.totalMs>p90[r.kind];
+    const steps=_timingSteps(r.kind,d).map(([l,v])=>`${esc(l)} ${_sec(v)}`).join(' · ');
+    return `<div class="log-row">
+      <button class="btn sm log-copy" title="Copy" onclick="copyTimingRow(${i})"><i class="ti ti-copy"></i></button>
+      <div class="log-main"><span class="log-when">${esc(_shortWhen(r.when))}</span> &nbsp;<b>${esc(timingKindLabel(r.kind))}</b> &nbsp;<b style="color:${slow?'var(--amber)':'var(--text)'}">${_sec(r.totalMs)}</b>${d.aborted?` <span style="color:var(--amber)">${esc(d.aborted)}</span>`:''}</div>
+      ${steps?`<div class="log-sub">${steps}</div>`:''}
+      <div class="log-meta">${[_timingFirmName(r.tenantId),r.user,d.device,d.pages?d.pages+' page(s)':'',d.kinds?d.kinds.join(', '):''].filter(Boolean).map(x=>`<span>${esc(x)}</span>`).join('')}</div>
+    </div>`;
   };
-  el.innerHTML=`${kinds.length?`<div style="font-size:13px;font-weight:600;margin-bottom:6px">Last 7 days (median / 90%)</div>
-    <div style="overflow-x:auto;margin-bottom:14px"><table style="width:100%;border-collapse:collapse;font-size:12px">
-    <tr style="color:var(--text2);text-align:left"><th style="padding:6px 8px">What</th><th style="padding:6px 8px">Count</th><th style="padding:6px 8px">Median</th><th style="padding:6px 8px">90%</th><th style="padding:6px 8px">Median by step</th></tr>${summary}</table></div>`:''}
-    <div style="font-size:13px;font-weight:600;margin-bottom:6px">Latest</div><div id="timingsLatestList" style="display:flex;flex-direction:column;gap:6px"></div>`;
-  renderPagedList(document.getElementById('timingsLatestList'), 'timings', '', rows, rowHtml);
+  el.innerHTML=`<div style="font-size:12px;color:var(--text2);margin-bottom:6px">${esc(pr.label)} · ${rows.length} measurement${rows.length===1?'':'s'} · median / 90%</div>
+    ${cards?`<div class="tm-cards">${cards}</div>`:''}
+    <div style="font-size:12px;color:var(--text2);margin-bottom:6px">All measurements, newest first</div>
+    <div id="timingsLatestList" class="log-box"></div>`;
+  renderPagedList(document.getElementById('timingsLatestList'), 'timings', pr.key, rows, rowHtml);
+}
+// Print: the picked period of the Errors or Timings pane as a plain page.
+function printLogPane(which){
+  const isT=which==='timings';
+  const rows=isT?__timingsRows:(__errorsRowsByTarget.adminErrorsList||[]);
+  const pr=isT?__timingsPeriod:__errorsPeriod.adminErrorsList;
+  if(!rows.length){ showToast('Nothing to print'); return; }
+  const title=(isT?'Timings':'Errors')+(pr?' — '+pr.label:'');
+  const th='style="border:1px solid #ccc;padding:4px 6px;background:#f0f0f0;text-align:left"', td='style="border:1px solid #ccc;padding:4px 6px;vertical-align:top"';
+  const summary=isT&&__timingsSummary.length?`<h3>Summary (median / 90%)</h3><table><tr><th ${th}>What</th><th ${th}>Count</th><th ${th}>Median</th><th ${th}>90%</th><th ${th}>Median by step</th></tr>`
+    +__timingsSummary.map(x=>`<tr><td ${td}>${esc(x.label)}</td><td ${td}>${x.count}</td><td ${td}>${_sec(x.median)}</td><td ${td}>${_sec(x.p90)}</td><td ${td}>${esc(x.steps.map(([l,v])=>l+' '+_sec(v)).join(' · '))}</td></tr>`).join('')+'</table>':'';
+  const body=isT
+    ?`<table><tr><th ${th}>When</th><th ${th}>What</th><th ${th}>Total</th><th ${th}>Steps</th><th ${th}>Firm · user · device</th></tr>`
+      +rows.map(r=>{ const d=r.details||{}; return `<tr><td ${td}>${esc(new Date(r.when).toLocaleString())}</td><td ${td}>${esc(timingKindLabel(r.kind))}${d.aborted?' ('+esc(d.aborted)+')':''}</td><td ${td}>${_sec(r.totalMs)}</td><td ${td}>${esc(_timingSteps(r.kind,d).map(([l,v])=>l+' '+_sec(v)).join(' · '))}</td><td ${td}>${esc([_timingFirmName(r.tenantId),r.user,d.device].filter(Boolean).join(' · '))}</td></tr>`; }).join('')+'</table>'
+    :`<table><tr><th ${th}>When</th><th ${th}>Page</th><th ${th}>Source</th><th ${th}>Message</th></tr>`
+      +rows.map(r=>`<tr><td ${td}>${esc(r.when?new Date(r.when).toLocaleString():'')}</td><td ${td}>${esc(r.page||'')}</td><td ${td}>${esc(r.source||'')}</td><td ${td}>${esc(r.message||'')}</td></tr>`).join('')+'</table>';
+  const win=window.open('','_blank');
+  if(!win){ showToast('Allow pop-ups to print'); return; }
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(title)}</title><style>body{font-family:Arial,sans-serif;padding:16px;color:#111;font-size:12px}table{width:100%;border-collapse:collapse;margin-bottom:16px}</style></head><body><h2>${esc(title)}</h2><div>${rows.length} row(s)</div>${summary}<h3>${isT?'Measurements':'Errors'}</h3>${body}</body></html>`);
+  win.document.close();
+  setTimeout(()=>win.print(),500);
 }
 function errorRowText(r){
   const head = [r.when ? new Date(r.when).toLocaleString() : '', r.page||'', r.source||''].filter(Boolean).join(' · ');
@@ -4810,6 +4996,13 @@ async function submitEditFirm(){
     const __activeSession=getSession();
     const __activeTenantId=__activeSession&&(__activeSession.viewingTenantId||__activeSession.tenantId);
     if(__activeTenantId===__editingFirmTenantId) regenerateAllWorkerDocs();
+    else {
+      // Another firm, edited from the Firms list: its workers aren't loaded
+      // here, so their Form 101s are rebuilt the next time this device opens
+      // that firm (checked in maybeRegenAfterFirmEdit()).
+      try{ localStorage.setItem('form101Regen:'+__editingFirmTenantId,'1'); }catch(e){}
+      showToast('Сохранено. Формы 101 работников этой фирмы обновятся, когда вы её откроете', 5000);
+    }
   }catch(e){ errEl.textContent = 'Сеть недоступна'; }
   finally{ btn.disabled = false; btn.textContent = 'Сохранить'; }
 }
@@ -5051,6 +5244,7 @@ async function loadData(){
       markFreshContent('app');
       setSaveStatus('saved');
       syncPunchesFromGS();
+      maybeRegenAfterFirmEdit();
     } else {
       showToast('Could not load from the server — showing saved data'+(gsLoad.lastError?' ('+gsLoad.lastError.slice(0,80)+')':''),6000);
       retryLoadDataWhenBack();
@@ -5070,7 +5264,7 @@ function retryLoadDataWhenBack(){
     if(document.visibilityState==='hidden' || navigator.onLine===false) return;
     window.removeEventListener('online',again); document.removeEventListener('visibilitychange',again);
     const gd=await gsLoad(); __loadRetryArmed=false;
-    if(gd){ try{ if(applyServerLoad(gd)) showToast('Data loaded'); }catch(e){} markFreshContent('app'); syncPunchesFromGS(); }
+    if(gd){ try{ if(applyServerLoad(gd)) showToast('Data loaded'); }catch(e){} markFreshContent('app'); syncPunchesFromGS(); maybeRegenAfterFirmEdit(); }
   };
   window.addEventListener('online',again); document.addEventListener('visibilitychange',again);
   setTimeout(again,15000);
@@ -5111,12 +5305,9 @@ function importDataBackup(){
 }
 
 // --- Dashboard -------------------------------------------------------------------
-let _logExpanded=false, _salExpanded=false;
 let __lastSalaryEntries=[];
 let __lastClientBillEntries=[];
 let __lastSupplierPayableRows=[];
-function toggleLog(){ _logExpanded=!_logExpanded; renderDashboard(); }
-function toggleSalary(){ _salExpanded=!_salExpanded; renderSalary(); }
 function renderDashboard(){
   const now     = new Date();
   const todayIdx= now.getDay(); // 0=Sun
@@ -5154,7 +5345,7 @@ function renderDashboard(){
   // ── Render on-site cards ────────────────────────────────────────────────
   const onSiteEl = document.getElementById('dashOnSite');
   if(onSite.length){
-    onSiteEl.innerHTML = onSite.map(w=>{
+    renderPagedList(onSiteEl,'dashOnSite','',onSite,w=>{
       const c=WORKER_COLORS[w.colorIdx%8];
       const lastIn=latestOf(todayLog.filter(e=>e.workerId===w.id&&e.type==='in'));
       const sinceTime=lastIn?lastIn.time:'?';
@@ -5167,7 +5358,7 @@ function renderDashboard(){
         <div style="font-size:11px;color:var(--text2)">Since ${sinceTime}</div>
         ${lastIn?.dist!=null?`<div style="font-size:10px;color:var(--text3)"><i class="ti ti-map-pin"></i> ${lastIn.dist}m</div>`:''}
       </div>`;
-    }).join('');
+    },{grid:true});
   } else {
     onSiteEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">Nobody clocked in yet today</div>`;
   }
@@ -5175,7 +5366,7 @@ function renderDashboard(){
   // ── Render missing workers ──────────────────────────────────────────────
   const missingEl = document.getElementById('dashMissing');
   if(missing.length){
-    missingEl.innerHTML = missing.map(w=>{
+    renderPagedList(missingEl,'dashMissing','',missing,w=>{
       const c=WORKER_COLORS[w.colorIdx%8];
       const sh=w.schedule?.[todayIdx];
       return `<div style="background:var(--bg2);border:1px solid rgba(248,113,113,0.25);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
@@ -5186,7 +5377,7 @@ function renderDashboard(){
         <div style="font-size:11px;color:var(--red)">Should be here</div>
         <div style="font-size:10px;color:var(--text3)">${sh?.start||''}–${sh?.end||''}</div>
       </div>`;
-    }).join('');
+    },{grid:true});
   } else {
     missingEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">Everyone is present <i class="ti ti-check"></i></div>`;
   }
@@ -5203,7 +5394,7 @@ function renderDashboard(){
   const expiringWrap = document.getElementById('dashExpiringWrap');
   expiringWrap.style.display = expiring.length ? 'block' : 'none';
   if(expiring.length){
-    document.getElementById('dashExpiring').innerHTML = expiring.map(({w,overdue,label,date})=>{
+    renderPagedList(document.getElementById('dashExpiring'),'dashExpiring','',expiring,({w,overdue,label,date})=>{
       const c=WORKER_COLORS[w.colorIdx%8];
       const borderCol = overdue?'rgba(248,113,113,0.25)':'rgba(245,166,35,0.25)';
       const dotCol = overdue?'var(--red)':'var(--amber)';
@@ -5216,7 +5407,7 @@ function renderDashboard(){
         <div style="font-size:11px;color:${textCol}">${esc(label)}</div>
         <div style="font-size:10px;color:var(--text3)">${date.toLocaleDateString('en-GB')}</div>
       </div>`;
-    }).join('');
+    },{grid:true});
   }
 
   // ── Today's punch log ───────────────────────────────────────────────────
@@ -5225,13 +5416,11 @@ function renderDashboard(){
     dashLogEl.innerHTML=`<div style="text-align:center;padding:24px;color:var(--text3);font-size:13px">No punches today</div>`;
   } else {
     const sorted=[...todayLog].reverse();
-    const LOG_LIMIT=4;
-    const shown=_logExpanded?sorted:sorted.slice(0,LOG_LIMIT);
-    dashLogEl.innerHTML=shown.map((e,i)=>{
+    renderPagedList(dashLogEl,'dashLog',now.toDateString(),sorted,(e,i)=>{
       const wc=workers.find(w=>w.id===e.workerId);
       const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
       const ini=wc?workerAvatarInner(wc):esc(e.workerName?.slice(0,2).toUpperCase()||'?');
-      return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:${i<shown.length-1?'1px solid var(--border)':'none'}">
+      return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--border)">
         <div style="width:30px;height:30px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div>
         <div style="flex:1">
           <div style="font-size:13px;font-weight:600">${esc(e.workerName)}</div>
@@ -5241,7 +5430,7 @@ function renderDashboard(){
         <span style="font-size:13px;font-family:monospace;color:var(--text);min-width:42px;text-align:right">${e.time}</span>
         ${e.gpsSuspicious?'<span title="GPS suspicious" style="color:var(--amber);font-size:12px"><i class="ti ti-alert-triangle"></i></span>':''}
       </div>`;
-    }).join('') + (sorted.length>LOG_LIMIT?`<div style="text-align:center;padding:10px;border-top:1px solid var(--border)"><button class="btn sm" onclick="toggleLog()">${_logExpanded?'<i class="ti ti-chevron-up"></i> Show less':'<i class="ti ti-chevron-down"></i> Show all ('+sorted.length+')'}</button></div>`:'');
+    });
   }
 
   renderDashSuppliers();
@@ -5265,16 +5454,16 @@ function renderDashSuppliers(){
     wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No workers yet</div>`;
     return;
   }
-  wrap.innerHTML = rows.map(r=>`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
+  const items=unassigned?[...rows,{unassigned}]:rows;
+  renderPagedList(wrap,'dashSuppliers','',items,r=>r.unassigned==null?`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
       <div style="width:40px;height:40px;border-radius:50%;background:${r.sup.color}22;color:${r.sup.color};display:flex;align-items:center;justify-content:center;font-size:16px"><i class="ti ti-truck-delivery"></i></div>
       <div style="font-size:13px;font-weight:600">${esc(r.sup.name)}</div>
       <div style="font-size:11px;color:var(--text2)">${r.count} worker${r.count===1?'':'s'}</div>
-    </div>`).join('')
-    + (unassigned?`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;opacity:0.7">
+    </div>`:`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;opacity:0.7">
       <div style="width:40px;height:40px;border-radius:50%;background:var(--bg3);color:var(--text3);display:flex;align-items:center;justify-content:center;font-size:16px"><i class="ti ti-truck-delivery"></i></div>
       <div style="font-size:13px;font-weight:600;color:var(--text3)">No supplier</div>
-      <div style="font-size:11px;color:var(--text3)">${unassigned} worker${unassigned===1?'':'s'}</div>
-    </div>`:'');
+      <div style="font-size:11px;color:var(--text3)">${r.unassigned} worker${r.unassigned===1?'':'s'}</div>
+    </div>`,{grid:true});
 }
 
 function renderAccounting(){
@@ -5376,7 +5565,6 @@ function renderSalary(){
 
   const totalHours=entries.reduce((s,e)=>s+e.hours,0);
   const grandTotal=entries.reduce((s,e)=>s+e.total+e.travel,0);
-  const shownEntries=_salExpanded?entries:entries.slice(0,4);
   const _allWarns=entries.flatMap(e=>(e.warns||[]).map(w=>e.worker+' — '+w));
   const _reviewBanner=_allWarns.length?`<div style="background:var(--amber-bg);border:1px solid rgba(245,166,35,0.3);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px"><div style="color:var(--amber);font-weight:600;font-size:13px;margin-bottom:4px"><i class="ti ti-alert-triangle"></i> ${_allWarns.length} to review before calculating</div><div style="color:var(--text2);font-size:12px;line-height:1.6">${_allWarns.slice(0,12).map(w=>'• '+w).join('<br>')}${_allWarns.length>12?'<br>…'+(_allWarns.length-12)+' more':''}</div></div>`:'';
   salaryEl.innerHTML=_reviewBanner+`
@@ -5394,8 +5582,23 @@ function renderSalary(){
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Total Pay</th>
           </tr>
         </thead>
-        <tbody>
-          ${shownEntries.map((e,i)=>{
+        <tbody class="salary-rows"></tbody>
+        <tfoot>
+          <tr style="background:var(--bg3);border-top:2px solid var(--border)">
+            <td style="padding:10px 12px;font-size:13px;font-weight:600;color:var(--text2)">TOTAL</td>
+            <td style="padding:10px 12px;text-align:center;font-size:14px;font-weight:700;color:var(--text)">${totalHours.toFixed(1)}h</td>
+            <td colspan="4"></td>
+            <td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">
+              ₪${grandTotal.toFixed(0)}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+      </div>
+      <div style="padding:8px 12px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">₪/hour rates are editable manually. Default: Regular = base rate · OT = ×${PAY_RULES.otMult} · Shabbat = ×${PAY_RULES.shabbatMult}. Hours: Regular ≤8h/day, above that — OT; Saturday — at the Shabbat rate. Travel = worker's flat per-work-day travel allowance.</div>
+    </div>`;
+  // The totals row covers every worker; the rows are paged (renderPagedList).
+  renderPagedList(salaryEl.querySelector('.salary-rows'),'salary',period,entries,(e,i)=>{
             const wc=workers.find(w=>w.id===e.workerId);
             const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
             const base=wc?.hourlyRate||0;
@@ -5432,23 +5635,7 @@ function renderSalary(){
                 ${(e.total+e.travel)>0?'₪'+(e.total+e.travel).toFixed(0):'—'}
               </td>
             </tr>`;
-          }).join('')}
-        </tbody>
-        <tfoot>
-          <tr style="background:var(--bg3);border-top:2px solid var(--border)">
-            <td style="padding:10px 12px;font-size:13px;font-weight:600;color:var(--text2)">TOTAL</td>
-            <td style="padding:10px 12px;text-align:center;font-size:14px;font-weight:700;color:var(--text)">${totalHours.toFixed(1)}h</td>
-            <td colspan="4"></td>
-            <td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">
-              ₪${grandTotal.toFixed(0)}
-            </td>
-          </tr>
-        </tfoot>
-      </table>
-      </div>
-      ${entries.length>4?`<div style="text-align:center;padding:8px;border-top:1px solid var(--border)"><button class="btn sm" onclick="toggleSalary()">${_salExpanded?'<i class="ti ti-chevron-up"></i> Show less':'<i class="ti ti-chevron-down"></i> Show all ('+entries.length+')'}</button></div>`:''}
-      <div style="padding:8px 12px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">₪/hour rates are editable manually. Default: Regular = base rate · OT = ×${PAY_RULES.otMult} · Shabbat = ×${PAY_RULES.shabbatMult}. Hours: Regular ≤8h/day, above that — OT; Saturday — at the Shabbat rate. Travel = worker's flat per-work-day travel allowance.</div>
-    </div>`;
+},{table:true,colspan:7});
   renderSupplierPayable(entries);
   renderClientBillable(__lastClientBillEntries);
 }
@@ -5515,21 +5702,19 @@ function renderSupplierPayable(entries){
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Payable</th>
           </tr>
         </thead>
-        <tbody>
-          ${rows.map((r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
-            <td style="padding:10px 12px;font-size:13px;font-weight:600"><span style="color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></span> ${esc(r.sup.name)}</td>
-            <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)}h</td>
-            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
-          </tr>`).join('')}
-          ${unassigned.hours?`<tr style="border-bottom:1px solid var(--border)">
+        <tbody class="paged-supplierPayable"></tbody><tbody>${unassigned.hours?`<tr style="border-bottom:1px solid var(--border)">
             <td style="padding:10px 12px;font-size:13px;color:var(--text3)">No supplier assigned</td>
             <td style="padding:10px 12px;text-align:center;font-size:13px;color:var(--text3)">${unassigned.hours.toFixed(1)}h</td>
             <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text3)">—</td>
-          </tr>`:''}
-        </tbody>
+          </tr>`:''}</tbody>
       </table>
       </div>
     </div>`;
+  renderPagedList(wrap.querySelector('.paged-supplierPayable'),'supplierPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
+            <td style="padding:10px 12px;font-size:13px;font-weight:600"><span style="color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></span> ${esc(r.sup.name)}</td>
+            <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)}h</td>
+            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
+          </tr>`,{table:true,colspan:20});
 }
 
 // "Billable by client" — what each client owes the firm, computed via
@@ -5562,17 +5747,16 @@ function renderClientBillable(entries){
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Billable</th>
           </tr>
         </thead>
-        <tbody>
-          ${rows.map((r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
+        <tbody class="paged-clientBillable"></tbody>
+      </table>
+      </div>
+    </div>`;
+  renderPagedList(wrap.querySelector('.paged-clientBillable'),'clientBillable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
             <td style="padding:10px 12px;font-size:13px;font-weight:600"><span style="color:${r.cl.color}"><i class="ti ti-building-store"></i></span> ${esc(r.cl.name)}</td>
             <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)}h</td>
             <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${r.cl.rateMode==='fixed'?'Fixed':'Tiered'}</td>
             <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-      </div>
-    </div>`;
+          </tr>`,{table:true,colspan:20});
 }
 
 // Hours-import approval queue (Admin/Roles plan, stage 14). Any non-supplier
@@ -5605,8 +5789,11 @@ async function renderPendingHours(){
             ${canApprove?'<th style="padding:10px 12px"></th>':''}
           </tr>
         </thead>
-        <tbody>
-          ${batches.map(b=>{
+        <tbody class="pending-hours-rows"></tbody>
+      </table>
+      </div>
+    </div>`;
+  renderPagedList(wrap.querySelector('.pending-hours-rows'),'pendingHours','',batches,b=>{
             const w = workers.find(x=>x.id===(b.entries[0]&&b.entries[0].workerId));
             return `<tr style="border-bottom:1px solid var(--border)">
               <td style="padding:10px 12px;font-size:13px">${esc(b.fileName||'—')}${w?' · '+esc(w.name):''}</td>
@@ -5617,11 +5804,7 @@ async function renderPendingHours(){
                 <button class="btn sm red" onclick="rejectHoursBatch('${b.batchId}')"><i class="ti ti-x"></i></button>
               </td>`:''}
             </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-      </div>
-    </div>`;
+},{table:true,colspan:canApprove?4:3});
 }
 async function approveHoursBatch(batchId){
   try{
@@ -5683,8 +5866,11 @@ function renderRateMatrix(){
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--blue)">Shabbat ₪/h</th>
           </tr>
         </thead>
-        <tbody>
-          ${rows.map((r,i)=>{
+        <tbody class="paged-rateMatrix"></tbody>
+      </table>
+      </div>
+    </div>`;
+  renderPagedList(wrap.querySelector('.paged-rateMatrix'),'rateMatrix','',rows,(r,i)=>{
             const ov=(r.w.clientRates&&r.w.clientRates[r.cl.id])||{};
             const eff=effectiveRates(r.w,r.cl.id);
             return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
@@ -5706,11 +5892,7 @@ function renderRateMatrix(){
                   style="width:70px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
             </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-      </div>
-    </div>`;
+          },{table:true,colspan:20});
 }
 function setClientRateOverride(wid,cid,field,val){
   const w=workers.find(x=>x.id===wid);
@@ -5752,8 +5934,11 @@ function renderSupplierRateMatrix(){
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Commission ₪/h</th>
           </tr>
         </thead>
-        <tbody>
-          ${rows.map((r,i)=>{
+        <tbody class="paged-supplierRateMatrix"></tbody>
+      </table>
+      </div>
+    </div>`;
+  renderPagedList(wrap.querySelector('.paged-supplierRateMatrix'),'supplierRateMatrix','',rows,(r,i)=>{
             const ov=(r.w.supplierRates&&r.w.supplierRates[r.sup.id])||{};
             return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
               <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.w.name)}</td>
@@ -5764,11 +5949,7 @@ function renderSupplierRateMatrix(){
                   style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
             </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-      </div>
-    </div>`;
+          },{table:true,colspan:20});
 }
 function setSupplierRateOverride(wid,sid,field,val){
   const w=workers.find(x=>x.id===wid);
@@ -6046,7 +6227,7 @@ function setAdminView(view){
   if(view==='log'){
     logBtn.style.cssText='background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)';
     cliBtn.style.cssText='';
-    if(filters) filters.style.display='flex';
+    if(filters) filters.style.display='';
     if(tableWrap) tableWrap.style.display='block';
     if(cliView) cliView.style.display='none';
     renderAdmin();
@@ -6065,7 +6246,7 @@ function renderClientLogs(){
   const el = document.getElementById('adminClientLogs');
   if(!clients.length){ el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3)">No clients configured</div>'; return; }
 
-  el.innerHTML = clients.map(c=>{
+  renderPagedList(el, 'clientLogs', '', clients, c=>{
     const assignedWorkers = workers.filter(w=>(w.clientIds||[]).includes(c.id));
     const assignedIds = assignedWorkers.map(w=>w.id);
     const clientLog = log.filter(e=>assignedIds.includes(e.workerId)).reverse();
@@ -6119,36 +6300,41 @@ function renderClientLogs(){
       </div>
       ${assignedWorkers.length?workerRows:'<div style="font-size:13px;color:var(--text3);text-align:center;padding:12px">No workers assigned</div>'}
     </div>`;
-  }).join('');
+  });
 }
 
-// Long lists (punch log, errors, timings) draw LIST_PAGE rows at first; the
-// next page is added when the "Show more" row scrolls into view (or is
-// clicked). Drawing every row at once was what made these panes slow, not
-// the data itself, which is already loaded. `sig` describes what is listed
-// (filters): while it stays the same, a redraw (new punch, refresh) keeps
+// Every list that grows (workers, clients, suppliers, firms, users, punch
+// log, errors, timings, pending hours, salary and rate tables, ...) draws
+// LIST_PAGE rows at first. The next LIST_PAGE rows come only when the user
+// scrolls the "Show more" row into view, or taps it — exactly one page per
+// reach of the end, no pre-loading. `sig` describes what is listed (filters,
+// grouping): while it stays the same, a redraw (new punch, refresh) keeps
 // what was already opened; a new filter starts again from the first page.
+// opts.table/colspan: rows of a <tbody>; opts.grid: tiles of a CSS grid.
 const LIST_PAGE = 10;
 const __pagedLists = {};
 function renderPagedList(el, key, sig, items, rowHtml, opts){
+  if(!el) return;
   opts = opts || {};
   const st = __pagedLists[key] && __pagedLists[key].sig === sig ? __pagedLists[key] : (__pagedLists[key] = {sig, shown: LIST_PAGE});
-  if(st.observer){ st.observer.disconnect(); st.observer = null; }
   const n = Math.min(items.length, st.shown);
-  el.innerHTML = items.slice(0, n).map((it, i) => rowHtml(it, i)).join('') + pagedMoreHtml(items.length - n, opts);
+  el.innerHTML = (opts.head || '') + items.slice(0, n).map((it, i) => rowHtml(it, i)).join('') + pagedMoreHtml(items.length - n, opts);
   wirePagedMore(el, key, items, rowHtml, opts);
 }
 function pagedMoreHtml(left, opts){
   if(left <= 0) return '';
   const btn = `<button class="btn sm paged-more-btn" style="margin:6px auto;display:flex"><i class="ti ti-chevron-down"></i> Show more (${left} left)</button>`;
-  return opts.table ? `<tr class="paged-more"><td colspan="${opts.colspan||20}" style="padding:4px">${btn}</td></tr>` : `<div class="paged-more">${btn}</div>`;
+  if(opts.table) return `<tr class="paged-more"><td colspan="${opts.colspan||20}" style="padding:4px">${btn}</td></tr>`;
+  return `<div class="paged-more" style="${opts.grid?'grid-column:1/-1;':''}">${btn}</div>`;
 }
 function wirePagedMore(el, key, items, rowHtml, opts){
+  const st = __pagedLists[key];
+  st.more = null;
   const more = el.querySelector(':scope > .paged-more');
   if(!more) return;
-  const st = __pagedLists[key];
-  const next = () => {
-    if(st.observer){ st.observer.disconnect(); st.observer = null; }
+  st.more = more;
+  st.next = () => {
+    if(st.more !== more || !more.isConnected) return;
     const from = st.shown;
     st.shown += LIST_PAGE;
     const to = Math.min(items.length, st.shown);
@@ -6157,14 +6343,41 @@ function wirePagedMore(el, key, items, rowHtml, opts){
     el.insertAdjacentHTML('beforeend', pagedMoreHtml(items.length - to, opts));
     wirePagedMore(el, key, items, rowHtml, opts);
   };
-  more.querySelector('button').onclick = next;
-  if('IntersectionObserver' in window){
-    st.observer = new IntersectionObserver(entries => { if(entries.some(e => e.isIntersecting)) next(); }, {rootMargin: '200px'});
-    st.observer.observe(more);
-  }
+  more.querySelector('button').onclick = () => st.next();
 }
+// On a user scroll (any scrolling element: the page or a modal), each list
+// whose "Show more" row is now visible gets its next page — one per frame.
+// Only a scroll that follows the user's own input (wheel, touch, key, click)
+// counts, and each input allows one page at most: the browser also fires
+// scroll when a page's height changes after a redraw, which would otherwise
+// chain-load page after page.
+let __pagedScrollQueued = false, __pagedUserAt = 0;
+['wheel','touchstart','touchmove','touchend','keydown','pointerdown'].forEach(t =>
+  window.addEventListener(t, () => { __pagedUserAt = Date.now(); }, {capture:true, passive:true}));
+function _pagedVisibleBottom(node){
+  let bottom = window.innerHeight;
+  for(let p = node.parentElement; p && p !== document.body; p = p.parentElement){
+    const oy = getComputedStyle(p).overflowY;
+    if(oy === 'auto' || oy === 'scroll') bottom = Math.min(bottom, p.getBoundingClientRect().bottom);
+  }
+  return bottom;
+}
+function _pagedOnScroll(){
+  if(__pagedScrollQueued || !__pagedUserAt || Date.now() - __pagedUserAt > 1500) return;
+  __pagedScrollQueued = true;
+  requestAnimationFrame(() => {
+    __pagedScrollQueued = false;
+    for(const k in __pagedLists){
+      const st = __pagedLists[k], more = st.more;
+      if(!more || !more.isConnected || !more.getClientRects().length) continue;
+      if(more.getBoundingClientRect().top <= _pagedVisibleBottom(more)){ __pagedUserAt = 0; st.next(); return; }
+    }
+  });
+}
+window.addEventListener('scroll', _pagedOnScroll, {capture:true, passive:true});
 
 function renderAdmin(){
+  if(__adminPane!=='punchlog') return; // drawn only while the Punch Log section is open
   const log = getPunchLog();
   const filterWorker = document.getElementById('adminFilterWorker')?.value||'';
   const filterClient = document.getElementById('adminFilterClient')?.value||'';
@@ -6697,7 +6910,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // has a confirmed bug that silently drops a glyph of multi-word RTL
     // (Hebrew) text; PyMuPDF has no such bug. This function still gathers
     // every value exactly as before — only "build the PDF bytes" moved.
-    const profile=activeTenantProfile();
+    const profile=await refreshTenantProfile(5*60*1000);
     firmMissing=firmProfileMissing(profile);
 
     const signDateSrc=(targetWorker&&targetWorker.createdAt)?new Date(targetWorker.createdAt):new Date();
@@ -6957,6 +7170,16 @@ async function regenerateWorkerDoc(workerId){
   }catch(e){ return false; }
 }
 
+// A firm whose details were edited from the Firms list while another firm
+// was open: rebuild its workers' Form 101s once its data is loaded here.
+function maybeRegenAfterFirmEdit(){
+  const s=getSession(), t=s&&(s.viewingTenantId||s.tenantId);
+  if(!t) return;
+  let flag=null; try{ flag=localStorage.getItem('form101Regen:'+t); }catch(e){}
+  if(!flag) return;
+  try{ localStorage.removeItem('form101Regen:'+t); }catch(e){}
+  refreshTenantProfile(0).then(()=>regenerateAllWorkerDocs());
+}
 // Firm-profile edits change every worker's Form 101 employer-details row
 // (section א, פרטי המעסיק — company name/address/phone/deductions number),
 // so every already-generated document is now stale, not just the one worker
@@ -7075,8 +7298,13 @@ function _consoleArgsText(args){
   }).join(' ');
   return {msg,stack};
 }
-console.error=function(...args){ _origConsoleError(...args); try{ const t=_consoleArgsText(args); reportError(t.msg,'console.error',t.stack); }catch(e){} };
-console.warn=function(...args){ _origConsoleWarn(...args); try{ const t=_consoleArgsText(args); reportError(t.msg,'console.warn',t.stack); }catch(e){} };
+// The Firestore SDK logs a warning each time the live punch listener's
+// connection drops — a phone in the background, a network switch, an idle
+// connection cut by the carrier — and then reconnects by itself. Not a
+// failure, so not reported (it filled the Errors pane every few minutes).
+const SDK_RECONNECT_NOISE_RE=/@firebase\/firestore:.*(transport errored|Could not reach Cloud Firestore backend|stream .* (closed|errored))/i;
+console.error=function(...args){ _origConsoleError(...args); try{ const t=_consoleArgsText(args); if(!SDK_RECONNECT_NOISE_RE.test(t.msg)) reportError(t.msg,'console.error',t.stack); }catch(e){} };
+console.warn=function(...args){ _origConsoleWarn(...args); try{ const t=_consoleArgsText(args); if(!SDK_RECONNECT_NOISE_RE.test(t.msg)) reportError(t.msg,'console.warn',t.stack); }catch(e){} };
 const ERROR_TOAST_RE=/fail|could not|error|offline|denied|invalid|ошибк|не удал|недоступ|нет прав|истекл|\u26a0|⚠/i;
 const _origShowToast=showToast;
 showToast=function(msg,dur){ _origShowToast(msg,dur); try{ if(ERROR_TOAST_RE.test(String(msg||''))) reportError(String(msg),'toast',''); }catch(e){} };

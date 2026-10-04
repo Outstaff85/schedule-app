@@ -254,9 +254,16 @@
       await batch.commit();
       return {ok:true};
     }
-    // Errors / Timings panes: the newest rows first.
-    async function readLog(name, max){
-      const snap = await F.getDocs(F.query(F.collection(db, name), F.orderBy('when','desc'), F.limit(max)));
+    // Errors / Timings panes: the newest rows first. With from/to (ISO
+    // times, from the period picker) only that period, up to `max` rows;
+    // `when` is an ISO string, so the range compares as text.
+    const ISO_RE = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/;
+    async function readLog(name, max, from, to){
+      const parts = [F.collection(db, name)];
+      if(ISO_RE.test(String(from||''))) parts.push(F.where('when','>=',from));
+      if(ISO_RE.test(String(to||''))) parts.push(F.where('when','<',to));
+      parts.push(F.orderBy('when','desc'), F.limit(max));
+      const snap = await F.getDocs(F.query(...parts));
       return {rows: snap.docs.map(d => d.data())};
     }
     async function deletePunchesByMonths(t, ctx, months){
@@ -409,8 +416,8 @@
         return action === 'deleteWorkerDoc' ? {ok:true} : {error:'Файл не найден'};
       }
       switch(action){
-        case 'loadErrors':  return ctx.role === 'superadmin' ? readLog('errors', 100) : {error:'Доступ только для супер-админа'};
-        case 'loadTimings': return ctx.role === 'superadmin' ? readLog('timings', 500) : {error:'Доступ только для супер-админа'};
+        case 'loadErrors':  return ctx.role === 'superadmin' ? readLog('errors', params.from ? 2000 : 100, params.from, params.to) : {error:'Доступ только для супер-админа'};
+        case 'loadTimings': return ctx.role === 'superadmin' ? readLog('timings', params.from ? 5000 : 500, params.from, params.to) : {error:'Доступ только для супер-админа'};
         case 'loadSchedule': return loadSchedule(t, false);
         case 'loadPunchLog': return punchesOnce(t);
         case 'deletePunchesByMonths': return deletePunchesByMonths(t, ctx, params.months);

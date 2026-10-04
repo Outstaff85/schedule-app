@@ -254,6 +254,79 @@ function lastEntryFor(workerId){
   const list = punchLog.filter(e=>e.workerId===workerId).sort((a,b)=>new Date(b.ts)-new Date(a.ts));
   return list[0]||null;
 }
+// Every list that grows draws (a copy of schedule-manager.html's paging
+// helper — keep the two the same):
+// LIST_PAGE rows at first. The next LIST_PAGE rows come only when the user
+// scrolls the "Show more" row into view, or taps it — exactly one page per
+// reach of the end, no pre-loading. `sig` describes what is listed (filters,
+// grouping): while it stays the same, a redraw (new punch, refresh) keeps
+// what was already opened; a new filter starts again from the first page.
+// opts.table/colspan: rows of a <tbody>; opts.grid: tiles of a CSS grid.
+const LIST_PAGE = 10;
+const __pagedLists = {};
+function renderPagedList(el, key, sig, items, rowHtml, opts){
+  if(!el) return;
+  opts = opts || {};
+  const st = __pagedLists[key] && __pagedLists[key].sig === sig ? __pagedLists[key] : (__pagedLists[key] = {sig, shown: LIST_PAGE});
+  const n = Math.min(items.length, st.shown);
+  el.innerHTML = (opts.head || '') + items.slice(0, n).map((it, i) => rowHtml(it, i)).join('') + pagedMoreHtml(items.length - n, opts);
+  wirePagedMore(el, key, items, rowHtml, opts);
+}
+function pagedMoreHtml(left, opts){
+  if(left <= 0) return '';
+  const btn = `<button class="btn sm paged-more-btn" style="margin:6px auto;display:flex"><i class="ti ti-chevron-down"></i> Show more (${left} left)</button>`;
+  if(opts.table) return `<tr class="paged-more"><td colspan="${opts.colspan||20}" style="padding:4px">${btn}</td></tr>`;
+  return `<div class="paged-more" style="${opts.grid?'grid-column:1/-1;':''}">${btn}</div>`;
+}
+function wirePagedMore(el, key, items, rowHtml, opts){
+  const st = __pagedLists[key];
+  st.more = null;
+  const more = el.querySelector(':scope > .paged-more');
+  if(!more) return;
+  st.more = more;
+  st.next = () => {
+    if(st.more !== more || !more.isConnected) return;
+    const from = st.shown;
+    st.shown += LIST_PAGE;
+    const to = Math.min(items.length, st.shown);
+    more.insertAdjacentHTML('beforebegin', items.slice(from, to).map((it, i) => rowHtml(it, from + i)).join(''));
+    more.remove();
+    el.insertAdjacentHTML('beforeend', pagedMoreHtml(items.length - to, opts));
+    wirePagedMore(el, key, items, rowHtml, opts);
+  };
+  more.querySelector('button').onclick = () => st.next();
+}
+// On a user scroll (any scrolling element: the page or a modal), each list
+// whose "Show more" row is now visible gets its next page — one per frame.
+// Only a scroll that follows the user's own input (wheel, touch, key, click)
+// counts, and each input allows one page at most: the browser also fires
+// scroll when a page's height changes after a redraw, which would otherwise
+// chain-load page after page.
+let __pagedScrollQueued = false, __pagedUserAt = 0;
+['wheel','touchstart','touchmove','touchend','keydown','pointerdown'].forEach(t =>
+  window.addEventListener(t, () => { __pagedUserAt = Date.now(); }, {capture:true, passive:true}));
+function _pagedVisibleBottom(node){
+  let bottom = window.innerHeight;
+  for(let p = node.parentElement; p && p !== document.body; p = p.parentElement){
+    const oy = getComputedStyle(p).overflowY;
+    if(oy === 'auto' || oy === 'scroll') bottom = Math.min(bottom, p.getBoundingClientRect().bottom);
+  }
+  return bottom;
+}
+function _pagedOnScroll(){
+  if(__pagedScrollQueued || !__pagedUserAt || Date.now() - __pagedUserAt > 1500) return;
+  __pagedScrollQueued = true;
+  requestAnimationFrame(() => {
+    __pagedScrollQueued = false;
+    for(const k in __pagedLists){
+      const st = __pagedLists[k], more = st.more;
+      if(!more || !more.isConnected || !more.getClientRects().length) continue;
+      if(more.getBoundingClientRect().top <= _pagedVisibleBottom(more)){ __pagedUserAt = 0; st.next(); return; }
+    }
+  });
+}
+window.addEventListener('scroll', _pagedOnScroll, {capture:true, passive:true});
+
 function renderDashboard(){
   document.getElementById('dashTotal').textContent = myWorkers.length;
   const onSite = myWorkers.filter(w=>{ const e=lastEntryFor(w.id); return e && e.type==='in'; });
@@ -262,10 +335,10 @@ function renderDashboard(){
   const todays = punchLog.filter(e=>new Date(e.ts).toDateString()===today).sort((a,b)=>new Date(b.ts)-new Date(a.ts));
   const logEl = document.getElementById('dashLog');
   if(!todays.length){ logEl.textContent='No activity today'; return; }
-  logEl.innerHTML = todays.map(e=>{
+  renderPagedList(logEl, 'dashLog', today, todays, e=>{
     const w = myWorkers.find(x=>x.id===e.workerId);
     return `<div>${esc(w?w.name:e.workerName)} — ${e.type.toUpperCase()} ${esc(e.time)}</div>`;
-  }).join('');
+  });
 }
 
 // ── My Workers (list/add/edit/delete via the narrow supplierAddWorker/
@@ -275,8 +348,8 @@ function clientName(id){ const c=myClients.find(x=>x.id===id); return c?c.name:'
 function renderWorkersList(){
   const el=document.getElementById('workersList');
   if(!myWorkers.length){ el.innerHTML=`<div style="color:var(--text3);padding:16px 0">No workers yet</div>`; return; }
-  el.innerHTML=`<table><thead><tr><th>Name</th><th>Phone</th><th>Object</th><th>Commission</th><th></th></tr></thead><tbody>
-    ${myWorkers.map(w=>`<tr>
+  el.innerHTML=`<table><thead><tr><th>Name</th><th>Phone</th><th>Object</th><th>Commission</th><th></th></tr></thead><tbody class="workers-rows"></tbody></table>`;
+  renderPagedList(el.querySelector('.workers-rows'), 'workers', '', myWorkers, w=>`<tr>
       <td>${esc(w.name)}</td>
       <td>${esc(w.phone||'')}</td>
       <td>${(w.clientIds||[]).map(clientName).filter(Boolean).join(', ')}</td>
@@ -285,8 +358,7 @@ function renderWorkersList(){
         <button class="btn sm" onclick="openEditWorkerModal('${w.id}')"><i class="ti ti-edit"></i></button>
         <button class="btn sm red" onclick="deleteWorker('${w.id}')"><i class="ti ti-trash"></i></button>
       </td>
-    </tr>`).join('')}
-  </tbody></table>`;
+    </tr>`, {table:true, colspan:5});
 }
 function openAddWorkerModal(){ renderWorkerModal(null); document.getElementById('workerOverlay').classList.add('open'); }
 function openEditWorkerModal(id){ renderWorkerModal(myWorkers.find(w=>w.id===id)); document.getElementById('workerOverlay').classList.add('open'); }

@@ -1,16 +1,18 @@
 # Admin tab
 
-The Admin tab (`#sectionAdmin`) and the punch-log data behind it: the punch log, firms (super-admin), users, errors, timings and the firm profile. Code is in `schedule-manager.html`.
+The Admin tab (`#sectionAdmin`) and the punch-log data behind it: the punch log, firms (every firm for the super-admin, the own firm for an owner), users, errors and timings. Code is in `schedule-manager.html`.
 
 ## Panes and who sees them
 
-`switchTab('admin')` → `renderAdmin()` + `setupAdminPaneBar()`. The pane bar (`switchAdminPane(pane)`):
+`switchTab('admin')` → `setupAdminPaneBar()`. The tab opens with **no section** (`#adminPane_none`, "Choose a section"): nothing is drawn or loaded until a section button is tapped (`switchAdminPane(pane)`, kept in `__adminPane` while the app stays open). `renderAdmin()` draws only while Punch Log is the open section.
 
 | Pane | Who |
 |---|---|
-| Punch Log (default) | everyone who can open the tab — the tab needs the `workers` permission |
-| Firms, Errors, Timings | `superadmin` |
-| Users, Profile | `superadmin`, `tenant_admin` |
+| Punch Log | everyone who can open the tab — the tab needs the `workers` permission |
+| Firms, Users | `superadmin`, `tenant_admin` |
+| Errors, Timings | `superadmin` |
+
+Layout (`.admin-pane-bar`): the section buttons in a row on a computer, a 3-column grid on a phone. The header buttons (`.head-actions`) are two equal buttons across the width on a phone.
 
 The header buttons **Export CSV** and **Clear Log** show only on the Punch Log pane; Clear Log is only for `tenant_admin` and `superadmin`. Opening the tab as an owner also preloads the user list (`prefetchAdminUsers()`). The pane subtitles are in `ADMIN_PANE_SUBTITLES`.
 
@@ -36,9 +38,9 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
 
 ## Punch Log pane
 
-- **Stats:** Total IN, Total OUT, Today and Total (over what is loaded).
-- **Views:** Punch Log (`setAdminView('log')`) or By Client (`setAdminView('clients')`).
-- **Filters** (each with a caption, see [workers.md](workers.md)):
+- **Stats:** Total IN, Total OUT, Today and Total (over what is loaded) — four in a row, smaller on a phone.
+- **Views:** Log (`setAdminView('log')`) or By Client (`setAdminView('clients')`), with the record count on the same line (`.admin-log-bar`).
+- **Filters** (`.filters-grid`, `--cols:4` — one row on a computer, two columns without captions on a phone; see [workers.md](workers.md)):
   - Worker — the workers that appear in the log;
   - Client — the punch's own `clientId` (where it was recorded); a punch saved without one falls back to the worker's current clients;
   - Date — the days that have punches, as `en-GB` strings, newest day first (sorted by the real date);
@@ -46,7 +48,7 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
   
   The list is sorted newest first by `ts`.
 - **Table** (`renderAdmin()`): worker, client badges, IN/OUT, time, date, site, GPS (distance, ±accuracy, ⚠ when suspicious, or "Manual"), edit / delete.
-  - **Drawing:** in pages of `LIST_PAGE` = 10 via `renderPagedList(el, 'punchLog', filters, rows, rowHtml, {table:true, colspan:8})`. The next 10 rows are added when the "Show more" row scrolls into view (IntersectionObserver) or is clicked. A redraw keeps the opened count; a new filter starts again at 10. `pagedMoreHtml` / `wirePagedMore` are the helpers; Errors and Timings use the same.
+  - **Drawing:** in pages of `LIST_PAGE` = 10 via `renderPagedList(el, 'punchLog', filters, rows, rowHtml, {table:true, colspan:8})`. The next 10 rows come when the user scrolls the "Show more" row into view, or taps it ([app-core.md](app-core.md) → Long lists). A redraw keeps the opened count; a new filter starts again at 10. Firms, Users, Errors, Timings and the client logs page the same way.
   - **Older punches:** under the table, `renderAdminOlder()` shows "Showing punches from <date>" with **Load earlier month** (`loadEarlierPunchMonth()` loads back to the 1st of the month already partly loaded, or the month before) and **Load all history**.
 - **Edit:** `editPunchEntry(id)` → type, time, site (a client, or a kept custom site) and notes. `savePunchEntry(id)` sets `editedBy:'admin'` and `editedAt`, then calls `gsUpdatePunch`. `deletePunchEntry(id)` removes it locally and calls `gsDeletePunch`.
 - **By Client** (`renderClientLogs()`): per client, its assigned workers with on-site-now status and their last 5 punches.
@@ -56,7 +58,11 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
   2. `submitClearPunchLog()` downloads a CSV of exactly those rows first.
   3. Then `deletePunchesByMonths` runs (by `day`, or `ts` for a punch without `day`), and the rows are dropped from the local cache.
 
-## Firms pane (super-admin)
+## Firms pane
+
+**Firm owner** (`tenant_admin`): the own firm only (`renderOwnFirmCard`). The card shows the Form 101 fields (name, deductions file, phone, address), which of them are missing, and **Edit** (`openMyFirmForm`). It is drawn from the session's profile, then from `refreshTenantProfile(0)`. The super-admin buttons (`#adminFirmsSuperBar`) are hidden. There is no separate Profile pane.
+
+**Super-admin:**
 
 - **List:** `renderFirmsList('adminFirmsList')` — the same function draws the super-admin's landing screen (`#firmsList`).
   - It draws the cached list first (`localStorage.firmsCache_v1`), then `listTenants`.
@@ -69,7 +75,7 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
   - fields: company name, deductions file number, phone, street, street number, city;
   - Create (`openCreateFirmForm`) also asks for the owner's username and password → `createUser`;
   - Edit (`openEditFirmForm`, or `openMyFirmForm` for the firm's own profile) → `updateTenant`;
-  - after saving: `cacheTenantProfile`, `refreshFirmProfileWarnings`, and `regenerateAllWorkerDocs()` when the edited firm is the one loaded (every worker's Form 101 employer block changes);
+  - after saving: `cacheTenantProfile`, `refreshFirmProfileWarnings`, and `regenerateAllWorkerDocs()` when the edited firm is the one loaded (every worker's Form 101 employer block changes). For another firm, the rebuild waits until that firm is opened here (`form101Regen:<tenantId>`, `maybeRegenAfterFirmEdit`);
   - `openMyFirmForm()` prefills from the session and refreshes with `loadTenantProfile`, without overwriting what the user already typed (`__firmEditDirty`).
 - **Buttons:**
   - **Payable summary (all firms)** — [accounting.md](accounting.md);
@@ -86,20 +92,26 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
 
 The server rules (only staff/supplier users are created here, own firm only, and so on): [backend.md](backend.md).
 
+## Errors and Timings: the period picker
+
+Both panes load one period at a time, picked in a select at the top:
+- the options are "Last 30 days" (default), "Last 7 days", and each calendar month (this one and the 11 before it) — `logPeriodOptions` / `fillLogPeriodSelect`;
+- `logPeriodRange(value)` gives `{key, from, to, label}` (ISO times), sent to `loadErrors` / `loadTimings` as `from` / `to` (`logPeriodQuery`);
+- each period has its own cache (`adminCache_errors:<key>`, `adminCache_timings:<key>`);
+- **Copy all** and **Print** take only the loaded period. Print (`printLogPane('errors' | 'timings')`) opens a plain page with a table (for timings, the summary first) and prints it.
+
+Rows are compact: one bordered box (`.log-box`), one row per entry (`.log-row`), and a small copy button per row. Times are shown as `04.10 10:18` (`_shortWhen`). The rows are paged by 10.
+
 ## Errors pane (super-admin)
 
-`loadErrorsList('adminErrorsList')` draws the cached list (`adminCache_errors`), then `loadErrors` — the Firestore `errors` collection, newest first, max 100. The list is paged by 10. Each row has a copy button (`copyErrorRow` → `copyTextToClipboard`). The old standalone `#errorsScreen` (`openErrorsScreen`) has no UI caller.
+`loadErrorsList('adminErrorsList')` draws the period's cached list, then loads `loadErrors` for the period. The list shows the count and the period, then one row per error: time, page, source, user on the first line, the message under it. Each row has a copy button (`copyErrorRow` → `copyTextToClipboard`); "Copy all" is `copyAllErrors`. The old standalone `#errorsScreen` (`openErrorsScreen`) has no UI caller and loads without a period (the newest 100).
 
 ## Timings pane (super-admin)
 
-`loadTimingsPane()` → `loadTimings` (cached as `adminCache_timings`; the `timings` collection, max 500).
+`loadTimingsPane()` → `loadTimings` for the picked period.
 
 `renderTimingsPane()` shows:
-- **summary** — median and 90th percentile per kind over the last 7 days, without aborted runs. It also shows the median per step (`TIMING_PHASES`);
-- **latest rows** — paged by 10, each with a copy button (`copyTimingRow`).
+- **summary cards** (`_timingsSummary`, `.tm-card`) — one per kind over the period, without aborted runs. Each shows the count, the median and 90th percentile of the total, and the median of each step (`TIMING_PHASES`) as small pills;
+- **all measurements**, newest first, paged by 10. Each row shows time, kind and total on the first line (a total above its kind's 90% is amber), the steps under it, then firm, user, device, pages and page kinds. Each row has a copy button (`copyTimingRow`).
 
-"Copy all" (`copyAllTimings`) copies the summary and the latest 50 rows as text. Kinds and how they are measured: [app-core.md](app-core.md) → Telemetry.
-
-## Profile pane (owner, super-admin)
-
-One button, "Edit company profile" → `openMyFirmForm()`. The profile fills the Form 101 employer block ([form101.md](form101.md)). An incomplete profile colors the Admin tab icon amber.
+"Copy all" (`copyAllTimings`) copies the summary and every measurement of the period as text. Kinds and how they are measured: [app-core.md](app-core.md) → Telemetry.
