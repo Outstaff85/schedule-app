@@ -178,11 +178,11 @@ def supplier(req: https_fn.Request) -> https_fn.Response:
 
 
 def _anthropic_post(url, payload, headers):
-    resp = requests.post(url, json=payload, headers=headers, timeout=110)
+    resp = requests.post(url, json=payload, headers=headers, timeout=90)
     return resp.status_code, resp.text
 
 
-@https_fn.on_request(cors=_CORS, timeout_sec=120, memory=options.MemoryOption.MB_512, secrets=[ANTHROPIC_API_KEY])
+@https_fn.on_request(cors=_CORS, timeout_sec=300, memory=options.MemoryOption.MB_512, secrets=[ANTHROPIC_API_KEY])
 def ai_read(req: https_fn.Request) -> https_fn.Response:
     """AI document reading for the manager app (ai.py). Manager logins only:
     a supplier never scans or imports hours."""

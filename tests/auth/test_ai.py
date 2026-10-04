@@ -22,6 +22,11 @@ with open(os.path.join(HERE, "ai_golden.json"), encoding="utf-8") as f:
     GOLDEN = json.load(f)
 
 
+@pytest.fixture(autouse=True)
+def no_pause(monkeypatch):
+    monkeypatch.setattr(ai, "_sleep", lambda s: None)
+
+
 def apps_script(action, body, reply='{"content":[{"type":"text","text":"{}"}]}', status=200):
     """The recorded Apps Script request and result for this case."""
     return GOLDEN[json.dumps([action, body, reply, status], ensure_ascii=False, sort_keys=True)]
@@ -152,3 +157,39 @@ def test_http_ai_read(monkeypatch):
     status, r = _call(main.ai_read, {"action": "aiReadDoc", "image": "I", "token": "gs"}, {"Authorization": "Bearer " + staff})
     assert status == 200 and r == {"ok": True, "parsed": {"type": "passport"}}
     assert sent[0][1]["x-api-key"] == "sk-test" and sent[0][0]["messages"][0]["content"][1]["source"]["data"] == "I"
+
+
+def _replies(*answers):
+    """post() that answers in turn; an Exception instance is raised."""
+    sent = []
+
+    def post(url, payload, headers):
+        a = answers[len(sent)]
+        sent.append(payload)
+        if isinstance(a, Exception):
+            raise a
+        return a
+    return post, sent
+
+
+GOOD = (200, '{"content":[{"type":"text","text":"{\\"kind\\":\\"sefach\\"}"}]}')
+
+
+@pytest.mark.parametrize("busy", [(429, "{}"), (502, "<html>502</html>"), (529, "{}"),
+                                  (200, '{"error":{"type":"overloaded_error","message":"Overloaded"}}'),
+                                  ConnectionError("reset")])
+def test_busy_reply_is_tried_again(busy):
+    post, sent = _replies(busy, GOOD)
+    r = ai.run("aiDetectAlign", {"image": "I"}, "KEY", post, MODEL, ALIGN)
+    assert r == {"ok": True, "align": {"kind": "sefach"}} and len(sent) == 2
+
+
+def test_gives_up_after_three_tries():
+    post, sent = _replies((529, "{}"), (529, "{}"), (529, "{}"), GOOD)
+    r = ai.run("aiReadSefach", {"image": "I"}, "KEY", post, MODEL, ALIGN)
+    assert "error" in r and len(sent) == 3
+
+
+def test_real_error_is_not_tried_again():
+    post, sent = _replies((400, '{"error":{"type":"invalid_request_error","message":"bad"}}'), GOOD)
+    assert ai.run("aiReadDoc", {"image": "I"}, "KEY", post, MODEL, ALIGN) == {"error": "bad"} and len(sent) == 1

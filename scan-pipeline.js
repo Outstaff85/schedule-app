@@ -502,6 +502,7 @@ async function _autoPreAlignCore(b64,mediaType,meta){
       body:JSON.stringify({action:'aiDetectAlign',...gsAuth(),image:b64,mediaType:mediaType})
     });
     const json=await resp.json();
+    if(json&&json.error) console.warn('aiDetectAlign failed: '+json.error); // → Admin → Errors
     const align=json&&json.ok&&json.align;
     if(align&&PAGE_KINDS.includes(align.kind)) meta.kind=align.kind;
     if(!align) return {b64,mediaType};
@@ -1510,7 +1511,7 @@ function removePendingScanPage(i){
 // back). Never throws — a failed read resolves null, same as "nothing found".
 function readSefachPage(it){
   return fetch(API_URL,{method:'POST',body:JSON.stringify({action:'aiReadSefach',...gsAuth(),image:it.b64,mediaType:it.mediaType})})
-    .then(r=>r.json()).then(j=>(j&&j.parsed)||null)
+    .then(r=>r.json()).then(j=>{ if(j&&j.error) console.warn('aiReadSefach failed: '+j.error); return (j&&j.parsed)||null; })
     .catch(e=>{ console.error(e); return null; });
 }
 // Page type only (aiDetectAlign's "kind"), for the multi-file path, which
@@ -1528,11 +1529,14 @@ function readFrontPage(it){
     .catch(e=>{ console.error(e); return null; });
 }
 // Which reader an EXTRA page (after the primary) gets, by aiDetectAlign's
-// page kind: a contract, a passport or any other page is attached without an
-// AI read; an ID front gets the full read; a ספח, a card back or an unknown
-// page (kind missing — classification failed) gets aiReadSefach as before.
+// page kind: a passport page is attached without an AI read; an ID front gets
+// the full read; everything else gets aiReadSefach. That includes "contract"
+// and "other": the align model often files the paper ספח (a printed form)
+// under them, which left the address empty. Extra pages are read only while
+// the primary still misses core fields (needMore), so a real contract costs
+// one read at most, and aiReadSefach returns nothing for it.
 function extraPageReader(kind){
-  if(kind==='contract'||kind==='other'||kind==='passport') return null;
+  if(kind==='passport') return null;
   if(kind==='id_front') return readFrontPage;
   return readSefachPage;
 }
