@@ -816,8 +816,10 @@ async function runOcr(b64,mediaType){
 // call — so it only makes an already-decent guess more precise; if a side's
 // signal is too weak/noisy to trust (low contrast, busy background) that
 // side's two corners just fall back to the original AI guess instead of
-// risking a worse snap.
-function refineQuadCorners(b64,mediaType,cornersFrac){
+// risking a worse snap. opts.inward / opts.outward: how far to search into
+// and out of the quad, as fractions of the image's long side (default 4%
+// both ways; finalTightenPass searches 15% inward from the frame).
+function refineQuadCorners(b64,mediaType,cornersFrac,opts){
   return new Promise(resolve=>{
     const img=new Image();
     img.onload=()=>{
@@ -834,32 +836,36 @@ function refineQuadCorners(b64,mediaType,cornersFrac){
         const Q={tl:toPx(cornersFrac.tl),tr:toPx(cornersFrac.tr),br:toPx(cornersFrac.br),bl:toPx(cornersFrac.bl)};
         const card=tools.cardColor(Q);
         const SIDES=[['tl','tr'],['tr','br'],['br','bl'],['bl','tl']];
-        // 20 samples per side, away from the corners; each searches ±(4% + 6px)
-        // across the side from the AI's guess for the NEAREST colour jump that
+        // 20 samples per side, away from the corners; each searches across the
+        // side (default ±(4% + 6px)) from the guess for the NEAREST colour jump that
         // passes isCardEdge() (card colour inside, something else outside —
         // see _edgeTools), with a subpixel parabolic peak. The corners go
         // clockwise, so the normal (-dy,dx) points into the card.
-        const N=20, MARGIN=0.12, SEARCH=Math.round(Math.max(w,h)*0.04)+6;
-        const sidePoints={};
+        const N=20, MARGIN=0.12;
+        const IN=Math.round(Math.max(w,h)*((opts&&opts.inward!=null)?opts.inward:0.04))+6;
+        const OUT=Math.round(Math.max(w,h)*((opts&&opts.outward!=null)?opts.outward:0.04))+6;
+        const sidePoints={}, sideGeo={};
         for(const [a,b] of SIDES){
           const A=Q[a],B=Q[b];
           const dx=B.x-A.x, dy=B.y-A.y, len=Math.hypot(dx,dy)||1;
           const nx=-dy/len, ny=dx/len;
+          sideGeo[a+b]={A,dx,dy,nx,ny};
           const pts=[];
           for(let i=0;i<N;i++){
             const t=MARGIN+(1-2*MARGIN)*(i/(N-1));
             const px=A.x+dx*t, py=A.y+dy*t;
             const grads=[];
-            for(let s=-SEARCH;s<=SEARCH;s++) grads.push(tools.grad(px+nx*s,py+ny*s,nx,ny));
-            const mid=SEARCH;
+            for(let s=-OUT;s<=IN;s++) grads.push(tools.grad(px+nx*s,py+ny*s,nx,ny));
+            const mid=OUT;
             let bi=-1;
-            for(let d=0;d<=SEARCH&&bi===-1;d++){
+            for(let d=0;d<=Math.max(IN,OUT)&&bi===-1;d++){
               const idxs=d===0?[mid]:[mid-d,mid+d];
               for(const idx of idxs){
                 if(idx<0||idx>=grads.length) continue;
                 const g=grads[idx];
                 const gl=idx>0?grads[idx-1]:-Infinity, gr=idx<grads.length-1?grads[idx+1]:-Infinity;
-                if(g>15&&g>=gl&&g>=gr&&tools.isCardEdge(card,px+nx*(idx-mid),py+ny*(idx-mid),nx,ny)){ bi=idx; break; }
+                // Look out to the far end of the search window.
+                if(g>15&&g>=gl&&g>=gr&&tools.isCardEdge(card,px+nx*(idx-mid),py+ny*(idx-mid),nx,ny,idx)){ bi=idx; break; }
               }
             }
             if(bi===-1) continue;
@@ -870,7 +876,7 @@ function refineQuadCorners(b64,mediaType,cornersFrac){
               const denom=(y0-2*y1+y2);
               if(Math.abs(denom)>1e-6) sub=0.5*(y0-y2)/denom;
             }
-            const best=(bi-SEARCH)+Math.max(-1,Math.min(1,sub));
+            const best=(bi-mid)+Math.max(-1,Math.min(1,sub));
             pts.push({x:px+nx*best,y:py+ny*best});
           }
           sidePoints[a+b]=pts.length>=Math.ceil(N*0.4)?pts:null;
@@ -890,22 +896,43 @@ function refineQuadCorners(b64,mediaType,cornersFrac){
           return {a,b,c:a*mx+b*my};
         };
         const tol=Math.max(2.5,Math.max(w,h)*0.006);
-        const fitLine=pts=>{
+        // A fitted line must also BE the card's edge along most of the side:
+        // at 60% of the sample positions the edge test has to pass on the
+        // line (±2 px). A line fitted through a mix of real and false points
+        // (a faint edge on a light table) fails this and is dropped.
+        const onEdge=(L,g)=>{
+          let ok=0;
+          for(let i=0;i<N;i++){
+            const t=MARGIN+(1-2*MARGIN)*(i/(N-1));
+            const ox=g.A.x+g.dx*t, oy=g.A.y+g.dy*t, den=L.a*g.nx+L.b*g.ny;
+            if(Math.abs(den)<0.5) return false;
+            const s0=(L.c-L.a*ox-L.b*oy)/den;
+            for(let d=-2;d<=2;d++){
+              const s1=s0+d;
+              if(tools.isCardEdge(card,ox+g.nx*s1,oy+g.ny*s1,g.nx,g.ny,s1+OUT)){ ok++; break; }
+            }
+          }
+          return ok>=N*0.6;
+        };
+        const fitLine=k=>{
+          const pts=sidePoints[k];
           if(!pts) return null;
           let L=tls(pts);
-          for(let k=0;k<2;k++){
-            const inl=pts.filter(p=>Math.abs(L.a*p.x+L.b*p.y-L.c)<=tol*(k?1:3));
+          for(let r=0;r<2;r++){
+            const inl=pts.filter(p=>Math.abs(L.a*p.x+L.b*p.y-L.c)<=tol*(r?1:3));
             if(inl.length<Math.ceil(N*0.4)) return null;
             L=tls(inl);
           }
-          return L;
+          return onEdge(L,sideGeo[k])?L:null;
         };
+        // A side without a trusted line keeps the guess's own side, so the
+        // other sides still move their corners along it.
+        const through=(A,B)=>{ const dx=B.x-A.x, dy=B.y-A.y, l=Math.hypot(dx,dy)||1, a=-dy/l, b=dx/l; return {a,b,c:a*A.x+b*A.y}; };
         const lines={
-          top:fitLine(sidePoints.tltr), right:fitLine(sidePoints.trbr),
-          bottom:fitLine(sidePoints.brbl), left:fitLine(sidePoints.bltl)
+          top:fitLine('tltr')||through(Q.tl,Q.tr), right:fitLine('trbr')||through(Q.tr,Q.br),
+          bottom:fitLine('brbl')||through(Q.br,Q.bl), left:fitLine('bltl')||through(Q.bl,Q.tl)
         };
         const intersect=(L1,L2,fallback)=>{
-          if(!L1||!L2) return fallback;
           const det=L1.a*L2.b-L2.a*L1.b;
           if(Math.abs(det)<1e-6) return fallback;
           const x=(L1.c*L2.b-L2.c*L1.b)/det, y=(L1.a*L2.c-L2.a*L1.c)/det;
@@ -979,10 +1006,10 @@ function _isNearIdentityQuad(c,eps){
 // printed text and crop it off (reported on a real front-ID scan; reproduced
 // with a synthetic card: 40 of 75 crops lost a corner). A point counts as the
 // card's edge only when the strip just inside it has the card's own colour
-// (the median colour of the card's middle) and the strip just outside it does
-// not, nor does the strip a little further out. Printed text fails that test
-// (card surface on both sides of the line), and so does table clutter
-// (background on both sides).
+// (the median colour of the card's middle) and the stretch outside it, out to
+// the end of the search, does not. Printed text fails that test (card surface
+// on both sides of the line), and so does table clutter (background on both
+// sides).
 function _edgeTools(data,w,h){
   const px=(x,y)=>{ x=Math.max(0,Math.min(w-1,Math.round(x))); y=Math.max(0,Math.min(h-1,Math.round(y))); const i=(y*w+x)*4; return [data[i],data[i+1],data[i+2]]; };
   const dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
@@ -995,13 +1022,25 @@ function _edgeTools(data,w,h){
     pts.push({x:tx+(bx-tx)*v,y:ty+(by-ty)*v}); } return colorOf(pts); };
   // Colour jump across (x,y) along the unit normal (nx,ny).
   const grad=(x,y,nx,ny)=>dist(px(x+nx,y+ny),px(x-nx,y-ny));
-  // (nx,ny) points INTO the card.
-  const isCardEdge=(card,x,y,nx,ny)=>{
-    const strip=(a,b)=>{ const d=[]; for(let s=a;s<=b;s++) d.push(dist(px(x+nx*s,y+ny*s),card)); return median(d); };
-    const inside=strip(3,10);
-    // Further out too: below a bold printed line the ink looks like an edge
-    // for a few pixels, but past it the card's colour comes back.
-    return inside<60&&strip(-10,-3)>inside+40&&strip(-24,-14)>inside+40;
+  // (nx,ny) points INTO the card; far: how far out to look (px, at least 24).
+  // Outside, from 3 px out to `far`, the card's colour must not come back:
+  // at most 20% of the points may look like the card, and never two in a row.
+  // Past a bold printed line (whose lower edge looks just like the card's)
+  // there is a stretch of card before anything else.
+  const isCardEdge=(card,x,y,nx,ny,far)=>{
+    const d=[]; for(let s=3;s<=10;s++) d.push(dist(px(x+nx*s,y+ny*s),card));
+    const inside=median(d);
+    if(inside>=60) return false;
+    far=Math.max(24,far||0);
+    const step=Math.max(1,(far-3)/24);
+    let n=0, like=0, prev=false;
+    for(let s=3;s<=far;s+=step){
+      n++;
+      const isCard=dist(px(x-nx*s,y-ny*s),card)<=inside+15;
+      if(isCard){ if(prev) return false; like++; }
+      prev=isCard;
+    }
+    return like<=0.2*n;
   };
   // A blurred edge passes isCardEdge() over a few pixels, and a texture
   // jump just outside it can be the first to qualify: the edge is the
@@ -1009,53 +1048,23 @@ function _edgeTools(data,w,h){
   const strongestNear=(g,i)=>{ let b=i; for(let k=Math.max(0,i-4);k<=Math.min(g.length-1,i+4);k++) if(g[k]>g[b]) b=k; return b; };
   return {cardColor,grad,isCardEdge,strongestNear};
 }
-// Final self-tightening pass: trims a thin strip of background left along
-// any side of the (already straightened) page. Each side is checked on its
-// own: from the image border inward (at most 6% of that dimension), each of
-// 24 samples takes the first colour jump that passes isCardEdge(); the side
-// is trimmed to the median of those positions only when at least half the
-// samples found one and most of them agree (a real edge is a straight line).
-// Otherwise the side is left as it is — a page that is already tight, or
-// whose card has the background's colour, is not touched, so printed text by
-// the edge is never cut.
-function _tightenSide(tools,card,w,h,side){
-  const N=24, horiz=side==='top'||side==='bottom', len=horiz?h:w, along=horiz?w:h;
-  const MAXD=Math.round(len*0.06)+4;
-  const nx=side==='left'?1:side==='right'?-1:0, ny=side==='top'?1:side==='bottom'?-1:0;
-  const offs=[];
-  for(let i=0;i<N;i++){
-    const t=(0.1+0.8*i/(N-1))*along;
-    const bx=horiz?t:(side==='left'?0:w-1), by=horiz?(side==='top'?0:h-1):t;
-    let prev=0, cur=tools.grad(bx+nx,by+ny,nx,ny);
-    for(let s=1;s<MAXD;s++){
-      const next=tools.grad(bx+nx*(s+1),by+ny*(s+1),nx,ny);
-      if(cur>15&&cur>=prev&&cur>=next&&tools.isCardEdge(card,bx+nx*s,by+ny*s,nx,ny)){
-        const g=[]; for(let k=0;k<=s+4;k++) g.push(tools.grad(bx+nx*k,by+ny*k,nx,ny));
-        offs.push(tools.strongestNear(g,s)); break;
-      }
-      prev=cur; cur=next;
-    }
-  }
-  if(offs.length<N*0.5) return 0;
-  offs.sort((a,b)=>a-b);
-  const med=offs[offs.length>>1], tol=Math.max(3,len*0.006);
-  if(offs.filter(o=>Math.abs(o-med)<=tol).length<N*0.4) return 0;
-  return med/len;
-}
+// Final self-tightening pass: trims the background still left around the
+// (already straightened) page — a thin sliver, or a wider tilted band such as
+// a strip of table under the card. It is refineQuadCorners() run from the
+// whole frame, searching up to 15% inward: each side moves to the card's
+// edge only where the card edge test (_edgeTools) finds one along a straight
+// line, so a tilted band is cut along its tilt. A side without such an edge
+// stays at the frame — an already tight page, or a card the colour of the
+// background, is not touched, and printed text by the edge is never cut.
 async function finalTightenPass(img){
   if(!img||!img.b64) return img;
-  const decoded=await new Promise(res=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>res(null); im.src='data:'+img.mediaType+';base64,'+img.b64; });
-  if(!decoded) return img;
-  const w=decoded.naturalWidth, h=decoded.naturalHeight;
-  const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
-  const ctx=cv.getContext('2d',{willReadFrequently:true});
-  ctx.drawImage(decoded,0,0,w,h);
-  const tools=_edgeTools(ctx.getImageData(0,0,w,h).data,w,h);
-  const card=tools.cardColor({tl:{x:0,y:0},tr:{x:w,y:0},br:{x:w,y:h},bl:{x:0,y:h}});
-  const x0=_tightenSide(tools,card,w,h,'left'), x1=1-_tightenSide(tools,card,w,h,'right');
-  const y0=_tightenSide(tools,card,w,h,'top'), y1=1-_tightenSide(tools,card,w,h,'bottom');
-  if(x0<0.005&&x1>0.995&&y0<0.005&&y1>0.995) return img;
-  const quadPx={tl:{x:x0*w,y:y0*h},tr:{x:x1*w,y:y0*h},br:{x:x1*w,y:y1*h},bl:{x:x0*w,y:y1*h},imgW:w,imgH:h};
+  const dims=await new Promise(res=>{ const im=new Image(); im.onload=()=>res({w:im.naturalWidth,h:im.naturalHeight}); im.onerror=()=>res(null); im.src='data:'+img.mediaType+';base64,'+img.b64; });
+  if(!dims) return img;
+  const full={tl:{x:0,y:0},tr:{x:1,y:0},br:{x:1,y:1},bl:{x:0,y:1}};
+  const q=await refineQuadCorners(img.b64,img.mediaType,full,{inward:0.15,outward:0});
+  if(_isNearIdentityQuad(q,0.004)) return img;
+  const c=p=>({x:Math.max(0,Math.min(1,p.x))*dims.w,y:Math.max(0,Math.min(1,p.y))*dims.h});
+  const quadPx={tl:c(q.tl),tr:c(q.tr),br:c(q.br),bl:c(q.bl),imgW:dims.w,imgH:dims.h};
   try{ return await warpQuadImage(img.b64,img.mediaType,quadPx); }
   catch(e){ console.error(e); return img; }
 }
