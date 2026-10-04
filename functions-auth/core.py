@@ -5,14 +5,15 @@ tests/auth/test_core.py runs it against the Firestore and Auth emulators.
 Every function takes the Firestore client and returns a plain dict — either
 the result or {"error": "..."} — for the actions login, createUser (a new
 firm), listUsers, createTenantUser, updateUser, resetUserPassword,
-deleteUser, listTenants, setTenantActive, deleteTenant, updateTenant and
-loadTenantProfile, with the Russian error texts the app shows.
+deleteUser, updateMyName, checkWorkerDoc, listTenants, setTenantActive,
+deleteTenant, updateTenant and loadTenantProfile, with the Russian error texts the app shows.
 
 Collections (see firestore.rules — all of these are function-only except
 users/{uid}, which its owner, a superadmin or the firm's tenant_admin may read):
   users/{uid}         username, tenantId, role, permissions ('*' or list),
-                      supplierId, active, createdAt; an 'hr' user also
-                      fullName, phone, ownOnly (sees only the workers whose
+                      supplierId, active, createdAt, fullName (the
+                      person's name the app shows), phone; an 'hr' user also
+                      ownOnly (sees only the workers whose
                       hrId is theirs — see firestore.rules)
   authSecrets/{uid}   algo, salt, hash, failCount, lastFailAt
   usernames/{name}    {uid} — makes a username unique: the batch that
@@ -270,6 +271,22 @@ def list_users(db, caller):
     return {"users": users}
 
 
+def update_my_name(db, caller, body):
+    """updateMyName {fullName}: any signed-in user sets the name the app
+    shows for them (header, Users list) — also an owner or a super-admin,
+    whose own records the Users form doesn't edit."""
+    if not caller.get("uid"):
+        return {"error": E_NOT_FOUND}
+    ref = db.collection("users").document(str(caller["uid"]))
+    if not ref.get().exists:
+        return {"error": E_NOT_FOUND}
+    name = str(body.get("fullName") or "").strip()[:80]
+    if not name and caller.get("role") == "hr":
+        return {"error": "Для роли HR нужно указать имя"}
+    ref.update({"fullName": name})
+    return {"ok": True, "fullName": name}
+
+
 def create_firm(db, caller, body):
     """createUser: a new firm profile plus its tenant_admin."""
     if not _is_super(caller):
@@ -285,6 +302,7 @@ def create_firm(db, caller, body):
     uid, err = _new_user_batch(db, username, {
         "role": "tenant_admin", "tenantId": tenant_id, "permissions": "*",
         "supplierId": None, "active": True,
+        "fullName": str(body.get("ownerName") or "").strip()[:80],
     }, password)
     if err:
         return {"error": err}
@@ -327,11 +345,13 @@ def create_tenant_user(db, caller, body):
         "role": role, "tenantId": tenant_id, "permissions": perms,
         "supplierId": body.get("supplierId") if role == "supplier" else None,
         "active": True,
+        # The person's name (shown in the app header and the Users list
+        # instead of the login); required for an HR.
+        "fullName": str(body.get("fullName") or "").strip()[:80],
+        "phone": str(body.get("phone") or "").strip()[:40],
     }
     if role == "hr":
-        user.update(fullName=str(body.get("fullName") or "").strip()[:80],
-                    phone=str(body.get("phone") or "").strip()[:40],
-                    ownOnly=body.get("ownOnly") is not False)
+        user["ownOnly"] = body.get("ownOnly") is not False
     uid, err = _new_user_batch(db, username, user, password)
     if err:
         return {"error": err}
@@ -354,18 +374,18 @@ def update_user(db, caller, body, revoke):
         upd["supplierId"] = body.get("supplierId") or None
     if "active" in body:
         upd["active"] = bool(body.get("active"))
-    if _norm_role(data.get("role")) == "hr":
-        if "ownOnly" in body:
-            upd["ownOnly"] = body.get("ownOnly") is not False
-        info = {}
-        if "fullName" in body:
-            if not str(body.get("fullName") or "").strip():
-                return {"error": "Для роли HR нужно указать имя"}
-            info["fullName"] = str(body.get("fullName")).strip()[:80]
-        if "phone" in body:
-            info["phone"] = str(body.get("phone") or "").strip()[:40]
-        if info:
-            ref.update(info)  # name and phone: no new sign-in needed
+    is_hr = _norm_role(data.get("role")) == "hr"
+    if is_hr and "ownOnly" in body:
+        upd["ownOnly"] = body.get("ownOnly") is not False
+    info = {}
+    if "fullName" in body:
+        if is_hr and not str(body.get("fullName") or "").strip():
+            return {"error": "Для роли HR нужно указать имя"}
+        info["fullName"] = str(body.get("fullName") or "").strip()[:80]
+    if "phone" in body:
+        info["phone"] = str(body.get("phone") or "").strip()[:40]
+    if info:
+        ref.update(info)  # name and phone: no new sign-in needed
     if upd:
         ref.update(upd)
         # Claims are baked into the session: make the user sign in again so
@@ -550,6 +570,7 @@ ACTIONS = {
     "resetUserPassword": reset_user_password,
     "deleteUser": delete_user,
     "checkWorkerDoc": lambda db, c, b, r: check_worker_doc(db, c, b),
+    "updateMyName": lambda db, c, b, r: update_my_name(db, c, b),
 }
 
 

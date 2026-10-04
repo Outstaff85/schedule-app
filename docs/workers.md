@@ -87,7 +87,7 @@ Read-only summary, as flat icon + text rows:
 - notes;
 - the Documents section (`workerDocsSectionHtml(w)`).
 
-Buttons: Delete, Download document, **Upload hours** and **Export hours** (both only with `hasPermission('workers')`). There is no Edit button: a tap anywhere on the card other than a button, link or field (`isPlainTap`) closes it and opens the edit form (`openEditWorker`).
+Buttons: **Add document** (`openWorkerDocUpload`, only with `hasPermission('workers')`; the Documents section itself has no add button), Download document, **Upload hours** and **Export hours** (both only with `hasPermission('workers')`). There is no Edit button: a tap anywhere on the card other than a button, link or field (`isPlainTap`) closes it and opens the edit form (`openEditWorker`).
 
 ## Worker modal (`showWorkerModal(w)`, `#workerModal`)
 
@@ -116,7 +116,7 @@ One form for add, edit and post-scan review. Labels of every Form 101 field are 
   - **Weekly schedule.** Collapsible (`toggleWeeklySchedule`). It is only written on save if it was opened: a new worker gets all days off, an existing one keeps their shifts.
   - **Form 101 block.** Collapsible (`toggleForm101Wrap`): income types and children rows (`renderChildrenRows`, `addChildRow`, `removeChildRow`).
   - **Contract-term warning.** Collapsible (`toggleExpiryWrap`); opening it enables the warning.
-  - **Color, signature, notes.** Color picker; the signature pad (`wSigCanvas`, see [form101.md](form101.md)); notes; a new punch-link token (`regenerateWorkerToken`).
+  - **Signature, notes.** No color picker — a new worker gets the next `WORKER_COLORS` color (`blankWorkerDefaults`), an edited one keeps its color; the signature pad (`wSigCanvas`, see [form101.md](form101.md)); notes; a new punch-link token (`regenerateWorkerToken`).
 
 ### Saving (`saveWorker()`)
 
@@ -145,7 +145,7 @@ One form for add, edit and post-scan review. Labels of every Form 101 field are 
 
 ### Deleting (`deleteWorker(wi)`)
 
-It removes the worker and saves, then best-effort deletes their files through `gsDeleteWorkerDoc()`: the PDF (`docFileId`), the sidecar, and every `docs[].fileId`.
+Started from the faint red ✕ in a worker tile's top-right corner (`.wcard-del`, only with `hasPermission('workers')`; the worker card has no Delete button) or the ✕ in the list view's row. It first asks for confirmation (the worker's Form 101, scans and documents go too, punches and hours stay). It removes the worker and saves, then best-effort deletes their files through `gsDeleteWorkerDoc()`: the PDF (`docFileId`), the sidecar, and every `docs[].fileId`.
 
 ## Punch link
 

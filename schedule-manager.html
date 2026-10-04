@@ -162,6 +162,17 @@
   .field label{display:block;font-size:14px;color:var(--text2);margin-bottom:5px;font-weight:500;}
   .field input,.field select{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:15px;font-family:'DM Sans','Heebo',Arial,sans-serif;padding:8px 10px;outline:none;transition:border-color 0.15s;}
   .field input:focus,.field select:focus{border-color:var(--accent);}
+  /* Checkbox choices as tappable tiles (template: user form sections and
+     own-only switch) — the same on a phone and a computer. Overrides the
+     .field label/input styles they sit inside. */
+  .form-section{margin:18px 0 8px;padding-top:12px;border-top:1px solid var(--border2);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text2);}
+  .form-section:first-of-type{margin-top:4px;padding-top:0;border-top:none;}
+  .check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+  .field label.check-chip,label.check-chip{display:flex;align-items:center;gap:10px;margin:0;padding:10px 12px;min-height:44px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:14px;font-weight:500;cursor:pointer;user-select:none;}
+  .field label.check-chip input,label.check-chip input{width:18px;height:18px;flex:0 0 18px;margin:0;padding:0;accent-color:var(--accent);cursor:pointer;}
+  label.check-chip:has(input:checked){border-color:var(--accent);background:rgba(79,142,247,0.12);}
+  label.check-chip .chip-text{display:flex;flex-direction:column;gap:2px;min-width:0;}
+  label.check-chip .chip-hint{font-size:12px;font-weight:400;color:var(--text2);line-height:1.35;}
   .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
   .hours-badge{display:inline-block;font-size:14px;color:var(--green);background:var(--green-bg);border-radius:4px;padding:3px 8px;margin-top:6px;font-family:'DM Mono','Heebo',Consolas,monospace;}
   .modal-actions{display:flex;gap:8px;margin-top:20px;justify-content:flex-end;}
@@ -421,6 +432,10 @@
   .workers-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
   .wcard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:10px;transition:border-color .15s}
   .wcard:hover{border-color:var(--border2)}
+  .wcard{position:relative}
+  /* Delete: a faint red ✕ in the tile's top-right corner (deleteWorker asks first). */
+  .wcard-del{position:absolute;top:6px;right:6px;background:none;border:none;color:var(--red);opacity:.4;font-size:16px;line-height:1;padding:6px;border-radius:6px;cursor:pointer;transition:opacity .15s,background .15s}
+  .wcard-del:hover{opacity:1;background:var(--bg3)}
   .wcard-rows{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:12px}
   .wcard-rows .k{color:var(--text3);white-space:nowrap}
   .wcard-rows .v{color:var(--text);min-width:0;overflow-wrap:anywhere}
@@ -957,8 +972,6 @@
 <div class="overlay" id="userFormOverlay" style="z-index:980">
   <div class="modal" style="max-width:420px">
     <div class="modal-title" id="userFormTitle">New user</div>
-    <div class="field"><label>Username</label><input type="text" id="userFormUsername" autocomplete="off"></div>
-    <div class="field" id="userFormPasswordField"><label>Password (min. 8 chars)</label><input type="password" id="userFormPassword" autocomplete="new-password"></div>
     <div class="field"><label>Role</label>
       <select id="userFormRole" onchange="onUserFormRoleChange(true)">
         <option value="staff">Staff</option>
@@ -966,26 +979,31 @@
         <option value="supplier">Supplier</option>
       </select>
     </div>
-    <div id="userFormHrFields" style="display:none">
-      <div class="field"><label>Full name</label><input type="text" id="userFormFullName" autocomplete="off" maxlength="80"></div>
-      <div class="field"><label>Phone</label><input type="tel" id="userFormPhone" autocomplete="off" maxlength="40"></div>
-      <div class="field"><label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" id="userFormOwnOnly" checked> Only own workers (unchecked: sees every worker of the firm)</label></div>
-    </div>
+    <div class="form-section">Person</div>
+    <div class="field"><label id="userFormFullNameLabel">Full name</label><input type="text" id="userFormFullName" autocomplete="off" maxlength="80"></div>
+    <div class="field"><label>Phone</label><input type="tel" id="userFormPhone" autocomplete="off" maxlength="40"></div>
+    <div class="form-section">Login</div>
+    <div class="field"><label>Username</label><input type="text" id="userFormUsername" autocomplete="off"></div>
+    <div class="field" id="userFormPasswordField"><label id="userFormPasswordLabel">Password (min. 8 chars)</label><input type="password" id="userFormPassword" autocomplete="new-password"></div>
+    <div class="form-section">Access</div>
     <div class="field" id="userFormSupplierField" style="display:none"><label>Supplier</label><select id="userFormSupplierId"></select></div>
     <div class="field" id="userFormPermsField">
-      <label>Permissions</label>
-      <div style="display:flex;flex-direction:column;gap:4px;font-size:13px">
-        <label><input type="checkbox" value="schedule" class="userFormPermCb"> Schedule</label>
-        <label><input type="checkbox" value="workers" class="userFormPermCb"> Workers</label>
-        <label><input type="checkbox" value="clients" class="userFormPermCb"> Clients</label>
-        <label><input type="checkbox" value="suppliers" class="userFormPermCb"> Suppliers</label>
-        <label><input type="checkbox" value="accounting" class="userFormPermCb"> Accounting</label>
-        <label><input type="checkbox" value="exports" class="userFormPermCb"> Exports</label>
+      <label>Sections</label>
+      <div class="check-grid">
+        <label class="check-chip"><input type="checkbox" value="schedule" class="userFormPermCb"><span class="chip-text">Schedule</span></label>
+        <label class="check-chip"><input type="checkbox" value="workers" class="userFormPermCb"><span class="chip-text">Workers</span></label>
+        <label class="check-chip"><input type="checkbox" value="clients" class="userFormPermCb"><span class="chip-text">Clients</span></label>
+        <label class="check-chip"><input type="checkbox" value="suppliers" class="userFormPermCb"><span class="chip-text">Suppliers</span></label>
+        <label class="check-chip"><input type="checkbox" value="accounting" class="userFormPermCb"><span class="chip-text">Accounting</span></label>
+        <label class="check-chip"><input type="checkbox" value="exports" class="userFormPermCb"><span class="chip-text">Exports</span></label>
       </div>
     </div>
-    <div class="field" id="userFormHrWorkersField" style="display:none">
-      <label style="display:flex;justify-content:space-between;align-items:center">Workers <button class="btn sm" type="button" onclick="openHrAssignModal()"><i class="ti ti-user-plus"></i> Add workers</button></label>
-      <div id="userFormHrWorkers" style="display:flex;flex-direction:column;gap:6px"></div>
+    <div class="field" id="userFormHrFields" style="display:none">
+      <label class="check-chip"><input type="checkbox" id="userFormOwnOnly" checked><span class="chip-text">Only own workers<span class="chip-hint">Sees only the workers assigned to this HR. Unchecked: every worker of the firm.</span></span></label>
+    </div>
+    <div id="userFormHrWorkersField" style="display:none">
+      <div class="form-section" style="display:flex;justify-content:space-between;align-items:center">Workers <button class="btn sm" type="button" onclick="openHrAssignModal()"><i class="ti ti-user-plus"></i> Add workers</button></div>
+      <div id="userFormHrWorkers" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
     </div>
     <div id="userFormError" style="color:#ff6b78;font-size:13px;margin:2px 0 6px;min-height:1.2em"></div>
     <div class="modal-actions">
@@ -999,7 +1017,7 @@
 <div class="overlay" id="hrAssignOverlay" style="z-index:990">
   <div class="modal" style="max-width:440px">
     <div class="modal-title" id="hrAssignTitle">Add workers</div>
-    <input type="text" id="hrAssignSearch" placeholder="Search by name or document…" autocomplete="off" oninput="renderHrAssignList()" style="width:100%;margin-bottom:8px">
+    <div class="field" style="margin-bottom:10px"><input type="text" id="hrAssignSearch" placeholder="Search by name or document…" autocomplete="off" oninput="renderHrAssignList()"></div>
     <div id="hrAssignList" style="display:flex;flex-direction:column;gap:4px;max-height:50vh;overflow-y:auto"></div>
     <div class="modal-actions">
       <button class="btn accent" id="hrAssignSaveBtn" onclick="submitHrAssign()">Assign</button>
@@ -1020,6 +1038,7 @@
     <div style="font-size:11px;color:var(--text3);line-height:1.5;margin:-6px 0 10px">
       פרטים אלה מודפסים בחלק א׳ („פרטי המעסיק”) של כל טופס 101.
     </div>
+    <div class="field" id="firmEditOwnerNameField" style="display:none"><label>Owner name</label><input type="text" id="firmEditOwnerName" autocomplete="off" maxlength="80"></div>
     <div class="field" id="firmEditUsernameField" style="display:none"><label>Логин</label><input type="text" id="firmEditUsername" autocomplete="off"></div>
     <div class="field" id="firmEditPasswordField" style="display:none"><label>Пароль (мин. 8 символов)</label><input type="password" id="firmEditPassword" autocomplete="new-password"></div>
     <div class="field"><label>שם המעסיק</label><input type="text" id="firmEditCompanyName"></div>
@@ -2572,11 +2591,6 @@ function showWorkerModal(w){
         <div class="field"><label>התראה כמה חודשים מראש</label><input type="number" id="wExpiryWarnMonths" min="0" step="1" value="${w.expiryWarnMonths??1}"></div>
       </div>
     </div>
-    <div class="field"><label>צבע</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap" id="wColorPick">
-        ${WORKER_COLORS.map((c,i)=>`<div onclick="pickWColor(${i})" data-ci="${i}" style="width:24px;height:24px;border-radius:50%;background:${c.text};cursor:pointer;border:2px solid ${i===selColorIdx?'white':'transparent'};transition:all 0.15s;${i===selColorIdx?'transform:scale(1.2)':''}"></div>`).join('')}
-      </div>
-    </div>
     <div class="field" style="margin-top:10px;margin-bottom:10px">
       <label style="display:block;font-size:12px;color:var(--text2);margin-bottom:4px">חתימה</label>
       <canvas id="wSigCanvas" width="500" height="120"
@@ -2595,7 +2609,9 @@ function showWorkerModal(w){
   markScanMissingFields();
   markScanUncertain(w.__scanCheck);
 }
-function pickWColor(i){ selColorIdx=i; document.querySelectorAll('#wColorPick [data-ci]').forEach(el=>{ const idx=parseInt(el.dataset.ci); el.style.borderColor=idx===i?'white':'transparent'; el.style.transform=idx===i?'scale(1.2)':'scale(1)'; }); }
+// No color picker any more (per user request 2026-10-04): a new worker,
+// client or supplier gets the next color of its palette automatically.
+function pickWColor(i){ selColorIdx=i; }
 function toggleDayTime(i){ const off=document.getElementById(`wt${i}`).value==='off'; ['ws','we'].forEach(p=>{ const el=document.getElementById(p+i); el.disabled=off; el.style.opacity=off?'0.3':'1'; }); }
 async function saveWorker(){
   const docGiven=document.getElementById('wGiven').value.trim();
@@ -2822,7 +2838,7 @@ function copyWorkerLink(wid){
 }
 function deleteWorker(wi){
   const w=workers[wi];
-  if(!confirm('Remove "'+w.name+'"?'))return;
+  if(!confirm('Delete worker "'+w.name+'"?\n\nTheir Form 101, scans and documents are deleted too. This cannot be undone. Punches and hours stay.'))return;
   const n=w.name;
   const fileId=w.docFileId;
   const assetsFileId=w.assetsFileId;
@@ -2836,7 +2852,6 @@ function deleteWorker(wi){
   if(assetsFileId) gsDeleteWorkerDoc(assetsFileId);
   docFileIds.forEach(gsDeleteWorkerDoc); // contract/visa/permit files
 }
-function deleteWorkerFromCard(wi){ closeModal('workerCardOverlay'); deleteWorker(wi); }
 
 // --- Client Modal -------------------------------------------------------------
 function openAddClient(){ editingClientId=null; selClientColor=CLIENT_COLORS[clients.length%CLIENT_COLORS.length]; showClientModal({name:'',color:selClientColor,address:'',notes:''}); }
@@ -2847,64 +2862,54 @@ function showClientModal(c){
   __cBill = { rateMode: c.rateMode==='fixed'?'fixed':'tiered', fixedBillRate: c.fixedBillRate??null,
     billRate: (c.billRate!=null&&c.billRate!=='') ? c.billRate : (c.defaultHourlyRate??null),
     billOtRate: c.billOtRate??null, billShabbatRate: c.billShabbatRate??null };
-  document.getElementById('clientModal').innerHTML=`
-    <div class="modal-title">${editingClientId?'Edit Client':'Add New Client'}</div>
-    <div class="field"><label>Name</label><input type="text" id="cName" value="${esc(c.name||'')}" placeholder="Client name" autofocus></div>
-    <div class="field"><label>ח.פ (Company Number, optional)</label><input type="text" id="cCompanyNumber" value="${esc(c.companyNumber||'')}" placeholder="512345678"></div>
-    <div class="field"><label>Object</label><input type="text" id="cObject" value="${esc(c.object||'')}" placeholder="Object / branch name"></div>
-    <div class="field"><label>Address (optional)</label><input type="text" id="cAddr" value="${esc(c.address||'')}" placeholder="Address"></div>
+  // The client card is in Hebrew (per user request 2026-10-04).
+  document.getElementById('clientModal').innerHTML=`<div dir="rtl">
+    <div class="modal-title">${editingClientId?'עריכת לקוח':'לקוח חדש'}</div>
+    <div class="field"><label>שם הלקוח</label><input type="text" id="cName" value="${esc(c.name||'')}" placeholder="שם הלקוח" autofocus></div>
+    <div class="field"><label>ח.פ (לא חובה)</label><input type="text" id="cCompanyNumber" value="${esc(c.companyNumber||'')}" placeholder="512345678"></div>
+    <div class="field"><label>אתר / סניף</label><input type="text" id="cObject" value="${esc(c.object||'')}" placeholder="שם האתר או הסניף"></div>
+    <div class="field"><label>כתובת (לא חובה)</label><input type="text" id="cAddr" value="${esc(c.address||'')}" placeholder="כתובת"></div>
     <div class="field">
-      <label><i class="ti ti-cash"></i> Default rate for this client (optional)</label>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Applied to all workers at this client if a worker has no own rate for it (see Accounting → Per-client rates)</div>
+      <label><i class="ti ti-cash"></i> שכר העובד אצל לקוח זה (₪ לשעה)</label>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">כל העובדים אצל הלקוח מקבלים את התעריף הזה, אלא אם לעובד יש תעריף משלו.</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-        <div><label style="font-size:11px;color:var(--text3)">Regular ₪/h</label>
+        <div><label style="font-size:11px;color:var(--text3)">רגיל</label>
           <input type="number" min="0" step="0.5" id="cDefRate" value="${c.defaultHourlyRate??''}" placeholder="—"></div>
-        <div><label style="font-size:11px;color:var(--text3)">OT ₪/h</label>
+        <div><label style="font-size:11px;color:var(--text3)">שעות נוספות</label>
           <input type="number" min="0" step="0.5" id="cDefOtRate" value="${c.defaultOtRate??''}" placeholder="—"></div>
-        <div><label style="font-size:11px;color:var(--text3)">Shabbat ₪/h</label>
+        <div><label style="font-size:11px;color:var(--text3)">שבת</label>
           <input type="number" min="0" step="0.5" id="cDefShabRate" value="${c.defaultShabbatRate??''}" placeholder="—"></div>
       </div>
     </div>
     <div class="field">
-      <label><i class="ti ti-receipt"></i> Client billing mode</label>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">What's billed to this client (Accounting → Billable by client). Never affects the worker's own wage above.</div>
+      <label><i class="ti ti-receipt"></i> תשלום הלקוח לחברה (₪ לשעה)</label>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">כמה הלקוח משלם לנו. לא משנה את שכר העובד.</div>
       <select id="cRateMode" onchange="onClientRateModeChange()" style="width:100%">
-        <option value="tiered" ${__cBill.rateMode==='tiered'?'selected':''}>With overtime (Israeli OT/Shabbat tiers)</option>
-        <option value="fixed" ${__cBill.rateMode==='fixed'?'selected':''}>Fixed rate (flat ₪/h, no OT/Shabbat)</option>
+        <option value="tiered" ${__cBill.rateMode==='tiered'?'selected':''}>עם שעות נוספות ושבת (לפי החוק)</option>
+        <option value="fixed" ${__cBill.rateMode==='fixed'?'selected':''}>תעריף קבוע (בלי תוספות)</option>
       </select>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px">
         <div id="cBillSummary" style="font-size:12px;color:var(--text2)">${clientBillSummary()}</div>
-        <button class="btn sm" type="button" onclick="openClientBillRatePopup()"><i class="ti ti-pencil"></i> Edit rate</button>
+        <button class="btn sm" type="button" onclick="openClientBillRatePopup()"><i class="ti ti-pencil"></i> עריכה</button>
       </div>
     </div>
     <div class="field">
-      <label><i class="ti ti-map-pin"></i> Geolocation for Punch Clock</label>
+      <label><i class="ti ti-map-pin"></i> מיקום לשעון הנוכחות</label>
       <button class="btn ${c.lat?'sm':'accent'}" type="button" onclick="openMapPicker()" style="width:100%;justify-content:center;margin-bottom:10px">
-        <i class="ti ti-map-2"></i> ${c.lat?'Change location on map':'Pick location on map'}
+        <i class="ti ti-map-2"></i> ${c.lat?'שינוי מיקום במפה':'בחירת מיקום במפה'}
       </button>
       <div style="margin-bottom:8px">
-        <label style="font-size:11px;color:var(--text3);margin-bottom:4px;display:block">…or paste a Google Maps link</label>
-        <input type="text" id="cMapsUrl" placeholder="https://maps.google.com/..." value="${esc(c.mapsUrl||'')}" oninput="parseGoogleMapsUrl(this.value)" style="font-size:12px">
-        <div style="font-size:11px;color:var(--text3);margin-top:4px">Open Google Maps → right-click on location → copy link or coordinates</div>
+        <label style="font-size:11px;color:var(--text3);margin-bottom:4px;display:block">או הדבקת קישור מ-Google Maps</label>
+        <input type="text" id="cMapsUrl" dir="ltr" placeholder="https://maps.google.com/..." value="${esc(c.mapsUrl||'')}" oninput="parseGoogleMapsUrl(this.value)" style="font-size:12px">
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
-        <div><label style="font-size:11px;color:var(--text3)">Latitude</label>
-          <input type="number" step="any" id="cLat" value="${c.lat||''}" placeholder="32.0853" oninput="updateLocStatus()"></div>
-        <div><label style="font-size:11px;color:var(--text3)">Longitude</label>
-          <input type="number" step="any" id="cLng" value="${c.lng||''}" placeholder="34.7818" oninput="updateLocStatus()"></div>
-        <div><label style="font-size:11px;color:var(--text3)">Radius (m)</label>
-          <input type="number" id="cRadius" value="${c.radius||100}" placeholder="100"></div>
-      </div>
-      <div id="cLocStatus" style="font-size:12px;min-height:18px;padding:4px 0;color:var(--text2)">${c.lat?'<i class="ti ti-circle-check"></i> Location set: '+Number(c.lat).toFixed(5)+', '+Number(c.lng).toFixed(5):''}</div>
-    </div>
-    <div class="field"><label>Color</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap" id="cColorPick">
-        ${CLIENT_COLORS.map(col=>`<div onclick="pickCColor('${col}')" data-color="${col}" style="width:24px;height:24px;border-radius:50%;background:${col};cursor:pointer;border:2px solid ${col===selClientColor?'white':'transparent'};transition:all 0.15s;${col===selClientColor?'transform:scale(1.2)':''}"></div>`).join('')}
-      </div>
+      <input type="hidden" id="cLat" value="${c.lat||''}"><input type="hidden" id="cLng" value="${c.lng||''}">
+      <div style="margin-bottom:8px;max-width:140px"><label style="font-size:11px;color:var(--text3)">רדיוס (מטרים)</label>
+        <input type="number" id="cRadius" value="${c.radius||100}" placeholder="100"></div>
+      <div id="cLocStatus" style="font-size:12px;min-height:18px;padding:4px 0;color:${c.lat?'var(--green)':'var(--text2)'}">${c.lat?locSetHtml(c.lat,c.lng):''}</div>
     </div>
     <div class="modal-actions">
-      <button class="btn accent" onclick="saveClient()">${editingClientId?'Save Changes':'Add Client'}</button>
-    </div>`;
+      <button class="btn accent" onclick="saveClient()">${editingClientId?'שמירה':'הוספת לקוח'}</button>
+    </div></div>`;
   document.getElementById('clientOverlay').classList.add('open');
 }
 
@@ -2936,10 +2941,11 @@ function parseGoogleMapsUrl(url){
   const el=document.getElementById('cLocStatus');
   if(url.length>10){
     el.style.color='var(--amber)';
-    el.textContent="Could not parse — try right-click → What's here? on Google Maps and paste those coordinates";
+    el.textContent='הקישור לא זוהה — ב-Google Maps לחצו לחיצה ימנית על המקום והדביקו את הקואורדינטות';
   }
 }
 
+function locSetHtml(lat,lng){ return '<i class="ti ti-circle-check"></i> המיקום נקבע: <span dir="ltr">'+Number(lat).toFixed(5)+', '+Number(lng).toFixed(5)+'</span>'; }
 function updateLocStatus(){
   const lat=document.getElementById('cLat')?.value;
   const lng=document.getElementById('cLng')?.value;
@@ -2947,7 +2953,7 @@ function updateLocStatus(){
   if(!el)return;
   if(lat&&lng&&!isNaN(parseFloat(lat))&&!isNaN(parseFloat(lng))){
     el.style.color='var(--green)';
-    el.innerHTML='<i class="ti ti-circle-check"></i> Location set: '+Number(lat).toFixed(5)+', '+Number(lng).toFixed(5);
+    el.innerHTML=locSetHtml(lat,lng);
   } else {
     el.style.color='var(--text2)';
     el.textContent='';
@@ -3064,7 +3070,6 @@ function saveMapPick(){
   updateLocStatus();
   closeModal('mapPickOverlay');
 }
-function pickCColor(col){ selClientColor=col; document.querySelectorAll('#cColorPick [data-color]').forEach(el=>{ el.style.borderColor=el.dataset.color===col?'white':'transparent'; el.style.transform=el.dataset.color===col?'scale(1.2)':'scale(1)'; }); }
 // ── Client billing-rate popup ───────────────────────────────────────────────
 // Picking a billing mode in the client modal immediately pops up the matching
 // rate form: 'fixed' → one flat ₪/h; 'tiered' (with overtime) → Regular plus
@@ -3075,11 +3080,13 @@ let __cBill = { rateMode:'tiered', fixedBillRate:null, billRate:null, billOtRate
 let __cBillPrevMode = 'tiered';
 const fmtRate=v=>(v==null||v==='')?null:('₪'+Number(v)+'/h');
 function clientBillSummary(){
-  if(__cBill.rateMode==='fixed') return fmtRate(__cBill.fixedBillRate) ? 'Fixed '+fmtRate(__cBill.fixedBillRate) : '<span style="color:var(--amber)">Rate not set</span>';
-  if(!fmtRate(__cBill.billRate)) return '<span style="color:var(--amber)">Rate not set</span>';
-  return 'Regular '+fmtRate(__cBill.billRate)
-    +' · OT '+(fmtRate(__cBill.billOtRate)||'law tiers')
-    +' · Shabbat '+(fmtRate(__cBill.billShabbatRate)||'law tiers');
+  const r=v=>'₪'+Number(v);
+  const set=v=>v!=null&&v!=='';
+  if(__cBill.rateMode==='fixed') return set(__cBill.fixedBillRate) ? 'קבוע '+r(__cBill.fixedBillRate) : '<span style="color:var(--amber)">לא הוגדר תעריף</span>';
+  if(!set(__cBill.billRate)) return '<span style="color:var(--amber)">לא הוגדר תעריף</span>';
+  return 'רגיל '+r(__cBill.billRate)
+    +' · נוספות '+(set(__cBill.billOtRate)?r(__cBill.billOtRate):'לפי החוק')
+    +' · שבת '+(set(__cBill.billShabbatRate)?r(__cBill.billShabbatRate):'לפי החוק');
 }
 function onClientRateModeChange(){
   const sel=document.getElementById('cRateMode');
@@ -3091,21 +3098,21 @@ function onClientRateModeChange(){
 function openClientBillRatePopup(fromModeChange){
   const b=__cBill, v=x=>x??'';
   const inp=(id,val,label)=>`<div><label style="font-size:11px;color:var(--text3)">${label}</label><input type="number" min="0" step="0.5" id="${id}" value="${v(val)}" placeholder="—"></div>`;
-  document.getElementById('clientBillModal').innerHTML = b.rateMode==='fixed' ? `
-    <div class="modal-title">Fixed billing rate</div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Flat ₪ per hour billed to the client — no overtime or Shabbat tiers.</div>
-    <div class="field">${inp('cbFixed',b.fixedBillRate,'Rate ₪/h')}</div>
+  document.getElementById('clientBillModal').innerHTML = b.rateMode==='fixed' ? `<div dir="rtl">
+    <div class="modal-title">תעריף קבוע ללקוח</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">₪ לשעה שהלקוח משלם לנו, בלי שעות נוספות ושבת.</div>
+    <div class="field">${inp('cbFixed',b.fixedBillRate,'₪ לשעה')}</div>
     <div class="modal-actions">
-      <button class="btn accent" type="button" onclick="saveClientBillRatePopup()">Save</button>
-    </div>` : `
-    <div class="modal-title">Billing rate with overtime</div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Billed to the client. Leave OT / Shabbat empty to use the Israeli law tiers off the regular rate (OT ×1.25 then ×1.5; Shabbat ×1.5–×2.0).</div>
+      <button class="btn accent" type="button" onclick="saveClientBillRatePopup()">שמירה</button>
+    </div></div>` : `<div dir="rtl">
+    <div class="modal-title">תשלום הלקוח עם שעות נוספות</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">כמה הלקוח משלם לנו לשעה. נוספות / שבת ריקים = לפי החוק מהתעריף הרגיל (נוספות ×1.25 ואז ×1.5, שבת ×1.5–×2).</div>
     <div class="field" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-      ${inp('cbReg',b.billRate,'Regular ₪/h')}${inp('cbOt',b.billOtRate,'OT ₪/h')}${inp('cbShab',b.billShabbatRate,'Shabbat ₪/h')}
+      ${inp('cbReg',b.billRate,'רגיל')}${inp('cbOt',b.billOtRate,'שעות נוספות')}${inp('cbShab',b.billShabbatRate,'שבת')}
     </div>
     <div class="modal-actions">
-      <button class="btn accent" type="button" onclick="saveClientBillRatePopup()">Save</button>
-    </div>`;
+      <button class="btn accent" type="button" onclick="saveClientBillRatePopup()">שמירה</button>
+    </div></div>`;
   // Closing it (a tap outside) cancels: a popup opened by a mode switch
   // undoes that switch (cancelClientBillRatePopup).
   const ov=document.getElementById('clientBillOverlay');
@@ -3211,7 +3218,8 @@ function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
     const sup=suppliers.find(s=>s.id===w.supplierId);
     const h=hours[w.id]||0;
     return `<div class="wcard" onclick="openWorkerCard(${wi})">
-      <div style="display:flex;align-items:center;gap:10px">
+      ${hasPermission('workers')?`<button class="wcard-del" type="button" title="Delete worker" onclick="event.stopPropagation();deleteWorker(${wi})">✕</button>`:''}
+      <div style="display:flex;align-items:center;gap:10px;padding-right:22px">
         <div style="width:38px;height:38px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div>
         <div style="min-width:0;flex:1">
           <div style="font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(w.name)}</div>
@@ -3354,7 +3362,7 @@ function openWorkerCard(wi){
     ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
     ${workerDocsSectionHtml(w)}
     <div class="modal-actions">
-      <button class="btn sm red" onclick="deleteWorkerFromCard(${wi})"><i class="ti ti-trash"></i> Delete</button>
+      ${hasPermission('workers')?`<button class="btn sm" onclick="openWorkerDocUpload('${esc(w.id)}')"><i class="ti ti-upload"></i> Add document</button>`:''}
       ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Скачать документ</a>`:''}
       ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursImportModal('${w.id}')"><i class="ti ti-file-upload"></i> Upload hours</button>`:''}
       ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursExportModal('${w.id}')"><i class="ti ti-file-export"></i> Export hours</button>`:''}
@@ -3403,7 +3411,6 @@ function workerDocsSectionHtml(w){
   return `<div style="margin-bottom:14px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
       <div style="font-size:13px;font-weight:700"><i class="ti ti-folder"></i> Documents</div>
-      ${hasPermission('workers')?`<button class="btn sm" onclick="openWorkerDocUpload('${esc(w.id)}')"><i class="ti ti-upload"></i> Add document</button>`:''}
     </div>
     ${docs.length?'<div class="worker-docs-rows"></div>':'<div style="font-size:12px;color:var(--text3)">No documents yet — contract, visa, work permit…</div>'}
   </div>`;
@@ -3682,17 +3689,11 @@ function showSupplierModal(s){
           <input type="text" id="sAccountNumber" value="${esc(s.accountNumber||'')}" placeholder="Account #"></div>
       </div>
     </div>
-    <div class="field"><label>Color</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap" id="sColorPick">
-        ${CLIENT_COLORS.map(col=>`<div onclick="pickSColor('${col}')" data-color="${col}" style="width:24px;height:24px;border-radius:50%;background:${col};cursor:pointer;border:2px solid ${col===selSupplierColor?'white':'transparent'};transition:all 0.15s;${col===selSupplierColor?'transform:scale(1.2)':''}"></div>`).join('')}
-      </div>
-    </div>
     <div class="modal-actions">
       <button class="btn accent" onclick="saveSupplier()">${editingSupplierId?'Save Changes':'Add Supplier'}</button>
     </div>`;
   document.getElementById('supplierOverlay').classList.add('open');
 }
-function pickSColor(col){ selSupplierColor=col; document.querySelectorAll('#sColorPick [data-color]').forEach(el=>{ el.style.borderColor=el.dataset.color===col?'white':'transparent'; el.style.transform=el.dataset.color===col?'scale(1.2)':'scale(1)'; }); }
 function saveSupplier(){
   const name=document.getElementById('sName').value.trim();
   if(!name){ document.getElementById('sName').focus(); return; }
@@ -4340,7 +4341,9 @@ function renderAccountControl(s){
     const firm = s.role === 'superadmin'
       ? (s.viewingTenantName || s.viewingTenantId || 'Super-admin')
       : ((profile && profile.companyName) || '');
-    labelHost.innerHTML = '<i class="ti ti-user"></i> ' + esc(s.username || '')
+    // The person's name (fullName), the login only while it has none; a
+    // tap on it changes the name (editMyName).
+    labelHost.innerHTML = '<span onclick="editMyName()" style="cursor:pointer" title="Change your name"><i class="ti ti-user"></i> ' + esc(s.fullName || s.username || '') + '</span>'
       + (firm ? ' · <span>' + esc(firm) + '</span>' : '');
   }
   if(!host) return;
@@ -4355,6 +4358,19 @@ function renderAccountControl(s){
   // warning moves to the Admin tab's own icon instead, so the cue isn't lost.
   const tabAdminIcon = document.querySelector('#tabAdmin .ic i');
   if(tabAdminIcon) tabAdminIcon.style.color = ((s.role==='superadmin'||s.role==='tenant_admin') && incomplete) ? '#ffb020' : '';
+}
+
+async function editMyName(){
+  const s = getSession(); if(!s) return;
+  const name = prompt('Your name (shown at the top instead of the login):', s.fullName || '');
+  if(name === null) return;
+  try{
+    const json = await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'updateMyName', fullName: name.trim()})})).json();
+    if(!json || json.error){ showToast((json && json.error) || 'Not saved'); return; }
+    s.fullName = json.fullName; saveSession(s);
+    renderAccountControl(s);
+    showToast('Saved');
+  }catch(e){ showToast('Network error'); }
 }
 
 let __firmsCache = [];
@@ -4577,14 +4593,14 @@ function renderAdminUsersRows(el, users){
     const row = u => {
       const sup = u.role==='supplier' ? (suppliers||[]).find(s=>s.id===u.supplierId) : null;
       const permsLabel = (u.role!=='staff' && u.role!=='hr') ? '' : (u.permissions==='*' ? 'Full access' : (Array.isArray(u.permissions)?u.permissions.join(', '):'—'));
-      const hrLine = u.role!=='hr' ? '' : `<div style="font-size:12px;color:var(--text2)">${esc(u.fullName||'')}${u.phone?' · '+esc(u.phone):''} · ${hrWorkerCount(u.id)} workers${u.ownOnly===false?' · sees all workers':''}</div>`;
+      const hrLine = u.role!=='hr' ? '' : `<div style="font-size:12px;color:var(--text2)">${hrWorkerCount(u.id)} workers${u.ownOnly===false?' · sees all workers':''}</div>`;
       return `<div class="tap-edit" onclick="if(isPlainTap(event,this))openEditUserForm('${esc(u.id)}')" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);${u.active===false?'opacity:0.55':''}">
         <div>
-          <div style="font-weight:600">${esc(u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(u.role)})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">inactive</span>':''}</div>
+          <div style="font-weight:600">${esc(u.fullName||u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(u.role)})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">inactive</span>':''}</div>
+          <div style="font-size:11px;color:var(--text3)">login: ${esc(u.username)}${u.phone?' · '+esc(u.phone):''}</div>
           ${hrLine}<div style="font-size:12px;color:var(--text2)">${u.role==='supplier' ? (sup?esc(sup.name):'—') : esc(permsLabel)}</div>
         </div>
         <div style="display:flex;gap:4px">
-          <button class="btn sm" onclick="resetUserPasswordPrompt('${esc(u.id)}')" title="Reset password"><i class="ti ti-key"></i></button>
           <button class="btn sm" onclick="deleteUserConfirm('${esc(u.id)}','${esc(u.username)}')" title="Delete" style="color:#ff6b78"><i class="ti ti-trash"></i></button>
         </div>
       </div>`;
@@ -4602,6 +4618,7 @@ function onUserFormRoleChange(fromUser){
   document.getElementById('userFormSupplierField').style.display = role==='supplier' ? '' : 'none';
   document.getElementById('userFormPermsField').style.display = role==='supplier' ? 'none' : '';
   document.getElementById('userFormHrFields').style.display = role==='hr' ? '' : 'none';
+  document.getElementById('userFormFullNameLabel').textContent = role==='hr' ? 'Full name (required)' : 'Full name';
   document.getElementById('userFormHrWorkersField').style.display = role==='hr' && __editingUserId ? '' : 'none';
   if(role==='supplier') fillUserFormSupplierSelect(null);
   // A new HR login starts with the Workers section only.
@@ -4615,6 +4632,7 @@ function openCreateUserForm(){
   document.getElementById('userFormUsername').disabled = false;
   document.getElementById('userFormPassword').value = '';
   document.getElementById('userFormPasswordField').style.display = '';
+  document.getElementById('userFormPasswordLabel').textContent = 'Password (min. 8 chars)';
   document.getElementById('userFormRole').value = 'staff';
   document.getElementById('userFormRole').disabled = false;
   document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = false);
@@ -4635,7 +4653,8 @@ async function openEditUserForm(id){
   document.getElementById('userFormUsername').value = u.username;
   document.getElementById('userFormUsername').disabled = true; // username is immutable post-creation
   document.getElementById('userFormPassword').value = '';
-  document.getElementById('userFormPasswordField').style.display = 'none'; // use resetUserPasswordPrompt() instead
+  // A new password is set here too; left empty, the password stays.
+  document.getElementById('userFormPasswordLabel').textContent = 'New password (leave empty to keep)';
   document.getElementById('userFormRole').value = u.role;
   document.getElementById('userFormRole').disabled = true; // a login keeps its role
   document.getElementById('userFormError').textContent = '';
@@ -4658,12 +4677,17 @@ async function submitUserForm(){
   const btn = document.getElementById('userFormSaveBtn');
   btn.disabled = true;
   try{
-    const hrFields = role!=='hr' ? {} : {
+    const hrFields = {
       fullName: document.getElementById('userFormFullName').value.trim(),
-      phone: document.getElementById('userFormPhone').value.trim(),
-      ownOnly: document.getElementById('userFormOwnOnly').checked };
+      phone: document.getElementById('userFormPhone').value.trim() };
+    if(role==='hr') hrFields.ownOnly = document.getElementById('userFormOwnOnly').checked;
     if(role==='hr' && !hrFields.fullName){ errEl.textContent = 'Full name required for an HR login'; return; }
     if(__editingUserId){
+      const password = document.getElementById('userFormPassword').value;
+      if(password){
+        const pr = await (await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'resetUserPassword', ...gsAuth(), id: __editingUserId, password }) })).json();
+        if(!pr || pr.error){ errEl.textContent = (pr&&pr.error)||'Password not changed'; return; }
+      }
       const body = { action:'updateUser', ...gsAuth(), id: __editingUserId, active: true, ...hrFields };
       if(role==='supplier') body.supplierId = supplierId; else body.permissions = permissions;
       const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(body) });
@@ -4684,16 +4708,6 @@ async function submitUserForm(){
     renderAdminUsers();
   }catch(e){ errEl.textContent = 'Network error'; }
   finally{ btn.disabled = false; }
-}
-async function resetUserPasswordPrompt(id){
-  const password = prompt('New password (min. 8 characters):');
-  if(!password) return;
-  try{
-    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'resetUserPassword', ...gsAuth(), id, password }) });
-    const json = await res.json();
-    if(!json || json.error){ showToast((json&&json.error)||'Failed'); return; }
-    showToast('Password updated');
-  }catch(e){ showToast('Network error'); }
 }
 async function deleteUserConfirm(id, username){
   if(!confirm('Delete user "'+username+'"?')) return;
@@ -4770,9 +4784,9 @@ function renderHrAssignList(){
   if(!list.length){ el.innerHTML = '<div style="font-size:12px;color:var(--text3)">No workers to add</div>'; return; }
   renderPagedList(el, 'hrAssign', __editingUserId+'|'+q, list, w => {
     const other = w.hrId ? hrNameOf(w.hrId) || 'another HR' : '';
-    return `<label style="display:flex;gap:8px;align-items:center;padding:6px 8px;background:var(--bg3);border-radius:var(--radius-sm);font-size:13px">
+    return `<label class="check-chip">
       <input type="checkbox" ${__hrAssignPicked.has(w.id)?'checked':''} onchange="toggleHrAssignPick('${esc(w.id)}',this.checked)">
-      <span style="flex:1">${esc(w.name)}${other?' <span style="color:var(--amber);font-size:11px">· now: '+esc(other)+'</span>':''}</span>
+      <span class="chip-text">${esc(w.name)}${other?'<span class="chip-hint" style="color:var(--amber)">now: '+esc(other)+'</span>':''}</span>
     </label>`;
   });
 }
@@ -5034,11 +5048,12 @@ function renderTimingsPane(el,rows){
     `${x.label}: ${x.count}× · median ${_sec(x.median)} · 90% ${_sec(x.p90)}${x.steps.length?' · '+x.steps.map(([l,v])=>l+' '+_sec(v)).join(' · '):''}`).join('\n'):'';
   if(!rows.length){ el.innerHTML='<div style="color:var(--text2);font-size:13px">No measurements — '+esc(pr.label)+'.</div>'; return; }
   const p90=Object.fromEntries(__timingsSummary.map(x=>[x.kind,x.p90]));
-  const cards=__timingsSummary.map(x=>`<div class="tm-card">
+  // One card per kind; slow data calls add a kind each, so the cards page by 10 too.
+  const cardHtml=x=>`<div class="tm-card">
       <div class="tm-card-head">${esc(x.label)}<span>${x.count}×</span></div>
       <div class="tm-card-vals">median <b>${_sec(x.median)}</b> · 90% ${_sec(x.p90)}</div>
       ${x.steps.map(([l,v])=>`<span class="tm-pill">${esc(l)} ${_sec(v)}</span>`).join('')}
-    </div>`).join('');
+    </div>`;
   // A run slower than its kind's 90% is marked amber.
   const rowHtml=(r,i)=>{
     const d=r.details||{}, slow=p90[r.kind]!=null&&r.totalMs>p90[r.kind];
@@ -5051,9 +5066,10 @@ function renderTimingsPane(el,rows){
     </div>`;
   };
   el.innerHTML=`<div style="font-size:12px;color:var(--text2);margin-bottom:6px">${esc(pr.label)} · ${rows.length} measurement${rows.length===1?'':'s'} · median / 90%</div>
-    ${cards?`<div class="tm-cards">${cards}</div>`:''}
+    ${__timingsSummary.length?`<div id="timingsCards" class="tm-cards"></div>`:''}
     <div style="font-size:12px;color:var(--text2);margin-bottom:6px">All measurements, newest first</div>
     <div id="timingsLatestList" class="log-box"></div>`;
+  if(__timingsSummary.length) renderPagedList(document.getElementById('timingsCards'), 'timingCards', pr.key, __timingsSummary, cardHtml, {grid:true});
   renderPagedList(document.getElementById('timingsLatestList'), 'timings', pr.key, rows, rowHtml);
 }
 // Print: the picked period of the Errors or Timings pane as a plain page.
@@ -5158,6 +5174,8 @@ function openCreateFirmForm(){
   fillFirmEditForm({});
   document.getElementById('firmEditUsername').value = '';
   document.getElementById('firmEditPassword').value = '';
+  document.getElementById('firmEditOwnerName').value = '';
+  document.getElementById('firmEditOwnerNameField').style.display = '';
   document.getElementById('firmEditUsernameField').style.display = '';
   document.getElementById('firmEditPasswordField').style.display = '';
   document.getElementById('editFirmBtn').textContent = 'Создать';
@@ -5172,6 +5190,7 @@ function openEditFirmForm(tenantId){
   document.getElementById('firmEditTitle').textContent = 'Редактировать фирму';
   fillFirmEditForm(t);
   document.getElementById('firmEditUsernameField').style.display = 'none';
+  document.getElementById('firmEditOwnerNameField').style.display = 'none';
   document.getElementById('firmEditPasswordField').style.display = 'none';
   document.getElementById('editFirmBtn').textContent = 'Сохранить';
   document.getElementById('firmEditFormError').textContent = '';
@@ -5193,6 +5212,7 @@ async function openMyFirmForm(){
   document.getElementById('firmEditTitle').textContent = 'Данные фирмы';
   fillFirmEditForm(activeTenantProfile() || {});
   document.getElementById('firmEditUsernameField').style.display = 'none';
+  document.getElementById('firmEditOwnerNameField').style.display = 'none';
   document.getElementById('firmEditPasswordField').style.display = 'none';
   document.getElementById('editFirmBtn').textContent = 'Сохранить';
   document.getElementById('firmEditFormError').textContent = '';
@@ -5225,7 +5245,7 @@ async function submitEditFirm(){
     btn.disabled = true; btn.textContent = 'Создаю…';
     try{
       const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({
-        action:'createUser', ...gsAuth(), username, password, ...profileFields,
+        action:'createUser', ...gsAuth(), username, password, ownerName: get('firmEditOwnerName'), ...profileFields,
       })});
       const json = await res.json();
       if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось создать фирму'; return; }
@@ -6622,7 +6642,15 @@ function wirePagedMore(el, key, items, rowHtml, opts){
 // chain-load page after page.
 let __pagedScrollQueued = false, __pagedUserAt = 0;
 ['wheel','touchstart','touchmove','touchend','keydown','pointerdown'].forEach(t =>
-  window.addEventListener(t, () => { __pagedUserAt = Date.now(); }, {capture:true, passive:true}));
+  window.addEventListener(t, e => {
+    __pagedUserAt = Date.now();
+    // A downward wheel / swipe / key while "Show more" is already in view
+    // loads the next page too: when the page is short enough not to scroll
+    // (a short list on a big screen) no scroll event would ever come.
+    const down = t === 'touchmove' || (t === 'wheel' && e.deltaY > 0)
+      || (t === 'keydown' && ['ArrowDown','PageDown','End',' '].includes(e.key));
+    if(down) _pagedOnScroll();
+  }, {capture:true, passive:true}));
 function _pagedVisibleBottom(node){
   let bottom = window.innerHeight;
   for(let p = node.parentElement; p && p !== document.body; p = p.parentElement){

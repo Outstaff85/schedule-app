@@ -85,12 +85,12 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
 
 ## Users pane (owner, super-admin)
 
-- **List** (`renderAdminUsers()`): logins of the active firm only (`activeTenantIdForAdmin()`); `listUsers` returns more for a super-admin and is filtered here. Cached as `adminCache_users_<tenantId>`. Each row shows the name, role, inactive flag, and the supplier (supplier role) or the permissions (staff, hr); an HR row also shows its full name, phone and worker count (`hrWorkerCount`).
-- **Form** (`#userFormOverlay`):
-  - **Create** (`openCreateUserForm`): username, password, role (`staff` / `hr` / `supplier`, `onUserFormRoleChange`). `staff` and `hr` get permission checkboxes from `PERMISSION_SECTIONS` (`schedule, workers, clients, suppliers, accounting, exports`) — picking HR checks only Workers; `hr` also gets Full name (required), Phone and "Only own workers" (`ownOnly`, on by default); `supplier` gets a supplier select. Saved with `createTenantUser`.
-  - **Edit** (`openEditUserForm`, a tap on the user's row anywhere but its key / delete buttons): the username and role are locked and there is no password field; `updateUser` (for HR also `fullName`, `phone`, `ownOnly`). An HR's form also lists its workers (`renderUserFormHrWorkers`, paged, each with Unassign) and has **Add workers** (`#hrAssignOverlay`: the firm's other workers with a search and checkboxes, a worker of another HR marked "now: <name>"; `submitHrAssign`).
+- **List** (`renderAdminUsers()`): logins of the active firm only (`activeTenantIdForAdmin()`); `listUsers` returns more for a super-admin and is filtered here. Cached as `adminCache_users_<tenantId>`. Each row shows the person's name first (`fullName`, the login when it has none) with the role and an inactive flag, then compactly `login: <username> · <phone>`, then the supplier (supplier role) or the permissions (staff, hr); an HR row also shows its worker count (`hrWorkerCount`).
+- **Form** (`#userFormOverlay`): Role first, then the sections Person (Full name, Phone), Login (Username, Password) and Access (supplier select, or the Sections tiles and, for HR, the "Only own workers" tile — the checkbox-tile template, [app-core.md](app-core.md) → Layout); an HR's edit form ends with Workers.
+  - **Create** (`openCreateUserForm`): username, password, role (`staff` / `hr` / `supplier`, `onUserFormRoleChange`). Every role has Full name and Phone (the name is what the header and this list show; required only for HR). `staff` and `hr` get permission checkboxes from `PERMISSION_SECTIONS` (`schedule, workers, clients, suppliers, accounting, exports`) — picking HR checks only Workers; `hr` also gets "Only own workers" (`ownOnly`, on by default); `supplier` gets a supplier select. Saved with `createTenantUser`.
+  - **Edit** (`openEditUserForm`, a tap on the user's row anywhere but its delete button): the username and role are locked; the password field reads "New password (leave empty to keep)" — filled in, it is sent first as `resetUserPassword` (which also ends the user's sessions); then `updateUser` (with `fullName`, `phone`; for HR also `ownOnly`). An HR's form also lists its workers (`renderUserFormHrWorkers`, paged, each with Unassign) and has **Add workers** (`#hrAssignOverlay`: the firm's other workers with a search and checkboxes, a worker of another HR marked "now: <name>"; `submitHrAssign`).
   - Errors show in `#userFormError`.
-- **Password and delete:** `resetUserPasswordPrompt(id)` → `resetUserPassword`; `deleteUserConfirm` → `deleteUser`.
+- **Delete:** the row's trash button, `deleteUserConfirm` → `deleteUser`. A password is changed in the edit form (above).
 
 The server rules (only staff/hr/supplier users are created here, own firm only, and so on): [backend.md](backend.md).
 
@@ -117,7 +117,7 @@ Rows are compact: one bordered box (`.log-box`), one row per entry (`.log-row`),
 `loadTimingsPane()` → `loadTimings` for the picked period.
 
 `renderTimingsPane()` shows:
-- **summary cards** (`_timingsSummary`, `.tm-card`) — one per kind over the period, without aborted runs. Each shows the count, the median and 90th percentile of the total, and the median of each step (`TIMING_PHASES`) as small pills;
+- **summary cards** (`_timingsSummary`, `.tm-card`) — one per kind over the period, without aborted runs. Each shows the count, the median and 90th percentile of the total, and the median of each step (`TIMING_PHASES`) as small pills. Every slow data call adds a kind (`gs:<action>`), so the cards are paged by 10 as well (`renderPagedList`, grid);
 - **all measurements**, newest first, paged by 10. Each row shows time, kind and total on the first line (a total above its kind's 90% is amber), the steps under it, then firm, user, device, pages and page kinds. Each row has a copy button (`copyTimingRow`).
 
 "Copy all" (`copyAllTimings`) copies the summary and every measurement of the period as text. Kinds and how they are measured: [app-core.md](app-core.md) → Telemetry.
