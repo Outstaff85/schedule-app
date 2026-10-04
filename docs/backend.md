@@ -9,19 +9,19 @@ Project `schedule-odinson`; Firestore and the `functions-auth` functions in **eu
 | Path | Content | Written by |
 |---|---|---|
 | `tenants/{t}` | firm profile: `companyName, deductionsFileNumber, phone, street, streetNumber, city`, `createdAt`, `active`, `workerCount`, `clientCount` | `users_admin`; a `tenant_admin` may update only the profile fields |
-| `tenants/{t}/workers/{id}` | the worker object exactly as the app keeps it, plus `sortIndex` (list position) | the app (`saveSchedule`), the `supplier` function |
+| `tenants/{t}/workers/{id}` | the worker object exactly as the app keeps it, plus `sortIndex` (list position); `hrId` = the HR login it belongs to | the app (`saveSchedule`), the `supplier` function |
 | `tenants/{t}/clients/{id}`, `…/suppliers/{id}` | same, with `sortIndex` | the app |
 | `tenants/{t}/settings/schedule` | `weekStart`, `savedAt` — copied from the sheets by the old migration; nothing writes it now | — |
-| `tenants/{t}/punches/{id}` | a punch ([accounting.md](accounting.md) → the punch) with `ts` as a Timestamp, `day` (`yyyy-MM-dd`), `archived`; `tsRaw` when a migrated sheet timestamp was unreadable | the app, the `punch` function, an approved hours batch |
+| `tenants/{t}/punches/{id}` | a punch ([accounting.md](accounting.md) → the punch) with `ts` as a Timestamp, `day` (`yyyy-MM-dd`), `archived`, `hrId` (the worker's HR, when it has one); `tsRaw` when a migrated sheet timestamp was unreadable | the app, the `punch` function, an approved hours batch |
 | `tenants/{t}/pendingHours/{batchId}` | `{status, fileName, uploadedBy, createdBy, uploadedAt, createdAt, rows:[{rowId, workerId, clientId, date, inTime, outTime}]}` | the app |
-| `users/{uid}` | `username, tenantId, role, permissions ('*' or list), supplierId, active, createdAt` | functions only |
+| `users/{uid}` | `username, tenantId, role, permissions ('*' or list), supplierId, active, createdAt`; for `hr` also `fullName, phone, ownOnly` | functions only |
 | `authSecrets/{uid}` | `algo ('scrypt', or 'sha256' until the user's next login), salt, hash, failCount, lastFailAt` | functions only |
 | `usernames/{name}` | `{uid}` — keeps usernames unique | functions only |
 | `workerTokens/{token}` | left over from the migration; nothing reads or writes it (the `punch` function finds a token by a collection-group query on `workers.token`) | — |
 | `pushSubscriptions/{sha256(endpoint)}` | a worker's push subscription | `punch` |
 | `errors/{auto}`, `timings/{auto}` | telemetry rows (`when, page, role, worker, message, source, stack` / `when, kind, totalMs, tenantId, user, role, details`) | any signed-in caller; login refusals by `login` |
 
-Indexes (`firestore.indexes.json`): punches `workerId + ts`; pendingHours `status + createdAt desc`; a single-field override on `workers.token` with collection-group scope (needed by `punch`).
+Indexes (`firestore.indexes.json`): punches `workerId + ts` and `hrId + ts` (an own-workers HR's punch queries); pendingHours `status + createdAt desc`; a single-field override on `workers.token` with collection-group scope (needed by `punch`).
 
 **Storage:** `tenants/<t>/workers/<workerId>/{form101|assets|docs}/<ms>-<name>`. The object path is the file id kept on the worker (`docFileId`, `assetsFileId`, `docs[].fileId`); the PDF and documents also get a download URL (`docUrl`, `docs[].url`), the sidecar does not.
 
@@ -34,32 +34,35 @@ Loaded by `loadFirestoreBackend()` in the manager app and the supplier portal (t
 - `localStorage.fsEmulator` = a host → Firestore 8080, Auth 9099, Storage 9199 (tests);
 - waits for `auth.authStateReady()`.
 
+An own-workers HR login (claims `role:'hr'`, `own:true`, read once per sign-in by `myClaims()`) may only read its own workers and their punches, and the rules check the query: `hrOnly()` gives its uid, and every read of workers, punches and pending hours then adds `where('hrId'|'createdBy', '==', uid)`. `saveSchedule` skips clients / suppliers for an HR without that section (`mayWrite`).
+
 It returns:
 
 | Function | What it does |
 |---|---|
 | `login(username, password)` | `login` function → `signInWithCustomToken`; returns the function's reply |
 | `currentUser()`, `idToken()`, `signOut()` | `signOut` also stops the punch listener |
-| `loadSchedule(t, track=true)` | workers, clients, suppliers (sorted by `sortIndex`, then id) and settings. Remembers each document's signature (`sig()`, key-order independent, plus the position) as the reference for the next save; `track=false` (another firm) does not |
+| `loadSchedule(t, track=true)` | workers (an own-workers HR: only its own), clients, suppliers (sorted by `sortIndex`, then id) and settings. Remembers each document's signature (`sig()`, key-order independent, plus the position) as the reference for the next save; `track=false` (another firm) does not |
 | `saveSchedule(t, data)` | writes only documents whose signature or position changed, deletes the ones that are gone, in batches of 450. Reloads first if the reference belongs to another firm |
 | `listenPunches(t, onChange, since)` | `onSnapshot` on punches with `ts ≥ since`; resolves with the first snapshot, every later snapshot (this device's own writes included) goes to `onChange`. Without `since`: 13 months back |
 | `punchesBetween(t, from, to)` | one read of `[from, to)` |
 | `punchesOfBatch(t, batchId)` | punches with ids starting `imp-<batchId>-` |
-| `savePunch` / `updatePunch` / `deletePunch` | `updatePunch` writes only `type, time, site, notes, clientId` and `editedAt` |
-| `uploadWorkerFile(t, body, onProgress)` | `saveWorkerDoc` → `form101/`, `saveWorkerAssets` → `assets/` (a JSON `{scanB64, scanMediaType, sigPng, extraPages}`), `saveWorkerFile` → `docs/`; `uploadBytesResumable` with real byte progress; returns `{ok, id: path, url}` (no url for the sidecar) |
+| `savePunch` / `updatePunch` / `deletePunch` | `savePunch` stamps the worker's current `hrId` (`punchDoc`, from the last load/save — `workerHr`); `updatePunch` writes only `type, time, site, notes, clientId` and `editedAt` |
+| `uploadWorkerFile(t, body, onProgress)` | `saveWorkerDoc` → `form101/`, `saveWorkerAssets` → `assets/` (a JSON `{scanB64, scanMediaType, sigPng, extraPages}`), `saveWorkerFile` → `docs/`; `uploadBytesResumable` with real byte progress; returns `{ok, id: path, url}` (no url for the sidecar); an own-workers HR's files carry `hrId` in their metadata |
 | `handleAction(action, params, ctx)` | answers one named data action (below) with a JSON reply, or `null` when there is no such action |
 
 **`handleAction`** — the manager app's `fetch(API_URL, …)` dispatcher calls it ([app-core.md](app-core.md) → Data calls). `ctx` is `{role, username, tenantId}`; the firm is `params.asTenantId || ctx.tenantId`.
 
 - `logBatch` / `logError` / `logTiming` → `errors` / `timings` documents (max 60 per batch, fields clipped); before the Firebase sign-in → `{ok:false, skipped:true}`.
 - Any other action before the sign-in → the session-expired error.
-- Users and firms (`listTenants, setTenantActive, deleteTenant, createUser, updateTenant, loadTenantProfile, listUsers, createTenantUser, updateUser, resetUserPassword, deleteUser`) → `users_admin` with the ID token.
+- Users and firms (`listTenants, setTenantActive, deleteTenant, createUser, updateTenant, loadTenantProfile, listUsers, createTenantUser, updateUser, resetUserPassword, deleteUser, checkWorkerDoc`) → `users_admin` with the ID token.
 - The AI actions (`aiReadDoc, aiReadSefach, aiDetectAlign, aiVerifyField, aiVerifyFields, aiReadHoursTable, aiFindField`) → `ai_read`.
 - `loadWorkerAssets` / `deleteWorkerDoc` → `users_admin` for a `tenants/…` id. Any other id: delete answers `{ok:true}` (nothing of ours to delete), load answers "Файл не найден".
 - `loadErrors` / `loadTimings` — super-admin only, newest first. With `from` / `to` (ISO times; the panes' period picker) only that period, up to 2000 errors / 5000 timings; without them the newest 100 / 500.
 - `loadSchedule` / `loadPunchLog` for another firm (super-admin summary): `loadSchedule(t, false)`; punches from the 1st of this month minus 7 days (`punchesOnce`).
 - `deletePunchesByMonths` — `tenant_admin` / `superadmin` only; per month, punches with `day` in the month plus punches without `day` whose `ts` is in it.
-- Hours queue: `savePendingHoursBatch` (refused for a supplier), `loadPendingHours` (all batches), `approvePendingHours` (approver only; for every row an IN and an OUT punch `imp-<batch>-<row>-in|out` with `notes: 'Imported from <file>'` and the batch status in **one** batch write, so approving twice creates nothing new), `rejectPendingHours`.
+- `setPunchesHr` (`{workerIds, hrId}`) — owner / super-admin only: sets (or clears) `hrId` on every punch of those workers.
+- Hours queue: `savePendingHoursBatch` (refused for a supplier), `loadPendingHours` (all batches; an own-workers HR only its own), `approvePendingHours` (approver only; for every row an IN and an OUT punch, with the worker's `hrId`, `imp-<batch>-<row>-in|out` with `notes: 'Imported from <file>'` and the batch status in **one** batch write, so approving twice creates nothing new), `rejectPendingHours`.
 
 ## Cloud Functions — `functions-auth/` (codebase `auth`, europe-west3)
 
@@ -71,7 +74,7 @@ A separate codebase so a login never loads OpenCV/PyMuPDF. `main.py` holds the H
 | `users_admin` | `Bearer <ID token>`, checked with `check_revoked` | `core.run_action`, `files.run` | a superadmin's firm = `asTenantId`; after `deleteTenant` also `files.delete_tenant_files` |
 | `punch` | the worker link token | `portal.punch_action` | 30 s; `{ping:true}` |
 | `supplier` | `Bearer <ID token>` of a supplier | `portal.supplier_action` | |
-| `ai_read` | `Bearer <ID token>`, role superadmin/tenant_admin/staff | `ai.run` | 300 s, 512 MB, 1 CPU, up to 20 requests at once per instance (a scan's parallel calls share one warm instance); secret `ANTHROPIC_API_KEY`; `{ping:true}` |
+| `ai_read` | `Bearer <ID token>`, role superadmin/tenant_admin/staff/hr | `ai.run` | 300 s, 512 MB, 1 CPU, up to 20 requests at once per instance (a scan's parallel calls share one warm instance); secret `ANTHROPIC_API_KEY`; `{ping:true}` |
 
 Minting custom tokens needs the runtime service account to hold "Service Account Token Creator".
 
@@ -82,19 +85,21 @@ Minting custom tokens needs the runtime service account to hold "Service Account
   - 5 wrong passwords in a row lock the account for 5 minutes ("Слишком много неверных попыток — подождите N мин."); the counter restarts after the window.
   - A user who has not logged in since the move still has the old `sha256` hash (SHA-256 of `password + ':' + salt`); it is replaced by scrypt (N=2¹⁴, r=8, p=1) on the first good login.
   - Every refusal is written to `errors` with its reason (`on_refused`) — never the password or hash; the user only sees "Неверный логин или пароль".
-  - The reply: `{ok, token (custom token), uid, username, role, tenantId, permissions, supplierId, tenantProfile}`.
-  - Custom-token claims (`claims_for`): `role` (`'tenant'` normalized to `tenant_admin`), `perms` (`['*']`, a list, or `[]` for a supplier), `tenantId`, `supplierId`.
+  - The reply: `{ok, token (custom token), uid, username, role, tenantId, permissions, supplierId, tenantProfile, ownOnly, fullName}`.
+  - Custom-token claims (`claims_for`): `role` (`'tenant'` normalized to `tenant_admin`), `perms` (`['*']`, a list, or `[]` for a supplier), `tenantId`, `supplierId`; for `hr` also `own` ("only own workers", true unless `ownOnly` is false).
 - **Users** (superadmin: any firm; `tenant_admin`: own firm only):
   - `listUsers` — never returns hashes;
-  - `createTenantUser` — role `staff` or `supplier` only, password ≥ 8, a supplier needs `supplierId`; the `usernames` doc is created in the same batch, so a taken name fails the whole batch ("Такой логин уже существует");
-  - `updateUser` (`permissions`, `supplierId`, `active`), `resetUserPassword`, `deleteUser` — refuse a `tenant_admin` / `superadmin` target and another firm's user; each revokes the user's Firebase sessions (delete removes the Auth user).
+  - `createTenantUser` — role `staff`, `hr` or `supplier` only, password ≥ 8, a supplier needs `supplierId`, an HR needs `fullName` (also stores `phone`, `ownOnly` default true; permissions default `['workers']`); the `usernames` doc is created in the same batch, so a taken name fails the whole batch ("Такой логин уже существует");
+  - `updateUser` (`permissions`, `supplierId`, `active`; for HR `ownOnly`, and `fullName` / `phone`, which alone don't revoke), `resetUserPassword`, `deleteUser` — refuse a `tenant_admin` / `superadmin` target and another firm's user; each revokes the user's Firebase sessions (delete removes the Auth user).
+- **`checkWorkerDoc`** (superadmin, tenant_admin, staff, hr; `{docId, workerId?}`): is a worker with this document number (`docId`, `passportNo` or `israeliId`, compared on letters and digits only) already in the caller's firm, other than `workerId` — `{ok, exists}`, nothing else, so an own-workers HR learns no other worker's data.
 - **Firms** (superadmin): `createUser` (a new firm + its `tenant_admin`; profile strings stay strings, so no leading-zero loss), `listTenants` (profile, active, worker/client counts by aggregation, `savedAt`), `setTenantActive` (the firm and all its users; deactivation revokes their sessions), `deleteTenant` (recursive delete of `tenants/{t}`, its users, secrets and usernames; `main.py` then deletes every Storage object under `tenants/<t>/` and reports `removed.files`). `updateTenant` — superadmin or the firm's own `tenant_admin`. `loadTenantProfile`.
 
 ### `files.py` — reading and deleting Storage files
 
 `users_admin` actions `loadWorkerAssets` and `deleteWorkerDoc` with `{fileId: <storage path>}`:
-- manager roles only; the path must be under `tenants/<caller's firm>/workers/` (no `..`, no `//`);
-- delete needs superadmin, `tenant_admin`, or staff with `workers`;
+- manager roles (and `hr`) only; the path must be under `tenants/<caller's firm>/workers/` (no `..`, no `//`);
+- an own-workers HR only for a worker whose `hrId` is its uid (`worker_hr(wid)` reads the worker in `main.py`);
+- delete needs superadmin, `tenant_admin`, or staff / hr with `workers`;
 - `loadWorkerAssets` returns `{ok, scanB64, scanMediaType, sigPng, extraPages}`.
 
 `delete_tenant_files(bucket, tenantId)` deletes everything under `tenants/<tenantId>/` (refuses an empty id or one with `/`).
@@ -107,7 +112,7 @@ See [punch.md](punch.md) and [supplier-portal.md](supplier-portal.md) for the pa
 
 - **`punch`:** the token is looked up by a collection-group query on `workers.token`; none or two matches → "Unknown worker link".
   - `load` → `{workers:[{id, name, colorIdx, token, clientIds}], clients:[{id, name, object, lat, lng, radius}]}` — only this worker and their sites.
-  - `savePunch` — only for this worker; type `in`/`out`; the punch id may not contain `/`; an existing document of another worker is never overwritten. Stored fields: `workerName, type, time, date, site, dist, gpsAccuracy, gpsSuspicious, gpsWarnings (≤20, clipped), notes, clientId`, plus `id, workerId, ts, day, archived:false`. `day` comes from `date` (`dd/MM/yyyy`) when sent, otherwise from `ts` in Israel time (the punch page sends no date). `set()`, so a re-sent punch is the same document. The page's `lat`/`lng`/`gpsVerified`… are not kept.
+  - `savePunch` — only for this worker; type `in`/`out`; the punch id may not contain `/`; an existing document of another worker is never overwritten. Stored fields: `workerName, type, time, date, site, dist, gpsAccuracy, gpsSuspicious, gpsWarnings (≤20, clipped), notes, clientId`, plus `id, workerId, ts, day, archived:false`, and `hrId` from the worker document (never from the page). `day` comes from `date` (`dd/MM/yyyy`) when sent, otherwise from `ts` in Israel time (the punch page sends no date). `set()`, so a re-sent punch is the same document. The page's `lat`/`lng`/`gpsVerified`… are not kept.
   - `savePushSubscription`, `logError` (no token needed).
 - **`supplier`:** role `supplier` with `tenantId` and `supplierId` in the claims, else "Только для роли поставщика".
   - `loadSchedule` → own workers through `strip_worker` (the `SUPPLIER_WORKER_FIELDS` allow-list + `supplierRate`; never a wage, the worker's punch-link token or a file link), clients as `{id, name, object}`, `suppliers: []`;
@@ -175,15 +180,16 @@ Both answer `{"ping":true}` at once (warm-up) and parse the body with `force=Tru
 ## Security rules
 
 **`firestore.rules`** — identities come from the custom-token claims.
-- `manager(t)` = superadmin, or a `tenant_admin` / `staff` of firm `t`. A supplier never reads Firestore directly (wages and GPS can't be hidden field by field) — it goes through `supplier`.
+- `manager(t)` = superadmin, or a `tenant_admin` / `staff` of firm `t`, or an `hr` of firm `t` without `own` (`hrAll`). A supplier never reads Firestore directly (wages and GPS can't be hidden field by field) — it goes through `supplier`.
+- HR (`isHr`, `hrMine` = with `own`, `hrAll` = without, `hrCan(t, section)`): workers are written by an HR with `workers` or `schedule`; `hrMine` only reads, updates and deletes workers whose `hrId` is its uid and creates them only with its own `hrId`; `hrAll` may create with no `hrId` or its own; **no HR changes a worker's `hrId`**. `hrMine` reads / writes punches whose `hrId` is its uid, reads its own pendingHours (`createdBy`). Any HR reads the firm doc, clients, suppliers and settings; clients / suppliers are written with the `clients` / `suppliers` section.
 - `tenants/{t}`: read by managers; update by a superadmin, or by its `tenant_admin` touching only the profile fields; create/delete superadmin.
 - workers, clients, suppliers, settings: read by managers; write by superadmin, `tenant_admin`, or staff with `schedule` — so a staff login without `schedule` gets `gsSave()` → false.
 - punches: read and write by any manager of the firm.
-- pendingHours: read by managers; create only as `status:'pending'` with `createdBy` = the caller; update/delete only superadmin or `tenant_admin`.
+- pendingHours: read by managers; create (managers and any HR) only as `status:'pending'` with `createdBy` = the caller; update/delete only superadmin or `tenant_admin`.
 - `users/{uid}`: read by the user, a superadmin, or that firm's `tenant_admin`; never written by clients. `authSecrets`, `usernames`, `workerTokens`, `pushSubscriptions`: functions only.
 - `errors`, `timings`: create by anyone signed in, read by a superadmin.
 
-**`storage.rules`** — `tenants/{t}/**`: read by managers of the firm; create/update/delete by superadmin, `tenant_admin`, or staff with `workers`; files under 25 MB.
+**`storage.rules`** — `tenants/{t}/**`: read by managers of the firm (`hrAll` included); create/update by superadmin, `tenant_admin`, or staff / hr with `workers`; delete by those, except an own-workers HR (it deletes through `users_admin`); files under 25 MB. An own-workers HR must put its uid in the file's `hrId` metadata and reads back only files carrying it.
 
 ## Tests
 
