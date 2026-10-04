@@ -9,7 +9,7 @@ The manager app's skeleton: the page layout, global state, tabs and rendering, t
 
 ## Layout
 
-- **Titlebar:** brand; the account label (`#accountLabelCenter`: `name · firm` — the session's `fullName`, the login only while it has none; a tap on the name asks for a new one, `editMyName()` → `updateMyName`, and updates the session); the **Export** dropdown (`exportExcel`, `exportPDF`, `exportJSON` — the Schedule week, below); `#accountControl` (logout); the save indicator (`setSaveStatus`). An Install button (`ensureInstallButton`) and, if push is enabled, an alerts button are prepended at runtime.
+- **Titlebar:** brand; the account label (`#accountLabelCenter`: `name · firm` — the session's `fullName`, the login only while it has none; a tap on the name asks for a new one, `editMyName()` → `updateMyName`, and updates the session); `#accountControl` (logout); the save indicator (`setSaveStatus`). An Install button (`ensureInstallButton`) and, if push is enabled, an alerts button are prepended at runtime.
 - **Tabs** (`.ttab`): Today (`dashboard`), Schedule, Workers, Clients, Suppliers, Admin, Accounting. Each has a `#section<Name>`.
 - **Sidebar** (Schedule): the worker list (`renderWorkerList`) and the client filter (`renderSidebarClients`).
 - **Full-screen overlays:** `#loginScreen`, `#firmsScreen` (super-admin with no firm picked), `#errorsScreen` (no UI caller left).
@@ -43,6 +43,7 @@ Shared helpers:
 ## Schedule tab (`#sectionSchedule`)
 
 A weekly roster.
+- **Export** (top right of the tab, next to the date picker; `#exportDropdown`, only with the `exports` section): Excel, PDF, JSON of the shown week (`exportExcel`, `exportPDF`, `exportJSON`).
 - **Shifts:** stored per weekday in `w.schedule[0..6]` (Sunday first), not per date, so changing the week only changes the date labels.
 - **Week navigation:** the week always opens on the current week; `applyData()` does not restore the saved `weekStart`. `prevWeek` / `nextWeek` / `goToday`, and the date picker (`syncPicker`, `onDateChange` — local dates).
 - **Who is shown:** `getVisible()` — with a client filter, the workers of that client; otherwise only workers with at least one working day (`hasSchedule`).
