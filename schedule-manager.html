@@ -111,6 +111,8 @@
 
   /* Export dropdown */
   .export-dropdown{position:relative;}
+  .sched-head-actions{display:flex;align-items:center;gap:8px;justify-content:flex-end;}
+  @media (max-width:768px){ .sched-head-actions{width:100%;} .sched-head-actions input{flex:1;min-width:0;} }
   .dropdown-menu{position:absolute;top:100%;right:0;margin-top:4px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:6px;z-index:50;min-width:200px;display:none;}
   .dropdown-menu.open{display:block;}
   .dropdown-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--radius-sm);font-size:15px;cursor:pointer;color:var(--text2);transition:all 0.15s;}
@@ -416,6 +418,13 @@
   /* Filter rows everywhere (Workers, Admin): one row of --cols on a
      computer; two columns without captions on a phone, an odd last one
      across. */
+  .filters-btn{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;padding:0 12px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);border-radius:var(--radius-sm);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer}
+  .filters-btn.on{border-color:var(--accent);color:var(--accent)}
+  .filters-btn .n{background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px}
+  .filter-chips{display:flex;flex-wrap:wrap;gap:6px}
+  .filter-chips:empty{display:none}
+  .filter-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:rgba(79,142,247,.12);border:1px solid rgba(79,142,247,.4);color:var(--accent);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer}
+  .filter-chip b{opacity:.75}
   .filters-grid{display:grid;grid-template-columns:repeat(var(--cols,4),minmax(0,1fr));gap:8px}
   .filters-grid .filter-field{display:flex;min-width:0}
   .filters-grid select{width:100%;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 8px;font-size:13px;outline:none;text-overflow:ellipsis}
@@ -480,14 +489,6 @@
   </div>
   <div id="accountLabelCenter" class="account-label-center"></div>
   <div class="titlebar-actions">
-    <div class="export-dropdown" id="exportDropdown">
-      <button class="btn sm" onclick="toggleExportMenu()"><i class="ti ti-upload"></i> Export <i class="ti ti-chevron-down" style="font-size:13px;opacity:0.7"></i></button>
-      <div class="dropdown-menu" id="exportMenu">
-        <div class="dropdown-item" onclick="exportExcel()"><i class="ti ti-file-spreadsheet"></i> Excel (.xlsx)</div>
-        <div class="dropdown-item" onclick="exportPDF()"><i class="ti ti-file-type-pdf"></i> PDF</div>
-        <div class="dropdown-item" onclick="exportJSON()"><i class="ti ti-braces"></i> JSON</div>
-      </div>
-    </div>
     <div id="accountControl"></div>
     <div class="save-indicator saved" id="saveIndicator">
       <div class="save-dot"></div><span>Saved</span>
@@ -570,7 +571,18 @@
           <div class="page-title">Weekly Schedule</div>
           <div class="page-sub" id="pageSub">Drag ⠿ to reorder · Click shifts to edit</div>
         </div>
-        <input type="date" id="datePicker" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;font-family:'DM Sans','Heebo',Arial,sans-serif;outline:none;" onchange="onDateChange()">
+        <div class="sched-head-actions">
+          <input type="date" id="datePicker" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;font-family:'DM Sans','Heebo',Arial,sans-serif;outline:none;" onchange="onDateChange()">
+          <!-- Export of the Schedule week (Excel / PDF / JSON) -->
+        <div class="export-dropdown" id="exportDropdown">
+          <button class="btn sm" onclick="toggleExportMenu()"><i class="ti ti-upload"></i> Export <i class="ti ti-chevron-down" style="font-size:13px;opacity:0.7"></i></button>
+          <div class="dropdown-menu" id="exportMenu">
+            <div class="dropdown-item" onclick="exportExcel()"><i class="ti ti-file-spreadsheet"></i> Excel (.xlsx)</div>
+            <div class="dropdown-item" onclick="exportPDF()"><i class="ti ti-file-type-pdf"></i> PDF</div>
+            <div class="dropdown-item" onclick="exportJSON()"><i class="ti ti-braces"></i> JSON</div>
+          </div>
+        </div>
+        </div>
       </div>
       <div class="stats-row" id="statsRow"></div>
       <div class="gantt-wrap">
@@ -599,12 +611,13 @@
       <div class="workers-toolbar">
         <div class="workers-search-row">
           <input type="text" id="workersSearch" placeholder="Search by name, phone, object..." oninput="renderWorkersPage()">
+          <button type="button" class="filters-btn" id="workersFiltersBtn" onclick="toggleWorkersFilters()" aria-expanded="false"><i class="ti ti-filter"></i> Filters <span class="n" id="workersFiltersCount" style="display:none"></span><i class="ti ti-chevron-down" id="workersFiltersChevron"></i></button>
           <div class="view-toggle" role="group" aria-label="Layout">
             <button type="button" id="workersViewList" onclick="setWorkersView('list')" title="List"><i class="ti ti-list"></i></button>
             <button type="button" id="workersViewCards" onclick="setWorkersView('cards')" title="Cards"><i class="ti ti-layout-grid"></i></button>
           </div>
         </div>
-        <div class="filters-grid" style="--cols:5">
+        <div class="filters-grid" id="workersFiltersGrid" style="--cols:5;display:none">
           <label class="filter-field"><span class="filter-cap">Status</span><select id="workersFilterStatus" onchange="renderWorkersPage()">
             <option value="">All statuses</option>
             <option value="active">Active</option>
@@ -624,6 +637,7 @@
             <option value="supplier">Group by supplier</option>
           </select></label>
         </div>
+        <div class="filter-chips" id="workersFilterChips"></div>
         <div id="workersCount" class="workers-count"></div>
       </div>
       <div id="workersCards" class="workers-cards" style="display:none"></div>
@@ -3305,9 +3319,32 @@ function workersGroupedItems(list,groupBy){
        {name:'No supplier assigned',color:null,items:list.filter(x=>!x.w.supplierId)}];
   return groups.filter(g=>g.items.length).flatMap(g=>[{group:{name:g.name,color:g.color,count:g.items.length}},...g.items]);
 }
+// Workers filters: hidden behind the "Filters" button (its open state is kept
+// on this device); each chosen filter shows as a chip under the search, and
+// its ✕ clears just that filter.
+const WORKERS_FILTER_IDS=['workersFilterStatus','workersFilterDocs','workersFilterClient','workersFilterSupplier','workersGroupBy'];
+function toggleWorkersFilters(open){
+  const g=document.getElementById('workersFiltersGrid'); if(!g) return;
+  const show=open!=null?open:g.style.display==='none';
+  g.style.display=show?'':'none';
+  const b=document.getElementById('workersFiltersBtn'), ch=document.getElementById('workersFiltersChevron');
+  if(b){ b.classList.toggle('on',show); b.setAttribute('aria-expanded',show?'true':'false'); }
+  if(ch) ch.className='ti ti-chevron-'+(show?'up':'down');
+  try{ localStorage.setItem('workersFiltersOpen',show?'1':''); }catch(e){}
+}
+function clearWorkersFilter(id){ const el=document.getElementById(id); if(el){ el.value=''; renderWorkersPage(); } }
+function renderWorkersFilterChips(){
+  const box=document.getElementById('workersFilterChips'); if(!box) return;
+  const on=WORKERS_FILTER_IDS.map(id=>document.getElementById(id)).filter(el=>el&&el.value);
+  box.innerHTML=on.map(el=>`<button type="button" class="filter-chip" onclick="clearWorkersFilter('${el.id}')" title="Clear this filter">${esc(el.options[el.selectedIndex]?.text||el.value)} <b>✕</b></button>`).join('');
+  const n=document.getElementById('workersFiltersCount');
+  if(n){ n.textContent=on.length; n.style.display=on.length?'':'none'; }
+}
 function renderWorkersPage(){
   fillFilterSelect('workersFilterClient', clients, 'All clients');
   fillFilterSelect('workersFilterSupplier', suppliers, 'All suppliers');
+  if(!renderWorkersPage._init){ renderWorkersPage._init=true; let o=''; try{ o=localStorage.getItem('workersFiltersOpen')||''; }catch(e){} if(o) toggleWorkersFilters(true); }
+  renderWorkersFilterChips();
   const q=(document.getElementById('workersSearch')?.value||'').trim().toLowerCase();
   const stFilter=document.getElementById('workersFilterStatus')?.value||'';
   const clientFilter=document.getElementById('workersFilterClient')?.value||'';
