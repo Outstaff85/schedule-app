@@ -1441,8 +1441,8 @@ function renderPendingPagesPrompt(){
       <div style="font-size:12px;color:var(--text2)">${pages.length} תמונות ממתינות לעיבוד</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px">
         ${pages.map((p,i)=>`
-          <div style="position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--border2);flex-shrink:0">
-            <img src="data:${p.mediaType};base64,${p.b64}" style="width:100%;height:100%;object-fit:cover;display:block">
+          <div style="position:relative;width:96px;height:96px;border-radius:8px;overflow:hidden;border:1px solid var(--border2);flex-shrink:0;background:#fff">
+            <img src="data:${p.mediaType};base64,${p.b64}" style="width:100%;height:100%;object-fit:contain;display:block">
             <span style="position:absolute;bottom:1px;left:1px;font-size:9px;background:rgba(0,0,0,0.6);color:#fff;padding:0 3px;border-radius:3px">${i+1}</span>
             <button type="button" onclick="removePendingScanPage(${i})" style="position:absolute;top:1px;right:1px;width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,0.7);color:#fff;border:none;font-size:10px;line-height:1;cursor:pointer;padding:0">✕</button>
           </div>`).join('')}
@@ -1742,8 +1742,8 @@ function renderScanPagesPrompt(){
       <div style="font-size:12px;color:var(--text2)">נסרקו ${pages.filter(Boolean).length} עמוד${pages.filter(Boolean).length===1?'':'ים'}</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px">
         ${pages.map((p,i)=>!p?'':`
-          <div style="position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--border2);flex-shrink:0">
-            <img src="data:${p.mediaType};base64,${p.b64}" style="width:100%;height:100%;object-fit:cover;display:block">
+          <div style="position:relative;width:96px;height:96px;border-radius:8px;overflow:hidden;border:1px solid var(--border2);flex-shrink:0;background:#fff">
+            <img src="data:${p.mediaType};base64,${p.b64}" style="width:100%;height:100%;object-fit:contain;display:block">
             <span style="position:absolute;bottom:1px;left:1px;font-size:9px;background:rgba(0,0,0,0.6);color:#fff;padding:0 3px;border-radius:3px">${i+1}</span>
             ${i>0?`<button type="button" onclick="removeExtraScanPage(${i})" style="position:absolute;top:1px;right:1px;width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,0.7);color:#fff;border:none;font-size:10px;line-height:1;cursor:pointer;padding:0">✕</button>`:''}
           </div>`).join('')}

@@ -70,7 +70,7 @@ A single non-PDF file → `onScanFileSelected(file)`:
        These reads start in the background (`prefetchSefachFrom`) as soon as the primary is known to be missing fields. They are merged in page order with `mergeScanPage()`. Every extra page also goes through `finalTightenPass()` and is kept in `__aiPacketOtherPages`. Extra pages are read only while the primary still misses core fields, so a real contract costs one read at most, and `aiReadSefach` returns nothing for it.
    - **A blurry page** stops the run there: earlier pages are kept, the blurry one is dropped, later ones stay queued. The message says which page.
    - **Progress** shows through `renderScanProgress(label, pct)`; a `scan` timing is reported.
-4. **Review screen** — `renderScanPagesPrompt()`: thumbnails (page 1 is not removable), "Add page" (back to step 1 and the queue), "Done" → `finishScanPages()` → `openWorkerModalFromScan()`. `removeExtraScanPage(i)` drops a page and recomputes the primary from the remaining pages (`rebuildPrimaryFromPages()`, which replays `initPrimaryFromFirstPage` + `mergeScanPage` over `__aiPageParsed`).
+4. **Review screen** — `renderScanPagesPrompt()`: 96 px thumbnails showing each page whole (`object-fit:contain`, so leftover background is visible; page 1 is not removable), "Add page" (back to step 1 and the queue), "Done" → `finishScanPages()` → `openWorkerModalFromScan()`. `removeExtraScanPage(i)` drops a page and recomputes the primary from the remaining pages (`rebuildPrimaryFromPages()`, which replays `initPrimaryFromFirstPage` + `mergeScanPage` over `__aiPageParsed`).
 
 ## Path B — several files or a PDF (no corner editor)
 
