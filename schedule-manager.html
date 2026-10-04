@@ -7153,9 +7153,16 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     for(const p of otherPagesToUse) extraPages.push({b64:p.b64,mediaType:p.mediaType,caption:'Document'});
     if(extraPages.length) payload.extraPages=extraPages;
 
+    const f101t0=Date.now();
     const fnResp=await fetch(FORM101_FN_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const fnJson=await fnResp.json();
     if(!fnResp.ok||fnJson.error) throw new Error(fnJson.error||'Не удалось построить PDF');
+    // Admin → Timings, kind "form101": what each generated form carried —
+    // flags and counts only, no personal data — so a section missing from a
+    // real PDF can be traced to the record or to the PDF build.
+    try{ reportTiming('form101',Date.now()-f101t0,{regen:isRegen,docType:isId?'israeli_id':'passport',
+      spouse:!!payload.spouse,spouseNames:!!(payload.spouse&&(payload.spouse.surname||payload.spouse.given)),
+      children:(payload.children||[]).length,marital:payload.marital||'',extraPages:(payload.extraPages||[]).length}); }catch(e){}
     const out=Uint8Array.from(atob(fnJson.pdfBase64),c=>c.charCodeAt(0));
     const fileName=fnJson.fileName;
 
