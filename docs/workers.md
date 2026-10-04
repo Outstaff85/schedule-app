@@ -42,6 +42,12 @@ One object per worker in the global `workers` array. It is saved as part of the 
 
 ## Workers tab (`#sectionWorkers`)
 
+**Toolbar** (`.workers-head`, `.workers-toolbar`):
+- "Add Worker" and "Скан паспорта" — on a phone, two equal buttons across the width;
+- the search box with the list/cards toggle beside it;
+- the filters (Status, Documents, Client, Supplier, Group by) — one row of five on a computer; two columns on a phone, with Group by across, and no captions (each select's first option names it);
+- the worker count.
+
 `renderWorkersPage()` filters, then draws either cards or the table.
 
 - **Filters** (each a `<label class="filter-field">` with a caption; a dropdown with a choice is highlighted by `markActiveFilters()`):

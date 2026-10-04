@@ -376,6 +376,23 @@
   .filter-cap{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;padding-left:2px}
   .filter-field select.filter-on{border-color:var(--accent)!important;color:var(--accent)!important}
   .view-toggle{display:inline-flex;border:1px solid var(--border2);border-radius:var(--radius-sm);overflow:hidden}
+  /* Workers tab toolbar: actions, search + layout toggle, then the filters in
+     one row on a computer and two columns on a phone. */
+  .workers-actions{display:flex;gap:8px}
+  .workers-toolbar{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+  .workers-search-row{display:flex;gap:8px;align-items:stretch}
+  .workers-search-row input{flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:8px 10px;font-size:13px;outline:none}
+  .workers-filters{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+  .workers-filters .filter-field{display:flex;min-width:0}
+  .workers-filters select{width:100%;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 8px;font-size:13px;outline:none;text-overflow:ellipsis}
+  .workers-count{font-size:12px;color:var(--text2)}
+  @media (max-width:700px){
+    .workers-head .workers-actions{width:100%}
+    .workers-head .workers-actions .btn{flex:1;justify-content:center;min-height:40px}
+    .workers-filters{grid-template-columns:1fr 1fr}
+    .workers-filters .filter-field:last-child{grid-column:1/-1}
+    .workers-filters .filter-cap{display:none}
+  }
   .view-toggle button{background:var(--bg3);border:none;color:var(--text2);padding:6px 10px;cursor:pointer;font-size:15px;line-height:1}
   .view-toggle button+button{border-left:1px solid var(--border2)}
   .view-toggle button.active{background:var(--blue-bg);color:var(--blue)}
@@ -516,39 +533,45 @@
     </div>
 
     <div class="page-section" id="sectionWorkers">
-      <div class="page-header">
+      <div class="page-header workers-head">
         <div>
           <div class="page-title">Workers</div>
           <div class="page-sub">All worker details, status and history</div>
         </div>
-        <button class="btn sm" onclick="openAddWorker()"><i class="ti ti-plus"></i> Add Worker</button>
-        <button class="btn sm" onclick="startNewScan()" style="border-color:rgba(109,214,160,0.4);color:var(--green)"><i class="ti ti-sparkles"></i> Скан паспорта</button>
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:flex-end">
-        <input type="text" id="workersSearch" placeholder="Search by name, phone, object..." oninput="renderWorkersPage()" style="flex:1;min-width:180px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
-        <label class="filter-field"><span class="filter-cap">Status</span><select id="workersFilterStatus" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
-          <option value="">All statuses</option>
-          <option value="active">Active</option>
-          <option value="vacation">On vacation</option>
-          <option value="fired">Fired</option>
-        </select></label>
-        <label class="filter-field"><span class="filter-cap">Documents</span><select id="workersFilterDocs" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
-          <option value="">All documents</option>
-          <option value="incomplete">Documents incomplete</option>
-          <option value="expiring">ID expired / expiring</option>
-        </select></label>
-        <label class="filter-field"><span class="filter-cap">Client</span><select id="workersFilterClient" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none"></select></label>
-        <label class="filter-field"><span class="filter-cap">Supplier</span><select id="workersFilterSupplier" onchange="renderWorkersPage()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none"></select></label>
-        <label class="filter-field"><span class="filter-cap">Group by</span><select id="workersGroupBy" onchange="renderWorkersPage()" title="Group by" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none">
-          <option value="">No grouping</option>
-          <option value="client">Group by client</option>
-          <option value="supplier">Group by supplier</option>
-        </select></label>
-        <span id="workersCount" style="font-size:13px;color:var(--text2);margin-left:auto"></span>
-        <div class="view-toggle" role="group" aria-label="Layout">
-          <button type="button" id="workersViewList" onclick="setWorkersView('list')" title="List"><i class="ti ti-list"></i></button>
-          <button type="button" id="workersViewCards" onclick="setWorkersView('cards')" title="Cards"><i class="ti ti-layout-grid"></i></button>
+        <div class="workers-actions">
+          <button class="btn sm" onclick="openAddWorker()"><i class="ti ti-plus"></i> Add Worker</button>
+          <button class="btn sm" onclick="startNewScan()" style="border-color:rgba(109,214,160,0.4);color:var(--green)"><i class="ti ti-sparkles"></i> Скан паспорта</button>
         </div>
+      </div>
+      <div class="workers-toolbar">
+        <div class="workers-search-row">
+          <input type="text" id="workersSearch" placeholder="Search by name, phone, object..." oninput="renderWorkersPage()">
+          <div class="view-toggle" role="group" aria-label="Layout">
+            <button type="button" id="workersViewList" onclick="setWorkersView('list')" title="List"><i class="ti ti-list"></i></button>
+            <button type="button" id="workersViewCards" onclick="setWorkersView('cards')" title="Cards"><i class="ti ti-layout-grid"></i></button>
+          </div>
+        </div>
+        <div class="workers-filters">
+          <label class="filter-field"><span class="filter-cap">Status</span><select id="workersFilterStatus" onchange="renderWorkersPage()">
+            <option value="">All statuses</option>
+            <option value="active">Active</option>
+            <option value="vacation">On vacation</option>
+            <option value="fired">Fired</option>
+          </select></label>
+          <label class="filter-field"><span class="filter-cap">Documents</span><select id="workersFilterDocs" onchange="renderWorkersPage()">
+            <option value="">All documents</option>
+            <option value="incomplete">Documents incomplete</option>
+            <option value="expiring">ID expired / expiring</option>
+          </select></label>
+          <label class="filter-field"><span class="filter-cap">Client</span><select id="workersFilterClient" onchange="renderWorkersPage()"></select></label>
+          <label class="filter-field"><span class="filter-cap">Supplier</span><select id="workersFilterSupplier" onchange="renderWorkersPage()"></select></label>
+          <label class="filter-field"><span class="filter-cap">Group by</span><select id="workersGroupBy" onchange="renderWorkersPage()" title="Group by">
+            <option value="">No grouping</option>
+            <option value="client">Group by client</option>
+            <option value="supplier">Group by supplier</option>
+          </select></label>
+        </div>
+        <div id="workersCount" class="workers-count"></div>
       </div>
       <div id="workersCards" class="workers-cards" style="display:none"></div>
       <div id="workersTableWrap" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow-x:auto;-webkit-overflow-scrolling:touch">
