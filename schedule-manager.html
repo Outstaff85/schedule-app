@@ -4633,6 +4633,7 @@ const PERMISSION_SECTIONS = ['schedule','workers','clients','suppliers','account
 let __editingUserId = null;
 // An owner / super-admin row: only name, phone and password are edited here.
 let __editingAdminRow = false;
+let __editingUserOrigRole = null;
 function showUserFormAccess(on){
   ['userFormRoleField','userFormAccessHead','userFormPermsField'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display = on ? '' : 'none'; });
 }
@@ -4691,7 +4692,7 @@ function onUserFormRoleChange(fromUser){
   document.getElementById('userFormHrWorkersField').style.display = role==='hr' && __editingUserId ? '' : 'none';
   if(role==='supplier') fillUserFormSupplierSelect(null);
   // A new HR login starts with the Workers section only.
-  if(role==='hr' && !__editingUserId && fromUser===true)
+  if(role==='hr' && fromUser===true && (!__editingUserId || !document.querySelector('.userFormPermCb:checked')))
     document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = cb.value==='workers');
 }
 function openCreateUserForm(){
@@ -4727,7 +4728,9 @@ async function openEditUserForm(id){
   // A new password is set here too; left empty, the password stays.
   document.getElementById('userFormPasswordLabel').textContent = 'New password (empty = keep)';
   document.getElementById('userFormRole').value = u.role;
-  document.getElementById('userFormRole').disabled = true; // a login keeps its role
+  // The role can change between Staff, HR and Supplier (not for an owner row).
+  document.getElementById('userFormRole').disabled = false;
+  __editingUserOrigRole = u.role;
   document.getElementById('userFormError').textContent = '';
   document.getElementById('userFormFullName').value = u.fullName || '';
   document.getElementById('userFormPhone').value = u.phone || '';
@@ -4744,7 +4747,8 @@ async function openEditUserForm(id){
   onUserFormRoleChange();
   if(u.role==='supplier') fillUserFormSupplierSelect(u.supplierId);
   if(u.role==='hr') renderUserFormHrWorkers();
-  const perms = u.permissions==='*' ? PERMISSION_SECTIONS.slice() : (Array.isArray(u.permissions)?u.permissions:[]);
+  // A supplier has no sections (listUsers reports its empty list as '*').
+  const perms = u.role==='supplier' ? [] : u.permissions==='*' ? PERMISSION_SECTIONS.slice() : (Array.isArray(u.permissions)?u.permissions:[]);
   document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = perms.indexOf(cb.value)!==-1);
   document.getElementById('userFormOverlay').classList.add('open');
 }
@@ -4772,11 +4776,16 @@ async function submitUserForm(){
       // sessions only when they really changed.
       const body = __editingAdminRow
         ? { action:'updateUser', ...gsAuth(), id: __editingUserId, fullName: hrFields.fullName, phone: hrFields.phone }
-        : { action:'updateUser', ...gsAuth(), id: __editingUserId, ...hrFields };
+        : { action:'updateUser', ...gsAuth(), id: __editingUserId, role, ...hrFields };
       if(!__editingAdminRow){ if(role==='supplier') body.supplierId = supplierId; else body.permissions = permissions; }
       const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(body) });
       const json = await res.json();
       if(!json || json.error){ errEl.textContent = (json&&json.error)||'Save failed'; return; }
+      // No longer an HR: its workers are no longer assigned to it.
+      if(__editingUserOrigRole==='hr' && role!=='hr'){
+        const ids = workers.filter(w => w.hrId===__editingUserId).map(w => w.id);
+        if(ids.length) await assignWorkersToHr(ids, null);
+      }
       const me = getSession();
       if(me && me.uid === __editingUserId){ me.fullName = hrFields.fullName; saveSession(me); renderAccountControl(me); }
     } else {

@@ -373,12 +373,29 @@ def update_user(db, caller, body, revoke):
     if err:
         return {"error": err}
     role = _norm_role(data.get("role"))
-    if role in ADMIN_ROLES and any(k in body for k in ("permissions", "supplierId", "active", "ownOnly")):
+    if role in ADMIN_ROLES and any(k in body for k in ("permissions", "supplierId", "active", "ownOnly", "role")):
         return {"error": E_ADMIN_TARGET}
     upd = {}
+    # A login may move between staff, hr and supplier (never to an admin role).
+    new_role = body.get("role") or role
+    if new_role != role:
+        if new_role not in ROLES_SUB:
+            return {"error": "Роль должна быть staff, supplier или hr"}
+        if new_role == "supplier" and not (body.get("supplierId") or data.get("supplierId")):
+            return {"error": "Для роли supplier нужно выбрать поставщика"}
+        if new_role == "hr" and not str(body.get("fullName") or data.get("fullName") or "").strip():
+            return {"error": "Для роли HR нужно указать имя"}
+        upd["role"] = new_role
+        if new_role == "supplier":
+            body = dict(body, permissions="")
+        if new_role != "supplier":
+            body = dict(body, supplierId=None)
+        if new_role == "hr" and "ownOnly" not in body:
+            body = dict(body, ownOnly=True)
+        role = new_role
     if "permissions" in body:
         p = body.get("permissions")
-        upd["permissions"] = list(p) if isinstance(p, list) else "*"
+        upd["permissions"] = list(p) if isinstance(p, list) else ("" if p == "" else "*")
     if "supplierId" in body:
         upd["supplierId"] = body.get("supplierId") or None
     if "active" in body:
@@ -386,10 +403,13 @@ def update_user(db, caller, body, revoke):
     is_hr = role == "hr"
     if is_hr and "ownOnly" in body:
         upd["ownOnly"] = body.get("ownOnly") is not False
-    current = {"permissions": "*" if data.get("permissions") in (None, "", "*") else data.get("permissions"),
+    current = {"role": _norm_role(data.get("role")),
+               "permissions": "*" if data.get("permissions") in (None, "", "*") else data.get("permissions"),
                "supplierId": data.get("supplierId") or None, "active": data.get("active", True) is not False,
                "ownOnly": data.get("ownOnly") is not False}
     upd = {k: v for k, v in upd.items() if v != current[k]}
+    if upd.get("role") == "hr":  # a new HR always gets its ownOnly flag stored
+        upd["ownOnly"] = body.get("ownOnly") is not False
     info = {}
     if "fullName" in body:
         if is_hr and not str(body.get("fullName") or "").strip():

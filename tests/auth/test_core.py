@@ -445,3 +445,18 @@ def test_update_user_revokes_only_on_a_real_rights_change():
     assert core.update_user(DB, SUPER, {"id": "u-admin1", "fullName": "Owner 2"}, rv)["ok"]
     assert core.update_user(DB, SUPER, {"id": "u-admin1", "permissions": ["workers"]}, rv)["error"] == core.E_ADMIN_TARGET
     assert len(rv) == 1
+
+
+def test_update_user_changes_role_between_staff_hr_supplier():
+    rv = Revokes()
+    assert "имя" in core.update_user(DB, ADMIN1, {"id": "u-staff1", "role": "hr", "fullName": ""}, rv)["error"]
+    assert core.update_user(DB, ADMIN1, {"id": "u-staff1", "role": "hr", "fullName": "Dana HR", "permissions": ["workers"]}, rv)["ok"]
+    d = DB.collection("users").document("u-staff1").get().to_dict()
+    assert d["role"] == "hr" and d["ownOnly"] is True and d["permissions"] == ["workers"] and rv == [("u-staff1", False)]
+    assert core.login(DB, "staff1", "staff-pass-1", mint)["role"] == "hr"
+    assert "поставщика" in core.update_user(DB, ADMIN1, {"id": "u-staff1", "role": "supplier"}, rv)["error"]
+    assert core.update_user(DB, ADMIN1, {"id": "u-staff1", "role": "supplier", "supplierId": "s-9"}, rv)["ok"]
+    d = DB.collection("users").document("u-staff1").get().to_dict()
+    assert d["role"] == "supplier" and d["supplierId"] == "s-9" and d["permissions"] == ""
+    assert core.update_user(DB, ADMIN1, {"id": "u-staff1", "role": "tenant_admin"}, rv)["error"]
+    assert core.update_user(DB, ADMIN1, {"id": "u-admin1", "role": "staff"}, rv)["error"] == core.E_ADMIN_TARGET
