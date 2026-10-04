@@ -2591,11 +2591,6 @@ function showWorkerModal(w){
         <div class="field"><label>התראה כמה חודשים מראש</label><input type="number" id="wExpiryWarnMonths" min="0" step="1" value="${w.expiryWarnMonths??1}"></div>
       </div>
     </div>
-    <div class="field"><label>צבע</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap" id="wColorPick">
-        ${WORKER_COLORS.map((c,i)=>`<div onclick="pickWColor(${i})" data-ci="${i}" style="width:24px;height:24px;border-radius:50%;background:${c.text};cursor:pointer;border:2px solid ${i===selColorIdx?'white':'transparent'};transition:all 0.15s;${i===selColorIdx?'transform:scale(1.2)':''}"></div>`).join('')}
-      </div>
-    </div>
     <div class="field" style="margin-top:10px;margin-bottom:10px">
       <label style="display:block;font-size:12px;color:var(--text2);margin-bottom:4px">חתימה</label>
       <canvas id="wSigCanvas" width="500" height="120"
@@ -2614,7 +2609,9 @@ function showWorkerModal(w){
   markScanMissingFields();
   markScanUncertain(w.__scanCheck);
 }
-function pickWColor(i){ selColorIdx=i; document.querySelectorAll('#wColorPick [data-ci]').forEach(el=>{ const idx=parseInt(el.dataset.ci); el.style.borderColor=idx===i?'white':'transparent'; el.style.transform=idx===i?'scale(1.2)':'scale(1)'; }); }
+// No color picker any more (per user request 2026-10-04): a new worker,
+// client or supplier gets the next color of its palette automatically.
+function pickWColor(i){ selColorIdx=i; }
 function toggleDayTime(i){ const off=document.getElementById(`wt${i}`).value==='off'; ['ws','we'].forEach(p=>{ const el=document.getElementById(p+i); el.disabled=off; el.style.opacity=off?'0.3':'1'; }); }
 async function saveWorker(){
   const docGiven=document.getElementById('wGiven').value.trim();
@@ -2910,11 +2907,6 @@ function showClientModal(c){
         <input type="number" id="cRadius" value="${c.radius||100}" placeholder="100"></div>
       <div id="cLocStatus" style="font-size:12px;min-height:18px;padding:4px 0;color:${c.lat?'var(--green)':'var(--text2)'}">${c.lat?locSetHtml(c.lat,c.lng):''}</div>
     </div>
-    <div class="field"><label>צבע</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap" id="cColorPick">
-        ${CLIENT_COLORS.map(col=>`<div onclick="pickCColor('${col}')" data-color="${col}" style="width:24px;height:24px;border-radius:50%;background:${col};cursor:pointer;border:2px solid ${col===selClientColor?'white':'transparent'};transition:all 0.15s;${col===selClientColor?'transform:scale(1.2)':''}"></div>`).join('')}
-      </div>
-    </div>
     <div class="modal-actions">
       <button class="btn accent" onclick="saveClient()">${editingClientId?'שמירה':'הוספת לקוח'}</button>
     </div></div>`;
@@ -3078,7 +3070,6 @@ function saveMapPick(){
   updateLocStatus();
   closeModal('mapPickOverlay');
 }
-function pickCColor(col){ selClientColor=col; document.querySelectorAll('#cColorPick [data-color]').forEach(el=>{ el.style.borderColor=el.dataset.color===col?'white':'transparent'; el.style.transform=el.dataset.color===col?'scale(1.2)':'scale(1)'; }); }
 // ── Client billing-rate popup ───────────────────────────────────────────────
 // Picking a billing mode in the client modal immediately pops up the matching
 // rate form: 'fixed' → one flat ₪/h; 'tiered' (with overtime) → Regular plus
@@ -3698,17 +3689,11 @@ function showSupplierModal(s){
           <input type="text" id="sAccountNumber" value="${esc(s.accountNumber||'')}" placeholder="Account #"></div>
       </div>
     </div>
-    <div class="field"><label>Color</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap" id="sColorPick">
-        ${CLIENT_COLORS.map(col=>`<div onclick="pickSColor('${col}')" data-color="${col}" style="width:24px;height:24px;border-radius:50%;background:${col};cursor:pointer;border:2px solid ${col===selSupplierColor?'white':'transparent'};transition:all 0.15s;${col===selSupplierColor?'transform:scale(1.2)':''}"></div>`).join('')}
-      </div>
-    </div>
     <div class="modal-actions">
       <button class="btn accent" onclick="saveSupplier()">${editingSupplierId?'Save Changes':'Add Supplier'}</button>
     </div>`;
   document.getElementById('supplierOverlay').classList.add('open');
 }
-function pickSColor(col){ selSupplierColor=col; document.querySelectorAll('#sColorPick [data-color]').forEach(el=>{ el.style.borderColor=el.dataset.color===col?'white':'transparent'; el.style.transform=el.dataset.color===col?'scale(1.2)':'scale(1)'; }); }
 function saveSupplier(){
   const name=document.getElementById('sName').value.trim();
   if(!name){ document.getElementById('sName').focus(); return; }

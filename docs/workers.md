@@ -116,7 +116,7 @@ One form for add, edit and post-scan review. Labels of every Form 101 field are 
   - **Weekly schedule.** Collapsible (`toggleWeeklySchedule`). It is only written on save if it was opened: a new worker gets all days off, an existing one keeps their shifts.
   - **Form 101 block.** Collapsible (`toggleForm101Wrap`): income types and children rows (`renderChildrenRows`, `addChildRow`, `removeChildRow`).
   - **Contract-term warning.** Collapsible (`toggleExpiryWrap`); opening it enables the warning.
-  - **Color, signature, notes.** Color picker; the signature pad (`wSigCanvas`, see [form101.md](form101.md)); notes; a new punch-link token (`regenerateWorkerToken`).
+  - **Signature, notes.** No color picker — a new worker gets the next `WORKER_COLORS` color (`blankWorkerDefaults`), an edited one keeps its color; the signature pad (`wSigCanvas`, see [form101.md](form101.md)); notes; a new punch-link token (`regenerateWorkerToken`).
 
 ### Saving (`saveWorker()`)
 

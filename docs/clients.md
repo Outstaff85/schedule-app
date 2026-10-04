@@ -41,7 +41,7 @@ Worker pay and client billing are separate sets of fields. Billing never changes
   - `cancelClientBillRatePopup(true)` (cancelling a popup opened by a mode switch) puts the previous mode back (`__cBillPrevMode`);
   - `__cBill.billRate` falls back to `defaultHourlyRate` for clients saved before `billRate` existed.
 - **Geolocation:** set it on the map (below), by pasting a Google Maps link (`parseGoogleMapsUrl()` understands `@lat,lng`, `?q=`, `?ll=`, `/lat,lng` and a plain `lat, lng`), The coordinates are hidden inputs (`cLat`, `cLng`) filled by those two — there are no Latitude / Longitude fields to type; only the radius (`cRadius`) is typed. `updateLocStatus()` / `locSetHtml()` show the result ("המיקום נקבע: lat, lng").
-- **Color** (`pickCColor`).
+- **No color picker:** a new client gets the next `CLIENT_COLORS` color automatically (`openAddClient`); an edited one keeps its color.
 
 `saveClient()` builds the record from the fields plus `__cBill`. It updates in place or pushes a new client (`uid()`), then saves. `deleteClient(cid)` removes the client, removes its id from every worker's `clientIds` and `clientRates`, clears the Schedule sidebar filter if it was this client, and saves.
 
