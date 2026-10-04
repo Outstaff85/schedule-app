@@ -33,9 +33,10 @@ Shared helpers:
 - **`render()`** redraws the Schedule pieces (stats, Gantt header and body, worker list, client list), plus whichever other tab is open (`currentTab`). So an edit made on the Workers tab shows at once.
 - **`switchTab(tab)`** toggles the tab/section and renders that tab. Opening Admin also runs `setupAdminPaneBar()`, only there, so a save doesn't reset the Admin pane.
 - **Permissions (client-side visibility only; the server enforces):**
-  - `hasPermission(section)` — only a `staff` role is limited by its `permissions` (`'*'` or a list); every other role passes;
-  - `NAV_TAB_PERMISSION` maps tabs to sections: schedule, workers, clients, suppliers, accounting, and `admin` → `workers`. Today is never gated;
-  - `applyNavPermissions()` hides tabs and moves off a hidden tab.
+  - `hasPermission(section)` — only a `staff` or `hr` role is limited by its `permissions` (`'*'` or a list); every other role passes;
+  - `NAV_TAB_PERMISSION` maps tabs to sections: schedule, workers, clients, suppliers, accounting, and `admin` → `workers`. Today is never gated, except for HR;
+  - `tabAllowed(tab)` adds the HR rule: an `hr` login never gets Today or Admin (`HR_HIDDEN_TABS`); `homeTab()` is Today for everyone else and the first allowed tab (Workers by default) for HR;
+  - `applyNavPermissions()` hides tabs (Today included) and moves off a hidden tab to `homeTab()`.
 
 ## Schedule tab (`#sectionSchedule`)
 
@@ -82,11 +83,11 @@ Where it is used:
 ## Login and session
 
 - **Session:** `localStorage.schedMgr_session` (`SESSION_KEY`). It only remembers who is signed in; the real authentication is the Firebase sign-in (the rules and the functions check the Firebase ID token). `getSession()` returns `null` and clears the session when it has no `uid` (a session from before the move off Apps Script has none, so that user logs in once more).
-- **Session fields:** `uid` (the Firebase user), `role` (`superadmin` / `tenant_admin` / `staff`), `tenantId`, `username`, `tenantProfile`, `permissions`, `supplierId`, `viewingTenantId` (and `viewingTenantName` / `viewingTenantProfile` for a super-admin).
+- **Session fields:** `uid` (the Firebase user), `role` (`superadmin` / `tenant_admin` / `staff` / `hr`), `tenantId`, `username`, `tenantProfile`, `permissions`, `supplierId`, `ownOnly` and `fullName` (HR), `viewingTenantId` (and `viewingTenantName` / `viewingTenantProfile` for a super-admin).
 - **`gateApp(runInitApp)`** decides the screen:
   1. No session → `#loginScreen`, and a warm-up `{ping:true}` to the `login` function; its time is kept in `window.__pingMs`.
   2. A super-admin with no firm picked → `#firmsScreen` (`renderFirmsList()`).
-  3. Otherwise → `renderAccountControl(s)` and the init sequence: `loadData()`, `render()`, `applyNavPermissions()`, `switchTab('dashboard')`, `checkPushStatus`.
+  3. Otherwise → `renderAccountControl(s)` and the init sequence: `loadData()`, `render()`, `applyNavPermissions()`, `switchTab(homeTab())`, for an owner / super-admin `prefetchAdminUsers()` (the HR names for the worker modal and card), `checkPushStatus`.
 - **`submitLogin()`:** `firestore-backend.js` `login()` — the `login` function checks the password and returns a custom token, then the device signs in to Firebase with it. The session is saved, the login timing kept in `sessionStorage.pendingLoginTiming`, and the page reloads.
 - **Firms:** `switchToTenant(tenantId)` (super-admin) sets `viewingTenantId` / Name / Profile and reloads. `backToFirmsList()` has no UI caller.
 - **`logout()`** clears the Firms and admin caches and the session, signs out of Firebase, and reloads.

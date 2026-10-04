@@ -140,7 +140,13 @@ def users_admin(req: https_fn.Request) -> https_fn.Response:
     try:
         if body.get("action") in files.ACTIONS:
             caller["perms"] = decoded.get("perms")
-            return _json(files.run(storage.bucket(), caller, body))
+            caller["own"] = decoded.get("own") is True
+            tid = caller["tenantId"]
+
+            def worker_hr(wid):
+                snap = _db().collection("tenants").document(tid).collection("workers").document(wid).get()
+                return (snap.to_dict() or {}).get("hrId") if snap.exists else None
+            return _json(files.run(storage.bucket(), caller, body, worker_hr))
         result = core.run_action(_db(), caller, body, _revoke)
         if body.get("action") == "deleteTenant" and result.get("ok"):
             result["removed"]["files"] = files.delete_tenant_files(storage.bucket(), body.get("tenantId"))
@@ -209,7 +215,7 @@ def ai_read(req: https_fn.Request) -> https_fn.Response:
     decoded = _verified(req)
     if not decoded:
         return _json({"error": E_SESSION}, 401)
-    if decoded.get("role") not in ("superadmin", "tenant_admin", "staff"):
+    if decoded.get("role") not in ("superadmin", "tenant_admin", "staff", "hr"):
         return _json({"error": "Недоступно для роли поставщика"})
     try:
         return _json(ai.run(str(body.get("action") or ""), body, (ANTHROPIC_API_KEY.value or "").strip(), _anthropic_post))

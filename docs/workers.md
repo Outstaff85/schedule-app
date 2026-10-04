@@ -19,6 +19,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
 | `travelAllowance` | ₪ per day worked, added on top of pay |
 | `clientIds` | array — a worker can work at several clients |
 | `supplierId`, `supplierRates` | one supplier (agency); `supplierRates[sid].rate` = commission override |
+| `hrId` | uid of the HR login the worker belongs to, or absent; set only by the owner / super-admin (worker modal HR field, the HR card in Users) or automatically for a worker an HR adds ([hr.md](hr.md)) |
 | `bank`, `bankBranch`, `bankAccountNumber` | the worker's own bank details |
 | `schedule` | 7 items, Sunday first: `{type:'work'|'off', start:'HH:MM'|null, end}` |
 | `startDate` / `workStartDate` | same value, one input; `startDate` drives the contract warning, `workStartDate` goes to Form 101 |
@@ -127,12 +128,16 @@ One form for add, edit and post-scan review. Labels of every Form 101 field are 
    - a live scan in this session marks it as rescanned.
    
    Cancel returns to the form. A second record with the same number is never created.
+
+   An HR login with "only own workers" has only its own workers in `workers`, so when there is no local match it also asks the server (`checkWorkerDoc`, answers only yes/no across the whole firm) and refuses with "A worker with this document number already exists in the firm".
 3. **Editing an existing worker.**
    - It merges the form into the record and compares `FORM101_WATCHED_FIELDS` (`docId, address, houseNumber, city, incomeType, otherIncomeType, docSurname, docGiven, maritalStatus, healthFund, workStartDate, phone, docSex, docDob, docChildren` and the five spouse fields).
    - **Rescanned in this session** (`window.__aiRescannedWorkerId === id`): a blocking overlay shows while `autoUploadWithRetry()` rebuilds the PDF from the fresh scan.
    - **Otherwise**, if a watched field changed: `regenerateWorkerDoc(id)` runs in the background from the stored sidecar, followed by a toast.
 4. **New worker.**
    - It gets a `token` and `createdAt` and is pushed to `workers`, then saved with `autoSave()`.
+   - `hrId`: an HR login's own uid; for an owner / super-admin the HR field's choice.
+5. **HR field** (`#wHrId`, owner and super-admin only, options from `hrUsers()`): a change on an existing worker goes through `assignWorkersToHr([id], hrId)`, which also moves the worker's punches to the new HR. The worker card shows "HR: <name>" to the owner / super-admin.
    - The signature PNG is captured first (`window.__wCapturedSigPng`).
    - The modal then shows the upload progress (`showWorkerUploadingOverlay`, `renderWorkerUploadProgress`) while `autoUploadWithRetry()` builds and uploads Form 101 from the live scan globals. See [form101.md](form101.md).
 

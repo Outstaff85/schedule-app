@@ -4,7 +4,7 @@
 import { test, before, after, beforeEach } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, addDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, addDoc, query, where } from 'firebase/firestore';
 import { ref, uploadString, getBytes, deleteObject } from 'firebase/storage';
 
 let env;
@@ -20,6 +20,10 @@ const who = {
   staffWorkers: { uid: 'u-staffWorkers', claims: { role: 'staff', tenantId: A, perms: ['workers'] } },
   staffNone:    { uid: 'u-staffNone', claims: { role: 'staff', tenantId: A, perms: [] } },
   supplierA:    { uid: 'u-supA', claims: { role: 'supplier', tenantId: A, supplierId: 's1', perms: [] } },
+  hrOwn:        { uid: 'u-hrOwn', claims: { role: 'hr', tenantId: A, perms: ['workers'], own: true } },
+  hrOwnClients: { uid: 'u-hrOwnC', claims: { role: 'hr', tenantId: A, perms: ['workers', 'clients'], own: true } },
+  hrAll:        { uid: 'u-hrAll', claims: { role: 'hr', tenantId: A, perms: ['workers'], own: false } },
+  hrOwnB:       { uid: 'u-hrOwnB', claims: { role: 'hr', tenantId: B, perms: ['workers'], own: true } },
 };
 const db = name => (name === 'anon' ? env.unauthenticatedContext() : env.authenticatedContext(who[name].uid, who[name].claims)).firestore();
 const st = name => (name === 'anon' ? env.unauthenticatedContext() : env.authenticatedContext(who[name].uid, who[name].claims)).storage();
@@ -44,6 +48,11 @@ beforeEach(async () => {
       await setDoc(doc(d, 'tenants', t, 'suppliers', 's1'), { name: 'Agency' });
       await setDoc(doc(d, 'tenants', t, 'punches', 'p1'), { workerId: 'w1', type: 'in', ts: new Date() });
       await setDoc(doc(d, 'tenants', t, 'pendingHours', 'b1'), { status: 'pending', createdBy: 'x', rows: [] });
+      // w2 belongs to the own-workers hr of firm A, w3 to another hr.
+      await setDoc(doc(d, 'tenants', t, 'workers', 'w2'), { name: 'Mine', hourlyRate: 40, hrId: 'u-hrOwn' });
+      await setDoc(doc(d, 'tenants', t, 'workers', 'w3'), { name: 'Other', hourlyRate: 40, hrId: 'u-other' });
+      await setDoc(doc(d, 'tenants', t, 'punches', 'p2'), { workerId: 'w2', type: 'in', ts: new Date(), hrId: 'u-hrOwn' });
+      await setDoc(doc(d, 'tenants', t, 'pendingHours', 'bh'), { status: 'pending', createdBy: 'u-hrOwn', rows: [] });
     }
     await setDoc(doc(d, 'users', 'u-ownerA'), { username: 'ownera', tenantId: A, role: 'tenant_admin' });
     await setDoc(doc(d, 'users', 'u-staffAll'), { username: 'staff', tenantId: A, role: 'staff' });
@@ -160,6 +169,85 @@ test('telemetry: any signed-in caller appends, only superadmin reads', async () 
   await assertSucceeds(getDoc(doc(db('superadmin'), 'errors', 'e1')));
 });
 
+// ── HR ───────────────────────────────────────────────────────────────────────
+test('hr own-workers: reads and writes only workers with its hrId, never reassigns', async () => {
+  const h = db('hrOwn');
+  const mine = query(collection(h, 'tenants', A, 'workers'), where('hrId', '==', 'u-hrOwn'));
+  await assertSucceeds(getDocs(mine));
+  await assertFails(getDocs(collection(h, 'tenants', A, 'workers')));
+  await assertSucceeds(getDoc(doc(h, 'tenants', A, 'workers', 'w2')));
+  await assertFails(getDoc(doc(h, 'tenants', A, 'workers', 'w3')));
+  await assertFails(getDoc(doc(h, 'tenants', A, 'workers', 'w1')));
+  await assertSucceeds(updateDoc(doc(h, 'tenants', A, 'workers', 'w2'), { hourlyRate: 45 }));
+  await assertFails(updateDoc(doc(h, 'tenants', A, 'workers', 'w2'), { hrId: 'u-other' }));
+  await assertFails(updateDoc(doc(h, 'tenants', A, 'workers', 'w3'), { hourlyRate: 45 }));
+  await assertFails(updateDoc(doc(h, 'tenants', A, 'workers', 'w1'), { hrId: 'u-hrOwn' }));
+  await assertSucceeds(setDoc(doc(h, 'tenants', A, 'workers', 'n1'), { name: 'New', hrId: 'u-hrOwn' }));
+  await assertFails(setDoc(doc(h, 'tenants', A, 'workers', 'n2'), { name: 'New' }));
+  await assertFails(setDoc(doc(h, 'tenants', A, 'workers', 'n3'), { name: 'New', hrId: 'u-other' }));
+  await assertFails(deleteDoc(doc(h, 'tenants', A, 'workers', 'w3')));
+  await assertSucceeds(deleteDoc(doc(h, 'tenants', A, 'workers', 'w2')));
+  // Another firm: nothing, even a worker carrying the same uid.
+  await assertFails(getDoc(doc(h, 'tenants', B, 'workers', 'w2')));
+  await assertFails(setDoc(doc(h, 'tenants', B, 'workers', 'n4'), { name: 'x', hrId: 'u-hrOwn' }));
+  await assertFails(getDoc(doc(db('hrOwnB'), 'tenants', A, 'workers', 'w2')));
+});
+
+test('hr own-workers: punches and pending hours of its own workers only', async () => {
+  const h = db('hrOwn');
+  await assertSucceeds(getDocs(query(collection(h, 'tenants', A, 'punches'), where('hrId', '==', 'u-hrOwn'))));
+  await assertFails(getDocs(collection(h, 'tenants', A, 'punches')));
+  await assertFails(getDoc(doc(h, 'tenants', A, 'punches', 'p1')));
+  await assertSucceeds(addDoc(collection(h, 'tenants', A, 'punches'), { workerId: 'w2', type: 'out', hrId: 'u-hrOwn' }));
+  await assertFails(addDoc(collection(h, 'tenants', A, 'punches'), { workerId: 'w1', type: 'out' }));
+  await assertSucceeds(updateDoc(doc(h, 'tenants', A, 'punches', 'p2'), { type: 'out' }));
+  await assertFails(updateDoc(doc(h, 'tenants', A, 'punches', 'p2'), { hrId: 'u-other' }));
+  await assertFails(deleteDoc(doc(h, 'tenants', A, 'punches', 'p1')));
+  await assertSucceeds(deleteDoc(doc(h, 'tenants', A, 'punches', 'p2')));
+
+  await assertSucceeds(getDocs(query(collection(h, 'tenants', A, 'pendingHours'), where('createdBy', '==', 'u-hrOwn'))));
+  await assertFails(getDocs(collection(h, 'tenants', A, 'pendingHours')));
+  await assertSucceeds(setDoc(doc(h, 'tenants', A, 'pendingHours', 'b9'), { status: 'pending', createdBy: 'u-hrOwn', rows: [] }));
+  await assertFails(setDoc(doc(h, 'tenants', A, 'pendingHours', 'b8'), { status: 'approved', createdBy: 'u-hrOwn', rows: [] }));
+  await assertFails(updateDoc(doc(h, 'tenants', A, 'pendingHours', 'bh'), { status: 'approved' }));
+});
+
+test('hr: shared clients/suppliers readable, written only with that section; firm doc readable', async () => {
+  await assertSucceeds(getDoc(doc(db('hrOwn'), 'tenants', A)));
+  await assertFails(updateDoc(doc(db('hrOwn'), 'tenants', A), { phone: '1' }));
+  await assertSucceeds(getDocs(collection(db('hrOwn'), 'tenants', A, 'clients')));
+  await assertSucceeds(getDocs(collection(db('hrOwn'), 'tenants', A, 'suppliers')));
+  await assertSucceeds(getDocs(collection(db('hrOwn'), 'tenants', A, 'settings')));
+  await assertFails(setDoc(doc(db('hrOwn'), 'tenants', A, 'clients', 'c9'), { name: 'x' }));
+  await assertSucceeds(setDoc(doc(db('hrOwnClients'), 'tenants', A, 'clients', 'c9'), { name: 'x' }));
+  await assertFails(setDoc(doc(db('hrOwnClients'), 'tenants', A, 'suppliers', 's9'), { name: 'x' }));
+  await assertFails(setDoc(doc(db('hrOwn'), 'tenants', A, 'settings', 'x'), { a: 1 }));
+  await assertFails(getDocs(collection(db('hrOwn'), 'tenants', B, 'clients')));
+  await assertFails(getDoc(doc(db('hrOwn'), 'users', 'u-ownerA')));
+});
+
+test('hr without own-workers: sees the whole firm like staff, still never reassigns', async () => {
+  const h = db('hrAll');
+  for (const sub of ['workers', 'punches', 'pendingHours', 'clients']) {
+    await assertSucceeds(getDocs(collection(h, 'tenants', A, sub)));
+    await assertFails(getDocs(collection(h, 'tenants', B, sub)));
+  }
+  await assertSucceeds(updateDoc(doc(h, 'tenants', A, 'workers', 'w3'), { hourlyRate: 50 }));
+  await assertFails(updateDoc(doc(h, 'tenants', A, 'workers', 'w3'), { hrId: 'u-hrAll' }));
+  await assertSucceeds(setDoc(doc(h, 'tenants', A, 'workers', 'n1'), { name: 'New' }));
+  await assertSucceeds(setDoc(doc(h, 'tenants', A, 'workers', 'n2'), { name: 'New', hrId: 'u-hrAll' }));
+  await assertFails(setDoc(doc(h, 'tenants', A, 'workers', 'n3'), { name: 'New', hrId: 'u-other' }));
+  await assertSucceeds(deleteDoc(doc(h, 'tenants', A, 'workers', 'w1')));
+  await assertFails(updateDoc(doc(h, 'tenants', A, 'pendingHours', 'b1'), { status: 'approved' }));
+});
+
+test('owner assigns workers to an hr and stamps punches', async () => {
+  await assertSucceeds(updateDoc(doc(db('ownerA'), 'tenants', A, 'workers', 'w1'), { hrId: 'u-hrOwn' }));
+  await assertSucceeds(updateDoc(doc(db('ownerA'), 'tenants', A, 'punches', 'p1'), { hrId: 'u-hrOwn' }));
+  await assertSucceeds(getDoc(doc(db('hrOwn'), 'tenants', A, 'workers', 'w1')));
+  await assertSucceeds(getDoc(doc(db('hrOwn'), 'tenants', A, 'punches', 'p1')));
+});
+
 // ── Storage ──────────────────────────────────────────────────────────────────
 test('storage: firm files readable by its managers, written by owner/workers staff, isolated by firm', async () => {
   const pA = 'tenants/' + A + '/workers/w1/form101.pdf';
@@ -176,4 +264,20 @@ test('storage: firm files readable by its managers, written by owner/workers sta
   await assertFails(uploadString(ref(st('ownerA'), 'elsewhere/file.txt'), 'x'));
   await assertFails(deleteObject(ref(st('staffNone'), pA)));
   await assertSucceeds(deleteObject(ref(st('ownerA'), pA)));
+});
+
+test('storage: hr uploads with the workers section; an own-workers hr reads back only its stamped files, deletes via the function', async () => {
+  const pA = 'tenants/' + A + '/workers/w2/form101.pdf';
+  const mine = { customMetadata: { hrId: 'u-hrOwn' } };
+  await assertFails(uploadString(ref(st('hrOwn'), pA), 'pdf'));
+  await assertFails(uploadString(ref(st('hrOwn'), pA), 'pdf', 'raw', { customMetadata: { hrId: 'u-other' } }));
+  await assertSucceeds(uploadString(ref(st('hrOwn'), pA), 'pdf', 'raw', mine));
+  await assertSucceeds(getBytes(ref(st('hrOwn'), pA)));
+  const pOther = 'tenants/' + A + '/workers/w3/form101.pdf';
+  await assertSucceeds(uploadString(ref(st('ownerA'), pOther), 'pdf'));
+  await assertFails(getBytes(ref(st('hrOwn'), pOther)));
+  await assertFails(deleteObject(ref(st('hrOwn'), pA)));
+  await assertSucceeds(getBytes(ref(st('hrAll'), pA)));
+  await assertFails(uploadString(ref(st('hrOwnB'), pA), 'evil'));
+  await assertSucceeds(deleteObject(ref(st('hrAll'), pA)));
 });

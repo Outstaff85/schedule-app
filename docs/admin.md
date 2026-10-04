@@ -10,6 +10,8 @@ The Admin tab (`#sectionAdmin`) and the punch-log data behind it: the punch log,
 |---|---|
 | Punch Log | everyone who can open the tab — the tab needs the `workers` permission |
 | Firms, Users | `superadmin`, `tenant_admin` |
+
+An `hr` login never sees the Admin tab ([hr.md](hr.md)).
 | Errors, Timings | `superadmin` |
 
 Layout (`.admin-pane-bar`): the section buttons in a row on a computer, a 3-column grid on a phone. The header buttons (`.head-actions`) are two equal buttons across the width on a phone.
@@ -83,14 +85,18 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
 
 ## Users pane (owner, super-admin)
 
-- **List** (`renderAdminUsers()`): logins of the active firm only (`activeTenantIdForAdmin()`); `listUsers` returns more for a super-admin and is filtered here. Cached as `adminCache_users_<tenantId>`. Each row shows the name, role, inactive flag, and the supplier (supplier role) or the permissions (staff).
+- **List** (`renderAdminUsers()`): logins of the active firm only (`activeTenantIdForAdmin()`); `listUsers` returns more for a super-admin and is filtered here. Cached as `adminCache_users_<tenantId>`. Each row shows the name, role, inactive flag, and the supplier (supplier role) or the permissions (staff, hr); an HR row also shows its full name, phone and worker count (`hrWorkerCount`).
 - **Form** (`#userFormOverlay`):
-  - **Create** (`openCreateUserForm`): username, password, role (`staff` / `supplier`, `onUserFormRoleChange`). `staff` gets permission checkboxes from `PERMISSION_SECTIONS` (`schedule, workers, clients, suppliers, accounting, exports`); `supplier` gets a supplier select. Saved with `createTenantUser`.
-  - **Edit** (`openEditUserForm`, a tap on the user's row anywhere but its key / delete buttons): the username is locked and there is no password field; `updateUser`.
+  - **Create** (`openCreateUserForm`): username, password, role (`staff` / `hr` / `supplier`, `onUserFormRoleChange`). `staff` and `hr` get permission checkboxes from `PERMISSION_SECTIONS` (`schedule, workers, clients, suppliers, accounting, exports`) — picking HR checks only Workers; `hr` also gets Full name (required), Phone and "Only own workers" (`ownOnly`, on by default); `supplier` gets a supplier select. Saved with `createTenantUser`.
+  - **Edit** (`openEditUserForm`, a tap on the user's row anywhere but its key / delete buttons): the username and role are locked and there is no password field; `updateUser` (for HR also `fullName`, `phone`, `ownOnly`). An HR's form also lists its workers (`renderUserFormHrWorkers`, paged, each with Unassign) and has **Add workers** (`#hrAssignOverlay`: the firm's other workers with a search and checkboxes, a worker of another HR marked "now: <name>"; `submitHrAssign`).
   - Errors show in `#userFormError`.
 - **Password and delete:** `resetUserPasswordPrompt(id)` → `resetUserPassword`; `deleteUserConfirm` → `deleteUser`.
 
-The server rules (only staff/supplier users are created here, own firm only, and so on): [backend.md](backend.md).
+The server rules (only staff/hr/supplier users are created here, own firm only, and so on): [backend.md](backend.md).
+
+## HR logins
+
+HR logins are created and edited here (form above); what they can do and how it is enforced: [hr.md](hr.md).
 
 ## Errors and Timings: the period picker
 

@@ -46,6 +46,16 @@ def test_load_gives_only_this_worker_and_their_sites():
     assert "hourlyRate" not in text and "billRate" not in text and "0501111111" not in text and "tok-dana" not in text
 
 
+def test_save_punch_stamps_the_workers_hr_never_the_pages():
+    W(T1, "w2").update({"hrId": "u-hr1"})
+    base = {"type": "in", "ts": "2026-10-01T05:00:00.000Z"}
+    portal.punch_action(DB, {"action": "savePunch", "token": "tok-dana", "data": {**base, "id": 11, "workerId": "w2"}})
+    assert P(T1, "11").get().to_dict()["hrId"] == "u-hr1"
+    portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi",
+                             "data": {**base, "id": 12, "workerId": "w1", "hrId": "u-evil"}})
+    assert "hrId" not in P(T1, "12").get().to_dict()
+
+
 def test_unknown_or_shared_token_is_refused():
     assert portal.punch_action(DB, {"action": "load", "token": "nope"})["error"] == portal.E_LINK
     assert portal.punch_action(DB, {"action": "load"})["error"] == portal.E_LINK

@@ -958,10 +958,16 @@
     <div class="field"><label>Username</label><input type="text" id="userFormUsername" autocomplete="off"></div>
     <div class="field" id="userFormPasswordField"><label>Password (min. 8 chars)</label><input type="password" id="userFormPassword" autocomplete="new-password"></div>
     <div class="field"><label>Role</label>
-      <select id="userFormRole" onchange="onUserFormRoleChange()">
+      <select id="userFormRole" onchange="onUserFormRoleChange(true)">
         <option value="staff">Staff</option>
+        <option value="hr">HR</option>
         <option value="supplier">Supplier</option>
       </select>
+    </div>
+    <div id="userFormHrFields" style="display:none">
+      <div class="field"><label>Full name</label><input type="text" id="userFormFullName" autocomplete="off" maxlength="80"></div>
+      <div class="field"><label>Phone</label><input type="tel" id="userFormPhone" autocomplete="off" maxlength="40"></div>
+      <div class="field"><label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" id="userFormOwnOnly" checked> Only own workers (unchecked: sees every worker of the firm)</label></div>
     </div>
     <div class="field" id="userFormSupplierField" style="display:none"><label>Supplier</label><select id="userFormSupplierId"></select></div>
     <div class="field" id="userFormPermsField">
@@ -975,9 +981,26 @@
         <label><input type="checkbox" value="exports" class="userFormPermCb"> Exports</label>
       </div>
     </div>
+    <div class="field" id="userFormHrWorkersField" style="display:none">
+      <label style="display:flex;justify-content:space-between;align-items:center">Workers <button class="btn sm" type="button" onclick="openHrAssignModal()"><i class="ti ti-user-plus"></i> Add workers</button></label>
+      <div id="userFormHrWorkers" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
     <div id="userFormError" style="color:#ff6b78;font-size:13px;margin:2px 0 6px;min-height:1.2em"></div>
     <div class="modal-actions">
       <button class="btn accent" id="userFormSaveBtn" onclick="submitUserForm()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk assign of the firm's workers to one HR login (the HR's card in
+     Users → "Add workers"). -->
+<div class="overlay" id="hrAssignOverlay" style="z-index:990">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-title" id="hrAssignTitle">Add workers</div>
+    <input type="text" id="hrAssignSearch" placeholder="Search by name or document…" autocomplete="off" oninput="renderHrAssignList()" style="width:100%;margin-bottom:8px">
+    <div id="hrAssignList" style="display:flex;flex-direction:column;gap:4px;max-height:50vh;overflow-y:auto"></div>
+    <div class="modal-actions">
+      <button class="btn accent" id="hrAssignSaveBtn" onclick="submitHrAssign()">Assign</button>
     </div>
   </div>
 </div>
@@ -1388,7 +1411,7 @@ function fmtDMY(dateStr){
 // all — it gets its own separate supplier-portal.html, stage 16).
 function hasPermission(section){
   const s = getSession();
-  if(!s || s.role !== 'staff') return true;
+  if(!s || (s.role !== 'staff' && s.role !== 'hr')) return true;
   const perms = s.permissions;
   return perms === '*' || (Array.isArray(perms) && perms.indexOf(section) !== -1);
 }
@@ -1402,18 +1425,29 @@ function hasPermission(section){
 // has no entry — the Today/real-time overview is never gated, every
 // logged-in staff member can always see it.
 const NAV_TAB_PERMISSION = { schedule:'schedule', workers:'workers', clients:'clients', suppliers:'suppliers', admin:'workers', accounting:'accounting' };
+// An HR login (docs/admin.md → HR) gets only the tabs of its sections: never
+// Today or Admin (the firm-wide punch log); it lands on its first tab.
+function isHrSession(){ const s = getSession(); return !!s && s.role === 'hr'; }
+function isFirmAdminSession(){ const s = getSession(); return !!s && (s.role === 'tenant_admin' || s.role === 'superadmin'); }
+const HR_HIDDEN_TABS = ['dashboard','admin'];
+function tabAllowed(tab){
+  if(isHrSession() && HR_HIDDEN_TABS.includes(tab)) return false;
+  return !NAV_TAB_PERMISSION[tab] || hasPermission(NAV_TAB_PERMISSION[tab]);
+}
+function homeTab(){
+  if(!isHrSession()) return 'dashboard';
+  return ['workers','schedule','clients','suppliers','accounting'].find(tabAllowed) || 'workers';
+}
 function applyNavPermissions(){
-  Object.keys(NAV_TAB_PERMISSION).forEach(tab=>{
+  ['dashboard', ...Object.keys(NAV_TAB_PERMISSION)].forEach(tab=>{
     const el = document.getElementById('tab'+tab.charAt(0).toUpperCase()+tab.slice(1));
     if(!el) return;
-    el.style.display = hasPermission(NAV_TAB_PERMISSION[tab]) ? '' : 'none';
+    el.style.display = tabAllowed(tab) ? '' : 'none';
   });
   // If the tab we're currently sitting on just got hidden (e.g. permissions
-  // changed and the page re-initialized), fall back to Dashboard rather than
-  // leaving a blank/inaccessible section visible.
-  if(currentTab && NAV_TAB_PERMISSION[currentTab] && !hasPermission(NAV_TAB_PERMISSION[currentTab])){
-    switchTab('dashboard');
-  }
+  // changed and the page re-initialized), fall back to the home tab rather
+  // than leaving a blank/inaccessible section visible.
+  if(currentTab && !tabAllowed(currentTab)) switchTab(homeTab());
 }
 
 function switchTab(tab){
@@ -2432,6 +2466,14 @@ function showWorkerModal(w){
         ${suppliers.map(s=>`<option value="${s.id}" ${w.supplierId===s.id?'selected':''}>${esc(s.name)}</option>`).join('')}
       </select>
     </div>
+    ${isFirmAdminSession()?`<div class="field">
+      <label><i class="ti ti-user-shield"></i> HR (optional)</label>
+      <select id="wHrId" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:10px;outline:none">
+        <option value="">— None —</option>
+        ${hrUsers().map(u=>`<option value="${esc(u.id)}" ${w.hrId===u.id?'selected':''}>${esc(u.fullName||u.username)}</option>`).join('')}
+        ${w.hrId&&!hrUsers().some(u=>u.id===w.hrId)?`<option value="${esc(w.hrId)}" selected>(unknown HR)</option>`:''}
+      </select>
+    </div>`:''}
     <div class="field" style="margin-bottom:6px">
       <button class="btn sm" type="button" onclick="toggleBankWrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
         <span><i class="ti ti-building-bank"></i> Bank details <span id="wBankSummary" style="color:var(--text3);font-weight:400;font-size:12px">${w.bank||w.bankAccountNumber?'· set':''}</span></span>
@@ -2621,8 +2663,19 @@ async function saveWorker(){
   // entered into the existing worker — only non-empty values overwrite, the
   // existing schedule/status/color are kept, clients are merged — and carry
   // on through the normal edit path below.
+  // HR field (owner / super-admin only): undefined = keep the worker's HR.
+  const hrSel=document.getElementById('wHrId');
+  const hrIdPicked=hrSel?(hrSel.value||null):undefined;
   if(editingWorkerIdx===null && docId){
     const dupIdx=workers.findIndex(w=>workerDocId(w)===docId);
+    // An own-workers HR has only its own workers here: the server checks the
+    // whole firm and answers only yes/no (checkWorkerDoc).
+    if(dupIdx<0 && isHrSession()){
+      try{
+        const r=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'checkWorkerDoc',...gsAuth(),docId})})).json();
+        if(r&&r.exists){ alert('A worker with this document number already exists in the firm.'); return; }
+      }catch(e){}
+    }
     if(dupIdx>=0){
       const dup=workers[dupIdx];
       if(!confirm('A worker with this document number already exists: '+(dup.name||'?')+'.\nOK — update that worker with the data entered here.\nCancel — go back and edit.')) return;
@@ -2649,6 +2702,7 @@ async function saveWorker(){
     const updated={...prevW,...commonFields};
     const changed=FORM101_WATCHED_FIELDS.some(f=>JSON.stringify(prevW[f])!==JSON.stringify(updated[f]));
     workers[editingWorkerIdx]=updated;
+    if(hrIdPicked!==undefined && (prevW.hrId||null)!==hrIdPicked) assignWorkersToHr([updated.id],hrIdPicked);
     showToast(name+' עודכן!');
     // This save follows a fresh physical rescan of THIS worker in THIS
     // session (rescanWorkerDoc() -> openWorkerModalFromScan() set this a
@@ -2693,6 +2747,10 @@ async function saveWorker(){
   // signature date on a scanned worker's PDF should match when they were
   // actually onboarded, not whatever day the PDF happens to be (re)generated.
   const newWorker={id:uid(),...commonFields,token,createdAt:new Date().toISOString()};
+  // A worker added by an HR login is that HR's; the owner may pick one.
+  const sess=getSession();
+  if(isHrSession()) newWorker.hrId=sess.uid;
+  else if(hrIdPicked) newWorker.hrId=hrIdPicked;
   workers.push(newWorker);
   // Persisted and visible right away regardless of the PDF upload below —
   // only the modal itself stays open a little longer for that.
@@ -3289,6 +3347,7 @@ function openWorkerCard(wi){
         return `<div><i class="ti ti-currency-shekel"></i> ${esc(o.name)}: ₪${r.regRate}/h · OT ₪${r.otRate} · Shabbat ₪${r.shabbatRate}${hasOverride?' <i class="ti ti-star-filled" style="font-size:10px;color:var(--amber)" title="Own rate at this client"></i>':''}</div>`;
       }).join('')}` : `<div><i class="ti ti-building-off"></i> Not assigned to any object</div>`}
       ${sup?`<div><i class="ti ti-truck-delivery"></i> Supplier: <span style="color:${sup.color}">${esc(sup.name)}</span></div>`:''}
+      ${w.hrId&&isFirmAdminSession()?`<div><i class="ti ti-user-shield"></i> HR: ${esc(hrNameOf(w.hrId)||'—')}</div>`:''}
     </div>
     ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
     ${workerDocsSectionHtml(w)}
@@ -4141,6 +4200,7 @@ async function submitLogin(){
     saveSession({
       uid: fb.uid, role: fb.role, tenantId: fb.tenantId, username: fb.username, tenantProfile: fb.tenantProfile,
       permissions: fb.permissions, supplierId: fb.supplierId,
+      ownOnly: fb.ownOnly === true, fullName: fb.fullName || '',
       viewingTenantId: fb.tenantId, // a super-admin (tenantId null) picks one on the Firms screen
     });
     location.reload();
@@ -4452,7 +4512,7 @@ function prefetchAdminUsers(){
 const ADMIN_PANE_SUBTITLES = {
   punchlog: 'Punch log — view, edit and export all attendance records',
   firms: 'Firm details — the employer block printed on every Form 101',
-  users: 'Staff and supplier logins for this firm',
+  users: 'Staff, HR and supplier logins for this firm',
   errors: 'Client-side errors by period, every firm',
   timings: 'How long login, app open and scans take (real devices, every firm)',
 };
@@ -4514,11 +4574,12 @@ async function renderAdminUsers(){
 function renderAdminUsersRows(el, users){
     const row = u => {
       const sup = u.role==='supplier' ? (suppliers||[]).find(s=>s.id===u.supplierId) : null;
-      const permsLabel = u.role!=='staff' ? '' : (u.permissions==='*' ? 'Full access' : (Array.isArray(u.permissions)?u.permissions.join(', '):'—'));
+      const permsLabel = (u.role!=='staff' && u.role!=='hr') ? '' : (u.permissions==='*' ? 'Full access' : (Array.isArray(u.permissions)?u.permissions.join(', '):'—'));
+      const hrLine = u.role!=='hr' ? '' : `<div style="font-size:12px;color:var(--text2)">${esc(u.fullName||'')}${u.phone?' · '+esc(u.phone):''} · ${hrWorkerCount(u.id)} workers${u.ownOnly===false?' · sees all workers':''}</div>`;
       return `<div class="tap-edit" onclick="if(isPlainTap(event,this))openEditUserForm('${esc(u.id)}')" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);${u.active===false?'opacity:0.55':''}">
         <div>
           <div style="font-weight:600">${esc(u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(u.role)})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">inactive</span>':''}</div>
-          <div style="font-size:12px;color:var(--text2)">${u.role==='supplier' ? (sup?esc(sup.name):'—') : esc(permsLabel)}</div>
+          ${hrLine}<div style="font-size:12px;color:var(--text2)">${u.role==='supplier' ? (sup?esc(sup.name):'—') : esc(permsLabel)}</div>
         </div>
         <div style="display:flex;gap:4px">
           <button class="btn sm" onclick="resetUserPasswordPrompt('${esc(u.id)}')" title="Reset password"><i class="ti ti-key"></i></button>
@@ -4527,18 +4588,23 @@ function renderAdminUsersRows(el, users){
       </div>`;
     };
     el.innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="openCreateUserForm()"><i class="ti ti-plus"></i> New user</button></div>`
-      + (users.length ? `<div class="admin-users-rows" style="display:flex;flex-direction:column;gap:8px"></div>` : '<div style="color:var(--text2);font-size:13px">No staff/supplier users yet.</div>');
+      + (users.length ? `<div class="admin-users-rows" style="display:flex;flex-direction:column;gap:8px"></div>` : '<div style="color:var(--text2);font-size:13px">No staff, HR or supplier users yet.</div>');
     if(users.length) renderPagedList(el.querySelector('.admin-users-rows'), 'users', '', users, row);
 }
 function fillUserFormSupplierSelect(selectedId){
   const sel = document.getElementById('userFormSupplierId');
   sel.innerHTML = (suppliers||[]).map(s => `<option value="${esc(s.id)}"${s.id===selectedId?' selected':''}>${esc(s.name)}</option>`).join('');
 }
-function onUserFormRoleChange(){
+function onUserFormRoleChange(fromUser){
   const role = document.getElementById('userFormRole').value;
   document.getElementById('userFormSupplierField').style.display = role==='supplier' ? '' : 'none';
   document.getElementById('userFormPermsField').style.display = role==='supplier' ? 'none' : '';
+  document.getElementById('userFormHrFields').style.display = role==='hr' ? '' : 'none';
+  document.getElementById('userFormHrWorkersField').style.display = role==='hr' && __editingUserId ? '' : 'none';
   if(role==='supplier') fillUserFormSupplierSelect(null);
+  // A new HR login starts with the Workers section only.
+  if(role==='hr' && !__editingUserId && fromUser===true)
+    document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = cb.value==='workers');
 }
 function openCreateUserForm(){
   __editingUserId = null;
@@ -4548,7 +4614,11 @@ function openCreateUserForm(){
   document.getElementById('userFormPassword').value = '';
   document.getElementById('userFormPasswordField').style.display = '';
   document.getElementById('userFormRole').value = 'staff';
+  document.getElementById('userFormRole').disabled = false;
   document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = false);
+  document.getElementById('userFormFullName').value = '';
+  document.getElementById('userFormPhone').value = '';
+  document.getElementById('userFormOwnOnly').checked = true;
   document.getElementById('userFormError').textContent = '';
   onUserFormRoleChange();
   document.getElementById('userFormOverlay').classList.add('open');
@@ -4565,9 +4635,14 @@ async function openEditUserForm(id){
   document.getElementById('userFormPassword').value = '';
   document.getElementById('userFormPasswordField').style.display = 'none'; // use resetUserPasswordPrompt() instead
   document.getElementById('userFormRole').value = u.role;
+  document.getElementById('userFormRole').disabled = true; // a login keeps its role
   document.getElementById('userFormError').textContent = '';
+  document.getElementById('userFormFullName').value = u.fullName || '';
+  document.getElementById('userFormPhone').value = u.phone || '';
+  document.getElementById('userFormOwnOnly').checked = u.ownOnly !== false;
   onUserFormRoleChange();
   if(u.role==='supplier') fillUserFormSupplierSelect(u.supplierId);
+  if(u.role==='hr') renderUserFormHrWorkers();
   const perms = u.permissions==='*' ? PERMISSION_SECTIONS.slice() : (Array.isArray(u.permissions)?u.permissions:[]);
   document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = perms.indexOf(cb.value)!==-1);
   document.getElementById('userFormOverlay').classList.add('open');
@@ -4581,8 +4656,13 @@ async function submitUserForm(){
   const btn = document.getElementById('userFormSaveBtn');
   btn.disabled = true;
   try{
+    const hrFields = role!=='hr' ? {} : {
+      fullName: document.getElementById('userFormFullName').value.trim(),
+      phone: document.getElementById('userFormPhone').value.trim(),
+      ownOnly: document.getElementById('userFormOwnOnly').checked };
+    if(role==='hr' && !hrFields.fullName){ errEl.textContent = 'Full name required for an HR login'; return; }
     if(__editingUserId){
-      const body = { action:'updateUser', ...gsAuth(), id: __editingUserId, active: true };
+      const body = { action:'updateUser', ...gsAuth(), id: __editingUserId, active: true, ...hrFields };
       if(role==='supplier') body.supplierId = supplierId; else body.permissions = permissions;
       const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(body) });
       const json = await res.json();
@@ -4591,7 +4671,7 @@ async function submitUserForm(){
       const username = document.getElementById('userFormUsername').value.trim();
       const password = document.getElementById('userFormPassword').value;
       if(!username || !password){ errEl.textContent = 'Username and password required'; return; }
-      const body = { action:'createTenantUser', ...gsAuth(), username, password, role };
+      const body = { action:'createTenantUser', ...gsAuth(), username, password, role, ...hrFields };
       if(role==='supplier') body.supplierId = supplierId; else body.permissions = permissions;
       const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(body) });
       const json = await res.json();
@@ -4622,6 +4702,89 @@ async function deleteUserConfirm(id, username){
     showToast('User deleted');
     renderAdminUsers();
   }catch(e){ showToast('Network error'); }
+}
+
+// ── HR logins and their workers (docs/admin.md → HR) ────────────────────────
+// A worker's hrId is the uid of the HR login it belongs to. Only the firm's
+// owner or a super-admin assigns it: here (the HR's card: list, unassign,
+// "Add workers") or in the worker modal's HR field. Reassigning also moves
+// the worker's past punches to the new HR (setPunchesHr).
+function hrUsers(){
+  const c = loadAdminCache('users_'+activeTenantIdForAdmin());
+  return Array.isArray(c) ? c.filter(u => u.role==='hr') : [];
+}
+function hrNameOf(id){
+  const u = hrUsers().find(x => x.id===id);
+  return u ? (u.fullName || u.username) : '';
+}
+function hrWorkerCount(id){ return workers.filter(w => w.hrId===id).length; }
+// Sets the HR of these workers (null = none), saves, and moves their punches.
+async function assignWorkersToHr(ids, hrId){
+  const changed = [];
+  ids.forEach(id => {
+    const w = workers.find(x => x.id===id);
+    if(!w || (w.hrId||null)===(hrId||null)) return;
+    if(hrId) w.hrId = hrId; else delete w.hrId;
+    changed.push(id);
+  });
+  if(!changed.length) return 0;
+  render(); autoSave();
+  try{
+    const res = await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'setPunchesHr', ...gsAuth(), workerIds: changed, hrId: hrId||null})});
+    const json = await res.json();
+    if(!json || json.error) showToast((json&&json.error)||'Punches not updated');
+  }catch(e){ showToast('Network error — punches not updated'); }
+  return changed.length;
+}
+function renderUserFormHrWorkers(){
+  const el = document.getElementById('userFormHrWorkers');
+  if(!el || !__editingUserId) return;
+  const mine = workers.filter(w => w.hrId===__editingUserId);
+  if(!mine.length){ el.innerHTML = '<div style="font-size:12px;color:var(--text3)">No workers assigned</div>'; return; }
+  renderPagedList(el, 'hrWorkers', __editingUserId, mine, w => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;background:var(--bg3);border-radius:var(--radius-sm);font-size:13px">
+      <span>${esc(w.name)}${workerDocId(w)?' <span style="color:var(--text3);font-size:11px">'+esc(workerDocId(w))+'</span>':''}</span>
+      <button class="btn sm" type="button" onclick="unassignHrWorker('${esc(w.id)}')">Unassign</button>
+    </div>`);
+}
+async function unassignHrWorker(id){
+  await assignWorkersToHr([id], null);
+  renderUserFormHrWorkers(); renderAdminUsers();
+}
+let __hrAssignPicked = new Set();
+function openHrAssignModal(){
+  if(!__editingUserId) return;
+  __hrAssignPicked = new Set();
+  const u = hrUsers().find(x => x.id===__editingUserId);
+  document.getElementById('hrAssignTitle').textContent = 'Add workers to ' + ((u && (u.fullName||u.username)) || 'HR');
+  document.getElementById('hrAssignSearch').value = '';
+  renderHrAssignList();
+  document.getElementById('hrAssignOverlay').classList.add('open');
+}
+function renderHrAssignList(){
+  const q = document.getElementById('hrAssignSearch').value.trim().toLowerCase();
+  const list = workers.filter(w => w.hrId!==__editingUserId)
+    .filter(w => !q || (w.name||'').toLowerCase().includes(q) || String(workerDocId(w)||'').toLowerCase().includes(q));
+  const el = document.getElementById('hrAssignList');
+  if(!list.length){ el.innerHTML = '<div style="font-size:12px;color:var(--text3)">No workers to add</div>'; return; }
+  renderPagedList(el, 'hrAssign', __editingUserId+'|'+q, list, w => {
+    const other = w.hrId ? hrNameOf(w.hrId) || 'another HR' : '';
+    return `<label style="display:flex;gap:8px;align-items:center;padding:6px 8px;background:var(--bg3);border-radius:var(--radius-sm);font-size:13px">
+      <input type="checkbox" ${__hrAssignPicked.has(w.id)?'checked':''} onchange="toggleHrAssignPick('${esc(w.id)}',this.checked)">
+      <span style="flex:1">${esc(w.name)}${other?' <span style="color:var(--amber);font-size:11px">· now: '+esc(other)+'</span>':''}</span>
+    </label>`;
+  });
+}
+function toggleHrAssignPick(id, on){ if(on) __hrAssignPicked.add(id); else __hrAssignPicked.delete(id); }
+async function submitHrAssign(){
+  if(!__hrAssignPicked.size){ closeModal('hrAssignOverlay'); return; }
+  const btn = document.getElementById('hrAssignSaveBtn');
+  btn.disabled = true;
+  try{
+    const n = await assignWorkersToHr([...__hrAssignPicked], __editingUserId);
+    showToast(n + ' assigned');
+    closeModal('hrAssignOverlay');
+    renderUserFormHrWorkers(); renderAdminUsers();
+  }finally{ btn.disabled = false; }
 }
 
 // ── Superadmin cross-firm payable summary (Admin/Roles plan, stage 10) ─────
@@ -5211,7 +5374,12 @@ function mergeRemotePunches(remote){
   // Cached rows older than what this app open has loaded are dropped (loaded
   // on demand last time), so the cache never grows past what is in use.
   const keepFrom = (__punchLoadedFrom || punchWindowStart()).getTime();
-  local.forEach(e=>{ if(e && e.id!=null && !(e.id in byId) && !(new Date(e.ts).getTime() < keepFrom)) byId[e.id] = e; });
+  // An own-workers HR keeps cached rows only of the workers it still has (a
+  // worker the owner moved to another HR takes its punches along).
+  const s = getSession();
+  const mine = s && s.role==='hr' && s.ownOnly ? new Set(workers.map(w=>String(w.id))) : null;
+  local.forEach(e=>{ if(e && e.id!=null && !(e.id in byId) && !(new Date(e.ts).getTime() < keepFrom)
+    && (!mine || mine.has(String(e.workerId)))) byId[e.id] = e; });
   savePunchLog(Object.values(byId));
   if(currentTab==='admin') renderAdmin();
 }
@@ -7492,8 +7660,10 @@ try{
     render();
     setSaveStatus('saved');
     applyNavPermissions();
-    // Start on Dashboard
-    switchTab('dashboard');
+    // Start on Dashboard (an HR login: its first tab)
+    switchTab(homeTab());
+    // The firm's HR logins, for the worker modal's HR field and the cards.
+    if(isFirmAdminSession() && activeTenantIdForAdmin()) prefetchAdminUsers();
     // Check push subscription status
     setTimeout(checkPushStatus, 1000);
   });

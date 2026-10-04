@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A staff scheduling & GPS punch-clock PWA for a single client ("Odinson"), served as static files from Firebase Hosting (project `schedule-odinson`). No build step, no bundler, no package.json at the root, no test suite for the pages — each page is a self-contained HTML file with inline `<style>`/`<script>`.
 
-Multi-tenant: a super-admin creates firms (tenants), each with its own logins and isolated data. Roles: `superadmin`, `tenant_admin`, `staff` (per-section permissions), `supplier` (own workers only).
+Multi-tenant: a super-admin creates firms (tenants), each with its own logins and isolated data. Roles: `superadmin`, `tenant_admin`, `staff` (per-section permissions), `hr` (per-section permissions; by default only the workers assigned to it, `hrId` — docs/hr.md), `supplier` (own workers only).
 
 The backend is **Firestore + Firebase Storage + Cloud Functions**, and nothing else. The original Google Apps Script / Google Sheets backend was removed on 2026-10-03 (see docs/history.md); don't add calls to it.
 
@@ -21,6 +21,7 @@ The backend is **Firestore + Firebase Storage + Cloud Functions**, and nothing e
 | [docs/app-core.md](docs/app-core.md) | `schedule-manager.html` shell: login/session, tabs and `render()`, the Schedule tab, data calls (the `fetch(API_URL)` dispatcher), load/save/cache, uploads (`uploadWorkerFile`), telemetry, PWA |
 | [docs/workers.md](docs/workers.md) | the worker record, Workers tab (cards/list, filters), worker card, worker modal and `saveWorker()`, worker documents, hours import/export from the card, punch links |
 | [docs/clients.md](docs/clients.md) | the client record, Clients tab and modal, billing modes, map picker, manual punch |
+| [docs/hr.md](docs/hr.md) | the HR role end to end: `hrId` ownership of workers and punches, own-only vs all, assigning workers, rules/queries/Storage enforcement |
 | [docs/suppliers.md](docs/suppliers.md) | the supplier record and Suppliers tab |
 | [docs/accounting.md](docs/accounting.md) | **payroll math** (`groupPunchesIntoShifts`, `analyzeDayPunches`, `effectiveRates`, `shiftPay`, `israeliDayPay`), Accounting tab, supplier commission, client billing, hours approval queue, exports, Today tab, super-admin summary |
 | [docs/admin.md](docs/admin.md) | Admin tab: punch log (month-window loading, filters, paging, Clear Log), Firms, Users, Errors, Timings, Profile |
@@ -73,7 +74,7 @@ Some code comments (the rules, `tests/`, older parts of the pages) still name th
 - **Lists page by 10:** every list that can grow (workers, clients, suppliers, firms, users, punches, errors, timings, pending hours, salary and rate tables, documents, …) is drawn with `renderPagedList` (docs/app-core.md → Long lists). It shows 10 rows, and the next 10 only when the user scrolls to the end or taps "Show more". A new list follows the same rule. Totals rows always cover every item.
 - **Duplicated on purpose:** `esc()`, `reportError`, `showToast`, `getPunchLog`/`savePunchLog`, `loadFirestoreBackend()`, the shift pairing (`groupPunchesIntoShifts`/`analyzeDayPunches`), the paging helper (`renderPagedList`, in the manager app and the supplier portal), the new version check (`startVersionWatch` / `showNewVersionBar`, in all three pages), the modal backdrop close (the document click handler + `__onUserClose`) and the tap-to-edit helper (`isPlainTap`), both in the manager app and the supplier portal, exist in more than one page. A fix in one must be mirrored in the others.
 - **Payroll:** hours and pay only through the canonical functions in docs/accounting.md — never a second calculation. Supplier commission and client billing are separate figures that never change a worker's pay.
-- **Firm data isolation:** a firm sees only its own data; a supplier never receives wages, client billing, GPS, a worker's punch-link token or file links (server-side allow-lists, docs/supplier-portal.md); a client entity never gets a login and no client-facing surface shows supplier data.
+- **Firm data isolation:** a firm sees only its own data; an own-workers HR login sees only the workers whose `hrId` is its uid and their punches (rules + `hrOnly()` queries), and never changes a worker's `hrId`; a supplier never receives wages, client billing, GPS, a worker's punch-link token or file links (server-side allow-lists, docs/supplier-portal.md); a client entity never gets a login and no client-facing surface shows supplier data.
 - **Form 101:** see the language rule above; field positions only via docs/form101-field-map.md.
 - **AI prompts** live in `functions-auth/ai_prompts.json`; `tests/auth/test_ai.py` checks every request against `tests/auth/ai_golden.json`, so a prompt edit also updates that file (docs/backend.md).
 - **Uploads:** new upload features go through the shared helpers (`filesToUploadPages`/`fileToUploadPages`/`downscaleForUpload`/`fileForStorage`) and send per-page requests in parallel (docs/scan.md).

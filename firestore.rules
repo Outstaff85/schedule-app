@@ -4,9 +4,10 @@ rules_version = '2';
 //
 // Sign-in is a custom token from the `login` Cloud Function, whose claims
 // carry who the caller is:
-//   role      'superadmin' | 'tenant_admin' | 'staff' | 'supplier'
+//   role      'superadmin' | 'tenant_admin' | 'staff' | 'hr' | 'supplier'
 //   tenantId  the caller's firm (absent for a superadmin)
-//   perms     list of sections a staff login may use, ['*'] = all
+//   perms     list of sections a staff or hr login may use, ['*'] = all
+//   own       hr only: true = "only own workers" (docs/admin.md → HR)
 //   supplierId  only for role 'supplier'
 //
 // These rules mirror the Apps Script checks they replace:
@@ -20,6 +21,10 @@ rules_version = '2';
 //   - a supplier never reads Firestore directly: wages and GPS can't be
 //     hidden field-by-field, so the supplier portal goes through functions
 //     that strip them (_stripWorkerForSupplier / _stripClientForSupplier);
+//   - an hr login without `own` works like staff with its sections; an hr
+//     login with `own` reads and writes only the workers (and their punches,
+//     its own pending-hours batches) whose hrId is its uid. No hr login ever
+//     changes a worker's hrId — the owner or a superadmin assigns workers;
 //   - users, password hashes, usernames and worker punch-link tokens are
 //     function-only.
 service cloud.firestore {
@@ -36,9 +41,25 @@ service cloud.firestore {
         && request.auth.token.perms is list
         && (('*' in request.auth.token.perms) || (section in request.auth.token.perms));
     }
-    // Manager-side logins of the firm (never a supplier).
-    function manager(t) { return isSuper() || (member(t) && role() in ['tenant_admin', 'staff']); }
+    // HR logins. hrMine: "only own workers" (claim own); hrAll: sees the firm
+    // like staff. hrCan: the login has that section.
+    function isHr(t) { return member(t) && role() == 'hr'; }
+    function hrMine(t) { return isHr(t) && request.auth.token.own == true; }
+    function hrAll(t) { return isHr(t) && request.auth.token.own != true; }
+    function hrCan(t, section) {
+      return isHr(t) && request.auth.token.perms is list
+        && (('*' in request.auth.token.perms) || (section in request.auth.token.perms));
+    }
+    function uid() { return request.auth.uid; }
+    function oldHr() { return resource.data.get('hrId', null); }
+    function newHr() { return request.resource.data.get('hrId', null); }
+    // Manager-side logins of the firm that see all of its data (never a
+    // supplier, never an own-workers hr).
+    function manager(t) { return isSuper() || (member(t) && role() in ['tenant_admin', 'staff']) || hrAll(t); }
     function scheduleWriter(t) { return isAdmin(t) || staffCan(t, 'schedule'); }
+    // An hr login that may write workers: the workers or schedule section;
+    // with own, only its own workers.
+    function hrWorkers(t) { return hrCan(t, 'workers') || hrCan(t, 'schedule'); }
 
     // Firm profile fields a tenant_admin may edit on their own firm
     // (updateTenant). Activation and counters stay superadmin/function-only.
@@ -48,34 +69,47 @@ service cloud.firestore {
     }
 
     match /tenants/{t} {
-      allow read: if manager(t);
+      allow read: if manager(t) || isHr(t);
       allow update: if isSuper() || (isTenantAdmin(t) && onlyProfileFields());
       allow create, delete: if isSuper();
 
       match /workers/{id} {
-        allow read: if manager(t);
-        allow write: if scheduleWriter(t);
+        allow read: if manager(t) || (hrMine(t) && oldHr() == uid());
+        allow create: if scheduleWriter(t)
+          || (hrAll(t) && hrWorkers(t) && (newHr() == null || newHr() == uid()))
+          || (hrMine(t) && hrWorkers(t) && newHr() == uid());
+        allow update: if scheduleWriter(t)
+          || (hrAll(t) && hrWorkers(t) && newHr() == oldHr())
+          || (hrMine(t) && hrWorkers(t) && oldHr() == uid() && newHr() == uid());
+        allow delete: if scheduleWriter(t)
+          || (hrAll(t) && hrWorkers(t))
+          || (hrMine(t) && hrWorkers(t) && oldHr() == uid());
       }
       match /clients/{id} {
-        allow read: if manager(t);
-        allow write: if scheduleWriter(t);
+        allow read: if manager(t) || isHr(t);
+        allow write: if scheduleWriter(t) || hrCan(t, 'clients');
       }
       match /suppliers/{id} {
-        allow read: if manager(t);
-        allow write: if scheduleWriter(t);
+        allow read: if manager(t) || isHr(t);
+        allow write: if scheduleWriter(t) || hrCan(t, 'suppliers');
       }
       match /settings/{id} {
-        allow read: if manager(t);
-        allow write: if scheduleWriter(t);
+        allow read: if manager(t) || isHr(t);
+        allow write: if scheduleWriter(t) || (hrAll(t) && hrCan(t, 'schedule'));
       }
       match /punches/{id} {
         allow read, create, update, delete: if manager(t);
+        // An own-workers hr: the punches stamped with its uid (hrId is set by
+        // the punch function, manual punches and approved hours).
+        allow read, delete: if hrMine(t) && oldHr() == uid();
+        allow create: if hrMine(t) && newHr() == uid();
+        allow update: if hrMine(t) && oldHr() == uid() && newHr() == uid();
       }
       match /pendingHours/{id} {
-        allow read: if manager(t);
+        allow read: if manager(t) || (hrMine(t) && resource.data.createdBy == uid());
         // Submitted as pending by the caller themself; nothing reaches payroll
         // until a tenant_admin/superadmin approves it.
-        allow create: if manager(t)
+        allow create: if (manager(t) || isHr(t))
           && request.resource.data.status == 'pending'
           && request.resource.data.createdBy == request.auth.uid;
         allow update, delete: if isAdmin(t);
