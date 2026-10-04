@@ -2423,7 +2423,13 @@ function showWorkerModal(w){
         ${w.idChecksumOk===false?'<div style="font-size:11px;color:var(--amber);margin-top:2px"><i class="ti ti-alert-triangle"></i> המספר לא עבר בדיקת ספרת ביקורת — יש לבדוק ידנית</div>':''}
         ${w.idMismatch?'<div style="font-size:11px;color:var(--amber);margin-top:2px"><i class="ti ti-alert-triangle"></i> המספר בספח לא תואם למספר בצד הקדמי — יש לבדוק ידנית</div>':''}
       </div>
-      <div class="field"><label>טלפון</label><input type="text" id="wPhone" value="${esc(w.phone||'')}" placeholder="+972..."></div>
+      <div class="field"><label>מין</label>
+        <select id="wSex">
+          <option value="" ${!w.docSex?'selected':''}>— לא נבחר —</option>
+          <option value="M" ${w.docSex==='M'?'selected':''}>זכר</option>
+          <option value="F" ${w.docSex==='F'?'selected':''}>נקבה</option>
+        </select>
+      </div>
     </div>
     <div class="field-row">
       <div class="field"><label>מצב משפחתי</label>
@@ -2479,13 +2485,7 @@ function showWorkerModal(w){
     </div>
     <div class="field-row">
       <div class="field"><label>תאריך תחילת עבודה</label><input type="date" id="wStartDate" value="${w.startDate||w.workStartDate||new Date().toISOString().slice(0,10)}"></div>
-      <div class="field"><label>מין</label>
-        <select id="wSex">
-          <option value="" ${!w.docSex?'selected':''}>— לא נבחר —</option>
-          <option value="M" ${w.docSex==='M'?'selected':''}>זכר</option>
-          <option value="F" ${w.docSex==='F'?'selected':''}>נקבה</option>
-        </select>
-      </div>
+      <div class="field"><label>טלפון</label><input type="text" id="wPhone" value="${esc(w.phone||'')}" placeholder="+972..."></div>
     </div>
     <div class="field">
       <label><i class="ti ti-users"></i> לקוחות <span id="wClientCount" style="color:var(--text3);font-weight:400;font-size:12px"></span></label>
