@@ -198,7 +198,7 @@ Both answer `{"ping":true}` at once (warm-up) and parse the body with `force=Tru
 | `deploy-functions.yml` | `functions/**`, `functions-auth/**`, `tests/auth/**`, or manual | builds both venvs, runs `tests/auth` on the emulators (a failure stops the deploy), `firebase deploy --only functions --force` (`--force` also deletes deployed functions that are no longer in the code); on failure opens/updates a GitHub Issue |
 | `deploy-rules.yml` | `firestore.rules`, `firestore.indexes.json`, `storage.rules`, `tests/rules/**`, or manual | rules tests, then deploys rules, indexes and storage; on failure opens an Issue (usual causes: the service account lacks Firebase Rules Admin / Cloud Datastore Index Admin, or Storage is not enabled) |
 
-`firebase.json`: both codebases pinned to `python312`; Hosting rewrites `/` → `schedule-manager.html`, `/punch` → `worker-punch.html`, `/supplier` → `supplier-portal.html`; the Hosting `ignore` list must keep `functions/**` (otherwise the venv is uploaded as public files), `functions-auth/**`, `tests/**`, the rules files, `*.md` and `docs/**`. HTML and all `.js` files are served `no-cache`. When `service-worker.js` changes, bump its `CACHE` version (now `schedule-mgr-v106`).
+`firebase.json`: both codebases pinned to `python312`; Hosting rewrites `/` → `schedule-manager.html`, `/punch` → `worker-punch.html`, `/supplier` → `supplier-portal.html`; the Hosting `ignore` list must keep `functions/**` (otherwise the venv is uploaded as public files), `functions-auth/**`, `tests/**`, the rules files, `*.md` and `docs/**`. HTML and all `.js` files, and the routes `/`, `/punch`, `/supplier`, are served `no-cache`. When `service-worker.js` changes, bump its `CACHE` version (now `schedule-mgr-v106`).
 
 ### Known deploy failures
 

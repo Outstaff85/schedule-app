@@ -1700,8 +1700,8 @@ function workerMissingScanKeys(w){
   return Object.keys(SCAN_FIND_FIELDS).filter(k=>(isId||!SCAN_FIND_FIELDS[k].idOnly)&&!String(k==='docId'?workerDocId(w):k==='address'?workerAddress(w):(w[k]||'')).trim());
 }
 function workerMissingScanFields(w){ return workerMissingScanKeys(w).map(k=>scanFieldLabel(k,w.docType)); }
-function missingScanFieldsHtml(w,canFind){
-  const m=workerMissingScanFields(w);
+function missingScanFieldsHtml(w,canFind){ return _missingScanLine(workerMissingScanFields(w),canFind); }
+function _missingScanLine(m,canFind){
   return m.length?`<div style="flex-basis:100%;font-size:12px;color:var(--amber)"><i class="ti ti-alert-triangle"></i> חסרים: ${m.map(esc).join(', ')} — ${canFind?'לחצו על שדה מסומן כדי לחפש אותו בסריקה':'אפשר לסרוק שוב'}</div>`:'';
 }
 // The worker's page photos, for a field search: the scan still in memory
@@ -1809,6 +1809,27 @@ function markScanMissingFields(){
     el.addEventListener(el.tagName==='SELECT'?'pointerdown':'click',_scanFieldTap);
     el.addEventListener('input',_scanFieldTyped);
   }
+  // Typing or picking in any scan field updates the "missing" line (one
+  // listener on the modal, added once).
+  if(!m.__missingLineHooked){
+    m.__missingLineHooked=true;
+    const ids=new Set(Object.values(SCAN_FIND_FIELDS).map(f=>f.input));
+    const onEdit=e=>{ if(e.target&&ids.has(e.target.id)) refreshModalMissingScan(); };
+    m.addEventListener('input',onEdit); m.addEventListener('change',onEdit);
+  }
+  refreshModalMissingScan();
+}
+// Worker modal: the "missing" line under the documents follows the fields as
+// they are filled — typed, picked, or found by the scan search — instead of
+// keeping the list the modal opened with.
+function refreshModalMissingScan(){
+  const box=document.getElementById('wMissingScan');
+  if(!box) return;
+  const isId=__wDocType!=='passport';
+  const m=Object.entries(SCAN_FIND_FIELDS)
+    .filter(([,f])=>(isId||!f.idOnly)&&!String((document.getElementById(f.input)||{}).value||'').trim())
+    .map(([k])=>scanFieldLabel(k,__wDocType));
+  box.innerHTML=_missingScanLine(m,workerHasScanPages(editingWorkerIdx!==null?workers[editingWorkerIdx]:null));
 }
 function _unmarkScanField(el){
   el.classList.remove('scan-missing','scan-busy');
@@ -1861,6 +1882,7 @@ function _applyScanFieldResult(el,r){
   if(r&&r.value){
     el.value=r.value;
     _unmarkScanField(el);
+    refreshModalMissingScan();
     if(r.unsure) markScanUncertain([key]);
     else { el.classList.add('scan-found'); setTimeout(()=>el.classList.remove('scan-found'),2500); }
     return;
@@ -2256,7 +2278,7 @@ function showWorkerModal(w){
         <button class="btn sm" type="button" style="flex-shrink:0" onclick="rescanFromWorkerModal()">
           <i class="ti ti-scan"></i> ${w.docUrl||(window.__aiScanPageThumbs||[]).length?'סריקה חוזרת':'סרוק מסמך'}</button>
         <span style="font-size:11px;color:var(--text3)">${editingWorkerIdx!==null&&w.docSavedAt?'נשמר: '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</span>
-        ${missingScanFieldsHtml(w,workerHasScanPages(editingWorkerIdx!==null?workers[editingWorkerIdx]:null))}
+        <div id="wMissingScan" style="display:contents">${missingScanFieldsHtml(w,workerHasScanPages(editingWorkerIdx!==null?workers[editingWorkerIdx]:null))}</div>
       </div>
     </div>
     <div class="field-row">
@@ -3205,13 +3227,13 @@ function openWorkerCard(wi){
       ${w.otherIncomeType&&w.otherIncomeType!=='none'&&OTHER_INCOME_LABELS[w.otherIncomeType]?`<div><i class="ti ti-cash"></i> Other income: ${OTHER_INCOME_LABELS[w.otherIncomeType]}</div>`:''}
       <div><i class="ti ti-clock-hour-4"></i> ${wh.toFixed(1)}h scheduled / week</div>
       ${w.docUrl?`<div><i class="ti ti-file-text"></i> Документ сохранён${w.docSavedAt?': '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</div>`:''}
-      ${objs.length?`<div><i class="ti ti-building"></i> ${objs.map(o=>`<span style="color:${o.color}">${esc(o.name)}</span>`).join(', ')}</div>
+      ${objs.length?`<div><i class="ti ti-building"></i> Clients: ${objs.map(o=>`<span style="color:${o.color}">${esc(o.name)}</span>`).join(', ')}</div>
       ${objs.map(o=>{
         const r=effectiveRates(w,o.id);
         const hasOverride=!!(w.clientRates&&w.clientRates[o.id]&&Object.values(w.clientRates[o.id]).some(v=>v!=null));
         return `<div><i class="ti ti-currency-shekel"></i> ${esc(o.name)}: ₪${r.regRate}/h · OT ₪${r.otRate} · Shabbat ₪${r.shabbatRate}${hasOverride?' <i class="ti ti-star-filled" style="font-size:10px;color:var(--amber)" title="Own rate at this client"></i>':''}</div>`;
       }).join('')}` : `<div><i class="ti ti-building-off"></i> Not assigned to any object</div>`}
-      ${sup?`<div><i class="ti ti-truck-delivery"></i> <span style="color:${sup.color}">${esc(sup.name)}</span></div>`:''}
+      ${sup?`<div><i class="ti ti-truck-delivery"></i> Supplier: <span style="color:${sup.color}">${esc(sup.name)}</span></div>`:''}
     </div>
     ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
     ${workerDocsSectionHtml(w)}
@@ -6643,6 +6665,45 @@ async function submitClearPunchLog(){
 
 // --- Toast ------------------------------------------------------------------------------------------------------------------------------------
 function showToast(msg,dur){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),dur||2500); }
+// ── New version check (2026-10-04; the same code in schedule-manager.html,
+// worker-punch.html and supplier-portal.html). An app left open — a PWA in
+// the background — keeps running the code it loaded, even after a deploy.
+// When the page comes back to the screen, and every 30 min while it is
+// shown, the files it runs are asked for their ETag (HEAD: the service
+// worker only handles GET, and cache:'no-store' skips the HTTP cache). The
+// first answer is the baseline; a changed ETag later means a deploy, and a
+// bar offers to reload. Nothing reloads on its own (typed data stays).
+function startVersionWatch(files){
+  let base=null, shown=false;
+  const tags=async()=>{
+    const out={};
+    for(const f of files()){
+      const r=await fetch(f,{method:'HEAD',cache:'no-store'});
+      if(!r.ok) return null;
+      out[f]=r.headers.get('etag')||r.headers.get('last-modified')||'';
+    }
+    return out;
+  };
+  const check=async()=>{
+    if(shown||document.visibilityState!=='visible'||navigator.onLine===false) return;
+    try{
+      const t=await tags(); if(!t) return;
+      if(!base){ base=t; return; }
+      for(const f in t){ if(!(f in base)){ base[f]=t[f]; continue; } if(t[f]&&base[f]&&t[f]!==base[f]){ shown=true; showNewVersionBar(); return; } }
+    }catch(e){}
+  };
+  document.addEventListener('visibilitychange',check);
+  setInterval(check,30*60*1000);
+  check();
+}
+function showNewVersionBar(){
+  if(document.getElementById('newVersionBar')) return;
+  document.body.insertAdjacentHTML('beforeend',`<div id="newVersionBar" style="position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:100000;display:flex;align-items:center;gap:10px;max-width:calc(100% - 32px);box-sizing:border-box;padding:10px 12px 10px 16px;border-radius:12px;background:#1f6feb;color:#fff;font:600 14px/1.3 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.35)">
+    <span>A new version is available</span>
+    <button type="button" onclick="location.reload()" style="border:0;border-radius:8px;padding:6px 12px;background:#fff;color:#1f6feb;font:inherit;cursor:pointer">Update</button>
+    <button type="button" aria-label="Close" onclick="this.parentElement.remove()" style="border:0;background:none;color:#fff;font:inherit;font-size:18px;cursor:pointer;padding:0 4px">✕</button></div>`);
+}
+startVersionWatch(()=>[location.pathname,'firestore-backend.js',...(window.__scanPipelineReady?['scan-pipeline.js']:[])]);
 
 const AVATAR_SIZE=160; // shared with scan-pipeline.js's cropPortraitAvatar() and confirmAvatarCrop() below (manual crop editor) — must stay in THIS file, not the lazy one, since confirmAvatarCrop() runs on every worker-photo edit regardless of scanning
 
