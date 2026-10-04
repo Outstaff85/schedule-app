@@ -354,6 +354,7 @@
   .scan-found { border-color: var(--green) !important; box-shadow: 0 0 0 2px rgba(34,197,94,0.3); }
   /* Two reads of the scan disagreed on this value: check it. */
   .scan-check { border-color: var(--amber) !important; box-shadow: 0 0 0 2px rgba(245,166,35,0.25); }
+  .scan-check[data-check-key]:not([data-rechecked]) { cursor: pointer; }
   @keyframes barSlide { 0% { left: -40%; } 100% { left: 100%; } }
   .progress-bar { position: relative; width: 100%; height: 4px; border-radius: 2px;
     background: var(--bg3); overflow: hidden; margin-top: 10px; }
@@ -1771,14 +1772,15 @@ async function findScanField(w,key,docType){
   return r&&r[key];
 }
 // Worker modal: fields whose two scan reads disagreed (w.__scanCheck, from
-// the scan) get an amber frame and "check" note until edited. The note has
-// a 🔍 link that reads just that field again from the scan (recheckScanField).
+// the scan) get an amber frame and "check" note until edited. Tapping the
+// framed field reads just that field again from the scan (recheckScanField);
+// after that a tap edits it as usual, and the note's 🔍 link reads it again.
 function markScanUncertain(keys){
   for(const k of keys||[]){
     const id=(SCAN_FIND_FIELDS[k]||{}).input||(k==='docExpiry'?'wDocExpiry':null);
     const el=id&&document.getElementById(id);
     if(!el||!String(el.value||'').trim()||el.classList.contains('scan-check')) continue;
-    _markScanCheck(el,k,'בדקו — שתי הקריאות של הסריקה לא זהות');
+    _markScanCheck(el,k,SCAN_FIND_FIELDS[k]?'בדקו — שתי הקריאות של הסריקה לא זהות. לחצו על השדה לקריאה חוזרת':'בדקו — שתי הקריאות של הסריקה לא זהות');
   }
 }
 // msgHtml is built by the caller from fixed text and esc()'d values.
@@ -1793,6 +1795,18 @@ function _markScanCheck(el,key,msgHtml){
     el.__checkClear=()=>{ if(!el.dataset.scanBusy) _clearScanCheck(el); };
     el.addEventListener('input',el.__checkClear); el.addEventListener('change',el.__checkClear);
   }
+  if(again&&!el.__checkTap){
+    el.dataset.checkKey=key;
+    el.__checkTap=_scanCheckTap;
+    el.addEventListener(el.tagName==='SELECT'?'pointerdown':'click',_scanCheckTap);
+  }
+}
+// The first tap on a framed field reads it again; later taps edit it.
+function _scanCheckTap(e){
+  const el=e.currentTarget;
+  if(!el.classList.contains('scan-check')||el.dataset.rechecked||el.dataset.scanBusy) return;
+  if(el.tagName==='SELECT') e.preventDefault();
+  recheckScanField(el.dataset.checkKey);
 }
 function _clearScanCheck(el){
   el.classList.remove('scan-check');
@@ -1807,6 +1821,7 @@ const _scanShown=el=>el.tagName==='SELECT'?((el.options[el.selectedIndex]||{}).t
 async function recheckScanField(key){
   const f=SCAN_FIND_FIELDS[key], el=f&&document.getElementById(f.input);
   if(!el||el.dataset.scanBusy) return;
+  el.dataset.rechecked='1';
   const prev=String(el.value||'').trim(), prevShown=_scanShown(el);
   const hint=el.nextElementSibling;
   if(hint&&hint.classList.contains('scan-check-hint')) hint.textContent='קורא שוב מהסריקה…';
@@ -1825,7 +1840,7 @@ async function recheckScanField(key){
   }
   el.value=r.value;
   el.dataset.scanPrev=prev;
-  _markScanCheck(el,key,`בדקו — הקריאה החוזרת: ${esc(_scanShown(el))} · היה: ${esc(prevShown)} · <a href="#" style="color:var(--amber);text-decoration:underline" onclick="event.preventDefault();restoreScanPrev('${f.input}')">החזר</a>`);
+  _markScanCheck(el,key,`בדקו — לפני: ${esc(prevShown)} · אחרי: ${esc(_scanShown(el))} · <a href="#" style="color:var(--amber);text-decoration:underline" onclick="event.preventDefault();restoreScanPrev('${f.input}')">החזר</a>`);
   refreshModalMissingScan();
 }
 function restoreScanPrev(id){
