@@ -60,7 +60,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
   
   All filters combine (AND). In client grouping a worker appears under every client they have; in supplier grouping, under one (or "No supplier assigned").
 - **View:** `getWorkersView()` returns `cards` unless `localStorage.workersView === 'list'`; `setWorkersView(v)` stores the choice.
-  - Cards — `renderWorkerCards(box, list, groupBy, stMetaMap, sig)`. Each card shows avatar, name, status, contract and document badges, ID/passport, rate, hours this month, clients, supplier, start date and document status. Hours come from `workersMonthHours()`, which parses the punch log once, splits it by worker and sums `getWorkerMonthShifts()` — the same shift pairing as payroll.
+  - Cards — `renderWorkerCards(box, list, groupBy, stMetaMap, sig)`. Each card shows avatar, name, status, contract and document badges, ID/passport, rate, hours this month, clients, supplier, HR (owner / super-admin only: the HR login's name, `hrNameOf`), start date and document status. Hours come from `workersMonthHours()`, which parses the punch log once, splits it by worker and sums `getWorkerMonthShifts()` — the same shift pairing as payroll.
   - List — a table with columns Worker / Status / ID / Objects / Supplier / Phone / Rate / Start / actions (PDF download, delete). A tap on the row opens the worker card; a tap on the card opens the edit form.
   - Clicking a card or row opens `openWorkerCard(wi)`.
 
@@ -138,7 +138,7 @@ One form for add, edit and post-scan review. Labels of every Form 101 field are 
 4. **New worker.**
    - It gets a `token` and `createdAt` and is pushed to `workers`, then saved with `autoSave()`.
    - `hrId`: an HR login's own uid; for an owner / super-admin the HR field's choice.
-5. **HR field** (`#wHrId`, owner and super-admin only, options from `hrUsers()`): a change on an existing worker goes through `assignWorkersToHr([id], hrId)`, which also moves the worker's punches to the new HR. The worker card shows "HR: <name>" to the owner / super-admin.
+5. **HR field** (`#wHrId`, owner and super-admin only, options from `hrUsers()`): a change on an existing worker goes through `assignWorkersToHr([id], hrId)`, which also moves the worker's punches to the new HR. The worker card and the worker tile show the HR ("none" / "—" when unassigned) to the owner / super-admin.
    - The signature PNG is captured first (`window.__wCapturedSigPng`).
    - The modal then shows the upload progress (`showWorkerUploadingOverlay`, `renderWorkerUploadProgress`) while `autoUploadWithRetry()` builds and uploads Form 101 from the live scan globals. See [form101.md](form101.md).
 

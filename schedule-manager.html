@@ -3242,6 +3242,8 @@ function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
   const monthName=new Date().toLocaleDateString('en-GB',{month:'long'});
   const badge=(o)=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${esc(o.color)}22;border-radius:10px;margin:0 3px 3px 0"><span style="width:6px;height:6px;border-radius:50%;background:${esc(o.color)}"></span>${esc(o.name)}</span>`;
   const dash='<span style="color:var(--text3)">—</span>';
+  // The HR line: for the owner / super-admin (an HR login sees only its own workers).
+  const showHr=isFirmAdminSession();
   const card=({w,wi})=>{
     const c=WORKER_COLORS[w.colorIdx%8];
     const st=stMetaMap[w.status||'active'];
@@ -3263,6 +3265,7 @@ function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
         <span class="k"><i class="ti ti-clock-hour-4"></i> Hours (${esc(monthName)})</span><span class="v" style="font-weight:700;color:${h>0?'var(--green)':'var(--text3)'}">${h.toFixed(1)}h</span>
         <span class="k"><i class="ti ti-building"></i> Clients</span><span class="v">${objs.length?objs.map(badge).join(''):dash}</span>
         <span class="k"><i class="ti ti-truck-delivery"></i> Supplier</span><span class="v">${sup?badge(sup):dash}</span>
+        ${showHr?`<span class="k"><i class="ti ti-user-shield"></i> HR</span><span class="v">${w.hrId?esc(hrNameOf(w.hrId)||'—'):dash}</span>`:''}
         <span class="k"><i class="ti ti-calendar-event"></i> Start date</span><span class="v">${w.startDate?esc(fmtDMY(w.startDate)):dash}</span>
         <span class="k"><i class="ti ti-files"></i> Documents</span><span class="v">${docStatusSummaryHtml(w)}</span>
       </div>
@@ -3388,7 +3391,7 @@ function openWorkerCard(wi){
         return `<div><i class="ti ti-currency-shekel"></i> ${esc(o.name)}: ₪${r.regRate}/h · OT ₪${r.otRate} · Shabbat ₪${r.shabbatRate}${hasOverride?' <i class="ti ti-star-filled" style="font-size:10px;color:var(--amber)" title="Own rate at this client"></i>':''}</div>`;
       }).join('')}` : `<div><i class="ti ti-building-off"></i> Not assigned to any object</div>`}
       ${sup?`<div><i class="ti ti-truck-delivery"></i> Supplier: <span style="color:${sup.color}">${esc(sup.name)}</span></div>`:''}
-      ${w.hrId&&isFirmAdminSession()?`<div><i class="ti ti-user-shield"></i> HR: ${esc(hrNameOf(w.hrId)||'—')}</div>`:''}
+      ${isFirmAdminSession()?`<div><i class="ti ti-user-shield"></i> HR: ${w.hrId?esc(hrNameOf(w.hrId)||'—'):'<span style="color:var(--text3)">none</span>'}</div>`:''}
     </div>
     ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
     ${workerDocsSectionHtml(w)}
@@ -4557,7 +4560,11 @@ function fetchAdminUsers(){
 function prefetchAdminUsers(){
   const tenantId=activeTenantIdForAdmin();
   fetchAdminUsers().then(json=>{
-    if(json && !json.error) saveAdminCache('users_'+tenantId,(json.users||[]).filter(u=>u.tenantId===tenantId));
+    if(json && !json.error){
+      saveAdminCache('users_'+tenantId,(json.users||[]).filter(u=>u.tenantId===tenantId));
+      // The HR names on the worker tiles come from this list.
+      if(currentTab==='workers' && workers.some(w=>w.hrId)) renderWorkersPage();
+    }
   }).catch(()=>{});
 }
 const ADMIN_PANE_SUBTITLES = {
