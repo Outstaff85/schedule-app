@@ -60,6 +60,7 @@ Every list that can grow is drawn with `renderPagedList(el, key, sig, items, row
 - it shows the first `LIST_PAGE` = 10 items and a "Show more (N left)" row;
 - the next 10 come when that row is tapped, or when a scroll that follows the user's own input brings it into view (`_pagedOnScroll`);
 - user input means wheel, touch, a key or a pointer press;
+- a downward wheel, a swipe or a down key (↓, PageDown, End, Space) while the row is already in view also loads the next page — a list short enough that the page doesn't scroll (Errors on a computer) fires no scroll event at all;
 - each input allows one page at most, so a scroll the browser fires after a redraw changes the page height never chain-loads, and there is no pre-loading margin;
 - the visible area is the viewport or the nearest scrolling ancestor, such as a modal (`_pagedVisibleBottom`).
 

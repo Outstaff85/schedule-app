@@ -6656,7 +6656,15 @@ function wirePagedMore(el, key, items, rowHtml, opts){
 // chain-load page after page.
 let __pagedScrollQueued = false, __pagedUserAt = 0;
 ['wheel','touchstart','touchmove','touchend','keydown','pointerdown'].forEach(t =>
-  window.addEventListener(t, () => { __pagedUserAt = Date.now(); }, {capture:true, passive:true}));
+  window.addEventListener(t, e => {
+    __pagedUserAt = Date.now();
+    // A downward wheel / swipe / key while "Show more" is already in view
+    // loads the next page too: when the page is short enough not to scroll
+    // (a short list on a big screen) no scroll event would ever come.
+    const down = t === 'touchmove' || (t === 'wheel' && e.deltaY > 0)
+      || (t === 'keydown' && ['ArrowDown','PageDown','End',' '].includes(e.key));
+    if(down) _pagedOnScroll();
+  }, {capture:true, passive:true}));
 function _pagedVisibleBottom(node){
   let bottom = window.innerHeight;
   for(let p = node.parentElement; p && p !== document.body; p = p.parentElement){
