@@ -135,7 +135,7 @@ One form for add, edit and post-scan review. Labels of every Form 101 field are 
 3. **Editing an existing worker.**
    - It merges the form into the record and compares `FORM101_WATCHED_FIELDS` (`docId, address, houseNumber, city, incomeType, otherIncomeType, docSurname, docGiven, maritalStatus, healthFund, workStartDate, phone, docSex, docDob, docChildren` and the five spouse fields).
    - **Rescanned in this session** (`window.__aiRescannedWorkerId === id`): a blocking overlay shows while `autoUploadWithRetry()` rebuilds the PDF from the fresh scan.
-   - **Otherwise**, if a watched field changed: `regenerateWorkerDoc(id)` runs in the background from the stored sidecar, followed by a toast.
+   - **Otherwise**, if a watched field changed or a signature was drawn on the pad: `regenerateWorkerDoc(id, newSigPng)` runs in the background from the stored sidecar (a new signature replaces the stored one), followed by a toast.
 4. **New worker.**
    - It gets a `token` and `createdAt` and is pushed to `workers`, then saved with `autoSave()`.
    - `hrId`: an HR login's own uid; for an owner / super-admin the HR field's choice.
