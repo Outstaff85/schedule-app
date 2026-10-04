@@ -24,7 +24,7 @@ Who creates a supplier login and how: [admin.md](admin.md) → Users pane. The s
 ## Tabs (`switchTab`)
 
 - **Dashboard** (`renderDashboard()`): On site now (workers whose last punch is IN), My workers (count), today's punches (paged by 10 — the portal's own copy of `renderPagedList`, [app-core.md](app-core.md) → Long lists).
-- **My Workers** (`renderWorkersList()`): Name, Phone, Object (client names), Commission (₪/h or —), edit and delete; paged by 10.
+- **My Workers** (`renderWorkersList()`): Name, Phone, Object (client names), Commission (₪/h or —), delete; a tap on the row opens the edit form; paged by 10.
   - **Add / edit** (`renderWorkerModal` → `saveWorkerModal`): a manual form — given name, surname, phone, ID/passport number, address, city. The name fields fall back to splitting `name` for an older record. Given name is required. No document scan here (a deliberate scope cut).
   - **Delete** (`deleteWorker`) after `confirm()`.
   - After each change the data is reloaded.

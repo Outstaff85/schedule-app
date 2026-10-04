@@ -12,7 +12,7 @@ A worker links to **one** supplier through `w.supplierId`; `w.supplierRates[supp
 
 ## Suppliers tab (`#sectionSuppliers`)
 
-`renderSuppliersPage()` draws a card per supplier in `#suppliersGrid`: name, ח.פ, phone, bank details and the assigned workers, with **Edit** and **Remove** buttons. The tab has no role gate beyond the `suppliers` permission (`NAV_TAB_PERMISSION`).
+`renderSuppliersPage()` draws a card per supplier in `#suppliersGrid`: name, ח.פ, phone, bank details and the assigned workers, with a **Remove** button; a tap anywhere else on the card opens its edit form (`isPlainTap` → `openEditSupplier`). The tab has no role gate beyond the `suppliers` permission (`NAV_TAB_PERMISSION`).
 
 - **Adding and editing:** `openAddSupplier()` / `openEditSupplier(sid)` → `showSupplierModal(s)`. The fields are Name, ח.פ, Phone, Bank / Branch / Account #, and Color (`pickSColor`). The color palette is the same as clients (`CLIENT_COLORS`).
 - **Saving:** `saveSupplier()` updates in place or pushes a new supplier (`uid()`), then saves.
