@@ -37,6 +37,7 @@ body{padding-bottom:40px;}
 .field input,.field select{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:8px 10px;font-size:13px;outline:none;}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:500;padding:16px;}
 .overlay.open{display:flex;}
+.tap-edit{cursor:pointer;} /* a tap opens the item's edit form (isPlainTap) */
 .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:20px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto;}
 .modal-title{font-size:16px;font-weight:700;margin-bottom:14px;}
 .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap;}
@@ -159,6 +160,19 @@ function showNewVersionBar(){
 }
 startVersionWatch(()=>[location.pathname,'firestore-backend.js']);
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+// Template (per user request 2026-10-04): a list item or card opens its edit
+// form on a tap anywhere on it — there is no separate Edit button. A tap on a
+// control inside it (a button, link, field, or anything with its own onclick)
+// does that control's job instead, and selecting text doesn't count. The
+// same code is in schedule-manager.html and supplier-portal.html.
+function isPlainTap(e,container){
+  if(String((window.getSelection&&window.getSelection())||'')) return false;
+  for(let n=e.target;n&&n!==container;n=n.parentElement){
+    if(/^(BUTTON|A|INPUT|SELECT|TEXTAREA|LABEL)$/.test(n.tagName)||n.hasAttribute('onclick')) return false;
+  }
+  return true;
+}
+
 // Every modal closes on a tap anywhere outside it — on the dark backdrop,
 // including where the card or row that opened it was (per user request
 // 2026-10-04, for every modal; modals have no ✕ and no Cancel button). Only
@@ -406,13 +420,12 @@ function renderWorkersList(){
   const el=document.getElementById('workersList');
   if(!myWorkers.length){ el.innerHTML=`<div style="color:var(--text3);padding:16px 0">No workers yet</div>`; return; }
   el.innerHTML=`<table><thead><tr><th>Name</th><th>Phone</th><th>Object</th><th>Commission</th><th></th></tr></thead><tbody class="workers-rows"></tbody></table>`;
-  renderPagedList(el.querySelector('.workers-rows'), 'workers', '', myWorkers, w=>`<tr>
+  renderPagedList(el.querySelector('.workers-rows'), 'workers', '', myWorkers, w=>`<tr class="tap-edit" onclick="if(isPlainTap(event,this))openEditWorkerModal('${w.id}')">
       <td>${esc(w.name)}</td>
       <td>${esc(w.phone||'')}</td>
       <td>${(w.clientIds||[]).map(clientName).filter(Boolean).join(', ')}</td>
       <td>${w.supplierRate!=null?'₪'+w.supplierRate+'/h':'—'}</td>
       <td style="white-space:nowrap">
-        <button class="btn sm" onclick="openEditWorkerModal('${w.id}')"><i class="ti ti-edit"></i></button>
         <button class="btn sm red" onclick="deleteWorker('${w.id}')"><i class="ti ti-trash"></i></button>
       </td>
     </tr>`, {table:true, colspan:5});

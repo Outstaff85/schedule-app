@@ -60,7 +60,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
   All filters combine (AND). In client grouping a worker appears under every client they have; in supplier grouping, under one (or "No supplier assigned").
 - **View:** `getWorkersView()` returns `cards` unless `localStorage.workersView === 'list'`; `setWorkersView(v)` stores the choice.
   - Cards — `renderWorkerCardsHtml(list, groupBy, stMetaMap)`. Each card shows avatar, name, status, contract and document badges, ID/passport, rate, hours this month, clients, supplier, start date and document status. Hours come from `workersMonthHours()`, which parses the punch log once, splits it by worker and sums `getWorkerMonthShifts()` — the same shift pairing as payroll.
-  - List — a table with columns Worker / Status / ID / Objects / Supplier / Phone / Rate / Start / actions (PDF download, edit, delete).
+  - List — a table with columns Worker / Status / ID / Objects / Supplier / Phone / Rate / Start / actions (PDF download, delete). A tap on the row opens the worker card; a tap on the card opens the edit form.
   - Clicking a card or row opens `openWorkerCard(wi)`.
 
 ## Badges and status helpers
@@ -86,7 +86,7 @@ Read-only summary, as flat icon + text rows:
 - notes;
 - the Documents section (`workerDocsSectionHtml(w)`).
 
-Buttons: Delete, Download document, **Upload hours** and **Export hours** (both only with `hasPermission('workers')`), Edit.
+Buttons: Delete, Download document, **Upload hours** and **Export hours** (both only with `hasPermission('workers')`). There is no Edit button: a tap anywhere on the card other than a button, link or field (`isPlainTap`) closes it and opens the edit form (`openEditWorker`).
 
 ## Worker modal (`showWorkerModal(w)`, `#workerModal`)
 
@@ -175,4 +175,4 @@ Nothing reaches payroll until an owner approves it in Accounting ([accounting.md
 
 ## Schedule sidebar worker list
 
-`renderWorkerList()` (Schedule tab sidebar) sorts by name / hours / status (`#workerSort`). Each row shows status, contract and upload-failed badges, scheduled hours and rate, with edit, copy-link and delete buttons. See [app-core.md](app-core.md) for the Schedule tab.
+`renderWorkerList()` (Schedule tab sidebar) sorts by name / hours / status (`#workerSort`). Each row shows status, contract and upload-failed badges, scheduled hours and rate, with copy-link and delete buttons; a tap elsewhere on the row opens the edit form (`openEditWorker`). See [app-core.md](app-core.md) for the Schedule tab.

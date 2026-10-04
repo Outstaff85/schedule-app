@@ -50,7 +50,7 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
 - **Table** (`renderAdmin()`): worker, client badges, IN/OUT, time, date, site, GPS (distance, ±accuracy, ⚠ when suspicious, or "Manual"), edit / delete.
   - **Drawing:** in pages of `LIST_PAGE` = 10 via `renderPagedList(el, 'punchLog', filters, rows, rowHtml, {table:true, colspan:8})`. The next 10 rows come when the user scrolls the "Show more" row into view, or taps it ([app-core.md](app-core.md) → Long lists). A redraw keeps the opened count; a new filter starts again at 10. Firms, Users, Errors, Timings and the client logs page the same way.
   - **Older punches:** under the table, `renderAdminOlder()` shows "Showing punches from <date>" with **Load earlier month** (`loadEarlierPunchMonth()` loads back to the 1st of the month already partly loaded, or the month before) and **Load all history**.
-- **Edit:** `editPunchEntry(id)` → type, time, site (a client, or a kept custom site) and notes. `savePunchEntry(id)` sets `editedBy:'admin'` and `editedAt`, then calls `gsUpdatePunch`. `deletePunchEntry(id)` removes it locally and calls `gsDeletePunch`.
+- **Edit:** a tap on a log row (or on a punch in By Client), anywhere but its delete button, opens `editPunchEntry(id)` → type, time, site (a client, or a kept custom site) and notes. `savePunchEntry(id)` sets `editedBy:'admin'` and `editedAt`, then calls `gsUpdatePunch`. `deletePunchEntry(id)` removes it locally and calls `gsDeletePunch`.
 - **By Client** (`renderClientLogs()`): per client, its assigned workers with on-site-now status and their last 5 punches.
 - **Export CSV** (`exportPunchCSV()`, after `ensureAllPunches()`): Worker, Supplier, Type, Time, Date, Site, Distance(m), GPS Accuracy (rounded), Notes, Edited.
 - **Clear Log** (`clearPunchLog()`, after `ensureAllPunches()`):
@@ -60,7 +60,7 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
 
 ## Firms pane
 
-**Firm owner** (`tenant_admin`): the own firm only (`renderOwnFirmCard`). The card shows the Form 101 fields (name, deductions file, phone, address), which of them are missing, and **Edit** (`openMyFirmForm`). It is drawn from the session's profile, then from `refreshTenantProfile(0)`. The super-admin buttons (`#adminFirmsSuperBar`) are hidden. There is no separate Profile pane.
+**Firm owner** (`tenant_admin`): the own firm only (`renderOwnFirmCard`). The card shows the Form 101 fields (name, deductions file, phone, address), and which of them are missing; a tap on the card opens the edit form (`openMyFirmForm`). It is drawn from the session's profile, then from `refreshTenantProfile(0)`. The super-admin buttons (`#adminFirmsSuperBar`) are hidden. There is no separate Profile pane.
 
 **Super-admin:**
 
@@ -86,7 +86,7 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
 - **List** (`renderAdminUsers()`): logins of the active firm only (`activeTenantIdForAdmin()`); `listUsers` returns more for a super-admin and is filtered here. Cached as `adminCache_users_<tenantId>`. Each row shows the name, role, inactive flag, and the supplier (supplier role) or the permissions (staff).
 - **Form** (`#userFormOverlay`):
   - **Create** (`openCreateUserForm`): username, password, role (`staff` / `supplier`, `onUserFormRoleChange`). `staff` gets permission checkboxes from `PERMISSION_SECTIONS` (`schedule, workers, clients, suppliers, accounting, exports`); `supplier` gets a supplier select. Saved with `createTenantUser`.
-  - **Edit** (`openEditUserForm`): the username is locked and there is no password field; `updateUser`.
+  - **Edit** (`openEditUserForm`, a tap on the user's row anywhere but its key / delete buttons): the username is locked and there is no password field; `updateUser`.
   - Errors show in `#userFormError`.
 - **Password and delete:** `resetUserPasswordPrompt(id)` → `resetUserPassword`; `deleteUserConfirm` → `deleteUser`.
 

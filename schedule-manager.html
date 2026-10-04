@@ -155,6 +155,7 @@
   /* Modal */
   .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:100;align-items:center;justify-content:center;}
   .overlay.open{display:flex;}
+  .tap-edit{cursor:pointer;} /* a tap opens the item's edit form (isPlainTap) */
   .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto;}
   .modal-title{font-size:19px;font-weight:600;color:var(--text);margin-bottom:18px;letter-spacing:-0.3px;}
   .field{margin-bottom:14px;}
@@ -1554,11 +1555,10 @@ function renderWorkerList(){
   renderPagedList(el,'sideWorkers',sort,list,({w,wi})=>{
     const c=WORKER_COLORS[w.colorIdx%8],wh=workerTotalHours(w);
     const rateStr=w.hourlyRate?(' · ₪'+w.hourlyRate+'/h'):'';
-    return `<div class="worker-chip">
+    return `<div class="worker-chip tap-edit" onclick="if(isPlainTap(event,this))openEditWorker(${wi})">
       <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${workerAvatarInner(w)}</div>
       <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">FIRED</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">VAC</span>':''}${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div><div class="worker-hours">${wh.toFixed(1)}h${rateStr}</div></div>
       <div class="worker-actions">
-        <button class="worker-act-btn edit" onclick="openEditWorker(${wi})" title="Edit"><i class="ti ti-edit"></i></button>
         <button class="worker-act-btn edit" onclick="copyWorkerLink('${w.id}')" title="Copy punch link"><i class="ti ti-link"></i></button>
         <button class="worker-act-btn del"  onclick="deleteWorker(${wi})"   title="Delete"><i class="ti ti-x"></i></button>
       </div>
@@ -3239,7 +3239,6 @@ function renderWorkersPage(){
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.startDate?fmtDMY(w.startDate):'—'}</td>
       <td style="padding:10px 12px;text-align:center" onclick="event.stopPropagation()"><div style="display:flex;gap:4px;justify-content:center">
         ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" title="Скачать документ (PDF с ${DOC_STORE})" style="padding:3px 8px;font-size:11px"><i class="ti ti-download"></i></a>`:''}
-        <button class="btn sm" onclick="openEditWorker(${wi})" style="padding:3px 8px;font-size:11px"><i class="ti ti-edit"></i></button>
         <button class="btn sm red" onclick="deleteWorker(${wi})" style="padding:3px 8px;font-size:11px"><i class="ti ti-x"></i></button>
       </div></td>
     </tr>`;
@@ -3298,9 +3297,12 @@ function openWorkerCard(wi){
       ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Скачать документ</a>`:''}
       ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursImportModal('${w.id}')"><i class="ti ti-file-upload"></i> Upload hours</button>`:''}
       ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursExportModal('${w.id}')"><i class="ti ti-file-export"></i> Export hours</button>`:''}
-      <button class="btn accent" onclick="closeModal('workerCardOverlay');openEditWorker(${wi})"><i class="ti ti-edit"></i> Edit</button>
     </div>`;
   pageWorkerDocs(document.getElementById('workerCardModal'),w.id);
+  // A tap on the card (not on one of its buttons or links) opens the edit form.
+  const cm=document.getElementById('workerCardModal');
+  cm.classList.add('tap-edit');
+  cm.onclick=e=>{ if(isPlainTap(e,cm)){ closeModal('workerCardOverlay'); openEditWorker(wi); } };
   document.getElementById('workerCardOverlay').classList.add('open');
 }
 
@@ -3579,7 +3581,7 @@ function renderClientsPage(){
 
   renderPagedList(grid,'clients','',clients,c=>{
     const assigned=workers.filter(w=>(w.clientIds||[]).includes(c.id));
-    return `<div class="client-card">
+    return `<div class="client-card tap-edit" onclick="if(isPlainTap(event,this))openEditClient('${c.id}')">
       <div class="client-card-header">
         <div class="client-card-dot" style="background:${c.color}"></div>
         <div><div class="client-card-name">${esc(c.name)}</div>${c.companyNumber?`<div class="client-card-info"><i class="ti ti-id"></i> ח.פ ${esc(c.companyNumber)}</div>`:''}${c.object?`<div class="client-card-info"><i class="ti ti-building"></i> ${esc(c.object)}</div>`:''}${c.address?`<div class="client-card-info"><i class="ti ti-map-pin"></i> ${esc(c.address)}</div>`:''}</div>
@@ -3587,7 +3589,6 @@ function renderClientsPage(){
 
       <div style="font-size:12px;color:var(--text2)"><strong style="color:var(--text)">Workers:</strong> ${assigned.length?assigned.map(w=>`<span style="color:${WORKER_COLORS[w.colorIdx%8].text}">${esc(w.name)}</span>`).join(', '):'None assigned'}</div>
       <div class="client-card-actions">
-        <button class="btn sm" onclick="openEditClient('${c.id}')"><i class="ti ti-edit"></i> Edit</button>
 
         <button class="btn sm" style="background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)" onclick="openManualPunch('${c.id}')"><i class="ti ti-clock"></i> Punch Clock</button>
         <button class="btn sm red" onclick="deleteClient('${c.id}')">&#x2715; Remove</button>
@@ -3666,7 +3667,7 @@ function renderSuppliersPage(){
 
   renderPagedList(grid,'suppliers','',suppliers,s=>{
     const assigned=workers.filter(w=>w.supplierId===s.id);
-    return `<div class="client-card">
+    return `<div class="client-card tap-edit" onclick="if(isPlainTap(event,this))openEditSupplier('${s.id}')">
       <div class="client-card-header">
         <div class="client-card-dot" style="background:${s.color}"></div>
         <div><div class="client-card-name">${esc(s.name)}</div>${s.companyNumber?`<div class="client-card-info"><i class="ti ti-id"></i> ח.פ ${esc(s.companyNumber)}</div>`:''}${s.phone?`<div class="client-card-info"><i class="ti ti-phone"></i> ${esc(s.phone)}</div>`:''}</div>
@@ -3674,7 +3675,6 @@ function renderSuppliersPage(){
       ${s.bank?`<div style="font-size:12px;color:var(--text2)"><i class="ti ti-building-bank"></i> ${esc(s.bank)}${s.bankBranch?' · branch '+esc(s.bankBranch):''}${s.accountNumber?' · '+esc(s.accountNumber):''}</div>`:''}
       <div style="font-size:12px;color:var(--text2)"><strong style="color:var(--text)">Workers:</strong> ${assigned.length?assigned.map(w=>`<span style="color:${WORKER_COLORS[w.colorIdx%8].text}">${esc(w.name)}</span>`).join(', '):'None assigned'}</div>
       <div class="client-card-actions">
-        <button class="btn sm" onclick="openEditSupplier('${s.id}')"><i class="ti ti-edit"></i> Edit</button>
         <button class="btn sm red" onclick="deleteSupplier('${s.id}')">&#x2715; Remove</button>
       </div>
     </div>`;
@@ -3811,6 +3811,19 @@ function openPunchClock(cid){
 
 // --- Modal close --------------------------------------------------------------
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+// Template (per user request 2026-10-04): a list item or card opens its edit
+// form on a tap anywhere on it — there is no separate Edit button. A tap on a
+// control inside it (a button, link, field, or anything with its own onclick)
+// does that control's job instead, and selecting text doesn't count. The
+// same code is in schedule-manager.html and supplier-portal.html.
+function isPlainTap(e,container){
+  if(String((window.getSelection&&window.getSelection())||'')) return false;
+  for(let n=e.target;n&&n!==container;n=n.parentElement){
+    if(/^(BUTTON|A|INPUT|SELECT|TEXTAREA|LABEL)$/.test(n.tagName)||n.hasAttribute('onclick')) return false;
+  }
+  return true;
+}
+
 // Every modal closes on a tap anywhere outside it — on the dark backdrop,
 // including where the card or row that opened it was (per user request
 // 2026-10-04, for every modal; modals have no ✕ and no Cancel button). Only
@@ -4188,10 +4201,9 @@ function firmProfileMissing(profile){
 function firmProfileWarnInner(){
   const missing = firmProfileMissing();
   if(!missing.length) return '';
-  return `<div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;border:1px solid #ffb020;border-radius:var(--radius-sm);background:rgba(255,176,32,0.08);font-size:12px;line-height:1.5;color:var(--text2)">
+  return `<div class="tap-edit" onclick="if(isPlainTap(event,this))openMyFirmForm()" style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;border:1px solid #ffb020;border-radius:var(--radius-sm);background:rgba(255,176,32,0.08);font-size:12px;line-height:1.5;color:var(--text2)">
     <i class="ti ti-alert-triangle" style="color:#ffb020;font-size:15px"></i>
     <div style="flex:1;min-width:180px">Профиль фирмы неполный — в Форме 101 (раздел א «פרטי המעסיק») останутся пустыми: <b>${esc(missing.join(', '))}</b>.</div>
-    <button class="btn sm" onclick="openMyFirmForm()"><i class="ti ti-pencil"></i> Заполнить</button>
   </div>`;
 }
 // Placeholder stays in the DOM even when the profile is complete, so saving
@@ -4350,10 +4362,9 @@ async function renderOwnFirmCard(listEl){
     const missing = firmProfileMissing(p);
     const addr = [[p.street, p.streetNumber].filter(Boolean).join(' '), p.city].filter(Boolean).join(', ');
     const row = (k, v) => `<div style="display:flex;gap:8px;font-size:13px"><span style="color:var(--text3);min-width:130px">${k}</span><span>${v ? esc(v) : '<span style="color:#ffb020">—</span>'}</span></div>`;
-    listEl.innerHTML = `<div style="padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:6px">
+    listEl.innerHTML = `<div class="tap-edit" onclick="if(isPlainTap(event,this))openMyFirmForm()" style="padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:6px">
       ${row('Название фирмы', p.companyName)}${row('מספר תיק ניכויים', p.deductionsFileNumber)}${row('Телефон', p.phone)}${row('Адрес', addr)}
       ${missing.length ? `<div style="font-size:12px;color:#ffb020"><i class="ti ti-alert-triangle"></i> В Форме 101 останутся пустыми: ${esc(missing.join(', '))}</div>` : `<div style="font-size:12px;color:var(--green)"><i class="ti ti-check"></i> Всё, что нужно для Формы 101, заполнено</div>`}
-      <div><button class="btn sm accent" onclick="openMyFirmForm()"><i class="ti ti-pencil"></i> Редактировать</button></div>
     </div>`;
   };
   draw(activeTenantProfile());
@@ -4504,13 +4515,12 @@ function renderAdminUsersRows(el, users){
     const row = u => {
       const sup = u.role==='supplier' ? (suppliers||[]).find(s=>s.id===u.supplierId) : null;
       const permsLabel = u.role!=='staff' ? '' : (u.permissions==='*' ? 'Full access' : (Array.isArray(u.permissions)?u.permissions.join(', '):'—'));
-      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);${u.active===false?'opacity:0.55':''}">
+      return `<div class="tap-edit" onclick="if(isPlainTap(event,this))openEditUserForm('${esc(u.id)}')" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);${u.active===false?'opacity:0.55':''}">
         <div>
           <div style="font-weight:600">${esc(u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(u.role)})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">inactive</span>':''}</div>
           <div style="font-size:12px;color:var(--text2)">${u.role==='supplier' ? (sup?esc(sup.name):'—') : esc(permsLabel)}</div>
         </div>
         <div style="display:flex;gap:4px">
-          <button class="btn sm" onclick="openEditUserForm('${esc(u.id)}')" title="Edit"><i class="ti ti-pencil"></i></button>
           <button class="btn sm" onclick="resetUserPasswordPrompt('${esc(u.id)}')" title="Reset password"><i class="ti ti-key"></i></button>
           <button class="btn sm" onclick="deleteUserConfirm('${esc(u.id)}','${esc(u.username)}')" title="Delete" style="color:#ff6b78"><i class="ti ti-trash"></i></button>
         </div>
@@ -6364,7 +6374,7 @@ function renderClientLogs(){
           <div style="font-size:11px;color:var(--text3)">${wLog.length} records</div>
         </div>
         ${recent.length?`<div style="display:flex;flex-direction:column;gap:3px">${recent.map(e=>`
-          <div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 8px;border-radius:5px;background:var(--bg2)">
+          <div class="tap-edit" onclick="if(isPlainTap(event,this))editPunchEntry(${e.id})" style="display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 8px;border-radius:5px;background:var(--bg2)">
             <span style="font-weight:700;padding:2px 8px;border-radius:10px;font-size:11px;${e.type==='in'?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${e.type==='in'?'IN':'OUT'}</span>
             <span style="font-family:monospace;color:var(--text)">${e.time||'--'}</span>
             <span style="color:var(--text2)">${new Date(e.ts).toLocaleDateString('en-GB')}</span>
@@ -6372,7 +6382,6 @@ function renderClientLogs(){
             ${e.dist!=null?`<span style="color:var(--text3);font-size:11px">${e.dist}m</span>`:''}
             
             <div style="margin-left:auto;display:flex;gap:3px">
-              <button class="btn sm" onclick="editPunchEntry(${e.id})" style="padding:2px 6px;font-size:10px"><i class="ti ti-edit"></i></button>
               <button class="btn sm red" onclick="deletePunchEntry(${e.id});renderClientLogs()" style="padding:2px 6px;font-size:10px"><i class="ti ti-x"></i></button>
             </div>
           </div>`).join('')}</div>`:''}
@@ -6520,7 +6529,7 @@ function renderAdmin(){
     const dateStr=new Date(e.ts).toLocaleDateString('en-GB');
     const wClients=wc?clients.filter(cl=>(wc.clientIds||[]).includes(cl.id)):[];
     const clientBadge=wClients.map(cl=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${cl.color}22;border-radius:10px;white-space:nowrap"><span style="width:6px;height:6px;border-radius:50%;background:${cl.color};flex-shrink:0"></span>${esc(cl.name)}</span>`).join(' ');
-    return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'background:rgba(255,255,255,0.01)':''}">
+    return `<tr class="tap-edit" onclick="if(isPlainTap(event,this))editPunchEntry(${e.id})" style="border-bottom:1px solid var(--border);${i%2===0?'background:rgba(255,255,255,0.01)':''}">
       <td style="padding:10px 12px;white-space:nowrap"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><span style="font-size:13px;font-weight:600">${esc(e.workerName)||'Unknown'}</span></div></td>
       <td style="padding:10px 12px">${clientBadge||'<span style="color:var(--text3);font-size:12px">—</span>'}</td>
       <td style="padding:10px 12px"><span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;${e.type==='in'?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${e.type==='in'?'IN':'OUT'}</span></td>
@@ -6534,7 +6543,6 @@ function renderAdmin(){
       </td>
 
       <td style="padding:10px 12px;text-align:center"><div style="display:flex;gap:4px;justify-content:center">
-        <button class="btn sm" onclick="editPunchEntry(${e.id})" style="padding:3px 8px;font-size:11px"><i class="ti ti-edit"></i></button>
         <button class="btn sm red" onclick="deletePunchEntry(${e.id})" style="padding:3px 8px;font-size:11px"><i class="ti ti-x"></i></button>
       </div></td>
     </tr>`;

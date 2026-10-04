@@ -23,7 +23,7 @@ Worker pay and client billing are separate sets of fields. Billing never changes
 
 ## Clients tab (`#sectionClients`)
 
-`renderClientsPage()` draws a card per client in `#clientsGrid`. Each card shows the name, ח.פ, object, address and the names of the assigned workers (workers whose `clientIds` include it), with three buttons: **Edit**, **Punch Clock** (manual punch) and **Remove**.
+`renderClientsPage()` draws a card per client in `#clientsGrid`. Each card shows the name, ח.פ, object, address and the names of the assigned workers (workers whose `clientIds` include it), with two buttons: **Punch Clock** (manual punch) and **Remove**. A tap anywhere else on the card opens its edit form (`isPlainTap` → `openEditClient`).
 
 ## Client modal (`showClientModal(c)`, `#clientModal`)
 
