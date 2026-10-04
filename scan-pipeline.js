@@ -34,16 +34,41 @@ function openAiScan(){
   // first photo (no separate upload screen).
   renderPendingPagesPrompt();
 }
-// The page screens' file input. Several files picked at once on a fresh,
-// empty scan go through the ready-made-packet path (onScanFilesSelected:
-// Form 101 + passport + contract, ...); otherwise one photo at a time goes
-// through the corner editor into the queue.
+// The page screens' file input. One photo goes through the corner editor
+// into the queue. Several files, or a PDF, go straight into the queue: every
+// page of every file becomes a tile of its own, in order (per user request
+// 2026-10-04), aligned later by processAllPendingPages like any page. Taking
+// a new photo for a tile (__scanReplace) uses the first file only.
 function _onScanFilesPicked(files){
   if(!files||!files.length) return;
-  const fresh=!(window.__pendingScanPages||[]).length&&!window.__aiScanImage&&!window.__scanReplace;
-  if(files.length>1&&fresh){ onScanFilesSelected(files); return; }
-  if(files.length>1) showToast('הוסיפו עמוד אחד בכל פעם — נוסף הראשון',4000);
+  files=[...files];
+  const isPdf=f=>f.type==='application/pdf'||/\.pdf$/i.test(f.name||'');
+  if(window.__scanReplace){
+    if(files.length>1) showToast('נבחר הקובץ הראשון להחלפת העמוד',4000);
+    onScanFileSelected(files[0]); return;
+  }
+  if(files.length>1||isPdf(files[0])){ _queueScanFiles(files); return; }
   onScanFileSelected(files[0]);
+}
+// Every page of the files (filesToUploadPages: images shrunk, PDF pages
+// rendered; a shrunk photo keeps its original as the page's photo twin for
+// sharp field crops) joins the queue. A page that looks like an already
+// filled Form 101 is left out — we always generate our own.
+async function _queueScanFiles(files){
+  const stage=document.getElementById('aiScanStage');
+  stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
+    +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br><span>קורא קבצים…</span></div>';
+  if(!window.__pendingScanPages) window.__pendingScanPages=[];
+  try{
+    const items=await filesToUploadPages(files);
+    let dropped=0;
+    for(const it of items){
+      if(/כרטיס\s*עובד|0101\/130/.test(it.text||'')){ dropped++; continue; }
+      window.__pendingScanPages.push({b64:it.b64,mediaType:it.mediaType,hi:_hiPage(it.orig)});
+    }
+    if(dropped) showToast('טופס 101 ישן הוסר ('+dropped+' עמודים) — ייווצר טופס חדש',4000);
+  }catch(e){ console.error(e); showToast('לא ניתן לקרוא את הקבצים',4000); }
+  renderPendingPagesPrompt();
 }
 
 // Straightens/crops the scanned photo using the AI's reported rotation +
@@ -708,6 +733,7 @@ function cropPortraitAvatar(b64,mediaType,box){
         const ctx=cv.getContext('2d');
         ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
         ctx.drawImage(img,sx0,sy0,side,side,0,0,AVATAR_SIZE,AVATAR_SIZE);
+        grayscaleCanvas(cv); // avatars are black and white (schedule-manager.html)
         resolve(cv.toDataURL('image/jpeg',0.85).split(',')[1]);
       }catch(e){ resolve(null); }
     };
@@ -1671,19 +1697,29 @@ const ID_CORE_FIELDS=['dob','sex','address','houseNumber','city','maritalStatus'
 const CORE_FIELDS=['dob','sex','address','city'];
 const missingCore=p=>p&&p.type==='israeli_id'&&CORE_FIELDS.some(f=>!p[f]);
 // Whether a page of this kind after the primary gets an AI read. An Israeli
-// ID reads extra pages while it misses core fields. A passport reads only a
+// ID reads extra pages while it misses core fields, and every page the align
+// model calls a ספח: the ספח is a folded sheet, often photographed in parts,
+// and the children or spouse can be on a part after the address. A passport
+// reads only a
 // ספח or ID card back: that makes the holder an Israeli resident
 // (_passportHolderIsIsraeli); a contract next to a passport costs nothing.
 const PASSPORT_EXTRA_KINDS=['sefach','id_back'];
 function extraReadWanted(primary,kind){
   if(!primary) return false;
   if(primary.type==='passport') return PASSPORT_EXTRA_KINDS.includes(kind);
-  return missingCore(primary);
+  return kind==='sefach'||missingCore(primary);
 }
 function mergeIsraeliIdFields(primary,extra){
   if(!primary||primary.type!=='israeli_id'||!extra||extra.type!=='israeli_id') return primary;
   for(const f of ID_CORE_FIELDS){ if(!primary[f]&&extra[f]) primary[f]=extra[f]; }
-  if((!primary.children||!primary.children.length)&&Array.isArray(extra.children)&&extra.children.length) primary.children=extra.children;
+  // Children from every page, each child once (by ID number, else name):
+  // a ספח photographed in parts lists them on different parts.
+  if(Array.isArray(extra.children)&&extra.children.length){
+    const key=c=>_normScanDigits(String(c&&c.idNo||''))||String(c&&c.name||'').replace(/\s+/g,' ').trim();
+    const kids=[...(primary.children||[])], seen=new Set(kids.map(key));
+    for(const c of extra.children){ const k=key(c); if(k&&!seen.has(k)){ seen.add(k); kids.push(c); } }
+    primary.children=kids;
+  }
   // Spouse rows (ספח only) — taken whole from the first page that has any.
   const hasSpouse=sp=>sp&&(sp.surname||sp.given||sp.idNo);
   if(!hasSpouse(primary.spouse)&&hasSpouse(extra.spouse)) primary.spouse=extra.spouse;
@@ -1852,7 +1888,7 @@ function renderPendingPagesPrompt(){
   stage.innerHTML=`
     <div style="display:flex;flex-direction:column;gap:12px">
       ${pages.length||window.__aiScanImage?`<div style="font-size:13px;color:var(--text2)">${pages.length} תמונות ממתינות לעיבוד</div>`
-        :`<div dir="rtl" style="font-size:12px;color:var(--text3);line-height:1.5">לחצו על + כדי לצלם או להעלות את המסמך. תומך ב: דרכון זר, תעודת זהות ישראלית (שני הצדדים), סריקת PDF. אפשר לבחור כמה קבצים בבת אחת (חבילה מוכנה של טופס 101 + דרכון + חוזה) — טופס 101 ישן בחבילה יוחלף בשלנו.</div>`}
+        :`<div dir="rtl" style="font-size:12px;color:var(--text3);line-height:1.5">לחצו על + כדי לצלם או להעלות את המסמך. תומך ב: דרכון זר, תעודת זהות ישראלית (שני הצדדים), סריקת PDF. אפשר לבחור כמה תמונות או קבצי PDF בבת אחת — כל עמוד נכנס למשבצת משלו. טופס 101 ישן מוסר ויוחלף בשלנו.</div>`}
       ${_scanPagesGrid(pages,'removePendingScanPage','queue','aiScanFilePending')}
       ${_scanPagesButtons('aiScanFilePending','עבד '+(pages.length||'')+' עמודים','processAllPendingPages()',!pages.length)}
     </div>`;

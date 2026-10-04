@@ -2262,6 +2262,7 @@ function confirmAvatarCrop(){
   const ctx=cv.getContext('2d');
   ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
   ctx.drawImage(img,sx,sy,sSize,sSize,0,0,AVATAR_SIZE,AVATAR_SIZE);
+  grayscaleCanvas(cv);
   __wAvatarB64=cv.toDataURL('image/jpeg',0.85).split(',')[1];
   closeAvatarCropEditor();
   const wImg=document.getElementById('wAvatarImg');
@@ -6768,6 +6769,16 @@ function showNewVersionBar(){
 startVersionWatch(()=>[location.pathname,'firestore-backend.js',...(window.__scanPipelineReady?['scan-pipeline.js']:[])]);
 
 const AVATAR_SIZE=160; // shared with scan-pipeline.js's cropPortraitAvatar() and confirmAvatarCrop() below (manual crop editor) — must stay in THIS file, not the lazy one, since confirmAvatarCrop() runs on every worker-photo edit regardless of scanning
+// Worker avatars are black and white (per user request 2026-10-04): the
+// portrait is turned to grey on the AVATAR_SIZE canvas it was cut onto, in
+// both the scan's portrait crop (cropPortraitAvatar) and the manual crop
+// editor (confirmAvatarCrop). Pixel math, so it works on every browser.
+function grayscaleCanvas(cv){
+  const ctx=cv.getContext('2d'), im=ctx.getImageData(0,0,cv.width,cv.height), d=im.data;
+  for(let i=0;i<d.length;i+=4){ const y=Math.round(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]); d[i]=d[i+1]=d[i+2]=y; }
+  ctx.putImageData(im,0,0);
+  return cv;
+}
 
 // ===== Lazy-loaded scan pipeline (added 2026-09-28, optimization) =====
 // The AI document-scan pipeline (corner editor, alignment/OCR orchestration,
