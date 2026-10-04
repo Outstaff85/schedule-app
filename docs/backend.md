@@ -120,7 +120,7 @@ The seven AI actions: the Anthropic request for each, the reply handling and the
 
 | Action | Model | `max_tokens` | Returns |
 |---|---|---|---|
-| `aiReadDoc` | `ANTHROPIC_MODEL` | 8000 | passport or Israeli ID fields, `fieldBoxes`, `photoBox`, `children`, `spouse`; `latinSurname` / `latinGiven` and `mrzName` for the name cross-check; system prompt cached |
+| `aiReadDoc` | `ANTHROPIC_MODEL` | 8000 | passport or Israeli ID fields, `fieldBoxes`, `photoBox`, `children`, `spouse`; `latinSurname` / `latinGiven` and `mrzName` for the name cross-check; an Israeli passport comes back as `israeli_id` (Hebrew names, `idNo`, `passportNo`); system prompt cached |
 | `aiReadSefach` | `ANTHROPIC_MODEL` | 4500 | an extra Israeli page: address, house number, city, marital status, sex, spouse, children, idNo and the holder's given / surname (cross-checks), `fieldBoxes` of address / house number / city |
 | `aiDetectAlign` | `ANTHROPIC_ALIGN_MODEL` | 400 | `{kind, rotate (0/90/180/270), corners {tl,tr,br,bl} as fractions}` |
 | `aiVerifyField` | `ANTHROPIC_MODEL` | 50 | one zoomed field (`digits9`, `date`, `passportNo`); empty when unreadable |

@@ -144,7 +144,6 @@ async function onScanFilesSelected(fileList){
     await Promise.all(items.map(async it=>{ it.kind=isForm101Page(it)?null:await classifyPage(it); }));
     tm.classifyMs=Date.now()-cs;
     const sefachReads=new Map();
-    let needMore=false;
     const otherPages=[];
     for(let i=0;i<items.length;i++){
       const it=items[i];
@@ -163,7 +162,7 @@ async function onScanFilesSelected(fileList){
           if(p&&(p.type==='israeli_id'||p.type==='passport')){
             // Start the following pages' ספח reads now, in parallel with this
             // page's digit re-check (merged in page order below, unchanged).
-            if(missingCore(p)) for(let j=i+1;j<items.length;j++){ const rd=extraPageReader(items[j].kind); if(rd&&!isForm101Page(items[j])) sefachReads.set(j,rd(items[j])); }
+            for(let j=i+1;j<items.length;j++){ if(!extraReadWanted(p,items[j].kind)) continue; const rd=extraPageReader(items[j].kind); if(rd&&!isForm101Page(items[j])) sefachReads.set(j,rd(items[j])); }
             // Same zoomed-in digit re-check as the single-photo path (runOcr) —
             // a wrong ID/date digit is just as costly whether it came from one
             // photo or a multi-file packet.
@@ -176,15 +175,14 @@ async function onScanFilesSelected(fileList){
             foundParsed=initPrimaryFromFirstPage(foundParsed);
             window.__aiScanImage={b64:it.b64,mediaType:it.mediaType};
             window.__aiAvatarB64=p.photoBox?await cropPortraitAvatar(it.b64,it.mediaType,p.photoBox):null;
-            needMore=missingCore(foundParsed);
             window.__aiPageParsed=[foundParsed]; // primary page's own data — parallel to __aiScanImage
             continue; // эта страница уже сохранена как window.__aiScanImage, в "прочие" не дублируем
           }
         }catch(e){ console.error(e); }
-      } else if(needMore){
+      } else if(extraReadWanted(foundParsed,it.kind)){
         try{
-          // needMore is only ever true after an Israeli-ID primary (see
-          // missingCore), so this extra page is the ספח/address side: read it
+          // After an Israeli-ID primary missing core fields, or a passport
+          // (extraReadWanted), this extra page is the ספח/address side: read it
           // with the narrow aiReadSefach (smaller prompt/output, always
           // type:israeli_id) instead of the full aiReadDoc, which re-derived
           // type/fieldBoxes/photoBox for nothing and was noticeably slower.
@@ -209,7 +207,6 @@ async function onScanFilesSelected(fileList){
             // check (verifyIdChecksum, already run on foundParsed above) is the
             // one signal that actually surfaces a warning; not duplicated here.
           }
-          needMore=missingCore(foundParsed);
           // Note: no `continue` here even when this page's data got merged —
           // this page's own photo (commonly the ספח) still needs to fall
           // through to the otherPages.push() below so it's kept in the
@@ -956,12 +953,35 @@ function _editDistance(a,b){
   for(let i=1;i<=m;i++){ const cur=[i]; for(let j=1;j<=n;j++) cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1)); prev=cur; }
   return prev[n];
 }
+// Hebrew consonants against a Latin spelling. Usual spelling noise: ו spelled
+// V (an extra B on the Latin side), ח spelled H (an X with nothing on the
+// Latin side), and classes spelled alike (צ as Z, כ as CH). Anything else is
+// suspicious: a different consonant (ד read as ר: D vs R), or one missing or
+// extra. → {d: edits, subs: suspicious edits}.
+const _SKEL_SAME=new Set(['CZ','ZC','KX','XK']);
+function _skeletonAlign(a,b){
+  const m=a.length, n=b.length, pick=(x,y)=>y.d<x.d||(y.d===x.d&&y.subs<x.subs)?y:x;
+  let prev=[{d:0,subs:0}];
+  for(let j=1;j<=n;j++) prev[j]={d:j,subs:prev[j-1].subs+(b[j-1]==='B'?0:1)};
+  for(let i=1;i<=m;i++){
+    const cur=[{d:i,subs:prev[0].subs+(a[i-1]==='X'?0:1)}];
+    for(let j=1;j<=n;j++){
+      const same=a[i-1]===b[j-1]||_SKEL_SAME.has(a[i-1]+b[j-1]);
+      cur[j]=[{d:prev[j].d+1,subs:prev[j].subs+(a[i-1]==='X'?0:1)},     // Hebrew letter with no Latin
+              {d:cur[j-1].d+1,subs:cur[j-1].subs+(b[j-1]==='B'?0:1)},   // Latin letter with no Hebrew
+              {d:prev[j-1].d+(same?0:1),subs:prev[j-1].subs+(same?0:1)}].reduce(pick);
+    }
+    prev=cur;
+  }
+  return prev[n];
+}
 function _nameRefDistance(v,ref,latin){
   if(latin){
     const a=String(v||'').toUpperCase().replace(/[^A-Z]/g,''), r=String(ref||'').toUpperCase().replace(/[^A-Z]/g,'');
-    return _editDistance(r.length>=30?a.slice(0,r.length):a,r); // a long MRZ name may be cut short
+    const d=_editDistance(r.length>=30?a.slice(0,r.length):a,r); // a long MRZ name may be cut short
+    return {d,subs:d};
   }
-  return _editDistance(_hebSkeleton(v),_latSkeleton(ref));
+  return _skeletonAlign(_hebSkeleton(v),_latSkeleton(ref));
 }
 function _pickScanName(reads,refs,latin){
   const key=v=>String(v||'').replace(/[\s\-'"׳״.,]/g,'').toUpperCase();
@@ -976,10 +996,11 @@ function _pickScanName(reads,refs,latin){
   const refList=refs.filter(r=>key(r));
   const len=g=>latin?g.k.length:_hebSkeleton(g.v).length;
   const tol=g=>Math.max(1,Math.floor(len(g)/3)); // spelling noise allowed against a reference
-  const scored=refList.length?groups.map(g=>({g,d:Math.min(...refList.map(r=>_nameRefDistance(g.v,r,latin)))})).sort((a,b)=>a.d-b.d):null;
+  const scored=refList.length?groups.map(g=>{ const ds=refList.map(r=>_nameRefDistance(g.v,r,latin)); const best=ds.reduce((x,y)=>y.d<x.d?y:x); return {g,d:best.d,subs:best.subs}; }).sort((a,b)=>a.d-b.d):null;
   // Every reading agrees: taken, but "check this" when the reference
-  // spelling doesn't match it (all readings misread alike).
-  if(groups.length===1) return {v:groups[0].v,unsure:!!scored&&scored[0].d>tol(groups[0])};
+  // spelling doesn't match it — a different consonant, or more than spelling
+  // noise (all readings misread alike).
+  if(groups.length===1) return {v:groups[0].v,unsure:!!scored&&(scored[0].subs>0||scored[0].d>tol(groups[0]))};
   if(scored&&scored[0].d<scored[1].d&&scored[0].d<=tol(scored[0].g)) return {v:scored[0].g.v,unsure:false};
   const byN=[...groups].sort((a,b)=>b.n-a.n);
   if(byN[0].n>=2&&byN[0].n>byN[1].n) return {v:byN[0].v,unsure:false};
@@ -1649,6 +1670,16 @@ const ID_CORE_FIELDS=['dob','sex','address','houseNumber','city','maritalStatus'
 // manual-crop-then-batch path) so both use the same "keep looking" gate.
 const CORE_FIELDS=['dob','sex','address','city'];
 const missingCore=p=>p&&p.type==='israeli_id'&&CORE_FIELDS.some(f=>!p[f]);
+// Whether a page of this kind after the primary gets an AI read. An Israeli
+// ID reads extra pages while it misses core fields. A passport reads only a
+// ספח or ID card back: that makes the holder an Israeli resident
+// (_passportHolderIsIsraeli); a contract next to a passport costs nothing.
+const PASSPORT_EXTRA_KINDS=['sefach','id_back'];
+function extraReadWanted(primary,kind){
+  if(!primary) return false;
+  if(primary.type==='passport') return PASSPORT_EXTRA_KINDS.includes(kind);
+  return missingCore(primary);
+}
 function mergeIsraeliIdFields(primary,extra){
   if(!primary||primary.type!=='israeli_id'||!extra||extra.type!=='israeli_id') return primary;
   for(const f of ID_CORE_FIELDS){ if(!primary[f]&&extra[f]) primary[f]=extra[f]; }
@@ -1690,6 +1721,7 @@ function initPrimaryFromFirstPage(current){
 // re-scanning for) — a no-op in that case.
 function mergeScanPage(primary,current){
   if(!current) return primary;
+  if(primary&&primary.type==='passport'&&current.type==='israeli_id'&&(current.__fromSefachReader||current.__isSefachScan)) _passportHolderIsIsraeli(primary);
   const isSefachRead=!!current.__isSefachScan;
   const currentIdNo=/^\d{9}$/.test(current.idNo||'')?current.idNo:'';
   if(isSefachRead){
@@ -1707,8 +1739,26 @@ function mergeScanPage(primary,current){
     for(const f of ['given','surname','expiry']) if(!primary[f]&&current[f]) primary[f]=current[f];
   }
   mergeIsraeliIdFields(primary,current);
+  // A passport holder's ID number comes only from the ספח: its check digit is
+  // the only check it gets (a failing one warns in the worker modal).
+  if(primary.__fromPassport) primary.idChecksumOk=isValidIsraeliId(primary.idNo||'');
   _addScanNameReads(primary,current);
   return _resolveScanNames(primary);
+}
+// A ספח (or ID card back) next to a passport: the holder is an Israeli
+// resident and is recorded like an Israeli ID — Hebrew names and the ID
+// number, as Form 101 needs (per user decision 2026-10-04). The ספח brings
+// the Hebrew names, ID number, address and family; the passport's Latin
+// names and MRZ name line stay as references for the Hebrew names
+// (_pickScanName); its dates, sex and passport number stay.
+function _passportHolderIsIsraeli(primary){
+  const ref={type:'israeli_id',latinSurname:primary.surname||'',latinGiven:primary.given||'',mrzName:primary.mrzName||''};
+  primary.type='israeli_id';
+  primary.__fromPassport=true;
+  primary.surname=''; primary.given=''; primary.idNo='';
+  primary.__uncertain=(primary.__uncertain||[]).filter(f=>!_SCAN_NAME_FIELDS.includes(f));
+  primary.__names=null; primary.__full=null;
+  _addScanNameReads(primary,ref);
 }
 // Recomputes window.__aiPrimaryParsed from scratch out of window.__aiPageParsed
 // (each page's own raw parsed data, kept parallel to __aiScanPageThumbs) —
@@ -1858,7 +1908,7 @@ function readFrontPage(it){
 // the full read; everything else gets aiReadSefach. That includes "contract"
 // and "other": the align model often files the paper ספח (a printed form)
 // under them, which left the address empty. Extra pages are read only while
-// the primary still misses core fields (needMore), so a real contract costs
+// the primary still misses core fields (extraReadWanted), so a real contract costs
 // one read at most, and aiReadSefach returns nothing for it.
 function extraPageReader(kind){
   if(kind==='passport') return null;
@@ -1873,7 +1923,7 @@ const isNonIdKind=kind=>kind==='contract'||kind==='other';
 // the primary page through aiReadDoc, and as soon as it is known to be an
 // Israeli ID that still misses core fields, the following pages' aiReadSefach
 // reads start in the background while the primary's digits are re-verified.
-// Results are still merged strictly in page order with the same needMore
+// Results are still merged strictly in page order with the same extraReadWanted
 // rule, so the merged record is identical to the old sequential loop.
 // Pattern (docs/backend.md → Parallel AI calls): independent requests start
 // at once, the code waits only where a step needs a result; ai_read
@@ -1896,7 +1946,6 @@ async function processAllPendingPages(){
   // without one can only be stale state from another scan, never resume it.
   const resuming=!!((window.__aiPrimaryParsed||window.__aiParsed)&&window.__aiScanImage);
   let foundParsed=resuming?(window.__aiPrimaryParsed||window.__aiParsed||null):null;
-  let needMore=missingCore(foundParsed);
   const otherPages=resuming?window.__aiPacketOtherPages.slice():[];
   let pageParsed=resuming?window.__aiPageParsed.slice():[];
   const total=queue.length;
@@ -1972,10 +2021,11 @@ async function processAllPendingPages(){
 
   // Phase 2 — reads.
   const sefachReads=new Map();
-  const prefetchSefachFrom=start=>{ for(let j=start;j<usable.length;j++){ const rd=extraPageReader(usable[j].kind); if(rd&&!sefachReads.has(j)) sefachReads.set(j,rd(usable[j])); } };
-  if(foundParsed&&needMore) prefetchSefachFrom(0); // resumed session: every queued page is an extra page
+  // p: the primary's read — which following pages get a read (extraReadWanted).
+  const prefetchSefachFrom=(start,p)=>{ for(let j=start;j<usable.length;j++){ if(!extraReadWanted(p,usable[j].kind)) continue; const rd=extraPageReader(usable[j].kind); if(rd&&!sefachReads.has(j)) sefachReads.set(j,rd(usable[j])); } };
+  if(foundParsed) prefetchSefachFrom(0,foundParsed); // resumed session: every queued page is an extra page
   if(earlyRead&&usable.length>1&&!isNonIdKind(usable[0].kind)){
-    earlyRead.then(p=>{ if(p&&(p.type==='israeli_id'||p.type==='passport')&&missingCore(p)) prefetchSefachFrom(1); }).catch(()=>{});
+    earlyRead.then(p=>{ if(p&&(p.type==='israeli_id'||p.type==='passport')) prefetchSefachFrom(1,p); }).catch(()=>{});
   }
   const readPct=i=>Math.round(40+50*(i+1)/Math.max(1,usable.length));
   for(let i=0;i<usable.length;i++){
@@ -1988,12 +2038,11 @@ async function processAllPendingPages(){
         renderScanProgress('ה-AI קורא את המסמך… (עמוד 1 מתוך '+total+')',Math.max(45,readPct(i)-30));
         const r=await earlyPrimary;
         if(r&&r.verified){
-          if(missingCore(r.p)) prefetchSefachFrom(1);
+          prefetchSefachFrom(1,r.p);
           foundParsed=initPrimaryFromFirstPage(r.verified);
           window.__aiAvatarB64=r.avatar;
           renderScanProgress('מחדד קצוות… (עמוד 1 מתוך '+total+')',readPct(i));
           window.__aiScanImage=await finalTightenPass(it);
-          needMore=missingCore(foundParsed);
           pageParsed=[foundParsed];
           continue;
         }
@@ -2012,7 +2061,7 @@ async function processAllPendingPages(){
         if(p&&(p.type==='israeli_id'||p.type==='passport')){
           // Start the following pages' ספח reads now, so they run while this
           // page's digits are being re-verified below.
-          if(missingCore(p)) prefetchSefachFrom(i+1);
+          prefetchSefachFrom(i+1,p);
           if(p.fieldBoxes) renderScanProgress('בודק שוב את הספרות… (עמוד '+(i+1)+' מתוך '+total+')',Math.max(55,readPct(i)-20));
           const vs=Date.now();
           foundParsed=p.fieldBoxes?await verifyDigitFields(p,it.b64,it.mediaType,hi):p;
@@ -2028,12 +2077,11 @@ async function processAllPendingPages(){
           window.__aiAvatarB64=p.photoBox?await cropPortraitAvatar(it.b64,it.mediaType,p.photoBox):null;
           renderScanProgress('מחדד קצוות… (עמוד '+(i+1)+' מתוך '+total+')',readPct(i));
           window.__aiScanImage=await finalTightenPass(it);
-          needMore=missingCore(foundParsed);
           pageParsed=[foundParsed];
           continue; // this page's image is __aiScanImage — not duplicated into otherPages
         }
       }catch(e){ console.error(e); }
-    } else if(needMore){
+    } else if(extraReadWanted(foundParsed,kind)){
       renderScanProgress('ה-AI קורא את הספח… (עמוד '+(i+1)+' מתוך '+total+')',Math.max(60,readPct(i)-10));
       // Same as the multi-file path: an extra page after an Israeli-ID
       // primary is the ספח (or the card back) — narrow aiReadSefach, usually
@@ -2048,7 +2096,6 @@ async function processAllPendingPages(){
         foundParsed=mergeScanPage(foundParsed,p);
         thisPageParsed=p;
       }
-      needMore=missingCore(foundParsed);
     }
     // finalTightenPass (pure local pixel math, no AI call) runs on every
     // extra page too.
