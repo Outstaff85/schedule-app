@@ -133,6 +133,36 @@ The seven AI actions: the Anthropic request for each, the reply handling and the
 - **Prompts** live in `functions-auth/ai_prompts.json` — edit them there. The Israeli and passport rules (page kinds A/B/C and the old laminated card's fixed field order, joined ID groups, Gregorian dates only, holder vs spouse vs child numbers, the MRZ cross-check) are in `readDoc` / `readSefach`.
 - **Tests:** `tests/auth/test_ai.py` compares every request and result with `tests/auth/ai_golden.json`, recorded from the original Apps Script actions. A prompt edit therefore fails `test_same_request` until the golden file is updated for the new prompt.
 
+## Parallel AI calls — the pattern
+
+How a feature that sends several AI requests is built, on both ends. Follow it for any new one.
+
+**Client (the page).** Every request that does not need another one's answer is started at once, and the code waits only where a later step really needs a result:
+
+| Where | Sent in parallel |
+|---|---|
+| `processAllPendingPages` (`scan-pipeline.js`) | Phase 1: `aiDetectAlign` + `preprocess_scan` for every queued page (`Promise.all`); the early `aiReadDoc` of the first page as cropped, alongside Phase 1; the ספח `aiReadSefach` (`prefetchSefachFrom`) while the front page's digits are re-checked; the zoom batches (`aiVerifyFields`), one per page |
+| `findScanFields` (`schedule-manager.html`) | one `aiFindField` batch per page |
+| hours import | `aiReadHoursTable` per page of every file |
+| uploads | `fileToUploadPages` / `fileForStorage` and `uploadWorkerFile` per file |
+
+Rules:
+- one request = one page or one batch of fields; requests share no state, and results are merged afterwards in page order, so the outcome is the same as the sequential order;
+- parallel sending changes only the time, never the number of AI calls (an ID front + ספח read cleanly = 6 calls);
+- a failed request fails alone (`aiDetectAlign` leaves the page as cropped, a failed ספח read is logged); busy replies are retried on the server (`RETRY_PAUSES`).
+
+**Server (the function).** `ai_read` is declared so that one warm instance serves all of a scan's parallel requests:
+
+| Setting | Value | Why |
+|---|---|---|
+| `cpu` | 1 | a full CPU; the default third of one makes a cold start and the image work slow |
+| `concurrency` | 20 | up to 20 requests in one instance. With the default (1) every parallel call started an instance of its own, and a cold one cost 5–20 s. The requests mostly wait on Anthropic, so 20 fit; a scan sends up to ~6 at a time |
+| `memory` | 512 MB | |
+| `timeout_sec` | 300 | a slow reply plus the retries |
+| `min_instances` | 0 | an idle function costs nothing; the first call of the day may still start cold |
+
+Conditions for `concurrency` > 1: requests run in threads of one process, so a handler keeps no per-request state in globals, and a shared object is created once under a lock (`_db()` with `threading.Lock`). A new function that receives parallel calls copies these settings and conditions.
+
 ## Cloud Functions — `functions/` (codebase `default`, us-central1)
 
 - `fill_form_101` — builds the Form 101 PDF ([form101.md](form101.md)).
