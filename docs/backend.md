@@ -14,7 +14,7 @@ Project `schedule-odinson`; Firestore and the `functions-auth` functions in **eu
 | `tenants/{t}/settings/schedule` | `weekStart`, `savedAt` — copied from the sheets by the old migration; nothing writes it now | — |
 | `tenants/{t}/punches/{id}` | a punch ([accounting.md](accounting.md) → the punch) with `ts` as a Timestamp, `day` (`yyyy-MM-dd`), `archived`, `hrId` (the worker's HR, when it has one); `tsRaw` when a migrated sheet timestamp was unreadable | the app, the `punch` function, an approved hours batch |
 | `tenants/{t}/pendingHours/{batchId}` | `{status, fileName, uploadedBy, createdBy, uploadedAt, createdAt, rows:[{rowId, workerId, clientId, date, inTime, outTime}]}` | the app |
-| `users/{uid}` | `username, tenantId, role, permissions ('*' or list), supplierId, active, createdAt`; for `hr` also `fullName, phone, ownOnly` | functions only |
+| `users/{uid}` | `username, tenantId, role, permissions ('*' or list), supplierId, active, createdAt, fullName` (the person's name the app shows), `phone`; for `hr` also `ownOnly` | functions only |
 | `authSecrets/{uid}` | `algo ('scrypt', or 'sha256' until the user's next login), salt, hash, failCount, lastFailAt` | functions only |
 | `usernames/{name}` | `{uid}` — keeps usernames unique | functions only |
 | `workerTokens/{token}` | left over from the migration; nothing reads or writes it (the `punch` function finds a token by a collection-group query on `workers.token`) | — |
@@ -55,7 +55,7 @@ It returns:
 
 - `logBatch` / `logError` / `logTiming` → `errors` / `timings` documents (max 60 per batch, fields clipped); before the Firebase sign-in → `{ok:false, skipped:true}`.
 - Any other action before the sign-in → the session-expired error.
-- Users and firms (`listTenants, setTenantActive, deleteTenant, createUser, updateTenant, loadTenantProfile, listUsers, createTenantUser, updateUser, resetUserPassword, deleteUser, checkWorkerDoc`) → `users_admin` with the ID token.
+- Users and firms (`listTenants, setTenantActive, deleteTenant, createUser, updateTenant, loadTenantProfile, listUsers, createTenantUser, updateUser, resetUserPassword, deleteUser, checkWorkerDoc, updateMyName`) → `users_admin` with the ID token.
 - The AI actions (`aiReadDoc, aiReadSefach, aiDetectAlign, aiVerifyField, aiVerifyFields, aiReadHoursTable, aiFindField`) → `ai_read`.
 - `loadWorkerAssets` / `deleteWorkerDoc` → `users_admin` for a `tenants/…` id. Any other id: delete answers `{ok:true}` (nothing of ours to delete), load answers "Файл не найден".
 - `loadErrors` / `loadTimings` — super-admin only, newest first. With `from` / `to` (ISO times; the panes' period picker) only that period, up to 2000 errors / 5000 timings; without them the newest 100 / 500.
@@ -89,10 +89,11 @@ Minting custom tokens needs the runtime service account to hold "Service Account
   - Custom-token claims (`claims_for`): `role` (`'tenant'` normalized to `tenant_admin`), `perms` (`['*']`, a list, or `[]` for a supplier), `tenantId`, `supplierId`; for `hr` also `own` ("only own workers", true unless `ownOnly` is false).
 - **Users** (superadmin: any firm; `tenant_admin`: own firm only):
   - `listUsers` — never returns hashes;
-  - `createTenantUser` — role `staff`, `hr` or `supplier` only, password ≥ 8, a supplier needs `supplierId`, an HR needs `fullName` (also stores `phone`, `ownOnly` default true; permissions default `['workers']`); the `usernames` doc is created in the same batch, so a taken name fails the whole batch ("Такой логин уже существует");
-  - `updateUser` (`permissions`, `supplierId`, `active`; for HR `ownOnly`, and `fullName` / `phone`, which alone don't revoke), `resetUserPassword`, `deleteUser` — refuse a `tenant_admin` / `superadmin` target and another firm's user; each revokes the user's Firebase sessions (delete removes the Auth user).
+  - `createTenantUser` — role `staff`, `hr` or `supplier` only, password ≥ 8, a supplier needs `supplierId`, stores `fullName` and `phone` for every role; an HR needs `fullName` (also stores `ownOnly` default true; permissions default `['workers']`); the `usernames` doc is created in the same batch, so a taken name fails the whole batch ("Такой логин уже существует");
+  - `updateUser` (`permissions`, `supplierId`, `active`; `fullName` / `phone` for every role, which alone don't revoke — an HR's name can't be emptied; for HR `ownOnly`), `resetUserPassword`, `deleteUser` — refuse a `tenant_admin` / `superadmin` target and another firm's user; each revokes the user's Firebase sessions (delete removes the Auth user).
+- **`updateMyName`** (`{fullName}`, any signed-in user, owner and super-admin included): sets the caller's own `fullName`; an HR's can't be empty.
 - **`checkWorkerDoc`** (superadmin, tenant_admin, staff, hr; `{docId, workerId?}`): is a worker with this document number (`docId`, `passportNo` or `israeliId`, compared on letters and digits only) already in the caller's firm, other than `workerId` — `{ok, exists}`, nothing else, so an own-workers HR learns no other worker's data.
-- **Firms** (superadmin): `createUser` (a new firm + its `tenant_admin`; profile strings stay strings, so no leading-zero loss), `listTenants` (profile, active, worker/client counts by aggregation, `savedAt`), `setTenantActive` (the firm and all its users; deactivation revokes their sessions), `deleteTenant` (recursive delete of `tenants/{t}`, its users, secrets and usernames; `main.py` then deletes every Storage object under `tenants/<t>/` and reports `removed.files`). `updateTenant` — superadmin or the firm's own `tenant_admin`. `loadTenantProfile`.
+- **Firms** (superadmin): `createUser` (a new firm + its `tenant_admin`, whose `fullName` is `ownerName`; profile strings stay strings, so no leading-zero loss), `listTenants` (profile, active, worker/client counts by aggregation, `savedAt`), `setTenantActive` (the firm and all its users; deactivation revokes their sessions), `deleteTenant` (recursive delete of `tenants/{t}`, its users, secrets and usernames; `main.py` then deletes every Storage object under `tenants/<t>/` and reports `removed.files`). `updateTenant` — superadmin or the firm's own `tenant_admin`. `loadTenantProfile`.
 
 ### `files.py` — reading and deleting Storage files
 
