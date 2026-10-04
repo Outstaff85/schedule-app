@@ -2361,12 +2361,10 @@ function renderChildrenRows(){
   if(!wrap) return;
   wrap.innerHTML = __wChildren.map((c,i)=>`
     <div class="w-child" style="margin-bottom:8px">
-      <div class="field-row" style="grid-template-columns:1.6fr 1fr;gap:8px;margin-bottom:6px">
-        <div class="field" style="margin-bottom:0"><label>שם הילד/ה</label><input type="text" value="${esc(c.name||'')}" oninput="__wChildren[${i}].name=this.value;updateWPanelLabels()"></div>
-        <div class="field" style="margin-bottom:0"><label>תאריך לידה</label><input type="text" placeholder="DD/MM/YYYY" value="${esc(c.dob||'')}" oninput="__wChildren[${i}].dob=this.value;updateWPanelLabels()"></div>
-      </div>
-      <div class="field-row" style="grid-template-columns:1fr auto;align-items:end;gap:8px">
+      <div class="field" style="margin-bottom:6px"><label>שם הילד/ה</label><input type="text" value="${esc(c.name||'')}" oninput="__wChildren[${i}].name=this.value;updateWPanelLabels()"></div>
+      <div class="field-row" style="grid-template-columns:1fr 1fr auto;align-items:end;gap:8px">
         <div class="field" style="margin-bottom:0"><label>ת.ז. / דרכון</label><input type="text" value="${esc(c.idNo||'')}" oninput="__wChildren[${i}].idNo=this.value;updateWPanelLabels()"></div>
+        <div class="field" style="margin-bottom:0"><label>תאריך לידה</label><input type="text" placeholder="DD/MM/YYYY" value="${esc(c.dob||'')}" oninput="__wChildren[${i}].dob=this.value;updateWPanelLabels()"></div>
         <button class="btn sm" type="button" onclick="removeChildRow(${i})" title="הסר"><i class="ti ti-trash"></i></button>
       </div>
     </div>`).join('')
