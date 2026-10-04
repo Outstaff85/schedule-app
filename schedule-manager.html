@@ -6732,7 +6732,7 @@ async function fileToUploadPages(file){
   const raw={b64:await _readFileB64(file),mediaType:file.type||'image/jpeg'};
   const d=await downscaleForUpload(raw.b64,raw.mediaType);
   // orig: the photo before shrinking, only when it was shrunk — the scan
-  // crops its zoomed field re-reads from it (scan-pipeline.js _hiImage).
+  // crops its zoomed field re-reads from it (scan-pipeline.js _hiFieldCrop).
   return [{b64:d.b64,mediaType:d.mediaType,text:'',fileName:file.name||'',orig:d.b64!==raw.b64?raw:null}];
 }
 // One file prepared for STORAGE (kept as a single file, unlike the per-page
