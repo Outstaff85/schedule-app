@@ -1442,8 +1442,9 @@ function renderGanttBody(){
   const cols='170px repeat(7,1fr)';
   const body=document.getElementById('ganttBody');
   const vis=getVisible();
-  let h='';
-  vis.forEach(w=>{
+  // One schedule row per worker, paged like every other list.
+  renderPagedList(body,'gantt',String(selectedClientId||''),vis,w=>{
+    let h='';
     const wi=workers.indexOf(w);
     const c=WORKER_COLORS[w.colorIdx%8];
     h+=`<div class="gantt-row" style="grid-template-columns:${cols}" draggable="true"
@@ -1469,8 +1470,8 @@ function renderGanttBody(){
       h+=`</div>`;
     });
     h+=`</div>`;
+    return h;
   });
-  body.innerHTML=h;
 }
 
 function hourTicks(){
@@ -1490,11 +1491,10 @@ function renderWorkerList(){
   if(sort==='name')       list.sort((a,b)=>a.w.name.localeCompare(b.w.name));
   else if(sort==='hours') list.sort((a,b)=>workerTotalHours(b.w)-workerTotalHours(a.w));
   else if(sort==='status'){ const rank={active:0,vacation:1,fired:2}; list.sort((a,b)=>((rank[a.w.status||'active']??0)-(rank[b.w.status||'active']??0))||a.w.name.localeCompare(b.w.name)); }
-  let h='';
-  list.forEach(({w,wi})=>{
+  renderPagedList(el,'sideWorkers',sort,list,({w,wi})=>{
     const c=WORKER_COLORS[w.colorIdx%8],wh=workerTotalHours(w);
     const rateStr=w.hourlyRate?(' · ₪'+w.hourlyRate+'/h'):'';
-    h+=`<div class="worker-chip">
+    return `<div class="worker-chip">
       <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${workerAvatarInner(w)}</div>
       <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">FIRED</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">VAC</span>':''}${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div><div class="worker-hours">${wh.toFixed(1)}h${rateStr}</div></div>
       <div class="worker-actions">
@@ -1504,12 +1504,11 @@ function renderWorkerList(){
       </div>
     </div>`;
   });
-  el.innerHTML=h;
 }
 
 function renderSidebarClients(){
   const el=document.getElementById('sidebarClientList'); if(!el) return;
-  let h=`<div class="client-chip ${!selectedClientId?'selected':''}" onclick="filterByClient(null)">
+  const head=`<div class="client-chip ${!selectedClientId?'selected':''}" onclick="filterByClient(null)">
     <div class="client-dot" style="background:var(--text2)"></div>
     <span class="client-name-label">All clients</span>
   </div>`;
@@ -1517,13 +1516,10 @@ function renderSidebarClients(){
   const csort=document.getElementById('clientSort')?.value||'name';
   if(csort==='name')          cl.sort((a,b)=>a.name.localeCompare(b.name));
   else if(csort==='workers')  cl.sort((a,b)=>workers.filter(w=>(w.clientIds||[]).includes(b.id)).length-workers.filter(w=>(w.clientIds||[]).includes(a.id)).length);
-  cl.forEach(c=>{
-    h+=`<div class="client-chip ${selectedClientId===c.id?'selected':''}" onclick="filterByClient('${c.id}')">
+  renderPagedList(el,'sideClients',csort,cl,c=>`<div class="client-chip ${selectedClientId===c.id?'selected':''}" onclick="filterByClient('${c.id}')">
       <div class="client-dot" style="background:${c.color}"></div>
       <span class="client-name-label">${esc(c.name)}</span>
-    </div>`;
-  });
-  el.innerHTML=h;
+    </div>`,{head});
 }
 
 function filterByClient(cid){ selectedClientId=cid; render(); }
@@ -2997,8 +2993,10 @@ function workersMonthHours(){
   workers.forEach(w=>{ out[w.id]=getWorkerMonthShifts(w.id,y,m,byWorker[w.id]||[]).reduce((s,x)=>s+x.hours,0); });
   return out;
 }
-function renderWorkerCardsHtml(list,groupBy,stMetaMap){
-  if(!list.length) return '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:14px">No workers found</div>';
+// The workers as card tiles, paged by LIST_PAGE (renderPagedList). Grouped,
+// each group's title is one more tile in the flat list.
+function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
+  if(!list.length){ box.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:14px">No workers found</div>'; return; }
   const hours=workersMonthHours();
   const monthName=new Date().toLocaleDateString('en-GB',{month:'long'});
   const badge=(o)=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${esc(o.color)}22;border-radius:10px;margin:0 3px 3px 0"><span style="width:6px;height:6px;border-radius:50%;background:${esc(o.color)}"></span>${esc(o.name)}</span>`;
@@ -3028,15 +3026,21 @@ function renderWorkerCardsHtml(list,groupBy,stMetaMap){
       </div>
     </div>`;
   };
-  if(!groupBy) return list.map(card).join('');
+  const title=g=>`<div class="workers-group-title">${g.color?`<span style="width:8px;height:8px;border-radius:50%;background:${esc(g.color)}"></span>`:''}${esc(g.name)} <span style="color:var(--text3);font-weight:400">(${g.count})</span></div>`;
+  renderPagedList(box,'workersCards',sig,workersGroupedItems(list,groupBy),it=>it.group?title(it.group):card(it),{grid:true});
+}
+// The worker list flattened for paging: with a grouping, each group's
+// header is an item ({group:{name,color,count}}) followed by its workers. A
+// client-group worker can appear in several groups (several clientIds); a
+// supplier-group worker in exactly one.
+function workersGroupedItems(list,groupBy){
+  if(!groupBy) return list;
   const groups=groupBy==='client'
     ? [...clients.map(c=>({name:c.name,color:c.color,items:list.filter(x=>(x.w.clientIds||[]).includes(c.id))})),
        {name:'No client assigned',color:null,items:list.filter(x=>!(x.w.clientIds||[]).length)}]
     : [...suppliers.map(s=>({name:s.name,color:s.color,items:list.filter(x=>x.w.supplierId===s.id)})),
        {name:'No supplier assigned',color:null,items:list.filter(x=>!x.w.supplierId)}];
-  return groups.filter(g=>g.items.length).map(g=>
-    `<div class="workers-group-title">${g.color?`<span style="width:8px;height:8px;border-radius:50%;background:${esc(g.color)}"></span>`:''}${esc(g.name)} <span style="color:var(--text3);font-weight:400">(${g.items.length})</span></div>`+g.items.map(card).join('')
-  ).join('');
+  return groups.filter(g=>g.items.length).flatMap(g=>[{group:{name:g.name,color:g.color,count:g.items.length}},...g.items]);
 }
 function renderWorkersPage(){
   fillFilterSelect('workersFilterClient', clients, 'All clients');
@@ -3063,9 +3067,10 @@ function renderWorkersPage(){
   document.getElementById('workersViewList')?.classList.toggle('active',view==='list');
   document.getElementById('workersViewCards')?.classList.toggle('active',view==='cards');
   const cardsBox=document.getElementById('workersCards'), tableWrap=document.getElementById('workersTableWrap');
+  const sig=[q,stFilter,clientFilter,supplierFilter,docsFilter,groupBy].join('|');
   if(view==='cards'){
     tableWrap.style.display='none'; cardsBox.style.display='grid';
-    cardsBox.innerHTML=renderWorkerCardsHtml(list,groupBy,stMetaMap);
+    renderWorkerCards(cardsBox,list,groupBy,stMetaMap,sig);
     return;
   }
   cardsBox.style.display='none'; tableWrap.style.display='';
@@ -3098,22 +3103,8 @@ function renderWorkersPage(){
   };
   const groupHeaderHtml=(name,color,count)=>`<tr><td colspan="8" style="padding:8px 12px;background:var(--bg3);font-size:12px;font-weight:700;color:var(--text2)"><span style="display:inline-flex;align-items:center;gap:6px">${color?`<span style="width:8px;height:8px;border-radius:50%;background:${color}"></span>`:''}${esc(name)} <span style="color:var(--text3);font-weight:400">(${count})</span></span></td></tr>`;
 
-  if(!groupBy){
-    tbody.innerHTML=list.map(rowHtml).join('');
-    return;
-  }
-  // Grouped view: a client-group worker can appear in MULTIPLE groups (a
-  // worker can have several clientIds — that's the real many-to-many
-  // relationship, not a bug); a supplier-group worker appears in exactly one
-  // (or "Unassigned"), matching w.supplierId being single-valued.
-  const groups=groupBy==='client'
-    ? [...clients.map(c=>({id:c.id,name:c.name,color:c.color,items:list.filter(x=>(x.w.clientIds||[]).includes(c.id))})),
-       {id:null,name:'No client assigned',color:null,items:list.filter(x=>!(x.w.clientIds||[]).length)}]
-    : [...suppliers.map(s=>({id:s.id,name:s.name,color:s.color,items:list.filter(x=>x.w.supplierId===s.id)})),
-       {id:null,name:'No supplier assigned',color:null,items:list.filter(x=>!x.w.supplierId)}];
-  tbody.innerHTML=groups.filter(g=>g.items.length).map(g=>
-    groupHeaderHtml(g.name,g.color,g.items.length)+g.items.map(rowHtml).join('')
-  ).join('');
+  renderPagedList(tbody,'workersTable',sig,workersGroupedItems(list,groupBy),
+    it=>it.group?groupHeaderHtml(it.group.name,it.group.color,it.group.count):rowHtml(it),{table:true,colspan:9});
 }
 
 const INCOME_TYPE_LABELS = {monthly:'משכורת חודשית',secondary:'משרה נוספת',partial:'משרה חלקית',daily:'שכר יומי',pension:'פנסיה',scholarship:'מלגה'};
@@ -3168,6 +3159,7 @@ function openWorkerCard(wi){
       ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursExportModal('${w.id}')"><i class="ti ti-file-export"></i> Export hours</button>`:''}
       <button class="btn accent" onclick="closeModal('workerCardOverlay');openEditWorker(${wi})"><i class="ti ti-edit"></i> Edit</button>
     </div>`;
+  pageWorkerDocs(document.getElementById('workerCardModal'),w.id);
   document.getElementById('workerCardOverlay').classList.add('open');
 }
 
@@ -3188,7 +3180,7 @@ function rescanFromWorkerCard(wi){
 function workerDocsSectionHtml(w){
   const exp=new Map(workerDocExpiries(w).map(x=>[x.doc.id,x]));
   const docs=[...(w.docs||[])].sort((a,b)=>String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||'')));
-  const rows=docs.map(d=>{
+  const row=d=>{
     const x=exp.get(d.id);
     const col=x?(x.level==='error'?'var(--red)':'var(--amber)'):'var(--text3)';
     const exText=d.expiry?((x&&x.level==='error')?'Expired ':'Expires ')+fmtDMY(d.expiry):'No expiry date';
@@ -3201,14 +3193,22 @@ function workerDocsSectionHtml(w){
       </div>
       ${hasPermission('workers')?`<button class="btn sm" title="Delete" onclick="deleteWorkerFile('${esc(w.id)}','${esc(d.id)}')" style="padding:0 8px"><i class="ti ti-trash"></i></button>`:''}
     </div>`;
-  }).join('');
+  };
+  // The rows are paged into .worker-docs-rows once the card is on screen.
+  __workerDocsPending={docs,row};
   return `<div style="margin-bottom:14px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
       <div style="font-size:13px;font-weight:700"><i class="ti ti-folder"></i> Documents</div>
       ${hasPermission('workers')?`<button class="btn sm" onclick="openWorkerDocUpload('${esc(w.id)}')"><i class="ti ti-upload"></i> Add document</button>`:''}
     </div>
-    ${rows||'<div style="font-size:12px;color:var(--text3)">No documents yet — contract, visa, work permit…</div>'}
+    ${docs.length?'<div class="worker-docs-rows"></div>':'<div style="font-size:12px;color:var(--text3)">No documents yet — contract, visa, work permit…</div>'}
   </div>`;
+}
+let __workerDocsPending=null;
+function pageWorkerDocs(root,workerId){
+  const p=__workerDocsPending; __workerDocsPending=null;
+  const el=root&&root.querySelector('.worker-docs-rows');
+  if(p&&el) renderPagedList(el,'workerDocs',workerId,p.docs,p.row);
 }
 let __workerDocUploadId=null;
 function openWorkerDocUpload(workerId){
@@ -3439,7 +3439,7 @@ function renderClientsPage(){
   const grid=document.getElementById('clientsGrid');
   if(!clients.length){ grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:14px">No clients yet. Click "+ Add Client" to create one.</div>'; return; }
 
-  grid.innerHTML=clients.map(c=>{
+  renderPagedList(grid,'clients','',clients,c=>{
     const assigned=workers.filter(w=>(w.clientIds||[]).includes(c.id));
     return `<div class="client-card">
       <div class="client-card-header">
@@ -3455,7 +3455,7 @@ function renderClientsPage(){
         <button class="btn sm red" onclick="deleteClient('${c.id}')">&#x2715; Remove</button>
       </div>
     </div>`;
-  }).join('');
+  },{grid:true});
 }
 
 // --- Suppliers ----------------------------------------------------------------
@@ -3527,7 +3527,7 @@ function renderSuppliersPage(){
   if(!grid) return;
   if(!suppliers.length){ grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:14px">No suppliers yet. Click "+ Add Supplier" to create one.</div>'; return; }
 
-  grid.innerHTML=suppliers.map(s=>{
+  renderPagedList(grid,'suppliers','',suppliers,s=>{
     const assigned=workers.filter(w=>w.supplierId===s.id);
     return `<div class="client-card">
       <div class="client-card-header">
@@ -3541,7 +3541,7 @@ function renderSuppliersPage(){
         <button class="btn sm red" onclick="deleteSupplier('${s.id}')">&#x2715; Remove</button>
       </div>
     </div>`;
-  }).join('');
+  },{grid:true});
 }
 
 function openManualPunch(cid){
@@ -4151,7 +4151,7 @@ function loadFirmsCache(){ try{ const v=JSON.parse(localStorage.getItem(FIRMS_CA
 function renderFirmsRows(listEl, tenants){
   __firmsCache = tenants;
   if(!tenants.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Фирм ещё нет — создайте первую.</div>'; return; }
-  listEl.innerHTML = tenants.map(t => `
+  renderPagedList(listEl, 'firms:' + listEl.id, '', tenants, t => `
       <div class="row" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);cursor:pointer;${t.active===false?'opacity:0.55':''}" onclick="switchToTenant('${esc(t.tenantId)}')">
         <div>
           <div style="font-weight:600">${esc(t.companyName || '(без названия)')}${t.active===false?' <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px">отключена</span>':''}${firmProfileMissing(t).length?` <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px" title="Не заполнено: ${esc(firmProfileMissing(t).join(', '))}">профиль неполный</span>`:''}</div>
@@ -4163,7 +4163,7 @@ function renderFirmsRows(listEl, tenants){
           <button class="btn sm" onclick="confirmDeleteTenant('${esc(t.tenantId)}','${esc(t.companyName||t.tenantId)}')" title="Удалить" style="color:#ff6b78"><i class="ti ti-trash"></i></button>
           <i class="ti ti-chevron-right"></i>
         </div>
-      </div>`).join('');
+      </div>`);
 }
 async function renderFirmsList(targetId){
   __firmsListTarget = targetId || 'firmsList';
@@ -4296,7 +4296,7 @@ async function renderAdminUsers(){
 }
 // Draws the Users pane from an already-filtered user list (cached or fresh).
 function renderAdminUsersRows(el, users){
-    const rows = users.map(u => {
+    const row = u => {
       const sup = u.role==='supplier' ? (suppliers||[]).find(s=>s.id===u.supplierId) : null;
       const permsLabel = u.role!=='staff' ? '' : (u.permissions==='*' ? 'Full access' : (Array.isArray(u.permissions)?u.permissions.join(', '):'—'));
       return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);${u.active===false?'opacity:0.55':''}">
@@ -4310,9 +4310,10 @@ function renderAdminUsersRows(el, users){
           <button class="btn sm" onclick="deleteUserConfirm('${esc(u.id)}','${esc(u.username)}')" title="Delete" style="color:#ff6b78"><i class="ti ti-trash"></i></button>
         </div>
       </div>`;
-    }).join('');
+    };
     el.innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="openCreateUserForm()"><i class="ti ti-plus"></i> New user</button></div>`
-      + (users.length ? `<div style="display:flex;flex-direction:column;gap:8px">${rows}</div>` : '<div style="color:var(--text2);font-size:13px">No staff/supplier users yet.</div>');
+      + (users.length ? `<div class="admin-users-rows" style="display:flex;flex-direction:column;gap:8px"></div>` : '<div style="color:var(--text2);font-size:13px">No staff/supplier users yet.</div>');
+    if(users.length) renderPagedList(el.querySelector('.admin-users-rows'), 'users', '', users, row);
 }
 function fillUserFormSupplierSelect(selectedId){
   const sel = document.getElementById('userFormSupplierId');
@@ -4480,11 +4481,7 @@ async function renderSuperadminAccounting(){
         <th style="padding:8px 12px;text-align:center;font-size:12px;color:var(--text2)">Hours (this week)</th>
         <th style="padding:8px 12px;text-align:right;font-size:12px;color:var(--text2)">Payable</th>
       </tr></thead>
-      <tbody>${rows.map(r=>`<tr style="border-bottom:1px solid var(--border)">
-        <td style="padding:8px 12px;font-size:13px;font-weight:600">${esc(r.name)}${r.error?' <span style="color:#ff6b78;font-size:11px">(load failed)</span>':''}</td>
-        <td style="padding:8px 12px;text-align:center;font-size:13px">${r.hours.toFixed(1)}h</td>
-        <td style="padding:8px 12px;text-align:right;font-size:13px;font-weight:700;color:var(--green)">₪${r.pay.toFixed(0)}</td>
-      </tr>`).join('')}</tbody>
+      <tbody class="paged-firmSummary"></tbody>
       <tfoot><tr style="background:var(--bg3);border-top:2px solid var(--border)">
         <td style="padding:8px 12px;font-size:13px;font-weight:700">TOTAL</td>
         <td style="padding:8px 12px;text-align:center;font-size:13px;font-weight:700">${grandHours.toFixed(1)}h</td>
@@ -4492,6 +4489,11 @@ async function renderSuperadminAccounting(){
       </tr></tfoot>
     </table>
   </div>`;
+  renderPagedList(wrap.querySelector('.paged-firmSummary'),'firmSummary','',rows,r=>`<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:8px 12px;font-size:13px;font-weight:600">${esc(r.name)}${r.error?' <span style="color:#ff6b78;font-size:11px">(load failed)</span>':''}</td>
+        <td style="padding:8px 12px;text-align:center;font-size:13px">${r.hours.toFixed(1)}h</td>
+        <td style="padding:8px 12px;text-align:right;font-size:13px;font-weight:700;color:var(--green)">₪${r.pay.toFixed(0)}</td>
+      </tr>`,{table:true,colspan:3});
 }
 
 
@@ -5111,12 +5113,9 @@ function importDataBackup(){
 }
 
 // --- Dashboard -------------------------------------------------------------------
-let _logExpanded=false, _salExpanded=false;
 let __lastSalaryEntries=[];
 let __lastClientBillEntries=[];
 let __lastSupplierPayableRows=[];
-function toggleLog(){ _logExpanded=!_logExpanded; renderDashboard(); }
-function toggleSalary(){ _salExpanded=!_salExpanded; renderSalary(); }
 function renderDashboard(){
   const now     = new Date();
   const todayIdx= now.getDay(); // 0=Sun
@@ -5154,7 +5153,7 @@ function renderDashboard(){
   // ── Render on-site cards ────────────────────────────────────────────────
   const onSiteEl = document.getElementById('dashOnSite');
   if(onSite.length){
-    onSiteEl.innerHTML = onSite.map(w=>{
+    renderPagedList(onSiteEl,'dashOnSite','',onSite,w=>{
       const c=WORKER_COLORS[w.colorIdx%8];
       const lastIn=latestOf(todayLog.filter(e=>e.workerId===w.id&&e.type==='in'));
       const sinceTime=lastIn?lastIn.time:'?';
@@ -5167,7 +5166,7 @@ function renderDashboard(){
         <div style="font-size:11px;color:var(--text2)">Since ${sinceTime}</div>
         ${lastIn?.dist!=null?`<div style="font-size:10px;color:var(--text3)"><i class="ti ti-map-pin"></i> ${lastIn.dist}m</div>`:''}
       </div>`;
-    }).join('');
+    },{grid:true});
   } else {
     onSiteEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">Nobody clocked in yet today</div>`;
   }
@@ -5175,7 +5174,7 @@ function renderDashboard(){
   // ── Render missing workers ──────────────────────────────────────────────
   const missingEl = document.getElementById('dashMissing');
   if(missing.length){
-    missingEl.innerHTML = missing.map(w=>{
+    renderPagedList(missingEl,'dashMissing','',missing,w=>{
       const c=WORKER_COLORS[w.colorIdx%8];
       const sh=w.schedule?.[todayIdx];
       return `<div style="background:var(--bg2);border:1px solid rgba(248,113,113,0.25);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
@@ -5186,7 +5185,7 @@ function renderDashboard(){
         <div style="font-size:11px;color:var(--red)">Should be here</div>
         <div style="font-size:10px;color:var(--text3)">${sh?.start||''}–${sh?.end||''}</div>
       </div>`;
-    }).join('');
+    },{grid:true});
   } else {
     missingEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">Everyone is present <i class="ti ti-check"></i></div>`;
   }
@@ -5203,7 +5202,7 @@ function renderDashboard(){
   const expiringWrap = document.getElementById('dashExpiringWrap');
   expiringWrap.style.display = expiring.length ? 'block' : 'none';
   if(expiring.length){
-    document.getElementById('dashExpiring').innerHTML = expiring.map(({w,overdue,label,date})=>{
+    renderPagedList(document.getElementById('dashExpiring'),'dashExpiring','',expiring,({w,overdue,label,date})=>{
       const c=WORKER_COLORS[w.colorIdx%8];
       const borderCol = overdue?'rgba(248,113,113,0.25)':'rgba(245,166,35,0.25)';
       const dotCol = overdue?'var(--red)':'var(--amber)';
@@ -5216,7 +5215,7 @@ function renderDashboard(){
         <div style="font-size:11px;color:${textCol}">${esc(label)}</div>
         <div style="font-size:10px;color:var(--text3)">${date.toLocaleDateString('en-GB')}</div>
       </div>`;
-    }).join('');
+    },{grid:true});
   }
 
   // ── Today's punch log ───────────────────────────────────────────────────
@@ -5225,13 +5224,11 @@ function renderDashboard(){
     dashLogEl.innerHTML=`<div style="text-align:center;padding:24px;color:var(--text3);font-size:13px">No punches today</div>`;
   } else {
     const sorted=[...todayLog].reverse();
-    const LOG_LIMIT=4;
-    const shown=_logExpanded?sorted:sorted.slice(0,LOG_LIMIT);
-    dashLogEl.innerHTML=shown.map((e,i)=>{
+    renderPagedList(dashLogEl,'dashLog',now.toDateString(),sorted,(e,i)=>{
       const wc=workers.find(w=>w.id===e.workerId);
       const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
       const ini=wc?workerAvatarInner(wc):esc(e.workerName?.slice(0,2).toUpperCase()||'?');
-      return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:${i<shown.length-1?'1px solid var(--border)':'none'}">
+      return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--border)">
         <div style="width:30px;height:30px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div>
         <div style="flex:1">
           <div style="font-size:13px;font-weight:600">${esc(e.workerName)}</div>
@@ -5241,7 +5238,7 @@ function renderDashboard(){
         <span style="font-size:13px;font-family:monospace;color:var(--text);min-width:42px;text-align:right">${e.time}</span>
         ${e.gpsSuspicious?'<span title="GPS suspicious" style="color:var(--amber);font-size:12px"><i class="ti ti-alert-triangle"></i></span>':''}
       </div>`;
-    }).join('') + (sorted.length>LOG_LIMIT?`<div style="text-align:center;padding:10px;border-top:1px solid var(--border)"><button class="btn sm" onclick="toggleLog()">${_logExpanded?'<i class="ti ti-chevron-up"></i> Show less':'<i class="ti ti-chevron-down"></i> Show all ('+sorted.length+')'}</button></div>`:'');
+    });
   }
 
   renderDashSuppliers();
@@ -5265,16 +5262,16 @@ function renderDashSuppliers(){
     wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No workers yet</div>`;
     return;
   }
-  wrap.innerHTML = rows.map(r=>`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
+  const items=unassigned?[...rows,{unassigned}]:rows;
+  renderPagedList(wrap,'dashSuppliers','',items,r=>r.unassigned==null?`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
       <div style="width:40px;height:40px;border-radius:50%;background:${r.sup.color}22;color:${r.sup.color};display:flex;align-items:center;justify-content:center;font-size:16px"><i class="ti ti-truck-delivery"></i></div>
       <div style="font-size:13px;font-weight:600">${esc(r.sup.name)}</div>
       <div style="font-size:11px;color:var(--text2)">${r.count} worker${r.count===1?'':'s'}</div>
-    </div>`).join('')
-    + (unassigned?`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;opacity:0.7">
+    </div>`:`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;opacity:0.7">
       <div style="width:40px;height:40px;border-radius:50%;background:var(--bg3);color:var(--text3);display:flex;align-items:center;justify-content:center;font-size:16px"><i class="ti ti-truck-delivery"></i></div>
       <div style="font-size:13px;font-weight:600;color:var(--text3)">No supplier</div>
-      <div style="font-size:11px;color:var(--text3)">${unassigned} worker${unassigned===1?'':'s'}</div>
-    </div>`:'');
+      <div style="font-size:11px;color:var(--text3)">${r.unassigned} worker${r.unassigned===1?'':'s'}</div>
+    </div>`,{grid:true});
 }
 
 function renderAccounting(){
@@ -5376,7 +5373,6 @@ function renderSalary(){
 
   const totalHours=entries.reduce((s,e)=>s+e.hours,0);
   const grandTotal=entries.reduce((s,e)=>s+e.total+e.travel,0);
-  const shownEntries=_salExpanded?entries:entries.slice(0,4);
   const _allWarns=entries.flatMap(e=>(e.warns||[]).map(w=>e.worker+' — '+w));
   const _reviewBanner=_allWarns.length?`<div style="background:var(--amber-bg);border:1px solid rgba(245,166,35,0.3);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px"><div style="color:var(--amber);font-weight:600;font-size:13px;margin-bottom:4px"><i class="ti ti-alert-triangle"></i> ${_allWarns.length} to review before calculating</div><div style="color:var(--text2);font-size:12px;line-height:1.6">${_allWarns.slice(0,12).map(w=>'• '+w).join('<br>')}${_allWarns.length>12?'<br>…'+(_allWarns.length-12)+' more':''}</div></div>`:'';
   salaryEl.innerHTML=_reviewBanner+`
@@ -5394,8 +5390,23 @@ function renderSalary(){
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Total Pay</th>
           </tr>
         </thead>
-        <tbody>
-          ${shownEntries.map((e,i)=>{
+        <tbody class="salary-rows"></tbody>
+        <tfoot>
+          <tr style="background:var(--bg3);border-top:2px solid var(--border)">
+            <td style="padding:10px 12px;font-size:13px;font-weight:600;color:var(--text2)">TOTAL</td>
+            <td style="padding:10px 12px;text-align:center;font-size:14px;font-weight:700;color:var(--text)">${totalHours.toFixed(1)}h</td>
+            <td colspan="4"></td>
+            <td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">
+              ₪${grandTotal.toFixed(0)}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+      </div>
+      <div style="padding:8px 12px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">₪/hour rates are editable manually. Default: Regular = base rate · OT = ×${PAY_RULES.otMult} · Shabbat = ×${PAY_RULES.shabbatMult}. Hours: Regular ≤8h/day, above that — OT; Saturday — at the Shabbat rate. Travel = worker's flat per-work-day travel allowance.</div>
+    </div>`;
+  // The totals row covers every worker; the rows are paged (renderPagedList).
+  renderPagedList(salaryEl.querySelector('.salary-rows'),'salary',period,entries,(e,i)=>{
             const wc=workers.find(w=>w.id===e.workerId);
             const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
             const base=wc?.hourlyRate||0;
@@ -5432,23 +5443,7 @@ function renderSalary(){
                 ${(e.total+e.travel)>0?'₪'+(e.total+e.travel).toFixed(0):'—'}
               </td>
             </tr>`;
-          }).join('')}
-        </tbody>
-        <tfoot>
-          <tr style="background:var(--bg3);border-top:2px solid var(--border)">
-            <td style="padding:10px 12px;font-size:13px;font-weight:600;color:var(--text2)">TOTAL</td>
-            <td style="padding:10px 12px;text-align:center;font-size:14px;font-weight:700;color:var(--text)">${totalHours.toFixed(1)}h</td>
-            <td colspan="4"></td>
-            <td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">
-              ₪${grandTotal.toFixed(0)}
-            </td>
-          </tr>
-        </tfoot>
-      </table>
-      </div>
-      ${entries.length>4?`<div style="text-align:center;padding:8px;border-top:1px solid var(--border)"><button class="btn sm" onclick="toggleSalary()">${_salExpanded?'<i class="ti ti-chevron-up"></i> Show less':'<i class="ti ti-chevron-down"></i> Show all ('+entries.length+')'}</button></div>`:''}
-      <div style="padding:8px 12px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">₪/hour rates are editable manually. Default: Regular = base rate · OT = ×${PAY_RULES.otMult} · Shabbat = ×${PAY_RULES.shabbatMult}. Hours: Regular ≤8h/day, above that — OT; Saturday — at the Shabbat rate. Travel = worker's flat per-work-day travel allowance.</div>
-    </div>`;
+},{table:true,colspan:7});
   renderSupplierPayable(entries);
   renderClientBillable(__lastClientBillEntries);
 }
@@ -5515,21 +5510,19 @@ function renderSupplierPayable(entries){
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Payable</th>
           </tr>
         </thead>
-        <tbody>
-          ${rows.map((r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
-            <td style="padding:10px 12px;font-size:13px;font-weight:600"><span style="color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></span> ${esc(r.sup.name)}</td>
-            <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)}h</td>
-            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
-          </tr>`).join('')}
-          ${unassigned.hours?`<tr style="border-bottom:1px solid var(--border)">
+        <tbody class="paged-supplierPayable"></tbody><tbody>${unassigned.hours?`<tr style="border-bottom:1px solid var(--border)">
             <td style="padding:10px 12px;font-size:13px;color:var(--text3)">No supplier assigned</td>
             <td style="padding:10px 12px;text-align:center;font-size:13px;color:var(--text3)">${unassigned.hours.toFixed(1)}h</td>
             <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text3)">—</td>
-          </tr>`:''}
-        </tbody>
+          </tr>`:''}</tbody>
       </table>
       </div>
     </div>`;
+  renderPagedList(wrap.querySelector('.paged-supplierPayable'),'supplierPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
+            <td style="padding:10px 12px;font-size:13px;font-weight:600"><span style="color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></span> ${esc(r.sup.name)}</td>
+            <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)}h</td>
+            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
+          </tr>`,{table:true,colspan:20});
 }
 
 // "Billable by client" — what each client owes the firm, computed via
@@ -5562,17 +5555,16 @@ function renderClientBillable(entries){
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Billable</th>
           </tr>
         </thead>
-        <tbody>
-          ${rows.map((r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
+        <tbody class="paged-clientBillable"></tbody>
+      </table>
+      </div>
+    </div>`;
+  renderPagedList(wrap.querySelector('.paged-clientBillable'),'clientBillable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
             <td style="padding:10px 12px;font-size:13px;font-weight:600"><span style="color:${r.cl.color}"><i class="ti ti-building-store"></i></span> ${esc(r.cl.name)}</td>
             <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)}h</td>
             <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${r.cl.rateMode==='fixed'?'Fixed':'Tiered'}</td>
             <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-      </div>
-    </div>`;
+          </tr>`,{table:true,colspan:20});
 }
 
 // Hours-import approval queue (Admin/Roles plan, stage 14). Any non-supplier
@@ -5605,8 +5597,11 @@ async function renderPendingHours(){
             ${canApprove?'<th style="padding:10px 12px"></th>':''}
           </tr>
         </thead>
-        <tbody>
-          ${batches.map(b=>{
+        <tbody class="pending-hours-rows"></tbody>
+      </table>
+      </div>
+    </div>`;
+  renderPagedList(wrap.querySelector('.pending-hours-rows'),'pendingHours','',batches,b=>{
             const w = workers.find(x=>x.id===(b.entries[0]&&b.entries[0].workerId));
             return `<tr style="border-bottom:1px solid var(--border)">
               <td style="padding:10px 12px;font-size:13px">${esc(b.fileName||'—')}${w?' · '+esc(w.name):''}</td>
@@ -5617,11 +5612,7 @@ async function renderPendingHours(){
                 <button class="btn sm red" onclick="rejectHoursBatch('${b.batchId}')"><i class="ti ti-x"></i></button>
               </td>`:''}
             </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-      </div>
-    </div>`;
+},{table:true,colspan:canApprove?4:3});
 }
 async function approveHoursBatch(batchId){
   try{
@@ -5683,8 +5674,11 @@ function renderRateMatrix(){
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--blue)">Shabbat ₪/h</th>
           </tr>
         </thead>
-        <tbody>
-          ${rows.map((r,i)=>{
+        <tbody class="paged-rateMatrix"></tbody>
+      </table>
+      </div>
+    </div>`;
+  renderPagedList(wrap.querySelector('.paged-rateMatrix'),'rateMatrix','',rows,(r,i)=>{
             const ov=(r.w.clientRates&&r.w.clientRates[r.cl.id])||{};
             const eff=effectiveRates(r.w,r.cl.id);
             return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
@@ -5706,11 +5700,7 @@ function renderRateMatrix(){
                   style="width:70px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
             </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-      </div>
-    </div>`;
+          },{table:true,colspan:20});
 }
 function setClientRateOverride(wid,cid,field,val){
   const w=workers.find(x=>x.id===wid);
@@ -5752,8 +5742,11 @@ function renderSupplierRateMatrix(){
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Commission ₪/h</th>
           </tr>
         </thead>
-        <tbody>
-          ${rows.map((r,i)=>{
+        <tbody class="paged-supplierRateMatrix"></tbody>
+      </table>
+      </div>
+    </div>`;
+  renderPagedList(wrap.querySelector('.paged-supplierRateMatrix'),'supplierRateMatrix','',rows,(r,i)=>{
             const ov=(r.w.supplierRates&&r.w.supplierRates[r.sup.id])||{};
             return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
               <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.w.name)}</td>
@@ -5764,11 +5757,7 @@ function renderSupplierRateMatrix(){
                   style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
             </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-      </div>
-    </div>`;
+          },{table:true,colspan:20});
 }
 function setSupplierRateOverride(wid,sid,field,val){
   const w=workers.find(x=>x.id===wid);
@@ -6065,7 +6054,7 @@ function renderClientLogs(){
   const el = document.getElementById('adminClientLogs');
   if(!clients.length){ el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3)">No clients configured</div>'; return; }
 
-  el.innerHTML = clients.map(c=>{
+  renderPagedList(el, 'clientLogs', '', clients, c=>{
     const assignedWorkers = workers.filter(w=>(w.clientIds||[]).includes(c.id));
     const assignedIds = assignedWorkers.map(w=>w.id);
     const clientLog = log.filter(e=>assignedIds.includes(e.workerId)).reverse();
@@ -6119,36 +6108,41 @@ function renderClientLogs(){
       </div>
       ${assignedWorkers.length?workerRows:'<div style="font-size:13px;color:var(--text3);text-align:center;padding:12px">No workers assigned</div>'}
     </div>`;
-  }).join('');
+  });
 }
 
-// Long lists (punch log, errors, timings) draw LIST_PAGE rows at first; the
-// next page is added when the "Show more" row scrolls into view (or is
-// clicked). Drawing every row at once was what made these panes slow, not
-// the data itself, which is already loaded. `sig` describes what is listed
-// (filters): while it stays the same, a redraw (new punch, refresh) keeps
+// Every list that grows (workers, clients, suppliers, firms, users, punch
+// log, errors, timings, pending hours, salary and rate tables, ...) draws
+// LIST_PAGE rows at first. The next LIST_PAGE rows come only when the user
+// scrolls the "Show more" row into view, or taps it — exactly one page per
+// reach of the end, no pre-loading. `sig` describes what is listed (filters,
+// grouping): while it stays the same, a redraw (new punch, refresh) keeps
 // what was already opened; a new filter starts again from the first page.
+// opts.table/colspan: rows of a <tbody>; opts.grid: tiles of a CSS grid.
 const LIST_PAGE = 10;
 const __pagedLists = {};
 function renderPagedList(el, key, sig, items, rowHtml, opts){
+  if(!el) return;
   opts = opts || {};
   const st = __pagedLists[key] && __pagedLists[key].sig === sig ? __pagedLists[key] : (__pagedLists[key] = {sig, shown: LIST_PAGE});
-  if(st.observer){ st.observer.disconnect(); st.observer = null; }
   const n = Math.min(items.length, st.shown);
-  el.innerHTML = items.slice(0, n).map((it, i) => rowHtml(it, i)).join('') + pagedMoreHtml(items.length - n, opts);
+  el.innerHTML = (opts.head || '') + items.slice(0, n).map((it, i) => rowHtml(it, i)).join('') + pagedMoreHtml(items.length - n, opts);
   wirePagedMore(el, key, items, rowHtml, opts);
 }
 function pagedMoreHtml(left, opts){
   if(left <= 0) return '';
   const btn = `<button class="btn sm paged-more-btn" style="margin:6px auto;display:flex"><i class="ti ti-chevron-down"></i> Show more (${left} left)</button>`;
-  return opts.table ? `<tr class="paged-more"><td colspan="${opts.colspan||20}" style="padding:4px">${btn}</td></tr>` : `<div class="paged-more">${btn}</div>`;
+  if(opts.table) return `<tr class="paged-more"><td colspan="${opts.colspan||20}" style="padding:4px">${btn}</td></tr>`;
+  return `<div class="paged-more" style="${opts.grid?'grid-column:1/-1;':''}">${btn}</div>`;
 }
 function wirePagedMore(el, key, items, rowHtml, opts){
+  const st = __pagedLists[key];
+  st.more = null;
   const more = el.querySelector(':scope > .paged-more');
   if(!more) return;
-  const st = __pagedLists[key];
-  const next = () => {
-    if(st.observer){ st.observer.disconnect(); st.observer = null; }
+  st.more = more;
+  st.next = () => {
+    if(st.more !== more || !more.isConnected) return;
     const from = st.shown;
     st.shown += LIST_PAGE;
     const to = Math.min(items.length, st.shown);
@@ -6157,12 +6151,38 @@ function wirePagedMore(el, key, items, rowHtml, opts){
     el.insertAdjacentHTML('beforeend', pagedMoreHtml(items.length - to, opts));
     wirePagedMore(el, key, items, rowHtml, opts);
   };
-  more.querySelector('button').onclick = next;
-  if('IntersectionObserver' in window){
-    st.observer = new IntersectionObserver(entries => { if(entries.some(e => e.isIntersecting)) next(); }, {rootMargin: '200px'});
-    st.observer.observe(more);
-  }
+  more.querySelector('button').onclick = () => st.next();
 }
+// On a user scroll (any scrolling element: the page or a modal), each list
+// whose "Show more" row is now visible gets its next page — one per frame.
+// Only a scroll that follows the user's own input (wheel, touch, key, click)
+// counts, and each input allows one page at most: the browser also fires
+// scroll when a page's height changes after a redraw, which would otherwise
+// chain-load page after page.
+let __pagedScrollQueued = false, __pagedUserAt = 0;
+['wheel','touchstart','touchmove','touchend','keydown','pointerdown'].forEach(t =>
+  window.addEventListener(t, () => { __pagedUserAt = Date.now(); }, {capture:true, passive:true}));
+function _pagedVisibleBottom(node){
+  let bottom = window.innerHeight;
+  for(let p = node.parentElement; p && p !== document.body; p = p.parentElement){
+    const oy = getComputedStyle(p).overflowY;
+    if(oy === 'auto' || oy === 'scroll') bottom = Math.min(bottom, p.getBoundingClientRect().bottom);
+  }
+  return bottom;
+}
+function _pagedOnScroll(){
+  if(__pagedScrollQueued || !__pagedUserAt || Date.now() - __pagedUserAt > 1500) return;
+  __pagedScrollQueued = true;
+  requestAnimationFrame(() => {
+    __pagedScrollQueued = false;
+    for(const k in __pagedLists){
+      const st = __pagedLists[k], more = st.more;
+      if(!more || !more.isConnected || !more.getClientRects().length) continue;
+      if(more.getBoundingClientRect().top <= _pagedVisibleBottom(more)){ __pagedUserAt = 0; st.next(); return; }
+    }
+  });
+}
+window.addEventListener('scroll', _pagedOnScroll, {capture:true, passive:true});
 
 function renderAdmin(){
   const log = getPunchLog();

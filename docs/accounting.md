@@ -68,7 +68,7 @@ The tab is gated by the `accounting` permission.
 - **Results:**
   - `__lastSalaryEntries` holds the per-worker rows (feeds Payable by supplier);
   - `__lastClientBillEntries` holds the per-client rows (feeds Billable by client).
-- **Table:** Worker, Hours, Regular / OT / Shabbat ₪/h, Travel ₪, Total Pay (= wage + travel); a TOTAL row; 4 rows until "Show all" (`toggleSalary`).
+- **Table:** Worker, Hours, Regular / OT / Shabbat ₪/h, Travel ₪, Total Pay (= wage + travel); a TOTAL row covering every worker; the rows are paged by 10 ([app-core.md](app-core.md) → Long lists). Supplier payable, client billable and both rate matrices are paged the same way.
   - **Editable rate inputs** — `setWorkerRate`, `setWorkerOtRate`, `setWorkerShabbatRate`. These edit the worker's **base** rates. The values shown are `wRegRate(w)` etc. *without* a client, so they don't reflect per-client rates.
   - **Warnings** — anomalies show as an amber "N to review" banner and a ⚠ icon per worker.
 
@@ -122,7 +122,7 @@ Real-time attendance from the punch log and today's schedule; `renderDashboard()
 - **Should be here** — today's shift started more than 15 minutes ago and there is no punch, or the worker punched OUT more than 10 minutes before the shift's end.
 - **Workers by supplier** — `renderDashSuppliers()`: a headcount per supplier plus "No supplier"; no pay data.
 - **Expiry cards** — contract-term warnings (`workerExpiryStatus`) and expiring or expired worker documents (`workerDocExpiries`).
-- **Today's punches** — 4 rows until "Show all" (`toggleLog`).
+- **Today's punches** — paged by 10, like the on-site, missing, suppliers and expiring tiles ([app-core.md](app-core.md) → Long lists).
 
 ## Super-admin cross-firm summary
 

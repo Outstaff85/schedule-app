@@ -51,6 +51,33 @@ A weekly roster.
   - `exportPDF()` — a print page in a new window;
   - `exportJSON()` — workers and clients.
 
+## Long lists (`renderPagedList`)
+
+Every list that can grow is drawn with `renderPagedList(el, key, sig, items, rowHtml, opts)`:
+- it shows the first `LIST_PAGE` = 10 items and a "Show more (N left)" row;
+- the next 10 come when that row is tapped, or when a scroll that follows the user's own input brings it into view (`_pagedOnScroll`);
+- user input means wheel, touch, a key or a pointer press;
+- each input allows one page at most, so a scroll the browser fires after a redraw changes the page height never chain-loads, and there is no pre-loading margin;
+- the visible area is the viewport or the nearest scrolling ancestor, such as a modal (`_pagedVisibleBottom`).
+
+Options and keys:
+- `opts.table` / `opts.colspan`: rows of a `<tbody>`;
+- `opts.grid`: tiles of a CSS grid, where the "more" row spans the grid;
+- `opts.head`: fixed HTML before the items (the sidebar's "All clients");
+- `key` names the list; while `sig` (filters, grouping, period) stays the same, a redraw keeps the number already opened, and a new `sig` starts again at 10;
+- totals rows (salary, firm summary) are outside the paged rows and cover every item.
+
+Where it is used:
+- workers (cards and table; with grouping, each group title is an item — `workersGroupedItems`);
+- the schedule rows and the sidebar workers and clients;
+- clients, suppliers;
+- Today: on site, missing, suppliers, expiring, today's punches;
+- salary, supplier payable, client billable, both rate matrices, pending hours;
+- the punch log and client logs, firms, the firm summary, users, errors, timings;
+- a worker's documents in the card (`pageWorkerDocs`).
+
+`supplier-portal.html` has its own copy (today's activity, My Workers); keep the two the same. Not paged: chips and form rows being edited (selected clients, children), and printed / exported documents.
+
 ## Login and session
 
 - **Session:** `localStorage.schedMgr_session` (`SESSION_KEY`). It only remembers who is signed in; the real authentication is the Firebase sign-in (the rules and the functions check the Firebase ID token). `getSession()` returns `null` and clears the session when it has no `uid` (a session from before the move off Apps Script has none, so that user logs in once more).
