@@ -174,3 +174,11 @@ A follow-up the same day: a scanned ID still kept a tilted black band (about 10 
 
 The same day, the report "the preview is straight but the PDF photo is crooked" was traced to the review-screen thumbnails, not the PDF. They were 64 px squares with `object-fit:cover`, which hid the band at the bottom; the PDF shows the same image, whole. The thumbnails now use `contain`. The new `finalTightenPass`, run on a screenshot of that real scan, removed the band. The test device was likely still running the old `scan-pipeline.js`: it is loaded once per page, and Hosting served `.js` with its default `max-age=3600`. All `.js` files are now `no-cache`.
 
+
+## Scan misread Hebrew names (fixed 2026-10-04)
+
+A real ID came out with one surname letter wrong: ד read as ר, the classic look-alike pair. Two causes. Since the "every boxed field is re-read zoomed" change earlier the same day, the zoomed re-read of a name always replaced the full read, so a crop that was off or blurred won on its own. And the crop was blurred: the page is shrunk to 1800 px before anything else, a name line is ~25-30 px tall, and the crop was only that, stretched — the corner that tells ד from ר is 1-2 px.
+
+The fix (docs/scan.md → Sharper field crops, Merging pages): field crops are cut from the photo as taken, through the page's own geometry steps; a zoomed text read no longer replaces the first read; and the holder's name is picked from every reading — the front's read, its zoomed re-read, the ספח / card back's copy (which `aiReadSefach` now returns) — with the Latin spelling or the MRZ name line, when the document has one, deciding between them.
+
+Tried first and dropped: rebuilding a sharp copy of the whole page from the photo (replay the warps at up to 3200 px), then cropping from it. On a 4x-throttled CPU that took ~4 s per page (the per-pixel warp of the whole card), and for a ספח it would have added to the wait. Cutting only the field regions from the photo takes ~0.5 s for all of a scan's fields.

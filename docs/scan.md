@@ -39,8 +39,8 @@ All of them are sent as `fetch(API_URL, …)`; the dispatcher passes them to the
 
 | Action | Model | Used for |
 |---|---|---|
-| `aiReadDoc` | `ANTHROPIC_MODEL` | Full read of the main page: `type` (`israeli_id` / `passport`), names, numbers, dates, sex, address, children, spouse; `fieldBoxes` (boxes of the digit fields and of given name, surname, address, house number, city); `photoBox` (the portrait) |
-| `aiReadSefach` | `ANTHROPIC_MODEL` | An extra Israeli-ID page (ספח or card back): address, house number, city, marital status, sex, spouse, children, `idNo` for cross-check; `fieldBoxes` for address, house number, city. Always `type:'israeli_id'` |
+| `aiReadDoc` | `ANTHROPIC_MODEL` | Full read of the main page: `type` (`israeli_id` / `passport`), names, numbers, dates, sex, address, children, spouse; for the name cross-check also `latinSurname` / `latinGiven` (the holder's Latin spelling when the page prints one) and `mrzName` (MRZ line 1 from its 6th character); `fieldBoxes` (boxes of the digit fields and of given name, surname, address, house number, city); `photoBox` (the portrait) |
+| `aiReadSefach` | `ANTHROPIC_MODEL` | An extra Israeli-ID page (ספח or card back): address, house number, city, marital status, sex, spouse, children; `idNo`, `given` and `surname` of the holder for cross-check; `fieldBoxes` for address, house number, city. Always `type:'israeli_id'` |
 | `aiDetectAlign` | `ANTHROPIC_ALIGN_MODEL` (Haiku) | Rotation, 4 corners and the page `kind`: `id_front` / `id_back` / `sefach` / `passport` / `contract` / `other`. A failed call leaves the page as cropped; the error goes to Admin → Errors as `console.warn('aiDetectAlign failed: …')` (`readSefachPage` does the same for `aiReadSefach`) |
 | `aiVerifyFields` | `ANTHROPIC_MODEL` | Batched zoomed re-read of several fields (kinds `digits9`, `date`, `passportNo`, `hebrewText`, `latinName`, `houseNumber`) |
 | `aiVerifyField` | `ANTHROPIC_MODEL` | One zoomed re-read (the ID retry) |
@@ -52,7 +52,7 @@ The prompts live in `functions-auth/ai_prompts.json` — see [backend.md](backen
 
 A single non-PDF file → `onScanFileSelected(file)`:
 
-1. **Downscale** the photo (`downscaleForUpload`), then open the corner editor on the raw photo, with no server call yet (`__scanEditPurpose='collectPage'`). See "Corner editor" below.
+1. **Downscale** the photo (`downscaleForUpload`) — the photo as taken is kept on the device (`__scanEditOrig`) for sharper field crops (see "Sharper field crops" below) — then open the corner editor on the raw photo, with no server call yet (`__scanEditPurpose='collectPage'`). See "Corner editor" below.
 2. **Confirm or skip.** `confirmScanQuad()` perspective-warps the quad flat (`warpQuadImage`); `skipScanQuad()` keeps the photo as-is. Either way the page is pushed to `__pendingScanPages` and the queue screen shows (`renderPendingPagesPrompt()`: the same page grid, "+" tile and main button as the review screen).
 3. **`processAllPendingPages()`** — the only step that talks to the server:
    - **Resume:** if a primary record and its image already exist (pages added after a first batch), the run continues that record.
@@ -84,10 +84,10 @@ A single non-PDF file → `onScanFileSelected(file)`:
 
 `onScanFilesSelected(files)` (also the entry for one PDF):
 
-1. Expand every page (`filesToUploadPages`).
+1. Expand every page (`filesToUploadPages`). An image that was shrunk keeps its original (`orig`), which becomes the page's photo twin (`hi`, no geometry steps).
 2. A page whose text looks like an old filled Form 101 (`כרטיס עובד` or `0101/130`) is dropped.
 3. All other pages are classified in parallel (`classifyPage` → `aiDetectAlign`, kind only).
-4. In order: the first non-contract page that `aiReadDoc` reads as an ID/passport becomes the primary (digit check, avatar), and the following pages' reads are prefetched as in Path A. Later pages merge while `missingCore` holds. Every page except the primary is kept as an extra page.
+4. In order: the first non-contract page that `aiReadDoc` reads as an ID/passport becomes the primary (digit check, `initPrimaryFromFirstPage`, avatar), and the following pages' reads are prefetched as in Path A. Later pages merge while `missingCore` holds. Every page except the primary is kept as an extra page.
 5. A `scanFiles` timing is reported, then the same review screen.
 
 The pages are not aligned, enhanced or tightened in this path.
@@ -100,7 +100,12 @@ The pages are not aligned, enhanced or tightened in this path.
   - passport: `passportNo`, `dob`, `expiry`;
   - both (`_pushTextJobs`): every boxed `given`, `surname`, `address` and `city` (`hebrewText`; a passport's names `latinName`) and `houseNumber` (`houseNumber`). All of them go in the same one call. A field left empty is searched for after the scan instead (`autoFindMissingScanFields`, [workers.md](workers.md)).
   
-  `verifyFieldsBatch()` crops each box with a margin and scales it to at least 500 px wide (`cropFieldImage`), then sends one `aiVerifyFields` for all of them. `_applyZoomedRead` takes the zoomed value when it is readable and has the right shape (9 digits, `DD/MM/YYYY`, an uppercased passport number, a house number without spaces, text with single spaces). For the ID number the check digit decides: a first read that passes it is kept over a zoomed one that does not, and a zoomed one that passes it is taken without a mark. When the final value differs from the first read, the field goes into `parsed.__uncertain`.
+  `verifyFieldsBatch()` crops each box with a margin (`_fieldCrop`: from the photo twin when the page has one, else `cropFieldImage` from the page, scaled to at least 500 px wide; at most 1100 px), then sends one `aiVerifyFields` for all of them. `_applyZoomedRead` keeps only a readable value of the right shape (9 digits, `DD/MM/YYYY`, an uppercased passport number, a house number without spaces, text with single spaces):
+  - **digits and dates** — the zoomed value replaces the first read. For the ID number the check digit decides: a first read that passes it is kept over a zoomed one that does not, and a zoomed one that passes it is taken without a mark;
+  - **text** (`hebrewText`, `latinName`, `houseNumber`) — the zoomed value is kept beside the first read in `parsed.__zoom` and never replaces it on its own. The names are picked later from all their readings (Merging pages → holder's name); street, house number and town keep the first read.
+  
+  When the zoomed value differs from the first read (names aside), the field goes into `parsed.__uncertain`.
+- **Sharper field crops.** The read page was shrunk to `UPLOAD_MAX_DIM`, so a zoomed crop of it is only a stretched copy. Each queued page carries a photo twin `hi = {src, ops}`: the photo as taken plus the geometry steps the page went through — the corner editor's warp (`{quad}`), and `autoPreAlignScan`'s rotation (`{rotate}`) and warp (`{quad}`), returned as its `ops` (`preprocess_scan` keeps the geometry). `_hiFieldCrop(hi, box, page)` maps the box corners back through those steps (`_hiMapPoint`: the warp's own homography, the opposite rotation) onto the photo (decoded once, `_hiSource`), copies out only that region and warps it straight. It returns null — and the page crop is used — when the photo is no sharper there (less than 1.2× the page's pixels). Only the crops are uploaded; the twin is never stored (`__aiScanImage` / `__aiPacketOtherPages` hold plain pages). About half a second for a scan's fields on a phone. Pages without a photo (a PDF, a page re-read from storage) work as before.
 - **`verifySefachFields(parsed, b64, mediaType)`** does the same for the ספח read's address, house number and city. It runs in `readSefachPage` and `runSefachOcr`.
 - **"Check this" marks:** `openWorkerModalFromScan` collects the uncertain fields whose value is the one on screen (`_scanUncertainKeys` over `__aiPageParsed`) into `ocrFields.__scanCheck`. The modal frames them in amber with a note (`markScanUncertain`) until the field is edited. This is display only and never saved.
 - **`verifyIdChecksum(parsed, …)`** uses `isValidIsraeliId(id)` (check digit). If it fails, one `aiVerifyField` retry of the ID box follows, unless `verifyDigitFields` already re-read that box zoomed (`parsed.__idZoomed`). The result is `parsed.idChecksumOk`; a still-failing number shows an amber warning in the modal.
@@ -113,6 +118,11 @@ The pages are not aligned, enhanced or tightened in this path.
   - spouse — taken from the first page that has one.
 - **ID number from a ספח:** an `idNo` read from a ספח (`__isSefachScan`) is never trusted on its own. It is kept in `__aiPendingSefachIdNo` to cross-check a front page; a disagreement sets `idMismatch`.
 - **Front page after the ספח:** it also fills an empty `given`, `surname` and `expiry`.
+- **The holder's name** (`_resolveScanNames`, run by `initPrimaryFromFirstPage` and `mergeScanPage`, so a page removal replays it). `_addScanNameReads` collects on the primary (`__names`) every reading of `given` / `surname`: the front's first read (`full`, kept in `__full`), its zoomed re-read (`zoom`), and the ספח / card back's copy (`sefach`, pages read by `readSefachPage` are tagged `__fromSefachReader`); and the references: the Latin spelling (`latinSurname` / `latinGiven`, Hebrew names only) and the MRZ names (`mrzName` → `_mrzNames`). `_pickScanName` then:
+  1. all readings agree → that value; marked "check" only when a reference does not match it;
+  2. a reference decides — the reading whose letters match it best, clearly better than the others (`_nameRefDistance`: for Hebrew, consonant classes of the Hebrew letters vs the Latin spelling, `_hebSkeleton` / `_latSkeleton`, so a ד misread as ר no longer matches D; for a passport, the letters against the MRZ);
+  3. two readings agree against a third → the majority;
+  4. otherwise the first read stays and the field is marked "check" (`__uncertain`).
 
 ## Into the worker modal (`openWorkerModalFromScan(p)`)
 
