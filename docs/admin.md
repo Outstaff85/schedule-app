@@ -86,19 +86,29 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
 
 The server rules (only staff/supplier users are created here, own firm only, and so on): [backend.md](backend.md).
 
+## Errors and Timings: the period picker
+
+Both panes load one period at a time, picked in a select at the top:
+- the options are "Last 30 days" (default), "Last 7 days", and each calendar month (this one and the 11 before it) — `logPeriodOptions` / `fillLogPeriodSelect`;
+- `logPeriodRange(value)` gives `{key, from, to, label}` (ISO times), sent to `loadErrors` / `loadTimings` as `from` / `to` (`logPeriodQuery`);
+- each period has its own cache (`adminCache_errors:<key>`, `adminCache_timings:<key>`);
+- **Copy all** and **Print** take only the loaded period. Print (`printLogPane('errors' | 'timings')`) opens a plain page with a table (for timings, the summary first) and prints it.
+
+Rows are compact: one bordered box (`.log-box`), one row per entry (`.log-row`), and a small copy button per row. Times are shown as `04.10 10:18` (`_shortWhen`). The rows are paged by 10.
+
 ## Errors pane (super-admin)
 
-`loadErrorsList('adminErrorsList')` draws the cached list (`adminCache_errors`), then `loadErrors` — the Firestore `errors` collection, newest first, max 100. The list is paged by 10. Each row has a copy button (`copyErrorRow` → `copyTextToClipboard`). The old standalone `#errorsScreen` (`openErrorsScreen`) has no UI caller.
+`loadErrorsList('adminErrorsList')` draws the period's cached list, then loads `loadErrors` for the period. The list shows the count and the period, then one row per error: time, page, source, user on the first line, the message under it. Each row has a copy button (`copyErrorRow` → `copyTextToClipboard`); "Copy all" is `copyAllErrors`. The old standalone `#errorsScreen` (`openErrorsScreen`) has no UI caller and loads without a period (the newest 100).
 
 ## Timings pane (super-admin)
 
-`loadTimingsPane()` → `loadTimings` (cached as `adminCache_timings`; the `timings` collection, max 500).
+`loadTimingsPane()` → `loadTimings` for the picked period.
 
 `renderTimingsPane()` shows:
-- **summary** — median and 90th percentile per kind over the last 7 days, without aborted runs. It also shows the median per step (`TIMING_PHASES`);
-- **latest rows** — paged by 10, each with a copy button (`copyTimingRow`).
+- **summary cards** (`_timingsSummary`, `.tm-card`) — one per kind over the period, without aborted runs. Each shows the count, the median and 90th percentile of the total, and the median of each step (`TIMING_PHASES`) as small pills;
+- **all measurements**, newest first, paged by 10. Each row shows time, kind and total on the first line (a total above its kind's 90% is amber), the steps under it, then firm, user, device, pages and page kinds. Each row has a copy button (`copyTimingRow`).
 
-"Copy all" (`copyAllTimings`) copies the summary and the latest 50 rows as text. Kinds and how they are measured: [app-core.md](app-core.md) → Telemetry.
+"Copy all" (`copyAllTimings`) copies the summary and every measurement of the period as text. Kinds and how they are measured: [app-core.md](app-core.md) → Telemetry.
 
 ## Profile pane (owner, super-admin)
 

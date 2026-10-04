@@ -332,6 +332,22 @@
   /* ── Loading spinner + progress bar (AI scan, Form 101 generation) ── */
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   .spin { display: inline-block; animation: spin 0.8s linear infinite; }
+  /* Errors / Timings: compact rows in one bordered box, summary cards. */
+  .log-box { background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius-sm); overflow: hidden; }
+  .log-row { position: relative; padding: 6px 36px 6px 10px; font-size: 12px; line-height: 1.4; border-top: 1px solid var(--border); }
+  .log-row:first-child { border-top: none; }
+  .log-meta { display: flex; flex-wrap: wrap; gap: 0 8px; color: var(--text3); font-size: 11px; }
+  .log-when { font-family: monospace; color: var(--text2); }
+  .log-main { color: var(--text); }
+  .log-sub { color: var(--text2); font-size: 11px; }
+  .log-copy { position: absolute; top: 5px; right: 5px; padding: 2px 5px !important; min-width: 0; min-height: 0 !important; font-size: 11px !important; }
+  .tm-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-bottom: 14px; }
+  .tm-card { background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius-sm); padding: 8px 10px; font-size: 12px; }
+  .tm-card-head { display: flex; justify-content: space-between; gap: 6px; font-weight: 600; }
+  .tm-card-head span { color: var(--text3); font-weight: 400; }
+  .tm-card-vals { margin: 3px 0 4px; color: var(--text2); }
+  .tm-card-vals b { font-size: 15px; color: var(--text); }
+  .tm-pill { display: inline-block; background: var(--bg3); border-radius: 10px; padding: 1px 7px; margin: 0 4px 3px 0; font-size: 10.5px; color: var(--text2); }
   /* A worker-modal field the scan left empty: tap it to search the scan for it. */
   .scan-missing { border-color: var(--amber) !important; box-shadow: 0 0 0 2px rgba(245,166,35,0.25); cursor: pointer; }
   .scan-busy { opacity: 0.6; }
@@ -684,11 +700,21 @@
         <div id="adminUsersWrap"></div>
       </div>
       <div id="adminPane_errors" style="display:none">
-        <div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="loadErrorsList('adminErrorsList')"><i class="ti ti-refresh"></i> Refresh</button></div>
-        <div id="adminErrorsList" style="display:flex;flex-direction:column;gap:6px"></div>
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:10px">
+          <select id="adminErrorsPeriod" onchange="loadErrorsList('adminErrorsList')" style="flex:1;min-width:150px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none"></select>
+          <button class="btn sm" onclick="copyAllErrors('adminErrorsList')"><i class="ti ti-copy"></i> Copy all</button>
+          <button class="btn sm" onclick="printLogPane('errors')"><i class="ti ti-printer"></i> Print</button>
+          <button class="btn sm" onclick="loadErrorsList('adminErrorsList')"><i class="ti ti-refresh"></i> Refresh</button>
+        </div>
+        <div id="adminErrorsList"></div>
       </div>
       <div id="adminPane_timings" style="display:none">
-        <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px"><button class="btn sm" onclick="copyAllTimings()"><i class="ti ti-copy"></i> Copy all</button><button class="btn sm" onclick="loadTimingsPane()"><i class="ti ti-refresh"></i> Refresh</button></div>
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:10px">
+          <select id="adminTimingsPeriod" onchange="loadTimingsPane()" style="flex:1;min-width:150px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none"></select>
+          <button class="btn sm" onclick="copyAllTimings()"><i class="ti ti-copy"></i> Copy all</button>
+          <button class="btn sm" onclick="printLogPane('timings')"><i class="ti ti-printer"></i> Print</button>
+          <button class="btn sm" onclick="loadTimingsPane()"><i class="ti ti-refresh"></i> Refresh</button>
+        </div>
         <div id="adminTimingsWrap"></div>
       </div>
       <div id="adminPane_profile" style="display:none">
@@ -4518,35 +4544,74 @@ function closeErrorsScreen(){
 // just pass back the row index rather than re-serializing the whole error
 // into an inline attribute (awkward/fragile with newlines and quotes).
 let __errorsRowsByTarget = {};
+// ── Errors / Timings: the period picker ─────────────────────────────────
+// Both panes load one period at a time: the last 7 or 30 days, or a calendar
+// month (this one and the 11 before it). Copy all and Print take only that
+// period's rows.
+function logPeriodOptions(){
+  const now=new Date(), opts=[['30d','Last 30 days'],['7d','Last 7 days']];
+  for(let i=0;i<12;i++){
+    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    opts.push(['m:'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),d.toLocaleDateString('en-GB',{month:'long',year:'numeric'})]);
+  }
+  return opts;
+}
+function fillLogPeriodSelect(id){
+  const sel=document.getElementById(id);
+  if(!sel||sel.options.length) return;
+  sel.innerHTML=logPeriodOptions().map(([v,l])=>`<option value="${v}">${esc(l)}</option>`).join('');
+}
+// {key, from, to, label} for a picker value; from/to are ISO times.
+function logPeriodRange(v){
+  v=v||'30d';
+  const opt=logPeriodOptions().find(o=>o[0]===v)||['30d','Last 30 days'];
+  let from, to=null;
+  if(v==='7d'||v==='30d') from=new Date(Date.now()-(v==='7d'?7:30)*864e5);
+  else { const [y,m]=v.slice(2).split('-').map(Number); from=new Date(y,m-1,1); to=new Date(y,m,1); }
+  return {key:v, from:from.toISOString(), to:to?to.toISOString():null, label:opt[1]};
+}
+function logPeriodQuery(pr){ return '&from='+encodeURIComponent(pr.from)+(pr.to?'&to='+encodeURIComponent(pr.to):''); }
+// Short date-time for the compact rows: 04.10 10:18.
+function _shortWhen(w){ const d=new Date(w); return isNaN(d)?'':d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit'}).replace('/','.')+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); }
+let __errorsPeriod={};
 async function loadErrorsList(targetId){
   targetId = targetId || 'errorsList';
   const listEl = document.getElementById(targetId);
-  const cached = loadAdminCache('errors');
+  const pickerId = targetId==='adminErrorsList' ? 'adminErrorsPeriod' : null;
+  if(pickerId) fillLogPeriodSelect(pickerId);
+  const pr = pickerId ? logPeriodRange(document.getElementById(pickerId).value) : null;
+  __errorsPeriod[targetId] = pr;
+  const cacheKey = 'errors' + (pr ? ':' + pr.key : '');
+  const cached = loadAdminCache(cacheKey);
   if(Array.isArray(cached)) renderErrorsRows(listEl, targetId, cached);
   else listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
   try{
-    const res = await fetch(API_URL + '?action=loadErrors' + gsAuthQuery());
+    const res = await fetch(API_URL + '?action=loadErrors' + gsAuthQuery() + (pr ? logPeriodQuery(pr) : ''));
     const json = await res.json();
     if(!json || json.error){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Ошибка загрузки')+'</div>'; return; }
     const rows = json.rows || [];
-    saveAdminCache('errors', rows);
+    saveAdminCache(cacheKey, rows);
     renderErrorsRows(listEl, targetId, rows);
   }catch(e){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
 }
-// Draws the Errors list from rows (cached or fresh).
+// Draws the Errors list from rows (cached or fresh): one bordered box, a
+// compact row per error (time · page · source, then the message), paged by 10.
 function renderErrorsRows(listEl, targetId, rows){
     __errorsRowsByTarget[targetId] = rows;
-    if(!rows.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Ошибок нет.</div>'; return; }
-    renderPagedList(listEl, 'errors:' + targetId, '', rows, (r,i) => `
-      <div style="position:relative;padding:10px 40px 10px 12px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:12px">
-        <button class="btn sm" title="Копировать ошибку" onclick="copyErrorRow('${targetId}',${i})" style="position:absolute;top:6px;right:6px;padding:4px 6px;min-width:0"><i class="ti ti-copy"></i></button>
-        <div style="display:flex;gap:10px;color:var(--text2);margin-bottom:4px">
-          <span>${esc(r.when ? new Date(r.when).toLocaleString() : '')}</span>
-          <span>${esc(r.page||'')}</span>
-          ${r.source ? '<span style="font-weight:600">'+esc(r.source)+'</span>' : ''}
-        </div>
-        <div style="word-break:break-word">${esc(r.message||'')}</div>
+    const pr = __errorsPeriod[targetId];
+    if(!rows.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Ошибок нет'+(pr?' — '+esc(pr.label):'')+'.</div>'; return; }
+    listEl.innerHTML = `<div style="font-size:12px;color:var(--text2);margin-bottom:6px">${rows.length} error${rows.length===1?'':'s'}${pr?' · '+esc(pr.label):''}</div><div class="log-box errors-rows"></div>`;
+    renderPagedList(listEl.querySelector('.errors-rows'), 'errors:' + targetId, pr ? pr.key : '', rows, (r,i) => `
+      <div class="log-row">
+        <button class="btn sm log-copy" title="Копировать ошибку" onclick="copyErrorRow('${targetId}',${i})"><i class="ti ti-copy"></i></button>
+        <div class="log-meta"><span class="log-when">${esc(_shortWhen(r.when))}</span>${r.page?`<span>${esc(r.page)}</span>`:''}${r.source?`<span style="font-weight:600">${esc(r.source)}</span>`:''}${r.user||r.worker?`<span>${esc(r.user||r.worker)}</span>`:''}</div>
+        <div class="log-main" style="word-break:break-word">${esc(r.message||'')}</div>
       </div>`);
+}
+function copyAllErrors(targetId){
+  const rows = __errorsRowsByTarget[targetId] || [], pr = __errorsPeriod[targetId];
+  if(!rows.length){ showToast('Nothing to copy'); return; }
+  copyTextToClipboard((pr ? 'Errors — ' + pr.label + ' (' + rows.length + ')\n\n' : '') + rows.map(errorRowText).join('\n\n'));
 }
 // ── Admin → Timings (super-admin) ─────────────────────────────────────────
 // Summary per kind over the last 7 days (median / 90th percentile of the
@@ -4559,73 +4624,104 @@ const TIMING_PHASES = {
 };
 function _pct(arr,p){ if(!arr.length) return null; const a=[...arr].sort((x,y)=>x-y); return a[Math.min(a.length-1,Math.floor(p*(a.length-1)+0.5))]; }
 const _sec=ms=>ms==null?'—':(ms/1000).toFixed(1)+'s';
+let __timingsPeriod=null;
 async function loadTimingsPane(){
   const el=document.getElementById('adminTimingsWrap'); if(!el) return;
-  const cached=loadAdminCache('timings');
+  fillLogPeriodSelect('adminTimingsPeriod');
+  const pr=logPeriodRange((document.getElementById('adminTimingsPeriod')||{}).value);
+  __timingsPeriod=pr;
+  const cacheKey='timings:'+pr.key;
+  const cached=loadAdminCache(cacheKey);
   if(Array.isArray(cached)) renderTimingsPane(el,cached);
   else el.innerHTML='<div style="color:var(--text2);font-size:13px">Loading…</div>';
   try{
-    const res=await fetch(API_URL+'?action=loadTimings'+gsAuthQuery());
+    const res=await fetch(API_URL+'?action=loadTimings'+gsAuthQuery()+logPeriodQuery(pr));
     const json=await res.json();
     if(!json||json.error){ if(!cached) el.innerHTML='<div style="color:#ff6b78">'+esc((json&&json.error)||'Load failed')+'</div>'; return; }
-    saveAdminCache('timings',json.rows||[]);
+    saveAdminCache(cacheKey,json.rows||[]);
     renderTimingsPane(el,json.rows||[]);
   }catch(e){ if(!cached) el.innerHTML='<div style="color:#ff6b78">Network error</div>'; }
 }
 const TIMING_KIND_LABEL={login:'Login → fresh data',open:'App open',scan:'Scan (camera)',scanFiles:'Scan (files)'};
 // Slow data calls arrive as kind "gs:<action>" (see the fetch wrapper).
 function timingKindLabel(k){ return TIMING_KIND_LABEL[k] || (String(k).indexOf('gs:')===0 ? 'Slow call: '+k.slice(3) : k); }
-let __timingsRows=[], __timingsSummaryText='';
+let __timingsRows=[], __timingsSummaryText='', __timingsSummary=[];
 function _timingFirmName(id){ const firms=(__firmsCache&&__firmsCache.length)?__firmsCache:(loadFirmsCache()||[]); const t=firms.find(x=>x.tenantId===id); return t?(t.companyName||id):(id||'—'); }
+function _timingSteps(kind,d){ return (TIMING_PHASES[kind]||[]).map(([key,label])=>typeof d[key]==='number'?[label,d[key]]:null).filter(Boolean); }
 // One measurement as plain text (what the per-row copy button copies).
 function timingRowText(r){
   const d=r.details||{};
-  const steps=(TIMING_PHASES[r.kind]||[]).map(([key,label])=>typeof d[key]==='number'?`${label} ${_sec(d[key])}`:'').filter(Boolean).join(' · ');
-  const head=[new Date(r.when).toLocaleString(),_timingKeyLabel(_timingKey(r)),_timingFirmName(r.tenantId),r.user||'',d.device||'',d.pages?d.pages+' page(s)':'',d.aborted||''].filter(Boolean).join(' · ');
+  const steps=_timingSteps(r.kind,d).map(([l,v])=>`${l} ${_sec(v)}`).join(' · ');
+  const head=[new Date(r.when).toLocaleString(),timingKindLabel(r.kind),_timingFirmName(r.tenantId),r.user||'',d.device||'',d.pages?d.pages+' page(s)':'',d.aborted||''].filter(Boolean).join(' · ');
   return head+'\n'+_sec(r.totalMs)+(steps?' — '+steps:'')+(d.kinds?'\nPage kinds: '+d.kinds.join(', '):'');
 }
 function copyTimingRow(i){ const r=__timingsRows[i]; if(r) copyTextToClipboard(timingRowText(r)); }
 function copyAllTimings(){
   if(!__timingsRows.length){ showToast('Nothing to copy'); return; }
-  copyTextToClipboard((__timingsSummaryText?__timingsSummaryText+'\n\n':'')+'Latest:\n'+__timingsRows.slice(0,50).map(timingRowText).join('\n\n'));
+  copyTextToClipboard((__timingsSummaryText?__timingsSummaryText+'\n\n':'')+'All measurements ('+__timingsRows.length+'):\n'+__timingsRows.map(timingRowText).join('\n\n'));
 }
-function _timingKey(r){ return r.kind; }
-function _timingKeyLabel(key){ return timingKindLabel(key); }
+// Summary per kind over the picked period (finished runs only): count,
+// median and 90% of the total, median of each step.
+function _timingsSummary(rows){
+  const done=rows.filter(r=>!(r.details&&r.details.aborted));
+  const kinds=['login','open','scan','scanFiles'].filter(k=>done.some(r=>r.kind===k))
+    .concat([...new Set(done.map(r=>r.kind).filter(k=>String(k).indexOf('gs:')===0))].sort());
+  return kinds.map(k=>{
+    const rs=done.filter(r=>r.kind===k), tot=rs.map(r=>r.totalMs);
+    const steps=(TIMING_PHASES[k]||[]).map(([key,label])=>{ const v=rs.map(r=>r.details&&r.details[key]).filter(x=>typeof x==='number'); return v.length?[label,_pct(v,0.5)]:null; }).filter(Boolean);
+    return {kind:k,label:timingKindLabel(k),count:rs.length,median:_pct(tot,0.5),p90:_pct(tot,0.9),steps};
+  });
+}
 function renderTimingsPane(el,rows){
-  __timingsRows=rows; __timingsSummaryText='';
-  if(!rows.length){ el.innerHTML='<div style="color:var(--text2);font-size:13px">No measurements yet — they appear after the next login, app open or scan.</div>'; return; }
-  const weekAgo=Date.now()-7*864e5;
-  const recent=rows.filter(r=>new Date(r.when).getTime()>=weekAgo&&!(r.details&&r.details.aborted));
-  const baseKinds=['login','open','scan','scanFiles'].filter(k=>recent.some(r=>r.kind===k)).concat([...new Set(recent.map(r=>r.kind).filter(k=>String(k).indexOf('gs:')===0))].sort());
-  const kinds=baseKinds;
-  const firmName=_timingFirmName;
-  const KIND_LABEL=TIMING_KIND_LABEL;
-  __timingsSummaryText='Last 7 days (median / 90%):\n'+kinds.map(k=>{
-    const rs=recent.filter(r=>_timingKey(r)===k), tot=rs.map(r=>r.totalMs);
-    const steps=(TIMING_PHASES[k.split('|')[0]]||[]).map(([key,label])=>{ const v=rs.map(r=>r.details&&r.details[key]).filter(x=>typeof x==='number'); return v.length?`${label} ${_sec(_pct(v,0.5))}`:''; }).filter(Boolean).join(' · ');
-    return `${_timingKeyLabel(k)}: ${rs.length}× · median ${_sec(_pct(tot,0.5))} · 90% ${_sec(_pct(tot,0.9))}${steps?' · '+steps:''}`;
-  }).join('\n');
-  const summary=kinds.map(k=>{
-    const rs=recent.filter(r=>_timingKey(r)===k), tot=rs.map(r=>r.totalMs);
-    const phases=(TIMING_PHASES[k.split('|')[0]]||[]).map(([key,label])=>{ const v=rs.map(r=>r.details&&r.details[key]).filter(x=>typeof x==='number'); return v.length?`${esc(label)} ${_sec(_pct(v,0.5))}`:''; }).filter(Boolean).join(' · ');
-    return `<tr><td style="padding:6px 8px;font-weight:600">${esc(_timingKeyLabel(k))}</td><td style="padding:6px 8px;text-align:center">${rs.length}</td>
-      <td style="padding:6px 8px;text-align:center;font-weight:600">${_sec(_pct(tot,0.5))}</td><td style="padding:6px 8px;text-align:center">${_sec(_pct(tot,0.9))}</td>
-      <td style="padding:6px 8px;font-size:11px;color:var(--text2)">${phases}</td></tr>`;
-  }).join('');
+  const pr=__timingsPeriod||logPeriodRange('30d');
+  __timingsRows=rows;
+  __timingsSummary=_timingsSummary(rows);
+  __timingsSummaryText=__timingsSummary.length?pr.label+' (median / 90%):\n'+__timingsSummary.map(x=>
+    `${x.label}: ${x.count}× · median ${_sec(x.median)} · 90% ${_sec(x.p90)}${x.steps.length?' · '+x.steps.map(([l,v])=>l+' '+_sec(v)).join(' · '):''}`).join('\n'):'';
+  if(!rows.length){ el.innerHTML='<div style="color:var(--text2);font-size:13px">No measurements — '+esc(pr.label)+'.</div>'; return; }
+  const p90=Object.fromEntries(__timingsSummary.map(x=>[x.kind,x.p90]));
+  const cards=__timingsSummary.map(x=>`<div class="tm-card">
+      <div class="tm-card-head">${esc(x.label)}<span>${x.count}×</span></div>
+      <div class="tm-card-vals">median <b>${_sec(x.median)}</b> · 90% ${_sec(x.p90)}</div>
+      ${x.steps.map(([l,v])=>`<span class="tm-pill">${esc(l)} ${_sec(v)}</span>`).join('')}
+    </div>`).join('');
+  // A run slower than its kind's 90% is marked amber.
   const rowHtml=(r,i)=>{
-    const d=r.details||{};
-    const extra=(TIMING_PHASES[r.kind]||[]).map(([key,label])=>typeof d[key]==='number'?`${esc(label)} ${_sec(d[key])}`:'').filter(Boolean).join(' · ');
-    return `<div style="position:relative;padding:8px 40px 8px 10px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:12px">
-      <button class="btn sm" title="Copy" onclick="copyTimingRow(${i})" style="position:absolute;top:6px;right:6px;padding:4px 6px;min-width:0"><i class="ti ti-copy"></i></button>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;color:var(--text2)"><span>${esc(new Date(r.when).toLocaleString())}</span><span style="font-weight:600;color:var(--text)">${esc(_timingKeyLabel(_timingKey(r)))}</span>
-        <span>${esc(firmName(r.tenantId))}</span><span>${esc(r.user||'')}</span><span>${esc(d.device||'')}</span>${d.pages?`<span>${d.pages} page(s)</span>`:''}${d.aborted?`<span style="color:#ffb020">${esc(d.aborted)}</span>`:''}</div>
-      <div><b>${_sec(r.totalMs)}</b>${extra?' — '+extra:''}</div></div>`;
+    const d=r.details||{}, slow=p90[r.kind]!=null&&r.totalMs>p90[r.kind];
+    const steps=_timingSteps(r.kind,d).map(([l,v])=>`${esc(l)} ${_sec(v)}`).join(' · ');
+    return `<div class="log-row">
+      <button class="btn sm log-copy" title="Copy" onclick="copyTimingRow(${i})"><i class="ti ti-copy"></i></button>
+      <div class="log-main"><span class="log-when">${esc(_shortWhen(r.when))}</span> &nbsp;<b>${esc(timingKindLabel(r.kind))}</b> &nbsp;<b style="color:${slow?'var(--amber)':'var(--text)'}">${_sec(r.totalMs)}</b>${d.aborted?` <span style="color:var(--amber)">${esc(d.aborted)}</span>`:''}</div>
+      ${steps?`<div class="log-sub">${steps}</div>`:''}
+      <div class="log-meta">${[_timingFirmName(r.tenantId),r.user,d.device,d.pages?d.pages+' page(s)':'',d.kinds?d.kinds.join(', '):''].filter(Boolean).map(x=>`<span>${esc(x)}</span>`).join('')}</div>
+    </div>`;
   };
-  el.innerHTML=`${kinds.length?`<div style="font-size:13px;font-weight:600;margin-bottom:6px">Last 7 days (median / 90%)</div>
-    <div style="overflow-x:auto;margin-bottom:14px"><table style="width:100%;border-collapse:collapse;font-size:12px">
-    <tr style="color:var(--text2);text-align:left"><th style="padding:6px 8px">What</th><th style="padding:6px 8px">Count</th><th style="padding:6px 8px">Median</th><th style="padding:6px 8px">90%</th><th style="padding:6px 8px">Median by step</th></tr>${summary}</table></div>`:''}
-    <div style="font-size:13px;font-weight:600;margin-bottom:6px">Latest</div><div id="timingsLatestList" style="display:flex;flex-direction:column;gap:6px"></div>`;
-  renderPagedList(document.getElementById('timingsLatestList'), 'timings', '', rows, rowHtml);
+  el.innerHTML=`<div style="font-size:12px;color:var(--text2);margin-bottom:6px">${esc(pr.label)} · ${rows.length} measurement${rows.length===1?'':'s'} · median / 90%</div>
+    ${cards?`<div class="tm-cards">${cards}</div>`:''}
+    <div style="font-size:12px;color:var(--text2);margin-bottom:6px">All measurements, newest first</div>
+    <div id="timingsLatestList" class="log-box"></div>`;
+  renderPagedList(document.getElementById('timingsLatestList'), 'timings', pr.key, rows, rowHtml);
+}
+// Print: the picked period of the Errors or Timings pane as a plain page.
+function printLogPane(which){
+  const isT=which==='timings';
+  const rows=isT?__timingsRows:(__errorsRowsByTarget.adminErrorsList||[]);
+  const pr=isT?__timingsPeriod:__errorsPeriod.adminErrorsList;
+  if(!rows.length){ showToast('Nothing to print'); return; }
+  const title=(isT?'Timings':'Errors')+(pr?' — '+pr.label:'');
+  const th='style="border:1px solid #ccc;padding:4px 6px;background:#f0f0f0;text-align:left"', td='style="border:1px solid #ccc;padding:4px 6px;vertical-align:top"';
+  const summary=isT&&__timingsSummary.length?`<h3>Summary (median / 90%)</h3><table><tr><th ${th}>What</th><th ${th}>Count</th><th ${th}>Median</th><th ${th}>90%</th><th ${th}>Median by step</th></tr>`
+    +__timingsSummary.map(x=>`<tr><td ${td}>${esc(x.label)}</td><td ${td}>${x.count}</td><td ${td}>${_sec(x.median)}</td><td ${td}>${_sec(x.p90)}</td><td ${td}>${esc(x.steps.map(([l,v])=>l+' '+_sec(v)).join(' · '))}</td></tr>`).join('')+'</table>':'';
+  const body=isT
+    ?`<table><tr><th ${th}>When</th><th ${th}>What</th><th ${th}>Total</th><th ${th}>Steps</th><th ${th}>Firm · user · device</th></tr>`
+      +rows.map(r=>{ const d=r.details||{}; return `<tr><td ${td}>${esc(new Date(r.when).toLocaleString())}</td><td ${td}>${esc(timingKindLabel(r.kind))}${d.aborted?' ('+esc(d.aborted)+')':''}</td><td ${td}>${_sec(r.totalMs)}</td><td ${td}>${esc(_timingSteps(r.kind,d).map(([l,v])=>l+' '+_sec(v)).join(' · '))}</td><td ${td}>${esc([_timingFirmName(r.tenantId),r.user,d.device].filter(Boolean).join(' · '))}</td></tr>`; }).join('')+'</table>'
+    :`<table><tr><th ${th}>When</th><th ${th}>Page</th><th ${th}>Source</th><th ${th}>Message</th></tr>`
+      +rows.map(r=>`<tr><td ${td}>${esc(r.when?new Date(r.when).toLocaleString():'')}</td><td ${td}>${esc(r.page||'')}</td><td ${td}>${esc(r.source||'')}</td><td ${td}>${esc(r.message||'')}</td></tr>`).join('')+'</table>';
+  const win=window.open('','_blank');
+  if(!win){ showToast('Allow pop-ups to print'); return; }
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(title)}</title><style>body{font-family:Arial,sans-serif;padding:16px;color:#111;font-size:12px}table{width:100%;border-collapse:collapse;margin-bottom:16px}</style></head><body><h2>${esc(title)}</h2><div>${rows.length} row(s)</div>${summary}<h3>${isT?'Measurements':'Errors'}</h3>${body}</body></html>`);
+  win.document.close();
+  setTimeout(()=>win.print(),500);
 }
 function errorRowText(r){
   const head = [r.when ? new Date(r.when).toLocaleString() : '', r.page||'', r.source||''].filter(Boolean).join(' · ');
