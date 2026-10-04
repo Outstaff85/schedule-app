@@ -12,6 +12,8 @@ on the bucket, which this way never has to be made by hand.
 
 A fileId is the object's path, tenants/<tenantId>/workers/...; only a path in
 the caller's own firm is accepted (a superadmin's: the firm it is viewing).
+An HR login limited to its own workers (claim own) reaches only the files of
+workers whose hrId is its uid (worker_hr(workerId) -> hrId, from main.py).
 
 delete_tenant_files(bucket, tenant_id) removes every file of a firm; main.py
 calls it after users_admin deleteTenant.
@@ -20,7 +22,7 @@ calls it after users_admin deleteTenant.
 import json
 
 ACTIONS = ("loadWorkerAssets", "deleteWorkerDoc")
-MANAGER_ROLES = ("superadmin", "tenant_admin", "staff")
+MANAGER_ROLES = ("superadmin", "tenant_admin", "staff", "hr")
 
 E_NOT_FIRM = "Файл не принадлежит этой фирме"
 E_NO_FILE = "Нет fileId"
@@ -38,10 +40,10 @@ def _workers_writer(caller):
     if role in ("superadmin", "tenant_admin"):
         return True
     perms = caller.get("perms")
-    return role == "staff" and isinstance(perms, list) and ("*" in perms or "workers" in perms)
+    return role in ("staff", "hr") and isinstance(perms, list) and ("*" in perms or "workers" in perms)
 
 
-def run(bucket, caller, body):
+def run(bucket, caller, body, worker_hr=None):
     """bucket: a google.cloud.storage Bucket (or anything with .blob(path)
     returning an object with exists/download_as_bytes/delete)."""
     action = str(body.get("action") or "")
@@ -54,6 +56,10 @@ def run(bucket, caller, body):
         return {"error": E_NO_FILE}
     if not _path_ok(path, caller.get("tenantId")):
         return {"error": E_NOT_FIRM}
+    if caller.get("role") == "hr" and caller.get("own"):
+        wid = path.split("/")[3] if len(path.split("/")) > 3 else ""
+        if not worker_hr or not wid or worker_hr(wid) != caller.get("uid"):
+            return {"error": E_NOT_FIRM}
     blob = bucket.blob(path)
     if action == "deleteWorkerDoc":
         if not _workers_writer(caller):

@@ -11,7 +11,9 @@ loadTenantProfile, with the Russian error texts the app shows.
 Collections (see firestore.rules — all of these are function-only except
 users/{uid}, which its owner, a superadmin or the firm's tenant_admin may read):
   users/{uid}         username, tenantId, role, permissions ('*' or list),
-                      supplierId, active, createdAt
+                      supplierId, active, createdAt; an 'hr' user also
+                      fullName, phone, ownOnly (sees only the workers whose
+                      hrId is theirs — see firestore.rules)
   authSecrets/{uid}   algo, salt, hash, failCount, lastFailAt
   usernames/{name}    {uid} — makes a username unique: the batch that
                       creates a user create()s this doc and fails as a whole
@@ -34,7 +36,8 @@ from datetime import datetime, timezone
 
 from google.cloud.firestore_v1.base_query import FieldFilter
 
-ROLES_SUB = ("staff", "supplier")          # what a firm can create for itself
+ROLES_SUB = ("staff", "supplier", "hr")    # what a firm can create for itself
+HR_DEFAULT_PERMS = ["workers"]
 ADMIN_ROLES = ("tenant_admin", "superadmin")
 PROFILE_FIELDS = ("companyName", "deductionsFileNumber", "phone", "street", "streetNumber", "city")
 
@@ -100,6 +103,10 @@ def claims_for(user):
     else:
         perms_list = list(perms)
     claims = {"role": role, "perms": perms_list}
+    if role == "hr":
+        # own: this HR sees and edits only the workers whose hrId is its uid
+        # (firestore.rules / storage.rules / files.py read it).
+        claims["own"] = user.get("ownOnly") is not False
     if user.get("tenantId"):
         claims["tenantId"] = user["tenantId"]
     if user.get("supplierId"):
@@ -186,6 +193,8 @@ def login(db, username, password, mint_token, now=None, on_refused=None):
         "tenantId": tenant_id,
         "permissions": "*" if perms in (None, "", "*") else perms,
         "supplierId": user.get("supplierId") or None,
+        "ownOnly": claims.get("own", False),
+        "fullName": user.get("fullName") or "",
         "tenantProfile": profile,
     }
 
@@ -255,6 +264,8 @@ def list_users(db, caller):
             "createdAt": d.get("createdAt"),
             "permissions": "*" if d.get("permissions") in (None, "", "*") else d.get("permissions"),
             "supplierId": d.get("supplierId") or None,
+            "fullName": d.get("fullName") or "", "phone": d.get("phone") or "",
+            "ownOnly": d.get("ownOnly") is not False if _norm_role(d.get("role")) == "hr" else None,
         })
     return {"users": users}
 
@@ -293,7 +304,7 @@ def create_tenant_user(db, caller, body):
         return {"error": "Нет tenantId"}
     role = body.get("role")
     if role not in ROLES_SUB:
-        return {"error": "Роль должна быть staff или supplier"}
+        return {"error": "Роль должна быть staff, supplier или hr"}
     username = _norm_username(body.get("username"))
     password = str(body.get("password") or "")
     if not username or not password:
@@ -303,13 +314,25 @@ def create_tenant_user(db, caller, body):
         return {"error": err}
     if role == "supplier" and not body.get("supplierId"):
         return {"error": "Для роли supplier нужно выбрать поставщика"}
+    if role == "hr" and not str(body.get("fullName") or "").strip():
+        return {"error": "Для роли HR нужно указать имя"}
     perms = body.get("permissions")
-    uid, err = _new_user_batch(db, username, {
-        "role": role, "tenantId": tenant_id,
-        "permissions": "" if role == "supplier" else (list(perms) if isinstance(perms, list) else "*"),
+    if role == "supplier":
+        perms = ""
+    elif role == "hr":
+        perms = list(perms) if isinstance(perms, list) else list(HR_DEFAULT_PERMS)
+    else:
+        perms = list(perms) if isinstance(perms, list) else "*"
+    user = {
+        "role": role, "tenantId": tenant_id, "permissions": perms,
         "supplierId": body.get("supplierId") if role == "supplier" else None,
         "active": True,
-    }, password)
+    }
+    if role == "hr":
+        user.update(fullName=str(body.get("fullName") or "").strip()[:80],
+                    phone=str(body.get("phone") or "").strip()[:40],
+                    ownOnly=body.get("ownOnly") is not False)
+    uid, err = _new_user_batch(db, username, user, password)
     if err:
         return {"error": err}
     return {"ok": True, "userId": uid}
@@ -331,6 +354,18 @@ def update_user(db, caller, body, revoke):
         upd["supplierId"] = body.get("supplierId") or None
     if "active" in body:
         upd["active"] = bool(body.get("active"))
+    if _norm_role(data.get("role")) == "hr":
+        if "ownOnly" in body:
+            upd["ownOnly"] = body.get("ownOnly") is not False
+        info = {}
+        if "fullName" in body:
+            if not str(body.get("fullName") or "").strip():
+                return {"error": "Для роли HR нужно указать имя"}
+            info["fullName"] = str(body.get("fullName")).strip()[:80]
+        if "phone" in body:
+            info["phone"] = str(body.get("phone") or "").strip()[:40]
+        if info:
+            ref.update(info)  # name and phone: no new sign-in needed
     if upd:
         ref.update(upd)
         # Claims are baked into the session: make the user sign in again so
@@ -477,6 +512,31 @@ def load_tenant_profile(db, caller, body):
     return {"ok": True, "profile": _profile(tid, snap.to_dict()) if snap and snap.exists else None}
 
 
+def _doc_key(v):
+    return "".join(ch for ch in str(v or "").upper() if ch.isalnum())
+
+
+def check_worker_doc(db, caller, body):
+    """checkWorkerDoc {docId, workerId?}: is there another worker in the
+    caller's firm with this ID / passport number? Answers only yes or no, so
+    an HR who sees only their own workers is warned about a duplicate
+    without seeing the other worker."""
+    if caller.get("role") not in ("superadmin", "tenant_admin", "staff", "hr"):
+        return {"error": E_NO_RIGHTS}
+    tid = _target_tenant(caller, body)
+    key = _doc_key(body.get("docId"))
+    if not tid or not key:
+        return {"ok": True, "exists": False}
+    skip = str(body.get("workerId") or "")
+    for snap in db.collection("tenants").document(tid).collection("workers").stream():
+        if snap.id == skip:
+            continue
+        d = snap.to_dict() or {}
+        if key in (_doc_key(d.get("docId")), _doc_key(d.get("passportNo")), _doc_key(d.get("israeliId"))):
+            return {"ok": True, "exists": True}
+    return {"ok": True, "exists": False}
+
+
 ACTIONS = {
     "listTenants": lambda db, c, b, r: list_tenants(db, c),
     "setTenantActive": set_tenant_active,
@@ -489,6 +549,7 @@ ACTIONS = {
     "updateUser": update_user,
     "resetUserPassword": reset_user_password,
     "deleteUser": delete_user,
+    "checkWorkerDoc": lambda db, c, b, r: check_worker_doc(db, c, b),
 }
 
 

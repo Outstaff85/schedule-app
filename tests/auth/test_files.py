@@ -98,3 +98,19 @@ def test_delete_tenant_files_only_that_firm():
     assert list(b.store) == [OTHER]
     assert files.delete_tenant_files(b, "") == 0 and files.delete_tenant_files(b, "a/b") == 0
     assert list(b.store) == [OTHER]
+
+
+def test_hr_own_only_reaches_its_own_workers_files():
+    b = Bucket()
+    hr = {"uid": "u-hr", "role": "hr", "tenantId": T1, "perms": ["workers"], "own": True}
+    mine = lambda wid: "u-hr" if wid == "w1" else "other"
+    assert files.run(b, hr, {"action": "loadWorkerAssets", "fileId": ASSETS}, mine)["ok"]
+    theirs = lambda wid: "other"
+    assert files.run(b, hr, {"action": "loadWorkerAssets", "fileId": ASSETS}, theirs) == {"error": files.E_NOT_FIRM}
+    assert files.run(b, hr, {"action": "deleteWorkerDoc", "fileId": PDF}, theirs) == {"error": files.E_NOT_FIRM}
+    assert PDF in b.store
+    assert files.run(b, hr, {"action": "deleteWorkerDoc", "fileId": PDF}, mine) == {"ok": True}
+    # Without own-only, an HR with the workers right is a workers writer for the whole firm.
+    hr_all = dict(hr, own=False)
+    assert files.run(Bucket(), hr_all, {"action": "deleteWorkerDoc", "fileId": PDF}, theirs) == {"ok": True}
+    assert files.run(Bucket(), dict(hr_all, perms=["accounting"]), {"action": "deleteWorkerDoc", "fileId": PDF}, theirs) == {"error": files.E_NO_RIGHT}

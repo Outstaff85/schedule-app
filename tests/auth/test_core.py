@@ -364,3 +364,47 @@ def test_http_superadmin_acts_on_the_viewed_firm():
     finally:
         main.storage.bucket = orig
     assert status == 200 and out["ok"] and out["removed"]["files"] == 2 and list(bucket.store) == [OTHER]
+
+
+# ── HR logins ────────────────────────────────────────────────────────────────
+
+def test_hr_user_create_login_update():
+    rv = Revokes()
+    assert "имя" in core.create_tenant_user(DB, ADMIN1, {"role": "hr", "username": "hr1", "password": "hr-pass-11"})["error"]
+    r = core.create_tenant_user(DB, ADMIN1, {"role": "hr", "username": "HR1", "password": "hr-pass-11",
+                                             "fullName": " Dana Levi ", "phone": "050-1112233"})
+    assert r["ok"]
+    u = DB.collection("users").document(r["userId"]).get().to_dict()
+    # Defaults: only the workers section, only own workers.
+    assert u["role"] == "hr" and u["permissions"] == ["workers"] and u["ownOnly"] is True
+    assert u["fullName"] == "Dana Levi" and u["phone"] == "050-1112233" and u["tenantId"] == T1
+    login = core.login(DB, "hr1", "hr-pass-11", mint)
+    assert login["role"] == "hr" and login["ownOnly"] is True and login["fullName"] == "Dana Levi"
+    claims = id_token_claims(login["token"])
+    assert claims["role"] == "hr" and claims["perms"] == ["workers"] and claims["own"] is True and claims["tenantId"] == T1
+    # Listed with name, phone, ownOnly.
+    row = next(x for x in core.list_users(DB, ADMIN1)["users"] if x["username"] == "hr1")
+    assert row["fullName"] == "Dana Levi" and row["phone"] == "050-1112233" and row["ownOnly"] is True
+    # Name / phone change needs no new sign-in; rights do.
+    assert core.update_user(DB, ADMIN1, {"id": r["userId"], "fullName": "Dana L.", "phone": "1"}, rv)["ok"] and rv == []
+    assert "имя" in core.update_user(DB, ADMIN1, {"id": r["userId"], "fullName": " "}, rv)["error"]
+    assert core.update_user(DB, ADMIN1, {"id": r["userId"], "ownOnly": False, "permissions": ["workers", "accounting"]}, rv)["ok"]
+    assert rv == [(r["userId"], False)]
+    claims = id_token_claims(core.login(DB, "hr1", "hr-pass-11", mint)["token"])
+    assert claims["own"] is False and claims["perms"] == ["workers", "accounting"]
+    # Not a firm-admin: can't manage users.
+    hr = {"uid": r["userId"], "role": "hr", "tenantId": T1}
+    assert core.list_users(DB, hr)["error"] == core.E_NO_RIGHTS
+
+
+def test_check_worker_doc_answers_only_yes_or_no():
+    w = DB.collection("tenants").document(T1).collection("workers")
+    w.document("w1").set({"id": "w1", "docId": "012345678", "name": "Secret Name", "hrId": "someone"})
+    w.document("w2").set({"id": "w2", "docId": "AB 1234567"})
+    hr = {"uid": "u-hr", "role": "hr", "tenantId": T1}
+    assert core.check_worker_doc(DB, hr, {"docId": "012345678"}) == {"ok": True, "exists": True}
+    assert core.check_worker_doc(DB, hr, {"docId": "ab1234567"}) == {"ok": True, "exists": True}
+    assert core.check_worker_doc(DB, hr, {"docId": "012345678", "workerId": "w1"}) == {"ok": True, "exists": False}
+    assert core.check_worker_doc(DB, hr, {"docId": "999"}) == {"ok": True, "exists": False}
+    assert core.check_worker_doc(DB, ADMIN2, {"docId": "012345678"})["exists"] is False  # other firm
+    assert core.check_worker_doc(DB, {"uid": "s", "role": "supplier", "tenantId": T1}, {"docId": "1"})["error"] == core.E_NO_RIGHTS
