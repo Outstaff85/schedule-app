@@ -155,6 +155,9 @@
   /* Modal */
   .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:100;align-items:center;justify-content:center;}
   .overlay.open{display:flex;}
+  /* The close ✕ every open modal gets, top right, staying in view while the
+     modal scrolls (ensureModalCloseButtons; the same in supplier-portal.html). */
+  .modal-x{position:sticky;top:0;float:right;z-index:6;margin:-12px -12px 4px 10px;width:32px;height:32px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;line-height:1;padding:0;}
   .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto;}
   .modal-title{font-size:19px;font-weight:600;color:var(--text);margin-bottom:18px;letter-spacing:-0.3px;}
   .field{margin-bottom:14px;}
@@ -843,7 +846,6 @@
   <div class="modal" style="width:680px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <div class="modal-title" style="margin-bottom:0"><i class="ti ti-sparkles" style="color:var(--green)"></i> Скан паспорта</div>
-      <button class="btn sm" onclick="closeModal('aiScanOverlay')"><i class="ti ti-x"></i></button>
     </div>
     <div id="aiScanStage"></div>
   </div>
@@ -2315,7 +2317,6 @@ function showWorkerModal(w){
   document.getElementById('workerModal').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <div class="modal-title" style="margin-bottom:0">${editingWorkerIdx!==null?'עריכת עובד':'הוספת עובד חדש'}</div>
-      <button class="btn sm" onclick="closeModal('workerOverlay')" title="סגור" style="flex-shrink:0;padding:0 8px"><i class="ti ti-x"></i></button>
     </div>
     <div class="field" id="wAvatarWrap" style="display:flex;align-items:center;gap:10px">
       <img id="wAvatarImg" src="${__wAvatarB64?('data:image/jpeg;base64,'+__wAvatarB64):''}" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1px solid var(--border2);background:var(--bg3);display:${__wAvatarB64?'block':'none'}">
@@ -3273,7 +3274,7 @@ function openWorkerCard(wi){
         <div style="font-size:18px;font-weight:700">${esc(w.name)}</div>
         <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col};display:inline-block;margin-top:4px">${stMeta.label}</span>${docStatusBadgeHtml(w)}
       </div>
-      <button class="btn sm" onclick="closeModal('workerCardOverlay')" title="Закрыть" style="flex-shrink:0;padding:0 8px"><i class="ti ti-x"></i></button>
+      ${hasPermission('workers')?`<button class="btn sm" type="button" onclick="rescanFromWorkerCard(${wi})" style="flex-shrink:0"><i class="ti ti-scan"></i> ${w.docUrl?'סריקה חוזרת':'סרוק מסמך'}</button>`:''}
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text2);margin-bottom:14px">
       ${w.phone?`<div><i class="ti ti-phone"></i> ${esc(w.phone)}</div>`:''}
@@ -3282,9 +3283,7 @@ function openWorkerCard(wi){
       ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?'Срок истёк':'Срок приближается'} — ${expSt.deadline.toLocaleDateString('ru-RU')}</div>`:''}
       ${workerDocId(w)?`<div><i class="ti ti-id"></i> ${esc(workerDocId(w))}</div>`:''}
       <div style="display:flex;gap:6px"><i class="ti ti-files" style="margin-top:2px"></i><span>Documents: ${docStatusSummaryHtml(w)}</span></div>
-      ${hasPermission('workers')?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <button class="btn sm" type="button" onclick="rescanFromWorkerCard(${wi})"><i class="ti ti-scan"></i> ${w.docUrl?'סריקה חוזרת':'סרוק מסמך'}</button>
-        ${cardMissingScanRowsHtml(w,wi)}</div>`:''}
+      ${hasPermission('workers')&&cardMissingScanRowsHtml(w,wi)?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${cardMissingScanRowsHtml(w,wi)}</div>`:''}
       ${[[workerAddress(w),w.houseNumber].filter(Boolean).join(' '),w.city].filter(Boolean).length?`<div><i class="ti ti-map-pin"></i> ${esc([[workerAddress(w),w.houseNumber].filter(Boolean).join(' '),w.city].filter(Boolean).join(', '))}</div>`:''}
       ${w.incomeType&&INCOME_TYPE_LABELS[w.incomeType]?`<div><i class="ti ti-briefcase"></i> ${INCOME_TYPE_LABELS[w.incomeType]}</div>`:''}
       ${w.otherIncomeType&&w.otherIncomeType!=='none'&&OTHER_INCOME_LABELS[w.otherIncomeType]?`<div><i class="ti ti-cash"></i> Other income: ${OTHER_INCOME_LABELS[w.otherIncomeType]}</div>`:''}
@@ -3823,6 +3822,21 @@ function openPunchClock(cid){
 
 // --- Modal close --------------------------------------------------------------
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+// Every open modal gets a close ✕ in its top right corner (per user request
+// 2026-10-04: "in all windows, top right"). One observer adds it whenever an
+// overlay opens or its modal is redrawn, so no modal has to draw its own;
+// it calls closeModal(<overlay id>) like the backdrop tap. The same code is
+// in schedule-manager.html and supplier-portal.html.
+function ensureModalCloseButtons(){
+  document.querySelectorAll('.overlay.open > .modal').forEach(m=>{
+    if(m.querySelector(':scope > .modal-x')) return;
+    const id=m.parentElement.id;
+    if(!id) return;
+    m.insertAdjacentHTML('afterbegin',`<button type="button" class="modal-x" aria-label="Close" title="Close" onclick="closeModal('${id}')">✕</button>`);
+  });
+}
+new MutationObserver(ensureModalCloseButtons).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});
+
 
 // --- Export dropdown ----------------------------------------------------------
 function toggleExportMenu(){ document.getElementById('exportMenu').classList.toggle('open'); }
@@ -7449,9 +7463,18 @@ function _consoleArgsText(args){
 const SDK_RECONNECT_NOISE_RE=/@firebase\/firestore:.*(transport errored|Could not reach Cloud Firestore backend|stream .* (closed|errored))/i;
 // Google Maps' notice that google.maps.Marker (the client map picker's pin)
 // is deprecated — it still works, and Google gives 12 months' notice before
-// removing it; not an app error, so not reported either.
+// removing it. Kept in the Errors log as a reminder, but at most once a day
+// per device (per user request; the time is kept in localStorage).
 const MAPS_MARKER_NOTICE_RE=/google\.maps\.Marker is deprecated/;
-const _consoleNoise=msg=>SDK_RECONNECT_NOISE_RE.test(msg)||MAPS_MARKER_NOTICE_RE.test(msg);
+function _mapsNoticeSeenToday(){
+  try{
+    const last=Number(localStorage.getItem('mapsMarkerNoticeAt')||0);
+    if(Date.now()-last<24*3600*1000) return true;
+    localStorage.setItem('mapsMarkerNoticeAt',String(Date.now()));
+  }catch(e){}
+  return false;
+}
+const _consoleNoise=msg=>SDK_RECONNECT_NOISE_RE.test(msg)||(MAPS_MARKER_NOTICE_RE.test(msg)&&_mapsNoticeSeenToday());
 console.error=function(...args){ _origConsoleError(...args); try{ const t=_consoleArgsText(args); if(!_consoleNoise(t.msg)) reportError(t.msg,'console.error',t.stack); }catch(e){} };
 console.warn=function(...args){ _origConsoleWarn(...args); try{ const t=_consoleArgsText(args); if(!_consoleNoise(t.msg)) reportError(t.msg,'console.warn',t.stack); }catch(e){} };
 const ERROR_TOAST_RE=/fail|could not|error|offline|denied|invalid|ошибк|не удал|недоступ|нет прав|истекл|\u26a0|⚠/i;

@@ -13,7 +13,7 @@ The manager app's skeleton: the page layout, global state, tabs and rendering, t
 - **Tabs** (`.ttab`): Today (`dashboard`), Schedule, Workers, Clients, Suppliers, Admin, Accounting. Each has a `#section<Name>`.
 - **Sidebar** (Schedule): the worker list (`renderWorkerList`) and the client filter (`renderSidebarClients`).
 - **Full-screen overlays:** `#loginScreen`, `#firmsScreen` (super-admin with no firm picked), `#errorsScreen` (no UI caller left).
-- **Modals:** `.overlay` elements, opened by adding `open`; `closeModal(id)` removes it.
+- **Modals:** `.overlay` elements, opened by adding `open`; `closeModal(id)` removes it. Every open modal gets a close ✕ in its top right corner (`.modal-x`, sticky, so it stays in view while the modal scrolls; on the right in Hebrew modals too): `ensureModalCloseButtons()`, run by one `MutationObserver` on the page, adds it when an overlay opens or its modal is redrawn and points it at `closeModal(<overlay id>)`. Modals don't draw their own ✕. The supplier portal has the same code.
 
 ## Global state
 
@@ -127,7 +127,7 @@ Punches have their own path (`gsLoadPunchLog`, `mergeRemotePunches`, month windo
 
 - **Errors:** `reportError(message, source, stack)` — at most 40 per page, the same message at most once a minute. It is fed by:
   - `window` `error` and `unhandledrejection`;
-  - every `console.error` / `console.warn` (wrapped), except the Firestore SDK's reconnect warnings (`SDK_RECONNECT_NOISE_RE`: the live listener's stream "transport errored" / "Could not reach Cloud Firestore backend" — the SDK reconnects by itself) and Google Maps' notice that `google.maps.Marker` (the client map picker's pin) is deprecated (`MAPS_MARKER_NOTICE_RE` — it still works; moving to `AdvancedMarkerElement` needs a Map ID from the Google Cloud console);
+  - every `console.error` / `console.warn` (wrapped), except the Firestore SDK's reconnect warnings (`SDK_RECONNECT_NOISE_RE`: the live listener's stream "transport errored" / "Could not reach Cloud Firestore backend" — the SDK reconnects by itself). Google Maps' notice that `google.maps.Marker` (the client map picker's pin) is deprecated (`MAPS_MARKER_NOTICE_RE`) is reported at most once a day per device (`_mapsNoticeSeenToday`, `localStorage.mapsMarkerNoticeAt`) — it still works; moving to `AdvancedMarkerElement` needs a Map ID from the Google Cloud console;
   - toasts matching `ERROR_TOAST_RE`;
   - the form error lines `firmEditFormError` / `userFormError` (`watchErrorLine`, a MutationObserver).
 - **Timings:** `reportTiming(kind, totalMs, details)` adds `device`. Kinds:
