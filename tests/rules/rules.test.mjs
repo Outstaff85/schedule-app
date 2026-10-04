@@ -266,10 +266,16 @@ test('storage: firm files readable by its managers, written by owner/workers sta
   await assertSucceeds(deleteObject(ref(st('ownerA'), pA)));
 });
 
-test('storage: hr uploads with the workers section; an own-workers hr reads/deletes only via the function', async () => {
+test('storage: hr uploads with the workers section; an own-workers hr reads back only its stamped files, deletes via the function', async () => {
   const pA = 'tenants/' + A + '/workers/w2/form101.pdf';
-  await assertSucceeds(uploadString(ref(st('hrOwn'), pA), 'pdf'));
-  await assertFails(getBytes(ref(st('hrOwn'), pA)));
+  const mine = { customMetadata: { hrId: 'u-hrOwn' } };
+  await assertFails(uploadString(ref(st('hrOwn'), pA), 'pdf'));
+  await assertFails(uploadString(ref(st('hrOwn'), pA), 'pdf', 'raw', { customMetadata: { hrId: 'u-other' } }));
+  await assertSucceeds(uploadString(ref(st('hrOwn'), pA), 'pdf', 'raw', mine));
+  await assertSucceeds(getBytes(ref(st('hrOwn'), pA)));
+  const pOther = 'tenants/' + A + '/workers/w3/form101.pdf';
+  await assertSucceeds(uploadString(ref(st('ownerA'), pOther), 'pdf'));
+  await assertFails(getBytes(ref(st('hrOwn'), pOther)));
   await assertFails(deleteObject(ref(st('hrOwn'), pA)));
   await assertSucceeds(getBytes(ref(st('hrAll'), pA)));
   await assertFails(uploadString(ref(st('hrOwnB'), pA), 'evil'));

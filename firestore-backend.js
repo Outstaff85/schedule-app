@@ -41,7 +41,7 @@
   const AI_ACTIONS = ['aiReadDoc','aiReadSefach','aiDetectAlign','aiVerifyField','aiVerifyFields','aiReadHoursTable','aiFindField'];
   // Actions answered by the users_admin function.
   const FUNCTION_ACTIONS = ['listTenants','setTenantActive','deleteTenant','createUser','updateTenant',
-    'loadTenantProfile','listUsers','createTenantUser','updateUser','resetUserPassword','deleteUser'];
+    'loadTenantProfile','listUsers','createTenantUser','updateUser','resetUserPassword','deleteUser','checkWorkerDoc'];
   // File uploads, straight to Storage.
   const UPLOAD_ACTIONS = ['saveWorkerDoc','saveWorkerAssets','saveWorkerFile'];
   // Reading/deleting a file in Storage (its id is the object path) goes
@@ -101,8 +101,8 @@
     // Last JSON written/read per document, so a save sends only real changes.
     const known = {workers:new Map(), clients:new Map(), suppliers:new Map()};
     let knownTenant = null;
-    // Worker id -> hrId, from the last load/save: a punch written here is
-    // stamped with its worker's HR.
+    // Worker id -> hrId (null: no HR), from the last load/save: a punch
+    // written here is stamped with its worker's current HR.
     const workerHr = new Map();
 
     // The signed-in login's claims (role, own, perms); refreshed per sign-in.
@@ -167,7 +167,7 @@
                    weekStart: settings.weekStart || null, savedAt: settings.savedAt || null};
       if(track){
         knownTenant = t;
-        workerHr.clear(); out.workers.forEach(x => { if(x.hrId) workerHr.set(String(x.id), x.hrId); });
+        workerHr.clear(); out.workers.forEach(x => workerHr.set(String(x.id), x.hrId || null));
       }
       return out;
     }
@@ -197,7 +197,7 @@
         await batch.commit();
       }
       for(const kind in next) known[kind] = next[kind];
-      workerHr.clear(); (data.workers || []).forEach(x => { if(x && x.hrId) workerHr.set(String(x.id), x.hrId); });
+      workerHr.clear(); (data.workers || []).forEach(x => { if(x && x.id != null) workerHr.set(String(x.id), x.hrId || null); });
       return {ok:true, written: ops.length};
     }
 
@@ -209,14 +209,17 @@
       if(e.id == null) e.id = d.id;
       return e;
     }
-    function punchDoc(entry){
+    // hrId: the worker's HR when the caller knows it (approved hours read the
+    // workers); otherwise the one from the last load/save, else the entry's.
+    function punchDoc(entry, hrId){
       const body = plain(entry);
       delete body.tenantId;
       const when = new Date(entry.ts || Date.now());
       body.ts = isNaN(when.getTime()) ? null : F.Timestamp.fromDate(when);
       body.day = ddmmyyyyToDay(entry.date);
       body.archived = false;
-      const hr = entry.hrId !== undefined ? entry.hrId : workerHr.get(String(entry.workerId));
+      const wid = String(entry.workerId);
+      const hr = hrId !== undefined ? hrId : (workerHr.has(wid) ? workerHr.get(wid) : entry.hrId);
       if(hr) body.hrId = hr; else delete body.hrId;
       return body;
     }
@@ -375,8 +378,8 @@
           if(!time) return;
           const id = 'imp-' + batchId + '-' + i + '-' + type;
           batch.set(F.doc(db,'tenants',t,'punches',id), punchDoc({id, workerId: r.workerId, workerName: names[r.workerId] || '',
-            type, time, date: r.date, ts: tsFor(r.date, time), clientId: r.clientId || '', notes: note, gpsWarnings: [],
-            hrId: hrs[r.workerId] || null}));
+            type, time, date: r.date, ts: tsFor(r.date, time), clientId: r.clientId || '', notes: note, gpsWarnings: []},
+            hrs[r.workerId] || null));
         });
       });
       batch.update(ref, {status:'approved'});
@@ -455,6 +458,10 @@
       const path = 'tenants/' + t + '/workers/' + wid + '/' + kind + '/' + Date.now() + '-' + safeName(name);
       const ref = stMod.ref(storage, path);
       const meta = {contentType: type, customMetadata: {workerId: String(body.workerId || ''), kind}};
+      // An own-workers hr may read back (download URL) only files stamped
+      // with its uid (storage.rules).
+      const hr = await hrOnly();
+      if(hr) meta.customMetadata.hrId = hr;
       if(kind !== 'assets') meta.contentDisposition = "inline; filename*=UTF-8''" + encodeURIComponent(safeName(name));
       await new Promise((resolve, reject) => {
         const task = stMod.uploadBytesResumable(ref, bytes, meta);
