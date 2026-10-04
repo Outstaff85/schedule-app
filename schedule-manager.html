@@ -3393,7 +3393,7 @@ function openWorkerCard(wi){
       ${hasPermission('workers')?`<div class="status-pills" role="radiogroup" aria-label="Status">
         ${[['active','Active'],['vacation','Vacation'],['fired','Inactive']].map(([v,l])=>`<button type="button" data-st="${v}" class="${(w.status||'active')===v?'on':''}" onclick="setWorkerStatus(${wi},'${v}')" title="Set status: ${l}"><i></i>${l}</button>`).join('')}
       </div>`:''}
-      ${w.docSavedAt?`<span style="font-size:11px;color:var(--text3)">Form 101 saved ${esc(new Date(w.docSavedAt).toLocaleDateString('en-GB'))}</span>`:''}
+      ${w.docSavedAt?`<span style="font-size:11px;color:var(--text3)">נשמר: ${esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU'))}</span>`:''}
     </div>`:''}
     <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text2);margin-bottom:14px">
       ${w.phone?`<div><i class="ti ti-phone"></i> ${esc(w.phone)}</div>`:''}
