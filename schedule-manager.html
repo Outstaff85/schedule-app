@@ -2490,11 +2490,11 @@ function showWorkerModal(w){
     <div class="field">
       <label><i class="ti ti-users"></i> לקוחות <span id="wClientCount" style="color:var(--text3);font-weight:400;font-size:12px"></span></label>
       <div id="wClientChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
-      ${clients.length?`<input type="text" id="wClientSearch" placeholder="+ Add client / object…" autocomplete="off"
+      ${clients.length?`<input type="text" id="wClientSearch" placeholder="לחצו כדי להוסיף לקוח" autocomplete="off"
         oninput="renderWClientSuggest()" onfocus="renderWClientSuggest()" onblur="setTimeout(hideWClientSuggest,150)"
         onkeydown="if(event.key==='Enter'){event.preventDefault();pickFirstWClientSuggest();}else if(event.key==='Escape'){this.blur();}">
       <div id="wClientSuggest" style="display:none;max-height:200px;overflow-y:auto;border:1px solid var(--border2);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);background:var(--bg2)"></div>`
-      :'<span style="font-size:12px;color:var(--text3)">No clients yet</span>'}
+      :'<span style="font-size:12px;color:var(--text3)">אין עדיין לקוחות</span>'}
     </div>
     <div class="${isFirmAdminSession()?'field-row':''}">
     <div class="field">
