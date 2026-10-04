@@ -138,8 +138,12 @@
       return json;
     }
 
+    // The stored sortIndex of each worker an own-workers HR loaded: its saves
+    // keep it, so the owner's order isn't rewritten with the HR's positions.
+    const storedPos = new Map();
     function listOf(snap, kind, store){
       const map = store[kind]; map.clear();
+      if(kind === 'workers' && store === known) storedPos.clear();
       const items = [];
       snap.forEach(d => {
         const data = d.data();
@@ -147,6 +151,7 @@
         delete data.sortIndex;
         if(data.id == null) data.id = d.id;
         items.push({pos, data});
+        if(kind === 'workers' && store === known) storedPos.set(d.id, pos);
         map.set(d.id, sig(data) + '#' + pos);
       });
       items.sort((a,b) => a.pos - b.pos || String(a.data.id).localeCompare(String(b.data.id)));
@@ -178,13 +183,21 @@
     // overwrite each other.
     async function saveSchedule(t, data){
       if(knownTenant !== t) await loadSchedule(t); // never diff against another firm
+      const hrScoped = !!(await hrOnly());
       const ops = [], next = {};
       for(const kind of ['workers','clients','suppliers']){
         if(!(await mayWrite(kind))){ next[kind] = known[kind]; continue; }
         next[kind] = new Map();
-        (data[kind] || []).forEach((item, pos) => {
+        (data[kind] || []).forEach((item, idx) => {
           if(!item || item.id == null) return;
           const id = String(item.id), body = plain(item);
+          // An own-workers HR sees only part of the list: its positions are
+          // not the firm's. It keeps a worker's stored place; a new one goes last.
+          let pos = idx;
+          if(hrScoped && kind === 'workers'){
+            if(!storedPos.has(id)) storedPos.set(id, 1e6 + Date.now() % 1e6 + idx);
+            pos = storedPos.get(id);
+          }
           const s = sig(body) + '#' + pos;
           next[kind].set(id, s);
           if(known[kind].get(id) !== s) ops.push(['set', F.doc(db,'tenants',t,kind,id), Object.assign(body, {sortIndex: pos})]);

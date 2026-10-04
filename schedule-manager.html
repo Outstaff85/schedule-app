@@ -178,12 +178,17 @@
   .w-toggle{width:100%;display:flex;justify-content:space-between;align-items:center;}
   .w-panel{border:1px solid var(--border2);border-radius:10px;padding:10px 12px;margin-bottom:12px;}
   .w-child{padding-bottom:8px;border-bottom:1px solid var(--border);}
-  .status-seg{display:inline-flex;border:1px solid var(--border2);border-radius:var(--radius-sm);overflow:hidden;flex-shrink:0;}
-  .status-seg button{background:var(--bg3);border:none;color:var(--text2);font-size:12px;font-weight:600;padding:7px 10px;cursor:pointer;font-family:inherit;}
-  .status-seg button+button{border-left:1px solid var(--border2);}
-  .status-seg button.on[data-st="active"]{background:var(--green-bg);color:var(--green);}
-  .status-seg button.on[data-st="vacation"]{background:var(--amber-bg);color:var(--amber);}
-  .status-seg button.on[data-st="fired"]{background:var(--red-bg);color:var(--red);}
+  /* Worker status on the card: three small pills, a colored dot each; the
+     chosen one is filled in its color. */
+  .status-pills{display:inline-flex;gap:4px;padding:3px;background:var(--bg3);border:1px solid var(--border2);border-radius:999px;}
+  .status-pills button{display:inline-flex;align-items:center;gap:5px;background:none;border:none;border-radius:999px;color:var(--text2);font:600 11px/1 inherit;font-family:inherit;padding:5px 9px;cursor:pointer;}
+  .status-pills button i{width:7px;height:7px;border-radius:50%;background:var(--text3);}
+  .status-pills button[data-st="active"] i{background:var(--green);}
+  .status-pills button[data-st="vacation"] i{background:var(--amber);}
+  .status-pills button[data-st="fired"] i{background:var(--red);}
+  .status-pills button.on[data-st="active"]{background:var(--green-bg);color:var(--green);}
+  .status-pills button.on[data-st="vacation"]{background:var(--amber-bg);color:var(--amber);}
+  .status-pills button.on[data-st="fired"]{background:var(--red-bg);color:var(--red);}
   .hours-badge{display:inline-block;font-size:14px;color:var(--green);background:var(--green-bg);border-radius:4px;padding:3px 8px;margin-top:6px;font-family:'DM Mono','Heebo',Consolas,monospace;}
   .modal-actions{display:flex;gap:8px;margin-top:20px;justify-content:flex-end;}
   .day-grid{display:flex;flex-direction:column;gap:6px;}
@@ -983,7 +988,7 @@
 <div class="overlay" id="userFormOverlay" style="z-index:980">
   <div class="modal" style="max-width:420px">
     <div class="modal-title" id="userFormTitle">New user</div>
-    <div class="field"><label>Role</label>
+    <div class="field" id="userFormRoleField"><label>Role</label>
       <select id="userFormRole" onchange="onUserFormRoleChange(true)">
         <option value="staff">Staff</option>
         <option value="hr">HR</option>
@@ -1000,7 +1005,7 @@
       <div class="field"><label>Username</label><input type="text" id="userFormUsername" autocomplete="off"></div>
       <div class="field" id="userFormPasswordField"><label id="userFormPasswordLabel">Password (min. 8)</label><input type="password" id="userFormPassword" autocomplete="new-password"></div>
     </div>
-    <div class="form-section">Access</div>
+    <div class="form-section" id="userFormAccessHead">Access</div>
     <div class="field" id="userFormSupplierField" style="display:none"><label>Supplier</label><select id="userFormSupplierId"></select></div>
     <div class="field" id="userFormPermsField">
       <label>Sections</label>
@@ -2092,7 +2097,6 @@ function applyWorkerDraft(){
     if(v&&typeof v==='object'){ el.checked=v.checked; continue; }
     if(v!==''&&v!=null){ el.value=v; _clearScanCheck(el); }
   }
-  if(d.vals.wStatus) setWStatus(d.vals.wStatus);
   if(d.children.length){ __wChildren=d.children; renderChildrenRows(); }
   if(d.clientIds.length){ __wClientIds=d.clientIds.filter(id=>clients.some(c=>c.id===id)); renderWClientChips(); }
   if(d.avatar&&!__wAvatarB64){
@@ -2402,16 +2406,7 @@ function showWorkerModal(w){
   __wAvatarB64=w.avatarB64||'';
   __wDocType=w.docType||'israeli_id';
   document.getElementById('workerModal').innerHTML=`
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px">
-      <div class="modal-title" style="margin-bottom:0">${editingWorkerIdx!==null?'עריכת עובד':'הוספת עובד חדש'}</div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-        <div class="status-seg" role="radiogroup" aria-label="סטטוס">
-          <input type="hidden" id="wStatus" value="${esc(w.status||'active')}">
-          ${[['active','פעיל'],['vacation','בחופשה'],['fired','לא פעיל']].map(([v,l])=>`<button type="button" data-st="${v}" class="${(w.status||'active')===v?'on':''}" onclick="setWStatus('${v}')">${l}</button>`).join('')}
-        </div>
-        ${editingWorkerIdx!==null&&w.docSavedAt?`<span style="font-size:11px;color:var(--text3)">נשמר: ${esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU'))}</span>`:''}
-      </div>
-    </div>
+    <div class="modal-title" style="margin-bottom:10px">${editingWorkerIdx!==null?'עריכת עובד':'הוספת עובד חדש'}</div>
     <div class="field" id="wAvatarWrap" style="display:flex;align-items:center;gap:10px">
       <img id="wAvatarImg" src="${__wAvatarB64?('data:image/jpeg;base64,'+__wAvatarB64):''}" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1px solid var(--border2);background:var(--bg3);display:${__wAvatarB64?'block':'none'}">
       <button class="btn sm" type="button" onclick="document.getElementById('wAvatarFile').click()"><i class="ti ti-camera"></i> העלה תמונה</button>
@@ -2426,16 +2421,6 @@ function showWorkerModal(w){
       <div style="display:flex;gap:8px">
         <button class="btn sm" type="button" onclick="closeAvatarCropEditor()">ביטול</button>
         <button class="btn sm accent" type="button" onclick="confirmAvatarCrop()">אישור</button>
-      </div>
-    </div>
-    <div class="field">
-      <label><i class="ti ti-file-text"></i> מסמכים (טופס 101 + סריקה)</label>
-      <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        ${editingWorkerIdx!==null&&w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" style="flex-shrink:0">
-          <i class="ti ti-download"></i> הורד מסמכים</a>`:''}
-        <button class="btn sm" type="button" style="flex-shrink:0" onclick="rescanFromWorkerModal()">
-          <i class="ti ti-scan"></i> ${w.docUrl||(window.__aiScanPageThumbs||[]).length?'סריקה חוזרת':'סרוק מסמך'}</button>
-        <div id="wMissingScan" style="display:contents">${missingScanFieldsHtml(w,workerHasScanPages(editingWorkerIdx!==null?workers[editingWorkerIdx]:null))}</div>
       </div>
     </div>
     <div class="field-row">
@@ -2555,10 +2540,14 @@ function showWorkerModal(w){
         <input type="time" id="we${i}" value="${w.schedule[i]?.end||'17:00'}"   ${w.schedule[i]?.type==='off'?'disabled style="opacity:0.3"':''}>
       </div>`).join('')}
     </div>
-    <div class="field" style="margin-bottom:6px">
-      <button class="btn sm" type="button" onclick="toggleForm101Wrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
+    <div class="field-row" style="margin-bottom:6px">
+      <button class="btn sm w-toggle" type="button" onclick="toggleForm101Wrap()">
         <span><i class="ti ti-id-badge-2"></i> נתונים נוספים לטופס 101</span>
         <i class="ti ti-chevron-down" id="wForm101Chevron"></i>
+      </button>
+      <button class="btn sm w-toggle" type="button" onclick="toggleExpiryWrap()">
+        <span><i class="ti ti-alert-triangle"></i> התראת תוקף חוזה</span>
+        <i class="ti ti-chevron-down" id="wExpiryChevron"></i>
       </button>
     </div>
     <div id="wForm101Wrap" style="display:none">
@@ -2589,6 +2578,13 @@ function showWorkerModal(w){
         ${w.docUrl?'שינוי שדות אלו (או כתובת/עיר/סוג הכנסה למעלה) יעדכן אוטומטית את המסמך השמור ב-'+DOC_STORE+'.':'קובץ ה-PDF של טופס 101 ייבנה אוטומטית בעת השמירה.'}
       </div>
     </div>
+    <div id="wExpiryWrap" style="display:none">
+      <input type="checkbox" id="wExpiryEnabled" ${w.expiryEnabled?'checked':''} style="display:none">
+      <div class="field-row stack-phone" id="wExpiryFields">
+        <div class="field"><label>חודשים עד למועד האחרון</label><input type="number" id="wExpiryMonths" min="1" step="1" value="${w.expiryMonths||9}"></div>
+        <div class="field"><label>התראה כמה חודשים מראש</label><input type="number" id="wExpiryWarnMonths" min="0" step="1" value="${w.expiryWarnMonths??1}"></div>
+      </div>
+    </div>
     <div class="field-row" style="margin-bottom:6px">
       <button class="btn sm w-toggle" type="button" onclick="toggleWPanel('spouse')"><span><i class="ti ti-heart"></i> <span id="wSpouseLabel">בן/בת הזוג</span></span><i class="ti ti-chevron-down" id="wSpouseChevron"></i></button>
       <button class="btn sm w-toggle" type="button" onclick="toggleWPanel('children')"><span><i class="ti ti-mood-kid"></i> <span id="wChildrenLabel">ילדים</span></span><i class="ti ti-chevron-down" id="wChildrenChevron"></i></button>
@@ -2615,19 +2611,6 @@ function showWorkerModal(w){
     <div id="wChildrenWrap" class="w-panel" style="display:none">
       <div style="font-weight:600;font-size:13px;margin-bottom:8px"><i class="ti ti-mood-kid"></i> ילדים (ספח)</div>
       <div id="wChildrenRows"></div>
-    </div>
-    <div class="field" style="margin-bottom:6px">
-      <button class="btn sm" type="button" onclick="toggleExpiryWrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
-        <span><i class="ti ti-alert-triangle"></i> התראת תוקף חוזה</span>
-        <i class="ti ti-chevron-down" id="wExpiryChevron"></i>
-      </button>
-    </div>
-    <div id="wExpiryWrap" style="display:none">
-      <input type="checkbox" id="wExpiryEnabled" ${w.expiryEnabled?'checked':''} style="display:none">
-      <div class="field-row stack-phone" id="wExpiryFields">
-        <div class="field"><label>חודשים עד למועד האחרון</label><input type="number" id="wExpiryMonths" min="1" step="1" value="${w.expiryMonths||9}"></div>
-        <div class="field"><label>התראה כמה חודשים מראש</label><input type="number" id="wExpiryWarnMonths" min="0" step="1" value="${w.expiryWarnMonths??1}"></div>
-      </div>
     </div>
     <div class="field" style="margin-top:10px;margin-bottom:10px">
       <label style="display:block;font-size:12px;color:var(--text2);margin-bottom:4px">חתימה</label>
@@ -2671,7 +2654,8 @@ async function saveWorker(){
   const phone=document.getElementById('wPhone').value.trim();
   const hourlyRate=parseFloat(document.getElementById('wRate')?.value)||0;
   const travelAllowance=parseFloat(document.getElementById('wTravelAllowance')?.value)||0;
-  const status=document.getElementById('wStatus')?.value||'active';
+  // Status is set on the worker card (setWorkerStatus), not in this form.
+  const status=editingWorkerIdx!==null?(workers[editingWorkerIdx].status||'active'):'active';
   // One UI field ("תאריך תחילת עבודה") feeds both: startDate (schedule/Contract
   // Expiry Warning calc) and workStartDate (Form 101's own start-date field).
   const startDate=document.getElementById('wStartDate')?.value||'';
@@ -2755,6 +2739,12 @@ async function saveWorker(){
       // A live scan in this session → regenerate from the fresh images.
       if(window.__aiScanImage) window.__aiRescannedWorkerId=dup.id;
     }
+  }
+  if(editingWorkerIdx!==null && isHrSession() && docId && docId!==workerDocId(workers[editingWorkerIdx])){
+    try{
+      const r=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'checkWorkerDoc',...gsAuth(),docId,workerId:workers[editingWorkerIdx].id})})).json();
+      if(r&&r.exists){ alert('A worker with this document number already exists in the firm.'); return; }
+    }catch(e){}
   }
   if(editingWorkerIdx!==null){
     const prevW=workers[editingWorkerIdx];
@@ -2859,12 +2849,12 @@ function showWorkerUploadingOverlay(){
   renderWorkerUploadProgress('בונה PDF, נא לא לסגור…',0);
 }
 
-// Worker status: three buttons in the modal's photo row; the value lives in
-// the hidden #wStatus that saveWorker() and the scan draft read.
-function setWStatus(v){
-  const inp=document.getElementById('wStatus'); if(!inp) return;
-  inp.value=v;
-  document.querySelectorAll('.status-seg [data-st]').forEach(b=>b.classList.toggle('on',b.dataset.st===v));
+// Worker status: three pills in the worker card's header; a tap saves at once.
+function setWorkerStatus(wi, v){
+  const w=workers[wi]; if(!w||(w.status||'active')===v) return;
+  w.status=v;
+  render(); autoSave();
+  openWorkerCard(wi);
 }
 function genToken(){
   return Math.random().toString(36).slice(2,6)+Math.random().toString(36).slice(2,6);
@@ -3215,10 +3205,10 @@ function saveClient(){
   if(editingClientId){
     const idx=clients.findIndex(x=>x.id===editingClientId);
     if(idx>=0) clients[idx]={...clients[idx],name,object,address,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate};
-    showToast(name+' updated!');
+    showToast(name+' עודכן');
   } else {
     clients.push({id:uid(),name,object,address,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate});
-    showToast(name+' added!');
+    showToast(name+' נוסף');
   }
   closeModal('clientOverlay'); renderClientsPage(); renderSidebarClients(); autoSave();
 }
@@ -3293,7 +3283,7 @@ function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
         <span class="k"><i class="ti ti-clock-hour-4"></i> Hours (${esc(monthName)})</span><span class="v" style="font-weight:700;color:${h>0?'var(--green)':'var(--text3)'}">${h.toFixed(1)}h</span>
         <span class="k"><i class="ti ti-building"></i> Clients</span><span class="v">${objs.length?objs.map(badge).join(''):dash}</span>
         <span class="k"><i class="ti ti-truck-delivery"></i> Supplier</span><span class="v">${sup?badge(sup):dash}</span>
-        ${showHr?`<span class="k"><i class="ti ti-user-shield"></i> HR</span><span class="v">${w.hrId?esc(hrNameOf(w.hrId)||'—'):dash}</span>`:''}
+        ${showHr?`<span class="k"><i class="ti ti-user-shield"></i> HR</span><span class="v">${w.hrId?badge({name:hrNameOf(w.hrId)||'—',color:hrColor(w.hrId)}):dash}</span>`:''}
         <span class="k"><i class="ti ti-calendar-event"></i> Start date</span><span class="v">${w.startDate?esc(fmtDMY(w.startDate)):dash}</span>
         <span class="k"><i class="ti ti-files"></i> Documents</span><span class="v">${docStatusSummaryHtml(w)}</span>
       </div>
@@ -3393,25 +3383,28 @@ function openWorkerCard(wi){
   document.getElementById('workerCardModal').innerHTML=`
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
       <div style="width:52px;height:52px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div>
-      <div style="flex:1">
-        <div style="font-size:18px;font-weight:700">${esc(w.name)}</div>
-        <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col};display:inline-block;margin-top:4px">${stMeta.label}</span>${docStatusBadgeHtml(w)}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:18px;font-weight:700;overflow:hidden;text-overflow:ellipsis">${esc(w.name)}</div>
+        ${hasPermission('workers')?'':`<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col};display:inline-block;margin-top:4px">${stMeta.label}</span>`}${docStatusBadgeHtml(w)}
       </div>
       ${hasPermission('workers')?`<button class="btn sm" type="button" onclick="rescanFromWorkerCard(${wi})" style="flex-shrink:0"><i class="ti ti-scan"></i> ${w.docUrl?'סריקה חוזרת':'סרוק מסמך'}</button>`:''}
     </div>
+    ${hasPermission('workers')||w.docSavedAt?`<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;margin:-6px 0 14px">
+      ${hasPermission('workers')?`<div class="status-pills" role="radiogroup" aria-label="Status">
+        ${[['active','Active'],['vacation','Vacation'],['fired','Inactive']].map(([v,l])=>`<button type="button" data-st="${v}" class="${(w.status||'active')===v?'on':''}" onclick="setWorkerStatus(${wi},'${v}')" title="Set status: ${l}"><i></i>${l}</button>`).join('')}
+      </div>`:''}
+      ${w.docSavedAt?`<span style="font-size:11px;color:var(--text3)">נשמר: ${esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU'))}</span>`:''}
+    </div>`:''}
     <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text2);margin-bottom:14px">
       ${w.phone?`<div><i class="ti ti-phone"></i> ${esc(w.phone)}</div>`:''}
       ${w.hourlyRate?`<div><i class="ti ti-coin"></i> Base ₪${w.hourlyRate}/h${w.otRate!=null?' · OT ₪'+w.otRate+'/h':''}${w.shabbatRate!=null?' · Shabbat ₪'+w.shabbatRate+'/h':''}</div>`:''}
       ${w.startDate?`<div><i class="ti ti-calendar-event"></i> Started ${fmtDMY(w.startDate)}</div>`:''}
       ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?'Срок истёк':'Срок приближается'} — ${expSt.deadline.toLocaleDateString('ru-RU')}</div>`:''}
       ${workerDocId(w)?`<div><i class="ti ti-id"></i> ${esc(workerDocId(w))}</div>`:''}
-      <div style="display:flex;gap:6px"><i class="ti ti-files" style="margin-top:2px"></i><span>Documents: ${docStatusSummaryHtml(w)}</span></div>
-      ${hasPermission('workers')&&cardMissingScanRowsHtml(w,wi)?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${cardMissingScanRowsHtml(w,wi)}</div>`:''}
       ${[[workerAddress(w),w.houseNumber].filter(Boolean).join(' '),w.city].filter(Boolean).length?`<div><i class="ti ti-map-pin"></i> ${esc([[workerAddress(w),w.houseNumber].filter(Boolean).join(' '),w.city].filter(Boolean).join(', '))}</div>`:''}
       ${w.incomeType&&INCOME_TYPE_LABELS[w.incomeType]?`<div><i class="ti ti-briefcase"></i> ${INCOME_TYPE_LABELS[w.incomeType]}</div>`:''}
       ${w.otherIncomeType&&w.otherIncomeType!=='none'&&OTHER_INCOME_LABELS[w.otherIncomeType]?`<div><i class="ti ti-cash"></i> Other income: ${OTHER_INCOME_LABELS[w.otherIncomeType]}</div>`:''}
       <div><i class="ti ti-clock-hour-4"></i> ${wh.toFixed(1)}h scheduled / week</div>
-      ${w.docUrl?`<div><i class="ti ti-file-text"></i> Документ сохранён${w.docSavedAt?': '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</div>`:''}
       ${objs.length?`<div><i class="ti ti-building"></i> Clients: ${objs.map(o=>`<span style="color:${o.color}">${esc(o.name)}</span>`).join(', ')}</div>
       ${objs.map(o=>{
         const r=effectiveRates(w,o.id);
@@ -3419,7 +3412,10 @@ function openWorkerCard(wi){
         return `<div><i class="ti ti-currency-shekel"></i> ${esc(o.name)}: ₪${r.regRate}/h · OT ₪${r.otRate} · Shabbat ₪${r.shabbatRate}${hasOverride?' <i class="ti ti-star-filled" style="font-size:10px;color:var(--amber)" title="Own rate at this client"></i>':''}</div>`;
       }).join('')}` : `<div><i class="ti ti-building-off"></i> Not assigned to any object</div>`}
       ${sup?`<div><i class="ti ti-truck-delivery"></i> Supplier: <span style="color:${sup.color}">${esc(sup.name)}</span></div>`:''}
-      ${isFirmAdminSession()?`<div><i class="ti ti-user-shield"></i> HR: ${w.hrId?esc(hrNameOf(w.hrId)||'—'):'<span style="color:var(--text3)">none</span>'}</div>`:''}
+      ${isFirmAdminSession()?`<div><i class="ti ti-user-shield"></i> HR: ${w.hrId?`<span style="color:${esc(hrColor(w.hrId))}">${esc(hrNameOf(w.hrId)||'—')}</span>`:'<span style="color:var(--text3)">none</span>'}</div>`:''}
+      <!-- document status last, next to the Documents section below -->
+      <div style="display:flex;gap:6px"><i class="ti ti-files" style="margin-top:2px"></i><span>Documents: ${docStatusSummaryHtml(w)}</span></div>
+      ${hasPermission('workers')&&cardMissingScanRowsHtml(w,wi)?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${cardMissingScanRowsHtml(w,wi)}</div>`:''}
     </div>
     ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
     ${workerDocsSectionHtml(w)}
@@ -3427,7 +3423,7 @@ function openWorkerCard(wi){
       ${hasPermission('workers')?`<button class="btn sm" onclick="openWorkerDocUpload('${esc(w.id)}')"><i class="ti ti-upload"></i> Add document</button>`:''}
       ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Скачать документ</a>`:''}
       ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursImportModal('${w.id}')"><i class="ti ti-file-upload"></i> Upload hours</button>`:''}
-      ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursExportModal('${w.id}')"><i class="ti ti-file-export"></i> Export hours</button>`:''}
+      ${hasPermission('workers')&&hasPermission('exports')?`<button class="btn sm" onclick="openHoursExportModal('${w.id}')"><i class="ti ti-file-export"></i> Export hours</button>`:''}
     </div>`;
   pageWorkerDocs(document.getElementById('workerCardModal'),w.id);
   // A tap on the card (not on one of its buttons or links) opens the edit form.
@@ -4635,6 +4631,12 @@ function switchAdminPane(pane){
 // firm here client-side.
 const PERMISSION_SECTIONS = ['schedule','workers','clients','suppliers','accounting','exports'];
 let __editingUserId = null;
+// An owner / super-admin row: only name, phone and password are edited here.
+let __editingAdminRow = false;
+let __editingUserOrigRole = null;
+function showUserFormAccess(on){
+  ['userFormRoleField','userFormAccessHead','userFormPermsField'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display = on ? '' : 'none'; });
+}
 function activeTenantIdForAdmin(){
   const s = getSession();
   if(!s) return null;
@@ -4690,11 +4692,13 @@ function onUserFormRoleChange(fromUser){
   document.getElementById('userFormHrWorkersField').style.display = role==='hr' && __editingUserId ? '' : 'none';
   if(role==='supplier') fillUserFormSupplierSelect(null);
   // A new HR login starts with the Workers section only.
-  if(role==='hr' && !__editingUserId && fromUser===true)
+  if(role==='hr' && fromUser===true && (!__editingUserId || !document.querySelector('.userFormPermCb:checked')))
     document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = cb.value==='workers');
 }
 function openCreateUserForm(){
   __editingUserId = null;
+  __editingAdminRow = false;
+  showUserFormAccess(true);
   document.getElementById('userFormTitle').textContent = 'New user';
   document.getElementById('userFormUsername').value = '';
   document.getElementById('userFormUsername').disabled = false;
@@ -4724,15 +4728,27 @@ async function openEditUserForm(id){
   // A new password is set here too; left empty, the password stays.
   document.getElementById('userFormPasswordLabel').textContent = 'New password (empty = keep)';
   document.getElementById('userFormRole').value = u.role;
-  document.getElementById('userFormRole').disabled = true; // a login keeps its role
+  // The role can change between Staff, HR and Supplier (not for an owner row).
+  document.getElementById('userFormRole').disabled = false;
+  __editingUserOrigRole = u.role;
   document.getElementById('userFormError').textContent = '';
   document.getElementById('userFormFullName').value = u.fullName || '';
   document.getElementById('userFormPhone').value = u.phone || '';
   document.getElementById('userFormOwnOnly').checked = u.ownOnly !== false;
+  __editingAdminRow = u.role==='tenant_admin' || u.role==='superadmin';
+  if(__editingAdminRow){
+    document.getElementById('userFormTitle').textContent = 'Edit ' + (u.fullName || u.username) + ' (owner)';
+    ['userFormSupplierField','userFormHrFields','userFormHrWorkersField'].forEach(i => document.getElementById(i).style.display = 'none');
+    showUserFormAccess(false);
+    document.getElementById('userFormOverlay').classList.add('open');
+    return;
+  }
+  showUserFormAccess(true);
   onUserFormRoleChange();
   if(u.role==='supplier') fillUserFormSupplierSelect(u.supplierId);
   if(u.role==='hr') renderUserFormHrWorkers();
-  const perms = u.permissions==='*' ? PERMISSION_SECTIONS.slice() : (Array.isArray(u.permissions)?u.permissions:[]);
+  // A supplier has no sections (listUsers reports its empty list as '*').
+  const perms = u.role==='supplier' ? [] : u.permissions==='*' ? PERMISSION_SECTIONS.slice() : (Array.isArray(u.permissions)?u.permissions:[]);
   document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = perms.indexOf(cb.value)!==-1);
   document.getElementById('userFormOverlay').classList.add('open');
 }
@@ -4756,11 +4772,22 @@ async function submitUserForm(){
         const pr = await (await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'resetUserPassword', ...gsAuth(), id: __editingUserId, password }) })).json();
         if(!pr || pr.error){ errEl.textContent = (pr&&pr.error)||'Password not changed'; return; }
       }
-      const body = { action:'updateUser', ...gsAuth(), id: __editingUserId, active: true, ...hrFields };
-      if(role==='supplier') body.supplierId = supplierId; else body.permissions = permissions;
+      // Rights are sent as they are in the form; the server ends the user's
+      // sessions only when they really changed.
+      const body = __editingAdminRow
+        ? { action:'updateUser', ...gsAuth(), id: __editingUserId, fullName: hrFields.fullName, phone: hrFields.phone }
+        : { action:'updateUser', ...gsAuth(), id: __editingUserId, role, ...hrFields };
+      if(!__editingAdminRow){ if(role==='supplier') body.supplierId = supplierId; else body.permissions = permissions; }
       const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(body) });
       const json = await res.json();
       if(!json || json.error){ errEl.textContent = (json&&json.error)||'Save failed'; return; }
+      // No longer an HR: its workers are no longer assigned to it.
+      if(__editingUserOrigRole==='hr' && role!=='hr'){
+        const ids = workers.filter(w => w.hrId===__editingUserId).map(w => w.id);
+        if(ids.length) await assignWorkersToHr(ids, null);
+      }
+      const me = getSession();
+      if(me && me.uid === __editingUserId){ me.fullName = hrFields.fullName; saveSession(me); renderAccountControl(me); }
     } else {
       const username = document.getElementById('userFormUsername').value.trim();
       const password = document.getElementById('userFormPassword').value;
@@ -4800,6 +4827,12 @@ function hrUsers(){
 function hrNameOf(id){
   const u = hrUsers().find(x => x.id===id);
   return u ? (u.fullName || u.username) : '';
+}
+// Each HR gets a steady color from the client palette (picked by its uid),
+// shown like a supplier's badge on the worker tile and card.
+function hrColor(id){
+  let h=0; for(const ch of String(id||'')) h=(h*31+ch.charCodeAt(0))>>>0;
+  return CLIENT_COLORS[h%CLIENT_COLORS.length];
 }
 function hrWorkerCount(id){ return workers.filter(w => w.hrId===id).length; }
 // Sets the HR of these workers (null = none), saves, and moves their punches.
