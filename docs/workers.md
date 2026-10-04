@@ -87,7 +87,7 @@ Read-only summary, as flat icon + text rows:
 - notes;
 - the Documents section (`workerDocsSectionHtml(w)`).
 
-Buttons: Download document, **Upload hours** and **Export hours** (both only with `hasPermission('workers')`). There is no Edit button: a tap anywhere on the card other than a button, link or field (`isPlainTap`) closes it and opens the edit form (`openEditWorker`).
+Buttons: **Add document** (`openWorkerDocUpload`, only with `hasPermission('workers')`; the Documents section itself has no add button), Download document, **Upload hours** and **Export hours** (both only with `hasPermission('workers')`). There is no Edit button: a tap anywhere on the card other than a button, link or field (`isPlainTap`) closes it and opens the edit form (`openEditWorker`).
 
 ## Worker modal (`showWorkerModal(w)`, `#workerModal`)
 
