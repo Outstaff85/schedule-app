@@ -87,7 +87,7 @@ Read-only summary, as flat icon + text rows:
 - notes;
 - the Documents section (`workerDocsSectionHtml(w)`).
 
-Buttons: **Add document** (`openWorkerDocUpload`, only with `hasPermission('workers')`; the Documents section itself has no add button), Download document, **Upload hours** and **Export hours** (both only with `hasPermission('workers')`). There is no Edit button: a tap anywhere on the card other than a button, link or field (`isPlainTap`) closes it and opens the edit form (`openEditWorker`).
+Buttons: **Add document** (`openWorkerDocUpload`, only with `hasPermission('workers')`; the Documents section itself has no add button), Download document, **Upload hours** (with `hasPermission('workers')`) and **Export hours** (with `workers` and `exports`). There is no Edit button: a tap anywhere on the card other than a button, link or field (`isPlainTap`) closes it and opens the edit form (`openEditWorker`).
 
 ## Worker modal (`showWorkerModal(w)`, `#workerModal`)
 
@@ -131,7 +131,7 @@ One form for add, edit and post-scan review. Labels of every Form 101 field are 
    
    Cancel returns to the form. A second record with the same number is never created.
 
-   An HR login with "only own workers" has only its own workers in `workers`, so when there is no local match it also asks the server (`checkWorkerDoc`, answers only yes/no across the whole firm) and refuses with "A worker with this document number already exists in the firm".
+   An HR login with "only own workers" has only its own workers in `workers`, so when there is no local match it also asks the server (`checkWorkerDoc`, answers only yes/no across the whole firm) and refuses with "A worker with this document number already exists in the firm". The same server check runs when an HR changes an existing worker's number.
 3. **Editing an existing worker.**
    - It merges the form into the record and compares `FORM101_WATCHED_FIELDS` (`docId, address, houseNumber, city, incomeType, otherIncomeType, docSurname, docGiven, maritalStatus, healthFund, workStartDate, phone, docSex, docDob, docChildren` and the five spouse fields).
    - **Rescanned in this session** (`window.__aiRescannedWorkerId === id`): a blocking overlay shows while `autoUploadWithRetry()` rebuilds the PDF from the fresh scan.

@@ -201,7 +201,7 @@ def test_update_user_and_revoke():
     assert u["permissions"] == ["schedule"] and u["active"] is False
     assert rv == [("u-staff1", False)]
     assert "своей фирмы" in core.update_user(DB, ADMIN2, {"id": "u-staff1", "active": True}, rv)["error"]
-    assert "напрямую" in core.update_user(DB, ADMIN1, {"id": "u-admin1", "active": False}, rv)["error"]
+    assert core.update_user(DB, ADMIN1, {"id": "u-admin1", "active": False}, rv)["error"] == core.E_ADMIN_TARGET
     assert core.update_user(DB, ADMIN1, {"id": "missing", "active": True}, rv)["error"] == core.E_NOT_FOUND
     assert len(rv) == 1
 
@@ -428,3 +428,20 @@ def test_full_name_for_every_role_and_update_my_name():
     # a new firm's owner gets the name given at creation
     f = core.create_firm(DB, {"uid": "s", "role": "superadmin"}, {"username": "newowner", "password": "new-pass-11", "ownerName": "Moshe"})
     assert DB.collection("users").document(f["userId"]).get().to_dict()["fullName"] == "Moshe"
+
+
+def test_update_user_revokes_only_on_a_real_rights_change():
+    rv = Revokes()
+    cur = DB.collection("users").document("u-staff1").get().to_dict()
+    same = {"id": "u-staff1", "permissions": cur.get("permissions") if isinstance(cur.get("permissions"), list) else "*",
+            "active": True, "fullName": "Staff One", "phone": "050"}
+    assert core.update_user(DB, ADMIN1, same, rv)["ok"]
+    d = DB.collection("users").document("u-staff1").get().to_dict()
+    assert d["fullName"] == "Staff One" and d["phone"] == "050" and rv == []
+    assert core.update_user(DB, ADMIN1, dict(same, permissions=["accounting"]), rv)["ok"] and rv == [("u-staff1", False)]
+    # owner row: name and phone only, never rights
+    assert core.update_user(DB, ADMIN1, {"id": "u-admin1", "fullName": "Owner", "phone": "1"}, rv)["ok"]
+    assert DB.collection("users").document("u-admin1").get().to_dict()["fullName"] == "Owner"
+    assert core.update_user(DB, SUPER, {"id": "u-admin1", "fullName": "Owner 2"}, rv)["ok"]
+    assert core.update_user(DB, SUPER, {"id": "u-admin1", "permissions": ["workers"]}, rv)["error"] == core.E_ADMIN_TARGET
+    assert len(rv) == 1

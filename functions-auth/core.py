@@ -358,14 +358,23 @@ def create_tenant_user(db, caller, body):
     return {"ok": True, "userId": uid}
 
 
+E_ADMIN_TARGET = "У владельца фирмы и супер-админа здесь меняются только имя и телефон"
+
+
 def update_user(db, caller, body, revoke):
+    """Name and phone are saved as they are and need no new sign-in. Rights
+    (permissions, supplier, active, ownOnly) are compared with what is
+    stored: only a real change ends the user's sessions (the app's form
+    sends them every time). An owner / super-admin target takes only name
+    and phone."""
     if not _can_manage(caller):
         return {"error": E_NO_RIGHTS}
     ref, data, err = _load_target(db, caller, body.get("id"))
     if err:
         return {"error": err}
-    if _norm_role(data.get("role")) in ADMIN_ROLES:
-        return {"error": "Эта роль редактируется только напрямую в таблице"}
+    role = _norm_role(data.get("role"))
+    if role in ADMIN_ROLES and any(k in body for k in ("permissions", "supplierId", "active", "ownOnly")):
+        return {"error": E_ADMIN_TARGET}
     upd = {}
     if "permissions" in body:
         p = body.get("permissions")
@@ -374,9 +383,13 @@ def update_user(db, caller, body, revoke):
         upd["supplierId"] = body.get("supplierId") or None
     if "active" in body:
         upd["active"] = bool(body.get("active"))
-    is_hr = _norm_role(data.get("role")) == "hr"
+    is_hr = role == "hr"
     if is_hr and "ownOnly" in body:
         upd["ownOnly"] = body.get("ownOnly") is not False
+    current = {"permissions": "*" if data.get("permissions") in (None, "", "*") else data.get("permissions"),
+               "supplierId": data.get("supplierId") or None, "active": data.get("active", True) is not False,
+               "ownOnly": data.get("ownOnly") is not False}
+    upd = {k: v for k, v in upd.items() if v != current[k]}
     info = {}
     if "fullName" in body:
         if is_hr and not str(body.get("fullName") or "").strip():

@@ -983,7 +983,7 @@
 <div class="overlay" id="userFormOverlay" style="z-index:980">
   <div class="modal" style="max-width:420px">
     <div class="modal-title" id="userFormTitle">New user</div>
-    <div class="field"><label>Role</label>
+    <div class="field" id="userFormRoleField"><label>Role</label>
       <select id="userFormRole" onchange="onUserFormRoleChange(true)">
         <option value="staff">Staff</option>
         <option value="hr">HR</option>
@@ -1000,7 +1000,7 @@
       <div class="field"><label>Username</label><input type="text" id="userFormUsername" autocomplete="off"></div>
       <div class="field" id="userFormPasswordField"><label id="userFormPasswordLabel">Password (min. 8)</label><input type="password" id="userFormPassword" autocomplete="new-password"></div>
     </div>
-    <div class="form-section">Access</div>
+    <div class="form-section" id="userFormAccessHead">Access</div>
     <div class="field" id="userFormSupplierField" style="display:none"><label>Supplier</label><select id="userFormSupplierId"></select></div>
     <div class="field" id="userFormPermsField">
       <label>Sections</label>
@@ -2756,6 +2756,12 @@ async function saveWorker(){
       if(window.__aiScanImage) window.__aiRescannedWorkerId=dup.id;
     }
   }
+  if(editingWorkerIdx!==null && isHrSession() && docId && docId!==workerDocId(workers[editingWorkerIdx])){
+    try{
+      const r=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'checkWorkerDoc',...gsAuth(),docId,workerId:workers[editingWorkerIdx].id})})).json();
+      if(r&&r.exists){ alert('A worker with this document number already exists in the firm.'); return; }
+    }catch(e){}
+  }
   if(editingWorkerIdx!==null){
     const prevW=workers[editingWorkerIdx];
     const isId=prevW.docType!=='passport';
@@ -3215,10 +3221,10 @@ function saveClient(){
   if(editingClientId){
     const idx=clients.findIndex(x=>x.id===editingClientId);
     if(idx>=0) clients[idx]={...clients[idx],name,object,address,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate};
-    showToast(name+' updated!');
+    showToast(name+' עודכן');
   } else {
     clients.push({id:uid(),name,object,address,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate});
-    showToast(name+' added!');
+    showToast(name+' נוסף');
   }
   closeModal('clientOverlay'); renderClientsPage(); renderSidebarClients(); autoSave();
 }
@@ -3427,7 +3433,7 @@ function openWorkerCard(wi){
       ${hasPermission('workers')?`<button class="btn sm" onclick="openWorkerDocUpload('${esc(w.id)}')"><i class="ti ti-upload"></i> Add document</button>`:''}
       ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Скачать документ</a>`:''}
       ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursImportModal('${w.id}')"><i class="ti ti-file-upload"></i> Upload hours</button>`:''}
-      ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursExportModal('${w.id}')"><i class="ti ti-file-export"></i> Export hours</button>`:''}
+      ${hasPermission('workers')&&hasPermission('exports')?`<button class="btn sm" onclick="openHoursExportModal('${w.id}')"><i class="ti ti-file-export"></i> Export hours</button>`:''}
     </div>`;
   pageWorkerDocs(document.getElementById('workerCardModal'),w.id);
   // A tap on the card (not on one of its buttons or links) opens the edit form.
@@ -4635,6 +4641,11 @@ function switchAdminPane(pane){
 // firm here client-side.
 const PERMISSION_SECTIONS = ['schedule','workers','clients','suppliers','accounting','exports'];
 let __editingUserId = null;
+// An owner / super-admin row: only name, phone and password are edited here.
+let __editingAdminRow = false;
+function showUserFormAccess(on){
+  ['userFormRoleField','userFormAccessHead','userFormPermsField'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display = on ? '' : 'none'; });
+}
 function activeTenantIdForAdmin(){
   const s = getSession();
   if(!s) return null;
@@ -4695,6 +4706,8 @@ function onUserFormRoleChange(fromUser){
 }
 function openCreateUserForm(){
   __editingUserId = null;
+  __editingAdminRow = false;
+  showUserFormAccess(true);
   document.getElementById('userFormTitle').textContent = 'New user';
   document.getElementById('userFormUsername').value = '';
   document.getElementById('userFormUsername').disabled = false;
@@ -4729,6 +4742,15 @@ async function openEditUserForm(id){
   document.getElementById('userFormFullName').value = u.fullName || '';
   document.getElementById('userFormPhone').value = u.phone || '';
   document.getElementById('userFormOwnOnly').checked = u.ownOnly !== false;
+  __editingAdminRow = u.role==='tenant_admin' || u.role==='superadmin';
+  if(__editingAdminRow){
+    document.getElementById('userFormTitle').textContent = 'Edit ' + (u.fullName || u.username) + ' (owner)';
+    ['userFormSupplierField','userFormHrFields','userFormHrWorkersField'].forEach(i => document.getElementById(i).style.display = 'none');
+    showUserFormAccess(false);
+    document.getElementById('userFormOverlay').classList.add('open');
+    return;
+  }
+  showUserFormAccess(true);
   onUserFormRoleChange();
   if(u.role==='supplier') fillUserFormSupplierSelect(u.supplierId);
   if(u.role==='hr') renderUserFormHrWorkers();
@@ -4756,11 +4778,17 @@ async function submitUserForm(){
         const pr = await (await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'resetUserPassword', ...gsAuth(), id: __editingUserId, password }) })).json();
         if(!pr || pr.error){ errEl.textContent = (pr&&pr.error)||'Password not changed'; return; }
       }
-      const body = { action:'updateUser', ...gsAuth(), id: __editingUserId, active: true, ...hrFields };
-      if(role==='supplier') body.supplierId = supplierId; else body.permissions = permissions;
+      // Rights are sent as they are in the form; the server ends the user's
+      // sessions only when they really changed.
+      const body = __editingAdminRow
+        ? { action:'updateUser', ...gsAuth(), id: __editingUserId, fullName: hrFields.fullName, phone: hrFields.phone }
+        : { action:'updateUser', ...gsAuth(), id: __editingUserId, ...hrFields };
+      if(!__editingAdminRow){ if(role==='supplier') body.supplierId = supplierId; else body.permissions = permissions; }
       const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(body) });
       const json = await res.json();
       if(!json || json.error){ errEl.textContent = (json&&json.error)||'Save failed'; return; }
+      const me = getSession();
+      if(me && me.uid === __editingUserId){ me.fullName = hrFields.fullName; saveSession(me); renderAccountControl(me); }
     } else {
       const username = document.getElementById('userFormUsername').value.trim();
       const password = document.getElementById('userFormPassword').value;

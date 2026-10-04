@@ -24,7 +24,9 @@ No HR, of either kind, can change a worker's `hrId` — only the owner (`tenant_
 
 ## Who does what
 
-- **Create / edit the HR:** Admin → Users (owner, super-admin) → `createTenantUser` / `updateUser` (`functions-auth/core.py`). A change of sections or of `ownOnly` revokes the HR's sessions (new claims on the next login); name and phone don't.
+- **Create / edit the HR:** Admin → Users (owner, super-admin) → `createTenantUser` / `updateUser` (`functions-auth/core.py`). Only a real change of sections or of `ownOnly` ends the HR's sessions (new claims on the next login) — the server compares them with what is stored; name and phone never do.
+- **The owner's order is kept:** an own-workers HR sees only part of the list, so its saves keep each worker's stored `sortIndex` (`storedPos` in `firestore-backend.js`); a worker it adds goes to the end.
+- **Duplicate check on edit too:** changing an existing worker's document number is checked across the firm the same way (`checkWorkerDoc` with `workerId`).
 - **Assign workers:** the HR's card in Users (its worker list with Unassign, "Add workers" bulk picker) or the worker modal's HR field. Both go through `assignWorkersToHr(ids, hrId)` in `schedule-manager.html`: sets `hrId` on the workers, `autoSave()`, then `setPunchesHr` (`firestore-backend.js`, owner / super-admin only) rewrites `hrId` on every punch of those workers — so the new HR sees the history and the old one loses it.
 - **A worker added by an HR** gets `hrId` = its uid in `saveWorker()`.
 
