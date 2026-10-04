@@ -113,6 +113,11 @@ def _save_punch(db, tid, w, data):
     doc.update(id=data.get("id") if data.get("id") is not None else pid, workerId=w.id,
                day=_day(data.get("date")) or ts.astimezone(TZ).strftime("%Y-%m-%d"), archived=False)
     doc["ts"] = ts
+    # The worker's HR (if any): an own-workers hr login reads punches by it
+    # (firestore.rules). Taken from the worker, never from the page.
+    hr = (w.to_dict() or {}).get("hrId")
+    if hr:
+        doc["hrId"] = str(hr)
     ref.set(doc)  # idempotent: a queued punch sent twice is the same document
     return {"ok": True, "id": doc["id"]}
 

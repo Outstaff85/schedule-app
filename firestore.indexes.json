@@ -15,6 +15,20 @@
       ]
     },
     {
+      "collectionGroup": "punches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "hrId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ts",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "pendingHours",
       "queryScope": "COLLECTION",
       "fields": [

@@ -76,7 +76,7 @@ service cloud.firestore {
       match /workers/{id} {
         allow read: if manager(t) || (hrMine(t) && oldHr() == uid());
         allow create: if scheduleWriter(t)
-          || (hrAll(t) && hrWorkers(t) && newHr() == null)
+          || (hrAll(t) && hrWorkers(t) && (newHr() == null || newHr() == uid()))
           || (hrMine(t) && hrWorkers(t) && newHr() == uid());
         allow update: if scheduleWriter(t)
           || (hrAll(t) && hrWorkers(t) && newHr() == oldHr())

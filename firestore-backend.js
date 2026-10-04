@@ -15,7 +15,7 @@
 //                               passes the start of this month minus a week);
 //                               resolves with the first snapshot's entries
 //   punchesBetween(t, from, to) one-time read of older punches, on demand
-//   savePunch / updatePunch / deletePunch
+//   savePunch / updatePunch / deletePunch  (a punch gets its worker's hrId)
 //   idToken()                   the signed-in user's ID token (supplier portal)
 //   uploadWorkerFile(t, body, onProgress)   saveWorkerDoc / saveWorkerAssets /
 //                               saveWorkerFile into Storage, replying {ok,id,url}
@@ -26,7 +26,11 @@
 //
 // Documents are the same objects the app keeps in memory: one per worker,
 // client, supplier (plus sortIndex, the array position) and one per punch
-// (ts as a Timestamp, day 'yyyy-MM-dd', archived).
+// (ts as a Timestamp, day 'yyyy-MM-dd', archived, hrId = the worker's HR).
+//
+// An "own workers" hr login (claims role 'hr', own) may read only the workers
+// whose hrId is its uid and their punches (firestore.rules), so every read of
+// workers, punches and pending hours adds that filter for it (hrOnly()).
 (function(){
   const FB_VERSION = '12.19.0';
   const FB_CDN = 'https://www.gstatic.com/firebasejs/' + FB_VERSION + '/';
@@ -97,6 +101,32 @@
     // Last JSON written/read per document, so a save sends only real changes.
     const known = {workers:new Map(), clients:new Map(), suppliers:new Map()};
     let knownTenant = null;
+    // Worker id -> hrId, from the last load/save: a punch written here is
+    // stamped with its worker's HR.
+    const workerHr = new Map();
+
+    // The signed-in login's claims (role, own, perms); refreshed per sign-in.
+    let claimsFor = null, claims = {};
+    async function myClaims(){
+      const u = auth.currentUser;
+      if(!u) return {};
+      if(claimsFor !== u.uid){ claims = (await u.getIdTokenResult()).claims || {}; claimsFor = u.uid; }
+      return claims;
+    }
+    // The uid to filter by for an own-workers hr login, else null.
+    async function hrOnly(){
+      const c = await myClaims();
+      return c.role === 'hr' && c.own === true ? auth.currentUser.uid : null;
+    }
+    // A login may write that kind of record (an hr without the clients /
+    // suppliers section only reads them, firestore.rules).
+    async function mayWrite(kind){
+      const c = await myClaims();
+      if(c.role !== 'hr' || kind === 'workers') return true;
+      const p = Array.isArray(c.perms) ? c.perms : [];
+      return p.includes('*') || p.includes(kind);
+    }
+    const hrWhere = hr => hr ? [F.where('hrId', '==', hr)] : [];
 
     async function login(username, password){
       const res = await fetch(LOGIN_FN_URL, {method:'POST', headers:{'Content-Type':'application/json'},
@@ -124,8 +154,9 @@
     }
 
     async function loadSchedule(t, track = true){
+      const hr = await hrOnly();
       const [w, c, s, set] = await Promise.all([
-        F.getDocs(col(t,'workers')), F.getDocs(col(t,'clients')), F.getDocs(col(t,'suppliers')),
+        F.getDocs(F.query(col(t,'workers'), ...hrWhere(hr))), F.getDocs(col(t,'clients')), F.getDocs(col(t,'suppliers')),
         F.getDoc(F.doc(db, 'tenants', t, 'settings', 'schedule')),
       ]);
       const settings = set.exists() ? set.data() : {};
@@ -134,7 +165,10 @@
       const keep = track ? known : {workers:new Map(), clients:new Map(), suppliers:new Map()};
       const out = {workers: listOf(w,'workers',keep), clients: listOf(c,'clients',keep), suppliers: listOf(s,'suppliers',keep),
                    weekStart: settings.weekStart || null, savedAt: settings.savedAt || null};
-      if(track) knownTenant = t;
+      if(track){
+        knownTenant = t;
+        workerHr.clear(); out.workers.forEach(x => { if(x.hrId) workerHr.set(String(x.id), x.hrId); });
+      }
       return out;
     }
 
@@ -146,6 +180,7 @@
       if(knownTenant !== t) await loadSchedule(t); // never diff against another firm
       const ops = [], next = {};
       for(const kind of ['workers','clients','suppliers']){
+        if(!(await mayWrite(kind))){ next[kind] = known[kind]; continue; }
         next[kind] = new Map();
         (data[kind] || []).forEach((item, pos) => {
           if(!item || item.id == null) return;
@@ -162,6 +197,7 @@
         await batch.commit();
       }
       for(const kind in next) known[kind] = next[kind];
+      workerHr.clear(); (data.workers || []).forEach(x => { if(x && x.hrId) workerHr.set(String(x.id), x.hrId); });
       return {ok:true, written: ops.length};
     }
 
@@ -180,6 +216,8 @@
       body.ts = isNaN(when.getTime()) ? null : F.Timestamp.fromDate(when);
       body.day = ddmmyyyyToDay(entry.date);
       body.archived = false;
+      const hr = entry.hrId !== undefined ? entry.hrId : workerHr.get(String(entry.workerId));
+      if(hr) body.hrId = hr; else delete body.hrId;
       return body;
     }
 
@@ -187,8 +225,8 @@
     function listenPunches(t, onChange, since){
       if(punchUnsub) punchUnsub();
       if(!since){ since = new Date(); since.setMonth(since.getMonth() - PUNCH_MONTHS); since.setDate(1); since.setHours(0,0,0,0); }
-      const q = F.query(col(t,'punches'), F.where('ts', '>=', F.Timestamp.fromDate(since)));
-      return new Promise((resolve, reject) => {
+      return hrOnly().then(hr => new Promise((resolve, reject) => {
+        const q = F.query(col(t,'punches'), ...hrWhere(hr), F.where('ts', '>=', F.Timestamp.fromDate(since)));
         let first = true;
         punchUnsub = F.onSnapshot(q, snap => {
           const entries = snap.docs.map(punchFromDoc);
@@ -197,19 +235,19 @@
           if(first){ first = false; resolve(entries); }
           else onChange(entries);
         }, err => { if(first){ first = false; reject(err); } else console.warn('Punch listener stopped:', err); });
-      });
+      }));
     }
     // Older punches, read once when the app needs them (a past month's
     // salary, an export, Clear Log): [from, to).
     async function punchesBetween(t, from, to){
-      const snap = await F.getDocs(F.query(col(t,'punches'),
+      const snap = await F.getDocs(F.query(col(t,'punches'), ...hrWhere(await hrOnly()),
         F.where('ts','>=',F.Timestamp.fromDate(from)), F.where('ts','<',F.Timestamp.fromDate(to))));
       return snap.docs.map(punchFromDoc);
     }
     // Punches an approved hours batch wrote (ids imp-<batch>-<row>-in|out).
     async function punchesOfBatch(t, batchId){
       const pre = 'imp-' + batchId + '-';
-      const snap = await F.getDocs(F.query(col(t,'punches'),
+      const snap = await F.getDocs(F.query(col(t,'punches'), ...hrWhere(await hrOnly()),
         F.where(F.documentId(),'>=',pre), F.where(F.documentId(),'<',pre + '\uf8ff')));
       return snap.docs.map(punchFromDoc);
     }
@@ -303,7 +341,9 @@
     }
     async function loadPendingHours(t, ctx){
       if(ctx.role === 'supplier') return {error:'Недоступно для роли поставщика'};
-      const snap = await F.getDocs(col(t,'pendingHours'));
+      // An own-workers hr reads only the batches it uploaded.
+      const hr = await hrOnly();
+      const snap = await F.getDocs(hr ? F.query(col(t,'pendingHours'), F.where('createdBy','==',hr)) : col(t,'pendingHours'));
       return {batches: snap.docs.map(d => { const x = d.data(); return {batchId: d.id, fileName: x.fileName || '',
         uploadedBy: x.uploadedBy || '', uploadedAt: x.uploadedAt || '', status: x.status, entries: x.rows || []}; })};
     }
@@ -320,7 +360,8 @@
       const b = snap.data();
       if(b.status !== 'pending') return {ok:true, created:0};
       const workersSnap = await F.getDocs(col(t,'workers'));
-      const names = {}; workersSnap.forEach(d => { names[d.id] = d.data().name || ''; });
+      const names = {}, hrs = {};
+      workersSnap.forEach(d => { names[d.id] = d.data().name || ''; hrs[d.id] = d.data().hrId || null; });
       const note = 'Imported' + (b.fileName ? ' from ' + b.fileName : '');
       const tsFor = (date, time) => {
         const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(date || '');
@@ -334,7 +375,8 @@
           if(!time) return;
           const id = 'imp-' + batchId + '-' + i + '-' + type;
           batch.set(F.doc(db,'tenants',t,'punches',id), punchDoc({id, workerId: r.workerId, workerName: names[r.workerId] || '',
-            type, time, date: r.date, ts: tsFor(r.date, time), clientId: r.clientId || '', notes: note, gpsWarnings: []}));
+            type, time, date: r.date, ts: tsFor(r.date, time), clientId: r.clientId || '', notes: note, gpsWarnings: [],
+            hrId: hrs[r.workerId] || null}));
         });
       });
       batch.update(ref, {status:'approved'});
@@ -350,11 +392,31 @@
       await F.updateDoc(ref, {status:'rejected'});
       return {ok:true, rejected: (snap.data().rows || []).length};
     }
+    // A worker's HR changed (worker modal, the HR card's bulk assign): its
+    // punches carry the new hrId, so the new HR sees its history and the old
+    // one no longer does. Owner or super-admin only.
+    async function setPunchesHr(t, ctx, workerIds, hrId){
+      if(!approver(ctx)) return {error:'Назначать HR может только владелец фирмы или супер-админ'};
+      const ids = (Array.isArray(workerIds) ? workerIds : []).map(String).filter(Boolean);
+      const val = hrId ? String(hrId) : F.deleteField();
+      let n = 0;
+      for(const wid of ids){
+        const snap = await F.getDocs(F.query(col(t,'punches'), F.where('workerId','==',wid)));
+        const refs = snap.docs.filter(d => (d.data().hrId || null) !== (hrId || null)).map(d => d.ref);
+        for(let i = 0; i < refs.length; i += BATCH_LIMIT){
+          const batch = F.writeBatch(db);
+          refs.slice(i, i + BATCH_LIMIT).forEach(r => batch.update(r, {hrId: val}));
+          await batch.commit();
+        }
+        n += refs.length;
+      }
+      return {ok:true, updated: n};
+    }
     // Another firm's punches for the super-admin summary (this week): the
     // same window the app keeps live — this month, plus the week before it.
     async function punchesOnce(t){
       const since = new Date(); since.setDate(1); since.setHours(0,0,0,0); since.setDate(since.getDate() - 7);
-      const snap = await F.getDocs(F.query(col(t,'punches'), F.where('ts','>=',F.Timestamp.fromDate(since))));
+      const snap = await F.getDocs(F.query(col(t,'punches'), ...hrWhere(await hrOnly()), F.where('ts','>=',F.Timestamp.fromDate(since))));
       return {entries: snap.docs.map(punchFromDoc)};
     }
 
@@ -425,6 +487,7 @@
         case 'loadPendingHours': return loadPendingHours(t, ctx);
         case 'approvePendingHours': return approvePendingHours(t, ctx, params.batchId);
         case 'rejectPendingHours': return rejectPendingHours(t, ctx, params.batchId);
+        case 'setPunchesHr': return setPunchesHr(t, ctx, params.workerIds, params.hrId);
       }
       return null;
     }
@@ -434,7 +497,7 @@
       uploadWorkerFile, UPLOAD_ACTIONS, isStoragePath,
       currentUser: () => auth.currentUser,
       idToken: () => auth.currentUser ? auth.currentUser.getIdToken() : Promise.resolve(null),
-      signOut: () => { if(punchUnsub) punchUnsub(); return authMod.signOut(auth); },
+      signOut: () => { if(punchUnsub) punchUnsub(); claimsFor = null; claims = {}; return authMod.signOut(auth); },
     };
   };
 })();

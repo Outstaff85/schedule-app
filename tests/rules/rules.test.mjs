@@ -235,7 +235,8 @@ test('hr without own-workers: sees the whole firm like staff, still never reassi
   await assertSucceeds(updateDoc(doc(h, 'tenants', A, 'workers', 'w3'), { hourlyRate: 50 }));
   await assertFails(updateDoc(doc(h, 'tenants', A, 'workers', 'w3'), { hrId: 'u-hrAll' }));
   await assertSucceeds(setDoc(doc(h, 'tenants', A, 'workers', 'n1'), { name: 'New' }));
-  await assertFails(setDoc(doc(h, 'tenants', A, 'workers', 'n2'), { name: 'New', hrId: 'u-hrAll' }));
+  await assertSucceeds(setDoc(doc(h, 'tenants', A, 'workers', 'n2'), { name: 'New', hrId: 'u-hrAll' }));
+  await assertFails(setDoc(doc(h, 'tenants', A, 'workers', 'n3'), { name: 'New', hrId: 'u-other' }));
   await assertSucceeds(deleteDoc(doc(h, 'tenants', A, 'workers', 'w1')));
   await assertFails(updateDoc(doc(h, 'tenants', A, 'pendingHours', 'b1'), { status: 'approved' }));
 });
