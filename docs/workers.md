@@ -19,7 +19,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
 | `travelAllowance` | ₪ per day worked, added on top of pay |
 | `clientIds` | array — a worker can work at several clients |
 | `supplierId`, `supplierRates` | one supplier (agency); `supplierRates[sid].rate` = commission override |
-| `hrId` | uid of the HR login the worker belongs to, or absent; set only by the owner / super-admin (worker modal HR field, the HR card in Users) or automatically for a worker an HR adds ([admin.md](admin.md) → HR logins) |
+| `hrId` | uid of the HR login the worker belongs to, or absent; set only by the owner / super-admin (worker modal HR field, the HR card in Users) or automatically for a worker an HR adds ([hr.md](hr.md)) |
 | `bank`, `bankBranch`, `bankAccountNumber` | the worker's own bank details |
 | `schedule` | 7 items, Sunday first: `{type:'work'|'off', start:'HH:MM'|null, end}` |
 | `startDate` / `workStartDate` | same value, one input; `startDate` drives the contract warning, `workStartDate` goes to Form 101 |

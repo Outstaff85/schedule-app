@@ -11,7 +11,7 @@ The Admin tab (`#sectionAdmin`) and the punch-log data behind it: the punch log,
 | Punch Log | everyone who can open the tab — the tab needs the `workers` permission |
 | Firms, Users | `superadmin`, `tenant_admin` |
 
-An `hr` login never sees the Admin tab ([HR logins](#hr-logins)).
+An `hr` login never sees the Admin tab ([hr.md](hr.md)).
 | Errors, Timings | `superadmin` |
 
 Layout (`.admin-pane-bar`): the section buttons in a row on a computer, a 3-column grid on a phone. The header buttons (`.head-actions`) are two equal buttons across the width on a phone.
@@ -96,17 +96,7 @@ The server rules (only staff/hr/supplier users are created here, own firm only, 
 
 ## HR logins
 
-An HR manager's login (role `hr`), made in the Users pane by the firm's owner or a super-admin.
-
-- **Sections** like staff (default Workers only). The tabs follow them, but an HR never gets Today or Admin (`tabAllowed`) and lands on its first tab.
-- **"Only own workers"** (`ownOnly`, the token claim `own`; on by default):
-  - on: it sees, adds, edits and deletes only workers whose `hrId` is its uid, and their punches; its hours uploads go to the queue as pending (the owner approves) and it sees only its own batches. Clients and suppliers are shared: readable, writable only with the clients / suppliers section;
-  - off: it sees the whole firm like staff with the same sections.
-- **Assigning:** only the owner or a super-admin sets a worker's `hrId` — the worker modal's HR field, or the HR's card (list, Unassign, Add workers). `assignWorkersToHr(ids, hrId)` changes the workers, saves, and calls `setPunchesHr`, which moves those workers' past punches to the new HR (or clears it). A worker an HR adds is its own automatically; no HR login can change `hrId` (rules).
-- **Punches carry `hrId`** (the worker's HR at write time): the punch link (`portal._save_punch`), the app's own punches (`punchDoc`), approved hours. An own-workers HR reads punches by `hrId`, so a reassignment must move them (`setPunchesHr`). Its cached punches of a worker it no longer has are dropped (`mergeRemotePunches`).
-- **Duplicate check:** a new worker's document number is checked across the whole firm by the server (`checkWorkerDoc`, yes/no only).
-- **Files:** an own-workers HR uploads with `hrId` in the file metadata and reads back only such files (the link after an upload); other reads and deletes go through `users_admin`, which checks the worker's `hrId`.
-- A change of sections or of "Only own workers" ends the HR's sessions (it logs in again); name and phone don't.
+HR logins are created and edited here (form above); what they can do and how it is enforced: [hr.md](hr.md).
 
 ## Errors and Timings: the period picker
 

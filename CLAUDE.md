@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A staff scheduling & GPS punch-clock PWA for a single client ("Odinson"), served as static files from Firebase Hosting (project `schedule-odinson`). No build step, no bundler, no package.json at the root, no test suite for the pages — each page is a self-contained HTML file with inline `<style>`/`<script>`.
 
-Multi-tenant: a super-admin creates firms (tenants), each with its own logins and isolated data. Roles: `superadmin`, `tenant_admin`, `staff` (per-section permissions), `hr` (per-section permissions; by default only the workers assigned to it, `hrId` — docs/admin.md → HR logins), `supplier` (own workers only).
+Multi-tenant: a super-admin creates firms (tenants), each with its own logins and isolated data. Roles: `superadmin`, `tenant_admin`, `staff` (per-section permissions), `hr` (per-section permissions; by default only the workers assigned to it, `hrId` — docs/hr.md), `supplier` (own workers only).
 
 The backend is **Firestore + Firebase Storage + Cloud Functions**, and nothing else. The original Google Apps Script / Google Sheets backend was removed on 2026-10-03 (see docs/history.md); don't add calls to it.
 
@@ -21,6 +21,7 @@ The backend is **Firestore + Firebase Storage + Cloud Functions**, and nothing e
 | [docs/app-core.md](docs/app-core.md) | `schedule-manager.html` shell: login/session, tabs and `render()`, the Schedule tab, data calls (the `fetch(API_URL)` dispatcher), load/save/cache, uploads (`uploadWorkerFile`), telemetry, PWA |
 | [docs/workers.md](docs/workers.md) | the worker record, Workers tab (cards/list, filters), worker card, worker modal and `saveWorker()`, worker documents, hours import/export from the card, punch links |
 | [docs/clients.md](docs/clients.md) | the client record, Clients tab and modal, billing modes, map picker, manual punch |
+| [docs/hr.md](docs/hr.md) | the HR role end to end: `hrId` ownership of workers and punches, own-only vs all, assigning workers, rules/queries/Storage enforcement |
 | [docs/suppliers.md](docs/suppliers.md) | the supplier record and Suppliers tab |
 | [docs/accounting.md](docs/accounting.md) | **payroll math** (`groupPunchesIntoShifts`, `analyzeDayPunches`, `effectiveRates`, `shiftPay`, `israeliDayPay`), Accounting tab, supplier commission, client billing, hours approval queue, exports, Today tab, super-admin summary |
 | [docs/admin.md](docs/admin.md) | Admin tab: punch log (month-window loading, filters, paging, Clear Log), Firms, Users, Errors, Timings, Profile |
