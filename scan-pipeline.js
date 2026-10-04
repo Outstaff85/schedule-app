@@ -1310,29 +1310,67 @@ function skipScanQuad(){
   if(window.__scanEditPurpose==='collectPage') _queueScanPage(window.__scanEdit);
   else finishPageScan(window.__scanEdit);
 }
-// A cropped page joins the queue. When it was taken with a page's "scan
-// again" button (window.__scanReplace = {screen, idx}), it takes that page's
-// place: on the queue screen it simply replaces it; on the review screen the
-// old page is dropped only now (a cancelled photo keeps it) and the new one
-// is queued to be read — page 1 together with the remaining pages, so the
-// set is read again with the new page first.
+// A cropped page joins the queue. When it was taken by tapping a page to
+// scan it again (window.__scanReplace = {screen, idx}), it takes that page's
+// place instead: on the queue screen it simply replaces it (nothing has been
+// read yet); on the review screen only this one page is read again
+// (_replaceReviewPage) — the other pages keep their reads.
 function _queueScanPage(img){
   if(!window.__pendingScanPages) window.__pendingScanPages=[];
   const rep=window.__scanReplace; window.__scanReplace=null;
   const page={b64:img.b64,mediaType:img.mediaType};
+  if(rep&&rep.screen==='review'&&(window.__aiScanPageThumbs||[])[rep.idx]){ _replaceReviewPage(rep.idx,page); return; }
   if(rep&&rep.screen==='queue'&&rep.idx<window.__pendingScanPages.length) window.__pendingScanPages.splice(rep.idx,1,page);
-  else if(rep&&rep.screen==='review'&&rep.idx===0){
-    const rest=(window.__aiScanPageThumbs||[]).slice(1).filter(Boolean).map(p=>({b64:p.b64,mediaType:p.mediaType}));
-    const queued=window.__pendingScanPages.slice();
-    openAiScan();
-    window.__pendingScanPages=[page,...rest,...queued];
-  } else {
-    if(rep&&rep.screen==='review') _dropReviewPage(rep.idx);
-    window.__pendingScanPages.push(page);
-  }
+  else window.__pendingScanPages.push(page);
   renderPendingPagesPrompt();
 }
-// "Scan again" under a page: take a new photo for it (see _queueScanPage).
+// Replaces page i on the review screen with a new photo and reads only that
+// photo: aligned and enhanced like any page (autoPreAlignScan, preAlignScan),
+// then page 1 gets the full read (aiReadDoc, digit re-check, portrait crop)
+// and any other page the reader its kind calls for (extraPageReader). The
+// worker's record is then rebuilt from every page's own read
+// (rebuildPrimaryFromPages), so the other pages are not read again. A blurry
+// photo, or a page 1 that doesn't read as an ID or passport, leaves the old
+// page in place.
+async function _replaceReviewPage(i,img){
+  const back=msg=>{ if(msg) showToast(msg,4000); renderScanPagesPrompt(); };
+  try{
+    renderScanProgress('מיישר ומשפר את התמונה…',20);
+    const al=await autoPreAlignScan(img.b64,img.mediaType);
+    const pre=await preAlignScan(al.b64,al.mediaType);
+    if(pre.blurry) return back('התמונה מטושטשת מדי — צלמו שוב');
+    const page={b64:pre.b64,mediaType:pre.mediaType};
+    if(i===0){
+      renderScanProgress('ה-AI קורא את המסמך…',50);
+      const json=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'aiReadDoc',...gsAuth(),image:page.b64,mediaType:page.mediaType})})).json();
+      const p=json&&json.parsed;
+      if(!(p&&(p.type==='israeli_id'||p.type==='passport'))) return back('לא זוהה מסמך זהות בתמונה — העמוד הקודם נשאר');
+      renderScanProgress('בודק שוב את הספרות…',70);
+      let v=p.fieldBoxes?await verifyDigitFields(p,page.b64,page.mediaType):p;
+      v=await verifyIdChecksum(v,page.b64,page.mediaType);
+      // photoBox belongs to the image that was read — crop before tightening.
+      window.__aiAvatarB64=p.photoBox?await cropPortraitAvatar(page.b64,page.mediaType,p.photoBox):null;
+      renderScanProgress('מחדד קצוות…',90);
+      const final=await finalTightenPass(page);
+      window.__aiScanImage=final;
+      window.__aiScanPageThumbs[0]=final;
+      window.__aiPageParsed[0]=v;
+    } else {
+      renderScanProgress('ה-AI קורא את העמוד…',60);
+      const rd=extraPageReader(al.kind);
+      const p=rd?await rd(page):null;
+      renderScanProgress('מחדד קצוות…',90);
+      const final=await finalTightenPass(page);
+      window.__aiScanPageThumbs[i]=final;
+      window.__aiPacketOtherPages[i-1]=final;
+      window.__aiPageParsed[i]=(p&&p.type==='israeli_id')?p:null;
+    }
+    rebuildPrimaryFromPages();
+    window.__aiParsed=window.__aiPrimaryParsed;
+    back();
+  }catch(e){ console.error(e); back('הסריקה החוזרת נכשלה — העמוד הקודם נשאר'); }
+}
+// Tapping a page: take a new photo for it (see _queueScanPage).
 function rescanScanPage(screen,i){
   window.__scanReplace={screen,idx:i};
   const input=document.getElementById(screen==='queue'?'aiScanFilePending':'aiScanFileExtra');
@@ -1416,6 +1454,9 @@ function rebuildPrimaryFromPages(){
   if(!pages.length){ window.__aiPrimaryParsed=null; return; }
   let primary=initPrimaryFromFirstPage(pages[0]);
   for(let i=1;i<pages.length;i++) primary=mergeScanPage(primary,pages[i]);
+  // Page 1 without a read of its own (a page kept without an AI read) — the
+  // document type comes from the first page that has one.
+  if(!primary.type){ const t=pages.find(p=>p&&p.type); if(t) primary.type=t.type; }
   window.__aiPrimaryParsed=primary;
 }
 // Called once a single page's OCR + corner-confirmation is done (whichever
@@ -1805,18 +1846,24 @@ function _dropReviewPage(i){
   // recompute the primary record from the pages that are actually still here.
   rebuildPrimaryFromPages();
 }
-// Removing page 1 (the primary: names, ID number, portrait) can't be done by
-// splicing — the next page may be a ספח read with no names. The remaining
-// pages go back to the queue as they are and the whole set is read again
-// (processAllPendingPages picks the new primary); with no pages left the
-// scan starts over.
+// Removing page 1 (the primary): the next page becomes page 1 and the record
+// is rebuilt from the remaining pages' own reads — nothing is read again.
+// Names, ID number and portrait came from the removed page, so a ספח left
+// alone gives an address-only record; tapping "+" adds a new front page, or
+// tapping the new page 1 scans it again. With no pages left the scan starts
+// over.
 function removePrimaryScanPage(){
-  const rest=(window.__aiScanPageThumbs||[]).slice(1).filter(Boolean);
-  if(rest.length&&!confirm('להסיר את העמוד הראשי? שאר העמודים ייקראו מחדש.')) return;
-  openAiScan();
-  if(!rest.length) return;
-  window.__pendingScanPages=rest.map(p=>({b64:p.b64,mediaType:p.mediaType}));
-  renderPendingPagesPrompt();
+  const thumbs=window.__aiScanPageThumbs||[];
+  if(thumbs.filter(Boolean).length<=1){ openAiScan(); return; }
+  if(!confirm('להסיר את העמוד הראשי (שם, ת.ז., תמונה)?')) return;
+  thumbs.shift();
+  window.__aiPacketOtherPages.shift();
+  if(window.__aiPageParsed) window.__aiPageParsed.shift();
+  window.__aiScanImage=thumbs[0];
+  window.__aiAvatarB64=null;
+  rebuildPrimaryFromPages();
+  window.__aiParsed=window.__aiPrimaryParsed;
+  renderScanPagesPrompt();
 }
 function finishScanPages(){
   const finalParsed=window.__aiPrimaryParsed||window.__aiParsed;
