@@ -272,3 +272,17 @@ def test_find_several_fields_in_one_request():
     text = sent[0]["messages"][0]["content"][0]["text"]
     assert len(sent) == 1 and '"city": ישוב' in text and '"address": רחוב' in text and sent[0]["max_tokens"] == 450
     assert _find({"fields": ["city", "salary"], "images": [{"image": "F"}]})[0] == {"error": "Unknown field"}
+
+
+def test_truncated_read_keeps_the_complete_fields():
+    # A ספח answer cut at max_tokens in the middle of the children: the
+    # address and the children that came in full are kept.
+    text = '{"idNo":"000000018","address":"הרצל","city":"חיפה","children":[{"name":"נועה כהן","idNo":"000000026","dob":"01/01/2015"},{"name":"דני כ'
+    reply = json.dumps({"content": [{"type": "text", "text": text}], "stop_reason": "max_tokens"})
+    r = python("aiReadSefach", {"image": "I"}, reply)["result"]
+    assert r["ok"] and r["truncated"]
+    assert r["parsed"]["address"] == "הרצל" and r["parsed"]["city"] == "חיפה" and r["parsed"]["type"] == "israeli_id"
+    assert [c["name"] for c in r["parsed"]["children"]] == ["נועה כהן"]
+    # Not truncated and not JSON: still an error.
+    bad = json.dumps({"content": [{"type": "text", "text": "not json"}]})
+    assert "error" in python("aiReadSefach", {"image": "I"}, bad)["result"]

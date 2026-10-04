@@ -1922,7 +1922,9 @@ function removePendingScanPage(i){
 // back). Never throws — a failed read resolves null, same as "nothing found".
 function readSefachPage(it){
   return fetch(API_URL,{method:'POST',body:JSON.stringify({action:'aiReadSefach',...gsAuth(),image:it.b64,mediaType:it.mediaType})})
-    .then(r=>r.json()).then(j=>{ if(j&&j.error) console.warn('aiReadSefach failed: '+j.error); const p=j&&j.parsed; if(p) p.__fromSefachReader=true; return p?verifySefachFields(p,it.b64,it.mediaType,it.hi):null; })
+    .then(r=>r.json()).then(j=>{ if(j&&j.error) console.warn('aiReadSefach failed: '+j.error);
+      if(j&&j.truncated) console.warn('aiReadSefach: answer cut at max_tokens — the fields read in full were kept');
+      const p=j&&j.parsed; if(p) p.__fromSefachReader=true; return p?verifySefachFields(p,it.b64,it.mediaType,it.hi):null; })
     .catch(e=>{ console.error(e); return null; });
 }
 // Page type only (aiDetectAlign's "kind"), for the multi-file path, which
