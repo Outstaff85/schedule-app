@@ -24,6 +24,7 @@ Minting custom tokens needs the runtime service account to hold
 """
 
 import json
+import threading
 
 import requests
 
@@ -42,14 +43,17 @@ options.set_global_options(region="europe-west3", memory=options.MemoryOption.MB
 _CORS = options.CorsOptions(cors_origins="*", cors_methods=["post"])
 ANTHROPIC_API_KEY = SecretParam("ANTHROPIC_API_KEY")
 _db_client = None
+_db_lock = threading.Lock()  # ai_read serves several requests at once (threads)
 
 
 def _db():
     global _db_client
     if _db_client is None:
-        if not firebase_admin._apps:
-            firebase_admin.initialize_app()
-        _db_client = firestore.client()
+        with _db_lock:
+            if _db_client is None:
+                if not firebase_admin._apps:
+                    firebase_admin.initialize_app()
+                _db_client = firestore.client()
     return _db_client
 
 
@@ -182,7 +186,12 @@ def _anthropic_post(url, payload, headers):
     return resp.status_code, resp.text
 
 
-@https_fn.on_request(cors=_CORS, timeout_sec=300, memory=options.MemoryOption.MB_512, secrets=[ANTHROPIC_API_KEY])
+# cpu=1 + concurrency=20: one instance serves a whole scan's parallel calls
+# (align ×2, read, re-check, ספח) — the requests mostly wait on Anthropic.
+# With the default (a third of a CPU, one request per instance) each parallel
+# call needed an instance of its own, and a cold one cost 5-20 s.
+@https_fn.on_request(cors=_CORS, timeout_sec=300, memory=options.MemoryOption.MB_512, cpu=1, concurrency=20,
+                     secrets=[ANTHROPIC_API_KEY])
 def ai_read(req: https_fn.Request) -> https_fn.Response:
     """AI document reading for the manager app (ai.py). Manager logins only:
     a supplier never scans or imports hours."""
