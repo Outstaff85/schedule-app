@@ -228,3 +228,28 @@ def test_find_field_refusals_and_not_found():
     assert _find({"field": "city", "images": []})[0] == {"error": ai.E_NO_IMAGE}
     r, _ = _find({"field": "city", "images": [{"image": "F"}]}, '{"content":[{"type":"text","text":"{\\"value\\":\\"\\"}"}]}')
     assert r == {"ok": True, "found": {"value": "", "page": None, "box": None}}
+
+
+def test_text_kinds_for_zoomed_reads():
+    sent = []
+
+    def post(url, payload, headers):
+        sent.append(payload)
+        return 200, '{"content":[{"type":"text","text":"{\\"city\\":\\"חיפה\\"}"}]}'
+    r = ai.run("aiVerifyFields", {"jobs": [{"field": "city", "kind": "hebrewText", "image": "1"},
+                                           {"field": "given", "kind": "latinName", "image": "2"},
+                                           {"field": "houseNumber", "kind": "houseNumber", "image": "3"}]}, "KEY", post, MODEL, ALIGN)
+    assert r == {"ok": True, "values": {"city": "חיפה"}}
+    texts = [c["text"] for c in sent[0]["messages"][0]["content"] if c["type"] == "text"]
+    assert ai.PROMPTS["verifyFieldsKind"]["hebrewText"] in texts[1]
+    assert ai.PROMPTS["verifyFieldsKind"]["latinName"] in texts[2]
+    assert ai.PROMPTS["verifyFieldsKind"]["houseNumber"] in texts[3]
+    for kind in ("hebrewText", "latinName", "houseNumber"):
+        sent.clear()
+        ai.run("aiVerifyField", {"image": "E", "kind": kind}, "KEY", post, MODEL, ALIGN)
+        assert sent[0]["messages"][0]["content"][0]["text"] == ai.PROMPTS["verifyField"][kind]
+
+
+def test_reads_ask_for_boxes_of_every_field():
+    assert "given, surname, address, houseNumber, city" in ai.PROMPTS["readDoc"]
+    assert "address, houseNumber, city that you found a value for" in ai.PROMPTS["readSefach"]

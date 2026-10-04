@@ -378,7 +378,7 @@ async function runSefachOcr(b64,mediaType){
         +'<button class="btn sm" onclick="renderScanPagesPrompt()">שוב</button></div>';
       return;
     }
-    window.__aiParsed=json.parsed;
+    window.__aiParsed=await verifySefachFields(json.parsed,b64,mediaType);
     // Tags this result as "a ספח-only read" for finishPageScan() below — its
     // own idNo (if any) must never become authoritative on its own, only
     // used as a cross-check against a front page's verified idNo, since it
@@ -713,8 +713,6 @@ async function verifyIdChecksum(parsed,b64,mediaType){
 // comments for why that mattered).
 async function verifyDigitFields(parsed,b64,mediaType){
   if(!parsed||!parsed.fieldBoxes) return parsed;
-  const isDigits9=s=>typeof s==='string'&&/^\d{9}$/.test(s);
-  const isDate=s=>typeof s==='string'&&/^\d{2}[\/.]\d{2}[\/.]\d{4}$/.test(s);
   const jobs=[];
   // Join a grouped ID ("0 1234567 8") first, so a correct read passes the
   // checksum below and skips the extra zoomed AI re-read.
@@ -737,15 +735,49 @@ async function verifyDigitFields(parsed,b64,mediaType){
     if(parsed.fieldBoxes.dob)        jobs.push({field:'dob',kind:'date'});
     if(parsed.fieldBoxes.expiry)     jobs.push({field:'expiry',kind:'date'});
   }
+  _pushTextJobs(parsed,jobs);
   if(!jobs.length) return parsed;
   const values=await verifyFieldsBatch(jobs.map(j=>({field:j.field,kind:j.kind,box:parsed.fieldBoxes[j.field]})),b64,mediaType);
-  jobs.forEach(j=>{
-    const raw=values[j.field];
-    if(!raw) return;
-    if(j.kind==='digits9'){ const val=_normScanDigits(raw); if(isDigits9(val)) parsed[j.field]=val; }
-    else if(j.kind==='date'){ const val=_normScanDate(raw); if(isDate(val)) parsed[j.field]=val.replace(/\./g,'/'); }
-    else { parsed[j.field]=String(raw).replace(/[\s<]/g,'').toUpperCase(); } // passportNo — format varies by country
-  });
+  jobs.forEach(j=>_applyZoomedRead(parsed,j,values[j.field]));
+  return parsed;
+}
+// Text fields re-read zoomed too (2026-10-04): every name and address field
+// the read boxed (fieldBoxes) goes into the same batched aiVerifyFields call
+// as the digits — Hebrew names/streets/towns as hebrewText, a passport's
+// Latin names as latinName, the house number as houseNumber.
+const _TEXT_VERIFY_FIELDS=['given','surname','address','houseNumber','city'];
+function _pushTextJobs(parsed,jobs){
+  for(const f of _TEXT_VERIFY_FIELDS){
+    if(!parsed.fieldBoxes||!parsed.fieldBoxes[f]||!String(parsed[f]||'').trim()) continue;
+    const kind=f==='houseNumber'?'houseNumber':(parsed.type==='passport'&&(f==='given'||f==='surname'))?'latinName':'hebrewText';
+    jobs.push({field:f,kind});
+  }
+}
+// The zoomed read wins over the first read when it is readable; when the two
+// differ the field is listed in parsed.__uncertain, and the worker modal
+// frames it "check this" (markScanUncertain).
+function _applyZoomedRead(parsed,j,raw){
+  if(!raw) return;
+  const before=parsed[j.field];
+  let val=null;
+  if(j.kind==='digits9'){ const v=_normScanDigits(raw); if(/^\d{9}$/.test(v)) val=v; }
+  else if(j.kind==='date'){ const v=_normScanDate(raw); if(/^\d{2}[\/.]\d{2}[\/.]\d{4}$/.test(v)) val=v.replace(/\./g,'/'); }
+  else if(j.kind==='passportNo') val=String(raw).replace(/[\s<]/g,'').toUpperCase(); // format varies by country
+  else if(j.kind==='houseNumber') val=String(raw).replace(/\s/g,'');
+  else val=String(raw).replace(/\s+/g,' ').trim();
+  if(!val) return;
+  const norm=v=>String(v||'').replace(/[\s.\/-]/g,'').toUpperCase();
+  if(before&&norm(before)!==norm(val)) (parsed.__uncertain=parsed.__uncertain||[]).includes(j.field)||parsed.__uncertain.push(j.field);
+  parsed[j.field]=val;
+}
+// The ספח read's own address boxes, re-read zoomed the same way.
+async function verifySefachFields(parsed,b64,mediaType){
+  if(!parsed||!parsed.fieldBoxes) return parsed;
+  const jobs=[];
+  _pushTextJobs(parsed,jobs);
+  if(!jobs.length) return parsed;
+  const values=await verifyFieldsBatch(jobs.map(j=>({field:j.field,kind:j.kind,box:parsed.fieldBoxes[j.field]})),b64,mediaType);
+  jobs.forEach(j=>_applyZoomedRead(parsed,j,values[j.field]));
   return parsed;
 }
 
@@ -1568,7 +1600,7 @@ function removePendingScanPage(i){
 // back). Never throws — a failed read resolves null, same as "nothing found".
 function readSefachPage(it){
   return fetch(API_URL,{method:'POST',body:JSON.stringify({action:'aiReadSefach',...gsAuth(),image:it.b64,mediaType:it.mediaType})})
-    .then(r=>r.json()).then(j=>{ if(j&&j.error) console.warn('aiReadSefach failed: '+j.error); return (j&&j.parsed)||null; })
+    .then(r=>r.json()).then(j=>{ if(j&&j.error) console.warn('aiReadSefach failed: '+j.error); const p=j&&j.parsed; return p?verifySefachFields(p,it.b64,it.mediaType):null; })
     .catch(e=>{ console.error(e); return null; });
 }
 // Page type only (aiDetectAlign's "kind"), for the multi-file path, which
@@ -1871,6 +1903,16 @@ function finishScanPages(){
   openWorkerModalFromScan(finalParsed);
 }
 
+// Scan field → worker field, for the "check this" marks.
+const _SCAN_TO_WORKER={given:'docGiven',surname:'docSurname',idNo:'docId',passportNo:'docId',dob:'docDob',expiry:'docExpiry',address:'address',houseNumber:'houseNumber',city:'city'};
+function _scanUncertainKeys(final){
+  const out=new Set();
+  for(const pg of [...(window.__aiPageParsed||[]),final]){
+    if(!pg||!pg.__uncertain) continue;
+    for(const f of pg.__uncertain) if(_SCAN_TO_WORKER[f]&&String(pg[f]||'')===String(final[f]||'')) out.add(_SCAN_TO_WORKER[f]);
+  }
+  return [...out];
+}
 // Shared handoff from the scan pipeline into the unified worker modal, once
 // OCR + corner-confirmation are done — replaces the old separate
 // renderAiResult() result screen entirely. A rescan of an existing worker
@@ -1935,6 +1977,9 @@ function openWorkerModalFromScan(p){
     setIfPresent(ocrFields,'spouseId',_normScanDigits(sp.idNo));
     if((ocrFields.spouseSurname||ocrFields.spouseGiven||ocrFields.spouseId)&&!ocrFields.maritalStatus) ocrFields.maritalStatus='marital_married';
   }
+  // Fields whose zoomed re-read disagreed with the first read and whose value
+  // is the one on screen — framed "check this" in the modal (display only).
+  ocrFields.__scanCheck=_scanUncertainKeys(p);
   let rescanId=window.__aiRescanWorkerId;
   window.__aiRescanWorkerId=null;
   // A NEW scan whose document number matches an existing worker is the same

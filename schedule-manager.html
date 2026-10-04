@@ -336,6 +336,8 @@
   .scan-missing { border-color: var(--amber) !important; box-shadow: 0 0 0 2px rgba(245,166,35,0.25); cursor: pointer; }
   .scan-busy { opacity: 0.6; }
   .scan-found { border-color: var(--green) !important; box-shadow: 0 0 0 2px rgba(34,197,94,0.3); }
+  /* Two reads of the scan disagreed on this value: check it. */
+  .scan-check { border-color: var(--amber) !important; box-shadow: 0 0 0 2px rgba(245,166,35,0.25); }
   @keyframes barSlide { 0% { left: -40%; } 100% { left: 100%; } }
   .progress-bar { position: relative; width: 100%; height: 4px; border-radius: 2px;
     background: var(--bg3); overflow: hidden; margin-top: 10px; }
@@ -1623,14 +1625,14 @@ function openEditWorker(wi){ editingWorkerIdx=wi; window.__wDraft=null; showWork
 // worker modal, the page it is printed on (front or ספח), its Hebrew label
 // and, for digits and dates, the zoomed re-read kind (verifyField).
 const SCAN_FIND_FIELDS={
-  docGiven:{input:'wGiven',page:'front',label:'שם פרטי'},
-  docSurname:{input:'wSurname',page:'front',label:'שם משפחה'},
+  docGiven:{input:'wGiven',page:'front',label:'שם פרטי',kind:'hebrewText',passportKind:'latinName'},
+  docSurname:{input:'wSurname',page:'front',label:'שם משפחה',kind:'hebrewText',passportKind:'latinName'},
   docId:{input:'wDocId',page:'front',label:'מספר זהות',passportLabel:'מספר דרכון',kind:'digits9',passportKind:'passportNo'},
   docDob:{input:'wDob',page:'front',label:'תאריך לידה',kind:'date'},
   docSex:{input:'wSex',page:'front',label:'מין'},
-  address:{input:'wAddress',page:'sefach',label:'רחוב',idOnly:true},
-  houseNumber:{input:'wHouseNumber',page:'sefach',label:'מס׳ בית',idOnly:true},
-  city:{input:'wCity',page:'sefach',label:'ישוב',idOnly:true},
+  address:{input:'wAddress',page:'sefach',label:'רחוב',idOnly:true,kind:'hebrewText'},
+  houseNumber:{input:'wHouseNumber',page:'sefach',label:'מס׳ בית',idOnly:true,kind:'houseNumber'},
+  city:{input:'wCity',page:'sefach',label:'ישוב',idOnly:true,kind:'hebrewText'},
 };
 const scanFieldLabel=(key,docType)=>docType==='passport'&&SCAN_FIND_FIELDS[key].passportLabel||SCAN_FIND_FIELDS[key].label;
 // Keys of the scan fields this worker is missing.
@@ -1659,9 +1661,10 @@ async function workerScanPages(w){
     others:(j.extraPages||[]).filter(p=>p&&p.b64)};
 }
 // Searches the worker's page photos for one field (aiFindField, the field's
-// own page first); digits and dates found with a box are re-read zoomed
-// (verifyField). Resolves the normalized value, '' when not found, null when
-// there is no scan to search.
+// own page first); a value found with a box is re-read zoomed (verifyField)
+// and the zoomed read wins. Resolves {value, unsure} — unsure when the two
+// reads disagreed — with value '' when not found; null when there is no scan
+// to search.
 async function findScanField(w,key,docType){
   const f=SCAN_FIND_FIELDS[key];
   const pages=await workerScanPages(w);
@@ -1672,15 +1675,41 @@ async function findScanField(w,key,docType){
     images:list.map(p=>({image:p.b64,mediaType:p.mediaType}))})})).json();
   if(j&&j.error) console.warn('aiFindField failed: '+j.error);
   let v=String(j&&j.ok&&j.found&&j.found.value||'').trim();
-  if(!v) return '';
-  const kind=docType==='passport'?(key==='docId'?f.passportKind:f.kind):f.kind;
+  if(!v) return {value:'',unsure:false};
+  const kind=docType==='passport'&&f.passportKind||f.kind;
   const pg=list[j.found.page], box=j.found.box;
-  if(kind&&pg&&box){ try{ const z=await verifyField(pg.b64,pg.mediaType,box,kind); if(z) v=String(z).trim(); }catch(e){ console.error(e); } }
+  let unsure=false;
+  if(kind&&pg&&box){
+    try{
+      const z=String(await verifyField(pg.b64,pg.mediaType,box,kind)||'').replace(/\s+/g,' ').trim();
+      const norm=x=>x.replace(/[\s.\/-]/g,'').toUpperCase();
+      if(z){ unsure=norm(z)!==norm(v); v=z; }
+    }catch(e){ console.error(e); }
+  }
   if(key==='docId'&&docType!=='passport') v=_normScanDigits(v);
   else if(key==='docId') v=v.replace(/\s/g,'').toUpperCase();
   if(key==='docDob') v=_normScanDate(v)||v;
   if(key==='docSex') v=/^[mז]/i.test(v)?'M':/^[fנ]/i.test(v)?'F':'';
-  return v;
+  if(key==='houseNumber') v=v.replace(/\s/g,'');
+  return {value:v,unsure};
+}
+// Worker modal: fields whose two scan reads disagreed (w.__scanCheck, from
+// the scan) get an amber frame and "check" note until edited.
+function markScanUncertain(keys){
+  for(const k of keys||[]){
+    const id=(SCAN_FIND_FIELDS[k]||{}).input||(k==='docExpiry'?'wDocExpiry':null);
+    const el=id&&document.getElementById(id);
+    if(!el||!String(el.value||'').trim()||el.classList.contains('scan-check')) continue;
+    el.classList.add('scan-check');
+    el.insertAdjacentHTML('afterend','<div class="scan-check-hint" dir="rtl" style="font-size:11px;color:var(--amber);margin-top:4px">בדקו — שתי הקריאות של הסריקה לא זהות</div>');
+    const clear=()=>{ _clearScanCheck(el); el.removeEventListener('input',clear); el.removeEventListener('change',clear); };
+    el.addEventListener('input',clear); el.addEventListener('change',clear);
+  }
+}
+function _clearScanCheck(el){
+  el.classList.remove('scan-check');
+  const h=el.nextElementSibling;
+  if(h&&h.classList.contains('scan-check-hint')) h.remove();
 }
 // Worker modal: every scan field still empty gets an amber frame; tapping it
 // searches the scan for that field only. Found → filled (green for a moment);
@@ -1723,14 +1752,15 @@ async function _scanFieldTap(e){
   el.dataset.scanBusy='1'; el.classList.add('scan-busy'); el.readOnly=true;
   if(el.tagName!=='SELECT') el.placeholder='מחפש בסריקה…';
   const w=editingWorkerIdx!==null?workers[editingWorkerIdx]:null;
-  let v=null;
-  try{ v=await findScanField(w,key,__wDocType); }catch(err){ console.error(err); }
+  let r=null;
+  try{ r=await findScanField(w,key,__wDocType); }catch(err){ console.error(err); }
   el.readOnly=false; delete el.dataset.scanBusy;
   if(!document.body.contains(el)) return; // the modal was closed or redrawn meanwhile
-  if(v){
-    el.value=v;
+  if(r&&r.value){
+    el.value=r.value;
     _unmarkScanField(el);
-    el.classList.add('scan-found'); setTimeout(()=>el.classList.remove('scan-found'),2500);
+    if(r.unsure) markScanUncertain([key]);
+    else { el.classList.add('scan-found'); setTimeout(()=>el.classList.remove('scan-found'),2500); }
     return;
   }
   // Not found: keep the frame, stop searching on tap, say what to do.
@@ -1757,8 +1787,9 @@ async function findScanFieldFromCard(wi,key){
   row.dataset.busy='1';
   const label=esc(scanFieldLabel(key,w.docType));
   row.innerHTML=`<i class="ti ti-loader-2 spin"></i><b>${label}</b> — מחפש בסריקה…`;
-  let v=null;
-  try{ v=await findScanField(w,key,w.docType||'israeli_id'); }catch(e){ console.error(e); }
+  let r=null;
+  try{ r=await findScanField(w,key,w.docType||'israeli_id'); }catch(e){ console.error(e); }
+  const v=r&&r.value;
   if(!v){
     row.onclick=null; row.style.cursor='default';
     row.innerHTML=`<i class="ti ti-alert-triangle"></i><b>${label}</b> — לא נמצא בסריקה · <a href="#" style="color:var(--amber);text-decoration:underline" onclick="event.preventDefault();event.stopPropagation();rescanFromWorkerCard(${wi})">צלמו שוב</a>`;
@@ -1768,7 +1799,7 @@ async function findScanFieldFromCard(wi,key){
   if(key==='docGiven'||key==='docSurname') w.name=((w.docGiven||'')+' '+(w.docSurname||'')).trim();
   autoSave();
   openWorkerCard(wi);
-  showToast(scanFieldLabel(key,w.docType)+': '+v);
+  showToast(scanFieldLabel(key,w.docType)+': '+v+(r.unsure?' — בדקו':''),r.unsure?5000:undefined);
   regenerateWorkerDoc(w.id).then(ok=>showToast(ok?'טופס 101 עודכן':'עדכון טופס 101 נכשל'));
 }
 // "Scan again" from inside the worker modal, without losing what is on the
@@ -1806,7 +1837,7 @@ function applyWorkerDraft(){
     const el=document.getElementById(id);
     if(!el) continue;
     if(v&&typeof v==='object'){ el.checked=v.checked; continue; }
-    if(v!==''&&v!=null) el.value=v;
+    if(v!==''&&v!=null){ el.value=v; _clearScanCheck(el); }
   }
   if(d.children.length){ __wChildren=d.children; renderChildrenRows(); }
   if(d.clientIds.length){ __wClientIds=d.clientIds.filter(id=>clients.some(c=>c.id===id)); renderWClientChips(); }
@@ -2337,6 +2368,7 @@ function showWorkerModal(w){
   renderChildrenRows();
   initSignaturePad('wSigCanvas');
   markScanMissingFields();
+  markScanUncertain(w.__scanCheck);
 }
 function pickWColor(i){ selColorIdx=i; document.querySelectorAll('#wColorPick [data-ci]').forEach(el=>{ const idx=parseInt(el.dataset.ci); el.style.borderColor=idx===i?'white':'transparent'; el.style.transform=idx===i?'scale(1.2)':'scale(1)'; }); }
 function toggleDayTime(i){ const off=document.getElementById(`wt${i}`).value==='off'; ['ws','we'].forEach(p=>{ const el=document.getElementById(p+i); el.disabled=off; el.style.opacity=off?'0.3':'1'; }); }

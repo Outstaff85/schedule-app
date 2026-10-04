@@ -121,10 +121,10 @@ The seven AI actions: the Anthropic request for each, the reply handling and the
 | Action | Model | `max_tokens` | Returns |
 |---|---|---|---|
 | `aiReadDoc` | `ANTHROPIC_MODEL` | 8000 | passport or Israeli ID fields, `fieldBoxes`, `photoBox`, `children`, `spouse`; system prompt cached |
-| `aiReadSefach` | `ANTHROPIC_MODEL` | 4500 | an extra Israeli page: address, house number, city, marital status, sex, spouse, children, idNo |
+| `aiReadSefach` | `ANTHROPIC_MODEL` | 4500 | an extra Israeli page: address, house number, city, marital status, sex, spouse, children, idNo, `fieldBoxes` of address / house number / city |
 | `aiDetectAlign` | `ANTHROPIC_ALIGN_MODEL` | 400 | `{kind, rotate (0/90/180/270), corners {tl,tr,br,bl} as fractions}` |
 | `aiVerifyField` | `ANTHROPIC_MODEL` | 50 | one zoomed field (`digits9`, `date`, `passportNo`); empty when unreadable |
-| `aiVerifyFields` | `ANTHROPIC_MODEL` | 200 | several fields in one call: `{values:{field:value}}` |
+| `aiVerifyFields` | `ANTHROPIC_MODEL` | 200 | several fields in one call: `{values:{field:value}}`; kinds `digits9`, `date`, `passportNo`, `hebrewText`, `latinName`, `houseNumber` (`verifyFieldsKind`; `verifyField` has the same kinds for the single re-read) |
 | `aiReadHoursTable` | `ANTHROPIC_MODEL` | 4000 | `{entries:[{date, inTime, outTime}]}` from a timesheet photo |
 | `aiFindField` | `ANTHROPIC_MODEL` | 300 | `{found:{value, page, box}}` — one field (`field` key, `docType`) searched on up to 4 page photos (`images:[{image, mediaType}]`); label and hint come from `ai_prompts.json` `findFieldFields`, never from the caller; `value` is empty when not found |
 
