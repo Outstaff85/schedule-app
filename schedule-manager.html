@@ -2428,16 +2428,6 @@ function showWorkerModal(w){
         <button class="btn sm accent" type="button" onclick="confirmAvatarCrop()">אישור</button>
       </div>
     </div>
-    <div class="field">
-      <label><i class="ti ti-file-text"></i> מסמכים (טופס 101 + סריקה)</label>
-      <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        ${editingWorkerIdx!==null&&w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" style="flex-shrink:0">
-          <i class="ti ti-download"></i> הורד מסמכים</a>`:''}
-        <button class="btn sm" type="button" style="flex-shrink:0" onclick="rescanFromWorkerModal()">
-          <i class="ti ti-scan"></i> ${w.docUrl||(window.__aiScanPageThumbs||[]).length?'סריקה חוזרת':'סרוק מסמך'}</button>
-        <div id="wMissingScan" style="display:contents">${missingScanFieldsHtml(w,workerHasScanPages(editingWorkerIdx!==null?workers[editingWorkerIdx]:null))}</div>
-      </div>
-    </div>
     <div class="field-row">
       <div class="field" style="position:relative"><label>שם פרטי</label>
         <input type="text" id="wGiven" value="${esc(w.docGiven||'')}" placeholder="שם פרטי" autofocus
