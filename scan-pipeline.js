@@ -720,41 +720,33 @@ async function verifyDigitFields(parsed,b64,mediaType){
   // checksum below and skips the extra zoomed AI re-read.
   if(parsed.type==='israeli_id'&&parsed.idNo) parsed.idNo=_normScanDigits(parsed.idNo);
   if(parsed.type==='israeli_id'){
-    // Skip the zoomed idNo re-read when the RAW extraction already passes
-    // its own Luhn-style check digit (isValidIsraeliId, below) — a passing
-    // checksum on a plausible read is already a strong correctness signal
-    // (a random OCR digit swap essentially never happens to still produce
-    // a valid check digit), so this saves a whole AI round-trip in the
-    // common case where the first read was already right. verifyIdChecksum()
-    // still runs afterward and independently re-verifies/flags this exact
-    // same way whether this job ran or not — nothing here weakens that check,
-    // it just avoids redundantly re-confirming a number that's already
-    // provably consistent.
-    if(parsed.fieldBoxes.idNo && !isValidIsraeliId(parsed.idNo)){ jobs.push({field:'idNo',kind:'digits9'}); parsed.__idZoomed=true; }
+    // The ID number is re-read zoomed every time (it rides in the same
+    // batched call, so this costs no extra request); _applyZoomedRead keeps a
+    // first read that passes the check digit over a zoomed one that doesn't.
+    // verifyIdChecksum() then skips its own retry of this box (__idZoomed).
+    if(parsed.fieldBoxes.idNo){ jobs.push({field:'idNo',kind:'digits9'}); parsed.__idZoomed=true; }
     if(parsed.fieldBoxes.dob)  jobs.push({field:'dob',kind:'date'});
   } else if(parsed.type==='passport'){
     if(parsed.fieldBoxes.passportNo) jobs.push({field:'passportNo',kind:'passportNo'});
     if(parsed.fieldBoxes.dob)        jobs.push({field:'dob',kind:'date'});
     if(parsed.fieldBoxes.expiry)     jobs.push({field:'expiry',kind:'date'});
   }
-  _pushUnsureJobs(parsed,jobs);
+  _pushTextJobs(parsed,jobs);
   if(!jobs.length) return parsed;
   const values=await verifyFieldsBatch(jobs.map(j=>({field:j.field,kind:j.kind,box:parsed.fieldBoxes[j.field]})),b64,mediaType);
   jobs.forEach(j=>_applyZoomedRead(parsed,j,values[j.field]));
   return parsed;
 }
-// The important digits above are always re-read zoomed. A name or address
-// field is re-read zoomed only when the read itself listed it as unsure
-// (parsed.unsure: glare, blur, faint print) and boxed it — in the same
-// batched aiVerifyFields call: Hebrew names/streets/towns as hebrewText, a
-// passport's Latin names as latinName, the house number as houseNumber. A
-// field left empty is searched for after the scan instead
-// (autoFindMissingScanFields in the worker modal).
+// First pass: every field the read boxed is re-read zoomed — the digits
+// above and the names and address here — all in the same ONE batched
+// aiVerifyFields call: Hebrew names/streets/towns as hebrewText, a passport's
+// Latin names as latinName, the house number as houseNumber. A field left
+// empty is searched for after the scan (autoFindMissingScanFields in the
+// worker modal).
 const _TEXT_VERIFY_FIELDS=['given','surname','address','houseNumber','city'];
-function _pushUnsureJobs(parsed,jobs){
-  const unsure=Array.isArray(parsed.unsure)?parsed.unsure:[];
+function _pushTextJobs(parsed,jobs){
   for(const f of _TEXT_VERIFY_FIELDS){
-    if(!unsure.includes(f)||!parsed.fieldBoxes||!parsed.fieldBoxes[f]||!String(parsed[f]||'').trim()) continue;
+    if(!parsed.fieldBoxes||!parsed.fieldBoxes[f]||!String(parsed[f]||'').trim()) continue;
     const kind=f==='houseNumber'?'houseNumber':(parsed.type==='passport'&&(f==='given'||f==='surname'))?'latinName':'hebrewText';
     jobs.push({field:f,kind});
   }
@@ -766,7 +758,17 @@ function _applyZoomedRead(parsed,j,raw){
   if(!raw) return;
   const before=parsed[j.field];
   let val=null;
-  if(j.kind==='digits9'){ const v=_normScanDigits(raw); if(/^\d{9}$/.test(v)) val=v; }
+  if(j.kind==='digits9'){
+    const v=_normScanDigits(raw);
+    if(!/^\d{9}$/.test(v)) return;
+    // The check digit decides between two readings of the ID number: a first
+    // read that passes it is kept over a zoomed one that doesn't; a zoomed one
+    // that passes it is taken without a "check" mark.
+    const okBefore=isValidIsraeliId(before||''), okNow=isValidIsraeliId(v);
+    if(okBefore&&!okNow) return;
+    if(okNow&&!okBefore){ parsed[j.field]=v; return; }
+    val=v;
+  }
   else if(j.kind==='date'){ const v=_normScanDate(raw); if(/^\d{2}[\/.]\d{2}[\/.]\d{4}$/.test(v)) val=v.replace(/\./g,'/'); }
   else if(j.kind==='passportNo') val=String(raw).replace(/[\s<]/g,'').toUpperCase(); // format varies by country
   else if(j.kind==='houseNumber') val=String(raw).replace(/\s/g,'');
@@ -776,11 +778,11 @@ function _applyZoomedRead(parsed,j,raw){
   if(before&&norm(before)!==norm(val)) (parsed.__uncertain=parsed.__uncertain||[]).includes(j.field)||parsed.__uncertain.push(j.field);
   parsed[j.field]=val;
 }
-// The ספח read's address fields it was unsure of, re-read zoomed the same way.
+// The ספח read's address fields, re-read zoomed the same way.
 async function verifySefachFields(parsed,b64,mediaType){
   if(!parsed||!parsed.fieldBoxes) return parsed;
   const jobs=[];
-  _pushUnsureJobs(parsed,jobs);
+  _pushTextJobs(parsed,jobs);
   if(!jobs.length) return parsed;
   const values=await verifyFieldsBatch(jobs.map(j=>({field:j.field,kind:j.kind,box:parsed.fieldBoxes[j.field]})),b64,mediaType);
   jobs.forEach(j=>_applyZoomedRead(parsed,j,values[j.field]));

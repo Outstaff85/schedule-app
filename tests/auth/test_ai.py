@@ -253,7 +253,6 @@ def test_text_kinds_for_zoomed_reads():
 def test_reads_ask_for_boxes_of_every_field():
     assert "given, surname, address, houseNumber, city" in ai.PROMPTS["readDoc"]
     assert "address, houseNumber, city that you found a value for" in ai.PROMPTS["readSefach"]
-    assert '"unsure" array' in ai.PROMPTS["readDoc"] and '"unsure" array' in ai.PROMPTS["readSefach"]
 
 
 def test_find_several_fields_in_one_request():

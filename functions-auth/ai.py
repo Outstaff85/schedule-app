@@ -62,7 +62,8 @@ def build_request(action, body, model, align_model):
         for j in jobs:
             content.append({"type": "text", "text": 'Field "' + str(j.get("field")) + '": ' + kinds.get(j.get("kind"), kinds["*"]) + "."})
             content.append(_image(j))
-        return {"model": model, "max_tokens": 200, "messages": [{"role": "user", "content": content}]}, {}
+        # Up to ~7 fields per scan, Hebrew values included: 400 leaves room.
+        return {"model": model, "max_tokens": 400, "messages": [{"role": "user", "content": content}]}, {}
     if action == "aiFindField":
         return _find_field_request(body, model)
     if not body.get("image"):
