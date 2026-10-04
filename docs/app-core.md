@@ -13,7 +13,7 @@ The manager app's skeleton: the page layout, global state, tabs and rendering, t
 - **Tabs** (`.ttab`): Today (`dashboard`), Schedule, Workers, Clients, Suppliers, Admin, Accounting. Each has a `#section<Name>`.
 - **Sidebar** (Schedule): the worker list (`renderWorkerList`) and the client filter (`renderSidebarClients`).
 - **Full-screen overlays:** `#loginScreen`, `#firmsScreen` (super-admin with no firm picked), `#errorsScreen` (no UI caller left).
-- **Modals:** `.overlay` elements, opened by adding `open`; `closeModal(id)` removes it.
+- **Modals:** `.overlay` elements, opened by adding `open`; `closeModal(id)` removes it. Every open modal gets a close ✕ in its top right corner (`.modal-x`, sticky, so it stays in view while the modal scrolls; on the right in Hebrew modals too): `ensureModalCloseButtons()`, run by one `MutationObserver` on the page, adds it when an overlay opens or its modal is redrawn and points it at `closeModal(<overlay id>)`. Modals don't draw their own ✕. The supplier portal has the same code.
 
 ## Global state
 
