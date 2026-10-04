@@ -7,7 +7,8 @@ The worker modal that the scan opens is in [workers.md](workers.md); the PDF bui
 ## Entry points (schedule-manager.html)
 
 - **`startNewScan()`** — the "Скан паспорта" button.
-- **`rescanWorkerDoc(workerId)`** — "Scan / Rescan" in the worker modal; sets `window.__aiRescanWorkerId`.
+- **`rescanWorkerDoc(workerId)`** — a scan tagged to an existing worker; sets `window.__aiRescanWorkerId`.
+- **`rescanFromWorkerModal()`** / **`rescanFromWorkerCard(wi)`** — "Scan / Rescan" in the worker modal and card, keeping the form as a draft ([workers.md](workers.md)).
 
 Both:
 1. warm the Cloud Functions (`warmCloudFunctions(SCAN_WARM_URLS())` — `{"ping":true}` to `preprocess_scan`, `fill_form_101` and `ai_read`; at most once per URL every 4 min, results in `__fnWarm`);
@@ -70,7 +71,7 @@ A single non-PDF file → `onScanFileSelected(file)`:
        These reads start in the background (`prefetchSefachFrom`) as soon as the primary is known to be missing fields. They are merged in page order with `mergeScanPage()`. Every extra page also goes through `finalTightenPass()` and is kept in `__aiPacketOtherPages`. Extra pages are read only while the primary still misses core fields, so a real contract costs one read at most, and `aiReadSefach` returns nothing for it.
    - **A blurry page** stops the run there: earlier pages are kept, the blurry one is dropped, later ones stay queued. The message says which page.
    - **Progress** shows through `renderScanProgress(label, pct)`; a `scan` timing is reported.
-4. **Review screen** — `renderScanPagesPrompt()`. The page grid is shared with the queue screen (`_scanPagesGrid`): at least 180 px per page (one per row on a phone), each page shown whole (`object-fit:contain`, so leftover background is visible), and a ✕ on every page. The two equal buttons are pinned to the bottom of the modal (`_scanPagesButtons`): "Add page" (back to step 1 and the queue) and "Done" → `finishScanPages()` → `openWorkerModalFromScan()`. Removing pages:
+4. **Review screen** — `renderScanPagesPrompt()`. The page grid is shared with the queue screen (`_scanPagesGrid`): at least 180 px per page (one per row on a phone), each page shown whole (`object-fit:contain`, so leftover background is visible), a ✕ on every page and a "סרוק שוב" (scan again) button under it (`rescanScanPage(screen, i)`). The new photo goes through the corner editor, then `_queueScanPage()` puts it in the old page's place: on the queue screen it replaces that page; on the review screen the old page is dropped only then (a cancelled photo keeps it) and the new one is queued to be read. For page 1, the rest of the set is re-queued with the new page first. The two equal buttons are pinned to the bottom of the modal (`_scanPagesButtons`): "Add page" (back to step 1 and the queue) and "Done" → `finishScanPages()` → `openWorkerModalFromScan()`. Removing pages:
    - `removeExtraScanPage(i)` drops page i and recomputes the primary from the remaining pages (`rebuildPrimaryFromPages()`, which replays `initPrimaryFromFirstPage` + `mergeScanPage` over `__aiPageParsed`).
    - For page 1 it calls `removePrimaryScanPage()`: after a confirm, the scan state is reset (`openAiScan()`) and the remaining pages go back to the queue to be read again; with none left, the scan starts over.
 
@@ -119,6 +120,8 @@ Which worker it opens:
 - a new scan whose document number matches an existing worker opens **that** worker instead of a new one (toast);
 - in both cases `__aiRescannedWorkerId` is set, so `saveWorker()` rebuilds Form 101 from this scan;
 - otherwise a blank new worker opens.
+
+Either way, a draft from `rescanFromWorkerModal()` is then put back (`applyWorkerDraft()`): typed values stay, empty fields take the scan's.
 
 The scan images stay in `__aiScanImage` / `__aiPacketOtherPages` for the upload.
 

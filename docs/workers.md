@@ -74,6 +74,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
 
 Read-only summary, as flat icon + text rows:
 - phone; rates; start date; contract warning; ID; document status;
+- with `hasPermission('workers')`: a "Scan / Rescan" button (`rescanFromWorkerCard(wi)`: closes the card, opens the worker modal and the scan over it), and the scan fields still missing (`missingScanFieldsHtml`);
 - address with house number and city; income types; scheduled hours per week; "document saved";
 - each assigned client with the effective rates there (`effectiveRates(w, clientId)`, a star when the worker has their own override); the supplier;
 - notes;
@@ -91,7 +92,11 @@ One form for add, edit and post-scan review. Labels of every Form 101 field are 
   - module state is reset: `__wScheduleOpen`, `__wExpiryOpen`, `__wForm101Open`, `__wBankOpen` (all collapsed); `__wClientIds`; `__wChildren`; `__wAvatarB64`; `__wDocType`.
 - **Sections:**
   - **Avatar.** Upload a photo, then crop it in the editor: `openAvatarCropEditor`, drag (`attachAvatarCropDrag`), zoom (`onAvatarCropZoom`), confirm (`confirmAvatarCrop` → 160 px JPEG, `AVATAR_SIZE`). Or delete it (`clearWorkerAvatar`).
-  - **Documents** (editing only). Download the PDF, or "Scan / Rescan" → `rescanWorkerDoc(id)`.
+  - **Documents** (new and existing workers). Download the PDF (existing workers), "Scan / Rescan" → `rescanFromWorkerModal()`, and the scan fields still missing. `workerMissingScanFields(w)` lists given name, surname, ID or passport number, date of birth and sex, plus street, house number and city for an Israeli ID.
+    - `rescanFromWorkerModal()` keeps the form as a draft (`window.__wDraft`: field values by id, children, clients, avatar, colour, signature) and opens the scan over the modal.
+    - Which scan opens: the review screen of the scan still in memory when the modal came from it (a new worker, or this worker just rescanned); otherwise a new scan of this worker (`__aiRescanWorkerId`).
+    - When the scan finishes, `openWorkerModalFromScan()` redraws the modal and calls `applyWorkerDraft()`: a field that had a value keeps it, an empty one takes the scan's value.
+    - `openAddWorker`, `openEditWorker`, `startNewScan` and `rescanWorkerDoc` clear the draft.
   - **Personal data.** Name, ID/passport, phone, rate, status, travel allowance, start date, sex, marital status, health fund. The spouse block (`#wSpouseWrap`, shown only for married — `onWMaritalChange()`). Address, house number, city, date of birth, ID expiry.
   - **Clients.** Chips plus a search box: `renderWClientChips`, `renderWClientSuggest` (only clients not yet added), `addWClient`, `removeWClient`. Enter picks the first match (`pickFirstWClientSuggest`).
   - **Supplier.** A `<select>` (`wSupplierId`).

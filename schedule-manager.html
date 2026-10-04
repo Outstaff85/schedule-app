@@ -1607,13 +1607,77 @@ function blankWorkerDefaults(){
 // (which goes through the sidecar-based regenerateWorkerDoc() instead).
 function openAddWorker(){
   editingWorkerIdx=null;
+  window.__wDraft=null;
   window.__aiScanImage=null;
   window.__aiPacketOtherPages=[];
   window.__aiAvatarB64=null;
   window.__wCapturedSigPng=undefined;
   showWorkerModal(blankWorkerDefaults());
 }
-function openEditWorker(wi){ editingWorkerIdx=wi; showWorkerModal(workers[wi]); }
+function openEditWorker(wi){ editingWorkerIdx=wi; window.__wDraft=null; showWorkerModal(workers[wi]); }
+// Form 101 fields a document scan fills, by document type, with their
+// Hebrew labels — what the worker card and modal list as missing.
+function workerMissingScanFields(w){
+  const isId=(w.docType||'israeli_id')!=='passport';
+  const f=[['docGiven','שם פרטי'],['docSurname','שם משפחה'],['docId',isId?'מספר זהות':'מספר דרכון'],['docDob','תאריך לידה'],['docSex','מין']];
+  if(isId) f.push(['address','רחוב'],['houseNumber','מס׳ בית'],['city','ישוב']);
+  return f.filter(([k])=>!String(w[k]||'').trim()).map(([,label])=>label);
+}
+function missingScanFieldsHtml(w){
+  const m=workerMissingScanFields(w);
+  return m.length?`<div style="flex-basis:100%;font-size:12px;color:var(--amber)"><i class="ti ti-alert-triangle"></i> חסרים: ${m.map(esc).join(', ')} — אפשר לסרוק שוב</div>`:'';
+}
+// "Scan again" from inside the worker modal, without losing what is on the
+// form. The form is kept as a draft (window.__wDraft); the scan opens over
+// the modal — on its review screen when this modal came from a scan that is
+// still in memory (replace or add a page there), otherwise as a new scan of
+// this worker. When the scan finishes, openWorkerModalFromScan() redraws the
+// modal and applyWorkerDraft() puts the draft back: a field that had a value
+// keeps it, an empty one takes the new scan's value.
+async function rescanFromWorkerModal(){
+  const m=document.getElementById('workerModal');
+  const vals={};
+  m.querySelectorAll('input[id],select[id],textarea[id]').forEach(el=>{
+    if(el.type==='file') return;
+    vals[el.id]=(el.type==='checkbox'||el.type==='radio')?{checked:el.checked}:el.value;
+  });
+  const cv=document.getElementById('wSigCanvas');
+  window.__wDraft={vals,children:__wChildren.map(c=>({...c})),clientIds:[...__wClientIds],avatar:__wAvatarB64,
+    colorIdx:selColorIdx,sig:cv&&cv._sigDirty?cv.toDataURL('image/png'):null};
+  warmCloudFunctions(SCAN_WARM_URLS());
+  try{ await ensureScanPipelineLoaded(); }
+  catch(e){ window.__wDraft=null; showToast('Не удалось загрузить модуль скана — проверьте соединение'); return; }
+  const wid=editingWorkerIdx!==null?workers[editingWorkerIdx].id:null;
+  const sameSession=(window.__aiScanPageThumbs||[]).length&&window.__aiScanImage&&(wid===null||window.__aiRescannedWorkerId===wid);
+  window.__aiRescanWorkerId=wid;
+  if(sameSession){
+    document.getElementById('aiScanOverlay').classList.add('open');
+    renderScanPagesPrompt();
+  } else openAiScan();
+}
+function applyWorkerDraft(){
+  const d=window.__wDraft; window.__wDraft=null;
+  if(!d) return;
+  for(const [id,v] of Object.entries(d.vals)){
+    const el=document.getElementById(id);
+    if(!el) continue;
+    if(v&&typeof v==='object'){ el.checked=v.checked; continue; }
+    if(v!==''&&v!=null) el.value=v;
+  }
+  if(d.children.length){ __wChildren=d.children; renderChildrenRows(); }
+  if(d.clientIds.length){ __wClientIds=d.clientIds.filter(id=>clients.some(c=>c.id===id)); renderWClientChips(); }
+  if(d.avatar&&!__wAvatarB64){
+    __wAvatarB64=d.avatar;
+    const img=document.getElementById('wAvatarImg'), del=document.getElementById('wAvatarDeleteBtn');
+    if(img){ img.src='data:image/jpeg;base64,'+d.avatar; img.style.display='block'; }
+    if(del) del.style.display='inline-flex';
+  }
+  if(d.colorIdx!=null) pickWColor(d.colorIdx);
+  if(d.sig){
+    const cv=document.getElementById('wSigCanvas');
+    if(cv){ const im=new Image(); im.onload=()=>{ cv.getContext('2d').drawImage(im,0,0); cv._sigDirty=true; }; im.src=d.sig; }
+  }
+}
 
 // The weekly grid starts collapsed every time the modal opens, and saveWorker
 // only writes a schedule from it once it has been opened — so adding a worker
@@ -1906,17 +1970,17 @@ function showWorkerModal(w){
         <button class="btn sm accent" type="button" onclick="confirmAvatarCrop()">אישור</button>
       </div>
     </div>
-    ${editingWorkerIdx!==null ? `
     <div class="field">
       <label><i class="ti ti-file-text"></i> מסמכים (טופס 101 + סריקה)</label>
       <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" style="flex-shrink:0">
+        ${editingWorkerIdx!==null&&w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" style="flex-shrink:0">
           <i class="ti ti-download"></i> הורד מסמכים</a>`:''}
-        <button class="btn sm" style="flex-shrink:0" onclick="rescanWorkerDoc('${w.id}')">
-          <i class="ti ti-scan"></i> ${w.docUrl?'סריקה חוזרת':'סרוק מסמך'}</button>
-        <span style="font-size:11px;color:var(--text3)">${w.docSavedAt?'נשמר: '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</span>
+        <button class="btn sm" type="button" style="flex-shrink:0" onclick="rescanFromWorkerModal()">
+          <i class="ti ti-scan"></i> ${w.docUrl||(window.__aiScanPageThumbs||[]).length?'סריקה חוזרת':'סרוק מסמך'}</button>
+        <span style="font-size:11px;color:var(--text3)">${editingWorkerIdx!==null&&w.docSavedAt?'נשמר: '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</span>
+        ${missingScanFieldsHtml(w)}
       </div>
-    </div>` : ''}
+    </div>
     <div class="field-row">
       <div class="field" style="position:relative"><label>שם פרטי</label>
         <input type="text" id="wGiven" value="${esc(w.docGiven||'')}" placeholder="שם פרטי" autofocus
@@ -2858,6 +2922,9 @@ function openWorkerCard(wi){
       ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?'Срок истёк':'Срок приближается'} — ${expSt.deadline.toLocaleDateString('ru-RU')}</div>`:''}
       ${workerDocId(w)?`<div><i class="ti ti-id"></i> ${esc(workerDocId(w))}</div>`:''}
       <div style="display:flex;gap:6px"><i class="ti ti-files" style="margin-top:2px"></i><span>Documents: ${docStatusSummaryHtml(w)}</span></div>
+      ${hasPermission('workers')?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn sm" type="button" onclick="rescanFromWorkerCard(${wi})"><i class="ti ti-scan"></i> ${w.docUrl?'סריקה חוזרת':'סרוק מסמך'}</button>
+        ${missingScanFieldsHtml(w)}</div>`:''}
       ${[[workerAddress(w),w.houseNumber].filter(Boolean).join(' '),w.city].filter(Boolean).length?`<div><i class="ti ti-map-pin"></i> ${esc([[workerAddress(w),w.houseNumber].filter(Boolean).join(' '),w.city].filter(Boolean).join(', '))}</div>`:''}
       ${w.incomeType&&INCOME_TYPE_LABELS[w.incomeType]?`<div><i class="ti ti-briefcase"></i> ${INCOME_TYPE_LABELS[w.incomeType]}</div>`:''}
       ${w.otherIncomeType&&w.otherIncomeType!=='none'&&OTHER_INCOME_LABELS[w.otherIncomeType]?`<div><i class="ti ti-cash"></i> Other income: ${OTHER_INCOME_LABELS[w.otherIncomeType]}</div>`:''}
@@ -2881,6 +2948,15 @@ function openWorkerCard(wi){
       <button class="btn accent" onclick="closeModal('workerCardOverlay');openEditWorker(${wi})"><i class="ti ti-edit"></i> Edit</button>
     </div>`;
   document.getElementById('workerCardOverlay').classList.add('open');
+}
+
+// From the worker card: opens this worker's modal and the scan over it, so
+// the scan's result lands in the modal (empty fields filled, nothing typed
+// lost) and saving rebuilds the Form 101 from the new photos.
+function rescanFromWorkerCard(wi){
+  closeModal('workerCardOverlay');
+  openEditWorker(wi);
+  rescanFromWorkerModal();
 }
 
 // --- Worker documents (contract / visa / work permit / other) -----------------
@@ -6280,6 +6356,7 @@ async function startNewScan(){
   try{ await ensureScanPipelineLoaded(); }
   catch(e){ showToast('Не удалось загрузить модуль скана — проверьте соединение'); return; }
   window.__aiRescanWorkerId=null;
+  window.__wDraft=null;
   openAiScan();
 }
 // Rescan entry point — kept here (not moved into scan-pipeline.js) purely
@@ -6292,6 +6369,7 @@ async function rescanWorkerDoc(workerId){
   try{ await ensureScanPipelineLoaded(); }
   catch(e){ showToast('Не удалось загрузить модуль скана — проверьте соединение'); return; }
   window.__aiRescanWorkerId=workerId;
+  window.__wDraft=null;
   openAiScan();
 }
 

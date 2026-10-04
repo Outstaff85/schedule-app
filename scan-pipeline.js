@@ -29,6 +29,7 @@ function openAiScan(){
   window.__aiAvatarB64=null;
   window.__aiPageParsed=[];
   window.__pendingScanPages=[]; // not-yet-processed crops queued by processAllPendingPages() — see its own comment
+  window.__scanReplace=null; // a page's "scan again" in progress — see _queueScanPage()
   document.getElementById('aiScanStage').innerHTML=`
     <div style="display:flex;flex-direction:column;gap:10px">
       <button class="btn sm" onclick="document.getElementById('aiScanFile').click()">
@@ -1302,18 +1303,40 @@ async function confirmScanQuad(){
   let finalImg;
   try{ finalImg=await warpQuadImage(b64,mediaType,r); }
   catch(e){ console.error(e); finalImg={b64,mediaType}; }
-  if(window.__scanEditPurpose==='collectPage'){
-    if(!window.__pendingScanPages) window.__pendingScanPages=[];
-    window.__pendingScanPages.push(finalImg);
-    renderPendingPagesPrompt();
-  } else finishPageScan(finalImg);
+  if(window.__scanEditPurpose==='collectPage') _queueScanPage(finalImg);
+  else finishPageScan(finalImg);
 }
 function skipScanQuad(){
-  if(window.__scanEditPurpose==='collectPage'){
-    if(!window.__pendingScanPages) window.__pendingScanPages=[];
-    window.__pendingScanPages.push(window.__scanEdit);
-    renderPendingPagesPrompt();
-  } else finishPageScan(window.__scanEdit);
+  if(window.__scanEditPurpose==='collectPage') _queueScanPage(window.__scanEdit);
+  else finishPageScan(window.__scanEdit);
+}
+// A cropped page joins the queue. When it was taken with a page's "scan
+// again" button (window.__scanReplace = {screen, idx}), it takes that page's
+// place: on the queue screen it simply replaces it; on the review screen the
+// old page is dropped only now (a cancelled photo keeps it) and the new one
+// is queued to be read — page 1 together with the remaining pages, so the
+// set is read again with the new page first.
+function _queueScanPage(img){
+  if(!window.__pendingScanPages) window.__pendingScanPages=[];
+  const rep=window.__scanReplace; window.__scanReplace=null;
+  const page={b64:img.b64,mediaType:img.mediaType};
+  if(rep&&rep.screen==='queue'&&rep.idx<window.__pendingScanPages.length) window.__pendingScanPages.splice(rep.idx,1,page);
+  else if(rep&&rep.screen==='review'&&rep.idx===0){
+    const rest=(window.__aiScanPageThumbs||[]).slice(1).filter(Boolean).map(p=>({b64:p.b64,mediaType:p.mediaType}));
+    const queued=window.__pendingScanPages.slice();
+    openAiScan();
+    window.__pendingScanPages=[page,...rest,...queued];
+  } else {
+    if(rep&&rep.screen==='review') _dropReviewPage(rep.idx);
+    window.__pendingScanPages.push(page);
+  }
+  renderPendingPagesPrompt();
+}
+// "Scan again" under a page: take a new photo for it (see _queueScanPage).
+function rescanScanPage(screen,i){
+  window.__scanReplace={screen,idx:i};
+  const input=document.getElementById(screen==='queue'?'aiScanFilePending':'aiScanFileExtra');
+  if(input) input.click();
 }
 // Fields carried by an Israeli ID's ספח (appendix) card that the front side
 // doesn't have — shared between the multi-file batch path
@@ -1435,15 +1458,19 @@ function finishPageScan(finalImg){
 // once processAllPendingPages() actually reads the documents.
 // Page thumbnails for the queue and review screens: large, each page shown
 // whole (object-fit:contain, so leftover background is visible before
-// saving), a remove ✕ on every page. removeFn is the global called with the
-// page index.
-function _scanPagesGrid(pages,removeFn){
+// saving), a remove ✕ on every page and a "scan again" button under it.
+// removeFn is the global called with the page index; screen is 'queue' or
+// 'review' (rescanScanPage).
+function _scanPagesGrid(pages,removeFn,screen){
   return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">
     ${pages.map((p,i)=>!p?'':`
+      <div style="display:flex;flex-direction:column;gap:6px">
       <div style="position:relative;aspect-ratio:4/3;border-radius:10px;overflow:hidden;border:1px solid var(--border2);background:#fff">
         <img src="data:${esc(p.mediaType)};base64,${esc(p.b64)}" style="width:100%;height:100%;object-fit:contain;display:block">
         <span style="position:absolute;bottom:4px;left:4px;font-size:12px;background:rgba(0,0,0,0.65);color:#fff;padding:1px 7px;border-radius:5px">${i+1}</span>
         <button type="button" onclick="${removeFn}(${i})" title="הסר" style="position:absolute;top:4px;right:4px;width:30px;height:30px;border-radius:50%;background:rgba(0,0,0,0.7);color:#fff;border:none;font-size:16px;line-height:1;cursor:pointer;padding:0">✕</button>
+      </div>
+      <button class="btn sm" type="button" style="justify-content:center;min-height:36px" onclick="rescanScanPage('${screen}',${i})"><i class="ti ti-camera-rotate"></i> סרוק שוב</button>
       </div>`).join('')}
   </div>`;
 }
@@ -1453,7 +1480,7 @@ function _scanPagesButtons(inputId,mainLabel,mainOnclick,mainDisabled){
   const st='flex:1;justify-content:center;min-height:46px;font-size:15px';
   return `<input type="file" id="${inputId}" accept="image/*,application/pdf,.pdf" style="display:none" onchange="onScanFileSelected(this.files[0]); this.value='';">
     <div style="display:flex;gap:10px;position:sticky;bottom:-1px;background:var(--bg2);padding:8px 0">
-      <button class="btn" type="button" style="${st}" onclick="document.getElementById('${inputId}').click()"><i class="ti ti-plus"></i> הוסף עמוד</button>
+      <button class="btn" type="button" style="${st}" onclick="window.__scanReplace=null;document.getElementById('${inputId}').click()"><i class="ti ti-plus"></i> הוסף עמוד</button>
       <button class="btn accent" type="button" style="${st}" ${mainDisabled?'disabled':''} onclick="${mainOnclick}"><i class="ti ti-check"></i> ${mainLabel}</button>
     </div>`;
 }
@@ -1463,7 +1490,7 @@ function renderPendingPagesPrompt(){
   stage.innerHTML=`
     <div style="display:flex;flex-direction:column;gap:12px">
       <div style="font-size:13px;color:var(--text2)">${pages.length} תמונות ממתינות לעיבוד</div>
-      ${_scanPagesGrid(pages,'removePendingScanPage')}
+      ${_scanPagesGrid(pages,'removePendingScanPage','queue')}
       ${_scanPagesButtons('aiScanFilePending','עבד '+(pages.length||'')+' עמודים','processAllPendingPages()',!pages.length)}
     </div>`;
 }
@@ -1753,12 +1780,18 @@ function renderScanPagesPrompt(){
   stage.innerHTML=`
     <div style="display:flex;flex-direction:column;gap:12px">
       <div style="font-size:13px;color:var(--text2)">נסרקו ${n} עמוד${n===1?'':'ים'}</div>
-      ${_scanPagesGrid(pages,'removeExtraScanPage')}
+      ${_scanPagesGrid(pages,'removeExtraScanPage','review')}
       ${_scanPagesButtons('aiScanFileExtra','סיום','finishScanPages()',!n)}
     </div>`;
 }
 function removeExtraScanPage(i){
   if(i===0){ removePrimaryScanPage(); return; }
+  _dropReviewPage(i);
+  renderScanPagesPrompt();
+}
+// Drops extra page i (not page 1) from the review set.
+function _dropReviewPage(i){
+  if(!(i>0)) return;
   window.__aiScanPageThumbs.splice(i,1);
   window.__aiPacketOtherPages.splice(i-1,1);
   if(window.__aiPageParsed) window.__aiPageParsed.splice(i,1);
@@ -1767,7 +1800,6 @@ function removeExtraScanPage(i){
   // must not silently survive just because only the thumbnail was removed —
   // recompute the primary record from the pages that are actually still here.
   rebuildPrimaryFromPages();
-  renderScanPagesPrompt();
 }
 // Removing page 1 (the primary: names, ID number, portrait) can't be done by
 // splicing — the next page may be a ספח read with no names. The remaining
@@ -1878,11 +1910,13 @@ function openWorkerModalFromScan(p){
       // saveWorker()'s own comment at the matching check.
       window.__aiRescannedWorkerId=rescanId;
       showWorkerModal({...workers[idx],...ocrFields});
+      if(typeof applyWorkerDraft==='function') applyWorkerDraft(); // a rescan started from the open modal
       return;
     }
   }
   editingWorkerIdx=null;
   showWorkerModal({...blankWorkerDefaults(),...ocrFields});
+  if(typeof applyWorkerDraft==='function') applyWorkerDraft();
 }
 
 // Flattens the quadrilateral the user positioned into a plain rectangular
