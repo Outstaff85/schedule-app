@@ -162,6 +162,17 @@
   .field label{display:block;font-size:14px;color:var(--text2);margin-bottom:5px;font-weight:500;}
   .field input,.field select{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:15px;font-family:'DM Sans','Heebo',Arial,sans-serif;padding:8px 10px;outline:none;transition:border-color 0.15s;}
   .field input:focus,.field select:focus{border-color:var(--accent);}
+  /* Checkbox choices as tappable tiles (template: user form sections and
+     own-only switch) — the same on a phone and a computer. Overrides the
+     .field label/input styles they sit inside. */
+  .form-section{margin:18px 0 8px;padding-top:12px;border-top:1px solid var(--border2);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text2);}
+  .form-section:first-of-type{margin-top:4px;padding-top:0;border-top:none;}
+  .check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+  .field label.check-chip,label.check-chip{display:flex;align-items:center;gap:10px;margin:0;padding:10px 12px;min-height:44px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:14px;font-weight:500;cursor:pointer;user-select:none;}
+  .field label.check-chip input,label.check-chip input{width:18px;height:18px;flex:0 0 18px;margin:0;padding:0;accent-color:var(--accent);cursor:pointer;}
+  label.check-chip:has(input:checked){border-color:var(--accent);background:rgba(79,142,247,0.12);}
+  label.check-chip .chip-text{display:flex;flex-direction:column;gap:2px;min-width:0;}
+  label.check-chip .chip-hint{font-size:12px;font-weight:400;color:var(--text2);line-height:1.35;}
   .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
   .hours-badge{display:inline-block;font-size:14px;color:var(--green);background:var(--green-bg);border-radius:4px;padding:3px 8px;margin-top:6px;font-family:'DM Mono','Heebo',Consolas,monospace;}
   .modal-actions{display:flex;gap:8px;margin-top:20px;justify-content:flex-end;}
@@ -957,8 +968,6 @@
 <div class="overlay" id="userFormOverlay" style="z-index:980">
   <div class="modal" style="max-width:420px">
     <div class="modal-title" id="userFormTitle">New user</div>
-    <div class="field"><label>Username</label><input type="text" id="userFormUsername" autocomplete="off"></div>
-    <div class="field" id="userFormPasswordField"><label id="userFormPasswordLabel">Password (min. 8 chars)</label><input type="password" id="userFormPassword" autocomplete="new-password"></div>
     <div class="field"><label>Role</label>
       <select id="userFormRole" onchange="onUserFormRoleChange(true)">
         <option value="staff">Staff</option>
@@ -966,26 +975,31 @@
         <option value="supplier">Supplier</option>
       </select>
     </div>
+    <div class="form-section">Person</div>
     <div class="field"><label id="userFormFullNameLabel">Full name</label><input type="text" id="userFormFullName" autocomplete="off" maxlength="80"></div>
     <div class="field"><label>Phone</label><input type="tel" id="userFormPhone" autocomplete="off" maxlength="40"></div>
-    <div id="userFormHrFields" style="display:none">
-      <div class="field"><label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" id="userFormOwnOnly" checked> Only own workers (unchecked: sees every worker of the firm)</label></div>
-    </div>
+    <div class="form-section">Login</div>
+    <div class="field"><label>Username</label><input type="text" id="userFormUsername" autocomplete="off"></div>
+    <div class="field" id="userFormPasswordField"><label id="userFormPasswordLabel">Password (min. 8 chars)</label><input type="password" id="userFormPassword" autocomplete="new-password"></div>
+    <div class="form-section">Access</div>
     <div class="field" id="userFormSupplierField" style="display:none"><label>Supplier</label><select id="userFormSupplierId"></select></div>
     <div class="field" id="userFormPermsField">
-      <label>Permissions</label>
-      <div style="display:flex;flex-direction:column;gap:4px;font-size:13px">
-        <label><input type="checkbox" value="schedule" class="userFormPermCb"> Schedule</label>
-        <label><input type="checkbox" value="workers" class="userFormPermCb"> Workers</label>
-        <label><input type="checkbox" value="clients" class="userFormPermCb"> Clients</label>
-        <label><input type="checkbox" value="suppliers" class="userFormPermCb"> Suppliers</label>
-        <label><input type="checkbox" value="accounting" class="userFormPermCb"> Accounting</label>
-        <label><input type="checkbox" value="exports" class="userFormPermCb"> Exports</label>
+      <label>Sections</label>
+      <div class="check-grid">
+        <label class="check-chip"><input type="checkbox" value="schedule" class="userFormPermCb"><span class="chip-text">Schedule</span></label>
+        <label class="check-chip"><input type="checkbox" value="workers" class="userFormPermCb"><span class="chip-text">Workers</span></label>
+        <label class="check-chip"><input type="checkbox" value="clients" class="userFormPermCb"><span class="chip-text">Clients</span></label>
+        <label class="check-chip"><input type="checkbox" value="suppliers" class="userFormPermCb"><span class="chip-text">Suppliers</span></label>
+        <label class="check-chip"><input type="checkbox" value="accounting" class="userFormPermCb"><span class="chip-text">Accounting</span></label>
+        <label class="check-chip"><input type="checkbox" value="exports" class="userFormPermCb"><span class="chip-text">Exports</span></label>
       </div>
     </div>
-    <div class="field" id="userFormHrWorkersField" style="display:none">
-      <label style="display:flex;justify-content:space-between;align-items:center">Workers <button class="btn sm" type="button" onclick="openHrAssignModal()"><i class="ti ti-user-plus"></i> Add workers</button></label>
-      <div id="userFormHrWorkers" style="display:flex;flex-direction:column;gap:6px"></div>
+    <div class="field" id="userFormHrFields" style="display:none">
+      <label class="check-chip"><input type="checkbox" id="userFormOwnOnly" checked><span class="chip-text">Only own workers<span class="chip-hint">Sees only the workers assigned to this HR. Unchecked: every worker of the firm.</span></span></label>
+    </div>
+    <div id="userFormHrWorkersField" style="display:none">
+      <div class="form-section" style="display:flex;justify-content:space-between;align-items:center">Workers <button class="btn sm" type="button" onclick="openHrAssignModal()"><i class="ti ti-user-plus"></i> Add workers</button></div>
+      <div id="userFormHrWorkers" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
     </div>
     <div id="userFormError" style="color:#ff6b78;font-size:13px;margin:2px 0 6px;min-height:1.2em"></div>
     <div class="modal-actions">
@@ -999,7 +1013,7 @@
 <div class="overlay" id="hrAssignOverlay" style="z-index:990">
   <div class="modal" style="max-width:440px">
     <div class="modal-title" id="hrAssignTitle">Add workers</div>
-    <input type="text" id="hrAssignSearch" placeholder="Search by name or document…" autocomplete="off" oninput="renderHrAssignList()" style="width:100%;margin-bottom:8px">
+    <div class="field" style="margin-bottom:10px"><input type="text" id="hrAssignSearch" placeholder="Search by name or document…" autocomplete="off" oninput="renderHrAssignList()"></div>
     <div id="hrAssignList" style="display:flex;flex-direction:column;gap:4px;max-height:50vh;overflow-y:auto"></div>
     <div class="modal-actions">
       <button class="btn accent" id="hrAssignSaveBtn" onclick="submitHrAssign()">Assign</button>
@@ -4784,9 +4798,9 @@ function renderHrAssignList(){
   if(!list.length){ el.innerHTML = '<div style="font-size:12px;color:var(--text3)">No workers to add</div>'; return; }
   renderPagedList(el, 'hrAssign', __editingUserId+'|'+q, list, w => {
     const other = w.hrId ? hrNameOf(w.hrId) || 'another HR' : '';
-    return `<label style="display:flex;gap:8px;align-items:center;padding:6px 8px;background:var(--bg3);border-radius:var(--radius-sm);font-size:13px">
+    return `<label class="check-chip">
       <input type="checkbox" ${__hrAssignPicked.has(w.id)?'checked':''} onchange="toggleHrAssignPick('${esc(w.id)}',this.checked)">
-      <span style="flex:1">${esc(w.name)}${other?' <span style="color:var(--amber);font-size:11px">· now: '+esc(other)+'</span>':''}</span>
+      <span class="chip-text">${esc(w.name)}${other?'<span class="chip-hint" style="color:var(--amber)">now: '+esc(other)+'</span>':''}</span>
     </label>`;
   });
 }
