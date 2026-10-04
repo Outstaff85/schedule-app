@@ -174,6 +174,13 @@
   label.check-chip .chip-text{display:flex;flex-direction:column;gap:2px;min-width:0;}
   label.check-chip .chip-hint{font-size:12px;font-weight:400;color:var(--text2);line-height:1.35;}
   .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .field-row > *{min-width:0;}
+  .status-seg{display:inline-flex;border:1px solid var(--border2);border-radius:var(--radius-sm);overflow:hidden;flex-shrink:0;}
+  .status-seg button{background:var(--bg3);border:none;color:var(--text2);font-size:12px;font-weight:600;padding:7px 10px;cursor:pointer;font-family:inherit;}
+  .status-seg button+button{border-left:1px solid var(--border2);}
+  .status-seg button.on[data-st="active"]{background:var(--green-bg);color:var(--green);}
+  .status-seg button.on[data-st="vacation"]{background:var(--amber-bg);color:var(--amber);}
+  .status-seg button.on[data-st="fired"]{background:var(--red-bg);color:var(--red);}
   .hours-badge{display:inline-block;font-size:14px;color:var(--green);background:var(--green-bg);border-radius:4px;padding:3px 8px;margin-top:6px;font-family:'DM Mono','Heebo',Consolas,monospace;}
   .modal-actions{display:flex;gap:8px;margin-top:20px;justify-content:flex-end;}
   .day-grid{display:flex;flex-direction:column;gap:6px;}
@@ -298,7 +305,8 @@
       max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px); margin: 0;
     }
     .modal-title { font-size: 16px; }
-    .field-row   { grid-template-columns: 1fr; gap: 8px; }
+    .field-row   { gap: 8px; } /* two short fields stay on one line on a phone too */
+    .field-row.stack-phone { grid-template-columns: 1fr; } /* long labels / options: one per line */
     .day-row     { grid-template-columns: 38px 60px 1fr 1fr; gap: 4px; font-size: 12px; }
     .day-row select, .day-row input { font-size: 12px; padding: 5px 4px; }
     .modal-actions { gap: 8px; flex-wrap: wrap; }
@@ -593,7 +601,7 @@
             <option value="">All statuses</option>
             <option value="active">Active</option>
             <option value="vacation">On vacation</option>
-            <option value="fired">Fired</option>
+            <option value="fired">Inactive</option>
           </select></label>
           <label class="filter-field"><span class="filter-cap">Documents</span><select id="workersFilterDocs" onchange="renderWorkersPage()">
             <option value="">All documents</option>
@@ -798,7 +806,7 @@
               <option value="month">This Month</option>
               <option value="all">All Time</option>
             </select>
-            <button class="btn sm" onclick="openSalaryExportModal()"><i class="ti ti-upload"></i> Export</button>
+            <button class="btn sm perm-exports" onclick="openSalaryExportModal()"><i class="ti ti-upload"></i> Export</button>
           </div>
         </div>
         <div id="dashSalary"></div>
@@ -980,22 +988,26 @@
       </select>
     </div>
     <div class="form-section">Person</div>
-    <div class="field"><label id="userFormFullNameLabel">Full name</label><input type="text" id="userFormFullName" autocomplete="off" maxlength="80"></div>
-    <div class="field"><label>Phone</label><input type="tel" id="userFormPhone" autocomplete="off" maxlength="40"></div>
+    <div class="field-row">
+      <div class="field"><label id="userFormFullNameLabel">Full name</label><input type="text" id="userFormFullName" autocomplete="off" maxlength="80"></div>
+      <div class="field"><label>Phone</label><input type="tel" id="userFormPhone" autocomplete="off" maxlength="40"></div>
+    </div>
     <div class="form-section">Login</div>
-    <div class="field"><label>Username</label><input type="text" id="userFormUsername" autocomplete="off"></div>
-    <div class="field" id="userFormPasswordField"><label id="userFormPasswordLabel">Password (min. 8 chars)</label><input type="password" id="userFormPassword" autocomplete="new-password"></div>
+    <div class="field-row">
+      <div class="field"><label>Username</label><input type="text" id="userFormUsername" autocomplete="off"></div>
+      <div class="field" id="userFormPasswordField"><label id="userFormPasswordLabel">Password (min. 8)</label><input type="password" id="userFormPassword" autocomplete="new-password"></div>
+    </div>
     <div class="form-section">Access</div>
     <div class="field" id="userFormSupplierField" style="display:none"><label>Supplier</label><select id="userFormSupplierId"></select></div>
     <div class="field" id="userFormPermsField">
       <label>Sections</label>
       <div class="check-grid">
-        <label class="check-chip"><input type="checkbox" value="schedule" class="userFormPermCb"><span class="chip-text">Schedule</span></label>
-        <label class="check-chip"><input type="checkbox" value="workers" class="userFormPermCb"><span class="chip-text">Workers</span></label>
-        <label class="check-chip"><input type="checkbox" value="clients" class="userFormPermCb"><span class="chip-text">Clients</span></label>
-        <label class="check-chip"><input type="checkbox" value="suppliers" class="userFormPermCb"><span class="chip-text">Suppliers</span></label>
-        <label class="check-chip"><input type="checkbox" value="accounting" class="userFormPermCb"><span class="chip-text">Accounting</span></label>
-        <label class="check-chip"><input type="checkbox" value="exports" class="userFormPermCb"><span class="chip-text">Exports</span></label>
+        <label class="check-chip"><input type="checkbox" value="schedule" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-calendar"></i> Schedule</span><span class="chip-hint">Schedule tab</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="workers" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-users-group"></i> Workers</span><span class="chip-hint">Workers tab</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="clients" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-users"></i> Clients</span><span class="chip-hint">Clients tab</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="suppliers" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-truck-delivery"></i> Suppliers</span><span class="chip-hint">Suppliers tab</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="accounting" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-cash"></i> Accounting</span><span class="chip-hint">Accounting tab</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="exports" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-upload"></i> Export</span><span class="chip-hint">Export button</span></span></label>
       </div>
     </div>
     <div class="field" id="userFormHrFields" style="display:none">
@@ -1465,6 +1477,8 @@ function applyNavPermissions(){
     if(!el) return;
     el.style.display = tabAllowed(tab) ? '' : 'none';
   });
+  // The Export section: the header Export menu and the salary export.
+  document.querySelectorAll('#exportDropdown, .perm-exports').forEach(el => { el.style.display = hasPermission('exports') ? '' : 'none'; });
   // If the tab we're currently sitting on just got hidden (e.g. permissions
   // changed and the page re-initialized), fall back to the home tab rather
   // than leaving a blank/inaccessible section visible.
@@ -1612,7 +1626,7 @@ function renderWorkerList(){
     const rateStr=w.hourlyRate?(' · ₪'+w.hourlyRate+'/h'):'';
     return `<div class="worker-chip tap-edit" onclick="if(isPlainTap(event,this))openEditWorker(${wi})">
       <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${workerAvatarInner(w)}</div>
-      <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">FIRED</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">VAC</span>':''}${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div><div class="worker-hours">${wh.toFixed(1)}h${rateStr}</div></div>
+      <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">INACTIVE</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">VAC</span>':''}${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div><div class="worker-hours">${wh.toFixed(1)}h${rateStr}</div></div>
       <div class="worker-actions">
         <button class="worker-act-btn edit" onclick="copyWorkerLink('${w.id}')" title="Copy punch link"><i class="ti ti-link"></i></button>
         <button class="worker-act-btn del"  onclick="deleteWorker(${wi})"   title="Delete"><i class="ti ti-x"></i></button>
@@ -2075,6 +2089,7 @@ function applyWorkerDraft(){
     if(v&&typeof v==='object'){ el.checked=v.checked; continue; }
     if(v!==''&&v!=null){ el.value=v; _clearScanCheck(el); }
   }
+  if(d.vals.wStatus) setWStatus(d.vals.wStatus);
   if(d.children.length){ __wChildren=d.children; renderChildrenRows(); }
   if(d.clientIds.length){ __wClientIds=d.clientIds.filter(id=>clients.some(c=>c.id===id)); renderWClientChips(); }
   if(d.avatar&&!__wAvatarB64){
@@ -2371,6 +2386,10 @@ function showWorkerModal(w){
       <button class="btn sm" type="button" onclick="document.getElementById('wAvatarFile').click()"><i class="ti ti-camera"></i> העלה תמונה</button>
       <button class="btn sm" type="button" id="wAvatarDeleteBtn" onclick="clearWorkerAvatar()" style="display:${__wAvatarB64?'inline-flex':'none'}"><i class="ti ti-trash"></i> מחק תמונה</button>
       <input type="file" id="wAvatarFile" accept="image/*" style="display:none" onchange="onAvatarFileSelected(this.files[0]); this.value='';">
+      <div class="status-seg" role="radiogroup" aria-label="סטטוס" style="margin-left:auto">
+        <input type="hidden" id="wStatus" value="${esc(w.status||'active')}">
+        ${[['active','פעיל'],['vacation','בחופשה'],['fired','לא פעיל']].map(([v,l])=>`<button type="button" data-st="${v}" class="${(w.status||'active')===v?'on':''}" onclick="setWStatus('${v}')">${l}</button>`).join('')}
+      </div>
     </div>
     <div class="field" id="avatarCropWrap" style="display:none;flex-direction:column;align-items:center;gap:8px;background:var(--bg3);border-radius:8px;padding:12px">
       <div id="avatarCropBox" style="width:200px;height:200px;border-radius:50%;overflow:hidden;position:relative;background:#111;touch-action:none;cursor:grab">
@@ -2401,29 +2420,18 @@ function showWorkerModal(w){
       </div>
       <div class="field"><label>שם משפחה</label><input type="text" id="wSurname" value="${esc(w.docSurname||'')}" placeholder="שם משפחה"></div>
     </div>
-    <div class="field"><label>מספר ת.ז./דרכון</label><input type="text" id="wDocId" value="${esc(workerDocId(w))}" placeholder="ת.ז. / מספר דרכון">
-      ${w.idChecksumOk===false?'<div style="font-size:11px;color:var(--amber);margin-top:2px"><i class="ti ti-alert-triangle"></i> המספר לא עבר בדיקת ספרת ביקורת — יש לבדוק ידנית</div>':''}
-      ${w.idMismatch?'<div style="font-size:11px;color:var(--amber);margin-top:2px"><i class="ti ti-alert-triangle"></i> המספר בספח לא תואם למספר בצד הקדמי — יש לבדוק ידנית</div>':''}
-    </div>
-    <div class="field"><label>טלפון</label><input type="text" id="wPhone" value="${w.phone||''}" placeholder="+972..."></div>
     <div class="field-row">
-      <div class="field"><label>תעריף שעתי (₪/שעה)</label><input type="number" id="wRate" value="${w.hourlyRate||''}" placeholder="לדוגמה: 35" min="0" step="0.5"></div>
-      <div class="field"><label>סטטוס</label>
-        <select id="wStatus">
-          <option value="active" ${(w.status||'active')==='active'?'selected':''}>פעיל</option>
-          <option value="vacation" ${w.status==='vacation'?'selected':''}>בחופשה</option>
-          <option value="fired" ${w.status==='fired'?'selected':''}>פוטר</option>
+      <div class="field"><label>מספר ת.ז./דרכון</label><input type="text" id="wDocId" value="${esc(workerDocId(w))}" placeholder="ת.ז. / דרכון">
+        ${w.idChecksumOk===false?'<div style="font-size:11px;color:var(--amber);margin-top:2px"><i class="ti ti-alert-triangle"></i> המספר לא עבר בדיקת ספרת ביקורת — יש לבדוק ידנית</div>':''}
+        ${w.idMismatch?'<div style="font-size:11px;color:var(--amber);margin-top:2px"><i class="ti ti-alert-triangle"></i> המספר בספח לא תואם למספר בצד הקדמי — יש לבדוק ידנית</div>':''}
+      </div>
+      <div class="field"><label>מין</label>
+        <select id="wSex">
+          <option value="" ${!w.docSex?'selected':''}>— לא נבחר —</option>
+          <option value="M" ${w.docSex==='M'?'selected':''}>זכר</option>
+          <option value="F" ${w.docSex==='F'?'selected':''}>נקבה</option>
         </select>
       </div>
-    </div>
-    <div class="field"><label>Travel allowance (₪ per work day, optional)</label><input type="number" id="wTravelAllowance" value="${w.travelAllowance||''}" placeholder="0" min="0" step="0.5"></div>
-    <div class="field"><label>תאריך תחילת עבודה</label><input type="date" id="wStartDate" value="${w.startDate||w.workStartDate||new Date().toISOString().slice(0,10)}"></div>
-    <div class="field"><label>מין</label>
-      <select id="wSex">
-        <option value="" ${!w.docSex?'selected':''}>— לא נבחר —</option>
-        <option value="M" ${w.docSex==='M'?'selected':''}>זכר</option>
-        <option value="F" ${w.docSex==='F'?'selected':''}>נקבה</option>
-      </select>
     </div>
     <div class="field-row">
       <div class="field"><label>מצב משפחתי</label>
@@ -2465,36 +2473,48 @@ function showWorkerModal(w){
       </div>
     </div>
     <div class="field-row">
-      <div class="field"><label>רחוב</label><input type="text" id="wAddress" value="${esc(workerAddress(w))}" placeholder="רחוב"></div>
-      <div class="field"><label>מספר בית</label><input type="text" id="wHouseNumber" value="${esc(w.houseNumber||'')}" placeholder="מספר בית"></div>
+      <div class="field"><label>תאריך לידה</label><input type="text" id="wDob" value="${esc(w.docDob||'')}" placeholder="DD/MM/YYYY"></div>
+      <div class="field"><label>תוקף ת.ז./דרכון</label><input type="text" id="wDocExpiry" value="${esc(w.docExpiry||'')}" placeholder="DD/MM/YYYY"></div>
     </div>
-    <div class="field"><label>עיר</label><input type="text" id="wCity" value="${esc(w.city||'')}" placeholder="עיר"></div>
-    <div class="field"><label>תאריך לידה</label><input type="text" id="wDob" value="${esc(w.docDob||'')}" placeholder="DD/MM/YYYY"></div>
-    <div class="field"><label>תוקף ת.ז./דרכון</label><input type="text" id="wDocExpiry" value="${esc(w.docExpiry||'')}" placeholder="DD/MM/YYYY"></div>
+    <div class="field-row" style="grid-template-columns:1.6fr .8fr 1.3fr">
+      <div class="field"><label>רחוב</label><input type="text" id="wAddress" value="${esc(workerAddress(w))}" placeholder="רחוב"></div>
+      <div class="field"><label>מספר בית</label><input type="text" id="wHouseNumber" value="${esc(w.houseNumber||'')}" placeholder="מס׳"></div>
+      <div class="field"><label>עיר</label><input type="text" id="wCity" value="${esc(w.city||'')}" placeholder="עיר"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>תעריף שעתי (₪/שעה)</label><input type="number" id="wRate" value="${w.hourlyRate||''}" placeholder="לדוגמה: 35" min="0" step="0.5"></div>
+      <div class="field"><label>Travel ₪ / day</label><input type="number" id="wTravelAllowance" value="${w.travelAllowance||''}" placeholder="0" min="0" step="0.5"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>תאריך תחילת עבודה</label><input type="date" id="wStartDate" value="${w.startDate||w.workStartDate||new Date().toISOString().slice(0,10)}"></div>
+      <div class="field"><label>טלפון</label><input type="text" id="wPhone" value="${esc(w.phone||'')}" placeholder="+972..."></div>
+    </div>
     <div class="field">
       <label><i class="ti ti-users"></i> לקוחות <span id="wClientCount" style="color:var(--text3);font-weight:400;font-size:12px"></span></label>
       <div id="wClientChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
-      ${clients.length?`<input type="text" id="wClientSearch" placeholder="+ Add client / object…" autocomplete="off"
+      ${clients.length?`<input type="text" id="wClientSearch" placeholder="לחצו כדי להוסיף לקוח" autocomplete="off"
         oninput="renderWClientSuggest()" onfocus="renderWClientSuggest()" onblur="setTimeout(hideWClientSuggest,150)"
         onkeydown="if(event.key==='Enter'){event.preventDefault();pickFirstWClientSuggest();}else if(event.key==='Escape'){this.blur();}">
       <div id="wClientSuggest" style="display:none;max-height:200px;overflow-y:auto;border:1px solid var(--border2);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);background:var(--bg2)"></div>`
-      :'<span style="font-size:12px;color:var(--text3)">No clients yet</span>'}
+      :'<span style="font-size:12px;color:var(--text3)">אין עדיין לקוחות</span>'}
     </div>
+    <div class="${isFirmAdminSession()?'field-row':''}">
     <div class="field">
-      <label><i class="ti ti-truck-delivery"></i> Supplier (optional)</label>
+      <label><i class="ti ti-truck-delivery"></i> Supplier</label>
       <select id="wSupplierId" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:10px;outline:none">
         <option value="">— None —</option>
         ${suppliers.map(s=>`<option value="${s.id}" ${w.supplierId===s.id?'selected':''}>${esc(s.name)}</option>`).join('')}
       </select>
     </div>
     ${isFirmAdminSession()?`<div class="field">
-      <label><i class="ti ti-user-shield"></i> HR (optional)</label>
+      <label><i class="ti ti-user-shield"></i> HR</label>
       <select id="wHrId" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:10px;outline:none">
         <option value="">— None —</option>
         ${hrUsers().map(u=>`<option value="${esc(u.id)}" ${w.hrId===u.id?'selected':''}>${esc(u.fullName||u.username)}</option>`).join('')}
         ${w.hrId&&!hrUsers().some(u=>u.id===w.hrId)?`<option value="${esc(w.hrId)}" selected>(unknown HR)</option>`:''}
       </select>
     </div>`:''}
+    </div>
     <div class="field" style="margin-bottom:6px">
       <button class="btn sm" type="button" onclick="toggleBankWrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
         <span><i class="ti ti-building-bank"></i> Bank details <span id="wBankSummary" style="color:var(--text3);font-weight:400;font-size:12px">${w.bank||w.bankAccountNumber?'· set':''}</span></span>
@@ -2528,18 +2548,6 @@ function showWorkerModal(w){
         <input type="time" id="we${i}" value="${w.schedule[i]?.end||'17:00'}"   ${w.schedule[i]?.type==='off'?'disabled style="opacity:0.3"':''}>
       </div>`).join('')}
     </div>
-    ${editingWorkerIdx!==null && w.token ? `
-    <div class="field">
-      <label><i class="ti ti-link"></i> קישור אישי להחתמה</label>
-      <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <code style="font-size:11px;color:var(--blue);flex:1;word-break:break-all">${buildPunchLink(w)}</code>
-        <button class="btn sm" onclick="copyWorkerLink('${w.id}')" style="flex-shrink:0"><i class="ti ti-clipboard-text"></i> העתק</button>
-      </div>
-      ${(()=>{ const geo=(w.clientIds||[]).map(id=>clients.find(c=>c.id===id)).find(c=>c&&c.lat&&c.lng); return geo
-        ? `<div style="font-size:11px;color:var(--green);margin-top:4px"><i class="ti ti-map-pin"></i> גדר גיאוגרפית: ${esc(geo.name)} · ${(geo.radius||100)}מ'</div>`
-        : `<div style="font-size:11px;color:var(--amber);margin-top:4px"><i class="ti ti-alert-triangle"></i> ללקוח המקושר אין מיקום מוגדר — ההחתמה לא תאומת גיאוגרפית</div>`; })()}
-      <div style="font-size:11px;color:var(--text3);margin-top:4px">שלחו את הקישור לעובד. הוא ישמור אותו כסימניה.</div>
-    </div>` : ''}
     <div class="field" style="margin-bottom:6px">
       <button class="btn sm" type="button" onclick="toggleForm101Wrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
         <span><i class="ti ti-id-badge-2"></i> נתונים נוספים לטופס 101</span>
@@ -2547,7 +2555,7 @@ function showWorkerModal(w){
       </button>
     </div>
     <div id="wForm101Wrap" style="display:none">
-      <div class="field-row">
+      <div class="field-row stack-phone">
         <div class="field"><label>סוג הכנסה (טופס 101)</label>
           <select id="wIncomeType">
             <option value="monthly" ${(w.incomeType||'monthly')==='monthly'?'selected':''}>משכורת חודשית</option>
@@ -2586,7 +2594,7 @@ function showWorkerModal(w){
     </div>
     <div id="wExpiryWrap" style="display:none">
       <input type="checkbox" id="wExpiryEnabled" ${w.expiryEnabled?'checked':''} style="display:none">
-      <div class="field-row" id="wExpiryFields">
+      <div class="field-row stack-phone" id="wExpiryFields">
         <div class="field"><label>חודשים עד למועד האחרון</label><input type="number" id="wExpiryMonths" min="1" step="1" value="${w.expiryMonths||9}"></div>
         <div class="field"><label>התראה כמה חודשים מראש</label><input type="number" id="wExpiryWarnMonths" min="0" step="1" value="${w.expiryWarnMonths??1}"></div>
       </div>
@@ -2597,7 +2605,19 @@ function showWorkerModal(w){
         style="width:100%;max-width:340px;height:90px;display:block;background:#fff;border:1px solid var(--border2);border-radius:var(--radius-sm);touch-action:none"></canvas>
       <button class="btn sm" style="margin-top:6px" type="button" onclick="clearSignaturePad('wSigCanvas')"><i class="ti ti-eraser"></i> נקה חתימה</button>
     </div>
-    <div class="field"><label>הערות</label><textarea id="wNotes" placeholder="הערות על העובד" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;padding:8px 10px;outline:none;min-height:56px;resize:vertical">${w.notes||''}</textarea></div>
+    ${editingWorkerIdx!==null && w.token ? `
+    <div class="field">
+      <label><i class="ti ti-link"></i> קישור אישי להחתמה</label>
+      <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <code style="font-size:11px;color:var(--blue);flex:1;word-break:break-all">${buildPunchLink(w)}</code>
+        <button class="btn sm" onclick="copyWorkerLink('${w.id}')" style="flex-shrink:0"><i class="ti ti-clipboard-text"></i> העתק</button>
+      </div>
+      ${(()=>{ const geo=(w.clientIds||[]).map(id=>clients.find(c=>c.id===id)).find(c=>c&&c.lat&&c.lng); return geo
+        ? `<div style="font-size:11px;color:var(--green);margin-top:4px"><i class="ti ti-map-pin"></i> גדר גיאוגרפית: ${esc(geo.name)} · ${(geo.radius||100)}מ'</div>`
+        : `<div style="font-size:11px;color:var(--amber);margin-top:4px"><i class="ti ti-alert-triangle"></i> ללקוח המקושר אין מיקום מוגדר — ההחתמה לא תאומת גיאוגרפית</div>`; })()}
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">שלחו את הקישור לעובד. הוא ישמור אותו כסימניה.</div>
+    </div>` : ''}
+    <div class="field"><label>הערות</label><textarea id="wNotes" placeholder="הערות על העובד" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;padding:8px 10px;outline:none;min-height:56px;resize:vertical">${esc(w.notes||'')}</textarea></div>
     <div class="modal-actions">
       ${editingWorkerIdx!==null?`<button class="btn" onclick="regenerateWorkerToken(${editingWorkerIdx})" style="background:var(--amber-bg);border-color:rgba(245,166,35,0.3);color:var(--amber)"><i class="ti ti-refresh"></i> טוקן חדש</button>`:''}
       <button class="btn accent" onclick="saveWorker()">${editingWorkerIdx!==null?'שמור שינויים':'צור עובד'}</button>
@@ -2809,6 +2829,13 @@ function showWorkerUploadingOverlay(){
   renderWorkerUploadProgress('בונה PDF, נא לא לסגור…',0);
 }
 
+// Worker status: three buttons in the modal's photo row; the value lives in
+// the hidden #wStatus that saveWorker() and the scan draft read.
+function setWStatus(v){
+  const inp=document.getElementById('wStatus'); if(!inp) return;
+  inp.value=v;
+  document.querySelectorAll('.status-seg [data-st]').forEach(b=>b.classList.toggle('on',b.dataset.st===v));
+}
 function genToken(){
   return Math.random().toString(36).slice(2,6)+Math.random().toString(36).slice(2,6);
 }
@@ -2865,8 +2892,10 @@ function showClientModal(c){
   // The client card is in Hebrew (per user request 2026-10-04).
   document.getElementById('clientModal').innerHTML=`<div dir="rtl">
     <div class="modal-title">${editingClientId?'עריכת לקוח':'לקוח חדש'}</div>
-    <div class="field"><label>שם הלקוח</label><input type="text" id="cName" value="${esc(c.name||'')}" placeholder="שם הלקוח" autofocus></div>
-    <div class="field"><label>ח.פ (לא חובה)</label><input type="text" id="cCompanyNumber" value="${esc(c.companyNumber||'')}" placeholder="512345678"></div>
+    <div class="field-row">
+      <div class="field"><label>שם הלקוח</label><input type="text" id="cName" value="${esc(c.name||'')}" placeholder="שם הלקוח" autofocus></div>
+      <div class="field"><label>ח.פ (לא חובה)</label><input type="text" id="cCompanyNumber" value="${esc(c.companyNumber||'')}" placeholder="512345678"></div>
+    </div>
     <div class="field"><label>אתר / סניף</label><input type="text" id="cObject" value="${esc(c.object||'')}" placeholder="שם האתר או הסניף"></div>
     <div class="field"><label>כתובת (לא חובה)</label><input type="text" id="cAddr" value="${esc(c.address||'')}" placeholder="כתובת"></div>
     <div class="field">
@@ -3261,7 +3290,7 @@ function renderWorkersPage(){
   const clientFilter=document.getElementById('workersFilterClient')?.value||'';
   const supplierFilter=document.getElementById('workersFilterSupplier')?.value||'';
   const groupBy=document.getElementById('workersGroupBy')?.value||'';
-  const stMetaMap={active:{label:'Active',col:'var(--green)',bg:'var(--green-bg)'},vacation:{label:'On vacation',col:'var(--amber)',bg:'var(--amber-bg)'},fired:{label:'Fired',col:'var(--red)',bg:'var(--red-bg)'}};
+  const stMetaMap={active:{label:'Active',col:'var(--green)',bg:'var(--green-bg)'},vacation:{label:'On vacation',col:'var(--amber)',bg:'var(--amber-bg)'},fired:{label:'Inactive',col:'var(--red)',bg:'var(--red-bg)'}};
   let list=workers.map((w,wi)=>({w,wi}));
   if(stFilter) list=list.filter(x=>(x.w.status||'active')===stFilter);
   if(clientFilter) list=list.filter(x=>(x.w.clientIds||[]).includes(clientFilter));
@@ -3322,7 +3351,7 @@ const OTHER_INCOME_LABELS = {none:'אין הכנסה נוספת',monthly:'משכ
 function openWorkerCard(wi){
   const w=workers[wi]; if(!w) return;
   const c=WORKER_COLORS[w.colorIdx%8];
-  const stMetaMap={active:{label:'Active',col:'var(--green)',bg:'var(--green-bg)'},vacation:{label:'On vacation',col:'var(--amber)',bg:'var(--amber-bg)'},fired:{label:'Fired',col:'var(--red)',bg:'var(--red-bg)'}};
+  const stMetaMap={active:{label:'Active',col:'var(--green)',bg:'var(--green-bg)'},vacation:{label:'On vacation',col:'var(--amber)',bg:'var(--amber-bg)'},fired:{label:'Inactive',col:'var(--red)',bg:'var(--red-bg)'}};
   const stMeta=stMetaMap[w.status||'active'];
   const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
   const sup=suppliers.find(s=>s.id===w.supplierId);
@@ -3675,8 +3704,10 @@ function openEditSupplier(sid){ editingSupplierId=sid; const s=suppliers.find(x=
 function showSupplierModal(s){
   document.getElementById('supplierModal').innerHTML=`
     <div class="modal-title">${editingSupplierId?'Edit Supplier':'Add New Supplier'}</div>
-    <div class="field"><label>Name</label><input type="text" id="sName" value="${esc(s.name||'')}" placeholder="Supplier name" autofocus></div>
-    <div class="field"><label>ח.פ (Company Number, optional)</label><input type="text" id="sCompanyNumber" value="${esc(s.companyNumber||'')}" placeholder="512345678"></div>
+    <div class="field-row">
+      <div class="field"><label>Name</label><input type="text" id="sName" value="${esc(s.name||'')}" placeholder="Supplier name" autofocus></div>
+      <div class="field"><label>ח.פ (optional)</label><input type="text" id="sCompanyNumber" value="${esc(s.companyNumber||'')}" placeholder="512345678"></div>
+    </div>
     <div class="field"><label>Phone (optional)</label><input type="text" id="sPhone" value="${esc(s.phone||'')}" placeholder="Phone"></div>
     <div class="field">
       <label><i class="ti ti-building-bank"></i> Bank details (optional)</label>
@@ -4618,7 +4649,7 @@ function onUserFormRoleChange(fromUser){
   document.getElementById('userFormSupplierField').style.display = role==='supplier' ? '' : 'none';
   document.getElementById('userFormPermsField').style.display = role==='supplier' ? 'none' : '';
   document.getElementById('userFormHrFields').style.display = role==='hr' ? '' : 'none';
-  document.getElementById('userFormFullNameLabel').textContent = role==='hr' ? 'Full name (required)' : 'Full name';
+  document.getElementById('userFormFullNameLabel').textContent = role==='hr' ? 'Full name *' : 'Full name';
   document.getElementById('userFormHrWorkersField').style.display = role==='hr' && __editingUserId ? '' : 'none';
   if(role==='supplier') fillUserFormSupplierSelect(null);
   // A new HR login starts with the Workers section only.
@@ -4632,7 +4663,7 @@ function openCreateUserForm(){
   document.getElementById('userFormUsername').disabled = false;
   document.getElementById('userFormPassword').value = '';
   document.getElementById('userFormPasswordField').style.display = '';
-  document.getElementById('userFormPasswordLabel').textContent = 'Password (min. 8 chars)';
+  document.getElementById('userFormPasswordLabel').textContent = 'Password (min. 8)';
   document.getElementById('userFormRole').value = 'staff';
   document.getElementById('userFormRole').disabled = false;
   document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = false);
@@ -4654,7 +4685,7 @@ async function openEditUserForm(id){
   document.getElementById('userFormUsername').disabled = true; // username is immutable post-creation
   document.getElementById('userFormPassword').value = '';
   // A new password is set here too; left empty, the password stays.
-  document.getElementById('userFormPasswordLabel').textContent = 'New password (leave empty to keep)';
+  document.getElementById('userFormPasswordLabel').textContent = 'New password (empty = keep)';
   document.getElementById('userFormRole').value = u.role;
   document.getElementById('userFormRole').disabled = true; // a login keeps its role
   document.getElementById('userFormError').textContent = '';
