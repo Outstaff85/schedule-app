@@ -1700,8 +1700,8 @@ function workerMissingScanKeys(w){
   return Object.keys(SCAN_FIND_FIELDS).filter(k=>(isId||!SCAN_FIND_FIELDS[k].idOnly)&&!String(k==='docId'?workerDocId(w):k==='address'?workerAddress(w):(w[k]||'')).trim());
 }
 function workerMissingScanFields(w){ return workerMissingScanKeys(w).map(k=>scanFieldLabel(k,w.docType)); }
-function missingScanFieldsHtml(w,canFind){
-  const m=workerMissingScanFields(w);
+function missingScanFieldsHtml(w,canFind){ return _missingScanLine(workerMissingScanFields(w),canFind); }
+function _missingScanLine(m,canFind){
   return m.length?`<div style="flex-basis:100%;font-size:12px;color:var(--amber)"><i class="ti ti-alert-triangle"></i> חסרים: ${m.map(esc).join(', ')} — ${canFind?'לחצו על שדה מסומן כדי לחפש אותו בסריקה':'אפשר לסרוק שוב'}</div>`:'';
 }
 // The worker's page photos, for a field search: the scan still in memory
@@ -1809,6 +1809,27 @@ function markScanMissingFields(){
     el.addEventListener(el.tagName==='SELECT'?'pointerdown':'click',_scanFieldTap);
     el.addEventListener('input',_scanFieldTyped);
   }
+  // Typing or picking in any scan field updates the "missing" line (one
+  // listener on the modal, added once).
+  if(!m.__missingLineHooked){
+    m.__missingLineHooked=true;
+    const ids=new Set(Object.values(SCAN_FIND_FIELDS).map(f=>f.input));
+    const onEdit=e=>{ if(e.target&&ids.has(e.target.id)) refreshModalMissingScan(); };
+    m.addEventListener('input',onEdit); m.addEventListener('change',onEdit);
+  }
+  refreshModalMissingScan();
+}
+// Worker modal: the "missing" line under the documents follows the fields as
+// they are filled — typed, picked, or found by the scan search — instead of
+// keeping the list the modal opened with.
+function refreshModalMissingScan(){
+  const box=document.getElementById('wMissingScan');
+  if(!box) return;
+  const isId=__wDocType!=='passport';
+  const m=Object.entries(SCAN_FIND_FIELDS)
+    .filter(([,f])=>(isId||!f.idOnly)&&!String((document.getElementById(f.input)||{}).value||'').trim())
+    .map(([k])=>scanFieldLabel(k,__wDocType));
+  box.innerHTML=_missingScanLine(m,workerHasScanPages(editingWorkerIdx!==null?workers[editingWorkerIdx]:null));
 }
 function _unmarkScanField(el){
   el.classList.remove('scan-missing','scan-busy');
@@ -1861,6 +1882,7 @@ function _applyScanFieldResult(el,r){
   if(r&&r.value){
     el.value=r.value;
     _unmarkScanField(el);
+    refreshModalMissingScan();
     if(r.unsure) markScanUncertain([key]);
     else { el.classList.add('scan-found'); setTimeout(()=>el.classList.remove('scan-found'),2500); }
     return;
@@ -2256,7 +2278,7 @@ function showWorkerModal(w){
         <button class="btn sm" type="button" style="flex-shrink:0" onclick="rescanFromWorkerModal()">
           <i class="ti ti-scan"></i> ${w.docUrl||(window.__aiScanPageThumbs||[]).length?'סריקה חוזרת':'סרוק מסמך'}</button>
         <span style="font-size:11px;color:var(--text3)">${editingWorkerIdx!==null&&w.docSavedAt?'נשמר: '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</span>
-        ${missingScanFieldsHtml(w,workerHasScanPages(editingWorkerIdx!==null?workers[editingWorkerIdx]:null))}
+        <div id="wMissingScan" style="display:contents">${missingScanFieldsHtml(w,workerHasScanPages(editingWorkerIdx!==null?workers[editingWorkerIdx]:null))}</div>
       </div>
     </div>
     <div class="field-row">
