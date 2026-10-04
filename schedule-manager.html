@@ -2378,18 +2378,21 @@ function showWorkerModal(w){
   __wAvatarB64=w.avatarB64||'';
   __wDocType=w.docType||'israeli_id';
   document.getElementById('workerModal').innerHTML=`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px">
       <div class="modal-title" style="margin-bottom:0">${editingWorkerIdx!==null?'עריכת עובד':'הוספת עובד חדש'}</div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        <div class="status-seg" role="radiogroup" aria-label="סטטוס">
+          <input type="hidden" id="wStatus" value="${esc(w.status||'active')}">
+          ${[['active','פעיל'],['vacation','בחופשה'],['fired','לא פעיל']].map(([v,l])=>`<button type="button" data-st="${v}" class="${(w.status||'active')===v?'on':''}" onclick="setWStatus('${v}')">${l}</button>`).join('')}
+        </div>
+        ${editingWorkerIdx!==null&&w.docSavedAt?`<span style="font-size:11px;color:var(--text3)">נשמר: ${esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU'))}</span>`:''}
+      </div>
     </div>
     <div class="field" id="wAvatarWrap" style="display:flex;align-items:center;gap:10px">
       <img id="wAvatarImg" src="${__wAvatarB64?('data:image/jpeg;base64,'+__wAvatarB64):''}" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1px solid var(--border2);background:var(--bg3);display:${__wAvatarB64?'block':'none'}">
       <button class="btn sm" type="button" onclick="document.getElementById('wAvatarFile').click()"><i class="ti ti-camera"></i> העלה תמונה</button>
       <button class="btn sm" type="button" id="wAvatarDeleteBtn" onclick="clearWorkerAvatar()" style="display:${__wAvatarB64?'inline-flex':'none'}"><i class="ti ti-trash"></i> מחק תמונה</button>
       <input type="file" id="wAvatarFile" accept="image/*" style="display:none" onchange="onAvatarFileSelected(this.files[0]); this.value='';">
-      <div class="status-seg" role="radiogroup" aria-label="סטטוס" style="margin-left:auto">
-        <input type="hidden" id="wStatus" value="${esc(w.status||'active')}">
-        ${[['active','פעיל'],['vacation','בחופשה'],['fired','לא פעיל']].map(([v,l])=>`<button type="button" data-st="${v}" class="${(w.status||'active')===v?'on':''}" onclick="setWStatus('${v}')">${l}</button>`).join('')}
-      </div>
     </div>
     <div class="field" id="avatarCropWrap" style="display:none;flex-direction:column;align-items:center;gap:8px;background:var(--bg3);border-radius:8px;padding:12px">
       <div id="avatarCropBox" style="width:200px;height:200px;border-radius:50%;overflow:hidden;position:relative;background:#111;touch-action:none;cursor:grab">
@@ -2408,7 +2411,6 @@ function showWorkerModal(w){
           <i class="ti ti-download"></i> הורד מסמכים</a>`:''}
         <button class="btn sm" type="button" style="flex-shrink:0" onclick="rescanFromWorkerModal()">
           <i class="ti ti-scan"></i> ${w.docUrl||(window.__aiScanPageThumbs||[]).length?'סריקה חוזרת':'סרוק מסמך'}</button>
-        <span style="font-size:11px;color:var(--text3)">${editingWorkerIdx!==null&&w.docSavedAt?'נשמר: '+esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU')):''}</span>
         <div id="wMissingScan" style="display:contents">${missingScanFieldsHtml(w,workerHasScanPages(editingWorkerIdx!==null?workers[editingWorkerIdx]:null))}</div>
       </div>
     </div>
