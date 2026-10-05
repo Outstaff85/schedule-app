@@ -310,3 +310,27 @@ def test_passport_expiry_comes_from_the_mrz_when_its_check_digit_is_right():
 
 def test_read_doc_asks_for_mrz_line_2():
     assert '"mrzLine2"' in ai.PROMPTS["readDoc"]
+
+
+def _read(doc, action="aiReadDoc"):
+    raw = json.dumps({"content": [{"type": "text", "text": json.dumps(doc)}]})
+    return ai.parse_reply(action, 200, raw)["parsed"]
+
+
+def test_issue_and_expiry_dates_swapped_back_when_reversed():
+    out = _read({"type": "israeli_id", "expiry": "01/03/2018", "issueDate": "01/03/2028", "fieldBoxes": {"expiry": {}}})
+    assert out["expiry"] == "01/03/2028" and out["issueDate"] == "01/03/2018" and out["datesSwapped"] is True
+    assert "expiry" not in out["fieldBoxes"] and "__uncertain" not in out
+
+
+def test_expiry_too_close_to_the_issue_date_is_marked_for_checking():
+    out = _read({"type": "israeli_id", "expiry": "05/06/2024", "issueDate": "01/03/2024", "__uncertain": ["dob"]})
+    assert out["expiry"] == "05/06/2024" and out["__uncertain"] == ["dob", "expiry"]
+    ok = _read({"type": "passport", "expiry": "01/03/2034", "issueDate": "01/03/2024"})
+    assert "__uncertain" not in ok and "datesSwapped" not in ok
+    # no issue date, an unreadable date, or an expiry from the MRZ: left alone
+    for doc in ({"expiry": "01/03/2024"}, {"expiry": "1 MAR 2024", "issueDate": "01/03/2030"}):
+        assert _read(doc) == doc
+    mrz = _read({"type": "passport", "expiry": "x", "issueDate": "01/01/2030",
+                 "mrzLine2": "L898902C36UTO7408122F1204159ZE184226B<<<<<10"})
+    assert mrz["expiry"] == "15/04/2012" and "datesSwapped" not in mrz and "__uncertain" not in mrz
