@@ -160,6 +160,7 @@
   .tap-edit{cursor:pointer;} /* a tap opens the item's edit form (isPlainTap) */
   .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto;}
   .modal-title{font-size:19px;font-weight:600;color:var(--text);margin-bottom:18px;letter-spacing:-0.3px;}
+  .salary-ro input,.salary-ro select{pointer-events:none;opacity:.85}
   .acc-help{background:none;border:none;color:var(--text3);cursor:pointer;padding:2px;font-size:15px;line-height:1;display:inline-flex}
   .acc-help:hover{color:var(--blue)}
   .acc-help-body{font-size:13px;color:var(--text2);line-height:1.6}
@@ -840,31 +841,37 @@
       </div>
 
       <!-- Per-client rate matrix -->
-      <div>
+      <div id="accSecRates">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-adjustments"></i> Per-client rates <button type="button" class="acc-help" onclick="openAccountingHelp('rates')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="rateMatrixWrap"></div>
       </div>
 
       <!-- Per-supplier rate matrix (informational — does not feed payroll math) -->
-      <div style="margin-top:24px">
+      <div id="accSecSupplierRates" style="margin-top:24px">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-truck-delivery"></i> Per-supplier rates <button type="button" class="acc-help" onclick="openAccountingHelp('supplierRates')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="supplierRateMatrixWrap"></div>
       </div>
 
       <!-- Payable by supplier summary -->
-      <div style="margin-top:24px">
+      <div id="accSecPayable" style="margin-top:24px">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-report-money"></i> Payable by supplier <button type="button" class="acc-help" onclick="openAccountingHelp('payable')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="supplierPayableWrap"></div>
       </div>
 
+      <!-- Payable by HR: each HR's commission on its workers' hours (owner) -->
+      <div id="accSecHrPayable" style="margin-top:24px;display:none">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-user-dollar"></i> Payable by HR <button type="button" class="acc-help" onclick="openAccountingHelp('hrPayable')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
+        <div id="hrPayableWrap"></div>
+      </div>
+
       <!-- Billable by client (client's own rateMode — tiered or fixed — independent of the worker's real wage above) -->
-      <div style="margin-top:24px">
+      <div id="accSecBillable" style="margin-top:24px">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-building-store"></i> Billable by client <button type="button" class="acc-help" onclick="openAccountingHelp('billable')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="clientBillableWrap"></div>
       </div>
 
       <!-- Hours-import approval queue (Admin/Roles plan, stage 14) -->
-      <div style="margin-top:24px">
+      <div id="accSecPending" style="margin-top:24px">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-file-check"></i> Pending hours <button type="button" class="acc-help" onclick="openAccountingHelp('pending')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="pendingHoursWrap"></div>
       </div>
@@ -1030,6 +1037,14 @@
     </div>
     <div class="field" id="userFormHrFields" style="display:none">
       <label class="check-chip"><input type="checkbox" id="userFormOwnOnly" checked><span class="chip-text">Only own workers<span class="chip-hint">Sees only the workers assigned to this HR. Unchecked: every worker of the firm.</span></span></label>
+    </div>
+    <!-- HR and supplier: see their own workers' pay and their commission
+         (claim "pay"; on by default). HR: its commission ₪/h. -->
+    <div class="field" id="userFormPayFields" style="display:none">
+      <div class="check-grid">
+        <label class="check-chip"><input type="checkbox" id="userFormShowPay" checked><span class="chip-text">Sees own workers' pay<span class="chip-hint">Their hours, rate and pay, and this login's commission. Nothing else of Accounting.</span></span></label>
+      </div>
+      <div class="field" id="userFormCommissionField" style="margin-top:8px"><label>HR commission ₪/h</label><input type="number" id="userFormCommission" min="0" step="0.5" placeholder="0"></div>
     </div>
     <div id="userFormHrWorkersField" style="display:none">
       <div class="form-section" style="display:flex;justify-content:space-between;align-items:center">Workers <button class="btn sm" type="button" onclick="openHrAssignModal()"><i class="ti ti-user-plus"></i> Add workers</button></div>
@@ -1514,8 +1529,16 @@ const NAV_TAB_PERMISSION = { schedule:'schedule', workers:'workers', clients:'cl
 function isHrSession(){ const s = getSession(); return !!s && s.role === 'hr'; }
 function isFirmAdminSession(){ const s = getSession(); return !!s && (s.role === 'tenant_admin' || s.role === 'superadmin'); }
 const HR_HIDDEN_TABS = ['dashboard','admin'];
+// An HR without the Accounting section but with "sees own workers' pay"
+// (session.showPay) gets a reduced Accounting tab: Salary for its own
+// workers, read-only, with its commission — nothing else (renderAccounting).
+function hrPayOnly(){
+  const s = getSession();
+  return !!s && s.role === 'hr' && s.showPay === true && !hasPermission('accounting');
+}
 function tabAllowed(tab){
   if(isHrSession() && HR_HIDDEN_TABS.includes(tab)) return false;
+  if(tab === 'accounting' && hrPayOnly()) return true;
   return !NAV_TAB_PERMISSION[tab] || hasPermission(NAV_TAB_PERMISSION[tab]);
 }
 function homeTab(){
@@ -4375,6 +4398,7 @@ async function submitLogin(){
       uid: fb.uid, role: fb.role, tenantId: fb.tenantId, username: fb.username, tenantProfile: fb.tenantProfile,
       permissions: fb.permissions, supplierId: fb.supplierId,
       ownOnly: fb.ownOnly === true, fullName: fb.fullName || '',
+      showPay: fb.showPay === true, commissionRate: Number(fb.commissionRate) || 0,
       viewingTenantId: fb.tenantId, // a super-admin (tenantId null) picks one on the Firms screen
     });
     location.reload();
@@ -4699,6 +4723,8 @@ function prefetchAdminUsers(){
       saveAdminCache('users_'+tenantId,(json.users||[]).filter(u=>u.tenantId===tenantId));
       // The HR names on the worker tiles come from this list.
       if(currentTab==='workers' && workers.some(w=>w.hrId)) renderWorkersPage();
+      // ...and the HR commissions in Accounting → Payable by HR.
+      if(currentTab==='accounting' && workers.some(w=>w.hrId)) renderAccounting();
       // ...and the HR field of a worker modal already open.
       const sel=document.getElementById('wHrId');
       if(sel){
@@ -4807,6 +4833,8 @@ function onUserFormRoleChange(fromUser){
   document.getElementById('userFormSupplierField').style.display = role==='supplier' ? '' : 'none';
   document.getElementById('userFormPermsField').style.display = role==='supplier' ? 'none' : '';
   document.getElementById('userFormHrFields').style.display = role==='hr' ? '' : 'none';
+  document.getElementById('userFormPayFields').style.display = (role==='hr'||role==='supplier') ? '' : 'none';
+  document.getElementById('userFormCommissionField').style.display = role==='hr' ? '' : 'none';
   document.getElementById('userFormFullNameLabel').textContent = role==='hr' ? 'Full name *' : 'Full name';
   document.getElementById('userFormHrWorkersField').style.display = role==='hr' && __editingUserId ? '' : 'none';
   if(role==='supplier') fillUserFormSupplierSelect(null);
@@ -4830,6 +4858,8 @@ function openCreateUserForm(){
   document.getElementById('userFormFullName').value = '';
   document.getElementById('userFormPhone').value = '';
   document.getElementById('userFormOwnOnly').checked = true;
+  document.getElementById('userFormShowPay').checked = true;
+  document.getElementById('userFormCommission').value = '';
   document.getElementById('userFormError').textContent = '';
   onUserFormRoleChange();
   document.getElementById('userFormOverlay').classList.add('open');
@@ -4859,10 +4889,12 @@ async function openEditUserForm(id){
   document.getElementById('userFormFullName').value = u.fullName || '';
   document.getElementById('userFormPhone').value = u.phone || '';
   document.getElementById('userFormOwnOnly').checked = u.ownOnly !== false;
+  document.getElementById('userFormShowPay').checked = u.showPay !== false;
+  document.getElementById('userFormCommission').value = u.commissionRate ? u.commissionRate : '';
   __editingAdminRow = u.role==='tenant_admin' || u.role==='superadmin';
   if(__editingAdminRow){
     document.getElementById('userFormTitle').textContent = 'Edit ' + (u.fullName || u.username) + ' (owner)';
-    ['userFormSupplierField','userFormHrFields','userFormHrWorkersField'].forEach(i => document.getElementById(i).style.display = 'none');
+    ['userFormSupplierField','userFormHrFields','userFormHrWorkersField','userFormPayFields'].forEach(i => document.getElementById(i).style.display = 'none');
     showUserFormAccess(false);
     document.getElementById('userFormOverlay').classList.add('open');
     return;
@@ -4889,6 +4921,8 @@ async function submitUserForm(){
       fullName: document.getElementById('userFormFullName').value.trim(),
       phone: document.getElementById('userFormPhone').value.trim() };
     if(role==='hr') hrFields.ownOnly = document.getElementById('userFormOwnOnly').checked;
+    if(role==='hr'||role==='supplier') hrFields.showPay = document.getElementById('userFormShowPay').checked;
+    if(role==='hr') hrFields.commissionRate = parseFloat(document.getElementById('userFormCommission').value)||0;
     if(role==='hr' && !hrFields.fullName){ errEl.textContent = 'Full name required for an HR login'; return; }
     if(__editingUserId){
       const password = document.getElementById('userFormPassword').value;
@@ -6007,7 +6041,16 @@ function renderDashSuppliers(){
 }
 
 function renderAccounting(){
+  // An HR that only sees its own workers' pay: Salary and nothing else.
+  const payOnly=hrPayOnly();
+  ['accSecRates','accSecSupplierRates','accSecPayable','accSecBillable','accSecPending'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display=payOnly?'none':'';
+  });
+  if(payOnly){ const ex=document.querySelector('#sectionAccounting .perm-exports'); if(ex) ex.style.display='none'; }
+  const sub=document.querySelector('#sectionAccounting .page-sub');
+  if(sub) sub.textContent=payOnly?'Your workers\' hours, pay and your commission':'Salary calculation and per-client rates';
   renderSalary();
+  if(payOnly) return;
   renderRateMatrix();
   renderSupplierRateMatrix();
   renderPendingHours();
@@ -6105,11 +6148,18 @@ function renderSalary(){
   });
 
   const salaryEl=document.getElementById('dashSalary');
-  const entries=Object.values(byWorker);
+  // An HR that only sees pay: its own workers only, read-only, plus its
+  // commission (session.commissionRate × hours).
+  const payOnly=hrPayOnly(), me=getSession()||{};
+  const hrRate=Number(me.commissionRate)||0;
+  const entries=Object.values(byWorker).filter(e=>!payOnly||((workers.find(w=>w.id===e.workerId)||{}).hrId===me.uid));
   __lastSalaryEntries=entries;
+  salaryEl.classList.toggle('salary-ro',payOnly);
   if(!entries.length){
     salaryEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No punch data for this period</div>`;
+    if(payOnly) return;
     renderSupplierPayable(entries);
+    renderHrPayable(entries);
     renderClientBillable(__lastClientBillEntries);
     return;
   }
@@ -6132,6 +6182,7 @@ function renderSalary(){
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--blue)">Shabbat ₪/h</th>
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Travel ₪</th>
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Total Pay</th>
+            ${payOnly?`<th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">My commission</th>`:''}
           </tr>
         </thead>
         <tbody class="salary-rows"></tbody>
@@ -6143,6 +6194,7 @@ function renderSalary(){
             <td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">
               ₪${grandTotal.toFixed(0)}
             </td>
+            ${payOnly?`<td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">₪${(totalHours*hrRate).toFixed(0)}</td>`:''}
           </tr>
         </tfoot>
       </table>
@@ -6203,9 +6255,12 @@ function renderSalary(){
               <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${(e.total+e.travel)>0?'var(--green)':'var(--text3)'}">
                 ${(e.total+e.travel)>0?'₪'+(e.total+e.travel).toFixed(0):'—'}
               </td>
+              ${payOnly?`<td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)" title="${e.hours.toFixed(1)}h × ₪${hrRate}">₪${(e.hours*hrRate).toFixed(0)}</td>`:''}
             </tr>`;
-},{table:true,colspan:8});
+},{table:true,colspan:payOnly?9:8});
+  if(payOnly) return;
   renderSupplierPayable(entries);
+  renderHrPayable(entries);
   renderClientBillable(__lastClientBillEntries);
 }
 
@@ -6282,6 +6337,44 @@ function renderSupplierPayable(entries){
   renderPagedList(wrap.querySelector('.paged-supplierPayable'),'supplierPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
             <td style="padding:10px 12px;font-size:13px;font-weight:600"><span style="color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></span> ${esc(r.sup.name)}</td>
             <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)}h</td>
+            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
+          </tr>`,{table:true,colspan:20});
+}
+
+// "Payable by HR" (owner / super-admin): each HR login's commission on its
+// workers' hours — hours of the workers whose hrId is that HR × its
+// commissionRate (Users form). A re-grouping of the Salary rows, never a
+// wage; an HR without workers in the period has no row.
+function renderHrPayable(entries){
+  const sec=document.getElementById('accSecHrPayable'), wrap=document.getElementById('hrPayableWrap');
+  if(!sec||!wrap) return;
+  const hrs=isFirmAdminSession()?hrUsers():[];
+  const rows=hrs.map(u=>{
+    const hours=entries.filter(e=>((workers.find(w=>w.id===e.workerId)||{}).hrId)===u.id).reduce((t,e)=>t+e.hours,0);
+    const rate=Number(u.commissionRate)||0;
+    return {u, hours, rate, total:hours*rate};
+  }).filter(r=>r.hours>0);
+  sec.style.display=hrs.length?'':'none';
+  if(!rows.length){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No hours of HR workers this period</div>`; return; }
+  wrap.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table style="width:100%;border-collapse:collapse;min-width:420px">
+        <thead>
+          <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">HR</th>
+            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">Hours</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">₪/h</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Payable</th>
+          </tr>
+        </thead>
+        <tbody class="paged-hrPayable"></tbody>
+      </table>
+      </div>
+    </div>`;
+  renderPagedList(wrap.querySelector('.paged-hrPayable'),'hrPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
+            <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.u.fullName||r.u.username)}</td>
+            <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)}h</td>
+            <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)">${r.rate?'₪'+esc(r.rate):'—'}</td>
             <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
           </tr>`,{table:true,colspan:20});
 }
@@ -6560,6 +6653,9 @@ const ACCOUNTING_HELP={
   billable:{icon:'ti-building-store',title:'Billable by client',items:[
     'What each client owes the firm for the period picked in Salary, by the client\'s own pricing (client card): tiered (the OT / Shabbat law rates on the client\'s billing rate) or one fixed rate.',
     'Separate from the workers\' pay: it never changes a wage, and a wage never changes it.']},
+  hrPayable:{icon:'ti-user-dollar',title:'Payable by HR',items:[
+    'For the period picked in Salary: each HR\'s workers\' hours × the HR\'s commission (₪/h, set in Admin → Users on the HR).',
+    'Separate from the workers\' pay: it never changes a wage.']},
   pending:{icon:'ti-file-check',title:'Pending hours',items:[
     'Hours uploaded with a worker\'s "Upload hours" button wait here.',
     'Nothing here counts toward pay until it is approved; approving turns each row into IN / OUT punches.',
@@ -6572,25 +6668,25 @@ function openAccountingHelp(key){
   document.getElementById('accHelpOverlay').classList.add('open');
 }
 // The older regRate field is cleared so the edit is what counts.
-function setWorkerRate(wid,rate){
+function setWorkerRate(wid,rate){ if(hrPayOnly()) return;
   const w=workers.find(x=>x.id===wid);
   if(w){ w.hourlyRate=parseFloat(rate)||0; if(w.regRate!=null) w.regRate=null; autoSave(); }
 }
-function setWorkerPayMode(wid,mode){
+function setWorkerPayMode(wid,mode){ if(hrPayOnly()) return;
   const w=workers.find(x=>x.id===wid); if(!w) return;
   if(mode==='daily') w.payMode='daily'; else delete w.payMode;
   autoSave(); renderSalary();
 }
 // Days set by hand for one period (salaryPeriodKey); empty = by the punches.
-function setWorkerDays(wid,key,val){
+function setWorkerDays(wid,key,val){ if(hrPayOnly()) return;
   const w=workers.find(x=>x.id===wid); if(!w) return;
   w.dayOverrides={...(w.dayOverrides||{})};
   if(val===''||val==null) delete w.dayOverrides[key]; else w.dayOverrides[key]=Math.max(0,Math.round(Number(val)||0));
   if(!Object.keys(w.dayOverrides).length) delete w.dayOverrides;
   autoSave(); renderSalary();
 }
-function setWorkerOtRate(wid,val){ const w=workers.find(x=>x.id===wid); if(w){ w.otRate=(val===''||val==null)?null:(parseFloat(val)||0); autoSave(); } }
-function setWorkerShabbatRate(wid,val){ const w=workers.find(x=>x.id===wid); if(w){ w.shabbatRate=(val===''||val==null)?null:(parseFloat(val)||0); autoSave(); } }
+function setWorkerOtRate(wid,val){ if(hrPayOnly()) return; const w=workers.find(x=>x.id===wid); if(w){ w.otRate=(val===''||val==null)?null:(parseFloat(val)||0); autoSave(); } }
+function setWorkerShabbatRate(wid,val){ if(hrPayOnly()) return; const w=workers.find(x=>x.id===wid); if(w){ w.shabbatRate=(val===''||val==null)?null:(parseFloat(val)||0); autoSave(); } }
 
 // Salary export — Accounting tab's "Export" button opens a format picker
 // (Excel / PDF / CSV); all three share buildSalaryExportRows(), which pairs

@@ -399,6 +399,31 @@ def test_hr_user_create_login_update():
     assert core.list_users(DB, hr)["error"] == core.E_NO_RIGHTS
 
 
+def test_hr_and_supplier_see_pay_by_default_and_hr_commission():
+    rv = Revokes()
+    r = core.create_tenant_user(DB, ADMIN1, {"role": "hr", "username": "hrp", "password": "hr-pass-11",
+                                             "fullName": "Pay HR", "commissionRate": "6.5"})
+    login = core.login(DB, "hrp", "hr-pass-11", mint)
+    assert login["showPay"] is True and login["commissionRate"] == 6.5
+    claims = id_token_claims(login["token"])
+    assert claims["pay"] is True and claims["hrc"] == 6.5
+    row = next(x for x in core.list_users(DB, ADMIN1)["users"] if x["username"] == "hrp")
+    assert row["showPay"] is True and row["commissionRate"] == 6.5
+    # Turning it off or changing the commission is a rights change: a new sign-in.
+    assert core.update_user(DB, ADMIN1, {"id": r["userId"], "showPay": False, "commissionRate": 6.5}, rv)["ok"]
+    assert rv == [(r["userId"], False)]
+    claims = id_token_claims(core.login(DB, "hrp", "hr-pass-11", mint)["token"])
+    assert claims["pay"] is False
+    s = core.create_tenant_user(DB, ADMIN1, {"role": "supplier", "username": "supp", "password": "sup-pass-11",
+                                             "supplierId": "sp1", "commissionRate": 9})
+    u = DB.collection("users").document(s["userId"]).get().to_dict()
+    assert u["showPay"] is True and "commissionRate" not in u
+    assert id_token_claims(core.login(DB, "supp", "sup-pass-11", mint)["token"])["pay"] is True
+    # A staff login carries neither.
+    st = core.create_tenant_user(DB, ADMIN1, {"role": "staff", "username": "stp", "password": "stf-pass-11"})
+    assert "showPay" not in DB.collection("users").document(st["userId"]).get().to_dict()
+
+
 def test_check_worker_doc_answers_only_yes_or_no():
     w = DB.collection("tenants").document(T1).collection("workers")
     w.document("w1").set({"id": "w1", "docId": "012345678", "name": "Secret Name", "hrId": "someone"})

@@ -123,6 +123,16 @@ def test_supplier_sees_only_own_workers_stripped():
     assert "billRate" not in str(r["clients"]) and "lat" not in str(r["clients"]) and r["suppliers"] == []
 
 
+def test_supplier_with_pay_gets_the_pay_inputs_never_billing():
+    r = portal.supplier_action(DB, dict(SUP1, pay=True), {"action": "loadSchedule"})
+    w = r["workers"][0]
+    assert r["showPay"] is True and w["hourlyRate"] == 55 and w["supplierRate"] == 7
+    assert "supplierRates" not in w and "token" not in w and "docUrl" not in w
+    c1 = next(c for c in r["clients"] if c["id"] == "c1")
+    assert c1 == {"id": "c1", "name": "Site A", "object": "Gate 1", "defaultHourlyRate": 70}
+    assert portal.supplier_action(DB, SUP1, {"action": "loadSchedule"})["showPay"] is False
+
+
 def test_supplier_punches_only_own_and_without_gps():
     P(T1, "a").set({"id": "a", "workerId": "w1", "type": "in", "date": "01/10/2026", "dist": 5, "gpsAccuracy": 3,
                     "notes": "x", "ts": __import__("datetime").datetime.now(__import__("datetime").timezone.utc)})
