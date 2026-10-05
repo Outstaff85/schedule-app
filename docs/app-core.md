@@ -91,7 +91,7 @@ Where it is used:
 - **`gateApp(runInitApp)`** decides the screen:
   1. No session → `#loginScreen`, and a warm-up `{ping:true}` to the `login` function; its time is kept in `window.__pingMs`.
   2. A super-admin with no firm picked → `#firmsScreen` (`renderFirmsList()`).
-  3. Otherwise → `renderAccountControl(s)` and the init sequence: `loadData()`, `render()`, `applyNavPermissions()`, `switchTab(homeTab())`, for an owner / super-admin `prefetchAdminUsers()` (the HR names for the worker modal and card), `checkPushStatus`.
+  3. Otherwise → `renderAccountControl(s)` and the init sequence: `loadData()`, `render()`, `applyNavPermissions()`, `switchTab(homeTab())`, `warmCloudFunctions([USERS_ADMIN_FN_URL])` (sends a warm-up `{ping:true}` to `users_admin` so its first real call skips a cold start), `checkPushStatus`.
 - **`submitLogin()`:** `firestore-backend.js` `login()` — the `login` function checks the password and returns a custom token, then the device signs in to Firebase with it. The session is saved, the login timing kept in `sessionStorage.pendingLoginTiming`, and the page reloads.
 - **Firms:** `switchToTenant(tenantId)` (super-admin) sets `viewingTenantId` / Name / Profile and reloads. `backToFirmsList()` has no UI caller.
 - **`logout()`** clears the Firms and admin caches and the session, signs out of Firebase, and reloads.
