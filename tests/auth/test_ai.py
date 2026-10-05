@@ -288,6 +288,21 @@ def test_truncated_read_keeps_the_complete_fields():
     assert "error" in python("aiReadSefach", {"image": "I"}, bad)["result"]
 
 
+def test_sefach_part_asks_for_half_the_answer_with_the_same_cached_prompt():
+    # The app reads a ספח in two parallel halves; both send the full prompt
+    # (one cache entry) and differ only in the closing instruction.
+    full = python("aiReadSefach", {"image": "I"})["request"]["payload"]
+    holder = python("aiReadSefach", {"image": "I", "part": "holder"})["request"]["payload"]
+    family = python("aiReadSefach", {"image": "I", "part": "family"})["request"]["payload"]
+    for p in (holder, family):
+        assert p["messages"][0]["content"][:2] == full["messages"][0]["content"][:2]
+    assert "spouse, children" in family["messages"][0]["content"][2]["text"]
+    assert "address, houseNumber, city" in holder["messages"][0]["content"][2]["text"]
+    # An unknown part is a full read.
+    odd = python("aiReadSefach", {"image": "I", "part": "x"})["request"]["payload"]
+    assert odd == full
+
+
 def test_passport_expiry_comes_from_the_mrz_when_its_check_digit_is_right():
     # ICAO 9303 specimen line 2: expiry 120415, check digit 9.
     line2 = "L898902C36UTO7408122F1204159ZE184226B<<<<<10"

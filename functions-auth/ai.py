@@ -78,10 +78,15 @@ def build_request(action, body, model, align_model):
         # A real ספח answer is ~0.5-1.5k tokens; 3000 leaves room for many
         # children and cuts a runaway answer short (a truncated one is
         # salvaged, _salvage_object).
+        # "part" (holder / family) asks for half of the answer: the app sends
+        # both halves at once, so the answer — what takes the time — is
+        # written in two parallel halves. The long prompt is the same, so
+        # both requests share its cache.
+        part = PROMPTS["readSefachPart"].get(body.get("part")) if body.get("part") else None
         return {"model": model, "max_tokens": 3000, "messages": [{"role": "user", "content": [
             {"type": "text", "text": PROMPTS["readSefach"], "cache_control": {"type": "ephemeral"}},
             _image(body),
-            {"type": "text", "text": "Read this and return the JSON object only."}]}]}, cached
+            {"type": "text", "text": part or "Read this and return the JSON object only."}]}]}, cached
     if action == "aiDetectAlign":
         return {"model": align_model, "max_tokens": 400, "messages": [{"role": "user", "content": [
             {"type": "text", "text": PROMPTS["detectAlign"]}, _image(body),
