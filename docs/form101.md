@@ -50,8 +50,8 @@ Missing firm-profile fields (`firmProfileMissing`) are shown as a toast after th
   - **Hebrew text:** `set_hebrew()` sets the value, blanks the field's own appearance, and draws the text by hand. PyMuPDF has no RTL shaping, so the text goes through `bidi.get_display()` and is right-aligned.
   - **Plain text:** `set_text()` keeps PyMuPDF's own appearance (fine for left-to-right text). `set_text_centered()` draws it centered by hand (the house number).
   - **Digits:** `set_comb(name, value, max_len, size)` — comb fields, one digit per box.
-  - **Checkboxes:** `check(name)` blanks the box and draws a blue tick. The tick is nudged by `NUDGE`, `PAGE1_EXTRA_Y` and `CHECK_EXTRA_UP`; page 2 is nudged down.
-  - **Position fixes:** `FIELD_RECT_NUDGES` moves individual field rects — `worker_phone` +3 pt right, `employer_deductions` +1 pt down. Add new fixes here, not in the template.
+  - **Checkboxes:** `check(name)` blanks the box and draws a blue tick inside the checkbox's own rectangle, with no offset.
+  - **Positions:** every field is filled exactly at its rectangle in the template; fields are moved in the PDF itself. `FIELD_RECT_NUDGES` (move a field's rect in code) is empty.
 - **What is filled:**
   - **Header:** surname and given name; date of birth (`_ddmmyyyy` → 8 boxes, zero-padded); `id_top2`; tax year = the current year.
   - **Employer:** name, address (street + number + city), phone, deductions file — digits only, the last 8 in the 8 boxes (the form prints the leading 9 itself).
