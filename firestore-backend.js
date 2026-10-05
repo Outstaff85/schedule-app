@@ -65,6 +65,17 @@
   // Change signature independent of key order: the app rebuilds objects
   // (applyData puts id/clientIds/token/status first), Firestore returns
   // fields in its own order, and neither is a real change.
+  // A worker's document numbers in one standard form (upper case, letters
+  // and digits only), stored as docKeys so checkWorkerDoc (functions-auth
+  // core.py doc_keys — keep the two the same) finds a duplicate in one query.
+  function docKeysOf(w){
+    const keys = [];
+    ['docId','passportNo','israeliId'].forEach(f => {
+      const k = String((w && w[f]) || '').toUpperCase().replace(/[^\p{L}\p{N}]/gu, '');
+      if(k && !keys.includes(k)) keys.push(k);
+    });
+    return keys;
+  }
   function sig(v){
     if(Array.isArray(v)) return '[' + v.map(sig).join(',') + ']';
     if(v && typeof v === 'object') return '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + sig(v[k])).join(',') + '}';
@@ -150,9 +161,11 @@
         const pos = typeof data.sortIndex === 'number' ? data.sortIndex : 1e9;
         delete data.sortIndex;
         if(data.id == null) data.id = d.id;
+        // docKeys stays in the stored copy (its signature) but not in the app's.
+        map.set(d.id, sig(data) + '#' + pos);
+        if(kind === 'workers') delete data.docKeys;
         items.push({pos, data});
         if(kind === 'workers' && store === known) storedPos.set(d.id, pos);
-        map.set(d.id, sig(data) + '#' + pos);
       });
       items.sort((a,b) => a.pos - b.pos || String(a.data.id).localeCompare(String(b.data.id)));
       return items.map(x => x.data);
@@ -191,6 +204,7 @@
         (data[kind] || []).forEach((item, idx) => {
           if(!item || item.id == null) return;
           const id = String(item.id), body = plain(item);
+          if(kind === 'workers') body.docKeys = docKeysOf(body);
           // An own-workers HR sees only part of the list: its positions are
           // not the firm's. It keeps a worker's stored place; a new one goes last.
           let pos = idx;
@@ -415,17 +429,23 @@
       if(!approver(ctx)) return {error:'Назначать HR может только владелец фирмы или супер-админ'};
       const ids = (Array.isArray(workerIds) ? workerIds : []).map(String).filter(Boolean);
       const val = hrId ? String(hrId) : F.deleteField();
-      let n = 0;
-      for(const wid of ids){
+      // Several workers at once (8 in flight): a bulk assign of dozens of
+      // workers one after another was slow.
+      let n = 0, next = 0;
+      async function one(wid){
         const snap = await F.getDocs(F.query(col(t,'punches'), F.where('workerId','==',wid)));
         const refs = snap.docs.filter(d => (d.data().hrId || null) !== (hrId || null)).map(d => d.ref);
+        const commits = [];
         for(let i = 0; i < refs.length; i += BATCH_LIMIT){
           const batch = F.writeBatch(db);
           refs.slice(i, i + BATCH_LIMIT).forEach(r => batch.update(r, {hrId: val}));
-          await batch.commit();
+          commits.push(batch.commit());
         }
+        await Promise.all(commits);
         n += refs.length;
       }
+      async function lane(){ while(next < ids.length) await one(ids[next++]); }
+      await Promise.all(Array.from({length: Math.min(8, ids.length)}, lane));
       return {ok:true, updated: n};
     }
     // Another firm's punches for the super-admin summary (this week): the

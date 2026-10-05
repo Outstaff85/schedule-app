@@ -182,3 +182,15 @@ A real ID came out with one surname letter wrong: ד read as ר, the classic loo
 The fix (docs/scan.md → Sharper field crops, Merging pages): field crops are cut from the photo as taken, through the page's own geometry steps; a zoomed text read no longer replaces the first read; and the holder's name is picked from every reading — the front's read, its zoomed re-read, the ספח / card back's copy (which `aiReadSefach` now returns) — with the Latin spelling or the MRZ name line, when the document has one, deciding between them.
 
 Tried first and dropped: rebuilding a sharp copy of the whole page from the photo (replay the warps at up to 3200 px), then cropping from it. On a 4x-throttled CPU that took ~4 s per page (the per-pixel warp of the whole card), and for a ספח it would have added to the wait. Cutting only the field regions from the photo takes ~0.5 s for all of a scan's fields.
+
+## Slow ספח read (fixed 2026-10-05)
+The ספח read took 9–11 s, and once 22 s. Two dead ends first:
+- Asking for fewer `fieldBoxes` saves nothing, because the prompt already asks for the address boxes only.
+- Cutting the photo in half is risky: the cut can go through a child's row or the address.
+
+The time goes into writing the long answer, so `readSefachPage` now asks for it in two halves at once (`aiReadSefach` with `part`: holder / family, docs/scan.md). Both halves use the same cached prompt. The cost is under a cent more per scan.
+
+The first version kept a single read for `id_back` pages. The next live scan still waited 22 s, because the align model had classified a paper ספח as `id_back`. So every extra page is now split. The same scan also added `_meta` to `ai_read` replies (time at Anthropic, tries, tokens, docs/backend.md), so that a slow AI call in Timings shows where its time went.
+
+## Form 101 field map rewritten (2026-10-05)
+`docs/form101-field-map.md` still described the browser (pdf-lib) version of the form filling: `addNewCombField`, `stripWidgetChrome`, hand-made boxes such as `id_box` and `tax_year_box`, and the bug trails of that time. The form has been built on the server for a long time (`functions/main.py`, PyMuPDF), and the current template has its own field for every value. The map now lists the template's fields as dumped from the PDF and what `build_form101_pdf()` writes into each. The old text is in git history.

@@ -410,6 +410,13 @@ def test_check_worker_doc_answers_only_yes_or_no():
     assert core.check_worker_doc(DB, hr, {"docId": "999"}) == {"ok": True, "exists": False}
     assert core.check_worker_doc(DB, ADMIN2, {"docId": "012345678"})["exists"] is False  # other firm
     assert core.check_worker_doc(DB, {"uid": "s", "role": "supplier", "tenantId": T1}, {"docId": "1"})["error"] == core.E_NO_RIGHTS
+    # The first check filled docKeys and set the flag; later checks are one query.
+    assert w.document("w2").get().to_dict()["docKeys"] == ["AB1234567"]
+    assert DB.collection("tenants").document(T1).get().to_dict()["docKeysReady"] is True
+    w.document("w3").set({"id": "w3", "passportNo": "X 77", "docKeys": ["X77"]})
+    assert core.check_worker_doc(DB, hr, {"docId": "x77"}) == {"ok": True, "exists": True}
+    assert core.check_worker_doc(DB, hr, {"docId": "x77", "workerId": "w3"}) == {"ok": True, "exists": False}
+    assert core.check_worker_doc(DB, hr, {"docId": "AB1234567"}) == {"ok": True, "exists": True}
 
 
 def test_full_name_for_every_role_and_update_my_name():

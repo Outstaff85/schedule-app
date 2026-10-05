@@ -9,7 +9,7 @@ Project `schedule-odinson`; Firestore and the `functions-auth` functions in **eu
 | Path | Content | Written by |
 |---|---|---|
 | `tenants/{t}` | firm profile: `companyName, deductionsFileNumber, phone, street, streetNumber, city`, `createdAt`, `active`, `workerCount`, `clientCount` | `users_admin`; a `tenant_admin` may update only the profile fields |
-| `tenants/{t}/workers/{id}` | the worker object exactly as the app keeps it, plus `sortIndex` (list position); `hrId` = the HR login it belongs to | the app (`saveSchedule`), the `supplier` function |
+| `tenants/{t}/workers/{id}` | the worker object exactly as the app keeps it, plus `sortIndex` (list position) and `docKeys` (its document numbers in standard form — `docKeysOf` / `doc_keys`, for `checkWorkerDoc`; not kept in the app's copy); `hrId` = the HR login it belongs to | the app (`saveSchedule`), the `supplier` function |
 | `tenants/{t}/clients/{id}`, `…/suppliers/{id}` | same, with `sortIndex` | the app |
 | `tenants/{t}/settings/schedule` | `weekStart`, `savedAt` — copied from the sheets by the old migration; nothing writes it now | — |
 | `tenants/{t}/punches/{id}` | a punch ([accounting.md](accounting.md) → the punch) with `ts` as a Timestamp, `day` (`yyyy-MM-dd`), `archived`, `hrId` (the worker's HR, when it has one); `tsRaw` when a migrated sheet timestamp was unreadable | the app, the `punch` function, an approved hours batch |
@@ -34,7 +34,7 @@ Loaded by `loadFirestoreBackend()` in the manager app and the supplier portal (t
 - `localStorage.fsEmulator` = a host → Firestore 8080, Auth 9099, Storage 9199 (tests);
 - waits for `auth.authStateReady()`.
 
-An own-workers HR login (claims `role:'hr'`, `own:true`, read once per sign-in by `myClaims()`) may only read its own workers and their punches, and the rules check the query: `hrOnly()` gives its uid, and every read of workers, punches and pending hours then adds `where('hrId'|'createdBy', '==', uid)`. `saveSchedule` skips clients / suppliers for an HR without that section (`mayWrite`).
+An own-workers HR's reads are filtered by `hrOnly()` (from `myClaims()`), and `saveSchedule` skips what its sections don't allow (`mayWrite`) — the HR model end to end is in [hr.md](hr.md).
 
 It returns:
 
@@ -93,7 +93,7 @@ Minting custom tokens needs the runtime service account to hold "Service Account
   - `updateUser` (`role` — between staff / hr / supplier only, with the same requirements as on create: a supplier needs `supplierId`, an HR a name; `permissions`, `supplierId`, `active`, for HR `ownOnly` — compared with the stored values, and only a real change revokes the user's sessions; `fullName` / `phone` for every role, never revoking — an HR's name can't be emptied). A `tenant_admin` / `superadmin` target takes only `fullName` / `phone` (any rights field → `E_ADMIN_TARGET`).
   - `resetUserPassword` (any user of the firm, the owner included; revokes), `deleteUser` (refuses a `tenant_admin` / `superadmin` target; deletes the Auth user). Another firm's user is always refused.
 - **`updateMyName`** (`{fullName}`, any signed-in user, owner and super-admin included): sets the caller's own `fullName`; an HR's can't be empty.
-- **`checkWorkerDoc`** (superadmin, tenant_admin, staff, hr; `{docId, workerId?}`): is a worker with this document number (`docId`, `passportNo` or `israeliId`, compared on letters and digits only) already in the caller's firm, other than `workerId` — `{ok, exists}`, nothing else, so an own-workers HR learns no other worker's data.
+- **`checkWorkerDoc`** (superadmin, tenant_admin, staff, hr; `{docId, workerId?}`): is a worker with this document number (`docId`, `passportNo` or `israeliId`, compared on letters and digits only) already in the caller's firm, other than `workerId` — `{ok, exists}`, nothing else, so an own-workers HR learns no other worker's data. It is one `array_contains` query on `docKeys` once the firm doc has `docKeysReady`; the firm's first check reads every worker instead, writes the missing `docKeys` and sets that flag. The app's `saveSchedule` and the supplier portal write `docKeys` on every worker save.
 - **Firms** (superadmin): `createUser` (a new firm + its `tenant_admin`, whose `fullName` is `ownerName`; profile strings stay strings, so no leading-zero loss), `listTenants` (profile, active, worker/client counts by aggregation, `savedAt`), `setTenantActive` (the firm and all its users; deactivation revokes their sessions), `deleteTenant` (recursive delete of `tenants/{t}`, its users, secrets and usernames; `main.py` then deletes every Storage object under `tenants/<t>/` and reports `removed.files`). `updateTenant` — superadmin or the firm's own `tenant_admin`. `loadTenantProfile`.
 
 ### `files.py` — reading and deleting Storage files
@@ -184,7 +184,7 @@ Both answer `{"ping":true}` at once (warm-up) and parse the body with `force=Tru
 
 **`firestore.rules`** — identities come from the custom-token claims.
 - `manager(t)` = superadmin, or a `tenant_admin` / `staff` of firm `t`, or an `hr` of firm `t` without `own` (`hrAll`). A supplier never reads Firestore directly (wages and GPS can't be hidden field by field) — it goes through `supplier`.
-- HR (`isHr`, `hrMine` = with `own`, `hrAll` = without, `hrCan(t, section)`): workers are written by an HR with `workers` or `schedule`; `hrMine` only reads, updates and deletes workers whose `hrId` is its uid and creates them only with its own `hrId`; `hrAll` may create with no `hrId` or its own; **no HR changes a worker's `hrId`**. `hrMine` reads / writes punches whose `hrId` is its uid, reads its own pendingHours (`createdBy`). Any HR reads the firm doc, clients, suppliers and settings; clients / suppliers are written with the `clients` / `suppliers` section.
+- HR (`isHr`, `hrMine` = with `own`, `hrAll` = without, `hrCan(t, section)`): an own-workers HR reaches only workers and punches whose `hrId` is its uid, and **no HR changes a worker's `hrId`** — the full HR rules are in [hr.md](hr.md) → Enforcement.
 - `tenants/{t}`: read by managers; update by a superadmin, or by its `tenant_admin` touching only the profile fields; create/delete superadmin.
 - workers, clients, suppliers, settings: read by managers; write by superadmin, `tenant_admin`, or staff with `schedule` — so a staff login without `schedule` gets `gsSave()` → false.
 - punches: read and write by any manager of the firm.
@@ -192,7 +192,7 @@ Both answer `{"ping":true}` at once (warm-up) and parse the body with `force=Tru
 - `users/{uid}`: read by the user, a superadmin, or that firm's `tenant_admin`; never written by clients. `authSecrets`, `usernames`, `workerTokens`, `pushSubscriptions`: functions only.
 - `errors`, `timings`: create by anyone signed in, read by a superadmin.
 
-**`storage.rules`** — `tenants/{t}/**`: read by managers of the firm (`hrAll` included); create/update by superadmin, `tenant_admin`, or staff / hr with `workers`; delete by those, except an own-workers HR (it deletes through `users_admin`); files under 25 MB. An own-workers HR must put its uid in the file's `hrId` metadata and reads back only files carrying it.
+**`storage.rules`** — `tenants/{t}/**`: read by managers of the firm (`hrAll` included); create/update by superadmin, `tenant_admin`, or staff / hr with `workers`; delete by those, except an own-workers HR (it deletes through `users_admin`); files under 25 MB. An own-workers HR stamps and reads back only files with its uid in `hrId` metadata ([hr.md](hr.md)).
 
 ## Tests
 

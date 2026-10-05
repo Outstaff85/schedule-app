@@ -1377,30 +1377,32 @@ function israeliDayPay(hours, rate, isSat){
 // most specific wins, each tier optional, falling through to the next:
 //   1. worker.clientRates[clientId] — this worker's own override for this
 //      specific client (set in the Accounting rate matrix).
-//   2. client.defaultHourlyRate/defaultOtRate/defaultShabbatRate — this
-//      client's own standard rate, if it has one.
-//   3. the worker's own base rate — hourlyRate, or its regRate/otRate/
-//      shabbatRate override — exactly as before this feature existed.
-// clientId is optional; omitting it (or a worker/client with no override at
-// any tier) falls straight through to tier 3, so this is a no-op for anyone
-// not using per-client rates. `has*Override` tells shiftPay() whether an
+//   2. the worker's own rate — hourlyRate (or the older regRate), otRate,
+//      shabbatRate — set in the worker modal or Accounting → Salary. It
+//      changes this worker only (user decision 2026-10-05).
+//   3. client.defaultHourlyRate/defaultOtRate/defaultShabbatRate — the
+//      client's rate, shared by every worker there without a rate of their own.
+// Each of the three rates resolves on its own. `src` says which tier gave the
+// regular rate: 'override' / 'worker' / 'client' / '' (none). `has*Override` tells shiftPay() whether an
 // explicit flat OT/Shabbat rate was found at ANY tier (vs falling back to
 // the israeliDayPay law tiers) — the three tiers can't be told apart just by
 // comparing the resolved number to a law-tier calculation.
 function effectiveRates(w, clientId){
   const ov = clientId && w && w.clientRates && w.clientRates[clientId];
   const cl = clientId && clients.find(c=>c.id===clientId);
-  const base = Number(w&&w.hourlyRate)||0;
-  const pick=(ovVal,clVal,wVal,fallback)=>{
-    if(ovVal!=null&&ovVal!=='') return {val:Number(ovVal),has:true};
-    if(clVal!=null&&clVal!=='') return {val:Number(clVal),has:true};
-    if(wVal!=null&&wVal!=='') return {val:Number(wVal),has:true};
-    return {val:fallback,has:false};
+  const set=v=>v!=null&&v!=='';
+  const own = set(w&&w.regRate) ? w.regRate : (Number(w&&w.hourlyRate)>0 ? w.hourlyRate : null);
+  const pick=(ovVal,wVal,clVal,fallback)=>{
+    if(set(ovVal)) return {val:Number(ovVal),has:true,src:'override'};
+    if(set(wVal)) return {val:Number(wVal),has:true,src:'worker'};
+    if(set(clVal)) return {val:Number(clVal),has:true,src:'client'};
+    return {val:fallback,has:false,src:''};
   };
-  const reg  = pick(ov&&ov.rate,        cl&&cl.defaultHourlyRate,  w&&w.regRate,     base);
-  const ot   = pick(ov&&ov.otRate,      cl&&cl.defaultOtRate,      w&&w.otRate,      Math.round(reg.val*PAY_RULES.otMult*100)/100);
-  const shab = pick(ov&&ov.shabbatRate, cl&&cl.defaultShabbatRate, w&&w.shabbatRate, Math.round(reg.val*PAY_RULES.shabbatMult*100)/100);
-  return {regRate:reg.val, otRate:ot.val, shabbatRate:shab.val, hasOtOverride:ot.has, hasShabbatOverride:shab.has};
+  const reg  = pick(ov&&ov.rate,        own,             cl&&cl.defaultHourlyRate,  0);
+  const ot   = pick(ov&&ov.otRate,      w&&w.otRate,      cl&&cl.defaultOtRate,      Math.round(reg.val*PAY_RULES.otMult*100)/100);
+  const shab = pick(ov&&ov.shabbatRate, w&&w.shabbatRate, cl&&cl.defaultShabbatRate, Math.round(reg.val*PAY_RULES.shabbatMult*100)/100);
+  return {regRate:reg.val, otRate:ot.val, shabbatRate:shab.val, hasOtOverride:ot.has, hasShabbatOverride:shab.has,
+    src:reg.src, otSrc:ot.src, shabbatSrc:shab.src};
 }
 function wRegRate(w,clientId){ return effectiveRates(w,clientId).regRate; }
 function wOtRate(w,clientId){ return effectiveRates(w,clientId).otRate; }
@@ -2089,7 +2091,7 @@ async function rescanFromWorkerModal(){
     vals[el.id]=(el.type==='checkbox'||el.type==='radio')?{checked:el.checked}:el.value;
   });
   const cv=document.getElementById('wSigCanvas');
-  window.__wDraft={vals,children:__wChildren.map(c=>({...c})),clientIds:[...__wClientIds],avatar:__wAvatarB64,
+  window.__wDraft={vals,rateManual:document.getElementById('wRate')?.dataset.manual==='1',children:__wChildren.map(c=>({...c})),clientIds:[...__wClientIds],avatar:__wAvatarB64,
     colorIdx:selColorIdx,sig:cv&&cv._sigDirty?cv.toDataURL('image/png'):null};
   warmCloudFunctions(SCAN_WARM_URLS());
   try{ await ensureScanPipelineLoaded(); }
@@ -2111,7 +2113,10 @@ function applyWorkerDraft(){
     if(v&&typeof v==='object'){ el.checked=v.checked; continue; }
     if(v!==''&&v!=null){ el.value=v; _clearScanCheck(el); }
   }
+  const rateEl=document.getElementById('wRate');
+  if(rateEl){ if(d.rateManual) rateEl.dataset.manual='1'; else delete rateEl.dataset.manual; }
   if(d.children.length){ __wChildren=d.children; renderChildrenRows(); }
+  syncWRate();
   if(d.clientIds.length){ __wClientIds=d.clientIds.filter(id=>clients.some(c=>c.id===id)); renderWClientChips(); }
   if(d.avatar&&!__wAvatarB64){
     __wAvatarB64=d.avatar;
@@ -2186,6 +2191,35 @@ function renderWClientChips(){
       <button type="button" onclick="removeWClient('${esc(c.id)}')" title="Remove" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:0 2px;font-size:14px;line-height:1">&times;</button>
     </span>`).join('');
   const cnt=document.getElementById('wClientCount'); if(cnt) cnt.textContent=sel.length?('('+sel.length+')'):'';
+  syncWRate();
+}
+// The worker modal's hourly rate. A worker without a rate of their own shows
+// the rate of their last-added client that has one (filled in, "client rate"
+// under it) and follows it as the clients change; such a worker is saved
+// with no rate of their own, so a later change of the client's rate reaches
+// them. A rate typed by hand (data-manual) is the worker's own: it wins over
+// the client's, for this worker only (effectiveRates). Emptying it goes back
+// to the client's.
+function wOwnRate(w){
+  if(!w) return '';
+  if(w.regRate!=null&&w.regRate!=='') return w.regRate;
+  return Number(w.hourlyRate)>0?w.hourlyRate:'';
+}
+// The client whose rate applies: the last-added one that has a rate.
+function wClientRateSource(){
+  return __wClientIds.map(id=>clients.find(c=>c.id===id)).filter(c=>c&&c.defaultHourlyRate!=null&&c.defaultHourlyRate!=='').pop()||null;
+}
+function syncWRate(){
+  const el=document.getElementById('wRate'), hint=document.getElementById('wRateHint'); if(!el) return;
+  const cl=wClientRateSource();
+  if(el.dataset.manual!=='1') el.value=cl?cl.defaultHourlyRate:'';
+  if(hint) hint.textContent=el.dataset.manual==='1'
+    ? (cl?'This worker\'s own rate (client\'s: ₪'+cl.defaultHourlyRate+')':'')
+    : (cl?'Client rate · '+cl.name:'');
+}
+function onWRateInput(el){
+  if(el.value==='') delete el.dataset.manual; else el.dataset.manual='1';
+  syncWRate();
 }
 function wClientMatches(){
   const q=(document.getElementById('wClientSearch')?.value||'').trim().toLowerCase();
@@ -2202,7 +2236,13 @@ function renderWClientSuggest(){
 }
 function hideWClientSuggest(){ const box=document.getElementById('wClientSuggest'); if(box) box.style.display='none'; }
 function addWClient(id){
-  if(!__wClientIds.includes(id)) __wClientIds.push(id);
+  if(!__wClientIds.includes(id)){
+    __wClientIds.push(id);
+    // Moved to a new client that has a rate: its rate is the default again,
+    // replacing a rate typed for the previous client (it can be typed over).
+    const cl=clients.find(c=>c.id===id), el=document.getElementById('wRate');
+    if(el&&cl&&cl.defaultHourlyRate!=null&&cl.defaultHourlyRate!=='') delete el.dataset.manual;
+  }
   const inp=document.getElementById('wClientSearch'); if(inp){ inp.value=''; inp.focus(); }
   renderWClientChips(); renderWClientSuggest();
 }
@@ -2488,7 +2528,7 @@ function showWorkerModal(w){
       <div class="field"><label>עיר</label><input type="text" id="wCity" value="${esc(w.city||'')}" placeholder="עיר"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>תעריף שעתי (₪/שעה)</label><input type="number" id="wRate" value="${w.hourlyRate||''}" placeholder="לדוגמה: 35" min="0" step="0.5"></div>
+      <div class="field"><label>תעריף שעתי (₪/שעה)</label><input type="number" id="wRate" value="${esc(wOwnRate(w))}" ${wOwnRate(w)!==''?'data-manual="1"':''} placeholder="לדוגמה: 35" min="0" step="0.5" oninput="onWRateInput(this)"><div id="wRateHint" style="font-size:11px;color:var(--text3);margin-top:3px"></div></div>
       <div class="field"><label>Travel ₪ / day</label><input type="number" id="wTravelAllowance" value="${w.travelAllowance||''}" placeholder="0" min="0" step="0.5"></div>
     </div>
     <div class="field-row">
@@ -2666,7 +2706,9 @@ async function saveWorker(){
   const name=(docGiven+' '+docSurname).trim();
   if(!name){ document.getElementById('wGiven').focus(); return; }
   const phone=document.getElementById('wPhone').value.trim();
-  const hourlyRate=parseFloat(document.getElementById('wRate')?.value)||0;
+  // Only a rate typed by hand is the worker's own (syncWRate).
+  const rateEl=document.getElementById('wRate');
+  const hourlyRate=rateEl&&rateEl.dataset.manual==='1'?(parseFloat(rateEl.value)||0):0;
   const travelAllowance=parseFloat(document.getElementById('wTravelAllowance')?.value)||0;
   // Status is set on the worker card (setWorkerStatus), not in this form.
   const status=editingWorkerIdx!==null?(workers[editingWorkerIdx].status||'active'):'active';
@@ -2716,7 +2758,7 @@ async function saveWorker(){
     : (editingWorkerIdx!==null
         ? workers[editingWorkerIdx].schedule
         : DAYS.map(()=>({type:'off',start:null,end:null})));
-  const commonFields={name,colorIdx:selColorIdx,phone,hourlyRate,travelAllowance,status,startDate,workStartDate,docSex,
+  const commonFields={name,colorIdx:selColorIdx,phone,hourlyRate,regRate:null,travelAllowance,status,startDate,workStartDate,docSex,
     expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,houseNumber,city,docDob,docExpiry,notes,
     incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,docChildren,clientIds,schedule,
     spouseSurname,spouseGiven,spouseId,spouseDob,spouseIncome,
@@ -4766,9 +4808,14 @@ function openCreateUserForm(){
   document.getElementById('userFormOverlay').classList.add('open');
 }
 async function openEditUserForm(id){
-  const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'listUsers', ...gsAuth() }) });
-  const json = await res.json();
-  const u = (json.users||[]).find(x => x.id === id);
+  // From the list the Users pane just drew (its cache) — no server round
+  // trip; the server is asked only when the row isn't there.
+  const cachedUsers = loadAdminCache('users_'+activeTenantIdForAdmin());
+  let u = Array.isArray(cachedUsers) ? cachedUsers.find(x => x.id === id) : null;
+  if(!u){
+    const json = await fetchAdminUsers();
+    u = ((json && json.users) || []).find(x => x.id === id);
+  }
   if(!u){ showToast('User not found'); return; }
   __editingUserId = id;
   document.getElementById('userFormTitle').textContent = 'Edit ' + u.username;
@@ -5983,7 +6030,7 @@ function renderSalary(){
   const byWorker={};
   const byClient={};
   Object.values(byWorkerDay).forEach(({worker,workerId,date,entries})=>{
-    if(!byWorker[workerId]) byWorker[workerId]={worker,workerId,hours:0,days:0,regH:0,otH:0,shabH:0,total:0,travel:0,warns:[]};
+    if(!byWorker[workerId]) byWorker[workerId]={worker,workerId,hours:0,days:0,regH:0,otH:0,shabH:0,total:0,travel:0,warns:[],clientHours:{}};
     const _res=analyzeDayPunches(entries,date);
     const _dstr=date.toLocaleDateString('en-GB');
     _res.warnings.forEach(wn=> byWorker[workerId].warns.push(_dstr+': '+wn));
@@ -6002,6 +6049,7 @@ function renderSalary(){
       // correctly, even though this table shows one summed row per worker.
       const cid=entries[0]&&entries[0].clientId;
       byWorker[workerId].total+=shiftPay(h,wc,isSat,cid);
+      if(cid) byWorker[workerId].clientHours[cid]=(byWorker[workerId].clientHours[cid]||0)+h;
       // Billable-by-client — a parallel, independent figure (see
       // clientBillPay()'s own comment); never derived from/feeding the
       // worker's own wage line above.
@@ -6057,14 +6105,22 @@ function renderSalary(){
         </tfoot>
       </table>
       </div>
-      <div style="padding:8px 12px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">₪/hour rates are editable manually. Default: Regular = base rate · OT = ×${PAY_RULES.otMult} · Shabbat = ×${PAY_RULES.shabbatMult}. Hours: Regular ≤8h/day, above that — OT; Saturday — at the Shabbat rate. Travel = worker's flat per-work-day travel allowance.</div>
+      <div style="padding:8px 12px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">₪/hour: the worker's own rates — an edit changes this worker only. Empty = the client's rate (grey, "client" under it; the client's rate is changed in the client card), else OT = Regular ×${PAY_RULES.otMult} · Shabbat = ×${PAY_RULES.shabbatMult}. A worker's rate at one client only is set in the rate matrix below. Hours: Regular ≤8h/day, above that — OT; Saturday — at the Shabbat rate. Travel = worker's flat per-work-day travel allowance.</div>
     </div>`;
   // The totals row covers every worker; the rows are paged (renderPagedList).
   renderPagedList(salaryEl.querySelector('.salary-rows'),'salary',period,entries,(e,i)=>{
             const wc=workers.find(w=>w.id===e.workerId);
             const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
-            const base=wc?.hourlyRate||0;
-            const regRate=wRegRate(wc), otRate=wOtRate(wc), shabRate=wShabRate(wc);
+            // The rates shown are those of the client this worker had most
+            // hours at. The inputs hold the worker's own rates; empty = the
+            // client's (placeholder, "client" under it). An edit changes this
+            // worker only — the client's rate is edited in the client card.
+            const mainCid=Object.entries(e.clientHours||{}).sort((a,b)=>b[1]-a[1]).map(x=>x[0])[0]||(wc&&wc.clientIds||[])[0]||'';
+            const mainCl=mainCid&&clients.find(c=>c.id===mainCid);
+            const er=wc?effectiveRates(wc,mainCid):{regRate:0,otRate:0,shabbatRate:0};
+            const ownReg=wc?(wc.regRate!=null&&wc.regRate!==''?wc.regRate:(Number(wc.hourlyRate)>0?wc.hourlyRate:'')):'';
+            const ownOt=wc&&wc.otRate!=null?wc.otRate:'', ownShab=wc&&wc.shabbatRate!=null?wc.shabbatRate:'';
+            const srcTag=src=>src==='client'?`<div style="font-size:10px;color:var(--text3);margin-top:2px">client${mainCl?' · '+esc(mainCl.name):''}</div>`:src==='override'?`<div style="font-size:10px;color:var(--text3);margin-top:2px">rate matrix</div>`:'';
             const ini=wc?workerAvatarInner(wc):esc(e.worker.slice(0,2).toUpperCase());
             return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
               <td style="padding:10px 12px">
@@ -6076,19 +6132,19 @@ function renderSalary(){
               </td>
               <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${e.hours.toFixed(1)}h</td>
               <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${regRate}" min="0" step="0.5" title="Base rate (Regular ×1.0)"
+                <input type="number" value="${esc(ownReg)}" placeholder="${esc(er.regRate)}" min="0" step="0.5" title="This worker's rate (Regular ×1.0) · empty = the client's rate"
                   onchange="setWorkerRate('${e.workerId}',this.value);renderSalary()"
-                  style="width:66px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+                  style="width:66px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">${srcTag(er.src)}
               </td>
               <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${otRate}" min="0" step="0.5" title="OT rate ₪/hour · default base ×${PAY_RULES.otMult}"
+                <input type="number" value="${esc(ownOt)}" placeholder="${esc(er.otRate)}" min="0" step="0.5" title="OT rate ₪/hour · empty = the client's, else base ×${PAY_RULES.otMult}"
                   onchange="setWorkerOtRate('${e.workerId}',this.value);renderSalary()"
-                  style="width:66px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+                  style="width:66px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:right;outline:none">${srcTag(er.otSrc)}
               </td>
               <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${shabRate}" min="0" step="0.5" title="Shabbat rate ₪/hour · default base ×${PAY_RULES.shabbatMult}"
+                <input type="number" value="${esc(ownShab)}" placeholder="${esc(er.shabbatRate)}" min="0" step="0.5" title="Shabbat rate ₪/hour · empty = the client's, else base ×${PAY_RULES.shabbatMult}"
                   onchange="setWorkerShabbatRate('${e.workerId}',this.value);renderSalary()"
-                  style="width:66px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+                  style="width:66px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">${srcTag(er.shabbatSrc)}
               </td>
               <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)">
                 ${e.travel>0?'₪'+e.travel.toFixed(0):'—'}
@@ -6339,7 +6395,7 @@ function renderRateMatrix(){
               <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.w.name)}</td>
               <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${esc(r.cl.name)}</td>
               <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${eff.regRate}" title="Empty = ${eff.regRate} (client rate or base)"
+                <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${eff.regRate}" title="Empty = ${eff.regRate} (the worker's own rate, else the client's)"
                   onchange="setClientRateOverride('${r.w.id}','${r.cl.id}','rate',this.value)"
                   style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
@@ -6425,9 +6481,11 @@ function setSupplierRateOverride(wid,sid,field,val){
   renderSupplierPayable(__lastSalaryEntries||[]);
 }
 
+// This worker's own regular rate (empty = none: the client's rate applies).
+// The older regRate field is cleared so the edit is what counts.
 function setWorkerRate(wid,rate){
   const w=workers.find(x=>x.id===wid);
-  if(w){ w.hourlyRate=parseFloat(rate)||0; autoSave(); }
+  if(w){ w.hourlyRate=parseFloat(rate)||0; if(w.regRate!=null) w.regRate=null; autoSave(); }
 }
 function setWorkerOtRate(wid,val){ const w=workers.find(x=>x.id===wid); if(w){ w.otRate=(val===''||val==null)?null:(parseFloat(val)||0); autoSave(); } }
 function setWorkerShabbatRate(wid,val){ const w=workers.find(x=>x.id===wid); if(w){ w.shabbatRate=(val===''||val==null)?null:(parseFloat(val)||0); autoSave(); } }
@@ -6811,15 +6869,27 @@ function wirePagedMore(el, key, items, rowHtml, opts){
 // counts, and each input allows one page at most: the browser also fires
 // scroll when a page's height changes after a redraw, which would otherwise
 // chain-load page after page.
-let __pagedScrollQueued = false, __pagedUserAt = 0;
+// __pagedUp: the last input moved up (wheel up, finger down, ArrowUp…) —
+// then nothing loads, even with "Show more" in view.
+let __pagedScrollQueued = false, __pagedUserAt = 0, __pagedUp = false, __pagedTouchY = null;
 ['wheel','touchstart','touchmove','touchend','keydown','pointerdown'].forEach(t =>
   window.addEventListener(t, e => {
     __pagedUserAt = Date.now();
     // A downward wheel / swipe / key while "Show more" is already in view
     // loads the next page too: when the page is short enough not to scroll
     // (a short list on a big screen) no scroll event would ever come.
-    const down = t === 'touchmove' || (t === 'wheel' && e.deltaY > 0)
-      || (t === 'keydown' && ['ArrowDown','PageDown','End',' '].includes(e.key));
+    let down = false;
+    if(t === 'touchstart'){ __pagedTouchY = e.touches && e.touches[0] ? e.touches[0].clientY : null; __pagedUp = false; }
+    else if(t === 'touchmove' && e.touches && e.touches[0] && __pagedTouchY != null){
+      const y = e.touches[0].clientY;
+      if(Math.abs(y - __pagedTouchY) > 4){ __pagedUp = y > __pagedTouchY; down = !__pagedUp; __pagedTouchY = y; }
+    }
+    else if(t === 'wheel' && e.deltaY){ __pagedUp = e.deltaY < 0; down = !__pagedUp; }
+    else if(t === 'keydown'){
+      if(['ArrowDown','PageDown','End',' '].includes(e.key)){ __pagedUp = false; down = true; }
+      else if(['ArrowUp','PageUp','Home'].includes(e.key)) __pagedUp = true;
+    }
+    else if(t === 'pointerdown' && e.pointerType === 'mouse') __pagedUp = false;
     if(down) _pagedOnScroll();
   }, {capture:true, passive:true}));
 function _pagedVisibleBottom(node){
@@ -6831,7 +6901,7 @@ function _pagedVisibleBottom(node){
   return bottom;
 }
 function _pagedOnScroll(){
-  if(__pagedScrollQueued || !__pagedUserAt || Date.now() - __pagedUserAt > 1500) return;
+  if(__pagedScrollQueued || __pagedUp || !__pagedUserAt || Date.now() - __pagedUserAt > 1500) return;
   __pagedScrollQueued = true;
   requestAnimationFrame(() => {
     __pagedScrollQueued = false;
