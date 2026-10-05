@@ -221,6 +221,11 @@ def ai_read(req: https_fn.Request) -> https_fn.Response:
     if decoded.get("role") not in ("superadmin", "tenant_admin", "staff", "hr"):
         return _json({"error": "Недоступно для роли поставщика"})
     try:
-        return _json(ai.run(str(body.get("action") or ""), body, (ANTHROPIC_API_KEY.value or "").strip(), _anthropic_post))
+        meta = {}
+        result = ai.run(str(body.get("action") or ""), body, (ANTHROPIC_API_KEY.value or "").strip(), _anthropic_post, meta=meta)
+        # How the call went, for the app's Timings pane (ai.run's meta).
+        if meta.get("tries"):
+            result["_meta"] = meta
+        return _json(result)
     except Exception as e:
         return _json({"error": str(e)}, 500)

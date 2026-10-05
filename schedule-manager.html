@@ -4265,7 +4265,10 @@ const SESSION_EXPIRED_ERROR = 'Сессия истекла или недейст
     if(json == null) json = {error: 'Unknown action: ' + action};
     const quiet = NO_LOGOUT_ACTIONS.indexOf(action) !== -1;
     const ms = Date.now() - t0;
-    if(!quiet && ms >= SLOW_API_CALL_MS) try{ reportTiming('gs:' + action, ms, {}); }catch(e){}
+    // An AI call's reply carries _meta (time at Anthropic, tries, tokens) — kept with the measurement.
+    const meta = json && json._meta && typeof json._meta === 'object' ? json._meta : null;
+    if(meta) delete json._meta;
+    if(!quiet && ms >= SLOW_API_CALL_MS) try{ reportTiming('gs:' + action, ms, Object.assign({}, meta || {}, params.part ? {part: String(params.part)} : {})); }catch(e){}
     if(!quiet && json && json.error === SESSION_EXPIRED_ERROR && getSession()){
       clearSession();
       showToast('Сессия истекла — войдите заново');
@@ -5173,13 +5176,23 @@ const TIMING_KIND_LABEL={login:'Login → fresh data',open:'App open',scan:'Scan
 function timingKindLabel(k){ return TIMING_KIND_LABEL[k] || (String(k).indexOf('gs:')===0 ? 'Slow call: '+k.slice(3) : k); }
 let __timingsRows=[], __timingsSummaryText='', __timingsSummary=[];
 function _timingFirmName(id){ const firms=(__firmsCache&&__firmsCache.length)?__firmsCache:(loadFirmsCache()||[]); const t=firms.find(x=>x.tenantId===id); return t?(t.companyName||id):(id||'—'); }
-function _timingSteps(kind,d){ return (TIMING_PHASES[kind]||[]).map(([key,label])=>typeof d[key]==='number'?[label,d[key]]:null).filter(Boolean); }
+// A slow AI call (gs:ai…) carries ai_read's _meta: the time spent at
+// Anthropic and in retry pauses, the tries and the token counts.
+const TIMING_AI_PHASES=[['apiMs','Anthropic'],['waitMs','Retry pauses']];
+const _timingPhases=kind=>TIMING_PHASES[kind]||(String(kind).indexOf('gs:ai')===0?TIMING_AI_PHASES:[]);
+function _timingSteps(kind,d){ return _timingPhases(kind).map(([key,label])=>typeof d[key]==='number'?[label,d[key]]:null).filter(Boolean); }
+function _timingAiNote(d){
+  return [d.part?'part '+d.part:'',d.tries>1?d.tries+' tries':'',typeof d.outTok==='number'?'out '+d.outTok+' tok':'',
+    typeof d.inTok==='number'?'in '+d.inTok+' tok':'',d.cacheReadTok?'cache read '+d.cacheReadTok:'',d.cacheWriteTok?'cache write '+d.cacheWriteTok:'',
+    d.stop&&d.stop!=='end_turn'?'stop '+d.stop:''].filter(Boolean).join(' · ');
+}
 // One measurement as plain text (what the per-row copy button copies).
 function timingRowText(r){
   const d=r.details||{};
   const steps=_timingSteps(r.kind,d).map(([l,v])=>`${l} ${_sec(v)}`).join(' · ');
   const head=[new Date(r.when).toLocaleString(),timingKindLabel(r.kind),_timingFirmName(r.tenantId),r.user||'',d.device||'',d.pages?d.pages+' page(s)':'',d.aborted||''].filter(Boolean).join(' · ');
-  return head+'\n'+_sec(r.totalMs)+(steps?' — '+steps:'')+(d.kinds?'\nPage kinds: '+d.kinds.join(', '):'');
+  const note=_timingAiNote(d);
+  return head+'\n'+_sec(r.totalMs)+(steps?' — '+steps:'')+(note?' — '+note:'')+(d.kinds?'\nPage kinds: '+d.kinds.join(', '):'');
 }
 function copyTimingRow(i){ const r=__timingsRows[i]; if(r) copyTextToClipboard(timingRowText(r)); }
 function copyAllTimings(){
@@ -5194,7 +5207,7 @@ function _timingsSummary(rows){
     .concat([...new Set(done.map(r=>r.kind).filter(k=>String(k).indexOf('gs:')===0))].sort());
   return kinds.map(k=>{
     const rs=done.filter(r=>r.kind===k), tot=rs.map(r=>r.totalMs);
-    const steps=(TIMING_PHASES[k]||[]).map(([key,label])=>{ const v=rs.map(r=>r.details&&r.details[key]).filter(x=>typeof x==='number'); return v.length?[label,_pct(v,0.5)]:null; }).filter(Boolean);
+    const steps=_timingPhases(k).map(([key,label])=>{ const v=rs.map(r=>r.details&&r.details[key]).filter(x=>typeof x==='number'); return v.length?[label,_pct(v,0.5)]:null; }).filter(Boolean);
     return {kind:k,label:timingKindLabel(k),count:rs.length,median:_pct(tot,0.5),p90:_pct(tot,0.9),steps};
   });
 }
@@ -5215,7 +5228,7 @@ function renderTimingsPane(el,rows){
   // A run slower than its kind's 90% is marked amber.
   const rowHtml=(r,i)=>{
     const d=r.details||{}, slow=p90[r.kind]!=null&&r.totalMs>p90[r.kind];
-    const steps=_timingSteps(r.kind,d).map(([l,v])=>`${esc(l)} ${_sec(v)}`).join(' · ');
+    const steps=[..._timingSteps(r.kind,d).map(([l,v])=>`${esc(l)} ${_sec(v)}`),esc(_timingAiNote(d))].filter(Boolean).join(' · ');
     return `<div class="log-row">
       <button class="btn sm log-copy" title="Copy" onclick="copyTimingRow(${i})"><i class="ti ti-copy"></i></button>
       <div class="log-main"><span class="log-when">${esc(_shortWhen(r.when))}</span> &nbsp;<b>${esc(timingKindLabel(r.kind))}</b> &nbsp;<b style="color:${slow?'var(--amber)':'var(--text)'}">${_sec(r.totalMs)}</b>${d.aborted?` <span style="color:var(--amber)">${esc(d.aborted)}</span>`:''}</div>

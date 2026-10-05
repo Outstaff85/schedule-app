@@ -155,7 +155,9 @@ def test_http_ai_read(monkeypatch):
     assert "поставщика" in _call(main.ai_read, {"action": "aiReadDoc", "image": "I"}, {"Authorization": "Bearer " + sup})[1]["error"]
     staff = _id_token("u-st", {"role": "staff", "tenantId": "t", "perms": ["workers"]})
     status, r = _call(main.ai_read, {"action": "aiReadDoc", "image": "I", "token": "gs"}, {"Authorization": "Bearer " + staff})
+    meta = r.pop("_meta")
     assert status == 200 and r == {"ok": True, "parsed": {"type": "passport"}}
+    assert meta["tries"] == 1 and meta["waitMs"] == 0
     assert sent[0][1]["x-api-key"] == "sk-test" and sent[0][0]["messages"][0]["content"][1]["source"]["data"] == "I"
 
 
@@ -301,6 +303,18 @@ def test_sefach_part_asks_for_half_the_answer_with_the_same_cached_prompt():
     # An unknown part is a full read.
     odd = python("aiReadSefach", {"image": "I", "part": "x"})["request"]["payload"]
     assert odd == full
+
+
+def test_meta_reports_tries_pauses_and_tokens(monkeypatch):
+    monkeypatch.setattr(ai, "_sleep", lambda s: None)
+    replies = iter([(529, '{"error":{"type":"overloaded_error"}}'),
+                    (200, '{"content":[{"type":"text","text":"{}"}],"stop_reason":"end_turn",'
+                          '"usage":{"input_tokens":120,"output_tokens":45,"cache_read_input_tokens":2900}}')])
+    meta = {}
+    r = ai.run("aiReadSefach", {"image": "I"}, "KEY", lambda u, p, h: next(replies), MODEL, ALIGN, meta=meta)
+    assert r["ok"]
+    assert meta["tries"] == 2 and meta["waitMs"] == 1500 and isinstance(meta["apiMs"], int)
+    assert meta["outTok"] == 45 and meta["inTok"] == 120 and meta["cacheReadTok"] == 2900 and meta["stop"] == "end_turn"
 
 
 def test_passport_expiry_comes_from_the_mrz_when_its_check_digit_is_right():
