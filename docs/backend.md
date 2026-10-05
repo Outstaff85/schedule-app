@@ -34,7 +34,7 @@ Loaded by `loadFirestoreBackend()` in the manager app and the supplier portal (t
 - `localStorage.fsEmulator` = a host → Firestore 8080, Auth 9099, Storage 9199 (tests);
 - waits for `auth.authStateReady()`.
 
-An own-workers HR login (claims `role:'hr'`, `own:true`, read once per sign-in by `myClaims()`) may only read its own workers and their punches, and the rules check the query: `hrOnly()` gives its uid, and every read of workers, punches and pending hours then adds `where('hrId'|'createdBy', '==', uid)`. `saveSchedule` skips clients / suppliers for an HR without that section (`mayWrite`).
+An own-workers HR's reads are filtered by `hrOnly()` (from `myClaims()`), and `saveSchedule` skips what its sections don't allow (`mayWrite`) — the HR model end to end is in [hr.md](hr.md).
 
 It returns:
 
@@ -184,7 +184,7 @@ Both answer `{"ping":true}` at once (warm-up) and parse the body with `force=Tru
 
 **`firestore.rules`** — identities come from the custom-token claims.
 - `manager(t)` = superadmin, or a `tenant_admin` / `staff` of firm `t`, or an `hr` of firm `t` without `own` (`hrAll`). A supplier never reads Firestore directly (wages and GPS can't be hidden field by field) — it goes through `supplier`.
-- HR (`isHr`, `hrMine` = with `own`, `hrAll` = without, `hrCan(t, section)`): workers are written by an HR with `workers` or `schedule`; `hrMine` only reads, updates and deletes workers whose `hrId` is its uid and creates them only with its own `hrId`; `hrAll` may create with no `hrId` or its own; **no HR changes a worker's `hrId`**. `hrMine` reads / writes punches whose `hrId` is its uid, reads its own pendingHours (`createdBy`). Any HR reads the firm doc, clients, suppliers and settings; clients / suppliers are written with the `clients` / `suppliers` section.
+- HR (`isHr`, `hrMine` = with `own`, `hrAll` = without, `hrCan(t, section)`): an own-workers HR reaches only workers and punches whose `hrId` is its uid, and **no HR changes a worker's `hrId`** — the full HR rules are in [hr.md](hr.md) → Enforcement.
 - `tenants/{t}`: read by managers; update by a superadmin, or by its `tenant_admin` touching only the profile fields; create/delete superadmin.
 - workers, clients, suppliers, settings: read by managers; write by superadmin, `tenant_admin`, or staff with `schedule` — so a staff login without `schedule` gets `gsSave()` → false.
 - punches: read and write by any manager of the firm.
@@ -192,7 +192,7 @@ Both answer `{"ping":true}` at once (warm-up) and parse the body with `force=Tru
 - `users/{uid}`: read by the user, a superadmin, or that firm's `tenant_admin`; never written by clients. `authSecrets`, `usernames`, `workerTokens`, `pushSubscriptions`: functions only.
 - `errors`, `timings`: create by anyone signed in, read by a superadmin.
 
-**`storage.rules`** — `tenants/{t}/**`: read by managers of the firm (`hrAll` included); create/update by superadmin, `tenant_admin`, or staff / hr with `workers`; delete by those, except an own-workers HR (it deletes through `users_admin`); files under 25 MB. An own-workers HR must put its uid in the file's `hrId` metadata and reads back only files carrying it.
+**`storage.rules`** — `tenants/{t}/**`: read by managers of the firm (`hrAll` included); create/update by superadmin, `tenant_admin`, or staff / hr with `workers`; delete by those, except an own-workers HR (it deletes through `users_admin`); files under 25 MB. An own-workers HR stamps and reads back only files with its uid in `hrId` metadata ([hr.md](hr.md)).
 
 ## Tests
 
