@@ -160,6 +160,11 @@
   .tap-edit{cursor:pointer;} /* a tap opens the item's edit form (isPlainTap) */
   .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto;}
   .modal-title{font-size:19px;font-weight:600;color:var(--text);margin-bottom:18px;letter-spacing:-0.3px;}
+  .acc-help{background:none;border:none;color:var(--text3);cursor:pointer;padding:2px;font-size:15px;line-height:1;display:inline-flex}
+  .acc-help:hover{color:var(--blue)}
+  .acc-help-body{font-size:13px;color:var(--text2);line-height:1.6}
+  .acc-help-body ul{margin:0;padding-left:18px}
+  .acc-help-body li{margin-bottom:6px}
   .field{margin-bottom:14px;}
   .field label{display:block;font-size:14px;color:var(--text2);margin-bottom:5px;font-weight:500;}
   .field input,.field select{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:15px;font-family:'DM Sans','Heebo',Arial,sans-serif;padding:8px 10px;outline:none;transition:border-color 0.15s;}
@@ -821,7 +826,7 @@
       <!-- Salary summary (moved here from Today) -->
       <div style="margin-bottom:24px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px"><i class="ti ti-cash"></i> Salary Calculation</div>
+          <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:4px"><i class="ti ti-cash"></i> Salary Calculation <button type="button" class="acc-help" onclick="openAccountingHelp('salary')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
           <div style="display:flex;gap:8px;align-items:center">
             <select id="salaryPeriod" onchange="onSalaryPeriodChange()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:4px 8px;font-size:12px;outline:none">
               <option value="week">This Week</option>
@@ -836,43 +841,31 @@
 
       <!-- Per-client rate matrix -->
       <div>
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px"><i class="ti ti-adjustments"></i> Per-client rates</div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
-          Priority: worker's own rate at this client → client's default rate → worker's base rate. Empty — nothing overridden.
-        </div>
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-adjustments"></i> Per-client rates <button type="button" class="acc-help" onclick="openAccountingHelp('rates')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="rateMatrixWrap"></div>
       </div>
 
       <!-- Per-supplier rate matrix (informational — does not feed payroll math) -->
       <div style="margin-top:24px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px"><i class="ti ti-truck-delivery"></i> Per-supplier rates</div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
-          Reference only — placeholders show the worker's own base rate. Payroll totals below always use the worker's actual pay (client/base rate), never this value.
-        </div>
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-truck-delivery"></i> Per-supplier rates <button type="button" class="acc-help" onclick="openAccountingHelp('supplierRates')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="supplierRateMatrixWrap"></div>
       </div>
 
       <!-- Payable by supplier summary -->
       <div style="margin-top:24px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px"><i class="ti ti-report-money"></i> Payable by supplier</div>
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-report-money"></i> Payable by supplier <button type="button" class="acc-help" onclick="openAccountingHelp('payable')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="supplierPayableWrap"></div>
       </div>
 
       <!-- Billable by client (client's own rateMode — tiered or fixed — independent of the worker's real wage above) -->
       <div style="margin-top:24px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px"><i class="ti ti-building-store"></i> Billable by client</div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
-          What each client owes the firm, per that client's own pricing mode (tiered Israeli OT rates, or a flat rate). Independent of the worker's own wage above.
-        </div>
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-building-store"></i> Billable by client <button type="button" class="acc-help" onclick="openAccountingHelp('billable')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="clientBillableWrap"></div>
       </div>
 
       <!-- Hours-import approval queue (Admin/Roles plan, stage 14) -->
       <div style="margin-top:24px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px"><i class="ti ti-file-check"></i> Pending hours (uploaded, awaiting approval)</div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
-          Uploaded via a worker's "Upload hours" button. Nothing here counts toward payroll until approved.
-        </div>
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-file-check"></i> Pending hours <button type="button" class="acc-help" onclick="openAccountingHelp('pending')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="pendingHoursWrap"></div>
       </div>
     </div>
@@ -881,6 +874,9 @@
 </div>
 
 <!-- Modals -->
+<div class="overlay" id="accHelpOverlay">
+  <div class="modal" id="accHelpModal" style="width:460px"></div>
+</div>
 <div class="overlay" id="editOverlay">
   <div class="modal" id="editModal"></div>
 </div>
@@ -6105,7 +6101,6 @@ function renderSalary(){
         </tfoot>
       </table>
       </div>
-      <div style="padding:8px 12px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">₪/hour: the worker's own rates — an edit changes this worker only. Empty = the client's rate (grey, "client" under it; the client's rate is changed in the client card), else OT = Regular ×${PAY_RULES.otMult} · Shabbat = ×${PAY_RULES.shabbatMult}. A worker's rate at one client only is set in the rate matrix below. Hours: Regular ≤8h/day, above that — OT; Saturday — at the Shabbat rate. Travel = worker's flat per-work-day travel allowance.</div>
     </div>`;
   // The totals row covers every worker; the rows are paged (renderPagedList).
   renderPagedList(salaryEl.querySelector('.salary-rows'),'salary',period,entries,(e,i)=>{
@@ -6482,6 +6477,42 @@ function setSupplierRateOverride(wid,sid,field,val){
 }
 
 // This worker's own regular rate (empty = none: the client's rate applies).
+// Accounting → each section's title has an (i) button that opens its
+// explanation here (accHelpOverlay; closes on a tap outside, like every modal).
+const ACCOUNTING_HELP={
+  salary:{icon:'ti-cash',title:'Salary Calculation',items:[
+    'Pay for the picked period, per worker: punches are paired into shifts, each shift priced at the rate of its own client.',
+    'Hours: up to 8 a day are regular, above that OT (×1.25 for the first 2 hours, then ×1.5); a shift that starts on Saturday is paid at the Shabbat rates.',
+    'The ₪/hour fields are this worker\'s own rates. An edit changes this worker only and wins over the client\'s rate.',
+    'An empty field = the worker has no rate of their own: grey shows the client\'s rate that applies, with "client · name" under it. The client\'s rate is changed in the client card.',
+    'Empty OT / Shabbat = the law rates on top of the regular rate.',
+    'Travel = the worker\'s travel allowance for each day worked. Total Pay = pay + travel.',
+    'A ⚠ next to a worker: punches to check (a missing IN or OUT, an overlong shift…). The list is in the banner above the table.']},
+  rates:{icon:'ti-adjustments',title:'Per-client rates',items:[
+    'One row per worker and client: a rate for this worker at this client only.',
+    'Which rate counts, most specific first: this table → the worker\'s own rate (worker card, Salary) → the client\'s rate (client card).',
+    'An empty field = nothing set here; grey shows the rate that applies.']},
+  supplierRates:{icon:'ti-truck-delivery',title:'Per-supplier rates',items:[
+    'What the firm pays a supplier per hour of each of its workers (the supplier\'s commission).',
+    'Feeds "Payable by supplier" only. It never changes a worker\'s pay.']},
+  payable:{icon:'ti-report-money',title:'Payable by supplier',items:[
+    'For the period picked in Salary: each supplier\'s workers\' hours × the supplier rate.',
+    '"No supplier assigned" shows those workers\' hours only — nothing is owed to a supplier for them.',
+    'A worker\'s wage never appears in this table.']},
+  billable:{icon:'ti-building-store',title:'Billable by client',items:[
+    'What each client owes the firm for the period picked in Salary, by the client\'s own pricing (client card): tiered (the OT / Shabbat law rates on the client\'s billing rate) or one fixed rate.',
+    'Separate from the workers\' pay: it never changes a wage, and a wage never changes it.']},
+  pending:{icon:'ti-file-check',title:'Pending hours',items:[
+    'Hours uploaded with a worker\'s "Upload hours" button wait here.',
+    'Nothing here counts toward pay until it is approved; approving turns each row into IN / OUT punches.',
+    'Rejected batches are not counted.']},
+};
+function openAccountingHelp(key){
+  const h=ACCOUNTING_HELP[key]; if(!h) return;
+  document.getElementById('accHelpModal').innerHTML=`<div class="modal-title"><i class="ti ${h.icon}"></i> ${esc(h.title)}</div>
+    <div class="acc-help-body"><ul>${h.items.map(t=>`<li>${esc(t)}</li>`).join('')}</ul></div>`;
+  document.getElementById('accHelpOverlay').classList.add('open');
+}
 // The older regRate field is cleared so the edit is what counts.
 function setWorkerRate(wid,rate){
   const w=workers.find(x=>x.id===wid);
