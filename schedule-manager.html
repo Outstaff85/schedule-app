@@ -2194,7 +2194,7 @@ function renderWClientChips(){
   syncWRate();
 }
 // The worker modal's hourly rate. A worker without a rate of their own shows
-// the rate of their first client that has one (filled in, "client rate"
+// the rate of their last-added client that has one (filled in, "client rate"
 // under it) and follows it as the clients change; such a worker is saved
 // with no rate of their own, so a later change of the client's rate reaches
 // them. A rate typed by hand (data-manual) is the worker's own: it wins over
@@ -2205,8 +2205,9 @@ function wOwnRate(w){
   if(w.regRate!=null&&w.regRate!=='') return w.regRate;
   return Number(w.hourlyRate)>0?w.hourlyRate:'';
 }
+// The client whose rate applies: the last-added one that has a rate.
 function wClientRateSource(){
-  return __wClientIds.map(id=>clients.find(c=>c.id===id)).find(c=>c&&c.defaultHourlyRate!=null&&c.defaultHourlyRate!=='')||null;
+  return __wClientIds.map(id=>clients.find(c=>c.id===id)).filter(c=>c&&c.defaultHourlyRate!=null&&c.defaultHourlyRate!=='').pop()||null;
 }
 function syncWRate(){
   const el=document.getElementById('wRate'), hint=document.getElementById('wRateHint'); if(!el) return;
@@ -2235,7 +2236,13 @@ function renderWClientSuggest(){
 }
 function hideWClientSuggest(){ const box=document.getElementById('wClientSuggest'); if(box) box.style.display='none'; }
 function addWClient(id){
-  if(!__wClientIds.includes(id)) __wClientIds.push(id);
+  if(!__wClientIds.includes(id)){
+    __wClientIds.push(id);
+    // Moved to a new client that has a rate: its rate is the default again,
+    // replacing a rate typed for the previous client (it can be typed over).
+    const cl=clients.find(c=>c.id===id), el=document.getElementById('wRate');
+    if(el&&cl&&cl.defaultHourlyRate!=null&&cl.defaultHourlyRate!=='') delete el.dataset.manual;
+  }
   const inp=document.getElementById('wClientSearch'); if(inp){ inp.value=''; inp.focus(); }
   renderWClientChips(); renderWClientSuggest();
 }
