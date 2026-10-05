@@ -6,7 +6,7 @@ The worker modal that the scan opens is in [workers.md](workers.md); the PDF bui
 
 ## Entry points (schedule-manager.html)
 
-- **`startNewScan()`** — the "Скан паспорта" button.
+- **`startNewScan()`** — the "Scan passport" button.
 - **`rescanWorkerDoc(workerId)`** — a scan tagged to an existing worker; sets `window.__aiRescanWorkerId`.
 - **`rescanFromWorkerModal()`** / **`rescanFromWorkerCard(wi)`** — "Scan / Rescan" in the worker modal and card, keeping the form as a draft ([workers.md](workers.md)).
 

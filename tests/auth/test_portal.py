@@ -145,7 +145,7 @@ def test_supplier_worker_crud():
     d = W(T1, wid).get().to_dict()
     assert r["ok"] and d["name"] == "New Man" and d["supplierId"] == "sp1" and "hourlyRate" not in d
     assert portal.supplier_action(DB, SUP1, {"action": "supplierUpdateWorker", "workerId": "w2",
-                                             "worker": {"phone": "1"}})["error"] == "Работник не найден"
+                                             "worker": {"phone": "1"}})["error"] == "Worker not found"
     assert portal.supplier_action(DB, SUP1, {"action": "supplierDeleteWorker", "workerId": "w2"})["error"]
     assert W(T1, "w2").get().exists
     assert portal.supplier_action(DB, SUP1, {"action": "supplierDeleteWorker", "workerId": wid})["ok"]

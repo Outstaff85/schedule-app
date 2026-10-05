@@ -2,7 +2,7 @@
 
 Every request ai.py sends to Anthropic, and every result it returns for a
 given Anthropic reply, must equal ai_golden.json: the requests and results of
-the original Apps Script AI actions, recorded from apps-script/Код.js (run in
+the original Apps Script AI actions, recorded from apps-script/Kod.js (run in
 Node) before Apps Script was removed. The prompts live in ai_prompts.json.
 """
 
@@ -133,12 +133,12 @@ def test_models_and_errors(monkeypatch):
     ai.run("aiReadDoc", {"image": "I"}, "K", lambda u, p, h: (sent.append(p), (200, reply("{}")))[1])
     ai.run("aiDetectAlign", {"image": "I"}, "K", lambda u, p, h: (sent.append(p), (200, reply("{}")))[1])
     assert [p["model"] for p in sent] == ["claude-x", "claude-y"]
-    assert ai.run("aiReadDoc", {"image": "I"}, "", None)["error"] == "ANTHROPIC_API_KEY не задан"
+    assert ai.run("aiReadDoc", {"image": "I"}, "", None)["error"] == "ANTHROPIC_API_KEY is not set"
     assert ai.run("nope", {}, "K", None)["error"] == "Unknown action"
 
     def boom(*a):
         raise OSError("down")
-    assert ai.run("aiReadDoc", {"image": "I"}, "K", boom)["error"] == "Запрос к Anthropic не прошёл: down"
+    assert ai.run("aiReadDoc", {"image": "I"}, "K", boom)["error"] == "The request to Anthropic failed: down"
 
 
 def test_http_ai_read(monkeypatch):
@@ -152,7 +152,7 @@ def test_http_ai_read(monkeypatch):
     assert _call(main.ai_read, {"ping": True})[1]["warm"]
     assert _call(main.ai_read, {"action": "aiReadDoc", "image": "I"})[0] == 401
     sup = _id_token("u-s", {"role": "supplier", "tenantId": "t", "supplierId": "s"})
-    assert "поставщика" in _call(main.ai_read, {"action": "aiReadDoc", "image": "I"}, {"Authorization": "Bearer " + sup})[1]["error"]
+    assert "supplier" in _call(main.ai_read, {"action": "aiReadDoc", "image": "I"}, {"Authorization": "Bearer " + sup})[1]["error"]
     staff = _id_token("u-st", {"role": "staff", "tenantId": "t", "perms": ["workers"]})
     status, r = _call(main.ai_read, {"action": "aiReadDoc", "image": "I", "token": "gs"}, {"Authorization": "Bearer " + staff})
     meta = r.pop("_meta")

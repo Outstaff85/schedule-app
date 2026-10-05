@@ -175,7 +175,7 @@ async function onScanFilesSelected(fileList){
       stage.innerHTML='<div style="text-align:center;padding:26px;color:var(--text2);font-size:14px">'
         +'<i class="ti ti-loader-2 spin" style="font-size:20px"></i><br><br>'
         +'<span>קורא עמוד '+(i+1)+' מתוך '+items.length+'…</span></div>';
-      if(isForm101Page(it)) continue; // старая Форма 101 — отбрасываем
+      if(isForm101Page(it)) continue; // an old Form 101 — dropped
       let thisPageParsed=null;
       if(!foundParsed&&!isNonIdKind(it.kind)){
         try{
@@ -201,7 +201,7 @@ async function onScanFilesSelected(fileList){
             window.__aiScanImage={b64:it.b64,mediaType:it.mediaType};
             window.__aiAvatarB64=p.photoBox?await cropPortraitAvatar(it.b64,it.mediaType,p.photoBox):null;
             window.__aiPageParsed=[foundParsed]; // primary page's own data — parallel to __aiScanImage
-            continue; // эта страница уже сохранена как window.__aiScanImage, в "прочие" не дублируем
+            continue; // this page is already saved as window.__aiScanImage — not repeated among the other pages
           }
         }catch(e){ console.error(e); }
       } else if(extraReadWanted(foundParsed,it.kind)){
@@ -277,7 +277,7 @@ async function onScanFilesSelected(fileList){
 // confirmScanQuad's __scanEditPurpose==='collectPage' branch) rather than
 // processed immediately; processAllPendingPages() sends the whole queue
 // through preAlignScan/OCR together once the user is done adding pages.
-// Reached either directly (a single non-PDF file), as "Заново" from the
+// Reached either directly (a single non-PDF file), as "Retake" from the
 // multi-file flow above, or from the pending/review screens' own "add page"
 // buttons (renderPendingPagesPrompt/renderScanPagesPrompt).
 async function onScanFileSelected(file){
@@ -1389,8 +1389,8 @@ function rotatePointFrac(pt,deg){
 }
 
 // Step 3: corner-adjustment editor, pre-filled with the AI's guess (or a
-// full-frame default) — dragging the 4 handles is always available, "Готово"
-// perspective-warps the quad flat like a scanner, "Пропустить" uses the
+// full-frame default) — dragging the 4 handles is always available, "Done"
+// perspective-warps the quad flat like a scanner, "Skip" uses the
 // image as-is.
 function renderScanQuadEditor(b64,mediaType,cornersFrac){
   window.__scanEdit={b64,mediaType};
@@ -1429,7 +1429,7 @@ function renderScanQuadEditor(b64,mediaType,cornersFrac){
   // matter how the user drags them. warpQuadImage() then divides by that
   // same 0 (naturalWidth/quadPx.imgW), producing NaN/degenerate output that
   // throws inside confirmScanQuad()'s try — silently caught, falling back to
-  // the ORIGINAL uncropped photo. That's the exact "рамка не подгоняет фото"
+  // the ORIGINAL uncropped photo. That's the exact "the frame doesn't fit the photo"
   // symptom: no error shown, crop just silently never applied.
   // A single requestAnimationFrame (the original fix) assumes one frame is
   // always enough time for the browser to finish decoding a large data: URI
@@ -1844,8 +1844,8 @@ function finishPageScan(finalImg){
 // user is still cropping pages, BEFORE any of them has touched the server.
 // window.__pendingScanPages holds { b64, mediaType } entries straight out of
 // warpQuadImage/the raw skipped photo — no preAlignScan, no aiReadDoc yet.
-// "Добавить страницу" re-enters onScanFileSelected (crop only, still no
-// network call); "Обработать" hands the whole queue to
+// "Add page" re-enters onScanFileSelected (crop only, still no
+// network call); "Process" hands the whole queue to
 // processAllPendingPages() in one shot. Every thumbnail is removable here
 // (unlike renderScanPagesPrompt()'s card #1) since nothing has been
 // classified as "the primary page" yet at this stage — that only happens

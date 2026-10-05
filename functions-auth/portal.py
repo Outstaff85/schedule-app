@@ -161,7 +161,7 @@ SUPPLIER_WORKER_FIELDS = ("id", "name", "docGiven", "docSurname", "docId", "docT
 SUPPLIER_EDITABLE = ("docGiven", "docSurname", "phone", "docId", "address", "houseNumber", "city", "docDob",
                      "docSex", "maritalStatus", "healthFund", "startDate", "notes", "status")
 SUPPLIER_PUNCH_FIELDS = ("id", "workerId", "workerName", "type", "time", "date", "site", "clientId")
-E_SUPPLIER_ONLY = "Только для роли поставщика"
+E_SUPPLIER_ONLY = "Supplier role only"
 
 
 def strip_worker(d, supplier_id):
@@ -230,7 +230,7 @@ def supplier_action(db, caller, body):
         ref = t_ref.collection("workers").document(wid) if wid and "/" not in wid else None
         snap = ref.get() if ref else None
         if not snap or not snap.exists or (snap.to_dict() or {}).get("supplierId") != sid:
-            return {"error": "Работник не найден"}
+            return {"error": "Worker not found"}
         if action == "supplierDeleteWorker":
             ref.delete()
             return {"ok": True}

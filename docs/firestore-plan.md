@@ -1,196 +1,196 @@
-# План миграции на Firestore
+# Firestore migration plan
 
-> **Выполнено.** Миграция завершена; Apps Script и режим Google Sheets удалены 2026-10-03 (см. [history.md](history.md)). Ниже — исходный план, как исторический документ. Текущее устройство — [backend.md](backend.md).
+> **Done.** The migration is finished; Apps Script and the Google Sheets mode were removed on 2026-10-03 (see [history.md](history.md)). Below is the original plan, kept as a historical document. The current design is in [backend.md](backend.md).
 
-Переезд базы данных с Google Sheets + Apps Script на **Firestore (Standard, регион `europe-west3`, Франкфурт)**
-в проекте Firebase `schedule-odinson`. Сайт (Hosting) и Cloud Functions остаются там же, где сейчас.
+Moving the database from Google Sheets + Apps Script to **Firestore (Standard, region `europe-west3`, Frankfurt)**
+in the Firebase project `schedule-odinson`. The site (Hosting) and the Cloud Functions stay where they are.
 
-## Зачем
+## Why
 
-- **Лимит Google Таблицы — 10 млн ячеек.** При 20 фирмах по ~50 работников отметки дают
-  ~52 тыс. строк × 16 колонок ≈ 830 тыс. ячеек в месяц, то есть таблица заполнится примерно за год.
-- **Скорость.** Каждый вызов Apps Script — 1,5–10 с (по Timings: вход 10–17 с, загрузка 2,5–5 с).
-  Firestore отвечает за 0,1–0,5 с, без пробуждения сервера.
-- **Один JSON на фирму.** Сейчас все работники фирмы хранятся одной ячейкой, и каждое сохранение
-  перезаписывает её целиком; два менеджера одновременно получают конфликт. В Firestore каждый
-  работник, клиент и отметка — отдельный документ.
-- Обновления в реальном времени: отметка работника сразу видна у менеджера, без перезагрузки.
+- **A Google Sheet holds at most 10 million cells.** With 20 firms of ~50 workers each, punches add
+  ~52k rows × 16 columns ≈ 830k cells a month, so the sheet would fill up in about a year.
+- **Speed.** Every Apps Script call takes 1.5–10 s (Timings: login 10–17 s, load 2.5–5 s).
+  Firestore answers in 0.1–0.5 s, with no server wake-up.
+- **One JSON per firm.** All of a firm's workers are stored in one cell, and every save
+  rewrites it whole; two managers saving at once get a conflict. In Firestore every
+  worker, client and punch is a document of its own.
+- Real-time updates: a worker's punch shows up at the manager's at once, without a reload.
 
-## Что не меняется
+## What doesn't change
 
-- Весь расчёт зарплаты и бухгалтерии в браузере: `groupPunchesIntoShifts`, `shiftPay`,
-  израильские тарифы, оплата поставщикам, счета клиентам, экспорт в Excel/PDF/CSV.
-  Меняется только **откуда** приходят данные.
-- Интерфейс, роли (superadmin / tenant_admin / staff / supplier) и права по разделам.
-- Форма 101 (Cloud Function `fill_form_101`) и предобработка скана (`preprocess_scan`).
-- Логины и пароли пользователей: пароль менять никому не придётся.
+- All payroll and accounting math in the browser: `groupPunchesIntoShifts`, `shiftPay`,
+  the Israeli rates, supplier payouts, client billing, the Excel/PDF/CSV exports.
+  Only **where** the data comes from changes.
+- The UI, the roles (superadmin / tenant_admin / staff / supplier) and the per-section rights.
+- Form 101 (Cloud Function `fill_form_101`) and scan preprocessing (`preprocess_scan`).
+- User logins and passwords: nobody has to change a password.
 
-## Модель данных
+## Data model
 
 ```
-tenants/{tenantId}                     профиль фирмы (название, תיק ניכויים, телефон, адрес), active,
+tenants/{tenantId}                     firm profile (name, תיק ניכויים, phone, address), active,
                                        workerCount/clientCount
-tenants/{tenantId}/workers/{workerId}  один документ на работника (все текущие поля, включая фото —
-                                       ~10 КБ, лимит документа 1 МБ); файлы — в Storage, в документе ссылки
+tenants/{tenantId}/workers/{workerId}  one document per worker (all current fields, the photo included —
+                                       ~10 KB, the document limit is 1 MB); files go to Storage, the document holds links
 tenants/{tenantId}/clients/{clientId}
 tenants/{tenantId}/suppliers/{supplierId}
 tenants/{tenantId}/punches/{punchId}   workerId, clientId, type (in/out), ts (Timestamp),
-                                       date 'yyyy-MM-dd', time, GPS-поля, notes, editedAt
-tenants/{tenantId}/pendingHours/{batchId}  очередь импорта часов (status, rows[], fileName, автор)
-tenants/{tenantId}/settings/schedule   weekStart и прочие мелкие настройки
+                                       date 'yyyy-MM-dd', time, GPS fields, notes, editedAt
+tenants/{tenantId}/pendingHours/{batchId}  the hours import queue (status, rows[], fileName, author)
+tenants/{tenantId}/settings/schedule   weekStart and other small settings
 users/{uid}                            username, tenantId, role, permissions, supplierId, active
-                                       (хэш пароля — только в закрытой коллекции, см. «Вход»)
-authSecrets/{uid}                      algo, salt, hash, счётчик неверных попыток — клиенту недоступно никогда
-usernames/{username}                   { uid } — уникальность логина и быстрый поиск при входе
-workerTokens/{token}                   { tenantId, workerId } — для ссылки работника на отметки
+                                       (the password hash only in a closed collection, see "Login")
+authSecrets/{uid}                      algo, salt, hash, wrong-attempt counter — never readable by a client
+usernames/{username}                   { uid } — a unique username and a fast lookup at login
+workerTokens/{token}                   { tenantId, workerId } — for the worker's punch link
 pushSubscriptions/{id}
-errors/{id}, timings/{id}              журналы (читает только superadmin)
+errors/{id}, timings/{id}              logs (read by superadmin only)
 ```
 
-Отметки читаются **за период**, а не целиком: открытие приложения грузит текущий и прошлый месяц,
-бухгалтерия и экспорт за другой период догружают нужные месяцы. «All Time» ограничиваем
-последними 12 месяцами: иначе это ~30 тыс. чтений на фирму за раз.
+Punches are read **by period**, not whole: opening the app loads the current and the previous month;
+accounting and exports for another period load the months they need. "All Time" is limited to
+the last 12 months: otherwise it is ~30k reads per firm at a time.
 
-## Вход и права
+## Login and rights
 
-- **Вход через Cloud Function `login`.** Она проверяет логин и пароль по текущим хэшам
-  (переносятся из листа Users как есть) и выдаёт Firebase **custom token** с правами в claims:
-  `tenantId, role, permissions, supplierId`. Браузер входит через `signInWithCustomToken`.
-  - Пароли не переносятся в Firebase Auth и не сбрасываются: формат хэша остаётся нашим.
-  - Сессию дальше держит Firebase Auth (продлевается сама). Самописные 6-часовые токены
-    и `requireAuth` уходят.
-- **Правила безопасности Firestore** повторяют текущие проверки сервера:
-  - фирма видит только свои данные (`request.auth.token.tenantId == tenantId`), superadmin — все;
-  - запись работников/клиентов/поставщиков/расписания: tenant_admin или staff с правом `schedule`;
-  - одобрение импорта часов: только tenant_admin/superadmin; staff может загрузить, но не одобрить;
-  - профиль фирмы: tenant_admin своей фирмы; создание и удаление фирм — только superadmin;
-  - журналы ошибок и замеров: писать может любой вошедший, читать — только superadmin.
-- **Поставщик (supplier) не читает Firestore напрямую.** Ставки и GPS нельзя скрыть правилами
-  на уровне полей, поэтому портал поставщика работает через функции, которые отдают урезанные
-  данные — та же логика, что сейчас `_stripWorkerForSupplier` / `_stripClientForSupplier`.
-- **Ссылка работника на отметки** (без входа) идёт через функцию `punch`:
-  токен → фирма/работник, запись отметки на сервере. Офлайн-очередь на телефоне работника
-  остаётся как сейчас.
+- **Login through the Cloud Function `login`.** It checks the username and password against the current hashes
+  (moved over from the Users sheet as they are) and issues a Firebase **custom token** with the rights in its claims:
+  `tenantId, role, permissions, supplierId`. The browser signs in with `signInWithCustomToken`.
+  - Passwords are not moved into Firebase Auth and are not reset: the hash format stays ours.
+  - Firebase Auth keeps the session from then on (it renews itself). The home-made 6-hour tokens
+    and `requireAuth` go away.
+- **Firestore security rules** repeat the server's current checks:
+  - a firm sees only its own data (`request.auth.token.tenantId == tenantId`), superadmin sees all;
+  - writing workers/clients/suppliers/schedule: tenant_admin, or staff with the `schedule` right;
+  - approving an hours import: tenant_admin/superadmin only; staff may upload but not approve;
+  - the firm profile: the firm's tenant_admin; creating and deleting firms — superadmin only;
+  - the error and timing logs: any signed-in user writes, only superadmin reads.
+- **A supplier never reads Firestore directly.** Rates and GPS can't be hidden by rules
+  field by field, so the supplier portal works through functions that return trimmed
+  data — the same logic as `_stripWorkerForSupplier` / `_stripClientForSupplier` today.
+- **The worker's punch link** (no login) goes through the function `punch`:
+  token → firm/worker, the punch written on the server. The offline queue on the worker's phone
+  stays as it is.
 
-## Этапы (каждый — отдельный PR, «Мержи» после проверки)
+## Stages (each a separate PR, merged after the owner's OK)
 
-1. **Модель и правила.** ✅ `firestore.rules`, `storage.rules`, `firestore.indexes.json`, настройка
-   в `firebase.json`, деплой в CI (`.github/workflows/deploy-rules.yml`: сначала тесты, потом деплой).
-   Тесты на эмуляторе (`tests/rules`, `npm install && npm test`): 12 сценариев — изоляция фирм,
-   каждая роль × каждая коллекция, поставщик без прямого доступа, очередь часов, профиль фирмы,
-   закрытые коллекции, журналы, Storage. Приложение пока не трогаем.
-2. **Вход.** ✅ Папка `functions-auth/` — отдельный набор функций в регионе `europe-west3` (Франкфурт, рядом с базой),
-   чтобы вход не грузил тяжёлые OpenCV/PyMuPDF из `functions/`:
-   - `login` — проверяет пароль, выдаёт custom token с правами;
-   - `users_admin` — `listUsers` / `createUser` (новая фирма) / `createTenantUser` / `updateUser` /
-     `resetUserPassword` / `deleteUser` с теми же правилами и текстами ошибок, что в Apps Script.
-   Старый хэш пароля при первом входе заменяется на scrypt. После 5 неверных паролей подряд вход
-   закрыт на 5 минут. Изменение прав, сброс пароля или удаление пользователя завершают его сессии.
-   Тесты: `tests/auth` на эмуляторах Firestore и Auth (13 сценариев), в CI перед деплоем функций.
-   Приложение пока не трогаем: пользователи появятся в Firestore на этапе 3.
-3. **Перенос данных.** ✅ Кнопка **Admin → Firms → Copy to Firestore** (только супер-админ).
-   Функция `migrate_from_sheets` берёт данные через действие Apps Script `exportForMigration`
-   (только супер-админ, таблицу не меняет) и раскладывает их в Firestore: логины с текущими
-   паролями, фирмы, работники с фото, ссылки работников на отметки, клиенты, поставщики, отметки
-   (и архивные), очередь импорта часов. Firestore становится копией таблицы: документы пишутся
-   под теми же id, а то, чего в таблице уже нет, удаляется. Запуск можно повторять сколько угодно.
-   После запуска показывается таблица «в таблице → в Firestore» по каждой фирме, с ошибками и
-   предупреждениями (например, телефон без ведущего нуля). Тесты: `tests/auth/test_migrate.py`.
-4. **Приложение менеджера на Firestore.** ✅ Файл `firestore-backend.js`, подгружается только
-   в режиме Firestore. Переключатель на устройстве: открыть приложение с `?backend=firestore`
-   (выключить — `?backend=sheets`), в шапке появляется значок «Firestore».
-   - Вход через функцию `login`; параллельно идёт вход в Apps Script — его токен нужен частям,
-     которые ещё не переехали (ИИ-скан, документы в Drive, вкладки админки, импорт часов).
-   - Работники, клиенты, поставщики: загрузка напрямую из Firestore; сохранение пишет только
-     изменённые документы (порядок — поле `sortIndex`), удалённые удаляет.
-   - Отметки: живая подписка на последние 13 месяцев — отметка с другого устройства появляется
-     сразу, без перезагрузки. Добавление/правка/удаление отметки — сразу в Firestore.
-   - Права проверяют правила Firestore: staff без права `schedule` читает, но сохранить не может.
-   - Пока не сделано: живое обновление списка работников (обновляется при открытии).
-   - Важно: изменения, сделанные в режиме Firestore, в таблицу не попадают, а повторный
-     «Copy to Firestore» перезаписывает Firestore данными из таблицы. До этапа 8 режим —
-     для проверки, рабочие данные ведём в таблице.
-   - Проверено в браузере на настоящем Firebase SDK с эмуляторами Firestore и Auth (25 проверок).
-5. **Админка.** ✅ В режиме Firestore на Firestore и функцию `users_admin` переехали:
-   фирмы (список, вкл/выкл, удаление, создание), пользователи, профиль фирмы, журналы ошибок и
-   замеров (показываются вместе со строками из таблицы), очистка отметок по месяцам, очередь
-   импорта часов (загрузка, список, подтверждение, отклонение), сводка супер-админа по фирмам.
-   Вход больше не ждёт Apps Script: функция `login` сама выдаёт токен Apps Script для частей,
-   которые ещё не переехали (секрет `GS_SESSION_SECRET` в Secret Manager). В Admin → Timings
-   замеры режима Firestore идут отдельными строками («… · Firestore»).
-   В Apps Script в режиме Firestore остаются: ИИ-скан, форма 101 и документы в Drive, Copy to
-   Firestore, ссылка работника. Удаление фирмы в режиме Firestore не трогает её папку в Drive.
-   Проверено в браузере на эмуляторах (56 проверок) и тестами функций (28).
-6. **Ссылка работника и портал поставщика.** ✅ Тот же переключатель `?backend=firestore` на устройстве.
-   - Ссылка работника идёт через функцию `punch`: по токену из ссылки она отдаёт только этого
-     работника и его объекты (раньше Apps Script отдавал по любой ссылке весь список работников
-     фирмы со ставками и телефонами) и принимает отметки только за него. Офлайн-очередь как была.
-   - Портал поставщика: вход через `login`, данные и работники — через функцию `supplier`
-     с теми же ограничениями, что в Apps Script (без ставок, оплаты клиентов и GPS).
-   - Отметка работника сразу видна у менеджера в режиме Firestore.
-   - Проверено в браузере: 19 проверок (работник → менеджер вживую, чужая отметка отклоняется,
-     поставщик видит только своих), тесты функций — 38.
-7. **ИИ и файлы.**
-   - **7а ✅ ИИ:** в режиме Firestore все шесть вызовов ИИ (`aiReadDoc`, `aiReadSefach`,
-     `aiDetectAlign`, `aiVerifyField`, `aiVerifyFields`, `aiReadHoursTable`) идут в функцию
-     `ai_read` (ключ — секрет `ANTHROPIC_API_KEY`). Это порт кода Apps Script: те же запросы к
-     Anthropic, та же обработка ответов. Тексты промптов не переписаны вручную, а сгенерированы
-     из `Код.js` (`functions-auth/ai_prompts.json`); тест запускает настоящий код Apps Script и
-     требует побайтно одинаковых запросов и результатов (68 сценариев). Минус задержка Apps
-     Script на каждом вызове ИИ во время скана.
-   - **7б ✅ файлы:** в режиме Firestore форма 101 (PDF), скан с подписью (JSON для
-     пересборки формы) и документы работников (договор, виза, разрешение) загружаются прямо
-     из браузера в Firebase Storage: `tenants/<фирма>/workers/<работник>/{form101,assets,docs}/`,
-     с настоящим прогрессом загрузки. Права проверяют `storage.rules` (запись — владелец фирмы
-     или staff с правом `workers`). Чтение скана для пересборки и удаление файла идут через
-     `users_admin` (`functions-auth/files.py`, только своя фирма) — так бакету не нужна
-     ручная настройка CORS. Файлы, сохранённые раньше в Drive, по-прежнему открываются по
-     старым ссылкам, читаются и удаляются через Apps Script; при пересканировании старый файл
-     в Drive отправляется в корзину. При удалении фирмы её файлы в Storage остаются (как
-     папка в Drive). Проверено в браузере на эмуляторах: 21 проверка.
-8. **Переключение.** Повторный прогон переноса прямо перед переключением (займёт минуты), затем
-   `BACKEND = firestore`. Apps Script остаётся только для чтения ещё на 1–2 недели как запасной
-   вариант, потом отключается. Включаем ежедневные бэкапы Firestore (встроенная функция, хранение
-   до 14 недель).
-   - **В коде:** Firestore — режим по умолчанию на всех трёх страницах (менеджер, ссылка
-     работника, портал поставщика); `?backend=sheets` оставляет устройство на старом режиме.
-     Кнопка «Copy to Firestore» после переключения требует ввести REPLACE. Кнопка «Move files
-     to Firebase» (функция `migrate_files`) копирует файлы работников из Drive в Storage и
-     меняет ссылки в карточках; Drive не трогает, повторный запуск переносит только остаток.
-   - **Отметки по месяцам:** при открытии приложение грузит только текущий месяц (плюс неделю
-     до него); более старые месяцы читаются один раз, когда их выбирают в зарплате, экспорте,
-     журнале отметок или очистке журнала. Меньше чтений Firestore и маленький кэш в браузере.
-   - **Порядок:** 1) попросить никого не вносить изменения; 2) «Copy to Firestore»; 3) смержить
-     PR с переключением; 4) после деплоя — «Move files to Firebase»; 5) бэкапы и бюджет в консоли.
+1. **Model and rules.** ✅ `firestore.rules`, `storage.rules`, `firestore.indexes.json`, the settings
+   in `firebase.json`, a CI deploy (`.github/workflows/deploy-rules.yml`: tests first, then the deploy).
+   Tests on the emulator (`tests/rules`, `npm install && npm test`): 12 scenarios — firm isolation,
+   every role × every collection, a supplier with no direct access, the hours queue, the firm profile,
+   closed collections, logs, Storage. The app is not touched yet.
+2. **Login.** ✅ The folder `functions-auth/` — a separate set of functions in `europe-west3` (Frankfurt, next to the database),
+   so that login doesn't load the heavy OpenCV/PyMuPDF of `functions/`:
+   - `login` — checks the password, issues a custom token with the rights;
+   - `users_admin` — `listUsers` / `createUser` (a new firm) / `createTenantUser` / `updateUser` /
+     `resetUserPassword` / `deleteUser`, with the same rules and error texts as in Apps Script.
+   The old password hash is replaced by scrypt at the first login. After 5 wrong passwords in a row, login
+   is closed for 5 minutes. Changing rights, resetting a password or deleting a user ends their sessions.
+   Tests: `tests/auth` on the Firestore and Auth emulators (13 scenarios), run in CI before the functions deploy.
+   The app is not touched yet: the users appear in Firestore at stage 3.
+3. **Data transfer.** ✅ The button **Admin → Firms → Copy to Firestore** (super-admin only).
+   The function `migrate_from_sheets` takes the data through the Apps Script action `exportForMigration`
+   (super-admin only, doesn't change the sheet) and lays it out in Firestore: logins with their current
+   passwords, firms, workers with photos, workers' punch links, clients, suppliers, punches
+   (archived ones too), the hours import queue. Firestore becomes a copy of the sheet: documents are written
+   under the same ids, and whatever is no longer in the sheet is deleted. The run can be repeated any number of times.
+   After a run, a "sheet → Firestore" table is shown for every firm, with errors and
+   warnings (for example, a phone without its leading zero). Tests: `tests/auth/test_migrate.py`.
+4. **The manager app on Firestore.** ✅ The file `firestore-backend.js`, loaded only
+   in Firestore mode. The per-device switch: open the app with `?backend=firestore`
+   (off — `?backend=sheets`); a "Firestore" badge appears in the header.
+   - Login through the function `login`; an Apps Script login runs in parallel — its token is needed by the parts
+     not moved yet (AI scan, documents in Drive, the admin tabs, hours import).
+   - Workers, clients, suppliers: loaded straight from Firestore; a save writes only the
+     changed documents (order — the `sortIndex` field) and deletes the removed ones.
+   - Punches: a live subscription to the last 13 months — a punch from another device appears
+     at once, without a reload. Adding/editing/deleting a punch goes to Firestore at once.
+   - Rights are checked by the Firestore rules: staff without the `schedule` right reads but can't save.
+   - Not done yet: a live update of the worker list (it updates on open).
+   - Important: changes made in Firestore mode don't reach the sheet, and a repeated
+     "Copy to Firestore" overwrites Firestore with the sheet's data. Until stage 8 the mode is
+     for testing; working data stays in the sheet.
+   - Checked in the browser on the real Firebase SDK with the Firestore and Auth emulators (25 checks).
+5. **Admin.** ✅ In Firestore mode these moved to Firestore and the function `users_admin`:
+   firms (list, enable/disable, delete, create), users, the firm profile, the error and
+   timing logs (shown together with the sheet's rows), clearing punches by month, the hours
+   import queue (upload, list, approve, reject), the super-admin's summary by firm.
+   Login no longer waits for Apps Script: the function `login` itself issues the Apps Script token for the parts
+   not moved yet (the secret `GS_SESSION_SECRET` in Secret Manager). In Admin → Timings,
+   Firestore-mode measurements are separate rows ("… · Firestore").
+   Left in Apps Script in Firestore mode: AI scan, Form 101 and documents in Drive, Copy to
+   Firestore, the worker link. Deleting a firm in Firestore mode doesn't touch its Drive folder.
+   Checked in the browser on the emulators (56 checks) and by function tests (28).
+6. **The worker link and the supplier portal.** ✅ The same per-device switch `?backend=firestore`.
+   - The worker link goes through the function `punch`: by the token in the link it returns only this
+     worker and their sites (Apps Script used to return, for any link, the firm's whole worker list
+     with rates and phones) and accepts punches only for them. The offline queue stays as it was.
+   - The supplier portal: login through `login`, data and workers through the function `supplier`,
+     with the same limits as in Apps Script (no rates, client billing or GPS).
+   - A worker's punch shows up at once at a manager in Firestore mode.
+   - Checked in the browser: 19 checks (worker → manager live, a punch for someone else is refused,
+     a supplier sees only its own), function tests — 38.
+7. **AI and files.**
+   - **7a ✅ AI:** in Firestore mode all six AI calls (`aiReadDoc`, `aiReadSefach`,
+     `aiDetectAlign`, `aiVerifyField`, `aiVerifyFields`, `aiReadHoursTable`) go to the function
+     `ai_read` (the key is the secret `ANTHROPIC_API_KEY`). It is a port of the Apps Script code: the same requests to
+     Anthropic, the same reply handling. The prompt texts were not rewritten by hand but generated
+     from the Apps Script source (`functions-auth/ai_prompts.json`); the test runs the real Apps Script code and
+     requires byte-identical requests and results (68 scenarios). One Apps Script delay less
+     on every AI call during a scan.
+   - **7b ✅ files:** in Firestore mode Form 101 (PDF), the scan with the signature (JSON for
+     rebuilding the form) and the workers' documents (contract, visa, permit) are uploaded straight
+     from the browser to Firebase Storage: `tenants/<firm>/workers/<worker>/{form101,assets,docs}/`,
+     with real upload progress. Rights are checked by `storage.rules` (write — the firm owner
+     or staff with the `workers` right). Reading the scan for a rebuild and deleting a file go through
+     `users_admin` (`functions-auth/files.py`, own firm only) — so the bucket needs no
+     manual CORS setup. Files saved to Drive earlier still open by their
+     old links and are read and deleted through Apps Script; on a rescan the old file
+     in Drive goes to the trash. When a firm is deleted, its files in Storage stay (like
+     its Drive folder). Checked in the browser on the emulators: 21 checks.
+8. **Switch-over.** A repeated transfer run right before the switch (takes minutes), then
+   `BACKEND = firestore`. Apps Script stays read-only for another 1–2 weeks as a fallback,
+   then it is turned off. Daily Firestore backups are turned on (a built-in feature, kept
+   up to 14 weeks).
+   - **In the code:** Firestore is the default mode on all three pages (manager, worker
+     link, supplier portal); `?backend=sheets` keeps a device on the old mode.
+     The "Copy to Firestore" button requires typing REPLACE after the switch. The "Move files
+     to Firebase" button (function `migrate_files`) copies the workers' files from Drive to Storage and
+     changes the links in the cards; it doesn't touch Drive, and a repeated run moves only the rest.
+   - **Punches by month:** on open the app loads only the current month (plus the week
+     before it); older months are read once, when they are picked in payroll, export,
+     the punch log or the log cleanup. Fewer Firestore reads and a small browser cache.
+   - **Order:** 1) ask everyone not to make changes; 2) "Copy to Firestore"; 3) merge
+     the switch-over PR; 4) after the deploy — "Move files to Firebase"; 5) backups and a budget in the console.
 
-**Откат** на любом этапе до 8: переключатель `BACKEND` обратно на `sheets` — данные в таблице
-не трогаются до самого конца.
+**Rollback** at any stage before 8: the `BACKEND` switch back to `sheets` — the data in the sheet
+is not touched until the very end.
 
-## Что понадобится от вас по ходу
+## What was needed from the owner along the way
 
-- [x] Firestore (Standard, `europe-west3` — Франкфурт) и вход Email/Password включены.
-- [x] **Firebase Storage** включён; деплой-аккаунту выданы Firebase Rules Admin, Cloud Datastore
-      Index Admin и Cloud Storage for Firebase Admin.
-- [x] Этап 2: роль **Service Account Token Creator** у сервисного аккаунта функций.
-- [x] Этап 5: секрет `GS_SESSION_SECRET` (значение `SESSION_SECRET` из Script Properties Apps Script)
-      в Secret Manager. Деплой-аккаунту `firebase-adminsdk-…` нужна роль **Secret Manager Admin**.
-- [ ] Этап 4: веб-приложение Firebase в проекте (Project settings → Your apps → Web), иначе
-      `/__/firebase/init.json` на сайте пустой и режим Firestore не стартует.
-- [x] Этап 7: ключ Anthropic в **Secret Manager** (`ANTHROPIC_API_KEY`).
-- [ ] Этап 8: включить ежедневные бэкапы Firestore (Firestore → Disaster recovery).
-- [ ] Оповещение о расходах (Billing → Budgets), например $20/мес.
+- [x] Firestore (Standard, `europe-west3` — Frankfurt) and Email/Password sign-in turned on.
+- [x] **Firebase Storage** turned on; the deploy account given Firebase Rules Admin, Cloud Datastore
+      Index Admin and Cloud Storage for Firebase Admin.
+- [x] Stage 2: the **Service Account Token Creator** role for the functions' service account.
+- [x] Stage 5: the secret `GS_SESSION_SECRET` (the value of `SESSION_SECRET` from the Apps Script Script Properties)
+      in Secret Manager. The deploy account `firebase-adminsdk-…` needs the **Secret Manager Admin** role.
+- [ ] Stage 4: a Firebase web app in the project (Project settings → Your apps → Web), otherwise
+      `/__/firebase/init.json` on the site is empty and Firestore mode doesn't start.
+- [x] Stage 7: the Anthropic key in **Secret Manager** (`ANTHROPIC_API_KEY`).
+- [ ] Stage 8: turn on daily Firestore backups (Firestore → Disaster recovery).
+- [ ] A spending alert (Billing → Budgets), for example $20/month.
 
-## Решения
+## Decisions
 
-1. **Файлы — в Firebase Storage** (решено 2026-10-01): форма 101, сканы с подписью и страницами,
-   документы работников (контракт, виза, разрешение). Путь `tenants/{tenantId}/workers/{workerId}/…`,
-   доступ по тем же ролям, что и к данным. Старые файлы в Drive не трогаем: их ссылки в карточках
-   продолжают открываться, новые файлы идут в Storage.
-2. **Push-напоминания о сменах** — выключены, в миграцию не входят; вернём отдельной задачей,
-   когда понадобятся (коллекция `pushSubscriptions` в модели оставлена под это).
+1. **Files go to Firebase Storage** (decided 2026-10-01): Form 101, scans with the signature and pages,
+   the workers' documents (contract, visa, permit). Path `tenants/{tenantId}/workers/{workerId}/…`,
+   access by the same roles as the data. Old files in Drive are left alone: their links in the cards
+   keep opening, new files go to Storage.
+2. **Push reminders about shifts** — turned off, not part of the migration; to come back as a separate task
+   when needed (the `pushSubscriptions` collection is kept in the model for it).
 
-## Стоимость (оценка, проверить в Firebase Console → Usage)
+## Cost (an estimate; check in Firebase Console → Usage)
 
-Бесплатно каждый день: 50 тыс. чтений, 20 тыс. записей, 1 ГБ хранения. При 20 фирмах × 50 работников
-платная часть — в основном чтения при открытии приложения и бухгалтерии: ожидаемо **$5–15 в месяц**.
-Cloud Functions в пределах бесплатного лимита (2 млн вызовов в месяц).
+Free every day: 50k reads, 20k writes, 1 GB of storage. With 20 firms × 50 workers
+the paid part is mostly reads when the app and accounting are opened: expected **$5–15 a month**.
+Cloud Functions within the free tier (2 million calls a month).

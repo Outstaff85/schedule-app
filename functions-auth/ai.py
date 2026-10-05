@@ -28,9 +28,9 @@ ACTIONS = ("aiReadDoc", "aiReadSefach", "aiDetectAlign", "aiVerifyField", "aiVer
 # aiFindField: at most this many page photos per request.
 FIND_MAX_PAGES = 4
 
-E_NO_IMAGE = "Нет изображения"
-E_UNREADABLE = "AI вернул нечитаемый ответ"
-E_TRUNCATED = "Ответ ИИ обрезан лимитом max_tokens — увеличьте лимит"
+E_NO_IMAGE = "No image"
+E_UNREADABLE = "The AI returned an unreadable answer"
+E_TRUNCATED = "The AI answer was cut at max_tokens — raise the limit"
 
 # A busy Anthropic (HTTP 429 / 5xx / 529, or an overloaded_error reply) or a
 # dropped connection is tried again after these pauses (seconds). Scans send
@@ -254,9 +254,9 @@ def parse_reply(action, status, raw):
     try:
         reply = json.loads(raw)
     except ValueError:
-        return {"error": f"Неверный ответ от Anthropic (HTTP {status})"}
+        return {"error": f"Bad reply from Anthropic (HTTP {status})"}
     if reply.get("error"):
-        return {"error": (reply["error"] or {}).get("message") or "Ошибка Anthropic"}
+        return {"error": (reply["error"] or {}).get("message") or "Anthropic error"}
     text = "".join(c.get("text", "") for c in (reply.get("content") or []) if c.get("type") == "text")
 
     if action == "aiVerifyField":
@@ -310,7 +310,7 @@ def run(action, body, key, post, model=None, align_model=None, meta=None):
     if action not in ACTIONS:
         return {"error": "Unknown action"}
     if not key:
-        return {"error": "ANTHROPIC_API_KEY не задан"}
+        return {"error": "ANTHROPIC_API_KEY is not set"}
     m, am = models()
     payload, extra = build_request(action, body, model or m, align_model or am)
     if payload is None:
@@ -326,7 +326,7 @@ def run(action, body, key, post, model=None, align_model=None, meta=None):
         except Exception as e:  # network
             meta["apiMs"] += int((time.monotonic() - t0) * 1000)
             if last:
-                return {"error": "Запрос к Anthropic не прошёл: " + str(e)}
+                return {"error": "The request to Anthropic failed: " + str(e)}
         else:
             meta["apiMs"] += int((time.monotonic() - t0) * 1000)
             if last or not _busy(status, raw):

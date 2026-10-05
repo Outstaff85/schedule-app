@@ -143,8 +143,8 @@
       const res = await fetch(LOGIN_FN_URL, {method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({username, password})});
       let json;
-      try{ json = await res.json(); }catch(e){ return {error:'Сервер входа вернул ошибку (HTTP ' + res.status + ')'}; }
-      if(!json || json.error) return json || {error:'Не удалось войти'};
+      try{ json = await res.json(); }catch(e){ return {error:'The login server returned an error (HTTP ' + res.status + ')'}; }
+      if(!json || json.error) return json || {error:'Could not sign in'};
       await authMod.signInWithCustomToken(auth, json.token);
       return json;
     }
@@ -304,7 +304,7 @@
       const res = await fetch(url, {method:'POST',
         headers:{'Content-Type':'application/json', Authorization:'Bearer ' + idToken},
         body: JSON.stringify(Object.assign({}, params, {token: undefined, secret: undefined}))});
-      try{ return await res.json(); }catch(e){ return {error:'Сервер вернул ошибку (HTTP ' + res.status + ')'}; }
+      try{ return await res.json(); }catch(e){ return {error:'The server returned an error (HTTP ' + res.status + ')'}; }
     }
     async function writeTelemetry(params){
       const items = params.action === 'logBatch' ? (params.items || []).slice(0, 60)
@@ -359,9 +359,9 @@
     // Hours-import queue (savePendingHoursBatch / loadPendingHours /
     // approvePendingHours / rejectPendingHours). One document per batch.
     async function savePendingHours(t, ctx, params){
-      if(ctx.role === 'supplier') return {error:'Недоступно для роли поставщика'};
+      if(ctx.role === 'supplier') return {error:'Not available for the supplier role'};
       const entries = Array.isArray(params.entries) ? params.entries : [];
-      if(!entries.length) return {error:'Нет распознанных смен для загрузки'};
+      if(!entries.length) return {error:'No recognized shifts to upload'};
       const ref = F.doc(col(t,'pendingHours'));
       const rows = entries.map(e => ({rowId: crypto.randomUUID(), workerId: e.workerId || '', clientId: e.clientId || null,
         date: e.date || '', inTime: e.inTime || '', outTime: e.outTime || ''}));
@@ -370,7 +370,7 @@
       return {ok:true, batchId: ref.id, count: rows.length};
     }
     async function loadPendingHours(t, ctx){
-      if(ctx.role === 'supplier') return {error:'Недоступно для роли поставщика'};
+      if(ctx.role === 'supplier') return {error:'Not available for the supplier role'};
       // An own-workers hr reads only the batches it uploaded.
       const hr = await hrOnly();
       const snap = await F.getDocs(hr ? F.query(col(t,'pendingHours'), F.where('createdBy','==',hr)) : col(t,'pendingHours'));
@@ -378,7 +378,7 @@
         uploadedBy: x.uploadedBy || '', uploadedAt: x.uploadedAt || '', status: x.status, entries: x.rows || []}; })};
     }
     function approver(ctx){ return ctx.role === 'tenant_admin' || ctx.role === 'superadmin'; }
-    const APPROVER_ERROR = 'Подтверждать загруженные часы может только владелец фирмы или супер-админ';
+    const APPROVER_ERROR = 'Only the firm owner or the super-admin can approve uploaded hours';
     // Approving turns each row into an IN and an OUT punch (ids derived from
     // the batch, so approving twice can't duplicate) and marks the batch, all
     // in one batch write.
@@ -386,7 +386,7 @@
       if(!approver(ctx)) return {error: APPROVER_ERROR};
       const ref = F.doc(db,'tenants',t,'pendingHours',String(batchId));
       const snap = await F.getDoc(ref);
-      if(!snap.exists()) return {error:'Пакет не найден'};
+      if(!snap.exists()) return {error:'Batch not found'};
       const b = snap.data();
       if(b.status !== 'pending') return {ok:true, created:0};
       const workersSnap = await F.getDocs(col(t,'workers'));
@@ -417,7 +417,7 @@
       if(!approver(ctx)) return {error: APPROVER_ERROR};
       const ref = F.doc(db,'tenants',t,'pendingHours',String(batchId));
       const snap = await F.getDoc(ref);
-      if(!snap.exists()) return {error:'Пакет не найден'};
+      if(!snap.exists()) return {error:'Batch not found'};
       if(snap.data().status !== 'pending') return {ok:true, rejected:0};
       await F.updateDoc(ref, {status:'rejected'});
       return {ok:true, rejected: (snap.data().rows || []).length};
@@ -426,7 +426,7 @@
     // punches carry the new hrId, so the new HR sees its history and the old
     // one no longer does. Owner or super-admin only.
     async function setPunchesHr(t, ctx, workerIds, hrId){
-      if(!approver(ctx)) return {error:'Назначать HR может только владелец фирмы или супер-админ'};
+      if(!approver(ctx)) return {error:'Only the firm owner or the super-admin can assign an HR'};
       const ids = (Array.isArray(workerIds) ? workerIds : []).map(String).filter(Boolean);
       const val = hrId ? String(hrId) : F.deleteField();
       // Several workers at once (8 in flight): a bulk assign of dozens of
@@ -471,16 +471,16 @@
       return out;
     }
     async function uploadWorkerFile(t, body, onProgress){
-      if(!auth.currentUser) return {error:'Сессия истекла или недействительна — войдите заново'};
-      if(!t) return {error:'Нет фирмы'};
+      if(!auth.currentUser) return {error:'Session expired or invalid — please sign in again'};
+      if(!t) return {error:'No firm'};
       const action = body.action;
       let kind, name, bytes, type;
       if(action === 'saveWorkerDoc'){
-        if(!body.fileBase64 || !body.fileName) return {error:'Нет fileBase64 или fileName'};
+        if(!body.fileBase64 || !body.fileName) return {error:'No fileBase64 or fileName'};
         kind = 'form101'; name = body.fileName; bytes = b64Bytes(body.fileBase64); type = body.mimeType || 'application/pdf';
       } else if(action === 'saveWorkerAssets'){
         // A sidecar may hold only a signature (a worker added without a scan).
-        if(!body.scanB64 && !body.sigPng) return {error:'Нет scanB64'};
+        if(!body.scanB64 && !body.sigPng) return {error:'No scanB64'};
         kind = 'assets'; name = (body.fileNameBase || 'worker') + '_assets.json'; type = 'application/json';
         bytes = new TextEncoder().encode(JSON.stringify({scanB64: body.scanB64, scanMediaType: body.scanMediaType || 'image/jpeg',
           sigPng: body.sigPng || null, extraPages: Array.isArray(body.extraPages) ? body.extraPages : []}));
@@ -510,17 +510,17 @@
       const t = params.asTenantId || ctx.tenantId;
       // Telemetry before the Firebase sign-in has nowhere to go: dropped.
       if(['logBatch','logError','logTiming'].includes(action)) return auth.currentUser ? writeTelemetry(params) : {ok:false, skipped:true};
-      if(!auth.currentUser) return {error:'Сессия истекла или недействительна — войдите заново'};
+      if(!auth.currentUser) return {error:'Session expired or invalid — please sign in again'};
       if(FUNCTION_ACTIONS.includes(action)) return callUsersAdmin(params);
       if(AI_ACTIONS.includes(action)) return callUsersAdmin(params, AI_FN_URL);
       if(STORAGE_FILE_ACTIONS.includes(action)){
         if(isStoragePath(params.fileId)) return callUsersAdmin(params);
         // Not a Storage path: nothing of ours to delete, nothing to read.
-        return action === 'deleteWorkerDoc' ? {ok:true} : {error:'Файл не найден'};
+        return action === 'deleteWorkerDoc' ? {ok:true} : {error:'File not found'};
       }
       switch(action){
-        case 'loadErrors':  return ctx.role === 'superadmin' ? readLog('errors', params.from ? 2000 : 100, params.from, params.to) : {error:'Доступ только для супер-админа'};
-        case 'loadTimings': return ctx.role === 'superadmin' ? readLog('timings', params.from ? 5000 : 500, params.from, params.to) : {error:'Доступ только для супер-админа'};
+        case 'loadErrors':  return ctx.role === 'superadmin' ? readLog('errors', params.from ? 2000 : 100, params.from, params.to) : {error:'Super-admin only'};
+        case 'loadTimings': return ctx.role === 'superadmin' ? readLog('timings', params.from ? 5000 : 500, params.from, params.to) : {error:'Super-admin only'};
         case 'loadSchedule': return loadSchedule(t, false);
         case 'loadPunchLog': return punchesOnce(t);
         case 'deletePunchesByMonths': return deletePunchesByMonths(t, ctx, params.months);
