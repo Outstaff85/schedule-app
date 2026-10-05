@@ -51,12 +51,13 @@ The client keeps the punch log in `localStorage.punchLog` (`getPunchLog()` / `sa
 2. **Per-client rates** — `renderRateMatrix()`.
 3. **Per-supplier rates** — `renderSupplierRateMatrix()`.
 4. **Payable by supplier** — `renderSupplierPayable()`, called from `renderSalary()`.
+   **Payable by HR** — `renderHrPayable()` (owner / super-admin, shown when the firm has HR logins): per HR, the hours of the workers whose `hrId` is that HR × its `commissionRate`; never a wage.
 5. **Billable by client** — `renderClientBillable()`, called from `renderSalary()`.
 6. **Pending hours** — `renderPendingHours()`.
 
 Each section title has an (i) button (`.acc-help`) that opens the section's explanation in a modal (`openAccountingHelp(key)` → `#accHelpOverlay`, texts in `ACCOUNTING_HELP`); the page itself carries no explanatory text. A change to how a section works updates its text there.
 
-The tab is gated by the `accounting` permission.
+The tab is gated by the `accounting` permission. An HR without it but with "Sees own workers' pay" gets the reduced tab of `hrPayOnly()` ([hr.md](hr.md) → Pay): `renderAccounting` hides every section but Salary, `renderSalary` keeps only its workers, makes the table read-only (`.salary-ro`, the setters refuse) and adds "My commission".
 
 ### Salary (`renderSalary()`)
 

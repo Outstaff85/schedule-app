@@ -187,7 +187,11 @@ def test_http_functions():
     assert status == 200 and r["workers"][0]["id"] == "w1"
     sup = _id_token("u-sup", {"role": "supplier", "tenantId": T1, "supplierId": "sp1"})
     status, r = _call(main.supplier, {"action": "loadSchedule"}, {"Authorization": "Bearer " + sup})
-    assert status == 200 and [w["id"] for w in r["workers"]] == ["w1"]
+    assert status == 200 and [w["id"] for w in r["workers"]] == ["w1"] and r["showPay"] is False
+    # The pay claim from the token reaches the portal code.
+    paysup = _id_token("u-sup2", {"role": "supplier", "tenantId": T1, "supplierId": "sp1", "pay": True})
+    r = _call(main.supplier, {"action": "loadSchedule"}, {"Authorization": "Bearer " + paysup})[1]
+    assert r["showPay"] is True and r["workers"][0]["hourlyRate"] == 55
     assert _call(main.supplier, {"action": "loadSchedule"})[0] == 401
     owner = _id_token("u-own", {"role": "tenant_admin", "tenantId": T1})
     assert _call(main.supplier, {"action": "loadSchedule"}, {"Authorization": "Bearer " + owner})[1]["error"] == portal.E_SUPPLIER_ONLY
