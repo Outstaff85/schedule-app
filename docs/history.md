@@ -191,3 +191,6 @@ The ספח read took 9–11 s, and once 22 s. Two dead ends first:
 The time goes into writing the long answer, so `readSefachPage` now asks for it in two halves at once (`aiReadSefach` with `part`: holder / family, docs/scan.md). Both halves use the same cached prompt. The cost is under a cent more per scan.
 
 The first version kept a single read for `id_back` pages. The next live scan still waited 22 s, because the align model had classified a paper ספח as `id_back`. So every extra page is now split. The same scan also added `_meta` to `ai_read` replies (time at Anthropic, tries, tokens, docs/backend.md), so that a slow AI call in Timings shows where its time went.
+
+## Form 101 field map rewritten (2026-10-05)
+`docs/form101-field-map.md` still described the browser (pdf-lib) version of the form filling: `addNewCombField`, `stripWidgetChrome`, hand-made boxes such as `id_box` and `tax_year_box`, and the bug trails of that time. The form has been built on the server for a long time (`functions/main.py`, PyMuPDF), and the current template has its own field for every value. The map now lists the template's fields as dumped from the PDF and what `build_form101_pdf()` writes into each. The old text is in git history.

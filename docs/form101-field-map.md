@@ -121,7 +121,7 @@ Spouse income (`SPOUSE_INCOME_CB` by `income`): `none` → `cb_p1_22` (אין ל
 | `id_top2` | 96.3,14.6,172.3,26.6 | `p.no` (the page header), `set_text` 10 |
 | `resident_h` | 510.5,39.9,520.5,49.9 | ח.1 "אני תושב/ת ישראל" — checked for an Israeli ID worker |
 | `cb_p2_1` … `cb_p2_16` | x ≈ 511, y 55–460 | the tax-relief declarations of ח and ט — never checked: a scan can't know them |
-| `sign_date` | 147.4,641.6,223.5,655.6 | `p.signDate` (the app sends the date the worker was first saved), `set_text` 10 |
+| `sign_date` | 147.4,641.6,223.5,655.6 | `p.signDate` — the app sends the date the worker was first saved (`createdAt`), else today; `set_text` 10 |
 | `sign` | 33.1,636.7,129.5,658.7 | not filled as text. The signature image (`p.signaturePngBase64`) is drawn into `SIG_RECT` = x 34.02, bottom 186, 87.99 × 15 (page y 640.9–655.9), downscaled by `_shrink_for_embed` |
 
 The section ט table of other employers has no fields and is left as printed.
