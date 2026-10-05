@@ -3744,8 +3744,15 @@ async function loadHoursSent(workerId){
 // 08:00–16:00.
 let __hoursManualRows = [];
 const MANUAL_DAY_SHIFT = ['08:00','16:00'];
+// A new row takes the day after the last row (today for the first one).
+function nextManualDate(rows){
+  const last = rows.length && rows[rows.length-1].date;
+  if(!last) return localYMD(new Date());
+  const d = new Date(last+'T12:00'); d.setDate(d.getDate()+1);
+  return localYMD(d);
+}
 function addHoursManualRow(){
-  __hoursManualRows.push({date: localYMD(new Date()), inTime:'', outTime:''});
+  __hoursManualRows.push({date: nextManualDate(__hoursManualRows), inTime:'', outTime:''});
   renderHoursManualRows();
 }
 function setHoursManualRow(i, key, val){ if(__hoursManualRows[i]){ __hoursManualRows[i][key] = val; updateHoursSubmit(); } }
@@ -3753,7 +3760,7 @@ function removeHoursManualRow(i){ __hoursManualRows.splice(i,1); renderHoursManu
 function renderHoursManualRows(){
   const el = document.getElementById('hoursManualRows'); if(!el) return;
   const inStyle = 'width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;padding:6px 8px;outline:none';
-  el.innerHTML = __hoursManualRows.map((r,i)=>`<div style="display:grid;grid-template-columns:1.4fr 1fr 1fr auto;gap:6px;align-items:center">
+  el.innerHTML = __hoursManualRows.map((r,i)=>`<div data-row="${i}" style="display:grid;grid-template-columns:1.4fr 1fr 1fr auto;gap:6px;align-items:center">
       <input type="date" value="${esc(r.date)}" onchange="setHoursManualRow(${i},'date',this.value)" style="${inStyle}">
       <input type="time" value="${esc(r.inTime)}" title="In" onchange="setHoursManualRow(${i},'inTime',this.value)" style="${inStyle}">
       <input type="time" value="${esc(r.outTime)}" title="Out" onchange="setHoursManualRow(${i},'outTime',this.value)" style="${inStyle}">
@@ -3774,9 +3781,22 @@ function hoursManualEntries(){
     return {date: d+'/'+m+'/'+y, inTime, outTime};
   }).filter(Boolean);
 }
+// The send button is on whenever there is something to send; a typed row
+// that can't be sent is explained on submit (manualRowsProblem), never
+// dropped silently.
 function updateHoursSubmit(){
   const btn = document.getElementById('hoursImportSubmitBtn');
-  if(btn) btn.disabled = !(__hoursImportEntries.length || hoursManualEntries().length);
+  if(btn) btn.disabled = !(__hoursImportEntries.length || __hoursManualRows.length);
+}
+// Which typed rows can't be sent: no date, or (paid by the hour) no in / out.
+function manualRowsProblem(rows, daily, name){
+  const bad = rows.map((r,i)=>(!r.date || (!daily && (!r.inTime || !r.outTime)) || (!!r.inTime !== !!r.outTime)) ? i : -1).filter(i=>i>=0);
+  if(!bad.length) return null;
+  const r = rows[bad[0]];
+  const why = !r.date ? 'pick a date'
+    : (!daily ? 'enter the in and out times — '+(name||'this worker')+' is paid by the hour (₪/day in Accounting → Salary lets you send dates only)'
+    : 'enter both times, or leave both empty for a whole day');
+  return {rows: bad, text: 'Shift '+(bad[0]+1)+': '+why};
 }
 function renderHoursImportPreview(status){
   const el = document.getElementById('hoursImportPreview');
@@ -3867,6 +3887,13 @@ async function parseHoursImagePage(pg){
 }
 async function submitHoursImportBatch(){
   const clientId = document.getElementById('hoursImportClient')?.value || '';
+  const w = workers.find(x=>x.id===__hoursImportWorkerId);
+  const problem = manualRowsProblem(__hoursManualRows, isDailyPay(w), w&&w.name);
+  if(problem){
+    document.querySelectorAll('#hoursManualRows [data-row]').forEach(el=>{ el.style.outline = problem.rows.includes(Number(el.dataset.row)) ? '1px solid var(--red)' : ''; });
+    showToast(problem.text, 6000);
+    return;
+  }
   const manual = hoursManualEntries();
   if(!__hoursImportEntries.length && !manual.length) return;
   const entries = [...__hoursImportEntries, ...manual].map(en=>({ workerId: __hoursImportWorkerId, clientId, date: en.date, inTime: en.inTime, outTime: en.outTime||'' }));

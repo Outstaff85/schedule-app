@@ -709,11 +709,18 @@ function renderHoursTab(){
 // empty times count as one day, 08:00–16:00 — the same as the manager app.
 let sendHoursRows = [];
 const MANUAL_DAY_SHIFT = ['08:00','16:00'];
-function addSendHoursRow(){ sendHoursRows.push({date: localYMD(new Date()), inTime:'', outTime:''}); renderSendHoursRows(); }
+// A new row takes the day after the last row (today for the first one).
+function addSendHoursRow(){
+  const last = sendHoursRows.length && sendHoursRows[sendHoursRows.length-1].date;
+  let date = localYMD(new Date());
+  if(last){ const d = new Date(last+'T12:00'); d.setDate(d.getDate()+1); date = localYMD(d); }
+  sendHoursRows.push({date, inTime:'', outTime:''});
+  renderSendHoursRows();
+}
 function renderSendHoursRows(){
   const w = myWorkers.find(x=>x.id===document.getElementById('sendHoursWorker').value);
   document.getElementById('sendHoursHint').textContent = isDailyPay(w) ? 'Paid by the day: a date is enough — with no times it counts as one day (08:00–16:00).' : 'Date, in and out for each shift.';
-  document.getElementById('sendHoursRows').innerHTML = sendHoursRows.map((r,i)=>`<div style="display:grid;grid-template-columns:1.4fr 1fr 1fr auto;gap:6px;align-items:center">
+  document.getElementById('sendHoursRows').innerHTML = sendHoursRows.map((r,i)=>`<div data-row="${i}" style="display:grid;grid-template-columns:1.4fr 1fr 1fr auto;gap:6px;align-items:center">
       <input type="date" value="${esc(r.date)}" onchange="sendHoursRows[${i}].date=this.value">
       <input type="time" value="${esc(r.inTime)}" title="In" onchange="sendHoursRows[${i}].inTime=this.value">
       <input type="time" value="${esc(r.outTime)}" title="Out" onchange="sendHoursRows[${i}].outTime=this.value">
@@ -722,6 +729,16 @@ function renderSendHoursRows(){
 }
 async function submitSendHours(){
   const wid = document.getElementById('sendHoursWorker').value, w = myWorkers.find(x=>x.id===wid);
+  if(!sendHoursRows.length){ showToast('Add at least one shift'); return; }
+  // A row that can't be sent is explained, never dropped silently.
+  const daily = isDailyPay(w);
+  const bad = sendHoursRows.map((r,i)=>(!r.date || (!daily && (!r.inTime || !r.outTime)) || (!!r.inTime !== !!r.outTime)) ? i : -1).filter(i=>i>=0);
+  if(bad.length){
+    document.querySelectorAll('#sendHoursRows [data-row]').forEach(el=>{ el.style.outline = bad.includes(Number(el.dataset.row)) ? '1px solid var(--red)' : ''; });
+    const r = sendHoursRows[bad[0]];
+    showToast('Shift '+(bad[0]+1)+': '+(!r.date ? 'pick a date' : !daily ? 'enter the in and out times — this worker is paid by the hour' : 'enter both times, or leave both empty for a whole day'));
+    return;
+  }
   const entries = sendHoursRows.map(r=>{
     let inTime = r.inTime, outTime = r.outTime;
     if(!inTime && !outTime && isDailyPay(w)) [inTime, outTime] = MANUAL_DAY_SHIFT;
