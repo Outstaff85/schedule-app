@@ -79,7 +79,7 @@ Missing firm-profile fields (`firmProfileMissing`) are shown as a toast after th
   - this happens only here: the full-resolution scan stays in the sidecar.
 - **Output:**
   - the file is saved with `garbage=4, deflate, clean`, and `NeedAppearances=false`;
-  - the file name is `<given> - <surname> - <ID or passport number> - <company>.pdf` ([form101-field-map.md](form101-field-map.md) → File name);
+  - the file name is `<given> <surname> - <ID or passport number> - <company>.pdf` ([form101-field-map.md](form101-field-map.md) → File name);
   - the function returns `{pdfBase64, fileName, firmMissing}`.
 - **Warm-up:** `{"ping":true}` gets an immediate answer (`_ping_response`). All three functions in `functions/main.py` do this; the client pings them when the worker modal opens and when a scan starts.
 

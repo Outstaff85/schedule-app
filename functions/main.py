@@ -557,10 +557,10 @@ def build_form101_pdf(p):
         s = re.sub(r"(?<=[֐-׿])'", "׳", s)
         return re.sub(r"\s+", " ", re.sub(r"[^A-Za-z0-9֐-׿ ]", " ", s)).strip()
 
-    # "<given> - <surname> - <ID or passport number> - <company>.pdf" (per
+    # "<given> <surname> - <ID or passport number> - <company>.pdf" (per
     # user request 2026-10-05); an empty part is left out.
-    parts = [fn_part(given) or "worker", fn_part(surname),
-             re.sub(r"[^A-Za-z0-9]", "", str(no or "")).upper(), fn_part(employer.get("companyName"))]
+    full_name = " ".join(x for x in (fn_part(given), fn_part(surname)) if x) or "worker"
+    parts = [full_name, re.sub(r"[^A-Za-z0-9]", "", str(no or "")).upper(), fn_part(employer.get("companyName"))]
     file_name = " - ".join(x for x in parts if x) + ".pdf"
 
     return b.finalize(), file_name, firm_missing
