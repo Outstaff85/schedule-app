@@ -14,7 +14,7 @@ All values go into the template's own AcroForm fields (`Form101Builder`, PyMuPDF
 | `set_text(name, value, size)` | plain LTR text | PyMuPDF's own appearance |
 | `set_text_centered(name, value, size)` | the house number | like `set_hebrew`, but centered (`_draw_center_text`) |
 | `set_comb(name, value, max_len, size)` | digit boxes | turns on the comb flag with `max_len` cells and sets the value |
-| `check(name)` | checkboxes | sets the value and blanks the "Yes" appearance, then draws a blue check mark (two lines, `CHECK_BLUE`). Page 1 marks are moved up by `PAGE1_EXTRA_Y` + `CHECK_EXTRA_UP`; page 2 (`resident_h`) by `CHECK_EXTRA_UP` − 2 |
+| `check(name)` | checkboxes | sets the value and blanks the "Yes" appearance, then draws a blue check mark (two lines, `CHECK_BLUE`) inside the checkbox's own rectangle, with no extra offset |
 
 Every writer skips an empty value or a field name the template doesn't have.
 
