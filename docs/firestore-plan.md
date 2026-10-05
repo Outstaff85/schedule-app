@@ -72,7 +72,7 @@ the last 12 months: otherwise it is ~30k reads per firm at a time.
   token → firm/worker, the punch written on the server. The offline queue on the worker's phone
   stays as it is.
 
-## Stages (each a separate PR, merged on "Мержи" after checking)
+## Stages (each a separate PR, merged after the owner's OK)
 
 1. **Model and rules.** ✅ `firestore.rules`, `storage.rules`, `firestore.indexes.json`, the settings
    in `firebase.json`, a CI deploy (`.github/workflows/deploy-rules.yml`: tests first, then the deploy).

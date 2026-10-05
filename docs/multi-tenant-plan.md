@@ -13,7 +13,7 @@ Design doc for the multi-tenant version of this app: a super-admin creates
       stateless signed session tokens, tenant-scoped `Schedule`/`PunchLog`/
       `PushSubscriptions`, `login`/`createUser`/`listTenants` actions,
       `migrateToMultiTenant()` one-time migration function.
-      (`apps-script/Код.js` / `google-apps-script.js`)
+      (`apps-script/Kod.js` / `google-apps-script.js`)
 - [x] **Step 2 — frontend**: login screen (`#loginScreen`) + 6h session
       (`schedMgr_session` in localStorage) in `schedule-manager.html`;
       super-admin "Firms" screen (`#firmsScreen`) + create-firm modal
@@ -59,8 +59,8 @@ Design doc for the multi-tenant version of this app: a super-admin creates
       play/pause button and a trash button per firm row.
       `toggleTenantActive(tenantId, nextActive)` calls `setTenantActive` —
       reversible, flips the `active` column on every `Users` row for that
-      tenant; a deactivated login is rejected at `login()` with "Аккаунт
-      отключён" but the firm's schedule/punches/Drive docs are untouched
+      tenant; a deactivated login is rejected at `login()` with "Account
+      disabled" but the firm's schedule/punches/Drive docs are untouched
       (an already-issued session token still works until its normal 6h
       expiry, since sessions are stateless with no revocation list).
       `confirmDeleteTenant(tenantId, companyName)` calls `deleteTenant` —
@@ -117,7 +117,7 @@ Design doc for the multi-tenant version of this app: a super-admin creates
 **Steps 1-3 verified** — no access to the real Google Sheet/Drive from this
 environment, so instead: (1) a GAS environment shim (`SpreadsheetApp`/
 `Utilities`/`PropertiesService`/`ContentService`/`DriveApp` stubbed over
-in-memory state) runs the **actual** `apps-script/Код.js` unmodified under
+in-memory state) runs the **actual** `apps-script/Kod.js` unmodified under
 Node; 64 automated checks cover login, session tokens (tampered/expired
 rejected),
 superadmin vs tenant authorization, migration idempotency, that one firm can

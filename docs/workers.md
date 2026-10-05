@@ -169,7 +169,7 @@ These are separate from the Form 101 scan, and their labels are English.
 `openHoursImportModal(workerId)` opens `#hoursImportOverlay`:
 - a client select (the worker's clients, or all clients if they have none) and a file input (`.xlsx`, `.xls`, `.csv`, images, PDF; several files);
 - **reading the files** — `onHoursImportFileSelected(files)` parses every file in parallel:
-  - spreadsheets → `parseHoursExcelFile()` (SheetJS; a header row with `Date`/`In`/`Out` or the Russian `Дата`/`Вход`/`Выход`, any order, case-insensitive; dates become `dd/MM/yyyy`);
+  - spreadsheets → `parseHoursExcelFile()` (SheetJS; a header row with `Date`/`In`/`Out` or the same three words in Russian, any order, case-insensitive; dates become `dd/MM/yyyy`);
   - images and PDFs → `fileToUploadPages()`, then every page → `parseHoursImagePage()` (`aiReadHoursTable`);
 - **preview** — the first 10 entries are shown;
 - **submit** — `submitHoursImportBatch()` sends `savePendingHoursBatch` with `{workerId, clientId, date, inTime, outTime}` rows.

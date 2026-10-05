@@ -977,7 +977,7 @@
      (every firm's client-side errors land in one collection with
      no tenantId column — see loadErrors()'s own comment server-side for why
      this screen is superadmin-only). Overlays whatever screen was showing;
-     "Назад" just hides it again, no re-render of the underlying screen needed. -->
+     "Back" just hides it again, no re-render of the underlying screen needed. -->
 <div id="errorsScreen" style="display:none;position:fixed;inset:0;z-index:960;background:var(--bg);overflow-y:auto">
   <div style="max-width:960px;margin:0 auto;padding:28px 20px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
@@ -1262,7 +1262,7 @@ function expiryBadgeHtml(w){
   return `<span title="Deadline: ${dateStr}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:${bg};color:${color};margin-left:5px"><i class="ti ti-alert-triangle" style="font-size:9px"></i> ${label}</span>`;
 }
 // Shown only for a worker whose background PDF-generation/upload (right
-// after creation from a scan, or a manual "Загрузить"/rescan) actually
+// after creation from a scan, or a manual "Upload"/rescan) actually
 // failed — `docUploadFailed` is set by aiFillForm101()'s catch block and
 // cleared the moment an upload succeeds, so a worker who never went through
 // the scan/upload flow at all never gets this badge (no noise for firms not
@@ -2246,7 +2246,7 @@ function removeWClient(id){ __wClientIds=__wClientIds.filter(x=>x!==id); renderW
 function pickFirstWClientSuggest(){ const m=wClientMatches(); if(m.length) addWClient(m[0].id); }
 // Same collapsed-by-default pattern, for the worker's own bank requisites
 // (bank/branch/account number) — a separate section, not mixed into the
-// client picker, per request ("отдельная вкладка внутри карточки").
+// client picker, per request ("a separate tab inside the card").
 let __wBankOpen = false;
 // Spouse block in the worker modal is only relevant when married.
 // Spouse and children: framed panels behind two buttons side by side (closed
@@ -3691,7 +3691,7 @@ async function onHoursImportFileSelected(fileOrList){
   if(!__hoursImportEntries.length){ showToast('No shifts recognized in this file'); }
   renderHoursImportPreview();
 }
-// Fixed template: a header row containing Date/In/Out (or Дата/Вход/Выход),
+// Fixed template: a header row containing Date/In/Out (or the same three words in Russian),
 // case-insensitive, in any column order. cellDates:true so an Excel date
 // serial comes back as a real JS Date we can format ourselves, matching the
 // dd/MM/yyyy convention PunchLog itself already uses everywhere else.
@@ -4281,8 +4281,6 @@ function gsAuthQuery(){
 // session and returns to the login screen. A call slower than
 // SLOW_API_CALL_MS goes to the Timings pane as kind "gs:<action>".
 const SESSION_EXPIRED_ERROR = 'Session expired or invalid — please sign in again';
-// The text before 2026-10-05, from functions not yet redeployed.
-const SESSION_EXPIRED_ERROR_OLD = 'Сессия истекла или недействительна — войдите заново';
 (function(){
   const _origFetch = window.fetch.bind(window);
   // Telemetry and login never trigger the session-expired logout.
@@ -4309,7 +4307,7 @@ const SESSION_EXPIRED_ERROR_OLD = 'Сессия истекла или недей
     const meta = json && json._meta && typeof json._meta === 'object' ? json._meta : null;
     if(meta) delete json._meta;
     if(!quiet && ms >= SLOW_API_CALL_MS) try{ reportTiming('gs:' + action, ms, Object.assign({}, meta || {}, params.part ? {part: String(params.part)} : {})); }catch(e){}
-    if(!quiet && json && (json.error === SESSION_EXPIRED_ERROR || json.error === SESSION_EXPIRED_ERROR_OLD) && getSession()){
+    if(!quiet && json && json.error === SESSION_EXPIRED_ERROR && getSession()){
       clearSession();
       showToast('Session expired — please sign in again');
       setTimeout(() => location.reload(), 1200);
@@ -7383,7 +7381,7 @@ function ensureScanPipelineLoaded(){
   });
   return _scanPipelineLoading;
 }
-// New-scan entry point (the "Скан паспорта" button) — awaits the
+// New-scan entry point (the "Scan passport" button) — awaits the
 // pipeline before calling openAiScan(), which only exists once it's loaded.
 // Cloud Function warm-up (2026-10-01): a cold preprocess_scan /
 // fill_form_101 / ai_read instance costs seconds on first use (the
@@ -7761,7 +7759,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
 // unattended — nobody is watching for the failure toast — so it gets one
 // retry on failure (e.g. a transient CDN hiccup loading pdf-lib on a mobile
 // connection) before leaving the "no document" badge (docUploadFailed) for
-// the manager to notice and retry manually via "Пересканировать".
+// the manager to notice and retry manually via "Rescan".
 async function autoUploadWithRetry(isId,workerId){
   let ok=await aiFillForm101(isId,'upload',workerId,null);
   if(!ok){
@@ -7954,7 +7952,7 @@ function _mapsNoticeSeenToday(){
 const _consoleNoise=msg=>SDK_RECONNECT_NOISE_RE.test(msg)||(MAPS_MARKER_NOTICE_RE.test(msg)&&_mapsNoticeSeenToday());
 console.error=function(...args){ _origConsoleError(...args); try{ const t=_consoleArgsText(args); if(!_consoleNoise(t.msg)) reportError(t.msg,'console.error',t.stack); }catch(e){} };
 console.warn=function(...args){ _origConsoleWarn(...args); try{ const t=_consoleArgsText(args); if(!_consoleNoise(t.msg)) reportError(t.msg,'console.warn',t.stack); }catch(e){} };
-const ERROR_TOAST_RE=/fail|could not|error|offline|denied|invalid|ошибк|не удал|недоступ|нет прав|истекл|\u26a0|⚠/i;
+const ERROR_TOAST_RE=/fail|could not|error|offline|denied|invalid|no network|not available|no rights|not enough rights|expired|\u26a0|⚠/i;
 const _origShowToast=showToast;
 showToast=function(msg,dur){ _origShowToast(msg,dur); try{ if(ERROR_TOAST_RE.test(String(msg||''))) reportError(String(msg),'toast',''); }catch(e){} };
 function watchErrorLine(id){

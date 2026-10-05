@@ -2,7 +2,7 @@
 
 Every request ai.py sends to Anthropic, and every result it returns for a
 given Anthropic reply, must equal ai_golden.json: the requests and results of
-the original Apps Script AI actions, recorded from apps-script/Код.js (run in
+the original Apps Script AI actions, recorded from apps-script/Kod.js (run in
 Node) before Apps Script was removed. The prompts live in ai_prompts.json.
 """
 

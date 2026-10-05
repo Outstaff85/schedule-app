@@ -33,7 +33,7 @@ The function hands out only this worker and their sites, and accepts punches for
    - not in the cache, offline → "No connection — open this link once while online".
 3. **No token:** the worker grid (`screenWorker`, `renderWorkerGrid()`). This old picker flow cannot name a firm, so it only works from the same-device cache (`loadWorkersFromGS()` does nothing without a token).
 
-`loadWorkersFromGS()` answers `true` when the server answered — with this worker, or with "Unknown worker link" (then `workers` is empty, so the link is revoked) — and `false` when it could not be reached. It writes the whole reply to `localStorage.schedMgr_v1`, which is how the next open works offline. A crash in `init()` is reported and shows "Что-то пошло не так".
+`loadWorkersFromGS()` answers `true` when the server answered — with this worker, or with "Unknown worker link" (then `workers` is empty, so the link is revoked) — and `false` when it could not be reached. It writes the whole reply to `localStorage.schedMgr_v1`, which is how the next open works offline. A crash in `init()` is reported and shows "Something went wrong".
 
 ## Screens
 
