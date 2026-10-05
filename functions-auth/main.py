@@ -183,7 +183,7 @@ def supplier(req: https_fn.Request) -> https_fn.Response:
     if not decoded:
         return _json({"error": E_SESSION}, 401)
     caller = {"uid": decoded["uid"], "role": decoded.get("role"), "tenantId": decoded.get("tenantId"),
-              "supplierId": decoded.get("supplierId")}
+              "supplierId": decoded.get("supplierId"), "pay": decoded.get("pay") is True}
     try:
         return _json(portal.supplier_action(_db(), caller, _body(req)))
     except Exception as e:

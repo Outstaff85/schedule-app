@@ -35,9 +35,6 @@ INCOME_TYPE_CB = {"monthly": "cb_p1_4", "secondary": "cb_p1_5", "partial": "cb_p
 OTHER_INCOME_CB = {"monthly": "cb_p1_13", "secondary": "cb_p1_15", "partial": "cb_p1_17",
                    "daily": "cb_p1_12", "pension": "cb_p1_14", "scholarship": "cb_p1_16"}
 CHECK_BLUE = (0.09, 0.32, 0.85)
-NUDGE = 0.75
-PAGE1_EXTRA_Y = 1.5
-CHECK_EXTRA_UP = 2.5  # per repeated user feedback the checkmarks kept reading slightly low — nudged up twice now, all pages
 
 # PDF-embed image optimization (added 2026-09-26, per user request) — applies
 # ONLY here, at final PDF assembly, never earlier in the scan pipeline: OCR
@@ -71,10 +68,9 @@ CHILD_FIELD_SUFFIXES = ["", "1", "2", "3", "4", "5"]
 # hand-drawn text sits within an unchanged rect — the user specifically
 # wants the former. Add further per-field tweaks here rather than re-editing
 # the PDF template by hand.
-FIELD_RECT_NUDGES = {
-    "worker_phone": (3, 0),           # 3pt right, per user request
-    "employer_deductions": (0, 1),    # 1pt down, per user request (font size bumped at its set_comb() call site)
-}
+# Empty since 2026-10-05: every field sits exactly at its rectangle in the
+# template, and the user positions the fields in the PDF itself.
+FIELD_RECT_NUDGES = {}
 
 
 def pdf_rect(page_h, x, y_bottom, width, height):
@@ -202,11 +198,12 @@ class Form101Builder:
         self._blank_appearance(page, w, state="Yes")
         r = w.rect
         thickness = max(1.1, r.height * 0.16)
-        extra_up = PAGE1_EXTRA_Y if page == self.page1 else -2.0  # page-2 checkbox (resident_h) sits too high vs page-1 ones; nudge down 2pt, isolated to page 2
+        # The mark is drawn inside the checkbox's own rectangle, with no
+        # extra offset (2026-10-05): boxes are positioned in the template.
 
         def pt(fx, fy_from_bottom):
-            x = r.x0 + fx * r.width + NUDGE
-            y = r.y0 + (1 - fy_from_bottom) * r.height - NUDGE - extra_up - CHECK_EXTRA_UP
+            x = r.x0 + fx * r.width
+            y = r.y0 + (1 - fy_from_bottom) * r.height
             return pymupdf.Point(x, y)
 
         p1, p2, p3 = pt(0.12, 0.55), pt(0.40, 0.18), pt(0.88, 0.82)

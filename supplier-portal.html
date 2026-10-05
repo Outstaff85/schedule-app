@@ -98,7 +98,12 @@ th{color:var(--text2);font-size:11px;text-transform:uppercase;}
   </div>
 
   <div id="sectionHours" style="padding:16px;display:none">
-    <div class="field"><label>Month</label><select id="hoursExportMonthSel"></select></div>
+    <div class="field"><label>Month</label><select id="hoursExportMonthSel" onchange="renderPayTable()"></select></div>
+    <!-- With "sees pay": each worker's hours, days, rate, pay and my commission for the month. -->
+    <div id="payTableWrap" style="display:none;margin-bottom:16px">
+      <div style="font-weight:600;margin-bottom:8px">Pay</div>
+      <div id="payTable"></div>
+    </div>
     <div class="field"><label>Worker (for detailed export)</label><select id="hoursExportWorkerSel"></select></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
       <button class="btn sm" onclick="runDetailExport('excel')"><i class="ti ti-file-spreadsheet"></i> Detail (Excel)</button>
@@ -289,11 +294,112 @@ async function submitLogin(){
 // ── Data (already allow-listed by the supplier function — portal.py
 // strip_worker(): no hourlyRate/otRate/shabbatRate/clientRates, no client
 // billing data, no GPS fields ever reach this page at all) ──────────────
+// ── Pay (duplicated on purpose from schedule-manager.html: PAY_RULES,
+// israeliDayPay, effectiveRates … dayOverride, wOwnRate, localYMD — keep the
+// copies the same). Used only with "sees pay" (showPay from the server);
+// `clients` here are the firm's clients with their worker-pay rates only.
+let clients=[];
+const PAY_RULES = { regularMax: 8, ot1Span: 2, roundMinutes: 0, otMult: 1.25, shabbatMult: 1.5 };
+function israeliDayPay(hours, rate, isSat){
+  const base=isSat?1.5:1.0, ot1=isSat?1.75:1.25, ot2=isSat?2.0:1.5;
+  const RM=PAY_RULES.regularMax, O1=PAY_RULES.ot1Span;
+  const reg=Math.min(hours,RM), o1=Math.min(Math.max(hours-RM,0),O1), o2=Math.max(hours-(RM+O1),0);
+  const regularPay=reg*rate*base, otPay=o1*rate*ot1+o2*rate*ot2;
+  return { regularPay, otPay, total:regularPay+otPay, isSat };
+}
+// Effective per-hour rates for one shift, resolving a 3-tier priority chain —
+// most specific wins, each tier optional, falling through to the next:
+//   1. worker.clientRates[clientId] — this worker's own override for this
+//      specific client (set in the Accounting rate matrix).
+//   2. the worker's own rate — hourlyRate (or the older regRate), otRate,
+//      shabbatRate — set in the worker modal or Accounting → Salary. It
+//      changes this worker only (user decision 2026-10-05).
+//   3. client.defaultHourlyRate/defaultOtRate/defaultShabbatRate — the
+//      client's rate, shared by every worker there without a rate of their own.
+// Each of the three rates resolves on its own. `src` says which tier gave the
+// regular rate: 'override' / 'worker' / 'client' / '' (none). `has*Override` tells shiftPay() whether an
+// explicit flat OT/Shabbat rate was found at ANY tier (vs falling back to
+// the israeliDayPay law tiers) — the three tiers can't be told apart just by
+// comparing the resolved number to a law-tier calculation.
+function effectiveRates(w, clientId){
+  const ov = clientId && w && w.clientRates && w.clientRates[clientId];
+  const cl = clientId && clients.find(c=>c.id===clientId);
+  const set=v=>v!=null&&v!=='';
+  const own = set(w&&w.regRate) ? w.regRate : (Number(w&&w.hourlyRate)>0 ? w.hourlyRate : null);
+  const pick=(ovVal,wVal,clVal,fallback)=>{
+    if(set(ovVal)) return {val:Number(ovVal),has:true,src:'override'};
+    if(set(wVal)) return {val:Number(wVal),has:true,src:'worker'};
+    if(set(clVal)) return {val:Number(clVal),has:true,src:'client'};
+    return {val:fallback,has:false,src:''};
+  };
+  const reg  = pick(ov&&ov.rate,        own,             cl&&cl.defaultHourlyRate,  0);
+  const ot   = pick(ov&&ov.otRate,      w&&w.otRate,      cl&&cl.defaultOtRate,      Math.round(reg.val*PAY_RULES.otMult*100)/100);
+  const shab = pick(ov&&ov.shabbatRate, w&&w.shabbatRate, cl&&cl.defaultShabbatRate, Math.round(reg.val*PAY_RULES.shabbatMult*100)/100);
+  return {regRate:reg.val, otRate:ot.val, shabbatRate:shab.val, hasOtOverride:ot.has, hasShabbatOverride:shab.has,
+    src:reg.src, otSrc:ot.src, shabbatSrc:shab.src};
+}
+function wRegRate(w,clientId){ return effectiveRates(w,clientId).regRate; }
+function wOtRate(w,clientId){ return effectiveRates(w,clientId).otRate; }
+function wShabRate(w,clientId){ return effectiveRates(w,clientId).shabbatRate; }
+// Pay for one shift's hours. Default: the israeliDayPay law tiers (125%/150% OT,
+// 150%/175%/200% Shabbat) applied to the effective regular rate. An explicit flat
+// OT/Shabbat rate (at any tier above) replaces the law tiers with that single flat
+// rate across all OT/Shabbat hours of the shift, same as before this defaulted to
+// the law. clientId is optional — see effectiveRates() above.
+function shiftPay(hours, w, isSat, clientId){
+  const RM=PAY_RULES.regularMax, r=effectiveRates(w,clientId);
+  if(isSat){
+    if(r.hasShabbatOverride) return hours*r.shabbatRate;
+    return israeliDayPay(hours, r.regRate, true).total;
+  }
+  if(r.hasOtOverride) return Math.min(hours,RM)*r.regRate + Math.max(hours-RM,0)*r.otRate;
+  return israeliDayPay(hours, r.regRate, false).total;
+}
+// Daily pay (w.payMode === 'daily', picked per worker in Accounting →
+// Salary; 2026-10-05): the worker is paid their own rate (the worker card's
+// rate, read as ₪/day) once for every day worked, whatever the hours. A
+// client's rate (an hourly figure) never applies to a daily-paid worker.
+function isDailyPay(w){ return !!(w && w.payMode==='daily'); }
+function dailyRate(w){ return Number(wOwnRate(w))||0; }
+// One shift's pay, for every payroll figure (Salary, its export, the
+// super-admin summary). seenDays is a Set kept per worker over the period:
+// a daily-paid worker's later shifts on a day already paid pay 0.
+function shiftPayFor(hours, w, isSat, clientId, date, seenDays){
+  if(isDailyPay(w)){
+    const k=localYMD(date);
+    if(seenDays.has(k)) return 0;
+    seenDays.add(k);
+    return dailyRate(w);
+  }
+  return shiftPay(hours, w, isSat, clientId);
+}
+// The days of a daily-paid worker can be set by hand for one period
+// (w.dayOverrides[key]); key = the concrete period: 'w:<Sunday yyyy-mm-dd>',
+// 'm:<yyyy-mm>' or 'all'.
+function salaryPeriodKey(period, now){
+  now=now||new Date();
+  if(period==='week'){ const ws=new Date(now); ws.setDate(ws.getDate()-ws.getDay()); return 'w:'+localYMD(ws); }
+  if(period==='month') return 'm:'+localYMD(now).slice(0,7);
+  return period||'all';
+}
+function dayOverride(w, key){
+  const v=w&&w.dayOverrides&&w.dayOverrides[key];
+  return (v==null||v==='')?null:Number(v);
+}
+function wOwnRate(w){
+  if(!w) return '';
+  if(w.regRate!=null&&w.regRate!=='') return w.regRate;
+  return Number(w.hourlyRate)>0?w.hourlyRate:'';
+}
+function localYMD(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 let myWorkers=[], myClients=[], punchLog=[];
+let showPay=false;
 async function loadData(){
   const [sch, pl] = await Promise.all([supplierCall({action:'loadSchedule'}), supplierCall({action:'loadPunchLog'})]);
   myWorkers = sch.workers||[];
   myClients = sch.clients||[];
+  clients = myClients;
+  showPay = sch.showPay===true;
   punchLog = pl.entries||[];
 }
 
@@ -579,6 +685,41 @@ function renderHoursTab(){
   }).join('');
   const workerSel=document.getElementById('hoursExportWorkerSel');
   workerSel.innerHTML = myWorkers.map(w=>`<option value="${w.id}">${esc(w.name)}</option>`).join('');
+  renderPayTable();
+}
+// The month's pay per own worker, with the app's own pay functions (the
+// copies above): hours, days, the worker's rate (₪/h or ₪/day), their pay,
+// and my commission (hours × supplierRate, default 5). Shown only when the
+// server says this login sees pay.
+function renderPayTable(){
+  const wrap=document.getElementById('payTableWrap'); if(!wrap) return;
+  wrap.style.display=showPay?'':'none';
+  if(!showPay) return;
+  const [year,month]=document.getElementById('hoursExportMonthSel').value.split('-').map(Number);
+  const key='m:'+year+'-'+String(month+1).padStart(2,'0');
+  const rows=myWorkers.map(w=>{
+    const seen=new Set(), days=new Set(); let hours=0, pay=0;
+    groupPunchesIntoShifts(punchLog.filter(e=>e.workerId===w.id))
+      .filter(b=>b.date.getFullYear()===year && b.date.getMonth()===month)
+      .forEach(b=>{
+        const h=analyzeDayPunches(b.entries,b.date).hours;
+        if(h<=0) return;
+        hours+=h; days.add(localYMD(b.date));
+        pay+=shiftPayFor(h,w,b.date.getDay()===6,b.entries[0]&&b.entries[0].clientId,b.date,seen);
+      });
+    const daily=isDailyPay(w), ov=daily?dayOverride(w,key):null;
+    if(ov!=null) pay=ov*dailyRate(w);
+    const rate=daily?dailyRate(w):wRegRate(w,(w.clientIds||[])[0]);
+    const com=w.supplierRate!=null?w.supplierRate:5;
+    return {w, hours, days:ov!=null?ov:days.size, rate:daily?'₪'+rate+'/day':'₪'+rate+'/h', pay, commission:hours*com};
+  }).filter(r=>r.hours>0);
+  const el=document.getElementById('payTable');
+  if(!rows.length){ el.innerHTML='<div style="color:#8b90a8;font-size:13px">No hours this month</div>'; return; }
+  const tot=k=>rows.reduce((t,r)=>t+r[k],0);
+  el.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Worker</th><th>Hours</th><th>Days</th><th>Rate</th><th>Pay</th><th>My commission</th></tr></thead>
+    <tbody class="pay-rows"></tbody>
+    <tfoot><tr><td><b>Total</b></td><td><b>${tot('hours').toFixed(1)}</b></td><td></td><td></td><td><b>₪${tot('pay').toFixed(0)}</b></td><td><b>₪${tot('commission').toFixed(0)}</b></td></tr></tfoot></table></div>`;
+  renderPagedList(el.querySelector('.pay-rows'),'pay',key,rows,r=>`<tr><td>${esc(r.w.name)}</td><td>${r.hours.toFixed(1)}</td><td>${r.days}</td><td>${esc(r.rate)}</td><td>₪${r.pay.toFixed(0)}</td><td>₪${r.commission.toFixed(0)}</td></tr>`,{table:true,colspan:6});
 }
 function runDetailExport(format){
   const workerId = document.getElementById('hoursExportWorkerSel').value;

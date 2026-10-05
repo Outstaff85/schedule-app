@@ -39,6 +39,7 @@ The client keeps the punch log in `localStorage.punchLog` (`getPunchLog()` / `sa
   - weekday — with an OT override, `min(h,8) × reg + rest × ot`; otherwise the weekday law tiers.
   
   **Saturday = the shift's opening date is a Saturday** (`date.getDay() === 6`).
+- **Daily pay** — `w.payMode === 'daily'` (picked per worker in Salary, `setWorkerPayMode`): the worker is paid `dailyRate(w)` — their own rate from the worker card (`wOwnRate`), read as ₪/day — once for every day worked, whatever the hours; no OT / Shabbat, and a client's (hourly) rate never applies. Every payroll figure prices a shift with **`shiftPayFor(hours, w, isSat, clientId, date, seenDays)`**: for a daily-paid worker the first shift of a day pays the day rate and later shifts that day pay 0 (`seenDays`, one Set per worker over the period); otherwise `shiftPay`. Days set by hand for a period (`w.dayOverrides[salaryPeriodKey(period)]`, `dayOverride`; keys `w:<Sunday>`, `m:<yyyy-mm>`, `all`) replace the counted days: pay = days × daily rate.
 - **Client billing** — a separate figure that never changes worker pay: `clientBillPay(hours, client, isSat)`.
   - `fixed` → `hours × fixedBillRate`;
   - `tiered` → the law tiers on `clientBillRate(client)` (`billRate`, else the old `defaultHourlyRate`), unless a flat `billOtRate` / `billShabbatRate` is set (applied like `shiftPay`).
@@ -50,12 +51,13 @@ The client keeps the punch log in `localStorage.punchLog` (`getPunchLog()` / `sa
 2. **Per-client rates** — `renderRateMatrix()`.
 3. **Per-supplier rates** — `renderSupplierRateMatrix()`.
 4. **Payable by supplier** — `renderSupplierPayable()`, called from `renderSalary()`.
+   **Payable by HR** — `renderHrPayable()` (owner / super-admin, shown when the firm has HR logins): per HR, the hours of the workers whose `hrId` is that HR × its `commissionRate`; never a wage.
 5. **Billable by client** — `renderClientBillable()`, called from `renderSalary()`.
 6. **Pending hours** — `renderPendingHours()`.
 
 Each section title has an (i) button (`.acc-help`) that opens the section's explanation in a modal (`openAccountingHelp(key)` → `#accHelpOverlay`, texts in `ACCOUNTING_HELP`); the page itself carries no explanatory text. A change to how a section works updates its text there.
 
-The tab is gated by the `accounting` permission.
+The tab is gated by the `accounting` permission. For an HR that permission gives only the reduced tab of `hrPayOnly()` (never the full one) ([hr.md](hr.md) → Pay): `renderAccounting` hides every section but Salary, `renderSalary` keeps only its workers, makes the table read-only (`.salary-ro`, the setters refuse) and adds "My commission".
 
 ### Salary (`renderSalary()`)
 
@@ -72,6 +74,7 @@ The tab is gated by the `accounting` permission.
   - `__lastClientBillEntries` holds the per-client rows (feeds Billable by client).
 - **Table:** Worker, Hours, Regular / OT / Shabbat ₪/h, Travel ₪, Total Pay (= wage + travel); a TOTAL row covering every worker; the rows are paged by 10 ([app-core.md](app-core.md) → Long lists). Supplier payable, client billable and both rate matrices are paged the same way.
   - **Editable rate inputs** — `setWorkerRate`, `setWorkerOtRate`, `setWorkerShabbatRate`. They hold the worker's **own** rates (tier 2), and an edit changes that worker only (`setWorkerRate` also clears the older `regRate`). Empty = no own rate: the placeholder shows the rate that applies at the client the worker had most hours at in the period (`clientHours`), with "client · name" (or "rate matrix") under it. The client's rate itself is edited in the client card.
+  - **Days** — days worked by the punches (`countedDays`, two shifts on one day count once). The Rate column has a ₪/h | ₪/day select per worker; for a daily-paid worker Days is an input (`setWorkerDays`: a number replaces the count for this period, empty goes back) and OT / Shabbat show "—". A daily worker with no own rate shows "set a daily rate".
   - **Warnings** — anomalies show as an amber "N to review" banner and a ⚠ icon per worker.
 
 ### Per-client rates (`renderRateMatrix()`)
@@ -104,7 +107,7 @@ Uploading the hours (worker card) is in [workers.md](workers.md).
 
 - **Salary export** (`openSalaryExportModal()` → `runSalaryExport(format)`):
   - it first loads the period's punches, then calls `exportSalary(format, period)`;
-  - the rows come from `buildSalaryExportRows(period)`: one row per shift — Worker, Object/Client, Supplier, Date, First In, Last Out, Hours, Rate (`wRegRate` at the shift's client), Day Pay (`shiftPay`), Notes (the warnings);
+  - the rows come from `buildSalaryExportRows(period)`: one row per shift — Worker, Object/Client, Supplier, Date, First In, Last Out, Hours, Rate (`wRegRate` at the shift's client, or `<daily rate>/day`), Day Pay (`shiftPayFor`), Notes (the warnings); for a daily-paid worker with days set by hand, one extra row "Days set by hand: N (punches: M)" brings the total to N × rate;
   - formats:
     - Excel — SheetJS, sheet "Salary";
     - PDF — a print page in a new window;
@@ -130,5 +133,5 @@ Real-time attendance from the punch log and today's schedule; `renderDashboard()
 
 Admin → Firms → "Payable summary (all firms)" (`toggleSuperadminAccounting()` → `renderSuperadminAccounting()`).
 - For each cached firm, `fetchForTenant('loadSchedule'|'loadPunchLog', tenantId)` reads that firm with an explicit `asTenantId`, so the firm being viewed does not change. Punches: this month plus the week before.
-- It computes this week's hours and `shiftPay` per firm with the canonical functions and shows a table with a grand total.
-- Tier 2 of `effectiveRates()` reads the global `clients`, so while a firm's pay is computed its own clients stand in for the loaded firm's, and are swapped back right after.
+- It computes this week's hours and pay per firm with the canonical functions (`shiftPayFor`; a daily-paid worker's days set by hand for this week count, as in Salary) and shows a table with a grand total.
+- The client tier of `effectiveRates()` reads the global `clients`, so while a firm's pay is computed its own clients stand in for the loaded firm's, and are swapped back right after.

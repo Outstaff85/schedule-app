@@ -16,8 +16,9 @@ Who creates a supplier login and how: [admin.md](admin.md) → Users pane. The s
 
 `loadSchedule` and `loadPunchLog` in parallel → `myWorkers`, `myClients`, `punchLog`. What the server sends a supplier (`functions-auth/portal.py` `strip_worker`):
 
-- **workers** — only those with `supplierId` = this supplier, and only these fields (`SUPPLIER_WORKER_FIELDS`): `id, name, docGiven, docSurname, docId, docType, docDob, docSex, address, houseNumber, city, maritalStatus, healthFund, workStartDate, phone, docChildren, clientIds, supplierId, startDate, expiryEnabled, expiryMonths, expiryWarnMonths, avatarB64, colorIdx, notes, createdAt, schedule`, plus `supplierRate` = this supplier's commission override or `null`. Never a wage (`hourlyRate`, `otRate`, `shabbatRate`, `clientRates`, `supplierRates`), never the worker's punch-link `token` (a supplier must not be able to punch for its workers), never a stored-file link (`docUrl`, `docFileId`, `assetsFileId`);
-- **clients** — `{id, name, object}` only;
+- **workers** — only those with `supplierId` = this supplier, and only these fields (`SUPPLIER_WORKER_FIELDS`): `id, name, docGiven, docSurname, docId, docType, docDob, docSex, address, houseNumber, city, maritalStatus, healthFund, workStartDate, phone, docChildren, clientIds, supplierId, startDate, expiryEnabled, expiryMonths, expiryWarnMonths, avatarB64, colorIdx, notes, createdAt, schedule`, plus `supplierRate` = this supplier's commission override or `null`. With **"Sees own workers' pay"** (the login's `showPay`, claim `pay`, on unless the owner turned it off) also `SUPPLIER_PAY_FIELDS`: `payMode, hourlyRate, regRate, otRate, shabbatRate, clientRates, dayOverrides`; without it no wage at all. Never `supplierRates` (other suppliers' commissions), never the worker's punch-link `token` (a supplier must not be able to punch for its workers), never a stored-file link (`docUrl`, `docFileId`, `assetsFileId`);
+- **clients** — `{id, name, object}`; with "sees pay" also the worker-pay rates `defaultHourlyRate, defaultOtRate, defaultShabbatRate` (`CLIENT_PAY_FIELDS`) — never client billing (`billRate`, `rateMode`, …), GPS or company numbers;
+- **showPay** — whether this login sees pay;
 - **suppliers** — always empty;
 - **punches** — only this supplier's workers, only `id, workerId, workerName, type, time, date, site, clientId` (plus `ts`); no GPS, distance or notes. The last 13 months.
 
@@ -32,7 +33,9 @@ Who creates a supplier login and how: [admin.md](admin.md) → Users pane. The s
   - **Detail** (`runDetailExport` → `exportShiftsDetail`): the worker's shifts that month, Date / In / Out / Hours + total, Excel or a print page.
   - **Summary** (`runSummaryExport` → `exportPayableSummary`): per worker with hours that month, hours × commission (`supplierRate`, else 5), Excel or a print page.
 
-Hours use local copies of `groupPunchesIntoShifts` / `analyzeDayPunches` (simplified: no warnings, no rounding) and `getWorkerMonthShifts`. They are never wages.
+  - **Pay** (`renderPayTable`, only with `showPay`): for the picked month, per own worker with hours: Hours, Days, Rate (₪/h, or ₪/day for a daily-paid worker), Pay, My commission (hours × `supplierRate`, else 5), with totals; paged by 10.
+
+Hours use local copies of `groupPunchesIntoShifts` / `analyzeDayPunches` (simplified: no warnings, no rounding) and `getWorkerMonthShifts`. Pay uses copies of the manager app's pay functions (`PAY_RULES`, `israeliDayPay`, `effectiveRates`, `shiftPay`, `shiftPayFor`, `dayOverride`, `wOwnRate`, `localYMD` — the global `clients` is set to `myClients`), so a worker's pay is the same figure as in the manager's Salary table.
 
 ## Modals
 
@@ -49,4 +52,4 @@ Only the three actions:
 - `supplierUpdateWorker` / `supplierDeleteWorker` — only a worker whose `supplierId` is the caller's; otherwise "Worker not found";
 - editable fields (`SUPPLIER_EDITABLE`): `docGiven, docSurname, phone, docId, address, houseNumber, city, docDob, docSex, maritalStatus, healthFund, startDate, notes, status`; `name` is rebuilt from given name + surname.
 
-A supplier cannot call `saveSchedule`, the hours-import queue or the AI reads (refused on the server), and has no client billing or wage data to show.
+A supplier cannot call `saveSchedule`, the hours-import queue or the AI reads (refused on the server), and has no client billing data to show; wages only with "sees pay".

@@ -160,6 +160,7 @@
   .tap-edit{cursor:pointer;} /* a tap opens the item's edit form (isPlainTap) */
   .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto;}
   .modal-title{font-size:19px;font-weight:600;color:var(--text);margin-bottom:18px;letter-spacing:-0.3px;}
+  .salary-ro input,.salary-ro select{pointer-events:none;opacity:.85}
   .acc-help{background:none;border:none;color:var(--text3);cursor:pointer;padding:2px;font-size:15px;line-height:1;display:inline-flex}
   .acc-help:hover{color:var(--blue)}
   .acc-help-body{font-size:13px;color:var(--text2);line-height:1.6}
@@ -840,31 +841,37 @@
       </div>
 
       <!-- Per-client rate matrix -->
-      <div>
+      <div id="accSecRates">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-adjustments"></i> Per-client rates <button type="button" class="acc-help" onclick="openAccountingHelp('rates')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="rateMatrixWrap"></div>
       </div>
 
       <!-- Per-supplier rate matrix (informational — does not feed payroll math) -->
-      <div style="margin-top:24px">
+      <div id="accSecSupplierRates" style="margin-top:24px">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-truck-delivery"></i> Per-supplier rates <button type="button" class="acc-help" onclick="openAccountingHelp('supplierRates')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="supplierRateMatrixWrap"></div>
       </div>
 
       <!-- Payable by supplier summary -->
-      <div style="margin-top:24px">
+      <div id="accSecPayable" style="margin-top:24px">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-report-money"></i> Payable by supplier <button type="button" class="acc-help" onclick="openAccountingHelp('payable')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="supplierPayableWrap"></div>
       </div>
 
+      <!-- Payable by HR: each HR's commission on its workers' hours (owner) -->
+      <div id="accSecHrPayable" style="margin-top:24px;display:none">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-user-dollar"></i> Payable by HR <button type="button" class="acc-help" onclick="openAccountingHelp('hrPayable')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
+        <div id="hrPayableWrap"></div>
+      </div>
+
       <!-- Billable by client (client's own rateMode — tiered or fixed — independent of the worker's real wage above) -->
-      <div style="margin-top:24px">
+      <div id="accSecBillable" style="margin-top:24px">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-building-store"></i> Billable by client <button type="button" class="acc-help" onclick="openAccountingHelp('billable')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="clientBillableWrap"></div>
       </div>
 
       <!-- Hours-import approval queue (Admin/Roles plan, stage 14) -->
-      <div style="margin-top:24px">
+      <div id="accSecPending" style="margin-top:24px">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-file-check"></i> Pending hours <button type="button" class="acc-help" onclick="openAccountingHelp('pending')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="pendingHoursWrap"></div>
       </div>
@@ -1024,12 +1031,20 @@
         <label class="check-chip"><input type="checkbox" value="workers" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-users-group"></i> Workers</span><span class="chip-hint">Workers tab</span></span></label>
         <label class="check-chip"><input type="checkbox" value="clients" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-users"></i> Clients</span><span class="chip-hint">Clients tab</span></span></label>
         <label class="check-chip"><input type="checkbox" value="suppliers" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-truck-delivery"></i> Suppliers</span><span class="chip-hint">Suppliers tab</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="accounting" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-cash"></i> Accounting</span><span class="chip-hint">Accounting tab</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="accounting" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-cash"></i> Accounting</span><span class="chip-hint" id="userFormAccountingHint">Accounting tab</span></span></label>
         <label class="check-chip"><input type="checkbox" value="exports" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-upload"></i> Export</span><span class="chip-hint">Export button</span></span></label>
       </div>
     </div>
     <div class="field" id="userFormHrFields" style="display:none">
       <label class="check-chip"><input type="checkbox" id="userFormOwnOnly" checked><span class="chip-text">Only own workers<span class="chip-hint">Sees only the workers assigned to this HR. Unchecked: every worker of the firm.</span></span></label>
+    </div>
+    <!-- HR and supplier: see their own workers' pay and their commission
+         (claim "pay"; on by default). HR: its commission ₪/h. -->
+    <div class="field" id="userFormPayFields" style="display:none">
+      <div class="check-grid" id="userFormShowPayGrid">
+        <label class="check-chip"><input type="checkbox" id="userFormShowPay" checked><span class="chip-text">Sees own workers' pay<span class="chip-hint">Their hours, rate and pay, and this login's commission. Nothing else of Accounting.</span></span></label>
+      </div>
+      <div class="field" id="userFormCommissionField" style="margin-top:8px"><label>HR commission ₪/h</label><input type="number" id="userFormCommission" min="0" step="0.5" placeholder="0"></div>
     </div>
     <div id="userFormHrWorkersField" style="display:none">
       <div class="form-section" style="display:flex;justify-content:space-between;align-items:center">Workers <button class="btn sm" type="button" onclick="openHrAssignModal()"><i class="ti ti-user-plus"></i> Add workers</button></div>
@@ -1417,6 +1432,37 @@ function shiftPay(hours, w, isSat, clientId){
   if(r.hasOtOverride) return Math.min(hours,RM)*r.regRate + Math.max(hours-RM,0)*r.otRate;
   return israeliDayPay(hours, r.regRate, false).total;
 }
+// Daily pay (w.payMode === 'daily', picked per worker in Accounting →
+// Salary; 2026-10-05): the worker is paid their own rate (the worker card's
+// rate, read as ₪/day) once for every day worked, whatever the hours. A
+// client's rate (an hourly figure) never applies to a daily-paid worker.
+function isDailyPay(w){ return !!(w && w.payMode==='daily'); }
+function dailyRate(w){ return Number(wOwnRate(w))||0; }
+// One shift's pay, for every payroll figure (Salary, its export, the
+// super-admin summary). seenDays is a Set kept per worker over the period:
+// a daily-paid worker's later shifts on a day already paid pay 0.
+function shiftPayFor(hours, w, isSat, clientId, date, seenDays){
+  if(isDailyPay(w)){
+    const k=localYMD(date);
+    if(seenDays.has(k)) return 0;
+    seenDays.add(k);
+    return dailyRate(w);
+  }
+  return shiftPay(hours, w, isSat, clientId);
+}
+// The days of a daily-paid worker can be set by hand for one period
+// (w.dayOverrides[key]); key = the concrete period: 'w:<Sunday yyyy-mm-dd>',
+// 'm:<yyyy-mm>' or 'all'.
+function salaryPeriodKey(period, now){
+  now=now||new Date();
+  if(period==='week'){ const ws=new Date(now); ws.setDate(ws.getDate()-ws.getDay()); return 'w:'+localYMD(ws); }
+  if(period==='month') return 'm:'+localYMD(now).slice(0,7);
+  return period||'all';
+}
+function dayOverride(w, key){
+  const v=w&&w.dayOverrides&&w.dayOverrides[key];
+  return (v==null||v==='')?null:Number(v);
+}
 // What a CLIENT is billed for one shift's hours — a figure entirely separate
 // from shiftPay() above (the worker's own legally-owed wage). client.rateMode
 // ('tiered', the default, or 'fixed') never changes what the worker earns;
@@ -1483,6 +1529,13 @@ const NAV_TAB_PERMISSION = { schedule:'schedule', workers:'workers', clients:'cl
 function isHrSession(){ const s = getSession(); return !!s && s.role === 'hr'; }
 function isFirmAdminSession(){ const s = getSession(); return !!s && (s.role === 'tenant_admin' || s.role === 'superadmin'); }
 const HR_HIDDEN_TABS = ['dashboard','admin'];
+// An HR never gets the full Accounting tab: with the Accounting section
+// (off by default) it gets a reduced one — Salary for its own workers,
+// read-only, with its commission — nothing else (renderAccounting).
+function hrPayOnly(){
+  const s = getSession();
+  return !!s && s.role === 'hr' && hasPermission('accounting');
+}
 function tabAllowed(tab){
   if(isHrSession() && HR_HIDDEN_TABS.includes(tab)) return false;
   return !NAV_TAB_PERMISSION[tab] || hasPermission(NAV_TAB_PERMISSION[tab]);
@@ -4344,6 +4397,7 @@ async function submitLogin(){
       uid: fb.uid, role: fb.role, tenantId: fb.tenantId, username: fb.username, tenantProfile: fb.tenantProfile,
       permissions: fb.permissions, supplierId: fb.supplierId,
       ownOnly: fb.ownOnly === true, fullName: fb.fullName || '',
+      showPay: fb.showPay === true, commissionRate: Number(fb.commissionRate) || 0,
       viewingTenantId: fb.tenantId, // a super-admin (tenantId null) picks one on the Firms screen
     });
     location.reload();
@@ -4668,6 +4722,8 @@ function prefetchAdminUsers(){
       saveAdminCache('users_'+tenantId,(json.users||[]).filter(u=>u.tenantId===tenantId));
       // The HR names on the worker tiles come from this list.
       if(currentTab==='workers' && workers.some(w=>w.hrId)) renderWorkersPage();
+      // ...and the HR commissions in Accounting → Payable by HR.
+      if(currentTab==='accounting' && workers.some(w=>w.hrId)) renderAccounting();
       // ...and the HR field of a worker modal already open.
       const sel=document.getElementById('wHrId');
       if(sel){
@@ -4776,6 +4832,11 @@ function onUserFormRoleChange(fromUser){
   document.getElementById('userFormSupplierField').style.display = role==='supplier' ? '' : 'none';
   document.getElementById('userFormPermsField').style.display = role==='supplier' ? 'none' : '';
   document.getElementById('userFormHrFields').style.display = role==='hr' ? '' : 'none';
+  document.getElementById('userFormPayFields').style.display = (role==='hr'||role==='supplier') ? '' : 'none';
+  document.getElementById('userFormCommissionField').style.display = role==='hr' ? '' : 'none';
+  // A supplier's pay view is its own tile; an HR's is the Accounting section.
+  document.getElementById('userFormShowPayGrid').style.display = role==='supplier' ? '' : 'none';
+  document.getElementById('userFormAccountingHint').textContent = role==='hr' ? 'Own workers\' pay and commission only' : 'Accounting tab';
   document.getElementById('userFormFullNameLabel').textContent = role==='hr' ? 'Full name *' : 'Full name';
   document.getElementById('userFormHrWorkersField').style.display = role==='hr' && __editingUserId ? '' : 'none';
   if(role==='supplier') fillUserFormSupplierSelect(null);
@@ -4799,6 +4860,8 @@ function openCreateUserForm(){
   document.getElementById('userFormFullName').value = '';
   document.getElementById('userFormPhone').value = '';
   document.getElementById('userFormOwnOnly').checked = true;
+  document.getElementById('userFormShowPay').checked = true;
+  document.getElementById('userFormCommission').value = '';
   document.getElementById('userFormError').textContent = '';
   onUserFormRoleChange();
   document.getElementById('userFormOverlay').classList.add('open');
@@ -4828,10 +4891,12 @@ async function openEditUserForm(id){
   document.getElementById('userFormFullName').value = u.fullName || '';
   document.getElementById('userFormPhone').value = u.phone || '';
   document.getElementById('userFormOwnOnly').checked = u.ownOnly !== false;
+  document.getElementById('userFormShowPay').checked = u.showPay !== false;
+  document.getElementById('userFormCommission').value = u.commissionRate ? u.commissionRate : '';
   __editingAdminRow = u.role==='tenant_admin' || u.role==='superadmin';
   if(__editingAdminRow){
     document.getElementById('userFormTitle').textContent = 'Edit ' + (u.fullName || u.username) + ' (owner)';
-    ['userFormSupplierField','userFormHrFields','userFormHrWorkersField'].forEach(i => document.getElementById(i).style.display = 'none');
+    ['userFormSupplierField','userFormHrFields','userFormHrWorkersField','userFormPayFields'].forEach(i => document.getElementById(i).style.display = 'none');
     showUserFormAccess(false);
     document.getElementById('userFormOverlay').classList.add('open');
     return;
@@ -4858,6 +4923,8 @@ async function submitUserForm(){
       fullName: document.getElementById('userFormFullName').value.trim(),
       phone: document.getElementById('userFormPhone').value.trim() };
     if(role==='hr') hrFields.ownOnly = document.getElementById('userFormOwnOnly').checked;
+    if(role==='supplier') hrFields.showPay = document.getElementById('userFormShowPay').checked;
+    if(role==='hr') hrFields.commissionRate = parseFloat(document.getElementById('userFormCommission').value)||0;
     if(role==='hr' && !hrFields.fullName){ errEl.textContent = 'Full name required for an HR login'; return; }
     if(__editingUserId){
       const password = document.getElementById('userFormPassword').value;
@@ -5057,15 +5124,19 @@ async function renderSuperadminAccounting(){
       clients = schJson.clients || [];
       try{
         Object.entries(byWorkerPunches).forEach(([wid, list]) => {
-          const wc = fWorkers.find(w => w.id === wid);
+          const wc = fWorkers.find(w => w.id === wid), seen = new Set();
+          let wPay = 0;
           groupPunchesIntoShifts(list).forEach(bucket => {
             const res = analyzeDayPunches(bucket.entries, bucket.date);
             if(res.hours > 0){
               totalHours += res.hours;
               const isSat = bucket.date.getDay() === 6;
-              totalPay += shiftPay(res.hours, wc, isSat, bucket.entries[0] && bucket.entries[0].clientId);
+              wPay += shiftPayFor(res.hours, wc, isSat, bucket.entries[0] && bucket.entries[0].clientId, bucket.date, seen);
             }
           });
+          // A daily-paid worker's days set by hand for this week (as in Salary).
+          const ov = isDailyPay(wc) ? dayOverride(wc, salaryPeriodKey('week')) : null;
+          totalPay += ov != null ? ov * dailyRate(wc) : wPay;
         });
       }finally{ clients = ownClients; }
       rows.push({ name: t.companyName || t.tenantId, hours: totalHours, pay: totalPay });
@@ -5972,7 +6043,16 @@ function renderDashSuppliers(){
 }
 
 function renderAccounting(){
+  // An HR that only sees its own workers' pay: Salary and nothing else.
+  const payOnly=hrPayOnly();
+  ['accSecRates','accSecSupplierRates','accSecPayable','accSecBillable','accSecPending'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display=payOnly?'none':'';
+  });
+  if(payOnly){ const ex=document.querySelector('#sectionAccounting .perm-exports'); if(ex) ex.style.display='none'; }
+  const sub=document.querySelector('#sectionAccounting .page-sub');
+  if(sub) sub.textContent=payOnly?'Your workers\' hours, pay and your commission':'Salary calculation and per-client rates';
   renderSalary();
+  if(payOnly) return;
   renderRateMatrix();
   renderSupplierRateMatrix();
   renderPendingHours();
@@ -6026,7 +6106,7 @@ function renderSalary(){
   const byWorker={};
   const byClient={};
   Object.values(byWorkerDay).forEach(({worker,workerId,date,entries})=>{
-    if(!byWorker[workerId]) byWorker[workerId]={worker,workerId,hours:0,days:0,regH:0,otH:0,shabH:0,total:0,travel:0,warns:[],clientHours:{}};
+    if(!byWorker[workerId]) byWorker[workerId]={worker,workerId,hours:0,days:0,regH:0,otH:0,shabH:0,total:0,travel:0,warns:[],clientHours:{},seen:new Set(),dayKeys:new Set()};
     const _res=analyzeDayPunches(entries,date);
     const _dstr=date.toLocaleDateString('en-GB');
     _res.warnings.forEach(wn=> byWorker[workerId].warns.push(_dstr+': '+wn));
@@ -6044,7 +6124,8 @@ function renderSalary(){
       // different rates in the same period still gets each shift priced
       // correctly, even though this table shows one summed row per worker.
       const cid=entries[0]&&entries[0].clientId;
-      byWorker[workerId].total+=shiftPay(h,wc,isSat,cid);
+      byWorker[workerId].total+=shiftPayFor(h,wc,isSat,cid,date,byWorker[workerId].seen);
+      byWorker[workerId].dayKeys.add(localYMD(date));
       if(cid) byWorker[workerId].clientHours[cid]=(byWorker[workerId].clientHours[cid]||0)+h;
       // Billable-by-client — a parallel, independent figure (see
       // clientBillPay()'s own comment); never derived from/feeding the
@@ -6058,13 +6139,29 @@ function renderSalary(){
     }
   });
   __lastClientBillEntries=Object.entries(byClient).map(([clientId,v])=>({clientId,...v}));
+  // Days worked (from the punches) and, for a daily-paid worker, days set by
+  // hand for this period replace the counted ones.
+  const periodKey=salaryPeriodKey(period);
+  Object.values(byWorker).forEach(e=>{
+    e.countedDays=e.dayKeys.size;
+    const wc=workers.find(w=>w.id===e.workerId), ov=isDailyPay(wc)?dayOverride(wc,periodKey):null;
+    if(ov!=null) e.total=ov*dailyRate(wc);
+    e.daysUsed=ov!=null?ov:e.countedDays;
+  });
 
   const salaryEl=document.getElementById('dashSalary');
-  const entries=Object.values(byWorker);
+  // An HR that only sees pay: its own workers only, read-only, plus its
+  // commission (session.commissionRate × hours).
+  const payOnly=hrPayOnly(), me=getSession()||{};
+  const hrRate=Number(me.commissionRate)||0;
+  const entries=Object.values(byWorker).filter(e=>!payOnly||((workers.find(w=>w.id===e.workerId)||{}).hrId===me.uid));
   __lastSalaryEntries=entries;
+  salaryEl.classList.toggle('salary-ro',payOnly);
   if(!entries.length){
     salaryEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No punch data for this period</div>`;
+    if(payOnly) return;
     renderSupplierPayable(entries);
+    renderHrPayable(entries);
     renderClientBillable(__lastClientBillEntries);
     return;
   }
@@ -6076,16 +6173,18 @@ function renderSalary(){
   salaryEl.innerHTML=_reviewBanner+`
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-      <table style="width:100%;border-collapse:collapse;min-width:560px">
+      <table style="width:100%;border-collapse:collapse;min-width:640px">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
             <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Worker</th>
             <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">Hours</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Regular ₪/h</th>
+            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">Days</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Rate</th>
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--amber)">OT ₪/h</th>
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--blue)">Shabbat ₪/h</th>
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Travel ₪</th>
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Total Pay</th>
+            ${payOnly?`<th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">My commission</th>`:''}
           </tr>
         </thead>
         <tbody class="salary-rows"></tbody>
@@ -6093,10 +6192,11 @@ function renderSalary(){
           <tr style="background:var(--bg3);border-top:2px solid var(--border)">
             <td style="padding:10px 12px;font-size:13px;font-weight:600;color:var(--text2)">TOTAL</td>
             <td style="padding:10px 12px;text-align:center;font-size:14px;font-weight:700;color:var(--text)">${totalHours.toFixed(1)}h</td>
-            <td colspan="4"></td>
+            <td colspan="5"></td>
             <td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">
               ₪${grandTotal.toFixed(0)}
             </td>
+            ${payOnly?`<td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">₪${(totalHours*hrRate).toFixed(0)}</td>`:''}
           </tr>
         </tfoot>
       </table>
@@ -6117,6 +6217,15 @@ function renderSalary(){
             const ownOt=wc&&wc.otRate!=null?wc.otRate:'', ownShab=wc&&wc.shabbatRate!=null?wc.shabbatRate:'';
             const srcTag=src=>src==='client'?`<div style="font-size:10px;color:var(--text3);margin-top:2px">client${mainCl?' · '+esc(mainCl.name):''}</div>`:src==='override'?`<div style="font-size:10px;color:var(--text3);margin-top:2px">rate matrix</div>`:'';
             const ini=wc?workerAvatarInner(wc):esc(e.worker.slice(0,2).toUpperCase());
+            const daily=isDailyPay(wc);
+            const inStyle='width:66px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none';
+            // ₪/h or ₪/day, per worker (setWorkerPayMode). Daily: the days come
+            // from the punches; a number typed here replaces them for this period.
+            const modeSel=`<select onchange="setWorkerPayMode('${e.workerId}',this.value)" title="Paid by the hour or by the day" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text2);font-size:11px;padding:3px 4px;margin-bottom:4px;outline:none">
+                <option value="hourly"${daily?'':' selected'}>₪/h</option><option value="daily"${daily?' selected':''}>₪/day</option></select>`;
+            const daysCell=daily
+              ? `<input type="number" value="${dayOverride(wc,periodKey)??''}" placeholder="${e.countedDays}" min="0" step="1" title="Days worked: ${e.countedDays} by the punches · type a number to replace it for this period" onchange="setWorkerDays('${e.workerId}','${periodKey}',this.value)" style="${inStyle};width:54px;text-align:center">${dayOverride(wc,periodKey)!=null?`<div style="font-size:10px;color:var(--text3);margin-top:2px">punches: ${e.countedDays}</div>`:''}`
+              : `${e.countedDays}`;
             return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
               <td style="padding:10px 12px">
                 <div style="display:flex;align-items:center;gap:8px">
@@ -6126,12 +6235,13 @@ function renderSalary(){
                 </div>
               </td>
               <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${e.hours.toFixed(1)}h</td>
-              <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${esc(ownReg)}" placeholder="${esc(er.regRate)}" min="0" step="0.5" title="This worker's rate (Regular ×1.0) · empty = the client's rate"
+              <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${daysCell}</td>
+              <td style="padding:10px 12px;text-align:right">${modeSel}<br>
+                <input type="number" value="${esc(ownReg)}" placeholder="${daily?'0':esc(er.regRate)}" min="0" step="0.5" title="${daily?'This worker\'s rate per day':'This worker\'s rate (Regular ×1.0) · empty = the client\'s rate'}"
                   onchange="setWorkerRate('${e.workerId}',this.value);renderSalary()"
-                  style="width:66px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">${srcTag(er.src)}
+                  style="${inStyle}">${daily?(ownReg===''?'<div style="font-size:10px;color:var(--amber);margin-top:2px">set a daily rate</div>':''):srcTag(er.src)}
               </td>
-              <td style="padding:10px 12px;text-align:right">
+              ${daily?`<td style="padding:10px 12px;text-align:right;color:var(--text3)">—</td><td style="padding:10px 12px;text-align:right;color:var(--text3)">—</td>`:`<td style="padding:10px 12px;text-align:right">
                 <input type="number" value="${esc(ownOt)}" placeholder="${esc(er.otRate)}" min="0" step="0.5" title="OT rate ₪/hour · empty = the client's, else base ×${PAY_RULES.otMult}"
                   onchange="setWorkerOtRate('${e.workerId}',this.value);renderSalary()"
                   style="width:66px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:right;outline:none">${srcTag(er.otSrc)}
@@ -6140,16 +6250,19 @@ function renderSalary(){
                 <input type="number" value="${esc(ownShab)}" placeholder="${esc(er.shabbatRate)}" min="0" step="0.5" title="Shabbat rate ₪/hour · empty = the client's, else base ×${PAY_RULES.shabbatMult}"
                   onchange="setWorkerShabbatRate('${e.workerId}',this.value);renderSalary()"
                   style="width:66px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">${srcTag(er.shabbatSrc)}
-              </td>
+              </td>`}
               <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)">
                 ${e.travel>0?'₪'+e.travel.toFixed(0):'—'}
               </td>
               <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${(e.total+e.travel)>0?'var(--green)':'var(--text3)'}">
                 ${(e.total+e.travel)>0?'₪'+(e.total+e.travel).toFixed(0):'—'}
               </td>
+              ${payOnly?`<td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)" title="${e.hours.toFixed(1)}h × ₪${hrRate}">₪${(e.hours*hrRate).toFixed(0)}</td>`:''}
             </tr>`;
-},{table:true,colspan:7});
+},{table:true,colspan:payOnly?9:8});
+  if(payOnly) return;
   renderSupplierPayable(entries);
+  renderHrPayable(entries);
   renderClientBillable(__lastClientBillEntries);
 }
 
@@ -6226,6 +6339,44 @@ function renderSupplierPayable(entries){
   renderPagedList(wrap.querySelector('.paged-supplierPayable'),'supplierPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
             <td style="padding:10px 12px;font-size:13px;font-weight:600"><span style="color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></span> ${esc(r.sup.name)}</td>
             <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)}h</td>
+            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
+          </tr>`,{table:true,colspan:20});
+}
+
+// "Payable by HR" (owner / super-admin): each HR login's commission on its
+// workers' hours — hours of the workers whose hrId is that HR × its
+// commissionRate (Users form). A re-grouping of the Salary rows, never a
+// wage; an HR without workers in the period has no row.
+function renderHrPayable(entries){
+  const sec=document.getElementById('accSecHrPayable'), wrap=document.getElementById('hrPayableWrap');
+  if(!sec||!wrap) return;
+  const hrs=isFirmAdminSession()?hrUsers():[];
+  const rows=hrs.map(u=>{
+    const hours=entries.filter(e=>((workers.find(w=>w.id===e.workerId)||{}).hrId)===u.id).reduce((t,e)=>t+e.hours,0);
+    const rate=Number(u.commissionRate)||0;
+    return {u, hours, rate, total:hours*rate};
+  }).filter(r=>r.hours>0);
+  sec.style.display=hrs.length?'':'none';
+  if(!rows.length){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No hours of HR workers this period</div>`; return; }
+  wrap.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table style="width:100%;border-collapse:collapse;min-width:420px">
+        <thead>
+          <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">HR</th>
+            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">Hours</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">₪/h</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Payable</th>
+          </tr>
+        </thead>
+        <tbody class="paged-hrPayable"></tbody>
+      </table>
+      </div>
+    </div>`;
+  renderPagedList(wrap.querySelector('.paged-hrPayable'),'hrPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
+            <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.u.fullName||r.u.username)}</td>
+            <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)}h</td>
+            <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)">${r.rate?'₪'+esc(r.rate):'—'}</td>
             <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
           </tr>`,{table:true,colspan:20});
 }
@@ -6486,6 +6637,8 @@ const ACCOUNTING_HELP={
     'The ₪/hour fields are this worker\'s own rates. An edit changes this worker only and wins over the client\'s rate.',
     'An empty field = the worker has no rate of their own: grey shows the client\'s rate that applies, with "client · name" under it. The client\'s rate is changed in the client card.',
     'Empty OT / Shabbat = the law rates on top of the regular rate.',
+    '₪/h or ₪/day, per worker: ₪/day pays the worker\'s own rate (from the worker card) once for each day worked, whatever the hours; no OT or Shabbat rates, and the client\'s rate is not used.',
+    'Days: counted from the punches (two shifts on one day count once). For a worker paid by the day, a number typed in Days replaces the count for the picked period only; empty it to go back to the punches.',
     'Travel = the worker\'s travel allowance for each day worked. Total Pay = pay + travel.',
     'A ⚠ next to a worker: punches to check (a missing IN or OUT, an overlong shift…). The list is in the banner above the table.']},
   rates:{icon:'ti-adjustments',title:'Per-client rates',items:[
@@ -6502,6 +6655,10 @@ const ACCOUNTING_HELP={
   billable:{icon:'ti-building-store',title:'Billable by client',items:[
     'What each client owes the firm for the period picked in Salary, by the client\'s own pricing (client card): tiered (the OT / Shabbat law rates on the client\'s billing rate) or one fixed rate.',
     'Separate from the workers\' pay: it never changes a wage, and a wage never changes it.']},
+  hrPayable:{icon:'ti-user-dollar',title:'Payable by HR',items:[
+    'An HR login with the Accounting section sees only this part for its own workers: their hours, rate and pay, and its commission — never the rest of Accounting.',
+    'For the period picked in Salary: each HR\'s workers\' hours × the HR\'s commission (₪/h, set in Admin → Users on the HR).',
+    'Separate from the workers\' pay: it never changes a wage.']},
   pending:{icon:'ti-file-check',title:'Pending hours',items:[
     'Hours uploaded with a worker\'s "Upload hours" button wait here.',
     'Nothing here counts toward pay until it is approved; approving turns each row into IN / OUT punches.',
@@ -6514,12 +6671,25 @@ function openAccountingHelp(key){
   document.getElementById('accHelpOverlay').classList.add('open');
 }
 // The older regRate field is cleared so the edit is what counts.
-function setWorkerRate(wid,rate){
+function setWorkerRate(wid,rate){ if(hrPayOnly()) return;
   const w=workers.find(x=>x.id===wid);
   if(w){ w.hourlyRate=parseFloat(rate)||0; if(w.regRate!=null) w.regRate=null; autoSave(); }
 }
-function setWorkerOtRate(wid,val){ const w=workers.find(x=>x.id===wid); if(w){ w.otRate=(val===''||val==null)?null:(parseFloat(val)||0); autoSave(); } }
-function setWorkerShabbatRate(wid,val){ const w=workers.find(x=>x.id===wid); if(w){ w.shabbatRate=(val===''||val==null)?null:(parseFloat(val)||0); autoSave(); } }
+function setWorkerPayMode(wid,mode){ if(hrPayOnly()) return;
+  const w=workers.find(x=>x.id===wid); if(!w) return;
+  if(mode==='daily') w.payMode='daily'; else delete w.payMode;
+  autoSave(); renderSalary();
+}
+// Days set by hand for one period (salaryPeriodKey); empty = by the punches.
+function setWorkerDays(wid,key,val){ if(hrPayOnly()) return;
+  const w=workers.find(x=>x.id===wid); if(!w) return;
+  w.dayOverrides={...(w.dayOverrides||{})};
+  if(val===''||val==null) delete w.dayOverrides[key]; else w.dayOverrides[key]=Math.max(0,Math.round(Number(val)||0));
+  if(!Object.keys(w.dayOverrides).length) delete w.dayOverrides;
+  autoSave(); renderSalary();
+}
+function setWorkerOtRate(wid,val){ if(hrPayOnly()) return; const w=workers.find(x=>x.id===wid); if(w){ w.otRate=(val===''||val==null)?null:(parseFloat(val)||0); autoSave(); } }
+function setWorkerShabbatRate(wid,val){ if(hrPayOnly()) return; const w=workers.find(x=>x.id===wid); if(w){ w.shabbatRate=(val===''||val==null)?null:(parseFloat(val)||0); autoSave(); } }
 
 // Salary export — Accounting tab's "Export" button opens a format picker
 // (Excel / PDF / CSV); all three share buildSalaryExportRows(), which pairs
@@ -6582,19 +6752,30 @@ function buildSalaryExportRows(period){
       byWD[wid+'|'+i]={worker:list[0].workerName,wid,date:bucket.date,entries:bucket.entries};
     });
   });
-  const rows=[];
+  const rows=[], seenBy={};
   Object.values(byWD).sort((a,b)=> a.worker<b.worker?-1 : a.worker>b.worker?1 : (a.date-b.date)).forEach(d=>{
     const res=analyzeDayPunches(d.entries,d.date);
     const ins=d.entries.filter(x=>x.type==='in').map(x=>x.time).sort();
     const outs=d.entries.filter(x=>x.type==='out').map(x=>x.time).sort();
     const _w=workers.find(w=>w.id===d.wid);
     const shiftClientId=d.entries[0]&&d.entries[0].clientId;
-    const rate=wRegRate(_w,shiftClientId);
+    const daily=isDailyPay(_w);
+    const rate=daily?dailyRate(_w):wRegRate(_w,shiftClientId);
     const isSat=d.date.getDay()===6;
-    const pay=shiftPay(res.hours,_w,isSat,shiftClientId);
+    const seen=seenBy[d.wid]||(seenBy[d.wid]=new Set());
+    const pay=res.hours>0?shiftPayFor(res.hours,_w,isSat,shiftClientId,d.date,seen):0;
     const clientObj=punchClientObject(d.entries[0])||workerClientObject(d.wid);
     const supName=suppliers.find(s=>s.id===_w?.supplierId)?.name||'';
-    rows.push({worker:d.worker, client:clientObj, supplier:supName, date:d.date.toLocaleDateString('en-GB'), firstIn:ins[0]||'', lastOut:outs[outs.length-1]||'', hours:res.hours, rate, pay, notes:res.warnings.join('; ')});
+    rows.push({worker:d.worker, client:clientObj, supplier:supName, date:d.date.toLocaleDateString('en-GB'), firstIn:ins[0]||'', lastOut:outs[outs.length-1]||'', hours:res.hours, rate:daily?rate+'/day':rate, pay, notes:res.warnings.join('; ')});
+  });
+  // A daily-paid worker whose days were set by hand for this period: one more
+  // row brings the total to days × rate, the same as the Salary table.
+  const key=salaryPeriodKey(period, now);
+  Object.entries(seenBy).forEach(([wid,seen])=>{
+    const _w=workers.find(w=>w.id===wid), ov=isDailyPay(_w)?dayOverride(_w,key):null;
+    if(ov==null||ov===seen.size) return;
+    rows.push({worker:_w.name||'', client:'', supplier:suppliers.find(s=>s.id===_w.supplierId)?.name||'', date:'', firstIn:'', lastOut:'', hours:0,
+      rate:dailyRate(_w)+'/day', pay:(ov-seen.size)*dailyRate(_w), notes:'Days set by hand: '+ov+' (punches: '+seen.size+')'});
   });
   return rows;
 }
@@ -6602,7 +6783,7 @@ function exportSalary(format, period){
   period=period||document.getElementById('salaryPeriod')?.value||'week';
   const now=new Date();
   const rows=buildSalaryExportRows(period);
-  const header=['Worker','Object/Client','Supplier','Date','First In','Last Out','Hours','Rate (\u20aa/h)','Day Pay (\u20aa)','Notes'];
+  const header=['Worker','Object/Client','Supplier','Date','First In','Last Out','Hours','Rate (\u20aa/h or /day)','Day Pay (\u20aa)','Notes'];
   const toArr=r=>[r.worker, r.client, r.supplier, r.date, r.firstIn, r.lastOut, r.hours.toFixed(2), r.rate, r.pay.toFixed(2), r.notes];
   const totalHours=rows.reduce((s,r)=>s+r.hours,0), totalPay=rows.reduce((s,r)=>s+r.pay,0);
   const fname='salary-'+(period.startsWith('m:')?period.slice(2):period+'-'+localYMD(now));

@@ -14,7 +14,7 @@ Project `schedule-odinson`; Firestore and the `functions-auth` functions in **eu
 | `tenants/{t}/settings/schedule` | `weekStart`, `savedAt` — copied from the sheets by the old migration; nothing writes it now | — |
 | `tenants/{t}/punches/{id}` | a punch ([accounting.md](accounting.md) → the punch) with `ts` as a Timestamp, `day` (`yyyy-MM-dd`), `archived`, `hrId` (the worker's HR, when it has one); `tsRaw` when a migrated sheet timestamp was unreadable | the app, the `punch` function, an approved hours batch |
 | `tenants/{t}/pendingHours/{batchId}` | `{status, fileName, uploadedBy, createdBy, uploadedAt, createdAt, rows:[{rowId, workerId, clientId, date, inTime, outTime}]}` | the app |
-| `users/{uid}` | `username, tenantId, role, permissions ('*' or list), supplierId, active, createdAt, fullName` (the person's name the app shows), `phone`; for `hr` also `ownOnly` | functions only |
+| `users/{uid}` | `username, tenantId, role, permissions ('*' or list), supplierId, active, createdAt, fullName` (the person's name the app shows), `phone`; for `hr` also `ownOnly`, `commissionRate`; for `hr` and `supplier` `showPay` (default true) | functions only |
 | `authSecrets/{uid}` | `algo ('scrypt', or 'sha256' until the user's next login), salt, hash, failCount, lastFailAt` | functions only |
 | `usernames/{name}` | `{uid}` — keeps usernames unique | functions only |
 | `workerTokens/{token}` | left over from the migration; nothing reads or writes it (the `punch` function finds a token by a collection-group query on `workers.token`) | — |
@@ -86,7 +86,7 @@ Minting custom tokens needs the runtime service account to hold "Service Account
   - A user who has not logged in since the move still has the old `sha256` hash (SHA-256 of `password + ':' + salt`); it is replaced by scrypt (N=2¹⁴, r=8, p=1) on the first good login.
   - Every refusal is written to `errors` with its reason (`on_refused`) — never the password or hash; the user only sees "Wrong username or password".
   - The reply: `{ok, token (custom token), uid, username, role, tenantId, permissions, supplierId, tenantProfile, ownOnly, fullName}`.
-  - Custom-token claims (`claims_for`): `role` (`'tenant'` normalized to `tenant_admin`), `perms` (`['*']`, a list, or `[]` for a supplier), `tenantId`, `supplierId`; for `hr` also `own` ("only own workers", true unless `ownOnly` is false).
+  - Custom-token claims (`claims_for`): `role` (`'tenant'` normalized to `tenant_admin`), `perms` (`['*']`, a list, or `[]` for a supplier), `tenantId`, `supplierId`; for `hr` also `own` ("only own workers", true unless `ownOnly` is false) and `hrc` (its commission ₪/h, `commissionRate`); for `hr` and `supplier` also `pay` ("sees own workers' pay", true unless `showPay` is false). The login reply also gives `showPay` and `commissionRate`.
 - **Users** (superadmin: any firm; `tenant_admin`: own firm only):
   - `listUsers` — never returns hashes;
   - `createTenantUser` — role `staff`, `hr` or `supplier` only, password ≥ 8, a supplier needs `supplierId`, stores `fullName` and `phone` for every role; an HR needs `fullName` (also stores `ownOnly` default true; permissions default `['workers']`); the `usernames` doc is created in the same batch, so a taken name fails the whole batch ("This username is already taken");

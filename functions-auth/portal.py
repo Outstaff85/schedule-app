@@ -161,11 +161,19 @@ SUPPLIER_WORKER_FIELDS = ("id", "name", "docGiven", "docSurname", "docId", "docT
 SUPPLIER_EDITABLE = ("docGiven", "docSurname", "phone", "docId", "address", "houseNumber", "city", "docDob",
                      "docSex", "maritalStatus", "healthFund", "startDate", "notes", "status")
 SUPPLIER_PUNCH_FIELDS = ("id", "workerId", "workerName", "type", "time", "date", "site", "clientId")
+# With "sees pay" (claim pay, on unless the owner turned it off) the supplier
+# also gets what the app's pay functions need for its own workers: their own
+# rates, pay mode and days set by hand, and the clients' worker-pay rates.
+# Never client billing (billRate, rateMode…), GPS, tokens or file links.
+SUPPLIER_PAY_FIELDS = ("payMode", "hourlyRate", "regRate", "otRate", "shabbatRate", "clientRates", "dayOverrides")
+CLIENT_PAY_FIELDS = ("defaultHourlyRate", "defaultOtRate", "defaultShabbatRate")
 E_SUPPLIER_ONLY = "Supplier role only"
 
 
-def strip_worker(d, supplier_id):
+def strip_worker(d, supplier_id, pay=False):
     o = {k: d[k] for k in SUPPLIER_WORKER_FIELDS if k in d}
+    if pay:
+        o.update({k: d[k] for k in SUPPLIER_PAY_FIELDS if k in d})
     rate = ((d.get("supplierRates") or {}).get(supplier_id) or {}).get("rate")
     o["supplierRate"] = rate
     return o
@@ -190,13 +198,19 @@ def supplier_action(db, caller, body):
     t_ref = db.collection("tenants").document(tid)
     action = str(body.get("action") or "")
 
+    pay = caller.get("pay") is True
     if action == "loadSchedule":
-        workers = [strip_worker(d, sid) for _, d in _own_workers(db, tid, sid)]
-        clients = [{"id": c.id, "name": (c.to_dict() or {}).get("name"), "object": (c.to_dict() or {}).get("object") or None}
-                   for c in t_ref.collection("clients").stream()]
+        workers = [strip_worker(d, sid, pay) for _, d in _own_workers(db, tid, sid)]
+        clients = []
+        for c in t_ref.collection("clients").stream():
+            cd = c.to_dict() or {}
+            row = {"id": c.id, "name": cd.get("name"), "object": cd.get("object") or None}
+            if pay:
+                row.update({k: cd[k] for k in CLIENT_PAY_FIELDS if k in cd})
+            clients.append(row)
         st = t_ref.collection("settings").document("schedule").get()
         sd = st.to_dict() if st.exists else {}
-        return {"workers": workers, "clients": clients, "suppliers": [],
+        return {"workers": workers, "clients": clients, "suppliers": [], "showPay": pay,
                 "weekStart": sd.get("weekStart"), "savedAt": sd.get("savedAt")}
 
     if action == "loadPunchLog":
@@ -223,7 +237,7 @@ def supplier_action(db, caller, body):
         w["name"] = f"{w.get('docGiven') or ''} {w.get('docSurname') or ''}".strip()
         w["docKeys"] = doc_keys(w)
         t_ref.collection("workers").document(wid).set(w)
-        return {"ok": True, "worker": strip_worker(w, sid)}
+        return {"ok": True, "worker": strip_worker(w, sid, pay)}
 
     if action in ("supplierUpdateWorker", "supplierDeleteWorker"):
         wid = str(body.get("workerId") or "")
@@ -241,6 +255,6 @@ def supplier_action(db, caller, body):
         ref.update(upd)
         d.update(upd)
         d.setdefault("id", wid)
-        return {"ok": True, "worker": strip_worker(d, sid)}
+        return {"ok": True, "worker": strip_worker(d, sid, pay)}
 
     return {"error": "Unknown action"}

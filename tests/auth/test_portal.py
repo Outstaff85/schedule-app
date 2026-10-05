@@ -123,6 +123,16 @@ def test_supplier_sees_only_own_workers_stripped():
     assert "billRate" not in str(r["clients"]) and "lat" not in str(r["clients"]) and r["suppliers"] == []
 
 
+def test_supplier_with_pay_gets_the_pay_inputs_never_billing():
+    r = portal.supplier_action(DB, dict(SUP1, pay=True), {"action": "loadSchedule"})
+    w = r["workers"][0]
+    assert r["showPay"] is True and w["hourlyRate"] == 55 and w["supplierRate"] == 7
+    assert "supplierRates" not in w and "token" not in w and "docUrl" not in w
+    c1 = next(c for c in r["clients"] if c["id"] == "c1")
+    assert c1 == {"id": "c1", "name": "Site A", "object": "Gate 1", "defaultHourlyRate": 70}
+    assert portal.supplier_action(DB, SUP1, {"action": "loadSchedule"})["showPay"] is False
+
+
 def test_supplier_punches_only_own_and_without_gps():
     P(T1, "a").set({"id": "a", "workerId": "w1", "type": "in", "date": "01/10/2026", "dist": 5, "gpsAccuracy": 3,
                     "notes": "x", "ts": __import__("datetime").datetime.now(__import__("datetime").timezone.utc)})
@@ -177,7 +187,11 @@ def test_http_functions():
     assert status == 200 and r["workers"][0]["id"] == "w1"
     sup = _id_token("u-sup", {"role": "supplier", "tenantId": T1, "supplierId": "sp1"})
     status, r = _call(main.supplier, {"action": "loadSchedule"}, {"Authorization": "Bearer " + sup})
-    assert status == 200 and [w["id"] for w in r["workers"]] == ["w1"]
+    assert status == 200 and [w["id"] for w in r["workers"]] == ["w1"] and r["showPay"] is False
+    # The pay claim from the token reaches the portal code.
+    paysup = _id_token("u-sup2", {"role": "supplier", "tenantId": T1, "supplierId": "sp1", "pay": True})
+    r = _call(main.supplier, {"action": "loadSchedule"}, {"Authorization": "Bearer " + paysup})[1]
+    assert r["showPay"] is True and r["workers"][0]["hourlyRate"] == 55
     assert _call(main.supplier, {"action": "loadSchedule"})[0] == 401
     owner = _id_token("u-own", {"role": "tenant_admin", "tenantId": T1})
     assert _call(main.supplier, {"action": "loadSchedule"}, {"Authorization": "Bearer " + owner})[1]["error"] == portal.E_SUPPLIER_ONLY
