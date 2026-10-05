@@ -18,7 +18,7 @@ All values go into the template's own AcroForm fields (`Form101Builder`, PyMuPDF
 
 Every writer skips an empty value or a field name the template doesn't have.
 
-`FIELD_RECT_NUDGES` moves a field's rectangle before anything is written: `worker_phone` 3 pt right, `employer_deductions` 1 pt down. Further position fixes go there, not into the template.
+`FIELD_RECT_NUDGES` can move a field's rectangle before anything is written; it is empty: every field is filled exactly at its rectangle in the template, and fields are positioned in the PDF itself.
 
 `add_comb_field` / `add_hebrew_field` (create a new field) are not used at the moment: every value has a template field.
 
@@ -33,7 +33,7 @@ Rectangles below are page coordinates as PyMuPDF reports them: origin top-left, 
 | `employer_name` | 417.2,167.4,537.4,181.4 | `companyName`, `set_hebrew` 11 |
 | `employer_address` | 209.5,166.8,412.6,180.8 | `street streetNumber, city`, `set_hebrew` 11 |
 | `employer_phone` | 131.4,166.8,207.5,180.8 | `phone`, `set_hebrew` 10 |
-| `employer_deductions` | 39.0,166.7,128.4,180.7 (+1 pt down) | the last 8 digits of `deductionsFileNumber` (the form prints the leading 9), comb 8, size 11 |
+| `employer_deductions` | 39.0,166.7,128.4,180.7 | the last 8 digits of `deductionsFileNumber` (the form prints the leading 9), comb 8, size 11 |
 
 `p.firmMissing` (the firm fields that were empty) is passed back unchanged in the reply.
 
@@ -57,7 +57,7 @@ Rectangles below are page coordinates as PyMuPDF reports them: origin top-left, 
 | `addr_number` | 204.1,243.8,227.1,257.8 | the house number from `p.address`, `set_text_centered` |
 | `addr_city` | 109.3,243.5,199.9,257.5 | `p.city`, `set_hebrew` 11 |
 | `addr_zip` | 30.5,243.8,107.4,257.8 | not filled |
-| `worker_phone` | 48.9,310.8,125.0,324.8 (+3 pt right) | `p.workerPhone`, `set_hebrew` 10 |
+| `worker_phone` | 48.9,310.8,125.0,324.8 | `p.workerPhone`, `set_hebrew` 10 |
 | `home_phone`, `email_employer` | — | not filled |
 
 The address and the children are filled for both document types: an Israeli ID worker's come from the ספח, a foreign worker's are typed by hand.

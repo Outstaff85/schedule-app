@@ -71,10 +71,9 @@ CHILD_FIELD_SUFFIXES = ["", "1", "2", "3", "4", "5"]
 # hand-drawn text sits within an unchanged rect — the user specifically
 # wants the former. Add further per-field tweaks here rather than re-editing
 # the PDF template by hand.
-FIELD_RECT_NUDGES = {
-    "worker_phone": (3, 0),           # 3pt right, per user request
-    "employer_deductions": (0, 1),    # 1pt down, per user request (font size bumped at its set_comb() call site)
-}
+# Empty since 2026-10-05: every field sits exactly at its rectangle in the
+# template, and the user positions the fields in the PDF itself.
+FIELD_RECT_NUDGES = {}
 
 
 def pdf_rect(page_h, x, y_bottom, width, height):
