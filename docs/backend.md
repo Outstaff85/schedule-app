@@ -48,7 +48,7 @@ It returns:
 | `punchesBetween(t, from, to)` | one read of `[from, to)` |
 | `punchesOfBatch(t, batchId)` | punches with ids starting `imp-<batchId>-` |
 | `savePunch` / `updatePunch` / `deletePunch` | `savePunch` stamps the worker's current `hrId` (`punchDoc`, from the last load/save — `workerHr`); `updatePunch` writes only `type, time, site, notes, clientId` and `editedAt` |
-| `uploadWorkerFile(t, body, onProgress)` | `saveWorkerDoc` → `form101/`, `saveWorkerAssets` → `assets/` (a JSON `{scanB64, scanMediaType, sigPng, extraPages}`), `saveWorkerFile` → `docs/`; `uploadBytesResumable` with real byte progress; returns `{ok, id: path, url}` (no url for the sidecar); an own-workers HR's files carry `hrId` in their metadata |
+| `uploadWorkerFile(t, body, onProgress)` | `saveWorkerDoc` → `form101/`, `saveWorkerAssets` → `assets/` (a JSON `{scanB64, scanMediaType, sigPng, extraPages}`; at least one of `scanB64` or `sigPng` must be provided, so the sidecar may hold only a signature when a worker is added without a scan), `saveWorkerFile` → `docs/`; `uploadBytesResumable` with real byte progress; returns `{ok, id: path, url}` (no url for the sidecar); an own-workers HR's files carry `hrId` in their metadata |
 | `handleAction(action, params, ctx)` | answers one named data action (below) with a JSON reply, or `null` when there is no such action |
 
 **`handleAction`** — the manager app's `fetch(API_URL, …)` dispatcher calls it ([app-core.md](app-core.md) → Data calls). `ctx` is `{role, username, tenantId}`; the firm is `params.asTenantId || ctx.tenantId`.
@@ -127,7 +127,7 @@ The seven AI actions: the Anthropic request for each, the reply handling and the
 
 | Action | Model | `max_tokens` | Returns |
 |---|---|---|---|
-| `aiReadDoc` | `ANTHROPIC_MODEL` | 8000 | passport or Israeli ID fields, `fieldBoxes`, `photoBox`, `children`, `spouse`; `latinSurname` / `latinGiven` and `mrzName` for the name cross-check; an Israeli passport comes back as `israeli_id` (Hebrew names, `idNo`, `passportNo`); system prompt cached |
+| `aiReadDoc` | `ANTHROPIC_MODEL` | 8000 | passport or Israeli ID fields, `fieldBoxes`, `photoBox`, `children`, `spouse`; `latinSurname` / `latinGiven` and `mrzName` for the name cross-check; `mrzLine2` (passports only — an Israeli ID card has no MRZ): when its expiry check digit is right, `_expiry_from_mrz` replaces `expiry` with the MRZ date (`expiryFromMrz`) and drops the expiry box, so the issue date printed next to the expiry can't be taken for it; `issueDate` (any document): without an MRZ expiry, `_check_dates` swaps an expiry on or before the issue date back (`datesSwapped`, the expiry box dropped) and marks an expiry less than a year after the issue date for checking (`__uncertain`); an Israeli passport comes back as `israeli_id` (Hebrew names, `idNo`, `passportNo`); system prompt cached |
 | `aiReadSefach` | `ANTHROPIC_MODEL` | 3000 | an extra Israeli page: address, house number, city, marital status, sex, spouse, children, idNo and the holder's given / surname (cross-checks), `fieldBoxes` of address / house number / city |
 | `aiDetectAlign` | `ANTHROPIC_ALIGN_MODEL` | 400 | `{kind, rotate (0/90/180/270), corners {tl,tr,br,bl} as fractions}` |
 | `aiVerifyField` | `ANTHROPIC_MODEL` | 50 | one zoomed field (`digits9`, `date`, `passportNo`); empty when unreadable |

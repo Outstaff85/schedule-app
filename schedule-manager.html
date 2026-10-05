@@ -2773,6 +2773,8 @@ async function saveWorker(){
       'spouseSurname','spouseGiven','spouseId','spouseDob','spouseIncome'];
     const updated={...prevW,...commonFields};
     const changed=FORM101_WATCHED_FIELDS.some(f=>JSON.stringify(prevW[f])!==JSON.stringify(updated[f]));
+    // A signature drawn now goes into the PDF (and the sidecar) too.
+    const newSig=getSignaturePng('wSigCanvas');
     workers[editingWorkerIdx]=updated;
     if(hrIdPicked!==undefined && (prevW.hrId||null)!==hrIdPicked) assignWorkersToHr([updated.id],hrIdPicked);
     showToast(name+' עודכן!');
@@ -2798,8 +2800,8 @@ async function saveWorker(){
     // image/signature from the Storage sidecar rather than the live
     // window.__aiScanImage global, which could belong to an unrelated scan
     // session the manager has open elsewhere right now.
-    if(changed){
-      regenerateWorkerDoc(updated.id).then(ok=>{
+    if(changed||newSig){
+      regenerateWorkerDoc(updated.id,newSig).then(ok=>{
         showToast(ok?('המסמך של '+name+' עודכן'):('עדכון המסמך של '+name+' נכשל'));
       });
     }
@@ -7569,9 +7571,13 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       // field, e.g. address) used to always pay for this redundant
       // multi-MB download-then-reupload round trip on top of the PDF
       // build itself, which is what made a single-field edit feel so slow.
-      const assetsPromise=(scanImage&&!isRegen&&w)?uploadWorkerFile(
+      // ...except when the signature is new (drawn on an existing worker):
+      // then the sidecar is written again so later rebuilds keep it — also
+      // for a worker with no scan (a sidecar holding only the signature).
+      const sigOnly=isRegen&&presetAssets.sigChanged;
+      const assetsPromise=(w&&((scanImage&&!isRegen)||sigOnly))?uploadWorkerFile(
         {action:'saveWorkerAssets',...gsAuth(),workerId:w.id,
-          scanB64:scanImage.b64, scanMediaType:scanImage.mediaType, sigPng:sigPng||null,
+          scanB64:scanImage?scanImage.b64:'', scanMediaType:scanImage?scanImage.mediaType:'image/jpeg', sigPng:sigPng||null,
           extraPages:otherPagesToUse,
           fileNameBase:fileName.replace(/\.pdf$/,''), previousFileId:w.assetsFileId||null},
         (loaded,total)=>{ assetsLoaded=loaded; assetsTotal=total; reportUploadProgress(); }
@@ -7643,7 +7649,9 @@ async function autoUploadWithRetry(isId,workerId){
 // there's no sidecar yet (a worker whose document has never been generated
 // at all, or one predating this feature), it still proceeds — just with an
 // empty scan/signature, producing a plain data-only PDF.
-async function regenerateWorkerDoc(workerId){
+// newSigPng: a signature just drawn in the worker modal — it goes into this
+// PDF and is stored in the sidecar for later rebuilds.
+async function regenerateWorkerDoc(workerId, newSigPng){
   const w=workers.find(x=>x.id===workerId);
   if(!w) return false;
   try{
@@ -7656,6 +7664,7 @@ async function regenerateWorkerDoc(workerId){
       const json=await resp.json();
       if(json&&json.ok) assets={scanB64:json.scanB64,scanMediaType:json.scanMediaType,sigPng:json.sigPng||null,extraPages:Array.isArray(json.extraPages)?json.extraPages:[]};
     }
+    if(newSigPng){ assets.sigPng=newSigPng; assets.sigChanged=true; }
     const isId=w.docType!=='passport';
     return await aiFillForm101(isId,'upload',workerId,null,assets);
   }catch(e){ return false; }

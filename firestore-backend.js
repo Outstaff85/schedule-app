@@ -459,7 +459,8 @@
         if(!body.fileBase64 || !body.fileName) return {error:'Нет fileBase64 или fileName'};
         kind = 'form101'; name = body.fileName; bytes = b64Bytes(body.fileBase64); type = body.mimeType || 'application/pdf';
       } else if(action === 'saveWorkerAssets'){
-        if(!body.scanB64) return {error:'Нет scanB64'};
+        // A sidecar may hold only a signature (a worker added without a scan).
+        if(!body.scanB64 && !body.sigPng) return {error:'Нет scanB64'};
         kind = 'assets'; name = (body.fileNameBase || 'worker') + '_assets.json'; type = 'application/json';
         bytes = new TextEncoder().encode(JSON.stringify({scanB64: body.scanB64, scanMediaType: body.scanMediaType || 'image/jpeg',
           sigPng: body.sigPng || null, extraPages: Array.isArray(body.extraPages) ? body.extraPages : []}));

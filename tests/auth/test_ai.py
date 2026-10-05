@@ -286,3 +286,51 @@ def test_truncated_read_keeps_the_complete_fields():
     # Not truncated and not JSON: still an error.
     bad = json.dumps({"content": [{"type": "text", "text": "not json"}]})
     assert "error" in python("aiReadSefach", {"image": "I"}, bad)["result"]
+
+
+def test_passport_expiry_comes_from_the_mrz_when_its_check_digit_is_right():
+    # ICAO 9303 specimen line 2: expiry 120415, check digit 9.
+    line2 = "L898902C36UTO7408122F1204159ZE184226B<<<<<10"
+    doc = {"type": "passport", "expiry": "15/04/2002", "mrzLine2": line2,
+           "fieldBoxes": {"expiry": {"x0": 0, "y0": 0, "x1": 1, "y1": 1}, "dob": {"x0": 0, "y0": 0, "x1": 1, "y1": 1}}}
+    raw = json.dumps({"content": [{"type": "text", "text": json.dumps(doc)}]})
+    out = ai.parse_reply("aiReadDoc", 200, raw)["parsed"]
+    assert out["expiry"] == "15/04/2012" and out["expiryFromMrz"] is True
+    assert "expiry" not in out["fieldBoxes"] and "dob" in out["fieldBoxes"]
+    # a wrong check digit, a short line or no MRZ (an Israeli ID card) leave the read as it is
+    for bad in (line2[:27] + "8" + line2[28:], line2[:20], ""):
+        doc2 = dict(doc, mrzLine2=bad, fieldBoxes={"expiry": {}})
+        raw2 = json.dumps({"content": [{"type": "text", "text": json.dumps(doc2)}]})
+        out2 = ai.parse_reply("aiReadDoc", 200, raw2)["parsed"]
+        assert out2["expiry"] == "15/04/2002" and "expiryFromMrz" not in out2 and "expiry" in out2["fieldBoxes"]
+    # the ספח read is never touched
+    raw3 = json.dumps({"content": [{"type": "text", "text": json.dumps(dict(doc, type="israeli_id"))}]})
+    assert ai.parse_reply("aiReadSefach", 200, raw3)["parsed"]["expiry"] == "15/04/2002"
+
+
+def test_read_doc_asks_for_mrz_line_2():
+    assert '"mrzLine2"' in ai.PROMPTS["readDoc"]
+
+
+def _read(doc, action="aiReadDoc"):
+    raw = json.dumps({"content": [{"type": "text", "text": json.dumps(doc)}]})
+    return ai.parse_reply(action, 200, raw)["parsed"]
+
+
+def test_issue_and_expiry_dates_swapped_back_when_reversed():
+    out = _read({"type": "israeli_id", "expiry": "01/03/2018", "issueDate": "01/03/2028", "fieldBoxes": {"expiry": {}}})
+    assert out["expiry"] == "01/03/2028" and out["issueDate"] == "01/03/2018" and out["datesSwapped"] is True
+    assert "expiry" not in out["fieldBoxes"] and "__uncertain" not in out
+
+
+def test_expiry_too_close_to_the_issue_date_is_marked_for_checking():
+    out = _read({"type": "israeli_id", "expiry": "05/06/2024", "issueDate": "01/03/2024", "__uncertain": ["dob"]})
+    assert out["expiry"] == "05/06/2024" and out["__uncertain"] == ["dob", "expiry"]
+    ok = _read({"type": "passport", "expiry": "01/03/2034", "issueDate": "01/03/2024"})
+    assert "__uncertain" not in ok and "datesSwapped" not in ok
+    # no issue date, an unreadable date, or an expiry from the MRZ: left alone
+    for doc in ({"expiry": "01/03/2024"}, {"expiry": "1 MAR 2024", "issueDate": "01/03/2030"}):
+        assert _read(doc) == doc
+    mrz = _read({"type": "passport", "expiry": "x", "issueDate": "01/01/2030",
+                 "mrzLine2": "L898902C36UTO7408122F1204159ZE184226B<<<<<10"})
+    assert mrz["expiry"] == "15/04/2012" and "datesSwapped" not in mrz and "__uncertain" not in mrz

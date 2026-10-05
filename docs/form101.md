@@ -36,7 +36,7 @@ Everything comes from the saved worker record, `targetWorker`:
 | `address` | street + house number in one string |
 | `city`, `marital`, `workStart` (`workStartDate`), `healthFund`, `children` | worker — for both document types |
 | `spouse` | `{surname, given, idNo, dob, income}` when any spouse field is set |
-| `signaturePngBase64` | live pad (`getSignaturePng('wSigCanvas')`, or the copy captured in `__wCapturedSigPng` before the modal is replaced) or the sidecar's `sigPng` |
+| `signaturePngBase64` | live pad (`getSignaturePng('wSigCanvas')`, or the copy captured in `__wCapturedSigPng` before the modal is replaced) or the sidecar's `sigPng`; a signature drawn while editing an existing worker is passed to the rebuild (`regenerateWorkerDoc(id, newSigPng)`, `sigChanged`) |
 | `extraPages` | `[{b64, mediaType, caption}]`: the main scan first (`'Document scan'`), then the other pages (`'Document'`) |
 
 Missing firm-profile fields (`firmProfileMissing`) are shown as a toast after the save.
@@ -90,7 +90,7 @@ The PDF and the sidecar are uploaded at the same time; the progress bar runs 20�
 | What | Action | Stored at |
 |---|---|---|
 | PDF | `saveWorkerDoc` `{fileBase64, fileName, previousFileId, workerId}` | Storage `tenants/<t>/workers/<id>/form101/<ms>-<name>`, with a download URL |
-| Sidecar (scan, signature, extra pages as JSON) | `saveWorkerAssets` `{scanB64, scanMediaType, sigPng, extraPages, fileNameBase, previousFileId}` | Storage `…/assets/` (no URL) |
+| Sidecar (scan, signature, extra pages as JSON) | `saveWorkerAssets` `{scanB64, scanMediaType, sigPng, extraPages, fileNameBase, previousFileId}` — written on a new save, and again on a rebuild with a new signature; it may hold only a signature (`scanB64` empty) for a worker added without a scan | Storage `…/assets/` (no URL) |
 
 - **Sidecar:** written only when there is a scan image, and not on a background rebuild.
 - **The worker record after a successful save:** `docUrl`, `docFileId`, `docSavedAt`, `assetsFileId`, `docHasSignature`, `docExtraPages`; `docUploadFailed` is set to `false`.
