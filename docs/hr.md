@@ -30,6 +30,7 @@ No HR, of either kind, can change a worker's `hrId` — only the owner (`tenant_
 - **Duplicate check on edit too:** changing an existing worker's document number is checked across the firm the same way (`checkWorkerDoc` with `workerId`).
 - **Assign workers:** the HR's card in Users (its worker list with Unassign, "Add workers" bulk picker) or the worker modal's HR field. Both go through `assignWorkersToHr(ids, hrId)` in `schedule-manager.html`: sets `hrId` on the workers, `autoSave()`, then `setPunchesHr` (`firestore-backend.js`, owner / super-admin only) rewrites `hrId` on every punch of those workers, 8 workers at a time — so the new HR sees the history and the old one loses it.
 - **A worker added by an HR** gets `hrId` = its uid in `saveWorker()`.
+- **Live list:** an HR session watches its workers (`watchHrWorkers` → `listenWorkers`): a worker the owner assigns appears and one taken away disappears without a reload (`applyHrWorkerChanges`, applied while no worker form or card is open). A changed field of an existing worker shows on the next load. Its punches follow through the punch listener (`setPunchesHr` rewrites their `hrId`).
 
 ## Enforcement, layer by layer
 

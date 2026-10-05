@@ -5897,6 +5897,7 @@ async function loadData(){
       markFreshContent('app');
       setSaveStatus('saved');
       syncPunchesFromGS();
+      if(isHrSession()) watchHrWorkers();
       maybeRegenAfterFirmEdit();
     } else {
       showToast('Could not load from the server — showing saved data'+(gsLoad.lastError?' ('+gsLoad.lastError.slice(0,80)+')':''),6000);
@@ -5906,6 +5907,35 @@ async function loadData(){
     console.error('Load failed',e);
     showToast('Offline — using cached data');
   }
+}
+
+// An HR's worker list follows the server (listenWorkers): a worker the owner
+// assigns appears, one taken away disappears. Applied while no worker form
+// or card is open (their index into `workers` must not move); otherwise it
+// waits and tries again.
+let __hrWorkersWatched = false, __hrWorkerChanges = [];
+function watchHrWorkers(){
+  if(__hrWorkersWatched) return;
+  __hrWorkersWatched = true;
+  loadFirestoreBackend().then(b => b.listenWorkers(fsTenantId(), ch => { __hrWorkerChanges.push(ch); applyHrWorkerChanges(); }))
+    .catch(e => { __hrWorkersWatched = false; console.warn('Worker watch failed: ' + ((e && e.message) || e)); });
+}
+function applyHrWorkerChanges(){
+  if(!__hrWorkerChanges.length) return;
+  const busy = ['workerOverlay','workerCardOverlay'].some(id => document.getElementById(id)?.classList.contains('open'));
+  if(busy){ clearTimeout(applyHrWorkerChanges._t); applyHrWorkerChanges._t = setTimeout(applyHrWorkerChanges, 2000); return; }
+  const changes = __hrWorkerChanges.splice(0);
+  let n = 0;
+  changes.forEach(({added, removed}) => {
+    const gone = new Set(removed.map(String));
+    const before = workers.length;
+    workers = workers.filter(w => !gone.has(String(w.id)));
+    n += before - workers.length;
+    added.forEach(x => { if(!workers.some(w => String(w.id) === String(x.id))){ workers.push(x); n++; } });
+  });
+  if(!n) return;
+  try{ localStorage.setItem(STORAGE_KEY(), JSON.stringify(getDataObj())); }catch(e){}
+  render();
 }
 
 // After a failed load, try again once the device is back online or the tab
