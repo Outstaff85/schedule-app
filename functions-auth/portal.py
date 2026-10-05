@@ -31,6 +31,8 @@ from zoneinfo import ZoneInfo
 
 from google.cloud.firestore_v1.base_query import FieldFilter
 
+from core import doc_keys
+
 PUNCH_MONTHS = 13
 PUNCH_FIELDS = ("workerName", "type", "time", "date", "site", "dist", "gpsAccuracy",
                 "gpsSuspicious", "gpsWarnings", "notes", "clientId")
@@ -219,6 +221,7 @@ def supplier_action(db, caller, body):
         w = {"id": wid, "supplierId": sid, "clientIds": [], "schedule": [], "sortIndex": int(time.time())}
         w.update({k: fields[k] for k in SUPPLIER_EDITABLE if fields.get(k) is not None})
         w["name"] = f"{w.get('docGiven') or ''} {w.get('docSurname') or ''}".strip()
+        w["docKeys"] = doc_keys(w)
         t_ref.collection("workers").document(wid).set(w)
         return {"ok": True, "worker": strip_worker(w, sid)}
 
@@ -234,6 +237,7 @@ def supplier_action(db, caller, body):
         upd = {k: fields[k] for k in SUPPLIER_EDITABLE if fields.get(k) is not None}
         d = dict(snap.to_dict(), **upd)
         upd["name"] = f"{d.get('docGiven') or ''} {d.get('docSurname') or ''}".strip()
+        upd["docKeys"] = doc_keys(d)
         ref.update(upd)
         d.update(upd)
         d.setdefault("id", wid)

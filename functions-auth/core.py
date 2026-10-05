@@ -569,11 +569,27 @@ def _doc_key(v):
     return "".join(ch for ch in str(v or "").upper() if ch.isalnum())
 
 
+def doc_keys(d):
+    """A worker's document numbers in one standard form (docKeys on the
+    worker document), for checkWorkerDoc's one-query lookup. The app
+    (firestore-backend.js docKeysOf) and the supplier portal write it."""
+    keys = []
+    for f in ("docId", "passportNo", "israeliId"):
+        k = _doc_key((d or {}).get(f))
+        if k and k not in keys:
+            keys.append(k)
+    return keys
+
+
 def check_worker_doc(db, caller, body):
     """checkWorkerDoc {docId, workerId?}: is there another worker in the
     caller's firm with this ID / passport number? Answers only yes or no, so
     an HR who sees only their own workers is warned about a duplicate
-    without seeing the other worker."""
+    without seeing the other worker.
+
+    One query on docKeys once the firm's workers all carry it
+    (tenants/{t}.docKeysReady). Until then: one full read that also writes
+    the missing docKeys and sets the flag."""
     if caller.get("role") not in ("superadmin", "tenant_admin", "staff", "hr"):
         return {"error": E_NO_RIGHTS}
     tid = _target_tenant(caller, body)
@@ -581,13 +597,27 @@ def check_worker_doc(db, caller, body):
     if not tid or not key:
         return {"ok": True, "exists": False}
     skip = str(body.get("workerId") or "")
-    for snap in db.collection("tenants").document(tid).collection("workers").stream():
-        if snap.id == skip:
-            continue
+    t_ref = db.collection("tenants").document(tid)
+    t_snap = t_ref.get()
+    if t_snap.exists and (t_snap.to_dict() or {}).get("docKeysReady"):
+        q = t_ref.collection("workers").where(filter=FieldFilter("docKeys", "array_contains", key)).limit(2)
+        return {"ok": True, "exists": any(s.id != skip for s in q.stream())}
+    exists, batch, n = False, db.batch(), 0
+    for snap in t_ref.collection("workers").stream():
         d = snap.to_dict() or {}
-        if key in (_doc_key(d.get("docId")), _doc_key(d.get("passportNo")), _doc_key(d.get("israeliId"))):
-            return {"ok": True, "exists": True}
-    return {"ok": True, "exists": False}
+        keys = doc_keys(d)
+        if snap.id != skip and key in keys:
+            exists = True
+        if d.get("docKeys") != keys:
+            batch.update(snap.reference, {"docKeys": keys})
+            n += 1
+            if n % 400 == 0:
+                batch.commit()
+                batch = db.batch()
+    if n % 400:
+        batch.commit()
+    t_ref.set({"docKeysReady": True}, merge=True)
+    return {"ok": True, "exists": exists}
 
 
 ACTIONS = {

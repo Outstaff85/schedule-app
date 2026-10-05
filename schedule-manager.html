@@ -4768,9 +4768,14 @@ function openCreateUserForm(){
   document.getElementById('userFormOverlay').classList.add('open');
 }
 async function openEditUserForm(id){
-  const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'listUsers', ...gsAuth() }) });
-  const json = await res.json();
-  const u = (json.users||[]).find(x => x.id === id);
+  // From the list the Users pane just drew (its cache) — no server round
+  // trip; the server is asked only when the row isn't there.
+  const cachedUsers = loadAdminCache('users_'+activeTenantIdForAdmin());
+  let u = Array.isArray(cachedUsers) ? cachedUsers.find(x => x.id === id) : null;
+  if(!u){
+    const json = await fetchAdminUsers();
+    u = ((json && json.users) || []).find(x => x.id === id);
+  }
   if(!u){ showToast('User not found'); return; }
   __editingUserId = id;
   document.getElementById('userFormTitle').textContent = 'Edit ' + u.username;
@@ -6824,15 +6829,27 @@ function wirePagedMore(el, key, items, rowHtml, opts){
 // counts, and each input allows one page at most: the browser also fires
 // scroll when a page's height changes after a redraw, which would otherwise
 // chain-load page after page.
-let __pagedScrollQueued = false, __pagedUserAt = 0;
+// __pagedUp: the last input moved up (wheel up, finger down, ArrowUp…) —
+// then nothing loads, even with "Show more" in view.
+let __pagedScrollQueued = false, __pagedUserAt = 0, __pagedUp = false, __pagedTouchY = null;
 ['wheel','touchstart','touchmove','touchend','keydown','pointerdown'].forEach(t =>
   window.addEventListener(t, e => {
     __pagedUserAt = Date.now();
     // A downward wheel / swipe / key while "Show more" is already in view
     // loads the next page too: when the page is short enough not to scroll
     // (a short list on a big screen) no scroll event would ever come.
-    const down = t === 'touchmove' || (t === 'wheel' && e.deltaY > 0)
-      || (t === 'keydown' && ['ArrowDown','PageDown','End',' '].includes(e.key));
+    let down = false;
+    if(t === 'touchstart'){ __pagedTouchY = e.touches && e.touches[0] ? e.touches[0].clientY : null; __pagedUp = false; }
+    else if(t === 'touchmove' && e.touches && e.touches[0] && __pagedTouchY != null){
+      const y = e.touches[0].clientY;
+      if(Math.abs(y - __pagedTouchY) > 4){ __pagedUp = y > __pagedTouchY; down = !__pagedUp; __pagedTouchY = y; }
+    }
+    else if(t === 'wheel' && e.deltaY){ __pagedUp = e.deltaY < 0; down = !__pagedUp; }
+    else if(t === 'keydown'){
+      if(['ArrowDown','PageDown','End',' '].includes(e.key)){ __pagedUp = false; down = true; }
+      else if(['ArrowUp','PageUp','Home'].includes(e.key)) __pagedUp = true;
+    }
+    else if(t === 'pointerdown' && e.pointerType === 'mouse') __pagedUp = false;
     if(down) _pagedOnScroll();
   }, {capture:true, passive:true}));
 function _pagedVisibleBottom(node){
@@ -6844,7 +6861,7 @@ function _pagedVisibleBottom(node){
   return bottom;
 }
 function _pagedOnScroll(){
-  if(__pagedScrollQueued || !__pagedUserAt || Date.now() - __pagedUserAt > 1500) return;
+  if(__pagedScrollQueued || __pagedUp || !__pagedUserAt || Date.now() - __pagedUserAt > 1500) return;
   __pagedScrollQueued = true;
   requestAnimationFrame(() => {
     __pagedScrollQueued = false;
