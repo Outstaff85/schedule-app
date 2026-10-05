@@ -71,7 +71,7 @@ A separate codebase so a login never loads OpenCV/PyMuPDF. `main.py` holds the H
 | Function | Auth | Module | Notes |
 |---|---|---|---|
 | `login` | none | `core.login` | 30 s; `min_instances=0` (no standing cost; the login screen's `{ping:true}` wakes it while the user types, but after a long idle the first login can still wait for a cold start) |
-| `users_admin` | `Bearer <ID token>`, checked with `check_revoked` | `core.run_action`, `files.run` | a superadmin's firm = `asTenantId`; after `deleteTenant` also `files.delete_tenant_files`; `{ping:true}` (no token) answers at once — the app sends it on open |
+| `users_admin` | `Bearer <ID token>`, checked with `check_revoked`; `{ping:true}` needs no token | `core.run_action`, `files.run` | a superadmin's firm = `asTenantId`; after `deleteTenant` also `files.delete_tenant_files`; `{ping:true}` answers `{ok: True, warm: True}` at once (the app sends it on open to skip a cold start on the first real call) |
 | `punch` | the worker link token | `portal.punch_action` | 30 s; `{ping:true}` |
 | `supplier` | `Bearer <ID token>` of a supplier | `portal.supplier_action` | |
 | `ai_read` | `Bearer <ID token>`, role superadmin/tenant_admin/staff/hr | `ai.run` | 300 s, 512 MB, 1 CPU, up to 20 requests at once per instance (a scan's parallel calls share one warm instance); secret `ANTHROPIC_API_KEY`; `{ping:true}` |
