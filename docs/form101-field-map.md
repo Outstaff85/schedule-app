@@ -33,7 +33,7 @@ Rectangles below are page coordinates as PyMuPDF reports them: origin top-left, 
 | `employer_name` | 417.2,167.4,537.4,181.4 | `companyName`, `set_hebrew` 11 |
 | `employer_address` | 209.5,166.8,412.6,180.8 | `street streetNumber, city`, `set_hebrew` 11 |
 | `employer_phone` | 131.4,166.8,207.5,180.8 | `phone`, `set_hebrew` 10 |
-| `employer_deductions` | 39.0,166.7,128.4,180.7 | the last 8 digits of `deductionsFileNumber` (the form prints the leading 9), comb 8, size 11 |
+| `employer_deductions` | 40.0,167.5,129.4,181.5 | the last 8 digits of `deductionsFileNumber` (the form prints the leading 9), comb 8, size 11 |
 
 `p.firmMissing` (the firm fields that were empty) is passed back unchanged in the reply.
 
@@ -47,8 +47,8 @@ Rectangles below are page coordinates as PyMuPDF reports them: origin top-left, 
 
 | Field | Rect | Value |
 |---|---|---|
-| `surname` | 316.1,220.2,435.7,234.2 | `p.surname`, `set_hebrew` 11 |
-| `given_name` | 210.9,220.2,311.6,234.2 | `p.given`, `set_hebrew` 11 |
+| `surname` | 316.1,221.2,435.7,235.2 | `p.surname`, `set_hebrew` 11 |
+| `given_name` | 210.9,221.2,311.6,235.2 | `p.given`, `set_hebrew` 11 |
 | `employer_zeut_num` | 439.3,220.9,538.7,234.9 | the **worker's** Israeli ID (`p.no`, digits only), comb 9, size 10 — Israeli ID only. The name is misleading; the field sits under "מספר זהות (9 ספרות)" |
 | `dob` | 119.7,221.2,209.1,235.2 | `p.dob` → `DDMMYYYY` (`_ddmmyyyy`), comb 8, size 10 |
 | `aliyah` | 28.5,220.9,117.9,234.9 | not filled |
@@ -57,8 +57,8 @@ Rectangles below are page coordinates as PyMuPDF reports them: origin top-left, 
 | `addr_number` | 204.1,243.8,227.1,257.8 | the house number from `p.address`, `set_text_centered` |
 | `addr_city` | 109.3,243.5,199.9,257.5 | `p.city`, `set_hebrew` 11 |
 | `addr_zip` | 30.5,243.8,107.4,257.8 | not filled |
-| `worker_phone` | 48.9,310.8,125.0,324.8 | `p.workerPhone`, `set_hebrew` 10 |
-| `home_phone`, `email_employer` | — | not filled |
+| `worker_phone` | 83.0,311.9,159.1,325.9 | `p.workerPhone`, `set_hebrew` 10 |
+| `home_phone` (251.6,311.6,327.6,325.6), `email_employer` (364.8,311.8,537.4,325.8) | — | not filled |
 
 The address and the children are filled for both document types: an Israeli ID worker's come from the ספח, a foreign worker's are typed by hand.
 
