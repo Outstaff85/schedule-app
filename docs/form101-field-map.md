@@ -132,7 +132,7 @@ The section ט table of other employers has no fields and is left as printed.
 
 ## File name
 
-`<ID digits or "noid">_<given>[_<surname>][_<company>].pdf`. Only Latin letters, digits and Hebrew letters are kept in each part.
+`<given> - <surname> - <ID or passport number> - <company>.pdf` (a space, a hyphen, a space between the parts; an empty part is left out, "worker" when there is no given name). Each name part keeps Latin and Hebrew letters, digits and single spaces; a quote inside a Hebrew word becomes the gershayim (בע״מ). The number keeps its letters and digits, upper case. The PDF is stored in Storage and downloaded under this name.
 
 ## Re-checking the template
 
