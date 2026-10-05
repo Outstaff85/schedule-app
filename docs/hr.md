@@ -19,7 +19,7 @@ An HR manager's login inside one firm: it works with the workers assigned to it.
 | Clients, suppliers, settings, firm doc | read; clients / suppliers written only with that section | same |
 | Worker files (Storage) | uploads stamped with `hrId` metadata; reads back only those; other reads / deletes through `users_admin` with an ownership check | like staff |
 | Tabs | its sections; never Today or Admin | same |
-| Pay | without the Accounting section but with "Sees own workers' pay" (`showPay`, default on): a reduced Accounting tab (`hrPayOnly()`) — Salary for the workers whose `hrId` is its uid, read-only, with a "My commission" column (hours × its `commissionRate`); no other Accounting section, no export | same (still only the workers with its `hrId`) |
+| Pay | never the full Accounting tab; with the Accounting section (off by default) a reduced one (`hrPayOnly()`) — Salary for the workers whose `hrId` is its uid, read-only, with a "My commission" column (hours × its `commissionRate`); no other Accounting section, no export | same (still only the workers with its `hrId`) |
 
 No HR, of either kind, can change a worker's `hrId` — only the owner (`tenant_admin`) or a super-admin assigns.
 

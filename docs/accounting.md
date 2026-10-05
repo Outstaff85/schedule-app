@@ -57,7 +57,7 @@ The client keeps the punch log in `localStorage.punchLog` (`getPunchLog()` / `sa
 
 Each section title has an (i) button (`.acc-help`) that opens the section's explanation in a modal (`openAccountingHelp(key)` → `#accHelpOverlay`, texts in `ACCOUNTING_HELP`); the page itself carries no explanatory text. A change to how a section works updates its text there.
 
-The tab is gated by the `accounting` permission. An HR without it but with "Sees own workers' pay" gets the reduced tab of `hrPayOnly()` ([hr.md](hr.md) → Pay): `renderAccounting` hides every section but Salary, `renderSalary` keeps only its workers, makes the table read-only (`.salary-ro`, the setters refuse) and adds "My commission".
+The tab is gated by the `accounting` permission. For an HR that permission gives only the reduced tab of `hrPayOnly()` (never the full one) ([hr.md](hr.md) → Pay): `renderAccounting` hides every section but Salary, `renderSalary` keeps only its workers, makes the table read-only (`.salary-ro`, the setters refuse) and adds "My commission".
 
 ### Salary (`renderSalary()`)
 

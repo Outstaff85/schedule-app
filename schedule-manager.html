@@ -1031,7 +1031,7 @@
         <label class="check-chip"><input type="checkbox" value="workers" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-users-group"></i> Workers</span><span class="chip-hint">Workers tab</span></span></label>
         <label class="check-chip"><input type="checkbox" value="clients" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-users"></i> Clients</span><span class="chip-hint">Clients tab</span></span></label>
         <label class="check-chip"><input type="checkbox" value="suppliers" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-truck-delivery"></i> Suppliers</span><span class="chip-hint">Suppliers tab</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="accounting" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-cash"></i> Accounting</span><span class="chip-hint">Accounting tab</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="accounting" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-cash"></i> Accounting</span><span class="chip-hint" id="userFormAccountingHint">Accounting tab</span></span></label>
         <label class="check-chip"><input type="checkbox" value="exports" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-upload"></i> Export</span><span class="chip-hint">Export button</span></span></label>
       </div>
     </div>
@@ -1041,7 +1041,7 @@
     <!-- HR and supplier: see their own workers' pay and their commission
          (claim "pay"; on by default). HR: its commission ₪/h. -->
     <div class="field" id="userFormPayFields" style="display:none">
-      <div class="check-grid">
+      <div class="check-grid" id="userFormShowPayGrid">
         <label class="check-chip"><input type="checkbox" id="userFormShowPay" checked><span class="chip-text">Sees own workers' pay<span class="chip-hint">Their hours, rate and pay, and this login's commission. Nothing else of Accounting.</span></span></label>
       </div>
       <div class="field" id="userFormCommissionField" style="margin-top:8px"><label>HR commission ₪/h</label><input type="number" id="userFormCommission" min="0" step="0.5" placeholder="0"></div>
@@ -1529,16 +1529,15 @@ const NAV_TAB_PERMISSION = { schedule:'schedule', workers:'workers', clients:'cl
 function isHrSession(){ const s = getSession(); return !!s && s.role === 'hr'; }
 function isFirmAdminSession(){ const s = getSession(); return !!s && (s.role === 'tenant_admin' || s.role === 'superadmin'); }
 const HR_HIDDEN_TABS = ['dashboard','admin'];
-// An HR without the Accounting section but with "sees own workers' pay"
-// (session.showPay) gets a reduced Accounting tab: Salary for its own
-// workers, read-only, with its commission — nothing else (renderAccounting).
+// An HR never gets the full Accounting tab: with the Accounting section
+// (off by default) it gets a reduced one — Salary for its own workers,
+// read-only, with its commission — nothing else (renderAccounting).
 function hrPayOnly(){
   const s = getSession();
-  return !!s && s.role === 'hr' && s.showPay === true && !hasPermission('accounting');
+  return !!s && s.role === 'hr' && hasPermission('accounting');
 }
 function tabAllowed(tab){
   if(isHrSession() && HR_HIDDEN_TABS.includes(tab)) return false;
-  if(tab === 'accounting' && hrPayOnly()) return true;
   return !NAV_TAB_PERMISSION[tab] || hasPermission(NAV_TAB_PERMISSION[tab]);
 }
 function homeTab(){
@@ -4835,6 +4834,9 @@ function onUserFormRoleChange(fromUser){
   document.getElementById('userFormHrFields').style.display = role==='hr' ? '' : 'none';
   document.getElementById('userFormPayFields').style.display = (role==='hr'||role==='supplier') ? '' : 'none';
   document.getElementById('userFormCommissionField').style.display = role==='hr' ? '' : 'none';
+  // A supplier's pay view is its own tile; an HR's is the Accounting section.
+  document.getElementById('userFormShowPayGrid').style.display = role==='supplier' ? '' : 'none';
+  document.getElementById('userFormAccountingHint').textContent = role==='hr' ? 'Own workers\' pay and commission only' : 'Accounting tab';
   document.getElementById('userFormFullNameLabel').textContent = role==='hr' ? 'Full name *' : 'Full name';
   document.getElementById('userFormHrWorkersField').style.display = role==='hr' && __editingUserId ? '' : 'none';
   if(role==='supplier') fillUserFormSupplierSelect(null);
@@ -4921,7 +4923,7 @@ async function submitUserForm(){
       fullName: document.getElementById('userFormFullName').value.trim(),
       phone: document.getElementById('userFormPhone').value.trim() };
     if(role==='hr') hrFields.ownOnly = document.getElementById('userFormOwnOnly').checked;
-    if(role==='hr'||role==='supplier') hrFields.showPay = document.getElementById('userFormShowPay').checked;
+    if(role==='supplier') hrFields.showPay = document.getElementById('userFormShowPay').checked;
     if(role==='hr') hrFields.commissionRate = parseFloat(document.getElementById('userFormCommission').value)||0;
     if(role==='hr' && !hrFields.fullName){ errEl.textContent = 'Full name required for an HR login'; return; }
     if(__editingUserId){
@@ -6654,6 +6656,7 @@ const ACCOUNTING_HELP={
     'What each client owes the firm for the period picked in Salary, by the client\'s own pricing (client card): tiered (the OT / Shabbat law rates on the client\'s billing rate) or one fixed rate.',
     'Separate from the workers\' pay: it never changes a wage, and a wage never changes it.']},
   hrPayable:{icon:'ti-user-dollar',title:'Payable by HR',items:[
+    'An HR login with the Accounting section sees only this part for its own workers: their hours, rate and pay, and its commission — never the rest of Accounting.',
     'For the period picked in Salary: each HR\'s workers\' hours × the HR\'s commission (₪/h, set in Admin → Users on the HR).',
     'Separate from the workers\' pay: it never changes a wage.']},
   pending:{icon:'ti-file-check',title:'Pending hours',items:[
