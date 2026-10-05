@@ -2091,7 +2091,7 @@ async function rescanFromWorkerModal(){
     vals[el.id]=(el.type==='checkbox'||el.type==='radio')?{checked:el.checked}:el.value;
   });
   const cv=document.getElementById('wSigCanvas');
-  window.__wDraft={vals,children:__wChildren.map(c=>({...c})),clientIds:[...__wClientIds],avatar:__wAvatarB64,
+  window.__wDraft={vals,rateManual:document.getElementById('wRate')?.dataset.manual==='1',children:__wChildren.map(c=>({...c})),clientIds:[...__wClientIds],avatar:__wAvatarB64,
     colorIdx:selColorIdx,sig:cv&&cv._sigDirty?cv.toDataURL('image/png'):null};
   warmCloudFunctions(SCAN_WARM_URLS());
   try{ await ensureScanPipelineLoaded(); }
@@ -2113,7 +2113,10 @@ function applyWorkerDraft(){
     if(v&&typeof v==='object'){ el.checked=v.checked; continue; }
     if(v!==''&&v!=null){ el.value=v; _clearScanCheck(el); }
   }
+  const rateEl=document.getElementById('wRate');
+  if(rateEl){ if(d.rateManual) rateEl.dataset.manual='1'; else delete rateEl.dataset.manual; }
   if(d.children.length){ __wChildren=d.children; renderChildrenRows(); }
+  syncWRate();
   if(d.clientIds.length){ __wClientIds=d.clientIds.filter(id=>clients.some(c=>c.id===id)); renderWClientChips(); }
   if(d.avatar&&!__wAvatarB64){
     __wAvatarB64=d.avatar;
@@ -2188,6 +2191,34 @@ function renderWClientChips(){
       <button type="button" onclick="removeWClient('${esc(c.id)}')" title="Remove" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:0 2px;font-size:14px;line-height:1">&times;</button>
     </span>`).join('');
   const cnt=document.getElementById('wClientCount'); if(cnt) cnt.textContent=sel.length?('('+sel.length+')'):'';
+  syncWRate();
+}
+// The worker modal's hourly rate. A worker without a rate of their own shows
+// the rate of their first client that has one (filled in, "client rate"
+// under it) and follows it as the clients change; such a worker is saved
+// with no rate of their own, so a later change of the client's rate reaches
+// them. A rate typed by hand (data-manual) is the worker's own: it wins over
+// the client's, for this worker only (effectiveRates). Emptying it goes back
+// to the client's.
+function wOwnRate(w){
+  if(!w) return '';
+  if(w.regRate!=null&&w.regRate!=='') return w.regRate;
+  return Number(w.hourlyRate)>0?w.hourlyRate:'';
+}
+function wClientRateSource(){
+  return __wClientIds.map(id=>clients.find(c=>c.id===id)).find(c=>c&&c.defaultHourlyRate!=null&&c.defaultHourlyRate!=='')||null;
+}
+function syncWRate(){
+  const el=document.getElementById('wRate'), hint=document.getElementById('wRateHint'); if(!el) return;
+  const cl=wClientRateSource();
+  if(el.dataset.manual!=='1') el.value=cl?cl.defaultHourlyRate:'';
+  if(hint) hint.textContent=el.dataset.manual==='1'
+    ? (cl?'This worker\'s own rate (client\'s: ₪'+cl.defaultHourlyRate+')':'')
+    : (cl?'Client rate · '+cl.name:'');
+}
+function onWRateInput(el){
+  if(el.value==='') delete el.dataset.manual; else el.dataset.manual='1';
+  syncWRate();
 }
 function wClientMatches(){
   const q=(document.getElementById('wClientSearch')?.value||'').trim().toLowerCase();
@@ -2490,7 +2521,7 @@ function showWorkerModal(w){
       <div class="field"><label>עיר</label><input type="text" id="wCity" value="${esc(w.city||'')}" placeholder="עיר"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>תעריף שעתי (₪/שעה)</label><input type="number" id="wRate" value="${w.hourlyRate||''}" placeholder="לדוגמה: 35" min="0" step="0.5"></div>
+      <div class="field"><label>תעריף שעתי (₪/שעה)</label><input type="number" id="wRate" value="${esc(wOwnRate(w))}" ${wOwnRate(w)!==''?'data-manual="1"':''} placeholder="לדוגמה: 35" min="0" step="0.5" oninput="onWRateInput(this)"><div id="wRateHint" style="font-size:11px;color:var(--text3);margin-top:3px"></div></div>
       <div class="field"><label>Travel ₪ / day</label><input type="number" id="wTravelAllowance" value="${w.travelAllowance||''}" placeholder="0" min="0" step="0.5"></div>
     </div>
     <div class="field-row">
@@ -2668,7 +2699,9 @@ async function saveWorker(){
   const name=(docGiven+' '+docSurname).trim();
   if(!name){ document.getElementById('wGiven').focus(); return; }
   const phone=document.getElementById('wPhone').value.trim();
-  const hourlyRate=parseFloat(document.getElementById('wRate')?.value)||0;
+  // Only a rate typed by hand is the worker's own (syncWRate).
+  const rateEl=document.getElementById('wRate');
+  const hourlyRate=rateEl&&rateEl.dataset.manual==='1'?(parseFloat(rateEl.value)||0):0;
   const travelAllowance=parseFloat(document.getElementById('wTravelAllowance')?.value)||0;
   // Status is set on the worker card (setWorkerStatus), not in this form.
   const status=editingWorkerIdx!==null?(workers[editingWorkerIdx].status||'active'):'active';
@@ -2718,7 +2751,7 @@ async function saveWorker(){
     : (editingWorkerIdx!==null
         ? workers[editingWorkerIdx].schedule
         : DAYS.map(()=>({type:'off',start:null,end:null})));
-  const commonFields={name,colorIdx:selColorIdx,phone,hourlyRate,travelAllowance,status,startDate,workStartDate,docSex,
+  const commonFields={name,colorIdx:selColorIdx,phone,hourlyRate,regRate:null,travelAllowance,status,startDate,workStartDate,docSex,
     expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,houseNumber,city,docDob,docExpiry,notes,
     incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,docChildren,clientIds,schedule,
     spouseSurname,spouseGiven,spouseId,spouseDob,spouseIncome,
