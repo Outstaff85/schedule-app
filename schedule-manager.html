@@ -4627,6 +4627,14 @@ function prefetchAdminUsers(){
       saveAdminCache('users_'+tenantId,(json.users||[]).filter(u=>u.tenantId===tenantId));
       // The HR names on the worker tiles come from this list.
       if(currentTab==='workers' && workers.some(w=>w.hrId)) renderWorkersPage();
+      // ...and the HR field of a worker modal already open.
+      const sel=document.getElementById('wHrId');
+      if(sel){
+        const cur=sel.value;
+        sel.innerHTML='<option value="">— None —</option>'+hrUsers().map(u=>`<option value="${esc(u.id)}">${esc(u.fullName||u.username)}</option>`).join('')
+          +(cur&&!hrUsers().some(u=>u.id===cur)?`<option value="${esc(cur)}">(unknown HR)</option>`:'');
+        sel.value=cur;
+      }
     }
   }).catch(()=>{});
 }
@@ -4859,7 +4867,17 @@ async function deleteUserConfirm(id, username){
 // owner or a super-admin assigns it: here (the HR's card: list, unassign,
 // "Add workers") or in the worker modal's HR field. Reassigning also moves
 // the worker's past punches to the new HR (setPunchesHr).
+// The HR list comes from the cached users list. It is loaded on first need
+// (worker modal, a worker tile or card with an HR) — not at every app open —
+// once per app open; meanwhile the cache from the last time is used.
+let __hrUsersLoaded=false;
+function ensureHrUsers(){
+  if(__hrUsersLoaded || !isFirmAdminSession() || !activeTenantIdForAdmin()) return;
+  __hrUsersLoaded=true;
+  prefetchAdminUsers();
+}
 function hrUsers(){
+  ensureHrUsers();
   const c = loadAdminCache('users_'+activeTenantIdForAdmin());
   return Array.isArray(c) ? c.filter(u => u.role==='hr') : [];
 }
@@ -7261,6 +7279,7 @@ const __fnWarm={};
 // The AI reads go to the ai_read function, so it is woken too.
 const AI_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/ai_read';
 function SCAN_WARM_URLS(){ return [PREPROCESS_SCAN_FN_URL,FORM101_FN_URL,AI_FN_URL]; }
+const USERS_ADMIN_FN_URL='https://europe-west3-schedule-odinson.cloudfunctions.net/users_admin';
 function warmCloudFunctions(urls){
   const now=Date.now();
   for(const url of urls){
@@ -7839,8 +7858,9 @@ try{
     applyNavPermissions();
     // Start on Dashboard (an HR login: its first tab)
     switchTab(homeTab());
-    // The firm's HR logins, for the worker modal's HR field and the cards.
-    if(isFirmAdminSession() && activeTenantIdForAdmin()) prefetchAdminUsers();
+    // Wake users_admin (firm profile, users, files) so its first real call
+    // doesn't wait for a cold start.
+    warmCloudFunctions([USERS_ADMIN_FN_URL]);
     // Check push subscription status
     setTimeout(checkPushStatus, 1000);
   });

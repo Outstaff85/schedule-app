@@ -139,7 +139,7 @@ One form for add, edit and post-scan review. Labels of every Form 101 field are 
 4. **New worker.**
    - It gets a `token` and `createdAt` and is pushed to `workers`, then saved with `autoSave()`.
    - `hrId`: an HR login's own uid; for an owner / super-admin the HR field's choice.
-5. **HR field** (`#wHrId`, owner and super-admin only, options from `hrUsers()`): a change on an existing worker goes through `assignWorkersToHr([id], hrId)`, which also moves the worker's punches to the new HR. The worker card and the worker tile show the HR ("none" / "—" when unassigned) to the owner / super-admin.
+5. **HR field** (`#wHrId`, owner and super-admin only, options from `hrUsers()` — the cached users list, loaded on first need per app open by `ensureHrUsers()`, not at startup; when it arrives an open modal's HR field and the tiles are redrawn): a change on an existing worker goes through `assignWorkersToHr([id], hrId)`, which also moves the worker's punches to the new HR. The worker card and the worker tile show the HR ("none" / "—" when unassigned) to the owner / super-admin.
    - The signature PNG is captured first (`window.__wCapturedSigPng`).
    - The modal then shows the upload progress (`showWorkerUploadingOverlay`, `renderWorkerUploadProgress`) while `autoUploadWithRetry()` builds and uploads Form 101 from the live scan globals. See [form101.md](form101.md).
 

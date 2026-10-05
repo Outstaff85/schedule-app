@@ -130,10 +130,13 @@ E_SESSION = "Сессия истекла или недействительна �
 def users_admin(req: https_fn.Request) -> https_fn.Response:
     if req.method != "POST":
         return _json({"error": "POST only"}, 405)
+    body = _body(req)
+    if body.get("ping") is True:  # warm-up when the app opens: no data, no token needed
+        _db()
+        return _json({"ok": True, "warm": True})
     decoded = _verified(req)
     if not decoded:
         return _json({"error": E_SESSION}, 401)
-    body = _body(req)
     caller = {"uid": decoded["uid"], "role": decoded.get("role"), "tenantId": decoded.get("tenantId")}
     if caller["role"] == "superadmin":
         caller["tenantId"] = body.get("asTenantId") or None  # the firm it is viewing

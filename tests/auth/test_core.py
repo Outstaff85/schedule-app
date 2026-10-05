@@ -276,6 +276,8 @@ def test_http_login_and_users_admin():
     status, out = _call(main.users_admin, {"action": "listUsers"}, {"Authorization": "Bearer " + id_token})
     assert status == 200 and {u["username"] for u in out["users"]} == {"owner1", "staff1", "sup1"}
     assert _call(main.users_admin, {"action": "listUsers"})[0] == 401
+    status, warm = _call(main.users_admin, {"ping": True})   # warm-up: no token, no data
+    assert status == 200 and warm == {"ok": True, "warm": True}
     assert _call(main.users_admin, {"action": "listUsers"}, {"Authorization": "Bearer junk"})[0] == 401
 
     # A revoked session (e.g. after a password reset) is refused at once.
