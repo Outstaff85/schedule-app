@@ -30,10 +30,10 @@ The client keeps the punch log in `localStorage.punchLog` (`getPunchLog()` / `sa
   | beyond | ×1.5 | ×2.0 |
 - **`effectiveRates(w, clientId)`** — the most specific rate wins:
   1. `w.clientRates[clientId]` — the worker's own rate at this client (Accounting matrix);
-  2. the client's `defaultHourlyRate` / `defaultOtRate` / `defaultShabbatRate`;
-  3. the worker's `regRate` / `otRate` / `shabbatRate`, or `hourlyRate`.
+  2. the worker's own rate — `hourlyRate` (or the older `regRate`), `otRate`, `shabbatRate` — from the worker modal or Accounting → Salary; it changes this worker only;
+  3. the client's `defaultHourlyRate` / `defaultOtRate` / `defaultShabbatRate` — shared by every worker there without a rate of their own.
   
-  Without an explicit value, OT = regular × 1.25 and Shabbat = regular × 1.5. `hasOtOverride` / `hasShabbatOverride` say whether an explicit value was found at any tier. Shortcuts: `wRegRate`, `wOtRate`, `wShabRate`.
+  Each of the three rates resolves on its own. Without an explicit value, OT = regular × 1.25 and Shabbat = regular × 1.5. `hasOtOverride` / `hasShabbatOverride` say whether an explicit value was found at any tier; `src` / `otSrc` / `shabbatSrc` say which tier (`override`, `worker`, `client`, or empty). Shortcuts: `wRegRate`, `wOtRate`, `wShabRate`.
 - **`shiftPay(hours, w, isSat, clientId)`**:
   - Saturday — a flat Shabbat override if one exists, otherwise the Saturday law tiers;
   - weekday — with an OT override, `min(h,8) × reg + rest × ot`; otherwise the weekday law tiers.
@@ -69,7 +69,7 @@ The tab is gated by the `accounting` permission.
   - `__lastSalaryEntries` holds the per-worker rows (feeds Payable by supplier);
   - `__lastClientBillEntries` holds the per-client rows (feeds Billable by client).
 - **Table:** Worker, Hours, Regular / OT / Shabbat ₪/h, Travel ₪, Total Pay (= wage + travel); a TOTAL row covering every worker; the rows are paged by 10 ([app-core.md](app-core.md) → Long lists). Supplier payable, client billable and both rate matrices are paged the same way.
-  - **Editable rate inputs** — `setWorkerRate`, `setWorkerOtRate`, `setWorkerShabbatRate`. These edit the worker's **base** rates. The values shown are `wRegRate(w)` etc. *without* a client, so they don't reflect per-client rates.
+  - **Editable rate inputs** — `setWorkerRate`, `setWorkerOtRate`, `setWorkerShabbatRate`. They hold the worker's **own** rates (tier 2), and an edit changes that worker only (`setWorkerRate` also clears the older `regRate`). Empty = no own rate: the placeholder shows the rate that applies at the client the worker had most hours at in the period (`clientHours`), with "client · name" (or "rate matrix") under it. The client's rate itself is edited in the client card.
   - **Warnings** — anomalies show as an amber "N to review" banner and a ⚠ icon per worker.
 
 ### Per-client rates (`renderRateMatrix()`)

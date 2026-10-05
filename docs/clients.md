@@ -13,7 +13,7 @@ Global `clients` array. It is saved with the schedule; each client is one docume
 | `object` | object / branch name, shown next to the name |
 | `address` | |
 | `lat`, `lng`, `radius` (m, default 100), `mapsUrl` | geofence for the worker punch page |
-| `defaultHourlyRate`, `defaultOtRate`, `defaultShabbatRate` | **worker pay** default at this client (tier 2 of `effectiveRates()`, see [accounting.md](accounting.md)) |
+| `defaultHourlyRate`, `defaultOtRate`, `defaultShabbatRate` | **worker pay** default at this client, for workers without a rate of their own (tier 3 of `effectiveRates()`, see [accounting.md](accounting.md)) |
 | `rateMode` | `tiered` (default) or `fixed` — how the **client is billed** |
 | `billRate`, `billOtRate`, `billShabbatRate` | billing rates for `tiered` (empty OT/Shabbat = law tiers) |
 | `fixedBillRate` | billing rate for `fixed` |

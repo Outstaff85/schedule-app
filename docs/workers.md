@@ -111,7 +111,7 @@ One form for add, edit and post-scan review. Labels of every Form 101 field are 
     - When the scan finishes, `openWorkerModalFromScan()` redraws the modal and calls `applyWorkerDraft()`: a field that had a value keeps it, an empty one takes the scan's value.
     - `openAddWorker`, `openEditWorker`, `startNewScan` and `rescanWorkerDoc` clear the draft.
   - The form's title has no status or saved date: both are on the worker card.
-  - **Personal data**, two short fields per line: first + last name; ID/passport + sex; marital status + health fund; date of birth + ID expiry; street + house no. + city (one line of three); hourly rate + travel ₪/day; start date + phone. The hourly rate is the same field as the base rate in Accounting → Salary (`setWorkerRate`); a client's default rate or the worker's per-client rate wins over it in pay (`effectiveRates`, [accounting.md](accounting.md)).
+  - **Personal data**, two short fields per line: first + last name; ID/passport + sex; marital status + health fund; date of birth + ID expiry; street + house no. + city (one line of three); hourly rate + travel ₪/day; start date + phone. The hourly rate is the same field as the base rate in Accounting → Salary (`setWorkerRate`); it wins over the client's rate for this worker, and only a per-client rate from the rate matrix wins over it; empty = the client's rate (`effectiveRates`, [accounting.md](accounting.md)).
   - **Clients.** Chips plus a search box: `renderWClientChips`, `renderWClientSuggest` (only clients not yet added), `addWClient`, `removeWClient`. Enter picks the first match (`pickFirstWClientSuggest`).
   - **Supplier.** A `<select>` (`wSupplierId`).
   - **Bank details.** A collapsible block (`toggleBankWrap`).

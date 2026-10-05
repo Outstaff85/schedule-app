@@ -1377,30 +1377,32 @@ function israeliDayPay(hours, rate, isSat){
 // most specific wins, each tier optional, falling through to the next:
 //   1. worker.clientRates[clientId] — this worker's own override for this
 //      specific client (set in the Accounting rate matrix).
-//   2. client.defaultHourlyRate/defaultOtRate/defaultShabbatRate — this
-//      client's own standard rate, if it has one.
-//   3. the worker's own base rate — hourlyRate, or its regRate/otRate/
-//      shabbatRate override — exactly as before this feature existed.
-// clientId is optional; omitting it (or a worker/client with no override at
-// any tier) falls straight through to tier 3, so this is a no-op for anyone
-// not using per-client rates. `has*Override` tells shiftPay() whether an
+//   2. the worker's own rate — hourlyRate (or the older regRate), otRate,
+//      shabbatRate — set in the worker modal or Accounting → Salary. It
+//      changes this worker only (user decision 2026-10-05).
+//   3. client.defaultHourlyRate/defaultOtRate/defaultShabbatRate — the
+//      client's rate, shared by every worker there without a rate of their own.
+// Each of the three rates resolves on its own. `src` says which tier gave the
+// regular rate: 'override' / 'worker' / 'client' / '' (none). `has*Override` tells shiftPay() whether an
 // explicit flat OT/Shabbat rate was found at ANY tier (vs falling back to
 // the israeliDayPay law tiers) — the three tiers can't be told apart just by
 // comparing the resolved number to a law-tier calculation.
 function effectiveRates(w, clientId){
   const ov = clientId && w && w.clientRates && w.clientRates[clientId];
   const cl = clientId && clients.find(c=>c.id===clientId);
-  const base = Number(w&&w.hourlyRate)||0;
-  const pick=(ovVal,clVal,wVal,fallback)=>{
-    if(ovVal!=null&&ovVal!=='') return {val:Number(ovVal),has:true};
-    if(clVal!=null&&clVal!=='') return {val:Number(clVal),has:true};
-    if(wVal!=null&&wVal!=='') return {val:Number(wVal),has:true};
-    return {val:fallback,has:false};
+  const set=v=>v!=null&&v!=='';
+  const own = set(w&&w.regRate) ? w.regRate : (Number(w&&w.hourlyRate)>0 ? w.hourlyRate : null);
+  const pick=(ovVal,wVal,clVal,fallback)=>{
+    if(set(ovVal)) return {val:Number(ovVal),has:true,src:'override'};
+    if(set(wVal)) return {val:Number(wVal),has:true,src:'worker'};
+    if(set(clVal)) return {val:Number(clVal),has:true,src:'client'};
+    return {val:fallback,has:false,src:''};
   };
-  const reg  = pick(ov&&ov.rate,        cl&&cl.defaultHourlyRate,  w&&w.regRate,     base);
-  const ot   = pick(ov&&ov.otRate,      cl&&cl.defaultOtRate,      w&&w.otRate,      Math.round(reg.val*PAY_RULES.otMult*100)/100);
-  const shab = pick(ov&&ov.shabbatRate, cl&&cl.defaultShabbatRate, w&&w.shabbatRate, Math.round(reg.val*PAY_RULES.shabbatMult*100)/100);
-  return {regRate:reg.val, otRate:ot.val, shabbatRate:shab.val, hasOtOverride:ot.has, hasShabbatOverride:shab.has};
+  const reg  = pick(ov&&ov.rate,        own,             cl&&cl.defaultHourlyRate,  0);
+  const ot   = pick(ov&&ov.otRate,      w&&w.otRate,      cl&&cl.defaultOtRate,      Math.round(reg.val*PAY_RULES.otMult*100)/100);
+  const shab = pick(ov&&ov.shabbatRate, w&&w.shabbatRate, cl&&cl.defaultShabbatRate, Math.round(reg.val*PAY_RULES.shabbatMult*100)/100);
+  return {regRate:reg.val, otRate:ot.val, shabbatRate:shab.val, hasOtOverride:ot.has, hasShabbatOverride:shab.has,
+    src:reg.src, otSrc:ot.src, shabbatSrc:shab.src};
 }
 function wRegRate(w,clientId){ return effectiveRates(w,clientId).regRate; }
 function wOtRate(w,clientId){ return effectiveRates(w,clientId).otRate; }
@@ -5983,7 +5985,7 @@ function renderSalary(){
   const byWorker={};
   const byClient={};
   Object.values(byWorkerDay).forEach(({worker,workerId,date,entries})=>{
-    if(!byWorker[workerId]) byWorker[workerId]={worker,workerId,hours:0,days:0,regH:0,otH:0,shabH:0,total:0,travel:0,warns:[]};
+    if(!byWorker[workerId]) byWorker[workerId]={worker,workerId,hours:0,days:0,regH:0,otH:0,shabH:0,total:0,travel:0,warns:[],clientHours:{}};
     const _res=analyzeDayPunches(entries,date);
     const _dstr=date.toLocaleDateString('en-GB');
     _res.warnings.forEach(wn=> byWorker[workerId].warns.push(_dstr+': '+wn));
@@ -6002,6 +6004,7 @@ function renderSalary(){
       // correctly, even though this table shows one summed row per worker.
       const cid=entries[0]&&entries[0].clientId;
       byWorker[workerId].total+=shiftPay(h,wc,isSat,cid);
+      if(cid) byWorker[workerId].clientHours[cid]=(byWorker[workerId].clientHours[cid]||0)+h;
       // Billable-by-client — a parallel, independent figure (see
       // clientBillPay()'s own comment); never derived from/feeding the
       // worker's own wage line above.
@@ -6057,14 +6060,22 @@ function renderSalary(){
         </tfoot>
       </table>
       </div>
-      <div style="padding:8px 12px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">₪/hour rates are editable manually. Default: Regular = base rate · OT = ×${PAY_RULES.otMult} · Shabbat = ×${PAY_RULES.shabbatMult}. Hours: Regular ≤8h/day, above that — OT; Saturday — at the Shabbat rate. Travel = worker's flat per-work-day travel allowance.</div>
+      <div style="padding:8px 12px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">₪/hour: the worker's own rates — an edit changes this worker only. Empty = the client's rate (grey, "client" under it; the client's rate is changed in the client card), else OT = Regular ×${PAY_RULES.otMult} · Shabbat = ×${PAY_RULES.shabbatMult}. A worker's rate at one client only is set in the rate matrix below. Hours: Regular ≤8h/day, above that — OT; Saturday — at the Shabbat rate. Travel = worker's flat per-work-day travel allowance.</div>
     </div>`;
   // The totals row covers every worker; the rows are paged (renderPagedList).
   renderPagedList(salaryEl.querySelector('.salary-rows'),'salary',period,entries,(e,i)=>{
             const wc=workers.find(w=>w.id===e.workerId);
             const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
-            const base=wc?.hourlyRate||0;
-            const regRate=wRegRate(wc), otRate=wOtRate(wc), shabRate=wShabRate(wc);
+            // The rates shown are those of the client this worker had most
+            // hours at. The inputs hold the worker's own rates; empty = the
+            // client's (placeholder, "client" under it). An edit changes this
+            // worker only — the client's rate is edited in the client card.
+            const mainCid=Object.entries(e.clientHours||{}).sort((a,b)=>b[1]-a[1]).map(x=>x[0])[0]||(wc&&wc.clientIds||[])[0]||'';
+            const mainCl=mainCid&&clients.find(c=>c.id===mainCid);
+            const er=wc?effectiveRates(wc,mainCid):{regRate:0,otRate:0,shabbatRate:0};
+            const ownReg=wc?(wc.regRate!=null&&wc.regRate!==''?wc.regRate:(Number(wc.hourlyRate)>0?wc.hourlyRate:'')):'';
+            const ownOt=wc&&wc.otRate!=null?wc.otRate:'', ownShab=wc&&wc.shabbatRate!=null?wc.shabbatRate:'';
+            const srcTag=src=>src==='client'?`<div style="font-size:10px;color:var(--text3);margin-top:2px">client${mainCl?' · '+esc(mainCl.name):''}</div>`:src==='override'?`<div style="font-size:10px;color:var(--text3);margin-top:2px">rate matrix</div>`:'';
             const ini=wc?workerAvatarInner(wc):esc(e.worker.slice(0,2).toUpperCase());
             return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
               <td style="padding:10px 12px">
@@ -6076,19 +6087,19 @@ function renderSalary(){
               </td>
               <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${e.hours.toFixed(1)}h</td>
               <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${regRate}" min="0" step="0.5" title="Base rate (Regular ×1.0)"
+                <input type="number" value="${esc(ownReg)}" placeholder="${esc(er.regRate)}" min="0" step="0.5" title="This worker's rate (Regular ×1.0) · empty = the client's rate"
                   onchange="setWorkerRate('${e.workerId}',this.value);renderSalary()"
-                  style="width:66px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+                  style="width:66px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">${srcTag(er.src)}
               </td>
               <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${otRate}" min="0" step="0.5" title="OT rate ₪/hour · default base ×${PAY_RULES.otMult}"
+                <input type="number" value="${esc(ownOt)}" placeholder="${esc(er.otRate)}" min="0" step="0.5" title="OT rate ₪/hour · empty = the client's, else base ×${PAY_RULES.otMult}"
                   onchange="setWorkerOtRate('${e.workerId}',this.value);renderSalary()"
-                  style="width:66px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+                  style="width:66px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:right;outline:none">${srcTag(er.otSrc)}
               </td>
               <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${shabRate}" min="0" step="0.5" title="Shabbat rate ₪/hour · default base ×${PAY_RULES.shabbatMult}"
+                <input type="number" value="${esc(ownShab)}" placeholder="${esc(er.shabbatRate)}" min="0" step="0.5" title="Shabbat rate ₪/hour · empty = the client's, else base ×${PAY_RULES.shabbatMult}"
                   onchange="setWorkerShabbatRate('${e.workerId}',this.value);renderSalary()"
-                  style="width:66px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+                  style="width:66px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">${srcTag(er.shabbatSrc)}
               </td>
               <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)">
                 ${e.travel>0?'₪'+e.travel.toFixed(0):'—'}
@@ -6339,7 +6350,7 @@ function renderRateMatrix(){
               <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.w.name)}</td>
               <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${esc(r.cl.name)}</td>
               <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${eff.regRate}" title="Empty = ${eff.regRate} (client rate or base)"
+                <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${eff.regRate}" title="Empty = ${eff.regRate} (the worker's own rate, else the client's)"
                   onchange="setClientRateOverride('${r.w.id}','${r.cl.id}','rate',this.value)"
                   style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
@@ -6425,9 +6436,11 @@ function setSupplierRateOverride(wid,sid,field,val){
   renderSupplierPayable(__lastSalaryEntries||[]);
 }
 
+// This worker's own regular rate (empty = none: the client's rate applies).
+// The older regRate field is cleared so the edit is what counts.
 function setWorkerRate(wid,rate){
   const w=workers.find(x=>x.id===wid);
-  if(w){ w.hourlyRate=parseFloat(rate)||0; autoSave(); }
+  if(w){ w.hourlyRate=parseFloat(rate)||0; if(w.regRate!=null) w.regRate=null; autoSave(); }
 }
 function setWorkerOtRate(wid,val){ const w=workers.find(x=>x.id===wid); if(w){ w.otRate=(val===''||val==null)?null:(parseFloat(val)||0); autoSave(); } }
 function setWorkerShabbatRate(wid,val){ const w=workers.find(x=>x.id===wid); if(w){ w.shabbatRate=(val===''||val==null)?null:(parseFloat(val)||0); autoSave(); } }
