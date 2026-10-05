@@ -550,11 +550,18 @@ def build_form101_pdf(p):
             pass
 
     def fn_part(s):
-        return re.sub(r"[^A-Za-z0-9֐-׿]", "", s or "")
+        # Latin and Hebrew letters, digits and single spaces only. A quote
+        # inside a Hebrew word (בע"מ) becomes the Hebrew gershayim (בע״מ):
+        # a plain quote isn't allowed in a Windows file name.
+        s = re.sub(r'(?<=[֐-׿])"(?=[֐-׿])', "״", str(s or ""))
+        s = re.sub(r"(?<=[֐-׿])'", "׳", s)
+        return re.sub(r"\s+", " ", re.sub(r"[^A-Za-z0-9֐-׿ ]", " ", s)).strip()
 
-    company_suffix = ("_" + fn_part(employer.get("companyName"))) if employer.get("companyName") else ""
-    file_name = ((re.sub(r"\D", "", no) if no else "noid") + "_" + fn_part(given or "worker") +
-                 (("_" + fn_part(surname)) if surname else "") + company_suffix + ".pdf")
+    # "<given> <surname> - <ID or passport number> - <company>.pdf" (per
+    # user request 2026-10-05); an empty part is left out.
+    full_name = " ".join(x for x in (fn_part(given), fn_part(surname)) if x) or "worker"
+    parts = [full_name, re.sub(r"[^A-Za-z0-9]", "", str(no or "")).upper(), fn_part(employer.get("companyName"))]
+    file_name = " - ".join(x for x in parts if x) + ".pdf"
 
     return b.finalize(), file_name, firm_missing
 
