@@ -176,6 +176,38 @@ def _salvage_object(text):
     return None
 
 
+def _mrz_check(chars):
+    """ICAO 9303 check digit: weights 7, 3, 1; digits as is, A-Z = 10-35, '<' = 0."""
+    total = 0
+    for i, ch in enumerate(chars):
+        v = int(ch) if ch.isdigit() else (ord(ch) - 55 if "A" <= ch <= "Z" else 0)
+        total += v * (7, 3, 1)[i % 3]
+    return total % 10
+
+
+def _expiry_from_mrz(parsed):
+    """A passport's expiry from MRZ line 2 (characters 22-27, YYMMDD, check
+    digit 28) when its check digit is right. The printed dates are easy to
+    mix up (the issue date sits next to the expiry); the MRZ is not. The
+    zoomed re-read of the printed expiry is then skipped (its box dropped)."""
+    if not isinstance(parsed, dict):
+        return parsed
+    line = re.sub(r"\s", "", str(parsed.get("mrzLine2") or "")).upper()
+    if len(line) < 28:
+        return parsed
+    exp, chk = line[21:27], line[27]
+    if not (exp.isdigit() and chk.isdigit()) or _mrz_check(exp) != int(chk):
+        return parsed
+    yy, mm, dd = exp[:2], exp[2:4], exp[4:6]
+    if not (1 <= int(mm) <= 12 and 1 <= int(dd) <= 31):
+        return parsed
+    parsed["expiry"] = f"{dd}/{mm}/20{yy}"
+    parsed["expiryFromMrz"] = True
+    if isinstance(parsed.get("fieldBoxes"), dict):
+        parsed["fieldBoxes"].pop("expiry", None)
+    return parsed
+
+
 def parse_reply(action, status, raw):
     """The result the app gets for this Anthropic reply."""
     try:
@@ -205,6 +237,8 @@ def parse_reply(action, status, raw):
             if salvaged is not None:
                 if action == "aiReadSefach":
                     salvaged["type"] = "israeli_id"
+                else:
+                    salvaged = _expiry_from_mrz(salvaged)
                 return {"ok": True, "parsed": salvaged, "truncated": True}
             return {"error": E_TRUNCATED if truncated else E_UNREADABLE, "raw": cleaned[:400]}
         return {"error": E_UNREADABLE, "raw": cleaned[:300]}
@@ -221,6 +255,8 @@ def parse_reply(action, status, raw):
     if action == "aiReadHoursTable":
         entries = parsed.get("entries") if isinstance(parsed, dict) else None
         return {"ok": True, "entries": entries if isinstance(entries, list) else []}
+    if action == "aiReadDoc":
+        parsed = _expiry_from_mrz(parsed)
     return {"ok": True, "parsed": parsed}
 
 

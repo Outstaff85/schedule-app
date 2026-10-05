@@ -286,3 +286,27 @@ def test_truncated_read_keeps_the_complete_fields():
     # Not truncated and not JSON: still an error.
     bad = json.dumps({"content": [{"type": "text", "text": "not json"}]})
     assert "error" in python("aiReadSefach", {"image": "I"}, bad)["result"]
+
+
+def test_passport_expiry_comes_from_the_mrz_when_its_check_digit_is_right():
+    # ICAO 9303 specimen line 2: expiry 120415, check digit 9.
+    line2 = "L898902C36UTO7408122F1204159ZE184226B<<<<<10"
+    doc = {"type": "passport", "expiry": "15/04/2002", "mrzLine2": line2,
+           "fieldBoxes": {"expiry": {"x0": 0, "y0": 0, "x1": 1, "y1": 1}, "dob": {"x0": 0, "y0": 0, "x1": 1, "y1": 1}}}
+    raw = json.dumps({"content": [{"type": "text", "text": json.dumps(doc)}]})
+    out = ai.parse_reply("aiReadDoc", 200, raw)["parsed"]
+    assert out["expiry"] == "15/04/2012" and out["expiryFromMrz"] is True
+    assert "expiry" not in out["fieldBoxes"] and "dob" in out["fieldBoxes"]
+    # a wrong check digit, a short line or no MRZ (an Israeli ID card) leave the read as it is
+    for bad in (line2[:27] + "8" + line2[28:], line2[:20], ""):
+        doc2 = dict(doc, mrzLine2=bad, fieldBoxes={"expiry": {}})
+        raw2 = json.dumps({"content": [{"type": "text", "text": json.dumps(doc2)}]})
+        out2 = ai.parse_reply("aiReadDoc", 200, raw2)["parsed"]
+        assert out2["expiry"] == "15/04/2002" and "expiryFromMrz" not in out2 and "expiry" in out2["fieldBoxes"]
+    # the ספח read is never touched
+    raw3 = json.dumps({"content": [{"type": "text", "text": json.dumps(dict(doc, type="israeli_id"))}]})
+    assert ai.parse_reply("aiReadSefach", 200, raw3)["parsed"]["expiry"] == "15/04/2002"
+
+
+def test_read_doc_asks_for_mrz_line_2():
+    assert '"mrzLine2"' in ai.PROMPTS["readDoc"]
