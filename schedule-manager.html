@@ -6061,7 +6061,7 @@ function renderSalary(){
   const byWorker={};
   const byClient={};
   Object.values(byWorkerDay).forEach(({worker,workerId,date,entries})=>{
-    if(!byWorker[workerId]) byWorker[workerId]={worker,workerId,hours:0,days:0,regH:0,otH:0,shabH:0,total:0,travel:0,warns:[],clientHours:{},seen:new Set()};
+    if(!byWorker[workerId]) byWorker[workerId]={worker,workerId,hours:0,days:0,regH:0,otH:0,shabH:0,total:0,travel:0,warns:[],clientHours:{},seen:new Set(),dayKeys:new Set()};
     const _res=analyzeDayPunches(entries,date);
     const _dstr=date.toLocaleDateString('en-GB');
     _res.warnings.forEach(wn=> byWorker[workerId].warns.push(_dstr+': '+wn));
@@ -6080,6 +6080,7 @@ function renderSalary(){
       // correctly, even though this table shows one summed row per worker.
       const cid=entries[0]&&entries[0].clientId;
       byWorker[workerId].total+=shiftPayFor(h,wc,isSat,cid,date,byWorker[workerId].seen);
+      byWorker[workerId].dayKeys.add(localYMD(date));
       if(cid) byWorker[workerId].clientHours[cid]=(byWorker[workerId].clientHours[cid]||0)+h;
       // Billable-by-client — a parallel, independent figure (see
       // clientBillPay()'s own comment); never derived from/feeding the
@@ -6097,7 +6098,7 @@ function renderSalary(){
   // hand for this period replace the counted ones.
   const periodKey=salaryPeriodKey(period);
   Object.values(byWorker).forEach(e=>{
-    e.countedDays=e.seen.size;
+    e.countedDays=e.dayKeys.size;
     const wc=workers.find(w=>w.id===e.workerId), ov=isDailyPay(wc)?dayOverride(wc,periodKey):null;
     if(ov!=null) e.total=ov*dailyRate(wc);
     e.daysUsed=ov!=null?ov:e.countedDays;
