@@ -375,7 +375,7 @@
       const hr = await hrOnly();
       const snap = await F.getDocs(hr ? F.query(col(t,'pendingHours'), F.where('createdBy','==',hr)) : col(t,'pendingHours'));
       return {batches: snap.docs.map(d => { const x = d.data(); return {batchId: d.id, fileName: x.fileName || '',
-        uploadedBy: x.uploadedBy || '', uploadedAt: x.uploadedAt || '', status: x.status, entries: x.rows || []}; })};
+        uploadedBy: x.uploadedBy || '', uploadedAt: x.uploadedAt || '', decidedAt: x.decidedAt || '', status: x.status, entries: x.rows || []}; })};
     }
     function approver(ctx){ return ctx.role === 'tenant_admin' || ctx.role === 'superadmin'; }
     const APPROVER_ERROR = 'Only the firm owner or the super-admin can approve uploaded hours';
@@ -409,7 +409,7 @@
             hrs[r.workerId] || null));
         });
       });
-      batch.update(ref, {status:'approved'});
+      batch.update(ref, {status:'approved', decidedAt: new Date().toISOString()});
       await batch.commit();
       return {ok:true, created: (b.rows || []).length};
     }
@@ -419,7 +419,7 @@
       const snap = await F.getDoc(ref);
       if(!snap.exists()) return {error:'Batch not found'};
       if(snap.data().status !== 'pending') return {ok:true, rejected:0};
-      await F.updateDoc(ref, {status:'rejected'});
+      await F.updateDoc(ref, {status:'rejected', decidedAt: new Date().toISOString()});
       return {ok:true, rejected: (snap.data().rows || []).length};
     }
     // A worker's HR changed (worker modal, the HR card's bulk assign): its

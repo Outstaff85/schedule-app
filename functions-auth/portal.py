@@ -257,4 +257,56 @@ def supplier_action(db, caller, body):
         d.setdefault("id", wid)
         return {"ok": True, "worker": strip_worker(d, sid, pay)}
 
+    if action == "supplierSubmitHours":
+        return _submit_hours(t_ref, caller, sid, body)
+    if action == "supplierListHours":
+        return {"batches": _list_hours(t_ref, sid)}
+
     return {"error": "Unknown action"}
+
+
+# ── Hours sent by a supplier for approval ────────────────────────────────────
+# The same pendingHours batch the app's "Upload hours" writes; the firm owner
+# approves or rejects it in Accounting → Pending hours. The supplier sees each
+# batch's status (pending / approved / rejected).
+MAX_HOUR_ROWS = 62
+_DATE_RE = __import__("re").compile(r"^\d{2}/\d{2}/\d{4}$")
+_TIME_RE = __import__("re").compile(r"^\d{2}:\d{2}$")
+
+
+def _submit_hours(t_ref, caller, sid, body):
+    wid = str(body.get("workerId") or "")
+    snap = t_ref.collection("workers").document(wid).get() if wid and "/" not in wid else None
+    w = snap.to_dict() if snap and snap.exists else None
+    if not w or w.get("supplierId") != sid:
+        return {"error": "Worker not found"}
+    client_id = str(body.get("clientId") or "")
+    if client_id and client_id not in (w.get("clientIds") or []):
+        client_id = ""
+    rows = []
+    for e in (body.get("entries") or [])[:MAX_HOUR_ROWS]:
+        e = e if isinstance(e, dict) else {}
+        date, tin, tout = str(e.get("date") or ""), str(e.get("inTime") or ""), str(e.get("outTime") or "")
+        if _DATE_RE.match(date) and _TIME_RE.match(tin) and _TIME_RE.match(tout):
+            rows.append({"rowId": str(uuid.uuid4()), "workerId": wid, "clientId": client_id or None,
+                         "date": date, "inTime": tin, "outTime": tout})
+    if not rows:
+        return {"error": "No shifts to send"}
+    sup = t_ref.collection("suppliers").document(sid).get()
+    ref = t_ref.collection("pendingHours").document()
+    ref.set({"status": "pending", "fileName": "entered by hand", "uploadedBy": (sup.to_dict() or {}).get("name", "") if sup.exists else "",
+             "createdBy": caller.get("uid") or "", "supplierId": sid, "uploadedAt": datetime.now(timezone.utc).isoformat(),
+             "createdAt": datetime.now(timezone.utc), "rows": rows})
+    return {"ok": True, "batchId": ref.id, "count": len(rows)}
+
+
+def _list_hours(t_ref, sid):
+    q = t_ref.collection("pendingHours").where(filter=FieldFilter("supplierId", "==", sid))
+    out = []
+    for b in q.stream():
+        d = b.to_dict() or {}
+        out.append({"batchId": b.id, "status": d.get("status"), "uploadedAt": d.get("uploadedAt") or "",
+                    "decidedAt": d.get("decidedAt") or "",
+                    "entries": [{k: r.get(k) for k in ("workerId", "date", "inTime", "outTime")} for r in d.get("rows") or []]})
+    out.sort(key=lambda x: x["uploadedAt"], reverse=True)
+    return out

@@ -3683,8 +3683,10 @@ function openHoursImportModal(workerId){
   __hoursImportWorkerId = workerId;
   __hoursImportEntries = [];
   __hoursImportFileName = '';
+  __hoursManualRows = [];
   renderHoursImportModal();
   document.getElementById('hoursImportOverlay').classList.add('open');
+  loadHoursSent(workerId);
 }
 function renderHoursImportModal(){
   const w = workers.find(x=>x.id===__hoursImportWorkerId);
@@ -3702,15 +3704,85 @@ function renderHoursImportModal(){
       <input type="file" id="hoursImportFile" accept=".xlsx,.xls,.csv,image/*,application/pdf,.pdf" multiple onchange="onHoursImportFileSelected(this.files)">
     </div>
     <div id="hoursImportPreview" style="font-size:12px;color:var(--text3);min-height:20px"></div>
+    <div class="form-section" style="display:flex;justify-content:space-between;align-items:center">Enter by hand <button class="btn sm" type="button" onclick="addHoursManualRow()"><i class="ti ti-plus"></i> Add shift</button></div>
+    ${isDailyPay(w)?'<div style="font-size:11px;color:var(--text3);margin-bottom:6px">Paid by the day: a date is enough — with no times it counts as one day (08:00–16:00).</div>':''}
+    <div id="hoursManualRows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
     <div class="modal-actions">
       <button class="btn accent" id="hoursImportSubmitBtn" disabled onclick="submitHoursImportBatch()"><i class="ti ti-upload"></i> Upload for approval</button>
-    </div>`;
+    </div>
+    <div class="form-section">Sent for approval</div>
+    <div id="hoursSentList" style="font-size:12px;color:var(--text3)">Loading…</div>`;
+}
+// The batches already sent for this worker, each with its status: pending
+// (amber, "Sent for review"), approved (green) or rejected (red) — what an
+// HR (or staff) sees after sending hours; the owner decides in Accounting →
+// Pending hours. An own-workers HR reads only its own batches (rules).
+const HOURS_STATUS = {pending:['Sent for review','var(--amber)','var(--amber-bg)','ti-clock'],
+  approved:['Approved','var(--green)','rgba(109,214,160,0.12)','ti-circle-check'],
+  rejected:['Rejected','var(--red)','var(--red-bg)','ti-circle-x']};
+function hoursStatusChip(st, when){
+  const [label,color,bg,icon] = HOURS_STATUS[st] || HOURS_STATUS.pending;
+  return `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;color:${color};background:${bg}"><i class="ti ${icon}"></i>${esc(label)}${when?' · '+esc(new Date(when).toLocaleDateString('en-GB')):''}</span>`;
+}
+async function loadHoursSent(workerId){
+  const el = document.getElementById('hoursSentList'); if(!el) return;
+  let batches = [];
+  try{ batches = ((await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'loadPendingHours',...gsAuth()})})).json()).batches)||[]; }
+  catch(e){ el.textContent = 'Could not load'; return; }
+  if(__hoursImportWorkerId !== workerId || !document.getElementById('hoursSentList')) return;
+  const mine = batches.map(b=>({...b, rows:(b.entries||[]).filter(r=>r.workerId===workerId)})).filter(b=>b.rows.length)
+    .sort((a,b)=>String(b.uploadedAt).localeCompare(String(a.uploadedAt)));
+  if(!mine.length){ el.textContent = 'Nothing sent yet'; return; }
+  renderPagedList(el, 'hoursSent', workerId, mine, b=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 10px;background:var(--bg3);border-radius:var(--radius-sm);margin-bottom:6px">
+      <span style="color:var(--text2)">${b.rows.length} shift(s): ${esc(b.rows[0].date)}${b.rows.length>1?' – '+esc(b.rows[b.rows.length-1].date):''}${b.fileName?' · '+esc(b.fileName):''}</span>
+      ${hoursStatusChip(b.status, b.status==='pending'?b.uploadedAt:b.decidedAt)}
+    </div>`);
+}
+// Shifts typed by hand (Upload hours → Enter by hand): rows of date, in, out.
+// They go into the same pending batch as a file's shifts, for the owner to
+// approve. A daily-paid worker's row may leave the times empty: one day,
+// 08:00–16:00.
+let __hoursManualRows = [];
+const MANUAL_DAY_SHIFT = ['08:00','16:00'];
+function addHoursManualRow(){
+  __hoursManualRows.push({date: localYMD(new Date()), inTime:'', outTime:''});
+  renderHoursManualRows();
+}
+function setHoursManualRow(i, key, val){ if(__hoursManualRows[i]){ __hoursManualRows[i][key] = val; updateHoursSubmit(); } }
+function removeHoursManualRow(i){ __hoursManualRows.splice(i,1); renderHoursManualRows(); }
+function renderHoursManualRows(){
+  const el = document.getElementById('hoursManualRows'); if(!el) return;
+  const inStyle = 'width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;padding:6px 8px;outline:none';
+  el.innerHTML = __hoursManualRows.map((r,i)=>`<div style="display:grid;grid-template-columns:1.4fr 1fr 1fr auto;gap:6px;align-items:center">
+      <input type="date" value="${esc(r.date)}" onchange="setHoursManualRow(${i},'date',this.value)" style="${inStyle}">
+      <input type="time" value="${esc(r.inTime)}" title="In" onchange="setHoursManualRow(${i},'inTime',this.value)" style="${inStyle}">
+      <input type="time" value="${esc(r.outTime)}" title="Out" onchange="setHoursManualRow(${i},'outTime',this.value)" style="${inStyle}">
+      <button class="btn sm" type="button" title="Remove" onclick="removeHoursManualRow(${i})"><i class="ti ti-trash"></i></button>
+    </div>`).join('');
+  updateHoursSubmit();
+}
+// The typed rows ready to send, as {date: dd/MM/yyyy, inTime, outTime}.
+function hoursManualEntries(){
+  const w = workers.find(x=>x.id===__hoursImportWorkerId);
+  const daily = isDailyPay(w);
+  return __hoursManualRows.map(r=>{
+    if(!r.date) return null;
+    let inTime = r.inTime, outTime = r.outTime;
+    if(!inTime && !outTime && daily) [inTime, outTime] = MANUAL_DAY_SHIFT;
+    if(!inTime || !outTime) return null;
+    const [y,m,d] = r.date.split('-');
+    return {date: d+'/'+m+'/'+y, inTime, outTime};
+  }).filter(Boolean);
+}
+function updateHoursSubmit(){
+  const btn = document.getElementById('hoursImportSubmitBtn');
+  if(btn) btn.disabled = !(__hoursImportEntries.length || hoursManualEntries().length);
 }
 function renderHoursImportPreview(status){
   const el = document.getElementById('hoursImportPreview');
   if(!el) return;
   if(status){ el.textContent = status; return; }
-  if(!__hoursImportEntries.length){ el.textContent = ''; return; }
+  if(!__hoursImportEntries.length){ el.textContent = ''; updateHoursSubmit(); return; }
   el.innerHTML = `<div style="color:var(--text2);margin-bottom:4px">${__hoursImportEntries.length} shift(s) found:</div>` +
     __hoursImportEntries.slice(0,10).map(en=>`<div>${esc(en.date)} · ${esc(en.inTime)}${en.outTime?'–'+esc(en.outTime):' (open)'}</div>`).join('') +
     (__hoursImportEntries.length>10?`<div>…${__hoursImportEntries.length-10} more</div>`:'');
@@ -3795,14 +3867,19 @@ async function parseHoursImagePage(pg){
 }
 async function submitHoursImportBatch(){
   const clientId = document.getElementById('hoursImportClient')?.value || '';
-  if(!__hoursImportEntries.length) return;
-  const entries = __hoursImportEntries.map(en=>({ workerId: __hoursImportWorkerId, clientId, date: en.date, inTime: en.inTime, outTime: en.outTime||'' }));
+  const manual = hoursManualEntries();
+  if(!__hoursImportEntries.length && !manual.length) return;
+  const entries = [...__hoursImportEntries, ...manual].map(en=>({ workerId: __hoursImportWorkerId, clientId, date: en.date, inTime: en.inTime, outTime: en.outTime||'' }));
+  const fileName = [__hoursImportFileName, manual.length?'entered by hand':''].filter(Boolean).join(' + ');
   try{
-    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'savePendingHoursBatch', ...gsAuth(), entries, fileName: __hoursImportFileName }) });
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'savePendingHoursBatch', ...gsAuth(), entries, fileName }) });
     const json = await res.json();
     if(json.error){ showToast(json.error); return; }
-    showToast(json.count+' shift(s) uploaded — pending approval');
-    closeModal('hoursImportOverlay');
+    showToast(json.count+' shift(s) sent for review');
+    __hoursImportEntries = []; __hoursImportFileName = ''; __hoursManualRows = [];
+    const f = document.getElementById('hoursImportFile'); if(f) f.value = '';
+    renderHoursManualRows(); renderHoursImportPreview('');
+    loadHoursSent(__hoursImportWorkerId);
   }catch(e){ showToast('Upload failed: '+e.message); }
 }
 

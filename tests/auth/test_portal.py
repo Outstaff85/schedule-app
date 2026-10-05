@@ -133,6 +133,25 @@ def test_supplier_with_pay_gets_the_pay_inputs_never_billing():
     assert portal.supplier_action(DB, SUP1, {"action": "loadSchedule"})["showPay"] is False
 
 
+def test_supplier_sends_hours_for_approval_and_sees_their_status():
+    ok = portal.supplier_action(DB, SUP1, {"action": "supplierSubmitHours", "workerId": "w1", "clientId": "c9",
+                                           "entries": [{"date": "02/10/2026", "inTime": "09:00", "outTime": "13:00"},
+                                                       {"date": "bad", "inTime": "09:00", "outTime": "13:00"}]})
+    assert ok["ok"] and ok["count"] == 1
+    b = DB.collection("tenants").document(T1).collection("pendingHours").document(ok["batchId"]).get().to_dict()
+    assert b["status"] == "pending" and b["supplierId"] == "sp1" and b["createdBy"] == "u-sup"
+    assert b["rows"][0]["workerId"] == "w1" and b["rows"][0]["clientId"] is None  # c9 isn't the worker's client
+    # Someone else's worker, or nothing valid: refused.
+    assert portal.supplier_action(DB, SUP1, {"action": "supplierSubmitHours", "workerId": "w2",
+                                             "entries": [{"date": "02/10/2026", "inTime": "09:00", "outTime": "13:00"}]})["error"]
+    assert portal.supplier_action(DB, SUP1, {"action": "supplierSubmitHours", "workerId": "w1", "entries": []})["error"]
+    lst = portal.supplier_action(DB, SUP1, {"action": "supplierListHours"})["batches"]
+    assert [x["status"] for x in lst] == ["pending"] and lst[0]["entries"][0]["date"] == "02/10/2026"
+    DB.collection("tenants").document(T1).collection("pendingHours").document(ok["batchId"]).update(
+        {"status": "approved", "decidedAt": "2026-10-05T10:00:00Z"})
+    assert portal.supplier_action(DB, SUP1, {"action": "supplierListHours"})["batches"][0]["status"] == "approved"
+
+
 def test_supplier_punches_only_own_and_without_gps():
     P(T1, "a").set({"id": "a", "workerId": "w1", "type": "in", "date": "01/10/2026", "dist": 5, "gpsAccuracy": 3,
                     "notes": "x", "ts": __import__("datetime").datetime.now(__import__("datetime").timezone.utc)})
