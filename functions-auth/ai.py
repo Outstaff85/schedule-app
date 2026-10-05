@@ -301,8 +301,12 @@ def parse_reply(action, status, raw):
     return {"ok": True, "parsed": parsed}
 
 
-def run(action, body, key, post, model=None, align_model=None):
-    """post(url, payload, headers) -> (status, text). Returns the action's result."""
+def run(action, body, key, post, model=None, align_model=None, meta=None):
+    """post(url, payload, headers) -> (status, text). Returns the action's result.
+    meta, when given, is filled with how the call went (for the app's Timings
+    pane): apiMs (time spent waiting for Anthropic), tries, waitMs (retry
+    pauses), and the last reply's stop reason and token counts."""
+    meta = {} if meta is None else meta
     if action not in ACTIONS:
         return {"error": "Unknown action"}
     if not key:
@@ -312,17 +316,41 @@ def run(action, body, key, post, model=None, align_model=None):
     if payload is None:
         return {"ok": True, "values": {}} if action == "aiVerifyFields" and extra is None else {"error": extra}
     headers = dict({"x-api-key": key, "anthropic-version": "2023-06-01"}, **extra)
+    meta.update(apiMs=0, tries=0, waitMs=0)
     for attempt in range(len(RETRY_PAUSES) + 1):
         last = attempt == len(RETRY_PAUSES)
+        t0 = time.monotonic()
+        meta["tries"] += 1
         try:
             status, raw = post(ANTHROPIC_URL, payload, headers)
         except Exception as e:  # network
+            meta["apiMs"] += int((time.monotonic() - t0) * 1000)
             if last:
                 return {"error": "Запрос к Anthropic не прошёл: " + str(e)}
         else:
+            meta["apiMs"] += int((time.monotonic() - t0) * 1000)
             if last or not _busy(status, raw):
+                _usage(raw, meta)
                 return parse_reply(action, status, raw)
+        meta["waitMs"] += int(RETRY_PAUSES[attempt] * 1000)
         _sleep(RETRY_PAUSES[attempt])
+
+
+def _usage(raw, meta):
+    """The reply's stop reason and token counts into meta."""
+    try:
+        reply = json.loads(raw) or {}
+        u = reply.get("usage") or {}
+    except (ValueError, AttributeError):
+        return
+    if not isinstance(u, dict):
+        return
+    for k, m in (("input_tokens", "inTok"), ("output_tokens", "outTok"),
+                 ("cache_read_input_tokens", "cacheReadTok"), ("cache_creation_input_tokens", "cacheWriteTok")):
+        if isinstance(u.get(k), int):
+            meta[m] = u[k]
+    if reply.get("stop_reason"):
+        meta["stop"] = str(reply["stop_reason"])
 
 
 def _busy(status, raw):

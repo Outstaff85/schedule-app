@@ -117,7 +117,7 @@ Rows are compact: one bordered box (`.log-box`), one row per entry (`.log-row`),
 `loadTimingsPane()` → `loadTimings` for the picked period.
 
 `renderTimingsPane()` shows:
-- **summary cards** (`_timingsSummary`, `.tm-card`) — one per kind over the period, without aborted runs. Each shows the count, the median and 90th percentile of the total, and the median of each step (`TIMING_PHASES`) as small pills. Every slow data call adds a kind (`gs:<action>`), so the cards are paged by 10 as well (`renderPagedList`, grid);
+- **summary cards** (`_timingsSummary`, `.tm-card`) — one per kind over the period, without aborted runs. Each shows the count, the median and 90th percentile of the total, and the median of each step (`TIMING_PHASES`; a slow AI call `gs:ai…` uses `TIMING_AI_PHASES`: time at Anthropic, retry pauses) as small pills. A slow AI call's row also shows `_timingAiNote`: the `part`, tries, output / input / cache tokens and a stop reason other than `end_turn`. Every slow data call adds a kind (`gs:<action>`), so the cards are paged by 10 as well (`renderPagedList`, grid);
 - **all measurements**, newest first, paged by 10. Each row shows time, kind and total on the first line (a total above its kind's 90% is amber), the steps under it, then firm, user, device, pages and page kinds. Each row has a copy button (`copyTimingRow`).
 
 "Copy all" (`copyAllTimings`) copies the summary and every measurement of the period as text. Kinds and how they are measured: [app-core.md](app-core.md) → Telemetry.
