@@ -172,7 +172,7 @@ These are separate from the Form 101 scan, and their labels are English.
   - spreadsheets → `parseHoursExcelFile()` (SheetJS; a header row with `Date`/`In`/`Out` or the same three words in Russian, any order, case-insensitive; dates become `dd/MM/yyyy`);
   - images and PDFs → `fileToUploadPages()`, then every page → `parseHoursImagePage()` (`aiReadHoursTable`);
 - **preview** — the first 10 entries are shown;
-- **enter by hand** — "Add shift" rows of date / in / out (`addHoursManualRow`, `renderHoursManualRows`, `hoursManualEntries`); a daily-paid worker's row may leave the times empty and counts as one day, 08:00–16:00 (`MANUAL_DAY_SHIFT`);
+- **enter by hand** — "Add shift" rows of date / in / out (`addHoursManualRow`, `renderHoursManualRows`, `hoursManualEntries`); each new row takes the day after the last one (`nextManualDate`); a daily-paid worker's row may leave the times empty and counts as one day, 08:00–16:00 (`MANUAL_DAY_SHIFT`). The send button is on whenever there is a file or a row; a row that can't be sent (no date; an hourly worker without in and out; only one of the two times) is outlined red and explained in a toast (`manualRowsProblem`), and nothing is sent;
 - **submit** — `submitHoursImportBatch()` sends `savePendingHoursBatch` with the file's and the typed `{workerId, clientId, date, inTime, outTime}` rows in one batch (file name, plus "entered by hand" when rows were typed); the modal stays open and clears;
 - **sent for approval** — `loadHoursSent(workerId)` lists this worker's batches (`loadPendingHours`; an own-workers HR gets only its own) with a status chip (`hoursStatusChip`): amber "Sent for review", green "Approved", red "Rejected", with the date; paged by 10.
 
