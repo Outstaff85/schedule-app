@@ -33,6 +33,7 @@ Who creates a supplier login and how: [admin.md](admin.md) → Users pane. The s
   - **Detail** (`runDetailExport` → `exportShiftsDetail`): the worker's shifts that month, Date / In / Out / Hours + total, Excel or a print page.
   - **Summary** (`runSummaryExport` → `exportPayableSummary`): per worker with hours that month, hours × commission (`supplierRate`, else 5), Excel or a print page.
 
+  - **Send hours for approval**: a worker select and "Add shift" rows of date / in / out (`sendHoursRows`; a daily-paid worker needs only a date — one day, 08:00–16:00), "Send for approval" (`submitSendHours` → `supplierSubmitHours`); **Sent for approval** (`loadSentHours` → `supplierListHours`) lists each batch with an amber / green / red status chip (`hoursStatusChip`), paged by 10.
   - **Pay** (`renderPayTable`, only with `showPay`): for the picked month, per own worker with hours: Hours, Days, Rate (₪/h, or ₪/day for a daily-paid worker), Pay, My commission (hours × `supplierRate`, else 5), with totals; paged by 10.
 
 Hours use local copies of `groupPunchesIntoShifts` / `analyzeDayPunches` (simplified: no warnings, no rounding) and `getWorkerMonthShifts`. Pay uses copies of the manager app's pay functions (`PAY_RULES`, `israeliDayPay`, `effectiveRates`, `shiftPay`, `shiftPayFor`, `dayOverride`, `wOwnRate`, `localYMD` — the global `clients` is set to `myClients`), so a worker's pay is the same figure as in the manager's Salary table.
@@ -50,6 +51,7 @@ The worker modal closes like the manager app's modals: a tap outside it, no ✕ 
 Only the three actions:
 - `supplierAddWorker` — a new worker with `supplierId` forced to the caller's own, `clientIds: []`, `schedule: []`, and only the editable fields;
 - `supplierUpdateWorker` / `supplierDeleteWorker` — only a worker whose `supplierId` is the caller's; otherwise "Worker not found";
+- `supplierSubmitHours` `{workerId, clientId, entries:[{date dd/MM/yyyy, inTime, outTime}]}` — shifts for its own worker, at most 62 rows, invalid rows dropped, a client that isn't the worker's dropped; written as a `pending` batch (`supplierId`, `createdBy`) for the owner to approve; `supplierListHours` → its batches with `status`, `uploadedAt`, `decidedAt` and the rows;
 - editable fields (`SUPPLIER_EDITABLE`): `docGiven, docSurname, phone, docId, address, houseNumber, city, docDob, docSex, maritalStatus, healthFund, startDate, notes, status`; `name` is rebuilt from given name + surname.
 
-A supplier cannot call `saveSchedule`, the hours-import queue or the AI reads (refused on the server), and has no client billing data to show; wages only with "sees pay".
+A supplier cannot call `saveSchedule`, the app's hours-import actions (it sends hours only through `supplierSubmitHours`) or the AI reads (refused on the server), and has no client billing data to show; wages only with "sees pay".

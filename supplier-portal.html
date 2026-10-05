@@ -35,6 +35,7 @@ body{padding-bottom:40px;}
 .field{margin-bottom:12px;}
 .field label{display:block;font-size:11px;color:var(--text2);margin-bottom:4px;}
 .field input,.field select{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:8px 10px;font-size:13px;outline:none;}
+#sendHoursRows input{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 8px;font-size:13px;outline:none;}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:500;padding:16px;}
 .overlay.open{display:flex;}
 .tap-edit{cursor:pointer;} /* a tap opens the item's edit form (isPlainTap) */
@@ -112,6 +113,18 @@ th{color:var(--text2);font-size:11px;text-transform:uppercase;}
       <button class="btn sm accent" onclick="runSummaryExport('pdf')"><i class="ti ti-file-type-pdf"></i> Summary (PDF)</button>
     </div>
     <div id="hoursSummaryPreview"></div>
+    <!-- Hours typed here go to the firm owner for approval (supplierSubmitHours);
+         the list below shows each batch's status. -->
+    <div style="font-weight:600;margin:8px 0">Send hours for approval</div>
+    <div class="field"><label>Worker</label><select id="sendHoursWorker" onchange="renderSendHoursRows()"></select></div>
+    <div id="sendHoursHint" style="font-size:11px;color:var(--text3);margin-bottom:6px"></div>
+    <div id="sendHoursRows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <button class="btn sm" type="button" onclick="addSendHoursRow()"><i class="ti ti-plus"></i> Add shift</button>
+      <button class="btn sm accent" type="button" id="sendHoursBtn" onclick="submitSendHours()"><i class="ti ti-send"></i> Send for approval</button>
+    </div>
+    <div style="font-weight:600;margin:8px 0">Sent for approval</div>
+    <div id="sentHoursList" style="font-size:12px;color:var(--text3)"></div>
   </div>
 </div>
 
@@ -686,6 +699,67 @@ function renderHoursTab(){
   const workerSel=document.getElementById('hoursExportWorkerSel');
   workerSel.innerHTML = myWorkers.map(w=>`<option value="${w.id}">${esc(w.name)}</option>`).join('');
   renderPayTable();
+  document.getElementById('sendHoursWorker').innerHTML = myWorkers.map(w=>`<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('');
+  sendHoursRows = [];
+  renderSendHoursRows();
+  loadSentHours();
+}
+// Shifts typed by hand → one pending batch for the owner (supplierSubmitHours).
+// A daily-paid worker (payMode, sent with "sees pay") needs only a date:
+// empty times count as one day, 08:00–16:00 — the same as the manager app.
+let sendHoursRows = [];
+const MANUAL_DAY_SHIFT = ['08:00','16:00'];
+function addSendHoursRow(){ sendHoursRows.push({date: localYMD(new Date()), inTime:'', outTime:''}); renderSendHoursRows(); }
+function renderSendHoursRows(){
+  const w = myWorkers.find(x=>x.id===document.getElementById('sendHoursWorker').value);
+  document.getElementById('sendHoursHint').textContent = isDailyPay(w) ? 'Paid by the day: a date is enough — with no times it counts as one day (08:00–16:00).' : 'Date, in and out for each shift.';
+  document.getElementById('sendHoursRows').innerHTML = sendHoursRows.map((r,i)=>`<div style="display:grid;grid-template-columns:1.4fr 1fr 1fr auto;gap:6px;align-items:center">
+      <input type="date" value="${esc(r.date)}" onchange="sendHoursRows[${i}].date=this.value">
+      <input type="time" value="${esc(r.inTime)}" title="In" onchange="sendHoursRows[${i}].inTime=this.value">
+      <input type="time" value="${esc(r.outTime)}" title="Out" onchange="sendHoursRows[${i}].outTime=this.value">
+      <button class="btn sm" type="button" title="Remove" onclick="sendHoursRows.splice(${i},1);renderSendHoursRows()"><i class="ti ti-trash"></i></button>
+    </div>`).join('');
+}
+async function submitSendHours(){
+  const wid = document.getElementById('sendHoursWorker').value, w = myWorkers.find(x=>x.id===wid);
+  const entries = sendHoursRows.map(r=>{
+    let inTime = r.inTime, outTime = r.outTime;
+    if(!inTime && !outTime && isDailyPay(w)) [inTime, outTime] = MANUAL_DAY_SHIFT;
+    if(!r.date || !inTime || !outTime) return null;
+    const [y,m,d] = r.date.split('-');
+    return {date: d+'/'+m+'/'+y, inTime, outTime};
+  }).filter(Boolean);
+  if(!entries.length){ showToast('Add at least one shift with a date, in and out'); return; }
+  const btn = document.getElementById('sendHoursBtn'); btn.disabled = true;
+  try{
+    const r = await supplierCall({action:'supplierSubmitHours', workerId: wid, clientId: (w&&w.clientIds||[])[0]||'', entries});
+    if(r.error){ showToast(r.error); return; }
+    showToast(r.count+' shift(s) sent for review');
+    sendHoursRows = []; renderSendHoursRows(); loadSentHours();
+  }catch(e){ showToast('Failed: '+e.message); }
+  finally{ btn.disabled = false; }
+}
+// Each batch with its status: amber "Sent for review", green "Approved", red "Rejected".
+const HOURS_STATUS = {pending:['Sent for review','var(--amber)','var(--amber-bg)','ti-clock'],
+  approved:['Approved','var(--green)','var(--green-bg)','ti-circle-check'],
+  rejected:['Rejected','var(--red)','var(--red-bg)','ti-circle-x']};
+function hoursStatusChip(st, when){
+  const [label,color,bg,icon] = HOURS_STATUS[st] || HOURS_STATUS.pending;
+  return `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;color:${color};background:${bg}"><i class="ti ${icon}"></i>${esc(label)}${when?' · '+esc(new Date(when).toLocaleDateString('en-GB')):''}</span>`;
+}
+async function loadSentHours(){
+  const el = document.getElementById('sentHoursList');
+  let batches = [];
+  try{ batches = (await supplierCall({action:'supplierListHours'})).batches || []; }catch(e){ el.textContent = 'Could not load'; return; }
+  if(!batches.length){ el.textContent = 'Nothing sent yet'; return; }
+  const nameOf = id => (myWorkers.find(w=>w.id===id)||{}).name || '';
+  renderPagedList(el, 'sentHours', '', batches, b=>{
+    const rows = b.entries||[];
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 10px;background:var(--bg3);border-radius:var(--radius-sm);margin-bottom:6px">
+      <span>${esc(nameOf(rows[0]&&rows[0].workerId))} · ${rows.length} shift(s): ${esc((rows[0]||{}).date||'')}${rows.length>1?' – '+esc(rows[rows.length-1].date):''}</span>
+      ${hoursStatusChip(b.status, b.status==='pending'?b.uploadedAt:b.decidedAt)}
+    </div>`;
+  });
 }
 // The month's pay per own worker, with the app's own pay functions (the
 // copies above): hours, days, the worker's rate (₪/h or ₪/day), their pay,

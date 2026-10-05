@@ -119,7 +119,8 @@ See [punch.md](punch.md) and [supplier-portal.md](supplier-portal.md) for the pa
 - **`supplier`:** role `supplier` with `tenantId` and `supplierId` in the claims, else "Supplier role only".
   - `loadSchedule` → own workers through `strip_worker` (the `SUPPLIER_WORKER_FIELDS` allow-list + `supplierRate`; never a wage, the worker's punch-link token or a file link), clients as `{id, name, object}`, `suppliers: []`;
   - `loadPunchLog` → own workers' punches of the last 13 months with `id, workerId, workerName, type, time, date, site, clientId, ts` (`workerId in` queries of 30);
-  - `supplierAddWorker` / `supplierUpdateWorker` / `supplierDeleteWorker` with the `SUPPLIER_EDITABLE` list ([supplier-portal.md](supplier-portal.md)).
+  - `supplierAddWorker` / `supplierUpdateWorker` / `supplierDeleteWorker` with the `SUPPLIER_EDITABLE` list;
+  - `supplierSubmitHours` (a pending hours batch for an own worker) and `supplierListHours` (its batches with their status) ([supplier-portal.md](supplier-portal.md)).
 
 ### `ai.py` — `ai_read`
 

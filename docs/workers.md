@@ -172,7 +172,9 @@ These are separate from the Form 101 scan, and their labels are English.
   - spreadsheets → `parseHoursExcelFile()` (SheetJS; a header row with `Date`/`In`/`Out` or the same three words in Russian, any order, case-insensitive; dates become `dd/MM/yyyy`);
   - images and PDFs → `fileToUploadPages()`, then every page → `parseHoursImagePage()` (`aiReadHoursTable`);
 - **preview** — the first 10 entries are shown;
-- **submit** — `submitHoursImportBatch()` sends `savePendingHoursBatch` with `{workerId, clientId, date, inTime, outTime}` rows.
+- **enter by hand** — "Add shift" rows of date / in / out (`addHoursManualRow`, `renderHoursManualRows`, `hoursManualEntries`); a daily-paid worker's row may leave the times empty and counts as one day, 08:00–16:00 (`MANUAL_DAY_SHIFT`);
+- **submit** — `submitHoursImportBatch()` sends `savePendingHoursBatch` with the file's and the typed `{workerId, clientId, date, inTime, outTime}` rows in one batch (file name, plus "entered by hand" when rows were typed); the modal stays open and clears;
+- **sent for approval** — `loadHoursSent(workerId)` lists this worker's batches (`loadPendingHours`; an own-workers HR gets only its own) with a status chip (`hoursStatusChip`): amber "Sent for review", green "Approved", red "Rejected", with the date; paged by 10.
 
 Nothing reaches payroll until an owner approves it in Accounting ([accounting.md](accounting.md)).
 
