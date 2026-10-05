@@ -2260,6 +2260,13 @@ function wClientRateSource(){
 }
 function syncWRate(){
   const el=document.getElementById('wRate'), hint=document.getElementById('wRateHint'); if(!el) return;
+  // Paid by the day (wPayMode): the rate is per day, the worker's own — a
+  // client's rate is hourly and never fills it.
+  if(document.getElementById('wPayMode')?.value==='daily'){
+    if(el.dataset.manual!=='1') el.value='';
+    if(hint) hint.textContent=el.dataset.manual==='1'?'Rate per day':'Set the rate per day';
+    return;
+  }
   const cl=wClientRateSource();
   if(el.dataset.manual!=='1') el.value=cl?cl.defaultHourlyRate:'';
   if(hint) hint.textContent=el.dataset.manual==='1'
@@ -2577,7 +2584,7 @@ function showWorkerModal(w){
       <div class="field"><label>עיר</label><input type="text" id="wCity" value="${esc(w.city||'')}" placeholder="עיר"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>תעריף שעתי (₪/שעה)</label><input type="number" id="wRate" value="${esc(wOwnRate(w))}" ${wOwnRate(w)!==''?'data-manual="1"':''} placeholder="לדוגמה: 35" min="0" step="0.5" oninput="onWRateInput(this)"><div id="wRateHint" style="font-size:11px;color:var(--text3);margin-top:3px"></div></div>
+      <div class="field"><label>תעריף (₪)</label><div style="display:grid;grid-template-columns:1fr auto;gap:6px"><input type="number" id="wRate" value="${esc(wOwnRate(w))}" ${wOwnRate(w)!==''?'data-manual="1"':''} placeholder="לדוגמה: 35" min="0" step="0.5" oninput="onWRateInput(this)"><select id="wPayMode" onchange="syncWRate()" title="Paid by the hour or by the day" style="width:auto"><option value="hourly"${isDailyPay(w)?'':' selected'}>₪/h</option><option value="daily"${isDailyPay(w)?' selected':''}>₪/day</option></select></div><div id="wRateHint" style="font-size:11px;color:var(--text3);margin-top:3px"></div></div>
       <div class="field"><label>Travel ₪ / day</label><input type="number" id="wTravelAllowance" value="${w.travelAllowance||''}" placeholder="0" min="0" step="0.5"></div>
     </div>
     <div class="field-row">
@@ -2807,7 +2814,8 @@ async function saveWorker(){
     : (editingWorkerIdx!==null
         ? workers[editingWorkerIdx].schedule
         : DAYS.map(()=>({type:'off',start:null,end:null})));
-  const commonFields={name,colorIdx:selColorIdx,phone,hourlyRate,regRate:null,travelAllowance,status,startDate,workStartDate,docSex,
+  const payMode=document.getElementById('wPayMode')?.value==='daily'?'daily':null;
+  const commonFields={name,colorIdx:selColorIdx,phone,hourlyRate,regRate:null,payMode,travelAllowance,status,startDate,workStartDate,docSex,
     expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,houseNumber,city,docDob,docExpiry,notes,
     incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,docChildren,clientIds,schedule,
     spouseSurname,spouseGiven,spouseId,spouseDob,spouseIncome,
@@ -3704,8 +3712,12 @@ function renderHoursImportModal(){
       <input type="file" id="hoursImportFile" accept=".xlsx,.xls,.csv,image/*,application/pdf,.pdf" multiple onchange="onHoursImportFileSelected(this.files)">
     </div>
     <div id="hoursImportPreview" style="font-size:12px;color:var(--text3);min-height:20px"></div>
-    <div class="form-section" style="display:flex;justify-content:space-between;align-items:center">Enter by hand <button class="btn sm" type="button" onclick="addHoursManualRow()"><i class="ti ti-plus"></i> Add shift</button></div>
-    ${isDailyPay(w)?'<div style="font-size:11px;color:var(--text3);margin-bottom:6px">Paid by the day: a date is enough — with no times it counts as one day (08:00–16:00).</div>':''}
+    <div class="form-section" style="display:flex;justify-content:space-between;align-items:center;gap:8px">Enter by hand
+      <span style="display:flex;gap:6px;align-items:center">
+        <select id="hoursPayMode" onchange="setHoursPayMode(this.value)" title="How this worker is paid" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;outline:none">
+          <option value="hourly"${isDailyPay(w)?'':' selected'}>Paid ₪/h</option><option value="daily"${isDailyPay(w)?' selected':''}>Paid ₪/day</option></select>
+        <button class="btn sm" type="button" onclick="addHoursManualRow()"><i class="ti ti-plus"></i> Add shift</button></span></div>
+    <div id="hoursPayHint" style="font-size:11px;color:var(--text3);margin-bottom:6px">${isDailyPay(w)?'Paid by the day: a date is enough — with no times it counts as one day (08:00–16:00).':'Paid by the hour: date, in and out for each shift.'}</div>
     <div id="hoursManualRows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
     <div class="modal-actions">
       <button class="btn accent" id="hoursImportSubmitBtn" disabled onclick="submitHoursImportBatch()"><i class="ti ti-upload"></i> Upload for approval</button>
@@ -3744,6 +3756,17 @@ async function loadHoursSent(workerId){
 // 08:00–16:00.
 let __hoursManualRows = [];
 const MANUAL_DAY_SHIFT = ['08:00','16:00'];
+// The worker's pay mode, set right here (the same field as the worker card's
+// ₪/h | ₪/day and Accounting → Salary): a worker with no shifts yet isn't in
+// the Salary table, and an HR's Salary is read-only.
+function setHoursPayMode(mode){
+  const w = workers.find(x=>x.id===__hoursImportWorkerId); if(!w) return;
+  if(mode==='daily') w.payMode='daily'; else delete w.payMode;
+  autoSave();
+  const hint = document.getElementById('hoursPayHint');
+  if(hint) hint.textContent = mode==='daily' ? 'Paid by the day: a date is enough — with no times it counts as one day (08:00–16:00).' : 'Paid by the hour: date, in and out for each shift.';
+  document.querySelectorAll('#hoursManualRows [data-row]').forEach(el=>{ el.style.outline=''; });
+}
 // A new row takes the day after the last row (today for the first one).
 function nextManualDate(rows){
   const last = rows.length && rows[rows.length-1].date;
@@ -3794,7 +3817,7 @@ function manualRowsProblem(rows, daily, name){
   if(!bad.length) return null;
   const r = rows[bad[0]];
   const why = !r.date ? 'pick a date'
-    : (!daily ? 'enter the in and out times — '+(name||'this worker')+' is paid by the hour (₪/day in Accounting → Salary lets you send dates only)'
+    : (!daily ? 'enter the in and out times — '+(name||'this worker')+' is paid by the hour (switch to "Paid ₪/day" above to send dates only)'
     : 'enter both times, or leave both empty for a whole day');
   return {rows: bad, text: 'Shift '+(bad[0]+1)+': '+why};
 }
