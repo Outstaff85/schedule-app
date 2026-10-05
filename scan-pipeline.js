@@ -1923,8 +1923,8 @@ function removePendingScanPage(i){
 // Speed: a ספח answer is long, and writing it is what takes the time, so it
 // is asked for in two halves at once — "holder" (names, ID, address, marital
 // status, sex, fieldBoxes) and "family" (spouse, children) — and merged. If
-// either half fails, one full read is made instead. A card back (id_back)
-// has no family, so it gets one full read.
+// either half fails, one full read is made instead. A card back is split
+// too: the align model has filed a paper ספח under id_back.
 function aiReadSefachCall(it,part){
   return fetch(API_URL,{method:'POST',body:JSON.stringify({action:'aiReadSefach',...gsAuth(),image:it.b64,mediaType:it.mediaType,...(part?{part}:{})})})
     .then(r=>r.json()).then(j=>{ if(j&&j.error) console.warn('aiReadSefach'+(part?' ('+part+')':'')+' failed: '+j.error);
@@ -1934,12 +1934,10 @@ function aiReadSefachCall(it,part){
 }
 async function readSefachPage(it){
   let p=null;
-  if(it.kind!=='id_back'){
-    const [h,f]=await Promise.all([aiReadSefachCall(it,'holder'),aiReadSefachCall(it,'family')]);
-    if(h&&f){
-      const sp=f.spouse&&typeof f.spouse==='object'?f.spouse:{surname:'',given:'',idNo:''};
-      p={...h,type:'israeli_id',spouse:sp,children:Array.isArray(f.children)?f.children:[]};
-    }
+  const [h,f]=await Promise.all([aiReadSefachCall(it,'holder'),aiReadSefachCall(it,'family')]);
+  if(h&&f){
+    const sp=f.spouse&&typeof f.spouse==='object'?f.spouse:{surname:'',given:'',idNo:''};
+    p={...h,type:'israeli_id',spouse:sp,children:Array.isArray(f.children)?f.children:[]};
   }
   if(!p) p=await aiReadSefachCall(it,null);
   if(!p) return null;
