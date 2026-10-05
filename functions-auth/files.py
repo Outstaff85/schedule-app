@@ -24,10 +24,10 @@ import json
 ACTIONS = ("loadWorkerAssets", "deleteWorkerDoc")
 MANAGER_ROLES = ("superadmin", "tenant_admin", "staff", "hr")
 
-E_NOT_FIRM = "Файл не принадлежит этой фирме"
-E_NO_FILE = "Нет fileId"
-E_NOT_FOUND = "Файл не найден"
-E_NO_RIGHT = "Нет прав на работников"
+E_NOT_FIRM = "The file doesn't belong to this firm"
+E_NO_FILE = "No fileId"
+E_NOT_FOUND = "File not found"
+E_NO_RIGHT = "No rights to workers"
 
 
 def _path_ok(path, tenant_id):
@@ -50,7 +50,7 @@ def run(bucket, caller, body, worker_hr=None):
     if action not in ACTIONS:
         return {"error": "Unknown action"}
     if caller.get("role") not in MANAGER_ROLES:
-        return {"error": "Недоступно для этой роли"}
+        return {"error": "Not available for this role"}
     path = str(body.get("fileId") or "")
     if not path:
         return {"error": E_NO_FILE}

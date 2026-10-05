@@ -75,7 +75,7 @@
    "url": "https://api.anthropic.com/v1/messages"
   },
   "result": {
-   "error": "Неверный ответ от Anthropic (HTTP 502)"
+   "error": "Bad reply from Anthropic (HTTP 502)"
   }
  },
  "[\"aiDetectAlign\", {\"image\": \"I\"}, \"{\\\"content\\\": [{\\\"type\\\": \\\"text\\\", \\\"text\\\": \\\"Here you go: {\\\\\\\"a\\\\\\\":{\\\\\\\"b\\\\\\\":1}} thanks\\\"}]}\", 200]": {
@@ -158,7 +158,7 @@
    "url": "https://api.anthropic.com/v1/messages"
   },
   "result": {
-   "error": "AI вернул нечитаемый ответ",
+   "error": "The AI returned an unreadable answer",
    "raw": ""
   }
  },
@@ -241,7 +241,7 @@
    "url": "https://api.anthropic.com/v1/messages"
   },
   "result": {
-   "error": "AI вернул нечитаемый ответ",
+   "error": "The AI returned an unreadable answer",
    "raw": "not json at all"
   }
  },
@@ -325,7 +325,7 @@
    "url": "https://api.anthropic.com/v1/messages"
   },
   "result": {
-   "error": "AI вернул нечитаемый ответ",
+   "error": "The AI returned an unreadable answer",
    "raw": "{\"type\":\"israeli_id\",\"surname\":\"כה"
   }
  },
@@ -446,13 +446,13 @@
    "url": "https://api.anthropic.com/v1/messages"
   },
   "result": {
-   "error": "Ошибка Anthropic"
+   "error": "Anthropic error"
   }
  },
  "[\"aiDetectAlign\", {}, \"{\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"{}\\\"}]}\", 200]": {
   "request": null,
   "result": {
-   "error": "Нет изображения"
+   "error": "No image"
   }
  },
  "[\"aiReadDoc\", {\"image\": \"AAA\", \"mediaType\": \"image/png\"}, \"{\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"{}\\\"}]}\", 200]": {
@@ -583,7 +583,7 @@
    "url": "https://api.anthropic.com/v1/messages"
   },
   "result": {
-   "error": "Неверный ответ от Anthropic (HTTP 502)"
+   "error": "Bad reply from Anthropic (HTTP 502)"
   }
  },
  "[\"aiReadDoc\", {\"image\": \"I\"}, \"{\\\"content\\\": [{\\\"type\\\": \\\"text\\\", \\\"text\\\": \\\"Here you go: {\\\\\\\"a\\\\\\\":{\\\\\\\"b\\\\\\\":1}} thanks\\\"}]}\", 200]": {
@@ -674,7 +674,7 @@
    "url": "https://api.anthropic.com/v1/messages"
   },
   "result": {
-   "error": "AI вернул нечитаемый ответ",
+   "error": "The AI returned an unreadable answer",
    "raw": ""
   }
  },
@@ -765,7 +765,7 @@
    "url": "https://api.anthropic.com/v1/messages"
   },
   "result": {
-   "error": "AI вернул нечитаемый ответ",
+   "error": "The AI returned an unreadable answer",
    "raw": "not json at all"
   }
  },
@@ -993,13 +993,13 @@
    "url": "https://api.anthropic.com/v1/messages"
   },
   "result": {
-   "error": "Ошибка Anthropic"
+   "error": "Anthropic error"
   }
  },
  "[\"aiReadDoc\", {}, \"{\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"{}\\\"}]}\", 200]": {
   "request": null,
   "result": {
-   "error": "Нет изображения"
+   "error": "No image"
   }
  },
  "[\"aiReadHoursTable\", {\"image\": \"DDD\", \"mediaType\": \"image/webp\"}, \"{\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"{}\\\"}]}\", 200]": {
@@ -1078,7 +1078,7 @@
    "url": "https://api.anthropic.com/v1/messages"
   },
   "result": {
-   "error": "Неверный ответ от Anthropic (HTTP 502)"
+   "error": "Bad reply from Anthropic (HTTP 502)"
   }
  },
  "[\"aiReadHoursTable\", {\"image\": \"I\"}, \"{\\\"content\\\": [{\\\"type\\\": \\\"text\\\", \\\"text\\\": \\\"bad\\\"}]}\", 200]": {
@@ -1117,7 +1117,7 @@
    "url": "https://api.anthropic.com/v1/messages"
   },
   "result": {
-   "error": "AI вернул нечитаемый ответ",
+   "error": "The AI returned an unreadable answer",
    "raw": "bad"
   }
  },
@@ -1322,19 +1322,19 @@
    "url": "https://api.anthropic.com/v1/messages"
   },
   "result": {
-   "error": "Ошибка Anthropic"
+   "error": "Anthropic error"
   }
  },
  "[\"aiReadHoursTable\", {}, \"{\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"{}\\\"}]}\", 200]": {
   "request": null,
   "result": {
-   "error": "Нет изображения"
+   "error": "No image"
   }
  },
  "[\"aiReadSefach\", {\"image\": \"\"}, \"{\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"{}\\\"}]}\", 200]": {
   "request": null,
   "result": {
-   "error": "Нет изображения"
+   "error": "No image"
   }
  },
  "[\"aiReadSefach\", {\"image\": \"BBB\", \"mediaType\": \"image/jpeg\"}, \"{\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"{}\\\"}]}\", 200]": {
@@ -1421,7 +1421,7 @@
    "url": "https://api.anthropic.com/v1/messages"
   },
   "result": {
-   "error": "Неверный ответ от Anthropic (HTTP 502)"
+   "error": "Bad reply from Anthropic (HTTP 502)"
   }
  },
  "[\"aiReadSefach\", {\"image\": \"I\"}, \"{\\\"content\\\": [{\\\"type\\\": \\\"text\\\", \\\"text\\\": \\\"Here you go: {\\\\\\\"a\\\\\\\":{\\\\\\\"b\\\\\\\":1}} thanks\\\"}]}\", 200]": {
@@ -1512,7 +1512,7 @@
    "url": "https://api.anthropic.com/v1/messages"
   },
   "result": {
-   "error": "AI вернул нечитаемый ответ",
+   "error": "The AI returned an unreadable answer",
    "raw": ""
   }
  },
@@ -1603,7 +1603,7 @@
    "url": "https://api.anthropic.com/v1/messages"
   },
   "result": {
-   "error": "AI вернул нечитаемый ответ",
+   "error": "The AI returned an unreadable answer",
    "raw": "not json at all"
   }
  },
@@ -1831,7 +1831,7 @@
    "url": "https://api.anthropic.com/v1/messages"
   },
   "result": {
-   "error": "Ошибка Anthropic"
+   "error": "Anthropic error"
   }
  },
  "[\"aiVerifyField\", {\"image\": \"E\", \"kind\": \"date\"}, \"{\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"{}\\\"}]}\", 200]": {
@@ -2046,7 +2046,7 @@
    "url": "https://api.anthropic.com/v1/messages"
   },
   "result": {
-   "error": "Неверный ответ от Anthropic (HTTP 502)"
+   "error": "Bad reply from Anthropic (HTTP 502)"
   }
  },
  "[\"aiVerifyField\", {\"image\": \"I\", \"kind\": \"date\"}, \"{\\\"content\\\": [{\\\"type\\\": \\\"text\\\", \\\"text\\\": \\\"  05/04/1995 \\\\n\\\"}]}\", 200]": {
@@ -2368,13 +2368,13 @@
    "url": "https://api.anthropic.com/v1/messages"
   },
   "result": {
-   "error": "Ошибка Anthropic"
+   "error": "Anthropic error"
   }
  },
  "[\"aiVerifyField\", {\"kind\": \"date\"}, \"{\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"{}\\\"}]}\", 200]": {
   "request": null,
   "result": {
-   "error": "Нет изображения"
+   "error": "No image"
   }
  },
  "[\"aiVerifyFields\", {\"jobs\": []}, \"{\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"{}\\\"}]}\", 200]": {
@@ -2484,7 +2484,7 @@
    "url": "https://api.anthropic.com/v1/messages"
   },
   "result": {
-   "error": "Неверный ответ от Anthropic (HTTP 502)"
+   "error": "Bad reply from Anthropic (HTTP 502)"
   }
  },
  "[\"aiVerifyFields\", {\"jobs\": [{\"field\": \"idNo\", \"image\": \"I\", \"kind\": \"digits9\"}]}, \"{\\\"content\\\": [{\\\"type\\\": \\\"text\\\", \\\"text\\\": \\\"  05/04/1995 \\\\n\\\"}]}\", 200]": {
@@ -2849,7 +2849,7 @@
    "url": "https://api.anthropic.com/v1/messages"
   },
   "result": {
-   "error": "Ошибка Anthropic"
+   "error": "Anthropic error"
   }
  },
  "[\"aiVerifyFields\", {\"jobs\": [{\"field\": \"passportNo\", \"image\": \"9\", \"kind\": \"passportNo\"}]}, \"{\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"{}\\\"}]}\", 200]": {

@@ -558,7 +558,7 @@
 
       <!-- Contract expiry warnings (hidden unless at least one worker is flagged) -->
       <div style="margin-bottom:20px;display:none" id="dashExpiringWrap">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"><i class="ti ti-alert-triangle"></i> Истекает срок работы</div>
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"><i class="ti ti-alert-triangle"></i> Work permit expiring</div>
         <div id="dashExpiring" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px"></div>
       </div>
 
@@ -610,7 +610,7 @@
         </div>
         <div class="workers-actions">
           <button class="btn sm" onclick="openAddWorker()"><i class="ti ti-plus"></i> Add Worker</button>
-          <button class="btn sm" onclick="startNewScan()" style="border-color:rgba(109,214,160,0.4);color:var(--green)"><i class="ti ti-sparkles"></i> Скан паспорта</button>
+          <button class="btn sm" onclick="startNewScan()" style="border-color:rgba(109,214,160,0.4);color:var(--green)"><i class="ti ti-sparkles"></i> Scan passport</button>
         </div>
       </div>
       <div class="workers-toolbar">
@@ -652,7 +652,7 @@
             <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Worker</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Status</th>
-              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">ID / Паспорт</th>
+              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">ID / Passport</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Objects</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Supplier</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Phone</th>
@@ -886,7 +886,7 @@
 <div class="overlay" id="aiScanOverlay">
   <div class="modal" style="width:680px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-      <div class="modal-title" style="margin-bottom:0"><i class="ti ti-sparkles" style="color:var(--green)"></i> Скан паспорта</div>
+      <div class="modal-title" style="margin-bottom:0"><i class="ti ti-sparkles" style="color:var(--green)"></i> Scan passport</div>
     </div>
     <div id="aiScanStage"></div>
   </div>
@@ -950,10 +950,10 @@
       <i class="ti ti-calendar-stats" style="font-size:32px;color:var(--accent)"></i>
       <div style="font-size:19px;font-weight:700;margin-top:8px">Schedule Manager</div>
     </div>
-    <div class="field"><label>Логин</label><input type="text" id="loginUsername" autocomplete="username" autofocus></div>
-    <div class="field"><label>Пароль</label><input type="password" id="loginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogin()"></div>
+    <div class="field"><label>Username</label><input type="text" id="loginUsername" autocomplete="username" autofocus></div>
+    <div class="field"><label>Password</label><input type="password" id="loginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogin()"></div>
     <div id="loginError" style="color:#ff6b78;font-size:13px;margin:2px 0 10px;min-height:1.2em"></div>
-    <button class="btn accent" style="width:100%" onclick="submitLogin()" id="loginBtn">Войти</button>
+    <button class="btn accent" style="width:100%" onclick="submitLogin()" id="loginBtn">Sign in</button>
   </div>
 </div>
 
@@ -963,10 +963,10 @@
 <div id="firmsScreen" style="display:none;position:fixed;inset:0;z-index:900;background:var(--bg);overflow-y:auto">
   <div style="max-width:720px;margin:0 auto;padding:28px 20px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
-      <div style="font-size:20px;font-weight:700"><i class="ti ti-building-skyscraper"></i> Фирмы</div>
+      <div style="font-size:20px;font-weight:700"><i class="ti ti-building-skyscraper"></i> Firms</div>
       <div style="display:flex;gap:8px">
-        <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> Создать фирму</button>
-        <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i> Выйти</button>
+        <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> Create firm</button>
+        <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i> Sign out</button>
       </div>
     </div>
     <div id="firmsList" style="display:flex;flex-direction:column;gap:8px"></div>
@@ -981,10 +981,10 @@
 <div id="errorsScreen" style="display:none;position:fixed;inset:0;z-index:960;background:var(--bg);overflow-y:auto">
   <div style="max-width:960px;margin:0 auto;padding:28px 20px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
-      <div style="font-size:20px;font-weight:700"><i class="ti ti-alert-circle"></i> Ошибки (последние 100)</div>
+      <div style="font-size:20px;font-weight:700"><i class="ti ti-alert-circle"></i> Errors (last 100)</div>
       <div style="display:flex;gap:8px">
-        <button class="btn sm" onclick="loadErrorsList()"><i class="ti ti-refresh"></i> Обновить</button>
-        <button class="btn sm" onclick="closeErrorsScreen()"><i class="ti ti-x"></i> Закрыть</button>
+        <button class="btn sm" onclick="loadErrorsList()"><i class="ti ti-refresh"></i> Refresh</button>
+        <button class="btn sm" onclick="closeErrorsScreen()"><i class="ti ti-x"></i> Close</button>
       </div>
     </div>
     <div id="errorsList" style="display:flex;flex-direction:column;gap:6px"></div>
@@ -1064,13 +1064,13 @@
      login fields, openEditFirmForm()/openMyFirmForm() hide them. -->
 <div class="overlay" id="editFirmOverlay" style="z-index:950">
   <div class="modal" style="max-width:420px" oninput="__firmEditDirty=true">
-    <div class="modal-title" id="firmEditTitle">Редактировать фирму</div>
+    <div class="modal-title" id="firmEditTitle">Edit firm</div>
     <div style="font-size:11px;color:var(--text3);line-height:1.5;margin:-6px 0 10px">
       פרטים אלה מודפסים בחלק א׳ („פרטי המעסיק”) של כל טופס 101.
     </div>
     <div class="field" id="firmEditOwnerNameField" style="display:none"><label>Owner name</label><input type="text" id="firmEditOwnerName" autocomplete="off" maxlength="80"></div>
-    <div class="field" id="firmEditUsernameField" style="display:none"><label>Логин</label><input type="text" id="firmEditUsername" autocomplete="off"></div>
-    <div class="field" id="firmEditPasswordField" style="display:none"><label>Пароль (мин. 8 символов)</label><input type="password" id="firmEditPassword" autocomplete="new-password"></div>
+    <div class="field" id="firmEditUsernameField" style="display:none"><label>Username</label><input type="text" id="firmEditUsername" autocomplete="off"></div>
+    <div class="field" id="firmEditPasswordField" style="display:none"><label>Password (min. 8 characters)</label><input type="password" id="firmEditPassword" autocomplete="new-password"></div>
     <div class="field"><label>שם המעסיק</label><input type="text" id="firmEditCompanyName"></div>
     <div class="field"><label>מספר תיק ניכויים (8 ספרות)</label><input type="text" id="firmEditDeductionsNo" maxlength="8" inputmode="numeric"></div>
     <div class="field"><label>טלפון</label><input type="text" id="firmEditPhone"></div>
@@ -1081,7 +1081,7 @@
     <div class="field"><label>עיר</label><input type="text" id="firmEditCity"></div>
     <div id="firmEditFormError" style="color:#ff6b78;font-size:13px;margin:2px 0 6px;min-height:1.2em"></div>
     <div class="modal-actions">
-      <button class="btn accent" onclick="submitEditFirm()" id="editFirmBtn">Сохранить</button>
+      <button class="btn accent" onclick="submitEditFirm()" id="editFirmBtn">Save</button>
     </div>
   </div>
 </div>
@@ -1187,21 +1187,21 @@ function analyzeDayPunches(entries,date){
   let hours=0, openIn=null; const warnings=[];
   chrono.forEach(e=>{
     if(e.type==='in'){
-      if(openIn) warnings.push('двойной вход (нет выхода после '+openIn.time+')');
+      if(openIn) warnings.push('double IN (no OUT after '+openIn.time+')');
       openIn=e;
     } else if(e.type==='out'){
-      if(!openIn){ warnings.push('выход без входа ('+e.time+')'); return; }
+      if(!openIn){ warnings.push('OUT without IN ('+e.time+')'); return; }
       if(!openIn.time||!e.time){ openIn=null; return; }
       let dur=toMins(e.time)-toMins(openIn.time); if(dur<0) dur+=1440; dur=roundMins(dur);
       const hh=dur/60;
-      if(hh<=0) warnings.push('смена 0 мин ('+openIn.time+'→'+e.time+')');
-      else if(hh>12) warnings.push('смена >12ч ('+openIn.time+'→'+e.time+')');
+      if(hh<=0) warnings.push('0-minute shift ('+openIn.time+'→'+e.time+')');
+      else if(hh>12) warnings.push('shift >12h ('+openIn.time+'→'+e.time+')');
       hours+=hh; openIn=null;
     }
   });
   if(openIn){
     const isToday=new Date().toDateString()===new Date(date).toDateString();
-    warnings.push('открытая смена с '+openIn.time+(isToday?' (ещё на работе)':' — нет выхода'));
+    warnings.push('open shift from '+openIn.time+(isToday?' (still at work)':' — no OUT'));
     if(isToday && openIn.time){ let dur=toMins(nowHHMM())-toMins(openIn.time); if(dur<0) dur+=1440; dur=roundMins(dur); hours+=dur/60; }
   }
   return {hours,warnings};
@@ -1257,9 +1257,9 @@ function expiryBadgeHtml(w){
   const overdue = st.level==='overdue';
   const color = overdue?'var(--red)':'var(--amber)';
   const bg = overdue?'var(--red-bg)':'var(--amber-bg)';
-  const label = overdue?'СРОК ИСТЁК':'СКОРО ИСТЕКАЕТ';
-  const dateStr = st.deadline.toLocaleDateString('ru-RU');
-  return `<span title="Срок: ${dateStr}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:${bg};color:${color};margin-left:5px"><i class="ti ti-alert-triangle" style="font-size:9px"></i> ${label}</span>`;
+  const label = overdue?'EXPIRED':'EXPIRING SOON';
+  const dateStr = st.deadline.toLocaleDateString('en-GB');
+  return `<span title="Deadline: ${dateStr}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:${bg};color:${color};margin-left:5px"><i class="ti ti-alert-triangle" style="font-size:9px"></i> ${label}</span>`;
 }
 // Shown only for a worker whose background PDF-generation/upload (right
 // after creation from a scan, or a manual "Загрузить"/rescan) actually
@@ -1269,7 +1269,7 @@ function expiryBadgeHtml(w){
 // using document storage).
 function docUploadFailedBadgeHtml(w){
   if(!w.docUploadFailed) return '';
-  return `<span title="Не удалось сохранить документ в ${DOC_STORE} — откройте карточку и пересканируйте" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px"><i class="ti ti-file-off" style="font-size:9px"></i> НЕТ ДОКУМЕНТА</span>`;
+  return `<span title="The document could not be saved to ${DOC_STORE} — open the card and scan again" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px"><i class="ti ti-file-off" style="font-size:9px"></i> NO DOCUMENT</span>`;
 }
 // ── Worker document completeness ────────────────────────────────────────────
 // One status per worker, used by the Workers list/cards badge, the cards'
@@ -2091,7 +2091,7 @@ async function rescanFromWorkerModal(){
     colorIdx:selColorIdx,sig:cv&&cv._sigDirty?cv.toDataURL('image/png'):null};
   warmCloudFunctions(SCAN_WARM_URLS());
   try{ await ensureScanPipelineLoaded(); }
-  catch(e){ window.__wDraft=null; showToast('Не удалось загрузить модуль скана — проверьте соединение'); return; }
+  catch(e){ window.__wDraft=null; showToast('Could not load the scan module — check the connection'); return; }
   const wid=editingWorkerIdx!==null?workers[editingWorkerIdx].id:null;
   const sameSession=(window.__aiScanPageThumbs||[]).length&&window.__aiScanImage&&(wid===null||window.__aiRescannedWorkerId===wid);
   window.__aiRescanWorkerId=wid;
@@ -3435,7 +3435,7 @@ function renderWorkersPage(){
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.hourlyRate?('₪'+w.hourlyRate+'/h'):'—'}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.startDate?fmtDMY(w.startDate):'—'}</td>
       <td style="padding:10px 12px;text-align:center" onclick="event.stopPropagation()"><div style="display:flex;gap:4px;justify-content:center">
-        ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" title="Скачать документ (PDF с ${DOC_STORE})" style="padding:3px 8px;font-size:11px"><i class="ti ti-download"></i></a>`:''}
+        ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" title="Download the document (PDF from ${DOC_STORE})" style="padding:3px 8px;font-size:11px"><i class="ti ti-download"></i></a>`:''}
         <button class="btn sm red" onclick="deleteWorker(${wi})" style="padding:3px 8px;font-size:11px"><i class="ti ti-x"></i></button>
       </div></td>
     </tr>`;
@@ -3470,13 +3470,13 @@ function openWorkerCard(wi){
       ${hasPermission('workers')?`<div class="status-pills" role="radiogroup" aria-label="Status">
         ${[['active','Active'],['vacation','Vacation'],['fired','Inactive']].map(([v,l])=>`<button type="button" data-st="${v}" class="${(w.status||'active')===v?'on':''}" onclick="setWorkerStatus(${wi},'${v}')" title="Set status: ${l}"><i></i>${l}</button>`).join('')}
       </div>`:''}
-      ${w.docSavedAt?`<span style="font-size:11px;color:var(--text3)">נשמר: ${esc(new Date(w.docSavedAt).toLocaleDateString('ru-RU'))}</span>`:''}
+      ${w.docSavedAt?`<span style="font-size:11px;color:var(--text3)">נשמר: ${esc(new Date(w.docSavedAt).toLocaleDateString('en-GB'))}</span>`:''}
     </div>`:''}
     <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text2);margin-bottom:14px">
       ${w.phone?`<div><i class="ti ti-phone"></i> ${esc(w.phone)}</div>`:''}
       ${w.hourlyRate?`<div><i class="ti ti-coin"></i> Base ₪${w.hourlyRate}/h${w.otRate!=null?' · OT ₪'+w.otRate+'/h':''}${w.shabbatRate!=null?' · Shabbat ₪'+w.shabbatRate+'/h':''}</div>`:''}
       ${w.startDate?`<div><i class="ti ti-calendar-event"></i> Started ${fmtDMY(w.startDate)}</div>`:''}
-      ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?'Срок истёк':'Срок приближается'} — ${expSt.deadline.toLocaleDateString('ru-RU')}</div>`:''}
+      ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?'Expired':'Expiring soon'} — ${expSt.deadline.toLocaleDateString('en-GB')}</div>`:''}
       ${workerDocId(w)?`<div><i class="ti ti-id"></i> ${esc(workerDocId(w))}</div>`:''}
       ${[[workerAddress(w),w.houseNumber].filter(Boolean).join(' '),w.city].filter(Boolean).length?`<div><i class="ti ti-map-pin"></i> ${esc([[workerAddress(w),w.houseNumber].filter(Boolean).join(' '),w.city].filter(Boolean).join(', '))}</div>`:''}
       ${w.incomeType&&INCOME_TYPE_LABELS[w.incomeType]?`<div><i class="ti ti-briefcase"></i> ${INCOME_TYPE_LABELS[w.incomeType]}</div>`:''}
@@ -3498,7 +3498,7 @@ function openWorkerCard(wi){
     ${workerDocsSectionHtml(w)}
     <div class="modal-actions">
       ${hasPermission('workers')?`<button class="btn sm" onclick="openWorkerDocUpload('${esc(w.id)}')"><i class="ti ti-upload"></i> Add document</button>`:''}
-      ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Скачать документ</a>`:''}
+      ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Download document</a>`:''}
       ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursImportModal('${w.id}')"><i class="ti ti-file-upload"></i> Upload hours</button>`:''}
       ${hasPermission('workers')&&hasPermission('exports')?`<button class="btn sm" onclick="openHoursExportModal('${w.id}')"><i class="ti ti-file-export"></i> Export hours</button>`:''}
     </div>`;
@@ -4280,7 +4280,9 @@ function gsAuthQuery(){
 // Firebase ID token: signed out, revoked after a rights change) clears the
 // session and returns to the login screen. A call slower than
 // SLOW_API_CALL_MS goes to the Timings pane as kind "gs:<action>".
-const SESSION_EXPIRED_ERROR = 'Сессия истекла или недействительна — войдите заново';
+const SESSION_EXPIRED_ERROR = 'Session expired or invalid — please sign in again';
+// The text before 2026-10-05, from functions not yet redeployed.
+const SESSION_EXPIRED_ERROR_OLD = 'Сессия истекла или недействительна — войдите заново';
 (function(){
   const _origFetch = window.fetch.bind(window);
   // Telemetry and login never trigger the session-expired logout.
@@ -4307,9 +4309,9 @@ const SESSION_EXPIRED_ERROR = 'Сессия истекла или недейст
     const meta = json && json._meta && typeof json._meta === 'object' ? json._meta : null;
     if(meta) delete json._meta;
     if(!quiet && ms >= SLOW_API_CALL_MS) try{ reportTiming('gs:' + action, ms, Object.assign({}, meta || {}, params.part ? {part: String(params.part)} : {})); }catch(e){}
-    if(!quiet && json && json.error === SESSION_EXPIRED_ERROR && getSession()){
+    if(!quiet && json && (json.error === SESSION_EXPIRED_ERROR || json.error === SESSION_EXPIRED_ERROR_OLD) && getSession()){
       clearSession();
-      showToast('Сессия истекла — войдите заново');
+      showToast('Session expired — please sign in again');
       setTimeout(() => location.reload(), 1200);
     }
     return jsonResponse(json);
@@ -4328,17 +4330,17 @@ async function submitLogin(){
   const errEl = document.getElementById('loginError');
   const btn = document.getElementById('loginBtn');
   errEl.textContent = '';
-  if(!username || !password){ errEl.textContent = 'Введите логин и пароль'; return; }
-  btn.disabled = true; btn.textContent = 'Вхожу…';
+  if(!username || !password){ errEl.textContent = 'Enter a username and password'; return; }
+  btn.disabled = true; btn.textContent = 'Signing in…';
   try{
     const t0 = Date.now();
     let backend;
     try{ backend = await loadFirestoreBackend(); }
-    catch(e){ errEl.textContent = 'Не удалось загрузить Firebase — проверьте сеть'; return; }
+    catch(e){ errEl.textContent = 'Could not load Firebase — check the network'; return; }
     let fb;
     try{ fb = await backend.login(username, password); }
-    catch(e){ errEl.textContent = 'Сеть недоступна — попробуйте ещё раз'; return; }
-    if(!fb || fb.error){ errEl.textContent = (fb && fb.error) || 'Не удалось войти'; return; }
+    catch(e){ errEl.textContent = 'No network — try again'; return; }
+    if(!fb || fb.error){ errEl.textContent = (fb && fb.error) || 'Could not sign in'; return; }
     try{ sessionStorage.setItem('pendingLoginTiming', JSON.stringify({t0, loginMs:Date.now()-t0, pingMs:window.__pingMs==null?null:window.__pingMs, pingDone:window.__pingMs!=null})); }catch(e){}
     saveSession({
       uid: fb.uid, role: fb.role, tenantId: fb.tenantId, username: fb.username, tenantProfile: fb.tenantProfile,
@@ -4347,7 +4349,7 @@ async function submitLogin(){
       viewingTenantId: fb.tenantId, // a super-admin (tenantId null) picks one on the Firms screen
     });
     location.reload();
-  }finally{ btn.disabled = false; btn.textContent = 'Войти'; }
+  }finally{ btn.disabled = false; btn.textContent = 'Sign in'; }
 }
 
 // A super-admin drilling into one firm's normal view — every subsequent API
@@ -4384,11 +4386,11 @@ function backToFirmsList(){
 // this profile complete" — used by the titlebar control, the Form 101 panel,
 // and the super-admin's Firms list.
 const FIRM_PROFILE_FIELDS = [
-  {key:'companyName',          label:'Название фирмы'},
+  {key:'companyName',          label:'Company name'},
   {key:'deductionsFileNumber', label:'מספר תיק ניכויים'},
-  {key:'phone',                label:'Телефон'},
-  {key:'street',               label:'Улица'},
-  {key:'city',                 label:'Город'},
+  {key:'phone',                label:'Phone'},
+  {key:'street',               label:'Street'},
+  {key:'city',                 label:'City'},
 ];
 function activeTenantProfile(){
   const s = getSession();
@@ -4406,7 +4408,7 @@ function firmProfileWarnInner(){
   if(!missing.length) return '';
   return `<div class="tap-edit" onclick="if(isPlainTap(event,this))openMyFirmForm()" style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;border:1px solid #ffb020;border-radius:var(--radius-sm);background:rgba(255,176,32,0.08);font-size:12px;line-height:1.5;color:var(--text2)">
     <i class="ti ti-alert-triangle" style="color:#ffb020;font-size:15px"></i>
-    <div style="flex:1;min-width:180px">Профиль фирмы неполный — в Форме 101 (раздел א «פרטי המעסיק») останутся пустыми: <b>${esc(missing.join(', '))}</b>.</div>
+    <div style="flex:1;min-width:180px">The firm profile is incomplete — these stay empty in Form 101 (section א «פרטי המעסיק»): <b>${esc(missing.join(', '))}</b>.</div>
   </div>`;
 }
 // Placeholder stays in the DOM even when the profile is complete, so saving
@@ -4537,17 +4539,17 @@ function saveFirmsCache(tenants){ try{ localStorage.setItem(FIRMS_CACHE_KEY, JSO
 function loadFirmsCache(){ try{ const v=JSON.parse(localStorage.getItem(FIRMS_CACHE_KEY)||'null'); return Array.isArray(v)?v:null; }catch(e){ return null; } }
 function renderFirmsRows(listEl, tenants){
   __firmsCache = tenants;
-  if(!tenants.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Фирм ещё нет — создайте первую.</div>'; return; }
+  if(!tenants.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">No firms yet — create the first one.</div>'; return; }
   renderPagedList(listEl, 'firms:' + listEl.id, '', tenants, t => `
       <div class="row" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);cursor:pointer;${t.active===false?'opacity:0.55':''}" onclick="switchToTenant('${esc(t.tenantId)}')">
         <div>
-          <div style="font-weight:600">${esc(t.companyName || '(без названия)')}${t.active===false?' <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px">отключена</span>':''}${firmProfileMissing(t).length?` <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px" title="Не заполнено: ${esc(firmProfileMissing(t).join(', '))}">профиль неполный</span>`:''}</div>
-          <div style="font-size:12px;color:var(--text2)">${t.workerCount||0} воркеров · ${t.clientCount||0} клиентов${t.savedAt?' · сохранено '+esc(new Date(t.savedAt).toLocaleString()):''}</div>
+          <div style="font-weight:600">${esc(t.companyName || '(no name)')}${t.active===false?' <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px">disabled</span>':''}${firmProfileMissing(t).length?` <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px" title="Not filled in: ${esc(firmProfileMissing(t).join(', '))}">profile incomplete</span>`:''}</div>
+          <div style="font-size:12px;color:var(--text2)">${t.workerCount||0} workers · ${t.clientCount||0} clients${t.savedAt?' · saved '+esc(new Date(t.savedAt).toLocaleString()):''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:4px" onclick="event.stopPropagation()">
-          <button class="btn sm" onclick="openEditFirmForm('${esc(t.tenantId)}')" title="Редактировать"><i class="ti ti-pencil"></i></button>
-          <button class="btn sm" onclick="toggleTenantActive('${esc(t.tenantId)}',${t.active===false})" title="${t.active===false?'Включить':'Отключить'}"><i class="ti ti-${t.active===false?'player-play':'player-pause'}"></i></button>
-          <button class="btn sm" onclick="confirmDeleteTenant('${esc(t.tenantId)}','${esc(t.companyName||t.tenantId)}')" title="Удалить" style="color:#ff6b78"><i class="ti ti-trash"></i></button>
+          <button class="btn sm" onclick="openEditFirmForm('${esc(t.tenantId)}')" title="Edit"><i class="ti ti-pencil"></i></button>
+          <button class="btn sm" onclick="toggleTenantActive('${esc(t.tenantId)}',${t.active===false})" title="${t.active===false?'Enable':'Disable'}"><i class="ti ti-${t.active===false?'player-play':'player-pause'}"></i></button>
+          <button class="btn sm" onclick="confirmDeleteTenant('${esc(t.tenantId)}','${esc(t.companyName||t.tenantId)}')" title="Delete" style="color:#ff6b78"><i class="ti ti-trash"></i></button>
           <i class="ti ti-chevron-right"></i>
         </div>
       </div>`);
@@ -4559,16 +4561,16 @@ async function renderFirmsList(targetId){
   const cached = loadFirmsCache();
   const isLanding = __firmsListTarget==='firmsList';
   if(cached){ renderFirmsRows(listEl, cached); if(isLanding) markFirstContent(); }
-  else listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
+  else listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Loading…</div>';
   try{
     const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'listTenants', ...gsAuth() }) });
     const json = await res.json();
-    if(!json || json.error){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Ошибка загрузки')+'</div>'; return; }
+    if(!json || json.error){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Load failed')+'</div>'; return; }
     const tenants = json.tenants || [];
     saveFirmsCache(tenants);
     renderFirmsRows(listEl, tenants);
     if(isLanding) markFreshContent('firms');
-  }catch(e){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
+  }catch(e){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">No network</div>'; }
 }
 
 // A firm owner's Firms pane: their own firm only — the fields Form 101
@@ -4581,8 +4583,8 @@ async function renderOwnFirmCard(listEl){
     const addr = [[p.street, p.streetNumber].filter(Boolean).join(' '), p.city].filter(Boolean).join(', ');
     const row = (k, v) => `<div style="display:flex;gap:8px;font-size:13px"><span style="color:var(--text3);min-width:130px">${k}</span><span>${v ? esc(v) : '<span style="color:#ffb020">—</span>'}</span></div>`;
     listEl.innerHTML = `<div class="tap-edit" onclick="if(isPlainTap(event,this))openMyFirmForm()" style="padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:6px">
-      ${row('Название фирмы', p.companyName)}${row('מספר תיק ניכויים', p.deductionsFileNumber)}${row('Телефон', p.phone)}${row('Адрес', addr)}
-      ${missing.length ? `<div style="font-size:12px;color:#ffb020"><i class="ti ti-alert-triangle"></i> В Форме 101 останутся пустыми: ${esc(missing.join(', '))}</div>` : `<div style="font-size:12px;color:var(--green)"><i class="ti ti-check"></i> Всё, что нужно для Формы 101, заполнено</div>`}
+      ${row('Company name', p.companyName)}${row('מספר תיק ניכויים', p.deductionsFileNumber)}${row('Phone', p.phone)}${row('Address', addr)}
+      ${missing.length ? `<div style="font-size:12px;color:#ffb020"><i class="ti ti-alert-triangle"></i> Empty in Form 101: ${esc(missing.join(', '))}</div>` : `<div style="font-size:12px;color:var(--green)"><i class="ti ti-check"></i> Everything Form 101 needs is filled in</div>`}
     </div>`;
   };
   draw(activeTenantProfile());
@@ -5156,26 +5158,26 @@ async function loadErrorsList(targetId){
   const cacheKey = 'errors' + (pr ? ':' + pr.key : '');
   const cached = loadAdminCache(cacheKey);
   if(Array.isArray(cached)) renderErrorsRows(listEl, targetId, cached);
-  else listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Загружаю…</div>';
+  else listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Loading…</div>';
   try{
     const res = await fetch(API_URL + '?action=loadErrors' + gsAuthQuery() + (pr ? logPeriodQuery(pr) : ''));
     const json = await res.json();
-    if(!json || json.error){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Ошибка загрузки')+'</div>'; return; }
+    if(!json || json.error){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Load failed')+'</div>'; return; }
     const rows = json.rows || [];
     saveAdminCache(cacheKey, rows);
     renderErrorsRows(listEl, targetId, rows);
-  }catch(e){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">Сеть недоступна</div>'; }
+  }catch(e){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">No network</div>'; }
 }
 // Draws the Errors list from rows (cached or fresh): one bordered box, a
 // compact row per error (time · page · source, then the message), paged by 10.
 function renderErrorsRows(listEl, targetId, rows){
     __errorsRowsByTarget[targetId] = rows;
     const pr = __errorsPeriod[targetId];
-    if(!rows.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">Ошибок нет'+(pr?' — '+esc(pr.label):'')+'.</div>'; return; }
+    if(!rows.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">No errors'+(pr?' — '+esc(pr.label):'')+'.</div>'; return; }
     listEl.innerHTML = `<div style="font-size:12px;color:var(--text2);margin-bottom:6px">${rows.length} error${rows.length===1?'':'s'}${pr?' · '+esc(pr.label):''}</div><div class="log-box errors-rows"></div>`;
     renderPagedList(listEl.querySelector('.errors-rows'), 'errors:' + targetId, pr ? pr.key : '', rows, (r,i) => `
       <div class="log-row">
-        <button class="btn sm log-copy" title="Копировать ошибку" onclick="copyErrorRow('${targetId}',${i})"><i class="ti ti-copy"></i></button>
+        <button class="btn sm log-copy" title="Copy error" onclick="copyErrorRow('${targetId}',${i})"><i class="ti ti-copy"></i></button>
         <div class="log-meta"><span class="log-when">${esc(_shortWhen(r.when))}</span>${r.page?`<span>${esc(r.page)}</span>`:''}${r.source?`<span style="font-weight:600">${esc(r.source)}</span>`:''}${r.user||r.worker?`<span>${esc(r.user||r.worker)}</span>`:''}</div>
         <div class="log-main" style="word-break:break-word">${esc(r.message||'')}</div>
       </div>`);
@@ -5320,7 +5322,7 @@ async function copyErrorRow(targetId, idx){
 async function copyTextToClipboard(text){
   try{
     await navigator.clipboard.writeText(text);
-    showToast('Скопировано');
+    showToast('Copied');
   }catch(e){
     // Fallback for contexts where the async Clipboard API is unavailable/denied.
     try{
@@ -5329,8 +5331,8 @@ async function copyTextToClipboard(text){
       document.body.appendChild(ta); ta.select();
       document.execCommand('copy');
       document.body.removeChild(ta);
-      showToast('Скопировано');
-    }catch(e2){ showToast('Не удалось скопировать'); }
+      showToast('Copied');
+    }catch(e2){ showToast('Could not copy'); }
   }
 }
 
@@ -5340,10 +5342,10 @@ async function toggleTenantActive(tenantId, nextActive){
   try{
     const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'setTenantActive', ...gsAuth(), tenantId, active: nextActive }) });
     const json = await res.json();
-    if(!json || json.error){ showToast((json&&json.error)||'Ошибка'); return; }
-    showToast(nextActive ? 'Фирма включена' : 'Фирма отключена');
+    if(!json || json.error){ showToast((json&&json.error)||'Error'); return; }
+    showToast(nextActive ? 'Firm enabled' : 'Firm disabled');
     renderFirmsList(__firmsListTarget);
-  }catch(e){ showToast('Сеть недоступна'); }
+  }catch(e){ showToast('No network'); }
 }
 
 // Irreversible: deletes the firm's profile, logins, schedule, punch history,
@@ -5351,16 +5353,16 @@ async function toggleTenantActive(tenantId, nextActive){
 // confirm(), then typing the exact company name) — matches the weight of
 // what's being destroyed, not just a single accidental click.
 async function confirmDeleteTenant(tenantId, companyName){
-  if(!confirm('Удалить фирму «'+companyName+'» БЕЗВОЗВРАТНО? Будут удалены расписание, история пуанчей, файлы работников и логины этой фирмы.')) return;
-  const typed = prompt('Чтобы подтвердить, введите точное название фирмы: '+companyName);
-  if(typed !== companyName){ showToast('Название не совпало — отменено'); return; }
+  if(!confirm('Delete the firm «'+companyName+'» PERMANENTLY? Its schedule, punch history, worker files and logins will be deleted.')) return;
+  const typed = prompt('To confirm, type the exact firm name: '+companyName);
+  if(typed !== companyName){ showToast('The name didn\'t match — cancelled'); return; }
   try{
     const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'deleteTenant', ...gsAuth(), tenantId }) });
     const json = await res.json();
-    if(!json || json.error){ showToast((json&&json.error)||'Ошибка'); return; }
-    showToast('Фирма «'+companyName+'» удалена');
+    if(!json || json.error){ showToast((json&&json.error)||'Error'); return; }
+    showToast('Firm «'+companyName+'» deleted');
     renderFirmsList(__firmsListTarget);
-  }catch(e){ showToast('Сеть недоступна'); }
+  }catch(e){ showToast('No network'); }
 }
 
 let __editingFirmTenantId = null;
@@ -5384,7 +5386,7 @@ function fillFirmEditForm(p){
 function openCreateFirmForm(){
   __editingFirmTenantId = null;
   __firmFormMode = 'create';
-  document.getElementById('firmEditTitle').textContent = 'Новая фирма';
+  document.getElementById('firmEditTitle').textContent = 'New firm';
   fillFirmEditForm({});
   document.getElementById('firmEditUsername').value = '';
   document.getElementById('firmEditPassword').value = '';
@@ -5392,21 +5394,21 @@ function openCreateFirmForm(){
   document.getElementById('firmEditOwnerNameField').style.display = '';
   document.getElementById('firmEditUsernameField').style.display = '';
   document.getElementById('firmEditPasswordField').style.display = '';
-  document.getElementById('editFirmBtn').textContent = 'Создать';
+  document.getElementById('editFirmBtn').textContent = 'Create';
   document.getElementById('firmEditFormError').textContent = '';
   document.getElementById('editFirmOverlay').classList.add('open');
 }
 function openEditFirmForm(tenantId){
   const t = __firmsCache.find(x => x.tenantId === tenantId);
-  if(!t){ showToast('Фирма не найдена'); return; }
+  if(!t){ showToast('Firm not found'); return; }
   __editingFirmTenantId = tenantId;
   __firmFormMode = 'edit';
-  document.getElementById('firmEditTitle').textContent = 'Редактировать фирму';
+  document.getElementById('firmEditTitle').textContent = 'Edit firm';
   fillFirmEditForm(t);
   document.getElementById('firmEditUsernameField').style.display = 'none';
   document.getElementById('firmEditOwnerNameField').style.display = 'none';
   document.getElementById('firmEditPasswordField').style.display = 'none';
-  document.getElementById('editFirmBtn').textContent = 'Сохранить';
+  document.getElementById('editFirmBtn').textContent = 'Save';
   document.getElementById('firmEditFormError').textContent = '';
   document.getElementById('editFirmOverlay').classList.add('open');
 }
@@ -5420,15 +5422,15 @@ async function openMyFirmForm(){
   const s = getSession();
   if(!s) return;
   const tenantId = s.viewingTenantId || s.tenantId;
-  if(!tenantId){ showToast('Фирма не выбрана'); return; }
+  if(!tenantId){ showToast('No firm selected'); return; }
   __editingFirmTenantId = tenantId;
   __firmFormMode = 'edit';
-  document.getElementById('firmEditTitle').textContent = 'Данные фирмы';
+  document.getElementById('firmEditTitle').textContent = 'Firm details';
   fillFirmEditForm(activeTenantProfile() || {});
   document.getElementById('firmEditUsernameField').style.display = 'none';
   document.getElementById('firmEditOwnerNameField').style.display = 'none';
   document.getElementById('firmEditPasswordField').style.display = 'none';
-  document.getElementById('editFirmBtn').textContent = 'Сохранить';
+  document.getElementById('editFirmBtn').textContent = 'Save';
   document.getElementById('firmEditFormError').textContent = '';
   document.getElementById('editFirmOverlay').classList.add('open');
   try{
@@ -5455,23 +5457,23 @@ async function submitEditFirm(){
   };
   if(__firmFormMode === 'create'){
     const username = get('firmEditUsername'), password = document.getElementById('firmEditPassword').value;
-    if(!username || !password){ errEl.textContent = 'Логин и пароль обязательны'; return; }
-    btn.disabled = true; btn.textContent = 'Создаю…';
+    if(!username || !password){ errEl.textContent = 'Username and password are required'; return; }
+    btn.disabled = true; btn.textContent = 'Creating…';
     try{
       const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({
         action:'createUser', ...gsAuth(), username, password, ownerName: get('firmEditOwnerName'), ...profileFields,
       })});
       const json = await res.json();
-      if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось создать фирму'; return; }
+      if(!json || json.error){ errEl.textContent = (json && json.error) || 'Could not create the firm'; return; }
       closeModal('editFirmOverlay');
-      showToast('Фирма создана');
+      showToast('Firm created');
       renderFirmsList(__firmsListTarget);
-    }catch(e){ errEl.textContent = 'Сеть недоступна'; }
-    finally{ btn.disabled = false; btn.textContent = 'Создать'; }
+    }catch(e){ errEl.textContent = 'No network'; }
+    finally{ btn.disabled = false; btn.textContent = 'Create'; }
     return;
   }
-  if(!__editingFirmTenantId){ errEl.textContent = 'Фирма не выбрана'; return; }
-  btn.disabled = true; btn.textContent = 'Сохраняю…';
+  if(!__editingFirmTenantId){ errEl.textContent = 'No firm selected'; return; }
+  btn.disabled = true; btn.textContent = 'Saving…';
   try{
     const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({
       action:'updateTenant', ...gsAuth(),
@@ -5479,9 +5481,9 @@ async function submitEditFirm(){
       ...profileFields,
     })});
     const json = await res.json();
-    if(!json || json.error){ errEl.textContent = (json && json.error) || 'Не удалось сохранить'; return; }
+    if(!json || json.error){ errEl.textContent = (json && json.error) || 'Could not save'; return; }
     closeModal('editFirmOverlay');
-    showToast('Данные фирмы сохранены');
+    showToast('Firm details saved');
     cacheTenantProfile(__editingFirmTenantId, json.profile);
     refreshFirmProfileWarnings();
     // Only the super-admin has a Firms list to refresh (and the right to ask
@@ -5501,10 +5503,10 @@ async function submitEditFirm(){
       // here, so their Form 101s are rebuilt the next time this device opens
       // that firm (checked in maybeRegenAfterFirmEdit()).
       try{ localStorage.setItem('form101Regen:'+__editingFirmTenantId,'1'); }catch(e){}
-      showToast('Сохранено. Формы 101 работников этой фирмы обновятся, когда вы её откроете', 5000);
+      showToast('Saved. The Form 101s of this firm\'s workers update when you open it', 5000);
     }
-  }catch(e){ errEl.textContent = 'Сеть недоступна'; }
-  finally{ btn.disabled = false; btn.textContent = 'Сохранить'; }
+  }catch(e){ errEl.textContent = 'No network'; }
+  finally{ btn.disabled = false; btn.textContent = 'Save'; }
 }
 
 // Optimistic concurrency: the savedAt value we last loaded from the DB.
@@ -5694,7 +5696,7 @@ function autoSave(){
   if((!workers||!workers.length) && (!clients||!clients.length)){
     let hadData=false;
     try{ const prev=JSON.parse(localStorage.getItem(STORAGE_KEY())||'{}'); hadData=(prev.workers&&prev.workers.length)||(prev.clients&&prev.clients.length); }catch(e){}
-    if(hadData){ console.warn('Empty state but cache has data — skipping save'); setSaveStatus('saved'); showToast('\u26a0 Пустые данные — сохранение пропущено'); return; }
+    if(hadData){ console.warn('Empty state but cache has data — skipping save'); setSaveStatus('saved'); showToast('\u26a0 Empty data — save skipped'); return; }
   }
   setSaveStatus('saving');
   clearTimeout(saveTimer);
@@ -5777,10 +5779,10 @@ function retryLoadDataWhenBack(){
 
 function timeSince(date){
   const s=Math.floor((new Date()-date)/1000);
-  if(s<60) return s+'с назад';
-  if(s<3600) return Math.floor(s/60)+'м назад';
-  if(s<86400) return Math.floor(s/3600)+'ч назад';
-  return Math.floor(s/86400)+'д назад';
+  if(s<60) return s+'s ago';
+  if(s<3600) return Math.floor(s/60)+'m ago';
+  if(s<86400) return Math.floor(s/3600)+'h ago';
+  return Math.floor(s/86400)+'d ago';
 }
 
 // Manual export/import for backup
@@ -5790,7 +5792,7 @@ function exportDataBackup(){
   const a=document.createElement('a');
   a.href=url; a.download='schedule-backup-'+new Date().toISOString().slice(0,10)+'.json';
   a.click(); URL.revokeObjectURL(url);
-  showToast('Резервная копия скачана');
+  showToast('Backup downloaded');
 }
 
 function importDataBackup(){
@@ -5803,8 +5805,8 @@ function importDataBackup(){
       applyData(d);
       render();
       autoSave();
-      showToast('Данные загружены из файла!');
-    }catch(err){ showToast('Ошибка загрузки файла'); }
+      showToast('Data loaded from the file!');
+    }catch(err){ showToast('Could not load the file'); }
   };
   input.click();
 }
@@ -5892,7 +5894,7 @@ function renderDashboard(){
   // work permit, contract file — workerDocExpiries()), one card each.
   const expiring = [
     ...workers.map(w=>({w, st:workerExpiryStatus(w)})).filter(x=>x.st)
-      .map(({w,st})=>({w, overdue:st.level==='overdue', label:st.level==='overdue'?'Срок истёк':'Срок приближается', date:st.deadline})),
+      .map(({w,st})=>({w, overdue:st.level==='overdue', label:st.level==='overdue'?'Expired':'Expiring soon', date:st.deadline})),
     ...workers.flatMap(w=>workerDocExpiries(w).map(x=>({w, overdue:x.level==='error',
       label:(WORKER_DOC_TYPES[x.doc.type]||'Document')+(x.level==='error'?' expired':' expires'), date:x.date}))),
   ];
@@ -7407,7 +7409,7 @@ function warmCloudFunctions(urls){
 async function startNewScan(){
   warmCloudFunctions(SCAN_WARM_URLS());
   try{ await ensureScanPipelineLoaded(); }
-  catch(e){ showToast('Не удалось загрузить модуль скана — проверьте соединение'); return; }
+  catch(e){ showToast('Could not load the scan module — check the connection'); return; }
   window.__aiRescanWorkerId=null;
   window.__wDraft=null;
   openAiScan();
@@ -7420,7 +7422,7 @@ async function startNewScan(){
 async function rescanWorkerDoc(workerId){
   warmCloudFunctions(SCAN_WARM_URLS());
   try{ await ensureScanPipelineLoaded(); }
-  catch(e){ showToast('Не удалось загрузить модуль скана — проверьте соединение'); return; }
+  catch(e){ showToast('Could not load the scan module — check the connection'); return; }
   window.__aiRescanWorkerId=workerId;
   window.__wDraft=null;
   openAiScan();
@@ -7519,7 +7521,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
   // saveWorker(), where that panel isn't on screen.
   let firmMissing=[];
   try{
-    if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader-2 spin"></i> '+(mode==='upload'?'Загружаю…':'Готовлю…'); }
+    if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader-2 spin"></i> '+(mode==='upload'?'Uploading…':'Preparing…'); }
 
     // PDF construction itself (field placement, RTL Hebrew rendering, comb
     // fields, checkboxes, employer block, children table, signature/scan
@@ -7638,7 +7640,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     const f101t0=Date.now();
     const fnResp=await fetch(FORM101_FN_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const fnJson=await fnResp.json();
-    if(!fnResp.ok||fnJson.error) throw new Error(fnJson.error||'Не удалось построить PDF');
+    if(!fnResp.ok||fnJson.error) throw new Error(fnJson.error||'Could not build the PDF');
     // Admin → Timings, kind "form101": what each generated form carried —
     // flags and counts only, no personal data — so a section missing from a
     // real PDF can be traced to the record or to the PDF build.
@@ -7716,7 +7718,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
         (loaded,total)=>{ assetsLoaded=loaded; assetsTotal=total; reportUploadProgress(); }
       ).catch(()=>null):Promise.resolve(null);
       const [json,assetsJson]=await Promise.all([docPromise,assetsPromise]);
-      if(!json||json.error) throw new Error((json&&json.error)||'Сервер не ответил');
+      if(!json||json.error) throw new Error((json&&json.error)||'The server did not answer');
       if(showBlockingProgress) renderWorkerUploadProgress('הועלה בהצלחה',100);
       if(w){
         w.docUrl=json.url; w.docSavedAt=new Date().toISOString(); w.docFileId=json.id;
@@ -7727,9 +7729,9 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
         w.docHasSignature=!!sigPng;
         w.docExtraPages=Array.isArray(otherPagesToUse)?otherPagesToUse.length:0;
         render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
-        showToast('Документы '+(w.name||'')+' сохранены в '+DOC_STORE);
+        showToast('Documents of '+(w.name||'')+' saved to '+DOC_STORE);
         window.__aiRescanWorkerId=null;
-      } else showToast('Файл сохранён в '+DOC_STORE);
+      } else showToast('File saved to '+DOC_STORE);
     } else {
       const blob=new Blob([out],{type:'application/pdf'});
       const url=URL.createObjectURL(blob);
@@ -7737,14 +7739,14 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
       a.download=fileName;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(()=>URL.revokeObjectURL(url),3000);
-      showToast('Форма 101 скачана');
+      showToast('Form 101 downloaded');
     }
     // After the success toast's own 2.5s, so the two don't overwrite each other.
-    if(firmMissing.length) setTimeout(()=>showToast('⚠ Профиль фирмы неполный — в Форме 101 пусто: '+firmMissing.join(', '),4000),2600);
+    if(firmMissing.length) setTimeout(()=>showToast('⚠ The firm profile is incomplete — empty in Form 101: '+firmMissing.join(', '),4000),2600);
     return true;
   }catch(err){
     console.error(err);
-    showToast('Не удалось: '+(err&&err.message||''));
+    showToast('Failed: '+(err&&err.message||''));
     // Flag it on the worker (if one's resolved) so the "no document" badge
     // in the workers list/card catches a silent background failure — the
     // toast alone is easy to miss, especially on mobile where a flaky
@@ -7830,8 +7832,8 @@ async function regenerateAllWorkerDocs(){
     done++; if(!ok) failed++;
   }
   showToast(failed
-    ? ('Документы обновлены: '+(done-failed)+'/'+done+' (есть ошибки, см. пометки у сотрудников)')
-    : ('Документы всех сотрудников обновлены ('+done+')'));
+    ? ('Documents updated: '+(done-failed)+'/'+done+' (some failed — see the marks on the workers)')
+    : ('Documents of all workers updated ('+done+')'));
 }
 
 // ===== Form 101: fill the fillable template from AI-scanned document data =====
@@ -7980,10 +7982,10 @@ try{
   });
 }catch(err){
   console.error('Init failed:', err);
-  try{ showToast('Ошибка инициализации — обновите страницу (F5)'); }catch(e){}
+  try{ showToast('Startup error — reload the page (F5)'); }catch(e){}
 }
 document.addEventListener('keydown',e=>{
-  if((e.ctrlKey||e.metaKey)&&e.key==='s'){ e.preventDefault(); autoSave(); showToast('Сохранено!'); }
+  if((e.ctrlKey||e.metaKey)&&e.key==='s'){ e.preventDefault(); autoSave(); showToast('Saved!'); }
 });
 
 
@@ -8092,7 +8094,7 @@ function ensureInstallButton(){
       _installPrompt=null;
     } else {
       const ios=/iphone|ipad|ipod/i.test(navigator.userAgent);
-      showToast(ios ? 'Safari: Поделиться → «На экран «Домой»' : 'Меню браузера (⋮) → «Установить приложение»');
+      showToast(ios ? 'Safari: Share → «Add to Home Screen»' : 'Browser menu (⋮) → «Install app»');
     }
   };
   host.prepend(btn);

@@ -125,12 +125,12 @@ def test_refusal_reasons_are_reported():
 
 def test_unknown_user_and_empty_fields():
     assert core.login(DB, "nobody", "whatever-1", mint)["error"] == core.E_BAD_LOGIN
-    assert core.login(DB, "", "", mint)["error"] == "Введите логин и пароль"
+    assert core.login(DB, "", "", mint)["error"] == "Enter a username and password"
 
 
 def test_inactive_user_is_refused():
     DB.collection("users").document("u-staff1").update({"active": False})
-    assert core.login(DB, "staff1", "staff-pass-1", mint)["error"] == "Аккаунт отключён"
+    assert core.login(DB, "staff1", "staff-pass-1", mint)["error"] == "Account disabled"
 
 
 def test_lockout_after_five_wrong_passwords():
@@ -138,7 +138,7 @@ def test_lockout_after_five_wrong_passwords():
     for i in range(5):
         assert core.login(DB, "staff1", "wrong-pass", mint, now=t + i)["error"] == core.E_BAD_LOGIN
     locked = core.login(DB, "staff1", "staff-pass-1", mint, now=t + 10)
-    assert "Слишком много" in locked["error"]
+    assert "Too many" in locked["error"]
     # After the window passes the right password works and resets the counter.
     ok = core.login(DB, "staff1", "staff-pass-1", mint, now=t + 4 + core.LOCK_SECONDS + 1)
     assert ok["ok"]
@@ -183,9 +183,9 @@ def test_create_tenant_user():
     assert id_token_claims(core.login(DB, "new.staff", "new-pass-1", mint)["token"])["perms"] == ["accounting"]
 
     assert core.create_tenant_user(DB, ADMIN1, {"role": "staff", "username": "new.staff", "password": "other-pass-1"})["error"] == core.E_TAKEN
-    assert core.create_tenant_user(DB, ADMIN1, {"role": "tenant_admin", "username": "x1", "password": "xxxxxxxx1"})["error"].startswith("Роль")
+    assert core.create_tenant_user(DB, ADMIN1, {"role": "tenant_admin", "username": "x1", "password": "xxxxxxxx1"})["error"].startswith("The role")
     assert core.create_tenant_user(DB, ADMIN1, {"role": "staff", "username": "x2", "password": "short"})["error"] == core.E_SHORT_PW
-    assert "поставщика" in core.create_tenant_user(DB, ADMIN1, {"role": "supplier", "username": "x3", "password": "xxxxxxxx1"})["error"]
+    assert "supplier" in core.create_tenant_user(DB, ADMIN1, {"role": "supplier", "username": "x3", "password": "xxxxxxxx1"})["error"]
     assert core.create_tenant_user(DB, STAFF1, {"role": "staff", "username": "x4", "password": "xxxxxxxx1"})["error"] == core.E_NO_RIGHTS
     # A superadmin may target any firm.
     r2 = core.create_tenant_user(DB, SUPER, {"role": "supplier", "username": "sup2", "password": "sup-pass-22",
@@ -200,7 +200,7 @@ def test_update_user_and_revoke():
     u = DB.collection("users").document("u-staff1").get().to_dict()
     assert u["permissions"] == ["schedule"] and u["active"] is False
     assert rv == [("u-staff1", False)]
-    assert "своей фирмы" in core.update_user(DB, ADMIN2, {"id": "u-staff1", "active": True}, rv)["error"]
+    assert "your own firm" in core.update_user(DB, ADMIN2, {"id": "u-staff1", "active": True}, rv)["error"]
     assert core.update_user(DB, ADMIN1, {"id": "u-admin1", "active": False}, rv)["error"] == core.E_ADMIN_TARGET
     assert core.update_user(DB, ADMIN1, {"id": "missing", "active": True}, rv)["error"] == core.E_NOT_FOUND
     assert len(rv) == 1
@@ -218,8 +218,8 @@ def test_reset_password():
 
 def test_delete_user_frees_the_username():
     rv = Revokes()
-    assert "удалить" in core.delete_user(DB, ADMIN1, {"id": "u-admin1"}, rv)["error"]
-    assert "удалять" in core.delete_user(DB, ADMIN2, {"id": "u-staff1"}, rv)["error"]
+    assert "deleted" in core.delete_user(DB, ADMIN1, {"id": "u-admin1"}, rv)["error"]
+    assert "delete only" in core.delete_user(DB, ADMIN2, {"id": "u-staff1"}, rv)["error"]
     assert core.delete_user(DB, ADMIN1, {"id": "u-staff1"}, rv)["ok"]
     assert rv == [("u-staff1", True)]
     assert not DB.collection("authSecrets").document("u-staff1").get().exists
@@ -228,7 +228,7 @@ def test_delete_user_frees_the_username():
 
 
 def test_create_firm():
-    assert "супер-админ" in core.create_firm(DB, ADMIN1, {"username": "f1", "password": "firm-pass-1"})["error"]
+    assert "super-admin" in core.create_firm(DB, ADMIN1, {"username": "f1", "password": "firm-pass-1"})["error"]
     r = core.create_firm(DB, SUPER, {"username": "Firm3", "password": "firm-pass-3", "companyName": "Firm Three",
                                      "phone": "0521112233", "deductionsFileNumber": "009876543"})
     assert r["ok"]
@@ -300,7 +300,7 @@ def test_list_tenants():
     assert one["companyName"] == "Firm One" and one["phone"] == "0501234567" and one["workerCount"] == 2
     assert one["clientCount"] == 0 and one["savedAt"] == "S1" and one["active"] is True
     assert next(t for t in r["tenants"] if t["tenantId"] == T2)["active"] is False
-    assert core.list_tenants(DB, ADMIN1)["error"] == "Только супер-админ"
+    assert core.list_tenants(DB, ADMIN1)["error"] == "Super-admin only"
 
 
 def test_set_tenant_active():
@@ -308,7 +308,7 @@ def test_set_tenant_active():
     assert core.set_tenant_active(DB, ADMIN1, {"tenantId": T1, "active": False}, rv)["error"]
     r = core.set_tenant_active(DB, SUPER, {"tenantId": T1, "active": False}, rv)
     assert r == {"ok": True, "updated": 3, "active": False}
-    assert core.login(DB, "owner1", "owner-pass-1", mint)["error"] == "Аккаунт отключён"
+    assert core.login(DB, "owner1", "owner-pass-1", mint)["error"] == "Account disabled"
     assert DB.collection("tenants").document(T1).get().get("active") is False
     assert len(rv) == 3
     core.set_tenant_active(DB, SUPER, {"tenantId": T1, "active": True}, rv)
@@ -333,7 +333,7 @@ def test_update_and_load_tenant_profile():
     assert r["ok"] and r["profile"]["companyName"] == "Firm 1b" and r["profile"]["tenantId"] == T1
     assert DB.collection("tenants").document(T1).get().get("deductionsFileNumber") == "012345678"   # untouched
     assert core.update_tenant(DB, STAFF1, {"companyName": "x"})["error"]
-    assert core.update_tenant(DB, SUPER, {"tenantId": "missing", "city": "x"})["error"] == "Фирма не найдена"
+    assert core.update_tenant(DB, SUPER, {"tenantId": "missing", "city": "x"})["error"] == "Firm not found"
     assert core.update_tenant(DB, dict(SUPER, tenantId=T1), {"city": "Haifa"})["profile"]["city"] == "Haifa"
     assert core.load_tenant_profile(DB, STAFF1, {})["profile"]["phone"] == "0509999999"
     assert core.load_tenant_profile(DB, SUPER, {})["profile"] is None
@@ -372,7 +372,7 @@ def test_http_superadmin_acts_on_the_viewed_firm():
 
 def test_hr_user_create_login_update():
     rv = Revokes()
-    assert "имя" in core.create_tenant_user(DB, ADMIN1, {"role": "hr", "username": "hr1", "password": "hr-pass-11"})["error"]
+    assert "name" in core.create_tenant_user(DB, ADMIN1, {"role": "hr", "username": "hr1", "password": "hr-pass-11"})["error"]
     r = core.create_tenant_user(DB, ADMIN1, {"role": "hr", "username": "HR1", "password": "hr-pass-11",
                                              "fullName": " Dana Levi ", "phone": "050-1112233"})
     assert r["ok"]
@@ -389,7 +389,7 @@ def test_hr_user_create_login_update():
     assert row["fullName"] == "Dana Levi" and row["phone"] == "050-1112233" and row["ownOnly"] is True
     # Name / phone change needs no new sign-in; rights do.
     assert core.update_user(DB, ADMIN1, {"id": r["userId"], "fullName": "Dana L.", "phone": "1"}, rv)["ok"] and rv == []
-    assert "имя" in core.update_user(DB, ADMIN1, {"id": r["userId"], "fullName": " "}, rv)["error"]
+    assert "name" in core.update_user(DB, ADMIN1, {"id": r["userId"], "fullName": " "}, rv)["error"]
     assert core.update_user(DB, ADMIN1, {"id": r["userId"], "ownOnly": False, "permissions": ["workers", "accounting"]}, rv)["ok"]
     assert rv == [(r["userId"], False)]
     claims = id_token_claims(core.login(DB, "hr1", "hr-pass-11", mint)["token"])
@@ -458,12 +458,12 @@ def test_update_user_revokes_only_on_a_real_rights_change():
 
 def test_update_user_changes_role_between_staff_hr_supplier():
     rv = Revokes()
-    assert "имя" in core.update_user(DB, ADMIN1, {"id": "u-staff1", "role": "hr", "fullName": ""}, rv)["error"]
+    assert "name" in core.update_user(DB, ADMIN1, {"id": "u-staff1", "role": "hr", "fullName": ""}, rv)["error"]
     assert core.update_user(DB, ADMIN1, {"id": "u-staff1", "role": "hr", "fullName": "Dana HR", "permissions": ["workers"]}, rv)["ok"]
     d = DB.collection("users").document("u-staff1").get().to_dict()
     assert d["role"] == "hr" and d["ownOnly"] is True and d["permissions"] == ["workers"] and rv == [("u-staff1", False)]
     assert core.login(DB, "staff1", "staff-pass-1", mint)["role"] == "hr"
-    assert "поставщика" in core.update_user(DB, ADMIN1, {"id": "u-staff1", "role": "supplier"}, rv)["error"]
+    assert "supplier" in core.update_user(DB, ADMIN1, {"id": "u-staff1", "role": "supplier"}, rv)["error"]
     assert core.update_user(DB, ADMIN1, {"id": "u-staff1", "role": "supplier", "supplierId": "s-9"}, rv)["ok"]
     d = DB.collection("users").document("u-staff1").get().to_dict()
     assert d["role"] == "supplier" and d["supplierId"] == "s-9" and d["permissions"] == ""

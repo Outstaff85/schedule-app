@@ -48,11 +48,11 @@ LOCK_SECONDS = 5 * 60
 
 SCRYPT_N, SCRYPT_R, SCRYPT_P = 2 ** 14, 8, 1
 
-E_BAD_LOGIN = "Неверный логин или пароль"
-E_NO_RIGHTS = "Недостаточно прав"
-E_SHORT_PW = "Пароль должен быть не короче 8 символов"
-E_TAKEN = "Такой логин уже существует"
-E_NOT_FOUND = "Пользователь не найден"
+E_BAD_LOGIN = "Wrong username or password"
+E_NO_RIGHTS = "Not enough rights"
+E_SHORT_PW = "The password must be at least 8 characters"
+E_TAKEN = "This username is already taken"
+E_NOT_FOUND = "User not found"
 
 
 def _now_iso():
@@ -142,7 +142,7 @@ def login(db, username, password, mint_token, now=None, on_refused=None):
     username = _norm_username(username)
     password = str(password or "")
     if not username or not password:
-        return {"error": "Введите логин и пароль"}
+        return {"error": "Enter a username and password"}
 
     name_doc = db.collection("usernames").document(username).get()
     if not name_doc.exists:
@@ -157,13 +157,13 @@ def login(db, username, password, mint_token, now=None, on_refused=None):
     secret = secret_snap.to_dict()
 
     if user.get("active") is False:
-        return refused("account inactive", "Аккаунт отключён")
+        return refused("account inactive", "Account disabled")
 
     fails = int(secret.get("failCount") or 0)
     last_fail = float(secret.get("lastFailAt") or 0)
     if fails >= LOCK_AFTER_FAILS and now - last_fail < LOCK_SECONDS:
         wait_min = max(1, int((LOCK_SECONDS - (now - last_fail) + 59) // 60))
-        return refused("locked after wrong passwords", f"Слишком много неверных попыток — подождите {wait_min} мин.")
+        return refused("locked after wrong passwords", f"Too many wrong attempts — wait {wait_min} min.")
 
     if not verify_password(password, secret):
         # The counter restarts once the lock window has passed.
@@ -236,7 +236,7 @@ def _new_user_batch(db, username, user, password):
     return uid, None
 
 
-def _load_target(db, caller, uid, other_firm="Можно редактировать только пользователей своей фирмы"):
+def _load_target(db, caller, uid, other_firm="You can edit only users of your own firm"):
     """Returns (ref, data, error) for a user the caller may manage."""
     if not uid:
         return None, None, E_NOT_FOUND
@@ -282,7 +282,7 @@ def update_my_name(db, caller, body):
         return {"error": E_NOT_FOUND}
     name = str(body.get("fullName") or "").strip()[:80]
     if not name and caller.get("role") == "hr":
-        return {"error": "Для роли HR нужно указать имя"}
+        return {"error": "An HR login needs a name"}
     ref.update({"fullName": name})
     return {"ok": True, "fullName": name}
 
@@ -290,11 +290,11 @@ def update_my_name(db, caller, body):
 def create_firm(db, caller, body):
     """createUser: a new firm profile plus its tenant_admin."""
     if not _is_super(caller):
-        return {"error": "Только супер-админ может создавать пользователей"}
+        return {"error": "Only the super-admin can create users"}
     username = _norm_username(body.get("username"))
     password = str(body.get("password") or "")
     if not username or not password:
-        return {"error": "Логин и пароль обязательны"}
+        return {"error": "Username and password are required"}
     err = _validate_password(password)
     if err:
         return {"error": err}
@@ -319,21 +319,21 @@ def create_tenant_user(db, caller, body):
         return {"error": E_NO_RIGHTS}
     tenant_id = (body.get("tenantId") or caller.get("tenantId")) if _is_super(caller) else caller.get("tenantId")
     if not tenant_id:
-        return {"error": "Нет tenantId"}
+        return {"error": "No tenantId"}
     role = body.get("role")
     if role not in ROLES_SUB:
-        return {"error": "Роль должна быть staff, supplier или hr"}
+        return {"error": "The role must be staff, supplier or hr"}
     username = _norm_username(body.get("username"))
     password = str(body.get("password") or "")
     if not username or not password:
-        return {"error": "Логин и пароль обязательны"}
+        return {"error": "Username and password are required"}
     err = _validate_password(password)
     if err:
         return {"error": err}
     if role == "supplier" and not body.get("supplierId"):
-        return {"error": "Для роли supplier нужно выбрать поставщика"}
+        return {"error": "A supplier login needs a supplier"}
     if role == "hr" and not str(body.get("fullName") or "").strip():
-        return {"error": "Для роли HR нужно указать имя"}
+        return {"error": "An HR login needs a name"}
     perms = body.get("permissions")
     if role == "supplier":
         perms = ""
@@ -358,7 +358,7 @@ def create_tenant_user(db, caller, body):
     return {"ok": True, "userId": uid}
 
 
-E_ADMIN_TARGET = "У владельца фирмы и супер-админа здесь меняются только имя и телефон"
+E_ADMIN_TARGET = "For the firm owner and the super-admin only the name and phone can be changed here"
 
 
 def update_user(db, caller, body, revoke):
@@ -380,11 +380,11 @@ def update_user(db, caller, body, revoke):
     new_role = body.get("role") or role
     if new_role != role:
         if new_role not in ROLES_SUB:
-            return {"error": "Роль должна быть staff, supplier или hr"}
+            return {"error": "The role must be staff, supplier or hr"}
         if new_role == "supplier" and not (body.get("supplierId") or data.get("supplierId")):
-            return {"error": "Для роли supplier нужно выбрать поставщика"}
+            return {"error": "A supplier login needs a supplier"}
         if new_role == "hr" and not str(body.get("fullName") or data.get("fullName") or "").strip():
-            return {"error": "Для роли HR нужно указать имя"}
+            return {"error": "An HR login needs a name"}
         upd["role"] = new_role
         if new_role == "supplier":
             body = dict(body, permissions="")
@@ -413,7 +413,7 @@ def update_user(db, caller, body, revoke):
     info = {}
     if "fullName" in body:
         if is_hr and not str(body.get("fullName") or "").strip():
-            return {"error": "Для роли HR нужно указать имя"}
+            return {"error": "An HR login needs a name"}
         info["fullName"] = str(body.get("fullName") or "").strip()[:80]
     if "phone" in body:
         info["phone"] = str(body.get("phone") or "").strip()[:40]
@@ -445,11 +445,11 @@ def reset_user_password(db, caller, body, revoke):
 def delete_user(db, caller, body, revoke):
     if not _can_manage(caller):
         return {"error": E_NO_RIGHTS}
-    ref, data, err = _load_target(db, caller, body.get("id"), "Можно удалять только пользователей своей фирмы")
+    ref, data, err = _load_target(db, caller, body.get("id"), "You can delete only users of your own firm")
     if err:
         return {"error": err}
     if _norm_role(data.get("role")) in ADMIN_ROLES:
-        return {"error": "Эту роль нельзя удалить отсюда"}
+        return {"error": "This role can't be deleted here"}
     batch = db.batch()
     batch.delete(ref)
     batch.delete(db.collection("authSecrets").document(ref.id))
@@ -479,7 +479,7 @@ def _profile(tid, data):
 
 def list_tenants(db, caller):
     if not _is_super(caller):
-        return {"error": "Только супер-админ"}
+        return {"error": "Super-admin only"}
     snaps = list(db.collection("tenants").stream())
 
     def one(snap):
@@ -502,10 +502,10 @@ def _tenant_users(db, tid):
 
 def set_tenant_active(db, caller, body, revoke):
     if not _is_super(caller):
-        return {"error": "Только супер-админ"}
+        return {"error": "Super-admin only"}
     tid = body.get("tenantId")
     if not tid:
-        return {"error": "Нет tenantId"}
+        return {"error": "No tenantId"}
     active = bool(body.get("active"))
     users = _tenant_users(db, tid)
     batch = db.batch()
@@ -523,10 +523,10 @@ def delete_tenant(db, caller, body, revoke):
     """The firm and everything under it, and its logins. Its Storage files
     are deleted by main.py (files.delete_tenant_files)."""
     if not _is_super(caller):
-        return {"error": "Только супер-админ"}
+        return {"error": "Super-admin only"}
     tid = body.get("tenantId")
     if not tid:
-        return {"error": "Нет tenantId"}
+        return {"error": "No tenantId"}
     ref = db.collection("tenants").document(tid)
     existed = ref.get().exists
     db.recursive_delete(ref)
@@ -547,12 +547,12 @@ def delete_tenant(db, caller, body, revoke):
 def update_tenant(db, caller, body):
     tid = _target_tenant(caller, body)
     if not tid:
-        return {"error": "Нет tenantId"}
+        return {"error": "No tenantId"}
     if not _is_super(caller) and (caller.get("role") != "tenant_admin" or tid != caller.get("tenantId")):
-        return {"error": "Можно редактировать только свою фирму"}
+        return {"error": "You can edit only your own firm"}
     ref = db.collection("tenants").document(tid)
     if not ref.get().exists:
-        return {"error": "Фирма не найдена"}
+        return {"error": "Firm not found"}
     upd = {k: str(body[k]) for k in PROFILE_FIELDS if body.get(k) is not None}
     if upd:
         ref.update(upd)

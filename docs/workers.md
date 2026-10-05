@@ -44,7 +44,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
 ## Workers tab (`#sectionWorkers`)
 
 **Toolbar** (`.workers-head`, `.workers-toolbar`):
-- "Add Worker" and "Скан паспорта" — on a phone, two equal buttons across the width;
+- "Add Worker" and "Scan passport" — on a phone, two equal buttons across the width;
 - the search box with the list/cards toggle beside it;
 - a **Filters** button next to the search (`toggleWorkersFilters`): the filters are hidden until it is tapped (the open state is kept on this device, `localStorage.workersFiltersOpen`); the button shows how many are set. Each set filter shows as a chip under the search (`renderWorkersFilterChips`); its ✕ clears that filter (`clearWorkersFilter`);
 - the filters (Status, Documents, Client, Supplier, Group by) — one row of five on a computer; two columns on a phone, with Group by across, and no captions (each select's first option names it);
@@ -169,7 +169,7 @@ These are separate from the Form 101 scan, and their labels are English.
 `openHoursImportModal(workerId)` opens `#hoursImportOverlay`:
 - a client select (the worker's clients, or all clients if they have none) and a file input (`.xlsx`, `.xls`, `.csv`, images, PDF; several files);
 - **reading the files** — `onHoursImportFileSelected(files)` parses every file in parallel:
-  - spreadsheets → `parseHoursExcelFile()` (SheetJS; a header row with `Date`/`In`/`Out` or `Дата`/`Вход`/`Выход`, any order, case-insensitive; dates become `dd/MM/yyyy`);
+  - spreadsheets → `parseHoursExcelFile()` (SheetJS; a header row with `Date`/`In`/`Out` or the Russian `Дата`/`Вход`/`Выход`, any order, case-insensitive; dates become `dd/MM/yyyy`);
   - images and PDFs → `fileToUploadPages()`, then every page → `parseHoursImagePage()` (`aiReadHoursTable`);
 - **preview** — the first 10 entries are shown;
 - **submit** — `submitHoursImportBatch()` sends `savePendingHoursBatch` with `{workerId, clientId, date, inTime, outTime}` rows.

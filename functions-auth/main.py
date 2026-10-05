@@ -123,7 +123,7 @@ def _verified(req):
         return None
 
 
-E_SESSION = "Сессия истекла или недействительна — войдите заново"
+E_SESSION = "Session expired or invalid — please sign in again"
 
 
 @https_fn.on_request(cors=_CORS, timeout_sec=60)
@@ -219,7 +219,7 @@ def ai_read(req: https_fn.Request) -> https_fn.Response:
     if not decoded:
         return _json({"error": E_SESSION}, 401)
     if decoded.get("role") not in ("superadmin", "tenant_admin", "staff", "hr"):
-        return _json({"error": "Недоступно для роли поставщика"})
+        return _json({"error": "Not available for the supplier role"})
     try:
         meta = {}
         result = ai.run(str(body.get("action") or ""), body, (ANTHROPIC_API_KEY.value or "").strip(), _anthropic_post, meta=meta)

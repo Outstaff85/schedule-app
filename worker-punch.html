@@ -675,7 +675,7 @@ function showObjectPicker(w, objs){
   const d=document.createElement('div'); d.id='objectPicker';
   d.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;padding:20px;z-index:998;font-family:"DM Sans",-apple-system,sans-serif';
   let h='<div style="background:#181c27;border:1px solid rgba(255,255,255,0.13);border-radius:14px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto">';
-  h+='<div style="display:flex;align-items:center;gap:8px;font-size:19px;font-weight:600;color:#eef0f8;letter-spacing:-0.3px"><i class="ti ti-building-store"></i> Выберите объект</div>';
+  h+='<div style="display:flex;align-items:center;gap:8px;font-size:19px;font-weight:600;color:#eef0f8;letter-spacing:-0.3px"><i class="ti ti-building-store"></i> Choose a site</div>';
   h+='<div style="color:#7c84a0;font-size:13px;margin-top:4px;margin-bottom:18px">'+esc(w.name)+'</div>';
   h+='<div style="display:flex;flex-direction:column;gap:10px">';
   objs.forEach(c=>{
@@ -683,7 +683,7 @@ function showObjectPicker(w, objs){
     h+='<button onclick="pickObject(\''+c.id+'\')" style="background:#1e2333;border:1px solid rgba(255,255,255,0.13);border-radius:12px;padding:14px 16px;color:#eef0f8;font-size:15px;font-weight:600;text-align:left;cursor:pointer;font-family:inherit;transition:border-color .15s" onmouseover="this.style.borderColor=\'rgba(109,214,160,0.5)\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,0.13)\'">'
       +'<div><i class="ti ti-building"></i> '+esc(c.name||'—')+'</div>'
       +(c.object?'<div style="font-size:12px;color:#7c84a0;font-weight:400;margin-top:3px">'+esc(c.object)+'</div>':'')
-      +'<div style="font-size:11px;color:'+(hasGeo?'#6dd6a0':'#f5a623')+';font-weight:400;margin-top:5px"><i class="ti ti-map-pin'+(hasGeo?'':'-off')+'"></i> '+(hasGeo?('геозона · '+(Number(c.radius)||100)+' м'):'без геозоны')+'</div>'
+      +'<div style="font-size:11px;color:'+(hasGeo?'#6dd6a0':'#f5a623')+';font-weight:400;margin-top:5px"><i class="ti ti-map-pin'+(hasGeo?'':'-off')+'"></i> '+(hasGeo?('geofence · '+(Number(c.radius)||100)+' m'):'no geofence')+'</div>'
       +'</button>';
   });
   h+='</div></div>';
@@ -840,10 +840,10 @@ function startPunchClock(){
   clockTick=setInterval(tickPunch,1000); tickPunch();
 }
 function greetingFor(h){
-  if(h>=5  && h<12) return 'Доброе утро';
-  if(h>=12 && h<17) return 'Добрый день';
-  if(h>=17 && h<23) return 'Добрый вечер';
-  return 'Доброй ночи';
+  if(h>=5  && h<12) return 'Good morning';
+  if(h>=12 && h<17) return 'Good afternoon';
+  if(h>=17 && h<23) return 'Good evening';
+  return 'Good night';
 }
 function tickPunch(){
   const n=new Date();
@@ -917,7 +917,7 @@ function updateBigBtn(){
 
 function doPunch(){
   if(!locOk||!selectedWorker) return;
-  if(Date.now()-_lastPunchAt < 4000){ showToast('Подождите пару секунд'); return; }  // guard against accidental double-tap
+  if(Date.now()-_lastPunchAt < 4000){ showToast('Wait a couple of seconds'); return; }  // guard against accidental double-tap
   _lastPunchAt = Date.now();
   const now=new Date(), hh=String(now.getHours()).padStart(2,'0'), mm=String(now.getMinutes()).padStart(2,'0');
   const log=getPunchLog(), last=getLastEntry(log,selectedWorker.id), type=last?.type==='in'?'out':'in';
@@ -1112,7 +1112,7 @@ function reportError(message, source, stack){
 }
 window.addEventListener('error', function(ev){ reportError(ev.message, (ev.filename||'')+':'+(ev.lineno||''), ev.error&&ev.error.stack); });
 window.addEventListener('unhandledrejection', function(ev){ const r=ev.reason; reportError((r&&r.message)||String(r), 'promise', r&&r.stack); });
-try{ init(); }catch(err){ console.error('init failed',err); reportError('init failed: '+(err&&err.message), 'init', err&&err.stack); showInvalidLink('Что-то пошло не так','Обновите страницу. Если не помогает — обратитесь к менеджеру.','ti-alert-triangle'); }
+try{ init(); }catch(err){ console.error('init failed',err); reportError('init failed: '+(err&&err.message), 'init', err&&err.stack); showInvalidLink('Something went wrong','Reload the page. If that doesn\'t help, contact your manager.','ti-alert-triangle'); }
 
 
 // ── PWA service worker: always-fresh, auto-reload on new version ───────────

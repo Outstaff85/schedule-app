@@ -21,7 +21,7 @@ The function hands out only this worker and their sites, and accepts punches for
 - `localStorage.punchClockSite` (set by an admin on the same device) gives a site and a worker list, but is **ignored on a personal link** (`_siteEff = null` when there is a token).
 - `SITE = {name, object, lat, lng, radius (default 100), clientId}`. Coordinates use `??`, so a real `0` stays a coordinate.
 - **`resolveSiteFromWorker(w)`** (token link without URL geo): the first of the worker's clients that has coordinates becomes the site; if none has coordinates, the first client gives the name only (no geofence).
-- **Several objects:** when the worker has more than one client and the URL gave no coordinates, `decideObjectOrPunch()` shows `showObjectPicker()` (Russian labels: "Выберите объект", "геозона · N м" / "без геозоны"). `pickObject(clientId)` sets `SITE` from that client and locks it (`_geoLocked`), so the background refresh does not re-resolve it. If the client list is not loaded yet (cache fast path), `goToPunchDirect()` loads it first.
+- **Several objects:** when the worker has more than one client and the URL gave no coordinates, `decideObjectOrPunch()` shows `showObjectPicker()` (labels: "Choose a site", "geofence · N m" / "no geofence"). `pickObject(clientId)` sets `SITE` from that client and locks it (`_geoLocked`), so the background refresh does not re-resolve it. If the client list is not loaded yet (cache fast path), `goToPunchDirect()` loads it first.
 - `siteLabel()` = client name, plus ` · object` when set.
 
 ## Startup (`init()`)
@@ -38,7 +38,7 @@ The function hands out only this worker and their sites, and accepts punches for
 ## Screens
 
 - **`screenWorker`** — clock, site name, the worker grid (status per worker: "In since HH:MM", "Last: HH:MM (out)", "Not clocked in"), Continue button (`goToPunch()`). Switching worker (`selectWorker`, `goBack`) is disabled on a personal link.
-- **`screenPunch`** — greeting by hour (Russian), live clock, site pill, GPS chip, the big button, "My History".
+- **`screenPunch`** — greeting by hour ("Good morning" …), live clock, site pill, GPS chip, the big button, "My History".
 - **`screenSuccess`** — Clocked IN / OUT, time and date; "Clock another" is hidden on a personal link. Every "back" (`goToWorker`, `resetToQR`, `closeHistory`) returns a personal-link worker to their punch screen with a fresh GPS check.
 - **`screenHistory`** — see below.
 
@@ -56,7 +56,7 @@ Constants: `GPS_MAX_ACCURACY` = 150 m, `GPS_REQUEST_MS` = 800 ms, `GPS_MAX_SPEED
 
 ## A punch (`doPunch()`)
 
-- Ignored without `locOk`; a second tap within 4 s gets "Подождите пару секунд".
+- Ignored without `locOk`; a second tap within 4 s gets "Wait a couple of seconds".
 - **IN or OUT** = the opposite of the worker's last punch across all days (`getLastEntry`, latest `ts`), so an overnight shift closes correctly.
 - The entry: `{id: Date.now(), workerId, workerName, type, time:'HH:MM', ts, site, clientId, dist, lat, lng, gpsVerified, geoSkipped, manual:false, gpsAccuracy, gpsSuspicious, gpsWarnings, gpsElapsed}`. `lat`/`lng` are sent only when the site has a geofence. No `date` is sent: the `punch` function takes the day from `ts` in Israel time.
 - Saved to `localStorage.punchLog` first, then `gsSavePunch()`.

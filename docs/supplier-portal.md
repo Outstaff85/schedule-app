@@ -46,7 +46,7 @@ The worker modal closes like the manager app's modals: a tap outside it, no ✕ 
 
 Only the three actions:
 - `supplierAddWorker` — a new worker with `supplierId` forced to the caller's own, `clientIds: []`, `schedule: []`, and only the editable fields;
-- `supplierUpdateWorker` / `supplierDeleteWorker` — only a worker whose `supplierId` is the caller's; otherwise "Работник не найден";
+- `supplierUpdateWorker` / `supplierDeleteWorker` — only a worker whose `supplierId` is the caller's; otherwise "Worker not found";
 - editable fields (`SUPPLIER_EDITABLE`): `docGiven, docSurname, phone, docId, address, houseNumber, city, docDob, docSex, maritalStatus, healthFund, startDate, notes, status`; `name` is rebuilt from given name + surname.
 
 A supplier cannot call `saveSchedule`, the hours-import queue or the AI reads (refused on the server), and has no client billing or wage data to show.
