@@ -44,6 +44,7 @@ It returns:
 | `currentUser()`, `idToken()`, `signOut()` | `signOut` also stops the punch listener |
 | `loadSchedule(t, track=true)` | workers (an own-workers HR: only its own), clients, suppliers (sorted by `sortIndex`, then id) and settings. Remembers each document's signature (`sig()`, key-order independent, plus the position) as the reference for the next save; `track=false` (another firm) does not |
 | `saveSchedule(t, data)` | writes only documents whose signature or position changed, deletes the ones that are gone, in batches of 450. Reloads first if the reference belongs to another firm |
+| `listenWorkers(t, onChange)` | `onSnapshot` on the workers an HR may read (own-only: its own); reports only additions and removals as `{added, removed}` against the reference copy (`known`, `storedPos`, `workerHr` follow), never overwrites an existing worker. Started for an HR session only |
 | `listenPunches(t, onChange, since)` | `onSnapshot` on punches with `ts ≥ since`; resolves with the first snapshot, every later snapshot (this device's own writes included) goes to `onChange`. Without `since`: 13 months back |
 | `punchesBetween(t, from, to)` | one read of `[from, to)` |
 | `punchesOfBatch(t, batchId)` | punches with ids starting `imp-<batchId>-` |

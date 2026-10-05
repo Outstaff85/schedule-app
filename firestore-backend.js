@@ -251,6 +251,39 @@
       return body;
     }
 
+    // An HR's worker list, live (2026-10-05): a worker the owner assigns to
+    // it appears, one taken away disappears, without a reload. Only additions
+    // and removals are reported — an existing worker is never overwritten
+    // here, so an edit the HR hasn't saved yet is kept. The reference copy
+    // (known / storedPos / workerHr) follows, so the next save neither
+    // deletes an added worker nor tries to delete one it can no longer touch.
+    let workersUnsub = null;
+    function listenWorkers(t, onChange){
+      if(workersUnsub) workersUnsub();
+      return hrOnly().then(hr => {
+        const q = F.query(col(t,'workers'), ...hrWhere(hr));
+        workersUnsub = F.onSnapshot(q, snap => {
+          if(knownTenant !== t) return;
+          const ids = new Set(snap.docs.map(d => d.id)), added = [];
+          snap.docs.forEach(d => {
+            if(known.workers.has(d.id)) return;
+            const data = d.data();
+            const pos = typeof data.sortIndex === 'number' ? data.sortIndex : 1e9;
+            delete data.sortIndex;
+            if(data.id == null) data.id = d.id;
+            known.workers.set(d.id, sig(data) + '#' + pos);
+            storedPos.set(d.id, pos);
+            delete data.docKeys;
+            workerHr.set(String(data.id), data.hrId || null);
+            added.push(data);
+          });
+          const removed = [...known.workers.keys()].filter(id => !ids.has(id));
+          removed.forEach(id => { known.workers.delete(id); storedPos.delete(id); workerHr.delete(id); });
+          if(added.length || removed.length) onChange({added, removed});
+        }, err => console.warn('Worker listener stopped:', err));
+      });
+    }
+
     let punchUnsub = null;
     function listenPunches(t, onChange, since){
       if(punchUnsub) punchUnsub();
@@ -534,7 +567,7 @@
     }
 
     return {
-      login, loadSchedule, saveSchedule, listenPunches, punchesBetween, punchesOfBatch, savePunch, updatePunch, deletePunch, handleAction,
+      login, loadSchedule, saveSchedule, listenWorkers, listenPunches, punchesBetween, punchesOfBatch, savePunch, updatePunch, deletePunch, handleAction,
       uploadWorkerFile, UPLOAD_ACTIONS, isStoragePath,
       currentUser: () => auth.currentUser,
       idToken: () => auth.currentUser ? auth.currentUser.getIdToken() : Promise.resolve(null),
