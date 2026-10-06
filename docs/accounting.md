@@ -113,6 +113,8 @@ Per client: hours, mode (Fixed / Tiered) and the billable total. It never shows 
 - **Rejecting:** `rejectHoursBatch(id)` → `rejectPendingHours` marks the batch rejected and creates nothing.
 - Approving and rejecting store `decidedAt`; the sender sees the batch's status (worker card → Upload hours, [workers.md](workers.md); the supplier portal's My Hours). A supplier's batches (`supplierId`, uploaded by the supplier's name, "entered by hand") come in through the `supplier` function and are approved the same way.
 
+- **Live count and status:** `watchHoursBatches()` (after the load, any manager-side login) keeps `__hoursBatches` from `listenPendingHours`. `updateHoursBadge()` shows the number of batches waiting for a decision on the Accounting tab (`#accPendingBadge`, `.tab-badge`, hidden at 0); the worker card shows the worker's latest batch and its status (`cardHoursStatusHtml` / `latestHoursBatch`, redrawn live while the card is open); an open Accounting tab redraws Pending hours.
+
 Uploading the hours (worker card) is in [workers.md](workers.md).
 
 ## Exports

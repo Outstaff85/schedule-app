@@ -17,6 +17,7 @@ const who = {
   ownerB:       { uid: 'u-ownerB', claims: { role: 'tenant_admin', tenantId: B, perms: ['*'] } },
   staffAll:     { uid: 'u-staffAll', claims: { role: 'staff', tenantId: A, perms: ['*'] } },
   staffSched:   { uid: 'u-staffSched', claims: { role: 'staff', tenantId: A, perms: ['schedule'] } },
+  staffSchedAcc: { uid: 'u-staffSA', claims: { role: 'staff', tenantId: A, perms: ['schedule', 'accounting'] } },
   staffWorkers: { uid: 'u-staffWorkers', claims: { role: 'staff', tenantId: A, perms: ['workers'] } },
   staffNone:    { uid: 'u-staffNone', claims: { role: 'staff', tenantId: A, perms: [] } },
   supplierA:    { uid: 'u-supA', claims: { role: 'supplier', tenantId: A, supplierId: 's1', perms: [] } },
@@ -194,7 +195,7 @@ test('hr own-workers: reads and writes only workers with its hrId, never reassig
   await assertFails(getDoc(doc(db('hrOwnB'), 'tenants', A, 'workers', 'w2')));
 });
 
-test('hr: a worker\'s pay and bank change only with payEdit, own workers only', async () => {
+test('a worker\'s pay and bank: hr only with payEdit (own workers), staff only with accounting', async () => {
   const h = db('hrOwn');
   for (const f of [{ hourlyRate: 45 }, { regRate: 45 }, { otRate: 60 }, { shabbatRate: 70 }, { payMode: 'daily' },
     { travelAllowance: 20 }, { travelMonthly: 150 }, { bank: 'X' }, { bankBranch: '1' }, { bankAccountNumber: '9' },
@@ -209,9 +210,17 @@ test('hr: a worker\'s pay and bank change only with payEdit, own workers only', 
   await assertSucceeds(updateDoc(doc(hp, 'tenants', A, 'workers', 'w2'), { hourlyRate: 52, bank: 'Discount', bankAccountNumber: '777', travelMonthly: 150 }));
   await assertSucceeds(setDoc(doc(hp, 'tenants', A, 'workers', 'n3'), { name: 'New', hrId: 'u-hrOwn', hourlyRate: 50 }));
   await assertFails(updateDoc(doc(hp, 'tenants', A, 'workers', 'w3'), { hourlyRate: 52 }));
-  // the owner and staff with "schedule" are not limited by it
+  // the owner always; staff only with accounting
   await assertSucceeds(updateDoc(doc(db('ownerA'), 'tenants', A, 'workers', 'w3'), { bank: 'Y' }));
-  await assertSucceeds(updateDoc(doc(db('staffSched'), 'tenants', A, 'workers', 'w3'), { hourlyRate: 41 }));
+  await assertSucceeds(updateDoc(doc(db('staffAll'), 'tenants', A, 'workers', 'w3'), { hourlyRate: 42 }));
+  await assertSucceeds(updateDoc(doc(db('staffSchedAcc'), 'tenants', A, 'workers', 'w3'), { travelMonthly: 100 }));
+  for (const f of [{ hourlyRate: 41 }, { bank: 'Z' }, { payMode: 'daily' }, { travelAllowance: 5 }]) {
+    await assertFails(updateDoc(doc(db('staffSched'), 'tenants', A, 'workers', 'w3'), f));
+  }
+  await assertSucceeds(updateDoc(doc(db('staffSched'), 'tenants', A, 'workers', 'w3'), { phone: '053' }));
+  await assertSucceeds(setDoc(doc(db('staffSched'), 'tenants', A, 'workers', 'w3'), { name: 'Other 2', hourlyRate: 42, hrId: 'u-other', travelMonthly: 100, bank: 'Y' }));
+  await assertFails(setDoc(doc(db('staffSched'), 'tenants', A, 'workers', 'n9'), { name: 'New', hourlyRate: 30 }));
+  await assertSucceeds(setDoc(doc(db('staffSched'), 'tenants', A, 'workers', 'n9'), { name: 'New' }));
 });
 
 test('hr own-workers: punches and pending hours of its own workers only', async () => {

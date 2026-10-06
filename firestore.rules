@@ -25,7 +25,8 @@ rules_version = '2';
 //     login with `own` reads and writes only the workers (and their punches,
 //     its own pending-hours batches) whose hrId is its uid. No hr login ever
 //     changes a worker's hrId — the owner or a superadmin assigns workers;
-//     an hr login changes a worker's pay and bank fields only with payEdit;
+//     an hr login changes a worker's pay and bank fields only with payEdit,
+//     a staff login only with accounting;
 //   - users, password hashes, usernames and worker punch-link tokens are
 //     function-only.
 service cloud.firestore {
@@ -58,6 +59,10 @@ service cloud.firestore {
     // supplier, never an own-workers hr).
     function manager(t) { return isSuper() || (member(t) && role() in ['tenant_admin', 'staff']) || hrAll(t); }
     function scheduleWriter(t) { return isAdmin(t) || staffCan(t, 'schedule'); }
+    // A worker's money: staff changes it only with the accounting section
+    // (the owner and a superadmin always may).
+    function staffPayOk(t) { return isAdmin(t) || staffCan(t, 'accounting') || samePay(); }
+    function staffNewPayOk(t) { return isAdmin(t) || staffCan(t, 'accounting') || noPay(); }
     // An hr login that may write workers: the workers or schedule section;
     // with own, only its own workers.
     function hrWorkers(t) { return hrCan(t, 'workers') || hrCan(t, 'schedule'); }
@@ -97,10 +102,10 @@ service cloud.firestore {
 
       match /workers/{id} {
         allow read: if manager(t) || (hrMine(t) && oldHr() == uid());
-        allow create: if scheduleWriter(t)
+        allow create: if (scheduleWriter(t) && staffNewPayOk(t))
           || (hrAll(t) && hrWorkers(t) && (newHr() == null || newHr() == uid()) && hrNewPayOk(t))
           || (hrMine(t) && hrWorkers(t) && newHr() == uid() && hrNewPayOk(t));
-        allow update: if scheduleWriter(t)
+        allow update: if (scheduleWriter(t) && staffPayOk(t))
           || (hrAll(t) && hrWorkers(t) && newHr() == oldHr() && hrPayOk(t))
           || (hrMine(t) && hrWorkers(t) && oldHr() == uid() && newHr() == uid() && hrPayOk(t));
         allow delete: if scheduleWriter(t)

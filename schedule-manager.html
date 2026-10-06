@@ -45,7 +45,8 @@
   .account-label-center span{color:var(--accent);}
   .top-tabs{display:flex;gap:2px;align-items:stretch;}
   .ttab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:70px;padding:0 12px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text2);transition:all 0.15s;}
-  .ttab .ic{font-size:18px;line-height:1;}
+  .ttab .ic{font-size:18px;line-height:1;position:relative;}
+  .tab-badge{position:absolute;top:-6px;right:-12px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--amber);color:#1a1a1a;font-size:10px;font-weight:700;line-height:16px;text-align:center;font-family:inherit;}
   .ttab .lb{font-size:12px;font-weight:500;}
   .ttab:hover{color:var(--text);background:rgba(255,255,255,0.025);}
   .ttab.active{color:var(--blue);border-bottom-color:var(--blue);background:var(--blue-bg);}
@@ -2697,9 +2698,12 @@ function showWorkerModal(w){
     <div class="field"><label>הערות</label><textarea id="wNotes" placeholder="הערות על העובד" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;padding:8px 10px;outline:none;min-height:56px;resize:vertical">${esc(w.notes||'')}</textarea></div>
     <div class="modal-actions">
       ${editingWorkerIdx!==null?`<button class="btn" onclick="regenerateWorkerToken(${editingWorkerIdx})" style="background:var(--amber-bg);border-color:rgba(245,166,35,0.3);color:var(--amber)"><i class="ti ti-refresh"></i> טוקן חדש</button>`:''}
-      <button class="btn accent" onclick="saveWorker()">${editingWorkerIdx!==null?'שמור שינויים':'צור עובד'}</button>
-    </div>`;
-  document.getElementById('workerOverlay').classList.add('open');
+    </div>
+    <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px"><i class="ti ti-device-floppy"></i> ${editingWorkerIdx!==null?'השינויים נשמרים בסגירת החלון':'העובד נוצר בסגירת החלון'}</div>`;
+  // No Save button: a tap outside the window saves it (saveWorker auto).
+  const wov=document.getElementById('workerOverlay');
+  wov.__onUserClose=()=>saveWorker({auto:true});
+  wov.classList.add('open');
   renderWClientChips();
   renderChildrenRows();
   initSignaturePad('wSigCanvas');
@@ -2710,11 +2714,27 @@ function showWorkerModal(w){
 // client or supplier gets the next color of its palette automatically.
 function pickWColor(i){ selColorIdx=i; }
 function toggleDayTime(i){ const off=document.getElementById(`wt${i}`).value==='off'; ['ws','we'].forEach(p=>{ const el=document.getElementById(p+i); el.disabled=off; el.style.opacity=off?'0.3':'1'; }); }
-async function saveWorker(){
+// The worker window saves itself when it is closed by a tap outside
+// (opts.auto): an edit with nothing changed just closes; a window whose name
+// is empty closes without saving (a new worker is not created, an edit is
+// dropped with a toast). One save at a time.
+async function saveWorker(opts){
+  if(saveWorker.busy) return;
+  saveWorker.busy=true;
+  try{ return await saveWorkerNow(opts||{}); } finally{ saveWorker.busy=false; }
+}
+async function saveWorkerNow(opts){
   const docGiven=document.getElementById('wGiven').value.trim();
   const docSurname=document.getElementById('wSurname').value.trim();
   const name=(docGiven+' '+docSurname).trim();
-  if(!name){ document.getElementById('wGiven').focus(); return; }
+  if(!name){
+    if(opts.auto){
+      if(editingWorkerIdx!==null) showToast('השם ריק — השינויים לא נשמרו');
+      closeModal('workerOverlay');
+      return;
+    }
+    document.getElementById('wGiven').focus(); return;
+  }
   const phone=document.getElementById('wPhone').value.trim();
   // Status is set on the worker card (setWorkerStatus), not in this form.
   const status=editingWorkerIdx!==null?(workers[editingWorkerIdx].status||'active'):'active';
@@ -2810,6 +2830,15 @@ async function saveWorker(){
   if(editingWorkerIdx!==null){
     const prevW=workers[editingWorkerIdx];
     const isId=prevW.docType!=='passport';
+    // Closed with nothing changed: nothing to save.
+    if(opts.auto){
+      const norm=v=>(v==null||v===''||(Array.isArray(v)&&!v.length))?'':JSON.stringify(v);
+      const same=Object.keys(commonFields).every(k=>norm(commonFields[k])===norm(prevW[k]))
+        && !getSignaturePng('wSigCanvas')
+        && (hrIdPicked===undefined || (prevW.hrId||null)===hrIdPicked)
+        && window.__aiRescannedWorkerId!==prevW.id;
+      if(same){ closeModal('workerOverlay'); return; }
+    }
     // Fields that end up printed on this worker's Form-101 PDF — if any of
     // them actually changed, the stored copy (if one exists) is now stale
     // relative to what's on screen. Trigger a background regenerate so the
@@ -2824,8 +2853,9 @@ async function saveWorker(){
     // 2026-10-05; it can be set again in Accounting → Worker pay).
     const addedRated=(updated.clientIds||[]).filter(id=>!(prevW.clientIds||[]).includes(id))
       .some(id=>{ const c=clients.find(x=>x.id===id); return c&&c.defaultHourlyRate!=null&&c.defaultHourlyRate!==''; });
-    // (a pay change: an HR without "Edit own workers' pay" leaves the rate as it is)
-    if(addedRated && !isDailyPay(updated) && wOwnRate(updated)!=='' && ((getSession()||{}).role!=='hr' || canEditPay(updated))){ updated.hourlyRate=0; updated.regRate=null; }
+    // (a pay change: a login that may not change pay — an HR without "Edit own
+    // workers' pay", staff without Accounting — leaves the rate as it is)
+    if(addedRated && !isDailyPay(updated) && wOwnRate(updated)!=='' && canEditPay(updated)){ updated.hourlyRate=0; updated.regRate=null; }
     const changed=FORM101_WATCHED_FIELDS.some(f=>JSON.stringify(prevW[f])!==JSON.stringify(updated[f]));
     // A signature drawn now goes into the PDF (and the sidecar) too.
     const newSig=getSignaturePng('wSigCanvas');
@@ -3498,6 +3528,7 @@ function openWorkerCard(wi){
       ${objs.length?`<div><i class="ti ti-building"></i> Clients: ${objs.map(o=>`<span style="color:${o.color}">${esc(o.name)}</span>`).join(', ')}</div>` : `<div><i class="ti ti-building-off"></i> Not assigned to any object</div>`}
       ${sup?`<div><i class="ti ti-truck-delivery"></i> Supplier: <span style="color:${sup.color}">${esc(sup.name)}</span></div>`:''}
       ${isFirmAdminSession()?`<div><i class="ti ti-user-shield"></i> HR: ${w.hrId?`<span style="color:${esc(hrColor(w.hrId))}">${esc(hrNameOf(w.hrId)||'—')}</span>`:'<span style="color:var(--text3)">none</span>'}</div>`:''}
+      <div id="cardHoursStatus" data-worker="${esc(w.id)}">${cardHoursStatusHtml(w.id)}</div>
       <!-- document status last, next to the Documents section below -->
       <div style="display:flex;gap:6px"><i class="ti ti-files" style="margin-top:2px"></i><span>Documents: ${docStatusSummaryHtml(w)}</span></div>
       ${hasPermission('workers')&&cardMissingScanRowsHtml(w,wi)?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${cardMissingScanRowsHtml(w,wi)}</div>`:''}
@@ -5888,6 +5919,7 @@ async function loadData(){
       setSaveStatus('saved');
       syncPunchesFromGS();
       if(isHrSession()) watchHrWorkers();
+      watchHoursBatches();
       maybeRegenAfterFirmEdit();
     } else {
       showToast('Could not load from the server — showing saved data'+(gsLoad.lastError?' ('+gsLoad.lastError.slice(0,80)+')':''),6000);
@@ -5897,6 +5929,45 @@ async function loadData(){
     console.error('Load failed',e);
     showToast('Offline — using cached data');
   }
+}
+
+// The hours batches (Pending hours), live (listenPendingHours): the count of
+// batches waiting for a decision on the Accounting tab, and each worker's
+// latest batch status on the worker card.
+let __hoursWatched = false, __hoursBatches = null;
+function watchHoursBatches(){
+  const s = getSession();
+  if(__hoursWatched || !s || s.role === 'supplier') return;
+  __hoursWatched = true;
+  loadFirestoreBackend().then(b => b.listenPendingHours(fsTenantId(), list => {
+    __hoursBatches = list;
+    updateHoursBadge();
+    refreshCardHoursStatus();
+    if(currentTab === 'accounting') renderPendingHours();
+  })).catch(e => { __hoursWatched = false; console.warn('Hours watch failed: ' + ((e && e.message) || e)); });
+}
+function updateHoursBadge(){
+  const tab = document.getElementById('tabAccounting'); if(!tab) return;
+  const n = (__hoursBatches || []).filter(b => b.status === 'pending').length;
+  let el = document.getElementById('accPendingBadge');
+  if(!el){ el = document.createElement('span'); el.id = 'accPendingBadge'; el.className = 'tab-badge'; tab.querySelector('.ic').appendChild(el); }
+  el.textContent = n > 99 ? '99+' : String(n);
+  el.style.display = n ? '' : 'none';
+  el.title = n + ' hours batch(es) waiting for review';
+}
+// This worker's latest hours batch (by when it was sent), or null.
+function latestHoursBatch(workerId){
+  return (__hoursBatches || []).filter(b => (b.entries || []).some(r => r.workerId === workerId))
+    .sort((a, b) => String(b.uploadedAt).localeCompare(String(a.uploadedAt)))[0] || null;
+}
+function cardHoursStatusHtml(workerId){
+  const b = latestHoursBatch(workerId);
+  if(!b) return '';
+  return `<div style="display:flex;gap:6px;align-items:center"><i class="ti ti-file-upload"></i><span>Hours sent: ${hoursStatusChip(b.status, b.status==='pending'?b.uploadedAt:b.decidedAt)}</span></div>`;
+}
+function refreshCardHoursStatus(){
+  const el = document.getElementById('cardHoursStatus');
+  if(el && document.getElementById('workerCardOverlay')?.classList.contains('open')) el.innerHTML = cardHoursStatusHtml(el.dataset.worker);
 }
 
 // An HR's worker list follows the server (listenWorkers): a worker the owner

@@ -284,6 +284,19 @@
       });
     }
 
+    // The hours batches this login may see (an own-workers HR: only its own),
+    // live: every change (sent, approved, rejected) calls onChange with the
+    // whole list, shaped like loadPendingHours.
+    let hoursUnsub = null;
+    function listenPendingHours(t, onChange){
+      if(hoursUnsub) hoursUnsub();
+      return hrOnly().then(hr => {
+        const q = hr ? F.query(col(t,'pendingHours'), F.where('createdBy','==',hr)) : col(t,'pendingHours');
+        hoursUnsub = F.onSnapshot(q, snap => onChange(snap.docs.map(batchFromDoc)),
+          err => console.warn('Hours listener stopped:', err));
+      });
+    }
+
     let punchUnsub = null;
     function listenPunches(t, onChange, since){
       if(punchUnsub) punchUnsub();
@@ -407,8 +420,12 @@
       // An own-workers hr reads only the batches it uploaded.
       const hr = await hrOnly();
       const snap = await F.getDocs(hr ? F.query(col(t,'pendingHours'), F.where('createdBy','==',hr)) : col(t,'pendingHours'));
-      return {batches: snap.docs.map(d => { const x = d.data(); return {batchId: d.id, fileName: x.fileName || '',
-        uploadedBy: x.uploadedBy || '', uploadedAt: x.uploadedAt || '', decidedAt: x.decidedAt || '', status: x.status, entries: x.rows || []}; })};
+      return {batches: snap.docs.map(batchFromDoc)};
+    }
+    function batchFromDoc(d){
+      const x = d.data();
+      return {batchId: d.id, fileName: x.fileName || '', uploadedBy: x.uploadedBy || '', uploadedAt: x.uploadedAt || '',
+        decidedAt: x.decidedAt || '', status: x.status, entries: x.rows || []};
     }
     function approver(ctx){ return ctx.role === 'tenant_admin' || ctx.role === 'superadmin'; }
     const APPROVER_ERROR = 'Only the firm owner or the super-admin can approve uploaded hours';
@@ -567,7 +584,7 @@
     }
 
     return {
-      login, loadSchedule, saveSchedule, listenWorkers, listenPunches, punchesBetween, punchesOfBatch, savePunch, updatePunch, deletePunch, handleAction,
+      login, loadSchedule, saveSchedule, listenWorkers, listenPendingHours, listenPunches, punchesBetween, punchesOfBatch, savePunch, updatePunch, deletePunch, handleAction,
       uploadWorkerFile, UPLOAD_ACTIONS, isStoragePath,
       currentUser: () => auth.currentUser,
       idToken: () => auth.currentUser ? auth.currentUser.getIdToken() : Promise.resolve(null),

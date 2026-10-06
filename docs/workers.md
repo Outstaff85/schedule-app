@@ -84,6 +84,7 @@ Read-only summary, as flat icon + text rows:
 - phone; start date; contract warning; ID; document status;
 - with `hasPermission('workers')`: a "Scan / Rescan" button at the end of the header (`rescanFromWorkerCard(wi)`: closes the card, opens the worker modal and the scan over it). Under Documents, one amber row per scan field still missing (`cardMissingScanRowsHtml`). When the worker has a saved scan (`assetsFileId`), tapping a row searches it for that field (`findScanFieldFromCard` → `findScanField`). A value found is saved on the worker (`autoSave`, `name` rebuilt for a name field), and the Form 101 is rebuilt (`regenerateWorkerDoc`). Not found → the row says so, with a link to photograph the page again;
 - address with house number and city; income types; scheduled hours per week; "document saved";
+- "Hours sent:" the worker's latest hours batch and its status (Sent for review / Approved / Rejected, with the date), live ([accounting.md](accounting.md) → Pending hours);
 - the clients (labelled "Clients:"); the supplier, labelled "Supplier:";
 - notes;
 - the Documents section (`workerDocsSectionHtml(w)`).
@@ -120,6 +121,9 @@ One form for add, edit and post-scan review. Labels of every Form 101 field are 
   - **Signature, notes.** No color picker — a new worker gets the next `WORKER_COLORS` color (`blankWorkerDefaults`), an edited one keeps its color; the signature pad (`wSigCanvas`, see [form101.md](form101.md)); notes; a new punch-link token (`regenerateWorkerToken`).
 
 ### Saving (`saveWorker()`)
+
+The window has no Save button: it saves when closed by a tap outside (`workerOverlay.__onUserClose` → `saveWorker({auto:true})`, one save at a time, `saveWorker.busy` → `saveWorkerNow`). A hint under the form says so. On such a close: an edit with nothing changed (form fields, signature, HR pick, a rescan) just closes; an empty name closes without saving (an edit says so in a toast, a new worker is not created); otherwise the steps below run as for the old button. `saveWorker()` with no options (tests, the scan flow) behaves the same except that an empty name focuses the field.
+
 
 1. **Read the form.** All fields go into `commonFields`. A spouse entered with no marital status saves as `marital_married`. Empty children rows are dropped.
 2. **Duplicate guard for a new worker.** If another worker has the same `workerDocId`, `confirm()` offers to update that worker instead:
