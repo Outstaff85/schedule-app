@@ -52,7 +52,7 @@ The client keeps the punch log in `localStorage.punchLog` (`getPunchLog()` / `sa
 2. **Per-client rates** — `renderRateMatrix()`.
 3. **Per-supplier rates** — `renderSupplierRateMatrix()`.
 4. **Payable by supplier** — `renderSupplierPayable()`, called from `renderSalary()`.
-   **Payable by HR** — `renderHrPayable()` (owner / super-admin, shown when the firm has HR logins): per HR, the hours of the workers whose `hrId` is that HR × its `commissionRate`; for a worker paid by the day, days × its `commissionDayRate` when set (`commissionFor`); never a wage.
+   **Payable by HR** — `renderHrPayable()` (owner / super-admin, shown when the firm has HR logins): per HR, `commissionFor` with the HR's commission rates (its `commissionRate` and `commissionDayRate` when set) on the workers whose `hrId` is that HR; never a wage.
 5. **Billable by client** — `renderClientBillable()`, called from `renderSalary()`.
 6. **Pending hours** — `renderPendingHours()`.
 
