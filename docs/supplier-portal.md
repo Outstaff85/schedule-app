@@ -31,7 +31,7 @@ Who creates a supplier login and how: [admin.md](admin.md) → Users pane. The s
   - After each change the data is reloaded.
 - **My Hours** (`renderHoursTab()`): a month (this one and the 11 before it) and a worker.
   - **Detail** (`runDetailExport` → `exportShiftsDetail`): the worker's shifts that month, Date / In / Out / Hours + total, Excel or a print page.
-  - **Summary** (`runSummaryExport` → `exportPayableSummary`): per worker with hours that month, its commission (`myCommission`: days × `supplierDayRate` when set, else hours × `supplierRate`, else 5), Excel or a print page.
+  - **Summary** (`runSummaryExport` → `exportPayableSummary`): per worker with hours that month, its commission calculated by `myCommission()` — days × `supplierDayRate` when set for a daily-paid worker, else hours × `supplierRate` (or 5), Excel or a print page.
 
   - **Send hours for approval**: a worker select and "Add shift" rows of date / in / out (`sendHoursRows`; each new row takes the next day; a daily-paid worker needs only a date — one day, 08:00–16:00; a row that can't be sent is outlined red and explained, nothing is sent), "Send for approval" (`submitSendHours` → `supplierSubmitHours`); **Sent for approval** (`loadSentHours` → `supplierListHours`) lists each batch with an amber / green / red status chip (`hoursStatusChip`), paged by 10.
   - **Pay** (`renderPayTable`, only with `showPay`): for the picked month, per own worker with hours: Hours, Days, Rate (₪/h, or ₪/day for a daily-paid worker), Pay, My commission (`myCommission`), with totals; paged by 10.
