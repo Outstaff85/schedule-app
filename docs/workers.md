@@ -14,13 +14,13 @@ One object per worker in the global `workers` array. It is saved as part of the 
 | `colorIdx` | index into `WORKER_COLORS` (8 colors) |
 | `phone`, `notes` | |
 | `status` | `active` / `vacation` / `fired` (shown as פעיל / בחופשה / לא פעיל, Active / On vacation / Inactive) |
-| `hourlyRate` | base ₪/h. Optional overrides `regRate`, `otRate`, `shabbatRate` (set in Accounting) |
+| `hourlyRate` | the worker's own rate (₪/h, or ₪/day when `payMode` is `daily`); `otRate`, `shabbatRate`; the older `regRate`. All set in Accounting → Worker pay ([accounting.md](accounting.md)) |
 | `clientRates` | `{clientId: {rate, otRate, shabbatRate}}` — per-client override, see [accounting.md](accounting.md) |
-| `travelAllowance` | ₪ per day worked, added on top of pay |
+| `travelAllowance`, `travelMonthly` | travel: ₪ per day worked and ₪ per month with work, added on top of pay (Accounting → Worker pay) |
 | `clientIds` | array — a worker can work at several clients |
 | `supplierId`, `supplierRates` | one supplier (agency); `supplierRates[sid].rate` = commission override |
 | `hrId` | uid of the HR login the worker belongs to, or absent; set only by the owner / super-admin (worker modal HR field, the HR card in Users) or automatically for a worker an HR adds ([hr.md](hr.md)) |
-| `bank`, `bankBranch`, `bankAccountNumber` | the worker's own bank details |
+| `bank`, `bankBranch`, `bankAccountNumber` | the worker's own bank details (Accounting → Worker pay) |
 | `schedule` | 7 items, Sunday first: `{type:'work'|'off', start:'HH:MM'|null, end}` |
 | `startDate` / `workStartDate` | same value, one input; `startDate` drives the contract warning, `workStartDate` goes to Form 101 |
 | `expiryEnabled`, `expiryMonths`, `expiryWarnMonths` | opt-in contract-term warning |
@@ -61,8 +61,8 @@ One object per worker in the global `workers` array. It is saved as part of the 
   
   All filters combine (AND). In client grouping a worker appears under every client they have; in supplier grouping, under one (or "No supplier assigned").
 - **View:** `getWorkersView()` returns `cards` unless `localStorage.workersView === 'list'`; `setWorkersView(v)` stores the choice.
-  - Cards — `renderWorkerCards(box, list, groupBy, stMetaMap, sig)`. Each card shows avatar, name, status, contract and document badges, ID/passport, rate, hours this month, clients, supplier, HR (owner / super-admin only: the HR login's name as a colored badge like the supplier's, `hrNameOf` / `hrColor` — a steady color picked from `CLIENT_COLORS` by the HR's uid), start date and document status. Hours come from `workersMonthHours()`, which parses the punch log once, splits it by worker and sums `getWorkerMonthShifts()` — the same shift pairing as payroll.
-  - List — a table with columns Worker / Status / ID / Objects / Supplier / Phone / Rate / Start / actions (PDF download, delete). A tap on the row opens the worker card; a tap on the card opens the edit form.
+  - Cards — `renderWorkerCards(box, list, groupBy, stMetaMap, sig)`. Each card shows avatar, name, status, contract and document badges, ID/passport, hours this month, clients, supplier, HR (owner / super-admin only: the HR login's name as a colored badge like the supplier's, `hrNameOf` / `hrColor` — a steady color picked from `CLIENT_COLORS` by the HR's uid), start date and document status. Hours come from `workersMonthHours()`, which parses the punch log once, splits it by worker and sums `getWorkerMonthShifts()` — the same shift pairing as payroll.
+  - List — a table with columns Worker / Status / ID / Objects / Supplier / Phone / Start / actions (PDF download, delete). A tap on the row opens the worker card; a tap on the card opens the edit form.
   - Clicking a card or row opens `openWorkerCard(wi)`.
 
 ## Badges and status helpers
@@ -81,14 +81,14 @@ One object per worker in the global `workers` array. It is saved as part of the 
 ## Worker card (`openWorkerCard(wi)`, `#workerCardOverlay`)
 
 Read-only summary, as flat icon + text rows:
-- phone; rates; start date; contract warning; ID; document status;
+- phone; start date; contract warning; ID; document status;
 - with `hasPermission('workers')`: a "Scan / Rescan" button at the end of the header (`rescanFromWorkerCard(wi)`: closes the card, opens the worker modal and the scan over it). Under Documents, one amber row per scan field still missing (`cardMissingScanRowsHtml`). When the worker has a saved scan (`assetsFileId`), tapping a row searches it for that field (`findScanFieldFromCard` → `findScanField`). A value found is saved on the worker (`autoSave`, `name` rebuilt for a name field), and the Form 101 is rebuilt (`regenerateWorkerDoc`). Not found → the row says so, with a link to photograph the page again;
 - address with house number and city; income types; scheduled hours per week; "document saved";
-- the clients (labelled "Clients:"), and each assigned client with the effective rates there (`effectiveRates(w, clientId)`, a star when the worker has their own override); the supplier, labelled "Supplier:";
+- the clients (labelled "Clients:"); the supplier, labelled "Supplier:";
 - notes;
 - the Documents section (`workerDocsSectionHtml(w)`).
 
-**Status** — three small pills right under the card's header, at the right (Active / Vacation / Inactive, a colored dot each, the chosen one filled; `setWorkerStatus(wi, v)` saves at once and redraws the card). Under them, also at the right, "נשמר: <date>" (`docSavedAt`, when the Form 101 was last saved). The "Documents: …" status line and the missing scan-field rows are the last lines of the card's details (after HR), right above the Documents section. Without the workers permission the card shows a plain status badge instead. Buttons: **Add document** (`openWorkerDocUpload`, only with `hasPermission('workers')`; the Documents section itself has no add button), Download document, **Upload hours** (with `hasPermission('workers')`) and **Export hours** (with `workers` and `exports`). There is no Edit button: a tap anywhere on the card other than a button, link or field (`isPlainTap`) closes it and opens the edit form (`openEditWorker`).
+**Status** — three small pills right under the card's header, at the right (Active / Vacation / Inactive, a colored dot each, the chosen one filled; `setWorkerStatus(wi, v)` saves at once and redraws the card). Under them, also at the right, "נשמר: <date>" (`docSavedAt`, when the Form 101 was last saved). The "Documents: …" status line and the missing scan-field rows are the last lines of the card's details (after HR), right above the Documents section. Without the workers permission the card shows a plain status badge instead. Buttons: **Add document** (`openWorkerDocUpload`, only with `hasPermission('workers')`; the Documents section itself has no add button), Download document, **Upload hours** (with `hasPermission('workers')`) and **Export hours** (with `workers` and `exports`), **Pay** (with `canEditPay()`: closes the card and opens the pay modal, `openPayModal` — [accounting.md](accounting.md) → Worker pay). There is no Edit button: a tap anywhere on the card other than a button, link or field (`isPlainTap`) closes it and opens the edit form (`openEditWorker`).
 
 ## Worker modal (`showWorkerModal(w)`, `#workerModal`)
 
@@ -97,7 +97,7 @@ One form for add, edit and post-scan review. Labels of every Form 101 field are 
 - **Opening:**
   - it warms the Form 101 and upload functions (`warmCloudFunctions`);
   - a worker with only `name` gets `docGiven`/`docSurname` split from it for display (without this the "name required" check would silently block the save);
-  - module state is reset: `__wScheduleOpen`, `__wExpiryOpen`, `__wForm101Open`, `__wBankOpen` (all collapsed); `__wClientIds`; `__wChildren`; `__wAvatarB64`; `__wDocType`.
+  - module state is reset: `__wScheduleOpen`, `__wExpiryOpen`, `__wForm101Open` (all collapsed); `__wClientIds`; `__wChildren`; `__wAvatarB64`; `__wDocType`.
 - **Sections:**
   - **Avatar.** Upload a photo, then crop it in the editor: `openAvatarCropEditor`, drag (`attachAvatarCropDrag`), zoom (`onAvatarCropZoom`), confirm (`confirmAvatarCrop` → 160 px JPEG, `AVATAR_SIZE`, black and white via `grayscaleCanvas`; the scan's portrait is made the same way). Or delete it (`clearWorkerAvatar`).
   - **Scan fields** (no Documents block in the modal — removed as a duplicate, per user request 2026-10-05: the PDF download and the scan / rescan button are on the worker card, `rescanFromWorkerCard`, which opens the modal and `rescanFromWorkerModal()`; a field the scan didn't find links to it too). `SCAN_FIND_FIELDS` is the list of scan fields: given name, surname, ID or passport number, date of birth and sex, plus street, house number and city for an Israeli ID. For each it records the input, the page (front or ספח), the Hebrew label, and the zoomed re-read kind for digits and dates. `workerMissingScanKeys` / `workerMissingScanFields` give the ones a worker lacks. The "חסרים" line under the documents (`#wMissingScan`) follows the fields live: `refreshModalMissingScan()` recounts the empty scan inputs when one is typed in or picked (one `input`/`change` listener on the modal) and when the field search fills one, so a field filled after the modal opened leaves the line.
@@ -111,10 +111,9 @@ One form for add, edit and post-scan review. Labels of every Form 101 field are 
     - When the scan finishes, `openWorkerModalFromScan()` redraws the modal and calls `applyWorkerDraft()`: a field that had a value keeps it, an empty one takes the scan's value.
     - `openAddWorker`, `openEditWorker`, `startNewScan` and `rescanWorkerDoc` clear the draft.
   - The form's title has no status or saved date: both are on the worker card.
-  - **Personal data**, two short fields per line: first + last name; ID/passport + sex; marital status + health fund; date of birth + ID expiry; street + house no. + city (one line of three); hourly rate + travel ₪/day; start date + phone. The hourly rate is the same field as the base rate in Accounting → Salary (`setWorkerRate`). A worker without a rate of their own shows the rate of their last-added client that has one (`wClientRateSource`), filled in with "Client rate · name" under it, and follows it as clients are added or removed (`syncWRate`). Adding a client that has a rate makes its rate the default again, even over a rate typed earlier (`addWClient`); saved, such a worker keeps no rate of their own, so a later change of the client's rate reaches them. A rate typed by hand (`data-manual`, `onWRateInput`) is the worker's own: saved as `hourlyRate` (the older `regRate` cleared), it wins over the client's rate for this worker only, and only a per-client rate from the rate matrix wins over it; emptying the field goes back to the client's (`effectiveRates`, [accounting.md](accounting.md)).
+  - **Personal data**, two short fields per line: first + last name; ID/passport + sex; marital status + health fund; date of birth + ID expiry; street + house no. + city (one line of three); start date + phone. No money field: rate, pay mode, OT / Shabbat, travel and bank are set in Accounting → Worker pay ([accounting.md](accounting.md)); `saveWorker` keeps them on an edit (`{...prevW, ...commonFields}`). One rule stays here: when a client that has a rate is added to an hourly worker with a rate of their own, the own rate is cleared (`hourlyRate = 0`), so the new client's rate applies.
   - **Clients.** Chips plus a search box: `renderWClientChips`, `renderWClientSuggest` (only clients not yet added), `addWClient`, `removeWClient`. Enter picks the first match (`pickFirstWClientSuggest`).
   - **Supplier.** A `<select>` (`wSupplierId`).
-  - **Bank details.** A collapsible block (`toggleBankWrap`).
   - **Weekly schedule.** Collapsible (`toggleWeeklySchedule`). It is only written on save if it was opened: a new worker gets all days off, an existing one keeps their shifts.
   - **Form 101 block and contract-term warning.** Two buttons side by side (`toggleForm101Wrap`: income types; `toggleExpiryWrap`: opening it enables the warning), their panels under them.
   - **Spouse and children.** Two buttons side by side under those (`toggleWPanel('spouse'|'children')`), each opening a framed panel: the spouse fields (`#wSpouseWrap`) and the children rows (`#wChildrenWrap`; `renderChildrenRows`, `addChildRow`, `removeChildRow` — the name across, then ID / passport, date of birth and delete on one line). Both are closed when the modal opens; the buttons show "✓" for a filled-in spouse and the number of children (`updateWPanelLabels`). Picking "married" opens the spouse panel (`onWMaritalChange`).
@@ -172,7 +171,7 @@ These are separate from the Form 101 scan, and their labels are English.
   - spreadsheets → `parseHoursExcelFile()` (SheetJS; a header row with `Date`/`In`/`Out` or the same three words in Russian, any order, case-insensitive; dates become `dd/MM/yyyy`);
   - images and PDFs → `fileToUploadPages()`, then every page → `parseHoursImagePage()` (`aiReadHoursTable`);
 - **preview** — the first 10 entries are shown;
-- **enter by hand** — "Add shift" rows of date / in / out (`addHoursManualRow`, `renderHoursManualRows`, `hoursManualEntries`); each new row takes the day after the last one (`nextManualDate`); a daily-paid worker's row may leave the times empty and counts as one day, 08:00–16:00 (`MANUAL_DAY_SHIFT`). The send button is on whenever there is a file or a row; a row that can't be sent (no date; an hourly worker without in and out; only one of the two times) is outlined red and explained in a toast (`manualRowsProblem`), and nothing is sent;
+- **enter by hand** — "Add shift" rows of date / in / out (`addHoursManualRow`, `renderHoursManualRows`, `hoursManualEntries`); each new row takes the day after the last one (`nextManualDate`); a daily-paid worker's (Accounting → Worker pay) row may leave the times empty and counts as one day, 08:00–16:00 (`MANUAL_DAY_SHIFT`). The send button is on whenever there is a file or a row; a row that can't be sent (no date; an hourly worker without in and out; only one of the two times) is outlined red and explained in a toast (`manualRowsProblem`), and nothing is sent;
 - **submit** — `submitHoursImportBatch()` sends `savePendingHoursBatch` with the file's and the typed `{workerId, clientId, date, inTime, outTime}` rows in one batch (file name, plus "entered by hand" when rows were typed); the modal stays open and clears;
 - **sent for approval** — `loadHoursSent(workerId)` lists this worker's batches (`loadPendingHours`; an own-workers HR gets only its own) with a status chip (`hoursStatusChip`): amber "Sent for review", green "Approved", red "Rejected", with the date; paged by 10.
 
@@ -184,4 +183,4 @@ Nothing reaches payroll until an owner approves it in Accounting ([accounting.md
 
 ## Schedule sidebar worker list
 
-`renderWorkerList()` (Schedule tab sidebar) sorts by name / hours / status (`#workerSort`). Each row shows status, contract and upload-failed badges, scheduled hours and rate, with copy-link and delete buttons; a tap elsewhere on the row opens the edit form (`openEditWorker`). See [app-core.md](app-core.md) for the Schedule tab.
+`renderWorkerList()` (Schedule tab sidebar) sorts by name / hours / status (`#workerSort`). Each row shows status, contract and upload-failed badges, scheduled hours, with copy-link and delete buttons; a tap elsewhere on the row opens the edit form (`openEditWorker`). See [app-core.md](app-core.md) for the Schedule tab.

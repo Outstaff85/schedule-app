@@ -657,7 +657,6 @@
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Objects</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Supplier</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Phone</th>
-              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Rate</th>
               <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Start date</th>
               <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">Actions</th>
             </tr>
@@ -840,6 +839,13 @@
         <div id="dashSalary"></div>
       </div>
 
+      <!-- Worker pay: every worker's rate, pay mode, travel and bank (the one place money is set) -->
+      <div id="accSecWorkerPay" style="margin-bottom:24px">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-wallet"></i> Worker pay <button type="button" class="acc-help" onclick="openAccountingHelp('workerPay')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
+        <input type="text" id="workerPaySearch" placeholder="Search a worker" oninput="renderWorkerPay()" style="width:100%;max-width:320px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;padding:7px 10px;outline:none;margin-bottom:8px">
+        <div id="workerPayWrap"></div>
+      </div>
+
       <!-- Per-client rate matrix -->
       <div id="accSecRates">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-adjustments"></i> Per-client rates <button type="button" class="acc-help" onclick="openAccountingHelp('rates')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
@@ -881,6 +887,9 @@
 </div>
 
 <!-- Modals -->
+<div class="overlay" id="payOverlay">
+  <div class="modal" id="payModal" style="width:460px"></div>
+</div>
 <div class="overlay" id="accHelpOverlay">
   <div class="modal" id="accHelpModal" style="width:460px"></div>
 </div>
@@ -1433,9 +1442,9 @@ function shiftPay(hours, w, isSat, clientId){
   return israeliDayPay(hours, r.regRate, false).total;
 }
 // Daily pay (w.payMode === 'daily', picked per worker in Accounting →
-// Salary; 2026-10-05): the worker is paid their own rate (the worker card's
-// rate, read as ₪/day) once for every day worked, whatever the hours. A
-// client's rate (an hourly figure) never applies to a daily-paid worker.
+// Worker pay or Salary): the worker is paid their own rate (read as ₪/day)
+// once for every day worked, whatever the hours. A client's rate (an hourly
+// figure) never applies to a daily-paid worker.
 function isDailyPay(w){ return !!(w && w.payMode==='daily'); }
 function dailyRate(w){ return Number(wOwnRate(w))||0; }
 // One shift's pay, for every payroll figure (Salary, its export, the
@@ -1449,6 +1458,12 @@ function shiftPayFor(hours, w, isSat, clientId, date, seenDays){
     return dailyRate(w);
   }
   return shiftPay(hours, w, isSat, clientId);
+}
+// Travel for a period (Accounting → Worker pay): travelAllowance ₪ for each
+// day worked + travelMonthly ₪ once for each calendar month with work in it.
+// Never part of the wage itself (shiftPay / shiftPayFor).
+function travelPay(w, days, months){
+  return (Number(w&&w.travelAllowance)||0)*days + (Number(w&&w.travelMonthly)||0)*months;
 }
 // The days of a daily-paid worker can be set by hand for one period
 // (w.dayOverrides[key]); key = the concrete period: 'w:<Sunday yyyy-mm-dd>',
@@ -1696,10 +1711,9 @@ function renderWorkerList(){
   else if(sort==='status'){ const rank={active:0,vacation:1,fired:2}; list.sort((a,b)=>((rank[a.w.status||'active']??0)-(rank[b.w.status||'active']??0))||a.w.name.localeCompare(b.w.name)); }
   renderPagedList(el,'sideWorkers',sort,list,({w,wi})=>{
     const c=WORKER_COLORS[w.colorIdx%8],wh=workerTotalHours(w);
-    const rateStr=w.hourlyRate?(' · ₪'+w.hourlyRate+'/h'):'';
     return `<div class="worker-chip tap-edit" onclick="if(isPlainTap(event,this))openEditWorker(${wi})">
       <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${workerAvatarInner(w)}</div>
-      <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">INACTIVE</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">VAC</span>':''}${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div><div class="worker-hours">${wh.toFixed(1)}h${rateStr}</div></div>
+      <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">INACTIVE</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">VAC</span>':''}${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div><div class="worker-hours">${wh.toFixed(1)}h</div></div>
       <div class="worker-actions">
         <button class="worker-act-btn edit" onclick="copyWorkerLink('${w.id}')" title="Copy punch link"><i class="ti ti-link"></i></button>
         <button class="worker-act-btn del"  onclick="deleteWorker(${wi})"   title="Delete"><i class="ti ti-x"></i></button>
@@ -2140,7 +2154,7 @@ async function rescanFromWorkerModal(){
     vals[el.id]=(el.type==='checkbox'||el.type==='radio')?{checked:el.checked}:el.value;
   });
   const cv=document.getElementById('wSigCanvas');
-  window.__wDraft={vals,rateManual:document.getElementById('wRate')?.dataset.manual==='1',children:__wChildren.map(c=>({...c})),clientIds:[...__wClientIds],avatar:__wAvatarB64,
+  window.__wDraft={vals,children:__wChildren.map(c=>({...c})),clientIds:[...__wClientIds],avatar:__wAvatarB64,
     colorIdx:selColorIdx,sig:cv&&cv._sigDirty?cv.toDataURL('image/png'):null};
   warmCloudFunctions(SCAN_WARM_URLS());
   try{ await ensureScanPipelineLoaded(); }
@@ -2162,10 +2176,7 @@ function applyWorkerDraft(){
     if(v&&typeof v==='object'){ el.checked=v.checked; continue; }
     if(v!==''&&v!=null){ el.value=v; _clearScanCheck(el); }
   }
-  const rateEl=document.getElementById('wRate');
-  if(rateEl){ if(d.rateManual) rateEl.dataset.manual='1'; else delete rateEl.dataset.manual; }
   if(d.children.length){ __wChildren=d.children; renderChildrenRows(); }
-  syncWRate();
   if(d.clientIds.length){ __wClientIds=d.clientIds.filter(id=>clients.some(c=>c.id===id)); renderWClientChips(); }
   if(d.avatar&&!__wAvatarB64){
     __wAvatarB64=d.avatar;
@@ -2240,35 +2251,12 @@ function renderWClientChips(){
       <button type="button" onclick="removeWClient('${esc(c.id)}')" title="Remove" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:0 2px;font-size:14px;line-height:1">&times;</button>
     </span>`).join('');
   const cnt=document.getElementById('wClientCount'); if(cnt) cnt.textContent=sel.length?('('+sel.length+')'):'';
-  syncWRate();
 }
-// The worker modal's hourly rate. A worker without a rate of their own shows
-// the rate of their last-added client that has one (filled in, "client rate"
-// under it) and follows it as the clients change; such a worker is saved
-// with no rate of their own, so a later change of the client's rate reaches
-// them. A rate typed by hand (data-manual) is the worker's own: it wins over
-// the client's, for this worker only (effectiveRates). Emptying it goes back
-// to the client's.
+// The worker's own regular rate (hourlyRate, or the older regRate); '' = none.
 function wOwnRate(w){
   if(!w) return '';
   if(w.regRate!=null&&w.regRate!=='') return w.regRate;
   return Number(w.hourlyRate)>0?w.hourlyRate:'';
-}
-// The client whose rate applies: the last-added one that has a rate.
-function wClientRateSource(){
-  return __wClientIds.map(id=>clients.find(c=>c.id===id)).filter(c=>c&&c.defaultHourlyRate!=null&&c.defaultHourlyRate!=='').pop()||null;
-}
-function syncWRate(){
-  const el=document.getElementById('wRate'), hint=document.getElementById('wRateHint'); if(!el) return;
-  const cl=wClientRateSource();
-  if(el.dataset.manual!=='1') el.value=cl?cl.defaultHourlyRate:'';
-  if(hint) hint.textContent=el.dataset.manual==='1'
-    ? (cl?'This worker\'s own rate (client\'s: ₪'+cl.defaultHourlyRate+')':'')
-    : (cl?'Client rate · '+cl.name:'');
-}
-function onWRateInput(el){
-  if(el.value==='') delete el.dataset.manual; else el.dataset.manual='1';
-  syncWRate();
 }
 function wClientMatches(){
   const q=(document.getElementById('wClientSearch')?.value||'').trim().toLowerCase();
@@ -2287,20 +2275,12 @@ function hideWClientSuggest(){ const box=document.getElementById('wClientSuggest
 function addWClient(id){
   if(!__wClientIds.includes(id)){
     __wClientIds.push(id);
-    // Moved to a new client that has a rate: its rate is the default again,
-    // replacing a rate typed for the previous client (it can be typed over).
-    const cl=clients.find(c=>c.id===id), el=document.getElementById('wRate');
-    if(el&&cl&&cl.defaultHourlyRate!=null&&cl.defaultHourlyRate!=='') delete el.dataset.manual;
   }
   const inp=document.getElementById('wClientSearch'); if(inp){ inp.value=''; inp.focus(); }
   renderWClientChips(); renderWClientSuggest();
 }
 function removeWClient(id){ __wClientIds=__wClientIds.filter(x=>x!==id); renderWClientChips(); }
 function pickFirstWClientSuggest(){ const m=wClientMatches(); if(m.length) addWClient(m[0].id); }
-// Same collapsed-by-default pattern, for the worker's own bank requisites
-// (bank/branch/account number) — a separate section, not mixed into the
-// client picker, per request ("a separate tab inside the card").
-let __wBankOpen = false;
 // Spouse block in the worker modal is only relevant when married.
 // Spouse and children: framed panels behind two buttons side by side (closed
 // when the modal opens); the buttons say what is filled in.
@@ -2322,13 +2302,6 @@ function updateWPanelLabels(){
 // Married opens the spouse panel.
 function onWMaritalChange(){
   if(document.getElementById('wMaritalStatus')?.value==='marital_married') toggleWPanel('spouse',true);
-}
-function toggleBankWrap(){
-  __wBankOpen = !__wBankOpen;
-  const wrap = document.getElementById('wBankWrap');
-  const chev = document.getElementById('wBankChevron');
-  if(wrap) wrap.style.display = __wBankOpen ? '' : 'none';
-  if(chev) chev.className = 'ti ti-chevron-' + (__wBankOpen ? 'up' : 'down');
 }
 
 // ===== Children (ספח) manual editor, inside the Form-101 dropdown =====
@@ -2504,7 +2477,7 @@ function showWorkerModal(w){
   __wExpiryOpen=false;
   __wForm101Open=false;
   __wClientIds=(w.clientIds||[]).filter(id=>clients.some(c=>c.id===id));
-  __wBankOpen=false;
+
   __wChildren=Array.isArray(w.docChildren)?w.docChildren.map(c=>({...c})):[];
   __wAvatarB64=w.avatarB64||'';
   __wDocType=w.docType||'israeli_id';
@@ -2577,10 +2550,6 @@ function showWorkerModal(w){
       <div class="field"><label>עיר</label><input type="text" id="wCity" value="${esc(w.city||'')}" placeholder="עיר"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>תעריף שעתי (₪/שעה)</label><input type="number" id="wRate" value="${esc(wOwnRate(w))}" ${wOwnRate(w)!==''?'data-manual="1"':''} placeholder="לדוגמה: 35" min="0" step="0.5" oninput="onWRateInput(this)"><div id="wRateHint" style="font-size:11px;color:var(--text3);margin-top:3px"></div></div>
-      <div class="field"><label>Travel ₪ / day</label><input type="number" id="wTravelAllowance" value="${w.travelAllowance||''}" placeholder="0" min="0" step="0.5"></div>
-    </div>
-    <div class="field-row">
       <div class="field"><label>תאריך תחילת עבודה</label><input type="date" id="wStartDate" value="${w.startDate||w.workStartDate||new Date().toISOString().slice(0,10)}"></div>
       <div class="field"><label>טלפון</label><input type="text" id="wPhone" value="${esc(w.phone||'')}" placeholder="+972..."></div>
     </div>
@@ -2609,19 +2578,6 @@ function showWorkerModal(w){
         ${w.hrId&&!hrUsers().some(u=>u.id===w.hrId)?`<option value="${esc(w.hrId)}" selected>(unknown HR)</option>`:''}
       </select>
     </div>`:''}
-    </div>
-    <div class="field" style="margin-bottom:6px">
-      <button class="btn sm" type="button" onclick="toggleBankWrap()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
-        <span><i class="ti ti-building-bank"></i> Bank details <span id="wBankSummary" style="color:var(--text3);font-weight:400;font-size:12px">${w.bank||w.bankAccountNumber?'· set':''}</span></span>
-        <i class="ti ti-chevron-down" id="wBankChevron"></i>
-      </button>
-    </div>
-    <div id="wBankWrap" style="display:none">
-      <div class="field-row">
-        <div class="field"><label>Bank</label><input type="text" id="wBank" value="${esc(w.bank||'')}" placeholder="Bank name"></div>
-        <div class="field"><label>Branch</label><input type="text" id="wBankBranch" value="${esc(w.bankBranch||'')}" placeholder="Branch #"></div>
-      </div>
-      <div class="field"><label>Account number</label><input type="text" id="wBankAccountNumber" value="${esc(w.bankAccountNumber||'')}" placeholder="Account #"></div>
     </div>
     <div class="field" style="margin-bottom:6px">
       <button class="btn sm" type="button" onclick="toggleWeeklySchedule()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
@@ -2755,10 +2711,6 @@ async function saveWorker(){
   const name=(docGiven+' '+docSurname).trim();
   if(!name){ document.getElementById('wGiven').focus(); return; }
   const phone=document.getElementById('wPhone').value.trim();
-  // Only a rate typed by hand is the worker's own (syncWRate).
-  const rateEl=document.getElementById('wRate');
-  const hourlyRate=rateEl&&rateEl.dataset.manual==='1'?(parseFloat(rateEl.value)||0):0;
-  const travelAllowance=parseFloat(document.getElementById('wTravelAllowance')?.value)||0;
   // Status is set on the worker card (setWorkerStatus), not in this form.
   const status=editingWorkerIdx!==null?(workers[editingWorkerIdx].status||'active'):'active';
   // One UI field ("תאריך תחילת עבודה") feeds both: startDate (schedule/Contract
@@ -2796,9 +2748,6 @@ async function saveWorker(){
     .filter(c=>c.name||c.idNo||c.dob);
   const clientIds=[...__wClientIds];
   const supplierId=document.getElementById('wSupplierId')?.value||null;
-  const bank=document.getElementById('wBank')?.value.trim()||'';
-  const bankBranch=document.getElementById('wBankBranch')?.value.trim()||'';
-  const bankAccountNumber=document.getElementById('wBankAccountNumber')?.value.trim()||'';
   // Only a grid the user actually opened decides the schedule. Left closed, an
   // existing worker keeps the shifts they already had and a new one is created
   // with none — added to the roster without being dropped into the week.
@@ -2807,11 +2756,13 @@ async function saveWorker(){
     : (editingWorkerIdx!==null
         ? workers[editingWorkerIdx].schedule
         : DAYS.map(()=>({type:'off',start:null,end:null})));
-  const commonFields={name,colorIdx:selColorIdx,phone,hourlyRate,regRate:null,travelAllowance,status,startDate,workStartDate,docSex,
+  // Pay (rate, pay mode, travel, bank) is not in this form: it is set in
+  // Accounting → Worker pay (openPayModal), and an edit here keeps it.
+  const commonFields={name,colorIdx:selColorIdx,phone,status,startDate,workStartDate,docSex,
     expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,houseNumber,city,docDob,docExpiry,notes,
     incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,docChildren,clientIds,schedule,
     spouseSurname,spouseGiven,spouseId,spouseDob,spouseIncome,
-    supplierId,bank,bankBranch,bankAccountNumber,
+    supplierId,
     avatarB64:__wAvatarB64,docType:__wDocType};
   // Duplicate guard for a NEW worker (checked by document number — unique to
   // one person, unlike a name). Never creates a second record for the same
@@ -2863,6 +2814,12 @@ async function saveWorker(){
       'docSurname','docGiven','maritalStatus','healthFund','workStartDate','phone','docSex','docDob','docChildren',
       'spouseSurname','spouseGiven','spouseId','spouseDob','spouseIncome'];
     const updated={...prevW,...commonFields};
+    // Moved to a new client that has a rate: that client's rate is the
+    // default again — an hourly worker's own rate is cleared (user decision
+    // 2026-10-05; it can be set again in Accounting → Worker pay).
+    const addedRated=(updated.clientIds||[]).filter(id=>!(prevW.clientIds||[]).includes(id))
+      .some(id=>{ const c=clients.find(x=>x.id===id); return c&&c.defaultHourlyRate!=null&&c.defaultHourlyRate!==''; });
+    if(addedRated && !isDailyPay(updated) && wOwnRate(updated)!==''){ updated.hourlyRate=0; updated.regRate=null; }
     const changed=FORM101_WATCHED_FIELDS.some(f=>JSON.stringify(prevW[f])!==JSON.stringify(updated[f]));
     // A signature drawn now goes into the PDF (and the sidecar) too.
     const newSig=getSignaturePng('wSigCanvas');
@@ -3386,7 +3343,6 @@ function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
       </div>
       <div class="wcard-rows">
         <span class="k"><i class="ti ti-id"></i> ID / Passport</span><span class="v" style="font-family:monospace">${workerDocId(w)?esc(workerDocId(w)):dash}</span>
-        <span class="k"><i class="ti ti-coin"></i> Rate</span><span class="v">${w.hourlyRate?('₪'+esc(w.hourlyRate)+'/h'):dash}</span>
         <span class="k"><i class="ti ti-clock-hour-4"></i> Hours (${esc(monthName)})</span><span class="v" style="font-weight:700;color:${h>0?'var(--green)':'var(--text3)'}">${h.toFixed(1)}h</span>
         <span class="k"><i class="ti ti-building"></i> Clients</span><span class="v">${objs.length?objs.map(badge).join(''):dash}</span>
         <span class="k"><i class="ti ti-truck-delivery"></i> Supplier</span><span class="v">${sup?badge(sup):dash}</span>
@@ -3485,7 +3441,6 @@ function renderWorkersPage(){
       <td style="padding:10px 12px">${objBadges}</td>
       <td style="padding:10px 12px">${supBadge}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.phone?esc(w.phone):'—'}</td>
-      <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.hourlyRate?('₪'+w.hourlyRate+'/h'):'—'}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.startDate?fmtDMY(w.startDate):'—'}</td>
       <td style="padding:10px 12px;text-align:center" onclick="event.stopPropagation()"><div style="display:flex;gap:4px;justify-content:center">
         ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" title="Download the document (PDF from ${DOC_STORE})" style="padding:3px 8px;font-size:11px"><i class="ti ti-download"></i></a>`:''}
@@ -3527,7 +3482,6 @@ function openWorkerCard(wi){
     </div>`:''}
     <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text2);margin-bottom:14px">
       ${w.phone?`<div><i class="ti ti-phone"></i> ${esc(w.phone)}</div>`:''}
-      ${w.hourlyRate?`<div><i class="ti ti-coin"></i> Base ₪${w.hourlyRate}/h${w.otRate!=null?' · OT ₪'+w.otRate+'/h':''}${w.shabbatRate!=null?' · Shabbat ₪'+w.shabbatRate+'/h':''}</div>`:''}
       ${w.startDate?`<div><i class="ti ti-calendar-event"></i> Started ${fmtDMY(w.startDate)}</div>`:''}
       ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?'Expired':'Expiring soon'} — ${expSt.deadline.toLocaleDateString('en-GB')}</div>`:''}
       ${workerDocId(w)?`<div><i class="ti ti-id"></i> ${esc(workerDocId(w))}</div>`:''}
@@ -3535,12 +3489,7 @@ function openWorkerCard(wi){
       ${w.incomeType&&INCOME_TYPE_LABELS[w.incomeType]?`<div><i class="ti ti-briefcase"></i> ${INCOME_TYPE_LABELS[w.incomeType]}</div>`:''}
       ${w.otherIncomeType&&w.otherIncomeType!=='none'&&OTHER_INCOME_LABELS[w.otherIncomeType]?`<div><i class="ti ti-cash"></i> Other income: ${OTHER_INCOME_LABELS[w.otherIncomeType]}</div>`:''}
       <div><i class="ti ti-clock-hour-4"></i> ${wh.toFixed(1)}h scheduled / week</div>
-      ${objs.length?`<div><i class="ti ti-building"></i> Clients: ${objs.map(o=>`<span style="color:${o.color}">${esc(o.name)}</span>`).join(', ')}</div>
-      ${objs.map(o=>{
-        const r=effectiveRates(w,o.id);
-        const hasOverride=!!(w.clientRates&&w.clientRates[o.id]&&Object.values(w.clientRates[o.id]).some(v=>v!=null));
-        return `<div><i class="ti ti-currency-shekel"></i> ${esc(o.name)}: ₪${r.regRate}/h · OT ₪${r.otRate} · Shabbat ₪${r.shabbatRate}${hasOverride?' <i class="ti ti-star-filled" style="font-size:10px;color:var(--amber)" title="Own rate at this client"></i>':''}</div>`;
-      }).join('')}` : `<div><i class="ti ti-building-off"></i> Not assigned to any object</div>`}
+      ${objs.length?`<div><i class="ti ti-building"></i> Clients: ${objs.map(o=>`<span style="color:${o.color}">${esc(o.name)}</span>`).join(', ')}</div>` : `<div><i class="ti ti-building-off"></i> Not assigned to any object</div>`}
       ${sup?`<div><i class="ti ti-truck-delivery"></i> Supplier: <span style="color:${sup.color}">${esc(sup.name)}</span></div>`:''}
       ${isFirmAdminSession()?`<div><i class="ti ti-user-shield"></i> HR: ${w.hrId?`<span style="color:${esc(hrColor(w.hrId))}">${esc(hrNameOf(w.hrId)||'—')}</span>`:'<span style="color:var(--text3)">none</span>'}</div>`:''}
       <!-- document status last, next to the Documents section below -->
@@ -3553,6 +3502,7 @@ function openWorkerCard(wi){
       ${hasPermission('workers')?`<button class="btn sm" onclick="openWorkerDocUpload('${esc(w.id)}')"><i class="ti ti-upload"></i> Add document</button>`:''}
       ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Download document</a>`:''}
       ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursImportModal('${w.id}')"><i class="ti ti-file-upload"></i> Upload hours</button>`:''}
+      ${canEditPay()?`<button class="btn sm" onclick="closeModal('workerCardOverlay');openPayModal('${w.id}')" title="Rate, pay mode, travel, bank — in Accounting"><i class="ti ti-cash"></i> Pay</button>`:''}
       ${hasPermission('workers')&&hasPermission('exports')?`<button class="btn sm" onclick="openHoursExportModal('${w.id}')"><i class="ti ti-file-export"></i> Export hours</button>`:''}
     </div>`;
   pageWorkerDocs(document.getElementById('workerCardModal'),w.id);
@@ -3704,8 +3654,9 @@ function renderHoursImportModal(){
       <input type="file" id="hoursImportFile" accept=".xlsx,.xls,.csv,image/*,application/pdf,.pdf" multiple onchange="onHoursImportFileSelected(this.files)">
     </div>
     <div id="hoursImportPreview" style="font-size:12px;color:var(--text3);min-height:20px"></div>
-    <div class="form-section" style="display:flex;justify-content:space-between;align-items:center">Enter by hand <button class="btn sm" type="button" onclick="addHoursManualRow()"><i class="ti ti-plus"></i> Add shift</button></div>
-    ${isDailyPay(w)?'<div style="font-size:11px;color:var(--text3);margin-bottom:6px">Paid by the day: a date is enough — with no times it counts as one day (08:00–16:00).</div>':''}
+    <div class="form-section" style="display:flex;justify-content:space-between;align-items:center;gap:8px">Enter by hand
+      <button class="btn sm" type="button" onclick="addHoursManualRow()"><i class="ti ti-plus"></i> Add shift</button></div>
+    <div id="hoursPayHint" style="font-size:11px;color:var(--text3);margin-bottom:6px">${isDailyPay(w)?'Paid by the day: a date is enough — with no times it counts as one day (08:00–16:00).':'Paid by the hour: date, in and out for each shift. (How a worker is paid is set in Accounting → Worker pay.)'}</div>
     <div id="hoursManualRows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
     <div class="modal-actions">
       <button class="btn accent" id="hoursImportSubmitBtn" disabled onclick="submitHoursImportBatch()"><i class="ti ti-upload"></i> Upload for approval</button>
@@ -3794,7 +3745,7 @@ function manualRowsProblem(rows, daily, name){
   if(!bad.length) return null;
   const r = rows[bad[0]];
   const why = !r.date ? 'pick a date'
-    : (!daily ? 'enter the in and out times — '+(name||'this worker')+' is paid by the hour (₪/day in Accounting → Salary lets you send dates only)'
+    : (!daily ? 'enter the in and out times — '+(name||'this worker')+' is paid by the hour (dates only need "₪/day" in Accounting → Worker pay)'
     : 'enter both times, or leave both empty for a whole day');
   return {rows: bad, text: 'Shift '+(bad[0]+1)+': '+why};
 }
@@ -6186,6 +6137,7 @@ function renderAccounting(){
   const sub=document.querySelector('#sectionAccounting .page-sub');
   if(sub) sub.textContent=payOnly?'Your workers\' hours, pay and your commission':'Salary calculation and per-client rates';
   renderSalary();
+  renderWorkerPay();
   if(payOnly) return;
   renderRateMatrix();
   renderSupplierRateMatrix();
@@ -6252,7 +6204,6 @@ function renderSalary(){
       else { byWorker[workerId].regH+=Math.min(h,RM); byWorker[workerId].otH+=Math.max(h-RM,0); }
       byWorker[workerId].hours+=h;
       byWorker[workerId].days++;
-      byWorker[workerId].travel+=Number(wc&&wc.travelAllowance)||0;
       // The shift's own clientId (from its opening IN punch) picks up any
       // per-client rate override — a worker who worked at two clients with
       // different rates in the same period still gets each shift priced
@@ -6281,6 +6232,7 @@ function renderSalary(){
     const wc=workers.find(w=>w.id===e.workerId), ov=isDailyPay(wc)?dayOverride(wc,periodKey):null;
     if(ov!=null) e.total=ov*dailyRate(wc);
     e.daysUsed=ov!=null?ov:e.countedDays;
+    e.travel=travelPay(wc,e.daysUsed,new Set([...e.dayKeys].map(k=>k.slice(0,7))).size);
   });
 
   const salaryEl=document.getElementById('dashSalary');
@@ -6762,6 +6714,95 @@ function setSupplierRateOverride(wid,sid,field,val){
 }
 
 // This worker's own regular rate (empty = none: the client's rate applies).
+// ── Worker pay (Accounting) ────────────────────────────────────────────────
+// The one place a worker's money is set: pay mode (₪/h or ₪/day), own rate,
+// OT / Shabbat rates, travel per day and per month, bank details. Every
+// worker is listed (a new one with no shifts too); a tap opens openPayModal.
+// The firm owner, a super-admin and staff with Accounting edit; an HR (its
+// reduced Accounting) sees its own workers read-only, without bank details.
+function canEditPay(){
+  const s=getSession();
+  if(!s) return false;
+  if(s.role==='tenant_admin'||s.role==='superadmin') return true;
+  return s.role==='staff' && hasPermission('accounting');
+}
+function renderWorkerPay(){
+  const wrap=document.getElementById('workerPayWrap'); if(!wrap) return;
+  const me=getSession()||{}, edit=canEditPay(), hr=hrPayOnly();
+  const q=(document.getElementById('workerPaySearch')?.value||'').trim().toLowerCase();
+  const list=workers.filter(w=>(!hr||w.hrId===me.uid) && (!q||String(w.name||'').toLowerCase().includes(q)))
+    .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
+  if(!list.length){ wrap.innerHTML='<div style="color:var(--text3);font-size:13px;padding:8px 0">No workers</div>'; return; }
+  const th=t=>`<th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">${t}</th>`;
+  wrap.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden"><div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+    <table style="width:100%;border-collapse:collapse;min-width:560px"><thead><tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
+      ${th('Worker')}${th('Paid')}${th('Rate')}${th('Travel ₪/day')}${th('Travel ₪/month')}${hr?'':th('Bank')}</tr></thead>
+    <tbody class="paged-workerPay"></tbody></table></div></div>`;
+  const td=v=>`<td style="padding:10px 12px;font-size:13px;color:var(--text2)">${v}</td>`;
+  renderPagedList(wrap.querySelector('.paged-workerPay'),'workerPay',q,list,w=>{
+    const daily=isDailyPay(w), own=wOwnRate(w);
+    const rate=daily ? (own!==''?'₪'+esc(own)+'/day':'<span style="color:var(--amber)">set a daily rate</span>')
+      : (own!==''?'₪'+esc(own)+'/h':`<span style="color:var(--text3)">client ₪${esc(wRegRate(w,(w.clientIds||[])[0]))}/h</span>`);
+    return `<tr class="${edit?'tap-edit':''}" ${edit?`onclick="if(isPlainTap(event,this))openPayModal('${esc(w.id)}')" style="cursor:pointer;border-bottom:1px solid var(--border)"`:'style="border-bottom:1px solid var(--border)"'}>
+      <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(w.name||'')}</td>
+      ${td(daily?'₪/day':'₪/h')}${td(rate)}${td(Number(w.travelAllowance)>0?'₪'+esc(w.travelAllowance):'—')}${td(Number(w.travelMonthly)>0?'₪'+esc(w.travelMonthly):'—')}
+      ${hr?'':td(w.bank||w.bankAccountNumber?'<i class="ti ti-check" style="color:var(--green)"></i>':'—')}</tr>`;
+  },{table:true,colspan:6});
+}
+function openPayModal(wid){
+  if(!canEditPay()) return;
+  const w=workers.find(x=>x.id===wid); if(!w) return;
+  const daily=isDailyPay(w), cid=(w.clientIds||[])[0];
+  const clientRate=effectiveRates({...w,hourlyRate:0,regRate:null,otRate:null,shabbatRate:null,clientRates:w.clientRates},cid);
+  const v=x=>x==null||x===''?'':esc(x);
+  document.getElementById('payModal').innerHTML=`<div class="modal-title"><i class="ti ti-wallet"></i> Pay — ${esc(w.name||'')}</div>
+    <div class="form-section">Pay</div>
+    <div class="field-row">
+      <div class="field"><label>Paid</label><select id="payMode" onchange="onPayModeChange()"><option value="hourly"${daily?'':' selected'}>By the hour (₪/h)</option><option value="daily"${daily?' selected':''}>By the day (₪/day)</option></select></div>
+      <div class="field"><label id="payRateLabel">${daily?'Rate ₪/day':'Rate ₪/h'}</label><input type="number" id="payRate" min="0" step="0.5" value="${v(wOwnRate(w))}" data-client="${esc(clientRate.regRate)}" placeholder="${daily?'per day':(clientRate.src==='client'?'client: '+esc(clientRate.regRate):'')}"></div>
+    </div>
+    <div class="field-row" id="payOtRow" style="${daily?'display:none':''}">
+      <div class="field"><label>OT ₪/h</label><input type="number" id="payOt" min="0" step="0.5" value="${v(w.otRate)}" placeholder="law ×${PAY_RULES.otMult}"></div>
+      <div class="field"><label>Shabbat ₪/h</label><input type="number" id="payShab" min="0" step="0.5" value="${v(w.shabbatRate)}" placeholder="law ×${PAY_RULES.shabbatMult}"></div>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin:-4px 0 8px">Empty rate = the client's rate (by the hour only). A rate at one client only is set in Per-client rates.</div>
+    <div class="form-section">Travel</div>
+    <div class="field-row">
+      <div class="field"><label>Travel ₪/day</label><input type="number" id="payTravelDay" min="0" step="0.5" value="${Number(w.travelAllowance)>0?esc(w.travelAllowance):''}" placeholder="0"></div>
+      <div class="field"><label>Travel ₪/month</label><input type="number" id="payTravelMonth" min="0" step="0.5" value="${Number(w.travelMonthly)>0?esc(w.travelMonthly):''}" placeholder="0"></div>
+    </div>
+    <div class="form-section">Bank</div>
+    <div class="field-row">
+      <div class="field"><label>Bank</label><input type="text" id="payBank" value="${v(w.bank)}" placeholder="Bank name"></div>
+      <div class="field"><label>Branch</label><input type="text" id="payBankBranch" value="${v(w.bankBranch)}" placeholder="Branch #"></div>
+    </div>
+    <div class="field"><label>Account number</label><input type="text" id="payBankAccount" value="${v(w.bankAccountNumber)}" placeholder="Account #"></div>
+    <div class="modal-actions"><button class="btn accent" onclick="savePayModal('${esc(w.id)}')">Save</button></div>`;
+  document.getElementById('payOverlay').classList.add('open');
+}
+function onPayModeChange(){
+  const daily=document.getElementById('payMode').value==='daily', r=document.getElementById('payRate');
+  document.getElementById('payOtRow').style.display=daily?'none':'';
+  document.getElementById('payRateLabel').textContent=daily?'Rate ₪/day':'Rate ₪/h';
+  r.placeholder=daily?'per day':(r.dataset.client?'client: '+r.dataset.client:'');
+}
+function savePayModal(wid){
+  if(!canEditPay()) return;
+  const w=workers.find(x=>x.id===wid); if(!w) return;
+  const num=id=>{ const s=document.getElementById(id).value; return s===''?null:(parseFloat(s)||0); };
+  if(document.getElementById('payMode').value==='daily') w.payMode='daily'; else delete w.payMode;
+  w.hourlyRate=num('payRate')||0; w.regRate=null;
+  w.otRate=num('payOt'); w.shabbatRate=num('payShab');
+  w.travelAllowance=num('payTravelDay')||0; w.travelMonthly=num('payTravelMonth')||0;
+  w.bank=document.getElementById('payBank').value.trim();
+  w.bankBranch=document.getElementById('payBankBranch').value.trim();
+  w.bankAccountNumber=document.getElementById('payBankAccount').value.trim();
+  autoSave();
+  closeModal('payOverlay');
+  showToast('Pay saved — '+(w.name||''));
+  if(currentTab==='accounting') renderAccounting();
+}
+
 // Accounting → each section's title has an (i) button that opens its
 // explanation here (accHelpOverlay; closes on a tap outside, like every modal).
 const ACCOUNTING_HELP={
@@ -6771,13 +6812,13 @@ const ACCOUNTING_HELP={
     'The ₪/hour fields are this worker\'s own rates. An edit changes this worker only and wins over the client\'s rate.',
     'An empty field = the worker has no rate of their own: grey shows the client\'s rate that applies, with "client · name" under it. The client\'s rate is changed in the client card.',
     'Empty OT / Shabbat = the law rates on top of the regular rate.',
-    '₪/h or ₪/day, per worker: ₪/day pays the worker\'s own rate (from the worker card) once for each day worked, whatever the hours; no OT or Shabbat rates, and the client\'s rate is not used.',
+    '₪/h or ₪/day, per worker: ₪/day pays the worker\'s own rate (set in Worker pay) once for each day worked, whatever the hours; no OT or Shabbat rates, and the client\'s rate is not used.',
     'Days: counted from the punches (two shifts on one day count once). For a worker paid by the day, a number typed in Days replaces the count for the picked period only; empty it to go back to the punches.',
-    'Travel = the worker\'s travel allowance for each day worked. Total Pay = pay + travel.',
+    'Travel = ₪/day × days worked + ₪/month once for each calendar month with work (set in Worker pay). Total Pay = pay + travel.',
     'A ⚠ next to a worker: punches to check (a missing IN or OUT, an overlong shift…). The list is in the banner above the table.']},
   rates:{icon:'ti-adjustments',title:'Per-client rates',items:[
     'One row per worker and client: a rate for this worker at this client only.',
-    'Which rate counts, most specific first: this table → the worker\'s own rate (worker card, Salary) → the client\'s rate (client card).',
+    'Which rate counts, most specific first: this table → the worker\'s own rate (Worker pay, Salary) → the client\'s rate (client card).',
     'An empty field = nothing set here; grey shows the rate that applies.']},
   supplierRates:{icon:'ti-truck-delivery',title:'Per-supplier rates',items:[
     'What the firm pays a supplier per hour of each of its workers (the supplier\'s commission).',
@@ -6789,6 +6830,12 @@ const ACCOUNTING_HELP={
   billable:{icon:'ti-building-store',title:'Billable by client',items:[
     'What each client owes the firm for the period picked in Salary, by the client\'s own pricing (client card): tiered (the OT / Shabbat law rates on the client\'s billing rate) or one fixed rate.',
     'Separate from the workers\' pay: it never changes a wage, and a wage never changes it.']},
+  workerPay:{icon:'ti-wallet',title:'Worker pay',items:[
+    'The one place a worker\'s money is set: paid by the hour or by the day, the own rate, OT and Shabbat rates, travel per day and per month, bank details. Tap a worker to edit.',
+    'Every worker is here, a new one with no shifts too.',
+    'Empty rate (by the hour) = the client\'s rate; by the day the worker needs a daily rate of their own.',
+    'Travel: the ₪/day amount for each day worked, plus the ₪/month amount once for each calendar month with work in the period.',
+    'An HR sees its own workers here read-only, without bank details.']},
   hrPayable:{icon:'ti-user-dollar',title:'Payable by HR',items:[
     'An HR login with the Accounting section sees only this part for its own workers: their hours, rate and pay, and its commission — never the rest of Accounting.',
     'For the period picked in Salary: each HR\'s workers\' hours × the HR\'s commission (₪/h, set in Admin → Users on the HR).',
