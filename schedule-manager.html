@@ -839,7 +839,7 @@
         <div id="dashSalary"></div>
       </div>
 
-      <!-- Worker pay: every worker's rate, pay mode, travel and bank (the one place money is set) -->
+      <!-- Worker pay: a card per worker with its rate, pay mode, period pay, travel and bank (the one place money is set) -->
       <div id="accSecWorkerPay" style="margin-bottom:24px">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-wallet"></i> Worker pay <button type="button" class="acc-help" onclick="openAccountingHelp('workerPay')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <input type="text" id="workerPaySearch" placeholder="Search a worker" oninput="renderWorkerPay()" style="width:100%;max-width:320px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;padding:7px 10px;outline:none;margin-bottom:8px">
@@ -1041,6 +1041,7 @@
         <label class="check-chip"><input type="checkbox" value="clients" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-users"></i> Clients</span><span class="chip-hint">Clients tab</span></span></label>
         <label class="check-chip"><input type="checkbox" value="suppliers" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-truck-delivery"></i> Suppliers</span><span class="chip-hint">Suppliers tab</span></span></label>
         <label class="check-chip"><input type="checkbox" value="accounting" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-cash"></i> Accounting</span><span class="chip-hint" id="userFormAccountingHint">Accounting tab</span></span></label>
+        <label class="check-chip" id="userFormPayEditChip" style="display:none"><input type="checkbox" value="payEdit" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-wallet"></i> Edit own workers' pay</span><span class="chip-hint">Rate, travel, bank of its own workers (with Accounting)</span></span></label>
         <label class="check-chip"><input type="checkbox" value="exports" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-upload"></i> Export</span><span class="chip-hint">Export button</span></span></label>
       </div>
     </div>
@@ -2819,7 +2820,8 @@ async function saveWorker(){
     // 2026-10-05; it can be set again in Accounting → Worker pay).
     const addedRated=(updated.clientIds||[]).filter(id=>!(prevW.clientIds||[]).includes(id))
       .some(id=>{ const c=clients.find(x=>x.id===id); return c&&c.defaultHourlyRate!=null&&c.defaultHourlyRate!==''; });
-    if(addedRated && !isDailyPay(updated) && wOwnRate(updated)!==''){ updated.hourlyRate=0; updated.regRate=null; }
+    // (a pay change: an HR without "Edit own workers' pay" leaves the rate as it is)
+    if(addedRated && !isDailyPay(updated) && wOwnRate(updated)!=='' && ((getSession()||{}).role!=='hr' || canEditPay(updated))){ updated.hourlyRate=0; updated.regRate=null; }
     const changed=FORM101_WATCHED_FIELDS.some(f=>JSON.stringify(prevW[f])!==JSON.stringify(updated[f]));
     // A signature drawn now goes into the PDF (and the sidecar) too.
     const newSig=getSignaturePng('wSigCanvas');
@@ -3502,7 +3504,7 @@ function openWorkerCard(wi){
       ${hasPermission('workers')?`<button class="btn sm" onclick="openWorkerDocUpload('${esc(w.id)}')"><i class="ti ti-upload"></i> Add document</button>`:''}
       ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Download document</a>`:''}
       ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursImportModal('${w.id}')"><i class="ti ti-file-upload"></i> Upload hours</button>`:''}
-      ${canEditPay()?`<button class="btn sm" onclick="closeModal('workerCardOverlay');openPayModal('${w.id}')" title="Rate, pay mode, travel, bank — in Accounting"><i class="ti ti-cash"></i> Pay</button>`:''}
+      ${canEditPay(w)?`<button class="btn sm" onclick="closeModal('workerCardOverlay');openPayModal('${w.id}')" title="Rate, pay mode, travel, bank — in Accounting"><i class="ti ti-cash"></i> Pay</button>`:''}
       ${hasPermission('workers')&&hasPermission('exports')?`<button class="btn sm" onclick="openHoursExportModal('${w.id}')"><i class="ti ti-file-export"></i> Export hours</button>`:''}
     </div>`;
   pageWorkerDocs(document.getElementById('workerCardModal'),w.id);
@@ -4891,6 +4893,8 @@ function onUserFormRoleChange(fromUser){
   document.getElementById('userFormCommissionField').style.display = role==='hr' ? '' : 'none';
   // A supplier's pay view is its own tile; an HR's is the Accounting section.
   document.getElementById('userFormShowPayGrid').style.display = role==='supplier' ? '' : 'none';
+  document.getElementById('userFormPayEditChip').style.display = role==='hr' ? '' : 'none';
+  if(role!=='hr') document.querySelector('.userFormPermCb[value="payEdit"]').checked = false;
   document.getElementById('userFormAccountingHint').textContent = role==='hr' ? 'Own workers\' pay and commission only' : 'Accounting tab';
   document.getElementById('userFormFullNameLabel').textContent = role==='hr' ? 'Full name *' : 'Full name';
   document.getElementById('userFormHrWorkersField').style.display = role==='hr' && __editingUserId ? '' : 'none';
@@ -6571,7 +6575,7 @@ async function approveHoursBatch(batchId){
         if(first) await ensurePunchesSince(new Date(first.getFullYear(), first.getMonth(), first.getDate()-1));
       }catch(e){ console.warn('Loading approved punches failed:', e); }
     }
-    renderPendingHours(); renderSalary();
+    renderPendingHours(); renderSalary(); renderWorkerPay();
   }catch(e){ showToast('Failed: '+e.message); }
 }
 async function rejectHoursBatch(batchId){
@@ -6719,39 +6723,60 @@ function setSupplierRateOverride(wid,sid,field,val){
 // OT / Shabbat rates, travel per day and per month, bank details. Every
 // worker is listed (a new one with no shifts too); a tap opens openPayModal.
 // The firm owner, a super-admin and staff with Accounting edit; an HR (its
-// reduced Accounting) sees its own workers read-only, without bank details.
-function canEditPay(){
+// reduced Accounting) sees its own workers' cards and pay modal read-only,
+// and edits them too with "Edit own workers' pay" (permission payEdit) —
+// its own workers only (w.hrId is its uid).
+function canEditPay(w){
   const s=getSession();
   if(!s) return false;
   if(s.role==='tenant_admin'||s.role==='superadmin') return true;
+  // (the rules let an HR write a worker only with Workers or Schedule)
+  if(s.role==='hr') return hrPayOnly() && hasPermission('payEdit') && (hasPermission('workers')||hasPermission('schedule')) && (!w || w.hrId===s.uid);
   return s.role==='staff' && hasPermission('accounting');
 }
 function renderWorkerPay(){
   const wrap=document.getElementById('workerPayWrap'); if(!wrap) return;
-  const me=getSession()||{}, edit=canEditPay(), hr=hrPayOnly();
+  const me=getSession()||{}, hr=hrPayOnly();
   const q=(document.getElementById('workerPaySearch')?.value||'').trim().toLowerCase();
   const list=workers.filter(w=>(!hr||w.hrId===me.uid) && (!q||String(w.name||'').toLowerCase().includes(q)))
     .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
   if(!list.length){ wrap.innerHTML='<div style="color:var(--text3);font-size:13px;padding:8px 0">No workers</div>'; return; }
-  const th=t=>`<th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">${t}</th>`;
-  wrap.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden"><div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-    <table style="width:100%;border-collapse:collapse;min-width:560px"><thead><tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-      ${th('Worker')}${th('Paid')}${th('Rate')}${th('Travel ₪/day')}${th('Travel ₪/month')}${hr?'':th('Bank')}</tr></thead>
-    <tbody class="paged-workerPay"></tbody></table></div></div>`;
-  const td=v=>`<td style="padding:10px 12px;font-size:13px;color:var(--text2)">${v}</td>`;
+  // This period's figures come from the Salary run just before (renderSalary).
+  const byId={}; (__lastSalaryEntries||[]).forEach(e=>{ byId[e.workerId]=e; });
+  const sel=document.getElementById('salaryPeriod');
+  const periodLbl=sel&&sel.selectedIndex>=0?sel.options[sel.selectedIndex].text:'';
+  const money=n=>'₪'+esc((Math.round((Number(n)||0)*100)/100).toLocaleString('en-US'));
+  const line=(icon,html)=>`<div style="font-size:12px;color:var(--text2);display:flex;gap:6px;align-items:flex-start"><i class="ti ${icon}" style="color:var(--text3);margin-top:2px"></i><span>${html}</span></div>`;
+  wrap.innerHTML='<div class="clients-grid paged-workerPay"></div>';
   renderPagedList(wrap.querySelector('.paged-workerPay'),'workerPay',q,list,w=>{
-    const daily=isDailyPay(w), own=wOwnRate(w);
+    const daily=isDailyPay(w), own=wOwnRate(w), e=byId[w.id], edit=canEditPay(w);
     const rate=daily ? (own!==''?'₪'+esc(own)+'/day':'<span style="color:var(--amber)">set a daily rate</span>')
       : (own!==''?'₪'+esc(own)+'/h':`<span style="color:var(--text3)">client ₪${esc(wRegRate(w,(w.clientIds||[])[0]))}/h</span>`);
-    return `<tr class="${edit?'tap-edit':''}" ${edit?`onclick="if(isPlainTap(event,this))openPayModal('${esc(w.id)}')" style="cursor:pointer;border-bottom:1px solid var(--border)"`:'style="border-bottom:1px solid var(--border)"'}>
-      <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(w.name||'')}</td>
-      ${td(daily?'₪/day':'₪/h')}${td(rate)}${td(Number(w.travelAllowance)>0?'₪'+esc(w.travelAllowance):'—')}${td(Number(w.travelMonthly)>0?'₪'+esc(w.travelMonthly):'—')}
-      ${hr?'':td(w.bank||w.bankAccountNumber?'<i class="ti ti-check" style="color:var(--green)"></i>':'—')}</tr>`;
-  },{table:true,colspan:6});
+    const td=Number(w.travelAllowance)||0, tm=Number(w.travelMonthly)||0;
+    const travel=td||tm?[td?'₪'+esc(td)+'/day':'',tm?'₪'+esc(tm)+'/month':''].filter(Boolean).join(' + '):'<span style="color:var(--text3)">no travel</span>';
+    const bank=w.bank||w.bankBranch||w.bankAccountNumber
+      ?[esc(w.bank||''),w.bankBranch?'branch '+esc(w.bankBranch):'',w.bankAccountNumber?'acc. '+esc(w.bankAccountNumber):''].filter(Boolean).join(' · ')
+      :'<span style="color:var(--amber)">no bank details</span>';
+    const period=e
+      ? `${esc(periodLbl)}: ${esc(e.daysUsed)} days · ${esc((Math.round(e.hours*100)/100))} h · pay ${money(e.total)} · travel ${money(e.travel)} · <b style="color:var(--text)">total ${money(e.total+e.travel)}</b>`
+      : `<span style="color:var(--text3)">${esc(periodLbl)}: no shifts</span>`;
+    return `<div class="wcard tap-edit" onclick="if(isPlainTap(event,this))openPayModal('${esc(w.id)}')" title="${edit?'Edit pay':'View pay'}">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div style="font-weight:600;font-size:14px">${esc(w.name||'')}</div>
+        <div style="font-size:12px;font-weight:600;white-space:nowrap">${rate}</div>
+      </div>
+      ${line('ti-clock',period)}
+      ${line('ti-bus',travel)}
+      ${line('ti-building-bank',bank)}
+    </div>`;
+  },{grid:true});
 }
 function openPayModal(wid){
-  if(!canEditPay()) return;
   const w=workers.find(x=>x.id===wid); if(!w) return;
+  const me=getSession()||{};
+  // An HR with the reduced Accounting views its own workers' pay, read-only.
+  const ro=!canEditPay(w);
+  if(ro && !(hrPayOnly() && w.hrId===me.uid)) return;
   const daily=isDailyPay(w), cid=(w.clientIds||[])[0];
   const clientRate=effectiveRates({...w,hourlyRate:0,regRate:null,otRate:null,shabbatRate:null,clientRates:w.clientRates},cid);
   const v=x=>x==null||x===''?'':esc(x);
@@ -6777,7 +6802,8 @@ function openPayModal(wid){
       <div class="field"><label>Branch</label><input type="text" id="payBankBranch" value="${v(w.bankBranch)}" placeholder="Branch #"></div>
     </div>
     <div class="field"><label>Account number</label><input type="text" id="payBankAccount" value="${v(w.bankAccountNumber)}" placeholder="Account #"></div>
-    <div class="modal-actions"><button class="btn accent" onclick="savePayModal('${esc(w.id)}')">Save</button></div>`;
+    ${ro?'':`<div class="modal-actions"><button class="btn accent" onclick="savePayModal('${esc(w.id)}')">Save</button></div>`}`;
+  if(ro) document.querySelectorAll('#payModal input, #payModal select').forEach(el=>{ el.disabled=true; });
   document.getElementById('payOverlay').classList.add('open');
 }
 function onPayModeChange(){
@@ -6787,8 +6813,7 @@ function onPayModeChange(){
   r.placeholder=daily?'per day':(r.dataset.client?'client: '+r.dataset.client:'');
 }
 function savePayModal(wid){
-  if(!canEditPay()) return;
-  const w=workers.find(x=>x.id===wid); if(!w) return;
+  const w=workers.find(x=>x.id===wid); if(!w || !canEditPay(w)) return;
   const num=id=>{ const s=document.getElementById(id).value; return s===''?null:(parseFloat(s)||0); };
   if(document.getElementById('payMode').value==='daily') w.payMode='daily'; else delete w.payMode;
   w.hourlyRate=num('payRate')||0; w.regRate=null;
@@ -6831,11 +6856,11 @@ const ACCOUNTING_HELP={
     'What each client owes the firm for the period picked in Salary, by the client\'s own pricing (client card): tiered (the OT / Shabbat law rates on the client\'s billing rate) or one fixed rate.',
     'Separate from the workers\' pay: it never changes a wage, and a wage never changes it.']},
   workerPay:{icon:'ti-wallet',title:'Worker pay',items:[
-    'The one place a worker\'s money is set: paid by the hour or by the day, the own rate, OT and Shabbat rates, travel per day and per month, bank details. Tap a worker to edit.',
+    'One card per worker with everything about their money: paid by the hour or by the day and the rate; for the period picked in Salary the days, hours, pay, travel and total; travel per day and per month; bank details. Tap a card to edit.',
     'Every worker is here, a new one with no shifts too.',
     'Empty rate (by the hour) = the client\'s rate; by the day the worker needs a daily rate of their own.',
     'Travel: the ₪/day amount for each day worked, plus the ₪/month amount once for each calendar month with work in the period.',
-    'An HR sees its own workers here read-only, without bank details.']},
+    'An HR sees its own workers\' cards here, bank details included, read-only; with "Edit own workers\' pay" (user form) it edits them too.']},
   hrPayable:{icon:'ti-user-dollar',title:'Payable by HR',items:[
     'An HR login with the Accounting section sees only this part for its own workers: their hours, rate and pay, and its commission — never the rest of Accounting.',
     'For the period picked in Salary: each HR\'s workers\' hours × the HR\'s commission (₪/h, set in Admin → Users on the HR).',
@@ -6859,7 +6884,7 @@ function setWorkerRate(wid,rate){ if(hrPayOnly()) return;
 function setWorkerPayMode(wid,mode){ if(hrPayOnly()) return;
   const w=workers.find(x=>x.id===wid); if(!w) return;
   if(mode==='daily') w.payMode='daily'; else delete w.payMode;
-  autoSave(); renderSalary();
+  autoSave(); renderSalary(); renderWorkerPay();
 }
 // Days set by hand for one period (salaryPeriodKey); empty = by the punches.
 function setWorkerDays(wid,key,val){ if(hrPayOnly()) return;
@@ -6867,7 +6892,7 @@ function setWorkerDays(wid,key,val){ if(hrPayOnly()) return;
   w.dayOverrides={...(w.dayOverrides||{})};
   if(val===''||val==null) delete w.dayOverrides[key]; else w.dayOverrides[key]=Math.max(0,Math.round(Number(val)||0));
   if(!Object.keys(w.dayOverrides).length) delete w.dayOverrides;
-  autoSave(); renderSalary();
+  autoSave(); renderSalary(); renderWorkerPay();
 }
 function setWorkerOtRate(wid,val){ if(hrPayOnly()) return; const w=workers.find(x=>x.id===wid); if(w){ w.otRate=(val===''||val==null)?null:(parseFloat(val)||0); autoSave(); } }
 function setWorkerShabbatRate(wid,val){ if(hrPayOnly()) return; const w=workers.find(x=>x.id===wid); if(w){ w.shabbatRate=(val===''||val==null)?null:(parseFloat(val)||0); autoSave(); } }

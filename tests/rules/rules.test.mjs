@@ -23,6 +23,7 @@ const who = {
   hrOwn:        { uid: 'u-hrOwn', claims: { role: 'hr', tenantId: A, perms: ['workers'], own: true } },
   hrOwnClients: { uid: 'u-hrOwnC', claims: { role: 'hr', tenantId: A, perms: ['workers', 'clients'], own: true } },
   hrAll:        { uid: 'u-hrAll', claims: { role: 'hr', tenantId: A, perms: ['workers'], own: false } },
+  hrOwnPay:     { uid: 'u-hrOwn', claims: { role: 'hr', tenantId: A, perms: ['workers', 'accounting', 'payEdit'], own: true } },
   hrOwnB:       { uid: 'u-hrOwnB', claims: { role: 'hr', tenantId: B, perms: ['workers'], own: true } },
 };
 const db = name => (name === 'anon' ? env.unauthenticatedContext() : env.authenticatedContext(who[name].uid, who[name].claims)).firestore();
@@ -178,7 +179,7 @@ test('hr own-workers: reads and writes only workers with its hrId, never reassig
   await assertSucceeds(getDoc(doc(h, 'tenants', A, 'workers', 'w2')));
   await assertFails(getDoc(doc(h, 'tenants', A, 'workers', 'w3')));
   await assertFails(getDoc(doc(h, 'tenants', A, 'workers', 'w1')));
-  await assertSucceeds(updateDoc(doc(h, 'tenants', A, 'workers', 'w2'), { hourlyRate: 45 }));
+  await assertSucceeds(updateDoc(doc(h, 'tenants', A, 'workers', 'w2'), { phone: '052' }));
   await assertFails(updateDoc(doc(h, 'tenants', A, 'workers', 'w2'), { hrId: 'u-other' }));
   await assertFails(updateDoc(doc(h, 'tenants', A, 'workers', 'w3'), { hourlyRate: 45 }));
   await assertFails(updateDoc(doc(h, 'tenants', A, 'workers', 'w1'), { hrId: 'u-hrOwn' }));
@@ -191,6 +192,26 @@ test('hr own-workers: reads and writes only workers with its hrId, never reassig
   await assertFails(getDoc(doc(h, 'tenants', B, 'workers', 'w2')));
   await assertFails(setDoc(doc(h, 'tenants', B, 'workers', 'n4'), { name: 'x', hrId: 'u-hrOwn' }));
   await assertFails(getDoc(doc(db('hrOwnB'), 'tenants', A, 'workers', 'w2')));
+});
+
+test('hr: a worker\'s pay and bank change only with payEdit, own workers only', async () => {
+  const h = db('hrOwn');
+  for (const f of [{ hourlyRate: 45 }, { regRate: 45 }, { otRate: 60 }, { shabbatRate: 70 }, { payMode: 'daily' },
+    { travelAllowance: 20 }, { travelMonthly: 150 }, { bank: 'X' }, { bankBranch: '1' }, { bankAccountNumber: '9' },
+    { clientRates: { c1: { rate: 50 } } }, { dayOverrides: { all: 3 } }]) {
+    await assertFails(updateDoc(doc(h, 'tenants', A, 'workers', 'w2'), f));
+  }
+  // the whole document written back unchanged (how the app saves) still passes
+  await assertSucceeds(setDoc(doc(h, 'tenants', A, 'workers', 'w2'), { name: 'Mine 2', hourlyRate: 40, hrId: 'u-hrOwn' }));
+  await assertFails(setDoc(doc(h, 'tenants', A, 'workers', 'n1'), { name: 'New', hrId: 'u-hrOwn', hourlyRate: 50 }));
+  await assertSucceeds(setDoc(doc(h, 'tenants', A, 'workers', 'n2'), { name: 'New', hrId: 'u-hrOwn', hourlyRate: 0, bank: '' }));
+  const hp = db('hrOwnPay');
+  await assertSucceeds(updateDoc(doc(hp, 'tenants', A, 'workers', 'w2'), { hourlyRate: 52, bank: 'Discount', bankAccountNumber: '777', travelMonthly: 150 }));
+  await assertSucceeds(setDoc(doc(hp, 'tenants', A, 'workers', 'n3'), { name: 'New', hrId: 'u-hrOwn', hourlyRate: 50 }));
+  await assertFails(updateDoc(doc(hp, 'tenants', A, 'workers', 'w3'), { hourlyRate: 52 }));
+  // the owner and staff with "schedule" are not limited by it
+  await assertSucceeds(updateDoc(doc(db('ownerA'), 'tenants', A, 'workers', 'w3'), { bank: 'Y' }));
+  await assertSucceeds(updateDoc(doc(db('staffSched'), 'tenants', A, 'workers', 'w3'), { hourlyRate: 41 }));
 });
 
 test('hr own-workers: punches and pending hours of its own workers only', async () => {
@@ -232,7 +253,8 @@ test('hr without own-workers: sees the whole firm like staff, still never reassi
     await assertSucceeds(getDocs(collection(h, 'tenants', A, sub)));
     await assertFails(getDocs(collection(h, 'tenants', B, sub)));
   }
-  await assertSucceeds(updateDoc(doc(h, 'tenants', A, 'workers', 'w3'), { hourlyRate: 50 }));
+  await assertSucceeds(updateDoc(doc(h, 'tenants', A, 'workers', 'w3'), { phone: '052' }));
+  await assertFails(updateDoc(doc(h, 'tenants', A, 'workers', 'w3'), { hourlyRate: 50 }));
   await assertFails(updateDoc(doc(h, 'tenants', A, 'workers', 'w3'), { hrId: 'u-hrAll' }));
   await assertSucceeds(setDoc(doc(h, 'tenants', A, 'workers', 'n1'), { name: 'New' }));
   await assertSucceeds(setDoc(doc(h, 'tenants', A, 'workers', 'n2'), { name: 'New', hrId: 'u-hrAll' }));

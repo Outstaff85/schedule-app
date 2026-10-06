@@ -186,7 +186,7 @@ Both answer `{"ping":true}` at once (warm-up) and parse the body with `force=Tru
 
 **`firestore.rules`** — identities come from the custom-token claims.
 - `manager(t)` = superadmin, or a `tenant_admin` / `staff` of firm `t`, or an `hr` of firm `t` without `own` (`hrAll`). A supplier never reads Firestore directly (wages and GPS can't be hidden field by field) — it goes through `supplier`.
-- HR (`isHr`, `hrMine` = with `own`, `hrAll` = without, `hrCan(t, section)`): an own-workers HR reaches only workers and punches whose `hrId` is its uid, and **no HR changes a worker's `hrId`** — the full HR rules are in [hr.md](hr.md) → Enforcement.
+- HR (`isHr`, `hrMine` = with `own`, `hrAll` = without, `hrCan(t, section)`): an own-workers HR reaches only workers and punches whose `hrId` is its uid, and **no HR changes a worker's `hrId`**, nor its pay and bank fields without `payEdit` — the full HR rules are in [hr.md](hr.md) → Enforcement.
 - `tenants/{t}`: read by managers; update by a superadmin, or by its `tenant_admin` touching only the profile fields; create/delete superadmin.
 - workers, clients, suppliers, settings: read by managers; write by superadmin, `tenant_admin`, or staff with `schedule` — so a staff login without `schedule` gets `gsSave()` → false.
 - punches: read and write by any manager of the firm.
