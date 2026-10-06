@@ -252,11 +252,13 @@
     }
 
     // An HR's worker list, live (2026-10-05): a worker the owner assigns to
-    // it appears, one taken away disappears, without a reload. Only additions
-    // and removals are reported — an existing worker is never overwritten
-    // here, so an edit the HR hasn't saved yet is kept. The reference copy
-    // (known / storedPos / workerHr) follows, so the next save neither
-    // deletes an added worker nor tries to delete one it can no longer touch.
+    // it appears, one taken away disappears, and an edit made elsewhere (a
+    // rate, a phone…) arrives, without a reload. Reported as {added, removed,
+    // changed}; a changed worker comes with `unsaved(item)`, true when this
+    // device's copy has edits not yet saved (the app keeps those). This
+    // device's own writes (pending) are skipped. The reference copy (known /
+    // storedPos / workerHr) follows, so the next save neither deletes an added
+    // worker nor tries to delete one it can no longer touch.
     let workersUnsub = null;
     function listenWorkers(t, onChange){
       if(workersUnsub) workersUnsub();
@@ -264,9 +266,24 @@
         const q = F.query(col(t,'workers'), ...hrWhere(hr));
         workersUnsub = F.onSnapshot(q, snap => {
           if(knownTenant !== t) return;
-          const ids = new Set(snap.docs.map(d => d.id)), added = [];
+          const ids = new Set(snap.docs.map(d => d.id)), added = [], changed = [];
           snap.docs.forEach(d => {
-            if(known.workers.has(d.id)) return;
+            if(known.workers.has(d.id)){
+              if(d.metadata.hasPendingWrites) return;
+              const data = d.data();
+              const pos = typeof data.sortIndex === 'number' ? data.sortIndex : 1e9;
+              delete data.sortIndex;
+              if(data.id == null) data.id = d.id;
+              const before = known.workers.get(d.id), now = sig(data) + '#' + pos;
+              if(before === now) return;
+              const baseSig = before.slice(0, before.lastIndexOf('#'));
+              known.workers.set(d.id, now);
+              storedPos.set(d.id, pos);
+              workerHr.set(String(data.id), data.hrId || null);
+              delete data.docKeys;
+              changed.push({data, unsaved: item => { const b = plain(item); b.docKeys = docKeysOf(b); return sig(b) !== baseSig; }});
+              return;
+            }
             const data = d.data();
             const pos = typeof data.sortIndex === 'number' ? data.sortIndex : 1e9;
             delete data.sortIndex;
@@ -279,7 +296,7 @@
           });
           const removed = [...known.workers.keys()].filter(id => !ids.has(id));
           removed.forEach(id => { known.workers.delete(id); storedPos.delete(id); workerHr.delete(id); });
-          if(added.length || removed.length) onChange({added, removed});
+          if(added.length || removed.length || changed.length) onChange({added, removed, changed});
         }, err => console.warn('Worker listener stopped:', err));
       });
     }
