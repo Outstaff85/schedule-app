@@ -123,6 +123,16 @@ def test_supplier_sees_only_own_workers_stripped():
     assert "billRate" not in str(r["clients"]) and "lat" not in str(r["clients"]) and r["suppliers"] == []
 
 
+def test_supplier_day_commission_only_for_a_daily_worker():
+    assert portal.supplier_action(DB, SUP1, {"action": "loadSchedule"})["workers"][0]["supplierDayRate"] is None
+    ref = DB.collection("tenants").document(T1).collection("workers").document("w1")
+    keep = ref.get().to_dict()
+    ref.update({"payMode": "daily", "supplierRates": {"sp1": {"rate": 7, "dayRate": 60}}})
+    w = portal.supplier_action(DB, SUP1, {"action": "loadSchedule"})["workers"][0]
+    assert w["supplierDayRate"] == 60 and "payMode" not in w  # the pay mode itself only with "sees pay"
+    ref.set(keep)
+
+
 def test_supplier_with_pay_gets_the_pay_inputs_never_billing():
     r = portal.supplier_action(DB, dict(SUP1, pay=True), {"action": "loadSchedule"})
     w = r["workers"][0]

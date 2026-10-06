@@ -52,7 +52,7 @@ The client keeps the punch log in `localStorage.punchLog` (`getPunchLog()` / `sa
 2. **Per-client rates** — `renderRateMatrix()`.
 3. **Per-supplier rates** — `renderSupplierRateMatrix()`.
 4. **Payable by supplier** — `renderSupplierPayable()`, called from `renderSalary()`.
-   **Payable by HR** — `renderHrPayable()` (owner / super-admin, shown when the firm has HR logins): per HR, the hours of the workers whose `hrId` is that HR × its `commissionRate`; never a wage.
+   **Payable by HR** — `renderHrPayable()` (owner / super-admin, shown when the firm has HR logins): per HR, the hours of the workers whose `hrId` is that HR × its `commissionRate`; for a worker paid by the day, days × its `commissionDayRate` when set (`commissionFor`); never a wage.
 5. **Billable by client** — `renderClientBillable()`, called from `renderSalary()`.
 6. **Pending hours** — `renderPendingHours()`.
 
@@ -97,7 +97,7 @@ One row per (worker, assigned client). Empty inputs show the resolved rate as a 
 - **Rate:** `SUPPLIER_DEFAULT_RATE` = 5 ₪/h. `supplierCommissionRate(w, sid)` returns `w.supplierRates[sid].rate` if set, otherwise the default.
 - **Matrix:** `renderSupplierRateMatrix()` — one row per worker with a supplier and a single "Commission ₪/h" input. `setSupplierRateOverride()` writes it, then redraws the matrix and the payable table.
 - **Payable by supplier:** `renderSupplierPayable(entries)`:
-  - per supplier, hours × commission (never the worker's wage); stored in `__lastSupplierPayableRows` for the export buttons;
+  - per supplier, hours × commission, or for a worker paid by the day days × `supplierDayCommission(w, sid)` (`supplierRates[sid].dayRate`) when set — `commissionFor` (never the worker's wage); stored in `__lastSupplierPayableRows` for the export buttons;
   - Excel / PDF buttons → `exportPayableSummary()`;
   - the **"No supplier assigned" row** shows those workers' hours only; its payable is "—" (nothing is owed to a supplier for them, and a wage never appears in this table).
 

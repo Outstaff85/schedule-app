@@ -93,7 +93,7 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
   - Role;
   - Person: Full name, Phone;
   - Login: Username, Password;
-  - Access: the supplier select (supplier), or the Sections tiles — each with the icon and name of the header tab or button it opens (Schedule, Workers, Clients, Suppliers, Accounting tabs, the Export button) — and, for HR, the "Edit own workers' pay" tile (permission `payEdit`, off by default) and the "Only own workers" tile (the checkbox-tile template, [app-core.md](app-core.md) → Layout); for a supplier the "Sees own workers' pay" tile (`showPay`, on by default); for HR "HR commission ₪/h" (`commissionRate`) (`#userFormPayFields`) — an HR's pay view is its Accounting tile, whose hint then reads "Own workers' pay and commission only";
+  - Access: the supplier select (supplier), or the Sections tiles — each with the icon and name of the header tab or button it opens (Schedule, Workers, Clients, Suppliers, Accounting tabs, the Export button) — and, for HR, the "Edit own workers' pay" tile (permission `payEdit`, off by default) and the "Only own workers" tile (the checkbox-tile template, [app-core.md](app-core.md) → Layout); for a supplier the "Sees own workers' pay" tile (`showPay`, on by default); for HR "HR commission ₪/h" (`commissionRate`) and "₪/day (daily workers)" (`commissionDayRate`, empty = by the hour), side by side (`#userFormPayFields`) — an HR's pay view is its Accounting tile, whose hint then reads "Own workers' pay and commission only";
   - Workers — an HR's edit form only.
 - **Create** (`openCreateUserForm`):
   - username, password, role (`staff` / `hr` / `supplier`, `onUserFormRoleChange`);
@@ -107,7 +107,7 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
   - the role can change between Staff, HR and Supplier (`updateUser` with `role`; the user signs in again; a former HR's workers are unassigned);
   - an owner's row shows only Full name, Phone and the password (`__editingAdminRow`); editing one's own row also updates the header name;
   - the password field reads "New password (empty = keep)"; filled in, it is sent first as `resetUserPassword`, which also ends the user's sessions;
-  - then `updateUser` (`fullName`, `phone`; for HR also `ownOnly` and `commissionRate`; for a supplier `showPay` — these are rights: a change makes the user sign in again);
+  - then `updateUser` (`fullName`, `phone`; for HR also `ownOnly`, `commissionRate` and `commissionDayRate`; for a supplier `showPay` — these are rights: a change makes the user sign in again);
   - an HR's form lists its workers (`renderUserFormHrWorkers`, paged, each with Unassign) and has **Add workers** (`#hrAssignOverlay`: the firm's other workers with a search and checkboxes, a worker of another HR marked "now: <name>"; `submitHrAssign`).
 - Errors show in `#userFormError`.
 - **Delete:** the row's trash button, `deleteUserConfirm` → `deleteUser`. A password is changed in the edit form (above).

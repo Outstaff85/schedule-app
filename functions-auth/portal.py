@@ -174,8 +174,11 @@ def strip_worker(d, supplier_id, pay=False):
     o = {k: d[k] for k in SUPPLIER_WORKER_FIELDS if k in d}
     if pay:
         o.update({k: d[k] for k in SUPPLIER_PAY_FIELDS if k in d})
-    rate = ((d.get("supplierRates") or {}).get(supplier_id) or {}).get("rate")
-    o["supplierRate"] = rate
+    sr = (d.get("supplierRates") or {}).get(supplier_id) or {}
+    o["supplierRate"] = sr.get("rate")
+    # A worker paid by the day: the supplier's commission is a fixed ₪ per day
+    # (dayRate) when one is set; never the worker's own pay inputs.
+    o["supplierDayRate"] = sr.get("dayRate") if d.get("payMode") == "daily" else None
     return o
 
 

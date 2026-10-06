@@ -402,18 +402,24 @@ def test_hr_user_create_login_update():
 def test_hr_and_supplier_see_pay_by_default_and_hr_commission():
     rv = Revokes()
     r = core.create_tenant_user(DB, ADMIN1, {"role": "hr", "username": "hrp", "password": "hr-pass-11",
-                                             "fullName": "Pay HR", "commissionRate": "6.5"})
+                                             "fullName": "Pay HR", "commissionRate": "6.5",
+                                             "commissionDayRate": "40"})
     login = core.login(DB, "hrp", "hr-pass-11", mint)
-    assert login["showPay"] is True and login["commissionRate"] == 6.5
+    assert login["showPay"] is True and login["commissionRate"] == 6.5 and login["commissionDayRate"] == 40
     claims = id_token_claims(login["token"])
-    assert claims["pay"] is True and claims["hrc"] == 6.5
+    assert claims["pay"] is True and claims["hrc"] == 6.5 and claims["hrcd"] == 40
     row = next(x for x in core.list_users(DB, ADMIN1)["users"] if x["username"] == "hrp")
-    assert row["showPay"] is True and row["commissionRate"] == 6.5
+    assert row["showPay"] is True and row["commissionRate"] == 6.5 and row["commissionDayRate"] == 40
     # Turning it off or changing the commission is a rights change: a new sign-in.
     assert core.update_user(DB, ADMIN1, {"id": r["userId"], "showPay": False, "commissionRate": 6.5}, rv)["ok"]
     assert rv == [(r["userId"], False)]
     claims = id_token_claims(core.login(DB, "hrp", "hr-pass-11", mint)["token"])
     assert claims["pay"] is False
+    # The day commission is a rights change too.
+    rv.clear()
+    assert core.update_user(DB, ADMIN1, {"id": r["userId"], "commissionDayRate": 55}, rv)["ok"]
+    assert rv == [(r["userId"], False)]
+    assert id_token_claims(core.login(DB, "hrp", "hr-pass-11", mint)["token"])["hrcd"] == 55
     s = core.create_tenant_user(DB, ADMIN1, {"role": "supplier", "username": "supp", "password": "sup-pass-11",
                                              "supplierId": "sp1", "commissionRate": 9})
     u = DB.collection("users").document(s["userId"]).get().to_dict()

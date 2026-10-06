@@ -24,7 +24,7 @@ A worker links to **one** supplier through `w.supplierId`; `w.supplierRates[supp
 - **Today tab:** "Workers by supplier" headcount (`renderDashSuppliers()`, [accounting.md](accounting.md) → Today).
 - **Accounting:**
   - the commission matrix (`renderSupplierRateMatrix()`);
-  - "Payable by supplier" (`renderSupplierPayable()`): hours × flat commission, where `supplierCommissionRate(w, sid)` uses the worker's override or `SUPPLIER_DEFAULT_RATE` = 5 ₪/h.
+  - "Payable by supplier" (`renderSupplierPayable()`): hours × flat commission, where `supplierCommissionRate(w, sid)` uses the worker's override or `SUPPLIER_DEFAULT_RATE` = 5 ₪/h; for a worker paid by the day, days × the matrix's "₪/day (daily workers)" (`supplierRates[sid].dayRate`, `supplierDayCommission`) when set (`commissionFor`).
   
   A supplier never affects what the worker is paid. See [accounting.md](accounting.md).
 - **Exports:** the punch CSV, the salary export and the Excel Statistics sheet carry a Supplier column.
