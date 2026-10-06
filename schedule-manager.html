@@ -5971,7 +5971,8 @@ function refreshCardHoursStatus(){
 }
 
 // An HR's worker list follows the server (listenWorkers): a worker the owner
-// assigns appears, one taken away disappears. Applied while no worker form
+// assigns appears, one taken away disappears, a field the owner edits (a
+// rate, a phone…) changes. Applied while no worker form
 // or card is open (their index into `workers` must not move); otherwise it
 // waits and tries again.
 let __hrWorkersWatched = false, __hrWorkerChanges = [];
@@ -5983,16 +5984,23 @@ function watchHrWorkers(){
 }
 function applyHrWorkerChanges(){
   if(!__hrWorkerChanges.length) return;
-  const busy = ['workerOverlay','workerCardOverlay'].some(id => document.getElementById(id)?.classList.contains('open'));
+  const busy = ['workerOverlay','workerCardOverlay','payOverlay'].some(id => document.getElementById(id)?.classList.contains('open'));
   if(busy){ clearTimeout(applyHrWorkerChanges._t); applyHrWorkerChanges._t = setTimeout(applyHrWorkerChanges, 2000); return; }
   const changes = __hrWorkerChanges.splice(0);
   let n = 0;
-  changes.forEach(({added, removed}) => {
+  changes.forEach(({added, removed, changed}) => {
     const gone = new Set(removed.map(String));
     const before = workers.length;
     workers = workers.filter(w => !gone.has(String(w.id)));
     n += before - workers.length;
     added.forEach(x => { if(!workers.some(w => String(w.id) === String(x.id))){ workers.push(x); n++; } });
+    // An edit made elsewhere replaces this copy, unless this copy has edits
+    // of its own not yet saved (those win and are saved over it).
+    (changed || []).forEach(({data, unsaved}) => {
+      const i = workers.findIndex(w => String(w.id) === String(data.id));
+      if(i < 0 || unsaved(workers[i])) return;
+      workers[i] = data; n++;
+    });
   });
   if(!n) return;
   try{ localStorage.setItem(STORAGE_KEY(), JSON.stringify(getDataObj())); }catch(e){}

@@ -121,6 +121,7 @@ th{color:var(--text2);font-size:11px;text-transform:uppercase;}
     <div id="sendHoursRows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
       <button class="btn sm" type="button" onclick="addSendHoursRow()"><i class="ti ti-plus"></i> Add shift</button>
+      <label class="btn sm" title="Columns: Date, In, Out (and Worker — a name or ID number — for a sheet of several workers)"><i class="ti ti-file-spreadsheet"></i> Load from Excel<input type="file" id="timesheetFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="loadTimesheetFile(this)"></label>
       <button class="btn sm accent" type="button" id="sendHoursBtn" onclick="submitSendHours()"><i class="ti ti-send"></i> Send for approval</button>
     </div>
     <div style="font-weight:600;margin:8px 0">Sent for approval</div>
@@ -726,6 +727,66 @@ function renderSendHoursRows(){
       <input type="time" value="${esc(r.outTime)}" title="Out" onchange="sendHoursRows[${i}].outTime=this.value">
       <button class="btn sm" type="button" title="Remove" onclick="sendHoursRows.splice(${i},1);renderSendHoursRows()"><i class="ti ti-trash"></i></button>
     </div>`).join('');
+}
+// A timesheet file (Excel / CSV) fills the shift rows of the picked worker,
+// to check and send like rows typed by hand. Columns by their header: Date,
+// In, Out (English or Hebrew); an optional Worker column (a name or an ID /
+// passport number) lets one sheet hold several workers — only the picked
+// worker's rows are taken, the others wait until that worker is picked.
+function parseTimesheetFile(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onerror = ()=>reject(new Error('Could not read the file'));
+    reader.onload = ()=>{
+      try{
+        const wb = XLSX.read(reader.result, {type:'array', cellDates:true});
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1, defval:''});
+        if(!rows.length){ resolve([]); return; }
+        const head = rows[0].map(h=>String(h||'').trim().toLowerCase().replace(/["'׳״.]/g,''));
+        const col = names => head.findIndex(h=>names.includes(h));
+        const di = col(['date','תאריך']), ii = col(['in','start','כניסה']), oi = col(['out','end','יציאה']), wi = col(['worker','name','id','עובד','שם','תז']);
+        if(di < 0){ reject(new Error('No Date column (expected Date, In, Out)')); return; }
+        const p2 = n => String(n).padStart(2,'0');
+        const day = v=>{
+          if(v instanceof Date) return v.getFullYear()+'-'+p2(v.getMonth()+1)+'-'+p2(v.getDate());
+          const t = String(v||'').trim();
+          let m = t.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/); if(m) return m[3]+'-'+p2(m[2])+'-'+p2(m[1]);
+          m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); if(m) return m[1]+'-'+p2(m[2])+'-'+p2(m[3]);
+          return '';
+        };
+        const time = v=>{
+          if(v instanceof Date) return p2(v.getHours())+':'+p2(v.getMinutes());
+          if(typeof v === 'number' && v >= 0 && v < 1){ const mins = Math.round(v*1440); return p2(Math.floor(mins/60)%24)+':'+p2(mins%60); }
+          const m = String(v||'').trim().match(/^(\d{1,2})[:.](\d{2})/);
+          return m ? p2(m[1])+':'+m[2] : '';
+        };
+        resolve(rows.slice(1).filter(r=>String(r[di]??'').trim()!=='').map(r=>({
+          worker: wi >= 0 ? String(r[wi]||'').trim() : '', date: day(r[di]),
+          inTime: ii >= 0 ? time(r[ii]) : '', outTime: oi >= 0 ? time(r[oi]) : '' })));
+      }catch(e){ reject(e); }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+// Does a sheet's Worker cell name this worker (its name, or its ID number)?
+function timesheetRowIsFor(cell, w){
+  if(!cell) return true;
+  const norm = v => String(v||'').toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
+  const c = norm(cell);
+  return c === norm(w.name) || (!!w.docId && c === norm(w.docId)) || c === norm((w.docGiven||'')+(w.docSurname||''));
+}
+async function loadTimesheetFile(input){
+  const file = input.files && input.files[0]; input.value = '';
+  if(!file) return;
+  const w = myWorkers.find(x=>x.id===document.getElementById('sendHoursWorker').value);
+  if(!w){ showToast('Pick a worker first'); return; }
+  let rows;
+  try{ rows = await parseTimesheetFile(file); }catch(e){ showToast(e.message || 'Could not read the file', 6000); return; }
+  const mine = rows.filter(r=>timesheetRowIsFor(r.worker, w)), others = rows.length - mine.length;
+  if(!mine.length){ showToast('No rows for '+w.name+' in this file'+(others?' ('+others+' row(s) of other workers)':''), 6000); return; }
+  mine.forEach(r=>sendHoursRows.push({date:r.date, inTime:r.inTime, outTime:r.outTime}));
+  renderSendHoursRows();
+  showToast(mine.length+' shift(s) loaded for '+w.name+' — check them and send'+(others?'; '+others+' row(s) of other workers: pick that worker and load the file again':''), 7000);
 }
 async function submitSendHours(){
   const wid = document.getElementById('sendHoursWorker').value, w = myWorkers.find(x=>x.id===wid);
