@@ -19,7 +19,7 @@ An HR manager's login inside one firm: it works with the workers assigned to it.
 | Clients, suppliers, settings, firm doc | read; clients / suppliers written only with that section | same |
 | Worker files (Storage) | uploads stamped with `hrId` metadata; reads back only those; other reads / deletes through `users_admin` with an ownership check | like staff |
 | Tabs | its sections; never Today or Admin | same |
-| Pay | never the full Accounting tab; with the Accounting section (off by default) a reduced one (`hrPayOnly()`) — Salary for the workers whose `hrId` is its uid, read-only, with a "My commission" column (hours × its `commissionRate`), and the Worker pay cards of the same workers (bank details included), read-only; no other Accounting section, no export | same (still only the workers with its `hrId`) |
+| Pay | never the full Accounting tab; with the Accounting section (off by default) a reduced one (`hrPayOnly()`) — Salary for the workers whose `hrId` is its uid, read-only, with a "My commission" column (hours × its `commissionRate`), and the Worker pay cards of the same workers (bank details included), read-only — with "Edit own workers' pay" (`payEdit`, which also needs Workers or Schedule, the sections the rules let it write workers with) it edits those workers' pay and bank in the pay modal (`canEditPay(w)`: `w.hrId` is its uid). The limit is in the app: the rules let an HR with Workers write any field of its own workers; no other Accounting section, no export | same (still only the workers with its `hrId`) |
 
 No HR, of either kind, can change a worker's `hrId` — only the owner (`tenant_admin`) or a super-admin assigns.
 

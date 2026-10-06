@@ -1041,6 +1041,7 @@
         <label class="check-chip"><input type="checkbox" value="clients" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-users"></i> Clients</span><span class="chip-hint">Clients tab</span></span></label>
         <label class="check-chip"><input type="checkbox" value="suppliers" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-truck-delivery"></i> Suppliers</span><span class="chip-hint">Suppliers tab</span></span></label>
         <label class="check-chip"><input type="checkbox" value="accounting" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-cash"></i> Accounting</span><span class="chip-hint" id="userFormAccountingHint">Accounting tab</span></span></label>
+        <label class="check-chip" id="userFormPayEditChip" style="display:none"><input type="checkbox" value="payEdit" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-wallet"></i> Edit own workers' pay</span><span class="chip-hint">Rate, travel, bank of its own workers (with Accounting)</span></span></label>
         <label class="check-chip"><input type="checkbox" value="exports" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-upload"></i> Export</span><span class="chip-hint">Export button</span></span></label>
       </div>
     </div>
@@ -3502,7 +3503,7 @@ function openWorkerCard(wi){
       ${hasPermission('workers')?`<button class="btn sm" onclick="openWorkerDocUpload('${esc(w.id)}')"><i class="ti ti-upload"></i> Add document</button>`:''}
       ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> Download document</a>`:''}
       ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursImportModal('${w.id}')"><i class="ti ti-file-upload"></i> Upload hours</button>`:''}
-      ${canEditPay()?`<button class="btn sm" onclick="closeModal('workerCardOverlay');openPayModal('${w.id}')" title="Rate, pay mode, travel, bank — in Accounting"><i class="ti ti-cash"></i> Pay</button>`:''}
+      ${canEditPay(w)?`<button class="btn sm" onclick="closeModal('workerCardOverlay');openPayModal('${w.id}')" title="Rate, pay mode, travel, bank — in Accounting"><i class="ti ti-cash"></i> Pay</button>`:''}
       ${hasPermission('workers')&&hasPermission('exports')?`<button class="btn sm" onclick="openHoursExportModal('${w.id}')"><i class="ti ti-file-export"></i> Export hours</button>`:''}
     </div>`;
   pageWorkerDocs(document.getElementById('workerCardModal'),w.id);
@@ -4891,6 +4892,8 @@ function onUserFormRoleChange(fromUser){
   document.getElementById('userFormCommissionField').style.display = role==='hr' ? '' : 'none';
   // A supplier's pay view is its own tile; an HR's is the Accounting section.
   document.getElementById('userFormShowPayGrid').style.display = role==='supplier' ? '' : 'none';
+  document.getElementById('userFormPayEditChip').style.display = role==='hr' ? '' : 'none';
+  if(role!=='hr') document.querySelector('.userFormPermCb[value="payEdit"]').checked = false;
   document.getElementById('userFormAccountingHint').textContent = role==='hr' ? 'Own workers\' pay and commission only' : 'Accounting tab';
   document.getElementById('userFormFullNameLabel').textContent = role==='hr' ? 'Full name *' : 'Full name';
   document.getElementById('userFormHrWorkersField').style.display = role==='hr' && __editingUserId ? '' : 'none';
@@ -6719,16 +6722,20 @@ function setSupplierRateOverride(wid,sid,field,val){
 // OT / Shabbat rates, travel per day and per month, bank details. Every
 // worker is listed (a new one with no shifts too); a tap opens openPayModal.
 // The firm owner, a super-admin and staff with Accounting edit; an HR (its
-// reduced Accounting) sees its own workers' cards and pay modal read-only.
-function canEditPay(){
+// reduced Accounting) sees its own workers' cards and pay modal read-only,
+// and edits them too with "Edit own workers' pay" (permission payEdit) —
+// its own workers only (w.hrId is its uid).
+function canEditPay(w){
   const s=getSession();
   if(!s) return false;
   if(s.role==='tenant_admin'||s.role==='superadmin') return true;
+  // (the rules let an HR write a worker only with Workers or Schedule)
+  if(s.role==='hr') return hrPayOnly() && hasPermission('payEdit') && (hasPermission('workers')||hasPermission('schedule')) && (!w || w.hrId===s.uid);
   return s.role==='staff' && hasPermission('accounting');
 }
 function renderWorkerPay(){
   const wrap=document.getElementById('workerPayWrap'); if(!wrap) return;
-  const me=getSession()||{}, edit=canEditPay(), hr=hrPayOnly();
+  const me=getSession()||{}, hr=hrPayOnly();
   const q=(document.getElementById('workerPaySearch')?.value||'').trim().toLowerCase();
   const list=workers.filter(w=>(!hr||w.hrId===me.uid) && (!q||String(w.name||'').toLowerCase().includes(q)))
     .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
@@ -6741,7 +6748,7 @@ function renderWorkerPay(){
   const line=(icon,html)=>`<div style="font-size:12px;color:var(--text2);display:flex;gap:6px;align-items:flex-start"><i class="ti ${icon}" style="color:var(--text3);margin-top:2px"></i><span>${html}</span></div>`;
   wrap.innerHTML='<div class="clients-grid paged-workerPay"></div>';
   renderPagedList(wrap.querySelector('.paged-workerPay'),'workerPay',q,list,w=>{
-    const daily=isDailyPay(w), own=wOwnRate(w), e=byId[w.id];
+    const daily=isDailyPay(w), own=wOwnRate(w), e=byId[w.id], edit=canEditPay(w);
     const rate=daily ? (own!==''?'₪'+esc(own)+'/day':'<span style="color:var(--amber)">set a daily rate</span>')
       : (own!==''?'₪'+esc(own)+'/h':`<span style="color:var(--text3)">client ₪${esc(wRegRate(w,(w.clientIds||[])[0]))}/h</span>`);
     const td=Number(w.travelAllowance)||0, tm=Number(w.travelMonthly)||0;
@@ -6767,7 +6774,7 @@ function openPayModal(wid){
   const w=workers.find(x=>x.id===wid); if(!w) return;
   const me=getSession()||{};
   // An HR with the reduced Accounting views its own workers' pay, read-only.
-  const ro=!canEditPay();
+  const ro=!canEditPay(w);
   if(ro && !(hrPayOnly() && w.hrId===me.uid)) return;
   const daily=isDailyPay(w), cid=(w.clientIds||[])[0];
   const clientRate=effectiveRates({...w,hourlyRate:0,regRate:null,otRate:null,shabbatRate:null,clientRates:w.clientRates},cid);
@@ -6805,8 +6812,7 @@ function onPayModeChange(){
   r.placeholder=daily?'per day':(r.dataset.client?'client: '+r.dataset.client:'');
 }
 function savePayModal(wid){
-  if(!canEditPay()) return;
-  const w=workers.find(x=>x.id===wid); if(!w) return;
+  const w=workers.find(x=>x.id===wid); if(!w || !canEditPay(w)) return;
   const num=id=>{ const s=document.getElementById(id).value; return s===''?null:(parseFloat(s)||0); };
   if(document.getElementById('payMode').value==='daily') w.payMode='daily'; else delete w.payMode;
   w.hourlyRate=num('payRate')||0; w.regRate=null;
@@ -6853,7 +6859,7 @@ const ACCOUNTING_HELP={
     'Every worker is here, a new one with no shifts too.',
     'Empty rate (by the hour) = the client\'s rate; by the day the worker needs a daily rate of their own.',
     'Travel: the ₪/day amount for each day worked, plus the ₪/month amount once for each calendar month with work in the period.',
-    'An HR sees its own workers\' cards here, bank details included, read-only.']},
+    'An HR sees its own workers\' cards here, bank details included, read-only; with "Edit own workers\' pay" (user form) it edits them too.']},
   hrPayable:{icon:'ti-user-dollar',title:'Payable by HR',items:[
     'An HR login with the Accounting section sees only this part for its own workers: their hours, rate and pay, and its commission — never the rest of Accounting.',
     'For the period picked in Salary: each HR\'s workers\' hours × the HR\'s commission (₪/h, set in Admin → Users on the HR).',
