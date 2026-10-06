@@ -2820,7 +2820,8 @@ async function saveWorker(){
     // 2026-10-05; it can be set again in Accounting → Worker pay).
     const addedRated=(updated.clientIds||[]).filter(id=>!(prevW.clientIds||[]).includes(id))
       .some(id=>{ const c=clients.find(x=>x.id===id); return c&&c.defaultHourlyRate!=null&&c.defaultHourlyRate!==''; });
-    if(addedRated && !isDailyPay(updated) && wOwnRate(updated)!==''){ updated.hourlyRate=0; updated.regRate=null; }
+    // (a pay change: an HR without "Edit own workers' pay" leaves the rate as it is)
+    if(addedRated && !isDailyPay(updated) && wOwnRate(updated)!=='' && ((getSession()||{}).role!=='hr' || canEditPay(updated))){ updated.hourlyRate=0; updated.regRate=null; }
     const changed=FORM101_WATCHED_FIELDS.some(f=>JSON.stringify(prevW[f])!==JSON.stringify(updated[f]));
     // A signature drawn now goes into the PDF (and the sidecar) too.
     const newSig=getSignaturePng('wSigCanvas');

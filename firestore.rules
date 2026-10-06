@@ -25,6 +25,7 @@ rules_version = '2';
 //     login with `own` reads and writes only the workers (and their punches,
 //     its own pending-hours batches) whose hrId is its uid. No hr login ever
 //     changes a worker's hrId — the owner or a superadmin assigns workers;
+//     an hr login changes a worker's pay and bank fields only with payEdit;
 //   - users, password hashes, usernames and worker punch-link tokens are
 //     function-only.
 service cloud.firestore {
@@ -60,6 +61,27 @@ service cloud.firestore {
     // An hr login that may write workers: the workers or schedule section;
     // with own, only its own workers.
     function hrWorkers(t) { return hrCan(t, 'workers') || hrCan(t, 'schedule'); }
+    // A worker's money (rate, pay mode, OT / Shabbat, travel, bank, per-client
+    // rates, days set by hand): an hr login changes it only with payEdit
+    // ("Edit own workers' pay"); without it a write must leave every one of
+    // these fields as it was (missing and null count as the same).
+    function hrPayOk(t) { return hrCan(t, 'payEdit') || samePay(); }
+    function samePay() {
+      return sameField('hourlyRate') && sameField('regRate') && sameField('otRate')
+        && sameField('shabbatRate') && sameField('payMode') && sameField('travelAllowance')
+        && sameField('travelMonthly') && sameField('bank') && sameField('bankBranch')
+        && sameField('bankAccountNumber') && sameField('clientRates') && sameField('dayOverrides');
+    }
+    function sameField(k) { return request.resource.data.get(k, null) == resource.data.get(k, null); }
+    // A new worker made by an hr login without payEdit carries no money.
+    function hrNewPayOk(t) { return hrCan(t, 'payEdit') || noPay(); }
+    function noPay() {
+      return noField('hourlyRate') && noField('regRate') && noField('otRate')
+        && noField('shabbatRate') && noField('payMode') && noField('travelAllowance')
+        && noField('travelMonthly') && noField('bank') && noField('bankBranch')
+        && noField('bankAccountNumber') && noField('clientRates') && noField('dayOverrides');
+    }
+    function noField(k) { return request.resource.data.get(k, null) in [null, 0, '', {}]; }
 
     // Firm profile fields a tenant_admin may edit on their own firm
     // (updateTenant). Activation and counters stay superadmin/function-only.
@@ -76,11 +98,11 @@ service cloud.firestore {
       match /workers/{id} {
         allow read: if manager(t) || (hrMine(t) && oldHr() == uid());
         allow create: if scheduleWriter(t)
-          || (hrAll(t) && hrWorkers(t) && (newHr() == null || newHr() == uid()))
-          || (hrMine(t) && hrWorkers(t) && newHr() == uid());
+          || (hrAll(t) && hrWorkers(t) && (newHr() == null || newHr() == uid()) && hrNewPayOk(t))
+          || (hrMine(t) && hrWorkers(t) && newHr() == uid() && hrNewPayOk(t));
         allow update: if scheduleWriter(t)
-          || (hrAll(t) && hrWorkers(t) && newHr() == oldHr())
-          || (hrMine(t) && hrWorkers(t) && oldHr() == uid() && newHr() == uid());
+          || (hrAll(t) && hrWorkers(t) && newHr() == oldHr() && hrPayOk(t))
+          || (hrMine(t) && hrWorkers(t) && oldHr() == uid() && newHr() == uid() && hrPayOk(t));
         allow delete: if scheduleWriter(t)
           || (hrAll(t) && hrWorkers(t))
           || (hrMine(t) && hrWorkers(t) && oldHr() == uid());
