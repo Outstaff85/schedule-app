@@ -165,7 +165,7 @@
   .acc-help{background:none;border:none;color:var(--text3);cursor:pointer;padding:2px;font-size:15px;line-height:1;display:inline-flex}
   .acc-help:hover{color:var(--blue)}
   .acc-help-body{font-size:13px;color:var(--text2);line-height:1.6}
-  .acc-help-body ul{margin:0;padding-left:18px}
+  .acc-help-body ul{margin:0;padding-inline-start:18px}
   .acc-help-body li{margin-bottom:6px}
   .field{margin-bottom:14px;}
   .field label{display:block;font-size:14px;color:var(--text2);margin-bottom:5px;font-weight:500;}
@@ -492,7 +492,7 @@
     <div class="ttab" id="tabClients" onclick="switchTab('clients')"><span class="ic"><i class="ti ti-users"></i></span><span class="lb">Clients</span></div>
     <div class="ttab" id="tabSuppliers" onclick="switchTab('suppliers')"><span class="ic"><i class="ti ti-truck-delivery"></i></span><span class="lb">Suppliers</span></div>
     <div class="ttab admin" id="tabAdmin" onclick="switchTab('admin')"><span class="ic"><i class="ti ti-lock"></i></span><span class="lb">Admin</span></div>
-    <div class="ttab admin" id="tabAccounting" onclick="switchTab('accounting')"><span class="ic"><i class="ti ti-cash"></i></span><span class="lb">Accounting</span></div>
+    <div class="ttab admin" id="tabAccounting" onclick="switchTab('accounting')"><span class="ic"><i class="ti ti-cash"></i></span><span class="lb">חשבונות</span></div>
   </div>
   <div id="accountLabelCenter" class="account-label-center"></div>
   <div class="titlebar-actions">
@@ -816,25 +816,25 @@
     </div>
 
     <!-- Accounting Section -->
-    <div class="page-section" id="sectionAccounting">
+    <div class="page-section" id="sectionAccounting" dir="rtl">
       <div class="page-header">
         <div>
-          <div class="page-title"><i class="ti ti-cash"></i> Accounting</div>
-          <div class="page-sub">Salary calculation and per-client rates</div>
+          <div class="page-title"><i class="ti ti-cash"></i> הנהלת חשבונות</div>
+          <div class="page-sub">חישוב שכר ותעריפים</div>
         </div>
       </div>
 
       <!-- Salary summary (moved here from Today) -->
       <div style="margin-bottom:24px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:4px"><i class="ti ti-cash"></i> Salary Calculation <button type="button" class="acc-help" onclick="openAccountingHelp('salary')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
+          <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:4px"><i class="ti ti-cash"></i> חישוב שכר <button type="button" class="acc-help" onclick="openAccountingHelp('salary')" title="מה זה?"><i class="ti ti-info-circle"></i></button></div>
           <div style="display:flex;gap:8px;align-items:center">
             <select id="salaryPeriod" onchange="onSalaryPeriodChange()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:4px 8px;font-size:12px;outline:none">
-              <option value="week">This Week</option>
-              <option value="month">This Month</option>
-              <option value="all">All Time</option>
+              <option value="week">השבוע</option>
+              <option value="month">החודש</option>
+              <option value="all">כל התקופה</option>
             </select>
-            <button class="btn sm perm-exports" onclick="openSalaryExportModal()"><i class="ti ti-upload"></i> Export</button>
+            <button class="btn sm perm-exports" onclick="openSalaryExportModal()"><i class="ti ti-upload"></i> ייצוא</button>
           </div>
         </div>
         <div id="dashSalary"></div>
@@ -842,44 +842,44 @@
 
       <!-- Worker pay: a card per worker with its rate, pay mode, period pay, travel and bank (the one place money is set) -->
       <div id="accSecWorkerPay" style="margin-bottom:24px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-wallet"></i> Worker pay <button type="button" class="acc-help" onclick="openAccountingHelp('workerPay')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
-        <input type="text" id="workerPaySearch" placeholder="Search a worker" oninput="renderWorkerPay()" style="width:100%;max-width:320px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;padding:7px 10px;outline:none;margin-bottom:8px">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-wallet"></i> שכר עובדים <button type="button" class="acc-help" onclick="openAccountingHelp('workerPay')" title="מה זה?"><i class="ti ti-info-circle"></i></button></div>
+        <input type="text" id="workerPaySearch" placeholder="חיפוש עובד" oninput="renderWorkerPay()" style="width:100%;max-width:320px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;padding:7px 10px;outline:none;margin-bottom:8px">
         <div id="workerPayWrap"></div>
       </div>
 
       <!-- Per-client rate matrix -->
       <div id="accSecRates">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-adjustments"></i> Per-client rates <button type="button" class="acc-help" onclick="openAccountingHelp('rates')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-adjustments"></i> תעריפים לפי לקוח <button type="button" class="acc-help" onclick="openAccountingHelp('rates')" title="מה זה?"><i class="ti ti-info-circle"></i></button></div>
         <div id="rateMatrixWrap"></div>
       </div>
 
       <!-- Per-supplier rate matrix (informational — does not feed payroll math) -->
       <div id="accSecSupplierRates" style="margin-top:24px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-truck-delivery"></i> Per-supplier rates <button type="button" class="acc-help" onclick="openAccountingHelp('supplierRates')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-truck-delivery"></i> עמלות ספקים <button type="button" class="acc-help" onclick="openAccountingHelp('supplierRates')" title="מה זה?"><i class="ti ti-info-circle"></i></button></div>
         <div id="supplierRateMatrixWrap"></div>
       </div>
 
       <!-- Payable by supplier summary -->
       <div id="accSecPayable" style="margin-top:24px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-report-money"></i> Payable by supplier <button type="button" class="acc-help" onclick="openAccountingHelp('payable')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-report-money"></i> לתשלום לספקים <button type="button" class="acc-help" onclick="openAccountingHelp('payable')" title="מה זה?"><i class="ti ti-info-circle"></i></button></div>
         <div id="supplierPayableWrap"></div>
       </div>
 
       <!-- Payable by HR: each HR's commission on its workers' hours (owner) -->
       <div id="accSecHrPayable" style="margin-top:24px;display:none">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-user-dollar"></i> Payable by HR <button type="button" class="acc-help" onclick="openAccountingHelp('hrPayable')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-user-dollar"></i> לתשלום למשאבי אנוש <button type="button" class="acc-help" onclick="openAccountingHelp('hrPayable')" title="מה זה?"><i class="ti ti-info-circle"></i></button></div>
         <div id="hrPayableWrap"></div>
       </div>
 
       <!-- Billable by client (client's own rateMode — tiered or fixed — independent of the worker's real wage above) -->
       <div id="accSecBillable" style="margin-top:24px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-building-store"></i> Billable by client <button type="button" class="acc-help" onclick="openAccountingHelp('billable')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-building-store"></i> לחיוב לקוחות <button type="button" class="acc-help" onclick="openAccountingHelp('billable')" title="מה זה?"><i class="ti ti-info-circle"></i></button></div>
         <div id="clientBillableWrap"></div>
       </div>
 
       <!-- Hours-import approval queue (Admin/Roles plan, stage 14) -->
       <div id="accSecPending" style="margin-top:24px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-file-check"></i> Pending hours <button type="button" class="acc-help" onclick="openAccountingHelp('pending')" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-file-check"></i> שעות ממתינות לאישור <button type="button" class="acc-help" onclick="openAccountingHelp('pending')" title="מה זה?"><i class="ti ti-info-circle"></i></button></div>
         <div id="pendingHoursWrap"></div>
       </div>
     </div>
@@ -889,10 +889,10 @@
 
 <!-- Modals -->
 <div class="overlay" id="payOverlay">
-  <div class="modal" id="payModal" style="width:460px"></div>
+  <div class="modal" id="payModal" style="width:460px" dir="rtl"></div>
 </div>
 <div class="overlay" id="accHelpOverlay">
-  <div class="modal" id="accHelpModal" style="width:460px"></div>
+  <div class="modal" id="accHelpModal" style="width:460px" dir="rtl"></div>
 </div>
 <div class="overlay" id="editOverlay">
   <div class="modal" id="editModal"></div>
@@ -947,7 +947,7 @@
   <div class="modal" id="clearLogModal" style="max-width:400px"></div>
 </div>
 <div class="overlay" id="salaryExportOverlay">
-  <div class="modal" id="salaryExportModal" style="max-width:360px"></div>
+  <div class="modal" id="salaryExportModal" style="max-width:360px" dir="rtl"></div>
 </div>
 <div class="overlay" id="hoursExportOverlay">
   <div class="modal" id="hoursExportModal" style="max-width:360px"></div>
@@ -6226,7 +6226,7 @@ function renderAccounting(){
   });
   if(payOnly){ const ex=document.querySelector('#sectionAccounting .perm-exports'); if(ex) ex.style.display='none'; }
   const sub=document.querySelector('#sectionAccounting .page-sub');
-  if(sub) sub.textContent=payOnly?'Your workers\' hours, pay and your commission':'Salary calculation and per-client rates';
+  if(sub) sub.textContent=payOnly?'השעות והשכר של העובדים שלך, והעמלה שלך':'חישוב שכר ותעריפים';
   renderSalary();
   renderWorkerPay();
   if(payOnly) return;
@@ -6336,7 +6336,7 @@ function renderSalary(){
   __lastSalaryEntries=entries;
   salaryEl.classList.toggle('salary-ro',payOnly);
   if(!entries.length){
-    salaryEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No punch data for this period</div>`;
+    salaryEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">אין החתמות בתקופה זו</div>`;
     if(payOnly) return;
     renderSupplierPayable(entries);
     renderHrPayable(entries);
@@ -6347,34 +6347,34 @@ function renderSalary(){
   const totalHours=entries.reduce((s,e)=>s+e.hours,0);
   const grandTotal=entries.reduce((s,e)=>s+e.total+e.travel,0);
   const _allWarns=entries.flatMap(e=>(e.warns||[]).map(w=>e.worker+' — '+w));
-  const _reviewBanner=_allWarns.length?`<div style="background:var(--amber-bg);border:1px solid rgba(245,166,35,0.3);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px"><div style="color:var(--amber);font-weight:600;font-size:13px;margin-bottom:4px"><i class="ti ti-alert-triangle"></i> ${_allWarns.length} to review before calculating</div><div style="color:var(--text2);font-size:12px;line-height:1.6">${_allWarns.slice(0,12).map(w=>'• '+w).join('<br>')}${_allWarns.length>12?'<br>…'+(_allWarns.length-12)+' more':''}</div></div>`:'';
+  const _reviewBanner=_allWarns.length?`<div style="background:var(--amber-bg);border:1px solid rgba(245,166,35,0.3);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px"><div style="color:var(--amber);font-weight:600;font-size:13px;margin-bottom:4px"><i class="ti ti-alert-triangle"></i> ${_allWarns.length} לבדיקה לפני החישוב</div><div style="color:var(--text2);font-size:12px;line-height:1.6">${_allWarns.slice(0,12).map(w=>'• '+w).join('<br>')}${_allWarns.length>12?'<br>…ועוד '+(_allWarns.length-12):''}</div></div>`:'';
   salaryEl.innerHTML=_reviewBanner+`
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
       <table style="width:100%;border-collapse:collapse;min-width:640px">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Worker</th>
-            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">Hours</th>
-            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">Days</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Rate</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--amber)">OT ₪/h</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--blue)">Shabbat ₪/h</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Travel ₪</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Total Pay</th>
-            ${payOnly?`<th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">My commission</th>`:''}
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">עובד</th>
+            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">שעות</th>
+            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">ימים</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">תעריף</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--amber)">נוספות ₪/ש׳</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--blue)">שבת ₪/ש׳</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">נסיעות ₪</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">סה״כ לתשלום</th>
+            ${payOnly?`<th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">העמלה שלי</th>`:''}
           </tr>
         </thead>
         <tbody class="salary-rows"></tbody>
         <tfoot>
           <tr style="background:var(--bg3);border-top:2px solid var(--border)">
-            <td style="padding:10px 12px;font-size:13px;font-weight:600;color:var(--text2)">TOTAL</td>
-            <td style="padding:10px 12px;text-align:center;font-size:14px;font-weight:700;color:var(--text)">${totalHours.toFixed(1)}h</td>
+            <td style="padding:10px 12px;font-size:13px;font-weight:600;color:var(--text2)">סה״כ</td>
+            <td style="padding:10px 12px;text-align:center;font-size:14px;font-weight:700;color:var(--text)">${totalHours.toFixed(1)} ש׳</td>
             <td colspan="5"></td>
-            <td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">
+            <td style="padding:10px 12px;text-align:left;font-size:15px;font-weight:800;color:var(--green)">
               ₪${grandTotal.toFixed(0)}
             </td>
-            ${payOnly?`<td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">₪${entries.reduce((t,e)=>t+hrCom(e),0).toFixed(0)}</td>`:''}
+            ${payOnly?`<td style="padding:10px 12px;text-align:left;font-size:15px;font-weight:800;color:var(--green)">₪${entries.reduce((t,e)=>t+hrCom(e),0).toFixed(0)}</td>`:''}
           </tr>
         </tfoot>
       </table>
@@ -6393,16 +6393,16 @@ function renderSalary(){
             const er=wc?effectiveRates(wc,mainCid):{regRate:0,otRate:0,shabbatRate:0};
             const ownReg=wc?(wc.regRate!=null&&wc.regRate!==''?wc.regRate:(Number(wc.hourlyRate)>0?wc.hourlyRate:'')):'';
             const ownOt=wc&&wc.otRate!=null?wc.otRate:'', ownShab=wc&&wc.shabbatRate!=null?wc.shabbatRate:'';
-            const srcTag=src=>src==='client'?`<div style="font-size:10px;color:var(--text3);margin-top:2px">client${mainCl?' · '+esc(mainCl.name):''}</div>`:src==='override'?`<div style="font-size:10px;color:var(--text3);margin-top:2px">rate matrix</div>`:'';
+            const srcTag=src=>src==='client'?`<div style="font-size:10px;color:var(--text3);margin-top:2px">לקוח${mainCl?' · '+esc(mainCl.name):''}</div>`:src==='override'?`<div style="font-size:10px;color:var(--text3);margin-top:2px">תעריף לפי לקוח</div>`:'';
             const ini=wc?workerAvatarInner(wc):esc(e.worker.slice(0,2).toUpperCase());
             const daily=isDailyPay(wc);
-            const inStyle='width:66px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none';
+            const inStyle='width:66px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:left;outline:none';
             // ₪/h or ₪/day, per worker (setWorkerPayMode). Daily: the days come
             // from the punches; a number typed here replaces them for this period.
-            const modeSel=`<select onchange="setWorkerPayMode('${e.workerId}',this.value)" title="Paid by the hour or by the day" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text2);font-size:11px;padding:3px 4px;margin-bottom:4px;outline:none">
-                <option value="hourly"${daily?'':' selected'}>₪/h</option><option value="daily"${daily?' selected':''}>₪/day</option></select>`;
+            const modeSel=`<select onchange="setWorkerPayMode('${e.workerId}',this.value)" title="תשלום לפי שעה או לפי יום" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text2);font-size:11px;padding:3px 4px;margin-bottom:4px;outline:none">
+                <option value="hourly"${daily?'':' selected'}>₪/ש׳</option><option value="daily"${daily?' selected':''}>₪/יום</option></select>`;
             const daysCell=daily
-              ? `<input type="number" value="${dayOverride(wc,periodKey)??''}" placeholder="${e.countedDays}" min="0" step="1" title="Days worked: ${e.countedDays} by the punches · type a number to replace it for this period" onchange="setWorkerDays('${e.workerId}','${periodKey}',this.value)" style="${inStyle};width:54px;text-align:center">${dayOverride(wc,periodKey)!=null?`<div style="font-size:10px;color:var(--text3);margin-top:2px">punches: ${e.countedDays}</div>`:''}`
+              ? `<input type="number" value="${dayOverride(wc,periodKey)??''}" placeholder="${e.countedDays}" min="0" step="1" title="ימי עבודה לפי ההחתמות: ${e.countedDays} · מספר שיוקלד כאן מחליף אותם לתקופה זו בלבד" onchange="setWorkerDays('${e.workerId}','${periodKey}',this.value)" style="${inStyle};width:54px;text-align:center">${dayOverride(wc,periodKey)!=null?`<div style="font-size:10px;color:var(--text3);margin-top:2px">לפי החתמות: ${e.countedDays}</div>`:''}`
               : `${e.countedDays}`;
             return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
               <td style="padding:10px 12px">
@@ -6412,30 +6412,30 @@ function renderSalary(){
                   ${e.warns&&e.warns.length?`<i class="ti ti-alert-triangle" style="color:var(--amber);font-size:14px;cursor:help" title="${e.warns.join('&#10;').replace(/"/g,'&quot;')}"></i>`:''}
                 </div>
               </td>
-              <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${e.hours.toFixed(1)}h</td>
+              <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${e.hours.toFixed(1)} ש׳</td>
               <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${daysCell}</td>
-              <td style="padding:10px 12px;text-align:right">${modeSel}<br>
-                <input type="number" value="${esc(ownReg)}" placeholder="${daily?'0':esc(er.regRate)}" min="0" step="0.5" title="${daily?'This worker\'s rate per day':'This worker\'s rate (Regular ×1.0) · empty = the client\'s rate'}"
+              <td style="padding:10px 12px;text-align:left">${modeSel}<br>
+                <input type="number" value="${esc(ownReg)}" placeholder="${daily?'0':esc(er.regRate)}" min="0" step="0.5" title="${daily?'התעריף היומי של העובד':'התעריף של העובד (רגיל ×1.0) · ריק = תעריף הלקוח'}"
                   onchange="setWorkerRate('${e.workerId}',this.value);renderSalary()"
-                  style="${inStyle}">${daily?(ownReg===''?'<div style="font-size:10px;color:var(--amber);margin-top:2px">set a daily rate</div>':''):srcTag(er.src)}
+                  style="${inStyle}">${daily?(ownReg===''?'<div style="font-size:10px;color:var(--amber);margin-top:2px">יש להגדיר תעריף יומי</div>':''):srcTag(er.src)}
               </td>
-              ${daily?`<td style="padding:10px 12px;text-align:right;color:var(--text3)">—</td><td style="padding:10px 12px;text-align:right;color:var(--text3)">—</td>`:`<td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${esc(ownOt)}" placeholder="${esc(er.otRate)}" min="0" step="0.5" title="OT rate ₪/hour · empty = the client's, else base ×${PAY_RULES.otMult}"
+              ${daily?`<td style="padding:10px 12px;text-align:left;color:var(--text3)">—</td><td style="padding:10px 12px;text-align:left;color:var(--text3)">—</td>`:`<td style="padding:10px 12px;text-align:left">
+                <input type="number" value="${esc(ownOt)}" placeholder="${esc(er.otRate)}" min="0" step="0.5" title="תעריף שעות נוספות ₪/שעה · ריק = של הלקוח, אחרת בסיס ×${PAY_RULES.otMult}"
                   onchange="setWorkerOtRate('${e.workerId}',this.value);renderSalary()"
-                  style="width:66px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:right;outline:none">${srcTag(er.otSrc)}
+                  style="width:66px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:left;outline:none">${srcTag(er.otSrc)}
               </td>
-              <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${esc(ownShab)}" placeholder="${esc(er.shabbatRate)}" min="0" step="0.5" title="Shabbat rate ₪/hour · empty = the client's, else base ×${PAY_RULES.shabbatMult}"
+              <td style="padding:10px 12px;text-align:left">
+                <input type="number" value="${esc(ownShab)}" placeholder="${esc(er.shabbatRate)}" min="0" step="0.5" title="תעריף שבת ₪/שעה · ריק = של הלקוח, אחרת בסיס ×${PAY_RULES.shabbatMult}"
                   onchange="setWorkerShabbatRate('${e.workerId}',this.value);renderSalary()"
-                  style="width:66px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">${srcTag(er.shabbatSrc)}
+                  style="width:66px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:left;outline:none">${srcTag(er.shabbatSrc)}
               </td>`}
-              <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)">
+              <td style="padding:10px 12px;text-align:left;font-size:13px;color:var(--text2)">
                 ${e.travel>0?'₪'+e.travel.toFixed(0):'—'}
               </td>
-              <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${(e.total+e.travel)>0?'var(--green)':'var(--text3)'}">
+              <td style="padding:10px 12px;text-align:left;font-size:14px;font-weight:700;color:${(e.total+e.travel)>0?'var(--green)':'var(--text3)'}">
                 ${(e.total+e.travel)>0?'₪'+(e.total+e.travel).toFixed(0):'—'}
               </td>
-              ${payOnly?`<td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)" title="${isDailyPay(workers.find(w=>w.id===e.workerId))&&hrDayRate>0?esc(e.daysUsed)+' days × ₪'+hrDayRate:e.hours.toFixed(1)+'h × ₪'+hrRate}">₪${hrCom(e).toFixed(0)}</td>`:''}
+              ${payOnly?`<td style="padding:10px 12px;text-align:left;font-size:13px;color:var(--text2)" title="${isDailyPay(workers.find(w=>w.id===e.workerId))&&hrDayRate>0?esc(e.daysUsed)+' ימים × ₪'+hrDayRate:e.hours.toFixed(1)+' ש׳ × ₪'+hrRate}">₪${hrCom(e).toFixed(0)}</td>`:''}
             </tr>`;
 },{table:true,colspan:payOnly?9:8});
   if(payOnly) return;
@@ -6481,7 +6481,7 @@ function renderSupplierPayable(entries){
   const wrap=document.getElementById('supplierPayableWrap');
   if(!wrap) return;
   if(!entries.length){
-    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No punch data for this period</div>`;
+    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">אין החתמות בתקופה זו</div>`;
     return;
   }
   const bySupplier={};
@@ -6498,39 +6498,39 @@ function renderSupplierPayable(entries){
   });
   const rows=suppliers.filter(s=>bySupplier[s.id]).map(s=>({sup:s,...bySupplier[s.id]}));
   if(!rows.length && !unassigned.hours){
-    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No workers with a supplier assigned had activity this period</div>`;
+    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">לעובדים עם ספק לא הייתה פעילות בתקופה זו</div>`;
     return;
   }
   // Stage 15: same {label,hours,rate,total} shape exportPayableSummary()
   // expects — built here once so the export buttons below never recompute.
-  __lastSupplierPayableRows = rows.map(r=>({ label:r.sup.name, hours:r.hours, rate:'commission', total:r.total }));
+  __lastSupplierPayableRows = rows.map(r=>({ label:r.sup.name, hours:r.hours, rate:'עמלה', total:r.total }));
   wrap.innerHTML=`
     <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:6px">
-      <button class="btn sm" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:'Payable by supplier',filename:'payable-by-supplier',format:'excel'})"><i class="ti ti-file-spreadsheet"></i> Excel</button>
-      <button class="btn sm" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:'Payable by supplier',filename:'payable-by-supplier',format:'pdf'})"><i class="ti ti-file-type-pdf"></i> PDF</button>
+      <button class="btn sm" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:'לתשלום לספקים',filename:'payable-by-supplier',format:'excel'})"><i class="ti ti-file-spreadsheet"></i> Excel</button>
+      <button class="btn sm" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:'לתשלום לספקים',filename:'payable-by-supplier',format:'pdf'})"><i class="ti ti-file-type-pdf"></i> PDF</button>
     </div>
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
       <table style="width:100%;border-collapse:collapse;min-width:420px">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Supplier</th>
-            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">Hours</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Payable</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">ספק</th>
+            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">שעות</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">לתשלום</th>
           </tr>
         </thead>
         <tbody class="paged-supplierPayable"></tbody><tbody>${unassigned.hours?`<tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:10px 12px;font-size:13px;color:var(--text3)">No supplier assigned</td>
-            <td style="padding:10px 12px;text-align:center;font-size:13px;color:var(--text3)">${unassigned.hours.toFixed(1)}h</td>
-            <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text3)">—</td>
+            <td style="padding:10px 12px;font-size:13px;color:var(--text3)">ללא ספק</td>
+            <td style="padding:10px 12px;text-align:center;font-size:13px;color:var(--text3)">${unassigned.hours.toFixed(1)} ש׳</td>
+            <td style="padding:10px 12px;text-align:left;font-size:13px;color:var(--text3)">—</td>
           </tr>`:''}</tbody>
       </table>
       </div>
     </div>`;
   renderPagedList(wrap.querySelector('.paged-supplierPayable'),'supplierPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
             <td style="padding:10px 12px;font-size:13px;font-weight:600"><span style="color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></span> ${esc(r.sup.name)}</td>
-            <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)}h</td>
-            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
+            <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)} ש׳</td>
+            <td style="padding:10px 12px;text-align:left;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
           </tr>`,{table:true,colspan:20});
 }
 
@@ -6550,16 +6550,16 @@ function renderHrPayable(entries){
     return {u, hours, rate, dayRate, total};
   }).filter(r=>r.hours>0);
   sec.style.display=hrs.length?'':'none';
-  if(!rows.length){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No hours of HR workers this period</div>`; return; }
+  if(!rows.length){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">אין שעות לעובדי משאבי אנוש בתקופה זו</div>`; return; }
   wrap.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
       <table style="width:100%;border-collapse:collapse;min-width:420px">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">HR</th>
-            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">Hours</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">₪/h</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Payable</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">משאבי אנוש</th>
+            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">שעות</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">₪/ש׳</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">לתשלום</th>
           </tr>
         </thead>
         <tbody class="paged-hrPayable"></tbody>
@@ -6568,9 +6568,9 @@ function renderHrPayable(entries){
     </div>`;
   renderPagedList(wrap.querySelector('.paged-hrPayable'),'hrPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
             <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.u.fullName||r.u.username)}</td>
-            <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)}h</td>
-            <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)">${r.rate?'₪'+esc(r.rate):'—'}${r.dayRate?' · ₪'+esc(r.dayRate)+'/day':''}</td>
-            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
+            <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)} ש׳</td>
+            <td style="padding:10px 12px;text-align:left;font-size:13px;color:var(--text2)">${r.rate?'₪'+esc(r.rate):'—'}${r.dayRate?' · ₪'+esc(r.dayRate)+'/יום':''}</td>
+            <td style="padding:10px 12px;text-align:left;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
           </tr>`,{table:true,colspan:20});
 }
 
@@ -6584,12 +6584,12 @@ function renderClientBillable(entries){
   const wrap=document.getElementById('clientBillableWrap');
   if(!wrap) return;
   if(!entries.length){
-    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No punch data for this period</div>`;
+    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">אין החתמות בתקופה זו</div>`;
     return;
   }
   const rows=entries.map(e=>({cl:clients.find(c=>c.id===e.clientId),...e})).filter(r=>r.cl);
   if(!rows.length){
-    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No billable activity this period</div>`;
+    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">אין פעילות לחיוב בתקופה זו</div>`;
     return;
   }
   wrap.innerHTML=`
@@ -6598,10 +6598,10 @@ function renderClientBillable(entries){
       <table style="width:100%;border-collapse:collapse;min-width:420px">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Client</th>
-            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">Hours</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Mode</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Billable</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">לקוח</th>
+            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">שעות</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">שיטה</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">לחיוב</th>
           </tr>
         </thead>
         <tbody class="paged-clientBillable"></tbody>
@@ -6610,9 +6610,9 @@ function renderClientBillable(entries){
     </div>`;
   renderPagedList(wrap.querySelector('.paged-clientBillable'),'clientBillable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
             <td style="padding:10px 12px;font-size:13px;font-weight:600"><span style="color:${r.cl.color}"><i class="ti ti-building-store"></i></span> ${esc(r.cl.name)}</td>
-            <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)}h</td>
-            <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${r.cl.rateMode==='fixed'?'Fixed':'Tiered'}</td>
-            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
+            <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)} ש׳</td>
+            <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${r.cl.rateMode==='fixed'?'קבוע':'מדורג'}</td>
+            <td style="padding:10px 12px;text-align:left;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
           </tr>`,{table:true,colspan:20});
 }
 
@@ -6631,18 +6631,18 @@ async function renderPendingHours(){
   try{
     const res = await fetch(API_URL+'?'+new URLSearchParams({ action:'loadPendingHours', ...gsAuth() }));
     json = await res.json();
-  }catch(e){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">Could not load</div>`; return; }
+  }catch(e){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">הטעינה נכשלה</div>`; return; }
   const batches=(json.batches||[]).filter(b=>b.status==='pending');
-  if(!batches.length){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">Nothing pending</div>`; return; }
+  if(!batches.length){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">אין שעות ממתינות</div>`; return; }
   wrap.innerHTML=`
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
       <table style="width:100%;border-collapse:collapse;min-width:520px">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">File</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Uploaded by</th>
-            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">Shifts</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">קובץ</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">נשלח על ידי</th>
+            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">משמרות</th>
             ${canApprove?'<th style="padding:10px 12px"></th>':''}
           </tr>
         </thead>
@@ -6656,7 +6656,7 @@ async function renderPendingHours(){
               <td style="padding:10px 12px;font-size:13px">${esc(b.fileName||'—')}${w?' · '+esc(w.name):''}</td>
               <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${esc(b.uploadedBy||'—')}</td>
               <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600">${b.entries.length}</td>
-              ${canApprove?`<td style="padding:10px 12px;text-align:right;white-space:nowrap">
+              ${canApprove?`<td style="padding:10px 12px;text-align:left;white-space:nowrap">
                 <button class="btn sm" style="color:var(--green)" onclick="approveHoursBatch('${b.batchId}')"><i class="ti ti-check"></i></button>
                 <button class="btn sm red" onclick="rejectHoursBatch('${b.batchId}')"><i class="ti ti-x"></i></button>
               </td>`:''}
@@ -6668,7 +6668,7 @@ async function approveHoursBatch(batchId){
     const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'approvePendingHours', ...gsAuth(), batchId }) });
     const json = await res.json();
     if(json.error){ showToast(json.error); return; }
-    showToast(json.created+' shift(s) approved');
+    showToast(json.created+' משמרות אושרו');
     // Approved hours are often for a past month, older than the live window
     // — load back to the earliest of them so they show.
     if(json.created){
@@ -6679,17 +6679,17 @@ async function approveHoursBatch(batchId){
       }catch(e){ console.warn('Loading approved punches failed:', e); }
     }
     renderPendingHours(); renderSalary(); renderWorkerPay();
-  }catch(e){ showToast('Failed: '+e.message); }
+  }catch(e){ showToast('נכשל: '+e.message); }
 }
 async function rejectHoursBatch(batchId){
-  if(!confirm('Reject this batch?')) return;
+  if(!confirm('לדחות את השעות שנשלחו?')) return;
   try{
     const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'rejectPendingHours', ...gsAuth(), batchId }) });
     const json = await res.json();
     if(json.error){ showToast(json.error); return; }
-    showToast('Batch rejected');
+    showToast('השעות נדחו');
     renderPendingHours();
-  }catch(e){ showToast('Failed: '+e.message); }
+  }catch(e){ showToast('נכשל: '+e.message); }
 }
 
 // Per-worker-per-client rate override matrix (tier 1 of effectiveRates()).
@@ -6707,7 +6707,7 @@ function renderRateMatrix(){
     });
   });
   if(!rows.length){
-    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No workers assigned to clients</div>`;
+    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">אין עובדים משויכים ללקוחות</div>`;
     return;
   }
   wrap.innerHTML=`
@@ -6716,11 +6716,11 @@ function renderRateMatrix(){
       <table style="width:100%;border-collapse:collapse;min-width:640px">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Worker</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Object</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Regular ₪/h</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--amber)">OT ₪/h</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--blue)">Shabbat ₪/h</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">עובד</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">לקוח</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">רגיל ₪/ש׳</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--amber)">נוספות ₪/ש׳</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--blue)">שבת ₪/ש׳</th>
           </tr>
         </thead>
         <tbody class="paged-rateMatrix"></tbody>
@@ -6733,20 +6733,20 @@ function renderRateMatrix(){
             return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
               <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.w.name)}</td>
               <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${esc(r.cl.name)}</td>
-              <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${eff.regRate}" title="Empty = ${eff.regRate} (the worker's own rate, else the client's)"
+              <td style="padding:10px 12px;text-align:left">
+                <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${eff.regRate}" title="ריק = ${eff.regRate} (התעריף של העובד, אחרת של הלקוח)"
                   onchange="setClientRateOverride('${r.w.id}','${r.cl.id}','rate',this.value)"
-                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:left;outline:none">
               </td>
-              <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.otRate??''}" min="0" step="0.5" placeholder="${eff.otRate}" title="Empty = ${eff.otRate}"
+              <td style="padding:10px 12px;text-align:left">
+                <input type="number" value="${ov.otRate??''}" min="0" step="0.5" placeholder="${eff.otRate}" title="ריק = ${eff.otRate}"
                   onchange="setClientRateOverride('${r.w.id}','${r.cl.id}','otRate',this.value)"
-                  style="width:70px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+                  style="width:70px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:left;outline:none">
               </td>
-              <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.shabbatRate??''}" min="0" step="0.5" placeholder="${eff.shabbatRate}" title="Empty = ${eff.shabbatRate}"
+              <td style="padding:10px 12px;text-align:left">
+                <input type="number" value="${ov.shabbatRate??''}" min="0" step="0.5" placeholder="${eff.shabbatRate}" title="ריק = ${eff.shabbatRate}"
                   onchange="setClientRateOverride('${r.w.id}','${r.cl.id}','shabbatRate',this.value)"
-                  style="width:70px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+                  style="width:70px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:left;outline:none">
               </td>
             </tr>`;
           },{table:true,colspan:20});
@@ -6777,7 +6777,7 @@ function renderSupplierRateMatrix(){
   if(!wrap) return;
   const rows=workers.filter(w=>w.supplierId).map(w=>({w,sup:suppliers.find(s=>s.id===w.supplierId)})).filter(r=>r.sup);
   if(!rows.length){
-    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No workers assigned to a supplier</div>`;
+    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">אין עובדים משויכים לספק</div>`;
     return;
   }
   wrap.innerHTML=`
@@ -6786,10 +6786,10 @@ function renderSupplierRateMatrix(){
       <table style="width:100%;border-collapse:collapse;min-width:420px">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Worker</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Supplier</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Commission ₪/h</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">₪/day (daily workers)</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">עובד</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">ספק</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">עמלה ₪/ש׳</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">₪/יום (עובדים יומיים)</th>
           </tr>
         </thead>
         <tbody class="paged-supplierRateMatrix"></tbody>
@@ -6801,15 +6801,15 @@ function renderSupplierRateMatrix(){
             return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
               <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.w.name)}</td>
               <td style="padding:10px 12px;font-size:13px;color:var(--text2)"><span style="color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></span> ${esc(r.sup.name)}</td>
-              <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${SUPPLIER_DEFAULT_RATE}" title="Empty = default (${SUPPLIER_DEFAULT_RATE} ₪/h)"
+              <td style="padding:10px 12px;text-align:left">
+                <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${SUPPLIER_DEFAULT_RATE}" title="ריק = ברירת מחדל (${SUPPLIER_DEFAULT_RATE} ₪/ש׳)"
                   onchange="setSupplierRateOverride('${r.w.id}','${r.sup.id}','rate',this.value)"
-                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:left;outline:none">
               </td>
-              <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.dayRate??''}" min="0" step="0.5" placeholder="${isDailyPay(r.w)?'by the hour':'—'}" title="A fixed ₪ per day, for a worker paid by the day. Empty = hours × ₪/h"
+              <td style="padding:10px 12px;text-align:left">
+                <input type="number" value="${ov.dayRate??''}" min="0" step="0.5" placeholder="${isDailyPay(r.w)?'לפי שעה':'—'}" title="סכום קבוע ₪ ליום, לעובד בתשלום יומי. ריק = שעות × ₪/ש׳"
                   onchange="setSupplierRateOverride('${r.w.id}','${r.sup.id}','dayRate',this.value)"
-                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:left;outline:none">
               </td>
             </tr>`;
           },{table:true,colspan:20});
@@ -6849,7 +6849,7 @@ function renderWorkerPay(){
   const q=(document.getElementById('workerPaySearch')?.value||'').trim().toLowerCase();
   const list=workers.filter(w=>(!hr||w.hrId===me.uid) && (!q||String(w.name||'').toLowerCase().includes(q)))
     .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
-  if(!list.length){ wrap.innerHTML='<div style="color:var(--text3);font-size:13px;padding:8px 0">No workers</div>'; return; }
+  if(!list.length){ wrap.innerHTML='<div style="color:var(--text3);font-size:13px;padding:8px 0">אין עובדים</div>'; return; }
   // This period's figures come from the Salary run just before (renderSalary).
   const byId={}; (__lastSalaryEntries||[]).forEach(e=>{ byId[e.workerId]=e; });
   const sel=document.getElementById('salaryPeriod');
@@ -6859,17 +6859,17 @@ function renderWorkerPay(){
   wrap.innerHTML='<div class="clients-grid paged-workerPay"></div>';
   renderPagedList(wrap.querySelector('.paged-workerPay'),'workerPay',q,list,w=>{
     const daily=isDailyPay(w), own=wOwnRate(w), e=byId[w.id], edit=canEditPay(w);
-    const rate=daily ? (own!==''?'₪'+esc(own)+'/day':'<span style="color:var(--amber)">set a daily rate</span>')
-      : (own!==''?'₪'+esc(own)+'/h':`<span style="color:var(--text3)">client ₪${esc(wRegRate(w,(w.clientIds||[])[0]))}/h</span>`);
+    const rate=daily ? (own!==''?'₪'+esc(own)+'/יום':'<span style="color:var(--amber)">יש להגדיר תעריף יומי</span>')
+      : (own!==''?'₪'+esc(own)+'/ש׳':`<span style="color:var(--text3)">לקוח ₪${esc(wRegRate(w,(w.clientIds||[])[0]))}/ש׳</span>`);
     const td=Number(w.travelAllowance)||0, tm=Number(w.travelMonthly)||0;
-    const travel=td||tm?[td?'₪'+esc(td)+'/day':'',tm?'₪'+esc(tm)+'/month':''].filter(Boolean).join(' + '):'<span style="color:var(--text3)">no travel</span>';
+    const travel=td||tm?[td?'₪'+esc(td)+'/יום':'',tm?'₪'+esc(tm)+'/חודש':''].filter(Boolean).join(' + '):'<span style="color:var(--text3)">ללא נסיעות</span>';
     const bank=w.bank||w.bankBranch||w.bankAccountNumber
-      ?[esc(w.bank||''),w.bankBranch?'branch '+esc(w.bankBranch):'',w.bankAccountNumber?'acc. '+esc(w.bankAccountNumber):''].filter(Boolean).join(' · ')
-      :'<span style="color:var(--amber)">no bank details</span>';
+      ?[esc(w.bank||''),w.bankBranch?'סניף '+esc(w.bankBranch):'',w.bankAccountNumber?'חשבון '+esc(w.bankAccountNumber):''].filter(Boolean).join(' · ')
+      :'<span style="color:var(--amber)">אין פרטי בנק</span>';
     const period=e
-      ? `${esc(periodLbl)}: ${esc(e.daysUsed)} days · ${esc((Math.round(e.hours*100)/100))} h · pay ${money(e.total)} · travel ${money(e.travel)} · <b style="color:var(--text)">total ${money(e.total+e.travel)}</b>`
-      : `<span style="color:var(--text3)">${esc(periodLbl)}: no shifts</span>`;
-    return `<div class="wcard tap-edit" onclick="if(isPlainTap(event,this))openPayModal('${esc(w.id)}')" title="${edit?'Edit pay':'View pay'}">
+      ? `${esc(periodLbl)}: ${esc(e.daysUsed)} ימים · ${esc((Math.round(e.hours*100)/100))} ש׳ · שכר ${money(e.total)} · נסיעות ${money(e.travel)} · <b style="color:var(--text)">סה״כ ${money(e.total+e.travel)}</b>`
+      : `<span style="color:var(--text3)">${esc(periodLbl)}: אין משמרות</span>`;
+    return `<div class="wcard tap-edit" onclick="if(isPlainTap(event,this))openPayModal('${esc(w.id)}')" title="${edit?'עריכת שכר':'צפייה בשכר'}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <div style="font-weight:600;font-size:14px">${esc(w.name||'')}</div>
         <div style="font-size:12px;font-weight:600;white-space:nowrap">${rate}</div>
@@ -6889,37 +6889,37 @@ function openPayModal(wid){
   const daily=isDailyPay(w), cid=(w.clientIds||[])[0];
   const clientRate=effectiveRates({...w,hourlyRate:0,regRate:null,otRate:null,shabbatRate:null,clientRates:w.clientRates},cid);
   const v=x=>x==null||x===''?'':esc(x);
-  document.getElementById('payModal').innerHTML=`<div class="modal-title"><i class="ti ti-wallet"></i> Pay — ${esc(w.name||'')}</div>
-    <div class="form-section">Pay</div>
+  document.getElementById('payModal').innerHTML=`<div class="modal-title"><i class="ti ti-wallet"></i> שכר — ${esc(w.name||'')}</div>
+    <div class="form-section">שכר</div>
     <div class="field-row">
-      <div class="field"><label>Paid</label><select id="payMode" onchange="onPayModeChange()"><option value="hourly"${daily?'':' selected'}>By the hour (₪/h)</option><option value="daily"${daily?' selected':''}>By the day (₪/day)</option></select></div>
-      <div class="field"><label id="payRateLabel">${daily?'Rate ₪/day':'Rate ₪/h'}</label><input type="number" id="payRate" min="0" step="0.5" value="${v(wOwnRate(w))}" data-client="${esc(clientRate.regRate)}" placeholder="${daily?'per day':(clientRate.src==='client'?'client: '+esc(clientRate.regRate):'')}"></div>
+      <div class="field"><label>אופן תשלום</label><select id="payMode" onchange="onPayModeChange()"><option value="hourly"${daily?'':' selected'}>לפי שעה (₪/ש׳)</option><option value="daily"${daily?' selected':''}>לפי יום (₪/יום)</option></select></div>
+      <div class="field"><label id="payRateLabel">${daily?'תעריף ₪/יום':'תעריף ₪/ש׳'}</label><input type="number" id="payRate" min="0" step="0.5" value="${v(wOwnRate(w))}" data-client="${esc(clientRate.regRate)}" placeholder="${daily?'ליום':(clientRate.src==='client'?'לקוח: '+esc(clientRate.regRate):'')}"></div>
     </div>
     <div class="field-row" id="payOtRow" style="${daily?'display:none':''}">
-      <div class="field"><label>OT ₪/h</label><input type="number" id="payOt" min="0" step="0.5" value="${v(w.otRate)}" placeholder="law ×${PAY_RULES.otMult}"></div>
-      <div class="field"><label>Shabbat ₪/h</label><input type="number" id="payShab" min="0" step="0.5" value="${v(w.shabbatRate)}" placeholder="law ×${PAY_RULES.shabbatMult}"></div>
+      <div class="field"><label>נוספות ₪/ש׳</label><input type="number" id="payOt" min="0" step="0.5" value="${v(w.otRate)}" placeholder="לפי חוק ×${PAY_RULES.otMult}"></div>
+      <div class="field"><label>שבת ₪/ש׳</label><input type="number" id="payShab" min="0" step="0.5" value="${v(w.shabbatRate)}" placeholder="לפי חוק ×${PAY_RULES.shabbatMult}"></div>
     </div>
-    <div style="font-size:11px;color:var(--text3);margin:-4px 0 8px">Empty rate = the client's rate (by the hour only). A rate at one client only is set in Per-client rates.</div>
-    <div class="form-section">Travel</div>
+    <div style="font-size:11px;color:var(--text3);margin:-4px 0 8px">תעריף ריק = תעריף הלקוח (לפי שעה בלבד). תעריף אצל לקוח אחד בלבד נקבע ב"תעריפים לפי לקוח".</div>
+    <div class="form-section">נסיעות</div>
     <div class="field-row">
-      <div class="field"><label>Travel ₪/day</label><input type="number" id="payTravelDay" min="0" step="0.5" value="${Number(w.travelAllowance)>0?esc(w.travelAllowance):''}" placeholder="0"></div>
-      <div class="field"><label>Travel ₪/month</label><input type="number" id="payTravelMonth" min="0" step="0.5" value="${Number(w.travelMonthly)>0?esc(w.travelMonthly):''}" placeholder="0"></div>
+      <div class="field"><label>נסיעות ₪/יום</label><input type="number" id="payTravelDay" min="0" step="0.5" value="${Number(w.travelAllowance)>0?esc(w.travelAllowance):''}" placeholder="0"></div>
+      <div class="field"><label>נסיעות ₪/חודש</label><input type="number" id="payTravelMonth" min="0" step="0.5" value="${Number(w.travelMonthly)>0?esc(w.travelMonthly):''}" placeholder="0"></div>
     </div>
-    <div class="form-section">Bank</div>
+    <div class="form-section">בנק</div>
     <div class="field-row">
-      <div class="field"><label>Bank</label><input type="text" id="payBank" value="${v(w.bank)}" placeholder="Bank name"></div>
-      <div class="field"><label>Branch</label><input type="text" id="payBankBranch" value="${v(w.bankBranch)}" placeholder="Branch #"></div>
+      <div class="field"><label>בנק</label><input type="text" id="payBank" value="${v(w.bank)}" placeholder="שם הבנק"></div>
+      <div class="field"><label>סניף</label><input type="text" id="payBankBranch" value="${v(w.bankBranch)}" placeholder="מס׳ סניף"></div>
     </div>
-    <div class="field"><label>Account number</label><input type="text" id="payBankAccount" value="${v(w.bankAccountNumber)}" placeholder="Account #"></div>
-    ${ro?'':`<div class="modal-actions"><button class="btn accent" onclick="savePayModal('${esc(w.id)}')">Save</button></div>`}`;
+    <div class="field"><label>מספר חשבון</label><input type="text" id="payBankAccount" value="${v(w.bankAccountNumber)}" placeholder="מס׳ חשבון"></div>
+    ${ro?'':`<div class="modal-actions"><button class="btn accent" onclick="savePayModal('${esc(w.id)}')">שמירה</button></div>`}`;
   if(ro) document.querySelectorAll('#payModal input, #payModal select').forEach(el=>{ el.disabled=true; });
   document.getElementById('payOverlay').classList.add('open');
 }
 function onPayModeChange(){
   const daily=document.getElementById('payMode').value==='daily', r=document.getElementById('payRate');
   document.getElementById('payOtRow').style.display=daily?'none':'';
-  document.getElementById('payRateLabel').textContent=daily?'Rate ₪/day':'Rate ₪/h';
-  r.placeholder=daily?'per day':(r.dataset.client?'client: '+r.dataset.client:'');
+  document.getElementById('payRateLabel').textContent=daily?'תעריף ₪/יום':'תעריף ₪/ש׳';
+  r.placeholder=daily?'ליום':(r.dataset.client?'לקוח: '+r.dataset.client:'');
 }
 function savePayModal(wid){
   const w=workers.find(x=>x.id===wid); if(!w || !canEditPay(w)) return;
@@ -6933,52 +6933,52 @@ function savePayModal(wid){
   w.bankAccountNumber=document.getElementById('payBankAccount').value.trim();
   autoSave();
   closeModal('payOverlay');
-  showToast('Pay saved — '+(w.name||''));
+  showToast('השכר נשמר — '+(w.name||''));
   if(currentTab==='accounting') renderAccounting();
 }
 
 // Accounting → each section's title has an (i) button that opens its
 // explanation here (accHelpOverlay; closes on a tap outside, like every modal).
 const ACCOUNTING_HELP={
-  salary:{icon:'ti-cash',title:'Salary Calculation',items:[
-    'Pay for the picked period, per worker: punches are paired into shifts, each shift priced at the rate of its own client.',
-    'Hours: up to 8 a day are regular, above that OT (×1.25 for the first 2 hours, then ×1.5); a shift that starts on Saturday is paid at the Shabbat rates.',
-    'The ₪/hour fields are this worker\'s own rates. An edit changes this worker only and wins over the client\'s rate.',
-    'An empty field = the worker has no rate of their own: grey shows the client\'s rate that applies, with "client · name" under it. The client\'s rate is changed in the client card.',
-    'Empty OT / Shabbat = the law rates on top of the regular rate.',
-    '₪/h or ₪/day, per worker: ₪/day pays the worker\'s own rate (set in Worker pay) once for each day worked, whatever the hours; no OT or Shabbat rates, and the client\'s rate is not used.',
-    'Days: counted from the punches (two shifts on one day count once). For a worker paid by the day, a number typed in Days replaces the count for the picked period only; empty it to go back to the punches.',
-    'Travel = ₪/day × days worked + ₪/month once for each calendar month with work (set in Worker pay). Total Pay = pay + travel.',
-    'A ⚠ next to a worker: punches to check (a missing IN or OUT, an overlong shift…). The list is in the banner above the table.']},
-  rates:{icon:'ti-adjustments',title:'Per-client rates',items:[
-    'One row per worker and client: a rate for this worker at this client only.',
-    'Which rate counts, most specific first: this table → the worker\'s own rate (Worker pay, Salary) → the client\'s rate (client card).',
-    'An empty field = nothing set here; grey shows the rate that applies.']},
-  supplierRates:{icon:'ti-truck-delivery',title:'Per-supplier rates',items:[
-    'What the firm pays a supplier per hour of each of its workers (the supplier\'s commission).',
-    'For a worker paid by the day, ₪/day is a fixed amount for each day worked; empty = hours × ₪/h.',
-    'Feeds "Payable by supplier" only. It never changes a worker\'s pay.']},
-  payable:{icon:'ti-report-money',title:'Payable by supplier',items:[
-    'For the period picked in Salary: each supplier\'s workers\' hours × the supplier rate.',
-    '"No supplier assigned" shows those workers\' hours only — nothing is owed to a supplier for them.',
-    'A worker\'s wage never appears in this table.']},
-  billable:{icon:'ti-building-store',title:'Billable by client',items:[
-    'What each client owes the firm for the period picked in Salary, by the client\'s own pricing (client card): tiered (the OT / Shabbat law rates on the client\'s billing rate) or one fixed rate.',
-    'Separate from the workers\' pay: it never changes a wage, and a wage never changes it.']},
-  workerPay:{icon:'ti-wallet',title:'Worker pay',items:[
-    'One card per worker with everything about their money: paid by the hour or by the day and the rate; for the period picked in Salary the days, hours, pay, travel and total; travel per day and per month; bank details. Tap a card to edit.',
-    'Every worker is here, a new one with no shifts too.',
-    'Empty rate (by the hour) = the client\'s rate; by the day the worker needs a daily rate of their own.',
-    'Travel: the ₪/day amount for each day worked, plus the ₪/month amount once for each calendar month with work in the period.',
-    'An HR sees its own workers\' cards here, bank details included, read-only; with "Edit own workers\' pay" (user form) it edits them too.']},
-  hrPayable:{icon:'ti-user-dollar',title:'Payable by HR',items:[
-    'An HR login with the Accounting section sees only this part for its own workers: their hours, rate and pay, and its commission — never the rest of Accounting.',
-    'For the period picked in Salary: each HR\'s workers\' hours × the HR\'s commission (₪/h, set in Admin → Users on the HR); a worker paid by the day counts days × the HR\'s ₪/day when one is set.',
-    'Separate from the workers\' pay: it never changes a wage.']},
-  pending:{icon:'ti-file-check',title:'Pending hours',items:[
-    'Hours uploaded with a worker\'s "Upload hours" button wait here.',
-    'Nothing here counts toward pay until it is approved; approving turns each row into IN / OUT punches.',
-    'Rejected batches are not counted.']},
+  salary:{icon:'ti-cash',title:'חישוב שכר',items:[
+    'השכר לתקופה שנבחרה, לכל עובד: ההחתמות מצורפות למשמרות, וכל משמרת מתומחרת לפי התעריף של הלקוח שלה.',
+    'שעות: עד 8 ביום הן רגילות, מעבר לכך שעות נוספות (×1.25 לשעתיים הראשונות, אחר כך ×1.5); משמרת שמתחילה בשבת משולמת בתעריפי שבת.',
+    'השדות ₪/שעה הם התעריפים של העובד עצמו. שינוי חל על העובד הזה בלבד וגובר על תעריף הלקוח.',
+    'שדה ריק = לעובד אין תעריף משלו: באפור מוצג תעריף הלקוח שחל, ומתחתיו "לקוח · שם". את תעריף הלקוח משנים בכרטיס הלקוח.',
+    'נוספות / שבת ריקים = תעריפי החוק מעל התעריף הרגיל.',
+    '₪/ש׳ או ₪/יום, לכל עובד: ₪/יום משלם את התעריף של העובד (נקבע ב"שכר עובדים") פעם אחת לכל יום עבודה, בלי קשר לשעות; אין תעריפי נוספות או שבת, ותעריף הלקוח לא חל.',
+    'ימים: נספרים מההחתמות (שתי משמרות באותו יום נספרות פעם אחת). לעובד בתשלום יומי, מספר שמוקלד ב"ימים" מחליף את הספירה לתקופה שנבחרה בלבד; מחיקתו מחזירה לספירה לפי ההחתמות.',
+    'נסיעות = ₪/יום × ימי עבודה + ₪/חודש פעם אחת לכל חודש קלנדרי שבו היתה עבודה (נקבע ב"שכר עובדים"). סה״כ לתשלום = שכר + נסיעות.',
+    '⚠ ליד עובד: החתמות לבדיקה (כניסה או יציאה חסרה, משמרת ארוכה מדי…). הרשימה מופיעה בפס שמעל הטבלה.']},
+  rates:{icon:'ti-adjustments',title:'תעריפים לפי לקוח',items:[
+    'שורה לכל עובד ולקוח: תעריף לעובד הזה אצל הלקוח הזה בלבד.',
+    'איזה תעריף קובע, מהספציפי ביותר: הטבלה הזו ← התעריף של העובד (שכר עובדים, חישוב שכר) ← תעריף הלקוח (כרטיס הלקוח).',
+    'שדה ריק = לא הוגדר כאן דבר; באפור מוצג התעריף שחל.']},
+  supplierRates:{icon:'ti-truck-delivery',title:'עמלות ספקים',items:[
+    'מה שהחברה משלמת לספק על כל שעה של כל אחד מהעובדים שלו (עמלת הספק).',
+    'לעובד בתשלום יומי, ₪/יום הוא סכום קבוע לכל יום עבודה; ריק = שעות × ₪/ש׳.',
+    'משפיע רק על "לתשלום לספקים". אינו משנה את השכר של העובד.']},
+  payable:{icon:'ti-report-money',title:'לתשלום לספקים',items:[
+    'לתקופה שנבחרה בחישוב השכר: שעות העובדים של כל ספק × עמלת הספק (לעובד בתשלום יומי — ימים × ₪/יום, כשהוגדר).',
+    '"ללא ספק" מציג רק את השעות של העובדים האלה — אין חוב לספק בגינם.',
+    'השכר של עובד לעולם אינו מופיע בטבלה הזו.']},
+  billable:{icon:'ti-building-store',title:'לחיוב לקוחות',items:[
+    'מה שכל לקוח חייב לחברה לתקופה שנבחרה בחישוב השכר, לפי התמחור של הלקוח (כרטיס הלקוח): מדורג (תעריפי החוק לנוספות / שבת על תעריף החיוב של הלקוח) או תעריף קבוע אחד.',
+    'נפרד מהשכר של העובדים: אינו משנה שכר, ושכר אינו משנה אותו.']},
+  workerPay:{icon:'ti-wallet',title:'שכר עובדים',items:[
+    'כרטיס לכל עובד עם כל מה שקשור לכסף שלו: תשלום לפי שעה או לפי יום והתעריף; לתקופה שנבחרה בחישוב השכר — ימים, שעות, שכר, נסיעות וסה״כ; נסיעות ליום ולחודש; פרטי בנק. הקשה על כרטיס פותחת עריכה.',
+    'כל העובדים כאן, גם עובד חדש בלי משמרות.',
+    'תעריף ריק (לפי שעה) = תעריף הלקוח; בתשלום יומי העובד צריך תעריף יומי משלו.',
+    'נסיעות: סכום ₪/יום לכל יום עבודה, ועוד סכום ₪/חודש פעם אחת לכל חודש קלנדרי עם עבודה בתקופה.',
+    'משאבי אנוש רואה כאן את הכרטיסים של העובדים שלו, כולל פרטי בנק, לקריאה בלבד; עם "Edit own workers\' pay" (בטופס המשתמש) הוא גם עורך אותם.']},
+  hrPayable:{icon:'ti-user-dollar',title:'לתשלום למשאבי אנוש',items:[
+    'משתמש משאבי אנוש עם הרשאת חשבונות רואה רק את החלק הזה לעובדים שלו: השעות, התעריף והשכר שלהם, והעמלה שלו — לעולם לא את שאר הנהלת החשבונות.',
+    'לתקופה שנבחרה בחישוב השכר: שעות העובדים של כל איש משאבי אנוש × העמלה שלו (₪/ש׳, נקבעת ב-Admin ← Users); עובד בתשלום יומי נספר ימים × ₪/יום של משאבי אנוש, כשהוגדר.',
+    'נפרד מהשכר של העובדים: אינו משנה שכר.']},
+  pending:{icon:'ti-file-check',title:'שעות ממתינות לאישור',items:[
+    'שעות שנשלחו בכפתור "Upload hours" של עובד, או על ידי ספק, ממתינות כאן.',
+    'דבר כאן לא נספר לשכר עד שאושר; אישור הופך כל שורה להחתמות כניסה / יציאה.',
+    'שעות שנדחו אינן נספרות.']},
 };
 function openAccountingHelp(key){
   const h=ACCOUNTING_HELP[key]; if(!h) return;
@@ -7011,12 +7011,12 @@ function setWorkerShabbatRate(wid,val){ if(hrPayOnly()) return; const w=workers.
 // (Excel / PDF / CSV); all three share buildSalaryExportRows(), which pairs
 // punches via the canonical groupPunchesIntoShifts()/analyzeDayPunches()/
 // shiftPay() — the formats differ only in how the same rows are written out.
-const SALARY_PERIOD_LABELS={week:'This Week',month:'This Month',all:'All Time'};
+const SALARY_PERIOD_LABELS={week:'השבוע',month:'החודש',all:'כל התקופה'};
 function openSalaryExportModal(){
   const period=document.getElementById('salaryPeriod')?.value||'week';
   document.getElementById('salaryExportModal').innerHTML = `
-    <div class="modal-title">Export salary</div>
-    <div class="field"><label>Period</label>
+    <div class="modal-title">ייצוא שכר</div>
+    <div class="field"><label>תקופה</label>
       <select id="salaryExportPeriod" style="width:100%">
         ${salaryExportPeriodOptions().map(([v,l])=>`<option value="${esc(v)}" ${v===period?'selected':''}>${esc(l)}</option>`).join('')}
       </select>
@@ -7035,7 +7035,7 @@ function salaryExportPeriodOptions(){
   const now=new Date(), opts=[['week',SALARY_PERIOD_LABELS.week],['month',SALARY_PERIOD_LABELS.month]];
   for(let i=1;i<=12;i++){
     const d=new Date(now.getFullYear(), now.getMonth()-i, 1);
-    opts.push(['m:'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'), d.toLocaleDateString('en-GB',{month:'long',year:'numeric'})]);
+    opts.push(['m:'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'), d.toLocaleDateString('he-IL',{month:'long',year:'numeric'})]);
   }
   opts.push(['all',SALARY_PERIOD_LABELS.all]);
   return opts;
@@ -7082,7 +7082,7 @@ function buildSalaryExportRows(period){
     const pay=res.hours>0?shiftPayFor(res.hours,_w,isSat,shiftClientId,d.date,seen):0;
     const clientObj=punchClientObject(d.entries[0])||workerClientObject(d.wid);
     const supName=suppliers.find(s=>s.id===_w?.supplierId)?.name||'';
-    rows.push({worker:d.worker, client:clientObj, supplier:supName, date:d.date.toLocaleDateString('en-GB'), firstIn:ins[0]||'', lastOut:outs[outs.length-1]||'', hours:res.hours, rate:daily?rate+'/day':rate, pay, notes:res.warnings.join('; ')});
+    rows.push({worker:d.worker, client:clientObj, supplier:supName, date:d.date.toLocaleDateString('en-GB'), firstIn:ins[0]||'', lastOut:outs[outs.length-1]||'', hours:res.hours, rate:daily?rate+'/יום':rate, pay, notes:res.warnings.join('; ')});
   });
   // A daily-paid worker whose days were set by hand for this period: one more
   // row brings the total to days × rate, the same as the Salary table.
@@ -7091,7 +7091,7 @@ function buildSalaryExportRows(period){
     const _w=workers.find(w=>w.id===wid), ov=isDailyPay(_w)?dayOverride(_w,key):null;
     if(ov==null||ov===seen.size) return;
     rows.push({worker:_w.name||'', client:'', supplier:suppliers.find(s=>s.id===_w.supplierId)?.name||'', date:'', firstIn:'', lastOut:'', hours:0,
-      rate:dailyRate(_w)+'/day', pay:(ov-seen.size)*dailyRate(_w), notes:'Days set by hand: '+ov+' (punches: '+seen.size+')'});
+      rate:dailyRate(_w)+'/יום', pay:(ov-seen.size)*dailyRate(_w), notes:'ימים שהוזנו ידנית: '+ov+' (לפי החתמות: '+seen.size+')'});
   });
   return rows;
 }
@@ -7099,35 +7099,36 @@ function exportSalary(format, period){
   period=period||document.getElementById('salaryPeriod')?.value||'week';
   const now=new Date();
   const rows=buildSalaryExportRows(period);
-  const header=['Worker','Object/Client','Supplier','Date','First In','Last Out','Hours','Rate (\u20aa/h or /day)','Day Pay (\u20aa)','Notes'];
+  const header=['עובד','לקוח/אתר','ספק','תאריך','כניסה ראשונה','יציאה אחרונה','שעות','תעריף (\u20aa לשעה או ליום)','שכר (\u20aa)','הערות'];
   const toArr=r=>[r.worker, r.client, r.supplier, r.date, r.firstIn, r.lastOut, r.hours.toFixed(2), r.rate, r.pay.toFixed(2), r.notes];
   const totalHours=rows.reduce((s,r)=>s+r.hours,0), totalPay=rows.reduce((s,r)=>s+r.pay,0);
   const fname='salary-'+(period.startsWith('m:')?period.slice(2):period+'-'+localYMD(now));
   if(format==='excel'){
-    if(typeof XLSX==='undefined'){ showToast('Excel library not loaded'); return; }
-    const aoa=[header, ...rows.map(toArr), ['','','','','','Total',totalHours.toFixed(2),'',totalPay.toFixed(2),'']];
+    if(typeof XLSX==='undefined'){ showToast('ספריית Excel לא נטענה'); return; }
+    const aoa=[header, ...rows.map(toArr), ['','','','','','סה״כ',totalHours.toFixed(2),'',totalPay.toFixed(2),'']];
     const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Salary');
+    wb.Workbook={Views:[{RTL:true}]};
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'שכר');
     XLSX.writeFile(wb, fname+'.xlsx');
   } else if(format==='pdf'){
-    const title='Salary — '+salaryPeriodLabel(period);
+    const title='שכר — '+salaryPeriodLabel(period);
     const rowsHtml=rows.map(r=>'<tr>'+toArr(r).map(v=>`<td>${esc(String(v))}</td>`).join('')+'</tr>').join('');
-    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(title)}</title>
-      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #ccc;padding:5px 8px;text-align:left}th{background:#f0f0f0}tfoot td{font-weight:bold}</style>
+    const html=`<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="UTF-8"><title>${esc(title)}</title>
+      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #ccc;padding:5px 8px;text-align:right}th{background:#f0f0f0}tfoot td{font-weight:bold}</style>
       </head><body><h2>${esc(title)}</h2>
       <table><thead><tr>${header.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
       <tbody>${rowsHtml}</tbody>
-      <tfoot><tr><td colspan="6">Total</td><td>${totalHours.toFixed(2)}</td><td></td><td>${totalPay.toFixed(2)}</td><td></td></tr></tfoot>
+      <tfoot><tr><td colspan="6">סה״כ</td><td>${totalHours.toFixed(2)}</td><td></td><td>${totalPay.toFixed(2)}</td><td></td></tr></tfoot>
       </table></body></html>`;
     const win=window.open('','_blank');
-    if(!win){ showToast('Pop-up blocked — allow pop-ups to export PDF'); return; }
+    if(!win){ showToast('החלון הקופץ נחסם — יש לאפשר חלונות קופצים כדי לייצא PDF'); return; }
     win.document.write(html); win.document.close(); setTimeout(()=>win.print(),400);
   } else {
     const csv=[header, ...rows.map(toArr)].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
     const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const url=URL.createObjectURL(blob);
     const a=document.createElement('a'); a.href=url; a.download=fname+'.csv'; a.click(); URL.revokeObjectURL(url);
   }
-  showToast('Salary exported!');
+  showToast('השכר יוצא');
 }
 // Kept for any existing caller — CSV straight through, no picker.
 function exportSalaryCSV(){ exportSalary('csv'); }
@@ -7191,28 +7192,29 @@ function exportShiftsDetail(workerId, year, month, format){
 // `total` is always the real, already-correct figure from the source table.
 function exportPayableSummary(rows, opts){
   opts = opts||{};
-  const title = opts.title || 'Payable summary';
+  const title = opts.title || 'סיכום לתשלום';
   const fname = opts.filename || 'payable-summary';
   const grand = rows.reduce((s,r)=>s+r.total,0);
   if(opts.format==='excel'){
-    const aoa=[['Label','Hours','Rate','Total']];
+    const aoa=[['שם','שעות','תעריף','סה״כ']];
     rows.forEach(r=>aoa.push([r.label, r.hours.toFixed(2), r.rate, r.total.toFixed(2)]));
-    aoa.push(['','','Total', grand.toFixed(2)]);
+    aoa.push(['','','סה״כ', grand.toFixed(2)]);
     const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Summary');
+    wb.Workbook={Views:[{RTL:true}]};
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'סיכום');
     XLSX.writeFile(wb, fname+'.xlsx');
   } else {
     const rowsHtml = rows.map(r=>`<tr><td>${esc(r.label)}</td><td>${r.hours.toFixed(2)}</td><td>${esc(String(r.rate))}</td><td>${r.total.toFixed(2)}</td></tr>`).join('');
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(title)}</title>
-      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px;text-align:left}th{background:#f0f0f0}tfoot td{font-weight:bold}</style>
+    const html = `<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="UTF-8"><title>${esc(title)}</title>
+      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px;text-align:right}th{background:#f0f0f0}tfoot td{font-weight:bold}</style>
       </head><body><h2>${esc(title)}</h2>
-      <table><thead><tr><th>Label</th><th>Hours</th><th>Rate</th><th>Total</th></tr></thead>
+      <table><thead><tr><th>שם</th><th>שעות</th><th>תעריף</th><th>סה״כ</th></tr></thead>
       <tbody>${rowsHtml}</tbody>
-      <tfoot><tr><td colspan="3">Total</td><td>${grand.toFixed(2)}</td></tr></tfoot>
+      <tfoot><tr><td colspan="3">סה״כ</td><td>${grand.toFixed(2)}</td></tr></tfoot>
       </table></body></html>`;
     const win=window.open('','_blank'); win.document.write(html); win.document.close(); setTimeout(()=>win.print(),400);
   }
-  showToast('Summary exported');
+  showToast('הסיכום יוצא');
 }
 
 // --- Worker punch history (shown in worker modal) ------------------------------

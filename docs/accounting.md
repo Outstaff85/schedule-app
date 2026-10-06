@@ -46,6 +46,8 @@ The client keeps the punch log in `localStorage.punchLog` (`getPunchLog()` / `sa
 
 ## Accounting tab (`#sectionAccounting`)
 
+The whole tab is in Hebrew and right-to-left (`dir="rtl"` on the section, the pay modal, the help modal and the salary-export modal; table columns are aligned for RTL). Tab label חשבונות, title הנהלת חשבונות; sections: חישוב שכר (Salary), שכר עובדים (Worker pay), תעריפים לפי לקוח (Per-client rates), עמלות ספקים (Per-supplier rates), לתשלום לספקים (Payable by supplier), לתשלום למשאבי אנוש (Payable by HR), לחיוב לקוחות (Billable by client), שעות ממתינות לאישור (Pending hours). The English names below are the code's. Period labels are Hebrew (`SALARY_PERIOD_LABELS`, months in `he-IL`); the salary export and `exportPayableSummary` write Hebrew headers, an RTL sheet (`wb.Workbook.Views[0].RTL`) and an RTL print page. Shift warnings from `analyzeDayPunches` (shared with the rest of the app) stay English.
+
 `renderAccounting()` draws, in this order on the page:
 1. **Salary Calculation** — `renderSalary()` into `#dashSalary`.
 1a. **Worker pay** — `renderWorkerPay()` into `#workerPayWrap` (below).
