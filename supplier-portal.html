@@ -780,8 +780,15 @@ async function loadSentHours(){
 }
 // The month's pay per own worker, with the app's own pay functions (the
 // copies above): hours, days, the worker's rate (₪/h or ₪/day), their pay,
-// and my commission (hours × supplierRate, default 5). Shown only when the
-// server says this login sees pay.
+// and my commission (myCommission). Shown only when the server says this
+// login sees pay.
+// My commission for one worker: a fixed ₪ per day worked when the firm set
+// one for a worker paid by the day (supplierDayRate, sent only for such a
+// worker), else hours × my ₪/h (supplierRate, default 5).
+function myCommission(w, hours, days){
+  if(w.supplierDayRate!=null && Number(w.supplierDayRate)>0) return days*Number(w.supplierDayRate);
+  return hours*(w.supplierRate!=null?w.supplierRate:5);
+}
 function renderPayTable(){
   const wrap=document.getElementById('payTableWrap'); if(!wrap) return;
   wrap.style.display=showPay?'':'none';
@@ -801,8 +808,8 @@ function renderPayTable(){
     const daily=isDailyPay(w), ov=daily?dayOverride(w,key):null;
     if(ov!=null) pay=ov*dailyRate(w);
     const rate=daily?dailyRate(w):wRegRate(w,(w.clientIds||[])[0]);
-    const com=w.supplierRate!=null?w.supplierRate:5;
-    return {w, hours, days:ov!=null?ov:days.size, rate:daily?'₪'+rate+'/day':'₪'+rate+'/h', pay, commission:hours*com};
+    const com=w.supplierRate!=null?w.supplierRate:5, d=ov!=null?ov:days.size;
+    return {w, hours, days:d, rate:daily?'₪'+rate+'/day':'₪'+rate+'/h', pay, commission:myCommission(w,hours,d)};
   }).filter(r=>r.hours>0);
   const el=document.getElementById('payTable');
   if(!rows.length){ el.innerHTML='<div style="color:#8b90a8;font-size:13px">No hours this month</div>'; return; }
@@ -823,7 +830,8 @@ function runSummaryExport(format){
     const shifts = getWorkerMonthShifts(w.id, year, month);
     const hours = shifts.reduce((s,x)=>s+x.hours,0);
     const rate = w.supplierRate!=null ? w.supplierRate : 5;
-    return { label: w.name, hours, rate, total: hours*rate };
+    const days = new Set(shifts.filter(x=>x.hours>0).map(x=>localYMD(x.date))).size;
+    return { label: w.name, hours, rate: w.supplierDayRate!=null ? '₪'+w.supplierDayRate+'/day' : rate, total: myCommission(w, hours, days) };
   }).filter(r=>r.hours>0);
   exportPayableSummary(rows, { title:'My hours — payable summary', filename:'my-hours-summary', format });
 }

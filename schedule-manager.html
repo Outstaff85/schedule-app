@@ -45,7 +45,8 @@
   .account-label-center span{color:var(--accent);}
   .top-tabs{display:flex;gap:2px;align-items:stretch;}
   .ttab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:70px;padding:0 12px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text2);transition:all 0.15s;}
-  .ttab .ic{font-size:18px;line-height:1;}
+  .ttab .ic{font-size:18px;line-height:1;position:relative;}
+  .tab-badge{position:absolute;top:-6px;right:-12px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--amber);color:#1a1a1a;font-size:10px;font-weight:700;line-height:16px;text-align:center;font-family:inherit;}
   .ttab .lb{font-size:12px;font-weight:500;}
   .ttab:hover{color:var(--text);background:rgba(255,255,255,0.025);}
   .ttab.active{color:var(--blue);border-bottom-color:var(--blue);background:var(--blue-bg);}
@@ -1049,12 +1050,16 @@
       <label class="check-chip"><input type="checkbox" id="userFormOwnOnly" checked><span class="chip-text">Only own workers<span class="chip-hint">Sees only the workers assigned to this HR. Unchecked: every worker of the firm.</span></span></label>
     </div>
     <!-- HR and supplier: see their own workers' pay and their commission
-         (claim "pay"; on by default). HR: its commission ₪/h. -->
+         (claim "pay"; on by default). HR: its commission ₪/h, and ₪/day for
+         a worker paid by the day. -->
     <div class="field" id="userFormPayFields" style="display:none">
       <div class="check-grid" id="userFormShowPayGrid">
         <label class="check-chip"><input type="checkbox" id="userFormShowPay" checked><span class="chip-text">Sees own workers' pay<span class="chip-hint">Their hours, rate and pay, and this login's commission. Nothing else of Accounting.</span></span></label>
       </div>
-      <div class="field" id="userFormCommissionField" style="margin-top:8px"><label>HR commission ₪/h</label><input type="number" id="userFormCommission" min="0" step="0.5" placeholder="0"></div>
+      <div class="field-row" id="userFormCommissionField" style="margin-top:8px">
+        <div class="field"><label>HR commission ₪/h</label><input type="number" id="userFormCommission" min="0" step="0.5" placeholder="0"></div>
+        <div class="field"><label>₪/day (daily workers)</label><input type="number" id="userFormCommissionDay" min="0" step="0.5" placeholder="by the hour"></div>
+      </div>
     </div>
     <div id="userFormHrWorkersField" style="display:none">
       <div class="form-section" style="display:flex;justify-content:space-between;align-items:center">Workers <button class="btn sm" type="button" onclick="openHrAssignModal()"><i class="ti ti-user-plus"></i> Add workers</button></div>
@@ -2693,9 +2698,12 @@ function showWorkerModal(w){
     <div class="field"><label>הערות</label><textarea id="wNotes" placeholder="הערות על העובד" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;padding:8px 10px;outline:none;min-height:56px;resize:vertical">${esc(w.notes||'')}</textarea></div>
     <div class="modal-actions">
       ${editingWorkerIdx!==null?`<button class="btn" onclick="regenerateWorkerToken(${editingWorkerIdx})" style="background:var(--amber-bg);border-color:rgba(245,166,35,0.3);color:var(--amber)"><i class="ti ti-refresh"></i> טוקן חדש</button>`:''}
-      <button class="btn accent" onclick="saveWorker()">${editingWorkerIdx!==null?'שמור שינויים':'צור עובד'}</button>
-    </div>`;
-  document.getElementById('workerOverlay').classList.add('open');
+    </div>
+    <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px"><i class="ti ti-device-floppy"></i> ${editingWorkerIdx!==null?'השינויים נשמרים בסגירת החלון':'העובד נוצר בסגירת החלון'}</div>`;
+  // No Save button: a tap outside the window saves it (saveWorker auto).
+  const wov=document.getElementById('workerOverlay');
+  wov.__onUserClose=()=>saveWorker({auto:true});
+  wov.classList.add('open');
   renderWClientChips();
   renderChildrenRows();
   initSignaturePad('wSigCanvas');
@@ -2706,11 +2714,27 @@ function showWorkerModal(w){
 // client or supplier gets the next color of its palette automatically.
 function pickWColor(i){ selColorIdx=i; }
 function toggleDayTime(i){ const off=document.getElementById(`wt${i}`).value==='off'; ['ws','we'].forEach(p=>{ const el=document.getElementById(p+i); el.disabled=off; el.style.opacity=off?'0.3':'1'; }); }
-async function saveWorker(){
+// The worker window saves itself when it is closed by a tap outside
+// (opts.auto): an edit with nothing changed just closes; a window whose name
+// is empty closes without saving (a new worker is not created, an edit is
+// dropped with a toast). One save at a time.
+async function saveWorker(opts){
+  if(saveWorker.busy) return;
+  saveWorker.busy=true;
+  try{ return await saveWorkerNow(opts||{}); } finally{ saveWorker.busy=false; }
+}
+async function saveWorkerNow(opts){
   const docGiven=document.getElementById('wGiven').value.trim();
   const docSurname=document.getElementById('wSurname').value.trim();
   const name=(docGiven+' '+docSurname).trim();
-  if(!name){ document.getElementById('wGiven').focus(); return; }
+  if(!name){
+    if(opts.auto){
+      if(editingWorkerIdx!==null) showToast('השם ריק — השינויים לא נשמרו');
+      closeModal('workerOverlay');
+      return;
+    }
+    document.getElementById('wGiven').focus(); return;
+  }
   const phone=document.getElementById('wPhone').value.trim();
   // Status is set on the worker card (setWorkerStatus), not in this form.
   const status=editingWorkerIdx!==null?(workers[editingWorkerIdx].status||'active'):'active';
@@ -2806,6 +2830,15 @@ async function saveWorker(){
   if(editingWorkerIdx!==null){
     const prevW=workers[editingWorkerIdx];
     const isId=prevW.docType!=='passport';
+    // Closed with nothing changed: nothing to save.
+    if(opts.auto){
+      const norm=v=>(v==null||v===''||(Array.isArray(v)&&!v.length))?'':JSON.stringify(v);
+      const same=Object.keys(commonFields).every(k=>norm(commonFields[k])===norm(prevW[k]))
+        && !getSignaturePng('wSigCanvas')
+        && (hrIdPicked===undefined || (prevW.hrId||null)===hrIdPicked)
+        && window.__aiRescannedWorkerId!==prevW.id;
+      if(same){ closeModal('workerOverlay'); return; }
+    }
     // Fields that end up printed on this worker's Form-101 PDF — if any of
     // them actually changed, the stored copy (if one exists) is now stale
     // relative to what's on screen. Trigger a background regenerate so the
@@ -2820,8 +2853,9 @@ async function saveWorker(){
     // 2026-10-05; it can be set again in Accounting → Worker pay).
     const addedRated=(updated.clientIds||[]).filter(id=>!(prevW.clientIds||[]).includes(id))
       .some(id=>{ const c=clients.find(x=>x.id===id); return c&&c.defaultHourlyRate!=null&&c.defaultHourlyRate!==''; });
-    // (a pay change: an HR without "Edit own workers' pay" leaves the rate as it is)
-    if(addedRated && !isDailyPay(updated) && wOwnRate(updated)!=='' && ((getSession()||{}).role!=='hr' || canEditPay(updated))){ updated.hourlyRate=0; updated.regRate=null; }
+    // (a pay change: a login that may not change pay — an HR without "Edit own
+    // workers' pay", staff without Accounting — leaves the rate as it is)
+    if(addedRated && !isDailyPay(updated) && wOwnRate(updated)!=='' && canEditPay(updated)){ updated.hourlyRate=0; updated.regRate=null; }
     const changed=FORM101_WATCHED_FIELDS.some(f=>JSON.stringify(prevW[f])!==JSON.stringify(updated[f]));
     // A signature drawn now goes into the PDF (and the sidecar) too.
     const newSig=getSignaturePng('wSigCanvas');
@@ -3494,6 +3528,7 @@ function openWorkerCard(wi){
       ${objs.length?`<div><i class="ti ti-building"></i> Clients: ${objs.map(o=>`<span style="color:${o.color}">${esc(o.name)}</span>`).join(', ')}</div>` : `<div><i class="ti ti-building-off"></i> Not assigned to any object</div>`}
       ${sup?`<div><i class="ti ti-truck-delivery"></i> Supplier: <span style="color:${sup.color}">${esc(sup.name)}</span></div>`:''}
       ${isFirmAdminSession()?`<div><i class="ti ti-user-shield"></i> HR: ${w.hrId?`<span style="color:${esc(hrColor(w.hrId))}">${esc(hrNameOf(w.hrId)||'—')}</span>`:'<span style="color:var(--text3)">none</span>'}</div>`:''}
+      <div id="cardHoursStatus" data-worker="${esc(w.id)}">${cardHoursStatusHtml(w.id)}</div>
       <!-- document status last, next to the Documents section below -->
       <div style="display:flex;gap:6px"><i class="ti ti-files" style="margin-top:2px"></i><span>Documents: ${docStatusSummaryHtml(w)}</span></div>
       ${hasPermission('workers')&&cardMissingScanRowsHtml(w,wi)?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${cardMissingScanRowsHtml(w,wi)}</div>`:''}
@@ -4455,6 +4490,7 @@ async function submitLogin(){
       permissions: fb.permissions, supplierId: fb.supplierId,
       ownOnly: fb.ownOnly === true, fullName: fb.fullName || '',
       showPay: fb.showPay === true, commissionRate: Number(fb.commissionRate) || 0,
+      commissionDayRate: Number(fb.commissionDayRate) || 0,
       viewingTenantId: fb.tenantId, // a super-admin (tenantId null) picks one on the Firms screen
     });
     location.reload();
@@ -4921,6 +4957,7 @@ function openCreateUserForm(){
   document.getElementById('userFormOwnOnly').checked = true;
   document.getElementById('userFormShowPay').checked = true;
   document.getElementById('userFormCommission').value = '';
+  document.getElementById('userFormCommissionDay').value = '';
   document.getElementById('userFormError').textContent = '';
   onUserFormRoleChange();
   document.getElementById('userFormOverlay').classList.add('open');
@@ -4952,6 +4989,7 @@ async function openEditUserForm(id){
   document.getElementById('userFormOwnOnly').checked = u.ownOnly !== false;
   document.getElementById('userFormShowPay').checked = u.showPay !== false;
   document.getElementById('userFormCommission').value = u.commissionRate ? u.commissionRate : '';
+  document.getElementById('userFormCommissionDay').value = u.commissionDayRate ? u.commissionDayRate : '';
   __editingAdminRow = u.role==='tenant_admin' || u.role==='superadmin';
   if(__editingAdminRow){
     document.getElementById('userFormTitle').textContent = 'Edit ' + (u.fullName || u.username) + ' (owner)';
@@ -4984,6 +5022,7 @@ async function submitUserForm(){
     if(role==='hr') hrFields.ownOnly = document.getElementById('userFormOwnOnly').checked;
     if(role==='supplier') hrFields.showPay = document.getElementById('userFormShowPay').checked;
     if(role==='hr') hrFields.commissionRate = parseFloat(document.getElementById('userFormCommission').value)||0;
+    if(role==='hr') hrFields.commissionDayRate = parseFloat(document.getElementById('userFormCommissionDay').value)||0;
     if(role==='hr' && !hrFields.fullName){ errEl.textContent = 'Full name required for an HR login'; return; }
     if(__editingUserId){
       const password = document.getElementById('userFormPassword').value;
@@ -5880,6 +5919,7 @@ async function loadData(){
       setSaveStatus('saved');
       syncPunchesFromGS();
       if(isHrSession()) watchHrWorkers();
+      watchHoursBatches();
       maybeRegenAfterFirmEdit();
     } else {
       showToast('Could not load from the server — showing saved data'+(gsLoad.lastError?' ('+gsLoad.lastError.slice(0,80)+')':''),6000);
@@ -5889,6 +5929,45 @@ async function loadData(){
     console.error('Load failed',e);
     showToast('Offline — using cached data');
   }
+}
+
+// The hours batches (Pending hours), live (listenPendingHours): the count of
+// batches waiting for a decision on the Accounting tab, and each worker's
+// latest batch status on the worker card.
+let __hoursWatched = false, __hoursBatches = null;
+function watchHoursBatches(){
+  const s = getSession();
+  if(__hoursWatched || !s || s.role === 'supplier') return;
+  __hoursWatched = true;
+  loadFirestoreBackend().then(b => b.listenPendingHours(fsTenantId(), list => {
+    __hoursBatches = list;
+    updateHoursBadge();
+    refreshCardHoursStatus();
+    if(currentTab === 'accounting') renderPendingHours();
+  })).catch(e => { __hoursWatched = false; console.warn('Hours watch failed: ' + ((e && e.message) || e)); });
+}
+function updateHoursBadge(){
+  const tab = document.getElementById('tabAccounting'); if(!tab) return;
+  const n = (__hoursBatches || []).filter(b => b.status === 'pending').length;
+  let el = document.getElementById('accPendingBadge');
+  if(!el){ el = document.createElement('span'); el.id = 'accPendingBadge'; el.className = 'tab-badge'; tab.querySelector('.ic').appendChild(el); }
+  el.textContent = n > 99 ? '99+' : String(n);
+  el.style.display = n ? '' : 'none';
+  el.title = n + ' hours batch(es) waiting for review';
+}
+// This worker's latest hours batch (by when it was sent), or null.
+function latestHoursBatch(workerId){
+  return (__hoursBatches || []).filter(b => (b.entries || []).some(r => r.workerId === workerId))
+    .sort((a, b) => String(b.uploadedAt).localeCompare(String(a.uploadedAt)))[0] || null;
+}
+function cardHoursStatusHtml(workerId){
+  const b = latestHoursBatch(workerId);
+  if(!b) return '';
+  return `<div style="display:flex;gap:6px;align-items:center"><i class="ti ti-file-upload"></i><span>Hours sent: ${hoursStatusChip(b.status, b.status==='pending'?b.uploadedAt:b.decidedAt)}</span></div>`;
+}
+function refreshCardHoursStatus(){
+  const el = document.getElementById('cardHoursStatus');
+  if(el && document.getElementById('workerCardOverlay')?.classList.contains('open')) el.innerHTML = cardHoursStatusHtml(el.dataset.worker);
 }
 
 // An HR's worker list follows the server (listenWorkers): a worker the owner
@@ -6243,7 +6322,8 @@ function renderSalary(){
   // An HR that only sees pay: its own workers only, read-only, plus its
   // commission (session.commissionRate × hours).
   const payOnly=hrPayOnly(), me=getSession()||{};
-  const hrRate=Number(me.commissionRate)||0;
+  const hrRate=Number(me.commissionRate)||0, hrDayRate=Number(me.commissionDayRate)||0;
+  const hrCom=e=>commissionFor(workers.find(w=>w.id===e.workerId),e,hrRate,hrDayRate);
   const entries=Object.values(byWorker).filter(e=>!payOnly||((workers.find(w=>w.id===e.workerId)||{}).hrId===me.uid));
   __lastSalaryEntries=entries;
   salaryEl.classList.toggle('salary-ro',payOnly);
@@ -6286,7 +6366,7 @@ function renderSalary(){
             <td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">
               ₪${grandTotal.toFixed(0)}
             </td>
-            ${payOnly?`<td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">₪${(totalHours*hrRate).toFixed(0)}</td>`:''}
+            ${payOnly?`<td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">₪${entries.reduce((t,e)=>t+hrCom(e),0).toFixed(0)}</td>`:''}
           </tr>
         </tfoot>
       </table>
@@ -6347,7 +6427,7 @@ function renderSalary(){
               <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${(e.total+e.travel)>0?'var(--green)':'var(--text3)'}">
                 ${(e.total+e.travel)>0?'₪'+(e.total+e.travel).toFixed(0):'—'}
               </td>
-              ${payOnly?`<td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)" title="${e.hours.toFixed(1)}h × ₪${hrRate}">₪${(e.hours*hrRate).toFixed(0)}</td>`:''}
+              ${payOnly?`<td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)" title="${isDailyPay(workers.find(w=>w.id===e.workerId))&&hrDayRate>0?esc(e.daysUsed)+' days × ₪'+hrDayRate:e.hours.toFixed(1)+'h × ₪'+hrRate}">₪${hrCom(e).toFixed(0)}</td>`:''}
             </tr>`;
 },{table:true,colspan:payOnly?9:8});
   if(payOnly) return;
@@ -6367,6 +6447,19 @@ const SUPPLIER_DEFAULT_RATE = 5;
 function supplierCommissionRate(w, supplierId){
   const ov = w.supplierRates && w.supplierRates[supplierId];
   return (ov && ov.rate!=null) ? ov.rate : SUPPLIER_DEFAULT_RATE;
+}
+// The supplier's fixed ₪ per day for a worker paid by the day (null = none
+// set: the hourly commission applies).
+function supplierDayCommission(w, supplierId){
+  const ov = w.supplierRates && w.supplierRates[supplierId];
+  return (ov && ov.dayRate!=null) ? ov.dayRate : null;
+}
+// A commission (supplier or HR, never part of the wage) for one worker's
+// Salary row: a worker paid by the day earns it as a fixed ₪ per day worked
+// when a day amount is set; otherwise hours × the ₪/h rate.
+function commissionFor(w, e, hourRate, dayRate){
+  if(isDailyPay(w) && Number(dayRate)>0) return (Number(e.daysUsed!=null?e.daysUsed:e.days)||0)*Number(dayRate);
+  return (Number(e.hours)||0)*(Number(hourRate)||0);
 }
 // "Payable by supplier" = hours × the supplier's own flat commission rate —
 // deliberately NOT e.total (the worker's real wage, computed via
@@ -6393,7 +6486,7 @@ function renderSupplierPayable(entries){
     if(!sid){ unassigned.hours+=e.hours; return; }
     if(!bySupplier[sid]) bySupplier[sid]={hours:0,total:0};
     bySupplier[sid].hours+=e.hours;
-    bySupplier[sid].total+=e.hours*supplierCommissionRate(wc,sid);
+    bySupplier[sid].total+=commissionFor(wc,e,supplierCommissionRate(wc,sid),supplierDayCommission(wc,sid));
   });
   const rows=suppliers.filter(s=>bySupplier[s.id]).map(s=>({sup:s,...bySupplier[s.id]}));
   if(!rows.length && !unassigned.hours){
@@ -6442,9 +6535,11 @@ function renderHrPayable(entries){
   if(!sec||!wrap) return;
   const hrs=isFirmAdminSession()?hrUsers():[];
   const rows=hrs.map(u=>{
-    const hours=entries.filter(e=>((workers.find(w=>w.id===e.workerId)||{}).hrId)===u.id).reduce((t,e)=>t+e.hours,0);
-    const rate=Number(u.commissionRate)||0;
-    return {u, hours, rate, total:hours*rate};
+    const mine=entries.filter(e=>((workers.find(w=>w.id===e.workerId)||{}).hrId)===u.id);
+    const hours=mine.reduce((t,e)=>t+e.hours,0);
+    const rate=Number(u.commissionRate)||0, dayRate=Number(u.commissionDayRate)||0;
+    const total=mine.reduce((t,e)=>t+commissionFor(workers.find(w=>w.id===e.workerId),e,rate,dayRate),0);
+    return {u, hours, rate, dayRate, total};
   }).filter(r=>r.hours>0);
   sec.style.display=hrs.length?'':'none';
   if(!rows.length){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">No hours of HR workers this period</div>`; return; }
@@ -6466,7 +6561,7 @@ function renderHrPayable(entries){
   renderPagedList(wrap.querySelector('.paged-hrPayable'),'hrPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
             <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.u.fullName||r.u.username)}</td>
             <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)}h</td>
-            <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)">${r.rate?'₪'+esc(r.rate):'—'}</td>
+            <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)">${r.rate?'₪'+esc(r.rate):'—'}${r.dayRate?' · ₪'+esc(r.dayRate)+'/day':''}</td>
             <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
           </tr>`,{table:true,colspan:20});
 }
@@ -6686,6 +6781,7 @@ function renderSupplierRateMatrix(){
             <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Worker</th>
             <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">Supplier</th>
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">Commission ₪/h</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">₪/day (daily workers)</th>
           </tr>
         </thead>
         <tbody class="paged-supplierRateMatrix"></tbody>
@@ -6700,6 +6796,11 @@ function renderSupplierRateMatrix(){
               <td style="padding:10px 12px;text-align:right">
                 <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${SUPPLIER_DEFAULT_RATE}" title="Empty = default (${SUPPLIER_DEFAULT_RATE} ₪/h)"
                   onchange="setSupplierRateOverride('${r.w.id}','${r.sup.id}','rate',this.value)"
+                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
+              </td>
+              <td style="padding:10px 12px;text-align:right">
+                <input type="number" value="${ov.dayRate??''}" min="0" step="0.5" placeholder="${isDailyPay(r.w)?'by the hour':'—'}" title="A fixed ₪ per day, for a worker paid by the day. Empty = hours × ₪/h"
+                  onchange="setSupplierRateOverride('${r.w.id}','${r.sup.id}','dayRate',this.value)"
                   style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
             </tr>`;
@@ -6847,6 +6948,7 @@ const ACCOUNTING_HELP={
     'An empty field = nothing set here; grey shows the rate that applies.']},
   supplierRates:{icon:'ti-truck-delivery',title:'Per-supplier rates',items:[
     'What the firm pays a supplier per hour of each of its workers (the supplier\'s commission).',
+    'For a worker paid by the day, ₪/day is a fixed amount for each day worked; empty = hours × ₪/h.',
     'Feeds "Payable by supplier" only. It never changes a worker\'s pay.']},
   payable:{icon:'ti-report-money',title:'Payable by supplier',items:[
     'For the period picked in Salary: each supplier\'s workers\' hours × the supplier rate.',
@@ -6863,7 +6965,7 @@ const ACCOUNTING_HELP={
     'An HR sees its own workers\' cards here, bank details included, read-only; with "Edit own workers\' pay" (user form) it edits them too.']},
   hrPayable:{icon:'ti-user-dollar',title:'Payable by HR',items:[
     'An HR login with the Accounting section sees only this part for its own workers: their hours, rate and pay, and its commission — never the rest of Accounting.',
-    'For the period picked in Salary: each HR\'s workers\' hours × the HR\'s commission (₪/h, set in Admin → Users on the HR).',
+    'For the period picked in Salary: each HR\'s workers\' hours × the HR\'s commission (₪/h, set in Admin → Users on the HR); a worker paid by the day counts days × the HR\'s ₪/day when one is set.',
     'Separate from the workers\' pay: it never changes a wage.']},
   pending:{icon:'ti-file-check',title:'Pending hours',items:[
     'Hours uploaded with a worker\'s "Upload hours" button wait here.',

@@ -52,7 +52,7 @@ The client keeps the punch log in `localStorage.punchLog` (`getPunchLog()` / `sa
 2. **Per-client rates** — `renderRateMatrix()`.
 3. **Per-supplier rates** — `renderSupplierRateMatrix()`.
 4. **Payable by supplier** — `renderSupplierPayable()`, called from `renderSalary()`.
-   **Payable by HR** — `renderHrPayable()` (owner / super-admin, shown when the firm has HR logins): per HR, the hours of the workers whose `hrId` is that HR × its `commissionRate`; never a wage.
+   **Payable by HR** — `renderHrPayable()` (owner / super-admin, shown when the firm has HR logins): per HR, `commissionFor` with the HR's commission rates (its `commissionRate` and `commissionDayRate` when set) on the workers whose `hrId` is that HR; never a wage.
 5. **Billable by client** — `renderClientBillable()`, called from `renderSalary()`.
 6. **Pending hours** — `renderPendingHours()`.
 
@@ -94,10 +94,11 @@ One row per (worker, assigned client). Empty inputs show the resolved rate as a 
 
 ### Supplier commission
 
-- **Rate:** `SUPPLIER_DEFAULT_RATE` = 5 ₪/h. `supplierCommissionRate(w, sid)` returns `w.supplierRates[sid].rate` if set, otherwise the default.
-- **Matrix:** `renderSupplierRateMatrix()` — one row per worker with a supplier and a single "Commission ₪/h" input. `setSupplierRateOverride()` writes it, then redraws the matrix and the payable table.
+- **Rate:** `SUPPLIER_DEFAULT_RATE` = 5 ₪/h. `supplierCommissionRate(w, sid)` returns `w.supplierRates[sid].rate` if set, otherwise the default. **Daily rate:** `supplierDayCommission(w, sid)` returns `w.supplierRates[sid].dayRate` if set, else `null`; a fixed ₪ per day worked for a worker paid by the day.
+- **Matrix:** `renderSupplierRateMatrix()` — one row per worker with a supplier and two inputs: "Commission ₪/h" and "₪/day (daily workers)" (empty for a daily worker = hours × ₪/h). `setSupplierRateOverride()` writes it, then redraws the matrix and the payable table.
+- **Commission:** `commissionFor(w, e, hourRate, dayRate)` — a worker's commission for one Salary row: if the worker is paid by the day (`isDailyPay`) and a day rate is set, days × day rate; else hours × hour rate (the supplier's default or override).
 - **Payable by supplier:** `renderSupplierPayable(entries)`:
-  - per supplier, hours × commission (never the worker's wage); stored in `__lastSupplierPayableRows` for the export buttons;
+  - per supplier, `commissionFor` with the supplier's rates (never the worker's wage); stored in `__lastSupplierPayableRows` for the export buttons;
   - Excel / PDF buttons → `exportPayableSummary()`;
   - the **"No supplier assigned" row** shows those workers' hours only; its payable is "—" (nothing is owed to a supplier for them, and a wage never appears in this table).
 
@@ -112,6 +113,8 @@ Per client: hours, mode (Fixed / Tiered) and the billable total. It never shows 
 - **Approving:** `approveHoursBatch(id)` → `approvePendingHours` creates IN and OUT punches per row, with no GPS fields and the note `Imported from <file>`. Approving again creates nothing. The app then reads the batch's punches (`punchesOfBatch`) and loads back to the earliest of them, so a past month shows up.
 - **Rejecting:** `rejectHoursBatch(id)` → `rejectPendingHours` marks the batch rejected and creates nothing.
 - Approving and rejecting store `decidedAt`; the sender sees the batch's status (worker card → Upload hours, [workers.md](workers.md); the supplier portal's My Hours). A supplier's batches (`supplierId`, uploaded by the supplier's name, "entered by hand") come in through the `supplier` function and are approved the same way.
+
+- **Live count and status:** `watchHoursBatches()` (after the load, any manager-side login) keeps `__hoursBatches` from `listenPendingHours`. `updateHoursBadge()` shows the number of batches waiting for a decision on the Accounting tab (`#accPendingBadge`, `.tab-badge`, hidden at 0); the worker card shows the worker's latest batch and its status (`cardHoursStatusHtml` / `latestHoursBatch`, redrawn live while the card is open); an open Accounting tab redraws Pending hours.
 
 Uploading the hours (worker card) is in [workers.md](workers.md).
 

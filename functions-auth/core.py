@@ -110,10 +110,12 @@ def claims_for(user):
         claims["own"] = user.get("ownOnly") is not False
     if role in ("hr", "supplier"):
         # pay: sees its own workers' rate, pay and its own commission
-        # (showPay, on unless turned off); hrc: an HR's commission ₪/h.
+        # (showPay, on unless turned off); hrc: an HR's commission ₪/h;
+        # hrcd: its commission ₪/day for a worker paid by the day.
         claims["pay"] = user.get("showPay") is not False
         if role == "hr":
             claims["hrc"] = _rate(user.get("commissionRate"))
+            claims["hrcd"] = _rate(user.get("commissionDayRate"))
     if user.get("tenantId"):
         claims["tenantId"] = user["tenantId"]
     if user.get("supplierId"):
@@ -211,6 +213,7 @@ def login(db, username, password, mint_token, now=None, on_refused=None):
         "ownOnly": claims.get("own", False),
         "showPay": claims.get("pay", False),
         "commissionRate": claims.get("hrc", 0),
+        "commissionDayRate": claims.get("hrcd", 0),
         "fullName": user.get("fullName") or "",
         "tenantProfile": profile,
     }
@@ -285,6 +288,7 @@ def list_users(db, caller):
             "ownOnly": d.get("ownOnly") is not False if _norm_role(d.get("role")) == "hr" else None,
             "showPay": d.get("showPay") is not False if _norm_role(d.get("role")) in ("hr", "supplier") else None,
             "commissionRate": _rate(d.get("commissionRate")) if _norm_role(d.get("role")) == "hr" else None,
+            "commissionDayRate": _rate(d.get("commissionDayRate")) if _norm_role(d.get("role")) == "hr" else None,
         })
     return {"users": users}
 
@@ -371,6 +375,7 @@ def create_tenant_user(db, caller, body):
     if role == "hr":
         user["ownOnly"] = body.get("ownOnly") is not False
         user["commissionRate"] = _rate(body.get("commissionRate"))
+        user["commissionDayRate"] = _rate(body.get("commissionDayRate"))
     if role in ("hr", "supplier"):
         user["showPay"] = body.get("showPay") is not False
     uid, err = _new_user_batch(db, username, user, password)
@@ -395,7 +400,7 @@ def update_user(db, caller, body, revoke):
         return {"error": err}
     role = _norm_role(data.get("role"))
     if role in ADMIN_ROLES and any(k in body for k in ("permissions", "supplierId", "active", "ownOnly", "role",
-                                                       "showPay", "commissionRate")):
+                                                       "showPay", "commissionRate", "commissionDayRate")):
         return {"error": E_ADMIN_TARGET}
     upd = {}
     # A login may move between staff, hr and supplier (never to an admin role).
@@ -429,11 +434,14 @@ def update_user(db, caller, body, revoke):
         upd["showPay"] = body.get("showPay") is not False
     if is_hr and "commissionRate" in body:
         upd["commissionRate"] = _rate(body.get("commissionRate"))
+    if is_hr and "commissionDayRate" in body:
+        upd["commissionDayRate"] = _rate(body.get("commissionDayRate"))
     current = {"role": _norm_role(data.get("role")),
                "permissions": "*" if data.get("permissions") in (None, "", "*") else data.get("permissions"),
                "supplierId": data.get("supplierId") or None, "active": data.get("active", True) is not False,
                "ownOnly": data.get("ownOnly") is not False, "showPay": data.get("showPay") is not False,
-               "commissionRate": _rate(data.get("commissionRate"))}
+               "commissionRate": _rate(data.get("commissionRate")),
+               "commissionDayRate": _rate(data.get("commissionDayRate"))}
     upd = {k: v for k, v in upd.items() if v != current[k]}
     if upd.get("role") == "hr":  # a new HR always gets its ownOnly flag stored
         upd["ownOnly"] = body.get("ownOnly") is not False
