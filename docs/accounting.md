@@ -94,10 +94,11 @@ One row per (worker, assigned client). Empty inputs show the resolved rate as a 
 
 ### Supplier commission
 
-- **Rate:** `SUPPLIER_DEFAULT_RATE` = 5 ₪/h. `supplierCommissionRate(w, sid)` returns `w.supplierRates[sid].rate` if set, otherwise the default.
-- **Matrix:** `renderSupplierRateMatrix()` — one row per worker with a supplier and a single "Commission ₪/h" input. `setSupplierRateOverride()` writes it, then redraws the matrix and the payable table.
+- **Rate:** `SUPPLIER_DEFAULT_RATE` = 5 ₪/h. `supplierCommissionRate(w, sid)` returns `w.supplierRates[sid].rate` if set, otherwise the default. **Daily rate:** `supplierDayCommission(w, sid)` returns `w.supplierRates[sid].dayRate` if set, else `null`; a fixed ₪ per day worked for a worker paid by the day.
+- **Matrix:** `renderSupplierRateMatrix()` — one row per worker with a supplier and two inputs: "Commission ₪/h" and "₪/day (daily workers)" (empty for a daily worker = hours × ₪/h). `setSupplierRateOverride()` writes it, then redraws the matrix and the payable table.
+- **Commission:** `commissionFor(w, e, hourRate, dayRate)` — a worker's commission for one Salary row: if the worker is paid by the day (`isDailyPay`) and a day rate is set, days × day rate; else hours × hour rate (the supplier's default or override).
 - **Payable by supplier:** `renderSupplierPayable(entries)`:
-  - per supplier, hours × commission, or for a worker paid by the day days × `supplierDayCommission(w, sid)` (`supplierRates[sid].dayRate`) when set — `commissionFor` (never the worker's wage); stored in `__lastSupplierPayableRows` for the export buttons;
+  - per supplier, `commissionFor` with the supplier's rates (never the worker's wage); stored in `__lastSupplierPayableRows` for the export buttons;
   - Excel / PDF buttons → `exportPayableSummary()`;
   - the **"No supplier assigned" row** shows those workers' hours only; its payable is "—" (nothing is owed to a supplier for them, and a wage never appears in this table).
 
