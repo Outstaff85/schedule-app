@@ -354,6 +354,36 @@ html,body{
 }
 .top-bar{padding-right:64px;}
 .lang-select{position:fixed;right:max(env(safe-area-inset-right,0px),12px);top:max(env(safe-area-inset-top,0px),12px);z-index:50;background:rgba(255,255,255,0.06);color:var(--text2,#7c84a0);border:1px solid rgba(255,255,255,0.13);border-radius:8px;padding:4px 6px;font:600 12px/1 inherit;cursor:pointer;}
+.punch-links{display:flex;gap:4px;justify-content:center;flex-wrap:wrap;}
+.sched-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;}
+.sched-head .m{font-size:17px;font-weight:700;color:var(--text);text-transform:capitalize;text-align:center;flex:1;}
+.sched-nav{background:rgba(255,255,255,0.05);border:1px solid var(--border2);color:var(--text);border-radius:10px;width:40px;height:36px;cursor:pointer;font-size:18px;}
+.sched-today{background:var(--blue-bg);border:1px solid rgba(79,142,247,0.35);color:var(--blue);border-radius:10px;height:36px;padding:0 12px;cursor:pointer;font:600 13px inherit;}
+.sched-legend{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:10px;font-size:12px;color:var(--text2);}
+.sched-legend span{display:inline-flex;align-items:center;gap:5px;}
+.sched-legend i{width:12px;height:12px;border-radius:3px;display:inline-block;}
+.sched-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+.sched-dow{text-align:center;font-size:11px;font-weight:600;color:var(--text2);padding:4px 0;text-transform:uppercase;}
+.sched-cell{min-height:62px;border-radius:8px;padding:4px 3px 5px;display:flex;flex-direction:column;gap:3px;cursor:pointer;border:1px solid transparent;background:rgba(255,255,255,0.02);}
+.sched-cell.out{opacity:.35;}
+.sched-cell.today{border-color:var(--blue);}
+.sched-cell.sel{border-color:var(--text);background:rgba(255,255,255,0.06);}
+.sched-cell .n{font-size:12px;font-weight:600;color:var(--text2);padding-left:2px;}
+.sched-cell.today .n{color:var(--blue);}
+.shift-bar{flex:1;border-radius:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'DM Mono',ui-monospace,monospace;font-size:10.5px;font-weight:500;line-height:1.25;text-align:center;}
+.shift-bar.work{background:rgba(109,214,160,0.13);color:var(--green);}
+.shift-bar.midnight{background:rgba(96,165,250,0.12);color:#60a5fa;}
+.shift-bar.off{background:var(--amber-bg);color:var(--amber);font-family:inherit;font-size:10px;}
+.sched-detail{margin-top:12px;padding:14px 16px;border-radius:14px;background:var(--card);border:1px solid var(--border2);display:flex;align-items:center;gap:14px;}
+.sched-detail .dd{flex:1;}
+.sched-detail .dd b{display:block;font-size:15px;color:var(--text);text-transform:capitalize;}
+.sched-detail .dd span{font-size:13px;color:var(--text2);}
+.sched-detail .tt{font-family:'DM Mono',ui-monospace,monospace;font-size:18px;font-weight:600;}
+.sched-sum{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;}
+.sched-sum div{padding:12px;border-radius:12px;background:rgba(255,255,255,0.03);border:1px solid var(--border);text-align:center;}
+.sched-sum b{display:block;font-size:20px;color:var(--text);}
+.sched-sum span{font-size:12px;color:var(--text2);}
+.sched-note{margin-top:10px;text-align:center;font-size:12px;color:var(--text3);}
 </style>
 </head>
 <body>
@@ -394,7 +424,10 @@ html,body{
       <span class="btn-label" data-i18n>LOADING</span>
     </button>
   </div>
-  <div class="back-link" onclick="openHistory()" style="color:var(--blue)"><i class="ti ti-calendar"></i> <span data-i18n>My History</span></div>
+  <div class="punch-links">
+    <div class="back-link" onclick="openSchedule()" style="color:var(--blue)"><i class="ti ti-calendar-week"></i> <span data-i18n>My Schedule</span></div>
+    <div class="back-link" onclick="openHistory()" style="color:var(--blue)"><i class="ti ti-history"></i> <span data-i18n>My History</span></div>
+  </div>
   <div class="back-link" id="changeWorkerLink" onclick="goBack()" data-i18n>← Change worker</div>
 </div>
 
@@ -409,6 +442,15 @@ html,body{
     <button class="btn-primary" id="clockAnotherBtn" onclick="goToWorker()" data-i18n>Clock another worker</button>
     <button class="btn-secondary" onclick="resetToQR()" data-i18n>Done</button>
   </div>
+</div>
+
+<!-- Screen 5: My schedule (only this worker's own week) -->
+<div class="screen hidden" id="screenSchedule" style="justify-content:flex-start;align-items:center">
+  <div class="top-bar" style="margin-bottom:16px">
+    <div style="font-size:18px;font-weight:500"><i class="ti ti-calendar-week"></i> <span data-i18n>My Schedule</span></div>
+    <div class="back-link" onclick="closeHistory()" style="font-size:14px" data-i18n>✕ Close</div>
+  </div>
+  <div id="scheduleContent" style="width:100%;max-width:500px"></div>
 </div>
 
 <!-- Screen 4: History -->
@@ -535,6 +577,7 @@ function redrawForLanguage(){
     if(on('screenPunch')){ tickPunch(); updateBigBtn(); getLocation(); }
     else if(on('screenWorker')) renderWorkerGrid();
     else if(on('screenHistory')) openHistory();
+    else if(on('screenSchedule')) renderMySchedule();
   }catch(e){}
 }
 function getQueue(){ try{return JSON.parse(localStorage.getItem(QUEUE_KEY)||'[]');}catch(e){return[];} }
@@ -790,7 +833,7 @@ function loadWorkers(){
         const filtered=list.filter(w=>(w.clientIds||[]).includes(SITE.clientId));
         list = filtered.length ? filtered : list;
       }
-      workers=list.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null,clientIds:w.clientIds||[]}));
+      workers=list.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null,clientIds:w.clientIds||[],schedule:Array.isArray(w.schedule)?w.schedule:[]}));
       if(workers.length) return;
     }
   }catch(e){}
@@ -817,7 +860,7 @@ async function loadWorkersFromGS(){
         const filtered=list.filter(w=>(w.clientIds||[]).includes(SITE.clientId));
         list = filtered.length ? filtered : list;
       }
-      workers=list.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null,clientIds:w.clientIds||[]}));
+      workers=list.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null,clientIds:w.clientIds||[],schedule:Array.isArray(w.schedule)?w.schedule:[]}));
       localStorage.setItem('schedMgr_v1', JSON.stringify(data));
       return true;
     }
@@ -1018,6 +1061,68 @@ function showSuccess(type,time,date){
 
 function goToWorker(){ if(URL_TOKEN&&selectedWorker){ showScreen('screenPunch'); startPunchClock(); getLocation(); updateBigBtn(); return; } selectedWorker=null; showScreen('screenWorker'); startWorkerClock(); }
 function resetToQR(){ if(URL_TOKEN&&selectedWorker){ showScreen('screenPunch'); startPunchClock(); getLocation(); updateBigBtn(); return; } selectedWorker=null; showScreen('screenWorker'); startWorkerClock(); }
+// ── My schedule: the worker's own roster as a month calendar, in the colours
+// of the manager's Schedule tab (work green, a shift past midnight blue, day
+// off amber). The roster is weekly (w.schedule[0..6], Sunday first — the server
+// sends a worker only their own), so every week of a month repeats it. The
+// arrows change the month; a tap on a day shows it below.
+let _schedMonth = 0, _schedSel = null;
+function openSchedule(){
+  if(!selectedWorker) return;
+  _schedMonth = 0; _schedSel = null;
+  showScreen('screenSchedule');
+  renderMySchedule();
+  // Fresh from the server when online, so a change the manager just made shows.
+  if(URL_TOKEN && navigator.onLine) loadWorkersFromGS().then(ok => {
+    const fresh = ok && workers.find(w => w.id === selectedWorker.id);
+    if(fresh){ selectedWorker = fresh; if(!document.getElementById('screenSchedule').classList.contains('hidden')) renderMySchedule(); }
+  }).catch(()=>{});
+}
+function shiftMonth(n){ _schedMonth = n === 0 ? 0 : _schedMonth + n; _schedSel = null; renderMySchedule(); }
+function pickSchedDay(t){ _schedSel = t; renderMySchedule(); }
+function schedDay(d){
+  const day = ((selectedWorker && selectedWorker.schedule) || [])[d.getDay()] || {};
+  if(!(day.type === 'work' && day.start && day.end)) return {work:false};
+  const toM = t => { const [h, m] = String(t).split(':').map(Number); return h * 60 + (m || 0); };
+  let m = toM(day.end) - toM(day.start); const night = m <= 0; if(night) m += 1440;
+  return {work:true, start:day.start, end:day.end, night, hours:m / 60};
+}
+function renderMySchedule(){
+  const el = document.getElementById('scheduleContent');
+  const loc = uiLocale();
+  const today = new Date(); today.setHours(0,0,0,0);
+  const first = new Date(today.getFullYear(), today.getMonth() + _schedMonth, 1);
+  const month = first.getMonth();
+  const start = new Date(first); start.setDate(1 - first.getDay());
+  const sel = _schedSel != null ? new Date(_schedSel) : (_schedMonth === 0 ? today : first);
+  const hasAny = ((selectedWorker && selectedWorker.schedule) || []).some(x => x && x.type === 'work' && x.start && x.end);
+  let cells = '', days = 0, hours = 0;
+  const dows = [0,1,2,3,4,5,6].map(i => { const d = new Date(2024, 8, 1 + i); return `<div class="sched-dow">${esc(d.toLocaleDateString(loc, {weekday:'short'}))}</div>`; }).join('');
+  for(let i = 0; i < 42; i++){
+    const d = new Date(start); d.setDate(start.getDate() + i);
+    if(i >= 35 && d.getMonth() !== month) break;
+    const x = schedDay(d), inMonth = d.getMonth() === month;
+    if(inMonth && x.work){ days++; hours += x.hours; }
+    const cls = ['sched-cell', inMonth ? '' : 'out', d.getTime() === today.getTime() ? 'today' : '', d.getTime() === sel.getTime() ? 'sel' : ''].join(' ');
+    cells += `<div class="${cls}" onclick="pickSchedDay(${d.getTime()})"><span class="n">${d.getDate()}</span>`
+      + (x.work ? `<div class="shift-bar ${x.night ? 'midnight' : 'work'}">${esc(x.start)}<br>${esc(x.end)}</div>` : `<div class="shift-bar off">${esc(tr('Off'))}</div>`)
+      + `</div>`;
+  }
+  const sx = schedDay(sel);
+  const detail = `<div class="sched-detail"><div class="dd"><b>${esc(sel.toLocaleDateString(loc, {weekday:'long', day:'numeric', month:'long'}))}</b>
+      <span>${esc(sx.work ? (sx.night ? tr('Night shift — ends the next day') : tr('Work day')) : tr('Day off'))}</span></div>
+      ${sx.work ? `<div class="tt" style="color:${sx.night ? '#60a5fa' : 'var(--green)'}">${esc(sx.start)} – ${esc(sx.end)}<div style="font-size:12px;color:var(--text2);text-align:right">${esc(tr('{h}h', {h: sx.hours.toFixed(1)}))}</div></div>` : ''}
+    </div>`;
+  el.innerHTML = `<div class="sched-head"><button type="button" class="sched-nav" onclick="shiftMonth(-1)" aria-label="${esc(tr('Previous month'))}">‹</button>
+      <div class="m">${esc(first.toLocaleDateString(loc, {month:'long', year:'numeric'}))}</div>
+      ${_schedMonth !== 0 ? `<button type="button" class="sched-today" onclick="shiftMonth(0)">${esc(tr('Today'))}</button>` : ''}
+      <button type="button" class="sched-nav" onclick="shiftMonth(1)" aria-label="${esc(tr('Next month'))}">›</button></div>
+    <div class="sched-legend"><span><i style="background:rgba(109,214,160,0.35)"></i>${esc(tr('Work'))}</span><span><i style="background:rgba(96,165,250,0.35)"></i>${esc(tr('Night shift'))}</span><span><i style="background:rgba(245,166,35,0.35)"></i>${esc(tr('Day off'))}</span></div>`
+    + (hasAny ? `<div class="sched-grid">${dows}${cells}</div>${detail}
+      <div class="sched-sum"><div><b>${days}</b><span>${esc(tr('Work days this month'))}</span></div><div><b>${esc(tr('{h}h', {h: hours.toFixed(1)}))}</b><span>${esc(tr('Planned hours this month'))}</span></div></div>
+      <div class="sched-note">${esc(tr('Your manager plans this schedule; changes show here at once.'))}</div>`
+      : `<div style="text-align:center;padding:40px;color:var(--text3);font-size:15px">${esc(tr('No shifts planned yet'))}</div>`);
+}
 function closeHistory(){ if(URL_TOKEN&&selectedWorker){ showScreen('screenPunch'); startPunchClock(); getLocation(); updateBigBtn(); } else { showScreen('screenWorker'); startWorkerClock(); } }
 
 // ── Helpers ───────────────────────────────────────────────────────
