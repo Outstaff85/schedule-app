@@ -6723,9 +6723,11 @@ async function onSalaryPeriodChange(){
   await ensurePunchesSince(periodPunchStart(period));
   renderAccounting();
 }
-function renderSalary(){
-  fillSalaryPeriodSelect();
-  const period   = document.getElementById('salaryPeriod')?.value||'week';
+// The Salary table's figures for one period, per worker (one place for the
+// table, its HR view and the accountant export): hours split into regular /
+// OT / Shabbat, days, pay (shiftPayFor; a daily-paid worker's days set by
+// hand win), travel, warnings; plus the billable-by-client figures.
+function salaryEntriesFor(period){
   const log      = getPunchLog();
   const now      = new Date();
   let filtered   = log;
@@ -6788,7 +6790,6 @@ function renderSalary(){
       }
     }
   });
-  __lastClientBillEntries=Object.entries(byClient).map(([clientId,v])=>({clientId,...v}));
   // Days worked (from the punches) and, for a daily-paid worker, days set by
   // hand for this period replace the counted ones.
   const periodKey=salaryPeriodKey(period);
@@ -6800,6 +6801,13 @@ function renderSalary(){
     e.travel=travelPay(wc,e.daysUsed,new Set([...e.dayKeys].map(k=>k.slice(0,7))).size);
   });
 
+  return {byWorker, byClient};
+}
+function renderSalary(){
+  fillSalaryPeriodSelect();
+  const period   = document.getElementById('salaryPeriod')?.value||'week';
+  const {byWorker, byClient} = salaryEntriesFor(period);
+  __lastClientBillEntries=Object.entries(byClient).map(([clientId,v])=>({clientId,...v}));
   const salaryEl=document.getElementById('dashSalary');
   // An HR that only sees pay: its own workers only, read-only, plus its
   // commission (session.commissionRate × hours).
@@ -7499,7 +7507,11 @@ function openSalaryExportModal(){
       <button class="btn sm" onclick="runSalaryExport('csv')"><i class="ti ti-file-text"></i> CSV</button>
       <button class="btn sm" onclick="runSalaryExport('excel')"><i class="ti ti-file-spreadsheet"></i> Excel</button>
       <button class="btn accent" onclick="runSalaryExport('pdf')"><i class="ti ti-file-type-pdf"></i> PDF</button>
-    </div>`;
+    </div>
+    ${hrPayOnly()?'':`<div style="border-top:1px solid var(--border2);margin-top:14px;padding-top:12px">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px">${esc(tr('For the accountant: one row per worker (ID, days, regular / overtime / Shabbat hours, pay, travel, bank details) and a sheet of every shift.'))}</div>
+      <button class="btn sm" style="width:100%;justify-content:center" onclick="runSalaryExport('accountant')"><i class="ti ti-file-spreadsheet"></i> ${esc(tr('Accountant report (Excel)'))}</button>
+    </div>`}`;
   document.getElementById('salaryExportOverlay').classList.add('open');
 }
 // Period choices for the export modal: the same This Week / This Month /
@@ -7570,7 +7582,8 @@ function buildSalaryExportRows(period){
   return rows;
 }
 function exportSalary(format, period){
-  if(format==='excel' && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportSalary(format, period)).catch(()=>showToast(tr('Excel library not loaded'))); return; }
+  if((format==='excel'||format==='accountant') && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportSalary(format, period)).catch(()=>showToast(tr('Excel library not loaded'))); return; }
+  if(format==='accountant') return exportAccountantReport(period);
   period=period||document.getElementById('salaryPeriod')?.value||'week';
   const now=new Date();
   const rows=buildSalaryExportRows(period);
@@ -7603,6 +7616,33 @@ function exportSalary(format, period){
     const a=document.createElement('a'); a.href=url; a.download=fname+'.csv'; a.click(); URL.revokeObjectURL(url);
   }
   showToast(tr('Salary exported!'));
+}
+// The accountant's workbook for a period: a Summary sheet with one row per
+// worker — the Salary table's own figures (salaryEntriesFor) plus ID, supplier,
+// pay mode and bank details — and a Shifts sheet (buildSalaryExportRows).
+function exportAccountantReport(period){
+  period=period||'month';
+  const {byWorker}=salaryEntriesFor(period);
+  const money=v=>Math.round((Number(v)||0)*100)/100, hrs=v=>Math.round((Number(v)||0)*100)/100;
+  const head=['Worker','ID / Passport','Supplier','Pay mode','Rate','Days','Regular hours','Overtime hours','Shabbat hours','Total hours','Pay (₪)','Travel (₪)','Total (₪)','Bank','Branch','Account','Warnings'].map(h=>tr(h));
+  const list=Object.values(byWorker).map(e=>({e, w:workers.find(x=>x.id===e.workerId)||{name:e.worker}}))
+    .sort((a,b)=>String(a.w.name||'').localeCompare(String(b.w.name||'')));
+  const rows=list.map(({e,w})=>[w.name||e.worker, workerDocId(w)||'', (suppliers.find(s=>s.id===w.supplierId)||{}).name||'',
+    isDailyPay(w)?tr('By the day'):tr('By the hour'), isDailyPay(w)?dailyRate(w):(wOwnRate(w)||''),
+    e.daysUsed, hrs(e.regH), hrs(e.otH), hrs(e.shabH), hrs(e.hours), money(e.total), money(e.travel), money(e.total+e.travel),
+    w.bank||'', w.bankBranch||'', w.bankAccountNumber||'', e.warns.length]);
+  const sum=k=>money(list.reduce((s,{e})=>s+(k==='grand'?e.total+e.travel:e[k]),0));
+  rows.push([tr('Total'),'','','','',list.reduce((s,{e})=>s+e.daysUsed,0),sum('regH'),sum('otH'),sum('shabH'),sum('hours'),sum('total'),sum('travel'),sum('grand'),'','','','']);
+  const shifts=buildSalaryExportRows(period);
+  const sHead=['Worker','Object/Client','Supplier','Date','First In','Last Out','Hours','Rate (₪/h or /day)','Day Pay (₪)','Notes'].map(h=>tr(h));
+  const sRows=shifts.map(r=>[r.worker, r.client, r.supplier, r.date, r.firstIn, r.lastOut, hrs(r.hours), r.rate, money(r.pay), r.notes]);
+  const wb=XLSX.utils.book_new();
+  const title=[tr('Accountant report — {period}',{period:salaryPeriodLabel(period)})], firm=[(activeTenantProfile()||{}).companyName||''];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([title, firm, [], head, ...rows]), tr('Summary'));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([sHead, ...sRows]), tr('Shifts'));
+  const now=new Date();
+  XLSX.writeFile(wb, 'accountant-'+(period.startsWith('m:')?period.slice(2):period+'-'+localYMD(now))+'.xlsx');
+  showToast(tr('Accountant report exported'));
 }
 // Kept for any existing caller — CSV straight through, no picker.
 function exportSalaryCSV(){ exportSalary('csv'); }
