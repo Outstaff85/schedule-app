@@ -482,7 +482,7 @@
 <div class="titlebar">
   <div class="brand">
     <i class="ti ti-calendar-stats" style="font-size:24px;color:var(--accent);flex-shrink:0"></i>
-    <div class="logo"><span data-i18n>Schedule</span> <span data-i18n>Manager</span></div>
+    <div class="logo">Schedule <span>Manager</span></div>
   </div>
   <div class="top-tabs">
     <div class="ttab active" id="tabDashboard" onclick="switchTab('dashboard')"><span class="ic"><i class="ti ti-home"></i></span><span class="lb" data-i18n>Today</span></div>
@@ -565,7 +565,7 @@
 
       <!-- Today's log -->
       <div style="margin-bottom:20px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"><i class="ti ti-clipboard-text"></i> Today's Log</div>
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"><i class="ti ti-clipboard-text"></i> <span data-i18n>Today's Log</span></div>
         <div id="dashLog" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden"></div>
       </div>
 
@@ -966,10 +966,10 @@
       <i class="ti ti-calendar-stats" style="font-size:32px;color:var(--accent)"></i>
       <div style="font-size:19px;font-weight:700;margin-top:8px">Schedule Manager</div>
     </div>
-    <div class="field"><label>Username</label><input type="text" id="loginUsername" autocomplete="username" autofocus></div>
-    <div class="field"><label>Password</label><input type="password" id="loginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogin()"></div>
+    <div class="field"><label data-i18n>Username</label><input type="text" id="loginUsername" autocomplete="username" autofocus></div>
+    <div class="field"><label data-i18n>Password</label><input type="password" id="loginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogin()"></div>
     <div id="loginError" style="color:#ff6b78;font-size:13px;margin:2px 0 10px;min-height:1.2em"></div>
-    <button class="btn accent" style="width:100%" onclick="submitLogin()" id="loginBtn">Sign in</button>
+    <button class="btn accent" style="width:100%" onclick="submitLogin()" id="loginBtn" data-i18n>Sign in</button>
   </div>
 </div>
 
@@ -979,10 +979,10 @@
 <div id="firmsScreen" style="display:none;position:fixed;inset:0;z-index:900;background:var(--bg);overflow-y:auto">
   <div style="max-width:720px;margin:0 auto;padding:28px 20px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
-      <div style="font-size:20px;font-weight:700"><i class="ti ti-building-skyscraper"></i> Firms</div>
+      <div style="font-size:20px;font-weight:700"><i class="ti ti-building-skyscraper"></i> <span data-i18n>Firms</span></div>
       <div style="display:flex;gap:8px">
-        <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> Create firm</button>
-        <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i> Sign out</button>
+        <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> <span data-i18n>Create firm</span></button>
+        <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i> <span data-i18n>Sign out</span></button>
       </div>
     </div>
     <div id="firmsList" style="display:flex;flex-direction:column;gap:8px"></div>
@@ -997,10 +997,10 @@
 <div id="errorsScreen" style="display:none;position:fixed;inset:0;z-index:960;background:var(--bg);overflow-y:auto">
   <div style="max-width:960px;margin:0 auto;padding:28px 20px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
-      <div style="font-size:20px;font-weight:700"><i class="ti ti-alert-circle"></i> Errors (last 100)</div>
+      <div style="font-size:20px;font-weight:700"><i class="ti ti-alert-circle"></i> <span data-i18n>Errors (last 100)</span></div>
       <div style="display:flex;gap:8px">
-        <button class="btn sm" onclick="loadErrorsList()"><i class="ti ti-refresh"></i> Refresh</button>
-        <button class="btn sm" onclick="closeErrorsScreen()"><i class="ti ti-x"></i> Close</button>
+        <button class="btn sm" onclick="loadErrorsList()"><i class="ti ti-refresh"></i> <span data-i18n>Refresh</span></button>
+        <button class="btn sm" onclick="closeErrorsScreen()"><i class="ti ti-x"></i> <span data-i18n>Close</span></button>
       </div>
     </div>
     <div id="errorsList" style="display:flex;flex-direction:column;gap:6px"></div>
@@ -1013,35 +1013,35 @@
      pattern as the worker modal — __editingUserId null means "create". -->
 <div class="overlay" id="userFormOverlay" style="z-index:980">
   <div class="modal" style="max-width:420px">
-    <div class="modal-title" id="userFormTitle">New user</div>
-    <div class="field" id="userFormRoleField"><label>Role</label>
+    <div class="modal-title" id="userFormTitle" data-i18n>New user</div>
+    <div class="field" id="userFormRoleField"><label data-i18n>Role</label>
       <select id="userFormRole" onchange="onUserFormRoleChange(true)">
-        <option value="staff">Staff</option>
+        <option value="staff" data-i18n>Staff</option>
         <option value="hr">HR</option>
-        <option value="supplier">Supplier</option>
+        <option value="supplier" data-i18n>Supplier</option>
       </select>
     </div>
-    <div class="form-section">Person</div>
+    <div class="form-section" data-i18n>Person</div>
     <div class="field-row">
-      <div class="field"><label id="userFormFullNameLabel">Full name</label><input type="text" id="userFormFullName" autocomplete="off" maxlength="80"></div>
-      <div class="field"><label>Phone</label><input type="tel" id="userFormPhone" autocomplete="off" maxlength="40"></div>
+      <div class="field"><label id="userFormFullNameLabel" data-i18n>Full name</label><input type="text" id="userFormFullName" autocomplete="off" maxlength="80"></div>
+      <div class="field"><label data-i18n>Phone</label><input type="tel" id="userFormPhone" autocomplete="off" maxlength="40"></div>
     </div>
-    <div class="form-section">Login</div>
+    <div class="form-section" data-i18n>Login</div>
     <div class="field-row">
-      <div class="field"><label>Username</label><input type="text" id="userFormUsername" autocomplete="off"></div>
-      <div class="field" id="userFormPasswordField"><label id="userFormPasswordLabel">Password (min. 8)</label><input type="password" id="userFormPassword" autocomplete="new-password"></div>
+      <div class="field"><label data-i18n>Username</label><input type="text" id="userFormUsername" autocomplete="off"></div>
+      <div class="field" id="userFormPasswordField"><label id="userFormPasswordLabel" data-i18n>Password (min. 8)</label><input type="password" id="userFormPassword" autocomplete="new-password"></div>
     </div>
-    <div class="form-section" id="userFormAccessHead">Access</div>
-    <div class="field" id="userFormSupplierField" style="display:none"><label>Supplier</label><select id="userFormSupplierId"></select></div>
+    <div class="form-section" id="userFormAccessHead" data-i18n>Access</div>
+    <div class="field" id="userFormSupplierField" style="display:none"><label data-i18n>Supplier</label><select id="userFormSupplierId"></select></div>
     <div class="field" id="userFormPermsField">
-      <label>Sections</label>
+      <label data-i18n>Sections</label>
       <div class="check-grid">
-        <label class="check-chip"><input type="checkbox" value="schedule" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-calendar"></i> Schedule</span><span class="chip-hint">Schedule tab</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="workers" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-users-group"></i> Workers</span><span class="chip-hint">Workers tab</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="clients" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-users"></i> Clients</span><span class="chip-hint">Clients tab</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="suppliers" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-truck-delivery"></i> Suppliers</span><span class="chip-hint">Suppliers tab</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="accounting" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-cash"></i> Accounting</span><span class="chip-hint" id="userFormAccountingHint">Accounting tab</span></span></label>
-        <label class="check-chip" id="userFormPayEditChip" style="display:none"><input type="checkbox" value="payEdit" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-wallet"></i> Edit own workers' pay</span><span class="chip-hint" data-i18n>Rate, travel, bank of its own workers (with Accounting)</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="schedule" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-calendar"></i> <span data-i18n>Schedule</span></span><span class="chip-hint" data-i18n>Schedule tab</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="workers" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-users-group"></i> <span data-i18n>Workers</span></span><span class="chip-hint" data-i18n>Workers tab</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="clients" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-users"></i> <span data-i18n>Clients</span></span><span class="chip-hint" data-i18n>Clients tab</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="suppliers" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-truck-delivery"></i> <span data-i18n>Suppliers</span></span><span class="chip-hint" data-i18n>Suppliers tab</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="accounting" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-cash"></i> <span data-i18n>Accounting</span></span><span class="chip-hint" id="userFormAccountingHint" data-i18n>Accounting tab</span></span></label>
+        <label class="check-chip" id="userFormPayEditChip" style="display:none"><input type="checkbox" value="payEdit" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-wallet"></i> <span data-i18n>Edit own workers' pay</span></span><span class="chip-hint" data-i18n>Rate, travel, bank of its own workers (with Accounting)</span></span></label>
         <label class="check-chip"><input type="checkbox" value="exports" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-upload"></i> <span data-i18n>Export</span></span><span class="chip-hint" data-i18n>Export button</span></span></label>
       </div>
     </div>
@@ -1053,7 +1053,7 @@
          a worker paid by the day. -->
     <div class="field" id="userFormPayFields" style="display:none">
       <div class="check-grid" id="userFormShowPayGrid">
-        <label class="check-chip"><input type="checkbox" id="userFormShowPay" checked><span class="chip-text">Sees own workers' pay<span class="chip-hint" data-i18n>Their hours, rate and pay, and this login's commission. Nothing else of Accounting.</span></span></label>
+        <label class="check-chip"><input type="checkbox" id="userFormShowPay" checked><span class="chip-text"><span data-i18n>Sees own workers' pay</span><span class="chip-hint" data-i18n>Their hours, rate and pay, and this login's commission. Nothing else of Accounting.</span></span></label>
       </div>
       <div class="field-row" id="userFormCommissionField" style="margin-top:8px">
         <div class="field"><label data-i18n>HR commission ₪/h</label><input type="number" id="userFormCommission" min="0" step="0.5" placeholder="0"></div>
@@ -1233,6 +1233,8 @@ function applyI18n(root){
   host.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = tr(keyOf(el, 'placeholder')); });
   host.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = tr(keyOf(el, 'title')); });
 }
+// The date locale for month and weekday names on screen (numeric dates stay dd/mm/yyyy).
+function uiLocale(){ return {he:'he-IL', ru:'ru-RU'}[I18N_LANG] || 'en-GB'; }
 function firmLanguage(){
   const p = typeof activeTenantProfile === 'function' ? activeTenantProfile() : null;
   const l = p && p.language;
@@ -1259,6 +1261,8 @@ async function loadI18n(lang){
 }
 function redrawForLanguage(){
   applyI18n();
+  try{ const s = getSession(); if(s) renderAccountControl(s); }catch(e){}
+  try{ const b = document.getElementById('installBtn'); if(b) b.innerHTML = '<i class="ti ti-download" style="color:#4f8ef7"></i> ' + esc(tr('Install')); }catch(e){}
   try{ if(typeof render === 'function') render(); }catch(e){}
   try{ if(typeof currentTab !== 'undefined' && currentTab === 'accounting') renderAccounting(); }catch(e){}
 }
@@ -1397,10 +1401,10 @@ function workerDocExpiries(w){
     // One reminder per document, not per file (a visa uploaded as front +
     // back shares its type and expiry).
     const key=d.type+'|'+d.expiry; if(seen.has(key)) continue; seen.add(key);
-    const label=WORKER_DOC_TYPES[d.type]||'Document';
+    const label=tr(WORKER_DOC_TYPES[d.type]||'Document');
     const warnAt=new Date(today); warnAt.setDate(warnAt.getDate()+(WORKER_DOC_WARN_DAYS[d.type]||30));
-    if(date<today) out.push({doc:d,level:'error',date,text:label+' expired '+date.toLocaleDateString('en-GB')});
-    else if(date<=warnAt) out.push({doc:d,level:'warn',date,text:label+' expires '+date.toLocaleDateString('en-GB')});
+    if(date<today) out.push({doc:d,level:'error',date,text:tr('{0} expired {1}',{0:label,1:date.toLocaleDateString('en-GB')})});
+    else if(date<=warnAt) out.push({doc:d,level:'warn',date,text:tr('{0} expires {1}',{0:label,1:date.toLocaleDateString('en-GB')})});
   }
   return out.sort((a,b)=>a.date-b.date);
 }
@@ -1414,26 +1418,26 @@ function parseDocDate(s){
 }
 function workerDocStatus(w){
   const missing=[];
-  if(!workerDocId(w)) missing.push('ID/passport no.');
-  if(!w.docUrl) missing.push('Form 101');
-  if(!w.assetsFileId) missing.push('document scan');
-  if(w.docHasSignature===false) missing.push('signature');
-  if((w.docType||'israeli_id')==='israeli_id' && w.docExtraPages===0) missing.push('ספח (ID appendix)');
+  if(!workerDocId(w)) missing.push(tr('ID/passport no.'));
+  if(!w.docUrl) missing.push(tr('Form 101'));
+  if(!w.assetsFileId) missing.push(tr('document scan'));
+  if(w.docHasSignature===false) missing.push(tr('signature'));
+  if((w.docType||'israeli_id')==='israeli_id' && w.docExtraPages===0) missing.push(tr('ספח (ID appendix)'));
   let expiry=null;
   const d=parseDocDate(w.docExpiry);
   if(d && !isNaN(d)){
     const today=new Date(); today.setHours(0,0,0,0);
     const warnAt=new Date(today); warnAt.setMonth(warnAt.getMonth()+DOC_EXPIRY_WARN_MONTHS);
-    if(d<today) expiry={level:'error',date:d,text:'ID/passport expired '+d.toLocaleDateString('en-GB')};
-    else if(d<=warnAt) expiry={level:'warn',date:d,text:'ID/passport expires '+d.toLocaleDateString('en-GB')};
+    if(d<today) expiry={level:'error',date:d,text:tr('ID/passport expired {0}',{0:d.toLocaleDateString('en-GB')})};
+    else if(d<=warnAt) expiry={level:'warn',date:d,text:tr('ID/passport expires {0}',{0:d.toLocaleDateString('en-GB')})};
   }
   const failed=!!w.docUploadFailed;
   const docExpiries=workerDocExpiries(w);
   const docExpired=docExpiries.find(x=>x.level==='error')||null;
   const level = (failed || (expiry&&expiry.level==='error') || docExpired) ? 'error' : ((missing.length||expiry||docExpiries.length) ? 'warn' : 'ok');
   const lines=[];
-  if(failed) lines.push('Last upload to '+DOC_STORE+' failed');
-  if(missing.length) lines.push('Missing: '+missing.join(', '));
+  if(failed) lines.push(tr('Last upload to {0} failed',{0:DOC_STORE}));
+  if(missing.length) lines.push(tr('Missing: {0}',{0:missing.join(', ')}));
   if(expiry) lines.push(expiry.text);
   for(const x of docExpiries) lines.push(x.text);
   return {level, missing, expiry, docExpiries, docExpired, failed, lines};
@@ -1443,8 +1447,8 @@ function docStatusBadgeHtml(w){
   const s=workerDocStatus(w);
   if(s.level==='ok') return '';
   const red=s.level==='error';
-  const label = s.failed ? 'UPLOAD FAILED' : (s.expiry&&s.expiry.level==='error') ? 'ID EXPIRED'
-    : s.docExpired ? (WORKER_DOC_TYPES[s.docExpired.doc.type]||'Document').toUpperCase()+' EXPIRED' : 'DOCS';
+  const label = s.failed ? tr('UPLOAD FAILED') : (s.expiry&&s.expiry.level==='error') ? tr('ID EXPIRED')
+    : s.docExpired ? tr('{0} EXPIRED',{0:tr(WORKER_DOC_TYPES[s.docExpired.doc.type]||'Document').toUpperCase()}) : tr('DOCS');
   return `<span title="${esc(s.lines.join(' · '))}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(${red?'--red-bg':'--amber-bg'});color:var(${red?'--red':'--amber'});margin-left:5px;white-space:nowrap"><i class="ti ti-${red?'file-off':'file-alert'}" style="font-size:9px"></i> ${label}</span>`;
 }
 // Full one-line summary for the worker card / cards view.
@@ -1580,7 +1584,7 @@ function clientBillPay(hours, client, isSat){
   if(has(client.billOtRate)){ const RM=PAY_RULES.regularMax; return Math.min(hours,RM)*rate + Math.max(hours-RM,0)*Number(client.billOtRate); }
   return israeliDayPay(hours, rate, false).total;
 }
-function fmtDate(d){ return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); }
+function fmtDate(d){ return d.toLocaleDateString(uiLocale(),{day:'2-digit',month:'short'}); }
 function fmtRange(d){ const e=new Date(d); e.setDate(e.getDate()+6); return fmtDate(d)+' – '+fmtDate(e); }
 // Formats a stored 'YYYY-MM-DD' date string (e.g. w.startDate, straight from
 // a <input type="date">) as 'DD/MM/YYYY' for display. Leaves the raw value
@@ -1725,7 +1729,7 @@ function renderGanttHeader(){
   DAYS.forEach((d,i)=>{
     const date=new Date(weekStart); date.setDate(date.getDate()+i);
     const today=date.toDateString()===new Date().toDateString();
-    h+=`<div class="gantt-header-cell" style="${today?'color:#60a5fa':''}"><span class="day-name">${d}<span class="day-hebrew">${DAYS_HE[i]}</span></span><span class="day-date">${fmtDate(date)}</span></div>`;
+    h+=`<div class="gantt-header-cell" style="${today?'color:#60a5fa':''}"><span class="day-name">${tr(d)}<span class="day-hebrew">${DAYS_HE[i]}</span></span><span class="day-date">${fmtDate(date)}</span></div>`;
   });
   el.innerHTML=h;
 }
@@ -1832,7 +1836,7 @@ function openEditShift(wi,di){
   const w=workers[wi],sh=w.schedule[di];
   const date=new Date(weekStart); date.setDate(date.getDate()+di);
   document.getElementById('editModal').innerHTML=`
-    <div class="modal-title">${tr('Edit shift — {0}, {1} {2}',{0:(esc(w.name)),1:(DAYS[di]),2:(fmtDate(date))})}</div>
+    <div class="modal-title">${tr('Edit shift — {0}, {1} {2}',{0:(esc(w.name)),1:(tr(DAYS[di])),2:(fmtDate(date))})}</div>
     <div class="field"><label>${tr('Shift type')}</label>
       <select id="eType" onchange="toggleEditTime()">
         <option value="work" ${sh.type==='work'?'selected':''}>${tr('Working')}</option>
@@ -3402,7 +3406,7 @@ document.addEventListener('change', e=>{ if(e.target.closest && e.target.closest
 function fillFilterSelect(selectId, items, allLabel){
   const el=document.getElementById(selectId); if(!el) return;
   const prev=el.value;
-  el.innerHTML=`<option value="">${allLabel}</option>`+items.map(i=>`<option value="${i.id}">${esc(i.name)}</option>`).join('');
+  el.innerHTML=`<option value="">${esc(tr(allLabel))}</option>`+items.map(i=>`<option value="${i.id}">${esc(i.name)}</option>`).join('');
   if(items.some(i=>i.id===prev)) el.value=prev;
 }
 // Workers tab layout: 'cards' (the default) or 'list' (the table), once
@@ -3425,7 +3429,7 @@ function workersMonthHours(){
 function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
   if(!list.length){ box.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:14px">'+tr('No workers found')+'</div>'; return; }
   const hours=workersMonthHours();
-  const monthName=new Date().toLocaleDateString('en-GB',{month:'long'});
+  const monthName=new Date().toLocaleDateString(uiLocale(),{month:'long'});
   const badge=(o)=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${esc(o.color)}22;border-radius:10px;margin:0 3px 3px 0"><span style="width:6px;height:6px;border-radius:50%;background:${esc(o.color)}"></span>${esc(o.name)}</span>`;
   const dash='<span style="color:var(--text3)">—</span>';
   // The HR line: for the owner / super-admin (an HR login sees only its own workers).
@@ -3503,7 +3507,7 @@ function renderWorkersPage(){
   const clientFilter=document.getElementById('workersFilterClient')?.value||'';
   const supplierFilter=document.getElementById('workersFilterSupplier')?.value||'';
   const groupBy=document.getElementById('workersGroupBy')?.value||'';
-  const stMetaMap={active:{label:'Active',col:'var(--green)',bg:'var(--green-bg)'},vacation:{label:'On vacation',col:'var(--amber)',bg:'var(--amber-bg)'},fired:{label:'Inactive',col:'var(--red)',bg:'var(--red-bg)'}};
+  const stMetaMap={active:{label:tr('Active'),col:'var(--green)',bg:'var(--green-bg)'},vacation:{label:tr('On vacation'),col:'var(--amber)',bg:'var(--amber-bg)'},fired:{label:tr('Inactive'),col:'var(--red)',bg:'var(--red-bg)'}};
   let list=workers.map((w,wi)=>({w,wi}));
   if(stFilter) list=list.filter(x=>(x.w.status||'active')===stFilter);
   if(clientFilter) list=list.filter(x=>(x.w.clientIds||[]).includes(clientFilter));
@@ -3563,7 +3567,7 @@ const OTHER_INCOME_LABELS = {none:'אין הכנסה נוספת',monthly:'משכ
 function openWorkerCard(wi){
   const w=workers[wi]; if(!w) return;
   const c=WORKER_COLORS[w.colorIdx%8];
-  const stMetaMap={active:{label:'Active',col:'var(--green)',bg:'var(--green-bg)'},vacation:{label:'On vacation',col:'var(--amber)',bg:'var(--amber-bg)'},fired:{label:'Inactive',col:'var(--red)',bg:'var(--red-bg)'}};
+  const stMetaMap={active:{label:tr('Active'),col:'var(--green)',bg:'var(--green-bg)'},vacation:{label:tr('On vacation'),col:'var(--amber)',bg:'var(--amber-bg)'},fired:{label:tr('Inactive'),col:'var(--red)',bg:'var(--red-bg)'}};
   const stMeta=stMetaMap[w.status||'active'];
   const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
   const sup=suppliers.find(s=>s.id===w.supplierId);
@@ -3580,14 +3584,14 @@ function openWorkerCard(wi){
     </div>
     ${hasPermission('workers')||w.docSavedAt?`<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;margin:-6px 0 14px">
       ${hasPermission('workers')?`<div class="status-pills" role="radiogroup" aria-label="${tr('Status')}">
-        ${[['active','Active'],['vacation','Vacation'],['fired','Inactive']].map(([v,l])=>`<button type="button" data-st="${v}" class="${(w.status||'active')===v?'on':''}" onclick="setWorkerStatus(${wi},'${v}')" title="${tr('Set status: {0}',{0:(l)})}"><i></i>${l}</button>`).join('')}
+        ${[['active',tr('Active')],['vacation',tr('Vacation')],['fired',tr('Inactive')]].map(([v,l])=>`<button type="button" data-st="${v}" class="${(w.status||'active')===v?'on':''}" onclick="setWorkerStatus(${wi},'${v}')" title="${tr('Set status: {0}',{0:(l)})}"><i></i>${l}</button>`).join('')}
       </div>`:''}
       ${w.docSavedAt?`<span style="font-size:11px;color:var(--text3)">נשמר: ${esc(new Date(w.docSavedAt).toLocaleDateString('en-GB'))}</span>`:''}
     </div>`:''}
     <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text2);margin-bottom:14px">
       ${w.phone?`<div><i class="ti ti-phone"></i> ${esc(w.phone)}</div>`:''}
       ${w.startDate?`<div><i class="ti ti-calendar-event"></i> ${tr('Started {0}',{0:(fmtDMY(w.startDate))})}</div>`:''}
-      ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?'Expired':'Expiring soon'} — ${expSt.deadline.toLocaleDateString('en-GB')}</div>`:''}
+      ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?tr('Expired'):tr('Expiring soon')} — ${expSt.deadline.toLocaleDateString('en-GB')}</div>`:''}
       ${workerDocId(w)?`<div><i class="ti ti-id"></i> ${esc(workerDocId(w))}</div>`:''}
       ${[[workerAddress(w),w.houseNumber].filter(Boolean).join(' '),w.city].filter(Boolean).length?`<div><i class="ti ti-map-pin"></i> ${esc([[workerAddress(w),w.houseNumber].filter(Boolean).join(' '),w.city].filter(Boolean).join(', '))}</div>`:''}
       ${w.incomeType&&INCOME_TYPE_LABELS[w.incomeType]?`<div><i class="ti ti-briefcase"></i> ${INCOME_TYPE_LABELS[w.incomeType]}</div>`:''}
@@ -3642,7 +3646,7 @@ function workerDocsSectionHtml(w){
     return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border)">
       <i class="ti ti-${d.type==='contract'?'file-certificate':d.type==='other'?'file':'id-badge-2'}" style="color:var(--text2)"></i>
       <div style="flex:1;min-width:0">
-        <div style="font-size:12px;font-weight:600">${esc(WORKER_DOC_TYPES[d.type]||'Document')}</div>
+        <div style="font-size:12px;font-weight:600">${esc(tr(WORKER_DOC_TYPES[d.type]||'Document'))}</div>
         <a href="${esc(d.url||'#')}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);word-break:break-all">${esc(d.name||'file')}</a>
         <div style="font-size:11px;color:${col}">${esc(exText)}</div>
       </div>
@@ -3671,7 +3675,7 @@ function openWorkerDocUpload(workerId){
   document.getElementById('workerDocModal').innerHTML=`
     <div class="modal-title">${tr('Add document — {0}',{0:(esc(w.name))})}</div>
     <div class="field"><label>${tr('Type')}</label>
-      <select id="wdType">${Object.entries(WORKER_DOC_TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>
+      <select id="wdType">${Object.entries(WORKER_DOC_TYPES).map(([k,v])=>`<option value="${k}">${esc(tr(v))}</option>`).join('')}</select>
     </div>
     <div class="field"><label>${tr('Expiry date (optional — reminder before it expires)')}</label><input type="date" id="wdExpiry"></div>
     <div class="field"><label>${tr('Files (several at once is fine — PDF or photos)')}</label><input type="file" id="wdFiles" multiple accept="application/pdf,.pdf,image/*,.doc,.docx"></div>
@@ -3715,7 +3719,7 @@ async function submitWorkerDocUpload(){
 async function deleteWorkerFile(workerId,docId){
   const w=workers.find(x=>x.id===workerId); if(!w) return;
   const d=(w.docs||[]).find(x=>x.id===docId); if(!d) return;
-  if(!confirm(tr('Delete {0} "{1}"?',{0:(WORKER_DOC_TYPES[d.type]||'document'),1:(d.name)}))) return;
+  if(!confirm(tr('Delete {0} "{1}"?',{0:(tr(WORKER_DOC_TYPES[d.type]||'Document')),1:(d.name)}))) return;
   w.docs=(w.docs||[]).filter(x=>x.id!==docId);
   autoSave(); render();
   if(d.fileId) gsDeleteWorkerDoc(d.fileId);
@@ -3761,7 +3765,7 @@ function renderHoursImportModal(){
     <div id="hoursImportPreview" style="font-size:12px;color:var(--text3);min-height:20px"></div>
     <div class="form-section" style="display:flex;justify-content:space-between;align-items:center;gap:8px">${tr('Enter by hand')}
       <button class="btn sm" type="button" onclick="addHoursManualRow()"><i class="ti ti-plus"></i> ${tr('Add shift')}</button></div>
-    <div id="hoursPayHint" style="font-size:11px;color:var(--text3);margin-bottom:6px">${isDailyPay(w)?'Paid by the day: a date is enough — with no times it counts as one day (08:00–16:00).':'Paid by the hour: date, in and out for each shift. (How a worker is paid is set in Accounting → Worker pay.)'}</div>
+    <div id="hoursPayHint" style="font-size:11px;color:var(--text3);margin-bottom:6px">${isDailyPay(w)?tr('Paid by the day: a date is enough — with no times it counts as one day (08:00–16:00).'):tr('Paid by the hour: date, in and out for each shift. (How a worker is paid is set in Accounting → Worker pay.)')}</div>
     <div id="hoursManualRows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
     <div class="modal-actions">
       <button class="btn accent" id="hoursImportSubmitBtn" disabled onclick="submitHoursImportBatch()"><i class="ti ti-upload"></i> ${tr('Upload for approval')}</button>
@@ -3973,7 +3977,7 @@ function openHoursExportModal(workerId){
   const now = new Date();
   const monthOptions = Array.from({length:12}, (_,i)=>{
     const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
-    return `<option value="${d.getFullYear()}-${d.getMonth()}">${esc(d.toLocaleDateString('en-GB',{month:'long',year:'numeric'}))}</option>`;
+    return `<option value="${d.getFullYear()}-${d.getMonth()}">${esc(d.toLocaleDateString(uiLocale(),{month:'long',year:'numeric'}))}</option>`;
   }).join('');
   document.getElementById('hoursExportModal').innerHTML = `
     <div class="modal-title">${tr('Export hours')}</div>
@@ -4317,7 +4321,7 @@ function exportPDF(){
         const cBg=mid?'#16202e':'#152620', cFg=mid?'#6fa8e0':'#6dd6a0', cSub=mid?'#9ec4ec':'#a7e8c8';
         return '<td style="padding:2px;text-align:center;background:'+rowBg+';border:none"><div style="background:'+cBg+';color:'+cFg+';border-radius:10px;padding:0;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:78px;font-size:15px;font-weight:500;line-height:1.15;font-family:\'DM Mono\',ui-monospace,monospace;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important">'+sh.start+'<br>'+sh.end+'<br><span style="color:'+cSub+';font-size:12px;font-weight:500;margin-top:0">'+h.toFixed(1)+'h</span></div></td>';
       }
-      return '<td style="padding:2px;text-align:center;background:'+rowBg+''+tr(';border:none">')+'<div style="background:#2a2012;color:#f5a623;border-radius:10px;padding:0;display:flex;align-items:center;justify-content:center;width:100%;height:78px;font-size:15px;font-weight:500;letter-spacing:0.3px;font-family:\'DM Sans\',sans-serif;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important">'+tr('Day off')+'</div></td>';
+      return '<td style="padding:2px;text-align:center;background:'+rowBg+';border:none"><div style="background:#2a2012;color:#f5a623;border-radius:10px;padding:0;display:flex;align-items:center;justify-content:center;width:100%;height:78px;font-size:15px;font-weight:500;letter-spacing:0.3px;font-family:\'DM Sans\',sans-serif;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important">'+tr('Day off')+'</div></td>';
     }).join('');
     const ini=w.name.slice(0,2).toUpperCase(), total=workerTotalHours(w).toFixed(1);
     return '<tr><td style="padding:4px 8px;background:'+rowBg+';border:none;width:130px;max-width:130px"><div style="display:flex;align-items:center;gap:6px;overflow:hidden"><div style="width:32px;height:32px;border-radius:50%;background:'+c.bg+';color:'+c.text+';display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0">'+ini+'</div><div style="overflow:hidden;min-width:0"><div style="font-weight:500;color:#ffffff;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(w.name)+'</div><div style="color:#8b90a0;font-size:12px;margin-top:1px;white-space:nowrap">'+total+'h / week</div></div></div></td>'+cells+'</tr>';
@@ -4325,7 +4329,7 @@ function exportPDF(){
 
   const summary=exW.map(w=>{ const c=WORKER_COLORS[w.colorIdx%8]; return '<div style="font-size:13px;background:#1e2333;padding:8px 12px;border-radius:8px;min-width:80px"><div style="color:'+c.text+';font-weight:500;font-size:13px">'+esc(w.name)+'</div><div style="color:#ffffff;font-weight:600;font-size:15px;margin-top:3px;font-family:\'DM Mono\',ui-monospace,monospace">'+workerTotalHours(w).toFixed(1)+'h</div></div>'; }).join('');
   const grand=exW.reduce((s,w)=>s+workerTotalHours(w),0).toFixed(1);
-  const genDate=new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+  const genDate=new Date().toLocaleDateString(uiLocale(),{day:'2-digit',month:'short',year:'numeric'});
   const weekLabel=fmtRange(weekStart);
 
   const html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Schedule '+weekLabel+'</title>'
@@ -4560,7 +4564,7 @@ async function submitLogin(){
     let fb;
     try{ fb = await backend.login(username, password); }
     catch(e){ errEl.textContent = tr('No network — try again'); return; }
-    if(!fb || fb.error){ errEl.textContent = (fb && fb.error) || tr('Could not sign in'); return; }
+    if(!fb || fb.error){ errEl.textContent = tr((fb&&fb.error)||'') || tr('Could not sign in'); return; }
     // A supplier login belongs in the supplier portal: hand the session over
     // (same origin, same Firebase sign-in) and go there.
     if(fb.role === 'supplier'){ goToSupplierPortal(fb); return; }
@@ -4713,7 +4717,7 @@ function renderAccountControl(s){
       : ((profile && profile.companyName) || '');
     // The person's name (fullName), the login only while it has none; a
     // tap on it changes the name (editMyName).
-    labelHost.innerHTML = '<span onclick="editMyName()" style="cursor:pointer" title="Change your name"><i class="ti ti-user"></i> ' + esc(s.fullName || s.username || '') + '</span>'
+    labelHost.innerHTML = '<span onclick="editMyName()" style="cursor:pointer" title="'+esc(tr('Change your name'))+'"><i class="ti ti-user"></i> ' + esc(s.fullName || s.username || '') + '</span>'
       + (firm ? ' · <span>' + esc(firm) + '</span>' : '');
   }
   if(!host) return;
@@ -4793,7 +4797,7 @@ async function renderFirmsList(targetId){
   try{
     const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'listTenants', ...gsAuth() }) });
     const json = await res.json();
-    if(!json || json.error){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Load failed')+'</div>'; return; }
+    if(!json || json.error){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">'+esc(tr((json&&json.error)||'Load failed'))+'</div>'; return; }
     const tenants = json.tenants || [];
     saveFirmsCache(tenants);
     renderFirmsRows(listEl, tenants);
@@ -4811,7 +4815,7 @@ async function renderOwnFirmCard(listEl){
     const addr = [[p.street, p.streetNumber].filter(Boolean).join(' '), p.city].filter(Boolean).join(', ');
     const row = (k, v) => `<div style="display:flex;gap:8px;font-size:13px"><span style="color:var(--text3);min-width:130px">${k}</span><span>${v ? esc(v) : '<span style="color:#ffb020">—</span>'}</span></div>`;
     listEl.innerHTML = `<div class="tap-edit" onclick="if(isPlainTap(event,this))openMyFirmForm()" style="padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:6px">
-      ${row('Company name', p.companyName)}${row('מספר תיק ניכויים', p.deductionsFileNumber)}${row('Phone', p.phone)}${row('Address', addr)}
+      ${row(tr('Company name'), p.companyName)}${row('מספר תיק ניכויים', p.deductionsFileNumber)}${row(tr('Phone'), p.phone)}${row(tr('Address'), addr)}
       ${missing.length ? `<div style="font-size:12px;color:#ffb020"><i class="ti ti-alert-triangle"></i> ${tr('Empty in Form 101: {0}',{0:(esc(missing.join(', ')))})}</div>` : `<div style="font-size:12px;color:var(--green)"><i class="ti ti-check"></i> ${tr('Everything Form 101 needs is filled in')}</div>`}
     </div>`;
   };
@@ -4911,7 +4915,9 @@ function prefetchAdminUsers(){
     }
   }).catch(()=>{});
 }
-const ADMIN_PANE_SUBTITLES = {
+// How a login's role reads in the Users list (through tr()).
+const USER_ROLE_LABELS = {tenant_admin:'owner', superadmin:'super-admin', staff:'staff', hr:'HR', supplier:'supplier'};
+const ADMIN_PANE_SUBTITLES = { // shown through tr()
   punchlog: 'Punch log — view, edit and export all attendance records',
   firms: 'Firm details — the employer block printed on every Form 101',
   users: 'Staff, HR and supplier logins for this firm',
@@ -4935,7 +4941,7 @@ function switchAdminPane(pane){
   const actions = document.getElementById('adminHeaderActions');
   if(actions) actions.style.display = pane==='punchlog' ? 'flex' : 'none';
   const sub = document.getElementById('adminPageSub');
-  if(sub) sub.textContent = ADMIN_PANE_SUBTITLES[pane] || tr('Choose a section');
+  if(sub) sub.textContent = ADMIN_PANE_SUBTITLES[pane] ? tr(ADMIN_PANE_SUBTITLES[pane]) : tr('Choose a section');
   if(pane==='punchlog'){ if(_adminView==='clients') renderClientLogs(); else renderAdmin(); }
   else if(pane==='firms') renderFirmsList('adminFirmsList');
   else if(pane==='errors') loadErrorsList('adminErrorsList');
@@ -4972,7 +4978,7 @@ async function renderAdminUsers(){
   else el.innerHTML = '<div style="color:var(--text2);font-size:13px">'+tr('Loading…')+'</div>';
   try{
     const json = await fetchAdminUsers();
-    if(!json || json.error){ if(!cached) el.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Load failed')+'</div>'; return; }
+    if(!json || json.error){ if(!cached) el.innerHTML = '<div style="color:#ff6b78">'+esc(tr((json&&json.error)||'Load failed'))+'</div>'; return; }
     const users = (json.users||[]).filter(u => u.tenantId === tenantId);
     saveAdminCache(cacheKey, users);
     renderAdminUsersRows(el, users);
@@ -4986,7 +4992,7 @@ function renderAdminUsersRows(el, users){
       const hrLine = u.role!=='hr' ? '' : `<div style="font-size:12px;color:var(--text2)">${tr('{0} workers{1}',{0:(hrWorkerCount(u.id)),1:(u.ownOnly===false?' · sees all workers':'')})}</div>`;
       return `<div class="tap-edit" onclick="if(isPlainTap(event,this))openEditUserForm('${esc(u.id)}')" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);${u.active===false?'opacity:0.55':''}">
         <div>
-          <div style="font-weight:600">${esc(u.fullName||u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(u.role)})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">'+tr('inactive')+'</span>':''}</div>
+          <div style="font-weight:600">${esc(u.fullName||u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(tr(USER_ROLE_LABELS[u.role]||u.role))})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">'+tr('inactive')+'</span>':''}</div>
           <div style="font-size:11px;color:var(--text3)">${tr('login: {0}{1}',{0:(esc(u.username)),1:(u.phone?' · '+esc(u.phone):'')})}</div>
           ${hrLine}<div style="font-size:12px;color:var(--text2)">${u.role==='supplier' ? (sup?esc(sup.name):'—') : esc(permsLabel)}</div>
         </div>
@@ -5111,7 +5117,7 @@ async function submitUserForm(){
       const password = document.getElementById('userFormPassword').value;
       if(password){
         const pr = await (await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'resetUserPassword', ...gsAuth(), id: __editingUserId, password }) })).json();
-        if(!pr || pr.error){ errEl.textContent = (pr&&pr.error)||tr('Password not changed'); return; }
+        if(!pr || pr.error){ errEl.textContent = tr((pr&&pr.error)||'') ||tr('Password not changed'); return; }
       }
       // Rights are sent as they are in the form; the server ends the user's
       // sessions only when they really changed.
@@ -5121,7 +5127,7 @@ async function submitUserForm(){
       if(!__editingAdminRow){ if(role==='supplier') body.supplierId = supplierId; else body.permissions = permissions; }
       const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(body) });
       const json = await res.json();
-      if(!json || json.error){ errEl.textContent = (json&&json.error)||tr('Save failed'); return; }
+      if(!json || json.error){ errEl.textContent = tr((json&&json.error)||'') ||tr('Save failed'); return; }
       // No longer an HR: its workers are no longer assigned to it.
       if(__editingUserOrigRole==='hr' && role!=='hr'){
         const ids = workers.filter(w => w.hrId===__editingUserId).map(w => w.id);
@@ -5137,7 +5143,7 @@ async function submitUserForm(){
       if(role==='supplier') body.supplierId = supplierId; else body.permissions = permissions;
       const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(body) });
       const json = await res.json();
-      if(!json || json.error){ errEl.textContent = (json&&json.error)||tr('Create failed'); return; }
+      if(!json || json.error){ errEl.textContent = tr((json&&json.error)||'') ||tr('Create failed'); return; }
     }
     closeModal('userFormOverlay');
     showToast(tr('Saved'));
@@ -5373,10 +5379,10 @@ let __errorsRowsByTarget = {};
 // month (this one and the 11 before it). Copy all and Print take only that
 // period's rows.
 function logPeriodOptions(){
-  const now=new Date(), opts=[['30d','Last 30 days'],['7d','Last 7 days']];
+  const now=new Date(), opts=[['30d',tr('Last 30 days')],['7d',tr('Last 7 days')]];
   for(let i=0;i<12;i++){
     const d=new Date(now.getFullYear(),now.getMonth()-i,1);
-    opts.push(['m:'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),d.toLocaleDateString('en-GB',{month:'long',year:'numeric'})]);
+    opts.push(['m:'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),d.toLocaleDateString(uiLocale(),{month:'long',year:'numeric'})]);
   }
   return opts;
 }
@@ -5396,7 +5402,7 @@ function logPeriodRange(v){
 }
 function logPeriodQuery(pr){ return '&from='+encodeURIComponent(pr.from)+(pr.to?'&to='+encodeURIComponent(pr.to):''); }
 // Short date-time for the compact rows: 04.10 10:18.
-function _shortWhen(w){ const d=new Date(w); return isNaN(d)?'':d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit'}).replace('/','.')+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); }
+function _shortWhen(w){ const d=new Date(w); return isNaN(d)?'':d.toLocaleDateString(uiLocale(),{day:'2-digit',month:'2-digit'}).replace('/','.')+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); }
 let __errorsPeriod={};
 async function loadErrorsList(targetId){
   targetId = targetId || 'errorsList';
@@ -5412,7 +5418,7 @@ async function loadErrorsList(targetId){
   try{
     const res = await fetch(API_URL + '?action=loadErrors' + gsAuthQuery() + (pr ? logPeriodQuery(pr) : ''));
     const json = await res.json();
-    if(!json || json.error){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">'+esc((json&&json.error)||'Load failed')+'</div>'; return; }
+    if(!json || json.error){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">'+esc(tr((json&&json.error)||'Load failed'))+'</div>'; return; }
     const rows = json.rows || [];
     saveAdminCache(cacheKey, rows);
     renderErrorsRows(listEl, targetId, rows);
@@ -5461,14 +5467,14 @@ async function loadTimingsPane(){
   try{
     const res=await fetch(API_URL+'?action=loadTimings'+gsAuthQuery()+logPeriodQuery(pr));
     const json=await res.json();
-    if(!json||json.error){ if(!cached) el.innerHTML='<div style="color:#ff6b78">'+esc((json&&json.error)||'Load failed')+'</div>'; return; }
+    if(!json||json.error){ if(!cached) el.innerHTML='<div style="color:#ff6b78">'+esc(tr((json&&json.error)||'Load failed'))+'</div>'; return; }
     saveAdminCache(cacheKey,json.rows||[]);
     renderTimingsPane(el,json.rows||[]);
   }catch(e){ if(!cached) el.innerHTML='<div style="color:#ff6b78">'+tr('Network error')+'</div>'; }
 }
 const TIMING_KIND_LABEL={login:'Login → fresh data',open:'App open',scan:'Scan (camera)',scanFiles:'Scan (files)'};
 // Slow data calls arrive as kind "gs:<action>" (see the fetch wrapper).
-function timingKindLabel(k){ return TIMING_KIND_LABEL[k] || (String(k).indexOf('gs:')===0 ? 'Slow call: '+k.slice(3) : k); }
+function timingKindLabel(k){ return TIMING_KIND_LABEL[k] ? tr(TIMING_KIND_LABEL[k]) : (String(k).indexOf('gs:')===0 ? tr('Slow call: {0}',{0:k.slice(3)}) : k); }
 let __timingsRows=[], __timingsSummaryText='', __timingsSummary=[];
 function _timingFirmName(id){ const firms=(__firmsCache&&__firmsCache.length)?__firmsCache:(loadFirmsCache()||[]); const t=firms.find(x=>x.tenantId===id); return t?(t.companyName||id):(id||'—'); }
 // A slow AI call (gs:ai…) carries ai_read's _meta: the time spent at
@@ -5718,7 +5724,7 @@ async function submitEditFirm(){
         action:'createUser', ...gsAuth(), username, password, ownerName: get('firmEditOwnerName'), ...profileFields,
       })});
       const json = await res.json();
-      if(!json || json.error){ errEl.textContent = (json && json.error) || tr('Could not create the firm'); return; }
+      if(!json || json.error){ errEl.textContent = tr((json&&json.error)||'') || tr('Could not create the firm'); return; }
       closeModal('editFirmOverlay');
       showToast(tr('Firm created'));
       renderFirmsList(__firmsListTarget);
@@ -5735,7 +5741,7 @@ async function submitEditFirm(){
       ...profileFields,
     })});
     const json = await res.json();
-    if(!json || json.error){ errEl.textContent = (json && json.error) || tr('Could not save'); return; }
+    if(!json || json.error){ errEl.textContent = tr((json&&json.error)||'') || tr('Could not save'); return; }
     closeModal('editFirmOverlay');
     showToast(tr('Firm details saved'));
     cacheTenantProfile(__editingFirmTenantId, json.profile);
@@ -6151,7 +6157,7 @@ function renderDashboard(){
   const now     = new Date();
   const todayIdx= now.getDay(); // 0=Sun
   const todayStr= now.toDateString();
-  document.getElementById('dashTitle').textContent = tr('Today — {0}, {1} {2}',{0:(['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][todayIdx]),1:(now.getDate()),2:(['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][now.getMonth()])});
+  document.getElementById('dashTitle').textContent = tr('Today — {0}',{0:now.toLocaleDateString(uiLocale(),{weekday:'long',day:'numeric',month:'short'})});
   document.getElementById('dashSub').textContent = tr('Real-time attendance overview');
 
   const log     = getPunchLog();
@@ -6226,7 +6232,7 @@ function renderDashboard(){
     ...workers.map(w=>({w, st:workerExpiryStatus(w)})).filter(x=>x.st)
       .map(({w,st})=>({w, overdue:st.level==='overdue', label:st.level==='overdue'?'Expired':'Expiring soon', date:st.deadline})),
     ...workers.flatMap(w=>workerDocExpiries(w).map(x=>({w, overdue:x.level==='error',
-      label:(WORKER_DOC_TYPES[x.doc.type]||'Document')+(x.level==='error'?' expired':' expires'), date:x.date}))),
+      label:tr(x.level==='error'?'{0} expired':'{0} expires',{0:tr(WORKER_DOC_TYPES[x.doc.type]||'Document')}).replace(/\s*\{1\}$/,''), date:x.date}))),
   ];
   const expiringWrap = document.getElementById('dashExpiringWrap');
   expiringWrap.style.display = expiring.length ? 'block' : 'none';
@@ -6263,7 +6269,7 @@ function renderDashboard(){
           <div style="font-size:13px;font-weight:600">${esc(e.workerName)}</div>
           <div style="font-size:11px;color:var(--text2)">${esc(punchSite(e))}</div>
         </div>
-        <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;${e.type==='in'?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${e.type==='in'?'IN':'OUT'}</span>
+        <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;${e.type==='in'?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${e.type==='in'?tr('IN'):tr('OUT')}</span>
         <span style="font-size:13px;font-family:monospace;color:var(--text);min-width:42px;text-align:right">${e.time}</span>
         ${e.gpsSuspicious?'<span title="GPS suspicious" style="color:var(--amber);font-size:12px"><i class="ti ti-alert-triangle"></i></span>':''}
       </div>`;
@@ -7120,7 +7126,7 @@ function salaryExportPeriodOptions(){
   const now=new Date(), opts=[['week',tr(SALARY_PERIOD_LABELS.week)],['month',tr(SALARY_PERIOD_LABELS.month)]];
   for(let i=1;i<=12;i++){
     const d=new Date(now.getFullYear(), now.getMonth()-i, 1);
-    opts.push(['m:'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'), d.toLocaleDateString(I18N_LANG==='en'?'en-GB':I18N_LANG,{month:'long',year:'numeric'})]);
+    opts.push(['m:'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'), d.toLocaleDateString(uiLocale(),{month:'long',year:'numeric'})]);
   }
   opts.push(['all',tr(SALARY_PERIOD_LABELS.all)]);
   return opts;
@@ -7248,7 +7254,7 @@ function exportShiftsDetail(workerId, year, month, format){
   if(format==='excel' && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportShiftsDetail(workerId, year, month, format)).catch(()=>showToast(tr('Excel library not loaded'))); return; }
   const w = workers.find(x=>x.id===workerId);
   const shifts = getWorkerMonthShifts(workerId, year, month);
-  const monthLabel = new Date(year, month, 1).toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  const monthLabel = new Date(year, month, 1).toLocaleDateString(uiLocale(),{month:'long',year:'numeric'});
   const totalHours = shifts.reduce((s,x)=>s+x.hours,0);
   const fname = 'hours-'+(w?w.name.replace(/\s+/g,'_'):workerId)+'-'+year+'-'+String(month+1).padStart(2,'0');
   if(format==='excel'){
@@ -7410,7 +7416,7 @@ function renderClientLogs(){
         </div>
         ${recent.length?`<div style="display:flex;flex-direction:column;gap:3px">${recent.map(e=>`
           <div class="tap-edit" onclick="if(isPlainTap(event,this))editPunchEntry(${e.id})" style="display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 8px;border-radius:5px;background:var(--bg2)">
-            <span style="font-weight:700;padding:2px 8px;border-radius:10px;font-size:11px;${e.type==='in'?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${e.type==='in'?'IN':'OUT'}</span>
+            <span style="font-weight:700;padding:2px 8px;border-radius:10px;font-size:11px;${e.type==='in'?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${e.type==='in'?tr('IN'):tr('OUT')}</span>
             <span style="font-family:monospace;color:var(--text)">${e.time||'--'}</span>
             <span style="color:var(--text2)">${new Date(e.ts).toLocaleDateString('en-GB')}</span>
             ${(()=>{const s=punchSite(e);return s?`<span style="color:var(--text3);font-size:11px"><i class="ti ti-map-pin"></i> ${esc(s)}</span>`:'';})()}
@@ -7587,7 +7593,7 @@ function renderAdmin(){
     return `<tr class="tap-edit" onclick="if(isPlainTap(event,this))editPunchEntry(${e.id})" style="border-bottom:1px solid var(--border);${i%2===0?'background:rgba(255,255,255,0.01)':''}">
       <td style="padding:10px 12px;white-space:nowrap"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><span style="font-size:13px;font-weight:600">${esc(e.workerName)||'Unknown'}</span></div></td>
       <td style="padding:10px 12px">${clientBadge||'<span style="color:var(--text3);font-size:12px">—</span>'}</td>
-      <td style="padding:10px 12px"><span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;${e.type==='in'?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${e.type==='in'?'IN':'OUT'}</span></td>
+      <td style="padding:10px 12px"><span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;${e.type==='in'?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${e.type==='in'?tr('IN'):tr('OUT')}</span></td>
       <td style="padding:10px 12px;font-size:13px;font-family:monospace;color:var(--text)">${e.time||'--'}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2);white-space:nowrap">${dateStr}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2);white-space:nowrap">${esc(punchSite(e))||'--'}</td>
@@ -7736,7 +7742,7 @@ function clearPunchLog(){
   const counts={};
   log.forEach(e=>{ const k=punchMonthKey(e); if(k) counts[k]=(counts[k]||0)+1; });
   const months=Object.keys(counts).sort().reverse();
-  const label=k=>{ const [y,m]=k.split('-').map(Number); return new Date(y,m-1,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'}); };
+  const label=k=>{ const [y,m]=k.split('-').map(Number); return new Date(y,m-1,1).toLocaleDateString(uiLocale(),{month:'long',year:'numeric'}); };
   document.getElementById('clearLogModal').innerHTML = `
     <div class="modal-title">${tr('Clear punch log')}</div>
     <div style="font-size:13px;color:var(--text2);margin-bottom:12px">${tr('Selected months are deleted permanently from the database (including the archive). A CSV backup of the deleted records is downloaded first.')}</div>
@@ -7793,7 +7799,8 @@ async function submitClearPunchLog(){
 }
 
 // --- Toast ------------------------------------------------------------------------------------------------------------------------------------
-function showToast(msg,dur){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),dur||2500); }
+// Any toast text goes through tr(): a server message in the dictionary shows translated.
+function showToast(msg,dur){ const t=document.getElementById('toast'); t.textContent=typeof msg==='string'?tr(msg):msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),dur||2500); }
 // ── New version check (2026-10-04; the same code in schedule-manager.html,
 // worker-punch.html and supplier-portal.html). An app left open — a PWA in
 // the background — keeps running the code it loaded, even after a deploy.
@@ -8668,7 +8675,7 @@ function ensureInstallButton(){
   const host=document.querySelector('.titlebar-actions'); if(!host) return;
   const btn=document.createElement('button');
   btn.id='installBtn'; btn.className='btn sm';
-  btn.innerHTML='<i class="ti ti-download" style="color:#4f8ef7"></i> Install';
+  btn.innerHTML='<i class="ti ti-download" style="color:#4f8ef7"></i> '+esc(tr('Install'));
   btn.onclick=async()=>{
     if(_installPrompt){
       _installPrompt.prompt();

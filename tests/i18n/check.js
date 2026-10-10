@@ -12,7 +12,7 @@ const fs = require('fs'), path = require('path');
 const ROOT = path.join(__dirname, '..', '..');
 const PAGES = ['schedule-manager.html', 'supplier-portal.html', 'worker-punch.html'];
 const COMPLETE = ['he']; // languages that must have every text; the others may be partial
-const unq = s => s.replace(/\\(['"`\\])/g, '$1');
+const unq = s => s.replace(/\\n/g, '\n').replace(/\\(['"`\\])/g, '$1');
 const keys = new Map(); // text → first page:line
 const add = (k, where) => { if(k && !keys.has(k)) keys.set(k, where); };
 let source = '';
@@ -25,6 +25,11 @@ for (const page of PAGES) {
   for (const m of text.matchAll(/\btr\(\s*(['"`])((?:\\.|(?!\1)[^\\])*)\1/g)) add(unq(m[2]), lineOf(m.index));
   for (const m of text.matchAll(/data-i18n(?:-placeholder|-title)?="([^"]+)"/g)) add(m[1], lineOf(m.index));
   for (const m of text.matchAll(/<[^>]*\bdata-i18n(?=[\s>])[^>]*>([^<]+)</g)) add(m[1].trim(), lineOf(m.index));
+}
+// Messages the server and the data layer return are shown through tr() too
+// (showToast, form error lines): their texts count as used.
+for (const f of ['firestore-backend.js', ...fs.readdirSync(path.join(ROOT, 'functions-auth')).filter(f => f.endsWith('.py')).map(f => 'functions-auth/' + f)]) {
+  source += fs.readFileSync(path.join(ROOT, f), 'utf8');
 }
 const langs = process.argv[2] ? [process.argv[2]] : fs.readdirSync(path.join(ROOT, 'i18n')).filter(f => f.endsWith('.json')).map(f => f.slice(0, -5));
 let failed = false;
