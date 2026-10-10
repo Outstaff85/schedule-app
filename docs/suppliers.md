@@ -8,7 +8,7 @@ The global `suppliers` array. It is saved with the schedule; each supplier is on
 
 `{id, name, color, phone, bank, bankBranch, accountNumber, companyNumber}` — `companyNumber` is the ח.פ. All of them are plain text, so leading zeros are kept. An older `notes` field may exist but is not shown.
 
-A worker links to **one** supplier through `w.supplierId`; `w.supplierRates[supplierId].rate` overrides the supplier's commission for that worker.
+A worker links to **one** supplier through `w.supplierId` (set in the worker modal, or by the owner / super-admin in Admin → Users, a supplier login's **Workers** section: list, Unassign, Add workers — [admin.md](admin.md)); `w.supplierRates[supplierId].rate` overrides the supplier's commission for that worker.
 
 ## Suppliers tab (`#sectionSuppliers`)
 
