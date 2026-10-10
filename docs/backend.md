@@ -115,11 +115,11 @@ Uploads do not go through here: the browser writes to Storage directly (`uploadW
 See [punch.md](punch.md) and [supplier-portal.md](supplier-portal.md) for the pages.
 
 - **`punch`:** the token is looked up by a collection-group query on `workers.token`; none or two matches → "Unknown worker link".
-  - `load` → `{workers:[{id, name, colorIdx, token, clientIds}], clients:[{id, name, object, lat, lng, radius}]}` — only this worker and their sites.
+  - `load` → `{workers:[{id, name, colorIdx, token, clientIds}], clients:[{id, name, object, lat, lng, radius}], language}` — only this worker and their sites, plus the firm's language (`firm_language()`: the profile's `language`, `en` when unset).
   - `savePunch` — only for this worker; type `in`/`out`; the punch id may not contain `/`; an existing document of another worker is never overwritten. Stored fields: `workerName, type, time, date, site, dist, gpsAccuracy, gpsSuspicious, gpsWarnings (≤20, clipped), notes, clientId`, plus `id, workerId, ts, day, archived:false`, and `hrId` from the worker document (never from the page). `day` comes from `date` (`dd/MM/yyyy`) when sent, otherwise from `ts` in Israel time (the punch page sends no date). `set()`, so a re-sent punch is the same document. The page's `lat`/`lng`/`gpsVerified`… are not kept.
   - `savePushSubscription`, `logError` (no token needed).
 - **`supplier`:** role `supplier` with `tenantId` and `supplierId` in the claims, else "Supplier role only".
-  - `loadSchedule` → own workers through `strip_worker` (the `SUPPLIER_WORKER_FIELDS` allow-list + `supplierRate` and `supplierDayRate`; never a wage, the worker's punch-link token or a file link), clients as `{id, name, object}`, `suppliers: []`;
+  - `loadSchedule` → own workers through `strip_worker` (the `SUPPLIER_WORKER_FIELDS` allow-list + `supplierRate` and `supplierDayRate`; never a wage, the worker's punch-link token or a file link), clients as `{id, name, object}`, `suppliers: []`, and the firm's `language`;
   - `loadPunchLog` → own workers' punches of the last 13 months with `id, workerId, workerName, type, time, date, site, clientId, ts` (`workerId in` queries of 30);
   - `supplierAddWorker` / `supplierUpdateWorker` / `supplierDeleteWorker` with the `SUPPLIER_EDITABLE` list;
   - `supplierSubmitHours` (a pending hours batch for an own worker) and `supplierListHours` (its batches with their status) ([supplier-portal.md](supplier-portal.md)).

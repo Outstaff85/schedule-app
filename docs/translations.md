@@ -14,7 +14,9 @@ The language is **one per firm**: the firm profile field `language` (`en` / `he`
 
 Form 101 is outside this system: its labels in the worker modal and the firm form, and the PDF, are always Hebrew ([form101.md](form101.md)).
 
-## In the code (`schedule-manager.html`)
+## In the code
+
+The manager app, the supplier portal and the worker punch page each hold the same core (`I18N_LANGS`, `tr`, `applyI18n`, `uiLocale`, `loadI18n` — duplicated on purpose, keep the copies the same) and their own `redrawForLanguage()`.
 
 - **`tr(text, params)`** returns `text` in the firm's language: `I18N[text]`, else the English `text` itself. `{name}` placeholders are filled from `params`, e.g. `tr('{n} shift(s) approved', {n: 3})`. The translation keeps the placeholder and may move it.
   - In HTML built in JS, a translated text goes into the page like any other text: `${esc(tr('…'))}`, or `${tr('…')}` when it holds no data.
@@ -30,7 +32,9 @@ Form 101 is outside this system: its labels in the worker modal and the firm for
   - a changed firm language (saved here, or seen in a refreshed profile, `cacheTenantProfile`) switches at once.
 - **Dates** in translated parts use the language's locale, e.g. the month names of the salary periods (`toLocaleDateString(I18N_LANG)`).
 
-Done so far: **the whole manager app** (`schedule-manager.html`) — every tab, modal, toast, confirm, form error, help text and export. Not yet: the supplier portal and the worker punch page (next stage).
+All three pages are translated: the manager app (every tab, modal, toast, confirm, form error, help text and export), the supplier portal and the worker punch page.
+
+**Supplier portal and punch page.** They have no firm profile to read, so the server's answer names the firm's language: `loadSchedule` (supplier function) and the punch `load` return `language` (`firm_language()` in `functions-auth/portal.py`). The page keeps it on the device (`localStorage['supplierPortal_lang']` / `['punch_lang']`, read by `storedLanguage()`), loads that dictionary before it draws (`loadI18n(storedLanguage())` then `gateApp()` / `init()`), and `useFirmLanguage(lang)` switches and redraws when the server names another one. So the very first open of a page draws in English and switches once the server answers; later opens draw in the firm's language at once. Data stays as it is: the GPS diagnostics stored with a punch (`gpsWarnings`), the default site name `Work Site` kept in a punch's `site`, export file names.
 
 More rules the manager app follows:
 - **Dates:** month and weekday names use `uiLocale()` (`en-GB` / `he-IL` / `ru-RU`); numeric dates stay `dd/mm/yyyy` (they are also data, e.g. a punch's `date`).
@@ -46,7 +50,6 @@ More rules the manager app follows:
 - Never translate, or wrap in `tr()`:
   - data (worker, client, supplier and bank names);
   - code, ids, export file names, comments, docs;
-  - shared messages built outside a translated screen (the shift warnings of `analyzeDayPunches` stay English until they are wrapped).
 - In a Hebrew value, a quote mark inside a word is the gershayim `״` or the geresh `׳`, never `"` or `'`.
 - Only `i18n/ru.json` may hold Russian text (CLAUDE.md → UI text language).
 
@@ -78,6 +81,6 @@ Keep using the same words for the same things:
 
 ## Adding a language
 
-1. Add it to `I18N_LANGS` in `schedule-manager.html` (code and the language's own name) and to `LANGUAGES` in `functions-auth/core.py`.
+1. Add it to `I18N_LANGS` in all three pages (`schedule-manager.html`, `supplier-portal.html`, `worker-punch.html`: code and the language's own name) and to `LANGUAGES` in `functions-auth/core.py`.
 2. Create `i18n/<code>.json`. Copy the keys from `he.json` and translate the values; until then `{}` shows English.
 3. When it is complete, add it to `COMPLETE` in `tests/i18n/check.js`.

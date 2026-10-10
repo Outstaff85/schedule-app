@@ -7258,15 +7258,15 @@ function exportShiftsDetail(workerId, year, month, format){
   const totalHours = shifts.reduce((s,x)=>s+x.hours,0);
   const fname = 'hours-'+(w?w.name.replace(/\s+/g,'_'):workerId)+'-'+year+'-'+String(month+1).padStart(2,'0');
   if(format==='excel'){
-    const aoa=[['Date','In','Out','Hours']];
+    const aoa=[['Date','In','Out','Hours'].map(h=>tr(h))];
     shifts.forEach(s=>aoa.push([s.date.toLocaleDateString('en-GB'), s.inTime, s.outTime, s.hours.toFixed(2)]));
-    aoa.push(['','','Total', totalHours.toFixed(2)]);
+    aoa.push(['','',tr('Total'), totalHours.toFixed(2)]);
     const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Hours');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), tr('Hours'));
     XLSX.writeFile(wb, fname+'.xlsx');
   } else {
     const rowsHtml = shifts.map(s=>`<tr><td>${s.date.toLocaleDateString('en-GB')}</td><td>${esc(s.inTime)}</td><td>${esc(s.outTime)}</td><td>${s.hours.toFixed(2)}</td></tr>`).join('');
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Hours — ${esc(w?w.name:'')}</title>
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(tr('Hours'))} — ${esc(w?w.name:'')}</title>
       <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px;text-align:left}th{background:#f0f0f0}tfoot td{font-weight:bold}</style>
       </head><body><h2>${esc(w?w.name:'')} — ${esc(monthLabel)}</h2>
       <table><thead><tr><th>${tr('Date')}</th><th>${tr('In')}</th><th>${tr('Out')}</th><th>${tr('Hours')}</th></tr></thead>
