@@ -52,7 +52,7 @@ A weekly roster.
   - `renderGanttHeader()` / `renderGanttBody()` — a 170 px name column plus 7 day columns; a bar that ends at or before its start is drawn as `midnight`. Each row is draggable (`dragStart` / `dragOver` / `doDrop` / `dragEnd`); dropping reorders `workers` and saves;
   - a day cell → `openEditShift(wi, di)`: work/off, start and end, hours badge (`updateBadge`); `saveShift` writes it.
 - **Export menu** (current week, visible workers):
-  - `exportExcel()` — SheetJS from the CDN; a Schedule sheet and a Statistics sheet with Clients and Supplier columns;
+  - `exportExcel()` — SheetJS from the CDN, loaded only when an Excel export or import first needs it (`loadXlsx()`, also in the supplier portal; the page itself never loads it); a Schedule sheet and a Statistics sheet with Clients and Supplier columns;
   - `exportPDF()` — a print page in a new window;
   - `exportJSON()` — workers and clients.
 
@@ -89,6 +89,7 @@ Where it is used:
 
 - **Session:** `localStorage.schedMgr_session` (`SESSION_KEY`). It only remembers who is signed in; the real authentication is the Firebase sign-in (the rules and the functions check the Firebase ID token). `getSession()` returns `null` and clears the session when it has no `uid` (a session from before the move off Apps Script has none, so that user logs in once more).
 - **Session fields:** `uid` (the Firebase user), `role` (`superadmin` / `tenant_admin` / `staff` / `hr`), `tenantId`, `username`, `tenantProfile`, `permissions`, `supplierId`, `ownOnly` and `fullName` (HR), `viewingTenantId` (and `viewingTenantName` / `viewingTenantProfile` for a super-admin).
+- **Language:** before `gateApp`, `loadI18n(firmLanguage())` loads the firm's dictionary and `applyI18n()` translates the static texts ([translations.md](translations.md)).
 - **`gateApp(runInitApp)`** decides the screen:
   1. No session → `#loginScreen`, and a warm-up `{ping:true}` to the `login` function; its time is kept in `window.__pingMs`.
   2. A super-admin with no firm picked → `#firmsScreen` (`renderFirmsList()`).

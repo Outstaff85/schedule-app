@@ -8,7 +8,7 @@ Project `schedule-odinson`; Firestore and the `functions-auth` functions in **eu
 
 | Path | Content | Written by |
 |---|---|---|
-| `tenants/{t}` | firm profile: `companyName, deductionsFileNumber, phone, street, streetNumber, city`, `createdAt`, `active`, `workerCount`, `clientCount` | `users_admin`; a `tenant_admin` may update only the profile fields |
+| `tenants/{t}` | firm profile: `companyName, deductionsFileNumber, phone, street, streetNumber, city`, `language` (`en` / `he` / `ru`, [translations.md](translations.md)), `createdAt`, `active`, `workerCount`, `clientCount` | `users_admin`; a `tenant_admin` may update only the profile fields |
 | `tenants/{t}/workers/{id}` | the worker object exactly as the app keeps it, plus `sortIndex` (list position) and `docKeys` (its document numbers in standard form — `docKeysOf` / `doc_keys`, for `checkWorkerDoc`; not kept in the app's copy); `hrId` = the HR login it belongs to | the app (`saveSchedule`), the `supplier` function |
 | `tenants/{t}/clients/{id}`, `…/suppliers/{id}` | same, with `sortIndex` | the app |
 | `tenants/{t}/settings/schedule` | `weekStart`, `savedAt` — copied from the sheets by the old migration; nothing writes it now | — |

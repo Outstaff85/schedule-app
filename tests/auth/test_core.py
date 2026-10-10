@@ -338,6 +338,11 @@ def test_update_and_load_tenant_profile():
     assert core.load_tenant_profile(DB, STAFF1, {})["profile"]["phone"] == "0509999999"
     assert core.load_tenant_profile(DB, SUPER, {})["profile"] is None
     assert core.run_action(DB, ADMIN1, {"action": "loadTenantProfile"}, Revokes())["profile"]["companyName"] == "Firm 1b"
+    # The firm's language: en / he / ru; anything else is English.
+    assert core.load_tenant_profile(DB, STAFF1, {})["profile"]["language"] == "en"
+    assert core.update_tenant(DB, ADMIN1, {"language": "he"})["profile"]["language"] == "he"
+    assert core.update_tenant(DB, ADMIN1, {"language": "ar"})["profile"]["language"] == "en"
+    assert DB.collection("tenants").document(T1).get().get("language") == "en"
 
 
 def test_http_superadmin_acts_on_the_viewed_firm():

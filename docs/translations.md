@@ -1,190 +1,76 @@
-# Translations (English → Hebrew)
+# Translations
 
-The glossary of every Hebrew string the app uses outside Form 101, and how to translate another part of the app the same way. Use these words again when you translate a new screen, so the same thing has one name everywhere.
+How the app shows its UI in the firm's language. The code is always English. Translations live only in dictionaries, `i18n/<lang>.json`; the code never holds a translated text.
 
-Which parts of the UI are in which language is the rule in [CLAUDE.md](../CLAUDE.md) → UI text language. At the moment the **Accounting tab** is in Hebrew (2026-10-06). Form 101 has its own Hebrew labels in the worker modal and the firm profile ([form101.md](form101.md)).
+## Languages
 
-## How to translate a screen
-
-1. **Only the words change.** Keep the app's layout template: left to right, no `dir="rtl"`, no swapped `text-align`, the same columns and buttons in the same places. The browser shows each Hebrew string right to left by itself.
-2. **Take the words from this glossary.** A word that isn't here yet is added to the right section below, in the same change.
-3. **Translate what the user reads:**
-   - labels, headers, buttons, placeholders, `title` tooltips;
-   - empty-state lines, toasts, `confirm()` texts;
-   - help (ⓘ) texts;
-   - export headers, sheet names and totals.
-4. **Don't translate:**
-   - code, ids, data keys, file names of exports, comments, docs;
-   - values that are data: worker, client and supplier names, bank names;
-   - messages from functions shared with English screens, such as the shift warnings of `analyzeDayPunches`. A shared function stays English until every screen that uses it is translated.
-5. **Keep the shared rules:**
-   - every `${…}` still goes through `esc()`;
-   - a quote inside a Hebrew word in a JS string is the gershayim `״` or the geresh `׳`, never a raw `"` or `'`, so string quoting doesn't break.
-6. **Update the tests that read the text:** the e2e checks match visible strings. Update the docs page of that screen, and the language rule in CLAUDE.md if a whole tab changes language.
-
-## Units and short forms
-
-| English | Hebrew | Note |
+| Code | Language | State |
 |---|---|---|
-| h (hours, after a number) | ש׳ | `4.0 ש׳` |
-| ₪/h | ₪/ש׳ | |
-| ₪/day | ₪/יום | |
-| ₪/month | ₪/חודש | |
-| /day, /month (after an amount) | /יום, /חודש | `₪400/יום` |
-| Total, TOTAL | סה״כ | |
-| — (nothing) | — | unchanged |
-| × (times) | × | unchanged |
+| `en` | English | the source: the texts in the code; needs no file |
+| `he` | עברית | complete: `i18n/he.json` must have every text (`tests/i18n/check.js` fails otherwise) |
+| `ru` | Русский | set up, not translated yet: `i18n/ru.json` is empty, so the UI shows English |
 
-## General words
+The language is **one per firm**: the firm profile field `language` (`en` / `he` / `ru`, English when unset or unknown). The owner or a super-admin picks it in the firm form (Admin → Profile → Firm details, or Firms → edit). The server keeps only those three values (`LANGUAGES` in `functions-auth/core.py`, `_language()`). The layout never changes with the language: it stays the app's left-to-right template, with no `dir="rtl"`.
 
-| English | Hebrew |
-|---|---|
-| Worker | עובד |
-| Workers | עובדים |
-| Client | לקוח |
-| Supplier | ספק |
-| HR | משאבי אנוש |
-| Hours | שעות |
-| Days | ימים |
-| Shifts | משמרות |
-| Rate | תעריף |
-| Regular | רגיל |
-| OT (overtime) | נוספות / שעות נוספות |
-| Shabbat | שבת |
-| Travel | נסיעות |
-| Pay, salary | שכר |
-| Commission | עמלה |
-| Bank | בנק |
-| Branch | סניף |
-| Account number | מספר חשבון |
-| Period | תקופה |
-| This Week | השבוע |
-| This Month | החודש |
-| All Time | כל התקופה |
-| Month names | `toLocaleDateString('he-IL', {month:'long', year:'numeric'})` |
-| File | קובץ |
-| Notes | הערות |
-| Date | תאריך |
-| First In / Last Out | כניסה ראשונה / יציאה אחרונה |
-| Search a worker | חיפוש עובד |
-| Save | שמירה |
-| Export | ייצוא |
-| What is this? | מה זה? |
-| Paid by the hour / by the day | לפי שעה / לפי יום |
-| How paid | אופן תשלום |
-| By law ×1.25 | לפי חוק ×1.25 |
-| Fixed / Tiered | קבוע / מדורג |
-| Mode (billing) | שיטה |
-| Payable | לתשלום |
-| Billable | לחיוב |
-| Uploaded by | נשלח על ידי |
+Form 101 is outside this system: its labels in the worker modal and the firm form, and the PDF, are always Hebrew ([form101.md](form101.md)).
 
-## Accounting tab
+## In the code (`schedule-manager.html`)
 
-### Titles and sections
+- **`tr(text, params)`** returns `text` in the firm's language: `I18N[text]`, else the English `text` itself. `{name}` placeholders are filled from `params`, e.g. `tr('{n} shift(s) approved', {n: 3})`. The translation keeps the placeholder and may move it.
+  - In HTML built in JS, a translated text goes into the page like any other text: `${esc(tr('…'))}`, or `${tr('…')}` when it holds no data.
+  - A value from data goes in through `params`, never by gluing it to the English, so word order can differ per language.
+- **Static HTML** marks its texts:
+  - `data-i18n` translates the element's text; the key is the English text itself, or the attribute's value. Put it on a `<span>` around the words when the element also holds an icon or a button.
+  - `data-i18n-placeholder="…"` and `data-i18n-title="…"` translate those attributes; keep the English in the attribute itself too.
+  - `applyI18n(root)` translates them all; it runs at startup and on a language change.
+- **A text handed over through a variable** (`tr(h.title)`, `tr(SALARY_PERIOD_LABELS.week)`, the export headers `[...].map(h => tr(h))`) is translated the same way, but the check script can't see it: add it to the dictionaries by hand.
+- **Loading** (`loadI18n(lang)`):
+  - at startup the firm's language (`firmLanguage()`, from the cached firm profile) is loaded before the app draws;
+  - this device's copy (`localStorage['i18n_' + lang]`) is used at once when there is one, and `i18n/<lang>.json` is fetched to refresh it; a newer file redraws the page (`redrawForLanguage`);
+  - a changed firm language (saved here, or seen in a refreshed profile, `cacheTenantProfile`) switches at once.
+- **Dates** in translated parts use the language's locale, e.g. the month names of the salary periods (`toLocaleDateString(I18N_LANG)`).
+
+Done so far: the **Accounting tab**, including its help (ⓘ) texts, pay modal, messages and exports, and the firm form's Language field. The other tabs, the supplier portal and the punch page are still plain English: they are wrapped next.
+
+## Dictionaries (`i18n/<lang>.json`)
+
+- A flat object: `"English text": "translation"`, sorted by key.
+- A text that isn't in a language's file shows in English, so a partial language is safe.
+- Never translate, or wrap in `tr()`:
+  - data (worker, client, supplier and bank names);
+  - code, ids, export file names, comments, docs;
+  - shared messages built outside a translated screen (the shift warnings of `analyzeDayPunches` stay English until they are wrapped).
+- In a Hebrew value, a quote mark inside a word is the gershayim `״` or the geresh `׳`, never `"` or `'`.
+- Only `i18n/ru.json` may hold Russian text (CLAUDE.md → UI text language).
+
+### Words already in use (Hebrew)
+
+Keep using the same words for the same things:
 
 | English | Hebrew |
 |---|---|
-| Accounting (tab label) | חשבונות |
-| Accounting (page title) | הנהלת חשבונות |
-| Salary calculation and per-client rates (subtitle) | חישוב שכר ותעריפים |
-| Your workers' hours, pay and your commission (HR subtitle) | השעות והשכר של העובדים שלך, והעמלה שלך |
-| Salary Calculation | חישוב שכר |
-| Worker pay | שכר עובדים |
-| Per-client rates | תעריפים לפי לקוח |
-| Per-supplier rates | עמלות ספקים |
-| Payable by supplier | לתשלום לספקים |
-| Payable by HR | לתשלום למשאבי אנוש |
-| Billable by client | לחיוב לקוחות |
-| Pending hours | שעות ממתינות לאישור |
+| Worker / Client / Supplier / HR | עובד / לקוח / ספק / משאבי אנוש |
+| Hours / Days / Shifts | שעות / ימים / משמרות |
+| Rate / Regular / OT / Shabbat | תעריף / רגיל / נוספות / שבת |
+| Pay, salary / Commission / Travel | שכר / עמלה / נסיעות |
+| Total | סה״כ |
+| h (after a number) / ₪/h / ₪/day / ₪/month | ש׳ / ₪/ש׳ / ₪/יום / ₪/חודש |
+| Payable / Billable | לתשלום / לחיוב |
+| This Week / This Month / All Time | השבוע / החודש / כל התקופה |
+| Save / Export | שמירה / ייצוא |
 
-### Table headers
+## Adding or changing a text
 
-| English | Hebrew |
-|---|---|
-| Total Pay | סה״כ לתשלום |
-| My commission | העמלה שלי |
-| Travel ₪ | נסיעות ₪ |
-| OT ₪/h | נוספות ₪/ש׳ |
-| Shabbat ₪/h | שבת ₪/ש׳ |
-| Regular ₪/h | רגיל ₪/ש׳ |
-| Commission ₪/h | עמלה ₪/ש׳ |
-| ₪/day (daily workers) | ₪/יום (עובדים יומיים) |
+1. Write the English in the code with `tr()` or `data-i18n`.
+2. Add it to `i18n/he.json`, using the words above. `ru.json` may wait.
+3. Run the check: `cd tests/rules && npm run test:i18n` (or `node tests/i18n/check.js [lang]`).
+   - It lists, per language: the texts missing, the empty values, and the keys the code never names.
+   - It fails when a complete language (`COMPLETE` in the script, now `he`) misses a text.
+   - Name a language (`… check.js ru`) to see its full list of gaps.
+4. The e2e checks match English texts; a test that needs another language sets the firm's language first.
 
-### Lines, hints and tooltips
+## Adding a language
 
-| English | Hebrew |
-|---|---|
-| No punch data for this period | אין החתמות בתקופה זו |
-| N to review before calculating | N לבדיקה לפני החישוב |
-| …N more | …ועוד N |
-| client · name (rate source) | לקוח · name |
-| rate matrix (rate source) | תעריף לפי לקוח |
-| set a daily rate | יש להגדיר תעריף יומי |
-| punches: N | לפי החתמות: N |
-| Days worked: N by the punches · type a number to replace it for this period | ימי עבודה לפי ההחתמות: N · מספר שיוקלד כאן מחליף אותם לתקופה זו בלבד |
-| This worker's rate per day | התעריף היומי של העובד |
-| This worker's rate (Regular ×1.0) · empty = the client's rate | התעריף של העובד (רגיל ×1.0) · ריק = תעריף הלקוח |
-| OT rate ₪/hour · empty = the client's, else base ×1.25 | תעריף שעות נוספות ₪/שעה · ריק = של הלקוח, אחרת בסיס ×1.25 |
-| Shabbat rate ₪/hour · empty = the client's, else base ×1.5 | תעריף שבת ₪/שעה · ריק = של הלקוח, אחרת בסיס ×1.5 |
-| Empty = X (the worker's own rate, else the client's) | ריק = X (התעריף של העובד, אחרת של הלקוח) |
-| Empty = default (5 ₪/h) | ריק = ברירת מחדל (5 ₪/ש׳) |
-| A fixed ₪ per day, for a worker paid by the day. Empty = hours × ₪/h | סכום קבוע ₪ ליום, לעובד בתשלום יומי. ריק = שעות × ₪/ש׳ |
-| by the hour (placeholder) | לפי שעה |
-| No supplier assigned | ללא ספק |
-| No workers with a supplier assigned had activity this period | לעובדים עם ספק לא הייתה פעילות בתקופה זו |
-| No hours of HR workers this period | אין שעות לעובדי משאבי אנוש בתקופה זו |
-| No billable activity this period | אין פעילות לחיוב בתקופה זו |
-| No workers assigned to clients | אין עובדים משויכים ללקוחות |
-| No workers assigned to a supplier | אין עובדים משויכים לספק |
-| No workers | אין עובדים |
-| Nothing pending | אין שעות ממתינות |
-| Could not load | הטעינה נכשלה |
-
-### Worker pay cards and pay modal
-
-| English | Hebrew |
-|---|---|
-| Pay — name (modal title) | שכר — name |
-| Pay / Travel / Bank (form sections) | שכר / נסיעות / בנק |
-| Rate ₪/h / Rate ₪/day | תעריף ₪/ש׳ / תעריף ₪/יום |
-| per day (placeholder) | ליום |
-| client: X (placeholder) | לקוח: X |
-| Travel ₪/day / Travel ₪/month | נסיעות ₪/יום / נסיעות ₪/חודש |
-| Bank name / Branch # / Account # (placeholders) | שם הבנק / מס׳ סניף / מס׳ חשבון |
-| Empty rate = the client's rate (by the hour only). A rate at one client only is set in Per-client rates. | תעריף ריק = תעריף הלקוח (לפי שעה בלבד). תעריף אצל לקוח אחד בלבד נקבע ב"תעריפים לפי לקוח". |
-| period: N days · N h · pay ₪ · travel ₪ · total ₪ | period: N ימים · N ש׳ · שכר ₪ · נסיעות ₪ · סה״כ ₪ |
-| no shifts | אין משמרות |
-| no travel | ללא נסיעות |
-| branch X / acc. X | סניף X / חשבון X |
-| no bank details | אין פרטי בנק |
-| Edit pay / View pay (tooltip) | עריכת שכר / צפייה בשכר |
-
-### Messages (toasts, confirms)
-
-| English | Hebrew |
-|---|---|
-| Pay saved — name | השכר נשמר — name |
-| N shift(s) approved | N משמרות אושרו |
-| Reject this batch? | לדחות את השעות שנשלחו? |
-| Batch rejected | השעות נדחו |
-| Failed: … | נכשל: … |
-| Salary exported! | השכר יוצא |
-| Summary exported | הסיכום יוצא |
-| Excel library not loaded | ספריית Excel לא נטענה |
-| Pop-up blocked — allow pop-ups to export PDF | החלון הקופץ נחסם — יש לאפשר חלונות קופצים כדי לייצא PDF |
-
-### Exports
-
-| English | Hebrew |
-|---|---|
-| Export salary (modal title) | ייצוא שכר |
-| Salary — period (PDF title) | שכר — period |
-| Salary (sheet) / Summary (sheet) | שכר / סיכום |
-| Payable summary (default title) | סיכום לתשלום |
-| Worker, Object/Client, Supplier, Date, First In, Last Out, Hours, Rate (₪/h or /day), Day Pay (₪), Notes | עובד, לקוח/אתר, ספק, תאריך, כניסה ראשונה, יציאה אחרונה, שעות, תעריף (₪ לשעה או ליום), שכר (₪), הערות |
-| Label, Hours, Rate, Total | שם, שעות, תעריף, סה״כ |
-| commission (rate cell) | עמלה |
-| Days set by hand: N (punches: M) | ימים שהוזנו ידנית: N (לפי החתמות: M) |
-
-The help (ⓘ) texts are full sentences: their Hebrew is in `ACCOUNTING_HELP` in `schedule-manager.html`. Reuse their wording for the same ideas.
+1. Add it to `I18N_LANGS` in `schedule-manager.html` (code and the language's own name) and to `LANGUAGES` in `functions-auth/core.py`.
+2. Create `i18n/<code>.json`. Copy the keys from `he.json` and translate the values; until then `{}` shows English.
+3. When it is complete, add it to `COMPLETE` in `tests/i18n/check.js`.

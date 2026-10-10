@@ -8,7 +8,6 @@
 <title>Supplier Portal</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 /* Supplier Portal — a deliberately separate, lighter file (not an embedded
    mode inside schedule-manager.html) — see docs/supplier-portal.md for
@@ -138,6 +137,21 @@ th{color:var(--text2);font-size:11px;text-transform:uppercase;}
 // ── Shared constants/helpers duplicated from schedule-manager.html on
 // purpose (see the rules in CLAUDE.md) ───────────
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// SheetJS (Excel read and write, ~900 KB) is loaded only when an Excel
+// export or import needs it, not with the page. Same code in
+// schedule-manager.html and supplier-portal.html.
+let __xlsxLoading = null;
+function loadXlsx(){
+  if(typeof XLSX !== 'undefined') return Promise.resolve();
+  return __xlsxLoading || (__xlsxLoading = new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    sc.onload = () => res();
+    sc.onerror = () => { __xlsxLoading = null; sc.remove(); rej(new Error('Excel library not loaded')); };
+    document.head.appendChild(sc);
+  }));
+}
+
 function showToast(msg,dur){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),dur||2500); }
 // ── New version check (2026-10-04; the same code in schedule-manager.html,
 // worker-punch.html and supplier-portal.html). An app left open — a PWA in
@@ -646,6 +660,7 @@ function getWorkerMonthShifts(workerId, year, month){
     .sort((a,b)=>a.date-b.date);
 }
 function exportShiftsDetail(workerId, year, month, format){
+  if(format==='excel' && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportShiftsDetail(workerId, year, month, format)).catch(()=>showToast('Excel library not loaded')); return; }
   const w = myWorkers.find(x=>x.id===workerId);
   const shifts = getWorkerMonthShifts(workerId, year, month);
   const monthLabel = new Date(year, month, 1).toLocaleDateString('en-GB',{month:'long',year:'numeric'});
@@ -670,6 +685,7 @@ function exportShiftsDetail(workerId, year, month, format){
   showToast('Hours exported');
 }
 function exportPayableSummary(rows, opts){
+  if(opts && opts.format==='excel' && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportPayableSummary(rows, opts)).catch(()=>showToast('Excel library not loaded')); return; }
   opts = opts||{};
   const grand = rows.reduce((s,r)=>s+r.total,0);
   if(opts.format==='excel'){
@@ -734,7 +750,7 @@ function renderSendHoursRows(){
 // passport number) lets one sheet hold several workers — only the picked
 // worker's rows are taken, the others wait until that worker is picked.
 function parseTimesheetFile(file){
-  return new Promise((resolve, reject)=>{
+  return loadXlsx().then(()=>new Promise((resolve, reject)=>{
     const reader = new FileReader();
     reader.onerror = ()=>reject(new Error('Could not read the file'));
     reader.onload = ()=>{
@@ -766,7 +782,7 @@ function parseTimesheetFile(file){
       }catch(e){ reject(e); }
     };
     reader.readAsArrayBuffer(file);
-  });
+  }));
 }
 // Does a sheet's Worker cell name this worker (its name, or its ID number)?
 function timesheetRowIsFor(cell, w){
