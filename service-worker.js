@@ -3,7 +3,7 @@
 // {cache:'no-store'} so the newest code/data is always used; the cache is only
 // a fallback when offline. Data calls (Firebase, Cloud Functions) go to other
 // origins and are never touched by the SW.
-const CACHE = 'schedule-mgr-v106';
+const CACHE = 'schedule-mgr-v107';
 const CORE = [
   './',
   './schedule-manager.html',
@@ -12,7 +12,9 @@ const CORE = [
   './manifest.json',
   './manifest-punch.json',
   './icon-192.png',
-  './icon-512.png'
+  './icon-512.png',
+  './icons/tabler-icons.css',
+  './icons/tabler-icons.woff2'
 ];
 
 self.addEventListener('install', e => {

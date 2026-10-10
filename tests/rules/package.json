@@ -5,7 +5,8 @@
   "scripts": {
     "test": "firebase emulators:exec --only firestore,storage --project demo-schedule \"node --test rules.test.mjs\"",
     "test:auth": "firebase emulators:exec --only firestore,auth --project demo-schedule \"${PYTHON:-python3} -m pytest ../auth -q\"",
-    "test:i18n": "node ../i18n/check.js"
+    "test:i18n": "node ../i18n/check.js",
+    "test:icons": "node ../icons/check.js"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",

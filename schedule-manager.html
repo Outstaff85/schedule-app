@@ -559,8 +559,7 @@
   .quad-side-handle { stroke: #fff; stroke-width: 5; stroke-linecap: round; filter: drop-shadow(0 0 2px rgba(0,0,0,.6)); }
 
 </style>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="icons/tabler-icons.css">
 </head>
 <body>
 
@@ -8969,23 +8968,25 @@ const GCONTACTS_CLIENT_ID = GCONTACTS_ACCOUNTS[_activeAccountIdx].clientId;
 let _gToken = null;
 let _contactsCache = [];
 
-function initGoogleContacts(){
-  // Initialize Google Identity Services
-  if(typeof google === 'undefined') return;
-  google.accounts.oauth2.initTokenClient({
-    client_id: GCONTACTS_CLIENT_ID,
-    scope: 'https://www.googleapis.com/auth/contacts.readonly',
-    callback: (resp) => {
-      if(resp.error) { showToast(tr('Google auth failed: {0}',{0:(resp.error)})); return; }
-      _gToken = resp.access_token;
-      fetchContacts();
-    }
-  });
+// Google Identity Services is loaded only for the contacts picker (not with
+// the page): opening the account list starts the load, so it is there by the
+// time an account is tapped.
+let __gsiLoading = null;
+function loadGsi(){
+  if(typeof google !== 'undefined' && google.accounts) return Promise.resolve();
+  return __gsiLoading || (__gsiLoading = new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://accounts.google.com/gsi/client'; sc.async = true;
+    sc.onload = () => res();
+    sc.onerror = () => { __gsiLoading = null; sc.remove(); rej(new Error('Google API not loaded')); };
+    document.head.appendChild(sc);
+  }));
 }
 
 let _tokenClient = null;
 
 function triggerContactsPicker(){
+  loadGsi().catch(()=>{});
   // Show account selector
   const el = document.getElementById('contactsSuggestions');
   if(el){
@@ -9017,7 +9018,10 @@ function switchContactsAccount(idx){
   showToast(tr('Connecting to {0}...',{0:(acc.label)}));
   hideContactsSuggestions();
 
-  if(typeof google === 'undefined'){ showToast(tr('Google API not loaded')); return; }
+  if(typeof google === 'undefined' || !google.accounts){
+    loadGsi().then(() => switchContactsAccount(idx)).catch(() => showToast(tr('Google API not loaded')));
+    return;
+  }
   _tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: acc.clientId,
     scope: 'https://www.googleapis.com/auth/contacts.readonly',
