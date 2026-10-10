@@ -89,7 +89,7 @@ Where it is used:
 
 - **Session:** `localStorage.schedMgr_session` (`SESSION_KEY`). It only remembers who is signed in; the real authentication is the Firebase sign-in (the rules and the functions check the Firebase ID token). `getSession()` returns `null` and clears the session when it has no `uid` (a session from before the move off Apps Script has none, so that user logs in once more).
 - **Session fields:** `uid` (the Firebase user), `role` (`superadmin` / `tenant_admin` / `staff` / `hr`), `tenantId`, `username`, `tenantProfile`, `permissions`, `supplierId`, `ownOnly` and `fullName` (HR), `viewingTenantId` (and `viewingTenantName` / `viewingTenantProfile` for a super-admin).
-- **Language:** before `gateApp`, `loadI18n(firmLanguage())` loads the firm's dictionary and `applyI18n()` translates the static texts ([translations.md](translations.md)).
+- **Language:** one language select (`#langSelect`: EN / HE / RU, English by default) in `.titlebar-actions`, moved onto the login or Firms screen while one of those covers the title bar (`placeLangSelect()`), calls `setLanguage()`; the choice is kept on this device (`localStorage.uiLang`) and, when signed in, on the user's account (`updateMyLanguage`); `submitLogin` takes the account's `language` from the login reply. Before `gateApp`, `loadI18n(storedLanguage())` loads that dictionary and `applyI18n()` translates the static texts ([translations.md](translations.md)).
 - **`gateApp(runInitApp)`** decides the screen:
   1. No session → `#loginScreen`, and a warm-up `{ping:true}` to the `login` function; its time is kept in `window.__pingMs`.
   2. A super-admin with no firm picked → `#firmsScreen` (`renderFirmsList()`).

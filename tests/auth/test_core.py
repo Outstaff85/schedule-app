@@ -338,11 +338,6 @@ def test_update_and_load_tenant_profile():
     assert core.load_tenant_profile(DB, STAFF1, {})["profile"]["phone"] == "0509999999"
     assert core.load_tenant_profile(DB, SUPER, {})["profile"] is None
     assert core.run_action(DB, ADMIN1, {"action": "loadTenantProfile"}, Revokes())["profile"]["companyName"] == "Firm 1b"
-    # The firm's language: en / he / ru; anything else is English.
-    assert core.load_tenant_profile(DB, STAFF1, {})["profile"]["language"] == "en"
-    assert core.update_tenant(DB, ADMIN1, {"language": "he"})["profile"]["language"] == "he"
-    assert core.update_tenant(DB, ADMIN1, {"language": "ar"})["profile"]["language"] == "en"
-    assert DB.collection("tenants").document(T1).get().get("language") == "en"
 
 
 def test_http_superadmin_acts_on_the_viewed_firm():
@@ -505,3 +500,15 @@ def test_update_user_changes_role_between_staff_hr_supplier():
     assert d["role"] == "supplier" and d["supplierId"] == "s-9" and d["permissions"] == ""
     assert core.update_user(DB, ADMIN1, {"id": "u-staff1", "role": "tenant_admin"}, rv)["error"]
     assert core.update_user(DB, ADMIN1, {"id": "u-admin1", "role": "staff"}, rv)["error"] == core.E_ADMIN_TARGET
+
+
+def test_update_my_language_follows_the_user_to_login():
+    seed_legacy("u-lang", "langu", "lang-pass-11", role="staff", tenantId="t-l", permissions="*")
+    me = {"uid": "u-lang", "role": "staff", "tenantId": "t-l"}
+    assert core.login(DB, "langu", "lang-pass-11", lambda u, c: "tok")["language"] is None  # never picked: the page's default
+    assert core.update_my_language(DB, me, {"language": "he"}) == {"ok": True, "language": "he"}
+    assert core.login(DB, "langu", "lang-pass-11", lambda u, c: "tok")["language"] == "he"
+    assert core.run_action(DB, me, {"action": "updateMyLanguage", "language": "ru"}, None)["language"] == "ru"
+    assert core.update_my_language(DB, me, {"language": "ar"})["error"] == "Unknown language"
+    assert core.update_my_language(DB, {"uid": "nobody", "role": "staff"}, {"language": "he"})["error"]
+    assert DB.collection("users").document("u-lang").get().to_dict()["language"] == "ru"

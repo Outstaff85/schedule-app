@@ -91,6 +91,7 @@ def _load(db, tid, w):
     return {"workers": [me], "clients": clients}
 
 
+
 def _save_punch(db, tid, w, data):
     if not isinstance(data, dict):
         return {"error": "No punch data"}

@@ -51,6 +51,8 @@
   .ttab.active{color:var(--blue);border-bottom-color:var(--blue);background:var(--blue-bg);}
   .ttab.admin.active{color:var(--amber);border-bottom-color:var(--amber);background:var(--amber-bg);}
   .titlebar-actions{margin-left:auto;display:flex;gap:6px;align-items:center;}
+  .lang-select{background:var(--bg3);color:var(--text2);border:1px solid var(--border);border-radius:8px;padding:4px 6px;font:600 12px/1 inherit;cursor:pointer;width:auto;min-width:0;}
+  .lang-select.on-cover{position:absolute;top:max(env(safe-area-inset-top,0px),12px);right:12px;z-index:2;}
   .save-indicator{font-size:14px;color:var(--text3);display:flex;align-items:center;gap:4px;transition:color 0.3s;}
   .save-indicator.saving{color:var(--amber);}
   .save-indicator.saved{color:var(--green);}
@@ -495,6 +497,7 @@
   </div>
   <div id="accountLabelCenter" class="account-label-center"></div>
   <div class="titlebar-actions">
+    <select class="lang-select" id="langSelect" title="Language" data-i18n-title="Language" aria-label="Language" onchange="setLanguage(this.value)"><option value="en">EN</option><option value="he">HE</option><option value="ru">RU</option></select>
     <div id="accountControl"></div>
     <div class="save-indicator saved" id="saveIndicator">
       <div class="save-dot"></div><span data-i18n>Saved</span>
@@ -1108,7 +1111,6 @@
       <div class="field"><label>מספר בית</label><input type="text" id="firmEditStreetNumber"></div>
     </div>
     <div class="field"><label>עיר</label><input type="text" id="firmEditCity"></div>
-    <div class="field"><label data-i18n><span data-i18n>Language</span></label><select id="firmEditLanguage"></select></div>
     <div id="firmEditFormError" style="color:#ff6b78;font-size:13px;margin:2px 0 6px;min-height:1.2em"></div>
     <div class="modal-actions">
       <button class="btn accent" onclick="submitEditFirm()" id="editFirmBtn" data-i18n>Save</button>
@@ -1212,12 +1214,13 @@ function loadXlsx(){
 
 // ── Translations (docs/translations.md) ─────────────────────────────────────
 // Every UI text in the code is English. tr('Total Pay') returns it in the
-// firm's language from i18n/<lang>.json (English text → translation); a text
+// language picked in the header from i18n/<lang>.json (English text → translation); a text
 // the dictionary lacks shows in English. {name} placeholders take params:
 // tr(text, {n: 3}). Static HTML marks its texts with
 // data-i18n (text), data-i18n-placeholder, data-i18n-title; applyI18n()
-// translates them. The language is the firm's (profile field `language`);
-// the layout never changes (left to right). Form 101 is outside this: it is
+// translates them. The language is this device's choice (the header's
+// language select, English by default, setLanguage()); the layout never
+// changes (left to right). Form 101 is outside this: it is
 // always Hebrew.
 const I18N_LANGS = {en:'English', he:'עברית', ru:'Русский'};
 var I18N = {}, I18N_LANG = 'en';
@@ -1235,11 +1238,31 @@ function applyI18n(root){
 }
 // The date locale for month and weekday names on screen (numeric dates stay dd/mm/yyyy).
 function uiLocale(){ return {he:'he-IL', ru:'ru-RU'}[I18N_LANG] || 'en-GB'; }
-function firmLanguage(){
-  const p = typeof activeTenantProfile === 'function' ? activeTenantProfile() : null;
-  const l = p && p.language;
-  return I18N_LANGS[l] ? l : 'en';
+// This device's language (localStorage.uiLang, shared by the three pages): English by default.
+function storedLanguage(){ try{ const l = localStorage.getItem('uiLang'); return I18N_LANGS[l] ? l : 'en'; }catch(e){ return 'en'; } }
+// The language select (one per page, #langSelect): keeps the choice on this device and redraws in it;
+// a signed-in user's choice is also saved to their account (updateMyLanguage), and login brings it back on any device.
+async function setLanguage(lang, opts){
+  lang = I18N_LANGS[lang] ? lang : 'en';
+  try{ localStorage.setItem('uiLang', lang); }catch(e){}
+  if(!(opts && opts.save === false) && getSession()){
+    fetch(API_URL, {method:'POST', body: JSON.stringify({action:'updateMyLanguage', language: lang})}).catch(()=>{});
+  }
+  try{ await loadI18n(lang); }catch(e){}
+  redrawForLanguage();
 }
+// The one language select sits in the title bar, or on the screen that covers
+// it (login, the super-admin's Firms screen) while that one is shown.
+function placeLangSelect(){
+  const sel = document.getElementById('langSelect'); if(!sel) return;
+  const shown = id => { const el = document.getElementById(id); return el && el.style.display && el.style.display !== 'none' ? el : null; };
+  const cover = shown('loginScreen') || shown('firmsScreen');
+  const host = cover || document.querySelector('.titlebar-actions');
+  sel.classList.toggle('on-cover', !!cover);
+  if(host && sel.parentNode !== host) host.prepend(sel);
+}
+['loginScreen','firmsScreen'].forEach(id => { const el = document.getElementById(id); if(el) new MutationObserver(placeLangSelect).observe(el, {attributes:true, attributeFilter:['style']}); });
+function syncLangSelects(){ document.querySelectorAll('select.lang-select').forEach(el => { el.value = I18N_LANG; }); }
 // Loads the firm language's dictionary: from this device's copy at once when
 // there is one (no wait at startup), refreshed from i18n/<lang>.json; a newer
 // file redraws the page. English needs no file.
@@ -1261,6 +1284,7 @@ async function loadI18n(lang){
 }
 function redrawForLanguage(){
   applyI18n();
+  syncLangSelects();
   try{ const s = getSession(); if(s) renderAccountControl(s); }catch(e){}
   try{ const b = document.getElementById('installBtn'); if(b) b.innerHTML = '<i class="ti ti-download" style="color:#4f8ef7"></i> ' + esc(tr('Install')); }catch(e){}
   try{ if(typeof render === 'function') render(); }catch(e){}
@@ -1289,21 +1313,21 @@ function analyzeDayPunches(entries,date){
   let hours=0, openIn=null; const warnings=[];
   chrono.forEach(e=>{
     if(e.type==='in'){
-      if(openIn) warnings.push('double IN (no OUT after '+openIn.time+')');
+      if(openIn) warnings.push(tr('double IN (no OUT after {0})',{0:openIn.time}));
       openIn=e;
     } else if(e.type==='out'){
-      if(!openIn){ warnings.push('OUT without IN ('+e.time+')'); return; }
+      if(!openIn){ warnings.push(tr('OUT without IN ({0})',{0:e.time})); return; }
       if(!openIn.time||!e.time){ openIn=null; return; }
       let dur=toMins(e.time)-toMins(openIn.time); if(dur<0) dur+=1440; dur=roundMins(dur);
       const hh=dur/60;
-      if(hh<=0) warnings.push('0-minute shift ('+openIn.time+'→'+e.time+')');
-      else if(hh>12) warnings.push('shift >12h ('+openIn.time+'→'+e.time+')');
+      if(hh<=0) warnings.push(tr('0-minute shift ({0}→{1})',{0:openIn.time,1:e.time}));
+      else if(hh>12) warnings.push(tr('shift >12h ({0}→{1})',{0:openIn.time,1:e.time}));
       hours+=hh; openIn=null;
     }
   });
   if(openIn){
     const isToday=new Date().toDateString()===new Date(date).toDateString();
-    warnings.push('open shift from '+openIn.time+(isToday?' (still at work)':' — no OUT'));
+    warnings.push(tr(isToday?'open shift from {0} (still at work)':'open shift from {0} — no OUT',{0:openIn.time}));
     if(isToday && openIn.time){ let dur=toMins(nowHHMM())-toMins(openIn.time); if(dur<0) dur+=1440; dur=roundMins(dur); hours+=dur/60; }
   }
   return {hours,warnings};
@@ -1791,7 +1815,7 @@ function renderWorkerList(){
     const c=WORKER_COLORS[w.colorIdx%8],wh=workerTotalHours(w);
     return `<div class="worker-chip tap-edit" onclick="if(isPlainTap(event,this))openEditWorker(${wi})">
       <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${workerAvatarInner(w)}</div>
-      <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">'+tr('INACTIVE')+'</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">'+tr('VAC')+'</span>':''}${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div><div class="worker-hours">${wh.toFixed(1)}h</div></div>
+      <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">'+tr('INACTIVE')+'</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">'+tr('VAC')+'</span>':''}${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div><div class="worker-hours">${tr('{h}h',{h:(wh).toFixed(1)})}</div></div>
       <div class="worker-actions">
         <button class="worker-act-btn edit" onclick="copyWorkerLink('${w.id}')" title="${tr('Copy punch link')}"><i class="ti ti-link"></i></button>
         <button class="worker-act-btn del"  onclick="deleteWorker(${wi})"   title="${tr('Delete')}"><i class="ti ti-x"></i></button>
@@ -1861,7 +1885,7 @@ function updateBadge(){
   const s=document.getElementById('eStart')?.value, e=document.getElementById('eEnd')?.value, el=document.getElementById('hBadge');
   if(!el||!s||!e)return;
   const h=calcHours(s,e);
-  el.innerHTML=`<span class="hours-badge">${h.toFixed(2)}h${isMidnight(s,e)?' · crosses midnight':''}</span>`;
+  el.innerHTML=`<span class="hours-badge">${tr('{h}h',{h:(h).toFixed(2)})}${isMidnight(s,e)?' · '+tr('crosses midnight'):''}</span>`;
 }
 function saveShift(wi,di){
   const type=document.getElementById('eType').value;
@@ -3451,7 +3475,7 @@ function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
       </div>
       <div class="wcard-rows">
         <span class="k"><i class="ti ti-id"></i> ${tr('ID / Passport')}</span><span class="v" style="font-family:monospace">${workerDocId(w)?esc(workerDocId(w)):dash}</span>
-        <span class="k"><i class="ti ti-clock-hour-4"></i> ${tr('Hours ({0})',{0:(esc(monthName))})}</span><span class="v" style="font-weight:700;color:${h>0?'var(--green)':'var(--text3)'}">${h.toFixed(1)}h</span>
+        <span class="k"><i class="ti ti-clock-hour-4"></i> ${tr('Hours ({0})',{0:(esc(monthName))})}</span><span class="v" style="font-weight:700;color:${h>0?'var(--green)':'var(--text3)'}">${tr('{h}h',{h:(h).toFixed(1)})}</span>
         <span class="k"><i class="ti ti-building"></i> ${tr('Clients')}</span><span class="v">${objs.length?objs.map(badge).join(''):dash}</span>
         <span class="k"><i class="ti ti-truck-delivery"></i> ${tr('Supplier')}</span><span class="v">${sup?badge(sup):dash}</span>
         ${showHr?`<span class="k"><i class="ti ti-user-shield"></i> ${tr('HR')}</span><span class="v">${w.hrId?badge({name:hrNameOf(w.hrId)||'—',color:hrColor(w.hrId)}):dash}</span>`:''}
@@ -4565,6 +4589,8 @@ async function submitLogin(){
     try{ fb = await backend.login(username, password); }
     catch(e){ errEl.textContent = tr('No network — try again'); return; }
     if(!fb || fb.error){ errEl.textContent = tr((fb&&fb.error)||'') || tr('Could not sign in'); return; }
+    // The language this user last picked (on any device) wins over this device's.
+    if(fb.language) try{ localStorage.setItem('uiLang', fb.language); }catch(e){}
     // A supplier login belongs in the supplier portal: hand the session over
     // (same origin, same Firebase sign-in) and go there.
     if(fb.role === 'supplier'){ goToSupplierPortal(fb); return; }
@@ -4664,8 +4690,6 @@ function cacheTenantProfile(tenantId, profile){
   }
   saveSession(s);
   renderAccountControl(s);
-  // The firm's language changed (here or on another device): switch to it.
-  if(firmLanguage() !== I18N_LANG) loadI18n(firmLanguage()).then(redrawForLanguage);
 }
 
 // ── App gate: decides which of the three top-level screens to show ─────────
@@ -5340,14 +5364,14 @@ async function renderSuperadminAccounting(){
       <tbody class="paged-firmSummary"></tbody>
       <tfoot><tr style="background:var(--bg3);border-top:2px solid var(--border)">
         <td style="padding:8px 12px;font-size:13px;font-weight:700">${tr('TOTAL')}</td>
-        <td style="padding:8px 12px;text-align:center;font-size:13px;font-weight:700">${grandHours.toFixed(1)}h</td>
+        <td style="padding:8px 12px;text-align:center;font-size:13px;font-weight:700">${tr('{h}h',{h:(grandHours).toFixed(1)})}</td>
         <td style="padding:8px 12px;text-align:right;font-size:14px;font-weight:800;color:var(--green)">₪${grandPay.toFixed(0)}</td>
       </tr></tfoot>
     </table>
   </div>`;
   renderPagedList(wrap.querySelector('.paged-firmSummary'),'firmSummary','',rows,r=>`<tr style="border-bottom:1px solid var(--border)">
         <td style="padding:8px 12px;font-size:13px;font-weight:600">${esc(r.name)}${r.error?' <span style="color:#ff6b78;font-size:11px">'+tr('(load failed)')+'</span>':''}</td>
-        <td style="padding:8px 12px;text-align:center;font-size:13px">${r.hours.toFixed(1)}h</td>
+        <td style="padding:8px 12px;text-align:center;font-size:13px">${tr('{h}h',{h:(r.hours).toFixed(1)})}</td>
         <td style="padding:8px 12px;text-align:right;font-size:13px;font-weight:700;color:var(--green)">₪${r.pay.toFixed(0)}</td>
       </tr>`,{table:true,colspan:3});
 }
@@ -5637,9 +5661,6 @@ function fillFirmEditForm(p){
   document.getElementById('firmEditStreet').value = p.street || '';
   document.getElementById('firmEditStreetNumber').value = p.streetNumber || '';
   document.getElementById('firmEditCity').value = p.city || '';
-  const langSel = document.getElementById('firmEditLanguage');
-  langSel.innerHTML = Object.entries(I18N_LANGS).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join('');
-  langSel.value = I18N_LANGS[p.language] ? p.language : 'en';
   __firmEditDirty = false;
 }
 function openCreateFirmForm(){
@@ -5713,7 +5734,6 @@ async function submitEditFirm(){
     street: get('firmEditStreet'),
     streetNumber: get('firmEditStreetNumber'),
     city: get('firmEditCity'),
-    language: document.getElementById('firmEditLanguage').value,
   };
   if(__firmFormMode === 'create'){
     const username = get('firmEditUsername'), password = document.getElementById('firmEditPassword').value;
@@ -7258,15 +7278,15 @@ function exportShiftsDetail(workerId, year, month, format){
   const totalHours = shifts.reduce((s,x)=>s+x.hours,0);
   const fname = 'hours-'+(w?w.name.replace(/\s+/g,'_'):workerId)+'-'+year+'-'+String(month+1).padStart(2,'0');
   if(format==='excel'){
-    const aoa=[['Date','In','Out','Hours']];
+    const aoa=[['Date','In','Out','Hours'].map(h=>tr(h))];
     shifts.forEach(s=>aoa.push([s.date.toLocaleDateString('en-GB'), s.inTime, s.outTime, s.hours.toFixed(2)]));
-    aoa.push(['','','Total', totalHours.toFixed(2)]);
+    aoa.push(['','',tr('Total'), totalHours.toFixed(2)]);
     const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Hours');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), tr('Hours'));
     XLSX.writeFile(wb, fname+'.xlsx');
   } else {
     const rowsHtml = shifts.map(s=>`<tr><td>${s.date.toLocaleDateString('en-GB')}</td><td>${esc(s.inTime)}</td><td>${esc(s.outTime)}</td><td>${s.hours.toFixed(2)}</td></tr>`).join('');
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Hours — ${esc(w?w.name:'')}</title>
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(tr('Hours'))} — ${esc(w?w.name:'')}</title>
       <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px;text-align:left}th{background:#f0f0f0}tfoot td{font-weight:bold}</style>
       </head><body><h2>${esc(w?w.name:'')} — ${esc(monthLabel)}</h2>
       <table><thead><tr><th>${tr('Date')}</th><th>${tr('In')}</th><th>${tr('Out')}</th><th>${tr('Hours')}</th></tr></thead>
@@ -8555,7 +8575,7 @@ function watchErrorLine(id){
 ['firmEditFormError','userFormError'].forEach(watchErrorLine);
 window.addEventListener('error', function(ev){ _origConsoleError('App error:', ev.error||ev.message); reportError(ev.message, (ev.filename||'')+':'+(ev.lineno||''), ev.error&&ev.error.stack); });
 window.addEventListener('unhandledrejection', function(ev){ const r=ev.reason; reportError((r&&r.message)||String(r), 'promise', r&&r.stack); });
-loadI18n(firmLanguage()).catch(()=>{}).then(()=>{ applyI18n(); try{
+loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangSelects(); placeLangSelect(); try{
   gateApp(function(){
     loadData();
     syncPicker();

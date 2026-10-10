@@ -8,13 +8,13 @@ Project `schedule-odinson`; Firestore and the `functions-auth` functions in **eu
 
 | Path | Content | Written by |
 |---|---|---|
-| `tenants/{t}` | firm profile: `companyName, deductionsFileNumber, phone, street, streetNumber, city`, `language` (`en` / `he` / `ru`, [translations.md](translations.md)), `createdAt`, `active`, `workerCount`, `clientCount` | `users_admin`; a `tenant_admin` may update only the profile fields |
+| `tenants/{t}` | firm profile: `companyName, deductionsFileNumber, phone, street, streetNumber, city`, `createdAt`, `active`, `workerCount`, `clientCount` | `users_admin`; a `tenant_admin` may update only the profile fields |
 | `tenants/{t}/workers/{id}` | the worker object exactly as the app keeps it, plus `sortIndex` (list position) and `docKeys` (its document numbers in standard form — `docKeysOf` / `doc_keys`, for `checkWorkerDoc`; not kept in the app's copy); `hrId` = the HR login it belongs to | the app (`saveSchedule`), the `supplier` function |
 | `tenants/{t}/clients/{id}`, `…/suppliers/{id}` | same, with `sortIndex` | the app |
 | `tenants/{t}/settings/schedule` | `weekStart`, `savedAt` — copied from the sheets by the old migration; nothing writes it now | — |
 | `tenants/{t}/punches/{id}` | a punch ([accounting.md](accounting.md) → the punch) with `ts` as a Timestamp, `day` (`yyyy-MM-dd`), `archived`, `hrId` (the worker's HR, when it has one); `tsRaw` when a migrated sheet timestamp was unreadable | the app, the `punch` function, an approved hours batch |
 | `tenants/{t}/pendingHours/{batchId}` | `{status, fileName, uploadedBy, createdBy, uploadedAt, createdAt, rows:[{rowId, workerId, clientId, date, inTime, outTime}]}` | the app |
-| `users/{uid}` | `username, tenantId, role, permissions ('*' or list), supplierId, active, createdAt, fullName` (the person's name the app shows), `phone`; for `hr` also `ownOnly`, `commissionRate`, `commissionDayRate` (₪/day for a worker paid by the day); for `hr` and `supplier` `showPay` (default true) | functions only |
+| `users/{uid}` | `username, tenantId, role, permissions ('*' or list), supplierId, active, createdAt, fullName` (the person's name the app shows), `phone`, `language` (the UI language the person last picked: `en` / `he` / `ru`, returned by `login`); for `hr` also `ownOnly`, `commissionRate`, `commissionDayRate` (₪/day for a worker paid by the day); for `hr` and `supplier` `showPay` (default true) | functions only |
 | `authSecrets/{uid}` | `algo ('scrypt', or 'sha256' until the user's next login), salt, hash, failCount, lastFailAt` | functions only |
 | `usernames/{name}` | `{uid}` — keeps usernames unique | functions only |
 | `workerTokens/{token}` | left over from the migration; nothing reads or writes it (the `punch` function finds a token by a collection-group query on `workers.token`) | — |
@@ -57,7 +57,7 @@ It returns:
 
 - `logBatch` / `logError` / `logTiming` → `errors` / `timings` documents (max 60 per batch, fields clipped); before the Firebase sign-in → `{ok:false, skipped:true}`.
 - Any other action before the sign-in → the session-expired error.
-- Users and firms (`listTenants, setTenantActive, deleteTenant, createUser, updateTenant, loadTenantProfile, listUsers, createTenantUser, updateUser, resetUserPassword, deleteUser, checkWorkerDoc, updateMyName`) → `users_admin` with the ID token.
+- Users and firms (`listTenants, setTenantActive, deleteTenant, createUser, updateTenant, loadTenantProfile, listUsers, createTenantUser, updateUser, resetUserPassword, deleteUser, checkWorkerDoc, updateMyName, updateMyLanguage`) → `users_admin` with the ID token.
 - The AI actions (`aiReadDoc, aiReadSefach, aiDetectAlign, aiVerifyField, aiVerifyFields, aiReadHoursTable, aiFindField`) → `ai_read`.
 - `loadWorkerAssets` / `deleteWorkerDoc` → `users_admin` for a `tenants/…` id. Any other id: delete answers `{ok:true}` (nothing of ours to delete), load answers "File not found".
 - `loadErrors` / `loadTimings` — super-admin only, newest first. With `from` / `to` (ISO times; the panes' period picker) only that period, up to 2000 errors / 5000 timings; without them the newest 100 / 500.
@@ -95,6 +95,7 @@ Minting custom tokens needs the runtime service account to hold "Service Account
   - `updateUser` (`role` — between staff / hr / supplier only, with the same requirements as on create: a supplier needs `supplierId`, an HR a name; `permissions`, `supplierId`, `active`, for HR `ownOnly` — compared with the stored values, and only a real change revokes the user's sessions; `fullName` / `phone` for every role, never revoking — an HR's name can't be emptied). A `tenant_admin` / `superadmin` target takes only `fullName` / `phone` (any rights field → `E_ADMIN_TARGET`).
   - `resetUserPassword` (any user of the firm, the owner included; revokes), `deleteUser` (refuses a `tenant_admin` / `superadmin` target; deletes the Auth user). Another firm's user is always refused.
 - **`updateMyName`** (`{fullName}`, any signed-in user, owner and super-admin included): sets the caller's own `fullName`; an HR's can't be empty.
+- **`updateMyLanguage`** (`{language}`, any signed-in user, a supplier included): keeps the UI language the caller picked (`en` / `he` / `ru`, else "Unknown language") in `users/{uid}.language`; `login` returns it as `language` (`null` when never picked) ([translations.md](translations.md)).
 - **`checkWorkerDoc`** (superadmin, tenant_admin, staff, hr; `{docId, workerId?}`): is a worker with this document number (`docId`, `passportNo` or `israeliId`, compared on letters and digits only) already in the caller's firm, other than `workerId` — `{ok, exists}`, nothing else, so an own-workers HR learns no other worker's data. It is one `array_contains` query on `docKeys` once the firm doc has `docKeysReady`; the firm's first check reads every worker instead, writes the missing `docKeys` and sets that flag. The app's `saveSchedule` and the supplier portal write `docKeys` on every worker save.
 - **Firms** (superadmin): `createUser` (a new firm + its `tenant_admin`, whose `fullName` is `ownerName`; profile strings stay strings, so no leading-zero loss), `listTenants` (profile, active, worker/client counts by aggregation, `savedAt`), `setTenantActive` (the firm and all its users; deactivation revokes their sessions), `deleteTenant` (recursive delete of `tenants/{t}`, its users, secrets and usernames; `main.py` then deletes every Storage object under `tenants/<t>/` and reports `removed.files`). `updateTenant` — superadmin or the firm's own `tenant_admin`. `loadTenantProfile`.
 

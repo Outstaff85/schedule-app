@@ -50,6 +50,8 @@ body{padding-bottom:40px;}
 table{width:100%;border-collapse:collapse;}
 th,td{padding:8px 10px;text-align:left;font-size:13px;border-bottom:1px solid var(--border);}
 th{color:var(--text2);font-size:11px;text-transform:uppercase;}
+.lang-select.on-cover{position:absolute;top:max(env(safe-area-inset-top,0px),12px);right:12px;z-index:2;}
+.lang-select{background:var(--bg3);color:var(--text2);border:1px solid var(--border);border-radius:8px;padding:4px 6px;font:600 12px/1 inherit;cursor:pointer;width:auto;min-width:0;}
 </style>
 </head>
 <body>
@@ -58,47 +60,48 @@ th{color:var(--text2);font-size:11px;text-transform:uppercase;}
   <div style="width:100%;max-width:340px;padding:24px">
     <div style="text-align:center;margin-bottom:22px">
       <i class="ti ti-truck-delivery" style="font-size:32px;color:var(--accent)"></i>
-      <div style="font-size:18px;font-weight:700;margin-top:8px">Supplier Portal</div>
+      <div style="font-size:18px;font-weight:700;margin-top:8px" data-i18n>Supplier Portal</div>
     </div>
-    <div class="field"><label>Username</label><input type="text" id="loginUsername" autocomplete="username"></div>
-    <div class="field"><label>Password</label><input type="password" id="loginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogin()"></div>
+    <div class="field"><label data-i18n>Username</label><input type="text" id="loginUsername" autocomplete="username"></div>
+    <div class="field"><label data-i18n>Password</label><input type="password" id="loginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogin()"></div>
     <div id="loginError" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px"></div>
-    <button class="btn accent" style="width:100%;justify-content:center" onclick="submitLogin()">Log in</button>
+    <button class="btn accent" style="width:100%;justify-content:center" onclick="submitLogin()" data-i18n>Log in</button>
   </div>
 </div>
 
 <div id="appRoot" style="display:none">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border)">
-    <div style="font-size:16px;font-weight:700"><i class="ti ti-truck-delivery"></i> Supplier Portal</div>
-    <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i> Log out</button>
+    <div style="font-size:16px;font-weight:700"><i class="ti ti-truck-delivery"></i> <span data-i18n>Supplier Portal</span></div>
+    <div id="headerActions" style="display:flex;gap:6px;align-items:center"><select class="lang-select" id="langSelect" title="Language" data-i18n-title="Language" aria-label="Language" onchange="setLanguage(this.value)"><option value="en">EN</option><option value="he">HE</option><option value="ru">RU</option></select>
+    <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i> <span data-i18n>Log out</span></button></div>
   </div>
   <div class="tabs">
-    <button class="tab-btn" id="tabBtn_dashboard" onclick="switchTab('dashboard')">Dashboard</button>
-    <button class="tab-btn" id="tabBtn_workers" onclick="switchTab('workers')">My Workers</button>
-    <button class="tab-btn" id="tabBtn_hours" onclick="switchTab('hours')">My Hours</button>
+    <button class="tab-btn" id="tabBtn_dashboard" onclick="switchTab('dashboard')" data-i18n>Dashboard</button>
+    <button class="tab-btn" id="tabBtn_workers" onclick="switchTab('workers')" data-i18n>My Workers</button>
+    <button class="tab-btn" id="tabBtn_hours" onclick="switchTab('hours')" data-i18n>My Hours</button>
   </div>
 
   <div id="sectionDashboard" style="padding:16px;display:none">
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:16px">
-      <div class="card"><div style="color:var(--text2);font-size:11px">On site now</div><div id="dashOnSite" style="font-size:22px;font-weight:700;color:var(--green)">0</div></div>
-      <div class="card"><div style="color:var(--text2);font-size:11px">My workers</div><div id="dashTotal" style="font-size:22px;font-weight:700">0</div></div>
+      <div class="card"><div style="color:var(--text2);font-size:11px" data-i18n>On site now</div><div id="dashOnSite" style="font-size:22px;font-weight:700;color:var(--green)">0</div></div>
+      <div class="card"><div style="color:var(--text2);font-size:11px" data-i18n>My workers</div><div id="dashTotal" style="font-size:22px;font-weight:700">0</div></div>
     </div>
     <div class="card">
-      <div style="font-weight:600;margin-bottom:8px">Today's log</div>
+      <div style="font-weight:600;margin-bottom:8px" data-i18n>Today's log</div>
       <div id="dashLog" style="font-size:13px;color:var(--text2)"></div>
     </div>
   </div>
 
   <div id="sectionWorkers" style="padding:16px;display:none">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div style="font-weight:600">My Workers</div>
-      <button class="btn sm accent" onclick="openAddWorkerModal()"><i class="ti ti-plus"></i> Add worker</button>
+      <div style="font-weight:600" data-i18n>My Workers</div>
+      <button class="btn sm accent" onclick="openAddWorkerModal()"><i class="ti ti-plus"></i> <span data-i18n>Add worker</span></button>
     </div>
     <div id="workersList"></div>
   </div>
 
   <div id="sectionHours" style="padding:16px;display:none">
-    <div class="field"><label>Month</label><select id="hoursExportMonthSel" onchange="renderPayTable()"></select></div>
+    <div class="field"><label data-i18n>Month</label><select id="hoursExportMonthSel" onchange="renderPayTable()"></select></div>
     <!-- With "sees pay": each worker's hours, days, rate, pay and my commission for the month. -->
     <div id="payTableWrap" style="display:none;margin-bottom:16px">
       <div style="font-weight:600;margin-bottom:8px">Pay</div>
@@ -114,16 +117,16 @@ th{color:var(--text2);font-size:11px;text-transform:uppercase;}
     <div id="hoursSummaryPreview"></div>
     <!-- Hours typed here go to the firm owner for approval (supplierSubmitHours);
          the list below shows each batch's status. -->
-    <div style="font-weight:600;margin:8px 0">Send hours for approval</div>
-    <div class="field"><label>Worker</label><select id="sendHoursWorker" onchange="renderSendHoursRows()"></select></div>
+    <div style="font-weight:600;margin:8px 0" data-i18n>Send hours for approval</div>
+    <div class="field"><label data-i18n>Worker</label><select id="sendHoursWorker" onchange="renderSendHoursRows()"></select></div>
     <div id="sendHoursHint" style="font-size:11px;color:var(--text3);margin-bottom:6px"></div>
     <div id="sendHoursRows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-      <button class="btn sm" type="button" onclick="addSendHoursRow()"><i class="ti ti-plus"></i> Add shift</button>
-      <label class="btn sm" title="Columns: Date, In, Out (and Worker — a name or ID number — for a sheet of several workers)"><i class="ti ti-file-spreadsheet"></i> Load from Excel<input type="file" id="timesheetFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="loadTimesheetFile(this)"></label>
-      <button class="btn sm accent" type="button" id="sendHoursBtn" onclick="submitSendHours()"><i class="ti ti-send"></i> Send for approval</button>
+      <button class="btn sm" type="button" onclick="addSendHoursRow()"><i class="ti ti-plus"></i> <span data-i18n>Add shift</span></button>
+      <label class="btn sm" title="Columns: Date, In, Out (and Worker — a name or ID number — for a sheet of several workers)" data-i18n-title="Columns: Date, In, Out (and Worker — a name or ID number — for a sheet of several workers)"><i class="ti ti-file-spreadsheet"></i> <span data-i18n>Load from Excel</span><input type="file" id="timesheetFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="loadTimesheetFile(this)"></label>
+      <button class="btn sm accent" type="button" id="sendHoursBtn" onclick="submitSendHours()"><i class="ti ti-send"></i> <span data-i18n>Send for approval</span></button>
     </div>
-    <div style="font-weight:600;margin:8px 0">Sent for approval</div>
+    <div style="font-weight:600;margin:8px 0" data-i18n>Sent for approval</div>
     <div id="sentHoursList" style="font-size:12px;color:var(--text3)"></div>
   </div>
 </div>
@@ -137,6 +140,69 @@ th{color:var(--text2);font-size:11px;text-transform:uppercase;}
 // ── Shared constants/helpers duplicated from schedule-manager.html on
 // purpose (see the rules in CLAUDE.md) ───────────
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ── Translations (the same core as schedule-manager.html: I18N_LANGS, tr,
+// applyI18n, uiLocale, loadI18n — keep the copies the same; docs/translations.md).
+// The language is this device's choice (the language select, English by
+// default), kept in localStorage.uiLang — shared by the three pages.
+const I18N_LANGS = {en:'English', he:'עברית', ru:'Русский'};
+var I18N = {}, I18N_LANG = 'en';
+function tr(s, params){
+  let out = (I18N_LANG !== 'en' && I18N[s]) || s;
+  if(params) out = out.replace(/\{(\w+)\}/g, (m, k) => params[k] != null ? params[k] : m);
+  return out;
+}
+function applyI18n(root){
+  const host = root || document;
+  const keyOf = (el, attr) => { const k = '__i18n_' + attr; if(el[k] == null) el[k] = attr === 'text' ? (el.getAttribute('data-i18n') || el.textContent.trim()) : el.getAttribute('data-i18n-' + attr); return el[k]; };
+  host.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = tr(keyOf(el, 'text')); });
+  host.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = tr(keyOf(el, 'placeholder')); });
+  host.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = tr(keyOf(el, 'title')); });
+}
+function uiLocale(){ return {he:'he-IL', ru:'ru-RU'}[I18N_LANG] || 'en-GB'; }
+async function loadI18n(lang){
+  const set = (l, d) => { I18N_LANG = l; I18N = d || {}; };
+  if(!I18N_LANGS[lang] || lang === 'en'){ set('en', {}); return; }
+  let cached = null;
+  try{ cached = JSON.parse(localStorage.getItem('i18n_' + lang) || 'null'); }catch(e){}
+  if(cached) set(lang, cached);
+  const fresh = fetch('i18n/' + lang + '.json', {cache:'no-cache'}).then(r => r.ok ? r.json() : null).then(d => {
+    if(!d || typeof d !== 'object') return false;
+    const changed = JSON.stringify(d) !== JSON.stringify(cached);
+    try{ localStorage.setItem('i18n_' + lang, JSON.stringify(d)); }catch(e){}
+    if(I18N_LANG === lang || !cached) set(lang, d);
+    return changed;
+  }).catch(() => false);
+  if(cached){ fresh.then(ch => { if(ch && I18N_LANG === lang) redrawForLanguage(); }); return; }
+  await fresh;
+}
+function storedLanguage(){ try{ const l = localStorage.getItem('uiLang'); return I18N_LANGS[l] ? l : 'en'; }catch(e){ return 'en'; } }
+// The language select (one per page, #langSelect): keeps the choice on this device and redraws in it;
+// a signed-in user's choice is also saved to their account (updateMyLanguage), and login brings it back on any device.
+async function setLanguage(lang, opts){
+  lang = I18N_LANGS[lang] ? lang : 'en';
+  try{ localStorage.setItem('uiLang', lang); }catch(e){}
+  if(!(opts && opts.save === false) && getSession()){
+    loadFirestoreBackend().then(b => b.handleAction('updateMyLanguage', {action:'updateMyLanguage', language: lang}, {})).catch(()=>{});
+  }
+  try{ await loadI18n(lang); }catch(e){}
+  redrawForLanguage();
+}
+// The one language select sits in the header, or on the login screen while that one is shown.
+function placeLangSelect(){
+  const sel = document.getElementById('langSelect'); if(!sel) return;
+  const login = document.getElementById('loginScreen');
+  const onLogin = login && login.style.display !== 'none';
+  const host = onLogin ? login : document.getElementById('headerActions');
+  sel.classList.toggle('on-cover', !!onLogin);
+  if(host && sel.parentNode !== host) host.prepend(sel);
+}
+function syncLangSelects(){ document.querySelectorAll('select.lang-select').forEach(el => { el.value = I18N_LANG; }); }
+function redrawForLanguage(){
+  applyI18n();
+  syncLangSelects();
+  try{ const b = document.querySelector('[id^="tabBtn_"].active'); if(b && document.getElementById('appRoot').style.display !== 'none') switchTab(b.id.slice(7)); }catch(e){}
+}
 // SheetJS (Excel read and write, ~900 KB) is loaded only when an Excel
 // export or import needs it, not with the page. Same code in
 // schedule-manager.html and supplier-portal.html.
@@ -147,7 +213,7 @@ function loadXlsx(){
     const sc = document.createElement('script');
     sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
     sc.onload = () => res();
-    sc.onerror = () => { __xlsxLoading = null; sc.remove(); rej(new Error('Excel library not loaded')); };
+    sc.onerror = () => { __xlsxLoading = null; sc.remove(); rej(new Error(tr('Excel library not loaded'))); };
     document.head.appendChild(sc);
   }));
 }
@@ -187,9 +253,9 @@ function startVersionWatch(files){
 function showNewVersionBar(){
   if(document.getElementById('newVersionBar')) return;
   document.body.insertAdjacentHTML('beforeend',`<div id="newVersionBar" style="position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:100000;display:flex;align-items:center;gap:10px;max-width:calc(100% - 32px);box-sizing:border-box;padding:10px 12px 10px 16px;border-radius:12px;background:#1f6feb;color:#fff;font:600 14px/1.3 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.35)">
-    <span>A new version is available</span>
-    <button type="button" onclick="location.reload()" style="border:0;border-radius:8px;padding:6px 12px;background:#fff;color:#1f6feb;font:inherit;cursor:pointer">Update</button>
-    <button type="button" aria-label="Close" onclick="this.parentElement.remove()" style="border:0;background:none;color:#fff;font:inherit;font-size:18px;cursor:pointer;padding:0 4px">✕</button></div>`);
+    <span>${tr('A new version is available')}</span>
+    <button type="button" onclick="location.reload()" style="border:0;border-radius:8px;padding:6px 12px;background:#fff;color:#1f6feb;font:inherit;cursor:pointer">${tr('Update')}</button>
+    <button type="button" aria-label="${tr('Close')}" onclick="this.parentElement.remove()" style="border:0;background:none;color:#fff;font:inherit;font-size:18px;cursor:pointer;padding:0 4px">✕</button></div>`);
 }
 startVersionWatch(()=>[location.pathname,'firestore-backend.js']);
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
@@ -308,15 +374,17 @@ async function submitLogin(){
   const password=document.getElementById('loginPassword').value;
   const errEl=document.getElementById('loginError');
   errEl.textContent='';
-  if(!username||!password){ errEl.textContent='Enter username and password'; return; }
+  if(!username||!password){ errEl.textContent=tr('Enter username and password'); return; }
   try{
     const b = await loadFirestoreBackend();
     const json = await b.login(username, password);
     if(json.error){ errEl.textContent=json.error; return; }
-    if(json.role!=='supplier'){ await b.signOut(); errEl.textContent='This login is not a supplier account'; return; }
+    if(json.role!=='supplier'){ await b.signOut(); errEl.textContent=tr('This login is not a supplier account'); return; }
     saveSession({ uid: json.uid, role: json.role, tenantId: json.tenantId, supplierId: json.supplierId, username: json.username });
+    // The language this user last picked (on any device) wins over this device's.
+    if(json.language && json.language !== I18N_LANG) await setLanguage(json.language, {save:false});
     gateApp();
-  }catch(e){ errEl.textContent='Network error'; }
+  }catch(e){ errEl.textContent=tr('Network error'); }
 }
 
 // ── Data (already allow-listed by the supplier function — portal.py
@@ -479,7 +547,7 @@ function renderPagedList(el, key, sig, items, rowHtml, opts){
 }
 function pagedMoreHtml(left, opts){
   if(left <= 0) return '';
-  const btn = `<button class="btn sm paged-more-btn" style="margin:6px auto;display:flex"><i class="ti ti-chevron-down"></i> Show more (${left} left)</button>`;
+  const btn = `<button class="btn sm paged-more-btn" style="margin:6px auto;display:flex"><i class="ti ti-chevron-down"></i> ${tr('Show more ({0} left)',{0:(left)})}</button>`;
   if(opts.table) return `<tr class="paged-more"><td colspan="${opts.colspan||20}" style="padding:4px">${btn}</td></tr>`;
   return `<div class="paged-more" style="${opts.grid?'grid-column:1/-1;':''}">${btn}</div>`;
 }
@@ -558,7 +626,7 @@ function renderDashboard(){
   const today = new Date().toDateString();
   const todays = punchLog.filter(e=>new Date(e.ts).toDateString()===today).sort((a,b)=>new Date(b.ts)-new Date(a.ts));
   const logEl = document.getElementById('dashLog');
-  if(!todays.length){ logEl.textContent='No activity today'; return; }
+  if(!todays.length){ logEl.textContent=tr('No activity today'); return; }
   renderPagedList(logEl, 'dashLog', today, todays, e=>{
     const w = myWorkers.find(x=>x.id===e.workerId);
     return `<div>${esc(w?w.name:e.workerName)} — ${e.type.toUpperCase()} ${esc(e.time)}</div>`;
@@ -571,8 +639,8 @@ function renderDashboard(){
 function clientName(id){ const c=myClients.find(x=>x.id===id); return c?c.name:''; }
 function renderWorkersList(){
   const el=document.getElementById('workersList');
-  if(!myWorkers.length){ el.innerHTML=`<div style="color:var(--text3);padding:16px 0">No workers yet</div>`; return; }
-  el.innerHTML=`<table><thead><tr><th>Name</th><th>Phone</th><th>Object</th><th>Commission</th><th></th></tr></thead><tbody class="workers-rows"></tbody></table>`;
+  if(!myWorkers.length){ el.innerHTML=`<div style="color:var(--text3);padding:16px 0">${tr('No workers yet')}</div>`; return; }
+  el.innerHTML=`<table><thead><tr><th>${tr('Name')}</th><th>${tr('Phone')}</th><th>${tr('Object')}</th><th>${tr('Commission')}</th><th></th></tr></thead><tbody class="workers-rows"></tbody></table>`;
   renderPagedList(el.querySelector('.workers-rows'), 'workers', '', myWorkers, w=>`<tr class="tap-edit" onclick="if(isPlainTap(event,this))openEditWorkerModal('${w.id}')">
       <td>${esc(w.name)}</td>
       <td>${esc(w.phone||'')}</td>
@@ -600,15 +668,15 @@ function renderWorkerModal(w){
   const given = w.docGiven != null ? w.docGiven : (w.name||'').split(' ')[0]||'';
   const surname = w.docSurname != null ? w.docSurname : (w.name||'').split(' ').slice(1).join(' ');
   document.getElementById('workerModal').innerHTML = `
-    <div class="modal-title">${w.id?'Edit':'Add'} Worker</div>
-    <div class="field"><label>Given name</label><input id="wfGiven" value="${esc(given)}"></div>
-    <div class="field"><label>Surname</label><input id="wfSurname" value="${esc(surname)}"></div>
-    <div class="field"><label>Phone</label><input id="wfPhone" value="${esc(w.phone||'')}"></div>
-    <div class="field"><label>ID / Passport number</label><input id="wfDocId" value="${esc(w.docId||'')}"></div>
-    <div class="field"><label>Address</label><input id="wfAddress" value="${esc(w.address||'')}"></div>
-    <div class="field"><label>City</label><input id="wfCity" value="${esc(w.city||'')}"></div>
+    <div class="modal-title">${w.id?tr('Edit Worker'):tr('Add Worker')}</div>
+    <div class="field"><label>${tr('Given name')}</label><input id="wfGiven" value="${esc(given)}"></div>
+    <div class="field"><label>${tr('Surname')}</label><input id="wfSurname" value="${esc(surname)}"></div>
+    <div class="field"><label>${tr('Phone')}</label><input id="wfPhone" value="${esc(w.phone||'')}"></div>
+    <div class="field"><label>${tr('ID / Passport number')}</label><input id="wfDocId" value="${esc(w.docId||'')}"></div>
+    <div class="field"><label>${tr('Address')}</label><input id="wfAddress" value="${esc(w.address||'')}"></div>
+    <div class="field"><label>${tr('City')}</label><input id="wfCity" value="${esc(w.city||'')}"></div>
     <div class="modal-actions">
-      <button class="btn accent" onclick="saveWorkerModal('${w.id||''}')">Save</button>
+      <button class="btn accent" onclick="saveWorkerModal('${w.id||''}')">${tr('Save')}</button>
     </div>`;
 }
 async function saveWorkerModal(id){
@@ -620,27 +688,27 @@ async function saveWorkerModal(id){
     address: document.getElementById('wfAddress').value.trim(),
     city: document.getElementById('wfCity').value.trim(),
   };
-  if(!worker.docGiven){ showToast('Name required'); return; }
+  if(!worker.docGiven){ showToast(tr('Name required')); return; }
   const action = id ? 'supplierUpdateWorker' : 'supplierAddWorker';
   const body = id ? { action, workerId:id, worker } : { action, worker };
   try{
     const json = await supplierCall(body);
     if(json.error){ showToast(json.error); return; }
-    showToast('Saved');
+    showToast(tr('Saved'));
     closeModal('workerOverlay');
     await loadData();
     renderWorkersList();
-  }catch(e){ showToast('Failed: '+e.message); }
+  }catch(e){ showToast(tr('Failed: {0}',{0:(e.message)})); }
 }
 async function deleteWorker(id){
-  if(!confirm('Remove this worker?')) return;
+  if(!confirm(tr('Remove this worker?'))) return;
   try{
     const json = await supplierCall({action:'supplierDeleteWorker', workerId:id});
     if(json.error){ showToast(json.error); return; }
-    showToast('Removed');
+    showToast(tr('Removed'));
     await loadData();
     renderWorkersList();
-  }catch(e){ showToast('Failed: '+e.message); }
+  }catch(e){ showToast(tr('Failed: {0}',{0:(e.message)})); }
 }
 
 // ── My Hours (stage 15's shared export module, duplicated here per this
@@ -660,51 +728,51 @@ function getWorkerMonthShifts(workerId, year, month){
     .sort((a,b)=>a.date-b.date);
 }
 function exportShiftsDetail(workerId, year, month, format){
-  if(format==='excel' && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportShiftsDetail(workerId, year, month, format)).catch(()=>showToast('Excel library not loaded')); return; }
+  if(format==='excel' && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportShiftsDetail(workerId, year, month, format)).catch(()=>showToast(tr('Excel library not loaded'))); return; }
   const w = myWorkers.find(x=>x.id===workerId);
   const shifts = getWorkerMonthShifts(workerId, year, month);
-  const monthLabel = new Date(year, month, 1).toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  const monthLabel = new Date(year, month, 1).toLocaleDateString(uiLocale(),{month:'long',year:'numeric'});
   const totalHours = shifts.reduce((s,x)=>s+x.hours,0);
   const fname = 'hours-'+(w?w.name.replace(/\s+/g,'_'):workerId)+'-'+year+'-'+String(month+1).padStart(2,'0');
   if(format==='excel'){
-    const aoa=[['Date','In','Out','Hours']];
+    const aoa=[['Date','In','Out','Hours'].map(h=>tr(h))];
     shifts.forEach(s=>aoa.push([s.date.toLocaleDateString('en-GB'), s.inTime, s.outTime, s.hours.toFixed(2)]));
-    aoa.push(['','','Total', totalHours.toFixed(2)]);
+    aoa.push(['','',tr('Total'), totalHours.toFixed(2)]);
     const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Hours');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), tr('Hours'));
     XLSX.writeFile(wb, fname+'.xlsx');
   } else {
     const rowsHtml = shifts.map(s=>`<tr><td>${s.date.toLocaleDateString('en-GB')}</td><td>${esc(s.inTime)}</td><td>${esc(s.outTime)}</td><td>${s.hours.toFixed(2)}</td></tr>`).join('');
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Hours — ${esc(w?w.name:'')}</title>
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(tr('Hours'))} — ${esc(w?w.name:'')}</title>
       <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px}th{background:#f0f0f0}</style>
       </head><body><h2>${esc(w?w.name:'')} — ${esc(monthLabel)}</h2>
-      <table><thead><tr><th>Date</th><th>In</th><th>Out</th><th>Hours</th></tr></thead>
+      <table><thead><tr><th>${tr('Date')}</th><th>${tr('In')}</th><th>${tr('Out')}</th><th>${tr('Hours')}</th></tr></thead>
       <tbody>${rowsHtml}</tbody></table></body></html>`;
     const win=window.open('','_blank'); win.document.write(html); win.document.close(); setTimeout(()=>win.print(),400);
   }
-  showToast('Hours exported');
+  showToast(tr('Hours exported'));
 }
 function exportPayableSummary(rows, opts){
-  if(opts && opts.format==='excel' && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportPayableSummary(rows, opts)).catch(()=>showToast('Excel library not loaded')); return; }
+  if(opts && opts.format==='excel' && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportPayableSummary(rows, opts)).catch(()=>showToast(tr('Excel library not loaded'))); return; }
   opts = opts||{};
   const grand = rows.reduce((s,r)=>s+r.total,0);
   if(opts.format==='excel'){
-    const aoa=[['Worker','Hours','Commission','Total']];
+    const aoa=[['Worker','Hours','Commission','Total'].map(h=>tr(h))];
     rows.forEach(r=>aoa.push([r.label, r.hours.toFixed(2), r.rate, r.total.toFixed(2)]));
-    aoa.push(['','','Total', grand.toFixed(2)]);
+    aoa.push(['','',tr('Total'), grand.toFixed(2)]);
     const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Summary');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), tr('Summary'));
     XLSX.writeFile(wb, (opts.filename||'summary')+'.xlsx');
   } else {
     const rowsHtml = rows.map(r=>`<tr><td>${esc(r.label)}</td><td>${r.hours.toFixed(2)}</td><td>${esc(String(r.rate))}</td><td>${r.total.toFixed(2)}</td></tr>`).join('');
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(opts.title||'Summary')}</title>
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(opts.title||tr('Summary'))}</title>
       <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px}th{background:#f0f0f0}</style>
-      </head><body><h2>${esc(opts.title||'Summary')}</h2>
-      <table><thead><tr><th>Worker</th><th>Hours</th><th>Commission</th><th>Total</th></tr></thead>
+      </head><body><h2>${esc(opts.title||tr('Summary'))}</h2>
+      <table><thead><tr><th>${tr('Worker')}</th><th>${tr('Hours')}</th><th>${tr('Commission')}</th><th>${tr('Total')}</th></tr></thead>
       <tbody>${rowsHtml}</tbody></table></body></html>`;
     const win=window.open('','_blank'); win.document.write(html); win.document.close(); setTimeout(()=>win.print(),400);
   }
-  showToast('Summary exported');
+  showToast(tr('Summary exported'));
 }
 function renderHoursTab(){
   const now=new Date();
@@ -736,12 +804,12 @@ function addSendHoursRow(){
 }
 function renderSendHoursRows(){
   const w = myWorkers.find(x=>x.id===document.getElementById('sendHoursWorker').value);
-  document.getElementById('sendHoursHint').textContent = isDailyPay(w) ? 'Paid by the day: a date is enough — with no times it counts as one day (08:00–16:00).' : 'Date, in and out for each shift.';
+  document.getElementById('sendHoursHint').textContent = isDailyPay(w) ? tr('Paid by the day: a date is enough — with no times it counts as one day (08:00–16:00).') : tr('Date, in and out for each shift.');
   document.getElementById('sendHoursRows').innerHTML = sendHoursRows.map((r,i)=>`<div data-row="${i}" style="display:grid;grid-template-columns:1.4fr 1fr 1fr auto;gap:6px;align-items:center">
       <input type="date" value="${esc(r.date)}" onchange="sendHoursRows[${i}].date=this.value">
-      <input type="time" value="${esc(r.inTime)}" title="In" onchange="sendHoursRows[${i}].inTime=this.value">
-      <input type="time" value="${esc(r.outTime)}" title="Out" onchange="sendHoursRows[${i}].outTime=this.value">
-      <button class="btn sm" type="button" title="Remove" onclick="sendHoursRows.splice(${i},1);renderSendHoursRows()"><i class="ti ti-trash"></i></button>
+      <input type="time" value="${esc(r.inTime)}" title="${tr('In')}" onchange="sendHoursRows[${i}].inTime=this.value">
+      <input type="time" value="${esc(r.outTime)}" title="${tr('Out')}" onchange="sendHoursRows[${i}].outTime=this.value">
+      <button class="btn sm" type="button" title="${tr('Remove')}" onclick="sendHoursRows.splice(${i},1);renderSendHoursRows()"><i class="ti ti-trash"></i></button>
     </div>`).join('');
 }
 // A timesheet file (Excel / CSV) fills the shift rows of the picked worker,
@@ -752,7 +820,7 @@ function renderSendHoursRows(){
 function parseTimesheetFile(file){
   return loadXlsx().then(()=>new Promise((resolve, reject)=>{
     const reader = new FileReader();
-    reader.onerror = ()=>reject(new Error('Could not read the file'));
+    reader.onerror = ()=>reject(new Error(tr('Could not read the file')));
     reader.onload = ()=>{
       try{
         const wb = XLSX.read(reader.result, {type:'array', cellDates:true});
@@ -761,7 +829,7 @@ function parseTimesheetFile(file){
         const head = rows[0].map(h=>String(h||'').trim().toLowerCase().replace(/["'׳״.]/g,''));
         const col = names => head.findIndex(h=>names.includes(h));
         const di = col(['date','תאריך']), ii = col(['in','start','כניסה']), oi = col(['out','end','יציאה']), wi = col(['worker','name','id','עובד','שם','תז']);
-        if(di < 0){ reject(new Error('No Date column (expected Date, In, Out)')); return; }
+        if(di < 0){ reject(new Error(tr('No Date column (expected Date, In, Out)'))); return; }
         const p2 = n => String(n).padStart(2,'0');
         const day = v=>{
           if(v instanceof Date) return v.getFullYear()+'-'+p2(v.getMonth()+1)+'-'+p2(v.getDate());
@@ -795,25 +863,25 @@ async function loadTimesheetFile(input){
   const file = input.files && input.files[0]; input.value = '';
   if(!file) return;
   const w = myWorkers.find(x=>x.id===document.getElementById('sendHoursWorker').value);
-  if(!w){ showToast('Pick a worker first'); return; }
+  if(!w){ showToast(tr('Pick a worker first')); return; }
   let rows;
-  try{ rows = await parseTimesheetFile(file); }catch(e){ showToast(e.message || 'Could not read the file', 6000); return; }
+  try{ rows = await parseTimesheetFile(file); }catch(e){ showToast(e.message || tr('Could not read the file'), 6000); return; }
   const mine = rows.filter(r=>timesheetRowIsFor(r.worker, w)), others = rows.length - mine.length;
-  if(!mine.length){ showToast('No rows for '+w.name+' in this file'+(others?' ('+others+' row(s) of other workers)':''), 6000); return; }
+  if(!mine.length){ showToast(others ? tr('No rows for {0} in this file ({1} row(s) of other workers)',{0:w.name,1:others}) : tr('No rows for {0} in this file',{0:w.name}), 6000); return; }
   mine.forEach(r=>sendHoursRows.push({date:r.date, inTime:r.inTime, outTime:r.outTime}));
   renderSendHoursRows();
-  showToast(mine.length+' shift(s) loaded for '+w.name+' — check them and send'+(others?'; '+others+' row(s) of other workers: pick that worker and load the file again':''), 7000);
+  showToast(others ? tr('{0} shift(s) loaded for {1} — check them and send; {2} row(s) of other workers: pick that worker and load the file again',{0:mine.length,1:w.name,2:others}) : tr('{0} shift(s) loaded for {1} — check them and send',{0:mine.length,1:w.name}), 7000);
 }
 async function submitSendHours(){
   const wid = document.getElementById('sendHoursWorker').value, w = myWorkers.find(x=>x.id===wid);
-  if(!sendHoursRows.length){ showToast('Add at least one shift'); return; }
+  if(!sendHoursRows.length){ showToast(tr('Add at least one shift')); return; }
   // A row that can't be sent is explained, never dropped silently.
   const daily = isDailyPay(w);
   const bad = sendHoursRows.map((r,i)=>(!r.date || (!daily && (!r.inTime || !r.outTime)) || (!!r.inTime !== !!r.outTime)) ? i : -1).filter(i=>i>=0);
   if(bad.length){
     document.querySelectorAll('#sendHoursRows [data-row]').forEach(el=>{ el.style.outline = bad.includes(Number(el.dataset.row)) ? '1px solid var(--red)' : ''; });
     const r = sendHoursRows[bad[0]];
-    showToast('Shift '+(bad[0]+1)+': '+(!r.date ? 'pick a date' : !daily ? 'enter the in and out times — this worker is paid by the hour' : 'enter both times, or leave both empty for a whole day'));
+    showToast(tr('Shift {0}: {1}',{0:bad[0]+1,1:(!r.date ? tr('pick a date') : !daily ? tr('enter the in and out times — this worker is paid by the hour') : tr('enter both times, or leave both empty for a whole day'))}));
     return;
   }
   const entries = sendHoursRows.map(r=>{
@@ -823,14 +891,14 @@ async function submitSendHours(){
     const [y,m,d] = r.date.split('-');
     return {date: d+'/'+m+'/'+y, inTime, outTime};
   }).filter(Boolean);
-  if(!entries.length){ showToast('Add at least one shift with a date, in and out'); return; }
+  if(!entries.length){ showToast(tr('Add at least one shift with a date, in and out')); return; }
   const btn = document.getElementById('sendHoursBtn'); btn.disabled = true;
   try{
     const r = await supplierCall({action:'supplierSubmitHours', workerId: wid, clientId: (w&&w.clientIds||[])[0]||'', entries});
     if(r.error){ showToast(r.error); return; }
-    showToast(r.count+' shift(s) sent for review');
+    showToast(tr('{0} shift(s) sent for review',{0:(r.count)}));
     sendHoursRows = []; renderSendHoursRows(); loadSentHours();
-  }catch(e){ showToast('Failed: '+e.message); }
+  }catch(e){ showToast(tr('Failed: {0}',{0:(e.message)})); }
   finally{ btn.disabled = false; }
 }
 // Each batch with its status: amber "Sent for review", green "Approved", red "Rejected".
@@ -839,18 +907,18 @@ const HOURS_STATUS = {pending:['Sent for review','var(--amber)','var(--amber-bg)
   rejected:['Rejected','var(--red)','var(--red-bg)','ti-circle-x']};
 function hoursStatusChip(st, when){
   const [label,color,bg,icon] = HOURS_STATUS[st] || HOURS_STATUS.pending;
-  return `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;color:${color};background:${bg}"><i class="ti ${icon}"></i>${esc(label)}${when?' · '+esc(new Date(when).toLocaleDateString('en-GB')):''}</span>`;
+  return `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;color:${color};background:${bg}"><i class="ti ${icon}"></i>${esc(tr(label))}${when?' · '+esc(new Date(when).toLocaleDateString('en-GB')):''}</span>`;
 }
 async function loadSentHours(){
   const el = document.getElementById('sentHoursList');
   let batches = [];
-  try{ batches = (await supplierCall({action:'supplierListHours'})).batches || []; }catch(e){ el.textContent = 'Could not load'; return; }
-  if(!batches.length){ el.textContent = 'Nothing sent yet'; return; }
+  try{ batches = (await supplierCall({action:'supplierListHours'})).batches || []; }catch(e){ el.textContent = tr('Could not load'); return; }
+  if(!batches.length){ el.textContent = tr('Nothing sent yet'); return; }
   const nameOf = id => (myWorkers.find(w=>w.id===id)||{}).name || '';
   renderPagedList(el, 'sentHours', '', batches, b=>{
     const rows = b.entries||[];
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 10px;background:var(--bg3);border-radius:var(--radius-sm);margin-bottom:6px">
-      <span>${esc(nameOf(rows[0]&&rows[0].workerId))} · ${rows.length} shift(s): ${esc((rows[0]||{}).date||'')}${rows.length>1?' – '+esc(rows[rows.length-1].date):''}</span>
+      <span>${tr('{0} · {1} shift(s): {2}{3}',{0:(esc(nameOf(rows[0]&&rows[0].workerId))),1:(rows.length),2:(esc((rows[0]||{}).date||'')),3:(rows.length>1?' – '+esc(rows[rows.length-1].date):'')})}</span>
       ${hoursStatusChip(b.status, b.status==='pending'?b.uploadedAt:b.decidedAt)}
     </div>`;
   });
@@ -889,11 +957,11 @@ function renderPayTable(){
     return {w, hours, days:d, rate:daily?'₪'+rate+'/day':'₪'+rate+'/h', pay, commission:myCommission(w,hours,d)};
   }).filter(r=>r.hours>0);
   const el=document.getElementById('payTable');
-  if(!rows.length){ el.innerHTML='<div style="color:#8b90a8;font-size:13px">No hours this month</div>'; return; }
+  if(!rows.length){ el.innerHTML='<div style="color:#8b90a8;font-size:13px">'+tr('No hours this month')+'</div>'; return; }
   const tot=k=>rows.reduce((t,r)=>t+r[k],0);
-  el.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Worker</th><th>Hours</th><th>Days</th><th>Rate</th><th>Pay</th><th>My commission</th></tr></thead>
+  el.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>${tr('Worker')}</th><th>${tr('Hours')}</th><th>${tr('Days')}</th><th>${tr('Rate')}</th><th>${tr('Pay')}</th><th>${tr('My commission')}</th></tr></thead>
     <tbody class="pay-rows"></tbody>
-    <tfoot><tr><td><b>Total</b></td><td><b>${tot('hours').toFixed(1)}</b></td><td></td><td></td><td><b>₪${tot('pay').toFixed(0)}</b></td><td><b>₪${tot('commission').toFixed(0)}</b></td></tr></tfoot></table></div>`;
+    <tfoot><tr><td><b>${tr('Total')}</b></td><td><b>${tot('hours').toFixed(1)}</b></td><td></td><td></td><td><b>₪${tot('pay').toFixed(0)}</b></td><td><b>₪${tot('commission').toFixed(0)}</b></td></tr></tfoot></table></div>`;
   renderPagedList(el.querySelector('.pay-rows'),'pay',key,rows,r=>`<tr><td>${esc(r.w.name)}</td><td>${r.hours.toFixed(1)}</td><td>${r.days}</td><td>${esc(r.rate)}</td><td>₪${r.pay.toFixed(0)}</td><td>₪${r.commission.toFixed(0)}</td></tr>`,{table:true,colspan:6});
 }
 function runDetailExport(format){
@@ -908,12 +976,13 @@ function runSummaryExport(format){
     const hours = shifts.reduce((s,x)=>s+x.hours,0);
     const rate = w.supplierRate!=null ? w.supplierRate : 5;
     const days = new Set(shifts.filter(x=>x.hours>0).map(x=>localYMD(x.date))).size;
-    return { label: w.name, hours, rate: w.supplierDayRate!=null ? '₪'+w.supplierDayRate+'/day' : rate, total: myCommission(w, hours, days) };
+    return { label: w.name, hours, rate: w.supplierDayRate!=null ? tr('₪{0}/day',{0:w.supplierDayRate}) : rate, total: myCommission(w, hours, days) };
   }).filter(r=>r.hours>0);
-  exportPayableSummary(rows, { title:'My hours — payable summary', filename:'my-hours-summary', format });
+  exportPayableSummary(rows, { title:tr('My hours — payable summary'), filename:'my-hours-summary', format });
 }
 
-gateApp();
+new MutationObserver(placeLangSelect).observe(document.getElementById('loginScreen'), {attributes:true, attributeFilter:['style']});
+loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangSelects(); placeLangSelect(); gateApp(); });
 </script>
 </body>
 </html>

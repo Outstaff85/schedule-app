@@ -352,9 +352,12 @@ html,body{
   .worker-grid{gap:8px;}
   .punch-clock{font-size:clamp(42px,14vw,60px);}
 }
+.top-bar{padding-right:64px;}
+.lang-select{position:fixed;right:max(env(safe-area-inset-right,0px),12px);top:max(env(safe-area-inset-top,0px),12px);z-index:50;background:rgba(255,255,255,0.06);color:var(--text2,#7c84a0);border:1px solid rgba(255,255,255,0.13);border-radius:8px;padding:4px 6px;font:600 12px/1 inherit;cursor:pointer;}
 </style>
 </head>
 <body>
+<select class="lang-select" id="langSelect" title="Language" data-i18n-title="Language" aria-label="Language" onchange="setLanguage(this.value)"><option value="en">EN</option><option value="he">HE</option><option value="ru">RU</option></select>
 
 <!-- Screen 1: Worker select -->
 <div class="screen" id="screenWorker">
@@ -362,7 +365,7 @@ html,body{
     <div class="site-pill"><i class="ti ti-map-pin"></i> <span id="verifiedSiteName">Work Site</span></div>
     <div class="time-pill" id="workerClock">--:--</div>
   </div>
-  <div class="section-label">Who are you?</div>
+  <div class="section-label" data-i18n>Who are you?</div>
   <div class="worker-grid" id="workerGrid"></div>
   <button class="continue-btn" id="continueBtn" disabled onclick="goToPunch()">
     Select a worker to continue
@@ -382,17 +385,17 @@ html,body{
   </div>
   <div class="loc-chip loading" id="locChip">
     <span class="loc-dot"></span>
-    <span>Checking location...</span>
+    <span data-i18n>Checking location...</span>
   </div>
   <div class="punch-btn-wrap">
     <div class="btn-ring off" id="btnRing"></div>
     <button class="big-punch-btn disabled" id="bigPunchBtn" onclick="doPunch()">
       <span class="btn-icon">👆</span>
-      <span class="btn-label">LOADING</span>
+      <span class="btn-label" data-i18n>LOADING</span>
     </button>
   </div>
-  <div class="back-link" onclick="openHistory()" style="color:var(--blue)"><i class="ti ti-calendar"></i> My History</div>
-  <div class="back-link" id="changeWorkerLink" onclick="goBack()">← Change worker</div>
+  <div class="back-link" onclick="openHistory()" style="color:var(--blue)"><i class="ti ti-calendar"></i> <span data-i18n>My History</span></div>
+  <div class="back-link" id="changeWorkerLink" onclick="goBack()" data-i18n>← Change worker</div>
 </div>
 
 <!-- Screen 3: Success -->
@@ -403,16 +406,16 @@ html,body{
   <div class="success-time" id="successTime">--:--</div>
   <div class="success-date" id="successDate"></div>
   <div class="success-actions">
-    <button class="btn-primary" id="clockAnotherBtn" onclick="goToWorker()">Clock another worker</button>
-    <button class="btn-secondary" onclick="resetToQR()">Done</button>
+    <button class="btn-primary" id="clockAnotherBtn" onclick="goToWorker()" data-i18n>Clock another worker</button>
+    <button class="btn-secondary" onclick="resetToQR()" data-i18n>Done</button>
   </div>
 </div>
 
 <!-- Screen 4: History -->
 <div class="screen hidden" id="screenHistory" style="justify-content:flex-start;align-items:center">
   <div class="top-bar" style="margin-bottom:16px">
-    <div style="font-size:18px;font-weight:500"><i class="ti ti-calendar"></i> My History</div>
-    <div class="back-link" onclick="closeHistory()" style="font-size:14px">✕ Close</div>
+    <div style="font-size:18px;font-weight:500"><i class="ti ti-calendar"></i> <span data-i18n>My History</span></div>
+    <div class="back-link" onclick="closeHistory()" style="font-size:14px" data-i18n>✕ Close</div>
   </div>
   <div id="historyContent" style="width:100%;max-width:500px"></div>
 </div>
@@ -478,6 +481,62 @@ let workers=[], allClients=[], selectedWorker=null, locOk=false, locDist=null, c
 
 // ── Offline queue ─────────────────────────────────────────────────
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ── Translations (the same core as schedule-manager.html: I18N_LANGS, tr,
+// applyI18n, uiLocale, loadI18n — keep the copies the same; docs/translations.md).
+// The language is this device's choice (the language select, English by
+// default), kept in localStorage.uiLang — shared by the three pages.
+const I18N_LANGS = {en:'English', he:'עברית', ru:'Русский'};
+var I18N = {}, I18N_LANG = 'en';
+function tr(s, params){
+  let out = (I18N_LANG !== 'en' && I18N[s]) || s;
+  if(params) out = out.replace(/\{(\w+)\}/g, (m, k) => params[k] != null ? params[k] : m);
+  return out;
+}
+function applyI18n(root){
+  const host = root || document;
+  const keyOf = (el, attr) => { const k = '__i18n_' + attr; if(el[k] == null) el[k] = attr === 'text' ? (el.getAttribute('data-i18n') || el.textContent.trim()) : el.getAttribute('data-i18n-' + attr); return el[k]; };
+  host.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = tr(keyOf(el, 'text')); });
+  host.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = tr(keyOf(el, 'placeholder')); });
+  host.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = tr(keyOf(el, 'title')); });
+}
+function uiLocale(){ return {he:'he-IL', ru:'ru-RU'}[I18N_LANG] || 'en-GB'; }
+async function loadI18n(lang){
+  const set = (l, d) => { I18N_LANG = l; I18N = d || {}; };
+  if(!I18N_LANGS[lang] || lang === 'en'){ set('en', {}); return; }
+  let cached = null;
+  try{ cached = JSON.parse(localStorage.getItem('i18n_' + lang) || 'null'); }catch(e){}
+  if(cached) set(lang, cached);
+  const fresh = fetch('i18n/' + lang + '.json', {cache:'no-cache'}).then(r => r.ok ? r.json() : null).then(d => {
+    if(!d || typeof d !== 'object') return false;
+    const changed = JSON.stringify(d) !== JSON.stringify(cached);
+    try{ localStorage.setItem('i18n_' + lang, JSON.stringify(d)); }catch(e){}
+    if(I18N_LANG === lang || !cached) set(lang, d);
+    return changed;
+  }).catch(() => false);
+  if(cached){ fresh.then(ch => { if(ch && I18N_LANG === lang) redrawForLanguage(); }); return; }
+  await fresh;
+}
+function storedLanguage(){ try{ const l = localStorage.getItem('uiLang'); return I18N_LANGS[l] ? l : 'en'; }catch(e){ return 'en'; } }
+// The language select (one per page, #langSelect, top right like the other pages): keeps the choice on this device
+// (the page has no login) and redraws in it.
+async function setLanguage(lang){
+  lang = I18N_LANGS[lang] ? lang : 'en';
+  try{ localStorage.setItem('uiLang', lang); }catch(e){}
+  try{ await loadI18n(lang); }catch(e){}
+  redrawForLanguage();
+}
+function syncLangSelects(){ document.querySelectorAll('select.lang-select').forEach(el => { el.value = I18N_LANG; }); }
+function redrawForLanguage(){
+  applyI18n();
+  syncLangSelects();
+  try{
+    const on = id => { const s = document.getElementById(id); return s && !s.classList.contains('hidden'); };
+    if(on('screenPunch')){ tickPunch(); updateBigBtn(); getLocation(); }
+    else if(on('screenWorker')) renderWorkerGrid();
+    else if(on('screenHistory')) openHistory();
+  }catch(e){}
+}
 function getQueue(){ try{return JSON.parse(localStorage.getItem(QUEUE_KEY)||'[]');}catch(e){return[];} }
 function saveQueue(q){ localStorage.setItem(QUEUE_KEY,JSON.stringify(q)); }
 
@@ -533,10 +592,10 @@ function showOfflineBadge(n){
   let b=document.getElementById('offlineBadge');
   if(!b){ b=document.createElement('div'); b.id='offlineBadge'; document.body.appendChild(b); }
   b.style.cssText='position:fixed;top:max(env(safe-area-inset-top,12px),12px);left:50%;transform:translateX(-50%);background:rgba(245,166,35,0.95);backdrop-filter:blur(8px);color:#fff;font-size:13px;font-weight:700;padding:7px 18px;border-radius:100px;z-index:999;display:flex;align-items:center;gap:6px;';
-  b.textContent='📶 Offline — '+n+' punch'+(n>1?'es':'')+' queued';
+  b.textContent=n>1?tr('📶 Offline — {0} punches queued',{0:n}):tr('📶 Offline — 1 punch queued');
 }
 function hideOfflineBadge(){ const b=document.getElementById('offlineBadge'); if(b) b.style.display='none'; }
-function showSyncToast(n){ showToast('Synced '+n+' offline punch'+(n>1?'es':'')); }
+function showSyncToast(n){ showToast(n>1?tr('Synced {0} offline punches',{0:n}):tr('Synced 1 offline punch')); }
 
 window.addEventListener('online', ()=>flushQueue());
 window.addEventListener('load',   ()=>{ const q=getQueue(); if(q.length){showOfflineBadge(q.length);flushQueue();} });
@@ -555,16 +614,16 @@ function init(){
       if(navigator.onLine) verifyAndRefresh();
     } else if(navigator.onLine){
       // Not in cache → must verify against the DB before letting them in.
-      showLoadingScreen('Verifying...');
+      showLoadingScreen(tr('Verifying...'));
       loadWorkersFromGS().then(ok=>{
         hideLoadingScreen();
-        if(!ok){ showInvalidLink('Connection problem','Couldn\'t reach the server. Check your connection and reload.','ti-wifi-off'); return; }
+        if(!ok){ showInvalidLink(tr('Connection problem'),tr('Couldn\'t reach the server. Check your connection and reload.'),'ti-wifi-off'); return; }
         const verified = workers.find(w=> w.token===URL_TOKEN);
         if(verified){ goToPunchDirect(verified); } else { showInvalidLink(); }
-      }).catch(()=>{ hideLoadingScreen(); showInvalidLink('Connection problem','Couldn\'t reach the server. Check your connection and reload.','ti-wifi-off'); });
+      }).catch(()=>{ hideLoadingScreen(); showInvalidLink(tr('Connection problem'),tr('Couldn\'t reach the server. Check your connection and reload.'),'ti-wifi-off'); });
     } else {
       // Offline and never opened before → nothing to verify against.
-      showInvalidLink('No connection','Open this link once while online to set it up. After that it works offline.','ti-wifi-off');
+      showInvalidLink(tr('No connection'),tr('Open this link once while online to set it up. After that it works offline.'),'ti-wifi-off');
     }
     return;
   }
@@ -575,7 +634,7 @@ function init(){
     startWorkerClock();
     if(navigator.onLine) loadWorkersFromGS().catch(()=>{}); // refresh cache in background
   } else {
-    showLoadingScreen('Loading...');
+    showLoadingScreen(tr('Loading...'));
     loadWorkersFromGS().then(()=>{
       hideLoadingScreen();
       showScreen('screenWorker');
@@ -602,12 +661,12 @@ function verifyAndRefresh(){
 }
 
 function showInvalidLink(title, msg, icon){
-  title = title || 'Invalid Link';
-  msg   = msg   || 'This link is no longer valid.<br>Ask your manager for a new link.';
+  title = title || tr('Invalid Link');
+  msg   = msg ? esc(msg) : esc(tr('This link is no longer valid.'))+'<br>'+esc(tr('Ask your manager for a new link.'));
   icon  = icon  || 'ti-link-off';
   document.body.innerHTML = '<div style="position:fixed;inset:0;background:#0f1117;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center">'
     + '<div style="color:#ff4f5e;margin-bottom:18px"><i class="ti '+icon+'" style="font-size:64px"></i></div>'
-    + '<div style="font-size:24px;font-weight:900;color:#ff4f5e;margin-bottom:10px">'+title+'</div>'
+    + '<div style="font-size:24px;font-weight:900;color:#ff4f5e;margin-bottom:10px">'+esc(title)+'</div>'
     + '<div style="font-size:15px;color:#7c84a0;line-height:1.6;max-width:280px">'+msg+'</div>'
     + '</div>';
 }
@@ -633,7 +692,7 @@ function resolveSiteFromWorker(w){
   }
 }
 // Label for the site pill: client name, plus its object/branch if set.
-function siteLabel(){ const n=esc(SITE.name||'Work Site'); return SITE.object?(n+' · '+esc(SITE.object)):n; }
+function siteLabel(){ const n=esc(!SITE.name||SITE.name==='Work Site'?tr('Work Site'):SITE.name); return SITE.object?(n+' · '+esc(SITE.object)):n; }
 
 function goToPunchDirect(w){
   selectedWorker = w;
@@ -675,7 +734,7 @@ function showObjectPicker(w, objs){
   const d=document.createElement('div'); d.id='objectPicker';
   d.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;padding:20px;z-index:998;font-family:"DM Sans",-apple-system,sans-serif';
   let h='<div style="background:#181c27;border:1px solid rgba(255,255,255,0.13);border-radius:14px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto">';
-  h+='<div style="display:flex;align-items:center;gap:8px;font-size:19px;font-weight:600;color:#eef0f8;letter-spacing:-0.3px"><i class="ti ti-building-store"></i> Choose a site</div>';
+  h+='<div style="display:flex;align-items:center;gap:8px;font-size:19px;font-weight:600;color:#eef0f8;letter-spacing:-0.3px"><i class="ti ti-building-store"></i> '+tr('Choose a site')+'</div>';
   h+='<div style="color:#7c84a0;font-size:13px;margin-top:4px;margin-bottom:18px">'+esc(w.name)+'</div>';
   h+='<div style="display:flex;flex-direction:column;gap:10px">';
   objs.forEach(c=>{
@@ -683,7 +742,7 @@ function showObjectPicker(w, objs){
     h+='<button onclick="pickObject(\''+c.id+'\')" style="background:#1e2333;border:1px solid rgba(255,255,255,0.13);border-radius:12px;padding:14px 16px;color:#eef0f8;font-size:15px;font-weight:600;text-align:left;cursor:pointer;font-family:inherit;transition:border-color .15s" onmouseover="this.style.borderColor=\'rgba(109,214,160,0.5)\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,0.13)\'">'
       +'<div><i class="ti ti-building"></i> '+esc(c.name||'—')+'</div>'
       +(c.object?'<div style="font-size:12px;color:#7c84a0;font-weight:400;margin-top:3px">'+esc(c.object)+'</div>':'')
-      +'<div style="font-size:11px;color:'+(hasGeo?'#6dd6a0':'#f5a623')+';font-weight:400;margin-top:5px"><i class="ti ti-map-pin'+(hasGeo?'':'-off')+'"></i> '+(hasGeo?('geofence · '+(Number(c.radius)||100)+' m'):'no geofence')+'</div>'
+      +'<div style="font-size:11px;color:'+(hasGeo?'#6dd6a0':'#f5a623')+';font-weight:400;margin-top:5px"><i class="ti ti-map-pin'+(hasGeo?'':'-off')+'"></i> '+(hasGeo?tr('geofence · {0} m',{0:Number(c.radius)||100}):tr('no geofence'))+'</div>'
       +'</button>';
   });
   h+='</div></div>';
@@ -794,7 +853,7 @@ function renderWorkerGrid(){
     const ini=w.name.slice(0,2).toUpperCase();
     const last=getLastEntry(log,w.id);
     const isIn=last?.type==='in';
-    const status=isIn?'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:5px;vertical-align:middle"></span>In since '+last.time : last?'Last: '+last.time+' (out)':'Not clocked in';
+    const status=isIn?'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:5px;vertical-align:middle"></span>'+esc(tr('In since {0}',{0:last.time})) : last?esc(tr('Last: {0} (out)',{0:last.time})):esc(tr('Not clocked in'));
     return `<div class="w-card ${isIn?'in-progress':''} ${selectedWorker?.id===w.id?'selected':''}" onclick="selectWorker('${w.id}')">
       <div class="w-dot"></div>
       <div class="w-avatar" style="background:${c.bg};color:${c.text}">
@@ -812,10 +871,10 @@ function renderWorkerGrid(){
     const last=getLastEntry(getPunchLog(),selectedWorker.id);
     const isIn=last?.type==='in';
     btn.disabled=false;
-    btn.textContent=isIn?'Clock OUT →':'Clock IN →';
+    btn.textContent=isIn?tr('Clock OUT →'):tr('Clock IN →');
   } else {
     btn.disabled=true;
-    btn.textContent='Select a worker to continue';
+    btn.textContent=tr('Select a worker to continue');
   }
 }
 
@@ -840,10 +899,10 @@ function startPunchClock(){
   clockTick=setInterval(tickPunch,1000); tickPunch();
 }
 function greetingFor(h){
-  if(h>=5  && h<12) return 'Good morning';
-  if(h>=12 && h<17) return 'Good afternoon';
-  if(h>=17 && h<23) return 'Good evening';
-  return 'Good night';
+  if(h>=5  && h<12) return tr('Good morning');
+  if(h>=12 && h<17) return tr('Good afternoon');
+  if(h>=17 && h<23) return tr('Good evening');
+  return tr('Good night');
 }
 function tickPunch(){
   const n=new Date();
@@ -872,10 +931,10 @@ function analyseGps(pos){
 function getLocation(){
   const chip=document.getElementById('locChip');
   chip.className='loc-chip loading';
-  chip.innerHTML='<span class="loc-dot"></span><span>Checking GPS...</span>';
+  chip.innerHTML='<span class="loc-dot"></span><span>'+tr('Checking GPS...')+'</span>';
   locOk=false;
-  if(!navigator.geolocation){ chip.className='loc-chip warn'; chip.innerHTML='<span class="loc-dot"></span><span>GPS not available</span>'; updateBigBtn(); return; }
-  if(SITE.lat==null||SITE.lng==null){ chip.className='loc-chip ok'; chip.innerHTML='<span class="loc-dot"></span><span>Location check skipped</span>'; locOk=true; updateBigBtn(); return; }
+  if(!navigator.geolocation){ chip.className='loc-chip warn'; chip.innerHTML='<span class="loc-dot"></span><span>'+tr('GPS not available')+'</span>'; updateBigBtn(); return; }
+  if(SITE.lat==null||SITE.lng==null){ chip.className='loc-chip ok'; chip.innerHTML='<span class="loc-dot"></span><span>'+tr('Location check skipped')+'</span>'; locOk=true; updateBigBtn(); return; }
   const t0=Date.now();
   navigator.geolocation.getCurrentPosition(pos=>{
     const elapsed=Date.now()-t0, a=analyseGps(pos);
@@ -883,14 +942,14 @@ function getLocation(){
     const tooFast=elapsed<GPS_REQUEST_MS;
     const distOk=dist<=SITE.radius, accOk=a.acc>0&&a.acc<=GPS_MAX_ACCURACY;
     window._lastGpsAnalysis={lat:a.lat,lng:a.lng,accuracy:a.acc,dist,suspicious:a.suspicious||tooFast,warnings:tooFast?['Response in '+elapsed+'ms (too fast)'].concat(a.warnings):a.warnings,elapsed};
-    if(!distOk){ locOk=false; chip.className='loc-chip warn'; chip.innerHTML='<span class="loc-dot"></span><span>'+dist+'m from site (max '+SITE.radius+'m)</span>'; }
-    else if(!accOk){ locOk=false; chip.className='loc-chip warn'; chip.innerHTML='<span class="loc-dot"></span><span>Weak GPS (±'+Math.round(a.acc)+'m) — go outside</span>'; }
-    else if(a.suspicious||tooFast){ locOk=false; chip.className='loc-chip warn'; chip.innerHTML='<span class="loc-dot"></span><span>Suspicious GPS: '+(tooFast?'instant response':a.warnings[0])+'</span>'; }
-    else{ locOk=true; chip.className='loc-chip ok'; chip.innerHTML='<span class="loc-dot"></span><span>On site · '+dist+'m · ±'+Math.round(a.acc)+'m</span>'; }
+    if(!distOk){ locOk=false; chip.className='loc-chip warn'; chip.innerHTML='<span class="loc-dot"></span><span>'+tr('{0}m from site (max {1}m)',{0:dist,1:SITE.radius})+'</span>'; }
+    else if(!accOk){ locOk=false; chip.className='loc-chip warn'; chip.innerHTML='<span class="loc-dot"></span><span>'+tr('Weak GPS (±{0}m) — go outside',{0:Math.round(a.acc)})+'</span>'; }
+    else if(a.suspicious||tooFast){ locOk=false; chip.className='loc-chip warn'; chip.innerHTML='<span class="loc-dot"></span><span>'+esc(tr('Suspicious GPS: {0}',{0:tooFast?tr('instant response'):a.warnings[0]}))+'</span>'; }
+    else{ locOk=true; chip.className='loc-chip ok'; chip.innerHTML='<span class="loc-dot"></span><span>'+tr('On site · {0}m · ±{1}m',{0:dist,1:Math.round(a.acc)})+'</span>'; }
     updateBigBtn();
   }, err=>{
     chip.className='loc-chip warn';
-    chip.innerHTML='<span class="loc-dot"></span><span>'+(err.code===1?'GPS denied — enable in settings':'GPS error — go outside')+'</span>';
+    chip.innerHTML='<span class="loc-dot"></span><span>'+(err.code===1?tr('GPS denied — enable in settings'):tr('GPS error — go outside'))+'</span>';
     locOk=false; updateBigBtn();
   },{enableHighAccuracy:true,timeout:15000,maximumAge:0});
 }
@@ -900,24 +959,24 @@ function updateBigBtn(){
   const ring=document.getElementById('btnRing');
   if(!locOk){
     btn.className='big-punch-btn disabled';
-    btn.innerHTML='<span class="btn-icon"><i class="ti ti-map-pin-off"></i></span><span class="btn-label">NOT ON SITE</span>';
+    btn.innerHTML='<span class="btn-icon"><i class="ti ti-map-pin-off"></i></span><span class="btn-label">'+tr('NOT ON SITE')+'</span>';
     ring.className='btn-ring off'; return;
   }
   const log=getPunchLog(), last=getLastEntry(log,selectedWorker?.id), isIn=last?.type==='in';
   if(isIn){
     btn.className='big-punch-btn out';
-    btn.innerHTML='<span class="btn-icon"><i class="ti ti-logout"></i></span><span class="btn-label">CLOCK OUT</span><span class="btn-sub">'+esc(selectedWorker.name)+'</span>';
+    btn.innerHTML='<span class="btn-icon"><i class="ti ti-logout"></i></span><span class="btn-label">'+tr('CLOCK OUT')+'</span><span class="btn-sub">'+esc(selectedWorker.name)+'</span>';
     ring.className='btn-ring out';
   } else {
     btn.className='big-punch-btn in';
-    btn.innerHTML='<span class="btn-icon"><i class="ti ti-login"></i></span><span class="btn-label">CLOCK IN</span><span class="btn-sub">'+esc(selectedWorker.name)+'</span>';
+    btn.innerHTML='<span class="btn-icon"><i class="ti ti-login"></i></span><span class="btn-label">'+tr('CLOCK IN')+'</span><span class="btn-sub">'+esc(selectedWorker.name)+'</span>';
     ring.className='btn-ring in';
   }
 }
 
 function doPunch(){
   if(!locOk||!selectedWorker) return;
-  if(Date.now()-_lastPunchAt < 4000){ showToast('Wait a couple of seconds'); return; }  // guard against accidental double-tap
+  if(Date.now()-_lastPunchAt < 4000){ showToast(tr('Wait a couple of seconds')); return; }  // guard against accidental double-tap
   _lastPunchAt = Date.now();
   const now=new Date(), hh=String(now.getHours()).padStart(2,'0'), mm=String(now.getMinutes()).padStart(2,'0');
   const log=getPunchLog(), last=getLastEntry(log,selectedWorker.id), type=last?.type==='in'?'out':'in';
@@ -947,7 +1006,7 @@ function showSuccess(type,time,date){
   const label=document.getElementById('successLabel');
   anim.innerHTML=type==='in'?'<i class="ti ti-circle-check"></i>':'<i class="ti ti-logout"></i>';
   anim.className='success-anim '+(type==='in'?'in':'out');
-  label.textContent=type==='in'?'Clocked IN':'Clocked OUT';
+  label.textContent=type==='in'?tr('Clocked IN'):tr('Clocked OUT');
   label.className='success-label '+(type==='in'?'in':'out');
   document.getElementById('successWorker').textContent=selectedWorker.name;
   document.getElementById('successTime').textContent=time;
@@ -1002,9 +1061,9 @@ function startVersionWatch(files){
 function showNewVersionBar(){
   if(document.getElementById('newVersionBar')) return;
   document.body.insertAdjacentHTML('beforeend',`<div id="newVersionBar" style="position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:100000;display:flex;align-items:center;gap:10px;max-width:calc(100% - 32px);box-sizing:border-box;padding:10px 12px 10px 16px;border-radius:12px;background:#1f6feb;color:#fff;font:600 14px/1.3 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.35)">
-    <span>A new version is available</span>
-    <button type="button" onclick="location.reload()" style="border:0;border-radius:8px;padding:6px 12px;background:#fff;color:#1f6feb;font:inherit;cursor:pointer">Update</button>
-    <button type="button" aria-label="Close" onclick="this.parentElement.remove()" style="border:0;background:none;color:#fff;font:inherit;font-size:18px;cursor:pointer;padding:0 4px">✕</button></div>`);
+    <span>${tr('A new version is available')}</span>
+    <button type="button" onclick="location.reload()" style="border:0;border-radius:8px;padding:6px 12px;background:#fff;color:#1f6feb;font:inherit;cursor:pointer">${tr('Update')}</button>
+    <button type="button" aria-label="${tr('Close')}" onclick="this.parentElement.remove()" style="border:0;background:none;color:#fff;font:inherit;font-size:18px;cursor:pointer;padding:0 4px">✕</button></div>`);
 }
 startVersionWatch(()=>[location.pathname]);
 
@@ -1030,7 +1089,7 @@ function openHistory(){
   const wLog=log.filter(e=>e.workerId===selectedWorker.id);
   const el=document.getElementById('historyContent');
   if(!wLog.length){
-    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3);font-size:15px">No history yet</div>';
+    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3);font-size:15px">'+tr('No history yet')+'</div>';
     return;
   }
   // Pair punches into shifts chronologically — mirrors groupPunchesIntoShifts
@@ -1058,7 +1117,7 @@ function openHistory(){
   // Group by date
   const byDate={};
   [...shifts].reverse().forEach(sh=>{
-    const d=sh.date.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
+    const d=sh.date.toLocaleDateString(uiLocale(),{weekday:'short',day:'2-digit',month:'short'});
     if(!byDate[d]) byDate[d]=[];
     byDate[d].push(sh);
   });
@@ -1076,15 +1135,15 @@ function openHistory(){
     const entries=dayShifts.flatMap(sh=>sh.entries);
     const rows=entries.map(e=>`
       <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-        <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;min-width:44px;text-align:center;${e.type==='in'?'background:rgba(109,214,160,0.12);color:#6dd6a0':'background:rgba(255,79,94,0.12);color:#ff4f5e'}">${e.type==='in'?'IN':'OUT'}</span>
+        <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;min-width:44px;text-align:center;${e.type==='in'?'background:rgba(109,214,160,0.12);color:#6dd6a0':'background:rgba(255,79,94,0.12);color:#ff4f5e'}">${e.type==='in'?tr('IN'):tr('OUT')}</span>
         <span style="font-size:15px;font-family:'DM Mono',ui-monospace,monospace;font-weight:600;color:var(--text)">${e.time}</span>
         ${(()=>{const s=histSite(e);return s?`<span style="font-size:11px;color:var(--text3)"><i class="ti ti-map-pin"></i> ${esc(s)}</span>`:'';})()}
         ${e.dist!=null?`<span style="font-size:11px;color:var(--text3)">${e.dist}m</span>`:''}
       </div>`).join('');
     return `<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px 16px;margin-bottom:10px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <div style="font-size:14px;font-weight:700;color:var(--text)">${date}</div>
-        ${hours>0?`<div style="font-size:13px;font-weight:600;color:var(--green)">${hours.toFixed(1)}h</div>`:''}
+        <div style="font-size:14px;font-weight:700;color:var(--text)">${esc(date)}</div>
+        ${hours>0?`<div style="font-size:13px;font-weight:600;color:var(--green)">${tr('{h}h',{h:hours.toFixed(1)})}</div>`:''}
       </div>
       ${rows}
     </div>`;
@@ -1112,7 +1171,11 @@ function reportError(message, source, stack){
 }
 window.addEventListener('error', function(ev){ reportError(ev.message, (ev.filename||'')+':'+(ev.lineno||''), ev.error&&ev.error.stack); });
 window.addEventListener('unhandledrejection', function(ev){ const r=ev.reason; reportError((r&&r.message)||String(r), 'promise', r&&r.stack); });
-try{ init(); }catch(err){ console.error('init failed',err); reportError('init failed: '+(err&&err.message), 'init', err&&err.stack); showInvalidLink('Something went wrong','Reload the page. If that doesn\'t help, contact your manager.','ti-alert-triangle'); }
+loadI18n(storedLanguage()).catch(()=>{}).then(()=>{
+  applyI18n();
+  syncLangSelects();
+  try{ init(); }catch(err){ console.error('init failed',err); reportError('init failed: '+(err&&err.message), 'init', err&&err.stack); showInvalidLink(tr('Something went wrong'),tr('Reload the page. If that doesn\'t help, contact your manager.'),'ti-alert-triangle'); }
+});
 
 
 // ── PWA service worker: always-fresh, auto-reload on new version ───────────
