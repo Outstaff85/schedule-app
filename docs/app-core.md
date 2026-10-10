@@ -176,10 +176,6 @@ Shown in Admin → Errors / Timings ([admin.md](admin.md)).
 - **Push:** `PUSH_ENABLED = false`. `subscribeToPush` exists (it keeps the subscription only in `localStorage`) but the button is hidden — no sender exists.
 - **Manifests:** `manifest.json` (manager, start `./schedule-manager.html`) and `manifest-punch.json` (`./worker-punch.html`).
 
-## Google Contacts (worker modal)
-
-Typing in the given-name field calls `searchContacts()`. Once contacts have been loaded with Google Identity Services (People API, read-only), matches show under the field, and `selectContact()` fills the given name, surname and phone. The account chooser (`triggerContactsPicker`, `switchContactsAccount`) has no button left, so contacts are only loaded if `switchContactsAccount` is called. The Google Identity script is not loaded with the page: `loadGsi()` adds it on first need (the chooser starts it; `switchContactsAccount` waits for it).
-
 ## Hosting and routes
 
 Firebase Hosting serves the repo root as static files (`firebase.json`; tests, functions, md files and rules are ignored). Rewrites: `/` → `schedule-manager.html`, `/punch` → `worker-punch.html`, `/supplier` → `supplier-portal.html`. `*.html` and `*.js` (including `service-worker.js`, `scan-pipeline.js`, `firestore-backend.js`), and the routes `/`, `/punch` and `/supplier` themselves, are served `no-cache`, so a deploy reaches the next page load. Deploying = merging to `main` (GitHub Actions; see [backend.md](backend.md)).

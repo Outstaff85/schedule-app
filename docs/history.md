@@ -199,3 +199,6 @@ The first version kept a single read for `id_back` pages. The next live scan sti
 
 ## UI language: from the firm to the header (2026-10-10)
 The first translation stages made the language one per firm: a `language` field in the firm profile (picked in the firm form), returned to the supplier portal and the punch page by the server. On user request the language moved to a select in each page's header, English by default, kept per device (`localStorage.uiLang`). The firm field, its server handling (`_language`, `firm_language`) and its rule were removed. Then each page got exactly one select, always top right, and the choice is also saved per user (`users/{uid}.language`, `updateMyLanguage`) so it follows the person to any device.
+
+## Google Contacts picker removed (2026-10-10)
+The worker modal once loaded contacts from Google (People API through Google Identity Services, with the account list and OAuth client ids written in the page) to fill the name and phone. Its button had long been gone, so it never ran; the code, the client ids and the Google script were removed.
