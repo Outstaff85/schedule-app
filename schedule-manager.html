@@ -17,7 +17,6 @@
 <meta name="theme-color" content="#0f1117">
 <title>Schedule Manager</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&family=Heebo:wght@400;500;700&display=swap');
   :root {
     --bg:#0f1117; --bg2:#181c27; --bg3:#1e2333;
     --border:rgba(255,255,255,0.08); --border2:rgba(255,255,255,0.14);
@@ -559,6 +558,7 @@
   .quad-side-handle { stroke: #fff; stroke-width: 5; stroke-linecap: round; filter: drop-shadow(0 0 2px rgba(0,0,0,.6)); }
 
 </style>
+<link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="icons/tabler-icons.css">
 </head>
 <body>
@@ -4570,7 +4570,7 @@ function exportPDF(){
   const weekLabel=fmtRange(weekStart);
 
   const html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Schedule '+weekLabel+'</title>'
-    +'<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&family=Heebo:wght@400;500;700&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;}html,body{background:#0f1117;min-height:100%;width:100%;}body{font-family:"DM Sans","Heebo",-apple-system,Arial,sans-serif;background:#0f1117;color:#e8eaf0;padding:8px;}@media print{*{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;}html,body{background:#0f1117 !important;}body{padding:6px;}@page{size:A4 landscape;margin:4mm;}html{height:auto;}body{height:auto;}table{font-size:11px;}}table{width:100%;border-collapse:separate !important;border-spacing:3px !important;table-layout:fixed;}th,td{border:none !important;}th{font-weight:500;}tr{height:82px !important;page-break-inside:avoid;break-inside:avoid;}</style>'
+    +'<link href="'+location.origin+'/fonts/fonts.css" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;}html,body{background:#0f1117;min-height:100%;width:100%;}body{font-family:"DM Sans","Heebo",-apple-system,Arial,sans-serif;background:#0f1117;color:#e8eaf0;padding:8px;}@media print{*{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;}html,body{background:#0f1117 !important;}body{padding:6px;}@page{size:A4 landscape;margin:4mm;}html{height:auto;}body{height:auto;}table{font-size:11px;}}table{width:100%;border-collapse:separate !important;border-spacing:3px !important;table-layout:fixed;}th,td{border:none !important;}th{font-weight:500;}tr{height:82px !important;page-break-inside:avoid;break-inside:avoid;}</style>'
     +'</head><body><div style="width:100%;background:#0f1117;padding:0"><div style="max-width:100%;margin:0 auto;padding:16px">'
     +'<div style="text-align:center;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.06)">'
     +(()=>{ const cl=selectedClientId?clients.find(c=>c.id===selectedClientId):null; return cl?'<div style="font-size:28px;font-weight:600;color:#7eb8ff;margin-bottom:6px;font-family:Heebo,Arial,sans-serif">'+esc(cl.name)+'</div>':'<div style="font-size:26px;font-weight:500;color:#5a6075;margin-bottom:6px;letter-spacing:1px">'+tr('ALL CLIENTS')+'</div>'; })()
