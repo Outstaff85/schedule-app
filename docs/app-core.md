@@ -61,7 +61,7 @@ A weekly roster, with changes for single dates.
 
 - The tabs (`.top-tabs`) become a bar fixed at the bottom of the screen, icon over a short label; the page keeps room for it, and toasts sit above it.
 - The tables of Accounting and Admin become one card per row: `cardTables(root)` (run by a `MutationObserver` on `#sectionAccounting` and `#sectionAdmin`) adds `mtable` to each table and puts its column's header on every cell as `data-label`; CSS shows the first cell as the card's title and each other cell as a "label · value" line. The supplier portal has a copy for its tables.
-- **Cards or list:** a toggle (`.tables-view-toggle`: list / cards icons, shown only on a phone) in the Accounting and Admin headers — and in the portal's header — switches between the cards and the plain table scrolled sideways (`setTablesView`, `localStorage.tablesView`, `body.tables-list`); cards by default.
+- **Cards or list:** a toggle (`.tables-view-toggle`: list / cards icons, shown only on a phone) at the top right of the Accounting and Admin headers — and in the portal's header — switches between the cards and the plain table scrolled sideways (`setTablesView`, `localStorage.tablesView`, `body.tables-list`); cards by default.
 
 ## Fonts and icons
 
