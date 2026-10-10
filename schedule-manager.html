@@ -165,7 +165,7 @@
   .acc-help{background:none;border:none;color:var(--text3);cursor:pointer;padding:2px;font-size:15px;line-height:1;display:inline-flex}
   .acc-help:hover{color:var(--blue)}
   .acc-help-body{font-size:13px;color:var(--text2);line-height:1.6}
-  .acc-help-body ul{margin:0;padding-inline-start:18px}
+  .acc-help-body ul{margin:0;padding-left:18px}
   .acc-help-body li{margin-bottom:6px}
   .field{margin-bottom:14px;}
   .field label{display:block;font-size:14px;color:var(--text2);margin-bottom:5px;font-weight:500;}
@@ -816,7 +816,7 @@
     </div>
 
     <!-- Accounting Section -->
-    <div class="page-section" id="sectionAccounting" dir="rtl">
+    <div class="page-section" id="sectionAccounting">
       <div class="page-header">
         <div>
           <div class="page-title"><i class="ti ti-cash"></i> הנהלת חשבונות</div>
@@ -889,10 +889,10 @@
 
 <!-- Modals -->
 <div class="overlay" id="payOverlay">
-  <div class="modal" id="payModal" style="width:460px" dir="rtl"></div>
+  <div class="modal" id="payModal" style="width:460px"></div>
 </div>
 <div class="overlay" id="accHelpOverlay">
-  <div class="modal" id="accHelpModal" style="width:460px" dir="rtl"></div>
+  <div class="modal" id="accHelpModal" style="width:460px"></div>
 </div>
 <div class="overlay" id="editOverlay">
   <div class="modal" id="editModal"></div>
@@ -947,7 +947,7 @@
   <div class="modal" id="clearLogModal" style="max-width:400px"></div>
 </div>
 <div class="overlay" id="salaryExportOverlay">
-  <div class="modal" id="salaryExportModal" style="max-width:360px" dir="rtl"></div>
+  <div class="modal" id="salaryExportModal" style="max-width:360px"></div>
 </div>
 <div class="overlay" id="hoursExportOverlay">
   <div class="modal" id="hoursExportModal" style="max-width:360px"></div>
@@ -6354,15 +6354,15 @@ function renderSalary(){
       <table style="width:100%;border-collapse:collapse;min-width:640px">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">עובד</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">עובד</th>
             <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">שעות</th>
             <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">ימים</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">תעריף</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--amber)">נוספות ₪/ש׳</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--blue)">שבת ₪/ש׳</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">נסיעות ₪</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">סה״כ לתשלום</th>
-            ${payOnly?`<th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">העמלה שלי</th>`:''}
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">תעריף</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--amber)">נוספות ₪/ש׳</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--blue)">שבת ₪/ש׳</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">נסיעות ₪</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">סה״כ לתשלום</th>
+            ${payOnly?`<th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">העמלה שלי</th>`:''}
           </tr>
         </thead>
         <tbody class="salary-rows"></tbody>
@@ -6371,10 +6371,10 @@ function renderSalary(){
             <td style="padding:10px 12px;font-size:13px;font-weight:600;color:var(--text2)">סה״כ</td>
             <td style="padding:10px 12px;text-align:center;font-size:14px;font-weight:700;color:var(--text)">${totalHours.toFixed(1)} ש׳</td>
             <td colspan="5"></td>
-            <td style="padding:10px 12px;text-align:left;font-size:15px;font-weight:800;color:var(--green)">
+            <td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">
               ₪${grandTotal.toFixed(0)}
             </td>
-            ${payOnly?`<td style="padding:10px 12px;text-align:left;font-size:15px;font-weight:800;color:var(--green)">₪${entries.reduce((t,e)=>t+hrCom(e),0).toFixed(0)}</td>`:''}
+            ${payOnly?`<td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">₪${entries.reduce((t,e)=>t+hrCom(e),0).toFixed(0)}</td>`:''}
           </tr>
         </tfoot>
       </table>
@@ -6396,7 +6396,7 @@ function renderSalary(){
             const srcTag=src=>src==='client'?`<div style="font-size:10px;color:var(--text3);margin-top:2px">לקוח${mainCl?' · '+esc(mainCl.name):''}</div>`:src==='override'?`<div style="font-size:10px;color:var(--text3);margin-top:2px">תעריף לפי לקוח</div>`:'';
             const ini=wc?workerAvatarInner(wc):esc(e.worker.slice(0,2).toUpperCase());
             const daily=isDailyPay(wc);
-            const inStyle='width:66px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:left;outline:none';
+            const inStyle='width:66px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none';
             // ₪/h or ₪/day, per worker (setWorkerPayMode). Daily: the days come
             // from the punches; a number typed here replaces them for this period.
             const modeSel=`<select onchange="setWorkerPayMode('${e.workerId}',this.value)" title="תשלום לפי שעה או לפי יום" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text2);font-size:11px;padding:3px 4px;margin-bottom:4px;outline:none">
@@ -6414,28 +6414,28 @@ function renderSalary(){
               </td>
               <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${e.hours.toFixed(1)} ש׳</td>
               <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${daysCell}</td>
-              <td style="padding:10px 12px;text-align:left">${modeSel}<br>
+              <td style="padding:10px 12px;text-align:right">${modeSel}<br>
                 <input type="number" value="${esc(ownReg)}" placeholder="${daily?'0':esc(er.regRate)}" min="0" step="0.5" title="${daily?'התעריף היומי של העובד':'התעריף של העובד (רגיל ×1.0) · ריק = תעריף הלקוח'}"
                   onchange="setWorkerRate('${e.workerId}',this.value);renderSalary()"
                   style="${inStyle}">${daily?(ownReg===''?'<div style="font-size:10px;color:var(--amber);margin-top:2px">יש להגדיר תעריף יומי</div>':''):srcTag(er.src)}
               </td>
-              ${daily?`<td style="padding:10px 12px;text-align:left;color:var(--text3)">—</td><td style="padding:10px 12px;text-align:left;color:var(--text3)">—</td>`:`<td style="padding:10px 12px;text-align:left">
+              ${daily?`<td style="padding:10px 12px;text-align:right;color:var(--text3)">—</td><td style="padding:10px 12px;text-align:right;color:var(--text3)">—</td>`:`<td style="padding:10px 12px;text-align:right">
                 <input type="number" value="${esc(ownOt)}" placeholder="${esc(er.otRate)}" min="0" step="0.5" title="תעריף שעות נוספות ₪/שעה · ריק = של הלקוח, אחרת בסיס ×${PAY_RULES.otMult}"
                   onchange="setWorkerOtRate('${e.workerId}',this.value);renderSalary()"
-                  style="width:66px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:left;outline:none">${srcTag(er.otSrc)}
+                  style="width:66px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:right;outline:none">${srcTag(er.otSrc)}
               </td>
-              <td style="padding:10px 12px;text-align:left">
+              <td style="padding:10px 12px;text-align:right">
                 <input type="number" value="${esc(ownShab)}" placeholder="${esc(er.shabbatRate)}" min="0" step="0.5" title="תעריף שבת ₪/שעה · ריק = של הלקוח, אחרת בסיס ×${PAY_RULES.shabbatMult}"
                   onchange="setWorkerShabbatRate('${e.workerId}',this.value);renderSalary()"
-                  style="width:66px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:left;outline:none">${srcTag(er.shabbatSrc)}
+                  style="width:66px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">${srcTag(er.shabbatSrc)}
               </td>`}
-              <td style="padding:10px 12px;text-align:left;font-size:13px;color:var(--text2)">
+              <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)">
                 ${e.travel>0?'₪'+e.travel.toFixed(0):'—'}
               </td>
-              <td style="padding:10px 12px;text-align:left;font-size:14px;font-weight:700;color:${(e.total+e.travel)>0?'var(--green)':'var(--text3)'}">
+              <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${(e.total+e.travel)>0?'var(--green)':'var(--text3)'}">
                 ${(e.total+e.travel)>0?'₪'+(e.total+e.travel).toFixed(0):'—'}
               </td>
-              ${payOnly?`<td style="padding:10px 12px;text-align:left;font-size:13px;color:var(--text2)" title="${isDailyPay(workers.find(w=>w.id===e.workerId))&&hrDayRate>0?esc(e.daysUsed)+' ימים × ₪'+hrDayRate:e.hours.toFixed(1)+' ש׳ × ₪'+hrRate}">₪${hrCom(e).toFixed(0)}</td>`:''}
+              ${payOnly?`<td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)" title="${isDailyPay(workers.find(w=>w.id===e.workerId))&&hrDayRate>0?esc(e.daysUsed)+' ימים × ₪'+hrDayRate:e.hours.toFixed(1)+' ש׳ × ₪'+hrRate}">₪${hrCom(e).toFixed(0)}</td>`:''}
             </tr>`;
 },{table:true,colspan:payOnly?9:8});
   if(payOnly) return;
@@ -6514,15 +6514,15 @@ function renderSupplierPayable(entries){
       <table style="width:100%;border-collapse:collapse;min-width:420px">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">ספק</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">ספק</th>
             <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">שעות</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">לתשלום</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">לתשלום</th>
           </tr>
         </thead>
         <tbody class="paged-supplierPayable"></tbody><tbody>${unassigned.hours?`<tr style="border-bottom:1px solid var(--border)">
             <td style="padding:10px 12px;font-size:13px;color:var(--text3)">ללא ספק</td>
             <td style="padding:10px 12px;text-align:center;font-size:13px;color:var(--text3)">${unassigned.hours.toFixed(1)} ש׳</td>
-            <td style="padding:10px 12px;text-align:left;font-size:13px;color:var(--text3)">—</td>
+            <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text3)">—</td>
           </tr>`:''}</tbody>
       </table>
       </div>
@@ -6530,7 +6530,7 @@ function renderSupplierPayable(entries){
   renderPagedList(wrap.querySelector('.paged-supplierPayable'),'supplierPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
             <td style="padding:10px 12px;font-size:13px;font-weight:600"><span style="color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></span> ${esc(r.sup.name)}</td>
             <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)} ש׳</td>
-            <td style="padding:10px 12px;text-align:left;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
+            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
           </tr>`,{table:true,colspan:20});
 }
 
@@ -6556,10 +6556,10 @@ function renderHrPayable(entries){
       <table style="width:100%;border-collapse:collapse;min-width:420px">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">משאבי אנוש</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">משאבי אנוש</th>
             <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">שעות</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">₪/ש׳</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">לתשלום</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">₪/ש׳</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">לתשלום</th>
           </tr>
         </thead>
         <tbody class="paged-hrPayable"></tbody>
@@ -6569,8 +6569,8 @@ function renderHrPayable(entries){
   renderPagedList(wrap.querySelector('.paged-hrPayable'),'hrPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
             <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.u.fullName||r.u.username)}</td>
             <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)} ש׳</td>
-            <td style="padding:10px 12px;text-align:left;font-size:13px;color:var(--text2)">${r.rate?'₪'+esc(r.rate):'—'}${r.dayRate?' · ₪'+esc(r.dayRate)+'/יום':''}</td>
-            <td style="padding:10px 12px;text-align:left;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
+            <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)">${r.rate?'₪'+esc(r.rate):'—'}${r.dayRate?' · ₪'+esc(r.dayRate)+'/יום':''}</td>
+            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
           </tr>`,{table:true,colspan:20});
 }
 
@@ -6598,10 +6598,10 @@ function renderClientBillable(entries){
       <table style="width:100%;border-collapse:collapse;min-width:420px">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">לקוח</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">לקוח</th>
             <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">שעות</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">שיטה</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">לחיוב</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">שיטה</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">לחיוב</th>
           </tr>
         </thead>
         <tbody class="paged-clientBillable"></tbody>
@@ -6612,7 +6612,7 @@ function renderClientBillable(entries){
             <td style="padding:10px 12px;font-size:13px;font-weight:600"><span style="color:${r.cl.color}"><i class="ti ti-building-store"></i></span> ${esc(r.cl.name)}</td>
             <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${r.hours.toFixed(1)} ש׳</td>
             <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${r.cl.rateMode==='fixed'?'קבוע':'מדורג'}</td>
-            <td style="padding:10px 12px;text-align:left;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
+            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
           </tr>`,{table:true,colspan:20});
 }
 
@@ -6640,8 +6640,8 @@ async function renderPendingHours(){
       <table style="width:100%;border-collapse:collapse;min-width:520px">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">קובץ</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">נשלח על ידי</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">קובץ</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">נשלח על ידי</th>
             <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">משמרות</th>
             ${canApprove?'<th style="padding:10px 12px"></th>':''}
           </tr>
@@ -6656,7 +6656,7 @@ async function renderPendingHours(){
               <td style="padding:10px 12px;font-size:13px">${esc(b.fileName||'—')}${w?' · '+esc(w.name):''}</td>
               <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${esc(b.uploadedBy||'—')}</td>
               <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600">${b.entries.length}</td>
-              ${canApprove?`<td style="padding:10px 12px;text-align:left;white-space:nowrap">
+              ${canApprove?`<td style="padding:10px 12px;text-align:right;white-space:nowrap">
                 <button class="btn sm" style="color:var(--green)" onclick="approveHoursBatch('${b.batchId}')"><i class="ti ti-check"></i></button>
                 <button class="btn sm red" onclick="rejectHoursBatch('${b.batchId}')"><i class="ti ti-x"></i></button>
               </td>`:''}
@@ -6716,11 +6716,11 @@ function renderRateMatrix(){
       <table style="width:100%;border-collapse:collapse;min-width:640px">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">עובד</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">לקוח</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">רגיל ₪/ש׳</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--amber)">נוספות ₪/ש׳</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--blue)">שבת ₪/ש׳</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">עובד</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">לקוח</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">רגיל ₪/ש׳</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--amber)">נוספות ₪/ש׳</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--blue)">שבת ₪/ש׳</th>
           </tr>
         </thead>
         <tbody class="paged-rateMatrix"></tbody>
@@ -6733,20 +6733,20 @@ function renderRateMatrix(){
             return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
               <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.w.name)}</td>
               <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${esc(r.cl.name)}</td>
-              <td style="padding:10px 12px;text-align:left">
+              <td style="padding:10px 12px;text-align:right">
                 <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${eff.regRate}" title="ריק = ${eff.regRate} (התעריף של העובד, אחרת של הלקוח)"
                   onchange="setClientRateOverride('${r.w.id}','${r.cl.id}','rate',this.value)"
-                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:left;outline:none">
+                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
-              <td style="padding:10px 12px;text-align:left">
+              <td style="padding:10px 12px;text-align:right">
                 <input type="number" value="${ov.otRate??''}" min="0" step="0.5" placeholder="${eff.otRate}" title="ריק = ${eff.otRate}"
                   onchange="setClientRateOverride('${r.w.id}','${r.cl.id}','otRate',this.value)"
-                  style="width:70px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:left;outline:none">
+                  style="width:70px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
-              <td style="padding:10px 12px;text-align:left">
+              <td style="padding:10px 12px;text-align:right">
                 <input type="number" value="${ov.shabbatRate??''}" min="0" step="0.5" placeholder="${eff.shabbatRate}" title="ריק = ${eff.shabbatRate}"
                   onchange="setClientRateOverride('${r.w.id}','${r.cl.id}','shabbatRate',this.value)"
-                  style="width:70px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:left;outline:none">
+                  style="width:70px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
             </tr>`;
           },{table:true,colspan:20});
@@ -6786,10 +6786,10 @@ function renderSupplierRateMatrix(){
       <table style="width:100%;border-collapse:collapse;min-width:420px">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">עובד</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">ספק</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">עמלה ₪/ש׳</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">₪/יום (עובדים יומיים)</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">עובד</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">ספק</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">עמלה ₪/ש׳</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">₪/יום (עובדים יומיים)</th>
           </tr>
         </thead>
         <tbody class="paged-supplierRateMatrix"></tbody>
@@ -6801,15 +6801,15 @@ function renderSupplierRateMatrix(){
             return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
               <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.w.name)}</td>
               <td style="padding:10px 12px;font-size:13px;color:var(--text2)"><span style="color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></span> ${esc(r.sup.name)}</td>
-              <td style="padding:10px 12px;text-align:left">
+              <td style="padding:10px 12px;text-align:right">
                 <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${SUPPLIER_DEFAULT_RATE}" title="ריק = ברירת מחדל (${SUPPLIER_DEFAULT_RATE} ₪/ש׳)"
                   onchange="setSupplierRateOverride('${r.w.id}','${r.sup.id}','rate',this.value)"
-                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:left;outline:none">
+                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
-              <td style="padding:10px 12px;text-align:left">
+              <td style="padding:10px 12px;text-align:right">
                 <input type="number" value="${ov.dayRate??''}" min="0" step="0.5" placeholder="${isDailyPay(r.w)?'לפי שעה':'—'}" title="סכום קבוע ₪ ליום, לעובד בתשלום יומי. ריק = שעות × ₪/ש׳"
                   onchange="setSupplierRateOverride('${r.w.id}','${r.sup.id}','dayRate',this.value)"
-                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:left;outline:none">
+                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
               </td>
             </tr>`;
           },{table:true,colspan:20});
@@ -7107,14 +7107,13 @@ function exportSalary(format, period){
     if(typeof XLSX==='undefined'){ showToast('ספריית Excel לא נטענה'); return; }
     const aoa=[header, ...rows.map(toArr), ['','','','','','סה״כ',totalHours.toFixed(2),'',totalPay.toFixed(2),'']];
     const wb=XLSX.utils.book_new();
-    wb.Workbook={Views:[{RTL:true}]};
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'שכר');
     XLSX.writeFile(wb, fname+'.xlsx');
   } else if(format==='pdf'){
     const title='שכר — '+salaryPeriodLabel(period);
     const rowsHtml=rows.map(r=>'<tr>'+toArr(r).map(v=>`<td>${esc(String(v))}</td>`).join('')+'</tr>').join('');
-    const html=`<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="UTF-8"><title>${esc(title)}</title>
-      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #ccc;padding:5px 8px;text-align:right}th{background:#f0f0f0}tfoot td{font-weight:bold}</style>
+    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(title)}</title>
+      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #ccc;padding:5px 8px;text-align:left}th{background:#f0f0f0}tfoot td{font-weight:bold}</style>
       </head><body><h2>${esc(title)}</h2>
       <table><thead><tr>${header.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
       <tbody>${rowsHtml}</tbody>
@@ -7200,13 +7199,12 @@ function exportPayableSummary(rows, opts){
     rows.forEach(r=>aoa.push([r.label, r.hours.toFixed(2), r.rate, r.total.toFixed(2)]));
     aoa.push(['','','סה״כ', grand.toFixed(2)]);
     const wb=XLSX.utils.book_new();
-    wb.Workbook={Views:[{RTL:true}]};
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'סיכום');
     XLSX.writeFile(wb, fname+'.xlsx');
   } else {
     const rowsHtml = rows.map(r=>`<tr><td>${esc(r.label)}</td><td>${r.hours.toFixed(2)}</td><td>${esc(String(r.rate))}</td><td>${r.total.toFixed(2)}</td></tr>`).join('');
-    const html = `<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="UTF-8"><title>${esc(title)}</title>
-      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px;text-align:right}th{background:#f0f0f0}tfoot td{font-weight:bold}</style>
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(title)}</title>
+      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px;text-align:left}th{background:#f0f0f0}tfoot td{font-weight:bold}</style>
       </head><body><h2>${esc(title)}</h2>
       <table><thead><tr><th>שם</th><th>שעות</th><th>תעריף</th><th>סה״כ</th></tr></thead>
       <tbody>${rowsHtml}</tbody>
