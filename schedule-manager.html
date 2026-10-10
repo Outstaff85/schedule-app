@@ -16,7 +16,6 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0f1117">
 <title>Schedule Manager</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&family=Heebo:wght@400;500;700&display=swap');
   :root {
@@ -1195,6 +1194,21 @@ let suppliers = [];
 // --- Utils --------------------------------------------------------------------
 function uid(){ return 'id'+Math.random().toString(36).slice(2,9); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// SheetJS (Excel read and write, ~900 KB) is loaded only when an Excel
+// export or import needs it, not with the page. Same code in
+// schedule-manager.html and supplier-portal.html.
+let __xlsxLoading = null;
+function loadXlsx(){
+  if(typeof XLSX !== 'undefined') return Promise.resolve();
+  return __xlsxLoading || (__xlsxLoading = new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    sc.onload = () => res();
+    sc.onerror = () => { __xlsxLoading = null; sc.remove(); rej(new Error('Excel library not loaded')); };
+    document.head.appendChild(sc);
+  }));
+}
+
 
 // ── Translations (docs/translations.md) ─────────────────────────────────────
 // Every UI text in the code is English. tr('Total Pay') returns it in the
@@ -3883,7 +3897,7 @@ async function onHoursImportFileSelected(fileOrList){
 // serial comes back as a real JS Date we can format ourselves, matching the
 // dd/MM/yyyy convention PunchLog itself already uses everywhere else.
 function parseHoursExcelFile(file){
-  return new Promise((resolve,reject)=>{
+  return loadXlsx().then(()=>new Promise((resolve,reject)=>{
     const reader = new FileReader();
     reader.onerror = ()=>reject(new Error('read failed'));
     reader.onload = ()=>{
@@ -3912,7 +3926,7 @@ function parseHoursExcelFile(file){
       }catch(e){ reject(e); }
     };
     reader.readAsArrayBuffer(file);
-  });
+  }));
 }
 // AI-vision path for a photographed/scanned timesheet (images only for now —
 // a multi-page scan-PDF would need page rendering this feature doesn't do
@@ -4247,6 +4261,7 @@ document.addEventListener('click',e=>{ if(!document.getElementById('exportDropdo
 
 // --- Export Excel -------------------------------------------------------------
 function exportExcel(){
+  if(true && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportExcel()).catch(()=>showToast('Excel library not loaded')); return; }
   document.getElementById('exportMenu').classList.remove('open');
   try {
     const wb=XLSX.utils.book_new();
@@ -7168,6 +7183,7 @@ function buildSalaryExportRows(period){
   return rows;
 }
 function exportSalary(format, period){
+  if(format==='excel' && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportSalary(format, period)).catch(()=>showToast(tr('Excel library not loaded'))); return; }
   period=period||document.getElementById('salaryPeriod')?.value||'week';
   const now=new Date();
   const rows=buildSalaryExportRows(period);
@@ -7231,6 +7247,7 @@ function getWorkerMonthShifts(workerId, year, month, workerLog){
     .sort((a,b)=>a.date-b.date);
 }
 function exportShiftsDetail(workerId, year, month, format){
+  if(format==='excel' && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportShiftsDetail(workerId, year, month, format)).catch(()=>showToast('Excel library not loaded')); return; }
   const w = workers.find(x=>x.id===workerId);
   const shifts = getWorkerMonthShifts(workerId, year, month);
   const monthLabel = new Date(year, month, 1).toLocaleDateString('en-GB',{month:'long',year:'numeric'});
@@ -7262,6 +7279,7 @@ function exportShiftsDetail(workerId, year, month, format){
 // varies by day, so the caller may pass a string like "varies" there);
 // `total` is always the real, already-correct figure from the source table.
 function exportPayableSummary(rows, opts){
+  if(opts && opts.format==='excel' && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportPayableSummary(rows, opts)).catch(()=>showToast(tr('Excel library not loaded'))); return; }
   opts = opts||{};
   const title = opts.title || tr('Payable summary');
   const fname = opts.filename || 'payable-summary';

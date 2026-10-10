@@ -52,7 +52,7 @@ A weekly roster.
   - `renderGanttHeader()` / `renderGanttBody()` — a 170 px name column plus 7 day columns; a bar that ends at or before its start is drawn as `midnight`. Each row is draggable (`dragStart` / `dragOver` / `doDrop` / `dragEnd`); dropping reorders `workers` and saves;
   - a day cell → `openEditShift(wi, di)`: work/off, start and end, hours badge (`updateBadge`); `saveShift` writes it.
 - **Export menu** (current week, visible workers):
-  - `exportExcel()` — SheetJS from the CDN; a Schedule sheet and a Statistics sheet with Clients and Supplier columns;
+  - `exportExcel()` — SheetJS from the CDN, loaded only when an Excel export or import first needs it (`loadXlsx()`, also in the supplier portal; the page itself never loads it); a Schedule sheet and a Statistics sheet with Clients and Supplier columns;
   - `exportPDF()` — a print page in a new window;
   - `exportJSON()` — workers and clients.
 
