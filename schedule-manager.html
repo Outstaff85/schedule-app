@@ -87,11 +87,16 @@
   .login-roles{margin-top:14px;min-height:34px;display:flex;flex-wrap:wrap;align-items:flex-start;align-content:flex-start;gap:8px;}
   .login-pay{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:4px;animation:loginPop .5s .3s both;}
   .login-pay-label{font-size:13px;color:#9aa1b8;display:inline-flex;align-items:center;gap:5px;}
-  .pay-badge{display:inline-flex;align-items:center;gap:2px;height:30px;padding:0 14px;border-radius:8px;font-size:14px;font-weight:700;letter-spacing:.2px;box-shadow:0 4px 14px rgba(0,0,0,.3);}
-  .pay-badge.gpay{background:#fff;color:#3c4043;border:1px solid #dadce0;}
-  .pay-badge.gpay b{background:linear-gradient(90deg,#4285f4 0 25%,#ea4335 25% 50%,#fbbc05 50% 75%,#34a853 75%);-webkit-background-clip:text;background-clip:text;color:transparent;font-size:15px;}
-  .pay-badge.paybox{background:#00a3e0;color:#fff;}
-  .pay-badge.bit{background:#00c9b5;color:#fff;font-size:16px;text-transform:lowercase;}
+  /* Payment badges: the payment apps' own marks in our dark-glass chip. */
+  .pay-badge{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px 0 4px;border-radius:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#e6e9f5;font-size:13px;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.25);transition:transform .2s,border-color .2s;}
+  .pay-badge:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.3);}
+  .pay-ico{width:26px;height:26px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;color:#fff;flex-shrink:0;}
+  .pay-ico.gpay{background:#fff;}
+  .pay-ico.gpay b{font:800 16px/1 Arial,sans-serif;background:conic-gradient(from -45deg,#ea4335 0 25%,#4285f4 0 50%,#34a853 0 75%,#fbbc05 0);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .pay-ico.paybox{background:#06a9f4;font:800 15px/1 Arial,sans-serif;}
+  .pay-ico.bit{background:linear-gradient(135deg,#1fd1c1,#00a9b5);font:800 12px/1 Arial,sans-serif;letter-spacing:-.3px;text-transform:lowercase;}
+  .pay-ico.bank{background:#2f4f7f;font-size:16px;}
+  .pay-ico.invoice{background:#6b5bd2;font-size:16px;}
   .login-role{font-size:13px;color:#dfe5f5;background:rgba(79,142,247,.14);border:1px solid rgba(79,142,247,.3);border-radius:100px;padding:6px 12px;animation:loginPop .4s both;}
   @keyframes loginPop{from{opacity:0;transform:translateY(6px) scale(.96)}to{opacity:1;transform:none}}
   .login-left{flex:1 1 58%;display:flex;flex-direction:column;justify-content:safe center;position:relative;padding:36px 40px;}
@@ -1051,7 +1056,7 @@
     <div class="login-hero-inner">
       <div class="login-brand"><i class="ti ti-users-group"></i> <span class="login-brand-name">Odinson</span></div>
       <div class="login-tagline"><span id="loginRotator" class="login-rotator" data-i18n>Staff for restaurants</span></div>
-      <div class="login-desc" data-i18n>We supply reliable workers for restaurants, factories, bakeries and catering, and the full chain of support for residential and commercial property — for a minimum of one month. Office cleaning from 3 hours.</div>
+      <div class="login-desc" data-i18n>We supply reliable workers for restaurants, factories, bakeries and catering, and the full chain of support for residential and commercial property — for a minimum of one month. Office cleaning from 3 hours, paid by app, bank transfer or invoice.</div>
       <div class="login-sectors" id="loginSectors">
         <button type="button" class="login-sector" data-sector="0"><i class="ti ti-chef-hat"></i><span data-i18n>Restaurants</span></button>
         <button type="button" class="login-sector" data-sector="1"><i class="ti ti-building-factory-2"></i><span data-i18n>Factories</span></button>
@@ -1395,7 +1400,11 @@ function showLoginSector(i){
   roles.innerHTML = LOGIN_SECTORS[i].roles.map((r, k) => `<span class="login-role" style="animation-delay:${k * 70}ms">${esc(tr(r))}</span>`).join('')
     // Office cleaning is paid on the spot: the payment apps it takes.
     + (LOGIN_SECTORS[i].pay ? `<div class="login-pay"><span class="login-pay-label"><i class="ti ti-wallet"></i> ${esc(tr('Pay with'))}</span>`
-      + `<span class="pay-badge gpay"><b>G</b> Pay</span><span class="pay-badge paybox">PayBox</span><span class="pay-badge bit">bit</span></div>` : '');
+      + `<span class="pay-badge"><span class="pay-ico gpay"><b>G</b></span>Google Pay</span>`
+      + `<span class="pay-badge"><span class="pay-ico paybox">P</span>PayBox</span>`
+      + `<span class="pay-badge"><span class="pay-ico bit">bit</span>bit</span>`
+      + `<span class="pay-badge"><span class="pay-ico bank"><i class="ti ti-building-bank"></i></span>${esc(tr('Bank transfer'))}</span>`
+      + `<span class="pay-badge"><span class="pay-ico invoice"><i class="ti ti-receipt"></i></span>${esc(tr('By invoice'))}</span></div>` : '');
 }
 function startLoginShowcase(){
   const screen = document.getElementById('loginScreen');
