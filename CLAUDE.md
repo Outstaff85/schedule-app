@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A staff scheduling & GPS punch-clock PWA for a single client ("Odinson"), served as static files from Firebase Hosting (project `schedule-odinson`). No build step, no bundler, no package.json at the root, no test suite for the pages — each page is a self-contained HTML file with inline `<style>`/`<script>`.
+A staff scheduling & GPS punch-clock PWA for a single client ("Odinson"), served as static files from Firebase Hosting (project `schedule-odinson`). No build step, no bundler, no package.json at the root — each page is a self-contained HTML file with inline `<style>`/`<script>`.
 
 Multi-tenant: a super-admin creates firms (tenants), each with its own logins and isolated data. Roles: `superadmin`, `tenant_admin`, `staff` (per-section permissions), `hr` (per-section permissions; by default only the workers assigned to it, `hrId` — docs/hr.md), `supplier` (own workers only).
 
@@ -34,6 +34,7 @@ The backend is **Firestore + Firebase Storage + Cloud Functions**, and nothing e
 | [docs/firestore-plan.md](docs/firestore-plan.md) | the (finished) move off Sheets: stages, decisions — historical |
 | [docs/multi-tenant-plan.md](docs/multi-tenant-plan.md) | the original multi-tenant design — historical |
 | [docs/translations.md](docs/translations.md) | any UI text: `tr()` / `data-i18n`, the dictionaries `i18n/<lang>.json`, the header language select, the check script, adding a language |
+| [docs/tests.md](docs/tests.md) | any test: the suites (dictionaries, icons, rules, functions, browser `tests/e2e/`), how to run them, the CI run on every PR, adding a check |
 | [docs/history.md](docs/history.md) | why things are the way they are: reverted approaches, debugging trails, fixed incidents |
 
 Some code comments (the rules, `tests/`, older parts of the pages) still name these files by their old root paths (`FIRESTORE_PLAN.md`, `MULTI_TENANT_PLAN.md`, `HISTORY.md`, `form101-field-map.md`) or point at sections of the former long CLAUDE.md — the content is now in the files above.
@@ -48,12 +49,12 @@ Some code comments (the rules, `tests/`, older parts of the pages) still name th
 - `functions/` — Python Cloud Functions, us-central1: `fill_form_101`, `preprocess_scan`; `functions/assets/` holds the PDF template and font (re-sync from the root copies `form101_fillable.pdf` / `heebo-hebrew.ttf` if those change).
 - `functions-auth/` — Python Cloud Functions, europe-west3: `login`, `users_admin`, `punch`, `supplier`, `ai_read`; the AI prompts are `functions-auth/ai_prompts.json`.
 - `i18n/<lang>.json` — the UI dictionaries (English text → translation), `tests/i18n/check.js` checks them.
-- `firestore.rules`, `storage.rules`, `firestore.indexes.json`; `tests/rules/` (rules tests + the npm scripts that run `tests/auth/`); `tests/auth/` (functions tests, incl. `ai_golden.json`).
+- `firestore.rules`, `storage.rules`, `firestore.indexes.json`; `tests/rules/` (rules tests + the npm scripts that run `tests/auth/`); `tests/auth/` (functions tests, incl. `ai_golden.json`); `tests/e2e/` (browser tests: the pages in Chromium on the emulators).
 
 ## Commands
 
 - Local preview: `firebase emulators:start --only hosting`, or open the HTML files directly.
-- Rules tests: `cd tests/rules && npm install && npm test`. Functions tests: `cd tests/rules && PYTHON=<python with firebase-admin, pytest> npm run test:auth`.
+- Rules tests: `cd tests/rules && npm install && npm test`. Functions tests: `cd tests/rules && PYTHON=<python with firebase-admin, pytest> npm run test:auth`. Browser tests: `cd tests/e2e && npm install && PYTHON=<same python> npm test`. All of them run on every PR into `main` (`tests.yml`); a red check blocks the merge (docs/tests.md). A new feature adds its check in the same PR.
 - Deploying `functions/` by hand needs `functions/venv` first (`python -m venv venv && pip install -r requirements.txt`); CI builds its own.
 - **Deploy = merge to `main`.** GitHub Actions: Hosting on every push to `main`; functions and rules on pushes touching their paths (details in docs/backend.md).
 

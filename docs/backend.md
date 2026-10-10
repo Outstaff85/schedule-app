@@ -203,11 +203,13 @@ Both answer `{"ping":true}` at once (warm-up) and parse the body with `force=Tru
 
 - **Rules:** `tests/rules/rules.test.mjs` on the Firestore + Storage emulators — `cd tests/rules && npm install && npm test`.
 - **Functions:** `tests/auth/test_core.py`, `test_portal.py`, `test_ai.py`, `test_files.py` (in-memory bucket) on the Firestore + Auth emulators — `cd tests/rules && PYTHON=<python with firebase-admin and pytest> npm run test:auth`.
+- **Browser:** `tests/e2e/` — see [tests.md](tests.md), which also lists every suite and how CI runs them on each pull request (`tests.yml`).
 
 ## Deploys (push to `main`)
 
 | Workflow | Runs on | Does |
 |---|---|---|
+| `tests.yml` | every pull request into `main`, or manual | all tests: dictionaries, icons, rules, functions, browser ([tests.md](tests.md)); deploys nothing |
 | `deploy.yml` | every push to `main` | Firebase Hosting (live channel) |
 | `deploy-functions.yml` | `functions/**`, `functions-auth/**`, `tests/auth/**`, or manual | builds both venvs, runs `tests/auth` on the emulators (a failure stops the deploy), `firebase deploy --only functions --force` (`--force` also deletes deployed functions that are no longer in the code); on failure opens/updates a GitHub Issue |
 | `deploy-rules.yml` | `firestore.rules`, `firestore.indexes.json`, `storage.rules`, `tests/rules/**`, or manual | rules tests, then deploys rules, indexes and storage; on failure opens an Issue (usual causes: the service account lacks Firebase Rules Admin / Cloud Datastore Index Admin, or Storage is not enabled) |
