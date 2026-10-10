@@ -39,6 +39,7 @@ def fresh():
 
 def test_load_gives_only_this_worker_and_their_sites():
     r = portal.punch_action(DB, {"action": "load", "token": "tok-avi"})
+    assert r["language"] == "en"
     assert r["workers"] == [{"id": "w1", "name": "Avi Cohen", "colorIdx": 2, "token": "tok-avi", "clientIds": ["c1", "c2"]}]
     assert r["clients"][0] == {"id": "c1", "name": "Site A", "object": "Gate 1", "lat": 32.1, "lng": 34.8, "radius": 150}
     assert [c["id"] for c in r["clients"]] == ["c1", "c2"]          # not c3, not another worker's
@@ -121,6 +122,16 @@ def test_supplier_sees_only_own_workers_stripped():
     assert "token" not in w and "docUrl" not in w and "docFileId" not in w and "assetsFileId" not in w
     assert {"id": "c1", "name": "Site A", "object": "Gate 1"} in r["clients"]
     assert "billRate" not in str(r["clients"]) and "lat" not in str(r["clients"]) and r["suppliers"] == []
+
+
+def test_pages_get_the_firm_language():
+    t = DB.collection("tenants").document(T1)
+    t.set({"language": "he"}, merge=True)
+    assert portal.supplier_action(DB, SUP1, {"action": "loadSchedule"})["language"] == "he"
+    assert portal.punch_action(DB, {"action": "load", "token": "tok-avi"})["language"] == "he"
+    t.set({"language": "xx"}, merge=True)
+    assert portal.supplier_action(DB, SUP1, {"action": "loadSchedule"})["language"] == "en"
+    t.set({"language": "en"}, merge=True)
 
 
 def test_supplier_day_commission_only_for_a_daily_worker():
