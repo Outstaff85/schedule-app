@@ -52,6 +52,32 @@
   .ttab.admin.active{color:var(--amber);border-bottom-color:var(--amber);background:var(--amber-bg);}
   .titlebar-actions{margin-left:auto;display:flex;gap:6px;align-items:center;}
   .lang-select{background:var(--bg3);color:var(--text2);border:1px solid var(--border);border-radius:8px;padding:4px 6px;font:600 12px/1 inherit;cursor:pointer;width:auto;min-width:0;}
+  /* Login screen: the firm's showcase (left, or on top on a phone) and the sign-in card. */
+  .login-screen{position:fixed;inset:0;z-index:1000;overflow-y:auto;align-items:stretch;justify-content:center;
+    background:radial-gradient(circle at 15% 20%,rgba(79,142,247,.28),transparent 45%),radial-gradient(circle at 80% 85%,rgba(109,214,160,.18),transparent 45%),linear-gradient(135deg,#0b0e16,#141a2b 60%,#0f1117);}
+  .login-hero{flex:1 1 55%;display:flex;align-items:center;justify-content:center;padding:48px 40px;position:relative;overflow:hidden;}
+  .login-hero::before{content:"";position:absolute;inset:0;opacity:.07;pointer-events:none;
+    background-image:repeating-linear-gradient(45deg,#fff 0 1px,transparent 1px 28px),repeating-linear-gradient(-45deg,#fff 0 1px,transparent 1px 28px);}
+  .login-hero-inner{position:relative;max-width:520px;}
+  .login-brand{font-size:44px;font-weight:800;letter-spacing:-1px;color:#fff;display:flex;align-items:center;gap:12px;}
+  .login-brand i{font-size:40px;color:var(--accent);}
+  .login-tagline{margin-top:6px;font-size:20px;font-weight:600;color:#9fc0ff;}
+  .login-desc{margin-top:14px;font-size:15px;line-height:1.6;color:#b9bfd3;}
+  .login-sectors{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:26px;}
+  .login-sector{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:14px 8px;text-align:center;color:#e6e9f5;font-size:13px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .login-sector i{font-size:28px;color:#6dd6a0;}
+  .login-points{margin-top:24px;display:flex;flex-direction:column;gap:8px;color:#9aa1b8;font-size:14px;}
+  .login-points i{color:var(--accent);margin-right:4px;}
+  .login-card{flex:0 0 400px;display:flex;flex-direction:column;justify-content:center;padding:40px 36px;background:rgba(24,28,39,.88);border-left:1px solid rgba(255,255,255,.08);backdrop-filter:blur(8px);}
+  @media (max-width: 820px){
+    .login-screen{flex-direction:column;justify-content:flex-start;}
+    .login-hero{flex:none;padding:56px 20px 22px;}
+    .login-brand{font-size:32px;} .login-brand i{font-size:30px;}
+    .login-tagline{font-size:17px;} .login-desc{font-size:14px;}
+    .login-sectors{grid-template-columns:repeat(2,1fr);margin-top:18px;}
+    .login-points{display:none;}
+    .login-card{flex:none;border-left:0;border-top:1px solid rgba(255,255,255,.08);padding:24px 20px 32px;}
+  }
   .lang-select.on-cover{position:absolute;top:max(env(safe-area-inset-top,0px),12px);right:12px;z-index:2;}
   .save-indicator{font-size:14px;color:var(--text3);display:flex;align-items:center;gap:4px;transition:color 0.3s;}
   .save-indicator.saving{color:var(--amber);}
@@ -963,8 +989,27 @@
 <!-- Login gate: full-screen, opaque, above everything else. Shown by JS at
      startup when there's no valid (non-expired) session; hides + the normal
      app init runs only after a successful login. -->
-<div id="loginScreen" style="display:none;position:fixed;inset:0;z-index:1000;background:var(--bg);align-items:center;justify-content:center">
-  <div style="width:100%;max-width:340px;padding:24px">
+<div id="loginScreen" class="login-screen" style="display:none">
+  <!-- The firm's showcase behind the login: name, what it does, the sectors it staffs. -->
+  <div class="login-hero">
+    <div class="login-hero-inner">
+      <div class="login-brand"><i class="ti ti-users-group"></i> Odinson</div>
+      <div class="login-tagline" data-i18n>Staff for line positions</div>
+      <div class="login-desc" data-i18n>We supply reliable workers for restaurants, factories, bakeries and catering — for one shift or for the long term.</div>
+      <div class="login-sectors">
+        <div class="login-sector"><i class="ti ti-chef-hat"></i><span data-i18n>Restaurants</span></div>
+        <div class="login-sector"><i class="ti ti-building-factory-2"></i><span data-i18n>Factories</span></div>
+        <div class="login-sector"><i class="ti ti-bread"></i><span data-i18n>Bakeries</span></div>
+        <div class="login-sector"><i class="ti ti-tools-kitchen-2"></i><span data-i18n>Catering</span></div>
+      </div>
+      <div class="login-points">
+        <div><i class="ti ti-clock-bolt"></i> <span data-i18n>Workers on short notice</span></div>
+        <div><i class="ti ti-map-pin-check"></i> <span data-i18n>GPS punch clock on every site</span></div>
+        <div><i class="ti ti-file-check"></i> <span data-i18n>Hours, pay and documents in one place</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="login-card">
     <div style="text-align:center;margin-bottom:22px">
       <i class="ti ti-calendar-stats" style="font-size:32px;color:var(--accent)"></i>
       <div style="font-size:19px;font-weight:700;margin-top:8px">Schedule Manager</div>
