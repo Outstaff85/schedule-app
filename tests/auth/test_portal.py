@@ -41,7 +41,7 @@ def test_load_gives_only_this_worker_and_their_sites():
     r = portal.punch_action(DB, {"action": "load", "token": "tok-avi"})
     me = r["workers"][0]
     assert {k: me[k] for k in ("id", "name", "colorIdx", "token", "clientIds")} == {"id": "w1", "name": "Avi Cohen", "colorIdx": 2, "token": "tok-avi", "clientIds": ["c1", "c2"]}
-    assert set(me) == {"id", "name", "colorIdx", "token", "clientIds", "schedule"} and len(r["workers"]) == 1
+    assert set(me) == {"id", "name", "colorIdx", "token", "clientIds", "schedule", "dates"} and len(r["workers"]) == 1
     assert len(me["schedule"]) == 7 and all(d["type"] in ("work", "off") for d in me["schedule"])
     assert r["clients"][0] == {"id": "c1", "name": "Site A", "object": "Gate 1", "lat": 32.1, "lng": 34.8, "radius": 150}
     assert [c["id"] for c in r["clients"]] == ["c1", "c2"]          # not c3, not another worker's
@@ -239,3 +239,14 @@ def test_load_gives_the_worker_only_their_own_week():
     assert s[1] == s[2] == {"type": "off", "start": None, "end": None}      # off, or a day without both times
     assert len(s) == 7 and s[6]["type"] == "off"                            # always seven days
     w.update({"schedule": keep if keep is not None else []})
+
+
+def test_load_gives_the_worker_their_own_date_changes():
+    from datetime import date, timedelta
+    w = DB.collection("tenants").document(T1).collection("workers").document("w1")
+    t = date.today()
+    soon, old, far = (t + timedelta(days=3)).isoformat(), (t - timedelta(days=60)).isoformat(), (t + timedelta(days=400)).isoformat()
+    w.update({"dateShifts": {soon: {"type": "work", "start": "10:00", "end": "14:00", "note": "x"}, old: {"type": "off"}, far: {"type": "off"}}})
+    d = portal.punch_action(DB, {"action": "load", "token": "tok-avi"})["workers"][0]["dates"]
+    assert d == {soon: {"type": "work", "start": "10:00", "end": "14:00"}}       # only the window, only type/start/end
+    w.update({"dateShifts": {}})

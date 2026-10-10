@@ -234,6 +234,8 @@
   .shift-bar.work{background:var(--green-bg);color:var(--green);}
   .shift-bar.off{background:var(--amber-bg);color:var(--amber);font-family:'DM Sans','Heebo',sans-serif;}
   .shift-bar.midnight{background:var(--blue-bg);color:var(--blue);}
+  .shift-bar.dated{outline:1.5px dashed currentColor;outline-offset:-3px;position:relative;}
+  .shift-bar.dated::after{content:'';position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:currentColor;}
   .legend{display:flex;align-items:center;gap:16px;margin-top:12px;flex-wrap:wrap;}
   .legend-item{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text2);}
   .legend-dot{width:10px;height:10px;border-radius:3px;}
@@ -1618,7 +1620,17 @@ function groupPunchesIntoShifts(entries){
   return buckets;
 }
 function isMidnight(s,e){ return !!s&&!!e&&toMins(e)<=toMins(s); }
-function workerTotalHours(w){ return w.schedule.reduce((s,sh)=>s+calcHours(sh.start,sh.end),0); }
+// Shifts: the weekly roster (w.schedule[0..6], Sunday first) plus changes
+// made for one date only (w.dateShifts['YYYY-MM-DD'] = {type, start, end}),
+// which win over the roster on that date.
+function shiftOn(w, date){
+  const o = w.dateShifts && w.dateShifts[localYMD(date)];
+  if(o) return Object.assign({dated:true}, o);
+  return (w.schedule||[])[date.getDay()] || {type:'off', start:null, end:null};
+}
+// The seven shifts of the shown week (weekStart, Sunday first).
+function weekShifts(w){ return [0,1,2,3,4,5,6].map(i => { const d=new Date(weekStart); d.setDate(d.getDate()+i); return shiftOn(w,d); }); }
+function workerTotalHours(w){ return weekShifts(w).reduce((s,sh)=>s+(sh.type==='work'?calcHours(sh.start,sh.end):0),0); }
 
 // ── Contract-expiry warning (per-worker, opt-in) ───────────────────────────────
 // A worker can optionally set expiryMonths (how many months after startDate
@@ -1993,14 +2005,14 @@ function render(){
 // Weekly Schedule editor closed on creation) — treat that as "manages their
 // own hours, doesn't belong in the combined roster" rather than showing them
 // as a row of day-offs in the All-clients view.
-function hasSchedule(w){ return (w.schedule||[]).some(s=>s.type==='work'); }
+function hasSchedule(w){ return (w.schedule||[]).some(s=>s.type==='work') || weekShifts(w).some(s=>s.type==='work'); }
 function getVisible(){ return selectedClientId ? workers.filter(w=>(w.clientIds||[]).includes(selectedClientId)) : workers.filter(hasSchedule); }
 
 function renderStats(){
   const vis=getVisible();
   const totalH=vis.reduce((s,w)=>s+workerTotalHours(w),0);
-  const shifts=vis.reduce((s,w)=>s+w.schedule.filter(sh=>sh.type==='work').length,0);
-  const offs  =vis.reduce((s,w)=>s+w.schedule.filter(sh=>sh.type==='off').length,0);
+  const shifts=vis.reduce((s,w)=>s+weekShifts(w).filter(sh=>sh.type==='work').length,0);
+  const offs  =vis.reduce((s,w)=>s+weekShifts(w).filter(sh=>sh.type!=='work').length,0);
   let h=`
     <div class="stat-card"><div class="stat-label">${tr('Total hours')}</div><div class="stat-val">${totalH.toFixed(1)}<span class="stat-unit">h</span></div></div>
     <div class="stat-card"><div class="stat-label">${tr('Shifts')}</div><div class="stat-val">${shifts}</div></div>
@@ -2043,13 +2055,14 @@ function renderGanttBody(){
       <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${workerAvatarInner(w)}</div>
       <span>${esc(w.name)}</span>
     </div>`;
-    w.schedule.forEach((sh,di)=>{
+    weekShifts(w).forEach((sh,di)=>{
       h+=`<div class="gantt-day-cell" onclick="openEditShift(${wi},${di})">`;
+      const dated=sh.dated?` dated" title="${esc(tr('Changed for this date only'))}`:'';
       if(sh.type==='work'&&sh.start&&sh.end){
         const mid=toMins(sh.end)<=toMins(sh.start);
-        h+=`<div class="shift-bar ${mid?'midnight':'work'}">${sh.start}<br>${sh.end}</div>`;
+        h+=`<div class="shift-bar ${mid?'midnight':'work'}${dated}">${esc(sh.start)}<br>${esc(sh.end)}</div>`;
       } else {
-        h+=`<div class="shift-bar off">${tr('Day off')}</div>`;
+        h+=`<div class="shift-bar off${dated}">${tr('Day off')}</div>`;
       }
       h+=`</div>`;
     });
@@ -2121,8 +2134,9 @@ function dragEnd(e){ e.currentTarget.classList.remove('dragging'); document.quer
 
 // --- Edit Shift ---------------------------------------------------------------
 function openEditShift(wi,di){
-  const w=workers[wi],sh=w.schedule[di];
+  const w=workers[wi];
   const date=new Date(weekStart); date.setDate(date.getDate()+di);
+  const sh=shiftOn(w,date);
   document.getElementById('editModal').innerHTML=`
     <div class="modal-title">${tr('Edit shift — {0}, {1} {2}',{0:(esc(w.name)),1:(tr(DAYS[di])),2:(fmtDate(date))})}</div>
     <div class="field"><label>${tr('Shift type')}</label>
@@ -2130,6 +2144,13 @@ function openEditShift(wi,di){
         <option value="work" ${sh.type==='work'?'selected':''}>${tr('Working')}</option>
         <option value="off"  ${sh.type==='off' ?'selected':''}>${tr('Day off')}</option>
       </select>
+    </div>
+    <div class="field"><label>${tr('Applies to')}</label>
+      <select id="eScope">
+        <option value="week" ${sh.dated?'':'selected'}>${esc(tr('Every {0}',{0:tr(DAYS[di])}))}</option>
+        <option value="date" ${sh.dated?'selected':''}>${esc(tr('Only {0}',{0:fmtDate(date)}))}</option>
+      </select>
+      ${sh.dated?`<div style="font-size:12px;color:var(--text2);margin-top:6px">${tr('This date has its own shift.')} <a href="#" onclick="event.preventDefault();clearDateShift(${wi},${di})" style="color:var(--blue)">${tr('Back to the weekly schedule')}</a></div>`:''}
     </div>
     <div id="eTimeWrap" ${sh.type==='off'?'style="opacity:0.4;pointer-events:none"':''}>
       <div class="field-row">
@@ -2152,9 +2173,29 @@ function updateBadge(){
   el.innerHTML=`<span class="hours-badge">${tr('{h}h',{h:(h).toFixed(2)})}${isMidnight(s,e)?' · '+tr('crosses midnight'):''}</span>`;
 }
 function saveShift(wi,di){
-  const type=document.getElementById('eType').value;
-  workers[wi].schedule[di]={type,start:type==='work'?document.getElementById('eStart').value:null,end:type==='work'?document.getElementById('eEnd').value:null};
+  const w=workers[wi], type=document.getElementById('eType').value;
+  const sh={type,start:type==='work'?document.getElementById('eStart').value:null,end:type==='work'?document.getElementById('eEnd').value:null};
+  const date=new Date(weekStart); date.setDate(date.getDate()+di);
+  const key=localYMD(date);
+  if(document.getElementById('eScope').value==='date'){
+    w.dateShifts=pruneDateShifts(Object.assign({}, w.dateShifts, {[key]:sh}));
+  } else {
+    w.schedule[di]=sh;
+    if(w.dateShifts && w.dateShifts[key]){ const d=Object.assign({}, w.dateShifts); delete d[key]; w.dateShifts=pruneDateShifts(d); }
+  }
   closeModal('editOverlay'); render(); autoSave(); showToast(tr('Shift saved'));
+}
+// Removes the one-date change: the day follows the weekly roster again.
+function clearDateShift(wi,di){
+  const w=workers[wi], date=new Date(weekStart); date.setDate(date.getDate()+di);
+  const d=Object.assign({}, w.dateShifts); delete d[localYMD(date)]; w.dateShifts=pruneDateShifts(d);
+  closeModal('editOverlay'); render(); autoSave(); showToast(tr('Back to the weekly schedule'));
+}
+// Date changes older than 62 days are dropped, so the worker record stays small.
+function pruneDateShifts(d){
+  const cut=new Date(); cut.setDate(cut.getDate()-62); const ck=localYMD(cut);
+  const out={}; Object.keys(d||{}).sort().forEach(k=>{ if(k>=ck) out[k]=d[k]; });
+  return out;
 }
 
 // --- Worker Modal -------------------------------------------------------------
@@ -4565,12 +4606,12 @@ function exportExcel(){
     const exW=getVisible();
     exW.forEach(w=>{
       const row=[w.name,w.phone||'']; let total=0;
-      w.schedule.forEach(sh=>{ if(sh.type==='work'&&sh.start&&sh.end){ const h=calcHours(sh.start,sh.end); total+=h; row.push(sh.start+' – '+sh.end+' ('+h.toFixed(1)+'h)'); } else row.push('Day off'); });
+      weekShifts(w).forEach(sh=>{ if(sh.type==='work'&&sh.start&&sh.end){ const h=calcHours(sh.start,sh.end); total+=h; row.push(sh.start+' – '+sh.end+' ('+h.toFixed(1)+'h)'); } else row.push('Day off'); });
       row.push(total.toFixed(1)+'h'); rows.push(row);
     });
     rows.push([]);
     const totals=['TOTAL',''];
-    DAYS.forEach((_,i)=>totals.push(exW.filter(w=>w.schedule[i]?.type==='work').length+' working'));
+    DAYS.forEach((_,i)=>totals.push(exW.filter(w=>weekShifts(w)[i]?.type==='work').length+' working'));
     totals.push(exW.reduce((s,w)=>s+workerTotalHours(w),0).toFixed(1)+'h');
     rows.push(totals);
     const ws=XLSX.utils.aoa_to_sheet(rows);
@@ -4580,7 +4621,7 @@ function exportExcel(){
     const statsRows=[['Statistics',fmtRange(weekStart)],[],['Worker','Hours','Shifts','Days Off','Clients','Supplier'],
       ...exW.map(w=>{ const cn=clients.filter(c=>(w.clientIds||[]).includes(c.id)).map(c=>c.name).join(', ');
         const sn=suppliers.find(s=>s.id===w.supplierId)?.name||'';
-        return [w.name,workerTotalHours(w).toFixed(1),w.schedule.filter(s=>s.type==='work').length,w.schedule.filter(s=>s.type==='off').length,cn||'Unassigned',sn]; })];
+        return [w.name,workerTotalHours(w).toFixed(1),weekShifts(w).filter(s=>s.type==='work').length,weekShifts(w).filter(s=>s.type!=='work').length,cn||'Unassigned',sn]; })];
     const ws2=XLSX.utils.aoa_to_sheet(statsRows);
     ws2['!cols']=[{wch:18},{wch:10},{wch:8},{wch:10},{wch:28},{wch:20}];
     XLSX.utils.book_append_sheet(wb,ws2,'Statistics');
@@ -4605,7 +4646,7 @@ function exportPDF(){
   const workerRows=exW.map((w,ri)=>{
     const c=WORKER_COLORS[w.colorIdx%8];
     const rowBg=ri%2===0?'#181c27':'#13161f';
-    const cells=w.schedule.map(sh=>{
+    const cells=weekShifts(w).map(sh=>{
       if(sh.type==='work'&&sh.start&&sh.end){
         const h=calcHours(sh.start,sh.end);
         const mid=toMins(sh.end)<=toMins(sh.start);
@@ -6242,8 +6283,8 @@ function applyData(d){
   // d.weekStart (the week that was on screen at the last save) is deliberately
   // NOT restored — the Weekly Schedule always opens on the current week, and a
   // background re-load mustn't yank the manager off a week they navigated to.
-  // Shifts are stored per weekday (w.schedule[0..6]), not per date, so the
-  // week shown only changes the date labels, never which shifts exist.
+  // The weekly roster is per weekday (w.schedule[0..6]); a change for one
+  // date only lives in w.dateShifts, so the week shown picks those up.
 }
 
 // Set while local changes have not reached the server yet (2026-10-01).
@@ -6492,7 +6533,7 @@ function renderDashboard(){
   // ── Who should be here based on schedule but NOT clocked in ─────────────
   const nowMins = now.getHours()*60+now.getMinutes();
   const missing = workers.filter(w=>{
-    const sh = w.schedule?.[todayIdx];
+    const sh = shiftOn(w, now);
     if(!sh||sh.type==='off'||!sh.start) return false;
     const shStart = toMins(sh.start);
     // Only flag if shift started more than 15 mins ago
@@ -6512,7 +6553,7 @@ function renderDashboard(){
       const c=WORKER_COLORS[w.colorIdx%8];
       const lastIn=latestOf(todayLog.filter(e=>e.workerId===w.id&&e.type==='in'));
       const sinceTime=lastIn?lastIn.time:'?';
-      const shiftHours=w.schedule?.[todayIdx]?.end?calcHours(sinceTime,w.schedule[todayIdx].end).toFixed(1):'-';
+      const tsh=shiftOn(w, now); const shiftHours=tsh.type==='work'&&tsh.end?calcHours(sinceTime,tsh.end).toFixed(1):'-';
       return `<div style="background:var(--bg2);border:1px solid rgba(62,207,142,0.25);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
         <div style="width:40px;height:40px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;position:relative">
           ${workerAvatarInner(w)}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--green);border:2px solid var(--bg2)"></span>
@@ -6531,7 +6572,7 @@ function renderDashboard(){
   if(missing.length){
     renderPagedList(missingEl,'dashMissing','',missing,w=>{
       const c=WORKER_COLORS[w.colorIdx%8];
-      const sh=w.schedule?.[todayIdx];
+      const sh=shiftOn(w, now);
       return `<div style="background:var(--bg2);border:1px solid rgba(248,113,113,0.25);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
         <div style="width:40px;height:40px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;position:relative;opacity:0.6">
           ${workerAvatarInner(w)}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--red);border:2px solid var(--bg2)"></span>

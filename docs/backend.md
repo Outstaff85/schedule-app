@@ -29,7 +29,7 @@ Indexes (`firestore.indexes.json`): punches `workerId + ts` and `hrId + ts` (an 
 
 Loaded by `loadFirestoreBackend()` in the manager app and the supplier portal (the punch page talks only to the `punch` function). One global, `initFirestoreBackend()`:
 
-- imports the Firebase SDK `FB_VERSION` 12.19.0 (app, auth, firestore, storage) from gstatic;
+- imports the Firebase SDK `FB_VERSION` 12.19.0 (app, auth, firestore) from gstatic; Storage only on the first upload, or 4 s after a signed-in start (`loadStorage()`);
 - web config from Hosting's `/__/firebase/init.json`, or `window.FIREBASE_WEB_CONFIG`;
 - `localStorage.fsEmulator` = a host → Firestore 8080, Auth 9099, Storage 9199 (tests);
 - waits for `auth.authStateReady()`.
@@ -116,7 +116,7 @@ Uploads do not go through here: the browser writes to Storage directly (`uploadW
 See [punch.md](punch.md) and [supplier-portal.md](supplier-portal.md) for the pages.
 
 - **`punch`:** the token is looked up by a collection-group query on `workers.token`; none or two matches → "Unknown worker link".
-  - `load` → `{workers:[{id, name, colorIdx, token, clientIds, schedule}], clients:[{id, name, object, lat, lng, radius}]}` — only this worker, their own weekly roster (`schedule`: seven days, Sunday first, each `{type:'work'|'off', start, end}`, `_week()`) and their sites.
+  - `load` → `{workers:[{id, name, colorIdx, token, clientIds, schedule, dates}], clients:[{id, name, object, lat, lng, radius}]}` — only this worker, their own weekly roster (`schedule`: seven days, Sunday first, each `{type:'work'|'off', start, end}`, `_week()`), their one-date changes from 31 days back to 120 days ahead (`dates`: `{'YYYY-MM-DD': {type, start, end}}`, `_dates()`, from the worker's `dateShifts`) and their sites.
   - `savePunch` — only for this worker; type `in`/`out`; the punch id may not contain `/`; an existing document of another worker is never overwritten. Stored fields: `workerName, type, time, date, site, dist, gpsAccuracy, gpsSuspicious, gpsWarnings (≤20, clipped), notes, clientId`, plus `id, workerId, ts, day, archived:false`, and `hrId` from the worker document (never from the page). `day` comes from `date` (`dd/MM/yyyy`) when sent, otherwise from `ts` in Israel time (the punch page sends no date). `set()`, so a re-sent punch is the same document. The page's `lat`/`lng`/`gpsVerified`… are not kept.
   - `savePushSubscription`, `logError` (no token needed).
 - **`supplier`:** role `supplier` with `tenantId` and `supplierId` in the claims, else "Supplier role only".

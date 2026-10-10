@@ -141,7 +141,7 @@ Uploading the hours (worker card) is in [workers.md](workers.md).
 Real-time attendance from the punch log and today's schedule; `renderDashboard()`. Never gated.
 
 - **On site now** — workers whose last punch today is IN; shows "since" time and distance.
-- **Should be here** — today's shift started more than 15 minutes ago and there is no punch, or the worker punched OUT more than 10 minutes before the shift's end.
+- **Should be here** — today's shift (`shiftOn`, so a change for today's date counts) started more than 15 minutes ago and there is no punch, or the worker punched OUT more than 10 minutes before the shift's end.
 - **Workers by supplier** — `renderDashSuppliers()`: a headcount per supplier plus "No supplier"; no pay data.
 - **Expiry cards** — contract-term warnings (`workerExpiryStatus`) and expiring or expired worker documents (`workerDocExpiries`).
 - **Today's punches** — paged by 10, like the on-site, missing, suppliers and expiring tiles ([app-core.md](app-core.md) → Long lists).

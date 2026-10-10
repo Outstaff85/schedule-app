@@ -43,19 +43,31 @@ Shared helpers:
 
 ## Schedule tab (`#sectionSchedule`)
 
-A weekly roster.
+A weekly roster, with changes for single dates.
 - **Export** (top right of the tab, next to the date picker; `#exportDropdown`, only with the `exports` section): Excel, PDF, JSON of the shown week (`exportExcel`, `exportPDF`, `exportJSON`).
-- **Shifts:** stored per weekday in `w.schedule[0..6]` (Sunday first), not per date, so changing the week only changes the date labels.
+- **Shifts:** the weekly roster per weekday in `w.schedule[0..6]` (Sunday first), plus changes for one date only in `w.dateShifts` (`{'YYYY-MM-DD': {type, start, end}}`), which win over the roster on that date. `shiftOn(w, date)` gives a date's shift (marked `dated` when it comes from `dateShifts`), `weekShifts(w)` the seven of the shown week; the grid, the stats, `workerTotalHours`, the exports and the Today tab all read through them. Date changes older than 62 days are dropped on save (`pruneDateShifts`).
 - **Week navigation:** the week always opens on the current week; `applyData()` does not restore the saved `weekStart`. `prevWeek` / `nextWeek` / `goToday`, and the date picker (`syncPicker`, `onDateChange` — local dates).
-- **Who is shown:** `getVisible()` — with a client filter, the workers of that client; otherwise only workers with at least one working day (`hasSchedule`).
+- **Who is shown:** `getVisible()` — with a client filter, the workers of that client; otherwise only workers with at least one working day in the roster or in the shown week (`hasSchedule`).
 - **Rendering:**
   - `renderStats()` — total hours, shifts, days off, worker count;
   - `renderGanttHeader()` / `renderGanttBody()` — a 170 px name column plus 7 day columns; a bar that ends at or before its start is drawn as `midnight`. Each row is draggable (`dragStart` / `dragOver` / `doDrop` / `dragEnd`); dropping reorders `workers` and saves;
-  - a day cell → `openEditShift(wi, di)`: work/off, start and end, hours badge (`updateBadge`); `saveShift` writes it.
+  - a day cell → `openEditShift(wi, di)`: work/off, start and end, hours badge (`updateBadge`), and **Applies to** — "Every <weekday>" (writes `w.schedule[di]` and removes a date change of that day) or "Only <date>" (writes `w.dateShifts[date]`); a dated day also offers "Back to the weekly schedule" (`clearDateShift`). A dated bar has a dashed outline and a dot.
 - **Export menu** (current week, visible workers):
   - `exportExcel()` — SheetJS from the CDN, loaded only when an Excel export or import first needs it (`loadXlsx()`, also in the supplier portal; the page itself never loads it); a Schedule sheet and a Statistics sheet with Clients and Supplier columns;
   - `exportPDF()` — a print page in a new window;
   - `exportJSON()` — workers and clients.
+
+## Phone layout (≤ 700 px)
+
+- The tabs (`.top-tabs`) become a bar fixed at the bottom of the screen, icon over a short label; the page keeps room for it, and toasts sit above it.
+- The tables of Accounting and Admin become one card per row: `cardTables(root)` (run by a `MutationObserver` on `#sectionAccounting` and `#sectionAdmin`) adds `mtable` to each table and puts its column's header on every cell as `data-label`; CSS shows the first cell as the card's title and each other cell as a "label · value" line. The supplier portal has a copy for its tables.
+
+## Fonts and icons
+
+All three pages load them from the site itself, not from a CDN, so they also work offline:
+- `fonts/fonts.css` — DM Sans (Latin, 300–700), DM Mono (Latin, 400/500), Heebo (Hebrew, 400/500/700), woff2 from @fontsource; each face downloads only when the page uses it.
+- `icons/tabler-icons.css` + `icons/tabler-icons.woff2` — a subset of Tabler Icons with only the icons the pages use, built by `tests/icons/build.py`. **A new icon** (`ti-<name>`) needs a rebuild: `npm run test:icons` (in `tests/rules`) fails on an icon missing from the subset. An icon name glued from pieces in code goes into the script's `EXTRA` list.
+- `.woff2` files are served with a one-year cache (`firebase.json`) and the service worker answers them from its cache first.
 
 ## Long lists (`renderPagedList`)
 
@@ -153,6 +165,8 @@ Shown in Admin → Errors / Timings ([admin.md](admin.md)).
 - **Service worker:** `service-worker.js` (cache `schedule-mgr-vNNN` — bump the number on every deploy that changes the app).
   - Network-first, with `cache:'no-store'`; the cache is only the offline fallback.
   - It never touches POSTs or other origins (Firebase, Cloud Functions, CDNs).
+  - `.woff2` font files are the exception: cache first (they never change under the same URL).
+  - `CORE` precaches the pages, manifests, app icons, `fonts/fonts.css` and the icon subset.
   - An offline navigation falls back to the matching page.
   - It also has push / notificationclick handlers.
 - **Registration:** the page registers the worker with `updateViaCache:'none'` and calls `reg.update()`. When a new version takes control (`controllerchange`) it reloads once, after uploads finish.
@@ -163,7 +177,7 @@ Shown in Admin → Errors / Timings ([admin.md](admin.md)).
 
 ## Google Contacts (worker modal)
 
-Typing in the given-name field calls `searchContacts()`. Once contacts have been loaded with Google Identity Services (People API, read-only), matches show under the field, and `selectContact()` fills the given name, surname and phone. The account chooser (`triggerContactsPicker`, `switchContactsAccount`) has no button left, so contacts are only loaded if `switchContactsAccount` is called.
+Typing in the given-name field calls `searchContacts()`. Once contacts have been loaded with Google Identity Services (People API, read-only), matches show under the field, and `selectContact()` fills the given name, surname and phone. The account chooser (`triggerContactsPicker`, `switchContactsAccount`) has no button left, so contacts are only loaded if `switchContactsAccount` is called. The Google Identity script is not loaded with the page: `loadGsi()` adds it on first need (the chooser starts it; `switchContactsAccount` waits for it).
 
 ## Hosting and routes
 
