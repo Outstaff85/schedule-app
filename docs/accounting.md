@@ -17,7 +17,7 @@ The client keeps the punch log in `localStorage.punchLog` (`getPunchLog()` / `sa
 - **`groupPunchesIntoShifts(entries)`** — one worker's punches, sorted by `ts`, split into shift buckets: each IN starts a bucket and the next OUT closes it. An overnight IN→OUT stays one shift. A bucket's `date` is the date of its first punch.
 - **`analyzeDayPunches(entries, date)`** → `{hours, warnings}`.
   - Pairs IN→OUT; a negative duration wraps past midnight.
-  - Warnings (Russian): double IN, OUT without IN, a 0-minute shift, a shift over 12 h, an open shift.
+  - Warnings (English texts shown through `tr()`, so in the firm's language): double IN, OUT without IN, a 0-minute shift, a shift over 12 h, an open shift.
   - An open shift *today* counts up to now.
   - Durations go through `roundMins()` (`PAY_RULES.roundMinutes`, 0 = off).
 - **`PAY_RULES`** = `{regularMax:8, ot1Span:2, roundMinutes:0, otMult:1.25, shabbatMult:1.5}`.
