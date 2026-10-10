@@ -88,25 +88,32 @@
   }
 
   window.initFirestoreBackend = async function(){
-    const [appMod, authMod, fsMod, stMod] = await Promise.all([
+    const [appMod, authMod, fsMod] = await Promise.all([
       import(FB_CDN + 'firebase-app.js'),
       import(FB_CDN + 'firebase-auth.js'),
       import(FB_CDN + 'firebase-firestore.js'),
-      import(FB_CDN + 'firebase-storage.js'),
     ]);
     const app = appMod.initializeApp(await webConfig());
     const auth = authMod.getAuth(app);
     const db = fsMod.getFirestore(app);
-    const storage = stMod.getStorage(app);
     const F = fsMod;
     // Emulators for tests: localStorage fsEmulator = '127.0.0.1' (host).
     const emu = localStorage.getItem('fsEmulator');
     if(emu){
       F.connectFirestoreEmulator(db, emu, 8080);
       authMod.connectAuthEmulator(auth, 'http://' + emu + ':9099', {disableWarnings:true});
-      stMod.connectStorageEmulator(storage, emu, 9199);
+    }
+    // Storage (file uploads only) is not loaded with the rest: on the first
+    // upload, or a few seconds after a signed-in start, whichever comes first.
+    let stMod = null, storage = null, stLoading = null;
+    function loadStorage(){
+      return stLoading || (stLoading = import(FB_CDN + 'firebase-storage.js').then(m => {
+        stMod = m; storage = m.getStorage(app);
+        if(emu) m.connectStorageEmulator(storage, emu, 9199);
+      }).catch(e => { stLoading = null; throw e; }));
     }
     await auth.authStateReady();
+    if(auth.currentUser) setTimeout(() => loadStorage().catch(() => {}), 4000);
 
     const col = (t, name) => F.collection(db, 'tenants', t, name);
     // Last JSON written/read per document, so a save sends only real changes.
@@ -557,6 +564,7 @@
       } else return {error:'Unknown action'};
       const wid = safeName(body.workerId || '_');
       const path = 'tenants/' + t + '/workers/' + wid + '/' + kind + '/' + Date.now() + '-' + safeName(name);
+      await loadStorage();
       const ref = stMod.ref(storage, path);
       const meta = {contentType: type, customMetadata: {workerId: String(body.workerId || ''), kind}};
       // An own-workers hr may read back (download URL) only files stamped

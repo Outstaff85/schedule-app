@@ -6,8 +6,8 @@
 <meta name="theme-color" content="#0f1117">
 <link rel="icon" href="icon-192.png" type="image/png">
 <title>Supplier Portal</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="icons/tabler-icons.css">
+<link rel="stylesheet" href="fonts/fonts.css">
 <style>
 /* Supplier Portal — a deliberately separate, lighter file (not an embedded
    mode inside schedule-manager.html) — see docs/supplier-portal.md for
@@ -52,6 +52,22 @@ th,td{padding:8px 10px;text-align:left;font-size:13px;border-bottom:1px solid va
 th{color:var(--text2);font-size:11px;text-transform:uppercase;}
 .lang-select.on-cover{position:absolute;top:max(env(safe-area-inset-top,0px),12px);right:12px;z-index:2;}
 .lang-select{background:var(--bg3);color:var(--text2);border:1px solid var(--border);border-radius:8px;padding:4px 6px;font:600 12px/1 inherit;cursor:pointer;width:auto;min-width:0;}
+/* Phone (≤ 700 px): the tables become one card per row (cardTables — the same as schedule-manager.html). */
+@media (max-width:700px){
+  table.mtable{min-width:0 !important;border-collapse:separate !important;}
+  table.mtable thead{display:none;}
+  table.mtable,table.mtable tbody,table.mtable tfoot,table.mtable tr,table.mtable td{display:block;width:100%;box-sizing:border-box;}
+  table.mtable tr{background:var(--bg2);border:1px solid var(--border2) !important;border-radius:12px;margin:0 0 10px;padding:6px 12px;}
+  table.mtable td{display:flex;justify-content:flex-end;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:5px 0 !important;border:0 !important;text-align:right !important;min-height:28px;}
+  table.mtable td::before{content:attr(data-label);color:var(--text3);font-size:12px;font-weight:500;text-align:left;flex-shrink:0;margin-right:auto;}
+  table.mtable td:first-child{font-weight:600;font-size:15px;justify-content:flex-start;text-align:left !important;}
+  table.mtable td:first-child::before{display:none;}
+  table.mtable td:empty{display:none;}
+  table.mtable td[colspan]{justify-content:center;}
+  table.mtable td[colspan]::before{display:none;}
+}
+/* Hebrew has no capitals: no letter-spacing (made for spaced-out uppercase Latin). */
+html[lang="he"] *{letter-spacing:normal !important;}
 </style>
 </head>
 <body>
@@ -161,7 +177,7 @@ function applyI18n(root){
 }
 function uiLocale(){ return {he:'he-IL', ru:'ru-RU'}[I18N_LANG] || 'en-GB'; }
 async function loadI18n(lang){
-  const set = (l, d) => { I18N_LANG = l; I18N = d || {}; };
+  const set = (l, d) => { I18N_LANG = l; I18N = d || {}; document.documentElement.lang = l; };
   if(!I18N_LANGS[lang] || lang === 'en'){ set('en', {}); return; }
   let cached = null;
   try{ cached = JSON.parse(localStorage.getItem('i18n_' + lang) || 'null'); }catch(e){}
@@ -198,6 +214,27 @@ function placeLangSelect(){
   if(host && sel.parentNode !== host) host.prepend(sel);
 }
 function syncLangSelects(){ document.querySelectorAll('select.lang-select').forEach(el => { el.value = I18N_LANG; }); }
+// Phone layout of the tables (CSS table.mtable at ≤ 700 px): each cell gets its
+// column's header as data-label. A copy of schedule-manager.html's cardTables — keep the two the same.
+function cardTables(root){
+  root.querySelectorAll('table').forEach(t => {
+    t.classList.add('mtable');
+    const head = t.tHead && t.tHead.rows.length ? t.tHead.rows[t.tHead.rows.length - 1] : null;
+    if(!head) return;
+    const labels = [];
+    [...head.cells].forEach(c => { const n = c.colSpan || 1; for(let i = 0; i < n; i++) labels.push(c.textContent.trim()); });
+    [...t.tBodies, ...(t.tFoot ? [t.tFoot] : [])].forEach(b => [...b.rows].forEach(r => {
+      let col = 0;
+      [...r.cells].forEach(c => { if(!c.hasAttribute('data-label') && labels[col]) c.setAttribute('data-label', labels[col]); col += c.colSpan || 1; });
+    }));
+  });
+}
+(() => {
+  let queued = false;
+  const root = document.getElementById('appRoot');
+  const mo = new MutationObserver(() => { if(!queued){ queued = true; requestAnimationFrame(() => { queued = false; cardTables(root); }); } });
+  if(root) mo.observe(root, {childList:true, subtree:true});
+})();
 function redrawForLanguage(){
   applyI18n();
   syncLangSelects();

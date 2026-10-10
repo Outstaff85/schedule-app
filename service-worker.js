@@ -3,7 +3,7 @@
 // {cache:'no-store'} so the newest code/data is always used; the cache is only
 // a fallback when offline. Data calls (Firebase, Cloud Functions) go to other
 // origins and are never touched by the SW.
-const CACHE = 'schedule-mgr-v106';
+const CACHE = 'schedule-mgr-v107';
 const CORE = [
   './',
   './schedule-manager.html',
@@ -12,7 +12,10 @@ const CORE = [
   './manifest.json',
   './manifest-punch.json',
   './icon-192.png',
-  './icon-512.png'
+  './icon-512.png',
+  './fonts/fonts.css',
+  './icons/tabler-icons.css',
+  './icons/tabler-icons.woff2'
 ];
 
 self.addEventListener('install', e => {
@@ -35,6 +38,16 @@ self.addEventListener('fetch', e => {
   if (url.origin !== self.location.origin) return;                // 3rd-party (fonts/CDN): let the browser handle it
 
   const isNav = req.mode === 'navigate';
+
+  // Font files never change under the same URL (the icon font's URL carries
+  // its version): cache first, so they are not fetched again on every page load.
+  if (/\.woff2$/.test(url.pathname)) {
+    e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => {
+      if (res && res.status === 200) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)).catch(()=>{}); }
+      return res;
+    })));
+    return;
+  }
 
   e.respondWith(
     // Bypass the browser HTTP cache so we always get the freshest file from the server.

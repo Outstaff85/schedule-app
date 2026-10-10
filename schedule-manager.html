@@ -17,7 +17,6 @@
 <meta name="theme-color" content="#0f1117">
 <title>Schedule Manager</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&family=Heebo:wght@400;500;700&display=swap');
   :root {
     --bg:#0f1117; --bg2:#181c27; --bg3:#1e2333;
     --border:rgba(255,255,255,0.08); --border2:rgba(255,255,255,0.14);
@@ -235,6 +234,8 @@
   .shift-bar.work{background:var(--green-bg);color:var(--green);}
   .shift-bar.off{background:var(--amber-bg);color:var(--amber);font-family:'DM Sans','Heebo',sans-serif;}
   .shift-bar.midnight{background:var(--blue-bg);color:var(--blue);}
+  .shift-bar.dated{outline:1.5px dashed currentColor;outline-offset:-3px;position:relative;}
+  .shift-bar.dated::after{content:'';position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:currentColor;}
   .legend{display:flex;align-items:center;gap:16px;margin-top:12px;flex-wrap:wrap;}
   .legend-item{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text2);}
   .legend-dot{width:10px;height:10px;border-radius:3px;}
@@ -524,6 +525,32 @@
      the first line and the buttons share the second equally. */
   .pane-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:10px}
   .pane-toolbar select{flex:1;min-width:150px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none}
+  /* ── Phone (≤ 700 px): the tabs become a bar at the bottom of the screen,
+     and the tables of Accounting and Admin become one card per row
+     (cardTables() puts each column's header on its cells as data-label). ── */
+  @media (max-width:700px){
+    .top-tabs{position:fixed;left:0;right:0;bottom:0;z-index:60;width:auto;order:initial;overflow:visible;display:flex;gap:0;
+      background:rgba(20,24,36,.97);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--border2);
+      padding:4px 2px calc(4px + env(safe-area-inset-bottom,0px));box-shadow:0 -6px 20px rgba(0,0,0,.35);}
+    .ttab{flex:1 1 0;min-width:0;padding:6px 1px;border-bottom:0;border-top:2px solid transparent;border-radius:10px;}
+    .ttab.active,.ttab.admin.active{border-bottom-color:transparent;}
+    .ttab .ic{font-size:20px;}
+    .ttab:not(.active):hover{background:none;color:var(--text2);}
+    .ttab .lb{font-size:10px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    body{padding-bottom:calc(66px + env(safe-area-inset-bottom,0px));}
+    .toast{bottom:calc(76px + env(safe-area-inset-bottom,0px));}
+    table.mtable{min-width:0 !important;border-collapse:separate !important;}
+    table.mtable thead{display:none;}
+    table.mtable,table.mtable tbody,table.mtable tfoot,table.mtable tr,table.mtable td{display:block;width:100%;box-sizing:border-box;}
+    table.mtable tr{background:var(--bg2);border:1px solid var(--border2) !important;border-radius:12px;margin:0 0 10px;padding:6px 12px;}
+    table.mtable td{display:flex;justify-content:flex-end;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:5px 0 !important;border:0 !important;text-align:right !important;min-height:28px;}
+    table.mtable td::before{content:attr(data-label);color:var(--text3);font-size:12px;font-weight:500;text-align:left;flex-shrink:0;margin-right:auto;}
+    table.mtable td:first-child{font-weight:600;font-size:15px;justify-content:flex-start;text-align:left !important;}
+    table.mtable td:first-child::before{display:none;}
+    table.mtable td:empty{display:none;}
+    table.mtable td[colspan]{justify-content:center;}
+    table.mtable td[colspan]::before{display:none;}
+  }
   /* Admin section buttons; head actions. */
   .admin-pane-bar{display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border2);padding-bottom:10px;flex-wrap:wrap}
   .head-actions{display:flex;gap:8px}
@@ -558,9 +585,11 @@
   .workers-group-title{grid-column:1/-1;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--text2);margin-top:6px}
   .quad-side-handle { stroke: #fff; stroke-width: 5; stroke-linecap: round; filter: drop-shadow(0 0 2px rgba(0,0,0,.6)); }
 
+/* Hebrew has no capitals: no letter-spacing (made for spaced-out uppercase Latin). */
+html[lang="he"] *{letter-spacing:normal !important;}
 </style>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="fonts/fonts.css">
+<link rel="stylesheet" href="icons/tabler-icons.css">
 </head>
 <body>
 
@@ -1476,11 +1505,34 @@ const loginFx = (() => {
   return {start, stop};
 })();
 function syncLangSelects(){ document.querySelectorAll('select.lang-select').forEach(el => { el.value = I18N_LANG; }); }
+
+// Phone layout of the tables in Accounting and Admin (CSS: table.mtable at
+// ≤ 700 px): each cell gets its column's header as data-label, so a row reads
+// as a card of "label value" lines. Runs after those sections redraw.
+function cardTables(root){
+  root.querySelectorAll('table').forEach(t => {
+    t.classList.add('mtable');
+    const head = t.tHead && t.tHead.rows.length ? t.tHead.rows[t.tHead.rows.length - 1] : null;
+    if(!head) return;
+    const labels = [];
+    [...head.cells].forEach(c => { const n = c.colSpan || 1; for(let i = 0; i < n; i++) labels.push(c.textContent.trim()); });
+    [...t.tBodies, ...(t.tFoot ? [t.tFoot] : [])].forEach(b => [...b.rows].forEach(r => {
+      let col = 0;
+      [...r.cells].forEach(c => { if(!c.hasAttribute('data-label') && labels[col]) c.setAttribute('data-label', labels[col]); col += c.colSpan || 1; });
+    }));
+  });
+}
+(() => {
+  let queued = false;
+  const run = () => { queued = false; ['sectionAccounting','sectionAdmin'].forEach(id => { const el = document.getElementById(id); if(el) cardTables(el); }); };
+  const mo = new MutationObserver(() => { if(!queued){ queued = true; requestAnimationFrame(run); } });
+  ['sectionAccounting','sectionAdmin'].forEach(id => { const el = document.getElementById(id); if(el) mo.observe(el, {childList:true, subtree:true}); });
+})();
 // Loads the firm language's dictionary: from this device's copy at once when
 // there is one (no wait at startup), refreshed from i18n/<lang>.json; a newer
 // file redraws the page. English needs no file.
 async function loadI18n(lang){
-  const set = (l, d) => { I18N_LANG = l; I18N = d || {}; };
+  const set = (l, d) => { I18N_LANG = l; I18N = d || {}; document.documentElement.lang = l; };
   if(!I18N_LANGS[lang] || lang === 'en'){ set('en', {}); return; }
   let cached = null;
   try{ cached = JSON.parse(localStorage.getItem('i18n_' + lang) || 'null'); }catch(e){}
@@ -1568,7 +1620,17 @@ function groupPunchesIntoShifts(entries){
   return buckets;
 }
 function isMidnight(s,e){ return !!s&&!!e&&toMins(e)<=toMins(s); }
-function workerTotalHours(w){ return w.schedule.reduce((s,sh)=>s+calcHours(sh.start,sh.end),0); }
+// Shifts: the weekly roster (w.schedule[0..6], Sunday first) plus changes
+// made for one date only (w.dateShifts['YYYY-MM-DD'] = {type, start, end}),
+// which win over the roster on that date.
+function shiftOn(w, date){
+  const o = w.dateShifts && w.dateShifts[localYMD(date)];
+  if(o) return Object.assign({dated:true}, o);
+  return (w.schedule||[])[date.getDay()] || {type:'off', start:null, end:null};
+}
+// The seven shifts of the shown week (weekStart, Sunday first).
+function weekShifts(w){ return [0,1,2,3,4,5,6].map(i => { const d=new Date(weekStart); d.setDate(d.getDate()+i); return shiftOn(w,d); }); }
+function workerTotalHours(w){ return weekShifts(w).reduce((s,sh)=>s+(sh.type==='work'?calcHours(sh.start,sh.end):0),0); }
 
 // ── Contract-expiry warning (per-worker, opt-in) ───────────────────────────────
 // A worker can optionally set expiryMonths (how many months after startDate
@@ -1943,14 +2005,14 @@ function render(){
 // Weekly Schedule editor closed on creation) — treat that as "manages their
 // own hours, doesn't belong in the combined roster" rather than showing them
 // as a row of day-offs in the All-clients view.
-function hasSchedule(w){ return (w.schedule||[]).some(s=>s.type==='work'); }
+function hasSchedule(w){ return (w.schedule||[]).some(s=>s.type==='work') || weekShifts(w).some(s=>s.type==='work'); }
 function getVisible(){ return selectedClientId ? workers.filter(w=>(w.clientIds||[]).includes(selectedClientId)) : workers.filter(hasSchedule); }
 
 function renderStats(){
   const vis=getVisible();
   const totalH=vis.reduce((s,w)=>s+workerTotalHours(w),0);
-  const shifts=vis.reduce((s,w)=>s+w.schedule.filter(sh=>sh.type==='work').length,0);
-  const offs  =vis.reduce((s,w)=>s+w.schedule.filter(sh=>sh.type==='off').length,0);
+  const shifts=vis.reduce((s,w)=>s+weekShifts(w).filter(sh=>sh.type==='work').length,0);
+  const offs  =vis.reduce((s,w)=>s+weekShifts(w).filter(sh=>sh.type!=='work').length,0);
   let h=`
     <div class="stat-card"><div class="stat-label">${tr('Total hours')}</div><div class="stat-val">${totalH.toFixed(1)}<span class="stat-unit">h</span></div></div>
     <div class="stat-card"><div class="stat-label">${tr('Shifts')}</div><div class="stat-val">${shifts}</div></div>
@@ -1993,13 +2055,14 @@ function renderGanttBody(){
       <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${workerAvatarInner(w)}</div>
       <span>${esc(w.name)}</span>
     </div>`;
-    w.schedule.forEach((sh,di)=>{
+    weekShifts(w).forEach((sh,di)=>{
       h+=`<div class="gantt-day-cell" onclick="openEditShift(${wi},${di})">`;
+      const dated=sh.dated?` dated" title="${esc(tr('Changed for this date only'))}`:'';
       if(sh.type==='work'&&sh.start&&sh.end){
         const mid=toMins(sh.end)<=toMins(sh.start);
-        h+=`<div class="shift-bar ${mid?'midnight':'work'}">${sh.start}<br>${sh.end}</div>`;
+        h+=`<div class="shift-bar ${mid?'midnight':'work'}${dated}">${esc(sh.start)}<br>${esc(sh.end)}</div>`;
       } else {
-        h+=`<div class="shift-bar off">${tr('Day off')}</div>`;
+        h+=`<div class="shift-bar off${dated}">${tr('Day off')}</div>`;
       }
       h+=`</div>`;
     });
@@ -2071,8 +2134,9 @@ function dragEnd(e){ e.currentTarget.classList.remove('dragging'); document.quer
 
 // --- Edit Shift ---------------------------------------------------------------
 function openEditShift(wi,di){
-  const w=workers[wi],sh=w.schedule[di];
+  const w=workers[wi];
   const date=new Date(weekStart); date.setDate(date.getDate()+di);
+  const sh=shiftOn(w,date);
   document.getElementById('editModal').innerHTML=`
     <div class="modal-title">${tr('Edit shift — {0}, {1} {2}',{0:(esc(w.name)),1:(tr(DAYS[di])),2:(fmtDate(date))})}</div>
     <div class="field"><label>${tr('Shift type')}</label>
@@ -2080,6 +2144,13 @@ function openEditShift(wi,di){
         <option value="work" ${sh.type==='work'?'selected':''}>${tr('Working')}</option>
         <option value="off"  ${sh.type==='off' ?'selected':''}>${tr('Day off')}</option>
       </select>
+    </div>
+    <div class="field"><label>${tr('Applies to')}</label>
+      <select id="eScope">
+        <option value="week" ${sh.dated?'':'selected'}>${esc(tr('Every {0}',{0:tr(DAYS[di])}))}</option>
+        <option value="date" ${sh.dated?'selected':''}>${esc(tr('Only {0}',{0:fmtDate(date)}))}</option>
+      </select>
+      ${sh.dated?`<div style="font-size:12px;color:var(--text2);margin-top:6px">${tr('This date has its own shift.')} <a href="#" onclick="event.preventDefault();clearDateShift(${wi},${di})" style="color:var(--blue)">${tr('Back to the weekly schedule')}</a></div>`:''}
     </div>
     <div id="eTimeWrap" ${sh.type==='off'?'style="opacity:0.4;pointer-events:none"':''}>
       <div class="field-row">
@@ -2102,9 +2173,29 @@ function updateBadge(){
   el.innerHTML=`<span class="hours-badge">${tr('{h}h',{h:(h).toFixed(2)})}${isMidnight(s,e)?' · '+tr('crosses midnight'):''}</span>`;
 }
 function saveShift(wi,di){
-  const type=document.getElementById('eType').value;
-  workers[wi].schedule[di]={type,start:type==='work'?document.getElementById('eStart').value:null,end:type==='work'?document.getElementById('eEnd').value:null};
+  const w=workers[wi], type=document.getElementById('eType').value;
+  const sh={type,start:type==='work'?document.getElementById('eStart').value:null,end:type==='work'?document.getElementById('eEnd').value:null};
+  const date=new Date(weekStart); date.setDate(date.getDate()+di);
+  const key=localYMD(date);
+  if(document.getElementById('eScope').value==='date'){
+    w.dateShifts=pruneDateShifts(Object.assign({}, w.dateShifts, {[key]:sh}));
+  } else {
+    w.schedule[di]=sh;
+    if(w.dateShifts && w.dateShifts[key]){ const d=Object.assign({}, w.dateShifts); delete d[key]; w.dateShifts=pruneDateShifts(d); }
+  }
   closeModal('editOverlay'); render(); autoSave(); showToast(tr('Shift saved'));
+}
+// Removes the one-date change: the day follows the weekly roster again.
+function clearDateShift(wi,di){
+  const w=workers[wi], date=new Date(weekStart); date.setDate(date.getDate()+di);
+  const d=Object.assign({}, w.dateShifts); delete d[localYMD(date)]; w.dateShifts=pruneDateShifts(d);
+  closeModal('editOverlay'); render(); autoSave(); showToast(tr('Back to the weekly schedule'));
+}
+// Date changes older than 62 days are dropped, so the worker record stays small.
+function pruneDateShifts(d){
+  const cut=new Date(); cut.setDate(cut.getDate()-62); const ck=localYMD(cut);
+  const out={}; Object.keys(d||{}).sort().forEach(k=>{ if(k>=ck) out[k]=d[k]; });
+  return out;
 }
 
 // --- Worker Modal -------------------------------------------------------------
@@ -2430,9 +2521,12 @@ function cardMissingScanRowsHtml(w,wi){
   const keys=workerMissingScanKeys(w);
   if(!keys.length) return '';
   const can=!!w.assetsFileId;
-  return `<div dir="rtl" style="display:flex;flex-direction:column;gap:6px;flex-basis:100%">${keys.map(k=>`
-    <div id="cardMiss_${k}" ${can?`onclick="findScanFieldFromCard(${wi},'${k}')"`:''} style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px dashed var(--amber);border-radius:8px;color:var(--amber);font-size:12px;${can?'cursor:pointer':''}">
-      <i class="ti ti-${can?'search':'alert-triangle'}"></i><b>${esc(scanFieldLabel(k,w.docType))}</b> — לא נסרק${can?' · לחצו לחיפוש בסריקה':''}</div>`).join('')}</div>`;
+  // A long list shows its first 3 rows; the rest open with "Show N more".
+  const SHOW=3, more=keys.length-SHOW;
+  return `<div dir="rtl" style="display:flex;flex-direction:column;gap:6px;flex-basis:100%">${keys.map((k,i)=>`
+    <div id="cardMiss_${k}" ${can?`onclick="findScanFieldFromCard(${wi},'${k}')"`:''} style="display:${i<SHOW||more===1?'flex':'none'};align-items:center;gap:8px;padding:7px 10px;border:1px dashed var(--amber);border-radius:8px;color:var(--amber);font-size:12px;${can?'cursor:pointer':''}" ${i>=SHOW?'data-miss-more':''}>
+      <i class="ti ti-${can?'search':'alert-triangle'}"></i><b>${esc(scanFieldLabel(k,w.docType))}</b> — לא נסרק${can?' · לחצו לחיפוש בסריקה':''}</div>`).join('')}${more>1?`
+    <button type="button" class="btn sm" dir="ltr" style="align-self:flex-start;color:var(--amber)" onclick="event.stopPropagation();this.parentElement.querySelectorAll('[data-miss-more]').forEach(r=>r.style.display='flex');this.remove()"><i class="ti ti-chevron-down"></i> ${esc(tr('Show {0} more missing fields',{0:more}))}</button>`:''}</div>`;
 }
 async function findScanFieldFromCard(wi,key){
   const w=workers[wi], row=document.getElementById('cardMiss_'+key);
@@ -4249,7 +4343,7 @@ function renderClientsPage(){
       <div class="client-card-actions">
 
         <button class="btn sm" style="background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)" onclick="openManualPunch('${c.id}')"><i class="ti ti-clock"></i> ${tr('Punch Clock')}</button>
-        <button class="btn sm red" onclick="deleteClient('${c.id}')">${tr('&#x2715; Remove')}</button>
+        <button class="btn sm" onclick="deleteClient('${c.id}')" title="${tr('Remove')}" aria-label="${tr('Remove')}" style="color:#ff6b78;margin-left:auto"><i class="ti ti-trash"></i></button>
       </div>
     </div>`;
   },{grid:true});
@@ -4329,7 +4423,7 @@ function renderSuppliersPage(){
       ${s.bank?`<div style="font-size:12px;color:var(--text2)"><i class="ti ti-building-bank"></i> ${esc(s.bank)}${s.bankBranch?' · branch '+esc(s.bankBranch):''}${s.accountNumber?' · '+esc(s.accountNumber):''}</div>`:''}
       <div style="font-size:12px;color:var(--text2)"><strong style="color:var(--text)">${tr('Workers:')}</strong> ${assigned.length?assigned.map(w=>`<span style="color:${WORKER_COLORS[w.colorIdx%8].text}">${esc(w.name)}</span>`).join(', '):'None assigned'}</div>
       <div class="client-card-actions">
-        <button class="btn sm red" onclick="deleteSupplier('${s.id}')">${tr('&#x2715; Remove')}</button>
+        <button class="btn sm" onclick="deleteSupplier('${s.id}')" title="${tr('Remove')}" aria-label="${tr('Remove')}" style="color:#ff6b78;margin-left:auto"><i class="ti ti-trash"></i></button>
       </div>
     </div>`;
   },{grid:true});
@@ -4512,12 +4606,12 @@ function exportExcel(){
     const exW=getVisible();
     exW.forEach(w=>{
       const row=[w.name,w.phone||'']; let total=0;
-      w.schedule.forEach(sh=>{ if(sh.type==='work'&&sh.start&&sh.end){ const h=calcHours(sh.start,sh.end); total+=h; row.push(sh.start+' – '+sh.end+' ('+h.toFixed(1)+'h)'); } else row.push('Day off'); });
+      weekShifts(w).forEach(sh=>{ if(sh.type==='work'&&sh.start&&sh.end){ const h=calcHours(sh.start,sh.end); total+=h; row.push(sh.start+' – '+sh.end+' ('+h.toFixed(1)+'h)'); } else row.push('Day off'); });
       row.push(total.toFixed(1)+'h'); rows.push(row);
     });
     rows.push([]);
     const totals=['TOTAL',''];
-    DAYS.forEach((_,i)=>totals.push(exW.filter(w=>w.schedule[i]?.type==='work').length+' working'));
+    DAYS.forEach((_,i)=>totals.push(exW.filter(w=>weekShifts(w)[i]?.type==='work').length+' working'));
     totals.push(exW.reduce((s,w)=>s+workerTotalHours(w),0).toFixed(1)+'h');
     rows.push(totals);
     const ws=XLSX.utils.aoa_to_sheet(rows);
@@ -4527,7 +4621,7 @@ function exportExcel(){
     const statsRows=[['Statistics',fmtRange(weekStart)],[],['Worker','Hours','Shifts','Days Off','Clients','Supplier'],
       ...exW.map(w=>{ const cn=clients.filter(c=>(w.clientIds||[]).includes(c.id)).map(c=>c.name).join(', ');
         const sn=suppliers.find(s=>s.id===w.supplierId)?.name||'';
-        return [w.name,workerTotalHours(w).toFixed(1),w.schedule.filter(s=>s.type==='work').length,w.schedule.filter(s=>s.type==='off').length,cn||'Unassigned',sn]; })];
+        return [w.name,workerTotalHours(w).toFixed(1),weekShifts(w).filter(s=>s.type==='work').length,weekShifts(w).filter(s=>s.type!=='work').length,cn||'Unassigned',sn]; })];
     const ws2=XLSX.utils.aoa_to_sheet(statsRows);
     ws2['!cols']=[{wch:18},{wch:10},{wch:8},{wch:10},{wch:28},{wch:20}];
     XLSX.utils.book_append_sheet(wb,ws2,'Statistics');
@@ -4552,7 +4646,7 @@ function exportPDF(){
   const workerRows=exW.map((w,ri)=>{
     const c=WORKER_COLORS[w.colorIdx%8];
     const rowBg=ri%2===0?'#181c27':'#13161f';
-    const cells=w.schedule.map(sh=>{
+    const cells=weekShifts(w).map(sh=>{
       if(sh.type==='work'&&sh.start&&sh.end){
         const h=calcHours(sh.start,sh.end);
         const mid=toMins(sh.end)<=toMins(sh.start);
@@ -4571,7 +4665,7 @@ function exportPDF(){
   const weekLabel=fmtRange(weekStart);
 
   const html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Schedule '+weekLabel+'</title>'
-    +'<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&family=Heebo:wght@400;500;700&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;}html,body{background:#0f1117;min-height:100%;width:100%;}body{font-family:"DM Sans","Heebo",-apple-system,Arial,sans-serif;background:#0f1117;color:#e8eaf0;padding:8px;}@media print{*{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;}html,body{background:#0f1117 !important;}body{padding:6px;}@page{size:A4 landscape;margin:4mm;}html{height:auto;}body{height:auto;}table{font-size:11px;}}table{width:100%;border-collapse:separate !important;border-spacing:3px !important;table-layout:fixed;}th,td{border:none !important;}th{font-weight:500;}tr{height:82px !important;page-break-inside:avoid;break-inside:avoid;}</style>'
+    +'<link href="'+location.origin+'/fonts/fonts.css" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;}html,body{background:#0f1117;min-height:100%;width:100%;}body{font-family:"DM Sans","Heebo",-apple-system,Arial,sans-serif;background:#0f1117;color:#e8eaf0;padding:8px;}@media print{*{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;}html,body{background:#0f1117 !important;}body{padding:6px;}@page{size:A4 landscape;margin:4mm;}html{height:auto;}body{height:auto;}table{font-size:11px;}}table{width:100%;border-collapse:separate !important;border-spacing:3px !important;table-layout:fixed;}th,td{border:none !important;}th{font-weight:500;}tr{height:82px !important;page-break-inside:avoid;break-inside:avoid;}</style>'
     +'</head><body><div style="width:100%;background:#0f1117;padding:0"><div style="max-width:100%;margin:0 auto;padding:16px">'
     +'<div style="text-align:center;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.06)">'
     +(()=>{ const cl=selectedClientId?clients.find(c=>c.id===selectedClientId):null; return cl?'<div style="font-size:28px;font-weight:600;color:#7eb8ff;margin-bottom:6px;font-family:Heebo,Arial,sans-serif">'+esc(cl.name)+'</div>':'<div style="font-size:26px;font-weight:500;color:#5a6075;margin-bottom:6px;letter-spacing:1px">'+tr('ALL CLIENTS')+'</div>'; })()
@@ -5227,8 +5321,8 @@ function renderAdminUsersRows(el, users){
     const row = u => {
       const sup = u.role==='supplier' ? (suppliers||[]).find(s=>s.id===u.supplierId) : null;
       const permsLabel = (u.role!=='staff' && u.role!=='hr') ? '' : (u.permissions==='*' ? 'Full access' : (Array.isArray(u.permissions)?u.permissions.join(', '):'—'));
-      const hrLine = u.role==='hr' ? `<div style="font-size:12px;color:var(--text2)">${tr('{0} workers{1}',{0:(hrWorkerCount(u.id)),1:(u.ownOnly===false?' · sees all workers':'')})}</div>`
-        : u.role==='supplier' && u.supplierId ? `<div style="font-size:12px;color:var(--text2)">${tr('{0} workers{1}',{0:(workers.filter(w => w.supplierId===u.supplierId).length),1:''})}</div>` : '';
+      const hrLine = u.role==='hr' ? `<div style="font-size:12px;color:var(--text2)">${(hrWorkerCount(u.id)===1?tr('1 worker{1}',{1:(u.ownOnly===false?' · '+tr('sees all workers'):'')}):tr('{0} workers{1}',{0:(hrWorkerCount(u.id)),1:(u.ownOnly===false?' · '+tr('sees all workers'):'')}))}</div>`
+        : u.role==='supplier' && u.supplierId ? `<div style="font-size:12px;color:var(--text2)">${(n => n===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:n,1:''}))(workers.filter(w => w.supplierId===u.supplierId).length)}</div>` : '';
       return `<div class="tap-edit" onclick="if(isPlainTap(event,this))openEditUserForm('${esc(u.id)}')" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);${u.active===false?'opacity:0.55':''}">
         <div>
           <div style="font-weight:600">${esc(u.fullName||u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(tr(USER_ROLE_LABELS[u.role]||u.role))})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">'+tr('inactive')+'</span>':''}</div>
@@ -6189,8 +6283,8 @@ function applyData(d){
   // d.weekStart (the week that was on screen at the last save) is deliberately
   // NOT restored — the Weekly Schedule always opens on the current week, and a
   // background re-load mustn't yank the manager off a week they navigated to.
-  // Shifts are stored per weekday (w.schedule[0..6]), not per date, so the
-  // week shown only changes the date labels, never which shifts exist.
+  // The weekly roster is per weekday (w.schedule[0..6]); a change for one
+  // date only lives in w.dateShifts, so the week shown picks those up.
 }
 
 // Set while local changes have not reached the server yet (2026-10-01).
@@ -6439,7 +6533,7 @@ function renderDashboard(){
   // ── Who should be here based on schedule but NOT clocked in ─────────────
   const nowMins = now.getHours()*60+now.getMinutes();
   const missing = workers.filter(w=>{
-    const sh = w.schedule?.[todayIdx];
+    const sh = shiftOn(w, now);
     if(!sh||sh.type==='off'||!sh.start) return false;
     const shStart = toMins(sh.start);
     // Only flag if shift started more than 15 mins ago
@@ -6459,7 +6553,7 @@ function renderDashboard(){
       const c=WORKER_COLORS[w.colorIdx%8];
       const lastIn=latestOf(todayLog.filter(e=>e.workerId===w.id&&e.type==='in'));
       const sinceTime=lastIn?lastIn.time:'?';
-      const shiftHours=w.schedule?.[todayIdx]?.end?calcHours(sinceTime,w.schedule[todayIdx].end).toFixed(1):'-';
+      const tsh=shiftOn(w, now); const shiftHours=tsh.type==='work'&&tsh.end?calcHours(sinceTime,tsh.end).toFixed(1):'-';
       return `<div style="background:var(--bg2);border:1px solid rgba(62,207,142,0.25);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
         <div style="width:40px;height:40px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;position:relative">
           ${workerAvatarInner(w)}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--green);border:2px solid var(--bg2)"></span>
@@ -6478,7 +6572,7 @@ function renderDashboard(){
   if(missing.length){
     renderPagedList(missingEl,'dashMissing','',missing,w=>{
       const c=WORKER_COLORS[w.colorIdx%8];
-      const sh=w.schedule?.[todayIdx];
+      const sh=shiftOn(w, now);
       return `<div style="background:var(--bg2);border:1px solid rgba(248,113,113,0.25);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
         <div style="width:40px;height:40px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;position:relative;opacity:0.6">
           ${workerAvatarInner(w)}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--red);border:2px solid var(--bg2)"></span>
@@ -7225,7 +7319,7 @@ function renderWorkerPay(){
       ?[esc(w.bank||''),w.bankBranch?tr('branch {b}',{b:esc(w.bankBranch)}):'',w.bankAccountNumber?tr('acc. {a}',{a:esc(w.bankAccountNumber)}):''].filter(Boolean).join(' · ')
       :'<span style="color:var(--amber)">'+esc(tr('no bank details'))+'</span>';
     const period=e
-      ? `${esc(periodLbl)}: ${esc(tr('{n} days · {h} h · pay {pay} · travel {travel}',{n:e.daysUsed,h:Math.round(e.hours*100)/100,pay:money(e.total),travel:money(e.travel)}))} · <b style="color:var(--text)">${esc(tr('total {t}',{t:money(e.total+e.travel)}))}</b>`
+      ? `${esc(periodLbl)}: ${esc((e.daysUsed===1?tr('1 day · {h} h · pay {pay} · travel {travel}',{n:e.daysUsed,h:Math.round(e.hours*100)/100,pay:money(e.total),travel:money(e.travel)}):tr('{n} days · {h} h · pay {pay} · travel {travel}',{n:e.daysUsed,h:Math.round(e.hours*100)/100,pay:money(e.total),travel:money(e.travel)})))} · <b style="color:var(--text)">${esc(tr('total {t}',{t:money(e.total+e.travel)}))}</b>`
       : `<span style="color:var(--text3)">${esc(periodLbl)}: ${esc(tr('no shifts'))}</span>`;
     return `<div class="wcard tap-edit" onclick="if(isPlainTap(event,this))openPayModal('${esc(w.id)}')" title="${edit?esc(tr('Edit pay')):esc(tr('View pay'))}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -8969,23 +9063,25 @@ const GCONTACTS_CLIENT_ID = GCONTACTS_ACCOUNTS[_activeAccountIdx].clientId;
 let _gToken = null;
 let _contactsCache = [];
 
-function initGoogleContacts(){
-  // Initialize Google Identity Services
-  if(typeof google === 'undefined') return;
-  google.accounts.oauth2.initTokenClient({
-    client_id: GCONTACTS_CLIENT_ID,
-    scope: 'https://www.googleapis.com/auth/contacts.readonly',
-    callback: (resp) => {
-      if(resp.error) { showToast(tr('Google auth failed: {0}',{0:(resp.error)})); return; }
-      _gToken = resp.access_token;
-      fetchContacts();
-    }
-  });
+// Google Identity Services is loaded only for the contacts picker (not with
+// the page): opening the account list starts the load, so it is there by the
+// time an account is tapped.
+let __gsiLoading = null;
+function loadGsi(){
+  if(typeof google !== 'undefined' && google.accounts) return Promise.resolve();
+  return __gsiLoading || (__gsiLoading = new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://accounts.google.com/gsi/client'; sc.async = true;
+    sc.onload = () => res();
+    sc.onerror = () => { __gsiLoading = null; sc.remove(); rej(new Error('Google API not loaded')); };
+    document.head.appendChild(sc);
+  }));
 }
 
 let _tokenClient = null;
 
 function triggerContactsPicker(){
+  loadGsi().catch(()=>{});
   // Show account selector
   const el = document.getElementById('contactsSuggestions');
   if(el){
@@ -9017,7 +9113,10 @@ function switchContactsAccount(idx){
   showToast(tr('Connecting to {0}...',{0:(acc.label)}));
   hideContactsSuggestions();
 
-  if(typeof google === 'undefined'){ showToast(tr('Google API not loaded')); return; }
+  if(typeof google === 'undefined' || !google.accounts){
+    loadGsi().then(() => switchContactsAccount(idx)).catch(() => showToast(tr('Google API not loaded')));
+    return;
+  }
   _tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: acc.clientId,
     scope: 'https://www.googleapis.com/auth/contacts.readonly',

@@ -93,11 +93,27 @@ def _week(schedule):
     return out
 
 
+def _dates(date_shifts, today=None):
+    """The worker's own one-date changes ({'YYYY-MM-DD': {type, start, end}},
+    the manager's "Only this date"), from 31 days back to 120 days ahead —
+    each reduced to type/start/end like _week()."""
+    if not isinstance(date_shifts, dict):
+        return {}
+    today = today or datetime.now(timezone.utc).date()
+    lo, hi = (today - timedelta(days=31)).isoformat(), (today + timedelta(days=120)).isoformat()
+    out = {}
+    for k, v in date_shifts.items():
+        if isinstance(k, str) and len(k) == 10 and lo <= k <= hi and isinstance(v, dict):
+            out[k] = _week([v])[0]
+    return out
+
+
 def _load(db, tid, w):
     d = w.to_dict()
     me = {"id": w.id, "name": d.get("name") or "", "colorIdx": d.get("colorIdx") or 0,
           "token": d.get("token"), "clientIds": d.get("clientIds") or [],
-          "schedule": _week(d.get("schedule"))}
+          "schedule": _week(d.get("schedule")),
+          "dates": _dates(d.get("dateShifts"))}
     clients = []
     for cid in me["clientIds"]:
         c = db.collection("tenants").document(tid).collection("clients").document(str(cid)).get()
