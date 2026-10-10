@@ -85,9 +85,16 @@
   .login-sector.active{background:rgba(109,214,160,.12);border-color:#6dd6a0;box-shadow:0 8px 28px rgba(109,214,160,.18);transform:translateY(-3px);}
   .login-sector.active i{transform:scale(1.15);}
   .login-roles{margin-top:14px;min-height:34px;display:flex;flex-wrap:wrap;align-items:flex-start;align-content:flex-start;gap:8px;}
+  .login-pay{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:4px;animation:loginPop .5s .3s both;}
+  .login-pay-label{font-size:13px;color:#9aa1b8;display:inline-flex;align-items:center;gap:5px;}
+  .pay-badge{display:inline-flex;align-items:center;gap:2px;height:30px;padding:0 14px;border-radius:8px;font-size:14px;font-weight:700;letter-spacing:.2px;box-shadow:0 4px 14px rgba(0,0,0,.3);}
+  .pay-badge.gpay{background:#fff;color:#3c4043;border:1px solid #dadce0;}
+  .pay-badge.gpay b{background:linear-gradient(90deg,#4285f4 0 25%,#ea4335 25% 50%,#fbbc05 50% 75%,#34a853 75%);-webkit-background-clip:text;background-clip:text;color:transparent;font-size:15px;}
+  .pay-badge.paybox{background:#00a3e0;color:#fff;}
+  .pay-badge.bit{background:#00c9b5;color:#fff;font-size:16px;text-transform:lowercase;}
   .login-role{font-size:13px;color:#dfe5f5;background:rgba(79,142,247,.14);border:1px solid rgba(79,142,247,.3);border-radius:100px;padding:6px 12px;animation:loginPop .4s both;}
   @keyframes loginPop{from{opacity:0;transform:translateY(6px) scale(.96)}to{opacity:1;transform:none}}
-  .login-left{flex:1 1 58%;display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden;padding:36px 40px;}
+  .login-left{flex:1 1 58%;display:flex;flex-direction:column;justify-content:safe center;position:relative;padding:36px 40px;}
   .login-features{position:relative;max-width:620px;width:100%;margin:0 auto;}
   .login-features-title{font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#8fb6ff;margin:22px 0 10px;}
   .login-feature-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
@@ -1039,8 +1046,7 @@
   <div class="login-spot" aria-hidden="true"></div>
   <!-- The firm's showcase behind the login: name, what it does, the sectors it staffs (startLoginShowcase). -->
   <div class="login-left">
-  <div class="login-blob b1"></div><div class="login-blob b2"></div><div class="login-blob b3"></div>
-  <div class="login-floaters" aria-hidden="true"><i class="ti ti-chef-hat f1"></i><i class="ti ti-building-factory-2 f2"></i><i class="ti ti-bread f3"></i><i class="ti ti-tools-kitchen-2 f4"></i><i class="ti ti-building-community f5"></i><i class="ti ti-spray f6"></i></div>
+  <div class="login-floaters" aria-hidden="true"><div class="login-blob b1"></div><div class="login-blob b2"></div><div class="login-blob b3"></div><i class="ti ti-chef-hat f1"></i><i class="ti ti-building-factory-2 f2"></i><i class="ti ti-bread f3"></i><i class="ti ti-tools-kitchen-2 f4"></i><i class="ti ti-building-community f5"></i><i class="ti ti-spray f6"></i></div>
   <div class="login-hero">
     <div class="login-hero-inner">
       <div class="login-brand"><i class="ti ti-users-group"></i> <span class="login-brand-name">Odinson</span></div>
@@ -1064,7 +1070,7 @@
       <div class="login-feature"><i class="ti ti-file-certificate"></i><div><b data-i18n>Full document tracking</b><span data-i18n>Every worker's documents in one place, with their expiry dates.</span></div></div>
       <div class="login-feature"><i class="ti ti-activity-heartbeat"></i><div><b data-i18n>Real-time attendance</b><span data-i18n>See who arrived and who left the moment they punch.</span></div></div>
       <div class="login-feature"><i class="ti ti-calculator"></i><div><b data-i18n>Hours and accounting, open to you</b><span data-i18n>Calculated hours, pay and billing — transparent and always available.</span></div></div>
-      <div class="login-feature"><i class="ti ti-calendar-user"></i><div><b data-i18n>A schedule for every worker</b><span data-i18n>Plan each worker's shifts — and the worker sees the schedule too.</span></div></div>
+      <div class="login-feature"><i class="ti ti-calendar-user"></i><div><b data-i18n>A schedule for every worker</b><span data-i18n>We build a personal schedule for each worker, and the worker sees it on their phone. Track hours and any other details you need, as you choose.</span></div></div>
     </div>
   </div>
   </div>
@@ -1376,7 +1382,7 @@ const LOGIN_SECTORS = [
   {title:'Staff for bakeries', roles:['Bakers','Dough preparation','Packing','Night shifts']},
   {title:'Staff for catering', roles:['Event staff','Servers','Kitchen crew','Setup and cleanup']},
   {title:'Full property support', roles:['Residential and commercial','Cleaning','Maintenance and repairs','Gardening','Building care']},
-  {title:'Office cleaning from 3 hours', roles:['Offices','From 3 hours a visit','Regular or one-time']},
+  {title:'Office cleaning from 3 hours', roles:['Offices','From 3 hours a visit','Regular or one-time'], pay:true},
 ];
 let __loginSector = 0, __loginTimer = null;
 function showLoginSector(i){
@@ -1386,7 +1392,10 @@ function showLoginSector(i){
   rot.classList.add('out');
   setTimeout(() => { rot.textContent = tr(LOGIN_SECTORS[i].title); rot.classList.remove('out'); }, 250);
   document.querySelectorAll('#loginSectors .login-sector').forEach(b => b.classList.toggle('active', Number(b.dataset.sector) === i));
-  roles.innerHTML = LOGIN_SECTORS[i].roles.map((r, k) => `<span class="login-role" style="animation-delay:${k * 70}ms">${esc(tr(r))}</span>`).join('');
+  roles.innerHTML = LOGIN_SECTORS[i].roles.map((r, k) => `<span class="login-role" style="animation-delay:${k * 70}ms">${esc(tr(r))}</span>`).join('')
+    // Office cleaning is paid on the spot: the payment apps it takes.
+    + (LOGIN_SECTORS[i].pay ? `<div class="login-pay"><span class="login-pay-label"><i class="ti ti-wallet"></i> ${esc(tr('Pay with'))}</span>`
+      + `<span class="pay-badge gpay"><b>G</b> Pay</span><span class="pay-badge paybox">PayBox</span><span class="pay-badge bit">bit</span></div>` : '');
 }
 function startLoginShowcase(){
   const screen = document.getElementById('loginScreen');
