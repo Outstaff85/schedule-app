@@ -69,7 +69,7 @@
   .login-rotator{display:inline-block;background:linear-gradient(90deg,#8fb6ff,#6dd6a0);-webkit-background-clip:text;background-clip:text;color:transparent;transition:opacity .35s,transform .35s;}
   .login-rotator.out{opacity:0;transform:translateY(-10px);}
   .login-desc{margin-top:12px;font-size:15px;line-height:1.6;color:#b9bfd3;}
-  .login-sectors{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:24px;}
+  .login-sectors{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:24px;}
   .login-sector{font:inherit;cursor:pointer;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:14px 8px;text-align:center;color:#e6e9f5;font-size:13px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:6px;transition:transform .25s,border-color .25s,background .25s,box-shadow .25s;}
   .login-sector i{font-size:28px;color:#6dd6a0;transition:transform .25s;}
   .login-sector:hover{transform:translateY(-3px);border-color:rgba(109,214,160,.45);}
@@ -100,7 +100,7 @@
     .login-feature-grid{grid-template-columns:1fr;}
     .login-brand{font-size:32px;} .login-brand i{font-size:30px;}
     .login-tagline{font-size:19px;} .login-desc{font-size:14px;}
-    .login-sectors{grid-template-columns:repeat(4,1fr);gap:6px;margin-top:16px;}
+    .login-sectors{grid-template-columns:repeat(3,1fr);gap:6px;margin-top:16px;}
     .login-sector{padding:10px 4px;font-size:11px;} .login-sector i{font-size:22px;}
     .login-card{flex:none;border-left:0;border-top:1px solid rgba(255,255,255,.08);padding:24px 20px 32px;}
   }
@@ -1024,12 +1024,14 @@
     <div class="login-hero-inner">
       <div class="login-brand"><i class="ti ti-users-group"></i> Odinson</div>
       <div class="login-tagline"><span id="loginRotator" class="login-rotator" data-i18n>Staff for restaurants</span></div>
-      <div class="login-desc" data-i18n>We supply reliable workers for restaurants, factories, bakeries and catering — for one shift or for the long term.</div>
+      <div class="login-desc" data-i18n>We supply reliable workers for restaurants, factories, bakeries and catering, and the full chain of support for residential and commercial property — for a minimum of one month. Office cleaning from 3 hours.</div>
       <div class="login-sectors" id="loginSectors">
         <button type="button" class="login-sector" data-sector="0"><i class="ti ti-chef-hat"></i><span data-i18n>Restaurants</span></button>
         <button type="button" class="login-sector" data-sector="1"><i class="ti ti-building-factory-2"></i><span data-i18n>Factories</span></button>
         <button type="button" class="login-sector" data-sector="2"><i class="ti ti-bread"></i><span data-i18n>Bakeries</span></button>
         <button type="button" class="login-sector" data-sector="3"><i class="ti ti-tools-kitchen-2"></i><span data-i18n>Catering</span></button>
+        <button type="button" class="login-sector" data-sector="4"><i class="ti ti-building-community"></i><span data-i18n>Property</span></button>
+        <button type="button" class="login-sector" data-sector="5"><i class="ti ti-spray"></i><span data-i18n>Office cleaning</span></button>
       </div>
       <div class="login-roles" id="loginRoles"></div>
     </div>
@@ -1352,6 +1354,8 @@ const LOGIN_SECTORS = [
   {title:'Staff for factories', roles:['Production line','Packing','Sorting','Warehouse']},
   {title:'Staff for bakeries', roles:['Bakers','Dough preparation','Packing','Night shifts']},
   {title:'Staff for catering', roles:['Event staff','Servers','Kitchen crew','Setup and cleanup']},
+  {title:'Full property support', roles:['Residential and commercial','Cleaning','Maintenance and repairs','Gardening','Building care']},
+  {title:'Office cleaning from 3 hours', roles:['Offices','From 3 hours a visit','Regular or one-time']},
 ];
 let __loginSector = 0, __loginTimer = null;
 function showLoginSector(i){
