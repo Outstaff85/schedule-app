@@ -523,6 +523,32 @@
      the first line and the buttons share the second equally. */
   .pane-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:10px}
   .pane-toolbar select{flex:1;min-width:150px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none}
+  /* ── Phone (≤ 700 px): the tabs become a bar at the bottom of the screen,
+     and the tables of Accounting and Admin become one card per row
+     (cardTables() puts each column's header on its cells as data-label). ── */
+  @media (max-width:700px){
+    .top-tabs{position:fixed;left:0;right:0;bottom:0;z-index:60;width:auto;order:initial;overflow:visible;display:flex;gap:0;
+      background:rgba(20,24,36,.97);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--border2);
+      padding:4px 2px calc(4px + env(safe-area-inset-bottom,0px));box-shadow:0 -6px 20px rgba(0,0,0,.35);}
+    .ttab{flex:1 1 0;min-width:0;padding:6px 1px;border-bottom:0;border-top:2px solid transparent;border-radius:10px;}
+    .ttab.active,.ttab.admin.active{border-bottom-color:transparent;}
+    .ttab .ic{font-size:20px;}
+    .ttab:not(.active):hover{background:none;color:var(--text2);}
+    .ttab .lb{font-size:10px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    body{padding-bottom:calc(66px + env(safe-area-inset-bottom,0px));}
+    .toast{bottom:calc(76px + env(safe-area-inset-bottom,0px));}
+    table.mtable{min-width:0 !important;border-collapse:separate !important;}
+    table.mtable thead{display:none;}
+    table.mtable,table.mtable tbody,table.mtable tfoot,table.mtable tr,table.mtable td{display:block;width:100%;box-sizing:border-box;}
+    table.mtable tr{background:var(--bg2);border:1px solid var(--border2) !important;border-radius:12px;margin:0 0 10px;padding:6px 12px;}
+    table.mtable td{display:flex;justify-content:flex-end;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:5px 0 !important;border:0 !important;text-align:right !important;min-height:28px;}
+    table.mtable td::before{content:attr(data-label);color:var(--text3);font-size:12px;font-weight:500;text-align:left;flex-shrink:0;margin-right:auto;}
+    table.mtable td:first-child{font-weight:600;font-size:15px;justify-content:flex-start;text-align:left !important;}
+    table.mtable td:first-child::before{display:none;}
+    table.mtable td:empty{display:none;}
+    table.mtable td[colspan]{justify-content:center;}
+    table.mtable td[colspan]::before{display:none;}
+  }
   /* Admin section buttons; head actions. */
   .admin-pane-bar{display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border2);padding-bottom:10px;flex-wrap:wrap}
   .head-actions{display:flex;gap:8px}
@@ -1475,6 +1501,29 @@ const loginFx = (() => {
   return {start, stop};
 })();
 function syncLangSelects(){ document.querySelectorAll('select.lang-select').forEach(el => { el.value = I18N_LANG; }); }
+
+// Phone layout of the tables in Accounting and Admin (CSS: table.mtable at
+// ≤ 700 px): each cell gets its column's header as data-label, so a row reads
+// as a card of "label value" lines. Runs after those sections redraw.
+function cardTables(root){
+  root.querySelectorAll('table').forEach(t => {
+    t.classList.add('mtable');
+    const head = t.tHead && t.tHead.rows.length ? t.tHead.rows[t.tHead.rows.length - 1] : null;
+    if(!head) return;
+    const labels = [];
+    [...head.cells].forEach(c => { const n = c.colSpan || 1; for(let i = 0; i < n; i++) labels.push(c.textContent.trim()); });
+    [...t.tBodies, ...(t.tFoot ? [t.tFoot] : [])].forEach(b => [...b.rows].forEach(r => {
+      let col = 0;
+      [...r.cells].forEach(c => { if(!c.hasAttribute('data-label') && labels[col]) c.setAttribute('data-label', labels[col]); col += c.colSpan || 1; });
+    }));
+  });
+}
+(() => {
+  let queued = false;
+  const run = () => { queued = false; ['sectionAccounting','sectionAdmin'].forEach(id => { const el = document.getElementById(id); if(el) cardTables(el); }); };
+  const mo = new MutationObserver(() => { if(!queued){ queued = true; requestAnimationFrame(run); } });
+  ['sectionAccounting','sectionAdmin'].forEach(id => { const el = document.getElementById(id); if(el) mo.observe(el, {childList:true, subtree:true}); });
+})();
 // Loads the firm language's dictionary: from this device's copy at once when
 // there is one (no wait at startup), refreshed from i18n/<lang>.json; a newer
 // file redraws the page. English needs no file.
