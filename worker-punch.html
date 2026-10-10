@@ -354,6 +354,18 @@ html,body{
 }
 .top-bar{padding-right:64px;}
 .lang-select{position:fixed;right:max(env(safe-area-inset-right,0px),12px);top:max(env(safe-area-inset-top,0px),12px);z-index:50;background:rgba(255,255,255,0.06);color:var(--text2,#7c84a0);border:1px solid rgba(255,255,255,0.13);border-radius:8px;padding:4px 6px;font:600 12px/1 inherit;cursor:pointer;}
+.punch-links{display:flex;gap:4px;justify-content:center;flex-wrap:wrap;}
+.sched-week{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;color:var(--text2);font-size:13px;}
+.sched-week button{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--text);border-radius:10px;width:36px;height:32px;cursor:pointer;font-size:16px;}
+.sched-day{display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:8px;border-radius:14px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);}
+.sched-day.today{border-color:rgba(79,142,247,0.6);background:rgba(79,142,247,0.08);}
+.sched-day .d{width:64px;flex-shrink:0;}
+.sched-day .d b{display:block;font-size:14px;color:var(--text);}
+.sched-day .d span{font-size:12px;color:var(--text3);}
+.sched-day .t{flex:1;font-family:'DM Mono',ui-monospace,monospace;font-size:16px;font-weight:600;color:var(--text);}
+.sched-day .t.off{font-family:inherit;font-size:14px;font-weight:500;color:var(--text3);}
+.sched-day .h{font-size:13px;font-weight:600;color:var(--green);}
+.sched-total{text-align:right;color:var(--text2);font-size:13px;margin-top:6px;}
 </style>
 </head>
 <body>
@@ -394,7 +406,10 @@ html,body{
       <span class="btn-label" data-i18n>LOADING</span>
     </button>
   </div>
-  <div class="back-link" onclick="openHistory()" style="color:var(--blue)"><i class="ti ti-calendar"></i> <span data-i18n>My History</span></div>
+  <div class="punch-links">
+    <div class="back-link" onclick="openSchedule()" style="color:var(--blue)"><i class="ti ti-calendar-week"></i> <span data-i18n>My Schedule</span></div>
+    <div class="back-link" onclick="openHistory()" style="color:var(--blue)"><i class="ti ti-history"></i> <span data-i18n>My History</span></div>
+  </div>
   <div class="back-link" id="changeWorkerLink" onclick="goBack()" data-i18n>← Change worker</div>
 </div>
 
@@ -409,6 +424,15 @@ html,body{
     <button class="btn-primary" id="clockAnotherBtn" onclick="goToWorker()" data-i18n>Clock another worker</button>
     <button class="btn-secondary" onclick="resetToQR()" data-i18n>Done</button>
   </div>
+</div>
+
+<!-- Screen 5: My schedule (only this worker's own week) -->
+<div class="screen hidden" id="screenSchedule" style="justify-content:flex-start;align-items:center">
+  <div class="top-bar" style="margin-bottom:16px">
+    <div style="font-size:18px;font-weight:500"><i class="ti ti-calendar-week"></i> <span data-i18n>My Schedule</span></div>
+    <div class="back-link" onclick="closeHistory()" style="font-size:14px" data-i18n>✕ Close</div>
+  </div>
+  <div id="scheduleContent" style="width:100%;max-width:500px"></div>
 </div>
 
 <!-- Screen 4: History -->
@@ -535,6 +559,7 @@ function redrawForLanguage(){
     if(on('screenPunch')){ tickPunch(); updateBigBtn(); getLocation(); }
     else if(on('screenWorker')) renderWorkerGrid();
     else if(on('screenHistory')) openHistory();
+    else if(on('screenSchedule')) renderMySchedule();
   }catch(e){}
 }
 function getQueue(){ try{return JSON.parse(localStorage.getItem(QUEUE_KEY)||'[]');}catch(e){return[];} }
@@ -790,7 +815,7 @@ function loadWorkers(){
         const filtered=list.filter(w=>(w.clientIds||[]).includes(SITE.clientId));
         list = filtered.length ? filtered : list;
       }
-      workers=list.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null,clientIds:w.clientIds||[]}));
+      workers=list.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null,clientIds:w.clientIds||[],schedule:Array.isArray(w.schedule)?w.schedule:[]}));
       if(workers.length) return;
     }
   }catch(e){}
@@ -817,7 +842,7 @@ async function loadWorkersFromGS(){
         const filtered=list.filter(w=>(w.clientIds||[]).includes(SITE.clientId));
         list = filtered.length ? filtered : list;
       }
-      workers=list.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null,clientIds:w.clientIds||[]}));
+      workers=list.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null,clientIds:w.clientIds||[],schedule:Array.isArray(w.schedule)?w.schedule:[]}));
       localStorage.setItem('schedMgr_v1', JSON.stringify(data));
       return true;
     }
@@ -1018,6 +1043,48 @@ function showSuccess(type,time,date){
 
 function goToWorker(){ if(URL_TOKEN&&selectedWorker){ showScreen('screenPunch'); startPunchClock(); getLocation(); updateBigBtn(); return; } selectedWorker=null; showScreen('screenWorker'); startWorkerClock(); }
 function resetToQR(){ if(URL_TOKEN&&selectedWorker){ showScreen('screenPunch'); startPunchClock(); getLocation(); updateBigBtn(); return; } selectedWorker=null; showScreen('screenWorker'); startWorkerClock(); }
+// ── My schedule: the worker's own week (w.schedule[0..6], Sunday first — the
+// same weekly roster the manager plans on the Schedule tab; the server sends
+// a worker only their own). Arrows move the shown dates a week at a time.
+let _schedWeek = 0;
+function openSchedule(){
+  if(!selectedWorker) return;
+  _schedWeek = 0;
+  showScreen('screenSchedule');
+  renderMySchedule();
+  // Fresh from the server when online, so a change the manager just made shows.
+  if(URL_TOKEN && navigator.onLine) loadWorkersFromGS().then(ok => {
+    const fresh = ok && workers.find(w => w.id === selectedWorker.id);
+    if(fresh){ selectedWorker = fresh; if(!document.getElementById('screenSchedule').classList.contains('hidden')) renderMySchedule(); }
+  }).catch(()=>{});
+}
+function shiftWeek(n){ _schedWeek += n; renderMySchedule(); }
+function renderMySchedule(){
+  const el = document.getElementById('scheduleContent');
+  const days = (selectedWorker && selectedWorker.schedule) || [];
+  const today = new Date(); today.setHours(0,0,0,0);
+  const sun = new Date(today); sun.setDate(today.getDate() - today.getDay() + 7 * _schedWeek);
+  const toM = t => { const [h, m] = String(t).split(':').map(Number); return h * 60 + (m || 0); };
+  let total = 0;
+  const rows = [0,1,2,3,4,5,6].map(i => {
+    const d = new Date(sun); d.setDate(sun.getDate() + i);
+    const day = days[i] || {};
+    const work = day.type === 'work' && day.start && day.end;
+    let hrs = 0;
+    if(work){ let m = toM(day.end) - toM(day.start); if(m <= 0) m += 1440; hrs = m / 60; total += hrs; }
+    const isToday = d.getTime() === today.getTime();
+    return `<div class="sched-day${isToday ? ' today' : ''}">
+      <div class="d"><b>${esc(d.toLocaleDateString(uiLocale(), {weekday:'short'}))}</b><span>${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}</span></div>
+      ${work ? `<div class="t">${esc(day.start)} – ${esc(day.end)}</div><div class="h">${esc(tr('{h}h', {h: hrs.toFixed(1)}))}</div>`
+             : `<div class="t off">${esc(tr('Day off'))}</div>`}
+    </div>`;
+  }).join('');
+  const sat = new Date(sun); sat.setDate(sun.getDate() + 6);
+  const label = _schedWeek === 0 ? tr('This week') : `${sun.toLocaleDateString(uiLocale(), {day:'2-digit', month:'short'})} – ${sat.toLocaleDateString(uiLocale(), {day:'2-digit', month:'short'})}`;
+  el.innerHTML = `<div class="sched-week"><button type="button" onclick="shiftWeek(-1)" aria-label="${esc(tr('Previous week'))}">‹</button><span>${esc(label)}</span><button type="button" onclick="shiftWeek(1)" aria-label="${esc(tr('Next week'))}">›</button></div>`
+    + (days.some(x => x && x.type === 'work') ? rows + `<div class="sched-total">${esc(tr('Total: {h}h', {h: total.toFixed(1)}))}</div>`
+       : `<div style="text-align:center;padding:40px;color:var(--text3);font-size:15px">${esc(tr('No shifts planned yet'))}</div>`);
+}
 function closeHistory(){ if(URL_TOKEN&&selectedWorker){ showScreen('screenPunch'); startPunchClock(); getLocation(); updateBigBtn(); } else { showScreen('screenWorker'); startWorkerClock(); } }
 
 // ── Helpers ───────────────────────────────────────────────────────

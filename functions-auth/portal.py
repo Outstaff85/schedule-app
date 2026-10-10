@@ -78,10 +78,26 @@ def find_worker(db, token):
 
 # ── Worker punch link ────────────────────────────────────────────────────────
 
+def _week(schedule):
+    """The worker's own weekly roster for "My schedule" on the punch page:
+    seven days, Sunday first, each {type: 'work' | 'off', start, end} —
+    nothing else from the day entry."""
+    days = schedule if isinstance(schedule, list) else []
+    out = []
+    for i in range(7):
+        day = days[i] if i < len(days) and isinstance(days[i], dict) else {}
+        work = day.get("type") == "work" and day.get("start") and day.get("end")
+        out.append({"type": "work" if work else "off",
+                    "start": str(day.get("start")) if work else None,
+                    "end": str(day.get("end")) if work else None})
+    return out
+
+
 def _load(db, tid, w):
     d = w.to_dict()
     me = {"id": w.id, "name": d.get("name") or "", "colorIdx": d.get("colorIdx") or 0,
-          "token": d.get("token"), "clientIds": d.get("clientIds") or []}
+          "token": d.get("token"), "clientIds": d.get("clientIds") or [],
+          "schedule": _week(d.get("schedule"))}
     clients = []
     for cid in me["clientIds"]:
         c = db.collection("tenants").document(tid).collection("clients").document(str(cid)).get()

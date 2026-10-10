@@ -39,7 +39,10 @@ def fresh():
 
 def test_load_gives_only_this_worker_and_their_sites():
     r = portal.punch_action(DB, {"action": "load", "token": "tok-avi"})
-    assert r["workers"] == [{"id": "w1", "name": "Avi Cohen", "colorIdx": 2, "token": "tok-avi", "clientIds": ["c1", "c2"]}]
+    me = r["workers"][0]
+    assert {k: me[k] for k in ("id", "name", "colorIdx", "token", "clientIds")} == {"id": "w1", "name": "Avi Cohen", "colorIdx": 2, "token": "tok-avi", "clientIds": ["c1", "c2"]}
+    assert set(me) == {"id", "name", "colorIdx", "token", "clientIds", "schedule"} and len(r["workers"]) == 1
+    assert len(me["schedule"]) == 7 and all(d["type"] in ("work", "off") for d in me["schedule"])
     assert r["clients"][0] == {"id": "c1", "name": "Site A", "object": "Gate 1", "lat": 32.1, "lng": 34.8, "radius": 150}
     assert [c["id"] for c in r["clients"]] == ["c1", "c2"]          # not c3, not another worker's
     text = str(r)
@@ -224,3 +227,15 @@ def test_http_functions():
     assert _call(main.supplier, {"action": "loadSchedule"})[0] == 401
     owner = _id_token("u-own", {"role": "tenant_admin", "tenantId": T1})
     assert _call(main.supplier, {"action": "loadSchedule"}, {"Authorization": "Bearer " + owner})[1]["error"] == portal.E_SUPPLIER_ONLY
+
+
+def test_load_gives_the_worker_only_their_own_week():
+    w = DB.collection("tenants").document(T1).collection("workers").document("w1")
+    keep = w.get().to_dict().get("schedule")
+    w.update({"schedule": [{"type": "work", "start": "08:00", "end": "16:00", "note": "x"}, {"type": "off"},
+                           {"type": "work", "start": "", "end": "12:00"}]})
+    s = portal.punch_action(DB, {"action": "load", "token": "tok-avi"})["workers"][0]["schedule"]
+    assert s[0] == {"type": "work", "start": "08:00", "end": "16:00"}       # only type/start/end
+    assert s[1] == s[2] == {"type": "off", "start": None, "end": None}      # off, or a day without both times
+    assert len(s) == 7 and s[6]["type"] == "off"                            # always seven days
+    w.update({"schedule": keep if keep is not None else []})
