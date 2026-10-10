@@ -88,7 +88,7 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
 - **List** (`renderAdminUsers()`):
   - logins of the active firm only (`activeTenantIdForAdmin()`); `listUsers` returns more for a super-admin and is filtered here;
   - cached as `adminCache_users_<tenantId>`;
-  - each row: the person's name (`fullName`, the login when it has none) with the role and an inactive flag; then `login: <username> · <phone>`; then the supplier (supplier role) or the permissions (staff, hr); an HR row also shows its worker count (`hrWorkerCount`).
+  - each row: the person's name (`fullName`, the login when it has none) with the role and an inactive flag; then `login: <username> · <phone>`; then the supplier (supplier role) or the permissions (staff, hr); an HR row also shows its worker count (`hrWorkerCount`), a supplier row the count of its supplier's workers.
 - **Form** (`#userFormOverlay`), top to bottom:
   - Role;
   - Person: Full name, Phone;
@@ -108,7 +108,7 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
   - an owner's row shows only Full name, Phone and the password (`__editingAdminRow`); editing one's own row also updates the header name;
   - the password field reads "New password (empty = keep)"; filled in, it is sent first as `resetUserPassword`, which also ends the user's sessions;
   - then `updateUser` (`fullName`, `phone`; for HR also `ownOnly`, `commissionRate` and `commissionDayRate`; for a supplier `showPay` — these are rights: a change makes the user sign in again);
-  - an HR's form lists its workers (`renderUserFormHrWorkers`, paged, each with Unassign) and has **Add workers** (`#hrAssignOverlay`: the firm's other workers with a search and checkboxes, a worker of another HR marked "now: <name>"; `submitHrAssign`).
+  - an HR's form, and a supplier's form, list their workers (`renderUserFormHrWorkers`, paged, each with Unassign) and have **Add workers** (`#hrAssignOverlay`: the firm's other workers with a search and checkboxes, a worker of another HR or supplier marked "now: <name>"; `submitHrAssign`). `userFormTeam()` picks what the section works on: an HR's workers are those whose `hrId` is its uid (`assignWorkersToHr`, which also moves their punches); a supplier's are those whose `supplierId` is the supplier picked in the form (`assignWorkersToSupplier`: sets `supplierId`, saves — punches carry no supplier), so every login of that supplier shares them; the section shows for a supplier also while creating, and redraws when the supplier select changes.
 - Errors show in `#userFormError`.
 - **Delete:** the row's trash button, `deleteUserConfirm` → `deleteUser`. A password is changed in the edit form (above).
 

@@ -1150,7 +1150,7 @@
       <div class="field" id="userFormPasswordField"><label id="userFormPasswordLabel" data-i18n>Password (min. 8)</label><input type="password" id="userFormPassword" autocomplete="new-password"></div>
     </div>
     <div class="form-section" id="userFormAccessHead" data-i18n>Access</div>
-    <div class="field" id="userFormSupplierField" style="display:none"><label data-i18n>Supplier</label><select id="userFormSupplierId"></select></div>
+    <div class="field" id="userFormSupplierField" style="display:none"><label data-i18n>Supplier</label><select id="userFormSupplierId" onchange="renderUserFormHrWorkers()"></select></div>
     <div class="field" id="userFormPermsField">
       <label data-i18n>Sections</label>
       <div class="check-grid">
@@ -5227,7 +5227,8 @@ function renderAdminUsersRows(el, users){
     const row = u => {
       const sup = u.role==='supplier' ? (suppliers||[]).find(s=>s.id===u.supplierId) : null;
       const permsLabel = (u.role!=='staff' && u.role!=='hr') ? '' : (u.permissions==='*' ? 'Full access' : (Array.isArray(u.permissions)?u.permissions.join(', '):'—'));
-      const hrLine = u.role!=='hr' ? '' : `<div style="font-size:12px;color:var(--text2)">${tr('{0} workers{1}',{0:(hrWorkerCount(u.id)),1:(u.ownOnly===false?' · sees all workers':'')})}</div>`;
+      const hrLine = u.role==='hr' ? `<div style="font-size:12px;color:var(--text2)">${tr('{0} workers{1}',{0:(hrWorkerCount(u.id)),1:(u.ownOnly===false?' · sees all workers':'')})}</div>`
+        : u.role==='supplier' && u.supplierId ? `<div style="font-size:12px;color:var(--text2)">${tr('{0} workers{1}',{0:(workers.filter(w => w.supplierId===u.supplierId).length),1:''})}</div>` : '';
       return `<div class="tap-edit" onclick="if(isPlainTap(event,this))openEditUserForm('${esc(u.id)}')" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);${u.active===false?'opacity:0.55':''}">
         <div>
           <div style="font-weight:600">${esc(u.fullName||u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(tr(USER_ROLE_LABELS[u.role]||u.role))})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">'+tr('inactive')+'</span>':''}</div>
@@ -5260,8 +5261,8 @@ function onUserFormRoleChange(fromUser){
   if(role!=='hr') document.querySelector('.userFormPermCb[value="payEdit"]').checked = false;
   document.getElementById('userFormAccountingHint').textContent = role==='hr' ? tr('Own workers\' pay and commission only') : tr('Accounting tab');
   document.getElementById('userFormFullNameLabel').textContent = role==='hr' ? tr('Full name *') : tr('Full name');
-  document.getElementById('userFormHrWorkersField').style.display = role==='hr' && __editingUserId ? '' : 'none';
-  if(role==='supplier') fillUserFormSupplierSelect(null);
+  document.getElementById('userFormHrWorkersField').style.display = (role==='hr' && __editingUserId) || role==='supplier' ? '' : 'none';
+  if(role==='supplier'){ fillUserFormSupplierSelect(null); renderUserFormHrWorkers(); }
   // A new HR login starts with the Workers section only.
   if(role==='hr' && fromUser===true && (!__editingUserId || !document.querySelector('.userFormPermCb:checked')))
     document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = cb.value==='workers');
@@ -5328,7 +5329,7 @@ async function openEditUserForm(id){
   showUserFormAccess(true);
   onUserFormRoleChange();
   if(u.role==='supplier') fillUserFormSupplierSelect(u.supplierId);
-  if(u.role==='hr') renderUserFormHrWorkers();
+  if(u.role==='hr' || u.role==='supplier') renderUserFormHrWorkers();
   // A supplier has no sections (listUsers reports its empty list as '*').
   const perms = u.role==='supplier' ? [] : u.permissions==='*' ? PERMISSION_SECTIONS.slice() : (Array.isArray(u.permissions)?u.permissions:[]);
   document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = perms.indexOf(cb.value)!==-1);
@@ -5448,41 +5449,72 @@ async function assignWorkersToHr(ids, hrId){
   }catch(e){ showToast(tr('Network error — punches not updated')); }
   return changed.length;
 }
+// The user form's "Workers" section serves an HR login (workers whose hrId is
+// its uid) and a supplier login (workers whose supplierId is the supplier the
+// form picks — shared by every login of that supplier). Owner / super-admin.
+function userFormTeam(){
+  const role = document.getElementById('userFormRole').value;
+  if(role==='supplier'){
+    const sid = document.getElementById('userFormSupplierId').value || null;
+    const sup = (suppliers||[]).find(x => x.id===sid);
+    return {kind:'supplier', key:sid, name: sup ? sup.name : tr('Supplier'), has: w => !!sid && w.supplierId===sid,
+      otherName: w => { const o = (suppliers||[]).find(x => x.id===w.supplierId); return o ? o.name : ''; }};
+  }
+  const u = hrUsers().find(x => x.id===__editingUserId);
+  return {kind:'hr', key:__editingUserId, name: (u && (u.fullName||u.username)) || 'HR', has: w => w.hrId===__editingUserId,
+    otherName: w => w.hrId ? (hrNameOf(w.hrId) || tr('another HR')) : ''};
+}
+// A supplier's workers: sets supplierId (null = none) and saves. Punches carry
+// no supplier, so nothing else moves (the portal reads its workers' punches).
+function assignWorkersToSupplier(ids, sid){
+  let n = 0;
+  ids.forEach(id => {
+    const w = workers.find(x => x.id===id);
+    if(!w || (w.supplierId||null)===(sid||null)) return;
+    w.supplierId = sid || null; n++;
+  });
+  if(n){ render(); autoSave(); }
+  return n;
+}
 function renderUserFormHrWorkers(){
   const el = document.getElementById('userFormHrWorkers');
-  if(!el || !__editingUserId) return;
-  const mine = workers.filter(w => w.hrId===__editingUserId);
+  if(!el) return;
+  const t = userFormTeam();
+  if(!t.key){ el.innerHTML = '<div style="font-size:12px;color:var(--text3)">'+tr(t.kind==='supplier' ? 'Pick a supplier first' : 'No workers assigned')+'</div>'; return; }
+  const mine = workers.filter(t.has);
   if(!mine.length){ el.innerHTML = '<div style="font-size:12px;color:var(--text3)">'+tr('No workers assigned')+'</div>'; return; }
-  renderPagedList(el, 'hrWorkers', __editingUserId, mine, w => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;background:var(--bg3);border-radius:var(--radius-sm);font-size:13px">
+  renderPagedList(el, 'hrWorkers', t.kind+'|'+t.key, mine, w => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;background:var(--bg3);border-radius:var(--radius-sm);font-size:13px">
       <span>${esc(w.name)}${workerDocId(w)?' <span style="color:var(--text3);font-size:11px">'+esc(workerDocId(w))+'</span>':''}</span>
       <button class="btn sm" type="button" onclick="unassignHrWorker('${esc(w.id)}')">${tr('Unassign')}</button>
     </div>`);
 }
 async function unassignHrWorker(id){
-  await assignWorkersToHr([id], null);
+  if(userFormTeam().kind==='supplier') assignWorkersToSupplier([id], null);
+  else await assignWorkersToHr([id], null);
   renderUserFormHrWorkers(); renderAdminUsers();
 }
 let __hrAssignPicked = new Set();
 function openHrAssignModal(){
-  if(!__editingUserId) return;
+  const t = userFormTeam();
+  if(!t.key){ showToast(tr('Pick a supplier first')); return; }
   __hrAssignPicked = new Set();
-  const u = hrUsers().find(x => x.id===__editingUserId);
-  document.getElementById('hrAssignTitle').textContent = tr('Add workers to {0}',{0:((u && (u.fullName||u.username)) || 'HR')});
+  document.getElementById('hrAssignTitle').textContent = tr('Add workers to {0}',{0:t.name});
   document.getElementById('hrAssignSearch').value = '';
   renderHrAssignList();
   document.getElementById('hrAssignOverlay').classList.add('open');
 }
 function renderHrAssignList(){
+  const t = userFormTeam();
   const q = document.getElementById('hrAssignSearch').value.trim().toLowerCase();
-  const list = workers.filter(w => w.hrId!==__editingUserId)
+  const list = workers.filter(w => !t.has(w))
     .filter(w => !q || (w.name||'').toLowerCase().includes(q) || String(workerDocId(w)||'').toLowerCase().includes(q));
   const el = document.getElementById('hrAssignList');
   if(!list.length){ el.innerHTML = '<div style="font-size:12px;color:var(--text3)">'+tr('No workers to add')+'</div>'; return; }
-  renderPagedList(el, 'hrAssign', __editingUserId+'|'+q, list, w => {
-    const other = w.hrId ? hrNameOf(w.hrId) || 'another HR' : '';
+  renderPagedList(el, 'hrAssign', t.kind+'|'+t.key+'|'+q, list, w => {
+    const other = t.otherName(w);
     return `<label class="check-chip">
       <input type="checkbox" ${__hrAssignPicked.has(w.id)?'checked':''} onchange="toggleHrAssignPick('${esc(w.id)}',this.checked)">
-      <span class="chip-text">${esc(w.name)}${other?'<span class="chip-hint" style="color:var(--amber)">now: '+esc(other)+'</span>':''}</span>
+      <span class="chip-text">${esc(w.name)}${other?'<span class="chip-hint" style="color:var(--amber)">'+esc(tr('now: {0}',{0:other}))+'</span>':''}</span>
     </label>`;
   });
 }
@@ -5492,7 +5524,8 @@ async function submitHrAssign(){
   const btn = document.getElementById('hrAssignSaveBtn');
   btn.disabled = true;
   try{
-    const n = await assignWorkersToHr([...__hrAssignPicked], __editingUserId);
+    const t = userFormTeam();
+    const n = t.kind==='supplier' ? assignWorkersToSupplier([...__hrAssignPicked], t.key) : await assignWorkersToHr([...__hrAssignPicked], t.key);
     showToast(tr('{0} assigned',{0:(n)}));
     closeModal('hrAssignOverlay');
     renderUserFormHrWorkers(); renderAdminUsers();
