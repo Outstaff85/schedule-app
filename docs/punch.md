@@ -1,6 +1,6 @@
 # Worker punch clock (`worker-punch.html`)
 
-The worker-facing clock-in/out page, routed at `/punch`. A worker opens a personal link `…/punch?t=<token>` (built by `buildPunchLink(w)` in the manager app, see [workers.md](workers.md)). There is no login: the token is the only credential. One inline `<script>`, no modules; it duplicates `esc()`, `getPunchLog`/`savePunchLog`, `reportError` and the shift pairing on purpose (see CLAUDE.md → rules that apply everywhere).
+The worker-facing clock-in/out page, routed at `/punch`. A worker opens a personal link `…/punch?t=<token>` (built by `buildPunchLink(w)` in the manager app, see [workers.md](workers.md)). There is no login: the token is the only credential. One inline `<script>`, no modules; it duplicates `esc()`, `getPunchLog`/`savePunchLog`, `reportError`, the shift pairing (`groupPunchesIntoShifts`/`analyzeDayPunches`) and the pay functions (`PAY_RULES` … `shiftPayFor`, `dayOverride`, `travelPay`, `localYMD`) on purpose (see CLAUDE.md → rules that apply everywhere).
 
 ## Server
 
@@ -10,6 +10,7 @@ The page talks only to the `punch` Cloud Function (`PUNCH_FN_URL` = `https://eur
 |---|---|
 | Load the worker, their week and sites | `{action:'load', token}` → `{workers, clients}` (the worker carries `schedule`) |
 | Save a punch (`postPunch(e)`) | `{action:'savePunch', token: e.workerToken or the link's, data: e}` |
+| The month on My Hours and Pay | `{action:'myMonth', token, month:'YYYY-MM'}` → `{punches, pay, clients}` |
 | Error telemetry | `{action:'logError', …}` |
 
 The function hands out only this worker and their sites, and accepts punches for this worker only.
@@ -40,9 +41,9 @@ The page first loads the dictionary of the language chosen on this device (`load
 ## Screens
 
 - **`screenWorker`** — clock, site name, the worker grid (status per worker: "In since HH:MM", "Last: HH:MM (out)", "Not clocked in"), Continue button (`goToPunch()`). Switching worker (`selectWorker`, `goBack`) is disabled on a personal link.
-- **`screenPunch`** — greeting by hour ("Good morning" …), live clock, site pill, GPS chip, the big button, "My History".
+- **`screenPunch`** — greeting by hour ("Good morning" …), live clock, site pill, GPS chip, the big button, "My Schedule", "My History" and (on a personal link only) "My Hours and Pay".
 - **`screenSuccess`** — Clocked IN / OUT, time and date; "Clock another" is hidden on a personal link. Every "back" (`goToWorker`, `resetToQR`, `closeHistory`) returns a personal-link worker to their punch screen with a fresh GPS check.
-- **`screenHistory`** — see below.
+- **`screenHistory`**, **`screenSchedule`**, **`screenHours`** — see below.
 
 ## GPS check (`getLocation()` / `analyseGps()`)
 
@@ -95,3 +96,9 @@ Only this device's `punchLog` for the selected worker. Punches are sorted by `ts
 ## Schedule change notice
 
 `checkScheduleChange()` (on entering the punch screen and after the background refresh) compares the worker's roster and date changes (`schedSig`) with what this device last showed them (`localStorage.schedSeen_<workerId>`). A difference shows a toast "Your schedule was updated — see My Schedule" and an amber dot on My Schedule; opening My Schedule marks it seen (`markScheduleSeen`). The first load on a device only remembers it. Push messages are not sent (no VAPID signing yet).
+
+## My hours and pay (`#screenHours`)
+
+"My Hours and Pay" on the punch screen shows only on the worker's own link (`URL_TOKEN`; never on a shared picker device). `openMyHours()` → `loadMyHours()` asks the `punch` function for one month (`myMonth`: the worker's own punches of that month with a day of margin, their own pay inputs — `payMode, hourlyRate, regRate, otRate, shabbatRate, clientRates, dayOverrides, travelAllowance, travelMonthly` — and their sites' worker-pay rates; never billing or GPS). The months are kept in memory (`_hoursData`) for the visit; offline or on an error it says so.
+
+`myMonthFigures(data, key)` sums the month exactly as Accounting → Salary does for `m:YYYY-MM` (`salaryEntriesFor`, [accounting.md](accounting.md)): punches of the month by `ts`, `groupPunchesIntoShifts`, `analyzeDayPunches`, each shift priced by `shiftPayFor` (the shift's first punch's client), the days of a daily-paid worker set by hand (`dayOverride(w,'m:YYYY-MM')`) replace the count, travel by `travelPay`. The screen: month arrows (no future months), hours worked, days worked, pay, total with travel, regular / overtime / Shabbat hours, then every shift newest first (date, in – out, hours, pay; the per-shift pay is hidden when the days were set by hand). The note says it is an estimate before deductions; a daily-paid worker without a rate sees "Your pay rate is not set yet — ask your manager." instead of sums.

@@ -2935,9 +2935,7 @@ function showWorkerModal(w){
     </div>
     <div class="field-row">
       <div class="field" style="position:relative"><label>שם פרטי</label>
-        <input type="text" id="wGiven" value="${esc(w.docGiven||'')}" placeholder="שם פרטי" autofocus
-          oninput="searchContacts(this.value)" autocomplete="off">
-        <div id="contactsSuggestions" style="display:none;position:absolute;z-index:300;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);left:0;right:0;top:100%;max-height:240px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.5)"></div>
+        <input type="text" id="wGiven" value="${esc(w.docGiven||'')}" placeholder="שם פרטי" autofocus autocomplete="off">
       </div>
       <div class="field"><label>שם משפחה</label><input type="text" id="wSurname" value="${esc(w.docSurname||'')}" placeholder="שם משפחה"></div>
     </div>
@@ -6725,9 +6723,11 @@ async function onSalaryPeriodChange(){
   await ensurePunchesSince(periodPunchStart(period));
   renderAccounting();
 }
-function renderSalary(){
-  fillSalaryPeriodSelect();
-  const period   = document.getElementById('salaryPeriod')?.value||'week';
+// The Salary table's figures for one period, per worker (one place for the
+// table, its HR view and the accountant export): hours split into regular /
+// OT / Shabbat, days, pay (shiftPayFor; a daily-paid worker's days set by
+// hand win), travel, warnings; plus the billable-by-client figures.
+function salaryEntriesFor(period){
   const log      = getPunchLog();
   const now      = new Date();
   let filtered   = log;
@@ -6790,7 +6790,6 @@ function renderSalary(){
       }
     }
   });
-  __lastClientBillEntries=Object.entries(byClient).map(([clientId,v])=>({clientId,...v}));
   // Days worked (from the punches) and, for a daily-paid worker, days set by
   // hand for this period replace the counted ones.
   const periodKey=salaryPeriodKey(period);
@@ -6802,6 +6801,14 @@ function renderSalary(){
     e.travel=travelPay(wc,e.daysUsed,new Set([...e.dayKeys].map(k=>k.slice(0,7))).size);
   });
 
+  return {byWorker, byClient};
+}
+function renderSalary(){
+  fillSalaryPeriodSelect();
+  const period   = document.getElementById('salaryPeriod')?.value||'week';
+  const {byWorker, byClient} = salaryEntriesFor(period);
+  const periodKey = salaryPeriodKey(period);
+  __lastClientBillEntries=Object.entries(byClient).map(([clientId,v])=>({clientId,...v}));
   const salaryEl=document.getElementById('dashSalary');
   // An HR that only sees pay: its own workers only, read-only, plus its
   // commission (session.commissionRate × hours).
@@ -7501,7 +7508,11 @@ function openSalaryExportModal(){
       <button class="btn sm" onclick="runSalaryExport('csv')"><i class="ti ti-file-text"></i> CSV</button>
       <button class="btn sm" onclick="runSalaryExport('excel')"><i class="ti ti-file-spreadsheet"></i> Excel</button>
       <button class="btn accent" onclick="runSalaryExport('pdf')"><i class="ti ti-file-type-pdf"></i> PDF</button>
-    </div>`;
+    </div>
+    ${hrPayOnly()?'':`<div style="border-top:1px solid var(--border2);margin-top:14px;padding-top:12px">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px">${esc(tr('For the accountant: one row per worker (ID, days, regular / overtime / Shabbat hours, pay, travel, bank details) and a sheet of every shift.'))}</div>
+      <button class="btn sm" style="width:100%;justify-content:center" onclick="runSalaryExport('accountant')"><i class="ti ti-file-spreadsheet"></i> ${esc(tr('Accountant report (Excel)'))}</button>
+    </div>`}`;
   document.getElementById('salaryExportOverlay').classList.add('open');
 }
 // Period choices for the export modal: the same This Week / This Month /
@@ -7572,7 +7583,8 @@ function buildSalaryExportRows(period){
   return rows;
 }
 function exportSalary(format, period){
-  if(format==='excel' && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportSalary(format, period)).catch(()=>showToast(tr('Excel library not loaded'))); return; }
+  if((format==='excel'||format==='accountant') && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportSalary(format, period)).catch(()=>showToast(tr('Excel library not loaded'))); return; }
+  if(format==='accountant') return exportAccountantReport(period);
   period=period||document.getElementById('salaryPeriod')?.value||'week';
   const now=new Date();
   const rows=buildSalaryExportRows(period);
@@ -7605,6 +7617,33 @@ function exportSalary(format, period){
     const a=document.createElement('a'); a.href=url; a.download=fname+'.csv'; a.click(); URL.revokeObjectURL(url);
   }
   showToast(tr('Salary exported!'));
+}
+// The accountant's workbook for a period: a Summary sheet with one row per
+// worker — the Salary table's own figures (salaryEntriesFor) plus ID, supplier,
+// pay mode and bank details — and a Shifts sheet (buildSalaryExportRows).
+function exportAccountantReport(period){
+  period=period||'month';
+  const {byWorker}=salaryEntriesFor(period);
+  const money=v=>Math.round((Number(v)||0)*100)/100, hrs=v=>Math.round((Number(v)||0)*100)/100;
+  const head=['Worker','ID / Passport','Supplier','Pay mode','Rate','Days','Regular hours','Overtime hours','Shabbat hours','Total hours','Pay (₪)','Travel (₪)','Total (₪)','Bank','Branch','Account','Warnings'].map(h=>tr(h));
+  const list=Object.values(byWorker).map(e=>({e, w:workers.find(x=>x.id===e.workerId)||{name:e.worker}}))
+    .sort((a,b)=>String(a.w.name||'').localeCompare(String(b.w.name||'')));
+  const rows=list.map(({e,w})=>[w.name||e.worker, workerDocId(w)||'', (suppliers.find(s=>s.id===w.supplierId)||{}).name||'',
+    isDailyPay(w)?tr('By the day'):tr('By the hour'), isDailyPay(w)?dailyRate(w):(wOwnRate(w)||''),
+    e.daysUsed, hrs(e.regH), hrs(e.otH), hrs(e.shabH), hrs(e.hours), money(e.total), money(e.travel), money(e.total+e.travel),
+    w.bank||'', w.bankBranch||'', w.bankAccountNumber||'', e.warns.length]);
+  const sum=k=>money(list.reduce((s,{e})=>s+(k==='grand'?e.total+e.travel:e[k]),0));
+  rows.push([tr('Total'),'','','','',list.reduce((s,{e})=>s+e.daysUsed,0),sum('regH'),sum('otH'),sum('shabH'),sum('hours'),sum('total'),sum('travel'),sum('grand'),'','','','']);
+  const shifts=buildSalaryExportRows(period);
+  const sHead=['Worker','Object/Client','Supplier','Date','First In','Last Out','Hours','Rate (₪/h or /day)','Day Pay (₪)','Notes'].map(h=>tr(h));
+  const sRows=shifts.map(r=>[r.worker, r.client, r.supplier, r.date, r.firstIn, r.lastOut, hrs(r.hours), r.rate, money(r.pay), r.notes]);
+  const wb=XLSX.utils.book_new();
+  const title=[tr('Accountant report — {period}',{period:salaryPeriodLabel(period)})], firm=[(activeTenantProfile()||{}).companyName||''];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([title, firm, [], head, ...rows]), tr('Summary'));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([sHead, ...sRows]), tr('Shifts'));
+  const now=new Date();
+  XLSX.writeFile(wb, 'accountant-'+(period.startsWith('m:')?period.slice(2):period+'-'+localYMD(now))+'.xlsx');
+  showToast(tr('Accountant report exported'));
 }
 // Kept for any existing caller — CSV straight through, no picker.
 function exportSalaryCSV(){ exportSalary('csv'); }
@@ -9076,175 +9115,6 @@ function ensureInstallButton(){
   host.prepend(btn);
 }
 window.addEventListener('load', ensureInstallButton);
-
-// ── Google Contacts API ───────────────────────────────────────────
-// Multiple Google accounts support
-const GCONTACTS_ACCOUNTS = [
-  { label: 'Account 1', clientId: '894216414920-kps8ekteomgnb6dvmjr5c8qf2p1c0cc1.apps.googleusercontent.com' },
-  { label: 'uneversam@gmail.com', clientId: '164512799784-rq1tmsp4p9nse8ai8feplevlqm0otrbl.apps.googleusercontent.com' },
-];
-let _activeAccountIdx = 0;
-const GCONTACTS_CLIENT_ID = GCONTACTS_ACCOUNTS[_activeAccountIdx].clientId;
-let _gToken = null;
-let _contactsCache = [];
-
-// Google Identity Services is loaded only for the contacts picker (not with
-// the page): opening the account list starts the load, so it is there by the
-// time an account is tapped.
-let __gsiLoading = null;
-function loadGsi(){
-  if(typeof google !== 'undefined' && google.accounts) return Promise.resolve();
-  return __gsiLoading || (__gsiLoading = new Promise((res, rej) => {
-    const sc = document.createElement('script');
-    sc.src = 'https://accounts.google.com/gsi/client'; sc.async = true;
-    sc.onload = () => res();
-    sc.onerror = () => { __gsiLoading = null; sc.remove(); rej(new Error('Google API not loaded')); };
-    document.head.appendChild(sc);
-  }));
-}
-
-let _tokenClient = null;
-
-function triggerContactsPicker(){
-  loadGsi().catch(()=>{});
-  // Show account selector
-  const el = document.getElementById('contactsSuggestions');
-  if(el){
-    el.style.display = 'block';
-    el.innerHTML = `
-      <div style="padding:10px 14px;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border)">
-        ${tr('Choose Google Account')}
-      </div>
-      ${GCONTACTS_ACCOUNTS.map((acc,i)=>`
-        <div onclick="switchContactsAccount(${i})"
-          style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--border)"
-          onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
-          <div style="width:34px;height:34px;border-radius:50%;background:rgba(66,133,244,0.15);color:#4285f4;display:flex;align-items:center;justify-content:center;font-size:16px">G</div>
-          <div>
-            <div style="font-size:13px;font-weight:600;color:var(--text)">${acc.label}</div>
-            <div style="font-size:11px;color:var(--text3)">${tr('Click to load contacts')}</div>
-          </div>
-          ${_activeAccountIdx===i&&_contactsCache.length?'<span style="font-size:11px;color:var(--green);margin-left:auto"><i class="ti ti-check"></i> '+tr('Active')+'</span>':''}
-        </div>`).join('')}`;
-  }
-}
-
-function switchContactsAccount(idx){
-  _activeAccountIdx = idx;
-  _gToken = null;
-  _tokenClient = null;
-  _contactsCache = [];
-  const acc = GCONTACTS_ACCOUNTS[idx];
-  showToast(tr('Connecting to {0}...',{0:(acc.label)}));
-  hideContactsSuggestions();
-
-  if(typeof google === 'undefined' || !google.accounts){
-    loadGsi().then(() => switchContactsAccount(idx)).catch(() => showToast(tr('Google API not loaded')));
-    return;
-  }
-  _tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: acc.clientId,
-    scope: 'https://www.googleapis.com/auth/contacts.readonly',
-    callback: (resp) => {
-      if(resp.error){ showToast(tr('Auth failed: {0}',{0:(resp.error)})); return; }
-      _gToken = resp.access_token;
-      fetchContacts().then(()=>{
-        const query = document.getElementById('wGiven')?.value||'';
-        showContactsSuggestions(query);
-      });
-    }
-  });
-  _tokenClient.requestAccessToken();
-}
-
-async function fetchContacts(){
-  if(!_gToken) return;
-  try{
-    showToast(tr('Loading contacts...'));
-    const res = await fetch(
-      'https://people.googleapis.com/v1/people/me/connections?personFields=names,phoneNumbers,emailAddresses,photos&pageSize=1000',
-      { headers: { Authorization: 'Bearer '+_gToken } }
-    );
-    const data = await res.json();
-    if(data.error){ showToast(tr('Contacts error: {0}',{0:(data.error.message)})); return; }
-    _contactsCache = (data.connections||[]).map(p=>{
-      const name  = p.names?.[0]?.displayName || '';
-      const phone = p.phoneNumbers?.[0]?.canonicalForm || p.phoneNumbers?.[0]?.value || '';
-      const email = p.emailAddresses?.[0]?.value || '';
-      const photo = p.photos?.[0]?.url || '';
-      return {name, phone, email, photo};
-    }).filter(c=>c.name);
-    showToast(tr('{0} contacts loaded',{0:(_contactsCache.length)}));
-  } catch(e){
-    showToast(tr('Failed to load contacts'));
-    console.error(e);
-  }
-}
-
-function searchContacts(query){
-  if(!query || query.length < 2){ hideContactsSuggestions(); return; }
-  if(!_contactsCache.length) return;
-  showContactsSuggestions(query);
-}
-
-function showContactsSuggestions(query){
-  const el = document.getElementById('contactsSuggestions');
-  if(!el) return;
-  const q = (query||'').toLowerCase().trim();
-  const matches = q
-    ? _contactsCache.filter(c =>
-        c.name.toLowerCase().includes(q) ||
-        c.phone.includes(q) ||
-        c.email.toLowerCase().includes(q)
-      ).slice(0,8)
-    : _contactsCache.slice(0,8);
-
-  if(!matches.length){ hideContactsSuggestions(); return; }
-
-  el.style.display = 'block';
-  el.innerHTML = matches.map((c,i) => `
-    <div onclick="selectContact(${i}, '${(query||'').replace(/'/g,"\\'")}')"
-      style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);transition:background 0.15s"
-      onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
-      ${c.photo
-        ? `<img src="${esc(c.photo)}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;flex-shrink:0">`
-        : `<div style="width:34px;height:34px;border-radius:50%;background:var(--blue-bg);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${esc(c.name.slice(0,2).toUpperCase())}</div>`
-      }
-      <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:600;color:var(--text)">${esc(c.name)}</div>
-        <div style="font-size:11px;color:var(--text2)">${esc([c.phone,c.email].filter(Boolean).join(' · '))}</div>
-      </div>
-    </div>
-  `).join('');
-
-  // Store matches for selection
-  window._contactMatches = matches;
-}
-
-function selectContact(idx, query){
-  const c = window._contactMatches?.[idx];
-  if(!c) return;
-  const givenEl   = document.getElementById('wGiven');
-  const surnameEl = document.getElementById('wSurname');
-  const phoneEl   = document.getElementById('wPhone');
-  const parts=(c.name||'').trim().split(/\s+/);
-  if(givenEl)   givenEl.value   = parts.shift()||'';
-  if(surnameEl) surnameEl.value = parts.join(' ');
-  if(phoneEl) phoneEl.value = c.phone;
-  hideContactsSuggestions();
-  showToast(tr('{0} imported from Contacts',{0:(c.name)}));
-}
-
-function hideContactsSuggestions(){
-  const el = document.getElementById('contactsSuggestions');
-  if(el) el.style.display = 'none';
-}
-
-// Close suggestions when clicking outside
-document.addEventListener('click', e=>{
-  if(!e.target.closest('#contactsSuggestions') && !e.target.closest('#wName'))
-    hideContactsSuggestions();
-});
 
 </script>
 </body>

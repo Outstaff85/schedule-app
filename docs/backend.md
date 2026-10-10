@@ -118,6 +118,7 @@ See [punch.md](punch.md) and [supplier-portal.md](supplier-portal.md) for the pa
 - **`punch`:** the token is looked up by a collection-group query on `workers.token`; none or two matches → "Unknown worker link".
   - `load` → `{workers:[{id, name, colorIdx, token, clientIds, schedule, dates}], clients:[{id, name, object, lat, lng, radius}]}` — only this worker, their own weekly roster (`schedule`: seven days, Sunday first, each `{type:'work'|'off', start, end}`, `_week()`), their one-date changes from 31 days back to 120 days ahead (`dates`: `{'YYYY-MM-DD': {type, start, end}}`, `_dates()`, from the worker's `dateShifts`) and their sites.
   - `savePunch` — only for this worker; type `in`/`out`; the punch id may not contain `/`; an existing document of another worker is never overwritten. Stored fields: `workerName, type, time, date, site, dist, gpsAccuracy, gpsSuspicious, gpsWarnings (≤20, clipped), notes, clientId`, plus `id, workerId, ts, day, archived:false`, and `hrId` from the worker document (never from the page). `day` comes from `date` (`dd/MM/yyyy`) when sent, otherwise from `ts` in Israel time (the punch page sends no date). `set()`, so a re-sent punch is the same document. The page's `lat`/`lng`/`gpsVerified`… are not kept.
+  - `myMonth` `{month:'YYYY-MM'}` → `{punches, pay, clients}` (`_my_month()`): this worker's own punches with `ts` from a day before the month to a day after it (`workerId` + `ts` index), each `{id, workerId, type, time, date, clientId, ts}` (ISO, `Z`); `pay` = `id` + the worker's `WORKER_PAY_FIELDS` (`payMode, hourlyRate, regRate, otRate, shabbatRate, clientRates, dayOverrides, travelAllowance, travelMonthly`); `clients` = the worker's sites as `{id}` + `CLIENT_PAY_FIELDS`. Never GPS, billing, other workers or tokens. A month that is not `YYYY-MM` → "Bad month".
   - `savePushSubscription`, `logError` (no token needed).
 - **`supplier`:** role `supplier` with `tenantId` and `supplierId` in the claims, else "Supplier role only".
   - `loadSchedule` → own workers through `strip_worker` (the `SUPPLIER_WORKER_FIELDS` allow-list + `supplierRate` and `supplierDayRate`; never a wage, the worker's punch-link token or a file link), clients as `{id, name, object}`, `suppliers: []`;
@@ -202,11 +203,13 @@ Both answer `{"ping":true}` at once (warm-up) and parse the body with `force=Tru
 
 - **Rules:** `tests/rules/rules.test.mjs` on the Firestore + Storage emulators — `cd tests/rules && npm install && npm test`.
 - **Functions:** `tests/auth/test_core.py`, `test_portal.py`, `test_ai.py`, `test_files.py` (in-memory bucket) on the Firestore + Auth emulators — `cd tests/rules && PYTHON=<python with firebase-admin and pytest> npm run test:auth`.
+- **Browser:** `tests/e2e/` — see [tests.md](tests.md), which also lists every suite and how CI runs them on each pull request (`tests.yml`).
 
 ## Deploys (push to `main`)
 
 | Workflow | Runs on | Does |
 |---|---|---|
+| `tests.yml` | every pull request into `main`, or manual | all tests: dictionaries, icons, rules, functions, browser ([tests.md](tests.md)); deploys nothing |
 | `deploy.yml` | every push to `main` | Firebase Hosting (live channel) |
 | `deploy-functions.yml` | `functions/**`, `functions-auth/**`, `tests/auth/**`, or manual | builds both venvs, runs `tests/auth` on the emulators (a failure stops the deploy), `firebase deploy --only functions --force` (`--force` also deletes deployed functions that are no longer in the code); on failure opens/updates a GitHub Issue |
 | `deploy-rules.yml` | `firestore.rules`, `firestore.indexes.json`, `storage.rules`, `tests/rules/**`, or manual | rules tests, then deploys rules, indexes and storage; on failure opens an Issue (usual causes: the service account lacks Firebase Rules Admin / Cloud Datastore Index Admin, or Storage is not enabled) |
