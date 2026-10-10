@@ -10,7 +10,14 @@ How the app shows its UI in the language the user picks. The code is always Engl
 | `he` | עברית | complete: `i18n/he.json` must have every text (`tests/i18n/check.js` fails otherwise) |
 | `ru` | Русский | set up, not translated yet: `i18n/ru.json` is empty, so the UI shows English |
 
-The language is **picked in the page's header**: a small select (`select.lang-select`, EN / HE / RU) in the manager app's title bar and the supplier portal's header (and on both login screens), and in the bottom-left corner of the worker punch page. **English is the default.** The choice belongs to the device, not the firm: `setLanguage(lang)` keeps it in `localStorage.uiLang` (one key for all three pages, read by `storedLanguage()`), loads the dictionary and redraws (`redrawForLanguage()`, which also sets every `select.lang-select` to the current language, `syncLangSelects()`). Nothing about the language is stored on the server. The layout never changes with the language: it stays the app's left-to-right template, with no `dir="rtl"`.
+The language is **picked in one select per page** (`#langSelect`, class `lang-select`, EN / HE / RU), always at the top right:
+- manager app: in the title bar; while the login screen or the super-admin's Firms screen covers it, the same element moves to that screen's top-right corner (`placeLangSelect()`, run by a `MutationObserver` on those screens' `style`);
+- supplier portal: in the header, and on the login screen the same way;
+- worker punch page: fixed in the top-right corner (the page has no login).
+
+**English is the default.** `setLanguage(lang)` keeps the choice in `localStorage.uiLang` (one key for all three pages, read by `storedLanguage()`), loads the dictionary and redraws (`redrawForLanguage()`, which also sets the select to the current language, `syncLangSelects()`).
+
+**The user's last choice is remembered on their account.** When a user is signed in, `setLanguage` also sends `updateMyLanguage {language}` (users_admin function → `users/{uid}.language`, `en` / `he` / `ru`). `login` returns that `language`, and the login form writes it to `localStorage.uiLang` before the app draws (the manager app before its reload, the portal through `setLanguage(…, {save:false})`). So the language follows the person to any device; before login, a device shows its own last choice. The layout never changes with the language: it stays the app's left-to-right template, with no `dir="rtl"`.
 
 Form 101 is outside this system: its labels in the worker modal and the firm form, and the PDF, are always Hebrew ([form101.md](form101.md)).
 
@@ -81,6 +88,6 @@ Keep using the same words for the same things:
 
 ## Adding a language
 
-1. Add it to `I18N_LANGS` in all three pages (`schedule-manager.html`, `supplier-portal.html`, `worker-punch.html`: code and the language's own name), and an `<option>` to every `select.lang-select`.
+1. Add it to `I18N_LANGS` in all three pages (`schedule-manager.html`, `supplier-portal.html`, `worker-punch.html`: code and the language's own name), an `<option>` to each page's `#langSelect`, and to `LANGUAGES` in `functions-auth/core.py`.
 2. Create `i18n/<code>.json`. Copy the keys from `he.json` and translate the values; until then `{}` shows English.
 3. When it is complete, add it to `COMPLETE` in `tests/i18n/check.js`.

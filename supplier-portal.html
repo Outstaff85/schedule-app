@@ -50,13 +50,13 @@ body{padding-bottom:40px;}
 table{width:100%;border-collapse:collapse;}
 th,td{padding:8px 10px;text-align:left;font-size:13px;border-bottom:1px solid var(--border);}
 th{color:var(--text2);font-size:11px;text-transform:uppercase;}
+.lang-select.on-cover{position:absolute;top:max(env(safe-area-inset-top,0px),12px);right:12px;z-index:2;}
 .lang-select{background:var(--bg3);color:var(--text2);border:1px solid var(--border);border-radius:8px;padding:4px 6px;font:600 12px/1 inherit;cursor:pointer;width:auto;min-width:0;}
 </style>
 </head>
 <body>
 
 <div id="loginScreen" style="display:flex;position:fixed;inset:0;z-index:1000;background:var(--bg);align-items:center;justify-content:center">
-  <select class="lang-select" title="Language" data-i18n-title="Language" aria-label="Language" onchange="setLanguage(this.value)" style="position:absolute;top:max(env(safe-area-inset-top,0px),12px);right:12px"><option value="en">EN</option><option value="he">HE</option><option value="ru">RU</option></select>
   <div style="width:100%;max-width:340px;padding:24px">
     <div style="text-align:center;margin-bottom:22px">
       <i class="ti ti-truck-delivery" style="font-size:32px;color:var(--accent)"></i>
@@ -72,7 +72,7 @@ th{color:var(--text2);font-size:11px;text-transform:uppercase;}
 <div id="appRoot" style="display:none">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border)">
     <div style="font-size:16px;font-weight:700"><i class="ti ti-truck-delivery"></i> <span data-i18n>Supplier Portal</span></div>
-    <div style="display:flex;gap:6px;align-items:center"><select class="lang-select" title="Language" data-i18n-title="Language" aria-label="Language" onchange="setLanguage(this.value)"><option value="en">EN</option><option value="he">HE</option><option value="ru">RU</option></select>
+    <div id="headerActions" style="display:flex;gap:6px;align-items:center"><select class="lang-select" id="langSelect" title="Language" data-i18n-title="Language" aria-label="Language" onchange="setLanguage(this.value)"><option value="en">EN</option><option value="he">HE</option><option value="ru">RU</option></select>
     <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i> <span data-i18n>Log out</span></button></div>
   </div>
   <div class="tabs">
@@ -177,12 +177,25 @@ async function loadI18n(lang){
   await fresh;
 }
 function storedLanguage(){ try{ const l = localStorage.getItem('uiLang'); return I18N_LANGS[l] ? l : 'en'; }catch(e){ return 'en'; } }
-// The language select: keeps the choice on this device and redraws in it.
-async function setLanguage(lang){
+// The language select (one per page, #langSelect): keeps the choice on this device and redraws in it;
+// a signed-in user's choice is also saved to their account (updateMyLanguage), and login brings it back on any device.
+async function setLanguage(lang, opts){
   lang = I18N_LANGS[lang] ? lang : 'en';
   try{ localStorage.setItem('uiLang', lang); }catch(e){}
+  if(!(opts && opts.save === false) && getSession()){
+    loadFirestoreBackend().then(b => b.handleAction('updateMyLanguage', {action:'updateMyLanguage', language: lang}, {})).catch(()=>{});
+  }
   try{ await loadI18n(lang); }catch(e){}
   redrawForLanguage();
+}
+// The one language select sits in the header, or on the login screen while that one is shown.
+function placeLangSelect(){
+  const sel = document.getElementById('langSelect'); if(!sel) return;
+  const login = document.getElementById('loginScreen');
+  const onLogin = login && login.style.display !== 'none';
+  const host = onLogin ? login : document.getElementById('headerActions');
+  sel.classList.toggle('on-cover', !!onLogin);
+  if(host && sel.parentNode !== host) host.prepend(sel);
 }
 function syncLangSelects(){ document.querySelectorAll('select.lang-select').forEach(el => { el.value = I18N_LANG; }); }
 function redrawForLanguage(){
@@ -368,6 +381,8 @@ async function submitLogin(){
     if(json.error){ errEl.textContent=json.error; return; }
     if(json.role!=='supplier'){ await b.signOut(); errEl.textContent=tr('This login is not a supplier account'); return; }
     saveSession({ uid: json.uid, role: json.role, tenantId: json.tenantId, supplierId: json.supplierId, username: json.username });
+    // The language this user last picked (on any device) wins over this device's.
+    if(json.language && json.language !== I18N_LANG) await setLanguage(json.language, {save:false});
     gateApp();
   }catch(e){ errEl.textContent=tr('Network error'); }
 }
@@ -966,7 +981,8 @@ function runSummaryExport(format){
   exportPayableSummary(rows, { title:tr('My hours — payable summary'), filename:'my-hours-summary', format });
 }
 
-loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangSelects(); gateApp(); });
+new MutationObserver(placeLangSelect).observe(document.getElementById('loginScreen'), {attributes:true, attributeFilter:['style']});
+loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangSelects(); placeLangSelect(); gateApp(); });
 </script>
 </body>
 </html>

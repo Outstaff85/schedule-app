@@ -352,7 +352,8 @@ html,body{
   .worker-grid{gap:8px;}
   .punch-clock{font-size:clamp(42px,14vw,60px);}
 }
-.lang-select{position:fixed;left:max(env(safe-area-inset-left,0px),12px);bottom:max(env(safe-area-inset-bottom,0px),12px);z-index:50;background:rgba(255,255,255,0.06);color:var(--text2,#7c84a0);border:1px solid rgba(255,255,255,0.13);border-radius:8px;padding:4px 6px;font:600 12px/1 inherit;cursor:pointer;}
+.top-bar{padding-right:64px;}
+.lang-select{position:fixed;right:max(env(safe-area-inset-right,0px),12px);top:max(env(safe-area-inset-top,0px),12px);z-index:50;background:rgba(255,255,255,0.06);color:var(--text2,#7c84a0);border:1px solid rgba(255,255,255,0.13);border-radius:8px;padding:4px 6px;font:600 12px/1 inherit;cursor:pointer;}
 </style>
 </head>
 <body>
@@ -517,7 +518,8 @@ async function loadI18n(lang){
   await fresh;
 }
 function storedLanguage(){ try{ const l = localStorage.getItem('uiLang'); return I18N_LANGS[l] ? l : 'en'; }catch(e){ return 'en'; } }
-// The language select: keeps the choice on this device and redraws in it.
+// The language select (one per page, #langSelect, top right like the other pages): keeps the choice on this device
+// (the page has no login) and redraws in it.
 async function setLanguage(lang){
   lang = I18N_LANGS[lang] ? lang : 'en';
   try{ localStorage.setItem('uiLang', lang); }catch(e){}
