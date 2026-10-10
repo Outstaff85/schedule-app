@@ -8,7 +8,7 @@ The page talks only to the `punch` Cloud Function (`PUNCH_FN_URL` = `https://eur
 
 | Call | Body |
 |---|---|
-| Load the worker, sites and the firm's language | `{action:'load', token}` → `{workers, clients, language}` |
+| Load the worker and sites | `{action:'load', token}` → `{workers, clients}` |
 | Save a punch (`postPunch(e)`) | `{action:'savePunch', token: e.workerToken or the link's, data: e}` |
 | Error telemetry | `{action:'logError', …}` |
 
@@ -22,11 +22,11 @@ The function hands out only this worker and their sites, and accepts punches for
 - `SITE = {name, object, lat, lng, radius (default 100), clientId}`. Coordinates use `??`, so a real `0` stays a coordinate.
 - **`resolveSiteFromWorker(w)`** (token link without URL geo): the first of the worker's clients that has coordinates becomes the site; if none has coordinates, the first client gives the name only (no geofence).
 - **Several objects:** when the worker has more than one client and the URL gave no coordinates, `decideObjectOrPunch()` shows `showObjectPicker()` (labels: "Choose a site", "geofence · N m" / "no geofence"). `pickObject(clientId)` sets `SITE` from that client and locks it (`_geoLocked`), so the background refresh does not re-resolve it. If the client list is not loaded yet (cache fast path), `goToPunchDirect()` loads it first.
-- `siteLabel()` = client name, plus ` · object` when set; with no name it shows "Work Site" in the firm's language.
+- `siteLabel()` = client name, plus ` · object` when set; with no name it shows "Work Site" in the chosen language.
 
 ## Startup (`init()`)
 
-The page first loads the dictionary of the language kept on this device (`loadI18n(storedLanguage())`, `localStorage.punch_lang`), then runs `init()`. Each `load` answer names the firm's language; `useFirmLanguage()` keeps it and, when it changed, redraws the shown screen in it ([translations.md](translations.md)).
+The page first loads the dictionary of the language chosen on this device (`loadI18n(storedLanguage())`, `localStorage.uiLang`, English by default), then runs `init()`. A small language select in the bottom-left corner (EN / HE / RU) calls `setLanguage()`, which keeps the choice and redraws the shown screen ([translations.md](translations.md)).
 
 1. `loadWorkers()` reads the worker list from `punchClockSite.workers`, else the legacy cache `localStorage.schedMgr_v1` (or `scheduleManagerData`), filtered to `SITE.clientId` when set (falls back to all if that is empty). Workers are reduced to `{id, name, colorIdx, token, clientIds}`.
 2. **Personal link:**

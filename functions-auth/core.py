@@ -40,13 +40,7 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 ROLES_SUB = ("staff", "supplier", "hr")    # what a firm can create for itself
 HR_DEFAULT_PERMS = ["workers"]
 ADMIN_ROLES = ("tenant_admin", "superadmin")
-PROFILE_FIELDS = ("companyName", "deductionsFileNumber", "phone", "street", "streetNumber", "city", "language")
-# The firm's UI language (docs/translations.md): one of these, English when unset.
-LANGUAGES = ("en", "he", "ru")
-
-
-def _language(v):
-    return v if v in LANGUAGES else "en"
+PROFILE_FIELDS = ("companyName", "deductionsFileNumber", "phone", "street", "streetNumber", "city")
 
 MIN_PASSWORD = 8
 LOCK_AFTER_FAILS = 5        # wrong passwords in a row before the account waits
@@ -337,7 +331,6 @@ def create_firm(db, caller, body):
     # Strings stay strings in Firestore: no leading-zero loss on phone or
     # deductions file number (the Sheets bug in CLAUDE.md Troubleshooting).
     profile = {k: str(body.get(k) or "") for k in PROFILE_FIELDS}
-    profile["language"] = _language(body.get("language"))
     db.collection("tenants").document(tenant_id).set(
         dict(profile, createdAt=_now_iso(), workerCount=0, clientCount=0))
     return {"ok": True, "userId": uid, "tenantId": tenant_id}
@@ -515,7 +508,6 @@ def _target_tenant(caller, body):
 
 def _profile(tid, data):
     out = {k: "" if data.get(k) is None else str(data.get(k)) for k in PROFILE_FIELDS}
-    out["language"] = _language(data.get("language"))
     out.update(tenantId=tid, createdAt=data.get("createdAt") or "")
     return out
 
@@ -597,8 +589,6 @@ def update_tenant(db, caller, body):
     if not ref.get().exists:
         return {"error": "Firm not found"}
     upd = {k: str(body[k]) for k in PROFILE_FIELDS if body.get(k) is not None}
-    if "language" in upd:
-        upd["language"] = _language(upd["language"])
     if upd:
         ref.update(upd)
     return {"ok": True, "profile": _profile(tid, ref.get().to_dict())}

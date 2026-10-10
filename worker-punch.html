@@ -352,9 +352,11 @@ html,body{
   .worker-grid{gap:8px;}
   .punch-clock{font-size:clamp(42px,14vw,60px);}
 }
+.lang-select{position:fixed;left:max(env(safe-area-inset-left,0px),12px);bottom:max(env(safe-area-inset-bottom,0px),12px);z-index:50;background:rgba(255,255,255,0.06);color:var(--text2,#7c84a0);border:1px solid rgba(255,255,255,0.13);border-radius:8px;padding:4px 6px;font:600 12px/1 inherit;cursor:pointer;}
 </style>
 </head>
 <body>
+<select class="lang-select" id="langSelect" title="Language" data-i18n-title="Language" aria-label="Language" onchange="setLanguage(this.value)"><option value="en">EN</option><option value="he">HE</option><option value="ru">RU</option></select>
 
 <!-- Screen 1: Worker select -->
 <div class="screen" id="screenWorker">
@@ -481,8 +483,8 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;
 
 // ── Translations (the same core as schedule-manager.html: I18N_LANGS, tr,
 // applyI18n, uiLocale, loadI18n — keep the copies the same; docs/translations.md).
-// The firm's language comes with the server's answer and is kept on this
-// device (localStorage['punch_lang']), so the next start draws in it at once.
+// The language is this device's choice (the language select, English by
+// default), kept in localStorage.uiLang — shared by the three pages.
 const I18N_LANGS = {en:'English', he:'עברית', ru:'Русский'};
 var I18N = {}, I18N_LANG = 'en';
 function tr(s, params){
@@ -514,17 +516,18 @@ async function loadI18n(lang){
   if(cached){ fresh.then(ch => { if(ch && I18N_LANG === lang) redrawForLanguage(); }); return; }
   await fresh;
 }
-function storedLanguage(){ try{ const l = localStorage.getItem('punch_lang'); return I18N_LANGS[l] ? l : 'en'; }catch(e){ return 'en'; } }
-// The server's answer names the firm's language: keep it and switch when it changed.
-async function useFirmLanguage(lang){
+function storedLanguage(){ try{ const l = localStorage.getItem('uiLang'); return I18N_LANGS[l] ? l : 'en'; }catch(e){ return 'en'; } }
+// The language select: keeps the choice on this device and redraws in it.
+async function setLanguage(lang){
   lang = I18N_LANGS[lang] ? lang : 'en';
-  try{ localStorage.setItem('punch_lang', lang); }catch(e){}
-  if(lang === I18N_LANG) return;
+  try{ localStorage.setItem('uiLang', lang); }catch(e){}
   try{ await loadI18n(lang); }catch(e){}
   redrawForLanguage();
 }
+function syncLangSelects(){ document.querySelectorAll('select.lang-select').forEach(el => { el.value = I18N_LANG; }); }
 function redrawForLanguage(){
   applyI18n();
+  syncLangSelects();
   try{
     const on = id => { const s = document.getElementById(id); return s && !s.classList.contains('hidden'); };
     if(on('screenPunch')){ tickPunch(); updateBigBtn(); getLocation(); }
@@ -804,7 +807,6 @@ async function loadWorkersFromGS(){
     // The server answered but does not know this link (regenerated or the
     // worker removed): no workers, so init()/verifyAndRefresh() revoke it.
     if(data.error==='Unknown worker link'){ workers=[]; return true; }
-    if(!data.error) useFirmLanguage(data.language);
     if(data.workers&&data.workers.length){
       let list = data.workers;
       allClients = data.clients||[];
@@ -1169,6 +1171,7 @@ window.addEventListener('error', function(ev){ reportError(ev.message, (ev.filen
 window.addEventListener('unhandledrejection', function(ev){ const r=ev.reason; reportError((r&&r.message)||String(r), 'promise', r&&r.stack); });
 loadI18n(storedLanguage()).catch(()=>{}).then(()=>{
   applyI18n();
+  syncLangSelects();
   try{ init(); }catch(err){ console.error('init failed',err); reportError('init failed: '+(err&&err.message), 'init', err&&err.stack); showInvalidLink(tr('Something went wrong'),tr('Reload the page. If that doesn\'t help, contact your manager.'),'ti-alert-triangle'); }
 });
 

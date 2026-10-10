@@ -88,14 +88,8 @@ def _load(db, tid, w):
         if c.exists:
             cd = c.to_dict()
             clients.append({k: (c.id if k == "id" else cd.get(k)) for k in SITE_FIELDS})
-    return {"workers": [me], "clients": clients, "language": firm_language(db, tid)}
+    return {"workers": [me], "clients": clients}
 
-
-def firm_language(db, tid):
-    """The firm's UI language for the worker and supplier pages (docs/translations.md)."""
-    t = db.collection("tenants").document(tid).get()
-    lang = (t.to_dict() or {}).get("language") if t.exists else None
-    return lang if lang in ("en", "he", "ru") else "en"
 
 
 def _save_punch(db, tid, w, data):
@@ -221,8 +215,7 @@ def supplier_action(db, caller, body):
         st = t_ref.collection("settings").document("schedule").get()
         sd = st.to_dict() if st.exists else {}
         return {"workers": workers, "clients": clients, "suppliers": [], "showPay": pay,
-                "weekStart": sd.get("weekStart"), "savedAt": sd.get("savedAt"),
-                "language": firm_language(db, tid)}
+                "weekStart": sd.get("weekStart"), "savedAt": sd.get("savedAt")}
 
     if action == "loadPunchLog":
         ids = [str(d.get("id")) for _, d in _own_workers(db, tid, sid)]

@@ -74,7 +74,7 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
     - enable / disable (`toggleTenantActive` → `setTenantActive`);
     - delete (`confirmDeleteTenant` — confirm, then type the exact firm name → `deleteTenant`: the firm's data, its logins and every worker file in Storage).
 - **Firm form** (`#editFirmOverlay`, one modal, `__firmFormMode`):
-  - fields: company name, deductions file number, phone, street, street number, city, and **Language** (`firmEditLanguage`: English / עברית / Русский — the firm's UI language, [translations.md](translations.md)); a changed language switches the app at once;
+  - fields: company name, deductions file number, phone, street, street number, city;
   - Create (`openCreateFirmForm`) also asks for the owner's username and password → `createUser`;
   - Edit (`openEditFirmForm`, or `openMyFirmForm` for the firm's own profile) → `updateTenant`;
   - after saving: `cacheTenantProfile`, `refreshFirmProfileWarnings`, and `regenerateAllWorkerDocs()` when the edited firm is the one loaded (every worker's Form 101 employer block changes). For another firm, the rebuild waits until that firm is opened here (`form101Regen:<tenantId>`, `maybeRegenAfterFirmEdit`);

@@ -92,7 +92,7 @@ service cloud.firestore {
     // (updateTenant). Activation and counters stay superadmin/function-only.
     function onlyProfileFields() {
       return request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly(['companyName', 'deductionsFileNumber', 'phone', 'street', 'streetNumber', 'city', 'language']);
+        .hasOnly(['companyName', 'deductionsFileNumber', 'phone', 'street', 'streetNumber', 'city']);
     }
 
     match /tenants/{t} {

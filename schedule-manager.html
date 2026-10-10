@@ -51,6 +51,7 @@
   .ttab.active{color:var(--blue);border-bottom-color:var(--blue);background:var(--blue-bg);}
   .ttab.admin.active{color:var(--amber);border-bottom-color:var(--amber);background:var(--amber-bg);}
   .titlebar-actions{margin-left:auto;display:flex;gap:6px;align-items:center;}
+  .lang-select{background:var(--bg3);color:var(--text2);border:1px solid var(--border);border-radius:8px;padding:4px 6px;font:600 12px/1 inherit;cursor:pointer;width:auto;min-width:0;}
   .save-indicator{font-size:14px;color:var(--text3);display:flex;align-items:center;gap:4px;transition:color 0.3s;}
   .save-indicator.saving{color:var(--amber);}
   .save-indicator.saved{color:var(--green);}
@@ -495,6 +496,7 @@
   </div>
   <div id="accountLabelCenter" class="account-label-center"></div>
   <div class="titlebar-actions">
+    <select class="lang-select" title="Language" data-i18n-title="Language" aria-label="Language" onchange="setLanguage(this.value)"><option value="en">EN</option><option value="he">HE</option><option value="ru">RU</option></select>
     <div id="accountControl"></div>
     <div class="save-indicator saved" id="saveIndicator">
       <div class="save-dot"></div><span data-i18n>Saved</span>
@@ -961,6 +963,7 @@
      startup when there's no valid (non-expired) session; hides + the normal
      app init runs only after a successful login. -->
 <div id="loginScreen" style="display:none;position:fixed;inset:0;z-index:1000;background:var(--bg);align-items:center;justify-content:center">
+  <select class="lang-select" title="Language" data-i18n-title="Language" aria-label="Language" onchange="setLanguage(this.value)" style="position:absolute;top:max(env(safe-area-inset-top,0px),12px);right:12px"><option value="en">EN</option><option value="he">HE</option><option value="ru">RU</option></select>
   <div style="width:100%;max-width:340px;padding:24px">
     <div style="text-align:center;margin-bottom:22px">
       <i class="ti ti-calendar-stats" style="font-size:32px;color:var(--accent)"></i>
@@ -1108,7 +1111,6 @@
       <div class="field"><label>מספר בית</label><input type="text" id="firmEditStreetNumber"></div>
     </div>
     <div class="field"><label>עיר</label><input type="text" id="firmEditCity"></div>
-    <div class="field"><label data-i18n><span data-i18n>Language</span></label><select id="firmEditLanguage"></select></div>
     <div id="firmEditFormError" style="color:#ff6b78;font-size:13px;margin:2px 0 6px;min-height:1.2em"></div>
     <div class="modal-actions">
       <button class="btn accent" onclick="submitEditFirm()" id="editFirmBtn" data-i18n>Save</button>
@@ -1212,12 +1214,13 @@ function loadXlsx(){
 
 // ── Translations (docs/translations.md) ─────────────────────────────────────
 // Every UI text in the code is English. tr('Total Pay') returns it in the
-// firm's language from i18n/<lang>.json (English text → translation); a text
+// language picked in the header from i18n/<lang>.json (English text → translation); a text
 // the dictionary lacks shows in English. {name} placeholders take params:
 // tr(text, {n: 3}). Static HTML marks its texts with
 // data-i18n (text), data-i18n-placeholder, data-i18n-title; applyI18n()
-// translates them. The language is the firm's (profile field `language`);
-// the layout never changes (left to right). Form 101 is outside this: it is
+// translates them. The language is this device's choice (the header's
+// language select, English by default, setLanguage()); the layout never
+// changes (left to right). Form 101 is outside this: it is
 // always Hebrew.
 const I18N_LANGS = {en:'English', he:'עברית', ru:'Русский'};
 var I18N = {}, I18N_LANG = 'en';
@@ -1235,11 +1238,16 @@ function applyI18n(root){
 }
 // The date locale for month and weekday names on screen (numeric dates stay dd/mm/yyyy).
 function uiLocale(){ return {he:'he-IL', ru:'ru-RU'}[I18N_LANG] || 'en-GB'; }
-function firmLanguage(){
-  const p = typeof activeTenantProfile === 'function' ? activeTenantProfile() : null;
-  const l = p && p.language;
-  return I18N_LANGS[l] ? l : 'en';
+// This device's language (localStorage.uiLang, shared by the three pages): English by default.
+function storedLanguage(){ try{ const l = localStorage.getItem('uiLang'); return I18N_LANGS[l] ? l : 'en'; }catch(e){ return 'en'; } }
+// The header's language select: keeps the choice on this device and redraws in it.
+async function setLanguage(lang){
+  lang = I18N_LANGS[lang] ? lang : 'en';
+  try{ localStorage.setItem('uiLang', lang); }catch(e){}
+  try{ await loadI18n(lang); }catch(e){}
+  redrawForLanguage();
 }
+function syncLangSelects(){ document.querySelectorAll('select.lang-select').forEach(el => { el.value = I18N_LANG; }); }
 // Loads the firm language's dictionary: from this device's copy at once when
 // there is one (no wait at startup), refreshed from i18n/<lang>.json; a newer
 // file redraws the page. English needs no file.
@@ -1261,6 +1269,7 @@ async function loadI18n(lang){
 }
 function redrawForLanguage(){
   applyI18n();
+  syncLangSelects();
   try{ const s = getSession(); if(s) renderAccountControl(s); }catch(e){}
   try{ const b = document.getElementById('installBtn'); if(b) b.innerHTML = '<i class="ti ti-download" style="color:#4f8ef7"></i> ' + esc(tr('Install')); }catch(e){}
   try{ if(typeof render === 'function') render(); }catch(e){}
@@ -4664,8 +4673,6 @@ function cacheTenantProfile(tenantId, profile){
   }
   saveSession(s);
   renderAccountControl(s);
-  // The firm's language changed (here or on another device): switch to it.
-  if(firmLanguage() !== I18N_LANG) loadI18n(firmLanguage()).then(redrawForLanguage);
 }
 
 // ── App gate: decides which of the three top-level screens to show ─────────
@@ -5637,9 +5644,6 @@ function fillFirmEditForm(p){
   document.getElementById('firmEditStreet').value = p.street || '';
   document.getElementById('firmEditStreetNumber').value = p.streetNumber || '';
   document.getElementById('firmEditCity').value = p.city || '';
-  const langSel = document.getElementById('firmEditLanguage');
-  langSel.innerHTML = Object.entries(I18N_LANGS).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join('');
-  langSel.value = I18N_LANGS[p.language] ? p.language : 'en';
   __firmEditDirty = false;
 }
 function openCreateFirmForm(){
@@ -5713,7 +5717,6 @@ async function submitEditFirm(){
     street: get('firmEditStreet'),
     streetNumber: get('firmEditStreetNumber'),
     city: get('firmEditCity'),
-    language: document.getElementById('firmEditLanguage').value,
   };
   if(__firmFormMode === 'create'){
     const username = get('firmEditUsername'), password = document.getElementById('firmEditPassword').value;
@@ -8555,7 +8558,7 @@ function watchErrorLine(id){
 ['firmEditFormError','userFormError'].forEach(watchErrorLine);
 window.addEventListener('error', function(ev){ _origConsoleError('App error:', ev.error||ev.message); reportError(ev.message, (ev.filename||'')+':'+(ev.lineno||''), ev.error&&ev.error.stack); });
 window.addEventListener('unhandledrejection', function(ev){ const r=ev.reason; reportError((r&&r.message)||String(r), 'promise', r&&r.stack); });
-loadI18n(firmLanguage()).catch(()=>{}).then(()=>{ applyI18n(); try{
+loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangSelects(); try{
   gateApp(function(){
     loadData();
     syncPicker();

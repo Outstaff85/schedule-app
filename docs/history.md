@@ -196,3 +196,6 @@ The first version kept a single read for `id_back` pages. The next live scan sti
 
 ## Form 101 field map rewritten (2026-10-05)
 `docs/form101-field-map.md` still described the browser (pdf-lib) version of the form filling: `addNewCombField`, `stripWidgetChrome`, hand-made boxes such as `id_box` and `tax_year_box`, and the bug trails of that time. The form has been built on the server for a long time (`functions/main.py`, PyMuPDF), and the current template has its own field for every value. The map now lists the template's fields as dumped from the PDF and what `build_form101_pdf()` writes into each. The old text is in git history.
+
+## UI language: from the firm to the header (2026-10-10)
+The first translation stages made the language one per firm: a `language` field in the firm profile (picked in the firm form), returned to the supplier portal and the punch page by the server. On user request the language moved to a select in each page's header, English by default, kept per device (`localStorage.uiLang`). The firm field, its server handling (`LANGUAGES`, `_language`, `firm_language`) and its rule were removed.
