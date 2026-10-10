@@ -852,5 +852,16 @@
   "✕ Close": "✕ סגירה",
   "⠿ Drag to reorder · Ctrl+S to save": "⠿ גררו לשינוי הסדר · Ctrl+S לשמירה",
   "📶 Offline — 1 punch queued": "📶 אין חיבור — החתמה אחת ממתינה",
-  "📶 Offline — {0} punches queued": "📶 אין חיבור — {0} החתמות ממתינות"
+  "📶 Offline — {0} punches queued": "📶 אין חיבור — {0} החתמות ממתינות",
+  "Could not load your hours — check the connection and try again.": "לא ניתן לטעון את השעות — בדקו את החיבור ונסו שוב.",
+  "No shifts this month": "אין משמרות החודש",
+  "Regular {h}h": "רגילות {h} ש׳",
+  "Overtime {h}h": "נוספות {h} ש׳",
+  "Shabbat {h}h": "שבת {h} ש׳",
+  "Hours worked": "שעות עבודה",
+  "Days worked": "ימי עבודה",
+  "Total with travel ({t})": "סה״כ כולל נסיעות ({t})",
+  "An estimate before deductions — your payslip is the final figure.": "הערכה לפני ניכויים — הסכום הסופי מופיע בתלוש השכר.",
+  "Your pay rate is not set yet — ask your manager.": "תעריף השכר שלך עוד לא הוגדר — פנו למנהל.",
+  "My Hours and Pay": "השעות והשכר שלי"
 }

@@ -250,3 +250,25 @@ def test_load_gives_the_worker_their_own_date_changes():
     d = portal.punch_action(DB, {"action": "load", "token": "tok-avi"})["workers"][0]["dates"]
     assert d == {soon: {"type": "work", "start": "10:00", "end": "14:00"}}       # only the window, only type/start/end
     w.update({"dateShifts": {}})
+
+
+def test_my_month_gives_own_punches_and_pay_inputs_only():
+    from datetime import datetime, timezone
+    def at(s):
+        return datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
+    P(T1, "m1").set({"id": "m1", "workerId": "w1", "type": "in", "date": "05/10/2026", "clientId": "c1",
+                     "dist": 4, "gpsAccuracy": 9, "lat": 32.1, "ts": at("2026-10-05T05:00:00")})
+    P(T1, "m2").set({"id": "m2", "workerId": "w1", "type": "out", "date": "05/10/2026", "ts": at("2026-10-05T13:00:00")})
+    P(T1, "m3").set({"id": "m3", "workerId": "w1", "type": "in", "ts": at("2026-08-05T05:00:00")})   # another month
+    P(T1, "m4").set({"id": "m4", "workerId": "w2", "type": "in", "ts": at("2026-10-06T05:00:00")})   # another worker
+    W(T1, "w1").update({"travelAllowance": 12, "billRate": 99})
+    r = portal.punch_action(DB, {"action": "myMonth", "token": "tok-avi", "month": "2026-10"})
+    assert sorted(e["id"] for e in r["punches"]) == ["m1", "m2"]
+    assert set(r["punches"][0]) <= {"id", "workerId", "type", "time", "date", "clientId", "ts"}
+    assert r["punches"][0]["ts"].endswith("Z")
+    assert r["pay"] == {"id": "w1", "hourlyRate": 55, "travelAllowance": 12}
+    assert r["clients"] == [{"id": "c1", "defaultHourlyRate": 70}, {"id": "c2"}]
+    text = str(r)
+    assert "billRate" not in text and "supplierRates" not in text and "lat" not in text and "0501111111" not in text
+    assert portal.punch_action(DB, {"action": "myMonth", "token": "tok-avi", "month": "10/2026"}) == {"error": "Bad month"}
+    assert portal.punch_action(DB, {"action": "myMonth", "token": "nope", "month": "2026-10"}) == {"error": portal.E_LINK}

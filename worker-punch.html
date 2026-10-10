@@ -385,6 +385,12 @@ html,body{
 .sched-sum div{padding:12px;border-radius:12px;background:rgba(255,255,255,0.03);border:1px solid var(--border);text-align:center;}
 .sched-sum b{display:block;font-size:20px;color:var(--text);}
 .sched-sum span{font-size:12px;color:var(--text2);}
+.hours-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:14px;}
+.hours-row .d{flex:1;color:var(--text);}
+.hours-row .t{font-family:'DM Mono',ui-monospace,monospace;color:var(--text2);font-size:13px;}
+.hours-row .h{min-width:52px;text-align:right;color:var(--green);font-weight:600;}
+.hours-row .p{min-width:64px;text-align:right;color:var(--text);font-weight:600;}
+.hours-break{margin-top:8px;font-size:12px;color:var(--text2);text-align:center;}
 .sched-note{margin-top:10px;text-align:center;font-size:12px;color:var(--text3);}
 /* Hebrew has no capitals: no letter-spacing (made for spaced-out uppercase Latin). */
 html[lang="he"] *{letter-spacing:normal !important;}
@@ -431,6 +437,7 @@ html[lang="he"] *{letter-spacing:normal !important;}
   <div class="punch-links">
     <div class="back-link" onclick="openSchedule()" style="color:var(--blue)"><i class="ti ti-calendar-week"></i> <span data-i18n>My Schedule</span><span class="sched-badge" id="schedBadge" style="display:none" title="Updated" data-i18n-title="Updated"></span></div>
     <div class="back-link" onclick="openHistory()" style="color:var(--blue)"><i class="ti ti-history"></i> <span data-i18n>My History</span></div>
+    <div class="back-link" id="myHoursLink" onclick="openMyHours()" style="color:var(--blue)"><i class="ti ti-wallet"></i> <span data-i18n>My Hours and Pay</span></div>
   </div>
   <div class="back-link" id="changeWorkerLink" onclick="goBack()" data-i18n>← Change worker</div>
 </div>
@@ -455,6 +462,15 @@ html[lang="he"] *{letter-spacing:normal !important;}
     <div class="back-link" onclick="closeHistory()" style="font-size:14px" data-i18n>✕ Close</div>
   </div>
   <div id="scheduleContent" style="width:100%;max-width:500px"></div>
+</div>
+
+<!-- Screen 6: My hours & pay (own link only; the month's shifts and a pay estimate) -->
+<div class="screen hidden" id="screenHours" style="justify-content:flex-start;align-items:center">
+  <div class="top-bar" style="margin-bottom:16px">
+    <div style="font-size:18px;font-weight:500"><i class="ti ti-wallet"></i> <span data-i18n>My Hours and Pay</span></div>
+    <div class="back-link" onclick="closeHistory()" style="font-size:14px" data-i18n>✕ Close</div>
+  </div>
+  <div id="hoursContent" style="width:100%;max-width:500px"></div>
 </div>
 
 <!-- Screen 4: History -->
@@ -772,6 +788,8 @@ function enterPunch(w, skipResolve){
   document.getElementById('punchSite').innerHTML = '<i class="ti ti-map-pin"></i> '+siteLabel();
   document.getElementById('punchWorkerName').textContent = w.name;
   const cw=document.getElementById('changeWorkerLink'); if(cw) cw.style.display=URL_TOKEN?'none':'';
+  // Pay only on the worker's own link, never on a shared picker device.
+  const mh=document.getElementById('myHoursLink'); if(mh) mh.style.display=URL_TOKEN?'':'none';
   showScreen('screenPunch');
   startPunchClock();
   getLocation();
@@ -1154,6 +1172,220 @@ function renderMySchedule(){
       <div class="sched-note">${esc(tr('Your manager plans this schedule; changes show here at once.'))}</div>`
       : `<div style="text-align:center;padding:40px;color:var(--text3);font-size:15px">${esc(tr('No shifts planned yet'))}</div>`);
 }
+
+// ── My hours & pay (worker's own link only): one month of the worker's own
+// punches from the punch function (myMonth — portal.py hands out only this
+// worker's punches, their own pay inputs and their sites' worker-pay rates),
+// summed with the canonical functions below exactly as Accounting → Salary
+// does for a month (salaryEntriesFor): punches of the month, paired into
+// shifts, each shift priced by shiftPayFor, daily days set by hand, travel.
+// It is an estimate before deductions; the payslip is the final figure.
+let _hoursMonth = 0;
+const _hoursData = {};
+function hoursMonthKey(){ const n = new Date(); return localYMD(new Date(n.getFullYear(), n.getMonth() + _hoursMonth, 1)).slice(0, 7); }
+function openMyHours(){
+  if(!selectedWorker || !URL_TOKEN) return;
+  _hoursMonth = 0;
+  showScreen('screenHours');
+  loadMyHours();
+}
+function shiftHoursMonth(n){ _hoursMonth = n === 0 ? 0 : Math.min(0, _hoursMonth + n); loadMyHours(); }
+async function loadMyHours(){
+  const key = hoursMonthKey();
+  renderMyHours(key);
+  try{
+    const r = await (await punchFn({action:'myMonth', token:_wpToken(), month:key})).json();
+    _hoursData[key] = (r && !r.error) ? r : (_hoursData[key] || {failed:true});
+  }catch(e){ _hoursData[key] = _hoursData[key] && !_hoursData[key].failed ? _hoursData[key] : {failed:true}; }
+  if(key === hoursMonthKey() && !document.getElementById('screenHours').classList.contains('hidden')) renderMyHours(key);
+}
+function myMonthFigures(data, key){
+  clients = data.clients || [];
+  const w = data.pay || {};
+  const [y, m] = key.split('-').map(Number), from = new Date(y, m - 1, 1), to = new Date(y, m, 1);
+  const list = (data.punches || []).filter(e => { const d = new Date(e.ts); return d >= from && d < to; });
+  const seen = new Set(), dayKeys = new Set(), shifts = [];
+  let hours = 0, regH = 0, otH = 0, shabH = 0, total = 0;
+  groupPunchesIntoShifts(list).forEach(b => {
+    const h = analyzeDayPunches(b.entries, b.date).hours;
+    const inE = b.entries.find(e => e.type === 'in'), outE = b.entries.find(e => e.type === 'out');
+    let pay = 0;
+    if(h > 0){
+      const isSat = b.date.getDay() === 6, RM = PAY_RULES.regularMax;
+      if(isSat) shabH += h; else { regH += Math.min(h, RM); otH += Math.max(h - RM, 0); }
+      hours += h;
+      pay = shiftPayFor(h, w, isSat, b.entries[0] && b.entries[0].clientId, b.date, seen);
+      total += pay;
+      dayKeys.add(localYMD(b.date));
+    }
+    shifts.push({date:b.date, inT:inE && inE.time, outT:outE && outE.time, h, pay});
+  });
+  const ov = isDailyPay(w) ? dayOverride(w, 'm:' + key) : null;
+  if(ov != null) total = ov * dailyRate(w);
+  const days = ov != null ? ov : dayKeys.size;
+  const travel = travelPay(w, days, dayKeys.size ? 1 : 0);
+  const hasRate = isDailyPay(w) ? dailyRate(w) > 0 : true;
+  return {shifts, hours, regH, otH, shabH, total, travel, days, ov, hasRate};
+}
+function money(n){ return '₪' + (Number(n) || 0).toLocaleString(uiLocale(), {minimumFractionDigits:0, maximumFractionDigits:2}); }
+function renderMyHours(key){
+  const el = document.getElementById('hoursContent'), loc = uiLocale();
+  const [y, m] = key.split('-').map(Number);
+  const head = `<div class="sched-head"><button type="button" class="sched-nav" onclick="shiftHoursMonth(-1)" aria-label="${esc(tr('Previous month'))}">‹</button>
+      <div class="m">${esc(new Date(y, m - 1, 1).toLocaleDateString(loc, {month:'long', year:'numeric'}))}</div>
+      ${_hoursMonth !== 0 ? `<button type="button" class="sched-today" onclick="shiftHoursMonth(0)">${esc(tr('Today'))}</button>` : ''}
+      <button type="button" class="sched-nav" onclick="shiftHoursMonth(1)" aria-label="${esc(tr('Next month'))}" ${_hoursMonth === 0 ? 'disabled style="opacity:.3"' : ''}>›</button></div>`;
+  const data = _hoursData[key];
+  const msg = t => `<div style="text-align:center;padding:40px;color:var(--text3);font-size:15px">${esc(t)}</div>`;
+  if(!data){ el.innerHTML = head + msg(tr('Loading…')); return; }
+  if(data.failed){ el.innerHTML = head + msg(tr('Could not load your hours — check the connection and try again.')); return; }
+  const f = myMonthFigures(data, key);
+  if(!f.shifts.length){ el.innerHTML = head + msg(tr('No shifts this month')); return; }
+  const rows = [...f.shifts].reverse().map(s => `<div class="hours-row">
+      <span class="d">${esc(s.date.toLocaleDateString(loc, {weekday:'short', day:'2-digit', month:'short'}))}</span>
+      <span class="t">${esc(s.inT || '--:--')} – ${esc(s.outT || '--:--')}</span>
+      <span class="h">${s.h > 0 ? esc(tr('{h}h', {h:s.h.toFixed(1)})) : '—'}</span>
+      ${f.ov == null && f.hasRate ? `<span class="p">${s.pay > 0 ? esc(money(s.pay)) : '—'}</span>` : ''}
+    </div>`).join('');
+  const parts = [tr('Regular {h}h', {h:f.regH.toFixed(1)})];
+  if(f.otH > 0) parts.push(tr('Overtime {h}h', {h:f.otH.toFixed(1)}));
+  if(f.shabH > 0) parts.push(tr('Shabbat {h}h', {h:f.shabH.toFixed(1)}));
+  el.innerHTML = head
+    + `<div class="sched-sum"><div><b>${esc(tr('{h}h', {h:f.hours.toFixed(1)}))}</b><span>${esc(tr('Hours worked'))}</span></div><div><b>${f.days}</b><span>${esc(tr('Days worked'))}</span></div>`
+    + (f.hasRate ? `<div><b>${esc(money(f.total))}</b><span>${esc(tr('Pay'))}</span></div><div><b>${esc(money(f.total + f.travel))}</b><span>${esc(f.travel > 0 ? tr('Total with travel ({t})', {t:money(f.travel)}) : tr('Total'))}</span></div>` : '')
+    + `</div><div class="hours-break">${esc(parts.join(' · '))}</div>
+    <div style="margin-top:10px">${rows}</div>
+    <div class="sched-note">${esc(f.hasRate ? tr('An estimate before deductions — your payslip is the final figure.') : tr('Your pay rate is not set yet — ask your manager.'))}</div>`;
+}
+
+// ── Shift pairing and pay (duplicated on purpose from schedule-manager.html:
+// groupPunchesIntoShifts, analyzeDayPunches, PAY_RULES, israeliDayPay,
+// effectiveRates … travelPay, localYMD — keep the copies the same).
+// `clients` here are the worker's sites with their worker-pay rates only.
+let clients = [];
+function groupPunchesIntoShifts(entries){
+  const chrono=[...entries].sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+  const buckets=[]; let cur=null;
+  chrono.forEach(e=>{
+    if(e.type==='in'){ if(cur) buckets.push(cur); cur={date:new Date(e.ts),entries:[e]}; }
+    else { if(!cur) cur={date:new Date(e.ts),entries:[]}; cur.entries.push(e); buckets.push(cur); cur=null; }
+  });
+  if(cur) buckets.push(cur);
+  return buckets;
+}
+function toMins(t){ if(!t) return 0; const [h,m]=t.split(':').map(Number); return h*60+(m||0); }
+function roundMins(m){ return m; }
+function analyzeDayPunches(entries,date){
+  const chrono=[...entries].sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+  let hours=0, openIn=null; const warnings=[];
+  chrono.forEach(e=>{
+    if(e.type==='in'){ openIn=e; }
+    else if(e.type==='out'){
+      if(!openIn) return;
+      if(!openIn.time||!e.time){ openIn=null; return; }
+      let dur=toMins(e.time)-toMins(openIn.time); if(dur<0) dur+=1440;
+      hours+=dur/60; openIn=null;
+    }
+  });
+  return {hours,warnings};
+}
+const PAY_RULES = { regularMax: 8, ot1Span: 2, roundMinutes: 0, otMult: 1.25, shabbatMult: 1.5 };
+function israeliDayPay(hours, rate, isSat){
+  const base=isSat?1.5:1.0, ot1=isSat?1.75:1.25, ot2=isSat?2.0:1.5;
+  const RM=PAY_RULES.regularMax, O1=PAY_RULES.ot1Span;
+  const reg=Math.min(hours,RM), o1=Math.min(Math.max(hours-RM,0),O1), o2=Math.max(hours-(RM+O1),0);
+  const regularPay=reg*rate*base, otPay=o1*rate*ot1+o2*rate*ot2;
+  return { regularPay, otPay, total:regularPay+otPay, isSat };
+}
+// Effective per-hour rates for one shift, resolving a 3-tier priority chain —
+// most specific wins, each tier optional, falling through to the next:
+//   1. worker.clientRates[clientId] — this worker's own override for this
+//      specific client (set in the Accounting rate matrix).
+//   2. the worker's own rate — hourlyRate (or the older regRate), otRate,
+//      shabbatRate — set in the worker modal or Accounting → Salary. It
+//      changes this worker only (user decision 2026-10-05).
+//   3. client.defaultHourlyRate/defaultOtRate/defaultShabbatRate — the
+//      client's rate, shared by every worker there without a rate of their own.
+// Each of the three rates resolves on its own. `src` says which tier gave the
+// regular rate: 'override' / 'worker' / 'client' / '' (none). `has*Override` tells shiftPay() whether an
+// explicit flat OT/Shabbat rate was found at ANY tier (vs falling back to
+// the israeliDayPay law tiers) — the three tiers can't be told apart just by
+// comparing the resolved number to a law-tier calculation.
+function effectiveRates(w, clientId){
+  const ov = clientId && w && w.clientRates && w.clientRates[clientId];
+  const cl = clientId && clients.find(c=>c.id===clientId);
+  const set=v=>v!=null&&v!=='';
+  const own = set(w&&w.regRate) ? w.regRate : (Number(w&&w.hourlyRate)>0 ? w.hourlyRate : null);
+  const pick=(ovVal,wVal,clVal,fallback)=>{
+    if(set(ovVal)) return {val:Number(ovVal),has:true,src:'override'};
+    if(set(wVal)) return {val:Number(wVal),has:true,src:'worker'};
+    if(set(clVal)) return {val:Number(clVal),has:true,src:'client'};
+    return {val:fallback,has:false,src:''};
+  };
+  const reg  = pick(ov&&ov.rate,        own,             cl&&cl.defaultHourlyRate,  0);
+  const ot   = pick(ov&&ov.otRate,      w&&w.otRate,      cl&&cl.defaultOtRate,      Math.round(reg.val*PAY_RULES.otMult*100)/100);
+  const shab = pick(ov&&ov.shabbatRate, w&&w.shabbatRate, cl&&cl.defaultShabbatRate, Math.round(reg.val*PAY_RULES.shabbatMult*100)/100);
+  return {regRate:reg.val, otRate:ot.val, shabbatRate:shab.val, hasOtOverride:ot.has, hasShabbatOverride:shab.has,
+    src:reg.src, otSrc:ot.src, shabbatSrc:shab.src};
+}
+function wRegRate(w,clientId){ return effectiveRates(w,clientId).regRate; }
+function wOtRate(w,clientId){ return effectiveRates(w,clientId).otRate; }
+function wShabRate(w,clientId){ return effectiveRates(w,clientId).shabbatRate; }
+// Pay for one shift's hours. Default: the israeliDayPay law tiers (125%/150% OT,
+// 150%/175%/200% Shabbat) applied to the effective regular rate. An explicit flat
+// OT/Shabbat rate (at any tier above) replaces the law tiers with that single flat
+// rate across all OT/Shabbat hours of the shift, same as before this defaulted to
+// the law. clientId is optional — see effectiveRates() above.
+function shiftPay(hours, w, isSat, clientId){
+  const RM=PAY_RULES.regularMax, r=effectiveRates(w,clientId);
+  if(isSat){
+    if(r.hasShabbatOverride) return hours*r.shabbatRate;
+    return israeliDayPay(hours, r.regRate, true).total;
+  }
+  if(r.hasOtOverride) return Math.min(hours,RM)*r.regRate + Math.max(hours-RM,0)*r.otRate;
+  return israeliDayPay(hours, r.regRate, false).total;
+}
+// Daily pay (w.payMode === 'daily', picked per worker in Accounting →
+// Salary; 2026-10-05): the worker is paid their own rate (the worker card's
+// rate, read as ₪/day) once for every day worked, whatever the hours. A
+// client's rate (an hourly figure) never applies to a daily-paid worker.
+function isDailyPay(w){ return !!(w && w.payMode==='daily'); }
+function dailyRate(w){ return Number(wOwnRate(w))||0; }
+// One shift's pay, for every payroll figure (Salary, its export, the
+// super-admin summary). seenDays is a Set kept per worker over the period:
+// a daily-paid worker's later shifts on a day already paid pay 0.
+function shiftPayFor(hours, w, isSat, clientId, date, seenDays){
+  if(isDailyPay(w)){
+    const k=localYMD(date);
+    if(seenDays.has(k)) return 0;
+    seenDays.add(k);
+    return dailyRate(w);
+  }
+  return shiftPay(hours, w, isSat, clientId);
+}
+// The days of a daily-paid worker can be set by hand for one period
+// (w.dayOverrides[key]); key = the concrete period: 'w:<Sunday yyyy-mm-dd>',
+// 'm:<yyyy-mm>' or 'all'.
+function salaryPeriodKey(period, now){
+  now=now||new Date();
+  if(period==='week'){ const ws=new Date(now); ws.setDate(ws.getDate()-ws.getDay()); return 'w:'+localYMD(ws); }
+  if(period==='month') return 'm:'+localYMD(now).slice(0,7);
+  return period||'all';
+}
+function dayOverride(w, key){
+  const v=w&&w.dayOverrides&&w.dayOverrides[key];
+  return (v==null||v==='')?null:Number(v);
+}
+function wOwnRate(w){
+  if(!w) return '';
+  if(w.regRate!=null&&w.regRate!=='') return w.regRate;
+  return Number(w.hourlyRate)>0?w.hourlyRate:'';
+}
+function travelPay(w, days, months){
+  return (Number(w&&w.travelAllowance)||0)*days + (Number(w&&w.travelMonthly)||0)*months;
+}
+function localYMD(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
 function closeHistory(){ if(URL_TOKEN&&selectedWorker){ showScreen('screenPunch'); startPunchClock(); getLocation(); updateBigBtn(); } else { showScreen('screenWorker'); startWorkerClock(); } }
 
 // ── Helpers ───────────────────────────────────────────────────────

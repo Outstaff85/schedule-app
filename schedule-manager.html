@@ -6807,6 +6807,7 @@ function renderSalary(){
   fillSalaryPeriodSelect();
   const period   = document.getElementById('salaryPeriod')?.value||'week';
   const {byWorker, byClient} = salaryEntriesFor(period);
+  const periodKey = salaryPeriodKey(period);
   __lastClientBillEntries=Object.entries(byClient).map(([clientId,v])=>({clientId,...v}));
   const salaryEl=document.getElementById('dashSalary');
   // An HR that only sees pay: its own workers only, read-only, plus its

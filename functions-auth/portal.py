@@ -10,6 +10,10 @@ punch_action(db, body)            worker-punch.html; body.token is the link toke
                         the sites assigned to them (id, name, object, lat, lng,
                         radius) — never the rest of the firm
   savePunch             a punch for THIS worker only
+  myMonth               the worker's own punches for one month ('YYYY-MM') plus
+                        what the pay functions need to estimate the pay: their
+                        own rates (WORKER_PAY_FIELDS) and their sites' worker-pay
+                        rates (CLIENT_PAY_FIELDS) — never billing, GPS or others
   savePushSubscription  stored for later (push reminders are off)
   logError              the page's error telemetry
 
@@ -157,6 +161,48 @@ def _save_punch(db, tid, w, data):
     return {"ok": True, "id": doc["id"]}
 
 
+MY_PUNCH_FIELDS = ("id", "type", "time", "date", "clientId")
+WORKER_PAY_FIELDS = ("payMode", "hourlyRate", "regRate", "otRate", "shabbatRate", "clientRates",
+                     "dayOverrides", "travelAllowance", "travelMonthly")
+
+
+def _my_month(db, tid, w, month):
+    """The worker's own punches of one month (a day of margin each side for
+    the device's time zone; the page keeps the month's own punches, as
+    Accounting does) and the pay inputs for the estimate on "My Hours and Pay"."""
+    month = str(month or "")
+    try:
+        start = datetime.strptime(month + "-01", "%Y-%m-%d").replace(tzinfo=TZ)
+    except ValueError:
+        return {"error": "Bad month"}
+    nxt = (start + timedelta(days=32)).replace(day=1)
+    t_ref = db.collection("tenants").document(tid)
+    q = (t_ref.collection("punches").where(filter=FieldFilter("workerId", "==", w.id))
+         .where(filter=FieldFilter("ts", ">=", start - timedelta(days=1)))
+         .where(filter=FieldFilter("ts", "<", nxt + timedelta(days=1))))
+    punches = []
+    for p in q.stream():
+        d = p.to_dict() or {}
+        ts = d.get("ts")
+        if not hasattr(ts, "isoformat"):
+            continue
+        e = {k: d.get(k) for k in MY_PUNCH_FIELDS if d.get(k) is not None}
+        e.setdefault("id", p.id)
+        e["workerId"] = w.id
+        e["ts"] = ts.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        punches.append(e)
+    wd = w.to_dict() or {}
+    pay = {k: wd.get(k) for k in WORKER_PAY_FIELDS if wd.get(k) is not None}
+    pay["id"] = w.id
+    clients = []
+    for cid in wd.get("clientIds") or []:
+        c = t_ref.collection("clients").document(str(cid)).get()
+        if c.exists:
+            cd = c.to_dict() or {}
+            clients.append({"id": c.id, **{k: cd.get(k) for k in CLIENT_PAY_FIELDS if cd.get(k) is not None}})
+    return {"punches": punches, "pay": pay, "clients": clients}
+
+
 def punch_action(db, body):
     action = str(body.get("action") or "")
     if action == "logError":
@@ -172,6 +218,8 @@ def punch_action(db, body):
         return _load(db, tid, w)
     if action == "savePunch":
         return _save_punch(db, tid, w, body.get("data"))
+    if action == "myMonth":
+        return _my_month(db, tid, w, body.get("month"))
     if action == "savePushSubscription":
         sub = body.get("subscription") or {}
         endpoint = str(sub.get("endpoint") or "")

@@ -64,6 +64,9 @@ The tab is gated by the `accounting` permission. For an HR that permission gives
 
 ### Salary (`renderSalary()`)
 
+The per-worker and per-client figures come from `salaryEntriesFor(period)` → `{byWorker, byClient}` (byWorker entries: `worker, workerId, hours, days, regH, otH, shabH, total, travel, warns, clientHours, countedDays, daysUsed`); `renderSalary()` draws them and the accountant report reuses them. The worker's own "My Hours and Pay" on the punch page repeats the same steps for one month ([punch.md](punch.md)).
+
+
 - **Period** (`#salaryPeriod`, filled by `fillSalaryPeriodSelect()` from `salaryExportPeriodOptions()`): This Week (from Sunday), This Month, each of the 12 previous months (`m:YYYY-MM`), All Time. `onSalaryPeriodChange()` first loads the punches that period needs (`ensurePunchesSince(periodPunchStart(period))` — see [admin.md](admin.md)), then redraws.
 - **Calculation:**
   1. Punches are filtered by `ts` to the period and grouped per worker.
@@ -129,6 +132,7 @@ Uploading the hours (worker card) is in [workers.md](workers.md).
     - Excel — SheetJS, sheet "Salary";
     - PDF — a print page in a new window;
     - CSV.
+    - **Accountant report** (`'accountant'`, hidden for an HR that only sees pay) — `exportAccountantReport(period)`: an Excel file `accountant-<period>.xlsx` with the sheet "Summary" (title, firm name, then one row per worker from `salaryEntriesFor`: Worker, ID / Passport, Supplier, Pay mode, Rate, Days, Regular / Overtime / Shabbat / Total hours, Pay, Travel, Total, Bank, Branch, Account, Warnings, and a total row) and the sheet "Shifts" (the rows of `buildSalaryExportRows`).
   
   `exportSalaryCSV()` = CSV without the picker.
 - **Hours of one worker:** `getWorkerMonthShifts(workerId, year, month, workerLog?)` → `[{date, inTime, outTime, hours}]` for shifts that *start* in that month. `exportShiftsDetail(workerId, year, month, 'excel'|'pdf')` writes Date / In / Out / Hours plus a total. Opened from the worker card ([workers.md](workers.md)).
