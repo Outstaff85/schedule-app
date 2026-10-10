@@ -69,7 +69,7 @@ th{color:var(--text2);font-size:11px;text-transform:uppercase;}
 /* Hebrew has no capitals: no letter-spacing (made for spaced-out uppercase Latin). */
 html[lang="he"] *{letter-spacing:normal !important;}
 .tables-view-toggle{display:none !important;}
-@media (max-width:700px){ .tables-view-toggle{display:inline-flex !important;} body.tables-list table.mtable{display:block;overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch;} }
+@media (max-width:700px){ .tables-view-toggle{display:inline-flex !important;} }
 </style>
 </head>
 <body>
@@ -693,7 +693,7 @@ function clientName(id){ const c=myClients.find(x=>x.id===id); return c?c.name:'
 function renderWorkersList(){
   const el=document.getElementById('workersList');
   if(!myWorkers.length){ el.innerHTML=`<div style="color:var(--text3);padding:16px 0">${tr('No workers yet')}</div>`; return; }
-  el.innerHTML=`<table><thead><tr><th>${tr('Name')}</th><th>${tr('Phone')}</th><th>${tr('Object')}</th><th>${tr('Commission')}</th><th></th></tr></thead><tbody class="workers-rows"></tbody></table>`;
+  el.innerHTML=`<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table><thead><tr><th>${tr('Name')}</th><th>${tr('Phone')}</th><th>${tr('Object')}</th><th>${tr('Commission')}</th><th></th></tr></thead><tbody class="workers-rows"></tbody></table></div>`;
   renderPagedList(el.querySelector('.workers-rows'), 'workers', '', myWorkers, w=>`<tr class="tap-edit" onclick="if(isPlainTap(event,this))openEditWorkerModal('${w.id}')">
       <td>${esc(w.name)}</td>
       <td>${esc(w.phone||'')}</td>
