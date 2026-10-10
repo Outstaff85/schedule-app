@@ -4391,6 +4391,14 @@ function getSession(){
   }catch(e){ return null; }
 }
 function saveSession(s){ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
+// A supplier never uses this app: its login is written as the supplier
+// portal's session (supplier-portal.html, key supplierPortal_session) and the
+// page moves to /supplier, already signed in.
+function goToSupplierPortal(u){
+  try{ localStorage.setItem('supplierPortal_session', JSON.stringify({uid:u.uid, role:'supplier', tenantId:u.tenantId, supplierId:u.supplierId, username:u.username})); }catch(e){}
+  clearSession();
+  location.replace('supplier-portal.html');
+}
 function clearSession(){ localStorage.removeItem(SESSION_KEY); }
 async function logout(){
   try{ localStorage.removeItem(FIRMS_CACHE_KEY); }catch(e){}
@@ -4484,6 +4492,9 @@ async function submitLogin(){
     try{ fb = await backend.login(username, password); }
     catch(e){ errEl.textContent = 'No network — try again'; return; }
     if(!fb || fb.error){ errEl.textContent = (fb && fb.error) || 'Could not sign in'; return; }
+    // A supplier login belongs in the supplier portal: hand the session over
+    // (same origin, same Firebase sign-in) and go there.
+    if(fb.role === 'supplier'){ goToSupplierPortal(fb); return; }
     try{ sessionStorage.setItem('pendingLoginTiming', JSON.stringify({t0, loginMs:Date.now()-t0, pingMs:window.__pingMs==null?null:window.__pingMs, pingDone:window.__pingMs!=null})); }catch(e){}
     saveSession({
       uid: fb.uid, role: fb.role, tenantId: fb.tenantId, username: fb.username, tenantProfile: fb.tenantProfile,
@@ -4590,6 +4601,7 @@ function cacheTenantProfile(tenantId, profile){
 // Called once at startup in place of the old unconditional init block.
 function gateApp(runInitApp){
   let s = getSession();
+  if(s && s.role === 'supplier'){ goToSupplierPortal(s); return; }
   if(!s){
     document.getElementById('loginScreen').style.display = 'flex';
     // Wake a cold login function while the user types, so the login request
