@@ -583,6 +583,8 @@
   .workers-group-title{grid-column:1/-1;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--text2);margin-top:6px}
   .quad-side-handle { stroke: #fff; stroke-width: 5; stroke-linecap: round; filter: drop-shadow(0 0 2px rgba(0,0,0,.6)); }
 
+/* Hebrew has no capitals: no letter-spacing (made for spaced-out uppercase Latin). */
+html[lang="he"] *{letter-spacing:normal !important;}
 </style>
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="icons/tabler-icons.css">
@@ -1528,7 +1530,7 @@ function cardTables(root){
 // there is one (no wait at startup), refreshed from i18n/<lang>.json; a newer
 // file redraws the page. English needs no file.
 async function loadI18n(lang){
-  const set = (l, d) => { I18N_LANG = l; I18N = d || {}; };
+  const set = (l, d) => { I18N_LANG = l; I18N = d || {}; document.documentElement.lang = l; };
   if(!I18N_LANGS[lang] || lang === 'en'){ set('en', {}); return; }
   let cached = null;
   try{ cached = JSON.parse(localStorage.getItem('i18n_' + lang) || 'null'); }catch(e){}
@@ -2478,9 +2480,12 @@ function cardMissingScanRowsHtml(w,wi){
   const keys=workerMissingScanKeys(w);
   if(!keys.length) return '';
   const can=!!w.assetsFileId;
-  return `<div dir="rtl" style="display:flex;flex-direction:column;gap:6px;flex-basis:100%">${keys.map(k=>`
-    <div id="cardMiss_${k}" ${can?`onclick="findScanFieldFromCard(${wi},'${k}')"`:''} style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px dashed var(--amber);border-radius:8px;color:var(--amber);font-size:12px;${can?'cursor:pointer':''}">
-      <i class="ti ti-${can?'search':'alert-triangle'}"></i><b>${esc(scanFieldLabel(k,w.docType))}</b> — לא נסרק${can?' · לחצו לחיפוש בסריקה':''}</div>`).join('')}</div>`;
+  // A long list shows its first 3 rows; the rest open with "Show N more".
+  const SHOW=3, more=keys.length-SHOW;
+  return `<div dir="rtl" style="display:flex;flex-direction:column;gap:6px;flex-basis:100%">${keys.map((k,i)=>`
+    <div id="cardMiss_${k}" ${can?`onclick="findScanFieldFromCard(${wi},'${k}')"`:''} style="display:${i<SHOW||more===1?'flex':'none'};align-items:center;gap:8px;padding:7px 10px;border:1px dashed var(--amber);border-radius:8px;color:var(--amber);font-size:12px;${can?'cursor:pointer':''}" ${i>=SHOW?'data-miss-more':''}>
+      <i class="ti ti-${can?'search':'alert-triangle'}"></i><b>${esc(scanFieldLabel(k,w.docType))}</b> — לא נסרק${can?' · לחצו לחיפוש בסריקה':''}</div>`).join('')}${more>1?`
+    <button type="button" class="btn sm" dir="ltr" style="align-self:flex-start;color:var(--amber)" onclick="event.stopPropagation();this.parentElement.querySelectorAll('[data-miss-more]').forEach(r=>r.style.display='flex');this.remove()"><i class="ti ti-chevron-down"></i> ${esc(tr('Show {0} more missing fields',{0:more}))}</button>`:''}</div>`;
 }
 async function findScanFieldFromCard(wi,key){
   const w=workers[wi], row=document.getElementById('cardMiss_'+key);
@@ -4297,7 +4302,7 @@ function renderClientsPage(){
       <div class="client-card-actions">
 
         <button class="btn sm" style="background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)" onclick="openManualPunch('${c.id}')"><i class="ti ti-clock"></i> ${tr('Punch Clock')}</button>
-        <button class="btn sm red" onclick="deleteClient('${c.id}')">${tr('&#x2715; Remove')}</button>
+        <button class="btn sm" onclick="deleteClient('${c.id}')" title="${tr('Remove')}" aria-label="${tr('Remove')}" style="color:#ff6b78;margin-left:auto"><i class="ti ti-trash"></i></button>
       </div>
     </div>`;
   },{grid:true});
@@ -4377,7 +4382,7 @@ function renderSuppliersPage(){
       ${s.bank?`<div style="font-size:12px;color:var(--text2)"><i class="ti ti-building-bank"></i> ${esc(s.bank)}${s.bankBranch?' · branch '+esc(s.bankBranch):''}${s.accountNumber?' · '+esc(s.accountNumber):''}</div>`:''}
       <div style="font-size:12px;color:var(--text2)"><strong style="color:var(--text)">${tr('Workers:')}</strong> ${assigned.length?assigned.map(w=>`<span style="color:${WORKER_COLORS[w.colorIdx%8].text}">${esc(w.name)}</span>`).join(', '):'None assigned'}</div>
       <div class="client-card-actions">
-        <button class="btn sm red" onclick="deleteSupplier('${s.id}')">${tr('&#x2715; Remove')}</button>
+        <button class="btn sm" onclick="deleteSupplier('${s.id}')" title="${tr('Remove')}" aria-label="${tr('Remove')}" style="color:#ff6b78;margin-left:auto"><i class="ti ti-trash"></i></button>
       </div>
     </div>`;
   },{grid:true});
@@ -5275,8 +5280,8 @@ function renderAdminUsersRows(el, users){
     const row = u => {
       const sup = u.role==='supplier' ? (suppliers||[]).find(s=>s.id===u.supplierId) : null;
       const permsLabel = (u.role!=='staff' && u.role!=='hr') ? '' : (u.permissions==='*' ? 'Full access' : (Array.isArray(u.permissions)?u.permissions.join(', '):'—'));
-      const hrLine = u.role==='hr' ? `<div style="font-size:12px;color:var(--text2)">${tr('{0} workers{1}',{0:(hrWorkerCount(u.id)),1:(u.ownOnly===false?' · sees all workers':'')})}</div>`
-        : u.role==='supplier' && u.supplierId ? `<div style="font-size:12px;color:var(--text2)">${tr('{0} workers{1}',{0:(workers.filter(w => w.supplierId===u.supplierId).length),1:''})}</div>` : '';
+      const hrLine = u.role==='hr' ? `<div style="font-size:12px;color:var(--text2)">${(hrWorkerCount(u.id)===1?tr('1 worker{1}',{1:(u.ownOnly===false?' · '+tr('sees all workers'):'')}):tr('{0} workers{1}',{0:(hrWorkerCount(u.id)),1:(u.ownOnly===false?' · '+tr('sees all workers'):'')}))}</div>`
+        : u.role==='supplier' && u.supplierId ? `<div style="font-size:12px;color:var(--text2)">${(n => n===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:n,1:''}))(workers.filter(w => w.supplierId===u.supplierId).length)}</div>` : '';
       return `<div class="tap-edit" onclick="if(isPlainTap(event,this))openEditUserForm('${esc(u.id)}')" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);${u.active===false?'opacity:0.55':''}">
         <div>
           <div style="font-weight:600">${esc(u.fullName||u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(tr(USER_ROLE_LABELS[u.role]||u.role))})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">'+tr('inactive')+'</span>':''}</div>
@@ -7273,7 +7278,7 @@ function renderWorkerPay(){
       ?[esc(w.bank||''),w.bankBranch?tr('branch {b}',{b:esc(w.bankBranch)}):'',w.bankAccountNumber?tr('acc. {a}',{a:esc(w.bankAccountNumber)}):''].filter(Boolean).join(' · ')
       :'<span style="color:var(--amber)">'+esc(tr('no bank details'))+'</span>';
     const period=e
-      ? `${esc(periodLbl)}: ${esc(tr('{n} days · {h} h · pay {pay} · travel {travel}',{n:e.daysUsed,h:Math.round(e.hours*100)/100,pay:money(e.total),travel:money(e.travel)}))} · <b style="color:var(--text)">${esc(tr('total {t}',{t:money(e.total+e.travel)}))}</b>`
+      ? `${esc(periodLbl)}: ${esc((e.daysUsed===1?tr('1 day · {h} h · pay {pay} · travel {travel}',{n:e.daysUsed,h:Math.round(e.hours*100)/100,pay:money(e.total),travel:money(e.travel)}):tr('{n} days · {h} h · pay {pay} · travel {travel}',{n:e.daysUsed,h:Math.round(e.hours*100)/100,pay:money(e.total),travel:money(e.travel)})))} · <b style="color:var(--text)">${esc(tr('total {t}',{t:money(e.total+e.travel)}))}</b>`
       : `<span style="color:var(--text3)">${esc(periodLbl)}: ${esc(tr('no shifts'))}</span>`;
     return `<div class="wcard tap-edit" onclick="if(isPlainTap(event,this))openPayModal('${esc(w.id)}')" title="${edit?esc(tr('Edit pay')):esc(tr('View pay'))}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">

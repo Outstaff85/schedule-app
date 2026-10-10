@@ -66,6 +66,8 @@ th{color:var(--text2);font-size:11px;text-transform:uppercase;}
   table.mtable td[colspan]{justify-content:center;}
   table.mtable td[colspan]::before{display:none;}
 }
+/* Hebrew has no capitals: no letter-spacing (made for spaced-out uppercase Latin). */
+html[lang="he"] *{letter-spacing:normal !important;}
 </style>
 </head>
 <body>
@@ -175,7 +177,7 @@ function applyI18n(root){
 }
 function uiLocale(){ return {he:'he-IL', ru:'ru-RU'}[I18N_LANG] || 'en-GB'; }
 async function loadI18n(lang){
-  const set = (l, d) => { I18N_LANG = l; I18N = d || {}; };
+  const set = (l, d) => { I18N_LANG = l; I18N = d || {}; document.documentElement.lang = l; };
   if(!I18N_LANGS[lang] || lang === 'en'){ set('en', {}); return; }
   let cached = null;
   try{ cached = JSON.parse(localStorage.getItem('i18n_' + lang) || 'null'); }catch(e){}
