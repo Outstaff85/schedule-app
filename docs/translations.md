@@ -30,7 +30,14 @@ Form 101 is outside this system: its labels in the worker modal and the firm for
   - a changed firm language (saved here, or seen in a refreshed profile, `cacheTenantProfile`) switches at once.
 - **Dates** in translated parts use the language's locale, e.g. the month names of the salary periods (`toLocaleDateString(I18N_LANG)`).
 
-Done so far: the **Accounting tab**, including its help (ⓘ) texts, pay modal, messages and exports, and the firm form's Language field. The other tabs, the supplier portal and the punch page are still plain English: they are wrapped next.
+Done so far: **the whole manager app** (`schedule-manager.html`) — every tab, modal, toast, confirm, form error, help text and export. Not yet: the supplier portal and the worker punch page (next stage).
+
+More rules the manager app follows:
+- **Dates:** month and weekday names use `uiLocale()` (`en-GB` / `he-IL` / `ru-RU`); numeric dates stay `dd/mm/yyyy` (they are also data, e.g. a punch's `date`).
+- **Day names** (`DAYS`: Sun … Sat) are keys: shown as `tr(DAYS[i])`.
+- **Labels kept in a map** (`stMetaMap`, `WORKER_DOC_TYPES`, `USER_ROLE_LABELS`, `ADMIN_PANE_SUBTITLES`, `TIMING_KIND_LABEL`, `SALARY_PERIOD_LABELS`, `ACCOUNTING_HELP`) hold English; the place that shows one wraps it in `tr()`.
+- **Messages from the server** (`json.error`) are English: `showToast()` passes every text through `tr()` (an unknown text stays as it is), and form error lines use `tr((json&&json.error)||'')`. Their Hebrew is in `he.json` like any other text; `check.js` counts the texts of `functions-auth/*.py` and `firestore-backend.js` as used.
+- **Wrapping a new screen:** `tests/i18n/check.js` sees `tr('…')` literals and `data-i18n*`; a text shown through a variable must be added to the dictionaries by hand.
 
 ## Dictionaries (`i18n/<lang>.json`)
 
