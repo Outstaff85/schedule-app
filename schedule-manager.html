@@ -208,55 +208,30 @@
 
   /* Export dropdown */
   .export-dropdown{position:relative;}
-  .sched-head-actions{display:flex;align-items:center;gap:8px;justify-content:flex-end;}
-  @media (max-width:768px){ .sched-head-actions{width:100%;} .sched-head-actions input{flex:1;min-width:0;} }
   .dropdown-menu{position:absolute;top:100%;right:0;margin-top:4px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:6px;z-index:50;min-width:200px;display:none;}
   .dropdown-menu.open{display:block;}
   .dropdown-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--radius-sm);font-size:15px;cursor:pointer;color:var(--text2);transition:all 0.15s;}
   .dropdown-item:hover{background:var(--bg3);color:var(--text);}
 
   /* Stats */
-  .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:20px;}
   .stat-card{background:var(--bg2);border-radius:var(--radius);padding:12px 14px;}
   .stat-label{font-size:14px;color:var(--text2);margin-bottom:4px;}
   .stat-val{font-size:22px;font-weight:600;color:var(--text);letter-spacing:-0.5px;font-family:'DM Mono',Consolas,monospace;}
   .stat-unit{font-size:15px;color:var(--text2);font-weight:400;}
 
   /* Gantt */
-  .gantt-wrap{background:var(--bg2);border-radius:var(--radius);overflow:hidden;user-select:none;}
-  .gantt-header{display:grid;background:var(--bg3);border-bottom:1px solid var(--border);}
-  .gantt-header-cell{padding:8px 8px;font-size:14px;font-weight:600;color:var(--text2);text-align:center;text-transform:uppercase;letter-spacing:0.5px;display:flex;flex-direction:column;align-items:center;gap:2px;}
-  .gantt-header-cell:first-child{text-align:left;align-items:flex-start;justify-content:center;}
-  .gantt-header-cell:last-child{border-right:none;}
   .day-name{display:inline-flex;align-items:center;gap:5px;}
   .day-date{font-family:'DM Mono',Consolas,monospace;font-size:11px;font-weight:500;color:var(--text3);letter-spacing:0;text-transform:none;}
   .day-hebrew{font-size:13px;color:var(--accent);font-weight:700;}
-  .gantt-row{display:grid;border-bottom:1px solid rgba(255,255,255,0.04);transition:background 0.1s;position:relative;}
-  .gantt-row:last-child{border-bottom:none;}
+  .gantt-row{position:relative;}
   .gantt-row.drag-over{background:rgba(79,142,247,0.07)!important;outline:2px dashed var(--accent);outline-offset:-2px;}
   .gantt-row.dragging{opacity:0.4;}
-  .gantt-name-cell{display:flex;align-items:center;gap:8px;padding:10px 12px;font-size:15px;font-weight:500;color:var(--text);}
   .drag-handle{color:var(--text3);font-size:16px;cursor:grab;flex-shrink:0;}
-  .gantt-day-cell{position:relative;height:68px;cursor:pointer;overflow:hidden;padding:5px;}
-  .gantt-day-cell:last-child{border-right:none;}
-  .gantt-day-cell:hover{background:rgba(255,255,255,0.025);}
-  .gantt-day-cell:nth-child(3),.gantt-day-cell:nth-child(5),.gantt-day-cell:nth-child(7){background:rgba(255,255,255,0.018);}
-  .gantt-day-cell:nth-child(3):hover,.gantt-day-cell:nth-child(5):hover,.gantt-day-cell:nth-child(7):hover{background:rgba(255,255,255,0.04);}
-  .shift-bar{height:100%;border-radius:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:16px;font-weight:500;cursor:pointer;text-align:center;line-height:1.2;transition:opacity 0.15s,transform 0.1s;font-family:'DM Mono',Consolas,monospace;}
-  .shift-bar:hover{opacity:0.85;}
-  .shift-bar.work{background:var(--green-bg);color:var(--green);}
-  .shift-bar.off{background:var(--amber-bg);color:var(--amber);font-family:'DM Sans','Heebo',sans-serif;}
-  .shift-bar.midnight{background:var(--blue-bg);color:var(--blue);}
-  .shift-bar.dated{outline:1.5px dashed currentColor;outline-offset:-3px;position:relative;}
-  .shift-bar.dated::after{content:'';position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:currentColor;}
-  .legend{display:flex;align-items:center;gap:16px;margin-top:12px;flex-wrap:wrap;}
-  .legend-item{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text2);}
-  .legend-dot{width:10px;height:10px;border-radius:3px;}
 
   /* Modal */
   .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:100;align-items:center;justify-content:center;}
   .overlay.open{display:flex;}
-  .tap-edit{cursor:pointer;} /* a tap opens the item's card, a double click / long press its editor (tapEdit, longPress) */
+  .tap-edit{cursor:pointer;} /* a tap opens the item's card, or its editor when it has none (tapEdit) */
   @media (pointer:coarse){ .tap-edit{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;} #workerCardModal{-webkit-touch-callout:none;} }
   .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto;}
   /* The app's template (variant 3, user request 2026-10-11): no boxes — big
@@ -454,31 +429,19 @@
     .page-header { flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 12px; }
     .page-title  { font-size: 17px; }
     .page-sub    { font-size: 12px; }
-    #datePicker  { width: 100%; font-size: 14px; padding: 8px 10px; }
 
     /* ── Stats row ── */
-    .stats-row  { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
     .stat-card  { padding: 10px 12px; }
     .stat-val   { font-size: 20px; }
     .stat-label { font-size: 11px; }
     .stat-unit  { font-size: 12px; }
 
     /* ── Gantt ── */
-    .gantt-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .gantt-header,
-    .gantt-row  { grid-template-columns: 90px repeat(7, minmax(82px, 1fr)) !important; }
-    .gantt-header-cell { padding: 8px 4px; font-size: 10px; line-height: 1.3; }
-    .gantt-name-cell   { padding: 8px 6px; font-size: 12px; gap: 6px; }
-    .gantt-day-cell    { height: 60px; }
-    .shift-bar  { font-size: 11px; padding: 2px 3px; }
     .day-hebrew { font-size: 10px; }
     .drag-handle { display: none; }
     .worker-avatar { width: 22px; height: 22px; font-size: 9px; }
 
     /* ── Legend ── */
-    .legend { gap: 10px; margin-top: 8px; }
-    .legend-item { font-size: 11px; }
-    .legend-item:last-child { display: none; }
 
     /* ── Modals — full screen bottom sheet ── */
     .overlay { align-items: flex-end; }
@@ -523,12 +486,7 @@
 
   /* ── Phone only ── */
   @media (max-width: 480px) {
-    .stats-row  { grid-template-columns: repeat(2, 1fr); gap: 6px; }
     .stat-val   { font-size: 18px; }
-    .gantt-header,
-    .gantt-row  { grid-template-columns: 76px repeat(7, minmax(72px, 1fr)) !important; }
-    .gantt-day-cell { height: 56px; }
-    .shift-bar  { font-size: 10px; }
     .page-title { font-size: 15px; }
     .tab-btn    { font-size: 10px; padding: 5px 7px; }
     /* Stack titlebar actions */
@@ -539,22 +497,47 @@
   /* ── Loading spinner + progress bar (AI scan, Form 101 generation) ── */
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   .spin { display: inline-block; animation: spin 0.8s linear infinite; }
-  /* Errors / Timings: compact rows in one bordered box, summary cards. */
-  .log-box { background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius-sm); overflow: hidden; }
-  .log-row { position: relative; padding: 6px 36px 6px 10px; font-size: 12px; line-height: 1.4; border-top: 1px solid var(--border); }
-  .log-row:first-child { border-top: none; }
-  .log-meta { display: flex; flex-wrap: wrap; gap: 0 8px; color: var(--text3); font-size: 11px; }
-  .log-when { font-family: monospace; color: var(--text2); }
-  .log-main { color: var(--text); }
-  .log-sub { color: var(--text2); font-size: 11px; }
-  .log-copy { position: absolute; top: 5px; right: 5px; padding: 2px 5px !important; min-width: 0; min-height: 0 !important; font-size: 11px !important; }
-  .tm-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-bottom: 14px; }
-  .tm-card { background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius-sm); padding: 8px 10px; font-size: 12px; }
-  .tm-card-head { display: flex; justify-content: space-between; gap: 6px; font-weight: 600; }
-  .tm-card-head span { color: var(--text3); font-weight: 400; }
-  .tm-card-vals { margin: 3px 0 4px; color: var(--text2); }
-  .tm-card-vals b { font-size: 15px; color: var(--text); }
-  .tm-pill { display: inline-block; background: var(--bg3); border-radius: 10px; padding: 1px 7px; margin: 0 4px 3px 0; font-size: 10.5px; color: var(--text2); }
+  /* Admin in the template (variant 3): a line wraps its text when the whole
+     message matters (errors); a small icon button at a line's right (copy). */
+  .t3-line.wrap .n b,.t3-line.wrap .n small{white-space:normal;word-break:break-word}
+  .t3-ib{background:none;border:0;color:var(--text3);font-size:15px;cursor:pointer;padding:4px 6px;flex:none}
+  .t3-ib:hover{color:var(--text)}
+  .t3-line.off{opacity:.6}
+  /* Schedule, variant 6: the week navigator, a line per worker, its days. */
+  .sched-nav{display:flex;align-items:center;gap:6px;margin:0 0 6px}
+  .sched-arrow{width:38px;height:38px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none}
+  .sched-week{flex:1;text-align:center;position:relative;cursor:pointer;min-width:0}
+  .sched-week b{display:block;font-size:16px}
+  .sched-week span{display:block;font-size:11px;color:var(--text2)}
+  .sched-week input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+  .sched-line .t3-chev{transition:transform .15s}
+  .sched-line.open .t3-chev{transform:rotate(180deg)}
+  .sched-day{display:flex;justify-content:space-between;align-items:center;margin:0 0 2px 40px;padding:6px 10px 6px 12px;border-left:2px solid var(--c);font-size:13px;cursor:pointer;border-radius:0 6px 6px 0}
+  .sched-day:hover{background:rgba(255,255,255,.04)}
+  .sched-day.today span{color:var(--accent);font-weight:700}
+  .sched-day b{font-family:'DM Mono',monospace;font-size:12px;font-weight:600}
+  .sched-dated{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);vertical-align:middle}
+
+  /* Today (variant A): a section folds with the arrow at its right; a
+     figure picked as a filter is highlighted, the other sections hidden. */
+  .dash-sec{cursor:pointer;user-select:none}
+  .t3-chev{color:var(--text3);font-size:15px;margin-left:4px;transition:transform .15s}
+  .dash-fold>.t3-sec .t3-chev{transform:rotate(-90deg)}
+  .dash-fold>.t3-sec+div{display:none}
+  .dash-off{display:none!important}
+  .t3-stats>div.on{background:var(--bg3);border-radius:8px;box-shadow:inset 0 -2px 0 var(--accent)}
+  .t3-stats>div{padding:3px 6px;margin:-3px -6px}
+  .dash-filter-note{font-size:11px;color:var(--accent);margin:-8px 2px 8px}
+  .dash-filter-note a{color:inherit;text-decoration:underline;cursor:pointer}
+  /* Accounting's section head in one line (variant A): title, period as
+     text with its arrow, icon buttons; the search field opens under it. */
+  .acc-head{display:flex;align-items:center;gap:2px;margin-bottom:8px}
+  .acc-head-title{flex:1;min-width:0;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:4px;white-space:nowrap;overflow:hidden}
+  .acc-period{background:none;border:0;color:var(--accent);font-weight:600;font-size:13px;padding:4px 2px;outline:none;cursor:pointer;max-width:45%}
+  .acc-period option{background:var(--bg2);color:var(--text)}
+  .acc-search{width:100%;margin:0 0 10px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none}
+  .t3-line.sub{margin-left:24px;padding:5px 8px 5px 10px;font-size:12px}
+  .t3-sec .btn{margin-left:8px}
   /* A worker-modal field the scan left empty: tap it to search the scan for it. */
   .scan-missing { border-color: var(--amber) !important; box-shadow: 0 0 0 2px rgba(245,166,35,0.25); cursor: pointer; }
   .scan-busy { opacity: 0.6; }
@@ -621,10 +604,13 @@
   .contract-notice span{flex:1}
   .contract-notice button{border:0;background:none;color:inherit;font:inherit;cursor:pointer;padding:2px 4px}
   .contract-notice .go{text-decoration:underline}
-  /* A pane's top row: period/select + buttons; on a phone the select takes
-     the first line and the buttons share the second equally. */
-  .pane-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:10px}
-  .pane-toolbar select{flex:1;min-width:150px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none}
+  /* A pane's top row: the period select and icon buttons, one line on a
+     phone too. */
+  .pane-toolbar{display:flex;align-items:center;gap:4px;margin-bottom:10px}
+  .pane-toolbar select{flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none}
+  .pane-toolbar .t3-ib{font-size:18px;padding:6px 7px}
+  .pane-toolbar .t3-ib.red{color:var(--red);opacity:.75}
+  .pane-toolbar .t3-ib.red:hover{opacity:1}
   /* ── Phone (≤ 700 px): the tabs become a bar at the bottom of the screen,
      and the tables of Accounting and Admin become one card per row
      (cardTables() puts each column's header on its cells as data-label). ── */
@@ -651,23 +637,21 @@
     body:not(.tables-list) table.mtable td[colspan]{justify-content:center;}
     body:not(.tables-list) table.mtable td[colspan]::before{display:none;}
   }
-  /* Admin section buttons; head actions. */
-  .admin-pane-bar{display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border2);padding-bottom:10px;flex-wrap:wrap}
+  /* Admin sections and the punch log's views: text tabs in one line
+     (scrolls sideways on a narrow phone), the open one highlighted. */
+  .admin-pane-bar,.admin-log-bar{display:flex;gap:2px;margin-bottom:14px;overflow-x:auto;scrollbar-width:none;border-bottom:1px solid var(--border);padding-bottom:6px}
+  .admin-pane-bar::-webkit-scrollbar,.admin-log-bar::-webkit-scrollbar{display:none}
+  .admin-pane-bar .btn,.admin-log-bar .btn{background:none;border:0;color:var(--text2);white-space:nowrap;padding:6px 10px;border-radius:8px;font-weight:600}
+  .admin-pane-bar .btn.accent,.admin-log-bar .btn.accent{background:var(--bg3);color:var(--text)}
+  .admin-log-bar{border-bottom:0;margin-bottom:8px;align-items:center}
+  .admin-log-bar .workers-count{margin-left:auto;white-space:nowrap}
   .head-actions{display:flex;gap:8px}
-  .admin-log-bar{display:flex;align-items:center;gap:6px;margin-bottom:10px}
-  .admin-log-bar .workers-count{margin-left:auto}
   @media (max-width:700px){
     .workers-head .workers-actions,.page-header .head-actions{width:100%}
     .workers-head .workers-actions .btn,.page-header .head-actions .btn{flex:1;justify-content:center;min-height:40px}
     .filters-grid{grid-template-columns:1fr 1fr}
     .filters-grid .filter-field:last-child:nth-child(odd){grid-column:1/-1}
     .filters-grid .filter-cap{display:none}
-    .pane-toolbar select{flex-basis:100%}
-    .pane-toolbar .btn{flex:1;justify-content:center;min-height:36px}
-    .admin-pane-bar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
-    .admin-pane-bar .btn{justify-content:center;padding:7px 4px}
-    #adminStats{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:6px!important;margin-bottom:12px!important}
-    #adminStats .stat-card{padding:8px 6px}
   }
   .view-toggle button{background:var(--bg3);border:none;color:var(--text2);padding:6px 10px;cursor:pointer;font-size:15px;line-height:1}
   .view-toggle button+button{border-left:1px solid var(--border2)}
@@ -694,6 +678,11 @@
 html[lang="he"] *{letter-spacing:normal !important;}
 .tables-view-toggle{display:none !important;}
 @media (max-width:700px){ .tables-view-toggle{display:inline-flex !important;} .page-header{position:relative;} .page-header > .tables-view-toggle{position:absolute;top:0;right:0;} .page-header:has(> .tables-view-toggle) > div:first-child{padding-right:96px;} }
+
+/* A window open: the page behind it does not scroll, and a scroll inside the
+   window never carries over to the page (swipe down closes it on a phone). */
+body:has(.overlay.open){overflow:hidden}
+.overlay,.overlay>.modal{overscroll-behavior:contain}
 </style>
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="icons/tabler-icons.css">
@@ -772,36 +761,38 @@ html[lang="he"] *{letter-spacing:normal !important;}
         </div>
       </div>
 
-      <!-- The day in figures (template 3); a tap on a figure jumps to its list. -->
+      <!-- The day in figures (template 3): a tap on a figure shows only its
+           list, a second tap (or "Show all") everything again (variant A). -->
       <div class="t3-stats" id="dashStats"></div>
+      <div id="dashFilterNote" class="dash-filter-note" style="display:none"></div>
 
       <!-- Missing from shift -->
-      <div id="dashMissingWrap">
-        <div class="t3-sec"><i class="ti ti-alert-triangle" style="color:var(--red)"></i> <span data-i18n>Should Be Here (Not Clocked In)</span><em id="dashMissingN"></em></div>
+      <div id="dashMissingWrap" data-sec="missing">
+        <div class="t3-sec dash-sec" onclick="toggleDashSec('missing')"><i class="ti ti-alert-triangle" style="color:var(--red)"></i> <span data-i18n>Should Be Here (Not Clocked In)</span><em id="dashMissingN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
         <div id="dashMissing"></div>
       </div>
 
       <!-- On-site now -->
-      <div id="dashOnSiteWrap">
-        <div class="t3-sec"><i class="ti ti-map-pin" style="color:var(--green)"></i> <span data-i18n>On Site Now</span><em id="dashOnSiteN"></em></div>
+      <div id="dashOnSiteWrap" data-sec="onsite">
+        <div class="t3-sec dash-sec" onclick="toggleDashSec('onsite')"><i class="ti ti-map-pin" style="color:var(--green)"></i> <span data-i18n>On Site Now</span><em id="dashOnSiteN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
         <div id="dashOnSite"></div>
       </div>
 
       <!-- Contract expiry warnings (hidden unless at least one worker is flagged) -->
-      <div style="display:none" id="dashExpiringWrap">
-        <div class="t3-sec"><i class="ti ti-id-badge" style="color:var(--amber)"></i> <span data-i18n>Work permit expiring</span><em id="dashExpiringN"></em></div>
+      <div style="display:none" id="dashExpiringWrap" data-sec="expiring">
+        <div class="t3-sec dash-sec" onclick="toggleDashSec('expiring')"><i class="ti ti-id-badge" style="color:var(--amber)"></i> <span data-i18n>Work permit expiring</span><em id="dashExpiringN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
         <div id="dashExpiring"></div>
       </div>
 
       <!-- Today's log -->
-      <div id="dashLogWrap">
-        <div class="t3-sec"><i class="ti ti-clipboard-text"></i> <span data-i18n>Today's Log</span><em id="dashLogN"></em></div>
+      <div id="dashLogWrap" data-sec="log">
+        <div class="t3-sec dash-sec" onclick="toggleDashSec('log')"><i class="ti ti-clipboard-text"></i> <span data-i18n>Today's Log</span><em id="dashLogN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
         <div id="dashLog"></div>
       </div>
 
       <!-- Workers by supplier (hidden when no supplier has workers) -->
-      <div id="dashSuppliersWrap">
-        <div class="t3-sec"><i class="ti ti-truck-delivery"></i> <span data-i18n>Workers by Supplier</span><em id="dashSuppliersN"></em></div>
+      <div id="dashSuppliersWrap" data-sec="suppliers">
+        <div class="t3-sec dash-sec" onclick="toggleDashSec('suppliers')"><i class="ti ti-truck-delivery"></i> <span data-i18n>Workers by Supplier</span><em id="dashSuppliersN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
         <div id="dashSuppliers"></div>
       </div>
       <div style="height:20px"></div>
@@ -811,32 +802,29 @@ html[lang="he"] *{letter-spacing:normal !important;}
       <div class="page-header">
         <div>
           <div class="page-title" data-i18n>Weekly Schedule</div>
-          <div class="page-sub" id="pageSub" data-i18n>Drag ⠿ to reorder · Click shifts to edit</div>
+          <div class="page-sub" id="pageSub"></div>
         </div>
-        <div class="sched-head-actions">
-          <input type="date" id="datePicker" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;font-family:'DM Sans','Heebo',Arial,sans-serif;outline:none;" onchange="onDateChange()">
-          <!-- Export of the Schedule week (Excel / PDF / JSON) -->
+      </div>
+      <!-- Variant 6 (user request 2026-10-11): ‹ week › with its totals (a tap
+           on the dates opens the date picker) and the export icon; a line per
+           worker with the week's sum; its arrow opens the 7 days, a day opens
+           the shift editor. -->
+      <div class="sched-nav">
+        <button type="button" class="sched-arrow" onclick="prevWeek()" title="Previous week" data-i18n-title="Previous week"><i class="ti ti-chevron-left"></i></button>
+        <label class="sched-week"><b id="schedWeekRange"></b><span id="schedWeekSum"></span>
+          <input type="date" id="datePicker" onchange="onDateChange()" aria-label="Week"></label>
+        <button type="button" class="sched-arrow" onclick="nextWeek()" title="Next week" data-i18n-title="Next week"><i class="ti ti-chevron-right"></i></button>
         <div class="export-dropdown" id="exportDropdown">
-          <button class="btn sm" onclick="toggleExportMenu()"><i class="ti ti-upload"></i> <span data-i18n>Export</span> <i class="ti ti-chevron-down" style="font-size:13px;opacity:0.7"></i></button>
+          <button type="button" class="t3-ib" onclick="toggleExportMenu()" title="Export" data-i18n-title="Export"><i class="ti ti-download"></i></button>
           <div class="dropdown-menu" id="exportMenu">
             <div class="dropdown-item" onclick="exportExcel()"><i class="ti ti-file-spreadsheet"></i> <span data-i18n>Excel (.xlsx)</span></div>
             <div class="dropdown-item" onclick="exportPDF()"><i class="ti ti-file-type-pdf"></i> PDF</div>
             <div class="dropdown-item" onclick="exportJSON()"><i class="ti ti-braces"></i> <span data-i18n>JSON</span></div>
           </div>
         </div>
-        </div>
       </div>
-      <div class="stats-row" id="statsRow"></div>
-      <div class="gantt-wrap">
-        <div class="gantt-header" id="ganttHeader"></div>
-        <div id="ganttBody"></div>
-      </div>
-      <div class="legend">
-        <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> <span data-i18n>Working</span></div>
-        <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div> <span data-i18n>Day off</span></div>
-        <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div> <span data-i18n>Crosses midnight</span></div>
-        <div class="legend-item" style="margin-left:auto;font-size:11px;color:var(--text3)" data-i18n>⠿ Drag to reorder · Ctrl+S to save</div>
-      </div>
+      <div class="t3-sec" id="ganttHeader"></div>
+      <div id="ganttBody"></div>
     </div>
 
     <div class="page-section" id="sectionWorkers">
@@ -937,14 +925,6 @@ html[lang="he"] *{letter-spacing:normal !important;}
           <div class="page-title"><i class="ti ti-lock"></i> <span data-i18n>Admin</span></div>
           <div class="page-sub" id="adminPageSub" data-i18n>Choose a section</div>
         </div>
-        <div class="view-toggle tables-view-toggle" role="group" aria-label="Layout">
-            <button type="button" class="tvList" onclick="setTablesView('list')" title="List" data-i18n-title="List"><i class="ti ti-list"></i></button>
-            <button type="button" class="tvCards" onclick="setTablesView('cards')" title="Cards" data-i18n-title="Cards"><i class="ti ti-layout-grid"></i></button>
-          </div>
-        <div class="head-actions" id="adminHeaderActions" style="display:none">
-          <button class="btn sm" onclick="ensureAllPunches().then(exportPunchCSV)"><i class="ti ti-upload" style="color:var(--green)"></i> <span data-i18n>Export CSV</span></button>
-          <button class="btn sm red" id="adminClearLogBtn" onclick="ensureAllPunches().then(clearPunchLog)"><i class="ti ti-trash"></i> <span data-i18n>Clear Log</span></button>
-        </div>
       </div>
 
       <!-- Admin sub-tab bar. Punch Log is always reachable (this whole tab is
@@ -963,13 +943,17 @@ html[lang="he"] *{letter-spacing:normal !important;}
       <div id="adminPane_none" style="color:var(--text3);font-size:13px;padding:8px 0" data-i18n>Choose a section above — nothing is loaded until you do.</div>
       <div id="adminPane_punchlog" style="display:none">
       <!-- Stats row -->
-      <div id="adminStats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:20px"></div>
+      <div id="adminStats" class="t3-stats"></div>
 
       <!-- View toggle + count -->
       <div class="admin-log-bar">
-        <button id="adminViewLog" class="btn sm" onclick="setAdminView('log')" style="background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)"><i class="ti ti-clipboard-text"></i> <span data-i18n>Log</span></button>
-        <button id="adminViewClients" class="btn sm" onclick="setAdminView('clients')"><i class="ti ti-users"></i> <span data-i18n>By Client</span></button>
+        <button id="adminViewLog" class="btn sm accent" onclick="setAdminView('log')"><span data-i18n>Log</span></button>
+        <button id="adminViewClients" class="btn sm" onclick="setAdminView('clients')"><span data-i18n>By Client</span></button>
         <span id="adminCount" class="workers-count"></span>
+        <span class="head-actions" id="adminHeaderActions" style="gap:0">
+          <button class="t3-ib" onclick="ensureAllPunches().then(exportPunchCSV)" title="Export CSV" data-i18n-title="Export CSV"><i class="ti ti-download"></i></button>
+          <button class="t3-ib" id="adminClearLogBtn" style="color:var(--red)" onclick="ensureAllPunches().then(clearPunchLog)" title="Clear Log" data-i18n-title="Clear Log"><i class="ti ti-trash"></i></button>
+        </span>
       </div>
 
       <!-- Filter bar (punch log view) -->
@@ -995,27 +979,10 @@ html[lang="he"] *{letter-spacing:normal !important;}
         <div id="adminClientLogs"></div>
       </div>
 
-      <!-- Log table -->
-      <div class="admin-table-wrap" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-        <table style="width:100%;border-collapse:collapse;min-width:760px" id="adminTable">
-          <thead>
-            <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)" data-i18n>Worker</th>
-              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)" data-i18n>Client</th>
-              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)" data-i18n>Type</th>
-              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)" data-i18n>Time</th>
-              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)" data-i18n>Date</th>
-              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)" data-i18n>Site</th>
-              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)" data-i18n>GPS</th>
-
-              <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)" data-i18n>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="adminTableBody"></tbody>
-        </table>
-        </div>
-        <div id="adminEmpty" style="display:none;text-align:center;padding:40px;color:var(--text3);font-size:14px" data-i18n>No punch records found</div>
+      <!-- Log: a line per punch (template 3) -->
+      <div class="admin-table-wrap">
+        <div id="adminTableBody"></div>
+        <div id="adminEmpty" class="t3-empty" style="display:none" data-i18n>No punch records found</div>
         <div id="adminOlder" style="display:none;justify-content:center;align-items:center;flex-wrap:wrap;gap:8px;padding:10px;font-size:12px;color:var(--text2)"></div>
       </div>
       </div>
@@ -1030,7 +997,7 @@ html[lang="he"] *{letter-spacing:normal !important;}
           <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> <span data-i18n>New firm</span></button>
         </div>
         <div id="superadminAccountingWrap" style="display:none;margin-bottom:16px"></div>
-        <div id="adminFirmsList" style="display:flex;flex-direction:column;gap:8px"></div>
+        <div id="adminFirmsList"></div>
       </div>
       <div id="adminPane_users" style="display:none">
         <div id="adminUsersWrap"></div>
@@ -1038,18 +1005,20 @@ html[lang="he"] *{letter-spacing:normal !important;}
       <div id="adminPane_errors" style="display:none">
         <div class="pane-toolbar">
           <select id="adminErrorsPeriod" onchange="loadErrorsList('adminErrorsList')"></select>
-          <button class="btn sm" onclick="copyAllErrors('adminErrorsList')"><i class="ti ti-copy"></i> <span data-i18n>Copy all</span></button>
-          <button class="btn sm" onclick="printLogPane('errors')"><i class="ti ti-printer"></i> <span data-i18n>Print</span></button>
-          <button class="btn sm" onclick="loadErrorsList('adminErrorsList')"><i class="ti ti-refresh"></i> <span data-i18n>Refresh</span></button>
+          <button class="t3-ib" onclick="copyAllErrors('adminErrorsList')" title="Copy all" data-i18n-title="Copy all"><i class="ti ti-copy"></i></button>
+          <button class="t3-ib" onclick="printLogPane('errors')" title="Print" data-i18n-title="Print"><i class="ti ti-printer"></i></button>
+          <button class="t3-ib" onclick="loadErrorsList('adminErrorsList')" title="Refresh" data-i18n-title="Refresh"><i class="ti ti-refresh"></i></button>
+          <button class="t3-ib red" onclick="resetLogs()" title="Reset: delete every error and measurement" data-i18n-title="Reset: delete every error and measurement"><i class="ti ti-trash"></i></button>
         </div>
         <div id="adminErrorsList"></div>
       </div>
       <div id="adminPane_timings" style="display:none">
         <div class="pane-toolbar">
           <select id="adminTimingsPeriod" onchange="loadTimingsPane()"></select>
-          <button class="btn sm" onclick="copyAllTimings()"><i class="ti ti-copy"></i> <span data-i18n>Copy all</span></button>
-          <button class="btn sm" onclick="printLogPane('timings')"><i class="ti ti-printer"></i> <span data-i18n>Print</span></button>
-          <button class="btn sm" onclick="loadTimingsPane()"><i class="ti ti-refresh"></i> <span data-i18n>Refresh</span></button>
+          <button class="t3-ib" onclick="copyAllTimings()" title="Copy all" data-i18n-title="Copy all"><i class="ti ti-copy"></i></button>
+          <button class="t3-ib" onclick="printLogPane('timings')" title="Print" data-i18n-title="Print"><i class="ti ti-printer"></i></button>
+          <button class="t3-ib" onclick="loadTimingsPane()" title="Refresh" data-i18n-title="Refresh"><i class="ti ti-refresh"></i></button>
+          <button class="t3-ib red" id="adminResetLogsBtn" onclick="resetLogs()" title="Reset: delete every error and measurement" data-i18n-title="Reset: delete every error and measurement"><i class="ti ti-trash"></i> <span style="font-size:12px;font-weight:600" data-i18n>Reset</span></button>
         </div>
         <div id="adminTimingsWrap"></div>
       </div>
@@ -1074,18 +1043,20 @@ html[lang="he"] *{letter-spacing:normal !important;}
 
       <!-- Salary: one row per worker with shifts in the period; the pay window edits (Worker pay merged in, 2026-10-11) -->
       <div id="accSecSalary" style="margin-bottom:24px">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-          <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:4px"><i class="ti ti-cash"></i> <span data-i18n><span data-i18n>Salary Calculation</span></span> <button type="button" class="acc-help" onclick="openAccountingHelp('salary')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;max-width:100%">
-            <input type="search" id="salarySearch" placeholder="Search a worker" data-i18n-placeholder="Search a worker" oninput="renderSalary()" style="width:150px;flex:1 1 120px;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:4px 8px;font-size:12px;outline:none">
-            <select id="salaryPeriod" onchange="onSalaryPeriodChange()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:4px 8px;font-size:12px;outline:none">
-              <option value="week" data-i18n>This Week</option>
-              <option value="month" data-i18n>This Month</option>
-              <option value="all" data-i18n>All Time</option>
-            </select>
-            <button class="btn sm perm-exports" onclick="openSalaryExportModal()"><i class="ti ti-upload"></i> <span data-i18n><span data-i18n>Export</span></span></button>
-          </div>
+        <!-- One line (variant A, user request 2026-10-11): the title, then the
+             period as text with ▾, a search icon (opens the field under it)
+             and the export icon. -->
+        <div class="acc-head">
+          <div class="acc-head-title"><i class="ti ti-cash"></i> <span data-i18n>Salary Calculation</span> <button type="button" class="acc-help" onclick="openAccountingHelp('salary')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
+          <select id="salaryPeriod" class="acc-period" onchange="onSalaryPeriodChange()">
+            <option value="week" data-i18n>This Week</option>
+            <option value="month" data-i18n>This Month</option>
+            <option value="all" data-i18n>All Time</option>
+          </select>
+          <button type="button" class="t3-ib" id="salarySearchBtn" onclick="toggleSalarySearch()" title="Search a worker" data-i18n-title="Search a worker"><i class="ti ti-search"></i></button>
+          <button type="button" class="t3-ib perm-exports" onclick="openSalaryExportModal()" title="Export" data-i18n-title="Export"><i class="ti ti-download"></i></button>
         </div>
+        <input type="search" id="salarySearch" class="acc-search" style="display:none" placeholder="Search a worker" data-i18n-placeholder="Search a worker" oninput="renderSalary()">
         <div id="dashSalary"></div>
       </div>
 
@@ -1103,7 +1074,11 @@ html[lang="he"] *{letter-spacing:normal !important;}
 
       <!-- Payable by supplier summary -->
       <div id="accSecPayable" style="margin-top:24px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-report-money"></i> <span data-i18n><span data-i18n>Payable by supplier</span></span> <button type="button" class="acc-help" onclick="openAccountingHelp('payable')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
+        <div class="acc-head">
+          <div class="acc-head-title"><i class="ti ti-report-money"></i> <span data-i18n>Payable by supplier</span> <button type="button" class="acc-help" onclick="openAccountingHelp('payable')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
+          <button type="button" class="t3-ib" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:tr('Payable by supplier'),filename:'payable-by-supplier',format:'excel'})" title="Excel"><i class="ti ti-file-spreadsheet"></i></button>
+          <button type="button" class="t3-ib" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:tr('Payable by supplier'),filename:'payable-by-supplier',format:'pdf'})" title="PDF"><i class="ti ti-file-type-pdf"></i></button>
+        </div>
         <div id="supplierPayableWrap"></div>
       </div>
 
@@ -1259,14 +1234,14 @@ html[lang="he"] *{letter-spacing:normal !important;}
      viewingTenantId picked yet (see gateApp() / backToFirmsList()). -->
 <div id="firmsScreen" style="display:none;position:fixed;inset:0;z-index:900;background:var(--bg);overflow-y:auto">
   <div style="max-width:720px;margin:0 auto;padding:28px 20px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px">
       <div style="font-size:20px;font-weight:700"><i class="ti ti-building-skyscraper"></i> <span data-i18n>Firms</span></div>
-      <div style="display:flex;gap:8px">
+      <div id="firmsActions" style="display:flex;align-items:center;gap:4px">
         <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> <span data-i18n>Create firm</span></button>
-        <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i> <span data-i18n>Sign out</span></button>
+        <button class="t3-ib" onclick="logout()" title="Sign out" data-i18n-title="Sign out"><i class="ti ti-logout"></i></button>
       </div>
     </div>
-    <div id="firmsList" style="display:flex;flex-direction:column;gap:8px"></div>
+    <div id="firmsList"></div>
   </div>
 </div>
 
@@ -1560,10 +1535,13 @@ async function setLanguage(lang, opts){
 function placeLangSelect(){
   const sel = document.getElementById('langSelect'); if(!sel) return;
   const shown = id => { const el = document.getElementById(id); return el && el.style.display && el.style.display !== 'none' ? el : null; };
-  const cover = shown('loginScreen') || shown('firmsScreen');
-  const host = cover || document.querySelector('#accountMenu .acct-lang');
+  // The login screen: its corner; the super-admin's firms list: in its
+  // header row, before the buttons; otherwise the account menu.
+  const cover = shown('loginScreen');
+  const firms = !cover && shown('firmsScreen') ? document.getElementById('firmsActions') : null;
+  const host = cover || firms || document.querySelector('#accountMenu .acct-lang');
   sel.classList.toggle('on-cover', !!cover);
-  if(host && sel.parentNode !== host){ if(cover) host.prepend(sel); else host.appendChild(sel); }
+  if(host && sel.parentNode !== host){ if(cover || firms) host.prepend(sel); else host.appendChild(sel); }
 }
 ['loginScreen','firmsScreen'].forEach(id => { const el = document.getElementById(id); if(el) new MutationObserver(placeLangSelect).observe(el, {attributes:true, attributeFilter:['style']}); });
 // The login screen's showcase: the headline turns through the sectors, the
@@ -2180,7 +2158,7 @@ function switchTab(tab){
   // pane would get silently reset back to Punch Log on every unrelated save.
   if(tab==='admin')      setupAdminPaneBar();
   if(tab==='dashboard')  renderDashboard();
-  if(tab==='accounting') renderAccounting();
+  if(tab==='accounting'){ __hourApprovalsCache=null; renderAccounting(); } // opening the tab reads the approvals afresh
 }
 
 // --- Week nav -----------------------------------------------------------------
@@ -2195,9 +2173,8 @@ function onDateChange(){ const v=document.getElementById('datePicker').value; if
 
 // --- Render -------------------------------------------------------------------
 function render(){
-  const _wd=document.getElementById('weekDisplay'); if(_wd) _wd.textContent=fmtRange(weekStart);
-  document.getElementById('pageSub').textContent=tr('{0} · Drag ⠿ to reorder · Click shifts to edit',{0:(fmtRange(weekStart))});
-  renderStats(); renderGanttHeader(); renderGanttBody(); renderWorkerList(); renderSidebarClients();
+  document.getElementById('pageSub').textContent=tr('A worker\'s arrow opens the week · a day opens its shift');
+  renderGanttHeader(); renderGanttBody(); renderWorkerList(); renderSidebarClients();
   // render() only ever refreshed the Schedule tab's own pieces above — every
   // other tab's table (Workers/Clients/Admin/Accounting) is rendered ONLY by
   // switchTab() when the tab is first opened. Every place that mutates data
@@ -2222,77 +2199,43 @@ function render(){
 function hasSchedule(w){ return (w.schedule||[]).some(s=>s.type==='work') || weekShifts(w).some(s=>s.type==='work'); }
 function getVisible(){ const act=workers.filter(isActiveWorker); return selectedClientId ? act.filter(w=>(w.clientIds||[]).includes(selectedClientId)) : act.filter(hasSchedule); }
 
-function renderStats(){
-  const vis=getVisible();
-  const totalH=vis.reduce((s,w)=>s+workerTotalHours(w),0);
-  const shifts=vis.reduce((s,w)=>s+weekShifts(w).filter(sh=>sh.type==='work').length,0);
-  const offs  =vis.reduce((s,w)=>s+weekShifts(w).filter(sh=>sh.type!=='work').length,0);
-  let h=`
-    <div class="stat-card"><div class="stat-label">${tr('Total hours')}</div><div class="stat-val">${totalH.toFixed(1)}<span class="stat-unit">h</span></div></div>
-    <div class="stat-card"><div class="stat-label">${tr('Shifts')}</div><div class="stat-val">${shifts}</div></div>
-    <div class="stat-card"><div class="stat-label">${tr('Days off')}</div><div class="stat-val" style="color:var(--amber)">${offs}</div></div>
-    <div class="stat-card"><div class="stat-label">${tr('Workers')}</div><div class="stat-val">${vis.length}</div></div>`;
-  document.getElementById('statsRow').innerHTML=h;
-}
-
+// Schedule, variant 6 (user request 2026-10-11): the week navigator's
+// dates and totals, then a section line with the worker count.
 function renderGanttHeader(){
-  const cols='170px repeat(7,1fr)';
+  const vis=getVisible(), sh=vis.flatMap(w=>weekShifts(w)).filter(x=>x.type==='work');
+  const thisWeek=getSundayOfWeek(new Date()).toDateString()===weekStart.toDateString();
+  const set=(id,t)=>{ const el=document.getElementById(id); if(el) el.textContent=t; };
+  set('schedWeekRange', fmtRange(weekStart));
+  set('schedWeekSum', [thisWeek?tr('This week'):'', tr('{h}h',{h:vis.reduce((t,w)=>t+workerTotalHours(w),0).toFixed(0)}), sh.length===1?tr('1 shift'):tr('{n} shifts',{n:sh.length})].filter(Boolean).join(' · '));
   const el=document.getElementById('ganttHeader');
-  el.style.gridTemplateColumns=cols;
-  let h='<div class="gantt-header-cell" style="text-align:left;align-items:flex-start">'+tr('Worker')+'</div>';
-  DAYS.forEach((d,i)=>{
-    const date=new Date(weekStart); date.setDate(date.getDate()+i);
-    const today=date.toDateString()===new Date().toDateString();
-    h+=`<div class="gantt-header-cell" style="${today?'color:#60a5fa':''}"><span class="day-name">${tr(d)}<span class="day-hebrew">${DAYS_HE[i]}</span></span><span class="day-date">${fmtDate(date)}</span></div>`;
-  });
-  el.innerHTML=h;
+  if(el) el.innerHTML=`<i class="ti ti-users"></i> ${esc(tr('Workers'))}<em>${vis.length}</em>`;
 }
-
+// A line per worker: its week in short ("4 shifts · 29h · off Mon, Wed");
+// the arrow (or a tap on the line) opens the 7 days under it, a day opens
+// the shift editor (openEditShift). Open workers are kept while the app is
+// open (__schedOpen). A row can still be dragged to reorder on a computer.
+const __schedOpen=new Set();
+function toggleSchedWorker(id){ if(__schedOpen.has(id)) __schedOpen.delete(id); else __schedOpen.add(id); renderGanttBody(); }
 function renderGanttBody(){
-  const cols='170px repeat(7,1fr)';
   const body=document.getElementById('ganttBody');
-  const vis=getVisible();
-  // One schedule row per worker, paged like every other list.
+  const vis=getVisible(), todayStr=new Date().toDateString();
   renderPagedList(body,'gantt',String(selectedClientId||''),vis,w=>{
-    let h='';
-    const wi=workers.indexOf(w);
-    const c=WORKER_COLORS[w.colorIdx%8];
-    h+=`<div class="gantt-row" style="grid-template-columns:${cols}" draggable="true"
-      data-wi="${wi}"
-      ondragstart="dragStart(event,${wi})"
-      ondragover="dragOver(event,${wi})"
-      ondragleave="dragLeave(event)"
-      ondrop="doDrop(event,${wi})"
-      ondragend="dragEnd(event)">`;
-    h+=`<div class="gantt-name-cell">
-      <span class="drag-handle">⠿</span>
-      <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${workerAvatarInner(w)}</div>
-      <span>${esc(w.name)}</span>
-    </div>`;
-    weekShifts(w).forEach((sh,di)=>{
-      h+=`<div class="gantt-day-cell" onclick="openEditShift(${wi},${di})">`;
-      const dated=sh.dated?` dated" title="${esc(tr('Changed for this date only'))}`:'';
-      if(sh.type==='work'&&sh.start&&sh.end){
-        const mid=toMins(sh.end)<=toMins(sh.start);
-        h+=`<div class="shift-bar ${mid?'midnight':'work'}${dated}">${esc(sh.start)}<br>${esc(sh.end)}</div>`;
-      } else {
-        h+=`<div class="shift-bar off${dated}">${tr('Day off')}</div>`;
-      }
-      h+=`</div>`;
-    });
-    h+=`</div>`;
-    return h;
+    const wi=workers.indexOf(w), ws=weekShifts(w), open=__schedOpen.has(w.id);
+    const work=ws.filter(x=>x.type==='work'&&x.start&&x.end), offs=ws.map((x,i)=>x.type==='work'&&x.start&&x.end?null:tr(DAYS[i])).filter(Boolean);
+    const sum=[work.length===1?tr('1 shift'):tr('{n} shifts',{n:work.length}), tr('{h}h',{h:workerTotalHours(w).toFixed(0)}), offs.length?tr('off {0}',{0:offs.join(', ')}):''].filter(Boolean).join(' · ');
+    const days=open?ws.map((x,di)=>{
+      const date=new Date(weekStart); date.setDate(date.getDate()+di);
+      const on=x.type==='work'&&x.start&&x.end, mid=on&&toMins(x.end)<=toMins(x.start);
+      const col=on?(mid?'var(--blue)':'var(--green)'):'var(--amber)';
+      return `<div class="sched-day${date.toDateString()===todayStr?' today':''}" style="--c:${col}" onclick="openEditShift(${wi},${di})">
+        <span>${esc(tr(DAYS[di]))} ${date.getDate()}${x.dated?` <i class="sched-dated" title="${esc(tr('Changed for this date only'))}"></i>`:''}</span>
+        <b style="color:${col}${on?'':';font-family:inherit'}">${on?esc(x.start+'–'+x.end):esc(tr('Day off'))}</b></div>`;
+    }).join(''):'';
+    return `<div class="gantt-row" draggable="true" data-wi="${wi}" ondragstart="dragStart(event,${wi})" ondragover="dragOver(event,${wi})" ondragleave="dragLeave(event)" ondrop="doDrop(event,${wi})" ondragend="dragEnd(event)">`
+      + t3Line({c:work.length?'var(--green)':'var(--border2)', av:t3Av(w), name:esc(w.name), sub:esc(sum), cls:'sched-line'+(open?' open':''),
+          onclick:`toggleSchedWorker('${esc(w.id)}')`, right:`<i class="ti ti-chevron-down t3-chev"></i>`})
+      + days + `</div>`;
   });
-}
-
-function hourTicks(){
-  let h='';
-  [0,6,12,18,24].forEach(hr=>{
-    const p=(hr/24*100).toFixed(1);
-    h+=`<div class="h-tick" style="left:${p}%"></div>`;
-    if(hr>0&&hr<24) h+=`<div class="h-label" style="left:${p}%">${String(hr).padStart(2,'0')}</div>`;
-  });
-  return h;
 }
 
 function renderWorkerList(){
@@ -2304,7 +2247,7 @@ function renderWorkerList(){
   else if(sort==='status'){ const rank={active:0,vacation:1,fired:2}; list.sort((a,b)=>((rank[a.w.status||'active']??0)-(rank[b.w.status||'active']??0))||a.w.name.localeCompare(b.w.name)); }
   renderPagedList(el,'sideWorkers',sort,list,({w,wi})=>{
     const c=WORKER_COLORS[w.colorIdx%8],wh=workerTotalHours(w);
-    return `<div class="worker-chip tap-edit" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))">
+    return `<div class="worker-chip tap-edit" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))">
       <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${workerAvatarInner(w)}</div>
       <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">'+tr('INACTIVE')+'</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">'+tr('VAC')+'</span>':''}${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div><div class="worker-hours">${tr('{h}h',{h:(wh).toFixed(1)})}</div></div>
       <div class="worker-actions">
@@ -3986,7 +3929,7 @@ function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
     const sup=suppliers.find(s=>s.id===w.supplierId);
     const h=hours[w.id]||0;
     const lc=w.status==='fired'?'var(--red)':w.status==='vacation'?'var(--amber)':workerDocStatus(w).level!=='ok'?'var(--amber)':'var(--green)';
-    return `<div class="wcard tap-edit" style="--c:${lc}" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))">
+    return `<div class="wcard tap-edit" style="--c:${lc}" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))">
       ${hasPermission('workers')?`<button class="wcard-del" type="button" title="${tr('Delete worker')}" onclick="event.stopPropagation();deleteWorker(${wi})">✕</button>`:''}
       <div style="display:flex;align-items:center;gap:10px;padding-right:22px">
         <div style="width:38px;height:38px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div>
@@ -4101,7 +4044,7 @@ function renderWorkersPage(){
     const objBadges=objs.length?objs.map(o=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${o.color}22;border-radius:10px;margin-right:3px"><span style="width:6px;height:6px;border-radius:50%;background:${o.color}"></span>${esc(o.name)}</span>`).join(''):'<span style="color:var(--text3);font-size:12px">—</span>';
     const sup=suppliers.find(s=>s.id===w.supplierId);
     const supBadge=sup?`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${sup.color}22;border-radius:10px"><span style="width:6px;height:6px;border-radius:50%;background:${sup.color}"></span>${esc(sup.name)}</span>`:'<span style="color:var(--text3);font-size:12px">—</span>';
-    return `<tr class="tap-edit" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background=''">
+    return `<tr class="tap-edit" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background=''">
       <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div><span style="font-size:13px;font-weight:600">${esc(w.name)}</span>${newWorkerBadgeHtml(w)}${expiryBadgeHtml(w)}${docStatusBadgeHtml(w)}</div></td>
       <td style="padding:10px 12px"><span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col}">${stMeta.label}</span></td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2);font-family:monospace">${workerDocId(w)?esc(workerDocId(w)):'—'}</td>
@@ -4139,7 +4082,8 @@ function openWorkerCard(wi){
         <div style="font-size:18px;font-weight:700;overflow:hidden;text-overflow:ellipsis">${esc(w.name)}</div>
         ${hasPermission('workers')?'':`<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col};display:inline-block;margin-top:4px">${stMeta.label}</span>`}${newWorkerBadgeHtml(w)}${docStatusBadgeHtml(w)}
       </div>
-      ${hasPermission('workers')?`<button class="btn sm" type="button" onclick="rescanFromWorkerCard(${wi})" style="flex-shrink:0"><i class="ti ti-scan"></i> ${w.docUrl?'סריקה חוזרת':'סרוק מסמך'}</button>`:''}
+      ${hasPermission('workers')?`<button class="btn sm" type="button" onclick="rescanFromWorkerCard(${wi})" style="flex-shrink:0"><i class="ti ti-scan"></i> ${w.docUrl?'סריקה חוזרת':'סרוק מסמך'}</button>
+      <button class="t3-ib" type="button" id="workerCardEdit" onclick="editFromWorkerCard('${esc(w.id)}')" title="${esc(tr('Edit'))}" aria-label="${esc(tr('Edit'))}"><i class="ti ti-pencil"></i></button>`:''}
     </div>
     ${hasPermission('workers')||w.docSavedAt?`<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;margin:-6px 0 14px">
       ${hasPermission('workers')?`<div class="status-pills" role="radiogroup" aria-label="${tr('Status')}">
@@ -4174,13 +4118,6 @@ function openWorkerCard(wi){
       ${hasPermission('workers')&&hasPermission('exports')?`<button class="btn sm" onclick="openHoursExportModal('${w.id}')"><i class="ti ti-file-export"></i> ${tr('Export hours')}</button>`:''}
     </div>`;
   pageWorkerDocs(document.getElementById('workerCardModal'),w.id);
-  // A long press (phone) or a double click (mouse) on the card — not on one of
-  // its buttons or links — opens the edit form; a plain tap only reads.
-  const cm=document.getElementById('workerCardModal');
-  cm.insertAdjacentHTML('beforeend',`<div style="font-size:11px;color:var(--text3);text-align:center;margin-top:10px"><i class="ti ti-pencil"></i> ${esc(tr('Hold (phone) or double-click (computer) to edit'))}</div>`);
-  const edit=()=>{ closeModal('workerCardOverlay'); openEditWorker(workers.findIndex(x=>x.id===w.id)); };
-  cm.onclick=e=>tapEdit(e,cm,null,edit);
-  cm.onpointerdown=e=>longPress(e,cm,edit);
   // Coming back to the card (a window opened from it was closed): drawn again
   // from the current data, by id — nothing when the worker is gone.
   const ov=document.getElementById('workerCardOverlay');
@@ -4188,6 +4125,8 @@ function openWorkerCard(wi){
   ov.classList.add('open');
 }
 
+// The worker card's ✎: its edit form (closing it comes back to the card).
+function editFromWorkerCard(wid){ closeModal('workerCardOverlay'); openEditWorker(workers.findIndex(x=>x.id===wid)); }
 // From the worker card: opens this worker's modal and the scan over it, so
 // the scan's result lands in the modal (empty fields filled, nothing typed
 // lost) and saving rebuilds the Form 101 from the new photos.
@@ -4567,7 +4506,7 @@ function renderClientsPage(){
 
   renderPagedList(grid,'clients','',clients,c=>{
     const assigned=workers.filter(w=>(w.clientIds||[]).includes(c.id));
-    return `<div class="client-card tap-edit" style="--c:${esc(c.color||'var(--border2)')}" onclick="tapEdit(event,this,null,()=>openEditClient('${c.id}'))" onpointerdown="longPress(event,this,()=>openEditClient('${c.id}'))">
+    return `<div class="client-card tap-edit" style="--c:${esc(c.color||'var(--border2)')}" onclick="tapEdit(event,this,null,()=>openEditClient('${c.id}'))">
       <button class="wcard-del" type="button" title="${tr('Remove')}" aria-label="${tr('Remove')}" onclick="event.stopPropagation();deleteClient('${c.id}')">✕</button>
       <div class="client-card-header">
         <div class="client-card-dot" style="background:${c.color}"></div>
@@ -4645,7 +4584,7 @@ function renderSuppliersPage(){
 
   renderPagedList(grid,'suppliers','',suppliers,s=>{
     const assigned=workers.filter(w=>w.supplierId===s.id);
-    return `<div class="client-card tap-edit" style="--c:${esc(s.color||'var(--border2)')}" onclick="tapEdit(event,this,null,()=>openEditSupplier('${s.id}'))" onpointerdown="longPress(event,this,()=>openEditSupplier('${s.id}'))">
+    return `<div class="client-card tap-edit" style="--c:${esc(s.color||'var(--border2)')}" onclick="tapEdit(event,this,null,()=>openEditSupplier('${s.id}'))">
       <button class="wcard-del" type="button" title="${tr('Remove')}" aria-label="${tr('Remove')}" onclick="event.stopPropagation();deleteSupplier('${s.id}')">✕</button>
       <div class="client-card-header">
         <div class="client-card-dot" style="background:${s.color}"></div>
@@ -4787,56 +4726,18 @@ function openPunchClock(cid){
 
 // --- Modal close --------------------------------------------------------------
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
-// Template (per user request 2026-10-04): a list item or card opens its edit
-// form on a tap anywhere on it — there is no separate Edit button. A tap on a
-// control inside it (a button, link, field, or anything with its own onclick)
-// does that control's job instead, and selecting text doesn't count. The
-// same code is in schedule-manager.html and supplier-portal.html.
-// Tap, double click, long press (user request 2026-10-11): a single tap on a
-// list item or card opens its card (tapFn) — never the editor; a double click
-// (computer) or a long press (phone, LONG_PRESS_MS; a move or scroll cancels
-// it) opens the edit form (editFn). With no tapFn a single tap only says how
-// to edit. Markup: onclick="tapEdit(event,this,tapFn,editFn)"
-// onpointerdown="longPress(event,this,editFn)" (class .tap-edit). With a mouse
-// and a tapFn the single click waits DBL_CLICK_MS to tell it from a double one.
-// The same helpers are in supplier-portal.html.
-const LONG_PRESS_MS=500, DBL_CLICK_MS=250;
-let __lp=null, __lpFiredAt=0, __editHintAt=0;
-function clearTextSel(){ try{ window.getSelection().removeAllRanges(); }catch(_){} }
+// Template (user request 2026-10-11): a single tap on a list item or card
+// opens its card (tapFn) or, when it has none, its edit form (editFn); there
+// is no double click or long press. A window that reads (the worker card)
+// has a ✎ button for the edit form. A tap on a control inside the item (a
+// button, link, field, or anything with its own onclick) does that
+// control's job instead, and selecting text doesn't count. Markup:
+// onclick="tapEdit(event,this,tapFn,editFn)" (class .tap-edit). The same
+// helper is in schedule-manager.html and supplier-portal.html.
 function tapEdit(e, el, tapFn, editFn){
-  if(Date.now()-__lpFiredAt<800) return;  // the click that ends a long press
-  if(e.detail>=2){
-    if(!isPlainTap(e,el,true)) return;
-    clearTimeout(el.__tapT); el.__tapT=null; clearTextSel();
-    if(editFn) editFn();
-    return;
-  }
   if(!isPlainTap(e,el)) return;
-  if(!tapFn){
-    if(editFn && Date.now()-__editHintAt>4000){ __editHintAt=Date.now(); showToast(tr('Double-click or hold to edit')); }
-    return;
-  }
-  if(e.pointerType==='mouse' && editFn){ clearTimeout(el.__tapT); el.__tapT=setTimeout(()=>{ el.__tapT=null; tapFn(); },DBL_CLICK_MS); }
-  else tapFn();
-}
-function cancelLongPress(){
-  if(!__lp) return;
-  clearTimeout(__lp.timer); __lp.el.removeEventListener('pointermove',__lp.move); __lp=null;
-}
-function longPress(e, el, editFn){
-  if(!editFn || e.pointerType==='mouse' || !isPlainTap(e,el,true)) return;
-  cancelLongPress();
-  const x=e.clientX, y=e.clientY;
-  const move=ev=>{ if(Math.hypot(ev.clientX-x,ev.clientY-y)>10) cancelLongPress(); };
-  el.addEventListener('pointermove',move);
-  el.addEventListener('pointerup',cancelLongPress,{once:true});
-  el.addEventListener('pointercancel',cancelLongPress,{once:true});
-  el.addEventListener('contextmenu',ev=>{ if(__lp||Date.now()-__lpFiredAt<800) ev.preventDefault(); },{once:true});
-  __lp={el, move, timer:setTimeout(()=>{
-    cancelLongPress(); __lpFiredAt=Date.now(); clearTextSel();
-    try{ navigator.vibrate&&navigator.vibrate(15); }catch(_){}
-    editFn();
-  },LONG_PRESS_MS)};
+  const fn=tapFn||editFn;
+  if(fn) fn();
 }
 function isPlainTap(e,container,anySelection){
   if(!anySelection&&String((window.getSelection&&window.getSelection())||'')) return false;
@@ -4863,6 +4764,46 @@ document.addEventListener('click',e=>{
   if(!(t&&t.classList&&t.classList.contains('overlay')&&t.classList.contains('open')&&_overlayDownOn===t&&t.id)) return;
   if(typeof t.__onUserClose==='function') t.__onUserClose(); else closeModal(t.id);
 });
+
+// Phone (≤ 700 px): a window, opened from the bottom as a sheet, also closes
+// with a swipe down on it (user request 2026-10-11) — the same way as a tap
+// outside (__onUserClose, else closeModal). Only when the sheet and anything
+// scrolled under the finger are at their top, never from a field, a map or
+// a canvas; while it is open the page behind does not scroll (CSS). The
+// same code is in the manager app and both portals.
+(function(){
+  let sw=null;
+  document.addEventListener('touchstart',e=>{
+    sw=null;
+    if(!window.matchMedia('(max-width:700px)').matches||e.touches.length!==1) return;
+    const m=e.target.closest&&e.target.closest('.overlay.open>.modal');
+    if(!m||e.target.closest('input,textarea,select,canvas,.leaflet-container,.no-swipe')) return;
+    for(let n=e.target;n&&n!==m.parentElement;n=n.parentElement){ if(n.scrollTop>0) return; }
+    sw={m, x:e.touches[0].clientX, y:e.touches[0].clientY, dy:0, on:false};
+  },{passive:true});
+  document.addEventListener('touchmove',e=>{
+    if(!sw) return;
+    const dx=e.touches[0].clientX-sw.x, dy=e.touches[0].clientY-sw.y;
+    if(!sw.on){
+      if(dy<0||Math.abs(dx)>Math.abs(dy)){ if(dy<-6||Math.abs(dx)>10) sw=null; return; }
+      if(dy<8) return;
+      sw.on=true; sw.m.style.transition='none';
+    }
+    sw.dy=Math.max(0,dy); sw.m.style.transform='translateY('+sw.dy+'px)';
+    if(e.cancelable) e.preventDefault();
+  },{passive:false});
+  const end=()=>{
+    if(!sw) return;
+    const {m,dy,on}=sw; sw=null; if(!on) return;
+    m.style.transition='transform .18s ease';
+    const ov=m.parentElement;
+    if(dy>90){
+      m.style.transform='translateY(100%)';
+      setTimeout(()=>{ m.style.transform=''; m.style.transition=''; if(typeof ov.__onUserClose==='function') ov.__onUserClose(); else closeModal(ov.id); },180);
+    } else { m.style.transform=''; setTimeout(()=>{ m.style.transition=''; },200); }
+  };
+  document.addEventListener('touchend',end); document.addEventListener('touchcancel',end);
+})();
 
 // Back to the previous window (user request 2026-10-11): a window opened from
 // another one — the first closed and the second opened by the same action
@@ -5293,7 +5234,7 @@ function firmProfileMissing(profile){
 function firmProfileWarnInner(){
   const missing = firmProfileMissing();
   if(!missing.length) return '';
-  return `<div class="tap-edit" onclick="tapEdit(event,this,null,openMyFirmForm)" onpointerdown="longPress(event,this,openMyFirmForm)" style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;border:1px solid #ffb020;border-radius:var(--radius-sm);background:rgba(255,176,32,0.08);font-size:12px;line-height:1.5;color:var(--text2)">
+  return `<div class="tap-edit" onclick="tapEdit(event,this,null,openMyFirmForm)" style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;border:1px solid #ffb020;border-radius:var(--radius-sm);background:rgba(255,176,32,0.08);font-size:12px;line-height:1.5;color:var(--text2)">
     <i class="ti ti-alert-triangle" style="color:#ffb020;font-size:15px"></i>
     <div style="flex:1;min-width:180px">The firm profile is incomplete — these stay empty in Form 101 (section א «פרטי המעסיק»): <b>${esc(missing.join(', '))}</b>.</div>
   </div>`;
@@ -5434,18 +5375,21 @@ function loadFirmsCache(){ try{ const v=JSON.parse(localStorage.getItem(FIRMS_CA
 function renderFirmsRows(listEl, tenants){
   __firmsCache = tenants;
   if(!tenants.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">'+tr('No firms yet — create the first one.')+'</div>'; return; }
-  renderPagedList(listEl, 'firms:' + listEl.id, '', tenants, t => `
-      <div class="row tap-edit" style="position:relative;display:flex;align-items:center;justify-content:space-between;padding:12px 30px 12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);cursor:pointer;${t.active===false?'opacity:0.55':''}" onclick="tapEdit(event,this,()=>switchToTenant('${esc(t.tenantId)}'),()=>openEditFirmForm('${esc(t.tenantId)}'))" onpointerdown="longPress(event,this,()=>openEditFirmForm('${esc(t.tenantId)}'))">
-        <button class="wcard-del" type="button" title="${tr('Delete')}" aria-label="${tr('Delete')}" onclick="event.stopPropagation();confirmDeleteTenant('${esc(t.tenantId)}','${esc(t.companyName||t.tenantId)}')">✕</button>
-        <div>
-          <div style="font-weight:600">${esc(t.companyName || '(no name)')}${t.active===false?' <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px">'+tr('disabled')+'</span>':''}${firmProfileMissing(t).length?` <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px" title="${tr('Not filled in: {0}',{0:(esc(firmProfileMissing(t).join(', ')))})}">${tr('profile incomplete')}</span>`:''}</div>
-          <div style="font-size:12px;color:var(--text2)">${tr('{0} workers · {1} clients{2}',{0:(t.workerCount||0),1:(t.clientCount||0),2:(t.savedAt?' · saved '+esc(new Date(t.savedAt).toLocaleString()):'')})}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:4px" onclick="event.stopPropagation()">
-          <button class="btn sm" onclick="toggleTenantActive('${esc(t.tenantId)}',${t.active===false})" title="${t.active===false?'Enable':'Disable'}"><i class="ti ti-${t.active===false?'player-play':'player-pause'}"></i></button>
-          <i class="ti ti-chevron-right"></i>
-        </div>
-      </div>`);
+  // Template 3: a line per firm — green while active, amber when disabled or
+  // its Form 101 profile is incomplete. A tap opens the firm; ✎ (edit),
+  // pause / play and ✕ (delete) at the right.
+  const when = v => { const d = new Date(v); return v && !isNaN(d) ? d.toLocaleString(uiLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : ''; };
+  renderPagedList(listEl, 'firms:' + listEl.id, '', tenants, t => {
+    const missing = firmProfileMissing(t), off = t.active===false, id = esc(t.tenantId);
+    const flags = [off ? `<span style="color:var(--amber)">${tr('disabled')}</span>` : '',
+      missing.length ? `<span style="color:var(--amber)" title="${tr('Not filled in: {0}',{0:esc(missing.join(', '))})}">${tr('profile incomplete')}</span>` : ''].filter(Boolean).join(' · ');
+    return t3Line({c: off||missing.length ? 'var(--amber)' : 'var(--green)', cls:'row tap-edit'+(off?' off':''),
+      av:`<div class="t3-av" style="background:var(--bg3);color:var(--text2)"><i class="ti ti-building-skyscraper"></i></div>`,
+      name: esc(t.companyName || '(no name)'),
+      sub: [tr('{0} workers · {1} clients{2}',{0:(t.workerCount||0),1:(t.clientCount||0),2:(when(t.savedAt)?' · '+tr('saved {0}',{0:esc(when(t.savedAt))}):'')}), flags],
+      attrs:`onclick="tapEdit(event,this,()=>switchToTenant('${id}'),()=>openEditFirmForm('${id}'))"`,
+      right:`<button class="t3-ib" type="button" onclick="event.stopPropagation();openEditFirmForm('${id}')" title="${tr('Edit')}"><i class="ti ti-pencil"></i></button><button class="t3-ib" type="button" onclick="event.stopPropagation();toggleTenantActive('${id}',${off})" title="${off?tr('Enable'):tr('Disable')}"><i class="ti ti-${off?'player-play':'player-pause'}"></i></button><button class="t3-x" type="button" title="${tr('Delete')}" aria-label="${tr('Delete')}" onclick="event.stopPropagation();confirmDeleteTenant('${id}','${esc(t.companyName||t.tenantId)}')">✕</button>`});
+  });
 }
 async function renderFirmsList(targetId){
   __firmsListTarget = targetId || 'firmsList';
@@ -5474,11 +5418,17 @@ async function renderOwnFirmCard(listEl){
     p = p || {};
     const missing = firmProfileMissing(p);
     const addr = [[p.street, p.streetNumber].filter(Boolean).join(' '), p.city].filter(Boolean).join(', ');
-    const row = (k, v) => `<div style="display:flex;gap:8px;font-size:13px"><span style="color:var(--text3);min-width:130px">${k}</span><span>${v ? esc(v) : '<span style="color:#ffb020">—</span>'}</span></div>`;
-    listEl.innerHTML = `<div class="tap-edit" onclick="tapEdit(event,this,null,openMyFirmForm)" onpointerdown="longPress(event,this,openMyFirmForm)" style="padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:6px">
-      ${row(tr('Company name'), p.companyName)}${row('מספר תיק ניכויים', p.deductionsFileNumber)}${row(tr('Phone'), p.phone)}${row(tr('Address'), addr)}
-      ${missing.length ? `<div style="font-size:12px;color:#ffb020"><i class="ti ti-alert-triangle"></i> ${tr('Empty in Form 101: {0}',{0:(esc(missing.join(', ')))})}</div>` : `<div style="font-size:12px;color:var(--green)"><i class="ti ti-check"></i> ${tr('Everything Form 101 needs is filled in')}</div>`}
-    </div>`;
+    // Template 3: the firm is one line (green when Form 101 has everything,
+    // amber when something is missing), its fields as small lines under the
+    // name; a tap edits.
+    const v = x => x ? esc(x) : '<span style="color:var(--amber)">—</span>';
+    listEl.innerHTML = t3Line({c: missing.length ? 'var(--amber)' : 'var(--green)', cls:'tap-edit wrap',
+      av:`<div class="t3-av" style="background:var(--bg3);color:var(--text2)"><i class="ti ti-building-skyscraper"></i></div>`,
+      name: p.companyName ? esc(p.companyName) : `<span style="color:var(--amber)">${tr('Company name')} —</span>`,
+      sub:[`מספר תיק ניכויים: ${v(p.deductionsFileNumber)}`, `${tr('Phone')}: ${v(p.phone)}`, `${tr('Address')}: ${v(addr)}`,
+        missing.length ? `<span style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> ${tr('Empty in Form 101: {0}',{0:esc(missing.join(', '))})}</span>`
+          : `<span style="color:var(--green)"><i class="ti ti-check"></i> ${tr('Everything Form 101 needs is filled in')}</span>`],
+      attrs:`onclick="tapEdit(event,this,null,openMyFirmForm)"`});
   };
   draw(activeTenantProfile());
   const p = await refreshTenantProfile(0);
@@ -5651,26 +5601,29 @@ async function renderAdminUsers(){
   }catch(e){ if(!cached) el.innerHTML = '<div style="color:#ff6b78">'+tr('Network error')+'</div>'; }
 }
 // Draws the Users pane from an already-filtered user list (cached or fresh).
+// Template 3: a line per login, its role as the colored mark (owner amber,
+// HR purple, supplier blue, client green, staff grey); the name with the
+// role, then the login and phone, then what it reaches. A tap edits; ✕
+// deletes.
+const USER_ROLE_COLOR={tenant_admin:'var(--amber)',superadmin:'var(--accent)',hr:'#a78bfa',supplier:'#60a5fa',client:'var(--green)',staff:'var(--border2)'};
 function renderAdminUsersRows(el, users){
     const row = u => {
       const sup = u.role==='supplier' ? (suppliers||[]).find(s=>s.id===u.supplierId) : null;
-      const permsLabel = (u.role!=='staff' && u.role!=='hr') ? '' : (u.permissions==='*' ? 'Full access' : (Array.isArray(u.permissions)?u.permissions.join(', '):'—'));
-      const hrLine = u.role==='hr' ? `<div style="font-size:12px;color:var(--text2)">${(hrWorkerCount(u.id)===1?tr('1 worker{1}',{1:(u.ownOnly===false?' · '+tr('sees all workers'):'')}):tr('{0} workers{1}',{0:(hrWorkerCount(u.id)),1:(u.ownOnly===false?' · '+tr('sees all workers'):'')}))}</div>`
-        : u.role==='supplier' && u.supplierId ? `<div style="font-size:12px;color:var(--text2)">${(n => n===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:n,1:''}))(workers.filter(w => w.supplierId===u.supplierId).length)}</div>` : '';
-      return `<div class="tap-edit" onclick="tapEdit(event,this,null,()=>openEditUserForm('${esc(u.id)}'))" onpointerdown="longPress(event,this,()=>openEditUserForm('${esc(u.id)}'))" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);${u.active===false?'opacity:0.55':''}">
-        <div>
-          <div style="font-weight:600">${u.role==='tenant_admin'?'<i class="ti ti-pin" style="color:var(--amber)" title="'+esc(tr('Firm owner'))+'"></i> ':''}${esc(u.fullName||u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(tr(USER_ROLE_LABELS[u.role]||u.role))})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">'+tr('inactive')+'</span>':''}</div>
-          <div style="font-size:11px;color:var(--text3)">${tr('login: {0}{1}',{0:(esc(u.username)),1:(u.phone?' · '+esc(u.phone):'')})}</div>
-          ${hrLine}<div style="font-size:12px;color:var(--text2)">${u.role==='supplier' ? (sup?esc(sup.name):'—') : u.role==='client' ? esc(((clients||[]).find(c=>c.id===u.clientId)||{}).name||'—') : esc(permsLabel)}</div>
-          ${HOUR_ROLES.includes(u.role) && (u.hourPerms||[]).length ? `<div style="font-size:12px;color:var(--text2)"><i class="ti ti-clock"></i> ${esc(u.hourPerms.map(p=>tr(HOUR_PERM_LABELS[p]||p)).join(', '))}</div>` : ''}
-        </div>
-        <div style="display:flex;gap:4px">
-          <button class="btn sm" onclick="deleteUserConfirm('${esc(u.id)}','${esc(u.username)}')" title="${tr('Delete')}" style="color:#ff6b78"><i class="ti ti-trash"></i></button>
-        </div>
-      </div>`;
+      const permsLabel = (u.role!=='staff' && u.role!=='hr') ? '' : (u.permissions==='*' ? tr('Full access') : (Array.isArray(u.permissions)?u.permissions.join(', '):'—'));
+      const count = u.role==='hr' ? hrWorkerCount(u.id) : u.role==='supplier' && u.supplierId ? workers.filter(w => w.supplierId===u.supplierId).length : null;
+      const team = count==null ? '' : (count===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:count,1:''})) + (u.role==='hr'&&u.ownOnly===false?' · '+tr('sees all workers'):'');
+      const what = u.role==='supplier' ? (sup?esc(sup.name):'—') : u.role==='client' ? esc(((clients||[]).find(c=>c.id===u.clientId)||{}).name||'—') : esc(permsLabel);
+      const name = (u.fullName||u.username)||'?', col = USER_ROLE_COLOR[u.role]||'var(--border2)';
+      return t3Line({c:col, cls:'tap-edit'+(u.active===false?' off':''),
+        av:`<div class="t3-av" style="background:var(--bg3);color:${col==='var(--border2)'?'var(--text2)':col}">${u.role==='tenant_admin'?'<i class="ti ti-pin"></i>':esc(String(name).trim().slice(0,1).toUpperCase())}</div>`,
+        name:`${esc(name)} <span style="font-size:11px;font-weight:400;color:var(--text2)">${esc(tr(USER_ROLE_LABELS[u.role]||u.role))}</span>${u.active===false?' <span style="font-size:11px;font-weight:400;color:var(--amber)">'+tr('inactive')+'</span>':''}`,
+        sub:[tr('login: {0}{1}',{0:esc(u.username),1:(u.phone?' · '+esc(u.phone):'')}), [what, esc(team)].filter(Boolean).join(' · '),
+          HOUR_ROLES.includes(u.role) && (u.hourPerms||[]).length ? `<i class="ti ti-clock"></i> ${esc(u.hourPerms.map(p=>tr(HOUR_PERM_LABELS[p]||p)).join(', '))}` : ''],
+        attrs:`onclick="tapEdit(event,this,null,()=>openEditUserForm('${esc(u.id)}'))"`,
+        right:`<button class="t3-x" type="button" onclick="event.stopPropagation();deleteUserConfirm('${esc(u.id)}','${esc(u.username)}')" title="${tr('Delete')}" aria-label="${tr('Delete')}">✕</button>`});
     };
-    el.innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="openCreateUserForm()"><i class="ti ti-plus"></i> ${tr('New user')}</button></div>`
-      + (users.length ? `<div class="admin-users-rows" style="display:flex;flex-direction:column;gap:8px"></div>` : '<div style="color:var(--text2);font-size:13px">'+tr('No staff, HR or supplier users yet.')+'</div>');
+    el.innerHTML = `<div class="t3-sec" style="margin-top:0"><i class="ti ti-users"></i> ${tr('Logins')}<em>${users.length}</em><button class="btn sm" onclick="openCreateUserForm()"><i class="ti ti-plus"></i> ${tr('New user')}</button></div>`
+      + (users.length ? `<div class="admin-users-rows"></div>` : '<div class="t3-empty">'+tr('No staff, HR or supplier users yet.')+'</div>');
     // The firm's owner is always pinned at the top (user request 2026-10-11),
     // then everyone else by name.
     const rank = u => u.role==='tenant_admin' ? 0 : u.role==='superadmin' ? 1 : 2;
@@ -6170,19 +6123,18 @@ async function loadErrorsList(targetId){
     renderErrorsRows(listEl, targetId, rows);
   }catch(e){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">'+tr('No network')+'</div>'; }
 }
-// Draws the Errors list from rows (cached or fresh): one bordered box, a
-// compact row per error (time · page · source, then the message), paged by 10.
+// Draws the Errors list from rows (cached or fresh), template 3: the count,
+// then a red-marked line per error — the message, then time · page · source ·
+// user — with a copy button; paged by 10.
 function renderErrorsRows(listEl, targetId, rows){
     __errorsRowsByTarget[targetId] = rows;
     const pr = __errorsPeriod[targetId];
-    if(!rows.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">No errors'+(pr?' — '+esc(pr.label):'')+'.</div>'; return; }
-    listEl.innerHTML = `<div style="font-size:12px;color:var(--text2);margin-bottom:6px">${tr('{0} error{1}{2}',{0:(rows.length),1:(rows.length===1?'':'s'),2:(pr?' · '+esc(pr.label):'')})}</div><div class="log-box errors-rows"></div>`;
-    renderPagedList(listEl.querySelector('.errors-rows'), 'errors:' + targetId, pr ? pr.key : '', rows, (r,i) => `
-      <div class="log-row">
-        <button class="btn sm log-copy" title="${tr('Copy error')}" onclick="copyErrorRow('${targetId}',${i})"><i class="ti ti-copy"></i></button>
-        <div class="log-meta"><span class="log-when">${esc(_shortWhen(r.when))}</span>${r.page?`<span>${esc(r.page)}</span>`:''}${r.source?`<span style="font-weight:600">${esc(r.source)}</span>`:''}${r.user||r.worker?`<span>${esc(r.user||r.worker)}</span>`:''}</div>
-        <div class="log-main" style="word-break:break-word">${esc(r.message||'')}</div>
-      </div>`);
+    if(!rows.length){ listEl.innerHTML = '<div class="t3-empty">'+esc(tr('No errors'))+(pr?' — '+esc(pr.label):'')+'.</div>'; return; }
+    listEl.innerHTML = `<div class="t3-sec" style="margin-top:0">${tr('{0} error{1}{2}',{0:(rows.length),1:(rows.length===1?'':'s'),2:(pr?' · '+esc(pr.label):'')})}</div><div class="errors-rows"></div>`;
+    renderPagedList(listEl.querySelector('.errors-rows'), 'errors:' + targetId, pr ? pr.key : '', rows, (r,i) => t3Line({c:'var(--red)', cls:'wrap',
+      name:`<span style="font-weight:500">${esc(r.message||'')}</span>`,
+      sub:`<span style="font-family:'DM Mono',monospace">${esc(_shortWhen(r.when))}</span>${[r.page,r.source,r.user||r.worker].filter(Boolean).map(x=>' · '+esc(x)).join('')}`,
+      right:`<button class="t3-ib" type="button" title="${tr('Copy error')}" onclick="copyErrorRow('${targetId}',${i})"><i class="ti ti-copy"></i></button>`}));
 }
 function copyAllErrors(targetId){
   const rows = __errorsRowsByTarget[targetId] || [], pr = __errorsPeriod[targetId];
@@ -6264,31 +6216,42 @@ function renderTimingsPane(el,rows){
   __timingsSummary=_timingsSummary(rows);
   __timingsSummaryText=__timingsSummary.length?pr.label+' (median / 90%):\n'+__timingsSummary.map(x=>
     `${x.label}: ${x.count}× · median ${_sec(x.median)} · 90% ${_sec(x.p90)}${x.steps.length?' · '+x.steps.map(([l,v])=>l+' '+_sec(v)).join(' · '):''}`).join('\n'):'';
-  if(!rows.length){ el.innerHTML='<div style="color:var(--text2);font-size:13px">No measurements — '+esc(pr.label)+'.</div>'; return; }
+  if(!rows.length){ el.innerHTML='<div class="t3-empty">'+esc(tr('No measurements'))+' — '+esc(pr.label)+'.</div>'; return; }
   const p90=Object.fromEntries(__timingsSummary.map(x=>[x.kind,x.p90]));
-  // One card per kind; slow data calls add a kind each, so the cards page by 10 too.
-  const cardHtml=x=>`<div class="tm-card">
-      <div class="tm-card-head">${esc(x.label)}<span>${x.count}×</span></div>
-      <div class="tm-card-vals">${tr('median')} <b>${_sec(x.median)}</b> · 90% ${_sec(x.p90)}</div>
-      ${x.steps.map(([l,v])=>`<span class="tm-pill">${esc(l)} ${_sec(v)}</span>`).join('')}
-    </div>`;
-  // A run slower than its kind's 90% is marked amber.
+  // Template 3: a line per kind (median at the right, its steps under it),
+  // then a line per measurement, newest first — amber when slower than its
+  // kind's 90%. Slow data calls add a kind each, so both page by 10.
+  const cardHtml=x=>t3Line({c:'var(--accent)', cls:'wrap', name:`${esc(x.label)} <span style="font-weight:400;color:var(--text3)">${x.count}×</span>`,
+    sub:x.steps.length?esc(x.steps.map(([l,v])=>l+' '+_sec(v)).join(' · ')):'',
+    right:`<span class="r" style="text-align:right"><b style="color:var(--text);font-size:14px">${_sec(x.median)}</b><br>90% ${_sec(x.p90)}</span>`});
   const rowHtml=(r,i)=>{
     const d=r.details||{}, slow=p90[r.kind]!=null&&r.totalMs>p90[r.kind];
     const steps=[..._timingSteps(r.kind,d).map(([l,v])=>`${esc(l)} ${_sec(v)}`),esc(_timingAiNote(d))].filter(Boolean).join(' · ');
-    return `<div class="log-row">
-      <button class="btn sm log-copy" title="${tr('Copy')}" onclick="copyTimingRow(${i})"><i class="ti ti-copy"></i></button>
-      <div class="log-main"><span class="log-when">${esc(_shortWhen(r.when))}</span> &nbsp;<b>${esc(timingKindLabel(r.kind))}</b> &nbsp;<b style="color:${slow?'var(--amber)':'var(--text)'}">${_sec(r.totalMs)}</b>${d.aborted?` <span style="color:var(--amber)">${esc(d.aborted)}</span>`:''}</div>
-      ${steps?`<div class="log-sub">${steps}</div>`:''}
-      <div class="log-meta">${[_timingFirmName(r.tenantId),r.user,d.device,d.pages?d.pages+' page(s)':'',d.kinds?d.kinds.join(', '):''].filter(Boolean).map(x=>`<span>${esc(x)}</span>`).join('')}</div>
-    </div>`;
+    return t3Line({c:slow?'var(--amber)':'var(--border2)', cls:'wrap',
+      name:`${esc(timingKindLabel(r.kind))}${d.aborted?` <span style="color:var(--amber);font-weight:400">${esc(d.aborted)}</span>`:''}`,
+      sub:[steps, `<span style="font-family:'DM Mono',monospace">${esc(_shortWhen(r.when))}</span>${[_timingFirmName(r.tenantId),r.user,d.device,d.pages?d.pages+' page(s)':'',d.kinds?d.kinds.join(', '):''].filter(Boolean).map(x=>' · '+esc(x)).join('')}`],
+      right:`<span class="r" style="color:${slow?'var(--amber)':'var(--text)'};font-size:14px;font-weight:700">${_sec(r.totalMs)}</span><button class="t3-ib" type="button" title="${tr('Copy')}" onclick="copyTimingRow(${i})"><i class="ti ti-copy"></i></button>`});
   };
-  el.innerHTML=`<div style="font-size:12px;color:var(--text2);margin-bottom:6px">${tr('{0} · {1} measurement{2} · median / 90%',{0:(esc(pr.label)),1:(rows.length),2:(rows.length===1?'':'s')})}</div>
-    ${__timingsSummary.length?`<div id="timingsCards" class="tm-cards"></div>`:''}
-    <div style="font-size:12px;color:var(--text2);margin-bottom:6px">${tr('All measurements, newest first')}</div>
-    <div id="timingsLatestList" class="log-box"></div>`;
-  if(__timingsSummary.length) renderPagedList(document.getElementById('timingsCards'), 'timingCards', pr.key, __timingsSummary, cardHtml, {grid:true});
+  const slowN=rows.filter(r=>p90[r.kind]!=null&&r.totalMs>p90[r.kind]).length, abortedN=rows.filter(r=>r.details&&r.details.aborted).length;
+  const fig=(n,label,col)=>`<div><b style="color:${n?col:'var(--text3)'}">${n}</b>${esc(label)}</div>`;
+  el.innerHTML=`<div class="t3-stats">${fig(rows.length,tr('measurements'),'var(--text)')}${fig(__timingsSummary.length,tr('kinds'),'var(--text)')}${fig(slowN,tr('above 90%'),'var(--amber)')}${fig(abortedN,tr('aborted'),'var(--red)')}</div>
+    ${__timingsSummary.length?`<div class="t3-sec">${tr('By kind · median / 90%')}<em>${__timingsSummary.length}</em></div><div id="timingsCards"></div>`:''}
+    <div class="t3-sec">${tr('All measurements, newest first')}<em>${rows.length}</em></div>
+    <div id="timingsLatestList"></div>`;
+  if(__timingsSummary.length) renderPagedList(document.getElementById('timingsCards'), 'timingCards', pr.key, __timingsSummary, cardHtml);
   renderPagedList(document.getElementById('timingsLatestList'), 'timings', pr.key, rows, rowHtml);
+}
+// Reset (Errors and Timings): every error and every measurement, of every
+// firm and period, deleted after a confirm; the cached periods go too.
+async function resetLogs(){
+  if(!confirm(tr('Delete every error and every timing measurement (all firms, all periods)? This cannot be undone.'))) return;
+  try{
+    const json=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'resetLogs'})})).json();
+    if(!json||json.error){ showToast(tr((json&&json.error)||'Not deleted')); return; }
+    try{ Object.keys(localStorage).filter(k=>k.startsWith(ADMIN_CACHE_PREFIX+'errors')||k.startsWith(ADMIN_CACHE_PREFIX+'timings')).forEach(k=>localStorage.removeItem(k)); }catch(e){}
+    showToast(tr('Deleted: {0} errors, {1} measurements',{0:json.errors||0,1:json.timings||0}));
+    if(__adminPane==='timings') loadTimingsPane(); else if(__adminPane==='errors') loadErrorsList('adminErrorsList');
+  }catch(e){ showToast(tr('Network error')); }
 }
 // Print: the picked period of the Errors or Timings pane as a plain page.
 function printLogPane(which){
@@ -6896,13 +6859,14 @@ let __lastSalaryEntries=[];
 let __lastClientBillEntries=[];
 let __lastSupplierPayableRows=[];
 // Template 3 pieces (shared by every list drawn in it): an avatar and a line.
-// name / sub / right are HTML, already escaped by the caller.
+// name / sub / right are HTML, already escaped by the caller; sub may be a
+// list (one small line each).
 function t3Av(w){
   const c=w?WORKER_COLORS[w.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
   return `<div class="t3-av" style="background:${c.bg};color:${c.text}">${w?workerAvatarInner(w):'?'}</div>`;
 }
 function t3Line(o){
-  return `<div class="t3-line${o.cls?' '+o.cls:''}" style="--c:${o.c||'var(--border2)'}"${o.onclick?` onclick="${o.onclick}"`:''}${o.attrs?' '+o.attrs:''}>${o.av||''}<div class="n"><b>${o.name}</b>${o.sub?`<small>${o.sub}</small>`:''}</div>${o.right||''}</div>`;
+  return `<div class="t3-line${o.cls?' '+o.cls:''}" style="--c:${o.c||'var(--border2)'}"${o.onclick?` onclick="${o.onclick}"`:''}${o.attrs?' '+o.attrs:''}>${o.av||''}<div class="n"><b>${o.name}</b>${[].concat(o.sub||[]).filter(Boolean).map(x=>`<small>${x}</small>`).join('')}</div>${o.right||''}</div>`;
 }
 function workerClientNames(w){ return (w.clientIds||[]).map(id=>(clients.find(c=>c.id===id)||{}).name).filter(Boolean).join(', '); }
 function renderDashboard(){
@@ -6990,13 +6954,41 @@ function renderDashboard(){
         onclick:wc?`openWorkerCardById('${esc(wc.id)}')`:''});
     });
   }
-  // The figures on top: a tap scrolls to the list.
-  const stat=(n,label,col,target)=>`<div class="${n?'go':''}" ${n?`onclick="document.getElementById('${target}').scrollIntoView({behavior:'smooth',block:'start'})"`:''}><b style="color:${n?col:'var(--text3)'}">${n}</b>${esc(label)}</div>`;
-  document.getElementById('dashStats').innerHTML=stat(onSite.length,tr('on site'),'var(--green)','dashOnSiteWrap')
-    +stat(missing.length,tr('missing'),'var(--red)','dashMissingWrap')
-    +stat(expiring.length,tr('expiring'),'var(--amber)','dashExpiringWrap')
-    +stat(todayLog.length,tr('punches'),'var(--text)','dashLogWrap');
+  // The figures on top: a tap shows only that figure's list (dashFilterTo).
+  const stat=(n,label,col,key)=>`<div class="${n?'go':''}${__dashFilter===key?' on':''}" ${n||__dashFilter===key?`onclick="dashFilterTo('${key}')"`:''}><b style="color:${n?col:'var(--text3)'}">${n}</b>${esc(label)}</div>`;
+  document.getElementById('dashStats').innerHTML=stat(onSite.length,tr('on site'),'var(--green)','onsite')
+    +stat(missing.length,tr('missing'),'var(--red)','missing')
+    +stat(expiring.length,tr('expiring'),'var(--amber)','expiring')
+    +stat(todayLog.length,tr('punches'),'var(--text)','log');
   renderDashSuppliers();
+  applyDashView();
+}
+// Today, variant A (user request 2026-10-11): a figure is a filter — only
+// its section shows, opened, until the same figure or "Show all" is tapped;
+// each section folds with the arrow at its right (kept on this device).
+const DASH_FILTER_LABEL={onsite:'on site',missing:'missing',expiring:'expiring',log:'punches'};
+let __dashFilter=null;
+function dashFolded(){ try{ return JSON.parse(localStorage.getItem('dashFolded')||'[]'); }catch(e){ return []; } }
+function toggleDashSec(key){
+  if(__dashFilter===key) return; // the filtered section stays open
+  const f=dashFolded(), i=f.indexOf(key);
+  if(i<0) f.push(key); else f.splice(i,1);
+  try{ localStorage.setItem('dashFolded', JSON.stringify(f)); }catch(e){}
+  applyDashView();
+}
+function dashFilterTo(key){ __dashFilter=__dashFilter===key?null:key; renderDashboard(); window.scrollTo({top:0}); }
+function applyDashView(){
+  const folded=dashFolded();
+  document.querySelectorAll('#sectionDashboard [data-sec]').forEach(el=>{
+    const k=el.dataset.sec;
+    el.classList.toggle('dash-off', !!__dashFilter && k!==__dashFilter);
+    el.classList.toggle('dash-fold', k!==__dashFilter && folded.includes(k));
+  });
+  const note=document.getElementById('dashFilterNote');
+  if(note){
+    note.style.display=__dashFilter?'':'none';
+    note.innerHTML=__dashFilter?`${esc(tr('Showing: {0}',{0:tr(DASH_FILTER_LABEL[__dashFilter])}))} · <a onclick="dashFilterTo('${__dashFilter}')">${esc(tr('Show all'))}</a>`:'';
+  }
 }
 
 // ── Workers-by-supplier widget (Dashboard) ──────────────────────────────────
@@ -7172,6 +7164,14 @@ function salaryEntriesFor(period){
 // The Salary rows opened by a tap stay open through a redraw (a live punch,
 // a period change).
 const __salOpen=new Set();
+// The search icon opens the field (focused); emptied and closed again, the
+// list shows everyone.
+function toggleSalarySearch(){
+  const el=document.getElementById('salarySearch'); if(!el) return;
+  const open=el.style.display==='none';
+  el.style.display=open?'':'none';
+  if(open) el.focus(); else if(el.value){ el.value=''; renderSalary(); }
+}
 function toggleSalRow(el){ const id=el.dataset.wid; if(el.classList.toggle('open')) __salOpen.add(id); else __salOpen.delete(id); }
 function renderSalary(){
   fillSalaryPeriodSelect();
@@ -7244,7 +7244,7 @@ function renderSalary(){
     const wid=esc(e.workerId), tot=e.total+e.travel;
     const det=(l,v)=>`<div><span>${esc(l)}</span><b>${v}</b></div>`;
     const lc=e.warns&&e.warns.length?'var(--amber)':tot>0?'var(--green)':'var(--border2)';
-    return `<div class="sal-row tap-edit${__salOpen.has(e.workerId)?' open':''}" style="--c:${lc}" data-wid="${wid}" onclick="tapEdit(event,this,()=>toggleSalRow(this),()=>openPayModal('${wid}'))" onpointerdown="longPress(event,this,()=>openPayModal('${wid}'))">
+    return `<div class="sal-row tap-edit${__salOpen.has(e.workerId)?' open':''}" style="--c:${lc}" data-wid="${wid}" onclick="tapEdit(event,this,()=>toggleSalRow(this),()=>openPayModal('${wid}'))">
       <div class="sal-line">
         <span class="c-name"><span class="sal-av" style="background:${c.bg};color:${c.text}">${ini}</span><span class="sal-nm" onclick="event.stopPropagation();openWorkerCardById('${wid}')">${esc(e.worker)}</span>${e.warns&&e.warns.length?`<i class="ti ti-alert-triangle" style="color:var(--amber);font-size:14px" title="${e.warns.join('&#10;').replace(/"/g,'&quot;')}"></i>`:''}</span>
         <span class="c-h">${esc(tr('{h}h',{h:e.hours.toFixed(1)}))}</span>
@@ -7258,6 +7258,7 @@ function renderSalary(){
         ${det(tr('Pay'),e.total>0?money(e.total):'—')}
         ${det(tr('Travel ₪'),e.travel>0?money(e.travel):'—')}
         ${det(tr('Bank'),bank)}
+        ${!payOnly||canEditPay(wc)?`<div style="justify-content:flex-end"><button class="btn sm" type="button" onclick="event.stopPropagation();openPayModal('${wid}')"><i class="ti ti-pencil"></i> ${esc(tr('Pay'))}</button></div>`:''}
         ${payOnly?det(tr('My commission'),'₪'+hrCom(e).toFixed(0)+` <span style="color:var(--text3);font-weight:400">(${isDailyPay(wc)&&hrDayRate>0?tr('{n} days × ₪{r}',{n:esc(e.daysUsed),r:hrDayRate}):tr('{h}h × ₪{r}',{h:e.hours.toFixed(1),r:hrRate})})</span>`):''}
       </div>
     </div>`;
@@ -7354,10 +7355,6 @@ function renderSupplierPayable(entries){
   // expects — built here once so the export buttons below never recompute.
   __lastSupplierPayableRows = rows.map(r=>({ label:r.sup.name, hours:r.hours, rate:tr('commission'), total:r.total }));
   wrap.innerHTML=`
-    <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:6px">
-      <button class="btn sm" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:tr('Payable by supplier'),filename:'payable-by-supplier',format:'excel'})"><i class="ti ti-file-spreadsheet"></i> Excel</button>
-      <button class="btn sm" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:tr('Payable by supplier'),filename:'payable-by-supplier',format:'pdf'})"><i class="ti ti-file-type-pdf"></i> PDF</button>
-    </div>
     <div class="paged-supplierPayable"></div>`;
   renderPagedList(wrap.querySelector('.paged-supplierPayable'),'supplierPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,r=>t3Line({c:r.sup.color,
     av:`<div class="t3-av" style="background:${r.sup.color}22;color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></div>`, name:esc(r.sup.name),
@@ -7416,10 +7413,7 @@ function hourDayLines(doc, month){
   else{
     let ids=null;
     if(doc.kind==='supplier') ids=new Set(workers.filter(w=>w.supplierId===doc.ownerId).map(w=>w.id));
-    else{
-      const u=(loadAdminCache('users_'+activeTenantIdForAdmin())||[]).find(x=>x.uid===doc.ownerId);
-      if(!u||u.ownOnly!==false) ids=new Set(workers.filter(w=>w.hrId===doc.ownerId).map(w=>w.id));
-    }
+    else if(doc.ownOnly!==false) ids=new Set(workers.filter(w=>w.hrId===doc.ownerId).map(w=>w.id));
     pick=e=>!ids||ids.has(e.workerId);
   }
   const byW={};
@@ -7443,10 +7437,18 @@ const HOUR_ST={approved:['var(--green)','ti-circle-check','Approved'],fixed:['va
   fix:['var(--accent)','ti-pencil','Fix proposed'],rejected:['var(--red)','ti-circle-x','Fix rejected'],pending:['var(--text3)','ti-clock','Waiting for approval']};
 const HOUR_KIND={client:['ti-building-store','Client'],supplier:['ti-truck-delivery','Supplier'],hr:['ti-user-check','HR']};
 // The month's approval documents (the hours function, list) — every login's.
-async function hourApprovalsOf(month){
+// Kept for a minute per month: Accounting redraws on every punch, which must
+// not ask the server each time; opening the tab and an accept / reject
+// drop the copy, the accountant report always reads afresh (fresh).
+const HOUR_APPROVALS_TTL=60e3;
+let __hourApprovalsCache=null;
+async function hourApprovalsOf(month, fresh){
+  const c=!fresh&&__hourApprovalsCache, key=fsTenantId()+'|'+month;
+  if(c&&c.key===key&&Date.now()-c.at<HOUR_APPROVALS_TTL) return c.docs;
   const r=await hoursCall({action:'list', month, tenantId:fsTenantId()});
   if(r.error) throw new Error(r.error);
-  return r.docs||[];
+  __hourApprovalsCache={key, at:Date.now(), docs:r.docs||[]};
+  return __hourApprovalsCache.docs;
 }
 // One login's month: its counts and the days that need a look.
 function hourApprovalSummary(doc, month){
@@ -7492,6 +7494,7 @@ async function renderHourApprovals(period){
 async function resolveHourFix(docId, key, accept){
   if(accept && !confirm(tr('Move this shift to the proposed times?'))) return;
   const r=await hoursCall({action:'resolve', docId, key, accept, tenantId:fsTenantId()});
+  __hourApprovalsCache=null;
   if(r.error){ showToast(r.error); return; }
   showToast(accept?tr('Fix accepted — the punches were updated'):tr('Fix rejected'));
   // The punch listener brings the moved punches; the section redraws now.
@@ -7531,35 +7534,16 @@ async function renderPendingHours(){
     json = await res.json();
   }catch(e){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('Could not load')}</div>`; return; }
   const batches=(json.batches||[]).filter(b=>b.status==='pending');
-  if(!batches.length){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('Nothing pending')}</div>`; return; }
-  wrap.innerHTML=`
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-      <table style="width:100%;border-collapse:collapse;min-width:520px">
-        <thead>
-          <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">${tr('File')}</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">${tr('Uploaded by')}</th>
-            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">${tr('Shifts')}</th>
-            ${canApprove?'<th style="padding:10px 12px"></th>':''}
-          </tr>
-        </thead>
-        <tbody class="pending-hours-rows"></tbody>
-      </table>
-      </div>
-    </div>`;
+  if(!batches.length){ wrap.innerHTML=`<div class="t3-empty">${tr('Nothing pending')}</div>`; return; }
+  // Template 3: a line per batch (amber: waiting) — the worker, the file and
+  // who sent it, the shift count; ✓ approve / ✕ reject at the right (owner).
+  wrap.innerHTML='<div class="pending-hours-rows"></div>';
   renderPagedList(wrap.querySelector('.pending-hours-rows'),'pendingHours','',batches,b=>{
-            const w = workers.find(x=>x.id===(b.entries[0]&&b.entries[0].workerId));
-            return `<tr style="border-bottom:1px solid var(--border)">
-              <td style="padding:10px 12px;font-size:13px">${esc(b.fileName||'—')}${w?' · '+esc(w.name):''}</td>
-              <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${esc(b.uploadedBy||'—')}</td>
-              <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600">${b.entries.length}</td>
-              ${canApprove?`<td style="padding:10px 12px;text-align:right;white-space:nowrap">
-                <button class="btn sm" style="color:var(--green)" onclick="approveHoursBatch('${b.batchId}')"><i class="ti ti-check"></i></button>
-                <button class="btn sm red" onclick="rejectHoursBatch('${b.batchId}')"><i class="ti ti-x"></i></button>
-              </td>`:''}
-            </tr>`;
-},{table:true,colspan:canApprove?4:3});
+    const w = workers.find(x=>x.id===(b.entries[0]&&b.entries[0].workerId)), id = esc(String(b.batchId||''));
+    return t3Line({c:'var(--amber)', av:t3Av(w), name:esc(w?w.name:(b.fileName||'—')),
+      sub:[esc(b.fileName||'—')+' · '+esc(b.uploadedBy||'—'), esc(b.entries.length===1?tr('1 shift'):tr('{n} shifts',{n:b.entries.length}))],
+      right:canApprove?`<button class="t3-ib" style="color:var(--green)" title="${esc(tr('Approve'))}" onclick="approveHoursBatch('${id}')"><i class="ti ti-check"></i></button><button class="t3-ib" style="color:var(--red)" title="${esc(tr('Reject'))}" onclick="rejectHoursBatch('${id}')"><i class="ti ti-x"></i></button>`:''});
+  });
 }
 async function approveHoursBatch(batchId){
   try{
@@ -7823,7 +7807,7 @@ const ACCOUNTING_HELP={
     'Rate: the worker\'s own rate, ₪/h or ₪/day; grey "client" = no rate of their own, the client\'s applies (by the hour only).',
     'Days: counted from the punches (two shifts on one day count once); for a worker paid by the day the days can be set by hand for the picked period in the pay window.',
     'Travel = ₪/day × days worked + ₪/month once for each calendar month with work. Total Pay = pay + travel.',
-    'A tap on a row opens the worker card; a double click (computer) or a long press (phone) opens the pay window: paid by the hour or by the day, rate, OT / Shabbat (empty = the law), travel, bank. A worker without shifts is set from the worker card\'s Pay button.',
+    'A tap on a row opens its details; the name opens the worker card and Pay the pay window: paid by the hour or by the day, rate, OT / Shabbat (empty = the law), travel, bank. A worker without shifts is set from the worker card\'s Pay button.',
     'A ⚠ next to a worker: punches to check (a missing IN or OUT, an overlong shift…). The list is in the banner above the table.']},
   rates:{icon:'ti-adjustments',title:'Per-client rates',items:[
     'One row per worker and client: a rate for this worker at this client only.',
@@ -7996,7 +7980,7 @@ async function exportAccountantReport(period){
   // A month: the hours approvals go in a sheet of their own.
   const month=salaryMonthOf(period);
   let approvals=null;
-  if(month){ try{ approvals=await hourApprovalsOf(month); }catch(e){ approvals=null; } }
+  if(month){ try{ approvals=await hourApprovalsOf(month, true); }catch(e){ approvals=null; } }
   const {byWorker}=salaryEntriesFor(period);
   const money=v=>Math.round((Number(v)||0)*100)/100, hrs=v=>Math.round((Number(v)||0)*100)/100;
   const head=['Worker','ID / Passport','Supplier','Pay mode','Rate','Days','Regular hours','Overtime hours','Shabbat hours','Total hours','Pay (₪)','Travel (₪)','Total (₪)','Bank','Branch','Account','Warnings'].map(h=>tr(h));
@@ -8175,16 +8159,14 @@ function setAdminView(view){
   const filters = document.getElementById('adminFilters');
   const tableWrap = document.querySelector('#sectionAdmin .admin-table-wrap');
   const cliView = document.getElementById('adminClientView');
+  logBtn.classList.toggle('accent', view==='log');
+  cliBtn.classList.toggle('accent', view!=='log');
   if(view==='log'){
-    logBtn.style.cssText='background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)';
-    cliBtn.style.cssText='';
     if(filters) filters.style.display='';
     if(tableWrap) tableWrap.style.display='block';
     if(cliView) cliView.style.display='none';
     renderAdmin();
   } else {
-    cliBtn.style.cssText='background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)';
-    logBtn.style.cssText='';
     if(filters) filters.style.display='none';
     if(tableWrap) tableWrap.style.display='none';
     if(cliView) cliView.style.display='block';
@@ -8195,61 +8177,30 @@ function setAdminView(view){
 function renderClientLogs(){
   const log = getPunchLog();
   const el = document.getElementById('adminClientLogs');
-  if(!clients.length){ el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3)">'+tr('No clients configured')+'</div>'; return; }
-
+  if(!clients.length){ el.innerHTML='<div class="t3-empty">'+tr('No clients configured')+'</div>'; return; }
+  const todayStr = new Date().toDateString();
+  // Template 3: a client is a section (its color, on site now / workers /
+  // punches), each assigned worker a line (green while on site) and its
+  // last 5 punches small lines under it.
   renderPagedList(el, 'clientLogs', '', clients, c=>{
     const assignedWorkers = workers.filter(w=>(w.clientIds||[]).includes(c.id));
-    const assignedIds = assignedWorkers.map(w=>w.id);
-    const clientLog = log.filter(e=>assignedIds.includes(e.workerId)).reverse();
-    const todayStr = new Date().toDateString();
-    const todayEntries = clientLog.filter(e=>new Date(e.ts).toDateString()===todayStr);
-    const presentNow = assignedWorkers.filter(w=>{
-      const wToday = todayEntries.filter(e=>e.workerId===w.id);
-      const le=latestOf(wToday); return !!le && le.type==='in';
-    }).length;
-
+    const assignedIds = new Set(assignedWorkers.map(w=>w.id));
+    const clientLog = log.filter(e=>assignedIds.has(e.workerId)).reverse();
+    let presentNow = 0;
     const workerRows = assignedWorkers.map(w=>{
-      const wc = WORKER_COLORS[w.colorIdx%8];
-      const ini = workerAvatarInner(w);
       const wLog = clientLog.filter(e=>e.workerId===w.id);
-      const todayW = wLog.filter(e=>new Date(e.ts).toDateString()===todayStr);
-      const lastEntry = latestOf(todayW);
+      const lastEntry = latestOf(wLog.filter(e=>new Date(e.ts).toDateString()===todayStr));
       const isClockedIn = lastEntry?.type==='in';
-      const recent = wLog.slice(0,5);
-      return `<div style="background:var(--bg3);border-radius:8px;padding:12px;margin-bottom:8px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:${recent.length?'10px':'0'}">
-          <div style="width:32px;height:32px;border-radius:50%;background:${wc.bg};color:${wc.text};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${ini}</div>
-          <div style="flex:1"><div style="font-size:14px;font-weight:600">${esc(w.name)}</div>
-            <div style="font-size:12px;margin-top:2px;color:${isClockedIn?'var(--green)':'var(--text3)'}">${isClockedIn?'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);vertical-align:middle;margin-right:4px"></span> In since '+lastEntry.time:lastEntry?'Last: '+lastEntry.time+' ('+lastEntry.type+')':'No records today'}</div>
-          </div>
-          <div style="font-size:11px;color:var(--text3)">${tr('{0} records',{0:(wLog.length)})}</div>
-        </div>
-        ${recent.length?`<div style="display:flex;flex-direction:column;gap:3px">${recent.map(e=>`
-          <div class="tap-edit" onclick="tapEdit(event,this,null,()=>editPunchEntry(${e.id}))" onpointerdown="longPress(event,this,()=>editPunchEntry(${e.id}))" style="display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 8px;border-radius:5px;background:var(--bg2)">
-            <span style="font-weight:700;padding:2px 8px;border-radius:10px;font-size:11px;${e.type==='in'?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${e.type==='in'?tr('IN'):tr('OUT')}</span>
-            <span style="font-family:monospace;color:var(--text)">${e.time||'--'}</span>
-            <span style="color:var(--text2)">${new Date(e.ts).toLocaleDateString('en-GB')}</span>
-            ${(()=>{const s=punchSite(e);return s?`<span style="color:var(--text3);font-size:11px"><i class="ti ti-map-pin"></i> ${esc(s)}</span>`:'';})()}
-            ${e.dist!=null?`<span style="color:var(--text3);font-size:11px">${e.dist}m</span>`:''}
-            
-            <div style="margin-left:auto;display:flex;gap:3px">
-              <button class="btn sm red" onclick="deletePunchEntry(${e.id});renderClientLogs()" style="padding:2px 6px;font-size:10px"><i class="ti ti-x"></i></button>
-            </div>
-          </div>`).join('')}</div>`:''}
-      </div>`;
+      if(isClockedIn) presentNow++;
+      const status = isClockedIn ? tr('In since {0}',{0:lastEntry.time}) : lastEntry ? tr('Last: {0} ({1})',{0:lastEntry.time,1:lastEntry.type==='in'?tr('IN'):tr('OUT')}) : tr('No records today');
+      return t3Line({c:isClockedIn?'var(--green)':'var(--border2)', av:t3Av(w), name:esc(w.name),
+          sub:`<span style="color:${isClockedIn?'var(--green)':'var(--text3)'}">${esc(status)}</span>`,
+          right:`<span class="r">${esc(tr('{0} records',{0:wLog.length}))}</span>`, onclick:`openWorkerCardById('${esc(w.id)}')`})
+        + wLog.slice(0,5).map(e=>punchLogLine(e,'sub')).join('');
     }).join('');
-
-    return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:16px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)">
-        <div style="width:14px;height:14px;border-radius:50%;background:${c.color};flex-shrink:0"></div>
-        <div style="flex:1"><div style="font-size:16px;font-weight:700">${esc(c.name)}</div>${c.address?`<div style="font-size:12px;color:var(--text2)"><i class="ti ti-map-pin"></i> ${esc(c.address)}</div>`:''}</div>
-        <div style="text-align:right">
-          <div style="font-size:13px;color:var(--green);font-weight:600">${tr('{0} on site now',{0:(presentNow)})}</div>
-          <div style="font-size:11px;color:var(--text3)">${tr('{0} workers · {1} total punches',{0:(assignedWorkers.length),1:(clientLog.length)})}</div>
-        </div>
-      </div>
-      ${assignedWorkers.length?workerRows:'<div style="font-size:13px;color:var(--text3);text-align:center;padding:12px">'+tr('No workers assigned')+'</div>'}
-    </div>`;
+    return `<div class="t3-sec" style="color:var(--text)"><span style="width:10px;height:10px;border-radius:50%;background:${c.color};flex:none"></span> ${esc(c.name)}${c.address?` <span style="color:var(--text3);font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.address)}</span>`:''}
+        <em><span style="color:${presentNow?'var(--green)':'inherit'}">${esc(tr('{0} on site now',{0:presentNow}))}</span> · ${esc(tr('{0} workers · {1} total punches',{0:assignedWorkers.length,1:clientLog.length}))}</em></div>
+      ${assignedWorkers.length?workerRows:'<div class="t3-empty">'+tr('No workers assigned')+'</div>'}`;
   });
 }
 
@@ -8383,41 +8334,28 @@ function renderAdmin(){
   const statsEl=document.getElementById('adminStats');
   const totalIn=log.filter(e=>e.type==='in').length, totalOut=log.filter(e=>e.type==='out').length;
   const todayLog=log.filter(e=>new Date(e.ts).toDateString()===new Date().toDateString());
-  statsEl.innerHTML=`
-    <div class="stat-card"><div class="stat-label">${tr('Total IN')}</div><div class="stat-val" style="color:var(--green)">${totalIn}</div></div>
-    <div class="stat-card"><div class="stat-label">${tr('Total OUT')}</div><div class="stat-val" style="color:var(--red)">${totalOut}</div></div>
-    <div class="stat-card"><div class="stat-label">${tr('Today')}</div><div class="stat-val">${todayLog.length}</div></div>
+  const fig=(n,label,col)=>`<div><b style="color:${n?col:'var(--text3)'}">${n}</b>${esc(label)}</div>`;
+  statsEl.innerHTML=fig(totalIn,tr('Total IN'),'var(--green)')+fig(totalOut,tr('Total OUT'),'var(--red)')+fig(todayLog.length,tr('Today'),'var(--text)')+fig(log.length,tr('Total'),'var(--text)');
 
-    <div class="stat-card"><div class="stat-label">${tr('Total')}</div><div class="stat-val">${log.length}</div></div>`;
-
-  const tbody=document.getElementById('adminTableBody'), empty=document.getElementById('adminEmpty');
-  if(!filtered.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
+  const listEl=document.getElementById('adminTableBody'), empty=document.getElementById('adminEmpty');
+  if(!filtered.length){ listEl.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
-  renderPagedList(tbody, 'punchLog', [filterWorker,filterClient,filterDate,filterType].join('|'), filtered, (e,i)=>{
-    const wc=workers.find(w=>w.id===e.workerId);
-    const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
-    const ini=wc?workerAvatarInner(wc):esc(e.workerName?.slice(0,2).toUpperCase()||'?');
-    const dateStr=new Date(e.ts).toLocaleDateString('en-GB');
-    const wClients=wc?clients.filter(cl=>(wc.clientIds||[]).includes(cl.id)):[];
-    const clientBadge=wClients.map(cl=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${cl.color}22;border-radius:10px;white-space:nowrap"><span style="width:6px;height:6px;border-radius:50%;background:${cl.color};flex-shrink:0"></span>${esc(cl.name)}</span>`).join(' ');
-    return `<tr class="tap-edit" onclick="tapEdit(event,this,null,()=>editPunchEntry(${e.id}))" onpointerdown="longPress(event,this,()=>editPunchEntry(${e.id}))" style="border-bottom:1px solid var(--border);${i%2===0?'background:rgba(255,255,255,0.01)':''}">
-      <td style="padding:10px 12px;white-space:nowrap"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><span style="font-size:13px;font-weight:600">${esc(e.workerName)||'Unknown'}</span></div></td>
-      <td style="padding:10px 12px">${clientBadge||'<span style="color:var(--text3);font-size:12px">—</span>'}</td>
-      <td style="padding:10px 12px"><span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;${e.type==='in'?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${e.type==='in'?tr('IN'):tr('OUT')}</span></td>
-      <td style="padding:10px 12px;font-size:13px;font-family:monospace;color:var(--text)">${e.time||'--'}</td>
-      <td style="padding:10px 12px;font-size:13px;color:var(--text2);white-space:nowrap">${dateStr}</td>
-      <td style="padding:10px 12px;font-size:13px;color:var(--text2);white-space:nowrap">${esc(punchSite(e))||'--'}</td>
-      <td style="padding:10px 12px;font-size:12px">
-        ${e.manual?'<span style="color:var(--amber);font-size:11px;font-weight:700"><i class="ti ti-edit"></i> '+tr('Manual')+'</span>':(e.dist!=null?'<i class="ti ti-map-pin"></i> '+e.dist+'m':'--')}
-        ${!e.manual&&e.gpsAccuracy?`<span style="color:var(--text3);font-size:11px">±${Math.round(e.gpsAccuracy)}m</span>`:''}
-        ${!e.manual&&e.gpsSuspicious?`<span title="${(e.gpsWarnings||[]).join('; ')}" style="color:var(--amber);font-size:11px;cursor:help"> <i class="ti ti-alert-triangle"></i></span>`:''}
-      </td>
-
-      <td style="padding:10px 12px;text-align:center"><div style="display:flex;gap:4px;justify-content:center">
-        <button class="btn sm red" onclick="deletePunchEntry(${e.id})" style="padding:3px 8px;font-size:11px"><i class="ti ti-x"></i></button>
-      </div></td>
-    </tr>`;
-  }, {table:true, colspan:8});
+  // Template 3: a line per punch, IN green / OUT red on the left; a tap opens
+  // the punch's edit form.
+  renderPagedList(listEl, 'punchLog', [filterWorker,filterClient,filterDate,filterType].join('|'), filtered, e=>punchLogLine(e));
+}
+// One punch as a template-3 line: the log (worker, then the time at the
+// right) or, with cls 'sub', a worker's recent punch in By Client.
+function punchLogLine(e, cls){
+  const wc=workers.find(w=>w.id===e.workerId), isIn=e.type==='in', id=Number(e.id);
+  const gps=e.manual?`<span style="color:var(--amber)"><i class="ti ti-edit"></i> ${esc(tr('Manual'))}</span>`
+    :[e.dist!=null?`<i class="ti ti-map-pin"></i> ${esc(tr('{m} m',{m:Math.round(e.dist)}))}`:'', e.gpsAccuracy?'±'+Math.round(e.gpsAccuracy)+'m':'',
+      e.gpsSuspicious?`<span title="${esc((e.gpsWarnings||[]).join('; '))}" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i></span>`:''].filter(Boolean).join(' ');
+  const sub=[`<span style="color:${isIn?'var(--green)':'var(--red)'};font-weight:600">${isIn?tr('IN'):tr('OUT')}</span>`, esc(new Date(e.ts).toLocaleDateString('en-GB')), esc(punchSite(e)), gps].filter(Boolean).join(' · ');
+  return t3Line({c:isIn?'var(--green)':'var(--red)', cls:'tap-edit'+(cls?' '+cls:''), av:cls?'':t3Av(wc),
+    name:cls?`<span style="font-family:'DM Mono',monospace">${esc(e.time||'--')}</span>`:esc(e.workerName||tr('Unknown')), sub,
+    attrs:`data-pid="${id}" onclick="tapEdit(event,this,null,()=>editPunchEntry(${id}))"`,
+    right:`${cls?'':`<span class="r" style="color:var(--text);font-size:14px">${esc(e.time||'--')}</span>`}<button class="t3-x" type="button" title="${esc(tr('Delete'))}" onclick="event.stopPropagation();deletePunchEntry(${id});if(_adminView==='clients')renderClientLogs()">✕</button>`});
 }
 // Firestore mode: under the punch log, how far back it goes and buttons to
 // load earlier punches (one more month, or everything).

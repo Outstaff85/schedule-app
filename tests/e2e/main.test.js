@@ -58,7 +58,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await login(p, BASE + 'schedule-manager.html', 'owner1', 'owner-pass-1');
   await p.waitForNavigation().catch(()=>{});
   ok(await waitFor(p, () => typeof workers !== 'undefined' && workers.length === 2), 'owner: workers load from Firestore');
-  const idle = await p.evaluate(() => { switchTab('admin'); return {none: document.getElementById('adminPane_none').style.display !== 'none', rows: document.querySelectorAll('#adminTableBody > tr').length, log: document.getElementById('adminPane_punchlog').style.display}; });
+  const idle = await p.evaluate(() => { switchTab('admin'); return {none: document.getElementById('adminPane_none').style.display !== 'none', rows: document.querySelectorAll('#adminTableBody > .t3-line').length, log: document.getElementById('adminPane_punchlog').style.display}; });
   ok(idle.none && idle.rows === 0 && idle.log === 'none', 'admin opens with no section: punch log not drawn until tapped');
   ok(await p.evaluate(() => typeof BACKEND === 'undefined' && typeof API_SECRET === 'undefined' && API_URL === 'api://app'), 'no BACKEND switch, no API_SECRET');
   ok(await waitFor(p, () => getPunchLog().length >= 2), 'owner: punches load (live window)');
@@ -147,6 +147,43 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const t3 = await p.evaluate(async () => { switchTab('dashboard'); await new Promise(r => setTimeout(r, 300));
     return {stats: document.querySelectorAll('#dashStats > div').length, lines: document.querySelectorAll('#sectionDashboard .t3-line').length}; });
   await p.screenshot({path: SP + '/t3-today.png'}).catch(()=>{});
+  // Today, variant A: a figure shows only its section; the arrow folds a section (kept); the salary search opens from its icon.
+  const tf = await p.evaluate(async () => {
+    const vis = id => getComputedStyle(document.getElementById(id)).display !== 'none';
+    const listShown = id => getComputedStyle(document.getElementById(id)).display !== 'none';
+    dashFilterTo('log');
+    const only = vis('dashLogWrap') && !vis('dashMissingWrap') && !vis('dashOnSiteWrap') && !vis('dashSuppliersWrap') && /Show all/.test(document.getElementById('dashFilterNote').innerText);
+    dashFilterTo('log');
+    const all = vis('dashSuppliersWrap') || vis('dashLogWrap');
+    document.querySelector('#dashLogWrap .dash-sec').click();
+    const folded = !listShown('dashLog'), kept = JSON.parse(localStorage.getItem('dashFolded') || '[]').includes('log');
+    document.querySelector('#dashLogWrap .dash-sec').click();
+    const open = listShown('dashLog');
+    switchTab('accounting'); await new Promise(r => setTimeout(r, 300));
+    const sr = document.getElementById('salarySearch'), hidden = sr.style.display === 'none';
+    toggleSalarySearch(); const shown = sr.style.display !== 'none'; toggleSalarySearch();
+    switchTab('dashboard');
+    return {only, all, folded, kept, open, hidden, shown, closed: sr.style.display === 'none'};
+  });
+  ok(Object.values(tf).every(Boolean), 'today: a figure filters to its section, the arrow folds one (kept); salary search opens from its icon ' + JSON.stringify(tf));
+  // Schedule, variant 6: a line per worker with its week; the arrow opens 7 days, a day opens the shift editor.
+  const sch = await p.evaluate(async () => {
+    const w0 = workers.find(w => isActiveWorker(w)), keep = JSON.stringify(w0.schedule || []);
+    w0.schedule = [{type:'off'}, {type:'work', start:'09:00', end:'17:00'}, {type:'off'}, {type:'off'}, {type:'off'}, {type:'off'}, {type:'off'}];
+    switchTab('schedule'); render(); await new Promise(r => setTimeout(r, 200));
+    const line = document.querySelector('#ganttBody .sched-line'), sum = line.querySelector('small').innerText;
+    line.click(); await new Promise(r => setTimeout(r, 100));
+    const days = document.querySelectorAll('#ganttBody .sched-day').length;
+    document.querySelector('#ganttBody .sched-day').click(); await new Promise(r => setTimeout(r, 200));
+    const editor = !!document.querySelector('.overlay.open');
+    document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open'));
+    document.querySelector('#ganttBody .sched-line').click();
+    const closedNow = document.querySelectorAll('#ganttBody .sched-day').length === 0;
+    w0.schedule = JSON.parse(keep); render();
+    return {sum, days, editor, closedNow, week: document.getElementById('schedWeekRange').innerText};
+  });
+  ok(/shift/.test(sch.sum) && /h/.test(sch.sum) && sch.days === 7 && sch.editor && sch.closedNow && /–/.test(sch.week), 'schedule: a line per worker, the arrow opens its 7 days, a day opens the shift editor ' + JSON.stringify(sch));
+  await p.screenshot({path: SP + '/t3-schedule.png'}).catch(()=>{});
   await p.evaluate(async () => { switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await new Promise(r => setTimeout(r, 300)); });
   await p.screenshot({path: SP + '/t3-workers.png'}).catch(()=>{});
   await p.evaluate(async () => { switchTab('accounting'); const sel = document.getElementById('salaryPeriod'); sel.value = 'all'; await onSalaryPeriodChange();
@@ -455,7 +492,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       try { savePunchLog(base.concat(extra)); } catch (e) {}
       switchTab('admin'); switchAdminPane('punchlog');
       await new Promise(r => setTimeout(r, 1500));
-      const rows = document.querySelectorAll('#adminTableBody > tr:not(.paged-more)').length;
+      const rows = document.querySelectorAll('#adminTableBody > .t3-line').length;
       const more = !!document.querySelector('#adminTableBody > .paged-more');
       try { savePunchLog(base); } catch (e) {}
       return [rows, more, getPunchLog().length];
@@ -579,33 +616,32 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return cards;
   });
   ok(nw.some(c => /Avi/.test(c.name) && c.isNew) && nw.some(c => /Dana/.test(c.name) && !c.isNew), 'worker cards: NEW for 3 days after the worker was added ' + JSON.stringify(nw));
-  // Worker card: a plain click only reads; a double click (or a long touch) opens the edit form;
+  // Worker card: a click or a double click on it only reads; its ✎ opens the edit form;
   // closing it (a tap outside saves it) brings the card back.
   const cardSpot = '#workerCardModal div[style*="flex-direction:column"] >> nth=0';
   await p.evaluate(() => openWorkerCard(1)); await sleep(400);
-  await p.click(cardSpot, {position:{x:5, y:5}}); await sleep(400);
+  await p.click(cardSpot, {position:{x:5, y:5}}); await p.dblclick(cardSpot, {position:{x:5, y:5}}); await sleep(400);
   const bk0 = await p.evaluate(() => !document.getElementById('workerOverlay').classList.contains('open') && document.getElementById('workerCardOverlay').classList.contains('open'));
-  const lp = await p.evaluate(async () => {
-    const el = document.querySelector('#workerCardModal div[style*="flex-direction:column"]');
-    const r = el.getBoundingClientRect(), o = {bubbles:true, pointerType:'touch', clientX:r.left + 5, clientY:r.top + 5};
-    el.dispatchEvent(new PointerEvent('pointerdown', o)); await new Promise(res => setTimeout(res, 250));
-    el.dispatchEvent(new PointerEvent('pointerup', o)); await new Promise(res => setTimeout(res, 400));
-    const shortTouch = document.getElementById('workerOverlay').classList.contains('open');
-    el.dispatchEvent(new PointerEvent('pointerdown', o)); await new Promise(res => setTimeout(res, 700));
-    const longTouch = document.getElementById('workerOverlay').classList.contains('open');
-    el.dispatchEvent(new PointerEvent('pointerup', o));
-    return {shortTouch, longTouch};
-  });
-  ok(bk0 && !lp.shortTouch && lp.longTouch, 'worker card: a click or short touch only reads, a long touch opens the edit form ' + JSON.stringify(lp));
-  await p.mouse.click(5, 450); await sleep(1200);
-  await p.evaluate(() => { closeModal('workerCardOverlay'); openWorkerCard(1); }); await sleep(400);
-  await p.dblclick(cardSpot, {position:{x:5, y:5}}); await sleep(400);
+  await p.click('#workerCardEdit'); await sleep(400);
   const bk1 = await p.evaluate(() => document.getElementById('workerOverlay').classList.contains('open'));
   await p.evaluate(() => { document.getElementById('wNotes').value = 'back-to-card'; });
   await p.mouse.click(5, 450); await sleep(1200);
   const bk = await p.evaluate(() => ({edit: document.getElementById('workerOverlay').classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open'), notes: workers[1].notes}));
   await p.mouse.click(5, 450); await sleep(300);
-  ok(bk1 && !bk.edit && bk.card && bk.notes === 'back-to-card', 'worker card: a double click edits; the form saves on close and goes back to the card ' + JSON.stringify(bk));
+  ok(bk0 && bk1 && !bk.edit && bk.card && bk.notes === 'back-to-card', 'worker card: clicks only read, ✎ edits; the form saves on close and goes back to the card ' + JSON.stringify({bk0, bk1, bk}));
+  // Phone: a swipe down on a window closes it the same way as a tap outside; a short one does not.
+  await p.setViewportSize({width: 390, height: 844});
+  await p.evaluate(() => openWorkerCard(1)); await sleep(400);
+  const swipe = await p.evaluate(async () => {
+    const m = document.getElementById('workerCardModal'), r = m.getBoundingClientRect(), x = r.left + 40, y = r.top + 20;
+    const t = (type, dy) => { const tp = new Touch({identifier: 1, target: m, clientX: x, clientY: y + dy}); m.dispatchEvent(new TouchEvent(type, {bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [tp], changedTouches: [tp]})); };
+    const drag = async dy => { t('touchstart', 0); for (let d = 10; d <= dy; d += 20) t('touchmove', d); t('touchend', dy); await new Promise(r => setTimeout(r, 400)); };
+    await drag(40); const short = document.getElementById('workerCardOverlay').classList.contains('open');
+    await drag(200); const long = document.getElementById('workerCardOverlay').classList.contains('open');
+    return {short, long, locked: getComputedStyle(document.body).overflow};
+  });
+  ok(swipe.short && !swipe.long, 'phone: a swipe down closes a window, a short one does not ' + JSON.stringify(swipe));
+  await p.setViewportSize({width: 1280, height: 900}); await sleep(300);
   // Any window opened from the worker card goes back to it: Pay → tap outside → the card again.
   await p.evaluate(() => openWorkerCard(1)); await sleep(300);
   await p.evaluate(() => { [...document.querySelectorAll('#workerCardModal button')].find(b => /Pay/.test(b.textContent)).click(); }); await sleep(400);
@@ -614,13 +650,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const pay2 = await p.evaluate(() => ({pay: document.getElementById('payOverlay')?.classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open')}));
   ok(pay1.pay && !pay1.card && !pay2.pay && pay2.card, 'back: closing Pay opened from the worker card shows the card again ' + JSON.stringify({pay1, pay2}));
   await p.mouse.click(5, 450); await sleep(400);
-  // A client card: a single click only hints, a double click opens its editor.
+  // A client card: a single click opens its editor (no card to read first).
   await p.evaluate(() => switchTab('clients')); await sleep(400);
   await p.click('#clientsGrid .client-card .client-card-name >> nth=0'); await sleep(500);
   const cl1 = await p.evaluate(() => document.getElementById('clientOverlay').classList.contains('open'));
-  await p.dblclick('#clientsGrid .client-card .client-card-name >> nth=0'); await sleep(400);
-  const cl2 = await p.evaluate(() => document.getElementById('clientOverlay').classList.contains('open'));
-  ok(!cl1 && cl2, 'clients: a single click does not edit, a double click does ' + JSON.stringify({cl1, cl2}));
+  ok(cl1, 'clients: a single click opens the editor');
+  await p.evaluate(() => closeModal('clientOverlay')); await sleep(200);
   // The client window has no Save button: a tap outside saves it; an empty new client is not created.
   const cs = await p.evaluate(async () => {
     const tap = () => { const ov = document.getElementById('clientOverlay'); ov.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true})); ov.click(); };
@@ -656,15 +691,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await login(p, BASE + 'schedule-manager.html', 'boss', 'boss-pass-1');
   await p.waitForNavigation().catch(()=>{});
   ok(await waitFor(p, () => document.getElementById('firmsScreen').style.display === 'block' && __firmsCache.length === 2), 'boss: firms list (listTenants)');
-  // The firms list: no pencil, a corner ✕; a double click edits; a single click switches (below).
+  // The firms list: ✎ edits, ✕ deletes; a single click switches (below).
   const fl = await p.evaluate(async () => {
     const row = document.querySelector('#firmsList .row.tap-edit');
-    const out = {pencil: !!document.querySelector('#firmsList .ti-pencil'), del: !!(row && row.querySelector('.wcard-del')), trash: !!document.querySelector('#firmsList .ti-trash')};
-    row.dispatchEvent(new MouseEvent('click', {bubbles: true, detail: 2})); await new Promise(r => setTimeout(r, 200));
+    const out = {pencil: !!row.querySelector('.ti-pencil'), del: !!(row && row.querySelector('.t3-x')), trash: !!document.querySelector('#firmsList .ti-trash')};
+    row.querySelector('.ti-pencil').parentElement.click(); await new Promise(r => setTimeout(r, 200));
     out.edit = document.getElementById('editFirmOverlay').classList.contains('open'); closeModal('editFirmOverlay');
     return out;
   });
-  ok(!fl.pencil && fl.del && !fl.trash && fl.edit, 'firms: no pencil or trash, a corner ✕, a double click edits ' + JSON.stringify(fl));
+  ok(fl.pencil && fl.del && !fl.trash && fl.edit, 'firms: ✎ edits, ✕ deletes, no trash ' + JSON.stringify(fl));
   await p.evaluate(() => switchToTenant('tenant-one'));
   await p.waitForNavigation().catch(()=>{});
   ok(await waitFor(p, () => workers.length === 2), 'boss: viewing Firm One');
@@ -683,13 +718,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   for (const [w, h] of [[1280, 800], [390, 800]]) {
     await p.setViewportSize({width:w, height:h});
     await p.evaluate(() => { switchTab('admin'); switchAdminPane('errors'); });
-    await waitFor(p, () => document.querySelectorAll('#adminErrorsList .errors-rows > .log-row').length >= 10);
+    await waitFor(p, () => document.querySelectorAll('#adminErrorsList .errors-rows > .t3-line').length >= 10);
     await sleep(1500);
-    const er = await p.evaluate(() => [document.querySelectorAll('#adminErrorsList .errors-rows > .log-row').length, !!document.querySelector('#adminErrorsList .errors-rows > .paged-more')]);
+    const er = await p.evaluate(() => [document.querySelectorAll('#adminErrorsList .errors-rows > .t3-line').length, !!document.querySelector('#adminErrorsList .errors-rows > .paged-more')]);
     await p.evaluate(() => switchAdminPane('timings'));
-    await waitFor(p, () => document.querySelectorAll('#timingsLatestList > .log-row').length >= 10);
+    await waitFor(p, () => document.querySelectorAll('#timingsLatestList > .t3-line').length >= 10);
     await sleep(1500);
-    const tm = await p.evaluate(() => [document.querySelectorAll('#timingsLatestList > .log-row').length, !!document.querySelector('#timingsLatestList > .paged-more')]);
+    const tm = await p.evaluate(() => [document.querySelectorAll('#timingsLatestList > .t3-line').length, !!document.querySelector('#timingsLatestList > .paged-more')]);
     await p.screenshot({path: SP + '/shot_timings_' + w + '.png'});
     console.log('LISTS', w, 'errors', JSON.stringify(er), 'timings', JSON.stringify(tm));
     ok(er[0] === 10 && er[1] && tm[0] === 10 && tm[1], `admin lists: exactly 10 rows at first at ${w}px (errors ${er[0]}, timings ${tm[0]})`);
@@ -709,10 +744,20 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     esel.value = opts[3]; await loadErrorsList('adminErrorsList');
     const epast = (__errorsRowsByTarget.adminErrorsList || []).length;
     esel.value = '30d'; await loadErrorsList('adminErrorsList');
-    return {opts: opts.length, first: opts.slice(0, 3), cur, past, text: text.slice(0, 80), epast, enow: (__errorsRowsByTarget.adminErrorsList || []).length, cards: document.querySelectorAll('.tm-card').length};
+    return {opts: opts.length, first: opts.slice(0, 3), cur, past, text: text.slice(0, 80), epast, enow: (__errorsRowsByTarget.adminErrorsList || []).length, cards: document.querySelectorAll('#timingsCards > .t3-line').length};
   });
   console.log('PERIOD', JSON.stringify(per));
   ok(per.opts === 14 && per.cur >= 20 && per.past === 0 && per.epast === 0 && per.enow >= 40, 'errors/timings: period picker loads one period at a time');
+  // Reset (Timings / Errors): every error and measurement is deleted, the panes show none.
+  const rst = await p.evaluate(async () => {
+    switchAdminPane('timings'); await new Promise(r => setTimeout(r, 800));
+    const btn = !!document.getElementById('adminResetLogsBtn');
+    await resetLogs(); await new Promise(r => setTimeout(r, 800));
+    const t = await (await fetch(API_URL + '?action=loadTimings' + gsAuthQuery())).json();
+    const e = await (await fetch(API_URL + '?action=loadErrors' + gsAuthQuery())).json();
+    return {btn, timings: (t.rows || []).length, errors: (e.rows || []).length, shown: __timingsRows.length};
+  });
+  ok(rst.btn && rst.timings === 0 && rst.errors === 0 && rst.shown === 0, 'timings: Reset deletes every error and measurement ' + JSON.stringify(rst));
   ok(p.errs.length === 0, 'boss: no page errors ' + p.errs.join(' | '));
   await ctx.close();
 
@@ -859,7 +904,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const ul = await q.evaluate(async () => { switchTab('admin'); switchAdminPane('users');
     for(let i = 0; i < 60 && document.querySelectorAll('.admin-users-rows > div').length < 2; i++) await new Promise(r => setTimeout(r, 150));
     return [...document.querySelectorAll('.admin-users-rows > div')].map(r => r.innerText.replace(/\s+/g, ' ')); });
-  ok(ul.length >= 2 && /\(owner\)/.test(ul[0]) && ul.some(t => /\(client\)/.test(t) && /Site B/.test(t) && /Approve/.test(t) && /Fix/.test(t)), 'users: the owner pinned first; a client login shows its client and hours ticks ' + JSON.stringify(ul.slice(0, 3)));
+  ok(ul.length >= 2 && /\bowner\b/.test(ul[0]) && ul.some(t => /\bclient\b/.test(t) && /Site B/.test(t) && /Approve/.test(t) && /Fix/.test(t)), 'users: the owner pinned first; a client login shows its client and hours ticks ' + JSON.stringify(ul.slice(0, 3)));
   // The user form: one Hours block for HR / supplier / client; "Only own workers" at the bottom, locked on for a supplier and a client.
   const uf = await q.evaluate(() => {
     openCreateUserForm(); const role = document.getElementById('userFormRole'), out = {};

@@ -61,6 +61,7 @@ It returns:
 - Users and firms (`listTenants, setTenantActive, deleteTenant, createUser, updateTenant, loadTenantProfile, listUsers, createTenantUser, updateUser, resetUserPassword, deleteUser, checkWorkerDoc, updateMyName, updateMyLanguage`) → `users_admin` with the ID token.
 - The AI actions (`aiReadDoc, aiReadSefach, aiDetectAlign, aiVerifyField, aiVerifyFields, aiReadHoursTable, aiFindField`) → `ai_read`.
 - `loadWorkerAssets` / `deleteWorkerDoc` → `users_admin` for a `tenants/…` id. Any other id: delete answers `{ok:true}` (nothing of ours to delete), load answers "File not found".
+- `resetLogs` — super-admin only: deletes every `errors` and `timings` document (all firms, all periods; batches of 400) → `{ok, errors, timings}` (the counts).
 - `loadErrors` / `loadTimings` — super-admin only, newest first. With `from` / `to` (ISO times; the panes' period picker) only that period, up to 2000 errors / 5000 timings; without them the newest 100 / 500.
 - `loadSchedule` / `loadPunchLog` for another firm (super-admin summary): `loadSchedule(t, false)`; punches from the 1st of this month minus 7 days (`punchesOnce`).
 - `deletePunchesByMonths` — `tenant_admin` / `superadmin` only; per month, punches with `day` in the month plus punches without `day` whose `ts` is in it.
@@ -198,7 +199,7 @@ Both answer `{"ping":true}` at once (warm-up) and parse the body with `force=Tru
 - hourApprovals: read by managers; never written directly (the `hours` function). A `client` role reads and writes nothing.
 - pendingHours: read by managers; create (managers and any HR) only as `status:'pending'` with `createdBy` = the caller; update/delete only superadmin or `tenant_admin`.
 - `users/{uid}`: read by the user, a superadmin, or that firm's `tenant_admin`; never written by clients. `authSecrets`, `usernames`, `workerTokens`, `pushSubscriptions`: functions only.
-- `errors`, `timings`: create by anyone signed in, read by a superadmin.
+- `errors`, `timings`: create by anyone signed in, read and delete (Reset) by a superadmin.
 
 **`storage.rules`** — `tenants/{t}/**`: read by managers of the firm (`hrAll` included); create/update by superadmin, `tenant_admin`, or staff / hr with `workers`; delete by those, except an own-workers HR (it deletes through `users_admin`); files under 25 MB. An own-workers HR stamps and reads back only files with its uid in `hrId` metadata ([hr.md](hr.md)).
 

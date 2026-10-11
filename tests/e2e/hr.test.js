@@ -78,7 +78,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   ok(made.hrFields && made.perms === 'workers' && made.own && !made.showPayTile, 'owner: HR form shows name/phone, Workers only, own-only on ' + JSON.stringify(made).slice(0, 120));
-  ok(/Rina HR \(HR\)\nlogin: hr1 · 0521112233\n0 workers/.test(made.listed), 'owner: user row: name first, login and phone below, worker count ' + JSON.stringify(made.listed));
+  ok(/Rina HR HR\nlogin: hr1 · 0521112233\n.*0 workers/.test(made.listed), 'owner: user row: name first, login and phone below, worker count ' + JSON.stringify(made.listed));
   const me = await p.evaluate(async () => {
     const before = document.getElementById('accountLabelCenter').innerText;
     window.prompt = () => 'Avi Owner';
