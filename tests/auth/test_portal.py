@@ -268,7 +268,7 @@ def test_my_month_gives_own_punches_and_pay_inputs_only():
     W(T1, "w1").update({"travelAllowance": 12, "billRate": 99})
     r = portal.punch_action(DB, {"action": "myMonth", "token": "tok-avi", "month": "2026-10"})
     assert sorted(e["id"] for e in r["punches"]) == ["m1", "m2"]
-    assert set(r["punches"][0]) <= {"id", "workerId", "type", "time", "date", "clientId", "ts"}
+    assert set(r["punches"][0]) <= {"id", "workerId", "type", "time", "date", "clientId", "dist", "ts"}
     assert r["punches"][0]["ts"].endswith("Z")
     assert r["pay"] == {"id": "w1", "hourlyRate": 55, "travelAllowance": 12}
     assert r["clients"] == [{"id": "c1", "defaultHourlyRate": 70}, {"id": "c2"}]

@@ -37,10 +37,23 @@
   .titlebar .brand img{width:28px;height:28px;border-radius:8px;}
   .titlebar .logo{font-size:16px;font-weight:600;color:var(--text);letter-spacing:-0.3px;align-self:center;white-space:nowrap;}
   .titlebar .logo span{color:var(--accent);}
-  .account-label-center{margin-left:auto;align-self:center;max-width:260px;overflow:hidden;text-overflow:ellipsis;font-size:13px;font-weight:500;color:var(--text2);white-space:nowrap;padding:0 8px;}
-  .account-label-center:empty{display:none;}
-  .account-label-center + .titlebar-actions{margin-left:0;}
-  .account-label-center span{color:var(--accent);}
+  .acct{position:relative;}
+  .acct-chip{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px 0 4px;border-radius:999px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;max-width:300px;}
+  .acct-av{width:28px;height:28px;flex:none;border-radius:50%;background:linear-gradient(135deg,#4f8ef7,#7a5cf7);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;text-transform:uppercase;}
+  .acct-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .acct-label .firm{color:var(--text2);font-weight:500;}
+  .acct-chev{color:var(--text2);font-size:14px;}
+  .acct-menu{display:none;position:absolute;right:0;top:44px;width:240px;background:var(--bg2);border:1px solid var(--border2);border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.5);padding:6px;z-index:900;}
+  .acct.open .acct-menu{display:block;}
+  .acct-h{padding:8px 10px 10px;border-bottom:1px solid var(--border);margin-bottom:4px;}
+  .acct-h b{display:block;font-size:13px;color:var(--text);}
+  .acct-h span{font-size:11px;color:var(--text2);}
+  .acct-mi{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border-radius:8px;border:0;background:none;color:var(--text);font:500 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;text-align:left;}
+  .acct-mi i{font-size:17px;color:var(--text2);}
+  .acct-mi:hover{background:var(--bg3);}
+  .acct-mi.install i{color:var(--accent);}
+  .acct-mi.out,.acct-mi.out i{color:var(--red);}
+  .acct-lang .lang-select{margin-left:auto;}
   .top-tabs{display:flex;gap:2px;align-items:stretch;}
   .ttab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:70px;padding:0 12px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text2);transition:all 0.15s;}
   .ttab .ic{font-size:18px;line-height:1;position:relative;}
@@ -247,6 +260,28 @@
   @media (pointer:coarse){ .tap-edit{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;} #workerCardModal{-webkit-touch-callout:none;} }
   .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto;}
   .modal-title{font-size:19px;font-weight:600;color:var(--text);margin-bottom:18px;letter-spacing:-0.3px;}
+  .sal-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px;margin-bottom:10px}
+  .sal-sum>div{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px}
+  .sal-sum b{display:block;font-size:15px;font-weight:700;color:var(--text)}
+  .sal-sum b.big{color:var(--green)}
+  .sal-sum span{font-size:11px;color:var(--text3)}
+  .sal-list{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+  .sal-head,.sal-line{display:grid;grid-template-columns:minmax(0,1fr) 72px 96px 16px;gap:8px;align-items:center;padding:8px 12px}
+  .sal-head{background:var(--bg3);font-size:11px;font-weight:600;color:var(--text2)}
+  .sal-head .c-h,.sal-line .c-h{text-align:center}
+  .sal-head .c-t,.sal-line .c-t{text-align:right}
+  .sal-row{border-top:1px solid var(--border);cursor:pointer}
+  .sal-line .c-name{display:flex;align-items:center;gap:8px;min-width:0}
+  .sal-av{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;overflow:hidden}
+  .sal-nm{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sal-line .c-h{font-size:13px;font-weight:600}
+  .sal-line .c-t{font-size:13px;font-weight:700}
+  .sal-chev{color:var(--text3);font-size:14px;transition:transform .15s}
+  .sal-row.open .sal-chev{transform:rotate(180deg)}
+  .sal-det{display:none;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px 14px;padding:2px 12px 10px 44px;font-size:12px}
+  .sal-row.open .sal-det{display:grid}
+  .sal-det span{display:block;color:var(--text3);font-size:11px}
+  .sal-det b{font-weight:600;color:var(--text)}
   .salary-ro input,.salary-ro select{pointer-events:none;opacity:.85}
   .acc-help{background:none;border:none;color:var(--text3);cursor:pointer;padding:2px;font-size:15px;line-height:1;display:inline-flex}
   .acc-help:hover{color:var(--blue)}
@@ -342,8 +377,8 @@
     .ttab .ic { font-size: 16px; }
     .ttab .lb { font-size: 11px; }
     .titlebar-actions { margin-left: auto; gap: 4px; flex-wrap: wrap; }
-    .account-label-center { order: 2; width: 100%; max-width: none; margin-left: 0; padding: 0; font-size: 12px; }
-    .account-label-center + .titlebar-actions { margin-left: auto; }
+    .acct-label, .acct-chev { display: none; }
+    .acct-chip { padding: 0 4px; }
     .save-indicator { font-size: 10px; }
     .btn.sm { font-size: 11px; padding: 5px 10px; min-height: 34px; }
     .dropdown-menu { right: 0; left: auto; min-width: 180px; }
@@ -507,6 +542,17 @@
   .filter-field{display:inline-flex;flex-direction:column;gap:3px}
   .filter-cap{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;padding-left:2px}
   .filter-field select.filter-on{border-color:var(--accent)!important;color:var(--accent)!important}
+  .rates-head{display:flex;align-items:center;justify-content:space-between}
+  .rates-help{display:none;font-size:11px;color:var(--text3);margin:-4px 0 10px}
+  .rates-help.open{display:block}
+  .rate-in{position:relative}
+  .rate-in input{padding-left:58px}
+  .rate-in span{position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--text3);pointer-events:none}
+  .seg-toggle{display:flex;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:3px;margin-bottom:12px;gap:3px}
+  .seg-toggle button{flex:1;border:0;background:none;color:var(--text2);font:600 13px inherit;padding:8px 4px;border-radius:8px;cursor:pointer}
+  .seg-toggle button.on{background:var(--accent);color:#fff}
+  .rate-margin{display:flex;align-items:center;justify-content:space-between;background:var(--green-bg);border:1px solid rgba(109,214,160,.3);color:var(--green);border-radius:10px;padding:9px 12px;font-size:13px;font-weight:600;margin-bottom:12px}
+  .rate-margin.neg{background:var(--red-bg,rgba(255,79,94,.12));border-color:rgba(255,79,94,.35);color:var(--red,#ff4f5e)}
   .view-toggle{display:inline-flex;border:1px solid var(--border2);border-radius:var(--radius-sm);overflow:hidden}
   /* Workers tab toolbar: actions, search + layout toggle, then the filters in
      one row on a computer and two columns on a phone. */
@@ -616,12 +662,21 @@ html[lang="he"] *{letter-spacing:normal !important;}
     <div class="ttab admin" id="tabAdmin" onclick="switchTab('admin')"><span class="ic"><i class="ti ti-lock"></i></span><span class="lb" data-i18n>Admin</span></div>
     <div class="ttab admin" id="tabAccounting" onclick="switchTab('accounting')"><span class="ic"><i class="ti ti-cash"></i></span><span class="lb" data-i18n><span data-i18n>Accounting</span></span></div>
   </div>
-  <div id="accountLabelCenter" class="account-label-center"></div>
   <div class="titlebar-actions">
-    <select class="lang-select" id="langSelect" title="Language" data-i18n-title="Language" aria-label="Language" onchange="setLanguage(this.value)"><option value="en">EN</option><option value="he">HE</option><option value="ru">RU</option></select>
-    <div id="accountControl"></div>
     <div class="save-indicator saved" id="saveIndicator">
       <div class="save-dot"></div><span data-i18n>Saved</span>
+    </div>
+    <!-- The account menu (header variant C, per user request 2026-10-11): one
+         button with the name; inside it install, language, my name, sign out. -->
+    <div class="acct" id="accountControl">
+      <button type="button" class="acct-chip" onclick="toggleAccountMenu(event)" aria-haspopup="true"><span class="acct-av" id="accountAvatar"></span><span id="accountLabelCenter" class="acct-label"></span><i class="ti ti-chevron-down acct-chev"></i></button>
+      <div class="acct-menu" id="accountMenu">
+        <div class="acct-h" id="accountMenuHead"></div>
+        <div id="accountInstallSlot"></div>
+        <div class="acct-mi acct-lang"><i class="ti ti-world"></i><span data-i18n>Language</span><select class="lang-select" id="langSelect" title="Language" data-i18n-title="Language" aria-label="Language" onchange="setLanguage(this.value)"><option value="en">EN</option><option value="he">HE</option><option value="ru">RU</option></select></div>
+        <button type="button" class="acct-mi" id="accountNameItem" onclick="closeAccountMenu();editMyName()"><i class="ti ti-user-edit"></i><span data-i18n>My name</span></button>
+        <button type="button" class="acct-mi out" onclick="logout()"><i class="ti ti-logout"></i><span data-i18n>Sign out</span></button>
+      </div>
     </div>
   </div>
 </div>
@@ -1049,9 +1104,6 @@ html[lang="he"] *{letter-spacing:normal !important;}
 <div class="overlay" id="clientOverlay">
   <div class="modal" id="clientModal"></div>
 </div>
-<div class="overlay" id="clientBillOverlay" style="z-index:110">
-  <div class="modal" id="clientBillModal" style="max-width:420px"></div>
-</div>
 <div class="overlay" id="mapPickOverlay" style="z-index:110">
   <div class="modal" style="max-width:640px;width:100%">
     <div class="modal-title" data-i18n>Pick location</div>
@@ -1439,9 +1491,9 @@ function placeLangSelect(){
   const sel = document.getElementById('langSelect'); if(!sel) return;
   const shown = id => { const el = document.getElementById(id); return el && el.style.display && el.style.display !== 'none' ? el : null; };
   const cover = shown('loginScreen') || shown('firmsScreen');
-  const host = cover || document.querySelector('.titlebar-actions');
+  const host = cover || document.querySelector('#accountMenu .acct-lang');
   sel.classList.toggle('on-cover', !!cover);
-  if(host && sel.parentNode !== host) host.prepend(sel);
+  if(host && sel.parentNode !== host){ if(cover) host.prepend(sel); else host.appendChild(sel); }
 }
 ['loginScreen','firmsScreen'].forEach(id => { const el = document.getElementById(id); if(el) new MutationObserver(placeLangSelect).observe(el, {attributes:true, attributeFilter:['style']}); });
 // The login screen's showcase: the headline turns through the sectors, the
@@ -1604,7 +1656,7 @@ function redrawForLanguage(){
   syncLangSelects();
   try{ if(document.getElementById('loginRoles')) showLoginSector(__loginSector); }catch(e){}
   try{ const s = getSession(); if(s) renderAccountControl(s); }catch(e){}
-  try{ const b = document.getElementById('installBtn'); if(b) b.innerHTML = '<i class="ti ti-download" style="color:#4f8ef7"></i> ' + esc(tr('Install')); }catch(e){}
+  try{ const b = document.getElementById('installBtn'); if(b) b.innerHTML = '<i class="ti ti-download"></i><span>' + esc(tr('Install app')) + '</span>'; }catch(e){}
   try{ if(typeof render === 'function') render(); }catch(e){}
   try{ if(typeof currentTab !== 'undefined' && currentTab === 'accounting') renderAccounting(); }catch(e){}
 }
@@ -3476,11 +3528,12 @@ function openAddClient(){ editingClientId=null; selClientColor=CLIENT_COLORS[cli
 function openEditClient(cid){ editingClientId=cid; const c=clients.find(x=>x.id===cid); selClientColor=c.color; showClientModal(c); }
 function showClientModal(c){
   // Billing settings live in __cBill while the modal is open — edited via the
-  // billing-rate popup (openClientBillRatePopup), written back by saveClient().
+  // rates block (setClientRateMode / onClientBillMainInput), written back by saveClient().
   __cBill = { rateMode: c.rateMode==='fixed'?'fixed':'tiered', fixedBillRate: c.fixedBillRate??null,
     billRate: (c.billRate!=null&&c.billRate!=='') ? c.billRate : (c.defaultHourlyRate??null),
     billOtRate: c.billOtRate??null, billShabbatRate: c.billShabbatRate??null };
   // The client card is in Hebrew (per user request 2026-10-04).
+  setTimeout(()=>{ syncClientBillFields(); },0);
   document.getElementById('clientModal').innerHTML=`<div dir="rtl">
     <div class="modal-title">${editingClientId?'עריכת לקוח':'לקוח חדש'}</div>
     <div class="field-row">
@@ -3489,25 +3542,26 @@ function showClientModal(c){
     </div>
     <div class="field"><label>אתר / סניף</label><input type="text" id="cObject" value="${esc(c.object||'')}" placeholder="שם האתר או הסניף"></div>
     <div class="field"><label>כתובת (לא חובה)</label><input type="text" id="cAddr" value="${esc(c.address||'')}" placeholder="כתובת"></div>
+    <!-- Rates (per user request 2026-10-11): the two rates side by side, the
+         billing mode as two buttons, OT / Shabbat inline (empty = by law),
+         and the margin per hour. -->
+    <div class="form-section rates-head"><span><i class="ti ti-coin"></i> תעריפים</span><button type="button" class="acc-help" onclick="this.closest('.modal').querySelector('.rates-help').classList.toggle('open')" title="מה זה?"><i class="ti ti-info-circle"></i></button></div>
+    <div class="rates-help">שכר העובד חל על כל העובדים אצל הלקוח, אלא אם לעובד יש תעריף משלו; שעות נוספות ושבת לפי החוק. תשלום הלקוח לא משנה את שכר העובד.</div>
     <div class="field-row">
-      <div class="field"><label><i class="ti ti-cash"></i> שכר העובד (₪ לשעה)</label>
-        <input type="number" min="0" step="0.5" id="cDefRate" value="${c.defaultHourlyRate??''}" placeholder="—"></div>
-      <div class="field"></div>
+      <div class="field"><label><i class="ti ti-cash"></i> שכר העובד</label>
+        <div class="rate-in"><input type="number" min="0" step="0.5" id="cDefRate" value="${c.defaultHourlyRate??''}" placeholder="—" oninput="updateClientMargin()"><span>₪/שעה</span></div></div>
+      <div class="field"><label><i class="ti ti-receipt"></i> הלקוח משלם</label>
+        <div class="rate-in"><input type="number" min="0" step="0.5" id="cBillMain" value="${clientBillMain()??''}" placeholder="—" oninput="onClientBillMainInput(this.value)"><span>₪/שעה</span></div></div>
     </div>
-    <div class="field-row">
-      <div class="field"><label>אופן חיוב הלקוח</label>
-        <select id="cRateMode" onchange="onClientRateModeChange()" style="width:100%">
-          <option value="tiered" ${__cBill.rateMode==='tiered'?'selected':''}>עם שעות נוספות ושבת (לפי החוק)</option>
-          <option value="fixed" ${__cBill.rateMode==='fixed'?'selected':''}>תעריף קבוע (בלי תוספות)</option>
-        </select></div>
-      <div class="field"><label><i class="ti ti-receipt"></i> תשלום הלקוח (₪ לשעה)</label>
-        <input type="number" min="0" step="0.5" id="cBillMain" value="${clientBillMain()??''}" placeholder="—" oninput="onClientBillMainInput(this.value)"></div>
+    <div class="seg-toggle" id="cRateMode">
+      <button type="button" data-mode="tiered" class="${__cBill.rateMode==='tiered'?'on':''}" onclick="setClientRateMode('tiered')">לפי החוק (נוספות + שבת)</button>
+      <button type="button" data-mode="fixed" class="${__cBill.rateMode==='fixed'?'on':''}" onclick="setClientRateMode('fixed')">קבוע</button>
     </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:-4px 0 8px">
-      <div id="cBillSummary" style="font-size:12px;color:var(--text2)">${clientBillSummary()}</div>
-      <button class="btn sm" type="button" onclick="openClientBillRatePopup()"><i class="ti ti-pencil"></i> עריכה</button>
+    <div class="field-row" id="cBillExtra" style="${__cBill.rateMode==='fixed'?'display:none':''}">
+      <div class="field"><label>שעות נוספות</label><div class="rate-in"><input type="number" min="0" step="0.5" id="cBillOt" value="${__cBill.billOtRate??''}" oninput="__cBill.billOtRate=clientRateNum(this.value)"><span>₪/שעה</span></div></div>
+      <div class="field"><label>שבת</label><div class="rate-in"><input type="number" min="0" step="0.5" id="cBillShab" value="${__cBill.billShabbatRate??''}" oninput="__cBill.billShabbatRate=clientRateNum(this.value)"><span>₪/שעה</span></div></div>
     </div>
-    <div style="font-size:11px;color:var(--text3);margin:0 0 12px">שכר העובד חל על כל העובדים אצל הלקוח, אלא אם לעובד יש תעריף משלו; שעות נוספות ושבת לפי החוק. תשלום הלקוח לא משנה את שכר העובד.</div>
+    <div class="rate-margin" id="cBillMargin"></div>
     <div class="field">
       <label><i class="ti ti-map-pin"></i> מיקום לשעון הנוכחות</label>
       <button class="btn ${c.lat?'sm':'accent'}" type="button" onclick="openMapPicker()" style="width:100%;justify-content:center;margin-bottom:10px">
@@ -3694,81 +3748,41 @@ function saveMapPick(){
 // off Regular). These are the CLIENT's billing rates only — the worker-pay
 // "Default rate" block in the same modal is a separate set of fields.
 let __cBill = { rateMode:'tiered', fixedBillRate:null, billRate:null, billOtRate:null, billShabbatRate:null };
-let __cBillPrevMode = 'tiered';
-const fmtRate=v=>(v==null||v==='')?null:('₪'+Number(v)+'/h');
-// The client's main billing rate (the one next to the worker rate in the
-// modal): the flat rate in fixed mode, the regular rate otherwise.
+// The client's main billing rate (next to the worker rate in the modal): the
+// flat rate in fixed mode, the regular rate otherwise.
 function clientBillMain(){ return __cBill.rateMode==='fixed' ? __cBill.fixedBillRate : __cBill.billRate; }
+function clientRateNum(v){ return (v===''||v==null)?null:(parseFloat(v)||0); }
 function onClientBillMainInput(v){
-  const n=(v===''||v==null)?null:(parseFloat(v)||0);
+  const n=clientRateNum(v);
   if(__cBill.rateMode==='fixed') __cBill.fixedBillRate=n; else __cBill.billRate=n;
-  const sum=document.getElementById('cBillSummary'); if(sum) sum.innerHTML=clientBillSummary();
+  syncClientBillFields(true);
 }
-// After the popup or a mode switch: the summary and the main rate input.
-function syncClientBillFields(){
-  const sum=document.getElementById('cBillSummary'); if(sum) sum.innerHTML=clientBillSummary();
+// The billing mode buttons: by law (OT / Shabbat inline) or one fixed rate.
+function setClientRateMode(mode){
+  __cBill.rateMode = mode==='fixed' ? 'fixed' : 'tiered';
+  document.querySelectorAll('#cRateMode button').forEach(b=>b.classList.toggle('on', b.dataset.mode===__cBill.rateMode));
   const main=document.getElementById('cBillMain'); if(main) main.value=clientBillMain()??'';
-}
-function clientBillSummary(){
-  const r=v=>'₪'+Number(v);
-  const set=v=>v!=null&&v!=='';
-  if(__cBill.rateMode==='fixed') return set(__cBill.fixedBillRate) ? 'קבוע '+r(__cBill.fixedBillRate) : '<span style="color:var(--amber)">לא הוגדר תעריף</span>';
-  if(!set(__cBill.billRate)) return '<span style="color:var(--amber)">לא הוגדר תעריף</span>';
-  return 'רגיל '+r(__cBill.billRate)
-    +' · נוספות '+(set(__cBill.billOtRate)?r(__cBill.billOtRate):'לפי החוק')
-    +' · שבת '+(set(__cBill.billShabbatRate)?r(__cBill.billShabbatRate):'לפי החוק');
-}
-function onClientRateModeChange(){
-  const sel=document.getElementById('cRateMode');
-  __cBillPrevMode=__cBill.rateMode;
-  __cBill.rateMode = sel.value==='fixed' ? 'fixed' : 'tiered';
   syncClientBillFields();
-  openClientBillRatePopup(true);
 }
-function openClientBillRatePopup(fromModeChange){
-  const b=__cBill, v=x=>x??'';
-  const inp=(id,val,label)=>`<div><label style="font-size:11px;color:var(--text3)">${label}</label><input type="number" min="0" step="0.5" id="${id}" value="${v(val)}" placeholder="—"></div>`;
-  document.getElementById('clientBillModal').innerHTML = b.rateMode==='fixed' ? `<div dir="rtl">
-    <div class="modal-title">תעריף קבוע ללקוח</div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">₪ לשעה שהלקוח משלם לנו, בלי שעות נוספות ושבת.</div>
-    <div class="field">${inp('cbFixed',b.fixedBillRate,'₪ לשעה')}</div>
-    <div class="modal-actions">
-      <button class="btn accent" type="button" onclick="saveClientBillRatePopup()">שמירה</button>
-    </div></div>` : `<div dir="rtl">
-    <div class="modal-title">תשלום הלקוח עם שעות נוספות</div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">כמה הלקוח משלם לנו לשעה. נוספות / שבת ריקים = לפי החוק מהתעריף הרגיל (נוספות ×1.25 ואז ×1.5, שבת ×1.5–×2).</div>
-    <div class="field" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-      ${inp('cbReg',b.billRate,'רגיל')}${inp('cbOt',b.billOtRate,'שעות נוספות')}${inp('cbShab',b.billShabbatRate,'שבת')}
-    </div>
-    <div class="modal-actions">
-      <button class="btn accent" type="button" onclick="saveClientBillRatePopup()">שמירה</button>
-    </div></div>`;
-  // Closing it (a tap outside) cancels: a popup opened by a mode switch
-  // undoes that switch (cancelClientBillRatePopup).
-  const ov=document.getElementById('clientBillOverlay');
-  ov.__onUserClose=()=>cancelClientBillRatePopup(!!fromModeChange);
-  ov.classList.add('open');
-  setTimeout(()=>document.querySelector('#clientBillModal input')?.focus(),50);
+// The OT / Shabbat placeholders (the law's rates from the regular one), their
+// row, and the margin line.
+function syncClientBillFields(keepMain){
+  const fixed=__cBill.rateMode==='fixed', reg=Number(__cBill.billRate)||0;
+  const ex=document.getElementById('cBillExtra'); if(ex) ex.style.display=fixed?'none':'';
+  const ph=(id,m)=>{ const el=document.getElementById(id); if(el) el.placeholder=reg?(Math.round(reg*m*100)/100)+' לפי החוק':'לפי החוק'; };
+  ph('cBillOt',PAY_RULES.otMult); ph('cBillShab',PAY_RULES.shabbatMult);
+  if(!keepMain){ const main=document.getElementById('cBillMain'); if(main && document.activeElement!==main) main.value=clientBillMain()??''; }
+  updateClientMargin();
 }
-function cancelClientBillRatePopup(revertMode){
-  // Cancelling the popup that a mode switch opened undoes that switch too,
-  // so the modal never ends up in a mode with no rate entered by accident.
-  if(revertMode){
-    __cBill.rateMode=__cBillPrevMode;
-    const sel=document.getElementById('cRateMode'); if(sel) sel.value=__cBill.rateMode;
-    syncClientBillFields();
-  }
-  closeModal('clientBillOverlay');
-}
-function saveClientBillRatePopup(){
-  const num=id=>{ const x=document.getElementById(id)?.value; return (x===''||x==null)?null:(parseFloat(x)||0); };
-  if(__cBill.rateMode==='fixed'){
-    __cBill.fixedBillRate=num('cbFixed');
-  } else {
-    __cBill.billRate=num('cbReg'); __cBill.billOtRate=num('cbOt'); __cBill.billShabbatRate=num('cbShab');
-  }
-  syncClientBillFields();
-  closeModal('clientBillOverlay');
+// What the firm keeps per regular hour: the client's rate minus the worker's.
+function updateClientMargin(){
+  const el=document.getElementById('cBillMargin'); if(!el) return;
+  const w=clientRateNum(document.getElementById('cDefRate')?.value), c=clientBillMain();
+  if(w==null||c==null||!c){ el.style.display='none'; return; }
+  const m=c-w, pct=Math.round(m/c*100);
+  el.style.display='';
+  el.classList.toggle('neg', m<0);
+  el.innerHTML=`<span><i class="ti ${m<0?'ti-trending-down':'ti-trending-up'}"></i> ${m<0?'הפסד לשעה':'רווח לשעה'}</span><b>₪${Math.round(Math.abs(m)*100)/100} · ${Math.abs(pct)}%</b>`;
 }
 // The manual punch from the client window: the window is saved first (as on a
 // tap outside), then the punch opens; closing it brings the client back.
@@ -5253,15 +5267,14 @@ function renderAccountControl(s){
       : ((profile && profile.companyName) || '');
     // The person's name (fullName), the login only while it has none; a
     // tap on it changes the name (editMyName).
-    labelHost.innerHTML = '<span onclick="editMyName()" style="cursor:pointer" title="'+esc(tr('Change your name'))+'"><i class="ti ti-user"></i> ' + esc(s.fullName || s.username || '') + '</span>'
-      + (firm ? ' · <span>' + esc(firm) + '</span>' : '');
+    const who = s.fullName || s.username || '';
+    labelHost.innerHTML = esc(who) + (firm ? ' <span class="firm">· ' + esc(firm) + '</span>' : '');
+    const av = document.getElementById('accountAvatar'); if(av) av.textContent = (who.trim()[0] || '?');
+    const head = document.getElementById('accountMenuHead');
+    if(head) head.innerHTML = '<b>' + esc(who) + '</b><span>' + esc([firm, tr(USER_ROLE_LABELS[s.role] || s.role || '')].filter(Boolean).join(' · ')) + '</span>';
   }
   if(!host) return;
   const incomplete = firmProfileMissing().length > 0;
-  host.innerHTML = `
-    <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">
-      <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i></button>
-    </div>`;
   // The gear button that used to open the separate #adminScreen modal was
   // removed 2026-09-30 (its content merged into the Admin nav tab's own
   // sub-panes — see setupAdminPaneBar()) — its "profile incomplete" amber
@@ -5270,6 +5283,12 @@ function renderAccountControl(s){
   if(tabAdminIcon) tabAdminIcon.style.color = ((s.role==='superadmin'||s.role==='tenant_admin') && incomplete) ? '#ffb020' : '';
 }
 
+// The account menu: a tap on the name button opens it, a tap anywhere else
+// (or Escape) closes it.
+function toggleAccountMenu(e){ if(e) e.stopPropagation(); document.getElementById('accountControl').classList.toggle('open'); }
+function closeAccountMenu(){ const a = document.getElementById('accountControl'); if(a) a.classList.remove('open'); }
+document.addEventListener('click', e => { const a = document.getElementById('accountControl'); if(a && a.classList.contains('open') && !a.contains(e.target)) closeAccountMenu(); });
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeAccountMenu(); });
 async function editMyName(){
   const s = getSession(); if(!s) return;
   const name = prompt(tr('Your name (shown at the top instead of the login):'), s.fullName || '');
@@ -7056,6 +7075,10 @@ function salaryEntriesFor(period){
 
   return {byWorker, byClient};
 }
+// The Salary rows opened by a tap stay open through a redraw (a live punch,
+// a period change).
+const __salOpen=new Set();
+function toggleSalRow(el){ const id=el.dataset.wid; if(el.classList.toggle('open')) __salOpen.add(id); else __salOpen.delete(id); }
 function renderSalary(){
   fillSalaryPeriodSelect();
   const period   = document.getElementById('salaryPeriod')?.value||'week';
@@ -7090,38 +7113,21 @@ function renderSalary(){
   const payTotal=shown.reduce((s,e)=>s+e.total,0), travelTotal=shown.reduce((s,e)=>s+e.travel,0);
   const _allWarns=entries.flatMap(e=>(e.warns||[]).map(w=>e.worker+' — '+w));
   const _reviewBanner=_allWarns.length?`<div style="background:var(--amber-bg);border:1px solid rgba(245,166,35,0.3);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px"><div style="color:var(--amber);font-weight:600;font-size:13px;margin-bottom:4px"><i class="ti ti-alert-triangle"></i> ${tr('{n} to review before calculating',{n:_allWarns.length})}</div><div style="color:var(--text2);font-size:12px;line-height:1.6">${_allWarns.slice(0,12).map(w=>'• '+w).join('<br>')}${_allWarns.length>12?'<br>…'+tr('{n} more',{n:_allWarns.length-12}):''}</div></div>`:'';
-  const th=(t,al,col)=>`<th style="padding:10px 12px;text-align:${al};font-size:12px;font-weight:600;color:${col||'var(--text2)'}">${t}</th>`;
   const money=n=>'₪'+(Math.round((Number(n)||0)*100)/100).toLocaleString('en-US');
+  // One compact line per worker (per user request 2026-10-11, so a long list
+  // stays short): name, hours, total; a tap opens its details below it — the
+  // hours split, days, rate, pay, travel, bank (and an HR's commission). The
+  // totals sit above the list and cover every row shown.
+  const sumCell=(v,l,big)=>`<div><b${big?' class="big"':''}>${v}</b><span>${esc(l)}</span></div>`;
   salaryEl.innerHTML=_reviewBanner+`
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-      <table style="width:100%;border-collapse:collapse;min-width:640px">
-        <thead>
-          <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            ${th(tr('Worker'),'left')}${th(tr('Hours'),'center')}${th(tr('Days'),'center')}${th(tr('Rate'),'right')}${th(tr('Pay'),'right')}${th(tr('Travel ₪'),'right')}${th(tr('Total Pay'),'right')}${th(tr('Bank'),'left')}
-            ${payOnly?th(tr('My commission'),'right'):''}
-          </tr>
-        </thead>
-        <tbody class="salary-rows"></tbody>
-        <tfoot>
-          <tr style="background:var(--bg3);border-top:2px solid var(--border)">
-            <td style="padding:10px 12px;font-size:13px;font-weight:600;color:var(--text2)">${tr('TOTAL')}</td>
-            <td style="padding:10px 12px;text-align:center;font-size:14px;font-weight:700;color:var(--text)">${tr('{h}h',{h:totalHours.toFixed(1)})}</td>
-            <td colspan="2"></td>
-            <td style="padding:10px 12px;text-align:right;font-size:13px;font-weight:700;color:var(--text)">${money(payTotal)}</td>
-            <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)">${travelTotal>0?money(travelTotal):'—'}</td>
-            <td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">${money(payTotal+travelTotal)}</td>
-            <td></td>
-            ${payOnly?`<td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">₪${shown.reduce((t,e)=>t+hrCom(e),0).toFixed(0)}</td>`:''}
-          </tr>
-        </tfoot>
-      </table>
-      </div>
+    <div class="sal-sum">${sumCell(esc(tr('{h}h',{h:totalHours.toFixed(1)})),tr('Hours'))}${sumCell(money(payTotal),tr('Pay'))}${sumCell(travelTotal>0?money(travelTotal):'—',tr('Travel ₪'))}${sumCell(money(payTotal+travelTotal),tr('Total Pay'),true)}${payOnly?sumCell('₪'+shown.reduce((t,e)=>t+hrCom(e),0).toFixed(0),tr('My commission'),true):''}</div>
+    <div class="sal-list">
+      <div class="sal-head"><span class="c-name">${esc(tr('Worker'))}</span><span class="c-h">${esc(tr('Hours'))}</span><span class="c-t">${esc(tr('Total Pay'))}</span><span></span></div>
+      <div class="salary-rows"></div>
     </div>`;
-  // The totals row covers every row shown; the rows are paged (renderPagedList).
-  // No fields in the table: a tap opens the worker card, a double click / long
+  // No fields in the list: a tap opens a row's details, a double click / long
   // press the pay modal — where rate, pay mode, travel, bank and (by the day)
-  // the days of this period are set.
+  // the days of this period are set; the name opens the worker card.
   renderPagedList(salaryEl.querySelector('.salary-rows'),'salary',period+'|'+q,shown,(e,i)=>{
     const wc=workers.find(w=>w.id===e.workerId);
     const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
@@ -7133,36 +7139,34 @@ function renderSalary(){
     const rate=daily
       ? (own!==''?money(own)+tr('/day'):`<span style="color:var(--amber)">${esc(tr('set a daily rate'))}</span>`)
       : (own!==''?money(own)+tr('/h'):(er.regRate>0?`<span style="color:var(--text3)">${esc(tr('client'))} ${money(er.regRate)}${tr('/h')}</span>`:`<span style="color:var(--amber)">${esc(tr('no rate'))}</span>`));
-    const parts=[];
-    if(e.otH>0||e.shabH>0){
-      parts.push(tr('Regular {h}h',{h:e.regH.toFixed(1)}));
-      if(e.otH>0) parts.push(tr('Overtime {h}h',{h:e.otH.toFixed(1)}));
-      if(e.shabH>0) parts.push(tr('Shabbat {h}h',{h:e.shabH.toFixed(1)}));
-    }
+    const parts=[tr('Regular {h}h',{h:e.regH.toFixed(1)})];
+    if(e.otH>0) parts.push(tr('Overtime {h}h',{h:e.otH.toFixed(1)}));
+    if(e.shabH>0) parts.push(tr('Shabbat {h}h',{h:e.shabH.toFixed(1)}));
     const byHand=daily&&dayOverride(wc,periodKey)!=null;
     const bank=wc&&(wc.bank||wc.bankBranch||wc.bankAccountNumber)
-      ? `<span title="${esc([wc.bank||'',wc.bankBranch?tr('branch {b}',{b:wc.bankBranch}):'',wc.bankAccountNumber?tr('acc. {a}',{a:wc.bankAccountNumber}):''].filter(Boolean).join(' · '))}">${esc(wc.bank||tr('Bank'))}</span>`
+      ? esc([wc.bank||'',wc.bankBranch?tr('branch {b}',{b:wc.bankBranch}):'',wc.bankAccountNumber?tr('acc. {a}',{a:wc.bankAccountNumber}):''].filter(Boolean).join(' · '))
       : `<span style="color:var(--amber)">${esc(tr('no bank details'))}</span>`;
     const ini=wc?workerAvatarInner(wc):esc(e.worker.slice(0,2).toUpperCase());
-    const wid=esc(e.workerId);
-    return `<tr class="tap-edit" onclick="tapEdit(event,this,()=>openWorkerCardById('${wid}'),()=>openPayModal('${wid}'))" onpointerdown="longPress(event,this,()=>openPayModal('${wid}'))" style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
-      <td style="padding:10px 12px">
-        <div style="display:flex;align-items:center;gap:8px">
-          <div style="width:26px;height:26px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">${ini}</div>
-          <span style="font-size:13px;font-weight:600">${esc(e.worker)}</span>
-          ${e.warns&&e.warns.length?`<i class="ti ti-alert-triangle" style="color:var(--amber);font-size:14px;cursor:help" title="${e.warns.join('&#10;').replace(/"/g,'&quot;')}"></i>`:''}
-        </div>
-      </td>
-      <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${tr('{h}h',{h:e.hours.toFixed(1)})}${parts.length?`<div style="font-size:10px;font-weight:400;color:var(--text3);margin-top:2px;white-space:nowrap">${esc(parts.join(' · '))}</div>`:''}</td>
-      <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${e.daysUsed}${byHand?`<div style="font-size:10px;font-weight:400;color:var(--text3);margin-top:2px">${esc(tr('punches: {n}',{n:e.countedDays}))}</div>`:''}</td>
-      <td style="padding:10px 12px;text-align:right;font-size:13px;white-space:nowrap">${rate}</td>
-      <td style="padding:10px 12px;text-align:right;font-size:13px;font-weight:600;color:var(--text)">${e.total>0?money(e.total):'—'}</td>
-      <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)">${e.travel>0?money(e.travel):'—'}</td>
-      <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${(e.total+e.travel)>0?'var(--green)':'var(--text3)'}">${(e.total+e.travel)>0?money(e.total+e.travel):'—'}</td>
-      <td style="padding:10px 12px;font-size:12px;color:var(--text2)">${bank}</td>
-      ${payOnly?`<td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)" title="${isDailyPay(wc)&&hrDayRate>0?tr('{n} days × ₪{r}',{n:esc(e.daysUsed),r:hrDayRate}):tr('{h}h × ₪{r}',{h:e.hours.toFixed(1),r:hrRate})}">₪${hrCom(e).toFixed(0)}</td>`:''}
-    </tr>`;
-  },{table:true,colspan:payOnly?9:8});
+    const wid=esc(e.workerId), tot=e.total+e.travel;
+    const det=(l,v)=>`<div><span>${esc(l)}</span><b>${v}</b></div>`;
+    return `<div class="sal-row tap-edit${__salOpen.has(e.workerId)?' open':''}" data-wid="${wid}" onclick="tapEdit(event,this,()=>toggleSalRow(this),()=>openPayModal('${wid}'))" onpointerdown="longPress(event,this,()=>openPayModal('${wid}'))">
+      <div class="sal-line">
+        <span class="c-name"><span class="sal-av" style="background:${c.bg};color:${c.text}">${ini}</span><span class="sal-nm" onclick="event.stopPropagation();openWorkerCardById('${wid}')">${esc(e.worker)}</span>${e.warns&&e.warns.length?`<i class="ti ti-alert-triangle" style="color:var(--amber);font-size:14px" title="${e.warns.join('&#10;').replace(/"/g,'&quot;')}"></i>`:''}</span>
+        <span class="c-h">${esc(tr('{h}h',{h:e.hours.toFixed(1)}))}</span>
+        <span class="c-t" style="color:${tot>0?'var(--green)':'var(--text3)'}">${tot>0?money(tot):'—'}</span>
+        <i class="ti ti-chevron-down sal-chev"></i>
+      </div>
+      <div class="sal-det">
+        ${det(tr('Hours'),esc(parts.join(' · ')))}
+        ${det(tr('Days'),esc(e.daysUsed)+(byHand?` <span style="color:var(--text3);font-weight:400">(${esc(tr('punches: {n}',{n:e.countedDays}))})</span>`:''))}
+        ${det(tr('Rate'),rate)}
+        ${det(tr('Pay'),e.total>0?money(e.total):'—')}
+        ${det(tr('Travel ₪'),e.travel>0?money(e.travel):'—')}
+        ${det(tr('Bank'),bank)}
+        ${payOnly?det(tr('My commission'),'₪'+hrCom(e).toFixed(0)+` <span style="color:var(--text3);font-weight:400">(${isDailyPay(wc)&&hrDayRate>0?tr('{n} days × ₪{r}',{n:esc(e.daysUsed),r:hrDayRate}):tr('{h}h × ₪{r}',{h:e.hours.toFixed(1),r:hrRate})})</span>`):''}
+      </div>
+    </div>`;
+  });
   if(payOnly) return;
   renderSupplierPayable(entries);
   renderHrPayable(entries);
@@ -9423,11 +9427,12 @@ function _isStandalone(){ return window.matchMedia('(display-mode: standalone)')
 function ensureInstallButton(){
   if(_isStandalone()){ document.getElementById('installBtn')?.remove(); return; }
   if(document.getElementById('installBtn')) return;
-  const host=document.querySelector('.titlebar-actions'); if(!host) return;
+  const host=document.getElementById('accountInstallSlot'); if(!host) return;
   const btn=document.createElement('button');
-  btn.id='installBtn'; btn.className='btn sm';
-  btn.innerHTML='<i class="ti ti-download" style="color:#4f8ef7"></i> '+esc(tr('Install'));
+  btn.id='installBtn'; btn.type='button'; btn.className='acct-mi install';
+  btn.innerHTML='<i class="ti ti-download"></i><span>'+esc(tr('Install app'))+'</span>';
   btn.onclick=async()=>{
+    closeAccountMenu();
     if(_installPrompt){
       _installPrompt.prompt();
       const{outcome}=await _installPrompt.userChoice;

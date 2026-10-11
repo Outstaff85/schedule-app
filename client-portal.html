@@ -49,35 +49,37 @@ body{padding-bottom:40px;}
 table{width:100%;border-collapse:collapse;}
 th,td{padding:7px 8px;text-align:left;font-size:12px;border-bottom:1px solid var(--border);}
 th{color:var(--text2);font-size:11px;}
-.lang-select.on-cover{position:absolute;top:max(env(safe-area-inset-top,0px),12px);right:12px;z-index:2;}
 .lang-select{background:var(--bg3);color:var(--text2);border:1px solid var(--border);border-radius:8px;padding:4px 6px;font:600 12px/1 inherit;cursor:pointer;width:auto;min-width:0;}
 html[lang="he"] *{letter-spacing:normal !important;}
 html.has-session #appRoot{display:block !important;}
-@media (max-width:500px){ .mgr-label{display:none;} }
+/* The account menu (header variant C, the same in the manager app and both
+   portals): one button with the login's name; inside it language and sign out. */
+.acct{position:relative;}
+.acct-chip{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px 0 4px;border-radius:999px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font:600 13px inherit;cursor:pointer;max-width:240px;}
+.acct-av{width:28px;height:28px;flex:none;border-radius:50%;background:linear-gradient(135deg,#4f8ef7,#7a5cf7);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;text-transform:uppercase;}
+.acct-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.acct-chev{color:var(--text2);font-size:14px;}
+.acct-menu{display:none;position:absolute;right:0;top:44px;width:230px;background:var(--bg2);border:1px solid var(--border2);border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.5);padding:6px;z-index:900;}
+.acct.open .acct-menu{display:block;}
+.acct-h{padding:8px 10px 10px;border-bottom:1px solid var(--border);margin-bottom:4px;}
+.acct-h b{display:block;font-size:13px;color:var(--text);}
+.acct-h span{font-size:11px;color:var(--text2);}
+.acct-mi{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border-radius:8px;border:0;background:none;color:var(--text);font:500 13px inherit;cursor:pointer;text-align:left;}
+.acct-mi i{font-size:17px;color:var(--text2);}
+.acct-mi:hover{background:var(--bg3);}
+.acct-mi.out,.acct-mi.out i{color:var(--red);}
+.acct-lang .lang-select{margin-left:auto;}
+@media (max-width:500px){ .acct-label,.acct-chev{display:none;} .acct-chip{padding:0 4px;} }
+
 </style>
 </head>
 <body>
 
-<div id="loginScreen" style="display:flex;position:fixed;inset:0;z-index:1000;background:var(--bg);align-items:center;justify-content:center">
-  <select class="lang-select on-cover" id="langSelect" title="Language" data-i18n-title="Language" aria-label="Language" onchange="setLanguage(this.value)"><option value="en">EN</option><option value="he">HE</option><option value="ru">RU</option></select>
-  <div style="width:100%;max-width:340px;padding:24px">
-    <div style="text-align:center;margin-bottom:22px">
-      <i class="ti ti-building-store" style="font-size:32px;color:var(--accent)"></i>
-      <div style="font-size:18px;font-weight:700;margin-top:8px" data-i18n>Client Portal</div>
-    </div>
-    <div class="field"><label data-i18n>Username</label><input type="text" id="loginUsername" autocomplete="username"></div>
-    <div class="field"><label data-i18n>Password</label><input type="password" id="loginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogin()"></div>
-    <div id="loginError" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px"></div>
-    <button class="btn accent" style="width:100%;justify-content:center" onclick="submitLogin()" data-i18n>Log in</button>
-    <div style="text-align:center;margin-top:14px"><a href="schedule-manager.html" style="color:var(--text2);font-size:12px;text-decoration:none"><i class="ti ti-home"></i> <span data-i18n>Manager login</span></a></div>
-  </div>
-</div>
-
 <script>
-// A login kept on this device opens the portal at once — no flash of the
-// login screen while the Firebase sign-in is checked; gateApp() brings the
-// login back only when that sign-in is really gone.
-try{ if(localStorage.getItem('clientPortal_session')){ document.getElementById('loginScreen').style.display = 'none'; document.documentElement.classList.add('has-session'); } }catch(e){}
+// One login for every role (per user request 2026-10-11): the manager app's
+// login page signs a supplier or client in and hands over to its portal; a
+// kept login opens the portal at once, no login means that page.
+try{ if(localStorage.getItem('clientPortal_session')) document.documentElement.classList.add('has-session'); else location.replace('schedule-manager.html'); }catch(e){}
 </script>
 <div id="appRoot" style="display:none">
   <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 16px;border-bottom:1px solid var(--border)">
@@ -86,8 +88,14 @@ try{ if(localStorage.getItem('clientPortal_session')){ document.getElementById('
       <div id="clientName" style="font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
     </div>
     <div id="headerActions" style="display:flex;gap:6px;align-items:center">
-      <button class="btn sm" onclick="goToManager()" title="Back to the manager app" data-i18n-title="Back to the manager app"><i class="ti ti-home"></i> <span class="mgr-label" data-i18n>Manager</span></button>
-      <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i> <span data-i18n>Log out</span></button>
+      <div class="acct" id="accountControl">
+      <button type="button" class="acct-chip" onclick="toggleAccountMenu(event)" aria-haspopup="true"><span class="acct-av" id="accountAvatar"></span><span class="acct-label" id="accountLabel"></span><i class="ti ti-chevron-down acct-chev"></i></button>
+      <div class="acct-menu" id="accountMenu">
+        <div class="acct-h" id="accountMenuHead"></div>
+        <div class="acct-mi acct-lang"><i class="ti ti-world"></i><span data-i18n>Language</span><select class="lang-select" id="langSelect" title="Language" data-i18n-title="Language" aria-label="Language" onchange="setLanguage(this.value)"><option value="en">EN</option><option value="he">HE</option><option value="ru">RU</option></select></div>
+        <button type="button" class="acct-mi out" onclick="logout()"><i class="ti ti-logout"></i><span data-i18n>Sign out</span></button>
+      </div>
+    </div>
     </div>
   </div>
   <div style="padding:16px;max-width:760px;margin:0 auto" id="hoursRoot"></div>
@@ -150,12 +158,8 @@ async function setLanguage(lang, opts){
 }
 // The one language select sits in the header, or on the login screen while that one is shown.
 function placeLangSelect(){
-  const sel = document.getElementById('langSelect'); if(!sel) return;
-  const login = document.getElementById('loginScreen');
-  const onLogin = login && login.style.display !== 'none';
-  const host = onLogin ? login : document.getElementById('headerActions');
-  sel.classList.toggle('on-cover', !!onLogin);
-  if(host && sel.parentNode !== host) host.prepend(sel);
+  const sel = document.getElementById('langSelect'), host = document.querySelector('#accountMenu .acct-lang');
+  if(sel && host && sel.parentNode !== host) host.appendChild(sel);
 }
 function syncLangSelects(){ document.querySelectorAll('select.lang-select').forEach(el => { el.value = I18N_LANG; }); }
 function redrawForLanguage(){
@@ -292,17 +296,23 @@ function getSession(){
   }catch(e){ return null; }
 }
 function saveSession(s){ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
-// Back to the manager app (its own login): this portal's sign-in ends first,
-// since one browser holds one Firebase sign-in for the whole site.
-async function goToManager(){
-  try{ localStorage.removeItem(SESSION_KEY); }catch(e){}
-  try{ await (await loadFirestoreBackend()).signOut(); }catch(e){}
-  location.href = 'schedule-manager.html';
-}
+// Sign out: this portal's session and the site's Firebase sign-in end, and
+// the one login page (the manager app's) opens.
 async function logout(){
   localStorage.removeItem(SESSION_KEY);
   try{ await (await loadFirestoreBackend()).signOut(); }catch(e){}
-  location.reload();
+  location.href = 'schedule-manager.html';
+}
+// The account menu: a tap on the name button opens it, a tap anywhere else
+// (or Escape) closes it. The same in the manager app and the other portal.
+function toggleAccountMenu(e){ if(e) e.stopPropagation(); document.getElementById('accountControl').classList.toggle('open'); }
+function closeAccountMenu(){ const a = document.getElementById('accountControl'); if(a) a.classList.remove('open'); }
+document.addEventListener('click', e => { const a = document.getElementById('accountControl'); if(a && a.classList.contains('open') && !a.contains(e.target)) closeAccountMenu(); });
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeAccountMenu(); });
+function renderAccountChip(name, sub){
+  document.getElementById('accountAvatar').textContent = (String(name || '').trim()[0] || '?');
+  document.getElementById('accountLabel').textContent = name || '';
+  document.getElementById('accountMenuHead').innerHTML = '<b>' + esc(name || '') + '</b><span>' + esc(sub || '') + '</span>';
 }
 
 // ── Backend: the login function signs the device in (firestore-backend.js);
@@ -327,22 +337,6 @@ async function hoursCall(body){
     headers:{'Content-Type':'application/json', Authorization:'Bearer ' + idToken}, body: JSON.stringify(body)});
   return res.json();
 }
-async function submitLogin(){
-  const username = document.getElementById('loginUsername').value.trim();
-  const password = document.getElementById('loginPassword').value;
-  const errEl = document.getElementById('loginError');
-  errEl.textContent = '';
-  if(!username || !password){ errEl.textContent = tr('Enter username and password'); return; }
-  try{
-    const b = await loadFirestoreBackend();
-    const json = await b.login(username, password);
-    if(json.error){ errEl.textContent = json.error; return; }
-    if(json.role !== 'client'){ await b.signOut(); errEl.textContent = tr('This login is not a client account'); return; }
-    saveSession({uid: json.uid, role: json.role, tenantId: json.tenantId, clientId: json.clientId, username: json.username});
-    if(json.language && json.language !== I18N_LANG) await setLanguage(json.language, {save:false});
-    gateApp();
-  }catch(e){ errEl.textContent = tr('Network error'); }
-}
 
 // The hours screen (hours-review.js, shared with the supplier portal and the
 // manager app's HR view), loaded once.
@@ -363,10 +357,9 @@ async function gateApp(){
   // The Firebase sign-in is gone (site data cleared, signed out): log in again.
   if(s){ try{ if(!(await loadFirestoreBackend()).currentUser()){ localStorage.removeItem(SESSION_KEY); s = null; } }catch(e){} }
   document.documentElement.classList.remove('has-session');  // the early open ends here
-  document.getElementById('loginScreen').style.display = s ? 'none' : 'flex';
-  document.getElementById('appRoot').style.display = s ? '' : 'none';
-  placeLangSelect();
-  if(!s) return;
+  if(!s){ location.replace('schedule-manager.html'); return; }
+  document.getElementById('appRoot').style.display = '';
+  placeLangSelect(); renderAccountChip(s.username, tr('Client'));
   try{ await loadHoursReview(); }catch(e){ showToast(tr('Could not load — check the connection and try again.')); return; }
   await hoursReviewMount(document.getElementById('hoursRoot'), {hideOwner: true, call: async body => {
     const r = await hoursCall(body);
@@ -375,7 +368,6 @@ async function gateApp(){
     return r;
   }});
 }
-new MutationObserver(placeLangSelect).observe(document.getElementById('loginScreen'), {attributes:true, attributeFilter:['style']});
 loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangSelects(); placeLangSelect(); gateApp(); });
 </script>
 </body>

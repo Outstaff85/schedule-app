@@ -161,7 +161,7 @@ def _save_punch(db, tid, w, data):
     return {"ok": True, "id": doc["id"]}
 
 
-MY_PUNCH_FIELDS = ("id", "type", "time", "date", "clientId")
+MY_PUNCH_FIELDS = ("id", "type", "time", "date", "clientId", "dist")  # dist: metres from the site, shown in My Hours
 WORKER_PAY_FIELDS = ("payMode", "hourlyRate", "regRate", "otRate", "shabbatRate", "clientRates",
                      "dayOverrides", "travelAllowance", "travelMonthly")
 

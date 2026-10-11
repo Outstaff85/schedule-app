@@ -27,21 +27,18 @@ Worker pay and client billing are separate sets of fields. Billing never changes
 
 ## Client modal (`showClientModal(c)`, `#clientModal`)
 
-`openAddClient()` / `openEditClient(cid)` set `editingClientId` and the color, then open the modal. The modal and its billing-rate popup are in Hebrew, right to left (per user request 2026-10-04).
+`openAddClient()` / `openEditClient(cid)` set `editingClientId` and the color, then open the modal. The modal is in Hebrew, right to left (per user request 2026-10-04).
 
 - **Fields:** שם הלקוח, ח.פ, אתר / סניף, כתובת.
-- **Layout:** worker pay on its own line; **Client billing mode** (`#cRateMode`) and **what the client pays** (`#cBillMain`) share the next line, the billing summary and "עריכה" under them.
+- **Rates block** (per user request 2026-10-11): a "תעריפים" heading with an (i) that shows the explanation; worker pay and what the client pays side by side (₪/שעה inside the fields); the billing mode as two buttons; OT / Shabbat inline in tiered mode; the margin line.
 - **Manual punch:** in place of a Save button, an existing client's window has "החתמה ידנית" (`punchFromClientModal`): it saves the window first (as a tap outside does), then opens the manual punch for this client; closing the punch brings the client window back.
 - **Saving:** there is no Save button — a tap outside the window saves it (`clientOverlay.__onUserClose` → `saveClient({auto:true})`; a hint line at the bottom says so). A new client without a name is not created; an unchanged client closes without a save.
 - **Two rates**: **worker pay** ("שכר העובד", `#cDefRate` → `defaultHourlyRate`) — the regular ₪/h every worker at this client gets unless the worker has an own rate; OT and Shabbat always follow the law from it (saving the card clears an older client's `defaultOtRate` / `defaultShabbatRate`) — and **what the client pays the firm** ("תשלום הלקוח", `#cBillMain`): the main billing rate (`clientBillMain()`: `fixedBillRate` in fixed mode, else `billRate`), typed straight in (`onClientBillMainInput`); never changes a worker's pay.
-- **Client billing mode** (`#cRateMode`):
-  - picking a mode (`onClientRateModeChange()`) opens the billing-rate popup at once (`openClientBillRatePopup(true)`):
-    - `fixed` → one flat ₪/h (`cbFixed`);
-    - `tiered` → Regular / OT / Shabbat (`cbReg`, `cbOt`, `cbShab`);
-  - values are kept in `__cBill` while the modal is open, summarized by `clientBillSummary()`, and edited again through "עריכה" (the billing OT / Shabbat rates live only in this popup); `syncClientBillFields()` refreshes the summary and `#cBillMain` after the popup or a mode switch;
-  - `saveClientBillRatePopup()` stores them;
-  - `cancelClientBillRatePopup(true)` (cancelling a popup opened by a mode switch) puts the previous mode back (`__cBillPrevMode`);
-  - `__cBill.billRate` falls back to `defaultHourlyRate` for clients saved before `billRate` existed.
+- **Client billing mode** (`#cRateMode`, two buttons → `setClientRateMode`):
+  - `tiered` ("לפי החוק (נוספות + שבת)") — the regular rate is `#cBillMain` (`billRate`); OT and Shabbat (`#cBillOt`, `#cBillShab` → `billOtRate`, `billShabbatRate`) sit in the form under the buttons, empty = by law (the placeholder shows the law's figure from the regular rate, `PAY_RULES.otMult` / `shabbatMult`);
+  - `fixed` ("קבוע") — `#cBillMain` is one flat ₪/h (`fixedBillRate`), the OT / Shabbat row is hidden;
+  - values are kept in `__cBill` while the modal is open (`syncClientBillFields()` refreshes the main field, the placeholders and the margin); `__cBill.billRate` falls back to `defaultHourlyRate` for clients saved before `billRate` existed.
+- **Margin** (`#cBillMargin`, `updateClientMargin()`): what the client pays minus the worker pay per regular hour, in ₪ and % of the client's rate — green, red ("הפסד לשעה") when the client pays less; hidden while either rate is empty.
 - **Geolocation:** set it on the map (below), by pasting a Google Maps link (`parseGoogleMapsUrl()` understands `@lat,lng`, `?q=`, `?ll=`, `/lat,lng` and a plain `lat, lng`), The coordinates are hidden inputs (`cLat`, `cLng`) filled by those two — there are no Latitude / Longitude fields to type; only the radius (`cRadius`) is typed. `updateLocStatus()` / `locSetHtml()` show the result ("המיקום נקבע: lat, lng").
 - **No color picker:** a new client gets the next `CLIENT_COLORS` color automatically (`openAddClient`); an edited one keeps its color.
 

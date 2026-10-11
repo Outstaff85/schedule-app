@@ -87,7 +87,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     out.saved = {mode: w.payMode, rate: w.hourlyRate, td: w.travelAllowance, tm: w.travelMonthly, bank: w.bank, acc: w.bankAccountNumber};
     out.travel = travelPay(w, 3, 2);
     const sel = document.getElementById('salaryPeriod'); sel.value = 'all'; await onSalaryPeriodChange();
-    const row = [...document.querySelectorAll('#dashSalary .salary-rows tr')].find(r => r.textContent.includes(w.name));
+    const row = [...document.querySelectorAll('#dashSalary .salary-rows .sal-row')].find(r => r.textContent.includes(w.name));
     out.card = row ? row.textContent.replace(/\s+/g, ' ') : '';
     sel.value = 'week'; await onSalaryPeriodChange();
     // An edit in the worker modal keeps the pay fields.
@@ -105,6 +105,22 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(rt.noRateInModal && rt.listed && rt.open && rt.otHidden, 'worker pay: no money fields in the worker modal; one Salary section; the pay modal opens', JSON.stringify(rt));
   ok(rt.saved.mode === 'daily' && rt.saved.rate === 400 && rt.saved.td === 20 && rt.saved.tm === 150 && rt.saved.bank === 'Leumi' && rt.saved.acc === '123' && rt.travel === 360 && /₪400\/day/.test(rt.card) && /Leumi/.test(rt.card), 'worker pay: the pay modal saves mode, rate, travel per day and per month, bank; the Salary row shows them', JSON.stringify(rt));
+  // Salary: one compact line per worker; a tap opens its details. The header: one account menu.
+  const sc = await p.evaluate(async () => {
+    switchTab('accounting'); const sel = document.getElementById('salaryPeriod'); sel.value = 'all'; await onSalaryPeriodChange();
+    const row0 = document.querySelector('#dashSalary .sal-row'); if(!row0) return {};
+    const wid = row0.dataset.wid, row = row0;
+    const det = () => getComputedStyle(document.querySelector('#dashSalary .sal-row[data-wid="' + wid + '"] .sal-det')).display;
+    const r = {h: row.getBoundingClientRect().height, before: det()};
+    row.dispatchEvent(new MouseEvent('click', {bubbles: true})); await new Promise(res => setTimeout(res, 450)); r.after = det();
+    sel.value = 'week'; await onSalaryPeriodChange();
+    toggleAccountMenu(); const m = document.getElementById('accountMenu');
+    r.menu = {open: getComputedStyle(m).display !== 'none', lang: !!m.querySelector('#langSelect'), out: /Sign out/.test(m.innerText), name: /My name/.test(m.innerText)};
+    closeAccountMenu(); r.closed = getComputedStyle(m).display === 'none';
+    return r;
+  });
+  ok(sc.h > 0 && sc.h < 60 && sc.before === 'none' && sc.after === 'grid', 'salary: one compact line per worker, a tap opens the details ' + JSON.stringify(sc));
+  ok(sc.menu && sc.menu.open && sc.menu.lang && sc.menu.out && sc.menu.name && sc.closed, 'header: one account menu with language, my name and sign out ' + JSON.stringify(sc.menu));
   ok(rt.keptAfterEdit, 'worker pay: an edit in the worker modal keeps the pay fields', JSON.stringify(rt));
   ok(rt.moved === 0, "worker pay: moved to a client with a rate, the worker takes the client's rate", JSON.stringify(rt));
   // Commission for a worker paid by the day: a fixed ₪ per day when set, else hours × ₪/h.
@@ -164,7 +180,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       for(let i = 0; i < 40 && I18N_LANG !== l; i++) await new Promise(res => setTimeout(res, 150));
       switchTab('accounting'); await new Promise(res => setTimeout(res, 300));
       return {lang: I18N_LANG, tab: document.getElementById('tabAccounting').innerText.trim(),
-        head: document.querySelector('#dashSalary th') && document.querySelector('#dashSalary th').innerText.trim(),
+        head: document.querySelector('#dashSalary .sal-head .c-name') && document.querySelector('#dashSalary .sal-head .c-name').innerText.trim(),
         sec: document.querySelector('#accSecSalary span[data-i18n]').textContent.trim(),
         period: document.getElementById('salaryPeriod').options[0].text,
         stored: localStorage.getItem('uiLang'), selects: [...document.querySelectorAll('select.lang-select')].every(x => x.value === l)};
@@ -447,7 +463,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     w2.payMode = 'daily'; renderSalary(); out.daily = dana().total; out.dailyExport = sum(); out.days = dana().countedDays;
     openPayModal('w2'); out.daysField = getComputedStyle(document.getElementById('payDaysRow')).display !== 'none' && document.getElementById('payDays').placeholder === '1';
     document.getElementById('payDays').value = '5'; savePayModal('w2'); out.over = dana().total; out.overExport = sum();
-    const row = [...document.querySelectorAll('#dashSalary .salary-rows tr')].find(r => r.textContent.includes('Dana Levi'));
+    const row = [...document.querySelectorAll('#dashSalary .salary-rows .sal-row')].find(r => r.textContent.includes('Dana Levi'));
     out.cellInput = out.daysField && !!row && !row.querySelector('input') && /punches: 1/.test(row.textContent); out.aviDays = __lastSalaryEntries.find(e => e.workerId === 'w1').countedDays;
     delete w2.dayOverrides; delete w2.payMode; renderSalary(); out.back = dana().total;
     return out;
@@ -571,9 +587,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const keep = JSON.parse(JSON.stringify(clients.find(c => c.id === 'c1')));
     openEditClient('c1');
     const noSave = ![...document.querySelectorAll('#clientModal button')].some(b => /שמירה|הוספת לקוח/.test(b.textContent));
-    document.getElementById('cBillMain').value = '130'; onClientBillMainInput('130'); document.getElementById('cDefRate').value = '52'; tap();
+    document.getElementById('cBillMain').value = '130'; onClientBillMainInput('130'); document.getElementById('cDefRate').value = '52'; updateClientMargin();
+    // The rates block: the margin per hour, the mode buttons (by law shows OT / Shabbat inline).
+    const rates = {margin: document.getElementById('cBillMargin').innerText.replace(/\s+/g, ' '), extra: getComputedStyle(document.getElementById('cBillExtra')).display !== 'none'};
+    setClientRateMode('fixed'); rates.fixedHidesExtra = getComputedStyle(document.getElementById('cBillExtra')).display === 'none'; setClientRateMode('tiered');
+    tap();
     await new Promise(r => setTimeout(r, 300));
-    const c = clients.find(x => x.id === 'c1'), out = {noSave, closed: !document.getElementById('clientOverlay').classList.contains('open'), d: c.defaultHourlyRate, b: c.billRate};
+    const c = clients.find(x => x.id === 'c1'), out = {rates, noSave, closed: !document.getElementById('clientOverlay').classList.contains('open'), d: c.defaultHourlyRate, b: c.billRate};
     const n = clients.length; openAddClient(); tap(); await new Promise(r => setTimeout(r, 300)); out.noNew = clients.length === n;
     // "Manual punch" from the client window: saves it, opens the punch; closing the punch brings the client back.
     out.noPunchOnCard = !document.querySelector('#clientsGrid .client-card button[onclick*="openManualPunch"]');
@@ -584,6 +604,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     Object.assign(c, keep); delete c.defaultOtRate; delete c.defaultShabbatRate; await gsSave(getDataObj());
     return out;
   });
+  ok(/₪78 · 60%/.test(cs.rates.margin) && cs.rates.extra && cs.rates.fixedHidesExtra, 'clients: the rates block shows the margin per hour; fixed mode hides OT / Shabbat ' + JSON.stringify(cs.rates));
   ok(cs.noSave && cs.closed && cs.d === 52 && cs.b === 130 && cs.noNew && cs.noPunchOnCard && cs.punch && cs.back, 'clients: no Save button, a tap outside saves; an empty new client is not created; manual punch from the window and back ' + JSON.stringify(cs));
   await p.mouse.click(5, 450); await sleep(400);
   ok(external.filter(u=>/script\.google\.com/.test(u)).length === 0, 'no request to script.google.com');
@@ -809,22 +830,32 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await q.evaluate(() => closeModal('userFormOverlay'));
   // A kept login opens the portal at once: the login screen never shows on a reload.
   await p.reload({waitUntil: 'domcontentloaded'});
-  const flash = await p.evaluate(() => getComputedStyle(document.getElementById('loginScreen')).display);
-  ok(flash === 'none' && await waitFor(p, () => typeof __hrv !== 'undefined' && !!__hrv.data, 15000), 'client: a reload with a kept login shows no login screen ' + flash);
+  ok(await waitFor(p, () => /client-portal/.test(location.pathname) && typeof __hrv !== 'undefined' && !!__hrv.data, 15000), 'client: a reload with a kept login stays in the portal');
   await p.screenshot({path: SP + '/client-portal-hours.png', fullPage: true}).catch(()=>{});
   ok(p.errs.length === 0 && q.errs.length === 0, 'client portal: no page errors ' + p.errs.concat(q.errs).join(' | '));
   await octx.close(); await ctx.close();
-  // "Manager" in the portal header: ends the portal's sign-in and opens the manager app's login.
+  // Sign out (the account menu): ends the portal's sign-in and opens the one login page.
   ctx = await newCtx(); p = await page(ctx);
   await login(p, BASE + 'client-portal.html', 'client1', 'client-pass-1');
   await waitFor(p, () => typeof __hrv !== 'undefined' && !!__hrv.data, 15000);
-  await p.evaluate(() => goToManager());
-  ok(await waitFor(p, () => /schedule-manager/.test(location.pathname) && document.getElementById('loginScreen').style.display !== 'none' && !localStorage.getItem('clientPortal_session'), 15000), 'client portal: "Manager" goes back to the manager app\'s login');
+  const menu = await p.evaluate(() => { toggleAccountMenu(); const m = document.getElementById('accountMenu'); return {open: getComputedStyle(m).display !== 'none', lang: !!m.querySelector('#langSelect'), text: m.innerText}; });
+  ok(menu.open && menu.lang && /client1/.test(menu.text) && /Sign out/.test(menu.text), 'client portal: the account menu holds the name, the language and Sign out ' + JSON.stringify(menu));
+  await p.evaluate(() => logout());
+  ok(await waitFor(p, () => /schedule-manager/.test(location.pathname) && document.getElementById('loginScreen').style.display !== 'none' && !localStorage.getItem('clientPortal_session'), 15000), 'client portal: Sign out opens the one login page');
+  // The portals have no login of their own: opened without a session they send to the one login page.
+  await p.goto(BASE + 'supplier-portal.html');
+  ok(await waitFor(p, () => /schedule-manager/.test(location.pathname), 10000), 'portals: no session → the manager app\'s login page');
   await ctx.close();
   // A client login on the main site goes to its portal.
   ctx = await newCtx(); p = await page(ctx);
   await login(p, BASE + 'schedule-manager.html', 'client1', 'client-pass-1');
   ok(await waitFor(p, () => /client-portal/.test(location.pathname) && typeof __hrv !== 'undefined' && !!__hrv.data, 15000), 'client: a client login on the main site is taken to its portal');
+  await ctx.close();
+
+  // ── Worker punch page without a personal link: a message, no worker picker ──
+  ctx = await newCtx(); p = await page(ctx);
+  await p.goto(BASE + 'worker-punch.html');
+  ok(await waitFor(p, () => /Open your personal link/.test(document.body.innerText), 10000), 'punch: without a personal link the page asks for it');
   await ctx.close();
 
   // ── Worker punch link ──
@@ -842,6 +873,14 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {shown: !document.getElementById('screenSchedule').classList.contains('hidden'), days: document.querySelectorAll('#scheduleContent .sched-cell').length, empty: /No shifts planned yet/.test(document.getElementById('scheduleContent').innerText), sched: JSON.stringify(selectedWorker.schedule), n: workers.length, keys: Object.keys(selectedWorker).sort().join(',')}; });
   ok(ms.shown && (ms.days >= 35 || ms.empty) && ms.n === 1 && ms.keys.includes('schedule'), 'punch: My Schedule shows the worker\'s own week ' + JSON.stringify(ms));
   await p.evaluate(() => closeHistory());
+  // A schedule change since this device last saw it: a notice that stays on the punch screen until My Schedule is opened.
+  const sn = await p.evaluate(async () => {
+    localStorage.setItem('schedSeen_' + selectedWorker.id, 'old'); showScreen('screenPunch'); checkScheduleChange();
+    const vis = () => getComputedStyle(document.getElementById('schedNotice')).display !== 'none';
+    const r = {shown: vis()}; await new Promise(res => setTimeout(res, 4500)); r.still = vis();
+    openSchedule(); r.after = vis(); closeHistory(); return r;
+  });
+  ok(sn.shown && sn.still && !sn.after, 'punch: a schedule change shows a notice that stays until My Schedule is opened ' + JSON.stringify(sn));
   // My Hours and Pay: yesterday's seeded 8h shift (hourly 50) from the punch function's myMonth, priced like Salary.
   const mh = await p.evaluate(async () => {
     const link = getComputedStyle(document.getElementById('myHoursLink')).display !== 'none';
@@ -854,9 +893,18 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const sh = (f.shifts || []).find(s => s.h > 0) || {};
     const raw = JSON.stringify(d);
     return {link, hours: f.hours, total: f.total, sat: sh.date && sh.date.getDay() === 6, text: document.getElementById('hoursContent').innerText.slice(0, 120),
-      leak: /gpsAccuracy|dist|billRate|tok-/.test(raw), pay: d.pay};
+      leak: /gpsAccuracy|gpsWarnings|billRate|tok-/.test(raw), pay: d.pay};
   });
-  ok(mh.link && mh.hours === 8 && mh.total === (mh.sat ? 600 : 400) && !mh.leak && /8\.0h/.test(mh.text), "punch: My Hours and Pay — own shift, priced like Salary, no GPS or billing " + JSON.stringify(mh));
+  ok(mh.link && mh.hours === 8 && mh.total === (mh.sat ? 600 : 400) && !mh.leak && /8\.0h/.test(mh.text), "punch: My Hours — own shift, priced like Salary, no GPS or billing " + JSON.stringify(mh));
+  // My History is merged in: a tap on a shift opens its punches (in / out, time, site).
+  const mx = await p.evaluate(async () => {
+    for(let i = 0; i < 50 && !document.querySelector('#hoursContent .hours-shift'); i++) await new Promise(r => setTimeout(r, 100));
+    const sh = [...document.querySelectorAll('#hoursContent .hours-shift')].find(x => x.querySelectorAll('.hp').length === 2); if(!sh) return {}; // a full shift (today's may be open)
+    const before = getComputedStyle(sh.querySelector('.hours-punches')).display; sh.click();
+    return {before, after: getComputedStyle(sh.querySelector('.hours-punches')).display, tags: [...sh.querySelectorAll('.hp .tag')].map(t => t.textContent).join(','), dist: /12 m/.test(sh.innerText),
+      noHistory: !document.getElementById('screenHistory') && !/My History/.test(document.getElementById('screenPunch').innerText)};
+  });
+  ok(mx.before === 'none' && mx.after === 'block' && mx.tags === 'IN,OUT' && mx.dist && mx.noHistory, 'punch: My Hours shows each shift\'s punches on a tap; no separate My History ' + JSON.stringify(mx));
   await p.evaluate(() => closeHistory());
   ok(await p.evaluate(() => JSON.parse(localStorage.getItem('punchQueue')||'[]').length === 0), 'punch: nothing queued');
   await srv('/revoke');
