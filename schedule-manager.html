@@ -1769,6 +1769,15 @@ function workerDocStatus(w){
   return {level, missing, expiry, docExpiries, docExpired, failed, lines};
 }
 // Compact list/cards badge — nothing when documents are complete.
+// "NEW" next to a worker for 3 days after they were added (w.createdAt —
+// set when the manager app or the supplier portal creates the worker).
+// Duplicated on purpose in schedule-manager.html and supplier-portal.html.
+const NEW_WORKER_DAYS = 3;
+function newWorkerBadgeHtml(w){
+  const t = w && w.createdAt ? new Date(w.createdAt).getTime() : NaN;
+  if(!(Date.now() - t < NEW_WORKER_DAYS * 864e5)) return '';
+  return `<span class="new-badge" title="${esc(tr('Added {0}', {0: new Date(t).toLocaleDateString(uiLocale())}))}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--green-bg);color:var(--green);margin-left:5px;white-space:nowrap">${esc(tr('NEW'))}</span>`;
+}
 function docStatusBadgeHtml(w){
   const s=workerDocStatus(w);
   if(s.level==='ok') return '';
@@ -3820,7 +3829,7 @@ function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
         <div style="width:38px;height:38px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div>
         <div style="min-width:0;flex:1">
           <div style="font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(w.name)}</div>
-          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${st.bg};color:${st.col}">${st.label}</span>${expiryBadgeHtml(w)}${docStatusBadgeHtml(w)}
+          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${st.bg};color:${st.col}">${st.label}</span>${newWorkerBadgeHtml(w)}${expiryBadgeHtml(w)}${docStatusBadgeHtml(w)}
         </div>
       </div>
       <div class="wcard-rows">
@@ -3917,7 +3926,7 @@ function renderWorkersPage(){
     const sup=suppliers.find(s=>s.id===w.supplierId);
     const supBadge=sup?`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${sup.color}22;border-radius:10px"><span style="width:6px;height:6px;border-radius:50%;background:${sup.color}"></span>${esc(sup.name)}</span>`:'<span style="color:var(--text3);font-size:12px">—</span>';
     return `<tr onclick="openWorkerCard(${wi})" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background=''">
-      <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div><span style="font-size:13px;font-weight:600">${esc(w.name)}</span>${expiryBadgeHtml(w)}${docStatusBadgeHtml(w)}</div></td>
+      <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div><span style="font-size:13px;font-weight:600">${esc(w.name)}</span>${newWorkerBadgeHtml(w)}${expiryBadgeHtml(w)}${docStatusBadgeHtml(w)}</div></td>
       <td style="padding:10px 12px"><span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col}">${stMeta.label}</span></td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2);font-family:monospace">${workerDocId(w)?esc(workerDocId(w)):'—'}</td>
       <td style="padding:10px 12px">${objBadges}</td>
@@ -3952,7 +3961,7 @@ function openWorkerCard(wi){
       <div style="width:52px;height:52px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:18px;font-weight:700;overflow:hidden;text-overflow:ellipsis">${esc(w.name)}</div>
-        ${hasPermission('workers')?'':`<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col};display:inline-block;margin-top:4px">${stMeta.label}</span>`}${docStatusBadgeHtml(w)}
+        ${hasPermission('workers')?'':`<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col};display:inline-block;margin-top:4px">${stMeta.label}</span>`}${newWorkerBadgeHtml(w)}${docStatusBadgeHtml(w)}
       </div>
       ${hasPermission('workers')?`<button class="btn sm" type="button" onclick="rescanFromWorkerCard(${wi})" style="flex-shrink:0"><i class="ti ti-scan"></i> ${w.docUrl?'סריקה חוזרת':'סרוק מסמך'}</button>`:''}
     </div>

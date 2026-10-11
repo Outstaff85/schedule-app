@@ -495,6 +495,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(!acc.none && /^accountant-all-/.test(acc.name) && acc.sheets.length === 2 && acc.pay === acc.want && acc.pay > 0 && acc.hours > 0 && acc.days >= 1 && acc.total >= acc.pay && acc.shifts > 1,
     'accountant report: Summary = Salary figures, total row, Shifts sheet ' + JSON.stringify(acc));
+  // "NEW" for 3 days after a worker is added: on the worker cards, not on an older worker.
+  const nw = await p.evaluate(async () => {
+    const a = workers.find(w => w.id === 'w1'), d = workers.find(w => w.id === 'w2');
+    const keep = [a.createdAt, d.createdAt];
+    a.createdAt = new Date(Date.now() - 2 * 864e5).toISOString(); d.createdAt = new Date(Date.now() - 4 * 864e5).toISOString();
+    switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await new Promise(r => setTimeout(r, 300));
+    const cards = [...document.querySelectorAll('.wcard')].map(c => ({name: c.innerText.split('\n').find(x => /Avi|Dana/.test(x)) || '', isNew: !!c.querySelector('.new-badge')}));
+    a.createdAt = keep[0]; d.createdAt = keep[1];
+    return cards;
+  });
+  ok(nw.some(c => /Avi/.test(c.name) && c.isNew) && nw.some(c => /Dana/.test(c.name) && !c.isNew), 'worker cards: NEW for 3 days after the worker was added ' + JSON.stringify(nw));
   // A tap on the worker card opens the edit form; closing it (a tap outside saves it) brings the card back.
   await p.evaluate(() => openWorkerCard(1)); await sleep(400);
   await p.click('#workerCardModal div[style*="flex-direction:column"] >> nth=0', {position:{x:5, y:5}}); await sleep(400);

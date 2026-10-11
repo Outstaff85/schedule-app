@@ -863,5 +863,7 @@
   "Total with travel ({t})": "סה״כ כולל נסיעות ({t})",
   "An estimate before deductions — your payslip is the final figure.": "הערכה לפני ניכויים — הסכום הסופי מופיע בתלוש השכר.",
   "Your pay rate is not set yet — ask your manager.": "תעריף השכר שלך עוד לא הוגדר — פנו למנהל.",
-  "My Hours and Pay": "השעות והשכר שלי"
+  "My Hours and Pay": "השעות והשכר שלי",
+  "NEW": "חדש",
+  "Added {0}": "נוסף ב-{0}"
 }

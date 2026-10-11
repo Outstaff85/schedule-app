@@ -316,7 +316,8 @@ def supplier_action(db, caller, body):
     fields = body.get("worker") or {}
     if action == "supplierAddWorker":
         wid = str(uuid.uuid4())
-        w = {"id": wid, "supplierId": sid, "clientIds": [], "schedule": [], "sortIndex": int(time.time())}
+        w = {"id": wid, "supplierId": sid, "clientIds": [], "schedule": [], "sortIndex": int(time.time()),
+             "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")}
         w.update({k: fields[k] for k in SUPPLIER_EDITABLE if fields.get(k) is not None})
         w["name"] = f"{w.get('docGiven') or ''} {w.get('docSurname') or ''}".strip()
         w["docKeys"] = doc_keys(w)

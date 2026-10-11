@@ -686,6 +686,16 @@ function renderDashboard(){
   });
 }
 
+// "NEW" next to a worker for 3 days after they were added (w.createdAt —
+// set when the manager app or the supplier portal creates the worker).
+// Duplicated on purpose in schedule-manager.html and supplier-portal.html.
+const NEW_WORKER_DAYS = 3;
+function newWorkerBadgeHtml(w){
+  const t = w && w.createdAt ? new Date(w.createdAt).getTime() : NaN;
+  if(!(Date.now() - t < NEW_WORKER_DAYS * 864e5)) return '';
+  return `<span class="new-badge" title="${esc(tr('Added {0}', {0: new Date(t).toLocaleDateString(uiLocale())}))}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--green-bg);color:var(--green);margin-left:5px;white-space:nowrap">${esc(tr('NEW'))}</span>`;
+}
+
 // ── My Workers (list/add/edit/delete via the narrow supplierAddWorker/
 // supplierUpdateWorker/supplierDeleteWorker backend actions — never
 // saveSchedule(), which a supplier role is never allowed to call) ────────
@@ -695,7 +705,7 @@ function renderWorkersList(){
   if(!myWorkers.length){ el.innerHTML=`<div style="color:var(--text3);padding:16px 0">${tr('No workers yet')}</div>`; return; }
   el.innerHTML=`<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table><thead><tr><th>${tr('Name')}</th><th>${tr('Phone')}</th><th>${tr('Object')}</th><th>${tr('Commission')}</th><th></th></tr></thead><tbody class="workers-rows"></tbody></table></div>`;
   renderPagedList(el.querySelector('.workers-rows'), 'workers', '', myWorkers, w=>`<tr class="tap-edit" onclick="if(isPlainTap(event,this))openEditWorkerModal('${w.id}')">
-      <td>${esc(w.name)}</td>
+      <td>${esc(w.name)}${newWorkerBadgeHtml(w)}</td>
       <td>${esc(w.phone||'')}</td>
       <td>${(w.clientIds||[]).map(clientName).filter(Boolean).join(', ')}</td>
       <td>${w.supplierRate!=null?'₪'+w.supplierRate+'/h':'—'}</td>

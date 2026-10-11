@@ -75,6 +75,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
   - **failed:** `docUploadFailed`.
   
   Shown by `docStatusBadgeHtml(w)` (DOCS / ID EXPIRED / `<TYPE> EXPIRED` / UPLOAD FAILED; nothing when complete) and `docStatusSummaryHtml(w)`.
+- **NEW badge** — `newWorkerBadgeHtml(w)`: a green "NEW" next to the name for `NEW_WORKER_DAYS` (3) days after `w.createdAt` (set when the worker is added in the app or by a supplier in its portal; the tooltip gives the date). On the worker cards, the list rows and the worker card; the supplier portal's worker list has the same badge.
 - `docUploadFailedBadgeHtml(w)` — the older NO DOCUMENT badge, still used in the Schedule sidebar.
 - `parseDocDate(s)` reads `DD/MM/YYYY` (or `.`, `-`) and ISO dates.
 
