@@ -1,5 +1,4 @@
 {
-  "\"No supplier assigned\" shows those workers' hours only — nothing is owed to a supplier for them.": "\"ללא ספק\" מציג רק את השעות של העובדים האלה — אין חוב לספק בגינם.",
   "&nbsp;·&nbsp; {0}": "&nbsp;·&nbsp; {0}",
   "(load failed)": "(הטעינה נכשלה)",
   "(unknown HR)": "(משאבי אנוש לא ידוע)",
@@ -389,7 +388,6 @@
   "Night shifts": "משמרות לילה",
   "No activity today": "אין פעילות היום",
   "no bank details": "אין פרטי בנק",
-  "No billable activity this period": "אין פעילות לחיוב בתקופה זו",
   "No clients configured": "לא הוגדרו לקוחות",
   "No clients yet. Click \"+ Add Client\" to create one.": "אין עדיין לקוחות. לחצו על \"+ הוספת לקוח\" כדי ליצור.",
   "No connection": "אין חיבור",
@@ -403,7 +401,6 @@
   "no geofence": "ללא גדר גאוגרפית",
   "No grouping": "ללא קיבוץ",
   "No history yet": "אין עדיין היסטוריה",
-  "No hours of HR workers this period": "אין שעות לעובדי משאבי אנוש בתקופה זו",
   "No hours this month": "אין שעות החודש",
   "No months selected": "לא נבחרו חודשים",
   "No network": "אין רשת",
@@ -432,7 +429,6 @@
   "No workers assigned to clients": "אין עובדים משויכים ללקוחות",
   "No workers found": "לא נמצאו עובדים",
   "No workers to add": "אין עובדים להוספה",
-  "No workers with a supplier assigned had activity this period": "לעובדים עם ספק לא הייתה פעילות בתקופה זו",
   "No workers yet": "אין עדיין עובדים",
   "Nobody clocked in yet today": "אף אחד עוד לא נכנס היום",
   "none": "אין",
@@ -852,5 +848,6 @@
   "Days: counted from the punches (two shifts on one day count once); for a worker paid by the day the days can be set by hand for the picked period in the pay window.": "ימים: נספרים מהדיווחים (שתי משמרות ביום אחד נספרות פעם אחת); לעובד לפי יום אפשר לקבוע את הימים ידנית לתקופה שנבחרה בחלון השכר.",
   "Travel = ₪/day × days worked + ₪/month once for each calendar month with work. Total Pay = pay + travel.": "נסיעות = ₪/יום × ימי עבודה + ₪/חודש פעם אחת לכל חודש קלנדרי שבו היתה עבודה. סה״כ לתשלום = שכר + נסיעות.",
   "A tap on a row opens the worker card; a double click (computer) or a long press (phone) opens the pay window: paid by the hour or by the day, rate, OT / Shabbat (empty = the law), travel, bank. A worker without shifts is set from the worker card's Pay button.": "לחיצה על שורה פותחת את כרטיס העובד; לחיצה כפולה (מחשב) או לחיצה ארוכה (טלפון) פותחת את חלון השכר: לפי שעה או לפי יום, תעריף, נוספות / שבת (ריק = לפי החוק), נסיעות, בנק. לעובד בלי משמרות קובעים בכפתור \"שכר\" בכרטיס העובד.",
-  "Which rate counts, most specific first: this table → the worker's own rate (pay window) → the client's rate (client card).": "איזה תעריף קובע, מהספציפי ביותר: הטבלה הזו ← התעריף של העובד (חלון השכר) ← תעריף הלקוח (כרטיס הלקוח)."
+  "Which rate counts, most specific first: this table → the worker's own rate (pay window) → the client's rate (client card).": "איזה תעריף קובע, מהספציפי ביותר: הטבלה הזו ← התעריף של העובד (חלון השכר) ← תעריף הלקוח (כרטיס הלקוח).",
+  "Only the suppliers with hours and a commission this period are listed; workers without a supplier are left out.": "מוצגים רק ספקים עם שעות ועמלה בתקופה; עובדים בלי ספק לא מוצגים."
 }

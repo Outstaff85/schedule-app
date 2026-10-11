@@ -7069,30 +7069,26 @@ function commissionFor(w, e, hourRate, dayRate){
 // Roles plan stage 12) — this table used to (incorrectly, by today's
 // standard) sum the worker's real pay per supplier, which is exactly the
 // number a supplier-role login must never be handed.
+// Only the suppliers with hours and something payable this period; workers
+// without a supplier are left out, and with no row the section is hidden
+// (user request 2026-10-11).
 function renderSupplierPayable(entries){
   const wrap=document.getElementById('supplierPayableWrap');
   if(!wrap) return;
-  if(!entries.length){
-    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('No punch data for this period')}</div>`;
-    return;
-  }
+  const sec=document.getElementById('accSecPayable');
   const bySupplier={};
-  // Workers with no supplier: their hours are shown, but nothing is payable
-  // to a supplier for them (never their wage — that is the salary table).
-  let unassigned={hours:0};
   entries.forEach(e=>{
     const wc=workers.find(w=>w.id===e.workerId);
     const sid=wc&&wc.supplierId;
-    if(!sid){ unassigned.hours+=e.hours; return; }
+    if(!sid) return;
     if(!bySupplier[sid]) bySupplier[sid]={hours:0,total:0};
     bySupplier[sid].hours+=e.hours;
     bySupplier[sid].total+=commissionFor(wc,e,supplierCommissionRate(wc,sid),supplierDayCommission(wc,sid));
   });
-  const rows=suppliers.filter(s=>bySupplier[s.id]).map(s=>({sup:s,...bySupplier[s.id]}));
-  if(!rows.length && !unassigned.hours){
-    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('No workers with a supplier assigned had activity this period')}</div>`;
-    return;
-  }
+  const rows=suppliers.filter(s=>bySupplier[s.id]&&bySupplier[s.id].hours>0&&bySupplier[s.id].total>0).map(s=>({sup:s,...bySupplier[s.id]}));
+  __lastSupplierPayableRows=[];
+  if(sec) sec.style.display=rows.length?'':'none';
+  if(!rows.length){ wrap.innerHTML=''; return; }
   // Stage 15: same {label,hours,rate,total} shape exportPayableSummary()
   // expects — built here once so the export buttons below never recompute.
   __lastSupplierPayableRows = rows.map(r=>({ label:r.sup.name, hours:r.hours, rate:tr('commission'), total:r.total }));
@@ -7111,11 +7107,7 @@ function renderSupplierPayable(entries){
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">${tr('Payable')}</th>
           </tr>
         </thead>
-        <tbody class="paged-supplierPayable"></tbody><tbody>${unassigned.hours?`<tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:10px 12px;font-size:13px;color:var(--text3)">${tr('No supplier assigned')}</td>
-            <td style="padding:10px 12px;text-align:center;font-size:13px;color:var(--text3)">${tr('{h}h',{h:unassigned.hours.toFixed(1)})}</td>
-            <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text3)">—</td>
-          </tr>`:''}</tbody>
+        <tbody class="paged-supplierPayable"></tbody>
       </table>
       </div>
     </div>`;
@@ -7140,9 +7132,9 @@ function renderHrPayable(entries){
     const rate=Number(u.commissionRate)||0, dayRate=Number(u.commissionDayRate)||0;
     const total=mine.reduce((t,e)=>t+commissionFor(workers.find(w=>w.id===e.workerId),e,rate,dayRate),0);
     return {u, hours, rate, dayRate, total};
-  }).filter(r=>r.hours>0);
-  sec.style.display=hrs.length?'':'none';
-  if(!rows.length){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('No hours of HR workers this period')}</div>`; return; }
+  }).filter(r=>r.hours>0&&r.total>0);  // only HRs with hours and a commission rate
+  sec.style.display=rows.length?'':'none';
+  if(!rows.length){ wrap.innerHTML=''; return; }
   wrap.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
       <table style="width:100%;border-collapse:collapse;min-width:420px">
@@ -7172,18 +7164,14 @@ function renderHrPayable(entries){
 // contains supplier data (suppliers[]/supplierId/supplierRates/commission)
 // anywhere — the standing Client<->Supplier isolation principle (Admin/Roles
 // plan): any client-facing surface must never see a supplier exists.
+// Only the clients with hours and a billing rate this period; with no row
+// the section is hidden (user request 2026-10-11).
 function renderClientBillable(entries){
   const wrap=document.getElementById('clientBillableWrap');
   if(!wrap) return;
-  if(!entries.length){
-    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('No punch data for this period')}</div>`;
-    return;
-  }
-  const rows=entries.map(e=>({cl:clients.find(c=>c.id===e.clientId),...e})).filter(r=>r.cl);
-  if(!rows.length){
-    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('No billable activity this period')}</div>`;
-    return;
-  }
+  const rows=entries.map(e=>({cl:clients.find(c=>c.id===e.clientId),...e})).filter(r=>r.cl&&r.hours>0&&r.total>0);
+  const sec=document.getElementById('accSecBillable'); if(sec) sec.style.display=rows.length?'':'none';
+  if(!rows.length){ wrap.innerHTML=''; return; }
   wrap.innerHTML=`
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
@@ -7529,7 +7517,7 @@ const ACCOUNTING_HELP={
     'Feeds "Payable by supplier" only. It never changes a worker\'s pay.']},
   payable:{icon:'ti-report-money',title:'Payable by supplier',items:[
     'For the period picked in Salary: each supplier\'s workers\' hours × the supplier rate.',
-    '"No supplier assigned" shows those workers\' hours only — nothing is owed to a supplier for them.',
+    'Only the suppliers with hours and a commission this period are listed; workers without a supplier are left out.',
     'A worker\'s wage never appears in this table.']},
   billable:{icon:'ti-building-store',title:'Billable by client',items:[
     'What each client owes the firm for the period picked in Salary, by the client\'s own pricing (client card): tiered (the OT / Shabbat law rates on the client\'s billing rate) or one fixed rate.',

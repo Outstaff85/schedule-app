@@ -105,7 +105,7 @@ One row per (worker, assigned client). Empty inputs show the resolved rate as a 
 - **Payable by supplier:** `renderSupplierPayable(entries)`:
   - per supplier, `commissionFor` with the supplier's rates (never the worker's wage); stored in `__lastSupplierPayableRows` for the export buttons;
   - Excel / PDF buttons → `exportPayableSummary()`;
-  - the **"No supplier assigned" row** shows those workers' hours only; its payable is "—" (nothing is owed to a supplier for them, and a wage never appears in this table).
+  - **only the suppliers with hours and a commission** in the period; workers without a supplier are left out, and with no row the section (`#accSecPayable`) is hidden (user request 2026-10-11). The same holds for Payable by HR (only HRs with hours and a commission rate, `#accSecHrPayable`) and Billable by client (only clients with hours and a billing rate, `#accSecBillable`); Salary lists only workers with shifts.
 
 ### Billable by client (`renderClientBillable(entries)`)
 

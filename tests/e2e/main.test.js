@@ -434,7 +434,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.evaluate(async () => { const sel=document.getElementById('salaryPeriod'); sel.value='all'; await onSalaryPeriodChange(); });
   await sleep(500);
   const pay = await p.evaluate(() => document.getElementById('supplierPayableWrap').innerText);
-  ok(/No supplier assigned\s+4\.0h\s+—/.test(pay), 'No supplier row: hours and "—", no wage');
+  ok(!/No supplier assigned/.test(pay), 'Payable by supplier: no row for workers without a supplier');
+  const bill = await p.evaluate(() => ({shown: document.getElementById('accSecBillable').style.display !== 'none', rows: document.querySelectorAll('#clientBillableWrap tbody tr').length}));
+  ok(!bill.shown && bill.rows === 0, 'Billable by client: hidden when no client has a billing rate ' + JSON.stringify(bill));
   ok(/Agency\s+8\.0h\s+₪40/.test(pay), 'Agency row: 8h × default commission 5 = ₪40');
   // Daily pay: Dana (1 day, 4h, own rate 40) paid by the day; then 5 days set by hand.
   // The days are set by hand in the pay window (period 'all' picked in Salary).
