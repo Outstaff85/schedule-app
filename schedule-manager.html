@@ -645,11 +645,15 @@
     body:not(.tables-list) table.mtable td[colspan]{justify-content:center;}
     body:not(.tables-list) table.mtable td[colspan]::before{display:none;}
   }
-  /* Admin section buttons; head actions. */
-  .admin-pane-bar{display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border2);padding-bottom:10px;flex-wrap:wrap}
+  /* Admin sections and the punch log's views: text tabs in one line
+     (scrolls sideways on a narrow phone), the open one highlighted. */
+  .admin-pane-bar,.admin-log-bar{display:flex;gap:2px;margin-bottom:14px;overflow-x:auto;scrollbar-width:none;border-bottom:1px solid var(--border);padding-bottom:6px}
+  .admin-pane-bar::-webkit-scrollbar,.admin-log-bar::-webkit-scrollbar{display:none}
+  .admin-pane-bar .btn,.admin-log-bar .btn{background:none;border:0;color:var(--text2);white-space:nowrap;padding:6px 10px;border-radius:8px;font-weight:600}
+  .admin-pane-bar .btn.accent,.admin-log-bar .btn.accent{background:var(--bg3);color:var(--text)}
+  .admin-log-bar{border-bottom:0;margin-bottom:8px;align-items:center}
+  .admin-log-bar .workers-count{margin-left:auto;white-space:nowrap}
   .head-actions{display:flex;gap:8px}
-  .admin-log-bar{display:flex;align-items:center;gap:6px;margin-bottom:10px}
-  .admin-log-bar .workers-count{margin-left:auto}
   @media (max-width:700px){
     .workers-head .workers-actions,.page-header .head-actions{width:100%}
     .workers-head .workers-actions .btn,.page-header .head-actions .btn{flex:1;justify-content:center;min-height:40px}
