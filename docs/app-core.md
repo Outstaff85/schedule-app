@@ -29,7 +29,7 @@ Shared helpers:
 - `esc(s)` — HTML-escapes `& < > " '`. **Every value put into HTML must go through it.**
 - `fmtDate`, `fmtRange`, `fmtDMY`, `localYMD(d)` — use this, not `toISOString()`, which in Israel gives the previous day;
 - `toMins`, `calcHours(s,e)` (crosses midnight), `nowHHMM`, `getSundayOfWeek`;
-- `showToast(msg, dur)`.
+- `showToast(msg, dur)` — a small note at the bottom right (above the tab bar on a phone; bottom centre in the portal and the punch page): an icon and a coloured left edge by kind, `toastKind(text)` guessing from the text — error (failed, error, not saved…, red), ongoing (ends with …, blue), warning (check, empty, missing…, amber), else done (green); a new one replaces the shown one. The same function and style are in all three pages.
 
 ## Tabs and rendering
 

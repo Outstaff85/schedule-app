@@ -321,17 +321,12 @@ html,body{
 .btn-primary:active,.btn-secondary:active{opacity:0.8;transform:scale(0.97);}
 
 /* ── Toast ── */
-#toast{
-  position:fixed;
-  bottom:max(env(safe-area-inset-bottom,20px),20px);
-  left:50%;transform:translateX(-50%) translateY(12px);
-  background:rgba(20,26,40,0.95);backdrop-filter:blur(12px);
-  border:1px solid var(--border2);border-radius:100px;
-  padding:11px 22px;font-size:14px;font-weight:500;color:var(--text);
-  white-space:nowrap;opacity:0;transition:all 0.25s;
-  z-index:999;pointer-events:none;
-}
-#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.toast{position:fixed;bottom:max(env(safe-area-inset-bottom,16px),16px);left:50%;transform:translateX(-50%) translateY(8px);display:flex;align-items:center;gap:8px;max-width:min(340px,calc(100vw - 32px));box-sizing:border-box;background:var(--bg2,#181c27);border:1px solid var(--border2);border-left:3px solid var(--green);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:500;line-height:1.35;color:var(--text);box-shadow:0 6px 20px rgba(0,0,0,.35);z-index:999;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.toast i{font-size:16px;color:var(--green);flex-shrink:0;}
+.toast.warn{border-left-color:var(--amber);} .toast.warn i{color:var(--amber);}
+.toast.err{border-left-color:var(--red);} .toast.err i{color:var(--red);}
+.toast.info{border-left-color:var(--blue,#60a5fa);} .toast.info i{color:var(--blue,#60a5fa);}
 
 /* ── Offline banner ── */
 #offlineBadge{
@@ -482,7 +477,7 @@ html[lang="he"] *{letter-spacing:normal !important;}
   <div id="historyContent" style="width:100%;max-width:500px"></div>
 </div>
 
-<div id="toast"></div>
+<div id="toast" class="toast"></div>
 
 <script>
 const params = new URLSearchParams(window.location.search);
@@ -1394,7 +1389,21 @@ function savePunchLog(log){ localStorage.setItem('punchLog',JSON.stringify(log))
 function getLastEntry(log,wid){ const es=log.filter(e=>e.workerId===wid); if(!es.length) return null; return es.reduce((a,b)=> new Date(b.ts).getTime()>new Date(a.ts).getTime()?b:a); }
 function haversine(a,b,c,d){ const R=6371000,dL=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180,x=Math.sin(dL/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dl/2)**2; return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x)); }
 function updateScheduleManager(wid,s,e){ try{ const k='schedMgr_v1',r=localStorage.getItem(k)||localStorage.getItem('scheduleManagerData'); if(!r)return; const d=JSON.parse(r),w=d.workers?.find(x=>x.id===wid); if(w){w.schedule[new Date().getDay()]={type:'work',start:s,end:e};localStorage.setItem(k,JSON.stringify(d));} }catch(e){} }
-function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3500); }
+// Toast (the same in all three pages): small, an icon and a coloured edge by
+// its kind, guessed from the text — error, ongoing (ends with …), warning,
+// else done.
+const TOAST_ICONS={ok:'ti-circle-check',warn:'ti-alert-triangle',err:'ti-alert-circle',info:'ti-info-circle'};
+function toastKind(t){
+  if(/fail|error|could not|couldn't|not saved|denied|refused|invalid|נכשל|שגיאה|לא נשמר|לא ניתן/i.test(t)) return 'err';
+  if(/(…|\.\.\.)\s*$/.test(t)) return 'info';
+  if(/⚠|warn|check|empty|missing|not found|בדקו|ריק|חסר|לא נמצא/i.test(t)) return 'warn';
+  return 'ok';
+}
+function showToast(msg,dur){
+  const t=document.getElementById('toast'), text=String(msg), k=toastKind(text);
+  t.className='toast show '+k; t.innerHTML='<i class="ti '+TOAST_ICONS[k]+'"></i><span></span>'; t.lastChild.textContent=text;
+  clearTimeout(t.__hide); t.__hide=setTimeout(()=>t.classList.remove('show'),dur||3500);
+}
 // ── New version check (2026-10-04; the same code in schedule-manager.html,
 // worker-punch.html and supplier-portal.html). An app left open — a PWA in
 // the background — keeps running the code it loaded, even after a deploy.

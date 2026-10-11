@@ -310,8 +310,12 @@
   ::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:3px;}
 
   /* Toast */
-  .toast{position:fixed;bottom:20px;right:20px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:10px 16px;font-size:15px;color:var(--text);z-index:999;opacity:0;transform:translateY(8px);transition:all 0.2s;pointer-events:none;}
+  .toast{position:fixed;bottom:16px;right:16px;transform:translateY(8px);display:flex;align-items:center;gap:8px;max-width:min(340px,calc(100vw - 32px));box-sizing:border-box;background:var(--bg2,#181c27);border:1px solid var(--border2);border-left:3px solid var(--green);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:500;line-height:1.35;color:var(--text);box-shadow:0 6px 20px rgba(0,0,0,.35);z-index:999;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;}
   .toast.show{opacity:1;transform:translateY(0);}
+  .toast i{font-size:16px;color:var(--green);flex-shrink:0;}
+  .toast.warn{border-left-color:var(--amber);} .toast.warn i{color:var(--amber);}
+  .toast.err{border-left-color:var(--red);} .toast.err i{color:var(--red);}
+  .toast.info{border-left-color:var(--blue,#60a5fa);} .toast.info i{color:var(--blue,#60a5fa);}
   input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(1);}
   /* ── Mobile Responsive ────────────────────────────────────────── */
   /* ═══════════════════════════════════════════════════
@@ -8289,7 +8293,21 @@ async function submitClearPunchLog(){
 
 // --- Toast ------------------------------------------------------------------------------------------------------------------------------------
 // Any toast text goes through tr(): a server message in the dictionary shows translated.
-function showToast(msg,dur){ const t=document.getElementById('toast'); t.textContent=typeof msg==='string'?tr(msg):msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),dur||2500); }
+// Toast (the same in all three pages): small, an icon and a coloured edge by
+// its kind, guessed from the text — error, ongoing (ends with …), warning,
+// else done.
+const TOAST_ICONS={ok:'ti-circle-check',warn:'ti-alert-triangle',err:'ti-alert-circle',info:'ti-info-circle'};
+function toastKind(t){
+  if(/fail|error|could not|couldn't|not saved|denied|refused|invalid|נכשל|שגיאה|לא נשמר|לא ניתן/i.test(t)) return 'err';
+  if(/(…|\.\.\.)\s*$/.test(t)) return 'info';
+  if(/⚠|warn|check|empty|missing|not found|בדקו|ריק|חסר|לא נמצא/i.test(t)) return 'warn';
+  return 'ok';
+}
+function showToast(msg,dur){
+  const t=document.getElementById('toast'), text=typeof msg==='string'?tr(msg):String(msg), k=toastKind(text);
+  t.className='toast show '+k; t.innerHTML='<i class="ti '+TOAST_ICONS[k]+'"></i><span></span>'; t.lastChild.textContent=text;
+  clearTimeout(t.__hide); t.__hide=setTimeout(()=>t.classList.remove('show'),dur||2500);
+}
 // ── New version check (2026-10-04; the same code in schedule-manager.html,
 // worker-punch.html and supplier-portal.html). An app left open — a PWA in
 // the background — keeps running the code it loaded, even after a deploy.
