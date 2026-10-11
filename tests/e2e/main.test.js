@@ -73,7 +73,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     out.noRateInModal = !document.getElementById('wRate') && !document.getElementById('wBank') && !document.getElementById('wTravelAllowance');
     closeModal('workerOverlay');
     switchTab('accounting');
-    out.listed = [...document.querySelectorAll('#workerPayWrap .wcard')].some(c => c.textContent.includes(workers[wi].name));
+    out.listed = !document.getElementById('accSecWorkerPay') && !document.getElementById('workerPayWrap');  // one Salary section, no Worker pay
     openPayModal('w2');
     out.open = document.getElementById('payOverlay').classList.contains('open');
     document.getElementById('payMode').value = 'daily'; onPayModeChange();
@@ -86,8 +86,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const w = workers[wi];
     out.saved = {mode: w.payMode, rate: w.hourlyRate, td: w.travelAllowance, tm: w.travelMonthly, bank: w.bank, acc: w.bankAccountNumber};
     out.travel = travelPay(w, 3, 2);
-    const card = [...document.querySelectorAll('#workerPayWrap .wcard')].find(c => c.textContent.includes(w.name));
-    out.card = card ? card.textContent.replace(/\s+/g, ' ') : '';
+    const sel = document.getElementById('salaryPeriod'); sel.value = 'all'; await onSalaryPeriodChange();
+    const row = [...document.querySelectorAll('#dashSalary .salary-rows tr')].find(r => r.textContent.includes(w.name));
+    out.card = row ? row.textContent.replace(/\s+/g, ' ') : '';
+    sel.value = 'week'; await onSalaryPeriodChange();
     // An edit in the worker modal keeps the pay fields.
     openEditWorker(wi); await saveWorker();
     out.keptAfterEdit = workers[wi].hourlyRate === 400 && workers[wi].travelMonthly === 150 && workers[wi].bank === 'Leumi';
@@ -101,8 +103,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     switchTab('schedule');
     return out;
   });
-  ok(rt.noRateInModal && rt.listed && rt.open && rt.otHidden, 'worker pay: no money fields in the worker modal; Worker pay lists the worker and opens its pay modal', JSON.stringify(rt));
-  ok(rt.saved.mode === 'daily' && rt.saved.rate === 400 && rt.saved.td === 20 && rt.saved.tm === 150 && rt.saved.bank === 'Leumi' && rt.saved.acc === '123' && rt.travel === 360 && /₪400\/day/.test(rt.card) && /₪20\/day \+ ₪150\/month/.test(rt.card) && /Leumi/.test(rt.card) && /acc\. 123/.test(rt.card), 'worker pay: the pay modal saves mode, rate, travel per day and per month, bank; the card shows them', JSON.stringify(rt));
+  ok(rt.noRateInModal && rt.listed && rt.open && rt.otHidden, 'worker pay: no money fields in the worker modal; one Salary section; the pay modal opens', JSON.stringify(rt));
+  ok(rt.saved.mode === 'daily' && rt.saved.rate === 400 && rt.saved.td === 20 && rt.saved.tm === 150 && rt.saved.bank === 'Leumi' && rt.saved.acc === '123' && rt.travel === 360 && /₪400\/day/.test(rt.card) && /Leumi/.test(rt.card), 'worker pay: the pay modal saves mode, rate, travel per day and per month, bank; the Salary row shows them', JSON.stringify(rt));
   ok(rt.keptAfterEdit, 'worker pay: an edit in the worker modal keeps the pay fields', JSON.stringify(rt));
   ok(rt.moved === 0, "worker pay: moved to a client with a rate, the worker takes the client's rate", JSON.stringify(rt));
   // Commission for a worker paid by the day: a fixed ₪ per day when set, else hours × ₪/h.
@@ -163,7 +165,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       switchTab('accounting'); await new Promise(res => setTimeout(res, 300));
       return {lang: I18N_LANG, tab: document.getElementById('tabAccounting').innerText.trim(),
         head: document.querySelector('#dashSalary th') && document.querySelector('#dashSalary th').innerText.trim(),
-        sec: document.querySelector('#accSecWorkerPay span[data-i18n]').textContent.trim(),
+        sec: document.querySelector('#accSecSalary span[data-i18n]').textContent.trim(),
         period: document.getElementById('salaryPeriod').options[0].text,
         stored: localStorage.getItem('uiLang'), selects: [...document.querySelectorAll('select.lang-select')].every(x => x.value === l)};
     };
@@ -172,9 +174,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.en = await setLang('en');
     return r;
   });
-  ok(lg.he.lang === 'he' && lg.he.tab === 'חשבונות' && lg.he.head === 'עובד' && lg.he.sec === 'שכר עובדים' && lg.he.period === 'השבוע' && lg.he.stored === 'he' && lg.he.selects && lg.def === 'en' && lg.sel === 'en' && !lg.firmField, 'language: English by default; the header select switches to Hebrew sees Accounting in Hebrew ' + JSON.stringify(lg.he));
+  ok(lg.he.lang === 'he' && lg.he.tab === 'חשבונות' && lg.he.head === 'עובד' && lg.he.sec === 'חישוב שכר' && lg.he.period === 'השבוע' && lg.he.stored === 'he' && lg.he.selects && lg.def === 'en' && lg.sel === 'en' && !lg.firmField, 'language: English by default; the header select switches to Hebrew sees Accounting in Hebrew ' + JSON.stringify(lg.he));
   ok(lg.ru.lang === 'ru' && lg.ru.tab === 'Accounting' && lg.ru.head === 'Worker', 'language: Russian with an empty dictionary shows English ' + JSON.stringify(lg.ru));
-  ok(lg.en.lang === 'en' && lg.en.tab === 'Accounting' && lg.en.sec === 'Worker pay' && lg.en.period === 'This Week', 'language: back to English ' + JSON.stringify(lg.en));
+  ok(lg.en.lang === 'en' && lg.en.tab === 'Accounting' && lg.en.sec === 'Salary Calculation' && lg.en.period === 'This Week', 'language: back to English ' + JSON.stringify(lg.en));
   // One select per page; the user's last choice follows them to a new device.
   await p.evaluate(() => setLanguage('he')); await sleep(1500);
   {
@@ -435,14 +437,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(/No supplier assigned\s+4\.0h\s+—/.test(pay), 'No supplier row: hours and "—", no wage');
   ok(/Agency\s+8\.0h\s+₪40/.test(pay), 'Agency row: 8h × default commission 5 = ₪40');
   // Daily pay: Dana (1 day, 4h, own rate 40) paid by the day; then 5 days set by hand.
+  // The days are set by hand in the pay window (period 'all' picked in Salary).
   const dp = await p.evaluate(() => {
-    const dana = () => __lastSalaryEntries.find(e => e.workerId === 'w2');
+    const dana = () => __lastSalaryEntries.find(e => e.workerId === 'w2'), w2 = workers.find(w => w.id === 'w2');
     const sum = () => buildSalaryExportRows('all').filter(r => r.worker === 'Dana Levi').reduce((s, r) => s + r.pay, 0);
     const out = {hourly: dana().total, hourlyExport: sum()};
-    setWorkerPayMode('w2', 'daily'); out.daily = dana().total; out.dailyExport = sum(); out.days = dana().countedDays;
-    setWorkerDays('w2', 'all', '5'); out.over = dana().total; out.overExport = sum();
-    out.cellInput = !!document.querySelector('#dashSalary input[placeholder="1"]'); out.aviDays = __lastSalaryEntries.find(e => e.workerId === 'w1').countedDays;
-    setWorkerDays('w2', 'all', ''); setWorkerPayMode('w2', 'hourly'); out.back = dana().total;
+    w2.payMode = 'daily'; renderSalary(); out.daily = dana().total; out.dailyExport = sum(); out.days = dana().countedDays;
+    openPayModal('w2'); out.daysField = getComputedStyle(document.getElementById('payDaysRow')).display !== 'none' && document.getElementById('payDays').placeholder === '1';
+    document.getElementById('payDays').value = '5'; savePayModal('w2'); out.over = dana().total; out.overExport = sum();
+    const row = [...document.querySelectorAll('#dashSalary .salary-rows tr')].find(r => r.textContent.includes('Dana Levi'));
+    out.cellInput = out.daysField && !!row && !row.querySelector('input') && /punches: 1/.test(row.textContent); out.aviDays = __lastSalaryEntries.find(e => e.workerId === 'w1').countedDays;
+    delete w2.dayOverrides; delete w2.payMode; renderSalary(); out.back = dana().total;
     return out;
   });
   // Upload hours → Enter by hand, through the buttons: consecutive dates; a daily worker sends dates only,
