@@ -16,6 +16,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const external = [];
   async function newCtx(opts={}){
     const ctx = await b.newContext(opts);
+    // The page's clock starts at E2E_NOW (run.sh), the day server.py seeds from.
+    if (process.env.E2E_NOW) await ctx.clock.install({time: new Date(process.env.E2E_NOW)});
     await ctx.route('**/*', async r => {
       const u = r.request().url();
       if (u.startsWith('http://127.0.0.1')) return r.continue();
@@ -493,6 +495,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(!acc.none && /^accountant-all-/.test(acc.name) && acc.sheets.length === 2 && acc.pay === acc.want && acc.pay > 0 && acc.hours > 0 && acc.days >= 1 && acc.total >= acc.pay && acc.shifts > 1,
     'accountant report: Summary = Salary figures, total row, Shifts sheet ' + JSON.stringify(acc));
+  // A tap on the worker card opens the edit form; closing it (a tap outside saves it) brings the card back.
+  await p.evaluate(() => openWorkerCard(1)); await sleep(400);
+  await p.click('#workerCardModal div[style*="flex-direction:column"] >> nth=0', {position:{x:5, y:5}}); await sleep(400);
+  const bk1 = await p.evaluate(() => document.getElementById('workerOverlay').classList.contains('open'));
+  await p.evaluate(() => { document.getElementById('wNotes').value = 'back-to-card'; });
+  await p.mouse.click(5, 450); await sleep(1200);
+  const bk = await p.evaluate(() => ({edit: document.getElementById('workerOverlay').classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open'), notes: workers[1].notes}));
+  await p.mouse.click(5, 450); await sleep(300);
+  ok(bk1 && !bk.edit && bk.card && bk.notes === 'back-to-card', 'worker card: the edit form saves on close and goes back to the card ' + JSON.stringify(bk));
   ok(external.filter(u=>/script\.google\.com/.test(u)).length === 0, 'no request to script.google.com');
   ok(p.errs.length === 0, 'owner: no page errors ' + p.errs.join(' | '));
   await ctx.close();

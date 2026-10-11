@@ -16,6 +16,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const external = [];
   async function newCtx(opts={}){
     const ctx = await b.newContext(opts);
+    // The page's clock starts at E2E_NOW (run.sh), the day server.py seeds from.
+    if (process.env.E2E_NOW) await ctx.clock.install({time: new Date(process.env.E2E_NOW)});
     await ctx.route('**/*', async r => {
       const u = r.request().url();
       if (u.startsWith('http://127.0.0.1')) return r.continue();
@@ -235,7 +237,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await gsSave(getDataObj());
   });
   ok(await waitFor(h, () => (workers.find(w => w.id === 'w2') || {}).phone === '0520000999', 15000), 'hr: an owner\'s edit of its worker arrives live (no reload)');
-  ok(hv.name === 'Dana Levi' && hv.punches.length === 2 && hv.punches.every(w => w === 'w2'), 'hr: sees only its workers\' punches');
+  ok(hv.name === 'Dana Levi' && hv.punches.length === 2 && hv.punches.every(w => w === 'w2'), 'hr: sees only its workers\' punches ' + JSON.stringify(hv));
   const add = await h.evaluate(async () => {
     window.autoUploadWithRetry = async () => {};
     const r = {};

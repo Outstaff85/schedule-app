@@ -7,6 +7,17 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 PY="${PYTHON:-python3}"
+# A fixed "today" for the seed and the browser: the latest Wednesday or
+# Thursday from the 3rd of a month on, 12:00 UTC — yesterday is then a weekday
+# of the same week and month, and the seed's punch 9 days back is still inside
+# the app's live punch window (this month + the week before). Set E2E_NOW to
+# override.
+export E2E_NOW="${E2E_NOW:-$(python3 -c "
+from datetime import date, timedelta
+d = date.today()
+while not (d.weekday() in (2, 3) and d.day >= 3): d -= timedelta(days=1)
+print(f'{d}T12:00:00Z')")}"
+echo "E2E_NOW=$E2E_NOW"
 LOG="$(mktemp)"
 python3 -m http.server 8765 --bind 127.0.0.1 --directory "$ROOT" >/dev/null 2>&1 &
 WEB=$!

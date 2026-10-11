@@ -2256,7 +2256,7 @@ function blankWorkerDefaults(){
 // these live globals directly (autoUploadWithRetry), unlike an edit-save
 // (which goes through the sidecar-based regenerateWorkerDoc() instead).
 function openAddWorker(){
-  editingWorkerIdx=null;
+  editingWorkerIdx=null; __wBackToCard=null;
   window.__wDraft=null;
   window.__aiScanImage=null;
   window.__aiPacketOtherPages=[];
@@ -2264,7 +2264,10 @@ function openAddWorker(){
   window.__wCapturedSigPng=undefined;
   showWorkerModal(blankWorkerDefaults());
 }
-function openEditWorker(wi){ editingWorkerIdx=wi; window.__wDraft=null; showWorkerModal(workers[wi]); }
+// The edit form opened by a tap on the worker card goes back to that card
+// when it is closed (saved) — __wBackToCard holds the worker's id until then.
+let __wBackToCard=null;
+function openEditWorker(wi){ __wBackToCard=null; editingWorkerIdx=wi; window.__wDraft=null; showWorkerModal(workers[wi]); }
 // Form 101 fields a document scan fills: the worker field, its input in the
 // worker modal, the page it is printed on (front or ספח), its Hebrew label
 // and, for digits and dates, the zoomed re-read kind (verifyField).
@@ -3130,7 +3133,13 @@ function showWorkerModal(w){
     <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px"><i class="ti ti-device-floppy"></i> ${editingWorkerIdx!==null?'השינויים נשמרים בסגירת החלון':'העובד נוצר בסגירת החלון'}</div>`;
   // No Save button: a tap outside the window saves it (saveWorker auto).
   const wov=document.getElementById('workerOverlay');
-  wov.__onUserClose=()=>saveWorker({auto:true});
+  wov.__onUserClose=async()=>{
+    const back=__wBackToCard;
+    await saveWorker({auto:true});
+    if(back==null || wov.classList.contains('open')) return;  // not from the card, or still open (the scan, a busy save)
+    __wBackToCard=null;
+    const wi=workers.findIndex(x=>x.id===back); if(wi>=0) openWorkerCard(wi);
+  };
   wov.classList.add('open');
   renderWClientChips();
   renderChildrenRows();
@@ -3983,7 +3992,7 @@ function openWorkerCard(wi){
   // A tap on the card (not on one of its buttons or links) opens the edit form.
   const cm=document.getElementById('workerCardModal');
   cm.classList.add('tap-edit');
-  cm.onclick=e=>{ if(isPlainTap(e,cm)){ closeModal('workerCardOverlay'); openEditWorker(wi); } };
+  cm.onclick=e=>{ if(isPlainTap(e,cm)){ closeModal('workerCardOverlay'); openEditWorker(wi); __wBackToCard=w.id; } };
   document.getElementById('workerCardOverlay').classList.add('open');
 }
 
