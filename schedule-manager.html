@@ -539,22 +539,13 @@
   /* ── Loading spinner + progress bar (AI scan, Form 101 generation) ── */
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   .spin { display: inline-block; animation: spin 0.8s linear infinite; }
-  /* Errors / Timings: compact rows in one bordered box, summary cards. */
-  .log-box { background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius-sm); overflow: hidden; }
-  .log-row { position: relative; padding: 6px 36px 6px 10px; font-size: 12px; line-height: 1.4; border-top: 1px solid var(--border); }
-  .log-row:first-child { border-top: none; }
-  .log-meta { display: flex; flex-wrap: wrap; gap: 0 8px; color: var(--text3); font-size: 11px; }
-  .log-when { font-family: monospace; color: var(--text2); }
-  .log-main { color: var(--text); }
-  .log-sub { color: var(--text2); font-size: 11px; }
-  .log-copy { position: absolute; top: 5px; right: 5px; padding: 2px 5px !important; min-width: 0; min-height: 0 !important; font-size: 11px !important; }
-  .tm-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-bottom: 14px; }
-  .tm-card { background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius-sm); padding: 8px 10px; font-size: 12px; }
-  .tm-card-head { display: flex; justify-content: space-between; gap: 6px; font-weight: 600; }
-  .tm-card-head span { color: var(--text3); font-weight: 400; }
-  .tm-card-vals { margin: 3px 0 4px; color: var(--text2); }
-  .tm-card-vals b { font-size: 15px; color: var(--text); }
-  .tm-pill { display: inline-block; background: var(--bg3); border-radius: 10px; padding: 1px 7px; margin: 0 4px 3px 0; font-size: 10.5px; color: var(--text2); }
+  /* Admin in the template (variant 3): a line wraps its text when the whole
+     message matters (errors); a small icon button at a line's right (copy). */
+  .t3-line.wrap .n b,.t3-line.wrap .n small{white-space:normal;word-break:break-word}
+  .t3-ib{background:none;border:0;color:var(--text3);font-size:15px;cursor:pointer;padding:4px 6px;flex:none}
+  .t3-ib:hover{color:var(--text)}
+  .t3-line.sub{margin-left:24px;padding:5px 8px 5px 10px;font-size:12px}
+  .t3-sec .btn{margin-left:8px}
   /* A worker-modal field the scan left empty: tap it to search the scan for it. */
   .scan-missing { border-color: var(--amber) !important; box-shadow: 0 0 0 2px rgba(245,166,35,0.25); cursor: pointer; }
   .scan-busy { opacity: 0.6; }
