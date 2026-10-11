@@ -854,13 +854,14 @@ function newWorkerBadgeHtml(w){
 // supplierUpdateWorker/supplierDeleteWorker backend actions — never
 // saveSchedule(), which a supplier role is never allowed to call) ────────
 // Template 3 pieces (copies of the manager app's t3Line / t3Av — keep them
-// the same): name / sub / right are HTML, already escaped by the caller.
+// the same): name / sub / right are HTML, already escaped by the caller;
+// sub may be a list (one small line each).
 function t3Av(w){
   if(w && w.avatarB64) return `<div class="t3-av"><img src="${esc(w.avatarB64)}" alt=""></div>`;
   return `<div class="t3-av">${esc(String((w && (w.name || w.workerName)) || '?').trim().slice(0, 2).toUpperCase())}</div>`;
 }
 function t3Line(o){
-  return `<div class="t3-line${o.cls?' '+o.cls:''}" style="--c:${o.c||'var(--border2)'}"${o.onclick?` onclick="${o.onclick}"`:''}${o.attrs?' '+o.attrs:''}>${o.av||''}<div class="n"><b>${o.name}</b>${o.sub?`<small>${o.sub}</small>`:''}</div>${o.right||''}</div>`;
+  return `<div class="t3-line${o.cls?' '+o.cls:''}" style="--c:${o.c||'var(--border2)'}"${o.onclick?` onclick="${o.onclick}"`:''}${o.attrs?' '+o.attrs:''}>${o.av||''}<div class="n"><b>${o.name}</b>${[].concat(o.sub||[]).filter(Boolean).map(x=>`<small>${x}</small>`).join('')}</div>${o.right||''}</div>`;
 }
 function clientName(id){ const c=myClients.find(x=>x.id===id); return c?c.name:''; }
 function renderWorkersList(){

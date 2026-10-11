@@ -165,13 +165,14 @@ service cloud.firestore {
     match /pushSubscriptions/{id} { allow read, write: if false; }
 
     // Telemetry: any signed-in caller may append, only a superadmin may read.
+    // The super-admin reads them and may wipe them (Admin → Reset).
     match /errors/{id} {
       allow create: if signedIn();
-      allow read: if isSuper();
+      allow read, delete: if isSuper();
     }
     match /timings/{id} {
       allow create: if signedIn();
-      allow read: if isSuper();
+      allow read, delete: if isSuper();
     }
   }
 }

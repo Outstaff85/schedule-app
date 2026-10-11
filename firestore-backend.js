@@ -404,6 +404,23 @@
       const snap = await F.getDocs(F.query(...parts));
       return {rows: snap.docs.map(d => d.data())};
     }
+    // Admin → Errors / Timings "Reset": every error and every measurement,
+    // of every firm and period, deleted (super-admin; firestore.rules lets
+    // only a super-admin delete them). In batches of 400 until none is left.
+    async function resetLogs(){
+      const out = {errors: 0, timings: 0};
+      for(const name of ['errors', 'timings']){
+        for(;;){
+          const snap = await F.getDocs(F.query(F.collection(db, name), F.limit(400)));
+          if(snap.empty) break;
+          const batch = F.writeBatch(db);
+          snap.docs.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+          out[name] += snap.size;
+        }
+      }
+      return Object.assign({ok:true}, out);
+    }
     async function deletePunchesByMonths(t, ctx, months){
       if(ctx.role !== 'tenant_admin' && ctx.role !== 'superadmin') return {error:'Only the firm owner or super-admin can delete punch records'};
       months = (months || []).filter(m => /^\d{4}-\d{2}$/.test(String(m)));
@@ -596,6 +613,7 @@
       switch(action){
         case 'loadErrors':  return ctx.role === 'superadmin' ? readLog('errors', params.from ? 2000 : 100, params.from, params.to) : {error:'Super-admin only'};
         case 'loadTimings': return ctx.role === 'superadmin' ? readLog('timings', params.from ? 5000 : 500, params.from, params.to) : {error:'Super-admin only'};
+        case 'resetLogs':   return ctx.role === 'superadmin' ? resetLogs() : {error:'Super-admin only'};
         case 'loadSchedule': return loadSchedule(t, false);
         case 'loadPunchLog': return punchesOnce(t);
         case 'deletePunchesByMonths': return deletePunchesByMonths(t, ctx, params.months);

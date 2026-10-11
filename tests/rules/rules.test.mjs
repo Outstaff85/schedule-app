@@ -179,11 +179,13 @@ test('password hashes, usernames and punch-link tokens: unreachable for everyone
   }
 });
 
-test('telemetry: any signed-in caller appends, only superadmin reads', async () => {
+test('telemetry: any signed-in caller appends, only superadmin reads and deletes (Reset)', async () => {
   await assertSucceeds(addDoc(collection(db('staffNone'), 'errors'), { message: 'x' }));
   await assertSucceeds(addDoc(collection(db('supplierA'), 'timings'), { kind: 'open' }));
   await assertFails(getDoc(doc(db('ownerA'), 'errors', 'e1')));
   await assertSucceeds(getDoc(doc(db('superadmin'), 'errors', 'e1')));
+  await assertFails(deleteDoc(doc(db('ownerA'), 'errors', 'e1')));
+  await assertSucceeds(deleteDoc(doc(db('superadmin'), 'errors', 'e1')));
 });
 
 // ── HR ───────────────────────────────────────────────────────────────────────

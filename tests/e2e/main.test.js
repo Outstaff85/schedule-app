@@ -58,7 +58,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await login(p, BASE + 'schedule-manager.html', 'owner1', 'owner-pass-1');
   await p.waitForNavigation().catch(()=>{});
   ok(await waitFor(p, () => typeof workers !== 'undefined' && workers.length === 2), 'owner: workers load from Firestore');
-  const idle = await p.evaluate(() => { switchTab('admin'); return {none: document.getElementById('adminPane_none').style.display !== 'none', rows: document.querySelectorAll('#adminTableBody > tr').length, log: document.getElementById('adminPane_punchlog').style.display}; });
+  const idle = await p.evaluate(() => { switchTab('admin'); return {none: document.getElementById('adminPane_none').style.display !== 'none', rows: document.querySelectorAll('#adminTableBody > .t3-line').length, log: document.getElementById('adminPane_punchlog').style.display}; });
   ok(idle.none && idle.rows === 0 && idle.log === 'none', 'admin opens with no section: punch log not drawn until tapped');
   ok(await p.evaluate(() => typeof BACKEND === 'undefined' && typeof API_SECRET === 'undefined' && API_URL === 'api://app'), 'no BACKEND switch, no API_SECRET');
   ok(await waitFor(p, () => getPunchLog().length >= 2), 'owner: punches load (live window)');
@@ -455,7 +455,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       try { savePunchLog(base.concat(extra)); } catch (e) {}
       switchTab('admin'); switchAdminPane('punchlog');
       await new Promise(r => setTimeout(r, 1500));
-      const rows = document.querySelectorAll('#adminTableBody > tr:not(.paged-more)').length;
+      const rows = document.querySelectorAll('#adminTableBody > .t3-line').length;
       const more = !!document.querySelector('#adminTableBody > .paged-more');
       try { savePunchLog(base); } catch (e) {}
       return [rows, more, getPunchLog().length];
@@ -659,7 +659,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // The firms list: no pencil, a corner ✕; a double click edits; a single click switches (below).
   const fl = await p.evaluate(async () => {
     const row = document.querySelector('#firmsList .row.tap-edit');
-    const out = {pencil: !!document.querySelector('#firmsList .ti-pencil'), del: !!(row && row.querySelector('.wcard-del')), trash: !!document.querySelector('#firmsList .ti-trash')};
+    const out = {pencil: !!document.querySelector('#firmsList .ti-pencil'), del: !!(row && row.querySelector('.t3-x')), trash: !!document.querySelector('#firmsList .ti-trash')};
     row.dispatchEvent(new MouseEvent('click', {bubbles: true, detail: 2})); await new Promise(r => setTimeout(r, 200));
     out.edit = document.getElementById('editFirmOverlay').classList.contains('open'); closeModal('editFirmOverlay');
     return out;
@@ -683,13 +683,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   for (const [w, h] of [[1280, 800], [390, 800]]) {
     await p.setViewportSize({width:w, height:h});
     await p.evaluate(() => { switchTab('admin'); switchAdminPane('errors'); });
-    await waitFor(p, () => document.querySelectorAll('#adminErrorsList .errors-rows > .log-row').length >= 10);
+    await waitFor(p, () => document.querySelectorAll('#adminErrorsList .errors-rows > .t3-line').length >= 10);
     await sleep(1500);
-    const er = await p.evaluate(() => [document.querySelectorAll('#adminErrorsList .errors-rows > .log-row').length, !!document.querySelector('#adminErrorsList .errors-rows > .paged-more')]);
+    const er = await p.evaluate(() => [document.querySelectorAll('#adminErrorsList .errors-rows > .t3-line').length, !!document.querySelector('#adminErrorsList .errors-rows > .paged-more')]);
     await p.evaluate(() => switchAdminPane('timings'));
-    await waitFor(p, () => document.querySelectorAll('#timingsLatestList > .log-row').length >= 10);
+    await waitFor(p, () => document.querySelectorAll('#timingsLatestList > .t3-line').length >= 10);
     await sleep(1500);
-    const tm = await p.evaluate(() => [document.querySelectorAll('#timingsLatestList > .log-row').length, !!document.querySelector('#timingsLatestList > .paged-more')]);
+    const tm = await p.evaluate(() => [document.querySelectorAll('#timingsLatestList > .t3-line').length, !!document.querySelector('#timingsLatestList > .paged-more')]);
     await p.screenshot({path: SP + '/shot_timings_' + w + '.png'});
     console.log('LISTS', w, 'errors', JSON.stringify(er), 'timings', JSON.stringify(tm));
     ok(er[0] === 10 && er[1] && tm[0] === 10 && tm[1], `admin lists: exactly 10 rows at first at ${w}px (errors ${er[0]}, timings ${tm[0]})`);
@@ -709,10 +709,20 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     esel.value = opts[3]; await loadErrorsList('adminErrorsList');
     const epast = (__errorsRowsByTarget.adminErrorsList || []).length;
     esel.value = '30d'; await loadErrorsList('adminErrorsList');
-    return {opts: opts.length, first: opts.slice(0, 3), cur, past, text: text.slice(0, 80), epast, enow: (__errorsRowsByTarget.adminErrorsList || []).length, cards: document.querySelectorAll('.tm-card').length};
+    return {opts: opts.length, first: opts.slice(0, 3), cur, past, text: text.slice(0, 80), epast, enow: (__errorsRowsByTarget.adminErrorsList || []).length, cards: document.querySelectorAll('#timingsCards > .t3-line').length};
   });
   console.log('PERIOD', JSON.stringify(per));
   ok(per.opts === 14 && per.cur >= 20 && per.past === 0 && per.epast === 0 && per.enow >= 40, 'errors/timings: period picker loads one period at a time');
+  // Reset (Timings / Errors): every error and measurement is deleted, the panes show none.
+  const rst = await p.evaluate(async () => {
+    switchAdminPane('timings'); await new Promise(r => setTimeout(r, 800));
+    const btn = !!document.getElementById('adminResetLogsBtn');
+    await resetLogs(); await new Promise(r => setTimeout(r, 800));
+    const t = await (await fetch(API_URL + '?action=loadTimings' + gsAuthQuery())).json();
+    const e = await (await fetch(API_URL + '?action=loadErrors' + gsAuthQuery())).json();
+    return {btn, timings: (t.rows || []).length, errors: (e.rows || []).length, shown: __timingsRows.length};
+  });
+  ok(rst.btn && rst.timings === 0 && rst.errors === 0 && rst.shown === 0, 'timings: Reset deletes every error and measurement ' + JSON.stringify(rst));
   ok(p.errs.length === 0, 'boss: no page errors ' + p.errs.join(' | '));
   await ctx.close();
 
@@ -859,7 +869,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const ul = await q.evaluate(async () => { switchTab('admin'); switchAdminPane('users');
     for(let i = 0; i < 60 && document.querySelectorAll('.admin-users-rows > div').length < 2; i++) await new Promise(r => setTimeout(r, 150));
     return [...document.querySelectorAll('.admin-users-rows > div')].map(r => r.innerText.replace(/\s+/g, ' ')); });
-  ok(ul.length >= 2 && /\(owner\)/.test(ul[0]) && ul.some(t => /\(client\)/.test(t) && /Site B/.test(t) && /Approve/.test(t) && /Fix/.test(t)), 'users: the owner pinned first; a client login shows its client and hours ticks ' + JSON.stringify(ul.slice(0, 3)));
+  ok(ul.length >= 2 && /\bowner\b/.test(ul[0]) && ul.some(t => /\bclient\b/.test(t) && /Site B/.test(t) && /Approve/.test(t) && /Fix/.test(t)), 'users: the owner pinned first; a client login shows its client and hours ticks ' + JSON.stringify(ul.slice(0, 3)));
   // The user form: one Hours block for HR / supplier / client; "Only own workers" at the bottom, locked on for a supplier and a client.
   const uf = await q.evaluate(() => {
     openCreateUserForm(); const role = document.getElementById('userFormRole'), out = {};

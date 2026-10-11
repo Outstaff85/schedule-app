@@ -14,9 +14,9 @@ The Admin tab (`#sectionAdmin`) and the punch-log data behind it: the punch log,
 An `hr` login never sees the Admin tab ([hr.md](hr.md)).
 | Errors, Timings | `superadmin` |
 
-Layout (`.admin-pane-bar`): the section buttons in a row on a computer, a 3-column grid on a phone. The header buttons (`.head-actions`) are two equal buttons across the width on a phone.
+Layout: the app's template (variant 3, [app-core.md](app-core.md) → Layout) in every pane — figures on top, sections with a count, a line per item with a colored mark on the left (`t3Line`). The section buttons (`.admin-pane-bar`) are text tabs in one line (it scrolls sideways on a narrow phone), the open one highlighted. Admin has no list / cards toggle (no tables left).
 
-The header buttons **Export CSV** and **Clear Log** show only on the Punch Log pane; Clear Log is only for `tenant_admin` and `superadmin`. Opening the tab as an owner also preloads the user list (`prefetchAdminUsers()`). The pane subtitles are in `ADMIN_PANE_SUBTITLES`.
+**Export CSV** and **Clear Log** are icon buttons at the right of the punch log's Log / By Client line (`#adminHeaderActions`), shown only on the Punch Log pane; Clear Log is only for `tenant_admin` and `superadmin`. Opening the tab as an owner also preloads the user list (`prefetchAdminUsers()`). The pane subtitles are in `ADMIN_PANE_SUBTITLES`.
 
 ## Punch log data
 
@@ -40,8 +40,8 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
 
 ## Punch Log pane
 
-- **Stats:** Total IN, Total OUT, Today and Total (over what is loaded) — four in a row, smaller on a phone.
-- **Views:** Log (`setAdminView('log')`) or By Client (`setAdminView('clients')`), with the record count on the same line (`.admin-log-bar`).
+- **Stats:** Total IN, Total OUT, Today and Total (over what is loaded) — figures as text (`.t3-stats`).
+- **Views:** Log (`setAdminView('log')`) or By Client (`setAdminView('clients')`) as text tabs, with the record count and the Export CSV / Clear Log icons on the same line (`.admin-log-bar`).
 - **Filters** (`.filters-grid`, `--cols:4` — one row on a computer, two columns without captions on a phone; see [workers.md](workers.md)):
   - Worker — the workers that appear in the log;
   - Client — the punch's own `clientId` (where it was recorded); a punch saved without one falls back to the worker's current clients;
@@ -49,11 +49,11 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
   - Type.
   
   The list is sorted newest first by `ts`.
-- **Table** (`renderAdmin()`): worker, client badges, IN/OUT, time, date, site, GPS (distance, ±accuracy, ⚠ when suspicious, or "Manual"), edit / delete.
-  - **Drawing:** in pages of `LIST_PAGE` = 10 via `renderPagedList(el, 'punchLog', filters, rows, rowHtml, {table:true, colspan:8})`. The next 10 rows come when the user scrolls the "Show more" row into view, or taps it ([app-core.md](app-core.md) → Long lists). A redraw keeps the opened count; a new filter starts again at 10. Firms, Users, Errors, Timings and the client logs page the same way.
+- **Lines** (`renderAdmin()` → `punchLogLine(e)`, into `#adminTableBody`): a line per punch, green for IN and red for OUT on the left; the worker's avatar and name, under it IN/OUT · date · site · GPS (distance, ±accuracy, ⚠ when suspicious, or "Manual"); the time and a ✕ (delete) at the right. A tap opens the worker's card.
+  - **Drawing:** in pages of `LIST_PAGE` = 10 via `renderPagedList(el, 'punchLog', filters, rows, punchLogLine)`. The next 10 rows come when the user scrolls the "Show more" row into view, or taps it ([app-core.md](app-core.md) → Long lists). A redraw keeps the opened count; a new filter starts again at 10. Firms, Users, Errors, Timings and the client logs page the same way.
   - **Older punches:** under the table, `renderAdminOlder()` shows "Showing punches from <date>" with **Load earlier month** (`loadEarlierPunchMonth()` loads back to the 1st of the month already partly loaded, or the month before) and **Load all history**.
-- **Edit:** a double click (computer) or a long press (phone) on a log row (or on a punch in By Client), anywhere but its delete button, opens `editPunchEntry(id)` → type, time, site (a client, or a kept custom site) and notes. `savePunchEntry(id)` sets `editedBy:'admin'` and `editedAt`, then calls `gsUpdatePunch`. `deletePunchEntry(id)` removes it locally and calls `gsDeletePunch`.
-- **By Client** (`renderClientLogs()`): per client, its assigned workers with on-site-now status and their last 5 punches.
+- **Edit:** a double click (computer) or a long press (phone) on a punch line (in the log or By Client), anywhere but its ✕, opens `editPunchEntry(id)` → type, time, site (a client, or a kept custom site) and notes. `savePunchEntry(id)` sets `editedBy:'admin'` and `editedAt`, then calls `gsUpdatePunch`. `deletePunchEntry(id)` removes it locally and calls `gsDeletePunch`.
+- **By Client** (`renderClientLogs()`): per client a section (its color dot, name, address; "N on site now · workers · total punches"), a line per assigned worker (green while on site; a tap opens its card) and its last 5 punches as small lines under it (`punchLogLine(e, 'sub')`: the time first).
 - **Export CSV** (`exportPunchCSV()`, after `ensureAllPunches()`): Worker, Supplier, Type, Time, Date, Site, Distance(m), GPS Accuracy (rounded), Notes, Edited.
 - **Clear Log** (`clearPunchLog()`, after `ensureAllPunches()`):
   1. A month checklist with counts per month (`punchMonthKey(e)` from `date`, else `ts`); the user must type `DELETE`.
@@ -62,13 +62,14 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
 
 ## Firms pane
 
-**Firm owner** (`tenant_admin`): the own firm only (`renderOwnFirmCard`). The card shows the Form 101 fields (name, deductions file, phone, address), and which of them are missing; a double click (computer) or a long press (phone) on the card opens the edit form (`openMyFirmForm`). It is drawn from the session's profile, then from `refreshTenantProfile(0)`. The super-admin buttons (`#adminFirmsSuperBar`) are hidden. There is no separate Profile pane.
+**Firm owner** (`tenant_admin`): the own firm only (`renderOwnFirmCard`), one template-3 line (green when Form 101 has everything, amber when not). It shows the Form 101 fields (name, deductions file, phone, address), and which of them are missing; a double click (computer) or a long press (phone) on the card opens the edit form (`openMyFirmForm`). It is drawn from the session's profile, then from `refreshTenantProfile(0)`. The super-admin buttons (`#adminFirmsSuperBar`) are hidden. There is no separate Profile pane.
 
 **Super-admin:**
 
 - **List:** `renderFirmsList('adminFirmsList')` — the same function draws the super-admin's landing screen (`#firmsList`).
   - It draws the cached list first (`localStorage.firmsCache_v1`), then `listTenants`.
-  - A row shows the name, "disabled", "profile incomplete" (`firmProfileMissing(t)`), worker and client counts, and the last save. A tap on a row → `switchToTenant()`; a double click (computer) or a long press (phone) → `openEditFirmForm` (no pencil button); a ✕ in the row's top corner (`.wcard-del`) → delete.
+  - A line per firm (template 3): green while active, amber when disabled or its profile is incomplete (`firmProfileMissing(t)`); the name, then worker and client counts and the last save (left out when the date can't be read), then "disabled" / "profile incomplete". A tap → `switchToTenant()`; a double click (computer) or a long press (phone) → `openEditFirmForm` (no pencil button); pause / play and a ✕ (`.t3-x`, delete) at the right.
+  - The landing screen's header row holds Create firm, the language select (`placeLangSelect` puts it in `#firmsActions`) and a Sign out icon.
   - Row actions:
     - edit (`openEditFirmForm`, by double click / long press);
     - enable / disable (`toggleTenantActive` → `setTenantActive`, the button at the right);
@@ -89,7 +90,7 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
   - logins of the active firm only (`activeTenantIdForAdmin()`); `listUsers` returns more for a super-admin and is filtered here;
   - cached as `adminCache_users_<tenantId>`;
   - the firm's owner (`tenant_admin`, with a pin) is always first, then a super-admin, then everyone by name;
-  - each row: the person's name (`fullName`, the login when it has none) with the role and an inactive flag; then `login: <username> · <phone>`; then the supplier (supplier role), the client and its ticks (client role), or the permissions (staff, hr); an HR row also shows its worker count (`hrWorkerCount`), a supplier row the count of its supplier's workers.
+  - a "Logins" section with the count and **New user**, then a line per login (template 3), its role as the colored mark (`USER_ROLE_COLOR`: owner amber with a pin, HR purple, supplier blue, client green, staff grey): the person's name (`fullName`, the login when it has none) with the role and an inactive flag; then `login: <username> · <phone>`; then the supplier (supplier role), the client (client role) or the permissions (staff, hr), with an HR's worker count (`hrWorkerCount`) or a supplier's count of its workers; then the hours ticks; a ✕ at the right deletes.
 - **Form** (`#userFormOverlay`), top to bottom:
   - Role;
   - Person: Full name, Phone;
@@ -113,7 +114,7 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
   - then `updateUser` (`fullName`, `phone`; for HR also `ownOnly`, `commissionRate` and `commissionDayRate`; for a supplier `showPay` — these are rights: a change makes the user sign in again);
   - an HR's form, and a supplier's form, list their workers (`renderUserFormHrWorkers`, paged, each with Unassign) and have **Add workers** (`#hrAssignOverlay`: the firm's other workers with a search and checkboxes, a worker of another HR or supplier marked "now: <name>"; `submitHrAssign`). `userFormTeam()` picks what the section works on: an HR's workers are those whose `hrId` is its uid (`assignWorkersToHr`, which also moves their punches); a supplier's are those whose `supplierId` is the supplier picked in the form (`assignWorkersToSupplier`: sets `supplierId`, saves — punches carry no supplier), so every login of that supplier shares them; the section shows for a supplier also while creating, and redraws when the supplier select changes.
 - Errors show in `#userFormError`.
-- **Delete:** the row's trash button, `deleteUserConfirm` → `deleteUser`. A password is changed in the edit form (above).
+- **Delete:** the line's ✕, `deleteUserConfirm` → `deleteUser`. A password is changed in the edit form (above).
 
 The server rules (only staff/hr/supplier users are created here, own firm only, and so on): [backend.md](backend.md).
 
@@ -129,18 +130,21 @@ Both panes load one period at a time, picked in a select at the top:
 - each period has its own cache (`adminCache_errors:<key>`, `adminCache_timings:<key>`);
 - **Copy all** and **Print** take only the loaded period. Print (`printLogPane('errors' | 'timings')`) opens a plain page with a table (for timings, the summary first) and prints it.
 
-Rows are compact: one bordered box (`.log-box`), one row per entry (`.log-row`), and a small copy button per row. Times are shown as `04.10 10:18` (`_shortWhen`). The rows are paged by 10.
+The top row (`.pane-toolbar`) is the select and icon buttons in one line: Copy all, Print, Refresh and **Reset** (red). Each entry is a template-3 line with a copy button at the right (`.t3-ib`). Times are shown as `04.10 10:18` (`_shortWhen`). The lines are paged by 10.
+
+**Reset** (`resetLogs()`, in both panes; labelled in Timings): after a confirm, `resetLogs` deletes every error and every measurement — all firms, all periods ([backend.md](backend.md)) — drops the cached periods (`adminCache_errors…`, `adminCache_timings…`) and reloads the pane; a toast gives the counts.
 
 ## Errors pane (super-admin)
 
-`loadErrorsList('adminErrorsList')` draws the period's cached list, then loads `loadErrors` for the period. The list shows the count and the period, then one row per error: time, page, source, user on the first line, the message under it. Each row has a copy button (`copyErrorRow` → `copyTextToClipboard`); "Copy all" is `copyAllErrors`. The old standalone `#errorsScreen` (`openErrorsScreen`) has no UI caller and loads without a period (the newest 100).
+`loadErrorsList('adminErrorsList')` draws the period's cached list, then loads `loadErrors` for the period. The list shows the count and the period, then a red-marked line per error: the message (wrapped in full), under it time · page · source · user. Each row has a copy button (`copyErrorRow` → `copyTextToClipboard`); "Copy all" is `copyAllErrors`. The old standalone `#errorsScreen` (`openErrorsScreen`) has no UI caller and loads without a period (the newest 100).
 
 ## Timings pane (super-admin)
 
 `loadTimingsPane()` → `loadTimings` for the picked period.
 
 `renderTimingsPane()` shows:
-- **summary cards** (`_timingsSummary`, `.tm-card`) — one per kind over the period, without aborted runs. Each shows the count, the median and 90th percentile of the total, and the median of each step (`TIMING_PHASES`; a slow AI call `gs:ai…` uses `TIMING_AI_PHASES`: time at Anthropic, retry pauses) as small pills. A slow AI call's row also shows `_timingAiNote`: the `part`, tries, output / input / cache tokens and a stop reason other than `end_turn`. Every slow data call adds a kind (`gs:<action>`), so the cards are paged by 10 as well (`renderPagedList`, grid);
-- **all measurements**, newest first, paged by 10. Each row shows time, kind and total on the first line (a total above its kind's 90% is amber), the steps under it, then firm, user, device, pages and page kinds. Each row has a copy button (`copyTimingRow`).
+- **figures** on top: measurements, kinds, runs above their kind's 90%, aborted runs;
+- **by kind** (`_timingsSummary`, `#timingsCards`) — a line per kind over the period, without aborted runs: the name with the count, the median of each step under it (`TIMING_PHASES`; a slow AI call `gs:ai…` uses `TIMING_AI_PHASES`: time at Anthropic, retry pauses), the median and 90th percentile of the total at the right. A slow AI call's row also shows `_timingAiNote`: the `part`, tries, output / input / cache tokens and a stop reason other than `end_turn`. Every slow data call adds a kind (`gs:<action>`), so the cards are paged by 10 as well (`renderPagedList`, grid);
+- **all measurements**, newest first, paged by 10: a line each — the kind, the steps under it, then time, firm, user, device, pages and page kinds; the total at the right (amber, and an amber mark, when above its kind's 90%) and a copy button (`copyTimingRow`).
 
 "Copy all" (`copyAllTimings`) copies the summary and every measurement of the period as text. Kinds and how they are measured: [app-core.md](app-core.md) → Telemetry.
