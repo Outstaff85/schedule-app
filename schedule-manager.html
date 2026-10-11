@@ -675,8 +675,8 @@ html[lang="he"] *{letter-spacing:normal !important;}
         <div id="dashMissing" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px"></div>
       </div>
 
-      <!-- Workers by supplier -->
-      <div style="margin-bottom:20px">
+      <!-- Workers by supplier (hidden when no supplier has workers) -->
+      <div style="margin-bottom:20px" id="dashSuppliersWrap">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"><i class="ti ti-truck-delivery"></i> <span data-i18n>Workers by Supplier</span></div>
         <div id="dashSuppliers" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px"></div>
       </div>
@@ -6792,32 +6792,22 @@ function renderDashboard(){
 }
 
 // ── Workers-by-supplier widget (Dashboard) ──────────────────────────────────
-// Purely a headcount overview (how many workers each supplier currently has
-// assigned, plus an unassigned bucket) — no punch/pay data, unlike the
-// Accounting tab's payable-by-supplier summary above.
+// Purely a headcount overview: how many workers each supplier has — only the
+// suppliers that have workers; workers without a supplier get no card (user
+// request 2026-10-11), and with none at all the section is hidden. No
+// punch/pay data, unlike the Accounting tab's payable-by-supplier summary.
 function renderDashSuppliers(){
   const wrap=document.getElementById('dashSuppliers');
   if(!wrap) return;
   const counts={};
-  let unassigned=0;
-  workers.forEach(w=>{
-    if(w.supplierId) counts[w.supplierId]=(counts[w.supplierId]||0)+1;
-    else unassigned++;
-  });
+  workers.forEach(w=>{ if(w.supplierId) counts[w.supplierId]=(counts[w.supplierId]||0)+1; });
   const rows=suppliers.filter(s=>counts[s.id]).map(s=>({sup:s,count:counts[s.id]}));
-  if(!rows.length && !unassigned){
-    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('No workers yet')}</div>`;
-    return;
-  }
-  const items=unassigned?[...rows,{unassigned}]:rows;
-  renderPagedList(wrap,'dashSuppliers','',items,r=>r.unassigned==null?`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
+  const sec=document.getElementById('dashSuppliersWrap'); if(sec) sec.style.display=rows.length?'':'none';
+  if(!rows.length){ wrap.innerHTML=''; return; }
+  renderPagedList(wrap,'dashSuppliers','',rows,r=>`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
       <div style="width:40px;height:40px;border-radius:50%;background:${r.sup.color}22;color:${r.sup.color};display:flex;align-items:center;justify-content:center;font-size:16px"><i class="ti ti-truck-delivery"></i></div>
       <div style="font-size:13px;font-weight:600">${esc(r.sup.name)}</div>
       <div style="font-size:11px;color:var(--text2)">${tr('{0} worker{1}',{0:(r.count),1:(r.count===1?'':'s')})}</div>
-    </div>`:`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;opacity:0.7">
-      <div style="width:40px;height:40px;border-radius:50%;background:var(--bg3);color:var(--text3);display:flex;align-items:center;justify-content:center;font-size:16px"><i class="ti ti-truck-delivery"></i></div>
-      <div style="font-size:13px;font-weight:600;color:var(--text3)">${tr('No supplier')}</div>
-      <div style="font-size:11px;color:var(--text3)">${tr('{0} worker{1}',{0:(r.unassigned),1:(r.unassigned===1?'':'s')})}</div>
     </div>`,{grid:true});
 }
 
