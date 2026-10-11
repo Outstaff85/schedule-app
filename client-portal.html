@@ -96,6 +96,11 @@ html.has-session #appRoot{display:block !important;}
 .acct-lang .lang-select{margin-left:auto;}
 @media (max-width:500px){ .acct-label,.acct-chev{display:none;} .acct-chip{padding:0 4px;} }
 
+
+/* A window open: the page behind it does not scroll, and a scroll inside the
+   window never carries over to the page (swipe down closes it on a phone). */
+body:has(.overlay.open){overflow:hidden}
+.overlay,.overlay>.modal{overscroll-behavior:contain}
 </style>
 </head>
 <body>
@@ -281,6 +286,46 @@ document.addEventListener('click',e=>{
   if(!(t&&t.classList&&t.classList.contains('overlay')&&t.classList.contains('open')&&_overlayDownOn===t&&t.id)) return;
   if(typeof t.__onUserClose==='function') t.__onUserClose(); else closeModal(t.id);
 });
+
+// Phone (≤ 700 px): a window, opened from the bottom as a sheet, also closes
+// with a swipe down on it (user request 2026-10-11) — the same way as a tap
+// outside (__onUserClose, else closeModal). Only when the sheet and anything
+// scrolled under the finger are at their top, never from a field, a map or
+// a canvas; while it is open the page behind does not scroll (CSS). The
+// same code is in the manager app and both portals.
+(function(){
+  let sw=null;
+  document.addEventListener('touchstart',e=>{
+    sw=null;
+    if(!window.matchMedia('(max-width:700px)').matches||e.touches.length!==1) return;
+    const m=e.target.closest&&e.target.closest('.overlay.open>.modal');
+    if(!m||e.target.closest('input,textarea,select,canvas,.leaflet-container,.no-swipe')) return;
+    for(let n=e.target;n&&n!==m.parentElement;n=n.parentElement){ if(n.scrollTop>0) return; }
+    sw={m, x:e.touches[0].clientX, y:e.touches[0].clientY, dy:0, on:false};
+  },{passive:true});
+  document.addEventListener('touchmove',e=>{
+    if(!sw) return;
+    const dx=e.touches[0].clientX-sw.x, dy=e.touches[0].clientY-sw.y;
+    if(!sw.on){
+      if(dy<0||Math.abs(dx)>Math.abs(dy)){ if(dy<-6||Math.abs(dx)>10) sw=null; return; }
+      if(dy<8) return;
+      sw.on=true; sw.m.style.transition='none';
+    }
+    sw.dy=Math.max(0,dy); sw.m.style.transform='translateY('+sw.dy+'px)';
+    if(e.cancelable) e.preventDefault();
+  },{passive:false});
+  const end=()=>{
+    if(!sw) return;
+    const {m,dy,on}=sw; sw=null; if(!on) return;
+    m.style.transition='transform .18s ease';
+    const ov=m.parentElement;
+    if(dy>90){
+      m.style.transform='translateY(100%)';
+      setTimeout(()=>{ m.style.transform=''; m.style.transition=''; if(typeof ov.__onUserClose==='function') ov.__onUserClose(); else closeModal(ov.id); },180);
+    } else { m.style.transform=''; setTimeout(()=>{ m.style.transition=''; },200); }
+  };
+  document.addEventListener('touchend',end); document.addEventListener('touchcancel',end);
+})();
 
 
 // Same shift-pairing logic as schedule-manager.html's own

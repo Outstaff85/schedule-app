@@ -598,33 +598,32 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return cards;
   });
   ok(nw.some(c => /Avi/.test(c.name) && c.isNew) && nw.some(c => /Dana/.test(c.name) && !c.isNew), 'worker cards: NEW for 3 days after the worker was added ' + JSON.stringify(nw));
-  // Worker card: a plain click only reads; a double click (or a long touch) opens the edit form;
+  // Worker card: a click or a double click on it only reads; its ✎ opens the edit form;
   // closing it (a tap outside saves it) brings the card back.
   const cardSpot = '#workerCardModal div[style*="flex-direction:column"] >> nth=0';
   await p.evaluate(() => openWorkerCard(1)); await sleep(400);
-  await p.click(cardSpot, {position:{x:5, y:5}}); await sleep(400);
+  await p.click(cardSpot, {position:{x:5, y:5}}); await p.dblclick(cardSpot, {position:{x:5, y:5}}); await sleep(400);
   const bk0 = await p.evaluate(() => !document.getElementById('workerOverlay').classList.contains('open') && document.getElementById('workerCardOverlay').classList.contains('open'));
-  const lp = await p.evaluate(async () => {
-    const el = document.querySelector('#workerCardModal div[style*="flex-direction:column"]');
-    const r = el.getBoundingClientRect(), o = {bubbles:true, pointerType:'touch', clientX:r.left + 5, clientY:r.top + 5};
-    el.dispatchEvent(new PointerEvent('pointerdown', o)); await new Promise(res => setTimeout(res, 250));
-    el.dispatchEvent(new PointerEvent('pointerup', o)); await new Promise(res => setTimeout(res, 400));
-    const shortTouch = document.getElementById('workerOverlay').classList.contains('open');
-    el.dispatchEvent(new PointerEvent('pointerdown', o)); await new Promise(res => setTimeout(res, 700));
-    const longTouch = document.getElementById('workerOverlay').classList.contains('open');
-    el.dispatchEvent(new PointerEvent('pointerup', o));
-    return {shortTouch, longTouch};
-  });
-  ok(bk0 && !lp.shortTouch && lp.longTouch, 'worker card: a click or short touch only reads, a long touch opens the edit form ' + JSON.stringify(lp));
-  await p.mouse.click(5, 450); await sleep(1200);
-  await p.evaluate(() => { closeModal('workerCardOverlay'); openWorkerCard(1); }); await sleep(400);
-  await p.dblclick(cardSpot, {position:{x:5, y:5}}); await sleep(400);
+  await p.click('#workerCardEdit'); await sleep(400);
   const bk1 = await p.evaluate(() => document.getElementById('workerOverlay').classList.contains('open'));
   await p.evaluate(() => { document.getElementById('wNotes').value = 'back-to-card'; });
   await p.mouse.click(5, 450); await sleep(1200);
   const bk = await p.evaluate(() => ({edit: document.getElementById('workerOverlay').classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open'), notes: workers[1].notes}));
   await p.mouse.click(5, 450); await sleep(300);
-  ok(bk1 && !bk.edit && bk.card && bk.notes === 'back-to-card', 'worker card: a double click edits; the form saves on close and goes back to the card ' + JSON.stringify(bk));
+  ok(bk0 && bk1 && !bk.edit && bk.card && bk.notes === 'back-to-card', 'worker card: clicks only read, ✎ edits; the form saves on close and goes back to the card ' + JSON.stringify({bk0, bk1, bk}));
+  // Phone: a swipe down on a window closes it the same way as a tap outside; a short one does not.
+  await p.setViewportSize({width: 390, height: 844});
+  await p.evaluate(() => openWorkerCard(1)); await sleep(400);
+  const swipe = await p.evaluate(async () => {
+    const m = document.getElementById('workerCardModal'), r = m.getBoundingClientRect(), x = r.left + 40, y = r.top + 20;
+    const t = (type, dy) => { const tp = new Touch({identifier: 1, target: m, clientX: x, clientY: y + dy}); m.dispatchEvent(new TouchEvent(type, {bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [tp], changedTouches: [tp]})); };
+    const drag = async dy => { t('touchstart', 0); for (let d = 10; d <= dy; d += 20) t('touchmove', d); t('touchend', dy); await new Promise(r => setTimeout(r, 400)); };
+    await drag(40); const short = document.getElementById('workerCardOverlay').classList.contains('open');
+    await drag(200); const long = document.getElementById('workerCardOverlay').classList.contains('open');
+    return {short, long, locked: getComputedStyle(document.body).overflow};
+  });
+  ok(swipe.short && !swipe.long, 'phone: a swipe down closes a window, a short one does not ' + JSON.stringify(swipe));
+  await p.setViewportSize({width: 1280, height: 900}); await sleep(300);
   // Any window opened from the worker card goes back to it: Pay → tap outside → the card again.
   await p.evaluate(() => openWorkerCard(1)); await sleep(300);
   await p.evaluate(() => { [...document.querySelectorAll('#workerCardModal button')].find(b => /Pay/.test(b.textContent)).click(); }); await sleep(400);
@@ -633,13 +632,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const pay2 = await p.evaluate(() => ({pay: document.getElementById('payOverlay')?.classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open')}));
   ok(pay1.pay && !pay1.card && !pay2.pay && pay2.card, 'back: closing Pay opened from the worker card shows the card again ' + JSON.stringify({pay1, pay2}));
   await p.mouse.click(5, 450); await sleep(400);
-  // A client card: a single click only hints, a double click opens its editor.
+  // A client card: a single click opens its editor (no card to read first).
   await p.evaluate(() => switchTab('clients')); await sleep(400);
   await p.click('#clientsGrid .client-card .client-card-name >> nth=0'); await sleep(500);
   const cl1 = await p.evaluate(() => document.getElementById('clientOverlay').classList.contains('open'));
-  await p.dblclick('#clientsGrid .client-card .client-card-name >> nth=0'); await sleep(400);
-  const cl2 = await p.evaluate(() => document.getElementById('clientOverlay').classList.contains('open'));
-  ok(!cl1 && cl2, 'clients: a single click does not edit, a double click does ' + JSON.stringify({cl1, cl2}));
+  ok(cl1, 'clients: a single click opens the editor');
+  await p.evaluate(() => closeModal('clientOverlay')); await sleep(200);
   // The client window has no Save button: a tap outside saves it; an empty new client is not created.
   const cs = await p.evaluate(async () => {
     const tap = () => { const ov = document.getElementById('clientOverlay'); ov.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true})); ov.click(); };
@@ -675,15 +673,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await login(p, BASE + 'schedule-manager.html', 'boss', 'boss-pass-1');
   await p.waitForNavigation().catch(()=>{});
   ok(await waitFor(p, () => document.getElementById('firmsScreen').style.display === 'block' && __firmsCache.length === 2), 'boss: firms list (listTenants)');
-  // The firms list: no pencil, a corner ✕; a double click edits; a single click switches (below).
+  // The firms list: ✎ edits, ✕ deletes; a single click switches (below).
   const fl = await p.evaluate(async () => {
     const row = document.querySelector('#firmsList .row.tap-edit');
-    const out = {pencil: !!document.querySelector('#firmsList .ti-pencil'), del: !!(row && row.querySelector('.t3-x')), trash: !!document.querySelector('#firmsList .ti-trash')};
-    row.dispatchEvent(new MouseEvent('click', {bubbles: true, detail: 2})); await new Promise(r => setTimeout(r, 200));
+    const out = {pencil: !!row.querySelector('.ti-pencil'), del: !!(row && row.querySelector('.t3-x')), trash: !!document.querySelector('#firmsList .ti-trash')};
+    row.querySelector('.ti-pencil').parentElement.click(); await new Promise(r => setTimeout(r, 200));
     out.edit = document.getElementById('editFirmOverlay').classList.contains('open'); closeModal('editFirmOverlay');
     return out;
   });
-  ok(!fl.pencil && fl.del && !fl.trash && fl.edit, 'firms: no pencil or trash, a corner ✕, a double click edits ' + JSON.stringify(fl));
+  ok(fl.pencil && fl.del && !fl.trash && fl.edit, 'firms: ✎ edits, ✕ deletes, no trash ' + JSON.stringify(fl));
   await p.evaluate(() => switchToTenant('tenant-one'));
   await p.waitForNavigation().catch(()=>{});
   ok(await waitFor(p, () => workers.length === 2), 'boss: viewing Firm One');
