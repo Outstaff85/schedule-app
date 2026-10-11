@@ -231,7 +231,7 @@
   /* Modal */
   .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:100;align-items:center;justify-content:center;}
   .overlay.open{display:flex;}
-  .tap-edit{cursor:pointer;} /* a tap opens the item's card, or its editor when it has none (tapEdit) */
+  .tap-edit{cursor:pointer;} /* a tap opens the item's card (or its editor when it has none); a double click / long press its editor (tapEdit, longPress) */
   @media (pointer:coarse){ .tap-edit{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;} #workerCardModal{-webkit-touch-callout:none;} }
   .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto;}
   /* The app's template (variant 3, user request 2026-10-11): no boxes — big
@@ -2247,7 +2247,7 @@ function renderWorkerList(){
   else if(sort==='status'){ const rank={active:0,vacation:1,fired:2}; list.sort((a,b)=>((rank[a.w.status||'active']??0)-(rank[b.w.status||'active']??0))||a.w.name.localeCompare(b.w.name)); }
   renderPagedList(el,'sideWorkers',sort,list,({w,wi})=>{
     const c=WORKER_COLORS[w.colorIdx%8],wh=workerTotalHours(w);
-    return `<div class="worker-chip tap-edit" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))">
+    return `<div class="worker-chip tap-edit" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))">
       <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${workerAvatarInner(w)}</div>
       <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">'+tr('INACTIVE')+'</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">'+tr('VAC')+'</span>':''}${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div><div class="worker-hours">${tr('{h}h',{h:(wh).toFixed(1)})}</div></div>
       <div class="worker-actions">
@@ -3929,7 +3929,7 @@ function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
     const sup=suppliers.find(s=>s.id===w.supplierId);
     const h=hours[w.id]||0;
     const lc=w.status==='fired'?'var(--red)':w.status==='vacation'?'var(--amber)':workerDocStatus(w).level!=='ok'?'var(--amber)':'var(--green)';
-    return `<div class="wcard tap-edit" style="--c:${lc}" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))">
+    return `<div class="wcard tap-edit" style="--c:${lc}" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))">
       ${hasPermission('workers')?`<button class="wcard-del" type="button" title="${tr('Delete worker')}" onclick="event.stopPropagation();deleteWorker(${wi})">✕</button>`:''}
       <div style="display:flex;align-items:center;gap:10px;padding-right:22px">
         <div style="width:38px;height:38px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div>
@@ -4044,7 +4044,7 @@ function renderWorkersPage(){
     const objBadges=objs.length?objs.map(o=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${o.color}22;border-radius:10px;margin-right:3px"><span style="width:6px;height:6px;border-radius:50%;background:${o.color}"></span>${esc(o.name)}</span>`).join(''):'<span style="color:var(--text3);font-size:12px">—</span>';
     const sup=suppliers.find(s=>s.id===w.supplierId);
     const supBadge=sup?`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${sup.color}22;border-radius:10px"><span style="width:6px;height:6px;border-radius:50%;background:${sup.color}"></span>${esc(sup.name)}</span>`:'<span style="color:var(--text3);font-size:12px">—</span>';
-    return `<tr class="tap-edit" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background=''">
+    return `<tr class="tap-edit" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background=''">
       <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div><span style="font-size:13px;font-weight:600">${esc(w.name)}</span>${newWorkerBadgeHtml(w)}${expiryBadgeHtml(w)}${docStatusBadgeHtml(w)}</div></td>
       <td style="padding:10px 12px"><span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col}">${stMeta.label}</span></td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2);font-family:monospace">${workerDocId(w)?esc(workerDocId(w)):'—'}</td>
@@ -4118,6 +4118,14 @@ function openWorkerCard(wi){
       ${hasPermission('workers')&&hasPermission('exports')?`<button class="btn sm" onclick="openHoursExportModal('${w.id}')"><i class="ti ti-file-export"></i> ${tr('Export hours')}</button>`:''}
     </div>`;
   pageWorkerDocs(document.getElementById('workerCardModal'),w.id);
+  // A long press (phone) or a double click (computer) on the card — not on
+  // one of its buttons or links — opens the edit form, like its ✎.
+  const cm=document.getElementById('workerCardModal');
+  if(hasPermission('workers')){
+    const edit=()=>editFromWorkerCard(w.id);
+    cm.onclick=e=>tapEdit(e,cm,()=>{},edit);
+    cm.onpointerdown=e=>longPress(e,cm,edit);
+  } else { cm.onclick=null; cm.onpointerdown=null; }
   // Coming back to the card (a window opened from it was closed): drawn again
   // from the current data, by id — nothing when the worker is gone.
   const ov=document.getElementById('workerCardOverlay');
@@ -4506,7 +4514,7 @@ function renderClientsPage(){
 
   renderPagedList(grid,'clients','',clients,c=>{
     const assigned=workers.filter(w=>(w.clientIds||[]).includes(c.id));
-    return `<div class="client-card tap-edit" style="--c:${esc(c.color||'var(--border2)')}" onclick="tapEdit(event,this,null,()=>openEditClient('${c.id}'))">
+    return `<div class="client-card tap-edit" style="--c:${esc(c.color||'var(--border2)')}" onclick="tapEdit(event,this,null,()=>openEditClient('${c.id}'))" onpointerdown="longPress(event,this,()=>openEditClient('${c.id}'))">
       <button class="wcard-del" type="button" title="${tr('Remove')}" aria-label="${tr('Remove')}" onclick="event.stopPropagation();deleteClient('${c.id}')">✕</button>
       <div class="client-card-header">
         <div class="client-card-dot" style="background:${c.color}"></div>
@@ -4584,7 +4592,7 @@ function renderSuppliersPage(){
 
   renderPagedList(grid,'suppliers','',suppliers,s=>{
     const assigned=workers.filter(w=>w.supplierId===s.id);
-    return `<div class="client-card tap-edit" style="--c:${esc(s.color||'var(--border2)')}" onclick="tapEdit(event,this,null,()=>openEditSupplier('${s.id}'))">
+    return `<div class="client-card tap-edit" style="--c:${esc(s.color||'var(--border2)')}" onclick="tapEdit(event,this,null,()=>openEditSupplier('${s.id}'))" onpointerdown="longPress(event,this,()=>openEditSupplier('${s.id}'))">
       <button class="wcard-del" type="button" title="${tr('Remove')}" aria-label="${tr('Remove')}" onclick="event.stopPropagation();deleteSupplier('${s.id}')">✕</button>
       <div class="client-card-header">
         <div class="client-card-dot" style="background:${s.color}"></div>
@@ -4727,17 +4735,52 @@ function openPunchClock(cid){
 // --- Modal close --------------------------------------------------------------
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 // Template (user request 2026-10-11): a single tap on a list item or card
-// opens its card (tapFn) or, when it has none, its edit form (editFn); there
-// is no double click or long press. A window that reads (the worker card)
-// has a ✎ button for the edit form. A tap on a control inside the item (a
-// button, link, field, or anything with its own onclick) does that
-// control's job instead, and selecting text doesn't count. Markup:
-// onclick="tapEdit(event,this,tapFn,editFn)" (class .tap-edit). The same
-// helper is in schedule-manager.html and supplier-portal.html.
+// opens its card (tapFn) or, when it has none, its edit form (editFn); a
+// double click (computer) or a long press (phone, LONG_PRESS_MS; a move or
+// scroll cancels it) opens the edit form too. A window that reads (the worker
+// card) also has a ✎. A tap on a control inside the item (a button, link,
+// field, or anything with its own onclick) does that control's job instead,
+// and selecting text doesn't count. Markup:
+// onclick="tapEdit(event,this,tapFn,editFn)"
+// onpointerdown="longPress(event,this,editFn)" (class .tap-edit). With a
+// mouse, a tapFn and an editFn the single click waits DBL_CLICK_MS to tell
+// it from a double one. The same helpers are in schedule-manager.html and
+// supplier-portal.html.
+const LONG_PRESS_MS=500, DBL_CLICK_MS=250;
+let __lp=null, __lpFiredAt=0;
+function clearTextSel(){ try{ window.getSelection().removeAllRanges(); }catch(_){} }
 function tapEdit(e, el, tapFn, editFn){
+  if(Date.now()-__lpFiredAt<800) return;  // the click that ends a long press
+  if(e.detail>=2){
+    if(!isPlainTap(e,el,true)) return;
+    clearTimeout(el.__tapT); el.__tapT=null; clearTextSel();
+    if(editFn) editFn();
+    return;
+  }
   if(!isPlainTap(e,el)) return;
-  const fn=tapFn||editFn;
-  if(fn) fn();
+  const fn=tapFn||editFn; if(!fn) return;
+  if(e.pointerType==='mouse' && tapFn && editFn){ clearTimeout(el.__tapT); el.__tapT=setTimeout(()=>{ el.__tapT=null; fn(); },DBL_CLICK_MS); }
+  else if(!tapFn && e.detail===1 && e.pointerType==='mouse'){ clearTimeout(el.__tapT); el.__tapT=setTimeout(()=>{ el.__tapT=null; fn(); },DBL_CLICK_MS); }
+  else fn();
+}
+function cancelLongPress(){
+  if(!__lp) return;
+  clearTimeout(__lp.timer); __lp.el.removeEventListener('pointermove',__lp.move); __lp=null;
+}
+function longPress(e, el, editFn){
+  if(!editFn || e.pointerType==='mouse' || !isPlainTap(e,el,true)) return;
+  cancelLongPress();
+  const x=e.clientX, y=e.clientY;
+  const move=ev=>{ if(Math.hypot(ev.clientX-x,ev.clientY-y)>10) cancelLongPress(); };
+  el.addEventListener('pointermove',move);
+  el.addEventListener('pointerup',cancelLongPress,{once:true});
+  el.addEventListener('pointercancel',cancelLongPress,{once:true});
+  el.addEventListener('contextmenu',ev=>{ if(__lp||Date.now()-__lpFiredAt<800) ev.preventDefault(); },{once:true});
+  __lp={el, move, timer:setTimeout(()=>{
+    cancelLongPress(); __lpFiredAt=Date.now(); clearTextSel();
+    try{ navigator.vibrate&&navigator.vibrate(15); }catch(_){}
+    editFn();
+  },LONG_PRESS_MS)};
 }
 function isPlainTap(e,container,anySelection){
   if(!anySelection&&String((window.getSelection&&window.getSelection())||'')) return false;
@@ -5234,7 +5277,7 @@ function firmProfileMissing(profile){
 function firmProfileWarnInner(){
   const missing = firmProfileMissing();
   if(!missing.length) return '';
-  return `<div class="tap-edit" onclick="tapEdit(event,this,null,openMyFirmForm)" style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;border:1px solid #ffb020;border-radius:var(--radius-sm);background:rgba(255,176,32,0.08);font-size:12px;line-height:1.5;color:var(--text2)">
+  return `<div class="tap-edit" onclick="tapEdit(event,this,null,openMyFirmForm)" onpointerdown="longPress(event,this,openMyFirmForm)" style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;border:1px solid #ffb020;border-radius:var(--radius-sm);background:rgba(255,176,32,0.08);font-size:12px;line-height:1.5;color:var(--text2)">
     <i class="ti ti-alert-triangle" style="color:#ffb020;font-size:15px"></i>
     <div style="flex:1;min-width:180px">The firm profile is incomplete — these stay empty in Form 101 (section א «פרטי המעסיק»): <b>${esc(missing.join(', '))}</b>.</div>
   </div>`;
@@ -5387,7 +5430,7 @@ function renderFirmsRows(listEl, tenants){
       av:`<div class="t3-av" style="background:var(--bg3);color:var(--text2)"><i class="ti ti-building-skyscraper"></i></div>`,
       name: esc(t.companyName || '(no name)'),
       sub: [tr('{0} workers · {1} clients{2}',{0:(t.workerCount||0),1:(t.clientCount||0),2:(when(t.savedAt)?' · '+tr('saved {0}',{0:esc(when(t.savedAt))}):'')}), flags],
-      attrs:`onclick="tapEdit(event,this,()=>switchToTenant('${id}'),()=>openEditFirmForm('${id}'))"`,
+      attrs:`onclick="tapEdit(event,this,()=>switchToTenant('${id}'),()=>openEditFirmForm('${id}'))" onpointerdown="longPress(event,this,()=>openEditFirmForm('${id}'))"`,
       right:`<button class="t3-ib" type="button" onclick="event.stopPropagation();openEditFirmForm('${id}')" title="${tr('Edit')}"><i class="ti ti-pencil"></i></button><button class="t3-ib" type="button" onclick="event.stopPropagation();toggleTenantActive('${id}',${off})" title="${off?tr('Enable'):tr('Disable')}"><i class="ti ti-${off?'player-play':'player-pause'}"></i></button><button class="t3-x" type="button" title="${tr('Delete')}" aria-label="${tr('Delete')}" onclick="event.stopPropagation();confirmDeleteTenant('${id}','${esc(t.companyName||t.tenantId)}')">✕</button>`});
   });
 }
@@ -5428,7 +5471,7 @@ async function renderOwnFirmCard(listEl){
       sub:[`מספר תיק ניכויים: ${v(p.deductionsFileNumber)}`, `${tr('Phone')}: ${v(p.phone)}`, `${tr('Address')}: ${v(addr)}`,
         missing.length ? `<span style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> ${tr('Empty in Form 101: {0}',{0:esc(missing.join(', '))})}</span>`
           : `<span style="color:var(--green)"><i class="ti ti-check"></i> ${tr('Everything Form 101 needs is filled in')}</span>`],
-      attrs:`onclick="tapEdit(event,this,null,openMyFirmForm)"`});
+      attrs:`onclick="tapEdit(event,this,null,openMyFirmForm)" onpointerdown="longPress(event,this,openMyFirmForm)"`});
   };
   draw(activeTenantProfile());
   const p = await refreshTenantProfile(0);
@@ -5619,7 +5662,7 @@ function renderAdminUsersRows(el, users){
         name:`${esc(name)} <span style="font-size:11px;font-weight:400;color:var(--text2)">${esc(tr(USER_ROLE_LABELS[u.role]||u.role))}</span>${u.active===false?' <span style="font-size:11px;font-weight:400;color:var(--amber)">'+tr('inactive')+'</span>':''}`,
         sub:[tr('login: {0}{1}',{0:esc(u.username),1:(u.phone?' · '+esc(u.phone):'')}), [what, esc(team)].filter(Boolean).join(' · '),
           HOUR_ROLES.includes(u.role) && (u.hourPerms||[]).length ? `<i class="ti ti-clock"></i> ${esc(u.hourPerms.map(p=>tr(HOUR_PERM_LABELS[p]||p)).join(', '))}` : ''],
-        attrs:`onclick="tapEdit(event,this,null,()=>openEditUserForm('${esc(u.id)}'))"`,
+        attrs:`onclick="tapEdit(event,this,null,()=>openEditUserForm('${esc(u.id)}'))" onpointerdown="longPress(event,this,()=>openEditUserForm('${esc(u.id)}'))"`,
         right:`<button class="t3-x" type="button" onclick="event.stopPropagation();deleteUserConfirm('${esc(u.id)}','${esc(u.username)}')" title="${tr('Delete')}" aria-label="${tr('Delete')}">✕</button>`});
     };
     el.innerHTML = `<div class="t3-sec" style="margin-top:0"><i class="ti ti-users"></i> ${tr('Logins')}<em>${users.length}</em><button class="btn sm" onclick="openCreateUserForm()"><i class="ti ti-plus"></i> ${tr('New user')}</button></div>`
@@ -7244,7 +7287,7 @@ function renderSalary(){
     const wid=esc(e.workerId), tot=e.total+e.travel;
     const det=(l,v)=>`<div><span>${esc(l)}</span><b>${v}</b></div>`;
     const lc=e.warns&&e.warns.length?'var(--amber)':tot>0?'var(--green)':'var(--border2)';
-    return `<div class="sal-row tap-edit${__salOpen.has(e.workerId)?' open':''}" style="--c:${lc}" data-wid="${wid}" onclick="tapEdit(event,this,()=>toggleSalRow(this),()=>openPayModal('${wid}'))">
+    return `<div class="sal-row tap-edit${__salOpen.has(e.workerId)?' open':''}" style="--c:${lc}" data-wid="${wid}" onclick="tapEdit(event,this,()=>toggleSalRow(this),()=>openPayModal('${wid}'))" onpointerdown="longPress(event,this,()=>openPayModal('${wid}'))">
       <div class="sal-line">
         <span class="c-name"><span class="sal-av" style="background:${c.bg};color:${c.text}">${ini}</span><span class="sal-nm" onclick="event.stopPropagation();openWorkerCardById('${wid}')">${esc(e.worker)}</span>${e.warns&&e.warns.length?`<i class="ti ti-alert-triangle" style="color:var(--amber);font-size:14px" title="${e.warns.join('&#10;').replace(/"/g,'&quot;')}"></i>`:''}</span>
         <span class="c-h">${esc(tr('{h}h',{h:e.hours.toFixed(1)}))}</span>
@@ -8354,7 +8397,7 @@ function punchLogLine(e, cls){
   const sub=[`<span style="color:${isIn?'var(--green)':'var(--red)'};font-weight:600">${isIn?tr('IN'):tr('OUT')}</span>`, esc(new Date(e.ts).toLocaleDateString('en-GB')), esc(punchSite(e)), gps].filter(Boolean).join(' · ');
   return t3Line({c:isIn?'var(--green)':'var(--red)', cls:'tap-edit'+(cls?' '+cls:''), av:cls?'':t3Av(wc),
     name:cls?`<span style="font-family:'DM Mono',monospace">${esc(e.time||'--')}</span>`:esc(e.workerName||tr('Unknown')), sub,
-    attrs:`data-pid="${id}" onclick="tapEdit(event,this,null,()=>editPunchEntry(${id}))"`,
+    attrs:`data-pid="${id}" onclick="tapEdit(event,this,null,()=>editPunchEntry(${id}))" onpointerdown="longPress(event,this,()=>editPunchEntry(${id}))"`,
     right:`${cls?'':`<span class="r" style="color:var(--text);font-size:14px">${esc(e.time||'--')}</span>`}<button class="t3-x" type="button" title="${esc(tr('Delete'))}" onclick="event.stopPropagation();deletePunchEntry(${id});if(_adminView==='clients')renderClientLogs()">✕</button>`});
 }
 // Firestore mode: under the punch log, how far back it goes and buttons to

@@ -52,7 +52,7 @@ Layout: the app's template (variant 3, [app-core.md](app-core.md) → Layout) in
 - **Lines** (`renderAdmin()` → `punchLogLine(e)`, into `#adminTableBody`): a line per punch, green for IN and red for OUT on the left; the worker's avatar and name, under it IN/OUT · date · site · GPS (distance, ±accuracy, ⚠ when suspicious, or "Manual"); the time and a ✕ (delete) at the right. A tap opens the worker's card.
   - **Drawing:** in pages of `LIST_PAGE` = 10 via `renderPagedList(el, 'punchLog', filters, rows, punchLogLine)`. The next 10 rows come when the user scrolls the "Show more" row into view, or taps it ([app-core.md](app-core.md) → Long lists). A redraw keeps the opened count; a new filter starts again at 10. Firms, Users, Errors, Timings and the client logs page the same way.
   - **Older punches:** under the table, `renderAdminOlder()` shows "Showing punches from <date>" with **Load earlier month** (`loadEarlierPunchMonth()` loads back to the 1st of the month already partly loaded, or the month before) and **Load all history**.
-- **Edit:** a tap on a punch line (in the log or By Client), anywhere but its ✕, opens `editPunchEntry(id)` → type, time, site (a client, or a kept custom site) and notes. `savePunchEntry(id)` sets `editedBy:'admin'` and `editedAt`, then calls `gsUpdatePunch`. `deletePunchEntry(id)` removes it locally and calls `gsDeletePunch`.
+- **Edit:** a tap, a double click or a long press on a punch line (in the log or By Client), anywhere but its ✕, opens `editPunchEntry(id)` → type, time, site (a client, or a kept custom site) and notes. `savePunchEntry(id)` sets `editedBy:'admin'` and `editedAt`, then calls `gsUpdatePunch`. `deletePunchEntry(id)` removes it locally and calls `gsDeletePunch`.
 - **By Client** (`renderClientLogs()`): per client a section (its color dot, name, address; "N on site now · workers · total punches"), a line per assigned worker (green while on site; a tap opens its card) and its last 5 punches as small lines under it (`punchLogLine(e, 'sub')`: the time first).
 - **Export CSV** (`exportPunchCSV()`, after `ensureAllPunches()`): Worker, Supplier, Type, Time, Date, Site, Distance(m), GPS Accuracy (rounded), Notes, Edited.
 - **Clear Log** (`clearPunchLog()`, after `ensureAllPunches()`):
@@ -62,16 +62,16 @@ Layout: the app's template (variant 3, [app-core.md](app-core.md) → Layout) in
 
 ## Firms pane
 
-**Firm owner** (`tenant_admin`): the own firm only (`renderOwnFirmCard`), one template-3 line (green when Form 101 has everything, amber when not). It shows the Form 101 fields (name, deductions file, phone, address), and which of them are missing; a tap on the line opens the edit form (`openMyFirmForm`). It is drawn from the session's profile, then from `refreshTenantProfile(0)`. The super-admin buttons (`#adminFirmsSuperBar`) are hidden. There is no separate Profile pane.
+**Firm owner** (`tenant_admin`): the own firm only (`renderOwnFirmCard`), one template-3 line (green when Form 101 has everything, amber when not). It shows the Form 101 fields (name, deductions file, phone, address), and which of them are missing; a tap, a double click or a long press on the line opens the edit form (`openMyFirmForm`). It is drawn from the session's profile, then from `refreshTenantProfile(0)`. The super-admin buttons (`#adminFirmsSuperBar`) are hidden. There is no separate Profile pane.
 
 **Super-admin:**
 
 - **List:** `renderFirmsList('adminFirmsList')` — the same function draws the super-admin's landing screen (`#firmsList`).
   - It draws the cached list first (`localStorage.firmsCache_v1`), then `listTenants`.
-  - A line per firm (template 3): green while active, amber when disabled or its profile is incomplete (`firmProfileMissing(t)`); the name, then worker and client counts and the last save (left out when the date can't be read), then "disabled" / "profile incomplete". A tap → `switchToTenant()`; the ✎ at its right → `openEditFirmForm`; pause / play and a ✕ (`.t3-x`, delete) at the right.
+  - A line per firm (template 3): green while active, amber when disabled or its profile is incomplete (`firmProfileMissing(t)`); the name, then worker and client counts and the last save (left out when the date can't be read), then "disabled" / "profile incomplete". A tap → `switchToTenant()`; a double click (computer), a long press (phone) or the ✎ at its right → `openEditFirmForm`; pause / play and a ✕ (`.t3-x`, delete) at the right.
   - The landing screen's header row holds Create firm, the language select (`placeLangSelect` puts it in `#firmsActions`) and a Sign out icon.
   - Row actions:
-    - edit (`openEditFirmForm`, the line's ✎);
+    - edit (`openEditFirmForm`: the line's ✎, a double click or a long press);
     - enable / disable (`toggleTenantActive` → `setTenantActive`, the button at the right);
     - delete (the corner ✕, `confirmDeleteTenant` — confirm, then type the exact firm name → `deleteTenant`: the firm's data, its logins and every worker file in Storage).
 - **Firm form** (`#editFirmOverlay`, one modal, `__firmFormMode`):
@@ -105,7 +105,7 @@ Layout: the app's template (variant 3, [app-core.md](app-core.md) → Layout) in
   - `staff` and `hr`: section tiles from `PERMISSION_SECTIONS` (`schedule, workers, clients, suppliers, accounting, exports`), plus `payEdit` for HR only (cleared for any other role); picking HR checks only Workers; `hr` also gets "Only own workers" (`ownOnly`, on by default);
   - `supplier`: a supplier select;
   - saved with `createTenantUser`.
-- **Edit** (`openEditUserForm`, a tap on the line anywhere but its ✕):
+- **Edit** (`openEditUserForm`, a tap, a double click or a long press on the line anywhere but its ✕):
   - filled from the list the pane drew (its cache); the server is asked only when the row isn't there;
   - the username is locked;
   - the role can change between Staff, HR and Supplier (`updateUser` with `role`; the user signs in again; a former HR's workers are unassigned);
