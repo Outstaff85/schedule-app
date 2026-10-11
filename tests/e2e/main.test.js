@@ -142,6 +142,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(ia.hidden && ia.sidebar && ia.shown && ia.back, 'workers: an inactive worker leaves the lists, "Inactive: N — show" brings them, Active returns them ' + JSON.stringify(ia));
   ok(ia.notice && ia.closed, 'contracts: an expired contract shows a notice at the top until closed ' + JSON.stringify(ia));
+  // On a phone a worker card is compact: one summary line instead of the detail rows.
+  await p.setViewportSize({width: 390, height: 800});
+  const wc = await p.evaluate(async () => { switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await new Promise(r => setTimeout(r, 200));
+    const c = document.querySelector('#workersCards .wcard'); return c ? {h: c.getBoundingClientRect().height, rows: getComputedStyle(c.querySelector('.wcard-rows')).display, sum: getComputedStyle(c.querySelector('.wcard-sum')).display} : {}; });
+  await p.setViewportSize({width: 1280, height: 720});
+  ok(wc.rows === 'none' && wc.sum === 'block' && wc.h < 130, 'workers: on a phone a card is compact (one summary line) ' + JSON.stringify(wc));
   ok(rt.keptAfterEdit, 'worker pay: an edit in the worker modal keeps the pay fields', JSON.stringify(rt));
   ok(rt.moved === 0, "worker pay: moved to a client with a rate, the worker takes the client's rate", JSON.stringify(rt));
   // Commission for a worker paid by the day: a fixed ₪ per day when set, else hours × ₪/h.

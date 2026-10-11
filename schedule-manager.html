@@ -638,6 +638,11 @@
   /* Delete: a faint red ✕ in the tile's top-right corner (deleteWorker asks first). */
   .wcard-del{position:absolute;top:6px;right:6px;background:none;border:none;color:var(--red);opacity:.4;font-size:16px;line-height:1;padding:6px;border-radius:6px;cursor:pointer;transition:opacity .15s,background .15s}
   .wcard-del:hover{opacity:1;background:var(--bg3)}
+  .wcard-sum{display:none;font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:48px;margin-top:-4px}
+  /* A phone: a compact card (user request 2026-10-11) — name, badges and one
+     line of hours · clients · supplier; the full details open on a tap (the
+     worker card). */
+  @media (max-width:700px){ .wcard{padding:10px 12px;gap:6px} .wcard-rows{display:none !important} .wcard-sum{display:block} }
   .wcard-rows{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:12px}
   .wcard-rows .k{color:var(--text3);white-space:nowrap}
   .wcard-rows .v{color:var(--text);min-width:0;overflow-wrap:anywhere}
@@ -3933,6 +3938,7 @@ function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
           <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${st.bg};color:${st.col}">${st.label}</span>${newWorkerBadgeHtml(w)}${expiryBadgeHtml(w)}${docStatusBadgeHtml(w)}
         </div>
       </div>
+      <div class="wcard-sum"><span style="color:${h>0?'var(--green)':'var(--text3)'};font-weight:700">${tr('{h}h',{h:(h).toFixed(1)})}</span>${objs.length?` · ${esc(objs.map(o=>o.name).join(', '))}`:''}${sup?` · <i class="ti ti-truck-delivery"></i> ${esc(sup.name)}`:''}</div>
       <div class="wcard-rows">
         <span class="k"><i class="ti ti-id"></i> ${tr('ID / Passport')}</span><span class="v" style="font-family:monospace">${workerDocId(w)?esc(workerDocId(w)):dash}</span>
         <span class="k"><i class="ti ti-clock-hour-4"></i> ${tr('Hours ({0})',{0:(esc(monthName))})}</span><span class="v" style="font-weight:700;color:${h>0?'var(--green)':'var(--text3)'}">${tr('{h}h',{h:(h).toFixed(1)})}</span>
