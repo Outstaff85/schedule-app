@@ -574,6 +574,12 @@
   .filters-grid .filter-field{display:flex;min-width:0}
   .filters-grid select{width:100%;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 8px;font-size:13px;outline:none;text-overflow:ellipsis}
   .workers-count{font-size:12px;color:var(--text2)}
+  .workers-count .inactive-link{color:var(--text2);text-decoration:underline}
+  .contract-notice{flex-shrink:0;display:flex;align-items:center;gap:10px;margin:8px 16px 0;padding:8px 12px;border-radius:10px;background:var(--amber-bg);border:1px solid rgba(245,166,35,0.35);color:var(--amber);font-size:13px;font-weight:600}
+  .contract-notice.over{background:var(--red-bg);border-color:rgba(248,113,113,0.35);color:var(--red)}
+  .contract-notice span{flex:1}
+  .contract-notice button{border:0;background:none;color:inherit;font:inherit;cursor:pointer;padding:2px 4px}
+  .contract-notice .go{text-decoration:underline}
   /* A pane's top row: period/select + buttons; on a phone the select takes
      the first line and the buttons share the second equally. */
   .pane-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:10px}
@@ -681,6 +687,8 @@ html[lang="he"] *{letter-spacing:normal !important;}
   </div>
 </div>
 
+<!-- Contract warnings when the app opens: stays until shown or closed (per user request 2026-10-11). -->
+<div id="contractNotice" class="contract-notice" style="display:none"></div>
 <div class="app">
   <div class="sidebar">
     <div class="sidebar-section">
@@ -804,10 +812,11 @@ html[lang="he"] *{letter-spacing:normal !important;}
         </div>
         <div class="filters-grid" id="workersFiltersGrid" style="--cols:5;display:none">
           <label class="filter-field"><span class="filter-cap" data-i18n>Status</span><select id="workersFilterStatus" onchange="renderWorkersPage()">
-            <option value="" data-i18n>All statuses</option>
+            <option value="" data-i18n>Active and on vacation</option>
             <option value="active" data-i18n>Active</option>
             <option value="vacation" data-i18n>On vacation</option>
             <option value="fired" data-i18n>Inactive</option>
+            <option value="all" data-i18n>All statuses</option>
           </select></label>
           <label class="filter-field"><span class="filter-cap" data-i18n>Documents</span><select id="workersFilterDocs" onchange="renderWorkersPage()">
             <option value="" data-i18n>All documents</option>
@@ -1736,6 +1745,12 @@ function shiftOn(w, date){
 function weekShifts(w){ return [0,1,2,3,4,5,6].map(i => { const d=new Date(weekStart); d.setDate(d.getDate()+i); return shiftOn(w,d); }); }
 function workerTotalHours(w){ return weekShifts(w).reduce((s,sh)=>s+(sh.type==='work'?calcHours(sh.start,sh.end):0),0); }
 
+// Inactive workers (status 'fired') leave the everyday lists — the Workers
+// tab (unless its Status filter picks them), the sidebar, the Schedule, Today
+// and the contract warnings — and come back when set Active again on their
+// card (per user request 2026-10-11). Accounting still counts their hours.
+function isActiveWorker(w){ return !!w && w.status!=='fired'; }
+
 // ── Contract-expiry warning (per-worker, opt-in) ───────────────────────────────
 // A worker can optionally set expiryMonths (how many months after startDate
 // the deadline hits) and expiryWarnMonths (how many months before the
@@ -1743,7 +1758,7 @@ function workerTotalHours(w){ return weekShifts(w).reduce((s,sh)=>s+(sh.type==='
 // this worker, or {level:'warning'|'overdue', deadline:Date} otherwise.
 // Single source of truth — used by every badge/section below.
 function workerExpiryStatus(w){
-  if(!w || !w.expiryEnabled || !w.startDate || !w.expiryMonths) return null;
+  if(!w || !isActiveWorker(w) || !w.expiryEnabled || !w.startDate || !w.expiryMonths) return null;
   const start = new Date(w.startDate+'T00:00:00');
   if(isNaN(start)) return null;
   const deadline = new Date(start);
@@ -1755,6 +1770,23 @@ function workerExpiryStatus(w){
   if(now >= warnFrom) return {level:'warning', deadline};
   return null;
 }
+// The notice under the title bar when the app opens: how many contracts have
+// expired or expire soon (workerExpiryStatus, active workers only); "Show"
+// opens Today, where they are listed; ✕ hides it until the next app start.
+function showContractNotice(){
+  const el=document.getElementById('contractNotice'); if(!el) return;
+  let closed=false; try{ closed=sessionStorage.getItem('contractNoticeClosed')==='1'; }catch(e){}
+  const st=workers.map(workerExpiryStatus).filter(Boolean);
+  const over=st.filter(x=>x.level==='overdue').length, soon=st.length-over;
+  if(closed||!st.length||!tabAllowed('dashboard')){ el.style.display='none'; return; }
+  const parts=[]; if(over) parts.push(tr('{n} expired',{n:over})); if(soon) parts.push(tr('{n} expiring soon',{n:soon}));
+  el.className='contract-notice'+(over?' over':'');
+  el.innerHTML=`<i class="ti ti-alert-triangle"></i><span>${esc(tr('Contracts: {list}',{list:parts.join(', ')}))}</span>
+    <button type="button" class="go" onclick="switchTab('dashboard')">${esc(tr('Show'))}</button>
+    <button type="button" aria-label="${esc(tr('Close'))}" onclick="closeContractNotice()">✕</button>`;
+  el.style.display='';
+}
+function closeContractNotice(){ try{ sessionStorage.setItem('contractNoticeClosed','1'); }catch(e){} showContractNotice(); }
 // Compact inline badge (matches the existing VAC/FIRED badge styling) for
 // the sidebar chip and the Workers table row.
 function expiryBadgeHtml(w){
@@ -2127,7 +2159,7 @@ function render(){
 // own hours, doesn't belong in the combined roster" rather than showing them
 // as a row of day-offs in the All-clients view.
 function hasSchedule(w){ return (w.schedule||[]).some(s=>s.type==='work') || weekShifts(w).some(s=>s.type==='work'); }
-function getVisible(){ return selectedClientId ? workers.filter(w=>(w.clientIds||[]).includes(selectedClientId)) : workers.filter(hasSchedule); }
+function getVisible(){ const act=workers.filter(isActiveWorker); return selectedClientId ? act.filter(w=>(w.clientIds||[]).includes(selectedClientId)) : act.filter(hasSchedule); }
 
 function renderStats(){
   const vis=getVisible();
@@ -2204,7 +2236,7 @@ function hourTicks(){
 
 function renderWorkerList(){
   const el=document.getElementById('workerList'); if(!el) return;
-  let list=workers.map((w,wi)=>({w,wi}));
+  let list=workers.map((w,wi)=>({w,wi})).filter(x=>isActiveWorker(x.w));
   const sort=document.getElementById('workerSort')?.value||'name';
   if(sort==='name')       list.sort((a,b)=>a.w.name.localeCompare(b.w.name));
   else if(sort==='hours') list.sort((a,b)=>workerTotalHours(b.w)-workerTotalHours(a.w));
@@ -2752,6 +2784,13 @@ function toggleExpiryWrap(){
   if(wrap) wrap.style.display = __wExpiryOpen ? '' : 'none';
   if(chev) chev.className = 'ti ti-chevron-' + (__wExpiryOpen ? 'up' : 'down');
   if(__wExpiryOpen){ const en=document.getElementById('wExpiryEnabled'); if(en) en.checked=true; }
+  updateExpiryHint();
+}
+// The contract warning needs the start date: said in red while it is empty.
+function updateExpiryHint(){
+  const h=document.getElementById('wExpiryNoStart'); if(!h) return;
+  const on=document.getElementById('wExpiryEnabled')?.checked, start=document.getElementById('wStartDate')?.value;
+  h.style.display=on&&!start?'':'none';
 }
 
 // Same collapsed-by-default dropdown pattern, for all Form-101-related
@@ -3079,7 +3118,7 @@ function showWorkerModal(w){
       <div class="field"><label>עיר</label><input type="text" id="wCity" value="${esc(w.city||'')}" placeholder="עיר"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>תאריך תחילת עבודה</label><input type="date" id="wStartDate" value="${w.startDate||w.workStartDate||new Date().toISOString().slice(0,10)}"></div>
+      <div class="field"><label>תאריך תחילת עבודה</label><input type="date" id="wStartDate" value="${w.startDate||w.workStartDate||new Date().toISOString().slice(0,10)}" oninput="updateExpiryHint()"></div>
       <div class="field"><label>טלפון</label><input type="text" id="wPhone" value="${esc(w.phone||'')}" placeholder="+972..."></div>
     </div>
     <div class="field">
@@ -3172,6 +3211,7 @@ function showWorkerModal(w){
         <div class="field"><label>חודשים עד למועד האחרון</label><input type="number" id="wExpiryMonths" min="1" step="1" value="${w.expiryMonths||9}"></div>
         <div class="field"><label>התראה כמה חודשים מראש</label><input type="number" id="wExpiryWarnMonths" min="0" step="1" value="${w.expiryWarnMonths??1}"></div>
       </div>
+      <div id="wExpiryNoStart" style="display:none;color:var(--red);font-size:12px;margin:-4px 0 10px"><i class="ti ti-alert-triangle"></i> חסר תאריך תחילת עבודה — ההתראה לא תפעל בלעדיו.</div>
     </div>
     <div class="field-row" style="margin-bottom:6px">
       <button class="btn sm w-toggle" type="button" onclick="toggleWPanel('spouse')"><span><i class="ti ti-heart"></i> <span id="wSpouseLabel">בן/בת הזוג</span></span><i class="ti ti-chevron-down" id="wSpouseChevron"></i></button>
@@ -3941,6 +3981,7 @@ function renderWorkersFilterChips(){
   const n=document.getElementById('workersFiltersCount');
   if(n){ n.textContent=on.length; n.style.display=on.length?'':'none'; }
 }
+function showInactiveWorkers(){ const sel=document.getElementById('workersFilterStatus'); if(sel){ sel.value='fired'; renderWorkersPage(); } }
 function renderWorkersPage(){
   fillFilterSelect('workersFilterClient', clients, 'All clients');
   fillFilterSelect('workersFilterSupplier', suppliers, 'All suppliers');
@@ -3953,7 +3994,9 @@ function renderWorkersPage(){
   const groupBy=document.getElementById('workersGroupBy')?.value||'';
   const stMetaMap={active:{label:tr('Active'),col:'var(--green)',bg:'var(--green-bg)'},vacation:{label:tr('On vacation'),col:'var(--amber)',bg:'var(--amber-bg)'},fired:{label:tr('Inactive'),col:'var(--red)',bg:'var(--red-bg)'}};
   let list=workers.map((w,wi)=>({w,wi}));
-  if(stFilter) list=list.filter(x=>(x.w.status||'active')===stFilter);
+  const inactiveN=workers.filter(w=>!isActiveWorker(w)).length;
+  if(!stFilter) list=list.filter(x=>isActiveWorker(x.w));
+  else if(stFilter!=='all') list=list.filter(x=>(x.w.status||'active')===stFilter);
   if(clientFilter) list=list.filter(x=>(x.w.clientIds||[]).includes(clientFilter));
   if(supplierFilter) list=list.filter(x=>x.w.supplierId===supplierFilter);
   const docsFilter=document.getElementById('workersFilterDocs')?.value||'';
@@ -3971,7 +4014,8 @@ function renderWorkersPage(){
       return text.includes(q) || (qNum.length>=2 && docNo.includes(qNum));
     });
   }
-  document.getElementById('workersCount').textContent=tr('{0} worker{1}',{0:(list.length),1:(list.length!==1?'s':'')});
+  document.getElementById('workersCount').innerHTML=esc(tr('{0} worker{1}',{0:(list.length),1:(list.length!==1?'s':'')}))
+    +(!stFilter&&inactiveN?` · <a href="#" class="inactive-link" onclick="event.preventDefault();showInactiveWorkers()">${esc(tr('Inactive: {n} — show',{n:inactiveN}))}</a>`:'');
   const view=getWorkersView();
   document.getElementById('workersViewList')?.classList.toggle('active',view==='list');
   document.getElementById('workersViewCards')?.classList.toggle('active',view==='cards');
@@ -4553,7 +4597,7 @@ function renderSuppliersPage(){
 function openManualPunch(cid){
   const c = clients.find(x=>x.id===cid);
   if(!c) return;
-  const assignedWorkers = workers.filter(w=>(w.clientIds||[]).includes(cid));
+  const assignedWorkers = workers.filter(w=>isActiveWorker(w)&&(w.clientIds||[]).includes(cid));
   const now = new Date();
   const hh = String(now.getHours()).padStart(2,'0');
   const mm = String(now.getMinutes()).padStart(2,'0');
@@ -4567,7 +4611,7 @@ function openManualPunch(cid){
         <option value="">${tr('— Select worker —')}</option>
         ${assignedWorkers.length
           ? assignedWorkers.map(w=>`<option value="${w.id}">${esc(w.name)}</option>`).join('')
-          : workers.map(w=>`<option value="${w.id}">${esc(w.name)}</option>`).join('')
+          : workers.filter(isActiveWorker).map(w=>`<option value="${w.id}">${esc(w.name)}</option>`).join('')
         }
       </select>
     </div>
@@ -6796,6 +6840,7 @@ function renderDashboard(){
   // ── Who should be here based on schedule but NOT clocked in ─────────────
   const nowMins = now.getHours()*60+now.getMinutes();
   const missing = workers.filter(w=>{
+    if(!isActiveWorker(w)) return false;
     const sh = shiftOn(w, now);
     if(!sh||sh.type==='off'||!sh.start) return false;
     const shStart = toMins(sh.start);
@@ -6855,7 +6900,7 @@ function renderDashboard(){
   const expiring = [
     ...workers.map(w=>({w, st:workerExpiryStatus(w)})).filter(x=>x.st)
       .map(({w,st})=>({w, overdue:st.level==='overdue', label:st.level==='overdue'?'Expired':'Expiring soon', date:st.deadline})),
-    ...workers.flatMap(w=>workerDocExpiries(w).map(x=>({w, overdue:x.level==='error',
+    ...workers.filter(isActiveWorker).flatMap(w=>workerDocExpiries(w).map(x=>({w, overdue:x.level==='error',
       label:tr(x.level==='error'?'{0} expired':'{0} expires',{0:tr(WORKER_DOC_TYPES[x.doc.type]||'Document')}).replace(/\s*\{1\}$/,''), date:x.date}))),
   ];
   const expiringWrap = document.getElementById('dashExpiringWrap');
@@ -9312,6 +9357,7 @@ loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangSelects
     applyNavPermissions();
     // Start on Dashboard (an HR login: its first tab)
     switchTab(homeTab());
+    showContractNotice();
     // An HR's hours ticks as the ID token has them now (a change by the
     // owner shows on the next sign-in without a new login here).
     if(isHrSession()) loadFirestoreBackend().then(b => b.hourPerms()).then(hp => {

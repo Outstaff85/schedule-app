@@ -54,7 +54,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
 
 - **Filters** (each a `<label class="filter-field">` with a caption; a dropdown with a choice is highlighted by `markActiveFilters()`):
   - search box: name (also the given name / surname from the document), phone, ID or passport number (`workerDocId`; spaces and dashes ignored, from 2 characters), and the worker's clients — name and object;
-  - Status (`workersFilterStatus`);
+  - Status (`workersFilterStatus`): by default "Active and on vacation" — inactive workers (`fired`) are left out, and the count line ends with "Inactive: N — show" (`showInactiveWorkers()` picks Inactive); also Active, On vacation, Inactive, All statuses;
   - Documents (`workersFilterDocs`: `incomplete` = `workerDocStatus().level !== 'ok'`, `expiring` = ID/passport or a document expiring/expired);
   - Client and Supplier (`fillFilterSelect()` fills them from `clients`/`suppliers`);
   - Group by (`workersGroupBy`: none / client / supplier).
@@ -67,7 +67,8 @@ One object per worker in the global `workers` array. It is saved as part of the 
 
 ## Badges and status helpers
 
-- `workerExpiryStatus(w)` → `null` or `{level:'warning'|'overdue', deadline}`. The deadline is `startDate` + `expiryMonths`, and warning starts `expiryWarnMonths` before it. Shown by `expiryBadgeHtml(w)` (Russian labels).
+- **Inactive workers** (`isActiveWorker(w)`: status not `fired`) leave the everyday lists — the Workers tab by default, the sidebar (`renderWorkerList`), the Schedule (`getVisible`), Today (missing, expiries), the manual-punch picker and the contract warnings — and return when set Active on their card (user request 2026-10-11). Accounting still counts their hours; their data and documents stay.
+- `workerExpiryStatus(w)` → `null` or `{level:'warning'|'overdue', deadline}` (an active worker with `expiryEnabled`, `startDate`, `expiryMonths`). The deadline is `startDate` + `expiryMonths`, and warning starts `expiryWarnMonths` before it. Shown by `expiryBadgeHtml(w)`, on Today, and when the app opens by a notice under the title bar (`showContractNotice()`: "Contracts: N expired, M expiring soon · Show ✕"; Show opens Today, ✕ hides it until the next start — `sessionStorage.contractNoticeClosed`). The worker form says in red when the warning is on but the start date is empty (`updateExpiryHint`, `#wExpiryNoStart`).
 - `workerDocStatus(w)` → `{level:'ok'|'warn'|'error', missing, expiry, docExpiries, docExpired, failed, lines}`:
   - **missing:** no ID/passport number, no `docUrl` (Form 101), no `assetsFileId` (scan), `docHasSignature === false`, or (Israeli ID) `docExtraPages === 0` (no ספח);
   - **expiry:** `docExpiry` already past is an error; within `DOC_EXPIRY_WARN_MONTHS` (3) is a warning;
