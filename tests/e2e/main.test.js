@@ -491,7 +491,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await sleep(500);
   const pay = await p.evaluate(() => document.getElementById('supplierPayableWrap').innerText);
   ok(!/No supplier assigned/.test(pay), 'Payable by supplier: no row for workers without a supplier');
-  const bill = await p.evaluate(() => ({shown: document.getElementById('accSecBillable').style.display !== 'none', rows: document.querySelectorAll('#clientBillableWrap tbody tr').length}));
+  const bill = await p.evaluate(() => ({shown: document.getElementById('accSecBillable').style.display !== 'none', rows: document.querySelectorAll('#clientBillableWrap .t3-line').length}));
   ok(!bill.shown && bill.rows === 0, 'Billable by client: hidden when no client has a billing rate ' + JSON.stringify(bill));
   ok(/Agency\s+8\.0h\s+₪40/.test(pay), 'Agency row: 8h × default commission 5 = ₪40');
   // Daily pay: Dana (1 day, 4h, own rate 40) paid by the day; then 5 days set by hand.
@@ -735,7 +735,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     sel.value = y.getFullYear() + '-' + y.getMonth(); renderPayTable();
     return document.getElementById('payTable').innerText;
   });
-  ok(/Avi Cohen\s+8\.0\s+1\s+₪50\/h\s+₪400\s+₪40/.test(sp), 'supplier pay: 8h × own rate 50 = ₪400, commission 8 × 5 = ₪40 ' + JSON.stringify(sp));
+  ok(/Avi Cohen\s+8\.0h · 1 day · ₪50\/h · Pay ₪400\s+₪40/.test(sp), 'supplier pay: 8h × own rate 50 = ₪400, commission 8 × 5 = ₪40 ' + JSON.stringify(sp));
   const spd = await p.evaluate(() => {
     const w = myWorkers[0], keep = {...w};
     w.supplierDayRate = 90; w.payMode = 'daily';
@@ -764,6 +764,14 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(/Avi Cohen · 1 shift\(s\): 02\/10\/2026/.test(sh) && /Sent for review/i.test(sh), 'supplier: hours sent for approval are listed as pending ' + JSON.stringify(sh));
   ok(await p.evaluate(async () => { const r = await supplierCall({action:'supplierUpdateWorker', workerId:'w1', worker:{phone:'0509'}}); await loadData(); return r.ok && myWorkers[0].phone === '0509'; }), 'supplier: update through the supplier function');
+  // Template 3 in the portal: figures and lines on the dashboard (screenshot at phone width).
+  await p.setViewportSize({width: 390, height: 844});
+  const spT3 = await p.evaluate(async () => { switchTab('dashboard'); await new Promise(r => setTimeout(r, 200));
+    return {stats: document.querySelectorAll('#sectionDashboard .t3-stats > div').length, workers: (switchTab('workers'), document.querySelectorAll('#workersList .t3-line').length)}; });
+  await p.evaluate(() => switchTab('dashboard'));
+  await p.screenshot({path: SP + '/t3-supplier.png'}).catch(()=>{});
+  await p.setViewportSize({width: 1280, height: 720});
+  ok(spT3.stats === 3 && spT3.workers >= 1, 'supplier portal: template 3 (figures, worker lines) ' + JSON.stringify(spT3));
   // Hours approval tab (hours ticks hours, approve, export): only its own workers; the month approved at once.
   ok(await waitFor(p, () => document.getElementById('tabBtn_review').style.display !== 'none', 10000), 'supplier: the Hours approval tab shows with an hours tick');
   await p.evaluate(() => switchTab('review'));

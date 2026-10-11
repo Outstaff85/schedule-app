@@ -52,6 +52,31 @@ th{color:var(--text2);font-size:11px;}
 .lang-select{background:var(--bg3);color:var(--text2);border:1px solid var(--border);border-radius:8px;padding:4px 6px;font:600 12px/1 inherit;cursor:pointer;width:auto;min-width:0;}
 html[lang="he"] *{letter-spacing:normal !important;}
 html.has-session #appRoot{display:block !important;}
+/* The app's template (variant 3, the same as the manager app): figures as
+   text, sections with a count, lines with a colored mark on the left; on a
+   phone a window opens from the bottom. Keep the copies the same. */
+.t3-stats{display:flex;gap:20px;flex-wrap:wrap;margin:2px 2px 14px}
+.t3-stats>div{font-size:11px;color:var(--text2)}
+.t3-stats b{display:block;font-size:24px;font-weight:700;line-height:1.1;color:var(--text)}
+.t3-sec{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--text2);margin:16px 2px 6px}
+.t3-sec em{font-style:normal;margin-left:auto;color:var(--text3);font-weight:500}
+.t3-line{display:flex;align-items:center;gap:10px;padding:9px 10px 9px 12px;border-left:3px solid var(--c,var(--border2));background:linear-gradient(90deg,rgba(255,255,255,.035),transparent 85%);border-radius:0 8px 8px 0;margin-bottom:4px;font-size:13px}
+.t3-line.tap-edit,.t3-line[onclick]{cursor:pointer}
+.t3-line .n{flex:1;min-width:0}
+.t3-line .n b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t3-line .n small{display:block;color:var(--text2);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t3-line .r{font-family:'DM Mono',ui-monospace,monospace;font-size:12px;color:var(--text2);white-space:nowrap}
+.t3-av{width:30px;height:30px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;overflow:hidden;background:var(--bg3);color:var(--text2)}
+.t3-av img{width:100%;height:100%;object-fit:cover}
+.t3-empty{color:var(--text3);font-size:13px;padding:6px 2px 4px}
+.t3-x{background:none;border:0;color:var(--red);opacity:.5;font-size:15px;cursor:pointer;padding:4px 6px}
+.t3-x:hover{opacity:1}
+@media (max-width:700px){
+  .overlay{align-items:flex-end;padding:0}
+  .overlay>.modal{max-width:100% !important;max-height:88vh;border-radius:18px 18px 0 0;border-bottom:0;padding:14px 16px 20px}
+  .overlay>.modal::before{content:'';display:block;width:40px;height:4px;border-radius:2px;background:var(--border2);margin:0 auto 12px}
+}
+
 /* The account menu (header variant C, the same in the manager app and both
    portals): one button with the login's name; inside it language and sign out. */
 .acct{position:relative;}

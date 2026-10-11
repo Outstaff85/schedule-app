@@ -7358,25 +7358,11 @@ function renderSupplierPayable(entries){
       <button class="btn sm" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:tr('Payable by supplier'),filename:'payable-by-supplier',format:'excel'})"><i class="ti ti-file-spreadsheet"></i> Excel</button>
       <button class="btn sm" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:tr('Payable by supplier'),filename:'payable-by-supplier',format:'pdf'})"><i class="ti ti-file-type-pdf"></i> PDF</button>
     </div>
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-      <table style="width:100%;border-collapse:collapse">
-        <thead>
-          <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">${tr('Supplier')}</th>
-            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">${tr('Hours')}</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">${tr('Payable')}</th>
-          </tr>
-        </thead>
-        <tbody class="paged-supplierPayable"></tbody>
-      </table>
-      </div>
-    </div>`;
-  renderPagedList(wrap.querySelector('.paged-supplierPayable'),'supplierPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr class="acc-click" onclick="openSupplierPayDetail('${esc(r.sup.id)}')" style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
-            <td style="padding:10px 12px;font-size:13px;font-weight:600"><span style="color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></span> ${esc(r.sup.name)}</td>
-            <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${tr('{h}h',{h:r.hours.toFixed(1)})}</td>
-            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
-          </tr>`,{table:true,colspan:20});
+    <div class="paged-supplierPayable"></div>`;
+  renderPagedList(wrap.querySelector('.paged-supplierPayable'),'supplierPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,r=>t3Line({c:r.sup.color,
+    av:`<div class="t3-av" style="background:${r.sup.color}22;color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></div>`, name:esc(r.sup.name),
+    sub:esc(tr('{h}h',{h:r.hours.toFixed(1)})), right:`<span class="r" style="color:${r.total>0?'var(--green)':'var(--text3)'};font-weight:700">${r.total>0?'₪'+r.total.toFixed(0):'—'}</span>`,
+    onclick:`openSupplierPayDetail('${esc(r.sup.id)}')`}));
 }
 
 // "Payable by HR" (owner / super-admin): each HR login's commission on its
@@ -7396,27 +7382,11 @@ function renderHrPayable(entries){
   }).filter(r=>r.hours>0&&r.total>0);  // only HRs with hours and a commission rate
   sec.style.display=rows.length?'':'none';
   if(!rows.length){ wrap.innerHTML=''; return; }
-  wrap.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-      <table style="width:100%;border-collapse:collapse;min-width:420px">
-        <thead>
-          <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">${tr('HR')}</th>
-            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">${tr('Hours')}</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">${tr('₪/h')}</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">${tr('Payable')}</th>
-          </tr>
-        </thead>
-        <tbody class="paged-hrPayable"></tbody>
-      </table>
-      </div>
-    </div>`;
-  renderPagedList(wrap.querySelector('.paged-hrPayable'),'hrPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
-            <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.u.fullName||r.u.username)}</td>
-            <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${tr('{h}h',{h:r.hours.toFixed(1)})}</td>
-            <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)">${r.rate?'₪'+esc(r.rate):'—'}${r.dayRate?' · ₪'+esc(r.dayRate)+tr('/day'):''}</td>
-            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
-          </tr>`,{table:true,colspan:20});
+  wrap.innerHTML='<div class="paged-hrPayable"></div>';
+  renderPagedList(wrap.querySelector('.paged-hrPayable'),'hrPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,r=>t3Line({c:hrColor(r.u.id),
+    av:`<div class="t3-av" style="background:${hrColor(r.u.id)}22;color:${hrColor(r.u.id)}"><i class="ti ti-user-shield"></i></div>`, name:esc(r.u.fullName||r.u.username),
+    sub:esc(tr('{h}h',{h:r.hours.toFixed(1)})+' · '+(r.rate?'₪'+r.rate+tr('/h'):'—')+(r.dayRate?' · ₪'+r.dayRate+tr('/day'):'')),
+    right:`<span class="r" style="color:${r.total>0?'var(--green)':'var(--text3)'};font-weight:700">${r.total>0?'₪'+r.total.toFixed(0):'—'}</span>`}));
 }
 
 // "Billable by client" — what each client owes the firm, computed via
@@ -7511,7 +7481,7 @@ async function renderHourApprovals(period){
       const btns=st==='fix'?`<span style="display:inline-flex;gap:6px;margin-left:auto"><button class="btn sm" style="color:var(--green)" onclick="resolveHourFix('${esc(doc.id)}','${esc(k)}',true)"><i class="ti ti-check"></i> ${esc(tr('Accept'))}</button><button class="btn sm" style="color:var(--red)" onclick="resolveHourFix('${esc(doc.id)}','${esc(k)}',false)"><i class="ti ti-x"></i> ${esc(tr('Reject'))}</button></span>`:'';
       return `<div class="hour-appr-item" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12px;margin-top:6px;color:${col}"><i class="ti ${icon}"></i> <b style="color:var(--text)">${esc(wname(wid))}</b> · ${esc(new Date(day+'T12:00').toLocaleDateString(uiLocale(),{day:'2-digit',month:'short'}))} <span style="font-family:'DM Mono',monospace;color:var(--text2)">${esc(times)}${esc(fix)}</span> — ${esc(tr(label))}${e.comment?': '+esc(e.comment):''}${e.byName?` <span style="color:var(--text3)">(${esc(e.byName)})</span>`:''}${btns}</div>`;
     }).join('');
-    return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px">
+    return `<div style="border-left:3px solid ${allOk?'var(--green)':open.length?'var(--amber)':'var(--border2)'};border-radius:0 8px 8px 0;background:linear-gradient(90deg,rgba(255,255,255,.035),transparent 85%);padding:10px 12px">
       <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
         <div style="font-weight:600"><i class="ti ${kIcon}" style="color:var(--text2)"></i> ${esc(doc.ownerName||doc.ownerId)} <span style="font-size:11px;color:var(--text3);font-weight:500">${esc(tr(kLabel))}</span></div>
         <div style="font-size:12px;font-weight:600;color:${allOk?'var(--green)':open.length?'var(--amber)':'var(--text2)'}"><i class="ti ${allOk?'ti-circle-check':open.length?'ti-alert-triangle':'ti-clock'}"></i> ${esc(tr('{done} of {n} days approved',{done,n:total}))}</div>
@@ -7536,28 +7506,12 @@ function renderClientBillable(entries){
   const rows=entries.map(e=>({cl:clients.find(c=>c.id===e.clientId),...e})).filter(r=>r.cl&&r.hours>0&&r.total>0);
   const sec=document.getElementById('accSecBillable'); if(sec) sec.style.display=rows.length?'':'none';
   if(!rows.length){ wrap.innerHTML=''; return; }
-  wrap.innerHTML=`
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-      <table style="width:100%;border-collapse:collapse">
-        <thead>
-          <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">${tr('Client')}</th>
-            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">${tr('Hours')}</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">${tr('Mode')}</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">${tr('Billable')}</th>
-          </tr>
-        </thead>
-        <tbody class="paged-clientBillable"></tbody>
-      </table>
-      </div>
-    </div>`;
-  renderPagedList(wrap.querySelector('.paged-clientBillable'),'clientBillable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr class="acc-click" onclick="openClientBillDetail('${esc(r.cl.id)}')" style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
-            <td style="padding:10px 12px;font-size:13px;font-weight:600"><span style="color:${r.cl.color}"><i class="ti ti-building-store"></i></span> ${esc(r.cl.name)}</td>
-            <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${tr('{h}h',{h:r.hours.toFixed(1)})}</td>
-            <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${r.cl.rateMode==='fixed'?tr('Fixed'):tr('Tiered')}</td>
-            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
-          </tr>`,{table:true,colspan:20});
+  wrap.innerHTML='<div class="paged-clientBillable"></div>';
+  renderPagedList(wrap.querySelector('.paged-clientBillable'),'clientBillable',(document.getElementById('salaryPeriod')||{}).value||'',rows,r=>t3Line({c:r.cl.color,
+    av:`<div class="t3-av" style="background:${r.cl.color}22;color:${r.cl.color}"><i class="ti ti-building-store"></i></div>`, name:esc(r.cl.name),
+    sub:esc(tr('{h}h',{h:r.hours.toFixed(1)})+' · '+(r.cl.rateMode==='fixed'?tr('Fixed'):tr('Tiered'))),
+    right:`<span class="r" style="color:${r.total>0?'var(--green)':'var(--text3)'};font-weight:700">${r.total>0?'₪'+r.total.toFixed(0):'—'}</span>`,
+    onclick:`openClientBillDetail('${esc(r.cl.id)}')`}));
 }
 
 // Hours-import approval queue (Admin/Roles plan, stage 14). Any non-supplier
