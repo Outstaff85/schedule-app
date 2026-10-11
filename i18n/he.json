@@ -889,5 +889,8 @@
   "Approved: the client approved the month (who, when). Disputed: the days it disputed, with its comments — fix the punches if needed.": "אושר: הלקוח אישר את החודש (מי, מתי). במחלוקת: הימים שערער עליהם, עם ההערות — תקנו את הדיווחים אם צריך.",
   "Changed after approval: a shift of this client was added or changed after the client approved; the client sees it and approves again.": "השתנה אחרי האישור: משמרת של הלקוח נוספה או השתנתה אחרי שאישר; הלקוח רואה זאת ומאשר שוב.",
   "A client login is made in Admin → Users (role Client, with its ticks).": "כניסת לקוח נוצרת בניהול ← משתמשים (תפקיד לקוח, עם ההרשאות שלו).",
-  "Firm owner": "בעל החברה"
+  "Firm owner": "בעל החברה",
+  "Back to the manager app": "חזרה לאפליקציית המנהל",
+  "Manager": "מנהל",
+  "Manager login": "כניסת מנהל"
 }

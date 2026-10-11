@@ -69,6 +69,7 @@ th{color:var(--text2);font-size:11px;}
 .lang-select{background:var(--bg3);color:var(--text2);border:1px solid var(--border);border-radius:8px;padding:4px 6px;font:600 12px/1 inherit;cursor:pointer;width:auto;min-width:0;}
 html[lang="he"] *{letter-spacing:normal !important;}
 html.has-session #appRoot{display:block !important;}
+@media (max-width:500px){ .mgr-label{display:none;} }
 </style>
 </head>
 <body>
@@ -84,6 +85,7 @@ html.has-session #appRoot{display:block !important;}
     <div class="field"><label data-i18n>Password</label><input type="password" id="loginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogin()"></div>
     <div id="loginError" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px"></div>
     <button class="btn accent" style="width:100%;justify-content:center" onclick="submitLogin()" data-i18n>Log in</button>
+    <div style="text-align:center;margin-top:14px"><a href="schedule-manager.html" style="color:var(--text2);font-size:12px;text-decoration:none"><i class="ti ti-home"></i> <span data-i18n>Manager login</span></a></div>
   </div>
 </div>
 
@@ -100,6 +102,7 @@ try{ if(localStorage.getItem('clientPortal_session')){ document.getElementById('
       <div id="clientName" style="font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
     </div>
     <div id="headerActions" style="display:flex;gap:6px;align-items:center">
+      <button class="btn sm" onclick="goToManager()" title="Back to the manager app" data-i18n-title="Back to the manager app"><i class="ti ti-home"></i> <span class="mgr-label" data-i18n>Manager</span></button>
       <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i> <span data-i18n>Log out</span></button>
     </div>
   </div>
@@ -318,6 +321,13 @@ function getSession(){
   }catch(e){ return null; }
 }
 function saveSession(s){ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
+// Back to the manager app (its own login): this portal's sign-in ends first,
+// since one browser holds one Firebase sign-in for the whole site.
+async function goToManager(){
+  try{ localStorage.removeItem(SESSION_KEY); }catch(e){}
+  try{ await (await loadFirestoreBackend()).signOut(); }catch(e){}
+  location.href = 'schedule-manager.html';
+}
 async function logout(){
   localStorage.removeItem(SESSION_KEY);
   try{ await (await loadFirestoreBackend()).signOut(); }catch(e){}

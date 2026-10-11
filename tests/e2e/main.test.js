@@ -756,6 +756,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(flash === 'none' && await waitFor(p, () => typeof __data !== 'undefined' && !!__data, 15000), 'client: a reload with a kept login shows no login screen ' + flash);
   ok(p.errs.length === 0 && q.errs.length === 0, 'client portal: no page errors ' + p.errs.concat(q.errs).join(' | '));
   await octx.close(); await ctx.close();
+  // "Manager" in the portal header: ends the portal's sign-in and opens the manager app's login.
+  ctx = await newCtx(); p = await page(ctx);
+  await login(p, BASE + 'client-portal.html', 'client1', 'client-pass-1');
+  await waitFor(p, () => typeof __data !== 'undefined' && !!__data, 15000);
+  await p.evaluate(() => goToManager());
+  ok(await waitFor(p, () => /schedule-manager/.test(location.pathname) && document.getElementById('loginScreen').style.display !== 'none' && !localStorage.getItem('clientPortal_session'), 15000), 'client portal: "Manager" goes back to the manager app\'s login');
+  await ctx.close();
   // A client login on the main site goes to its portal.
   ctx = await newCtx(); p = await page(ctx);
   await login(p, BASE + 'schedule-manager.html', 'client1', 'client-pass-1');
