@@ -98,6 +98,7 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
   - Workers — an HR's edit form only.
 - **Create** (`openCreateUserForm`):
   - username, password, role (`staff` / `hr` / `supplier` / `client`, `onUserFormRoleChange`);
+  - for a supplier its portal tabs (`.userFormSupSecCb` → `supplierSections`: Dashboard, My Workers, My Hours; all ticked for a new one);
   - for HR, supplier and client one **Hours** block (`.userFormHourPermCb` → `hourPerms`: hours, approve, dispute, fix, schedule, export — [hours-review.md](hours-review.md)), and **Only own workers** at the bottom (an HR may untick it; locked on for a supplier and a client);
   - Full name and Phone for every role (the name is what the header and this list show; required only for HR);
   - `staff` and `hr`: section tiles from `PERMISSION_SECTIONS` (`schedule, workers, clients, suppliers, accounting, exports`), plus `payEdit` for HR only (cleared for any other role); picking HR checks only Workers; `hr` also gets "Only own workers" (`ownOnly`, on by default);

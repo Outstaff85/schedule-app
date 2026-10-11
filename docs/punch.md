@@ -34,15 +34,14 @@ The page first loads the dictionary of the language chosen on this device (`load
    - token found in the cache → `goToPunchDirect()` at once (works offline), then, if online, `verifyAndRefresh()` in the background: reloads from the server; a token that is gone (regenerated or the worker removed) → "Invalid Link" screen at once; otherwise the geofence is re-resolved unless the URL or the object picker fixed it;
    - not in the cache, online → "Verifying…", `loadWorkersFromGS()`, then the punch screen, "Invalid Link" (the function answered "Unknown worker link"), or "Connection problem" (no answer);
    - not in the cache, offline → "No connection — open this link once while online".
-3. **No token:** "Open your personal link — This page works only from the personal link your manager sent you." (`showInvalidLink`); the old shared-device worker picker was removed (user request 2026-10-11).
+3. **No token:** "Open your personal link — This page works only from the personal link your manager sent you." (`showInvalidLink`); the old shared-device worker picker (its screen and code) was removed (user request 2026-10-11).
 
 `loadWorkersFromGS()` answers `true` when the server answered — with this worker, or with "Unknown worker link" (then `workers` is empty, so the link is revoked) — and `false` when it could not be reached. It writes the whole reply to `localStorage.schedMgr_v1`, which is how the next open works offline. A crash in `init()` is reported and shows "Something went wrong".
 
 ## Screens
 
-- **`screenWorker`** — clock, site name, the worker grid (status per worker: "In since HH:MM", "Last: HH:MM (out)", "Not clocked in"), Continue button (`goToPunch()`). Switching worker (`selectWorker`, `goBack`) is disabled on a personal link.
 - **`screenPunch`** — greeting by hour ("Good morning" …), live clock, site pill, GPS chip, the big button, "My Schedule" and "My Hours".
-- **`screenSuccess`** — Clocked IN / OUT, time and date; "Clock another" is hidden on a personal link. Every "back" (`goToWorker`, `resetToQR`, `closeHistory`) returns a personal-link worker to their punch screen with a fresh GPS check.
+- **`screenSuccess`** — Clocked IN / OUT, time and date, "Done". Every "back" (`resetToQR`, `closeHistory`) returns to the punch screen with a fresh GPS check.
 - **`screenHistory`**, **`screenSchedule`**, **`screenHours`** — see below.
 
 ## GPS check (`getLocation()` / `analyseGps()`)

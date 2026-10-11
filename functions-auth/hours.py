@@ -17,7 +17,9 @@ Store: tenants/{t}/hourApprovals/{kind}_{ownerId}_{YYYY-MM} =
   {kind, ownerId, ownerName, month, days: {"<workerId>|<YYYY-MM-DD>": entry}}
   entry = {status: approved | disputed | fix | fixed | rejected,
            line: "<workerId>|<day>|<in>|<out>" (the shift the person saw),
-           comment?, inT?, outT? (a proposed fix), byName, at,
+           comment?, inT?, outT?, shift?, oldIn?, oldOut? (a proposed fix:
+           the new times of shift number `shift`, whose punches were
+           oldIn / oldOut), byName, at,
            resolvedBy?, resolvedAt? (a manager's accept / reject)}
 A day approved whose shift has changed since (its line differs) shows as
 "changed after approval" — the pages compare lines, nothing is stored for it.
@@ -26,7 +28,8 @@ Actions (body.action):
   load {month}                  scope rows: owner, perms, workers, punches?, days
   approve {month, lines}        the given shift lines approved (a day or all)
   dispute {month, workerId, day, comment}      empty comment = take it back
-  fix {month, workerId, day, line, inT, outT, comment}
+  fix {month, workerId, day, line, shift?, inT, outT, comment}
+                                shift: which of the day's shifts (0 = the first)
   list {month}                  managers: every approval document of the month
   resolve {docId, key, accept}  managers: accept a proposed fix (the shift's
                                 punches get the new times) or reject it
@@ -256,7 +259,17 @@ def hours_action(db, caller, body):
         in_t, out_t = _hhmm(body.get("inT")), _hhmm(body.get("outT"))
         if not in_t or not out_t:
             return {"error": "Bad time"}
-        days[key] = {"status": "fix", "line": _clip(body.get("line"), 160), "inT": in_t, "outT": out_t,
+        line = _clip(body.get("line"), 160)
+        parts = line.split("|")
+        ins, outs = (parts[2].split(","), parts[3].split(",")) if len(parts) == 4 else ([""], [""])
+        try:
+            shift = int(body.get("shift") or 0)
+        except (TypeError, ValueError):
+            shift = 0
+        if shift < 0 or shift >= len(ins):
+            return {"error": "Bad shift"}
+        days[key] = {"status": "fix", "line": line, "shift": shift, "oldIn": ins[shift],
+                     "oldOut": outs[shift] if shift < len(outs) else "", "inT": in_t, "outT": out_t,
                      "comment": comment, "byName": by, "at": _now()}
     _write_days(ref, kind, owner, name, month, days)
     return {"ok": True, "days": days}
@@ -285,7 +298,10 @@ def _resolve(db, t_ref, caller, body):
     if body.get("accept"):
         wid, day = key.split("|", 1)
         old = str(entry.get("line") or "").split("|")
-        old_in, old_out = (old[2], old[3]) if len(old) == 4 else ("", "")
+        if "oldIn" in entry:
+            old_in, old_out = entry.get("oldIn") or "", entry.get("oldOut") or ""
+        else:
+            old_in, old_out = (old[2], old[3]) if len(old) == 4 else ("", "")
         start = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=TZ)
         q = (t_ref.collection("punches").where(filter=FieldFilter("workerId", "==", wid))
              .where(filter=FieldFilter("ts", ">=", start - timedelta(hours=6)))
@@ -307,7 +323,18 @@ def _resolve(db, t_ref, caller, body):
         p_in.reference.update(dict(stamp, time=entry["inT"], ts=in_ts))
         p_out.reference.update(dict(stamp, time=entry["outT"], ts=out_ts,
                                     day=out_ts.astimezone(TZ).strftime("%Y-%m-%d")))
-        entry.update(status="fixed", line=f"{wid}|{day}|{entry['inT']}|{entry['outT']}")
+        # The day's line with that shift's times replaced (the review compares lines).
+        if len(old) == 4:
+            ins, outs = old[2].split(","), old[3].split(",")
+            i = int(entry.get("shift") or 0)
+            if i < len(ins):
+                ins[i] = entry["inT"]
+            if i < len(outs):
+                outs[i] = entry["outT"]
+            new_line = f"{wid}|{day}|{','.join(ins)}|{','.join(outs)}"
+        else:
+            new_line = f"{wid}|{day}|{entry['inT']}|{entry['outT']}"
+        entry.update(status="fixed", line=new_line)
     else:
         entry.update(status="rejected")
     entry.update(resolvedBy=by, resolvedAt=_now())

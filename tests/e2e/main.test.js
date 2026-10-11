@@ -846,11 +846,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       role.value = r; role.dispatchEvent(new Event('change'));
       const own = document.getElementById('userFormOwnOnly');
       out[r] = {hours: document.getElementById('userFormHourPermsField').style.display !== 'none', own: document.getElementById('userFormHrFields').style.display !== 'none',
-        locked: own.disabled && own.checked, ticks: [...document.querySelectorAll('.userFormHourPermCb:checked')].map(c => c.value).join(',')};
+        locked: own.disabled && own.checked, ticks: [...document.querySelectorAll('.userFormHourPermCb:checked')].map(c => c.value).join(','),
+        secs: document.getElementById('userFormSupSectionsField').style.display !== 'none' ? [...document.querySelectorAll('.userFormSupSecCb:checked')].map(c => c.value).join(',') : null};
     }
     closeModal('userFormOverlay'); return out;
   });
-  ok(!uf.staff.hours && !uf.staff.own && uf.hr.hours && uf.hr.own && !uf.hr.locked && uf.supplier.hours && uf.supplier.locked && uf.client.hours && uf.client.locked && uf.client.ticks === 'hours,approve,dispute,fix',
+  ok(!uf.staff.hours && !uf.staff.own && uf.hr.hours && uf.hr.own && !uf.hr.locked && uf.supplier.hours && uf.supplier.locked && uf.client.hours && uf.client.locked && uf.client.ticks === 'hours,approve,dispute,fix' && uf.supplier.secs === 'dashboard,workers,hours' && uf.client.secs === null,
     'user form: one Hours block for HR / supplier / client, own-only locked for supplier and client ' + JSON.stringify(uf));
   await q.evaluate(() => { openCreateUserForm(); const r = document.getElementById('userFormRole'); r.value = 'supplier'; r.dispatchEvent(new Event('change')); });
   await (await q.$('#userFormOverlay .modal')).screenshot({path: SP + '/user-form-supplier.png'}).catch(()=>{});
