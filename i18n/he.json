@@ -369,7 +369,6 @@
   "Mon": "שני",
   "Month": "חודש",
   "My commission": "העמלה שלי",
-  "My History": "ההיסטוריה שלי",
   "My Hours": "השעות שלי",
   "My hours — payable summary": "השעות שלי — סיכום לתשלום",
   "My Schedule": "הסידור שלי",
@@ -400,7 +399,6 @@
   "No firms yet.": "אין עדיין חברות.",
   "no geofence": "ללא גדר גאוגרפית",
   "No grouping": "ללא קיבוץ",
-  "No history yet": "אין עדיין היסטוריה",
   "No hours this month": "אין שעות החודש",
   "No months selected": "לא נבחרו חודשים",
   "No network": "אין רשת",
@@ -828,7 +826,6 @@
   "Total with travel ({t})": "סה״כ כולל נסיעות ({t})",
   "An estimate before deductions — your payslip is the final figure.": "הערכה לפני ניכויים — הסכום הסופי מופיע בתלוש השכר.",
   "Your pay rate is not set yet — ask your manager.": "תעריף השכר שלך עוד לא הוגדר — פנו למנהל.",
-  "My Hours and Pay": "השעות והשכר שלי",
   "NEW": "חדש",
   "Added {0}": "נוסף ב-{0}",
   "Hold (phone) or double-click (computer) to edit": "לעריכה: לחיצה ארוכה (בטלפון) או לחיצה כפולה (במחשב)",
@@ -916,5 +913,7 @@
   "Changed after approval: a shift was added or changed after the day was approved; the login sees it and approves again.": "השתנה אחרי האישור: משמרת נוספה או שונתה אחרי שהיום אושר; הכניסה רואה זאת ומאשרת שוב.",
   "The logins and their hours ticks are set in Admin → Users.": "הכניסות וסימוני השעות שלהן נקבעים בניהול ← משתמשים.",
   "Your schedule was updated": "הסידור שלך עודכן",
-  "View": "צפייה"
+  "View": "צפייה",
+  "Offline — the punches saved on this device.": "אין חיבור — הדיווחים שנשמרו במכשיר הזה.",
+  "The punches saved on this device.": "הדיווחים שנשמרו במכשיר הזה."
 }

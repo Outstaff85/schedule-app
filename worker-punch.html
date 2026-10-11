@@ -388,6 +388,17 @@ html,body{
 .hours-row .d{flex:1;color:var(--text);}
 .hours-row .t{font-family:'DM Mono',ui-monospace,monospace;color:var(--text2);font-size:13px;}
 .hours-row .h{min-width:52px;text-align:right;color:var(--green);font-weight:600;}
+.hours-shift{border-bottom:1px solid rgba(255,255,255,0.05);cursor:pointer;}
+.hours-shift .hours-row{border-bottom:0;}
+.hours-row .chev{color:var(--text3);font-size:14px;transition:transform .15s;}
+.hours-shift.open .chev{transform:rotate(180deg);}
+.hours-punches{display:none;padding:0 0 10px 24px;}
+.hours-shift.open .hours-punches{display:block;}
+.hp{display:flex;align-items:center;gap:10px;padding:4px 0;font-size:13px;}
+.hp .tag{font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;min-width:40px;text-align:center;}
+.hp .tag.in{background:rgba(109,214,160,0.12);color:#6dd6a0;} .hp .tag.out{background:rgba(255,79,94,0.12);color:#ff4f5e;}
+.hp .tm{font-family:'DM Mono',ui-monospace,monospace;font-weight:600;color:var(--text);}
+.hp .st{font-size:11px;color:var(--text3);}
 .hours-row .p{min-width:64px;text-align:right;color:var(--text);font-weight:600;}
 .hours-break{margin-top:8px;font-size:12px;color:var(--text2);text-align:center;}
 .sched-note{margin-top:10px;text-align:center;font-size:12px;color:var(--text3);}
@@ -438,8 +449,7 @@ html[lang="he"] *{letter-spacing:normal !important;}
   </div>
   <div class="punch-links">
     <div class="back-link" onclick="openSchedule()" style="color:var(--blue)"><i class="ti ti-calendar-week"></i> <span data-i18n>My Schedule</span><span class="sched-badge" id="schedBadge" style="display:none" title="Updated" data-i18n-title="Updated"></span></div>
-    <div class="back-link" onclick="openHistory()" style="color:var(--blue)"><i class="ti ti-history"></i> <span data-i18n>My History</span></div>
-    <div class="back-link" id="myHoursLink" onclick="openMyHours()" style="color:var(--blue)"><i class="ti ti-wallet"></i> <span data-i18n>My Hours and Pay</span></div>
+    <div class="back-link" id="myHoursLink" onclick="openMyHours()" style="color:var(--blue)"><i class="ti ti-clock-hour-4"></i> <span data-i18n>My Hours</span></div>
   </div>
   <div class="back-link" id="changeWorkerLink" onclick="goBack()" data-i18n>← Change worker</div>
 </div>
@@ -466,23 +476,16 @@ html[lang="he"] *{letter-spacing:normal !important;}
   <div id="scheduleContent" style="width:100%;max-width:500px"></div>
 </div>
 
-<!-- Screen 6: My hours & pay (own link only; the month's shifts and a pay estimate) -->
+<!-- Screen 6: My hours (the month's shifts, each opens to its punches; with the
+     worker's own link also a pay estimate — My History merged in, 2026-10-11) -->
 <div class="screen hidden" id="screenHours" style="justify-content:flex-start;align-items:center">
   <div class="top-bar" style="margin-bottom:16px">
-    <div style="font-size:18px;font-weight:500"><i class="ti ti-wallet"></i> <span data-i18n>My Hours and Pay</span></div>
+    <div style="font-size:18px;font-weight:500"><i class="ti ti-clock-hour-4"></i> <span data-i18n>My Hours</span></div>
     <div class="back-link" onclick="closeHistory()" style="font-size:14px" data-i18n>✕ Close</div>
   </div>
   <div id="hoursContent" style="width:100%;max-width:500px"></div>
 </div>
 
-<!-- Screen 4: History -->
-<div class="screen hidden" id="screenHistory" style="justify-content:flex-start;align-items:center">
-  <div class="top-bar" style="margin-bottom:16px">
-    <div style="font-size:18px;font-weight:500"><i class="ti ti-calendar"></i> <span data-i18n>My History</span></div>
-    <div class="back-link" onclick="closeHistory()" style="font-size:14px" data-i18n>✕ Close</div>
-  </div>
-  <div id="historyContent" style="width:100%;max-width:500px"></div>
-</div>
 
 <div id="toast" class="toast"></div>
 
@@ -598,7 +601,7 @@ function redrawForLanguage(){
     const on = id => { const s = document.getElementById(id); return s && !s.classList.contains('hidden'); };
     if(on('screenPunch')){ tickPunch(); updateBigBtn(); getLocation(); }
     else if(on('screenWorker')) renderWorkerGrid();
-    else if(on('screenHistory')) openHistory();
+    else if(on('screenHours')) renderMyHours(hoursMonthKey());
     else if(on('screenSchedule')) renderMySchedule();
   }catch(e){}
 }
@@ -790,8 +793,6 @@ function enterPunch(w, skipResolve){
   document.getElementById('punchSite').innerHTML = '<i class="ti ti-map-pin"></i> '+siteLabel();
   document.getElementById('punchWorkerName').textContent = w.name;
   const cw=document.getElementById('changeWorkerLink'); if(cw) cw.style.display=URL_TOKEN?'none':'';
-  // Pay only on the worker's own link, never on a shared picker device.
-  const mh=document.getElementById('myHoursLink'); if(mh) mh.style.display=URL_TOKEN?'':'none';
   showScreen('screenPunch');
   startPunchClock();
   getLocation();
@@ -1177,7 +1178,7 @@ function renderMySchedule(){
       : `<div style="text-align:center;padding:40px;color:var(--text3);font-size:15px">${esc(tr('No shifts planned yet'))}</div>`);
 }
 
-// ── My hours & pay (worker's own link only): one month of the worker's own
+// ── My hours: on the worker's own link one month of the worker's own
 // punches from the punch function (myMonth — portal.py hands out only this
 // worker's punches, their own pay inputs and their sites' worker-pay rates),
 // summed with the canonical functions below exactly as Accounting → Salary
@@ -1188,19 +1189,27 @@ let _hoursMonth = 0;
 const _hoursData = {};
 function hoursMonthKey(){ const n = new Date(); return localYMD(new Date(n.getFullYear(), n.getMonth() + _hoursMonth, 1)).slice(0, 7); }
 function openMyHours(){
-  if(!selectedWorker || !URL_TOKEN) return;
+  if(!selectedWorker) return;
   _hoursMonth = 0;
   showScreen('screenHours');
   loadMyHours();
 }
 function shiftHoursMonth(n){ _hoursMonth = n === 0 ? 0 : Math.min(0, _hoursMonth + n); loadMyHours(); }
+// The month from this device's own punch log: a shared picker device (no
+// personal link, never pay) or no connection.
+function localMonthData(){
+  const w = selectedWorker;
+  return {local:true, pay:{id:w.id}, clients:[], punches:getPunchLog().filter(e => e.workerId === w.id)};
+}
 async function loadMyHours(){
   const key = hoursMonthKey();
+  if(!URL_TOKEN){ _hoursData[key] = localMonthData(); renderMyHours(key); return; }
   renderMyHours(key);
   try{
     const r = await (await punchFn({action:'myMonth', token:_wpToken(), month:key})).json();
     _hoursData[key] = (r && !r.error) ? r : (_hoursData[key] || {failed:true});
   }catch(e){ _hoursData[key] = _hoursData[key] && !_hoursData[key].failed ? _hoursData[key] : {failed:true}; }
+  if(_hoursData[key].failed){ const l = localMonthData(); if(l.punches.length) _hoursData[key] = l; }
   if(key === hoursMonthKey() && !document.getElementById('screenHours').classList.contains('hidden')) renderMyHours(key);
 }
 function myMonthFigures(data, key){
@@ -1222,13 +1231,13 @@ function myMonthFigures(data, key){
       total += pay;
       dayKeys.add(localYMD(b.date));
     }
-    shifts.push({date:b.date, inT:inE && inE.time, outT:outE && outE.time, h, pay});
+    shifts.push({date:b.date, inT:inE && inE.time, outT:outE && outE.time, h, pay, entries:b.entries});
   });
   const ov = isDailyPay(w) ? dayOverride(w, 'm:' + key) : null;
   if(ov != null) total = ov * dailyRate(w);
   const days = ov != null ? ov : dayKeys.size;
   const travel = travelPay(w, days, dayKeys.size ? 1 : 0);
-  const hasRate = isDailyPay(w) ? dailyRate(w) > 0 : true;
+  const hasRate = !data.local && (isDailyPay(w) ? dailyRate(w) > 0 : true);
   return {shifts, hours, regH, otH, shabH, total, travel, days, ov, hasRate};
 }
 function money(n){ return '₪' + (Number(n) || 0).toLocaleString(uiLocale(), {minimumFractionDigits:0, maximumFractionDigits:2}); }
@@ -1245,12 +1254,17 @@ function renderMyHours(key){
   if(data.failed){ el.innerHTML = head + msg(tr('Could not load your hours — check the connection and try again.')); return; }
   const f = myMonthFigures(data, key);
   if(!f.shifts.length){ el.innerHTML = head + msg(tr('No shifts this month')); return; }
-  const rows = [...f.shifts].reverse().map(s => `<div class="hours-row">
+  // A tap on a shift opens its punches (in / out, time, site) — what My History showed.
+  const rows = [...f.shifts].reverse().map(s => `<div class="hours-shift" onclick="this.classList.toggle('open')"><div class="hours-row">
+      <i class="ti ti-chevron-down chev"></i>
       <span class="d">${esc(s.date.toLocaleDateString(loc, {weekday:'short', day:'2-digit', month:'short'}))}</span>
       <span class="t">${esc(s.inT || '--:--')} – ${esc(s.outT || '--:--')}</span>
       <span class="h">${s.h > 0 ? esc(tr('{h}h', {h:s.h.toFixed(1)})) : '—'}</span>
       ${f.ov == null && f.hasRate ? `<span class="p">${s.pay > 0 ? esc(money(s.pay)) : '—'}</span>` : ''}
-    </div>`).join('');
+    </div><div class="hours-punches">${s.entries.map(e => `<div class="hp">
+      <span class="tag ${e.type === 'in' ? 'in' : 'out'}">${esc(e.type === 'in' ? tr('IN') : tr('OUT'))}</span>
+      <span class="tm">${esc(e.time || '--:--')}</span>
+      ${histSite(e) ? `<span class="st"><i class="ti ti-map-pin"></i> ${esc(histSite(e))}</span>` : ''}</div>`).join('')}</div></div>`).join('');
   const parts = [tr('Regular {h}h', {h:f.regH.toFixed(1)})];
   if(f.otH > 0) parts.push(tr('Overtime {h}h', {h:f.otH.toFixed(1)}));
   if(f.shabH > 0) parts.push(tr('Shabbat {h}h', {h:f.shabH.toFixed(1)}));
@@ -1259,7 +1273,8 @@ function renderMyHours(key){
     + (f.hasRate ? `<div><b>${esc(money(f.total))}</b><span>${esc(tr('Pay'))}</span></div><div><b>${esc(money(f.total + f.travel))}</b><span>${esc(f.travel > 0 ? tr('Total with travel ({t})', {t:money(f.travel)}) : tr('Total'))}</span></div>` : '')
     + `</div><div class="hours-break">${esc(parts.join(' · '))}</div>
     <div style="margin-top:10px">${rows}</div>
-    <div class="sched-note">${esc(f.hasRate ? tr('An estimate before deductions — your payslip is the final figure.') : tr('Your pay rate is not set yet — ask your manager.'))}</div>`;
+    <div class="sched-note">${esc(data.local ? (URL_TOKEN ? tr('Offline — the punches saved on this device.') : tr('The punches saved on this device.'))
+      : f.hasRate ? tr('An estimate before deductions — your payslip is the final figure.') : tr('Your pay rate is not set yet — ask your manager.'))}</div>`;
 }
 
 // ── Shift pairing and pay (duplicated on purpose from schedule-manager.html:
@@ -1453,7 +1468,7 @@ function showNewVersionBar(){
 }
 startVersionWatch(()=>[location.pathname]);
 
-// Site shown in history: keep a recorded site only if it's one of THIS worker's
+// Site shown with a punch in My Hours: keep a recorded site only if it's one of THIS worker's
 // own clients; otherwise show the client the worker is attached to.
 function histSite(e){
   if(e.clientId && allClients.length){ const c=allClients.find(x=>x.id===e.clientId); if(c) return c.name; }
@@ -1466,74 +1481,6 @@ function histSite(e){
   }
   if(SITE && SITE.name && SITE.name!=='Work Site') return SITE.name;
   return e.site || '';
-}
-
-function openHistory(){
-  if(!selectedWorker) return;
-  showScreen('screenHistory');
-  const log=getPunchLog();
-  const wLog=log.filter(e=>e.workerId===selectedWorker.id);
-  const el=document.getElementById('historyContent');
-  if(!wLog.length){
-    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3);font-size:15px">'+tr('No history yet')+'</div>';
-    return;
-  }
-  // Pair punches into shifts chronologically — mirrors groupPunchesIntoShifts
-  // in schedule-manager.html (kept in sync per CLAUDE.md's duplication
-  // convention) — and group by the SHIFT's own (IN-punch) date, not each
-  // entry's own calendar day. Grouping by calendar day first (the previous
-  // approach) split an overnight IN→OUT pair into two unpaired halves —
-  // the IN alone on day N with no matching OUT, and the OUT alone on day
-  // N+1 with no matching IN — so an overnight shift's hours silently
-  // vanished from the worker's own history even though they're correctly
-  // counted in the manager's payroll view.
-  const chronoAll=[...wLog].sort((a,b)=>new Date(a.ts)-new Date(b.ts));
-  const shifts=[]; let openShift=null;
-  chronoAll.forEach(e=>{
-    if(e.type==='in'){
-      if(openShift) shifts.push(openShift);
-      openShift={date:new Date(e.ts),entries:[e]};
-    } else {
-      if(!openShift) openShift={date:new Date(e.ts),entries:[]};
-      openShift.entries.push(e);
-      shifts.push(openShift); openShift=null;
-    }
-  });
-  if(openShift) shifts.push(openShift);
-  // Group by date
-  const byDate={};
-  [...shifts].reverse().forEach(sh=>{
-    const d=sh.date.toLocaleDateString(uiLocale(),{weekday:'short',day:'2-digit',month:'short'});
-    if(!byDate[d]) byDate[d]=[];
-    byDate[d].push(sh);
-  });
-  // Calculate total hours per day
-  el.innerHTML=Object.entries(byDate).slice(0,14).map(([date,dayShifts])=>{
-    let hours=0;
-    dayShifts.forEach(sh=>{
-      const inE=sh.entries.find(e=>e.type==='in'), outE=sh.entries.find(e=>e.type==='out');
-      if(inE && outE && inE.time && outE.time){
-        const sm=inE.time.split(':').map(Number), em=outE.time.split(':').map(Number);
-        let dur=(em[0]*60+em[1])-(sm[0]*60+sm[1]); if(dur<0) dur+=1440;
-        hours+=dur/60;
-      }
-    });
-    const entries=dayShifts.flatMap(sh=>sh.entries);
-    const rows=entries.map(e=>`
-      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-        <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;min-width:44px;text-align:center;${e.type==='in'?'background:rgba(109,214,160,0.12);color:#6dd6a0':'background:rgba(255,79,94,0.12);color:#ff4f5e'}">${e.type==='in'?tr('IN'):tr('OUT')}</span>
-        <span style="font-size:15px;font-family:'DM Mono',ui-monospace,monospace;font-weight:600;color:var(--text)">${e.time}</span>
-        ${(()=>{const s=histSite(e);return s?`<span style="font-size:11px;color:var(--text3)"><i class="ti ti-map-pin"></i> ${esc(s)}</span>`:'';})()}
-        ${e.dist!=null?`<span style="font-size:11px;color:var(--text3)">${e.dist}m</span>`:''}
-      </div>`).join('');
-    return `<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px 16px;margin-bottom:10px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <div style="font-size:14px;font-weight:700;color:var(--text)">${esc(date)}</div>
-        ${hours>0?`<div style="font-size:13px;font-weight:600;color:var(--green)">${tr('{h}h',{h:hours.toFixed(1)})}</div>`:''}
-      </div>
-      ${rows}
-    </div>`;
-  }).join('');
 }
 
 // Error telemetry: send client errors to the errors collection (throttled, silent).

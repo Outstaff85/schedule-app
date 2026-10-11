@@ -864,7 +864,16 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {link, hours: f.hours, total: f.total, sat: sh.date && sh.date.getDay() === 6, text: document.getElementById('hoursContent').innerText.slice(0, 120),
       leak: /gpsAccuracy|dist|billRate|tok-/.test(raw), pay: d.pay};
   });
-  ok(mh.link && mh.hours === 8 && mh.total === (mh.sat ? 600 : 400) && !mh.leak && /8\.0h/.test(mh.text), "punch: My Hours and Pay — own shift, priced like Salary, no GPS or billing " + JSON.stringify(mh));
+  ok(mh.link && mh.hours === 8 && mh.total === (mh.sat ? 600 : 400) && !mh.leak && /8\.0h/.test(mh.text), "punch: My Hours — own shift, priced like Salary, no GPS or billing " + JSON.stringify(mh));
+  // My History is merged in: a tap on a shift opens its punches (in / out, time, site).
+  const mx = await p.evaluate(async () => {
+    for(let i = 0; i < 50 && !document.querySelector('#hoursContent .hours-shift'); i++) await new Promise(r => setTimeout(r, 100));
+    const sh = [...document.querySelectorAll('#hoursContent .hours-shift')].find(x => x.querySelectorAll('.hp').length === 2); if(!sh) return {}; // a full shift (today's may be open)
+    const before = getComputedStyle(sh.querySelector('.hours-punches')).display; sh.click();
+    return {before, after: getComputedStyle(sh.querySelector('.hours-punches')).display, tags: [...sh.querySelectorAll('.hp .tag')].map(t => t.textContent).join(','),
+      noHistory: !document.getElementById('screenHistory') && !/My History/.test(document.getElementById('screenPunch').innerText)};
+  });
+  ok(mx.before === 'none' && mx.after === 'block' && mx.tags === 'IN,OUT' && mx.noHistory, 'punch: My Hours shows each shift\'s punches on a tap; no separate My History ' + JSON.stringify(mx));
   await p.evaluate(() => closeHistory());
   ok(await p.evaluate(() => JSON.parse(localStorage.getItem('punchQueue')||'[]').length === 0), 'punch: nothing queued');
   await srv('/revoke');
