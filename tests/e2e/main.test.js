@@ -506,15 +506,33 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return cards;
   });
   ok(nw.some(c => /Avi/.test(c.name) && c.isNew) && nw.some(c => /Dana/.test(c.name) && !c.isNew), 'worker cards: NEW for 3 days after the worker was added ' + JSON.stringify(nw));
-  // A tap on the worker card opens the edit form; closing it (a tap outside saves it) brings the card back.
+  // Worker card: a plain click only reads; a double click (or a long touch) opens the edit form;
+  // closing it (a tap outside saves it) brings the card back.
+  const cardSpot = '#workerCardModal div[style*="flex-direction:column"] >> nth=0';
   await p.evaluate(() => openWorkerCard(1)); await sleep(400);
-  await p.click('#workerCardModal div[style*="flex-direction:column"] >> nth=0', {position:{x:5, y:5}}); await sleep(400);
+  await p.click(cardSpot, {position:{x:5, y:5}}); await sleep(400);
+  const bk0 = await p.evaluate(() => !document.getElementById('workerOverlay').classList.contains('open') && document.getElementById('workerCardOverlay').classList.contains('open'));
+  const lp = await p.evaluate(async () => {
+    const el = document.querySelector('#workerCardModal div[style*="flex-direction:column"]');
+    const r = el.getBoundingClientRect(), o = {bubbles:true, pointerType:'touch', clientX:r.left + 5, clientY:r.top + 5};
+    el.dispatchEvent(new PointerEvent('pointerdown', o)); await new Promise(res => setTimeout(res, 250));
+    el.dispatchEvent(new PointerEvent('pointerup', o)); await new Promise(res => setTimeout(res, 400));
+    const shortTouch = document.getElementById('workerOverlay').classList.contains('open');
+    el.dispatchEvent(new PointerEvent('pointerdown', o)); await new Promise(res => setTimeout(res, 700));
+    const longTouch = document.getElementById('workerOverlay').classList.contains('open');
+    el.dispatchEvent(new PointerEvent('pointerup', o));
+    return {shortTouch, longTouch};
+  });
+  ok(bk0 && !lp.shortTouch && lp.longTouch, 'worker card: a click or short touch only reads, a long touch opens the edit form ' + JSON.stringify(lp));
+  await p.mouse.click(5, 450); await sleep(1200);
+  await p.evaluate(() => { closeModal('workerCardOverlay'); openWorkerCard(1); }); await sleep(400);
+  await p.dblclick(cardSpot, {position:{x:5, y:5}}); await sleep(400);
   const bk1 = await p.evaluate(() => document.getElementById('workerOverlay').classList.contains('open'));
   await p.evaluate(() => { document.getElementById('wNotes').value = 'back-to-card'; });
   await p.mouse.click(5, 450); await sleep(1200);
   const bk = await p.evaluate(() => ({edit: document.getElementById('workerOverlay').classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open'), notes: workers[1].notes}));
   await p.mouse.click(5, 450); await sleep(300);
-  ok(bk1 && !bk.edit && bk.card && bk.notes === 'back-to-card', 'worker card: the edit form saves on close and goes back to the card ' + JSON.stringify(bk));
+  ok(bk1 && !bk.edit && bk.card && bk.notes === 'back-to-card', 'worker card: a double click edits; the form saves on close and goes back to the card ' + JSON.stringify(bk));
   ok(external.filter(u=>/script\.google\.com/.test(u)).length === 0, 'no request to script.google.com');
   ok(p.errs.length === 0, 'owner: no page errors ' + p.errs.join(' | '));
   await ctx.close();

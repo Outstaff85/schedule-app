@@ -3998,10 +3998,11 @@ function openWorkerCard(wi){
       ${hasPermission('workers')&&hasPermission('exports')?`<button class="btn sm" onclick="openHoursExportModal('${w.id}')"><i class="ti ti-file-export"></i> ${tr('Export hours')}</button>`:''}
     </div>`;
   pageWorkerDocs(document.getElementById('workerCardModal'),w.id);
-  // A tap on the card (not on one of its buttons or links) opens the edit form.
+  // A long press (phone) or a double click (mouse) on the card — not on one of
+  // its buttons or links — opens the edit form; a plain tap only reads.
   const cm=document.getElementById('workerCardModal');
-  cm.classList.add('tap-edit');
-  cm.onclick=e=>{ if(isPlainTap(e,cm)){ closeModal('workerCardOverlay'); openEditWorker(wi); __wBackToCard=w.id; } };
+  cm.insertAdjacentHTML('beforeend',`<div style="font-size:11px;color:var(--text3);text-align:center;margin-top:10px"><i class="ti ti-pencil"></i> ${esc(tr('Hold (phone) or double-click (computer) to edit'))}</div>`);
+  onEditGesture(cm,()=>{ closeModal('workerCardOverlay'); openEditWorker(wi); __wBackToCard=w.id; });
   document.getElementById('workerCardOverlay').classList.add('open');
 }
 
@@ -4613,6 +4614,36 @@ function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 // control inside it (a button, link, field, or anything with its own onclick)
 // does that control's job instead, and selecting text doesn't count. The
 // same code is in schedule-manager.html and supplier-portal.html.
+// Edit gesture for a card that is read first (the worker card; user request
+// 2026-10-11): a long press on a touch screen (LONG_PRESS_MS, cancelled by a
+// move or scroll) or a double click with the mouse calls fn — not when it
+// starts on a button, link, field or anything with its own onclick. After a
+// long press the click that follows the finger's release is swallowed, so it
+// cannot land on the form that has just opened (or its backdrop).
+const LONG_PRESS_MS=500;
+function onEditGesture(el, fn){
+  const plain=e=>{ for(let n=e.target;n&&n!==el;n=n.parentElement){ if(/^(BUTTON|A|INPUT|SELECT|TEXTAREA|LABEL)$/.test(n.tagName)||n.hasAttribute('onclick')) return false; } return true; };
+  const clearSel=()=>{ try{ window.getSelection().removeAllRanges(); }catch(_){} };
+  el.onclick=null;
+  el.ondblclick=e=>{ if(plain(e)){ clearSel(); fn(); } };
+  let timer=null, x=0, y=0, pressing=false;
+  const stop=()=>{ clearTimeout(timer); timer=null; pressing=false; };
+  el.onpointerdown=e=>{
+    if(e.pointerType==='mouse'||!plain(e)) return;
+    stop(); pressing=true; x=e.clientX; y=e.clientY;
+    timer=setTimeout(()=>{
+      timer=null; clearSel();
+      const swallow=ev=>{ ev.stopPropagation(); ev.preventDefault(); };
+      document.addEventListener('click',swallow,{capture:true,once:true});
+      setTimeout(()=>document.removeEventListener('click',swallow,true),800);
+      try{ navigator.vibrate&&navigator.vibrate(15); }catch(_){}
+      fn();
+    },LONG_PRESS_MS);
+  };
+  el.onpointermove=e=>{ if(timer&&Math.hypot(e.clientX-x,e.clientY-y)>10) stop(); };
+  el.onpointerup=el.onpointercancel=stop;
+  el.oncontextmenu=e=>{ if(pressing) e.preventDefault(); };  // no long-press menu on the card
+}
 function isPlainTap(e,container){
   if(String((window.getSelection&&window.getSelection())||'')) return false;
   for(let n=e.target;n&&n!==container;n=n.parentElement){
