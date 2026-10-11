@@ -278,10 +278,17 @@
   .sal-line .c-t{font-size:13px;font-weight:700}
   .sal-chev{color:var(--text3);font-size:14px;transition:transform .15s}
   .sal-row.open .sal-chev{transform:rotate(180deg)}
-  .sal-det{display:none;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px 14px;padding:2px 12px 10px 44px;font-size:12px}
+  .sal-det{display:none;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 18px;padding:0 12px 10px 44px;font-size:12px}
   .sal-row.open .sal-det{display:grid}
-  .sal-det span{display:block;color:var(--text3);font-size:11px}
-  .sal-det b{font-weight:600;color:var(--text)}
+  .sal-det>div{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:1px dashed var(--border)}
+  .sal-det span{color:var(--text3);font-size:12px;white-space:nowrap}
+  .sal-det b{font-weight:600;color:var(--text);text-align:right}
+  .acc-click{cursor:pointer}
+  .acc-click:hover{background:rgba(255,255,255,0.03)}
+  .acc-det-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+  .acc-det-row .n{flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .acc-det-row .h{color:var(--text2);min-width:56px;text-align:right}
+  .acc-det-row .m{min-width:70px;text-align:right;font-weight:700;color:var(--green)}
   .salary-ro input,.salary-ro select{pointer-events:none;opacity:.85}
   .acc-help{background:none;border:none;color:var(--text3);cursor:pointer;padding:2px;font-size:15px;line-height:1;display:inline-flex}
   .acc-help:hover{color:var(--blue)}
@@ -1094,6 +1101,9 @@ html[lang="he"] *{letter-spacing:normal !important;}
 <!-- Modals -->
 <div class="overlay" id="payOverlay">
   <div class="modal" id="payModal" style="width:460px"></div>
+</div>
+<div class="overlay" id="accDetailOverlay">
+  <div class="modal" id="accDetailModal" style="width:460px"></div>
 </div>
 <div class="overlay" id="accHelpOverlay">
   <div class="modal" id="accHelpModal" style="width:460px"></div>
@@ -7281,7 +7291,35 @@ function commissionFor(w, e, hourRate, dayRate){
 // Only the suppliers with hours and something payable this period; workers
 // without a supplier are left out, and with no row the section is hidden
 // (user request 2026-10-11).
+// A tap on a "Payable by supplier" or "Billable by client" row: a window with
+// the workers behind the sum (the same figures, never a second calculation).
+let __lastPayEntries=[];
+function openAccDetail(title, sub, rows, total){
+  document.getElementById('accDetailModal').innerHTML=`<div class="modal-title">${title}</div>
+    <div style="font-size:12px;color:var(--text2);margin:-6px 0 10px">${esc(sub)}</div>
+    <div class="paged-accDetail"></div>
+    <div class="acc-det-row" style="border-bottom:0;font-weight:700"><span class="n">${esc(tr('Total'))}</span><span class="h">${esc(total.h)}</span><span class="m">${esc(total.m)}</span></div>`;
+  renderPagedList(document.querySelector('#accDetailModal .paged-accDetail'),'accDetail',title,rows,r=>`<div class="acc-det-row"><span class="n">${esc(r.n)}</span><span class="h">${esc(r.h)}</span><span class="m">${esc(r.m)}</span></div>`);
+  document.getElementById('accDetailOverlay').classList.add('open');
+}
+function openSupplierPayDetail(sid){
+  const sup=suppliers.find(s=>s.id===sid); if(!sup) return;
+  const list=__lastPayEntries.map(e=>({e,wc:workers.find(w=>w.id===e.workerId)})).filter(x=>x.wc&&x.wc.supplierId===sid);
+  const rows=list.map(({e,wc})=>({n:e.worker,h:tr('{h}h',{h:e.hours.toFixed(1)}),v:commissionFor(wc,e,supplierCommissionRate(wc,sid),supplierDayCommission(wc,sid)),hrs:e.hours}))
+    .sort((a,b)=>b.v-a.v).map(r=>({...r,m:'₪'+r.v.toFixed(0)}));
+  openAccDetail(`<i class="ti ti-truck-delivery" style="color:${sup.color}"></i> ${esc(sup.name)}`, tr('Payable by supplier')+' · '+salaryPeriodLabel((document.getElementById('salaryPeriod')||{}).value||'week'), rows,
+    {h:tr('{h}h',{h:rows.reduce((t,r)=>t+r.hrs,0).toFixed(1)}), m:'₪'+rows.reduce((t,r)=>t+r.v,0).toFixed(0)});
+}
+function openClientBillDetail(cid){
+  const cl=clients.find(c=>c.id===cid); if(!cl) return;
+  const bill=(__lastClientBillEntries||[]).find(x=>x.clientId===cid)||{hours:0,total:0};
+  const rows=__lastPayEntries.filter(e=>(e.clientHours||{})[cid]>0).map(e=>({n:e.worker,hrs:e.clientHours[cid]}))
+    .sort((a,b)=>b.hrs-a.hrs).map(r=>({...r,h:tr('{h}h',{h:r.hrs.toFixed(1)}),m:''}));
+  openAccDetail(`<i class="ti ti-building-store" style="color:${cl.color}"></i> ${esc(cl.name)}`, tr('Billable by client')+' · '+salaryPeriodLabel((document.getElementById('salaryPeriod')||{}).value||'week')+' · '+(cl.rateMode==='fixed'?tr('Fixed'):tr('Tiered')), rows,
+    {h:tr('{h}h',{h:bill.hours.toFixed(1)}), m:bill.total>0?'₪'+bill.total.toFixed(0):'—'});
+}
 function renderSupplierPayable(entries){
+  __lastPayEntries=entries;
   const wrap=document.getElementById('supplierPayableWrap');
   if(!wrap) return;
   const sec=document.getElementById('accSecPayable');
@@ -7308,7 +7346,7 @@ function renderSupplierPayable(entries){
     </div>
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-      <table style="width:100%;border-collapse:collapse;min-width:420px">
+      <table style="width:100%;border-collapse:collapse">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
             <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">${tr('Supplier')}</th>
@@ -7320,7 +7358,7 @@ function renderSupplierPayable(entries){
       </table>
       </div>
     </div>`;
-  renderPagedList(wrap.querySelector('.paged-supplierPayable'),'supplierPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
+  renderPagedList(wrap.querySelector('.paged-supplierPayable'),'supplierPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr class="acc-click" onclick="openSupplierPayDetail('${esc(r.sup.id)}')" style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
             <td style="padding:10px 12px;font-size:13px;font-weight:600"><span style="color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></span> ${esc(r.sup.name)}</td>
             <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${tr('{h}h',{h:r.hours.toFixed(1)})}</td>
             <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${r.total>0?'var(--green)':'var(--text3)'}">${r.total>0?'₪'+r.total.toFixed(0):'—'}</td>
@@ -7487,7 +7525,7 @@ function renderClientBillable(entries){
   wrap.innerHTML=`
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-      <table style="width:100%;border-collapse:collapse;min-width:420px">
+      <table style="width:100%;border-collapse:collapse">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
             <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">${tr('Client')}</th>
@@ -7500,7 +7538,7 @@ function renderClientBillable(entries){
       </table>
       </div>
     </div>`;
-  renderPagedList(wrap.querySelector('.paged-clientBillable'),'clientBillable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
+  renderPagedList(wrap.querySelector('.paged-clientBillable'),'clientBillable',(document.getElementById('salaryPeriod')||{}).value||'',rows,(r,i)=>`<tr class="acc-click" onclick="openClientBillDetail('${esc(r.cl.id)}')" style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
             <td style="padding:10px 12px;font-size:13px;font-weight:600"><span style="color:${r.cl.color}"><i class="ti ti-building-store"></i></span> ${esc(r.cl.name)}</td>
             <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${tr('{h}h',{h:r.hours.toFixed(1)})}</td>
             <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${r.cl.rateMode==='fixed'?tr('Fixed'):tr('Tiered')}</td>
