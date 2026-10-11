@@ -583,6 +583,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await login(p, BASE + 'schedule-manager.html', 'boss', 'boss-pass-1');
   await p.waitForNavigation().catch(()=>{});
   ok(await waitFor(p, () => document.getElementById('firmsScreen').style.display === 'block' && __firmsCache.length === 2), 'boss: firms list (listTenants)');
+  // The firms list: no pencil, a corner ✕; a double click edits; a single click switches (below).
+  const fl = await p.evaluate(async () => {
+    const row = document.querySelector('#firmsList .row.tap-edit');
+    const out = {pencil: !!document.querySelector('#firmsList .ti-pencil'), del: !!(row && row.querySelector('.wcard-del')), trash: !!document.querySelector('#firmsList .ti-trash')};
+    row.dispatchEvent(new MouseEvent('click', {bubbles: true, detail: 2})); await new Promise(r => setTimeout(r, 200));
+    out.edit = document.getElementById('editFirmOverlay').classList.contains('open'); closeModal('editFirmOverlay');
+    return out;
+  });
+  ok(!fl.pencil && fl.del && !fl.trash && fl.edit, 'firms: no pencil or trash, a corner ✕, a double click edits ' + JSON.stringify(fl));
   await p.evaluate(() => switchToTenant('tenant-one'));
   await p.waitForNavigation().catch(()=>{});
   ok(await waitFor(p, () => workers.length === 2), 'boss: viewing Firm One');

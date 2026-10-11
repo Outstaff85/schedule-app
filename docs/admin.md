@@ -68,11 +68,11 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
 
 - **List:** `renderFirmsList('adminFirmsList')` — the same function draws the super-admin's landing screen (`#firmsList`).
   - It draws the cached list first (`localStorage.firmsCache_v1`), then `listTenants`.
-  - A row shows the name, "disabled", "profile incomplete" (`firmProfileMissing(t)`), worker and client counts, and the last save. Clicking a row → `switchToTenant()`.
+  - A row shows the name, "disabled", "profile incomplete" (`firmProfileMissing(t)`), worker and client counts, and the last save. A tap on a row → `switchToTenant()`; a double click (computer) or a long press (phone) → `openEditFirmForm` (no pencil button); a ✕ in the row's top corner (`.wcard-del`) → delete.
   - Row actions:
-    - edit (`openEditFirmForm`);
-    - enable / disable (`toggleTenantActive` → `setTenantActive`);
-    - delete (`confirmDeleteTenant` — confirm, then type the exact firm name → `deleteTenant`: the firm's data, its logins and every worker file in Storage).
+    - edit (`openEditFirmForm`, by double click / long press);
+    - enable / disable (`toggleTenantActive` → `setTenantActive`, the button at the right);
+    - delete (the corner ✕, `confirmDeleteTenant` — confirm, then type the exact firm name → `deleteTenant`: the firm's data, its logins and every worker file in Storage).
 - **Firm form** (`#editFirmOverlay`, one modal, `__firmFormMode`):
   - fields: company name, deductions file number, phone, street, street number, city;
   - Create (`openCreateFirmForm`) also asks for the owner's username and password → `createUser`;

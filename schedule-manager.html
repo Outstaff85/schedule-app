@@ -5253,15 +5253,14 @@ function renderFirmsRows(listEl, tenants){
   __firmsCache = tenants;
   if(!tenants.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">'+tr('No firms yet — create the first one.')+'</div>'; return; }
   renderPagedList(listEl, 'firms:' + listEl.id, '', tenants, t => `
-      <div class="row" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);cursor:pointer;${t.active===false?'opacity:0.55':''}" onclick="switchToTenant('${esc(t.tenantId)}')">
+      <div class="row tap-edit" style="position:relative;display:flex;align-items:center;justify-content:space-between;padding:12px 30px 12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);cursor:pointer;${t.active===false?'opacity:0.55':''}" onclick="tapEdit(event,this,()=>switchToTenant('${esc(t.tenantId)}'),()=>openEditFirmForm('${esc(t.tenantId)}'))" onpointerdown="longPress(event,this,()=>openEditFirmForm('${esc(t.tenantId)}'))">
+        <button class="wcard-del" type="button" title="${tr('Delete')}" aria-label="${tr('Delete')}" onclick="event.stopPropagation();confirmDeleteTenant('${esc(t.tenantId)}','${esc(t.companyName||t.tenantId)}')">✕</button>
         <div>
           <div style="font-weight:600">${esc(t.companyName || '(no name)')}${t.active===false?' <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px">'+tr('disabled')+'</span>':''}${firmProfileMissing(t).length?` <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px" title="${tr('Not filled in: {0}',{0:(esc(firmProfileMissing(t).join(', ')))})}">${tr('profile incomplete')}</span>`:''}</div>
           <div style="font-size:12px;color:var(--text2)">${tr('{0} workers · {1} clients{2}',{0:(t.workerCount||0),1:(t.clientCount||0),2:(t.savedAt?' · saved '+esc(new Date(t.savedAt).toLocaleString()):'')})}</div>
         </div>
         <div style="display:flex;align-items:center;gap:4px" onclick="event.stopPropagation()">
-          <button class="btn sm" onclick="openEditFirmForm('${esc(t.tenantId)}')" title="${tr('Edit')}"><i class="ti ti-pencil"></i></button>
           <button class="btn sm" onclick="toggleTenantActive('${esc(t.tenantId)}',${t.active===false})" title="${t.active===false?'Enable':'Disable'}"><i class="ti ti-${t.active===false?'player-play':'player-pause'}"></i></button>
-          <button class="btn sm" onclick="confirmDeleteTenant('${esc(t.tenantId)}','${esc(t.companyName||t.tenantId)}')" title="${tr('Delete')}" style="color:#ff6b78"><i class="ti ti-trash"></i></button>
           <i class="ti ti-chevron-right"></i>
         </div>
       </div>`);
