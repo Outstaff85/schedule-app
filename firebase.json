@@ -79,6 +79,14 @@
             "value": "no-cache, must-revalidate"
           }
         ]
+      },      {
+        "source": "/client",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, must-revalidate"
+          }
+        ]
       },
       {
         "source": "/",
@@ -111,6 +119,10 @@
       {
         "source": "/supplier",
         "destination": "/supplier-portal.html"
+      },
+      {
+        "source": "/client",
+        "destination": "/client-portal.html"
       }
     ]
   },

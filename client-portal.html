@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f1117">
+<link rel="icon" href="icon-192.png" type="image/png">
+<title>Client Portal</title>
+<link rel="stylesheet" href="icons/tabler-icons.css">
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+/* Client Portal (/client) — a separate page, like the supplier portal: a
+   client login must never see wages, rates, suppliers, GPS or documents, so
+   it never reads Firestore; the client function (functions-auth/portal.py
+   client_action) hands out only its own workers' shifts at its site.
+   docs/client-portal.md. */
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+:root{
+  --bg:#0f1117;--bg2:#181c27;--bg3:#1e2333;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#eef0f8;--text2:#7c84a0;--text3:#3a4060;
+  --green:#6dd6a0;--green-bg:rgba(109,214,160,0.12);
+  --red:#ff4f5e;--red-bg:rgba(255,79,94,0.12);
+  --amber:#f5a623;--amber-bg:rgba(245,166,35,0.12);
+  --accent:#4f8ef7;--radius:12px;--radius-sm:8px;
+}
+html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:'DM Sans',-apple-system,sans-serif;}
+body{padding-bottom:40px;}
+.btn{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:inherit;}
+.btn.sm{padding:5px 10px;font-size:12px;}
+.btn.accent{background:var(--accent);border-color:var(--accent);color:#fff;}
+.btn.green{background:var(--green-bg);border-color:rgba(109,214,160,0.35);color:var(--green);}
+.btn:disabled{opacity:.5;cursor:default;}
+.field{margin-bottom:12px;}
+.field label{display:block;font-size:11px;color:var(--text2);margin-bottom:4px;}
+.field input,.field textarea{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:8px 10px;font-size:13px;outline:none;font-family:inherit;}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:500;padding:16px;}
+.overlay.open{display:flex;}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:20px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto;}
+.modal-title{font-size:16px;font-weight:700;margin-bottom:14px;}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px;}
+.tabs{display:flex;gap:6px;padding:10px 16px;border-bottom:1px solid var(--border);overflow-x:auto;}
+.tab-btn{background:none;border:none;color:var(--text2);padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;border-radius:var(--radius-sm);white-space:nowrap;font-family:inherit;}
+.tab-btn.active{background:var(--bg3);color:var(--text);}
+.month-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;}
+.month-nav .m{font-size:16px;font-weight:700;text-transform:capitalize;flex:1;text-align:center;}
+.month-nav button{width:36px;height:36px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:18px;cursor:pointer;}
+.status{border-radius:var(--radius);padding:10px 14px;margin-bottom:12px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;}
+.status.pending{background:var(--bg2);border:1px solid var(--border2);}
+.status.approved{background:var(--green-bg);border:1px solid rgba(109,214,160,0.3);color:var(--green);}
+.status.disputed,.status.changed{background:var(--amber-bg);border:1px solid rgba(245,166,35,0.3);color:var(--amber);}
+.shift{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border);font-size:13px;}
+.shift .d{flex:1;}
+.shift .t{font-family:'DM Mono',ui-monospace,monospace;color:var(--text2);font-size:12px;}
+.shift .h{min-width:48px;text-align:right;font-weight:600;}
+.shift .dis{color:var(--amber);font-size:11px;width:100%;padding-left:2px;}
+.dispute-btn{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:2px 4px;}
+.dispute-btn.on{color:var(--amber);}
+.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%) translateY(8px);display:flex;align-items:center;gap:8px;max-width:min(340px,calc(100vw - 32px));box-sizing:border-box;background:var(--bg2,#181c27);border:1px solid var(--border2);border-left:3px solid var(--green);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:500;line-height:1.35;color:var(--text);box-shadow:0 6px 20px rgba(0,0,0,.35);z-index:999;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.toast i{font-size:16px;color:var(--green);flex-shrink:0;}
+.toast.warn{border-left-color:var(--amber);} .toast.warn i{color:var(--amber);}
+.toast.err{border-left-color:var(--red);} .toast.err i{color:var(--red);}
+.toast.info{border-left-color:var(--blue,#60a5fa);} .toast.info i{color:var(--blue,#60a5fa);}
+table{width:100%;border-collapse:collapse;}
+th,td{padding:7px 8px;text-align:left;font-size:12px;border-bottom:1px solid var(--border);}
+th{color:var(--text2);font-size:11px;}
+.lang-select.on-cover{position:absolute;top:max(env(safe-area-inset-top,0px),12px);right:12px;z-index:2;}
+.lang-select{background:var(--bg3);color:var(--text2);border:1px solid var(--border);border-radius:8px;padding:4px 6px;font:600 12px/1 inherit;cursor:pointer;width:auto;min-width:0;}
+html[lang="he"] *{letter-spacing:normal !important;}
+</style>
+</head>
+<body>
+
+<div id="loginScreen" style="display:flex;position:fixed;inset:0;z-index:1000;background:var(--bg);align-items:center;justify-content:center">
+  <select class="lang-select on-cover" id="langSelect" title="Language" data-i18n-title="Language" aria-label="Language" onchange="setLanguage(this.value)"><option value="en">EN</option><option value="he">HE</option><option value="ru">RU</option></select>
+  <div style="width:100%;max-width:340px;padding:24px">
+    <div style="text-align:center;margin-bottom:22px">
+      <i class="ti ti-building-store" style="font-size:32px;color:var(--accent)"></i>
+      <div style="font-size:18px;font-weight:700;margin-top:8px" data-i18n>Client Portal</div>
+    </div>
+    <div class="field"><label data-i18n>Username</label><input type="text" id="loginUsername" autocomplete="username"></div>
+    <div class="field"><label data-i18n>Password</label><input type="password" id="loginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogin()"></div>
+    <div id="loginError" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px"></div>
+    <button class="btn accent" style="width:100%;justify-content:center" onclick="submitLogin()" data-i18n>Log in</button>
+  </div>
+</div>
+
+<div id="appRoot" style="display:none">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 16px;border-bottom:1px solid var(--border)">
+    <div style="min-width:0">
+      <div style="font-size:16px;font-weight:700"><i class="ti ti-building-store"></i> <span data-i18n>Client Portal</span></div>
+      <div id="clientName" style="font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+    </div>
+    <div id="headerActions" style="display:flex;gap:6px;align-items:center">
+      <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i> <span data-i18n>Log out</span></button>
+    </div>
+  </div>
+  <div class="tabs" id="tabsBar">
+    <button class="tab-btn" id="tabBtn_hours" onclick="switchTab('hours')" data-i18n>Hours</button>
+    <button class="tab-btn" id="tabBtn_schedule" onclick="switchTab('schedule')" data-i18n>Schedule</button>
+  </div>
+  <div style="padding:16px;max-width:760px;margin:0 auto">
+    <div class="month-nav">
+      <button type="button" onclick="shiftMonth(-1)" aria-label="Previous month" data-i18n-title="Previous month">‹</button>
+      <div class="m" id="monthLabel"></div>
+      <button type="button" id="nextMonthBtn" onclick="shiftMonth(1)" aria-label="Next month" data-i18n-title="Next month">›</button>
+    </div>
+    <div id="sectionHours" style="display:none"></div>
+    <div id="sectionSchedule" style="display:none"></div>
+  </div>
+</div>
+
+<div class="overlay" id="disputeOverlay"><div class="modal" id="disputeModal"></div></div>
+<div id="toast" class="toast"></div>
+
+<script>
+// ── Shared helpers duplicated on purpose from the other pages (CLAUDE.md →
+// Duplicated on purpose; keep the copies the same).
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function localYMD(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+// ── Translations (the same core as schedule-manager.html: I18N_LANGS, tr,
+// applyI18n, uiLocale, loadI18n — keep the copies the same; docs/translations.md).
+// The language is this device's choice (the language select, English by
+// default), kept in localStorage.uiLang — shared by the three pages.
+const I18N_LANGS = {en:'English', he:'עברית', ru:'Русский'};
+var I18N = {}, I18N_LANG = 'en';
+function tr(s, params){
+  let out = (I18N_LANG !== 'en' && I18N[s]) || s;
+  if(params) out = out.replace(/\{(\w+)\}/g, (m, k) => params[k] != null ? params[k] : m);
+  return out;
+}
+function applyI18n(root){
+  const host = root || document;
+  const keyOf = (el, attr) => { const k = '__i18n_' + attr; if(el[k] == null) el[k] = attr === 'text' ? (el.getAttribute('data-i18n') || el.textContent.trim()) : el.getAttribute('data-i18n-' + attr); return el[k]; };
+  host.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = tr(keyOf(el, 'text')); });
+  host.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = tr(keyOf(el, 'placeholder')); });
+  host.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = tr(keyOf(el, 'title')); });
+}
+function uiLocale(){ return {he:'he-IL', ru:'ru-RU'}[I18N_LANG] || 'en-GB'; }
+async function loadI18n(lang){
+  const set = (l, d) => { I18N_LANG = l; I18N = d || {}; document.documentElement.lang = l; };
+  if(!I18N_LANGS[lang] || lang === 'en'){ set('en', {}); return; }
+  let cached = null;
+  try{ cached = JSON.parse(localStorage.getItem('i18n_' + lang) || 'null'); }catch(e){}
+  if(cached) set(lang, cached);
+  const fresh = fetch('i18n/' + lang + '.json', {cache:'no-cache'}).then(r => r.ok ? r.json() : null).then(d => {
+    if(!d || typeof d !== 'object') return false;
+    const changed = JSON.stringify(d) !== JSON.stringify(cached);
+    try{ localStorage.setItem('i18n_' + lang, JSON.stringify(d)); }catch(e){}
+    if(I18N_LANG === lang || !cached) set(lang, d);
+    return changed;
+  }).catch(() => false);
+  if(cached){ fresh.then(ch => { if(ch && I18N_LANG === lang) redrawForLanguage(); }); return; }
+  await fresh;
+}
+function storedLanguage(){ try{ const l = localStorage.getItem('uiLang'); return I18N_LANGS[l] ? l : 'en'; }catch(e){ return 'en'; } }
+// The language select (one per page, #langSelect): keeps the choice on this device and redraws in it;
+// a signed-in user's choice is also saved to their account (updateMyLanguage), and login brings it back on any device.
+async function setLanguage(lang, opts){
+  lang = I18N_LANGS[lang] ? lang : 'en';
+  try{ localStorage.setItem('uiLang', lang); }catch(e){}
+  if(!(opts && opts.save === false) && getSession()){
+    loadFirestoreBackend().then(b => b.handleAction('updateMyLanguage', {action:'updateMyLanguage', language: lang}, {})).catch(()=>{});
+  }
+  try{ await loadI18n(lang); }catch(e){}
+  redrawForLanguage();
+}
+// The one language select sits in the header, or on the login screen while that one is shown.
+function placeLangSelect(){
+  const sel = document.getElementById('langSelect'); if(!sel) return;
+  const login = document.getElementById('loginScreen');
+  const onLogin = login && login.style.display !== 'none';
+  const host = onLogin ? login : document.getElementById('headerActions');
+  sel.classList.toggle('on-cover', !!onLogin);
+  if(host && sel.parentNode !== host) host.prepend(sel);
+}
+function syncLangSelects(){ document.querySelectorAll('select.lang-select').forEach(el => { el.value = I18N_LANG; }); }
+function redrawForLanguage(){
+  applyI18n(); syncLangSelects();
+  if(document.getElementById('appRoot').style.display !== 'none') render();
+}
+// SheetJS (Excel read and write, ~900 KB) is loaded only when an Excel
+// export or import needs it, not with the page. Same code in
+// schedule-manager.html and supplier-portal.html.
+let __xlsxLoading = null;
+function loadXlsx(){
+  if(typeof XLSX !== 'undefined') return Promise.resolve();
+  return __xlsxLoading || (__xlsxLoading = new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    sc.onload = () => res();
+    sc.onerror = () => { __xlsxLoading = null; sc.remove(); rej(new Error(tr('Excel library not loaded'))); };
+    document.head.appendChild(sc);
+  }));
+}
+
+// Toast (the same in all three pages): small, an icon and a coloured edge by
+// its kind, guessed from the text — error, ongoing (ends with …), warning,
+// else done.
+const TOAST_ICONS={ok:'ti-circle-check',warn:'ti-alert-triangle',err:'ti-alert-circle',info:'ti-info-circle'};
+function toastKind(t){
+  if(/fail|error|could not|couldn't|not saved|denied|refused|invalid|נכשל|שגיאה|לא נשמר|לא ניתן/i.test(t)) return 'err';
+  if(/(…|\.\.\.)\s*$/.test(t)) return 'info';
+  if(/⚠|warn|check|empty|missing|not found|בדקו|ריק|חסר|לא נמצא/i.test(t)) return 'warn';
+  return 'ok';
+}
+function showToast(msg,dur){
+  const t=document.getElementById('toast'), text=String(msg), k=toastKind(text);
+  t.className='toast show '+k; t.innerHTML='<i class="ti '+TOAST_ICONS[k]+'"></i><span></span>'; t.lastChild.textContent=text;
+  clearTimeout(t.__hide); t.__hide=setTimeout(()=>t.classList.remove('show'),dur||2500);
+}
+// ── New version check (2026-10-04; the same code in schedule-manager.html,
+// worker-punch.html and supplier-portal.html). An app left open — a PWA in
+// the background — keeps running the code it loaded, even after a deploy.
+// When the page comes back to the screen, and every 30 min while it is
+// shown, the files it runs are asked for their ETag (HEAD: the service
+// worker only handles GET, and cache:'no-store' skips the HTTP cache). The
+// first answer is the baseline; a changed ETag later means a deploy, and a
+// bar offers to reload. Nothing reloads on its own (typed data stays).
+function startVersionWatch(files){
+  let base=null, shown=false;
+  const tags=async()=>{
+    const out={};
+    for(const f of files()){
+      const r=await fetch(f,{method:'HEAD',cache:'no-store'});
+      if(!r.ok) return null;
+      out[f]=r.headers.get('etag')||r.headers.get('last-modified')||'';
+    }
+    return out;
+  };
+  const check=async()=>{
+    if(shown||document.visibilityState!=='visible'||navigator.onLine===false) return;
+    try{
+      const t=await tags(); if(!t) return;
+      if(!base){ base=t; return; }
+      for(const f in t){ if(!(f in base)){ base[f]=t[f]; continue; } if(t[f]&&base[f]&&t[f]!==base[f]){ shown=true; showNewVersionBar(); return; } }
+    }catch(e){}
+  };
+  document.addEventListener('visibilitychange',check);
+  setInterval(check,30*60*1000);
+  check();
+}
+function showNewVersionBar(){
+  if(document.getElementById('newVersionBar')) return;
+  document.body.insertAdjacentHTML('beforeend',`<div id="newVersionBar" style="position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:100000;display:flex;align-items:center;gap:10px;max-width:calc(100% - 32px);box-sizing:border-box;padding:10px 12px 10px 16px;border-radius:12px;background:#1f6feb;color:#fff;font:600 14px/1.3 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.35)">
+    <span>${tr('A new version is available')}</span>
+    <button type="button" onclick="location.reload()" style="border:0;border-radius:8px;padding:6px 12px;background:#fff;color:#1f6feb;font:inherit;cursor:pointer">${tr('Update')}</button>
+    <button type="button" aria-label="${tr('Close')}" onclick="this.parentElement.remove()" style="border:0;background:none;color:#fff;font:inherit;font-size:18px;cursor:pointer;padding:0 4px">✕</button></div>`);
+}
+startVersionWatch(()=>[location.pathname,'firestore-backend.js']);
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+// Every modal closes on a tap anywhere outside it — on the dark backdrop,
+// including where the card or row that opened it was (per user request
+// 2026-10-04, for every modal; modals have no ✕ and no Cancel button). Only
+// when the press also started on the backdrop, so a drag that starts inside
+// the modal (selecting text, moving a map pin) and ends outside doesn't close
+// it. The topmost open overlay is the one under the tap, so a modal over
+// another closes alone. An overlay whose closing must undo something sets
+// overlay.__onUserClose (e.g. the client billing-rate popup reverts the rate
+// mode); otherwise closeModal(id). The same code is in schedule-manager.html
+// and supplier-portal.html.
+let _overlayDownOn=null;
+document.addEventListener('pointerdown',e=>{ _overlayDownOn=e.target; },true);
+document.addEventListener('click',e=>{
+  const t=e.target;
+  if(!(t&&t.classList&&t.classList.contains('overlay')&&t.classList.contains('open')&&_overlayDownOn===t&&t.id)) return;
+  if(typeof t.__onUserClose==='function') t.__onUserClose(); else closeModal(t.id);
+});
+
+
+// Same shift-pairing logic as schedule-manager.html's own
+// groupPunchesIntoShifts()/analyzeDayPunches() — duplicated here rather than
+// imported (no shared build in this codebase).
+function groupPunchesIntoShifts(entries){
+  const chrono=[...entries].sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+  const buckets=[]; let cur=null;
+  chrono.forEach(e=>{
+    if(e.type==='in'){ if(cur) buckets.push(cur); cur={date:new Date(e.ts),entries:[e]}; }
+    else { if(!cur) cur={date:new Date(e.ts),entries:[]}; cur.entries.push(e); buckets.push(cur); cur=null; }
+  });
+  if(cur) buckets.push(cur);
+  return buckets;
+}
+function toMins(t){ if(!t) return 0; const [h,m]=t.split(':').map(Number); return h*60+(m||0); }
+function roundMins(m){ return m; }
+function analyzeDayPunches(entries,date){
+  const chrono=[...entries].sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+  let hours=0, openIn=null; const warnings=[];
+  chrono.forEach(e=>{
+    if(e.type==='in'){ openIn=e; }
+    else if(e.type==='out'){
+      if(!openIn) return;
+      if(!openIn.time||!e.time){ openIn=null; return; }
+      let dur=toMins(e.time)-toMins(openIn.time); if(dur<0) dur+=1440;
+      hours+=dur/60; openIn=null;
+    }
+  });
+  return {hours,warnings};
+}
+
+
+// ── Session (own key: never shares another page's login) ─────────────────────
+const SESSION_KEY = 'clientPortal_session';
+function getSession(){
+  try{
+    const s = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+    if(!s || !s.uid || s.role !== 'client'){ localStorage.removeItem(SESSION_KEY); return null; }
+    return s;
+  }catch(e){ return null; }
+}
+function saveSession(s){ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
+async function logout(){
+  localStorage.removeItem(SESSION_KEY);
+  try{ await (await loadFirestoreBackend()).signOut(); }catch(e){}
+  location.reload();
+}
+
+// ── Backend: the login function signs the device in (firestore-backend.js);
+// every data call goes to the client function with the Firebase ID token.
+const CLIENT_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/client';
+let __fsBackend = null;
+function loadFirestoreBackend(){
+  if(__fsBackend) return __fsBackend;
+  __fsBackend = new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = 'firestore-backend.js';
+    el.onload = () => window.initFirestoreBackend().then(resolve, reject);
+    el.onerror = () => reject(new Error('firestore-backend.js failed to load'));
+    document.head.appendChild(el);
+  }).catch(e => { __fsBackend = null; throw e; });
+  return __fsBackend;
+}
+loadFirestoreBackend().catch(e => console.warn('Firestore backend:', e));
+loadFirestoreBackend().catch(e => console.warn('Firestore backend:', e));
+async function clientCall(body){
+  const idToken = await (await loadFirestoreBackend()).idToken();
+  const res = await fetch(CLIENT_FN_URL, {method:'POST',
+    headers:{'Content-Type':'application/json', Authorization:'Bearer ' + idToken}, body: JSON.stringify(body)});
+  return res.json();
+}
+async function submitLogin(){
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  if(!username || !password){ errEl.textContent = tr('Enter username and password'); return; }
+  try{
+    const b = await loadFirestoreBackend();
+    const json = await b.login(username, password);
+    if(json.error){ errEl.textContent = json.error; return; }
+    if(json.role !== 'client'){ await b.signOut(); errEl.textContent = tr('This login is not a client account'); return; }
+    saveSession({uid: json.uid, role: json.role, tenantId: json.tenantId, clientId: json.clientId, username: json.username});
+    if(json.language && json.language !== I18N_LANG) await setLanguage(json.language, {save:false});
+    gateApp();
+  }catch(e){ errEl.textContent = tr('Network error'); }
+}
+
+// ── State ────────────────────────────────────────────────────────────────────
+let __month = 0, __tab = 'hours', __data = null, __loading = false;
+function monthKey(){ const n = new Date(); return localYMD(new Date(n.getFullYear(), n.getMonth() + __month, 1)).slice(0, 7); }
+function can(p){ return !!(__data && (__data.perms || []).includes(p)); }
+function shiftMonth(n){ __month = Math.min(0, __month + n); load(); }
+function switchTab(t){ __tab = t; render(); }
+
+async function gateApp(){
+  const s = getSession();
+  document.getElementById('loginScreen').style.display = s ? 'none' : 'flex';
+  document.getElementById('appRoot').style.display = s ? '' : 'none';
+  placeLangSelect();
+  if(s) await load();
+}
+async function load(){
+  const key = monthKey();
+  __loading = true; render();
+  try{
+    const r = await clientCall({action:'load', month:key});
+    if(r.error){ showToast(r.error); if(/session|sign in|token/i.test(r.error)) logout(); return; }
+    if(key === monthKey()) __data = r;
+  }catch(e){ showToast(tr('Could not load — check the connection and try again.')); }
+  finally{ __loading = false; render(); }
+}
+
+// The month's shifts at this site, per worker, the same pairing as the app
+// (groupPunchesIntoShifts / analyzeDayPunches): punches of the month by ts.
+function monthShifts(){
+  if(!__data || !__data.punches) return [];
+  const [y, m] = __data.month.split('-').map(Number), from = new Date(y, m - 1, 1), to = new Date(y, m, 1);
+  const byW = {};
+  __data.punches.filter(e => { const d = new Date(e.ts); return d >= from && d < to; })
+    .forEach(e => { (byW[e.workerId] = byW[e.workerId] || []).push(e); });
+  const out = [];
+  Object.entries(byW).forEach(([wid, list]) => groupPunchesIntoShifts(list).forEach(b => {
+    const inE = b.entries.find(e => e.type === 'in'), outE = [...b.entries].reverse().find(e => e.type === 'out');
+    out.push({workerId: wid, day: localYMD(b.date), date: b.date, inT: inE && inE.time || '', outT: outE && outE.time || '',
+      hours: analyzeDayPunches(b.entries, b.date).hours});
+  }));
+  return out.sort((a, b) => a.date - b.date);
+}
+// What the client approves: one line per shift (worker | day | in | out); the
+// manager app builds the same lines to see a change after the approval.
+function snapshotOf(shifts){ return shifts.map(s => [s.workerId, s.day, s.inT, s.outT].join('|')).sort(); }
+function approvalState(shifts){
+  const a = (__data && __data.approval) || {status:'pending'};
+  if(a.status === 'approved' && snapshotOf(shifts).join('\n') !== (a.snapshot || []).slice().sort().join('\n')) return 'changed';
+  return a.status || 'pending';
+}
+
+// ── Draw ─────────────────────────────────────────────────────────────────────
+function render(){
+  const [y, m] = monthKey().split('-').map(Number);
+  document.getElementById('monthLabel').textContent = new Date(y, m - 1, 1).toLocaleDateString(uiLocale(), {month:'long', year:'numeric'});
+  const nb = document.getElementById('nextMonthBtn'); nb.disabled = __month >= 0; nb.style.opacity = __month >= 0 ? .3 : 1;
+  document.getElementById('clientName').textContent = __data ? [__data.client.name, __data.client.object].filter(Boolean).join(' · ') : '';
+  const showHours = !__data || can('hours'), showSched = !!__data && can('schedule');
+  if(!showHours && __tab === 'hours') __tab = 'schedule';
+  if(!showSched && __tab === 'schedule') __tab = 'hours';
+  document.getElementById('tabBtn_hours').style.display = showHours ? '' : 'none';
+  document.getElementById('tabBtn_schedule').style.display = showSched ? '' : 'none';
+  document.getElementById('tabsBar').style.display = showHours && showSched ? '' : 'none';
+  ['hours', 'schedule'].forEach(t => {
+    document.getElementById('tabBtn_' + t).classList.toggle('active', __tab === t);
+    document.getElementById('section' + t[0].toUpperCase() + t.slice(1)).style.display = __tab === t ? '' : 'none';
+  });
+  if(__tab === 'hours') renderHours(); else renderSchedule();
+}
+const msg = t => `<div style="text-align:center;padding:32px;color:var(--text3);font-size:14px">${esc(t)}</div>`;
+function workerName(id){ const w = (__data.workers || []).find(x => x.id === id); return w ? w.name : ''; }
+
+function renderHours(){
+  const el = document.getElementById('sectionHours');
+  if(!__data){ el.innerHTML = msg(__loading ? tr('Loading…') : ''); return; }
+  if(__data.month !== monthKey()){ el.innerHTML = msg(tr('Loading…')); return; }
+  const shifts = monthShifts();
+  const a = __data.approval || {status:'pending', disputes:{}};
+  const disputes = a.disputes || {};
+  const st = approvalState(shifts);
+  const when = a.approvedAt ? new Date(a.approvedAt).toLocaleString(uiLocale(), {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}) : '';
+  const stText = st === 'approved' ? tr('Approved by {name} · {when}', {name: a.approvedByName || '', when})
+    : st === 'changed' ? tr('The hours changed after your approval — please check and approve again.')
+    : st === 'disputed' ? tr('{n} day(s) disputed — the firm will check them.', {n: Object.keys(disputes).length})
+    : tr('Waiting for your approval');
+  const icon = st === 'approved' ? 'ti-circle-check' : st === 'pending' ? 'ti-clock' : 'ti-alert-triangle';
+  const approveBtn = can('approve') && shifts.length && st !== 'approved'
+    ? `<button class="btn sm green" onclick="approveMonth()"><i class="ti ti-check"></i> ${esc(tr('Approve the month'))}</button>` : '';
+  const exportBtn = can('export') && shifts.length
+    ? `<button class="btn sm" onclick="exportMonth()"><i class="ti ti-file-spreadsheet"></i> ${esc(tr('Export'))}</button>` : '';
+  if(!shifts.length){ el.innerHTML = msg(tr('No hours this month')); return; }
+  const byW = {};
+  shifts.forEach(s => { (byW[s.workerId] = byW[s.workerId] || []).push(s); });
+  const total = shifts.reduce((t, s) => t + s.hours, 0);
+  const cards = Object.keys(byW).sort((x, y) => workerName(x).localeCompare(workerName(y))).map(wid => {
+    const list = byW[wid], hrs = list.reduce((t, s) => t + s.hours, 0), days = new Set(list.map(s => s.day)).size;
+    const rows = list.map(s => {
+      const d = disputes[wid + '|' + s.day];
+      return `<div class="shift" style="flex-wrap:wrap">
+        <span class="d">${esc(s.date.toLocaleDateString(uiLocale(), {weekday:'short', day:'2-digit', month:'short'}))}</span>
+        <span class="t">${esc(s.inT || '--:--')} – ${esc(s.outT || '--:--')}</span>
+        <span class="h">${esc(tr('{h}h', {h: s.hours.toFixed(1)}))}</span>
+        ${can('dispute') ? `<button class="dispute-btn${d ? ' on' : ''}" title="${esc(tr('Dispute this day'))}" onclick="openDispute('${esc(wid)}','${s.day}')"><i class="ti ti-alert-triangle"></i></button>` : ''}
+        ${d ? `<div class="dis"><i class="ti ti-info-circle"></i> ${esc(d.comment)}${d.byName ? ' — ' + esc(d.byName) : ''}</div>` : ''}
+      </div>`;
+    }).join('');
+    return `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:4px">
+      <b>${esc(workerName(wid))}</b><span style="color:var(--text2);font-size:12px">${esc(days === 1 ? tr('1 day') : tr('{n} days', {n: days}))} · <b style="color:var(--text)">${esc(tr('{h}h', {h: hrs.toFixed(1)}))}</b></span></div>${rows}</div>`;
+  }).join('');
+  el.innerHTML = `<div class="status ${st}"><span><i class="ti ${icon}"></i> ${esc(stText)}</span><span style="display:flex;gap:6px">${exportBtn}${approveBtn}</span></div>
+    <div style="font-size:12px;color:var(--text2);margin:-4px 0 10px">${esc(tr('Total: {h}h', {h: total.toFixed(1)}))}</div>${cards}`;
+}
+
+async function approveMonth(){
+  const shifts = monthShifts();
+  if(!confirm(tr('Approve all the hours of this month?'))) return;
+  const r = await clientCall({action:'approve', month: __data.month, snapshot: snapshotOf(shifts)});
+  if(r.error){ showToast(r.error); return; }
+  __data.approval = r.approval; render(); showToast(tr('Approved — thank you'));
+}
+// A dispute window: no Save button — closing it (a tap outside) saves the
+// comment; an empty comment takes the dispute back.
+function openDispute(wid, day){
+  const d = ((__data.approval || {}).disputes || {})[wid + '|' + day];
+  const date = new Date(day + 'T12:00');
+  document.getElementById('disputeModal').innerHTML = `<div class="modal-title"><i class="ti ti-alert-triangle"></i> ${esc(tr('Dispute — {name}', {name: workerName(wid)}))}</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:10px">${esc(date.toLocaleDateString(uiLocale(), {weekday:'long', day:'numeric', month:'long'}))}</div>
+    <div class="field"><label>${esc(tr('What is wrong with this day?'))}</label><textarea id="disputeText" rows="4" placeholder="${esc(tr('e.g. left at 15:00, not 17:00'))}">${esc(d ? d.comment : '')}</textarea></div>
+    <div style="font-size:11px;color:var(--text3)">${esc(tr('Saved when you close this window. Empty = no dispute.'))}</div>`;
+  const ov = document.getElementById('disputeOverlay');
+  ov.__onUserClose = async () => {
+    const comment = document.getElementById('disputeText').value.trim();
+    closeModal('disputeOverlay');
+    if(comment === (d ? d.comment : '')) return;
+    const r = await clientCall({action:'dispute', month: __data.month, workerId: wid, date: day, comment});
+    if(r.error){ showToast(r.error); return; }
+    __data.approval = r.approval; render(); showToast(comment ? tr('Dispute sent') : tr('Dispute removed'));
+  };
+  ov.classList.add('open');
+  setTimeout(() => document.getElementById('disputeText').focus(), 50);
+}
+async function exportMonth(){
+  try{ await loadXlsx(); }catch(e){ showToast(e.message); return; }
+  const shifts = monthShifts();
+  const head = [tr('Worker'), tr('Date'), tr('In'), tr('Out'), tr('Hours')];
+  const rows = shifts.map(s => [workerName(s.workerId), s.date.toLocaleDateString('en-GB'), s.inT, s.outT, Math.round(s.hours * 100) / 100]);
+  rows.push([tr('Total'), '', '', '', Math.round(shifts.reduce((t, s) => t + s.hours, 0) * 100) / 100]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[__data.client.name + ' — ' + __data.month], [], head, ...rows]), tr('Hours'));
+  XLSX.writeFile(wb, 'hours-' + __data.month + '.xlsx');
+}
+
+// Schedule: each worker's planned day for every day of the month — the
+// weekly roster, a change for a single date winning on its date.
+function schedDay(w, d){
+  const day = (w.dates || {})[localYMD(d)] || (w.schedule || [])[d.getDay()] || {};
+  return day.type === 'work' && day.start && day.end ? day.start + '–' + day.end : '';
+}
+function renderSchedule(){
+  const el = document.getElementById('sectionSchedule');
+  if(!__data){ el.innerHTML = msg(__loading ? tr('Loading…') : ''); return; }
+  const ws = (__data.workers || []).filter(w => w.schedule);
+  if(!ws.length){ el.innerHTML = msg(tr('No shifts planned yet')); return; }
+  const [y, m] = __data.month.split('-').map(Number);
+  const days = []; for(let d = new Date(y, m - 1, 1); d.getMonth() === m - 1; d.setDate(d.getDate() + 1)) days.push(new Date(d));
+  const today = localYMD(new Date());
+  el.innerHTML = ws.map(w => {
+    const rows = days.map(d => { const t = schedDay(w, d); return t ? `<div class="shift"><span class="d"${localYMD(d) === today ? ' style="color:var(--accent);font-weight:700"' : ''}>${esc(d.toLocaleDateString(uiLocale(), {weekday:'short', day:'2-digit', month:'short'}))}</span><span class="t">${esc(t)}</span></div>` : ''; }).join('');
+    return `<div class="card"><b>${esc(w.name)}</b>${rows || `<div style="color:var(--text3);font-size:12px;padding-top:6px">${esc(tr('No shifts planned yet'))}</div>`}</div>`;
+  }).join('');
+}
+
+new MutationObserver(placeLangSelect).observe(document.getElementById('loginScreen'), {attributes:true, attributeFilter:['style']});
+loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangSelects(); placeLangSelect(); gateApp(); });
+</script>
+</body>
+</html>

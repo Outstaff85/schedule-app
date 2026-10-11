@@ -10,7 +10,7 @@
 // those by hand before deleting them.
 const fs = require('fs'), path = require('path');
 const ROOT = path.join(__dirname, '..', '..');
-const PAGES = ['schedule-manager.html', 'supplier-portal.html', 'worker-punch.html'];
+const PAGES = ['schedule-manager.html', 'supplier-portal.html', 'worker-punch.html', 'client-portal.html'];
 const COMPLETE = ['he']; // languages that must have every text; the others may be partial
 const unq = s => s.replace(/\\n/g, '\n').replace(/\\(['"`\\])/g, '$1');
 const keys = new Map(); // text → first page:line
