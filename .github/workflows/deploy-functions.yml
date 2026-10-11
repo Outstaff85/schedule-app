@@ -64,8 +64,27 @@ jobs:
         id: deploy
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa.json
-        run: firebase deploy --only functions --project schedule-odinson --non-interactive --force
+        # Up to 3 tries a minute apart: a deploy sometimes fails for a moment
+        # ("Failed to list functions") and passes when run again (issue #202).
+        run: |
+          for i in 1 2 3; do
+            firebase deploy --only functions --project schedule-odinson --non-interactive --force && exit 0
+            [ "$i" -lt 3 ] && { echo "Deploy failed (try $i of 3) — retrying in 60 s"; sleep 60; }
+          done
+          exit 1
         continue-on-error: true
+
+      - name: Close the deploy-failure issue after a good deploy
+        if: steps.deploy.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          EXISTING=$(gh issue list --repo "$REPO" --search "Cloud Functions deploy failing in:title" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue close "$EXISTING" --repo "$REPO" --comment "Deployed fine: $RUN_URL"
+          fi
 
       - name: Open/update an issue if deploy failed
         if: steps.deploy.outcome == 'failure'

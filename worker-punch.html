@@ -59,8 +59,6 @@ html,body{
 .screen.center-v{justify-content:center;}
 
 /* ══ SCREEN 1 — Worker Select ══════════════════════════════════════ */
-#screenWorker{justify-content:center;gap:0;}
-#screenWorker > *{width:100%;max-width:480px;}
 
 /* Top bar */
 .top-bar{
@@ -409,19 +407,6 @@ html[lang="he"] *{letter-spacing:normal !important;}
 <body>
 <select class="lang-select" id="langSelect" title="Language" data-i18n-title="Language" aria-label="Language" onchange="setLanguage(this.value)"><option value="en">EN</option><option value="he">HE</option><option value="ru">RU</option></select>
 
-<!-- Screen 1: Worker select -->
-<div class="screen" id="screenWorker">
-  <div class="top-bar">
-    <div class="site-pill"><i class="ti ti-map-pin"></i> <span id="verifiedSiteName">Work Site</span></div>
-    <div class="time-pill" id="workerClock">--:--</div>
-  </div>
-  <div class="section-label" data-i18n>Who are you?</div>
-  <div class="worker-grid" id="workerGrid"></div>
-  <button class="continue-btn" id="continueBtn" disabled onclick="goToPunch()">
-    Select a worker to continue
-  </button>
-</div>
-
 <!-- Screen 2: Punch -->
 <div class="screen center-v hidden" id="screenPunch">
   <div class="punch-header">
@@ -451,7 +436,6 @@ html[lang="he"] *{letter-spacing:normal !important;}
     <div class="back-link" onclick="openSchedule()" style="color:var(--blue)"><i class="ti ti-calendar-week"></i> <span data-i18n>My Schedule</span><span class="sched-badge" id="schedBadge" style="display:none" title="Updated" data-i18n-title="Updated"></span></div>
     <div class="back-link" id="myHoursLink" onclick="openMyHours()" style="color:var(--blue)"><i class="ti ti-clock-hour-4"></i> <span data-i18n>My Hours</span></div>
   </div>
-  <div class="back-link" id="changeWorkerLink" onclick="goBack()" data-i18n>← Change worker</div>
 </div>
 
 <!-- Screen 3: Success -->
@@ -462,8 +446,7 @@ html[lang="he"] *{letter-spacing:normal !important;}
   <div class="success-time" id="successTime">--:--</div>
   <div class="success-date" id="successDate"></div>
   <div class="success-actions">
-    <button class="btn-primary" id="clockAnotherBtn" onclick="goToWorker()" data-i18n>Clock another worker</button>
-    <button class="btn-secondary" onclick="resetToQR()" data-i18n>Done</button>
+    <button class="btn-primary" onclick="resetToQR()" data-i18n>Done</button>
   </div>
 </div>
 
@@ -600,7 +583,6 @@ function redrawForLanguage(){
   try{
     const on = id => { const s = document.getElementById(id); return s && !s.classList.contains('hidden'); };
     if(on('screenPunch')){ tickPunch(); updateBigBtn(); getLocation(); }
-    else if(on('screenWorker')) renderWorkerGrid();
     else if(on('screenHours')) renderMyHours(hoursMonthKey());
     else if(on('screenSchedule')) renderMySchedule();
   }catch(e){}
@@ -782,7 +764,6 @@ function enterPunch(w, skipResolve){
   if(!skipResolve) resolveSiteFromWorker(w);
   document.getElementById('punchSite').innerHTML = '<i class="ti ti-map-pin"></i> '+siteLabel();
   document.getElementById('punchWorkerName').textContent = w.name;
-  const cw=document.getElementById('changeWorkerLink'); if(cw) cw.style.display=URL_TOKEN?'none':'';
   showScreen('screenPunch');
   startPunchClock();
   getLocation();
@@ -889,69 +870,6 @@ function showScreen(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.add('hidden'));
   document.getElementById(id).classList.remove('hidden');
 }
-
-// ── Worker screen ─────────────────────────────────────────────────
-function startWorkerClock(){
-  document.getElementById('verifiedSiteName').textContent=siteLabel();
-  renderWorkerGrid();
-  if(clockTick) clearInterval(clockTick);
-  clockTick=setInterval(()=>{
-    const n=new Date();
-    document.getElementById('workerClock').textContent=
-      String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
-  },1000);
-  // immediate tick
-  const n=new Date();
-  document.getElementById('workerClock').textContent=
-    String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
-}
-
-function renderWorkerGrid(){
-  const log=getPunchLog();
-  document.getElementById('workerGrid').innerHTML=workers.map(w=>{
-    const c=WORKER_COLORS[w.colorIdx%WORKER_COLORS.length];
-    const ini=w.name.slice(0,2).toUpperCase();
-    const last=getLastEntry(log,w.id);
-    const isIn=last?.type==='in';
-    const status=isIn?'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:5px;vertical-align:middle"></span>'+esc(tr('In since {0}',{0:last.time})) : last?esc(tr('Last: {0} (out)',{0:last.time})):esc(tr('Not clocked in'));
-    return `<div class="w-card ${isIn?'in-progress':''} ${selectedWorker?.id===w.id?'selected':''}" onclick="selectWorker('${w.id}')">
-      <div class="w-dot"></div>
-      <div class="w-avatar" style="background:${c.bg};color:${c.text}">
-        <div class="w-avatar-ring"></div>
-        ${ini}
-      </div>
-      <div class="w-name">${esc(w.name)}</div>
-      <div class="w-status">${status}</div>
-    </div>`;
-  }).join('');
-
-  const btn=document.getElementById('continueBtn');
-  const _oldHist=document.getElementById('historyBtn'); if(_oldHist) _oldHist.remove();
-  if(selectedWorker){
-    const last=getLastEntry(getPunchLog(),selectedWorker.id);
-    const isIn=last?.type==='in';
-    btn.disabled=false;
-    btn.textContent=isIn?tr('Clock OUT →'):tr('Clock IN →');
-  } else {
-    btn.disabled=true;
-    btn.textContent=tr('Select a worker to continue');
-  }
-}
-
-function selectWorker(id){
-  if(URL_TOKEN) return;                 // personal link: cannot switch workers
-  selectedWorker=workers.find(w=>w.id===id)||null;
-  renderWorkerGrid();
-}
-
-function goToPunch(){
-  if(!selectedWorker) return;
-  showScreen('screenPunch');
-  document.getElementById('punchSite').innerHTML='<i class="ti ti-map-pin"></i> '+siteLabel();
-  document.getElementById('punchWorkerName').textContent=selectedWorker.name;
-  startPunchClock(); getLocation(); updateBigBtn();
-}
-function goBack(){ if(URL_TOKEN) return; showScreen('screenWorker'); renderWorkerGrid(); }
 
 // ── Punch screen ──────────────────────────────────────────────────
 function startPunchClock(){
@@ -1072,12 +990,12 @@ function showSuccess(type,time,date){
   document.getElementById('successTime').textContent=time;
   document.getElementById('successDate').textContent=
     String(date.getDate()).padStart(2,'0')+'/'+String(date.getMonth()+1).padStart(2,'0')+'/'+String(date.getFullYear()).slice(-2);
-  const _ca=document.getElementById('clockAnotherBtn'); if(_ca) _ca.style.display=URL_TOKEN?'none':'';
   showScreen('screenSuccess');
 }
 
-function goToWorker(){ if(URL_TOKEN&&selectedWorker){ showScreen('screenPunch'); startPunchClock(); getLocation(); updateBigBtn(); return; } selectedWorker=null; showScreen('screenWorker'); startWorkerClock(); }
-function resetToQR(){ if(URL_TOKEN&&selectedWorker){ showScreen('screenPunch'); startPunchClock(); getLocation(); updateBigBtn(); return; } selectedWorker=null; showScreen('screenWorker'); startWorkerClock(); }
+// Back to the punch screen, with a fresh GPS check (the page works only from
+// a worker's own link — the shared-device worker picker was removed).
+function resetToQR(){ if(!selectedWorker) return; showScreen('screenPunch'); startPunchClock(); getLocation(); updateBigBtn(); }
 // ── My schedule: the worker's own roster as a month calendar, in the colours
 // of the manager's Schedule tab (work green, a shift past midnight blue, day
 // off amber). The roster is weekly (w.schedule[0..6], Sunday first — the server
@@ -1396,7 +1314,7 @@ function travelPay(w, days, months){
 }
 function localYMD(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 
-function closeHistory(){ if(URL_TOKEN&&selectedWorker){ showScreen('screenPunch'); startPunchClock(); getLocation(); updateBigBtn(); } else { showScreen('screenWorker'); startWorkerClock(); } }
+function closeHistory(){ resetToQR(); }
 
 // ── Helpers ───────────────────────────────────────────────────────
 function getPunchLog(){ try{return JSON.parse(localStorage.getItem('punchLog')||'[]');}catch(e){return[];} }
@@ -1452,10 +1370,13 @@ function startVersionWatch(files){
 }
 function showNewVersionBar(){
   if(document.getElementById('newVersionBar')) return;
-  document.body.insertAdjacentHTML('beforeend',`<div id="newVersionBar" style="position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:100000;display:flex;align-items:center;gap:10px;max-width:calc(100% - 32px);box-sizing:border-box;padding:10px 12px 10px 16px;border-radius:12px;background:#1f6feb;color:#fff;font:600 14px/1.3 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.35)">
-    <span>${tr('A new version is available')}</span>
-    <button type="button" onclick="location.reload()" style="border:0;border-radius:8px;padding:6px 12px;background:#fff;color:#1f6feb;font:inherit;cursor:pointer">${tr('Update')}</button>
-    <button type="button" aria-label="${tr('Close')}" onclick="this.parentElement.remove()" style="border:0;background:none;color:#fff;font:inherit;font-size:18px;cursor:pointer;padding:0 4px">✕</button></div>`);
+  // One compact line at the top (per user request 2026-10-11): it never
+  // covers the bottom tab bar and stays until Update or ✕.
+  document.body.insertAdjacentHTML('beforeend',`<div id="newVersionBar" role="status" style="position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 10px);transform:translateX(-50%);z-index:100000;display:flex;align-items:center;gap:10px;width:max-content;max-width:calc(100% - 24px);box-sizing:border-box;padding:6px 6px 6px 12px;border-radius:999px;background:#181c27;border:1px solid rgba(79,142,247,.45);color:#eef0f8;font:600 13px/1.2 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.45)">
+    <span style="width:8px;height:8px;border-radius:50%;background:#4f8ef7;box-shadow:0 0 0 4px rgba(79,142,247,.2);flex:none"></span>
+    <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${tr('A new version is available')}</span>
+    <button type="button" onclick="location.reload()" style="flex:none;border:0;border-radius:999px;padding:6px 14px;background:#4f8ef7;color:#fff;font:inherit;cursor:pointer">${tr('Update')}</button>
+    <button type="button" aria-label="${tr('Close')}" onclick="this.parentElement.remove()" style="flex:none;border:0;background:none;color:#7c84a0;font:inherit;font-size:15px;cursor:pointer;padding:4px 8px 4px 2px">✕</button></div>`);
 }
 startVersionWatch(()=>[location.pathname]);
 

@@ -616,6 +616,8 @@
       // The hours-review ticks of this login (claim hp: hours, approve,
       // dispute, fix, schedule, export — functions-auth/core.py HOUR_PERMS).
       hourPerms: async () => { const h = (await myClaims()).hp; return Array.isArray(h) ? h : []; },
+      // A supplier login's portal tabs (claim ss; none in the token = all).
+      supplierSections: async () => { const v = (await myClaims()).ss; return Array.isArray(v) ? v : ['dashboard', 'workers', 'hours']; },
       signOut: () => { if(punchUnsub) punchUnsub(); claimsFor = null; claims = {}; return authMod.signOut(auth); },
     };
   };

@@ -277,3 +277,17 @@ def test_my_month_gives_own_punches_and_pay_inputs_only():
     assert portal.punch_action(DB, {"action": "myMonth", "token": "tok-avi", "month": "10/2026"}) == {"error": "Bad month"}
     assert portal.punch_action(DB, {"action": "myMonth", "token": "nope", "month": "2026-10"}) == {"error": portal.E_LINK}
 
+
+
+def test_supplier_sections_limit_the_actions():
+    # Only the Dashboard tab: no worker changes, no hours sent or listed; reads still work.
+    only = dict(SUP1, ss=["dashboard"])
+    assert portal.supplier_action(DB, only, {"action": "loadSchedule"}).get("workers") is not None
+    for body in ({"action": "supplierAddWorker", "worker": {"docGiven": "X"}},
+                 {"action": "supplierUpdateWorker", "workerId": "w1", "worker": {"phone": "1"}},
+                 {"action": "supplierDeleteWorker", "workerId": "w1"},
+                 {"action": "supplierListHours"}):
+        assert portal.supplier_action(DB, only, body) == {"error": portal.E_NO_SECTION}
+    assert DB.collection("tenants").document(T1).collection("workers").document("w1").get().exists
+    # With My Workers the change goes through.
+    assert portal.supplier_action(DB, dict(SUP1, ss=["workers"]), {"action": "supplierUpdateWorker", "workerId": "w1", "worker": {"phone": "2"}})["ok"]

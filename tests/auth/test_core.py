@@ -525,14 +525,23 @@ def test_hour_review_ticks_for_client_supplier_and_hr():
     claims = id_token_claims(out["token"])
     assert claims["role"] == "client" and claims["clientId"] == "c1" and claims["hp"] == ["hours", "approve"] and claims["perms"] == []
     assert out["clientId"] == "c1" and out["hourPerms"] == ["hours", "approve"]
-    # Defaults: a client gets HOUR_CLIENT_DEFAULT, a supplier none.
+    # Defaults: a client and a supplier made without ticks get HOUR_DEFAULT; an
+    # older login with none stored gets it too; ticks set to none stay none.
     r2 = core.create_tenant_user(DB, ADMIN1, {"role": "client", "username": "cl2", "password": "client-pass-2", "clientId": "c2"})
-    assert DB.collection("users").document(r2["userId"]).get().to_dict()["hourPerms"] == core.HOUR_CLIENT_DEFAULT
+    assert DB.collection("users").document(r2["userId"]).get().to_dict()["hourPerms"] == core.HOUR_DEFAULT
     r3 = core.create_tenant_user(DB, ADMIN1, {"role": "supplier", "username": "sup9", "password": "sup-pass-99", "supplierId": "s-1"})
+    assert id_token_claims(core.login(DB, "sup9", "sup-pass-99", mint)["token"])["hp"] == core.HOUR_DEFAULT
+    DB.collection("users").document(r3["userId"]).update({"hourPerms": firestore.DELETE_FIELD})
+    assert id_token_claims(core.login(DB, "sup9", "sup-pass-99", mint)["token"])["hp"] == core.HOUR_DEFAULT
+    assert core.update_user(DB, ADMIN1, {"id": r3["userId"], "hourPerms": []}, Revokes())["ok"]
     assert id_token_claims(core.login(DB, "sup9", "sup-pass-99", mint)["token"])["hp"] == []
     rv = Revokes()
     assert core.update_user(DB, ADMIN1, {"id": r3["userId"], "hourPerms": ["hours", "fix"]}, rv)["ok"] and rv
     assert id_token_claims(core.login(DB, "sup9", "sup-pass-99", mint)["token"])["hp"] == ["hours", "fix"]
+    # A supplier's portal tabs: all by default (claim ss), a chosen set when given.
+    assert id_token_claims(core.login(DB, "sup9", "sup-pass-99", mint)["token"])["ss"] == list(core.SUPPLIER_SECTIONS)
+    assert core.update_user(DB, ADMIN1, {"id": r3["userId"], "supplierSections": ["dashboard", "bogus"]}, Revokes())["ok"]
+    assert id_token_claims(core.login(DB, "sup9", "sup-pass-99", mint)["token"])["ss"] == ["dashboard"]
     # An HR keeps its sections and gets the hours ticks beside them; staff gets no hp claim.
     r4 = core.create_tenant_user(DB, ADMIN1, {"role": "hr", "username": "hr9", "password": "hr-pass-999", "fullName": "Hr Nine",
                                               "permissions": ["workers"], "hourPerms": ["hours", "approve"]})

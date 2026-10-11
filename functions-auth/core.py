@@ -42,14 +42,32 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 ROLES_SUB = ("staff", "supplier", "hr", "client")    # what a firm can create for itself
 # Hours review (hours.py, the `hours` function) — the same ticks for an HR, a
 # supplier and a client login (users.hourPerms → claim hp). A client login
-# starts with HOUR_CLIENT_DEFAULT; an HR or a supplier with none.
+# login without its own ticks (none stored yet) has HOUR_DEFAULT — the same
+# for an HR, a supplier and a client (user request 2026-10-11).
 HOUR_PERMS = ("hours", "approve", "dispute", "fix", "schedule", "export")
-HOUR_CLIENT_DEFAULT = ["hours", "approve", "dispute", "fix"]
+HOUR_DEFAULT = ["hours", "approve", "dispute", "fix"]
 HOUR_ROLES = ("hr", "supplier", "client")
+# The supplier portal's tabs a supplier login may use (users.supplierSections
+# → claim ss; none stored = all of them). The supplier function refuses a
+# worker change without "workers" and the hours actions without "hours".
+SUPPLIER_SECTIONS = ("dashboard", "workers", "hours")
+
+
+def _supplier_sections(v):
+    return [p for p in SUPPLIER_SECTIONS if p in v] if isinstance(v, list) else list(SUPPLIER_SECTIONS)
 
 
 def _hour_perms(v):
     return [p for p in HOUR_PERMS if isinstance(v, list) and p in v]
+
+
+def _stored_hour_perms(d):
+    """A review login's ticks as stored; HOUR_DEFAULT when none are stored
+    (a client made before hourPerms: its old permissions list)."""
+    hp = d.get("hourPerms")
+    if hp is None and _norm_role(d.get("role")) == "client" and isinstance(d.get("permissions"), list):
+        hp = d.get("permissions")
+    return _hour_perms(hp) if hp is not None else list(HOUR_DEFAULT)
 E_ROLE = "The role must be staff, supplier, hr or client"
 HR_DEFAULT_PERMS = ["workers"]
 ADMIN_ROLES = ("tenant_admin", "superadmin")
@@ -141,9 +159,11 @@ def claims_for(user):
         claims["clientId"] = user["clientId"]
     if role in HOUR_ROLES:
         hp = user.get("hourPerms")
-        if hp is None and role == "client":  # a client login made before hourPerms: its ticks were its permissions
-            hp = user.get("permissions")
-        claims["hp"] = _hour_perms(hp)
+        if hp is None and role == "client" and isinstance(user.get("permissions"), list):
+            hp = user.get("permissions")  # a client login made before hourPerms: its ticks were its permissions
+        claims["hp"] = _hour_perms(hp) if hp is not None else list(HOUR_DEFAULT)
+    if role == "supplier":
+        claims["ss"] = _supplier_sections(user.get("supplierSections"))
     return claims
 
 
@@ -312,8 +332,8 @@ def list_users(db, caller):
             "permissions": "*" if d.get("permissions") in (None, "", "*") else d.get("permissions"),
             "supplierId": d.get("supplierId") or None,
             "clientId": d.get("clientId") or None,
-            "hourPerms": _hour_perms(d.get("hourPerms") if d.get("hourPerms") is not None else (d.get("permissions") if _norm_role(d.get("role")) == "client" else []))
-                         if _norm_role(d.get("role")) in HOUR_ROLES else None,
+            "hourPerms": _stored_hour_perms(d) if _norm_role(d.get("role")) in HOUR_ROLES else None,
+            "supplierSections": _supplier_sections(d.get("supplierSections")) if _norm_role(d.get("role")) == "supplier" else None,
             "fullName": d.get("fullName") or "", "phone": d.get("phone") or "",
             "ownOnly": d.get("ownOnly") is not False if _norm_role(d.get("role")) == "hr" else None,
             "showPay": d.get("showPay") is not False if _norm_role(d.get("role")) in ("hr", "supplier") else None,
@@ -416,6 +436,7 @@ def create_tenant_user(db, caller, body):
     user = {
         "role": role, "tenantId": tenant_id, "permissions": perms,
         "supplierId": body.get("supplierId") if role == "supplier" else None,
+        "supplierSections": _supplier_sections(body.get("supplierSections")) if role == "supplier" else None,
         "clientId": str(body.get("clientId")) if role == "client" else None,
         "active": True,
         # The person's name (shown in the app header and the Users list
@@ -431,7 +452,7 @@ def create_tenant_user(db, caller, body):
         user["showPay"] = body.get("showPay") is not False
     if role in HOUR_ROLES:
         hp = body.get("hourPerms")
-        user["hourPerms"] = _hour_perms(hp) if isinstance(hp, list) else (list(HOUR_CLIENT_DEFAULT) if role == "client" else [])
+        user["hourPerms"] = _hour_perms(hp) if isinstance(hp, list) else list(HOUR_DEFAULT)
     uid, err = _new_user_batch(db, username, user, password)
     if err:
         return {"error": err}
@@ -477,8 +498,8 @@ def update_user(db, caller, body, revoke):
             body = dict(body, clientId=None)
         else:
             body = dict(body, permissions="")
-            if not isinstance(body.get("hourPerms"), list):
-                body = dict(body, hourPerms=list(HOUR_CLIENT_DEFAULT))
+        if new_role in HOUR_ROLES and not isinstance(body.get("hourPerms"), list) and data.get("hourPerms") is None:
+            body = dict(body, hourPerms=list(HOUR_DEFAULT))
         if new_role == "hr" and "ownOnly" not in body:
             body = dict(body, ownOnly=True)
         role = new_role
@@ -490,6 +511,8 @@ def update_user(db, caller, body, revoke):
             upd["permissions"] = list(p) if isinstance(p, list) else ("" if p == "" else "*")
     if "hourPerms" in body:
         upd["hourPerms"] = _hour_perms(body.get("hourPerms")) if role in HOUR_ROLES else []
+    if "supplierSections" in body and role == "supplier":
+        upd["supplierSections"] = _supplier_sections(body.get("supplierSections"))
     if "clientId" in body:
         upd["clientId"] = (str(body.get("clientId")) if body.get("clientId") else None) if role == "client" else None
     if "supplierId" in body:
@@ -508,7 +531,8 @@ def update_user(db, caller, body, revoke):
     current = {"role": _norm_role(data.get("role")),
                "permissions": "*" if data.get("permissions") in (None, "", "*") else data.get("permissions"),
                "supplierId": data.get("supplierId") or None, "clientId": data.get("clientId") or None,
-               "hourPerms": data.get("hourPerms") if data.get("hourPerms") is not None else [],
+               "hourPerms": data.get("hourPerms"),
+               "supplierSections": data.get("supplierSections"),  # none stored ≠ none ticked (none stored = HOUR_DEFAULT)
                "active": data.get("active", True) is not False,
                "ownOnly": data.get("ownOnly") is not False, "showPay": data.get("showPay") is not False,
                "commissionRate": _rate(data.get("commissionRate")),

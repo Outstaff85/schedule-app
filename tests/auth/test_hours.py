@@ -108,3 +108,19 @@ def test_a_fix_changes_the_punches_only_when_a_manager_accepts_it():
                                 "line": "w1|2026-10-05|08:00|15:00", "inT": "07:00", "outT": "15:00"})
     r = hours.hours_action(DB, OWNER, {"action": "resolve", "docId": "client_c1_2026-10", "key": "w1|2026-10-05", "accept": False})
     assert r["entry"]["status"] == "rejected" and P("a1").get().to_dict()["time"] == "08:00"
+
+
+def test_a_fix_for_the_second_shift_of_a_day():
+    # Avi's day gets a second shift 18:00–20:00; the fix moves only that one.
+    P("a3").set({"id": "a3", "workerId": "w1", "type": "in", "time": "18:00", "clientId": "c1", "hrId": "u-hr", "ts": at("2026-10-05T15:00:00"), "day": "2026-10-05"})
+    P("a4").set({"id": "a4", "workerId": "w1", "type": "out", "time": "20:00", "clientId": "c1", "hrId": "u-hr", "ts": at("2026-10-05T17:00:00"), "day": "2026-10-05"})
+    line = "w1|2026-10-05|08:00,18:00|17:00,20:00"
+    assert hours.hours_action(DB, CL, {"action": "fix", "month": "2026-10", "workerId": "w1", "day": "2026-10-05",
+                                       "line": line, "shift": 5, "inT": "18:00", "outT": "21:00"})["error"] == "Bad shift"
+    r = hours.hours_action(DB, CL, {"action": "fix", "month": "2026-10", "workerId": "w1", "day": "2026-10-05",
+                                    "line": line, "shift": 1, "inT": "18:00", "outT": "21:00"})
+    e = r["days"]["w1|2026-10-05"]
+    assert e["shift"] == 1 and e["oldIn"] == "18:00" and e["oldOut"] == "20:00"
+    r = hours.hours_action(DB, OWNER, {"action": "resolve", "docId": "client_c1_2026-10", "key": "w1|2026-10-05", "accept": True})
+    assert r["entry"]["line"] == "w1|2026-10-05|08:00,18:00|17:00,21:00"
+    assert P("a4").get().to_dict()["time"] == "21:00" and P("a2").get().to_dict()["time"] == "17:00"

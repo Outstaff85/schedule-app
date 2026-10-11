@@ -249,6 +249,7 @@ SUPPLIER_PUNCH_FIELDS = ("id", "workerId", "workerName", "type", "time", "date",
 SUPPLIER_PAY_FIELDS = ("payMode", "hourlyRate", "regRate", "otRate", "shabbatRate", "clientRates", "dayOverrides")
 CLIENT_PAY_FIELDS = ("defaultHourlyRate", "defaultOtRate", "defaultShabbatRate")
 E_SUPPLIER_ONLY = "Supplier role only"
+E_NO_SECTION = "Not allowed for this login"
 
 
 def strip_worker(d, supplier_id, pay=False):
@@ -312,6 +313,13 @@ def supplier_action(db, caller, body):
                 e["ts"] = ts.isoformat().replace("+00:00", "Z") if hasattr(ts, "isoformat") else d.get("tsRaw")
                 entries.append(e)
         return {"entries": entries}
+
+    # The portal tabs this login may use (claim ss; a token without it: all).
+    sections = caller.get("ss") if isinstance(caller.get("ss"), list) else ["dashboard", "workers", "hours"]
+    if action in ("supplierAddWorker", "supplierUpdateWorker", "supplierDeleteWorker") and "workers" not in sections:
+        return {"error": E_NO_SECTION}
+    if action in ("supplierSubmitHours", "supplierListHours") and "hours" not in sections:
+        return {"error": E_NO_SECTION}
 
     fields = body.get("worker") or {}
     if action == "supplierAddWorker":

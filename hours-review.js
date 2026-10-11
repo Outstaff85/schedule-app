@@ -17,7 +17,7 @@
 //   hoursReviewReload()
 
 const HOURS_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/hours';
-let __hrv = {el: null, call: null, hideOwner: false, month: 0, tab: 'hours', data: null, loading: false, busy: false};
+let __hrv = {el: null, call: null, hideOwner: false, month: 0, tab: 'hours', data: null, loading: false, busy: false, shown: 10};
 
 function hoursReviewMount(el, opts){
   __hrv = Object.assign(__hrv, {el, call: opts.call, hideOwner: !!opts.hideOwner, data: null});
@@ -32,7 +32,7 @@ function hoursReviewMount(el, opts){
 
 function hrvMonthKey(){ const n = new Date(); return localYMD(new Date(n.getFullYear(), n.getMonth() + __hrv.month, 1)).slice(0, 7); }
 function hrvCan(p){ return !!(__hrv.data && (__hrv.data.perms || []).includes(p)); }
-function hrvShiftMonth(n){ __hrv.month = Math.min(0, __hrv.month + n); hoursReviewReload(); }
+function hrvShiftMonth(n){ __hrv.month = Math.min(0, __hrv.month + n); __hrv.shown = 10; hoursReviewReload(); }
 function hrvSwitchTab(t){ __hrv.tab = t; hrvRender(); }
 
 async function hoursReviewReload(){
@@ -111,7 +111,15 @@ function hrvRender(){
   const body = el.querySelector('#hrvBody');
   if(!d || d.month !== hrvMonthKey()){ body.innerHTML = hrvMsg(__hrv.loading || !d ? tr('Loading…') : ''); return; }
   body.innerHTML = __hrv.tab === 'hours' ? hrvHoursHtml() : hrvScheduleHtml();
+  // The workers come 10 at a time: the next 10 when "Show more" scrolls into
+  // view or is tapped (the apps' list rule — CLAUDE.md, Lists page by 10).
+  const more = body.querySelector('.hrv-more');
+  if(more && 'IntersectionObserver' in window){
+    const io = new IntersectionObserver(en => { if(en.some(x => x.isIntersecting)){ io.disconnect(); hrvMore(); } });
+    io.observe(more);
+  }
 }
+function hrvMore(){ __hrv.shown += 10; const y = window.scrollY; hrvRender(); window.scrollTo(0, y); }
 // The few styles this screen needs, in the pages' own variables.
 function hrvStyle(){
   return `<style>
@@ -157,7 +165,9 @@ function hrvHoursHtml(){
   const byW = {};
   days.forEach(r => { (byW[r.workerId] = byW[r.workerId] || []).push(r); });
   const total = days.reduce((t, r) => t + r.hours, 0);
-  const cards = Object.keys(byW).sort((a, b) => hrvWorkerName(a).localeCompare(hrvWorkerName(b))).map(wid => {
+  const wids = Object.keys(byW).sort((a, b) => hrvWorkerName(a).localeCompare(hrvWorkerName(b)));
+  const left = wids.length - __hrv.shown;
+  const cards = wids.slice(0, __hrv.shown).map(wid => {
     const list = byW[wid], hrs = list.reduce((t, r) => t + r.hours, 0);
     const rows = list.map(r => {
       const {st, e} = hrvDayState(r), S = HRV_STATES[st] || HRV_STATES.pending;
@@ -171,7 +181,7 @@ function hrvHoursHtml(){
       const acts = [
         hrvCan('approve') && !['approved', 'fixed'].includes(st) ? `<button class="hrv-act" title="${esc(tr('Approve this day'))}" onclick="hrvApproveDay('${k}')"><i class="ti ti-check"></i></button>` : '',
         hrvCan('dispute') ? `<button class="hrv-act${st === 'disputed' ? ' on' : ''}" title="${esc(tr('Dispute this day'))}" onclick="hrvOpenDispute('${k}')"><i class="ti ti-alert-triangle"></i></button>` : '',
-        hrvCan('fix') && r.shifts.length === 1 ? `<button class="hrv-act${st === 'fix' ? ' on' : ''}" title="${esc(tr('Propose a fix'))}" onclick="hrvOpenFix('${k}')"><i class="ti ti-pencil"></i></button>` : '',
+        hrvCan('fix') ? `<button class="hrv-act${st === 'fix' ? ' on' : ''}" title="${esc(tr('Propose a fix'))}" onclick="hrvOpenFix('${k}')"><i class="ti ti-pencil"></i></button>` : '',
       ].join('');
       return `<div class="hrv-day" data-key="${k}">
         <span class="st" style="color:${S.color}" title="${esc(tr(S.label))}"><i class="ti ${S.icon}"></i></span>
@@ -181,7 +191,7 @@ function hrvHoursHtml(){
     }).join('');
     return `<div class="hrv-card"><div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:4px">
       <b>${esc(hrvWorkerName(wid))}</b><span style="color:var(--text2);font-size:12px">${esc(list.length === 1 ? tr('1 day') : tr('{n} days', {n: list.length}))} · <b style="color:var(--text)">${esc(tr('{h}h', {h: hrs.toFixed(1)}))}</b></span></div>${rows}</div>`;
-  }).join('');
+  }).join('') + (left > 0 ? `<div class="hrv-more" style="text-align:center;padding:4px 0 10px"><button type="button" class="btn sm" onclick="hrvMore()"><i class="ti ti-chevron-down"></i> ${esc(tr('Show more ({0} left)', {0: left}))}</button></div>` : '');
   return `<div class="hrv-status ${!open ? 'ok' : warn ? 'warn' : ''}" id="hrvStatus"><span><i class="ti ${!open ? 'ti-circle-check' : warn ? 'ti-alert-triangle' : 'ti-clock'}"></i> ${esc(stText)}</span><span style="display:flex;gap:6px">${exportBtn}${approveBtn}</span></div>
     <div style="font-size:12px;color:var(--text2);margin:-4px 0 10px">${esc(tr('Total: {h}h', {h: total.toFixed(1)}))}</div>${cards}`;
 }
@@ -231,12 +241,18 @@ function hrvOpenDispute(key){
 }
 // A proposed fix: the right in / out (and why). Closing the window sends it
 // when a time differs from the punches; the firm accepts or rejects it.
+// A day with several shifts: the window first asks which shift.
 function hrvOpenFix(key){
   const r = hrvRow(key); if(!r) return;
-  const e = (__hrv.data.days || {})[key], s = r.shifts[0];
-  const inT = e && e.status === 'fix' ? e.inT : s.inT, outT = e && e.status === 'fix' ? e.outT : s.outT;
+  const e = (__hrv.data.days || {})[key];
+  let idx = e && e.status === 'fix' && Number.isInteger(e.shift) && r.shifts[e.shift] ? e.shift : 0;
+  const s0 = r.shifts[idx];
+  const inT = e && e.status === 'fix' ? e.inT : s0.inT, outT = e && e.status === 'fix' ? e.outT : s0.outT;
+  const pick = r.shifts.length > 1 ? `<div class="field"><label>${esc(tr('Shift'))}</label><select id="hrvFixShift" onchange="hrvFixShiftPicked(this.value)">${r.shifts.map((x, i) =>
+    `<option value="${i}"${i === idx ? ' selected' : ''}>${esc((x.inT || '--:--') + '–' + (x.outT || '--:--'))}</option>`).join('')}</select></div>` : '';
+  window.__hrvFixRow = r;
   document.getElementById('hoursReviewModal').innerHTML = `<div class="modal-title"><i class="ti ti-pencil"></i> ${esc(tr('Fix — {name}', {name: hrvWorkerName(r.workerId)}))}</div>
-    ${hrvDayTitle(r)}
+    ${hrvDayTitle(r)}${pick}
     <div class="field-row" style="display:flex;gap:10px">
       <div class="field" style="flex:1"><label>${esc(tr('In'))}</label><input type="time" id="hrvFixIn" value="${esc(inT)}"></div>
       <div class="field" style="flex:1"><label>${esc(tr('Out'))}</label><input type="time" id="hrvFixOut" value="${esc(outT)}"></div>
@@ -248,11 +264,18 @@ function hrvOpenFix(key){
     const ni = document.getElementById('hrvFixIn').value, no = document.getElementById('hrvFixOut').value;
     const comment = document.getElementById('hrvFixText').value.trim();
     closeModal('hoursReviewOverlay');
+    const sel = document.getElementById('hrvFixShift'); if(sel) idx = Number(sel.value) || 0;
+    const s = r.shifts[idx];
     if(!ni || !no || (ni === inT && no === outT && comment === (e && e.status === 'fix' ? e.comment || '' : ''))) return;
     if(ni === s.inT && no === s.outT) return;
-    hrvSend({action: 'fix', workerId: r.workerId, day: r.day, line: r.line, inT: ni, outT: no, comment}, tr('Fix sent'));
+    hrvSend({action: 'fix', workerId: r.workerId, day: r.day, line: r.line, shift: idx, inT: ni, outT: no, comment}, tr('Fix sent'));
   };
   ov.classList.add('open');
+}
+
+function hrvFixShiftPicked(i){
+  const s = (window.__hrvFixRow || {shifts: []}).shifts[Number(i) || 0]; if(!s) return;
+  document.getElementById('hrvFixIn').value = s.inT || ''; document.getElementById('hrvFixOut').value = s.outT || '';
 }
 
 async function hrvExport(){
