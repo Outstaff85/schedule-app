@@ -296,6 +296,8 @@
   .client-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;gap:10px;}
   .wc-row:hover{background:var(--bg3);}
   .client-card-header{display:flex;align-items:center;gap:10px;}
+  .client-card.tap-edit{position:relative}
+  .client-card.tap-edit .client-card-header{padding-right:22px}
   .client-card-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0;}
   .client-card-name{font-size:16px;font-weight:600;color:var(--text);}
   .client-card-info{font-size:14px;color:var(--text2);}
@@ -3444,21 +3446,15 @@ function showClientModal(c){
     </div>
     <div class="field"><label>אתר / סניף</label><input type="text" id="cObject" value="${esc(c.object||'')}" placeholder="שם האתר או הסניף"></div>
     <div class="field"><label>כתובת (לא חובה)</label><input type="text" id="cAddr" value="${esc(c.address||'')}" placeholder="כתובת"></div>
-    <div class="field">
-      <label><i class="ti ti-cash"></i> שכר העובד אצל לקוח זה (₪ לשעה)</label>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">כל העובדים אצל הלקוח מקבלים את התעריף הזה, אלא אם לעובד יש תעריף משלו.</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-        <div><label style="font-size:11px;color:var(--text3)">רגיל</label>
-          <input type="number" min="0" step="0.5" id="cDefRate" value="${c.defaultHourlyRate??''}" placeholder="—"></div>
-        <div><label style="font-size:11px;color:var(--text3)">שעות נוספות</label>
-          <input type="number" min="0" step="0.5" id="cDefOtRate" value="${c.defaultOtRate??''}" placeholder="—"></div>
-        <div><label style="font-size:11px;color:var(--text3)">שבת</label>
-          <input type="number" min="0" step="0.5" id="cDefShabRate" value="${c.defaultShabbatRate??''}" placeholder="—"></div>
-      </div>
+    <div class="field-row">
+      <div class="field"><label><i class="ti ti-cash"></i> שכר העובד (₪ לשעה)</label>
+        <input type="number" min="0" step="0.5" id="cDefRate" value="${c.defaultHourlyRate??''}" placeholder="—"></div>
+      <div class="field"><label><i class="ti ti-receipt"></i> תשלום הלקוח (₪ לשעה)</label>
+        <input type="number" min="0" step="0.5" id="cBillMain" value="${clientBillMain()??''}" placeholder="—" oninput="onClientBillMainInput(this.value)"></div>
     </div>
+    <div style="font-size:11px;color:var(--text3);margin:-6px 0 12px">שכר העובד חל על כל העובדים אצל הלקוח, אלא אם לעובד יש תעריף משלו; שעות נוספות ושבת לפי החוק. תשלום הלקוח לא משנה את שכר העובד.</div>
     <div class="field">
-      <label><i class="ti ti-receipt"></i> תשלום הלקוח לחברה (₪ לשעה)</label>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">כמה הלקוח משלם לנו. לא משנה את שכר העובד.</div>
+      <label>אופן חיוב הלקוח</label>
       <select id="cRateMode" onchange="onClientRateModeChange()" style="width:100%">
         <option value="tiered" ${__cBill.rateMode==='tiered'?'selected':''}>עם שעות נוספות ושבת (לפי החוק)</option>
         <option value="fixed" ${__cBill.rateMode==='fixed'?'selected':''}>תעריף קבוע (בלי תוספות)</option>
@@ -3654,6 +3650,19 @@ function saveMapPick(){
 let __cBill = { rateMode:'tiered', fixedBillRate:null, billRate:null, billOtRate:null, billShabbatRate:null };
 let __cBillPrevMode = 'tiered';
 const fmtRate=v=>(v==null||v==='')?null:('₪'+Number(v)+'/h');
+// The client's main billing rate (the one next to the worker rate in the
+// modal): the flat rate in fixed mode, the regular rate otherwise.
+function clientBillMain(){ return __cBill.rateMode==='fixed' ? __cBill.fixedBillRate : __cBill.billRate; }
+function onClientBillMainInput(v){
+  const n=(v===''||v==null)?null:(parseFloat(v)||0);
+  if(__cBill.rateMode==='fixed') __cBill.fixedBillRate=n; else __cBill.billRate=n;
+  const sum=document.getElementById('cBillSummary'); if(sum) sum.innerHTML=clientBillSummary();
+}
+// After the popup or a mode switch: the summary and the main rate input.
+function syncClientBillFields(){
+  const sum=document.getElementById('cBillSummary'); if(sum) sum.innerHTML=clientBillSummary();
+  const main=document.getElementById('cBillMain'); if(main) main.value=clientBillMain()??'';
+}
 function clientBillSummary(){
   const r=v=>'₪'+Number(v);
   const set=v=>v!=null&&v!=='';
@@ -3667,7 +3676,7 @@ function onClientRateModeChange(){
   const sel=document.getElementById('cRateMode');
   __cBillPrevMode=__cBill.rateMode;
   __cBill.rateMode = sel.value==='fixed' ? 'fixed' : 'tiered';
-  const sum=document.getElementById('cBillSummary'); if(sum) sum.innerHTML=clientBillSummary();
+  syncClientBillFields();
   openClientBillRatePopup(true);
 }
 function openClientBillRatePopup(fromModeChange){
@@ -3701,7 +3710,7 @@ function cancelClientBillRatePopup(revertMode){
   if(revertMode){
     __cBill.rateMode=__cBillPrevMode;
     const sel=document.getElementById('cRateMode'); if(sel) sel.value=__cBill.rateMode;
-    const sum=document.getElementById('cBillSummary'); if(sum) sum.innerHTML=clientBillSummary();
+    syncClientBillFields();
   }
   closeModal('clientBillOverlay');
 }
@@ -3712,7 +3721,7 @@ function saveClientBillRatePopup(){
   } else {
     __cBill.billRate=num('cbReg'); __cBill.billOtRate=num('cbOt'); __cBill.billShabbatRate=num('cbShab');
   }
-  const sum=document.getElementById('cBillSummary'); if(sum) sum.innerHTML=clientBillSummary();
+  syncClientBillFields();
   closeModal('clientBillOverlay');
 }
 function saveClient(){
@@ -3726,7 +3735,9 @@ function saveClient(){
   const radius=parseInt(document.getElementById('cRadius').value)||100;
   const mapsUrl=document.getElementById('cMapsUrl')?.value.trim()||'';
   const rateVal=id=>{ const v=document.getElementById(id)?.value; return (v===''||v==null)?null:(parseFloat(v)||0); };
-  const defaultHourlyRate=rateVal('cDefRate'), defaultOtRate=rateVal('cDefOtRate'), defaultShabbatRate=rateVal('cDefShabRate');
+  // The client card sets only the regular worker rate; OT and Shabbat follow
+  // the law from it (an older client's own OT / Shabbat rates are cleared).
+  const defaultHourlyRate=rateVal('cDefRate'), defaultOtRate=null, defaultShabbatRate=null;
   const {rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate}=__cBill;
   if(editingClientId){
     const idx=clients.findIndex(x=>x.id===editingClientId);
@@ -4356,6 +4367,7 @@ function renderClientsPage(){
   renderPagedList(grid,'clients','',clients,c=>{
     const assigned=workers.filter(w=>(w.clientIds||[]).includes(c.id));
     return `<div class="client-card tap-edit" onclick="if(isPlainTap(event,this))openEditClient('${c.id}')">
+      <button class="wcard-del" type="button" title="${tr('Remove')}" aria-label="${tr('Remove')}" onclick="event.stopPropagation();deleteClient('${c.id}')">✕</button>
       <div class="client-card-header">
         <div class="client-card-dot" style="background:${c.color}"></div>
         <div><div class="client-card-name">${esc(c.name)}</div>${c.companyNumber?`<div class="client-card-info"><i class="ti ti-id"></i> ח.פ ${esc(c.companyNumber)}</div>`:''}${c.object?`<div class="client-card-info"><i class="ti ti-building"></i> ${esc(c.object)}</div>`:''}${c.address?`<div class="client-card-info"><i class="ti ti-map-pin"></i> ${esc(c.address)}</div>`:''}</div>
@@ -4365,7 +4377,6 @@ function renderClientsPage(){
       <div class="client-card-actions">
 
         <button class="btn sm" style="background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)" onclick="openManualPunch('${c.id}')"><i class="ti ti-clock"></i> ${tr('Punch Clock')}</button>
-        <button class="btn sm" onclick="deleteClient('${c.id}')" title="${tr('Remove')}" aria-label="${tr('Remove')}" style="color:#ff6b78;margin-left:auto"><i class="ti ti-trash"></i></button>
       </div>
     </div>`;
   },{grid:true});
@@ -4438,15 +4449,13 @@ function renderSuppliersPage(){
   renderPagedList(grid,'suppliers','',suppliers,s=>{
     const assigned=workers.filter(w=>w.supplierId===s.id);
     return `<div class="client-card tap-edit" onclick="if(isPlainTap(event,this))openEditSupplier('${s.id}')">
+      <button class="wcard-del" type="button" title="${tr('Remove')}" aria-label="${tr('Remove')}" onclick="event.stopPropagation();deleteSupplier('${s.id}')">✕</button>
       <div class="client-card-header">
         <div class="client-card-dot" style="background:${s.color}"></div>
         <div><div class="client-card-name">${esc(s.name)}</div>${s.companyNumber?`<div class="client-card-info"><i class="ti ti-id"></i> ח.פ ${esc(s.companyNumber)}</div>`:''}${s.phone?`<div class="client-card-info"><i class="ti ti-phone"></i> ${esc(s.phone)}</div>`:''}</div>
       </div>
       ${s.bank?`<div style="font-size:12px;color:var(--text2)"><i class="ti ti-building-bank"></i> ${esc(s.bank)}${s.bankBranch?' · branch '+esc(s.bankBranch):''}${s.accountNumber?' · '+esc(s.accountNumber):''}</div>`:''}
       <div style="font-size:12px;color:var(--text2)"><strong style="color:var(--text)">${tr('Workers:')}</strong> ${assigned.length?assigned.map(w=>`<span style="color:${WORKER_COLORS[w.colorIdx%8].text}">${esc(w.name)}</span>`).join(', '):'None assigned'}</div>
-      <div class="client-card-actions">
-        <button class="btn sm" onclick="deleteSupplier('${s.id}')" title="${tr('Remove')}" aria-label="${tr('Remove')}" style="color:#ff6b78;margin-left:auto"><i class="ti ti-trash"></i></button>
-      </div>
     </div>`;
   },{grid:true});
 }
