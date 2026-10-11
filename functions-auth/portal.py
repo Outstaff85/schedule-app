@@ -340,7 +340,11 @@ def supplier_action(db, caller, body):
             return {"ok": True}
         upd = {k: fields[k] for k in SUPPLIER_EDITABLE if fields.get(k) is not None}
         d = dict(snap.to_dict(), **upd)
-        upd["name"] = f"{d.get('docGiven') or ''} {d.get('docSurname') or ''}".strip()
+        # The name is rebuilt from the document's names only when there are
+        # some — a worker added with just a name keeps it.
+        built = f"{d.get('docGiven') or ''} {d.get('docSurname') or ''}".strip()
+        if built:
+            upd["name"] = built
         upd["docKeys"] = doc_keys(d)
         ref.update(upd)
         d.update(upd)

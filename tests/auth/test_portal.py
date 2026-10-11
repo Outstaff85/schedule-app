@@ -187,6 +187,9 @@ def test_supplier_worker_crud():
                                           "worker": {"docSurname": "Man", "hourlyRate": 1, "supplierId": "sp2"}})
     d = W(T1, wid).get().to_dict()
     assert r["ok"] and d["name"] == "New Man" and d["supplierId"] == "sp1" and "hourlyRate" not in d
+    # A worker with only a name (no names from a document) keeps it on an update.
+    portal.supplier_action(DB, SUP1, {"action": "supplierUpdateWorker", "workerId": "w1", "worker": {"phone": "0507"}})
+    assert W(T1, "w1").get().to_dict()["name"] == "Avi Cohen"
     assert portal.supplier_action(DB, SUP1, {"action": "supplierUpdateWorker", "workerId": "w2",
                                              "worker": {"phone": "1"}})["error"] == "Worker not found"
     assert portal.supplier_action(DB, SUP1, {"action": "supplierDeleteWorker", "workerId": "w2"})["error"]

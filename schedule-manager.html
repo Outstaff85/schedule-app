@@ -1002,6 +1002,12 @@ html[lang="he"] *{letter-spacing:normal !important;}
         <div id="clientBillableWrap"></div>
       </div>
 
+      <!-- Client approvals: what each client login approved or disputed in its portal (month periods only) -->
+      <div id="accSecApprovals" style="margin-top:24px;display:none">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-circle-check"></i> <span data-i18n>Client approvals</span> <button type="button" class="acc-help" onclick="openAccountingHelp('approvals')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
+        <div id="clientApprovalsWrap"></div>
+      </div>
+
       <!-- Hours-import approval queue (Admin/Roles plan, stage 14) -->
       <div id="accSecPending" style="margin-top:24px">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-file-check"></i> <span data-i18n><span data-i18n>Pending hours</span></span> <button type="button" class="acc-help" onclick="openAccountingHelp('pending')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
@@ -1177,6 +1183,7 @@ html[lang="he"] *{letter-spacing:normal !important;}
         <option value="staff" data-i18n>Staff</option>
         <option value="hr">HR</option>
         <option value="supplier" data-i18n>Supplier</option>
+        <option value="client" data-i18n>Client</option>
       </select>
     </div>
     <div class="form-section" data-i18n>Person</div>
@@ -1191,6 +1198,20 @@ html[lang="he"] *{letter-spacing:normal !important;}
     </div>
     <div class="form-section" id="userFormAccessHead" data-i18n>Access</div>
     <div class="field" id="userFormSupplierField" style="display:none"><label data-i18n>Supplier</label><select id="userFormSupplierId" onchange="renderUserFormHrWorkers()"></select></div>
+    <!-- A client login: its client and what it may do in the client portal
+         (claim perms; checked by the client function). -->
+    <div class="field" id="userFormClientField" style="display:none"><label data-i18n>Client</label><select id="userFormClientId"></select></div>
+    <div class="field" id="userFormClientPermsField" style="display:none">
+      <label data-i18n>In the client portal</label>
+      <div class="check-grid">
+        <label class="check-chip"><input type="checkbox" value="hours" class="userFormClientPermCb"><span class="chip-text"><span><i class="ti ti-clock"></i> <span data-i18n>Hours</span></span><span class="chip-hint" data-i18n>In / out of its workers</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="approve" class="userFormClientPermCb"><span class="chip-text"><span><i class="ti ti-circle-check"></i> <span data-i18n>Approve</span></span><span class="chip-hint" data-i18n>Approves the month</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="dispute" class="userFormClientPermCb"><span class="chip-text"><span><i class="ti ti-alert-triangle"></i> <span data-i18n>Dispute</span></span><span class="chip-hint" data-i18n>Disputes a day with a comment</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="schedule" class="userFormClientPermCb"><span class="chip-text"><span><i class="ti ti-calendar"></i> <span data-i18n>Schedule</span></span><span class="chip-hint" data-i18n>Its workers' planned shifts</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="export" class="userFormClientPermCb"><span class="chip-text"><span><i class="ti ti-upload"></i> <span data-i18n>Export</span></span><span class="chip-hint" data-i18n>Hours to Excel</span></span></label>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px" data-i18n>Never sees pay, rates, suppliers, GPS or documents.</div>
+    </div>
     <div class="field" id="userFormPermsField">
       <label data-i18n>Sections</label>
       <div class="check-grid">
@@ -4964,6 +4985,12 @@ function goToSupplierPortal(u){
   clearSession();
   location.replace('supplier-portal.html');
 }
+// A client login uses the client portal (client-portal.html), handed over the same way.
+function goToClientPortal(u){
+  try{ localStorage.setItem('clientPortal_session', JSON.stringify({uid:u.uid, role:'client', tenantId:u.tenantId, clientId:u.clientId, username:u.username})); }catch(e){}
+  clearSession();
+  location.replace('client-portal.html');
+}
 function clearSession(){ localStorage.removeItem(SESSION_KEY); }
 async function logout(){
   try{ localStorage.removeItem(FIRMS_CACHE_KEY); }catch(e){}
@@ -5062,6 +5089,7 @@ async function submitLogin(){
     // A supplier login belongs in the supplier portal: hand the session over
     // (same origin, same Firebase sign-in) and go there.
     if(fb.role === 'supplier'){ goToSupplierPortal(fb); return; }
+    if(fb.role === 'client'){ goToClientPortal(fb); return; }
     try{ sessionStorage.setItem('pendingLoginTiming', JSON.stringify({t0, loginMs:Date.now()-t0, pingMs:window.__pingMs==null?null:window.__pingMs, pingDone:window.__pingMs!=null})); }catch(e){}
     saveSession({
       uid: fb.uid, role: fb.role, tenantId: fb.tenantId, username: fb.username, tenantProfile: fb.tenantProfile,
@@ -5169,6 +5197,7 @@ function cacheTenantProfile(tenantId, profile){
 function gateApp(runInitApp){
   let s = getSession();
   if(s && s.role === 'supplier'){ goToSupplierPortal(s); return; }
+  if(s && s.role === 'client'){ goToClientPortal(s); return; }
   if(!s){
     document.getElementById('loginScreen').style.display = 'flex';
     // Wake a cold login function while the user types, so the login request
@@ -5407,7 +5436,9 @@ function prefetchAdminUsers(){
   }).catch(()=>{});
 }
 // How a login's role reads in the Users list (through tr()).
-const USER_ROLE_LABELS = {tenant_admin:'owner', superadmin:'super-admin', staff:'staff', hr:'HR', supplier:'supplier'};
+const USER_ROLE_LABELS = {tenant_admin:'owner', superadmin:'super-admin', staff:'staff', hr:'HR', supplier:'supplier', client:'client'};
+const CLIENT_DEFAULT_PERMS = ['hours', 'approve', 'dispute'];
+const CLIENT_PERM_LABELS = {hours:'Hours', approve:'Approve', dispute:'Dispute', schedule:'Schedule', export:'Export'};
 const ADMIN_PANE_SUBTITLES = { // shown through tr()
   punchlog: 'Punch log — view, edit and export all attendance records',
   firms: 'Firm details — the employer block printed on every Form 101',
@@ -5484,9 +5515,9 @@ function renderAdminUsersRows(el, users){
         : u.role==='supplier' && u.supplierId ? `<div style="font-size:12px;color:var(--text2)">${(n => n===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:n,1:''}))(workers.filter(w => w.supplierId===u.supplierId).length)}</div>` : '';
       return `<div class="tap-edit" onclick="tapEdit(event,this,null,()=>openEditUserForm('${esc(u.id)}'))" onpointerdown="longPress(event,this,()=>openEditUserForm('${esc(u.id)}'))" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);${u.active===false?'opacity:0.55':''}">
         <div>
-          <div style="font-weight:600">${esc(u.fullName||u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(tr(USER_ROLE_LABELS[u.role]||u.role))})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">'+tr('inactive')+'</span>':''}</div>
+          <div style="font-weight:600">${u.role==='tenant_admin'?'<i class="ti ti-pin" style="color:var(--amber)" title="'+esc(tr('Firm owner'))+'"></i> ':''}${esc(u.fullName||u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(tr(USER_ROLE_LABELS[u.role]||u.role))})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">'+tr('inactive')+'</span>':''}</div>
           <div style="font-size:11px;color:var(--text3)">${tr('login: {0}{1}',{0:(esc(u.username)),1:(u.phone?' · '+esc(u.phone):'')})}</div>
-          ${hrLine}<div style="font-size:12px;color:var(--text2)">${u.role==='supplier' ? (sup?esc(sup.name):'—') : esc(permsLabel)}</div>
+          ${hrLine}<div style="font-size:12px;color:var(--text2)">${u.role==='supplier' ? (sup?esc(sup.name):'—') : u.role==='client' ? esc(((clients||[]).find(c=>c.id===u.clientId)||{}).name||'—')+' · '+esc((Array.isArray(u.permissions)?u.permissions:[]).map(p=>tr(CLIENT_PERM_LABELS[p]||p)).join(', ')) : esc(permsLabel)}</div>
         </div>
         <div style="display:flex;gap:4px">
           <button class="btn sm" onclick="deleteUserConfirm('${esc(u.id)}','${esc(u.username)}')" title="${tr('Delete')}" style="color:#ff6b78"><i class="ti ti-trash"></i></button>
@@ -5495,16 +5526,27 @@ function renderAdminUsersRows(el, users){
     };
     el.innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="openCreateUserForm()"><i class="ti ti-plus"></i> ${tr('New user')}</button></div>`
       + (users.length ? `<div class="admin-users-rows" style="display:flex;flex-direction:column;gap:8px"></div>` : '<div style="color:var(--text2);font-size:13px">'+tr('No staff, HR or supplier users yet.')+'</div>');
+    // The firm's owner is always pinned at the top (user request 2026-10-11),
+    // then everyone else by name.
+    const rank = u => u.role==='tenant_admin' ? 0 : u.role==='superadmin' ? 1 : 2;
+    users = users.slice().sort((a,b) => rank(a)-rank(b) || String(a.fullName||a.username||'').localeCompare(String(b.fullName||b.username||'')));
     if(users.length) renderPagedList(el.querySelector('.admin-users-rows'), 'users', '', users, row);
 }
 function fillUserFormSupplierSelect(selectedId){
   const sel = document.getElementById('userFormSupplierId');
   sel.innerHTML = (suppliers||[]).map(s => `<option value="${esc(s.id)}"${s.id===selectedId?' selected':''}>${esc(s.name)}</option>`).join('');
 }
+function fillUserFormClientSelect(selectedId){
+  const sel = document.getElementById('userFormClientId');
+  sel.innerHTML = (clients||[]).map(c => `<option value="${esc(c.id)}"${c.id===selectedId?' selected':''}>${esc(c.name)}${c.object?' · '+esc(c.object):''}</option>`).join('');
+}
 function onUserFormRoleChange(fromUser){
   const role = document.getElementById('userFormRole').value;
   document.getElementById('userFormSupplierField').style.display = role==='supplier' ? '' : 'none';
-  document.getElementById('userFormPermsField').style.display = role==='supplier' ? 'none' : '';
+  document.getElementById('userFormClientField').style.display = role==='client' ? '' : 'none';
+  document.getElementById('userFormClientPermsField').style.display = role==='client' ? '' : 'none';
+  if(role==='client' && fromUser===true){ fillUserFormClientSelect(null); document.querySelectorAll('.userFormClientPermCb').forEach(cb => cb.checked = CLIENT_DEFAULT_PERMS.includes(cb.value)); }
+  document.getElementById('userFormPermsField').style.display = (role==='supplier'||role==='client') ? 'none' : '';
   document.getElementById('userFormHrFields').style.display = role==='hr' ? '' : 'none';
   document.getElementById('userFormPayFields').style.display = (role==='hr'||role==='supplier') ? '' : 'none';
   document.getElementById('userFormCommissionField').style.display = role==='hr' ? '' : 'none';
@@ -5540,6 +5582,8 @@ function openCreateUserForm(){
   document.getElementById('userFormCommission').value = '';
   document.getElementById('userFormCommissionDay').value = '';
   document.getElementById('userFormError').textContent = '';
+  fillUserFormClientSelect(null);
+  document.querySelectorAll('.userFormClientPermCb').forEach(cb => cb.checked = CLIENT_DEFAULT_PERMS.includes(cb.value));
   onUserFormRoleChange();
   document.getElementById('userFormOverlay').classList.add('open');
 }
@@ -5582,9 +5626,12 @@ async function openEditUserForm(id){
   showUserFormAccess(true);
   onUserFormRoleChange();
   if(u.role==='supplier') fillUserFormSupplierSelect(u.supplierId);
+  fillUserFormClientSelect(u.role==='client' ? u.clientId : null);
+  const cperms = u.role==='client' && Array.isArray(u.permissions) ? u.permissions : CLIENT_DEFAULT_PERMS;
+  document.querySelectorAll('.userFormClientPermCb').forEach(cb => cb.checked = cperms.includes(cb.value));
   if(u.role==='hr' || u.role==='supplier') renderUserFormHrWorkers();
   // A supplier has no sections (listUsers reports its empty list as '*').
-  const perms = u.role==='supplier' ? [] : u.permissions==='*' ? PERMISSION_SECTIONS.slice() : (Array.isArray(u.permissions)?u.permissions:[]);
+  const perms = (u.role==='supplier'||u.role==='client') ? [] : u.permissions==='*' ? PERMISSION_SECTIONS.slice() : (Array.isArray(u.permissions)?u.permissions:[]);
   document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = perms.indexOf(cb.value)!==-1);
   document.getElementById('userFormOverlay').classList.add('open');
 }
@@ -5594,6 +5641,11 @@ async function submitUserForm(){
   const role = document.getElementById('userFormRole').value;
   const permissions = Array.from(document.querySelectorAll('.userFormPermCb:checked')).map(cb=>cb.value);
   const supplierId = document.getElementById('userFormSupplierId').value;
+  const clientId = document.getElementById('userFormClientId').value;
+  const clientPerms = Array.from(document.querySelectorAll('.userFormClientPermCb:checked')).map(cb=>cb.value);
+  if(role==='client' && !clientId){ errEl.textContent = tr('Pick the client'); return; }
+  // Who gets what: a supplier its supplier, a client its client and ticks, others their sections.
+  const access = body => { if(role==='supplier') body.supplierId = supplierId; else if(role==='client'){ body.clientId = clientId; body.permissions = clientPerms; } else body.permissions = permissions; };
   const btn = document.getElementById('userFormSaveBtn');
   btn.disabled = true;
   try{
@@ -5616,7 +5668,7 @@ async function submitUserForm(){
       const body = __editingAdminRow
         ? { action:'updateUser', ...gsAuth(), id: __editingUserId, fullName: hrFields.fullName, phone: hrFields.phone }
         : { action:'updateUser', ...gsAuth(), id: __editingUserId, role, ...hrFields };
-      if(!__editingAdminRow){ if(role==='supplier') body.supplierId = supplierId; else body.permissions = permissions; }
+      if(!__editingAdminRow) access(body);
       const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(body) });
       const json = await res.json();
       if(!json || json.error){ errEl.textContent = tr((json&&json.error)||'') ||tr('Save failed'); return; }
@@ -5632,7 +5684,7 @@ async function submitUserForm(){
       const password = document.getElementById('userFormPassword').value;
       if(!username || !password){ errEl.textContent = tr('Username and password required'); return; }
       const body = { action:'createTenantUser', ...gsAuth(), username, password, role, ...hrFields };
-      if(role==='supplier') body.supplierId = supplierId; else body.permissions = permissions;
+      access(body);
       const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(body) });
       const json = await res.json();
       if(!json || json.error){ errEl.textContent = tr((json&&json.error)||'') ||tr('Create failed'); return; }
@@ -6953,6 +7005,7 @@ function renderSalary(){
     renderSupplierPayable(entries);
     renderHrPayable(entries);
     renderClientBillable(__lastClientBillEntries);
+    renderClientApprovals(period);
     return;
   }
 
@@ -7042,6 +7095,7 @@ function renderSalary(){
   renderSupplierPayable(entries);
   renderHrPayable(entries);
   renderClientBillable(__lastClientBillEntries);
+  renderClientApprovals(period);
 }
 
 // Groups the already-computed per-worker pay totals (byWorker[...].total, the
@@ -7172,6 +7226,65 @@ function renderHrPayable(entries){
 // contains supplier data (suppliers[]/supplierId/supplierRates/commission)
 // anywhere — the standing Client<->Supplier isolation principle (Admin/Roles
 // plan): any client-facing surface must never see a supplier exists.
+// ── Client approvals (the client portal, docs/client-portal.md) ─────────────
+// For a month period only: the clients that have a client login or an
+// approval this month — hours, status, who / when, disputed days. "Changed
+// after approval": the shifts now differ from the lines the client approved
+// (clientShiftLines — the same lines the portal builds).
+function salaryMonthOf(period){
+  if(period==='month') return localYMD(new Date()).slice(0,7);
+  return /^m:\d{4}-\d{2}$/.test(period||'') ? period.slice(2) : null;
+}
+function clientShiftLines(cid, month){
+  const [y,m]=month.split('-').map(Number), from=new Date(y,m-1,1), to=new Date(y,m,1);
+  const byW={};
+  getPunchLog().filter(e=>e.clientId===cid&&new Date(e.ts)>=from&&new Date(e.ts)<to).forEach(e=>{ (byW[e.workerId]=byW[e.workerId]||[]).push(e); });
+  const out=[];
+  Object.entries(byW).forEach(([wid,list])=>groupPunchesIntoShifts(list).forEach(b=>{
+    const inE=b.entries.find(e=>e.type==='in'), outE=[...b.entries].reverse().find(e=>e.type==='out');
+    out.push([wid,localYMD(b.date),inE&&inE.time||'',outE&&outE.time||''].join('|'));
+  }));
+  return out.sort();
+}
+function clientApprovalState(a, cid, month){
+  if(!a) return 'pending';
+  if(a.status==='approved' && clientShiftLines(cid,month).join('\n')!==(a.snapshot||[]).slice().sort().join('\n')) return 'changed';
+  return a.status||'pending';
+}
+let __approvalsReq=0;
+async function renderClientApprovals(period){
+  const sec=document.getElementById('accSecApprovals'), wrap=document.getElementById('clientApprovalsWrap');
+  if(!sec||!wrap) return;
+  const month=salaryMonthOf(period);
+  if(!month||hrPayOnly()){ sec.style.display='none'; return; }
+  const req=++__approvalsReq;
+  let approvals={};
+  try{ approvals=await (await loadFirestoreBackend()).clientApprovalsOf(fsTenantId(), month); }catch(e){ console.warn('Client approvals:', e); }
+  if(req!==__approvalsReq) return;
+  ensureHrUsers();
+  const users=loadAdminCache('users_'+activeTenantIdForAdmin());
+  const withLogin=new Set((Array.isArray(users)?users:[]).filter(u=>u.role==='client'&&u.active!==false).map(u=>u.clientId));
+  const hoursOf=cid=>((__lastClientBillEntries||[]).find(e=>e.clientId===cid)||{}).hours||0;
+  const rows=(clients||[]).filter(c=>withLogin.has(c.id)||approvals[c.id]).map(c=>({c, a:approvals[c.id]||null, hours:hoursOf(c.id)}))
+    .filter(r=>r.hours>0||r.a);
+  sec.style.display=rows.length?'':'none';
+  if(!rows.length){ wrap.innerHTML=''; return; }
+  const ST={approved:['var(--green)','ti-circle-check','Approved'],pending:['var(--text3)','ti-clock','Waiting for the client'],disputed:['var(--amber)','ti-alert-triangle','Disputed'],changed:['var(--amber)','ti-alert-triangle','Changed after approval']};
+  wrap.innerHTML='<div class="paged-approvals" style="display:flex;flex-direction:column;gap:8px"></div>';
+  renderPagedList(wrap.querySelector('.paged-approvals'),'approvals',month,rows,({c,a,hours})=>{
+    const st=clientApprovalState(a,c.id,month), [col,icon,label]=ST[st];
+    const disputes=Object.entries((a&&a.disputes)||{}).sort();
+    const who=a&&a.approvedAt&&st!=='pending'?`<div style="font-size:11px;color:var(--text3)">${esc(tr('Approved by {name} · {when}',{name:a.approvedByName||'',when:new Date(a.approvedAt).toLocaleString(uiLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}))}</div>`:'';
+    const dis=disputes.map(([k,d])=>{ const [wid,day]=k.split('|'); const w=workers.find(x=>x.id===wid);
+      return `<div style="font-size:12px;color:var(--amber);margin-top:4px"><i class="ti ti-alert-triangle"></i> ${esc(w?w.name:wid)} · ${esc(new Date(day+'T12:00').toLocaleDateString(uiLocale(),{day:'2-digit',month:'short'}))} — ${esc(d.comment||'')}</div>`; }).join('');
+    return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+        <div><div style="font-weight:600"><span style="color:${c.color}"><i class="ti ti-building-store"></i></span> ${esc(c.name)}</div>${who}</div>
+        <div style="text-align:right"><div style="font-size:12px;font-weight:600;color:${col}"><i class="ti ${icon}"></i> ${esc(tr(label))}</div><div style="font-size:11px;color:var(--text3)">${esc(tr('{h}h',{h:hours.toFixed(1)}))}</div></div>
+      </div>${dis}</div>`;
+  });
+}
+
 // Only the clients with hours and a billing rate this period; with no row
 // the section is hidden (user request 2026-10-11).
 function renderClientBillable(entries){
@@ -7527,6 +7640,11 @@ const ACCOUNTING_HELP={
     'For the period picked in Salary: each supplier\'s workers\' hours × the supplier rate.',
     'Only the suppliers with hours and a commission this period are listed; workers without a supplier are left out.',
     'A worker\'s wage never appears in this table.']},
+  approvals:{icon:'ti-circle-check',title:'Client approvals',items:[
+    'For a month picked in Salary: each client with a client login (or an approval), its hours this month and what it did in the client portal.',
+    'Approved: the client approved the month (who, when). Disputed: the days it disputed, with its comments — fix the punches if needed.',
+    'Changed after approval: a shift of this client was added or changed after the client approved; the client sees it and approves again.',
+    'A client login is made in Admin → Users (role Client, with its ticks).']},
   billable:{icon:'ti-building-store',title:'Billable by client',items:[
     'What each client owes the firm for the period picked in Salary, by the client\'s own pricing (client card): tiered (the OT / Shabbat law rates on the client\'s billing rate) or one fixed rate.',
     'Separate from the workers\' pay: it never changes a wage, and a wage never changes it.']},
@@ -7676,8 +7794,12 @@ function exportSalary(format, period){
 // The accountant's workbook for a period: a Summary sheet with one row per
 // worker — the Salary table's own figures (salaryEntriesFor) plus ID, supplier,
 // pay mode and bank details — and a Shifts sheet (buildSalaryExportRows).
-function exportAccountantReport(period){
+async function exportAccountantReport(period){
   period=period||'month';
+  // A month: the client approvals go in a sheet of their own.
+  const month=salaryMonthOf(period);
+  let approvals=null;
+  if(month){ try{ approvals=await (await loadFirestoreBackend()).clientApprovalsOf(fsTenantId(), month); }catch(e){ approvals=null; } }
   const {byWorker}=salaryEntriesFor(period);
   const money=v=>Math.round((Number(v)||0)*100)/100, hrs=v=>Math.round((Number(v)||0)*100)/100;
   const head=['Worker','ID / Passport','Supplier','Pay mode','Rate','Days','Regular hours','Overtime hours','Shabbat hours','Total hours','Pay (₪)','Travel (₪)','Total (₪)','Bank','Branch','Account','Warnings'].map(h=>tr(h));
@@ -7696,6 +7818,15 @@ function exportAccountantReport(period){
   const title=[tr('Accountant report — {period}',{period:salaryPeriodLabel(period)})], firm=[(activeTenantProfile()||{}).companyName||''];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([title, firm, [], head, ...rows]), tr('Summary'));
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([sHead, ...sRows]), tr('Shifts'));
+  if(approvals && Object.keys(approvals).length){
+    const ST={approved:'Approved',pending:'Waiting for the client',disputed:'Disputed',changed:'Changed after approval'};
+    const aRows=Object.entries(approvals).map(([cid,a])=>{
+      const c=clients.find(x=>x.id===cid)||{name:cid};
+      const dis=Object.entries(a.disputes||{}).map(([k,d])=>{ const [wid,day]=k.split('|'); return ((workers.find(w=>w.id===wid)||{}).name||wid)+' '+day+': '+(d.comment||''); }).join('; ');
+      return [c.name, tr(ST[clientApprovalState(a,cid,month)]), a.approvedByName||'', a.approvedAt?new Date(a.approvedAt).toLocaleString('en-GB'):'', dis];
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[tr('Client'),tr('Status'),tr('Approved by'),tr('When'),tr('Disputed days')], ...aRows]), tr('Client approvals'));
+  }
   const now=new Date();
   XLSX.writeFile(wb, 'accountant-'+(period.startsWith('m:')?period.slice(2):period+'-'+localYMD(now))+'.xlsx');
   showToast(tr('Accountant report exported'));

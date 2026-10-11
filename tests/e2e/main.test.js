@@ -23,7 +23,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       if (u.startsWith('http://127.0.0.1')) return r.continue();
       if (u === FB + 'firebase-app.js') return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:BUNDLE});
       if (u.startsWith(FB)) return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:`export * from '${FB}firebase-app.js';`});
-      const fn = (u.match(/cloudfunctions\.net\/(login|users_admin|punch|supplier|ai_read)$/) || [])[1];
+      const fn = (u.match(/cloudfunctions\.net\/(login|users_admin|punch|supplier|client|ai_read)$/) || [])[1];
       if (fn) {
         if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'POST'}});
         const h = r.request().headers();
@@ -713,6 +713,49 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(await waitFor(p, () => I18N_LANG === 'he' && document.getElementById('tabBtn_dashboard').textContent.trim() === 'לוח בקרה', 15000), 'supplier: a reopened portal keeps the chosen language');
   await p.evaluate(() => setLanguage('en'));
   ok(p.errs.length === 0, 'supplier: no page errors ' + p.errs.join(' | '));
+  await ctx.close();
+
+  // ── Client portal (client1 → client c2: Avi's shift yesterday) ──
+  ctx = await newCtx(); p = await page(ctx);
+  await login(p, BASE + 'client-portal.html', 'client1', 'client-pass-1');
+  ok(await waitFor(p, () => typeof __data !== 'undefined' && __data && __data.punches && document.querySelectorAll('#sectionHours .card').length >= 1, 15000), 'client: sees its workers\' shifts of the month');
+  const cp = await p.evaluate(() => ({text: document.body.innerText, data: JSON.stringify(__data), cards: [...document.querySelectorAll('#sectionHours .card b')].map(b => b.textContent), status: document.querySelector('#sectionHours .status').className}));
+  ok(cp.cards.includes('Avi Cohen') && /pending/.test(cp.status) && !/₪|Agency|hourlyRate|billRate|gpsAccuracy|"dist"|tok-|supplier|docUrl|0501/i.test(cp.text + cp.data),
+    'client: only hours of its workers — no money, supplier, GPS, files or tokens ' + JSON.stringify({cards: cp.cards, status: cp.status}));
+  const ca = await p.evaluate(async () => { await approveMonth(); return document.querySelector('#sectionHours .status').className; });
+  ok(/approved/.test(ca), 'client: approves the month ' + ca);
+  // The owner sees it in Accounting → Client approvals (This Month), not changed (the same shift lines).
+  const octx = await newCtx(); const q = await page(octx);
+  await login(q, BASE + 'schedule-manager.html', 'owner1', 'owner-pass-1');
+  await q.waitForNavigation().catch(()=>{});
+  await waitFor(q, () => typeof workers !== 'undefined' && workers.length === 2);
+  const appr = async () => q.evaluate(async () => { switchTab('accounting'); const sel = document.getElementById('salaryPeriod'); sel.value = 'month'; await onSalaryPeriodChange();
+    for(let i = 0; i < 40 && !/Site B/.test(document.getElementById('clientApprovalsWrap').innerText); i++) await new Promise(r => setTimeout(r, 150));
+    await renderClientApprovals('month'); return document.getElementById('clientApprovalsWrap').innerText; });
+  const oa = await appr();
+  ok(/Site B/.test(oa) && /Approved/.test(oa) && /Site B manager/.test(oa) && !/Changed after approval/.test(oa), 'owner: the client\'s approval in Accounting, not "changed" ' + JSON.stringify(oa));
+  // The client disputes a day (the window saves on a tap outside); the owner sees the comment.
+  const cd = await p.evaluate(async () => {
+    const sh = monthShifts()[0]; openDispute(sh.workerId, sh.day);
+    document.getElementById('disputeText').value = 'Left at 15:00';
+    const ov = document.getElementById('disputeOverlay'); ov.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true})); ov.click();
+    for(let i = 0; i < 40 && !/disputed/.test(document.querySelector('#sectionHours .status').className); i++) await new Promise(r => setTimeout(r, 150));
+    return {status: document.querySelector('#sectionHours .status').className, text: document.getElementById('sectionHours').innerText};
+  });
+  ok(/disputed/.test(cd.status) && /Left at 15:00/.test(cd.text), 'client: disputes a day with a comment ' + JSON.stringify(cd.status));
+  const od = await appr();
+  ok(/Disputed/.test(od) && /Left at 15:00/.test(od) && /Avi Cohen/.test(od), 'owner: sees the disputed day and its comment ' + JSON.stringify(od));
+  // Admin → Users: the owner is pinned first; the client login shows its client and ticks.
+  const ul = await q.evaluate(async () => { switchTab('admin'); switchAdminPane('users');
+    for(let i = 0; i < 60 && document.querySelectorAll('.admin-users-rows > div').length < 2; i++) await new Promise(r => setTimeout(r, 150));
+    return [...document.querySelectorAll('.admin-users-rows > div')].map(r => r.innerText.replace(/\s+/g, ' ')); });
+  ok(ul.length >= 2 && /\(owner\)/.test(ul[0]) && ul.some(t => /\(client\)/.test(t) && /Site B/.test(t) && /Approve/.test(t)), 'users: the owner pinned first; a client login shows its client and ticks ' + JSON.stringify(ul.slice(0, 3)));
+  ok(p.errs.length === 0 && q.errs.length === 0, 'client portal: no page errors ' + p.errs.concat(q.errs).join(' | '));
+  await octx.close(); await ctx.close();
+  // A client login on the main site goes to its portal.
+  ctx = await newCtx(); p = await page(ctx);
+  await login(p, BASE + 'schedule-manager.html', 'client1', 'client-pass-1');
+  ok(await waitFor(p, () => /client-portal/.test(location.pathname) && typeof __data !== 'undefined' && !!__data, 15000), 'client: a client login on the main site is taken to its portal');
   await ctx.close();
 
   // ── Worker punch link ──
