@@ -154,7 +154,6 @@
   "Create failed": "היצירה נכשלה",
   "Create firm": "יצירת חברה",
   "Creating…": "יוצר…",
-  "Crosses midnight": "עובר את חצות",
   "crosses midnight": "עובר את חצות",
   "CSV exported!": "CSV יוצא!",
   "Dashboard": "לוח בקרה",
@@ -194,7 +193,6 @@
   "Dough preparation": "הכנת בצק",
   "Download document": "הורדת מסמך",
   "Download the document (PDF from {0})": "הורדת המסמך (PDF מ-{0})",
-  "Drag ⠿ to reorder · Click shifts to edit": "גררו ⠿ לשינוי הסדר · לחצו על משמרת לעריכה",
   "e.g. Late arrival, approved by manager": "למשל: איחור, באישור מנהל",
   "Edit": "עריכה",
   "Edit firm": "עריכת חברה",
@@ -771,7 +769,6 @@
   "{0} workers · {1} total punches": "{0} עובדים · {1} החתמות בסה״כ",
   "{0} workers{1}": "{0} עובדים{1}",
   "{0} worker{1}": "{0} עובדים",
-  "{0} · Drag ⠿ to reorder · Click shifts to edit": "{0} · גררו ⠿ לשינוי הסדר · לחצו על משמרת לעריכה",
   "{0} · {1} shift(s): {2}{3}": "{0} · {1} משמרות: {2}{3}",
   "{0}h scheduled / week": "{0} ש׳ מתוכננות בשבוע",
   "{0}m from site (max {1}m)": "{0} מ׳ מהאתר (מקסימום {1} מ׳)",
@@ -792,7 +789,6 @@
   "₪{0}/day": "₪{0}/יום",
   "⚠ The firm profile is incomplete — empty in Form 101: {0}": "⚠ פרופיל החברה חסר — ריק בטופס 101: {0}",
   "✕ Close": "✕ סגירה",
-  "⠿ Drag to reorder · Ctrl+S to save": "⠿ גררו לשינוי הסדר · Ctrl+S לשמירה",
   "📶 Offline — 1 punch queued": "📶 אין חיבור — החתמה אחת ממתינה",
   "📶 Offline — {0} punches queued": "📶 אין חיבור — {0} החתמות ממתינות",
   "Could not load your hours — check the connection and try again.": "לא ניתן לטעון את השעות — בדקו את החיבור ונסו שוב.",
@@ -936,5 +932,9 @@
   "Showing: {0}": "מוצג: {0}",
   "Show all": "הצג הכול",
   "1 shift": "משמרת אחת",
-  "{n} shifts": "{n} משמרות"
+  "{n} shifts": "{n} משמרות",
+  "A worker's arrow opens the week · a day opens its shift": "החץ של עובד פותח את השבוע · יום פותח את המשמרת",
+  "off {0}": "חופש {0}",
+  "Previous week": "השבוע הקודם",
+  "Next week": "השבוע הבא"
 }

@@ -208,8 +208,6 @@
 
   /* Export dropdown */
   .export-dropdown{position:relative;}
-  .sched-head-actions{display:flex;align-items:center;gap:8px;justify-content:flex-end;}
-  @media (max-width:768px){ .sched-head-actions{width:100%;} .sched-head-actions input{flex:1;min-width:0;} }
   .dropdown-menu{position:absolute;top:100%;right:0;margin-top:4px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:6px;z-index:50;min-width:200px;display:none;}
   .dropdown-menu.open{display:block;}
   .dropdown-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--radius-sm);font-size:15px;cursor:pointer;color:var(--text2);transition:all 0.15s;}
@@ -222,35 +220,13 @@
   .stat-unit{font-size:15px;color:var(--text2);font-weight:400;}
 
   /* Gantt */
-  .gantt-wrap{background:var(--bg2);border-radius:var(--radius);overflow:hidden;user-select:none;}
-  .gantt-header{display:grid;background:var(--bg3);border-bottom:1px solid var(--border);}
-  .gantt-header-cell{padding:8px 8px;font-size:14px;font-weight:600;color:var(--text2);text-align:center;text-transform:uppercase;letter-spacing:0.5px;display:flex;flex-direction:column;align-items:center;gap:2px;}
-  .gantt-header-cell:first-child{text-align:left;align-items:flex-start;justify-content:center;}
-  .gantt-header-cell:last-child{border-right:none;}
   .day-name{display:inline-flex;align-items:center;gap:5px;}
   .day-date{font-family:'DM Mono',Consolas,monospace;font-size:11px;font-weight:500;color:var(--text3);letter-spacing:0;text-transform:none;}
   .day-hebrew{font-size:13px;color:var(--accent);font-weight:700;}
-  .gantt-row{display:grid;border-bottom:1px solid rgba(255,255,255,0.04);transition:background 0.1s;position:relative;}
-  .gantt-row:last-child{border-bottom:none;}
+  .gantt-row{position:relative;}
   .gantt-row.drag-over{background:rgba(79,142,247,0.07)!important;outline:2px dashed var(--accent);outline-offset:-2px;}
   .gantt-row.dragging{opacity:0.4;}
-  .gantt-name-cell{display:flex;align-items:center;gap:8px;padding:10px 12px;font-size:15px;font-weight:500;color:var(--text);}
   .drag-handle{color:var(--text3);font-size:16px;cursor:grab;flex-shrink:0;}
-  .gantt-day-cell{position:relative;height:68px;cursor:pointer;overflow:hidden;padding:5px;}
-  .gantt-day-cell:last-child{border-right:none;}
-  .gantt-day-cell:hover{background:rgba(255,255,255,0.025);}
-  .gantt-day-cell:nth-child(3),.gantt-day-cell:nth-child(5),.gantt-day-cell:nth-child(7){background:rgba(255,255,255,0.018);}
-  .gantt-day-cell:nth-child(3):hover,.gantt-day-cell:nth-child(5):hover,.gantt-day-cell:nth-child(7):hover{background:rgba(255,255,255,0.04);}
-  .shift-bar{height:100%;border-radius:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:16px;font-weight:500;cursor:pointer;text-align:center;line-height:1.2;transition:opacity 0.15s,transform 0.1s;font-family:'DM Mono',Consolas,monospace;}
-  .shift-bar:hover{opacity:0.85;}
-  .shift-bar.work{background:var(--green-bg);color:var(--green);}
-  .shift-bar.off{background:var(--amber-bg);color:var(--amber);font-family:'DM Sans','Heebo',sans-serif;}
-  .shift-bar.midnight{background:var(--blue-bg);color:var(--blue);}
-  .shift-bar.dated{outline:1.5px dashed currentColor;outline-offset:-3px;position:relative;}
-  .shift-bar.dated::after{content:'';position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:currentColor;}
-  .legend{display:flex;align-items:center;gap:16px;margin-top:12px;flex-wrap:wrap;}
-  .legend-item{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text2);}
-  .legend-dot{width:10px;height:10px;border-radius:3px;}
 
   /* Modal */
   .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:100;align-items:center;justify-content:center;}
@@ -453,7 +429,6 @@
     .page-header { flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 12px; }
     .page-title  { font-size: 17px; }
     .page-sub    { font-size: 12px; }
-    #datePicker  { width: 100%; font-size: 14px; padding: 8px 10px; }
 
     /* ── Stats row ── */
     .stat-card  { padding: 10px 12px; }
@@ -462,21 +437,11 @@
     .stat-unit  { font-size: 12px; }
 
     /* ── Gantt ── */
-    .gantt-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .gantt-header,
-    .gantt-row  { grid-template-columns: 90px repeat(7, minmax(82px, 1fr)) !important; }
-    .gantt-header-cell { padding: 8px 4px; font-size: 10px; line-height: 1.3; }
-    .gantt-name-cell   { padding: 8px 6px; font-size: 12px; gap: 6px; }
-    .gantt-day-cell    { height: 60px; }
-    .shift-bar  { font-size: 11px; padding: 2px 3px; }
     .day-hebrew { font-size: 10px; }
     .drag-handle { display: none; }
     .worker-avatar { width: 22px; height: 22px; font-size: 9px; }
 
     /* ── Legend ── */
-    .legend { gap: 10px; margin-top: 8px; }
-    .legend-item { font-size: 11px; }
-    .legend-item:last-child { display: none; }
 
     /* ── Modals — full screen bottom sheet ── */
     .overlay { align-items: flex-end; }
@@ -522,10 +487,6 @@
   /* ── Phone only ── */
   @media (max-width: 480px) {
     .stat-val   { font-size: 18px; }
-    .gantt-header,
-    .gantt-row  { grid-template-columns: 76px repeat(7, minmax(72px, 1fr)) !important; }
-    .gantt-day-cell { height: 56px; }
-    .shift-bar  { font-size: 10px; }
     .page-title { font-size: 15px; }
     .tab-btn    { font-size: 10px; padding: 5px 7px; }
     /* Stack titlebar actions */
@@ -542,6 +503,21 @@
   .t3-ib{background:none;border:0;color:var(--text3);font-size:15px;cursor:pointer;padding:4px 6px;flex:none}
   .t3-ib:hover{color:var(--text)}
   .t3-line.off{opacity:.6}
+  /* Schedule, variant 6: the week navigator, a line per worker, its days. */
+  .sched-nav{display:flex;align-items:center;gap:6px;margin:0 0 6px}
+  .sched-arrow{width:38px;height:38px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none}
+  .sched-week{flex:1;text-align:center;position:relative;cursor:pointer;min-width:0}
+  .sched-week b{display:block;font-size:16px}
+  .sched-week span{display:block;font-size:11px;color:var(--text2)}
+  .sched-week input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+  .sched-line .t3-chev{transition:transform .15s}
+  .sched-line.open .t3-chev{transform:rotate(180deg)}
+  .sched-day{display:flex;justify-content:space-between;align-items:center;margin:0 0 2px 40px;padding:6px 10px 6px 12px;border-left:2px solid var(--c);font-size:13px;cursor:pointer;border-radius:0 6px 6px 0}
+  .sched-day:hover{background:rgba(255,255,255,.04)}
+  .sched-day.today span{color:var(--accent);font-weight:700}
+  .sched-day b{font-family:'DM Mono',monospace;font-size:12px;font-weight:600}
+  .sched-dated{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);vertical-align:middle}
+
   /* Today (variant A): a section folds with the arrow at its right; a
      figure picked as a filter is highlighted, the other sections hidden. */
   .dash-sec{cursor:pointer;user-select:none}
@@ -826,31 +802,29 @@ body:has(.overlay.open){overflow:hidden}
       <div class="page-header">
         <div>
           <div class="page-title" data-i18n>Weekly Schedule</div>
-          <div class="page-sub" id="pageSub" data-i18n>Drag ⠿ to reorder · Click shifts to edit</div>
+          <div class="page-sub" id="pageSub"></div>
         </div>
-        <div class="sched-head-actions">
-          <input type="date" id="datePicker" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;font-family:'DM Sans','Heebo',Arial,sans-serif;outline:none;" onchange="onDateChange()">
-          <!-- Export of the Schedule week (Excel / PDF / JSON) -->
+      </div>
+      <!-- Variant 6 (user request 2026-10-11): ‹ week › with its totals (a tap
+           on the dates opens the date picker) and the export icon; a line per
+           worker with the week's sum; its arrow opens the 7 days, a day opens
+           the shift editor. -->
+      <div class="sched-nav">
+        <button type="button" class="sched-arrow" onclick="prevWeek()" title="Previous week" data-i18n-title="Previous week"><i class="ti ti-chevron-left"></i></button>
+        <label class="sched-week"><b id="schedWeekRange"></b><span id="schedWeekSum"></span>
+          <input type="date" id="datePicker" onchange="onDateChange()" aria-label="Week"></label>
+        <button type="button" class="sched-arrow" onclick="nextWeek()" title="Next week" data-i18n-title="Next week"><i class="ti ti-chevron-right"></i></button>
         <div class="export-dropdown" id="exportDropdown">
-          <button class="btn sm" onclick="toggleExportMenu()"><i class="ti ti-upload"></i> <span data-i18n>Export</span> <i class="ti ti-chevron-down" style="font-size:13px;opacity:0.7"></i></button>
+          <button type="button" class="t3-ib" onclick="toggleExportMenu()" title="Export" data-i18n-title="Export"><i class="ti ti-download"></i></button>
           <div class="dropdown-menu" id="exportMenu">
             <div class="dropdown-item" onclick="exportExcel()"><i class="ti ti-file-spreadsheet"></i> <span data-i18n>Excel (.xlsx)</span></div>
             <div class="dropdown-item" onclick="exportPDF()"><i class="ti ti-file-type-pdf"></i> PDF</div>
             <div class="dropdown-item" onclick="exportJSON()"><i class="ti ti-braces"></i> <span data-i18n>JSON</span></div>
           </div>
         </div>
-        </div>
       </div>
-      <div class="gantt-wrap">
-        <div class="gantt-header" id="ganttHeader"></div>
-        <div id="ganttBody"></div>
-      </div>
-      <div class="legend">
-        <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> <span data-i18n>Working</span></div>
-        <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div> <span data-i18n>Day off</span></div>
-        <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div> <span data-i18n>Crosses midnight</span></div>
-        <div class="legend-item" style="margin-left:auto;font-size:11px;color:var(--text3)" data-i18n>⠿ Drag to reorder · Ctrl+S to save</div>
-      </div>
+      <div class="t3-sec" id="ganttHeader"></div>
+      <div id="ganttBody"></div>
     </div>
 
     <div class="page-section" id="sectionWorkers">
@@ -2199,8 +2173,7 @@ function onDateChange(){ const v=document.getElementById('datePicker').value; if
 
 // --- Render -------------------------------------------------------------------
 function render(){
-  const _wd=document.getElementById('weekDisplay'); if(_wd) _wd.textContent=fmtRange(weekStart);
-  document.getElementById('pageSub').textContent=tr('{0} · Drag ⠿ to reorder · Click shifts to edit',{0:(fmtRange(weekStart))});
+  document.getElementById('pageSub').textContent=tr('A worker\'s arrow opens the week · a day opens its shift');
   renderGanttHeader(); renderGanttBody(); renderWorkerList(); renderSidebarClients();
   // render() only ever refreshed the Schedule tab's own pieces above — every
   // other tab's table (Workers/Clients/Admin/Accounting) is rendered ONLY by
@@ -2226,64 +2199,43 @@ function render(){
 function hasSchedule(w){ return (w.schedule||[]).some(s=>s.type==='work') || weekShifts(w).some(s=>s.type==='work'); }
 function getVisible(){ const act=workers.filter(isActiveWorker); return selectedClientId ? act.filter(w=>(w.clientIds||[]).includes(selectedClientId)) : act.filter(hasSchedule); }
 
+// Schedule, variant 6 (user request 2026-10-11): the week navigator's
+// dates and totals, then a section line with the worker count.
 function renderGanttHeader(){
-  const cols='170px repeat(7,1fr)';
+  const vis=getVisible(), sh=vis.flatMap(w=>weekShifts(w)).filter(x=>x.type==='work');
+  const thisWeek=getSundayOfWeek(new Date()).toDateString()===weekStart.toDateString();
+  const set=(id,t)=>{ const el=document.getElementById(id); if(el) el.textContent=t; };
+  set('schedWeekRange', fmtRange(weekStart));
+  set('schedWeekSum', [thisWeek?tr('This week'):'', tr('{h}h',{h:vis.reduce((t,w)=>t+workerTotalHours(w),0).toFixed(0)}), sh.length===1?tr('1 shift'):tr('{n} shifts',{n:sh.length})].filter(Boolean).join(' · '));
   const el=document.getElementById('ganttHeader');
-  el.style.gridTemplateColumns=cols;
-  let h='<div class="gantt-header-cell" style="text-align:left;align-items:flex-start">'+tr('Worker')+'</div>';
-  DAYS.forEach((d,i)=>{
-    const date=new Date(weekStart); date.setDate(date.getDate()+i);
-    const today=date.toDateString()===new Date().toDateString();
-    h+=`<div class="gantt-header-cell" style="${today?'color:#60a5fa':''}"><span class="day-name">${tr(d)}<span class="day-hebrew">${DAYS_HE[i]}</span></span><span class="day-date">${fmtDate(date)}</span></div>`;
-  });
-  el.innerHTML=h;
+  if(el) el.innerHTML=`<i class="ti ti-users"></i> ${esc(tr('Workers'))}<em>${vis.length}</em>`;
 }
-
+// A line per worker: its week in short ("4 shifts · 29h · off Mon, Wed");
+// the arrow (or a tap on the line) opens the 7 days under it, a day opens
+// the shift editor (openEditShift). Open workers are kept while the app is
+// open (__schedOpen). A row can still be dragged to reorder on a computer.
+const __schedOpen=new Set();
+function toggleSchedWorker(id){ if(__schedOpen.has(id)) __schedOpen.delete(id); else __schedOpen.add(id); renderGanttBody(); }
 function renderGanttBody(){
-  const cols='170px repeat(7,1fr)';
   const body=document.getElementById('ganttBody');
-  const vis=getVisible();
-  // One schedule row per worker, paged like every other list.
+  const vis=getVisible(), todayStr=new Date().toDateString();
   renderPagedList(body,'gantt',String(selectedClientId||''),vis,w=>{
-    let h='';
-    const wi=workers.indexOf(w);
-    const c=WORKER_COLORS[w.colorIdx%8];
-    h+=`<div class="gantt-row" style="grid-template-columns:${cols}" draggable="true"
-      data-wi="${wi}"
-      ondragstart="dragStart(event,${wi})"
-      ondragover="dragOver(event,${wi})"
-      ondragleave="dragLeave(event)"
-      ondrop="doDrop(event,${wi})"
-      ondragend="dragEnd(event)">`;
-    h+=`<div class="gantt-name-cell">
-      <span class="drag-handle">⠿</span>
-      <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${workerAvatarInner(w)}</div>
-      <span>${esc(w.name)}</span>
-    </div>`;
-    weekShifts(w).forEach((sh,di)=>{
-      h+=`<div class="gantt-day-cell" onclick="openEditShift(${wi},${di})">`;
-      const dated=sh.dated?` dated" title="${esc(tr('Changed for this date only'))}`:'';
-      if(sh.type==='work'&&sh.start&&sh.end){
-        const mid=toMins(sh.end)<=toMins(sh.start);
-        h+=`<div class="shift-bar ${mid?'midnight':'work'}${dated}">${esc(sh.start)}<br>${esc(sh.end)}</div>`;
-      } else {
-        h+=`<div class="shift-bar off${dated}">${tr('Day off')}</div>`;
-      }
-      h+=`</div>`;
-    });
-    h+=`</div>`;
-    return h;
+    const wi=workers.indexOf(w), ws=weekShifts(w), open=__schedOpen.has(w.id);
+    const work=ws.filter(x=>x.type==='work'&&x.start&&x.end), offs=ws.map((x,i)=>x.type==='work'&&x.start&&x.end?null:tr(DAYS[i])).filter(Boolean);
+    const sum=[work.length===1?tr('1 shift'):tr('{n} shifts',{n:work.length}), tr('{h}h',{h:workerTotalHours(w).toFixed(0)}), offs.length?tr('off {0}',{0:offs.join(', ')}):''].filter(Boolean).join(' · ');
+    const days=open?ws.map((x,di)=>{
+      const date=new Date(weekStart); date.setDate(date.getDate()+di);
+      const on=x.type==='work'&&x.start&&x.end, mid=on&&toMins(x.end)<=toMins(x.start);
+      const col=on?(mid?'var(--blue)':'var(--green)'):'var(--amber)';
+      return `<div class="sched-day${date.toDateString()===todayStr?' today':''}" style="--c:${col}" onclick="openEditShift(${wi},${di})">
+        <span>${esc(tr(DAYS[di]))} ${date.getDate()}${x.dated?` <i class="sched-dated" title="${esc(tr('Changed for this date only'))}"></i>`:''}</span>
+        <b style="color:${col}${on?'':';font-family:inherit'}">${on?esc(x.start+'–'+x.end):esc(tr('Day off'))}</b></div>`;
+    }).join(''):'';
+    return `<div class="gantt-row" draggable="true" data-wi="${wi}" ondragstart="dragStart(event,${wi})" ondragover="dragOver(event,${wi})" ondragleave="dragLeave(event)" ondrop="doDrop(event,${wi})" ondragend="dragEnd(event)">`
+      + t3Line({c:work.length?'var(--green)':'var(--border2)', av:t3Av(w), name:esc(w.name), sub:esc(sum), cls:'sched-line'+(open?' open':''),
+          onclick:`toggleSchedWorker('${esc(w.id)}')`, right:`<i class="ti ti-chevron-down t3-chev"></i>`})
+      + days + `</div>`;
   });
-}
-
-function hourTicks(){
-  let h='';
-  [0,6,12,18,24].forEach(hr=>{
-    const p=(hr/24*100).toFixed(1);
-    h+=`<div class="h-tick" style="left:${p}%"></div>`;
-    if(hr>0&&hr<24) h+=`<div class="h-label" style="left:${p}%">${String(hr).padStart(2,'0')}</div>`;
-  });
-  return h;
 }
 
 function renderWorkerList(){

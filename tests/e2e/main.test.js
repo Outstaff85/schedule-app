@@ -166,6 +166,24 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {only, all, folded, kept, open, hidden, shown, closed: sr.style.display === 'none'};
   });
   ok(Object.values(tf).every(Boolean), 'today: a figure filters to its section, the arrow folds one (kept); salary search opens from its icon ' + JSON.stringify(tf));
+  // Schedule, variant 6: a line per worker with its week; the arrow opens 7 days, a day opens the shift editor.
+  const sch = await p.evaluate(async () => {
+    const w0 = workers.find(w => isActiveWorker(w)), keep = JSON.stringify(w0.schedule || []);
+    w0.schedule = [{type:'off'}, {type:'work', start:'09:00', end:'17:00'}, {type:'off'}, {type:'off'}, {type:'off'}, {type:'off'}, {type:'off'}];
+    switchTab('schedule'); render(); await new Promise(r => setTimeout(r, 200));
+    const line = document.querySelector('#ganttBody .sched-line'), sum = line.querySelector('small').innerText;
+    line.click(); await new Promise(r => setTimeout(r, 100));
+    const days = document.querySelectorAll('#ganttBody .sched-day').length;
+    document.querySelector('#ganttBody .sched-day').click(); await new Promise(r => setTimeout(r, 200));
+    const editor = !!document.querySelector('.overlay.open');
+    document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open'));
+    document.querySelector('#ganttBody .sched-line').click();
+    const closedNow = document.querySelectorAll('#ganttBody .sched-day').length === 0;
+    w0.schedule = JSON.parse(keep); render();
+    return {sum, days, editor, closedNow, week: document.getElementById('schedWeekRange').innerText};
+  });
+  ok(/shift/.test(sch.sum) && /h/.test(sch.sum) && sch.days === 7 && sch.editor && sch.closedNow && /–/.test(sch.week), 'schedule: a line per worker, the arrow opens its 7 days, a day opens the shift editor ' + JSON.stringify(sch));
+  await p.screenshot({path: SP + '/t3-schedule.png'}).catch(()=>{});
   await p.evaluate(async () => { switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await new Promise(r => setTimeout(r, 300)); });
   await p.screenshot({path: SP + '/t3-workers.png'}).catch(()=>{});
   await p.evaluate(async () => { switchTab('accounting'); const sel = document.getElementById('salaryPeriod'); sel.value = 'all'; await onSalaryPeriodChange();
