@@ -36,6 +36,7 @@ Loaded on demand (a `<script>` tag, like `scan-pipeline.js`) and run in the page
 - Month arrows (no future months) and tabs **Hours** / **Schedule**, each with its tick.
 - **Hours**: `hrvMonthDays()` pairs the punches like the app and groups them by worker and day (a day may hold several shifts); a card per worker, a row per day: its state icon, date, times, hours and the actions — ✓ approve the day, ⚠ dispute, ✎ propose a fix (a day with several shifts first asks which shift, `hrvFixShiftPicked`). The workers come 10 at a time ("Show more", `hrvMore`, also when it scrolls into view). The windows have no Save button: closing one sends (dispute: empty = take it back; fix: only when a time differs from the punches).
 - A day's state (`hrvDayState`): its stored status, or **changed** when an approved / fixed day's line no longer matches its shifts. States: waiting, approved, fix accepted, changed after approval, disputed, fix proposed, fix rejected (`HRV_STATES`).
+- Figures on top (`.hrv-stats`: approved, waiting, disputed or changed, fixes proposed); a worker is a section line and each day a line with its state as a colored mark on the left (template 3).
 - The status bar counts the days ("N of M days approved", changed, disputed, fixes waiting); "Approve the month" (`hrvApproveMonth`) approves every day waiting, changed or with a rejected fix — a day under an open dispute or fix stays until the firm answers. "Export" writes `hours-<month>.xlsx` (worker, date, in, out, hours, status).
 
 Where it runs:

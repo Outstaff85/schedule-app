@@ -133,8 +133,14 @@ function hrvStyle(){
   .hrv-status{border-radius:var(--radius,12px);padding:10px 14px;margin-bottom:12px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;background:var(--bg2);border:1px solid var(--border2);}
   .hrv-status.ok{background:var(--green-bg,rgba(109,214,160,0.12));border-color:rgba(109,214,160,0.3);color:var(--green);}
   .hrv-status.warn{background:var(--amber-bg,rgba(245,166,35,0.12));border-color:rgba(245,166,35,0.3);color:var(--amber);}
-  .hrv-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius,12px);padding:12px 14px;margin-bottom:10px;}
-  .hrv-day{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--border);font-size:13px;flex-wrap:wrap;}
+  /* The app's template (variant 3): no boxes — a worker is a section line,
+     each day a line with its state as a colored mark on the left (--c). */
+  .hrv-stats{display:flex;gap:18px;flex-wrap:wrap;margin:2px 2px 12px;}
+  .hrv-stats div{font-size:11px;color:var(--text2);}
+  .hrv-stats b{display:block;font-size:22px;font-weight:700;line-height:1.1;color:var(--text);}
+  .hrv-card{margin-bottom:12px;}
+  .hrv-card>div:first-child{padding:0 2px 4px;}
+  .hrv-day{display:flex;align-items:center;gap:8px;padding:7px 10px 7px 12px;margin-bottom:4px;border-left:3px solid var(--c,var(--border2));border-radius:0 8px 8px 0;background:linear-gradient(90deg,rgba(255,255,255,.035),transparent 85%);font-size:13px;flex-wrap:wrap;}
   .hrv-day .d{flex:1;min-width:90px;}
   .hrv-day .t{font-family:'DM Mono',ui-monospace,monospace;color:var(--text2);font-size:12px;}
   .hrv-day .h{min-width:42px;text-align:right;font-weight:600;}
@@ -183,7 +189,7 @@ function hrvHoursHtml(){
         hrvCan('dispute') ? `<button class="hrv-act${st === 'disputed' ? ' on' : ''}" title="${esc(tr('Dispute this day'))}" onclick="hrvOpenDispute('${k}')"><i class="ti ti-alert-triangle"></i></button>` : '',
         hrvCan('fix') ? `<button class="hrv-act${st === 'fix' ? ' on' : ''}" title="${esc(tr('Propose a fix'))}" onclick="hrvOpenFix('${k}')"><i class="ti ti-pencil"></i></button>` : '',
       ].join('');
-      return `<div class="hrv-day" data-key="${k}">
+      return `<div class="hrv-day" data-key="${k}" style="--c:${S.color === 'var(--text3)' ? 'var(--border2)' : S.color}">
         <span class="st" style="color:${S.color}" title="${esc(tr(S.label))}"><i class="ti ${S.icon}"></i></span>
         <span class="d">${esc(r.date.toLocaleDateString(uiLocale(), {weekday: 'short', day: '2-digit', month: 'short'}))}</span>
         <span class="t">${esc(times)}</span>
@@ -192,7 +198,9 @@ function hrvHoursHtml(){
     return `<div class="hrv-card"><div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:4px">
       <b>${esc(hrvWorkerName(wid))}</b><span style="color:var(--text2);font-size:12px">${esc(list.length === 1 ? tr('1 day') : tr('{n} days', {n: list.length}))} · <b style="color:var(--text)">${esc(tr('{h}h', {h: hrs.toFixed(1)}))}</b></span></div>${rows}</div>`;
   }).join('') + (left > 0 ? `<div class="hrv-more" style="text-align:center;padding:4px 0 10px"><button type="button" class="btn sm" onclick="hrvMore()"><i class="ti ti-chevron-down"></i> ${esc(tr('Show more ({0} left)', {0: left}))}</button></div>` : '');
-  return `<div class="hrv-status ${!open ? 'ok' : warn ? 'warn' : ''}" id="hrvStatus"><span><i class="ti ${!open ? 'ti-circle-check' : warn ? 'ti-alert-triangle' : 'ti-clock'}"></i> ${esc(stText)}</span><span style="display:flex;gap:6px">${exportBtn}${approveBtn}</span></div>
+  const fig = (n, l, col) => `<div><b style="color:${n ? col : 'var(--text3)'}">${n}</b>${esc(tr(l))}</div>`;
+  const stats = `<div class="hrv-stats">${fig(done, 'Approved', 'var(--green)')}${fig(counts.pending || 0, 'Waiting for approval', 'var(--text)')}${fig((counts.disputed || 0) + (counts.changed || 0), 'Disputed', 'var(--amber)')}${fig(counts.fix || 0, 'Fix proposed', 'var(--accent)')}</div>`;
+  return stats + `<div class="hrv-status ${!open ? 'ok' : warn ? 'warn' : ''}" id="hrvStatus"><span><i class="ti ${!open ? 'ti-circle-check' : warn ? 'ti-alert-triangle' : 'ti-clock'}"></i> ${esc(stText)}</span><span style="display:flex;gap:6px">${exportBtn}${approveBtn}</span></div>
     <div style="font-size:12px;color:var(--text2);margin:-4px 0 10px">${esc(tr('Total: {h}h', {h: total.toFixed(1)}))}</div>${cards}`;
 }
 

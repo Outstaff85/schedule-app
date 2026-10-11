@@ -25,10 +25,12 @@ Who creates a supplier login and how: [admin.md](admin.md) → Users pane. The s
 
 ## Tabs (`switchTab`)
 
+Drawn in the app's template (variant 3, the same CSS and `t3Line` / `t3Av` copies as the manager app): figures as text, lines with a colored mark on the left; on a phone windows open from the bottom.
+
 The tabs a supplier login may use are ticked in Admin → Users (`users.supplierSections` → claim `ss`, read by `supplierSections()` in `firestore-backend.js`; none stored = all three): a tab without its tick is hidden and `switchTab` falls back to the first allowed one. The `supplier` function enforces it: worker add / edit / delete need **My Workers** (`workers`), sending and listing hours need **My Hours** (`hours`) — else "Not allowed for this login".
 
-- **Dashboard** (`renderDashboard()`): On site now (workers whose last punch is IN), My workers (count), today's punches (paged by 10 — the portal's own copy of `renderPagedList`, [app-core.md](app-core.md) → Long lists).
-- **My Workers** (`renderWorkersList()`): Name, Phone, Object (client names), Commission (₪/h or —), delete; a double click (computer) or a long press (phone) on the row opens the edit form (a single tap only says so); paged by 10.
+- **Dashboard** (`renderDashboard()`): figures — On site now (workers whose last punch is IN), My workers, punches today — then today's punches as lines (green IN / red OUT, the client, the time) (paged by 10 — the portal's own copy of `renderPagedList`, [app-core.md](app-core.md) → Long lists).
+- **My Workers** (`renderWorkersList()`): a line per worker — name (and NEW), phone · clients, the commission (₪/h or ₪/day), ✕ to delete; green while the worker is on site; a double click (computer) or a long press (phone) on the row opens the edit form (a single tap only says so); paged by 10.
   - **Add / edit** (`renderWorkerModal` → `saveWorkerModal`): a manual form — given name, surname, phone, ID/passport number, address, city. The name fields fall back to splitting `name` for an older record. Given name is required. No document scan here (a deliberate scope cut).
   - **Delete** (`deleteWorker`) after `confirm()`.
   - After each change the data is reloaded.
