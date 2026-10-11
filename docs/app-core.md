@@ -35,7 +35,7 @@ Shared helpers:
 ## Tabs and rendering
 
 - **No framework:** mutate the globals, then call `render()`.
-- **`render()`** redraws the Schedule pieces (stats, Gantt header and body, worker list, client list), plus whichever other tab is open (`currentTab`). So an edit made on the Workers tab shows at once.
+- **`render()`** redraws the Schedule pieces (Gantt header and body, worker list, client list), plus whichever other tab is open (`currentTab`). So an edit made on the Workers tab shows at once.
 - **`switchTab(tab)`** toggles the tab/section and renders that tab. Opening Admin also runs `setupAdminPaneBar()`, only there, so a save doesn't reset the Admin pane.
 - **Permissions (client-side visibility only; the server enforces):**
   - `hasPermission(section)` — only a `staff` or `hr` role is limited by its `permissions` (`'*'` or a list); every other role passes;
@@ -47,11 +47,10 @@ Shared helpers:
 
 A weekly roster, with changes for single dates.
 - **Export** (top right of the tab, next to the date picker; `#exportDropdown`, only with the `exports` section): Excel, PDF, JSON of the shown week (`exportExcel`, `exportPDF`, `exportJSON`).
-- **Shifts:** the weekly roster per weekday in `w.schedule[0..6]` (Sunday first), plus changes for one date only in `w.dateShifts` (`{'YYYY-MM-DD': {type, start, end}}`), which win over the roster on that date. `shiftOn(w, date)` gives a date's shift (marked `dated` when it comes from `dateShifts`), `weekShifts(w)` the seven of the shown week; the grid, the stats, `workerTotalHours`, the exports and the Today tab all read through them. Date changes older than 62 days are dropped on save (`pruneDateShifts`).
+- **Shifts:** the weekly roster per weekday in `w.schedule[0..6]` (Sunday first), plus changes for one date only in `w.dateShifts` (`{'YYYY-MM-DD': {type, start, end}}`), which win over the roster on that date. `shiftOn(w, date)` gives a date's shift (marked `dated` when it comes from `dateShifts`), `weekShifts(w)` the seven of the shown week; the grid, `workerTotalHours`, the exports and the Today tab all read through them. Date changes older than 62 days are dropped on save (`pruneDateShifts`).
 - **Week navigation:** the week always opens on the current week; `applyData()` does not restore the saved `weekStart`. `prevWeek` / `nextWeek` / `goToday`, and the date picker (`syncPicker`, `onDateChange` — local dates).
 - **Who is shown:** `getVisible()` — with a client filter, the workers of that client; otherwise only workers with at least one working day in the roster or in the shown week (`hasSchedule`).
 - **Rendering:**
-  - `renderStats()` — total hours, shifts, days off, worker count;
   - `renderGanttHeader()` / `renderGanttBody()` — a 170 px name column plus 7 day columns; a bar that ends at or before its start is drawn as `midnight`. Each row is draggable (`dragStart` / `dragOver` / `doDrop` / `dragEnd`); dropping reorders `workers` and saves;
   - a day cell → `openEditShift(wi, di)`: work/off, start and end, hours badge (`updateBadge`), and **Applies to** — "Every <weekday>" (writes `w.schedule[di]` and removes a date change of that day) or "Only <date>" (writes `w.dateShifts[date]`); a dated day also offers "Back to the weekly schedule" (`clearDateShift`). A dated bar has a dashed outline and a dot.
 - **Export menu** (current week, visible workers):

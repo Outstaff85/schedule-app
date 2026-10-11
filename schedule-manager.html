@@ -216,7 +216,6 @@
   .dropdown-item:hover{background:var(--bg3);color:var(--text);}
 
   /* Stats */
-  .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:20px;}
   .stat-card{background:var(--bg2);border-radius:var(--radius);padding:12px 14px;}
   .stat-label{font-size:14px;color:var(--text2);margin-bottom:4px;}
   .stat-val{font-size:22px;font-weight:600;color:var(--text);letter-spacing:-0.5px;font-family:'DM Mono',Consolas,monospace;}
@@ -457,7 +456,6 @@
     #datePicker  { width: 100%; font-size: 14px; padding: 8px 10px; }
 
     /* ── Stats row ── */
-    .stats-row  { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
     .stat-card  { padding: 10px 12px; }
     .stat-val   { font-size: 20px; }
     .stat-label { font-size: 11px; }
@@ -523,7 +521,6 @@
 
   /* ── Phone only ── */
   @media (max-width: 480px) {
-    .stats-row  { grid-template-columns: repeat(2, 1fr); gap: 6px; }
     .stat-val   { font-size: 18px; }
     .gantt-header,
     .gantt-row  { grid-template-columns: 76px repeat(7, minmax(72px, 1fr)) !important; }
@@ -819,7 +816,6 @@ html[lang="he"] *{letter-spacing:normal !important;}
         </div>
         </div>
       </div>
-      <div class="stats-row" id="statsRow"></div>
       <div class="gantt-wrap">
         <div class="gantt-header" id="ganttHeader"></div>
         <div id="ganttBody"></div>
@@ -2174,7 +2170,7 @@ function onDateChange(){ const v=document.getElementById('datePicker').value; if
 function render(){
   const _wd=document.getElementById('weekDisplay'); if(_wd) _wd.textContent=fmtRange(weekStart);
   document.getElementById('pageSub').textContent=tr('{0} · Drag ⠿ to reorder · Click shifts to edit',{0:(fmtRange(weekStart))});
-  renderStats(); renderGanttHeader(); renderGanttBody(); renderWorkerList(); renderSidebarClients();
+  renderGanttHeader(); renderGanttBody(); renderWorkerList(); renderSidebarClients();
   // render() only ever refreshed the Schedule tab's own pieces above — every
   // other tab's table (Workers/Clients/Admin/Accounting) is rendered ONLY by
   // switchTab() when the tab is first opened. Every place that mutates data
@@ -2198,19 +2194,6 @@ function render(){
 // as a row of day-offs in the All-clients view.
 function hasSchedule(w){ return (w.schedule||[]).some(s=>s.type==='work') || weekShifts(w).some(s=>s.type==='work'); }
 function getVisible(){ const act=workers.filter(isActiveWorker); return selectedClientId ? act.filter(w=>(w.clientIds||[]).includes(selectedClientId)) : act.filter(hasSchedule); }
-
-function renderStats(){
-  const vis=getVisible();
-  const totalH=vis.reduce((s,w)=>s+workerTotalHours(w),0);
-  const shifts=vis.reduce((s,w)=>s+weekShifts(w).filter(sh=>sh.type==='work').length,0);
-  const offs  =vis.reduce((s,w)=>s+weekShifts(w).filter(sh=>sh.type!=='work').length,0);
-  let h=`
-    <div class="stat-card"><div class="stat-label">${tr('Total hours')}</div><div class="stat-val">${totalH.toFixed(1)}<span class="stat-unit">h</span></div></div>
-    <div class="stat-card"><div class="stat-label">${tr('Shifts')}</div><div class="stat-val">${shifts}</div></div>
-    <div class="stat-card"><div class="stat-label">${tr('Days off')}</div><div class="stat-val" style="color:var(--amber)">${offs}</div></div>
-    <div class="stat-card"><div class="stat-label">${tr('Workers')}</div><div class="stat-val">${vis.length}</div></div>`;
-  document.getElementById('statsRow').innerHTML=h;
-}
 
 function renderGanttHeader(){
   const cols='170px repeat(7,1fr)';
