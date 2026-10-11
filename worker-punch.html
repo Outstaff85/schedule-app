@@ -1264,7 +1264,8 @@ function renderMyHours(key){
     </div><div class="hours-punches">${s.entries.map(e => `<div class="hp">
       <span class="tag ${e.type === 'in' ? 'in' : 'out'}">${esc(e.type === 'in' ? tr('IN') : tr('OUT'))}</span>
       <span class="tm">${esc(e.time || '--:--')}</span>
-      ${histSite(e) ? `<span class="st"><i class="ti ti-map-pin"></i> ${esc(histSite(e))}</span>` : ''}</div>`).join('')}</div></div>`).join('');
+      ${histSite(e) ? `<span class="st"><i class="ti ti-map-pin"></i> ${esc(histSite(e))}</span>` : ''}
+      ${e.dist != null ? `<span class="st">${esc(tr('{m} m', {m: Math.round(e.dist)}))}</span>` : ''}</div>`).join('')}</div></div>`).join('');
   const parts = [tr('Regular {h}h', {h:f.regH.toFixed(1)})];
   if(f.otH > 0) parts.push(tr('Overtime {h}h', {h:f.otH.toFixed(1)}));
   if(f.shabH > 0) parts.push(tr('Shabbat {h}h', {h:f.shabH.toFixed(1)}));
