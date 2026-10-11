@@ -83,6 +83,8 @@ The per-worker and per-client figures come from `salaryEntriesFor(period)` → `
 - **Rows: only the workers with shifts in the period** (the entries of `salaryEntriesFor`; workers without hours are not listed). `#salarySearch` narrows the rows by name, and the totals with them; Payable by supplier and the rest always use every entry (`__lastSalaryEntries`).
 - **Totals** (`.sal-sum`, above the list): Hours, Pay, Travel ₪, Total Pay (= pay + travel); an HR also gets "My commission". They cover every row shown.
 - **List** (no input fields; one compact line per worker so a long list stays short, user request 2026-10-11): a line (`.sal-row`) holds the worker (⚠ when there are punches to check), hours and total pay; a tap opens its details (`.sal-det`): the Regular / Overtime / Shabbat split, Days (`daysUsed`; "punches: N" when set by hand), Rate (the own rate ₪/h or ₪/day; grey "client ₪x/h" when the client's applies — the client the worker had most hours at, `clientHours`; amber "set a daily rate" / "no rate"), Pay, Travel ₪, Bank (bank, branch, account; amber "no bank details"), and an HR's "My commission". The rows are paged by 10 ([app-core.md](app-core.md) → Long lists). Supplier payable and client billable are paged the same way.
+- **Details** are one line each (the label left, the figure right).
+- **Payable by supplier / Billable by client:** a tap on a row opens a window with the workers behind the sum (`openSupplierPayDetail` — each worker's hours and commission by `commissionFor`; `openClientBillDetail` — each worker's hours at that client from `clientHours`, and the client's total), paged by 10.
 - **A row:** a tap opens or closes its details; the worker's name opens the worker card (`openWorkerCardById`); a double click (computer) or a long press (phone) opens the pay window (`openPayModal`, below).
   - **Warnings** — anomalies show as an amber "N to review" banner and a ⚠ icon per worker.
 
@@ -146,9 +148,11 @@ Uploading the hours (worker card) is in [workers.md](workers.md).
 
 Real-time attendance from the punch log and today's schedule; `renderDashboard()`. Never gated.
 
+Drawn in the app's template (variant 3, user request 2026-10-11; see [app-core.md](app-core.md) → Layout): four figures on top (`#dashStats`: on site, missing, expiring, punches — a tap scrolls to that list), then one section per list with its count, each worker a line with a colored mark on the left (`t3Line` / `t3Av`; red — missing or out, green — on site or in, amber — expiring); a tap on a line opens the worker card. An empty section is hidden (the log says "No punches today").
+
 - **On site now** — workers whose last punch today is IN; shows "since" time and distance.
-- **Should be here** — today's shift (`shiftOn`, so a change for today's date counts) started more than 15 minutes ago and there is no punch, or the worker punched OUT more than 10 minutes before the shift's end.
-- **Workers by supplier** — `renderDashSuppliers()`: a headcount card per supplier that has workers; workers without a supplier get no card, and with no such supplier the section is hidden (`#dashSuppliersWrap`); no pay data.
+- **Should be here** — first on the page, with how late ("late 2h" / "late 20 min"); today's shift (`shiftOn`, so a change for today's date counts) started more than 15 minutes ago and there is no punch, or the worker punched OUT more than 10 minutes before the shift's end.
+- **Workers by supplier** — `renderDashSuppliers()`: a headcount line per supplier (a tap opens Suppliers) that has workers; workers without a supplier get no card, and with no such supplier the section is hidden (`#dashSuppliersWrap`); no pay data.
 - **Expiry cards** — contract-term warnings (`workerExpiryStatus`) and expiring or expired worker documents (`workerDocExpiries`).
 - **Today's punches** — paged by 10, like the on-site, missing, suppliers and expiring tiles ([app-core.md](app-core.md) → Long lists).
 

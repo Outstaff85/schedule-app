@@ -221,7 +221,6 @@
   "Event staff": "צוות אירועים",
   "Every worker's documents in one place, with their expiry dates.": "כל המסמכים של כל עובד במקום אחד, עם תאריכי התוקף שלהם.",
   "Every {0}": "כל {0}",
-  "Everyone is present": "כולם נוכחים",
   "Everything Form 101 needs is filled in": "כל מה שטופס 101 צריך מולא",
   "Excel (.xlsx)": "Excel (.xlsx)",
   "Excel exported!": "קובץ Excel יוצא!",
@@ -417,7 +416,6 @@
   "No workers found": "לא נמצאו עובדים",
   "No workers to add": "אין עובדים להוספה",
   "No workers yet": "אין עדיין עובדים",
-  "Nobody clocked in yet today": "אף אחד עוד לא נכנס היום",
   "none": "אין",
   "Not assigned to any object": "לא משויך לאף לקוח",
   "Not available for the supplier role": "לא זמין לתפקיד ספק",
@@ -603,7 +601,6 @@
   "Shift type": "סוג משמרת",
   "Shift {0}: {1}": "משמרת {0}: {1}",
   "Shifts": "משמרות",
-  "Should be here": "אמור להיות כאן",
   "Should Be Here (Not Clocked In)": "אמורים להיות כאן (לא החתימו)",
   "Show more ({0} left)": "הצג עוד ({0} נותרו)",
   "Show {0} more missing fields": "הצג עוד {0} שדות חסרים",
@@ -914,5 +911,11 @@
   "Who is on site, today's punches": "מי באתר, הדיווחים של היום",
   "Add and edit its workers": "הוספה ועריכה של העובדים שלו",
   "Exports, pay, hours sent for approval": "ייצוא, שכר, שעות שנשלחו לאישור",
-  "Shift": "משמרת"
+  "Shift": "משמרת",
+  "late {h}h": "איחור {h} ש'",
+  "late {m} min": "איחור {m} דק'",
+  "on site": "באתר",
+  "missing": "חסרים",
+  "expiring": "פגי תוקף",
+  "punches": "דיווחים"
 }
