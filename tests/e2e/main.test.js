@@ -533,6 +533,22 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const bk = await p.evaluate(() => ({edit: document.getElementById('workerOverlay').classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open'), notes: workers[1].notes}));
   await p.mouse.click(5, 450); await sleep(300);
   ok(bk1 && !bk.edit && bk.card && bk.notes === 'back-to-card', 'worker card: a double click edits; the form saves on close and goes back to the card ' + JSON.stringify(bk));
+  // Any window opened from the worker card goes back to it: Pay → tap outside → the card again.
+  await p.evaluate(() => openWorkerCard(1)); await sleep(300);
+  await p.evaluate(() => { [...document.querySelectorAll('#workerCardModal button')].find(b => /Pay/.test(b.textContent)).click(); }); await sleep(400);
+  const pay1 = await p.evaluate(() => ({pay: document.getElementById('payOverlay')?.classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open')}));
+  await p.mouse.click(5, 450); await sleep(600);
+  const pay2 = await p.evaluate(() => ({pay: document.getElementById('payOverlay')?.classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open')}));
+  ok(pay1.pay && !pay1.card && !pay2.pay && pay2.card, 'back: closing Pay opened from the worker card shows the card again ' + JSON.stringify({pay1, pay2}));
+  await p.mouse.click(5, 450); await sleep(400);
+  // A client card: a single click only hints, a double click opens its editor.
+  await p.evaluate(() => switchTab('clients')); await sleep(400);
+  await p.click('#clientsGrid .client-card .client-card-name >> nth=0'); await sleep(500);
+  const cl1 = await p.evaluate(() => document.getElementById('clientOverlay').classList.contains('open'));
+  await p.dblclick('#clientsGrid .client-card .client-card-name >> nth=0'); await sleep(400);
+  const cl2 = await p.evaluate(() => document.getElementById('clientOverlay').classList.contains('open'));
+  ok(!cl1 && cl2, 'clients: a single click does not edit, a double click does ' + JSON.stringify({cl1, cl2}));
+  await p.mouse.click(5, 450); await sleep(400);
   ok(external.filter(u=>/script\.google\.com/.test(u)).length === 0, 'no request to script.google.com');
   ok(p.errs.length === 0, 'owner: no page errors ' + p.errs.join(' | '));
   await ctx.close();

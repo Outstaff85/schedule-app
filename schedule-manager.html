@@ -243,7 +243,8 @@
   /* Modal */
   .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:100;align-items:center;justify-content:center;}
   .overlay.open{display:flex;}
-  .tap-edit{cursor:pointer;} /* a tap opens the item's edit form (isPlainTap) */
+  .tap-edit{cursor:pointer;} /* a tap opens the item's card, a double click / long press its editor (tapEdit, longPress) */
+  @media (pointer:coarse){ .tap-edit{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;} #workerCardModal{-webkit-touch-callout:none;} }
   .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto;}
   .modal-title{font-size:19px;font-weight:600;color:var(--text);margin-bottom:18px;letter-spacing:-0.3px;}
   .salary-ro input,.salary-ro select{pointer-events:none;opacity:.85}
@@ -2125,7 +2126,7 @@ function renderWorkerList(){
   else if(sort==='status'){ const rank={active:0,vacation:1,fired:2}; list.sort((a,b)=>((rank[a.w.status||'active']??0)-(rank[b.w.status||'active']??0))||a.w.name.localeCompare(b.w.name)); }
   renderPagedList(el,'sideWorkers',sort,list,({w,wi})=>{
     const c=WORKER_COLORS[w.colorIdx%8],wh=workerTotalHours(w);
-    return `<div class="worker-chip tap-edit" onclick="if(isPlainTap(event,this))openEditWorker(${wi})">
+    return `<div class="worker-chip tap-edit" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))">
       <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${workerAvatarInner(w)}</div>
       <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">'+tr('INACTIVE')+'</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">'+tr('VAC')+'</span>':''}${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div><div class="worker-hours">${tr('{h}h',{h:(wh).toFixed(1)})}</div></div>
       <div class="worker-actions">
@@ -2265,7 +2266,7 @@ function blankWorkerDefaults(){
 // these live globals directly (autoUploadWithRetry), unlike an edit-save
 // (which goes through the sidecar-based regenerateWorkerDoc() instead).
 function openAddWorker(){
-  editingWorkerIdx=null; __wBackToCard=null;
+  editingWorkerIdx=null;
   window.__wDraft=null;
   window.__aiScanImage=null;
   window.__aiPacketOtherPages=[];
@@ -2273,10 +2274,7 @@ function openAddWorker(){
   window.__wCapturedSigPng=undefined;
   showWorkerModal(blankWorkerDefaults());
 }
-// The edit form opened by a tap on the worker card goes back to that card
-// when it is closed (saved) — __wBackToCard holds the worker's id until then.
-let __wBackToCard=null;
-function openEditWorker(wi){ __wBackToCard=null; editingWorkerIdx=wi; window.__wDraft=null; showWorkerModal(workers[wi]); }
+function openEditWorker(wi){ editingWorkerIdx=wi; window.__wDraft=null; showWorkerModal(workers[wi]); }
 // Form 101 fields a document scan fills: the worker field, its input in the
 // worker modal, the page it is printed on (front or ספח), its Hebrew label
 // and, for digits and dates, the zoomed re-read kind (verifyField).
@@ -3142,13 +3140,7 @@ function showWorkerModal(w){
     <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px"><i class="ti ti-device-floppy"></i> ${editingWorkerIdx!==null?'השינויים נשמרים בסגירת החלון':'העובד נוצר בסגירת החלון'}</div>`;
   // No Save button: a tap outside the window saves it (saveWorker auto).
   const wov=document.getElementById('workerOverlay');
-  wov.__onUserClose=async()=>{
-    const back=__wBackToCard;
-    await saveWorker({auto:true});
-    if(back==null || wov.classList.contains('open')) return;  // not from the card, or still open (the scan, a busy save)
-    __wBackToCard=null;
-    const wi=workers.findIndex(x=>x.id===back); if(wi>=0) openWorkerCard(wi);
-  };
+  wov.__onUserClose=()=>saveWorker({auto:true});
   wov.classList.add('open');
   renderWClientChips();
   renderChildrenRows();
@@ -3823,7 +3815,7 @@ function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
     const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
     const sup=suppliers.find(s=>s.id===w.supplierId);
     const h=hours[w.id]||0;
-    return `<div class="wcard" onclick="openWorkerCard(${wi})">
+    return `<div class="wcard tap-edit" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))">
       ${hasPermission('workers')?`<button class="wcard-del" type="button" title="${tr('Delete worker')}" onclick="event.stopPropagation();deleteWorker(${wi})">✕</button>`:''}
       <div style="display:flex;align-items:center;gap:10px;padding-right:22px">
         <div style="width:38px;height:38px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div>
@@ -3925,7 +3917,7 @@ function renderWorkersPage(){
     const objBadges=objs.length?objs.map(o=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${o.color}22;border-radius:10px;margin-right:3px"><span style="width:6px;height:6px;border-radius:50%;background:${o.color}"></span>${esc(o.name)}</span>`).join(''):'<span style="color:var(--text3);font-size:12px">—</span>';
     const sup=suppliers.find(s=>s.id===w.supplierId);
     const supBadge=sup?`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${sup.color}22;border-radius:10px"><span style="width:6px;height:6px;border-radius:50%;background:${sup.color}"></span>${esc(sup.name)}</span>`:'<span style="color:var(--text3);font-size:12px">—</span>';
-    return `<tr onclick="openWorkerCard(${wi})" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background=''">
+    return `<tr class="tap-edit" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background=''">
       <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div><span style="font-size:13px;font-weight:600">${esc(w.name)}</span>${newWorkerBadgeHtml(w)}${expiryBadgeHtml(w)}${docStatusBadgeHtml(w)}</div></td>
       <td style="padding:10px 12px"><span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col}">${stMeta.label}</span></td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2);font-family:monospace">${workerDocId(w)?esc(workerDocId(w)):'—'}</td>
@@ -4002,8 +3994,14 @@ function openWorkerCard(wi){
   // its buttons or links — opens the edit form; a plain tap only reads.
   const cm=document.getElementById('workerCardModal');
   cm.insertAdjacentHTML('beforeend',`<div style="font-size:11px;color:var(--text3);text-align:center;margin-top:10px"><i class="ti ti-pencil"></i> ${esc(tr('Hold (phone) or double-click (computer) to edit'))}</div>`);
-  onEditGesture(cm,()=>{ closeModal('workerCardOverlay'); openEditWorker(wi); __wBackToCard=w.id; });
-  document.getElementById('workerCardOverlay').classList.add('open');
+  const edit=()=>{ closeModal('workerCardOverlay'); openEditWorker(workers.findIndex(x=>x.id===w.id)); };
+  cm.onclick=e=>tapEdit(e,cm,null,edit);
+  cm.onpointerdown=e=>longPress(e,cm,edit);
+  // Coming back to the card (a window opened from it was closed): drawn again
+  // from the current data, by id — nothing when the worker is gone.
+  const ov=document.getElementById('workerCardOverlay');
+  ov.__reopen=()=>{ const i=workers.findIndex(x=>x.id===w.id); if(i>=0) openWorkerCard(i); };
+  ov.classList.add('open');
 }
 
 // From the worker card: opens this worker's modal and the scan over it, so
@@ -4385,7 +4383,7 @@ function renderClientsPage(){
 
   renderPagedList(grid,'clients','',clients,c=>{
     const assigned=workers.filter(w=>(w.clientIds||[]).includes(c.id));
-    return `<div class="client-card tap-edit" onclick="if(isPlainTap(event,this))openEditClient('${c.id}')">
+    return `<div class="client-card tap-edit" onclick="tapEdit(event,this,null,()=>openEditClient('${c.id}'))" onpointerdown="longPress(event,this,()=>openEditClient('${c.id}'))">
       <button class="wcard-del" type="button" title="${tr('Remove')}" aria-label="${tr('Remove')}" onclick="event.stopPropagation();deleteClient('${c.id}')">✕</button>
       <div class="client-card-header">
         <div class="client-card-dot" style="background:${c.color}"></div>
@@ -4467,7 +4465,7 @@ function renderSuppliersPage(){
 
   renderPagedList(grid,'suppliers','',suppliers,s=>{
     const assigned=workers.filter(w=>w.supplierId===s.id);
-    return `<div class="client-card tap-edit" onclick="if(isPlainTap(event,this))openEditSupplier('${s.id}')">
+    return `<div class="client-card tap-edit" onclick="tapEdit(event,this,null,()=>openEditSupplier('${s.id}'))" onpointerdown="longPress(event,this,()=>openEditSupplier('${s.id}'))">
       <button class="wcard-del" type="button" title="${tr('Remove')}" aria-label="${tr('Remove')}" onclick="event.stopPropagation();deleteSupplier('${s.id}')">✕</button>
       <div class="client-card-header">
         <div class="client-card-dot" style="background:${s.color}"></div>
@@ -4614,38 +4612,54 @@ function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 // control inside it (a button, link, field, or anything with its own onclick)
 // does that control's job instead, and selecting text doesn't count. The
 // same code is in schedule-manager.html and supplier-portal.html.
-// Edit gesture for a card that is read first (the worker card; user request
-// 2026-10-11): a long press on a touch screen (LONG_PRESS_MS, cancelled by a
-// move or scroll) or a double click with the mouse calls fn — not when it
-// starts on a button, link, field or anything with its own onclick. After a
-// long press the click that follows the finger's release is swallowed, so it
-// cannot land on the form that has just opened (or its backdrop).
-const LONG_PRESS_MS=500;
-function onEditGesture(el, fn){
-  const plain=e=>{ for(let n=e.target;n&&n!==el;n=n.parentElement){ if(/^(BUTTON|A|INPUT|SELECT|TEXTAREA|LABEL)$/.test(n.tagName)||n.hasAttribute('onclick')) return false; } return true; };
-  const clearSel=()=>{ try{ window.getSelection().removeAllRanges(); }catch(_){} };
-  el.onclick=null;
-  el.ondblclick=e=>{ if(plain(e)){ clearSel(); fn(); } };
-  let timer=null, x=0, y=0, pressing=false;
-  const stop=()=>{ clearTimeout(timer); timer=null; pressing=false; };
-  el.onpointerdown=e=>{
-    if(e.pointerType==='mouse'||!plain(e)) return;
-    stop(); pressing=true; x=e.clientX; y=e.clientY;
-    timer=setTimeout(()=>{
-      timer=null; clearSel();
-      const swallow=ev=>{ ev.stopPropagation(); ev.preventDefault(); };
-      document.addEventListener('click',swallow,{capture:true,once:true});
-      setTimeout(()=>document.removeEventListener('click',swallow,true),800);
-      try{ navigator.vibrate&&navigator.vibrate(15); }catch(_){}
-      fn();
-    },LONG_PRESS_MS);
-  };
-  el.onpointermove=e=>{ if(timer&&Math.hypot(e.clientX-x,e.clientY-y)>10) stop(); };
-  el.onpointerup=el.onpointercancel=stop;
-  el.oncontextmenu=e=>{ if(pressing) e.preventDefault(); };  // no long-press menu on the card
+// Tap, double click, long press (user request 2026-10-11): a single tap on a
+// list item or card opens its card (tapFn) — never the editor; a double click
+// (computer) or a long press (phone, LONG_PRESS_MS; a move or scroll cancels
+// it) opens the edit form (editFn). With no tapFn a single tap only says how
+// to edit. Markup: onclick="tapEdit(event,this,tapFn,editFn)"
+// onpointerdown="longPress(event,this,editFn)" (class .tap-edit). With a mouse
+// and a tapFn the single click waits DBL_CLICK_MS to tell it from a double one.
+// The same helpers are in supplier-portal.html.
+const LONG_PRESS_MS=500, DBL_CLICK_MS=250;
+let __lp=null, __lpFiredAt=0, __editHintAt=0;
+function clearTextSel(){ try{ window.getSelection().removeAllRanges(); }catch(_){} }
+function tapEdit(e, el, tapFn, editFn){
+  if(Date.now()-__lpFiredAt<800) return;  // the click that ends a long press
+  if(e.detail>=2){
+    if(!isPlainTap(e,el,true)) return;
+    clearTimeout(el.__tapT); el.__tapT=null; clearTextSel();
+    if(editFn) editFn();
+    return;
+  }
+  if(!isPlainTap(e,el)) return;
+  if(!tapFn){
+    if(editFn && Date.now()-__editHintAt>4000){ __editHintAt=Date.now(); showToast(tr('Double-click or hold to edit')); }
+    return;
+  }
+  if(e.pointerType==='mouse' && editFn){ clearTimeout(el.__tapT); el.__tapT=setTimeout(()=>{ el.__tapT=null; tapFn(); },DBL_CLICK_MS); }
+  else tapFn();
 }
-function isPlainTap(e,container){
-  if(String((window.getSelection&&window.getSelection())||'')) return false;
+function cancelLongPress(){
+  if(!__lp) return;
+  clearTimeout(__lp.timer); __lp.el.removeEventListener('pointermove',__lp.move); __lp=null;
+}
+function longPress(e, el, editFn){
+  if(!editFn || e.pointerType==='mouse' || !isPlainTap(e,el,true)) return;
+  cancelLongPress();
+  const x=e.clientX, y=e.clientY;
+  const move=ev=>{ if(Math.hypot(ev.clientX-x,ev.clientY-y)>10) cancelLongPress(); };
+  el.addEventListener('pointermove',move);
+  el.addEventListener('pointerup',cancelLongPress,{once:true});
+  el.addEventListener('pointercancel',cancelLongPress,{once:true});
+  el.addEventListener('contextmenu',ev=>{ if(__lp||Date.now()-__lpFiredAt<800) ev.preventDefault(); },{once:true});
+  __lp={el, move, timer:setTimeout(()=>{
+    cancelLongPress(); __lpFiredAt=Date.now(); clearTextSel();
+    try{ navigator.vibrate&&navigator.vibrate(15); }catch(_){}
+    editFn();
+  },LONG_PRESS_MS)};
+}
+function isPlainTap(e,container,anySelection){
+  if(!anySelection&&String((window.getSelection&&window.getSelection())||'')) return false;
   for(let n=e.target;n&&n!==container;n=n.parentElement){
     if(/^(BUTTON|A|INPUT|SELECT|TEXTAREA|LABEL)$/.test(n.tagName)||n.hasAttribute('onclick')) return false;
   }
@@ -4669,6 +4683,48 @@ document.addEventListener('click',e=>{
   if(!(t&&t.classList&&t.classList.contains('overlay')&&t.classList.contains('open')&&_overlayDownOn===t&&t.id)) return;
   if(typeof t.__onUserClose==='function') t.__onUserClose(); else closeModal(t.id);
 });
+
+// Back to the previous window (user request 2026-10-11): a window opened from
+// another one — the first closed and the second opened by the same action
+// (one batch of class changes, e.g. closeModal(a); openB()) — remembers it
+// (overlay.__returnTo). When it closes and no other window opens right after
+// (MODAL_CHAIN_MS), the previous one comes back — drawn again by its
+// __reopen() if it has one (the worker card), else shown as it was. Chains
+// stack: card → pay → … each go back one step. Watches the class of every
+// .overlay, so every way of opening and closing (closeModal, a tap outside,
+// __onUserClose) works.
+const MODAL_CHAIN_MS=250;
+let __lastModalClose=null, __reopeningModal=null;
+function reopenModal(id){
+  const el=document.getElementById(id); if(!el||el.classList.contains('open')) return;
+  __reopeningModal=id;
+  if(typeof el.__reopen==='function') el.__reopen(); else el.classList.add('open');
+  if(!el.classList.contains('open')) __reopeningModal=null;  // __reopen found nothing to show
+}
+new MutationObserver(recs=>{
+  const closedNow=[];
+  recs.forEach(r=>{
+    const el=r.target;
+    if(!(el.classList&&el.classList.contains('overlay')&&el.id)) return;
+    const wasOpen=/(^|\s)open(\s|$)/.test(r.oldValue||''), isOpen=el.classList.contains('open');
+    if(wasOpen===isOpen) return;
+    if(isOpen){
+      if(__lastModalClose&&Date.now()-__lastModalClose.at<MODAL_CHAIN_MS) __lastModalClose.followed=true;
+      if(__reopeningModal===el.id){ __reopeningModal=null; return; }  // coming back: keeps its own __returnTo
+      const prev=closedNow.filter(id=>id!==el.id&&!document.getElementById(id).classList.contains('open')).pop();
+      el.__returnTo=prev||null;
+    } else {
+      closedNow.push(el.id);
+      const rec={id:el.id, at:Date.now(), followed:false};
+      __lastModalClose=rec;
+      const back=el.__returnTo; el.__returnTo=null;
+      if(back) setTimeout(()=>{
+        if(rec.followed||document.querySelector('.overlay.open')) return;  // another window opened instead
+        reopenModal(back);
+      },60);
+    }
+  });
+}).observe(document.body,{subtree:true,attributes:true,attributeFilter:['class'],attributeOldValue:true});
 
 
 // --- Export dropdown ----------------------------------------------------------
@@ -5049,7 +5105,7 @@ function firmProfileMissing(profile){
 function firmProfileWarnInner(){
   const missing = firmProfileMissing();
   if(!missing.length) return '';
-  return `<div class="tap-edit" onclick="if(isPlainTap(event,this))openMyFirmForm()" style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;border:1px solid #ffb020;border-radius:var(--radius-sm);background:rgba(255,176,32,0.08);font-size:12px;line-height:1.5;color:var(--text2)">
+  return `<div class="tap-edit" onclick="tapEdit(event,this,null,openMyFirmForm)" onpointerdown="longPress(event,this,openMyFirmForm)" style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;border:1px solid #ffb020;border-radius:var(--radius-sm);background:rgba(255,176,32,0.08);font-size:12px;line-height:1.5;color:var(--text2)">
     <i class="ti ti-alert-triangle" style="color:#ffb020;font-size:15px"></i>
     <div style="flex:1;min-width:180px">The firm profile is incomplete — these stay empty in Form 101 (section א «פרטי המעסיק»): <b>${esc(missing.join(', '))}</b>.</div>
   </div>`;
@@ -5226,7 +5282,7 @@ async function renderOwnFirmCard(listEl){
     const missing = firmProfileMissing(p);
     const addr = [[p.street, p.streetNumber].filter(Boolean).join(' '), p.city].filter(Boolean).join(', ');
     const row = (k, v) => `<div style="display:flex;gap:8px;font-size:13px"><span style="color:var(--text3);min-width:130px">${k}</span><span>${v ? esc(v) : '<span style="color:#ffb020">—</span>'}</span></div>`;
-    listEl.innerHTML = `<div class="tap-edit" onclick="if(isPlainTap(event,this))openMyFirmForm()" style="padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:6px">
+    listEl.innerHTML = `<div class="tap-edit" onclick="tapEdit(event,this,null,openMyFirmForm)" onpointerdown="longPress(event,this,openMyFirmForm)" style="padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:6px">
       ${row(tr('Company name'), p.companyName)}${row('מספר תיק ניכויים', p.deductionsFileNumber)}${row(tr('Phone'), p.phone)}${row(tr('Address'), addr)}
       ${missing.length ? `<div style="font-size:12px;color:#ffb020"><i class="ti ti-alert-triangle"></i> ${tr('Empty in Form 101: {0}',{0:(esc(missing.join(', ')))})}</div>` : `<div style="font-size:12px;color:var(--green)"><i class="ti ti-check"></i> ${tr('Everything Form 101 needs is filled in')}</div>`}
     </div>`;
@@ -5403,7 +5459,7 @@ function renderAdminUsersRows(el, users){
       const permsLabel = (u.role!=='staff' && u.role!=='hr') ? '' : (u.permissions==='*' ? 'Full access' : (Array.isArray(u.permissions)?u.permissions.join(', '):'—'));
       const hrLine = u.role==='hr' ? `<div style="font-size:12px;color:var(--text2)">${(hrWorkerCount(u.id)===1?tr('1 worker{1}',{1:(u.ownOnly===false?' · '+tr('sees all workers'):'')}):tr('{0} workers{1}',{0:(hrWorkerCount(u.id)),1:(u.ownOnly===false?' · '+tr('sees all workers'):'')}))}</div>`
         : u.role==='supplier' && u.supplierId ? `<div style="font-size:12px;color:var(--text2)">${(n => n===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:n,1:''}))(workers.filter(w => w.supplierId===u.supplierId).length)}</div>` : '';
-      return `<div class="tap-edit" onclick="if(isPlainTap(event,this))openEditUserForm('${esc(u.id)}')" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);${u.active===false?'opacity:0.55':''}">
+      return `<div class="tap-edit" onclick="tapEdit(event,this,null,()=>openEditUserForm('${esc(u.id)}'))" onpointerdown="longPress(event,this,()=>openEditUserForm('${esc(u.id)}'))" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);${u.active===false?'opacity:0.55':''}">
         <div>
           <div style="font-weight:600">${esc(u.fullName||u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(tr(USER_ROLE_LABELS[u.role]||u.role))})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">'+tr('inactive')+'</span>':''}</div>
           <div style="font-size:11px;color:var(--text3)">${tr('login: {0}{1}',{0:(esc(u.username)),1:(u.phone?' · '+esc(u.phone):'')})}</div>
@@ -7410,7 +7466,7 @@ function renderWorkerPay(){
     const period=e
       ? `${esc(periodLbl)}: ${esc((e.daysUsed===1?tr('1 day · {h} h · pay {pay} · travel {travel}',{n:e.daysUsed,h:Math.round(e.hours*100)/100,pay:money(e.total),travel:money(e.travel)}):tr('{n} days · {h} h · pay {pay} · travel {travel}',{n:e.daysUsed,h:Math.round(e.hours*100)/100,pay:money(e.total),travel:money(e.travel)})))} · <b style="color:var(--text)">${esc(tr('total {t}',{t:money(e.total+e.travel)}))}</b>`
       : `<span style="color:var(--text3)">${esc(periodLbl)}: ${esc(tr('no shifts'))}</span>`;
-    return `<div class="wcard tap-edit" onclick="if(isPlainTap(event,this))openPayModal('${esc(w.id)}')" title="${edit?esc(tr('Edit pay')):esc(tr('View pay'))}">
+    return `<div class="wcard tap-edit" onclick="tapEdit(event,this,null,()=>openPayModal('${esc(w.id)}'))" onpointerdown="longPress(event,this,()=>openPayModal('${esc(w.id)}'))" title="${edit?esc(tr('Edit pay')):esc(tr('View pay'))}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <div style="font-weight:600;font-size:14px">${esc(w.name||'')}</div>
         <div style="font-size:12px;font-weight:600;white-space:nowrap">${rate}</div>
@@ -7897,7 +7953,7 @@ function renderClientLogs(){
           <div style="font-size:11px;color:var(--text3)">${tr('{0} records',{0:(wLog.length)})}</div>
         </div>
         ${recent.length?`<div style="display:flex;flex-direction:column;gap:3px">${recent.map(e=>`
-          <div class="tap-edit" onclick="if(isPlainTap(event,this))editPunchEntry(${e.id})" style="display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 8px;border-radius:5px;background:var(--bg2)">
+          <div class="tap-edit" onclick="tapEdit(event,this,null,()=>editPunchEntry(${e.id}))" onpointerdown="longPress(event,this,()=>editPunchEntry(${e.id}))" style="display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 8px;border-radius:5px;background:var(--bg2)">
             <span style="font-weight:700;padding:2px 8px;border-radius:10px;font-size:11px;${e.type==='in'?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${e.type==='in'?tr('IN'):tr('OUT')}</span>
             <span style="font-family:monospace;color:var(--text)">${e.time||'--'}</span>
             <span style="color:var(--text2)">${new Date(e.ts).toLocaleDateString('en-GB')}</span>
@@ -8072,7 +8128,7 @@ function renderAdmin(){
     const dateStr=new Date(e.ts).toLocaleDateString('en-GB');
     const wClients=wc?clients.filter(cl=>(wc.clientIds||[]).includes(cl.id)):[];
     const clientBadge=wClients.map(cl=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${cl.color}22;border-radius:10px;white-space:nowrap"><span style="width:6px;height:6px;border-radius:50%;background:${cl.color};flex-shrink:0"></span>${esc(cl.name)}</span>`).join(' ');
-    return `<tr class="tap-edit" onclick="if(isPlainTap(event,this))editPunchEntry(${e.id})" style="border-bottom:1px solid var(--border);${i%2===0?'background:rgba(255,255,255,0.01)':''}">
+    return `<tr class="tap-edit" onclick="tapEdit(event,this,null,()=>editPunchEntry(${e.id}))" onpointerdown="longPress(event,this,()=>editPunchEntry(${e.id}))" style="border-bottom:1px solid var(--border);${i%2===0?'background:rgba(255,255,255,0.01)':''}">
       <td style="padding:10px 12px;white-space:nowrap"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><span style="font-size:13px;font-weight:600">${esc(e.workerName)||'Unknown'}</span></div></td>
       <td style="padding:10px 12px">${clientBadge||'<span style="color:var(--text3);font-size:12px">—</span>'}</td>
       <td style="padding:10px 12px"><span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;${e.type==='in'?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${e.type==='in'?tr('IN'):tr('OUT')}</span></td>
