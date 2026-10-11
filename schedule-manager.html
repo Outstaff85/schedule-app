@@ -259,6 +259,40 @@
   .tap-edit{cursor:pointer;} /* a tap opens the item's card, a double click / long press its editor (tapEdit, longPress) */
   @media (pointer:coarse){ .tap-edit{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;} #workerCardModal{-webkit-touch-callout:none;} }
   .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto;}
+  /* The app's template (variant 3, user request 2026-10-11): no boxes — big
+     figures as text (.t3-stats), a section line with its count (.t3-sec),
+     and rows whose state is a colored line on the left (.t3-line, --c);
+     on a phone a window opens from the bottom (a sheet). */
+  .t3-stats{display:flex;gap:20px;flex-wrap:wrap;margin:2px 2px 14px}
+  .t3-stats>div{font-size:11px;color:var(--text2);cursor:default}
+  .t3-stats>div.go{cursor:pointer}
+  .t3-stats b{display:block;font-size:24px;font-weight:700;line-height:1.1;color:var(--text)}
+  .t3-sec{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--text2);margin:16px 2px 6px}
+  .t3-sec em{font-style:normal;margin-left:auto;color:var(--text3);font-weight:500}
+  .t3-line{display:flex;align-items:center;gap:10px;padding:9px 10px 9px 12px;border-left:3px solid var(--c,var(--border2));background:linear-gradient(90deg,rgba(255,255,255,.035),transparent 85%);border-radius:0 8px 8px 0;margin-bottom:4px;font-size:13px;cursor:pointer}
+  .t3-line:hover{background:linear-gradient(90deg,rgba(255,255,255,.06),transparent 85%)}
+  .t3-line .n{flex:1;min-width:0}
+  .t3-line .n b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .t3-line .n small{display:block;color:var(--text2);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .t3-line .r{font-family:'DM Mono',monospace;font-size:12px;color:var(--text2);white-space:nowrap}
+  .t3-av{width:30px;height:30px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;overflow:hidden}
+  .t3-empty{color:var(--text3);font-size:13px;padding:6px 2px 4px}
+  /* The lists in the template: worker, client and supplier cards and the
+     Salary lines lose their box and get the colored line on the left. */
+  .wcard,.client-card{border:0 !important;border-left:3px solid var(--c,var(--border2)) !important;border-radius:0 10px 10px 0 !important;background:linear-gradient(90deg,rgba(255,255,255,.04),rgba(255,255,255,.012) 70%) !important}
+  .wcard:hover,.client-card:hover{background:linear-gradient(90deg,rgba(255,255,255,.07),rgba(255,255,255,.02) 70%) !important}
+  .sal-list{background:none !important;border:0 !important}
+  .sal-head{background:none !important;border-bottom:1px solid var(--border)}
+  .sal-row{border-top:0 !important;border-left:3px solid var(--c,var(--border2));border-radius:0 8px 8px 0;margin-top:4px;background:linear-gradient(90deg,rgba(255,255,255,.035),transparent 85%)}
+  .sal-sum>div{background:none !important;border:0 !important;padding:2px 2px}
+  .sal-sum b{font-size:20px}
+  .sal-sum{grid-template-columns:repeat(4,minmax(0,1fr)) !important;gap:6px !important}
+  @media (max-width:700px){ .sal-sum b{font-size:16px} .sal-sum span{font-size:10px} }
+  @media (max-width:700px){
+    .overlay{align-items:flex-end}
+    .overlay>.modal{width:100% !important;max-width:100% !important;max-height:88vh;border-radius:18px 18px 0 0;border-bottom:0;padding:14px 16px 20px}
+    .overlay>.modal::before{content:'';display:block;width:40px;height:4px;border-radius:2px;background:var(--border2);margin:0 auto 12px}
+  }
   .modal-title{font-size:19px;font-weight:600;color:var(--text);margin-bottom:18px;letter-spacing:-0.3px;}
   .sal-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px;margin-bottom:10px}
   .sal-sum>div{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px}
@@ -738,36 +772,39 @@ html[lang="he"] *{letter-spacing:normal !important;}
         </div>
       </div>
 
-      <!-- On-site now -->
-      <div style="margin-bottom:20px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);vertical-align:middle;margin-right:4px"></span> <span data-i18n>On Site Now</span></div>
-        <div id="dashOnSite" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px"></div>
-      </div>
+      <!-- The day in figures (template 3); a tap on a figure jumps to its list. -->
+      <div class="t3-stats" id="dashStats"></div>
 
       <!-- Missing from shift -->
-      <div style="margin-bottom:20px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"><i class="ti ti-alert-triangle"></i> <span data-i18n>Should Be Here (Not Clocked In)</span></div>
-        <div id="dashMissing" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px"></div>
+      <div id="dashMissingWrap">
+        <div class="t3-sec"><i class="ti ti-alert-triangle" style="color:var(--red)"></i> <span data-i18n>Should Be Here (Not Clocked In)</span><em id="dashMissingN"></em></div>
+        <div id="dashMissing"></div>
       </div>
 
-      <!-- Workers by supplier (hidden when no supplier has workers) -->
-      <div style="margin-bottom:20px" id="dashSuppliersWrap">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"><i class="ti ti-truck-delivery"></i> <span data-i18n>Workers by Supplier</span></div>
-        <div id="dashSuppliers" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px"></div>
+      <!-- On-site now -->
+      <div id="dashOnSiteWrap">
+        <div class="t3-sec"><i class="ti ti-map-pin" style="color:var(--green)"></i> <span data-i18n>On Site Now</span><em id="dashOnSiteN"></em></div>
+        <div id="dashOnSite"></div>
       </div>
 
       <!-- Contract expiry warnings (hidden unless at least one worker is flagged) -->
-      <div style="margin-bottom:20px;display:none" id="dashExpiringWrap">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"><i class="ti ti-alert-triangle"></i> <span data-i18n>Work permit expiring</span></div>
-        <div id="dashExpiring" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px"></div>
+      <div style="display:none" id="dashExpiringWrap">
+        <div class="t3-sec"><i class="ti ti-id-badge" style="color:var(--amber)"></i> <span data-i18n>Work permit expiring</span><em id="dashExpiringN"></em></div>
+        <div id="dashExpiring"></div>
       </div>
 
       <!-- Today's log -->
-      <div style="margin-bottom:20px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"><i class="ti ti-clipboard-text"></i> <span data-i18n>Today's Log</span></div>
-        <div id="dashLog" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden"></div>
+      <div id="dashLogWrap">
+        <div class="t3-sec"><i class="ti ti-clipboard-text"></i> <span data-i18n>Today's Log</span><em id="dashLogN"></em></div>
+        <div id="dashLog"></div>
       </div>
 
+      <!-- Workers by supplier (hidden when no supplier has workers) -->
+      <div id="dashSuppliersWrap">
+        <div class="t3-sec"><i class="ti ti-truck-delivery"></i> <span data-i18n>Workers by Supplier</span><em id="dashSuppliersN"></em></div>
+        <div id="dashSuppliers"></div>
+      </div>
+      <div style="height:20px"></div>
     </div>
 
     <div class="page-section visible" id="sectionSchedule">
@@ -3948,7 +3985,8 @@ function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
     const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
     const sup=suppliers.find(s=>s.id===w.supplierId);
     const h=hours[w.id]||0;
-    return `<div class="wcard tap-edit" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))">
+    const lc=w.status==='fired'?'var(--red)':w.status==='vacation'?'var(--amber)':workerDocStatus(w).level!=='ok'?'var(--amber)':'var(--green)';
+    return `<div class="wcard tap-edit" style="--c:${lc}" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))">
       ${hasPermission('workers')?`<button class="wcard-del" type="button" title="${tr('Delete worker')}" onclick="event.stopPropagation();deleteWorker(${wi})">✕</button>`:''}
       <div style="display:flex;align-items:center;gap:10px;padding-right:22px">
         <div style="width:38px;height:38px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div>
@@ -4529,7 +4567,7 @@ function renderClientsPage(){
 
   renderPagedList(grid,'clients','',clients,c=>{
     const assigned=workers.filter(w=>(w.clientIds||[]).includes(c.id));
-    return `<div class="client-card tap-edit" onclick="tapEdit(event,this,null,()=>openEditClient('${c.id}'))" onpointerdown="longPress(event,this,()=>openEditClient('${c.id}'))">
+    return `<div class="client-card tap-edit" style="--c:${esc(c.color||'var(--border2)')}" onclick="tapEdit(event,this,null,()=>openEditClient('${c.id}'))" onpointerdown="longPress(event,this,()=>openEditClient('${c.id}'))">
       <button class="wcard-del" type="button" title="${tr('Remove')}" aria-label="${tr('Remove')}" onclick="event.stopPropagation();deleteClient('${c.id}')">✕</button>
       <div class="client-card-header">
         <div class="client-card-dot" style="background:${c.color}"></div>
@@ -4607,7 +4645,7 @@ function renderSuppliersPage(){
 
   renderPagedList(grid,'suppliers','',suppliers,s=>{
     const assigned=workers.filter(w=>w.supplierId===s.id);
-    return `<div class="client-card tap-edit" onclick="tapEdit(event,this,null,()=>openEditSupplier('${s.id}'))" onpointerdown="longPress(event,this,()=>openEditSupplier('${s.id}'))">
+    return `<div class="client-card tap-edit" style="--c:${esc(s.color||'var(--border2)')}" onclick="tapEdit(event,this,null,()=>openEditSupplier('${s.id}'))" onpointerdown="longPress(event,this,()=>openEditSupplier('${s.id}'))">
       <button class="wcard-del" type="button" title="${tr('Remove')}" aria-label="${tr('Remove')}" onclick="event.stopPropagation();deleteSupplier('${s.id}')">✕</button>
       <div class="client-card-header">
         <div class="client-card-dot" style="background:${s.color}"></div>
@@ -6857,6 +6895,16 @@ function importDataBackup(){
 let __lastSalaryEntries=[];
 let __lastClientBillEntries=[];
 let __lastSupplierPayableRows=[];
+// Template 3 pieces (shared by every list drawn in it): an avatar and a line.
+// name / sub / right are HTML, already escaped by the caller.
+function t3Av(w){
+  const c=w?WORKER_COLORS[w.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
+  return `<div class="t3-av" style="background:${c.bg};color:${c.text}">${w?workerAvatarInner(w):'?'}</div>`;
+}
+function t3Line(o){
+  return `<div class="t3-line${o.cls?' '+o.cls:''}" style="--c:${o.c||'var(--border2)'}"${o.onclick?` onclick="${o.onclick}"`:''}${o.attrs?' '+o.attrs:''}>${o.av||''}<div class="n"><b>${o.name}</b>${o.sub?`<small>${o.sub}</small>`:''}</div>${o.right||''}</div>`;
+}
+function workerClientNames(w){ return (w.clientIds||[]).map(id=>(clients.find(c=>c.id===id)||{}).name).filter(Boolean).join(', '); }
 function renderDashboard(){
   const now     = new Date();
   const todayIdx= now.getDay(); // 0=Sun
@@ -6890,97 +6938,64 @@ function renderDashboard(){
     return false;
   });
 
-  // ── Render on-site cards ────────────────────────────────────────────────
-  const onSiteEl = document.getElementById('dashOnSite');
-  if(onSite.length){
-    renderPagedList(onSiteEl,'dashOnSite','',onSite,w=>{
-      const c=WORKER_COLORS[w.colorIdx%8];
-      const lastIn=latestOf(todayLog.filter(e=>e.workerId===w.id&&e.type==='in'));
-      const sinceTime=lastIn?lastIn.time:'?';
-      const tsh=shiftOn(w, now); const shiftHours=tsh.type==='work'&&tsh.end?calcHours(sinceTime,tsh.end).toFixed(1):'-';
-      return `<div style="background:var(--bg2);border:1px solid rgba(62,207,142,0.25);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
-        <div style="width:40px;height:40px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;position:relative">
-          ${workerAvatarInner(w)}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--green);border:2px solid var(--bg2)"></span>
-        </div>
-        <div style="font-size:13px;font-weight:600">${esc(w.name)}</div>
-        <div style="font-size:11px;color:var(--text2)">${tr('Since {0}',{0:(sinceTime)})}</div>
-        ${lastIn?.dist!=null?`<div style="font-size:10px;color:var(--text3)"><i class="ti ti-map-pin"></i> ${lastIn.dist}m</div>`:''}
-      </div>`;
-    },{grid:true});
-  } else {
-    onSiteEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('Nobody clocked in yet today')}</div>`;
-  }
-
-  // ── Render missing workers ──────────────────────────────────────────────
+  // ── Draw (template 3: figures, then a line per worker; a tap opens the card) ──
+  const setN=(id,n)=>{ const el=document.getElementById(id); if(el) el.textContent=n?String(n):''; };
+  const show=(id,on)=>{ const el=document.getElementById(id); if(el) el.style.display=on?'':'none'; };
   const missingEl = document.getElementById('dashMissing');
+  show('dashMissingWrap',missing.length); setN('dashMissingN',missing.length);
   if(missing.length){
     renderPagedList(missingEl,'dashMissing','',missing,w=>{
-      const c=WORKER_COLORS[w.colorIdx%8];
-      const sh=shiftOn(w, now);
-      return `<div style="background:var(--bg2);border:1px solid rgba(248,113,113,0.25);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
-        <div style="width:40px;height:40px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;position:relative;opacity:0.6">
-          ${workerAvatarInner(w)}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--red);border:2px solid var(--bg2)"></span>
-        </div>
-        <div style="font-size:13px;font-weight:600">${esc(w.name)}</div>
-        <div style="font-size:11px;color:var(--red)">${tr('Should be here')}</div>
-        <div style="font-size:10px;color:var(--text3)">${sh?.start||''}–${sh?.end||''}</div>
-      </div>`;
-    },{grid:true});
-  } else {
-    missingEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('Everyone is present')} <i class="ti ti-check"></i></div>`;
-  }
-
+      const sh=shiftOn(w, now), late=sh&&sh.start?Math.max(0,nowMins-toMins(sh.start)):0;
+      const lateTxt=late>=60?tr('late {h}h',{h:Math.floor(late/60)}):tr('late {m} min',{m:late});
+      return t3Line({c:'var(--red)', av:t3Av(w), name:esc(w.name), sub:esc([(sh?.start||'')+'–'+(sh?.end||''), workerClientNames(w)].filter(Boolean).join(' · ')),
+        right:`<span class="r" style="color:var(--red)">${esc(lateTxt)}</span>`, onclick:`openWorkerCardById('${esc(w.id)}')`});
+    });
+  } else missingEl.innerHTML='';
+  const onSiteEl = document.getElementById('dashOnSite');
+  show('dashOnSiteWrap',onSite.length); setN('dashOnSiteN',onSite.length);
+  if(onSite.length){
+    renderPagedList(onSiteEl,'dashOnSite','',onSite,w=>{
+      const lastIn=latestOf(todayLog.filter(e=>e.workerId===w.id&&e.type==='in'));
+      return t3Line({c:'var(--green)', av:t3Av(w), name:esc(w.name), sub:esc([tr('Since {0}',{0:(lastIn?lastIn.time:'?')}), lastIn?punchSite(lastIn):''].filter(Boolean).join(' · ')),
+        right:lastIn?.dist!=null?`<span class="r"><i class="ti ti-map-pin"></i> ${esc(tr('{m} m',{m:Math.round(lastIn.dist)}))}</span>`:'', onclick:`openWorkerCardById('${esc(w.id)}')`});
+    });
+  } else onSiteEl.innerHTML='';
   // ── Contract-expiry warnings ─────────────────────────────────────────────
   // Contract-term warnings plus expiring/expired worker documents (visa,
-  // work permit, contract file — workerDocExpiries()), one card each.
+  // work permit, contract file — workerDocExpiries()), one line each.
   const expiring = [
     ...workers.map(w=>({w, st:workerExpiryStatus(w)})).filter(x=>x.st)
-      .map(({w,st})=>({w, overdue:st.level==='overdue', label:st.level==='overdue'?'Expired':'Expiring soon', date:st.deadline})),
+      .map(({w,st})=>({w, overdue:st.level==='overdue', label:tr(st.level==='overdue'?'Expired':'Expiring soon'), date:st.deadline})),
     ...workers.filter(isActiveWorker).flatMap(w=>workerDocExpiries(w).map(x=>({w, overdue:x.level==='error',
       label:tr(x.level==='error'?'{0} expired':'{0} expires',{0:tr(WORKER_DOC_TYPES[x.doc.type]||'Document')}).replace(/\s*\{1\}$/,''), date:x.date}))),
   ];
-  const expiringWrap = document.getElementById('dashExpiringWrap');
-  expiringWrap.style.display = expiring.length ? 'block' : 'none';
+  show('dashExpiringWrap',expiring.length); setN('dashExpiringN',expiring.length);
   if(expiring.length){
-    renderPagedList(document.getElementById('dashExpiring'),'dashExpiring','',expiring,({w,overdue,label,date})=>{
-      const c=WORKER_COLORS[w.colorIdx%8];
-      const borderCol = overdue?'rgba(248,113,113,0.25)':'rgba(245,166,35,0.25)';
-      const dotCol = overdue?'var(--red)':'var(--amber)';
-      const textCol = overdue?'var(--red)':'var(--amber)';
-      return `<div style="background:var(--bg2);border:1px solid ${borderCol};border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
-        <div style="width:40px;height:40px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;position:relative">
-          ${workerAvatarInner(w)}<span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:${dotCol};border:2px solid var(--bg2)"></span>
-        </div>
-        <div style="font-size:13px;font-weight:600">${esc(w.name)}</div>
-        <div style="font-size:11px;color:${textCol}">${esc(label)}</div>
-        <div style="font-size:10px;color:var(--text3)">${date.toLocaleDateString('en-GB')}</div>
-      </div>`;
-    },{grid:true});
+    renderPagedList(document.getElementById('dashExpiring'),'dashExpiring','',expiring,({w,overdue,label,date})=>
+      t3Line({c:overdue?'var(--red)':'var(--amber)', av:t3Av(w), name:esc(w.name), sub:`<span style="color:${overdue?'var(--red)':'var(--amber)'}">${esc(label)}</span>`,
+        right:`<span class="r">${esc(date.toLocaleDateString('en-GB'))}</span>`, onclick:`openWorkerCardById('${esc(w.id)}')`}));
   }
-
   // ── Today's punch log ───────────────────────────────────────────────────
   const dashLogEl = document.getElementById('dashLog');
+  setN('dashLogN',todayLog.length);
   if(!todayLog.length){
-    dashLogEl.innerHTML=`<div style="text-align:center;padding:24px;color:var(--text3);font-size:13px">${tr('No punches today')}</div>`;
+    dashLogEl.innerHTML=`<div class="t3-empty">${tr('No punches today')}</div>`;
   } else {
     const sorted=[...todayLog].reverse();
-    renderPagedList(dashLogEl,'dashLog',now.toDateString(),sorted,(e,i)=>{
-      const wc=workers.find(w=>w.id===e.workerId);
-      const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
-      const ini=wc?workerAvatarInner(wc):esc(e.workerName?.slice(0,2).toUpperCase()||'?');
-      return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--border)">
-        <div style="width:30px;height:30px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div>
-        <div style="flex:1">
-          <div style="font-size:13px;font-weight:600">${esc(e.workerName)}</div>
-          <div style="font-size:11px;color:var(--text2)">${esc(punchSite(e))}</div>
-        </div>
-        <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;${e.type==='in'?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${e.type==='in'?tr('IN'):tr('OUT')}</span>
-        <span style="font-size:13px;font-family:monospace;color:var(--text);min-width:42px;text-align:right">${e.time}</span>
-        ${e.gpsSuspicious?'<span title="GPS suspicious" style="color:var(--amber);font-size:12px"><i class="ti ti-alert-triangle"></i></span>':''}
-      </div>`;
+    renderPagedList(dashLogEl,'dashLog',now.toDateString(),sorted,e=>{
+      const wc=workers.find(w=>w.id===e.workerId), isIn=e.type==='in';
+      return t3Line({c:isIn?'var(--green)':'var(--red)', av:t3Av(wc), name:esc(e.workerName),
+        sub:`<span style="color:${isIn?'var(--green)':'var(--red)'};font-weight:600">${isIn?tr('IN'):tr('OUT')}</span> · ${esc(punchSite(e))}`,
+        right:`${e.gpsSuspicious?'<span title="GPS suspicious" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i></span> ':''}<span class="r" style="color:var(--text)">${esc(e.time)}</span>`,
+        onclick:wc?`openWorkerCardById('${esc(wc.id)}')`:''});
     });
   }
-
+  // The figures on top: a tap scrolls to the list.
+  const stat=(n,label,col,target)=>`<div class="${n?'go':''}" ${n?`onclick="document.getElementById('${target}').scrollIntoView({behavior:'smooth',block:'start'})"`:''}><b style="color:${n?col:'var(--text3)'}">${n}</b>${esc(label)}</div>`;
+  document.getElementById('dashStats').innerHTML=stat(onSite.length,tr('on site'),'var(--green)','dashOnSiteWrap')
+    +stat(missing.length,tr('missing'),'var(--red)','dashMissingWrap')
+    +stat(expiring.length,tr('expiring'),'var(--amber)','dashExpiringWrap')
+    +stat(todayLog.length,tr('punches'),'var(--text)','dashLogWrap');
   renderDashSuppliers();
 }
 
@@ -6997,11 +7012,9 @@ function renderDashSuppliers(){
   const rows=suppliers.filter(s=>counts[s.id]).map(s=>({sup:s,count:counts[s.id]}));
   const sec=document.getElementById('dashSuppliersWrap'); if(sec) sec.style.display=rows.length?'':'none';
   if(!rows.length){ wrap.innerHTML=''; return; }
-  renderPagedList(wrap,'dashSuppliers','',rows,r=>`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
-      <div style="width:40px;height:40px;border-radius:50%;background:${r.sup.color}22;color:${r.sup.color};display:flex;align-items:center;justify-content:center;font-size:16px"><i class="ti ti-truck-delivery"></i></div>
-      <div style="font-size:13px;font-weight:600">${esc(r.sup.name)}</div>
-      <div style="font-size:11px;color:var(--text2)">${tr('{0} worker{1}',{0:(r.count),1:(r.count===1?'':'s')})}</div>
-    </div>`,{grid:true});
+  const cnt=document.getElementById('dashSuppliersN'); if(cnt) cnt.textContent=rows.length;
+  renderPagedList(wrap,'dashSuppliers','',rows,r=>t3Line({c:r.sup.color, av:`<div class="t3-av" style="background:${r.sup.color}22;color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></div>`,
+    name:esc(r.sup.name), right:`<span class="r">${esc(tr('{0} worker{1}',{0:(r.count),1:(r.count===1?'':'s')}))}</span>`, onclick:"switchTab('suppliers')"}));
 }
 
 // Per-client and per-supplier rate tables in Accounting: turned off for now
@@ -7230,7 +7243,8 @@ function renderSalary(){
     const ini=wc?workerAvatarInner(wc):esc(e.worker.slice(0,2).toUpperCase());
     const wid=esc(e.workerId), tot=e.total+e.travel;
     const det=(l,v)=>`<div><span>${esc(l)}</span><b>${v}</b></div>`;
-    return `<div class="sal-row tap-edit${__salOpen.has(e.workerId)?' open':''}" data-wid="${wid}" onclick="tapEdit(event,this,()=>toggleSalRow(this),()=>openPayModal('${wid}'))" onpointerdown="longPress(event,this,()=>openPayModal('${wid}'))">
+    const lc=e.warns&&e.warns.length?'var(--amber)':tot>0?'var(--green)':'var(--border2)';
+    return `<div class="sal-row tap-edit${__salOpen.has(e.workerId)?' open':''}" style="--c:${lc}" data-wid="${wid}" onclick="tapEdit(event,this,()=>toggleSalRow(this),()=>openPayModal('${wid}'))" onpointerdown="longPress(event,this,()=>openPayModal('${wid}'))">
       <div class="sal-line">
         <span class="c-name"><span class="sal-av" style="background:${c.bg};color:${c.text}">${ini}</span><span class="sal-nm" onclick="event.stopPropagation();openWorkerCardById('${wid}')">${esc(e.worker)}</span>${e.warns&&e.warns.length?`<i class="ti ti-alert-triangle" style="color:var(--amber);font-size:14px" title="${e.warns.join('&#10;').replace(/"/g,'&quot;')}"></i>`:''}</span>
         <span class="c-h">${esc(tr('{h}h',{h:e.hours.toFixed(1)}))}</span>

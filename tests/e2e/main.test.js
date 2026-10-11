@@ -142,6 +142,19 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(ia.hidden && ia.sidebar && ia.shown && ia.back, 'workers: an inactive worker leaves the lists, "Inactive: N — show" brings them, Active returns them ' + JSON.stringify(ia));
   ok(ia.notice && ia.closed, 'contracts: an expired contract shows a notice at the top until closed ' + JSON.stringify(ia));
+  // Template 3 on a phone: Today (figures, colored lines), Workers, Accounting — screenshots for review.
+  await p.setViewportSize({width: 390, height: 844});
+  const t3 = await p.evaluate(async () => { switchTab('dashboard'); await new Promise(r => setTimeout(r, 300));
+    return {stats: document.querySelectorAll('#dashStats > div').length, lines: document.querySelectorAll('#sectionDashboard .t3-line').length}; });
+  await p.screenshot({path: SP + '/t3-today.png'}).catch(()=>{});
+  await p.evaluate(async () => { switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await new Promise(r => setTimeout(r, 300)); });
+  await p.screenshot({path: SP + '/t3-workers.png'}).catch(()=>{});
+  await p.evaluate(async () => { switchTab('accounting'); const sel = document.getElementById('salaryPeriod'); sel.value = 'all'; await onSalaryPeriodChange();
+    const r = document.querySelector('#dashSalary .sal-row'); if(r) toggleSalRow(r); window.scrollTo(0, 0); document.querySelector('#sectionAccounting').scrollIntoView(); await new Promise(res => setTimeout(res, 300)); });
+  await p.screenshot({path: SP + '/t3-accounting.png'}).catch(()=>{});
+  await p.evaluate(async () => { const sel = document.getElementById('salaryPeriod'); sel.value = 'week'; await onSalaryPeriodChange(); });
+  await p.setViewportSize({width: 1280, height: 720});
+  ok(t3.stats === 4 && t3.lines >= 1, 'today: figures on top and colored lines (template 3) ' + JSON.stringify(t3));
   // On a phone a worker card is compact: one summary line instead of the detail rows.
   await p.setViewportSize({width: 390, height: 800});
   const wc = await p.evaluate(async () => { switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await new Promise(r => setTimeout(r, 200));
