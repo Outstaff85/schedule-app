@@ -955,6 +955,10 @@ html[lang="he"] *{letter-spacing:normal !important;}
           </div>
       </div>
 
+      <!-- Hours approval (an HR login with an hours tick): the shared
+           hours-review.js — its workers' days approved, disputed or fixed -->
+      <div id="accSecReview" style="margin-bottom:24px;display:none;max-width:760px"></div>
+
       <!-- Salary: one row per worker with shifts in the period; the pay window edits (Worker pay merged in, 2026-10-11) -->
       <div id="accSecSalary" style="margin-bottom:24px">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
@@ -1002,10 +1006,10 @@ html[lang="he"] *{letter-spacing:normal !important;}
         <div id="clientBillableWrap"></div>
       </div>
 
-      <!-- Client approvals: what each client login approved or disputed in its portal (month periods only) -->
+      <!-- Hours approvals: what each client, supplier and HR login approved, disputed or proposed to fix (month periods only) -->
       <div id="accSecApprovals" style="margin-top:24px;display:none">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-circle-check"></i> <span data-i18n>Client approvals</span> <button type="button" class="acc-help" onclick="openAccountingHelp('approvals')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
-        <div id="clientApprovalsWrap"></div>
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-circle-check"></i> <span data-i18n>Hours approvals</span> <button type="button" class="acc-help" onclick="openAccountingHelp('approvals')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
+        <div id="hourApprovalsWrap"></div>
       </div>
 
       <!-- Hours-import approval queue (Admin/Roles plan, stage 14) -->
@@ -1198,20 +1202,7 @@ html[lang="he"] *{letter-spacing:normal !important;}
     </div>
     <div class="form-section" id="userFormAccessHead" data-i18n>Access</div>
     <div class="field" id="userFormSupplierField" style="display:none"><label data-i18n>Supplier</label><select id="userFormSupplierId" onchange="renderUserFormHrWorkers()"></select></div>
-    <!-- A client login: its client and what it may do in the client portal
-         (claim perms; checked by the client function). -->
     <div class="field" id="userFormClientField" style="display:none"><label data-i18n>Client</label><select id="userFormClientId"></select></div>
-    <div class="field" id="userFormClientPermsField" style="display:none">
-      <label data-i18n>In the client portal</label>
-      <div class="check-grid">
-        <label class="check-chip"><input type="checkbox" value="hours" class="userFormClientPermCb"><span class="chip-text"><span><i class="ti ti-clock"></i> <span data-i18n>Hours</span></span><span class="chip-hint" data-i18n>In / out of its workers</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="approve" class="userFormClientPermCb"><span class="chip-text"><span><i class="ti ti-circle-check"></i> <span data-i18n>Approve</span></span><span class="chip-hint" data-i18n>Approves the month</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="dispute" class="userFormClientPermCb"><span class="chip-text"><span><i class="ti ti-alert-triangle"></i> <span data-i18n>Dispute</span></span><span class="chip-hint" data-i18n>Disputes a day with a comment</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="schedule" class="userFormClientPermCb"><span class="chip-text"><span><i class="ti ti-calendar"></i> <span data-i18n>Schedule</span></span><span class="chip-hint" data-i18n>Its workers' planned shifts</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="export" class="userFormClientPermCb"><span class="chip-text"><span><i class="ti ti-upload"></i> <span data-i18n>Export</span></span><span class="chip-hint" data-i18n>Hours to Excel</span></span></label>
-      </div>
-      <div style="font-size:11px;color:var(--text3);margin-top:6px" data-i18n>Never sees pay, rates, suppliers, GPS or documents.</div>
-    </div>
     <div class="field" id="userFormPermsField">
       <label data-i18n>Sections</label>
       <div class="check-grid">
@@ -1224,9 +1215,6 @@ html[lang="he"] *{letter-spacing:normal !important;}
         <label class="check-chip"><input type="checkbox" value="exports" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-upload"></i> <span data-i18n>Export</span></span><span class="chip-hint" data-i18n>Export button</span></span></label>
       </div>
     </div>
-    <div class="field" id="userFormHrFields" style="display:none">
-      <label class="check-chip"><input type="checkbox" id="userFormOwnOnly" checked><span class="chip-text"><span data-i18n>Only own workers</span><span class="chip-hint" data-i18n>Sees only the workers assigned to this HR. Unchecked: every worker of the firm.</span></span></label>
-    </div>
     <!-- HR and supplier: see their own workers' pay and their commission
          (claim "pay"; on by default). HR: its commission ₪/h, and ₪/day for
          a worker paid by the day. -->
@@ -1238,6 +1226,24 @@ html[lang="he"] *{letter-spacing:normal !important;}
         <div class="field"><label data-i18n>HR commission ₪/h</label><input type="number" id="userFormCommission" min="0" step="0.5" placeholder="0"></div>
         <div class="field"><label data-i18n>₪/day (daily workers)</label><input type="number" id="userFormCommissionDay" min="0" step="0.5" placeholder="by the hour" data-i18n-placeholder="by the hour"></div>
       </div>
+    </div>
+    <!-- Hours review (HR, supplier, client — the same ticks for all three,
+         users.hourPerms → claim hp, checked by the hours function): the
+         shared hours screen, hours-review.js. -->
+    <div class="field" id="userFormHourPermsField" style="display:none">
+      <label data-i18n>Hours</label>
+      <div class="check-grid">
+        <label class="check-chip"><input type="checkbox" value="hours" class="userFormHourPermCb"><span class="chip-text"><span><i class="ti ti-clock"></i> <span data-i18n>Hours</span></span><span class="chip-hint" data-i18n>In / out of its workers</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="approve" class="userFormHourPermCb"><span class="chip-text"><span><i class="ti ti-circle-check"></i> <span data-i18n>Approve</span></span><span class="chip-hint" data-i18n>A day or the whole month</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="dispute" class="userFormHourPermCb"><span class="chip-text"><span><i class="ti ti-alert-triangle"></i> <span data-i18n>Dispute</span></span><span class="chip-hint" data-i18n>Disputes a day with a comment</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="fix" class="userFormHourPermCb"><span class="chip-text"><span><i class="ti ti-pencil"></i> <span data-i18n>Fix</span></span><span class="chip-hint" data-i18n>Proposes the right in / out; the firm accepts it</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="schedule" class="userFormHourPermCb"><span class="chip-text"><span><i class="ti ti-calendar"></i> <span data-i18n>Schedule</span></span><span class="chip-hint" data-i18n>Its workers' planned shifts</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="export" class="userFormHourPermCb"><span class="chip-text"><span><i class="ti ti-upload"></i> <span data-i18n>Export</span></span><span class="chip-hint" data-i18n>Hours to Excel</span></span></label>
+      </div>
+      <div id="userFormClientNote" style="font-size:11px;color:var(--text3);margin-top:6px" data-i18n>Never sees pay, rates, suppliers, GPS or documents.</div>
+    </div>
+    <div class="field" id="userFormHrFields" style="display:none">
+      <label class="check-chip"><input type="checkbox" id="userFormOwnOnly" checked><span class="chip-text"><span data-i18n>Only own workers</span><span class="chip-hint" id="userFormOwnOnlyHint" data-i18n>Sees only the workers assigned to this HR. Unchecked: every worker of the firm.</span></span></label>
     </div>
     <div id="userFormHrWorkersField" style="display:none">
       <div class="form-section" style="display:flex;justify-content:space-between;align-items:center"><span data-i18n>Workers</span> <button class="btn sm" type="button" onclick="openHrAssignModal()"><i class="ti ti-user-plus"></i> <span data-i18n>Add workers</span></button></div>
@@ -1984,8 +1990,16 @@ function hrPayOnly(){
   const s = getSession();
   return !!s && s.role === 'hr' && hasPermission('accounting');
 }
+// An HR with an hours tick (users.hourPerms → claim hp) reviews its workers'
+// hours in Accounting → Hours approval (hours-review.js), even without the
+// Accounting section.
+function hrHourReview(){
+  const s = getSession();
+  return !!s && s.role === 'hr' && (s.hourPerms || []).some(p => p === 'hours' || p === 'schedule');
+}
 function tabAllowed(tab){
   if(isHrSession() && HR_HIDDEN_TABS.includes(tab)) return false;
+  if(tab === 'accounting' && hrHourReview()) return true;
   return !NAV_TAB_PERMISSION[tab] || hasPermission(NAV_TAB_PERMISSION[tab]);
 }
 function homeTab(){
@@ -5096,6 +5110,7 @@ async function submitLogin(){
       permissions: fb.permissions, supplierId: fb.supplierId,
       ownOnly: fb.ownOnly === true, fullName: fb.fullName || '',
       showPay: fb.showPay === true, commissionRate: Number(fb.commissionRate) || 0,
+      hourPerms: Array.isArray(fb.hourPerms) ? fb.hourPerms : [],
       commissionDayRate: Number(fb.commissionDayRate) || 0,
       viewingTenantId: fb.tenantId, // a super-admin (tenantId null) picks one on the Firms screen
     });
@@ -5437,8 +5452,11 @@ function prefetchAdminUsers(){
 }
 // How a login's role reads in the Users list (through tr()).
 const USER_ROLE_LABELS = {tenant_admin:'owner', superadmin:'super-admin', staff:'staff', hr:'HR', supplier:'supplier', client:'client'};
-const CLIENT_DEFAULT_PERMS = ['hours', 'approve', 'dispute'];
-const CLIENT_PERM_LABELS = {hours:'Hours', approve:'Approve', dispute:'Dispute', schedule:'Schedule', export:'Export'};
+// The hours-review ticks (users.hourPerms, functions-auth/core.py HOUR_PERMS);
+// a new client login starts with HOUR_CLIENT_DEFAULT, an HR or supplier with none.
+const HOUR_CLIENT_DEFAULT = ['hours', 'approve', 'dispute', 'fix'];
+const HOUR_PERM_LABELS = {hours:'Hours', approve:'Approve', dispute:'Dispute', fix:'Fix', schedule:'Schedule', export:'Export'};
+const HOUR_ROLES = ['hr', 'supplier', 'client'];
 const ADMIN_PANE_SUBTITLES = { // shown through tr()
   punchlog: 'Punch log — view, edit and export all attendance records',
   firms: 'Firm details — the employer block printed on every Form 101',
@@ -5517,7 +5535,8 @@ function renderAdminUsersRows(el, users){
         <div>
           <div style="font-weight:600">${u.role==='tenant_admin'?'<i class="ti ti-pin" style="color:var(--amber)" title="'+esc(tr('Firm owner'))+'"></i> ':''}${esc(u.fullName||u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(tr(USER_ROLE_LABELS[u.role]||u.role))})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">'+tr('inactive')+'</span>':''}</div>
           <div style="font-size:11px;color:var(--text3)">${tr('login: {0}{1}',{0:(esc(u.username)),1:(u.phone?' · '+esc(u.phone):'')})}</div>
-          ${hrLine}<div style="font-size:12px;color:var(--text2)">${u.role==='supplier' ? (sup?esc(sup.name):'—') : u.role==='client' ? esc(((clients||[]).find(c=>c.id===u.clientId)||{}).name||'—')+' · '+esc((Array.isArray(u.permissions)?u.permissions:[]).map(p=>tr(CLIENT_PERM_LABELS[p]||p)).join(', ')) : esc(permsLabel)}</div>
+          ${hrLine}<div style="font-size:12px;color:var(--text2)">${u.role==='supplier' ? (sup?esc(sup.name):'—') : u.role==='client' ? esc(((clients||[]).find(c=>c.id===u.clientId)||{}).name||'—') : esc(permsLabel)}</div>
+          ${HOUR_ROLES.includes(u.role) && (u.hourPerms||[]).length ? `<div style="font-size:12px;color:var(--text2)"><i class="ti ti-clock"></i> ${esc(u.hourPerms.map(p=>tr(HOUR_PERM_LABELS[p]||p)).join(', '))}</div>` : ''}
         </div>
         <div style="display:flex;gap:4px">
           <button class="btn sm" onclick="deleteUserConfirm('${esc(u.id)}','${esc(u.username)}')" title="${tr('Delete')}" style="color:#ff6b78"><i class="ti ti-trash"></i></button>
@@ -5540,14 +5559,25 @@ function fillUserFormClientSelect(selectedId){
   const sel = document.getElementById('userFormClientId');
   sel.innerHTML = (clients||[]).map(c => `<option value="${esc(c.id)}"${c.id===selectedId?' selected':''}>${esc(c.name)}${c.object?' · '+esc(c.object):''}</option>`).join('');
 }
+function setUserFormHourPerms(list){
+  document.querySelectorAll('.userFormHourPermCb').forEach(cb => cb.checked = (list||[]).includes(cb.value));
+}
 function onUserFormRoleChange(fromUser){
   const role = document.getElementById('userFormRole').value;
   document.getElementById('userFormSupplierField').style.display = role==='supplier' ? '' : 'none';
   document.getElementById('userFormClientField').style.display = role==='client' ? '' : 'none';
-  document.getElementById('userFormClientPermsField').style.display = role==='client' ? '' : 'none';
-  if(role==='client' && fromUser===true){ fillUserFormClientSelect(null); document.querySelectorAll('.userFormClientPermCb').forEach(cb => cb.checked = CLIENT_DEFAULT_PERMS.includes(cb.value)); }
+  document.getElementById('userFormHourPermsField').style.display = HOUR_ROLES.includes(role) ? '' : 'none';
+  document.getElementById('userFormClientNote').style.display = role==='client' ? '' : 'none';
+  if(role==='client' && fromUser===true){ fillUserFormClientSelect(null); setUserFormHourPerms(HOUR_CLIENT_DEFAULT); }
   document.getElementById('userFormPermsField').style.display = (role==='supplier'||role==='client') ? 'none' : '';
-  document.getElementById('userFormHrFields').style.display = role==='hr' ? '' : 'none';
+  // "Only own workers" closes the form: an HR may see every worker when it is
+  // off; a supplier and a client always see only their own (locked on).
+  document.getElementById('userFormHrFields').style.display = HOUR_ROLES.includes(role) ? '' : 'none';
+  const own = document.getElementById('userFormOwnOnly');
+  own.disabled = role!=='hr';
+  if(role!=='hr') own.checked = true;
+  document.getElementById('userFormOwnOnlyHint').textContent = role==='supplier' ? tr('Only this supplier\'s workers — always.')
+    : role==='client' ? tr('Only the workers at this client — always.') : tr('Sees only the workers assigned to this HR. Unchecked: every worker of the firm.');
   document.getElementById('userFormPayFields').style.display = (role==='hr'||role==='supplier') ? '' : 'none';
   document.getElementById('userFormCommissionField').style.display = role==='hr' ? '' : 'none';
   // A supplier's pay view is its own tile; an HR's is the Accounting section.
@@ -5583,7 +5613,7 @@ function openCreateUserForm(){
   document.getElementById('userFormCommissionDay').value = '';
   document.getElementById('userFormError').textContent = '';
   fillUserFormClientSelect(null);
-  document.querySelectorAll('.userFormClientPermCb').forEach(cb => cb.checked = CLIENT_DEFAULT_PERMS.includes(cb.value));
+  setUserFormHourPerms([]);
   onUserFormRoleChange();
   document.getElementById('userFormOverlay').classList.add('open');
 }
@@ -5618,7 +5648,7 @@ async function openEditUserForm(id){
   __editingAdminRow = u.role==='tenant_admin' || u.role==='superadmin';
   if(__editingAdminRow){
     document.getElementById('userFormTitle').textContent = tr('Edit {0} (owner)',{0:(u.fullName || u.username)});
-    ['userFormSupplierField','userFormHrFields','userFormHrWorkersField','userFormPayFields'].forEach(i => document.getElementById(i).style.display = 'none');
+    ['userFormSupplierField','userFormClientField','userFormHourPermsField','userFormHrFields','userFormHrWorkersField','userFormPayFields'].forEach(i => document.getElementById(i).style.display = 'none');
     showUserFormAccess(false);
     document.getElementById('userFormOverlay').classList.add('open');
     return;
@@ -5627,8 +5657,7 @@ async function openEditUserForm(id){
   onUserFormRoleChange();
   if(u.role==='supplier') fillUserFormSupplierSelect(u.supplierId);
   fillUserFormClientSelect(u.role==='client' ? u.clientId : null);
-  const cperms = u.role==='client' && Array.isArray(u.permissions) ? u.permissions : CLIENT_DEFAULT_PERMS;
-  document.querySelectorAll('.userFormClientPermCb').forEach(cb => cb.checked = cperms.includes(cb.value));
+  setUserFormHourPerms(Array.isArray(u.hourPerms) ? u.hourPerms : u.role==='client' ? HOUR_CLIENT_DEFAULT : []);
   if(u.role==='hr' || u.role==='supplier') renderUserFormHrWorkers();
   // A supplier has no sections (listUsers reports its empty list as '*').
   const perms = (u.role==='supplier'||u.role==='client') ? [] : u.permissions==='*' ? PERMISSION_SECTIONS.slice() : (Array.isArray(u.permissions)?u.permissions:[]);
@@ -5642,10 +5671,14 @@ async function submitUserForm(){
   const permissions = Array.from(document.querySelectorAll('.userFormPermCb:checked')).map(cb=>cb.value);
   const supplierId = document.getElementById('userFormSupplierId').value;
   const clientId = document.getElementById('userFormClientId').value;
-  const clientPerms = Array.from(document.querySelectorAll('.userFormClientPermCb:checked')).map(cb=>cb.value);
+  const hourPerms = Array.from(document.querySelectorAll('.userFormHourPermCb:checked')).map(cb=>cb.value);
   if(role==='client' && !clientId){ errEl.textContent = tr('Pick the client'); return; }
-  // Who gets what: a supplier its supplier, a client its client and ticks, others their sections.
-  const access = body => { if(role==='supplier') body.supplierId = supplierId; else if(role==='client'){ body.clientId = clientId; body.permissions = clientPerms; } else body.permissions = permissions; };
+  // Who gets what: a supplier its supplier, a client its client, staff and HR
+  // their sections; HR, supplier and client their hours ticks.
+  const access = body => {
+    if(role==='supplier') body.supplierId = supplierId; else if(role==='client') body.clientId = clientId; else body.permissions = permissions;
+    if(HOUR_ROLES.includes(role)) body.hourPerms = hourPerms;
+  };
   const btn = document.getElementById('userFormSaveBtn');
   btn.disabled = true;
   try{
@@ -6876,8 +6909,19 @@ function renderDashSuppliers(){
 // and commission (effectiveRates, w.supplierRates); true shows them again.
 const ACC_RATE_TABLES=false;
 function renderAccounting(){
-  // An HR that only sees its own workers' pay: Salary and nothing else.
+  // An HR: Hours approval with an hours tick, Salary (its own workers' pay)
+  // with the Accounting section, nothing else.
+  const review=hrHourReview();
+  document.getElementById('accSecReview').style.display=review?'':'none';
+  if(review) openHrHoursReview();
+  if(isHrSession() && !hasPermission('accounting')){
+    document.querySelectorAll('#sectionAccounting > [id^="accSec"]:not(#accSecReview)').forEach(el=>{ el.style.display='none'; });
+    const ex=document.querySelector('#sectionAccounting .perm-exports'); if(ex) ex.style.display='none';
+    const sub=document.querySelector('#sectionAccounting .page-sub'); if(sub) sub.textContent=tr('Your workers\' hours');
+    return;
+  }
   const payOnly=hrPayOnly();
+  document.getElementById('accSecSalary').style.display='';
   ['accSecRates','accSecSupplierRates','accSecPayable','accSecBillable','accSecPending'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.style.display=(payOnly||(!ACC_RATE_TABLES&&(id==='accSecRates'||id==='accSecSupplierRates')))?'none':'';
   });
@@ -6888,6 +6932,34 @@ function renderAccounting(){
   if(payOnly) return;
   if(ACC_RATE_TABLES){ renderRateMatrix(); renderSupplierRateMatrix(); }
   renderPendingHours();
+}
+
+// The shared hours screen (hours-review.js, also in the client and supplier
+// portals) over the hours function, loaded on the first open.
+const HOURS_REVIEW_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/hours';
+let __hrvLoading = null;
+function loadHoursReview(){
+  if(window.hoursReviewMount) return Promise.resolve();
+  return __hrvLoading = __hrvLoading || new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = 'hours-review.js';
+    el.onload = resolve;
+    el.onerror = () => { __hrvLoading = null; reject(new Error('hours-review.js failed to load')); };
+    document.head.appendChild(el);
+  });
+}
+async function hoursCall(body){
+  const idToken = await (await loadFirestoreBackend()).idToken();
+  const res = await fetch(HOURS_REVIEW_FN_URL, {method:'POST',
+    headers:{'Content-Type':'application/json', Authorization:'Bearer ' + idToken}, body: JSON.stringify(body)});
+  return res.json();
+}
+async function openHrHoursReview(){
+  const el = document.getElementById('accSecReview');
+  if(el.__mounted) return;
+  try{ await loadHoursReview(); }catch(e){ showToast(tr('Could not load — check the connection and try again.')); return; }
+  el.__mounted = true;
+  hoursReviewMount(el, {call: hoursCall});
 }
 
 // The salary period list: This Week / This Month / each of the 12 previous
@@ -7005,7 +7077,7 @@ function renderSalary(){
     renderSupplierPayable(entries);
     renderHrPayable(entries);
     renderClientBillable(__lastClientBillEntries);
-    renderClientApprovals(period);
+    renderHourApprovals(period);
     return;
   }
 
@@ -7095,7 +7167,7 @@ function renderSalary(){
   renderSupplierPayable(entries);
   renderHrPayable(entries);
   renderClientBillable(__lastClientBillEntries);
-  renderClientApprovals(period);
+  renderHourApprovals(period);
 }
 
 // Groups the already-computed per-worker pay totals (byWorker[...].total, the
@@ -7227,62 +7299,106 @@ function renderHrPayable(entries){
 // anywhere — the standing Client<->Supplier isolation principle (Admin/Roles
 // plan): any client-facing surface must never see a supplier exists.
 // ── Client approvals (the client portal, docs/client-portal.md) ─────────────
-// For a month period only: the clients that have a client login or an
-// approval this month — hours, status, who / when, disputed days. "Changed
-// after approval": the shifts now differ from the lines the client approved
-// (clientShiftLines — the same lines the portal builds).
+// Accounting → Hours approvals (a month period only): what each client,
+// supplier and HR login did in its hours review (hours-review.js over the
+// hours function): per login the days approved, and every day disputed,
+// with a fix waiting (accepted or rejected here — accept moves the shift's
+// punches to the proposed times), a fix rejected, or changed after approval
+// (the day's shifts now differ from the line approved; hourDayLines builds the
+// same lines as the review).
 function salaryMonthOf(period){
   if(period==='month') return localYMD(new Date()).slice(0,7);
   return /^m:\d{4}-\d{2}$/.test(period||'') ? period.slice(2) : null;
 }
-function clientShiftLines(cid, month){
+// The days of a login's scope this month: {"<worker>|<day>": line}.
+function hourDayLines(doc, month){
   const [y,m]=month.split('-').map(Number), from=new Date(y,m-1,1), to=new Date(y,m,1);
+  const lo=new Date(y,m-1,0), hi=new Date(y,m,2);
+  let pick;
+  if(doc.kind==='client') pick=e=>e.clientId===doc.ownerId;
+  else{
+    let ids=null;
+    if(doc.kind==='supplier') ids=new Set(workers.filter(w=>w.supplierId===doc.ownerId).map(w=>w.id));
+    else{
+      const u=(loadAdminCache('users_'+activeTenantIdForAdmin())||[]).find(x=>x.uid===doc.ownerId);
+      if(!u||u.ownOnly!==false) ids=new Set(workers.filter(w=>w.hrId===doc.ownerId).map(w=>w.id));
+    }
+    pick=e=>!ids||ids.has(e.workerId);
+  }
   const byW={};
-  getPunchLog().filter(e=>e.clientId===cid&&new Date(e.ts)>=from&&new Date(e.ts)<to).forEach(e=>{ (byW[e.workerId]=byW[e.workerId]||[]).push(e); });
-  const out=[];
+  getPunchLog().filter(e=>{ const d=new Date(e.ts); return d>=lo&&d<hi&&pick(e); }).forEach(e=>{ (byW[e.workerId]=byW[e.workerId]||[]).push(e); });
+  const days={};
   Object.entries(byW).forEach(([wid,list])=>groupPunchesIntoShifts(list).forEach(b=>{
+    if(b.date<from||b.date>=to) return;
     const inE=b.entries.find(e=>e.type==='in'), outE=[...b.entries].reverse().find(e=>e.type==='out');
-    out.push([wid,localYMD(b.date),inE&&inE.time||'',outE&&outE.time||''].join('|'));
+    const k=wid+'|'+localYMD(b.date); (days[k]=days[k]||[]).push([inE&&inE.time||'',outE&&outE.time||'']);
   }));
-  return out.sort();
+  const out={};
+  Object.entries(days).forEach(([k,sh])=>{ out[k]=[k,sh.map(x=>x[0]).join(','),sh.map(x=>x[1]).join(',')].join('|'); });
+  return out;
 }
-function clientApprovalState(a, cid, month){
-  if(!a) return 'pending';
-  if(a.status==='approved' && clientShiftLines(cid,month).join('\n')!==(a.snapshot||[]).slice().sort().join('\n')) return 'changed';
-  return a.status||'pending';
+function hourEntryState(e, line){
+  if((e.status==='approved'||e.status==='fixed') && e.line!==line) return 'changed';
+  return e.status||'pending';
+}
+const HOUR_ST={approved:['var(--green)','ti-circle-check','Approved'],fixed:['var(--green)','ti-circle-check','Fix accepted'],
+  changed:['var(--amber)','ti-alert-triangle','Changed after approval'],disputed:['var(--amber)','ti-alert-triangle','Disputed'],
+  fix:['var(--accent)','ti-pencil','Fix proposed'],rejected:['var(--red)','ti-circle-x','Fix rejected'],pending:['var(--text3)','ti-clock','Waiting for approval']};
+const HOUR_KIND={client:['ti-building-store','Client'],supplier:['ti-truck-delivery','Supplier'],hr:['ti-user-check','HR']};
+// The month's approval documents (the hours function, list) — every login's.
+async function hourApprovalsOf(month){
+  const r=await hoursCall({action:'list', month, tenantId:fsTenantId()});
+  if(r.error) throw new Error(r.error);
+  return r.docs||[];
+}
+// One login's month: its counts and the days that need a look.
+function hourApprovalSummary(doc, month){
+  const lines=hourDayLines(doc, month), days=doc.days||{};
+  const open=Object.entries(days).map(([k,e])=>({k,e,st:hourEntryState(e,lines[k]||'')}))
+    .filter(x=>x.st!=='approved'&&x.st!=='fixed').sort((a,b)=>a.k.split('|')[1].localeCompare(b.k.split('|')[1]));
+  const done=Object.entries(days).filter(([k,e])=>hourEntryState(e,lines[k]||'')==='approved'||hourEntryState(e,lines[k]||'')==='fixed').length;
+  return {lines, open, done, total:new Set([...Object.keys(lines),...Object.keys(days)]).size};
 }
 let __approvalsReq=0;
-async function renderClientApprovals(period){
-  const sec=document.getElementById('accSecApprovals'), wrap=document.getElementById('clientApprovalsWrap');
+async function renderHourApprovals(period){
+  const sec=document.getElementById('accSecApprovals'), wrap=document.getElementById('hourApprovalsWrap');
   if(!sec||!wrap) return;
   const month=salaryMonthOf(period);
-  if(!month||hrPayOnly()){ sec.style.display='none'; return; }
+  if(!month||isHrSession()){ sec.style.display='none'; return; }
   const req=++__approvalsReq;
-  let approvals={};
-  try{ approvals=await (await loadFirestoreBackend()).clientApprovalsOf(fsTenantId(), month); }catch(e){ console.warn('Client approvals:', e); }
+  let docs=[];
+  try{ docs=await hourApprovalsOf(month); }catch(e){ console.warn('Hours approvals:', e); }
   if(req!==__approvalsReq) return;
-  ensureHrUsers();
-  const users=loadAdminCache('users_'+activeTenantIdForAdmin());
-  const withLogin=new Set((Array.isArray(users)?users:[]).filter(u=>u.role==='client'&&u.active!==false).map(u=>u.clientId));
-  const hoursOf=cid=>((__lastClientBillEntries||[]).find(e=>e.clientId===cid)||{}).hours||0;
-  const rows=(clients||[]).filter(c=>withLogin.has(c.id)||approvals[c.id]).map(c=>({c, a:approvals[c.id]||null, hours:hoursOf(c.id)}))
-    .filter(r=>r.hours>0||r.a);
-  sec.style.display=rows.length?'':'none';
-  if(!rows.length){ wrap.innerHTML=''; return; }
-  const ST={approved:['var(--green)','ti-circle-check','Approved'],pending:['var(--text3)','ti-clock','Waiting for the client'],disputed:['var(--amber)','ti-alert-triangle','Disputed'],changed:['var(--amber)','ti-alert-triangle','Changed after approval']};
+  docs=docs.filter(d=>Object.keys(d.days||{}).length).sort((a,b)=>(a.kind+a.ownerName).localeCompare(b.kind+b.ownerName));
+  sec.style.display=docs.length?'':'none';
+  if(!docs.length){ wrap.innerHTML=''; return; }
+  const wname=id=>(workers.find(w=>w.id===id)||{}).name||id;
   wrap.innerHTML='<div class="paged-approvals" style="display:flex;flex-direction:column;gap:8px"></div>';
-  renderPagedList(wrap.querySelector('.paged-approvals'),'approvals',month,rows,({c,a,hours})=>{
-    const st=clientApprovalState(a,c.id,month), [col,icon,label]=ST[st];
-    const disputes=Object.entries((a&&a.disputes)||{}).sort();
-    const who=a&&a.approvedAt&&st!=='pending'?`<div style="font-size:11px;color:var(--text3)">${esc(tr('Approved by {name} · {when}',{name:a.approvedByName||'',when:new Date(a.approvedAt).toLocaleString(uiLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}))}</div>`:'';
-    const dis=disputes.map(([k,d])=>{ const [wid,day]=k.split('|'); const w=workers.find(x=>x.id===wid);
-      return `<div style="font-size:12px;color:var(--amber);margin-top:4px"><i class="ti ti-alert-triangle"></i> ${esc(w?w.name:wid)} · ${esc(new Date(day+'T12:00').toLocaleDateString(uiLocale(),{day:'2-digit',month:'short'}))} — ${esc(d.comment||'')}</div>`; }).join('');
+  renderPagedList(wrap.querySelector('.paged-approvals'),'approvals',month,docs,doc=>{
+    const {lines,open,done,total}=hourApprovalSummary(doc, month), [kIcon,kLabel]=HOUR_KIND[doc.kind]||HOUR_KIND.client;
+    const allOk=!open.length&&done>=total;
+    const items=open.map(({k,e,st})=>{
+      const [wid,day]=k.split('|'), [col,icon,label]=HOUR_ST[st]||HOUR_ST.pending, now=(lines[k]||'').split('|');
+      const times=now.length===4?now[2].split(',').map((x,i)=>(x||'--:--')+'–'+(now[3].split(',')[i]||'--:--')).join(', '):'';
+      const fix=e.inT?' → '+e.inT+'–'+e.outT:'';
+      const btns=st==='fix'?`<span style="display:inline-flex;gap:6px;margin-left:auto"><button class="btn sm" style="color:var(--green)" onclick="resolveHourFix('${esc(doc.id)}','${esc(k)}',true)"><i class="ti ti-check"></i> ${esc(tr('Accept'))}</button><button class="btn sm" style="color:var(--red)" onclick="resolveHourFix('${esc(doc.id)}','${esc(k)}',false)"><i class="ti ti-x"></i> ${esc(tr('Reject'))}</button></span>`:'';
+      return `<div class="hour-appr-item" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12px;margin-top:6px;color:${col}"><i class="ti ${icon}"></i> <b style="color:var(--text)">${esc(wname(wid))}</b> · ${esc(new Date(day+'T12:00').toLocaleDateString(uiLocale(),{day:'2-digit',month:'short'}))} <span style="font-family:'DM Mono',monospace;color:var(--text2)">${esc(times)}${esc(fix)}</span> — ${esc(tr(label))}${e.comment?': '+esc(e.comment):''}${e.byName?` <span style="color:var(--text3)">(${esc(e.byName)})</span>`:''}${btns}</div>`;
+    }).join('');
     return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px">
       <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
-        <div><div style="font-weight:600"><span style="color:${c.color}"><i class="ti ti-building-store"></i></span> ${esc(c.name)}</div>${who}</div>
-        <div style="text-align:right"><div style="font-size:12px;font-weight:600;color:${col}"><i class="ti ${icon}"></i> ${esc(tr(label))}</div><div style="font-size:11px;color:var(--text3)">${esc(tr('{h}h',{h:hours.toFixed(1)}))}</div></div>
-      </div>${dis}</div>`;
+        <div style="font-weight:600"><i class="ti ${kIcon}" style="color:var(--text2)"></i> ${esc(doc.ownerName||doc.ownerId)} <span style="font-size:11px;color:var(--text3);font-weight:500">${esc(tr(kLabel))}</span></div>
+        <div style="font-size:12px;font-weight:600;color:${allOk?'var(--green)':open.length?'var(--amber)':'var(--text2)'}"><i class="ti ${allOk?'ti-circle-check':open.length?'ti-alert-triangle':'ti-clock'}"></i> ${esc(tr('{done} of {n} days approved',{done,n:total}))}</div>
+      </div>${items}</div>`;
   });
+}
+// A proposed fix accepted (the shift's punches get the new times) or rejected.
+async function resolveHourFix(docId, key, accept){
+  if(accept && !confirm(tr('Move this shift to the proposed times?'))) return;
+  const r=await hoursCall({action:'resolve', docId, key, accept, tenantId:fsTenantId()});
+  if(r.error){ showToast(r.error); return; }
+  showToast(accept?tr('Fix accepted — the punches were updated'):tr('Fix rejected'));
+  // The punch listener brings the moved punches; the section redraws now.
+  renderAccounting();
 }
 
 // Only the clients with hours and a billing rate this period; with no row
@@ -7640,11 +7756,11 @@ const ACCOUNTING_HELP={
     'For the period picked in Salary: each supplier\'s workers\' hours × the supplier rate.',
     'Only the suppliers with hours and a commission this period are listed; workers without a supplier are left out.',
     'A worker\'s wage never appears in this table.']},
-  approvals:{icon:'ti-circle-check',title:'Client approvals',items:[
-    'For a month picked in Salary: each client with a client login (or an approval), its hours this month and what it did in the client portal.',
-    'Approved: the client approved the month (who, when). Disputed: the days it disputed, with its comments — fix the punches if needed.',
-    'Changed after approval: a shift of this client was added or changed after the client approved; the client sees it and approves again.',
-    'A client login is made in Admin → Users (role Client, with its ticks).']},
+  approvals:{icon:'ti-circle-check',title:'Hours approvals',items:[
+    'For a month picked in Salary: each client, supplier and HR login that reviewed its hours this month — how many days it approved, and every day that needs a look.',
+    'Disputed: a day it disputed, with its comment — fix the punches if needed. Fix proposed: the in / out it says is right; Accept moves the shift\'s punches to those times, Reject keeps them.',
+    'Changed after approval: a shift was added or changed after the day was approved; the login sees it and approves again.',
+    'The logins and their hours ticks are set in Admin → Users.']},
   billable:{icon:'ti-building-store',title:'Billable by client',items:[
     'What each client owes the firm for the period picked in Salary, by the client\'s own pricing (client card): tiered (the OT / Shabbat law rates on the client\'s billing rate) or one fixed rate.',
     'Separate from the workers\' pay: it never changes a wage, and a wage never changes it.']},
@@ -7796,10 +7912,10 @@ function exportSalary(format, period){
 // pay mode and bank details — and a Shifts sheet (buildSalaryExportRows).
 async function exportAccountantReport(period){
   period=period||'month';
-  // A month: the client approvals go in a sheet of their own.
+  // A month: the hours approvals go in a sheet of their own.
   const month=salaryMonthOf(period);
   let approvals=null;
-  if(month){ try{ approvals=await (await loadFirestoreBackend()).clientApprovalsOf(fsTenantId(), month); }catch(e){ approvals=null; } }
+  if(month){ try{ approvals=await hourApprovalsOf(month); }catch(e){ approvals=null; } }
   const {byWorker}=salaryEntriesFor(period);
   const money=v=>Math.round((Number(v)||0)*100)/100, hrs=v=>Math.round((Number(v)||0)*100)/100;
   const head=['Worker','ID / Passport','Supplier','Pay mode','Rate','Days','Regular hours','Overtime hours','Shabbat hours','Total hours','Pay (₪)','Travel (₪)','Total (₪)','Bank','Branch','Account','Warnings'].map(h=>tr(h));
@@ -7818,14 +7934,17 @@ async function exportAccountantReport(period){
   const title=[tr('Accountant report — {period}',{period:salaryPeriodLabel(period)})], firm=[(activeTenantProfile()||{}).companyName||''];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([title, firm, [], head, ...rows]), tr('Summary'));
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([sHead, ...sRows]), tr('Shifts'));
-  if(approvals && Object.keys(approvals).length){
-    const ST={approved:'Approved',pending:'Waiting for the client',disputed:'Disputed',changed:'Changed after approval'};
-    const aRows=Object.entries(approvals).map(([cid,a])=>{
-      const c=clients.find(x=>x.id===cid)||{name:cid};
-      const dis=Object.entries(a.disputes||{}).map(([k,d])=>{ const [wid,day]=k.split('|'); return ((workers.find(w=>w.id===wid)||{}).name||wid)+' '+day+': '+(d.comment||''); }).join('; ');
-      return [c.name, tr(ST[clientApprovalState(a,cid,month)]), a.approvedByName||'', a.approvedAt?new Date(a.approvedAt).toLocaleString('en-GB'):'', dis];
+  if(approvals && approvals.length){
+    const aRows=[];
+    approvals.forEach(doc=>{
+      const lines=hourDayLines(doc, month), who=doc.ownerName||doc.ownerId, kind=tr((HOUR_KIND[doc.kind]||HOUR_KIND.client)[1]);
+      Object.entries(doc.days||{}).sort((x,y)=>x[0].split('|')[1].localeCompare(y[0].split('|')[1])).forEach(([k,e])=>{
+        const [wid,day]=k.split('|');
+        aRows.push([who, kind, (workers.find(w=>w.id===wid)||{}).name||wid, day, tr((HOUR_ST[hourEntryState(e,lines[k]||'')]||HOUR_ST.pending)[2]),
+          e.inT?e.inT+'–'+e.outT:'', e.comment||'', e.byName||'', e.at?new Date(e.at).toLocaleString('en-GB'):'']);
+      });
     });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[tr('Client'),tr('Status'),tr('Approved by'),tr('When'),tr('Disputed days')], ...aRows]), tr('Client approvals'));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[tr('Login'),tr('Role'),tr('Worker'),tr('Date'),tr('Status'),tr('Proposed fix'),tr('Comment'),tr('By'),tr('When')], ...aRows]), tr('Hours approvals'));
   }
   const now=new Date();
   XLSX.writeFile(wb, 'accountant-'+(period.startsWith('m:')?period.slice(2):period+'-'+localYMD(now))+'.xlsx');
@@ -8463,7 +8582,7 @@ function showNewVersionBar(){
     <button type="button" onclick="location.reload()" style="border:0;border-radius:8px;padding:6px 12px;background:#fff;color:#1f6feb;font:inherit;cursor:pointer">${tr('Update')}</button>
     <button type="button" aria-label="${tr('Close')}" onclick="this.parentElement.remove()" style="border:0;background:none;color:#fff;font:inherit;font-size:18px;cursor:pointer;padding:0 4px">✕</button></div>`);
 }
-startVersionWatch(()=>[location.pathname,'firestore-backend.js',...(window.__scanPipelineReady?['scan-pipeline.js']:[])]);
+startVersionWatch(()=>[location.pathname,'firestore-backend.js',...(window.__scanPipelineReady?['scan-pipeline.js']:[]),...(window.hoursReviewMount?['hours-review.js']:[])]);
 
 const AVATAR_SIZE=160; // shared with scan-pipeline.js's cropPortraitAvatar() and confirmAvatarCrop() below (manual crop editor) — must stay in THIS file, not the lazy one, since confirmAvatarCrop() runs on every worker-photo edit regardless of scanning
 // Worker avatars are black and white (per user request 2026-10-04): the
@@ -9189,6 +9308,13 @@ loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangSelects
     applyNavPermissions();
     // Start on Dashboard (an HR login: its first tab)
     switchTab(homeTab());
+    // An HR's hours ticks as the ID token has them now (a change by the
+    // owner shows on the next sign-in without a new login here).
+    if(isHrSession()) loadFirestoreBackend().then(b => b.hourPerms()).then(hp => {
+      const s = getSession(); if(!s || JSON.stringify(hp) === JSON.stringify(s.hourPerms || [])) return;
+      saveSession(Object.assign(s, {hourPerms: hp})); applyNavPermissions();
+      if(currentTab === 'accounting') renderAccounting();
+    }).catch(()=>{});
     // Wake users_admin (firm profile, users, files) so its first real call
     // doesn't wait for a cold start.
     warmCloudFunctions([USERS_ADMIN_FN_URL]);

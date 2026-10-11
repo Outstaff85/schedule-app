@@ -11,7 +11,8 @@ deleteTenant, updateTenant and loadTenantProfile, with the error texts the app s
 Collections (see firestore.rules — all of these are function-only except
 users/{uid}, which its owner, a superadmin or the firm's tenant_admin may read):
   users/{uid}         username, tenantId, role, permissions ('*' or list),
-                      supplierId, clientId (a client login), active, createdAt, fullName (the
+                      supplierId, clientId (a client login), hourPerms (hr,
+                      supplier, client: the hours-review ticks), active, createdAt, fullName (the
                       person's name the app shows), phone, language
                       (the UI language the person last picked: en/he/ru); an 'hr' user also
                       ownOnly (sees only the workers whose
@@ -39,10 +40,16 @@ from datetime import datetime, timezone
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 ROLES_SUB = ("staff", "supplier", "hr", "client")    # what a firm can create for itself
-# A client login (the client portal, portal.client_action): its permissions
-# are ticks from this list, checked by the client function.
-CLIENT_PERMS = ("schedule", "hours", "approve", "dispute", "export")
-CLIENT_DEFAULT_PERMS = ["hours", "approve", "dispute"]
+# Hours review (hours.py, the `hours` function) — the same ticks for an HR, a
+# supplier and a client login (users.hourPerms → claim hp). A client login
+# starts with HOUR_CLIENT_DEFAULT; an HR or a supplier with none.
+HOUR_PERMS = ("hours", "approve", "dispute", "fix", "schedule", "export")
+HOUR_CLIENT_DEFAULT = ["hours", "approve", "dispute", "fix"]
+HOUR_ROLES = ("hr", "supplier", "client")
+
+
+def _hour_perms(v):
+    return [p for p in HOUR_PERMS if isinstance(v, list) and p in v]
 E_ROLE = "The role must be staff, supplier, hr or client"
 HR_DEFAULT_PERMS = ["workers"]
 ADMIN_ROLES = ("tenant_admin", "superadmin")
@@ -108,7 +115,7 @@ def claims_for(user):
     if role == "supplier":
         perms_list = []
     elif role == "client":
-        perms_list = [p for p in (perms if isinstance(perms, list) else []) if p in CLIENT_PERMS]
+        perms_list = []
     elif perms in (None, "", "*"):
         perms_list = ["*"]
     else:
@@ -132,6 +139,11 @@ def claims_for(user):
         claims["supplierId"] = user["supplierId"]
     if role == "client" and user.get("clientId"):
         claims["clientId"] = user["clientId"]
+    if role in HOUR_ROLES:
+        hp = user.get("hourPerms")
+        if hp is None and role == "client":  # a client login made before hourPerms: its ticks were its permissions
+            hp = user.get("permissions")
+        claims["hp"] = _hour_perms(hp)
     return claims
 
 
@@ -223,6 +235,7 @@ def login(db, username, password, mint_token, now=None, on_refused=None):
         "permissions": "*" if perms in (None, "", "*") else perms,
         "supplierId": user.get("supplierId") or None,
         "clientId": claims.get("clientId"),
+        "hourPerms": claims.get("hp", []),
         "ownOnly": claims.get("own", False),
         "showPay": claims.get("pay", False),
         "commissionRate": claims.get("hrc", 0),
@@ -299,6 +312,8 @@ def list_users(db, caller):
             "permissions": "*" if d.get("permissions") in (None, "", "*") else d.get("permissions"),
             "supplierId": d.get("supplierId") or None,
             "clientId": d.get("clientId") or None,
+            "hourPerms": _hour_perms(d.get("hourPerms") if d.get("hourPerms") is not None else (d.get("permissions") if _norm_role(d.get("role")) == "client" else []))
+                         if _norm_role(d.get("role")) in HOUR_ROLES else None,
             "fullName": d.get("fullName") or "", "phone": d.get("phone") or "",
             "ownOnly": d.get("ownOnly") is not False if _norm_role(d.get("role")) == "hr" else None,
             "showPay": d.get("showPay") is not False if _norm_role(d.get("role")) in ("hr", "supplier") else None,
@@ -393,7 +408,7 @@ def create_tenant_user(db, caller, body):
     if role == "supplier":
         perms = ""
     elif role == "client":
-        perms = [x for x in perms if x in CLIENT_PERMS] if isinstance(perms, list) else list(CLIENT_DEFAULT_PERMS)
+        perms = ""
     elif role == "hr":
         perms = list(perms) if isinstance(perms, list) else list(HR_DEFAULT_PERMS)
     else:
@@ -414,6 +429,9 @@ def create_tenant_user(db, caller, body):
         user["commissionDayRate"] = _rate(body.get("commissionDayRate"))
     if role in ("hr", "supplier"):
         user["showPay"] = body.get("showPay") is not False
+    if role in HOUR_ROLES:
+        hp = body.get("hourPerms")
+        user["hourPerms"] = _hour_perms(hp) if isinstance(hp, list) else (list(HOUR_CLIENT_DEFAULT) if role == "client" else [])
     uid, err = _new_user_batch(db, username, user, password)
     if err:
         return {"error": err}
@@ -435,7 +453,7 @@ def update_user(db, caller, body, revoke):
     if err:
         return {"error": err}
     role = _norm_role(data.get("role"))
-    if role in ADMIN_ROLES and any(k in body for k in ("permissions", "supplierId", "clientId", "active", "ownOnly", "role",
+    if role in ADMIN_ROLES and any(k in body for k in ("permissions", "supplierId", "clientId", "hourPerms", "active", "ownOnly", "role",
                                                        "showPay", "commissionRate", "commissionDayRate")):
         return {"error": E_ADMIN_TARGET}
     upd = {}
@@ -457,17 +475,21 @@ def update_user(db, caller, body, revoke):
             body = dict(body, supplierId=None)
         if new_role != "client":
             body = dict(body, clientId=None)
-        elif "permissions" not in body or not isinstance(body.get("permissions"), list):
-            body = dict(body, permissions=list(CLIENT_DEFAULT_PERMS))
+        else:
+            body = dict(body, permissions="")
+            if not isinstance(body.get("hourPerms"), list):
+                body = dict(body, hourPerms=list(HOUR_CLIENT_DEFAULT))
         if new_role == "hr" and "ownOnly" not in body:
             body = dict(body, ownOnly=True)
         role = new_role
     if "permissions" in body:
         p = body.get("permissions")
         if role == "client":
-            upd["permissions"] = [x for x in p if x in CLIENT_PERMS] if isinstance(p, list) else []
+            upd["permissions"] = ""
         else:
             upd["permissions"] = list(p) if isinstance(p, list) else ("" if p == "" else "*")
+    if "hourPerms" in body:
+        upd["hourPerms"] = _hour_perms(body.get("hourPerms")) if role in HOUR_ROLES else []
     if "clientId" in body:
         upd["clientId"] = (str(body.get("clientId")) if body.get("clientId") else None) if role == "client" else None
     if "supplierId" in body:
@@ -486,6 +508,7 @@ def update_user(db, caller, body, revoke):
     current = {"role": _norm_role(data.get("role")),
                "permissions": "*" if data.get("permissions") in (None, "", "*") else data.get("permissions"),
                "supplierId": data.get("supplierId") or None, "clientId": data.get("clientId") or None,
+               "hourPerms": data.get("hourPerms") if data.get("hourPerms") is not None else [],
                "active": data.get("active", True) is not False,
                "ownOnly": data.get("ownOnly") is not False, "showPay": data.get("showPay") is not False,
                "commissionRate": _rate(data.get("commissionRate")),

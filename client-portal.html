@@ -11,8 +11,9 @@
 <style>
 /* Client Portal (/client) — a separate page, like the supplier portal: a
    client login must never see wages, rates, suppliers, GPS or documents, so
-   it never reads Firestore; the client function (functions-auth/portal.py
-   client_action) hands out only its own workers' shifts at its site.
+   it never reads Firestore; the hours function (functions-auth/hours.py)
+   hands out only its own workers' shifts at its site, drawn by the shared
+   hours-review.js.
    docs/client-portal.md. */
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 :root{
@@ -39,23 +40,6 @@ body{padding-bottom:40px;}
 .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:20px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto;}
 .modal-title{font-size:16px;font-weight:700;margin-bottom:14px;}
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px;}
-.tabs{display:flex;gap:6px;padding:10px 16px;border-bottom:1px solid var(--border);overflow-x:auto;}
-.tab-btn{background:none;border:none;color:var(--text2);padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;border-radius:var(--radius-sm);white-space:nowrap;font-family:inherit;}
-.tab-btn.active{background:var(--bg3);color:var(--text);}
-.month-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;}
-.month-nav .m{font-size:16px;font-weight:700;text-transform:capitalize;flex:1;text-align:center;}
-.month-nav button{width:36px;height:36px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:18px;cursor:pointer;}
-.status{border-radius:var(--radius);padding:10px 14px;margin-bottom:12px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;}
-.status.pending{background:var(--bg2);border:1px solid var(--border2);}
-.status.approved{background:var(--green-bg);border:1px solid rgba(109,214,160,0.3);color:var(--green);}
-.status.disputed,.status.changed{background:var(--amber-bg);border:1px solid rgba(245,166,35,0.3);color:var(--amber);}
-.shift{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border);font-size:13px;}
-.shift .d{flex:1;}
-.shift .t{font-family:'DM Mono',ui-monospace,monospace;color:var(--text2);font-size:12px;}
-.shift .h{min-width:48px;text-align:right;font-weight:600;}
-.shift .dis{color:var(--amber);font-size:11px;width:100%;padding-left:2px;}
-.dispute-btn{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:2px 4px;}
-.dispute-btn.on{color:var(--amber);}
 .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%) translateY(8px);display:flex;align-items:center;gap:8px;max-width:min(340px,calc(100vw - 32px));box-sizing:border-box;background:var(--bg2,#181c27);border:1px solid var(--border2);border-left:3px solid var(--green);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:500;line-height:1.35;color:var(--text);box-shadow:0 6px 20px rgba(0,0,0,.35);z-index:999;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 .toast i{font-size:16px;color:var(--green);flex-shrink:0;}
@@ -106,22 +90,9 @@ try{ if(localStorage.getItem('clientPortal_session')){ document.getElementById('
       <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i> <span data-i18n>Log out</span></button>
     </div>
   </div>
-  <div class="tabs" id="tabsBar">
-    <button class="tab-btn" id="tabBtn_hours" onclick="switchTab('hours')" data-i18n>Hours</button>
-    <button class="tab-btn" id="tabBtn_schedule" onclick="switchTab('schedule')" data-i18n>Schedule</button>
-  </div>
-  <div style="padding:16px;max-width:760px;margin:0 auto">
-    <div class="month-nav">
-      <button type="button" onclick="shiftMonth(-1)" aria-label="Previous month" data-i18n-title="Previous month">‹</button>
-      <div class="m" id="monthLabel"></div>
-      <button type="button" id="nextMonthBtn" onclick="shiftMonth(1)" aria-label="Next month" data-i18n-title="Next month">›</button>
-    </div>
-    <div id="sectionHours" style="display:none"></div>
-    <div id="sectionSchedule" style="display:none"></div>
-  </div>
+  <div style="padding:16px;max-width:760px;margin:0 auto" id="hoursRoot"></div>
 </div>
 
-<div class="overlay" id="disputeOverlay"><div class="modal" id="disputeModal"></div></div>
 <div id="toast" class="toast"></div>
 
 <script>
@@ -189,7 +160,7 @@ function placeLangSelect(){
 function syncLangSelects(){ document.querySelectorAll('select.lang-select').forEach(el => { el.value = I18N_LANG; }); }
 function redrawForLanguage(){
   applyI18n(); syncLangSelects();
-  if(document.getElementById('appRoot').style.display !== 'none') render();
+  if(document.getElementById('appRoot').style.display !== 'none') { if(window.hrvRender) hrvRender(); }
 }
 // SheetJS (Excel read and write, ~900 KB) is loaded only when an Excel
 // export or import needs it, not with the page. Same code in
@@ -259,7 +230,7 @@ function showNewVersionBar(){
     <button type="button" onclick="location.reload()" style="border:0;border-radius:8px;padding:6px 12px;background:#fff;color:#1f6feb;font:inherit;cursor:pointer">${tr('Update')}</button>
     <button type="button" aria-label="${tr('Close')}" onclick="this.parentElement.remove()" style="border:0;background:none;color:#fff;font:inherit;font-size:18px;cursor:pointer;padding:0 4px">✕</button></div>`);
 }
-startVersionWatch(()=>[location.pathname,'firestore-backend.js']);
+startVersionWatch(()=>[location.pathname,'firestore-backend.js',...(window.hoursReviewMount?['hours-review.js']:[])]);
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 // Every modal closes on a tap anywhere outside it — on the dark backdrop,
 // including where the card or row that opened it was (per user request
@@ -335,8 +306,8 @@ async function logout(){
 }
 
 // ── Backend: the login function signs the device in (firestore-backend.js);
-// every data call goes to the client function with the Firebase ID token.
-const CLIENT_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/client';
+// every data call goes to the hours function (hours-review.js) with the
+// Firebase ID token.
 let __fsBackend = null;
 function loadFirestoreBackend(){
   if(__fsBackend) return __fsBackend;
@@ -350,10 +321,9 @@ function loadFirestoreBackend(){
   return __fsBackend;
 }
 loadFirestoreBackend().catch(e => console.warn('Firestore backend:', e));
-loadFirestoreBackend().catch(e => console.warn('Firestore backend:', e));
-async function clientCall(body){
+async function hoursCall(body){
   const idToken = await (await loadFirestoreBackend()).idToken();
-  const res = await fetch(CLIENT_FN_URL, {method:'POST',
+  const res = await fetch(HOURS_FN_URL, {method:'POST',
     headers:{'Content-Type':'application/json', Authorization:'Bearer ' + idToken}, body: JSON.stringify(body)});
   return res.json();
 }
@@ -374,12 +344,19 @@ async function submitLogin(){
   }catch(e){ errEl.textContent = tr('Network error'); }
 }
 
-// ── State ────────────────────────────────────────────────────────────────────
-let __month = 0, __tab = 'hours', __data = null, __loading = false;
-function monthKey(){ const n = new Date(); return localYMD(new Date(n.getFullYear(), n.getMonth() + __month, 1)).slice(0, 7); }
-function can(p){ return !!(__data && (__data.perms || []).includes(p)); }
-function shiftMonth(n){ __month = Math.min(0, __month + n); load(); }
-function switchTab(t){ __tab = t; render(); }
+// The hours screen (hours-review.js, shared with the supplier portal and the
+// manager app's HR view), loaded once.
+let __hrvLoading = null;
+function loadHoursReview(){
+  if(window.hoursReviewMount) return Promise.resolve();
+  return __hrvLoading = __hrvLoading || new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = 'hours-review.js';
+    el.onload = resolve;
+    el.onerror = () => { __hrvLoading = null; reject(new Error('hours-review.js failed to load')); };
+    document.head.appendChild(el);
+  });
+}
 
 async function gateApp(){
   let s = getSession();
@@ -389,165 +366,15 @@ async function gateApp(){
   document.getElementById('loginScreen').style.display = s ? 'none' : 'flex';
   document.getElementById('appRoot').style.display = s ? '' : 'none';
   placeLangSelect();
-  if(s) await load();
+  if(!s) return;
+  try{ await loadHoursReview(); }catch(e){ showToast(tr('Could not load — check the connection and try again.')); return; }
+  await hoursReviewMount(document.getElementById('hoursRoot'), {hideOwner: true, call: async body => {
+    const r = await hoursCall(body);
+    if(r && r.error && /session|sign in|token/i.test(r.error)) logout();
+    if(body.action === 'load' && r && r.owner) document.getElementById('clientName').textContent = [r.owner.name, r.owner.object].filter(Boolean).join(' · ');
+    return r;
+  }});
 }
-async function load(){
-  const key = monthKey();
-  __loading = true; render();
-  try{
-    const r = await clientCall({action:'load', month:key});
-    if(r.error){ showToast(r.error); if(/session|sign in|token/i.test(r.error)) logout(); return; }
-    if(key === monthKey()) __data = r;
-  }catch(e){ showToast(tr('Could not load — check the connection and try again.')); }
-  finally{ __loading = false; render(); }
-}
-
-// The month's shifts at this site, per worker, the same pairing as the app
-// (groupPunchesIntoShifts / analyzeDayPunches): punches of the month by ts.
-function monthShifts(){
-  if(!__data || !__data.punches) return [];
-  const [y, m] = __data.month.split('-').map(Number), from = new Date(y, m - 1, 1), to = new Date(y, m, 1);
-  const byW = {};
-  __data.punches.filter(e => { const d = new Date(e.ts); return d >= from && d < to; })
-    .forEach(e => { (byW[e.workerId] = byW[e.workerId] || []).push(e); });
-  const out = [];
-  Object.entries(byW).forEach(([wid, list]) => groupPunchesIntoShifts(list).forEach(b => {
-    const inE = b.entries.find(e => e.type === 'in'), outE = [...b.entries].reverse().find(e => e.type === 'out');
-    out.push({workerId: wid, day: localYMD(b.date), date: b.date, inT: inE && inE.time || '', outT: outE && outE.time || '',
-      hours: analyzeDayPunches(b.entries, b.date).hours});
-  }));
-  return out.sort((a, b) => a.date - b.date);
-}
-// What the client approves: one line per shift (worker | day | in | out); the
-// manager app builds the same lines to see a change after the approval.
-function snapshotOf(shifts){ return shifts.map(s => [s.workerId, s.day, s.inT, s.outT].join('|')).sort(); }
-function approvalState(shifts){
-  const a = (__data && __data.approval) || {status:'pending'};
-  if(a.status === 'approved' && snapshotOf(shifts).join('\n') !== (a.snapshot || []).slice().sort().join('\n')) return 'changed';
-  return a.status || 'pending';
-}
-
-// ── Draw ─────────────────────────────────────────────────────────────────────
-function render(){
-  const [y, m] = monthKey().split('-').map(Number);
-  document.getElementById('monthLabel').textContent = new Date(y, m - 1, 1).toLocaleDateString(uiLocale(), {month:'long', year:'numeric'});
-  const nb = document.getElementById('nextMonthBtn'); nb.disabled = __month >= 0; nb.style.opacity = __month >= 0 ? .3 : 1;
-  document.getElementById('clientName').textContent = __data ? [__data.client.name, __data.client.object].filter(Boolean).join(' · ') : '';
-  const showHours = !__data || can('hours'), showSched = !!__data && can('schedule');
-  if(!showHours && __tab === 'hours') __tab = 'schedule';
-  if(!showSched && __tab === 'schedule') __tab = 'hours';
-  document.getElementById('tabBtn_hours').style.display = showHours ? '' : 'none';
-  document.getElementById('tabBtn_schedule').style.display = showSched ? '' : 'none';
-  document.getElementById('tabsBar').style.display = showHours && showSched ? '' : 'none';
-  ['hours', 'schedule'].forEach(t => {
-    document.getElementById('tabBtn_' + t).classList.toggle('active', __tab === t);
-    document.getElementById('section' + t[0].toUpperCase() + t.slice(1)).style.display = __tab === t ? '' : 'none';
-  });
-  if(__tab === 'hours') renderHours(); else renderSchedule();
-}
-const msg = t => `<div style="text-align:center;padding:32px;color:var(--text3);font-size:14px">${esc(t)}</div>`;
-function workerName(id){ const w = (__data.workers || []).find(x => x.id === id); return w ? w.name : ''; }
-
-function renderHours(){
-  const el = document.getElementById('sectionHours');
-  if(!__data){ el.innerHTML = msg(__loading ? tr('Loading…') : ''); return; }
-  if(__data.month !== monthKey()){ el.innerHTML = msg(tr('Loading…')); return; }
-  const shifts = monthShifts();
-  const a = __data.approval || {status:'pending', disputes:{}};
-  const disputes = a.disputes || {};
-  const st = approvalState(shifts);
-  const when = a.approvedAt ? new Date(a.approvedAt).toLocaleString(uiLocale(), {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}) : '';
-  const stText = st === 'approved' ? tr('Approved by {name} · {when}', {name: a.approvedByName || '', when})
-    : st === 'changed' ? tr('The hours changed after your approval — please check and approve again.')
-    : st === 'disputed' ? tr('{n} day(s) disputed — the firm will check them.', {n: Object.keys(disputes).length})
-    : tr('Waiting for your approval');
-  const icon = st === 'approved' ? 'ti-circle-check' : st === 'pending' ? 'ti-clock' : 'ti-alert-triangle';
-  const approveBtn = can('approve') && shifts.length && st !== 'approved'
-    ? `<button class="btn sm green" onclick="approveMonth()"><i class="ti ti-check"></i> ${esc(tr('Approve the month'))}</button>` : '';
-  const exportBtn = can('export') && shifts.length
-    ? `<button class="btn sm" onclick="exportMonth()"><i class="ti ti-file-spreadsheet"></i> ${esc(tr('Export'))}</button>` : '';
-  if(!shifts.length){ el.innerHTML = msg(tr('No hours this month')); return; }
-  const byW = {};
-  shifts.forEach(s => { (byW[s.workerId] = byW[s.workerId] || []).push(s); });
-  const total = shifts.reduce((t, s) => t + s.hours, 0);
-  const cards = Object.keys(byW).sort((x, y) => workerName(x).localeCompare(workerName(y))).map(wid => {
-    const list = byW[wid], hrs = list.reduce((t, s) => t + s.hours, 0), days = new Set(list.map(s => s.day)).size;
-    const rows = list.map(s => {
-      const d = disputes[wid + '|' + s.day];
-      return `<div class="shift" style="flex-wrap:wrap">
-        <span class="d">${esc(s.date.toLocaleDateString(uiLocale(), {weekday:'short', day:'2-digit', month:'short'}))}</span>
-        <span class="t">${esc(s.inT || '--:--')} – ${esc(s.outT || '--:--')}</span>
-        <span class="h">${esc(tr('{h}h', {h: s.hours.toFixed(1)}))}</span>
-        ${can('dispute') ? `<button class="dispute-btn${d ? ' on' : ''}" title="${esc(tr('Dispute this day'))}" onclick="openDispute('${esc(wid)}','${s.day}')"><i class="ti ti-alert-triangle"></i></button>` : ''}
-        ${d ? `<div class="dis"><i class="ti ti-info-circle"></i> ${esc(d.comment)}${d.byName ? ' — ' + esc(d.byName) : ''}</div>` : ''}
-      </div>`;
-    }).join('');
-    return `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:4px">
-      <b>${esc(workerName(wid))}</b><span style="color:var(--text2);font-size:12px">${esc(days === 1 ? tr('1 day') : tr('{n} days', {n: days}))} · <b style="color:var(--text)">${esc(tr('{h}h', {h: hrs.toFixed(1)}))}</b></span></div>${rows}</div>`;
-  }).join('');
-  el.innerHTML = `<div class="status ${st}"><span><i class="ti ${icon}"></i> ${esc(stText)}</span><span style="display:flex;gap:6px">${exportBtn}${approveBtn}</span></div>
-    <div style="font-size:12px;color:var(--text2);margin:-4px 0 10px">${esc(tr('Total: {h}h', {h: total.toFixed(1)}))}</div>${cards}`;
-}
-
-async function approveMonth(){
-  const shifts = monthShifts();
-  if(!confirm(tr('Approve all the hours of this month?'))) return;
-  const r = await clientCall({action:'approve', month: __data.month, snapshot: snapshotOf(shifts)});
-  if(r.error){ showToast(r.error); return; }
-  __data.approval = r.approval; render(); showToast(tr('Approved — thank you'));
-}
-// A dispute window: no Save button — closing it (a tap outside) saves the
-// comment; an empty comment takes the dispute back.
-function openDispute(wid, day){
-  const d = ((__data.approval || {}).disputes || {})[wid + '|' + day];
-  const date = new Date(day + 'T12:00');
-  document.getElementById('disputeModal').innerHTML = `<div class="modal-title"><i class="ti ti-alert-triangle"></i> ${esc(tr('Dispute — {name}', {name: workerName(wid)}))}</div>
-    <div style="font-size:13px;color:var(--text2);margin-bottom:10px">${esc(date.toLocaleDateString(uiLocale(), {weekday:'long', day:'numeric', month:'long'}))}</div>
-    <div class="field"><label>${esc(tr('What is wrong with this day?'))}</label><textarea id="disputeText" rows="4" placeholder="${esc(tr('e.g. left at 15:00, not 17:00'))}">${esc(d ? d.comment : '')}</textarea></div>
-    <div style="font-size:11px;color:var(--text3)">${esc(tr('Saved when you close this window. Empty = no dispute.'))}</div>`;
-  const ov = document.getElementById('disputeOverlay');
-  ov.__onUserClose = async () => {
-    const comment = document.getElementById('disputeText').value.trim();
-    closeModal('disputeOverlay');
-    if(comment === (d ? d.comment : '')) return;
-    const r = await clientCall({action:'dispute', month: __data.month, workerId: wid, date: day, comment});
-    if(r.error){ showToast(r.error); return; }
-    __data.approval = r.approval; render(); showToast(comment ? tr('Dispute sent') : tr('Dispute removed'));
-  };
-  ov.classList.add('open');
-  setTimeout(() => document.getElementById('disputeText').focus(), 50);
-}
-async function exportMonth(){
-  try{ await loadXlsx(); }catch(e){ showToast(e.message); return; }
-  const shifts = monthShifts();
-  const head = [tr('Worker'), tr('Date'), tr('In'), tr('Out'), tr('Hours')];
-  const rows = shifts.map(s => [workerName(s.workerId), s.date.toLocaleDateString('en-GB'), s.inT, s.outT, Math.round(s.hours * 100) / 100]);
-  rows.push([tr('Total'), '', '', '', Math.round(shifts.reduce((t, s) => t + s.hours, 0) * 100) / 100]);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[__data.client.name + ' — ' + __data.month], [], head, ...rows]), tr('Hours'));
-  XLSX.writeFile(wb, 'hours-' + __data.month + '.xlsx');
-}
-
-// Schedule: each worker's planned day for every day of the month — the
-// weekly roster, a change for a single date winning on its date.
-function schedDay(w, d){
-  const day = (w.dates || {})[localYMD(d)] || (w.schedule || [])[d.getDay()] || {};
-  return day.type === 'work' && day.start && day.end ? day.start + '–' + day.end : '';
-}
-function renderSchedule(){
-  const el = document.getElementById('sectionSchedule');
-  if(!__data){ el.innerHTML = msg(__loading ? tr('Loading…') : ''); return; }
-  const ws = (__data.workers || []).filter(w => w.schedule);
-  if(!ws.length){ el.innerHTML = msg(tr('No shifts planned yet')); return; }
-  const [y, m] = __data.month.split('-').map(Number);
-  const days = []; for(let d = new Date(y, m - 1, 1); d.getMonth() === m - 1; d.setDate(d.getDate() + 1)) days.push(new Date(d));
-  const today = localYMD(new Date());
-  el.innerHTML = ws.map(w => {
-    const rows = days.map(d => { const t = schedDay(w, d); return t ? `<div class="shift"><span class="d"${localYMD(d) === today ? ' style="color:var(--accent);font-weight:700"' : ''}>${esc(d.toLocaleDateString(uiLocale(), {weekday:'short', day:'2-digit', month:'short'}))}</span><span class="t">${esc(t)}</span></div>` : ''; }).join('');
-    return `<div class="card"><b>${esc(w.name)}</b>${rows || `<div style="color:var(--text3);font-size:12px;padding-top:6px">${esc(tr('No shifts planned yet'))}</div>`}</div>`;
-  }).join('');
-}
-
 new MutationObserver(placeLangSelect).observe(document.getElementById('loginScreen'), {attributes:true, attributeFilter:['style']});
 loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangSelects(); placeLangSelect(); gateApp(); });
 </script>

@@ -5,7 +5,7 @@
 //   node tests/icons/check.js
 const fs = require('fs'), path = require('path');
 const ROOT = path.join(__dirname, '..', '..');
-const FILES = ['schedule-manager.html', 'supplier-portal.html', 'worker-punch.html', 'client-portal.html', 'scan-pipeline.js', 'firestore-backend.js'];
+const FILES = ['schedule-manager.html', 'supplier-portal.html', 'worker-punch.html', 'client-portal.html', 'hours-review.js', 'scan-pipeline.js', 'firestore-backend.js'];
 const css = fs.readFileSync(path.join(ROOT, 'icons', 'tabler-icons.css'), 'utf8');
 const have = new Set([...css.matchAll(/\.ti-([a-z0-9-]+):before/g)].map(m => m[1]));
 const missing = new Set();

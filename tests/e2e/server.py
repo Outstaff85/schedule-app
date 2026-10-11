@@ -35,10 +35,10 @@ def seed():
     t1.set({'companyName': 'Firm One', 'phone': '0501234567', 'deductionsFileNumber': '012345678', 'street': 'Herzl', 'streetNumber': '1', 'city': 'Haifa'})
     t2.set({'companyName': 'Firm Two', 'phone': '0507654321', 'deductionsFileNumber': '87654321', 'street': 'Bialik', 'streetNumber': '2', 'city': 'Tel Aviv'})
     seed_legacy('u-admin1', 'owner1', 'owner-pass-1', role='tenant_admin', tenantId=T1, permissions='*')
-    seed_legacy('u-sup1', 'sup1', 'sup-pass-11', role='supplier', tenantId=T1, permissions='', supplierId='s-1')
+    seed_legacy('u-sup1', 'sup1', 'sup-pass-11', role='supplier', tenantId=T1, permissions='', supplierId='s-1', hourPerms=['hours', 'approve', 'export'])
     seed_legacy('u-super', 'boss', 'boss-pass-1', role='superadmin', tenantId=None, permissions='*')
     seed_legacy('u-client1', 'client1', 'client-pass-1', role='client', tenantId=T1, clientId='c2', fullName='Site B manager',
-                permissions=['hours', 'approve', 'dispute', 'schedule', 'export'])
+                permissions='', hourPerms=['hours', 'approve', 'dispute', 'fix', 'schedule', 'export'])
     t1.collection('settings').document('schedule').set({'savedAt': 'S1'})
     t1.collection('clients').document('c1').set({'id': 'c1', 'name': 'Site A', 'lat': 32.0, 'lng': 34.8, 'radius': 100, 'sortIndex': 0})
     t1.collection('clients').document('c2').set({'id': 'c2', 'name': 'Site B', 'sortIndex': 1})
@@ -90,7 +90,7 @@ class H(BaseHTTPRequestHandler):
             docs = [d.to_dict() for d in DB.collection('tenants').document(T1).collection('punches').stream()]
             status, data = 200, json.dumps({'n': len(docs), 'ids': sorted(d['id'] if isinstance(d.get('id'), str) else str(d.get('id')) for d in docs), 'days': [d.get('day') for d in docs]}).encode()
         else:
-            fn = {'/login': main.login, '/users_admin': main.users_admin, '/punch': main.punch, '/supplier': main.supplier, '/client': main.client, '/ai_read': main.ai_read}[self.path]
+            fn = {'/login': main.login, '/users_admin': main.users_admin, '/punch': main.punch, '/supplier': main.supplier, '/hours': main.hours, '/ai_read': main.ai_read}[self.path]
             hdr = {'Content-Type': 'application/json'}
             if self.headers.get('Authorization'): hdr['Authorization'] = self.headers['Authorization']
             with app.test_request_context('/', method='POST', data=raw, headers=hdr):

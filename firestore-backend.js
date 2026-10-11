@@ -351,14 +351,6 @@
         F.where(F.documentId(),'>=',pre), F.where(F.documentId(),'<',pre + '\uf8ff')));
       return snap.docs.map(punchFromDoc);
     }
-    // A month's client approvals (the client portal writes them through the
-    // client function): {clientId: {status, approvedAt, approvedByName, snapshot, disputes}}.
-    async function clientApprovalsOf(t, month){
-      const snap = await F.getDocs(F.query(col(t,'clientApprovals'), F.where('month','==',String(month))));
-      const out = {};
-      snap.docs.forEach(d => { const x = d.data(); if(x && x.clientId) out[x.clientId] = x; });
-      return out;
-    }
     async function savePunch(t, entry){
       await F.setDoc(F.doc(db,'tenants',t,'punches',String(entry.id)), punchDoc(entry));
       return {ok:true, id: entry.id};
@@ -617,10 +609,13 @@
     }
 
     return {
-      login, loadSchedule, saveSchedule, listenWorkers, listenPendingHours, listenPunches, punchesBetween, punchesOfBatch, clientApprovalsOf, savePunch, updatePunch, deletePunch, handleAction,
+      login, loadSchedule, saveSchedule, listenWorkers, listenPendingHours, listenPunches, punchesBetween, punchesOfBatch, savePunch, updatePunch, deletePunch, handleAction,
       uploadWorkerFile, UPLOAD_ACTIONS, isStoragePath,
       currentUser: () => auth.currentUser,
       idToken: () => auth.currentUser ? auth.currentUser.getIdToken() : Promise.resolve(null),
+      // The hours-review ticks of this login (claim hp: hours, approve,
+      // dispute, fix, schedule, export — functions-auth/core.py HOUR_PERMS).
+      hourPerms: async () => { const h = (await myClaims()).hp; return Array.isArray(h) ? h : []; },
       signOut: () => { if(punchUnsub) punchUnsub(); claimsFor = null; claims = {}; return authMod.signOut(auth); },
     };
   };

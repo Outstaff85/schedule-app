@@ -10,6 +10,7 @@ rules_version = '2';
 //   own       hr only: true = "only own workers" (docs/admin.md → HR)
 //   supplierId  only for role 'supplier'
 //   clientId    only for role 'client' (the client portal goes through a function too)
+//   hp        hr / supplier / client: its hours-review ticks (read by the hours function only)
 //
 // These rules mirror the Apps Script checks they replace:
 //   - a firm sees only its own data, a superadmin sees every firm;
@@ -133,10 +134,9 @@ service cloud.firestore {
         allow create: if hrMine(t) && newHr() == uid();
         allow update: if hrMine(t) && oldHr() == uid() && newHr() == uid();
       }
-      // A client login's monthly approval of its workers' hours (the client
-      // function writes it; managers read it in Accounting). A client never
-      // reads Firestore directly.
-      match /clientApprovals/{id} {
+      // Hours reviews of client, supplier and HR logins (the `hours` function
+      // writes them; managers read them in Accounting). Never written directly.
+      match /hourApprovals/{id} {
         allow read: if manager(t);
         allow write: if false;
       }
