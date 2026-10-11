@@ -37,7 +37,7 @@ body{padding-bottom:40px;}
 #sendHoursRows input{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 8px;font-size:13px;outline:none;}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:500;padding:16px;}
 .overlay.open{display:flex;}
-.tap-edit{cursor:pointer;} /* a tap opens the item's editor (tapEdit) */
+.tap-edit{cursor:pointer;} /* a tap, a double click or a long press opens the item's editor (tapEdit, longPress) */
 @media (pointer:coarse){ .tap-edit{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;} }
 .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:20px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto;}
 .modal-title{font-size:16px;font-weight:700;margin-bottom:14px;}
@@ -384,17 +384,52 @@ function showNewVersionBar(){
 startVersionWatch(()=>[location.pathname,'firestore-backend.js',...(window.hoursReviewMount?['hours-review.js']:[])]);
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 // Template (user request 2026-10-11): a single tap on a list item or card
-// opens its card (tapFn) or, when it has none, its edit form (editFn); there
-// is no double click or long press. A window that reads (the worker card)
-// has a ✎ button for the edit form. A tap on a control inside the item (a
-// button, link, field, or anything with its own onclick) does that
-// control's job instead, and selecting text doesn't count. Markup:
-// onclick="tapEdit(event,this,tapFn,editFn)" (class .tap-edit). The same
-// helper is in schedule-manager.html and supplier-portal.html.
+// opens its card (tapFn) or, when it has none, its edit form (editFn); a
+// double click (computer) or a long press (phone, LONG_PRESS_MS; a move or
+// scroll cancels it) opens the edit form too. A window that reads (the worker
+// card) also has a ✎. A tap on a control inside the item (a button, link,
+// field, or anything with its own onclick) does that control's job instead,
+// and selecting text doesn't count. Markup:
+// onclick="tapEdit(event,this,tapFn,editFn)"
+// onpointerdown="longPress(event,this,editFn)" (class .tap-edit). With a
+// mouse, a tapFn and an editFn the single click waits DBL_CLICK_MS to tell
+// it from a double one. The same helpers are in schedule-manager.html and
+// supplier-portal.html.
+const LONG_PRESS_MS=500, DBL_CLICK_MS=250;
+let __lp=null, __lpFiredAt=0;
+function clearTextSel(){ try{ window.getSelection().removeAllRanges(); }catch(_){} }
 function tapEdit(e, el, tapFn, editFn){
+  if(Date.now()-__lpFiredAt<800) return;  // the click that ends a long press
+  if(e.detail>=2){
+    if(!isPlainTap(e,el,true)) return;
+    clearTimeout(el.__tapT); el.__tapT=null; clearTextSel();
+    if(editFn) editFn();
+    return;
+  }
   if(!isPlainTap(e,el)) return;
-  const fn=tapFn||editFn;
-  if(fn) fn();
+  const fn=tapFn||editFn; if(!fn) return;
+  if(e.pointerType==='mouse' && tapFn && editFn){ clearTimeout(el.__tapT); el.__tapT=setTimeout(()=>{ el.__tapT=null; fn(); },DBL_CLICK_MS); }
+  else if(!tapFn && e.detail===1 && e.pointerType==='mouse'){ clearTimeout(el.__tapT); el.__tapT=setTimeout(()=>{ el.__tapT=null; fn(); },DBL_CLICK_MS); }
+  else fn();
+}
+function cancelLongPress(){
+  if(!__lp) return;
+  clearTimeout(__lp.timer); __lp.el.removeEventListener('pointermove',__lp.move); __lp=null;
+}
+function longPress(e, el, editFn){
+  if(!editFn || e.pointerType==='mouse' || !isPlainTap(e,el,true)) return;
+  cancelLongPress();
+  const x=e.clientX, y=e.clientY;
+  const move=ev=>{ if(Math.hypot(ev.clientX-x,ev.clientY-y)>10) cancelLongPress(); };
+  el.addEventListener('pointermove',move);
+  el.addEventListener('pointerup',cancelLongPress,{once:true});
+  el.addEventListener('pointercancel',cancelLongPress,{once:true});
+  el.addEventListener('contextmenu',ev=>{ if(__lp||Date.now()-__lpFiredAt<800) ev.preventDefault(); },{once:true});
+  __lp={el, move, timer:setTimeout(()=>{
+    cancelLongPress(); __lpFiredAt=Date.now(); clearTextSel();
+    try{ navigator.vibrate&&navigator.vibrate(15); }catch(_){}
+    editFn();
+  },LONG_PRESS_MS)};
 }
 function isPlainTap(e,container,anySelection){
   if(!anySelection&&String((window.getSelection&&window.getSelection())||'')) return false;
@@ -880,7 +915,7 @@ function renderWorkersList(){
     return t3Line({cls:'tap-edit', c:onSite?'var(--green)':'var(--border2)', av:t3Av(w), name:esc(w.name)+newWorkerBadgeHtml(w),
       sub:esc([w.phone||'', (w.clientIds||[]).map(clientName).filter(Boolean).join(', ')].filter(Boolean).join(' · ')),
       right:`<span class="r">${w.supplierDayRate!=null&&Number(w.supplierDayRate)>0?'₪'+esc(w.supplierDayRate)+'/'+esc(tr('day')):w.supplierRate!=null?'₪'+esc(w.supplierRate)+'/h':''}</span><button class="t3-x" type="button" title="${esc(tr('Delete'))}" onclick="event.stopPropagation();deleteWorker('${esc(w.id)}')">✕</button>`,
-      attrs:`onclick="tapEdit(event,this,null,()=>openEditWorkerModal('${esc(w.id)}'))"`});
+      attrs:`onclick="tapEdit(event,this,null,()=>openEditWorkerModal('${esc(w.id)}'))" onpointerdown="longPress(event,this,()=>openEditWorkerModal('${esc(w.id)}'))"`});
   });
 }
 function openAddWorkerModal(){ renderWorkerModal(null); document.getElementById('workerOverlay').classList.add('open'); }

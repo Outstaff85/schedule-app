@@ -616,19 +616,38 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return cards;
   });
   ok(nw.some(c => /Avi/.test(c.name) && c.isNew) && nw.some(c => /Dana/.test(c.name) && !c.isNew), 'worker cards: NEW for 3 days after the worker was added ' + JSON.stringify(nw));
-  // Worker card: a click or a double click on it only reads; its ✎ opens the edit form;
+  // Worker card: a click only reads; a double click, a long touch or its ✎ opens the edit form;
   // closing it (a tap outside saves it) brings the card back.
   const cardSpot = '#workerCardModal div[style*="flex-direction:column"] >> nth=0';
   await p.evaluate(() => openWorkerCard(1)); await sleep(400);
-  await p.click(cardSpot, {position:{x:5, y:5}}); await p.dblclick(cardSpot, {position:{x:5, y:5}}); await sleep(400);
+  await p.click(cardSpot, {position:{x:5, y:5}}); await sleep(500);
   const bk0 = await p.evaluate(() => !document.getElementById('workerOverlay').classList.contains('open') && document.getElementById('workerCardOverlay').classList.contains('open'));
+  const lp = await p.evaluate(async () => {
+    const el = document.querySelector('#workerCardModal div[style*="flex-direction:column"]');
+    const r = el.getBoundingClientRect(), o = {bubbles:true, pointerType:'touch', clientX:r.left + 5, clientY:r.top + 5};
+    el.dispatchEvent(new PointerEvent('pointerdown', o)); await new Promise(res => setTimeout(res, 250));
+    el.dispatchEvent(new PointerEvent('pointerup', o)); await new Promise(res => setTimeout(res, 400));
+    const shortTouch = document.getElementById('workerOverlay').classList.contains('open');
+    el.dispatchEvent(new PointerEvent('pointerdown', o)); await new Promise(res => setTimeout(res, 700));
+    const longTouch = document.getElementById('workerOverlay').classList.contains('open');
+    el.dispatchEvent(new PointerEvent('pointerup', o));
+    return {shortTouch, longTouch};
+  });
+  ok(!lp.shortTouch && lp.longTouch, 'worker card: a short touch only reads, a long touch opens the edit form ' + JSON.stringify(lp));
+  await p.mouse.click(5, 450); await sleep(1200);
+  await p.evaluate(() => { closeModal('workerCardOverlay'); openWorkerCard(1); }); await sleep(400);
+  await p.dblclick(cardSpot, {position:{x:5, y:5}}); await sleep(400);
+  const dbl = await p.evaluate(() => document.getElementById('workerOverlay').classList.contains('open'));
+  ok(dbl, 'worker card: a double click opens the edit form');
+  await p.mouse.click(5, 450); await sleep(1200);
+  await p.evaluate(() => { closeModal('workerCardOverlay'); openWorkerCard(1); }); await sleep(400);
   await p.click('#workerCardEdit'); await sleep(400);
   const bk1 = await p.evaluate(() => document.getElementById('workerOverlay').classList.contains('open'));
   await p.evaluate(() => { document.getElementById('wNotes').value = 'back-to-card'; });
   await p.mouse.click(5, 450); await sleep(1200);
   const bk = await p.evaluate(() => ({edit: document.getElementById('workerOverlay').classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open'), notes: workers[1].notes}));
   await p.mouse.click(5, 450); await sleep(300);
-  ok(bk0 && bk1 && !bk.edit && bk.card && bk.notes === 'back-to-card', 'worker card: clicks only read, ✎ edits; the form saves on close and goes back to the card ' + JSON.stringify({bk0, bk1, bk}));
+  ok(bk0 && bk1 && !bk.edit && bk.card && bk.notes === 'back-to-card', 'worker card: a click only reads, ✎ edits; the form saves on close and goes back to the card ' + JSON.stringify({bk0, bk1, bk}));
   // Phone: a swipe down on a window closes it the same way as a tap outside; a short one does not.
   await p.setViewportSize({width: 390, height: 844});
   await p.evaluate(() => openWorkerCard(1)); await sleep(400);
@@ -654,7 +673,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.evaluate(() => switchTab('clients')); await sleep(400);
   await p.click('#clientsGrid .client-card .client-card-name >> nth=0'); await sleep(500);
   const cl1 = await p.evaluate(() => document.getElementById('clientOverlay').classList.contains('open'));
-  ok(cl1, 'clients: a single click opens the editor');
+  await p.evaluate(() => closeModal('clientOverlay')); await sleep(200);
+  await p.dblclick('#clientsGrid .client-card .client-card-name >> nth=0'); await sleep(500);
+  const cl2 = await p.evaluate(() => document.getElementById('clientOverlay').classList.contains('open'));
+  ok(cl1 && cl2, 'clients: a single click or a double click opens the editor ' + JSON.stringify({cl1, cl2}));
   await p.evaluate(() => closeModal('clientOverlay')); await sleep(200);
   // The client window has no Save button: a tap outside saves it; an empty new client is not created.
   const cs = await p.evaluate(async () => {
