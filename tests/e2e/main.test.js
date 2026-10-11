@@ -842,6 +842,14 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {shown: !document.getElementById('screenSchedule').classList.contains('hidden'), days: document.querySelectorAll('#scheduleContent .sched-cell').length, empty: /No shifts planned yet/.test(document.getElementById('scheduleContent').innerText), sched: JSON.stringify(selectedWorker.schedule), n: workers.length, keys: Object.keys(selectedWorker).sort().join(',')}; });
   ok(ms.shown && (ms.days >= 35 || ms.empty) && ms.n === 1 && ms.keys.includes('schedule'), 'punch: My Schedule shows the worker\'s own week ' + JSON.stringify(ms));
   await p.evaluate(() => closeHistory());
+  // A schedule change since this device last saw it: a notice that stays on the punch screen until My Schedule is opened.
+  const sn = await p.evaluate(async () => {
+    localStorage.setItem('schedSeen_' + selectedWorker.id, 'old'); showScreen('screenPunch'); checkScheduleChange();
+    const vis = () => getComputedStyle(document.getElementById('schedNotice')).display !== 'none';
+    const r = {shown: vis()}; await new Promise(res => setTimeout(res, 4500)); r.still = vis();
+    openSchedule(); r.after = vis(); closeHistory(); return r;
+  });
+  ok(sn.shown && sn.still && !sn.after, 'punch: a schedule change shows a notice that stays until My Schedule is opened ' + JSON.stringify(sn));
   // My Hours and Pay: yesterday's seeded 8h shift (hourly 50) from the punch function's myMonth, priced like Salary.
   const mh = await p.evaluate(async () => {
     const link = getComputedStyle(document.getElementById('myHoursLink')).display !== 'none';

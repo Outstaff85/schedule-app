@@ -763,7 +763,6 @@
   "You can edit only your own firm": "אפשר לערוך רק את החברה שלך",
   "Your manager plans this schedule; changes show here at once.": "המנהל מתכנן את הסידור הזה; שינויים מופיעים כאן מיד.",
   "Your name (shown at the top instead of the login):": "השם שלך (מוצג למעלה במקום שם המשתמש):",
-  "Your schedule was updated — see My Schedule": "הסידור שלך עודכן — ראו \"הסידור שלי\"",
   "Your workers' hours, pay and your commission": "השעות והשכר של העובדים שלך, והעמלה שלך",
   "{0} (custom)": "{0} (מותאם)",
   "{0} added!": "{0} נוסף!",
@@ -915,5 +914,7 @@
   "For a month picked in Salary: each client, supplier and HR login that reviewed its hours this month — how many days it approved, and every day that needs a look.": "לחודש שנבחר בשכר: כל כניסה של לקוח, ספק או משאבי אנוש שבדקה את השעות החודש — כמה ימים אישרה, וכל יום שדורש בדיקה.",
   "Disputed: a day it disputed, with its comment — fix the punches if needed. Fix proposed: the in / out it says is right; Accept moves the shift's punches to those times, Reject keeps them.": "במחלוקת: יום שערערו עליו, עם ההערה — תקנו את הדיווחים אם צריך. הוצע תיקון: הכניסה / היציאה הנכונות לדבריהם; אישור מעביר את דיווחי המשמרת לשעות האלה, דחייה משאירה אותם.",
   "Changed after approval: a shift was added or changed after the day was approved; the login sees it and approves again.": "השתנה אחרי האישור: משמרת נוספה או שונתה אחרי שהיום אושר; הכניסה רואה זאת ומאשרת שוב.",
-  "The logins and their hours ticks are set in Admin → Users.": "הכניסות וסימוני השעות שלהן נקבעים בניהול ← משתמשים."
+  "The logins and their hours ticks are set in Admin → Users.": "הכניסות וסימוני השעות שלהן נקבעים בניהול ← משתמשים.",
+  "Your schedule was updated": "הסידור שלך עודכן",
+  "View": "צפייה"
 }

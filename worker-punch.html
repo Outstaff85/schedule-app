@@ -370,6 +370,10 @@ html,body{
 .shift-bar.midnight{background:rgba(96,165,250,0.12);color:#60a5fa;}
 .shift-bar.off{background:var(--amber-bg);color:var(--amber);font-family:inherit;font-size:10px;}
 .shift-bar.dated{outline:1.5px dashed currentColor;outline-offset:-2px;}
+.sched-notice{display:none;align-items:center;gap:8px;margin:0 auto 12px;max-width:340px;padding:7px 12px;border-radius:999px;background:var(--amber-bg);border:1px solid rgba(245,166,35,0.35);color:var(--amber);font-size:13px;font-weight:600;cursor:pointer;}
+.sched-notice.show{display:flex;}
+.sched-notice span{flex:1;text-align:left;}
+.sched-notice .go{opacity:.8;font-size:12px;white-space:nowrap;}
 .sched-badge{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--amber);margin-left:4px;vertical-align:middle;box-shadow:0 0 0 3px rgba(245,166,35,.25);}
 .sched-detail{margin-top:12px;padding:14px 16px;border-radius:14px;background:var(--card);border:1px solid var(--border2);display:flex;align-items:center;gap:14px;}
 .sched-detail .dd{flex:1;}
@@ -414,6 +418,9 @@ html[lang="he"] *{letter-spacing:normal !important;}
     <div class="punch-greeting" id="punchGreeting"></div>
     <div class="punch-worker-name" id="punchWorkerName"></div>
   </div>
+  <!-- Stays until the worker opens My Schedule (per user request 2026-10-11:
+       the schedule-change notice hangs, it does not flash by). -->
+  <div class="sched-notice" id="schedNotice" onclick="openSchedule()" role="button"><i class="ti ti-calendar-event"></i><span data-i18n>Your schedule was updated</span><span class="go"><span data-i18n>View</span> ›</span></div>
   <div class="clock-block">
     <div class="punch-clock" id="punchClock">--:--:--</div>
     <div class="punch-date"  id="punchDate"></div>
@@ -1087,8 +1094,9 @@ function resetToQR(){ if(URL_TOKEN&&selectedWorker){ showScreen('screenPunch'); 
 // arrows change the month; a tap on a day shows it below.
 // ── Schedule change notice: the worker's own roster and date changes are
 // compared with what this device last showed them (localStorage
-// schedSeen_<workerId>). A change since then → a toast and a dot on
-// "My Schedule"; opening My Schedule marks it seen. The very first load only
+// schedSeen_<workerId>). A change since then → a compact notice on the punch
+// screen (#schedNotice, it stays) and a dot on "My Schedule"; opening My
+// Schedule (a tap on the notice too) marks it seen. The very first load only
 // remembers it. (Push messages are not wired up: no VAPID signing yet.)
 function schedSig(w){ return JSON.stringify([w && w.schedule || [], w && w.dates || {}]); }
 function checkScheduleChange(){
@@ -1099,12 +1107,13 @@ function checkScheduleChange(){
   if(seen == null){ try{ localStorage.setItem(key, sig); }catch(e){} return; }
   const changed = seen !== sig;
   if(badge) badge.style.display = changed ? '' : 'none';
-  if(changed && !checkScheduleChange.told){ checkScheduleChange.told = true; showToast(tr('Your schedule was updated — see My Schedule')); }
+  const note = document.getElementById('schedNotice'); if(note) note.classList.toggle('show', changed);
 }
 function markScheduleSeen(){
   const w = selectedWorker; if(!w) return;
   try{ localStorage.setItem('schedSeen_' + w.id, schedSig(w)); }catch(e){}
   const badge = document.getElementById('schedBadge'); if(badge) badge.style.display = 'none';
+  const note = document.getElementById('schedNotice'); if(note) note.classList.remove('show');
 }
 let _schedMonth = 0, _schedSel = null;
 function openSchedule(){

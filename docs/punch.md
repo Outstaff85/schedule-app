@@ -95,7 +95,7 @@ Only this device's `punchLog` for the selected worker. Punches are sorted by `ts
 
 ## Schedule change notice
 
-`checkScheduleChange()` (on entering the punch screen and after the background refresh) compares the worker's roster and date changes (`schedSig`) with what this device last showed them (`localStorage.schedSeen_<workerId>`). A difference shows a toast "Your schedule was updated — see My Schedule" and an amber dot on My Schedule; opening My Schedule marks it seen (`markScheduleSeen`). The first load on a device only remembers it. Push messages are not sent (no VAPID signing yet).
+`checkScheduleChange()` (on entering the punch screen and after the background refresh) compares the worker's roster and date changes (`schedSig`) with what this device last showed them (`localStorage.schedSeen_<workerId>`). A difference shows a compact amber notice on the punch screen, "Your schedule was updated · View ›" (`#schedNotice`; it stays until seen, a tap opens My Schedule), and an amber dot on My Schedule; opening My Schedule marks it seen (`markScheduleSeen`) and hides both. The first load on a device only remembers it. Push messages are not sent (no VAPID signing yet).
 
 ## My hours and pay (`#screenHours`)
 
