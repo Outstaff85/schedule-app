@@ -121,6 +121,33 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(sc.h > 0 && sc.h < 60 && sc.before === 'none' && sc.after === 'grid', 'salary: one compact line per worker, a tap opens the details ' + JSON.stringify(sc));
   ok(sc.menu && sc.menu.open && sc.menu.lang && sc.menu.out && sc.menu.name && sc.closed, 'header: one account menu with language, my name and sign out ' + JSON.stringify(sc.menu));
+  // An inactive worker leaves the everyday lists and comes back when set Active; a contract warning shows a notice at the top.
+  const ia = await p.evaluate(async () => {
+    const w = workers.find(x => x.id === 'w2'), keep = JSON.parse(JSON.stringify(w)), r = {};
+    switchTab('workers'); document.getElementById('workersFilterStatus').value = ''; renderWorkersPage();
+    w.status = 'fired'; render(); renderWorkersPage();
+    const names = () => document.getElementById('sectionWorkers').innerText;
+    r.hidden = !/Dana Levi/.test(names()) && /Inactive: 1/.test(document.getElementById('workersCount').innerText);
+    r.sidebar = !/Dana Levi/.test(document.getElementById('workerList').innerText);
+    showInactiveWorkers(); r.shown = /Dana Levi/.test(names());
+    w.status = 'active'; document.getElementById('workersFilterStatus').value = ''; render(); renderWorkersPage(); r.back = /Dana Levi/.test(names());
+    const d = new Date(); d.setMonth(d.getMonth() - 2);
+    Object.assign(w, {expiryEnabled: true, expiryMonths: 1, expiryWarnMonths: 1, startDate: localYMD(d)});
+    try{ sessionStorage.removeItem('contractNoticeClosed'); }catch(e){}
+    showContractNotice(); const n = document.getElementById('contractNotice');
+    r.notice = n.style.display !== 'none' && /Contracts: 1 expired/.test(n.innerText);
+    closeContractNotice(); r.closed = n.style.display === 'none';
+    Object.keys(w).forEach(k => delete w[k]); Object.assign(w, keep); render();
+    return r;
+  });
+  ok(ia.hidden && ia.sidebar && ia.shown && ia.back, 'workers: an inactive worker leaves the lists, "Inactive: N — show" brings them, Active returns them ' + JSON.stringify(ia));
+  ok(ia.notice && ia.closed, 'contracts: an expired contract shows a notice at the top until closed ' + JSON.stringify(ia));
+  // On a phone a worker card is compact: one summary line instead of the detail rows.
+  await p.setViewportSize({width: 390, height: 800});
+  const wc = await p.evaluate(async () => { switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await new Promise(r => setTimeout(r, 200));
+    const c = document.querySelector('#workersCards .wcard'); return c ? {h: c.getBoundingClientRect().height, rows: getComputedStyle(c.querySelector('.wcard-rows')).display, sum: getComputedStyle(c.querySelector('.wcard-sum')).display} : {}; });
+  await p.setViewportSize({width: 1280, height: 720});
+  ok(wc.rows === 'none' && wc.sum === 'block' && wc.h < 130, 'workers: on a phone a card is compact (one summary line) ' + JSON.stringify(wc));
   ok(rt.keptAfterEdit, 'worker pay: an edit in the worker modal keeps the pay fields', JSON.stringify(rt));
   ok(rt.moved === 0, "worker pay: moved to a client with a rate, the worker takes the client's rate", JSON.stringify(rt));
   // Commission for a worker paid by the day: a fixed ₪ per day when set, else hours × ₪/h.
