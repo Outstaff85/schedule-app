@@ -589,7 +589,6 @@
   "Search a worker": "חיפוש עובד",
   "Search an address, or tap the map / drag the pin. The circle is the punch-clock radius.": "חפשו כתובת, או הקישו על המפה / גררו את הסיכה. העיגול הוא רדיוס שעון הנוכחות.",
   "Search by name or document…": "חיפוש לפי שם או מסמך…",
-  "Search by name, phone, object...": "חיפוש לפי שם, טלפון, לקוח...",
   "Sections": "מדורים",
   "See who arrived and who left the moment they punch.": "רואים מי הגיע ומי יצא ברגע ההחתמה.",
   "sees all workers": "רואה את כל העובדים",
@@ -849,5 +848,6 @@
   "Travel = ₪/day × days worked + ₪/month once for each calendar month with work. Total Pay = pay + travel.": "נסיעות = ₪/יום × ימי עבודה + ₪/חודש פעם אחת לכל חודש קלנדרי שבו היתה עבודה. סה״כ לתשלום = שכר + נסיעות.",
   "A tap on a row opens the worker card; a double click (computer) or a long press (phone) opens the pay window: paid by the hour or by the day, rate, OT / Shabbat (empty = the law), travel, bank. A worker without shifts is set from the worker card's Pay button.": "לחיצה על שורה פותחת את כרטיס העובד; לחיצה כפולה (מחשב) או לחיצה ארוכה (טלפון) פותחת את חלון השכר: לפי שעה או לפי יום, תעריף, נוספות / שבת (ריק = לפי החוק), נסיעות, בנק. לעובד בלי משמרות קובעים בכפתור \"שכר\" בכרטיס העובד.",
   "Which rate counts, most specific first: this table → the worker's own rate (pay window) → the client's rate (client card).": "איזה תעריף קובע, מהספציפי ביותר: הטבלה הזו ← התעריף של העובד (חלון השכר) ← תעריף הלקוח (כרטיס הלקוח).",
-  "Only the suppliers with hours and a commission this period are listed; workers without a supplier are left out.": "מוצגים רק ספקים עם שעות ועמלה בתקופה; עובדים בלי ספק לא מוצגים."
+  "Only the suppliers with hours and a commission this period are listed; workers without a supplier are left out.": "מוצגים רק ספקים עם שעות ועמלה בתקופה; עובדים בלי ספק לא מוצגים.",
+  "Search: name, ID / passport, phone, client...": "חיפוש: שם, ת.ז / דרכון, טלפון, לקוח..."
 }

@@ -740,7 +740,7 @@ html[lang="he"] *{letter-spacing:normal !important;}
       </div>
       <div class="workers-toolbar">
         <div class="workers-search-row">
-          <input type="text" id="workersSearch" placeholder="Search by name, phone, object..." data-i18n-placeholder="Search by name, phone, object..." oninput="renderWorkersPage()">
+          <input type="text" id="workersSearch" placeholder="Search: name, ID / passport, phone, client..." data-i18n-placeholder="Search: name, ID / passport, phone, client..." oninput="renderWorkersPage()">
           <button type="button" class="filters-btn" id="workersFiltersBtn" onclick="toggleWorkersFilters()" aria-expanded="false"><i class="ti ti-filter"></i> <span data-i18n>Filters</span> <span class="n" id="workersFiltersCount" style="display:none"></span><i class="ti ti-chevron-down" id="workersFiltersChevron"></i></button>
           <div class="view-toggle" role="group" aria-label="Layout">
             <button type="button" id="workersViewList" onclick="setWorkersView('list')" title="List" data-i18n-title="List"><i class="ti ti-list"></i></button>
@@ -3910,10 +3910,18 @@ function renderWorkersPage(){
   const docsFilter=document.getElementById('workersFilterDocs')?.value||'';
   if(docsFilter==='incomplete') list=list.filter(x=>workerDocStatus(x.w).level!=='ok');
   else if(docsFilter==='expiring') list=list.filter(x=>{ const st=workerDocStatus(x.w); return !!st.expiry||st.docExpiries.length>0; });
-  if(q) list=list.filter(x=>{
-    const objNames=(x.w.clientIds||[]).map(id=>clients.find(c=>c.id===id)?.name||'').join(' ');
-    return (x.w.name||'').toLowerCase().includes(q) || (x.w.phone||'').toLowerCase().includes(q) || objNames.toLowerCase().includes(q);
-  });
+  // Search: name (and the names from the document), phone, ID / passport
+  // number (spaces and dashes ignored), and the worker's clients — name and object.
+  if(q){
+    const qNum=q.replace(/[\s-]/g,'');
+    list=list.filter(x=>{
+      const w=x.w;
+      const objNames=(w.clientIds||[]).map(id=>{ const c=clients.find(c=>c.id===id); return c?(c.name||'')+' '+(c.object||''):''; }).join(' ');
+      const text=[w.name,w.docGiven,w.docSurname,w.phone,objNames].join(' ').toLowerCase();
+      const docNo=String(workerDocId(w)||'').toLowerCase().replace(/[\s-]/g,'');
+      return text.includes(q) || (qNum.length>=2 && docNo.includes(qNum));
+    });
+  }
   document.getElementById('workersCount').textContent=tr('{0} worker{1}',{0:(list.length),1:(list.length!==1?'s':'')});
   const view=getWorkersView();
   document.getElementById('workersViewList')?.classList.toggle('active',view==='list');

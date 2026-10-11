@@ -53,7 +53,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
 `renderWorkersPage()` filters, then draws either cards or the table.
 
 - **Filters** (each a `<label class="filter-field">` with a caption; a dropdown with a choice is highlighted by `markActiveFilters()`):
-  - search box (name, phone, client name);
+  - search box: name (also the given name / surname from the document), phone, ID or passport number (`workerDocId`; spaces and dashes ignored, from 2 characters), and the worker's clients — name and object;
   - Status (`workersFilterStatus`);
   - Documents (`workersFilterDocs`: `incomplete` = `workerDocStatus().level !== 'ok'`, `expiring` = ID/passport or a document expiring/expired);
   - Client and Supplier (`fillFilterSelect()` fills them from `clients`/`suppliers`);

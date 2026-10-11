@@ -502,6 +502,16 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(!acc.none && /^accountant-all-/.test(acc.name) && acc.sheets.length === 2 && acc.pay === acc.want && acc.pay > 0 && acc.hours > 0 && acc.days >= 1 && acc.total >= acc.pay && acc.shifts > 1,
     'accountant report: Summary = Salary figures, total row, Shifts sheet ' + JSON.stringify(acc));
+  // Workers search: by ID / passport number (dashes ignored) and by client.
+  const srch = await p.evaluate(async () => {
+    const avi = workers.find(w => w.id === 'w1'), keep = avi.docId; avi.docId = '12345678-2';
+    switchTab('workers'); setWorkersView('list');
+    const find = q => { document.getElementById('workersSearch').value = q; renderWorkersPage(); return document.getElementById('workersCount').textContent; };
+    const out = {id: find('123456782'), client: find('site a'), none: find('99999')};
+    find(''); if(keep === undefined) delete avi.docId; else avi.docId = keep;
+    return out;
+  });
+  ok(/^1 /.test(srch.id) && /^1 /.test(srch.client) && /^0 /.test(srch.none), 'workers search: by ID / passport number and by client ' + JSON.stringify(srch));
   // "NEW" for 3 days after a worker is added: on the worker cards, not on an older worker.
   const nw = await p.evaluate(async () => {
     const a = workers.find(w => w.id === 'w1'), d = workers.find(w => w.id === 'w2');
