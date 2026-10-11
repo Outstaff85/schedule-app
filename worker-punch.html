@@ -696,19 +696,9 @@ function init(){
     return;
   }
 
-  // No personal link - show worker list
-  if(workers.length){
-    showScreen('screenWorker');
-    startWorkerClock();
-    if(navigator.onLine) loadWorkersFromGS().catch(()=>{}); // refresh cache in background
-  } else {
-    showLoadingScreen(tr('Loading...'));
-    loadWorkersFromGS().then(()=>{
-      hideLoadingScreen();
-      showScreen('screenWorker');
-      startWorkerClock();
-    });
-  }
+  // No personal link: the page works only from a worker's own link (the old
+  // shared-device worker picker was removed, per user request 2026-10-11).
+  showInvalidLink(tr('Open your personal link'), tr('This page works only from the personal link your manager sent you.'), 'ti-link');
 }
 
 // Background check for a token link: confirm the token still exists in the DB

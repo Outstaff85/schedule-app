@@ -190,7 +190,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const r = {};
     workers.find(w => w.id === 'w2').bank = 'Hapoalim';
     switchTab('accounting');
-    r.cards = [...document.querySelectorAll('#dashSalary .salary-rows tr')].map(c => c.textContent.replace(/\s+/g, ' '));
+    r.cards = [...document.querySelectorAll('#dashSalary .salary-rows .sal-row')].map(c => c.textContent.replace(/\s+/g, ' '));
     r.own = __lastSalaryEntries.length;
     openPayModal('w2');
     r.modal = document.getElementById('payOverlay').classList.contains('open');
