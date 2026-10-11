@@ -512,3 +512,28 @@ def test_update_my_language_follows_the_user_to_login():
     assert core.update_my_language(DB, me, {"language": "ar"})["error"] == "Unknown language"
     assert core.update_my_language(DB, {"uid": "nobody", "role": "staff"}, {"language": "he"})["error"]
     assert DB.collection("users").document("u-lang").get().to_dict()["language"] == "ru"
+
+
+def test_client_login_role_client_perms_and_claims():
+    # A client login needs a client; its ticks come only from CLIENT_PERMS.
+    assert "client" in core.create_tenant_user(DB, ADMIN1, {"role": "client", "username": "cl0", "password": "client-pass-1"})["error"]
+    r = core.create_tenant_user(DB, ADMIN1, {"role": "client", "username": "Client.One", "password": "client-pass-1",
+                                             "clientId": "c1", "permissions": ["hours", "approve", "workers", "*"]})
+    assert r["ok"]
+    u = DB.collection("users").document(r["userId"]).get().to_dict()
+    assert u["role"] == "client" and u["clientId"] == "c1" and u["permissions"] == ["hours", "approve"]
+    out = core.login(DB, "client.one", "client-pass-1", mint)
+    claims = id_token_claims(out["token"])
+    assert claims["role"] == "client" and claims["clientId"] == "c1" and claims["perms"] == ["hours", "approve"]
+    assert out["clientId"] == "c1" and "supplierId" not in claims
+    # Default ticks when none are sent.
+    r2 = core.create_tenant_user(DB, ADMIN1, {"role": "client", "username": "cl2", "password": "client-pass-2", "clientId": "c2"})
+    assert DB.collection("users").document(r2["userId"]).get().to_dict()["permissions"] == core.CLIENT_DEFAULT_PERMS
+    # Ticks change; moving to staff drops the clientId.
+    rv = Revokes()
+    assert core.update_user(DB, ADMIN1, {"id": r["userId"], "permissions": ["schedule", "export"]}, rv)["ok"]
+    assert DB.collection("users").document(r["userId"]).get().to_dict()["permissions"] == ["schedule", "export"]
+    assert core.update_user(DB, ADMIN1, {"id": r["userId"], "role": "staff", "permissions": "*"}, rv)["ok"]
+    u = DB.collection("users").document(r["userId"]).get().to_dict()
+    assert u["role"] == "staff" and u.get("clientId") is None
+    assert any(x["id"] == r2["userId"] and x["clientId"] == "c2" for x in core.list_users(DB, ADMIN1)["users"])

@@ -4,11 +4,12 @@ rules_version = '2';
 //
 // Sign-in is a custom token from the `login` Cloud Function, whose claims
 // carry who the caller is:
-//   role      'superadmin' | 'tenant_admin' | 'staff' | 'hr' | 'supplier'
+//   role      'superadmin' | 'tenant_admin' | 'staff' | 'hr' | 'supplier' | 'client'
 //   tenantId  the caller's firm (absent for a superadmin)
 //   perms     list of sections a staff or hr login may use, ['*'] = all
 //   own       hr only: true = "only own workers" (docs/admin.md → HR)
 //   supplierId  only for role 'supplier'
+//   clientId    only for role 'client' (the client portal goes through a function too)
 //
 // These rules mirror the Apps Script checks they replace:
 //   - a firm sees only its own data, a superadmin sees every firm;
@@ -131,6 +132,13 @@ service cloud.firestore {
         allow read, delete: if hrMine(t) && oldHr() == uid();
         allow create: if hrMine(t) && newHr() == uid();
         allow update: if hrMine(t) && oldHr() == uid() && newHr() == uid();
+      }
+      // A client login's monthly approval of its workers' hours (the client
+      // function writes it; managers read it in Accounting). A client never
+      // reads Firestore directly.
+      match /clientApprovals/{id} {
+        allow read: if manager(t);
+        allow write: if false;
       }
       match /pendingHours/{id} {
         allow read: if manager(t) || (hrMine(t) && resource.data.createdBy == uid());

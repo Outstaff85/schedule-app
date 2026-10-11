@@ -273,3 +273,53 @@ def test_my_month_gives_own_punches_and_pay_inputs_only():
     assert "billRate" not in text and "supplierRates" not in text and "lat" not in text and "0501111111" not in text
     assert portal.punch_action(DB, {"action": "myMonth", "token": "tok-avi", "month": "10/2026"}) == {"error": "Bad month"}
     assert portal.punch_action(DB, {"action": "myMonth", "token": "nope", "month": "2026-10"}) == {"error": portal.E_LINK}
+
+
+# ── Client portal ────────────────────────────────────────────────────────────
+
+CL1 = {"uid": "u-cl1", "role": "client", "tenantId": T1, "clientId": "c1",
+       "perms": ["hours", "approve", "dispute", "schedule"]}
+
+
+def test_client_sees_only_its_workers_hours_never_money_supplier_or_gps():
+    from datetime import datetime, timezone
+    def at(s):
+        return datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
+    DB.collection("users").document("u-cl1").set({"username": "cl1", "fullName": "Site A boss", "role": "client"})
+    P(T1, "k1").set({"id": "k1", "workerId": "w1", "workerName": "Avi Cohen", "type": "in", "time": "08:00", "date": "05/10/2026",
+                     "clientId": "c1", "dist": 3, "gpsAccuracy": 5, "notes": "internal", "ts": at("2026-10-05T05:00:00")})
+    P(T1, "k2").set({"id": "k2", "workerId": "w1", "type": "out", "time": "16:00", "clientId": "c1", "ts": at("2026-10-05T13:00:00")})
+    P(T1, "k3").set({"id": "k3", "workerId": "w1", "type": "in", "clientId": "c2", "ts": at("2026-10-06T05:00:00")})  # another client
+    r = portal.client_action(DB, CL1, {"action": "load", "month": "2026-10"})
+    assert r["client"] == {"id": "c1", "name": "Site A", "object": "Gate 1"}
+    assert [w["id"] for w in r["workers"]] == ["w1"] and set(r["workers"][0]) == {"id", "name", "schedule", "dates"}
+    assert sorted(p["id"] for p in r["punches"]) == ["k1", "k2"]
+    assert all(set(p) <= {"id", "workerId", "type", "time", "date", "ts"} for p in r["punches"])
+    text = str(r)
+    for secret in ("hourlyRate", "55", "billRate", "sp1", "supplier", "gps", "dist", "internal", "tok-avi", "0501111111", "123456782"):
+        assert secret not in text, secret
+    assert r["approval"]["status"] == "pending"
+
+
+def test_client_approves_and_disputes_by_its_ticks():
+    DB.collection("users").document("u-cl1").set({"username": "cl1", "fullName": "Site A boss", "role": "client"})
+    r = portal.client_action(DB, CL1, {"action": "approve", "month": "2026-10", "snapshot": ["w1|2026-10-05|08:00|16:00"]})
+    a = r["approval"]
+    assert a["status"] == "approved" and a["approvedByName"] == "Site A boss" and a["snapshot"] == ["w1|2026-10-05|08:00|16:00"]
+    r = portal.client_action(DB, CL1, {"action": "dispute", "month": "2026-10", "workerId": "w1", "date": "2026-10-05", "comment": "Left at 15:00"})
+    assert r["approval"]["status"] == "disputed" and r["approval"]["disputes"]["w1|2026-10-05"]["comment"] == "Left at 15:00"
+    portal.client_action(DB, CL1, {"action": "dispute", "month": "2026-10", "workerId": "w1", "date": "2026-10-06", "comment": "x"})
+    r = portal.client_action(DB, CL1, {"action": "dispute", "month": "2026-10", "workerId": "w1", "date": "2026-10-06", "comment": ""})
+    assert list(r["approval"]["disputes"]) == ["w1|2026-10-05"]
+    r = portal.client_action(DB, CL1, {"action": "dispute", "month": "2026-10", "workerId": "w1", "date": "2026-10-05", "comment": ""})
+    assert r["approval"]["status"] == "approved" and r["approval"]["disputes"] == {}
+    assert portal.client_action(DB, CL1, {"action": "dispute", "month": "2026-10", "workerId": "w1", "date": "2026-11-01", "comment": "x"})["error"] == "Bad day"
+    # Without the ticks: refused, and no hours / schedule handed out.
+    view = dict(CL1, perms=["schedule"])
+    assert portal.client_action(DB, view, {"action": "approve", "month": "2026-10", "snapshot": []})["error"] == portal.E_NO_PERM
+    assert portal.client_action(DB, view, {"action": "dispute", "month": "2026-10", "workerId": "w1", "date": "2026-10-05", "comment": "x"})["error"] == portal.E_NO_PERM
+    r = portal.client_action(DB, dict(CL1, perms=[]), {"action": "load", "month": "2026-10"})
+    assert "punches" not in r and "approval" not in r and set(r["workers"][0]) == {"id", "name"}
+    # Other roles and a bad month are refused.
+    assert portal.client_action(DB, SUP1, {"action": "load", "month": "2026-10"})["error"] == portal.E_CLIENT_ONLY
+    assert portal.client_action(DB, CL1, {"action": "load", "month": "10/2026"})["error"] == "Bad month"

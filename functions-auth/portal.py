@@ -17,6 +17,11 @@ punch_action(db, body)            worker-punch.html; body.token is the link toke
   savePushSubscription  stored for later (push reminders are off)
   logError              the page's error telemetry
 
+client_action(db, caller, body)    client-portal.html; caller from the ID token (role
+  client, clientId, perms): load (its workers and their shifts at its site for
+  a month, the month's approval), approve (the month, with the shifts it saw),
+  dispute (one worker's day, with a comment; an empty comment removes it)
+
 supplier_action(db, caller, body)  supplier-portal.html; caller from the ID token
   loadSchedule / loadPunchLog      only the supplier's own workers, stripped
   supplierAddWorker / supplierUpdateWorker / supplierDeleteWorker
@@ -395,3 +400,131 @@ def _list_hours(t_ref, sid):
                     "entries": [{k: r.get(k) for k in ("workerId", "date", "inTime", "outTime")} for r in d.get("rows") or []]})
     out.sort(key=lambda x: x["uploadedAt"], reverse=True)
     return out
+
+
+# ── Client portal ────────────────────────────────────────────────────────────
+# A client login (role 'client', claim clientId) sees only the workers who
+# work at its own site and their shifts there — names, dates, in / out times.
+# Never a wage, a rate, a supplier, GPS, documents or a punch-link token. What
+# it may do comes from its ticks (claim perms, CLIENT_PERMS in core.py),
+# checked here: schedule, hours, approve, dispute, export (export is the
+# page's own button over the hours it already has).
+
+E_CLIENT_ONLY = "Client role only"
+E_NO_PERM = "Not allowed for this login"
+CLIENT_PUNCH_FIELDS = ("id", "workerId", "type", "time", "date")
+MAX_SNAPSHOT = 3000
+
+
+def _approval_ref(t_ref, cid, month):
+    return t_ref.collection("clientApprovals").document(f"{cid}_{month}")
+
+
+def _month_start(month):
+    try:
+        return datetime.strptime(str(month or "") + "-01", "%Y-%m-%d").replace(tzinfo=TZ)
+    except ValueError:
+        return None
+
+
+def _approval_out(snap):
+    d = (snap.to_dict() or {}) if snap and snap.exists else {}
+    return {"status": d.get("status") or "pending", "approvedAt": d.get("approvedAt"),
+            "approvedByName": d.get("approvedByName"), "snapshot": d.get("snapshot") or [],
+            "disputes": d.get("disputes") or {}}
+
+
+def _caller_name(db, uid):
+    u = db.collection("users").document(uid).get()
+    d = (u.to_dict() or {}) if u.exists else {}
+    return str(d.get("fullName") or d.get("username") or "")[:80]
+
+
+def client_action(db, caller, body):
+    if caller.get("role") != "client" or not caller.get("tenantId") or not caller.get("clientId"):
+        return {"error": E_CLIENT_ONLY}
+    tid, cid = caller["tenantId"], str(caller["clientId"])
+    perms = set(caller.get("perms") or [])
+    t_ref = db.collection("tenants").document(tid)
+    action = str(body.get("action") or "")
+    start = _month_start(body.get("month"))
+    if start is None:
+        return {"error": "Bad month"}
+    month = start.strftime("%Y-%m")
+
+    if action == "load":
+        c = t_ref.collection("clients").document(cid).get()
+        if not c.exists:
+            return {"error": "Client not found"}
+        cd = c.to_dict() or {}
+        out = {"client": {"id": cid, "name": cd.get("name") or "", "object": cd.get("object") or None},
+               "perms": sorted(perms), "month": month, "workers": []}
+        mine = {}
+        for w in t_ref.collection("workers").where(filter=FieldFilter("clientIds", "array_contains", cid)).stream():
+            wd = w.to_dict() or {}
+            row = {"id": w.id, "name": wd.get("name") or ""}
+            if "schedule" in perms:
+                row["schedule"] = _week(wd.get("schedule"))
+                row["dates"] = _dates(wd.get("dateShifts"))
+            mine[w.id] = row
+        if "hours" in perms:
+            nxt = (start + timedelta(days=32)).replace(day=1)
+            q = (t_ref.collection("punches").where(filter=FieldFilter("clientId", "==", cid))
+                 .where(filter=FieldFilter("ts", ">=", start - timedelta(days=1)))
+                 .where(filter=FieldFilter("ts", "<", nxt + timedelta(days=1))))
+            punches = []
+            for p in q.stream():
+                d = p.to_dict() or {}
+                ts = d.get("ts")
+                if not hasattr(ts, "isoformat"):
+                    continue
+                e = {k: d.get(k) for k in CLIENT_PUNCH_FIELDS if d.get(k) is not None}
+                e.setdefault("id", p.id)
+                e["ts"] = ts.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+                punches.append(e)
+                wid = str(d.get("workerId") or "")
+                if wid and wid not in mine:  # worked here this month, since moved: still listed, by name
+                    w = t_ref.collection("workers").document(wid).get()
+                    mine[wid] = {"id": wid, "name": ((w.to_dict() or {}).get("name") if w.exists else "") or str(d.get("workerName") or "")}
+            out["punches"] = punches
+            out["approval"] = _approval_out(_approval_ref(t_ref, cid, month).get())
+        out["workers"] = sorted(mine.values(), key=lambda r: r["name"].lower())
+        return out
+
+    if action == "approve":
+        if not {"approve", "hours"} <= perms:
+            return {"error": E_NO_PERM}
+        snap = body.get("snapshot")
+        if not isinstance(snap, list) or len(snap) > MAX_SNAPSHOT:
+            return {"error": "Bad snapshot"}
+        doc = {"clientId": cid, "month": month, "status": "approved",
+               "approvedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+               "approvedBy": caller["uid"], "approvedByName": _caller_name(db, caller["uid"]),
+               "snapshot": [_clip(x, 160) for x in snap], "disputes": {}}
+        _approval_ref(t_ref, cid, month).set(doc)
+        return {"ok": True, "approval": _approval_out(_approval_ref(t_ref, cid, month).get())}
+
+    if action == "dispute":
+        if "dispute" not in perms:
+            return {"error": E_NO_PERM}
+        wid, day = str(body.get("workerId") or ""), str(body.get("date") or "")
+        if not wid or "/" in wid or len(wid) > 100 or len(day) != 10 or not day.startswith(month):
+            return {"error": "Bad day"}
+        ref = _approval_ref(t_ref, cid, month)
+        old = ref.get()
+        full = (old.to_dict() or {}) if old.exists else {}
+        disputes = dict(full.get("disputes") or {})
+        key = f"{wid}|{day}"
+        comment = _clip(body.get("comment"), 500).strip()
+        if comment:
+            disputes[key] = {"comment": comment, "byName": _caller_name(db, caller["uid"]),
+                             "at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")}
+        else:
+            disputes.pop(key, None)
+        # With no dispute left, a month approved before goes back to approved.
+        status = "disputed" if disputes else ("approved" if full.get("approvedAt") else "pending")
+        full.update(clientId=cid, month=month, status=status, disputes=disputes)
+        ref.set(full)  # the whole document: a removed dispute must not survive a merge
+        return {"ok": True, "approval": _approval_out(ref.get())}
+
+    return {"error": "Unknown action"}
