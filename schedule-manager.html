@@ -612,10 +612,13 @@
   .contract-notice span{flex:1}
   .contract-notice button{border:0;background:none;color:inherit;font:inherit;cursor:pointer;padding:2px 4px}
   .contract-notice .go{text-decoration:underline}
-  /* A pane's top row: period/select + buttons; on a phone the select takes
-     the first line and the buttons share the second equally. */
-  .pane-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:10px}
-  .pane-toolbar select{flex:1;min-width:150px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 10px;font-size:13px;outline:none}
+  /* A pane's top row: the period select and icon buttons, one line on a
+     phone too. */
+  .pane-toolbar{display:flex;align-items:center;gap:4px;margin-bottom:10px}
+  .pane-toolbar select{flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none}
+  .pane-toolbar .t3-ib{font-size:18px;padding:6px 7px}
+  .pane-toolbar .t3-ib.red{color:var(--red);opacity:.75}
+  .pane-toolbar .t3-ib.red:hover{opacity:1}
   /* ── Phone (≤ 700 px): the tabs become a bar at the bottom of the screen,
      and the tables of Accounting and Admin become one card per row
      (cardTables() puts each column's header on its cells as data-label). ── */
