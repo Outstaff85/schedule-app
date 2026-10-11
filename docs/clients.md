@@ -30,7 +30,9 @@ Worker pay and client billing are separate sets of fields. Billing never changes
 `openAddClient()` / `openEditClient(cid)` set `editingClientId` and the color, then open the modal. The modal and its billing-rate popup are in Hebrew, right to left (per user request 2026-10-04).
 
 - **Fields:** שם הלקוח, ח.פ, אתר / סניף, כתובת.
-- **One line, two rates** (`.field-row`): **worker pay** ("שכר העובד", `#cDefRate` → `defaultHourlyRate`) — the regular ₪/h every worker at this client gets unless the worker has an own rate; OT and Shabbat always follow the law from it (saving the card clears an older client's `defaultOtRate` / `defaultShabbatRate`) — and **what the client pays the firm** ("תשלום הלקוח", `#cBillMain`): the main billing rate (`clientBillMain()`: `fixedBillRate` in fixed mode, else `billRate`), typed straight in (`onClientBillMainInput`); never changes a worker's pay.
+- **Layout:** worker pay on its own line; **Client billing mode** (`#cRateMode`) and **what the client pays** (`#cBillMain`) share the next line, the billing summary and "עריכה" under them.
+- **Saving:** there is no Save button — a tap outside the window saves it (`clientOverlay.__onUserClose` → `saveClient({auto:true})`; a hint line at the bottom says so). A new client without a name is not created; an unchanged client closes without a save.
+- **Two rates**: **worker pay** ("שכר העובד", `#cDefRate` → `defaultHourlyRate`) — the regular ₪/h every worker at this client gets unless the worker has an own rate; OT and Shabbat always follow the law from it (saving the card clears an older client's `defaultOtRate` / `defaultShabbatRate`) — and **what the client pays the firm** ("תשלום הלקוח", `#cBillMain`): the main billing rate (`clientBillMain()`: `fixedBillRate` in fixed mode, else `billRate`), typed straight in (`onClientBillMainInput`); never changes a worker's pay.
 - **Client billing mode** (`#cRateMode`):
   - picking a mode (`onClientRateModeChange()`) opens the billing-rate popup at once (`openClientBillRatePopup(true)`):
     - `fixed` → one flat ₪/h (`cbFixed`);

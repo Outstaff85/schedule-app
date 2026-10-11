@@ -553,6 +553,20 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.dblclick('#clientsGrid .client-card .client-card-name >> nth=0'); await sleep(400);
   const cl2 = await p.evaluate(() => document.getElementById('clientOverlay').classList.contains('open'));
   ok(!cl1 && cl2, 'clients: a single click does not edit, a double click does ' + JSON.stringify({cl1, cl2}));
+  // The client window has no Save button: a tap outside saves it; an empty new client is not created.
+  const cs = await p.evaluate(async () => {
+    const tap = () => { const ov = document.getElementById('clientOverlay'); ov.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true})); ov.click(); };
+    const keep = JSON.parse(JSON.stringify(clients.find(c => c.id === 'c1')));
+    openEditClient('c1');
+    const noSave = ![...document.querySelectorAll('#clientModal button')].some(b => /שמירה|הוספת לקוח/.test(b.textContent));
+    document.getElementById('cBillMain').value = '130'; onClientBillMainInput('130'); document.getElementById('cDefRate').value = '52'; tap();
+    await new Promise(r => setTimeout(r, 300));
+    const c = clients.find(x => x.id === 'c1'), out = {noSave, closed: !document.getElementById('clientOverlay').classList.contains('open'), d: c.defaultHourlyRate, b: c.billRate};
+    const n = clients.length; openAddClient(); tap(); await new Promise(r => setTimeout(r, 300)); out.noNew = clients.length === n;
+    Object.assign(c, keep); delete c.defaultOtRate; delete c.defaultShabbatRate; await gsSave(getDataObj());
+    return out;
+  });
+  ok(cs.noSave && cs.closed && cs.d === 52 && cs.b === 130 && cs.noNew, 'clients: no Save button, a tap outside saves; an empty new client is not created ' + JSON.stringify(cs));
   await p.mouse.click(5, 450); await sleep(400);
   ok(external.filter(u=>/script\.google\.com/.test(u)).length === 0, 'no request to script.google.com');
   ok(p.errs.length === 0, 'owner: no page errors ' + p.errs.join(' | '));

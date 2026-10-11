@@ -3453,21 +3453,22 @@ function showClientModal(c){
     <div class="field-row">
       <div class="field"><label><i class="ti ti-cash"></i> שכר העובד (₪ לשעה)</label>
         <input type="number" min="0" step="0.5" id="cDefRate" value="${c.defaultHourlyRate??''}" placeholder="—"></div>
+      <div class="field"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>אופן חיוב הלקוח</label>
+        <select id="cRateMode" onchange="onClientRateModeChange()" style="width:100%">
+          <option value="tiered" ${__cBill.rateMode==='tiered'?'selected':''}>עם שעות נוספות ושבת (לפי החוק)</option>
+          <option value="fixed" ${__cBill.rateMode==='fixed'?'selected':''}>תעריף קבוע (בלי תוספות)</option>
+        </select></div>
       <div class="field"><label><i class="ti ti-receipt"></i> תשלום הלקוח (₪ לשעה)</label>
         <input type="number" min="0" step="0.5" id="cBillMain" value="${clientBillMain()??''}" placeholder="—" oninput="onClientBillMainInput(this.value)"></div>
     </div>
-    <div style="font-size:11px;color:var(--text3);margin:-6px 0 12px">שכר העובד חל על כל העובדים אצל הלקוח, אלא אם לעובד יש תעריף משלו; שעות נוספות ושבת לפי החוק. תשלום הלקוח לא משנה את שכר העובד.</div>
-    <div class="field">
-      <label>אופן חיוב הלקוח</label>
-      <select id="cRateMode" onchange="onClientRateModeChange()" style="width:100%">
-        <option value="tiered" ${__cBill.rateMode==='tiered'?'selected':''}>עם שעות נוספות ושבת (לפי החוק)</option>
-        <option value="fixed" ${__cBill.rateMode==='fixed'?'selected':''}>תעריף קבוע (בלי תוספות)</option>
-      </select>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px">
-        <div id="cBillSummary" style="font-size:12px;color:var(--text2)">${clientBillSummary()}</div>
-        <button class="btn sm" type="button" onclick="openClientBillRatePopup()"><i class="ti ti-pencil"></i> עריכה</button>
-      </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:-4px 0 8px">
+      <div id="cBillSummary" style="font-size:12px;color:var(--text2)">${clientBillSummary()}</div>
+      <button class="btn sm" type="button" onclick="openClientBillRatePopup()"><i class="ti ti-pencil"></i> עריכה</button>
     </div>
+    <div style="font-size:11px;color:var(--text3);margin:0 0 12px">שכר העובד חל על כל העובדים אצל הלקוח, אלא אם לעובד יש תעריף משלו; שעות נוספות ושבת לפי החוק. תשלום הלקוח לא משנה את שכר העובד.</div>
     <div class="field">
       <label><i class="ti ti-map-pin"></i> מיקום לשעון הנוכחות</label>
       <button class="btn ${c.lat?'sm':'accent'}" type="button" onclick="openMapPicker()" style="width:100%;justify-content:center;margin-bottom:10px">
@@ -3482,10 +3483,11 @@ function showClientModal(c){
         <input type="number" id="cRadius" value="${c.radius||100}" placeholder="100"></div>
       <div id="cLocStatus" style="font-size:12px;min-height:18px;padding:4px 0;color:${c.lat?'var(--green)':'var(--text2)'}">${c.lat?locSetHtml(c.lat,c.lng):''}</div>
     </div>
-    <div class="modal-actions">
-      <button class="btn accent" onclick="saveClient()">${editingClientId?'שמירה':'הוספת לקוח'}</button>
-    </div></div>`;
-  document.getElementById('clientOverlay').classList.add('open');
+    <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px"><i class="ti ti-device-floppy"></i> ${editingClientId?'השינויים נשמרים בסגירת החלון':'הלקוח נוצר בסגירת החלון'}</div></div>`;
+  // No Save button: a tap outside the window saves it (saveClient auto).
+  const cov=document.getElementById('clientOverlay');
+  cov.__onUserClose=()=>saveClient({auto:true});
+  cov.classList.add('open');
 }
 
 function parseGoogleMapsUrl(url){
@@ -3728,9 +3730,16 @@ function saveClientBillRatePopup(){
   syncClientBillFields();
   closeModal('clientBillOverlay');
 }
-function saveClient(){
+// Saves the client modal. With {auto} (a tap outside — the modal has no Save
+// button): a new client without a name is not created, an unchanged client
+// closes quietly.
+function saveClient(opts){
+  opts=opts||{};
   const name=document.getElementById('cName').value.trim();
-  if(!name){ document.getElementById('cName').focus(); return; }
+  if(!name){
+    if(opts.auto){ if(editingClientId) showToast('שם הלקוח ריק — השינויים לא נשמרו'); closeModal('clientOverlay'); return; }
+    document.getElementById('cName').focus(); return;
+  }
   const object=document.getElementById('cObject')?.value.trim()||'';
   const address=document.getElementById('cAddr').value.trim();
   const companyNumber=document.getElementById('cCompanyNumber')?.value.trim()||'';
@@ -3745,7 +3754,12 @@ function saveClient(){
   const {rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate}=__cBill;
   if(editingClientId){
     const idx=clients.findIndex(x=>x.id===editingClientId);
-    if(idx>=0) clients[idx]={...clients[idx],name,object,address,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate};
+    if(idx>=0){
+      const next={...clients[idx],name,object,address,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate};
+      const norm=o=>JSON.stringify(Object.keys(o).sort().map(k=>[k,o[k]??null]));
+      if(norm(next)===norm(clients[idx])){ closeModal('clientOverlay'); return; }  // nothing changed
+      clients[idx]=next;
+    }
     showToast(name+' עודכן');
   } else {
     clients.push({id:uid(),name,object,address,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate});
