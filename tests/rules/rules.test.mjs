@@ -20,6 +20,7 @@ const who = {
   staffSchedAcc: { uid: 'u-staffSA', claims: { role: 'staff', tenantId: A, perms: ['schedule', 'accounting'] } },
   staffWorkers: { uid: 'u-staffWorkers', claims: { role: 'staff', tenantId: A, perms: ['workers'] } },
   staffNone:    { uid: 'u-staffNone', claims: { role: 'staff', tenantId: A, perms: [] } },
+  clientA:      { uid: 'u-clientA', claims: { role: 'client', tenantId: A, clientId: 'c1', perms: ['hours', 'approve', 'dispute', 'schedule', 'export'] } },
   supplierA:    { uid: 'u-supA', claims: { role: 'supplier', tenantId: A, supplierId: 's1', perms: [] } },
   hrOwn:        { uid: 'u-hrOwn', claims: { role: 'hr', tenantId: A, perms: ['workers'], own: true } },
   hrOwnClients: { uid: 'u-hrOwnC', claims: { role: 'hr', tenantId: A, perms: ['workers', 'clients'], own: true } },
@@ -107,6 +108,20 @@ test('punches: any manager-side login of the firm reads and writes', async () =>
     await assertSucceeds(updateDoc(doc(db(r), 'tenants', A, 'punches', 'p-' + r), { notes: 'edited' }));
     await assertSucceeds(deleteDoc(doc(db(r), 'tenants', A, 'punches', 'p-' + r)));
   }
+});
+
+test('client: no direct read or write anywhere, even with every tick (portal goes through a function)', async () => {
+  for (const sub of ['workers', 'clients', 'suppliers', 'punches', 'pendingHours', 'settings', 'clientApprovals']) {
+    await assertFails(getDocs(collection(db('clientA'), 'tenants', A, sub)));
+    await assertFails(setDoc(doc(db('clientA'), 'tenants', A, sub, 'x'), { a: 1 }));
+  }
+  await assertFails(getDoc(doc(db('clientA'), 'tenants', A)));
+});
+
+test('clientApprovals: managers read, nobody writes directly', async () => {
+  await assertSucceeds(getDocs(collection(db('ownerA'), 'tenants', A, 'clientApprovals')));
+  await assertSucceeds(getDocs(collection(db('staffNone'), 'tenants', A, 'clientApprovals')));
+  await assertFails(setDoc(doc(db('ownerA'), 'tenants', A, 'clientApprovals', 'c1_2026-10'), { status: 'approved' }));
 });
 
 test('supplier: no direct read or write anywhere (portal goes through functions)', async () => {

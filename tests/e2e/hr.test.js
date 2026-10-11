@@ -23,7 +23,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       if (u.startsWith('http://127.0.0.1')) return r.continue();
       if (u === FB + 'firebase-app.js') return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:BUNDLE});
       if (u.startsWith(FB)) return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:`export * from '${FB}firebase-app.js';`});
-      const fn = (u.match(/cloudfunctions\.net\/(login|users_admin|punch|supplier|ai_read)$/) || [])[1];
+      const fn = (u.match(/cloudfunctions\.net\/(login|users_admin|punch|supplier|client|ai_read)$/) || [])[1];
       if (fn) {
         if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'POST'}});
         const h = r.request().headers();
@@ -177,9 +177,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const r = {};
     workers.find(w => w.id === 'w2').bank = 'Hapoalim';
     switchTab('accounting');
-    const wrap = document.getElementById('workerPayWrap');
-    r.cards = [...wrap.querySelectorAll('.wcard')].map(c => c.textContent.replace(/\s+/g, ' '));
-    r.own = workers.filter(w => w.hrId === getSession().uid).length;
+    r.cards = [...document.querySelectorAll('#dashSalary .salary-rows tr')].map(c => c.textContent.replace(/\s+/g, ' '));
+    r.own = __lastSalaryEntries.length;
     openPayModal('w2');
     r.modal = document.getElementById('payOverlay').classList.contains('open');
     r.allDisabled = [...document.querySelectorAll('#payModal input, #payModal select')].every(el => el.disabled);
@@ -188,7 +187,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     closeModal('payOverlay'); delete workers.find(w => w.id === 'w2').bank;
     return r;
   });
-  ok(pm.cards.length === Math.min(pm.own, 10) && pm.cards.some(t => /Hapoalim/.test(t)) && pm.modal && pm.allDisabled && pm.noSave && !pm.canEdit, 'hr: sees its workers\' pay cards with bank details, read-only ' + JSON.stringify(pm));
+  ok(pm.cards.length === Math.min(pm.own, 10) && pm.own >= 1 && pm.cards.some(t => /Hapoalim/.test(t)) && pm.modal && pm.allDisabled && pm.noSave && !pm.canEdit, 'hr: sees its workers\' Salary rows with the bank, the pay window read-only ' + JSON.stringify(pm));
   // Without "Edit own workers' pay" the server refuses a pay change too.
   const nope = await h.evaluate(async () => {
     const w = workers.find(x => x.id === 'w2'), keep = w.hourlyRate, keepBank = w.bank;

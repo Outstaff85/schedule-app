@@ -310,8 +310,12 @@
   ::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:3px;}
 
   /* Toast */
-  .toast{position:fixed;bottom:20px;right:20px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:10px 16px;font-size:15px;color:var(--text);z-index:999;opacity:0;transform:translateY(8px);transition:all 0.2s;pointer-events:none;}
+  .toast{position:fixed;bottom:16px;right:16px;transform:translateY(8px);display:flex;align-items:center;gap:8px;max-width:min(340px,calc(100vw - 32px));box-sizing:border-box;background:var(--bg2,#181c27);border:1px solid var(--border2);border-left:3px solid var(--green);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:500;line-height:1.35;color:var(--text);box-shadow:0 6px 20px rgba(0,0,0,.35);z-index:999;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;}
   .toast.show{opacity:1;transform:translateY(0);}
+  .toast i{font-size:16px;color:var(--green);flex-shrink:0;}
+  .toast.warn{border-left-color:var(--amber);} .toast.warn i{color:var(--amber);}
+  .toast.err{border-left-color:var(--red);} .toast.err i{color:var(--red);}
+  .toast.info{border-left-color:var(--blue,#60a5fa);} .toast.info i{color:var(--blue,#60a5fa);}
   input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(1);}
   /* ── Mobile Responsive ────────────────────────────────────────── */
   /* ═══════════════════════════════════════════════════
@@ -671,8 +675,8 @@ html[lang="he"] *{letter-spacing:normal !important;}
         <div id="dashMissing" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px"></div>
       </div>
 
-      <!-- Workers by supplier -->
-      <div style="margin-bottom:20px">
+      <!-- Workers by supplier (hidden when no supplier has workers) -->
+      <div style="margin-bottom:20px" id="dashSuppliersWrap">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"><i class="ti ti-truck-delivery"></i> <span data-i18n>Workers by Supplier</span></div>
         <div id="dashSuppliers" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px"></div>
       </div>
@@ -736,7 +740,7 @@ html[lang="he"] *{letter-spacing:normal !important;}
       </div>
       <div class="workers-toolbar">
         <div class="workers-search-row">
-          <input type="text" id="workersSearch" placeholder="Search by name, phone, object..." data-i18n-placeholder="Search by name, phone, object..." oninput="renderWorkersPage()">
+          <input type="text" id="workersSearch" placeholder="Search: name, ID / passport, phone, client..." data-i18n-placeholder="Search: name, ID / passport, phone, client..." oninput="renderWorkersPage()">
           <button type="button" class="filters-btn" id="workersFiltersBtn" onclick="toggleWorkersFilters()" aria-expanded="false"><i class="ti ti-filter"></i> <span data-i18n>Filters</span> <span class="n" id="workersFiltersCount" style="display:none"></span><i class="ti ti-chevron-down" id="workersFiltersChevron"></i></button>
           <div class="view-toggle" role="group" aria-label="Layout">
             <button type="button" id="workersViewList" onclick="setWorkersView('list')" title="List" data-i18n-title="List"><i class="ti ti-list"></i></button>
@@ -951,11 +955,12 @@ html[lang="he"] *{letter-spacing:normal !important;}
           </div>
       </div>
 
-      <!-- Salary summary (moved here from Today) -->
-      <div style="margin-bottom:24px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <!-- Salary: one row per worker with shifts in the period; the pay window edits (Worker pay merged in, 2026-10-11) -->
+      <div id="accSecSalary" style="margin-bottom:24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
           <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:4px"><i class="ti ti-cash"></i> <span data-i18n><span data-i18n>Salary Calculation</span></span> <button type="button" class="acc-help" onclick="openAccountingHelp('salary')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
-          <div style="display:flex;gap:8px;align-items:center">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;max-width:100%">
+            <input type="search" id="salarySearch" placeholder="Search a worker" data-i18n-placeholder="Search a worker" oninput="renderSalary()" style="width:150px;flex:1 1 120px;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:4px 8px;font-size:12px;outline:none">
             <select id="salaryPeriod" onchange="onSalaryPeriodChange()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:4px 8px;font-size:12px;outline:none">
               <option value="week" data-i18n>This Week</option>
               <option value="month" data-i18n>This Month</option>
@@ -965,13 +970,6 @@ html[lang="he"] *{letter-spacing:normal !important;}
           </div>
         </div>
         <div id="dashSalary"></div>
-      </div>
-
-      <!-- Worker pay: a card per worker with its rate, pay mode, period pay, travel and bank (the one place money is set) -->
-      <div id="accSecWorkerPay" style="margin-bottom:24px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-wallet"></i> <span data-i18n><span data-i18n>Worker pay</span></span> <button type="button" class="acc-help" onclick="openAccountingHelp('workerPay')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
-        <input type="text" id="workerPaySearch" placeholder="Search a worker" data-i18n-placeholder="Search a worker" oninput="renderWorkerPay()" style="width:100%;max-width:320px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;padding:7px 10px;outline:none;margin-bottom:8px">
-        <div id="workerPayWrap"></div>
       </div>
 
       <!-- Per-client rate matrix -->
@@ -1002,6 +1000,12 @@ html[lang="he"] *{letter-spacing:normal !important;}
       <div id="accSecBillable" style="margin-top:24px">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-building-store"></i> <span data-i18n><span data-i18n>Billable by client</span></span> <button type="button" class="acc-help" onclick="openAccountingHelp('billable')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="clientBillableWrap"></div>
+      </div>
+
+      <!-- Client approvals: what each client login approved or disputed in its portal (month periods only) -->
+      <div id="accSecApprovals" style="margin-top:24px;display:none">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-circle-check"></i> <span data-i18n>Client approvals</span> <button type="button" class="acc-help" onclick="openAccountingHelp('approvals')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
+        <div id="clientApprovalsWrap"></div>
       </div>
 
       <!-- Hours-import approval queue (Admin/Roles plan, stage 14) -->
@@ -1179,6 +1183,7 @@ html[lang="he"] *{letter-spacing:normal !important;}
         <option value="staff" data-i18n>Staff</option>
         <option value="hr">HR</option>
         <option value="supplier" data-i18n>Supplier</option>
+        <option value="client" data-i18n>Client</option>
       </select>
     </div>
     <div class="form-section" data-i18n>Person</div>
@@ -1193,6 +1198,20 @@ html[lang="he"] *{letter-spacing:normal !important;}
     </div>
     <div class="form-section" id="userFormAccessHead" data-i18n>Access</div>
     <div class="field" id="userFormSupplierField" style="display:none"><label data-i18n>Supplier</label><select id="userFormSupplierId" onchange="renderUserFormHrWorkers()"></select></div>
+    <!-- A client login: its client and what it may do in the client portal
+         (claim perms; checked by the client function). -->
+    <div class="field" id="userFormClientField" style="display:none"><label data-i18n>Client</label><select id="userFormClientId"></select></div>
+    <div class="field" id="userFormClientPermsField" style="display:none">
+      <label data-i18n>In the client portal</label>
+      <div class="check-grid">
+        <label class="check-chip"><input type="checkbox" value="hours" class="userFormClientPermCb"><span class="chip-text"><span><i class="ti ti-clock"></i> <span data-i18n>Hours</span></span><span class="chip-hint" data-i18n>In / out of its workers</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="approve" class="userFormClientPermCb"><span class="chip-text"><span><i class="ti ti-circle-check"></i> <span data-i18n>Approve</span></span><span class="chip-hint" data-i18n>Approves the month</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="dispute" class="userFormClientPermCb"><span class="chip-text"><span><i class="ti ti-alert-triangle"></i> <span data-i18n>Dispute</span></span><span class="chip-hint" data-i18n>Disputes a day with a comment</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="schedule" class="userFormClientPermCb"><span class="chip-text"><span><i class="ti ti-calendar"></i> <span data-i18n>Schedule</span></span><span class="chip-hint" data-i18n>Its workers' planned shifts</span></span></label>
+        <label class="check-chip"><input type="checkbox" value="export" class="userFormClientPermCb"><span class="chip-text"><span><i class="ti ti-upload"></i> <span data-i18n>Export</span></span><span class="chip-hint" data-i18n>Hours to Excel</span></span></label>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px" data-i18n>Never sees pay, rates, suppliers, GPS or documents.</div>
+    </div>
     <div class="field" id="userFormPermsField">
       <label data-i18n>Sections</label>
       <div class="check-grid">
@@ -1856,7 +1875,7 @@ function shiftPay(hours, w, isSat, clientId){
   return israeliDayPay(hours, r.regRate, false).total;
 }
 // Daily pay (w.payMode === 'daily', picked per worker in Accounting →
-// Worker pay or Salary): the worker is paid their own rate (read as ₪/day)
+// the pay window): the worker is paid their own rate (read as ₪/day)
 // once for every day worked, whatever the hours. A client's rate (an hourly
 // figure) never applies to a daily-paid worker.
 function isDailyPay(w){ return !!(w && w.payMode==='daily'); }
@@ -1873,7 +1892,7 @@ function shiftPayFor(hours, w, isSat, clientId, date, seenDays){
   }
   return shiftPay(hours, w, isSat, clientId);
 }
-// Travel for a period (Accounting → Worker pay): travelAllowance ₪ for each
+// Travel for a period (the pay window, openPayModal): travelAllowance ₪ for each
 // day worked + travelMonthly ₪ once for each calendar month with work in it.
 // Never part of the wage itself (shiftPay / shiftPayFor).
 function travelPay(w, days, months){
@@ -3220,7 +3239,7 @@ async function saveWorkerNow(opts){
         ? workers[editingWorkerIdx].schedule
         : DAYS.map(()=>({type:'off',start:null,end:null})));
   // Pay (rate, pay mode, travel, bank) is not in this form: it is set in
-  // Accounting → Worker pay (openPayModal), and an edit here keeps it.
+  // the pay window (openPayModal), and an edit here keeps it.
   const commonFields={name,colorIdx:selColorIdx,phone,status,startDate,workStartDate,docSex,
     expiryEnabled,expiryMonths,expiryWarnMonths,docId,address,houseNumber,city,docDob,docExpiry,notes,
     incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,docChildren,clientIds,schedule,
@@ -3288,7 +3307,7 @@ async function saveWorkerNow(opts){
     const updated={...prevW,...commonFields};
     // Moved to a new client that has a rate: that client's rate is the
     // default again — an hourly worker's own rate is cleared (user decision
-    // 2026-10-05; it can be set again in Accounting → Worker pay).
+    // 2026-10-05; it can be set again in the pay window).
     const addedRated=(updated.clientIds||[]).filter(id=>!(prevW.clientIds||[]).includes(id))
       .some(id=>{ const c=clients.find(x=>x.id===id); return c&&c.defaultHourlyRate!=null&&c.defaultHourlyRate!==''; });
     // (a pay change: a login that may not change pay — an HR without "Edit own
@@ -3459,21 +3478,22 @@ function showClientModal(c){
     <div class="field-row">
       <div class="field"><label><i class="ti ti-cash"></i> שכר העובד (₪ לשעה)</label>
         <input type="number" min="0" step="0.5" id="cDefRate" value="${c.defaultHourlyRate??''}" placeholder="—"></div>
+      <div class="field"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>אופן חיוב הלקוח</label>
+        <select id="cRateMode" onchange="onClientRateModeChange()" style="width:100%">
+          <option value="tiered" ${__cBill.rateMode==='tiered'?'selected':''}>עם שעות נוספות ושבת (לפי החוק)</option>
+          <option value="fixed" ${__cBill.rateMode==='fixed'?'selected':''}>תעריף קבוע (בלי תוספות)</option>
+        </select></div>
       <div class="field"><label><i class="ti ti-receipt"></i> תשלום הלקוח (₪ לשעה)</label>
         <input type="number" min="0" step="0.5" id="cBillMain" value="${clientBillMain()??''}" placeholder="—" oninput="onClientBillMainInput(this.value)"></div>
     </div>
-    <div style="font-size:11px;color:var(--text3);margin:-6px 0 12px">שכר העובד חל על כל העובדים אצל הלקוח, אלא אם לעובד יש תעריף משלו; שעות נוספות ושבת לפי החוק. תשלום הלקוח לא משנה את שכר העובד.</div>
-    <div class="field">
-      <label>אופן חיוב הלקוח</label>
-      <select id="cRateMode" onchange="onClientRateModeChange()" style="width:100%">
-        <option value="tiered" ${__cBill.rateMode==='tiered'?'selected':''}>עם שעות נוספות ושבת (לפי החוק)</option>
-        <option value="fixed" ${__cBill.rateMode==='fixed'?'selected':''}>תעריף קבוע (בלי תוספות)</option>
-      </select>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px">
-        <div id="cBillSummary" style="font-size:12px;color:var(--text2)">${clientBillSummary()}</div>
-        <button class="btn sm" type="button" onclick="openClientBillRatePopup()"><i class="ti ti-pencil"></i> עריכה</button>
-      </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:-4px 0 8px">
+      <div id="cBillSummary" style="font-size:12px;color:var(--text2)">${clientBillSummary()}</div>
+      <button class="btn sm" type="button" onclick="openClientBillRatePopup()"><i class="ti ti-pencil"></i> עריכה</button>
     </div>
+    <div style="font-size:11px;color:var(--text3);margin:0 0 12px">שכר העובד חל על כל העובדים אצל הלקוח, אלא אם לעובד יש תעריף משלו; שעות נוספות ושבת לפי החוק. תשלום הלקוח לא משנה את שכר העובד.</div>
     <div class="field">
       <label><i class="ti ti-map-pin"></i> מיקום לשעון הנוכחות</label>
       <button class="btn ${c.lat?'sm':'accent'}" type="button" onclick="openMapPicker()" style="width:100%;justify-content:center;margin-bottom:10px">
@@ -3488,10 +3508,12 @@ function showClientModal(c){
         <input type="number" id="cRadius" value="${c.radius||100}" placeholder="100"></div>
       <div id="cLocStatus" style="font-size:12px;min-height:18px;padding:4px 0;color:${c.lat?'var(--green)':'var(--text2)'}">${c.lat?locSetHtml(c.lat,c.lng):''}</div>
     </div>
-    <div class="modal-actions">
-      <button class="btn accent" onclick="saveClient()">${editingClientId?'שמירה':'הוספת לקוח'}</button>
-    </div></div>`;
-  document.getElementById('clientOverlay').classList.add('open');
+    ${editingClientId?`<div class="modal-actions"><button class="btn" type="button" style="background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)" onclick="punchFromClientModal()"><i class="ti ti-clock"></i> החתמה ידנית</button></div>`:''}
+    <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px"><i class="ti ti-device-floppy"></i> ${editingClientId?'השינויים נשמרים בסגירת החלון':'הלקוח נוצר בסגירת החלון'}</div></div>`;
+  // No Save button: a tap outside the window saves it (saveClient auto).
+  const cov=document.getElementById('clientOverlay');
+  cov.__onUserClose=()=>saveClient({auto:true});
+  cov.classList.add('open');
 }
 
 function parseGoogleMapsUrl(url){
@@ -3734,9 +3756,23 @@ function saveClientBillRatePopup(){
   syncClientBillFields();
   closeModal('clientBillOverlay');
 }
-function saveClient(){
+// The manual punch from the client window: the window is saved first (as on a
+// tap outside), then the punch opens; closing it brings the client back.
+function punchFromClientModal(){
+  const cid=editingClientId; if(!cid) return;
+  saveClient({auto:true});
+  if(!document.getElementById('clientOverlay').classList.contains('open')) openManualPunch(cid);
+}
+// Saves the client modal. With {auto} (a tap outside — the modal has no Save
+// button): a new client without a name is not created, an unchanged client
+// closes quietly.
+function saveClient(opts){
+  opts=opts||{};
   const name=document.getElementById('cName').value.trim();
-  if(!name){ document.getElementById('cName').focus(); return; }
+  if(!name){
+    if(opts.auto){ if(editingClientId) showToast('שם הלקוח ריק — השינויים לא נשמרו'); closeModal('clientOverlay'); return; }
+    document.getElementById('cName').focus(); return;
+  }
   const object=document.getElementById('cObject')?.value.trim()||'';
   const address=document.getElementById('cAddr').value.trim();
   const companyNumber=document.getElementById('cCompanyNumber')?.value.trim()||'';
@@ -3751,7 +3787,12 @@ function saveClient(){
   const {rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate}=__cBill;
   if(editingClientId){
     const idx=clients.findIndex(x=>x.id===editingClientId);
-    if(idx>=0) clients[idx]={...clients[idx],name,object,address,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate};
+    if(idx>=0){
+      const next={...clients[idx],name,object,address,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate};
+      const norm=o=>JSON.stringify(Object.keys(o).sort().map(k=>[k,o[k]??null]));
+      if(norm(next)===norm(clients[idx])){ closeModal('clientOverlay'); return; }  // nothing changed
+      clients[idx]=next;
+    }
     showToast(name+' עודכן');
   } else {
     clients.push({id:uid(),name,object,address,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate});
@@ -3890,10 +3931,18 @@ function renderWorkersPage(){
   const docsFilter=document.getElementById('workersFilterDocs')?.value||'';
   if(docsFilter==='incomplete') list=list.filter(x=>workerDocStatus(x.w).level!=='ok');
   else if(docsFilter==='expiring') list=list.filter(x=>{ const st=workerDocStatus(x.w); return !!st.expiry||st.docExpiries.length>0; });
-  if(q) list=list.filter(x=>{
-    const objNames=(x.w.clientIds||[]).map(id=>clients.find(c=>c.id===id)?.name||'').join(' ');
-    return (x.w.name||'').toLowerCase().includes(q) || (x.w.phone||'').toLowerCase().includes(q) || objNames.toLowerCase().includes(q);
-  });
+  // Search: name (and the names from the document), phone, ID / passport
+  // number (spaces and dashes ignored), and the worker's clients — name and object.
+  if(q){
+    const qNum=q.replace(/[\s-]/g,'');
+    list=list.filter(x=>{
+      const w=x.w;
+      const objNames=(w.clientIds||[]).map(id=>{ const c=clients.find(c=>c.id===id); return c?(c.name||'')+' '+(c.object||''):''; }).join(' ');
+      const text=[w.name,w.docGiven,w.docSurname,w.phone,objNames].join(' ').toLowerCase();
+      const docNo=String(workerDocId(w)||'').toLowerCase().replace(/[\s-]/g,'');
+      return text.includes(q) || (qNum.length>=2 && docNo.includes(qNum));
+    });
+  }
   document.getElementById('workersCount').textContent=tr('{0} worker{1}',{0:(list.length),1:(list.length!==1?'s':'')});
   const view=getWorkersView();
   document.getElementById('workersViewList')?.classList.toggle('active',view==='list');
@@ -4147,7 +4196,7 @@ function renderHoursImportModal(){
     <div id="hoursImportPreview" style="font-size:12px;color:var(--text3);min-height:20px"></div>
     <div class="form-section" style="display:flex;justify-content:space-between;align-items:center;gap:8px">${tr('Enter by hand')}
       <button class="btn sm" type="button" onclick="addHoursManualRow()"><i class="ti ti-plus"></i> ${tr('Add shift')}</button></div>
-    <div id="hoursPayHint" style="font-size:11px;color:var(--text3);margin-bottom:6px">${isDailyPay(w)?tr('Paid by the day: a date is enough — with no times it counts as one day (08:00–16:00).'):tr('Paid by the hour: date, in and out for each shift. (How a worker is paid is set in Accounting → Worker pay.)')}</div>
+    <div id="hoursPayHint" style="font-size:11px;color:var(--text3);margin-bottom:6px">${isDailyPay(w)?tr('Paid by the day: a date is enough — with no times it counts as one day (08:00–16:00).'):tr('Paid by the hour: date, in and out for each shift. (How a worker is paid is set in the pay window: worker card → Pay.)')}</div>
     <div id="hoursManualRows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
     <div class="modal-actions">
       <button class="btn accent" id="hoursImportSubmitBtn" disabled onclick="submitHoursImportBatch()"><i class="ti ti-upload"></i> ${tr('Upload for approval')}</button>
@@ -4236,7 +4285,7 @@ function manualRowsProblem(rows, daily, name){
   if(!bad.length) return null;
   const r = rows[bad[0]];
   const why = !r.date ? 'pick a date'
-    : (!daily ? 'enter the in and out times — '+(name||'this worker')+' is paid by the hour (dates only need "₪/day" in Accounting → Worker pay)'
+    : (!daily ? 'enter the in and out times — '+(name||'this worker')+' is paid by the hour (dates only need "₪/day" in the pay window: worker card → Pay)'
     : 'enter both times, or leave both empty for a whole day');
   return {rows: bad, text: 'Shift '+(bad[0]+1)+': '+why};
 }
@@ -4391,10 +4440,6 @@ function renderClientsPage(){
       </div>
 
       <div style="font-size:12px;color:var(--text2)"><strong style="color:var(--text)">${tr('Workers:')}</strong> ${assigned.length?assigned.map(w=>`<span style="color:${WORKER_COLORS[w.colorIdx%8].text}">${esc(w.name)}</span>`).join(', '):'None assigned'}</div>
-      <div class="client-card-actions">
-
-        <button class="btn sm" style="background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)" onclick="openManualPunch('${c.id}')"><i class="ti ti-clock"></i> ${tr('Punch Clock')}</button>
-      </div>
     </div>`;
   },{grid:true});
 }
@@ -4940,6 +4985,12 @@ function goToSupplierPortal(u){
   clearSession();
   location.replace('supplier-portal.html');
 }
+// A client login uses the client portal (client-portal.html), handed over the same way.
+function goToClientPortal(u){
+  try{ localStorage.setItem('clientPortal_session', JSON.stringify({uid:u.uid, role:'client', tenantId:u.tenantId, clientId:u.clientId, username:u.username})); }catch(e){}
+  clearSession();
+  location.replace('client-portal.html');
+}
 function clearSession(){ localStorage.removeItem(SESSION_KEY); }
 async function logout(){
   try{ localStorage.removeItem(FIRMS_CACHE_KEY); }catch(e){}
@@ -5038,6 +5089,7 @@ async function submitLogin(){
     // A supplier login belongs in the supplier portal: hand the session over
     // (same origin, same Firebase sign-in) and go there.
     if(fb.role === 'supplier'){ goToSupplierPortal(fb); return; }
+    if(fb.role === 'client'){ goToClientPortal(fb); return; }
     try{ sessionStorage.setItem('pendingLoginTiming', JSON.stringify({t0, loginMs:Date.now()-t0, pingMs:window.__pingMs==null?null:window.__pingMs, pingDone:window.__pingMs!=null})); }catch(e){}
     saveSession({
       uid: fb.uid, role: fb.role, tenantId: fb.tenantId, username: fb.username, tenantProfile: fb.tenantProfile,
@@ -5145,6 +5197,7 @@ function cacheTenantProfile(tenantId, profile){
 function gateApp(runInitApp){
   let s = getSession();
   if(s && s.role === 'supplier'){ goToSupplierPortal(s); return; }
+  if(s && s.role === 'client'){ goToClientPortal(s); return; }
   if(!s){
     document.getElementById('loginScreen').style.display = 'flex';
     // Wake a cold login function while the user types, so the login request
@@ -5241,15 +5294,14 @@ function renderFirmsRows(listEl, tenants){
   __firmsCache = tenants;
   if(!tenants.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">'+tr('No firms yet — create the first one.')+'</div>'; return; }
   renderPagedList(listEl, 'firms:' + listEl.id, '', tenants, t => `
-      <div class="row" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);cursor:pointer;${t.active===false?'opacity:0.55':''}" onclick="switchToTenant('${esc(t.tenantId)}')">
+      <div class="row tap-edit" style="position:relative;display:flex;align-items:center;justify-content:space-between;padding:12px 30px 12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);cursor:pointer;${t.active===false?'opacity:0.55':''}" onclick="tapEdit(event,this,()=>switchToTenant('${esc(t.tenantId)}'),()=>openEditFirmForm('${esc(t.tenantId)}'))" onpointerdown="longPress(event,this,()=>openEditFirmForm('${esc(t.tenantId)}'))">
+        <button class="wcard-del" type="button" title="${tr('Delete')}" aria-label="${tr('Delete')}" onclick="event.stopPropagation();confirmDeleteTenant('${esc(t.tenantId)}','${esc(t.companyName||t.tenantId)}')">✕</button>
         <div>
           <div style="font-weight:600">${esc(t.companyName || '(no name)')}${t.active===false?' <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px">'+tr('disabled')+'</span>':''}${firmProfileMissing(t).length?` <span style="font-size:11px;font-weight:400;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 5px;margin-left:4px" title="${tr('Not filled in: {0}',{0:(esc(firmProfileMissing(t).join(', ')))})}">${tr('profile incomplete')}</span>`:''}</div>
           <div style="font-size:12px;color:var(--text2)">${tr('{0} workers · {1} clients{2}',{0:(t.workerCount||0),1:(t.clientCount||0),2:(t.savedAt?' · saved '+esc(new Date(t.savedAt).toLocaleString()):'')})}</div>
         </div>
         <div style="display:flex;align-items:center;gap:4px" onclick="event.stopPropagation()">
-          <button class="btn sm" onclick="openEditFirmForm('${esc(t.tenantId)}')" title="${tr('Edit')}"><i class="ti ti-pencil"></i></button>
           <button class="btn sm" onclick="toggleTenantActive('${esc(t.tenantId)}',${t.active===false})" title="${t.active===false?'Enable':'Disable'}"><i class="ti ti-${t.active===false?'player-play':'player-pause'}"></i></button>
-          <button class="btn sm" onclick="confirmDeleteTenant('${esc(t.tenantId)}','${esc(t.companyName||t.tenantId)}')" title="${tr('Delete')}" style="color:#ff6b78"><i class="ti ti-trash"></i></button>
           <i class="ti ti-chevron-right"></i>
         </div>
       </div>`);
@@ -5384,7 +5436,9 @@ function prefetchAdminUsers(){
   }).catch(()=>{});
 }
 // How a login's role reads in the Users list (through tr()).
-const USER_ROLE_LABELS = {tenant_admin:'owner', superadmin:'super-admin', staff:'staff', hr:'HR', supplier:'supplier'};
+const USER_ROLE_LABELS = {tenant_admin:'owner', superadmin:'super-admin', staff:'staff', hr:'HR', supplier:'supplier', client:'client'};
+const CLIENT_DEFAULT_PERMS = ['hours', 'approve', 'dispute'];
+const CLIENT_PERM_LABELS = {hours:'Hours', approve:'Approve', dispute:'Dispute', schedule:'Schedule', export:'Export'};
 const ADMIN_PANE_SUBTITLES = { // shown through tr()
   punchlog: 'Punch log — view, edit and export all attendance records',
   firms: 'Firm details — the employer block printed on every Form 101',
@@ -5461,9 +5515,9 @@ function renderAdminUsersRows(el, users){
         : u.role==='supplier' && u.supplierId ? `<div style="font-size:12px;color:var(--text2)">${(n => n===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:n,1:''}))(workers.filter(w => w.supplierId===u.supplierId).length)}</div>` : '';
       return `<div class="tap-edit" onclick="tapEdit(event,this,null,()=>openEditUserForm('${esc(u.id)}'))" onpointerdown="longPress(event,this,()=>openEditUserForm('${esc(u.id)}'))" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);${u.active===false?'opacity:0.55':''}">
         <div>
-          <div style="font-weight:600">${esc(u.fullName||u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(tr(USER_ROLE_LABELS[u.role]||u.role))})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">'+tr('inactive')+'</span>':''}</div>
+          <div style="font-weight:600">${u.role==='tenant_admin'?'<i class="ti ti-pin" style="color:var(--amber)" title="'+esc(tr('Firm owner'))+'"></i> ':''}${esc(u.fullName||u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(tr(USER_ROLE_LABELS[u.role]||u.role))})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">'+tr('inactive')+'</span>':''}</div>
           <div style="font-size:11px;color:var(--text3)">${tr('login: {0}{1}',{0:(esc(u.username)),1:(u.phone?' · '+esc(u.phone):'')})}</div>
-          ${hrLine}<div style="font-size:12px;color:var(--text2)">${u.role==='supplier' ? (sup?esc(sup.name):'—') : esc(permsLabel)}</div>
+          ${hrLine}<div style="font-size:12px;color:var(--text2)">${u.role==='supplier' ? (sup?esc(sup.name):'—') : u.role==='client' ? esc(((clients||[]).find(c=>c.id===u.clientId)||{}).name||'—')+' · '+esc((Array.isArray(u.permissions)?u.permissions:[]).map(p=>tr(CLIENT_PERM_LABELS[p]||p)).join(', ')) : esc(permsLabel)}</div>
         </div>
         <div style="display:flex;gap:4px">
           <button class="btn sm" onclick="deleteUserConfirm('${esc(u.id)}','${esc(u.username)}')" title="${tr('Delete')}" style="color:#ff6b78"><i class="ti ti-trash"></i></button>
@@ -5472,16 +5526,27 @@ function renderAdminUsersRows(el, users){
     };
     el.innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="openCreateUserForm()"><i class="ti ti-plus"></i> ${tr('New user')}</button></div>`
       + (users.length ? `<div class="admin-users-rows" style="display:flex;flex-direction:column;gap:8px"></div>` : '<div style="color:var(--text2);font-size:13px">'+tr('No staff, HR or supplier users yet.')+'</div>');
+    // The firm's owner is always pinned at the top (user request 2026-10-11),
+    // then everyone else by name.
+    const rank = u => u.role==='tenant_admin' ? 0 : u.role==='superadmin' ? 1 : 2;
+    users = users.slice().sort((a,b) => rank(a)-rank(b) || String(a.fullName||a.username||'').localeCompare(String(b.fullName||b.username||'')));
     if(users.length) renderPagedList(el.querySelector('.admin-users-rows'), 'users', '', users, row);
 }
 function fillUserFormSupplierSelect(selectedId){
   const sel = document.getElementById('userFormSupplierId');
   sel.innerHTML = (suppliers||[]).map(s => `<option value="${esc(s.id)}"${s.id===selectedId?' selected':''}>${esc(s.name)}</option>`).join('');
 }
+function fillUserFormClientSelect(selectedId){
+  const sel = document.getElementById('userFormClientId');
+  sel.innerHTML = (clients||[]).map(c => `<option value="${esc(c.id)}"${c.id===selectedId?' selected':''}>${esc(c.name)}${c.object?' · '+esc(c.object):''}</option>`).join('');
+}
 function onUserFormRoleChange(fromUser){
   const role = document.getElementById('userFormRole').value;
   document.getElementById('userFormSupplierField').style.display = role==='supplier' ? '' : 'none';
-  document.getElementById('userFormPermsField').style.display = role==='supplier' ? 'none' : '';
+  document.getElementById('userFormClientField').style.display = role==='client' ? '' : 'none';
+  document.getElementById('userFormClientPermsField').style.display = role==='client' ? '' : 'none';
+  if(role==='client' && fromUser===true){ fillUserFormClientSelect(null); document.querySelectorAll('.userFormClientPermCb').forEach(cb => cb.checked = CLIENT_DEFAULT_PERMS.includes(cb.value)); }
+  document.getElementById('userFormPermsField').style.display = (role==='supplier'||role==='client') ? 'none' : '';
   document.getElementById('userFormHrFields').style.display = role==='hr' ? '' : 'none';
   document.getElementById('userFormPayFields').style.display = (role==='hr'||role==='supplier') ? '' : 'none';
   document.getElementById('userFormCommissionField').style.display = role==='hr' ? '' : 'none';
@@ -5517,6 +5582,8 @@ function openCreateUserForm(){
   document.getElementById('userFormCommission').value = '';
   document.getElementById('userFormCommissionDay').value = '';
   document.getElementById('userFormError').textContent = '';
+  fillUserFormClientSelect(null);
+  document.querySelectorAll('.userFormClientPermCb').forEach(cb => cb.checked = CLIENT_DEFAULT_PERMS.includes(cb.value));
   onUserFormRoleChange();
   document.getElementById('userFormOverlay').classList.add('open');
 }
@@ -5559,9 +5626,12 @@ async function openEditUserForm(id){
   showUserFormAccess(true);
   onUserFormRoleChange();
   if(u.role==='supplier') fillUserFormSupplierSelect(u.supplierId);
+  fillUserFormClientSelect(u.role==='client' ? u.clientId : null);
+  const cperms = u.role==='client' && Array.isArray(u.permissions) ? u.permissions : CLIENT_DEFAULT_PERMS;
+  document.querySelectorAll('.userFormClientPermCb').forEach(cb => cb.checked = cperms.includes(cb.value));
   if(u.role==='hr' || u.role==='supplier') renderUserFormHrWorkers();
   // A supplier has no sections (listUsers reports its empty list as '*').
-  const perms = u.role==='supplier' ? [] : u.permissions==='*' ? PERMISSION_SECTIONS.slice() : (Array.isArray(u.permissions)?u.permissions:[]);
+  const perms = (u.role==='supplier'||u.role==='client') ? [] : u.permissions==='*' ? PERMISSION_SECTIONS.slice() : (Array.isArray(u.permissions)?u.permissions:[]);
   document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = perms.indexOf(cb.value)!==-1);
   document.getElementById('userFormOverlay').classList.add('open');
 }
@@ -5571,6 +5641,11 @@ async function submitUserForm(){
   const role = document.getElementById('userFormRole').value;
   const permissions = Array.from(document.querySelectorAll('.userFormPermCb:checked')).map(cb=>cb.value);
   const supplierId = document.getElementById('userFormSupplierId').value;
+  const clientId = document.getElementById('userFormClientId').value;
+  const clientPerms = Array.from(document.querySelectorAll('.userFormClientPermCb:checked')).map(cb=>cb.value);
+  if(role==='client' && !clientId){ errEl.textContent = tr('Pick the client'); return; }
+  // Who gets what: a supplier its supplier, a client its client and ticks, others their sections.
+  const access = body => { if(role==='supplier') body.supplierId = supplierId; else if(role==='client'){ body.clientId = clientId; body.permissions = clientPerms; } else body.permissions = permissions; };
   const btn = document.getElementById('userFormSaveBtn');
   btn.disabled = true;
   try{
@@ -5593,7 +5668,7 @@ async function submitUserForm(){
       const body = __editingAdminRow
         ? { action:'updateUser', ...gsAuth(), id: __editingUserId, fullName: hrFields.fullName, phone: hrFields.phone }
         : { action:'updateUser', ...gsAuth(), id: __editingUserId, role, ...hrFields };
-      if(!__editingAdminRow){ if(role==='supplier') body.supplierId = supplierId; else body.permissions = permissions; }
+      if(!__editingAdminRow) access(body);
       const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(body) });
       const json = await res.json();
       if(!json || json.error){ errEl.textContent = tr((json&&json.error)||'') ||tr('Save failed'); return; }
@@ -5609,7 +5684,7 @@ async function submitUserForm(){
       const password = document.getElementById('userFormPassword').value;
       if(!username || !password){ errEl.textContent = tr('Username and password required'); return; }
       const body = { action:'createTenantUser', ...gsAuth(), username, password, role, ...hrFields };
-      if(role==='supplier') body.supplierId = supplierId; else body.permissions = permissions;
+      access(body);
       const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(body) });
       const json = await res.json();
       if(!json || json.error){ errEl.textContent = tr((json&&json.error)||'') ||tr('Create failed'); return; }
@@ -6777,32 +6852,22 @@ function renderDashboard(){
 }
 
 // ── Workers-by-supplier widget (Dashboard) ──────────────────────────────────
-// Purely a headcount overview (how many workers each supplier currently has
-// assigned, plus an unassigned bucket) — no punch/pay data, unlike the
-// Accounting tab's payable-by-supplier summary above.
+// Purely a headcount overview: how many workers each supplier has — only the
+// suppliers that have workers; workers without a supplier get no card (user
+// request 2026-10-11), and with none at all the section is hidden. No
+// punch/pay data, unlike the Accounting tab's payable-by-supplier summary.
 function renderDashSuppliers(){
   const wrap=document.getElementById('dashSuppliers');
   if(!wrap) return;
   const counts={};
-  let unassigned=0;
-  workers.forEach(w=>{
-    if(w.supplierId) counts[w.supplierId]=(counts[w.supplierId]||0)+1;
-    else unassigned++;
-  });
+  workers.forEach(w=>{ if(w.supplierId) counts[w.supplierId]=(counts[w.supplierId]||0)+1; });
   const rows=suppliers.filter(s=>counts[s.id]).map(s=>({sup:s,count:counts[s.id]}));
-  if(!rows.length && !unassigned){
-    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('No workers yet')}</div>`;
-    return;
-  }
-  const items=unassigned?[...rows,{unassigned}]:rows;
-  renderPagedList(wrap,'dashSuppliers','',items,r=>r.unassigned==null?`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
+  const sec=document.getElementById('dashSuppliersWrap'); if(sec) sec.style.display=rows.length?'':'none';
+  if(!rows.length){ wrap.innerHTML=''; return; }
+  renderPagedList(wrap,'dashSuppliers','',rows,r=>`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center">
       <div style="width:40px;height:40px;border-radius:50%;background:${r.sup.color}22;color:${r.sup.color};display:flex;align-items:center;justify-content:center;font-size:16px"><i class="ti ti-truck-delivery"></i></div>
       <div style="font-size:13px;font-weight:600">${esc(r.sup.name)}</div>
       <div style="font-size:11px;color:var(--text2)">${tr('{0} worker{1}',{0:(r.count),1:(r.count===1?'':'s')})}</div>
-    </div>`:`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;opacity:0.7">
-      <div style="width:40px;height:40px;border-radius:50%;background:var(--bg3);color:var(--text3);display:flex;align-items:center;justify-content:center;font-size:16px"><i class="ti ti-truck-delivery"></i></div>
-      <div style="font-size:13px;font-weight:600;color:var(--text3)">${tr('No supplier')}</div>
-      <div style="font-size:11px;color:var(--text3)">${tr('{0} worker{1}',{0:(r.unassigned),1:(r.unassigned===1?'':'s')})}</div>
     </div>`,{grid:true});
 }
 
@@ -6820,7 +6885,6 @@ function renderAccounting(){
   const sub=document.querySelector('#sectionAccounting .page-sub');
   if(sub) sub.textContent=payOnly?tr('Your workers\' hours, pay and your commission'):tr('Salary calculation and payments');
   renderSalary();
-  renderWorkerPay();
   if(payOnly) return;
   if(ACC_RATE_TABLES){ renderRateMatrix(); renderSupplierRateMatrix(); }
   renderPendingHours();
@@ -6941,28 +7005,29 @@ function renderSalary(){
     renderSupplierPayable(entries);
     renderHrPayable(entries);
     renderClientBillable(__lastClientBillEntries);
+    renderClientApprovals(period);
     return;
   }
 
-  const totalHours=entries.reduce((s,e)=>s+e.hours,0);
-  const grandTotal=entries.reduce((s,e)=>s+e.total+e.travel,0);
+  // Only the workers with shifts in the period (salaryEntriesFor); the search
+  // narrows the rows and the totals with them. Payable by supplier and the
+  // rest always get every row.
+  const q=(document.getElementById('salarySearch')?.value||'').trim().toLowerCase();
+  const shown=q?entries.filter(e=>String(e.worker||'').toLowerCase().includes(q)):entries;
+  const totalHours=shown.reduce((s,e)=>s+e.hours,0);
+  const payTotal=shown.reduce((s,e)=>s+e.total,0), travelTotal=shown.reduce((s,e)=>s+e.travel,0);
   const _allWarns=entries.flatMap(e=>(e.warns||[]).map(w=>e.worker+' — '+w));
   const _reviewBanner=_allWarns.length?`<div style="background:var(--amber-bg);border:1px solid rgba(245,166,35,0.3);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px"><div style="color:var(--amber);font-weight:600;font-size:13px;margin-bottom:4px"><i class="ti ti-alert-triangle"></i> ${tr('{n} to review before calculating',{n:_allWarns.length})}</div><div style="color:var(--text2);font-size:12px;line-height:1.6">${_allWarns.slice(0,12).map(w=>'• '+w).join('<br>')}${_allWarns.length>12?'<br>…'+tr('{n} more',{n:_allWarns.length-12}):''}</div></div>`:'';
+  const th=(t,al,col)=>`<th style="padding:10px 12px;text-align:${al};font-size:12px;font-weight:600;color:${col||'var(--text2)'}">${t}</th>`;
+  const money=n=>'₪'+(Math.round((Number(n)||0)*100)/100).toLocaleString('en-US');
   salaryEl.innerHTML=_reviewBanner+`
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
       <table style="width:100%;border-collapse:collapse;min-width:640px">
         <thead>
           <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">${tr('Worker')}</th>
-            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">${tr('Hours')}</th>
-            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">${tr('Days')}</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">${tr('Rate')}</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--amber)">${tr('OT ₪/h')}</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--blue)">${tr('Shabbat ₪/h')}</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">${tr('Travel ₪')}</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">${tr('Total Pay')}</th>
-            ${payOnly?`<th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">${tr('My commission')}</th>`:''}
+            ${th(tr('Worker'),'left')}${th(tr('Hours'),'center')}${th(tr('Days'),'center')}${th(tr('Rate'),'right')}${th(tr('Pay'),'right')}${th(tr('Travel ₪'),'right')}${th(tr('Total Pay'),'right')}${th(tr('Bank'),'left')}
+            ${payOnly?th(tr('My commission'),'right'):''}
           </tr>
         </thead>
         <tbody class="salary-rows"></tbody>
@@ -6970,78 +7035,67 @@ function renderSalary(){
           <tr style="background:var(--bg3);border-top:2px solid var(--border)">
             <td style="padding:10px 12px;font-size:13px;font-weight:600;color:var(--text2)">${tr('TOTAL')}</td>
             <td style="padding:10px 12px;text-align:center;font-size:14px;font-weight:700;color:var(--text)">${tr('{h}h',{h:totalHours.toFixed(1)})}</td>
-            <td colspan="5"></td>
-            <td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">
-              ₪${grandTotal.toFixed(0)}
-            </td>
-            ${payOnly?`<td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">₪${entries.reduce((t,e)=>t+hrCom(e),0).toFixed(0)}</td>`:''}
+            <td colspan="2"></td>
+            <td style="padding:10px 12px;text-align:right;font-size:13px;font-weight:700;color:var(--text)">${money(payTotal)}</td>
+            <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)">${travelTotal>0?money(travelTotal):'—'}</td>
+            <td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">${money(payTotal+travelTotal)}</td>
+            <td></td>
+            ${payOnly?`<td style="padding:10px 12px;text-align:right;font-size:15px;font-weight:800;color:var(--green)">₪${shown.reduce((t,e)=>t+hrCom(e),0).toFixed(0)}</td>`:''}
           </tr>
         </tfoot>
       </table>
       </div>
     </div>`;
-  // The totals row covers every worker; the rows are paged (renderPagedList).
-  renderPagedList(salaryEl.querySelector('.salary-rows'),'salary',period,entries,(e,i)=>{
-            const wc=workers.find(w=>w.id===e.workerId);
-            const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
-            // The rates shown are those of the client this worker had most
-            // hours at. The inputs hold the worker's own rates; empty = the
-            // client's (placeholder, "client" under it). An edit changes this
-            // worker only — the client's rate is edited in the client card.
-            const mainCid=Object.entries(e.clientHours||{}).sort((a,b)=>b[1]-a[1]).map(x=>x[0])[0]||(wc&&wc.clientIds||[])[0]||'';
-            const mainCl=mainCid&&clients.find(c=>c.id===mainCid);
-            const er=wc?effectiveRates(wc,mainCid):{regRate:0,otRate:0,shabbatRate:0};
-            const ownReg=wc?(wc.regRate!=null&&wc.regRate!==''?wc.regRate:(Number(wc.hourlyRate)>0?wc.hourlyRate:'')):'';
-            const ownOt=wc&&wc.otRate!=null?wc.otRate:'', ownShab=wc&&wc.shabbatRate!=null?wc.shabbatRate:'';
-            const srcTag=src=>src==='client'?`<div style="font-size:10px;color:var(--text3);margin-top:2px">${tr('client')}${mainCl?' · '+esc(mainCl.name):''}</div>`:src==='override'?`<div style="font-size:10px;color:var(--text3);margin-top:2px">${tr('rate matrix')}</div>`:'';
-            const ini=wc?workerAvatarInner(wc):esc(e.worker.slice(0,2).toUpperCase());
-            const daily=isDailyPay(wc);
-            const inStyle='width:66px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none';
-            // ₪/h or ₪/day, per worker (setWorkerPayMode). Daily: the days come
-            // from the punches; a number typed here replaces them for this period.
-            const modeSel=`<select onchange="setWorkerPayMode('${e.workerId}',this.value)" title="${tr('Paid by the hour or by the day')}" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text2);font-size:11px;padding:3px 4px;margin-bottom:4px;outline:none">
-                <option value="hourly"${daily?'':' selected'}>${tr('₪/h')}</option><option value="daily"${daily?' selected':''}>${tr('₪/day')}</option></select>`;
-            const daysCell=daily
-              ? `<input type="number" value="${dayOverride(wc,periodKey)??''}" placeholder="${e.countedDays}" min="0" step="1" title="${tr('Days worked: {n} by the punches · type a number to replace it for this period',{n:e.countedDays})}" onchange="setWorkerDays('${e.workerId}','${periodKey}',this.value)" style="${inStyle};width:54px;text-align:center">${dayOverride(wc,periodKey)!=null?`<div style="font-size:10px;color:var(--text3);margin-top:2px">${tr('punches: {n}',{n:e.countedDays})}</div>`:''}`
-              : `${e.countedDays}`;
-            return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
-              <td style="padding:10px 12px">
-                <div style="display:flex;align-items:center;gap:8px">
-                  <div style="width:26px;height:26px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">${ini}</div>
-                  <span style="font-size:13px;font-weight:600">${esc(e.worker)}</span>
-                  ${e.warns&&e.warns.length?`<i class="ti ti-alert-triangle" style="color:var(--amber);font-size:14px;cursor:help" title="${e.warns.join('&#10;').replace(/"/g,'&quot;')}"></i>`:''}
-                </div>
-              </td>
-              <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${tr('{h}h',{h:e.hours.toFixed(1)})}</td>
-              <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${daysCell}</td>
-              <td style="padding:10px 12px;text-align:right">${modeSel}<br>
-                <input type="number" value="${esc(ownReg)}" placeholder="${daily?'0':esc(er.regRate)}" min="0" step="0.5" title="${daily?tr('This worker\'s rate per day'):tr('This worker\'s rate (Regular ×1.0) · empty = the client\'s rate')}"
-                  onchange="setWorkerRate('${e.workerId}',this.value);renderSalary()"
-                  style="${inStyle}">${daily?(ownReg===''?'<div style="font-size:10px;color:var(--amber);margin-top:2px">'+esc(tr('set a daily rate'))+'</div>':''):srcTag(er.src)}
-              </td>
-              ${daily?`<td style="padding:10px 12px;text-align:right;color:var(--text3)">—</td><td style="padding:10px 12px;text-align:right;color:var(--text3)">—</td>`:`<td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${esc(ownOt)}" placeholder="${esc(er.otRate)}" min="0" step="0.5" title="${tr('OT rate ₪/hour · empty = the client\'s, else base ×{m}',{m:PAY_RULES.otMult})}"
-                  onchange="setWorkerOtRate('${e.workerId}',this.value);renderSalary()"
-                  style="width:66px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:right;outline:none">${srcTag(er.otSrc)}
-              </td>
-              <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${esc(ownShab)}" placeholder="${esc(er.shabbatRate)}" min="0" step="0.5" title="${tr('Shabbat rate ₪/hour · empty = the client\'s, else base ×{m}',{m:PAY_RULES.shabbatMult})}"
-                  onchange="setWorkerShabbatRate('${e.workerId}',this.value);renderSalary()"
-                  style="width:66px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">${srcTag(er.shabbatSrc)}
-              </td>`}
-              <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)">
-                ${e.travel>0?'₪'+e.travel.toFixed(0):'—'}
-              </td>
-              <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${(e.total+e.travel)>0?'var(--green)':'var(--text3)'}">
-                ${(e.total+e.travel)>0?'₪'+(e.total+e.travel).toFixed(0):'—'}
-              </td>
-              ${payOnly?`<td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)" title="${isDailyPay(workers.find(w=>w.id===e.workerId))&&hrDayRate>0?tr('{n} days × ₪{r}',{n:esc(e.daysUsed),r:hrDayRate}):tr('{h}h × ₪{r}',{h:e.hours.toFixed(1),r:hrRate})}">₪${hrCom(e).toFixed(0)}</td>`:''}
-            </tr>`;
-},{table:true,colspan:payOnly?9:8});
+  // The totals row covers every row shown; the rows are paged (renderPagedList).
+  // No fields in the table: a tap opens the worker card, a double click / long
+  // press the pay modal — where rate, pay mode, travel, bank and (by the day)
+  // the days of this period are set.
+  renderPagedList(salaryEl.querySelector('.salary-rows'),'salary',period+'|'+q,shown,(e,i)=>{
+    const wc=workers.find(w=>w.id===e.workerId);
+    const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
+    // The rate shown: the worker's own, else the client's where the worker
+    // had most hours in the period (grey, "client").
+    const mainCid=Object.entries(e.clientHours||{}).sort((a,b)=>b[1]-a[1]).map(x=>x[0])[0]||(wc&&wc.clientIds||[])[0]||'';
+    const er=wc?effectiveRates(wc,mainCid):{regRate:0,src:''};
+    const daily=isDailyPay(wc), own=wOwnRate(wc);
+    const rate=daily
+      ? (own!==''?money(own)+tr('/day'):`<span style="color:var(--amber)">${esc(tr('set a daily rate'))}</span>`)
+      : (own!==''?money(own)+tr('/h'):(er.regRate>0?`<span style="color:var(--text3)">${esc(tr('client'))} ${money(er.regRate)}${tr('/h')}</span>`:`<span style="color:var(--amber)">${esc(tr('no rate'))}</span>`));
+    const parts=[];
+    if(e.otH>0||e.shabH>0){
+      parts.push(tr('Regular {h}h',{h:e.regH.toFixed(1)}));
+      if(e.otH>0) parts.push(tr('Overtime {h}h',{h:e.otH.toFixed(1)}));
+      if(e.shabH>0) parts.push(tr('Shabbat {h}h',{h:e.shabH.toFixed(1)}));
+    }
+    const byHand=daily&&dayOverride(wc,periodKey)!=null;
+    const bank=wc&&(wc.bank||wc.bankBranch||wc.bankAccountNumber)
+      ? `<span title="${esc([wc.bank||'',wc.bankBranch?tr('branch {b}',{b:wc.bankBranch}):'',wc.bankAccountNumber?tr('acc. {a}',{a:wc.bankAccountNumber}):''].filter(Boolean).join(' · '))}">${esc(wc.bank||tr('Bank'))}</span>`
+      : `<span style="color:var(--amber)">${esc(tr('no bank details'))}</span>`;
+    const ini=wc?workerAvatarInner(wc):esc(e.worker.slice(0,2).toUpperCase());
+    const wid=esc(e.workerId);
+    return `<tr class="tap-edit" onclick="tapEdit(event,this,()=>openWorkerCardById('${wid}'),()=>openPayModal('${wid}'))" onpointerdown="longPress(event,this,()=>openPayModal('${wid}'))" style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
+      <td style="padding:10px 12px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:26px;height:26px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">${ini}</div>
+          <span style="font-size:13px;font-weight:600">${esc(e.worker)}</span>
+          ${e.warns&&e.warns.length?`<i class="ti ti-alert-triangle" style="color:var(--amber);font-size:14px;cursor:help" title="${e.warns.join('&#10;').replace(/"/g,'&quot;')}"></i>`:''}
+        </div>
+      </td>
+      <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${tr('{h}h',{h:e.hours.toFixed(1)})}${parts.length?`<div style="font-size:10px;font-weight:400;color:var(--text3);margin-top:2px;white-space:nowrap">${esc(parts.join(' · '))}</div>`:''}</td>
+      <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600;color:var(--text)">${e.daysUsed}${byHand?`<div style="font-size:10px;font-weight:400;color:var(--text3);margin-top:2px">${esc(tr('punches: {n}',{n:e.countedDays}))}</div>`:''}</td>
+      <td style="padding:10px 12px;text-align:right;font-size:13px;white-space:nowrap">${rate}</td>
+      <td style="padding:10px 12px;text-align:right;font-size:13px;font-weight:600;color:var(--text)">${e.total>0?money(e.total):'—'}</td>
+      <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)">${e.travel>0?money(e.travel):'—'}</td>
+      <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${(e.total+e.travel)>0?'var(--green)':'var(--text3)'}">${(e.total+e.travel)>0?money(e.total+e.travel):'—'}</td>
+      <td style="padding:10px 12px;font-size:12px;color:var(--text2)">${bank}</td>
+      ${payOnly?`<td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text2)" title="${isDailyPay(wc)&&hrDayRate>0?tr('{n} days × ₪{r}',{n:esc(e.daysUsed),r:hrDayRate}):tr('{h}h × ₪{r}',{h:e.hours.toFixed(1),r:hrRate})}">₪${hrCom(e).toFixed(0)}</td>`:''}
+    </tr>`;
+  },{table:true,colspan:payOnly?9:8});
   if(payOnly) return;
   renderSupplierPayable(entries);
   renderHrPayable(entries);
   renderClientBillable(__lastClientBillEntries);
+  renderClientApprovals(period);
 }
 
 // Groups the already-computed per-worker pay totals (byWorker[...].total, the
@@ -7077,30 +7131,26 @@ function commissionFor(w, e, hourRate, dayRate){
 // Roles plan stage 12) — this table used to (incorrectly, by today's
 // standard) sum the worker's real pay per supplier, which is exactly the
 // number a supplier-role login must never be handed.
+// Only the suppliers with hours and something payable this period; workers
+// without a supplier are left out, and with no row the section is hidden
+// (user request 2026-10-11).
 function renderSupplierPayable(entries){
   const wrap=document.getElementById('supplierPayableWrap');
   if(!wrap) return;
-  if(!entries.length){
-    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('No punch data for this period')}</div>`;
-    return;
-  }
+  const sec=document.getElementById('accSecPayable');
   const bySupplier={};
-  // Workers with no supplier: their hours are shown, but nothing is payable
-  // to a supplier for them (never their wage — that is the salary table).
-  let unassigned={hours:0};
   entries.forEach(e=>{
     const wc=workers.find(w=>w.id===e.workerId);
     const sid=wc&&wc.supplierId;
-    if(!sid){ unassigned.hours+=e.hours; return; }
+    if(!sid) return;
     if(!bySupplier[sid]) bySupplier[sid]={hours:0,total:0};
     bySupplier[sid].hours+=e.hours;
     bySupplier[sid].total+=commissionFor(wc,e,supplierCommissionRate(wc,sid),supplierDayCommission(wc,sid));
   });
-  const rows=suppliers.filter(s=>bySupplier[s.id]).map(s=>({sup:s,...bySupplier[s.id]}));
-  if(!rows.length && !unassigned.hours){
-    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('No workers with a supplier assigned had activity this period')}</div>`;
-    return;
-  }
+  const rows=suppliers.filter(s=>bySupplier[s.id]&&bySupplier[s.id].hours>0&&bySupplier[s.id].total>0).map(s=>({sup:s,...bySupplier[s.id]}));
+  __lastSupplierPayableRows=[];
+  if(sec) sec.style.display=rows.length?'':'none';
+  if(!rows.length){ wrap.innerHTML=''; return; }
   // Stage 15: same {label,hours,rate,total} shape exportPayableSummary()
   // expects — built here once so the export buttons below never recompute.
   __lastSupplierPayableRows = rows.map(r=>({ label:r.sup.name, hours:r.hours, rate:tr('commission'), total:r.total }));
@@ -7119,11 +7169,7 @@ function renderSupplierPayable(entries){
             <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">${tr('Payable')}</th>
           </tr>
         </thead>
-        <tbody class="paged-supplierPayable"></tbody><tbody>${unassigned.hours?`<tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:10px 12px;font-size:13px;color:var(--text3)">${tr('No supplier assigned')}</td>
-            <td style="padding:10px 12px;text-align:center;font-size:13px;color:var(--text3)">${tr('{h}h',{h:unassigned.hours.toFixed(1)})}</td>
-            <td style="padding:10px 12px;text-align:right;font-size:13px;color:var(--text3)">—</td>
-          </tr>`:''}</tbody>
+        <tbody class="paged-supplierPayable"></tbody>
       </table>
       </div>
     </div>`;
@@ -7148,9 +7194,9 @@ function renderHrPayable(entries){
     const rate=Number(u.commissionRate)||0, dayRate=Number(u.commissionDayRate)||0;
     const total=mine.reduce((t,e)=>t+commissionFor(workers.find(w=>w.id===e.workerId),e,rate,dayRate),0);
     return {u, hours, rate, dayRate, total};
-  }).filter(r=>r.hours>0);
-  sec.style.display=hrs.length?'':'none';
-  if(!rows.length){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('No hours of HR workers this period')}</div>`; return; }
+  }).filter(r=>r.hours>0&&r.total>0);  // only HRs with hours and a commission rate
+  sec.style.display=rows.length?'':'none';
+  if(!rows.length){ wrap.innerHTML=''; return; }
   wrap.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
       <table style="width:100%;border-collapse:collapse;min-width:420px">
@@ -7180,18 +7226,73 @@ function renderHrPayable(entries){
 // contains supplier data (suppliers[]/supplierId/supplierRates/commission)
 // anywhere — the standing Client<->Supplier isolation principle (Admin/Roles
 // plan): any client-facing surface must never see a supplier exists.
+// ── Client approvals (the client portal, docs/client-portal.md) ─────────────
+// For a month period only: the clients that have a client login or an
+// approval this month — hours, status, who / when, disputed days. "Changed
+// after approval": the shifts now differ from the lines the client approved
+// (clientShiftLines — the same lines the portal builds).
+function salaryMonthOf(period){
+  if(period==='month') return localYMD(new Date()).slice(0,7);
+  return /^m:\d{4}-\d{2}$/.test(period||'') ? period.slice(2) : null;
+}
+function clientShiftLines(cid, month){
+  const [y,m]=month.split('-').map(Number), from=new Date(y,m-1,1), to=new Date(y,m,1);
+  const byW={};
+  getPunchLog().filter(e=>e.clientId===cid&&new Date(e.ts)>=from&&new Date(e.ts)<to).forEach(e=>{ (byW[e.workerId]=byW[e.workerId]||[]).push(e); });
+  const out=[];
+  Object.entries(byW).forEach(([wid,list])=>groupPunchesIntoShifts(list).forEach(b=>{
+    const inE=b.entries.find(e=>e.type==='in'), outE=[...b.entries].reverse().find(e=>e.type==='out');
+    out.push([wid,localYMD(b.date),inE&&inE.time||'',outE&&outE.time||''].join('|'));
+  }));
+  return out.sort();
+}
+function clientApprovalState(a, cid, month){
+  if(!a) return 'pending';
+  if(a.status==='approved' && clientShiftLines(cid,month).join('\n')!==(a.snapshot||[]).slice().sort().join('\n')) return 'changed';
+  return a.status||'pending';
+}
+let __approvalsReq=0;
+async function renderClientApprovals(period){
+  const sec=document.getElementById('accSecApprovals'), wrap=document.getElementById('clientApprovalsWrap');
+  if(!sec||!wrap) return;
+  const month=salaryMonthOf(period);
+  if(!month||hrPayOnly()){ sec.style.display='none'; return; }
+  const req=++__approvalsReq;
+  let approvals={};
+  try{ approvals=await (await loadFirestoreBackend()).clientApprovalsOf(fsTenantId(), month); }catch(e){ console.warn('Client approvals:', e); }
+  if(req!==__approvalsReq) return;
+  ensureHrUsers();
+  const users=loadAdminCache('users_'+activeTenantIdForAdmin());
+  const withLogin=new Set((Array.isArray(users)?users:[]).filter(u=>u.role==='client'&&u.active!==false).map(u=>u.clientId));
+  const hoursOf=cid=>((__lastClientBillEntries||[]).find(e=>e.clientId===cid)||{}).hours||0;
+  const rows=(clients||[]).filter(c=>withLogin.has(c.id)||approvals[c.id]).map(c=>({c, a:approvals[c.id]||null, hours:hoursOf(c.id)}))
+    .filter(r=>r.hours>0||r.a);
+  sec.style.display=rows.length?'':'none';
+  if(!rows.length){ wrap.innerHTML=''; return; }
+  const ST={approved:['var(--green)','ti-circle-check','Approved'],pending:['var(--text3)','ti-clock','Waiting for the client'],disputed:['var(--amber)','ti-alert-triangle','Disputed'],changed:['var(--amber)','ti-alert-triangle','Changed after approval']};
+  wrap.innerHTML='<div class="paged-approvals" style="display:flex;flex-direction:column;gap:8px"></div>';
+  renderPagedList(wrap.querySelector('.paged-approvals'),'approvals',month,rows,({c,a,hours})=>{
+    const st=clientApprovalState(a,c.id,month), [col,icon,label]=ST[st];
+    const disputes=Object.entries((a&&a.disputes)||{}).sort();
+    const who=a&&a.approvedAt&&st!=='pending'?`<div style="font-size:11px;color:var(--text3)">${esc(tr('Approved by {name} · {when}',{name:a.approvedByName||'',when:new Date(a.approvedAt).toLocaleString(uiLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}))}</div>`:'';
+    const dis=disputes.map(([k,d])=>{ const [wid,day]=k.split('|'); const w=workers.find(x=>x.id===wid);
+      return `<div style="font-size:12px;color:var(--amber);margin-top:4px"><i class="ti ti-alert-triangle"></i> ${esc(w?w.name:wid)} · ${esc(new Date(day+'T12:00').toLocaleDateString(uiLocale(),{day:'2-digit',month:'short'}))} — ${esc(d.comment||'')}</div>`; }).join('');
+    return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+        <div><div style="font-weight:600"><span style="color:${c.color}"><i class="ti ti-building-store"></i></span> ${esc(c.name)}</div>${who}</div>
+        <div style="text-align:right"><div style="font-size:12px;font-weight:600;color:${col}"><i class="ti ${icon}"></i> ${esc(tr(label))}</div><div style="font-size:11px;color:var(--text3)">${esc(tr('{h}h',{h:hours.toFixed(1)}))}</div></div>
+      </div>${dis}</div>`;
+  });
+}
+
+// Only the clients with hours and a billing rate this period; with no row
+// the section is hidden (user request 2026-10-11).
 function renderClientBillable(entries){
   const wrap=document.getElementById('clientBillableWrap');
   if(!wrap) return;
-  if(!entries.length){
-    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('No punch data for this period')}</div>`;
-    return;
-  }
-  const rows=entries.map(e=>({cl:clients.find(c=>c.id===e.clientId),...e})).filter(r=>r.cl);
-  if(!rows.length){
-    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('No billable activity this period')}</div>`;
-    return;
-  }
+  const rows=entries.map(e=>({cl:clients.find(c=>c.id===e.clientId),...e})).filter(r=>r.cl&&r.hours>0&&r.total>0);
+  const sec=document.getElementById('accSecBillable'); if(sec) sec.style.display=rows.length?'':'none';
+  if(!rows.length){ wrap.innerHTML=''; return; }
   wrap.innerHTML=`
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
@@ -7278,7 +7379,7 @@ async function approveHoursBatch(batchId){
         if(first) await ensurePunchesSince(new Date(first.getFullYear(), first.getMonth(), first.getDate()-1));
       }catch(e){ console.warn('Loading approved punches failed:', e); }
     }
-    renderPendingHours(); renderSalary(); renderWorkerPay();
+    renderPendingHours(); renderSalary();
   }catch(e){ showToast(tr('Failed: {e}',{e:e.message})); }
 }
 async function rejectHoursBatch(batchId){
@@ -7427,7 +7528,7 @@ function setSupplierRateOverride(wid,sid,field,val){
 }
 
 // This worker's own regular rate (empty = none: the client's rate applies).
-// ── Worker pay (Accounting) ────────────────────────────────────────────────
+// ── Pay window (openPayModal; Accounting → Salary and the worker card) ────
 // The one place a worker's money is set: pay mode (₪/h or ₪/day), own rate,
 // OT / Shabbat rates, travel per day and per month, bank details. Every
 // worker is listed (a new one with no shifts too); a tap opens openPayModal.
@@ -7443,43 +7544,7 @@ function canEditPay(w){
   if(s.role==='hr') return hrPayOnly() && hasPermission('payEdit') && (hasPermission('workers')||hasPermission('schedule')) && (!w || w.hrId===s.uid);
   return s.role==='staff' && hasPermission('accounting');
 }
-function renderWorkerPay(){
-  const wrap=document.getElementById('workerPayWrap'); if(!wrap) return;
-  const me=getSession()||{}, hr=hrPayOnly();
-  const q=(document.getElementById('workerPaySearch')?.value||'').trim().toLowerCase();
-  const list=workers.filter(w=>(!hr||w.hrId===me.uid) && (!q||String(w.name||'').toLowerCase().includes(q)))
-    .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
-  if(!list.length){ wrap.innerHTML='<div style="color:var(--text3);font-size:13px;padding:8px 0">'+esc(tr('No workers'))+'</div>'; return; }
-  // This period's figures come from the Salary run just before (renderSalary).
-  const byId={}; (__lastSalaryEntries||[]).forEach(e=>{ byId[e.workerId]=e; });
-  const sel=document.getElementById('salaryPeriod');
-  const periodLbl=sel&&sel.selectedIndex>=0?sel.options[sel.selectedIndex].text:'';
-  const money=n=>'₪'+esc((Math.round((Number(n)||0)*100)/100).toLocaleString('en-US'));
-  const line=(icon,html)=>`<div style="font-size:12px;color:var(--text2);display:flex;gap:6px;align-items:flex-start"><i class="ti ${icon}" style="color:var(--text3);margin-top:2px"></i><span>${html}</span></div>`;
-  wrap.innerHTML='<div class="clients-grid paged-workerPay"></div>';
-  renderPagedList(wrap.querySelector('.paged-workerPay'),'workerPay',q,list,w=>{
-    const daily=isDailyPay(w), own=wOwnRate(w), e=byId[w.id], edit=canEditPay(w);
-    const rate=daily ? (own!==''?'₪'+esc(own)+tr('/day'):'<span style="color:var(--amber)">'+esc(tr('set a daily rate'))+'</span>')
-      : (own!==''?'₪'+esc(own)+tr('/h'):`<span style="color:var(--text3)">${esc(tr('client'))} ₪${esc(wRegRate(w,(w.clientIds||[])[0]))}${esc(tr('/h'))}</span>`);
-    const td=Number(w.travelAllowance)||0, tm=Number(w.travelMonthly)||0;
-    const travel=td||tm?[td?'₪'+esc(td)+tr('/day'):'',tm?'₪'+esc(tm)+tr('/month'):''].filter(Boolean).join(' + '):'<span style="color:var(--text3)">'+esc(tr('no travel'))+'</span>';
-    const bank=w.bank||w.bankBranch||w.bankAccountNumber
-      ?[esc(w.bank||''),w.bankBranch?tr('branch {b}',{b:esc(w.bankBranch)}):'',w.bankAccountNumber?tr('acc. {a}',{a:esc(w.bankAccountNumber)}):''].filter(Boolean).join(' · ')
-      :'<span style="color:var(--amber)">'+esc(tr('no bank details'))+'</span>';
-    const period=e
-      ? `${esc(periodLbl)}: ${esc((e.daysUsed===1?tr('1 day · {h} h · pay {pay} · travel {travel}',{n:e.daysUsed,h:Math.round(e.hours*100)/100,pay:money(e.total),travel:money(e.travel)}):tr('{n} days · {h} h · pay {pay} · travel {travel}',{n:e.daysUsed,h:Math.round(e.hours*100)/100,pay:money(e.total),travel:money(e.travel)})))} · <b style="color:var(--text)">${esc(tr('total {t}',{t:money(e.total+e.travel)}))}</b>`
-      : `<span style="color:var(--text3)">${esc(periodLbl)}: ${esc(tr('no shifts'))}</span>`;
-    return `<div class="wcard tap-edit" onclick="tapEdit(event,this,null,()=>openPayModal('${esc(w.id)}'))" onpointerdown="longPress(event,this,()=>openPayModal('${esc(w.id)}'))" title="${edit?esc(tr('Edit pay')):esc(tr('View pay'))}">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <div style="font-weight:600;font-size:14px">${esc(w.name||'')}</div>
-        <div style="font-size:12px;font-weight:600;white-space:nowrap">${rate}</div>
-      </div>
-      ${line('ti-clock',period)}
-      ${line('ti-bus',travel)}
-      ${line('ti-building-bank',bank)}
-    </div>`;
-  },{grid:true});
-}
+function openWorkerCardById(wid){ const i=workers.findIndex(w=>w.id===wid); if(i>=0) openWorkerCard(i); }
 function openPayModal(wid){
   const w=workers.find(x=>x.id===wid); if(!w) return;
   const me=getSession()||{};
@@ -7489,12 +7554,20 @@ function openPayModal(wid){
   const daily=isDailyPay(w), cid=(w.clientIds||[])[0];
   const clientRate=effectiveRates({...w,hourlyRate:0,regRate:null,otRate:null,shabbatRate:null,clientRates:w.clientRates},cid);
   const v=x=>x==null||x===''?'':esc(x);
+  // By the day: the days of the period picked in Salary — by the punches, or a
+  // number typed here for this period only (w.dayOverrides[salaryPeriodKey]).
+  const psel=document.getElementById('salaryPeriod'), period=psel?.value||'month';
+  const periodLbl=psel&&psel.selectedIndex>=0?psel.options[psel.selectedIndex].text:tr('This Month');
+  const pKey=salaryPeriodKey(period), counted=((__lastSalaryEntries||[]).find(e=>e.workerId===wid)||{}).countedDays||0;
   document.getElementById('payModal').innerHTML=`<div class="modal-title"><i class="ti ti-wallet"></i> ${esc(tr('Pay — {name}',{name:w.name||''}))}</div>
     <div class="form-section">${esc(tr('Pay'))}</div>
     <div class="field-row">
       <div class="field"><label>${esc(tr('Paid'))}</label><select id="payMode" onchange="onPayModeChange()"><option value="hourly"${daily?'':' selected'}>${esc(tr('By the hour (₪/h)'))}</option><option value="daily"${daily?' selected':''}>${esc(tr('By the day (₪/day)'))}</option></select></div>
       <div class="field"><label id="payRateLabel">${daily?esc(tr('Rate ₪/day')):esc(tr('Rate ₪/h'))}</label><input type="number" id="payRate" min="0" step="0.5" value="${v(wOwnRate(w))}" data-client="${esc(clientRate.regRate)}" placeholder="${daily?esc(tr('per day')):(clientRate.src==='client'?esc(tr('client: {r}',{r:clientRate.regRate})):'')}"></div>
     </div>
+    <div class="field" id="payDaysRow" data-key="${esc(pKey)}" style="${daily?'':'display:none'}"><label>${esc(tr('Days — {period}',{period:periodLbl}))}</label>
+      <input type="number" id="payDays" min="0" step="1" value="${v(dayOverride(w,pKey))}" placeholder="${esc(counted)}">
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">${esc(tr('Empty = by the punches ({n})',{n:counted}))}</div></div>
     <div class="field-row" id="payOtRow" style="${daily?'display:none':''}">
       <div class="field"><label>${esc(tr('OT ₪/h'))}</label><input type="number" id="payOt" min="0" step="0.5" value="${v(w.otRate)}" placeholder="${esc(tr('law ×{m}',{m:PAY_RULES.otMult}))}"></div>
       <div class="field"><label>${esc(tr('Shabbat ₪/h'))}</label><input type="number" id="payShab" min="0" step="0.5" value="${v(w.shabbatRate)}" placeholder="${esc(tr('law ×{m}',{m:PAY_RULES.shabbatMult}))}"></div>
@@ -7518,6 +7591,7 @@ function openPayModal(wid){
 function onPayModeChange(){
   const daily=document.getElementById('payMode').value==='daily', r=document.getElementById('payRate');
   document.getElementById('payOtRow').style.display=daily?'none':'';
+  document.getElementById('payDaysRow').style.display=daily?'':'none';
   document.getElementById('payRateLabel').textContent=daily?tr('Rate ₪/day'):tr('Rate ₪/h');
   r.placeholder=daily?tr('per day'):(r.dataset.client?tr('client: {r}',{r:r.dataset.client}):'');
 }
@@ -7531,6 +7605,12 @@ function savePayModal(wid){
   w.bank=document.getElementById('payBank').value.trim();
   w.bankBranch=document.getElementById('payBankBranch').value.trim();
   w.bankAccountNumber=document.getElementById('payBankAccount').value.trim();
+  if(w.payMode==='daily'){
+    const key=document.getElementById('payDaysRow').dataset.key, d=document.getElementById('payDays').value;
+    w.dayOverrides={...(w.dayOverrides||{})};
+    if(d==='') delete w.dayOverrides[key]; else w.dayOverrides[key]=Math.max(0,Math.round(Number(d)||0));
+    if(!Object.keys(w.dayOverrides).length) delete w.dayOverrides;
+  }
   autoSave();
   closeModal('payOverlay');
   showToast(tr('Pay saved — {name}',{name:w.name||''}));
@@ -7541,18 +7621,16 @@ function savePayModal(wid){
 // explanation here (accHelpOverlay; closes on a tap outside, like every modal).
 const ACCOUNTING_HELP={
   salary:{icon:'ti-cash',title:'Salary Calculation',items:[
-    'Pay for the picked period, per worker: punches are paired into shifts, each shift priced at the rate of its own client.',
-    'Hours: up to 8 a day are regular, above that OT (×1.25 for the first 2 hours, then ×1.5); a shift that starts on Saturday is paid at the Shabbat rates.',
-    'The ₪/hour fields are this worker\'s own rates. An edit changes this worker only and wins over the client\'s rate.',
-    'An empty field = the worker has no rate of their own: grey shows the client\'s rate that applies, with "client · name" under it. The client\'s rate is changed in the client card.',
-    'Empty OT / Shabbat = the law rates on top of the regular rate.',
-    '₪/h or ₪/day, per worker: ₪/day pays the worker\'s own rate (set in Worker pay) once for each day worked, whatever the hours; no OT or Shabbat rates, and the client\'s rate is not used.',
-    'Days: counted from the punches (two shifts on one day count once). For a worker paid by the day, a number typed in Days replaces the count for the picked period only; empty it to go back to the punches.',
-    'Travel = ₪/day × days worked + ₪/month once for each calendar month with work (set in Worker pay). Total Pay = pay + travel.',
+    'Pay for the picked period, one row per worker who worked in it (workers without shifts are not listed): punches are paired into shifts, each shift priced at the rate of its own client.',
+    'Hours: up to 8 a day are regular, above that OT (×1.25 for the first 2 hours, then ×1.5); a shift that starts on Saturday is paid at the Shabbat rates. The split shows under the hours.',
+    'Rate: the worker\'s own rate, ₪/h or ₪/day; grey "client" = no rate of their own, the client\'s applies (by the hour only).',
+    'Days: counted from the punches (two shifts on one day count once); for a worker paid by the day the days can be set by hand for the picked period in the pay window.',
+    'Travel = ₪/day × days worked + ₪/month once for each calendar month with work. Total Pay = pay + travel.',
+    'A tap on a row opens the worker card; a double click (computer) or a long press (phone) opens the pay window: paid by the hour or by the day, rate, OT / Shabbat (empty = the law), travel, bank. A worker without shifts is set from the worker card\'s Pay button.',
     'A ⚠ next to a worker: punches to check (a missing IN or OUT, an overlong shift…). The list is in the banner above the table.']},
   rates:{icon:'ti-adjustments',title:'Per-client rates',items:[
     'One row per worker and client: a rate for this worker at this client only.',
-    'Which rate counts, most specific first: this table → the worker\'s own rate (Worker pay, Salary) → the client\'s rate (client card).',
+    'Which rate counts, most specific first: this table → the worker\'s own rate (pay window) → the client\'s rate (client card).',
     'An empty field = nothing set here; grey shows the rate that applies.']},
   supplierRates:{icon:'ti-truck-delivery',title:'Per-supplier rates',items:[
     'What the firm pays a supplier per hour of each of its workers (the supplier\'s commission).',
@@ -7560,17 +7638,16 @@ const ACCOUNTING_HELP={
     'Feeds "Payable by supplier" only. It never changes a worker\'s pay.']},
   payable:{icon:'ti-report-money',title:'Payable by supplier',items:[
     'For the period picked in Salary: each supplier\'s workers\' hours × the supplier rate.',
-    '"No supplier assigned" shows those workers\' hours only — nothing is owed to a supplier for them.',
+    'Only the suppliers with hours and a commission this period are listed; workers without a supplier are left out.',
     'A worker\'s wage never appears in this table.']},
+  approvals:{icon:'ti-circle-check',title:'Client approvals',items:[
+    'For a month picked in Salary: each client with a client login (or an approval), its hours this month and what it did in the client portal.',
+    'Approved: the client approved the month (who, when). Disputed: the days it disputed, with its comments — fix the punches if needed.',
+    'Changed after approval: a shift of this client was added or changed after the client approved; the client sees it and approves again.',
+    'A client login is made in Admin → Users (role Client, with its ticks).']},
   billable:{icon:'ti-building-store',title:'Billable by client',items:[
     'What each client owes the firm for the period picked in Salary, by the client\'s own pricing (client card): tiered (the OT / Shabbat law rates on the client\'s billing rate) or one fixed rate.',
     'Separate from the workers\' pay: it never changes a wage, and a wage never changes it.']},
-  workerPay:{icon:'ti-wallet',title:'Worker pay',items:[
-    'One card per worker with everything about their money: paid by the hour or by the day and the rate; for the period picked in Salary the days, hours, pay, travel and total; travel per day and per month; bank details. Tap a card to edit.',
-    'Every worker is here, a new one with no shifts too.',
-    'Empty rate (by the hour) = the client\'s rate; by the day the worker needs a daily rate of their own.',
-    'Travel: the ₪/day amount for each day worked, plus the ₪/month amount once for each calendar month with work in the period.',
-    'An HR sees its own workers\' cards here, bank details included, read-only; with "Edit own workers\' pay" (user form) it edits them too.']},
   hrPayable:{icon:'ti-user-dollar',title:'Payable by HR',items:[
     'An HR login with the Accounting section sees only this part for its own workers: their hours, rate and pay, and its commission — never the rest of Accounting.',
     'For the period picked in Salary: each HR\'s workers\' hours × the HR\'s commission (₪/h, set in Admin → Users on the HR); a worker paid by the day counts days × the HR\'s ₪/day when one is set.',
@@ -7586,27 +7663,6 @@ function openAccountingHelp(key){
     <div class="acc-help-body"><ul>${h.items.map(t=>`<li>${esc(tr(t))}</li>`).join('')}</ul></div>`;
   document.getElementById('accHelpOverlay').classList.add('open');
 }
-// The older regRate field is cleared so the edit is what counts.
-function setWorkerRate(wid,rate){ if(hrPayOnly()) return;
-  const w=workers.find(x=>x.id===wid);
-  if(w){ w.hourlyRate=parseFloat(rate)||0; if(w.regRate!=null) w.regRate=null; autoSave(); }
-}
-function setWorkerPayMode(wid,mode){ if(hrPayOnly()) return;
-  const w=workers.find(x=>x.id===wid); if(!w) return;
-  if(mode==='daily') w.payMode='daily'; else delete w.payMode;
-  autoSave(); renderSalary(); renderWorkerPay();
-}
-// Days set by hand for one period (salaryPeriodKey); empty = by the punches.
-function setWorkerDays(wid,key,val){ if(hrPayOnly()) return;
-  const w=workers.find(x=>x.id===wid); if(!w) return;
-  w.dayOverrides={...(w.dayOverrides||{})};
-  if(val===''||val==null) delete w.dayOverrides[key]; else w.dayOverrides[key]=Math.max(0,Math.round(Number(val)||0));
-  if(!Object.keys(w.dayOverrides).length) delete w.dayOverrides;
-  autoSave(); renderSalary(); renderWorkerPay();
-}
-function setWorkerOtRate(wid,val){ if(hrPayOnly()) return; const w=workers.find(x=>x.id===wid); if(w){ w.otRate=(val===''||val==null)?null:(parseFloat(val)||0); autoSave(); } }
-function setWorkerShabbatRate(wid,val){ if(hrPayOnly()) return; const w=workers.find(x=>x.id===wid); if(w){ w.shabbatRate=(val===''||val==null)?null:(parseFloat(val)||0); autoSave(); } }
-
 // Salary export — Accounting tab's "Export" button opens a format picker
 // (Excel / PDF / CSV); all three share buildSalaryExportRows(), which pairs
 // punches via the canonical groupPunchesIntoShifts()/analyzeDayPunches()/
@@ -7738,8 +7794,12 @@ function exportSalary(format, period){
 // The accountant's workbook for a period: a Summary sheet with one row per
 // worker — the Salary table's own figures (salaryEntriesFor) plus ID, supplier,
 // pay mode and bank details — and a Shifts sheet (buildSalaryExportRows).
-function exportAccountantReport(period){
+async function exportAccountantReport(period){
   period=period||'month';
+  // A month: the client approvals go in a sheet of their own.
+  const month=salaryMonthOf(period);
+  let approvals=null;
+  if(month){ try{ approvals=await (await loadFirestoreBackend()).clientApprovalsOf(fsTenantId(), month); }catch(e){ approvals=null; } }
   const {byWorker}=salaryEntriesFor(period);
   const money=v=>Math.round((Number(v)||0)*100)/100, hrs=v=>Math.round((Number(v)||0)*100)/100;
   const head=['Worker','ID / Passport','Supplier','Pay mode','Rate','Days','Regular hours','Overtime hours','Shabbat hours','Total hours','Pay (₪)','Travel (₪)','Total (₪)','Bank','Branch','Account','Warnings'].map(h=>tr(h));
@@ -7758,6 +7818,15 @@ function exportAccountantReport(period){
   const title=[tr('Accountant report — {period}',{period:salaryPeriodLabel(period)})], firm=[(activeTenantProfile()||{}).companyName||''];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([title, firm, [], head, ...rows]), tr('Summary'));
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([sHead, ...sRows]), tr('Shifts'));
+  if(approvals && Object.keys(approvals).length){
+    const ST={approved:'Approved',pending:'Waiting for the client',disputed:'Disputed',changed:'Changed after approval'};
+    const aRows=Object.entries(approvals).map(([cid,a])=>{
+      const c=clients.find(x=>x.id===cid)||{name:cid};
+      const dis=Object.entries(a.disputes||{}).map(([k,d])=>{ const [wid,day]=k.split('|'); return ((workers.find(w=>w.id===wid)||{}).name||wid)+' '+day+': '+(d.comment||''); }).join('; ');
+      return [c.name, tr(ST[clientApprovalState(a,cid,month)]), a.approvedByName||'', a.approvedAt?new Date(a.approvedAt).toLocaleString('en-GB'):'', dis];
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[tr('Client'),tr('Status'),tr('Approved by'),tr('When'),tr('Disputed days')], ...aRows]), tr('Client approvals'));
+  }
   const now=new Date();
   XLSX.writeFile(wb, 'accountant-'+(period.startsWith('m:')?period.slice(2):period+'-'+localYMD(now))+'.xlsx');
   showToast(tr('Accountant report exported'));
@@ -8341,7 +8410,21 @@ async function submitClearPunchLog(){
 
 // --- Toast ------------------------------------------------------------------------------------------------------------------------------------
 // Any toast text goes through tr(): a server message in the dictionary shows translated.
-function showToast(msg,dur){ const t=document.getElementById('toast'); t.textContent=typeof msg==='string'?tr(msg):msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),dur||2500); }
+// Toast (the same in all three pages): small, an icon and a coloured edge by
+// its kind, guessed from the text — error, ongoing (ends with …), warning,
+// else done.
+const TOAST_ICONS={ok:'ti-circle-check',warn:'ti-alert-triangle',err:'ti-alert-circle',info:'ti-info-circle'};
+function toastKind(t){
+  if(/fail|error|could not|couldn't|not saved|denied|refused|invalid|נכשל|שגיאה|לא נשמר|לא ניתן/i.test(t)) return 'err';
+  if(/(…|\.\.\.)\s*$/.test(t)) return 'info';
+  if(/⚠|warn|check|empty|missing|not found|בדקו|ריק|חסר|לא נמצא/i.test(t)) return 'warn';
+  return 'ok';
+}
+function showToast(msg,dur){
+  const t=document.getElementById('toast'), text=typeof msg==='string'?tr(msg):String(msg), k=toastKind(text);
+  t.className='toast show '+k; t.innerHTML='<i class="ti '+TOAST_ICONS[k]+'"></i><span></span>'; t.lastChild.textContent=text;
+  clearTimeout(t.__hide); t.__hide=setTimeout(()=>t.classList.remove('show'),dur||2500);
+}
 // ── New version check (2026-10-04; the same code in schedule-manager.html,
 // worker-punch.html and supplier-portal.html). An app left open — a PWA in
 // the background — keeps running the code it loaded, even after a deploy.

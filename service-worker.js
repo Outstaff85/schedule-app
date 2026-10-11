@@ -3,12 +3,13 @@
 // {cache:'no-store'} so the newest code/data is always used; the cache is only
 // a fallback when offline. Data calls (Firebase, Cloud Functions) go to other
 // origins and are never touched by the SW.
-const CACHE = 'schedule-mgr-v107';
+const CACHE = 'schedule-mgr-v108';
 const CORE = [
   './',
   './schedule-manager.html',
   './worker-punch.html',
   './supplier-portal.html',
+  './client-portal.html',
   './manifest.json',
   './manifest-punch.json',
   './icon-192.png',
@@ -64,6 +65,7 @@ self.addEventListener('fetch', e => {
         if (isNav) {
           const page = url.pathname.indexOf('worker-punch') !== -1 ? './worker-punch.html'
             : url.pathname.indexOf('supplier') !== -1 ? './supplier-portal.html'
+            : url.pathname.indexOf('client') !== -1 ? './client-portal.html'
             : './schedule-manager.html';
           return caches.match(page);
         }

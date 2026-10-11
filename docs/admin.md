@@ -68,11 +68,11 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
 
 - **List:** `renderFirmsList('adminFirmsList')` — the same function draws the super-admin's landing screen (`#firmsList`).
   - It draws the cached list first (`localStorage.firmsCache_v1`), then `listTenants`.
-  - A row shows the name, "disabled", "profile incomplete" (`firmProfileMissing(t)`), worker and client counts, and the last save. Clicking a row → `switchToTenant()`.
+  - A row shows the name, "disabled", "profile incomplete" (`firmProfileMissing(t)`), worker and client counts, and the last save. A tap on a row → `switchToTenant()`; a double click (computer) or a long press (phone) → `openEditFirmForm` (no pencil button); a ✕ in the row's top corner (`.wcard-del`) → delete.
   - Row actions:
-    - edit (`openEditFirmForm`);
-    - enable / disable (`toggleTenantActive` → `setTenantActive`);
-    - delete (`confirmDeleteTenant` — confirm, then type the exact firm name → `deleteTenant`: the firm's data, its logins and every worker file in Storage).
+    - edit (`openEditFirmForm`, by double click / long press);
+    - enable / disable (`toggleTenantActive` → `setTenantActive`, the button at the right);
+    - delete (the corner ✕, `confirmDeleteTenant` — confirm, then type the exact firm name → `deleteTenant`: the firm's data, its logins and every worker file in Storage).
 - **Firm form** (`#editFirmOverlay`, one modal, `__firmFormMode`):
   - fields: company name, deductions file number, phone, street, street number, city;
   - Create (`openCreateFirmForm`) also asks for the owner's username and password → `createUser`;
@@ -88,15 +88,16 @@ The header buttons **Export CSV** and **Clear Log** show only on the Punch Log p
 - **List** (`renderAdminUsers()`):
   - logins of the active firm only (`activeTenantIdForAdmin()`); `listUsers` returns more for a super-admin and is filtered here;
   - cached as `adminCache_users_<tenantId>`;
-  - each row: the person's name (`fullName`, the login when it has none) with the role and an inactive flag; then `login: <username> · <phone>`; then the supplier (supplier role) or the permissions (staff, hr); an HR row also shows its worker count (`hrWorkerCount`), a supplier row the count of its supplier's workers.
+  - the firm's owner (`tenant_admin`, with a pin) is always first, then a super-admin, then everyone by name;
+  - each row: the person's name (`fullName`, the login when it has none) with the role and an inactive flag; then `login: <username> · <phone>`; then the supplier (supplier role), the client and its ticks (client role), or the permissions (staff, hr); an HR row also shows its worker count (`hrWorkerCount`), a supplier row the count of its supplier's workers.
 - **Form** (`#userFormOverlay`), top to bottom:
   - Role;
   - Person: Full name, Phone;
   - Login: Username, Password;
-  - Access: the supplier select (supplier), or the Sections tiles — each with the icon and name of the header tab or button it opens (Schedule, Workers, Clients, Suppliers, Accounting tabs, the Export button) — and, for HR, the "Edit own workers' pay" tile (permission `payEdit`, off by default) and the "Only own workers" tile (the checkbox-tile template, [app-core.md](app-core.md) → Layout); for a supplier the "Sees own workers' pay" tile (`showPay`, on by default); for HR "HR commission ₪/h" (`commissionRate`) and "₪/day (daily workers)" (`commissionDayRate`, empty = by the hour), side by side (`#userFormPayFields`) — an HR's pay view is its Accounting tile, whose hint then reads "Own workers' pay and commission only";
+  - Access: the supplier select (supplier); for a client the client select and its portal ticks (Hours, Approve, Dispute, Schedule, Export — [client-portal.md](client-portal.md)); or the Sections tiles — each with the icon and name of the header tab or button it opens (Schedule, Workers, Clients, Suppliers, Accounting tabs, the Export button) — and, for HR, the "Edit own workers' pay" tile (permission `payEdit`, off by default) and the "Only own workers" tile (the checkbox-tile template, [app-core.md](app-core.md) → Layout); for a supplier the "Sees own workers' pay" tile (`showPay`, on by default); for HR "HR commission ₪/h" (`commissionRate`) and "₪/day (daily workers)" (`commissionDayRate`, empty = by the hour), side by side (`#userFormPayFields`) — an HR's pay view is its Accounting tile, whose hint then reads "Own workers' pay and commission only";
   - Workers — an HR's edit form only.
 - **Create** (`openCreateUserForm`):
-  - username, password, role (`staff` / `hr` / `supplier`, `onUserFormRoleChange`);
+  - username, password, role (`staff` / `hr` / `supplier` / `client`, `onUserFormRoleChange`);
   - Full name and Phone for every role (the name is what the header and this list show; required only for HR);
   - `staff` and `hr`: section tiles from `PERMISSION_SECTIONS` (`schedule, workers, clients, suppliers, accounting, exports`), plus `payEdit` for HR only (cleared for any other role); picking HR checks only Workers; `hr` also gets "Only own workers" (`ownOnly`, on by default);
   - `supplier`: a supplier select;

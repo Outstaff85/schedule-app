@@ -16,6 +16,7 @@ Firestore database. The logic is in core.py, files.py, portal.py and ai.py.
   punch        POST {action, token, ...}: the worker punch link (portal.py)
   supplier     POST {action, ...} with "Authorization: Bearer <ID token>" of a
                supplier login: the supplier portal (portal.py)
+  client       the same with a client login: the client portal (portal.py)
   ai_read      POST {action, image, ...} with a manager's ID token: the AI
                document reading actions (ai.py)
 
@@ -186,6 +187,22 @@ def supplier(req: https_fn.Request) -> https_fn.Response:
               "supplierId": decoded.get("supplierId"), "pay": decoded.get("pay") is True}
     try:
         return _json(portal.supplier_action(_db(), caller, _body(req)))
+    except Exception as e:
+        return _json({"error": str(e)}, 500)
+
+
+@https_fn.on_request(cors=_CORS, timeout_sec=60)
+def client(req: https_fn.Request) -> https_fn.Response:
+    """Client portal (client-portal.html)."""
+    if req.method != "POST":
+        return _json({"error": "POST only"}, 405)
+    decoded = _verified(req)
+    if not decoded:
+        return _json({"error": E_SESSION}, 401)
+    caller = {"uid": decoded["uid"], "role": decoded.get("role"), "tenantId": decoded.get("tenantId"),
+              "clientId": decoded.get("clientId"), "perms": decoded.get("perms") or []}
+    try:
+        return _json(portal.client_action(_db(), caller, _body(req)))
     except Exception as e:
         return _json({"error": str(e)}, 500)
 

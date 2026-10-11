@@ -23,7 +23,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       if (u.startsWith('http://127.0.0.1')) return r.continue();
       if (u === FB + 'firebase-app.js') return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:BUNDLE});
       if (u.startsWith(FB)) return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:`export * from '${FB}firebase-app.js';`});
-      const fn = (u.match(/cloudfunctions\.net\/(login|users_admin|punch|supplier|ai_read)$/) || [])[1];
+      const fn = (u.match(/cloudfunctions\.net\/(login|users_admin|punch|supplier|client|ai_read)$/) || [])[1];
       if (fn) {
         if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'POST'}});
         const h = r.request().headers();
@@ -73,7 +73,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     out.noRateInModal = !document.getElementById('wRate') && !document.getElementById('wBank') && !document.getElementById('wTravelAllowance');
     closeModal('workerOverlay');
     switchTab('accounting');
-    out.listed = [...document.querySelectorAll('#workerPayWrap .wcard')].some(c => c.textContent.includes(workers[wi].name));
+    out.listed = !document.getElementById('accSecWorkerPay') && !document.getElementById('workerPayWrap');  // one Salary section, no Worker pay
     openPayModal('w2');
     out.open = document.getElementById('payOverlay').classList.contains('open');
     document.getElementById('payMode').value = 'daily'; onPayModeChange();
@@ -86,8 +86,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const w = workers[wi];
     out.saved = {mode: w.payMode, rate: w.hourlyRate, td: w.travelAllowance, tm: w.travelMonthly, bank: w.bank, acc: w.bankAccountNumber};
     out.travel = travelPay(w, 3, 2);
-    const card = [...document.querySelectorAll('#workerPayWrap .wcard')].find(c => c.textContent.includes(w.name));
-    out.card = card ? card.textContent.replace(/\s+/g, ' ') : '';
+    const sel = document.getElementById('salaryPeriod'); sel.value = 'all'; await onSalaryPeriodChange();
+    const row = [...document.querySelectorAll('#dashSalary .salary-rows tr')].find(r => r.textContent.includes(w.name));
+    out.card = row ? row.textContent.replace(/\s+/g, ' ') : '';
+    sel.value = 'week'; await onSalaryPeriodChange();
     // An edit in the worker modal keeps the pay fields.
     openEditWorker(wi); await saveWorker();
     out.keptAfterEdit = workers[wi].hourlyRate === 400 && workers[wi].travelMonthly === 150 && workers[wi].bank === 'Leumi';
@@ -101,8 +103,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     switchTab('schedule');
     return out;
   });
-  ok(rt.noRateInModal && rt.listed && rt.open && rt.otHidden, 'worker pay: no money fields in the worker modal; Worker pay lists the worker and opens its pay modal', JSON.stringify(rt));
-  ok(rt.saved.mode === 'daily' && rt.saved.rate === 400 && rt.saved.td === 20 && rt.saved.tm === 150 && rt.saved.bank === 'Leumi' && rt.saved.acc === '123' && rt.travel === 360 && /₪400\/day/.test(rt.card) && /₪20\/day \+ ₪150\/month/.test(rt.card) && /Leumi/.test(rt.card) && /acc\. 123/.test(rt.card), 'worker pay: the pay modal saves mode, rate, travel per day and per month, bank; the card shows them', JSON.stringify(rt));
+  ok(rt.noRateInModal && rt.listed && rt.open && rt.otHidden, 'worker pay: no money fields in the worker modal; one Salary section; the pay modal opens', JSON.stringify(rt));
+  ok(rt.saved.mode === 'daily' && rt.saved.rate === 400 && rt.saved.td === 20 && rt.saved.tm === 150 && rt.saved.bank === 'Leumi' && rt.saved.acc === '123' && rt.travel === 360 && /₪400\/day/.test(rt.card) && /Leumi/.test(rt.card), 'worker pay: the pay modal saves mode, rate, travel per day and per month, bank; the Salary row shows them', JSON.stringify(rt));
   ok(rt.keptAfterEdit, 'worker pay: an edit in the worker modal keeps the pay fields', JSON.stringify(rt));
   ok(rt.moved === 0, "worker pay: moved to a client with a rate, the worker takes the client's rate", JSON.stringify(rt));
   // Commission for a worker paid by the day: a fixed ₪ per day when set, else hours × ₪/h.
@@ -163,7 +165,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       switchTab('accounting'); await new Promise(res => setTimeout(res, 300));
       return {lang: I18N_LANG, tab: document.getElementById('tabAccounting').innerText.trim(),
         head: document.querySelector('#dashSalary th') && document.querySelector('#dashSalary th').innerText.trim(),
-        sec: document.querySelector('#accSecWorkerPay span[data-i18n]').textContent.trim(),
+        sec: document.querySelector('#accSecSalary span[data-i18n]').textContent.trim(),
         period: document.getElementById('salaryPeriod').options[0].text,
         stored: localStorage.getItem('uiLang'), selects: [...document.querySelectorAll('select.lang-select')].every(x => x.value === l)};
     };
@@ -172,9 +174,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.en = await setLang('en');
     return r;
   });
-  ok(lg.he.lang === 'he' && lg.he.tab === 'חשבונות' && lg.he.head === 'עובד' && lg.he.sec === 'שכר עובדים' && lg.he.period === 'השבוע' && lg.he.stored === 'he' && lg.he.selects && lg.def === 'en' && lg.sel === 'en' && !lg.firmField, 'language: English by default; the header select switches to Hebrew sees Accounting in Hebrew ' + JSON.stringify(lg.he));
+  ok(lg.he.lang === 'he' && lg.he.tab === 'חשבונות' && lg.he.head === 'עובד' && lg.he.sec === 'חישוב שכר' && lg.he.period === 'השבוע' && lg.he.stored === 'he' && lg.he.selects && lg.def === 'en' && lg.sel === 'en' && !lg.firmField, 'language: English by default; the header select switches to Hebrew sees Accounting in Hebrew ' + JSON.stringify(lg.he));
   ok(lg.ru.lang === 'ru' && lg.ru.tab === 'Accounting' && lg.ru.head === 'Worker', 'language: Russian with an empty dictionary shows English ' + JSON.stringify(lg.ru));
-  ok(lg.en.lang === 'en' && lg.en.tab === 'Accounting' && lg.en.sec === 'Worker pay' && lg.en.period === 'This Week', 'language: back to English ' + JSON.stringify(lg.en));
+  ok(lg.en.lang === 'en' && lg.en.tab === 'Accounting' && lg.en.sec === 'Salary Calculation' && lg.en.period === 'This Week', 'language: back to English ' + JSON.stringify(lg.en));
   // One select per page; the user's last choice follows them to a new device.
   await p.evaluate(() => setLanguage('he')); await sleep(1500);
   {
@@ -432,17 +434,22 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.evaluate(async () => { const sel=document.getElementById('salaryPeriod'); sel.value='all'; await onSalaryPeriodChange(); });
   await sleep(500);
   const pay = await p.evaluate(() => document.getElementById('supplierPayableWrap').innerText);
-  ok(/No supplier assigned\s+4\.0h\s+—/.test(pay), 'No supplier row: hours and "—", no wage');
+  ok(!/No supplier assigned/.test(pay), 'Payable by supplier: no row for workers without a supplier');
+  const bill = await p.evaluate(() => ({shown: document.getElementById('accSecBillable').style.display !== 'none', rows: document.querySelectorAll('#clientBillableWrap tbody tr').length}));
+  ok(!bill.shown && bill.rows === 0, 'Billable by client: hidden when no client has a billing rate ' + JSON.stringify(bill));
   ok(/Agency\s+8\.0h\s+₪40/.test(pay), 'Agency row: 8h × default commission 5 = ₪40');
   // Daily pay: Dana (1 day, 4h, own rate 40) paid by the day; then 5 days set by hand.
+  // The days are set by hand in the pay window (period 'all' picked in Salary).
   const dp = await p.evaluate(() => {
-    const dana = () => __lastSalaryEntries.find(e => e.workerId === 'w2');
+    const dana = () => __lastSalaryEntries.find(e => e.workerId === 'w2'), w2 = workers.find(w => w.id === 'w2');
     const sum = () => buildSalaryExportRows('all').filter(r => r.worker === 'Dana Levi').reduce((s, r) => s + r.pay, 0);
     const out = {hourly: dana().total, hourlyExport: sum()};
-    setWorkerPayMode('w2', 'daily'); out.daily = dana().total; out.dailyExport = sum(); out.days = dana().countedDays;
-    setWorkerDays('w2', 'all', '5'); out.over = dana().total; out.overExport = sum();
-    out.cellInput = !!document.querySelector('#dashSalary input[placeholder="1"]'); out.aviDays = __lastSalaryEntries.find(e => e.workerId === 'w1').countedDays;
-    setWorkerDays('w2', 'all', ''); setWorkerPayMode('w2', 'hourly'); out.back = dana().total;
+    w2.payMode = 'daily'; renderSalary(); out.daily = dana().total; out.dailyExport = sum(); out.days = dana().countedDays;
+    openPayModal('w2'); out.daysField = getComputedStyle(document.getElementById('payDaysRow')).display !== 'none' && document.getElementById('payDays').placeholder === '1';
+    document.getElementById('payDays').value = '5'; savePayModal('w2'); out.over = dana().total; out.overExport = sum();
+    const row = [...document.querySelectorAll('#dashSalary .salary-rows tr')].find(r => r.textContent.includes('Dana Levi'));
+    out.cellInput = out.daysField && !!row && !row.querySelector('input') && /punches: 1/.test(row.textContent); out.aviDays = __lastSalaryEntries.find(e => e.workerId === 'w1').countedDays;
+    delete w2.dayOverrides; delete w2.payMode; renderSalary(); out.back = dana().total;
     return out;
   });
   // Upload hours → Enter by hand, through the buttons: consecutive dates; a daily worker sends dates only,
@@ -495,6 +502,16 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(!acc.none && /^accountant-all-/.test(acc.name) && acc.sheets.length === 2 && acc.pay === acc.want && acc.pay > 0 && acc.hours > 0 && acc.days >= 1 && acc.total >= acc.pay && acc.shifts > 1,
     'accountant report: Summary = Salary figures, total row, Shifts sheet ' + JSON.stringify(acc));
+  // Workers search: by ID / passport number (dashes ignored) and by client.
+  const srch = await p.evaluate(async () => {
+    const avi = workers.find(w => w.id === 'w1'), keep = avi.docId; avi.docId = '12345678-2';
+    switchTab('workers'); setWorkersView('list');
+    const find = q => { document.getElementById('workersSearch').value = q; renderWorkersPage(); return document.getElementById('workersCount').textContent; };
+    const out = {id: find('123456782'), client: find('site a'), none: find('99999')};
+    find(''); if(keep === undefined) delete avi.docId; else avi.docId = keep;
+    return out;
+  });
+  ok(/^1 /.test(srch.id) && /^1 /.test(srch.client) && /^0 /.test(srch.none), 'workers search: by ID / passport number and by client ' + JSON.stringify(srch));
   // "NEW" for 3 days after a worker is added: on the worker cards, not on an older worker.
   const nw = await p.evaluate(async () => {
     const a = workers.find(w => w.id === 'w1'), d = workers.find(w => w.id === 'w2');
@@ -548,6 +565,26 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.dblclick('#clientsGrid .client-card .client-card-name >> nth=0'); await sleep(400);
   const cl2 = await p.evaluate(() => document.getElementById('clientOverlay').classList.contains('open'));
   ok(!cl1 && cl2, 'clients: a single click does not edit, a double click does ' + JSON.stringify({cl1, cl2}));
+  // The client window has no Save button: a tap outside saves it; an empty new client is not created.
+  const cs = await p.evaluate(async () => {
+    const tap = () => { const ov = document.getElementById('clientOverlay'); ov.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true})); ov.click(); };
+    const keep = JSON.parse(JSON.stringify(clients.find(c => c.id === 'c1')));
+    openEditClient('c1');
+    const noSave = ![...document.querySelectorAll('#clientModal button')].some(b => /שמירה|הוספת לקוח/.test(b.textContent));
+    document.getElementById('cBillMain').value = '130'; onClientBillMainInput('130'); document.getElementById('cDefRate').value = '52'; tap();
+    await new Promise(r => setTimeout(r, 300));
+    const c = clients.find(x => x.id === 'c1'), out = {noSave, closed: !document.getElementById('clientOverlay').classList.contains('open'), d: c.defaultHourlyRate, b: c.billRate};
+    const n = clients.length; openAddClient(); tap(); await new Promise(r => setTimeout(r, 300)); out.noNew = clients.length === n;
+    // "Manual punch" from the client window: saves it, opens the punch; closing the punch brings the client back.
+    out.noPunchOnCard = !document.querySelector('#clientsGrid .client-card button[onclick*="openManualPunch"]');
+    openEditClient('c1'); punchFromClientModal(); await new Promise(r => setTimeout(r, 100));
+    out.punch = document.getElementById('manualPunchOverlay').classList.contains('open') && !document.getElementById('clientOverlay').classList.contains('open');
+    closeModal('manualPunchOverlay'); await new Promise(r => setTimeout(r, 200));
+    out.back = document.getElementById('clientOverlay').classList.contains('open'); closeModal('clientOverlay');
+    Object.assign(c, keep); delete c.defaultOtRate; delete c.defaultShabbatRate; await gsSave(getDataObj());
+    return out;
+  });
+  ok(cs.noSave && cs.closed && cs.d === 52 && cs.b === 130 && cs.noNew && cs.noPunchOnCard && cs.punch && cs.back, 'clients: no Save button, a tap outside saves; an empty new client is not created; manual punch from the window and back ' + JSON.stringify(cs));
   await p.mouse.click(5, 450); await sleep(400);
   ok(external.filter(u=>/script\.google\.com/.test(u)).length === 0, 'no request to script.google.com');
   ok(p.errs.length === 0, 'owner: no page errors ' + p.errs.join(' | '));
@@ -558,6 +595,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await login(p, BASE + 'schedule-manager.html', 'boss', 'boss-pass-1');
   await p.waitForNavigation().catch(()=>{});
   ok(await waitFor(p, () => document.getElementById('firmsScreen').style.display === 'block' && __firmsCache.length === 2), 'boss: firms list (listTenants)');
+  // The firms list: no pencil, a corner ✕; a double click edits; a single click switches (below).
+  const fl = await p.evaluate(async () => {
+    const row = document.querySelector('#firmsList .row.tap-edit');
+    const out = {pencil: !!document.querySelector('#firmsList .ti-pencil'), del: !!(row && row.querySelector('.wcard-del')), trash: !!document.querySelector('#firmsList .ti-trash')};
+    row.dispatchEvent(new MouseEvent('click', {bubbles: true, detail: 2})); await new Promise(r => setTimeout(r, 200));
+    out.edit = document.getElementById('editFirmOverlay').classList.contains('open'); closeModal('editFirmOverlay');
+    return out;
+  });
+  ok(!fl.pencil && fl.del && !fl.trash && fl.edit, 'firms: no pencil or trash, a corner ✕, a double click edits ' + JSON.stringify(fl));
   await p.evaluate(() => switchToTenant('tenant-one'));
   await p.waitForNavigation().catch(()=>{});
   ok(await waitFor(p, () => workers.length === 2), 'boss: viewing Firm One');
@@ -667,6 +713,60 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(await waitFor(p, () => I18N_LANG === 'he' && document.getElementById('tabBtn_dashboard').textContent.trim() === 'לוח בקרה', 15000), 'supplier: a reopened portal keeps the chosen language');
   await p.evaluate(() => setLanguage('en'));
   ok(p.errs.length === 0, 'supplier: no page errors ' + p.errs.join(' | '));
+  await ctx.close();
+
+  // ── Client portal (client1 → client c2: Avi's shift yesterday) ──
+  ctx = await newCtx(); p = await page(ctx);
+  await login(p, BASE + 'client-portal.html', 'client1', 'client-pass-1');
+  ok(await waitFor(p, () => typeof __data !== 'undefined' && __data && __data.punches && document.querySelectorAll('#sectionHours .card').length >= 1, 15000), 'client: sees its workers\' shifts of the month');
+  const cp = await p.evaluate(() => ({text: document.body.innerText, data: JSON.stringify(__data), cards: [...document.querySelectorAll('#sectionHours .card b')].map(b => b.textContent), status: document.querySelector('#sectionHours .status').className}));
+  ok(cp.cards.includes('Avi Cohen') && /pending/.test(cp.status) && !/₪|Agency|hourlyRate|billRate|gpsAccuracy|"dist"|tok-|supplier|docUrl|0501/i.test(cp.text + cp.data),
+    'client: only hours of its workers — no money, supplier, GPS, files or tokens ' + JSON.stringify({cards: cp.cards, status: cp.status}));
+  const ca = await p.evaluate(async () => { await approveMonth(); return document.querySelector('#sectionHours .status').className; });
+  ok(/approved/.test(ca), 'client: approves the month ' + ca);
+  // The owner sees it in Accounting → Client approvals (This Month), not changed (the same shift lines).
+  const octx = await newCtx(); const q = await page(octx);
+  await login(q, BASE + 'schedule-manager.html', 'owner1', 'owner-pass-1');
+  await q.waitForNavigation().catch(()=>{});
+  await waitFor(q, () => typeof workers !== 'undefined' && workers.length === 2);
+  const appr = async () => q.evaluate(async () => { switchTab('accounting'); const sel = document.getElementById('salaryPeriod'); sel.value = 'month'; await onSalaryPeriodChange();
+    for(let i = 0; i < 40 && !/Site B/.test(document.getElementById('clientApprovalsWrap').innerText); i++) await new Promise(r => setTimeout(r, 150));
+    await renderClientApprovals('month'); return document.getElementById('clientApprovalsWrap').innerText; });
+  const oa = await appr();
+  ok(/Site B/.test(oa) && /Approved/.test(oa) && /Site B manager/.test(oa) && !/Changed after approval/.test(oa), 'owner: the client\'s approval in Accounting, not "changed" ' + JSON.stringify(oa));
+  // The client disputes a day (the window saves on a tap outside); the owner sees the comment.
+  const cd = await p.evaluate(async () => {
+    const sh = monthShifts()[0]; openDispute(sh.workerId, sh.day);
+    document.getElementById('disputeText').value = 'Left at 15:00';
+    const ov = document.getElementById('disputeOverlay'); ov.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true})); ov.click();
+    for(let i = 0; i < 40 && !/disputed/.test(document.querySelector('#sectionHours .status').className); i++) await new Promise(r => setTimeout(r, 150));
+    return {status: document.querySelector('#sectionHours .status').className, text: document.getElementById('sectionHours').innerText};
+  });
+  ok(/disputed/.test(cd.status) && /Left at 15:00/.test(cd.text), 'client: disputes a day with a comment ' + JSON.stringify(cd.status));
+  const od = await appr();
+  ok(/Disputed/.test(od) && /Left at 15:00/.test(od) && /Avi Cohen/.test(od), 'owner: sees the disputed day and its comment ' + JSON.stringify(od));
+  // Admin → Users: the owner is pinned first; the client login shows its client and ticks.
+  const ul = await q.evaluate(async () => { switchTab('admin'); switchAdminPane('users');
+    for(let i = 0; i < 60 && document.querySelectorAll('.admin-users-rows > div').length < 2; i++) await new Promise(r => setTimeout(r, 150));
+    return [...document.querySelectorAll('.admin-users-rows > div')].map(r => r.innerText.replace(/\s+/g, ' ')); });
+  ok(ul.length >= 2 && /\(owner\)/.test(ul[0]) && ul.some(t => /\(client\)/.test(t) && /Site B/.test(t) && /Approve/.test(t)), 'users: the owner pinned first; a client login shows its client and ticks ' + JSON.stringify(ul.slice(0, 3)));
+  // A kept login opens the portal at once: the login screen never shows on a reload.
+  await p.reload({waitUntil: 'domcontentloaded'});
+  const flash = await p.evaluate(() => getComputedStyle(document.getElementById('loginScreen')).display);
+  ok(flash === 'none' && await waitFor(p, () => typeof __data !== 'undefined' && !!__data, 15000), 'client: a reload with a kept login shows no login screen ' + flash);
+  ok(p.errs.length === 0 && q.errs.length === 0, 'client portal: no page errors ' + p.errs.concat(q.errs).join(' | '));
+  await octx.close(); await ctx.close();
+  // "Manager" in the portal header: ends the portal's sign-in and opens the manager app's login.
+  ctx = await newCtx(); p = await page(ctx);
+  await login(p, BASE + 'client-portal.html', 'client1', 'client-pass-1');
+  await waitFor(p, () => typeof __data !== 'undefined' && !!__data, 15000);
+  await p.evaluate(() => goToManager());
+  ok(await waitFor(p, () => /schedule-manager/.test(location.pathname) && document.getElementById('loginScreen').style.display !== 'none' && !localStorage.getItem('clientPortal_session'), 15000), 'client portal: "Manager" goes back to the manager app\'s login');
+  await ctx.close();
+  // A client login on the main site goes to its portal.
+  ctx = await newCtx(); p = await page(ctx);
+  await login(p, BASE + 'schedule-manager.html', 'client1', 'client-pass-1');
+  ok(await waitFor(p, () => /client-portal/.test(location.pathname) && typeof __data !== 'undefined' && !!__data, 15000), 'client: a client login on the main site is taken to its portal');
   await ctx.close();
 
   // ── Worker punch link ──

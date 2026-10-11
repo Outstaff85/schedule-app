@@ -46,8 +46,12 @@ body{padding-bottom:40px;}
 .tabs{display:flex;gap:6px;padding:12px 16px;border-bottom:1px solid var(--border);overflow-x:auto;}
 .tab-btn{background:none;border:none;color:var(--text2);padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;border-radius:var(--radius-sm);white-space:nowrap;}
 .tab-btn.active{background:var(--bg3);color:var(--text);}
-.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(100px);background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:10px 18px;border-radius:var(--radius-sm);font-size:13px;z-index:900;transition:transform 0.25s;}
-.toast.show{transform:translateX(-50%) translateY(0);}
+.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%) translateY(8px);display:flex;align-items:center;gap:8px;max-width:min(340px,calc(100vw - 32px));box-sizing:border-box;background:var(--bg2,#181c27);border:1px solid var(--border2);border-left:3px solid var(--green);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:500;line-height:1.35;color:var(--text);box-shadow:0 6px 20px rgba(0,0,0,.35);z-index:999;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.toast i{font-size:16px;color:var(--green);flex-shrink:0;}
+.toast.warn{border-left-color:var(--amber);} .toast.warn i{color:var(--amber);}
+.toast.err{border-left-color:var(--red);} .toast.err i{color:var(--red);}
+.toast.info{border-left-color:var(--blue,#60a5fa);} .toast.info i{color:var(--blue,#60a5fa);}
 table{width:100%;border-collapse:collapse;}
 th,td{padding:8px 10px;text-align:left;font-size:13px;border-bottom:1px solid var(--border);}
 th{color:var(--text2);font-size:11px;text-transform:uppercase;}
@@ -71,6 +75,8 @@ th{color:var(--text2);font-size:11px;text-transform:uppercase;}
 html[lang="he"] *{letter-spacing:normal !important;}
 .tables-view-toggle{display:none !important;}
 @media (max-width:700px){ .tables-view-toggle{display:inline-flex !important;} }
+html.has-session #appRoot{display:block !important;}
+@media (max-width:500px){ .mgr-label{display:none;} }
 </style>
 </head>
 <body>
@@ -85,14 +91,22 @@ html[lang="he"] *{letter-spacing:normal !important;}
     <div class="field"><label data-i18n>Password</label><input type="password" id="loginPassword" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogin()"></div>
     <div id="loginError" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px"></div>
     <button class="btn accent" style="width:100%;justify-content:center" onclick="submitLogin()" data-i18n>Log in</button>
+    <div style="text-align:center;margin-top:14px"><a href="schedule-manager.html" style="color:var(--text2);font-size:12px;text-decoration:none"><i class="ti ti-home"></i> <span data-i18n>Manager login</span></a></div>
   </div>
 </div>
 
+<script>
+// A login kept on this device opens the portal at once — no flash of the
+// login screen while the Firebase sign-in is checked; gateApp() brings the
+// login back only when that sign-in is really gone.
+try{ if(localStorage.getItem('supplierPortal_session')){ document.getElementById('loginScreen').style.display = 'none'; document.documentElement.classList.add('has-session'); } }catch(e){}
+</script>
 <div id="appRoot" style="display:none">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border)">
     <div style="font-size:16px;font-weight:700"><i class="ti ti-truck-delivery"></i> <span data-i18n>Supplier Portal</span></div>
     <div id="headerActions" style="display:flex;gap:6px;align-items:center"><div class="view-toggle tables-view-toggle" role="group" aria-label="Layout"><button type="button" class="tvList" onclick="setTablesView('list')" title="List" data-i18n-title="List"><i class="ti ti-list"></i></button><button type="button" class="tvCards" onclick="setTablesView('cards')" title="Cards" data-i18n-title="Cards"><i class="ti ti-layout-grid"></i></button></div><select class="lang-select" id="langSelect" title="Language" data-i18n-title="Language" aria-label="Language" onchange="setLanguage(this.value)"><option value="en">EN</option><option value="he">HE</option><option value="ru">RU</option></select>
-    <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i> <span data-i18n>Log out</span></button></div>
+    <button class="btn sm" onclick="goToManager()" title="Back to the manager app" data-i18n-title="Back to the manager app"><i class="ti ti-home"></i> <span class="mgr-label" data-i18n>Manager</span></button>
+      <button class="btn sm" onclick="logout()"><i class="ti ti-logout"></i> <span data-i18n>Log out</span></button></div>
   </div>
   <div class="tabs">
     <button class="tab-btn" id="tabBtn_dashboard" onclick="switchTab('dashboard')" data-i18n>Dashboard</button>
@@ -272,7 +286,21 @@ function loadXlsx(){
   }));
 }
 
-function showToast(msg,dur){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),dur||2500); }
+// Toast (the same in all three pages): small, an icon and a coloured edge by
+// its kind, guessed from the text — error, ongoing (ends with …), warning,
+// else done.
+const TOAST_ICONS={ok:'ti-circle-check',warn:'ti-alert-triangle',err:'ti-alert-circle',info:'ti-info-circle'};
+function toastKind(t){
+  if(/fail|error|could not|couldn't|not saved|denied|refused|invalid|נכשל|שגיאה|לא נשמר|לא ניתן/i.test(t)) return 'err';
+  if(/(…|\.\.\.)\s*$/.test(t)) return 'info';
+  if(/⚠|warn|check|empty|missing|not found|בדקו|ריק|חסר|לא נמצא/i.test(t)) return 'warn';
+  return 'ok';
+}
+function showToast(msg,dur){
+  const t=document.getElementById('toast'), text=String(msg), k=toastKind(text);
+  t.className='toast show '+k; t.innerHTML='<i class="ti '+TOAST_ICONS[k]+'"></i><span></span>'; t.lastChild.textContent=text;
+  clearTimeout(t.__hide); t.__hide=setTimeout(()=>t.classList.remove('show'),dur||2500);
+}
 // ── New version check (2026-10-04; the same code in schedule-manager.html,
 // worker-punch.html and supplier-portal.html). An app left open — a PWA in
 // the background — keeps running the code it loaded, even after a deploy.
@@ -436,6 +464,13 @@ function getSession(){
 }
 function saveSession(s){ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
 function clearSession(){ localStorage.removeItem(SESSION_KEY); }
+// Back to the manager app (its own login): this portal's sign-in ends first,
+// since one browser holds one Firebase sign-in for the whole site.
+async function goToManager(){
+  try{ localStorage.removeItem(SESSION_KEY); }catch(e){}
+  try{ await (await loadFirestoreBackend()).signOut(); }catch(e){}
+  location.href = 'schedule-manager.html';
+}
 async function logout(){
   clearSession();
   try{ await (await loadFirestoreBackend()).signOut(); }catch(e){}
@@ -605,6 +640,7 @@ async function gateApp(){
   if(s){
     try{ if(!(await loadFirestoreBackend()).currentUser()){ clearSession(); s=null; } }catch(e){}
   }
+  document.documentElement.classList.remove('has-session');  // the early open (above) ends here
   if(!s){ document.getElementById('loginScreen').style.display='flex'; document.getElementById('appRoot').style.display='none'; return; }
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('appRoot').style.display='block';

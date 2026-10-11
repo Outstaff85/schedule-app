@@ -11,7 +11,7 @@ deleteTenant, updateTenant and loadTenantProfile, with the error texts the app s
 Collections (see firestore.rules — all of these are function-only except
 users/{uid}, which its owner, a superadmin or the firm's tenant_admin may read):
   users/{uid}         username, tenantId, role, permissions ('*' or list),
-                      supplierId, active, createdAt, fullName (the
+                      supplierId, clientId (a client login), active, createdAt, fullName (the
                       person's name the app shows), phone, language
                       (the UI language the person last picked: en/he/ru); an 'hr' user also
                       ownOnly (sees only the workers whose
@@ -38,7 +38,12 @@ from datetime import datetime, timezone
 
 from google.cloud.firestore_v1.base_query import FieldFilter
 
-ROLES_SUB = ("staff", "supplier", "hr")    # what a firm can create for itself
+ROLES_SUB = ("staff", "supplier", "hr", "client")    # what a firm can create for itself
+# A client login (the client portal, portal.client_action): its permissions
+# are ticks from this list, checked by the client function.
+CLIENT_PERMS = ("schedule", "hours", "approve", "dispute", "export")
+CLIENT_DEFAULT_PERMS = ["hours", "approve", "dispute"]
+E_ROLE = "The role must be staff, supplier, hr or client"
 HR_DEFAULT_PERMS = ["workers"]
 ADMIN_ROLES = ("tenant_admin", "superadmin")
 PROFILE_FIELDS = ("companyName", "deductionsFileNumber", "phone", "street", "streetNumber", "city")
@@ -102,6 +107,8 @@ def claims_for(user):
     perms = user.get("permissions")
     if role == "supplier":
         perms_list = []
+    elif role == "client":
+        perms_list = [p for p in (perms if isinstance(perms, list) else []) if p in CLIENT_PERMS]
     elif perms in (None, "", "*"):
         perms_list = ["*"]
     else:
@@ -123,6 +130,8 @@ def claims_for(user):
         claims["tenantId"] = user["tenantId"]
     if user.get("supplierId"):
         claims["supplierId"] = user["supplierId"]
+    if role == "client" and user.get("clientId"):
+        claims["clientId"] = user["clientId"]
     return claims
 
 
@@ -213,6 +222,7 @@ def login(db, username, password, mint_token, now=None, on_refused=None):
         "tenantId": tenant_id,
         "permissions": "*" if perms in (None, "", "*") else perms,
         "supplierId": user.get("supplierId") or None,
+        "clientId": claims.get("clientId"),
         "ownOnly": claims.get("own", False),
         "showPay": claims.get("pay", False),
         "commissionRate": claims.get("hrc", 0),
@@ -288,6 +298,7 @@ def list_users(db, caller):
             "createdAt": d.get("createdAt"),
             "permissions": "*" if d.get("permissions") in (None, "", "*") else d.get("permissions"),
             "supplierId": d.get("supplierId") or None,
+            "clientId": d.get("clientId") or None,
             "fullName": d.get("fullName") or "", "phone": d.get("phone") or "",
             "ownOnly": d.get("ownOnly") is not False if _norm_role(d.get("role")) == "hr" else None,
             "showPay": d.get("showPay") is not False if _norm_role(d.get("role")) in ("hr", "supplier") else None,
@@ -364,7 +375,7 @@ def create_tenant_user(db, caller, body):
         return {"error": "No tenantId"}
     role = body.get("role")
     if role not in ROLES_SUB:
-        return {"error": "The role must be staff, supplier or hr"}
+        return {"error": E_ROLE}
     username = _norm_username(body.get("username"))
     password = str(body.get("password") or "")
     if not username or not password:
@@ -374,11 +385,15 @@ def create_tenant_user(db, caller, body):
         return {"error": err}
     if role == "supplier" and not body.get("supplierId"):
         return {"error": "A supplier login needs a supplier"}
+    if role == "client" and not body.get("clientId"):
+        return {"error": "A client login needs a client"}
     if role == "hr" and not str(body.get("fullName") or "").strip():
         return {"error": "An HR login needs a name"}
     perms = body.get("permissions")
     if role == "supplier":
         perms = ""
+    elif role == "client":
+        perms = [x for x in perms if x in CLIENT_PERMS] if isinstance(perms, list) else list(CLIENT_DEFAULT_PERMS)
     elif role == "hr":
         perms = list(perms) if isinstance(perms, list) else list(HR_DEFAULT_PERMS)
     else:
@@ -386,6 +401,7 @@ def create_tenant_user(db, caller, body):
     user = {
         "role": role, "tenantId": tenant_id, "permissions": perms,
         "supplierId": body.get("supplierId") if role == "supplier" else None,
+        "clientId": str(body.get("clientId")) if role == "client" else None,
         "active": True,
         # The person's name (shown in the app header and the Users list
         # instead of the login); required for an HR.
@@ -419,7 +435,7 @@ def update_user(db, caller, body, revoke):
     if err:
         return {"error": err}
     role = _norm_role(data.get("role"))
-    if role in ADMIN_ROLES and any(k in body for k in ("permissions", "supplierId", "active", "ownOnly", "role",
+    if role in ADMIN_ROLES and any(k in body for k in ("permissions", "supplierId", "clientId", "active", "ownOnly", "role",
                                                        "showPay", "commissionRate", "commissionDayRate")):
         return {"error": E_ADMIN_TARGET}
     upd = {}
@@ -427,9 +443,11 @@ def update_user(db, caller, body, revoke):
     new_role = body.get("role") or role
     if new_role != role:
         if new_role not in ROLES_SUB:
-            return {"error": "The role must be staff, supplier or hr"}
+            return {"error": E_ROLE}
         if new_role == "supplier" and not (body.get("supplierId") or data.get("supplierId")):
             return {"error": "A supplier login needs a supplier"}
+        if new_role == "client" and not (body.get("clientId") or data.get("clientId")):
+            return {"error": "A client login needs a client"}
         if new_role == "hr" and not str(body.get("fullName") or data.get("fullName") or "").strip():
             return {"error": "An HR login needs a name"}
         upd["role"] = new_role
@@ -437,12 +455,21 @@ def update_user(db, caller, body, revoke):
             body = dict(body, permissions="")
         if new_role != "supplier":
             body = dict(body, supplierId=None)
+        if new_role != "client":
+            body = dict(body, clientId=None)
+        elif "permissions" not in body or not isinstance(body.get("permissions"), list):
+            body = dict(body, permissions=list(CLIENT_DEFAULT_PERMS))
         if new_role == "hr" and "ownOnly" not in body:
             body = dict(body, ownOnly=True)
         role = new_role
     if "permissions" in body:
         p = body.get("permissions")
-        upd["permissions"] = list(p) if isinstance(p, list) else ("" if p == "" else "*")
+        if role == "client":
+            upd["permissions"] = [x for x in p if x in CLIENT_PERMS] if isinstance(p, list) else []
+        else:
+            upd["permissions"] = list(p) if isinstance(p, list) else ("" if p == "" else "*")
+    if "clientId" in body:
+        upd["clientId"] = (str(body.get("clientId")) if body.get("clientId") else None) if role == "client" else None
     if "supplierId" in body:
         upd["supplierId"] = body.get("supplierId") or None
     if "active" in body:
@@ -458,7 +485,8 @@ def update_user(db, caller, body, revoke):
         upd["commissionDayRate"] = _rate(body.get("commissionDayRate"))
     current = {"role": _norm_role(data.get("role")),
                "permissions": "*" if data.get("permissions") in (None, "", "*") else data.get("permissions"),
-               "supplierId": data.get("supplierId") or None, "active": data.get("active", True) is not False,
+               "supplierId": data.get("supplierId") or None, "clientId": data.get("clientId") or None,
+               "active": data.get("active", True) is not False,
                "ownOnly": data.get("ownOnly") is not False, "showPay": data.get("showPay") is not False,
                "commissionRate": _rate(data.get("commissionRate")),
                "commissionDayRate": _rate(data.get("commissionDayRate"))}

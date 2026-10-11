@@ -39,7 +39,7 @@ The client keeps the punch log in `localStorage.punchLog` (`getPunchLog()` / `sa
   - weekday — with an OT override, `min(h,8) × reg + rest × ot`; otherwise the weekday law tiers.
   
   **Saturday = the shift's opening date is a Saturday** (`date.getDay() === 6`).
-- **Daily pay** — `w.payMode === 'daily'` (picked per worker in Accounting → Worker pay, `savePayModal`, or in Salary, `setWorkerPayMode`): the worker is paid `dailyRate(w)` — their own rate (`wOwnRate`), read as ₪/day — once for every day worked, whatever the hours; no OT / Shabbat, and a client's (hourly) rate never applies. Every payroll figure prices a shift with **`shiftPayFor(hours, w, isSat, clientId, date, seenDays)`**: for a daily-paid worker the first shift of a day pays the day rate and later shifts that day pay 0 (`seenDays`, one Set per worker over the period); otherwise `shiftPay`. Days set by hand for a period (`w.dayOverrides[salaryPeriodKey(period)]`, `dayOverride`; keys `w:<Sunday>`, `m:<yyyy-mm>`, `all`) replace the counted days: pay = days × daily rate.
+- **Daily pay** — `w.payMode === 'daily'` (picked per worker in the pay window, `savePayModal`): the worker is paid `dailyRate(w)` — their own rate (`wOwnRate`), read as ₪/day — once for every day worked, whatever the hours; no OT / Shabbat, and a client's (hourly) rate never applies. Every payroll figure prices a shift with **`shiftPayFor(hours, w, isSat, clientId, date, seenDays)`**: for a daily-paid worker the first shift of a day pays the day rate and later shifts that day pay 0 (`seenDays`, one Set per worker over the period); otherwise `shiftPay`. Days set by hand for a period (`w.dayOverrides[salaryPeriodKey(period)]`, `dayOverride`; keys `w:<Sunday>`, `m:<yyyy-mm>`, `all`) replace the counted days: pay = days × daily rate.
 - **Client billing** — a separate figure that never changes worker pay: `clientBillPay(hours, client, isSat)`.
   - `fixed` → `hours × fixedBillRate`;
   - `tiered` → the law tiers on `clientBillRate(client)` (`billRate`, else the old `defaultHourlyRate`), unless a flat `billOtRate` / `billShabbatRate` is set (applied like `shiftPay`).
@@ -50,7 +50,6 @@ Every text of the tab goes through the chosen language ([translations.md](transl
 
 `renderAccounting()` draws, in this order on the page:
 1. **Salary Calculation** — `renderSalary()` into `#dashSalary`.
-1a. **Worker pay** — `renderWorkerPay()` into `#workerPayWrap` (below).
 2. **Per-client rates** — `renderRateMatrix()`.
 3. **Per-supplier rates** — `renderSupplierRateMatrix()`.
 
@@ -62,7 +61,7 @@ Every text of the tab goes through the chosen language ([translations.md](transl
 
 Each section title has an (i) button (`.acc-help`) that opens the section's explanation in a modal (`openAccountingHelp(key)` → `#accHelpOverlay`, texts in `ACCOUNTING_HELP`); the page itself carries no explanatory text. A change to how a section works updates its text there.
 
-The tab is gated by the `accounting` permission. For an HR that permission gives only the reduced tab of `hrPayOnly()` (never the full one) ([hr.md](hr.md) → Pay): `renderAccounting` hides every section but Salary and Worker pay, `renderSalary` keeps only its workers, makes the table read-only (`.salary-ro`, the setters refuse) and adds "My commission".
+The tab is gated by the `accounting` permission. For an HR that permission gives only the reduced tab of `hrPayOnly()` (never the full one) ([hr.md](hr.md) → Pay): `renderAccounting` hides every section but Salary, `renderSalary` keeps only its workers and adds "My commission"; the pay window is read-only for it unless `payEdit`.
 
 ### Salary (`renderSalary()`)
 
@@ -80,19 +79,18 @@ The per-worker and per-client figures come from `salaryEntriesFor(period)` → `
 - **Results:**
   - `__lastSalaryEntries` holds the per-worker rows (feeds Payable by supplier);
   - `__lastClientBillEntries` holds the per-client rows (feeds Billable by client).
-- **Table:** Worker, Hours, Regular / OT / Shabbat ₪/h, Travel ₪, Total Pay (= wage + travel); a TOTAL row covering every worker; the rows are paged by 10 ([app-core.md](app-core.md) → Long lists). Supplier payable, client billable and both rate matrices are paged the same way.
-  - **Editable rate inputs** — `setWorkerRate`, `setWorkerOtRate`, `setWorkerShabbatRate`. They hold the worker's **own** rates (tier 2), and an edit changes that worker only (`setWorkerRate` also clears the older `regRate`). Empty = no own rate: the placeholder shows the rate that applies at the client the worker had most hours at in the period (`clientHours`), with "client · name" (or "rate matrix") under it. The client's rate itself is edited in the client card.
-  - **Days** — days worked by the punches (`countedDays`, two shifts on one day count once). The Rate column has a ₪/h | ₪/day select per worker; for a daily-paid worker Days is an input (`setWorkerDays`: a number replaces the count for this period, empty goes back) and OT / Shabbat show "—". A daily worker with no own rate shows "set a daily rate".
+- **Rows: only the workers with shifts in the period** (the entries of `salaryEntriesFor`; workers without hours are not listed). `#salarySearch` narrows the rows by name, and the TOTAL row with them; Payable by supplier and the rest always use every entry (`__lastSalaryEntries`).
+- **Table** (no input fields): Worker (⚠ when there are punches to check), Hours (with the Regular / Overtime / Shabbat split under it when there is OT or Shabbat), Days (`daysUsed`; "punches: N" under it when set by hand), Rate (the own rate ₪/h or ₪/day; grey "client ₪x/h" when the client's applies — the client the worker had most hours at, `clientHours`; amber "set a daily rate" / "no rate"), Pay, Travel ₪, Total Pay (= pay + travel), Bank (the bank's name, branch and account in its tooltip; amber "no bank details"); an HR also gets "My commission". A TOTAL row; the rows are paged by 10 ([app-core.md](app-core.md) → Long lists). Supplier payable and client billable are paged the same way.
+- **A row:** a tap opens the worker card (`openWorkerCardById`); a double click (computer) or a long press (phone) opens the pay window (`openPayModal`, below).
   - **Warnings** — anomalies show as an amber "N to review" banner and a ⚠ icon per worker.
 
-### Worker pay (`renderWorkerPay()`)
+### Pay window (`openPayModal(wid)`, `#payOverlay`)
 
-The one place a worker's money is set; the worker modal, the worker card and Upload hours carry no rate, pay mode, travel or bank field ([workers.md](workers.md)).
+The one place a worker's money is set — from a Salary row or the worker card's "Pay" button (so a worker without shifts in the period is set there); the worker modal and Upload hours carry no rate, pay mode, travel or bank field ([workers.md](workers.md)). There is no separate Worker pay section (merged into Salary, user request 2026-10-11).
 
-- **Cards:** one `.wcard` per worker (a new one with no shifts too) in a `.clients-grid`, searchable (`#workerPaySearch`), paged by 10. Each card: the name and the rate (the own rate ₪/h or ₪/day, else the client's in grey; a daily worker without one shows "set a daily rate"); for the period picked in Salary the days, hours, pay, travel and total (from `__lastSalaryEntries`, so `renderWorkerPay` runs after `renderSalary` and after each Salary edit), or "no shifts"; travel ₪/day + ₪/month; the bank, branch and account ("no bank details" in amber).
-- **Who edits:** `canEditPay(w)` — the firm owner, a super-admin, staff with the `accounting` permission, and an HR with `payEdit` ("Edit own workers' pay") for its own workers only ([hr.md](hr.md)). A double click (computer) or a long press (phone) on a card (`tap-edit`) opens `openPayModal(wid)`; the worker card's "Pay" button opens the same modal.
-- **Pay modal** (`#payOverlay`): Paid ₪/h | ₪/day (`payMode`, `onPayModeChange` hides OT / Shabbat for a daily worker); Rate (the own rate; empty = the client's, by the hour only); OT and Shabbat ₪/h (empty = law); Travel ₪/day (`travelAllowance`) and ₪/month (`travelMonthly`); bank, branch, account. `savePayModal` writes them (`regRate` cleared), `autoSave()`, redraws Accounting.
-- **HR** (`hrPayOnly()`): only its own workers' cards, bank details included; a double click (computer) or a long press (phone) opens the pay modal read-only (every field disabled, no Save), or editable with `payEdit`.
+- **Who edits:** `canEditPay(w)` — the firm owner, a super-admin, staff with the `accounting` permission, and an HR with `payEdit` ("Edit own workers' pay") for its own workers only ([hr.md](hr.md)). A double click (computer) or a long press (phone) on a Salary row opens it; so does the worker card's "Pay" button.
+- **Fields:** Paid ₪/h | ₪/day (`payMode`, `onPayModeChange` hides OT / Shabbat and shows Days for a daily worker); Rate (the own rate; empty = the client's, by the hour only); **Days — <period>** for a daily worker (`#payDays`: the days of the period picked in Salary, `dayOverride(w, salaryPeriodKey(period))`; empty = by the punches, shown as the placeholder; saved in `w.dayOverrides`); OT and Shabbat ₪/h (empty = law); Travel ₪/day (`travelAllowance`) and ₪/month (`travelMonthly`); bank, branch, account. `savePayModal` writes them (`regRate` cleared), `autoSave()`, redraws Accounting.
+- **HR** (`hrPayOnly()`): only its own workers' Salary rows, bank included; a double click (computer) or a long press (phone) opens the pay window read-only (every field disabled, no Save), or editable with `payEdit`.
 - **Client rule** (`saveWorker`, [workers.md](workers.md)): adding a client that has a rate to an hourly worker with an own rate clears the own rate (`hourlyRate = 0`), so the new client's rate applies.
 
 ### Per-client rates (`renderRateMatrix()`)
@@ -107,7 +105,7 @@ One row per (worker, assigned client). Empty inputs show the resolved rate as a 
 - **Payable by supplier:** `renderSupplierPayable(entries)`:
   - per supplier, `commissionFor` with the supplier's rates (never the worker's wage); stored in `__lastSupplierPayableRows` for the export buttons;
   - Excel / PDF buttons → `exportPayableSummary()`;
-  - the **"No supplier assigned" row** shows those workers' hours only; its payable is "—" (nothing is owed to a supplier for them, and a wage never appears in this table).
+  - **only the suppliers with hours and a commission** in the period; workers without a supplier are left out, and with no row the section (`#accSecPayable`) is hidden (user request 2026-10-11). The same holds for Payable by HR (only HRs with hours and a commission rate, `#accSecHrPayable`) and Billable by client (only clients with hours and a billing rate, `#accSecBillable`); Salary lists only workers with shifts.
 
 ### Billable by client (`renderClientBillable(entries)`)
 
@@ -148,7 +146,7 @@ Real-time attendance from the punch log and today's schedule; `renderDashboard()
 
 - **On site now** — workers whose last punch today is IN; shows "since" time and distance.
 - **Should be here** — today's shift (`shiftOn`, so a change for today's date counts) started more than 15 minutes ago and there is no punch, or the worker punched OUT more than 10 minutes before the shift's end.
-- **Workers by supplier** — `renderDashSuppliers()`: a headcount per supplier plus "No supplier"; no pay data.
+- **Workers by supplier** — `renderDashSuppliers()`: a headcount card per supplier that has workers; workers without a supplier get no card, and with no such supplier the section is hidden (`#dashSuppliersWrap`); no pay data.
 - **Expiry cards** — contract-term warnings (`workerExpiryStatus`) and expiring or expired worker documents (`workerDocExpiries`).
 - **Today's punches** — paged by 10, like the on-site, missing, suppliers and expiring tiles ([app-core.md](app-core.md) → Long lists).
 
