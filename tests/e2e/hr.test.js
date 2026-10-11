@@ -71,6 +71,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     userFormFullName.value = 'Rina HR'; userFormPhone.value = '0521112233';
     r.showPayTile = document.getElementById('userFormShowPayGrid').style.display !== 'none'; userFormCommission.value = '4';
     document.querySelector('.userFormPermCb[value="accounting"]').checked = true; // the reduced pay view
+    ['hours', 'approve', 'dispute'].forEach(v => { document.querySelector('.userFormHourPermCb[value="' + v + '"]').checked = true; }); // hours review
     await submitUserForm();
     for(let i = 0; i < 40 && !document.getElementById('adminUsersWrap').innerText.includes('Rina HR'); i++) await new Promise(res => setTimeout(res, 150));
     r.listed = document.getElementById('adminUsersWrap').innerText;
@@ -156,6 +157,18 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(pv.rows.length === 1 && pv.rows[0] === 'w2' && pv.com && pv.ro && !pv.rates && !pv.sup && !pv.payable && !pv.bill && !pv.pend,
     'hr pay view: own worker only, read-only, its commission, nothing else of Accounting ' + JSON.stringify(pv).slice(0, 200));
   ok(pv.comText.includes('₪' + (pv.hours * 4).toFixed(0)), 'hr pay view: commission = hours × 4 ' + pv.hours);
+  // Hours approval in Accounting (hours ticks): its own worker's days; approve one.
+  const hrv = await h.evaluate(async () => {
+    switchTab('accounting');
+    for(let i = 0; i < 60 && !(typeof __hrv !== 'undefined' && __hrv.data && __hrv.data.punches); i++) await new Promise(r => setTimeout(r, 150));
+    if(!hrvMonthDays().length){ hrvShiftMonth(-1); for(let i = 0; i < 60 && !(__hrv.data && __hrv.data.month === hrvMonthKey() && !__hrv.loading); i++) await new Promise(r => setTimeout(r, 150)); }
+    const r = {shown: document.getElementById('accSecReview').style.display !== 'none', names: (__hrv.data.workers || []).map(w => w.name), days: hrvMonthDays().length};
+    const d = hrvMonthDays()[0];
+    if(d){ hrvApproveDay(d.key); for(let i = 0; i < 40 && hrvDayState(hrvRow(d.key)).st !== 'approved'; i++) await new Promise(res => setTimeout(res, 150)); r.st = hrvDayState(hrvRow(d.key)).st; }
+    return r;
+  });
+  await (await h.$('#accSecReview')).screenshot({path: SP + '/hr-hours-review.png'}).catch(()=>{});
+  ok(hrv.shown && hrv.names.join() === 'Dana Levi' && hrv.days >= 1 && hrv.st === 'approved', 'hr: Hours approval in Accounting — own workers only, approves a day ' + JSON.stringify(hrv));
   const mh = await h.evaluate(async () => {
     const r = {};
     openHoursImportModal('w2');

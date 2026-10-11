@@ -13,14 +13,14 @@
 // (groupPunchesIntoShifts / analyzeDayPunches) — all three pages have them.
 // docs/hours-review.md.
 //
-//   hoursReviewMount(el, {call: body => Promise<json>, title?: string})
+//   hoursReviewMount(el, {call: body => Promise<json>, hideOwner?: bool})
 //   hoursReviewReload()
 
 const HOURS_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/hours';
-let __hrv = {el: null, call: null, title: '', month: 0, tab: 'hours', data: null, loading: false, busy: false};
+let __hrv = {el: null, call: null, hideOwner: false, month: 0, tab: 'hours', data: null, loading: false, busy: false};
 
 function hoursReviewMount(el, opts){
-  __hrv = Object.assign(__hrv, {el, call: opts.call, title: opts.title || '', data: null});
+  __hrv = Object.assign(__hrv, {el, call: opts.call, hideOwner: !!opts.hideOwner, data: null});
   if(!document.getElementById('hoursReviewOverlay')){
     const ov = document.createElement('div');
     ov.className = 'overlay'; ov.id = 'hoursReviewOverlay';
@@ -106,7 +106,7 @@ function hrvRender(){
       <div class="m">${esc(new Date(y, m - 1, 1).toLocaleDateString(uiLocale(), {month: 'long', year: 'numeric'}))}</div>
       <button type="button" onclick="hrvShiftMonth(1)" title="${esc(tr('Next month'))}" ${__hrv.month >= 0 ? 'disabled style="opacity:.3"' : ''}>›</button>
     </div>
-    ${__hrv.title || owner ? `<div class="hrv-owner">${esc(__hrv.title || owner)}</div>` : ''}
+    ${owner && !__hrv.hideOwner ? `<div class="hrv-owner">${esc(owner)}</div>` : ''}
     <div id="hrvBody"></div>`;
   const body = el.querySelector('#hrvBody');
   if(!d || d.month !== hrvMonthKey()){ body.innerHTML = hrvMsg(__hrv.loading || !d ? tr('Loading…') : ''); return; }
@@ -123,8 +123,8 @@ function hrvStyle(){
   .hrv-month button{width:36px;height:36px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:18px;cursor:pointer;}
   .hrv-owner{text-align:center;font-size:12px;color:var(--text2);margin-bottom:10px;}
   .hrv-status{border-radius:var(--radius,12px);padding:10px 14px;margin-bottom:12px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;background:var(--bg2);border:1px solid var(--border2);}
-  .hrv-status.ok{background:var(--green-bg);border-color:rgba(109,214,160,0.3);color:var(--green);}
-  .hrv-status.warn{background:var(--amber-bg);border-color:rgba(245,166,35,0.3);color:var(--amber);}
+  .hrv-status.ok{background:var(--green-bg,rgba(109,214,160,0.12));border-color:rgba(109,214,160,0.3);color:var(--green);}
+  .hrv-status.warn{background:var(--amber-bg,rgba(245,166,35,0.12));border-color:rgba(245,166,35,0.3);color:var(--amber);}
   .hrv-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius,12px);padding:12px 14px;margin-bottom:10px;}
   .hrv-day{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--border);font-size:13px;flex-wrap:wrap;}
   .hrv-day .d{flex:1;min-width:90px;}
@@ -132,6 +132,7 @@ function hrvStyle(){
   .hrv-day .h{min-width:42px;text-align:right;font-weight:600;}
   .hrv-day .st{font-size:16px;}
   .hrv-day .note{width:100%;font-size:11px;padding-left:2px;}
+  .hrv-approve{background:var(--green-bg,rgba(109,214,160,0.12));border-color:rgba(109,214,160,0.35);color:var(--green);}
   .hrv-act{background:none;border:none;color:var(--text3);cursor:pointer;font-size:17px;padding:2px 4px;}
   .hrv-act:hover{color:var(--text);}
   .hrv-act.on{color:var(--accent);}
@@ -151,7 +152,7 @@ function hrvHoursHtml(){
       + (counts.disputed ? ' · ' + tr('{n} disputed', {n: counts.disputed}) : '')
       + (counts.fix ? ' · ' + tr('{n} fixes waiting', {n: counts.fix}) : '');
   const canApproveAll = hrvCan('approve') && days.some(r => ['pending', 'changed', 'rejected'].includes(hrvDayState(r).st));
-  const approveBtn = canApproveAll ? `<button class="btn sm green" onclick="hrvApproveMonth()"><i class="ti ti-checks"></i> ${esc(tr('Approve the month'))}</button>` : '';
+  const approveBtn = canApproveAll ? `<button class="btn sm hrv-approve" onclick="hrvApproveMonth()"><i class="ti ti-checks"></i> ${esc(tr('Approve the month'))}</button>` : '';
   const exportBtn = hrvCan('export') ? `<button class="btn sm" onclick="hrvExport()"><i class="ti ti-file-spreadsheet"></i> ${esc(tr('Export'))}</button>` : '';
   const byW = {};
   days.forEach(r => { (byW[r.workerId] = byW[r.workerId] || []).push(r); });

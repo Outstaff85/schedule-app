@@ -112,6 +112,7 @@ try{ if(localStorage.getItem('supplierPortal_session')){ document.getElementById
     <button class="tab-btn" id="tabBtn_dashboard" onclick="switchTab('dashboard')" data-i18n>Dashboard</button>
     <button class="tab-btn" id="tabBtn_workers" onclick="switchTab('workers')" data-i18n>My Workers</button>
     <button class="tab-btn" id="tabBtn_hours" onclick="switchTab('hours')" data-i18n>My Hours</button>
+    <button class="tab-btn" id="tabBtn_review" onclick="switchTab('review')" style="display:none" data-i18n>Hours approval</button>
   </div>
 
   <div id="sectionDashboard" style="padding:16px;display:none">
@@ -132,6 +133,11 @@ try{ if(localStorage.getItem('supplierPortal_session')){ document.getElementById
     </div>
     <div id="workersList"></div>
   </div>
+
+  <!-- Hours approval (with an hours tick, users.hourPerms): the shared
+       hours-review.js over the hours function — per day approve, dispute,
+       propose a fix; the month approved at once. -->
+  <div id="sectionReview" style="padding:16px;display:none;max-width:760px;margin:0 auto"></div>
 
   <div id="sectionHours" style="padding:16px;display:none">
     <div class="field"><label data-i18n>Month</label><select id="hoursExportMonthSel" onchange="renderPayTable()"></select></div>
@@ -339,7 +345,7 @@ function showNewVersionBar(){
     <button type="button" onclick="location.reload()" style="border:0;border-radius:8px;padding:6px 12px;background:#fff;color:#1f6feb;font:inherit;cursor:pointer">${tr('Update')}</button>
     <button type="button" aria-label="${tr('Close')}" onclick="this.parentElement.remove()" style="border:0;background:none;color:#fff;font:inherit;font-size:18px;cursor:pointer;padding:0 4px">✕</button></div>`);
 }
-startVersionWatch(()=>[location.pathname,'firestore-backend.js']);
+startVersionWatch(()=>[location.pathname,'firestore-backend.js',...(window.hoursReviewMount?['hours-review.js']:[])]);
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 // Template (per user request 2026-10-04): a list item or card opens its edit
 // form on a tap anywhere on it — there is no separate Edit button. A tap on a
@@ -644,17 +650,49 @@ async function gateApp(){
   if(!s){ document.getElementById('loginScreen').style.display='flex'; document.getElementById('appRoot').style.display='none'; return; }
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('appRoot').style.display='block';
+  // The Hours approval tab: with an hours or schedule tick (claim hp).
+  loadFirestoreBackend().then(b => b.hourPerms()).then(hp => {
+    document.getElementById('tabBtn_review').style.display = hp.some(p => p==='hours' || p==='schedule') ? '' : 'none';
+  }).catch(()=>{});
   loadData().then(()=>{ switchTab('dashboard'); });
 }
 
 function switchTab(tab){
-  ['dashboard','workers','hours'].forEach(t=>{
+  ['dashboard','workers','hours','review'].forEach(t=>{
     document.getElementById('section'+t[0].toUpperCase()+t.slice(1)).style.display = t===tab?'block':'none';
     document.getElementById('tabBtn_'+t).classList.toggle('active', t===tab);
   });
   if(tab==='dashboard') renderDashboard();
   if(tab==='workers') renderWorkersList();
   if(tab==='hours') renderHoursTab();
+  if(tab==='review') openHoursReview();
+}
+// The hours function (functions-auth/hours.py) and its shared screen
+// (hours-review.js, the same in the client portal and for an HR login in the
+// manager app), loaded on the first open of the tab.
+let __hrvLoading = null;
+function loadHoursReview(){
+  if(window.hoursReviewMount) return Promise.resolve();
+  return __hrvLoading = __hrvLoading || new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = 'hours-review.js';
+    el.onload = resolve;
+    el.onerror = () => { __hrvLoading = null; reject(new Error('hours-review.js failed to load')); };
+    document.head.appendChild(el);
+  });
+}
+async function hoursCall(body){
+  const idToken = await (await loadFirestoreBackend()).idToken();
+  const res = await fetch(HOURS_FN_URL, {method:'POST',
+    headers:{'Content-Type':'application/json', Authorization:'Bearer ' + idToken}, body: JSON.stringify(body)});
+  return res.json();
+}
+async function openHoursReview(){
+  try{ await loadHoursReview(); }catch(e){ showToast(tr('Could not load — check the connection and try again.')); return; }
+  const el = document.getElementById('sectionReview');
+  if(el.__mounted) return hoursReviewReload();
+  el.__mounted = true;
+  hoursReviewMount(el, {call: hoursCall});
 }
 
 // ── Dashboard (mini, own-workers-only real-time view — no GPS, since the
