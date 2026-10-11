@@ -943,7 +943,7 @@ html[lang="he"] *{letter-spacing:normal !important;}
       <div class="page-header">
         <div>
           <div class="page-title"><i class="ti ti-cash"></i> <span data-i18n><span data-i18n>Accounting</span></span></div>
-          <div class="page-sub" data-i18n>Salary calculation and per-client rates</div>
+          <div class="page-sub" data-i18n>Salary calculation and payments</div>
         </div>
         <div class="view-toggle tables-view-toggle" role="group" aria-label="Layout">
             <button type="button" class="tvList" onclick="setTablesView('list')" title="List" data-i18n-title="List"><i class="ti ti-list"></i></button>
@@ -6806,20 +6806,23 @@ function renderDashSuppliers(){
     </div>`,{grid:true});
 }
 
+// Per-client and per-supplier rate tables in Accounting: turned off for now
+// (user request 2026-10-11). Rates already set in them still count in pay
+// and commission (effectiveRates, w.supplierRates); true shows them again.
+const ACC_RATE_TABLES=false;
 function renderAccounting(){
   // An HR that only sees its own workers' pay: Salary and nothing else.
   const payOnly=hrPayOnly();
   ['accSecRates','accSecSupplierRates','accSecPayable','accSecBillable','accSecPending'].forEach(id=>{
-    const el=document.getElementById(id); if(el) el.style.display=payOnly?'none':'';
+    const el=document.getElementById(id); if(el) el.style.display=(payOnly||(!ACC_RATE_TABLES&&(id==='accSecRates'||id==='accSecSupplierRates')))?'none':'';
   });
   if(payOnly){ const ex=document.querySelector('#sectionAccounting .perm-exports'); if(ex) ex.style.display='none'; }
   const sub=document.querySelector('#sectionAccounting .page-sub');
-  if(sub) sub.textContent=payOnly?tr('Your workers\' hours, pay and your commission'):tr('Salary calculation and per-client rates');
+  if(sub) sub.textContent=payOnly?tr('Your workers\' hours, pay and your commission'):tr('Salary calculation and payments');
   renderSalary();
   renderWorkerPay();
   if(payOnly) return;
-  renderRateMatrix();
-  renderSupplierRateMatrix();
+  if(ACC_RATE_TABLES){ renderRateMatrix(); renderSupplierRateMatrix(); }
   renderPendingHours();
 }
 
@@ -7496,7 +7499,7 @@ function openPayModal(wid){
       <div class="field"><label>${esc(tr('OT ₪/h'))}</label><input type="number" id="payOt" min="0" step="0.5" value="${v(w.otRate)}" placeholder="${esc(tr('law ×{m}',{m:PAY_RULES.otMult}))}"></div>
       <div class="field"><label>${esc(tr('Shabbat ₪/h'))}</label><input type="number" id="payShab" min="0" step="0.5" value="${v(w.shabbatRate)}" placeholder="${esc(tr('law ×{m}',{m:PAY_RULES.shabbatMult}))}"></div>
     </div>
-    <div style="font-size:11px;color:var(--text3);margin:-4px 0 8px">${esc(tr("Empty rate = the client's rate (by the hour only). A rate at one client only is set in Per-client rates."))}</div>
+    <div style="font-size:11px;color:var(--text3);margin:-4px 0 8px">${esc(ACC_RATE_TABLES?tr("Empty rate = the client's rate (by the hour only). A rate at one client only is set in Per-client rates."):tr("Empty rate = the client's rate (by the hour only)."))}</div>
     <div class="form-section">${esc(tr('Travel'))}</div>
     <div class="field-row">
       <div class="field"><label>${esc(tr('Travel ₪/day'))}</label><input type="number" id="payTravelDay" min="0" step="0.5" value="${Number(w.travelAllowance)>0?esc(w.travelAllowance):''}" placeholder="0"></div>

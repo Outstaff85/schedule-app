@@ -53,6 +53,8 @@ Every text of the tab goes through the chosen language ([translations.md](transl
 1a. **Worker pay** — `renderWorkerPay()` into `#workerPayWrap` (below).
 2. **Per-client rates** — `renderRateMatrix()`.
 3. **Per-supplier rates** — `renderSupplierRateMatrix()`.
+
+   Both tables are turned off for now (`ACC_RATE_TABLES = false`, user request 2026-10-11): their sections are hidden and not drawn. Rates already set in them still count — a worker's per-client override (`w.clientRates`, tier 1 of `effectiveRates`) and the per-supplier commission (`w.supplierRates`); `true` shows them again.
 4. **Payable by supplier** — `renderSupplierPayable()`, called from `renderSalary()`.
    **Payable by HR** — `renderHrPayable()` (owner / super-admin, shown when the firm has HR logins): per HR, `commissionFor` with the HR's commission rates (its `commissionRate` and `commissionDayRate` when set) on the workers whose `hrId` is that HR; never a wage.
 5. **Billable by client** — `renderClientBillable()`, called from `renderSalary()`.
