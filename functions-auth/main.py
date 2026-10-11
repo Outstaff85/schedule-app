@@ -16,7 +16,8 @@ Firestore database. The logic is in core.py, files.py, portal.py and ai.py.
   punch        POST {action, token, ...}: the worker punch link (portal.py)
   supplier     POST {action, ...} with "Authorization: Bearer <ID token>" of a
                supplier login: the supplier portal (portal.py)
-  client       the same with a client login: the client portal (portal.py)
+  hours        the same with a client, supplier or HR login (hours review), or a
+               manager's (the month's approvals, fixes accepted / rejected): hours.py
   ai_read      POST {action, image, ...} with a manager's ID token: the AI
                document reading actions (ai.py)
 
@@ -37,6 +38,7 @@ from firebase_functions.params import SecretParam
 import ai
 import core
 import files
+import hours as hours_mod
 import portal
 
 options.set_global_options(region="europe-west3", memory=options.MemoryOption.MB_256)
@@ -192,17 +194,18 @@ def supplier(req: https_fn.Request) -> https_fn.Response:
 
 
 @https_fn.on_request(cors=_CORS, timeout_sec=60)
-def client(req: https_fn.Request) -> https_fn.Response:
-    """Client portal (client-portal.html)."""
+def hours(req: https_fn.Request) -> https_fn.Response:
+    """Hours review (hours.py): a client, supplier or HR login reviews its
+    workers' shifts; a manager lists the approvals and resolves fixes."""
     if req.method != "POST":
         return _json({"error": "POST only"}, 405)
     decoded = _verified(req)
     if not decoded:
         return _json({"error": E_SESSION}, 401)
-    caller = {"uid": decoded["uid"], "role": decoded.get("role"), "tenantId": decoded.get("tenantId"),
-              "clientId": decoded.get("clientId"), "perms": decoded.get("perms") or []}
+    caller = {k: decoded.get(k) for k in ("role", "tenantId", "clientId", "supplierId", "own", "hp", "perms")}
+    caller["uid"] = decoded["uid"]
     try:
-        return _json(portal.client_action(_db(), caller, _body(req)))
+        return _json(hours_mod.hours_action(_db(), caller, _body(req)))
     except Exception as e:
         return _json({"error": str(e)}, 500)
 

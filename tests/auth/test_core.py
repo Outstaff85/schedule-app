@@ -514,26 +514,32 @@ def test_update_my_language_follows_the_user_to_login():
     assert DB.collection("users").document("u-lang").get().to_dict()["language"] == "ru"
 
 
-def test_client_login_role_client_perms_and_claims():
-    # A client login needs a client; its ticks come only from CLIENT_PERMS.
+def test_hour_review_ticks_for_client_supplier_and_hr():
+    # A client login needs a client; the hours ticks (hourPerms) are the same list for client, supplier and HR.
     assert "client" in core.create_tenant_user(DB, ADMIN1, {"role": "client", "username": "cl0", "password": "client-pass-1"})["error"]
     r = core.create_tenant_user(DB, ADMIN1, {"role": "client", "username": "Client.One", "password": "client-pass-1",
-                                             "clientId": "c1", "permissions": ["hours", "approve", "workers", "*"]})
-    assert r["ok"]
+                                             "clientId": "c1", "hourPerms": ["hours", "approve", "workers", "*"]})
     u = DB.collection("users").document(r["userId"]).get().to_dict()
-    assert u["role"] == "client" and u["clientId"] == "c1" and u["permissions"] == ["hours", "approve"]
+    assert u["role"] == "client" and u["clientId"] == "c1" and u["hourPerms"] == ["hours", "approve"] and u["permissions"] == ""
     out = core.login(DB, "client.one", "client-pass-1", mint)
     claims = id_token_claims(out["token"])
-    assert claims["role"] == "client" and claims["clientId"] == "c1" and claims["perms"] == ["hours", "approve"]
-    assert out["clientId"] == "c1" and "supplierId" not in claims
-    # Default ticks when none are sent.
+    assert claims["role"] == "client" and claims["clientId"] == "c1" and claims["hp"] == ["hours", "approve"] and claims["perms"] == []
+    assert out["clientId"] == "c1" and out["hourPerms"] == ["hours", "approve"]
+    # Defaults: a client gets HOUR_CLIENT_DEFAULT, a supplier none.
     r2 = core.create_tenant_user(DB, ADMIN1, {"role": "client", "username": "cl2", "password": "client-pass-2", "clientId": "c2"})
-    assert DB.collection("users").document(r2["userId"]).get().to_dict()["permissions"] == core.CLIENT_DEFAULT_PERMS
-    # Ticks change; moving to staff drops the clientId.
+    assert DB.collection("users").document(r2["userId"]).get().to_dict()["hourPerms"] == core.HOUR_CLIENT_DEFAULT
+    r3 = core.create_tenant_user(DB, ADMIN1, {"role": "supplier", "username": "sup9", "password": "sup-pass-99", "supplierId": "s-1"})
+    assert id_token_claims(core.login(DB, "sup9", "sup-pass-99", mint)["token"])["hp"] == []
     rv = Revokes()
-    assert core.update_user(DB, ADMIN1, {"id": r["userId"], "permissions": ["schedule", "export"]}, rv)["ok"]
-    assert DB.collection("users").document(r["userId"]).get().to_dict()["permissions"] == ["schedule", "export"]
+    assert core.update_user(DB, ADMIN1, {"id": r3["userId"], "hourPerms": ["hours", "fix"]}, rv)["ok"] and rv
+    assert id_token_claims(core.login(DB, "sup9", "sup-pass-99", mint)["token"])["hp"] == ["hours", "fix"]
+    # An HR keeps its sections and gets the hours ticks beside them; staff gets no hp claim.
+    r4 = core.create_tenant_user(DB, ADMIN1, {"role": "hr", "username": "hr9", "password": "hr-pass-999", "fullName": "Hr Nine",
+                                              "permissions": ["workers"], "hourPerms": ["hours", "approve"]})
+    c4 = id_token_claims(core.login(DB, "hr9", "hr-pass-999", mint)["token"])
+    assert c4["perms"] == ["workers"] and c4["hp"] == ["hours", "approve"]
+    # Moving to staff drops the clientId; the list shows each login's ticks.
     assert core.update_user(DB, ADMIN1, {"id": r["userId"], "role": "staff", "permissions": "*"}, rv)["ok"]
-    u = DB.collection("users").document(r["userId"]).get().to_dict()
-    assert u["role"] == "staff" and u.get("clientId") is None
-    assert any(x["id"] == r2["userId"] and x["clientId"] == "c2" for x in core.list_users(DB, ADMIN1)["users"])
+    assert DB.collection("users").document(r["userId"]).get().to_dict().get("clientId") is None
+    users = {x["id"]: x for x in core.list_users(DB, ADMIN1)["users"]}
+    assert users[r2["userId"]]["clientId"] == "c2" and users[r3["userId"]]["hourPerms"] == ["hours", "fix"]
