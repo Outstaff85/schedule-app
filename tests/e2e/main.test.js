@@ -750,6 +750,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     for(let i = 0; i < 60 && document.querySelectorAll('.admin-users-rows > div').length < 2; i++) await new Promise(r => setTimeout(r, 150));
     return [...document.querySelectorAll('.admin-users-rows > div')].map(r => r.innerText.replace(/\s+/g, ' ')); });
   ok(ul.length >= 2 && /\(owner\)/.test(ul[0]) && ul.some(t => /\(client\)/.test(t) && /Site B/.test(t) && /Approve/.test(t)), 'users: the owner pinned first; a client login shows its client and ticks ' + JSON.stringify(ul.slice(0, 3)));
+  // A kept login opens the portal at once: the login screen never shows on a reload.
+  await p.reload({waitUntil: 'domcontentloaded'});
+  const flash = await p.evaluate(() => getComputedStyle(document.getElementById('loginScreen')).display);
+  ok(flash === 'none' && await waitFor(p, () => typeof __data !== 'undefined' && !!__data, 15000), 'client: a reload with a kept login shows no login screen ' + flash);
   ok(p.errs.length === 0 && q.errs.length === 0, 'client portal: no page errors ' + p.errs.concat(q.errs).join(' | '));
   await octx.close(); await ctx.close();
   // A client login on the main site goes to its portal.

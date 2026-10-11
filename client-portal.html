@@ -68,6 +68,7 @@ th{color:var(--text2);font-size:11px;}
 .lang-select.on-cover{position:absolute;top:max(env(safe-area-inset-top,0px),12px);right:12px;z-index:2;}
 .lang-select{background:var(--bg3);color:var(--text2);border:1px solid var(--border);border-radius:8px;padding:4px 6px;font:600 12px/1 inherit;cursor:pointer;width:auto;min-width:0;}
 html[lang="he"] *{letter-spacing:normal !important;}
+html.has-session #appRoot{display:block !important;}
 </style>
 </head>
 <body>
@@ -86,6 +87,12 @@ html[lang="he"] *{letter-spacing:normal !important;}
   </div>
 </div>
 
+<script>
+// A login kept on this device opens the portal at once — no flash of the
+// login screen while the Firebase sign-in is checked; gateApp() brings the
+// login back only when that sign-in is really gone.
+try{ if(localStorage.getItem('clientPortal_session')){ document.getElementById('loginScreen').style.display = 'none'; document.documentElement.classList.add('has-session'); } }catch(e){}
+</script>
 <div id="appRoot" style="display:none">
   <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 16px;border-bottom:1px solid var(--border)">
     <div style="min-width:0">
@@ -365,7 +372,10 @@ function shiftMonth(n){ __month = Math.min(0, __month + n); load(); }
 function switchTab(t){ __tab = t; render(); }
 
 async function gateApp(){
-  const s = getSession();
+  let s = getSession();
+  // The Firebase sign-in is gone (site data cleared, signed out): log in again.
+  if(s){ try{ if(!(await loadFirestoreBackend()).currentUser()){ localStorage.removeItem(SESSION_KEY); s = null; } }catch(e){} }
+  document.documentElement.classList.remove('has-session');  // the early open ends here
   document.getElementById('loginScreen').style.display = s ? 'none' : 'flex';
   document.getElementById('appRoot').style.display = s ? '' : 'none';
   placeLangSelect();

@@ -8,7 +8,7 @@ Who creates a supplier login and how: [admin.md](admin.md) → Users pane. The s
 
 - The session is kept in its own key `localStorage.supplierPortal_session`, so a manager login on the same browser is never touched. It holds `{uid, role, tenantId, supplierId, username}`; `getSession()` drops one without `uid` or with a role other than `supplier`.
 - **Login** (`submitLogin()`): `firestore-backend.js` `login()` through the `login` function, which signs the device in to Firebase; a role other than `supplier` is signed out again with "This login is not a supplier account".
-- **`gateApp()`** clears a session whose Firebase sign-in is gone, then shows the login screen or loads the data.
+- **Opening:** a small script right after the login screen hides it at once when a session is kept on this device (class `has-session` shows the app), so the login screen never flashes while Firebase restores the sign-in. **`gateApp()`** then clears a session whose Firebase sign-in is gone (and shows the login screen), or loads the data. The client portal opens the same way.
 - A supplier who signs in on the main site is brought here signed in (`goToSupplierPortal` in the manager app, [app-core.md](app-core.md) → Login).
 - **`logout()`** clears the session and signs out of Firebase.
 - **Requests:** `supplierCall(body)` posts to the `supplier` function (`SUPPLIER_FN_URL`, europe-west3) with `Authorization: Bearer <Firebase ID token>` and resolves with the JSON reply. Actions: `loadSchedule`, `loadPunchLog`, `supplierAddWorker`, `supplierUpdateWorker`, `supplierDeleteWorker`.
