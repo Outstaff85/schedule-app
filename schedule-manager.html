@@ -3483,6 +3483,7 @@ function showClientModal(c){
         <input type="number" id="cRadius" value="${c.radius||100}" placeholder="100"></div>
       <div id="cLocStatus" style="font-size:12px;min-height:18px;padding:4px 0;color:${c.lat?'var(--green)':'var(--text2)'}">${c.lat?locSetHtml(c.lat,c.lng):''}</div>
     </div>
+    ${editingClientId?`<div class="modal-actions"><button class="btn" type="button" style="background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)" onclick="punchFromClientModal()"><i class="ti ti-clock"></i> החתמה ידנית</button></div>`:''}
     <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px"><i class="ti ti-device-floppy"></i> ${editingClientId?'השינויים נשמרים בסגירת החלון':'הלקוח נוצר בסגירת החלון'}</div></div>`;
   // No Save button: a tap outside the window saves it (saveClient auto).
   const cov=document.getElementById('clientOverlay');
@@ -3729,6 +3730,13 @@ function saveClientBillRatePopup(){
   }
   syncClientBillFields();
   closeModal('clientBillOverlay');
+}
+// The manual punch from the client window: the window is saved first (as on a
+// tap outside), then the punch opens; closing it brings the client back.
+function punchFromClientModal(){
+  const cid=editingClientId; if(!cid) return;
+  saveClient({auto:true});
+  if(!document.getElementById('clientOverlay').classList.contains('open')) openManualPunch(cid);
 }
 // Saves the client modal. With {auto} (a tap outside — the modal has no Save
 // button): a new client without a name is not created, an unchanged client
@@ -4399,10 +4407,6 @@ function renderClientsPage(){
       </div>
 
       <div style="font-size:12px;color:var(--text2)"><strong style="color:var(--text)">${tr('Workers:')}</strong> ${assigned.length?assigned.map(w=>`<span style="color:${WORKER_COLORS[w.colorIdx%8].text}">${esc(w.name)}</span>`).join(', '):'None assigned'}</div>
-      <div class="client-card-actions">
-
-        <button class="btn sm" style="background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)" onclick="openManualPunch('${c.id}')"><i class="ti ti-clock"></i> ${tr('Punch Clock')}</button>
-      </div>
     </div>`;
   },{grid:true});
 }

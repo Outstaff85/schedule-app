@@ -563,10 +563,16 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await new Promise(r => setTimeout(r, 300));
     const c = clients.find(x => x.id === 'c1'), out = {noSave, closed: !document.getElementById('clientOverlay').classList.contains('open'), d: c.defaultHourlyRate, b: c.billRate};
     const n = clients.length; openAddClient(); tap(); await new Promise(r => setTimeout(r, 300)); out.noNew = clients.length === n;
+    // "Manual punch" from the client window: saves it, opens the punch; closing the punch brings the client back.
+    out.noPunchOnCard = !document.querySelector('#clientsGrid .client-card button[onclick*="openManualPunch"]');
+    openEditClient('c1'); punchFromClientModal(); await new Promise(r => setTimeout(r, 100));
+    out.punch = document.getElementById('manualPunchOverlay').classList.contains('open') && !document.getElementById('clientOverlay').classList.contains('open');
+    closeModal('manualPunchOverlay'); await new Promise(r => setTimeout(r, 200));
+    out.back = document.getElementById('clientOverlay').classList.contains('open'); closeModal('clientOverlay');
     Object.assign(c, keep); delete c.defaultOtRate; delete c.defaultShabbatRate; await gsSave(getDataObj());
     return out;
   });
-  ok(cs.noSave && cs.closed && cs.d === 52 && cs.b === 130 && cs.noNew, 'clients: no Save button, a tap outside saves; an empty new client is not created ' + JSON.stringify(cs));
+  ok(cs.noSave && cs.closed && cs.d === 52 && cs.b === 130 && cs.noNew && cs.noPunchOnCard && cs.punch && cs.back, 'clients: no Save button, a tap outside saves; an empty new client is not created; manual punch from the window and back ' + JSON.stringify(cs));
   await p.mouse.click(5, 450); await sleep(400);
   ok(external.filter(u=>/script\.google\.com/.test(u)).length === 0, 'no request to script.google.com');
   ok(p.errs.length === 0, 'owner: no page errors ' + p.errs.join(' | '));
