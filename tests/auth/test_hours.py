@@ -85,6 +85,10 @@ def test_approve_a_day_or_the_month_dispute_and_out_of_scope():
     r = hours.hours_action(DB, SUP, {"action": "dispute", "month": "2026-10", "workerId": "w1", "day": "2026-10-05", "comment": ""})
     assert r["days"] == {}
     assert hours.hours_action(DB, SUP, {"action": "dispute", "month": "2026-10", "workerId": "w2", "day": "2026-10-06", "comment": "x"})["error"] == "Bad day"
+    # A client reaches only the workers with punches at its site this month.
+    assert hours.hours_action(DB, CL, {"action": "dispute", "month": "2026-10", "workerId": "w2", "day": "2026-10-06", "comment": "x"})["error"] == "Bad day"
+    r = hours.hours_action(DB, CL, {"action": "approve", "month": "2026-10", "lines": ["w2|2026-10-06|09:00|"]})
+    assert r["days"] == {}
     # The supplier's and the client's reviews are separate documents.
     hours.hours_action(DB, CL, {"action": "approve", "month": "2026-10", "lines": ["w1|2026-10-05|08:00|17:00"]})
     docs = {d["id"]: d for d in hours.hours_action(DB, OWNER, {"action": "list", "month": "2026-10"})["docs"]}
@@ -103,6 +107,7 @@ def test_a_fix_changes_the_punches_only_when_a_manager_accepts_it():
     assert r["entry"]["status"] == "fixed" and r["entry"]["line"] == "w1|2026-10-05|08:00|15:00" and r["entry"]["resolvedBy"] == "Owner"
     out = P("a2").get().to_dict()
     assert out["time"] == "15:00" and out["ts"].astimezone(timezone.utc).hour == 12 and out["editedBy"] == "approval"
+    assert out["day"] == "2026-10-05" and out["date"] == "05/10/2026"
     # A second fix, rejected: the punches stay.
     hours.hours_action(DB, CL, {"action": "fix", "month": "2026-10", "workerId": "w1", "day": "2026-10-05",
                                 "line": "w1|2026-10-05|08:00|15:00", "inT": "07:00", "outT": "15:00"})
@@ -124,3 +129,11 @@ def test_a_fix_for_the_second_shift_of_a_day():
     r = hours.hours_action(DB, OWNER, {"action": "resolve", "docId": "client_c1_2026-10", "key": "w1|2026-10-05", "accept": True})
     assert r["entry"]["line"] == "w1|2026-10-05|08:00,18:00|17:00,21:00"
     assert P("a4").get().to_dict()["time"] == "21:00" and P("a2").get().to_dict()["time"] == "17:00"
+
+
+def test_list_tells_whether_an_hr_sees_only_its_own_workers():
+    hours.hours_action(DB, HR, {"action": "approve", "month": "2026-10", "lines": ["w1|2026-10-05|08:00|17:00"]})
+    doc = hours.hours_action(DB, OWNER, {"action": "list", "month": "2026-10"})["docs"][0]
+    assert doc["kind"] == "hr" and doc["ownOnly"] is True
+    DB.collection("users").document("u-hr").update({"ownOnly": False})
+    assert hours.hours_action(DB, OWNER, {"action": "list", "month": "2026-10"})["docs"][0]["ownOnly"] is False

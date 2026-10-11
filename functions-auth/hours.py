@@ -31,6 +31,7 @@ Actions (body.action):
   fix {month, workerId, day, line, shift?, inT, outT, comment}
                                 shift: which of the day's shifts (0 = the first)
   list {month}                  managers: every approval document of the month
+                                (an HR's also carries ownOnly)
   resolve {docId, key, accept}  managers: accept a proposed fix (the shift's
                                 punches get the new times) or reject it
 """
@@ -179,7 +180,14 @@ def hours_action(db, caller, body):
             if start is None:
                 return {"error": "Bad month"}
             q = t_ref.collection("hourApprovals").where(filter=FieldFilter("month", "==", start.strftime("%Y-%m")))
-            return {"docs": [dict(s.to_dict() or {}, id=s.id) for s in q.stream()]}
+            docs = [dict(s.to_dict() or {}, id=s.id) for s in q.stream()]
+            # An HR's scope: its own workers, or all of them when its "only own
+            # workers" is off — the page pairs the same punches for "changed".
+            for d in docs:
+                if d.get("kind") == "hr":
+                    u = db.collection("users").document(str(d.get("ownerId") or "")).get()
+                    d["ownOnly"] = ((u.to_dict() or {}).get("ownOnly") is not False) if u.exists else True
+            return {"docs": docs}
         return _resolve(db, t_ref, caller, body)
 
     kind, owner = scope_of(caller)
@@ -227,7 +235,12 @@ def hours_action(db, caller, body):
     need = {"approve": "approve", "dispute": "dispute", "fix": "fix"}[action]
     if need not in perms or "hours" not in perms:
         return {"error": E_NO_PERM}
-    allowed = None if kind == "client" else set(_scope_workers(t_ref, kind, owner, own))
+    if kind == "client":
+        # A client's workers are the ones with punches at its site this month
+        # (the load lists the same), never any worker id the page sends.
+        allowed = {str(e.get("workerId") or "") for e in _scope_punches(t_ref, kind, owner, own, [], start, nxt)}
+    else:
+        allowed = set(_scope_workers(t_ref, kind, owner, own))
     by = _caller_name(db, caller["uid"])
     name = _owner_name(db, t_ref, kind, owner)
     name = name[0] if isinstance(name, tuple) else name
@@ -320,9 +333,12 @@ def _resolve(db, t_ref, caller, body):
         if out_ts <= in_ts:
             out_ts += timedelta(days=1)  # a night shift ends the next day
         stamp = {"editedBy": "approval", "editedAt": _now()}
+        # day (YYYY-MM-DD) and date (DD/MM/YYYY, what the punch log shows)
+        # follow the new time: an out moved past midnight is on the next day.
+        out_local = out_ts.astimezone(TZ)
         p_in.reference.update(dict(stamp, time=entry["inT"], ts=in_ts))
         p_out.reference.update(dict(stamp, time=entry["outT"], ts=out_ts,
-                                    day=out_ts.astimezone(TZ).strftime("%Y-%m-%d")))
+                                    day=out_local.strftime("%Y-%m-%d"), date=out_local.strftime("%d/%m/%Y")))
         # The day's line with that shift's times replaced (the review compares lines).
         if len(old) == 4:
             ins, outs = old[2].split(","), old[3].split(",")

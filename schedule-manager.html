@@ -542,6 +542,24 @@
   .t3-ib{background:none;border:0;color:var(--text3);font-size:15px;cursor:pointer;padding:4px 6px;flex:none}
   .t3-ib:hover{color:var(--text)}
   .t3-line.off{opacity:.6}
+  /* Today (variant A): a section folds with the arrow at its right; a
+     figure picked as a filter is highlighted, the other sections hidden. */
+  .dash-sec{cursor:pointer;user-select:none}
+  .t3-chev{color:var(--text3);font-size:15px;margin-left:4px;transition:transform .15s}
+  .dash-fold>.t3-sec .t3-chev{transform:rotate(-90deg)}
+  .dash-fold>.t3-sec+div{display:none}
+  .dash-off{display:none!important}
+  .t3-stats>div.on{background:var(--bg3);border-radius:8px;box-shadow:inset 0 -2px 0 var(--accent)}
+  .t3-stats>div{padding:3px 6px;margin:-3px -6px}
+  .dash-filter-note{font-size:11px;color:var(--accent);margin:-8px 2px 8px}
+  .dash-filter-note a{color:inherit;text-decoration:underline;cursor:pointer}
+  /* Accounting's section head in one line (variant A): title, period as
+     text with its arrow, icon buttons; the search field opens under it. */
+  .acc-head{display:flex;align-items:center;gap:2px;margin-bottom:8px}
+  .acc-head-title{flex:1;min-width:0;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:4px;white-space:nowrap;overflow:hidden}
+  .acc-period{background:none;border:0;color:var(--accent);font-weight:600;font-size:13px;padding:4px 2px;outline:none;cursor:pointer;max-width:45%}
+  .acc-period option{background:var(--bg2);color:var(--text)}
+  .acc-search{width:100%;margin:0 0 10px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none}
   .t3-line.sub{margin-left:24px;padding:5px 8px 5px 10px;font-size:12px}
   .t3-sec .btn{margin-left:8px}
   /* A worker-modal field the scan left empty: tap it to search the scan for it. */
@@ -762,36 +780,38 @@ html[lang="he"] *{letter-spacing:normal !important;}
         </div>
       </div>
 
-      <!-- The day in figures (template 3); a tap on a figure jumps to its list. -->
+      <!-- The day in figures (template 3): a tap on a figure shows only its
+           list, a second tap (or "Show all") everything again (variant A). -->
       <div class="t3-stats" id="dashStats"></div>
+      <div id="dashFilterNote" class="dash-filter-note" style="display:none"></div>
 
       <!-- Missing from shift -->
-      <div id="dashMissingWrap">
-        <div class="t3-sec"><i class="ti ti-alert-triangle" style="color:var(--red)"></i> <span data-i18n>Should Be Here (Not Clocked In)</span><em id="dashMissingN"></em></div>
+      <div id="dashMissingWrap" data-sec="missing">
+        <div class="t3-sec dash-sec" onclick="toggleDashSec('missing')"><i class="ti ti-alert-triangle" style="color:var(--red)"></i> <span data-i18n>Should Be Here (Not Clocked In)</span><em id="dashMissingN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
         <div id="dashMissing"></div>
       </div>
 
       <!-- On-site now -->
-      <div id="dashOnSiteWrap">
-        <div class="t3-sec"><i class="ti ti-map-pin" style="color:var(--green)"></i> <span data-i18n>On Site Now</span><em id="dashOnSiteN"></em></div>
+      <div id="dashOnSiteWrap" data-sec="onsite">
+        <div class="t3-sec dash-sec" onclick="toggleDashSec('onsite')"><i class="ti ti-map-pin" style="color:var(--green)"></i> <span data-i18n>On Site Now</span><em id="dashOnSiteN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
         <div id="dashOnSite"></div>
       </div>
 
       <!-- Contract expiry warnings (hidden unless at least one worker is flagged) -->
-      <div style="display:none" id="dashExpiringWrap">
-        <div class="t3-sec"><i class="ti ti-id-badge" style="color:var(--amber)"></i> <span data-i18n>Work permit expiring</span><em id="dashExpiringN"></em></div>
+      <div style="display:none" id="dashExpiringWrap" data-sec="expiring">
+        <div class="t3-sec dash-sec" onclick="toggleDashSec('expiring')"><i class="ti ti-id-badge" style="color:var(--amber)"></i> <span data-i18n>Work permit expiring</span><em id="dashExpiringN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
         <div id="dashExpiring"></div>
       </div>
 
       <!-- Today's log -->
-      <div id="dashLogWrap">
-        <div class="t3-sec"><i class="ti ti-clipboard-text"></i> <span data-i18n>Today's Log</span><em id="dashLogN"></em></div>
+      <div id="dashLogWrap" data-sec="log">
+        <div class="t3-sec dash-sec" onclick="toggleDashSec('log')"><i class="ti ti-clipboard-text"></i> <span data-i18n>Today's Log</span><em id="dashLogN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
         <div id="dashLog"></div>
       </div>
 
       <!-- Workers by supplier (hidden when no supplier has workers) -->
-      <div id="dashSuppliersWrap">
-        <div class="t3-sec"><i class="ti ti-truck-delivery"></i> <span data-i18n>Workers by Supplier</span><em id="dashSuppliersN"></em></div>
+      <div id="dashSuppliersWrap" data-sec="suppliers">
+        <div class="t3-sec dash-sec" onclick="toggleDashSec('suppliers')"><i class="ti ti-truck-delivery"></i> <span data-i18n>Workers by Supplier</span><em id="dashSuppliersN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
         <div id="dashSuppliers"></div>
       </div>
       <div style="height:20px"></div>
@@ -1044,18 +1064,20 @@ html[lang="he"] *{letter-spacing:normal !important;}
 
       <!-- Salary: one row per worker with shifts in the period; the pay window edits (Worker pay merged in, 2026-10-11) -->
       <div id="accSecSalary" style="margin-bottom:24px">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-          <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:4px"><i class="ti ti-cash"></i> <span data-i18n><span data-i18n>Salary Calculation</span></span> <button type="button" class="acc-help" onclick="openAccountingHelp('salary')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;max-width:100%">
-            <input type="search" id="salarySearch" placeholder="Search a worker" data-i18n-placeholder="Search a worker" oninput="renderSalary()" style="width:150px;flex:1 1 120px;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:4px 8px;font-size:12px;outline:none">
-            <select id="salaryPeriod" onchange="onSalaryPeriodChange()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:4px 8px;font-size:12px;outline:none">
-              <option value="week" data-i18n>This Week</option>
-              <option value="month" data-i18n>This Month</option>
-              <option value="all" data-i18n>All Time</option>
-            </select>
-            <button class="btn sm perm-exports" onclick="openSalaryExportModal()"><i class="ti ti-upload"></i> <span data-i18n><span data-i18n>Export</span></span></button>
-          </div>
+        <!-- One line (variant A, user request 2026-10-11): the title, then the
+             period as text with ▾, a search icon (opens the field under it)
+             and the export icon. -->
+        <div class="acc-head">
+          <div class="acc-head-title"><i class="ti ti-cash"></i> <span data-i18n>Salary Calculation</span> <button type="button" class="acc-help" onclick="openAccountingHelp('salary')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
+          <select id="salaryPeriod" class="acc-period" onchange="onSalaryPeriodChange()">
+            <option value="week" data-i18n>This Week</option>
+            <option value="month" data-i18n>This Month</option>
+            <option value="all" data-i18n>All Time</option>
+          </select>
+          <button type="button" class="t3-ib" id="salarySearchBtn" onclick="toggleSalarySearch()" title="Search a worker" data-i18n-title="Search a worker"><i class="ti ti-search"></i></button>
+          <button type="button" class="t3-ib perm-exports" onclick="openSalaryExportModal()" title="Export" data-i18n-title="Export"><i class="ti ti-download"></i></button>
         </div>
+        <input type="search" id="salarySearch" class="acc-search" style="display:none" placeholder="Search a worker" data-i18n-placeholder="Search a worker" oninput="renderSalary()">
         <div id="dashSalary"></div>
       </div>
 
@@ -1073,7 +1095,11 @@ html[lang="he"] *{letter-spacing:normal !important;}
 
       <!-- Payable by supplier summary -->
       <div id="accSecPayable" style="margin-top:24px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-report-money"></i> <span data-i18n><span data-i18n>Payable by supplier</span></span> <button type="button" class="acc-help" onclick="openAccountingHelp('payable')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
+        <div class="acc-head">
+          <div class="acc-head-title"><i class="ti ti-report-money"></i> <span data-i18n>Payable by supplier</span> <button type="button" class="acc-help" onclick="openAccountingHelp('payable')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
+          <button type="button" class="t3-ib" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:tr('Payable by supplier'),filename:'payable-by-supplier',format:'excel'})" title="Excel"><i class="ti ti-file-spreadsheet"></i></button>
+          <button type="button" class="t3-ib" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:tr('Payable by supplier'),filename:'payable-by-supplier',format:'pdf'})" title="PDF"><i class="ti ti-file-type-pdf"></i></button>
+        </div>
         <div id="supplierPayableWrap"></div>
       </div>
 
@@ -2153,7 +2179,7 @@ function switchTab(tab){
   // pane would get silently reset back to Punch Log on every unrelated save.
   if(tab==='admin')      setupAdminPaneBar();
   if(tab==='dashboard')  renderDashboard();
-  if(tab==='accounting') renderAccounting();
+  if(tab==='accounting'){ __hourApprovalsCache=null; renderAccounting(); } // opening the tab reads the approvals afresh
 }
 
 // --- Week nav -----------------------------------------------------------------
@@ -6973,13 +6999,41 @@ function renderDashboard(){
         onclick:wc?`openWorkerCardById('${esc(wc.id)}')`:''});
     });
   }
-  // The figures on top: a tap scrolls to the list.
-  const stat=(n,label,col,target)=>`<div class="${n?'go':''}" ${n?`onclick="document.getElementById('${target}').scrollIntoView({behavior:'smooth',block:'start'})"`:''}><b style="color:${n?col:'var(--text3)'}">${n}</b>${esc(label)}</div>`;
-  document.getElementById('dashStats').innerHTML=stat(onSite.length,tr('on site'),'var(--green)','dashOnSiteWrap')
-    +stat(missing.length,tr('missing'),'var(--red)','dashMissingWrap')
-    +stat(expiring.length,tr('expiring'),'var(--amber)','dashExpiringWrap')
-    +stat(todayLog.length,tr('punches'),'var(--text)','dashLogWrap');
+  // The figures on top: a tap shows only that figure's list (dashFilterTo).
+  const stat=(n,label,col,key)=>`<div class="${n?'go':''}${__dashFilter===key?' on':''}" ${n||__dashFilter===key?`onclick="dashFilterTo('${key}')"`:''}><b style="color:${n?col:'var(--text3)'}">${n}</b>${esc(label)}</div>`;
+  document.getElementById('dashStats').innerHTML=stat(onSite.length,tr('on site'),'var(--green)','onsite')
+    +stat(missing.length,tr('missing'),'var(--red)','missing')
+    +stat(expiring.length,tr('expiring'),'var(--amber)','expiring')
+    +stat(todayLog.length,tr('punches'),'var(--text)','log');
   renderDashSuppliers();
+  applyDashView();
+}
+// Today, variant A (user request 2026-10-11): a figure is a filter — only
+// its section shows, opened, until the same figure or "Show all" is tapped;
+// each section folds with the arrow at its right (kept on this device).
+const DASH_FILTER_LABEL={onsite:'on site',missing:'missing',expiring:'expiring',log:'punches'};
+let __dashFilter=null;
+function dashFolded(){ try{ return JSON.parse(localStorage.getItem('dashFolded')||'[]'); }catch(e){ return []; } }
+function toggleDashSec(key){
+  if(__dashFilter===key) return; // the filtered section stays open
+  const f=dashFolded(), i=f.indexOf(key);
+  if(i<0) f.push(key); else f.splice(i,1);
+  try{ localStorage.setItem('dashFolded', JSON.stringify(f)); }catch(e){}
+  applyDashView();
+}
+function dashFilterTo(key){ __dashFilter=__dashFilter===key?null:key; renderDashboard(); window.scrollTo({top:0}); }
+function applyDashView(){
+  const folded=dashFolded();
+  document.querySelectorAll('#sectionDashboard [data-sec]').forEach(el=>{
+    const k=el.dataset.sec;
+    el.classList.toggle('dash-off', !!__dashFilter && k!==__dashFilter);
+    el.classList.toggle('dash-fold', k!==__dashFilter && folded.includes(k));
+  });
+  const note=document.getElementById('dashFilterNote');
+  if(note){
+    note.style.display=__dashFilter?'':'none';
+    note.innerHTML=__dashFilter?`${esc(tr('Showing: {0}',{0:tr(DASH_FILTER_LABEL[__dashFilter])}))} · <a onclick="dashFilterTo('${__dashFilter}')">${esc(tr('Show all'))}</a>`:'';
+  }
 }
 
 // ── Workers-by-supplier widget (Dashboard) ──────────────────────────────────
@@ -7155,6 +7209,14 @@ function salaryEntriesFor(period){
 // The Salary rows opened by a tap stay open through a redraw (a live punch,
 // a period change).
 const __salOpen=new Set();
+// The search icon opens the field (focused); emptied and closed again, the
+// list shows everyone.
+function toggleSalarySearch(){
+  const el=document.getElementById('salarySearch'); if(!el) return;
+  const open=el.style.display==='none';
+  el.style.display=open?'':'none';
+  if(open) el.focus(); else if(el.value){ el.value=''; renderSalary(); }
+}
 function toggleSalRow(el){ const id=el.dataset.wid; if(el.classList.toggle('open')) __salOpen.add(id); else __salOpen.delete(id); }
 function renderSalary(){
   fillSalaryPeriodSelect();
@@ -7337,10 +7399,6 @@ function renderSupplierPayable(entries){
   // expects — built here once so the export buttons below never recompute.
   __lastSupplierPayableRows = rows.map(r=>({ label:r.sup.name, hours:r.hours, rate:tr('commission'), total:r.total }));
   wrap.innerHTML=`
-    <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:6px">
-      <button class="btn sm" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:tr('Payable by supplier'),filename:'payable-by-supplier',format:'excel'})"><i class="ti ti-file-spreadsheet"></i> Excel</button>
-      <button class="btn sm" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:tr('Payable by supplier'),filename:'payable-by-supplier',format:'pdf'})"><i class="ti ti-file-type-pdf"></i> PDF</button>
-    </div>
     <div class="paged-supplierPayable"></div>`;
   renderPagedList(wrap.querySelector('.paged-supplierPayable'),'supplierPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,r=>t3Line({c:r.sup.color,
     av:`<div class="t3-av" style="background:${r.sup.color}22;color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></div>`, name:esc(r.sup.name),
@@ -7399,10 +7457,7 @@ function hourDayLines(doc, month){
   else{
     let ids=null;
     if(doc.kind==='supplier') ids=new Set(workers.filter(w=>w.supplierId===doc.ownerId).map(w=>w.id));
-    else{
-      const u=(loadAdminCache('users_'+activeTenantIdForAdmin())||[]).find(x=>x.uid===doc.ownerId);
-      if(!u||u.ownOnly!==false) ids=new Set(workers.filter(w=>w.hrId===doc.ownerId).map(w=>w.id));
-    }
+    else if(doc.ownOnly!==false) ids=new Set(workers.filter(w=>w.hrId===doc.ownerId).map(w=>w.id));
     pick=e=>!ids||ids.has(e.workerId);
   }
   const byW={};
@@ -7426,10 +7481,18 @@ const HOUR_ST={approved:['var(--green)','ti-circle-check','Approved'],fixed:['va
   fix:['var(--accent)','ti-pencil','Fix proposed'],rejected:['var(--red)','ti-circle-x','Fix rejected'],pending:['var(--text3)','ti-clock','Waiting for approval']};
 const HOUR_KIND={client:['ti-building-store','Client'],supplier:['ti-truck-delivery','Supplier'],hr:['ti-user-check','HR']};
 // The month's approval documents (the hours function, list) — every login's.
-async function hourApprovalsOf(month){
+// Kept for a minute per month: Accounting redraws on every punch, which must
+// not ask the server each time; opening the tab and an accept / reject
+// drop the copy, the accountant report always reads afresh (fresh).
+const HOUR_APPROVALS_TTL=60e3;
+let __hourApprovalsCache=null;
+async function hourApprovalsOf(month, fresh){
+  const c=!fresh&&__hourApprovalsCache, key=fsTenantId()+'|'+month;
+  if(c&&c.key===key&&Date.now()-c.at<HOUR_APPROVALS_TTL) return c.docs;
   const r=await hoursCall({action:'list', month, tenantId:fsTenantId()});
   if(r.error) throw new Error(r.error);
-  return r.docs||[];
+  __hourApprovalsCache={key, at:Date.now(), docs:r.docs||[]};
+  return __hourApprovalsCache.docs;
 }
 // One login's month: its counts and the days that need a look.
 function hourApprovalSummary(doc, month){
@@ -7475,6 +7538,7 @@ async function renderHourApprovals(period){
 async function resolveHourFix(docId, key, accept){
   if(accept && !confirm(tr('Move this shift to the proposed times?'))) return;
   const r=await hoursCall({action:'resolve', docId, key, accept, tenantId:fsTenantId()});
+  __hourApprovalsCache=null;
   if(r.error){ showToast(r.error); return; }
   showToast(accept?tr('Fix accepted — the punches were updated'):tr('Fix rejected'));
   // The punch listener brings the moved punches; the section redraws now.
@@ -7514,35 +7578,16 @@ async function renderPendingHours(){
     json = await res.json();
   }catch(e){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('Could not load')}</div>`; return; }
   const batches=(json.batches||[]).filter(b=>b.status==='pending');
-  if(!batches.length){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('Nothing pending')}</div>`; return; }
-  wrap.innerHTML=`
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-      <table style="width:100%;border-collapse:collapse;min-width:520px">
-        <thead>
-          <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">${tr('File')}</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">${tr('Uploaded by')}</th>
-            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)">${tr('Shifts')}</th>
-            ${canApprove?'<th style="padding:10px 12px"></th>':''}
-          </tr>
-        </thead>
-        <tbody class="pending-hours-rows"></tbody>
-      </table>
-      </div>
-    </div>`;
+  if(!batches.length){ wrap.innerHTML=`<div class="t3-empty">${tr('Nothing pending')}</div>`; return; }
+  // Template 3: a line per batch (amber: waiting) — the worker, the file and
+  // who sent it, the shift count; ✓ approve / ✕ reject at the right (owner).
+  wrap.innerHTML='<div class="pending-hours-rows"></div>';
   renderPagedList(wrap.querySelector('.pending-hours-rows'),'pendingHours','',batches,b=>{
-            const w = workers.find(x=>x.id===(b.entries[0]&&b.entries[0].workerId));
-            return `<tr style="border-bottom:1px solid var(--border)">
-              <td style="padding:10px 12px;font-size:13px">${esc(b.fileName||'—')}${w?' · '+esc(w.name):''}</td>
-              <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${esc(b.uploadedBy||'—')}</td>
-              <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600">${b.entries.length}</td>
-              ${canApprove?`<td style="padding:10px 12px;text-align:right;white-space:nowrap">
-                <button class="btn sm" style="color:var(--green)" onclick="approveHoursBatch('${b.batchId}')"><i class="ti ti-check"></i></button>
-                <button class="btn sm red" onclick="rejectHoursBatch('${b.batchId}')"><i class="ti ti-x"></i></button>
-              </td>`:''}
-            </tr>`;
-},{table:true,colspan:canApprove?4:3});
+    const w = workers.find(x=>x.id===(b.entries[0]&&b.entries[0].workerId)), id = esc(String(b.batchId||''));
+    return t3Line({c:'var(--amber)', av:t3Av(w), name:esc(w?w.name:(b.fileName||'—')),
+      sub:[esc(b.fileName||'—')+' · '+esc(b.uploadedBy||'—'), esc(b.entries.length===1?tr('1 shift'):tr('{n} shifts',{n:b.entries.length}))],
+      right:canApprove?`<button class="t3-ib" style="color:var(--green)" title="${esc(tr('Approve'))}" onclick="approveHoursBatch('${id}')"><i class="ti ti-check"></i></button><button class="t3-ib" style="color:var(--red)" title="${esc(tr('Reject'))}" onclick="rejectHoursBatch('${id}')"><i class="ti ti-x"></i></button>`:''});
+  });
 }
 async function approveHoursBatch(batchId){
   try{
@@ -7979,7 +8024,7 @@ async function exportAccountantReport(period){
   // A month: the hours approvals go in a sheet of their own.
   const month=salaryMonthOf(period);
   let approvals=null;
-  if(month){ try{ approvals=await hourApprovalsOf(month); }catch(e){ approvals=null; } }
+  if(month){ try{ approvals=await hourApprovalsOf(month, true); }catch(e){ approvals=null; } }
   const {byWorker}=salaryEntriesFor(period);
   const money=v=>Math.round((Number(v)||0)*100)/100, hrs=v=>Math.round((Number(v)||0)*100)/100;
   const head=['Worker','ID / Passport','Supplier','Pay mode','Rate','Days','Regular hours','Overtime hours','Shabbat hours','Total hours','Pay (₪)','Travel (₪)','Total (₪)','Bank','Branch','Account','Warnings'].map(h=>tr(h));

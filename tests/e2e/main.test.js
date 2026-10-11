@@ -147,6 +147,25 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const t3 = await p.evaluate(async () => { switchTab('dashboard'); await new Promise(r => setTimeout(r, 300));
     return {stats: document.querySelectorAll('#dashStats > div').length, lines: document.querySelectorAll('#sectionDashboard .t3-line').length}; });
   await p.screenshot({path: SP + '/t3-today.png'}).catch(()=>{});
+  // Today, variant A: a figure shows only its section; the arrow folds a section (kept); the salary search opens from its icon.
+  const tf = await p.evaluate(async () => {
+    const vis = id => getComputedStyle(document.getElementById(id)).display !== 'none';
+    const listShown = id => getComputedStyle(document.getElementById(id)).display !== 'none';
+    dashFilterTo('log');
+    const only = vis('dashLogWrap') && !vis('dashMissingWrap') && !vis('dashOnSiteWrap') && !vis('dashSuppliersWrap') && /Show all/.test(document.getElementById('dashFilterNote').innerText);
+    dashFilterTo('log');
+    const all = vis('dashSuppliersWrap') || vis('dashLogWrap');
+    document.querySelector('#dashLogWrap .dash-sec').click();
+    const folded = !listShown('dashLog'), kept = JSON.parse(localStorage.getItem('dashFolded') || '[]').includes('log');
+    document.querySelector('#dashLogWrap .dash-sec').click();
+    const open = listShown('dashLog');
+    switchTab('accounting'); await new Promise(r => setTimeout(r, 300));
+    const sr = document.getElementById('salarySearch'), hidden = sr.style.display === 'none';
+    toggleSalarySearch(); const shown = sr.style.display !== 'none'; toggleSalarySearch();
+    switchTab('dashboard');
+    return {only, all, folded, kept, open, hidden, shown, closed: sr.style.display === 'none'};
+  });
+  ok(Object.values(tf).every(Boolean), 'today: a figure filters to its section, the arrow folds one (kept); salary search opens from its icon ' + JSON.stringify(tf));
   await p.evaluate(async () => { switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await new Promise(r => setTimeout(r, 300)); });
   await p.screenshot({path: SP + '/t3-workers.png'}).catch(()=>{});
   await p.evaluate(async () => { switchTab('accounting'); const sel = document.getElementById('salaryPeriod'); sel.value = 'all'; await onSalaryPeriodChange();

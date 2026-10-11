@@ -694,7 +694,6 @@
   "Upload for approval": "שליחה לאישור",
   "Upload hours": "העלאת שעות",
   "Upload hours — {0}": "העלאת שעות — {0}",
-  "Uploaded by": "נשלח על ידי",
   "Uploading… {0}%": "מעלה… {0}%",
   "Use my location": "המיקום שלי",
   "Use this location": "שימוש במיקום זה",
@@ -935,5 +934,9 @@
   "No records today": "אין רשומות היום",
   "Unknown": "לא ידוע",
   "Reset: delete every error and measurement": "איפוס: מחיקת כל השגיאות והמדידות",
-  "Reset": "איפוס"
+  "Reset": "איפוס",
+  "Showing: {0}": "מוצג: {0}",
+  "Show all": "הצג הכול",
+  "1 shift": "משמרת אחת",
+  "{n} shifts": "{n} משמרות"
 }
