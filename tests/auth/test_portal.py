@@ -182,6 +182,7 @@ def test_supplier_worker_crud():
     wid = r["worker"]["id"]
     d = W(T1, wid).get().to_dict()
     assert d["name"] == "New Guy" and d["supplierId"] == "sp1" and d["clientIds"] == [] and "hourlyRate" not in d
+    assert d["createdAt"].endswith("Z") and r["worker"]["createdAt"] == d["createdAt"]  # the "NEW" badge
     r = portal.supplier_action(DB, SUP1, {"action": "supplierUpdateWorker", "workerId": wid,
                                           "worker": {"docSurname": "Man", "hourlyRate": 1, "supplierId": "sp2"}})
     d = W(T1, wid).get().to_dict()

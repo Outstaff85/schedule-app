@@ -53,6 +53,8 @@ Every text of the tab goes through the chosen language ([translations.md](transl
 1a. **Worker pay** — `renderWorkerPay()` into `#workerPayWrap` (below).
 2. **Per-client rates** — `renderRateMatrix()`.
 3. **Per-supplier rates** — `renderSupplierRateMatrix()`.
+
+   Both tables are turned off for now (`ACC_RATE_TABLES = false`, user request 2026-10-11): their sections are hidden and not drawn. Rates already set in them still count — a worker's per-client override (`w.clientRates`, tier 1 of `effectiveRates`) and the per-supplier commission (`w.supplierRates`); `true` shows them again.
 4. **Payable by supplier** — `renderSupplierPayable()`, called from `renderSalary()`.
    **Payable by HR** — `renderHrPayable()` (owner / super-admin, shown when the firm has HR logins): per HR, `commissionFor` with the HR's commission rates (its `commissionRate` and `commissionDayRate` when set) on the workers whose `hrId` is that HR; never a wage.
 5. **Billable by client** — `renderClientBillable()`, called from `renderSalary()`.
@@ -88,9 +90,9 @@ The per-worker and per-client figures come from `salaryEntriesFor(period)` → `
 The one place a worker's money is set; the worker modal, the worker card and Upload hours carry no rate, pay mode, travel or bank field ([workers.md](workers.md)).
 
 - **Cards:** one `.wcard` per worker (a new one with no shifts too) in a `.clients-grid`, searchable (`#workerPaySearch`), paged by 10. Each card: the name and the rate (the own rate ₪/h or ₪/day, else the client's in grey; a daily worker without one shows "set a daily rate"); for the period picked in Salary the days, hours, pay, travel and total (from `__lastSalaryEntries`, so `renderWorkerPay` runs after `renderSalary` and after each Salary edit), or "no shifts"; travel ₪/day + ₪/month; the bank, branch and account ("no bank details" in amber).
-- **Who edits:** `canEditPay(w)` — the firm owner, a super-admin, staff with the `accounting` permission, and an HR with `payEdit` ("Edit own workers' pay") for its own workers only ([hr.md](hr.md)). A tap on a card (`tap-edit`) opens `openPayModal(wid)`; the worker card's "Pay" button opens the same modal.
+- **Who edits:** `canEditPay(w)` — the firm owner, a super-admin, staff with the `accounting` permission, and an HR with `payEdit` ("Edit own workers' pay") for its own workers only ([hr.md](hr.md)). A double click (computer) or a long press (phone) on a card (`tap-edit`) opens `openPayModal(wid)`; the worker card's "Pay" button opens the same modal.
 - **Pay modal** (`#payOverlay`): Paid ₪/h | ₪/day (`payMode`, `onPayModeChange` hides OT / Shabbat for a daily worker); Rate (the own rate; empty = the client's, by the hour only); OT and Shabbat ₪/h (empty = law); Travel ₪/day (`travelAllowance`) and ₪/month (`travelMonthly`); bank, branch, account. `savePayModal` writes them (`regRate` cleared), `autoSave()`, redraws Accounting.
-- **HR** (`hrPayOnly()`): only its own workers' cards, bank details included; a tap opens the pay modal read-only (every field disabled, no Save), or editable with `payEdit`.
+- **HR** (`hrPayOnly()`): only its own workers' cards, bank details included; a double click (computer) or a long press (phone) opens the pay modal read-only (every field disabled, no Save), or editable with `payEdit`.
 - **Client rule** (`saveWorker`, [workers.md](workers.md)): adding a client that has a rate to an hourly worker with an own rate clears the own rate (`hourlyRate = 0`), so the new client's rate applies.
 
 ### Per-client rates (`renderRateMatrix()`)

@@ -585,7 +585,6 @@
   "Safari: Share → «Add to Home Screen»": "Safari: שיתוף ← «הוספה למסך הבית»",
   "Salary": "שכר",
   "Salary Calculation": "חישוב שכר",
-  "Salary calculation and per-client rates": "חישוב שכר ותעריפים",
   "Salary exported!": "השכר יוצא",
   "Salary — {period}": "שכר — {period}",
   "Sat": "שבת",
@@ -863,5 +862,11 @@
   "Total with travel ({t})": "סה״כ כולל נסיעות ({t})",
   "An estimate before deductions — your payslip is the final figure.": "הערכה לפני ניכויים — הסכום הסופי מופיע בתלוש השכר.",
   "Your pay rate is not set yet — ask your manager.": "תעריף השכר שלך עוד לא הוגדר — פנו למנהל.",
-  "My Hours and Pay": "השעות והשכר שלי"
+  "My Hours and Pay": "השעות והשכר שלי",
+  "NEW": "חדש",
+  "Added {0}": "נוסף ב-{0}",
+  "Hold (phone) or double-click (computer) to edit": "לעריכה: לחיצה ארוכה (בטלפון) או לחיצה כפולה (במחשב)",
+  "Double-click or hold to edit": "לעריכה: לחיצה כפולה או לחיצה ארוכה",
+  "Empty rate = the client's rate (by the hour only).": "תעריף ריק = התעריף של הלקוח (לפי שעה בלבד).",
+  "Salary calculation and payments": "חישוב שכר ותשלומים"
 }

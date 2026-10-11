@@ -44,7 +44,11 @@ def seed():
     t1.collection('workers').document('w1').set({'id': 'w1', 'name': 'Avi Cohen', 'token': 'tok-avi', 'clientIds': ['c1'], 'supplierId': 's-1',
         'hourlyRate': 50, 'docUrl': 'https://x/doc.pdf', 'docFileId': 'tenants/t/w/form101/x.pdf', 'colorIdx': 0, 'schedule': [], 'sortIndex': 0})
     t1.collection('workers').document('w2').set({'id': 'w2', 'name': 'Dana Levi', 'token': 'tok-dana', 'clientIds': ['c2'], 'hourlyRate': 40, 'colorIdx': 1, 'schedule': [], 'sortIndex': 1})
-    now = datetime.now(timezone.utc).replace(microsecond=0)
+    # E2E_NOW (run.sh: a Wednesday or Thursday from the 3rd, 12:00 UTC) — the
+    # browser's clock is set to it too, so "yesterday", "this week" and
+    # "this month" hold the same punches whatever day the tests run on.
+    now = (datetime.fromisoformat(os.environ['E2E_NOW'].replace('Z', '+00:00')) if os.environ.get('E2E_NOW')
+           else datetime.now(timezone.utc)).replace(microsecond=0)
     def punch(tref, pid, wid, name, typ, ts, cid):
         tref.collection('punches').document(pid).set({'id': pid, 'workerId': wid, 'workerName': name, 'type': typ,
             'time': ts.strftime('%H:%M'), 'ts': ts, 'day': ts.strftime('%Y-%m-%d'), 'site': '', 'clientId': cid,

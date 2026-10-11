@@ -63,7 +63,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
 - **View:** `getWorkersView()` returns `cards` unless `localStorage.workersView === 'list'`; `setWorkersView(v)` stores the choice.
   - Cards — `renderWorkerCards(box, list, groupBy, stMetaMap, sig)`. Each card shows avatar, name, status, contract and document badges, ID/passport, hours this month, clients, supplier, HR (owner / super-admin only: the HR login's name as a colored badge like the supplier's, `hrNameOf` / `hrColor` — a steady color picked from `CLIENT_COLORS` by the HR's uid), start date and document status. Hours come from `workersMonthHours()`, which parses the punch log once, splits it by worker and sums `getWorkerMonthShifts()` — the same shift pairing as payroll.
   - List — a table with columns Worker / Status / ID / Objects / Supplier / Phone / Start / actions (PDF download, delete). A tap on the row opens the worker card; a tap on the card opens the edit form.
-  - Clicking a card or row opens `openWorkerCard(wi)`.
+  - A tap on a card or row opens `openWorkerCard(wi)`; a double click / long press opens the edit form (`openEditWorker`).
 
 ## Badges and status helpers
 
@@ -75,6 +75,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
   - **failed:** `docUploadFailed`.
   
   Shown by `docStatusBadgeHtml(w)` (DOCS / ID EXPIRED / `<TYPE> EXPIRED` / UPLOAD FAILED; nothing when complete) and `docStatusSummaryHtml(w)`.
+- **NEW badge** — `newWorkerBadgeHtml(w)`: a green "NEW" next to the name for `NEW_WORKER_DAYS` (3) days after `w.createdAt` (set when the worker is added in the app or by a supplier in its portal; the tooltip gives the date). On the worker cards, the list rows and the worker card; the supplier portal's worker list has the same badge.
 - `docUploadFailedBadgeHtml(w)` — the older NO DOCUMENT badge, still used in the Schedule sidebar.
 - `parseDocDate(s)` reads `DD/MM/YYYY` (or `.`, `-`) and ISO dates.
 
@@ -89,7 +90,7 @@ Read-only summary, as flat icon + text rows:
 - notes;
 - the Documents section (`workerDocsSectionHtml(w)`).
 
-**Status** — three small pills right under the card's header, at the right (Active / Vacation / Inactive, a colored dot each, the chosen one filled; `setWorkerStatus(wi, v)` saves at once and redraws the card). Under them, also at the right, "נשמר: <date>" (`docSavedAt`, when the Form 101 was last saved). The "Documents: …" status line and the missing scan-field rows are the last lines of the card's details (after HR), right above the Documents section. Without the workers permission the card shows a plain status badge instead. Buttons: **Add document** (`openWorkerDocUpload`, only with `hasPermission('workers')`; the Documents section itself has no add button), Download document, **Upload hours** (with `hasPermission('workers')`) and **Export hours** (with `workers` and `exports`), **Pay** (with `canEditPay()`: closes the card and opens the pay modal, `openPayModal` — [accounting.md](accounting.md) → Worker pay). There is no Edit button: a tap anywhere on the card other than a button, link or field (`isPlainTap`) closes it and opens the edit form (`openEditWorker`).
+**Status** — three small pills right under the card's header, at the right (Active / Vacation / Inactive, a colored dot each, the chosen one filled; `setWorkerStatus(wi, v)` saves at once and redraws the card). Under them, also at the right, "נשמר: <date>" (`docSavedAt`, when the Form 101 was last saved). The "Documents: …" status line and the missing scan-field rows are the last lines of the card's details (after HR), right above the Documents section. Without the workers permission the card shows a plain status badge instead. Buttons: **Add document** (`openWorkerDocUpload`, only with `hasPermission('workers')`; the Documents section itself has no add button), Download document, **Upload hours** (with `hasPermission('workers')`) and **Export hours** (with `workers` and `exports`), **Pay** (with `canEditPay()`: closes the card and opens the pay modal, `openPayModal` — [accounting.md](accounting.md) → Worker pay). There is no Edit button: a long press (phone) or a double click (computer) anywhere on the card other than a button, link or field (`tapEdit` / `longPress`; a hint line at the bottom says so) closes it and opens the edit form (`openEditWorker`) — a plain tap only reads. Any window opened from the card (the edit form, Pay, Upload hours, …) brings the card back when it closes (`workerCardOverlay.__reopen`, by the worker's id — [app-core.md](app-core.md) → Back to the previous window).
 
 ## Worker modal (`showWorkerModal(w)`, `#workerModal`)
 

@@ -243,7 +243,8 @@
   /* Modal */
   .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:100;align-items:center;justify-content:center;}
   .overlay.open{display:flex;}
-  .tap-edit{cursor:pointer;} /* a tap opens the item's edit form (isPlainTap) */
+  .tap-edit{cursor:pointer;} /* a tap opens the item's card, a double click / long press its editor (tapEdit, longPress) */
+  @media (pointer:coarse){ .tap-edit{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;} #workerCardModal{-webkit-touch-callout:none;} }
   .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto;}
   .modal-title{font-size:19px;font-weight:600;color:var(--text);margin-bottom:18px;letter-spacing:-0.3px;}
   .salary-ro input,.salary-ro select{pointer-events:none;opacity:.85}
@@ -296,6 +297,8 @@
   .client-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;gap:10px;}
   .wc-row:hover{background:var(--bg3);}
   .client-card-header{display:flex;align-items:center;gap:10px;}
+  .client-card.tap-edit{position:relative}
+  .client-card.tap-edit .client-card-header{padding-right:22px}
   .client-card-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0;}
   .client-card-name{font-size:16px;font-weight:600;color:var(--text);}
   .client-card-info{font-size:14px;color:var(--text2);}
@@ -940,7 +943,7 @@ html[lang="he"] *{letter-spacing:normal !important;}
       <div class="page-header">
         <div>
           <div class="page-title"><i class="ti ti-cash"></i> <span data-i18n><span data-i18n>Accounting</span></span></div>
-          <div class="page-sub" data-i18n>Salary calculation and per-client rates</div>
+          <div class="page-sub" data-i18n>Salary calculation and payments</div>
         </div>
         <div class="view-toggle tables-view-toggle" role="group" aria-label="Layout">
             <button type="button" class="tvList" onclick="setTablesView('list')" title="List" data-i18n-title="List"><i class="ti ti-list"></i></button>
@@ -1767,6 +1770,15 @@ function workerDocStatus(w){
   return {level, missing, expiry, docExpiries, docExpired, failed, lines};
 }
 // Compact list/cards badge — nothing when documents are complete.
+// "NEW" next to a worker for 3 days after they were added (w.createdAt —
+// set when the manager app or the supplier portal creates the worker).
+// Duplicated on purpose in schedule-manager.html and supplier-portal.html.
+const NEW_WORKER_DAYS = 3;
+function newWorkerBadgeHtml(w){
+  const t = w && w.createdAt ? new Date(w.createdAt).getTime() : NaN;
+  if(!(Date.now() - t < NEW_WORKER_DAYS * 864e5)) return '';
+  return `<span class="new-badge" title="${esc(tr('Added {0}', {0: new Date(t).toLocaleDateString(uiLocale())}))}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--green-bg);color:var(--green);margin-left:5px;white-space:nowrap">${esc(tr('NEW'))}</span>`;
+}
 function docStatusBadgeHtml(w){
   const s=workerDocStatus(w);
   if(s.level==='ok') return '';
@@ -2114,7 +2126,7 @@ function renderWorkerList(){
   else if(sort==='status'){ const rank={active:0,vacation:1,fired:2}; list.sort((a,b)=>((rank[a.w.status||'active']??0)-(rank[b.w.status||'active']??0))||a.w.name.localeCompare(b.w.name)); }
   renderPagedList(el,'sideWorkers',sort,list,({w,wi})=>{
     const c=WORKER_COLORS[w.colorIdx%8],wh=workerTotalHours(w);
-    return `<div class="worker-chip tap-edit" onclick="if(isPlainTap(event,this))openEditWorker(${wi})">
+    return `<div class="worker-chip tap-edit" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))">
       <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${workerAvatarInner(w)}</div>
       <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">'+tr('INACTIVE')+'</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">'+tr('VAC')+'</span>':''}${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div><div class="worker-hours">${tr('{h}h',{h:(wh).toFixed(1)})}</div></div>
       <div class="worker-actions">
@@ -3444,21 +3456,15 @@ function showClientModal(c){
     </div>
     <div class="field"><label>אתר / סניף</label><input type="text" id="cObject" value="${esc(c.object||'')}" placeholder="שם האתר או הסניף"></div>
     <div class="field"><label>כתובת (לא חובה)</label><input type="text" id="cAddr" value="${esc(c.address||'')}" placeholder="כתובת"></div>
-    <div class="field">
-      <label><i class="ti ti-cash"></i> שכר העובד אצל לקוח זה (₪ לשעה)</label>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">כל העובדים אצל הלקוח מקבלים את התעריף הזה, אלא אם לעובד יש תעריף משלו.</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-        <div><label style="font-size:11px;color:var(--text3)">רגיל</label>
-          <input type="number" min="0" step="0.5" id="cDefRate" value="${c.defaultHourlyRate??''}" placeholder="—"></div>
-        <div><label style="font-size:11px;color:var(--text3)">שעות נוספות</label>
-          <input type="number" min="0" step="0.5" id="cDefOtRate" value="${c.defaultOtRate??''}" placeholder="—"></div>
-        <div><label style="font-size:11px;color:var(--text3)">שבת</label>
-          <input type="number" min="0" step="0.5" id="cDefShabRate" value="${c.defaultShabbatRate??''}" placeholder="—"></div>
-      </div>
+    <div class="field-row">
+      <div class="field"><label><i class="ti ti-cash"></i> שכר העובד (₪ לשעה)</label>
+        <input type="number" min="0" step="0.5" id="cDefRate" value="${c.defaultHourlyRate??''}" placeholder="—"></div>
+      <div class="field"><label><i class="ti ti-receipt"></i> תשלום הלקוח (₪ לשעה)</label>
+        <input type="number" min="0" step="0.5" id="cBillMain" value="${clientBillMain()??''}" placeholder="—" oninput="onClientBillMainInput(this.value)"></div>
     </div>
+    <div style="font-size:11px;color:var(--text3);margin:-6px 0 12px">שכר העובד חל על כל העובדים אצל הלקוח, אלא אם לעובד יש תעריף משלו; שעות נוספות ושבת לפי החוק. תשלום הלקוח לא משנה את שכר העובד.</div>
     <div class="field">
-      <label><i class="ti ti-receipt"></i> תשלום הלקוח לחברה (₪ לשעה)</label>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">כמה הלקוח משלם לנו. לא משנה את שכר העובד.</div>
+      <label>אופן חיוב הלקוח</label>
       <select id="cRateMode" onchange="onClientRateModeChange()" style="width:100%">
         <option value="tiered" ${__cBill.rateMode==='tiered'?'selected':''}>עם שעות נוספות ושבת (לפי החוק)</option>
         <option value="fixed" ${__cBill.rateMode==='fixed'?'selected':''}>תעריף קבוע (בלי תוספות)</option>
@@ -3654,6 +3660,19 @@ function saveMapPick(){
 let __cBill = { rateMode:'tiered', fixedBillRate:null, billRate:null, billOtRate:null, billShabbatRate:null };
 let __cBillPrevMode = 'tiered';
 const fmtRate=v=>(v==null||v==='')?null:('₪'+Number(v)+'/h');
+// The client's main billing rate (the one next to the worker rate in the
+// modal): the flat rate in fixed mode, the regular rate otherwise.
+function clientBillMain(){ return __cBill.rateMode==='fixed' ? __cBill.fixedBillRate : __cBill.billRate; }
+function onClientBillMainInput(v){
+  const n=(v===''||v==null)?null:(parseFloat(v)||0);
+  if(__cBill.rateMode==='fixed') __cBill.fixedBillRate=n; else __cBill.billRate=n;
+  const sum=document.getElementById('cBillSummary'); if(sum) sum.innerHTML=clientBillSummary();
+}
+// After the popup or a mode switch: the summary and the main rate input.
+function syncClientBillFields(){
+  const sum=document.getElementById('cBillSummary'); if(sum) sum.innerHTML=clientBillSummary();
+  const main=document.getElementById('cBillMain'); if(main) main.value=clientBillMain()??'';
+}
 function clientBillSummary(){
   const r=v=>'₪'+Number(v);
   const set=v=>v!=null&&v!=='';
@@ -3667,7 +3686,7 @@ function onClientRateModeChange(){
   const sel=document.getElementById('cRateMode');
   __cBillPrevMode=__cBill.rateMode;
   __cBill.rateMode = sel.value==='fixed' ? 'fixed' : 'tiered';
-  const sum=document.getElementById('cBillSummary'); if(sum) sum.innerHTML=clientBillSummary();
+  syncClientBillFields();
   openClientBillRatePopup(true);
 }
 function openClientBillRatePopup(fromModeChange){
@@ -3701,7 +3720,7 @@ function cancelClientBillRatePopup(revertMode){
   if(revertMode){
     __cBill.rateMode=__cBillPrevMode;
     const sel=document.getElementById('cRateMode'); if(sel) sel.value=__cBill.rateMode;
-    const sum=document.getElementById('cBillSummary'); if(sum) sum.innerHTML=clientBillSummary();
+    syncClientBillFields();
   }
   closeModal('clientBillOverlay');
 }
@@ -3712,7 +3731,7 @@ function saveClientBillRatePopup(){
   } else {
     __cBill.billRate=num('cbReg'); __cBill.billOtRate=num('cbOt'); __cBill.billShabbatRate=num('cbShab');
   }
-  const sum=document.getElementById('cBillSummary'); if(sum) sum.innerHTML=clientBillSummary();
+  syncClientBillFields();
   closeModal('clientBillOverlay');
 }
 function saveClient(){
@@ -3726,7 +3745,9 @@ function saveClient(){
   const radius=parseInt(document.getElementById('cRadius').value)||100;
   const mapsUrl=document.getElementById('cMapsUrl')?.value.trim()||'';
   const rateVal=id=>{ const v=document.getElementById(id)?.value; return (v===''||v==null)?null:(parseFloat(v)||0); };
-  const defaultHourlyRate=rateVal('cDefRate'), defaultOtRate=rateVal('cDefOtRate'), defaultShabbatRate=rateVal('cDefShabRate');
+  // The client card sets only the regular worker rate; OT and Shabbat follow
+  // the law from it (an older client's own OT / Shabbat rates are cleared).
+  const defaultHourlyRate=rateVal('cDefRate'), defaultOtRate=null, defaultShabbatRate=null;
   const {rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate}=__cBill;
   if(editingClientId){
     const idx=clients.findIndex(x=>x.id===editingClientId);
@@ -3794,13 +3815,13 @@ function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
     const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
     const sup=suppliers.find(s=>s.id===w.supplierId);
     const h=hours[w.id]||0;
-    return `<div class="wcard" onclick="openWorkerCard(${wi})">
+    return `<div class="wcard tap-edit" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))">
       ${hasPermission('workers')?`<button class="wcard-del" type="button" title="${tr('Delete worker')}" onclick="event.stopPropagation();deleteWorker(${wi})">✕</button>`:''}
       <div style="display:flex;align-items:center;gap:10px;padding-right:22px">
         <div style="width:38px;height:38px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div>
         <div style="min-width:0;flex:1">
           <div style="font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(w.name)}</div>
-          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${st.bg};color:${st.col}">${st.label}</span>${expiryBadgeHtml(w)}${docStatusBadgeHtml(w)}
+          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${st.bg};color:${st.col}">${st.label}</span>${newWorkerBadgeHtml(w)}${expiryBadgeHtml(w)}${docStatusBadgeHtml(w)}
         </div>
       </div>
       <div class="wcard-rows">
@@ -3896,8 +3917,8 @@ function renderWorkersPage(){
     const objBadges=objs.length?objs.map(o=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${o.color}22;border-radius:10px;margin-right:3px"><span style="width:6px;height:6px;border-radius:50%;background:${o.color}"></span>${esc(o.name)}</span>`).join(''):'<span style="color:var(--text3);font-size:12px">—</span>';
     const sup=suppliers.find(s=>s.id===w.supplierId);
     const supBadge=sup?`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${sup.color}22;border-radius:10px"><span style="width:6px;height:6px;border-radius:50%;background:${sup.color}"></span>${esc(sup.name)}</span>`:'<span style="color:var(--text3);font-size:12px">—</span>';
-    return `<tr onclick="openWorkerCard(${wi})" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background=''">
-      <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div><span style="font-size:13px;font-weight:600">${esc(w.name)}</span>${expiryBadgeHtml(w)}${docStatusBadgeHtml(w)}</div></td>
+    return `<tr class="tap-edit" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background=''">
+      <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div><span style="font-size:13px;font-weight:600">${esc(w.name)}</span>${newWorkerBadgeHtml(w)}${expiryBadgeHtml(w)}${docStatusBadgeHtml(w)}</div></td>
       <td style="padding:10px 12px"><span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col}">${stMeta.label}</span></td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2);font-family:monospace">${workerDocId(w)?esc(workerDocId(w)):'—'}</td>
       <td style="padding:10px 12px">${objBadges}</td>
@@ -3932,7 +3953,7 @@ function openWorkerCard(wi){
       <div style="width:52px;height:52px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:18px;font-weight:700;overflow:hidden;text-overflow:ellipsis">${esc(w.name)}</div>
-        ${hasPermission('workers')?'':`<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col};display:inline-block;margin-top:4px">${stMeta.label}</span>`}${docStatusBadgeHtml(w)}
+        ${hasPermission('workers')?'':`<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col};display:inline-block;margin-top:4px">${stMeta.label}</span>`}${newWorkerBadgeHtml(w)}${docStatusBadgeHtml(w)}
       </div>
       ${hasPermission('workers')?`<button class="btn sm" type="button" onclick="rescanFromWorkerCard(${wi})" style="flex-shrink:0"><i class="ti ti-scan"></i> ${w.docUrl?'סריקה חוזרת':'סרוק מסמך'}</button>`:''}
     </div>
@@ -3969,11 +3990,18 @@ function openWorkerCard(wi){
       ${hasPermission('workers')&&hasPermission('exports')?`<button class="btn sm" onclick="openHoursExportModal('${w.id}')"><i class="ti ti-file-export"></i> ${tr('Export hours')}</button>`:''}
     </div>`;
   pageWorkerDocs(document.getElementById('workerCardModal'),w.id);
-  // A tap on the card (not on one of its buttons or links) opens the edit form.
+  // A long press (phone) or a double click (mouse) on the card — not on one of
+  // its buttons or links — opens the edit form; a plain tap only reads.
   const cm=document.getElementById('workerCardModal');
-  cm.classList.add('tap-edit');
-  cm.onclick=e=>{ if(isPlainTap(e,cm)){ closeModal('workerCardOverlay'); openEditWorker(wi); } };
-  document.getElementById('workerCardOverlay').classList.add('open');
+  cm.insertAdjacentHTML('beforeend',`<div style="font-size:11px;color:var(--text3);text-align:center;margin-top:10px"><i class="ti ti-pencil"></i> ${esc(tr('Hold (phone) or double-click (computer) to edit'))}</div>`);
+  const edit=()=>{ closeModal('workerCardOverlay'); openEditWorker(workers.findIndex(x=>x.id===w.id)); };
+  cm.onclick=e=>tapEdit(e,cm,null,edit);
+  cm.onpointerdown=e=>longPress(e,cm,edit);
+  // Coming back to the card (a window opened from it was closed): drawn again
+  // from the current data, by id — nothing when the worker is gone.
+  const ov=document.getElementById('workerCardOverlay');
+  ov.__reopen=()=>{ const i=workers.findIndex(x=>x.id===w.id); if(i>=0) openWorkerCard(i); };
+  ov.classList.add('open');
 }
 
 // From the worker card: opens this worker's modal and the scan over it, so
@@ -4355,7 +4383,8 @@ function renderClientsPage(){
 
   renderPagedList(grid,'clients','',clients,c=>{
     const assigned=workers.filter(w=>(w.clientIds||[]).includes(c.id));
-    return `<div class="client-card tap-edit" onclick="if(isPlainTap(event,this))openEditClient('${c.id}')">
+    return `<div class="client-card tap-edit" onclick="tapEdit(event,this,null,()=>openEditClient('${c.id}'))" onpointerdown="longPress(event,this,()=>openEditClient('${c.id}'))">
+      <button class="wcard-del" type="button" title="${tr('Remove')}" aria-label="${tr('Remove')}" onclick="event.stopPropagation();deleteClient('${c.id}')">✕</button>
       <div class="client-card-header">
         <div class="client-card-dot" style="background:${c.color}"></div>
         <div><div class="client-card-name">${esc(c.name)}</div>${c.companyNumber?`<div class="client-card-info"><i class="ti ti-id"></i> ח.פ ${esc(c.companyNumber)}</div>`:''}${c.object?`<div class="client-card-info"><i class="ti ti-building"></i> ${esc(c.object)}</div>`:''}${c.address?`<div class="client-card-info"><i class="ti ti-map-pin"></i> ${esc(c.address)}</div>`:''}</div>
@@ -4365,7 +4394,6 @@ function renderClientsPage(){
       <div class="client-card-actions">
 
         <button class="btn sm" style="background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)" onclick="openManualPunch('${c.id}')"><i class="ti ti-clock"></i> ${tr('Punch Clock')}</button>
-        <button class="btn sm" onclick="deleteClient('${c.id}')" title="${tr('Remove')}" aria-label="${tr('Remove')}" style="color:#ff6b78;margin-left:auto"><i class="ti ti-trash"></i></button>
       </div>
     </div>`;
   },{grid:true});
@@ -4437,16 +4465,14 @@ function renderSuppliersPage(){
 
   renderPagedList(grid,'suppliers','',suppliers,s=>{
     const assigned=workers.filter(w=>w.supplierId===s.id);
-    return `<div class="client-card tap-edit" onclick="if(isPlainTap(event,this))openEditSupplier('${s.id}')">
+    return `<div class="client-card tap-edit" onclick="tapEdit(event,this,null,()=>openEditSupplier('${s.id}'))" onpointerdown="longPress(event,this,()=>openEditSupplier('${s.id}'))">
+      <button class="wcard-del" type="button" title="${tr('Remove')}" aria-label="${tr('Remove')}" onclick="event.stopPropagation();deleteSupplier('${s.id}')">✕</button>
       <div class="client-card-header">
         <div class="client-card-dot" style="background:${s.color}"></div>
         <div><div class="client-card-name">${esc(s.name)}</div>${s.companyNumber?`<div class="client-card-info"><i class="ti ti-id"></i> ח.פ ${esc(s.companyNumber)}</div>`:''}${s.phone?`<div class="client-card-info"><i class="ti ti-phone"></i> ${esc(s.phone)}</div>`:''}</div>
       </div>
       ${s.bank?`<div style="font-size:12px;color:var(--text2)"><i class="ti ti-building-bank"></i> ${esc(s.bank)}${s.bankBranch?' · branch '+esc(s.bankBranch):''}${s.accountNumber?' · '+esc(s.accountNumber):''}</div>`:''}
       <div style="font-size:12px;color:var(--text2)"><strong style="color:var(--text)">${tr('Workers:')}</strong> ${assigned.length?assigned.map(w=>`<span style="color:${WORKER_COLORS[w.colorIdx%8].text}">${esc(w.name)}</span>`).join(', '):'None assigned'}</div>
-      <div class="client-card-actions">
-        <button class="btn sm" onclick="deleteSupplier('${s.id}')" title="${tr('Remove')}" aria-label="${tr('Remove')}" style="color:#ff6b78;margin-left:auto"><i class="ti ti-trash"></i></button>
-      </div>
     </div>`;
   },{grid:true});
 }
@@ -4586,8 +4612,54 @@ function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 // control inside it (a button, link, field, or anything with its own onclick)
 // does that control's job instead, and selecting text doesn't count. The
 // same code is in schedule-manager.html and supplier-portal.html.
-function isPlainTap(e,container){
-  if(String((window.getSelection&&window.getSelection())||'')) return false;
+// Tap, double click, long press (user request 2026-10-11): a single tap on a
+// list item or card opens its card (tapFn) — never the editor; a double click
+// (computer) or a long press (phone, LONG_PRESS_MS; a move or scroll cancels
+// it) opens the edit form (editFn). With no tapFn a single tap only says how
+// to edit. Markup: onclick="tapEdit(event,this,tapFn,editFn)"
+// onpointerdown="longPress(event,this,editFn)" (class .tap-edit). With a mouse
+// and a tapFn the single click waits DBL_CLICK_MS to tell it from a double one.
+// The same helpers are in supplier-portal.html.
+const LONG_PRESS_MS=500, DBL_CLICK_MS=250;
+let __lp=null, __lpFiredAt=0, __editHintAt=0;
+function clearTextSel(){ try{ window.getSelection().removeAllRanges(); }catch(_){} }
+function tapEdit(e, el, tapFn, editFn){
+  if(Date.now()-__lpFiredAt<800) return;  // the click that ends a long press
+  if(e.detail>=2){
+    if(!isPlainTap(e,el,true)) return;
+    clearTimeout(el.__tapT); el.__tapT=null; clearTextSel();
+    if(editFn) editFn();
+    return;
+  }
+  if(!isPlainTap(e,el)) return;
+  if(!tapFn){
+    if(editFn && Date.now()-__editHintAt>4000){ __editHintAt=Date.now(); showToast(tr('Double-click or hold to edit')); }
+    return;
+  }
+  if(e.pointerType==='mouse' && editFn){ clearTimeout(el.__tapT); el.__tapT=setTimeout(()=>{ el.__tapT=null; tapFn(); },DBL_CLICK_MS); }
+  else tapFn();
+}
+function cancelLongPress(){
+  if(!__lp) return;
+  clearTimeout(__lp.timer); __lp.el.removeEventListener('pointermove',__lp.move); __lp=null;
+}
+function longPress(e, el, editFn){
+  if(!editFn || e.pointerType==='mouse' || !isPlainTap(e,el,true)) return;
+  cancelLongPress();
+  const x=e.clientX, y=e.clientY;
+  const move=ev=>{ if(Math.hypot(ev.clientX-x,ev.clientY-y)>10) cancelLongPress(); };
+  el.addEventListener('pointermove',move);
+  el.addEventListener('pointerup',cancelLongPress,{once:true});
+  el.addEventListener('pointercancel',cancelLongPress,{once:true});
+  el.addEventListener('contextmenu',ev=>{ if(__lp||Date.now()-__lpFiredAt<800) ev.preventDefault(); },{once:true});
+  __lp={el, move, timer:setTimeout(()=>{
+    cancelLongPress(); __lpFiredAt=Date.now(); clearTextSel();
+    try{ navigator.vibrate&&navigator.vibrate(15); }catch(_){}
+    editFn();
+  },LONG_PRESS_MS)};
+}
+function isPlainTap(e,container,anySelection){
+  if(!anySelection&&String((window.getSelection&&window.getSelection())||'')) return false;
   for(let n=e.target;n&&n!==container;n=n.parentElement){
     if(/^(BUTTON|A|INPUT|SELECT|TEXTAREA|LABEL)$/.test(n.tagName)||n.hasAttribute('onclick')) return false;
   }
@@ -4611,6 +4683,48 @@ document.addEventListener('click',e=>{
   if(!(t&&t.classList&&t.classList.contains('overlay')&&t.classList.contains('open')&&_overlayDownOn===t&&t.id)) return;
   if(typeof t.__onUserClose==='function') t.__onUserClose(); else closeModal(t.id);
 });
+
+// Back to the previous window (user request 2026-10-11): a window opened from
+// another one — the first closed and the second opened by the same action
+// (one batch of class changes, e.g. closeModal(a); openB()) — remembers it
+// (overlay.__returnTo). When it closes and no other window opens right after
+// (MODAL_CHAIN_MS), the previous one comes back — drawn again by its
+// __reopen() if it has one (the worker card), else shown as it was. Chains
+// stack: card → pay → … each go back one step. Watches the class of every
+// .overlay, so every way of opening and closing (closeModal, a tap outside,
+// __onUserClose) works.
+const MODAL_CHAIN_MS=250;
+let __lastModalClose=null, __reopeningModal=null;
+function reopenModal(id){
+  const el=document.getElementById(id); if(!el||el.classList.contains('open')) return;
+  __reopeningModal=id;
+  if(typeof el.__reopen==='function') el.__reopen(); else el.classList.add('open');
+  if(!el.classList.contains('open')) __reopeningModal=null;  // __reopen found nothing to show
+}
+new MutationObserver(recs=>{
+  const closedNow=[];
+  recs.forEach(r=>{
+    const el=r.target;
+    if(!(el.classList&&el.classList.contains('overlay')&&el.id)) return;
+    const wasOpen=/(^|\s)open(\s|$)/.test(r.oldValue||''), isOpen=el.classList.contains('open');
+    if(wasOpen===isOpen) return;
+    if(isOpen){
+      if(__lastModalClose&&Date.now()-__lastModalClose.at<MODAL_CHAIN_MS) __lastModalClose.followed=true;
+      if(__reopeningModal===el.id){ __reopeningModal=null; return; }  // coming back: keeps its own __returnTo
+      const prev=closedNow.filter(id=>id!==el.id&&!document.getElementById(id).classList.contains('open')).pop();
+      el.__returnTo=prev||null;
+    } else {
+      closedNow.push(el.id);
+      const rec={id:el.id, at:Date.now(), followed:false};
+      __lastModalClose=rec;
+      const back=el.__returnTo; el.__returnTo=null;
+      if(back) setTimeout(()=>{
+        if(rec.followed||document.querySelector('.overlay.open')) return;  // another window opened instead
+        reopenModal(back);
+      },60);
+    }
+  });
+}).observe(document.body,{subtree:true,attributes:true,attributeFilter:['class'],attributeOldValue:true});
 
 
 // --- Export dropdown ----------------------------------------------------------
@@ -4991,7 +5105,7 @@ function firmProfileMissing(profile){
 function firmProfileWarnInner(){
   const missing = firmProfileMissing();
   if(!missing.length) return '';
-  return `<div class="tap-edit" onclick="if(isPlainTap(event,this))openMyFirmForm()" style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;border:1px solid #ffb020;border-radius:var(--radius-sm);background:rgba(255,176,32,0.08);font-size:12px;line-height:1.5;color:var(--text2)">
+  return `<div class="tap-edit" onclick="tapEdit(event,this,null,openMyFirmForm)" onpointerdown="longPress(event,this,openMyFirmForm)" style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;border:1px solid #ffb020;border-radius:var(--radius-sm);background:rgba(255,176,32,0.08);font-size:12px;line-height:1.5;color:var(--text2)">
     <i class="ti ti-alert-triangle" style="color:#ffb020;font-size:15px"></i>
     <div style="flex:1;min-width:180px">The firm profile is incomplete — these stay empty in Form 101 (section א «פרטי המעסיק»): <b>${esc(missing.join(', '))}</b>.</div>
   </div>`;
@@ -5168,7 +5282,7 @@ async function renderOwnFirmCard(listEl){
     const missing = firmProfileMissing(p);
     const addr = [[p.street, p.streetNumber].filter(Boolean).join(' '), p.city].filter(Boolean).join(', ');
     const row = (k, v) => `<div style="display:flex;gap:8px;font-size:13px"><span style="color:var(--text3);min-width:130px">${k}</span><span>${v ? esc(v) : '<span style="color:#ffb020">—</span>'}</span></div>`;
-    listEl.innerHTML = `<div class="tap-edit" onclick="if(isPlainTap(event,this))openMyFirmForm()" style="padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:6px">
+    listEl.innerHTML = `<div class="tap-edit" onclick="tapEdit(event,this,null,openMyFirmForm)" onpointerdown="longPress(event,this,openMyFirmForm)" style="padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:6px">
       ${row(tr('Company name'), p.companyName)}${row('מספר תיק ניכויים', p.deductionsFileNumber)}${row(tr('Phone'), p.phone)}${row(tr('Address'), addr)}
       ${missing.length ? `<div style="font-size:12px;color:#ffb020"><i class="ti ti-alert-triangle"></i> ${tr('Empty in Form 101: {0}',{0:(esc(missing.join(', ')))})}</div>` : `<div style="font-size:12px;color:var(--green)"><i class="ti ti-check"></i> ${tr('Everything Form 101 needs is filled in')}</div>`}
     </div>`;
@@ -5345,7 +5459,7 @@ function renderAdminUsersRows(el, users){
       const permsLabel = (u.role!=='staff' && u.role!=='hr') ? '' : (u.permissions==='*' ? 'Full access' : (Array.isArray(u.permissions)?u.permissions.join(', '):'—'));
       const hrLine = u.role==='hr' ? `<div style="font-size:12px;color:var(--text2)">${(hrWorkerCount(u.id)===1?tr('1 worker{1}',{1:(u.ownOnly===false?' · '+tr('sees all workers'):'')}):tr('{0} workers{1}',{0:(hrWorkerCount(u.id)),1:(u.ownOnly===false?' · '+tr('sees all workers'):'')}))}</div>`
         : u.role==='supplier' && u.supplierId ? `<div style="font-size:12px;color:var(--text2)">${(n => n===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:n,1:''}))(workers.filter(w => w.supplierId===u.supplierId).length)}</div>` : '';
-      return `<div class="tap-edit" onclick="if(isPlainTap(event,this))openEditUserForm('${esc(u.id)}')" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);${u.active===false?'opacity:0.55':''}">
+      return `<div class="tap-edit" onclick="tapEdit(event,this,null,()=>openEditUserForm('${esc(u.id)}'))" onpointerdown="longPress(event,this,()=>openEditUserForm('${esc(u.id)}'))" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);${u.active===false?'opacity:0.55':''}">
         <div>
           <div style="font-weight:600">${esc(u.fullName||u.username)} <span style="font-size:11px;font-weight:400;color:var(--text2)">(${esc(tr(USER_ROLE_LABELS[u.role]||u.role))})</span>${u.active===false?' <span style="font-size:11px;color:#ffb020">'+tr('inactive')+'</span>':''}</div>
           <div style="font-size:11px;color:var(--text3)">${tr('login: {0}{1}',{0:(esc(u.username)),1:(u.phone?' · '+esc(u.phone):'')})}</div>
@@ -6692,20 +6806,23 @@ function renderDashSuppliers(){
     </div>`,{grid:true});
 }
 
+// Per-client and per-supplier rate tables in Accounting: turned off for now
+// (user request 2026-10-11). Rates already set in them still count in pay
+// and commission (effectiveRates, w.supplierRates); true shows them again.
+const ACC_RATE_TABLES=false;
 function renderAccounting(){
   // An HR that only sees its own workers' pay: Salary and nothing else.
   const payOnly=hrPayOnly();
   ['accSecRates','accSecSupplierRates','accSecPayable','accSecBillable','accSecPending'].forEach(id=>{
-    const el=document.getElementById(id); if(el) el.style.display=payOnly?'none':'';
+    const el=document.getElementById(id); if(el) el.style.display=(payOnly||(!ACC_RATE_TABLES&&(id==='accSecRates'||id==='accSecSupplierRates')))?'none':'';
   });
   if(payOnly){ const ex=document.querySelector('#sectionAccounting .perm-exports'); if(ex) ex.style.display='none'; }
   const sub=document.querySelector('#sectionAccounting .page-sub');
-  if(sub) sub.textContent=payOnly?tr('Your workers\' hours, pay and your commission'):tr('Salary calculation and per-client rates');
+  if(sub) sub.textContent=payOnly?tr('Your workers\' hours, pay and your commission'):tr('Salary calculation and payments');
   renderSalary();
   renderWorkerPay();
   if(payOnly) return;
-  renderRateMatrix();
-  renderSupplierRateMatrix();
+  if(ACC_RATE_TABLES){ renderRateMatrix(); renderSupplierRateMatrix(); }
   renderPendingHours();
 }
 
@@ -7352,7 +7469,7 @@ function renderWorkerPay(){
     const period=e
       ? `${esc(periodLbl)}: ${esc((e.daysUsed===1?tr('1 day · {h} h · pay {pay} · travel {travel}',{n:e.daysUsed,h:Math.round(e.hours*100)/100,pay:money(e.total),travel:money(e.travel)}):tr('{n} days · {h} h · pay {pay} · travel {travel}',{n:e.daysUsed,h:Math.round(e.hours*100)/100,pay:money(e.total),travel:money(e.travel)})))} · <b style="color:var(--text)">${esc(tr('total {t}',{t:money(e.total+e.travel)}))}</b>`
       : `<span style="color:var(--text3)">${esc(periodLbl)}: ${esc(tr('no shifts'))}</span>`;
-    return `<div class="wcard tap-edit" onclick="if(isPlainTap(event,this))openPayModal('${esc(w.id)}')" title="${edit?esc(tr('Edit pay')):esc(tr('View pay'))}">
+    return `<div class="wcard tap-edit" onclick="tapEdit(event,this,null,()=>openPayModal('${esc(w.id)}'))" onpointerdown="longPress(event,this,()=>openPayModal('${esc(w.id)}'))" title="${edit?esc(tr('Edit pay')):esc(tr('View pay'))}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <div style="font-weight:600;font-size:14px">${esc(w.name||'')}</div>
         <div style="font-size:12px;font-weight:600;white-space:nowrap">${rate}</div>
@@ -7382,7 +7499,7 @@ function openPayModal(wid){
       <div class="field"><label>${esc(tr('OT ₪/h'))}</label><input type="number" id="payOt" min="0" step="0.5" value="${v(w.otRate)}" placeholder="${esc(tr('law ×{m}',{m:PAY_RULES.otMult}))}"></div>
       <div class="field"><label>${esc(tr('Shabbat ₪/h'))}</label><input type="number" id="payShab" min="0" step="0.5" value="${v(w.shabbatRate)}" placeholder="${esc(tr('law ×{m}',{m:PAY_RULES.shabbatMult}))}"></div>
     </div>
-    <div style="font-size:11px;color:var(--text3);margin:-4px 0 8px">${esc(tr("Empty rate = the client's rate (by the hour only). A rate at one client only is set in Per-client rates."))}</div>
+    <div style="font-size:11px;color:var(--text3);margin:-4px 0 8px">${esc(ACC_RATE_TABLES?tr("Empty rate = the client's rate (by the hour only). A rate at one client only is set in Per-client rates."):tr("Empty rate = the client's rate (by the hour only)."))}</div>
     <div class="form-section">${esc(tr('Travel'))}</div>
     <div class="field-row">
       <div class="field"><label>${esc(tr('Travel ₪/day'))}</label><input type="number" id="payTravelDay" min="0" step="0.5" value="${Number(w.travelAllowance)>0?esc(w.travelAllowance):''}" placeholder="0"></div>
@@ -7839,7 +7956,7 @@ function renderClientLogs(){
           <div style="font-size:11px;color:var(--text3)">${tr('{0} records',{0:(wLog.length)})}</div>
         </div>
         ${recent.length?`<div style="display:flex;flex-direction:column;gap:3px">${recent.map(e=>`
-          <div class="tap-edit" onclick="if(isPlainTap(event,this))editPunchEntry(${e.id})" style="display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 8px;border-radius:5px;background:var(--bg2)">
+          <div class="tap-edit" onclick="tapEdit(event,this,null,()=>editPunchEntry(${e.id}))" onpointerdown="longPress(event,this,()=>editPunchEntry(${e.id}))" style="display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 8px;border-radius:5px;background:var(--bg2)">
             <span style="font-weight:700;padding:2px 8px;border-radius:10px;font-size:11px;${e.type==='in'?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${e.type==='in'?tr('IN'):tr('OUT')}</span>
             <span style="font-family:monospace;color:var(--text)">${e.time||'--'}</span>
             <span style="color:var(--text2)">${new Date(e.ts).toLocaleDateString('en-GB')}</span>
@@ -8014,7 +8131,7 @@ function renderAdmin(){
     const dateStr=new Date(e.ts).toLocaleDateString('en-GB');
     const wClients=wc?clients.filter(cl=>(wc.clientIds||[]).includes(cl.id)):[];
     const clientBadge=wClients.map(cl=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${cl.color}22;border-radius:10px;white-space:nowrap"><span style="width:6px;height:6px;border-radius:50%;background:${cl.color};flex-shrink:0"></span>${esc(cl.name)}</span>`).join(' ');
-    return `<tr class="tap-edit" onclick="if(isPlainTap(event,this))editPunchEntry(${e.id})" style="border-bottom:1px solid var(--border);${i%2===0?'background:rgba(255,255,255,0.01)':''}">
+    return `<tr class="tap-edit" onclick="tapEdit(event,this,null,()=>editPunchEntry(${e.id}))" onpointerdown="longPress(event,this,()=>editPunchEntry(${e.id}))" style="border-bottom:1px solid var(--border);${i%2===0?'background:rgba(255,255,255,0.01)':''}">
       <td style="padding:10px 12px;white-space:nowrap"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><span style="font-size:13px;font-weight:600">${esc(e.workerName)||'Unknown'}</span></div></td>
       <td style="padding:10px 12px">${clientBadge||'<span style="color:var(--text3);font-size:12px">—</span>'}</td>
       <td style="padding:10px 12px"><span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;${e.type==='in'?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${e.type==='in'?tr('IN'):tr('OUT')}</span></td>

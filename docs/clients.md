@@ -13,7 +13,7 @@ Global `clients` array. It is saved with the schedule; each client is one docume
 | `object` | object / branch name, shown next to the name |
 | `address` | |
 | `lat`, `lng`, `radius` (m, default 100), `mapsUrl` | geofence for the worker punch page |
-| `defaultHourlyRate`, `defaultOtRate`, `defaultShabbatRate` | **worker pay** default at this client, for workers without a rate of their own (tier 3 of `effectiveRates()`, see [accounting.md](accounting.md)) |
+| `defaultHourlyRate`, `defaultOtRate`, `defaultShabbatRate` | **worker pay** default at this client, for workers without a rate of their own (tier 3 of `effectiveRates()`, see [accounting.md](accounting.md)); the client card sets only `defaultHourlyRate` and saves the other two empty (OT / Shabbat by the law) |
 | `rateMode` | `tiered` (default) or `fixed` — how the **client is billed** |
 | `billRate`, `billOtRate`, `billShabbatRate` | billing rates for `tiered` (empty OT/Shabbat = law tiers) |
 | `fixedBillRate` | billing rate for `fixed` |
@@ -23,20 +23,19 @@ Worker pay and client billing are separate sets of fields. Billing never changes
 
 ## Clients tab (`#sectionClients`)
 
-`renderClientsPage()` draws a card per client in `#clientsGrid`. Each card shows the name, ח.פ, object, address and the names of the assigned workers (workers whose `clientIds` include it), with two buttons: **Punch Clock** (manual punch) and **Remove**. A tap anywhere else on the card opens its edit form (`isPlainTap` → `openEditClient`).
+`renderClientsPage()` draws a card per client in `#clientsGrid`. Each card shows the name, ח.פ, object, address and the names of the assigned workers (workers whose `clientIds` include it), with a **Punch Clock** button (manual punch) and a ✕ in the top corner that removes the client (`.wcard-del`, the same as on a worker card). A double click (computer) or a long press (phone) anywhere else on the card opens its edit form (`tapEdit` / `longPress` → `openEditClient`); a single tap only says so.
 
 ## Client modal (`showClientModal(c)`, `#clientModal`)
 
 `openAddClient()` / `openEditClient(cid)` set `editingClientId` and the color, then open the modal. The modal and its billing-rate popup are in Hebrew, right to left (per user request 2026-10-04).
 
 - **Fields:** שם הלקוח, ח.פ, אתר / סניף, כתובת.
-- **Worker pay at this client** ("שכר העובד אצל לקוח זה"): the three default rates (Regular / OT / Shabbat) every worker at this client gets unless the worker has an own rate for it.
-- **What the client pays the firm** ("תשלום הלקוח לחברה") — the billing mode below; never changes a worker's pay.
+- **One line, two rates** (`.field-row`): **worker pay** ("שכר העובד", `#cDefRate` → `defaultHourlyRate`) — the regular ₪/h every worker at this client gets unless the worker has an own rate; OT and Shabbat always follow the law from it (saving the card clears an older client's `defaultOtRate` / `defaultShabbatRate`) — and **what the client pays the firm** ("תשלום הלקוח", `#cBillMain`): the main billing rate (`clientBillMain()`: `fixedBillRate` in fixed mode, else `billRate`), typed straight in (`onClientBillMainInput`); never changes a worker's pay.
 - **Client billing mode** (`#cRateMode`):
   - picking a mode (`onClientRateModeChange()`) opens the billing-rate popup at once (`openClientBillRatePopup(true)`):
     - `fixed` → one flat ₪/h (`cbFixed`);
     - `tiered` → Regular / OT / Shabbat (`cbReg`, `cbOt`, `cbShab`);
-  - values are kept in `__cBill` while the modal is open, summarized by `clientBillSummary()`, and edited again through "עריכה";
+  - values are kept in `__cBill` while the modal is open, summarized by `clientBillSummary()`, and edited again through "עריכה" (the billing OT / Shabbat rates live only in this popup); `syncClientBillFields()` refreshes the summary and `#cBillMain` after the popup or a mode switch;
   - `saveClientBillRatePopup()` stores them;
   - `cancelClientBillRatePopup(true)` (cancelling a popup opened by a mode switch) puts the previous mode back (`__cBillPrevMode`);
   - `__cBill.billRate` falls back to `defaultHourlyRate` for clients saved before `billRate` existed.

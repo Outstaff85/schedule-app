@@ -37,7 +37,8 @@ body{padding-bottom:40px;}
 #sendHoursRows input{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:6px 8px;font-size:13px;outline:none;}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:500;padding:16px;}
 .overlay.open{display:flex;}
-.tap-edit{cursor:pointer;} /* a tap opens the item's edit form (isPlainTap) */
+.tap-edit{cursor:pointer;} /* a double click / long press opens the item's editor (tapEdit, longPress) */
+@media (pointer:coarse){ .tap-edit{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;} }
 .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:20px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto;}
 .modal-title{font-size:16px;font-weight:700;margin-bottom:14px;}
 .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap;}
@@ -317,8 +318,54 @@ function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 // control inside it (a button, link, field, or anything with its own onclick)
 // does that control's job instead, and selecting text doesn't count. The
 // same code is in schedule-manager.html and supplier-portal.html.
-function isPlainTap(e,container){
-  if(String((window.getSelection&&window.getSelection())||'')) return false;
+// Tap, double click, long press (user request 2026-10-11): a single tap on a
+// list item or card opens its card (tapFn) — never the editor; a double click
+// (computer) or a long press (phone, LONG_PRESS_MS; a move or scroll cancels
+// it) opens the edit form (editFn). With no tapFn a single tap only says how
+// to edit. Markup: onclick="tapEdit(event,this,tapFn,editFn)"
+// onpointerdown="longPress(event,this,editFn)" (class .tap-edit). With a mouse
+// and a tapFn the single click waits DBL_CLICK_MS to tell it from a double one.
+// The same helpers are in supplier-portal.html.
+const LONG_PRESS_MS=500, DBL_CLICK_MS=250;
+let __lp=null, __lpFiredAt=0, __editHintAt=0;
+function clearTextSel(){ try{ window.getSelection().removeAllRanges(); }catch(_){} }
+function tapEdit(e, el, tapFn, editFn){
+  if(Date.now()-__lpFiredAt<800) return;  // the click that ends a long press
+  if(e.detail>=2){
+    if(!isPlainTap(e,el,true)) return;
+    clearTimeout(el.__tapT); el.__tapT=null; clearTextSel();
+    if(editFn) editFn();
+    return;
+  }
+  if(!isPlainTap(e,el)) return;
+  if(!tapFn){
+    if(editFn && Date.now()-__editHintAt>4000){ __editHintAt=Date.now(); showToast(tr('Double-click or hold to edit')); }
+    return;
+  }
+  if(e.pointerType==='mouse' && editFn){ clearTimeout(el.__tapT); el.__tapT=setTimeout(()=>{ el.__tapT=null; tapFn(); },DBL_CLICK_MS); }
+  else tapFn();
+}
+function cancelLongPress(){
+  if(!__lp) return;
+  clearTimeout(__lp.timer); __lp.el.removeEventListener('pointermove',__lp.move); __lp=null;
+}
+function longPress(e, el, editFn){
+  if(!editFn || e.pointerType==='mouse' || !isPlainTap(e,el,true)) return;
+  cancelLongPress();
+  const x=e.clientX, y=e.clientY;
+  const move=ev=>{ if(Math.hypot(ev.clientX-x,ev.clientY-y)>10) cancelLongPress(); };
+  el.addEventListener('pointermove',move);
+  el.addEventListener('pointerup',cancelLongPress,{once:true});
+  el.addEventListener('pointercancel',cancelLongPress,{once:true});
+  el.addEventListener('contextmenu',ev=>{ if(__lp||Date.now()-__lpFiredAt<800) ev.preventDefault(); },{once:true});
+  __lp={el, move, timer:setTimeout(()=>{
+    cancelLongPress(); __lpFiredAt=Date.now(); clearTextSel();
+    try{ navigator.vibrate&&navigator.vibrate(15); }catch(_){}
+    editFn();
+  },LONG_PRESS_MS)};
+}
+function isPlainTap(e,container,anySelection){
+  if(!anySelection&&String((window.getSelection&&window.getSelection())||'')) return false;
   for(let n=e.target;n&&n!==container;n=n.parentElement){
     if(/^(BUTTON|A|INPUT|SELECT|TEXTAREA|LABEL)$/.test(n.tagName)||n.hasAttribute('onclick')) return false;
   }
@@ -686,6 +733,16 @@ function renderDashboard(){
   });
 }
 
+// "NEW" next to a worker for 3 days after they were added (w.createdAt —
+// set when the manager app or the supplier portal creates the worker).
+// Duplicated on purpose in schedule-manager.html and supplier-portal.html.
+const NEW_WORKER_DAYS = 3;
+function newWorkerBadgeHtml(w){
+  const t = w && w.createdAt ? new Date(w.createdAt).getTime() : NaN;
+  if(!(Date.now() - t < NEW_WORKER_DAYS * 864e5)) return '';
+  return `<span class="new-badge" title="${esc(tr('Added {0}', {0: new Date(t).toLocaleDateString(uiLocale())}))}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--green-bg);color:var(--green);margin-left:5px;white-space:nowrap">${esc(tr('NEW'))}</span>`;
+}
+
 // ── My Workers (list/add/edit/delete via the narrow supplierAddWorker/
 // supplierUpdateWorker/supplierDeleteWorker backend actions — never
 // saveSchedule(), which a supplier role is never allowed to call) ────────
@@ -694,8 +751,8 @@ function renderWorkersList(){
   const el=document.getElementById('workersList');
   if(!myWorkers.length){ el.innerHTML=`<div style="color:var(--text3);padding:16px 0">${tr('No workers yet')}</div>`; return; }
   el.innerHTML=`<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table><thead><tr><th>${tr('Name')}</th><th>${tr('Phone')}</th><th>${tr('Object')}</th><th>${tr('Commission')}</th><th></th></tr></thead><tbody class="workers-rows"></tbody></table></div>`;
-  renderPagedList(el.querySelector('.workers-rows'), 'workers', '', myWorkers, w=>`<tr class="tap-edit" onclick="if(isPlainTap(event,this))openEditWorkerModal('${w.id}')">
-      <td>${esc(w.name)}</td>
+  renderPagedList(el.querySelector('.workers-rows'), 'workers', '', myWorkers, w=>`<tr class="tap-edit" onclick="tapEdit(event,this,null,()=>openEditWorkerModal('${w.id}'))" onpointerdown="longPress(event,this,()=>openEditWorkerModal('${w.id}'))">
+      <td>${esc(w.name)}${newWorkerBadgeHtml(w)}</td>
       <td>${esc(w.phone||'')}</td>
       <td>${(w.clientIds||[]).map(clientName).filter(Boolean).join(', ')}</td>
       <td>${w.supplierRate!=null?'₪'+w.supplierRate+'/h':'—'}</td>

@@ -26,7 +26,7 @@ Who creates a supplier login and how: [admin.md](admin.md) → Users pane. The s
 ## Tabs (`switchTab`)
 
 - **Dashboard** (`renderDashboard()`): On site now (workers whose last punch is IN), My workers (count), today's punches (paged by 10 — the portal's own copy of `renderPagedList`, [app-core.md](app-core.md) → Long lists).
-- **My Workers** (`renderWorkersList()`): Name, Phone, Object (client names), Commission (₪/h or —), delete; a tap on the row opens the edit form; paged by 10.
+- **My Workers** (`renderWorkersList()`): Name, Phone, Object (client names), Commission (₪/h or —), delete; a double click (computer) or a long press (phone) on the row opens the edit form (a single tap only says so); paged by 10.
   - **Add / edit** (`renderWorkerModal` → `saveWorkerModal`): a manual form — given name, surname, phone, ID/passport number, address, city. The name fields fall back to splitting `name` for an older record. Given name is required. No document scan here (a deliberate scope cut).
   - **Delete** (`deleteWorker`) after `confirm()`.
   - After each change the data is reloaded.
@@ -50,7 +50,7 @@ The worker modal closes like the manager app's modals: a tap outside it, no ✕ 
 ## What a supplier can write
 
 Only the three actions:
-- `supplierAddWorker` — a new worker with `supplierId` forced to the caller's own, `clientIds: []`, `schedule: []`, and only the editable fields;
+- `supplierAddWorker` — a new worker with `supplierId` forced to the caller's own, `clientIds: []`, `schedule: []`, `createdAt` (now, ISO — the "NEW" badge for 3 days, `newWorkerBadgeHtml`, shown in the app and in the portal's worker list), and only the editable fields;
 - `supplierUpdateWorker` / `supplierDeleteWorker` — only a worker whose `supplierId` is the caller's; otherwise "Worker not found";
 - `supplierSubmitHours` `{workerId, clientId, entries:[{date dd/MM/yyyy, inTime, outTime}]}` — shifts for its own worker, at most 62 rows, invalid rows dropped, a client that isn't the worker's dropped; written as a `pending` batch (`supplierId`, `createdBy`) for the owner to approve; `supplierListHours` → its batches with `status`, `uploadedAt`, `decidedAt` and the rows;
 - editable fields (`SUPPLIER_EDITABLE`): `docGiven, docSurname, phone, docId, address, houseNumber, city, docDob, docSex, maritalStatus, healthFund, startDate, notes, status`; `name` is rebuilt from given name + surname.

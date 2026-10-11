@@ -16,6 +16,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const external = [];
   async function newCtx(opts={}){
     const ctx = await b.newContext(opts);
+    // The page's clock starts at E2E_NOW (run.sh), the day server.py seeds from.
+    if (process.env.E2E_NOW) await ctx.clock.install({time: new Date(process.env.E2E_NOW)});
     await ctx.route('**/*', async r => {
       const u = r.request().url();
       if (u.startsWith('http://127.0.0.1')) return r.continue();
@@ -493,6 +495,60 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(!acc.none && /^accountant-all-/.test(acc.name) && acc.sheets.length === 2 && acc.pay === acc.want && acc.pay > 0 && acc.hours > 0 && acc.days >= 1 && acc.total >= acc.pay && acc.shifts > 1,
     'accountant report: Summary = Salary figures, total row, Shifts sheet ' + JSON.stringify(acc));
+  // "NEW" for 3 days after a worker is added: on the worker cards, not on an older worker.
+  const nw = await p.evaluate(async () => {
+    const a = workers.find(w => w.id === 'w1'), d = workers.find(w => w.id === 'w2');
+    const keep = [a.createdAt, d.createdAt];
+    a.createdAt = new Date(Date.now() - 2 * 864e5).toISOString(); d.createdAt = new Date(Date.now() - 4 * 864e5).toISOString();
+    switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await new Promise(r => setTimeout(r, 300));
+    const cards = [...document.querySelectorAll('.wcard')].map(c => ({name: c.innerText.split('\n').find(x => /Avi|Dana/.test(x)) || '', isNew: !!c.querySelector('.new-badge')}));
+    a.createdAt = keep[0]; d.createdAt = keep[1];
+    return cards;
+  });
+  ok(nw.some(c => /Avi/.test(c.name) && c.isNew) && nw.some(c => /Dana/.test(c.name) && !c.isNew), 'worker cards: NEW for 3 days after the worker was added ' + JSON.stringify(nw));
+  // Worker card: a plain click only reads; a double click (or a long touch) opens the edit form;
+  // closing it (a tap outside saves it) brings the card back.
+  const cardSpot = '#workerCardModal div[style*="flex-direction:column"] >> nth=0';
+  await p.evaluate(() => openWorkerCard(1)); await sleep(400);
+  await p.click(cardSpot, {position:{x:5, y:5}}); await sleep(400);
+  const bk0 = await p.evaluate(() => !document.getElementById('workerOverlay').classList.contains('open') && document.getElementById('workerCardOverlay').classList.contains('open'));
+  const lp = await p.evaluate(async () => {
+    const el = document.querySelector('#workerCardModal div[style*="flex-direction:column"]');
+    const r = el.getBoundingClientRect(), o = {bubbles:true, pointerType:'touch', clientX:r.left + 5, clientY:r.top + 5};
+    el.dispatchEvent(new PointerEvent('pointerdown', o)); await new Promise(res => setTimeout(res, 250));
+    el.dispatchEvent(new PointerEvent('pointerup', o)); await new Promise(res => setTimeout(res, 400));
+    const shortTouch = document.getElementById('workerOverlay').classList.contains('open');
+    el.dispatchEvent(new PointerEvent('pointerdown', o)); await new Promise(res => setTimeout(res, 700));
+    const longTouch = document.getElementById('workerOverlay').classList.contains('open');
+    el.dispatchEvent(new PointerEvent('pointerup', o));
+    return {shortTouch, longTouch};
+  });
+  ok(bk0 && !lp.shortTouch && lp.longTouch, 'worker card: a click or short touch only reads, a long touch opens the edit form ' + JSON.stringify(lp));
+  await p.mouse.click(5, 450); await sleep(1200);
+  await p.evaluate(() => { closeModal('workerCardOverlay'); openWorkerCard(1); }); await sleep(400);
+  await p.dblclick(cardSpot, {position:{x:5, y:5}}); await sleep(400);
+  const bk1 = await p.evaluate(() => document.getElementById('workerOverlay').classList.contains('open'));
+  await p.evaluate(() => { document.getElementById('wNotes').value = 'back-to-card'; });
+  await p.mouse.click(5, 450); await sleep(1200);
+  const bk = await p.evaluate(() => ({edit: document.getElementById('workerOverlay').classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open'), notes: workers[1].notes}));
+  await p.mouse.click(5, 450); await sleep(300);
+  ok(bk1 && !bk.edit && bk.card && bk.notes === 'back-to-card', 'worker card: a double click edits; the form saves on close and goes back to the card ' + JSON.stringify(bk));
+  // Any window opened from the worker card goes back to it: Pay → tap outside → the card again.
+  await p.evaluate(() => openWorkerCard(1)); await sleep(300);
+  await p.evaluate(() => { [...document.querySelectorAll('#workerCardModal button')].find(b => /Pay/.test(b.textContent)).click(); }); await sleep(400);
+  const pay1 = await p.evaluate(() => ({pay: document.getElementById('payOverlay')?.classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open')}));
+  await p.mouse.click(5, 450); await sleep(600);
+  const pay2 = await p.evaluate(() => ({pay: document.getElementById('payOverlay')?.classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open')}));
+  ok(pay1.pay && !pay1.card && !pay2.pay && pay2.card, 'back: closing Pay opened from the worker card shows the card again ' + JSON.stringify({pay1, pay2}));
+  await p.mouse.click(5, 450); await sleep(400);
+  // A client card: a single click only hints, a double click opens its editor.
+  await p.evaluate(() => switchTab('clients')); await sleep(400);
+  await p.click('#clientsGrid .client-card .client-card-name >> nth=0'); await sleep(500);
+  const cl1 = await p.evaluate(() => document.getElementById('clientOverlay').classList.contains('open'));
+  await p.dblclick('#clientsGrid .client-card .client-card-name >> nth=0'); await sleep(400);
+  const cl2 = await p.evaluate(() => document.getElementById('clientOverlay').classList.contains('open'));
+  ok(!cl1 && cl2, 'clients: a single click does not edit, a double click does ' + JSON.stringify({cl1, cl2}));
+  await p.mouse.click(5, 450); await sleep(400);
   ok(external.filter(u=>/script\.google\.com/.test(u)).length === 0, 'no request to script.google.com');
   ok(p.errs.length === 0, 'owner: no page errors ' + p.errs.join(' | '));
   await ctx.close();
