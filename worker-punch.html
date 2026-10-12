@@ -547,16 +547,75 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
   .lang-grab{display:block;}
 }
 @media (prefers-reduced-motion:reduce){.og-line::after,.gbtn::before{animation:none;}.gbtn.shine::after{transition:none;}}
+/* ── The punch page exactly as mockups 06 / 07 B (owner 2026-10-13): the ground
+   shows through every screen; a top bar with the logo 11C, "Interactive
+   Manager" and its two lines, the Language button at the right; the greeting
+   with its short line; the location as a pill; the round glass button with
+   its ring; two glass tiles; error screens as a glass card. ── */
+.screen{background:transparent}
+#screenPunch{justify-content:flex-start;align-items:stretch;padding:max(env(safe-area-inset-top,0px),18px) 16px max(env(safe-area-inset-bottom,0px),24px)}
+#screenPunch>*{width:100%;max-width:460px;margin-left:auto;margin-right:auto}
+.pp-top{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.pp-logo{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.pp-mark{position:static;width:38px;height:38px;flex:none}
+.pp-wm{line-height:1.05;min-width:0}
+.pp-wm b{display:block;font-size:15px;font-weight:700;letter-spacing:-.2px;white-space:nowrap}
+.pp-wm b span{background:linear-gradient(90deg,#c7d2fe,#67e8f9);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.pp-wm small{display:block;font-size:11px;letter-spacing:.02em;color:var(--text2);margin-top:2px;line-height:1.25}
+.pp-wm small i{display:block;font-style:normal;color:#9fe6c0;opacity:.85}
+.pp-top .lang-btn{flex:none;height:38px}
+.punch-header{text-align:left;margin-bottom:12px}
+.punch-site,.clock-block{display:none!important}
+.punch-greeting.og-greet-h{position:relative;font-size:21px;margin:4px 0 0;padding:0 2px 9px}
+.punch-greeting.og-greet-h::after{content:'';position:absolute;left:2px;bottom:0;width:44px;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite}
+.loc-chip{align-self:center;width:auto!important;max-width:100%!important;display:inline-flex;align-items:center;gap:6px;margin:6px auto 0;padding:6px 12px;border:0;border-radius:999px;font-size:12px;font-weight:500;background:rgba(255,255,255,.08);color:var(--text2)}
+.loc-chip.ok{background:rgba(109,214,160,.12);color:#6dd6a0}
+.loc-chip.warn{background:rgba(245,166,35,.14);color:#f7c062}
+.loc-chip .loc-dot{width:7px;height:7px}
+.punch-btn-wrap{width:200px!important;height:200px;margin:22px auto 8px!important;display:flex;align-items:center;justify-content:center}
+.btn-ring{display:none}
+.big-punch-btn{width:172px;height:172px;gap:4px;color:#fff;font-family:inherit;background:radial-gradient(circle at 35% 25%,rgba(255,255,255,.22),rgba(255,255,255,.06) 60%);border:1px solid rgba(255,255,255,.3);box-shadow:0 20px 50px rgba(0,0,0,.4),inset 0 -8px 20px rgba(0,0,0,.2)}
+.big-punch-btn::before{inset:-14px}
+.big-punch-btn.in{background:radial-gradient(circle at 35% 25%,rgba(109,214,160,.30),rgba(109,214,160,.08) 65%);border-color:rgba(109,214,160,.45);box-shadow:0 20px 50px rgba(0,0,0,.4);color:#fff}
+.big-punch-btn.out{background:radial-gradient(circle at 35% 25%,rgba(255,95,109,.30),rgba(255,95,109,.08) 65%);border-color:rgba(255,95,109,.45);box-shadow:0 20px 50px rgba(0,0,0,.4);color:#fff}
+.big-punch-btn.in.holding{box-shadow:0 20px 50px rgba(0,0,0,.4),0 0 46px rgba(52,211,153,.55)}
+.big-punch-btn.out.holding{box-shadow:0 20px 50px rgba(0,0,0,.4),0 0 46px rgba(255,95,109,.55)}
+.big-punch-btn.disabled{color:rgba(255,255,255,.6);cursor:not-allowed;background:radial-gradient(circle at 35% 25%,rgba(255,255,255,.16),rgba(255,255,255,.04) 60%);border:1px solid rgba(255,255,255,.22);box-shadow:0 20px 50px rgba(0,0,0,.4),inset 0 -8px 20px rgba(0,0,0,.2)}
+#screenPunch .big-punch-btn.disabled::before{display:block}
+.pp-top,.pp-wm{text-align:left}
+.big-punch-btn .btn-label{display:inline-flex;align-items:center;font-size:23px;font-weight:700;letter-spacing:.2px;text-transform:none}
+.big-punch-btn .btn-sub{font-size:12px;font-weight:400;color:rgba(255,255,255,.65);opacity:1}
+.big-punch-btn .btn-icon{font-size:26px;margin-bottom:2px}
+.big-punch-btn.disabled .btn-label{font-size:17px}
+.pp-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;background:#6dd6a0;box-shadow:0 0 10px #6dd6a0}
+.big-punch-btn.out .pp-dot{background:#ff5f6d;box-shadow:0 0 10px #ff5f6d}
+.pp-result{margin:4px 0 6px}
+.pp-tiles{margin-top:14px}
+.gbtn.pp-tile{min-height:0;padding:14px;gap:6px;border-radius:18px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18)}
+.pp-tile-h{flex-direction:column;align-items:flex-start;gap:8px;font-size:15px;font-weight:700;color:#fff}
+.pp-tile-h>i.ti{width:36px;height:36px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;background:color-mix(in srgb,var(--c,#4f8ef7) 18%,transparent);color:var(--c,#4f8ef7)}
+.pp-tile-v{font-size:12px;font-weight:400;color:var(--text2)}
+.pp-tile-v em.fig{font:600 12px 'DM Mono',ui-monospace,monospace;font-style:normal;color:#9fe6c0}
+.gbtn.pp-tile{position:relative}
+.pp-tag{position:absolute;top:10px;right:10px;margin:0;background:rgba(79,142,247,.2);color:#8fb4ff}
+.pp-invalid{margin:40px auto 0;padding:26px 20px;border-radius:22px;text-align:center;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+.pp-invalid-ic{width:56px;height:56px;margin:0 auto 14px;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:28px;background:rgba(255,95,109,.16);color:#ff8a95}
+.pp-invalid b{display:block;font-size:19px;font-weight:700;margin-bottom:8px}
+.pp-invalid p{font-size:14px;color:var(--text2);line-height:1.55}
 </style>
 </head>
 <body>
-<button type="button" class="gbtn lang-btn lang-fixed" id="langBtn" onclick="openLangSheet(event)" title="Language" data-i18n-title="Language" aria-label="Language"><i class="ti ti-world"></i><span class="lang-btn-name">English</span><i class="ti ti-chevron-down lang-btn-chev"></i></button>
 
-<!-- The logo mark (top left; the Language button is top right). -->
-<svg class="og-mark pp-mark" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="ogMarkGrad" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#818cf8"/><stop offset=".5" stop-color="#22d3ee"/><stop offset="1" stop-color="#f472b6"/></linearGradient></defs><path class="og-roof" d="M10 50L50 16l40 34"/><path class="og-run" d="M10 50L50 16l40 34"/><g class="og-p og-p1"><g transform="translate(30 70) scale(.95)"><circle cx="0" cy="-9" r="7" fill="#818cf8"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#818cf8"/></g></g><g class="og-p og-p2"><g transform="translate(50 66) scale(1.15)"><circle cx="0" cy="-9" r="7" fill="#22d3ee"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#22d3ee"/></g></g><g class="og-p og-p3"><g transform="translate(70 70) scale(.95)"><circle cx="0" cy="-9" r="7" fill="#f472b6"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#f472b6"/></g></g><path class="og-link" d="M24 92H76"/><path class="og-linkrun" d="M24 92H76"/></svg>
+
+
 
 <!-- Screen 2: Punch -->
 <div class="screen center-v hidden" id="screenPunch">
+  <!-- The top bar (mockup 06): the logo 11C with its two lines, the Language button at the right. -->
+  <div class="pp-top">
+    <div class="pp-logo"><svg class="og-mark pp-mark" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="ogMarkGrad" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#818cf8"/><stop offset=".5" stop-color="#22d3ee"/><stop offset="1" stop-color="#f472b6"/></linearGradient></defs><path class="og-roof" d="M10 50L50 16l40 34"/><path class="og-run" d="M10 50L50 16l40 34"/><g class="og-p og-p1"><g transform="translate(30 70) scale(.95)"><circle cx="0" cy="-9" r="7" fill="#818cf8"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#818cf8"/></g></g><g class="og-p og-p2"><g transform="translate(50 66) scale(1.15)"><circle cx="0" cy="-9" r="7" fill="#22d3ee"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#22d3ee"/></g></g><g class="og-p og-p3"><g transform="translate(70 70) scale(.95)"><circle cx="0" cy="-9" r="7" fill="#f472b6"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#f472b6"/></g></g><path class="og-link" d="M24 92H76"/><path class="og-linkrun" d="M24 92H76"/></svg><div class="pp-wm"><b>Interactive <span>Manager</span></b><small><span data-i18n>Connecting people and business</span><i data-i18n>Everything under one roof</i></small></div></div>
+    <button type="button" class="gbtn lang-btn" id="langBtn" onclick="openLangSheet(event)" title="Language" data-i18n-title="Language" aria-label="Language"><i class="ti ti-world"></i><span class="lang-btn-name">English</span><i class="ti ti-chevron-down lang-btn-chev"></i></button>
+  </div>
   <div class="punch-header">
     <div class="punch-site" id="punchSite"></div>
     <h3 class="punch-greeting og-greet-h" id="punchGreeting"></h3>
@@ -578,14 +637,13 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
     <!-- Hold about one second (holdStart / holdEnd): the ring fills while
          held, letting go early rolls it back and sends nothing. -->
     <button class="big-punch-btn disabled" id="bigPunchBtn" oncontextmenu="return false">
-      <span class="btn-icon">👆</span>
-      <span class="btn-label" data-i18n>LOADING</span>
+      <span class="btn-label" data-i18n>Loading…</span>
     </button>
   </div>
   <div class="pp-result" id="punchResult"></div>
   <div class="pp-tiles">
-    <button type="button" class="gbtn pp-tile" onclick="openSchedule()"><span class="pp-tile-h"><i class="ti ti-calendar-week"></i> <span data-i18n>My Schedule</span><span class="pp-tag" id="schedBadge" style="display:none" data-i18n>Updated</span></span><span class="pp-tile-v" id="tileNextShift">—</span></button>
-    <button type="button" class="gbtn pp-tile" id="myHoursLink" onclick="openMyHours()"><span class="pp-tile-h"><i class="ti ti-clock-hour-4"></i> <span data-i18n>My Hours</span></span><span class="pp-tile-v fig" id="tileMonthHours">—</span></button>
+    <button type="button" class="gbtn pp-tile" style="--c:#4f8ef7" onclick="openSchedule()"><span class="pp-tile-h"><i class="ti ti-calendar-week"></i> <span data-i18n>My Schedule</span><span class="pp-tag" id="schedBadge" style="display:none" data-i18n>Updated</span></span><span class="pp-tile-v" id="tileNextShift">—</span></button>
+    <button type="button" class="gbtn pp-tile" style="--c:#6dd6a0" id="myHoursLink" onclick="openMyHours()"><span class="pp-tile-h"><i class="ti ti-clock-hour-4"></i> <span data-i18n>My Hours</span></span><span class="pp-tile-v"><span data-i18n>This month</span> <em class="fig" id="tileMonthHours">—</em></span></button>
   </div>
 </div>
 
@@ -885,11 +943,15 @@ function showInvalidLink(title, msg, icon){
   title = title || tr('Invalid Link');
   msg   = msg ? esc(msg) : esc(tr('This link is no longer valid.'))+'<br>'+esc(tr('Ask your manager for a new link.'));
   icon  = icon  || 'ti-link-off';
-  document.body.innerHTML = '<div style="position:fixed;inset:0;background:#0f1117;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center">'
-    + '<div style="color:#ff4f5e;margin-bottom:18px"><i class="ti '+icon+'" style="font-size:64px"></i></div>'
-    + '<div style="font-size:24px;font-weight:900;color:#ff4f5e;margin-bottom:10px">'+esc(title)+'</div>'
-    + '<div style="font-size:15px;color:#7c84a0;line-height:1.6;max-width:280px">'+msg+'</div>'
-    + '</div>';
+  // The page's ground and its top bar (logo, Language button) stay; the
+  // message is a glass card under them (mockup 06 style, owner 2026-10-13).
+  document.querySelectorAll('.screen').forEach(x=>x.classList.add('hidden'));
+  const sc=document.getElementById('screenPunch'); sc.classList.remove('hidden');
+  [...sc.children].forEach(el=>{ if(!el.classList.contains('pp-top')) el.style.display='none'; });
+  let card=document.getElementById('ppInvalid');
+  if(!card){ card=document.createElement('div'); card.id='ppInvalid'; card.className='pp-invalid'; sc.appendChild(card); }
+  card.innerHTML='<span class="pp-invalid-ic"><i class="ti '+icon+'"></i></span>'
+    + '<b>'+esc(title)+'</b><p>'+msg+'</p>';
 }
 
 // For a token-only link, fill the geofence from the worker's linked client
@@ -1154,17 +1216,17 @@ function updateBigBtn(){
   const ring=document.getElementById('btnRing');
   if(!locOk){
     btn.className='big-punch-btn disabled';
-    btn.innerHTML='<span class="btn-icon"><i class="ti ti-map-pin-off"></i></span><span class="btn-label">'+tr('NOT ON SITE')+'</span>';
+    btn.innerHTML='<span class="btn-icon"><i class="ti ti-map-pin-off"></i></span><span class="btn-label">'+tr('Not on site')+'</span><span class="btn-sub">'+tr('Go to your site to punch')+'</span>';
     ring.className='btn-ring off'; return;
   }
   const log=getPunchLog(), last=getLastEntry(log,selectedWorker?.id), isIn=last?.type==='in';
   if(isIn){
     btn.className='big-punch-btn out';
-    btn.innerHTML='<span class="btn-icon"><i class="ti ti-logout"></i></span><span class="btn-label">'+tr('CLOCK OUT')+'</span><span class="btn-sub">'+esc(selectedWorker.name)+'</span>';
+    btn.innerHTML='<span class="btn-label"><i class="pp-dot"></i>'+tr('Punch out')+'</span><span class="btn-sub">'+tr('hold to punch')+'</span>';
     ring.className='btn-ring out';
   } else {
     btn.className='big-punch-btn in';
-    btn.innerHTML='<span class="btn-icon"><i class="ti ti-login"></i></span><span class="btn-label">'+tr('CLOCK IN')+'</span><span class="btn-sub">'+esc(selectedWorker.name)+'</span>';
+    btn.innerHTML='<span class="btn-label"><i class="pp-dot"></i>'+tr('Punch in')+'</span><span class="btn-sub">'+tr('hold to punch')+'</span>';
     ring.className='btn-ring in';
   }
 }

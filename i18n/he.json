@@ -118,9 +118,7 @@
   "client: {r}": "לקוח: {r}",
   "Clients": "לקוחות",
   "Clients tab": "לשונית לקוחות",
-  "CLOCK IN": "החתמת כניסה",
   "Clock IN": "כניסה",
-  "CLOCK OUT": "החתמת יציאה",
   "Clock OUT": "יציאה",
   "Close": "סגירה",
   "Columns: Date, In, Out (and Worker — a name or ID number — for a sheet of several workers)": "עמודות: Date, In, Out (ו-Worker — שם או מספר ת״ז — לגיליון של כמה עובדים)",
@@ -350,7 +348,6 @@
   "Load earlier month": "טעינת חודש קודם",
   "Load failed": "הטעינה נכשלה",
   "Load from Excel": "טעינה מ-Excel",
-  "LOADING": "טוען",
   "Loading earlier punches…": "טוען החתמות קודמות…",
   "Loading the whole punch history…": "טוען את כל היסטוריית ההחתמות…",
   "Loading…": "טוען…",
@@ -454,7 +451,6 @@
   "Not enough rights": "אין מספיק הרשאות",
   "Not filled in": "לא מולא",
   "Not filled in: {0}": "לא מולא: {0}",
-  "NOT ON SITE": "לא באתר",
   "Not saved": "לא נשמר",
   "Not saved yet": "עוד לא נשמר",
   "Note (optional)": "הערה (רשות)",
@@ -1037,5 +1033,10 @@
   "₪{0} worker": "₪{0} עובד",
   "₪{0} client": "₪{0} לקוח",
   "hourly": "לפי שעה",
-  "daily": "לפי יום"
+  "daily": "לפי יום",
+  "Not on site": "לא באתר",
+  "Go to your site to punch": "הגיעו לאתר כדי להחתים",
+  "Punch out": "החתמת יציאה",
+  "hold to punch": "החזיקו להחתמה",
+  "Punch in": "החתמת כניסה"
 }

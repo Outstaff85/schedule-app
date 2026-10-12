@@ -27,20 +27,20 @@ The function hands out only this worker and their sites, and accepts punches for
 
 ## Startup (`init()`)
 
-The page first loads the dictionary of the language chosen on this device (`loadI18n(storedLanguage())`, `localStorage.uiLang`, English by default), then runs `init()`. The Language button fixed in the top-right corner (`#langBtn.lang-fixed`; the top bars keep room for it) opens the language sheet, whose pick calls `setLanguage()`, which keeps the choice and redraws the shown screen ([translations.md](translations.md)).
+The page first loads the dictionary of the language chosen on this device (`loadI18n(storedLanguage())`, `localStorage.uiLang`, English by default), then runs `init()`. The Language button at the right of the punch screen's top bar (`#langBtn` in `.pp-top`) opens the language sheet, whose pick calls `setLanguage()`, which keeps the choice and redraws the shown screen ([translations.md](translations.md)).
 
 1. `loadWorkers()` reads the worker list from `punchClockSite.workers`, else the legacy cache `localStorage.schedMgr_v1` (or `scheduleManagerData`), filtered to `SITE.clientId` when set (falls back to all if that is empty). Workers are reduced to `{id, name, colorIdx, token, clientIds, schedule, dates}`.
 2. **Personal link:**
    - token found in the cache → `goToPunchDirect()` at once (works offline), then, if online, `verifyAndRefresh()` in the background: reloads from the server; a token that is gone (regenerated or the worker removed) → "Invalid Link" screen at once; otherwise the geofence is re-resolved unless the URL or the object picker fixed it;
    - not in the cache, online → "Verifying…", `loadWorkersFromGS()`, then the punch screen, "Invalid Link" (the function answered "Unknown worker link"), or "Connection problem" (no answer);
    - not in the cache, offline → "No connection — open this link once while online".
-3. **No token:** "Open your personal link — This page works only from the personal link your manager sent you." (`showInvalidLink`); the old shared-device worker picker (its screen and code) was removed (user request 2026-10-11).
+3. **No token:** "Open your personal link — This page works only from the personal link your manager sent you." (`showInvalidLink`: the punch screen keeps its ground and top bar and shows the message as a glass card, `#ppInvalid`; the same for "Invalid Link", "Connection problem" and "No connection"); the old shared-device worker picker (its screen and code) was removed (user request 2026-10-11).
 
 `loadWorkersFromGS()` answers `true` when the server answered — with this worker, or with "Unknown worker link" (then `workers` is empty, so the link is revoked) — and `false` when it could not be reached. It writes the whole reply to `localStorage.schedMgr_v1`, which is how the next open works offline. A crash in `init()` is reported and shows "Something went wrong".
 
 ## Screens
 
-- **`screenPunch`** (redesign stage 9) — the logo mark top left (`.pp-mark`) and the Language button top right (no ⋮); the greeting "Good morning / afternoon / evening / night, <first name>" with its animated icon (`greetingHtml`, the same as the manager app's Today — duplicated on purpose); the schedule-change plate; live clock, site pill, GPS chip; the round glass punch button; the result line (`#punchResult`); two glass tiles — **My Schedule** (the next shift, `nextShiftText`, with an "Updated" tag after a change) and **My Hours** (this month's hours in green, `myMonthFigures` over the punch function's month, read in the background — `updatePunchTiles`). Every "back" (`resetToQR`, `closeHistory`) returns to the punch screen with a fresh GPS check.
+- **`screenPunch`** (redesign stage 9, matched to mockups 06 / 07 B on 2026-10-13) — the page's ground shows through every screen (`.screen` is transparent); a top bar `.pp-top`: the logo mark 11C (`.pp-mark`), "Interactive Manager" with "Connecting people and business" / "Everything under one roof" (`.pp-wm`), and the Language button at the right (no ⋮); the greeting "Good morning / afternoon / evening / night, <first name>" with its animated icon (`greetingHtml`, the same as the manager app's Today — duplicated on purpose); the schedule-change plate; the location as a pill (`#locChip`: green on site, amber otherwise; no big clock and no separate site line); the round glass punch button with its ring track always shown ("• Punch in / hold to punch", red "• Punch out", or "Not on site / Go to your site to punch"); the result line (`#punchResult`); two glass tiles — **My Schedule** (the next shift, `nextShiftText`, with an "Updated" tag after a change) and **My Hours** (this month's hours in green, `myMonthFigures` over the punch function's month, read in the background — `updatePunchTiles`). Every "back" (`resetToQR`, `closeHistory`) returns to the punch screen with a fresh GPS check.
 - **The punch button — hold about one second** (`HOLD_MS` 1000, `holdStart` / `holdEnd`): the ring around it fills while held (`--hold`, a conic ring); letting go early rolls it back and sends nothing; Enter / Space held works the same. Punch in is all green, punch out all red. The button takes the whole touch gesture (`touch-action:none`, no long-press menu, no text selection). On success the page stays: the face flashes its colour, a check draws, the phone vibrates, and the line under it says "Punched in at 07:58 · have a good shift" (green) or "Punched out at 17:04 · 8h 04m today" (red; the time since the last punch in) — `showSuccess`.
 - **`screenHistory`**, **`screenSchedule`**, **`screenHours`** — see below.
 
@@ -54,7 +54,7 @@ Constants: `GPS_MAX_ACCURACY` = 150 m, `GPS_REQUEST_MS` = 800 ms, `GPS_MAX_SPEED
 - The punch is allowed (`locOk`) only when the distance (`haversine`) ≤ `SITE.radius`, the accuracy is between 0 and 150 m, and nothing is suspicious. The chip says why not: "Nm from site (max R m)", "Weak GPS", "Suspicious GPS: …", "GPS denied", "GPS error".
 - The result is kept in `window._lastGpsAnalysis` for the punch.
 
-`updateBigBtn()`: NOT ON SITE when `!locOk` (no ring, no hold); otherwise CLOCK OUT (red) if the worker's last punch is IN, else CLOCK IN (green).
+`updateBigBtn()`: "Not on site" when `!locOk` (the ring's track only, no hold); otherwise "Punch out" (red) if the worker's last punch is IN, else "Punch in" (green), each with "hold to punch".
 
 ## A punch (`doPunch()`)
 
