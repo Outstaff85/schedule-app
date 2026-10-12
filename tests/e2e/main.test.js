@@ -732,6 +732,62 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     'editors: the worker editor is section plates (Person · Address · Work · Documents · Form 101 · Access), summaries, segmented choices, a focused field opens its section, no Save ' + JSON.stringify(ed));
   ok(ed.client.join() === 'client,place,rates,approval' && ed.supplier.join() === 'supplier*' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,sections' && ed.supplierEdit === 'supplier,commission,portal,workers' && ed.userHr === 'person,sections,hours,commission' && ed.roleSeg,
     'editors: client, supplier (one Save, an empty name amber) and user form as section plates ' + JSON.stringify(ed));
+  // Redesign gaps: client billing by the day; the supplier editor's payable commission and editable portal ticks (saved at once).
+  const gp = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
+    r.daily = [clientBillPay(5, {rateMode:'daily', dailyBillRate:300}), clientBillPay(0, {rateMode:'daily', dailyBillRate:300}), clientBillPay(11, {rateMode:'daily', dailyBillRate:300}, true)].join();
+    openEditClient(clients[0].id); await wait(100);
+    document.querySelector('#cPayUnit button[data-unit="day"]').click();
+    r.dayRow = document.getElementById('cDailyRow').style.display !== 'none' && document.getElementById('cHourlyBill').style.display === 'none';
+    document.querySelector('#cPayUnit button:not([data-unit="day"])').click();
+    r.hourBack = document.getElementById('cDailyRow').style.display === 'none'; closeModal('clientOverlay'); await wait(150);
+    openEditSupplier('s-1'); await wait(150);
+    const m = document.getElementById('supplierModal');
+    r.payable = /Payable this month/.test(m.querySelector('.og-sec[data-sec="commission"]').textContent);
+    r.newLogin = !!m.querySelector('.og-sec[data-sec="portal"] button[onclick^="newLoginFor"]');
+    const cb = m.querySelector('input[data-field="supplierSections"][value="dashboard"]');
+    r.tick = !!cb && !cb.disabled;
+    if(cb){ const was = cb.checked; cb.checked = !was; await saveLoginTicks(cb);
+      const u = loadAdminCache('users_' + activeTenantIdForAdmin()).find(x => x.username === 'sup1');
+      r.saved = (u.supplierSections || []).includes('dashboard') === !was;
+      cb.checked = was; await saveLoginTicks(cb); }
+    for(let i = 0; i < 3; i++){ await wait(150); document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); }
+    return r;
+  });
+  ok(gp.daily === '300,0,300' && gp.dayRow && gp.hourBack, 'clients: billing by the day — one day rate per worked shift, the By day / By hour switch ' + JSON.stringify(gp));
+  ok(gp.payable && gp.newLogin && gp.tick && gp.saved, 'supplier editor: commission payable this month, New portal login, portal tabs ticked and saved at once ' + JSON.stringify(gp));
+  // Stage 11a: a "no punch" notice has WhatsApp next to Call — wa.me with the phone in international form and the firm's template.
+  const wa = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
+    r.phones = [waPhone('050-123 4567'), waPhone('+972 50 1234567'), waPhone('00972501234567'), waPhone('12')].join();
+    const w = workers.find(x => x.id === 'w2'), keep = {phone: w.phone, ds: w.dateShifts, status: w.status};
+    w.phone = '052-765 4321'; w.status = 'active'; w.dateShifts = Object.assign({}, w.dateShifts, {[localYMD(new Date())]: {type:'work', start:'00:01', end:'23:59'}});
+    await loadFirmMessages(true);
+    r.defLink = decodeURIComponent(waLink(w, {start:'00:01'}));
+    openMyFirmForm(); await wait(800);
+    r.field = document.getElementById('firmEditWaField').style.display !== 'none' && /full name/.test(document.getElementById('firmEditWa').value);
+    const ta = document.getElementById('firmEditWa'); ta.value = 'Hello {first name}, shift at {start} · {site}'; await saveFirmWaTemplate();
+    closeModal('editFirmOverlay'); await wait(200);
+    __firmMsgs = null; await loadFirmMessages(true);
+    r.saved = __firmMsgs.waTemplate;
+    const n = notifList().find(x => x.id.includes('nopunch:w2:'));
+    r.bellActs = n ? n.acts.map(a => a.label).join() : 'none';
+    openNotices('w2'); await wait(200);
+    const btn = document.querySelector('#noticesModal .gbtn.nact.wa');
+    r.sheetBtn = !!btn && /Call/.test(document.getElementById('noticesModal').innerText);
+    let opened = null; const wo = window.open; window.open = u => { opened = u; return null; };
+    if(btn) btn.click(); window.open = wo;
+    r.link = opened ? decodeURIComponent(opened) : '';
+    closeModal('noticesOverlay');
+    await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'saveFirmMessages', waTemplate:''})})).json();
+    __firmMsgs = null;
+    Object.assign(w, {phone: keep.phone, status: keep.status}); w.dateShifts = keep.ds;
+    for(let i = 0; i < 3; i++){ await wait(150); document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); }
+    return r;
+  });
+  ok(wa.phones === '972501234567,972501234567,972501234567,' && /^https:\/\/wa\.me\/972527654321\?text=Hi .+, you have not punched in today \(shift 00:01 · /.test(wa.defLink), 'WhatsApp: the phone in international form, the default message ' + JSON.stringify(wa));
+  ok(wa.field && wa.saved === 'Hello {first name}, shift at {start} · {site}' && wa.bellActs === 'Call,WhatsApp' && wa.sheetBtn && /^https:\/\/wa\.me\/972527654321\?text=Hello \S+, shift at 00:01 · /.test(wa.link),
+    'WhatsApp: the firm template saved in the firm form; Call + WhatsApp on a no-punch notice (bell and notices sheet) open wa.me with it ' + JSON.stringify(wa));
   // Worker list header (the owner's fixed structure): "Workers N", glass New, ⋮; tabs Active / Vacation / Pending.
   const wh = await p.evaluate(async () => {
     switchTab('workers'); setWorkersView('cards'); renderWorkersPage();
@@ -824,6 +880,24 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {short, long, locked: getComputedStyle(document.body).overflow};
   });
   ok(swipe.short && !swipe.long, 'phone: a swipe down closes a window, a short one does not ' + JSON.stringify(swipe));
+  // A drag on the scan crop editor (and the avatar crop) moves the photo, never the sheet.
+  const crop = await p.evaluate(async () => {
+    await ensureScanPipelineLoaded();
+    const png = document.createElement('canvas'); png.width = 300; png.height = 200; png.getContext('2d').fillRect(0, 0, 300, 200);
+    document.getElementById('aiScanOverlay').classList.add('open');
+    renderScanQuadEditor(png.toDataURL('image/png').split(',')[1], 'image/png', {tl:{x:.1,y:.1}, tr:{x:.9,y:.1}, br:{x:.9,y:.9}, bl:{x:.1,y:.9}});
+    await new Promise(r => setTimeout(r, 1500));
+    const m = document.querySelector('#aiScanOverlay > .modal'), wrap = document.getElementById('scanEditWrap'), r = wrap.getBoundingClientRect(), x = r.left + 60, y = r.top + 30;
+    const t = (type, dy) => { const tp = new Touch({identifier: 1, target: wrap, clientX: x, clientY: y + dy}); wrap.dispatchEvent(new TouchEvent(type, {bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [tp], changedTouches: [tp]})); };
+    let moved = false;
+    t('touchstart', 0); for (let d = 10; d <= 200; d += 20){ t('touchmove', d); if(m.style.transform) moved = true; } t('touchend', 200);
+    await new Promise(r => setTimeout(r, 400));
+    const res = {noSwipe: wrap.classList.contains('no-swipe'), moved, open: document.getElementById('aiScanOverlay').classList.contains('open'), touch: getComputedStyle(wrap).touchAction,
+      avatar: document.getElementById('avatarCropBox').classList.contains('no-swipe')};
+    document.getElementById('aiScanOverlay').classList.remove('open'); document.getElementById('aiScanStage').innerHTML = '';
+    return res;
+  });
+  ok(crop.noSwipe && !crop.moved && crop.open && crop.touch === 'none' && crop.avatar, 'phone: a drag on the scan crop editor does not move or close the sheet ' + JSON.stringify(crop));
   await p.setViewportSize({width: 1280, height: 900}); await sleep(300);
   // Any window opened from the worker card goes back to it: Pay → tap outside → the card again.
   await p.evaluate(() => openWorkerCard(1)); await sleep(300);
@@ -1064,12 +1138,23 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(await waitFor(p, () => typeof __hrv !== 'undefined' && __hrv.data && __hrv.data.punches, 15000), 'supplier: the hours review loads');
   const sr = await p.evaluate(async () => {
     const r = {names: (__hrv.data.workers || []).map(w => w.name), acts: [...document.querySelectorAll('#sectionReview .hrv-act')].map(b => b.title), approveAll: !!document.querySelector('#sectionReview .hrv-approve')};
+    // Select mode: tick one day, approve it with the bar (hours-review.js).
+    const pk = hrvPickable();
+    if(pk.length){ document.getElementById('hrvSelectBtn').click();
+      r.selBar = !!document.getElementById('hrvSelBar') && document.getElementById('hrvApproveSel').disabled && !document.querySelector('#sectionReview .hrv-act');
+      document.querySelector(`#sectionReview .hrv-day[data-key="${pk[0].key}"]`).click();
+      r.selCount = document.querySelector('#hrvSelBar b').innerText.trim();
+      document.getElementById('hrvApproveSel').click();
+      for(let i = 0; i < 40 && hrvDayState(hrvRow(pk[0].key)).st !== 'approved'; i++) await new Promise(res => setTimeout(res, 150));
+      r.selSt = hrvDayState(hrvRow(pk[0].key)).st; r.selGone = !document.getElementById('hrvSelBar'); }
+    r.approveAll = !!document.querySelector('#sectionReview .hrv-approve');
     if(r.approveAll){ hrvApproveMonth(); for(let i = 0; i < 40 && !/Every day approved/.test(document.getElementById('hrvStatus').innerText); i++) await new Promise(res => setTimeout(res, 150)); }
     r.status = (document.getElementById('hrvStatus') || {}).innerText || document.getElementById('sectionReview').innerText;
     return r;
   });
   await (await p.$('#sectionReview')).screenshot({path: SP + '/supplier-hours-review.png'}).catch(()=>{});
   ok(sr.names.join() === 'Avi Cohen' && !sr.acts.some(t => /Dispute|fix/i.test(t)) && /Every day approved/.test(sr.status), 'supplier: reviews only its own workers, no dispute / fix without those ticks, approves the month ' + JSON.stringify(sr));
+  ok(sr.selBar && sr.selCount === '1 selected' && sr.selSt === 'approved' && sr.selGone, 'supplier: hours Select mode — tick a day, Approve in the bar ' + JSON.stringify(sr));
   // the firm's language reaches the portal with loadSchedule
   const sl = await p.evaluate(async () => { const def = I18N_LANG;
     document.querySelector('#headerActions .lang-btn').click(); document.querySelector('#langSheet .lang-li[data-lang="he"]').click();
@@ -1240,7 +1325,18 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(after.n === before + 1, 'punch: saved through the punch function (' + before + ' → ' + after.n + ')');
   ok(!after.days.includes(null), 'punch: the new punch has a day');
   const ms = await p.evaluate(async () => { openSchedule(); await new Promise(r => setTimeout(r, 1500));
-    return {shown: !document.getElementById('screenSchedule').classList.contains('hidden'), days: document.querySelectorAll('#scheduleContent .sched-cell').length, empty: /No shifts planned yet/.test(document.getElementById('scheduleContent').innerText), sched: JSON.stringify(selectedWorker.schedule), n: workers.length, keys: Object.keys(selectedWorker).sort().join(',')}; });
+    return {shown: !document.getElementById('screenSchedule').classList.contains('hidden'), days: document.querySelectorAll('#scheduleContent .sched-cell').length, empty: /No shifts planned yet/.test(document.getElementById('scheduleContent').innerText), sched: JSON.stringify(selectedWorker.schedule), n: workers.length, keys: Object.keys(selectedWorker).sort().join(','),
+      top: !!document.querySelector('#scheduleContent .sched-sum.top + .sched-grid'), plates: document.querySelectorAll('#scheduleContent .sp-plate').length}; });
+  const mp = await p.evaluate(() => { const keep = [selectedWorker.schedule, selectedWorker.dates];
+    const t = new Date(), k = localYMD(t);
+    selectedWorker.schedule = [0,1,2,3,4,5,6].map(() => ({type:'work', start:'09:00', end:'17:00'})); selectedWorker.dates = {[k]: {type:'work', start:'22:00', end:'06:00'}};
+    renderMySchedule();
+    const c = document.getElementById('scheduleContent'), first = c.querySelector('.sp-plate');
+    const r = {top: !!c.querySelector('.sched-sum.top + .sched-grid'), plates: c.querySelectorAll('.sp-plate').length, more: !!c.querySelector('.sp-more'),
+      first: first ? first.innerText.replace(/\s+/g, ' ') : '', today: !!(first && first.classList.contains('today')), dot: !!c.querySelector('.shift-bar.dated')};
+    [selectedWorker.schedule, selectedWorker.dates] = keep; renderMySchedule(); return r; });
+  ok(mp.top && mp.plates >= 1 && mp.plates <= 10 && mp.today && /22:00 – 06:00/.test(mp.first) && /Night shift/.test(mp.first) && /changed/.test(mp.first) && mp.dot,
+    'punch: My Schedule — figures on top, day plates from today (10 at a time), a changed night day tagged ' + JSON.stringify(mp));
   ok(ms.shown && (ms.days >= 35 || ms.empty) && ms.n === 1 && ms.keys.includes('schedule'), 'punch: My Schedule shows the worker\'s own week ' + JSON.stringify(ms));
   await p.evaluate(() => closeHistory());
   // A schedule change since this device last saw it: a notice that stays on the punch screen until My Schedule is opened.
@@ -1263,9 +1359,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const sh = (f.shifts || []).find(s => s.h > 0) || {};
     const raw = JSON.stringify(d);
     return {link, hours: f.hours, total: f.total, sat: sh.date && sh.date.getDay() === 6, text: document.getElementById('hoursContent').innerText.slice(0, 120),
-      leak: /gpsAccuracy|gpsWarnings|billRate|tok-/.test(raw), pay: d.pay};
+      leak: /gpsAccuracy|gpsWarnings|billRate|tok-/.test(raw), pay: d.pay,
+      card: ((document.querySelector('#hoursContent .pay-card .pay-r.tot') || {}).innerText || '').replace(/\s+/g, ' ')};
   });
   ok(mh.link && mh.hours === 8 && mh.total === (mh.sat ? 600 : 400) && !mh.leak && /8\.0h/.test(mh.text), "punch: My Hours — own shift, priced like Salary, no GPS or billing " + JSON.stringify(mh));
+  ok(/Total ₪(400|600)/.test(mh.card), 'punch: My Hours — the Pay card totals the month ' + JSON.stringify(mh.card));
   // My History is merged in: a tap on a shift opens its punches (in / out, time, site).
   const mx = await p.evaluate(async () => {
     for(let i = 0; i < 50 && !document.querySelector('#hoursContent .hours-shift'); i++) await new Promise(r => setTimeout(r, 100));

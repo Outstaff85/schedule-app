@@ -146,7 +146,7 @@ The scan images stay in `__aiScanImage` / `__aiPacketOtherPages` for the upload.
 ## Corner editor
 
 - **Drawing:** `renderScanQuadEditor(b64, mediaType, cornersFrac)` draws the photo inside `#scanEditWrap`, with an 18 px dark margin (`QUAD_PAD`) and an SVG quad: 4 corner handles and a grip bar on each side. It waits for `img.decode()` (at most 1.2 s), then one frame, before `initScanQuad()` reads the size.
-- **Dragging:** `attachQuadDrag()` listens on the whole wrap. `quadHitTest()` picks the nearest corner within 36 px (`QUAD_CORNER_HIT`), else the nearest side within 32 px (`QUAD_EDGE_HIT`); dragging a side moves both of its corners. It uses pointer capture and handles `pointercancel`.
+- **Dragging:** `attachQuadDrag()` listens on the whole wrap. `quadHitTest()` picks the nearest corner within 36 px (`QUAD_CORNER_HIT`), else the nearest side within 32 px (`QUAD_EDGE_HIT`); dragging a side moves both of its corners. It uses pointer capture and handles `pointercancel`. The wrap is `touch-action:none` and carries `.no-swipe`, so on a phone a drag that starts on the photo, a handle or the quad never starts the window's swipe-down close ([app-core.md](app-core.md) → Layout).
 - **Rotate:** `rotateScanQuad(±90)`.
 - **Done / Skip:** `confirmScanQuad()` / `skipScanQuad()`.
 

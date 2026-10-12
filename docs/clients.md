@@ -14,9 +14,10 @@ Global `clients` array. It is saved with the schedule; each client is one docume
 | `address` | |
 | `lat`, `lng`, `radius` (m, default 100), `mapsUrl` | geofence for the worker punch page |
 | `defaultHourlyRate`, `defaultOtRate`, `defaultShabbatRate` | **worker pay** default at this client, for workers without a rate of their own (tier 3 of `effectiveRates()`, see [accounting.md](accounting.md)); the client card sets only `defaultHourlyRate` and saves the other two empty (OT / Shabbat by the law) |
-| `rateMode` | `tiered` (default) or `fixed` — how the **client is billed** |
+| `rateMode` | `tiered` (default), `fixed` or `daily` — how the **client is billed** |
 | `billRate`, `billOtRate`, `billShabbatRate` | billing rates for `tiered` (empty OT/Shabbat = law tiers) |
 | `fixedBillRate` | billing rate for `fixed` |
+| `dailyBillRate` | ₪ per worked shift for `daily` |
 | `notes` | old field, no longer shown or edited; kept on the record |
 
 Worker pay and client billing are separate sets of fields. Billing never changes what a worker is paid.
@@ -27,14 +28,15 @@ A header "Clients N" (`#clientsTitleCount`) with a glass **New** (`openAddClient
 
 ## Client modal (`showClientModal(c)`, `#clientModal`)
 
-`openAddClient()` / `openEditClient(cid)` set `editingClientId` and the color, then open the modal. The modal is in Hebrew, right to left (per user request 2026-10-04). It is an editor of section plates ([app-core.md](app-core.md) → Editors): a head (the client's colour, name, site · address), then, in the owner's fixed order, **Client** (name — an empty one shows amber — ח.פ, site, address), **Place** (map, Maps link, radius), **Rates**, **Hours approval** (`clientLoginsHtml`: this client's client logins and their hours ticks, read-only from the users cache — edited in Admin → Users), and a **Save** button (`saveClient()`); closing the window still saves it too.
+`openAddClient()` / `openEditClient(cid)` set `editingClientId` and the color, then open the modal. The modal is in Hebrew, right to left (per user request 2026-10-04). It is an editor of section plates ([app-core.md](app-core.md) → Editors): a head (the client's colour, name, site · address), then, in the owner's fixed order, **Client** (name — an empty one shows amber — ח.פ, site, address), **Place** (map, Maps link, radius), **Rates**, **Hours approval** (`clientLoginsHtml`: this client's client logins and their hours ticks from the users cache, editable by the firm admin — a tick is saved at once with `updateUser` (`saveLoginTicks`); "New client login" opens the user form with the role and client set, `newLoginFor`), and a **Save** button (`saveClient()`); closing the window still saves it too.
 
 - **Fields:** שם הלקוח, ח.פ, אתר / סניף, כתובת.
 - **Rates block** (per user request 2026-10-11): a "תעריפים" heading with an (i) that shows the explanation; worker pay and what the client pays side by side (₪/שעה inside the fields); the billing mode as two buttons; OT / Shabbat inline in tiered mode; the margin line.
 - **Manual punch:** in place of a Save button, an existing client's window has "החתמה ידנית" (`punchFromClientModal`): it saves the window first (as a tap outside does), then opens the manual punch for this client; closing the punch brings the client window back.
 - **Saving:** there is no Save button — a tap outside the window saves it (`clientOverlay.__onUserClose` → `saveClient({auto:true})`; a hint line at the bottom says so). A new client without a name is not created; an unchanged client closes without a save.
 - **Two rates**: **worker pay** ("שכר העובד", `#cDefRate` → `defaultHourlyRate`) — the regular ₪/h every worker at this client gets unless the worker has an own rate; OT and Shabbat always follow the law from it (saving the card clears an older client's `defaultOtRate` / `defaultShabbatRate`) — and **what the client pays the firm** ("תשלום הלקוח", `#cBillMain`): the main billing rate (`clientBillMain()`: `fixedBillRate` in fixed mode, else `billRate`), typed straight in (`onClientBillMainInput`); never changes a worker's pay.
-- **Client billing mode** (`#cRateMode`, two buttons → `setClientRateMode`):
+- **By the hour / By the day** (`#cPayUnit` → `setClientPayUnit`): by the day (`daily`) hides the hourly fields and shows "Client pays per day" (`#cBillDaily` → `dailyBillRate`): `clientBillPay` bills that sum once for each shift with hours, whatever their length; by the hour goes back to the hourly mode last picked (`__cBill.hourMode`).
+- **Client billing mode** (by the hour; `#cRateMode`, two buttons → `setClientRateMode`):
   - `tiered` ("לפי החוק (נוספות + שבת)") — the regular rate is `#cBillMain` (`billRate`); OT and Shabbat (`#cBillOt`, `#cBillShab` → `billOtRate`, `billShabbatRate`) sit in the form under the buttons, empty = by law (the placeholder shows the law's figure from the regular rate, `PAY_RULES.otMult` / `shabbatMult`);
   - `fixed` ("קבוע") — `#cBillMain` is one flat ₪/h (`fixedBillRate`), the OT / Shabbat row is hidden;
   - values are kept in `__cBill` while the modal is open (`syncClientBillFields()` refreshes the main field, the placeholders and the margin); `__cBill.billRate` falls back to `defaultHourlyRate` for clients saved before `billRate` existed.

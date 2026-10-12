@@ -451,6 +451,34 @@ html,body{
 .sched-sum div,.sched-detail{background:var(--plate)!important;border:0!important;border-radius:14px!important}
 .hours-shift{background:var(--plate);border-radius:14px;border-bottom:0!important;margin-bottom:6px;padding:0 10px;box-shadow:inset 3px 0 0 var(--ok)}
 .hours-row .h{color:var(--fig)}
+/* My Schedule / My Hours (redesign gaps, mockup 08): figures on top, day and
+   shift plates (a date box, the text, hours in green), the current shift cyan
+   "on shift", the Pay card. */
+.sched-sum.top{margin:0 0 12px}
+.sched-legend{margin:10px 0 12px}
+.sched-legend i.dot{width:8px;height:8px;border-radius:50%;background:#22d3ee;box-shadow:0 0 6px #22d3ee}
+.sp-list{display:flex;flex-direction:column;gap:6px}
+.sp-plate{display:flex;align-items:center;gap:12px;padding:10px 12px 10px 14px;border-radius:14px;background:var(--plate);box-shadow:inset 4px 0 0 var(--c,var(--ok));cursor:pointer}
+.sp-plate.today{box-shadow:inset 4px 0 0 var(--c,var(--ok)),0 0 0 1.5px rgba(79,142,247,.7)}
+.sp-plate.sel{background:#222634}
+.sp-dd{width:38px;flex:none;text-align:center;font-size:11px;color:var(--text2);line-height:1.1;text-transform:capitalize}
+.sp-dd b{display:block;font-size:17px;color:#fff}
+.sp-tx{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--text);font-family:'DM Mono',ui-monospace,monospace}
+.sp-tx small{display:block;font:400 11px 'DM Sans','Heebo',Arial,sans-serif;color:var(--text2);margin-top:2px}
+.sp-tx em{font-style:normal;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;background:rgba(34,211,238,.2);color:#67e8f9}
+.sp-h{font:700 14px 'DM Mono',ui-monospace,monospace;color:var(--fig)}
+.gbtn.sp-more{height:36px;font-size:13px}
+.hours-shift{box-shadow:inset 4px 0 0 var(--c,var(--ok))!important;padding:0 10px 0 14px!important}
+.hours-shift .sp-tx{font-family:inherit}
+.hours-shift.live{background:#1a2a30}
+.hours-shift.live .sp-tx small{color:#67e8f9}
+.hours-punches{padding-left:50px}
+.pay-card{margin-top:12px;padding:14px 16px;border-radius:16px;background:var(--plate)}
+.pay-card h4{margin:0 0 8px;font-size:14px;color:var(--text)}
+.pay-r{display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;color:var(--text2)}
+.pay-r b{font-family:'DM Mono',ui-monospace,monospace;color:var(--text)}
+.pay-r.tot{border-top:1px solid rgba(255,255,255,.1);margin-top:4px;padding-top:9px;color:var(--text);font-weight:600}
+.pay-r.tot b{color:var(--fig);font-size:15px}
 @media (prefers-reduced-motion:reduce){.og-run,.og-p,.og-linkrun,.gic *{animation:none!important}}
 /* Hebrew has no capitals: no letter-spacing (made for spaced-out uppercase Latin). */
 html[lang="he"] *{letter-spacing:normal !important;}
@@ -1248,10 +1276,10 @@ function markScheduleSeen(){
   const badge = document.getElementById('schedBadge'); if(badge) badge.style.display = 'none';
   const note = document.getElementById('schedNotice'); if(note) note.classList.remove('show');
 }
-let _schedMonth = 0, _schedSel = null;
+let _schedMonth = 0, _schedSel = null, _schedShown = 10;
 function openSchedule(){
   if(!selectedWorker) return;
-  _schedMonth = 0; _schedSel = null;
+  _schedMonth = 0; _schedSel = null; _schedShown = 10;
   showScreen('screenSchedule');
   renderMySchedule();
   markScheduleSeen();
@@ -1261,7 +1289,7 @@ function openSchedule(){
     if(fresh){ selectedWorker = fresh; if(!document.getElementById('screenSchedule').classList.contains('hidden')){ renderMySchedule(); markScheduleSeen(); } }
   }).catch(()=>{});
 }
-function shiftMonth(n){ _schedMonth = n === 0 ? 0 : _schedMonth + n; _schedSel = null; renderMySchedule(); }
+function shiftMonth(n){ _schedMonth = n === 0 ? 0 : _schedMonth + n; _schedSel = null; _schedShown = 10; renderMySchedule(); }
 function pickSchedDay(t){ _schedSel = t; renderMySchedule(); }
 function schedDay(d){
   const k = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -1294,21 +1322,37 @@ function renderMySchedule(){
       + (x.work ? `<div class="shift-bar ${x.night ? 'midnight' : 'work'}${x.dated ? ' dated' : ''}">${esc(x.start)}<br>${esc(x.end)}</div>` : `<div class="shift-bar off${x.dated ? ' dated' : ''}">${esc(tr('Off'))}</div>`)
       + `</div>`;
   }
-  const sx = schedDay(sel);
-  const detail = `<div class="sched-detail"><div class="dd"><b>${esc(sel.toLocaleDateString(loc, {weekday:'long', day:'numeric', month:'long'}))}</b>
-      <span>${esc(sx.work ? (sx.night ? tr('Night shift — ends the next day') : tr('Work day')) : tr('Day off'))}${sx.dated ? ' · ' + esc(tr('changed for this date')) : ''}</span></div>
-      ${sx.work ? `<div class="tt" style="color:${sx.night ? '#60a5fa' : 'var(--green)'}">${esc(sx.start)} – ${esc(sx.end)}<div style="font-size:12px;color:var(--text2);text-align:right">${esc(tr('{h}h', {h: sx.hours.toFixed(1)}))}</div></div>` : ''}
-    </div>`;
+  // The day plates: the month's planned days (from today in the current
+  // month) — work, night, a day off the manager set for that date — 10 at a
+  // time (CLAUDE.md, Lists page by 10); the picked calendar day comes first.
+  const plates = [];
+  for(let d = new Date(first); d.getMonth() === month; d.setDate(d.getDate() + 1)){
+    if(_schedMonth === 0 && d < today) continue;
+    const x = schedDay(d); if(x.work || x.dated) plates.push({t: d.getTime(), x});
+  }
+  if(_schedSel != null){ const i = plates.findIndex(o => o.t === sel.getTime()); const sx = schedDay(sel);
+    if(i > 0) plates.unshift(plates.splice(i, 1)[0]); else if(i < 0) plates.unshift({t: sel.getTime(), x: sx}); }
+  const plateHtml = ({t, x}) => { const d = new Date(t), isT = t === today.getTime();
+    const c = x.work ? (x.night ? 'var(--info)' : 'var(--ok)') : 'var(--warn)';
+    const sub = [isT ? tr('Today') : '', x.work ? (x.night ? tr('Night shift — ends the next day') : '') : (x.dated ? '' : tr('Day off'))].filter(Boolean).join(' · ');
+    return `<div class="sp-plate${isT ? ' today' : ''}${t === sel.getTime() ? ' sel' : ''}" style="--c:${c}" onclick="pickSchedDay(${t})">
+      <div class="sp-dd">${esc(d.toLocaleDateString(loc, {weekday:'short'}))}<b>${d.getDate()}</b></div>
+      <div class="sp-tx">${esc(x.work ? x.start + ' – ' + x.end : tr('Day off'))}<small>${esc(sub)}${x.dated ? `${sub ? ' · ' : ''}${esc(tr('This date only'))} <em>${esc(tr('changed'))}</em>` : ''}</small></div>
+      <span class="sp-h">${x.work ? esc(tr('{h}h', {h: x.hours.toFixed(1)})) : '—'}</span></div>`; };
+  const shownPl = plates.slice(0, _schedShown), leftPl = plates.length - shownPl.length;
   el.innerHTML = `<div class="sched-head"><button type="button" class="sched-nav" onclick="shiftMonth(-1)" aria-label="${esc(tr('Previous month'))}">‹</button>
       <div class="m">${esc(first.toLocaleDateString(loc, {month:'long', year:'numeric'}))}</div>
       ${_schedMonth !== 0 ? `<button type="button" class="sched-today" onclick="shiftMonth(0)">${esc(tr('Today'))}</button>` : ''}
-      <button type="button" class="sched-nav" onclick="shiftMonth(1)" aria-label="${esc(tr('Next month'))}">›</button></div>
-    <div class="sched-legend"><span><i style="background:rgba(109,214,160,0.35)"></i>${esc(tr('Work'))}</span><span><i style="background:rgba(96,165,250,0.35)"></i>${esc(tr('Night shift'))}</span><span><i style="background:rgba(245,166,35,0.35)"></i>${esc(tr('Day off'))}</span><span><i style="outline:1.5px dashed var(--text2);outline-offset:-2px"></i>${esc(tr('This date only'))}</span></div>`
-    + (hasAny ? `<div class="sched-grid">${dows}${cells}</div>${detail}
-      <div class="sched-sum"><div><b>${days}</b><span>${esc(tr('Work days this month'))}</span></div><div><b>${esc(tr('{h}h', {h: hours.toFixed(1)}))}</b><span>${esc(tr('Planned hours this month'))}</span></div></div>
+      <button type="button" class="sched-nav" onclick="shiftMonth(1)" aria-label="${esc(tr('Next month'))}">›</button></div>`
+    + (hasAny ? `<div class="sched-sum top"><div><b>${days}</b><span>${esc(tr('Work days this month'))}</span></div><div><b>${esc(tr('{h}h', {h: hours.toFixed(1)}))}</b><span>${esc(tr('Planned hours this month'))}</span></div></div>
+      <div class="sched-grid">${dows}${cells}</div>
+      <div class="sched-legend"><span><i style="background:rgba(109,214,160,0.5)"></i>${esc(tr('Work'))}</span><span><i style="background:rgba(79,142,247,0.6)"></i>${esc(tr('Night shift'))}</span><span><i style="background:rgba(245,166,35,0.55)"></i>${esc(tr('Day off'))}</span><span><i class="dot"></i>${esc(tr('Changed'))}</span></div>
+      <div class="sp-list">${shownPl.map(plateHtml).join('')}</div>
+      ${leftPl > 0 ? `<div style="text-align:center;margin-top:4px"><button type="button" class="gbtn sp-more" onclick="moreSchedDays()"><i class="ti ti-chevron-down"></i> ${esc(tr('Show more ({0} left)', {0: leftPl}))}</button></div>` : ''}
       <div class="sched-note">${esc(tr('Your manager plans this schedule; changes show here at once.'))}</div>`
       : `<div style="text-align:center;padding:40px;color:var(--text3);font-size:15px">${esc(tr('No shifts planned yet'))}</div>`);
 }
+function moreSchedDays(){ _schedShown += 10; renderMySchedule(); }
 
 // ── My hours: on the worker's own link one month of the worker's own
 // punches from the punch function (myMonth — portal.py hands out only this
@@ -1386,26 +1430,43 @@ function renderMyHours(key){
   if(data.failed){ el.innerHTML = head + msg(tr('Could not load your hours — check the connection and try again.')); return; }
   const f = myMonthFigures(data, key);
   if(!f.shifts.length){ el.innerHTML = head + msg(tr('No shifts this month')); return; }
-  // A tap on a shift opens its punches (in / out, time, site) — what My History showed.
-  const rows = [...f.shifts].reverse().map(s => `<div class="hours-shift" onclick="this.classList.toggle('open')"><div class="hours-row">
-      <i class="ti ti-chevron-down chev"></i>
-      <span class="d">${esc(s.date.toLocaleDateString(loc, {weekday:'short', day:'2-digit', month:'short'}))}</span>
-      <span class="t">${esc(s.inT || '--:--')} – ${esc(s.outT || '--:--')}</span>
-      <span class="h">${s.h > 0 ? esc(tr('{h}h', {h:s.h.toFixed(1)})) : '—'}</span>
+  // A plate per shift, newest first; a tap opens its punches (in / out, time,
+  // site, GPS distance) — what My History showed. The shift still open (the
+  // newest, its in under a day ago) is cyan "on shift" with the time so far.
+  const now = Date.now(), last = f.shifts[f.shifts.length - 1];
+  const rows = [...f.shifts].reverse().map(s => {
+    const inE = s.entries.find(e => e.type === 'in');
+    const live = s === last && !s.outT && inE && now - new Date(inE.ts).getTime() < 86400000;
+    const so = live ? (now - new Date(inE.ts).getTime()) / 3600000 : 0;
+    const site = s.entries.map(histSite).find(Boolean) || '';
+    return `<div class="hours-shift${live ? ' live' : ''}" style="--c:${live ? '#22d3ee' : s.h > 0 ? 'var(--ok)' : 'var(--warn)'}" onclick="this.classList.toggle('open')"><div class="hours-row">
+      <div class="sp-dd">${esc(s.date.toLocaleDateString(loc, {weekday:'short'}))}<b>${s.date.getDate()}</b></div>
+      <div class="sp-tx">${esc(site || (s.inT || '--:--') + ' – ' + (s.outT || '--:--'))}<small>${site ? esc((s.inT || '--:--') + ' – ' + (live ? tr('now') : s.outT || '--:--')) : live ? esc(tr('now')) : ''}${live ? ' · ' + esc(tr('on shift')) : ''}</small></div>
+      <span class="h">${live ? esc(tr('{h}h', {h: so.toFixed(1)})) : s.h > 0 ? esc(tr('{h}h', {h:s.h.toFixed(1)})) : '—'}</span>
       ${f.ov == null && f.hasRate ? `<span class="p">${s.pay > 0 ? esc(money(s.pay)) : '—'}</span>` : ''}
+      <i class="ti ti-chevron-down chev"></i>
     </div><div class="hours-punches">${s.entries.map(e => `<div class="hp">
       <span class="tag ${e.type === 'in' ? 'in' : 'out'}">${esc(e.type === 'in' ? tr('IN') : tr('OUT'))}</span>
       <span class="tm">${esc(e.time || '--:--')}</span>
       ${histSite(e) ? `<span class="st"><i class="ti ti-map-pin"></i> ${esc(histSite(e))}</span>` : ''}
-      ${e.dist != null ? `<span class="st">${esc(tr('{m} m', {m: Math.round(e.dist)}))}</span>` : ''}</div>`).join('')}</div></div>`).join('');
+      ${e.dist != null ? `<span class="st">${esc(tr('{m} m', {m: Math.round(e.dist)}))}</span>` : ''}</div>`).join('')}</div></div>`; }).join('');
+  // The Pay card: the month's hours by kind and the totals of the canonical
+  // functions (myMonthFigures) — never a second calculation.
+  const pr = (l, v, cls) => `<div class="pay-r${cls ? ' ' + cls : ''}"><span>${esc(l)}</span><b>${esc(v)}</b></div>`;
+  const payCard = f.hasRate ? `<div class="pay-card"><h4>${esc(tr('Pay'))}</h4>`
+      + pr(tr('Regular {h}h', {h:f.regH.toFixed(1)}), '')
+      + (f.otH > 0 ? pr(tr('Overtime {h}h', {h:f.otH.toFixed(1)}), '') : '')
+      + (f.shabH > 0 ? pr(tr('Shabbat {h}h', {h:f.shabH.toFixed(1)}), '') : '')
+      + pr(tr('Total'), money(f.total), 'tot')
+      + (f.travel > 0 ? pr(tr('Total with travel ({t})', {t:money(f.travel)}), money(f.total + f.travel)) : '')
+      + `</div>` : '';
   const parts = [tr('Regular {h}h', {h:f.regH.toFixed(1)})];
   if(f.otH > 0) parts.push(tr('Overtime {h}h', {h:f.otH.toFixed(1)}));
   if(f.shabH > 0) parts.push(tr('Shabbat {h}h', {h:f.shabH.toFixed(1)}));
   el.innerHTML = head
-    + `<div class="sched-sum"><div><b>${esc(tr('{h}h', {h:f.hours.toFixed(1)}))}</b><span>${esc(tr('Hours worked'))}</span></div><div><b>${f.days}</b><span>${esc(tr('Days worked'))}</span></div>`
-    + (f.hasRate ? `<div><b>${esc(money(f.total))}</b><span>${esc(tr('Pay'))}</span></div><div><b>${esc(money(f.total + f.travel))}</b><span>${esc(f.travel > 0 ? tr('Total with travel ({t})', {t:money(f.travel)}) : tr('Total'))}</span></div>` : '')
-    + `</div><div class="hours-break">${esc(parts.join(' · '))}</div>
-    <div style="margin-top:10px">${rows}</div>
+    + `<div class="sched-sum top"><div><b>${f.days}</b><span>${esc(tr('Days worked'))}</span></div><div><b>${esc(tr('{h}h', {h:f.hours.toFixed(1)}))}</b><span>${esc(tr('Hours worked'))}</span></div></div>
+    <div>${rows}</div>
+    ${payCard || `<div class="hours-break">${esc(parts.join(' · '))}</div>`}
     <div class="sched-note">${esc(data.local ? (URL_TOKEN ? tr('Offline — the punches saved on this device.') : tr('The punches saved on this device.'))
       : f.hasRate ? tr('An estimate before deductions — your payslip is the final figure.') : tr('Your pay rate is not set yet — ask your manager.'))}</div>`;
 }

@@ -1397,7 +1397,7 @@ function renderScanQuadEditor(b64,mediaType,cornersFrac){
   const stage=document.getElementById('aiScanStage');
   stage.innerHTML=`
     <div style="font-size:12px;color:var(--text2);margin-bottom:8px">ה-AI סימן מסגרת סביב המסמך — גררו את הנקודות כדי לתקן, ואז «סיום».</div>
-    <div id="scanEditWrap" style="position:relative;display:inline-block;max-width:100%;touch-action:none;background:#111;line-height:0;padding:${QUAD_PAD}px;box-sizing:border-box;user-select:none;-webkit-user-select:none">
+    <div id="scanEditWrap" class="no-swipe" style="position:relative;display:inline-block;max-width:100%;touch-action:none;background:#111;line-height:0;padding:${QUAD_PAD}px;box-sizing:border-box;user-select:none;-webkit-user-select:none">
       <img id="scanEditImg" src="data:${mediaType};base64,${b64}" draggable="false"
         style="display:block;max-width:100%;max-height:46vh;user-select:none;-webkit-user-drag:none;pointer-events:none">
       <svg id="scanQuadSvg" style="position:absolute;left:${QUAD_PAD}px;top:${QUAD_PAD}px;width:calc(100% - ${2*QUAD_PAD}px);height:calc(100% - ${2*QUAD_PAD}px);overflow:visible;touch-action:none;pointer-events:none">
