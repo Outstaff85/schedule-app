@@ -808,6 +808,8 @@
   .og-ni .tx b{display:block;font-weight:600}
   .og-ni .tx small{display:block;font-size:11px;color:#8b90a0;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .og-ni time{font-size:10px;color:#8b90a0;flex:none}
+  .og-ni-acts{display:flex;gap:6px;padding:0 8px 8px 48px}
+  .gbtn.nact.wa i{color:#25d366}
   .og-ni.new time::after{content:'';display:block;width:7px;height:7px;border-radius:50%;background:#22d3ee;margin:6px 0 0 auto;box-shadow:0 0 8px #22d3ee}
   @media (prefers-reduced-motion:reduce){.gic *,.og-bell i,.og-bell-n{animation:none !important}}
   /* Editors as section plates (redesign stage 4): a head (avatar, name,
@@ -1760,6 +1762,11 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
       <div class="field"><label>מספר בית</label><input type="text" id="firmEditStreetNumber"></div>
     </div>
     <div class="field"><label>עיר</label><input type="text" id="firmEditCity"></div>
+    <div id="firmEditWaField" style="display:none">
+      <div class="form-section"><i class="ti ti-brand-whatsapp"></i> <span data-i18n>WhatsApp reminder</span></div>
+      <div class="field"><label data-i18n>Message when a worker has not punched in</label><textarea id="firmEditWa" rows="3" maxlength="1000" onchange="saveFirmWaTemplate()"></textarea>
+        <div id="firmEditWaHint" style="font-size:11px;color:var(--text3);margin-top:4px"></div></div>
+    </div>
     <div id="firmEditFormError" style="color:#ff6b78;font-size:13px;margin:2px 0 6px;min-height:1.2em"></div>
     <div class="modal-actions">
       <button class="btn accent" onclick="submitEditFirm()" id="editFirmBtn" data-i18n>Save</button>
@@ -2627,12 +2634,66 @@ function notifList(){
     const ex=workerExpiryStatus(w);
     if(ex) out.push({id:t+'contract:'+w.id+':'+localYMD(ex.deadline), lvl:ex.level==='overdue'?'red':'amber', icon:'ti-file-certificate', title:ex.level==='overdue'?tr('Contract ended'):tr('Contract ending'), detail:w.name+' · '+ex.deadline.toLocaleDateString('en-GB'), at:ex.level==='overdue'?+ex.deadline:dayStart, open:()=>openNotices(w.id)});
     const td=workerToday(w,todayLog);
-    if(td.k==='none'){ const [h,m]=String(td.sh.start).split(':').map(Number); out.push({id:t+'nopunch:'+w.id+':'+today, lvl:'red', icon:'ti-clock-off', title:tr('No punch on today\'s shift'), detail:w.name+' · '+td.sh.start+'–'+(td.sh.end||''), at:new Date(now).setHours(h||0,m||0,0,0), open:()=>openNotices(w.id)}); }
+    if(td.k==='none'){ const [h,m]=String(td.sh.start).split(':').map(Number); out.push({id:t+'nopunch:'+w.id+':'+today, lvl:'red', icon:'ti-clock-off', title:tr('No punch on today\'s shift'), detail:w.name+' · '+td.sh.start+'–'+(td.sh.end||''), at:new Date(now).setHours(h||0,m||0,0,0), open:()=>openNotices(w.id), acts:noPunchActs(w,td.sh)}); }
   });
   if(hasPermission('accounting')) (__hoursBatches||[]).filter(b=>b.status==='pending').forEach(b=>{
     out.push({id:t+'hours:'+b.batchId, lvl:'blue', icon:'ti-clock-hour-4', title:tr('Hours waiting for approval'), detail:[b.fileName,b.uploadedBy].filter(Boolean).join(' · '), at:Date.parse(b.uploadedAt)||dayStart, open:()=>switchTab('accounting')}); });
   __notifApprovals.forEach(a=>out.push(Object.assign({lvl:'green', icon:'ti-circle-check', open:()=>switchTab('accounting')}, a)));
   return out.sort((a,b)=>b.at-a.at);
+}
+// ── WhatsApp reminder (redesign stage 11a, docs/admin.md → Firms): a "no
+// punch" notice gets a WhatsApp button next to Call. It opens wa.me with the
+// worker's phone in international form and the firm's template filled in
+// (tenants/{t}/settings/messages.waTemplate; empty = the default, in the UI
+// language). No API: the owner taps Send in WhatsApp.
+function waDefaultTemplate(){ return tr('Hi {full name}, you have not punched in today (shift {start} · {site}).'); }
+let __firmMsgs=null, __firmMsgsAt=0;
+async function loadFirmMessages(force){
+  if(!force&&__firmMsgs&&Date.now()-__firmMsgsAt<5*60e3) return __firmMsgs;
+  try{ const j=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'loadFirmMessages'})})).json();
+    if(j&&j.ok){ __firmMsgs=j.messages||{}; __firmMsgsAt=Date.now(); } }catch(e){}
+  return __firmMsgs||{};
+}
+function waTemplate(){ const t=__firmMsgs&&__firmMsgs.waTemplate; return t&&String(t).trim()?String(t):waDefaultTemplate(); }
+// "050-123 4567" → "972501234567"; "+972…" / "972…" / "00972…" kept (digits only).
+function waPhone(p){
+  let d=String(p||'').replace(/\D/g,'');
+  if(d.startsWith('00')) d=d.slice(2);
+  if(/^0\d{8,9}$/.test(d)) d='972'+d.slice(1);
+  return d.length>=9?d:'';
+}
+function waMessage(w, sh){
+  const name=String(w.name||'').trim();
+  return waTemplate().replace(/\{full name\}/g,name).replace(/\{first name\}/g,name.split(/\s+/)[0]||'')
+    .replace(/\{start\}/g,(sh&&sh.start)||'').replace(/\{site\}/g,workerSiteName(w)||'');
+}
+function waLink(w, sh){ const n=waPhone(w&&w.phone); return n?'https://wa.me/'+n+'?text='+encodeURIComponent(waMessage(w,sh)):''; }
+function openWhatsApp(w, sh){ const u=waLink(w,sh); if(u) window.open(u,'_blank','noopener'); }
+function callWorker(w){ location.href='tel:'+String(w.phone).replace(/[^\d+]/g,''); }
+// The "no punch" actions: Call and WhatsApp, when the worker has a phone.
+function noPunchActs(w, sh){
+  if(!w.phone) return [];
+  return [{label:tr('Call'), icon:'ti-phone', fn:()=>callWorker(w)}, ...(waPhone(w.phone)?[{label:tr('WhatsApp'), icon:'ti-brand-whatsapp', fn:()=>openWhatsApp(w,sh), wa:true}]:[])];
+}
+async function saveFirmWaTemplate(){
+  const el=document.getElementById('firmEditWa'); if(!el||!__editingFirmTenantId) return;
+  const v=el.value.trim(), waTemplate=v===waDefaultTemplate()?'':v;
+  try{
+    const j=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'saveFirmMessages', asTenantId:__editingFirmTenantId, waTemplate})})).json();
+    if(!j||j.error){ showToast(tr((j&&j.error)||'Save failed')); return; }
+    __firmMsgs=Object.assign({}, __firmMsgs||{}, {waTemplate}); __firmMsgsAt=Date.now();
+    showToast(tr('Saved'));
+  }catch(e){ showToast(tr('Network error')); }
+}
+// The firm form's WhatsApp field: only for the firm being worked in.
+async function fillFirmWaField(tenantId){
+  const box=document.getElementById('firmEditWaField'); if(!box) return;
+  const s=getSession(), on=!!tenantId&&tenantId===(s&&(s.viewingTenantId||s.tenantId));
+  box.style.display=on?'':'none'; if(!on) return;
+  document.getElementById('firmEditWaHint').textContent=tr('You can use {0}',{0:'{full name}, {first name}, {start}, {site}'});
+  const el=document.getElementById('firmEditWa'); el.value=waTemplate();
+  await loadFirmMessages(true);
+  if(document.activeElement!==el) el.value=waTemplate();
 }
 // A client login that approved every day of this month (the hours function's
 // list, read at most every 5 minutes; firm admins and staff with Accounting).
@@ -2681,6 +2742,7 @@ function toggleBell(e){
   document.getElementById('bellBtn').classList.add('on');
   void p.offsetWidth; p.classList.add('open');
   refreshNotifApprovals();
+  loadFirmMessages();
 }
 function closeBell(){ const p=document.getElementById('bellPanel'); if(p) p.remove(); const b=document.getElementById('bellBtn'); if(b) b.classList.remove('on'); }
 document.addEventListener('click',()=>closeBell());
@@ -2695,7 +2757,8 @@ function drawBellPanel(list){
   if(!list.length){ box.innerHTML=`<div class="t3-empty" style="padding:10px 8px">${esc(tr('Nothing new'))}</div>`; return; }
   const col={red:'var(--bad)', amber:'var(--warn)', blue:'var(--info)', green:'var(--ok)'};
   const when=ms=>{ const d=new Date(ms); return localYMD(d)===localYMD(new Date())?d.toTimeString().slice(0,5):fmtDMY(localYMD(d)); };
-  renderPagedList(box,'notifs',list.length+':'+unread,list,(x,i)=>`<button type="button" class="og-ni${__notifRead.has(x.id)?'':' new'}" style="--c:${col[x.lvl]||'var(--neutral)'}" onclick="openNotif(${i})"><span class="ic"><i class="ti ${esc(x.icon)}"></i></span><span class="tx"><b>${esc(x.title)}</b><small>${esc(x.detail)}</small></span><time>${esc(when(x.at))}</time></button>`);
+  const acts=x=>(x.acts||[]).length?`<div class="og-ni-acts">${x.acts.map(a=>`<button type="button" class="gbtn nact${a.wa?' wa':''}" onclick="event.stopPropagation();runRowFn('${rowFnKey(a.fn)}')"><i class="ti ${esc(a.icon)}"></i><span>${esc(a.label)}</span></button>`).join('')}</div>`:'';
+  renderPagedList(box,'notifs',list.length+':'+unread,list,(x,i)=>`<div class="og-ni-w"><button type="button" class="og-ni${__notifRead.has(x.id)?'':' new'}" style="--c:${col[x.lvl]||'var(--neutral)'}" onclick="openNotif(${i})"><span class="ic"><i class="ti ${esc(x.icon)}"></i></span><span class="tx"><b>${esc(x.title)}</b><small>${esc(x.detail)}</small></span><time>${esc(when(x.at))}</time></button>${acts(x)}</div>`);
 }
 function openNotif(i){
   const x=__bellItems[i]; if(!x) return;
@@ -4692,7 +4755,7 @@ function workerNotices(w, today){
   if(ex) out.push({lvl:ex.level==='overdue'?'red':'amber', icon:'ti-file-certificate', word:tr('Contract'), title:ex.level==='overdue'?tr('Contract ended'):tr('Contract ending'), detail:ex.deadline.toLocaleDateString('en-GB'),
     act:can?{label:tr('Extend'), icon:'ti-calendar-plus', fn:go(()=>openEditWorker(idx()))}:null});
   if(today && today.k==='none') out.push({lvl:'red', icon:'ti-clock-off', word:tr('No punch'), title:tr('No punch on today\'s shift'), detail:today.sh?today.sh.start+'–'+(today.sh.end||''):'',
-    act:w.phone?{label:tr('Call'), icon:'ti-phone', fn:()=>{ location.href='tel:'+String(w.phone).replace(/[^\d+]/g,''); }}:null});
+    acts:noPunchActs(w,today.sh)});
   return out.sort((a,b)=>(a.lvl==='red'?0:1)-(b.lvl==='red'?0:1));
 }
 // The plate's bar (and avatar) colour: red inactive or an urgent notice, amber
@@ -4774,10 +4837,11 @@ function openNotices(wid){
   m.innerHTML=workerSheetHeadHtml(w,t,ns)
     +`<div class="t3-sec">${esc(tr('Notices'))}<em>${ns.length}</em></div>`
     +(ns.length?ns.map(n=>t3Line({c:n.lvl==='red'?'var(--bad)':'var(--warn)', av:`<div class="t3-av"><i class="ti ${esc(n.icon)}"></i></div>`, name:esc(n.title), sub:esc(n.detail),
-      right:n.act?`<button type="button" class="gbtn nact" onclick="event.stopPropagation();runRowFn('${rowFnKey(n.act.fn)}')"><i class="ti ${esc(n.act.icon)}"></i><span>${esc(n.act.label)}</span></button>`:''})).join('')
+      right:(n.acts||(n.act?[n.act]:[])).map(a=>`<button type="button" class="gbtn nact${a.wa?' wa':''}" onclick="event.stopPropagation();runRowFn('${rowFnKey(a.fn)}')"><i class="ti ${esc(a.icon)}"></i><span>${esc(a.label)}</span></button>`).join('')})).join('')
       :`<div class="t3-empty">${esc(tr('No notices'))}</div>`)
     +`<div class="modal-actions"><button type="button" class="gbtn primary" onclick="closeModal('noticesOverlay');openWorkerCardById('${esc(w.id)}')"><i class="ti ti-id"></i><span>${esc(tr('Open worker card'))}</span></button></div>`;
   document.getElementById('noticesOverlay').classList.add('open');
+  loadFirmMessages();
 }
 function runRowFn(k){ const fn=__rowFns.get(k); if(fn) fn(); }
 // The head of the worker card and the notices sheet: a big avatar in the
@@ -7328,6 +7392,7 @@ function openCreateFirmForm(){
   document.getElementById('editFirmBtn').textContent = tr('Create');
   document.getElementById('firmEditFormError').textContent = '';
   document.getElementById('editFirmOverlay').classList.add('open');
+  fillFirmWaField(null);
 }
 function openEditFirmForm(tenantId){
   const t = __firmsCache.find(x => x.tenantId === tenantId);
@@ -7342,6 +7407,7 @@ function openEditFirmForm(tenantId){
   document.getElementById('editFirmBtn').textContent = tr('Save');
   document.getElementById('firmEditFormError').textContent = '';
   document.getElementById('editFirmOverlay').classList.add('open');
+  fillFirmWaField(tenantId);
 }
 
 // Self-service version of the same form, for the firm the session is working
@@ -7364,6 +7430,7 @@ async function openMyFirmForm(){
   document.getElementById('editFirmBtn').textContent = tr('Save');
   document.getElementById('firmEditFormError').textContent = '';
   document.getElementById('editFirmOverlay').classList.add('open');
+  fillFirmWaField(tenantId);
   try{
     const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'loadTenantProfile', ...gsAuth() }) });
     const json = await res.json();

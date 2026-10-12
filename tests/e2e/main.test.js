@@ -756,6 +756,38 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(gp.daily === '300,0,300' && gp.dayRow && gp.hourBack, 'clients: billing by the day — one day rate per worked shift, the By day / By hour switch ' + JSON.stringify(gp));
   ok(gp.payable && gp.newLogin && gp.tick && gp.saved, 'supplier editor: commission payable this month, New portal login, portal tabs ticked and saved at once ' + JSON.stringify(gp));
+  // Stage 11a: a "no punch" notice has WhatsApp next to Call — wa.me with the phone in international form and the firm's template.
+  const wa = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
+    r.phones = [waPhone('050-123 4567'), waPhone('+972 50 1234567'), waPhone('00972501234567'), waPhone('12')].join();
+    const w = workers.find(x => x.id === 'w2'), keep = {phone: w.phone, ds: w.dateShifts, status: w.status};
+    w.phone = '052-765 4321'; w.status = 'active'; w.dateShifts = Object.assign({}, w.dateShifts, {[localYMD(new Date())]: {type:'work', start:'00:01', end:'23:59'}});
+    await loadFirmMessages(true);
+    r.defLink = decodeURIComponent(waLink(w, {start:'00:01'}));
+    openMyFirmForm(); await wait(800);
+    r.field = document.getElementById('firmEditWaField').style.display !== 'none' && /full name/.test(document.getElementById('firmEditWa').value);
+    const ta = document.getElementById('firmEditWa'); ta.value = 'Hello {first name}, shift at {start} · {site}'; await saveFirmWaTemplate();
+    closeModal('editFirmOverlay'); await wait(200);
+    __firmMsgs = null; await loadFirmMessages(true);
+    r.saved = __firmMsgs.waTemplate;
+    const n = notifList().find(x => x.id.includes('nopunch:w2:'));
+    r.bellActs = n ? n.acts.map(a => a.label).join() : 'none';
+    openNotices('w2'); await wait(200);
+    const btn = document.querySelector('#noticesModal .gbtn.nact.wa');
+    r.sheetBtn = !!btn && /Call/.test(document.getElementById('noticesModal').innerText);
+    let opened = null; const wo = window.open; window.open = u => { opened = u; return null; };
+    if(btn) btn.click(); window.open = wo;
+    r.link = opened ? decodeURIComponent(opened) : '';
+    closeModal('noticesOverlay');
+    await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'saveFirmMessages', waTemplate:''})})).json();
+    __firmMsgs = null;
+    Object.assign(w, {phone: keep.phone, status: keep.status}); w.dateShifts = keep.ds;
+    for(let i = 0; i < 3; i++){ await wait(150); document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); }
+    return r;
+  });
+  ok(wa.phones === '972501234567,972501234567,972501234567,' && /^https:\/\/wa\.me\/972527654321\?text=Hi .+, you have not punched in today \(shift 00:01 · /.test(wa.defLink), 'WhatsApp: the phone in international form, the default message ' + JSON.stringify(wa));
+  ok(wa.field && wa.saved === 'Hello {first name}, shift at {start} · {site}' && wa.bellActs === 'Call,WhatsApp' && wa.sheetBtn && /^https:\/\/wa\.me\/972527654321\?text=Hello \S+, shift at 00:01 · /.test(wa.link),
+    'WhatsApp: the firm template saved in the firm form; Call + WhatsApp on a no-punch notice (bell and notices sheet) open wa.me with it ' + JSON.stringify(wa));
   // Worker list header (the owner's fixed structure): "Workers N", glass New, ⋮; tabs Active / Vacation / Pending.
   const wh = await p.evaluate(async () => {
     switchTab('workers'); setWorkersView('cards'); renderWorkersPage();

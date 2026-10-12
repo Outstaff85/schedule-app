@@ -628,6 +628,18 @@
           const snap = await F.getDoc(F.doc(db, 'notifReads', auth.currentUser.uid));
           return {ok:true, ids: snap.exists() ? (snap.data().ids || []) : []};
         }
+        // The firm's message templates (stage 11a: the WhatsApp "no punch"
+        // reminder), tenants/{t}/settings/messages = {waTemplate, at}; read by
+        // every manager-side login, written by the owner (firestore.rules).
+        case 'loadFirmMessages': {
+          const snap = await F.getDoc(F.doc(db, 'tenants', t, 'settings', 'messages'));
+          return {ok:true, messages: snap.exists() ? snap.data() : {}};
+        }
+        case 'saveFirmMessages': {
+          const waTemplate = String(params.waTemplate == null ? '' : params.waTemplate).slice(0, 1000);
+          await F.setDoc(F.doc(db, 'tenants', t, 'settings', 'messages'), {waTemplate, at: new Date().toISOString()}, {merge:true});
+          return {ok:true};
+        }
         case 'saveNotifReads': {
           const ids = (params.ids || []).filter(x => typeof x === 'string' && x.length <= 200).slice(-500);
           await F.setDoc(F.doc(db, 'notifReads', auth.currentUser.uid), {ids, at: new Date().toISOString()});

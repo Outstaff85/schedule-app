@@ -87,7 +87,7 @@ How a run works (a run = one session, started by the Routine below or by hand wi
 - [x] 9 Punch page
 - [x] 10 Supplier and client portals
 - [x] 11 Sign-in
-- [ ] 11a WhatsApp reminder (added by the owner 2026-10-12; after stage 11, before the deferred weather)
+- [x] 11a WhatsApp reminder (added by the owner 2026-10-12; after stage 11, before the deferred weather)
 - [ ] 12 Weather — **deferred**: done last, only after the owner puts the OpenWeatherMap key in Secret Manager and says so; the loop stops after stage 11
 
 ### Stages
