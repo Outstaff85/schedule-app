@@ -14,8 +14,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#0f1117">
-<title>Schedule Manager</title>
+<meta name="theme-color" content="#10141f">
+<title>Interactive Manager</title>
 <style>
   :root {
     --bg:#0f1117; --bg2:#181c27; --bg3:#1e2333;
@@ -487,6 +487,8 @@
     /* Hide worker list + client filter — managed via Workers/Clients tabs on mobile */
     .worker-list, .client-list,
     .sidebar > div[style*="height:16px"] { display: none; }
+    /* Everything in the sidebar is hidden here: the empty strip goes too. */
+    .sidebar { display: none; }
 
     /* ── Main ── */
     .main { padding: 12px 12px env(safe-area-inset-bottom,12px); overflow: visible; }
