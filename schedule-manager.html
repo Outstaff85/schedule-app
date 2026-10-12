@@ -543,17 +543,32 @@
   .t3-line.off{opacity:.6}
   /* Schedule, variant 6: the week navigator, a line per worker, its days. */
   .sched-nav{display:flex;align-items:center;gap:6px;margin:0 0 6px}
-  .sched-arrow{width:38px;height:38px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none}
+  .sched-arrow.gbtn{width:38px;height:38px;border-radius:14px;padding:0;font-size:18px;flex:none}
+  .sched-arrow:not(.gbtn){width:38px;height:38px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none}
   .sched-week{flex:1;text-align:center;position:relative;cursor:pointer;min-width:0}
   .sched-week b{display:block;font-size:16px}
   .sched-week span{display:block;font-size:11px;color:var(--text2)}
   .sched-week input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
   .sched-line .t3-chev{transition:transform .15s}
   .sched-line.open .t3-chev{transform:rotate(180deg)}
-  .sched-day{display:flex;justify-content:space-between;align-items:center;margin:0 0 2px 40px;padding:6px 10px 6px 12px;border-left:2px solid var(--c);font-size:13px;cursor:pointer;border-radius:0 6px 6px 0}
+  /* Schedule (redesign stage 6): site tabs, day marks on a worker's plate, its
+     opened days indented under it with the times in green. */
+  .og-tabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:4px 0 10px}
+  .og-tabs::-webkit-scrollbar{display:none}
+  .og-tabs:empty{display:none}
+  .og-tabs button{position:relative;flex:none;height:36px;padding:0 14px;border:1px solid transparent;border-radius:14px;background:none;color:var(--text2);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;white-space:nowrap}
+  .og-tabs button.on{background:var(--glass-hi);border-color:rgba(255,255,255,.35);color:#fff;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+  .og-tabs button.on::after{content:'';position:absolute;left:14px;right:14px;bottom:-1px;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55);animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1)}
+  .sched-line .n small{white-space:normal}
+  .daymarks{display:flex;gap:3px;margin-top:5px}
+  .daymarks i{width:16px;height:6px;border-radius:3px;background:rgba(255,255,255,.12)}
+  .daymarks i.w{background:var(--ok)}.daymarks i.n{background:var(--info)}.daymarks i.o{background:var(--warn)}
+  .daymarks i.t{box-shadow:0 0 0 1.5px rgba(255,255,255,.7)}
+  .dayrows{margin:-4px 0 10px 18px;padding-left:12px;border-left:2px solid rgba(255,255,255,.12)}
+  .sched-day{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 6px;font-size:12px;color:#cfd3dd;cursor:pointer;border-radius:8px}
   .sched-day:hover{background:rgba(255,255,255,.04)}
   .sched-day.today span{color:var(--accent);font-weight:700}
-  .sched-day b{font-family:'DM Mono',monospace;font-size:12px;font-weight:600}
+  .sched-day b{font-family:'DM Mono',monospace;font-size:12px;font-weight:600;color:var(--c)}
   .sched-dated{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);vertical-align:middle}
 
   /* Today (variant A): a section folds with the arrow at its right; a
@@ -1106,10 +1121,10 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
            worker with the week's sum; its arrow opens the 7 days, a day opens
            the shift editor. -->
       <div class="sched-nav">
-        <button type="button" class="sched-arrow" onclick="prevWeek()" title="Previous week" data-i18n-title="Previous week"><i class="ti ti-chevron-left"></i></button>
+        <button type="button" class="gbtn icon sched-arrow" onclick="prevWeek()" title="Previous week" data-i18n-title="Previous week"><i class="ti ti-chevron-left"></i></button>
         <label class="sched-week"><b id="schedWeekRange"></b><span id="schedWeekSum"></span>
           <input type="date" id="datePicker" onchange="onDateChange()" aria-label="Week"></label>
-        <button type="button" class="sched-arrow" onclick="nextWeek()" title="Next week" data-i18n-title="Next week"><i class="ti ti-chevron-right"></i></button>
+        <button type="button" class="gbtn icon sched-arrow" onclick="nextWeek()" title="Next week" data-i18n-title="Next week"><i class="ti ti-chevron-right"></i></button>
         <div class="export-dropdown" id="exportDropdown">
           <button type="button" class="t3-ib" onclick="toggleExportMenu()" title="Export" data-i18n-title="Export"><i class="ti ti-download"></i></button>
           <div class="dropdown-menu" id="exportMenu">
@@ -1119,6 +1134,7 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
           </div>
         </div>
       </div>
+      <div class="og-tabs" id="schedSiteTabs"></div>
       <div class="t3-sec" id="ganttHeader"></div>
       <div id="ganttBody"></div>
     </div>
@@ -2691,6 +2707,10 @@ function renderGanttHeader(){
   set('schedWeekSum', [thisWeek?tr('This week'):'', tr('{h}h',{h:vis.reduce((t,w)=>t+workerTotalHours(w),0).toFixed(0)}), sh.length===1?tr('1 shift'):tr('{n} shifts',{n:sh.length})].filter(Boolean).join(' · '));
   const el=document.getElementById('ganttHeader');
   if(el) el.innerHTML=`<i class="ti ti-users"></i> ${esc(tr('Workers'))}<em>${vis.length}</em>`;
+  // The site tabs: All sites and each client (the same filter as the sidebar's).
+  const tabs=document.getElementById('schedSiteTabs');
+  if(tabs) tabs.innerHTML=clients.length?[`<button type="button" class="${!selectedClientId?'on':''}" onclick="filterByClient(null)">${esc(tr('All sites'))}</button>`]
+    .concat(clients.map(c=>`<button type="button" class="${selectedClientId===c.id?'on':''}" onclick="filterByClient('${esc(c.id)}')">${esc(c.name)}</button>`)).join(''):'';
 }
 // A line per worker: its week in short ("4 shifts · 29h · off Mon, Wed");
 // the arrow (or a tap on the line) opens the 7 days under it, a day opens
@@ -2702,20 +2722,24 @@ function renderGanttBody(){
   const body=document.getElementById('ganttBody');
   const vis=getVisible(), todayStr=new Date().toDateString();
   renderPagedList(body,'gantt',String(selectedClientId||''),vis,w=>{
-    const wi=workers.indexOf(w), ws=weekShifts(w), open=__schedOpen.has(w.id);
-    const work=ws.filter(x=>x.type==='work'&&x.start&&x.end), offs=ws.map((x,i)=>x.type==='work'&&x.start&&x.end?null:tr(DAYS[i])).filter(Boolean);
-    const sum=[work.length===1?tr('1 shift'):tr('{n} shifts',{n:work.length}), tr('{h}h',{h:workerTotalHours(w).toFixed(0)}), offs.length?tr('off {0}',{0:offs.join(', ')}):''].filter(Boolean).join(' · ');
-    const days=open?ws.map((x,di)=>{
-      const date=new Date(weekStart); date.setDate(date.getDate()+di);
-      const on=x.type==='work'&&x.start&&x.end, mid=on&&toMins(x.end)<=toMins(x.start);
-      const col=on?(mid?'var(--blue)':'var(--green)'):'var(--amber)';
+    const wi=workers.indexOf(w), ws=weekShifts(w), open=__schedOpen.has(w.id), site=workerSiteName(w);
+    const work=ws.filter(x=>x.type==='work'&&x.start&&x.end);
+    const sum=[site, work.length===1?tr('1 shift'):tr('{n} shifts',{n:work.length})].filter(Boolean).join(' · ');
+    const dateOf=di=>{ const d=new Date(weekStart); d.setDate(d.getDate()+di); return d; };
+    // A mark per day: green work, blue a night (crossing midnight), amber off while on vacation, grey off; today ringed.
+    const marks=ws.map((x,di)=>{ const on=x.type==='work'&&x.start&&x.end, mid=on&&toMins(x.end)<=toMins(x.start);
+      return `<i class="${on?(mid?'n':'w'):(w.status==='vacation'?'o':'')}${dateOf(di).toDateString()===todayStr?' t':''}"></i>`; }).join('');
+    const days=open?`<div class="dayrows">${ws.map((x,di)=>{
+      const date=dateOf(di), on=x.type==='work'&&x.start&&x.end, mid=on&&toMins(x.end)<=toMins(x.start);
+      const col=on?(mid?'var(--info)':'var(--fig)'):'var(--warn)';
       return `<div class="sched-day${date.toDateString()===todayStr?' today':''}" style="--c:${col}" onclick="openEditShift(${wi},${di})">
-        <span>${esc(tr(DAYS[di]))} ${date.getDate()}${x.dated?` <i class="sched-dated" title="${esc(tr('Changed for this date only'))}"></i>`:''}</span>
-        <b style="color:${col}${on?'':';font-family:inherit'}">${on?esc(x.start+'–'+x.end):esc(tr('Day off'))}</b></div>`;
-    }).join(''):'';
+        <span>${esc(tr(DAYS[di]))} ${date.getDate()}${site?' · '+esc(site):''}${x.dated?` <i class="sched-dated" title="${esc(tr('Changed for this date only'))}"></i>`:''}</span>
+        <b${on?'':' style="font-family:inherit"'}>${on?esc(x.start+'–'+x.end):esc(tr('Day off'))}</b></div>`;
+    }).join('')}</div>`:'';
     return `<div class="gantt-row" draggable="true" data-wi="${wi}" ondragstart="dragStart(event,${wi})" ondragover="dragOver(event,${wi})" ondragleave="dragLeave(event)" ondrop="doDrop(event,${wi})" ondragend="dragEnd(event)">`
-      + t3Line({c:work.length?'var(--green)':'var(--neutral)', av:t3Av(w), name:esc(w.name), sub:esc(sum), cls:'sched-line'+(open?' open':''),
-          onclick:`toggleSchedWorker('${esc(w.id)}')`, right:`<i class="ti ti-chevron-down t3-chev"></i>`})
+      + t3Line({c:w.status==='vacation'?'var(--warn)':work.length?'var(--ok)':'var(--neutral)', av:t3Av(w), name:`<span title="${esc(w.name)}">${esc(shortName(w.name))}</span>`,
+          sub:[esc(sum), `<span class="daymarks">${marks}</span>`], cls:'sched-line'+(open?' open':''),
+          onclick:`toggleSchedWorker('${esc(w.id)}')`, right:`<span class="r">${esc(fmtHoursShort(workerTotalHours(w)))}</span><i class="ti ti-chevron-down t3-chev"></i>`})
       + days + `</div>`;
   });
 }

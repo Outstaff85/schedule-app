@@ -49,6 +49,7 @@
   "All dates": "כל התאריכים",
   "All documents": "כל המסמכים",
   "All measurements, newest first": "כל המדידות, מהחדשה לישנה",
+  "All sites": "כל האתרים",
   "All statuses": "כל הסטטוסים",
   "All suppliers": "כל הספקים",
   "All Time": "כל התקופה",
@@ -981,7 +982,6 @@
   "1 shift": "משמרת אחת",
   "{n} shifts": "{n} משמרות",
   "A worker's arrow opens the week · a day opens its shift": "החץ של עובד פותח את השבוע · יום פותח את המשמרת",
-  "off {0}": "חופש {0}",
   "Previous week": "השבוע הקודם",
   "Next week": "השבוע הבא"
 }

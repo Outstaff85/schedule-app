@@ -81,7 +81,7 @@ How a run works (a run = one session, started by the Routine below or by hand wi
 - [x] 3 Workers
 - [x] 4 Editors
 - [x] 5 Today, greeting, notifications
-- [ ] 6 Schedule
+- [x] 6 Schedule
 - [ ] 7 Accounting and hours approvals
 - [ ] 8 Clients, Suppliers, Admin
 - [ ] 9 Punch page
