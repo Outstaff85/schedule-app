@@ -1221,8 +1221,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const before = (await srv('/punches')).n;
   await p.goto(BASE + 'worker-punch.html?t=tok-avi');
   ok(await waitFor(p, () => !document.getElementById('screenPunch').classList.contains('hidden') && locOk === true, 15000), 'punch: link verified, on site');
-  await p.click('#bigPunchBtn');
-  ok(await waitFor(p, () => !document.getElementById('screenSuccess').classList.contains('hidden')), 'punch: success screen');
+  // Hold to punch (redesign stage 9): a short press rolls back and sends nothing; about a second punches.
+  const pbb = await (await p.$('#bigPunchBtn')).boundingBox(), cx = pbb.x + pbb.width / 2, cy = pbb.y + pbb.height / 2;
+  await p.mouse.move(cx, cy); await p.mouse.down(); await sleep(300); await p.mouse.up(); await sleep(600);
+  const shortPress = await p.evaluate(() => ({log: getPunchLog().length, result: document.getElementById('punchResult').textContent}));
+  await p.mouse.down(); await sleep(1300); await p.mouse.up();
+  ok(await waitFor(p, () => /Punched in at \d\d:\d\d · have a good shift/.test(document.getElementById('punchResult').textContent) && !document.getElementById('screenPunch').classList.contains('hidden')), 'punch: a hold of about a second punches in; the line under the button says so');
+  ok(shortPress.result === '', 'punch: a short press sends nothing ' + JSON.stringify(shortPress));
+  const tiles = await p.evaluate(() => ({next: document.getElementById('tileNextShift').textContent, hours: document.getElementById('tileMonthHours').textContent, greet: document.getElementById('punchGreeting').innerHTML}));
+  ok(tiles.next !== '—' && /Avi/.test(tiles.greet) && /gic/.test(tiles.greet), 'punch: greeting with the first name and its icon; My Schedule tile shows the next shift ' + JSON.stringify(tiles));
   await sleep(1500);
   const after = await srv('/punches');
   ok(after.n === before + 1, 'punch: saved through the punch function (' + before + ' → ' + after.n + ')');

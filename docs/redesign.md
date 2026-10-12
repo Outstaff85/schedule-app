@@ -84,7 +84,7 @@ How a run works (a run = one session, started by the Routine below or by hand wi
 - [x] 6 Schedule
 - [x] 7 Accounting and hours approvals
 - [x] 8 Clients, Suppliers, Admin
-- [ ] 9 Punch page
+- [x] 9 Punch page
 - [ ] 10 Supplier and client portals
 - [ ] 11 Sign-in
 - [ ] 12 Weather — **deferred**: done last, only after the owner puts the OpenWeatherMap key in Secret Manager and says so; the loop stops after stage 11

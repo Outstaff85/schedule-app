@@ -40,8 +40,8 @@ The page first loads the dictionary of the language chosen on this device (`load
 
 ## Screens
 
-- **`screenPunch`** — greeting by hour ("Good morning" …), live clock, site pill, GPS chip, the big button, "My Schedule" and "My Hours".
-- **`screenSuccess`** — Clocked IN / OUT, time and date, "Done". Every "back" (`resetToQR`, `closeHistory`) returns to the punch screen with a fresh GPS check.
+- **`screenPunch`** (redesign stage 9) — the logo mark top left (`.pp-mark`) and the Language button top right (no ⋮); the greeting "Good morning / afternoon / evening / night, <first name>" with its animated icon (`greetingHtml`, the same as the manager app's Today — duplicated on purpose); the schedule-change plate; live clock, site pill, GPS chip; the round glass punch button; the result line (`#punchResult`); two glass tiles — **My Schedule** (the next shift, `nextShiftText`, with an "Updated" tag after a change) and **My Hours** (this month's hours in green, `myMonthFigures` over the punch function's month, read in the background — `updatePunchTiles`). Every "back" (`resetToQR`, `closeHistory`) returns to the punch screen with a fresh GPS check.
+- **The punch button — hold about one second** (`HOLD_MS` 1000, `holdStart` / `holdEnd`): the ring around it fills while held (`--hold`, a conic ring); letting go early rolls it back and sends nothing; Enter / Space held works the same. Punch in is all green, punch out all red. The button takes the whole touch gesture (`touch-action:none`, no long-press menu, no text selection). On success the page stays: the face flashes its colour, a check draws, the phone vibrates, and the line under it says "Punched in at 07:58 · have a good shift" (green) or "Punched out at 17:04 · 8h 04m today" (red; the time since the last punch in) — `showSuccess`.
 - **`screenHistory`**, **`screenSchedule`**, **`screenHours`** — see below.
 
 ## GPS check (`getLocation()` / `analyseGps()`)
@@ -54,7 +54,7 @@ Constants: `GPS_MAX_ACCURACY` = 150 m, `GPS_REQUEST_MS` = 800 ms, `GPS_MAX_SPEED
 - The punch is allowed (`locOk`) only when the distance (`haversine`) ≤ `SITE.radius`, the accuracy is between 0 and 150 m, and nothing is suspicious. The chip says why not: "Nm from site (max R m)", "Weak GPS", "Suspicious GPS: …", "GPS denied", "GPS error".
 - The result is kept in `window._lastGpsAnalysis` for the punch.
 
-`updateBigBtn()`: NOT ON SITE when `!locOk`; otherwise CLOCK OUT if the worker's last punch is IN, else CLOCK IN.
+`updateBigBtn()`: NOT ON SITE when `!locOk` (no ring, no hold); otherwise CLOCK OUT (red) if the worker's last punch is IN, else CLOCK IN (green).
 
 ## A punch (`doPunch()`)
 
@@ -85,7 +85,7 @@ Constants: `GPS_MAX_ACCURACY` = 150 m, `GPS_REQUEST_MS` = 800 ms, `GPS_MAX_SPEED
 - **Month:** the arrows change the month (`shiftMonth(±1)`), "Today" (shown away from the current month) comes back; weekday headers and the month name in `uiLocale()`; days of the next and previous months are dimmed; today is framed.
 - **A tap on a day** (`pickSchedDay`) shows it below the grid: the full date, "Work day" / "Night shift — ends the next day" / "Day off", the times and the hours (`schedDay(d)`).
 - **Totals:** work days and planned hours of the shown month; "No shifts planned yet" when the roster has no working day.
-- "✕ Close" goes back to the punch screen (`closeHistory()`).
+- "✕ Close" goes back to the punch screen (`closeHistory()`). My Schedule and My Hours are full-height glass sheets (a grab bar, soft day tiles, today ringed, a cyan dot on a day changed for its date only; shifts as plates).
 - A day changed for its date only has a dashed outline (legend "This date only"), and its details say "changed for this date".
 
 ## Schedule change notice
