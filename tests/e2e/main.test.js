@@ -742,6 +742,21 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   ok(wh.tabs === 'Active,Vacation,Pending' && /^\d+$/.test(wh.count) && wh.vac && wh.cleared && wh.pending && wh.menu === 'Scan passport,Select…', 'workers: header count, New and ⋮ (Scan passport, Select…), tabs Active / Vacation / Pending set the filters ' + JSON.stringify(wh));
+  // Accounting (redesign stage 7): the period in glass, figures, Salary / Billing / Approvals tabs, salary plates.
+  const ac = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), vis = id => getComputedStyle(document.getElementById(id)).display !== 'none';
+    switchTab('accounting'); await wait(200);
+    const sel = document.getElementById('salaryPeriod'), r = {inNav: !!document.querySelector('#accPeriodNav #salaryPeriod'), figs: [...document.querySelectorAll('#accFigs > div span')].map(x => x.textContent).join()};
+    r.tabs = [...document.querySelectorAll('#accTabs button')].map(b => b.dataset.k).join();
+    r.salaryTab = vis('accSecSalary') && !vis('accSecPayable') && !vis('accSecPending');
+    setAccTab('billing'); await wait(100); r.billingTab = !vis('accSecSalary') && vis('accSecPayable');
+    setAccTab('approvals'); await wait(100); r.approvalsTab = !vis('accSecSalary') && vis('accSecPending');
+    setAccTab('salary'); await wait(100);
+    const i0 = sel.selectedIndex; document.querySelector('#accPeriodNav .gbtn').click(); await wait(300); r.stepped = sel.selectedIndex === i0 + 1;
+    document.querySelectorAll('#accPeriodNav .gbtn')[1].click(); await wait(300); r.back = sel.selectedIndex === i0;
+    return r;
+  });
+  ok(ac.inNav && ac.figs === 'Hours,Payroll,To approve' && ac.tabs === 'salary,billing,approvals' && ac.salaryTab && ac.billingTab && ac.approvalsTab && ac.stepped && ac.back, 'accounting: glass period ‹ ›, figures, Salary / Billing / Approvals tabs show their sections ' + JSON.stringify(ac));
   // Greeting and notifications (redesign stage 5): the greeting by time of day; the bell, its panel, "Mark all read" kept on the account.
   const nt = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};

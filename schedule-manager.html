@@ -298,6 +298,19 @@
   .sal-head{background:none !important;border-bottom:1px solid var(--border)}
   .sal-row{border-top:0 !important;border-left:3px solid var(--c,var(--border2));border-radius:0 8px 8px 0;margin-top:4px;background:linear-gradient(90deg,rgba(255,255,255,.035),transparent 85%)}
   .sal-sum>div{background:none !important;border:0 !important;padding:2px 2px}
+  /* Accounting (redesign stage 7): the period in glass, tabs, salary plates
+     with the amount in green. */
+  .acc-period-nav{display:flex;align-items:center;gap:8px;margin:2px 0 12px;max-width:520px}
+  .acc-period-nav .gbtn.icon{width:40px;height:40px;flex:none}
+  .acc-period.gsel{flex:1;min-width:0;height:40px;padding:0 14px;border-radius:16px;background:var(--glass);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--glass-edge);color:#fff;font:600 14px 'DM Sans','Heebo',Arial,sans-serif;text-align:center;text-align-last:center;cursor:pointer;-webkit-appearance:none;appearance:none}
+  .acc-period.gsel option{background:#1b1e29;color:#fff}
+  #sectionAccounting[data-acctab="salary"] [data-tab]:not([data-tab="salary"]),#sectionAccounting[data-acctab="billing"] [data-tab]:not([data-tab="billing"]),#sectionAccounting[data-acctab="approvals"] [data-tab]:not([data-tab="approvals"]){display:none !important}
+  .og-tabs .tab-n{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:4px;border-radius:999px;background:var(--bad);color:#fff;font-size:10px;font-weight:700}
+  .sal-row{background:var(--plate) !important;border-left:0 !important;border-radius:16px !important;box-shadow:inset 4px 0 0 var(--c,var(--neutral));margin-top:8px !important}
+  .sal-row .sal-line{padding:10px 12px 10px 16px}
+  .sal-av{width:32px !important;height:32px !important;font-size:11px !important;background:color-mix(in srgb,var(--c,var(--neutral)) 22%,transparent) !important;color:var(--c,var(--neutral)) !important;box-shadow:inset 0 0 0 1.5px var(--c,var(--neutral))}
+  .sal-line .c-t{font-family:'DM Mono',monospace;color:var(--fig)}
+  .sal-head{border-bottom:0 !important;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
   .sal-sum b{font-size:20px}
   .sal-sum{grid-template-columns:repeat(4,minmax(0,1fr)) !important;gap:6px !important}
   @media (max-width:700px){ .sal-sum b{font-size:16px} .sal-sum span{font-size:10px} }
@@ -1358,22 +1371,26 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
           </div>
       </div>
 
+      <!-- Redesign stage 7: the period in glass (‹ period ›), figures, and the
+           Salary / Billing / Approvals tabs (each accSec carries data-tab). -->
+      <div class="acc-period-nav" id="accPeriodNav"><button type="button" class="gbtn icon" onclick="stepSalaryPeriod(-1)" title="Earlier" data-i18n-title="Earlier"><i class="ti ti-chevron-left"></i></button><select id="salaryPeriod" class="acc-period gsel" onchange="onSalaryPeriodChange()">
+            <option value="week" data-i18n>This Week</option>
+            <option value="month" data-i18n>This Month</option>
+            <option value="all" data-i18n>All Time</option>
+          </select><button type="button" class="gbtn icon" onclick="stepSalaryPeriod(1)" title="Later" data-i18n-title="Later"><i class="ti ti-chevron-right"></i></button></div>
+      <div class="t3-stats" id="accFigs"></div>
+      <div class="og-tabs" id="accTabs"></div>
       <!-- Hours approval (an HR login with an hours tick): the shared
            hours-review.js — its workers' days approved, disputed or fixed -->
       <div id="accSecReview" style="margin-bottom:24px;display:none;max-width:760px"></div>
 
       <!-- Salary: one row per worker with shifts in the period; the pay window edits (Worker pay merged in, 2026-10-11) -->
-      <div id="accSecSalary" style="margin-bottom:24px">
+      <div data-tab="salary" id="accSecSalary" style="margin-bottom:24px">
         <!-- One line (variant A, user request 2026-10-11): the title, then the
              period as text with ▾, a search icon (opens the field under it)
              and the export icon. -->
         <div class="acc-head">
           <div class="acc-head-title"><i class="ti ti-cash"></i> <span data-i18n>Salary Calculation</span> <button type="button" class="acc-help" onclick="openAccountingHelp('salary')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
-          <select id="salaryPeriod" class="acc-period" onchange="onSalaryPeriodChange()">
-            <option value="week" data-i18n>This Week</option>
-            <option value="month" data-i18n>This Month</option>
-            <option value="all" data-i18n>All Time</option>
-          </select>
           <button type="button" class="t3-ib" id="salarySearchBtn" onclick="toggleSalarySearch()" title="Search a worker" data-i18n-title="Search a worker"><i class="ti ti-search"></i></button>
           <button type="button" class="t3-ib perm-exports" onclick="openSalaryExportModal()" title="Export" data-i18n-title="Export"><i class="ti ti-download"></i></button>
         </div>
@@ -1382,19 +1399,19 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
       </div>
 
       <!-- Per-client rate matrix -->
-      <div id="accSecRates">
+      <div data-tab="billing" id="accSecRates">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-adjustments"></i> <span data-i18n><span data-i18n>Per-client rates</span></span> <button type="button" class="acc-help" onclick="openAccountingHelp('rates')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="rateMatrixWrap"></div>
       </div>
 
       <!-- Per-supplier rate matrix (informational — does not feed payroll math) -->
-      <div id="accSecSupplierRates" style="margin-top:24px">
+      <div data-tab="billing" id="accSecSupplierRates" style="margin-top:24px">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-truck-delivery"></i> <span data-i18n><span data-i18n>Per-supplier rates</span></span> <button type="button" class="acc-help" onclick="openAccountingHelp('supplierRates')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="supplierRateMatrixWrap"></div>
       </div>
 
       <!-- Payable by supplier summary -->
-      <div id="accSecPayable" style="margin-top:24px">
+      <div data-tab="billing" id="accSecPayable" style="margin-top:24px">
         <div class="acc-head">
           <div class="acc-head-title"><i class="ti ti-report-money"></i> <span data-i18n>Payable by supplier</span> <button type="button" class="acc-help" onclick="openAccountingHelp('payable')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
           <button type="button" class="t3-ib" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:tr('Payable by supplier'),filename:'payable-by-supplier',format:'excel'})" title="Excel"><i class="ti ti-file-spreadsheet"></i></button>
@@ -1404,25 +1421,25 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
       </div>
 
       <!-- Payable by HR: each HR's commission on its workers' hours (owner) -->
-      <div id="accSecHrPayable" style="margin-top:24px;display:none">
+      <div data-tab="billing" id="accSecHrPayable" style="margin-top:24px;display:none">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-user-dollar"></i> <span data-i18n><span data-i18n>Payable by HR</span></span> <button type="button" class="acc-help" onclick="openAccountingHelp('hrPayable')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="hrPayableWrap"></div>
       </div>
 
       <!-- Billable by client (client's own rateMode — tiered or fixed — independent of the worker's real wage above) -->
-      <div id="accSecBillable" style="margin-top:24px">
+      <div data-tab="billing" id="accSecBillable" style="margin-top:24px">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-building-store"></i> <span data-i18n><span data-i18n>Billable by client</span></span> <button type="button" class="acc-help" onclick="openAccountingHelp('billable')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="clientBillableWrap"></div>
       </div>
 
       <!-- Hours approvals: what each client, supplier and HR login approved, disputed or proposed to fix (month periods only) -->
-      <div id="accSecApprovals" style="margin-top:24px;display:none">
+      <div data-tab="approvals" id="accSecApprovals" style="margin-top:24px;display:none">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-circle-check"></i> <span data-i18n>Hours approvals</span> <button type="button" class="acc-help" onclick="openAccountingHelp('approvals')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="hourApprovalsWrap"></div>
       </div>
 
       <!-- Hours-import approval queue (Admin/Roles plan, stage 14) -->
-      <div id="accSecPending" style="margin-top:24px">
+      <div data-tab="approvals" id="accSecPending" style="margin-top:24px">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-file-check"></i> <span data-i18n><span data-i18n>Pending hours</span></span> <button type="button" class="acc-help" onclick="openAccountingHelp('pending')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="pendingHoursWrap"></div>
       </div>
@@ -8042,6 +8059,10 @@ function renderAccounting(){
   const review=hrHourReview();
   document.getElementById('accSecReview').style.display=review?'':'none';
   if(review) openHrHoursReview();
+  const simple=isHrSession()||hrPayOnly();
+  ['accPeriodNav','accTabs','accFigs'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display=(isHrSession()&&!hasPermission('accounting'))?'none':(id==='accTabs'&&simple?'none':''); });
+  document.getElementById('sectionAccounting').dataset.acctab=simple?'':__accTab;
+  renderAccTabs();
   if(isHrSession() && !hasPermission('accounting')){
     document.querySelectorAll('#sectionAccounting > [id^="accSec"]:not(#accSecReview)').forEach(el=>{ el.style.display='none'; });
     const ex=document.querySelector('#sectionAccounting .perm-exports'); if(ex) ex.style.display='none';
@@ -8098,6 +8119,31 @@ function fillSalaryPeriodSelect(){
   const cur=sel.value||'week';
   sel.innerHTML=salaryExportPeriodOptions().map(([v,l])=>`<option value="${esc(v)}" ${v===cur?'selected':''}>${esc(l)}</option>`).join('');
   sel.dataset.filled=I18N_LANG;
+}
+// The period arrows: ‹ an earlier period, › a later one (the select's order:
+// This Week, This Month, the previous months, All Time).
+function stepSalaryPeriod(dir){
+  const sel=document.getElementById('salaryPeriod'); if(!sel) return;
+  const i=Math.max(0, Math.min(sel.options.length-1, sel.selectedIndex+(dir<0?1:-1)));
+  if(i===sel.selectedIndex) return;
+  sel.selectedIndex=i; onSalaryPeriodChange();
+}
+// Salary / Billing / Approvals: CSS shows only the accSec blocks of the open
+// tab (#sectionAccounting[data-acctab]); an HR sees no tabs.
+let __accTab='salary';
+function renderAccTabs(){
+  const el=document.getElementById('accTabs'); if(!el) return;
+  const n=(__hoursBatches||[]).filter(b=>b.status==='pending').length;
+  el.innerHTML=[['salary','Salary'],['billing','Billing'],['approvals','Approvals']].map(([k,l])=>`<button type="button" data-k="${k}" class="${__accTab===k?'on':''}" onclick="setAccTab('${k}')">${esc(tr(l))}${k==='approvals'&&n?` <span class="tab-n">${n}</span>`:''}</button>`).join('');
+}
+function setAccTab(k){ __accTab=k; endSelect(); renderAccounting(); }
+// The figures on top: the period's hours and payroll over every worker (the
+// Salary rows, salaryEntriesFor), and how many hours batches wait.
+function renderAccFigs(entries){
+  const el=document.getElementById('accFigs'); if(!el) return;
+  const money=n=>'₪'+Math.round(Number(n)||0).toLocaleString('en-US');
+  const h=entries.reduce((t,e)=>t+e.hours,0), pay=entries.reduce((t,e)=>t+e.total+e.travel,0), wait=(__hoursBatches||[]).filter(b=>b.status==='pending').length;
+  el.innerHTML=`<div><b style="color:var(--info)">${esc(String(Math.round(h)))}</b><span>${esc(tr('Hours'))}</span></div><div><b class="fig">${esc(money(pay))}</b><span>${esc(tr('Payroll'))}</span></div>${hrPayOnly()?'':`<div class="go" onclick="setAccTab('approvals')"><b style="color:${wait?'var(--warn)':'var(--text)'}">${wait}</b><span>${esc(tr('To approve'))}</span></div>`}`;
 }
 async function onSalaryPeriodChange(){
   const period=document.getElementById('salaryPeriod')?.value||'week';
@@ -8210,6 +8256,7 @@ function renderSalary(){
   const hrCom=e=>commissionFor(workers.find(w=>w.id===e.workerId),e,hrRate,hrDayRate);
   const entries=Object.values(byWorker).filter(e=>!payOnly||((workers.find(w=>w.id===e.workerId)||{}).hrId===me.uid));
   __lastSalaryEntries=entries;
+  renderAccFigs(entries);
   salaryEl.classList.toggle('salary-ro',payOnly);
   if(!entries.length){
     salaryEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('No punch data for this period')}</div>`;
@@ -8560,13 +8607,36 @@ async function renderPendingHours(){
   if(!batches.length){ wrap.innerHTML=`<div class="t3-empty">${tr('Nothing pending')}</div>`; return; }
   // Template 3: a line per batch (amber: waiting) — the worker, the file and
   // who sent it, the shift count; ✓ approve / ✕ reject at the right (owner).
-  wrap.innerHTML='<div class="pending-hours-rows"></div>';
+  __pendingBatchIds=batches.map(b=>String(b.batchId||''));
+  wrap.innerHTML=(canApprove?`<div class="t3-sec" style="margin-top:0">${esc(tr('Batches'))}<em>${batches.length}</em>${listMenuHtml([{icon:'ti-checkbox', label:tr('Select…'), fn:startPendingSelect}])}</div>`:'')+'<div class="pending-hours-rows"></div>';
   renderPagedList(wrap.querySelector('.pending-hours-rows'),'pendingHours','',batches,b=>{
     const w = workers.find(x=>x.id===(b.entries[0]&&b.entries[0].workerId)), id = esc(String(b.batchId||''));
     return t3Line({c:'var(--amber)', av:t3Av(w), name:esc(w?w.name:(b.fileName||'—')),
       sub:[esc(b.fileName||'—')+' · '+esc(b.uploadedBy||'—'), esc(b.entries.length===1?tr('1 shift'):tr('{n} shifts',{n:b.entries.length}))],
+      sel: canApprove?String(b.batchId||''):null,
       right:canApprove?`<button class="t3-ib" style="color:var(--green)" title="${esc(tr('Approve'))}" onclick="approveHoursBatch('${id}')"><i class="ti ti-check"></i></button><button class="t3-ib" style="color:var(--red)" title="${esc(tr('Reject'))}" onclick="rejectHoursBatch('${id}')"><i class="ti ti-x"></i></button>`:''});
   });
+  selectRoot('pendingHours', wrap.querySelector('.pending-hours-rows'));
+}
+// Select in the pending batches: Approve or Reject the picked ones at once.
+let __pendingBatchIds=[];
+function startPendingSelect(){
+  const root=document.querySelector('#pendingHoursWrap .pending-hours-rows'); if(!root) return;
+  startSelect({key:'pendingHours', root, ids:()=>__pendingBatchIds,
+    actions:[{icon:'ti-check', label:tr('Approve'), fn:ids=>bulkHoursBatches(ids,true)}, {icon:'ti-x', label:tr('Reject'), fn:ids=>bulkHoursBatches(ids,false)}]});
+}
+async function bulkHoursBatches(ids, approve){
+  if(approve){ for(const id of ids) await approveHoursBatch(id); return; }
+  if(!confirm(tr('Reject {n} batch(es)?',{n:ids.length}))) return;
+  let done=0;
+  for(const batchId of ids){
+    try{
+      const json=await (await fetch(API_URL,{method:'POST', body:JSON.stringify({action:'rejectPendingHours', ...gsAuth(), batchId})})).json();
+      if(json.error) showToast(json.error); else done++;
+    }catch(e){ showToast(tr('Failed: {e}',{e:e.message})); }
+  }
+  showToast(tr('{n} batch(es) rejected',{n:done}));
+  renderPendingHours();
 }
 async function approveHoursBatch(batchId){
   try{
