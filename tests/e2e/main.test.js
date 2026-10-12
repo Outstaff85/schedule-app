@@ -7,7 +7,8 @@ const FB = 'https://www.gstatic.com/firebasejs/12.19.0/';
 const BUNDLE = fs.readFileSync(__dirname + '/build/firebase-all.js', 'utf8');
 const BASE = 'http://127.0.0.1:8765/';
 let fails = 0;
-const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fails++; };
+// A failed check is also printed as a GitHub annotation (::error::), so CI shows it without the log.
+const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c){ fails++; if (process.env.GITHUB_ACTIONS) console.log('::error::' + String(m).replace(/\r?\n/g, ' ').slice(0, 900)); } };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'POST', body:'{}'})).json();
 
