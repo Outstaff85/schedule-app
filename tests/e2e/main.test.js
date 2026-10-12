@@ -707,7 +707,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(ed.worker.join() === 'person,address,work,documents,form101,access,notes' && /Dana/.test(ed.personSum) && ed.sexSeg && ed.sexVal === 'F' && ed.focusOpens && ed.toggles && ed.noSave,
     'editors: the worker editor is section plates (Person · Address · Work · Documents · Form 101 · Access · Notes), summaries, segmented choices, a focused field opens its section, no Save ' + JSON.stringify(ed));
-  ok(ed.client.join() === 'client,rates,place' && ed.supplier.join() === 'supplier*,bank' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.includes('login') && ed.user.includes('access'),
+  ok(ed.client.join() === 'client,rates,place' && ed.supplier.join() === 'supplier*,bank' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,login,access',
     'editors: client, supplier (one Save, an empty name amber) and user form as section plates ' + JSON.stringify(ed));
   // Worker card: a click only reads; a double click, a long touch or its ✎ opens the edit form;
   // closing it (a tap outside saves it) brings the card back.
