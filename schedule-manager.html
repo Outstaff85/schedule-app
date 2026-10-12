@@ -185,6 +185,21 @@
     .login-card #loginError:empty{display:none;}
     .login-card #loginBtn{grid-column:1/-1;justify-content:center;}
   }
+  /* Sign-in (redesign stage 11): a compact glass card over the site — pinned
+     to the bottom right on a computer, to the bottom on a phone; the showcase
+     scrolls under it. */
+  .login-card{position:fixed !important;top:auto !important;right:24px;bottom:24px;left:auto;width:380px;min-height:0 !important;flex:none;display:block;padding:20px 20px 18px;border:1px solid rgba(255,255,255,.22) !important;border-radius:22px;background:rgba(17,20,31,.72) !important;-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);box-shadow:0 20px 50px rgba(0,0,0,.5) !important;z-index:5}
+  .login-card::before{display:none}
+  .login-card #loginBtn{background:rgba(255,255,255,.28);box-shadow:0 8px 24px rgba(0,0,0,.25);height:44px}
+  .login-card-h{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  .login-card-h .og-mark{width:40px;height:40px;flex:none}
+  .login-card-h h3{font-size:19px;font-weight:700}
+  .login-card-h p{font-size:12px;color:var(--text2);margin-top:2px}
+  @media (min-width: 821px){ .login-left{padding-right:420px} }
+  @media (max-width: 820px){
+    .login-card{left:10px;right:10px;width:auto;display:grid;padding:12px;border-radius:18px}
+    .login-card .login-card-h{display:none}
+  }
   @media (prefers-reduced-motion: reduce){ .login-blob,.login-role,.login-feature,.login-floaters i,.login-brand-name,.login-card::before{animation:none;} .login-fx{display:none;} .login-rotator,.login-sector{transition:none;} }
   .save-indicator{font-size:14px;color:var(--text3);display:flex;align-items:center;gap:4px;transition:color 0.3s;}
   .save-indicator.saving{color:var(--amber);}
@@ -1569,14 +1584,11 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
   </div>
   </div>
   <div class="login-card">
-    <div style="text-align:center;margin-bottom:22px">
-      <i class="ti ti-calendar-stats" style="font-size:32px;color:var(--accent)"></i>
-      <div style="font-size:19px;font-weight:700;margin-top:8px">Schedule Manager</div>
-    </div>
+    <div class="login-card-h"><svg class="og-mark" viewBox="0 0 100 100" aria-hidden="true"><path class="og-roof" d="M10 50L50 16l40 34"/><path class="og-run" d="M10 50L50 16l40 34"/><g class="og-p og-p1"><g transform="translate(30 70) scale(.95)"><circle cx="0" cy="-9" r="7" fill="#818cf8"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#818cf8"/></g></g><g class="og-p og-p2"><g transform="translate(50 66) scale(1.15)"><circle cx="0" cy="-9" r="7" fill="#22d3ee"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#22d3ee"/></g></g><g class="og-p og-p3"><g transform="translate(70 70) scale(.95)"><circle cx="0" cy="-9" r="7" fill="#f472b6"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#f472b6"/></g></g><path class="og-link" d="M24 92H76"/><path class="og-linkrun" d="M24 92H76"/></svg><div><h3 data-i18n>Sign in</h3><p data-i18n>One login for owners, HR, suppliers and clients</p></div></div>
     <div class="field"><label data-i18n>Username</label><input type="text" id="loginUsername" autocomplete="username" autofocus placeholder="Username" data-i18n-placeholder="Username"></div>
     <div class="field"><label data-i18n>Password</label><input type="password" id="loginPassword" autocomplete="current-password" placeholder="Password" data-i18n-placeholder="Password" onkeydown="if(event.key==='Enter')submitLogin()"></div>
     <div id="loginError" style="color:#ff6b78;font-size:13px;margin:2px 0 10px;min-height:1.2em"></div>
-    <button class="btn accent" style="width:100%" onclick="submitLogin()" id="loginBtn" data-i18n>Sign in</button>
+    <button class="gbtn primary" style="width:100%" onclick="submitLogin()" id="loginBtn" data-i18n>Sign in</button>
   </div>
 </div>
 

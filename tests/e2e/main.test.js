@@ -313,10 +313,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   {
     const c2 = await newCtx(); const p2 = await page(c2);
     await p2.goto(BASE + 'schedule-manager.html'); await p2.waitForSelector('#loginScreen', {state:'visible'});
-    const onLogin = await p2.evaluate(() => ({n: document.querySelectorAll('.lang-btn').length, selects: document.querySelectorAll('select.lang-select').length, inLogin: !!document.querySelector('#loginScreen #langBtn.on-cover'), lang: I18N_LANG}));
+    const onLogin = await p2.evaluate(() => ({card: (() => { const c = document.querySelector('.login-card'), cs = getComputedStyle(c); return cs.position === 'fixed' && cs.borderRadius === '22px' && !!c.querySelector('.og-mark') && /gbtn/.test(document.getElementById('loginBtn').className); })(), n: document.querySelectorAll('.lang-btn').length, selects: document.querySelectorAll('select.lang-select').length, inLogin: !!document.querySelector('#loginScreen #langBtn.on-cover'), lang: I18N_LANG}));
     await p2.fill('#loginUsername', 'owner1'); await p2.fill('#loginPassword', 'owner-pass-1'); await p2.click('#loginBtn');
     await p2.waitForNavigation().catch(()=>{});
     const after = await waitFor(p2, () => I18N_LANG === 'he' && !!document.querySelector('.titlebar-actions #langBtn') && document.querySelector('#langBtn .lang-btn-name').textContent === 'עברית' && document.querySelectorAll('.lang-btn').length === 1, 15000);
+    ok(onLogin.card, 'sign-in: a compact glass card pinned over the site, with the logo and a glass Sign in ' + JSON.stringify(onLogin));
     ok(onLogin.n === 1 && !onLogin.selects && onLogin.inLogin && onLogin.lang === 'en' && after, 'language: one Language button per page (login screen, then the title bar); the user\'s last choice comes back on a new device ' + JSON.stringify(onLogin));
     await p2.evaluate(() => setLanguage('en')); await sleep(1000);
     await c2.close();
