@@ -48,6 +48,8 @@ The client keeps the punch log in `localStorage.punchLog` (`getPunchLog()` / `sa
 
 Every text of the tab goes through the chosen language ([translations.md](translations.md)): `tr()` in the render functions, `data-i18n` on the static headers. This covers the help (ⓘ) texts, the pay modal, messages, the period labels (`SALARY_PERIOD_LABELS`, month names in the language's locale) and the salary / payable exports. With Hebrew the tab reads חשבונות and its sections חישוב שכר, שכר עובדים, תעריפים לפי לקוח, עמלות ספקים, לתשלום לספקים, לתשלום למשאבי אנוש, לחיוב לקוחות, שעות ממתינות לאישור. Shift warnings from `analyzeDayPunches` (shared with the rest of the app) stay English.
 
+**Top of the tab** (redesign stage 7): the period in glass (`#accPeriodNav`: ‹ `stepSalaryPeriod(-1)` an earlier period, the period select `#salaryPeriod` styled as a glass button, › a later one), the figures (`#accFigs`, `renderAccFigs(entries)`: the period's hours and payroll — pay + travel — over every Salary row from `salaryEntriesFor`, and the hours batches waiting, a tap opens Approvals), and the tabs **Salary / Billing / Approvals** (`#accTabs`, `__accTab`, `setAccTab(k)`; a red count on Approvals). Each block below carries `data-tab` (salary: Salary Calculation; billing: the rate matrices, Payable by supplier, Payable by HR, Billable by client; approvals: Hours approvals, Pending hours) and CSS shows only the open tab's blocks (`#sectionAccounting[data-acctab]`). An HR sees no tabs (its Hours review and Salary only). The salary lines are plates (the bar and avatar in the line's colour, the total in the figure green).
+
 `renderAccounting()` draws, in this order on the page:
 1. **Salary Calculation** — `renderSalary()` into `#dashSalary`.
 2. **Per-client rates** — `renderRateMatrix()`.
@@ -118,7 +120,7 @@ Per client: hours, mode (Fixed / Tiered) and the billable total. It never shows 
 
 ### Pending hours (approval queue)
 
-- **List:** `renderPendingHours()` sends `loadPendingHours` and lists batches with status `pending`, a template-3 line each (amber mark): the worker, then file · uploaded by, then the shift count; ✓ / ✕ icons at the right. The batches are `tenants/{t}/pendingHours` documents.
+- **List:** `renderPendingHours()` sends `loadPendingHours` and lists batches with status `pending`, a template-3 line each (amber mark): the worker, then file · uploaded by, then the shift count; ✓ / ✕ icons at the right. For the owner a "Batches" section line with its ⋮ → **Select…** (`startPendingSelect`): tick batches, then the glass bar's **Approve** (each through `approveHoursBatch`) or **Reject** (`bulkHoursBatches`, one confirm for all). The batches are `tenants/{t}/pendingHours` documents.
 - **Who may approve:** the Approve / Reject icons show only for `tenant_admin` and `superadmin` (the server checks the same). `staff` sees the list read-only; a `supplier` is refused everywhere.
 - **Approving:** `approveHoursBatch(id)` → `approvePendingHours` creates IN and OUT punches per row, with no GPS fields and the note `Imported from <file>`. Approving again creates nothing. The app then reads the batch's punches (`punchesOfBatch`) and loads back to the earliest of them, so a past month shows up.
 - **Rejecting:** `rejectHoursBatch(id)` → `rejectPendingHours` marks the batch rejected and creates nothing.

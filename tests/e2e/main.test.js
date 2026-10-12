@@ -564,7 +564,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.evaluate(() => switchTab('accounting'));
   await p.evaluate(async () => { const sel=document.getElementById('salaryPeriod'); sel.value='all'; await onSalaryPeriodChange(); });
   await sleep(500);
-  const pay = await p.evaluate(() => document.getElementById('supplierPayableWrap').innerText);
+  const pay = await p.evaluate(() => { setAccTab('billing'); const t = document.getElementById('supplierPayableWrap').innerText; setAccTab('salary'); return t; });
   ok(!/No supplier assigned/.test(pay), 'Payable by supplier: no row for workers without a supplier');
   const bill = await p.evaluate(() => ({shown: document.getElementById('accSecBillable').style.display !== 'none', rows: document.querySelectorAll('#clientBillableWrap .t3-line').length}));
   ok(!bill.shown && bill.rows === 0, 'Billable by client: hidden when no client has a billing rate ' + JSON.stringify(bill));
@@ -742,6 +742,22 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   ok(wh.tabs === 'Active,Vacation,Pending' && /^\d+$/.test(wh.count) && wh.vac && wh.cleared && wh.pending && wh.menu === 'Scan passport,Select…', 'workers: header count, New and ⋮ (Scan passport, Select…), tabs Active / Vacation / Pending set the filters ' + JSON.stringify(wh));
+  // Accounting (redesign stage 7): the period in glass, figures, Salary / Billing / Approvals tabs, salary plates.
+  const ac = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), vis = id => getComputedStyle(document.getElementById(id)).display !== 'none';
+    switchTab('accounting'); await wait(200);
+    const sel0 = document.getElementById('salaryPeriod'); sel0.value = 'week'; await onSalaryPeriodChange();
+    const sel = document.getElementById('salaryPeriod'), r = {inNav: !!document.querySelector('#accPeriodNav #salaryPeriod'), figs: [...document.querySelectorAll('#accFigs > div span')].map(x => x.textContent).join()};
+    r.tabs = [...document.querySelectorAll('#accTabs button')].map(b => b.dataset.k).join();
+    r.salaryTab = vis('accSecSalary') && !vis('accSecPayable') && !vis('accSecPending');
+    setAccTab('billing'); await wait(100); r.billingTab = !vis('accSecSalary') && vis('accSecPayable');
+    setAccTab('approvals'); await wait(100); r.approvalsTab = !vis('accSecSalary') && vis('accSecPending');
+    setAccTab('salary'); await wait(100);
+    const i0 = sel.selectedIndex; document.querySelector('#accPeriodNav .gbtn').click(); await wait(300); r.stepped = sel.selectedIndex === i0 + 1;
+    document.querySelectorAll('#accPeriodNav .gbtn')[1].click(); await wait(300); r.back = sel.selectedIndex === i0;
+    return r;
+  });
+  ok(ac.inNav && ac.figs === 'Hours,Payroll,To approve' && ac.tabs === 'salary,billing,approvals' && ac.salaryTab && ac.billingTab && ac.approvalsTab && ac.stepped && ac.back, 'accounting: glass period ‹ ›, figures, Salary / Billing / Approvals tabs show their sections ' + JSON.stringify(ac));
   // Greeting and notifications (redesign stage 5): the greeting by time of day; the bell, its panel, "Mark all read" kept on the account.
   const nt = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
@@ -1061,7 +1077,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await q.waitForNavigation().catch(()=>{});
   await waitFor(q, () => typeof workers !== 'undefined' && workers.length === 2);
   const appr = async () => q.evaluate(async () => { switchTab('accounting'); const sel = document.getElementById('salaryPeriod'); sel.value = 'month'; await onSalaryPeriodChange();
-    await renderHourApprovals('month'); return document.getElementById('hourApprovalsWrap').innerText; });
+    await renderHourApprovals('month'); setAccTab('approvals'); const t = document.getElementById('hourApprovalsWrap').innerText; setAccTab('salary'); return t; });
   const oa = await appr();
   ok(/Site B/.test(oa) && /Client/.test(oa) && /1 of \d days approved/.test(oa) && !/Changed after approval/.test(oa), 'owner: the client\'s approval in Accounting, not "changed" ' + JSON.stringify(oa));
   // The client disputes the day (the window sends on a tap outside); the owner sees the comment.
