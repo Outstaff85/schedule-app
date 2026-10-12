@@ -71,7 +71,7 @@ How a run works (a run = one session, started by the Routine below or by hand wi
 
 ### Status
 - [x] 1 Foundation
-- [ ] 2 Lists
+- [x] 2 Lists
 - [ ] 3 Workers
 - [ ] 4 Editors
 - [ ] 5 Today, greeting, notifications

@@ -672,6 +672,7 @@
     .ttab .tab-badge{top:-2px;right:-2px;}
     body{padding-bottom:calc(66px + env(safe-area-inset-bottom,0px));}
     .toast{bottom:calc(76px + env(safe-area-inset-bottom,0px));}
+    :root{--bar-gap:calc(76px + env(safe-area-inset-bottom,0px));}
     body:not(.tables-list) table.mtable{min-width:0 !important;border-collapse:separate !important;}
     body:not(.tables-list) table.mtable thead{display:none;}
     body:not(.tables-list) table.mtable,body:not(.tables-list) table.mtable tbody,body:not(.tables-list) table.mtable tfoot,body:not(.tables-list) table.mtable tr,body:not(.tables-list) table.mtable td{display:block;width:100%;box-sizing:border-box;}
@@ -795,6 +796,78 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
   .lang-grab{display:block;}
 }
 @media (prefers-reduced-motion:reduce){.og-line::after,.gbtn::before{animation:none;}.gbtn.shine::after{transition:none;}}
+/* ── Odinson Glass lists (docs/redesign.md → Plates): every t3Line is a plate —
+   solid, radius 16, a 4px bar in its colour (--c) and the avatar disc in the
+   same colour; figures (.r) in the soft green; a bare ⋮ (.t3-kb) opens the
+   row's glass popover (.og-pop, with a tail); a swipe left (.sw) shows Edit and
+   Delete; Delete never asks — the Undo snack (.og-snack) runs 5 s first;
+   Select mode (.selecting): drawn-tick boxes, a head line and the glass bulk
+   bar (.sel-bar). The same block in the manager app and the supplier portal. ── */
+:root{--neutral:#6b7189;--bar-gap:16px;}
+.t3-line{position:relative;gap:12px;padding:11px 8px 11px 14px;border-left:0;background:var(--plate);border-radius:16px;box-shadow:inset 4px 0 0 var(--c,var(--neutral));margin-bottom:8px;transition:transform .28s cubic-bezier(.3,.7,.3,1),background .2s;}
+.t3-line:hover{background:#20242f;}
+.t3-line .t3-av{width:38px;height:38px;font-size:13px;background:color-mix(in srgb,var(--c,var(--neutral)) 22%,transparent) !important;color:var(--c,var(--neutral)) !important;box-shadow:inset 0 0 0 1.5px var(--c,var(--neutral));}
+.t3-line .n b{font-size:15px;}
+.t3-line .n small{font-size:12px;color:#8b90a0;margin-top:1px;}
+.t3-line .r{font:700 14px 'DM Mono',ui-monospace,monospace;color:var(--fig);text-shadow:0 0 12px rgba(109,214,160,.22);}
+.t3-kb{position:relative;flex:none;width:26px;height:36px;margin-right:-2px;border:0;background:none;color:#d6d9e2;font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.t3-kb:hover{color:#fff;}
+.t3-kb::after{content:'';position:absolute;left:4px;right:4px;bottom:2px;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55);animation:og-flow 2.4s linear infinite;transform:scaleX(0);transition:transform .45s cubic-bezier(.34,1.56,.64,1);}
+.t3-kb.on{color:#fff;}
+.t3-kb.on::after{transform:scaleX(1);}
+.t3-sec .t3-kb{margin-left:4px;height:28px;font-size:18px;color:var(--text2);}
+/* The ⋮ popover: glass, a tail pointing at its button, Delete last in soft red. */
+.og-pop{position:fixed;z-index:4000;min-width:190px;max-width:260px;padding:6px;border-radius:16px;background:rgba(30,35,51,.82);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.22);box-shadow:0 16px 40px rgba(0,0,0,.45);opacity:0;transform:translateY(-6px) scale(.97);transition:opacity .18s,transform .18s;}
+.og-pop.up{transform:translateY(6px) scale(.97);}
+.og-pop.open{opacity:1;transform:none;}
+.og-pop::before{content:'';position:absolute;top:-7px;left:var(--px,14px);width:12px;height:12px;background:rgba(40,45,64,.95);border-left:1px solid rgba(255,255,255,.22);border-top:1px solid rgba(255,255,255,.22);transform:rotate(45deg);border-radius:2px 0 0 0;}
+.og-pop.up::before{top:auto;bottom:-7px;transform:rotate(225deg);}
+.og-pop-it{position:relative;display:flex;align-items:center;gap:10px;width:100%;padding:10px;border:0;border-radius:10px;background:none;color:#fff;font:500 14px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;text-align:left;}
+.og-pop-it i{font-size:17px;color:rgba(255,255,255,.62);}
+.og-pop-it:hover{background:rgba(255,255,255,.1);}
+.og-pop-it:hover::before{content:'';position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:2px;background:var(--uline);background-size:100% 300%;}
+.og-pop-it.del,.og-pop-it.del i{color:#ffd1d6;}
+.og-pop-hr{height:1px;background:rgba(255,255,255,.14);margin:4px 8px;}
+/* Swipe left: Edit and Delete behind the plate. */
+.sw{position:relative;margin-bottom:8px;border-radius:16px;overflow:hidden;transition:max-height .3s,margin .3s,opacity .3s;}
+.sw>.t3-line{margin-bottom:0;touch-action:pan-y;}
+.sw>.t3-line.drag{transition:none;}
+.sw.gone,.t3-line.gone{max-height:0 !important;margin:0 !important;opacity:0;overflow:hidden;padding-top:0;padding-bottom:0;}
+.t3-line.gone{transition:max-height .3s,margin .3s,opacity .3s,padding .3s;}
+.sw-acts{position:absolute;inset:0;display:flex;justify-content:flex-end;gap:6px;padding:6px;background:rgba(0,0,0,.25);}
+.sw-acts button{width:56px;border-radius:12px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.12);color:#fff;font:600 11px 'DM Sans','Heebo',Arial,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;}
+.sw-acts button i{font-size:17px;}
+.sw-acts button.d{color:#ffd1d6;background:rgba(255,95,109,.22);}
+/* The Undo snack: glass, 5 s, the gradient timer line. */
+.og-snack{position:fixed;left:50%;bottom:var(--bar-gap);z-index:3500;width:min(420px,calc(100% - 28px));display:flex;align-items:center;gap:10px;padding:12px 12px 12px 16px;border-radius:16px;background:rgba(30,35,51,.8);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.24);box-shadow:0 12px 30px rgba(0,0,0,.4);color:#fff;font-size:14px;overflow:hidden;transform:translate(-50%,160%);transition:transform .3s cubic-bezier(.3,.7,.3,1);}
+.og-snack.open{transform:translate(-50%,0);}
+.og-snack-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.og-snack-u{position:relative;border:0;background:none;color:#fff;font:700 14px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;padding:4px 6px;}
+.og-snack-u::after{content:'';position:absolute;left:6px;right:6px;bottom:0;height:2px;border-radius:2px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;}
+.og-snack-bar{position:absolute;left:0;bottom:0;height:3px;width:100%;background:var(--uline);background-size:300% 100%;box-shadow:0 0 8px rgba(34,211,238,.5);}
+.og-snack.open .og-snack-bar{animation:og-flow 2.4s linear infinite,og-shrink 5s linear forwards;}
+@keyframes og-shrink{to{width:0}}
+/* Select mode: drawn-tick boxes slide in, "N selected · Select all", the bulk bar. */
+.t3-cb{width:0;overflow:hidden;flex:none;margin-right:-12px;display:flex;align-items:center;transition:width .25s,margin .25s;}
+.selecting .t3-cb{width:26px;margin-right:0;}
+.og-box{width:22px;height:22px;flex:none;border-radius:7px;border:2px solid rgba(255,255,255,.4);position:relative;transition:background .25s,border-color .25s;}
+.og-box::after{content:'';position:absolute;left:5px;top:1px;width:5px;height:10px;border:solid #0b0d14;border-width:0 3px 3px 0;transform:rotate(45deg);clip-path:inset(100% 0 0 0);transition:clip-path .35s .05s;}
+.t3-line.picked{background:#1f2a2c;}
+.t3-line.picked .og-box{background:var(--ok);border-color:var(--ok);}
+.t3-line.picked .og-box::after{clip-path:inset(0);}
+.selecting .t3-kb{opacity:0;pointer-events:none;}
+.sel-head{display:flex;align-items:center;gap:8px;margin:-2px 2px 8px;font-size:13px;color:var(--text2);}
+.sel-head span{flex:1;}
+.sel-head button{position:relative;border:0;background:none;color:#fff;font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;padding:2px 0 5px;}
+.sel-head button::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;border-radius:2px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;}
+.sel-bar{position:fixed;left:50%;bottom:var(--bar-gap);z-index:3400;width:min(520px,calc(100% - 28px));display:flex;align-items:center;gap:6px;padding:8px 8px 8px 14px;border-radius:18px;background:rgba(30,35,51,.8);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.24);box-shadow:0 12px 30px rgba(0,0,0,.4);color:#fff;transform:translate(-50%,0);animation:sel-in .3s cubic-bezier(.3,.7,.3,1);}
+@keyframes sel-in{from{transform:translate(-50%,160%)}}
+.sel-bar b{flex:1;font-size:14px;white-space:nowrap;}
+.sel-bar .gbtn{height:38px;padding:0 12px;font-size:13px;}
+.sel-bar .gbtn.icon{width:38px;padding:0;}
+.sel-bar .gbtn.del{color:#ffd1d6;}
+@media (prefers-reduced-motion:reduce){.t3-kb::after,.og-snack-u::after,.sel-head button::after{animation:none;}}
+.sel-bar .gbtn:disabled{opacity:.45;cursor:default;}
 </style>
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="icons/tabler-icons.css">
@@ -2409,7 +2482,7 @@ function renderGanttBody(){
         <b style="color:${col}${on?'':';font-family:inherit'}">${on?esc(x.start+'–'+x.end):esc(tr('Day off'))}</b></div>`;
     }).join(''):'';
     return `<div class="gantt-row" draggable="true" data-wi="${wi}" ondragstart="dragStart(event,${wi})" ondragover="dragOver(event,${wi})" ondragleave="dragLeave(event)" ondrop="doDrop(event,${wi})" ondragend="dragEnd(event)">`
-      + t3Line({c:work.length?'var(--green)':'var(--border2)', av:t3Av(w), name:esc(w.name), sub:esc(sum), cls:'sched-line'+(open?' open':''),
+      + t3Line({c:work.length?'var(--green)':'var(--neutral)', av:t3Av(w), name:esc(w.name), sub:esc(sum), cls:'sched-line'+(open?' open':''),
           onclick:`toggleSchedWorker('${esc(w.id)}')`, right:`<i class="ti ti-chevron-down t3-chev"></i>`})
       + days + `</div>`;
   });
@@ -5840,15 +5913,27 @@ function renderAdminUsersRows(el, users){
         sub:[tr('login: {0}{1}',{0:esc(u.username),1:(u.phone?' · '+esc(u.phone):'')}), [what, esc(team)].filter(Boolean).join(' · '),
           HOUR_ROLES.includes(u.role) && (u.hourPerms||[]).length ? `<i class="ti ti-clock"></i> ${esc(u.hourPerms.map(p=>tr(HOUR_PERM_LABELS[p]||p)).join(', '))}` : ''],
         attrs:`onclick="tapEdit(event,this,null,()=>openEditUserForm('${esc(u.id)}'))" onpointerdown="longPress(event,this,()=>openEditUserForm('${esc(u.id)}'))"`,
-        right:`<button class="t3-x" type="button" onclick="event.stopPropagation();deleteUserConfirm('${esc(u.id)}','${esc(u.username)}')" title="${tr('Delete')}" aria-label="${tr('Delete')}">✕</button>`});
+        sel: USER_UNSELECTABLE.includes(u.role) ? null : u.id,
+        menu:[{icon:'ti-pencil', label:tr('Edit'), fn:()=>openEditUserForm(u.id)}, {icon:'ti-trash', label:tr('Delete'), danger:true, fn:b=>deleteUserConfirm(u.id, u.username, b.closest('.t3-line'))}],
+        swipe:{edit:()=>openEditUserForm(u.id), del:el=>deleteUserConfirm(u.id, u.username, el)}});
     };
-    el.innerHTML = `<div class="t3-sec" style="margin-top:0"><i class="ti ti-users"></i> ${tr('Logins')}<em>${users.length}</em><button class="btn sm" onclick="openCreateUserForm()"><i class="ti ti-plus"></i> ${tr('New user')}</button></div>`
+    el.innerHTML = `<div class="t3-sec" style="margin-top:0"><i class="ti ti-users"></i> ${tr('Logins')}<em>${users.length}</em><button class="btn sm" onclick="openCreateUserForm()"><i class="ti ti-plus"></i> ${tr('New user')}</button>${listMenuHtml([{icon:'ti-checkbox', label:tr('Select…'), fn:startUsersSelect}])}</div>`
       + (users.length ? `<div class="admin-users-rows"></div>` : '<div class="t3-empty">'+tr('No staff, HR or supplier users yet.')+'</div>');
     // The firm's owner is always pinned at the top (user request 2026-10-11),
     // then everyone else by name.
     const rank = u => u.role==='tenant_admin' ? 0 : u.role==='superadmin' ? 1 : 2;
     users = users.slice().sort((a,b) => rank(a)-rank(b) || String(a.fullName||a.username||'').localeCompare(String(b.fullName||b.username||'')));
-    if(users.length) renderPagedList(el.querySelector('.admin-users-rows'), 'users', '', users, row);
+    __adminUsersShown = users;
+    if(users.length){ renderPagedList(el.querySelector('.admin-users-rows'), 'users', '', users, row); selectRoot('users', el.querySelector('.admin-users-rows')); }
+}
+// The firm's owner (and a super-admin) can't be picked for a bulk delete.
+const USER_UNSELECTABLE = ['tenant_admin', 'superadmin'];
+let __adminUsersShown = [];
+function startUsersSelect(){
+  const root = document.querySelector('.admin-users-rows'); if(!root) return;
+  startSelect({key:'users', root, ids:() => __adminUsersShown.filter(u => !USER_UNSELECTABLE.includes(u.role)).map(u => u.id),
+    del:(ids, els) => undoDelete({els, label: ids.length === 1 ? ((__adminUsersShown.find(u => u.id === ids[0]) || {}).username || '') : tr('{0} users', {0: ids.length}),
+      commit: async () => { let ok = 0; for(const id of ids) if(await deleteUserNow(id, true)) ok++; if(ok) showToast(tr('User deleted')); renderAdminUsers(); }})});
 }
 function fillUserFormSupplierSelect(selectedId){
   const sel = document.getElementById('userFormSupplierId');
@@ -6038,15 +6123,18 @@ async function submitUserForm(){
   }catch(e){ errEl.textContent = tr('Network error'); }
   finally{ btn.disabled = false; }
 }
-async function deleteUserConfirm(id, username){
-  if(!confirm(tr('Delete user "{0}"?',{0:(username)}))) return;
+// Delete never asks: the line collapses and the Undo snack runs first (undoDelete).
+function deleteUserConfirm(id, username, el){
+  undoDelete({el, label: username, commit: () => deleteUserNow(id)});
+}
+async function deleteUserNow(id, quiet){
   try{
     const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'deleteUser', ...gsAuth(), id }) });
     const json = await res.json();
-    if(!json || json.error){ showToast((json&&json.error)||tr('Failed')); return; }
-    showToast(tr('User deleted'));
-    renderAdminUsers();
-  }catch(e){ showToast(tr('Network error')); }
+    if(!json || json.error){ showToast((json&&json.error)||tr('Failed')); if(!quiet) renderAdminUsers(); return false; }
+    if(!quiet){ showToast(tr('User deleted')); renderAdminUsers(); }
+    return true;
+  }catch(e){ showToast(tr('Network error')); if(!quiet) renderAdminUsers(); return false; }
 }
 
 // ── HR logins and their workers (docs/admin.md → HR) ────────────────────────
@@ -6447,7 +6535,7 @@ function renderTimingsPane(el,rows){
   const rowHtml=(r,i)=>{
     const d=r.details||{}, slow=p90[r.kind]!=null&&r.totalMs>p90[r.kind];
     const steps=[..._timingSteps(r.kind,d).map(([l,v])=>`${esc(l)} ${_sec(v)}`),esc(_timingAiNote(d))].filter(Boolean).join(' · ');
-    return t3Line({c:slow?'var(--amber)':'var(--border2)', cls:'wrap',
+    return t3Line({c:slow?'var(--amber)':'var(--neutral)', cls:'wrap',
       name:`${esc(timingKindLabel(r.kind))}${d.aborted?` <span style="color:var(--amber);font-weight:400">${esc(d.aborted)}</span>`:''}`,
       sub:[steps, `<span style="font-family:'DM Mono',monospace">${esc(_shortWhen(r.when))}</span>${[_timingFirmName(r.tenantId),r.user,d.device,d.pages?d.pages+' page(s)':'',d.kinds?d.kinds.join(', '):''].filter(Boolean).map(x=>' · '+esc(x)).join('')}`],
       right:`<span class="r" style="color:${slow?'var(--amber)':'var(--text)'};font-size:14px;font-weight:700">${_sec(r.totalMs)}</span><button class="t3-ib" type="button" title="${tr('Copy')}" onclick="copyTimingRow(${i})"><i class="ti ti-copy"></i></button>`});
@@ -7085,9 +7173,191 @@ function t3Av(w){
   const c=w?WORKER_COLORS[w.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
   return `<div class="t3-av" style="background:${c.bg};color:${c.text}">${w?workerAvatarInner(w):'?'}</div>`;
 }
-function t3Line(o){
-  return `<div class="t3-line${o.cls?' '+o.cls:''}" style="--c:${o.c||'var(--border2)'}"${o.onclick?` onclick="${o.onclick}"`:''}${o.attrs?' '+o.attrs:''}>${o.av||''}<div class="n"><b>${o.name}</b>${[].concat(o.sub||[]).filter(Boolean).map(x=>`<small>${x}</small>`).join('')}</div>${o.right||''}</div>`;
+// ── Odinson Glass list pieces (docs/redesign.md → Plates). The same code in
+// the manager app and the supplier portal — keep the two the same. ──
+// t3Line(o) draws a plate: o.c the bar colour, o.av the avatar (t3Av), o.name /
+// o.sub / o.right HTML already escaped by the caller, o.cls / o.onclick / o.attrs;
+// o.menu = the row's ⋮ items [{icon, label, fn, danger}] (Delete last, in red);
+// o.swipe = {edit: fn(el), del: fn(el)} — a swipe left on a touch screen shows
+// Edit and Delete behind the plate; o.sel = the row's id in a list that can
+// Select (startSelect). Functions are kept in __rowFns, looked up by key.
+const __rowFns = new Map(); let __rowFnSeq = 0;
+function rowFnKey(v){
+  const k = 'r' + (++__rowFnSeq); __rowFns.set(k, v);
+  if(__rowFns.size > 4000) __rowFns.delete(__rowFns.keys().next().value);
+  return k;
 }
+function t3Line(o){
+  const kb = o.menu && o.menu.length ? `<button type="button" class="t3-kb" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey(o.menu)}')"><i class="ti ti-dots-vertical"></i></button>` : '';
+  const sel = o.sel != null ? String(o.sel) : null;
+  const picked = sel != null && __selState && __selState.picked.has(sel);
+  const line = `<div class="t3-line${o.cls?' '+o.cls:''}${picked?' picked':''}" style="--c:${o.c||'var(--neutral)'}"${sel!=null?` data-sel-id="${esc(sel)}"`:''}${o.onclick?` onclick="${o.onclick}"`:''}${o.attrs?' '+o.attrs:''}>${sel!=null?'<span class="t3-cb"><span class="og-box"></span></span>':''}${o.av||''}<div class="n"><b>${o.name}</b>${[].concat(o.sub||[]).filter(Boolean).map(x=>`<small>${x}</small>`).join('')}</div>${o.right||''}${kb}</div>`;
+  if(!o.swipe) return line;
+  return `<div class="sw" data-sw="${rowFnKey(o.swipe)}"><div class="sw-acts">${o.swipe.edit?`<button type="button" onclick="swipeAct(this,'edit')"><i class="ti ti-pencil"></i><span>${esc(tr('Edit'))}</span></button>`:''}${o.swipe.del?`<button type="button" class="d" onclick="swipeAct(this,'del')"><i class="ti ti-trash"></i><span>${esc(tr('Delete'))}</span></button>`:''}</div>${line}</div>`;
+}
+// The ⋮ popover: glass, a tail pointing at the button, Delete last under a divider.
+function openRowMenu(ev, btn, key){ if(ev) ev.stopPropagation(); openPopover(btn, __rowFns.get(key) || []); }
+function openPopover(btn, items){
+  const again = btn.classList.contains('on'); closePopover(); if(again) return;
+  const list = items.filter(i => !i.danger).concat(items.filter(i => i.danger));
+  const pop = document.createElement('div'); pop.className = 'og-pop'; pop.id = 'ogPop'; pop.setAttribute('role', 'menu');
+  pop.innerHTML = list.map((i, n) => (i.danger && n && !list[n-1].danger ? '<div class="og-pop-hr"></div>' : '')
+    + `<button type="button" class="og-pop-it${i.danger?' del':''}" data-i="${n}" role="menuitem"><i class="ti ${esc(i.icon||'ti-point')}"></i><span>${esc(i.label)}</span></button>`).join('');
+  pop.addEventListener('click', e => { const b = e.target.closest('.og-pop-it'); if(!b) return; e.stopPropagation(); const it = list[+b.dataset.i]; closePopover(); if(it && it.fn) it.fn(btn); });
+  document.body.appendChild(pop); pop.__btn = btn; btn.classList.add('on');
+  const r = btn.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
+  const left = Math.min(window.innerWidth - pw - 8, Math.max(8, r.right - pw + 6));
+  let top = r.bottom + 10, up = false;
+  if(top + ph > window.innerHeight - 8 && r.top - ph - 10 > 8){ top = r.top - ph - 10; up = true; }
+  pop.style.left = left + 'px'; pop.style.top = top + 'px';
+  pop.style.setProperty('--px', Math.max(10, Math.min(pw - 22, r.left + r.width / 2 - left - 6)) + 'px');
+  pop.classList.toggle('up', up);
+  void pop.offsetWidth; pop.classList.add('open');
+}
+function closePopover(){ const p = document.getElementById('ogPop'); if(!p) return; if(p.__btn) p.__btn.classList.remove('on'); p.remove(); }
+document.addEventListener('click', e => { const p = document.getElementById('ogPop'); if(p && !p.contains(e.target)) closePopover(); });
+window.addEventListener('scroll', e => { const p = document.getElementById('ogPop'); if(p && !p.contains(e.target)) closePopover(); }, {capture:true, passive:true});
+window.addEventListener('resize', closePopover);
+// Swipe left on a touch screen (a plate drawn with o.swipe): the plate follows
+// the finger and stays open past half the buttons' width; a tap elsewhere, or
+// on the open plate, closes it. Off while selecting.
+function swipeClose(sw){ sw.classList.remove('open'); const l = sw.querySelector(':scope > .t3-line'); if(l) l.style.transform = ''; }
+function swipeOpen(sw){ sw.classList.add('open'); const l = sw.querySelector(':scope > .t3-line'), a = sw.querySelector('.sw-acts'); if(l && a) l.style.transform = `translateX(${-swipeWidth(sw)}px)`; }
+function swipeWidth(sw){ const bs = sw.querySelectorAll('.sw-acts button'); return bs.length * 62 + 6; }
+function swipeAct(btn, which){
+  const sw = btn.closest('.sw'), v = sw && __rowFns.get(sw.dataset.sw);
+  if(!sw) return; swipeClose(sw);
+  if(v && v[which]) v[which](sw.querySelector(':scope > .t3-line'));
+}
+document.addEventListener('pointerdown', e => {
+  const line = e.target.closest && e.target.closest('.sw > .t3-line');
+  document.querySelectorAll('.sw.open').forEach(s => { if(!line || s !== line.parentNode){ swipeClose(s); s.__closedAt = Date.now(); } });
+  if(!line || e.pointerType === 'mouse' || __selState || e.target.closest('button, a, input, select, textarea')) return;
+  const sw = line.parentNode, x0 = e.clientX, y0 = e.clientY, W = swipeWidth(sw), base = sw.classList.contains('open') ? -W : 0;
+  let dx = base, active = false, dead = false;
+  const move = ev => {
+    if(ev.pointerId !== e.pointerId || dead) return;
+    const mx = ev.clientX - x0, my = ev.clientY - y0;
+    if(!active){
+      if(Math.abs(my) > 10 && Math.abs(my) > Math.abs(mx)){ dead = true; return; }
+      if(Math.abs(mx) < 10) return;
+      active = true; line.classList.add('drag');
+    }
+    dx = Math.min(0, Math.max(-W - 24, base + mx)); line.style.transform = `translateX(${dx}px)`;
+  };
+  const up = ev => {
+    if(ev.pointerId !== e.pointerId) return;
+    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
+    if(!active) return;
+    line.classList.remove('drag'); sw.__swipedAt = Date.now();
+    if(dx < -W / 2) swipeOpen(sw); else swipeClose(sw);
+  };
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+}, true);
+// A click that ends a swipe, or taps an open plate, does nothing else.
+document.addEventListener('click', e => {
+  const sw = e.target.closest && e.target.closest('.sw'); if(!sw || e.target.closest('.sw-acts')) return;
+  if(sw.classList.contains('open') || Date.now() - (sw.__swipedAt || 0) < 400 || Date.now() - (sw.__closedAt || 0) < 400){
+    e.stopPropagation(); e.preventDefault(); swipeClose(sw);
+  }
+}, true);
+// Delete never asks: undoDelete({el | els, label, commit, undo}) collapses the
+// plate(s), shows the glass Undo snack for UNDO_MS with its timer line, and runs
+// commit() — the real delete — when the time is up (or when another delete
+// starts, or the page is left). Undo brings the plates back and runs undo().
+const UNDO_MS = 5000;
+let __undo = null;
+function undoDelete(o){
+  if(__undo) finishUndo(true);
+  const els = [].concat(o.els || o.el || []).filter(Boolean).map(el => el.closest('.sw') || el);
+  els.forEach(el => { el.style.maxHeight = el.offsetHeight + 'px'; });
+  els.forEach(el => { void el.offsetWidth; el.classList.add('gone'); });
+  let sn = document.getElementById('undoSnack');
+  if(!sn){
+    sn = document.createElement('div'); sn.id = 'undoSnack'; sn.className = 'og-snack'; sn.setAttribute('role', 'status');
+    sn.innerHTML = '<span class="og-snack-t"></span><button type="button" class="og-snack-u"></button><i class="og-snack-bar"></i>';
+    sn.querySelector('button').onclick = () => finishUndo(false);
+    document.body.appendChild(sn);
+  }
+  sn.querySelector('.og-snack-t').textContent = tr('{0} deleted', {0: o.label});
+  sn.querySelector('.og-snack-u').textContent = tr('Undo');
+  sn.classList.remove('open'); void sn.offsetWidth; sn.classList.add('open');
+  __undo = {o, els, t: setTimeout(() => finishUndo(true), UNDO_MS)};
+}
+function finishUndo(commit){
+  const u = __undo; if(!u) return; __undo = null; clearTimeout(u.t);
+  const sn = document.getElementById('undoSnack'); if(sn) sn.classList.remove('open');
+  if(commit){ try{ Promise.resolve(u.o.commit()).catch(e => showToast(tr('Failed: {0}', {0: e && e.message || e}))); }catch(e){ showToast(tr('Failed: {0}', {0: e && e.message || e})); } return; }
+  u.els.forEach(el => { el.classList.remove('gone'); setTimeout(() => { el.style.maxHeight = ''; }, 350); });
+  if(u.o.undo) u.o.undo();
+}
+window.addEventListener('pagehide', () => finishUndo(true));
+// Select mode, in any list drawn with o.sel: startSelect({key, root, ids, actions, del})
+// — root: the rows' container; ids(): every selectable id of the list (also
+// rows not drawn yet); actions: the list's bulk actions [{icon, label, fn(ids)}];
+// del(ids, els): its bulk delete. Drawn-tick boxes slide in, "N selected · Select
+// all" sits above the rows, a glass bar below (count, actions, Delete, ✕). A tap
+// on a row ticks it; swipe and the row ⋮ are off. A list that redraws its rows
+// calls selectRoot(key, root) so the mode survives the redraw.
+let __selState = null;
+function startSelect(o){
+  endSelect(); closePopover();
+  __selState = Object.assign({}, o, {picked: new Set()});
+  selectRoot(o.key, o.root);
+}
+function selectRoot(key, root){
+  const st = __selState; if(!st || st.key !== key || !root) return;
+  if(st.head && st.head.isConnected && st.root === root) return;
+  if(st.root && st.root !== root) st.root.classList.remove('selecting');
+  if(st.head) st.head.remove();
+  st.root = root; root.classList.add('selecting');
+  st.head = document.createElement('div'); st.head.className = 'sel-head';
+  root.parentNode.insertBefore(st.head, root);
+  root.querySelectorAll('.t3-line[data-sel-id]').forEach(l => l.classList.toggle('picked', st.picked.has(l.dataset.selId)));
+  if(!st.bar){ st.bar = document.createElement('div'); st.bar.className = 'sel-bar'; document.body.appendChild(st.bar); }
+  drawSelect();
+}
+function drawSelect(){
+  const st = __selState; if(!st) return;
+  const n = st.picked.size, all = st.ids().length;
+  st.head.innerHTML = `<span>${esc(tr('{0} selected', {0: n}))}</span><button type="button">${esc(n === all && all ? tr('Clear') : tr('Select all'))}</button>`;
+  st.head.querySelector('button').onclick = () => { const ids = st.ids().map(String); if(st.picked.size === ids.length) st.picked.clear(); else ids.forEach(i => st.picked.add(i)); syncPicked(); };
+  st.bar.innerHTML = `<b>${esc(tr('{0} selected', {0: n}))}</b>`
+    + (st.actions || []).map((a, i) => `<button type="button" class="gbtn" data-a="${i}"${n?'':' disabled'}><i class="ti ${esc(a.icon||'')}"></i><span>${esc(a.label)}</span></button>`).join('')
+    + (st.del ? `<button type="button" class="gbtn del" data-a="del"${n?'':' disabled'}><i class="ti ti-trash"></i><span>${esc(tr('Delete'))}</span></button>` : '')
+    + `<button type="button" class="gbtn icon" data-a="x" aria-label="${esc(tr('Close'))}"><i class="ti ti-x"></i></button>`;
+  st.bar.querySelectorAll('button').forEach(b => b.onclick = () => {
+    const a = b.dataset.a, ids = [...st.picked];
+    if(a === 'x'){ endSelect(); return; }
+    if(!ids.length) return;
+    const els = ids.map(id => st.root.querySelector(`.t3-line[data-sel-id="${CSS.escape(id)}"]`)).filter(Boolean);
+    endSelect();
+    if(a === 'del') st.del(ids, els); else st.actions[+a].fn(ids);
+  });
+}
+function syncPicked(){
+  const st = __selState; if(!st) return;
+  st.root.querySelectorAll('.t3-line[data-sel-id]').forEach(l => l.classList.toggle('picked', st.picked.has(l.dataset.selId)));
+  drawSelect();
+}
+function endSelect(){
+  const st = __selState; if(!st) return; __selState = null;
+  if(st.root){ st.root.classList.remove('selecting'); st.root.querySelectorAll('.t3-line.picked').forEach(l => l.classList.remove('picked')); }
+  if(st.head) st.head.remove(); if(st.bar) st.bar.remove();
+}
+// While selecting, a tap on a row of the list ticks it and does nothing else.
+['click', 'pointerdown'].forEach(t => document.addEventListener(t, e => {
+  const st = __selState; if(!st || !st.root) return;
+  const line = e.target.closest && e.target.closest('.t3-line[data-sel-id]');
+  if(!line || !st.root.contains(line)) return;
+  e.stopPropagation(); if(t === 'pointerdown') return;
+  e.preventDefault();
+  const id = line.dataset.selId; if(st.picked.has(id)) st.picked.delete(id); else st.picked.add(id);
+  line.classList.toggle('picked', st.picked.has(id)); drawSelect();
+}, true));
+document.addEventListener('keydown', e => { if(e.key === 'Escape'){ closePopover(); endSelect(); } });
+// The header ⋮ of a list: its items, plus "Select…" when the list can select.
+function listMenuHtml(items){ return items.length ? `<button type="button" class="t3-kb" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey(items)}')"><i class="ti ti-dots-vertical"></i></button>` : ''; }
 function workerClientNames(w){ return (w.clientIds||[]).map(id=>(clients.find(c=>c.id===id)||{}).name).filter(Boolean).join(', '); }
 function renderDashboard(){
   const now     = new Date();
@@ -8413,7 +8683,7 @@ function renderClientLogs(){
       const isClockedIn = lastEntry?.type==='in';
       if(isClockedIn) presentNow++;
       const status = isClockedIn ? tr('In since {0}',{0:lastEntry.time}) : lastEntry ? tr('Last: {0} ({1})',{0:lastEntry.time,1:lastEntry.type==='in'?tr('IN'):tr('OUT')}) : tr('No records today');
-      return t3Line({c:isClockedIn?'var(--green)':'var(--border2)', av:t3Av(w), name:esc(w.name),
+      return t3Line({c:isClockedIn?'var(--green)':'var(--neutral)', av:t3Av(w), name:esc(w.name),
           sub:`<span style="color:${isClockedIn?'var(--green)':'var(--text3)'}">${esc(status)}</span>`,
           right:`<span class="r">${esc(tr('{0} records',{0:wLog.length}))}</span>`, onclick:`openWorkerCardById('${esc(w.id)}')`})
         + wLog.slice(0,5).map(e=>punchLogLine(e,'sub')).join('');
