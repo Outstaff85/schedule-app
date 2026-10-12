@@ -97,7 +97,7 @@ A read-only sheet (redesign stage 3): the head (`workerSheetHeadHtml` — big av
 
 ## Worker modal (`showWorkerModal(w)`, `#workerModal`)
 
-One form for add, edit and post-scan review. Labels of every Form 101 field are Hebrew.
+One form for add, edit and post-scan review. Labels of every Form 101 field are Hebrew. Laid out as an editor of section plates (redesign stage 4, [app-core.md](app-core.md) → Editors): a head (`#wAvatarWrap`, `.og-edh`: the photo with a ring in the worker's plate colour, the name, site · phone, every notice chip, the scan button `rescanFromWorkerModal` when editing, photo upload / delete icons), then the sections **Person** (names, ID, sex, marital status, health fund, birth date, ID expiry), **Address**, **Work** (start date, phone, clients, supplier, HR, the weekly roster toggle, the contract-expiry toggle), **Documents** (the document status line and Add document — editing only; its colour from `workerDocStatus`), **Form 101** (income types, spouse, children, signature), **Access** (the punch link and New token — editing only), **Notes**. Sex, marital status, health fund and the spouse's income are segmented switches (`select[data-seg]`). A new worker or a scan review opens Person; a section with a missing field (`.scan-missing`) opens by itself.
 
 - **Opening:**
   - it warms the Form 101 and upload functions (`warmCloudFunctions`);
