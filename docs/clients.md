@@ -27,7 +27,7 @@ Worker pay and client billing are separate sets of fields. Billing never changes
 
 ## Client modal (`showClientModal(c)`, `#clientModal`)
 
-`openAddClient()` / `openEditClient(cid)` set `editingClientId` and the color, then open the modal. The modal is in Hebrew, right to left (per user request 2026-10-04). It is an editor of section plates ([app-core.md](app-core.md) → Editors): a head (the client's colour, name, site · address), then **Client** (name — an empty one shows amber — ח.פ, site, address), **Rates** and **Place** (map, Maps link, radius).
+`openAddClient()` / `openEditClient(cid)` set `editingClientId` and the color, then open the modal. The modal is in Hebrew, right to left (per user request 2026-10-04). It is an editor of section plates ([app-core.md](app-core.md) → Editors): a head (the client's colour, name, site · address), then, in the owner's fixed order, **Client** (name — an empty one shows amber — ח.פ, site, address), **Place** (map, Maps link, radius), **Rates**, **Hours approval** (`clientLoginsHtml`: this client's client logins and their hours ticks, read-only from the users cache — edited in Admin → Users), and a **Save** button (`saveClient()`); closing the window still saves it too.
 
 - **Fields:** שם הלקוח, ח.פ, אתר / סניף, כתובת.
 - **Rates block** (per user request 2026-10-11): a "תעריפים" heading with an (i) that shows the explanation; worker pay and what the client pays side by side (₪/שעה inside the fields); the billing mode as two buttons; OT / Shabbat inline in tiered mode; the margin line.
