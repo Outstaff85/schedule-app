@@ -1064,12 +1064,23 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(await waitFor(p, () => typeof __hrv !== 'undefined' && __hrv.data && __hrv.data.punches, 15000), 'supplier: the hours review loads');
   const sr = await p.evaluate(async () => {
     const r = {names: (__hrv.data.workers || []).map(w => w.name), acts: [...document.querySelectorAll('#sectionReview .hrv-act')].map(b => b.title), approveAll: !!document.querySelector('#sectionReview .hrv-approve')};
+    // Select mode: tick one day, approve it with the bar (hours-review.js).
+    const pk = hrvPickable();
+    if(pk.length){ document.getElementById('hrvSelectBtn').click();
+      r.selBar = !!document.getElementById('hrvSelBar') && document.getElementById('hrvApproveSel').disabled && !document.querySelector('#sectionReview .hrv-act');
+      document.querySelector(`#sectionReview .hrv-day[data-key="${pk[0].key}"]`).click();
+      r.selCount = document.querySelector('#hrvSelBar b').innerText.trim();
+      document.getElementById('hrvApproveSel').click();
+      for(let i = 0; i < 40 && hrvDayState(hrvRow(pk[0].key)).st !== 'approved'; i++) await new Promise(res => setTimeout(res, 150));
+      r.selSt = hrvDayState(hrvRow(pk[0].key)).st; r.selGone = !document.getElementById('hrvSelBar'); }
+    r.approveAll = !!document.querySelector('#sectionReview .hrv-approve');
     if(r.approveAll){ hrvApproveMonth(); for(let i = 0; i < 40 && !/Every day approved/.test(document.getElementById('hrvStatus').innerText); i++) await new Promise(res => setTimeout(res, 150)); }
     r.status = (document.getElementById('hrvStatus') || {}).innerText || document.getElementById('sectionReview').innerText;
     return r;
   });
   await (await p.$('#sectionReview')).screenshot({path: SP + '/supplier-hours-review.png'}).catch(()=>{});
   ok(sr.names.join() === 'Avi Cohen' && !sr.acts.some(t => /Dispute|fix/i.test(t)) && /Every day approved/.test(sr.status), 'supplier: reviews only its own workers, no dispute / fix without those ticks, approves the month ' + JSON.stringify(sr));
+  ok(sr.selBar && sr.selCount === '1 selected' && sr.selSt === 'approved' && sr.selGone, 'supplier: hours Select mode — tick a day, Approve in the bar ' + JSON.stringify(sr));
   // the firm's language reaches the portal with loadSchedule
   const sl = await p.evaluate(async () => { const def = I18N_LANG;
     document.querySelector('#headerActions .lang-btn').click(); document.querySelector('#langSheet .lang-li[data-lang="he"]').click();

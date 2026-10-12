@@ -17,7 +17,7 @@
 //   hoursReviewReload()
 
 const HOURS_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/hours';
-let __hrv = {el: null, call: null, hideOwner: false, month: 0, tab: 'hours', data: null, loading: false, busy: false, shown: 10};
+let __hrv = {el: null, call: null, hideOwner: false, month: 0, tab: 'hours', data: null, loading: false, busy: false, shown: 10, sel: null};
 
 function hoursReviewMount(el, opts){
   __hrv = Object.assign(__hrv, {el, call: opts.call, hideOwner: !!opts.hideOwner, data: null});
@@ -32,8 +32,8 @@ function hoursReviewMount(el, opts){
 
 function hrvMonthKey(){ const n = new Date(); return localYMD(new Date(n.getFullYear(), n.getMonth() + __hrv.month, 1)).slice(0, 7); }
 function hrvCan(p){ return !!(__hrv.data && (__hrv.data.perms || []).includes(p)); }
-function hrvShiftMonth(n){ __hrv.month = Math.min(0, __hrv.month + n); __hrv.shown = 10; hoursReviewReload(); }
-function hrvSwitchTab(t){ __hrv.tab = t; hrvRender(); }
+function hrvShiftMonth(n){ __hrv.month = Math.min(0, __hrv.month + n); __hrv.shown = 10; __hrv.sel = null; hoursReviewReload(); }
+function hrvSwitchTab(t){ __hrv.tab = t; __hrv.sel = null; hrvRender(); }
 
 async function hoursReviewReload(){
   const key = hrvMonthKey();
@@ -151,6 +151,22 @@ function hrvStyle(){
   .hrv-act{background:none;border:none;color:var(--text3);cursor:pointer;font-size:17px;padding:2px 4px;}
   .hrv-act:hover{color:var(--text);}
   .hrv-act.on{color:var(--accent);}
+  /* Select mode: a tick box on every day that can still be approved, a tap
+     ticks it, the glass bar approves the ticked days at once. */
+  .hrv-day.can-pick{cursor:pointer;}
+  .hrv-box{width:22px;height:22px;flex:none;border-radius:7px;border:2px solid rgba(255,255,255,.4);position:relative;transition:background .25s,border-color .25s;}
+  .hrv-box::after{content:'';position:absolute;left:5px;top:1px;width:5px;height:10px;border:solid #0b0d14;border-width:0 3px 3px 0;transform:rotate(45deg);clip-path:inset(100% 0 0 0);transition:clip-path .35s .05s;}
+  .hrv-day.picked{background:#1f2a2c;}
+  .hrv-day.picked .hrv-box{background:var(--green);border-color:var(--green);}
+  .hrv-day.picked .hrv-box::after{clip-path:inset(0);}
+  .hrv-day.no-pick{opacity:.5;}
+  .hrv-selhead{display:flex;align-items:center;gap:10px;margin:-2px 2px 10px;font-size:13px;color:var(--text2);}
+  .hrv-selhead span{flex:1;}
+  .hrv-selhead button{border:0;background:none;color:#fff;font:600 13px inherit;cursor:pointer;padding:2px 0;}
+  .hrv-selbar{position:fixed;left:50%;bottom:16px;z-index:3400;width:min(520px,calc(100% - 28px));display:flex;align-items:center;gap:6px;padding:8px 8px 8px 14px;border-radius:18px;background:rgba(30,35,51,.8);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.24);box-shadow:0 12px 30px rgba(0,0,0,.4);color:#fff;transform:translate(-50%,0);}
+  .hrv-selbar b{flex:1;font-size:14px;white-space:nowrap;}
+  .hrv-selbar .gbtn{height:38px;padding:0 12px;font-size:13px;}
+  .hrv-selbar .gbtn:disabled{opacity:.45;cursor:default;}
   </style>`;
 }
 
@@ -168,6 +184,8 @@ function hrvHoursHtml(){
       + (counts.fix ? ' · ' + tr('{n} fixes waiting', {n: counts.fix}) : '');
   const canApproveAll = hrvCan('approve') && days.some(r => ['pending', 'changed', 'rejected'].includes(hrvDayState(r).st));
   const approveBtn = canApproveAll ? `<button class="btn sm hrv-approve" onclick="hrvApproveMonth()"><i class="ti ti-checks"></i> ${esc(tr('Approve the month'))}</button>` : '';
+  const sel = __hrv.sel;
+  const selectBtn = canApproveAll && !sel ? `<button class="btn sm" id="hrvSelectBtn" onclick="hrvStartSelect()"><i class="ti ti-list-check"></i> ${esc(tr('Select'))}</button>` : '';
   const exportBtn = hrvCan('export') ? `<button class="btn sm" onclick="hrvExport()"><i class="ti ti-file-spreadsheet"></i> ${esc(tr('Export'))}</button>` : '';
   const byW = {};
   days.forEach(r => { (byW[r.workerId] = byW[r.workerId] || []).push(r); });
@@ -190,19 +208,20 @@ function hrvHoursHtml(){
         hrvCan('dispute') ? `<button class="hrv-act${st === 'disputed' ? ' on' : ''}" title="${esc(tr('Dispute this day'))}" onclick="hrvOpenDispute('${k}')"><i class="ti ti-alert-triangle"></i></button>` : '',
         hrvCan('fix') ? `<button class="hrv-act${st === 'fix' ? ' on' : ''}" title="${esc(tr('Propose a fix'))}" onclick="hrvOpenFix('${k}')"><i class="ti ti-pencil"></i></button>` : '',
       ].join('');
-      return `<div class="hrv-day" data-key="${k}" style="--c:${S.color === 'var(--text3)' ? 'var(--border2)' : S.color}">
-        <span class="st" style="color:${S.color}" title="${esc(tr(S.label))}"><i class="ti ${S.icon}"></i></span>
+      const pick = sel ? (HRV_PICKABLE.includes(st) ? (sel.has(r.key) ? ' can-pick picked' : ' can-pick') : ' no-pick') : '';
+      return `<div class="hrv-day${pick}" data-key="${k}" style="--c:${S.color === 'var(--text3)' ? 'var(--border2)' : S.color}"${pick.includes('can-pick') ? ` onclick="hrvToggleDay('${k}')"` : ''}>
+        ${sel ? (pick.includes('can-pick') ? '<span class="hrv-box"></span>' : '<span style="width:22px;flex:none"></span>') : ''}<span class="st" style="color:${S.color}" title="${esc(tr(S.label))}"><i class="ti ${S.icon}"></i></span>
         <span class="d">${esc(r.date.toLocaleDateString(uiLocale(), {weekday: 'short', day: '2-digit', month: 'short'}))}</span>
         <span class="t">${esc(times)}</span>
-        <span class="h">${esc(tr('{h}h', {h: r.hours.toFixed(1)}))}</span>${acts}${note}</div>`;
+        <span class="h">${esc(tr('{h}h', {h: r.hours.toFixed(1)}))}</span>${sel ? '' : acts}${note}</div>`;
     }).join('');
     return `<div class="hrv-card"><div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:4px">
       <b>${esc(hrvWorkerName(wid))}</b><span style="color:var(--text2);font-size:12px">${esc(list.length === 1 ? tr('1 day') : tr('{n} days', {n: list.length}))} · <b style="color:var(--text)">${esc(tr('{h}h', {h: hrs.toFixed(1)}))}</b></span></div>${rows}</div>`;
   }).join('') + (left > 0 ? `<div class="hrv-more" style="text-align:center;padding:4px 0 10px"><button type="button" class="btn sm" onclick="hrvMore()"><i class="ti ti-chevron-down"></i> ${esc(tr('Show more ({0} left)', {0: left}))}</button></div>` : '');
   const fig = (n, l, col) => `<div><b style="color:${n ? col : 'var(--text3)'}">${n}</b>${esc(tr(l))}</div>`;
   const stats = `<div class="hrv-stats">${fig(done, 'Approved', 'var(--green)')}${fig(counts.pending || 0, 'Waiting for approval', 'var(--text)')}${fig((counts.disputed || 0) + (counts.changed || 0), 'Disputed', 'var(--amber)')}${fig(counts.fix || 0, 'Fix proposed', 'var(--accent)')}</div>`;
-  return stats + `<div class="hrv-status ${!open ? 'ok' : warn ? 'warn' : ''}" id="hrvStatus"><span><i class="ti ${!open ? 'ti-circle-check' : warn ? 'ti-alert-triangle' : 'ti-clock'}"></i> ${esc(stText)}</span><span style="display:flex;gap:6px">${exportBtn}${approveBtn}</span></div>
-    <div style="font-size:12px;color:var(--text2);margin:-4px 0 10px">${esc(tr('Total: {h}h', {h: total.toFixed(1)}))}</div>${cards}`;
+  return stats + `<div class="hrv-status ${!open ? 'ok' : warn ? 'warn' : ''}" id="hrvStatus"><span><i class="ti ${!open ? 'ti-circle-check' : warn ? 'ti-alert-triangle' : 'ti-clock'}"></i> ${esc(stText)}</span><span style="display:flex;gap:6px;flex-wrap:wrap">${exportBtn}${selectBtn}${approveBtn}</span></div>
+    <div style="font-size:12px;color:var(--text2);margin:-4px 0 10px">${esc(tr('Total: {h}h', {h: total.toFixed(1)}))}</div>${sel ? hrvSelectHtml(days) : ''}${cards}`;
 }
 
 function hrvRow(key){ return hrvMonthDays().find(r => r.key === key); }
@@ -225,6 +244,36 @@ function hrvApproveMonth(){
   const lines = hrvMonthDays().filter(r => ['pending', 'changed', 'rejected'].includes(hrvDayState(r).st)).map(r => r.line);
   if(!lines.length || !confirm(tr('Approve all the hours of this month?'))) return;
   hrvSend({action: 'approve', lines}, tr('Approved — thank you'));
+}
+// Select mode: tick several days (only those still waiting, changed or whose
+// fix was rejected — the same as the month button) and approve them at once.
+const HRV_PICKABLE = ['pending', 'changed', 'rejected'];
+function hrvPickable(){ return hrvMonthDays().filter(r => HRV_PICKABLE.includes(hrvDayState(r).st)); }
+function hrvStartSelect(){ __hrv.sel = new Set(); hrvRender(); }
+function hrvEndSelect(){ __hrv.sel = null; hrvRender(); }
+function hrvToggleDay(key){
+  const sel = __hrv.sel; if(!sel) return;
+  sel.has(key) ? sel.delete(key) : sel.add(key);
+  const y = window.scrollY; hrvRender(); window.scrollTo(0, y);
+}
+function hrvSelectAll(){
+  const sel = __hrv.sel; if(!sel) return;
+  const all = hrvPickable().map(r => r.key);
+  if(all.every(k => sel.has(k))) sel.clear(); else all.forEach(k => sel.add(k));
+  const y = window.scrollY; hrvRender(); window.scrollTo(0, y);
+}
+function hrvSelectHtml(days){
+  const n = __hrv.sel.size, all = days.filter(r => HRV_PICKABLE.includes(hrvDayState(r).st)).length;
+  return `<div class="hrv-selhead"><span>${esc(tr('{n} selected', {n}))}</span><button type="button" onclick="hrvSelectAll()">${esc(tr(n && n >= all ? 'Clear' : 'Select all'))}</button></div>
+    <div class="hrv-selbar" id="hrvSelBar"><b>${esc(tr('{n} selected', {n}))}</b>
+      <button type="button" class="gbtn primary" id="hrvApproveSel" onclick="hrvApproveSelected()" ${n ? '' : 'disabled'}><i class="ti ti-check"></i> ${esc(tr('Approve'))}</button>
+      <button type="button" class="gbtn" onclick="hrvEndSelect()">${esc(tr('Done'))}</button></div>`;
+}
+async function hrvApproveSelected(){
+  const sel = __hrv.sel; if(!sel || !sel.size) return;
+  const lines = hrvPickable().filter(r => sel.has(r.key)).map(r => r.line);
+  __hrv.sel = null;
+  await hrvSend({action: 'approve', lines}, lines.length === 1 ? tr('Day approved') : tr('{n} days approved', {n: lines.length}));
 }
 function hrvDayTitle(r){
   return `<div style="font-size:13px;color:var(--text2);margin-bottom:10px">${esc(r.date.toLocaleDateString(uiLocale(), {weekday: 'long', day: 'numeric', month: 'long'}))} · ${esc(r.shifts.map(s => (s.inT || '--:--') + '–' + (s.outT || '--:--')).join(', '))}</div>`;

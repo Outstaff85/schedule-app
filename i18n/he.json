@@ -1007,5 +1007,8 @@
   "{n} shifts": "{n} משמרות",
   "A worker's arrow opens the week · a day opens its shift": "החץ של עובד פותח את השבוע · יום פותח את המשמרת",
   "Previous week": "השבוע הקודם",
-  "Next week": "השבוע הבא"
+  "Next week": "השבוע הבא",
+  "Select": "בחירה",
+  "{n} selected": "{n} נבחרו",
+  "{n} days approved": "{n} ימים אושרו"
 }
