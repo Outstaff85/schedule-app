@@ -115,12 +115,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     row.dispatchEvent(new MouseEvent('click', {bubbles: true})); await new Promise(res => setTimeout(res, 450)); r.after = det();
     sel.value = 'week'; await onSalaryPeriodChange();
     toggleAccountMenu(); const m = document.getElementById('accountMenu');
-    r.menu = {open: getComputedStyle(m).display !== 'none', lang: !!m.querySelector('#langSelect'), out: /Sign out/.test(m.innerText), name: /My name/.test(m.innerText)};
+    r.menu = {open: getComputedStyle(m).display !== 'none', lang: !m.querySelector('.lang-btn, select') && !!document.querySelector('.titlebar-actions > .lang-btn + #accountControl'), out: /Sign out/.test(m.innerText), name: /My name/.test(m.innerText)};
     closeAccountMenu(); r.closed = getComputedStyle(m).display === 'none';
     return r;
   });
   ok(sc.h > 0 && sc.h < 60 && sc.before === 'none' && sc.after === 'grid', 'salary: one compact line per worker, a tap opens the details ' + JSON.stringify(sc));
-  ok(sc.menu && sc.menu.open && sc.menu.lang && sc.menu.out && sc.menu.name && sc.closed, 'header: one account menu with language, my name and sign out ' + JSON.stringify(sc.menu));
+  ok(sc.menu && sc.menu.open && sc.menu.lang && sc.menu.out && sc.menu.name && sc.closed, 'header: one account menu with my name and sign out; the Language button beside it ' + JSON.stringify(sc.menu));
   // An inactive worker leaves the everyday lists and comes back when set Active; a contract warning shows a notice at the top.
   const ia = await p.evaluate(async () => {
     const w = workers.find(x => x.id === 'w2'), keep = JSON.parse(JSON.stringify(w)), r = {};
@@ -147,6 +147,20 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const t3 = await p.evaluate(async () => { switchTab('dashboard'); await new Promise(r => setTimeout(r, 300));
     return {stats: document.querySelectorAll('#dashStats > div').length, lines: document.querySelectorAll('#sectionDashboard .t3-line').length}; });
   await p.screenshot({path: SP + '/t3-today.png'}).catch(()=>{});
+  // The phone bottom bar (variant 11): Today, Schedule, Workers, Accounting, More; More opens a sheet with the other tabs.
+  const bb = await p.evaluate(async () => {
+    const shown = [...document.querySelectorAll('.top-tabs .ttab')].filter(t => getComputedStyle(t).display !== 'none').map(t => t.querySelector('.lb').textContent.trim());
+    const bar = document.querySelector('.top-tabs').getBoundingClientRect(), fixed = Math.abs(bar.bottom - innerHeight) < 2 && Math.abs(bar.width - innerWidth) < 2;
+    const todayColor = getComputedStyle(document.getElementById('tabDashboard')).color;
+    document.getElementById('tabMore').click(); await new Promise(r => setTimeout(r, 200));
+    const sheet = document.getElementById('moreOverlay').classList.contains('open'), items = [...document.querySelectorAll('#moreModal .t3-line b')].map(b => b.textContent.trim());
+    document.querySelectorAll('#moreModal .t3-line')[0].click(); await new Promise(r => setTimeout(r, 200));
+    const r = {shown, fixed, todayColor, sheet, items, tab: currentTab, moreOn: document.getElementById('tabMore').classList.contains('active'), closed: !document.getElementById('moreOverlay').classList.contains('open')};
+    switchTab('dashboard'); r.moreOff = !document.getElementById('tabMore').classList.contains('active');
+    return r;
+  });
+  ok(bb.shown.join() === 'Today,Schedule,Workers,Accounting,More' && bb.fixed && bb.todayColor === 'rgb(34, 211, 238)' && bb.sheet && bb.items.join() === 'Clients,Suppliers,Admin' && bb.tab === 'clients' && bb.moreOn && bb.closed && bb.moreOff,
+    'phone bottom bar: Today, Schedule, Workers, Accounting, More (the active one in its color); More opens Clients, Suppliers, Admin ' + JSON.stringify(bb));
   // Today, variant A: a figure shows only its section; the arrow folds a section (kept); the salary search opens from its icon.
   const tf = await p.evaluate(async () => {
     const vis = id => getComputedStyle(document.getElementById(id)).display !== 'none';
@@ -250,36 +264,44 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(as.nameKept === 'Dana Levi' && as.closedEmpty && as.noNew, 'worker window: an empty name is not saved; an empty new worker is not created ' + JSON.stringify(as));
   // The header's language select: English by default; Hebrew from i18n/he.json, Russian (an empty dictionary) falls back to English.
   const lg = await p.evaluate(async () => {
-    const r = {def: I18N_LANG, sel: document.querySelector('.titlebar-actions select.lang-select').value, firmField: !!document.getElementById('firmEditLanguage')};
+    const r = {def: I18N_LANG, sel: document.querySelector('.titlebar-actions .lang-btn .lang-btn-name').textContent, firmField: !!document.getElementById('firmEditLanguage')};
+    document.getElementById('langBtn').click();
+    const sh = document.getElementById('langSheet'), inp = sh.querySelector('input');
+    r.sheet = {open: sh.classList.contains('open'), all: [...sh.querySelectorAll('.lang-li')].map(b => b.querySelector('b').textContent + '/' + b.querySelector('small').textContent).join(), ticked: sh.querySelector('.lang-li.on').dataset.lang};
+    inp.value = 'hebr'; inp.dispatchEvent(new Event('input')); r.sheet.found = [...sh.querySelectorAll('.lang-li')].map(b => b.dataset.lang).join();
+    inp.value = 'zz'; inp.dispatchEvent(new Event('input')); r.sheet.none = sh.querySelectorAll('.lang-li').length === 0 && !!sh.querySelector('.lang-none');
+    sh.dispatchEvent(new MouseEvent('click', {bubbles: true})); r.sheet.closed = !sh.classList.contains('open');
     const setLang = async l => {
-      const sel = document.querySelector('.titlebar-actions select.lang-select');
-      sel.value = l; sel.dispatchEvent(new Event('change'));
+      document.getElementById('langBtn').click();
+      const li = document.querySelector('#langSheet .lang-li[data-lang="' + l + '"]') || document.querySelector('#langSheet .lang-li.on');
+      if(li) li.click();
       for(let i = 0; i < 40 && I18N_LANG !== l; i++) await new Promise(res => setTimeout(res, 150));
       switchTab('accounting'); await new Promise(res => setTimeout(res, 300));
       return {lang: I18N_LANG, tab: document.getElementById('tabAccounting').innerText.trim(),
         head: document.querySelector('#dashSalary .sal-head .c-name') && document.querySelector('#dashSalary .sal-head .c-name').innerText.trim(),
         sec: document.querySelector('#accSecSalary span[data-i18n]').textContent.trim(),
         period: document.getElementById('salaryPeriod').options[0].text,
-        stored: localStorage.getItem('uiLang'), selects: [...document.querySelectorAll('select.lang-select')].every(x => x.value === l)};
+        stored: localStorage.getItem('uiLang'), selects: [...document.querySelectorAll('.lang-btn .lang-btn-name')].every(x => x.textContent === I18N_LANGS[l]) && !document.getElementById('langSheet').classList.contains('open')};
     };
     r.he = await setLang('he');
     r.ru = await setLang('ru');
     r.en = await setLang('en');
     return r;
   });
-  ok(lg.he.lang === 'he' && lg.he.tab === 'חשבונות' && lg.he.head === 'עובד' && lg.he.sec === 'חישוב שכר' && lg.he.period === 'השבוע' && lg.he.stored === 'he' && lg.he.selects && lg.def === 'en' && lg.sel === 'en' && !lg.firmField, 'language: English by default; the header select switches to Hebrew sees Accounting in Hebrew ' + JSON.stringify(lg.he));
+  ok(lg.sheet.open && lg.sheet.all === 'English/English,עברית/Hebrew,Русский/Russian' && lg.sheet.ticked === 'en' && lg.sheet.found === 'he' && lg.sheet.none && lg.sheet.closed, 'language: the Language button opens a sheet with every language (own name + English), the current one ticked, a search, closes on a tap outside ' + JSON.stringify(lg.sheet));
+  ok(lg.he.lang === 'he' && lg.he.tab === 'חשבונות' && lg.he.head === 'עובד' && lg.he.sec === 'חישוב שכר' && lg.he.period === 'השבוע' && lg.he.stored === 'he' && lg.he.selects && lg.def === 'en' && lg.sel === 'English' && !lg.firmField, 'language: English by default; the header Language button switches to Hebrew sees Accounting in Hebrew ' + JSON.stringify(lg.he));
   ok(lg.ru.lang === 'ru' && lg.ru.tab === 'Accounting' && lg.ru.head === 'Worker', 'language: Russian with an empty dictionary shows English ' + JSON.stringify(lg.ru));
   ok(lg.en.lang === 'en' && lg.en.tab === 'Accounting' && lg.en.sec === 'Salary Calculation' && lg.en.period === 'This Week', 'language: back to English ' + JSON.stringify(lg.en));
-  // One select per page; the user's last choice follows them to a new device.
+  // One Language button per page; the user's last choice follows them to a new device.
   await p.evaluate(() => setLanguage('he')); await sleep(1500);
   {
     const c2 = await newCtx(); const p2 = await page(c2);
     await p2.goto(BASE + 'schedule-manager.html'); await p2.waitForSelector('#loginScreen', {state:'visible'});
-    const onLogin = await p2.evaluate(() => ({n: document.querySelectorAll('select.lang-select').length, inLogin: !!document.querySelector('#loginScreen #langSelect'), lang: I18N_LANG}));
+    const onLogin = await p2.evaluate(() => ({n: document.querySelectorAll('.lang-btn').length, selects: document.querySelectorAll('select.lang-select').length, inLogin: !!document.querySelector('#loginScreen #langBtn.on-cover'), lang: I18N_LANG}));
     await p2.fill('#loginUsername', 'owner1'); await p2.fill('#loginPassword', 'owner-pass-1'); await p2.click('#loginBtn');
     await p2.waitForNavigation().catch(()=>{});
-    const after = await waitFor(p2, () => I18N_LANG === 'he' && !!document.querySelector('.titlebar-actions #langSelect') && document.getElementById('langSelect').value === 'he' && document.querySelectorAll('select.lang-select').length === 1, 15000);
-    ok(onLogin.n === 1 && onLogin.inLogin && onLogin.lang === 'en' && after, 'language: one select per page (login screen, then the title bar); the user\'s last choice comes back on a new device ' + JSON.stringify(onLogin));
+    const after = await waitFor(p2, () => I18N_LANG === 'he' && !!document.querySelector('.titlebar-actions #langBtn') && document.querySelector('#langBtn .lang-btn-name').textContent === 'עברית' && document.querySelectorAll('.lang-btn').length === 1, 15000);
+    ok(onLogin.n === 1 && !onLogin.selects && onLogin.inLogin && onLogin.lang === 'en' && after, 'language: one Language button per page (login screen, then the title bar); the user\'s last choice comes back on a new device ' + JSON.stringify(onLogin));
     await p2.evaluate(() => setLanguage('en')); await sleep(1000);
     await c2.close();
   }
@@ -852,11 +874,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await (await p.$('#sectionReview')).screenshot({path: SP + '/supplier-hours-review.png'}).catch(()=>{});
   ok(sr.names.join() === 'Avi Cohen' && !sr.acts.some(t => /Dispute|fix/i.test(t)) && /Every day approved/.test(sr.status), 'supplier: reviews only its own workers, no dispute / fix without those ticks, approves the month ' + JSON.stringify(sr));
   // the firm's language reaches the portal with loadSchedule
-  const sl = await p.evaluate(async () => { const def = I18N_LANG; const sel = document.querySelector('#appRoot select.lang-select');
-    sel.value = 'he'; sel.dispatchEvent(new Event('change'));
+  const sl = await p.evaluate(async () => { const def = I18N_LANG;
+    document.querySelector('#headerActions .lang-btn').click(); document.querySelector('#langSheet .lang-li[data-lang="he"]').click();
     for(let i = 0; i < 40 && I18N_LANG !== 'he'; i++) await new Promise(res => setTimeout(res, 150));
     return {def, lang: I18N_LANG, tab: document.getElementById('tabBtn_hours').textContent.trim(), stored: localStorage.getItem('uiLang')}; });
-  ok(sl.def === 'en' && sl.lang === 'he' && sl.tab === 'השעות שלי' && sl.stored === 'he', 'supplier: English by default; the header select switches the portal to Hebrew ' + JSON.stringify(sl));
+  ok(sl.def === 'en' && sl.lang === 'he' && sl.tab === 'השעות שלי' && sl.stored === 'he', 'supplier: English by default; the header Language button switches the portal to Hebrew ' + JSON.stringify(sl));
   await p.reload();
   ok(await waitFor(p, () => I18N_LANG === 'he' && document.getElementById('tabBtn_dashboard').textContent.trim() === 'לוח בקרה', 15000), 'supplier: a reopened portal keeps the chosen language');
   await p.evaluate(() => setLanguage('en'));
@@ -954,8 +976,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ctx = await newCtx(); p = await page(ctx);
   await login(p, BASE + 'client-portal.html', 'client1', 'client-pass-1');
   await waitFor(p, () => typeof __hrv !== 'undefined' && !!__hrv.data, 15000);
-  const menu = await p.evaluate(() => { toggleAccountMenu(); const m = document.getElementById('accountMenu'); return {open: getComputedStyle(m).display !== 'none', lang: !!m.querySelector('#langSelect'), text: m.innerText}; });
-  ok(menu.open && menu.lang && /client1/.test(menu.text) && /Sign out/.test(menu.text), 'client portal: the account menu holds the name, the language and Sign out ' + JSON.stringify(menu));
+  const menu = await p.evaluate(() => { toggleAccountMenu(); const m = document.getElementById('accountMenu'); return {open: getComputedStyle(m).display !== 'none', lang: !m.querySelector('.lang-btn, select') && !!document.querySelector('#headerActions > .lang-btn + #accountControl'), text: m.innerText}; });
+  ok(menu.open && menu.lang && /client1/.test(menu.text) && /Sign out/.test(menu.text), 'client portal: the account menu holds the name and Sign out, the Language button beside it ' + JSON.stringify(menu));
   await p.evaluate(() => logout());
   ok(await waitFor(p, () => /schedule-manager/.test(location.pathname) && document.getElementById('loginScreen').style.display !== 'none' && !localStorage.getItem('clientPortal_session'), 15000), 'client portal: Sign out opens the one login page');
   // The portals have no login of their own: opened without a session they send to the one login page.
@@ -1028,7 +1050,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(await waitFor(p, () => /Invalid Link/.test(document.body.innerText)), 'punch: a regenerated link is revoked even from the cache');
   await p.goto(BASE + 'worker-punch.html?t=nope');
   ok(await waitFor(p, () => /Invalid Link/.test(document.body.innerText)), 'punch: unknown link refused');
-  await p.evaluate(() => setLanguage('he'));
+  await p.goto(BASE + 'worker-punch.html?t=tok-new');
+  await waitFor(p, () => !document.getElementById('screenPunch').classList.contains('hidden'), 15000);
+  await p.click('#langBtn'); await p.click('#langSheet .lang-li[data-lang="he"]');
+  ok(await waitFor(p, () => I18N_LANG === 'he' && document.querySelector('#langBtn .lang-btn-name').textContent === 'עברית'), 'punch: the Language button and its sheet switch the page');
   await p.goto(BASE + 'worker-punch.html?t=tok-new');
   ok(await waitFor(p, () => I18N_LANG === 'he' && !document.getElementById('screenPunch').classList.contains('hidden') && /החתמת/.test(document.getElementById('bigPunchBtn').innerText) && /טוב/.test(document.getElementById('punchGreeting').textContent), 15000), 'punch: the page shows the chosen language (Hebrew)');
   await p.goto(BASE + 'worker-punch.html?t=nope');

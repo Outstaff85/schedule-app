@@ -69,7 +69,7 @@ Layout: the app's template (variant 3, [app-core.md](app-core.md) → Layout) in
 - **List:** `renderFirmsList('adminFirmsList')` — the same function draws the super-admin's landing screen (`#firmsList`).
   - It draws the cached list first (`localStorage.firmsCache_v1`), then `listTenants`.
   - A line per firm (template 3): green while active, amber when disabled or its profile is incomplete (`firmProfileMissing(t)`); the name, then worker and client counts and the last save (left out when the date can't be read), then "disabled" / "profile incomplete". A tap → `switchToTenant()`; a double click (computer), a long press (phone) or the ✎ at its right → `openEditFirmForm`; pause / play and a ✕ (`.t3-x`, delete) at the right.
-  - The landing screen's header row holds Create firm, the language select (`placeLangSelect` puts it in `#firmsActions`) and a Sign out icon.
+  - The landing screen's header row holds Create firm, the Language button (`placeLangButton` puts it in `#firmsActions`) and a Sign out icon.
   - Row actions:
     - edit (`openEditFirmForm`: the line's ✎, a double click or a long press);
     - enable / disable (`toggleTenantActive` → `setTenantActive`, the button at the right);
