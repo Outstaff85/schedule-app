@@ -38,6 +38,7 @@ The backend is **Firestore + Firebase Storage + Cloud Functions**, and nothing e
 | [docs/translations.md](docs/translations.md) | any UI text: `tr()` / `data-i18n`, the dictionaries `i18n/<lang>.json`, the header language select, the check script, adding a language |
 | [docs/tests.md](docs/tests.md) | any test: the suites (dictionaries, icons, rules, functions, browser `tests/e2e/`), how to run them, the CI run on every PR, adding a check |
 | [docs/history.md](docs/history.md) | why things are the way they are: reverted approaches, debugging trails, fixed incidents |
+| [docs/redesign.md](docs/redesign.md) | the chosen "Odinson Glass" redesign (not built yet): read before any visual change or redesign stage |
 
 Some code comments (the rules, `tests/`, older parts of the pages) still name these files by their old root paths (`FIRESTORE_PLAN.md`, `MULTI_TENANT_PLAN.md`, `HISTORY.md`, `form101-field-map.md`) or point at sections of the former long CLAUDE.md — the content is now in the files above.
 
@@ -69,7 +70,7 @@ Some code comments (the rules, `tests/`, older parts of the pages) still name th
 - A `SessionStart` hook injects `git status --short` + current branch as context.
 - A `PostToolUse` hook on `gh pr create*` or the GitHub MCP `create_pull_request` tool checks the PR's diff against CLAUDE.md and `docs/*.md` and updates them via an agent.
 - **"Deploy" means: open a PR from the work branch into `main` covering everything accumulated since the last one, then merge it — merging is what triggers the real deploy.** Never push/reset directly to `main`. Batch accumulated changes into one PR per deploy request rather than one PR per edit.
-- **Never merge a PR without asking the user first.** Pushing to the feature branch needs no confirmation; merging to `main` always does.
+- **Never merge a PR without asking the user first.** Pushing to the feature branch needs no confirmation; merging to `main` always does. Exception: the stages of the redesign plan in docs/redesign.md, which the owner approved in advance — each is merged by its session once its CI is green (docs/redesign.md → Auto-continue).
 
 ## Rules that apply everywhere
 
