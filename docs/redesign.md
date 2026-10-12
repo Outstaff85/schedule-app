@@ -55,7 +55,29 @@ The look the user chose on 2026-10-12 for every page (manager app, supplier port
 - My Hours (full-height sheet): month switcher, figures (days and hours worked), a plate per shift (the current one cyan "on shift"); a tap shows its punches (IN / OUT, time, site, GPS distance); a Pay card (regular, overtime, Shabbat, total, total with travel) and the estimate note.
 
 ## Build plan (stage by stage)
-Each stage: a new short session that starts by reading this file; its own PR into `main` with the tests (`npm test` in `tests/rules`, `test:auth`, the browser tests, `tests/i18n/check.js`, `tests/icons/check.js`), every new text in the dictionaries with Hebrew, the duplicated helpers mirrored in every page (CLAUDE.md → Duplicated on purpose), `service-worker.js` CACHE bumped, docs updated; merged only after the owner's OK. Later stages build on the shared pieces of stage 1.
+
+### Auto-continue (the owner's standing order)
+The stages run one after another without waiting to be asked: when a stage is finished (built, tests green, docs and dictionaries updated, committed and pushed to the work branch), tick it in the status list below in the same push and go straight on to the next unticked stage — until every stage is ticked. Start it with `/loop Read docs/redesign.md and do the next unticked stage of the build plan` (the loop paces itself and stops when the list is all ticked), or in a new session with the same sentence; a session that ends for any reason (usage limit, context) is resumed the same way and picks up the first unticked stage.
+- Merging stays the owner's: the loop never merges. It keeps one PR from the work branch into `main` open and updated as stages land; deploy = the owner's OK on that PR (CLAUDE.md → Git workflow).
+- A stage that cannot finish (a failing test it cannot fix, a missing secret such as the OpenWeatherMap key) is marked "blocked: <reason>" in the list, reported to the owner, and the loop moves on to the next stage that does not depend on it.
+- Each stage starts from this file and the docs it names, not from the earlier chat, to keep sessions short.
+
+### Status
+- [ ] 1 Foundation
+- [ ] 2 Lists
+- [ ] 3 Workers
+- [ ] 4 Editors
+- [ ] 5 Today, greeting, notifications
+- [ ] 6 Schedule
+- [ ] 7 Accounting and hours approvals
+- [ ] 8 Clients, Suppliers, Admin
+- [ ] 9 Punch page
+- [ ] 10 Supplier and client portals
+- [ ] 11 Sign-in
+- [ ] 12 Weather (needs the OpenWeatherMap key in Secret Manager)
+
+### Stages
+Each stage: tested with (`npm test` in `tests/rules`, `test:auth`, the browser tests, `tests/i18n/check.js`, `tests/icons/check.js`), every new text in the dictionaries with Hebrew, the duplicated helpers mirrored in every page (CLAUDE.md → Duplicated on purpose), `service-worker.js` CACHE bumped, docs updated; merged only after the owner's OK. Later stages build on the shared pieces of stage 1.
 
 1. **Foundation** — the ground, glass and plate styles, the highlight line, tick tiles, the logo 11C with its two lines, the Language button and sheet on every page (replacing the select in the account menu), the bottom bar (variant 11) in the manager app. No tab content changes yet.
 2. **Lists** — plates everywhere (`t3Line` → the new plate: bar-colored avatar, figure in green, bare ⋮), swipe Edit / Delete, the Undo snack instead of confirm dialogs (the real delete after 5 s), the ⋮ popover with a tail, Select mode with the glass bulk bar; in the manager app and the supplier portal (shared helpers mirrored).
