@@ -1019,5 +1019,12 @@
   "You can use {0}": "אפשר להשתמש ב: {0}",
   "WhatsApp reminder": "תזכורת בוואטסאפ",
   "Message when a worker has not punched in": "הודעה כשעובד לא החתים כניסה",
-  "Hi {full name}, you have not punched in today (shift {start} · {site}).": "שלום {full name}, לא החתמת כניסה היום (משמרת {start} · {site})."
+  "Hi {full name}, you have not punched in today (shift {start} · {site}).": "שלום {full name}, לא החתמת כניסה היום (משמרת {start} · {site}).",
+  "{0} this month": "{0} החודש",
+  "Margin": "מרווח",
+  "{0} m": "{0} מ'",
+  "No location yet": "עדיין אין מיקום",
+  "1 own worker": "עובד אחד משלו",
+  "{0} own workers": "{0} עובדים משלו",
+  "Edit user": "עריכת משתמש"
 }

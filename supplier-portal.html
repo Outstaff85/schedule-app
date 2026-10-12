@@ -312,6 +312,29 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
   .seg{display:flex;gap:4px;padding:4px;margin:10px 0 14px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1)}
   .seg button{position:relative;flex:1;height:34px;border:0;border-radius:10px;background:none;color:var(--text2);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer}
   .seg button.on{background:var(--glass-hi);color:#fff}
+  /* Odinson Glass form fields (mockup 04, owner 2026-10-13): every field in a
+     window is a soft rounded glass box — 46px tall, 14px corners, a faint fill
+     and hairline, a cyan focus ring; selects carry a thin chevron; labels are
+     small and muted. The same block in the manager app and both portals. */
+  .modal .field>label:not(.check-chip){font-size:12px;font-weight:500;color:#8b90a0;margin:0 4px 5px}
+  .modal .field input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]),.modal .field select,.modal .field textarea{
+    height:46px;padding:0 14px;border-radius:14px;border:1px solid rgba(255,255,255,.12);background-color:rgba(255,255,255,.05);color:var(--text);font-size:15px;
+    box-shadow:none;transition:border-color .2s,box-shadow .2s,background-color .2s}
+  .modal .field textarea{height:auto;min-height:92px;padding:12px 14px;line-height:1.45}
+  .modal .field select{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;
+    background-image:linear-gradient(45deg,transparent 50%,#8b90a0 50%),linear-gradient(135deg,#8b90a0 50%,transparent 50%);
+    background-position:calc(100% - 19px) 20px,calc(100% - 14px) 20px;background-size:5px 5px;background-repeat:no-repeat}
+  .modal [dir=rtl] .field select,.modal .field select[dir=rtl]{padding-right:14px;padding-left:36px;background-position:14px 20px,19px 20px}
+  .modal .field input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]):focus,.modal .field select:focus,.modal .field textarea:focus{
+    outline:none;border-color:rgba(34,211,238,.6);background-color:rgba(255,255,255,.07);box-shadow:0 0 0 3px rgba(34,211,238,.12)}
+  .modal .field input::placeholder,.modal .field textarea::placeholder{color:rgba(255,255,255,.35)}
+  .modal .field input:disabled,.modal .field select:disabled{opacity:.55}
+  .modal .field .scan-missing{border-color:rgba(245,166,35,.6) !important;background-color:rgba(245,166,35,.06) !important}
+  .modal .rate-in input{padding-left:58px !important}
+  .modal .seg-toggle{gap:4px;padding:4px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1)}
+  .modal .seg-toggle button{position:relative;height:36px;padding:0 6px;border-radius:10px;color:#8b90a0}
+  .modal .seg-toggle button.on{background:rgba(255,255,255,.12);color:#fff}
+  .modal .seg-toggle button.on::after{content:'';position:absolute;left:28%;right:28%;bottom:3px;height:2px;border-radius:2px;background:var(--uline,#22d3ee);background-size:300% 100%;animation:og-flow 2.4s linear infinite}
 </style>
 </head>
 <body>
