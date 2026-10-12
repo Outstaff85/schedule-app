@@ -3616,7 +3616,7 @@ function showWorkerModal(w){
       <input type="file" id="wAvatarFile" accept="image/*" style="display:none" onchange="onAvatarFileSelected(this.files[0]); this.value='';">
     </div>
     <div class="field" id="avatarCropWrap" style="display:none;flex-direction:column;align-items:center;gap:8px;background:var(--bg3);border-radius:8px;padding:12px">
-      <div id="avatarCropBox" style="width:200px;height:200px;border-radius:50%;overflow:hidden;position:relative;background:#111;touch-action:none;cursor:grab">
+      <div id="avatarCropBox" class="no-swipe" style="width:200px;height:200px;border-radius:50%;overflow:hidden;position:relative;background:#111;touch-action:none;cursor:grab">
         <img id="avatarCropImg" style="position:absolute;left:0;top:0;user-select:none;-webkit-user-drag:none" draggable="false" alt="">
       </div>
       <input type="range" id="avatarCropZoom" min="1" max="3" step="0.01" value="1" oninput="onAvatarCropZoom(this.value)" style="width:200px">
@@ -5657,8 +5657,9 @@ document.addEventListener('click',e=>{
 // Phone (≤ 700 px): a window, opened from the bottom as a sheet, also closes
 // with a swipe down on it (user request 2026-10-11) — the same way as a tap
 // outside (__onUserClose, else closeModal). Only when the sheet and anything
-// scrolled under the finger are at their top, never from a field, a map or
-// a canvas; while it is open the page behind does not scroll (CSS). The
+// scrolled under the finger are at their top, never from a field, a map,
+// a canvas or a .no-swipe surface (the scan crop editor, the avatar crop —
+// a drag there moves the photo, not the sheet); while it is open the page behind does not scroll (CSS). The
 // same code is in the manager app and both portals.
 (function(){
   let sw=null;
