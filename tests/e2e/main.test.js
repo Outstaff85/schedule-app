@@ -126,7 +126,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const w = workers.find(x => x.id === 'w2'), keep = JSON.parse(JSON.stringify(w)), r = {};
     switchTab('workers'); document.getElementById('workersFilterStatus').value = ''; renderWorkersPage();
     w.status = 'fired'; render(); renderWorkersPage();
-    const names = () => document.getElementById('sectionWorkers').innerText;
+    const names = () => document.getElementById('sectionWorkers').innerText + ' ' + [...document.querySelectorAll('#sectionWorkers .wp-n')].map(x => x.title).join(' ');
     r.hidden = !/Dana Levi/.test(names()) && /Inactive: 1/.test(document.getElementById('workersCount').innerText);
     r.sidebar = !/Dana Levi/.test(document.getElementById('workerList').innerText);
     showInactiveWorkers(); r.shown = /Dana Levi/.test(names());
@@ -655,7 +655,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.panes = [panes()]; workerCardPane('docs'); r.panes.push(panes()); workerCardPane('hours'); r.panes.push(panes());
     r.hoursStatus = !!document.querySelector('#workerCardModal .wc-pane[data-p="hours"] #cardHoursStatus');
     r.edit = !!document.getElementById('workerCardEdit'); workerCardPane('info');
-    closeModal('workerCardOverlay'); w1.docUploadFailed = keep.failed;
+    closeModal('workerCardOverlay'); await wait(200);
+    r.backToNotices = document.getElementById('noticesOverlay').classList.contains('open'); closeModal('noticesOverlay'); w1.docUploadFailed = keep.failed;
     // Delete: Undo keeps the worker; a second Delete removes it only after 5 s.
     workers.push({id:'wtmp', name:'Temp Worker Del', colorIdx:1, clientIds:[], schedule:[]}); renderWorkersPage(); await wait(100);
     const tmp = () => document.querySelector('#workersCards .wplate[data-wid="wtmp"]');
@@ -678,7 +679,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     w1.status = keep.status; render(); autoSave();
     return r;
   });
-  ok(/red/.test(wp.chip) && wp.bar === 'var(--bad)' && wp.sheet && wp.notices.includes('Upload failed') && wp.head === 'Avi Cohen' && wp.card, 'worker plate: a red notice chip opens the notices sheet; "Open worker card" opens the card ' + JSON.stringify(wp));
+  ok(/red/.test(wp.chip) && wp.bar === 'var(--bad)' && wp.sheet && wp.notices.includes('Upload failed') && wp.head === 'Avi Cohen' && wp.card && wp.backToNotices, 'worker plate: a red notice chip opens the notices sheet; "Open worker card" opens the card, closing it goes back to the sheet ' + JSON.stringify(wp));
   ok(wp.panes.join('|') === 'info|docs|hours' && wp.hoursStatus && wp.edit, 'worker card: Info / Docs / Hours switch, one Edit button ' + JSON.stringify(wp.panes));
   ok(wp.menu === 'Open card,Edit,Pay,Punch link,!Delete' && wp.pendingHidden && wp.stillThere && wp.undone && wp.leftOut && wp.notYet && wp.deleted, 'workers: Delete never asks — Undo keeps the worker, otherwise it is removed after 5 s ' + JSON.stringify(wp));
   ok(wp.sel === '1 selected' && wp.vac, 'workers: Select… a worker, the bulk bar sets Vacation ' + JSON.stringify({sel: wp.sel, vac: wp.vac}));
