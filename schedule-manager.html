@@ -2472,6 +2472,8 @@ function clientBillRate(client){
 function clientBillPay(hours, client, isSat){
   if(!client) return 0;
   if(client.rateMode==='fixed') return hours*(Number(client.fixedBillRate)||0);
+  // By the day: one dailyBillRate for each worked shift, whatever its hours.
+  if(client.rateMode==='daily') return hours>0 ? (Number(client.dailyBillRate)||0) : 0;
   const rate=clientBillRate(client), has=v=>v!=null&&v!=='';
   if(isSat){
     if(has(client.billShabbatRate)) return hours*Number(client.billShabbatRate);
@@ -4243,7 +4245,7 @@ function openEditClient(cid){ editingClientId=cid; const c=clients.find(x=>x.id=
 function showClientModal(c){
   // Billing settings live in __cBill while the modal is open — edited via the
   // rates block (setClientRateMode / onClientBillMainInput), written back by saveClient().
-  __cBill = { rateMode: c.rateMode==='fixed'?'fixed':'tiered', fixedBillRate: c.fixedBillRate??null,
+  __cBill = { rateMode: c.rateMode==='fixed'?'fixed':c.rateMode==='daily'?'daily':'tiered', hourMode: c.rateMode==='fixed'?'fixed':'tiered', dailyBillRate: c.dailyBillRate??null, fixedBillRate: c.fixedBillRate??null,
     billRate: (c.billRate!=null&&c.billRate!=='') ? c.billRate : (c.defaultHourlyRate??null),
     billOtRate: c.billOtRate??null, billShabbatRate: c.billShabbatRate??null };
   // The client card is in Hebrew (per user request 2026-10-04).
@@ -4280,12 +4282,20 @@ function showClientModal(c){
     <section class="og-sec" data-sec="rates"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-coin"></i></span><span class="og-sec-t"><b>${esc(tr('Rates'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
     <div class="form-section rates-head"><span><i class="ti ti-coin"></i> תעריפים</span><button type="button" class="acc-help" onclick="this.closest('.modal').querySelector('.rates-help').classList.toggle('open')" title="מה זה?"><i class="ti ti-info-circle"></i></button></div>
     <div class="rates-help">שכר העובד חל על כל העובדים אצל הלקוח, אלא אם לעובד יש תעריף משלו; שעות נוספות ושבת לפי החוק. תשלום הלקוח לא משנה את שכר העובד.</div>
+    <!-- Hourly / Daily: how the client is billed (the worker's own pay is not touched). -->
+    <div class="seg-toggle" id="cPayUnit">
+      <button type="button" data-unit="hour" class="${__cBill.rateMode!=='daily'?'on':''}" onclick="setClientPayUnit('hour')">לפי שעה</button>
+      <button type="button" data-unit="day" class="${__cBill.rateMode==='daily'?'on':''}" onclick="setClientPayUnit('day')">לפי יום</button>
+    </div>
+    <div class="field" id="cDailyRow" style="${__cBill.rateMode==='daily'?'':'display:none'}"><label><i class="ti ti-receipt"></i> הלקוח משלם ליום</label>
+      <div class="rate-in"><input type="number" min="0" step="1" id="cBillDaily" value="${__cBill.dailyBillRate??''}" placeholder="—" oninput="__cBill.dailyBillRate=clientRateNum(this.value)"><span>₪/יום</span></div></div>
     <div class="field-row">
       <div class="field"><label><i class="ti ti-cash"></i> שכר העובד</label>
         <div class="rate-in"><input type="number" min="0" step="0.5" id="cDefRate" value="${c.defaultHourlyRate??''}" placeholder="—" oninput="updateClientMargin()"><span>₪/שעה</span></div></div>
-      <div class="field"><label><i class="ti ti-receipt"></i> הלקוח משלם</label>
+      <div class="field" id="cBillMainField" style="${__cBill.rateMode==='daily'?'display:none':''}"><label><i class="ti ti-receipt"></i> הלקוח משלם</label>
         <div class="rate-in"><input type="number" min="0" step="0.5" id="cBillMain" value="${clientBillMain()??''}" placeholder="—" oninput="onClientBillMainInput(this.value)"><span>₪/שעה</span></div></div>
     </div>
+    <div id="cHourlyBill" style="${__cBill.rateMode==='daily'?'display:none':''}">
     <div class="seg-toggle" id="cRateMode">
       <button type="button" data-mode="tiered" class="${__cBill.rateMode==='tiered'?'on':''}" onclick="setClientRateMode('tiered')">לפי החוק (נוספות + שבת)</button>
       <button type="button" data-mode="fixed" class="${__cBill.rateMode==='fixed'?'on':''}" onclick="setClientRateMode('fixed')">קבוע</button>
@@ -4295,6 +4305,7 @@ function showClientModal(c){
       <div class="field"><label>שבת</label><div class="rate-in"><input type="number" min="0" step="0.5" id="cBillShab" value="${__cBill.billShabbatRate??''}" oninput="__cBill.billShabbatRate=clientRateNum(this.value)"><span>₪/שעה</span></div></div>
     </div>
     <div class="rate-margin" id="cBillMargin"></div>
+    </div>
 </div></section>
     <section class="og-sec" data-sec="approval"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-circle-check"></i></span><span class="og-sec-t"><b>${esc(tr('Hours approval'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
       ${clientLoginsHtml(c)}
@@ -4471,7 +4482,17 @@ function saveMapPick(){
 // optional flat OT / Shabbat ₪/h (empty = law tiers ×1.25/×1.5 and ×1.5–×2.0
 // off Regular). These are the CLIENT's billing rates only — the worker-pay
 // "Default rate" block in the same modal is a separate set of fields.
-let __cBill = { rateMode:'tiered', fixedBillRate:null, billRate:null, billOtRate:null, billShabbatRate:null };
+let __cBill = { rateMode:'tiered', hourMode:'tiered', dailyBillRate:null, fixedBillRate:null, billRate:null, billOtRate:null, billShabbatRate:null };
+// Hourly / Daily: by the day the client pays dailyBillRate per worked shift
+// (clientBillPay); by the hour the law / fixed modes below apply.
+function setClientPayUnit(u){
+  __cBill.rateMode = u==='day' ? 'daily' : (__cBill.hourMode||'tiered');
+  document.querySelectorAll('#cPayUnit button').forEach(b=>b.classList.toggle('on', (b.dataset.unit==='day')===(__cBill.rateMode==='daily')));
+  const daily=__cBill.rateMode==='daily';
+  ['cHourlyBill','cBillMainField'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display=daily?'none':''; });
+  const d=document.getElementById('cDailyRow'); if(d) d.style.display=daily?'':'none';
+  if(!daily) syncClientBillFields();
+}
 // The client's main billing rate (next to the worker rate in the modal): the
 // flat rate in fixed mode, the regular rate otherwise.
 function clientBillMain(){ return __cBill.rateMode==='fixed' ? __cBill.fixedBillRate : __cBill.billRate; }
@@ -4483,7 +4504,7 @@ function onClientBillMainInput(v){
 }
 // The billing mode buttons: by law (OT / Shabbat inline) or one fixed rate.
 function setClientRateMode(mode){
-  __cBill.rateMode = mode==='fixed' ? 'fixed' : 'tiered';
+  __cBill.rateMode = __cBill.hourMode = mode==='fixed' ? 'fixed' : 'tiered';
   document.querySelectorAll('#cRateMode button').forEach(b=>b.classList.toggle('on', b.dataset.mode===__cBill.rateMode));
   const main=document.getElementById('cBillMain'); if(main) main.value=clientBillMain()??'';
   syncClientBillFields();
@@ -4536,18 +4557,18 @@ function saveClient(opts){
   // The client card sets only the regular worker rate; OT and Shabbat follow
   // the law from it (an older client's own OT / Shabbat rates are cleared).
   const defaultHourlyRate=rateVal('cDefRate'), defaultOtRate=null, defaultShabbatRate=null;
-  const {rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate}=__cBill;
+  const {rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate,dailyBillRate}=__cBill;
   if(editingClientId){
     const idx=clients.findIndex(x=>x.id===editingClientId);
     if(idx>=0){
-      const next={...clients[idx],name,object,address,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate};
+      const next={...clients[idx],name,object,address,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate,dailyBillRate};
       const norm=o=>JSON.stringify(Object.keys(o).sort().map(k=>[k,o[k]??null]));
       if(norm(next)===norm(clients[idx])){ closeModal('clientOverlay'); return; }  // nothing changed
       clients[idx]=next;
     }
     showToast(name+' עודכן');
   } else {
-    clients.push({id:uid(),name,object,address,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate});
+    clients.push({id:uid(),name,object,address,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate,dailyBillRate});
     showToast(name+' נוסף');
   }
   closeModal('clientOverlay'); renderClientsPage(); renderSidebarClients(); autoSave();
@@ -5333,7 +5354,7 @@ function renderClientsPage(){
   const waiting=new Set((__hoursBatches||[]).filter(b=>b.status==='pending').flatMap(b=>(b.entries||[]).map(e=>e.clientId)));
   renderPagedList(grid,'clients','',list,c=>{
     const n=workers.filter(w=>isActiveWorker(w)&&(w.clientIds||[]).includes(c.id)).length;
-    const chips=[(c.billRate==null||c.billRate==='')&&(c.defaultHourlyRate==null||c.defaultHourlyRate==='')&&!c.fixedBillRate?`<span class="nchip amber"><i class="ti ti-alert-triangle"></i>${esc(tr('No rate'))}</span>`:'',
+    const chips=[(c.billRate==null||c.billRate==='')&&(c.defaultHourlyRate==null||c.defaultHourlyRate==='')&&!c.fixedBillRate&&!c.dailyBillRate?`<span class="nchip amber"><i class="ti ti-alert-triangle"></i>${esc(tr('No rate'))}</span>`:'',
       waiting.has(c.id)?`<span class="nchip amber"><i class="ti ti-clock"></i>${esc(tr('Hours waiting'))}</span>`:''].join('');
     const id=c.id;
     return t3Line({c:c.color||'var(--neutral)', cls:'wplate tap-edit', av:`<div class="t3-av">${esc(initialsOf(c.name))}</div>`,
@@ -8459,7 +8480,7 @@ function openClientBillDetail(cid){
   const bill=(__lastClientBillEntries||[]).find(x=>x.clientId===cid)||{hours:0,total:0};
   const rows=__lastPayEntries.filter(e=>(e.clientHours||{})[cid]>0).map(e=>({n:e.worker,hrs:e.clientHours[cid]}))
     .sort((a,b)=>b.hrs-a.hrs).map(r=>({...r,h:tr('{h}h',{h:r.hrs.toFixed(1)}),m:''}));
-  openAccDetail(`<i class="ti ti-building-store" style="color:${cl.color}"></i> ${esc(cl.name)}`, tr('Billable by client')+' · '+salaryPeriodLabel((document.getElementById('salaryPeriod')||{}).value||'week')+' · '+(cl.rateMode==='fixed'?tr('Fixed'):tr('Tiered')), rows,
+  openAccDetail(`<i class="ti ti-building-store" style="color:${cl.color}"></i> ${esc(cl.name)}`, tr('Billable by client')+' · '+salaryPeriodLabel((document.getElementById('salaryPeriod')||{}).value||'week')+' · '+(cl.rateMode==='fixed'?tr('Fixed'):cl.rateMode==='daily'?tr('Daily'):tr('Tiered')), rows,
     {h:tr('{h}h',{h:bill.hours.toFixed(1)}), m:bill.total>0?'₪'+bill.total.toFixed(0):'—'});
 }
 function renderSupplierPayable(entries){
@@ -8641,7 +8662,7 @@ function renderClientBillable(entries){
   wrap.innerHTML='<div class="paged-clientBillable"></div>';
   renderPagedList(wrap.querySelector('.paged-clientBillable'),'clientBillable',(document.getElementById('salaryPeriod')||{}).value||'',rows,r=>t3Line({c:r.cl.color,
     av:`<div class="t3-av" style="background:${r.cl.color}22;color:${r.cl.color}"><i class="ti ti-building-store"></i></div>`, name:esc(r.cl.name),
-    sub:esc(tr('{h}h',{h:r.hours.toFixed(1)})+' · '+(r.cl.rateMode==='fixed'?tr('Fixed'):tr('Tiered'))),
+    sub:esc(tr('{h}h',{h:r.hours.toFixed(1)})+' · '+(r.cl.rateMode==='fixed'?tr('Fixed'):r.cl.rateMode==='daily'?tr('Daily'):tr('Tiered'))),
     right:`<span class="r" style="color:${r.total>0?'var(--green)':'var(--text3)'};font-weight:700">${r.total>0?'₪'+r.total.toFixed(0):'—'}</span>`,
     onclick:`openClientBillDetail('${esc(r.cl.id)}')`}));
 }
@@ -9327,7 +9348,7 @@ function setAdminView(view){
 }
 
 function renderClientLogs(){
-  const log = getPunchLog();
+  const log = getPunchLog().filter(e=>!__punchDelPending.has(e.id));
   const el = document.getElementById('adminClientLogs');
   if(!clients.length){ el.innerHTML='<div class="t3-empty">'+tr('No clients configured')+'</div>'; return; }
   const todayStr = new Date().toDateString();
@@ -9451,7 +9472,7 @@ window.addEventListener('scroll', _pagedOnScroll, {capture:true, passive:true});
 
 function renderAdmin(){
   if(__adminPane!=='punchlog') return; // drawn only while the Punch Log section is open
-  const log = getPunchLog();
+  const log = getPunchLog().filter(e=>!__punchDelPending.has(e.id));
   const filterWorker = document.getElementById('adminFilterWorker')?.value||'';
   const filterClient = document.getElementById('adminFilterClient')?.value||'';
   const filterDate   = document.getElementById('adminFilterDate')?.value||'';
@@ -9589,8 +9610,12 @@ function savePunchEntry(id){
 
 // Delete never asks: the line collapses behind the Undo snack; the punch is
 // deleted when the 5 s are up.
+// Punches deleted but still inside their Undo time: left out of the log views.
+const __punchDelPending=new Set();
 function deletePunchEntry(id, el){
-  undoDelete({el, label: tr('Punch'), commit:()=>{
+  __punchDelPending.add(id);
+  undoDelete({el, label: tr('Punch'), undo:()=>{ __punchDelPending.delete(id); renderAdmin(); if(_adminView==='clients') renderClientLogs(); }, commit:()=>{
+    __punchDelPending.delete(id);
     savePunchLog(getPunchLog().filter(x=>x.id!==id));
     gsDeletePunch(id);
     renderAdmin(); if(_adminView==='clients') renderClientLogs();
