@@ -109,7 +109,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.select = document.getElementById('wHrId') && document.getElementById('wHrId').value;
     closeModal('workerOverlay');
     openWorkerCard(workers.findIndex(w => w.id === 'w2'));
-    r.cardLine = /HR: Rina HR/.test(document.getElementById('workerCardModal').innerText);
+    r.cardLine = /HR\s*Rina HR/.test(document.getElementById('workerCardModal').innerText);
     closeModal('workerCardOverlay');
     return r;
   });
