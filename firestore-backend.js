@@ -622,6 +622,17 @@
         case 'approvePendingHours': return approvePendingHours(t, ctx, params.batchId);
         case 'rejectPendingHours': return rejectPendingHours(t, ctx, params.batchId);
         case 'setPunchesHr': return setPunchesHr(t, ctx, params.workerIds, params.hrId);
+        // The notifications this login has read (the bell's "Mark all read"),
+        // one doc per login: notifReads/{uid} = {ids, at}. Manager-side logins.
+        case 'loadNotifReads': {
+          const snap = await F.getDoc(F.doc(db, 'notifReads', auth.currentUser.uid));
+          return {ok:true, ids: snap.exists() ? (snap.data().ids || []) : []};
+        }
+        case 'saveNotifReads': {
+          const ids = (params.ids || []).filter(x => typeof x === 'string' && x.length <= 200).slice(-500);
+          await F.setDoc(F.doc(db, 'notifReads', auth.currentUser.uid), {ids, at: new Date().toISOString()});
+          return {ok:true};
+        }
       }
       return null;
     }

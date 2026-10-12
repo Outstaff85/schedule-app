@@ -709,6 +709,27 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     'editors: the worker editor is section plates (Person · Address · Work · Documents · Form 101 · Access · Notes), summaries, segmented choices, a focused field opens its section, no Save ' + JSON.stringify(ed));
   ok(ed.client.join() === 'client,rates,place' && ed.supplier.join() === 'supplier*,bank' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,login,access',
     'editors: client, supplier (one Save, an empty name amber) and user form as section plates ' + JSON.stringify(ed));
+  // Greeting and notifications (redesign stage 5): the greeting by time of day; the bell, its panel, "Mark all read" kept on the account.
+  const nt = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
+    switchTab('dashboard'); await wait(100);
+    const g = document.querySelector('#ogGreet h3'); r.greet = g ? g.textContent : ''; r.icon = !!(g && g.querySelector('svg.gic'));
+    const w2 = workers.find(w => w.id === 'w2'), keep = w2.docExpiry; w2.docExpiry = '01/01/2020'; render(); await wait(50);
+    const count = () => { const c = document.getElementById('bellCount'); return c.style.display === 'none' ? 0 : Number(c.textContent); };
+    r.bell = getComputedStyle(document.getElementById('bellBtn')).display !== 'none'; r.before = count();
+    document.getElementById('bellBtn').click(); await wait(100);
+    const items = [...document.querySelectorAll('#bellPanel .og-ni')];
+    r.item = items.some(b => /ID \/ passport expired/.test(b.textContent) && /Dana/.test(b.textContent) && b.classList.contains('new'));
+    document.querySelector('#bellPanel .og-npop-all').click(); await wait(800);
+    r.after = count(); r.noNew = !document.querySelector('#bellPanel .og-ni.new');
+    __notifRead = new Set(); __notifReadLoaded = false; await loadNotifReads(); r.kept = count();
+    const it = [...document.querySelectorAll('#bellPanel .og-ni')].find(b => /Dana/.test(b.textContent)); if(it) it.click(); await wait(200);
+    r.opens = document.getElementById('noticesOverlay').classList.contains('open') && !document.getElementById('bellPanel');
+    closeModal('noticesOverlay'); w2.docExpiry = keep; render();
+    return r;
+  });
+  ok(/^Good (morning|afternoon|evening|night)/.test(nt.greet) && nt.icon, 'today: the greeting by time of day with its icon ' + JSON.stringify(nt));
+  ok(nt.bell && nt.before >= 1 && nt.item && nt.after === 0 && nt.noNew && nt.kept === 0 && nt.opens, 'notifications: the bell counts, the panel lists the expired ID as new, Mark all read is kept on the account, a tap opens the worker\'s notices ' + JSON.stringify(nt));
   // Worker card: a click only reads; a double click, a long touch or its ✎ opens the edit form;
   // closing it (a tap outside saves it) brings the card back.
   const cardSpot = '#workerCardModal .wc-kv >> nth=0';
