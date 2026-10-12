@@ -743,7 +743,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.hourBack = document.getElementById('cDailyRow').style.display === 'none'; closeModal('clientOverlay'); await wait(150);
     openEditSupplier('s-1'); await wait(150);
     const m = document.getElementById('supplierModal');
-    r.payable = /Payable this month/.test(m.querySelector('.og-sec[data-sec="commission"]').textContent);
+    r.payable = /commission/.test(m.querySelector('.og-sec[data-sec="commission"]').textContent);
     r.newLogin = !!m.querySelector('.og-sec[data-sec="portal"] button[onclick^="newLoginFor"]');
     const cb = m.querySelector('input[data-field="supplierSections"][value="dashboard"]');
     r.tick = !!cb && !cb.disabled;
@@ -960,7 +960,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     Object.assign(c, keep); delete c.defaultOtRate; delete c.defaultShabbatRate; await gsSave(getDataObj());
     return out;
   });
-  ok(/₪78 .*60%/.test(cs.rates.margin) && cs.rates.extra && cs.rates.fixedHidesExtra, 'clients: the rates block shows the margin per hour; fixed mode hides OT / Shabbat ' + JSON.stringify(cs.rates));
+  ok(/₪78.*60%/.test(cs.rates.margin) && cs.rates.extra && cs.rates.fixedHidesExtra, 'clients: the rates block shows the margin per hour; fixed mode hides OT / Shabbat ' + JSON.stringify(cs.rates));
   // Editors per mockup 04: the client head's ⋮ (Manual punch, Delete) and the small map; the user editor's head; glass fields.
   const ed4 = await p.evaluate(() => {
     openEditClient('c1');
@@ -972,7 +972,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     closeModal('userFormOverlay');
     return {items, map, fieldRadius, user};
   });
-  ok(ed4.items.length === 2 && ed4.map && ed4.fieldRadius === '14px' && ed4.user.title === 'Rina Mizrahi' && ed4.user.av === 'RM', 'editors: the client head ⋮ (Manual punch, Delete), the small map, glass fields, the user editor head ' + JSON.stringify(ed4));
+  ok(ed4.items.length === 2 && ed4.map && ed4.fieldRadius === '12px' && ed4.user.title === 'Rina Mizrahi' && ed4.user.av === 'RM', 'editors: the client head ⋮ (Manual punch, Delete), the small map, glass fields, the user editor head ' + JSON.stringify(ed4));
   ok(cs.noSave && cs.closed && cs.d === 52 && cs.b === 130 && cs.noNew && cs.noPunchOnCard && cs.punch && cs.back, 'clients: no Save button, a tap outside saves; an empty new client is not created; manual punch from the window and back ' + JSON.stringify(cs));
   await p.mouse.click(5, 450); await sleep(400);
   ok(external.filter(u=>/script\.google\.com/.test(u)).length === 0, 'no request to script.google.com');

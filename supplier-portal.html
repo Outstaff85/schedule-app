@@ -313,24 +313,32 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
   .seg button{position:relative;flex:1;height:34px;border:0;border-radius:10px;background:none;color:var(--text2);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer}
   .seg button.on{background:var(--glass-hi);color:#fff}
   /* Odinson Glass form fields (mockup 04, owner 2026-10-13): every field in a
-     window is a soft rounded glass box — 46px tall, 14px corners, a faint fill
+     window is a soft rounded glass box — 42px tall, 12px corners, a faint fill
      and hairline, a cyan focus ring; selects carry a thin chevron; labels are
      small and muted. The same block in the manager app and both portals. */
-  .modal .field label:not(.check-chip):not([style]){font-size:12px;font-weight:500;color:#8b90a0;margin:0 4px 5px}
+  .modal .field label:not(.check-chip):not([style]){font-size:11px;font-weight:500;color:#8b90a0;margin:0 4px 4px}
   .modal .field input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]),.modal .field select,.modal .field textarea{
-    height:46px;padding:0 14px;border-radius:14px;border:1px solid rgba(255,255,255,.12);background-color:rgba(255,255,255,.05);color:var(--text);font-size:15px;
+    height:42px;padding:0 12px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background-color:rgba(255,255,255,.05);color:var(--text);font-size:14px;
     box-shadow:none;transition:border-color .2s,box-shadow .2s,background-color .2s}
-  .modal .field textarea{height:auto;min-height:92px;padding:12px 14px;line-height:1.45}
+  .modal .field textarea{height:auto;min-height:84px;padding:10px 12px;line-height:1.45}
   .modal .field select{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;
     background-image:linear-gradient(45deg,transparent 50%,#8b90a0 50%),linear-gradient(135deg,#8b90a0 50%,transparent 50%);
-    background-position:calc(100% - 19px) 20px,calc(100% - 14px) 20px;background-size:5px 5px;background-repeat:no-repeat}
-  .modal [dir=rtl] .field select,.modal .field select[dir=rtl]{padding-right:14px;padding-left:36px;background-position:14px 20px,19px 20px}
+    background-position:calc(100% - 19px) 18px,calc(100% - 14px) 18px;background-size:5px 5px;background-repeat:no-repeat}
+  .modal [dir=rtl] .field select,.modal .field select[dir=rtl]{padding-right:14px;padding-left:36px;background-position:14px 18px,19px 18px}
   .modal .field input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]):focus,.modal .field select:focus,.modal .field textarea:focus{
     outline:none;border-color:rgba(34,211,238,.6);background-color:rgba(255,255,255,.07);box-shadow:0 0 0 3px rgba(34,211,238,.12)}
   .modal .field input::placeholder,.modal .field textarea::placeholder{color:rgba(255,255,255,.35)}
   .modal .field input:disabled,.modal .field select:disabled{opacity:.55}
   .modal .field .scan-missing{border-color:rgba(245,166,35,.6) !important;background-color:rgba(245,166,35,.06) !important}
   .modal .rate-in input{padding-left:58px !important}
+  /* Inline old-style fields inside any window (style="background:var(--bg3)…") follow the glass look too. */
+  .modal input:is([type=text],[type=number],[type=date],[type=time],[type=tel],[type=email],[type=password],[type=search],[type=url],:not([type])),.modal select,.modal textarea{
+    background-color:rgba(255,255,255,.05) !important;border:1px solid rgba(255,255,255,.12) !important;border-radius:12px !important;color:var(--text) !important;font-size:14px !important;box-shadow:none}
+  .modal input:is([type=text],[type=number],[type=date],[type=time],[type=tel],[type=email],[type=password],[type=search],[type=url],:not([type])),.modal select{height:42px !important;padding-top:0 !important;padding-bottom:0 !important}
+  .modal input:focus,.modal select:focus,.modal textarea:focus{border-color:rgba(34,211,238,.6) !important;box-shadow:0 0 0 3px rgba(34,211,238,.12) !important;outline:none}
+  .modal .scan-missing{border-color:rgba(245,166,35,.6) !important;background-color:rgba(245,166,35,.06) !important}
+  .modal .field>label i.ti{display:none}
+  .modal input[type=date]{color-scheme:dark}
   .modal .seg-toggle{gap:4px;padding:4px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1)}
   .modal .seg-toggle button{position:relative;height:36px;padding:0 6px;border-radius:10px;color:#8b90a0}
   .modal .seg-toggle button.on{background:rgba(255,255,255,.12);color:#fff}

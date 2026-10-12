@@ -541,7 +541,6 @@
   "Person": "פרטים אישיים",
   "Person & login": "אדם וכניסה",
   "Phone": "טלפון",
-  "Phone (optional)": "טלפון (רשות)",
   "pick a date": "יש לבחור תאריך",
   "Pick a supplier first": "יש לבחור ספק תחילה",
   "Pick a worker first": "יש לבחור עובד תחילה",
@@ -1026,5 +1025,17 @@
   "1 own worker": "עובד אחד משלו",
   "{0} own workers": "{0} עובדים משלו",
   "Edit user": "עריכת משתמש",
-  "Tap to pick the place on the map": "הקישו לבחירת המקום במפה"
+  "Tap to pick the place on the map": "הקישו לבחירת המקום במפה",
+  "Sign": "לחתימה",
+  "Punch link on": "קישור החתמה פעיל",
+  "No punch link yet": "עדיין אין קישור החתמה",
+  "hours": "שעות",
+  "workers": "עובדים",
+  "₪{0} per hour by default; per-worker and per-day commission is set in Accounting.": "₪{0} לשעה כברירת מחדל; עמלה לפי עובד ולפי יום נקבעת בהנהלת חשבונות.",
+  "{0} waiting": "{0} ממתינים",
+  "Contact person": "איש קשר",
+  "₪{0} worker": "₪{0} עובד",
+  "₪{0} client": "₪{0} לקוח",
+  "hourly": "לפי שעה",
+  "daily": "לפי יום"
 }
