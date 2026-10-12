@@ -126,7 +126,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const w = workers.find(x => x.id === 'w2'), keep = JSON.parse(JSON.stringify(w)), r = {};
     switchTab('workers'); document.getElementById('workersFilterStatus').value = ''; renderWorkersPage();
     w.status = 'fired'; render(); renderWorkersPage();
-    const names = () => document.getElementById('sectionWorkers').innerText;
+    const names = () => document.getElementById('sectionWorkers').innerText + ' ' + [...document.querySelectorAll('#sectionWorkers .wp-n')].map(x => x.title).join(' ');
     r.hidden = !/Dana Levi/.test(names()) && /Inactive: 1/.test(document.getElementById('workersCount').innerText);
     r.sidebar = !/Dana Levi/.test(document.getElementById('workerList').innerText);
     showInactiveWorkers(); r.shown = /Dana Levi/.test(names());
@@ -209,9 +209,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // On a phone a worker card is compact: one summary line instead of the detail rows.
   await p.setViewportSize({width: 390, height: 800});
   const wc = await p.evaluate(async () => { switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await new Promise(r => setTimeout(r, 200));
-    const c = document.querySelector('#workersCards .wcard'); return c ? {h: c.getBoundingClientRect().height, rows: getComputedStyle(c.querySelector('.wcard-rows')).display, sum: getComputedStyle(c.querySelector('.wcard-sum')).display} : {}; });
+    const c = document.querySelector('#workersCards .wplate'); return c ? {h: c.getBoundingClientRect().height, name: c.querySelector('.wp-n').textContent, full: c.querySelector('.wp-n').title, hrs: (c.querySelector('.r') || {}).textContent, kb: !!c.querySelector('.t3-kb'), sw: !!c.closest('.sw')} : {}; });
   await p.setViewportSize({width: 1280, height: 720});
-  ok(wc.rows === 'none' && wc.sum === 'block' && wc.h < 130, 'workers: on a phone a card is compact (one summary line) ' + JSON.stringify(wc));
+  ok(wc.h > 0 && wc.h < 80 && wc.name && wc.name.length < wc.full.length && / [A-Z]\.$/.test(wc.name) && /h$/.test(wc.hrs) && wc.kb && wc.sw, 'workers: on a phone a worker is one plate — short name, the month\'s hours, ⋮, swipe ' + JSON.stringify(wc));
   ok(rt.keptAfterEdit, 'worker pay: an edit in the worker modal keeps the pay fields', JSON.stringify(rt));
   ok(rt.moved === 0, "worker pay: moved to a client with a rate, the worker takes the client's rate", JSON.stringify(rt));
   // Commission for a worker paid by the day: a fixed ₪ per day when set, else hours × ₪/h.
@@ -422,7 +422,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       switchTab('workers');
       for (const view of ['cards', 'list']) {
         setWorkersView(view); renderWorkersPage(); await wait(400);
-        const sel = view === 'cards' ? '#workersCards > .wcard' : '#workersTableBody > tr:not(.paged-more)';
+        const sel = view === 'cards' ? '#workersCards > .sw' : '#workersTableBody > tr:not(.paged-more)';
         const first = document.querySelectorAll(sel).length;
         await wait(600);
         const stillFirst = document.querySelectorAll(sel).length;
@@ -633,19 +633,64 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const keep = [a.createdAt, d.createdAt];
     a.createdAt = new Date(Date.now() - 2 * 864e5).toISOString(); d.createdAt = new Date(Date.now() - 4 * 864e5).toISOString();
     switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await new Promise(r => setTimeout(r, 300));
-    const cards = [...document.querySelectorAll('.wcard')].map(c => ({name: c.innerText.split('\n').find(x => /Avi|Dana/.test(x)) || '', isNew: !!c.querySelector('.new-badge')}));
+    const cards = [...document.querySelectorAll('#workersCards .wplate')].map(c => ({name: c.querySelector('.wp-n').title, isNew: !!c.querySelector('.new-badge')}));
     a.createdAt = keep[0]; d.createdAt = keep[1];
     return cards;
   });
   ok(nw.some(c => /Avi/.test(c.name) && c.isNew) && nw.some(c => /Dana/.test(c.name) && !c.isNew), 'worker cards: NEW for 3 days after the worker was added ' + JSON.stringify(nw));
+  // The worker plate (redesign stage 3): notice chips → the notices sheet → the worker card with Info / Docs / Hours; Delete → Undo → deleted after 5 s; Select → a bulk status.
+  const wp = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const w1 = workers.find(w => w.id === 'w1'), keep = {failed: w1.docUploadFailed, status: w1.status};
+    w1.docUploadFailed = true;
+    switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await wait(200);
+    const plate = document.querySelector('#workersCards .wplate[data-wid="w1"]'), r = {};
+    r.chip = plate.querySelector('.nchip') && plate.querySelector('.nchip').className; r.bar = plate.style.getPropertyValue('--c');
+    plate.querySelector('.nchip').click(); await wait(150);
+    r.sheet = document.getElementById('noticesOverlay').classList.contains('open'); r.notices = [...document.querySelectorAll('#noticesModal .t3-line b')].map(b => b.textContent);
+    r.head = document.querySelector('#noticesModal .wc-hn h4').textContent; r.card0 = document.getElementById('workerCardOverlay').classList.contains('open');
+    [...document.querySelectorAll('#noticesModal .modal-actions .gbtn')].find(b => /Open worker card/.test(b.textContent)).click(); await wait(300);
+    r.card = document.getElementById('workerCardOverlay').classList.contains('open') && !document.getElementById('noticesOverlay').classList.contains('open');
+    const panes = () => [...document.querySelectorAll('#workerCardModal .wc-pane')].filter(x => !x.hidden).map(x => x.dataset.p).join();
+    r.panes = [panes()]; workerCardPane('docs'); r.panes.push(panes()); workerCardPane('hours'); r.panes.push(panes());
+    r.hoursStatus = !!document.querySelector('#workerCardModal .wc-pane[data-p="hours"] #cardHoursStatus');
+    r.edit = !!document.getElementById('workerCardEdit'); workerCardPane('info');
+    closeModal('workerCardOverlay'); await wait(200);
+    r.backToNotices = document.getElementById('noticesOverlay').classList.contains('open'); closeModal('noticesOverlay'); w1.docUploadFailed = keep.failed;
+    // Delete: Undo keeps the worker; a second Delete removes it only after 5 s.
+    workers.push({id:'wtmp', name:'Temp Worker Del', colorIdx:1, clientIds:[], schedule:[]}); renderWorkersPage(); await wait(100);
+    const tmp = () => document.querySelector('#workersCards .wplate[data-wid="wtmp"]');
+    tmp().querySelector('.t3-kb').click(); await wait(50);
+    r.menu = [...document.querySelectorAll('#ogPop .og-pop-it')].map(b => (b.classList.contains('del') ? '!' : '') + b.innerText.trim()).join();
+    document.querySelector('#ogPop .og-pop-it.del').click(); await wait(400);
+    r.pendingHidden = !tmp() || !!tmp().closest('.sw.gone'); r.stillThere = workers.some(w => w.id === 'wtmp');
+    document.querySelector('#undoSnack .og-snack-u').click(); await wait(400);
+    r.undone = !!tmp() && !tmp().closest('.sw.gone') && workers.some(w => w.id === 'wtmp');
+    tmp().querySelector('.t3-kb').click(); await wait(50); document.querySelector('#ogPop .og-pop-it.del').click(); await wait(300);
+    renderWorkersPage(); r.leftOut = !tmp(); r.notYet = workers.some(w => w.id === 'wtmp');
+    await wait(5400); r.deleted = !workers.some(w => w.id === 'wtmp');
+    // Select → Vacation for the picked workers.
+    document.querySelector('#workersCount .t3-kb').click(); await wait(50);
+    document.querySelector('#ogPop .og-pop-it').click(); await wait(100);
+    document.querySelector('#workersCards .wplate[data-wid="w1"]').click();
+    r.sel = document.querySelector('.sel-bar b').textContent;
+    [...document.querySelectorAll('.sel-bar .gbtn')].find(b => /Vacation/.test(b.textContent)).click(); await wait(100);
+    r.vac = w1.status === 'vacation' && !document.querySelector('.sel-bar');
+    w1.status = keep.status; render(); autoSave();
+    return r;
+  });
+  ok(/red/.test(wp.chip) && wp.bar === 'var(--bad)' && wp.sheet && wp.notices.includes('Upload failed') && wp.head === 'Avi Cohen' && wp.card && wp.backToNotices, 'worker plate: a red notice chip opens the notices sheet; "Open worker card" opens the card, closing it goes back to the sheet ' + JSON.stringify(wp));
+  ok(wp.panes.join('|') === 'info|docs|hours' && wp.hoursStatus && wp.edit, 'worker card: Info / Docs / Hours switch, one Edit button ' + JSON.stringify(wp.panes));
+  ok(wp.menu === 'Open card,Edit,Pay,Punch link,!Delete' && wp.pendingHidden && wp.stillThere && wp.undone && wp.leftOut && wp.notYet && wp.deleted, 'workers: Delete never asks — Undo keeps the worker, otherwise it is removed after 5 s ' + JSON.stringify(wp));
+  ok(wp.sel === '1 selected' && wp.vac, 'workers: Select… a worker, the bulk bar sets Vacation ' + JSON.stringify({sel: wp.sel, vac: wp.vac}));
   // Worker card: a click only reads; a double click, a long touch or its ✎ opens the edit form;
   // closing it (a tap outside saves it) brings the card back.
-  const cardSpot = '#workerCardModal div[style*="flex-direction:column"] >> nth=0';
+  const cardSpot = '#workerCardModal .wc-kv >> nth=0';
   await p.evaluate(() => openWorkerCard(1)); await sleep(400);
   await p.click(cardSpot, {position:{x:5, y:5}}); await sleep(500);
   const bk0 = await p.evaluate(() => !document.getElementById('workerOverlay').classList.contains('open') && document.getElementById('workerCardOverlay').classList.contains('open'));
   const lp = await p.evaluate(async () => {
-    const el = document.querySelector('#workerCardModal div[style*="flex-direction:column"]');
+    const el = document.querySelector('#workerCardModal .wc-kv');
     const r = el.getBoundingClientRect(), o = {bubbles:true, pointerType:'touch', clientX:r.left + 5, clientY:r.top + 5};
     el.dispatchEvent(new PointerEvent('pointerdown', o)); await new Promise(res => setTimeout(res, 250));
     el.dispatchEvent(new PointerEvent('pointerup', o)); await new Promise(res => setTimeout(res, 400));
@@ -685,7 +730,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.setViewportSize({width: 1280, height: 900}); await sleep(300);
   // Any window opened from the worker card goes back to it: Pay → tap outside → the card again.
   await p.evaluate(() => openWorkerCard(1)); await sleep(300);
-  await p.evaluate(() => { [...document.querySelectorAll('#workerCardModal button')].find(b => /Pay/.test(b.textContent)).click(); }); await sleep(400);
+  await p.evaluate(() => { document.querySelector('#workerCardModal .wc-more').click(); [...document.querySelectorAll('#ogPop .og-pop-it')].find(b => /Pay/.test(b.textContent)).click(); }); await sleep(400);
   const pay1 = await p.evaluate(() => ({pay: document.getElementById('payOverlay')?.classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open')}));
   await p.mouse.click(5, 450); await sleep(600);
   const pay2 = await p.evaluate(() => ({pay: document.getElementById('payOverlay')?.classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open')}));

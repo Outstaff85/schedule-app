@@ -704,7 +704,52 @@
   .view-toggle button{background:var(--bg3);border:none;color:var(--text2);padding:6px 10px;cursor:pointer;font-size:15px;line-height:1}
   .view-toggle button+button{border-left:1px solid var(--border2)}
   .view-toggle button.active{background:var(--blue-bg);color:var(--blue)}
-  .workers-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+  .workers-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));column-gap:12px;row-gap:0;align-items:start}
+  /* The worker plate (redesign stage 3): short name, notice chips after it,
+     site · today's punch under it, the month's hours at the right. */
+  .wplate .n b{display:flex;align-items:center;gap:6px;min-width:0}
+  .wplate .wp-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;min-width:0}
+  .wplate .n small,.wc-hn p{display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden}
+  .site{overflow:hidden;text-overflow:ellipsis}
+  .dot{color:#4a5068}
+  .pin{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+  .pin i{width:6px;height:6px;border-radius:50%;background:currentColor}
+  .pin.ok{color:var(--ok)}.pin.bad{color:#ff8a95}.pin.vac{color:var(--warn)}
+  .nchip{position:relative;flex:none;display:inline-flex;align-items:center;gap:3px;height:20px;padding:0 7px 0 5px;border-radius:999px;border:0;font:600 11px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;white-space:nowrap}
+  .nchip i{font-size:12px}
+  .nchip.red{background:rgba(255,95,109,.16);color:#ff9aa4}
+  .nchip.amber{background:rgba(245,166,35,.15);color:#f7c062}
+  .nchip.more{background:rgba(255,255,255,.1);color:#cfd3dd;padding:0 7px}
+  .nchip::after{content:'';position:absolute;left:6px;right:6px;bottom:-3px;height:2px;border-radius:2px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;transform:scaleX(0);transition:transform .4s cubic-bezier(.34,1.56,.64,1)}
+  .nchip:hover::after{transform:scaleX(1)}
+  tr.gone{display:none}
+  /* An avatar in its holder's colour (--c), like a plate's. */
+  .og-av{background:color-mix(in srgb,var(--c,var(--neutral)) 22%,transparent) !important;color:var(--c,var(--neutral)) !important;box-shadow:inset 0 0 0 1.5px var(--c,var(--neutral))}
+  /* The worker card and the notices sheet. */
+  .wc-h{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+  .wc-av{width:56px;height:56px;font-size:19px}
+  .wc-hn{flex:1;min-width:0}
+  .wc-hn h4{font-size:18px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .wc-hn p{font-size:12px;color:var(--text2);margin-top:2px}
+  .wc-hrs{flex:none;text-align:right;font:700 18px 'DM Mono',monospace;color:var(--fig);text-shadow:0 0 12px rgba(109,214,160,.22)}
+  .wc-hrs small{display:block;font:500 11px 'DM Sans','Heebo',Arial,sans-serif;color:var(--text3);text-shadow:none}
+  .wc-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+  .wc-chips:empty{display:none}
+  .wc-tools{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-bottom:4px}
+  .wc-tools .gbtn{height:34px;padding:0 12px;font-size:13px}
+  .seg{display:flex;gap:4px;padding:4px;margin:10px 0 14px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1)}
+  .seg button{position:relative;flex:1;height:34px;border:0;border-radius:10px;background:none;color:var(--text2);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer}
+  .seg button.on{background:var(--glass-hi);color:#fff}
+  .seg button.on::after{content:'';position:absolute;left:30%;right:30%;bottom:2px;height:2px;border-radius:2px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1)}
+  .wc-kv{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;font-size:14px;color:var(--text);margin-bottom:12px}
+  .wc-kv>div{min-width:0;overflow-wrap:anywhere}
+  .wc-kv small{display:block;font-size:11px;color:var(--text3);margin-bottom:2px}
+  .wc-kv .wide{grid-column:1/-1}
+  .wc-notes{background:var(--plate);border-radius:12px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:12px}
+  .wc-line{display:flex;gap:6px;font-size:13px;color:var(--text2);margin-bottom:12px}
+  .wc-actions{display:flex;gap:10px;margin-top:6px}
+  .wc-actions .gbtn.primary{flex:1}
+  .gbtn.nact{height:32px;padding:0 10px;font-size:12px;border-radius:12px;flex:none}
   .wcard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:10px;transition:border-color .15s}
   .wcard:hover{border-color:var(--border2)}
   .wcard{position:relative}
@@ -1305,6 +1350,10 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 </div>
 <div class="overlay" id="accHelpOverlay">
   <div class="modal" id="accHelpModal" style="width:460px"></div>
+</div>
+<!-- A worker's notices (a tap on a notice chip). -->
+<div class="overlay" id="noticesOverlay">
+  <div class="modal" id="noticesModal" style="width:440px"></div>
 </div>
 <!-- Phone bottom bar's More: the tabs that don't fit in the bar. -->
 <div class="overlay" id="moreOverlay">
@@ -3800,21 +3849,33 @@ function copyWorkerLink(wid){
     prompt(tr('Copy this link:'), link);
   }
 }
-function deleteWorker(wi){
+// Delete never asks: the plate (or row) collapses behind the Undo snack and
+// the worker is removed only when its 5 s are up (deleteWorkerNow); until then
+// it is left out of the Workers list (__workerDelPending).
+function deleteWorker(wi, el){
+  const w=workers[wi]; if(!w) return;
+  deleteWorkers([w.id], [el]);
+}
+function deleteWorkers(ids, els){
+  ids=ids.filter(id=>workers.some(x=>x.id===id)); if(!ids.length) return;
+  ids.forEach(id=>__workerDelPending.add(id));
+  const one=ids.length===1?workers.find(x=>x.id===ids[0]):null;
+  undoDelete({els, label: one?one.name:tr('{0} workers{1}',{0:ids.length,1:''}),
+    commit:()=>{ ids.forEach(id=>deleteWorkerNow(id)); render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
+      showToast(one?tr('{0} removed',{0:one.name}):tr('{0} workers{1}',{0:ids.length,1:''})); },
+    undo:()=>{ ids.forEach(id=>__workerDelPending.delete(id)); renderWorkersPage(); }});
+}
+// Removes the worker, then best-effort deletes their files (Form 101 PDF,
+// the scan + signature sidecar, the contract / visa / permit files).
+function deleteWorkerNow(id){
+  __workerDelPending.delete(id);
+  const wi=workers.findIndex(x=>x.id===id); if(wi<0) return;
   const w=workers[wi];
-  if(!confirm(tr('Delete worker "{0}"?\n\nTheir Form 101, scans and documents are deleted too. This cannot be undone. Punches and hours stay.',{0:(w.name)})))return;
-  const n=w.name;
-  const fileId=w.docFileId;
-  const assetsFileId=w.assetsFileId;
   const docFileIds=(w.docs||[]).map(d=>d.fileId).filter(Boolean);
   workers.splice(wi,1);
-  render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
-  showToast(tr('{0} removed',{0:(n)}));
-  if(fileId) gsDeleteWorkerDoc(fileId);
-  // Same backend action trashes any file by ID regardless of type — reused
-  // here for the scan+signature sidecar so it doesn't outlive the worker.
-  if(assetsFileId) gsDeleteWorkerDoc(assetsFileId);
-  docFileIds.forEach(gsDeleteWorkerDoc); // contract/visa/permit files
+  if(w.docFileId) gsDeleteWorkerDoc(w.docFileId);
+  if(w.assetsFileId) gsDeleteWorkerDoc(w.assetsFileId);
+  docFileIds.forEach(gsDeleteWorkerDoc);
 }
 
 // --- Client Modal -------------------------------------------------------------
@@ -4162,46 +4223,126 @@ function workersMonthHours(){
   workers.forEach(w=>{ out[w.id]=getWorkerMonthShifts(w.id,y,m,byWorker[w.id]||[]).reduce((s,x)=>s+x.hours,0); });
   return out;
 }
-// The workers as card tiles, paged by LIST_PAGE (renderPagedList). Grouped,
-// each group's title is one more tile in the flat list.
+// ── The worker plate (redesign stage 3, docs/workers.md → Workers tab) ──
+// "Avi C.", "Maya B. D.": the first name in full, every other part as an initial.
+function shortName(n){ const p=String(n||'').trim().split(/\s+/).filter(Boolean); return p.length<2?(p[0]||''):p[0]+' '+p.slice(1).map(x=>x.charAt(0).toUpperCase()+'.').join(' '); }
+function todayPunchLog(){ const t=new Date().toDateString(); return getPunchLog().filter(e=>new Date(e.ts).toDateString()===t); }
+// A worker today: on vacation, the latest punch today (in / out and its time),
+// "no punch" when today's shift started 15+ minutes ago with no punch, or nothing.
+function workerToday(w, todayLog){
+  if(w.status==='vacation') return {k:'vac'};
+  const le=latestOf((todayLog||[]).filter(e=>e.workerId===w.id));
+  if(le) return {k:le.type==='in'?'in':'out', time:le.time||''};
+  if(!isActiveWorker(w)) return {k:''};
+  const now=new Date(), sh=shiftOn(w,now);
+  if(sh && sh.type==='work' && sh.start && now.getHours()*60+now.getMinutes() >= toMins(sh.start)+15) return {k:'none', sh};
+  return {k:''};
+}
+function workerTodayHtml(t){
+  if(t.k==='in') return `<span class="pin ok"><i></i>${esc(tr('In {0}',{0:t.time}))}</span>`;
+  if(t.k==='out') return `<span class="pin">${esc(tr('Out {0}',{0:t.time}))}</span>`;
+  if(t.k==='none') return `<span class="pin bad"><i></i>${esc(tr('No punch'))}</span>`;
+  if(t.k==='vac') return `<span class="pin vac">${esc(tr('On vacation'))}</span>`;
+  return '';
+}
+function workerSiteName(w){ const c=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean)[0]; return c?c.name:''; }
+function fmtHoursShort(h){ return tr('{h}h',{h:String(Math.round((h||0)*10)/10)}); }
+// A worker's notices, urgent (red) first: a failed upload, the ID / passport
+// or a document (visa, permit, contract file) expired or expiring, missing
+// documents, the contract ending, no punch on today's shift. Each has a short
+// word (its chip), a title and a detail line (the notices sheet) and, with the
+// rights for it, the action that fixes it.
+function workerNotices(w, today){
+  const out=[], st=workerDocStatus(w), id=w.id, can=hasPermission('workers');
+  const idx=()=>workers.findIndex(x=>x.id===id);
+  const go=fn=>()=>{ closeModal('noticesOverlay'); fn(); };
+  const days=d=>Math.max(0,Math.ceil((d-new Date().setHours(0,0,0,0))/864e5));
+  const rescan=can?{label:tr('Upload'), icon:'ti-scan', fn:go(()=>rescanFromWorkerCard(idx()))}:null;
+  const renew=can?{label:tr('Renew'), icon:'ti-refresh', fn:go(()=>openWorkerDocUpload(id))}:null;
+  if(st.failed) out.push({lvl:'red', icon:'ti-cloud-off', word:tr('Upload failed'), title:tr('Upload failed'), detail:tr('Last upload to {0} failed',{0:DOC_STORE}), act:rescan});
+  if(st.expiry){ const bad=st.expiry.level==='error'; out.push({lvl:bad?'red':'amber', icon:'ti-id', word:bad?tr('ID expired'):tr('ID {n}d',{n:days(st.expiry.date)}), title:tr('ID / Passport'), detail:st.expiry.text, act:rescan}); }
+  st.docExpiries.forEach(x=>{ const bad=x.level==='error', label=tr(WORKER_DOC_TYPES[x.doc.type]||'Document');
+    out.push({lvl:bad?'red':'amber', icon:'ti-id-badge-2', word:bad?tr('{0} expired',{0:label}):tr('{0} {n}d',{0:label,n:days(x.date)}), title:label, detail:x.text, act:renew}); });
+  if(st.missing.length) out.push({lvl:'amber', icon:'ti-file-alert', word:tr('Documents'), title:tr('Missing documents'), detail:st.missing.join(', '), act:rescan});
+  const ex=workerExpiryStatus(w);
+  if(ex) out.push({lvl:ex.level==='overdue'?'red':'amber', icon:'ti-file-certificate', word:tr('Contract'), title:ex.level==='overdue'?tr('Contract ended'):tr('Contract ending'), detail:ex.deadline.toLocaleDateString('en-GB'),
+    act:can?{label:tr('Extend'), icon:'ti-calendar-plus', fn:go(()=>openEditWorker(idx()))}:null});
+  if(today && today.k==='none') out.push({lvl:'red', icon:'ti-clock-off', word:tr('No punch'), title:tr('No punch on today\'s shift'), detail:today.sh?today.sh.start+'–'+(today.sh.end||''):'',
+    act:w.phone?{label:tr('Call'), icon:'ti-phone', fn:()=>{ location.href='tel:'+String(w.phone).replace(/[^\d+]/g,''); }}:null});
+  return out.sort((a,b)=>(a.lvl==='red'?0:1)-(b.lvl==='red'?0:1));
+}
+// The plate's bar (and avatar) colour: red inactive or an urgent notice, amber
+// on vacation or with a notice, green otherwise.
+function workerBarColor(w, ns){
+  if(!isActiveWorker(w) || ns.some(n=>n.lvl==='red')) return 'var(--bad)';
+  return (w.status==='vacation' || ns.length) ? 'var(--warn)' : 'var(--ok)';
+}
+// Notice chips: on a plate the first one with its word and "+N"; on the card all.
+function noticeChipsHtml(w, ns, all){
+  if(!ns.length) return '';
+  const on=`onclick="event.stopPropagation();openNotices('${esc(w.id)}')"`;
+  const chip=n=>`<button type="button" class="nchip ${n.lvl}" ${on}><i class="ti ${n.lvl==='red'?'ti-alert-circle':'ti-alert-triangle'}"></i>${esc(n.word)}</button>`;
+  return all ? ns.map(chip).join('') : chip(ns[0])+(ns.length>1?`<button type="button" class="nchip more" ${on}>+${ns.length-1}</button>`:'');
+}
+// Workers deleted but still inside their Undo time: left out of the list.
+const __workerDelPending=new Set();
+let __workersShownIds=[];
+// The workers as plates (the cards view), paged by LIST_PAGE (renderPagedList).
+// Grouped, each group's title is one more item in the flat list.
 function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
+  __workersShownIds=list.map(x=>x.w.id);
   if(!list.length){ box.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:14px">'+tr('No workers found')+'</div>'; return; }
-  const hours=workersMonthHours();
-  const monthName=new Date().toLocaleDateString(uiLocale(),{month:'long'});
-  const badge=(o)=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${esc(o.color)}22;border-radius:10px;margin:0 3px 3px 0"><span style="width:6px;height:6px;border-radius:50%;background:${esc(o.color)}"></span>${esc(o.name)}</span>`;
-  const dash='<span style="color:var(--text3)">—</span>';
-  // The HR line: for the owner / super-admin (an HR login sees only its own workers).
-  const showHr=isFirmAdminSession();
-  const card=({w,wi})=>{
-    const c=WORKER_COLORS[w.colorIdx%8];
-    const st=stMetaMap[w.status||'active'];
-    const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
-    const sup=suppliers.find(s=>s.id===w.supplierId);
-    const h=hours[w.id]||0;
-    const lc=w.status==='fired'?'var(--red)':w.status==='vacation'?'var(--amber)':workerDocStatus(w).level!=='ok'?'var(--amber)':'var(--green)';
-    return `<div class="wcard tap-edit" style="--c:${lc}" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))">
-      ${hasPermission('workers')?`<button class="wcard-del" type="button" title="${tr('Delete worker')}" onclick="event.stopPropagation();deleteWorker(${wi})">✕</button>`:''}
-      <div style="display:flex;align-items:center;gap:10px;padding-right:22px">
-        <div style="width:38px;height:38px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div>
-        <div style="min-width:0;flex:1">
-          <div style="font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(w.name)}</div>
-          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${st.bg};color:${st.col}">${st.label}</span>${newWorkerBadgeHtml(w)}${expiryBadgeHtml(w)}${docStatusBadgeHtml(w)}
-        </div>
-      </div>
-      <div class="wcard-sum"><span style="color:${h>0?'var(--green)':'var(--text3)'};font-weight:700">${tr('{h}h',{h:(h).toFixed(1)})}</span>${objs.length?` · ${esc(objs.map(o=>o.name).join(', '))}`:''}${sup?` · <i class="ti ti-truck-delivery"></i> ${esc(sup.name)}`:''}</div>
-      <div class="wcard-rows">
-        <span class="k"><i class="ti ti-id"></i> ${tr('ID / Passport')}</span><span class="v" style="font-family:monospace">${workerDocId(w)?esc(workerDocId(w)):dash}</span>
-        <span class="k"><i class="ti ti-clock-hour-4"></i> ${tr('Hours ({0})',{0:(esc(monthName))})}</span><span class="v" style="font-weight:700;color:${h>0?'var(--green)':'var(--text3)'}">${tr('{h}h',{h:(h).toFixed(1)})}</span>
-        <span class="k"><i class="ti ti-building"></i> ${tr('Clients')}</span><span class="v">${objs.length?objs.map(badge).join(''):dash}</span>
-        <span class="k"><i class="ti ti-truck-delivery"></i> ${tr('Supplier')}</span><span class="v">${sup?badge(sup):dash}</span>
-        ${showHr?`<span class="k"><i class="ti ti-user-shield"></i> ${tr('HR')}</span><span class="v">${w.hrId?badge({name:hrNameOf(w.hrId)||'—',color:hrColor(w.hrId)}):dash}</span>`:''}
-        <span class="k"><i class="ti ti-calendar-event"></i> ${tr('Start date')}</span><span class="v">${w.startDate?esc(fmtDMY(w.startDate)):dash}</span>
-        <span class="k"><i class="ti ti-files"></i> ${tr('Documents')}</span><span class="v">${docStatusSummaryHtml(w)}</span>
-      </div>
-    </div>`;
+  const hours=workersMonthHours(), todayLog=todayPunchLog(), can=hasPermission('workers');
+  const plate=({w,wi})=>{
+    const t=workerToday(w,todayLog), ns=workerNotices(w,t), id=esc(w.id), site=workerSiteName(w);
+    return t3Line({c:workerBarColor(w,ns), cls:'wplate tap-edit', av:t3Av(w),
+      name:`<span class="wp-n" title="${esc(w.name)}">${esc(shortName(w.name))}</span>${noticeChipsHtml(w,ns)}${newWorkerBadgeHtml(w)}`,
+      sub:[site?`<span class="site">${esc(site)}</span>`:'', workerTodayHtml(t)].filter(Boolean).join('<span class="dot">·</span>'),
+      right:`<span class="r">${esc(fmtHoursShort(hours[w.id]))}</span>`,
+      attrs:`data-wid="${id}" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))"`,
+      sel: can?w.id:null,
+      menu:[{icon:'ti-id', label:tr('Open card'), fn:()=>openWorkerCardById(w.id)},
+        ...(can?[{icon:'ti-pencil', label:tr('Edit'), fn:()=>openEditWorker(workers.findIndex(x=>x.id===w.id))}]:[]),
+        ...(canEditPay(w)?[{icon:'ti-cash', label:tr('Pay'), fn:()=>openPayModal(w.id)}]:[]),
+        ...(can?[{icon:'ti-link', label:tr('Punch link'), fn:()=>copyWorkerLink(w.id)}, {icon:'ti-trash', label:tr('Delete'), danger:true, fn:b=>deleteWorker(workers.findIndex(x=>x.id===w.id), b.closest('.t3-line'))}]:[])],
+      swipe: can?{edit:()=>openEditWorker(workers.findIndex(x=>x.id===w.id)), del:el=>deleteWorker(workers.findIndex(x=>x.id===w.id), el)}:null});
   };
-  const title=g=>`<div class="workers-group-title">${g.color?`<span style="width:8px;height:8px;border-radius:50%;background:${esc(g.color)}"></span>`:''}${esc(g.name)} <span style="color:var(--text3);font-weight:400">(${g.count})</span></div>`;
-  renderPagedList(box,'workersCards',sig,workersGroupedItems(list,groupBy),it=>it.group?title(it.group):card(it),{grid:true});
+  const title=g=>`<div class="t3-sec workers-group-title">${g.color?`<span style="width:8px;height:8px;border-radius:50%;background:${esc(g.color)}"></span>`:''}${esc(g.name)}<em>${g.count}</em></div>`;
+  renderPagedList(box,'workersCards',sig,workersGroupedItems(list,groupBy),it=>it.group?title(it.group):plate(it),{grid:true});
+  selectRoot('workers', box);
+}
+function startWorkerSelect(){
+  const box=document.getElementById('workersCards'); if(!box||getWorkersView()!=='cards') return;
+  startSelect({key:'workers', root:box, ids:()=>__workersShownIds,
+    actions:[{icon:'ti-beach', label:tr('Vacation'), fn:ids=>setWorkersStatus(ids,'vacation')}, {icon:'ti-circle-check', label:tr('Active'), fn:ids=>setWorkersStatus(ids,'active')}],
+    del:(ids,els)=>deleteWorkers(ids,els)});
+}
+function setWorkersStatus(ids, v){
+  ids.forEach(id=>{ const w=workers.find(x=>x.id===id); if(w) w.status=v; });
+  render(); autoSave(); showToast(tr('Saved'));
+}
+// The notices sheet: who (avatar, full name, site, today's punch, hours), a
+// plate per notice with its action, and "Open worker card".
+function openNotices(wid){
+  const wi=workers.findIndex(x=>x.id===wid), w=workers[wi]; if(!w) return;
+  const t=workerToday(w,todayPunchLog()), ns=workerNotices(w,t);
+  const m=document.getElementById('noticesModal');
+  m.innerHTML=workerSheetHeadHtml(w,t,ns)
+    +`<div class="t3-sec">${esc(tr('Notices'))}<em>${ns.length}</em></div>`
+    +(ns.length?ns.map(n=>t3Line({c:n.lvl==='red'?'var(--bad)':'var(--warn)', av:`<div class="t3-av"><i class="ti ${esc(n.icon)}"></i></div>`, name:esc(n.title), sub:esc(n.detail),
+      right:n.act?`<button type="button" class="gbtn nact" onclick="event.stopPropagation();runRowFn('${rowFnKey(n.act.fn)}')"><i class="ti ${esc(n.act.icon)}"></i><span>${esc(n.act.label)}</span></button>`:''})).join('')
+      :`<div class="t3-empty">${esc(tr('No notices'))}</div>`)
+    +`<div class="modal-actions"><button type="button" class="gbtn primary" onclick="closeModal('noticesOverlay');openWorkerCardById('${esc(w.id)}')"><i class="ti ti-id"></i><span>${esc(tr('Open worker card'))}</span></button></div>`;
+  document.getElementById('noticesOverlay').classList.add('open');
+}
+function runRowFn(k){ const fn=__rowFns.get(k); if(fn) fn(); }
+// The head of the worker card and the notices sheet: a big avatar in the
+// plate's colour, the full name, site · today's punch, the month's hours.
+function workerSheetHeadHtml(w,t,ns){
+  const site=workerSiteName(w), h=workersMonthHours()[w.id]||0;
+  return `<div class="wc-h" style="--c:${workerBarColor(w,ns)}"><div class="t3-av og-av wc-av">${workerAvatarInner(w)}</div>
+    <div class="wc-hn"><h4>${esc(w.name)}</h4><p>${[site?`<span class="site">${esc(site)}</span>`:'', workerTodayHtml(t)].filter(Boolean).join('<span class="dot">·</span>')}</p></div>
+    <span class="wc-hrs">${esc(fmtHoursShort(h))}<small>${esc(tr('this month'))}</small></span></div>`;
 }
 // The worker list flattened for paging: with a grouping, each group's
 // header is an item ({group:{name,color,count}}) followed by its workers. A
@@ -4249,7 +4390,7 @@ function renderWorkersPage(){
   const supplierFilter=document.getElementById('workersFilterSupplier')?.value||'';
   const groupBy=document.getElementById('workersGroupBy')?.value||'';
   const stMetaMap={active:{label:tr('Active'),col:'var(--green)',bg:'var(--green-bg)'},vacation:{label:tr('On vacation'),col:'var(--amber)',bg:'var(--amber-bg)'},fired:{label:tr('Inactive'),col:'var(--red)',bg:'var(--red-bg)'}};
-  let list=workers.map((w,wi)=>({w,wi}));
+  let list=workers.map((w,wi)=>({w,wi})).filter(x=>!__workerDelPending.has(x.w.id));
   const inactiveN=workers.filter(w=>!isActiveWorker(w)).length;
   if(!stFilter) list=list.filter(x=>isActiveWorker(x.w));
   else if(stFilter!=='all') list=list.filter(x=>(x.w.status||'active')===stFilter);
@@ -4271,8 +4412,10 @@ function renderWorkersPage(){
     });
   }
   document.getElementById('workersCount').innerHTML=esc(tr('{0} worker{1}',{0:(list.length),1:(list.length!==1?'s':'')}))
-    +(!stFilter&&inactiveN?` · <a href="#" class="inactive-link" onclick="event.preventDefault();showInactiveWorkers()">${esc(tr('Inactive: {n} — show',{n:inactiveN}))}</a>`:'');
+    +(!stFilter&&inactiveN?` · <a href="#" class="inactive-link" onclick="event.preventDefault();showInactiveWorkers()">${esc(tr('Inactive: {n} — show',{n:inactiveN}))}</a>`:'')
+    +(getWorkersView()==='cards'&&hasPermission('workers')?listMenuHtml([{icon:'ti-checkbox', label:tr('Select…'), fn:startWorkerSelect}]):'');
   const view=getWorkersView();
+  if(view!=='cards' && __selState && __selState.key==='workers') endSelect();
   document.getElementById('workersViewList')?.classList.toggle('active',view==='list');
   document.getElementById('workersViewCards')?.classList.toggle('active',view==='cards');
   const cardsBox=document.getElementById('workersCards'), tableWrap=document.getElementById('workersTableWrap');
@@ -4304,7 +4447,7 @@ function renderWorkersPage(){
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.startDate?fmtDMY(w.startDate):'—'}</td>
       <td style="padding:10px 12px;text-align:center" onclick="event.stopPropagation()"><div style="display:flex;gap:4px;justify-content:center">
         ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" title="${tr('Download the document (PDF from {0})',{0:(DOC_STORE)})}" style="padding:3px 8px;font-size:11px"><i class="ti ti-download"></i></a>`:''}
-        <button class="btn sm red" onclick="deleteWorker(${wi})" style="padding:3px 8px;font-size:11px"><i class="ti ti-x"></i></button>
+        ${hasPermission('workers')?`<button class="btn sm red" onclick="deleteWorker(${wi},this.closest('tr'))" style="padding:3px 8px;font-size:11px"><i class="ti ti-x"></i></button>`:''}
       </div></td>
     </tr>`;
   };
@@ -4318,69 +4461,89 @@ const INCOME_TYPE_LABELS = {monthly:'משכורת חודשית',secondary:'מש�
 const OTHER_INCOME_LABELS = {none:'אין הכנסה נוספת',monthly:'משכורת חודשית',secondary:'משרה נוספת',partial:'משרה חלקית',daily:'שכר יומי',pension:'פנסיה',scholarship:'מלגה'};
 function openWorkerCard(wi){
   const w=workers[wi]; if(!w) return;
-  const c=WORKER_COLORS[w.colorIdx%8];
   const stMetaMap={active:{label:tr('Active'),col:'var(--green)',bg:'var(--green-bg)'},vacation:{label:tr('On vacation'),col:'var(--amber)',bg:'var(--amber-bg)'},fired:{label:tr('Inactive'),col:'var(--red)',bg:'var(--red-bg)'}};
   const stMeta=stMetaMap[w.status||'active'];
   const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
   const sup=suppliers.find(s=>s.id===w.supplierId);
-  const wh=workerTotalHours(w);
+  const wh=workerTotalHours(w), mh=workersMonthHours()[w.id]||0;
   const expSt=workerExpiryStatus(w);
+  const t=workerToday(w,todayPunchLog()), ns=workerNotices(w,t), can=hasPermission('workers');
+  const sh=shiftOn(w,new Date());
+  const kv=(label,val,wide)=>val?`<div${wide?' class="wide"':''}><small>${esc(label)}</small>${val}</div>`:'';
+  const addr=[[workerAddress(w),w.houseNumber].filter(Boolean).join(' '),w.city].filter(Boolean).join(', ');
+  const ov=document.getElementById('workerCardOverlay');
+  const pane=ov.__wid===w.id&&ov.__pane?ov.__pane:'info';
+  // The ⋮: everything but Edit (the one primary button).
+  const more=[...(canEditPay(w)?[{icon:'ti-cash', label:tr('Pay'), fn:()=>{ closeModal('workerCardOverlay'); openPayModal(w.id); }}]:[]),
+    ...(can?[{icon:'ti-upload', label:tr('Add document'), fn:()=>openWorkerDocUpload(w.id)}]:[]),
+    ...(w.docUrl?[{icon:'ti-download', label:tr('Download document'), fn:()=>window.open(w.docUrl,'_blank','noopener')}]:[]),
+    ...(can?[{icon:'ti-file-upload', label:tr('Upload hours'), fn:()=>openHoursImportModal(w.id)}]:[]),
+    ...(can&&hasPermission('exports')?[{icon:'ti-file-export', label:tr('Export hours'), fn:()=>openHoursExportModal(w.id)}]:[]),
+    ...(can?[{icon:'ti-link', label:tr('Punch link'), fn:()=>copyWorkerLink(w.id)}]:[])];
   document.getElementById('workerCardModal').innerHTML=`
-    <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
-      <div style="width:52px;height:52px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:18px;font-weight:700;overflow:hidden;text-overflow:ellipsis">${esc(w.name)}</div>
-        ${hasPermission('workers')?'':`<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col};display:inline-block;margin-top:4px">${stMeta.label}</span>`}${newWorkerBadgeHtml(w)}${docStatusBadgeHtml(w)}
-      </div>
-      ${hasPermission('workers')?`<button class="btn sm" type="button" onclick="rescanFromWorkerCard(${wi})" style="flex-shrink:0"><i class="ti ti-scan"></i> ${w.docUrl?'סריקה חוזרת':'סרוק מסמך'}</button>
-      <button class="t3-ib" type="button" id="workerCardEdit" onclick="editFromWorkerCard('${esc(w.id)}')" title="${esc(tr('Edit'))}" aria-label="${esc(tr('Edit'))}"><i class="ti ti-pencil"></i></button>`:''}
-    </div>
-    ${hasPermission('workers')||w.docSavedAt?`<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;margin:-6px 0 14px">
-      ${hasPermission('workers')?`<div class="status-pills" role="radiogroup" aria-label="${tr('Status')}">
+    ${workerSheetHeadHtml(w,t,ns)}
+    <div class="wc-chips">${noticeChipsHtml(w,ns,true)}${can?'':`<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col}">${stMeta.label}</span>`}${newWorkerBadgeHtml(w)}</div>
+    ${can||w.docSavedAt?`<div class="wc-tools">
+      ${can?`<div class="status-pills" role="radiogroup" aria-label="${tr('Status')}">
         ${[['active',tr('Active')],['vacation',tr('Vacation')],['fired',tr('Inactive')]].map(([v,l])=>`<button type="button" data-st="${v}" class="${(w.status||'active')===v?'on':''}" onclick="setWorkerStatus(${wi},'${v}')" title="${tr('Set status: {0}',{0:(l)})}"><i></i>${l}</button>`).join('')}
       </div>`:''}
       ${w.docSavedAt?`<span style="font-size:11px;color:var(--text3)">נשמר: ${esc(new Date(w.docSavedAt).toLocaleDateString('en-GB'))}</span>`:''}
+      ${can?`<button class="gbtn wc-scan" type="button" onclick="rescanFromWorkerCard(${wi})"><i class="ti ti-scan"></i> ${w.docUrl?'סריקה חוזרת':'סרוק מסמך'}</button>`:''}
     </div>`:''}
-    <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text2);margin-bottom:14px">
-      ${w.phone?`<div><i class="ti ti-phone"></i> ${esc(w.phone)}</div>`:''}
-      ${w.startDate?`<div><i class="ti ti-calendar-event"></i> ${tr('Started {0}',{0:(fmtDMY(w.startDate))})}</div>`:''}
-      ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?tr('Expired'):tr('Expiring soon')} — ${expSt.deadline.toLocaleDateString('en-GB')}</div>`:''}
-      ${workerDocId(w)?`<div><i class="ti ti-id"></i> ${esc(workerDocId(w))}</div>`:''}
-      ${[[workerAddress(w),w.houseNumber].filter(Boolean).join(' '),w.city].filter(Boolean).length?`<div><i class="ti ti-map-pin"></i> ${esc([[workerAddress(w),w.houseNumber].filter(Boolean).join(' '),w.city].filter(Boolean).join(', '))}</div>`:''}
-      ${w.incomeType&&INCOME_TYPE_LABELS[w.incomeType]?`<div><i class="ti ti-briefcase"></i> ${INCOME_TYPE_LABELS[w.incomeType]}</div>`:''}
-      ${w.otherIncomeType&&w.otherIncomeType!=='none'&&OTHER_INCOME_LABELS[w.otherIncomeType]?`<div><i class="ti ti-cash"></i> ${tr('Other income: {0}',{0:(OTHER_INCOME_LABELS[w.otherIncomeType])})}</div>`:''}
-      <div><i class="ti ti-clock-hour-4"></i> ${tr('{0}h scheduled / week',{0:(wh.toFixed(1))})}</div>
-      ${objs.length?`<div><i class="ti ti-building"></i> ${tr('Clients:')} ${objs.map(o=>`<span style="color:${o.color}">${esc(o.name)}</span>`).join(', ')}</div>` : `<div><i class="ti ti-building-off"></i> ${tr('Not assigned to any object')}</div>`}
-      ${sup?`<div><i class="ti ti-truck-delivery"></i> ${tr('Supplier:')} <span style="color:${sup.color}">${esc(sup.name)}</span></div>`:''}
-      ${isFirmAdminSession()?`<div><i class="ti ti-user-shield"></i> ${tr('HR:')} ${w.hrId?`<span style="color:${esc(hrColor(w.hrId))}">${esc(hrNameOf(w.hrId)||'—')}</span>`:'<span style="color:var(--text3)">'+tr('none')+'</span>'}</div>`:''}
-      <div id="cardHoursStatus" data-worker="${esc(w.id)}">${cardHoursStatusHtml(w.id)}</div>
-      <!-- document status last, next to the Documents section below -->
-      <div style="display:flex;gap:6px"><i class="ti ti-files" style="margin-top:2px"></i><span>${tr('Documents: {0}',{0:(docStatusSummaryHtml(w))})}</span></div>
-      ${hasPermission('workers')&&cardMissingScanRowsHtml(w,wi)?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${cardMissingScanRowsHtml(w,wi)}</div>`:''}
+    <div class="seg" role="tablist">${[['info',tr('Info')],['docs',tr('Docs')],['hours',tr('Hours')]].map(([k,l])=>`<button type="button" role="tab" data-p="${k}" class="${pane===k?'on':''}" onclick="workerCardPane('${k}')">${esc(l)}</button>`).join('')}</div>
+    <div class="wc-pane" data-p="info"${pane==='info'?'':' hidden'}>
+      <div class="wc-kv">
+        ${kv(tr('Phone'), w.phone?esc(w.phone):'')}
+        ${kv(tr('ID / Passport'), workerDocId(w)?`<span style="font-family:'DM Mono',monospace">${esc(workerDocId(w))}</span>`:'')}
+        ${kv(tr('Clients'), objs.length?objs.map(o=>`<span style="color:${esc(o.color)}">${esc(o.name)}</span>`).join(', '):`<span style="color:var(--text3)">${tr('Not assigned to any object')}</span>`)}
+        ${kv(tr('Supplier'), sup?`<span style="color:${esc(sup.color)}">${esc(sup.name)}</span>`:'')}
+        ${isFirmAdminSession()?kv(tr('HR'), w.hrId?`<span style="color:${esc(hrColor(w.hrId))}">${esc(hrNameOf(w.hrId)||'—')}</span>`:'<span style="color:var(--text3)">'+tr('none')+'</span>'):''}
+        ${kv(tr('Shift today'), sh&&sh.type==='work'&&sh.start?`<span class="fig">${esc(sh.start)}–${esc(sh.end||'')}</span>`:`<span style="color:var(--amber)">${tr('Day off')}</span>`)}
+        ${kv(tr('Start date'), w.startDate?esc(fmtDMY(w.startDate)):'')}
+        ${expSt?kv(tr('Contract'), `<span style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}">${expSt.level==='overdue'?tr('Expired'):tr('Expiring soon')} — ${expSt.deadline.toLocaleDateString('en-GB')}</span>`):''}
+        ${kv(tr('Address'), addr?esc(addr):'', true)}
+        ${w.incomeType&&INCOME_TYPE_LABELS[w.incomeType]?kv(tr('Income'), INCOME_TYPE_LABELS[w.incomeType]):''}
+        ${w.otherIncomeType&&w.otherIncomeType!=='none'&&OTHER_INCOME_LABELS[w.otherIncomeType]?kv(tr('Other income'), OTHER_INCOME_LABELS[w.otherIncomeType]):''}
+      </div>
+      ${w.notes?`<div class="wc-notes">${esc(w.notes)}</div>`:''}
     </div>
-    ${w.notes?`<div style="background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:14px">${esc(w.notes)}</div>`:''}
-    ${workerDocsSectionHtml(w)}
-    <div class="modal-actions">
-      ${hasPermission('workers')?`<button class="btn sm" onclick="openWorkerDocUpload('${esc(w.id)}')"><i class="ti ti-upload"></i> ${tr('Add document')}</button>`:''}
-      ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm"><i class="ti ti-download"></i> ${tr('Download document')}</a>`:''}
-      ${hasPermission('workers')?`<button class="btn sm" onclick="openHoursImportModal('${w.id}')"><i class="ti ti-file-upload"></i> ${tr('Upload hours')}</button>`:''}
-      ${canEditPay(w)?`<button class="btn sm" onclick="closeModal('workerCardOverlay');openPayModal('${w.id}')" title="${tr('Rate, pay mode, travel, bank — in Accounting')}"><i class="ti ti-cash"></i> ${tr('Pay')}</button>`:''}
-      ${hasPermission('workers')&&hasPermission('exports')?`<button class="btn sm" onclick="openHoursExportModal('${w.id}')"><i class="ti ti-file-export"></i> ${tr('Export hours')}</button>`:''}
+    <div class="wc-pane" data-p="docs"${pane==='docs'?'':' hidden'}>
+      <div class="wc-line"><i class="ti ti-files"></i><span>${tr('Documents: {0}',{0:(docStatusSummaryHtml(w))})}</span></div>
+      ${can&&cardMissingScanRowsHtml(w,wi)?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">${cardMissingScanRowsHtml(w,wi)}</div>`:''}
+      ${workerDocsSectionHtml(w)}
+    </div>
+    <div class="wc-pane" data-p="hours"${pane==='hours'?'':' hidden'}>
+      <div class="wc-kv">
+        ${kv(tr('This month'), `<span class="fig" style="font-size:18px;font-weight:700">${esc(fmtHoursShort(mh))}</span>`)}
+        ${kv(tr('Scheduled'), esc(tr('{0}h scheduled / week',{0:(wh.toFixed(1))})))}
+      </div>
+      <div class="wc-line" id="cardHoursStatus" data-worker="${esc(w.id)}">${cardHoursStatusHtml(w.id)}</div>
+    </div>
+    <div class="wc-actions">
+      ${can?`<button type="button" class="gbtn primary" id="workerCardEdit" onclick="editFromWorkerCard('${esc(w.id)}')"><i class="ti ti-pencil"></i><span>${esc(tr('Edit'))}</span></button>`:''}
+      ${more.length?`<button type="button" class="gbtn icon wc-more" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey(more)}')"><i class="ti ti-dots-vertical"></i></button>`:''}
     </div>`;
   pageWorkerDocs(document.getElementById('workerCardModal'),w.id);
   // A long press (phone) or a double click (computer) on the card — not on
-  // one of its buttons or links — opens the edit form, like its ✎.
+  // one of its buttons or links — opens the edit form, like its Edit button.
   const cm=document.getElementById('workerCardModal');
-  if(hasPermission('workers')){
+  if(can){
     const edit=()=>editFromWorkerCard(w.id);
     cm.onclick=e=>tapEdit(e,cm,()=>{},edit);
     cm.onpointerdown=e=>longPress(e,cm,edit);
   } else { cm.onclick=null; cm.onpointerdown=null; }
   // Coming back to the card (a window opened from it was closed): drawn again
-  // from the current data, by id — nothing when the worker is gone.
-  const ov=document.getElementById('workerCardOverlay');
+  // from the current data, by id — nothing when the worker is gone; the open
+  // pane (Info / Docs / Hours) is kept.
+  ov.__wid=w.id; ov.__pane=pane;
   ov.__reopen=()=>{ const i=workers.findIndex(x=>x.id===w.id); if(i>=0) openWorkerCard(i); };
   ov.classList.add('open');
+}
+// The worker card's Info / Docs / Hours switch.
+function workerCardPane(k){
+  const ov=document.getElementById('workerCardOverlay'); ov.__pane=k;
+  ov.querySelectorAll('.seg button').forEach(b=>b.classList.toggle('on',b.dataset.p===k));
+  ov.querySelectorAll('.wc-pane').forEach(p=>{ p.hidden=p.dataset.p!==k; });
 }
 
 // The worker card's ✎: its edit form (closing it comes back to the card).
