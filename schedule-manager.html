@@ -4312,11 +4312,11 @@ function showClientModal(c){
     <div class="rates-help">שכר העובד חל על כל העובדים אצל הלקוח, אלא אם לעובד יש תעריף משלו; שעות נוספות ושבת לפי החוק. תשלום הלקוח לא משנה את שכר העובד.</div>
     <!-- Hourly / Daily: how the client is billed (the worker's own pay is not touched). -->
     <div class="seg-toggle" id="cPayUnit">
-      <button type="button" data-unit="hour" class="${__cBill.rateMode!=='daily'?'on':''}" onclick="setClientPayUnit('hour')">לפי שעה</button>
-      <button type="button" data-unit="day" class="${__cBill.rateMode==='daily'?'on':''}" onclick="setClientPayUnit('day')">לפי יום</button>
+      <button type="button" data-unit="hour" class="${__cBill.rateMode!=='daily'?'on':''}" onclick="setClientPayUnit('hour')">${esc(tr('By the hour'))}</button>
+      <button type="button" data-unit="day" class="${__cBill.rateMode==='daily'?'on':''}" onclick="setClientPayUnit('day')">${esc(tr('By the day'))}</button>
     </div>
-    <div class="field" id="cDailyRow" style="${__cBill.rateMode==='daily'?'':'display:none'}"><label><i class="ti ti-receipt"></i> הלקוח משלם ליום</label>
-      <div class="rate-in"><input type="number" min="0" step="1" id="cBillDaily" value="${__cBill.dailyBillRate??''}" placeholder="—" oninput="__cBill.dailyBillRate=clientRateNum(this.value)"><span>₪/יום</span></div></div>
+    <div class="field" id="cDailyRow" style="${__cBill.rateMode==='daily'?'':'display:none'}"><label><i class="ti ti-receipt"></i> ${esc(tr('Client pays per day'))}</label>
+      <div class="rate-in"><input type="number" min="0" step="1" id="cBillDaily" value="${__cBill.dailyBillRate??''}" placeholder="—" oninput="__cBill.dailyBillRate=clientRateNum(this.value)"><span>${esc(tr('₪/day'))}</span></div></div>
     <div class="field-row">
       <div class="field"><label><i class="ti ti-cash"></i> שכר העובד</label>
         <div class="rate-in"><input type="number" min="0" step="0.5" id="cDefRate" value="${c.defaultHourlyRate??''}" placeholder="—" oninput="updateClientMargin()"><span>₪/שעה</span></div></div>

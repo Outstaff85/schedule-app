@@ -42,6 +42,7 @@ The client keeps the punch log in `localStorage.punchLog` (`getPunchLog()` / `sa
 - **Daily pay** — `w.payMode === 'daily'` (picked per worker in the pay window, `savePayModal`): the worker is paid `dailyRate(w)` — their own rate (`wOwnRate`), read as ₪/day — once for every day worked, whatever the hours; no OT / Shabbat, and a client's (hourly) rate never applies. Every payroll figure prices a shift with **`shiftPayFor(hours, w, isSat, clientId, date, seenDays)`**: for a daily-paid worker the first shift of a day pays the day rate and later shifts that day pay 0 (`seenDays`, one Set per worker over the period); otherwise `shiftPay`. Days set by hand for a period (`w.dayOverrides[salaryPeriodKey(period)]`, `dayOverride`; keys `w:<Sunday>`, `m:<yyyy-mm>`, `all`) replace the counted days: pay = days × daily rate.
 - **Client billing** — a separate figure that never changes worker pay: `clientBillPay(hours, client, isSat)`.
   - `fixed` → `hours × fixedBillRate`;
+  - `daily` → `dailyBillRate` for a shift with hours (0 for an empty one), whatever its length;
   - `tiered` → the law tiers on `clientBillRate(client)` (`billRate`, else the old `defaultHourlyRate`), unless a flat `billOtRate` / `billShabbatRate` is set (applied like `shiftPay`).
 
 ## Accounting tab (`#sectionAccounting`)

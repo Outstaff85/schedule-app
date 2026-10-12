@@ -732,6 +732,30 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     'editors: the worker editor is section plates (Person · Address · Work · Documents · Form 101 · Access), summaries, segmented choices, a focused field opens its section, no Save ' + JSON.stringify(ed));
   ok(ed.client.join() === 'client,place,rates,approval' && ed.supplier.join() === 'supplier*' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,sections' && ed.supplierEdit === 'supplier,commission,portal,workers' && ed.userHr === 'person,sections,hours,commission' && ed.roleSeg,
     'editors: client, supplier (one Save, an empty name amber) and user form as section plates ' + JSON.stringify(ed));
+  // Redesign gaps: client billing by the day; the supplier editor's payable commission and editable portal ticks (saved at once).
+  const gp = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
+    r.daily = [clientBillPay(5, {rateMode:'daily', dailyBillRate:300}), clientBillPay(0, {rateMode:'daily', dailyBillRate:300}), clientBillPay(11, {rateMode:'daily', dailyBillRate:300}, true)].join();
+    openEditClient(clients[0].id); await wait(100);
+    document.querySelector('#cPayUnit button[data-unit="day"]').click();
+    r.dayRow = document.getElementById('cDailyRow').style.display !== 'none' && document.getElementById('cHourlyBill').style.display === 'none';
+    document.querySelector('#cPayUnit button:not([data-unit="day"])').click();
+    r.hourBack = document.getElementById('cDailyRow').style.display === 'none'; closeModal('clientOverlay'); await wait(150);
+    openEditSupplier('s-1'); await wait(150);
+    const m = document.getElementById('supplierModal');
+    r.payable = /Payable this month/.test(m.querySelector('.og-sec[data-sec="commission"]').textContent);
+    r.newLogin = !!m.querySelector('.og-sec[data-sec="portal"] button[onclick^="newLoginFor"]');
+    const cb = m.querySelector('input[data-field="supplierSections"][value="dashboard"]');
+    r.tick = !!cb && !cb.disabled;
+    if(cb){ const was = cb.checked; cb.checked = !was; await saveLoginTicks(cb);
+      const u = loadAdminCache('users_' + activeTenantIdForAdmin()).find(x => x.username === 'sup1');
+      r.saved = (u.supplierSections || []).includes('dashboard') === !was;
+      cb.checked = was; await saveLoginTicks(cb); }
+    for(let i = 0; i < 3; i++){ await wait(150); document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); }
+    return r;
+  });
+  ok(gp.daily === '300,0,300' && gp.dayRow && gp.hourBack, 'clients: billing by the day — one day rate per worked shift, the By day / By hour switch ' + JSON.stringify(gp));
+  ok(gp.payable && gp.newLogin && gp.tick && gp.saved, 'supplier editor: commission payable this month, New portal login, portal tabs ticked and saved at once ' + JSON.stringify(gp));
   // Worker list header (the owner's fixed structure): "Workers N", glass New, ⋮; tabs Active / Vacation / Pending.
   const wh = await p.evaluate(async () => {
     switchTab('workers'); setWorkersView('cards'); renderWorkersPage();
@@ -1253,7 +1277,16 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const ms = await p.evaluate(async () => { openSchedule(); await new Promise(r => setTimeout(r, 1500));
     return {shown: !document.getElementById('screenSchedule').classList.contains('hidden'), days: document.querySelectorAll('#scheduleContent .sched-cell').length, empty: /No shifts planned yet/.test(document.getElementById('scheduleContent').innerText), sched: JSON.stringify(selectedWorker.schedule), n: workers.length, keys: Object.keys(selectedWorker).sort().join(','),
       top: !!document.querySelector('#scheduleContent .sched-sum.top + .sched-grid'), plates: document.querySelectorAll('#scheduleContent .sp-plate').length}; });
-  ok(ms.empty || (ms.top && ms.plates >= 1), 'punch: My Schedule — figures on top, the day plates under the calendar ' + JSON.stringify(ms));
+  const mp = await p.evaluate(() => { const keep = [selectedWorker.schedule, selectedWorker.dates];
+    const t = new Date(), k = localYMD(t);
+    selectedWorker.schedule = [0,1,2,3,4,5,6].map(() => ({type:'work', start:'09:00', end:'17:00'})); selectedWorker.dates = {[k]: {type:'work', start:'22:00', end:'06:00'}};
+    renderMySchedule();
+    const c = document.getElementById('scheduleContent'), first = c.querySelector('.sp-plate');
+    const r = {top: !!c.querySelector('.sched-sum.top + .sched-grid'), plates: c.querySelectorAll('.sp-plate').length, more: !!c.querySelector('.sp-more'),
+      first: first ? first.innerText.replace(/\s+/g, ' ') : '', today: !!(first && first.classList.contains('today')), dot: !!c.querySelector('.shift-bar.dated')};
+    [selectedWorker.schedule, selectedWorker.dates] = keep; renderMySchedule(); return r; });
+  ok(mp.top && mp.plates >= 1 && mp.plates <= 10 && mp.today && /22:00 – 06:00/.test(mp.first) && /Night shift/.test(mp.first) && /changed/.test(mp.first) && mp.dot,
+    'punch: My Schedule — figures on top, day plates from today (10 at a time), a changed night day tagged ' + JSON.stringify(mp));
   ok(ms.shown && (ms.days >= 35 || ms.empty) && ms.n === 1 && ms.keys.includes('schedule'), 'punch: My Schedule shows the worker\'s own week ' + JSON.stringify(ms));
   await p.evaluate(() => closeHistory());
   // A schedule change since this device last saw it: a notice that stays on the punch screen until My Schedule is opened.

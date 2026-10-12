@@ -185,7 +185,7 @@ function hrvHoursHtml(){
   const canApproveAll = hrvCan('approve') && days.some(r => ['pending', 'changed', 'rejected'].includes(hrvDayState(r).st));
   const approveBtn = canApproveAll ? `<button class="btn sm hrv-approve" onclick="hrvApproveMonth()"><i class="ti ti-checks"></i> ${esc(tr('Approve the month'))}</button>` : '';
   const sel = __hrv.sel;
-  const selectBtn = canApproveAll && !sel ? `<button class="btn sm" id="hrvSelectBtn" onclick="hrvStartSelect()"><i class="ti ti-list-check"></i> ${esc(tr('Select'))}</button>` : '';
+  const selectBtn = canApproveAll && !sel ? `<button class="btn sm" id="hrvSelectBtn" onclick="hrvStartSelect()"><i class="ti ti-checkbox"></i> ${esc(tr('Select'))}</button>` : '';
   const exportBtn = hrvCan('export') ? `<button class="btn sm" onclick="hrvExport()"><i class="ti ti-file-spreadsheet"></i> ${esc(tr('Export'))}</button>` : '';
   const byW = {};
   days.forEach(r => { (byW[r.workerId] = byW[r.workerId] || []).push(r); });
