@@ -725,6 +725,45 @@
   tr.gone{display:none}
   /* An avatar in its holder's colour (--c), like a plate's. */
   .og-av{background:color-mix(in srgb,var(--c,var(--neutral)) 22%,transparent) !important;color:var(--c,var(--neutral)) !important;box-shadow:inset 0 0 0 1.5px var(--c,var(--neutral))}
+  /* Greeting (Today) and the notifications bell + panel (redesign stage 5). */
+  .og-greet{margin:0 2px 14px}
+  .og-greet:empty{display:none}
+  .og-greet h3{font-size:21px;font-weight:700;letter-spacing:-.2px}
+  .gic{display:inline-block;width:30px;height:30px;margin-left:8px;vertical-align:-6px;overflow:visible}
+  .gic .rise{animation:gic-rise 4s ease-in-out infinite}
+  @keyframes gic-rise{0%,100%{transform:translateY(2px)}50%{transform:translateY(-2px)}}
+  .gic .spin{transform-origin:16px 16px;animation:gic-spin 14s linear infinite}
+  @keyframes gic-spin{to{transform:rotate(360deg)}}
+  .gic .pulse{transform-origin:16px 16px;animation:gic-pulse 3s ease-in-out infinite}
+  @keyframes gic-pulse{50%{transform:scale(1.08)}}
+  .gic .sink{animation:gic-sink 5s ease-in-out infinite}
+  @keyframes gic-sink{0%,100%{transform:translateY(0)}50%{transform:translateY(3px)}}
+  .gic .moon{animation:gic-moon 4s ease-in-out infinite}
+  @keyframes gic-moon{50%{transform:translateY(-2px) rotate(-6deg)}}
+  .gic .tw{transform-box:fill-box;transform-origin:center;animation:gic-tw 2.4s ease-in-out infinite}.gic .tw2{animation-delay:1.2s}
+  @keyframes gic-tw{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.2;transform:scale(.6)}}
+  .og-bell{width:38px;height:38px;border-radius:14px;overflow:visible}
+  .og-bell::after{display:none}
+  .og-bell i{font-size:19px}
+  .og-bell.has-new i{animation:og-ring 4s ease-in-out infinite;transform-origin:50% 10%}
+  @keyframes og-ring{0%,88%,100%{transform:rotate(0)}90%{transform:rotate(14deg)}93%{transform:rotate(-12deg)}96%{transform:rotate(6deg)}}
+  .og-bell-n{position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--bad);color:#fff;font:700 10px 'DM Sans',Arial,sans-serif;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px var(--ground);animation:og-bump 2.4s ease-in-out infinite}
+  @keyframes og-bump{0%,90%,100%{transform:scale(1)}95%{transform:scale(1.2)}}
+  .og-npop{position:fixed;z-index:4000;width:min(340px,calc(100vw - 16px));max-height:min(480px,70vh);overflow:auto;padding:8px;border-radius:18px;background:rgba(22,26,38,.92);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.2);box-shadow:0 18px 44px rgba(0,0,0,.55);opacity:0;transform:translateY(-6px) scale(.97);transition:opacity .18s,transform .18s}
+  .og-npop.open{opacity:1;transform:none;overflow:visible}
+  .og-npop-list{max-height:min(420px,62vh);overflow:auto}
+  .og-npop::before{content:'';position:absolute;top:-7px;left:var(--px,14px);width:12px;height:12px;background:rgba(22,26,38,.95);border-left:1px solid rgba(255,255,255,.2);border-top:1px solid rgba(255,255,255,.2);transform:rotate(45deg)}
+  .og-npop h5{display:flex;align-items:center;font-size:13px;padding:6px 8px 8px}
+  .og-npop-all{margin-left:auto;border:0;background:none;color:var(--fig);font:600 12px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer}
+  .og-ni{display:flex;gap:10px;width:100%;padding:9px 8px;border:0;border-radius:12px;background:none;color:var(--text);align-items:flex-start;text-align:left;cursor:pointer;font-family:inherit}
+  .og-ni:hover{background:rgba(255,255,255,.06)}
+  .og-ni .ic{width:30px;height:30px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center;font-size:16px;background:color-mix(in srgb,var(--c) 18%,transparent);color:var(--c)}
+  .og-ni .tx{flex:1;min-width:0;font-size:13px}
+  .og-ni .tx b{display:block;font-weight:600}
+  .og-ni .tx small{display:block;font-size:11px;color:#8b90a0;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .og-ni time{font-size:10px;color:#8b90a0;flex:none}
+  .og-ni.new time::after{content:'';display:block;width:7px;height:7px;border-radius:50%;background:#22d3ee;margin:6px 0 0 auto;box-shadow:0 0 8px #22d3ee}
+  @media (prefers-reduced-motion:reduce){.gic *,.og-bell i,.og-bell-n{animation:none !important}}
   /* Editors as section plates (redesign stage 4): a head (avatar, name,
      summary, chips, tools), then a stack of section plates that open on a tap. */
   .og-edh{display:flex;align-items:center;gap:12px;margin-bottom:14px}
@@ -964,6 +1003,7 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
     </div>
     <!-- The account menu (header variant C, per user request 2026-10-11): one
          button with the name; inside it install, language, my name, sign out. -->
+    <button type="button" class="gbtn icon og-bell" id="bellBtn" onclick="toggleBell(event)" title="Notifications" data-i18n-title="Notifications" aria-label="Notifications" style="display:none"><i class="ti ti-bell"></i><span class="og-bell-n" id="bellCount"></span></button>
     <button type="button" class="gbtn lang-btn" id="langBtn" onclick="openLangSheet(event)" title="Language" data-i18n-title="Language" aria-label="Language"><i class="ti ti-world"></i><span class="lang-btn-name">English</span><i class="ti ti-chevron-down lang-btn-chev"></i></button>
     <div class="acct" id="accountControl">
       <button type="button" class="acct-chip" onclick="toggleAccountMenu(event)" aria-haspopup="true"><span class="acct-av" id="accountAvatar"></span><span id="accountLabelCenter" class="acct-label"></span><i class="ti ti-chevron-down acct-chev"></i></button>
@@ -1009,6 +1049,7 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
   <div class="main">
     <!-- Dashboard Section -->
     <div class="page-section" id="sectionDashboard">
+      <div class="og-greet" id="ogGreet"></div>
       <div class="page-header">
         <div>
           <div class="page-title" id="dashTitle" data-i18n>Today</div>
@@ -2487,6 +2528,120 @@ function switchTab(tab){
   if(tab==='accounting'){ __hourApprovalsCache=null; renderAccounting(); } // opening the tab reads the approvals afresh
 }
 
+
+// ── Greeting and notifications (redesign stage 5, docs/accounting.md → Today) ──
+// "Good morning / afternoon / evening / night, <first name>" by the device's
+// local time (5–12, 12–17, 17–21, 21–5), with a small animated icon after it.
+const GREET_ICONS={
+  morning:'<svg class="gic" viewBox="0 0 32 32" aria-hidden="true"><defs><clipPath id="gicHz"><rect x="0" y="0" width="32" height="23"/></clipPath></defs><g clip-path="url(#gicHz)"><g class="rise"><circle cx="16" cy="22" r="7" fill="#f7c062"/>'+[0,51,102,154,205,257,308].map(a=>`<line x1="16" y1="12" x2="16" y2="9" stroke="#f7c062" stroke-width="2" stroke-linecap="round" transform="rotate(${a} 16 22)"/>`).join('')+'</g></g><line x1="4" y1="23.5" x2="28" y2="23.5" stroke="rgba(255,255,255,.55)" stroke-width="2" stroke-linecap="round"/></svg>',
+  day:'<svg class="gic" viewBox="0 0 32 32" aria-hidden="true"><g class="spin">'+[0,45,90,135,180,225,270,315].map(a=>`<line x1="16" y1="6" x2="16" y2="2" stroke="#fde68a" stroke-width="2.2" stroke-linecap="round" transform="rotate(${a} 16 16)"/>`).join('')+'</g><circle class="pulse" cx="16" cy="16" r="6.5" fill="#fcd34d"/></svg>',
+  evening:'<svg class="gic" viewBox="0 0 32 32" aria-hidden="true"><defs><clipPath id="gicHz2"><rect x="0" y="0" width="32" height="21"/></clipPath></defs><g clip-path="url(#gicHz2)"><g class="sink"><circle cx="16" cy="20" r="8" fill="#f9a8d4"/></g></g><line x1="4" y1="21.5" x2="28" y2="21.5" stroke="rgba(255,255,255,.6)" stroke-width="2" stroke-linecap="round"/><line x1="9" y1="25.5" x2="23" y2="25.5" stroke="rgba(255,255,255,.3)" stroke-width="2" stroke-linecap="round"/></svg>',
+  night:'<svg class="gic" viewBox="0 0 32 32" aria-hidden="true"><path class="moon" d="M20 6a10 10 0 1 0 7 15A8 8 0 0 1 20 6z" fill="#c7d2fe"/><circle class="tw" cx="7" cy="8" r="1.4" fill="#fff"/><circle class="tw tw2" cx="11" cy="4" r="1" fill="#fff"/></svg>'};
+function partOfDay(d){ const h=(d||new Date()).getHours(); return h>=5&&h<12?'morning':h>=12&&h<17?'day':h>=17&&h<21?'evening':'night'; }
+function greetingHtml(name){
+  const p=partOfDay(), first=String(name||'').trim().split(/\s+/)[0]||'';
+  const text={morning:'Good morning, {name}',day:'Good afternoon, {name}',evening:'Good evening, {name}',night:'Good night, {name}'}[p];
+  return `<h3 class="t-${p}">${esc(first?tr(text,{name:first}):tr(text,{name:''}).replace(/,\s*$/,''))}${GREET_ICONS[p]}</h3>`;
+}
+function renderGreeting(){ const el=document.getElementById('ogGreet'), s=getSession(); if(el&&s) el.innerHTML=greetingHtml(s.fullName||s.username); }
+// The bell: what needs a look, newest first — documents and visas expiring or
+// expired, contracts ending, no punch on today's shift, hours waiting for
+// approval, a client that approved a month. Each has a steady id; the ids this
+// login has read are kept on its account (notifReads/{uid}, loadNotifReads /
+// saveNotifReads), so "Mark all read" follows it to every device.
+let __notifRead=new Set(), __notifReadLoaded=false, __notifApprovals=[], __notifApprAt=0;
+function notifEnabled(){ const s=getSession(); return !!s && ['superadmin','tenant_admin','staff','hr'].includes(s.role); }
+function notifList(){
+  const out=[], t=fsTenantId()+':', now=new Date(), today=localYMD(now), dayStart=new Date(now).setHours(0,0,0,0);
+  const todayLog=todayPunchLog();
+  workers.filter(isActiveWorker).forEach(w=>{
+    const st=workerDocStatus(w);
+    if(st.expiry){ const bad=st.expiry.level==='error'; out.push({id:t+'doc:'+w.id+':id:'+w.docExpiry, lvl:bad?'red':'amber', icon:'ti-id', title:bad?tr('ID / passport expired'):tr('ID / passport expiring'), detail:w.name+' · '+st.expiry.text, at:bad?+st.expiry.date:dayStart, open:()=>openNotices(w.id)}); }
+    st.docExpiries.forEach(x=>{ const bad=x.level==='error', label=tr(WORKER_DOC_TYPES[x.doc.type]||'Document');
+      out.push({id:t+'doc:'+w.id+':'+x.doc.type+':'+x.doc.expiry, lvl:bad?'red':'amber', icon:'ti-id-badge-2', title:bad?tr('{0} expired',{0:label}):tr('{0} expiring',{0:label}), detail:w.name+' · '+x.text, at:bad?+x.date:dayStart, open:()=>openNotices(w.id)}); });
+    const ex=workerExpiryStatus(w);
+    if(ex) out.push({id:t+'contract:'+w.id+':'+localYMD(ex.deadline), lvl:ex.level==='overdue'?'red':'amber', icon:'ti-file-certificate', title:ex.level==='overdue'?tr('Contract ended'):tr('Contract ending'), detail:w.name+' · '+ex.deadline.toLocaleDateString('en-GB'), at:ex.level==='overdue'?+ex.deadline:dayStart, open:()=>openNotices(w.id)});
+    const td=workerToday(w,todayLog);
+    if(td.k==='none'){ const [h,m]=String(td.sh.start).split(':').map(Number); out.push({id:t+'nopunch:'+w.id+':'+today, lvl:'red', icon:'ti-clock-off', title:tr('No punch on today\'s shift'), detail:w.name+' · '+td.sh.start+'–'+(td.sh.end||''), at:new Date(now).setHours(h||0,m||0,0,0), open:()=>openNotices(w.id)}); }
+  });
+  if(hasPermission('accounting')) (__hoursBatches||[]).filter(b=>b.status==='pending').forEach(b=>{
+    out.push({id:t+'hours:'+b.batchId, lvl:'blue', icon:'ti-clock-hour-4', title:tr('Hours waiting for approval'), detail:[b.fileName,b.uploadedBy].filter(Boolean).join(' · '), at:Date.parse(b.uploadedAt)||dayStart, open:()=>switchTab('accounting')}); });
+  __notifApprovals.forEach(a=>out.push(Object.assign({lvl:'green', icon:'ti-circle-check', open:()=>switchTab('accounting')}, a)));
+  return out.sort((a,b)=>b.at-a.at);
+}
+// A client login that approved every day of this month (the hours function's
+// list, read at most every 5 minutes; firm admins and staff with Accounting).
+async function refreshNotifApprovals(){
+  if(isHrSession()||!hasPermission('accounting')||Date.now()-__notifApprAt<5*60e3) return;
+  __notifApprAt=Date.now();
+  const month=localYMD(new Date()).slice(0,7);
+  try{
+    const docs=await hourApprovalsOf(month);
+    __notifApprovals=docs.filter(d=>d.kind==='client').map(d=>{ const sum=hourApprovalSummary(d,month); if(sum.open.length||!sum.done||sum.done<sum.total) return null;
+      const at=Math.max(0,...Object.values(d.days||{}).map(e=>Date.parse(e.at)||0));
+      return {id:fsTenantId()+':appr:'+d.id+':'+month, title:tr('A client approved the month'), detail:(d.ownerName||d.ownerId||'')+' · '+month, at:at||Date.now()}; }).filter(Boolean);
+    refreshBell();
+  }catch(e){}
+}
+async function loadNotifReads(){
+  if(__notifReadLoaded||!notifEnabled()) return;
+  __notifReadLoaded=true;
+  try{ const j=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'loadNotifReads'})})).json(); if(j&&Array.isArray(j.ids)) j.ids.forEach(id=>__notifRead.add(id)); }catch(e){ __notifReadLoaded=false; }
+  refreshBell();
+}
+function saveNotifReads(){
+  const ids=[...__notifRead].slice(-500); __notifRead=new Set(ids);
+  fetch(API_URL,{method:'POST',body:JSON.stringify({action:'saveNotifReads', ids})}).catch(()=>{});
+}
+function refreshBell(){
+  const btn=document.getElementById('bellBtn'); if(!btn) return;
+  if(!notifEnabled()){ btn.style.display='none'; return; }
+  btn.style.display='';
+  const list=notifList(), n=list.filter(x=>!__notifRead.has(x.id)).length, c=document.getElementById('bellCount');
+  c.textContent=n>99?'99+':String(n); c.style.display=n?'':'none'; btn.classList.toggle('has-new',n>0);
+  if(document.getElementById('bellPanel')) drawBellPanel(list);
+}
+function toggleBell(e){
+  if(e) e.stopPropagation();
+  if(document.getElementById('bellPanel')){ closeBell(); return; }
+  closePopover();
+  const p=document.createElement('div'); p.id='bellPanel'; p.className='og-npop'; p.setAttribute('role','dialog');
+  p.addEventListener('click',ev=>ev.stopPropagation());
+  document.body.appendChild(p);
+  drawBellPanel(notifList());
+  const r=document.getElementById('bellBtn').getBoundingClientRect(), pw=p.offsetWidth;
+  const left=Math.min(window.innerWidth-pw-8, Math.max(8, r.right-pw+40));
+  p.style.left=left+'px'; p.style.top=(r.bottom+10)+'px';
+  p.style.setProperty('--px', Math.max(10, Math.min(pw-22, r.left+r.width/2-left-6))+'px');
+  document.getElementById('bellBtn').classList.add('on');
+  void p.offsetWidth; p.classList.add('open');
+  refreshNotifApprovals();
+}
+function closeBell(){ const p=document.getElementById('bellPanel'); if(p) p.remove(); const b=document.getElementById('bellBtn'); if(b) b.classList.remove('on'); }
+document.addEventListener('click',()=>closeBell());
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeBell(); });
+let __bellItems=[];
+function drawBellPanel(list){
+  const p=document.getElementById('bellPanel'); if(!p) return;
+  __bellItems=list;
+  const unread=list.some(x=>!__notifRead.has(x.id));
+  p.innerHTML=`<h5><span>${esc(tr('Notifications'))}</span>${unread?`<button type="button" class="og-npop-all" onclick="markAllNotifRead()">${esc(tr('Mark all read'))}</button>`:''}</h5><div class="og-npop-list"></div>`;
+  const box=p.querySelector('.og-npop-list');
+  if(!list.length){ box.innerHTML=`<div class="t3-empty" style="padding:10px 8px">${esc(tr('Nothing new'))}</div>`; return; }
+  const col={red:'var(--bad)', amber:'var(--warn)', blue:'var(--info)', green:'var(--ok)'};
+  const when=ms=>{ const d=new Date(ms); return localYMD(d)===localYMD(new Date())?d.toTimeString().slice(0,5):fmtDMY(localYMD(d)); };
+  renderPagedList(box,'notifs',list.length+':'+unread,list,(x,i)=>`<button type="button" class="og-ni${__notifRead.has(x.id)?'':' new'}" style="--c:${col[x.lvl]||'var(--neutral)'}" onclick="openNotif(${i})"><span class="ic"><i class="ti ${esc(x.icon)}"></i></span><span class="tx"><b>${esc(x.title)}</b><small>${esc(x.detail)}</small></span><time>${esc(when(x.at))}</time></button>`);
+}
+function openNotif(i){
+  const x=__bellItems[i]; if(!x) return;
+  if(!__notifRead.has(x.id)){ __notifRead.add(x.id); saveNotifReads(); }
+  closeBell(); refreshBell(); if(x.open) x.open();
+}
+function markAllNotifRead(){
+  __bellItems.forEach(x=>__notifRead.add(x.id)); saveNotifReads(); refreshBell();
+}
+setInterval(()=>{ if(getSession()) refreshBell(); }, 60e3);
+
 // --- Week nav -----------------------------------------------------------------
 function prevWeek(){ weekStart.setDate(weekStart.getDate()-7); syncPicker(); render(); }
 function nextWeek(){ weekStart.setDate(weekStart.getDate()+7); syncPicker(); render(); }
@@ -2516,6 +2671,7 @@ function render(){
   if(currentTab==='admin')      renderAdmin();
   if(currentTab==='dashboard')  renderDashboard();
   if(currentTab==='accounting') renderAccounting();
+  refreshBell(); loadNotifReads();
 }
 
 // A worker with no 'work' day at all was never given a schedule (left the
@@ -7318,7 +7474,7 @@ function watchHoursBatches(){
   __hoursWatched = true;
   loadFirestoreBackend().then(b => b.listenPendingHours(fsTenantId(), list => {
     __hoursBatches = list;
-    updateHoursBadge();
+    updateHoursBadge(); refreshBell();
     refreshCardHoursStatus();
     if(currentTab === 'accounting') renderPendingHours();
   })).catch(e => { __hoursWatched = false; console.warn('Hours watch failed: ' + ((e && e.message) || e)); });
@@ -7631,6 +7787,7 @@ document.addEventListener('keydown', e => { if(e.key === 'Escape'){ closePopover
 function listMenuHtml(items){ return items.length ? `<button type="button" class="t3-kb" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey(items)}')"><i class="ti ti-dots-vertical"></i></button>` : ''; }
 function workerClientNames(w){ return (w.clientIds||[]).map(id=>(clients.find(c=>c.id===id)||{}).name).filter(Boolean).join(', '); }
 function renderDashboard(){
+  renderGreeting();
   const now     = new Date();
   const todayIdx= now.getDay(); // 0=Sun
   const todayStr= now.toDateString();

@@ -329,3 +329,14 @@ test('storage: hr uploads with the workers section; an own-workers hr reads back
   await assertFails(uploadString(ref(st('hrOwnB'), pA), 'evil'));
   await assertSucceeds(deleteObject(ref(st('hrAll'), pA)));
 });
+
+test('notifReads: a manager-side login reads and writes only its own read list', async () => {
+  const me = who.ownerA.uid, other = who.staffNone.uid;
+  await assertSucceeds(setDoc(doc(db('ownerA'), 'notifReads', me), { ids: ['a', 'b'], at: 'x' }));
+  await assertSucceeds(getDoc(doc(db('ownerA'), 'notifReads', me)));
+  await assertFails(getDoc(doc(db('ownerA'), 'notifReads', other)));
+  await assertFails(setDoc(doc(db('ownerA'), 'notifReads', other), { ids: [], at: 'x' }));
+  await assertFails(setDoc(doc(db('ownerA'), 'notifReads', me), { ids: [], at: 'x', extra: 1 }));
+  await assertFails(setDoc(doc(db('ownerA'), 'notifReads', me), { ids: Array.from({ length: 501 }, (_, i) => 'n' + i), at: 'x' }));
+  await assertFails(getDoc(doc(db('anon'), 'notifReads', me)));
+});

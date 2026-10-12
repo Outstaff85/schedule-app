@@ -157,6 +157,15 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // The notifications a manager-side login has read (the bell's "Mark all
+    // read"): only its own doc, a list of at most 500 ids.
+    match /notifReads/{u} {
+      allow read: if signedIn() && request.auth.uid == u && role() in ['superadmin', 'tenant_admin', 'staff', 'hr'];
+      allow write: if signedIn() && request.auth.uid == u && role() in ['superadmin', 'tenant_admin', 'staff', 'hr']
+        && request.resource.data.keys().hasOnly(['ids', 'at'])
+        && request.resource.data.ids is list && request.resource.data.ids.size() <= 500;
+    }
+
     // Function-only: password hashes, the username -> uid index (keeps
     // usernames unique), worker punch-link tokens, push subscriptions.
     match /authSecrets/{uid} { allow read, write: if false; }
