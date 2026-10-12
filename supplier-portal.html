@@ -259,6 +259,22 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 .sel-bar .gbtn.del{color:#ffd1d6;}
 @media (prefers-reduced-motion:reduce){.t3-kb::after,.og-snack-u::after,.sel-head button::after{animation:none;}}
 .sel-bar .gbtn:disabled{opacity:.45;cursor:default;}
+/* Portal header and tabs (redesign stage 10): the logo mark, a glass header,
+   glass tabs with the highlight line. */
+.pt-head{background:rgba(16,20,31,.55);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border-bottom:1px solid rgba(255,255,255,.1)!important;position:sticky;top:0;z-index:40}
+.pt-mark{width:30px;height:30px;flex:none;overflow:visible;vertical-align:-8px;margin-right:6px}
+.og-roof{fill:none;stroke:rgba(255,255,255,.28);stroke-width:7;stroke-linecap:round;stroke-linejoin:round}
+.og-run{fill:none;stroke:url(#ogMarkGrad);stroke-width:7;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:40 180;animation:og-run 2.8s linear infinite}
+@keyframes og-run{from{stroke-dashoffset:220}to{stroke-dashoffset:0}}
+.og-p{opacity:.55;animation:og-lit 2.8s ease-in-out infinite}.og-p2{animation-delay:.93s}.og-p3{animation-delay:1.86s}
+@keyframes og-lit{0%,100%{opacity:.55;transform:none}15%{opacity:1;transform:translateY(-4px)}35%{opacity:.55;transform:none}}
+.og-link{fill:none;stroke:rgba(255,255,255,.22);stroke-width:4;stroke-linecap:round}
+.og-linkrun{fill:none;stroke:url(#ogMarkGrad);stroke-width:4;stroke-linecap:round;stroke-dasharray:14 90;animation:og-linkrun 2.8s linear infinite}
+@keyframes og-linkrun{from{stroke-dashoffset:104}to{stroke-dashoffset:0}}
+.tab-btn{position:relative;border:1px solid transparent!important;border-radius:14px!important;height:36px;padding:0 14px!important}
+.tab-btn.active{background:var(--glass-hi)!important;border-color:rgba(255,255,255,.35)!important;color:#fff!important}
+.tab-btn.active::after{content:'';position:absolute;left:14px;right:14px;bottom:-1px;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55);animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1)}
+@media (prefers-reduced-motion:reduce){.og-run,.og-p,.og-linkrun{animation:none}}
 </style>
 </head>
 <body>
@@ -270,8 +286,8 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 try{ if(localStorage.getItem('supplierPortal_session')) document.documentElement.classList.add('has-session'); else location.replace('schedule-manager.html'); }catch(e){}
 </script>
 <div id="appRoot" style="display:none">
-  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border)">
-    <div style="font-size:16px;font-weight:700"><i class="ti ti-truck-delivery"></i> <span data-i18n>Supplier Portal</span></div>
+  <div class="pt-head" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border)">
+    <div style="font-size:16px;font-weight:700"><svg class="og-mark pt-mark" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="ogMarkGrad" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#818cf8"/><stop offset=".5" stop-color="#22d3ee"/><stop offset="1" stop-color="#f472b6"/></linearGradient></defs><path class="og-roof" d="M10 50L50 16l40 34"/><path class="og-run" d="M10 50L50 16l40 34"/><g class="og-p og-p1"><g transform="translate(30 70) scale(.95)"><circle cx="0" cy="-9" r="7" fill="#818cf8"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#818cf8"/></g></g><g class="og-p og-p2"><g transform="translate(50 66) scale(1.15)"><circle cx="0" cy="-9" r="7" fill="#22d3ee"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#22d3ee"/></g></g><g class="og-p og-p3"><g transform="translate(70 70) scale(.95)"><circle cx="0" cy="-9" r="7" fill="#f472b6"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#f472b6"/></g></g><path class="og-link" d="M24 92H76"/><path class="og-linkrun" d="M24 92H76"/></svg> <span data-i18n>Supplier Portal</span></div>
     <div id="headerActions" style="display:flex;gap:6px;align-items:center"><button type="button" class="gbtn lang-btn" id="langBtn" onclick="openLangSheet(event)" title="Language" data-i18n-title="Language" aria-label="Language"><i class="ti ti-world"></i><span class="lang-btn-name">English</span><i class="ti ti-chevron-down lang-btn-chev"></i></button>
       <div class="acct" id="accountControl">
       <button type="button" class="acct-chip" onclick="toggleAccountMenu(event)" aria-haspopup="true"><span class="acct-av" id="accountAvatar"></span><span class="acct-label" id="accountLabel"></span><i class="ti ti-chevron-down acct-chev"></i></button>

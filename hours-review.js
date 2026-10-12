@@ -124,26 +124,27 @@ function hrvMore(){ __hrv.shown += 10; const y = window.scrollY; hrvRender(); wi
 function hrvStyle(){
   return `<style>
   .hrv-tabs{display:flex;gap:6px;margin-bottom:10px;}
-  .hrv-tab{background:none;border:none;color:var(--text2);padding:7px 12px;font:600 13px inherit;cursor:pointer;border-radius:var(--radius-sm,8px);}
-  .hrv-tab.active{background:var(--bg3);color:var(--text);}
+  .hrv-tab{position:relative;background:none;border:1px solid transparent;color:var(--text2);height:36px;padding:0 14px;font:600 13px inherit;cursor:pointer;border-radius:14px;}
+  .hrv-tab.active{background:var(--glass-hi,rgba(255,255,255,.2));border-color:rgba(255,255,255,.35);color:#fff;}
+  .hrv-tab.active::after{content:'';position:absolute;left:14px;right:14px;bottom:-1px;height:3px;border-radius:2px;background:var(--uline,linear-gradient(90deg,#818cf8,#22d3ee,#f472b6,#818cf8));background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55);animation:og-flow 2.4s linear infinite;}
   .hrv-month{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;}
   .hrv-month .m{font-size:16px;font-weight:700;text-transform:capitalize;flex:1;text-align:center;}
-  .hrv-month button{width:36px;height:36px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:18px;cursor:pointer;}
+  .hrv-month button{width:40px;height:40px;border-radius:14px;border:1px solid var(--glass-edge,rgba(255,255,255,.28));background:var(--glass,rgba(255,255,255,.12));-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);color:#fff;font-size:18px;cursor:pointer;}
   .hrv-owner{text-align:center;font-size:12px;color:var(--text2);margin-bottom:10px;}
-  .hrv-status{border-radius:var(--radius,12px);padding:10px 14px;margin-bottom:12px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;background:var(--bg2);border:1px solid var(--border2);}
-  .hrv-status.ok{background:var(--green-bg,rgba(109,214,160,0.12));border-color:rgba(109,214,160,0.3);color:var(--green);}
-  .hrv-status.warn{background:var(--amber-bg,rgba(245,166,35,0.12));border-color:rgba(245,166,35,0.3);color:var(--amber);}
-  /* The app's template (variant 3): no boxes — a worker is a section line,
-     each day a line with its state as a colored mark on the left (--c). */
+  .hrv-status{border-radius:16px;padding:11px 14px 11px 16px;margin-bottom:12px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;background:var(--plate,#1b1e29);border:0;box-shadow:inset 4px 0 0 var(--neutral,#6b7189);}
+  .hrv-status.ok{color:var(--green);box-shadow:inset 4px 0 0 var(--green);}
+  .hrv-status.warn{color:var(--amber);box-shadow:inset 4px 0 0 var(--amber);}
+  /* Odinson Glass plates (redesign stage 10): a worker is a section line,
+     each day a plate with its state as the bar on the left (--c), hours in green. */
   .hrv-stats{display:flex;gap:18px;flex-wrap:wrap;margin:2px 2px 12px;}
   .hrv-stats div{font-size:11px;color:var(--text2);}
   .hrv-stats b{display:block;font-size:22px;font-weight:700;line-height:1.1;color:var(--text);}
   .hrv-card{margin-bottom:12px;}
   .hrv-card>div:first-child{padding:0 2px 4px;}
-  .hrv-day{display:flex;align-items:center;gap:8px;padding:7px 10px 7px 12px;margin-bottom:4px;border-left:3px solid var(--c,var(--border2));border-radius:0 8px 8px 0;background:linear-gradient(90deg,rgba(255,255,255,.035),transparent 85%);font-size:13px;flex-wrap:wrap;}
+  .hrv-day{display:flex;align-items:center;gap:8px;padding:10px 10px 10px 16px;margin-bottom:6px;border-radius:14px;background:var(--plate,#1b1e29);box-shadow:inset 4px 0 0 var(--c,var(--neutral,#6b7189));font-size:13px;flex-wrap:wrap;}
   .hrv-day .d{flex:1;min-width:90px;}
   .hrv-day .t{font-family:'DM Mono',ui-monospace,monospace;color:var(--text2);font-size:12px;}
-  .hrv-day .h{min-width:42px;text-align:right;font-weight:600;}
+  .hrv-day .h{min-width:42px;text-align:right;font:700 13px 'DM Mono',ui-monospace,monospace;color:var(--fig,#9fe6c0);}
   .hrv-day .st{font-size:16px;}
   .hrv-day .note{width:100%;font-size:11px;padding-left:2px;}
   .hrv-approve{background:var(--green-bg,rgba(109,214,160,0.12));border-color:rgba(109,214,160,0.35);color:var(--green);}

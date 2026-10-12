@@ -1,5 +1,7 @@
 # Hours review (`hours-review.js`, the `hours` function)
 
+The screen is drawn in the Odinson Glass look (redesign stage 10): glass tabs and month arrows, the status line as a plate with a coloured bar, each day a plate with its state as the bar (`--c`) and the hours in the figure green. Its styles fall back to plain values where a page lacks the design tokens.
+
 One screen, one Cloud Function and one store for every login that reviews its workers' hours: a **client** (in the client portal), a **supplier** (the supplier portal's Hours approval tab) and an **HR** (the manager app, Accounting). The same ticks, the same per-day actions, the same code (per user request 2026-10-11: "one template and one set of functions for hours").
 
 ## Ticks (`users.hourPerms` → claim `hp`)
