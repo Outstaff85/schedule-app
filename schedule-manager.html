@@ -802,6 +802,13 @@
   .og-sec.open .og-sec-b{display:block}
   .og-sec-b .scan-missing,.og-sec-b input.need:placeholder-shown{border-color:var(--warn) !important;box-shadow:0 0 0 1px rgba(245,166,35,.35)}
   .seg.seg-sel{margin:0}
+  .og-count{font-style:normal;font-size:14px;font-weight:500;color:var(--text2);margin-left:4px}
+  .workers-count{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text2)}
+  .og-doc{display:flex;align-items:center;gap:10px;padding:9px 8px 9px 12px;margin-bottom:6px;border-radius:12px;background:rgba(255,255,255,.04);box-shadow:inset 3px 0 0 var(--c)}
+  .og-doc-ic{width:30px;height:30px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--c);background:color-mix(in srgb,var(--c) 18%,transparent)}
+  .og-doc>div{flex:1;min-width:0;font-size:13px}
+  .og-doc b{display:block;font-weight:600}
+  .og-doc small{display:block;font-size:11px;color:#8b90a0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .modal-actions .og-save{flex:1}
   /* The worker card and the notices sheet. */
   .wc-h{display:flex;align-items:center;gap:12px;margin-bottom:10px}
@@ -1142,14 +1149,15 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
     <div class="page-section" id="sectionWorkers">
       <div class="page-header workers-head">
         <div>
-          <div class="page-title" data-i18n>Workers</div>
-          <div class="page-sub" data-i18n>All worker details, status and history</div>
+          <div class="page-title"><span data-i18n>Workers</span> <em class="og-count" id="workersTitleCount"></em></div>
         </div>
         <div class="workers-actions">
-          <button class="btn sm" onclick="openAddWorker()"><i class="ti ti-plus"></i> <span data-i18n>Add Worker</span></button>
-          <button class="btn sm" onclick="startNewScan()" style="border-color:rgba(109,214,160,0.4);color:var(--green)"><i class="ti ti-sparkles"></i> <span data-i18n>Scan passport</span></button>
+          <button class="gbtn primary" onclick="openAddWorker()"><i class="ti ti-plus"></i> <span data-i18n>New</span></button>
+          <button type="button" class="gbtn icon" id="workersHeadMenu" aria-label="More" data-i18n-title="More" title="More" onclick="openWorkersHeadMenu(event,this)"><i class="ti ti-dots-vertical"></i></button>
         </div>
       </div>
+      <!-- Active / Vacation / Pending (documents incomplete): they set the Status and Documents filters. -->
+      <div class="og-tabs" id="workersTabs"></div>
       <div class="workers-toolbar">
         <div class="workers-search-row">
           <input type="text" id="workersSearch" placeholder="Search: name, ID / passport, phone, client..." data-i18n-placeholder="Search: name, ID / passport, phone, client..." oninput="renderWorkersPage()">
@@ -1590,27 +1598,25 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 <div class="overlay" id="userFormOverlay" style="z-index:980">
   <div class="modal" style="max-width:420px">
     <div class="modal-title" id="userFormTitle" data-i18n>New user</div>
+    <section class="og-sec" data-sec="person"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-user"></i></span><span class="og-sec-t"><b data-i18n>Person & login</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
     <div class="field" id="userFormRoleField"><label data-i18n>Role</label>
-      <select id="userFormRole" onchange="onUserFormRoleChange(true)">
+      <select id="userFormRole" data-seg onchange="onUserFormRoleChange(true)">
         <option value="staff" data-i18n>Staff</option>
         <option value="hr">HR</option>
         <option value="supplier" data-i18n>Supplier</option>
         <option value="client" data-i18n>Client</option>
       </select>
     </div>
-    <section class="og-sec" data-sec="person"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-user"></i></span><span class="og-sec-t"><b data-i18n>Person</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
     <div class="field-row">
       <div class="field"><label id="userFormFullNameLabel" data-i18n>Full name</label><input type="text" id="userFormFullName" autocomplete="off" maxlength="80"></div>
       <div class="field"><label data-i18n>Phone</label><input type="tel" id="userFormPhone" autocomplete="off" maxlength="40"></div>
     </div>
-    </div></section>
-    <section class="og-sec" data-sec="login"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-key"></i></span><span class="og-sec-t"><b data-i18n>Login</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
     <div class="field-row">
       <div class="field"><label data-i18n>Username</label><input type="text" class="need" id="userFormUsername" autocomplete="off"></div>
       <div class="field" id="userFormPasswordField"><label id="userFormPasswordLabel" data-i18n>Password (min. 8)</label><input type="password" id="userFormPassword" autocomplete="new-password"></div>
     </div>
     </div></section>
-    <section class="og-sec" data-sec="access" id="userFormAccessHead"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-shield-lock"></i></span><span class="og-sec-t"><b data-i18n>Access</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
+    <section class="og-sec" data-sec="sections" id="userFormAccessHead" data-auto><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-layout-grid"></i></span><span class="og-sec-t"><b data-i18n>Sections</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
     <div class="field" id="userFormSupplierField" style="display:none"><label data-i18n>Supplier</label><select id="userFormSupplierId" onchange="renderUserFormHrWorkers()"></select></div>
     <div class="field" id="userFormClientField" style="display:none"><label data-i18n>Client</label><select id="userFormClientId"></select></div>
     <!-- A supplier login: the supplier portal's tabs it may use (users.supplierSections → claim ss). -->
@@ -1634,18 +1640,8 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
         <label class="check-chip"><input type="checkbox" value="exports" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-upload"></i> <span data-i18n>Export</span></span><span class="chip-hint" data-i18n>Export button</span></span></label>
       </div>
     </div>
-    <!-- HR and supplier: see their own workers' pay and their commission
-         (claim "pay"; on by default). HR: its commission ₪/h, and ₪/day for
-         a worker paid by the day. -->
-    <div class="field" id="userFormPayFields" style="display:none">
-      <div class="check-grid" id="userFormShowPayGrid">
-        <label class="check-chip"><input type="checkbox" id="userFormShowPay" checked><span class="chip-text"><span data-i18n>Sees own workers' pay</span><span class="chip-hint" data-i18n>Their hours, rate and pay, and this login's commission. Nothing else of Accounting.</span></span></label>
-      </div>
-      <div class="field-row" id="userFormCommissionField" style="margin-top:8px">
-        <div class="field"><label data-i18n>HR commission ₪/h</label><input type="number" id="userFormCommission" min="0" step="0.5" placeholder="0"></div>
-        <div class="field"><label data-i18n>₪/day (daily workers)</label><input type="number" id="userFormCommissionDay" min="0" step="0.5" placeholder="by the hour" data-i18n-placeholder="by the hour"></div>
-      </div>
-    </div>
+    </div></section>
+    <section class="og-sec" data-sec="hours" data-auto><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-clock"></i></span><span class="og-sec-t"><b data-i18n>Hours</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
     <!-- Hours review (HR, supplier, client — the same ticks for all three,
          users.hourPerms → claim hp, checked by the hours function): the
          shared hours screen, hours-review.js. -->
@@ -1664,8 +1660,22 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
     <div class="field" id="userFormHrFields" style="display:none">
       <label class="check-chip"><input type="checkbox" id="userFormOwnOnly" checked><span class="chip-text"><span data-i18n>Only own workers</span><span class="chip-hint" id="userFormOwnOnlyHint" data-i18n>Sees only the workers assigned to this HR. Unchecked: every worker of the firm.</span></span></label>
     </div>
+    <div class="field">
+      <div class="check-grid" id="userFormShowPayGrid" style="display:none">
+        <label class="check-chip"><input type="checkbox" id="userFormShowPay" checked><span class="chip-text"><span data-i18n>Sees own workers' pay</span><span class="chip-hint" data-i18n>Their hours, rate and pay, and this login's commission. Nothing else of Accounting.</span></span></label>
+      </div>
+    </div>
     </div></section>
-    <section class="og-sec" data-sec="workers" id="userFormHrWorkersField" style="display:none"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-users-group"></i></span><span class="og-sec-t"><b data-i18n>Workers</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
+    <!-- HR: its commission ₪/h, and ₪/day for a worker paid by the day. -->
+    <section class="og-sec" data-sec="commission" data-auto><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-coin"></i></span><span class="og-sec-t"><b data-i18n>HR commission</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
+    <div class="field" id="userFormPayFields" style="display:none">
+      <div class="field-row" id="userFormCommissionField" style="margin-top:8px">
+        <div class="field"><label data-i18n>HR commission ₪/h</label><input type="number" id="userFormCommission" min="0" step="0.5" placeholder="0"></div>
+        <div class="field"><label data-i18n>₪/day (daily workers)</label><input type="number" id="userFormCommissionDay" min="0" step="0.5" placeholder="by the hour" data-i18n-placeholder="by the hour"></div>
+      </div>
+    </div>
+    </div></section>
+    <section class="og-sec" data-sec="workers" id="userFormHrWorkersField" style="display:none"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-users-group"></i></span><span class="og-sec-t"><b data-i18n>Own workers</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
       <div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="btn sm" type="button" onclick="openHrAssignModal()"><i class="ti ti-user-plus"></i> <span data-i18n>Add workers</span></button></div>
       <div id="userFormHrWorkers" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
     </div></section>
@@ -3564,10 +3574,10 @@ function showWorkerModal(w){
   document.getElementById('workerModal').innerHTML=`
     <div class="field og-edh" id="wAvatarWrap" style="--c:${editingWorkerIdx!==null?workerBarColor(w,workerNotices(w,workerToday(w,todayPunchLog()))):'var(--neutral)'}">
       <img id="wAvatarImg" src="${__wAvatarB64?('data:image/jpeg;base64,'+__wAvatarB64):''}" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1px solid var(--border2);background:var(--bg3);display:${__wAvatarB64?'block':'none'}">
-      <div class="og-edh-n"><h4>${esc(w.name||'')||(editingWorkerIdx!==null?'עריכת עובד':'הוספת עובד חדש')}</h4><p>${esc([workerSiteName(w), w.phone||''].filter(Boolean).join(' · '))}</p>${editingWorkerIdx!==null?`<div class="wc-chips">${noticeChipsHtml(w,workerNotices(w,workerToday(w,todayPunchLog())),true)}</div>`:''}</div>
+      <div class="og-edh-n"><h4>${esc(w.name||'')||(editingWorkerIdx!==null?'עריכת עובד':'הוספת עובד חדש')}</h4><p>${editingWorkerIdx!==null?[workerSiteName(w)?`<span class="site">${esc(workerSiteName(w))}</span>`:'', workerTodayHtml(workerToday(w,todayPunchLog())), `<span class="fig">${esc(fmtHoursShort(workersMonthHours()[w.id]||0))}</span>`].filter(Boolean).join('<span class="dot">·</span>'):''}</p>${editingWorkerIdx!==null?`<div class="wc-chips">${noticeChipsHtml(w,workerNotices(w,workerToday(w,todayPunchLog())),true)}</div>`:''}</div>
       ${editingWorkerIdx!==null?`<button class="gbtn icon" type="button" onclick="rescanFromWorkerModal()" title="${esc(tr('Scan'))}" aria-label="${esc(tr('Scan'))}"><i class="ti ti-scan"></i></button>`:''}
-      <button class="gbtn icon" type="button" onclick="document.getElementById('wAvatarFile').click()" title="העלה תמונה" aria-label="העלה תמונה"><i class="ti ti-camera"></i></button>
-      <button class="gbtn icon" type="button" id="wAvatarDeleteBtn" onclick="clearWorkerAvatar()" title="מחק תמונה" aria-label="מחק תמונה" style="display:${__wAvatarB64?'inline-flex':'none'}"><i class="ti ti-trash"></i></button>
+      <button class="gbtn icon" type="button" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey([{icon:'ti-camera', label:'העלה תמונה', fn:()=>document.getElementById('wAvatarFile').click()}, {icon:'ti-trash', label:'מחק תמונה', danger:true, fn:()=>clearWorkerAvatar()}])}')"><i class="ti ti-dots-vertical"></i></button>
+      <span id="wAvatarDeleteBtn" hidden></span>
       <input type="file" id="wAvatarFile" accept="image/*" style="display:none" onchange="onAvatarFileSelected(this.files[0]); this.value='';">
     </div>
     <div class="field" id="avatarCropWrap" style="display:none;flex-direction:column;align-items:center;gap:8px;background:var(--bg3);border-radius:8px;padding:12px">
@@ -3592,17 +3602,18 @@ function showWorkerModal(w){
         ${w.idChecksumOk===false?'<div style="font-size:11px;color:var(--amber);margin-top:2px"><i class="ti ti-alert-triangle"></i> המספר לא עבר בדיקת ספרת ביקורת — יש לבדוק ידנית</div>':''}
         ${w.idMismatch?'<div style="font-size:11px;color:var(--amber);margin-top:2px"><i class="ti ti-alert-triangle"></i> המספר בספח לא תואם למספר בצד הקדמי — יש לבדוק ידנית</div>':''}
       </div>
-      <div class="field"><label>מין</label>
+      <div class="field"><label>תוקף ת.ז./דרכון</label><input type="text" id="wDocExpiry" value="${esc(w.docExpiry||'')}" placeholder="${tr('DD/MM/YYYY')}"></div>
+    </div>
+    <div class="field"><label>מין</label>
         <select id="wSex" data-seg>
           <option value="" ${!w.docSex?'selected':''}>— לא נבחר —</option>
           <option value="M" ${w.docSex==='M'?'selected':''}>זכר</option>
           <option value="F" ${w.docSex==='F'?'selected':''}>נקבה</option>
         </select>
-      </div>
     </div>
     <div class="field-row">
       <div class="field"><label>מצב משפחתי</label>
-        <select id="wMaritalStatus" data-seg onchange="onWMaritalChange()">
+        <select id="wMaritalStatus" onchange="onWMaritalChange()">
           <option value="" ${!w.maritalStatus?'selected':''}>— לא נבחר —</option>
           <option value="marital_single" ${w.maritalStatus==='marital_single'?'selected':''}>רווק/ה</option>
           <option value="marital_married" ${w.maritalStatus==='marital_married'?'selected':''}>נשוי/אה</option>
@@ -3611,7 +3622,7 @@ function showWorkerModal(w){
         </select>
       </div>
       <div class="field"><label>קופת חולים</label>
-        <select id="wHealthFund" data-seg>
+        <select id="wHealthFund">
           <option value="" ${!w.healthFund?'selected':''}>— לא נבחר —</option>
           <option value="Clalit" ${w.healthFund==='Clalit'?'selected':''}>כללית</option>
           <option value="Maccabi" ${w.healthFund==='Maccabi'?'selected':''}>מכבי</option>
@@ -3622,7 +3633,7 @@ function showWorkerModal(w){
     </div>
     <div class="field-row">
       <div class="field"><label>תאריך לידה</label><input type="text" id="wDob" value="${esc(w.docDob||'')}" placeholder="${tr('DD/MM/YYYY')}"></div>
-      <div class="field"><label>תוקף ת.ז./דרכון</label><input type="text" id="wDocExpiry" value="${esc(w.docExpiry||'')}" placeholder="${tr('DD/MM/YYYY')}"></div>
+      <div class="field"><label>טלפון</label><input type="text" id="wPhone" value="${esc(w.phone||'')}" placeholder="+972..."></div>
     </div>
 </div></section>
 <section class="og-sec" data-sec="address"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-home"></i></span><span class="og-sec-t"><b>${esc(tr('Address'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
@@ -3633,10 +3644,6 @@ function showWorkerModal(w){
     </div>
 </div></section>
 <section class="og-sec" data-sec="work"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-briefcase"></i></span><span class="og-sec-t"><b>${esc(tr('Work'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
-    <div class="field-row">
-      <div class="field"><label>תאריך תחילת עבודה</label><input type="date" id="wStartDate" value="${w.startDate||w.workStartDate||new Date().toISOString().slice(0,10)}" oninput="updateExpiryHint()"></div>
-      <div class="field"><label>טלפון</label><input type="text" id="wPhone" value="${esc(w.phone||'')}" placeholder="+972..."></div>
-    </div>
     <div class="field">
       <label><i class="ti ti-users"></i> לקוחות <span id="wClientCount" style="color:var(--text3);font-weight:400;font-size:12px"></span></label>
       <div id="wClientChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
@@ -3663,6 +3670,7 @@ function showWorkerModal(w){
       </select>
     </div>`:''}
     </div>
+    <div class="field"><label>תאריך תחילת עבודה</label><input type="date" id="wStartDate" value="${w.startDate||w.workStartDate||new Date().toISOString().slice(0,10)}" oninput="updateExpiryHint()"></div>
     <div class="field" style="margin-bottom:6px">
       <button class="btn sm" type="button" onclick="toggleWeeklySchedule()" style="width:100%;justify-content:space-between;display:flex;align-items:center">
         <span><i class="ti ti-calendar"></i> לוח משמרות שבועי</span>
@@ -3697,10 +3705,10 @@ function showWorkerModal(w){
       </div>
       <div id="wExpiryNoStart" style="display:none;color:var(--red);font-size:12px;margin:-4px 0 10px"><i class="ti ti-alert-triangle"></i> חסר תאריך תחילת עבודה — ההתראה לא תפעל בלעדיו.</div>
     </div>
+    <div class="field"><label>הערות</label><textarea id="wNotes" placeholder="הערות על העובד" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;padding:8px 10px;outline:none;min-height:56px;resize:vertical">${esc(w.notes||'')}</textarea></div>
 </div></section>
 <section class="og-sec" data-sec="documents" data-state="${editingWorkerIdx===null?'':({ok:'green',warn:'amber',error:'red'})[workerDocStatus(w).level]}" data-summary="${editingWorkerIdx===null?'':esc(workerDocStatus(w).lines[0]||tr('Complete'))}"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-files"></i></span><span class="og-sec-t"><b>${esc(tr('Documents'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
-      ${editingWorkerIdx!==null?`<div class="wc-line"><i class="ti ti-files"></i><span>${tr('Documents: {0}',{0:(docStatusSummaryHtml(w))})}</span></div>
-      <button class="gbtn" type="button" onclick="openWorkerDocUpload('${esc(w.id)}')"><i class="ti ti-upload"></i><span>${esc(tr('Add document'))}</span></button>`:`<div class="wc-line">${esc(tr('Documents are added on the worker card after the worker is saved.'))}</div>`}
+      ${editingWorkerIdx!==null?workerEditorDocsHtml(w):`<div class="wc-line">${esc(tr('Documents are added on the worker card after the worker is saved.'))}</div>`}
 </div></section>
 <section class="og-sec" data-sec="form101"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-id-badge-2"></i></span><span class="og-sec-t"><b>${esc(tr('Form 101'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
     <div id="wForm101Wrap">
@@ -3779,10 +3787,6 @@ function showWorkerModal(w){
     </div>` : ''}
       <button class="btn" onclick="regenerateWorkerToken(${editingWorkerIdx})" style="background:var(--amber-bg);border-color:rgba(245,166,35,0.3);color:var(--amber)"><i class="ti ti-refresh"></i> טוקן חדש</button>
     </div></section>` : ''}
-    <section class="og-sec" data-sec="notes"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-notes"></i></span><span class="og-sec-t"><b>${esc(tr('Notes'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
-
-    <div class="field"><label>הערות</label><textarea id="wNotes" placeholder="הערות על העובד" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;padding:8px 10px;outline:none;min-height:56px;resize:vertical">${esc(w.notes||'')}</textarea></div>
-</div></section>
     <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px"><i class="ti ti-device-floppy"></i> ${editingWorkerIdx!==null?'השינויים נשמרים בסגירת החלון':'העובד נוצר בסגירת החלון'}</div>`;
   // No Save button: a tap outside the window saves it (saveWorker auto).
   const wov=document.getElementById('workerOverlay');
@@ -3840,11 +3844,60 @@ function ogSegSelect(sel){
   const seg=document.createElement('div'); seg.className='seg seg-sel'; sel.__seg=seg;
   const draw=()=>{ seg.innerHTML=[...sel.options].filter(o=>o.value!=='').map(o=>`<button type="button" data-v="${esc(o.value)}" class="${o.value===sel.value?'on':''}">${esc(o.text)}</button>`).join(''); };
   seg.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; sel.value=b.dataset.v; sel.dispatchEvent(new Event('change',{bubbles:true})); draw(); });
-  sel.addEventListener('change',draw);
+  sel.addEventListener('change',draw); sel.__segDraw=draw;
   sel.style.display='none'; sel.classList.add('seg-src'); sel.after(seg); draw();
+}
+// A section marked data-auto shows only while one of its fields is shown
+// (the user form: Hours, HR commission depend on the role).
+function ogAutoSections(root){
+  if(!root) return;
+  root.querySelectorAll('.og-sec[data-auto]').forEach(sec=>{
+    const any=[...sec.querySelectorAll('.og-sec-b input, .og-sec-b select')].some(f=>{ for(let p=f.parentElement; p&&p!==sec; p=p.parentElement) if(p.style&&p.style.display==='none') return false; return true; });
+    sec.style.display=any?'':'none';
+  });
 }
 // A field asked to focus (a save that found it empty) opens its section first.
 (()=>{ const f=HTMLElement.prototype.focus; HTMLElement.prototype.focus=function(o){ const sec=this.closest&&this.closest('.og-sec:not(.open)'); if(sec) ogSecOpen(sec); return f.call(this,o); }; })();
+// The client editor's Hours approval: the client logins of this client and
+// their hours ticks (set in Admin → Users; the owner's users cache).
+function clientLoginsHtml(c){
+  const users=(loadAdminCache('users_'+activeTenantIdForAdmin())||[]).filter(u=>u.role==='client'&&c&&u.clientId===c.id);
+  const ticks=u=>`<div class="check-grid" style="margin:6px 0 10px">${Object.keys(HOUR_PERM_LABELS).map(p=>`<label class="check-chip"><input type="checkbox" disabled${(u.hourPerms||[]).includes(p)?' checked':''}><span class="chip-text"><span>${esc(tr(HOUR_PERM_LABELS[p]))}</span></span></label>`).join('')}</div>`;
+  return users.length?users.map(u=>`<div class="wc-line" style="margin-bottom:2px"><i class="ti ti-user"></i><span>${esc(u.fullName||u.username)} · ${esc(u.username)}</span></div>${ticks(u)}`).join('')
+    +(isFirmAdminSession()?`<button type="button" class="gbtn" onclick="closeModal('clientOverlay');switchTab('admin');switchAdminPane('users')"><i class="ti ti-users"></i><span>${esc(tr('Edit in Users'))}</span></button>`:'')
+    :`<div class="wc-line">${esc(tr('No client login yet — add one in Admin → Users.'))}</div>`;
+}
+// The supplier editor's Commission (per hour / per day; this month's figures
+// from the canonical hours), Portal login (its supplier logins and what they
+// see) and Workers (mini plates with this month's hours).
+function supplierEditorExtraHtml(sp){
+  const SEC=(key,icon,title,body)=>`<section class="og-sec" data-sec="${key}"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ${icon}"></i></span><span class="og-sec-t"><b>${esc(tr(title))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">${body}</div></section>`;
+  const mine=workers.filter(w=>w.supplierId===sp.id), hours=workersMonthHours(), total=mine.reduce((t,w)=>t+(hours[w.id]||0),0);
+  const commission=`<div class="wc-kv"><div><small>${esc(tr('Per hour'))}</small><span class="fig">₪${esc(String(SUPPLIER_DEFAULT_RATE))}</span></div><div><small>${esc(tr('Workers'))}</small>${mine.length}</div><div><small>${esc(tr('This month'))}</small><span class="fig">${esc(fmtHoursShort(total))}</span></div></div>
+    <div class="wc-line">${esc(tr('Per-worker and per-day commission is set in Accounting.'))}</div>`;
+  const users=(loadAdminCache('users_'+activeTenantIdForAdmin())||[]).filter(u=>u.role==='supplier'&&u.supplierId===sp.id);
+  const SECT={dashboard:'Dashboard', workers:'My Workers', hours:'My Hours'};
+  const login=users.length?users.map(u=>`<div class="wc-line" style="margin-bottom:2px"><i class="ti ti-user"></i><span>${esc(u.fullName||u.username)} · ${esc(u.username)}</span></div><div class="check-grid" style="margin:6px 0 10px">${Object.keys(SECT).map(k=>`<label class="check-chip"><input type="checkbox" disabled${(u.supplierSections||Object.keys(SECT)).includes(k)?' checked':''}><span class="chip-text"><span>${esc(tr(SECT[k]))}</span></span></label>`).join('')}</div>`).join('')
+    :`<div class="wc-line">${esc(tr('No portal login yet — add one in Admin → Users.'))}</div>`;
+  const plates=mine.length?mine.map(w=>t3Line({c:isActiveWorker(w)?'var(--ok)':'var(--bad)', av:t3Av(w), name:`<span title="${esc(w.name)}">${esc(shortName(w.name))}</span>`, right:`<span class="r">${esc(fmtHoursShort(hours[w.id]))}</span>`})).join(''):`<div class="t3-empty">${esc(tr('No workers'))}</div>`;
+  return SEC('commission','ti-coin','Commission',commission)+SEC('portal','ti-key','Portal login',login)+SEC('workers','ti-users-group','Workers',plates);
+}
+// The worker editor's Documents section: a plate per document (the scan and
+// Form 101 first, then w.docs), with Upload / Renew when something is missing
+// or expiring, and Add document.
+function workerEditorDocsHtml(w){
+  const st=workerDocStatus(w), exp=new Map(workerDocExpiries(w).map(x=>[x.doc.id,x]));
+  const plate=(c,icon,title,sub,act)=>`<div class="og-doc" style="--c:${c}"><span class="og-doc-ic"><i class="ti ${icon}"></i></span><div><b>${esc(title)}</b><small>${esc(sub)}</small></div>${act||''}</div>`;
+  const btn=(label,onclick)=>`<button type="button" class="gbtn nact" onclick="${onclick}">${esc(label)}</button>`;
+  const id=esc(w.id), wi=workers.findIndex(x=>x.id===w.id);
+  const rows=[plate(st.missing.length?'var(--warn)':'var(--ok)','ti-id',tr('ID / Passport'),st.expiry?st.expiry.text:(workerDocId(w)||''),st.missing.length||st.failed?btn(tr('Upload'),`rescanFromWorkerModal()`):''),
+    plate(w.docUrl?'var(--ok)':'var(--warn)','ti-file-text',tr('Form 101'),w.docUrl?tr('Saved'):tr('Not saved yet'),'')];
+  [...(w.docs||[])].sort((a,b)=>String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||''))).forEach(d=>{
+    const x=exp.get(d.id), c=x?(x.level==='error'?'var(--bad)':'var(--warn)'):'var(--ok)';
+    rows.push(plate(c,d.type==='contract'?'ti-file-certificate':'ti-id-badge-2',tr(WORKER_DOC_TYPES[d.type]||'Document'),x?x.text:(d.expiry?tr('Expires {0}',{0:fmtDMY(d.expiry)}):(d.name||'')),x?btn(tr('Renew'),`openWorkerDocUpload('${id}')`):''));
+  });
+  return rows.join('')+`<button class="gbtn" type="button" onclick="openWorkerDocUpload('${id}')" style="margin-top:4px"><i class="ti ti-upload"></i><span>${esc(tr('Add document'))}</span></button>`;
+}
 // No color picker any more (per user request 2026-10-04): a new worker,
 // client or supplier gets the next color of its palette automatically.
 function pickWColor(i){ selColorIdx=i; }
@@ -4171,7 +4224,23 @@ function showClientModal(c){
          billing mode as two buttons, OT / Shabbat inline (empty = by law),
          and the margin per hour. -->
 </div></section>
-<section class="og-sec" data-sec="rates"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-coin"></i></span><span class="og-sec-t"><b>${esc(tr('Rates'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
+<section class="og-sec" data-sec="place"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-map-pin"></i></span><span class="og-sec-t"><b>${esc(tr('Place'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
+    <div class="field">
+      <label><i class="ti ti-map-pin"></i> מיקום לשעון הנוכחות</label>
+      <button class="btn ${c.lat?'sm':'accent'}" type="button" onclick="openMapPicker()" style="width:100%;justify-content:center;margin-bottom:10px">
+        <i class="ti ti-map-2"></i> ${c.lat?'שינוי מיקום במפה':'בחירת מיקום במפה'}
+      </button>
+      <div style="margin-bottom:8px">
+        <label style="font-size:11px;color:var(--text3);margin-bottom:4px;display:block">או הדבקת קישור מ-Google Maps</label>
+        <input type="text" id="cMapsUrl" dir="ltr" placeholder="https://maps.google.com/..." value="${esc(c.mapsUrl||'')}" oninput="parseGoogleMapsUrl(this.value)" style="font-size:12px">
+      </div>
+      <input type="hidden" id="cLat" value="${c.lat||''}"><input type="hidden" id="cLng" value="${c.lng||''}">
+      <div style="margin-bottom:8px;max-width:140px"><label style="font-size:11px;color:var(--text3)">רדיוס (מטרים)</label>
+        <input type="number" id="cRadius" value="${c.radius||100}" placeholder="100"></div>
+      <div id="cLocStatus" style="font-size:12px;min-height:18px;padding:4px 0;color:${c.lat?'var(--green)':'var(--text2)'}">${c.lat?locSetHtml(c.lat,c.lng):''}</div>
+    </div>
+</div></section>
+    <section class="og-sec" data-sec="rates"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-coin"></i></span><span class="og-sec-t"><b>${esc(tr('Rates'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
     <div class="form-section rates-head"><span><i class="ti ti-coin"></i> תעריפים</span><button type="button" class="acc-help" onclick="this.closest('.modal').querySelector('.rates-help').classList.toggle('open')" title="מה זה?"><i class="ti ti-info-circle"></i></button></div>
     <div class="rates-help">שכר העובד חל על כל העובדים אצל הלקוח, אלא אם לעובד יש תעריף משלו; שעות נוספות ושבת לפי החוק. תשלום הלקוח לא משנה את שכר העובד.</div>
     <div class="field-row">
@@ -4190,23 +4259,10 @@ function showClientModal(c){
     </div>
     <div class="rate-margin" id="cBillMargin"></div>
 </div></section>
-<section class="og-sec" data-sec="place"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-map-pin"></i></span><span class="og-sec-t"><b>${esc(tr('Place'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
-    <div class="field">
-      <label><i class="ti ti-map-pin"></i> מיקום לשעון הנוכחות</label>
-      <button class="btn ${c.lat?'sm':'accent'}" type="button" onclick="openMapPicker()" style="width:100%;justify-content:center;margin-bottom:10px">
-        <i class="ti ti-map-2"></i> ${c.lat?'שינוי מיקום במפה':'בחירת מיקום במפה'}
-      </button>
-      <div style="margin-bottom:8px">
-        <label style="font-size:11px;color:var(--text3);margin-bottom:4px;display:block">או הדבקת קישור מ-Google Maps</label>
-        <input type="text" id="cMapsUrl" dir="ltr" placeholder="https://maps.google.com/..." value="${esc(c.mapsUrl||'')}" oninput="parseGoogleMapsUrl(this.value)" style="font-size:12px">
-      </div>
-      <input type="hidden" id="cLat" value="${c.lat||''}"><input type="hidden" id="cLng" value="${c.lng||''}">
-      <div style="margin-bottom:8px;max-width:140px"><label style="font-size:11px;color:var(--text3)">רדיוס (מטרים)</label>
-        <input type="number" id="cRadius" value="${c.radius||100}" placeholder="100"></div>
-      <div id="cLocStatus" style="font-size:12px;min-height:18px;padding:4px 0;color:${c.lat?'var(--green)':'var(--text2)'}">${c.lat?locSetHtml(c.lat,c.lng):''}</div>
-    </div>
+    <section class="og-sec" data-sec="approval"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-circle-check"></i></span><span class="og-sec-t"><b>${esc(tr('Hours approval'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
+      ${clientLoginsHtml(c)}
 </div></section>
-    ${editingClientId?`<div class="modal-actions"><button class="btn" type="button" style="background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)" onclick="punchFromClientModal()"><i class="ti ti-clock"></i> החתמה ידנית</button></div>`:''}
+    <div class="modal-actions"><button type="button" class="gbtn primary og-save" onclick="saveClient()">${esc(tr('Save'))}</button>${editingClientId?`<button class="btn" type="button" style="background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)" onclick="punchFromClientModal()"><i class="ti ti-clock"></i> החתמה ידנית</button>`:''}</div>
     <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px"><i class="ti ti-device-floppy"></i> ${editingClientId?'השינויים נשמרים בסגירת החלון':'הלקוח נוצר בסגירת החלון'}</div></div>`;
   // No Save button: a tap outside the window saves it (saveClient auto).
   const cov=document.getElementById('clientOverlay');
@@ -4587,6 +4643,26 @@ function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
   renderPagedList(box,'workersCards',sig,workersGroupedItems(list,groupBy),it=>it.group?title(it.group):plate(it),{grid:true});
   selectRoot('workers', box);
 }
+// The header ⋮: Scan passport and Select… (the plates view).
+function openWorkersHeadMenu(e, btn){
+  if(e) e.stopPropagation();
+  openPopover(btn, [{icon:'ti-sparkles', label:tr('Scan passport'), fn:()=>startNewScan()},
+    ...(getWorkersView()==='cards'&&hasPermission('workers')?[{icon:'ti-checkbox', label:tr('Select…'), fn:startWorkerSelect}]:[])]);
+}
+// The tabs over the list: Active, Vacation, Pending (documents incomplete) —
+// a tap sets the Status / Documents filters, a tap on the open one clears them.
+function renderWorkersTabs(){
+  const el=document.getElementById('workersTabs'); if(!el) return;
+  const st=document.getElementById('workersFilterStatus')?.value||'', dc=document.getElementById('workersFilterDocs')?.value||'';
+  const on=k=>k==='active'?st==='active'&&!dc:k==='vacation'?st==='vacation'&&!dc:!st&&dc==='incomplete';
+  el.innerHTML=[['active','Active'],['vacation','Vacation'],['pending','Pending']].map(([k,l])=>`<button type="button" class="${on(k)?'on':''}" onclick="setWorkersTab('${k}')">${esc(tr(l))}</button>`).join('');
+}
+function setWorkersTab(k){
+  const st=document.getElementById('workersFilterStatus'), dc=document.getElementById('workersFilterDocs');
+  const cur=k==='active'?st.value==='active'&&!dc.value:k==='vacation'?st.value==='vacation'&&!dc.value:!st.value&&dc.value==='incomplete';
+  st.value=cur?'':(k==='pending'?'':k); dc.value=cur?'':(k==='pending'?'incomplete':'');
+  renderWorkersPage();
+}
 function startWorkerSelect(){
   const box=document.getElementById('workersCards'); if(!box||getWorkersView()!=='cards') return;
   startSelect({key:'workers', root:box, ids:()=>__workersShownIds,
@@ -4687,9 +4763,11 @@ function renderWorkersPage(){
       return text.includes(q) || (qNum.length>=2 && docNo.includes(qNum));
     });
   }
-  document.getElementById('workersCount').innerHTML=esc(tr('{0} worker{1}',{0:(list.length),1:(list.length!==1?'s':'')}))
+  document.getElementById('workersCount').innerHTML=`${esc(tr('Workers'))} <em style="font-style:normal;color:var(--text3)">${list.length}</em>`
     +(!stFilter&&inactiveN?` · <a href="#" class="inactive-link" onclick="event.preventDefault();showInactiveWorkers()">${esc(tr('Inactive: {n} — show',{n:inactiveN}))}</a>`:'')
-    +(getWorkersView()==='cards'&&hasPermission('workers')?listMenuHtml([{icon:'ti-checkbox', label:tr('Select…'), fn:startWorkerSelect}]):'');
+    ;
+  const tc=document.getElementById('workersTitleCount'); if(tc) tc.textContent=list.length;
+  renderWorkersTabs();
   const view=getWorkersView();
   if(view!=='cards' && __selState && __selState.key==='workers') endSelect();
   document.getElementById('workersViewList')?.classList.toggle('active',view==='list');
@@ -5225,14 +5303,12 @@ function openEditSupplier(sid){ editingSupplierId=sid; const s=suppliers.find(x=
 function showSupplierModal(s){
   document.getElementById('supplierModal').innerHTML=`
     <div class="og-edh" style="--c:${esc(s.color||'var(--neutral)')}"><div class="t3-av og-av wc-av">${esc(String(s.name||'?').trim().slice(0,2).toUpperCase())}</div><div class="og-edh-n"><h4>${esc(s.name||'')||esc(editingSupplierId?tr('Edit Supplier'):tr('Add New Supplier'))}</h4><p>${esc(s.phone||'')}</p></div></div>
-    <section class="og-sec" data-sec="supplier"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-truck-delivery"></i></span><span class="og-sec-t"><b>${esc(tr('Supplier'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
+    <section class="og-sec" data-sec="supplier"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-truck-delivery"></i></span><span class="og-sec-t"><b>${esc(tr('Company'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
     <div class="field-row">
       <div class="field"><label>${tr('Name')}</label><input type="text" class="need" id="sName" value="${esc(s.name||'')}" placeholder="${tr('Supplier name')}" autofocus></div>
       <div class="field"><label>ח.פ (optional)</label><input type="text" id="sCompanyNumber" value="${esc(s.companyNumber||'')}" placeholder="512345678"></div>
     </div>
     <div class="field"><label>${tr('Phone (optional)')}</label><input type="text" id="sPhone" value="${esc(s.phone||'')}" placeholder="${tr('Phone')}"></div>
-</div></section>
-<section class="og-sec" data-sec="bank"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-building-bank"></i></span><span class="og-sec-t"><b>${esc(tr('Bank'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
     <div class="field">
       <label><i class="ti ti-building-bank"></i> ${tr('Bank details (optional)')}</label>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
@@ -5245,6 +5321,7 @@ function showSupplierModal(s){
       </div>
     </div>
 </div></section>
+    ${editingSupplierId?supplierEditorExtraHtml(s):''}
     <div class="modal-actions">
       <button class="gbtn primary og-save" onclick="saveSupplier()">${esc(editingSupplierId?tr('Save Changes'):tr('Add Supplier'))}</button>
     </div>`;
@@ -6318,6 +6395,7 @@ let __editingUserOrigRole = null;
 function userFormSections(){
   const ov=document.getElementById('userFormOverlay');
   ov.querySelectorAll('.og-sec').forEach(x=>x.classList.remove('open'));
+  ogAutoSections(ov);
   ogSections(ov,'person');
 }
 function showUserFormAccess(on){
@@ -6434,6 +6512,8 @@ function onUserFormRoleChange(fromUser){
   // A new HR login starts with the Workers section only.
   if(role==='hr' && fromUser===true && (!__editingUserId || !document.querySelector('.userFormPermCb:checked')))
     document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = cb.value==='workers');
+  const rs=document.getElementById('userFormRole'); if(rs.__segDraw) rs.__segDraw();
+  ogAutoSections(document.getElementById('userFormOverlay'));
 }
 function openCreateUserForm(){
   __editingUserId = null;
@@ -6492,7 +6572,7 @@ async function openEditUserForm(id){
   __editingAdminRow = u.role==='tenant_admin' || u.role==='superadmin';
   if(__editingAdminRow){
     document.getElementById('userFormTitle').textContent = tr('Edit {0} (owner)',{0:(u.fullName || u.username)});
-    ['userFormSupplierField','userFormClientField','userFormHourPermsField','userFormHrFields','userFormHrWorkersField','userFormPayFields'].forEach(i => document.getElementById(i).style.display = 'none');
+    ['userFormSupplierField','userFormClientField','userFormHourPermsField','userFormHrFields','userFormHrWorkersField','userFormPayFields','userFormShowPayGrid'].forEach(i => document.getElementById(i).style.display = 'none');
     showUserFormAccess(false);
     document.getElementById('userFormOverlay').classList.add('open'); userFormSections();
     return;

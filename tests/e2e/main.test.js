@@ -685,8 +685,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     renderWorkersPage(); r.leftOut = !tmp(); r.notYet = workers.some(w => w.id === 'wtmp');
     await wait(5400); r.deleted = !workers.some(w => w.id === 'wtmp');
     // Select → Vacation for the picked workers.
-    document.querySelector('#workersCount .t3-kb').click(); await wait(50);
-    document.querySelector('#ogPop .og-pop-it').click(); await wait(100);
+    document.getElementById('workersHeadMenu').click(); await wait(50);
+    [...document.querySelectorAll('#ogPop .og-pop-it')].find(b => /Select/.test(b.textContent)).click(); await wait(100);
     document.querySelector('#workersCards .wplate[data-wid="w1"]').click();
     r.sel = document.querySelector('.sel-bar b').textContent;
     [...document.querySelectorAll('.sel-bar .gbtn')].find(b => /Vacation/.test(b.textContent)).click(); await wait(100);
@@ -706,26 +706,41 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.worker = secs('workerModal');
     const person = document.querySelector('#workerModal .og-sec[data-sec="person"]');
     r.personSum = person.querySelector('.og-sec-s').textContent;
-    r.sexSeg = [...document.querySelectorAll('#workerModal .seg-sel')].length >= 3 && document.getElementById('wSex').style.display === 'none';
+    r.sexSeg = [...document.querySelectorAll('#workerModal .seg-sel')].length >= 2 && document.getElementById('wMaritalStatus').style.display !== 'none' && document.getElementById('wSex').style.display === 'none';
     const segBtn = document.getElementById('wSex').nextElementSibling.querySelector('button[data-v="F"]'); segBtn.click(); r.sexVal = document.getElementById('wSex').value;
     const addrSec = document.querySelector('#workerModal .og-sec[data-sec="address"]'); addrSec.classList.remove('open');
     document.getElementById('wCity').focus(); r.focusOpens = addrSec.classList.contains('open');
-    const notes = document.querySelector('#workerModal .og-sec[data-sec="notes"]'), wasOpen = notes.classList.contains('open');
+    const notes = document.querySelector('#workerModal .og-sec[data-sec="access"]'), wasOpen = notes.classList.contains('open');
     notes.querySelector('.og-sec-h').click(); r.toggles = notes.classList.contains('open') !== wasOpen;
     r.noSave = !document.querySelector('#workerModal .og-save');
     workers.find(w => w.id === 'w2').docSex = workers.find(w => w.id === 'w2').docSex; closeModal('workerOverlay');
     openEditClient(clients[0].id); await wait(100); r.client = secs('clientModal'); closeModal('clientOverlay');
     openAddSupplier(); await wait(100); r.supplier = secs('supplierModal'); r.supSave = !!document.querySelector('#supplierModal .og-save');
     r.supNameAmber = getComputedStyle(document.querySelector('#supplierModal .og-sec[data-sec="supplier"]')).getPropertyValue('--c').trim(); closeModal('supplierOverlay');
+    openEditSupplier(suppliers[0].id); await wait(100); r.supplierEdit = secs('supplierModal').map(x => x.replace('*', '')).join(); closeModal('supplierOverlay'); await wait(150);
+    openCreateUserForm(); await wait(100); const role = document.getElementById('userFormRole'); role.value = 'hr'; role.dispatchEvent(new Event('change')); await wait(50);
+    r.userHr = secs('userFormOverlay').map(x => x.replace('*', '')).join(); r.roleSeg = !!document.querySelector('#userFormOverlay .seg-sel button.on[data-v="hr"]');
+    role.value = 'staff'; role.dispatchEvent(new Event('change')); closeModal('userFormOverlay'); await wait(150);
     openCreateUserForm(); await wait(100); r.user = secs('userFormOverlay'); closeModal('userFormOverlay');
     // closing one window brings back the one it was opened over: close them all
     for(let i = 0; i < 3; i++){ await wait(150); document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); }
     return r;
   });
-  ok(ed.worker.join() === 'person,address,work,documents,form101,access,notes' && /Dana/.test(ed.personSum) && ed.sexSeg && ed.sexVal === 'F' && ed.focusOpens && ed.toggles && ed.noSave,
-    'editors: the worker editor is section plates (Person · Address · Work · Documents · Form 101 · Access · Notes), summaries, segmented choices, a focused field opens its section, no Save ' + JSON.stringify(ed));
-  ok(ed.client.join() === 'client,rates,place' && ed.supplier.join() === 'supplier*,bank' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,login,access',
+  ok(ed.worker.join() === 'person,address,work,documents,form101,access' && /Dana/.test(ed.personSum) && ed.sexSeg && ed.sexVal === 'F' && ed.focusOpens && ed.toggles && ed.noSave,
+    'editors: the worker editor is section plates (Person · Address · Work · Documents · Form 101 · Access), summaries, segmented choices, a focused field opens its section, no Save ' + JSON.stringify(ed));
+  ok(ed.client.join() === 'client,place,rates,approval' && ed.supplier.join() === 'supplier*,bank' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,sections' && ed.supplierEdit === 'supplier,commission,portal,workers' && ed.userHr === 'person,sections,hours,commission' && ed.roleSeg,
     'editors: client, supplier (one Save, an empty name amber) and user form as section plates ' + JSON.stringify(ed));
+  // Worker list header (the owner's fixed structure): "Workers N", glass New, ⋮; tabs Active / Vacation / Pending.
+  const wh = await p.evaluate(async () => {
+    switchTab('workers'); setWorkersView('cards'); renderWorkersPage();
+    const tabs = () => [...document.querySelectorAll('#workersTabs button')], r = {tabs: tabs().map(b => b.textContent).join(), count: document.getElementById('workersTitleCount').textContent};
+    tabs()[1].click(); r.vac = document.getElementById('workersFilterStatus').value === 'vacation' && tabs()[1].classList.contains('on');
+    tabs()[1].click(); r.cleared = document.getElementById('workersFilterStatus').value === '';
+    tabs()[2].click(); r.pending = document.getElementById('workersFilterDocs').value === 'incomplete'; tabs()[2].click();
+    document.getElementById('workersHeadMenu').click(); r.menu = [...document.querySelectorAll('#ogPop .og-pop-it')].map(b => b.textContent.trim()).join(); closePopover();
+    return r;
+  });
+  ok(wh.tabs === 'Active,Vacation,Pending' && /^\d+$/.test(wh.count) && wh.vac && wh.cleared && wh.pending && wh.menu === 'Scan passport,Select…', 'workers: header count, New and ⋮ (Scan passport, Select…), tabs Active / Vacation / Pending set the filters ' + JSON.stringify(wh));
   // Greeting and notifications (redesign stage 5): the greeting by time of day; the bell, its panel, "Mark all read" kept on the account.
   const nt = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
