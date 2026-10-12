@@ -53,3 +53,19 @@ The look the user chose on 2026-10-12 for every page (manager app, supplier port
 - Punch button — **hold about one second**: the ring fills while held; letting go early rolls it back and sends nothing. Punch in is all green (green dot, green tint, green ring and glow); Punch out is all red. On success the face flashes its color, a check draws, the phone vibrates, and the line under it says "Punched in at 07:58 · have a good shift" (green) or "Punched out at 17:04 · 8h 04m today" (red). The button takes the whole touch gesture (no scroll, no long-press menu).
 - My Schedule (full-height sheet): month switcher, figures (work days, planned hours), a month calendar of soft tiles (green work, blue night, amber off, a cyan dot on a day the manager changed, today ringed), a legend, day plates, the note "Your manager plans this schedule; changes show here at once."
 - My Hours (full-height sheet): month switcher, figures (days and hours worked), a plate per shift (the current one cyan "on shift"); a tap shows its punches (IN / OUT, time, site, GPS distance); a Pay card (regular, overtime, Shabbat, total, total with travel) and the estimate note.
+
+## Build plan (stage by stage)
+Each stage: a new short session that starts by reading this file; its own PR into `main` with the tests (`npm test` in `tests/rules`, `test:auth`, the browser tests, `tests/i18n/check.js`, `tests/icons/check.js`), every new text in the dictionaries with Hebrew, the duplicated helpers mirrored in every page (CLAUDE.md → Duplicated on purpose), `service-worker.js` CACHE bumped, docs updated; merged only after the owner's OK. Later stages build on the shared pieces of stage 1.
+
+1. **Foundation** — the ground, glass and plate styles, the highlight line, tick tiles, the logo 11C with its two lines, the Language button and sheet on every page (replacing the select in the account menu), the bottom bar (variant 11) in the manager app. No tab content changes yet.
+2. **Lists** — plates everywhere (`t3Line` → the new plate: bar-colored avatar, figure in green, bare ⋮), swipe Edit / Delete, the Undo snack instead of confirm dialogs (the real delete after 5 s), the ⋮ popover with a tail, Select mode with the glass bulk bar; in the manager app and the supplier portal (shared helpers mirrored).
+3. **Workers** — the worker plate (short name, notice chips, site · today's punch, month hours), the notices sheet, the worker card.
+4. **Editors** — worker, client, supplier, HR / user as section plates (Form 101 labels stay Hebrew; the worker editor keeps saving itself on close).
+5. **Today, greeting, notifications** — the greeting with the time-of-day icons, the bell with its panel and "Mark all read" (read state stored per user; rules and tests).
+6. **Schedule** — the week switcher, worker lines with day marks, opened days.
+7. **Accounting and hours approvals** — period switcher, figures, tabs, plates with amounts, totals over every item; approvals with Select.
+8. **Clients, Suppliers, Admin** — the remaining tabs (punch log, firms, users, errors, timings).
+9. **Punch page** — no ⋮, the tiles, the hold-to-punch button (green in / red out, touch-safe), the My Schedule and My Hours sheets.
+10. **Supplier and client portals** — the same pieces; `hours-review.js` restyled.
+11. **Sign-in** — the compact glass card over the site.
+12. **Weather** — a Cloud Function calling OpenWeatherMap (key in Secret Manager, 30-minute cache per area), the weather icons and temperature in the greeting, the time-of-day icon as fallback.
