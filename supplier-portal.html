@@ -275,6 +275,43 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 .tab-btn.active{background:var(--glass-hi)!important;border-color:rgba(255,255,255,.35)!important;color:#fff!important}
 .tab-btn.active::after{content:'';position:absolute;left:14px;right:14px;bottom:-1px;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55);animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1)}
 @media (prefers-reduced-motion:reduce){.og-run,.og-p,.og-linkrun{animation:none}}
+  /* Editors as section plates (redesign stage 4): a head (avatar, name,
+     summary, chips, tools), then a stack of section plates that open on a tap. */
+  .og-edh{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  .og-edh>img{width:56px;height:56px;border-radius:50%;object-fit:cover;flex:none;box-shadow:inset 0 0 0 2px var(--c),0 0 0 2px color-mix(in srgb,var(--c) 40%,transparent)}
+  .og-edh-n{flex:1;min-width:0}
+  .og-edh-n h4{font-size:18px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .og-edh-n p{font-size:12px;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .og-edh-n p:empty{display:none}
+  .og-edh-n .wc-chips{margin:6px 0 0}
+  .og-sec{position:relative;background:var(--plate);border-radius:16px;box-shadow:inset 4px 0 0 var(--c,var(--neutral));margin-bottom:8px;transition:box-shadow .25s}
+  .og-sec-h{position:relative;display:flex;align-items:center;gap:12px;width:100%;padding:11px 12px 11px 16px;border:0;background:none;color:var(--text);text-align:start;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent}
+  .og-sec-ic{width:36px;height:36px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--c,var(--neutral));background:color-mix(in srgb,var(--c,var(--neutral)) 22%,transparent);box-shadow:inset 0 0 0 1.5px var(--c,var(--neutral))}
+  .og-sec-t{flex:1;min-width:0}
+  .og-sec-t b{display:block;font-size:15px;font-weight:600}
+  .og-sec-t small{display:block;font-size:12px;color:#8b90a0;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .og-sec-chev{color:var(--text3);font-size:16px;transition:transform .25s}
+  .og-sec.open .og-sec-chev{transform:rotate(180deg)}
+  .og-sec.open .og-sec-t b{position:relative;display:inline-block;padding-bottom:4px}
+  .og-sec.open .og-sec-t b::after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55);animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1)}
+  .og-sec-b{display:none;padding:4px 14px 14px 16px}
+  .og-sec.open .og-sec-b{display:block}
+  .og-sec-b .scan-missing,.og-sec-b input.need:placeholder-shown{border-color:var(--warn) !important;box-shadow:0 0 0 1px rgba(245,166,35,.35)}
+  .seg.seg-sel{margin:0}
+  .og-count{font-style:normal;font-size:14px;font-weight:500;color:var(--text2);margin-left:4px}
+  .workers-count{font-size:12px;color:var(--text2)}
+  .workers-count .sec-lbl{font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+  .og-doc{display:flex;align-items:center;gap:10px;padding:9px 8px 9px 12px;margin-bottom:6px;border-radius:12px;background:rgba(255,255,255,.04);box-shadow:inset 3px 0 0 var(--c)}
+  .og-doc-ic{width:30px;height:30px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--c);background:color-mix(in srgb,var(--c) 18%,transparent)}
+  .og-doc>div{flex:1;min-width:0;font-size:13px}
+  .og-doc b{display:block;font-weight:600}
+  .og-doc small{display:block;font-size:11px;color:#8b90a0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .modal-actions .og-save{flex:1}
+  .og-av{background:color-mix(in srgb,var(--c,var(--neutral)) 22%,transparent) !important;color:var(--c,var(--neutral)) !important;box-shadow:inset 0 0 0 1.5px var(--c,var(--neutral))}
+  .wc-av{width:56px;height:56px;font-size:19px}
+  .seg{display:flex;gap:4px;padding:4px;margin:10px 0 14px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1)}
+  .seg button{position:relative;flex:1;height:34px;border:0;border-radius:10px;background:none;color:var(--text2);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer}
+  .seg button.on{background:var(--glass-hi);color:#fff}
 </style>
 </head>
 <body>
@@ -1305,6 +1342,124 @@ function openEditWorkerModal(id){ renderWorkerModal(myWorkers.find(w=>w.id===id)
 // Form-101 PDF generation flow) was out of scope for this stage; a supplier
 // can still fully onboard a worker by hand. Documented here as a known,
 // deliberate scope reduction rather than a half-built AI integration.
+// ── Editors as section plates (redesign stage 4; a copy of the manager app's — keep the two the same) ──
+// An editor's body is a stack of <section class="og-sec"> plates: an icon, a
+// title and a one-line summary of what is filled in; the bar and icon green
+// when complete, amber when a field is missing (.scan-missing, or an empty
+// .need), red when the section is marked urgent (data-state). A tap on the
+// head opens or closes a section. The fields stay in the page while closed,
+// so every save reads them as before. ogSections(root, openKey) draws the
+// summaries, opens openKey (or every section with something missing), and
+// turns each select[data-seg] (2–4 choices) into a segmented switch.
+function ogSecToggle(h){ const sec=h.closest('.og-sec'); sec.classList.toggle('open'); ogSecSummary(sec); }
+function ogSecOpen(sec){ if(sec && !sec.classList.contains('open')){ sec.classList.add('open'); ogSecSummary(sec); } }
+function ogSecSummary(sec){
+  const hidden=el=>{ for(let p=el.parentElement; p && p!==sec; p=p.parentElement) if(p.style && p.style.display==='none') return true; return false; };
+  const vals=[]; let missing=false;
+  sec.querySelectorAll('.og-sec-b input, .og-sec-b select, .og-sec-b textarea').forEach(f=>{
+    if(f.type==='hidden'||f.type==='file'||f.type==='range'||f.type==='password'||hidden(f)) return;
+    let v='';
+    if(f.tagName==='SELECT'){ const o=f.options[f.selectedIndex]; v=f.value!==''&&o?o.text.trim():''; if(/^—/.test(v)) v=''; }
+    else if(f.type==='checkbox'){ if(f.checked&&f.closest('label.check-chip')){ const t=f.closest('label.check-chip').querySelector('.chip-text span'); v=t?t.textContent.trim():''; } }
+    else v=String(f.value||'').trim();
+    if(f.classList.contains('scan-missing') || (f.classList.contains('need') && !v)) missing=true;
+    if(v && vals.length<3) vals.push(v.length>32?v.slice(0,30)+'…':v);
+  });
+  const st=sec.dataset.state, sum=sec.dataset.summary;
+  const c = st==='red' ? 'var(--bad)' : (st==='amber'||missing) ? 'var(--warn)' : (st==='green'||vals.length) ? 'var(--ok)' : 'var(--neutral)';
+  sec.style.setProperty('--c', c);
+  const s=sec.querySelector('.og-sec-s'); if(s) s.textContent = sum || vals.join(' · ') || tr('Not filled in');
+  return missing;
+}
+function ogSections(root, openKey){
+  if(!root) return;
+  root.querySelectorAll('select[data-seg]').forEach(ogSegSelect);
+  root.querySelectorAll('.og-sec').forEach(sec=>{ const miss=ogSecSummary(sec); if(miss || sec.dataset.sec===openKey) sec.classList.add('open'); });
+  if(!root.__ogSecWired){
+    root.__ogSecWired=true;
+    const upd=e=>{ const sec=e.target.closest&&e.target.closest('.og-sec'); if(sec) ogSecSummary(sec); };
+    root.addEventListener('input',upd); root.addEventListener('change',upd);
+  }
+}
+// A select with 2–4 choices as a segmented switch; the select stays the value.
+function ogSegSelect(sel){
+  if(sel.__seg) return;
+  const seg=document.createElement('div'); seg.className='seg seg-sel'; sel.__seg=seg;
+  const draw=()=>{ seg.innerHTML=[...sel.options].filter(o=>o.value!=='').map(o=>`<button type="button" data-v="${esc(o.value)}" class="${o.value===sel.value?'on':''}">${esc(o.text)}</button>`).join(''); };
+  seg.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; sel.value=b.dataset.v; sel.dispatchEvent(new Event('change',{bubbles:true})); draw(); });
+  sel.addEventListener('change',draw); sel.__segDraw=draw;
+  sel.style.display='none'; sel.classList.add('seg-src'); sel.after(seg); draw();
+}
+// A field asked to focus (a save that found it empty) opens its section first.
+(()=>{ const f=HTMLElement.prototype.focus; HTMLElement.prototype.focus=function(o){ const sec=this.closest&&this.closest('.og-sec:not(.open)'); if(sec) ogSecOpen(sec); return f.call(this,o); }; })();
+// The client editor's Hours approval: the client logins of this client and
+// their hours ticks (set in Admin → Users; the owner's users cache).
+function clientLoginsHtml(c){
+  const users=(loadAdminCache('users_'+activeTenantIdForAdmin())||[]).filter(u=>u.role==='client'&&c&&u.clientId===c.id);
+  const can=isFirmAdminSession();
+  const ticks=u=>`<div class="check-grid" style="margin:6px 0 10px">${Object.keys(HOUR_PERM_LABELS).map(p=>`<label class="check-chip"><input type="checkbox" data-uid="${esc(u.id)}" data-field="hourPerms" value="${esc(p)}"${can?'':' disabled'}${(u.hourPerms||[]).includes(p)?' checked':''} onchange="saveLoginTicks(this)"><span class="chip-text"><span>${esc(tr(HOUR_PERM_LABELS[p]))}</span></span></label>`).join('')}</div>`;
+  return (users.length?users.map(u=>`<div class="wc-line" style="margin-bottom:2px"><i class="ti ti-user"></i><span>${esc(u.fullName||u.username)} · ${esc(u.username)}</span></div>${ticks(u)}`).join(''):`<div class="wc-line">${esc(tr('No client login yet.'))}</div>`)
+    +(can&&c&&c.id?`<button type="button" class="gbtn" onclick="newLoginFor('client','${esc(c.id)}')"><i class="ti ti-user-plus"></i><span>${esc(tr('New client login'))}</span></button>`:'');
+}
+// A tick of a login (client hours ticks, supplier portal tabs) changed in an
+// editor: saved at once (updateUser — the user signs in again with the new
+// rights), and the users cache follows.
+async function saveLoginTicks(cb){
+  const uid=cb.dataset.uid, field=cb.dataset.field;
+  const values=[...document.querySelectorAll(`input[data-uid="${CSS.escape(uid)}"][data-field="${field}"]:checked`)].map(x=>x.value);
+  try{
+    const json=await (await fetch(API_URL,{method:'POST', body:JSON.stringify({action:'updateUser', ...gsAuth(), id:uid, [field]:values})})).json();
+    if(!json||json.error){ showToast(tr((json&&json.error)||'Save failed')); cb.checked=!cb.checked; return; }
+    const key='users_'+activeTenantIdForAdmin(), list=loadAdminCache(key)||[], u=list.find(x=>x.id===uid);
+    if(u){ u[field]=values; saveAdminCache(key,list); }
+    showToast(tr('Saved'));
+  }catch(e){ showToast(tr('Network error')); cb.checked=!cb.checked; }
+}
+// "New client login" / "New portal login" from an editor: the user form with
+// the role and the client / supplier already set.
+function newLoginFor(role, id){
+  const ov=role==='client'?'clientOverlay':'supplierOverlay';
+  if(role==='client') saveClient({auto:true}); else closeModal(ov);
+  openCreateUserForm();
+  const r=document.getElementById('userFormRole'); r.value=role; onUserFormRoleChange(true);
+  const sel=document.getElementById(role==='client'?'userFormClientId':'userFormSupplierId');
+  if(sel){ if(role==='client') fillUserFormClientSelect(id); else fillUserFormSupplierSelect(id); sel.value=id; if(role==='supplier') renderUserFormHrWorkers(); }
+  userFormSections();
+}
+// The supplier editor's Commission (per hour; this month's hours and the
+// commission payable — the same figures as Accounting → Payable by supplier),
+// Portal login (its supplier logins and the portal tabs they see, editable)
+// and Workers (mini plates with this month's hours).
+function supplierEditorExtraHtml(sp){
+  const SEC=(key,icon,title,body)=>`<section class="og-sec" data-sec="${key}"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ${icon}"></i></span><span class="og-sec-t"><b>${esc(tr(title))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">${body}</div></section>`;
+  const mine=workers.filter(w=>w.supplierId===sp.id), hours=workersMonthHours(), total=mine.reduce((t,w)=>t+(hours[w.id]||0),0);
+  let payable=0;
+  Object.values(salaryEntriesFor('month').byWorker||{}).forEach(e=>{ const wc=workers.find(w=>w.id===e.workerId); if(wc&&wc.supplierId===sp.id) payable+=commissionFor(wc,e,supplierCommissionRate(wc,sp.id),supplierDayCommission(wc,sp.id)); });
+  const commission=`<div class="wc-kv"><div><small>${esc(tr('Per hour'))}</small><span class="fig">₪${esc(String(SUPPLIER_DEFAULT_RATE))}</span></div><div><small>${esc(tr('Workers'))}</small>${mine.length}</div><div><small>${esc(tr('This month'))}</small><span class="fig">${esc(fmtHoursShort(total))}</span></div><div><small>${esc(tr('Payable this month'))}</small><span class="fig">₪${esc(String(Math.round(payable)))}</span></div></div>
+    <div class="wc-line">${esc(tr('Per-worker and per-day commission is set in Accounting.'))}</div>`;
+  const users=(loadAdminCache('users_'+activeTenantIdForAdmin())||[]).filter(u=>u.role==='supplier'&&u.supplierId===sp.id);
+  const SECT={dashboard:'Dashboard', workers:'My Workers', hours:'My Hours'}, can=isFirmAdminSession();
+  const login=(users.length?users.map(u=>`<div class="wc-line" style="margin-bottom:2px"><i class="ti ti-user"></i><span>${esc(u.fullName||u.username)} · ${esc(u.username)}</span></div><div class="check-grid" style="margin:6px 0 10px">${Object.keys(SECT).map(k=>`<label class="check-chip"><input type="checkbox" data-uid="${esc(u.id)}" data-field="supplierSections" value="${k}"${can?'':' disabled'}${(u.supplierSections||Object.keys(SECT)).includes(k)?' checked':''} onchange="saveLoginTicks(this)"><span class="chip-text"><span>${esc(tr(SECT[k]))}</span></span></label>`).join('')}</div>`).join(''):`<div class="wc-line">${esc(tr('No portal login yet.'))}</div>`)
+    +(can?`<button type="button" class="gbtn" onclick="newLoginFor('supplier','${esc(sp.id)}')"><i class="ti ti-user-plus"></i><span>${esc(tr('New portal login'))}</span></button>`:'');
+  const plates=mine.length?mine.map(w=>t3Line({c:isActiveWorker(w)?'var(--ok)':'var(--bad)', av:t3Av(w), name:`<span title="${esc(w.name)}">${esc(shortName(w.name))}</span>`, right:`<span class="r">${esc(fmtHoursShort(hours[w.id]))}</span>`})).join(''):`<div class="t3-empty">${esc(tr('No workers'))}</div>`;
+  return SEC('commission','ti-coin','Commission',commission)+SEC('portal','ti-key','Portal login',login)+SEC('workers','ti-users-group','Workers',plates);
+}
+// The worker editor's Documents section: a plate per document (the scan and
+// Form 101 first, then w.docs), with Upload / Renew when something is missing
+// or expiring, and Add document.
+function workerEditorDocsHtml(w){
+  const st=workerDocStatus(w), exp=new Map(workerDocExpiries(w).map(x=>[x.doc.id,x]));
+  const plate=(c,icon,title,sub,act)=>`<div class="og-doc" style="--c:${c}"><span class="og-doc-ic"><i class="ti ${icon}"></i></span><div><b>${esc(title)}</b><small>${esc(sub)}</small></div>${act||''}</div>`;
+  const btn=(label,onclick)=>`<button type="button" class="gbtn nact" onclick="${onclick}">${esc(label)}</button>`;
+  const id=esc(w.id), wi=workers.findIndex(x=>x.id===w.id);
+  const rows=[plate(st.missing.length?'var(--warn)':'var(--ok)','ti-id',tr('ID / Passport'),st.expiry?st.expiry.text:(workerDocId(w)||''),st.missing.length||st.failed?btn(tr('Upload'),`rescanFromWorkerModal()`):''),
+    plate(w.docUrl?'var(--ok)':'var(--warn)','ti-file-text',tr('Form 101'),w.docUrl?tr('Saved'):tr('Not saved yet'),'')];
+  [...(w.docs||[])].sort((a,b)=>String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||''))).forEach(d=>{
+    const x=exp.get(d.id), c=x?(x.level==='error'?'var(--bad)':'var(--warn)'):'var(--ok)';
+    rows.push(plate(c,d.type==='contract'?'ti-file-certificate':'ti-id-badge-2',tr(WORKER_DOC_TYPES[d.type]||'Document'),x?x.text:(d.expiry?tr('Expires {0}',{0:fmtDMY(d.expiry)}):(d.name||'')),x?btn(tr('Renew'),`openWorkerDocUpload('${id}')`):''));
+  });
+  return rows.join('')+`<button class="gbtn" type="button" onclick="openWorkerDocUpload('${id}')" style="margin-top:4px"><i class="ti ti-upload"></i><span>${esc(tr('Add document'))}</span></button>`;
+}
 function renderWorkerModal(w){
   w = w || {};
   // Same fallback schedule-manager.html's own showWorkerModal() uses: a
@@ -1314,16 +1469,21 @@ function renderWorkerModal(w){
   const given = w.docGiven != null ? w.docGiven : (w.name||'').split(' ')[0]||'';
   const surname = w.docSurname != null ? w.docSurname : (w.name||'').split(' ').slice(1).join(' ');
   document.getElementById('workerModal').innerHTML = `
-    <div class="modal-title">${w.id?tr('Edit Worker'):tr('Add Worker')}</div>
-    <div class="field"><label>${tr('Given name')}</label><input id="wfGiven" value="${esc(given)}"></div>
-    <div class="field"><label>${tr('Surname')}</label><input id="wfSurname" value="${esc(surname)}"></div>
-    <div class="field"><label>${tr('Phone')}</label><input id="wfPhone" value="${esc(w.phone||'')}"></div>
-    <div class="field"><label>${tr('ID / Passport number')}</label><input id="wfDocId" value="${esc(w.docId||'')}"></div>
-    <div class="field"><label>${tr('Address')}</label><input id="wfAddress" value="${esc(w.address||'')}"></div>
-    <div class="field"><label>${tr('City')}</label><input id="wfCity" value="${esc(w.city||'')}"></div>
+    <div class="og-edh" style="--c:var(--ok)"><div class="t3-av og-av wc-av">${esc(((given||'?').charAt(0)+(surname||'').charAt(0)).toUpperCase())}</div><div class="og-edh-n"><h4>${esc([given,surname].filter(Boolean).join(' ')||(w.id?tr('Edit Worker'):tr('Add Worker')))}</h4><p>${esc(w.phone||'')}</p></div></div>
+    <section class="og-sec" data-sec="person"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-user"></i></span><span class="og-sec-t"><b>${esc(tr('Person'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
+      <div class="field-row"><div class="field"><label>${tr('Given name')}</label><input id="wfGiven" class="need" value="${esc(given)}"></div>
+      <div class="field"><label>${tr('Surname')}</label><input id="wfSurname" value="${esc(surname)}"></div></div>
+      <div class="field-row"><div class="field"><label>${tr('Phone')}</label><input id="wfPhone" value="${esc(w.phone||'')}"></div>
+      <div class="field"><label>${tr('ID / Passport number')}</label><input id="wfDocId" value="${esc(w.docId||'')}"></div></div>
+    </div></section>
+    <section class="og-sec" data-sec="address"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-home"></i></span><span class="og-sec-t"><b>${esc(tr('Address'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
+      <div class="field-row"><div class="field"><label>${tr('Address')}</label><input id="wfAddress" value="${esc(w.address||'')}"></div>
+      <div class="field"><label>${tr('City')}</label><input id="wfCity" value="${esc(w.city||'')}"></div></div>
+    </div></section>
     <div class="modal-actions">
-      <button class="btn accent" onclick="saveWorkerModal('${w.id||''}')">${tr('Save')}</button>
+      <button class="gbtn primary og-save" onclick="saveWorkerModal('${w.id||''}')">${tr('Save')}</button>
     </div>`;
+  ogSections(document.getElementById('workerModal'), 'person');
 }
 async function saveWorkerModal(id){
   const worker = {

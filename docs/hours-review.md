@@ -9,7 +9,7 @@ One screen, one Cloud Function and one store for every login that reviews its wo
 `HOUR_PERMS` in `functions-auth/core.py` (and `HOUR_PERM_LABELS` in the manager app):
 
 - **hours** — see the month's shifts (in / out / hours per day);
-- **approve** — approve a day, or the whole month at once;
+- **approve** — approve a day, several ticked days at once (Select: a tick box on every day still waiting / changed / whose fix was rejected, a tap ticks it, "Select all", the glass bar's Approve sends their lines in one `approve`, Done leaves; `__hrv.sel`, `hrvStartSelect` / `hrvToggleDay` / `hrvApproveSelected`), or the whole month at once;
 - **dispute** — dispute a day with a comment;
 - **fix** — propose the right in / out of a day (with a comment); applied only when a manager accepts it;
 - **schedule** — the workers' planned shifts;

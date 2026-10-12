@@ -87,6 +87,7 @@ How a run works (a run = one session, started by the Routine below or by hand wi
 - [x] 9 Punch page
 - [x] 10 Supplier and client portals
 - [x] 11 Sign-in
+- [ ] 11a WhatsApp reminder (added by the owner 2026-10-12; after stage 11, before the deferred weather)
 - [ ] 12 Weather — **deferred**: done last, only after the owner puts the OpenWeatherMap key in Secret Manager and says so; the loop stops after stage 11
 
 ### Stages
@@ -103,4 +104,5 @@ Each stage: tested with (`npm test` in `tests/rules`, `test:auth`, the browser t
 9. **Punch page** — no ⋮, the tiles, the hold-to-punch button (green in / red out, touch-safe), the My Schedule and My Hours sheets.
 10. **Supplier and client portals** — the same pieces; `hours-review.js` restyled.
 11. **Sign-in** — the compact glass card over the site.
+11a. **WhatsApp reminder** — in the notifications panel and the notices sheet, a "no punch" notification gets a **WhatsApp** button next to Call. It opens `https://wa.me/<number>?text=<message>` (no API, no key; the owner taps Send in WhatsApp — fully automatic sending would need the paid WhatsApp Business API, not now). The number is the worker's phone from the card in international form (Israeli `05X…` → `9725X…`; a number already starting with `+` / `972` is kept, digits only). The message comes from a per-firm template, editable in the firm settings (Admin → Profile), default "Hi {full name}, you have not punched in today (shift {start} · {site})."; placeholders `{full name}`, `{first name}`, `{start}` (the planned shift start), `{site}`. The settings' labels and the default template text go through the dictionaries (English, with Hebrew); the message sent is the firm's template as saved. Tests (the number conversion, the link, the template saved and filled) and docs as usual.
 12. **Weather (deferred, last)** — a Cloud Function calling OpenWeatherMap (key in Secret Manager, 30-minute cache per area), the weather icons and temperature in the greeting, the time-of-day icon as fallback.
