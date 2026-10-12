@@ -996,10 +996,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     document.querySelector('#ogPop .og-pop-it').click(); await wait(100);
     const boxes = [...document.querySelectorAll('.admin-users-rows .t3-line')].map(l => !!l.querySelector('.t3-cb'));
     r.n = boxes.length; r.ownerNoBox = boxes[0] === false && boxes.slice(1).every(Boolean);
-    r.kbHidden = getComputedStyle(line.querySelector('.t3-kb')).opacity === '0';
+    const line2 = [...document.querySelectorAll('.admin-users-rows .t3-line')].find(l => /\bclient\b/.test(l.innerText));
+    r.kbHidden = getComputedStyle(line2.querySelector('.t3-kb')).opacity === '0';
     document.querySelector('.sel-head button').click();
     r.all = document.querySelector('.sel-bar b').innerText.trim(); r.picked = document.querySelectorAll('.admin-users-rows .t3-line.picked').length;
-    line.click(); r.unpicked = !line.classList.contains('picked') && !document.getElementById('userFormOverlay').classList.contains('open');
+    line2.click(); r.unpicked = !line2.classList.contains('picked') && !document.getElementById('userFormOverlay').classList.contains('open');
     [...document.querySelectorAll('.sel-bar .gbtn')].find(b => b.dataset.a === 'x').click();
     r.ended = !document.querySelector('.sel-bar') && !document.querySelector('.sel-head') && !document.querySelector('.admin-users-rows.selecting');
     return r;
