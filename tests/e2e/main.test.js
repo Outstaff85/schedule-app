@@ -842,7 +842,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(cl1 && cl2, 'clients: a single click or a double click opens the editor ' + JSON.stringify({cl1, cl2}));
   await p.evaluate(() => closeModal('clientOverlay')); await sleep(200);
   // Clients and suppliers as plates (redesign stage 8): ⋮ (Edit, Manual punch, Delete), Delete → Undo, Select; supplier plates.
-  const cp = await p.evaluate(async () => {
+  const cpl = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
     clients.push({id:'ctmp', name:'Temp Client', color:'#60a5fa'}); switchTab('clients'); renderClientsPage(); await wait(50);
     const line = () => document.querySelector('#clientsGrid .t3-line[data-cid="ctmp"]');
@@ -861,7 +861,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     switchTab('clients');
     return r;
   });
-  ok(cp.noRate && /^\d+$/.test(cp.count) && cp.menu === 'Edit,Manual punch,!Delete' && cp.pending && cp.undone && cp.sel === '1 selected' && cp.deleted && cp.supplier, 'clients / suppliers: plates with notices, ⋮, Delete → Undo, Select → Delete after 5 s; supplier plates ' + JSON.stringify(cp));
+  ok(cpl.noRate && /^\d+$/.test(cpl.count) && cpl.menu === 'Edit,Manual punch,!Delete' && cpl.pending && cpl.undone && cpl.sel === '1 selected' && cpl.deleted && cpl.supplier, 'clients / suppliers: plates with notices, ⋮, Delete → Undo, Select → Delete after 5 s; supplier plates ' + JSON.stringify(cp));
   // The client window has no Save button: a tap outside saves it; an empty new client is not created.
   const cs = await p.evaluate(async () => {
     const tap = () => { const ov = document.getElementById('clientOverlay'); ov.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true})); ov.click(); };
