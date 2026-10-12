@@ -91,7 +91,7 @@ Layout: the app's template (variant 3, [app-core.md](app-core.md) → Layout) in
   - cached as `adminCache_users_<tenantId>`;
   - the firm's owner (`tenant_admin`, with a pin) is always first, then a super-admin, then everyone by name;
   - a "Logins" section with the count and **New user**, then a line per login (template 3), its role as the colored mark (`USER_ROLE_COLOR`: owner amber with a pin, HR purple, supplier blue, client green, staff grey): the person's name (`fullName`, the login when it has none) with the role and an inactive flag; then `login: <username> · <phone>`; then the supplier (supplier role), the client (client role) or the permissions (staff, hr), with an HR's worker count (`hrWorkerCount`) or a supplier's count of its workers; then the hours ticks; a bare ⋮ at the right (Edit, Delete) and a swipe left on a phone (Edit, Delete). **Delete never asks**: the line collapses behind the Undo snack (`deleteUserConfirm(id, username, el)` → `undoDelete`) and `deleteUserNow(id)` (`deleteUser`) runs only when its 5 s are up. The section's ⋮ → **Select…** (`startUsersSelect`): every line but the owner's (and a super-admin's, `USER_UNSELECTABLE`) gets a tick box; the glass bar's Delete removes the picked logins the same way (one Undo for all).
-- **Form** (`#userFormOverlay`), top to bottom:
+- **Form** (`#userFormOverlay`), an editor of section plates ([app-core.md](app-core.md) → Editors; `userFormSections()` opens Person each time, the Access section is `#userFormAccessHead` and the Workers section `#userFormHrWorkersField`), one Save at the end, top to bottom:
   - Role;
   - Person: Full name, Phone;
   - Login: Username, Password;

@@ -683,6 +683,32 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(wp.panes.join('|') === 'info|docs|hours' && wp.hoursStatus && wp.edit, 'worker card: Info / Docs / Hours switch, one Edit button ' + JSON.stringify(wp.panes));
   ok(wp.menu === 'Open card,Edit,Pay,Punch link,!Delete' && wp.pendingHidden && wp.stillThere && wp.undone && wp.leftOut && wp.notYet && wp.deleted, 'workers: Delete never asks — Undo keeps the worker, otherwise it is removed after 5 s ' + JSON.stringify(wp));
   ok(wp.sel === '1 selected' && wp.vac, 'workers: Select… a worker, the bulk bar sets Vacation ' + JSON.stringify({sel: wp.sel, vac: wp.vac}));
+  // Editors as section plates (redesign stage 4): worker, client, supplier, user.
+  const ed = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
+    const secs = id => [...document.querySelectorAll('#' + id + ' .og-sec')].filter(x => x.style.display !== 'none').map(x => x.dataset.sec + (x.classList.contains('open') ? '*' : ''));
+    openEditWorker(workers.findIndex(w => w.id === 'w2')); await wait(200);
+    r.worker = secs('workerModal');
+    const person = document.querySelector('#workerModal .og-sec[data-sec="person"]');
+    r.personSum = person.querySelector('.og-sec-s').textContent;
+    r.sexSeg = [...document.querySelectorAll('#workerModal .seg-sel')].length >= 3 && document.getElementById('wSex').style.display === 'none';
+    const segBtn = document.getElementById('wSex').nextElementSibling.querySelector('button[data-v="F"]'); segBtn.click(); r.sexVal = document.getElementById('wSex').value;
+    const addrSec = document.querySelector('#workerModal .og-sec[data-sec="address"]'); addrSec.classList.remove('open');
+    document.getElementById('wCity').focus(); r.focusOpens = addrSec.classList.contains('open');
+    const notes = document.querySelector('#workerModal .og-sec[data-sec="notes"]'), wasOpen = notes.classList.contains('open');
+    notes.querySelector('.og-sec-h').click(); r.toggles = notes.classList.contains('open') !== wasOpen;
+    r.noSave = !document.querySelector('#workerModal .og-save');
+    workers.find(w => w.id === 'w2').docSex = workers.find(w => w.id === 'w2').docSex; closeModal('workerOverlay');
+    openEditClient(clients[0].id); await wait(100); r.client = secs('clientModal'); closeModal('clientOverlay');
+    openAddSupplier(); await wait(100); r.supplier = secs('supplierModal'); r.supSave = !!document.querySelector('#supplierModal .og-save');
+    r.supNameAmber = getComputedStyle(document.querySelector('#supplierModal .og-sec[data-sec="supplier"]')).getPropertyValue('--c').trim(); closeModal('supplierOverlay');
+    openCreateUserForm(); await wait(100); r.user = secs('userFormOverlay'); closeModal('userFormOverlay');
+    return r;
+  });
+  ok(ed.worker.join() === 'person,address,work,documents,form101,access,notes' && /Dana/.test(ed.personSum) && ed.sexSeg && ed.sexVal === 'F' && ed.focusOpens && ed.toggles && ed.noSave,
+    'editors: the worker editor is section plates (Person · Address · Work · Documents · Form 101 · Access · Notes), summaries, segmented choices, a focused field opens its section, no Save ' + JSON.stringify(ed));
+  ok(ed.client.join() === 'client,rates,place' && ed.supplier.join() === 'supplier*,bank' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,login,access',
+    'editors: client, supplier (one Save, an empty name amber) and user form as section plates ' + JSON.stringify(ed));
   // Worker card: a click only reads; a double click, a long touch or its ✎ opens the edit form;
   // closing it (a tap outside saves it) brings the card back.
   const cardSpot = '#workerCardModal .wc-kv >> nth=0';

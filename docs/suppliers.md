@@ -14,7 +14,7 @@ A worker links to **one** supplier through `w.supplierId` (set in the worker mod
 
 `renderSuppliersPage()` draws a card per supplier in `#suppliersGrid`: name, ח.פ, phone, bank details and the assigned workers, with a ✕ in the top corner that removes the supplier (`.wcard-del`, as on a worker card); a tap, a double click (computer) or a long press (phone) anywhere else on the card opens its edit form (`tapEdit` / `longPress` → `openEditSupplier`). The tab has no role gate beyond the `suppliers` permission (`NAV_TAB_PERMISSION`).
 
-- **Adding and editing:** `openAddSupplier()` / `openEditSupplier(sid)` → `showSupplierModal(s)`. The fields are Name, ח.פ, Phone, Bank / Branch / Account #, with no color picker: a new supplier gets the next `CLIENT_COLORS` color automatically, an edited one keeps its color.
+- **Adding and editing:** `openAddSupplier()` / `openEditSupplier(sid)` → `showSupplierModal(s)`. The editor ([app-core.md](app-core.md) → Editors) has a head (colour, name, phone), the sections **Supplier** (Name, ח.פ, Phone) and **Bank** (Bank / Branch / Account #) and one Save at the end, with no color picker: a new supplier gets the next `CLIENT_COLORS` color automatically, an edited one keeps its color.
 - **Saving:** `saveSupplier()` updates in place or pushes a new supplier (`uid()`), then saves.
 - **Removing:** `deleteSupplier(sid)` removes the supplier and, on every worker, sets `supplierId` to `null` and deletes `supplierRates[sid]`; then it saves.
 
