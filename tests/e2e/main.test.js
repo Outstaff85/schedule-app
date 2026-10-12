@@ -1222,7 +1222,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.goto(BASE + 'worker-punch.html?t=tok-avi');
   ok(await waitFor(p, () => !document.getElementById('screenPunch').classList.contains('hidden') && locOk === true, 15000), 'punch: link verified, on site');
   // Hold to punch (redesign stage 9): a short press rolls back and sends nothing; about a second punches.
-  const bb = await (await p.$('#bigPunchBtn')).boundingBox(), cx = bb.x + bb.width / 2, cy = bb.y + bb.height / 2;
+  const pbb = await (await p.$('#bigPunchBtn')).boundingBox(), cx = pbb.x + pbb.width / 2, cy = pbb.y + pbb.height / 2;
   await p.mouse.move(cx, cy); await p.mouse.down(); await sleep(300); await p.mouse.up(); await sleep(600);
   const shortPress = await p.evaluate(() => ({log: getPunchLog().length, result: document.getElementById('punchResult').textContent}));
   await p.mouse.down(); await sleep(1300); await p.mouse.up();
