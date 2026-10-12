@@ -32,11 +32,31 @@
   body{font-family:'DM Sans','Heebo',Arial,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
 
   /* Titlebar / top panel */
-  .titlebar{min-height:54px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:stretch;padding:0 14px;gap:6px;flex-shrink:0;position:relative;}
+  .titlebar{min-height:58px;background:rgba(16,20,31,.55);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border-bottom:1px solid rgba(255,255,255,.1);display:flex;align-items:stretch;padding:0 14px;gap:6px;flex-shrink:0;position:relative;}
   .titlebar .brand{display:flex;align-items:center;gap:9px;padding-right:14px;}
   .titlebar .brand img{width:28px;height:28px;border-radius:8px;}
   .titlebar .logo{font-size:16px;font-weight:600;color:var(--text);letter-spacing:-0.3px;align-self:center;white-space:nowrap;}
   .titlebar .logo span{color:var(--accent);}
+  /* The logo 11C "under one roof": a light running over the roof, the three
+     people lighting up in turn, a light along the connection line; the name
+     and its two lines beside it (only the mark on a phone). */
+  .og-brand{display:flex;align-items:center;gap:10px;}
+  .og-mark{width:36px;height:36px;flex:none;overflow:visible;}
+  .og-roof{fill:none;stroke:rgba(255,255,255,.28);stroke-width:7;stroke-linecap:round;stroke-linejoin:round;}
+  .og-run{fill:none;stroke:url(#ogMarkGrad);stroke-width:7;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:40 180;animation:og-run 2.8s linear infinite;}
+  @keyframes og-run{from{stroke-dashoffset:220}to{stroke-dashoffset:0}}
+  .og-p{opacity:.55;animation:og-lit 2.8s ease-in-out infinite;}
+  .og-p2{animation-delay:.93s;}.og-p3{animation-delay:1.86s;}
+  @keyframes og-lit{0%,100%{opacity:.55;transform:none}15%{opacity:1;transform:translateY(-4px)}35%{opacity:.55;transform:none}}
+  .og-link{fill:none;stroke:rgba(255,255,255,.22);stroke-width:4;stroke-linecap:round;}
+  .og-linkrun{fill:none;stroke:url(#ogMarkGrad);stroke-width:4;stroke-linecap:round;stroke-dasharray:14 90;animation:og-linkrun 2.8s linear infinite;}
+  @keyframes og-linkrun{from{stroke-dashoffset:104}to{stroke-dashoffset:0}}
+  .og-name b{display:block;font-size:16px;font-weight:700;letter-spacing:-.2px;white-space:nowrap;color:#fff;}
+  .og-name b span{background:linear-gradient(90deg,#c7d2fe,#67e8f9);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+  .og-name small{display:block;font-size:10.5px;line-height:1.3;color:#8b90a0;white-space:nowrap;}
+  .og-name small.og-roofline{color:var(--ok);}
+  @media (max-width:700px){ .og-name{display:none;} }
+  @media (prefers-reduced-motion:reduce){ .og-run,.og-p,.og-linkrun{animation:none;} .og-p{opacity:1;} }
   .acct{position:relative;}
   .acct-chip{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px 0 4px;border-radius:999px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;max-width:300px;}
   .acct-av{width:28px;height:28px;flex:none;border-radius:50%;background:linear-gradient(135deg,#4f8ef7,#7a5cf7);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;text-transform:uppercase;}
@@ -54,13 +74,18 @@
   .acct-mi.install i{color:var(--accent);}
   .acct-mi.out,.acct-mi.out i{color:var(--red);}
   .top-tabs{display:flex;gap:2px;align-items:stretch;}
-  .ttab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:70px;padding:0 12px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text2);transition:all 0.15s;}
+  .ttab{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:70px;padding:0 12px;cursor:pointer;color:var(--text2);transition:color 0.15s;-webkit-tap-highlight-color:transparent;}
+  /* The active tab: its section color (--k) and the highlight line under it. */
+  .ttab::after{content:'';position:absolute;left:14px;right:14px;bottom:0;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55),0 0 4px rgba(244,114,182,.5);transform:scaleX(0);pointer-events:none;}
+  .ttab.active::after{transform:scaleX(1);animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1);}
+  #tabMore{display:none;}
+  .more-ic{width:34px;height:34px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;background:color-mix(in srgb,currentColor 18%,transparent);}
+  .t3-line.more-on .n b{color:var(--c);}
   .ttab .ic{font-size:18px;line-height:1;position:relative;}
-  .tab-badge{position:absolute;top:-6px;right:-12px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--amber);color:#1a1a1a;font-size:10px;font-weight:700;line-height:16px;text-align:center;font-family:inherit;}
+  .tab-badge{position:absolute;top:-6px;right:-12px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:var(--bad);color:#fff;font-size:9px;font-weight:700;line-height:16px;text-align:center;font-family:inherit;box-shadow:0 0 0 2px var(--ground);}
   .ttab .lb{font-size:12px;font-weight:500;}
-  .ttab:hover{color:var(--text);background:rgba(255,255,255,0.025);}
-  .ttab.active{color:var(--blue);border-bottom-color:var(--blue);background:var(--blue-bg);}
-  .ttab.admin.active{color:var(--amber);border-bottom-color:var(--amber);background:var(--amber-bg);}
+  .ttab:hover{color:var(--text);}
+  .ttab.active,.ttab.admin.active{color:var(--k,var(--text));}
   .titlebar-actions{margin-left:auto;display:flex;gap:6px;align-items:center;}
   /* Login screen: the firm's showcase (left, or on top on a phone) and the sign-in card. */
   .login-screen{position:fixed;inset:0;z-index:1000;overflow-y:auto;align-items:stretch;justify-content:center;background:linear-gradient(135deg,#0a0d15,#121829 60%,#0f1117);}
@@ -625,14 +650,23 @@
      and the tables of Accounting and Admin become one card per row
      (cardTables() puts each column's header on its cells as data-label). ── */
   @media (max-width:700px){
+    /* The bottom bar (variant 11, a color per section): Today, Schedule,
+       Workers, Accounting, More; the active item takes its color (--k) on
+       the icon and label, a soft tile behind the icon and a line on the
+       bottom edge that springs in. Clients, Suppliers, Admin are under More. */
     .top-tabs{position:fixed;left:0;right:0;bottom:0;z-index:60;width:auto;order:initial;overflow:visible;display:flex;gap:0;
-      background:rgba(20,24,36,.97);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--border2);
-      padding:4px 2px calc(4px + env(safe-area-inset-bottom,0px));box-shadow:0 -6px 20px rgba(0,0,0,.35);}
-    .ttab{flex:1 1 0;min-width:0;padding:6px 1px;border-bottom:0;border-top:2px solid transparent;border-radius:10px;}
-    .ttab.active,.ttab.admin.active{border-bottom-color:transparent;}
-    .ttab .ic{font-size:20px;}
-    .ttab:not(.active):hover{background:none;color:var(--text2);}
-    .ttab .lb{font-size:10px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      height:calc(66px + env(safe-area-inset-bottom,0px));padding:0 0 env(safe-area-inset-bottom,0px);
+      background:rgba(14,17,26,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid rgba(255,255,255,.1);}
+    .top-tabs::before{content:'';position:absolute;left:0;right:0;top:-1px;height:1px;background:linear-gradient(90deg,transparent,rgba(129,140,248,.5),rgba(34,211,238,.5),rgba(244,114,182,.4),transparent);pointer-events:none;}
+    .ttab{flex:1 1 0;min-width:0;padding:0 1px;gap:3px;border:0;border-radius:0;color:rgba(255,255,255,.5);}
+    .ttab.in-more{display:none !important;}
+    #tabMore{display:flex;}
+    .ttab .ic{width:42px;height:30px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:21px;transition:background .3s;}
+    .ttab.active .ic{background:color-mix(in srgb,var(--k) 18%,transparent);}
+    .ttab::after{left:30%;right:30%;height:3px;border-radius:3px 3px 0 0;background:var(--k);box-shadow:0 0 10px var(--k);animation:none !important;transition:transform .4s cubic-bezier(.34,1.56,.64,1);}
+    .ttab:not(.active):hover{color:rgba(255,255,255,.5);}
+    .ttab .lb{font-size:10px;font-weight:600;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .ttab .tab-badge{top:-2px;right:-2px;}
     body{padding-bottom:calc(66px + env(safe-area-inset-bottom,0px));}
     .toast{bottom:calc(76px + env(safe-area-inset-bottom,0px));}
     body:not(.tables-list) table.mtable{min-width:0 !important;border-collapse:separate !important;}
@@ -765,18 +799,19 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 <body>
 
 <div class="titlebar">
-  <div class="brand">
-    <i class="ti ti-calendar-stats" style="font-size:24px;color:var(--accent);flex-shrink:0"></i>
-    <div class="logo">Schedule <span>Manager</span></div>
+  <div class="brand og-brand">
+    <svg class="og-mark" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="ogMarkGrad" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#818cf8"/><stop offset=".5" stop-color="#22d3ee"/><stop offset="1" stop-color="#f472b6"/></linearGradient></defs><path class="og-roof" d="M10 50L50 16l40 34"/><path class="og-run" d="M10 50L50 16l40 34"/><g class="og-p og-p1"><g transform="translate(30 70) scale(.95)"><circle cx="0" cy="-9" r="7" fill="#818cf8"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#818cf8"/></g></g><g class="og-p og-p2"><g transform="translate(50 66) scale(1.15)"><circle cx="0" cy="-9" r="7" fill="#22d3ee"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#22d3ee"/></g></g><g class="og-p og-p3"><g transform="translate(70 70) scale(.95)"><circle cx="0" cy="-9" r="7" fill="#f472b6"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#f472b6"/></g></g><path class="og-link" d="M24 92H76"/><path class="og-linkrun" d="M24 92H76"/></svg>
+    <div class="og-name"><b>Interactive <span>Manager</span></b><small data-i18n>Connecting people and business</small><small class="og-roofline" data-i18n>Everything under one roof</small></div>
   </div>
   <div class="top-tabs">
-    <div class="ttab active" id="tabDashboard" onclick="switchTab('dashboard')"><span class="ic"><i class="ti ti-home"></i></span><span class="lb" data-i18n>Today</span></div>
-    <div class="ttab" id="tabSchedule" onclick="switchTab('schedule')"><span class="ic"><i class="ti ti-calendar"></i></span><span class="lb" data-i18n>Schedule</span></div>
-    <div class="ttab" id="tabWorkers" onclick="switchTab('workers')"><span class="ic"><i class="ti ti-users-group"></i></span><span class="lb" data-i18n>Workers</span></div>
-    <div class="ttab" id="tabClients" onclick="switchTab('clients')"><span class="ic"><i class="ti ti-users"></i></span><span class="lb" data-i18n>Clients</span></div>
-    <div class="ttab" id="tabSuppliers" onclick="switchTab('suppliers')"><span class="ic"><i class="ti ti-truck-delivery"></i></span><span class="lb" data-i18n>Suppliers</span></div>
-    <div class="ttab admin" id="tabAdmin" onclick="switchTab('admin')"><span class="ic"><i class="ti ti-lock"></i></span><span class="lb" data-i18n>Admin</span></div>
-    <div class="ttab admin" id="tabAccounting" onclick="switchTab('accounting')"><span class="ic"><i class="ti ti-cash"></i></span><span class="lb" data-i18n><span data-i18n>Accounting</span></span></div>
+    <div class="ttab active" id="tabDashboard" style="--k:#22d3ee" onclick="switchTab('dashboard')"><span class="ic"><i class="ti ti-home"></i></span><span class="lb" data-i18n>Today</span></div>
+    <div class="ttab" id="tabSchedule" style="--k:#818cf8" onclick="switchTab('schedule')"><span class="ic"><i class="ti ti-calendar"></i></span><span class="lb" data-i18n>Schedule</span></div>
+    <div class="ttab" id="tabWorkers" style="--k:#6dd6a0" onclick="switchTab('workers')"><span class="ic"><i class="ti ti-users-group"></i></span><span class="lb" data-i18n>Workers</span></div>
+    <div class="ttab in-more" id="tabClients" style="--k:#60a5fa" onclick="switchTab('clients')"><span class="ic"><i class="ti ti-users"></i></span><span class="lb" data-i18n>Clients</span></div>
+    <div class="ttab in-more" id="tabSuppliers" style="--k:#c084fc" onclick="switchTab('suppliers')"><span class="ic"><i class="ti ti-truck-delivery"></i></span><span class="lb" data-i18n>Suppliers</span></div>
+    <div class="ttab in-more admin" id="tabAdmin" style="--k:#ff8a95" onclick="switchTab('admin')"><span class="ic"><i class="ti ti-lock"></i></span><span class="lb" data-i18n>Admin</span></div>
+    <div class="ttab admin" id="tabAccounting" style="--k:#f7c062" onclick="switchTab('accounting')"><span class="ic"><i class="ti ti-cash"></i></span><span class="lb" data-i18n>Accounting</span></div>
+    <div class="ttab" id="tabMore" style="--k:#f472b6" onclick="openMoreSheet()"><span class="ic"><i class="ti ti-dots-vertical"></i></span><span class="lb" data-i18n>More</span></div>
   </div>
   <div class="titlebar-actions">
     <div class="save-indicator saved" id="saveIndicator">
@@ -1194,6 +1229,10 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 </div>
 <div class="overlay" id="accHelpOverlay">
   <div class="modal" id="accHelpModal" style="width:460px"></div>
+</div>
+<!-- Phone bottom bar's More: the tabs that don't fit in the bar. -->
+<div class="overlay" id="moreOverlay">
+  <div class="modal" id="moreModal" style="width:380px"></div>
 </div>
 <div class="overlay" id="editOverlay">
   <div class="modal" id="editModal"></div>
@@ -2252,6 +2291,8 @@ function applyNavPermissions(){
     if(!el) return;
     el.style.display = tabAllowed(tab) ? '' : 'none';
   });
+  const more = document.getElementById('tabMore');
+  if(more) more.style.display = MORE_TABS.some(tabAllowed) ? '' : 'none';
   // The Export section: the header Export menu and the salary export.
   document.querySelectorAll('#exportDropdown, .perm-exports').forEach(el => { el.style.display = hasPermission('exports') ? '' : 'none'; });
   // If the tab we're currently sitting on just got hidden (e.g. permissions
@@ -2260,8 +2301,24 @@ function applyNavPermissions(){
   if(currentTab && !tabAllowed(currentTab)) switchTab(homeTab());
 }
 
+// Phone bottom bar: the tabs that sit under More (CSS .ttab.in-more), and its sheet.
+const MORE_TABS = ['clients','suppliers','admin'];
+function openMoreSheet(){
+  const items = MORE_TABS.filter(tabAllowed).map(t => {
+    const el = document.getElementById('tab'+t.charAt(0).toUpperCase()+t.slice(1));
+    const icon = (el.querySelector('.ic i') || {}).className || '';
+    const label = el.querySelector('.lb').textContent;
+    return t3Line({c: el.style.getPropertyValue('--k'), cls: t===currentTab ? 'more-on' : '', onclick: `closeModal('moreOverlay');switchTab('${t}')`,
+      av: `<span class="more-ic" style="color:${el.style.getPropertyValue('--k')}"><i class="${esc(icon)}"></i></span>`, name: esc(label), right: '<i class="ti ti-chevron-right" style="color:var(--text3)"></i>'});
+  });
+  document.getElementById('moreModal').innerHTML = `<div class="modal-title">${esc(tr('More'))}</div>` + items.join('');
+  document.getElementById('moreOverlay').classList.add('open');
+}
+// A short vibration on a tap in the phone bottom bar.
+document.querySelector('.top-tabs')?.addEventListener('click', () => { try{ if(matchMedia('(max-width:700px)').matches && navigator.vibrate) navigator.vibrate(8); }catch(e){} });
 function switchTab(tab){
   currentTab=tab;
+  document.getElementById('tabMore')?.classList.toggle('active', MORE_TABS.includes(tab));
   ['dashboard','schedule','workers','clients','suppliers','admin','accounting'].forEach(t=>{
     document.getElementById('tab'+t.charAt(0).toUpperCase()+t.slice(1))?.classList.toggle('active',tab===t);
     document.getElementById('section'+t.charAt(0).toUpperCase()+t.slice(1))?.classList.toggle('visible',tab===t);
