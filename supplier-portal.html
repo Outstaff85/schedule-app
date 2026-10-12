@@ -683,8 +683,9 @@ document.addEventListener('click',e=>{
 // Phone (≤ 700 px): a window, opened from the bottom as a sheet, also closes
 // with a swipe down on it (user request 2026-10-11) — the same way as a tap
 // outside (__onUserClose, else closeModal). Only when the sheet and anything
-// scrolled under the finger are at their top, never from a field, a map or
-// a canvas; while it is open the page behind does not scroll (CSS). The
+// scrolled under the finger are at their top, never from a field, a map,
+// a canvas or a .no-swipe surface (the scan crop editor, the avatar crop —
+// a drag there moves the photo, not the sheet); while it is open the page behind does not scroll (CSS). The
 // same code is in the manager app and both portals.
 (function(){
   let sw=null;

@@ -880,6 +880,24 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {short, long, locked: getComputedStyle(document.body).overflow};
   });
   ok(swipe.short && !swipe.long, 'phone: a swipe down closes a window, a short one does not ' + JSON.stringify(swipe));
+  // A drag on the scan crop editor (and the avatar crop) moves the photo, never the sheet.
+  const crop = await p.evaluate(async () => {
+    await ensureScanPipelineLoaded();
+    const png = document.createElement('canvas'); png.width = 300; png.height = 200; png.getContext('2d').fillRect(0, 0, 300, 200);
+    document.getElementById('aiScanOverlay').classList.add('open');
+    renderScanQuadEditor(png.toDataURL('image/png').split(',')[1], 'image/png', {tl:{x:.1,y:.1}, tr:{x:.9,y:.1}, br:{x:.9,y:.9}, bl:{x:.1,y:.9}});
+    await new Promise(r => setTimeout(r, 1500));
+    const m = document.querySelector('#aiScanOverlay > .modal'), wrap = document.getElementById('scanEditWrap'), r = wrap.getBoundingClientRect(), x = r.left + 60, y = r.top + 30;
+    const t = (type, dy) => { const tp = new Touch({identifier: 1, target: wrap, clientX: x, clientY: y + dy}); wrap.dispatchEvent(new TouchEvent(type, {bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [tp], changedTouches: [tp]})); };
+    let moved = false;
+    t('touchstart', 0); for (let d = 10; d <= 200; d += 20){ t('touchmove', d); if(m.style.transform) moved = true; } t('touchend', 200);
+    await new Promise(r => setTimeout(r, 400));
+    const res = {noSwipe: wrap.classList.contains('no-swipe'), moved, open: document.getElementById('aiScanOverlay').classList.contains('open'), touch: getComputedStyle(wrap).touchAction,
+      avatar: document.getElementById('avatarCropBox').classList.contains('no-swipe')};
+    document.getElementById('aiScanOverlay').classList.remove('open'); document.getElementById('aiScanStage').innerHTML = '';
+    return res;
+  });
+  ok(crop.noSwipe && !crop.moved && crop.open && crop.touch === 'none' && crop.avatar, 'phone: a drag on the scan crop editor does not move or close the sheet ' + JSON.stringify(crop));
   await p.setViewportSize({width: 1280, height: 900}); await sleep(300);
   // Any window opened from the worker card goes back to it: Pay → tap outside → the card again.
   await p.evaluate(() => openWorkerCard(1)); await sleep(300);
