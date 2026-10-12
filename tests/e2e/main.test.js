@@ -564,7 +564,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.evaluate(() => switchTab('accounting'));
   await p.evaluate(async () => { const sel=document.getElementById('salaryPeriod'); sel.value='all'; await onSalaryPeriodChange(); });
   await sleep(500);
-  const pay = await p.evaluate(() => document.getElementById('supplierPayableWrap').innerText);
+  const pay = await p.evaluate(() => { setAccTab('billing'); const t = document.getElementById('supplierPayableWrap').innerText; setAccTab('salary'); return t; });
   ok(!/No supplier assigned/.test(pay), 'Payable by supplier: no row for workers without a supplier');
   const bill = await p.evaluate(() => ({shown: document.getElementById('accSecBillable').style.display !== 'none', rows: document.querySelectorAll('#clientBillableWrap .t3-line').length}));
   ok(!bill.shown && bill.rows === 0, 'Billable by client: hidden when no client has a billing rate ' + JSON.stringify(bill));
@@ -746,6 +746,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const ac = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), vis = id => getComputedStyle(document.getElementById(id)).display !== 'none';
     switchTab('accounting'); await wait(200);
+    const sel0 = document.getElementById('salaryPeriod'); sel0.value = 'week'; await onSalaryPeriodChange();
     const sel = document.getElementById('salaryPeriod'), r = {inNav: !!document.querySelector('#accPeriodNav #salaryPeriod'), figs: [...document.querySelectorAll('#accFigs > div span')].map(x => x.textContent).join()};
     r.tabs = [...document.querySelectorAll('#accTabs button')].map(b => b.dataset.k).join();
     r.salaryTab = vis('accSecSalary') && !vis('accSecPayable') && !vis('accSecPending');
@@ -1076,7 +1077,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await q.waitForNavigation().catch(()=>{});
   await waitFor(q, () => typeof workers !== 'undefined' && workers.length === 2);
   const appr = async () => q.evaluate(async () => { switchTab('accounting'); const sel = document.getElementById('salaryPeriod'); sel.value = 'month'; await onSalaryPeriodChange();
-    await renderHourApprovals('month'); return document.getElementById('hourApprovalsWrap').innerText; });
+    await renderHourApprovals('month'); setAccTab('approvals'); const t = document.getElementById('hourApprovalsWrap').innerText; setAccTab('salary'); return t; });
   const oa = await appr();
   ok(/Site B/.test(oa) && /Client/.test(oa) && /1 of \d days approved/.test(oa) && !/Changed after approval/.test(oa), 'owner: the client\'s approval in Accounting, not "changed" ' + JSON.stringify(oa));
   // The client disputes the day (the window sends on a tap outside); the owner sees the comment.
