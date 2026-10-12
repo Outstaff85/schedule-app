@@ -61,6 +61,7 @@ The stages run one after another without waiting to be asked: when a stage is fi
 - Merging stays the owner's: the loop never merges. It keeps one PR from the work branch into `main` open and updated as stages land; deploy = the owner's OK on that PR (CLAUDE.md → Git workflow).
 - A stage that cannot finish (a failing test it cannot fix, a missing secret such as the OpenWeatherMap key) is marked "blocked: <reason>" in the list, reported to the owner, and the loop moves on to the next stage that does not depend on it.
 - Each stage starts from this file and the docs it names, not from the earlier chat, to keep sessions short.
+- **Auto-resume after a usage limit:** a scheduled Routine fires every 5 hours and starts a fresh session with the same sentence. Before starting a stage the session writes "in progress (<date time>)" next to it in the status list and pushes; a run that finds a stage "in progress" younger than 5 hours does nothing (another run is working); an older mark means the run was cut off — it continues that stage. When stages 1–11 are all ticked, the Routine is switched off and the owner is told.
 
 ### Status
 - [ ] 1 Foundation
@@ -74,7 +75,7 @@ The stages run one after another without waiting to be asked: when a stage is fi
 - [ ] 9 Punch page
 - [ ] 10 Supplier and client portals
 - [ ] 11 Sign-in
-- [ ] 12 Weather (needs the OpenWeatherMap key in Secret Manager)
+- [ ] 12 Weather — **deferred**: done last, only after the owner puts the OpenWeatherMap key in Secret Manager and says so; the loop stops after stage 11
 
 ### Stages
 Each stage: tested with (`npm test` in `tests/rules`, `test:auth`, the browser tests, `tests/i18n/check.js`, `tests/icons/check.js`), every new text in the dictionaries with Hebrew, the duplicated helpers mirrored in every page (CLAUDE.md → Duplicated on purpose), `service-worker.js` CACHE bumped, docs updated; merged only after the owner's OK. Later stages build on the shared pieces of stage 1.
@@ -90,4 +91,4 @@ Each stage: tested with (`npm test` in `tests/rules`, `test:auth`, the browser t
 9. **Punch page** — no ⋮, the tiles, the hold-to-punch button (green in / red out, touch-safe), the My Schedule and My Hours sheets.
 10. **Supplier and client portals** — the same pieces; `hours-review.js` restyled.
 11. **Sign-in** — the compact glass card over the site.
-12. **Weather** — a Cloud Function calling OpenWeatherMap (key in Secret Manager, 30-minute cache per area), the weather icons and temperature in the greeting, the time-of-day icon as fallback.
+12. **Weather (deferred, last)** — a Cloud Function calling OpenWeatherMap (key in Secret Manager, 30-minute cache per area), the weather icons and temperature in the greeting, the time-of-day icon as fallback.
