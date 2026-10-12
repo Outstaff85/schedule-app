@@ -278,8 +278,6 @@ html,body{
 .back-link:active{color:var(--text);background:rgba(255,255,255,0.04);}
 
 /* ══ SCREEN 3 — Success ════════════════════════════════════════════ */
-#screenSuccess{justify-content:center;text-align:center;gap:0;}
-#screenSuccess > *{width:100%;max-width:360px;}
 
 .success-anim{
   width:90px;height:90px;border-radius:50%;
@@ -400,6 +398,60 @@ html,body{
 .hours-row .p{min-width:64px;text-align:right;color:var(--text);font-weight:600;}
 .hours-break{margin-top:8px;font-size:12px;color:var(--text2);text-align:center;}
 .sched-note{margin-top:10px;text-align:center;font-size:12px;color:var(--text3);}
+/* ── Odinson Glass punch page (redesign stage 9): the logo mark, the greeting,
+   the hold-to-punch button (green in / red out, its ring fills while held),
+   the result line, two glass tiles, the sheets. ── */
+@property --hold{syntax:'<number>';inherits:false;initial-value:0}
+.pp-mark{position:fixed;left:max(env(safe-area-inset-left,0px),14px);top:max(env(safe-area-inset-top,0px),12px);width:34px;height:34px;z-index:50;overflow:visible}
+.og-roof{fill:none;stroke:rgba(255,255,255,.28);stroke-width:7;stroke-linecap:round;stroke-linejoin:round}
+.og-run{fill:none;stroke:url(#ogMarkGrad);stroke-width:7;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:40 180;animation:og-run 2.8s linear infinite}
+@keyframes og-run{from{stroke-dashoffset:220}to{stroke-dashoffset:0}}
+.og-p{opacity:.55;animation:og-lit 2.8s ease-in-out infinite}.og-p2{animation-delay:.93s}.og-p3{animation-delay:1.86s}
+@keyframes og-lit{0%,100%{opacity:.55;transform:none}15%{opacity:1;transform:translateY(-4px)}35%{opacity:.55;transform:none}}
+.og-link{fill:none;stroke:rgba(255,255,255,.22);stroke-width:4;stroke-linecap:round}
+.og-linkrun{fill:none;stroke:url(#ogMarkGrad);stroke-width:4;stroke-linecap:round;stroke-dasharray:14 90;animation:og-linkrun 2.8s linear infinite}
+@keyframes og-linkrun{from{stroke-dashoffset:104}to{stroke-dashoffset:0}}
+.punch-greeting.og-greet-h{font-size:22px;font-weight:700;color:var(--text);letter-spacing:-.2px;margin:6px 0 0}
+.gic{display:inline-block;width:30px;height:30px;margin-left:8px;vertical-align:-6px;overflow:visible}
+.gic .rise{animation:gic-rise 4s ease-in-out infinite}@keyframes gic-rise{0%,100%{transform:translateY(2px)}50%{transform:translateY(-2px)}}
+.gic .spin{transform-origin:16px 16px;animation:gic-spin 14s linear infinite}@keyframes gic-spin{to{transform:rotate(360deg)}}
+.gic .pulse{transform-origin:16px 16px;animation:gic-pulse 3s ease-in-out infinite}@keyframes gic-pulse{50%{transform:scale(1.08)}}
+.gic .sink{animation:gic-sink 5s ease-in-out infinite}@keyframes gic-sink{0%,100%{transform:translateY(0)}50%{transform:translateY(3px)}}
+.gic .moon{animation:gic-moon 4s ease-in-out infinite}@keyframes gic-moon{50%{transform:translateY(-2px) rotate(-6deg)}}
+.gic .tw{transform-box:fill-box;transform-origin:center;animation:gic-tw 2.4s ease-in-out infinite}.gic .tw2{animation-delay:1.2s}@keyframes gic-tw{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.2;transform:scale(.6)}}
+.big-punch-btn{--hold:0;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);transition:transform .2s,background .3s,box-shadow .3s}
+.big-punch-btn:active{transform:none!important}
+.big-punch-btn.holding{transform:scale(.96)!important}
+.big-punch-btn.in{--rc:var(--ok);background:radial-gradient(circle at 50% 35%,rgba(109,214,160,.38),rgba(109,214,160,.12) 70%);border:1px solid rgba(109,214,160,.55);box-shadow:0 0 44px rgba(109,214,160,.28);color:#dcfbe9}
+.big-punch-btn.out{--rc:var(--bad);background:radial-gradient(circle at 50% 35%,rgba(255,95,109,.38),rgba(255,95,109,.12) 70%);border:1px solid rgba(255,95,109,.55);box-shadow:0 0 44px rgba(255,95,109,.28);color:#ffe1e4}
+.big-punch-btn::before{content:'';position:absolute;inset:-11px;border-radius:50%;background:conic-gradient(var(--rc,transparent) calc(var(--hold)*360deg),rgba(255,255,255,.1) 0);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 6px),#000 calc(100% - 5px));mask:radial-gradient(farthest-side,transparent calc(100% - 6px),#000 calc(100% - 5px));pointer-events:none}
+.big-punch-btn.rollback{transition:--hold .35s ease-out,transform .2s}
+.big-punch-btn.disabled::before{display:none}
+.big-punch-btn.done{animation:pp-flash .7s ease-out}
+.big-punch-btn.done.in{background:rgba(109,214,160,.6)}.big-punch-btn.done.out{background:rgba(255,95,109,.6)}
+@keyframes pp-flash{0%{filter:brightness(1.8)}100%{filter:none}}
+.pp-check{width:64px;height:64px;fill:none;stroke:#fff;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:24;stroke-dashoffset:24;animation:pp-draw .45s .1s forwards}
+@keyframes pp-draw{to{stroke-dashoffset:0}}
+.pp-result{min-height:20px;font-size:14px;font-weight:600;margin:-14px 0 18px;opacity:0;transition:opacity .3s;text-align:center}
+.pp-result.show{opacity:1}.pp-result.in{color:var(--ok)}.pp-result.out{color:#ff8a95}
+.pp-tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;max-width:420px}
+.gbtn.pp-tile{height:auto;min-height:80px;flex-direction:column;align-items:flex-start;justify-content:center;gap:6px;padding:12px 14px;border-radius:18px;text-align:left;white-space:normal}
+.pp-tile-h{display:flex;align-items:center;gap:6px;font-size:13px;color:rgba(255,255,255,.78)}
+.pp-tile-v{font-size:14px;font-weight:700;color:#fff}
+.pp-tile-v.fig{font:700 18px 'DM Mono',ui-monospace,monospace;color:var(--fig)}
+.pp-tag{font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;background:rgba(34,211,238,.2);color:#67e8f9;margin-left:2px}
+.sched-notice{border-radius:14px!important;background:var(--plate)!important;border:0!important;box-shadow:inset 4px 0 0 var(--warn)}
+#screenSchedule,#screenHours{top:max(env(safe-area-inset-top,0px),10px);border-radius:22px 22px 0 0;background:var(--glass-dark)!important;-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border-top:1px solid rgba(255,255,255,.2)}
+#screenSchedule::before,#screenHours::before{content:'';display:block;flex:none;width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.3);margin:-12px auto 14px}
+.sched-cell{border-radius:10px;background:rgba(255,255,255,.035)}
+.sched-cell.today{border-color:transparent;box-shadow:0 0 0 2px var(--info)}
+.shift-bar{border-radius:7px}
+.shift-bar.dated{outline:none;position:relative}
+.shift-bar.dated::after{content:'';position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:#22d3ee;box-shadow:0 0 6px #22d3ee}
+.sched-sum div,.sched-detail{background:var(--plate)!important;border:0!important;border-radius:14px!important}
+.hours-shift{background:var(--plate);border-radius:14px;border-bottom:0!important;margin-bottom:6px;padding:0 10px;box-shadow:inset 3px 0 0 var(--ok)}
+.hours-row .h{color:var(--fig)}
+@media (prefers-reduced-motion:reduce){.og-run,.og-p,.og-linkrun,.gic *{animation:none!important}}
 /* Hebrew has no capitals: no letter-spacing (made for spaced-out uppercase Latin). */
 html[lang="he"] *{letter-spacing:normal !important;}
 /* ── Odinson Glass foundation (docs/redesign.md): the ground, glass, plates, the
@@ -472,12 +524,15 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 <body>
 <button type="button" class="gbtn lang-btn lang-fixed" id="langBtn" onclick="openLangSheet(event)" title="Language" data-i18n-title="Language" aria-label="Language"><i class="ti ti-world"></i><span class="lang-btn-name">English</span><i class="ti ti-chevron-down lang-btn-chev"></i></button>
 
+<!-- The logo mark (top left; the Language button is top right). -->
+<svg class="og-mark pp-mark" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="ogMarkGrad" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#818cf8"/><stop offset=".5" stop-color="#22d3ee"/><stop offset="1" stop-color="#f472b6"/></linearGradient></defs><path class="og-roof" d="M10 50L50 16l40 34"/><path class="og-run" d="M10 50L50 16l40 34"/><g class="og-p og-p1"><g transform="translate(30 70) scale(.95)"><circle cx="0" cy="-9" r="7" fill="#818cf8"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#818cf8"/></g></g><g class="og-p og-p2"><g transform="translate(50 66) scale(1.15)"><circle cx="0" cy="-9" r="7" fill="#22d3ee"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#22d3ee"/></g></g><g class="og-p og-p3"><g transform="translate(70 70) scale(.95)"><circle cx="0" cy="-9" r="7" fill="#f472b6"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#f472b6"/></g></g><path class="og-link" d="M24 92H76"/><path class="og-linkrun" d="M24 92H76"/></svg>
+
 <!-- Screen 2: Punch -->
 <div class="screen center-v hidden" id="screenPunch">
   <div class="punch-header">
     <div class="punch-site" id="punchSite"></div>
-    <div class="punch-greeting" id="punchGreeting"></div>
-    <div class="punch-worker-name" id="punchWorkerName"></div>
+    <h3 class="punch-greeting og-greet-h" id="punchGreeting"></h3>
+    <div class="punch-worker-name" id="punchWorkerName" hidden></div>
   </div>
   <!-- Stays until the worker opens My Schedule (per user request 2026-10-11:
        the schedule-change notice hangs, it does not flash by). -->
@@ -492,28 +547,20 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
   </div>
   <div class="punch-btn-wrap">
     <div class="btn-ring off" id="btnRing"></div>
-    <button class="big-punch-btn disabled" id="bigPunchBtn" onclick="doPunch()">
+    <!-- Hold about one second (holdStart / holdEnd): the ring fills while
+         held, letting go early rolls it back and sends nothing. -->
+    <button class="big-punch-btn disabled" id="bigPunchBtn" oncontextmenu="return false">
       <span class="btn-icon">👆</span>
       <span class="btn-label" data-i18n>LOADING</span>
     </button>
   </div>
-  <div class="punch-links">
-    <div class="back-link" onclick="openSchedule()" style="color:var(--blue)"><i class="ti ti-calendar-week"></i> <span data-i18n>My Schedule</span><span class="sched-badge" id="schedBadge" style="display:none" title="Updated" data-i18n-title="Updated"></span></div>
-    <div class="back-link" id="myHoursLink" onclick="openMyHours()" style="color:var(--blue)"><i class="ti ti-clock-hour-4"></i> <span data-i18n>My Hours</span></div>
+  <div class="pp-result" id="punchResult"></div>
+  <div class="pp-tiles">
+    <button type="button" class="gbtn pp-tile" onclick="openSchedule()"><span class="pp-tile-h"><i class="ti ti-calendar-week"></i> <span data-i18n>My Schedule</span><span class="pp-tag" id="schedBadge" style="display:none" data-i18n>Updated</span></span><span class="pp-tile-v" id="tileNextShift">—</span></button>
+    <button type="button" class="gbtn pp-tile" id="myHoursLink" onclick="openMyHours()"><span class="pp-tile-h"><i class="ti ti-clock-hour-4"></i> <span data-i18n>My Hours</span></span><span class="pp-tile-v fig" id="tileMonthHours">—</span></button>
   </div>
 </div>
 
-<!-- Screen 3: Success -->
-<div class="screen center-v hidden" id="screenSuccess">
-  <div class="success-anim in" id="successAnim"><i class="ti ti-circle-check"></i></div>
-  <div class="success-label in" id="successLabel">Clocked IN</div>
-  <div class="success-worker" id="successWorker"></div>
-  <div class="success-time" id="successTime">--:--</div>
-  <div class="success-date" id="successDate"></div>
-  <div class="success-actions">
-    <button class="btn-primary" onclick="resetToQR()" data-i18n>Done</button>
-  </div>
-</div>
 
 <!-- Screen 5: My schedule (only this worker's own week) -->
 <div class="screen hidden" id="screenSchedule" style="justify-content:flex-start;align-items:center">
@@ -865,6 +912,33 @@ function decideObjectOrPunch(w){
   enterPunch(w, false);
 }
 
+// The two tiles under the button: My Schedule (the next shift from the roster
+// and the date changes) and My Hours (this month's hours, myMonthFigures over
+// the punch function's month — read in the background once per open).
+function nextShiftText(w){
+  if(!w) return '—';
+  const now=new Date();
+  for(let i=0;i<14;i++){
+    const d=new Date(now.getFullYear(),now.getMonth(),now.getDate()+i), sh=schedDay(d);
+    if(sh && sh.type==='work' && sh.start){
+      if(i===0 && sh.end && sh.end>sh.start && String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')>sh.end) continue;
+      const day=i===0?tr('Today'):i===1?tr('Tomorrow'):d.toLocaleDateString(uiLocale(),{weekday:'short',day:'numeric'});
+      return day+' · '+sh.start+'–'+(sh.end||'');
+    }
+  }
+  return tr('No shifts planned yet');
+}
+let _tileHoursAt=0;
+function updatePunchTiles(){
+  const t1=document.getElementById('tileNextShift'); if(t1) t1.textContent=nextShiftText(selectedWorker);
+  const t2=document.getElementById('tileMonthHours'); if(!t2) return;
+  const key=localYMD(new Date()).slice(0,7), d=_hoursData[key];
+  if(d && d.punches){ try{ t2.textContent=tr('{h}h',{h:myMonthFigures(d,key).hours.toFixed(1)}); }catch(e){} }
+  if(URL_TOKEN && navigator.onLine && Date.now()-_tileHoursAt>60e3){
+    _tileHoursAt=Date.now();
+    punchFn({action:'myMonth', token:_wpToken(), month:key}).then(r=>r.json()).then(r=>{ if(r && !r.error){ _hoursData[key]=r; try{ t2.textContent=tr('{h}h',{h:myMonthFigures(r,key).hours.toFixed(1)}); }catch(e){} } }).catch(()=>{});
+  }
+}
 function enterPunch(w, skipResolve){
   if(!skipResolve) resolveSiteFromWorker(w);
   document.getElementById('punchSite').innerHTML = '<i class="ti ti-map-pin"></i> '+siteLabel();
@@ -874,6 +948,7 @@ function enterPunch(w, skipResolve){
   getLocation();
   updateBigBtn();
   checkScheduleChange();
+  updatePunchTiles();
 }
 
 function showObjectPicker(w, objs){
@@ -981,15 +1056,24 @@ function startPunchClock(){
   if(clockTick) clearInterval(clockTick);
   clockTick=setInterval(tickPunch,1000); tickPunch();
 }
-function greetingFor(h){
-  if(h>=5  && h<12) return tr('Good morning');
-  if(h>=12 && h<17) return tr('Good afternoon');
-  if(h>=17 && h<23) return tr('Good evening');
-  return tr('Good night');
+// The greeting (the same as the manager app's Today, duplicated on purpose):
+// "Good morning / afternoon / evening / night, <first name>" by the device's
+// local time (5–12, 12–17, 17–21, 21–5) and a small animated icon.
+const GREET_ICONS={
+  morning:'<svg class="gic" viewBox="0 0 32 32" aria-hidden="true"><defs><clipPath id="gicHz"><rect x="0" y="0" width="32" height="23"/></clipPath></defs><g clip-path="url(#gicHz)"><g class="rise"><circle cx="16" cy="22" r="7" fill="#f7c062"/>'+[0,51,102,154,205,257,308].map(a=>`<line x1="16" y1="12" x2="16" y2="9" stroke="#f7c062" stroke-width="2" stroke-linecap="round" transform="rotate(${a} 16 22)"/>`).join('')+'</g></g><line x1="4" y1="23.5" x2="28" y2="23.5" stroke="rgba(255,255,255,.55)" stroke-width="2" stroke-linecap="round"/></svg>',
+  day:'<svg class="gic" viewBox="0 0 32 32" aria-hidden="true"><g class="spin">'+[0,45,90,135,180,225,270,315].map(a=>`<line x1="16" y1="6" x2="16" y2="2" stroke="#fde68a" stroke-width="2.2" stroke-linecap="round" transform="rotate(${a} 16 16)"/>`).join('')+'</g><circle class="pulse" cx="16" cy="16" r="6.5" fill="#fcd34d"/></svg>',
+  evening:'<svg class="gic" viewBox="0 0 32 32" aria-hidden="true"><defs><clipPath id="gicHz2"><rect x="0" y="0" width="32" height="21"/></clipPath></defs><g clip-path="url(#gicHz2)"><g class="sink"><circle cx="16" cy="20" r="8" fill="#f9a8d4"/></g></g><line x1="4" y1="21.5" x2="28" y2="21.5" stroke="rgba(255,255,255,.6)" stroke-width="2" stroke-linecap="round"/><line x1="9" y1="25.5" x2="23" y2="25.5" stroke="rgba(255,255,255,.3)" stroke-width="2" stroke-linecap="round"/></svg>',
+  night:'<svg class="gic" viewBox="0 0 32 32" aria-hidden="true"><path class="moon" d="M20 6a10 10 0 1 0 7 15A8 8 0 0 1 20 6z" fill="#c7d2fe"/><circle class="tw" cx="7" cy="8" r="1.4" fill="#fff"/><circle class="tw tw2" cx="11" cy="4" r="1" fill="#fff"/></svg>'};
+function partOfDay(d){ const h=(d||new Date()).getHours(); return h>=5&&h<12?'morning':h>=12&&h<17?'day':h>=17&&h<21?'evening':'night'; }
+function greetingHtml(name){
+  const p=partOfDay(), first=String(name||'').trim().split(/\s+/)[0]||'';
+  const text={morning:'Good morning, {name}',day:'Good afternoon, {name}',evening:'Good evening, {name}',night:'Good night, {name}'}[p];
+  return esc(first?tr(text,{name:first}):tr(text,{name:''}).replace(/,\s*$/,''))+GREET_ICONS[p];
 }
 function tickPunch(){
   const n=new Date();
-  const g=document.getElementById('punchGreeting'); if(g) g.textContent=greetingFor(n.getHours());
+  const g=document.getElementById('punchGreeting'), gp=partOfDay(n)+'|'+(selectedWorker&&selectedWorker.name)+'|'+I18N_LANG;
+  if(g && g.__p!==gp){ g.__p=gp; g.innerHTML=greetingHtml(selectedWorker&&selectedWorker.name); }
   document.getElementById('punchClock').textContent=
     String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0')+':'+String(n.getSeconds()).padStart(2,'0');
   document.getElementById('punchDate').textContent=
@@ -1057,6 +1141,37 @@ function updateBigBtn(){
   }
 }
 
+// Hold to punch: about HOLD_MS on the button fills its ring (--hold 0→1);
+// letting go early rolls it back and sends nothing. The button takes the whole
+// gesture (no scroll, no long-press menu).
+const HOLD_MS = 1000;
+let _hold = null;
+function holdStart(e){
+  const btn=document.getElementById('bigPunchBtn');
+  if(!locOk || !selectedWorker || btn.classList.contains('disabled') || _hold) return;
+  e.preventDefault();
+  try{ if(e.pointerId!=null) btn.setPointerCapture(e.pointerId); }catch(_){}
+  btn.classList.remove('rollback'); btn.classList.add('holding');
+  const t0=performance.now();
+  _hold={raf:0};
+  const step=t=>{ if(!_hold) return; const p=Math.min(1,(t-t0)/HOLD_MS); btn.style.setProperty('--hold',p);
+    if(p>=1){ _hold=null; btn.classList.remove('holding'); doPunch(); return; }
+    _hold.raf=requestAnimationFrame(step); };
+  _hold.raf=requestAnimationFrame(step);
+}
+function holdEnd(){
+  if(!_hold) return;
+  cancelAnimationFrame(_hold.raf); _hold=null;
+  const btn=document.getElementById('bigPunchBtn');
+  btn.classList.remove('holding'); btn.classList.add('rollback'); btn.style.setProperty('--hold',0);
+}
+(()=>{ const btn=document.getElementById('bigPunchBtn'); if(!btn) return;
+  btn.addEventListener('pointerdown',holdStart);
+  ['pointerup','pointercancel','pointerleave','lostpointercapture'].forEach(t=>btn.addEventListener(t,holdEnd));
+  btn.addEventListener('keydown',e=>{ if((e.key==='Enter'||e.key===' ')&&!e.repeat) holdStart(e); });
+  btn.addEventListener('keyup',e=>{ if(e.key==='Enter'||e.key===' ') holdEnd(); });
+  btn.addEventListener('touchstart',e=>e.preventDefault(),{passive:false});
+})();
 function doPunch(){
   if(!locOk||!selectedWorker) return;
   if(Date.now()-_lastPunchAt < 4000){ showToast(tr('Wait a couple of seconds')); return; }  // guard against accidental double-tap
@@ -1080,22 +1195,26 @@ function doPunch(){
   log.push(entry); savePunchLog(log);
   gsSavePunch(entry);
   if(type==='out'&&last) updateScheduleManager(selectedWorker.id,last.time,hh+':'+mm);
-  showSuccess(type,hh+':'+mm,now);
+  showSuccess(type,hh+':'+mm,now,last);
 }
 
-function showSuccess(type,time,date){
-  if(clockTick) clearInterval(clockTick);
-  const anim=document.getElementById('successAnim');
-  const label=document.getElementById('successLabel');
-  anim.innerHTML=type==='in'?'<i class="ti ti-circle-check"></i>':'<i class="ti ti-logout"></i>';
-  anim.className='success-anim '+(type==='in'?'in':'out');
-  label.textContent=type==='in'?tr('Clocked IN'):tr('Clocked OUT');
-  label.className='success-label '+(type==='in'?'in':'out');
-  document.getElementById('successWorker').textContent=selectedWorker.name;
-  document.getElementById('successTime').textContent=time;
-  document.getElementById('successDate').textContent=
-    String(date.getDate()).padStart(2,'0')+'/'+String(date.getMonth()+1).padStart(2,'0')+'/'+String(date.getFullYear()).slice(-2);
-  showScreen('screenSuccess');
+// After a punch the page stays on the punch screen: the face flashes its
+// colour, a check draws, the phone vibrates, and the line under it says
+// "Punched in at 07:58 · have a good shift" (green) or "Punched out at 17:04 ·
+// 8h 04m today" (red; the time since the last punch in).
+function showSuccess(type,time,date,last){
+  const btn=document.getElementById('bigPunchBtn'), res=document.getElementById('punchResult');
+  btn.style.setProperty('--hold',0); btn.classList.remove('rollback');
+  btn.className='big-punch-btn done '+type;
+  btn.innerHTML='<svg class="pp-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  try{ if(navigator.vibrate) navigator.vibrate([30,40,60]); }catch(e){}
+  let line;
+  if(type==='in') line=tr('Punched in at {0} · have a good shift',{0:time});
+  else{ const mins=last&&last.ts?Math.max(0,Math.round((date-new Date(last.ts))/60000)):0;
+    line=tr('Punched out at {0} · {1} today',{0:time,1:Math.floor(mins/60)+'h '+String(mins%60).padStart(2,'0')+'m'}); }
+  res.className='pp-result show '+type; res.textContent=line;
+  setTimeout(()=>{ if(btn.classList.contains('done')){ btn.classList.remove('done'); updateBigBtn(); } }, 1600);
+  updatePunchTiles();
 }
 
 // Back to the punch screen, with a fresh GPS check (the page works only from
