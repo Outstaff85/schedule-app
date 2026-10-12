@@ -97,7 +97,6 @@
   "Call": "התקשרות",
   "Cards": "כרטיסים",
   "Catering": "קייטרינג",
-  "changed for this date": "שונה לתאריך זה",
   "Changed for this date only": "שונה לתאריך זה בלבד",
   "Checking GPS...": "בודק GPS...",
   "Checking location...": "בודק מיקום...",
@@ -1010,5 +1009,9 @@
   "Next week": "השבוע הבא",
   "Select": "בחירה",
   "{n} selected": "{n} נבחרו",
-  "{n} days approved": "{n} ימים אושרו"
+  "{n} days approved": "{n} ימים אושרו",
+  "changed": "שונה",
+  "Changed": "שונה",
+  "now": "עכשיו",
+  "on shift": "במשמרת"
 }

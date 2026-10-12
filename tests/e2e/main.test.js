@@ -1251,7 +1251,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(after.n === before + 1, 'punch: saved through the punch function (' + before + ' → ' + after.n + ')');
   ok(!after.days.includes(null), 'punch: the new punch has a day');
   const ms = await p.evaluate(async () => { openSchedule(); await new Promise(r => setTimeout(r, 1500));
-    return {shown: !document.getElementById('screenSchedule').classList.contains('hidden'), days: document.querySelectorAll('#scheduleContent .sched-cell').length, empty: /No shifts planned yet/.test(document.getElementById('scheduleContent').innerText), sched: JSON.stringify(selectedWorker.schedule), n: workers.length, keys: Object.keys(selectedWorker).sort().join(',')}; });
+    return {shown: !document.getElementById('screenSchedule').classList.contains('hidden'), days: document.querySelectorAll('#scheduleContent .sched-cell').length, empty: /No shifts planned yet/.test(document.getElementById('scheduleContent').innerText), sched: JSON.stringify(selectedWorker.schedule), n: workers.length, keys: Object.keys(selectedWorker).sort().join(','),
+      top: !!document.querySelector('#scheduleContent .sched-sum.top + .sched-grid'), plates: document.querySelectorAll('#scheduleContent .sp-plate').length}; });
+  ok(ms.empty || (ms.top && ms.plates >= 1), 'punch: My Schedule — figures on top, the day plates under the calendar ' + JSON.stringify(ms));
   ok(ms.shown && (ms.days >= 35 || ms.empty) && ms.n === 1 && ms.keys.includes('schedule'), 'punch: My Schedule shows the worker\'s own week ' + JSON.stringify(ms));
   await p.evaluate(() => closeHistory());
   // A schedule change since this device last saw it: a notice that stays on the punch screen until My Schedule is opened.
@@ -1274,9 +1276,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const sh = (f.shifts || []).find(s => s.h > 0) || {};
     const raw = JSON.stringify(d);
     return {link, hours: f.hours, total: f.total, sat: sh.date && sh.date.getDay() === 6, text: document.getElementById('hoursContent').innerText.slice(0, 120),
-      leak: /gpsAccuracy|gpsWarnings|billRate|tok-/.test(raw), pay: d.pay};
+      leak: /gpsAccuracy|gpsWarnings|billRate|tok-/.test(raw), pay: d.pay,
+      card: ((document.querySelector('#hoursContent .pay-card .pay-r.tot') || {}).innerText || '').replace(/\s+/g, ' ')};
   });
   ok(mh.link && mh.hours === 8 && mh.total === (mh.sat ? 600 : 400) && !mh.leak && /8\.0h/.test(mh.text), "punch: My Hours — own shift, priced like Salary, no GPS or billing " + JSON.stringify(mh));
+  ok(/Total ₪(400|600)/.test(mh.card), 'punch: My Hours — the Pay card totals the month ' + JSON.stringify(mh.card));
   // My History is merged in: a tap on a shift opens its punches (in / out, time, site).
   const mx = await p.evaluate(async () => {
     for(let i = 0; i < 50 && !document.querySelector('#hoursContent .hours-shift'); i++) await new Promise(r => setTimeout(r, 100));
