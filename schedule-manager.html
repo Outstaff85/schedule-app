@@ -658,8 +658,20 @@
   .seg-toggle{display:flex;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:3px;margin-bottom:12px;gap:3px}
   .seg-toggle button{flex:1;border:0;background:none;color:var(--text2);font:600 13px inherit;padding:8px 4px;border-radius:8px;cursor:pointer}
   .seg-toggle button.on{background:var(--accent);color:#fff}
-  .rate-margin{display:flex;align-items:center;justify-content:space-between;background:var(--green-bg);border:1px solid rgba(109,214,160,.3);color:var(--green);border-radius:10px;padding:9px 12px;font-size:13px;font-weight:600;margin-bottom:12px}
-  .rate-margin.neg{background:var(--red-bg,rgba(255,79,94,.12));border-color:rgba(255,79,94,.35);color:var(--red,#ff4f5e)}
+  .rate-margin{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:8px;margin-bottom:12px}
+  .rate-margin>div{background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:12px;padding:9px 10px;text-align:center}
+  .rate-margin b{display:block;font-size:17px;font-weight:700;color:var(--green)}
+  .rate-margin small{display:block;font-size:11px;color:var(--text2);margin-top:2px}
+  .rate-margin.neg b{color:var(--red,#ff4f5e)}
+  /* The client editor's small map (Place): the GPS radius as a circle; a tap opens the map picker. */
+  .og-map{position:relative;height:110px;border-radius:14px;margin:2px 0 12px;cursor:pointer;overflow:hidden;border:1px solid var(--border);
+    background:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px) 0 0/22px 22px,linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px) 0 0/22px 22px,rgba(34,211,238,.05)}
+  .og-map-r{position:absolute;left:50%;top:50%;width:calc(var(--r,48px)*2);height:calc(var(--r,48px)*2);transform:translate(-50%,-50%);border-radius:50%;border:1.5px dashed rgba(34,211,238,.7);background:rgba(34,211,238,.10)}
+  .og-map-pin{position:absolute;left:50%;top:50%;transform:translate(-50%,-80%);font-size:22px;color:#22d3ee}
+  .og-map-l{position:absolute;right:8px;bottom:8px;max-width:calc(100% - 16px);padding:3px 9px;border-radius:9px;background:rgba(10,12,20,.7);font-size:11px;font-weight:600;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .og-map-tap{position:absolute;left:10px;top:10px;width:30px;height:30px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:#22d3ee;font-size:16px}
+  .og-map:active{transform:scale(.99)}
+  .og-map:not(.set) .og-map-r,.og-map:not(.set) .og-map-pin{opacity:.35}
   .view-toggle{display:inline-flex;border:1px solid var(--border2);border-radius:var(--radius-sm);overflow:hidden}
   /* Workers tab toolbar: actions, search + layout toggle, then the filters in
      one row on a computer and two columns on a phone. */
@@ -821,6 +833,10 @@
   .og-edh-n p{font-size:12px;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .og-edh-n p:empty{display:none}
   .og-edh-n .wc-chips{margin:6px 0 0}
+  /* The worker editor without a photo: the initials in the status color (a tap adds a photo). */
+  #wAvatarIni{display:none;width:56px;height:56px;font-size:19px;flex:none;cursor:pointer}
+  #wAvatarWrap:not(:has(#wAvatarImg[src^="data"])) #wAvatarIni{display:flex}
+  .og-edh-n p .dot{margin:0 5px}
   .og-sec{position:relative;background:var(--plate);border-radius:16px;box-shadow:inset 4px 0 0 var(--c,var(--neutral));margin-bottom:8px;transition:box-shadow .25s}
   .og-sec-h{position:relative;display:flex;align-items:center;gap:12px;width:100%;padding:11px 12px 11px 16px;border:0;background:none;color:var(--text);text-align:start;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent}
   .og-sec-ic{width:36px;height:36px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--c,var(--neutral));background:color-mix(in srgb,var(--c,var(--neutral)) 22%,transparent);box-shadow:inset 0 0 0 1.5px var(--c,var(--neutral))}
@@ -1032,6 +1048,79 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 .sel-bar .gbtn.del{color:#ffd1d6;}
 @media (prefers-reduced-motion:reduce){.t3-kb::after,.og-snack-u::after,.sel-head button::after{animation:none;}}
 .sel-bar .gbtn:disabled{opacity:.45;cursor:default;}
+  /* Odinson Glass form fields (mockup 04, owner 2026-10-13): every field in a
+     window is a soft rounded glass box — 42px tall, 12px corners, a faint fill
+     and hairline, a cyan focus ring; selects carry a thin chevron; labels are
+     small and muted. The same block in the manager app and both portals. */
+  .modal .field label:not(.check-chip):not([style]){font-size:11px;font-weight:500;color:#8b90a0;margin:0 4px 4px}
+  .modal .field input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]),.modal .field select,.modal .field textarea{
+    height:42px;padding:0 12px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background-color:rgba(255,255,255,.05);color:var(--text);font-size:14px;
+    box-shadow:none;transition:border-color .2s,box-shadow .2s,background-color .2s}
+  .modal .field textarea{height:auto;min-height:84px;padding:10px 12px;line-height:1.45}
+  .modal .field select{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;
+    background-image:linear-gradient(45deg,transparent 50%,#8b90a0 50%),linear-gradient(135deg,#8b90a0 50%,transparent 50%);
+    background-position:calc(100% - 19px) 18px,calc(100% - 14px) 18px;background-size:5px 5px;background-repeat:no-repeat}
+  .modal [dir=rtl] .field select,.modal .field select[dir=rtl]{padding-right:14px;padding-left:36px;background-position:14px 18px,19px 18px}
+  .modal .field input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]):focus,.modal .field select:focus,.modal .field textarea:focus{
+    outline:none;border-color:rgba(34,211,238,.6);background-color:rgba(255,255,255,.07);box-shadow:0 0 0 3px rgba(34,211,238,.12)}
+  .modal .field input::placeholder,.modal .field textarea::placeholder{color:rgba(255,255,255,.35)}
+  .modal .field input:disabled,.modal .field select:disabled{opacity:.55}
+  .modal .field .scan-missing{border-color:rgba(245,166,35,.6) !important;background-color:rgba(245,166,35,.06) !important}
+  .modal .rate-in input{padding-left:58px !important}
+  /* Inline old-style fields inside any window (style="background:var(--bg3)…") follow the glass look too. */
+  .modal input:is([type=text],[type=number],[type=date],[type=time],[type=tel],[type=email],[type=password],[type=search],[type=url],:not([type])),.modal select,.modal textarea{
+    background-color:rgba(255,255,255,.05) !important;border:1px solid rgba(255,255,255,.12) !important;border-radius:12px !important;color:var(--text) !important;font-size:14px !important;box-shadow:none}
+  .modal input:is([type=text],[type=number],[type=date],[type=time],[type=tel],[type=email],[type=password],[type=search],[type=url],:not([type])),.modal select{height:42px !important;padding-top:0 !important;padding-bottom:0 !important}
+  .modal input:focus,.modal select:focus,.modal textarea:focus{border-color:rgba(34,211,238,.6) !important;box-shadow:0 0 0 3px rgba(34,211,238,.12) !important;outline:none}
+  .modal .scan-missing{border-color:rgba(245,166,35,.6) !important;background-color:rgba(245,166,35,.06) !important}
+  .modal .field>label i.ti{display:none}
+  .modal input[type=date]{color-scheme:dark}
+  .modal .seg-toggle{gap:4px;padding:4px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1)}
+  .modal .seg-toggle button{position:relative;height:36px;padding:0 6px;border-radius:10px;color:#8b90a0}
+  .modal .seg-toggle button.on{background:rgba(255,255,255,.12);color:#fff}
+  .modal .seg-toggle button.on::after{content:'';position:absolute;left:28%;right:28%;bottom:3px;height:2px;border-radius:2px;background:var(--uline,#22d3ee);background-size:300% 100%;animation:og-flow 2.4s linear infinite}
+  /* Editors exactly as mockup 04 (owner 2026-10-13): section heads with a
+     tinted rounded-square icon and the flowing line across an open head;
+     a badge before the chevron; ticks as compact tiles with a green box;
+     every button in a window is glass; Save carries a check. */
+  .og-sec{overflow:hidden}
+  .og-sec-h{gap:10px;padding:12px 12px 12px 16px}
+  .og-sec-ic{width:30px;height:30px;border-radius:10px;font-size:17px;background:color-mix(in srgb,var(--c,var(--neutral)) 16%,transparent);box-shadow:none}
+  .og-sec-t b{font-size:14px}
+  .og-sec.open .og-sec-t b{display:block;padding-bottom:0}
+  .og-sec.open .og-sec-t b::after{display:none}
+  .og-sec.open .og-sec-h::after{content:'';position:absolute;left:16px;right:12px;bottom:0;height:2px;border-radius:2px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;opacity:.7}
+  .og-sec-b{padding:6px 12px 14px 16px}
+  .og-sec-badge{flex:none;display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:11px;font-size:11px;font-weight:700}
+  .og-sec-badge.amber{background:rgba(245,166,35,.16);color:#f7c062}
+  .og-sec-badge.red{background:rgba(255,95,109,.16);color:#ff8a95}
+  .og-sec-badge.blue{background:rgba(79,142,247,.16);color:#8fb4ff}
+  .modal .check-grid{display:flex;flex-wrap:wrap;gap:6px;grid-template-columns:none}
+  .modal label.check-chip{display:inline-flex;width:auto;min-height:40px;height:40px;padding:0 12px 0 9px;gap:9px;margin:0;border:0;border-radius:14px;background:#232735;color:#8b90a0;font-size:13px;font-weight:600;transition:background .25s,color .25s}
+  .modal .field>label.check-chip{display:flex;width:100%}
+  .modal label.check-chip:has(input:checked){background:#1b2a28;color:#fff}
+  .modal label.check-chip .chip-hint,.modal label.check-chip .chip-text i.ti{display:none}
+  .modal label.check-chip .chip-text{flex-direction:row}
+  .modal label.check-chip input[type=checkbox]{-webkit-appearance:none;appearance:none;width:20px;height:20px;flex:0 0 20px;margin:0;border-radius:6px;border:2px solid rgba(255,255,255,.35);background:transparent;cursor:pointer;transition:background .25s,border-color .25s}
+  .modal label.check-chip input[type=checkbox]:checked{background:#6dd6a0 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230b0d14' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/14px no-repeat;border-color:#6dd6a0}
+  .modal label.check-chip input[type=checkbox]:disabled{opacity:.5}
+  .modal .btn{height:40px;padding:0 14px;border-radius:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:var(--text);font-weight:600;font-size:13px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+  .modal .btn.sm{height:36px;border-radius:12px;font-size:12.5px}
+  .modal .btn.accent{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.3);color:#fff}
+  .modal .og-save i{margin-right:2px}
+  .og-edh{flex-wrap:wrap}
+  .og-edh-chips{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px;margin:-4px 0 0}
+  .og-edh-chips:empty{display:none}
+  .og-sec-b .t3-line{min-height:40px;padding-top:6px;padding-bottom:6px;margin-bottom:6px}
+  .og-sec-b .t3-line .t3-av{width:26px;height:26px;font-size:10px}
+  .og-sec-b .t3-line .r{font-family:'DM Mono',monospace;font-size:12px}
+  .modal .field>label{line-height:16px}
+  .og-lbl{display:block;font-size:11px;font-weight:500;color:#8b90a0;margin:2px 4px 4px}
+  .og-figs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0 4px}
+  .og-figs>div,.rate-margin>div{background:#232735;border:0;border-radius:12px;padding:9px 10px;text-align:start}
+  .og-figs b,.rate-margin b{display:block;font:700 15px 'DM Mono',monospace;color:var(--green)}
+  .og-figs small,.rate-margin small{display:block;font-size:11px;color:#8b90a0;margin-top:2px}
+  .modal canvas#wSigCanvas{border-radius:12px !important}
 </style>
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="icons/tabler-icons.css">
@@ -1636,8 +1725,16 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
      pattern as the worker modal — __editingUserId null means "create". -->
 <div class="overlay" id="userFormOverlay" style="z-index:980">
   <div class="modal" style="max-width:420px">
-    <div class="modal-title" id="userFormTitle" data-i18n>New user</div>
+    <div class="og-edh" id="userFormHead"><div class="t3-av og-av wc-av" id="userFormAv"></div><div class="og-edh-n"><h4 id="userFormTitle">New user</h4><p id="userFormSub"></p></div><button class="gbtn icon" type="button" id="userFormMenuBtn" title="More" data-i18n-title="More" aria-label="More" onclick="openUserFormMenu(event,this)"><i class="ti ti-dots-vertical"></i></button><div class="og-edh-chips"><span class="nchip" id="userFormRolePill"></span></div></div>
     <section class="og-sec" data-sec="person"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-user"></i></span><span class="og-sec-t"><b data-i18n>Person & login</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
+    <div class="field-row">
+      <div class="field"><label id="userFormFullNameLabel" data-i18n>Full name</label><input type="text" id="userFormFullName" autocomplete="off" maxlength="80" oninput="drawUserFormHead()"></div>
+      <div class="field"><label data-i18n>Phone</label><input type="tel" id="userFormPhone" autocomplete="off" maxlength="40"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label data-i18n>Username</label><input type="text" class="need" id="userFormUsername" autocomplete="off"></div>
+      <div class="field" id="userFormPasswordField"><label id="userFormPasswordLabel" data-i18n>Password (min. 8)</label><input type="password" id="userFormPassword" autocomplete="new-password"></div>
+    </div>
     <div class="field" id="userFormRoleField"><label data-i18n>Role</label>
       <select id="userFormRole" data-seg onchange="onUserFormRoleChange(true)">
         <option value="staff" data-i18n>Staff</option>
@@ -1646,21 +1743,12 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
         <option value="client" data-i18n>Client</option>
       </select>
     </div>
-    <div class="field-row">
-      <div class="field"><label id="userFormFullNameLabel" data-i18n>Full name</label><input type="text" id="userFormFullName" autocomplete="off" maxlength="80"></div>
-      <div class="field"><label data-i18n>Phone</label><input type="tel" id="userFormPhone" autocomplete="off" maxlength="40"></div>
-    </div>
-    <div class="field-row">
-      <div class="field"><label data-i18n>Username</label><input type="text" class="need" id="userFormUsername" autocomplete="off"></div>
-      <div class="field" id="userFormPasswordField"><label id="userFormPasswordLabel" data-i18n>Password (min. 8)</label><input type="password" id="userFormPassword" autocomplete="new-password"></div>
-    </div>
     </div></section>
     <section class="og-sec" data-sec="sections" id="userFormAccessHead" data-auto><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-layout-grid"></i></span><span class="og-sec-t"><b data-i18n>Sections</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
     <div class="field" id="userFormSupplierField" style="display:none"><label data-i18n>Supplier</label><select id="userFormSupplierId" onchange="renderUserFormHrWorkers()"></select></div>
     <div class="field" id="userFormClientField" style="display:none"><label data-i18n>Client</label><select id="userFormClientId"></select></div>
     <!-- A supplier login: the supplier portal's tabs it may use (users.supplierSections → claim ss). -->
     <div class="field" id="userFormSupSectionsField" style="display:none">
-      <label data-i18n>Sections</label>
       <div class="check-grid">
         <label class="check-chip"><input type="checkbox" value="dashboard" class="userFormSupSecCb"><span class="chip-text"><span><i class="ti ti-home"></i> <span data-i18n>Dashboard</span></span><span class="chip-hint" data-i18n>Who is on site, today's punches</span></span></label>
         <label class="check-chip"><input type="checkbox" value="workers" class="userFormSupSecCb"><span class="chip-text"><span><i class="ti ti-users-group"></i> <span data-i18n>My Workers</span></span><span class="chip-hint" data-i18n>Add and edit its workers</span></span></label>
@@ -1668,7 +1756,6 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
       </div>
     </div>
     <div class="field" id="userFormPermsField">
-      <label data-i18n>Sections</label>
       <div class="check-grid">
         <label class="check-chip"><input type="checkbox" value="schedule" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-calendar"></i> <span data-i18n>Schedule</span></span><span class="chip-hint" data-i18n>Schedule tab</span></span></label>
         <label class="check-chip"><input type="checkbox" value="workers" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-users-group"></i> <span data-i18n>Workers</span></span><span class="chip-hint" data-i18n>Workers tab</span></span></label>
@@ -1685,7 +1772,6 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
          users.hourPerms → claim hp, checked by the hours function): the
          shared hours screen, hours-review.js. -->
     <div class="field" id="userFormHourPermsField" style="display:none">
-      <label data-i18n>Hours</label>
       <div class="check-grid">
         <label class="check-chip"><input type="checkbox" value="hours" class="userFormHourPermCb"><span class="chip-text"><span><i class="ti ti-clock"></i> <span data-i18n>Hours</span></span><span class="chip-hint" data-i18n>In / out of its workers</span></span></label>
         <label class="check-chip"><input type="checkbox" value="approve" class="userFormHourPermCb"><span class="chip-text"><span><i class="ti ti-circle-check"></i> <span data-i18n>Approve</span></span><span class="chip-hint" data-i18n>A day or the whole month</span></span></label>
@@ -1709,8 +1795,8 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
     <section class="og-sec" data-sec="commission" data-auto><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-coin"></i></span><span class="og-sec-t"><b data-i18n>HR commission</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
     <div class="field" id="userFormPayFields" style="display:none">
       <div class="field-row" id="userFormCommissionField" style="margin-top:8px">
-        <div class="field"><label data-i18n>HR commission ₪/h</label><input type="number" id="userFormCommission" min="0" step="0.5" placeholder="0"></div>
-        <div class="field"><label data-i18n>₪/day (daily workers)</label><input type="number" id="userFormCommissionDay" min="0" step="0.5" placeholder="by the hour" data-i18n-placeholder="by the hour"></div>
+        <div class="field"><label data-i18n>HR commission ₪/h</label><input type="number" id="userFormCommission" min="0" step="0.5" oninput="drawUserFormHead()" placeholder="0"></div>
+        <div class="field"><label data-i18n>₪/day (daily workers)</label><input type="number" id="userFormCommissionDay" min="0" step="0.5" oninput="drawUserFormHead()" placeholder="by the hour" data-i18n-placeholder="by the hour"></div>
       </div>
     </div>
     </div></section>
@@ -1720,7 +1806,7 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
     </div></section>
     <div id="userFormError" style="color:#ff6b78;font-size:13px;margin:2px 0 6px;min-height:1.2em"></div>
     <div class="modal-actions">
-      <button class="gbtn primary og-save" id="userFormSaveBtn" onclick="submitUserForm()" data-i18n>Save</button>
+      <button class="gbtn primary og-save" id="userFormSaveBtn" onclick="submitUserForm()"><i class="ti ti-check"></i><span data-i18n>Save</span></button>
     </div>
   </div>
 </div>
@@ -2335,6 +2421,12 @@ function workerDocStatus(w){
   if(expiry) lines.push(expiry.text);
   for(const x of docExpiries) lines.push(x.text);
   return {level, missing, expiry, docExpiries, docExpired, failed, lines};
+}
+// The worker editor's Documents badge: the number of open document problems
+// ("red|2" when one is urgent, "amber|1"), nothing when complete (mockup 04).
+function workerDocBadge(w){
+  const st=workerDocStatus(w), n=st.missing.length+(st.expiry?1:0)+st.docExpiries.length+(st.failed?1:0);
+  return n?(st.level==='error'?'red':'amber')+'|'+n:'';
 }
 // Compact list/cards badge — nothing when documents are complete.
 // "NEW" next to a worker for 3 days after they were added (w.createdAt —
@@ -3676,10 +3768,12 @@ function showWorkerModal(w){
   document.getElementById('workerModal').innerHTML=`
     <div class="field og-edh" id="wAvatarWrap" style="--c:${editingWorkerIdx!==null?workerBarColor(w,workerNotices(w,workerToday(w,todayPunchLog()))):'var(--neutral)'}">
       <img id="wAvatarImg" src="${__wAvatarB64?('data:image/jpeg;base64,'+__wAvatarB64):''}" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1px solid var(--border2);background:var(--bg3);display:${__wAvatarB64?'block':'none'}">
-      <div class="og-edh-n"><h4>${esc(w.name||'')||(editingWorkerIdx!==null?'עריכת עובד':'הוספת עובד חדש')}</h4><p>${editingWorkerIdx!==null?[workerSiteName(w)?`<span class="site">${esc(workerSiteName(w))}</span>`:'', workerTodayHtml(workerToday(w,todayPunchLog())), `<span class="fig">${esc(fmtHoursShort(workersMonthHours()[w.id]||0))}</span>`].filter(Boolean).join('<span class="dot">·</span>'):''}</p>${editingWorkerIdx!==null?`<div class="wc-chips">${noticeChipsHtml(w,workerNotices(w,workerToday(w,todayPunchLog())),true)}</div>`:''}</div>
+      <div class="t3-av og-av wc-av" id="wAvatarIni" onclick="document.getElementById('wAvatarFile').click()">${esc(initialsOf(w.name||'?'))}</div>
+      <div class="og-edh-n"><h4>${esc(w.name||'')||(editingWorkerIdx!==null?'עריכת עובד':'הוספת עובד חדש')}</h4><p>${editingWorkerIdx!==null?[workerSiteName(w)?`<span class="site">${esc(workerSiteName(w))}</span>`:'', workerTodayHtml(workerToday(w,todayPunchLog())), `<span class="fig">${esc(fmtHoursShort(workersMonthHours()[w.id]||0))}</span>`].filter(Boolean).join('<span class="dot">·</span>'):''}</p></div>
       ${editingWorkerIdx!==null?`<button class="gbtn icon" type="button" onclick="rescanFromWorkerModal()" title="${esc(tr('Scan'))}" aria-label="${esc(tr('Scan'))}"><i class="ti ti-scan"></i></button>`:''}
       <button class="gbtn icon" type="button" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey([{icon:'ti-camera', label:'העלה תמונה', fn:()=>document.getElementById('wAvatarFile').click()}, {icon:'ti-trash', label:'מחק תמונה', danger:true, fn:()=>clearWorkerAvatar()}])}')"><i class="ti ti-dots-vertical"></i></button>
       <span id="wAvatarDeleteBtn" hidden></span>
+      <div class="wc-chips og-edh-chips">${editingWorkerIdx!==null?noticeChipsHtml(w,workerNotices(w,workerToday(w,todayPunchLog())),true):''}</div>
       <input type="file" id="wAvatarFile" accept="image/*" style="display:none" onchange="onAvatarFileSelected(this.files[0]); this.value='';">
     </div>
     <div class="field" id="avatarCropWrap" style="display:none;flex-direction:column;align-items:center;gap:8px;background:var(--bg3);border-radius:8px;padding:12px">
@@ -3809,10 +3903,10 @@ function showWorkerModal(w){
     </div>
     <div class="field"><label>הערות</label><textarea id="wNotes" placeholder="הערות על העובד" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;padding:8px 10px;outline:none;min-height:56px;resize:vertical">${esc(w.notes||'')}</textarea></div>
 </div></section>
-<section class="og-sec" data-sec="documents" data-state="${editingWorkerIdx===null?'':({ok:'green',warn:'amber',error:'red'})[workerDocStatus(w).level]}" data-summary="${editingWorkerIdx===null?'':esc(workerDocStatus(w).lines[0]||tr('Complete'))}"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-files"></i></span><span class="og-sec-t"><b>${esc(tr('Documents'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
+<section class="og-sec" data-sec="documents" data-state="${editingWorkerIdx===null?'':({ok:'green',warn:'amber',error:'red'})[workerDocStatus(w).level]}" data-summary="${editingWorkerIdx===null?'':esc(workerDocStatus(w).lines[0]||tr('Complete'))}" data-badge="${editingWorkerIdx===null?'':workerDocBadge(w)}"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-files"></i></span><span class="og-sec-t"><b>${esc(tr('Documents'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
       ${editingWorkerIdx!==null?workerEditorDocsHtml(w):`<div class="wc-line">${esc(tr('Documents are added on the worker card after the worker is saved.'))}</div>`}
 </div></section>
-<section class="og-sec" data-sec="form101"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-id-badge-2"></i></span><span class="og-sec-t"><b>${esc(tr('Form 101'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
+<section class="og-sec" data-sec="form101" data-badge="${editingWorkerIdx!==null&&!w.docUrl?'amber|'+esc(tr('Sign')):''}"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-id-badge-2"></i></span><span class="og-sec-t"><b>${esc(tr('Form 101'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
     <div id="wForm101Wrap">
       <div class="field-row stack-phone">
         <div class="field"><label>סוג הכנסה (טופס 101)</label>
@@ -3875,19 +3969,19 @@ function showWorkerModal(w){
       <button class="btn sm" style="margin-top:6px" type="button" onclick="clearSignaturePad('wSigCanvas')"><i class="ti ti-eraser"></i> נקה חתימה</button>
     </div>
 </div></section>
-    ${editingWorkerIdx!==null ? `<section class="og-sec" data-sec="access"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-key"></i></span><span class="og-sec-t"><b>${esc(tr('Access'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
+    ${editingWorkerIdx!==null ? `<section class="og-sec" data-sec="access" data-summary="${esc(w.token?tr('Punch link on'):tr('No punch link yet'))}"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-key"></i></span><span class="og-sec-t"><b>${esc(tr('Access'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
     ${w.token ? `<div class="field">
       <label><i class="ti ti-link"></i> קישור אישי להחתמה</label>
-      <div style="background:var(--bg3);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <div style="background:#232735;border-radius:12px;padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <code style="font-size:11px;color:var(--blue);flex:1;word-break:break-all">${buildPunchLink(w)}</code>
-        <button class="btn sm" onclick="copyWorkerLink('${w.id}')" style="flex-shrink:0"><i class="ti ti-clipboard-text"></i> העתק</button>
+        <button class="gbtn" type="button" onclick="copyWorkerLink('${w.id}')" style="flex-shrink:0"><i class="ti ti-clipboard-text"></i><span>העתק</span></button>
       </div>
       ${(()=>{ const geo=(w.clientIds||[]).map(id=>clients.find(c=>c.id===id)).find(c=>c&&c.lat&&c.lng); return geo
         ? `<div style="font-size:11px;color:var(--green);margin-top:4px"><i class="ti ti-map-pin"></i> גדר גיאוגרפית: ${esc(geo.name)} · ${(geo.radius||100)}מ'</div>`
         : `<div style="font-size:11px;color:var(--amber);margin-top:4px"><i class="ti ti-alert-triangle"></i> ללקוח המקושר אין מיקום מוגדר — ההחתמה לא תאומת גיאוגרפית</div>`; })()}
       <div style="font-size:11px;color:var(--text3);margin-top:4px">שלחו את הקישור לעובד. הוא ישמור אותו כסימניה.</div>
     </div>` : ''}
-      <button class="btn" onclick="regenerateWorkerToken(${editingWorkerIdx})" style="background:var(--amber-bg);border-color:rgba(245,166,35,0.3);color:var(--amber)"><i class="ti ti-refresh"></i> טוקן חדש</button>
+      <button class="gbtn" type="button" onclick="regenerateWorkerToken(${editingWorkerIdx})"><i class="ti ti-refresh"></i><span>טוקן חדש</span></button>
     </div></section>` : ''}
     <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px"><i class="ti ti-device-floppy"></i> ${editingWorkerIdx!==null?'השינויים נשמרים בסגירת החלון':'העובד נוצר בסגירת החלון'}</div>`;
   // No Save button: a tap outside the window saves it (saveWorker auto).
@@ -3928,6 +4022,13 @@ function ogSecSummary(sec){
   const c = st==='red' ? 'var(--bad)' : (st==='amber'||missing) ? 'var(--warn)' : (st==='green'||vals.length) ? 'var(--ok)' : 'var(--neutral)';
   sec.style.setProperty('--c', c);
   const s=sec.querySelector('.og-sec-s'); if(s) s.textContent = sum || vals.join(' · ') || tr('Not filled in');
+  // A badge before the chevron: data-badge="red|1", "amber|Sign" (mockup 04).
+  let bd=sec.querySelector(':scope>.og-sec-h>.og-sec-badge');
+  if(sec.dataset.badge){
+    const [k,t]=sec.dataset.badge.split('|');
+    if(!bd){ bd=document.createElement('span'); sec.querySelector(':scope>.og-sec-h>.og-sec-chev').before(bd); }
+    bd.className='og-sec-badge '+k; bd.innerHTML=`<i class="ti ${k==='red'?'ti-alert-triangle':'ti-alert-circle'}"></i>${esc(t)}`;
+  } else if(bd) bd.remove();
   return missing;
 }
 function ogSections(root, openKey){
@@ -3974,7 +4075,7 @@ function clientLoginsHtml(c){
 // rights), and the users cache follows.
 async function saveLoginTicks(cb){
   const uid=cb.dataset.uid, field=cb.dataset.field;
-  const values=[...document.querySelectorAll(`input[data-uid="${CSS.escape(uid)}"][data-field="${field}"]:checked`)].map(x=>x.value);
+  const values=field==='showPay'?cb.checked:[...document.querySelectorAll(`input[data-uid="${CSS.escape(uid)}"][data-field="${field}"]:checked`)].map(x=>x.value);
   try{
     const json=await (await fetch(API_URL,{method:'POST', body:JSON.stringify({action:'updateUser', ...gsAuth(), id:uid, [field]:values})})).json();
     if(!json||json.error){ showToast(tr((json&&json.error)||'Save failed')); cb.checked=!cb.checked; return; }
@@ -3998,19 +4099,36 @@ function newLoginFor(role, id){
 // commission payable — the same figures as Accounting → Payable by supplier),
 // Portal login (its supplier logins and the portal tabs they see, editable)
 // and Workers (mini plates with this month's hours).
-function supplierEditorExtraHtml(sp){
-  const SEC=(key,icon,title,body)=>`<section class="og-sec" data-sec="${key}"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ${icon}"></i></span><span class="og-sec-t"><b>${esc(tr(title))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">${body}</div></section>`;
-  const mine=workers.filter(w=>w.supplierId===sp.id), hours=workersMonthHours(), total=mine.reduce((t,w)=>t+(hours[w.id]||0),0);
+// The supplier editor's header line: its workers and this month's commission payable.
+function supplierEditorSub(sp){
+  const n=workers.filter(w=>w.supplierId===sp.id).length;
+  return [n===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:n,1:''}), tr('{0} this month',{0:'₪'+fmtMoneyShort(supplierMonthPayable(sp))})].join(' · ');
+}
+// This month's commission payable to a supplier (the same figure as Accounting → Payable by supplier).
+function supplierMonthPayable(sp){
   let payable=0;
   Object.values(salaryEntriesFor('month').byWorker||{}).forEach(e=>{ const wc=workers.find(w=>w.id===e.workerId); if(wc&&wc.supplierId===sp.id) payable+=commissionFor(wc,e,supplierCommissionRate(wc,sp.id),supplierDayCommission(wc,sp.id)); });
-  const commission=`<div class="wc-kv"><div><small>${esc(tr('Per hour'))}</small><span class="fig">₪${esc(String(SUPPLIER_DEFAULT_RATE))}</span></div><div><small>${esc(tr('Workers'))}</small>${mine.length}</div><div><small>${esc(tr('This month'))}</small><span class="fig">${esc(fmtHoursShort(total))}</span></div><div><small>${esc(tr('Payable this month'))}</small><span class="fig">₪${esc(String(Math.round(payable)))}</span></div></div>
-    <div class="wc-line">${esc(tr('Per-worker and per-day commission is set in Accounting.'))}</div>`;
+  return payable;
+}
+function deleteSupplierFromEditor(){
+  const id=editingSupplierId; if(!id) return;
+  closeModal('supplierOverlay');
+  deleteSupplier(id, document.querySelector(`#suppliersGrid .t3-line[data-sel-id="${CSS.escape(id)}"]`));
+}
+function supplierEditorExtraHtml(sp){
+  const SEC=(key,icon,title,body,sum)=>`<section class="og-sec" data-sec="${key}"${sum?` data-summary="${esc(sum)}"`:''}><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ${icon}"></i></span><span class="og-sec-t"><b>${esc(tr(title))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">${body}</div></section>`;
+  const mine=workers.filter(w=>w.supplierId===sp.id), hours=workersMonthHours(), total=mine.reduce((t,w)=>t+(hours[w.id]||0),0);
+  const payable=supplierMonthPayable(sp);
+  const commission=`<div class="og-figs"><div><b>${esc(fmtHoursShort(total))}</b><small>${esc(tr('hours'))}</small></div><div><b>₪${esc(fmtMoneyShort(payable))}</b><small>${esc(tr('commission'))}</small></div><div><b>${mine.length}</b><small>${esc(tr('workers'))}</small></div></div>
+    <div class="wc-line">${esc(tr('₪{0} per hour by default; per-worker and per-day commission is set in Accounting.',{0:SUPPLIER_DEFAULT_RATE}))}</div>`;
   const users=(loadAdminCache('users_'+activeTenantIdForAdmin())||[]).filter(u=>u.role==='supplier'&&u.supplierId===sp.id);
   const SECT={dashboard:'Dashboard', workers:'My Workers', hours:'My Hours'}, can=isFirmAdminSession();
-  const login=(users.length?users.map(u=>`<div class="wc-line" style="margin-bottom:2px"><i class="ti ti-user"></i><span>${esc(u.fullName||u.username)} · ${esc(u.username)}</span></div><div class="check-grid" style="margin:6px 0 10px">${Object.keys(SECT).map(k=>`<label class="check-chip"><input type="checkbox" data-uid="${esc(u.id)}" data-field="supplierSections" value="${k}"${can?'':' disabled'}${(u.supplierSections||Object.keys(SECT)).includes(k)?' checked':''} onchange="saveLoginTicks(this)"><span class="chip-text"><span>${esc(tr(SECT[k]))}</span></span></label>`).join('')}</div>`).join(''):`<div class="wc-line">${esc(tr('No portal login yet.'))}</div>`)
+  const login=(users.length?users.map(u=>`<div class="wc-line" style="margin-bottom:2px"><i class="ti ti-user"></i><span>${esc(u.fullName||u.username)} · ${esc(u.username)}</span></div><div class="check-grid" style="margin:6px 0 10px">${Object.keys(SECT).map(k=>`<label class="check-chip"><input type="checkbox" data-uid="${esc(u.id)}" data-field="supplierSections" value="${k}"${can?'':' disabled'}${(u.supplierSections||Object.keys(SECT)).includes(k)?' checked':''} onchange="saveLoginTicks(this)"><span class="chip-text"><span>${esc(tr(SECT[k]))}</span></span></label>`).join('')}<label class="check-chip"><input type="checkbox" data-uid="${esc(u.id)}" data-field="showPay" value="1"${can?'':' disabled'}${u.showPay!==false?' checked':''} onchange="saveLoginTicks(this)"><span class="chip-text"><span>${esc(tr("Sees own workers' pay"))}</span></span></label></div><div class="check-grid" style="margin:0 0 10px">${Object.keys(HOUR_PERM_LABELS).map(p=>`<label class="check-chip"><input type="checkbox" data-uid="${esc(u.id)}" data-field="hourPerms" value="${esc(p)}"${can?'':' disabled'}${(Array.isArray(u.hourPerms)?u.hourPerms:HOUR_DEFAULT).includes(p)?' checked':''} onchange="saveLoginTicks(this)"><span class="chip-text"><span>${esc(tr(HOUR_PERM_LABELS[p]))}</span></span></label>`).join('')}</div>`).join(''):`<div class="wc-line">${esc(tr('No portal login yet.'))}</div>`)
     +(can?`<button type="button" class="gbtn" onclick="newLoginFor('supplier','${esc(sp.id)}')"><i class="ti ti-user-plus"></i><span>${esc(tr('New portal login'))}</span></button>`:'');
   const plates=mine.length?mine.map(w=>t3Line({c:isActiveWorker(w)?'var(--ok)':'var(--bad)', av:t3Av(w), name:`<span title="${esc(w.name)}">${esc(shortName(w.name))}</span>`, right:`<span class="r">${esc(fmtHoursShort(hours[w.id]))}</span>`})).join(''):`<div class="t3-empty">${esc(tr('No workers'))}</div>`;
-  return SEC('commission','ti-coin','Commission',commission)+SEC('portal','ti-key','Portal login',login)+SEC('workers','ti-users-group','Workers',plates);
+  return SEC('commission','ti-coin','Commission',commission,'₪'+SUPPLIER_DEFAULT_RATE+tr('/h')+' · '+tr('{0} this month',{0:'₪'+fmtMoneyShort(payable)}))
+    +SEC('portal','ti-key','Portal login',login,users.length?users.map(u=>u.username).join(', '):tr('No portal login yet.'))
+    +SEC('workers','ti-users-group','Workers',plates,mine.length===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:mine.length,1:''}));
 }
 // The worker editor's Documents section: a plate per document (the scan and
 // Form 101 first, then w.docs), with Upload / Renew when something is missing
@@ -4342,48 +4460,45 @@ function showClientModal(c){
   // The client card is in Hebrew (per user request 2026-10-04).
   setTimeout(()=>{ syncClientBillFields(); },0);
   document.getElementById('clientModal').innerHTML=`<div dir="rtl">
-    <div class="og-edh" style="--c:${esc(c.color||'var(--neutral)')}"><div class="t3-av og-av wc-av">${esc(String(c.name||'?').trim().slice(0,2).toUpperCase())}</div><div class="og-edh-n"><h4>${esc(c.name||'')||(editingClientId?'עריכת לקוח':'לקוח חדש')}</h4><p>${esc([c.object, c.address].filter(Boolean).join(' · '))}</p></div></div>
+    <div class="og-edh" style="--c:${esc(c.color||'var(--neutral)')}"><div class="t3-av og-av wc-av">${esc(String(c.name||'?').trim().slice(0,2).toUpperCase())}</div><div class="og-edh-n"><h4>${esc(c.name||'')||(editingClientId?'עריכת לקוח':'לקוח חדש')}</h4><p dir="auto">${esc(editingClientId?clientEditorSub(c):[c.object, c.address].filter(Boolean).join(' · '))}</p></div>${editingClientId?`<button class="gbtn icon" type="button" title="${esc(tr('More'))}" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey([{icon:'ti-clock', label:tr('Manual punch'), fn:()=>punchFromClientModal()}, ...(hasPermission('clients')?[{icon:'ti-trash', label:tr('Delete'), danger:true, fn:()=>deleteClientFromEditor()}]:[])])}')"><i class="ti ti-dots-vertical"></i></button>`:''}</div>
     <section class="og-sec" data-sec="client"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-building"></i></span><span class="og-sec-t"><b>${esc(tr('Client'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
     <div class="field-row">
       <div class="field"><label>שם הלקוח</label><input type="text" class="need" id="cName" value="${esc(c.name||'')}" placeholder="שם הלקוח" autofocus></div>
       <div class="field"><label>ח.פ (לא חובה)</label><input type="text" id="cCompanyNumber" value="${esc(c.companyNumber||'')}" placeholder="512345678"></div>
     </div>
-    <div class="field"><label>אתר / סניף</label><input type="text" id="cObject" value="${esc(c.object||'')}" placeholder="שם האתר או הסניף"></div>
-    <div class="field"><label>כתובת (לא חובה)</label><input type="text" id="cAddr" value="${esc(c.address||'')}" placeholder="כתובת"></div>
     <!-- Rates (per user request 2026-10-11): the two rates side by side, the
          billing mode as two buttons, OT / Shabbat inline (empty = by law),
          and the margin per hour. -->
 </div></section>
 <section class="og-sec" data-sec="place"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-map-pin"></i></span><span class="og-sec-t"><b>${esc(tr('Place'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
+    <div class="field"><label>כתובת (לא חובה)</label><input type="text" id="cAddr" value="${esc(c.address||'')}" placeholder="כתובת"></div>
+    <div class="field-row">
+      <div class="field"><label>אתר / סניף</label><input type="text" id="cObject" value="${esc(c.object||'')}" placeholder="שם האתר או הסניף"></div>
+      <div class="field"><label>רדיוס (מטרים)</label><input type="number" id="cRadius" value="${c.radius||100}" placeholder="100" oninput="drawClientMapMini()"></div>
+    </div>
+    <div class="og-map${c.lat?' set':''}" id="cMapMini" role="button" tabindex="0" onclick="openMapPicker()" onkeydown="if(event.key==='Enter')openMapPicker()"><span class="og-map-r"></span><span class="og-map-tap"><i class="ti ti-map-2"></i></span><i class="ti ti-map-pin og-map-pin"></i><b class="og-map-l"></b></div>
     <div class="field">
-      <label><i class="ti ti-map-pin"></i> מיקום לשעון הנוכחות</label>
-      <button class="btn ${c.lat?'sm':'accent'}" type="button" onclick="openMapPicker()" style="width:100%;justify-content:center;margin-bottom:10px">
-        <i class="ti ti-map-2"></i> ${c.lat?'שינוי מיקום במפה':'בחירת מיקום במפה'}
-      </button>
       <div style="margin-bottom:8px">
-        <label style="font-size:11px;color:var(--text3);margin-bottom:4px;display:block">או הדבקת קישור מ-Google Maps</label>
+        <label>או הדבקת קישור מ-Google Maps</label>
         <input type="text" id="cMapsUrl" dir="ltr" placeholder="https://maps.google.com/..." value="${esc(c.mapsUrl||'')}" oninput="parseGoogleMapsUrl(this.value)" style="font-size:12px">
       </div>
       <input type="hidden" id="cLat" value="${c.lat||''}"><input type="hidden" id="cLng" value="${c.lng||''}">
-      <div style="margin-bottom:8px;max-width:140px"><label style="font-size:11px;color:var(--text3)">רדיוס (מטרים)</label>
-        <input type="number" id="cRadius" value="${c.radius||100}" placeholder="100"></div>
       <div id="cLocStatus" style="font-size:12px;min-height:18px;padding:4px 0;color:${c.lat?'var(--green)':'var(--text2)'}">${c.lat?locSetHtml(c.lat,c.lng):''}</div>
     </div>
 </div></section>
     <section class="og-sec" data-sec="rates"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-coin"></i></span><span class="og-sec-t"><b>${esc(tr('Rates'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
-    <div class="form-section rates-head"><span><i class="ti ti-coin"></i> תעריפים</span><button type="button" class="acc-help" onclick="this.closest('.modal').querySelector('.rates-help').classList.toggle('open')" title="מה זה?"><i class="ti ti-info-circle"></i></button></div>
-    <div class="rates-help">שכר העובד חל על כל העובדים אצל הלקוח, אלא אם לעובד יש תעריף משלו; שעות נוספות ושבת לפי החוק. תשלום הלקוח לא משנה את שכר העובד.</div>
     <!-- Hourly / Daily: how the client is billed (the worker's own pay is not touched). -->
+    <span class="og-lbl">${esc(tr('Pay mode'))}</span>
     <div class="seg-toggle" id="cPayUnit">
       <button type="button" data-unit="hour" class="${__cBill.rateMode!=='daily'?'on':''}" onclick="setClientPayUnit('hour')">${esc(tr('By the hour'))}</button>
       <button type="button" data-unit="day" class="${__cBill.rateMode==='daily'?'on':''}" onclick="setClientPayUnit('day')">${esc(tr('By the day'))}</button>
     </div>
-    <div class="field" id="cDailyRow" style="${__cBill.rateMode==='daily'?'':'display:none'}"><label><i class="ti ti-receipt"></i> ${esc(tr('Client pays per day'))}</label>
-      <div class="rate-in"><input type="number" min="0" step="1" id="cBillDaily" value="${__cBill.dailyBillRate??''}" placeholder="—" oninput="__cBill.dailyBillRate=clientRateNum(this.value)"><span>${esc(tr('₪/day'))}</span></div></div>
+    <div class="field" id="cDailyRow" style="${__cBill.rateMode==='daily'?'':'display:none'}"><label>${esc(tr('Client pays per day'))}</label>
+      <div class="rate-in"><input type="number" min="0" step="1" id="cBillDaily" value="${__cBill.dailyBillRate??''}" placeholder="—" oninput="__cBill.dailyBillRate=clientRateNum(this.value); updateClientMargin()"><span>${esc(tr('₪/day'))}</span></div></div>
     <div class="field-row">
-      <div class="field"><label><i class="ti ti-cash"></i> שכר העובד</label>
+      <div class="field"><label>שכר העובד</label>
         <div class="rate-in"><input type="number" min="0" step="0.5" id="cDefRate" value="${c.defaultHourlyRate??''}" placeholder="—" oninput="updateClientMargin()"><span>₪/שעה</span></div></div>
-      <div class="field" id="cBillMainField" style="${__cBill.rateMode==='daily'?'display:none':''}"><label><i class="ti ti-receipt"></i> הלקוח משלם</label>
+      <div class="field" id="cBillMainField" style="${__cBill.rateMode==='daily'?'display:none':''}"><label>הלקוח משלם</label>
         <div class="rate-in"><input type="number" min="0" step="0.5" id="cBillMain" value="${clientBillMain()??''}" placeholder="—" oninput="onClientBillMainInput(this.value)"><span>₪/שעה</span></div></div>
     </div>
     <div id="cHourlyBill" style="${__cBill.rateMode==='daily'?'display:none':''}">
@@ -4398,16 +4513,17 @@ function showClientModal(c){
     <div class="rate-margin" id="cBillMargin"></div>
     </div>
 </div></section>
-    <section class="og-sec" data-sec="approval"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-circle-check"></i></span><span class="og-sec-t"><b>${esc(tr('Hours approval'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
+    <section class="og-sec" data-sec="approval"${clientApprovalAttrs(c)}><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-circle-check"></i></span><span class="og-sec-t"><b>${esc(tr('Hours approval'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
       ${clientLoginsHtml(c)}
 </div></section>
-    <div class="modal-actions"><button type="button" class="gbtn primary og-save" onclick="saveClient()">${esc(tr('Save'))}</button>${editingClientId?`<button class="btn" type="button" style="background:var(--blue-bg);border-color:rgba(96,165,250,0.3);color:var(--blue)" onclick="punchFromClientModal()"><i class="ti ti-clock"></i> החתמה ידנית</button>`:''}</div>
+    <div class="modal-actions"><button type="button" class="gbtn primary og-save" onclick="saveClient()"><i class="ti ti-check"></i><span>${esc(tr('Save'))}</span></button></div>
     <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px"><i class="ti ti-device-floppy"></i> ${editingClientId?'השינויים נשמרים בסגירת החלון':'הלקוח נוצר בסגירת החלון'}</div></div>`;
   // No Save button: a tap outside the window saves it (saveClient auto).
   const cov=document.getElementById('clientOverlay');
   cov.__onUserClose=()=>saveClient({auto:true});
   cov.classList.add('open');
   ogSections(document.getElementById('clientModal'), editingClientId?null:'client');
+  drawClientMapMini();
 }
 
 function parseGoogleMapsUrl(url){
@@ -4444,6 +4560,7 @@ function parseGoogleMapsUrl(url){
 
 function locSetHtml(lat,lng){ return '<i class="ti ti-circle-check"></i> המיקום נקבע: <span dir="ltr">'+Number(lat).toFixed(5)+', '+Number(lng).toFixed(5)+'</span>'; }
 function updateLocStatus(){
+  drawClientMapMini();
   const lat=document.getElementById('cLat')?.value;
   const lng=document.getElementById('cLng')?.value;
   const el=document.getElementById('cLocStatus');
@@ -4582,7 +4699,7 @@ function setClientPayUnit(u){
   const daily=__cBill.rateMode==='daily';
   ['cHourlyBill','cBillMainField'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display=daily?'none':''; });
   const d=document.getElementById('cDailyRow'); if(d) d.style.display=daily?'':'none';
-  if(!daily) syncClientBillFields();
+  if(!daily) syncClientBillFields(); else updateClientMargin();
 }
 // The client's main billing rate (next to the worker rate in the modal): the
 // flat rate in fixed mode, the regular rate otherwise.
@@ -4614,11 +4731,46 @@ function syncClientBillFields(keepMain){
 function updateClientMargin(){
   const el=document.getElementById('cBillMargin'); if(!el) return;
   const w=clientRateNum(document.getElementById('cDefRate')?.value), c=clientBillMain();
+  // The Rates head (mockup 04): "₪45 worker · ₪58 client · hourly".
+  const rs=document.querySelector('#clientModal .og-sec[data-sec="rates"]');
+  if(rs){ const daily=__cBill&&__cBill.rateMode==='daily', cb=daily?__cBill.dailyBillRate:c;
+    rs.dataset.summary=[w!=null?tr('₪{0} worker',{0:w}):'', cb!=null?tr('₪{0} client',{0:cb}):'', daily?tr('daily'):tr('hourly')].filter(Boolean).join(' · ');
+    ogSecSummary(rs); }
   if(w==null||c==null||!c){ el.style.display='none'; return; }
   const m=c-w, pct=Math.round(m/c*100);
   el.style.display='';
   el.classList.toggle('neg', m<0);
-  el.innerHTML=`<span><i class="ti ${m<0?'ti-trending-down':'ti-trending-up'}"></i> ${m<0?'הפסד לשעה':'רווח לשעה'}</span><b>₪${Math.round(Math.abs(m)*100)/100} · ${Math.abs(pct)}%</b>`;
+  const billed=editingClientId?((salaryEntriesFor('month').byClient||{})[editingClientId]||{}).total||0:null;
+  el.innerHTML=`<div><b class="fig">${m<0?'−':''}₪${Math.round(Math.abs(m)*100)/100}</b><small>${m<0?'הפסד לשעה':'רווח לשעה'}</small></div><div><b class="fig">${m<0?'−':''}${Math.abs(pct)}%</b><small>${esc(tr('Margin'))}</small></div>${billed!=null?`<div><b class="fig">₪${esc(fmtMoneyShort(billed))}</b><small>${esc(tr('This month'))}</small></div>`:''}`;
+}
+// The client editor's Hours approval head: its client logins as the summary,
+// "N waiting" (hours batches pending for this client) as the badge.
+function clientApprovalAttrs(c){
+  const users=(loadAdminCache('users_'+activeTenantIdForAdmin())||[]).filter(u=>u.role==='client'&&c&&u.clientId===c.id);
+  const n=c&&c.id?(__hoursBatches||[]).filter(b=>b.status==='pending'&&(b.entries||[]).some(e=>e.clientId===c.id)).length:0;
+  return ` data-summary="${esc(users.length?users.map(u=>u.fullName||u.username).join(', '):tr('No client login yet.'))}"`+(n?` data-badge="amber|${esc(tr('{0} waiting',{0:n}))}"`:'');
+}
+// The client editor's header line: active workers and this month's hours there.
+function clientEditorSub(c){
+  const n=workers.filter(w=>isActiveWorker(w)&&(w.clientIds||[]).includes(c.id)).length;
+  const h=((salaryEntriesFor('month').byClient||{})[c.id]||{}).hours||0;
+  return [n===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:n,1:''}), tr('{0} this month',{0:fmtHoursShort(h)})].join(' · ');
+}
+// "25.2k" for the figures under the rates.
+function fmtMoneyShort(v){ v=Math.round(v||0); return Math.abs(v)>=10000?(Math.round(v/100)/10)+'k':v.toLocaleString('en-US'); }
+// The small map under Place: the GPS radius as a circle, "150 m"; a tap opens the map picker.
+function drawClientMapMini(){
+  const box=document.getElementById('cMapMini'); if(!box) return;
+  const r=parseInt(document.getElementById('cRadius')?.value,10)||100, set=!!document.getElementById('cLat')?.value;
+  box.classList.toggle('set', set);
+  box.querySelector('.og-map-l').textContent=set?tr('{0} m',{0:r}):tr('Tap to pick the place on the map');
+  box.querySelector('.og-map-r').style.setProperty('--r', Math.max(28, Math.min(84, 20+r/4))+'px');
+}
+// Delete from the client editor's ⋮: the window closes without saving, then the Undo snack.
+function deleteClientFromEditor(){
+  const id=editingClientId; if(!id) return;
+  closeModal('clientOverlay');
+  deleteClient(id, document.querySelector(`#clientsGrid .t3-line[data-sel-id="${CSS.escape(id)}"]`));
 }
 // The manual punch from the client window: the window is saved first (as on a
 // tap outside), then the punch opens; closing it brings the client back.
@@ -5476,13 +5628,14 @@ function openAddSupplier(){ editingSupplierId=null; selSupplierColor=CLIENT_COLO
 function openEditSupplier(sid){ editingSupplierId=sid; const s=suppliers.find(x=>x.id===sid); selSupplierColor=s.color; showSupplierModal(s); }
 function showSupplierModal(s){
   document.getElementById('supplierModal').innerHTML=`
-    <div class="og-edh" style="--c:${esc(s.color||'var(--neutral)')}"><div class="t3-av og-av wc-av">${esc(String(s.name||'?').trim().slice(0,2).toUpperCase())}</div><div class="og-edh-n"><h4>${esc(s.name||'')||esc(editingSupplierId?tr('Edit Supplier'):tr('Add New Supplier'))}</h4><p>${esc(s.phone||'')}</p></div></div>
+    <div class="og-edh" style="--c:${esc(s.color||'var(--neutral)')}"><div class="t3-av og-av wc-av">${esc(String(s.name||'?').trim().slice(0,2).toUpperCase())}</div><div class="og-edh-n"><h4>${esc(s.name||'')||esc(editingSupplierId?tr('Edit Supplier'):tr('Add New Supplier'))}</h4><p>${esc(editingSupplierId?supplierEditorSub(s):(s.phone||''))}</p></div>${editingSupplierId&&hasPermission('suppliers')?`<button class="gbtn icon" type="button" title="${esc(tr('More'))}" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey([{icon:'ti-trash', label:tr('Delete'), danger:true, fn:()=>deleteSupplierFromEditor()}])}')"><i class="ti ti-dots-vertical"></i></button>`:''}</div>
     <section class="og-sec" data-sec="supplier"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-truck-delivery"></i></span><span class="og-sec-t"><b>${esc(tr('Company'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
+    <div class="field"><label>${tr('Name')}</label><input type="text" class="need" id="sName" value="${esc(s.name||'')}" placeholder="${tr('Supplier name')}" autofocus></div>
     <div class="field-row">
-      <div class="field"><label>${tr('Name')}</label><input type="text" class="need" id="sName" value="${esc(s.name||'')}" placeholder="${tr('Supplier name')}" autofocus></div>
       <div class="field"><label>ח.פ (optional)</label><input type="text" id="sCompanyNumber" value="${esc(s.companyNumber||'')}" placeholder="512345678"></div>
+      <div class="field"><label>${tr('Phone')}</label><input type="text" id="sPhone" value="${esc(s.phone||'')}" placeholder="${tr('Phone')}"></div>
     </div>
-    <div class="field"><label>${tr('Phone (optional)')}</label><input type="text" id="sPhone" value="${esc(s.phone||'')}" placeholder="${tr('Phone')}"></div>
+    <div class="field"><label>${tr('Contact person')}</label><input type="text" id="sContact" value="${esc(s.contactPerson||'')}" placeholder="${tr('Full name')}"></div>
     <div class="field">
       <label><i class="ti ti-building-bank"></i> ${tr('Bank details (optional)')}</label>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
@@ -5497,7 +5650,7 @@ function showSupplierModal(s){
 </div></section>
     ${editingSupplierId?supplierEditorExtraHtml(s):''}
     <div class="modal-actions">
-      <button class="gbtn primary og-save" onclick="saveSupplier()">${esc(editingSupplierId?tr('Save Changes'):tr('Add Supplier'))}</button>
+      <button class="gbtn primary og-save" onclick="saveSupplier()"><i class="ti ti-check"></i><span>${esc(editingSupplierId?tr('Save'):tr('Add Supplier'))}</span></button>
     </div>`;
   document.getElementById('supplierOverlay').classList.add('open');
   ogSections(document.getElementById('supplierModal'), editingSupplierId?null:'supplier');
@@ -5510,12 +5663,13 @@ function saveSupplier(){
   const bankBranch=document.getElementById('sBankBranch').value.trim();
   const accountNumber=document.getElementById('sAccountNumber').value.trim();
   const companyNumber=document.getElementById('sCompanyNumber').value.trim();
+  const contactPerson=document.getElementById('sContact').value.trim();
   if(editingSupplierId){
     const idx=suppliers.findIndex(x=>x.id===editingSupplierId);
-    if(idx>=0) suppliers[idx]={...suppliers[idx],name,phone,bank,bankBranch,accountNumber,companyNumber,color:selSupplierColor};
+    if(idx>=0) suppliers[idx]={...suppliers[idx],name,phone,bank,bankBranch,accountNumber,companyNumber,contactPerson,color:selSupplierColor};
     showToast(tr('{0} updated!',{0:(name)}));
   } else {
-    suppliers.push({id:uid(),name,phone,bank,bankBranch,accountNumber,companyNumber,color:selSupplierColor});
+    suppliers.push({id:uid(),name,phone,bank,bankBranch,accountNumber,companyNumber,contactPerson,color:selSupplierColor});
     showToast(tr('{0} added!',{0:(name)}));
   }
   closeModal('supplierOverlay'); renderSuppliersPage(); autoSave();
@@ -6583,7 +6737,53 @@ let __editingAdminRow = false;
 let __editingUserOrigRole = null;
 // The user form's section plates: Person open, the rest closed (those with
 // something missing open too).
+// The user editor's header (redesign stage 4, mockup 04): the role-colored
+// avatar, the full name, "HR · 14 own workers" (or the role and its supplier /
+// client), and ⋮ with Delete for a saved login (never for the owner row).
+function drawUserFormHead(){
+  const head=document.getElementById('userFormHead'); if(!head) return;
+  const role=document.getElementById('userFormRole').value;
+  const role0=__editingAdminRow?'tenant_admin':role, col=USER_ROLE_COLOR[role0]||'var(--neutral)';
+  const name=document.getElementById('userFormFullName').value.trim(), user=document.getElementById('userFormUsername').value.trim();
+  head.style.setProperty('--c', col==='var(--border2)'?'var(--neutral)':col);
+  document.getElementById('userFormAv').textContent=initialsOf(name||user||'?');
+  document.getElementById('userFormTitle').textContent=name||user||(__editingUserId?tr('Edit user'):tr('New user'));
+  let what='';
+  if(role0==='hr' && __editingUserId){ const n=hrWorkerCount(__editingUserId); what=n===1?tr('1 own worker'):tr('{0} own workers',{0:n}); }
+  else if(role0==='supplier'){ const sp=(suppliers||[]).find(x=>x.id===document.getElementById('userFormSupplierId').value); what=sp?sp.name:''; }
+  else if(role0==='client'){ const cl=(clients||[]).find(x=>x.id===document.getElementById('userFormClientId').value); what=cl?cl.name:''; }
+  document.getElementById('userFormSub').textContent=[tr(USER_ROLE_LABELS[role0]||role0), what].filter(Boolean).join(' · ');
+  const pill=document.getElementById('userFormRolePill'); pill.textContent=tr(USER_ROLE_LABELS[role0]||role0); pill.style.cssText=`background:color-mix(in srgb,${col==='var(--border2)'?'var(--neutral)':col} 18%,transparent);color:${col==='var(--border2)'?'var(--text2)':col}`;
+  document.getElementById('userFormMenuBtn').style.display=__editingUserId&&!__editingAdminRow?'':'none';
+  // HR commission's summary: the rate and this month's commission on its workers (as in Payable by HR).
+  const cs=document.querySelector('#userFormOverlay .og-sec[data-sec="commission"]');
+  if(cs){
+    const rate=Number(document.getElementById('userFormCommission').value)||0, dayRate=Number(document.getElementById('userFormCommissionDay').value)||0;
+    let sum='';
+    if(rate||dayRate){
+      sum=[rate?'₪'+rate+tr('/h'):'', dayRate?'₪'+dayRate+tr('/day'):''].filter(Boolean).join(' · ');
+      if(role0==='hr' && __editingUserId){
+        const total=Object.values((__ufMonth||(__ufMonth=salaryEntriesFor('month'))).byWorker||{}).reduce((t,e)=>{ const wc=workers.find(w=>w.id===e.workerId); return wc&&wc.hrId===__editingUserId?t+commissionFor(wc,e,rate,dayRate):t; },0);
+        sum+=' · '+tr('{0} this month',{0:'₪'+fmtMoneyShort(total)});
+      }
+    }
+    if(sum) cs.dataset.summary=sum; else delete cs.dataset.summary;
+    ogSecSummary(cs);
+  }
+}
+function openUserFormMenu(ev, btn){
+  const id=__editingUserId; if(!id) return;
+  const user=document.getElementById('userFormUsername').value;
+  openRowMenu(ev, btn, rowFnKey([{icon:'ti-trash', label:tr('Delete'), danger:true, fn:()=>{
+    closeModal('userFormOverlay');
+    const line=document.querySelector(`.admin-users-rows .t3-line[data-sel-id="${CSS.escape(id)}"]`);
+    deleteUserConfirm(id, user, line);
+  }}]));
+}
+let __ufMonth=null;  // this month's Salary rows while the user form is open (drawUserFormHead)
 function userFormSections(){
+  __ufMonth=null;
+  drawUserFormHead();
   const ov=document.getElementById('userFormOverlay');
   ov.querySelectorAll('.og-sec').forEach(x=>x.classList.remove('open'));
   ogAutoSections(ov);
@@ -6705,6 +6905,7 @@ function onUserFormRoleChange(fromUser){
     document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = cb.value==='workers');
   const rs=document.getElementById('userFormRole'); if(rs.__segDraw) rs.__segDraw();
   ogAutoSections(document.getElementById('userFormOverlay'));
+  drawUserFormHead();
 }
 function openCreateUserForm(){
   __editingUserId = null;
@@ -7584,13 +7785,23 @@ async function gsLoadPunchLog(){
     return await (await loadFirestoreBackend()).listenPunches(fsTenantId(), entries => {
       mergeRemotePunches(entries);
       if(currentTab === 'dashboard') renderDashboard();
+      // Hours approvals compare each day with the punches: redraw them too,
+      // or a day could keep showing a stale "Changed after approval".
+      if(currentTab === 'accounting') renderHourApprovals((document.getElementById('salaryPeriod')||{}).value||'month');
     }, since);
   }catch(e){ console.warn('Firestore punch load failed: ' + ((e && e.message) || e)); return null; }
 }
-async function syncPunchesFromGS(){
-  const remote = await gsLoadPunchLog();
-  if(!remote) return;
-  mergeRemotePunches(remote);
+// The first load of the punches (a promise): Accounting → Hours approvals
+// waits for it, so a day is never compared with a punch log still loading
+// (which showed an approved day as "Changed after approval").
+let __punchSynced = null;
+function syncPunchesFromGS(){
+  __punchSynced = (async () => {
+    const remote = await gsLoadPunchLog();
+    if(!remote) return;
+    mergeRemotePunches(remote);
+  })();
+  return __punchSynced;
 }
 function mergeRemotePunches(remote){
   const local = getPunchLog();
@@ -8713,6 +8924,7 @@ async function renderHourApprovals(period){
   const req=++__approvalsReq;
   let docs=[];
   try{ docs=await hourApprovalsOf(month); }catch(e){ console.warn('Hours approvals:', e); }
+  if(__punchSynced) await __punchSynced.catch(()=>{});
   if(req!==__approvalsReq) return;
   docs=docs.filter(d=>Object.keys(d.days||{}).length).sort((a,b)=>(a.kind+a.ownerName).localeCompare(b.kind+b.ownerName));
   sec.style.display=docs.length?'':'none';
