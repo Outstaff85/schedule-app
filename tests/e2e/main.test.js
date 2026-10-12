@@ -200,15 +200,19 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.screenshot({path: SP + '/t3-schedule.png'}).catch(()=>{});
   // Schedule (redesign stage 6): glass week arrows, site tabs, 7 day marks per worker, opened days under it.
   const sc6 = await p.evaluate(async () => {
+    const w0 = workers.find(w => isActiveWorker(w)), keep = JSON.stringify(w0.schedule || []);
+    w0.schedule = [{type:'off'}, {type:'work', start:'09:00', end:'17:00'}, {type:'work', start:'22:00', end:'06:00'}, {type:'off'}, {type:'off'}, {type:'off'}, {type:'off'}];
     switchTab('schedule'); render(); await new Promise(r => setTimeout(r, 100));
     const line = document.querySelector('#ganttBody .sched-line'), r = {arrows: document.querySelectorAll('.sched-nav .gbtn.sched-arrow').length, marks: line.querySelectorAll('.daymarks i').length, hrs: (line.querySelector('.r') || {}).textContent};
     const tabs = [...document.querySelectorAll('#schedSiteTabs button')]; r.tabs = tabs.map(b => b.textContent);
     if(tabs[1]){ tabs[1].click(); r.filtered = selectedClientId === clients[0].id && document.querySelector('#schedSiteTabs button.on').textContent === clients[0].name; filterByClient(null); }
     line.click(); await new Promise(r => setTimeout(r, 50));
     r.dayrows = document.querySelectorAll('#ganttBody .dayrows .sched-day').length; document.querySelector('#ganttBody .sched-line').click();
+    r.kinds = [...document.querySelector('#ganttBody .sched-line').querySelectorAll('.daymarks i')].map(i => i.className.replace(' t', '') || '-').join('');
+    w0.schedule = JSON.parse(keep); render();
     return r;
   });
-  ok(sc6.arrows === 2 && sc6.marks === 7 && /h$/.test(sc6.hrs) && sc6.tabs[0] === 'All sites' && sc6.filtered && sc6.dayrows === 7, 'schedule: glass arrows, site tabs filter, 7 day marks and the week\'s hours per worker, its days open under it ' + JSON.stringify(sc6));
+  ok(sc6.arrows === 2 && sc6.marks === 7 && /h$/.test(sc6.hrs) && sc6.tabs[0] === 'All sites' && sc6.filtered && sc6.dayrows === 7 && sc6.kinds === '-wn----', 'schedule: glass arrows, site tabs filter, 7 day marks and the week\'s hours per worker, its days open under it ' + JSON.stringify(sc6));
   await p.evaluate(async () => { switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await new Promise(r => setTimeout(r, 300)); });
   await p.screenshot({path: SP + '/t3-workers.png'}).catch(()=>{});
   await p.evaluate(async () => { switchTab('accounting'); const sel = document.getElementById('salaryPeriod'); sel.value = 'all'; await onSalaryPeriodChange();
