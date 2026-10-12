@@ -345,8 +345,8 @@ html,body{
   .worker-grid{gap:8px;}
   .punch-clock{font-size:clamp(42px,14vw,60px);}
 }
-.top-bar{padding-right:64px;}
-.lang-select{position:fixed;right:max(env(safe-area-inset-right,0px),12px);top:max(env(safe-area-inset-top,0px),12px);z-index:50;background:rgba(255,255,255,0.06);color:var(--text2,#7c84a0);border:1px solid rgba(255,255,255,0.13);border-radius:8px;padding:4px 6px;font:600 12px/1 inherit;cursor:pointer;}
+.top-bar{padding-right:120px;}
+.lang-fixed{position:fixed;right:max(env(safe-area-inset-right,0px),12px);top:max(env(safe-area-inset-top,0px),12px);z-index:50;}
 .punch-links{display:flex;gap:4px;justify-content:center;flex-wrap:wrap;}
 .sched-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;}
 .sched-head .m{font-size:17px;font-weight:700;color:var(--text);text-transform:capitalize;text-align:center;flex:1;}
@@ -402,10 +402,75 @@ html,body{
 .sched-note{margin-top:10px;text-align:center;font-size:12px;color:var(--text3);}
 /* Hebrew has no capitals: no letter-spacing (made for spaced-out uppercase Latin). */
 html[lang="he"] *{letter-spacing:normal !important;}
+/* ── Odinson Glass foundation (docs/redesign.md): the ground, glass, plates, the
+   highlight line, tick tiles, the Language button and sheet. The same block in
+   all four pages — keep the copies the same. ── */
+:root{--ground:#10141f;--plate:#1b1e29;--glass:rgba(255,255,255,.12);--glass-hi:rgba(255,255,255,.2);--glass-edge:rgba(255,255,255,.28);--glass-dark:rgba(17,20,31,.92);--fig:#9fe6c0;--ok:#6dd6a0;--info:#4f8ef7;--warn:#f5a623;--bad:#ff5f6d;--uline:linear-gradient(90deg,#818cf8,#22d3ee,#f472b6,#818cf8);}
+html{background:var(--ground);}
+body{background:transparent;}
+body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(circle at 15% 10%,rgba(79,70,229,.50) 0,transparent 56%),radial-gradient(circle at 92% 62%,rgba(6,182,212,.36) 0,transparent 54%),radial-gradient(circle at 40% 108%,rgba(219,39,119,.34) 0,transparent 56%),var(--ground);}
+@keyframes og-flow{to{background-position:300% 0}}
+@keyframes og-pop{0%{transform:scaleX(0)}60%{transform:scaleX(1.12)}100%{transform:scaleX(1)}}
+/* The highlight line: one 3px flowing gradient line with a glow; .og-line on any
+   element draws it under that element (it springs in when it appears). */
+.og-line{position:relative;}
+.og-line::after{content:'';position:absolute;left:12px;right:12px;bottom:0;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55),0 0 4px rgba(244,114,182,.5);animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1);pointer-events:none;}
+/* Glass buttons: white fill + blur, a shine sweep on every tap (.shine, set by
+   the pointerdown handler), the highlight line on hover and when .on. */
+.gbtn{position:relative;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:42px;padding:0 16px;border-radius:16px;background:var(--glass);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--glass-edge);color:#fff;font:600 14px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.25);-webkit-tap-highlight-color:transparent;white-space:nowrap;}
+.gbtn.primary{background:rgba(255,255,255,.28);}
+.gbtn.icon{width:42px;padding:0;}
+.gbtn::after{content:'';position:absolute;top:0;left:-60%;width:40%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.45),transparent);transform:skewX(-20deg);pointer-events:none;}
+.gbtn.shine::after{left:130%;transition:left .6s;}
+.gbtn::before{content:'';position:absolute;left:12px;right:12px;bottom:1px;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55),0 0 4px rgba(244,114,182,.5);animation:og-flow 2.4s linear infinite;transform:scaleX(0);transition:transform .45s cubic-bezier(.34,1.56,.64,1);pointer-events:none;}
+@media (hover:hover){.gbtn:hover::before{transform:scaleX(1);}}
+.gbtn.on::before{transform:scaleX(1);}
+/* Plates: the solid content tile, a 4px status bar (--c) on the left and the
+   avatar disc in the same color; figures (hours, money) in one soft green. */
+.plate{position:relative;display:flex;align-items:center;gap:12px;padding:11px 8px 11px 14px;background:var(--plate);border-radius:16px;box-shadow:inset 4px 0 0 var(--c,var(--ok));}
+.plate-av{width:38px;height:38px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--c,var(--ok));background:color-mix(in srgb,var(--c,var(--ok)) 22%,transparent);box-shadow:inset 0 0 0 1.5px var(--c,var(--ok));}
+.fig{font-family:'DM Mono',ui-monospace,monospace;color:var(--fig);}
+/* Tick tiles: a grey box; ticked — the tile tinted green, the box green and
+   the check mark drawing itself (350 ms). */
+label.check-chip{background:var(--plate);border-color:transparent;transition:background .25s,border-color .25s;}
+label.check-chip input[type=checkbox]{-webkit-appearance:none;appearance:none;position:relative;width:22px;height:22px;flex:0 0 22px;margin:0;border-radius:7px;border:2px solid #4a5170;background:transparent;cursor:pointer;transition:background .25s,border-color .25s;}
+label.check-chip input[type=checkbox]::after{content:'';position:absolute;left:5px;top:1px;width:5px;height:10px;border:solid #0b0d14;border-width:0 3px 3px 0;transform:rotate(45deg);clip-path:inset(100% 0 0 0);transition:clip-path .35s .05s;}
+label.check-chip input[type=checkbox]:checked{background:var(--ok);border-color:var(--ok);}
+label.check-chip input[type=checkbox]:checked::after{clip-path:inset(0);}
+label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214,160,.4);}
+/* The Language button (top right of every page) and its sheet. */
+.lang-btn{height:36px;padding:0 10px 0 9px;gap:6px;border-radius:14px;font-size:13px;flex:none;}
+.lang-btn i{font-size:17px;}
+.lang-btn .lang-btn-chev{font-size:14px;opacity:.7;}
+.lang-btn.on-cover{position:absolute;top:max(env(safe-area-inset-top,0px),12px);right:12px;z-index:2;}
+.lang-ov{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .25s;}
+.lang-ov.open{opacity:1;pointer-events:auto;}
+.lang-sheet{width:min(380px,100%);max-height:min(560px,80vh);display:flex;flex-direction:column;padding:14px 14px 16px;border-radius:22px;background:var(--glass-dark);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.2);box-shadow:0 20px 50px rgba(0,0,0,.5);color:#fff;transform:translateY(12px) scale(.98);transition:transform .35s cubic-bezier(.3,.7,.3,1);}
+.lang-ov.open .lang-sheet{transform:none;}
+.lang-grab{display:none;width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.3);margin:0 auto 10px;}
+.lang-sheet h4{font-size:17px;font-weight:600;margin:0 4px 10px;}
+.lang-search{display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;margin-bottom:8px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);}
+.lang-search i{color:#8b90a0;font-size:16px;}
+.lang-search input{flex:1;min-width:0;border:0;background:none;color:#fff;font:14px 'DM Sans','Heebo',Arial,sans-serif;outline:none;padding:0;}
+.lang-list{overflow:auto;display:flex;flex-direction:column;gap:4px;}
+.lang-li{position:relative;display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:0;border-radius:12px;background:none;color:#fff;font-family:'DM Sans','Heebo',Arial,sans-serif;text-align:left;cursor:pointer;}
+.lang-li:hover{background:rgba(255,255,255,.06);}
+.lang-li b{font-size:15px;font-weight:600;}
+.lang-li small{flex:1;font-size:12px;color:#8b90a0;}
+.lang-li.on{background:rgba(109,214,160,.1);}
+.lang-li.on::after{content:'';position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:2px;background:linear-gradient(180deg,#818cf8,#22d3ee,#f472b6);}
+.lang-tick{width:22px;height:22px;border-radius:7px;background:var(--ok);color:#0b0d14;display:flex;align-items:center;justify-content:center;font-size:14px;}
+.lang-none{padding:14px 12px;color:#8b90a0;font-size:13px;}
+@media (max-width:700px){
+  .lang-ov{align-items:flex-end;padding:0;}
+  .lang-sheet{width:100%;max-height:78vh;border-radius:22px 22px 0 0;border-width:1px 0 0;padding:10px 14px calc(18px + env(safe-area-inset-bottom,0px));transform:translateY(105%);}
+  .lang-grab{display:block;}
+}
+@media (prefers-reduced-motion:reduce){.og-line::after,.gbtn::before{animation:none;}.gbtn.shine::after{transition:none;}}
 </style>
 </head>
 <body>
-<select class="lang-select" id="langSelect" title="Language" data-i18n-title="Language" aria-label="Language" onchange="setLanguage(this.value)"><option value="en">EN</option><option value="he">HE</option><option value="ru">RU</option></select>
+<button type="button" class="gbtn lang-btn lang-fixed" id="langBtn" onclick="openLangSheet(event)" title="Language" data-i18n-title="Language" aria-label="Language"><i class="ti ti-world"></i><span class="lang-btn-name">English</span><i class="ti ti-chevron-down lang-btn-chev"></i></button>
 
 <!-- Screen 2: Punch -->
 <div class="screen center-v hidden" id="screenPunch">
@@ -568,7 +633,7 @@ async function loadI18n(lang){
   await fresh;
 }
 function storedLanguage(){ try{ const l = localStorage.getItem('uiLang'); return I18N_LANGS[l] ? l : 'en'; }catch(e){ return 'en'; } }
-// The language select (one per page, #langSelect, top right like the other pages): keeps the choice on this device
+// The language (the Language button, .lang-btn, top right like the other pages): keeps the choice on this device
 // (the page has no login) and redraws in it.
 async function setLanguage(lang){
   lang = I18N_LANGS[lang] ? lang : 'en';
@@ -576,10 +641,50 @@ async function setLanguage(lang){
   try{ await loadI18n(lang); }catch(e){}
   redrawForLanguage();
 }
-function syncLangSelects(){ document.querySelectorAll('select.lang-select').forEach(el => { el.value = I18N_LANG; }); }
+// The Language button (.lang-btn, top right of every page) and its sheet: the
+// button shows the current language's own name; a tap opens a sheet with a
+// search field and every language of I18N_LANGS (own script + English name),
+// the current one ticked; a pick goes through setLanguage. A tap outside the
+// sheet or Escape closes it. The same code in all four pages — keep them the same.
+const I18N_LANG_EN = {en:'English', he:'Hebrew', ru:'Russian'};
+function syncLangButtons(){
+  document.querySelectorAll('.lang-btn .lang-btn-name').forEach(el => { el.textContent = I18N_LANGS[I18N_LANG] || I18N_LANGS.en; });
+  const ov = document.getElementById('langSheet'); if(ov && ov.classList.contains('open')) renderLangList();
+}
+function openLangSheet(e){
+  if(e) e.stopPropagation();
+  let ov = document.getElementById('langSheet');
+  if(!ov){
+    ov = document.createElement('div'); ov.id = 'langSheet'; ov.className = 'lang-ov';
+    ov.innerHTML = '<div class="lang-sheet" role="dialog" aria-modal="true"><div class="lang-grab"></div><h4></h4><label class="lang-search"><i class="ti ti-search"></i><input type="search" autocomplete="off" spellcheck="false"></label><div class="lang-list"></div></div>';
+    ov.addEventListener('click', ev => { if(ev.target === ov) closeLangSheet(); });
+    ov.querySelector('input').addEventListener('input', renderLangList);
+    document.body.appendChild(ov);
+  }
+  ov.querySelector('h4').textContent = tr('Language');
+  const inp = ov.querySelector('input'); inp.value = ''; inp.placeholder = tr('Search a language');
+  renderLangList();
+  void ov.offsetWidth; ov.classList.add('open');
+}
+function closeLangSheet(){ const ov = document.getElementById('langSheet'); if(ov) ov.classList.remove('open'); }
+function renderLangList(){
+  const ov = document.getElementById('langSheet'); if(!ov) return;
+  const q = ov.querySelector('input').value.trim().toLowerCase();
+  const langs = Object.keys(I18N_LANGS).filter(l => !q || [l, I18N_LANGS[l], I18N_LANG_EN[l] || ''].join(' ').toLowerCase().includes(q));
+  ov.querySelector('.lang-list').innerHTML = langs.map(l => `<button type="button" class="lang-li${l === I18N_LANG ? ' on' : ''}" data-lang="${esc(l)}" onclick="pickLanguage('${esc(l)}')"><b>${esc(I18N_LANGS[l])}</b><small>${esc(I18N_LANG_EN[l] || '')}</small>${l === I18N_LANG ? '<span class="lang-tick"><i class="ti ti-check"></i></span>' : ''}</button>`).join('')
+    || `<div class="lang-none">${esc(tr('No language found'))}</div>`;
+}
+function pickLanguage(l){ closeLangSheet(); if(l !== I18N_LANG) setLanguage(l); }
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeLangSheet(); });
+// Glass buttons shine on every tap (CSS .gbtn.shine).
+document.addEventListener('pointerdown', e => {
+  const b = e.target.closest && e.target.closest('.gbtn'); if(!b) return;
+  b.classList.remove('shine'); void b.offsetWidth; b.classList.add('shine');
+  clearTimeout(b.__shineT); b.__shineT = setTimeout(() => b.classList.remove('shine'), 650);
+});
 function redrawForLanguage(){
   applyI18n();
-  syncLangSelects();
+  syncLangButtons();
   try{
     const on = id => { const s = document.getElementById(id); return s && !s.classList.contains('hidden'); };
     if(on('screenPunch')){ tickPunch(); updateBigBtn(); getLocation(); }
@@ -1418,7 +1523,7 @@ window.addEventListener('error', function(ev){ reportError(ev.message, (ev.filen
 window.addEventListener('unhandledrejection', function(ev){ const r=ev.reason; reportError((r&&r.message)||String(r), 'promise', r&&r.stack); });
 loadI18n(storedLanguage()).catch(()=>{}).then(()=>{
   applyI18n();
-  syncLangSelects();
+  syncLangButtons();
   try{ init(); }catch(err){ console.error('init failed',err); reportError('init failed: '+(err&&err.message), 'init', err&&err.stack); showInvalidLink(tr('Something went wrong'),tr('Reload the page. If that doesn\'t help, contact your manager.'),'ti-alert-triangle'); }
 });
 
