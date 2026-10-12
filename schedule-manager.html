@@ -3901,23 +3901,51 @@ function ogAutoSections(root){
 // their hours ticks (set in Admin → Users; the owner's users cache).
 function clientLoginsHtml(c){
   const users=(loadAdminCache('users_'+activeTenantIdForAdmin())||[]).filter(u=>u.role==='client'&&c&&u.clientId===c.id);
-  const ticks=u=>`<div class="check-grid" style="margin:6px 0 10px">${Object.keys(HOUR_PERM_LABELS).map(p=>`<label class="check-chip"><input type="checkbox" disabled${(u.hourPerms||[]).includes(p)?' checked':''}><span class="chip-text"><span>${esc(tr(HOUR_PERM_LABELS[p]))}</span></span></label>`).join('')}</div>`;
-  return users.length?users.map(u=>`<div class="wc-line" style="margin-bottom:2px"><i class="ti ti-user"></i><span>${esc(u.fullName||u.username)} · ${esc(u.username)}</span></div>${ticks(u)}`).join('')
-    +(isFirmAdminSession()?`<button type="button" class="gbtn" onclick="closeModal('clientOverlay');switchTab('admin');switchAdminPane('users')"><i class="ti ti-users"></i><span>${esc(tr('Edit in Users'))}</span></button>`:'')
-    :`<div class="wc-line">${esc(tr('No client login yet — add one in Admin → Users.'))}</div>`;
+  const can=isFirmAdminSession();
+  const ticks=u=>`<div class="check-grid" style="margin:6px 0 10px">${Object.keys(HOUR_PERM_LABELS).map(p=>`<label class="check-chip"><input type="checkbox" data-uid="${esc(u.id)}" data-field="hourPerms" value="${esc(p)}"${can?'':' disabled'}${(u.hourPerms||[]).includes(p)?' checked':''} onchange="saveLoginTicks(this)"><span class="chip-text"><span>${esc(tr(HOUR_PERM_LABELS[p]))}</span></span></label>`).join('')}</div>`;
+  return (users.length?users.map(u=>`<div class="wc-line" style="margin-bottom:2px"><i class="ti ti-user"></i><span>${esc(u.fullName||u.username)} · ${esc(u.username)}</span></div>${ticks(u)}`).join(''):`<div class="wc-line">${esc(tr('No client login yet.'))}</div>`)
+    +(can&&c&&c.id?`<button type="button" class="gbtn" onclick="newLoginFor('client','${esc(c.id)}')"><i class="ti ti-user-plus"></i><span>${esc(tr('New client login'))}</span></button>`:'');
 }
-// The supplier editor's Commission (per hour / per day; this month's figures
-// from the canonical hours), Portal login (its supplier logins and what they
-// see) and Workers (mini plates with this month's hours).
+// A tick of a login (client hours ticks, supplier portal tabs) changed in an
+// editor: saved at once (updateUser — the user signs in again with the new
+// rights), and the users cache follows.
+async function saveLoginTicks(cb){
+  const uid=cb.dataset.uid, field=cb.dataset.field;
+  const values=[...document.querySelectorAll(`input[data-uid="${CSS.escape(uid)}"][data-field="${field}"]:checked`)].map(x=>x.value);
+  try{
+    const json=await (await fetch(API_URL,{method:'POST', body:JSON.stringify({action:'updateUser', ...gsAuth(), id:uid, [field]:values})})).json();
+    if(!json||json.error){ showToast(tr((json&&json.error)||'Save failed')); cb.checked=!cb.checked; return; }
+    const key='users_'+activeTenantIdForAdmin(), list=loadAdminCache(key)||[], u=list.find(x=>x.id===uid);
+    if(u){ u[field]=values; saveAdminCache(key,list); }
+    showToast(tr('Saved'));
+  }catch(e){ showToast(tr('Network error')); cb.checked=!cb.checked; }
+}
+// "New client login" / "New portal login" from an editor: the user form with
+// the role and the client / supplier already set.
+function newLoginFor(role, id){
+  const ov=role==='client'?'clientOverlay':'supplierOverlay';
+  if(role==='client') saveClient({auto:true}); else closeModal(ov);
+  openCreateUserForm();
+  const r=document.getElementById('userFormRole'); r.value=role; onUserFormRoleChange(true);
+  const sel=document.getElementById(role==='client'?'userFormClientId':'userFormSupplierId');
+  if(sel){ if(role==='client') fillUserFormClientSelect(id); else fillUserFormSupplierSelect(id); sel.value=id; if(role==='supplier') renderUserFormHrWorkers(); }
+  userFormSections();
+}
+// The supplier editor's Commission (per hour; this month's hours and the
+// commission payable — the same figures as Accounting → Payable by supplier),
+// Portal login (its supplier logins and the portal tabs they see, editable)
+// and Workers (mini plates with this month's hours).
 function supplierEditorExtraHtml(sp){
   const SEC=(key,icon,title,body)=>`<section class="og-sec" data-sec="${key}"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ${icon}"></i></span><span class="og-sec-t"><b>${esc(tr(title))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">${body}</div></section>`;
   const mine=workers.filter(w=>w.supplierId===sp.id), hours=workersMonthHours(), total=mine.reduce((t,w)=>t+(hours[w.id]||0),0);
-  const commission=`<div class="wc-kv"><div><small>${esc(tr('Per hour'))}</small><span class="fig">₪${esc(String(SUPPLIER_DEFAULT_RATE))}</span></div><div><small>${esc(tr('Workers'))}</small>${mine.length}</div><div><small>${esc(tr('This month'))}</small><span class="fig">${esc(fmtHoursShort(total))}</span></div></div>
+  let payable=0;
+  Object.values(salaryEntriesFor('month').byWorker||{}).forEach(e=>{ const wc=workers.find(w=>w.id===e.workerId); if(wc&&wc.supplierId===sp.id) payable+=commissionFor(wc,e,supplierCommissionRate(wc,sp.id),supplierDayCommission(wc,sp.id)); });
+  const commission=`<div class="wc-kv"><div><small>${esc(tr('Per hour'))}</small><span class="fig">₪${esc(String(SUPPLIER_DEFAULT_RATE))}</span></div><div><small>${esc(tr('Workers'))}</small>${mine.length}</div><div><small>${esc(tr('This month'))}</small><span class="fig">${esc(fmtHoursShort(total))}</span></div><div><small>${esc(tr('Payable this month'))}</small><span class="fig">₪${esc(String(Math.round(payable)))}</span></div></div>
     <div class="wc-line">${esc(tr('Per-worker and per-day commission is set in Accounting.'))}</div>`;
   const users=(loadAdminCache('users_'+activeTenantIdForAdmin())||[]).filter(u=>u.role==='supplier'&&u.supplierId===sp.id);
-  const SECT={dashboard:'Dashboard', workers:'My Workers', hours:'My Hours'};
-  const login=users.length?users.map(u=>`<div class="wc-line" style="margin-bottom:2px"><i class="ti ti-user"></i><span>${esc(u.fullName||u.username)} · ${esc(u.username)}</span></div><div class="check-grid" style="margin:6px 0 10px">${Object.keys(SECT).map(k=>`<label class="check-chip"><input type="checkbox" disabled${(u.supplierSections||Object.keys(SECT)).includes(k)?' checked':''}><span class="chip-text"><span>${esc(tr(SECT[k]))}</span></span></label>`).join('')}</div>`).join('')
-    :`<div class="wc-line">${esc(tr('No portal login yet — add one in Admin → Users.'))}</div>`;
+  const SECT={dashboard:'Dashboard', workers:'My Workers', hours:'My Hours'}, can=isFirmAdminSession();
+  const login=(users.length?users.map(u=>`<div class="wc-line" style="margin-bottom:2px"><i class="ti ti-user"></i><span>${esc(u.fullName||u.username)} · ${esc(u.username)}</span></div><div class="check-grid" style="margin:6px 0 10px">${Object.keys(SECT).map(k=>`<label class="check-chip"><input type="checkbox" data-uid="${esc(u.id)}" data-field="supplierSections" value="${k}"${can?'':' disabled'}${(u.supplierSections||Object.keys(SECT)).includes(k)?' checked':''} onchange="saveLoginTicks(this)"><span class="chip-text"><span>${esc(tr(SECT[k]))}</span></span></label>`).join('')}</div>`).join(''):`<div class="wc-line">${esc(tr('No portal login yet.'))}</div>`)
+    +(can?`<button type="button" class="gbtn" onclick="newLoginFor('supplier','${esc(sp.id)}')"><i class="ti ti-user-plus"></i><span>${esc(tr('New portal login'))}</span></button>`:'');
   const plates=mine.length?mine.map(w=>t3Line({c:isActiveWorker(w)?'var(--ok)':'var(--bad)', av:t3Av(w), name:`<span title="${esc(w.name)}">${esc(shortName(w.name))}</span>`, right:`<span class="r">${esc(fmtHoursShort(hours[w.id]))}</span>`})).join(''):`<div class="t3-empty">${esc(tr('No workers'))}</div>`;
   return SEC('commission','ti-coin','Commission',commission)+SEC('portal','ti-key','Portal login',login)+SEC('workers','ti-users-group','Workers',plates);
 }
