@@ -10,12 +10,14 @@ How the app shows its UI in the language the user picks. The code is always Engl
 | `he` | עברית | complete: `i18n/he.json` must have every text (`tests/i18n/check.js` fails otherwise) |
 | `ru` | Русский | set up, not translated yet: `i18n/ru.json` is empty, so the UI shows English |
 
-The language is **picked in one select per page** (`#langSelect`, class `lang-select`, EN / HE / RU), always at the top right:
-- manager app: in the title bar; while the login screen or the super-admin's Firms screen covers it, the same element moves to that screen's top-right corner (`placeLangSelect()`, run by a `MutationObserver` on those screens' `style`);
-- supplier portal: in the header, and on the login screen the same way;
-- worker punch page: fixed in the top-right corner (the page has no login).
+The language is **picked with one Language button per page** (`#langBtn`, classes `gbtn lang-btn`), always at the top right: a globe, the current language's own name (`I18N_LANGS`), a chevron. A tap opens the **language sheet** (`openLangSheet()`, `#langSheet`: a bottom sheet on a phone, a centred window on a computer) with a search field (code, own name or English name) and a line per language — its own name and its English name (`I18N_LANG_EN`), the current one ticked; a tap on a line (`pickLanguage`) closes the sheet and calls `setLanguage`. A tap outside the sheet or Escape closes it. `syncLangButtons()` writes the current language's name on the button. Where it sits:
+- manager app: in the title bar, before the account button; while the login screen or the super-admin's Firms screen covers it, the same element moves to that screen's top-right corner (`placeLangButton()`, run by a `MutationObserver` on those screens' `style`);
+- supplier and client portals: in the header, before the account button;
+- worker punch page: fixed in the top-right corner (`.lang-fixed`; the page has no login).
 
-**English is the default.** `setLanguage(lang)` keeps the choice in `localStorage.uiLang` (one key for all three pages, read by `storedLanguage()`), loads the dictionary and redraws (`redrawForLanguage()`, which also sets the select to the current language, `syncLangSelects()`).
+Languages come only from the dictionaries: the sheet lists `I18N_LANGS` (code → own name) with `I18N_LANG_EN` (code → English name), the same in all four pages.
+
+**English is the default.** `setLanguage(lang)` keeps the choice in `localStorage.uiLang` (one key for all three pages, read by `storedLanguage()`), loads the dictionary and redraws (`redrawForLanguage()`, which also writes the current language on the button, `syncLangButtons()`).
 
 **The user's last choice is remembered on their account.** When a user is signed in, `setLanguage` also sends `updateMyLanguage {language}` (users_admin function → `users/{uid}.language`, `en` / `he` / `ru`). `login` returns that `language`, and the login form writes it to `localStorage.uiLang` before the app draws (the manager app before its reload, the portal through `setLanguage(…, {save:false})`). So the language follows the person to any device; before login, a device shows its own last choice. The layout never changes with the language: it stays the app's left-to-right template, with no `dir="rtl"`.
 
@@ -88,6 +90,6 @@ Keep using the same words for the same things:
 
 ## Adding a language
 
-1. Add it to `I18N_LANGS` in all three pages (`schedule-manager.html`, `supplier-portal.html`, `worker-punch.html`: code and the language's own name), an `<option>` to each page's `#langSelect`, and to `LANGUAGES` in `functions-auth/core.py`.
+1. Add it to `I18N_LANGS` (code and the language's own name) and `I18N_LANG_EN` (its English name) in all four pages (`schedule-manager.html`, `supplier-portal.html`, `client-portal.html`, `worker-punch.html`) — the language sheet lists it from there — and to `LANGUAGES` in `functions-auth/core.py`.
 2. Create `i18n/<code>.json`. Copy the keys from `he.json` and translate the values; until then `{}` shows English.
 3. When it is complete, add it to `COMPLETE` in `tests/i18n/check.js`.

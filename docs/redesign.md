@@ -1,6 +1,6 @@
-# Redesign "Odinson Glass" — decisions (not built yet)
+# Redesign "Odinson Glass" — decisions (being built, stage by stage)
 
-The look the user chose on 2026-10-12 for every page (manager app, supplier portal, client portal, punch page, sign-in). Nothing here is in the code yet; this file is the brief to build from, stage by stage (one tab or screen per PR). Live HTML mockups of every decision are in `docs/design/` (open them in a browser; not served by Hosting): 01 glass, plates, ticks · 02 worker list with Select and Undo · 03 all screens · 04 editors · 05 logo, greeting, notifications · 06 punch page · 07 punch button variants (B chosen) · 08 My Schedule / My Hours · 09 Language button · 10 logo 11 loops (C chosen) · 11 bottom bar variants (11 chosen) · 12 bottom bar live icons. Where a mockup and this file disagree, this file wins. The full design system — tokens, components with live previews, rules — is the claude.ai artifact "Odinson Glass": https://claude.ai/artifact/WPJ5EKM5zHokFRzWzq2EoZ (private to the owner). Every rule in CLAUDE.md still applies (UI texts in English through the dictionaries, `esc()`, paging by 10, tap reads / long press edits, modals close on the backdrop, payroll only through the canonical functions).
+The look the user chose on 2026-10-12 for every page (manager app, supplier portal, client portal, punch page, sign-in). This file is the brief to build from, stage by stage (one tab or screen per PR); the status list under "Build plan" says which stages are in the code. The shared pieces of stage 1 (ground, glass, plates, highlight line, tick tiles, Language button and sheet) are described in app-core.md → Layout and translations.md. Live HTML mockups of every decision are in `docs/design/` (open them in a browser; not served by Hosting): 01 glass, plates, ticks · 02 worker list with Select and Undo · 03 all screens · 04 editors · 05 logo, greeting, notifications · 06 punch page · 07 punch button variants (B chosen) · 08 My Schedule / My Hours · 09 Language button · 10 logo 11 loops (C chosen) · 11 bottom bar variants (11 chosen) · 12 bottom bar live icons. Where a mockup and this file disagree, this file wins. The full design system — tokens, components with live previews, rules — is the claude.ai artifact "Odinson Glass": https://claude.ai/artifact/WPJ5EKM5zHokFRzWzq2EoZ (private to the owner). Every rule in CLAUDE.md still applies (UI texts in English through the dictionaries, `esc()`, paging by 10, tap reads / long press edits, modals close on the backdrop, payroll only through the canonical functions).
 
 ## Name and logo
 - The app is called **Interactive Manager** ("Manager" in a soft indigo → cyan text gradient). Under it, small, two lines: "Connecting people and business", then "Everything under one roof" (soft green).
@@ -70,7 +70,7 @@ How a run works (a run = one session, started by the Routine below or by hand wi
 - **Auto-resume:** a Routine ("Redesign autopilot") fires every 5 hours and starts a fresh session with the sentence above, so the work resumes by itself after a usage limit resets. A run that finds nothing left (1–11 ticked) does nothing and says so; the owner then switches the Routine off (or the run does, if it can).
 
 ### Status
-- [ ] 1 Foundation
+- [x] 1 Foundation
 - [ ] 2 Lists
 - [ ] 3 Workers
 - [ ] 4 Editors

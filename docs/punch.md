@@ -27,7 +27,7 @@ The function hands out only this worker and their sites, and accepts punches for
 
 ## Startup (`init()`)
 
-The page first loads the dictionary of the language chosen on this device (`loadI18n(storedLanguage())`, `localStorage.uiLang`, English by default), then runs `init()`. A small language select fixed in the top-right corner (`#langSelect`, EN / HE / RU; the top bars keep room for it) calls `setLanguage()`, which keeps the choice and redraws the shown screen ([translations.md](translations.md)).
+The page first loads the dictionary of the language chosen on this device (`loadI18n(storedLanguage())`, `localStorage.uiLang`, English by default), then runs `init()`. The Language button fixed in the top-right corner (`#langBtn.lang-fixed`; the top bars keep room for it) opens the language sheet, whose pick calls `setLanguage()`, which keeps the choice and redraws the shown screen ([translations.md](translations.md)).
 
 1. `loadWorkers()` reads the worker list from `punchClockSite.workers`, else the legacy cache `localStorage.schedMgr_v1` (or `scheduleManagerData`), filtered to `SITE.clientId` when set (falls back to all if that is empty). Workers are reduced to `{id, name, colorIdx, token, clientIds, schedule, dates}`.
 2. **Personal link:**

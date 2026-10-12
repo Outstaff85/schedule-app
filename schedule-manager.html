@@ -32,7 +32,10 @@
   body{font-family:'DM Sans','Heebo',Arial,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
 
   /* Titlebar / top panel */
-  .titlebar{min-height:58px;background:rgba(16,20,31,.55);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border-bottom:1px solid rgba(255,255,255,.1);display:flex;align-items:stretch;padding:0 14px;gap:6px;flex-shrink:0;position:relative;}
+  .titlebar{min-height:58px;background:rgba(16,20,31,.55);isolation:isolate;border-bottom:1px solid rgba(255,255,255,.1);display:flex;align-items:stretch;padding:0 14px;gap:6px;flex-shrink:0;position:relative;}
+  /* The glass blur sits on a layer behind the bar, not on the bar itself: a
+     backdrop-filter on the bar would trap the phone bottom bar (fixed) inside it. */
+  .titlebar::before{content:'';position:absolute;inset:0;z-index:-1;-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);pointer-events:none;}
   .titlebar .brand{display:flex;align-items:center;gap:9px;padding-right:14px;}
   .titlebar .brand img{width:28px;height:28px;border-radius:8px;}
   .titlebar .logo{font-size:16px;font-weight:600;color:var(--text);letter-spacing:-0.3px;align-self:center;white-space:nowrap;}

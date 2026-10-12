@@ -150,7 +150,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // The phone bottom bar (variant 11): Today, Schedule, Workers, Accounting, More; More opens a sheet with the other tabs.
   const bb = await p.evaluate(async () => {
     const shown = [...document.querySelectorAll('.top-tabs .ttab')].filter(t => getComputedStyle(t).display !== 'none').map(t => t.querySelector('.lb').textContent.trim());
-    const bar = getComputedStyle(document.querySelector('.top-tabs')), fixed = bar.position === 'fixed' && bar.bottom === '0px';
+    const bar = document.querySelector('.top-tabs').getBoundingClientRect(), fixed = Math.abs(bar.bottom - innerHeight) < 2 && Math.abs(bar.width - innerWidth) < 2;
     const todayColor = getComputedStyle(document.getElementById('tabDashboard')).color;
     document.getElementById('tabMore').click(); await new Promise(r => setTimeout(r, 200));
     const sheet = document.getElementById('moreOverlay').classList.contains('open'), items = [...document.querySelectorAll('#moreModal .t3-line b')].map(b => b.textContent.trim());
@@ -1050,6 +1050,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(await waitFor(p, () => /Invalid Link/.test(document.body.innerText)), 'punch: a regenerated link is revoked even from the cache');
   await p.goto(BASE + 'worker-punch.html?t=nope');
   ok(await waitFor(p, () => /Invalid Link/.test(document.body.innerText)), 'punch: unknown link refused');
+  await p.goto(BASE + 'worker-punch.html?t=tok-new');
+  await waitFor(p, () => !document.getElementById('screenPunch').classList.contains('hidden'), 15000);
   await p.click('#langBtn'); await p.click('#langSheet .lang-li[data-lang="he"]');
   ok(await waitFor(p, () => I18N_LANG === 'he' && document.querySelector('#langBtn .lang-btn-name').textContent === 'עברית'), 'punch: the Language button and its sheet switch the page');
   await p.goto(BASE + 'worker-punch.html?t=tok-new');
