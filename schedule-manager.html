@@ -803,7 +803,8 @@
   .og-sec-b .scan-missing,.og-sec-b input.need:placeholder-shown{border-color:var(--warn) !important;box-shadow:0 0 0 1px rgba(245,166,35,.35)}
   .seg.seg-sel{margin:0}
   .og-count{font-style:normal;font-size:14px;font-weight:500;color:var(--text2);margin-left:4px}
-  .workers-count{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text2)}
+  .workers-count{font-size:12px;color:var(--text2)}
+  .workers-count .sec-lbl{font-size:11px;letter-spacing:.12em;text-transform:uppercase}
   .og-doc{display:flex;align-items:center;gap:10px;padding:9px 8px 9px 12px;margin-bottom:6px;border-radius:12px;background:rgba(255,255,255,.04);box-shadow:inset 3px 0 0 var(--c)}
   .og-doc-ic{width:30px;height:30px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--c);background:color-mix(in srgb,var(--c) 18%,transparent)}
   .og-doc>div{flex:1;min-width:0;font-size:13px}
@@ -4763,7 +4764,7 @@ function renderWorkersPage(){
       return text.includes(q) || (qNum.length>=2 && docNo.includes(qNum));
     });
   }
-  document.getElementById('workersCount').innerHTML=`${esc(tr('Workers'))} <em style="font-style:normal;color:var(--text3)">${list.length}</em>`
+  document.getElementById('workersCount').innerHTML=`<span class="sec-lbl">${esc(tr('Workers'))}</span> <em style="font-style:normal;color:var(--text3)">${list.length}</em>`
     +(!stFilter&&inactiveN?` · <a href="#" class="inactive-link" onclick="event.preventDefault();showInactiveWorkers()">${esc(tr('Inactive: {n} — show',{n:inactiveN}))}</a>`:'')
     ;
   const tc=document.getElementById('workersTitleCount'); if(tc) tc.textContent=list.length;
