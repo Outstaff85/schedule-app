@@ -861,6 +861,38 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.screenshot({path: SP + '/t3-supplier.png'}).catch(()=>{});
   await p.setViewportSize({width: 1280, height: 720});
   ok(spT3.stats === 3 && spT3.workers >= 1, 'supplier portal: template 3 (figures, worker lines) ' + JSON.stringify(spT3));
+  // Lists in the portal (redesign stage 2): ⋮ and swipe actions; Delete → the Undo snack → the real delete only after 5 s; Select with the bulk bar.
+  const spl = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const add = async n => (await supplierCall({action:'supplierAddWorker', worker:{docGiven:n, docSurname:'Temp'}})).worker.id;
+    const t1 = await add('Tmpa'), t2 = await add('Tmpb'), t3 = await add('Tmpc');
+    await loadData(); switchTab('workers'); renderWorkersList(); await wait(100);
+    const lineOf = id => document.querySelector('#workersList .t3-line[data-sel-id="' + id + '"]');
+    const r = {swipe: lineOf(t1).closest('.sw').querySelectorAll('.sw-acts button').length};
+    lineOf(t1).querySelector('.t3-kb').click(); await wait(50);
+    r.pop = [...document.querySelectorAll('#ogPop .og-pop-it')].map(b => (b.classList.contains('del') ? '!' : '') + b.innerText.trim()).join();
+    document.querySelector('#ogPop .og-pop-it.del').click(); await wait(400);
+    r.gone = lineOf(t1).closest('.sw').classList.contains('gone');
+    document.querySelector('#undoSnack .og-snack-u').click(); await wait(400);
+    r.undone = !lineOf(t1).closest('.sw').classList.contains('gone');
+    await wait(5300); await loadData(); r.keptAfterUndo = myWorkers.some(w => w.id === t1);
+    renderWorkersList(); await wait(50);
+    document.querySelector('#workersList .t3-sec .t3-kb').click(); await wait(50);
+    document.querySelector('#ogPop .og-pop-it').click(); await wait(100);
+    r.selecting = document.querySelector('#workersList .workers-rows').classList.contains('selecting') && !!document.querySelector('.sel-bar');
+    lineOf(t2).click(); lineOf(t3).click();
+    r.count = document.querySelector('.sel-bar b').innerText.trim(); r.noEditor = !document.getElementById('workerOverlay').classList.contains('open');
+    [...document.querySelectorAll('.sel-bar .gbtn')].find(b => b.dataset.a === 'del').click(); await wait(300);
+    r.barGone = !document.querySelector('.sel-bar'); r.snack = /2 workers deleted/.test(document.getElementById('undoSnack').innerText);
+    r.notYet = (await (async () => { await loadData(); return myWorkers.filter(w => w.id === t2 || w.id === t3).length; })()) === 2;
+    await wait(5600);
+    for(let i = 0; i < 40 && myWorkers.some(w => w.id === t2 || w.id === t3); i++) await wait(150);
+    r.deleted = !myWorkers.some(w => w.id === t2 || w.id === t3) && myWorkers.some(w => w.id === t1);
+    await supplierCall({action:'supplierDeleteWorker', workerId:t1}); await loadData(); renderWorkersList();
+    return r;
+  });
+  ok(spl.swipe === 2 && spl.pop === 'Edit,!Delete' && spl.gone && spl.undone && spl.keptAfterUndo, 'supplier lists: ⋮ / swipe Edit and Delete; Undo keeps the worker ' + JSON.stringify(spl));
+  ok(spl.selecting && spl.count === '2 selected' && spl.noEditor && spl.barGone && spl.snack && spl.notYet && spl.deleted, 'supplier lists: Select two, Delete → Undo snack, deleted on the server only after 5 s ' + JSON.stringify(spl));
   // Hours approval tab (hours ticks hours, approve, export): only its own workers; the month approved at once.
   ok(await waitFor(p, () => document.getElementById('tabBtn_review').style.display !== 'none', 10000), 'supplier: the Hours approval tab shows with an hours tick');
   await p.evaluate(() => switchTab('review'));
@@ -949,6 +981,31 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     for(let i = 0; i < 60 && document.querySelectorAll('.admin-users-rows > div').length < 2; i++) await new Promise(r => setTimeout(r, 150));
     return [...document.querySelectorAll('.admin-users-rows > div')].map(r => r.innerText.replace(/\s+/g, ' ')); });
   ok(ul.length >= 2 && /\bowner\b/.test(ul[0]) && ul.some(t => /\bclient\b/.test(t) && /Site B/.test(t) && /Approve/.test(t) && /Fix/.test(t)), 'users: the owner pinned first; a client login shows its client and hours ticks ' + JSON.stringify(ul.slice(0, 3)));
+  // Lists (redesign stage 2): a plate per user, the ⋮ popover (Delete last, red, under a divider), Delete collapses the line behind the Undo snack and Undo brings it back; Select mode.
+  const ls = await q.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const target = [...document.querySelectorAll('.admin-users-rows > .sw')].find(s => /\bclient\b/.test(s.innerText)), line = target.querySelector('.t3-line');
+    const cs = getComputedStyle(line), r = {plate: /inset/.test(cs.boxShadow) && cs.borderRadius === '16px', swipe: target.querySelectorAll('.sw-acts button').length};
+    line.querySelector('.t3-kb').click(); await wait(50);
+    r.pop = [...document.querySelectorAll('#ogPop .og-pop-it')].map(b => (b.classList.contains('del') ? '!' : '') + b.innerText.trim()).join(); r.hr = !!document.querySelector('#ogPop .og-pop-hr');
+    document.querySelector('#ogPop .og-pop-it.del').click(); await wait(400);
+    r.gone = target.classList.contains('gone'); r.snack = document.getElementById('undoSnack').classList.contains('open') && /deleted/.test(document.getElementById('undoSnack').innerText);
+    document.querySelector('#undoSnack .og-snack-u').click(); await wait(400);
+    r.back = !target.classList.contains('gone') && !document.getElementById('undoSnack').classList.contains('open');
+    document.querySelector('.admin-users-rows').parentNode.querySelector('.t3-sec .t3-kb').click(); await wait(50);
+    document.querySelector('#ogPop .og-pop-it').click(); await wait(100);
+    const boxes = [...document.querySelectorAll('.admin-users-rows .t3-line')].map(l => !!l.querySelector('.t3-cb'));
+    r.n = boxes.length; r.ownerNoBox = boxes[0] === false && boxes.slice(1).every(Boolean);
+    r.kbHidden = getComputedStyle(line.querySelector('.t3-kb')).opacity === '0';
+    document.querySelector('.sel-head button').click();
+    r.all = document.querySelector('.sel-bar b').innerText.trim(); r.picked = document.querySelectorAll('.admin-users-rows .t3-line.picked').length;
+    line.click(); r.unpicked = !line.classList.contains('picked') && !document.getElementById('userFormOverlay').classList.contains('open');
+    [...document.querySelectorAll('.sel-bar .gbtn')].find(b => b.dataset.a === 'x').click();
+    r.ended = !document.querySelector('.sel-bar') && !document.querySelector('.sel-head') && !document.querySelector('.admin-users-rows.selecting');
+    return r;
+  });
+  ok(ls.plate && ls.swipe === 2 && ls.pop === 'Edit,!Delete' && ls.hr && ls.gone && ls.snack && ls.back, 'lists: a plate per user; ⋮ opens Edit / Delete; Delete collapses it behind the Undo snack, Undo brings it back ' + JSON.stringify(ls));
+  ok(ls.ownerNoBox && ls.kbHidden && ls.picked === ls.n - 1 && ls.all === (ls.n - 1) + ' selected' && ls.unpicked && ls.ended, 'lists: Select… — boxes (none for the owner), Select all, a tap ticks, the glass bar closes with ✕ ' + JSON.stringify(ls));
   // The user form: one Hours block for HR / supplier / client; "Only own workers" at the bottom, locked on for a supplier and a client.
   const uf = await q.evaluate(() => {
     openCreateUserForm(); const role = document.getElementById('userFormRole'), out = {};
