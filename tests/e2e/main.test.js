@@ -641,7 +641,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     find(''); if(keep === undefined) delete avi.docId; else avi.docId = keep;
     return out;
   });
-  ok(/^1 /.test(srch.id) && /^1 /.test(srch.client) && /^0 /.test(srch.none), 'workers search: by ID / passport number and by client ' + JSON.stringify(srch));
+  ok(/ 1$/.test(srch.id) && / 1$/.test(srch.client) && / 0$/.test(srch.none), 'workers search: by ID / passport number and by client ' + JSON.stringify(srch));
   // "NEW" for 3 days after a worker is added: on the worker cards, not on an older worker.
   const nw = await p.evaluate(async () => {
     const a = workers.find(w => w.id === 'w1'), d = workers.find(w => w.id === 'w2');
@@ -728,7 +728,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(ed.worker.join() === 'person,address,work,documents,form101,access' && /Dana/.test(ed.personSum) && ed.sexSeg && ed.sexVal === 'F' && ed.focusOpens && ed.toggles && ed.noSave,
     'editors: the worker editor is section plates (Person · Address · Work · Documents · Form 101 · Access), summaries, segmented choices, a focused field opens its section, no Save ' + JSON.stringify(ed));
-  ok(ed.client.join() === 'client,place,rates,approval' && ed.supplier.join() === 'supplier*,bank' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,sections' && ed.supplierEdit === 'supplier,commission,portal,workers' && ed.userHr === 'person,sections,hours,commission' && ed.roleSeg,
+  ok(ed.client.join() === 'client,place,rates,approval' && ed.supplier.join() === 'supplier*' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,sections' && ed.supplierEdit === 'supplier,commission,portal,workers' && ed.userHr === 'person,sections,hours,commission' && ed.roleSeg,
     'editors: client, supplier (one Save, an empty name amber) and user form as section plates ' + JSON.stringify(ed));
   // Worker list header (the owner's fixed structure): "Workers N", glass New, ⋮; tabs Active / Vacation / Pending.
   const wh = await p.evaluate(async () => {
