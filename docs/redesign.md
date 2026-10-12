@@ -87,7 +87,8 @@ How a run works (a run = one session, started by the Routine below or by hand wi
 - [x] 9 Punch page
 - [x] 10 Supplier and client portals
 - [x] 11 Sign-in
-- [ ] 12 Weather — **deferred**: done last, only after the owner puts the OpenWeatherMap key in Secret Manager and says so; the loop stops after stage 11
+- [ ] 11b WhatsApp reminder — in the notices sheet and the notifications panel, next to Call on a "no punch" notice: a WhatsApp button that opens `https://wa.me/<number>?text=<message>` (no API, no key; the manager taps Send). Israeli numbers 05x… → 9725x…. One message template per firm, editable in the firm profile, English default "Hi {fullName}, you haven't punched in for your shift today ({shift} · {site})." with {fullName} {firstName} {shift} {site} {date} filled in. Fully automatic sending (WhatsApp Business API) is not part of this; it would need its own key like the weather.
+- [ ] 12 Weather — **deferred**: done last, only after the owner puts the OpenWeatherMap key in Secret Manager and says so; the loop stops after stage 11b
 
 ### Stages
 Each stage: tested with (`npm test` in `tests/rules`, `test:auth`, the browser tests, `tests/i18n/check.js`, `tests/icons/check.js`), every new text in the dictionaries with Hebrew, the duplicated helpers mirrored in every page (CLAUDE.md → Duplicated on purpose), `service-worker.js` CACHE bumped, docs updated; merged only after the owner's OK. Later stages build on the shared pieces of stage 1.

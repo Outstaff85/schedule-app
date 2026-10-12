@@ -5658,7 +5658,9 @@ document.addEventListener('click',e=>{
 // with a swipe down on it (user request 2026-10-11) — the same way as a tap
 // outside (__onUserClose, else closeModal). Only when the sheet and anything
 // scrolled under the finger are at their top, never from a field, a map or
-// a canvas; while it is open the page behind does not scroll (CSS). The
+// a canvas, an SVG or a drag area (touch-action:none: the scan corner
+// editor, the avatar crop, the signature pad); while it is open the page
+// behind does not scroll (CSS). The
 // same code is in the manager app and both portals.
 (function(){
   let sw=null;
@@ -5666,7 +5668,7 @@ document.addEventListener('click',e=>{
     sw=null;
     if(!window.matchMedia('(max-width:700px)').matches||e.touches.length!==1) return;
     const m=e.target.closest&&e.target.closest('.overlay.open>.modal');
-    if(!m||e.target.closest('input,textarea,select,canvas,.leaflet-container,.no-swipe')) return;
+    if(!m||e.target.closest('input,textarea,select,canvas,svg,.leaflet-container,.no-swipe,[style*="touch-action:none"]')) return;
     for(let n=e.target;n&&n!==m.parentElement;n=n.parentElement){ if(n.scrollTop>0) return; }
     sw={m, x:e.touches[0].clientX, y:e.touches[0].clientY, dy:0, on:false};
   },{passive:true});
