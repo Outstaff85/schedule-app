@@ -7785,13 +7785,23 @@ async function gsLoadPunchLog(){
     return await (await loadFirestoreBackend()).listenPunches(fsTenantId(), entries => {
       mergeRemotePunches(entries);
       if(currentTab === 'dashboard') renderDashboard();
+      // Hours approvals compare each day with the punches: redraw them too,
+      // or a day could keep showing a stale "Changed after approval".
+      if(currentTab === 'accounting') renderHourApprovals((document.getElementById('salaryPeriod')||{}).value||'month');
     }, since);
   }catch(e){ console.warn('Firestore punch load failed: ' + ((e && e.message) || e)); return null; }
 }
-async function syncPunchesFromGS(){
-  const remote = await gsLoadPunchLog();
-  if(!remote) return;
-  mergeRemotePunches(remote);
+// The first load of the punches (a promise): Accounting → Hours approvals
+// waits for it, so a day is never compared with a punch log still loading
+// (which showed an approved day as "Changed after approval").
+let __punchSynced = null;
+function syncPunchesFromGS(){
+  __punchSynced = (async () => {
+    const remote = await gsLoadPunchLog();
+    if(!remote) return;
+    mergeRemotePunches(remote);
+  })();
+  return __punchSynced;
 }
 function mergeRemotePunches(remote){
   const local = getPunchLog();
@@ -8914,6 +8924,7 @@ async function renderHourApprovals(period){
   const req=++__approvalsReq;
   let docs=[];
   try{ docs=await hourApprovalsOf(month); }catch(e){ console.warn('Hours approvals:', e); }
+  if(__punchSynced) await __punchSynced.catch(()=>{});
   if(req!==__approvalsReq) return;
   docs=docs.filter(d=>Object.keys(d.days||{}).length).sort((a,b)=>(a.kind+a.ownerName).localeCompare(b.kind+b.ownerName));
   sec.style.display=docs.length?'':'none';

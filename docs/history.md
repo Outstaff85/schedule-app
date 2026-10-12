@@ -202,3 +202,7 @@ The first translation stages made the language one per firm: a `language` field 
 
 ## Google Contacts picker removed (2026-10-10)
 The worker modal once loaded contacts from Google (People API through Google Identity Services, with the account list and OAuth client ids written in the page) to fill the name and phone. Its button had long been gone, so it never ran; the code, the client ids and the Google script were removed.
+
+
+## 2026-10-13 — false "Changed after approval" right after sign-in
+The browser test "owner: the client's approval in Accounting, not changed" failed now and then (PRs #232, #233). Cause: Accounting → Hours approvals compared each approved day with the punch log while the month's punches were still loading after sign-in; a day with no punches yet has an empty line, so every approved day read "Changed after approval", and only the Today tab was redrawn when the punches arrived. Fix: `renderHourApprovals` waits for the first punch load (`__punchSynced`) and the punch listener redraws the approvals while Accounting is open.
