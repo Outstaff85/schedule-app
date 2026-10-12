@@ -1014,5 +1014,10 @@
   "Changed": "שונה",
   "now": "עכשיו",
   "on shift": "במשמרת",
-  "Client pays per day": "הלקוח משלם ליום"
+  "Client pays per day": "הלקוח משלם ליום",
+  "WhatsApp": "וואטסאפ",
+  "You can use {0}": "אפשר להשתמש ב: {0}",
+  "WhatsApp reminder": "תזכורת בוואטסאפ",
+  "Message when a worker has not punched in": "הודעה כשעובד לא החתים כניסה",
+  "Hi {full name}, you have not punched in today (shift {start} · {site}).": "שלום {full name}, לא החתמת כניסה היום (משמרת {start} · {site})."
 }
