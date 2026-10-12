@@ -861,7 +861,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     switchTab('clients');
     return r;
   });
-  ok(cpl.noRate && /^\d+$/.test(cpl.count) && cpl.menu === 'Edit,Manual punch,!Delete' && cpl.pending && cpl.undone && cpl.sel === '1 selected' && cpl.deleted && cpl.supplier, 'clients / suppliers: plates with notices, ⋮, Delete → Undo, Select → Delete after 5 s; supplier plates ' + JSON.stringify(cp));
+  ok(cpl.noRate && /^\d+$/.test(cpl.count) && cpl.menu === 'Edit,Manual punch,!Delete' && cpl.pending && cpl.undone && cpl.sel === '1 selected' && cpl.deleted && cpl.supplier, 'clients / suppliers: plates with notices, ⋮, Delete → Undo, Select → Delete after 5 s; supplier plates ' + JSON.stringify(cpl));
   // The client window has no Save button: a tap outside saves it; an empty new client is not created.
   const cs = await p.evaluate(async () => {
     const tap = () => { const ov = document.getElementById('clientOverlay'); ov.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true})); ov.click(); };
