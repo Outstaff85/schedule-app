@@ -11,5 +11,6 @@ A client of the firm (a site where its workers work) signs in with its own login
 
 ## The page
 
+- A glass header (`.pt-head`) with the logo mark (`.pt-mark`) and "Client Portal" (redesign stage 10); the hours review below is drawn in plates ([hours-review.md](hours-review.md)).
 - No login of its own (one login for every role, user request 2026-10-11): a client signs in on the manager app's login page, which hands over to `/client` (own session key `clientPortal_session`); without a kept session — or when `gateApp` finds the Firebase sign-in gone — the page goes to `schedule-manager.html`. The header holds the Language button (`i18n/<lang>.json`) and the account menu (as in the other pages) with **Sign out** (`logout()` → the login page).
 - After the gate, `loadHoursReview()` loads `hours-review.js` and `hoursReviewMount(#hoursRoot, {hideOwner: true, call})` draws the month (the client's name and object are in the header, from the `load` reply). A session error from the function logs out.

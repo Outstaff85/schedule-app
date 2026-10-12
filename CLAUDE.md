@@ -90,7 +90,7 @@ Some code comments (the rules, `tests/`, older parts of the pages) still name th
 - **Uploads:** new upload features go through the shared helpers (`filesToUploadPages`/`fileToUploadPages`/`downscaleForUpload`/`fileForStorage`) and send per-page requests in parallel (docs/scan.md).
 - **Parallel AI calls:** a feature that sends several AI requests starts the independent ones at once (`Promise.all`, one request per page or field batch, merged in page order); a Cloud Function that receives such calls is declared with `cpu=1`, `concurrency=20` and keeps no shared per-request state (docs/backend.md → Parallel AI calls). **When a task adds or changes a feature with several AI or server calls that could use this pattern but doesn't yet, Claude points it out in chat and proposes applying it (what would run in parallel, which function settings) before writing the code — don't apply it silently, don't skip it silently.**
 - **Icons:** the pages use a self-hosted subset of Tabler Icons (`icons/`); a new `ti-<name>` needs `python tests/icons/build.py` and `npm run test:icons` passing (docs/app-core.md → Fonts and icons).
-- **Service worker:** when `service-worker.js` changes, bump its `CACHE` version (now `schedule-mgr-v119`), or clients keep stale files.
+- **Service worker:** when `service-worker.js` changes, bump its `CACHE` version (now `schedule-mgr-v120`), or clients keep stale files.
 - **Hosting ignore** in `firebase.json` must keep `functions/**` (otherwise the venv is uploaded publicly), `functions-auth/**`, `tests/**`, `docs/**`, `*.md` and the rules files.
 - **Secrets** live in Secret Manager (`ANTHROPIC_API_KEY`) — never in the repo, never asked for in chat.
 

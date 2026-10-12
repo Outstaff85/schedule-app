@@ -1023,6 +1023,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.screenshot({path: SP + '/t3-supplier.png'}).catch(()=>{});
   await p.setViewportSize({width: 1280, height: 720});
   ok(spT3.stats === 3 && spT3.workers >= 1, 'supplier portal: template 3 (figures, worker lines) ' + JSON.stringify(spT3));
+  const spHead = await p.evaluate(() => ({mark: !!document.querySelector('.pt-head .pt-mark'), tab: (() => { const b = document.querySelector('.tab-btn.active'); return b ? getComputedStyle(b).borderRadius : ''; })()}));
+  ok(spHead.mark && spHead.tab === '14px', 'supplier portal: the logo mark in a glass header, glass tabs ' + JSON.stringify(spHead));
   // Lists in the portal (redesign stage 2): ⋮ and swipe actions; Delete → the Undo snack → the real delete only after 5 s; Select with the bulk bar.
   const spl = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -1196,6 +1198,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ctx = await newCtx(); p = await page(ctx);
   await login(p, BASE + 'client-portal.html', 'client1', 'client-pass-1');
   await waitFor(p, () => typeof __hrv !== 'undefined' && !!__hrv.data, 15000);
+  const cpHead = await p.evaluate(() => { const d = document.querySelector('#hoursRoot .hrv-day'); return {mark: !!document.querySelector('.pt-head .pt-mark'), day: d ? getComputedStyle(d).borderRadius : 'none'}; });
+  ok(cpHead.mark && (cpHead.day === '14px' || cpHead.day === 'none'), 'client portal: the logo mark; hours days as plates ' + JSON.stringify(cpHead));
   const menu = await p.evaluate(() => { toggleAccountMenu(); const m = document.getElementById('accountMenu'); return {open: getComputedStyle(m).display !== 'none', lang: !m.querySelector('.lang-btn, select') && !!document.querySelector('#headerActions > .lang-btn + #accountControl'), text: m.innerText}; });
   ok(menu.open && menu.lang && /client1/.test(menu.text) && /Sign out/.test(menu.text), 'client portal: the account menu holds the name and Sign out, the Language button beside it ' + JSON.stringify(menu));
   await p.evaluate(() => logout());
