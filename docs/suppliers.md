@@ -12,11 +12,11 @@ A worker links to **one** supplier through `w.supplierId` (set in the worker mod
 
 ## Suppliers tab (`#sectionSuppliers`)
 
-`renderSuppliersPage()` draws a card per supplier in `#suppliersGrid`: name, ח.פ, phone, bank details and the assigned workers, with a ✕ in the top corner that removes the supplier (`.wcard-del`, as on a worker card); a tap, a double click (computer) or a long press (phone) anywhere else on the card opens its edit form (`tapEdit` / `longPress` → `openEditSupplier`). The tab has no role gate beyond the `suppliers` permission (`NAV_TAB_PERMISSION`).
+A header "Suppliers N" with a glass **New** (`openAddSupplier`) and a ⋮ (**Select…**, `startSupplierSelect`). `renderSuppliersPage()` draws a plate per supplier (redesign stage 8, paged by 10): its colour as bar and avatar, the name, "N workers · phone", its workers' hours this month (`workersMonthHours`) in green, a ⋮ (Edit, Delete) and a swipe left (Edit, Delete); a tap, a double click or a long press opens the editor.
 
 - **Adding and editing:** `openAddSupplier()` / `openEditSupplier(sid)` → `showSupplierModal(s)`. The editor ([app-core.md](app-core.md) → Editors) has a head (colour, name, phone), the sections, in the owner's fixed order, **Company** (Name, ח.פ, Phone, Bank / Branch / Account #) and — editing only, `supplierEditorExtraHtml` — **Commission** (the default ₪/h, its workers, this month's hours from `workersMonthHours`; per-worker and per-day rates stay in Accounting), **Portal login** (its supplier logins and the portal tabs they see, read-only) and **Workers** (a mini plate per worker with this month's hours), and one Save at the end, with no color picker: a new supplier gets the next `CLIENT_COLORS` color automatically, an edited one keeps its color.
 - **Saving:** `saveSupplier()` updates in place or pushes a new supplier (`uid()`), then saves.
-- **Removing:** `deleteSupplier(sid)` removes the supplier and, on every worker, sets `supplierId` to `null` and deletes `supplierRates[sid]`; then it saves.
+- **Removing:** `deleteSupplier(sid, el)` / `deleteSuppliers(ids, els)` never ask: the plate collapses behind the Undo snack (left out meanwhile, `__supplierDelPending`); after 5 s the supplier is removed and, on every worker, `supplierId` is set to `null` and `supplierRates[sid]` deleted; then it saves.
 
 ## Where suppliers are used
 

@@ -834,13 +834,34 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.mouse.click(5, 450); await sleep(400);
   // A client card: a single click opens its editor (no card to read first).
   await p.evaluate(() => switchTab('clients')); await sleep(400);
-  await p.click('#clientsGrid .client-card .client-card-name >> nth=0'); await sleep(500);
+  await p.click('#clientsGrid .t3-line .wp-n >> nth=0'); await sleep(500);
   const cl1 = await p.evaluate(() => document.getElementById('clientOverlay').classList.contains('open'));
   await p.evaluate(() => closeModal('clientOverlay')); await sleep(200);
-  await p.dblclick('#clientsGrid .client-card .client-card-name >> nth=0'); await sleep(500);
+  await p.dblclick('#clientsGrid .t3-line .wp-n >> nth=0'); await sleep(500);
   const cl2 = await p.evaluate(() => document.getElementById('clientOverlay').classList.contains('open'));
   ok(cl1 && cl2, 'clients: a single click or a double click opens the editor ' + JSON.stringify({cl1, cl2}));
   await p.evaluate(() => closeModal('clientOverlay')); await sleep(200);
+  // Clients and suppliers as plates (redesign stage 8): ⋮ (Edit, Manual punch, Delete), Delete → Undo, Select; supplier plates.
+  const cp = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
+    clients.push({id:'ctmp', name:'Temp Client', color:'#60a5fa'}); switchTab('clients'); renderClientsPage(); await wait(50);
+    const line = () => document.querySelector('#clientsGrid .t3-line[data-cid="ctmp"]');
+    r.noRate = /No rate/.test(line().textContent); r.count = document.getElementById('clientsTitleCount').textContent;
+    line().querySelector('.t3-kb').click(); await wait(50);
+    r.menu = [...document.querySelectorAll('#ogPop .og-pop-it')].map(b => (b.classList.contains('del') ? '!' : '') + b.textContent.trim()).join();
+    document.querySelector('#ogPop .og-pop-it.del').click(); await wait(300);
+    r.pending = clients.some(c => c.id === 'ctmp'); document.querySelector('#undoSnack .og-snack-u').click(); await wait(300);
+    r.undone = !!line() && clients.some(c => c.id === 'ctmp');
+    document.getElementById('clientsHeadMenu').click(); await wait(50); document.querySelector('#ogPop .og-pop-it').click(); await wait(50);
+    line().click(); r.sel = document.querySelector('.sel-bar b').textContent;
+    [...document.querySelectorAll('.sel-bar .gbtn')].find(b => b.dataset.a === 'del').click(); await wait(5500);
+    r.deleted = !clients.some(c => c.id === 'ctmp');
+    switchTab('suppliers'); renderSuppliersPage(); await wait(50);
+    const sp = document.querySelector('#suppliersGrid .t3-line'); r.supplier = !!sp && !!sp.querySelector('.r') && !!sp.querySelector('.t3-kb') && !!sp.closest('.sw');
+    switchTab('clients');
+    return r;
+  });
+  ok(cp.noRate && /^\d+$/.test(cp.count) && cp.menu === 'Edit,Manual punch,!Delete' && cp.pending && cp.undone && cp.sel === '1 selected' && cp.deleted && cp.supplier, 'clients / suppliers: plates with notices, ⋮, Delete → Undo, Select → Delete after 5 s; supplier plates ' + JSON.stringify(cp));
   // The client window has no Save button: a tap outside saves it; an empty new client is not created.
   const cs = await p.evaluate(async () => {
     const tap = () => { const ov = document.getElementById('clientOverlay'); ov.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true})); ov.click(); };
@@ -856,7 +877,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const c = clients.find(x => x.id === 'c1'), out = {rates, noSave, closed: !document.getElementById('clientOverlay').classList.contains('open'), d: c.defaultHourlyRate, b: c.billRate};
     const n = clients.length; openAddClient(); tap(); await new Promise(r => setTimeout(r, 300)); out.noNew = clients.length === n;
     // "Manual punch" from the client window: saves it, opens the punch; closing the punch brings the client back.
-    out.noPunchOnCard = !document.querySelector('#clientsGrid .client-card button[onclick*="openManualPunch"]');
+    out.noPunchOnCard = !document.querySelector('#clientsGrid .t3-line button[onclick*="openManualPunch"]');
     openEditClient('c1'); punchFromClientModal(); await new Promise(r => setTimeout(r, 100));
     out.punch = document.getElementById('manualPunchOverlay').classList.contains('open') && !document.getElementById('clientOverlay').classList.contains('open');
     closeModal('manualPunchOverlay'); await new Promise(r => setTimeout(r, 200));

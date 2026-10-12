@@ -23,7 +23,7 @@ Worker pay and client billing are separate sets of fields. Billing never changes
 
 ## Clients tab (`#sectionClients`)
 
-`renderClientsPage()` draws a card per client in `#clientsGrid`. Each card shows the name, ח.פ, object, address and the names of the assigned workers (workers whose `clientIds` include it), with a ✕ in the top corner that removes the client (`.wcard-del`, the same as on a worker card). A tap, a double click (computer) or a long press (phone) anywhere else on the card opens its edit form (`tapEdit` / `longPress` → `openEditClient`).
+A header "Clients N" (`#clientsTitleCount`) with a glass **New** (`openAddClient`) and a ⋮ (**Select…**, `startClientSelect`). `renderClientsPage()` draws a plate per client (redesign stage 8, grid of plates, paged by 10): the client's colour as bar and avatar (initials), the name with its notices (**No rate** — no billing or worker rate; **Hours waiting** — a pending hours batch for it), "N workers · address", this month's hours at the client (`salaryEntriesFor('month').byClient`) in green, a ⋮ (Edit, Manual punch, Delete) and a swipe left (Edit, Delete). A tap, a double click or a long press opens the editor. **Delete never asks** (`deleteClient(cid, el)` / `deleteClients(ids, els)`): the plate collapses behind the Undo snack and the client is left out meanwhile (`__clientDelPending`); after 5 s it is removed, taken off every worker (`clientIds`, `clientRates`) and the filter, and the page saves. Select's bulk Delete does the same for the picked ones.
 
 ## Client modal (`showClientModal(c)`, `#clientModal`)
 
