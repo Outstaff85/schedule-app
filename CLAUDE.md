@@ -70,7 +70,7 @@ Some code comments (the rules, `tests/`, older parts of the pages) still name th
 - A `SessionStart` hook injects `git status --short` + current branch as context.
 - A `PostToolUse` hook on `gh pr create*` or the GitHub MCP `create_pull_request` tool checks the PR's diff against CLAUDE.md and `docs/*.md` and updates them via an agent.
 - **"Deploy" means: open a PR from the work branch into `main` covering everything accumulated since the last one, then merge it — merging is what triggers the real deploy.** Never push/reset directly to `main`. Batch accumulated changes into one PR per deploy request rather than one PR per edit.
-- **Never merge a PR without asking the user first.** Pushing to the feature branch needs no confirmation; merging to `main` always does.
+- **Never merge a PR without asking the user first.** Pushing to the feature branch needs no confirmation; merging to `main` always does. Exception: the stages of the redesign plan in docs/redesign.md, which the owner approved in advance — each is merged by its session once its CI is green (docs/redesign.md → Auto-continue).
 
 ## Rules that apply everywhere
 

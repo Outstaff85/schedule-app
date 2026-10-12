@@ -1,0 +1,65 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Interactive Manager Logos</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#07080c;--ink:#fff;--t2:#8b90a0}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font:14px 'DM Sans',Arial,sans-serif;padding:24px 16px}
+h1{font-size:18px;margin-bottom:4px}.lead{color:var(--t2);font-size:13px;margin-bottom:20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:20px;max-width:1110px}
+.card{border-radius:22px;overflow:hidden;border:1px solid rgba(255,255,255,.1);cursor:pointer;
+ background:radial-gradient(circle at 15% 10%,rgba(79,70,229,.50) 0,transparent 56%),radial-gradient(circle at 92% 62%,rgba(6,182,212,.36) 0,transparent 54%),radial-gradient(circle at 40% 108%,rgba(219,39,119,.34) 0,transparent 56%),#10141f}
+.hero{height:190px;display:flex;align-items:center;justify-content:center}
+.hero .m{width:110px;height:110px}
+.bar{display:flex;align-items:center;gap:10px;padding:12px 14px;background:rgba(14,17,26,.6);border-top:1px solid rgba(255,255,255,.1)}
+.bar .m{width:34px;height:34px;flex:none}
+.bar b{font-size:16px;font-weight:700;letter-spacing:-.2px}
+.bar b span{background:linear-gradient(90deg,#c7d2fe,#67e8f9);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.cap{padding:12px 14px 14px;font-size:13px;color:#c9ccd6;line-height:1.45}.cap b{color:#fff;font-size:15px;margin-right:6px}
+svg.m{overflow:visible}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+
+/* A: flowing gradient along the roof, people bob in a wave; nothing disappears */
+.A .roof{fill:none;stroke:url(#gFlow);stroke-width:7;stroke-linecap:round;stroke-linejoin:round}
+.A .roofglow{fill:none;stroke:#22d3ee;stroke-width:12;stroke-linecap:round;stroke-linejoin:round;opacity:.18;filter:blur(3px);animation:gl 3s ease-in-out infinite}
+@keyframes gl{50%{opacity:.4}}
+.A>g.h{animation:bob 2.4s ease-in-out infinite}
+.A .h2{animation-delay:.3s!important}.A .h3{animation-delay:.6s!important}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+/* B: full cycle — draws left→right, holds, then un-draws from left to right (keeps going the same way), people fade in/out softly */
+.B .roof{fill:none;stroke:url(#gA);stroke-width:7;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:110 110;animation:cyc 4s cubic-bezier(.45,0,.35,1) infinite}
+@keyframes cyc{0%{stroke-dashoffset:110}35%,65%{stroke-dashoffset:0}100%{stroke-dashoffset:-110}}
+.B>g.h{animation:inout 4s ease-in-out infinite}
+.B .h2{animation-delay:.12s!important}.B .h3{animation-delay:.24s!important}
+@keyframes inout{0%,12%{opacity:.25;transform:translateY(5px)}35%,65%{opacity:1;transform:none}88%,100%{opacity:.25;transform:translateY(5px)}}
+/* C: a light runs over the roof again and again; people take turns to light up */
+.C .roof{fill:none;stroke:rgba(255,255,255,.28);stroke-width:7;stroke-linecap:round;stroke-linejoin:round}
+.C .run{fill:none;stroke:url(#gA);stroke-width:7;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:40 180;animation:run 2.8s linear infinite}
+@keyframes run{from{stroke-dashoffset:220}to{stroke-dashoffset:0}}
+.C>g.h{opacity:.55;animation:lit 2.8s ease-in-out infinite}
+.C .h1{animation-delay:0s}.C .h2{animation-delay:.93s}.C .h3{animation-delay:1.86s}
+@keyframes lit{0%,100%{opacity:.55;transform:none}15%{opacity:1;transform:translateY(-4px)}35%{opacity:.55;transform:none}}
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><defs>
+<linearGradient id="gA" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#818cf8"/><stop offset=".5" stop-color="#22d3ee"/><stop offset="1" stop-color="#f472b6"/></linearGradient>
+<linearGradient id="gFlow" x1="0" x2="1" gradientUnits="userSpaceOnUse" spreadMethod="reflect"><stop offset="0" stop-color="#818cf8"/><stop offset=".5" stop-color="#22d3ee"/><stop offset="1" stop-color="#f472b6"/>
+<animate attributeName="x1" values="0;100;0" dur="4s" repeatCount="indefinite"/><animate attributeName="x2" values="100;200;100" dur="4s" repeatCount="indefinite"/></linearGradient>
+</defs></svg>
+<h1>Logo 11 “Under one roof” · no cut, endless loop</h1>
+<div class="lead">Three smooth motion variants — nothing cuts off or jumps. See the live file.</div>
+<div class="grid" id="g"></div>
+<script>
+const P=(x,y,s,c)=>`<g transform="translate(${x} ${y}) scale(${s})"><circle cx="0" cy="-9" r="7" fill="${c}"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="${c}"/></g>`;
+const people=`<g class="h h1">${P(30,70,.95,'#818cf8')}</g><g class="h h2">${P(50,66,1.15,'#22d3ee')}</g><g class="h h3">${P(70,70,.95,'#f472b6')}</g>`;
+const R='M10 50L50 16l40 34';
+const M={
+'A':['Gradient','The roof always stays; a color gradient and a soft glow run along it; the people under it gently “breathe” in turn. The calmest.',
+`<svg class="m A" viewBox="0 0 100 100"><path class="roofglow" d="${R}"/><path class="roof" d="${R}"/>${people}</svg>`],
+'B':['Full cycle','The roof draws left to right, holds, and smoothly leaves further right — the loop closes without a jump; the people fade in and out with it.',
+`<svg class="m B" viewBox="0 0 100 100"><path class="roof" d="${R}"/>${people}</svg>`],
+'C':['Running light','A light roof with a colored light running over it again and again; the people light up in turn as it passes over them.',
+`<svg class="m C" viewBox="0 0 100 100"><path class="roof" d="${R}"/><path class="run" d="${R}"/>${people}</svg>`]};
+const g=document.getElementById('g');
+Object.entries(M).forEach(([n,[t,d,svg]])=>{const c=document.createElement('div');c.className='card';
+c.innerHTML=`<div class="hero">${svg}</div><div class="bar">${svg}<div><b>Interactive <span>Manager</span></b><small style="display:block;font-size:11px;color:#8b90a0;margin-top:1px">Everything under one roof</small></div></div><div class="cap"><b>11${n}</b>${t} — ${d}</div>`;g.appendChild(c)});
+</script></body></html>

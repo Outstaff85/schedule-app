@@ -1,6 +1,6 @@
 # Redesign "Odinson Glass" — decisions (not built yet)
 
-The look the user chose on 2026-10-12 for every page (manager app, supplier portal, client portal, punch page, sign-in). Nothing here is in the code yet; this file is the brief to build from, stage by stage (one tab or screen per PR). The full design system — tokens, components with live previews, rules — is the claude.ai artifact "Odinson Glass": https://claude.ai/artifact/WPJ5EKM5zHokFRzWzq2EoZ (private to the owner). Every rule in CLAUDE.md still applies (UI texts in English through the dictionaries, `esc()`, paging by 10, tap reads / long press edits, modals close on the backdrop, payroll only through the canonical functions).
+The look the user chose on 2026-10-12 for every page (manager app, supplier portal, client portal, punch page, sign-in). Nothing here is in the code yet; this file is the brief to build from, stage by stage (one tab or screen per PR). Live HTML mockups of every decision are in `docs/design/` (open them in a browser; not served by Hosting): 01 glass, plates, ticks · 02 worker list with Select and Undo · 03 all screens · 04 editors · 05 logo, greeting, notifications · 06 punch page · 07 punch button variants (B chosen) · 08 My Schedule / My Hours · 09 Language button · 10 logo 11 loops (C chosen) · 11 bottom bar variants (11 chosen) · 12 bottom bar live icons. Where a mockup and this file disagree, this file wins. The full design system — tokens, components with live previews, rules — is the claude.ai artifact "Odinson Glass": https://claude.ai/artifact/WPJ5EKM5zHokFRzWzq2EoZ (private to the owner). Every rule in CLAUDE.md still applies (UI texts in English through the dictionaries, `esc()`, paging by 10, tap reads / long press edits, modals close on the backdrop, payroll only through the canonical functions).
 
 ## Name and logo
 - The app is called **Interactive Manager** ("Manager" in a soft indigo → cyan text gradient). Under it, small, two lines: "Connecting people and business", then "Everything under one roof" (soft green).
@@ -56,12 +56,18 @@ The look the user chose on 2026-10-12 for every page (manager app, supplier port
 
 ## Build plan (stage by stage)
 
-### Auto-continue (the owner's standing order)
-The stages run one after another without waiting to be asked: when a stage is finished (built, tests green, docs and dictionaries updated, committed and pushed to the work branch), tick it in the status list below in the same push and go straight on to the next unticked stage — until every stage is ticked. Start it with `/loop Read docs/redesign.md and do the next unticked stage of the build plan` (the loop paces itself and stops when the list is all ticked), or in a new session with the same sentence; a session that ends for any reason (usage limit, context) is resumed the same way and picks up the first unticked stage.
-- Merging stays the owner's: the loop never merges. It keeps one PR from the work branch into `main` open and updated as stages land; deploy = the owner's OK on that PR (CLAUDE.md → Git workflow).
-- A stage that cannot finish (a failing test it cannot fix, a missing secret such as the OpenWeatherMap key) is marked "blocked: <reason>" in the list, reported to the owner, and the loop moves on to the next stage that does not depend on it.
-- Each stage starts from this file and the docs it names, not from the earlier chat, to keep sessions short.
-- **Auto-resume after a usage limit:** a scheduled Routine fires every 5 hours and starts a fresh session with the same sentence. Before starting a stage the session writes "in progress (<date time>)" next to it in the status list and pushes; a run that finds a stage "in progress" younger than 5 hours does nothing (another run is working); an older mark means the run was cut off — it continues that stage. When stages 1–11 are all ticked, the Routine is switched off and the owner is told.
+### Auto-continue (the owner's standing order, 2026-10-12)
+The owner approved the whole plan in advance: the stages run one after another without asking, **and each stage is merged into `main` (= deployed) by the session that built it, without asking, once every CI check on its PR is green** — this overrides "never merge without asking" for these stages only (CLAUDE.md → Git workflow). Anything outside this plan still needs the owner's OK.
+
+How a run works (a run = one session, started by the Routine below or by hand with the sentence "Read docs/redesign.md and do the next unticked stage of the build plan"):
+1. `git fetch origin main` and work from the latest `main`.
+2. If an open PR titled `Redesign stage N: …` exists, an earlier run was cut off (usage limit, context): check out its branch and finish that stage. Otherwise take the first unticked stage in the status list, start a branch from `main`, and open its PR early (title `Redesign stage N: <name>`) so the next run can find it.
+3. Build the stage; run every test suite; fix until green; update docs, dictionaries (Hebrew), `service-worker.js` CACHE; tick the stage in the status list in the same PR.
+4. Wait for the PR's CI; when green, merge it (`gh api -X PUT repos/Outstaff85/schedule-app/pulls/<n>/merge -f sha=<head> -f merge_method=merge`). If CI is red, fix and push; never skip or disable a test.
+5. Go straight on to the next unticked stage in the same session while there is room; stop when stages 1–11 are all ticked.
+- A stage that cannot be finished (a failure it cannot fix) is marked "blocked: <reason>" in the status list (via its PR), reported in the PR, and the run moves on to the next stage that does not depend on it.
+- Each run starts from this file and the docs it names, not from an earlier chat, to keep sessions short.
+- **Auto-resume:** a Routine ("Redesign autopilot") fires every 5 hours and starts a fresh session with the sentence above, so the work resumes by itself after a usage limit resets. A run that finds nothing left (1–11 ticked) does nothing and says so; the owner then switches the Routine off (or the run does, if it can).
 
 ### Status
 - [ ] 1 Foundation
