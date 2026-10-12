@@ -316,7 +316,7 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
      window is a soft rounded glass box — 46px tall, 14px corners, a faint fill
      and hairline, a cyan focus ring; selects carry a thin chevron; labels are
      small and muted. The same block in the manager app and both portals. */
-  .modal .field>label:not(.check-chip){font-size:12px;font-weight:500;color:#8b90a0;margin:0 4px 5px}
+  .modal .field label:not(.check-chip):not([style]){font-size:12px;font-weight:500;color:#8b90a0;margin:0 4px 5px}
   .modal .field input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]),.modal .field select,.modal .field textarea{
     height:46px;padding:0 14px;border-radius:14px;border:1px solid rgba(255,255,255,.12);background-color:rgba(255,255,255,.05);color:var(--text);font-size:15px;
     box-shadow:none;transition:border-color .2s,box-shadow .2s,background-color .2s}

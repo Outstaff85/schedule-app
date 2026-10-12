@@ -962,7 +962,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(/₪78 .*60%/.test(cs.rates.margin) && cs.rates.extra && cs.rates.fixedHidesExtra, 'clients: the rates block shows the margin per hour; fixed mode hides OT / Shabbat ' + JSON.stringify(cs.rates));
   // Editors per mockup 04: the client head's ⋮ (Manual punch, Delete) and the small map; the user editor's head; glass fields.
-  const ed = await p.evaluate(() => {
+  const ed4 = await p.evaluate(() => {
     openEditClient('c1');
     const head = document.querySelector('#clientModal .og-edh button.gbtn.icon'), map = !!document.getElementById('cMapMini');
     const fieldRadius = getComputedStyle(document.getElementById('cName')).borderTopLeftRadius;
@@ -972,7 +972,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     closeModal('userFormOverlay');
     return {items, map, fieldRadius, user};
   });
-  ok(ed.items.length === 2 && ed.map && ed.fieldRadius === '14px' && ed.user.title === 'Rina Mizrahi' && ed.user.av === 'RM', 'editors: the client head ⋮ (Manual punch, Delete), the small map, glass fields, the user editor head ' + JSON.stringify(ed));
+  ok(ed4.items.length === 2 && ed4.map && ed4.fieldRadius === '14px' && ed4.user.title === 'Rina Mizrahi' && ed4.user.av === 'RM', 'editors: the client head ⋮ (Manual punch, Delete), the small map, glass fields, the user editor head ' + JSON.stringify(ed4));
   ok(cs.noSave && cs.closed && cs.d === 52 && cs.b === 130 && cs.noNew && cs.noPunchOnCard && cs.punch && cs.back, 'clients: no Save button, a tap outside saves; an empty new client is not created; manual punch from the window and back ' + JSON.stringify(cs));
   await p.mouse.click(5, 450); await sleep(400);
   ok(external.filter(u=>/script\.google\.com/.test(u)).length === 0, 'no request to script.google.com');
