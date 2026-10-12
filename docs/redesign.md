@@ -83,7 +83,7 @@ How a run works (a run = one session, started by the Routine below or by hand wi
 - [x] 5 Today, greeting, notifications
 - [x] 6 Schedule
 - [x] 7 Accounting and hours approvals
-- [ ] 8 Clients, Suppliers, Admin
+- [x] 8 Clients, Suppliers, Admin
 - [ ] 9 Punch page
 - [ ] 10 Supplier and client portals
 - [ ] 11 Sign-in

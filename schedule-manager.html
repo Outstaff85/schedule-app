@@ -395,7 +395,7 @@
   .day-row select:focus,.day-row input:focus{border-color:var(--accent);}
 
   /* Clients page */
-  .clients-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;}
+  .clients-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));column-gap:12px;row-gap:0;align-items:start;}
   .client-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;gap:10px;}
   .wc-row:hover{background:var(--bg3);}
   .client-card-header{display:flex;align-items:center;gap:10px;}
@@ -718,7 +718,8 @@
   .admin-pane-bar,.admin-log-bar{display:flex;gap:2px;margin-bottom:14px;overflow-x:auto;scrollbar-width:none;border-bottom:1px solid var(--border);padding-bottom:6px}
   .admin-pane-bar::-webkit-scrollbar,.admin-log-bar::-webkit-scrollbar{display:none}
   .admin-pane-bar .btn,.admin-log-bar .btn{background:none;border:0;color:var(--text2);white-space:nowrap;padding:6px 10px;border-radius:8px;font-weight:600}
-  .admin-pane-bar .btn.accent,.admin-log-bar .btn.accent{background:var(--bg3);color:var(--text)}
+  .admin-pane-bar .btn.accent,.admin-log-bar .btn.accent{position:relative;background:var(--glass-hi);border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:14px}
+  .admin-pane-bar .btn.accent::after,.admin-log-bar .btn.accent::after{content:'';position:absolute;left:12px;right:12px;bottom:-1px;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55);animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1)}
   .admin-log-bar{border-bottom:0;margin-bottom:8px;align-items:center}
   .admin-log-bar .workers-count{margin-left:auto;white-space:nowrap}
   .head-actions{display:flex;gap:8px}
@@ -1229,10 +1230,12 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
     <div class="page-section" id="sectionClients">
       <div class="page-header">
         <div>
-          <div class="page-title" data-i18n>Clients</div>
-          <div class="page-sub" data-i18n>Manage clients and assign workers</div>
+          <div class="page-title"><span data-i18n>Clients</span> <em class="og-count" id="clientsTitleCount"></em></div>
         </div>
-        <button class="btn sm" onclick="openAddClient()"><i class="ti ti-plus"></i> <span data-i18n>Add Client</span></button>
+        <div class="workers-actions">
+          <button class="gbtn primary" onclick="openAddClient()"><i class="ti ti-plus"></i> <span data-i18n>New</span></button>
+          <button type="button" class="gbtn icon" id="clientsHeadMenu" title="More" data-i18n-title="More" aria-label="More" onclick="event.stopPropagation();openPopover(this,[{icon:'ti-checkbox',label:tr('Select…'),fn:startClientSelect}])"><i class="ti ti-dots-vertical"></i></button>
+        </div>
       </div>
       <div class="clients-grid" id="clientsGrid"></div>
     </div>
@@ -1240,10 +1243,12 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
     <div class="page-section" id="sectionSuppliers">
       <div class="page-header">
         <div>
-          <div class="page-title" data-i18n>Suppliers</div>
-          <div class="page-sub" data-i18n>Manage staffing suppliers and assigned workers</div>
+          <div class="page-title"><span data-i18n>Suppliers</span> <em class="og-count" id="suppliersTitleCount"></em></div>
         </div>
-        <button class="btn sm" onclick="openAddSupplier()"><i class="ti ti-plus"></i> <span data-i18n>Add Supplier</span></button>
+        <div class="workers-actions">
+          <button class="gbtn primary" onclick="openAddSupplier()"><i class="ti ti-plus"></i> <span data-i18n>New</span></button>
+          <button type="button" class="gbtn icon" id="suppliersHeadMenu" title="More" data-i18n-title="More" aria-label="More" onclick="event.stopPropagation();openPopover(this,[{icon:'ti-checkbox',label:tr('Select…'),fn:startSupplierSelect}])"><i class="ti ti-dots-vertical"></i></button>
+        </div>
       </div>
       <div class="clients-grid" id="suppliersGrid"></div>
     </div>
@@ -4533,16 +4538,22 @@ function saveClient(opts){
   }
   closeModal('clientOverlay'); renderClientsPage(); renderSidebarClients(); autoSave();
 }
-function deleteClient(cid){
-  const c=clients.find(x=>x.id===cid);
-  if(!c||!confirm(tr('Remove client "{0}"?',{0:(c.name)})))return;
-  clients=clients.filter(x=>x.id!==cid);
-  workers.forEach(w=>{
-    if(w.clientIds) w.clientIds=w.clientIds.filter(id=>id!==cid);
-    if(w.clientRates&&w.clientRates[cid]) delete w.clientRates[cid];
-  });
-  if(selectedClientId===cid) selectedClientId=null;
-  renderClientsPage(); renderSidebarClients(); render(); autoSave(); showToast(tr('{0} removed',{0:(c.name)}));
+// Delete never asks: the plate collapses behind the Undo snack; the client
+// is removed (and taken off every worker) when its 5 s are up.
+function deleteClient(cid, el){ deleteClients([cid], [el]); }
+function deleteClients(ids, els){
+  ids=ids.filter(id=>clients.some(c=>c.id===id)); if(!ids.length) return;
+  ids.forEach(id=>__clientDelPending.add(id));
+  const one=ids.length===1?clients.find(c=>c.id===ids[0]):null;
+  undoDelete({els, label: one?one.name:tr('{0} clients',{0:ids.length}),
+    commit:()=>{
+      ids.forEach(cid=>{ __clientDelPending.delete(cid);
+        clients=clients.filter(x=>x.id!==cid);
+        workers.forEach(w=>{ if(w.clientIds) w.clientIds=w.clientIds.filter(id=>id!==cid); if(w.clientRates&&w.clientRates[cid]) delete w.clientRates[cid]; });
+        if(selectedClientId===cid) selectedClientId=null; });
+      renderClientsPage(); renderSidebarClients(); render(); autoSave(); showToast(one?tr('{0} removed',{0:one.name}):tr('{0} clients',{0:ids.length}));
+    },
+    undo:()=>{ ids.forEach(id=>__clientDelPending.delete(id)); renderClientsPage(); }});
 }
 // Keeps a <select>'s options in sync with a source array (clients/suppliers)
 // while preserving whatever the user already had picked — called on every
@@ -5293,23 +5304,41 @@ async function runHoursExport(workerId, format){
   exportShiftsDetail(workerId, year, month, format);
 }
 
+// The client plates (redesign stage 8): the client's colour, the name and
+// its notices (no rate, hours waiting), "N workers · address", this month's
+// hours at the client (salaryEntriesFor), ⋮ (Edit, Manual punch, Delete), a
+// swipe (Edit, Delete) and Select (bulk Delete). A tap opens the editor.
+const __clientDelPending=new Set();
+function initialsOf(n){ return String(n||'?').trim().split(/\s+/).map(x=>x.charAt(0)).join('').slice(0,2).toUpperCase(); }
 function renderClientsPage(){
   const grid=document.getElementById('clientsGrid');
-  if(!clients.length){ grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:14px">'+tr('No clients yet. Click "+ Add Client" to create one.')+'</div>'; return; }
-
-  renderPagedList(grid,'clients','',clients,c=>{
-    const assigned=workers.filter(w=>(w.clientIds||[]).includes(c.id));
-    return `<div class="client-card tap-edit" style="--c:${esc(c.color||'var(--border2)')}" onclick="tapEdit(event,this,null,()=>openEditClient('${c.id}'))" onpointerdown="longPress(event,this,()=>openEditClient('${c.id}'))">
-      <button class="wcard-del" type="button" title="${tr('Remove')}" aria-label="${tr('Remove')}" onclick="event.stopPropagation();deleteClient('${c.id}')">✕</button>
-      <div class="client-card-header">
-        <div class="client-card-dot" style="background:${c.color}"></div>
-        <div><div class="client-card-name">${esc(c.name)}</div>${c.companyNumber?`<div class="client-card-info"><i class="ti ti-id"></i> ח.פ ${esc(c.companyNumber)}</div>`:''}${c.object?`<div class="client-card-info"><i class="ti ti-building"></i> ${esc(c.object)}</div>`:''}${c.address?`<div class="client-card-info"><i class="ti ti-map-pin"></i> ${esc(c.address)}</div>`:''}</div>
-      </div>
-
-      <div style="font-size:12px;color:var(--text2)"><strong style="color:var(--text)">${tr('Workers:')}</strong> ${assigned.length?assigned.map(w=>`<span style="color:${WORKER_COLORS[w.colorIdx%8].text}">${esc(w.name)}</span>`).join(', '):'None assigned'}</div>
-    </div>`;
+  const list=clients.filter(c=>!__clientDelPending.has(c.id));
+  const tc=document.getElementById('clientsTitleCount'); if(tc) tc.textContent=list.length;
+  if(!list.length){ grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:14px">'+tr('No clients yet. Click "+ Add Client" to create one.')+'</div>'; return; }
+  const byClient=salaryEntriesFor('month').byClient||{}, can=hasPermission('clients');
+  const waiting=new Set((__hoursBatches||[]).filter(b=>b.status==='pending').flatMap(b=>(b.entries||[]).map(e=>e.clientId)));
+  renderPagedList(grid,'clients','',list,c=>{
+    const n=workers.filter(w=>isActiveWorker(w)&&(w.clientIds||[]).includes(c.id)).length;
+    const chips=[(c.billRate==null||c.billRate==='')&&(c.defaultHourlyRate==null||c.defaultHourlyRate==='')&&!c.fixedBillRate?`<span class="nchip amber"><i class="ti ti-alert-triangle"></i>${esc(tr('No rate'))}</span>`:'',
+      waiting.has(c.id)?`<span class="nchip amber"><i class="ti ti-clock"></i>${esc(tr('Hours waiting'))}</span>`:''].join('');
+    const id=c.id;
+    return t3Line({c:c.color||'var(--neutral)', cls:'wplate tap-edit', av:`<div class="t3-av">${esc(initialsOf(c.name))}</div>`,
+      name:`<span class="wp-n">${esc(c.name)}</span>${chips}`,
+      sub:[[n===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:n,1:''}), c.address||c.object||''].filter(Boolean).map(esc).join('<span class="dot">·</span>')],
+      right:`<span class="r">${esc(fmtHoursShort((byClient[c.id]||{}).hours||0))}</span>`,
+      attrs:`data-cid="${esc(id)}" onclick="tapEdit(event,this,null,()=>openEditClient('${esc(id)}'))" onpointerdown="longPress(event,this,()=>openEditClient('${esc(id)}'))"`,
+      sel: can?id:null,
+      menu:[{icon:'ti-pencil', label:tr('Edit'), fn:()=>openEditClient(id)}, {icon:'ti-clock', label:tr('Manual punch'), fn:()=>openManualPunch(id)},
+        ...(can?[{icon:'ti-trash', label:tr('Delete'), danger:true, fn:b=>deleteClient(id, b.closest('.t3-line'))}]:[])],
+      swipe: can?{edit:()=>openEditClient(id), del:el=>deleteClient(id, el)}:null});
   },{grid:true});
+  selectRoot('clients', grid);
 }
+function startClientSelect(){
+  const grid=document.getElementById('clientsGrid');
+  startSelect({key:'clients', root:grid, ids:()=>clients.filter(c=>!__clientDelPending.has(c.id)).map(c=>c.id), del:(ids,els)=>deleteClients(ids,els)});
+}
+
 
 // --- Suppliers ----------------------------------------------------------------
 // Mirrors the Clients tab above (same grid/card CSS classes, same CRUD
@@ -5364,34 +5393,50 @@ function saveSupplier(){
   }
   closeModal('supplierOverlay'); renderSuppliersPage(); autoSave();
 }
-function deleteSupplier(sid){
-  const s=suppliers.find(x=>x.id===sid);
-  if(!s||!confirm(tr('Remove supplier "{0}"?',{0:(s.name)})))return;
-  suppliers=suppliers.filter(x=>x.id!==sid);
-  workers.forEach(w=>{
-    if(w.supplierId===sid) w.supplierId=null;
-    if(w.supplierRates&&w.supplierRates[sid]) delete w.supplierRates[sid];
-  });
-  renderSuppliersPage(); render(); autoSave(); showToast(tr('{0} removed',{0:(s.name)}));
+// Delete never asks (Undo snack); the supplier is removed and taken off its
+// workers when the 5 s are up.
+const __supplierDelPending=new Set();
+function deleteSupplier(sid, el){ deleteSuppliers([sid], [el]); }
+function deleteSuppliers(ids, els){
+  ids=ids.filter(id=>suppliers.some(s=>s.id===id)); if(!ids.length) return;
+  ids.forEach(id=>__supplierDelPending.add(id));
+  const one=ids.length===1?suppliers.find(s=>s.id===ids[0]):null;
+  undoDelete({els, label: one?one.name:tr('{0} suppliers',{0:ids.length}),
+    commit:()=>{
+      ids.forEach(sid=>{ __supplierDelPending.delete(sid);
+        suppliers=suppliers.filter(x=>x.id!==sid);
+        workers.forEach(w=>{ if(w.supplierId===sid) w.supplierId=null; if(w.supplierRates&&w.supplierRates[sid]) delete w.supplierRates[sid]; }); });
+      renderSuppliersPage(); render(); autoSave(); showToast(one?tr('{0} removed',{0:one.name}):tr('{0} suppliers',{0:ids.length}));
+    },
+    undo:()=>{ ids.forEach(id=>__supplierDelPending.delete(id)); renderSuppliersPage(); }});
 }
+// The supplier plates (redesign stage 8): colour, name, "N workers · phone",
+// its workers' hours this month, ⋮ (Edit, Delete), swipe, Select.
 function renderSuppliersPage(){
   const grid=document.getElementById('suppliersGrid');
   if(!grid) return;
-  if(!suppliers.length){ grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:14px">'+tr('No suppliers yet. Click "+ Add Supplier" to create one.')+'</div>'; return; }
-
-  renderPagedList(grid,'suppliers','',suppliers,s=>{
-    const assigned=workers.filter(w=>w.supplierId===s.id);
-    return `<div class="client-card tap-edit" style="--c:${esc(s.color||'var(--border2)')}" onclick="tapEdit(event,this,null,()=>openEditSupplier('${s.id}'))" onpointerdown="longPress(event,this,()=>openEditSupplier('${s.id}'))">
-      <button class="wcard-del" type="button" title="${tr('Remove')}" aria-label="${tr('Remove')}" onclick="event.stopPropagation();deleteSupplier('${s.id}')">✕</button>
-      <div class="client-card-header">
-        <div class="client-card-dot" style="background:${s.color}"></div>
-        <div><div class="client-card-name">${esc(s.name)}</div>${s.companyNumber?`<div class="client-card-info"><i class="ti ti-id"></i> ח.פ ${esc(s.companyNumber)}</div>`:''}${s.phone?`<div class="client-card-info"><i class="ti ti-phone"></i> ${esc(s.phone)}</div>`:''}</div>
-      </div>
-      ${s.bank?`<div style="font-size:12px;color:var(--text2)"><i class="ti ti-building-bank"></i> ${esc(s.bank)}${s.bankBranch?' · branch '+esc(s.bankBranch):''}${s.accountNumber?' · '+esc(s.accountNumber):''}</div>`:''}
-      <div style="font-size:12px;color:var(--text2)"><strong style="color:var(--text)">${tr('Workers:')}</strong> ${assigned.length?assigned.map(w=>`<span style="color:${WORKER_COLORS[w.colorIdx%8].text}">${esc(w.name)}</span>`).join(', '):'None assigned'}</div>
-    </div>`;
+  const list=suppliers.filter(s=>!__supplierDelPending.has(s.id));
+  const tc=document.getElementById('suppliersTitleCount'); if(tc) tc.textContent=list.length;
+  if(!list.length){ grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:14px">'+tr('No suppliers yet. Click "+ Add Supplier" to create one.')+'</div>'; return; }
+  const hours=workersMonthHours(), can=hasPermission('suppliers');
+  renderPagedList(grid,'suppliers','',list,s=>{
+    const mine=workers.filter(w=>w.supplierId===s.id), id=s.id;
+    return t3Line({c:s.color||'var(--neutral)', cls:'wplate tap-edit', av:`<div class="t3-av">${esc(initialsOf(s.name))}</div>`,
+      name:`<span class="wp-n">${esc(s.name)}</span>`,
+      sub:[[mine.length===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:mine.length,1:''}), s.phone||''].filter(Boolean).map(esc).join('<span class="dot">·</span>')],
+      right:`<span class="r">${esc(fmtHoursShort(mine.reduce((t,w)=>t+(hours[w.id]||0),0)))}</span>`,
+      attrs:`data-sid="${esc(id)}" onclick="tapEdit(event,this,null,()=>openEditSupplier('${esc(id)}'))" onpointerdown="longPress(event,this,()=>openEditSupplier('${esc(id)}'))"`,
+      sel: can?id:null,
+      menu:[{icon:'ti-pencil', label:tr('Edit'), fn:()=>openEditSupplier(id)}, ...(can?[{icon:'ti-trash', label:tr('Delete'), danger:true, fn:b=>deleteSupplier(id, b.closest('.t3-line'))}]:[])],
+      swipe: can?{edit:()=>openEditSupplier(id), del:el=>deleteSupplier(id, el)}:null});
   },{grid:true});
+  selectRoot('suppliers', grid);
 }
+function startSupplierSelect(){
+  const grid=document.getElementById('suppliersGrid');
+  startSelect({key:'suppliers', root:grid, ids:()=>suppliers.filter(s=>!__supplierDelPending.has(s.id)).map(s=>s.id), del:(ids,els)=>deleteSuppliers(ids,els)});
+}
+
 
 function openManualPunch(cid){
   const c = clients.find(x=>x.id===cid);
@@ -9448,7 +9493,7 @@ function punchLogLine(e, cls){
   return t3Line({c:isIn?'var(--green)':'var(--red)', cls:'tap-edit'+(cls?' '+cls:''), av:cls?'':t3Av(wc),
     name:cls?`<span style="font-family:'DM Mono',monospace">${esc(e.time||'--')}</span>`:esc(e.workerName||tr('Unknown')), sub,
     attrs:`data-pid="${id}" onclick="tapEdit(event,this,null,()=>editPunchEntry(${id}))" onpointerdown="longPress(event,this,()=>editPunchEntry(${id}))"`,
-    right:`${cls?'':`<span class="r" style="color:var(--text);font-size:14px">${esc(e.time||'--')}</span>`}<button class="t3-x" type="button" title="${esc(tr('Delete'))}" onclick="event.stopPropagation();deletePunchEntry(${id});if(_adminView==='clients')renderClientLogs()">✕</button>`});
+    right:`${cls?'':`<span class="r" style="color:var(--text);font-size:14px">${esc(e.time||'--')}</span>`}<button class="t3-x" type="button" title="${esc(tr('Delete'))}" onclick="event.stopPropagation();deletePunchEntry(${id},this.closest('.t3-line'))">✕</button>`});
 }
 // Firestore mode: under the punch log, how far back it goes and buttons to
 // load earlier punches (one more month, or everything).
@@ -9528,13 +9573,15 @@ function savePunchEntry(id){
   showToast(tr('Record updated'));
 }
 
-function deletePunchEntry(id){
-  if(!confirm(tr('Delete this punch record?'))) return;
-  const log = getPunchLog().filter(x=>x.id!==id);
-  savePunchLog(log);
-  gsDeletePunch(id);
-  renderAdmin();
-  showToast(tr('Record deleted'));
+// Delete never asks: the line collapses behind the Undo snack; the punch is
+// deleted when the 5 s are up.
+function deletePunchEntry(id, el){
+  undoDelete({el, label: tr('Punch'), commit:()=>{
+    savePunchLog(getPunchLog().filter(x=>x.id!==id));
+    gsDeletePunch(id);
+    renderAdmin(); if(_adminView==='clients') renderClientLogs();
+    showToast(tr('Record deleted'));
+  }});
 }
 
 function exportPunchCSV(){
