@@ -85,7 +85,7 @@ Constants: `GPS_MAX_ACCURACY` = 150 m, `GPS_REQUEST_MS` = 800 ms, `GPS_MAX_SPEED
 - **Month:** the arrows change the month (`shiftMonth(±1)`), "Today" (shown away from the current month) comes back; weekday headers and the month name in `uiLocale()`; days of the next and previous months are dimmed; today is framed.
 - **Totals on top:** work days and planned hours of the shown month (`.sched-sum.top`); "No shifts planned yet" when the roster has no working day.
 - **Day plates** under the legend (`.sp-plate`): the month's planned days — work, night, a day off set for that date — from today in the current month, 10 at a time with "Show more" (`_schedShown`, `moreSchedDays`); each a date box, the times, "Today" / "Night shift — ends the next day" / "This date only *changed*", the hours in green, the bar in its colour, today ringed. **A tap on a calendar day** (`pickSchedDay`) puts its plate first and marks it.
-- "✕ Close" goes back to the punch screen (`closeHistory()`). My Schedule and My Hours are full-height glass sheets (a grab bar, soft day tiles, today ringed, a cyan dot on a day changed for its date only; shifts as plates).
+- My Schedule and My Hours are full-height glass sheets with no ✕ (stage 13): a tap on the grab bar (`.sheet-grab`), a swipe down from the top of the sheet (more than 90 px; less springs back) or Escape goes back to the punch screen (`closeHistory()`). They are (a grab bar, soft day tiles, today ringed, a cyan dot on a day changed for its date only; shifts as plates).
 - A day changed for its date only has a cyan dot (legend "Changed"), and its plate a "changed" tag.
 
 ## Schedule change notice

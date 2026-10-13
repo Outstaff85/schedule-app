@@ -1195,9 +1195,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const r = {names: (__hrv.data.workers || []).map(w => w.name), acts: [...document.querySelectorAll('#sectionReview .hrv-act')].map(b => b.title), approveAll: !!document.querySelector('#sectionReview .hrv-approve')};
     // Select mode: tick one day, approve it with the bar (hours-review.js).
     const pk = hrvPickable();
-    if(pk.length){ document.getElementById('hrvSelectBtn').click();
-      r.selBar = !!document.getElementById('hrvSelBar') && document.getElementById('hrvApproveSel').disabled && !document.querySelector('#sectionReview .hrv-act');
-      document.querySelector(`#sectionReview .hrv-day[data-key="${pk[0].key}"]`).click();
+    r.pills = [...document.querySelectorAll('#sectionReview .hrv-day .hrv-pill')].map(x => x.textContent.trim()).join();
+    if(pk.length){
+      r.selBar = !!document.querySelector('#sectionReview .hrv-selhead') && !document.getElementById('hrvSelBar') && !document.getElementById('hrvSelectBtn');
+      document.querySelector(`#sectionReview .hrv-day[data-key="${pk[0].key}"] .hrv-box`).click();
       r.selCount = document.querySelector('#hrvSelBar b').innerText.trim();
       document.getElementById('hrvApproveSel').click();
       for(let i = 0; i < 40 && hrvDayState(hrvRow(pk[0].key)).st !== 'approved'; i++) await new Promise(res => setTimeout(res, 150));
@@ -1209,7 +1210,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   await (await p.$('#sectionReview')).screenshot({path: SP + '/supplier-hours-review.png'}).catch(()=>{});
   ok(sr.names.join() === 'Avi Cohen' && !sr.acts.some(t => /Dispute|fix/i.test(t)) && /Every day approved/.test(sr.status), 'supplier: reviews only its own workers, no dispute / fix without those ticks, approves the month ' + JSON.stringify(sr));
-  ok(sr.selBar && sr.selCount === '1 selected' && sr.selSt === 'approved' && sr.selGone, 'supplier: hours Select mode — tick a day, Approve in the bar ' + JSON.stringify(sr));
+  ok(sr.selBar && /Waiting/.test(sr.pills) && sr.selCount === '1 selected' && sr.selSt === 'approved' && sr.selGone, 'supplier: hours — a status pill per day; Select always on (no bar until a tick), tick a day, Approve in the bar ' + JSON.stringify(sr));
   // the firm's language reaches the portal with loadSchedule
   const sl = await p.evaluate(async () => { const def = I18N_LANG;
     document.querySelector('#headerActions .lang-btn').click(); document.querySelector('#langSheet .lang-li[data-lang="he"]').click();
@@ -1391,6 +1392,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(mp.top && mp.plates >= 1 && mp.plates <= 10 && mp.today && /22:00 – 06:00/.test(mp.first) && /Night shift/.test(mp.first) && /changed/.test(mp.first) && mp.dot,
     'punch: My Schedule — figures on top, day plates from today (10 at a time), a changed night day tagged ' + JSON.stringify(mp));
   ok(ms.shown && (ms.days >= 35 || ms.empty) && ms.n === 1 && ms.keys.includes('schedule'), 'punch: My Schedule shows the worker\'s own week ' + JSON.stringify(ms));
+  // The sheet has no ✕ Close: a swipe down from its top closes it (stage 13).
+  const shc = await p.evaluate(async () => {
+    const s = document.getElementById('screenSchedule'), r = {noClose: !/Close/.test(s.querySelector('.top-bar').innerText), grab: !!s.querySelector('.sheet-grab')};
+    const t = (type, dy) => { const tp = new Touch({identifier: 1, target: s, clientX: 100, clientY: 120 + dy}); s.dispatchEvent(new TouchEvent(type, {bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [tp], changedTouches: [tp]})); };
+    t('touchstart', 0); for(let d = 10; d <= 200; d += 20) t('touchmove', d); t('touchend', 200);
+    await new Promise(res => setTimeout(res, 400)); r.closed = s.classList.contains('hidden'); return r; });
+  ok(shc.noClose && shc.grab && shc.closed, 'punch: My Schedule has no ✕ Close; a swipe down closes the sheet ' + JSON.stringify(shc));
   await p.evaluate(() => closeHistory());
   // A schedule change since this device last saw it: a notice that stays on the punch screen until My Schedule is opened.
   const sn = await p.evaluate(async () => {

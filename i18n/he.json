@@ -847,7 +847,6 @@
   "₪/h": "₪/ש׳",
   "₪{0}/day": "₪{0}/יום",
   "⚠ The firm profile is incomplete — empty in Form 101: {0}": "⚠ פרופיל החברה חסר — ריק בטופס 101: {0}",
-  "✕ Close": "✕ סגירה",
   "📶 Offline — 1 punch queued": "📶 אין חיבור — החתמה אחת ממתינה",
   "📶 Offline — {0} punches queued": "📶 אין חיבור — {0} החתמות ממתינות",
   "Could not load your hours — check the connection and try again.": "לא ניתן לטעון את השעות — בדקו את החיבור ונסו שוב.",
@@ -1043,5 +1042,6 @@
   "Nothing to fix in this period": "אין מה לתקן בתקופה הזו",
   "Punches and shifts": "החתמות ומשמרות",
   "Rates and pay": "תעריפים ושכר",
-  "Alerts": "התראות"
+  "Alerts": "התראות",
+  "Waiting": "ממתין"
 }
