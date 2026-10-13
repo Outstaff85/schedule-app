@@ -799,12 +799,14 @@
   @keyframes gic-moon{50%{transform:translateY(-2px) rotate(-6deg)}}
   .gic .tw{transform-box:fill-box;transform-origin:center;animation:gic-tw 2.4s ease-in-out infinite}.gic .tw2{animation-delay:1.2s}
   @keyframes gic-tw{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.2;transform:scale(.6)}}
-  .og-bell{width:38px;height:38px;border-radius:14px;overflow:visible}
+  /* the count is a whole disc over the button's corner (mockup 05): .gbtn's own
+     overflow:hidden (og.css, later in the cascade) must not cut it. */
+  .gbtn.og-bell{width:38px;height:38px;border-radius:14px;overflow:visible}
   .og-bell::after{display:none}
   .og-bell i{font-size:19px}
   .og-bell.has-new i{animation:og-ring 4s ease-in-out infinite;transform-origin:50% 10%}
   @keyframes og-ring{0%,88%,100%{transform:rotate(0)}90%{transform:rotate(14deg)}93%{transform:rotate(-12deg)}96%{transform:rotate(6deg)}}
-  .og-bell-n{position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--bad);color:#fff;font:700 10px 'DM Sans',Arial,sans-serif;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px var(--ground);animation:og-bump 2.4s ease-in-out infinite}
+  .og-bell-n{position:absolute;top:-4px;right:-4px;z-index:1;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--bad);color:#fff;font:700 10px 'DM Sans',Arial,sans-serif;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px var(--ground);animation:og-bump 2.4s ease-in-out infinite}
   @keyframes og-bump{0%,90%,100%{transform:scale(1)}95%{transform:scale(1.2)}}
   .og-npop{position:fixed;z-index:4000;width:min(340px,calc(100vw - 16px));max-height:min(480px,70vh);overflow:auto;padding:8px;border-radius:18px;background:rgba(22,26,38,.92);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.2);box-shadow:0 18px 44px rgba(0,0,0,.55);opacity:0;transform:translateY(-6px) scale(.97);transition:opacity .18s,transform .18s}
   .og-npop.open{opacity:1;transform:none;overflow:visible}
@@ -918,7 +920,7 @@ body:has(.overlay.open){overflow:hidden}
    same colour; figures (.r) in the soft green; a bare ⋮ (.t3-kb) opens the
    row's glass popover (.og-pop, with a tail); a swipe left (.sw) shows Edit and
    Delete; Delete never asks — the Undo snack (.og-snack) runs 5 s first;
-   Select mode (.selecting): drawn-tick boxes, a head line and the glass bulk
+   Select, always on (.selecting): drawn-tick boxes, a head line and the glass bulk
    bar (.sel-bar). The same block in the manager app and the supplier portal. ── */
 :root{--neutral:#6b7189;--bar-gap:16px;}
 .t3-line{position:relative;gap:12px;padding:11px 8px 11px 14px;border-left:0;background:var(--plate);border-radius:16px;box-shadow:inset 4px 0 0 var(--c,var(--neutral));margin-bottom:8px;transition:transform .28s cubic-bezier(.3,.7,.3,1),background .2s;}
@@ -966,13 +968,12 @@ body:has(.overlay.open){overflow:hidden}
 @keyframes og-shrink{to{width:0}}
 /* Select mode: drawn-tick boxes slide in, "N selected · Select all", the bulk bar. */
 .t3-cb{width:0;overflow:hidden;flex:none;margin-right:-12px;display:flex;align-items:center;transition:width .25s,margin .25s;}
-.selecting .t3-cb{width:26px;margin-right:0;}
-.og-box{width:22px;height:22px;flex:none;border-radius:7px;border:2px solid rgba(255,255,255,.4);position:relative;transition:background .25s,border-color .25s;}
+.selecting .t3-cb{width:30px;margin-right:-4px;cursor:pointer;}
+.og-box{width:24px;height:24px;box-sizing:border-box;flex:none;border-radius:7px;border:2px solid var(--ink-3);position:relative;transition:background .25s,border-color .25s;}
 .og-box::after{content:'';position:absolute;left:5px;top:1px;width:5px;height:10px;border:solid #0b0d14;border-width:0 3px 3px 0;transform:rotate(45deg);clip-path:inset(100% 0 0 0);transition:clip-path .35s .05s;}
 .t3-line.picked{background:#1f2a2c;}
 .t3-line.picked .og-box{background:var(--ok);border-color:var(--ok);}
 .t3-line.picked .og-box::after{clip-path:inset(0);}
-.selecting .t3-kb{opacity:0;pointer-events:none;}
 .sel-head{display:flex;align-items:center;gap:8px;margin:-2px 2px 8px;font-size:13px;color:var(--text2);}
 .sel-head span{flex:1;}
 .sel-head button{position:relative;border:0;background:none;color:#fff;font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;padding:2px 0 5px;}
@@ -1033,13 +1034,19 @@ body:has(.overlay.open){overflow:hidden}
   .og-sec-badge.red{background:rgba(255,95,109,.16);color:#ff8a95}
   .og-sec-badge.blue{background:rgba(79,142,247,.16);color:#8fb4ff}
   .modal .check-grid{display:flex;flex-wrap:wrap;gap:6px;grid-template-columns:none}
-  .modal label.check-chip{display:inline-flex;width:auto;min-height:40px;height:40px;padding:0 12px 0 9px;gap:9px;margin:0;border:0;border-radius:14px;background:#232735;color:#8b90a0;font-size:13px;font-weight:600;transition:background .25s,color .25s}
+  /* Tick tiles in every window: the design system's Tick (docs/design/system/
+     components/Tick) — 46px, radius-md, plate fill, label 15/600 ink-2, a 24px
+     box bordered ink-3; ticked: tick-on fill, ink label, green box with the mark.
+     A tile with a hint (owner 2026-10-13: hints shown) grows to fit it. */
+  .modal label.check-chip{display:inline-flex;width:auto;min-height:46px;height:46px;padding:0 16px 0 12px;gap:10px;margin:0;border:0;border-radius:var(--radius-md);background:var(--plate);color:var(--ink-2);font-size:15px;font-weight:600;transition:background .25s,color .25s}
+  .modal label.check-chip:has(.chip-hint){height:auto;padding:10px 16px 10px 12px}
   .modal .field>label.check-chip{display:flex;width:100%}
-  .modal label.check-chip:has(input:checked){background:#1b2a28;color:#fff}
-  .modal label.check-chip .chip-hint,.modal label.check-chip .chip-text i.ti{display:none}
-  .modal label.check-chip .chip-text{flex-direction:row}
-  .modal label.check-chip input[type=checkbox]{-webkit-appearance:none;appearance:none;width:20px;height:20px;flex:0 0 20px;margin:0;border-radius:6px;border:2px solid rgba(255,255,255,.35);background:transparent;cursor:pointer;transition:background .25s,border-color .25s}
-  .modal label.check-chip input[type=checkbox]:checked{background:#6dd6a0 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230b0d14' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/14px no-repeat;border-color:#6dd6a0}
+  .modal label.check-chip:has(input:checked){background:var(--tick-on);color:var(--ink)}
+  .modal label.check-chip .chip-text i.ti{display:none}
+  .modal label.check-chip .chip-text{flex-direction:column;gap:2px}
+  .modal label.check-chip .chip-hint{display:block;font-size:12px;font-weight:400;line-height:1.35;color:var(--ink-2)}
+  .modal label.check-chip input[type=checkbox]{-webkit-appearance:none;appearance:none;width:24px;height:24px;flex:0 0 24px;margin:0;border-radius:7px;border:2px solid var(--ink-3);background:transparent;cursor:pointer;transition:background .25s,border-color .25s}
+  .modal label.check-chip input[type=checkbox]:checked{background:var(--green) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230b0d14' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/15px no-repeat;border-color:var(--green)}
   .modal label.check-chip input[type=checkbox]:disabled{opacity:.5}
   .modal .btn{height:40px;padding:0 14px;border-radius:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:var(--text);font-weight:600;font-size:13px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
   .modal .btn.sm{height:36px;border-radius:12px;font-size:12.5px}
@@ -1213,7 +1220,7 @@ body:has(.overlay.open){overflow:hidden}
         </div>
         <div class="workers-actions">
           <button class="gbtn primary" onclick="openAddWorker()"><i class="ti ti-plus"></i> <span data-i18n>New</span></button>
-          <button type="button" class="gbtn icon" id="workersHeadMenu" aria-label="More" data-i18n-title="More" title="More" onclick="openWorkersHeadMenu(event,this)"><i class="ti ti-dots-vertical"></i></button>
+          <button type="button" class="gbtn" id="workersScanBtn" onclick="startNewScan()"><i class="ti ti-scan"></i> <span data-i18n>Scan passport</span></button>
         </div>
       </div>
       <!-- Active / Vacation / Pending (documents incomplete): they set the Status and Documents filters. -->
@@ -1279,7 +1286,6 @@ body:has(.overlay.open){overflow:hidden}
         </div>
         <div class="workers-actions">
           <button class="gbtn primary" onclick="openAddClient()"><i class="ti ti-plus"></i> <span data-i18n>New</span></button>
-          <button type="button" class="gbtn icon" id="clientsHeadMenu" title="More" data-i18n-title="More" aria-label="More" onclick="event.stopPropagation();openPopover(this,[{icon:'ti-checkbox',label:tr('Select…'),fn:startClientSelect}])"><i class="ti ti-dots-vertical"></i></button>
         </div>
       </div>
       <div class="clients-grid" id="clientsGrid"></div>
@@ -1292,7 +1298,6 @@ body:has(.overlay.open){overflow:hidden}
         </div>
         <div class="workers-actions">
           <button class="gbtn primary" onclick="openAddSupplier()"><i class="ti ti-plus"></i> <span data-i18n>New</span></button>
-          <button type="button" class="gbtn icon" id="suppliersHeadMenu" title="More" data-i18n-title="More" aria-label="More" onclick="event.stopPropagation();openPopover(this,[{icon:'ti-checkbox',label:tr('Select…'),fn:startSupplierSelect}])"><i class="ti ti-dots-vertical"></i></button>
         </div>
       </div>
       <div class="clients-grid" id="suppliersGrid"></div>
@@ -4887,12 +4892,6 @@ function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
   renderPagedList(box,'workersCards',sig,workersGroupedItems(list,groupBy),it=>it.group?title(it.group):plate(it),{grid:true});
   selectRoot('workers', box);
 }
-// The header ⋮: Scan passport and Select… (the plates view).
-function openWorkersHeadMenu(e, btn){
-  if(e) e.stopPropagation();
-  openPopover(btn, [{icon:'ti-sparkles', label:tr('Scan passport'), fn:()=>startNewScan()},
-    ...(getWorkersView()==='cards'&&hasPermission('workers')?[{icon:'ti-checkbox', label:tr('Select…'), fn:startWorkerSelect}]:[])]);
-}
 // The tabs over the list: Active, Vacation, Pending (documents incomplete) —
 // a tap sets the Status / Documents filters, a tap on the open one clears them.
 function renderWorkersTabs(){
@@ -4908,7 +4907,7 @@ function setWorkersTab(k){
   renderWorkersPage();
 }
 function startWorkerSelect(){
-  const box=document.getElementById('workersCards'); if(!box||getWorkersView()!=='cards') return;
+  const box=document.getElementById('workersCards'); if(!box||getWorkersView()!=='cards'||!hasPermission('workers')) return;
   startSelect({key:'workers', root:box, ids:()=>__workersShownIds,
     actions:[{icon:'ti-beach', label:tr('Vacation'), fn:ids=>setWorkersStatus(ids,'vacation')}, {icon:'ti-circle-check', label:tr('Active'), fn:ids=>setWorkersStatus(ids,'active')}],
     del:(ids,els)=>deleteWorkers(ids,els)});
@@ -5551,7 +5550,7 @@ function renderClientsPage(){
   selectRoot('clients', grid);
 }
 function startClientSelect(){
-  const grid=document.getElementById('clientsGrid');
+  const grid=document.getElementById('clientsGrid'); if(!grid||!hasPermission('clients')) return;
   startSelect({key:'clients', root:grid, ids:()=>clients.filter(c=>!__clientDelPending.has(c.id)).map(c=>c.id), del:(ids,els)=>deleteClients(ids,els)});
 }
 
@@ -5651,7 +5650,7 @@ function renderSuppliersPage(){
   selectRoot('suppliers', grid);
 }
 function startSupplierSelect(){
-  const grid=document.getElementById('suppliersGrid');
+  const grid=document.getElementById('suppliersGrid'); if(!grid||!hasPermission('suppliers')) return;
   startSelect({key:'suppliers', root:grid, ids:()=>suppliers.filter(s=>!__supplierDelPending.has(s.id)).map(s=>s.id), del:(ids,els)=>deleteSuppliers(ids,els)});
 }
 
@@ -6774,7 +6773,7 @@ function renderAdminUsersRows(el, users){
         menu:[{icon:'ti-pencil', label:tr('Edit'), fn:()=>openEditUserForm(u.id)}, {icon:'ti-trash', label:tr('Delete'), danger:true, fn:b=>deleteUserConfirm(u.id, u.username, b.closest('.t3-line'))}],
         swipe:{edit:()=>openEditUserForm(u.id), del:el=>deleteUserConfirm(u.id, u.username, el)}});
     };
-    el.innerHTML = `<div class="t3-sec" style="margin-top:0"><i class="ti ti-users"></i> ${tr('Logins')}<em>${users.length}</em><button class="btn sm" onclick="openCreateUserForm()"><i class="ti ti-plus"></i> ${tr('New user')}</button>${listMenuHtml([{icon:'ti-checkbox', label:tr('Select…'), fn:startUsersSelect}])}</div>`
+    el.innerHTML = `<div class="t3-sec" style="margin-top:0"><i class="ti ti-users"></i> ${tr('Logins')}<em>${users.length}</em><button class="btn sm" onclick="openCreateUserForm()"><i class="ti ti-plus"></i> ${tr('New user')}</button></div>`
       + (users.length ? `<div class="admin-users-rows"></div>` : '<div class="t3-empty">'+tr('No staff, HR or supplier users yet.')+'</div>');
     // The firm's owner is always pinned at the top (user request 2026-10-11),
     // then everyone else by name.
@@ -8105,7 +8104,7 @@ function swipeAct(btn, which){
 document.addEventListener('pointerdown', e => {
   const line = e.target.closest && e.target.closest('.sw > .t3-line');
   document.querySelectorAll('.sw.open').forEach(s => { if(!line || s !== line.parentNode){ swipeClose(s); s.__closedAt = Date.now(); } });
-  if(!line || e.pointerType === 'mouse' || __selState || e.target.closest('button, a, input, select, textarea')) return;
+  if(!line || e.pointerType === 'mouse' || (__selState && __selState.picked.size) || e.target.closest('button, a, input, select, textarea, .t3-cb')) return;
   const sw = line.parentNode, x0 = e.clientX, y0 = e.clientY, W = swipeWidth(sw), base = sw.classList.contains('open') ? -W : 0;
   let dx = base, active = false, dead = false;
   const move = ev => {
@@ -8165,51 +8164,65 @@ function finishUndo(commit){
   if(u.o.undo) u.o.undo();
 }
 window.addEventListener('pagehide', () => finishUndo(true));
-// Select mode, in any list drawn with o.sel: startSelect({key, root, ids, actions, del})
-// — root: the rows' container; ids(): every selectable id of the list (also
-// rows not drawn yet); actions: the list's bulk actions [{icon, label, fn(ids)}];
-// del(ids, els): its bulk delete. Drawn-tick boxes slide in, "N selected · Select
-// all" sits above the rows, a glass bar below (count, actions, Delete, ✕). A tap
-// on a row ticks it; swipe and the row ⋮ are off. A list that redraws its rows
-// calls selectRoot(key, root) so the mode survives the redraw.
+// Select, always on (owner's override, docs/redesign.md → stage 13): every
+// list drawn with o.sel shows "N selected · Select all" above its rows and a
+// drawn-tick box on each selectable plate, without any ⋮ → Select…. A tap on
+// the box ticks the plate; a tap anywhere else on the plate keeps its own job
+// (open the card). When something is ticked the glass bar shows (count, the
+// list's actions, Delete, ✕ clears the ticks).
+// startSelect({key, root, ids, actions, del}) — root: the rows' container;
+// ids(): every selectable id (also rows not drawn yet); actions: the bulk
+// actions [{icon, label, fn(ids)}]; del(ids, els): the bulk delete. A list
+// calls selectRoot(key, root) after drawing its rows: that starts its Select
+// (SELECT_STARTERS[key], which checks the rights) or keeps the ticks across a redraw.
 let __selState = null;
+const SELECT_STARTERS = {workers: () => startWorkerSelect(), clients: () => startClientSelect(), suppliers: () => startSupplierSelect(), users: () => startUsersSelect(), pendingHours: () => startPendingSelect()};
 function startSelect(o){
-  endSelect(); closePopover();
-  __selState = Object.assign({}, o, {picked: new Set()});
+  const keep = __selState && __selState.key === o.key ? __selState.picked : null;
+  if(!keep) endSelect();
+  closePopover();
+  const prev = __selState;
+  __selState = Object.assign({}, o, {picked: keep || new Set(), head: prev && keep ? prev.head : null, bar: prev && keep ? prev.bar : null, root: prev && keep ? prev.root : null});
   selectRoot(o.key, o.root);
 }
 function selectRoot(key, root){
-  const st = __selState; if(!st || st.key !== key || !root) return;
-  if(st.head && st.head.isConnected && st.root === root) return;
+  if(!root) return;
+  const st = __selState;
+  if(!st || st.key !== key){ const f = SELECT_STARTERS[key]; if(f) f(); return; }
   if(st.root && st.root !== root) st.root.classList.remove('selecting');
-  if(st.head) st.head.remove();
   st.root = root; root.classList.add('selecting');
-  st.head = document.createElement('div'); st.head.className = 'sel-head';
-  root.parentNode.insertBefore(st.head, root);
+  if(!st.head || !st.head.isConnected || st.head.nextSibling !== root){
+    if(st.head) st.head.remove();
+    st.head = document.createElement('div'); st.head.className = 'sel-head';
+    root.parentNode.insertBefore(st.head, root);
+  }
+  const ids = new Set(st.ids().map(String));
+  [...st.picked].forEach(id => { if(!ids.has(id)) st.picked.delete(id); });
   root.querySelectorAll('.t3-line[data-sel-id]').forEach(l => l.classList.toggle('picked', st.picked.has(l.dataset.selId)));
-  if(!st.bar){ st.bar = document.createElement('div'); st.bar.className = 'sel-bar'; document.body.appendChild(st.bar); }
   drawSelect();
 }
 function drawSelect(){
-  const st = __selState; if(!st) return;
+  const st = __selState; if(!st || !st.head) return;
   const n = st.picked.size, all = st.ids().length;
   st.head.innerHTML = `<span>${esc(tr('{0} selected', {0: n}))}</span><button type="button">${esc(n === all && all ? tr('Clear') : tr('Select all'))}</button>`;
   st.head.querySelector('button').onclick = () => { const ids = st.ids().map(String); if(st.picked.size === ids.length) st.picked.clear(); else ids.forEach(i => st.picked.add(i)); syncPicked(); };
+  if(!n){ if(st.bar){ st.bar.remove(); st.bar = null; } return; }
+  if(!st.bar){ st.bar = document.createElement('div'); st.bar.className = 'sel-bar'; document.body.appendChild(st.bar); }
   st.bar.innerHTML = `<b>${esc(tr('{0} selected', {0: n}))}</b>`
-    + (st.actions || []).map((a, i) => `<button type="button" class="gbtn" data-a="${i}"${n?'':' disabled'}><i class="ti ${esc(a.icon||'')}"></i><span>${esc(a.label)}</span></button>`).join('')
-    + (st.del ? `<button type="button" class="gbtn del" data-a="del"${n?'':' disabled'}><i class="ti ti-trash"></i><span>${esc(tr('Delete'))}</span></button>` : '')
+    + (st.actions || []).map((a, i) => `<button type="button" class="gbtn" data-a="${i}"><i class="ti ${esc(a.icon||'')}"></i><span>${esc(a.label)}</span></button>`).join('')
+    + (st.del ? `<button type="button" class="gbtn del" data-a="del"><i class="ti ti-trash"></i><span>${esc(tr('Delete'))}</span></button>` : '')
     + `<button type="button" class="gbtn icon" data-a="x" aria-label="${esc(tr('Close'))}"><i class="ti ti-x"></i></button>`;
   st.bar.querySelectorAll('button').forEach(b => b.onclick = () => {
     const a = b.dataset.a, ids = [...st.picked];
-    if(a === 'x'){ endSelect(); return; }
+    if(a === 'x'){ st.picked.clear(); syncPicked(); return; }
     if(!ids.length) return;
     const els = ids.map(id => st.root.querySelector(`.t3-line[data-sel-id="${CSS.escape(id)}"]`)).filter(Boolean);
-    endSelect();
+    st.picked.clear(); syncPicked();
     if(a === 'del') st.del(ids, els); else st.actions[+a].fn(ids);
   });
 }
 function syncPicked(){
-  const st = __selState; if(!st) return;
+  const st = __selState; if(!st || !st.root) return;
   st.root.querySelectorAll('.t3-line[data-sel-id]').forEach(l => l.classList.toggle('picked', st.picked.has(l.dataset.selId)));
   drawSelect();
 }
@@ -8218,18 +8231,18 @@ function endSelect(){
   if(st.root){ st.root.classList.remove('selecting'); st.root.querySelectorAll('.t3-line.picked').forEach(l => l.classList.remove('picked')); }
   if(st.head) st.head.remove(); if(st.bar) st.bar.remove();
 }
-// While selecting, a tap on a row of the list ticks it and does nothing else.
+// A tap on a plate's tick box ticks it and does nothing else.
 ['click', 'pointerdown'].forEach(t => document.addEventListener(t, e => {
   const st = __selState; if(!st || !st.root) return;
-  const line = e.target.closest && e.target.closest('.t3-line[data-sel-id]');
+  const box = e.target.closest && e.target.closest('.t3-cb'), line = box && box.closest('.t3-line[data-sel-id]');
   if(!line || !st.root.contains(line)) return;
   e.stopPropagation(); if(t === 'pointerdown') return;
   e.preventDefault();
   const id = line.dataset.selId; if(st.picked.has(id)) st.picked.delete(id); else st.picked.add(id);
   line.classList.toggle('picked', st.picked.has(id)); drawSelect();
 }, true));
-document.addEventListener('keydown', e => { if(e.key === 'Escape'){ closePopover(); endSelect(); } });
-// The header ⋮ of a list: its items, plus "Select…" when the list can select.
+document.addEventListener('keydown', e => { if(e.key === 'Escape'){ closePopover(); if(__selState){ __selState.picked.clear(); syncPicked(); } } });
+// The header ⋮ of a list: its own tools (Select is always on — no Select… item).
 function listMenuHtml(items){ return items.length ? `<button type="button" class="t3-kb" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey(items)}')"><i class="ti ti-dots-vertical"></i></button>` : ''; }
 function workerClientNames(w){ return (w.clientIds||[]).map(id=>(clients.find(c=>c.id===id)||{}).name).filter(Boolean).join(', '); }
 function renderDashboard(){
@@ -8933,7 +8946,7 @@ async function renderPendingHours(){
   // Template 3: a line per batch (amber: waiting) — the worker, the file and
   // who sent it, the shift count; ✓ approve / ✕ reject at the right (owner).
   __pendingBatchIds=batches.map(b=>String(b.batchId||''));
-  wrap.innerHTML=(canApprove?`<div class="t3-sec" style="margin-top:0">${esc(tr('Batches'))}<em>${batches.length}</em>${listMenuHtml([{icon:'ti-checkbox', label:tr('Select…'), fn:startPendingSelect}])}</div>`:'')+'<div class="pending-hours-rows"></div>';
+  wrap.innerHTML=(canApprove?`<div class="t3-sec" style="margin-top:0">${esc(tr('Batches'))}<em>${batches.length}</em></div>`:'')+'<div class="pending-hours-rows"></div>';
   renderPagedList(wrap.querySelector('.pending-hours-rows'),'pendingHours','',batches,b=>{
     const w = workers.find(x=>x.id===(b.entries[0]&&b.entries[0].workerId)), id = esc(String(b.batchId||''));
     return t3Line({c:'var(--amber)', av:t3Av(w), name:esc(w?w.name:(b.fileName||'—')),
@@ -8946,6 +8959,7 @@ async function renderPendingHours(){
 // Select in the pending batches: Approve or Reject the picked ones at once.
 let __pendingBatchIds=[];
 function startPendingSelect(){
+  const ss=getSession(); if(!ss||!(ss.role==='tenant_admin'||ss.role==='superadmin')) return;
   const root=document.querySelector('#pendingHoursWrap .pending-hours-rows'); if(!root) return;
   startSelect({key:'pendingHours', root, ids:()=>__pendingBatchIds,
     actions:[{icon:'ti-check', label:tr('Approve'), fn:ids=>bulkHoursBatches(ids,true)}, {icon:'ti-x', label:tr('Reject'), fn:ids=>bulkHoursBatches(ids,false)}]});

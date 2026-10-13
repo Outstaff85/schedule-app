@@ -686,10 +686,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     tmp().querySelector('.t3-kb').click(); await wait(50); document.querySelector('#ogPop .og-pop-it.del').click(); await wait(300);
     renderWorkersPage(); r.leftOut = !tmp(); r.notYet = workers.some(w => w.id === 'wtmp');
     await wait(5400); r.deleted = !workers.some(w => w.id === 'wtmp');
-    // Select → Vacation for the picked workers.
-    document.getElementById('workersHeadMenu').click(); await wait(50);
-    [...document.querySelectorAll('#ogPop .og-pop-it')].find(b => /Select/.test(b.textContent)).click(); await wait(100);
-    document.querySelector('#workersCards .wplate[data-wid="w1"]').click();
+    // Select is always on: "0 selected · Select all" above the plates, no bar until a box is ticked; a tick → Vacation.
+    renderWorkersPage(); await wait(50);
+    r.selHead = (document.querySelector('#workersCards').previousElementSibling || {}).className === 'sel-head' && /0 selected/.test(document.querySelector('.sel-head').textContent) && !document.querySelector('.sel-bar');
+    document.querySelector('#workersCards .wplate[data-wid="w1"] .t3-cb').click();
     r.sel = document.querySelector('.sel-bar b').textContent;
     [...document.querySelectorAll('.sel-bar .gbtn')].find(b => /Vacation/.test(b.textContent)).click(); await wait(100);
     r.vac = w1.status === 'vacation' && !document.querySelector('.sel-bar');
@@ -699,7 +699,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(/red/.test(wp.chip) && wp.bar === 'var(--bad)' && wp.sheet && wp.notices.includes('Upload failed') && wp.head === 'Avi Cohen' && wp.card && wp.backToNotices, 'worker plate: a red notice chip opens the notices sheet; "Open worker card" opens the card, closing it goes back to the sheet ' + JSON.stringify(wp));
   ok(wp.panes.join('|') === 'info|docs|hours' && wp.hoursStatus && wp.edit, 'worker card: Info / Docs / Hours switch, one Edit button ' + JSON.stringify(wp.panes));
   ok(wp.menu === 'Open card,Edit,Pay,Punch link,!Delete' && wp.pendingHidden && wp.stillThere && wp.undone && wp.leftOut && wp.notYet && wp.deleted, 'workers: Delete never asks — Undo keeps the worker, otherwise it is removed after 5 s ' + JSON.stringify(wp));
-  ok(wp.sel === '1 selected' && wp.vac, 'workers: Select… a worker, the bulk bar sets Vacation ' + JSON.stringify({sel: wp.sel, vac: wp.vac}));
+  ok(wp.selHead && wp.sel === '1 selected' && wp.vac, 'workers: Select always shown (no bar until a tick); a tick on a box, the bulk bar sets Vacation ' + JSON.stringify({selHead: wp.selHead, sel: wp.sel, vac: wp.vac}));
   // Editors as section plates (redesign stage 4): worker, client, supplier, user.
   const ed = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
@@ -795,10 +795,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     tabs()[1].click(); r.vac = document.getElementById('workersFilterStatus').value === 'vacation' && tabs()[1].classList.contains('on');
     tabs()[1].click(); r.cleared = document.getElementById('workersFilterStatus').value === '';
     tabs()[2].click(); r.pending = document.getElementById('workersFilterDocs').value === 'incomplete'; tabs()[2].click();
-    document.getElementById('workersHeadMenu').click(); r.menu = [...document.querySelectorAll('#ogPop .og-pop-it')].map(b => b.textContent.trim()).join(); closePopover();
+    r.scan = /Scan passport/.test((document.getElementById('workersScanBtn') || {}).textContent || '') && document.getElementById('workersScanBtn').classList.contains('gbtn') && !document.getElementById('workersHeadMenu');
     return r;
   });
-  ok(wh.tabs === 'Active,Vacation,Pending' && /^\d+$/.test(wh.count) && wh.vac && wh.cleared && wh.pending && wh.menu === 'Scan passport,Select…', 'workers: header count, New and ⋮ (Scan passport, Select…), tabs Active / Vacation / Pending set the filters ' + JSON.stringify(wh));
+  ok(wh.tabs === 'Active,Vacation,Pending' && /^\d+$/.test(wh.count) && wh.vac && wh.cleared && wh.pending && wh.scan, 'workers: header count, New and a glass Scan passport next to it (no ⋮), tabs Active / Vacation / Pending set the filters ' + JSON.stringify(wh));
   // Accounting (redesign stage 7): the period in glass, figures, Salary / Billing / Approvals tabs, salary plates.
   const ac = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), vis = id => getComputedStyle(document.getElementById(id)).display !== 'none';
@@ -927,8 +927,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     document.querySelector('#ogPop .og-pop-it.del').click(); await wait(300);
     r.pending = clients.some(c => c.id === 'ctmp'); document.querySelector('#undoSnack .og-snack-u').click(); await wait(300);
     r.undone = !!line() && clients.some(c => c.id === 'ctmp');
-    document.getElementById('clientsHeadMenu').click(); await wait(50); document.querySelector('#ogPop .og-pop-it').click(); await wait(50);
-    line().click(); r.sel = document.querySelector('.sel-bar b').textContent;
+    line().querySelector('.t3-cb').click(); r.sel = document.querySelector('.sel-bar b').textContent;
     [...document.querySelectorAll('.sel-bar .gbtn')].find(b => b.dataset.a === 'del').click(); await wait(5500);
     r.deleted = !clients.some(c => c.id === 'ctmp');
     switchTab('suppliers'); renderSuppliersPage(); await wait(50);
@@ -1128,10 +1127,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.undone = !lineOf(t1).closest('.sw').classList.contains('gone');
     await wait(5300); await loadData(); r.keptAfterUndo = myWorkers.some(w => w.id === t1);
     renderWorkersList(); await wait(50);
-    document.querySelector('#workersList .t3-sec .t3-kb').click(); await wait(50);
-    document.querySelector('#ogPop .og-pop-it').click(); await wait(100);
-    r.selecting = document.querySelector('#workersList .workers-rows').classList.contains('selecting') && !!document.querySelector('.sel-bar');
-    lineOf(t2).click(); lineOf(t3).click();
+    r.selecting = document.querySelector('#workersList .workers-rows').classList.contains('selecting') && !!document.querySelector('.sel-head') && !document.querySelector('.sel-bar');
+    lineOf(t2).querySelector('.t3-cb').click(); lineOf(t3).querySelector('.t3-cb').click();
     r.count = document.querySelector('.sel-bar b').innerText.trim(); r.noEditor = !document.getElementById('workerOverlay').classList.contains('open');
     [...document.querySelectorAll('.sel-bar .gbtn')].find(b => b.dataset.a === 'del').click(); await wait(300);
     r.barGone = !document.querySelector('.sel-bar'); r.snack = /2 workers deleted/.test(document.getElementById('undoSnack').innerText);
@@ -1254,21 +1251,19 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.gone = target.classList.contains('gone'); r.snack = document.getElementById('undoSnack').classList.contains('open') && /deleted/.test(document.getElementById('undoSnack').innerText);
     document.querySelector('#undoSnack .og-snack-u').click(); await wait(400);
     r.back = !target.classList.contains('gone') && !document.getElementById('undoSnack').classList.contains('open');
-    document.querySelector('.admin-users-rows').parentNode.querySelector('.t3-sec .t3-kb').click(); await wait(50);
-    document.querySelector('#ogPop .og-pop-it').click(); await wait(100);
     const boxes = [...document.querySelectorAll('.admin-users-rows .t3-line')].map(l => !!l.querySelector('.t3-cb'));
     r.n = boxes.length; r.ownerNoBox = boxes[0] === false && boxes.slice(1).every(Boolean);
     const line2 = [...document.querySelectorAll('.admin-users-rows .t3-line')].find(l => /\bclient\b/.test(l.innerText));
-    r.kbHidden = getComputedStyle(line2.querySelector('.t3-kb')).opacity === '0';
+    r.kbShown = getComputedStyle(line2.querySelector('.t3-kb')).opacity === '1';
     document.querySelector('.sel-head button').click();
     r.all = document.querySelector('.sel-bar b').innerText.trim(); r.picked = document.querySelectorAll('.admin-users-rows .t3-line.picked').length;
-    line2.click(); r.unpicked = !line2.classList.contains('picked') && !document.getElementById('userFormOverlay').classList.contains('open');
+    line2.querySelector('.t3-cb').click(); r.unpicked = !line2.classList.contains('picked') && !document.getElementById('userFormOverlay').classList.contains('open');
     [...document.querySelectorAll('.sel-bar .gbtn')].find(b => b.dataset.a === 'x').click();
-    r.ended = !document.querySelector('.sel-bar') && !document.querySelector('.sel-head') && !document.querySelector('.admin-users-rows.selecting');
+    r.ended = !document.querySelector('.sel-bar') && !!document.querySelector('.sel-head') && /0 selected/.test(document.querySelector('.sel-head').textContent) && !document.querySelector('.admin-users-rows .t3-line.picked');
     return r;
   });
   ok(ls.plate && ls.swipe === 2 && ls.pop === 'Edit,!Delete' && ls.hr && ls.gone && ls.snack && ls.back, 'lists: a plate per user; ⋮ opens Edit / Delete; Delete collapses it behind the Undo snack, Undo brings it back ' + JSON.stringify(ls));
-  ok(ls.ownerNoBox && ls.kbHidden && ls.picked === ls.n - 1 && ls.all === (ls.n - 1) + ' selected' && ls.unpicked && ls.ended, 'lists: Select… — boxes (none for the owner), Select all, a tap ticks, the glass bar closes with ✕ ' + JSON.stringify(ls));
+  ok(ls.ownerNoBox && ls.kbShown && ls.picked === ls.n - 1 && ls.all === (ls.n - 1) + ' selected' && ls.unpicked && ls.ended, 'lists: Select always on — boxes (none for the owner), ⋮ stays, Select all, a box tick, ✕ clears the ticks ' + JSON.stringify(ls));
   // The user form: one Hours block for HR / supplier / client; "Only own workers" at the bottom, locked on for a supplier and a client.
   const uf = await q.evaluate(() => {
     openCreateUserForm(); const role = document.getElementById('userFormRole'), out = {};

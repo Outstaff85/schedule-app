@@ -129,7 +129,7 @@ body:has(.overlay.open){overflow:hidden}
    same colour; figures (.r) in the soft green; a bare ⋮ (.t3-kb) opens the
    row's glass popover (.og-pop, with a tail); a swipe left (.sw) shows Edit and
    Delete; Delete never asks — the Undo snack (.og-snack) runs 5 s first;
-   Select mode (.selecting): drawn-tick boxes, a head line and the glass bulk
+   Select, always on (.selecting): drawn-tick boxes, a head line and the glass bulk
    bar (.sel-bar). The same block in the manager app and the supplier portal. ── */
 :root{--neutral:#6b7189;--bar-gap:16px;}
 .t3-line{position:relative;gap:12px;padding:11px 8px 11px 14px;border-left:0;background:var(--plate);border-radius:16px;box-shadow:inset 4px 0 0 var(--c,var(--neutral));margin-bottom:8px;transition:transform .28s cubic-bezier(.3,.7,.3,1),background .2s;}
@@ -177,13 +177,12 @@ body:has(.overlay.open){overflow:hidden}
 @keyframes og-shrink{to{width:0}}
 /* Select mode: drawn-tick boxes slide in, "N selected · Select all", the bulk bar. */
 .t3-cb{width:0;overflow:hidden;flex:none;margin-right:-12px;display:flex;align-items:center;transition:width .25s,margin .25s;}
-.selecting .t3-cb{width:26px;margin-right:0;}
-.og-box{width:22px;height:22px;flex:none;border-radius:7px;border:2px solid rgba(255,255,255,.4);position:relative;transition:background .25s,border-color .25s;}
+.selecting .t3-cb{width:30px;margin-right:-4px;cursor:pointer;}
+.og-box{width:24px;height:24px;box-sizing:border-box;flex:none;border-radius:7px;border:2px solid var(--ink-3);position:relative;transition:background .25s,border-color .25s;}
 .og-box::after{content:'';position:absolute;left:5px;top:1px;width:5px;height:10px;border:solid #0b0d14;border-width:0 3px 3px 0;transform:rotate(45deg);clip-path:inset(100% 0 0 0);transition:clip-path .35s .05s;}
 .t3-line.picked{background:#1f2a2c;}
 .t3-line.picked .og-box{background:var(--ok);border-color:var(--ok);}
 .t3-line.picked .og-box::after{clip-path:inset(0);}
-.selecting .t3-kb{opacity:0;pointer-events:none;}
 .sel-head{display:flex;align-items:center;gap:8px;margin:-2px 2px 8px;font-size:13px;color:var(--text2);}
 .sel-head span{flex:1;}
 .sel-head button{position:relative;border:0;background:none;color:#fff;font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;padding:2px 0 5px;}
@@ -1153,7 +1152,7 @@ function swipeAct(btn, which){
 document.addEventListener('pointerdown', e => {
   const line = e.target.closest && e.target.closest('.sw > .t3-line');
   document.querySelectorAll('.sw.open').forEach(s => { if(!line || s !== line.parentNode){ swipeClose(s); s.__closedAt = Date.now(); } });
-  if(!line || e.pointerType === 'mouse' || __selState || e.target.closest('button, a, input, select, textarea')) return;
+  if(!line || e.pointerType === 'mouse' || (__selState && __selState.picked.size) || e.target.closest('button, a, input, select, textarea, .t3-cb')) return;
   const sw = line.parentNode, x0 = e.clientX, y0 = e.clientY, W = swipeWidth(sw), base = sw.classList.contains('open') ? -W : 0;
   let dx = base, active = false, dead = false;
   const move = ev => {
@@ -1213,51 +1212,65 @@ function finishUndo(commit){
   if(u.o.undo) u.o.undo();
 }
 window.addEventListener('pagehide', () => finishUndo(true));
-// Select mode, in any list drawn with o.sel: startSelect({key, root, ids, actions, del})
-// — root: the rows' container; ids(): every selectable id of the list (also
-// rows not drawn yet); actions: the list's bulk actions [{icon, label, fn(ids)}];
-// del(ids, els): its bulk delete. Drawn-tick boxes slide in, "N selected · Select
-// all" sits above the rows, a glass bar below (count, actions, Delete, ✕). A tap
-// on a row ticks it; swipe and the row ⋮ are off. A list that redraws its rows
-// calls selectRoot(key, root) so the mode survives the redraw.
+// Select, always on (owner's override, docs/redesign.md → stage 13): every
+// list drawn with o.sel shows "N selected · Select all" above its rows and a
+// drawn-tick box on each selectable plate, without any ⋮ → Select…. A tap on
+// the box ticks the plate; a tap anywhere else on the plate keeps its own job
+// (open the card). When something is ticked the glass bar shows (count, the
+// list's actions, Delete, ✕ clears the ticks).
+// startSelect({key, root, ids, actions, del}) — root: the rows' container;
+// ids(): every selectable id (also rows not drawn yet); actions: the bulk
+// actions [{icon, label, fn(ids)}]; del(ids, els): the bulk delete. A list
+// calls selectRoot(key, root) after drawing its rows: that starts its Select
+// (SELECT_STARTERS[key], which checks the rights) or keeps the ticks across a redraw.
 let __selState = null;
+const SELECT_STARTERS = {workers: () => startWorkersSelect()};
 function startSelect(o){
-  endSelect(); closePopover();
-  __selState = Object.assign({}, o, {picked: new Set()});
+  const keep = __selState && __selState.key === o.key ? __selState.picked : null;
+  if(!keep) endSelect();
+  closePopover();
+  const prev = __selState;
+  __selState = Object.assign({}, o, {picked: keep || new Set(), head: prev && keep ? prev.head : null, bar: prev && keep ? prev.bar : null, root: prev && keep ? prev.root : null});
   selectRoot(o.key, o.root);
 }
 function selectRoot(key, root){
-  const st = __selState; if(!st || st.key !== key || !root) return;
-  if(st.head && st.head.isConnected && st.root === root) return;
+  if(!root) return;
+  const st = __selState;
+  if(!st || st.key !== key){ const f = SELECT_STARTERS[key]; if(f) f(); return; }
   if(st.root && st.root !== root) st.root.classList.remove('selecting');
-  if(st.head) st.head.remove();
   st.root = root; root.classList.add('selecting');
-  st.head = document.createElement('div'); st.head.className = 'sel-head';
-  root.parentNode.insertBefore(st.head, root);
+  if(!st.head || !st.head.isConnected || st.head.nextSibling !== root){
+    if(st.head) st.head.remove();
+    st.head = document.createElement('div'); st.head.className = 'sel-head';
+    root.parentNode.insertBefore(st.head, root);
+  }
+  const ids = new Set(st.ids().map(String));
+  [...st.picked].forEach(id => { if(!ids.has(id)) st.picked.delete(id); });
   root.querySelectorAll('.t3-line[data-sel-id]').forEach(l => l.classList.toggle('picked', st.picked.has(l.dataset.selId)));
-  if(!st.bar){ st.bar = document.createElement('div'); st.bar.className = 'sel-bar'; document.body.appendChild(st.bar); }
   drawSelect();
 }
 function drawSelect(){
-  const st = __selState; if(!st) return;
+  const st = __selState; if(!st || !st.head) return;
   const n = st.picked.size, all = st.ids().length;
   st.head.innerHTML = `<span>${esc(tr('{0} selected', {0: n}))}</span><button type="button">${esc(n === all && all ? tr('Clear') : tr('Select all'))}</button>`;
   st.head.querySelector('button').onclick = () => { const ids = st.ids().map(String); if(st.picked.size === ids.length) st.picked.clear(); else ids.forEach(i => st.picked.add(i)); syncPicked(); };
+  if(!n){ if(st.bar){ st.bar.remove(); st.bar = null; } return; }
+  if(!st.bar){ st.bar = document.createElement('div'); st.bar.className = 'sel-bar'; document.body.appendChild(st.bar); }
   st.bar.innerHTML = `<b>${esc(tr('{0} selected', {0: n}))}</b>`
-    + (st.actions || []).map((a, i) => `<button type="button" class="gbtn" data-a="${i}"${n?'':' disabled'}><i class="ti ${esc(a.icon||'')}"></i><span>${esc(a.label)}</span></button>`).join('')
-    + (st.del ? `<button type="button" class="gbtn del" data-a="del"${n?'':' disabled'}><i class="ti ti-trash"></i><span>${esc(tr('Delete'))}</span></button>` : '')
+    + (st.actions || []).map((a, i) => `<button type="button" class="gbtn" data-a="${i}"><i class="ti ${esc(a.icon||'')}"></i><span>${esc(a.label)}</span></button>`).join('')
+    + (st.del ? `<button type="button" class="gbtn del" data-a="del"><i class="ti ti-trash"></i><span>${esc(tr('Delete'))}</span></button>` : '')
     + `<button type="button" class="gbtn icon" data-a="x" aria-label="${esc(tr('Close'))}"><i class="ti ti-x"></i></button>`;
   st.bar.querySelectorAll('button').forEach(b => b.onclick = () => {
     const a = b.dataset.a, ids = [...st.picked];
-    if(a === 'x'){ endSelect(); return; }
+    if(a === 'x'){ st.picked.clear(); syncPicked(); return; }
     if(!ids.length) return;
     const els = ids.map(id => st.root.querySelector(`.t3-line[data-sel-id="${CSS.escape(id)}"]`)).filter(Boolean);
-    endSelect();
+    st.picked.clear(); syncPicked();
     if(a === 'del') st.del(ids, els); else st.actions[+a].fn(ids);
   });
 }
 function syncPicked(){
-  const st = __selState; if(!st) return;
+  const st = __selState; if(!st || !st.root) return;
   st.root.querySelectorAll('.t3-line[data-sel-id]').forEach(l => l.classList.toggle('picked', st.picked.has(l.dataset.selId)));
   drawSelect();
 }
@@ -1266,24 +1279,24 @@ function endSelect(){
   if(st.root){ st.root.classList.remove('selecting'); st.root.querySelectorAll('.t3-line.picked').forEach(l => l.classList.remove('picked')); }
   if(st.head) st.head.remove(); if(st.bar) st.bar.remove();
 }
-// While selecting, a tap on a row of the list ticks it and does nothing else.
+// A tap on a plate's tick box ticks it and does nothing else.
 ['click', 'pointerdown'].forEach(t => document.addEventListener(t, e => {
   const st = __selState; if(!st || !st.root) return;
-  const line = e.target.closest && e.target.closest('.t3-line[data-sel-id]');
+  const box = e.target.closest && e.target.closest('.t3-cb'), line = box && box.closest('.t3-line[data-sel-id]');
   if(!line || !st.root.contains(line)) return;
   e.stopPropagation(); if(t === 'pointerdown') return;
   e.preventDefault();
   const id = line.dataset.selId; if(st.picked.has(id)) st.picked.delete(id); else st.picked.add(id);
   line.classList.toggle('picked', st.picked.has(id)); drawSelect();
 }, true));
-document.addEventListener('keydown', e => { if(e.key === 'Escape'){ closePopover(); endSelect(); } });
-// The header ⋮ of a list: its items, plus "Select…" when the list can select.
+document.addEventListener('keydown', e => { if(e.key === 'Escape'){ closePopover(); if(__selState){ __selState.picked.clear(); syncPicked(); } } });
+// The header ⋮ of a list: its own tools (Select is always on — no Select… item).
 function listMenuHtml(items){ return items.length ? `<button type="button" class="t3-kb" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey(items)}')"><i class="ti ti-dots-vertical"></i></button>` : ''; }
 function clientName(id){ const c=myClients.find(x=>x.id===id); return c?c.name:''; }
 function renderWorkersList(){
   const el=document.getElementById('workersList');
   if(!myWorkers.length){ el.innerHTML=`<div style="color:var(--text3);padding:16px 0">${tr('No workers yet')}</div>`; return; }
-  el.innerHTML=`<div class="t3-sec" style="margin-top:0">${esc(tr('Workers'))}<em>${myWorkers.length}</em>${listMenuHtml([{icon:'ti-checkbox', label:tr('Select…'), fn:startWorkersSelect}])}</div><div class="workers-rows"></div>`;
+  el.innerHTML=`<div class="t3-sec" style="margin-top:0">${esc(tr('Workers'))}<em>${myWorkers.length}</em></div><div class="workers-rows"></div>`;
   renderPagedList(el.querySelector('.workers-rows'), 'workers', '', myWorkers, w=>{
     const onSite = (lastEntryFor(w.id)||{}).type==='in';
     return t3Line({cls:'tap-edit', c:onSite?'var(--green)':'var(--neutral)', av:t3Av(w), name:esc(w.name)+newWorkerBadgeHtml(w),
