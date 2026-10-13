@@ -122,6 +122,7 @@ On 2026-10-13 the owner went through the design system artifact and found many p
 ### Owner overrides (decided after the artifact was made; they win over it)
 - **Language button: only the globe** (done 2026-10-13, PR #234) — the artifact's LanguageButton still shows the name and chevron.
 - **Scan passport next to New** in the Workers header (a glass button beside the primary "New"), not under the header ⋮ (the artifact's RowMenu puts it under ⋮).
+- **Header icons** (owner 2026-10-13): the bell and the Language button are bare icons with no glass frame, both 40px with a 23px glyph, on all four pages (`og.css` `.lang-btn` / `.gbtn.og-bell`).
 - **Select on every list** (changed by the owner on 2026-10-13 — before: always on): a Select button above every list, in the same place; no tick boxes until it is tapped, then the boxes on every plate and Select all — no ⋮ → Select… needed. Lists: workers, clients, suppliers, users, firms, punches, pending hours, hours approvals, documents, salary rows, and the portals' lists. The header ⋮ keeps its other tools.
 
 ### Checklist (known gaps so far; the audit adds the rest)
