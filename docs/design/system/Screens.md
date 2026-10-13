@@ -11,7 +11,8 @@ Every screen of the app is built from the same parts: the blob ground, a header 
 | Worker card | Bottom sheet: big avatar, full name, site and punch, month hours; notice chips; Info / Docs / Hours switch; facts in pairs; Edit as the one primary, ⋮ next to it. |
 | Clients | Client plates: name, chips (no rate, hours waiting), workers count · address, month hours. |
 | Suppliers | Supplier plates: name, workers · commission, month amount. |
-| Accounting | Glass period switcher, figures (Hours, Payroll, To approve), Salary / Billing / Approvals tabs, plates with the amount on the right, a total row over every item. |
+| Accounting | Glass period switcher, figures (Hours, Payroll, To approve), Salary / Billing / Approvals / Alerts tabs, plates with the amount on the right, a total row over every item. |
+| Accounting → Alerts | The fourth tab, with a red count when something waits: every accounting-only warning as a plate (red / amber bar), grouped in three labelled sections — **Punches and shifts** (open shift — no OUT, double IN, OUT without IN, shift over 12h, 0-minute shift), **Rates and pay** (worker with no rate, daily-paid worker without a daily rate, no bank details), **Clients** (client with no billing rate). A tap opens the place to fix it (the worker's pay window, the worker card, the client editor); the salary row keeps only a small ⚠. Hours approvals stay in Approvals; worker notices stay in the bell. |
 | Hours approvals | A plate per worker-day with a status pill (Approved, Waiting, Disputed); Select + glass bar to approve many; dispute and fix in a sheet. |
 | Admin | Punches / Users / Errors / Timings tabs; figures; punch plates with in/out, site and GPS distance; user plates with a role pill. |
 | Forms | Short fields in pairs, long ones alone, tick tiles for options, one primary at the end; the window saves itself on close. |
