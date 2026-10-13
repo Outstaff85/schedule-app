@@ -86,6 +86,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       ['accounting-salary', () => { switchTab('accounting'); setAccTab('salary'); }],
       ['accounting-billing', () => { switchTab('accounting'); setAccTab('billing'); }],
       ['accounting-approvals', () => { switchTab('accounting'); setAccTab('approvals'); }],
+      ['accounting-alerts', () => { switchTab('accounting'); setAccTab('alerts'); }],
       ['pay-window', () => { switchTab('accounting'); openPayModal(workers[0].id); }],
       ['admin', () => { switchTab('admin'); switchAdminPane(null); }],
       ['admin-punchlog', () => { switchTab('admin'); switchAdminPane('punchlog'); }],

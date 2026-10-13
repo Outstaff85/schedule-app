@@ -131,7 +131,7 @@ On 2026-10-13 the owner went through the design system artifact and found many p
 - [x] Select line: "N selected" on the left of "Select all" (SelectMode), on every list.
 - [x] Scan passport button next to New (override above).
 - [ ] Select shown by default on every list (override above) — done for workers, clients, suppliers, users, firms, pending hours and the supplier portal's workers; punches, documents, salary rows and hours approvals follow in their groups.
-- [ ] Accounting → new tab **Alerts** after Approvals, with the accounting-only warnings as plates grouped in three sections and a count on the tab (a tap opens the place to fix it; the salary row keeps only a small ⚠):
+- [x] Accounting → new tab **Alerts** after Approvals, with the accounting-only warnings as plates grouped in three sections and a count on the tab (a tap opens the place to fix it; the salary row keeps only a small ⚠):
   - Punches and shifts: open shift — no OUT; double IN; OUT without IN; shift over 12h; 0-minute shift (the `analyzeDayPunches` warnings).
   - Rates and pay: worker with no rate (own or client) — pay 0; daily-paid worker without a daily rate; no bank details.
   - Clients: client with no billing rate — billed 0.
