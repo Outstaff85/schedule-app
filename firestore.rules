@@ -118,9 +118,16 @@ service cloud.firestore {
         allow read: if manager(t) || isHr(t);
         allow write: if scheduleWriter(t) || hrCan(t, 'clients');
       }
+      // A supplier's own commission rate (commission, set in the supplier
+      // window) is changed only by the firm owner or a superadmin; staff and
+      // HR with the section edit everything else and keep it as it is.
       match /suppliers/{id} {
         allow read: if manager(t) || isHr(t);
-        allow write: if scheduleWriter(t) || hrCan(t, 'suppliers');
+        allow create: if (scheduleWriter(t) || hrCan(t, 'suppliers'))
+          && (isAdmin(t) || request.resource.data.get('commission', null) == null);
+        allow update: if (scheduleWriter(t) || hrCan(t, 'suppliers'))
+          && (isAdmin(t) || request.resource.data.get('commission', null) == resource.data.get('commission', null));
+        allow delete: if scheduleWriter(t) || hrCan(t, 'suppliers');
       }
       match /settings/{id} {
         allow read: if manager(t) || isHr(t);

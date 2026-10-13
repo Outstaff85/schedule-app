@@ -886,13 +886,14 @@ function wOwnRate(w){
 }
 function localYMD(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 let myWorkers=[], myClients=[], punchLog=[];
-let showPay=false;
+let showPay=false, myCommissionRates=[];
 async function loadData(){
   const [sch, pl] = await Promise.all([supplierCall({action:'loadSchedule'}), supplierCall({action:'loadPunchLog'})]);
   myWorkers = sch.workers||[];
   myClients = sch.clients||[];
   clients = myClients;
   showPay = sch.showPay===true;
+  myCommissionRates = Array.isArray(sch.commission) ? sch.commission : [];
   punchLog = pl.entries||[];
 }
 
@@ -1373,74 +1374,6 @@ function ogSegSelect(sel){
 }
 // A field asked to focus (a save that found it empty) opens its section first.
 (()=>{ const f=HTMLElement.prototype.focus; HTMLElement.prototype.focus=function(o){ const sec=this.closest&&this.closest('.og-sec:not(.open)'); if(sec) ogSecOpen(sec); return f.call(this,o); }; })();
-// The client editor's Hours approval: the client logins of this client and
-// their hours ticks (set in Admin → Users; the owner's users cache).
-function clientLoginsHtml(c){
-  const users=(loadAdminCache('users_'+activeTenantIdForAdmin())||[]).filter(u=>u.role==='client'&&c&&u.clientId===c.id);
-  const can=isFirmAdminSession();
-  const ticks=u=>`<div class="check-grid" style="margin:6px 0 10px">${Object.keys(HOUR_PERM_LABELS).map(p=>`<label class="check-chip"><input type="checkbox" data-uid="${esc(u.id)}" data-field="hourPerms" value="${esc(p)}"${can?'':' disabled'}${(u.hourPerms||[]).includes(p)?' checked':''} onchange="saveLoginTicks(this)"><span class="chip-text"><span>${esc(tr(HOUR_PERM_LABELS[p]))}</span></span></label>`).join('')}</div>`;
-  return (users.length?users.map(u=>`<div class="wc-line" style="margin-bottom:2px"><i class="ti ti-user"></i><span>${esc(u.fullName||u.username)} · ${esc(u.username)}</span></div>${ticks(u)}`).join(''):`<div class="wc-line">${esc(tr('No client login yet.'))}</div>`)
-    +(can&&c&&c.id?`<button type="button" class="gbtn" onclick="newLoginFor('client','${esc(c.id)}')"><i class="ti ti-user-plus"></i><span>${esc(tr('New client login'))}</span></button>`:'');
-}
-// A tick of a login (client hours ticks, supplier portal tabs) changed in an
-// editor: saved at once (updateUser — the user signs in again with the new
-// rights), and the users cache follows.
-async function saveLoginTicks(cb){
-  const uid=cb.dataset.uid, field=cb.dataset.field;
-  const values=[...document.querySelectorAll(`input[data-uid="${CSS.escape(uid)}"][data-field="${field}"]:checked`)].map(x=>x.value);
-  try{
-    const json=await (await fetch(API_URL,{method:'POST', body:JSON.stringify({action:'updateUser', ...gsAuth(), id:uid, [field]:values})})).json();
-    if(!json||json.error){ showToast(tr((json&&json.error)||'Save failed')); cb.checked=!cb.checked; return; }
-    const key='users_'+activeTenantIdForAdmin(), list=loadAdminCache(key)||[], u=list.find(x=>x.id===uid);
-    if(u){ u[field]=values; saveAdminCache(key,list); }
-    showToast(tr('Saved'));
-  }catch(e){ showToast(tr('Network error')); cb.checked=!cb.checked; }
-}
-// "New client login" / "New portal login" from an editor: the user form with
-// the role and the client / supplier already set.
-function newLoginFor(role, id){
-  const ov=role==='client'?'clientOverlay':'supplierOverlay';
-  if(role==='client') saveClient({auto:true}); else closeModal(ov);
-  openCreateUserForm();
-  const r=document.getElementById('userFormRole'); r.value=role; onUserFormRoleChange(true);
-  const sel=document.getElementById(role==='client'?'userFormClientId':'userFormSupplierId');
-  if(sel){ if(role==='client') fillUserFormClientSelect(id); else fillUserFormSupplierSelect(id); sel.value=id; if(role==='supplier') renderUserFormHrWorkers(); }
-  userFormSections();
-}
-// The supplier editor's Commission (per hour; this month's hours and the
-// commission payable — the same figures as Accounting → Payable by supplier),
-// Portal login (its supplier logins and the portal tabs they see, editable)
-// and Workers (mini plates with this month's hours).
-function supplierEditorExtraHtml(sp){
-  const SEC=(key,icon,title,body)=>`<section class="og-sec" data-sec="${key}"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ${icon}"></i></span><span class="og-sec-t"><b>${esc(tr(title))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">${body}</div></section>`;
-  const mine=workers.filter(w=>w.supplierId===sp.id), hours=workersMonthHours(), total=mine.reduce((t,w)=>t+(hours[w.id]||0),0);
-  let payable=0;
-  Object.values(salaryEntriesFor('month').byWorker||{}).forEach(e=>{ const wc=workers.find(w=>w.id===e.workerId); if(wc&&wc.supplierId===sp.id) payable+=commissionFor(wc,e,supplierCommissionRate(wc,sp.id),supplierDayCommission(wc,sp.id)); });
-  const commission=`<div class="wc-kv"><div><small>${esc(tr('Per hour'))}</small><span class="fig">₪${esc(String(SUPPLIER_DEFAULT_RATE))}</span></div><div><small>${esc(tr('Workers'))}</small>${mine.length}</div><div><small>${esc(tr('This month'))}</small><span class="fig">${esc(fmtHoursShort(total))}</span></div><div><small>${esc(tr('Payable this month'))}</small><span class="fig">₪${esc(String(Math.round(payable)))}</span></div></div>
-    <div class="wc-line">${esc(tr('Per-worker and per-day commission is set in Accounting.'))}</div>`;
-  const users=(loadAdminCache('users_'+activeTenantIdForAdmin())||[]).filter(u=>u.role==='supplier'&&u.supplierId===sp.id);
-  const SECT={dashboard:'Dashboard', workers:'My Workers', hours:'My Hours'}, can=isFirmAdminSession();
-  const login=(users.length?users.map(u=>`<div class="wc-line" style="margin-bottom:2px"><i class="ti ti-user"></i><span>${esc(u.fullName||u.username)} · ${esc(u.username)}</span></div><div class="check-grid" style="margin:6px 0 10px">${Object.keys(SECT).map(k=>`<label class="check-chip"><input type="checkbox" data-uid="${esc(u.id)}" data-field="supplierSections" value="${k}"${can?'':' disabled'}${(u.supplierSections||Object.keys(SECT)).includes(k)?' checked':''} onchange="saveLoginTicks(this)"><span class="chip-text"><span>${esc(tr(SECT[k]))}</span></span></label>`).join('')}</div>`).join(''):`<div class="wc-line">${esc(tr('No portal login yet.'))}</div>`)
-    +(can?`<button type="button" class="gbtn" onclick="newLoginFor('supplier','${esc(sp.id)}')"><i class="ti ti-user-plus"></i><span>${esc(tr('New portal login'))}</span></button>`:'');
-  const plates=mine.length?mine.map(w=>t3Line({c:isActiveWorker(w)?'var(--ok)':'var(--bad)', av:t3Av(w), name:`<span title="${esc(w.name)}">${esc(shortName(w.name))}</span>`, right:`<span class="r">${esc(fmtHoursShort(hours[w.id]))}</span>`})).join(''):`<div class="t3-empty">${esc(tr('No workers'))}</div>`;
-  return SEC('commission','ti-coin','Commission',commission)+SEC('portal','ti-key','Portal login',login)+SEC('workers','ti-users-group','Workers',plates);
-}
-// The worker editor's Documents section: a plate per document (the scan and
-// Form 101 first, then w.docs), with Upload / Renew when something is missing
-// or expiring, and Add document.
-function workerEditorDocsHtml(w){
-  const st=workerDocStatus(w), exp=new Map(workerDocExpiries(w).map(x=>[x.doc.id,x]));
-  const plate=(c,icon,title,sub,act)=>`<div class="og-doc" style="--c:${c}"><span class="og-doc-ic"><i class="ti ${icon}"></i></span><div><b>${esc(title)}</b><small>${esc(sub)}</small></div>${act||''}</div>`;
-  const btn=(label,onclick)=>`<button type="button" class="gbtn nact" onclick="${onclick}">${esc(label)}</button>`;
-  const id=esc(w.id), wi=workers.findIndex(x=>x.id===w.id);
-  const rows=[plate(st.missing.length?'var(--warn)':'var(--ok)','ti-id',tr('ID / Passport'),st.expiry?st.expiry.text:(workerDocId(w)||''),st.missing.length||st.failed?btn(tr('Upload'),`rescanFromWorkerModal()`):''),
-    plate(w.docUrl?'var(--ok)':'var(--warn)','ti-file-text',tr('Form 101'),w.docUrl?tr('Saved'):tr('Not saved yet'),'')];
-  [...(w.docs||[])].sort((a,b)=>String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||''))).forEach(d=>{
-    const x=exp.get(d.id), c=x?(x.level==='error'?'var(--bad)':'var(--warn)'):'var(--ok)';
-    rows.push(plate(c,d.type==='contract'?'ti-file-certificate':'ti-id-badge-2',tr(WORKER_DOC_TYPES[d.type]||'Document'),x?x.text:(d.expiry?tr('Expires {0}',{0:fmtDMY(d.expiry)}):(d.name||'')),x?btn(tr('Renew'),`openWorkerDocUpload('${id}')`):''));
-  });
-  return rows.join('')+`<button class="gbtn" type="button" onclick="openWorkerDocUpload('${id}')" style="margin-top:4px"><i class="ti ti-upload"></i><span>${esc(tr('Add document'))}</span></button>`;
-}
 function renderWorkerModal(w){
   w = w || {};
   // Same fallback schedule-manager.html's own showWorkerModal() uses: a
@@ -1719,6 +1652,34 @@ async function loadSentHours(){
 // My commission for one worker: a fixed ₪ per day worked when the firm set
 // one for a worker paid by the day (supplierDayRate, sent only for such a
 // worker), else hours × my ₪/h (supplierRate, default 5).
+// My own commission rate (the firm owner sets it in the supplier window):
+// myCommissionRates = [{from, mode:'hour'|'day', rate}], each from its date.
+// The same rule as supplierRateOn / supplierShiftCommission in the manager
+// app — keep them the same. A worker with an override of his own
+// (supplierRate / supplierDayRate) uses myCommission instead.
+function myRateOn(list, date){
+  const d=localYMD(date); let best=null;
+  (list||[]).forEach(x=>{ if(x && (!x.from || x.from<=d) && (!best || String(x.from||'')>=String(best.from||''))) best=x; });
+  return best && best.rate!=null && best.rate!=='' ? best : null;
+}
+function myShiftCommission(list, h, date, seenDays){
+  const r=myRateOn(list, date);
+  if(!r) return h*5;
+  if(r.mode==='day'){ const k=localYMD(date); if(seenDays.has(k)) return 0; seenDays.add(k); return Number(r.rate)||0; }
+  return h*(Number(r.rate)||0);
+}
+function hasOwnCommission(w){ return w.supplierRate!=null || (w.supplierDayRate!=null && Number(w.supplierDayRate)>0); }
+// A worker's month: his override, else the shifts priced by my rate on their dates.
+function myMonthCommission(w, shifts, hours, days){
+  if(hasOwnCommission(w)) return myCommission(w, hours, days);
+  const seen=new Set(); return shifts.reduce((t,s)=>t+(s.hours>0?myShiftCommission(myCommissionRates, s.hours, s.date, seen):0),0);
+}
+function myRateLabel(w){
+  if(w.supplierDayRate!=null && Number(w.supplierDayRate)>0) return tr('₪{0}/day',{0:w.supplierDayRate});
+  if(w.supplierRate!=null) return '₪'+w.supplierRate+'/h';
+  const r=myRateOn(myCommissionRates, new Date());
+  return r ? (r.mode==='day' ? tr('₪{0}/day',{0:r.rate}) : '₪'+r.rate+'/h') : '₪5/h';
+}
 function myCommission(w, hours, days){
   if(w.supplierDayRate!=null && Number(w.supplierDayRate)>0) return days*Number(w.supplierDayRate);
   return hours*(w.supplierRate!=null?w.supplierRate:5);
@@ -1730,20 +1691,20 @@ function renderPayTable(){
   const [year,month]=document.getElementById('hoursExportMonthSel').value.split('-').map(Number);
   const key='m:'+year+'-'+String(month+1).padStart(2,'0');
   const rows=myWorkers.map(w=>{
-    const seen=new Set(), days=new Set(); let hours=0, pay=0;
+    const seen=new Set(), days=new Set(), shifts=[]; let hours=0, pay=0;
     groupPunchesIntoShifts(punchLog.filter(e=>e.workerId===w.id))
       .filter(b=>b.date.getFullYear()===year && b.date.getMonth()===month)
       .forEach(b=>{
         const h=analyzeDayPunches(b.entries,b.date).hours;
         if(h<=0) return;
-        hours+=h; days.add(localYMD(b.date));
+        hours+=h; days.add(localYMD(b.date)); shifts.push({date:b.date, hours:h});
         pay+=shiftPayFor(h,w,b.date.getDay()===6,b.entries[0]&&b.entries[0].clientId,b.date,seen);
       });
     const daily=isDailyPay(w), ov=daily?dayOverride(w,key):null;
     if(ov!=null) pay=ov*dailyRate(w);
     const rate=daily?dailyRate(w):wRegRate(w,(w.clientIds||[])[0]);
-    const com=w.supplierRate!=null?w.supplierRate:5, d=ov!=null?ov:days.size;
-    return {w, hours, days:d, rate:daily?'₪'+rate+'/day':'₪'+rate+'/h', pay, commission:myCommission(w,hours,d)};
+    const d=ov!=null?ov:days.size;
+    return {w, hours, days:d, rate:daily?'₪'+rate+'/day':'₪'+rate+'/h', pay, commission:myMonthCommission(w,shifts,hours,d)};
   }).filter(r=>r.hours>0);
   const el=document.getElementById('payTable');
   if(!rows.length){ el.innerHTML='<div style="color:#8b90a8;font-size:13px">'+tr('No hours this month')+'</div>'; return; }
@@ -1765,9 +1726,8 @@ function runSummaryExport(format){
   const rows = myWorkers.map(w=>{
     const shifts = getWorkerMonthShifts(w.id, year, month);
     const hours = shifts.reduce((s,x)=>s+x.hours,0);
-    const rate = w.supplierRate!=null ? w.supplierRate : 5;
     const days = new Set(shifts.filter(x=>x.hours>0).map(x=>localYMD(x.date))).size;
-    return { label: w.name, hours, rate: w.supplierDayRate!=null ? tr('₪{0}/day',{0:w.supplierDayRate}) : rate, total: myCommission(w, hours, days) };
+    return { label: w.name, hours, rate: myRateLabel(w), total: myMonthCommission(w, shifts, hours, days) };
   }).filter(r=>r.hours>0);
   exportPayableSummary(rows, { title:tr('My hours — payable summary'), filename:'my-hours-summary', format });
 }

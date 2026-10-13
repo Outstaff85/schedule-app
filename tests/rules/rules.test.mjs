@@ -102,6 +102,18 @@ test('workers/clients/suppliers: tenant_admin and staff with "schedule" write, o
   }
 });
 
+test('suppliers: only the owner or a superadmin sets the commission; staff keep it', async () => {
+  const com = [{ from: '2026-10-01', mode: 'hour', rate: 7 }];
+  await assertSucceeds(setDoc(doc(db('ownerA'), 'tenants', A, 'suppliers', 'sc1'), { name: 'Agency', commission: com }));
+  await assertSucceeds(setDoc(doc(db('superadmin'), 'tenants', A, 'suppliers', 'sc2'), { name: 'Agency 2', commission: com }));
+  await assertFails(setDoc(doc(db('staffSched'), 'tenants', A, 'suppliers', 'sc3'), { name: 'New', commission: com }));
+  await assertSucceeds(setDoc(doc(db('staffSched'), 'tenants', A, 'suppliers', 'sc3'), { name: 'New' }));
+  await assertSucceeds(setDoc(doc(db('staffSched'), 'tenants', A, 'suppliers', 'sc1'), { name: 'Agency renamed', commission: com }));
+  await assertFails(setDoc(doc(db('staffSched'), 'tenants', A, 'suppliers', 'sc1'), { name: 'Agency', commission: [{ from: '', mode: 'day', rate: 99 }] }));
+  await assertFails(updateDoc(doc(db('staffAll'), 'tenants', A, 'suppliers', 'sc1'), { commission: [] }));
+  await assertSucceeds(updateDoc(doc(db('ownerA'), 'tenants', A, 'suppliers', 'sc1'), { commission: [] }));
+});
+
 test('punches: any manager-side login of the firm reads and writes', async () => {
   for (const r of ['ownerA', 'staffNone', 'staffAll', 'superadmin']) {
     await assertSucceeds(setDoc(doc(db(r), 'tenants', A, 'punches', 'p-' + r), { workerId: 'w1', type: 'in', ts: new Date() }));

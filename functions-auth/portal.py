@@ -295,7 +295,13 @@ def supplier_action(db, caller, body):
             clients.append(row)
         st = t_ref.collection("settings").document("schedule").get()
         sd = st.to_dict() if st.exists else {}
-        return {"workers": workers, "clients": clients, "suppliers": [], "showPay": pay,
+        # The supplier's own commission rate (set by the firm owner in the
+        # supplier window): [{from, mode: hour|day, rate}] — what the firm owes
+        # this supplier, never anyone's wage.
+        sp = t_ref.collection("suppliers").document(sid).get()
+        com = [{"from": str(x.get("from") or ""), "mode": "day" if x.get("mode") == "day" else "hour", "rate": x.get("rate")}
+               for x in ((sp.to_dict() or {}).get("commission") or [] if sp.exists else []) if isinstance(x, dict)]
+        return {"workers": workers, "clients": clients, "suppliers": [], "showPay": pay, "commission": com,
                 "weekStart": sd.get("weekStart"), "savedAt": sd.get("savedAt")}
 
     if action == "loadPunchLog":

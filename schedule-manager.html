@@ -4049,7 +4049,7 @@ function supplierEditorSub(sp){
 // This month's commission payable to a supplier (the same figure as Accounting → Payable by supplier).
 function supplierMonthPayable(sp){
   let payable=0;
-  Object.values(salaryEntriesFor('month').byWorker||{}).forEach(e=>{ const wc=workers.find(w=>w.id===e.workerId); if(wc&&wc.supplierId===sp.id) payable+=commissionFor(wc,e,supplierCommissionRate(wc,sp.id),supplierDayCommission(wc,sp.id)); });
+  Object.values(salaryEntriesFor('month').byWorker||{}).forEach(e=>{ const wc=workers.find(w=>w.id===e.workerId); if(wc&&wc.supplierId===sp.id) payable+=supplierCommission(wc,e,sp.id); });
   return payable;
 }
 function deleteSupplierFromEditor(){
@@ -4061,14 +4061,24 @@ function supplierEditorExtraHtml(sp){
   const SEC=(key,icon,title,body,sum)=>`<section class="og-sec" data-sec="${key}"${sum?` data-summary="${esc(sum)}"`:''}><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ${icon}"></i></span><span class="og-sec-t"><b>${esc(tr(title))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">${body}</div></section>`;
   const mine=workers.filter(w=>w.supplierId===sp.id), hours=workersMonthHours(), total=mine.reduce((t,w)=>t+(hours[w.id]||0),0);
   const payable=supplierMonthPayable(sp);
+  // The supplier's own rate (per hour / per day, applies from a date): only the
+  // firm owner and the super-admin change it; everyone else reads it.
+  const cur=supplierRateOn(sp.commission, new Date()), canRate=isFirmAdminSession();
+  const rateText=r=>r?('₪'+r.rate+(r.mode==='day'?tr('/day'):tr('/h'))):'₪'+SUPPLIER_DEFAULT_RATE+tr('/h');
+  const hist=[...(sp.commission||[])].filter(x=>x&&x.rate!=null&&x.rate!=='').sort((a,b)=>String(b.from||'').localeCompare(String(a.from||'')));
   const commission=`<div class="og-figs"><div><b>${esc(fmtHoursShort(total))}</b><small>${esc(tr('hours'))}</small></div><div><b>₪${esc(fmtMoneyShort(payable))}</b><small>${esc(tr('commission'))}</small></div><div><b>${mine.length}</b><small>${esc(tr('workers'))}</small></div></div>
-    <div class="wc-line">${esc(tr('₪{0} per hour by default; per-worker and per-day commission is set in Accounting.',{0:SUPPLIER_DEFAULT_RATE}))}</div>`;
+    ${canRate?`<div class="seg-toggle" id="sComMode">${['hour','day'].map(m=>`<button type="button" data-m="${m}" class="${(cur&&cur.mode==='day'?'day':'hour')===m?'on':''}" onclick="document.querySelectorAll('#sComMode button').forEach(b=>b.classList.toggle('on',b===this))">${esc(tr(m==='day'?'Per day':'Per hour'))}</button>`).join('')}</div>
+    <div class="field-row"><div class="field"><label>${esc(tr('Rate'))}</label><div class="rate-in"><input type="number" min="0" step="0.5" id="sComRate" value="${cur?esc(String(cur.rate)):''}" placeholder="${SUPPLIER_DEFAULT_RATE}"><span>₪</span></div></div>
+      <div class="field"><label>${esc(tr('Applies from'))}</label><input type="date" id="sComFrom" value="${esc(localYMD(new Date()))}"></div></div>`
+      :`<div class="wc-line">${esc(tr('Rate'))}: <b class="fig">${esc(rateText(cur))}</b>${cur&&cur.from?' · '+esc(tr('from {0}',{0:fmtDMY(cur.from)})):''}</div>`}
+    ${hist.length>1?`<div class="wc-line" style="color:var(--ink-2)">${hist.slice(1,4).map(x=>esc(rateText(x)+(x.from?' '+tr('from {0}',{0:fmtDMY(x.from)}):''))).join(' · ')}</div>`:''}
+    <div class="wc-line">${esc(tr('Empty = ₪{0} per hour. A worker\'s own commission in Accounting wins over this rate.',{0:SUPPLIER_DEFAULT_RATE}))}</div>`;
   const users=(loadAdminCache('users_'+activeTenantIdForAdmin())||[]).filter(u=>u.role==='supplier'&&u.supplierId===sp.id);
   const SECT={dashboard:'Dashboard', workers:'My Workers', hours:'My Hours'}, can=isFirmAdminSession();
   const login=(users.length?users.map(u=>`<div class="wc-line" style="margin-bottom:2px"><i class="ti ti-user"></i><span>${esc(u.fullName||u.username)} · ${esc(u.username)}</span></div><div class="check-grid" style="margin:6px 0 10px">${Object.keys(SECT).map(k=>`<label class="check-chip"><input type="checkbox" data-uid="${esc(u.id)}" data-field="supplierSections" value="${k}"${can?'':' disabled'}${(u.supplierSections||Object.keys(SECT)).includes(k)?' checked':''} onchange="saveLoginTicks(this)"><span class="chip-text"><span>${esc(tr(SECT[k]))}</span></span></label>`).join('')}<label class="check-chip"><input type="checkbox" data-uid="${esc(u.id)}" data-field="showPay" value="1"${can?'':' disabled'}${u.showPay!==false?' checked':''} onchange="saveLoginTicks(this)"><span class="chip-text"><span>${esc(tr("Sees own workers' pay"))}</span></span></label></div><div class="check-grid" style="margin:0 0 10px">${Object.keys(HOUR_PERM_LABELS).map(p=>`<label class="check-chip"><input type="checkbox" data-uid="${esc(u.id)}" data-field="hourPerms" value="${esc(p)}"${can?'':' disabled'}${(Array.isArray(u.hourPerms)?u.hourPerms:HOUR_DEFAULT).includes(p)?' checked':''} onchange="saveLoginTicks(this)"><span class="chip-text"><span>${esc(tr(HOUR_PERM_LABELS[p]))}</span></span></label>`).join('')}</div>`).join(''):`<div class="wc-line">${esc(tr('No portal login yet.'))}</div>`)
     +(can?`<button type="button" class="gbtn" onclick="newLoginFor('supplier','${esc(sp.id)}')"><i class="ti ti-user-plus"></i><span>${esc(tr('New portal login'))}</span></button>`:'');
   const plates=mine.length?mine.map(w=>t3Line({c:isActiveWorker(w)?'var(--ok)':'var(--bad)', av:t3Av(w), name:`<span title="${esc(w.name)}">${esc(shortName(w.name))}</span>`, right:`<span class="r">${esc(fmtHoursShort(hours[w.id]))}</span>`})).join(''):`<div class="t3-empty">${esc(tr('No workers'))}</div>`;
-  return SEC('commission','ti-coin','Commission',commission,'₪'+SUPPLIER_DEFAULT_RATE+tr('/h')+' · '+tr('{0} this month',{0:'₪'+fmtMoneyShort(payable)}))
+  return SEC('commission','ti-coin','Commission',commission,rateText(cur)+' · '+tr('{0} this month',{0:'₪'+fmtMoneyShort(payable)}))
     +SEC('portal','ti-key','Portal login',login,users.length?users.map(u=>u.username).join(', '):tr('No portal login yet.'))
     +SEC('workers','ti-users-group','Workers',plates,mine.length===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:mine.length,1:''}));
 }
@@ -5591,6 +5601,21 @@ function showSupplierModal(s){
   document.getElementById('supplierOverlay').classList.add('open');
   ogSections(document.getElementById('supplierModal'), editingSupplierId?null:'supplier');
 }
+// The Commission fields of the supplier window (owner / super-admin only): a
+// changed rate or mode becomes a new entry of sp.commission from its date
+// (an entry with the same date is replaced); an emptied rate from a date
+// goes back to the default from then on.
+function supplierCommissionFromForm(sp){
+  const rEl=document.getElementById('sComRate'); if(!rEl||!isFirmAdminSession()) return;
+  const v=rEl.value.trim(), mode=(document.querySelector('#sComMode button.on')||{}).dataset?.m==='day'?'day':'hour';
+  const from=(document.getElementById('sComFrom')||{}).value||localYMD(new Date());
+  const cur=supplierRateOn(sp.commission, new Date(from+'T12:00'));
+  const rate=v===''?null:(parseFloat(v)||0);
+  if(cur ? (Number(cur.rate)===rate && (cur.mode||'hour')===mode) : rate==null) return;
+  const list=(sp.commission||[]).filter(x=>x&&String(x.from||'')!==from);
+  list.push({from, mode, rate});
+  sp.commission=list.sort((a,b)=>String(a.from||'').localeCompare(String(b.from||'')));
+}
 function saveSupplier(){
   const name=document.getElementById('sName').value.trim();
   if(!name){ document.getElementById('sName').focus(); return; }
@@ -5603,6 +5628,7 @@ function saveSupplier(){
   if(editingSupplierId){
     const idx=suppliers.findIndex(x=>x.id===editingSupplierId);
     if(idx>=0) suppliers[idx]={...suppliers[idx],name,phone,bank,bankBranch,accountNumber,companyNumber,contactPerson,color:selSupplierColor};
+    if(idx>=0) supplierCommissionFromForm(suppliers[idx]);
     showToast(tr('{0} updated!',{0:(name)}));
   } else {
     suppliers.push({id:uid(),name,phone,bank,bankBranch,accountNumber,companyNumber,contactPerson,color:selSupplierColor});
@@ -6471,10 +6497,11 @@ function renderFirmsRows(listEl, tenants){
   __firmsCache = tenants;
   if(!tenants.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">'+tr('No firms yet — create the first one.')+'</div>'; return; }
   // Template 3: a line per firm — green while active, amber when disabled or
-  // its Form 101 profile is incomplete. A tap opens the firm; ✎ (edit),
-  // pause / play and ✕ (delete) at the right.
+  // its Form 101 profile is incomplete. A tap opens the firm; ✎ (edit) and a bare ⋮
+  // (Disable / Enable, Delete last — through the Undo snack) at the right.
   const when = v => { const d = new Date(v); return v && !isNaN(d) ? d.toLocaleString(uiLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : ''; };
-  renderPagedList(listEl, 'firms:' + listEl.id, '', tenants, t => {
+  __firmsRowsEl = listEl;
+  renderPagedList(listEl, 'firms:' + listEl.id, '', tenants.filter(t => !__firmDelPending.has(t.tenantId)), t => {
     const missing = firmProfileMissing(t), off = t.active===false, id = esc(t.tenantId);
     const flags = [off ? `<span style="color:var(--amber)">${tr('disabled')}</span>` : '',
       missing.length ? `<span style="color:var(--amber)" title="${tr('Not filled in: {0}',{0:esc(missing.join(', '))})}">${tr('profile incomplete')}</span>` : ''].filter(Boolean).join(' · ');
@@ -6482,9 +6509,26 @@ function renderFirmsRows(listEl, tenants){
       av:`<div class="t3-av" style="background:var(--bg3);color:var(--text2)"><i class="ti ti-building-skyscraper"></i></div>`,
       name: esc(t.companyName || '(no name)'),
       sub: [tr('{0} workers · {1} clients{2}',{0:(t.workerCount||0),1:(t.clientCount||0),2:(when(t.savedAt)?' · '+tr('saved {0}',{0:esc(when(t.savedAt))}):'')}), flags],
-      attrs:`onclick="tapEdit(event,this,()=>switchToTenant('${id}'),()=>openEditFirmForm('${id}'))" onpointerdown="longPress(event,this,()=>openEditFirmForm('${id}'))"`,
-      right:`<button class="t3-ib" type="button" onclick="event.stopPropagation();openEditFirmForm('${id}')" title="${tr('Edit')}"><i class="ti ti-pencil"></i></button><button class="t3-ib" type="button" onclick="event.stopPropagation();toggleTenantActive('${id}',${off})" title="${off?tr('Enable'):tr('Disable')}"><i class="ti ti-${off?'player-play':'player-pause'}"></i></button><button class="t3-x" type="button" title="${tr('Delete')}" aria-label="${tr('Delete')}" onclick="event.stopPropagation();confirmDeleteTenant('${id}','${esc(t.companyName||t.tenantId)}')">✕</button>`});
+      attrs:`data-tid="${id}" onclick="tapEdit(event,this,()=>switchToTenant('${id}'),()=>openEditFirmForm('${id}'))" onpointerdown="longPress(event,this,()=>openEditFirmForm('${id}'))"`,
+      sel: t.tenantId,
+      right:`<button class="t3-ib" type="button" onclick="event.stopPropagation();openEditFirmForm('${id}')" title="${esc(tr('Edit'))}" aria-label="${esc(tr('Edit'))}"><i class="ti ti-pencil"></i></button>`,
+      menu:[{icon: off?'ti-player-play':'ti-player-pause', label: off?tr('Enable'):tr('Disable'), fn:()=>toggleTenantActive(t.tenantId, off)},
+        {icon:'ti-trash', label:tr('Delete'), danger:true, fn:b=>deleteTenantUndo([t.tenantId], [b.closest('.t3-line')])}]});
   });
+  selectRoot('firms', listEl);
+}
+// Select on the firms (always on): Disable / Enable the ticked firms, Delete them.
+let __firmsRowsEl = null;
+const __firmDelPending = new Set();
+function startFirmsSelect(){
+  if(!__firmsRowsEl || getSession()?.role !== 'superadmin') return;
+  startSelect({key:'firms', root:__firmsRowsEl, ids:()=>(__firmsCache||[]).filter(t=>!__firmDelPending.has(t.tenantId)).map(t=>t.tenantId),
+    actions:[{icon:'ti-player-pause', label:tr('Disable'), fn:ids=>setTenantsActive(ids,false)}, {icon:'ti-player-play', label:tr('Enable'), fn:ids=>setTenantsActive(ids,true)}],
+    del:(ids,els)=>deleteTenantUndo(ids,els)});
+}
+async function setTenantsActive(ids, active){
+  for(const tenantId of ids){ try{ await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'setTenantActive', ...gsAuth(), tenantId, active }) }); }catch(e){} }
+  showToast(active ? tr('Firm enabled') : tr('Firm disabled')); renderFirmsList(__firmsListTarget);
 }
 async function renderFirmsList(targetId){
   __firmsListTarget = targetId || 'firmsList';
@@ -7480,21 +7524,25 @@ async function toggleTenantActive(tenantId, nextActive){
   }catch(e){ showToast(tr('No network')); }
 }
 
-// Irreversible: deletes the firm's profile, logins, schedule, punch history,
-// and every worker file in Storage. Two-step confirmation (a plain
-// confirm(), then typing the exact company name) — matches the weight of
-// what's being destroyed, not just a single accidental click.
-async function confirmDeleteTenant(tenantId, companyName){
-  if(!confirm(tr('Delete the firm «{0}» PERMANENTLY? Its schedule, punch history, worker files and logins will be deleted.',{0:(companyName)}))) return;
-  const typed = prompt(tr('To confirm, type the exact firm name: {0}',{0:(companyName)}));
-  if(typed !== companyName){ showToast(tr('The name didn\'t match — cancelled')); return; }
-  try{
-    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'deleteTenant', ...gsAuth(), tenantId }) });
-    const json = await res.json();
-    if(!json || json.error){ showToast((json&&json.error)||tr('Error')); return; }
-    showToast(tr('Firm «{0}» deleted',{0:(companyName)}));
-    renderFirmsList(__firmsListTarget);
-  }catch(e){ showToast(tr('No network')); }
+// Deletes firms — irreversible once it runs: the profile, logins, schedule,
+// punch history and every worker file in Storage. Delete never asks (stage 13,
+// the owner's rule for every list): the line collapses behind the Undo snack
+// and deleteTenant runs only when its 5 s are up.
+function deleteTenantUndo(ids, els){
+  ids.forEach(id => __firmDelPending.add(id));
+  const name = ids.length === 1 ? (((__firmsCache||[]).find(t => t.tenantId === ids[0]) || {}).companyName || '') : tr('{0} firms', {0: ids.length});
+  undoDelete({els, label: name,
+    undo: () => { ids.forEach(id => __firmDelPending.delete(id)); renderFirmsList(__firmsListTarget); },
+    commit: async () => {
+      let ok = 0;
+      for(const tenantId of ids){
+        try{ const json = await (await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'deleteTenant', ...gsAuth(), tenantId }) })).json();
+          if(json && !json.error) ok++; else showToast((json&&json.error)||tr('Error')); }catch(e){ showToast(tr('No network')); }
+      }
+      ids.forEach(id => __firmDelPending.delete(id));
+      if(ok) showToast(ok === 1 && ids.length === 1 ? tr('Firm «{0}» deleted',{0:name}) : tr('{0} firms deleted',{0:ok}));
+      renderFirmsList(__firmsListTarget);
+    }});
 }
 
 let __editingFirmTenantId = null;
@@ -8176,7 +8224,7 @@ window.addEventListener('pagehide', () => finishUndo(true));
 // calls selectRoot(key, root) after drawing its rows: that starts its Select
 // (SELECT_STARTERS[key], which checks the rights) or keeps the ticks across a redraw.
 let __selState = null;
-const SELECT_STARTERS = {workers: () => startWorkerSelect(), clients: () => startClientSelect(), suppliers: () => startSupplierSelect(), users: () => startUsersSelect(), pendingHours: () => startPendingSelect()};
+const SELECT_STARTERS = {firms: () => startFirmsSelect(), workers: () => startWorkerSelect(), clients: () => startClientSelect(), suppliers: () => startSupplierSelect(), users: () => startUsersSelect(), pendingHours: () => startPendingSelect()};
 function startSelect(o){
   const keep = __selState && __selState.key === o.key ? __selState.picked : null;
   if(!keep) endSelect();
@@ -8541,6 +8589,9 @@ function salaryEntriesFor(period){
       // correctly, even though this table shows one summed row per worker.
       const cid=entries[0]&&entries[0].clientId;
       byWorker[workerId].total+=shiftPayFor(h,wc,isSat,cid,date,byWorker[workerId].seen);
+      // The supplier's own commission, shift by shift (its rate on that date).
+      if(wc && wc.supplierId){ const sp=suppliers.find(s=>s.id===wc.supplierId), bw=byWorker[workerId];
+        bw.supCom=(bw.supCom||0)+supplierShiftCommission(sp&&sp.commission, h, date, bw.supDays||(bw.supDays=new Set())); }
       byWorker[workerId].dayKeys.add(localYMD(date));
       if(cid) byWorker[workerId].clientHours[cid]=(byWorker[workerId].clientHours[cid]||0)+h;
       // Billable-by-client — a parallel, independent figure (see
@@ -8702,6 +8753,37 @@ function commissionFor(w, e, hourRate, dayRate){
   if(isDailyPay(w) && Number(dayRate)>0) return (Number(e.daysUsed!=null?e.daysUsed:e.days)||0)*Number(dayRate);
   return (Number(e.hours)||0)*(Number(hourRate)||0);
 }
+// The supplier's own commission (stage 13, set in the supplier window by the
+// firm owner or the super-admin): sp.commission = [{from:'YYYY-MM-DD'|'',
+// mode:'hour'|'day', rate}] — each entry applies from its date on.
+// supplierRateOn: the newest entry whose from ≤ the date (null = none).
+// supplierShiftCommission: one shift's commission when the worker has no
+// override of his own — by the hour (hours × rate), by the day (the rate once
+// per day worked, seenDays), or the default ₪SUPPLIER_DEFAULT_RATE/h.
+// The same rule in the supplier portal (myShiftCommission) — keep them the same.
+function supplierRateOn(list, date){
+  const d=localYMD(date); let best=null;
+  (list||[]).forEach(x=>{ if(x && (!x.from || x.from<=d) && (!best || String(x.from||'')>=String(best.from||''))) best=x; });
+  return best && best.rate!=null && best.rate!=='' ? best : null;  // an emptied rate = the default from its date
+}
+function supplierShiftCommission(list, h, date, seenDays){
+  const r=supplierRateOn(list, date);
+  if(!r) return h*SUPPLIER_DEFAULT_RATE;
+  if(r.mode==='day'){ const k=localYMD(date); if(seenDays.has(k)) return 0; seenDays.add(k); return Number(r.rate)||0; }
+  return h*(Number(r.rate)||0);
+}
+// A worker's own commission override for this supplier (Accounting → rates)
+// wins over the supplier's rate.
+function workerHasSupplierOverride(w, sid){
+  const ov=w && w.supplierRates && w.supplierRates[sid];
+  return !!ov && (ov.rate!=null || (isDailyPay(w) && Number(ov.dayRate)>0));
+}
+// A Salary row's supplier commission: the worker's override (commissionFor),
+// else the per-shift sum of the supplier's own rate (e.supCom, salaryEntriesFor).
+function supplierCommission(wc, e, sid){
+  if(workerHasSupplierOverride(wc, sid)) return commissionFor(wc, e, supplierCommissionRate(wc, sid), supplierDayCommission(wc, sid));
+  return Number(e.supCom)||0;
+}
 // "Payable by supplier" = hours × the supplier's own flat commission rate —
 // deliberately NOT e.total (the worker's real wage, computed via
 // effectiveRates()/shiftPay()) — see this file's own standing principle:
@@ -8727,7 +8809,7 @@ function openAccDetail(title, sub, rows, total){
 function openSupplierPayDetail(sid){
   const sup=suppliers.find(s=>s.id===sid); if(!sup) return;
   const list=__lastPayEntries.map(e=>({e,wc:workers.find(w=>w.id===e.workerId)})).filter(x=>x.wc&&x.wc.supplierId===sid);
-  const rows=list.map(({e,wc})=>({n:e.worker,h:tr('{h}h',{h:e.hours.toFixed(1)}),v:commissionFor(wc,e,supplierCommissionRate(wc,sid),supplierDayCommission(wc,sid)),hrs:e.hours}))
+  const rows=list.map(({e,wc})=>({n:e.worker,h:tr('{h}h',{h:e.hours.toFixed(1)}),v:supplierCommission(wc,e,sid),hrs:e.hours}))
     .sort((a,b)=>b.v-a.v).map(r=>({...r,m:'₪'+r.v.toFixed(0)}));
   openAccDetail(`<i class="ti ti-truck-delivery" style="color:${sup.color}"></i> ${esc(sup.name)}`, tr('Payable by supplier')+' · '+salaryPeriodLabel((document.getElementById('salaryPeriod')||{}).value||'week'), rows,
     {h:tr('{h}h',{h:rows.reduce((t,r)=>t+r.hrs,0).toFixed(1)}), m:'₪'+rows.reduce((t,r)=>t+r.v,0).toFixed(0)});
@@ -8752,7 +8834,7 @@ function renderSupplierPayable(entries){
     if(!sid) return;
     if(!bySupplier[sid]) bySupplier[sid]={hours:0,total:0};
     bySupplier[sid].hours+=e.hours;
-    bySupplier[sid].total+=commissionFor(wc,e,supplierCommissionRate(wc,sid),supplierDayCommission(wc,sid));
+    bySupplier[sid].total+=supplierCommission(wc,e,sid);
   });
   const rows=suppliers.filter(s=>bySupplier[s.id]&&bySupplier[s.id].hours>0&&bySupplier[s.id].total>0).map(s=>({sup:s,...bySupplier[s.id]}));
   __lastSupplierPayableRows=[];
