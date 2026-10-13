@@ -45,7 +45,7 @@ The look the user chose on 2026-10-12 for every page (manager app, supplier port
 - Greeting under the header (manager) and on the punch page: "Good morning / Good afternoon / Good evening / Good night, <first name>" by the device's local time (5–12, 12–17, 17–21, 21–5). No box, no summary line. A small animated icon right after the name: sunrise over a horizon, a full sun with turning rays, a pink sunset, a crescent moon with two twinkling stars.
 - Notifications panel (glass, with a tail): newest first; icon in its importance color; title, one detail line, time; unread ones with a glowing cyan dot; "Mark all read" (remembered per manager). Sources: expiring visa/documents, contract ending, no punch on a shift, hours waiting for approval, a client approved a month. A tap opens what it is about.
 
-## Weather in the greeting (planned)
+## Weather in the greeting (stage 12, built)
 - The greeting icon can follow the real weather (clear, clouds, rain, thunder, snow, fog) with the temperature ("🌧 14°"). Source: OpenWeatherMap free tier (1,000 calls a day) through a new Cloud Function; the API key in Secret Manager, never in a page. Location: the worker's site coordinates on the punch page, the firm's main site for managers. Cached 30 minutes per area. When the weather can't be read, the time-of-day icon shows.
 
 ## Language button (every page)
@@ -89,7 +89,7 @@ How a run works (a run = one session, started by the Routine below or by hand wi
 - [x] 11 Sign-in
 - [x] 11a WhatsApp reminder (added by the owner 2026-10-12; after stage 11, before the deferred weather)
 - [x] 13 Conformance pass — every page made to match the design system exactly (below); the owner gave the go on 2026-10-13; done group by group
-- [ ] 12 Weather — **deferred**: done last, only after the owner puts the OpenWeatherMap key in Secret Manager and says so; the loop stops after stage 11
+- [x] 12 Weather — the owner put the OpenWeatherMap key in Secret Manager (`OPENWEATHER_API_KEY`) on 2026-10-13; the `weather` function, the weather icons and the temperature in the greeting
 
 ### Stages
 Each stage: tested with (`npm test` in `tests/rules`, `test:auth`, the browser tests, `tests/i18n/check.js`, `tests/icons/check.js`), every new text in the dictionaries with Hebrew, the duplicated helpers mirrored in every page (CLAUDE.md → Duplicated on purpose), `service-worker.js` CACHE bumped, docs updated; merged only after the owner's OK. Later stages build on the shared pieces of stage 1.

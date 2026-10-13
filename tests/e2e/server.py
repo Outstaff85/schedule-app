@@ -28,6 +28,9 @@ def _fake_anthropic(url, payload, headers):
         v = 'חיפה'
     return 200, json.dumps({'content': [{'type': 'text', 'text': json.dumps({'value': v, 'page': 0}, ensure_ascii=False)}]})
 main._anthropic_post = _fake_anthropic
+# OpenWeatherMap stand-in for the greeting (stage 12): light rain, 14.4°.
+os.environ['OPENWEATHER_API_KEY'] = 'owm-browser-test'
+main._owm_get = lambda url, params: (200, {'weather': [{'id': 500}], 'main': {'temp': 14.4}})
 
 def seed():
     _clear()
@@ -90,7 +93,7 @@ class H(BaseHTTPRequestHandler):
             docs = [d.to_dict() for d in DB.collection('tenants').document(T1).collection('punches').stream()]
             status, data = 200, json.dumps({'n': len(docs), 'ids': sorted(d['id'] if isinstance(d.get('id'), str) else str(d.get('id')) for d in docs), 'days': [d.get('day') for d in docs]}).encode()
         else:
-            fn = {'/login': main.login, '/users_admin': main.users_admin, '/punch': main.punch, '/supplier': main.supplier, '/hours': main.hours, '/ai_read': main.ai_read}[self.path]
+            fn = {'/login': main.login, '/users_admin': main.users_admin, '/punch': main.punch, '/supplier': main.supplier, '/hours': main.hours, '/ai_read': main.ai_read, '/weather': main.weather}[self.path]
             hdr = {'Content-Type': 'application/json'}
             if self.headers.get('Authorization'): hdr['Authorization'] = self.headers['Authorization']
             with app.test_request_context('/', method='POST', data=raw, headers=hdr):

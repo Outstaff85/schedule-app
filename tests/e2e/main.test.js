@@ -24,7 +24,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       if (u.startsWith('http://127.0.0.1')) return r.continue();
       if (u === FB + 'firebase-app.js') return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:BUNDLE});
       if (u.startsWith(FB)) return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:`export * from '${FB}firebase-app.js';`});
-      const fn = (u.match(/cloudfunctions\.net\/(login|users_admin|punch|supplier|hours|ai_read)$/) || [])[1];
+      const fn = (u.match(/cloudfunctions\.net\/(login|users_admin|punch|supplier|hours|ai_read|weather)$/) || [])[1];
       if (fn) {
         if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'POST'}});
         const h = r.request().headers();
@@ -939,6 +939,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   ok(/^Good (morning|afternoon|evening|night)/.test(nt.greet) && nt.icon, 'today: the greeting by time of day with its icon ' + JSON.stringify(nt));
+  ok(await waitFor(p, () => { const g = document.querySelector('#ogGreet h3'); return !!g && /14°/.test(g.textContent) && !!g.querySelector('svg.gic .drop'); }), 'today: the greeting shows the weather at the firm\'s main site — the rain icon and 14°');
   ok(nt.bell && nt.before >= 1 && nt.item && nt.after === 0 && nt.noNew && nt.kept === 0 && nt.opens, 'notifications: the bell counts, the panel lists the expired ID as new, Mark all read is kept on the account, a tap opens the worker\'s notices ' + JSON.stringify(nt));
   // Worker card: a click only reads; a double click, a long touch or its ✎ opens the edit form;
   // closing it (a tap outside saves it) brings the card back.
@@ -1442,6 +1443,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(shortPress.result === '', 'punch: a short press sends nothing ' + JSON.stringify(shortPress));
   const tiles = await p.evaluate(() => ({next: document.getElementById('tileNextShift').textContent, hours: document.getElementById('tileMonthHours').textContent, greet: document.getElementById('punchGreeting').innerHTML}));
   ok(tiles.next !== '—' && /Avi/.test(tiles.greet) && /gic/.test(tiles.greet), 'punch: greeting with the first name and its icon; My Schedule tile shows the next shift ' + JSON.stringify(tiles));
+  ok(await waitFor(p, () => /14°/.test(document.getElementById('punchGreeting').textContent) && !!document.querySelector('#punchGreeting svg.gic .drop')), 'punch: the greeting shows the weather at the worker\'s site — the rain icon and 14°');
   await sleep(1500);
   const after = await srv('/punches');
   ok(after.n === before + 1, 'punch: saved through the punch function (' + before + ' → ' + after.n + ')');
