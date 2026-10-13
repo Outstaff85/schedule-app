@@ -20,6 +20,8 @@ Firestore database. The logic is in core.py, files.py, portal.py and ai.py.
                manager's (the month's approvals, fixes accepted / rejected): hours.py
   ai_read      POST {action, image, ...} with a manager's ID token: the AI
                document reading actions (ai.py)
+  weather      POST {token} (worker punch link) or a manager's ID token: the
+               weather at the worker's site / the firm's main site (weather.py)
 
 Minting custom tokens needs the runtime service account to hold
 "Service Account Token Creator" (granted 2026-10-01).
@@ -40,11 +42,13 @@ import core
 import files
 import hours as hours_mod
 import portal
+import weather as weather_mod
 
 options.set_global_options(region="europe-west3", memory=options.MemoryOption.MB_256)
 
 _CORS = options.CorsOptions(cors_origins="*", cors_methods=["post"])
 ANTHROPIC_API_KEY = SecretParam("ANTHROPIC_API_KEY")
+OPENWEATHER_API_KEY = SecretParam("OPENWEATHER_API_KEY")
 _db_client = None
 _db_lock = threading.Lock()  # ai_read serves several requests at once (threads)
 
@@ -248,5 +252,37 @@ def ai_read(req: https_fn.Request) -> https_fn.Response:
         if meta.get("tries"):
             result["_meta"] = meta
         return _json(result)
+    except Exception as e:
+        return _json({"error": str(e)}, 500)
+
+
+def _owm_get(url, params):
+    """(status, JSON body) of an OpenWeatherMap GET; the tests replace it."""
+    r = requests.get(url, params=params, timeout=8)
+    try:
+        return r.status_code, r.json()
+    except ValueError:
+        return r.status_code, None
+
+
+@https_fn.on_request(cors=_CORS, timeout_sec=20, concurrency=20, cpu=1, secrets=[OPENWEATHER_API_KEY])
+def weather(req: https_fn.Request) -> https_fn.Response:
+    """The weather in the greeting (weather.py): the worker punch page sends
+    its link token, the manager app its ID token. Only {kind, temp} goes out;
+    {} when it can't be read (the page keeps its time-of-day icon)."""
+    if req.method != "POST":
+        return _json({"error": "POST only"}, 405)
+    body = _body(req)
+    caller = None
+    if not body.get("token"):
+        decoded = _verified(req)
+        if not decoded:
+            return _json({"error": E_SESSION}, 401)
+        if decoded.get("role") not in ("superadmin", "tenant_admin", "staff", "hr"):
+            return _json({})
+        tid = body.get("asTenantId") if decoded.get("role") == "superadmin" else decoded.get("tenantId")
+        caller = {"tenantId": tid or None}
+    try:
+        return _json(weather_mod.weather_action(_db(), body, caller, (OPENWEATHER_API_KEY.value or "").strip(), _owm_get))
     except Exception as e:
         return _json({"error": str(e)}, 500)

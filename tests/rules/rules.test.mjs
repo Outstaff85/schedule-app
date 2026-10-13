@@ -191,6 +191,13 @@ test('password hashes, usernames and punch-link tokens: unreachable for everyone
   }
 });
 
+test('the weather cache: written and read by the weather function only', async () => {
+  for (const r of ['superadmin', 'ownerA', 'staffAll', 'supplierA', 'anon']) {
+    await assertFails(getDoc(doc(db(r), 'weatherCache', '32.0_34.8')));
+    await assertFails(setDoc(doc(db(r), 'weatherCache', '32.0_34.8'), { kind: 'clear', temp: 20 }));
+  }
+});
+
 test('telemetry: any signed-in caller appends, only superadmin reads and deletes (Reset)', async () => {
   await assertSucceeds(addDoc(collection(db('staffNone'), 'errors'), { message: 'x' }));
   await assertSucceeds(addDoc(collection(db('supplierA'), 'timings'), { kind: 'open' }));
