@@ -79,7 +79,8 @@ The per-worker and per-client figures come from `salaryEntriesFor(period)` → `
   3. Per worker it sums hours, days worked and regular / OT / Saturday hours.
   4. **Pay** per shift = `shiftPay(h, worker, isSat, clientId of the shift's first punch)`.
   5. **Travel** = `travelPay(w, days, months)`: `w.travelAllowance` ₪ × days worked (`daysUsed`, so a daily worker's days set by hand count) + `w.travelMonthly` ₪ once for each calendar month with a day worked. Travel is never part of the wage (`shiftPayFor`).
-  6. In parallel, `byClient[clientId]` sums hours and `clientBillPay()` for shifts that have a `clientId`.
+  6. For a worker with a supplier, `e.supCom` sums the supplier's own commission shift by shift (`supplierShiftCommission(sp.commission, h, date, e.supDays)` — the rate on that shift's date).
+  7. In parallel, `byClient[clientId]` sums hours and `clientBillPay()` for shifts that have a `clientId`.
 - **Results:**
   - `__lastSalaryEntries` holds the per-worker rows (feeds Payable by supplier);
   - `__lastClientBillEntries` holds the per-client rows (feeds Billable by client).
@@ -107,11 +108,12 @@ One row per (worker, assigned client). Empty inputs show the resolved rate as a 
 
 ### Supplier commission
 
-- **Rate:** `SUPPLIER_DEFAULT_RATE` = 5 ₪/h. `supplierCommissionRate(w, sid)` returns `w.supplierRates[sid].rate` if set, otherwise the default. **Daily rate:** `supplierDayCommission(w, sid)` returns `w.supplierRates[sid].dayRate` if set, else `null`; a fixed ₪ per day worked for a worker paid by the day.
+- **The supplier's own rate:** `sp.commission` = `[{from:'YYYY-MM-DD'|'', mode:'hour'|'day', rate}]`, set in the supplier window by the firm owner or the super-admin ([suppliers.md](suppliers.md)); each entry applies from its date. `supplierRateOn(list, date)` → the newest entry whose `from` ≤ the date (an entry with an empty rate = back to the default; none → `null`). `supplierShiftCommission(list, h, date, seenDays)` → one shift: by the hour h × rate, by the day the rate once per day worked (`seenDays`), no rate `SUPPLIER_DEFAULT_RATE` (5) × h.
+- **Worker override:** `supplierCommissionRate(w, sid)` returns `w.supplierRates[sid].rate` if set, otherwise the default; `supplierDayCommission(w, sid)` returns `w.supplierRates[sid].dayRate` if set, else `null` (a fixed ₪ per day worked for a worker paid by the day). `workerHasSupplierOverride(w, sid)`: a `rate`, or a `dayRate` > 0 on a daily-paid worker.
 - **Matrix:** `renderSupplierRateMatrix()` — one row per worker with a supplier and two inputs: "Commission ₪/h" and "₪/day (daily workers)" (empty for a daily worker = hours × ₪/h). `setSupplierRateOverride()` writes it, then redraws the matrix and the payable table.
-- **Commission:** `commissionFor(w, e, hourRate, dayRate)` — a worker's commission for one Salary row: if the worker is paid by the day (`isDailyPay`) and a day rate is set, days × day rate; else hours × hour rate (the supplier's default or override).
+- **Commission:** `supplierCommission(w, e, sid)` — a worker's supplier commission for one Salary row: with an override, `commissionFor(w, e, hourRate, dayRate)` (paid by the day with a day rate: days × day rate; else hours × hour rate); otherwise `e.supCom` (the supplier's own rate, shift by shift). `commissionFor` also prices the HR commission.
 - **Payable by supplier:** `renderSupplierPayable(entries)`:
-  - per supplier, `commissionFor` with the supplier's rates (never the worker's wage); stored in `__lastSupplierPayableRows` for the export buttons;
+  - per supplier, `supplierCommission` per worker (never the worker's wage); stored in `__lastSupplierPayableRows` for the export buttons;
   - Excel / PDF icons in the section head → `exportPayableSummary()`;
   - **only the suppliers with hours and a commission** in the period; workers without a supplier are left out, and with no row the section (`#accSecPayable`) is hidden (user request 2026-10-11). The same holds for Payable by HR (only HRs with hours and a commission rate, `#accSecHrPayable`) and Billable by client (only clients with hours and a billing rate, `#accSecBillable`); Salary lists only workers with shifts.
 
