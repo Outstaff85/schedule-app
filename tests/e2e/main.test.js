@@ -558,15 +558,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(dates.length === 2 && asTime(dates[0]) > asTime(dates[1]), 'date filter: newest day first (' + dates.join(', ') + ')');
   const c2rows = await p.evaluate(() => { document.getElementById('adminFilterClient').value='c2'; renderAdmin(); return document.getElementById('adminCount').textContent; });
   ok(c2rows === '4 records', 'client filter uses the punch clientId (Site B2 → ' + c2rows + ')');
-  // The punch log: a bare ⋮ (Edit, Delete) instead of ✕; Select always on — tick two, Delete → Undo keeps them.
+  // The punch log: a bare ⋮ (Edit, Delete) instead of ✕; Select — no boxes until the Select button, then tick two, Delete → Undo keeps them.
   const pls = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)); document.getElementById('adminFilterClient').value = ''; renderAdmin();
     const lines = [...document.querySelectorAll('#adminTableBody > .t3-line, #adminTableBody > .sw > .t3-line')];
-    const r = {x: !!document.querySelector('#adminTableBody .t3-x'), kb: !!lines[0].querySelector('.t3-kb'), head: /0 selected/.test((document.querySelector('#adminTableBody').previousElementSibling || {}).textContent || '')};
+    const r = {x: !!document.querySelector('#adminTableBody .t3-x'), kb: !!lines[0].querySelector('.t3-kb'), head: !!(document.querySelector('#adminTableBody').previousElementSibling || document.body).querySelector('[data-h="on"]') && lines[0].querySelector('.t3-cb').offsetWidth === 0};
     lines[0].querySelector('.t3-kb').click(); await wait(50);
     r.menu = [...document.querySelectorAll('#ogPop .og-pop-it')].map(b => (b.classList.contains('del') ? '!' : '') + b.textContent.trim()).join(); closePopover();
     const n0 = getPunchLog().length;
-    lines[0].querySelector('.t3-cb').click(); lines[1].querySelector('.t3-cb').click();
+    document.querySelector('#adminTableBody').previousElementSibling.querySelector('[data-h="on"]').click(); await wait(300);
+    r.shown = lines[0].querySelector('.t3-cb').offsetWidth > 0;
+    lines[0].click(); lines[1].querySelector('.t3-cb').click();
     r.count = (document.querySelector('.sel-bar b') || {}).textContent; r.key = __selState && __selState.key; r.btns = [...document.querySelectorAll('.sel-bar .gbtn')].map(b => b.dataset.a).join();
     const del = [...document.querySelectorAll('.sel-bar .gbtn')].find(b => b.dataset.a === 'del'); if(!del) return r; del.click(); await wait(300);
     r.snack = /2 punches deleted/.test(document.getElementById('undoSnack').innerText);
@@ -574,7 +576,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.kept = getPunchLog().length === n0;
     return r;
   });
-  ok(!pls.x && pls.kb && pls.head && pls.menu === 'Edit,!Delete' && pls.count === '2 selected' && pls.snack && pls.kept, 'punch log: ⋮ (Edit, Delete) instead of ✕; Select always on, Delete two through Undo ' + JSON.stringify(pls));
+  ok(!pls.x && pls.kb && pls.head && pls.shown && pls.menu === 'Edit,!Delete' && pls.count === '2 selected' && pls.snack && pls.kept, 'punch log: ⋮ (Edit, Delete) instead of ✕; no boxes until Select, then a tap on a plate or its box ticks it, Delete two through Undo ' + JSON.stringify(pls));
   const c1rows = await p.evaluate(() => { document.getElementById('adminFilterClient').value='c1'; renderAdmin(); return document.getElementById('adminCount').textContent; });
   ok(c1rows === '0 records', 'client filter: Avi\'s current client has no punches (' + c1rows + ')');
   // CSV columns
@@ -710,21 +712,24 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     tmp().querySelector('.t3-kb').click(); await wait(50); document.querySelector('#ogPop .og-pop-it.del').click(); await wait(300);
     renderWorkersPage(); r.leftOut = !tmp(); r.notYet = workers.some(w => w.id === 'wtmp');
     await wait(5400); r.deleted = !workers.some(w => w.id === 'wtmp');
-    // Select is always on: "0 selected · Select all" above the plates, no bar until a box is ticked; a tick → Vacation.
+    // Select: a Select button above the plates and no boxes; after it "0 selected · Select all · Done", a tick → Vacation.
     renderWorkersPage(); await wait(50);
-    r.selHead = (document.querySelector('#workersCards').previousElementSibling || {}).className === 'sel-head' && /0 selected/.test(document.querySelector('.sel-head').textContent) && !document.querySelector('.sel-bar');
+    const wh = document.querySelector('#workersCards').previousElementSibling || {};
+    r.selHead = wh.className === 'sel-head' && !!wh.querySelector('[data-h="on"]') && !/selected/.test(wh.textContent) && !document.querySelector('.sel-bar');
+    wh.querySelector('[data-h="on"]').click(); await wait(50);
+    r.selOn = /0 selected/.test(wh.textContent) && !!wh.querySelector('[data-h="all"]') && !!wh.querySelector('[data-h="off"]');
     document.querySelector('#workersCards .wplate[data-wid="w1"] .t3-cb').click();
     r.sel = document.querySelector('.sel-bar b').textContent;
     [...document.querySelectorAll('.sel-bar .gbtn')].find(b => /Vacation/.test(b.textContent)).click(); await wait(100);
-    r.vac = w1.status === 'vacation' && !document.querySelector('.sel-bar');
+    r.vac = w1.status === 'vacation' && !document.querySelector('.sel-bar') && !!wh.querySelector('[data-h="on"]');
     w1.status = keep.status; render(); autoSave();
     return r;
   });
   ok(/red/.test(wp.chip) && wp.bar === 'var(--bad)' && wp.sheet && wp.notices.includes('Upload failed') && wp.head === 'Avi Cohen' && wp.card && wp.backToNotices, 'worker plate: a red notice chip opens the notices sheet; "Open worker card" opens the card, closing it goes back to the sheet ' + JSON.stringify(wp));
   ok(wp.panes.join('|') === 'info|docs|hours' && wp.hoursStatus && wp.edit, 'worker card: Info / Docs / Hours switch, one Edit button ' + JSON.stringify(wp.panes));
   ok(wp.menu === 'Open card,Edit,Pay,Punch link,!Delete' && wp.pendingHidden && wp.stillThere && wp.undone && wp.leftOut && wp.notYet && wp.deleted, 'workers: Delete never asks — Undo keeps the worker, otherwise it is removed after 5 s ' + JSON.stringify(wp));
-  ok(wp.selHead && wp.sel === '1 selected' && wp.vac, 'workers: Select always shown (no bar until a tick); a tick on a box, the bulk bar sets Vacation ' + JSON.stringify({selHead: wp.selHead, sel: wp.sel, vac: wp.vac}));
-  // Worker documents (stage 13): plates with Select always on in the card's Docs pane; bulk Delete through Undo; closing the card gives Select back to the workers list.
+  ok(wp.selHead && wp.selOn && wp.sel === '1 selected' && wp.vac, 'workers: a Select button, boxes only after it; a tick, the bulk bar sets Vacation and Select ends ' + JSON.stringify({selHead: wp.selHead, selOn: wp.selOn, sel: wp.sel, vac: wp.vac}));
+  // Worker documents (stage 13): plates with Select in the card's Docs pane; bulk Delete through Undo; closing the card gives Select back to the workers list.
   const wd = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
     const w = workers[0], keep = w.docs;
@@ -733,8 +738,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     openWorkerCard(0); await wait(300); workerCardPane('docs'); await wait(50);
     const rows = () => document.querySelector('#workerCardModal .worker-docs-rows');
     r.plates = rows().querySelectorAll('.t3-line .t3-cb').length;
-    r.head = (rows().previousElementSibling || {}).className === 'sel-head' && /0 selected/.test(rows().previousElementSibling.textContent);
-    rows().previousElementSibling.querySelector('button').click(); await wait(50);
+    r.head = (rows().previousElementSibling || {}).className === 'sel-head' && !!rows().previousElementSibling.querySelector('[data-h="on"]');
+    rows().previousElementSibling.querySelector('[data-h="on"]').click(); await wait(50);
+    rows().previousElementSibling.querySelector('[data-h="all"]').click(); await wait(50);
     r.bar = (document.querySelector('.sel-bar b') || {}).textContent;
     document.querySelector('.sel-bar .gbtn.del').click(); await wait(400);
     r.pending = w.docs.length === 2 && /2 documents deleted/.test(document.querySelector('#undoSnack').textContent);
@@ -750,7 +756,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     w.docs = keep; render();
     return r;
   });
-  ok(wd.plates === 2 && wd.head && wd.bar === '2 selected' && wd.pending && wd.undone && wd.menu === 'Open,!Delete' && wd.deleted === 'd2' && wd.back, 'worker documents: plates with Select always on, bulk Delete through Undo, ⋮ Delete after 5 s, Select back to the workers list on close ' + JSON.stringify(wd));
+  ok(wd.plates === 2 && wd.head && wd.bar === '2 selected' && wd.pending && wd.undone && wd.menu === 'Open,!Delete' && wd.deleted === 'd2' && wd.back, 'worker documents: plates with Select, bulk Delete through Undo, ⋮ Delete after 5 s, Select back to the workers list on close ' + JSON.stringify(wd));
   // Editors as section plates (redesign stage 4): worker, client, supplier, user.
   const ed = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
@@ -896,11 +902,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const bankLine = [...document.querySelectorAll('#accAlertsWrap .t3-line')].find(l => /No bank details/.test(l.textContent) && /Avi/.test(l.textContent));
     if(bankLine){ bankLine.click(); await wait(200); r.opensPay = document.getElementById('payOverlay').classList.contains('open'); closeModal('payOverlay'); await wait(200); }
     r.noBanner = !/to review before calculating/.test(document.getElementById('dashSalary').innerText);
-    // Select on the Salary rows (always on): a tick exports only that worker.
+    // Select on the Salary rows (after the Select button): a tick exports only that worker.
     setAccTab('salary'); await wait(100);
     const srow = document.querySelector('#dashSalary .sal-row[data-sel-id]');
     r.salSelect = !!document.querySelector('#dashSalary .sel-head') && !!srow && !!srow.querySelector('.t3-cb');
-    if(srow){ srow.querySelector('.t3-cb').click(); r.salBar = /1 selected/.test((document.querySelector('.sel-bar b') || {}).textContent || '') && !document.getElementById('payOverlay').classList.contains('open');
+    if(srow){ (__selState.head.querySelector('[data-h="on"]') || {click(){}}).click(); srow.querySelector('.t3-cb').click(); r.salBar = /1 selected/.test((document.querySelector('.sel-bar b') || {}).textContent || '') && !document.getElementById('payOverlay').classList.contains('open');
       r.salRows = buildSalaryExportRows(document.getElementById('salaryPeriod').value, [srow.dataset.selId]).every(x => x.worker === (workers.find(w => w.id === srow.dataset.selId) || {}).name);
       const xb = [...document.querySelectorAll('.sel-bar .gbtn')].find(b => b.dataset.a === 'x'); if(xb) xb.click(); }
     [w2.bank, w2.bankBranch, w2.bankAccountNumber] = keepBank;
@@ -1022,7 +1028,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     document.querySelector('#ogPop .og-pop-it.del').click(); await wait(300);
     r.pending = clients.some(c => c.id === 'ctmp'); document.querySelector('#undoSnack .og-snack-u').click(); await wait(300);
     r.undone = !!line() && clients.some(c => c.id === 'ctmp');
-    line().querySelector('.t3-cb').click(); r.sel = document.querySelector('.sel-bar b').textContent;
+    (__selState.head.querySelector('[data-h="on"]') || {click(){}}).click(); line().querySelector('.t3-cb').click(); r.sel = document.querySelector('.sel-bar b').textContent;
     [...document.querySelectorAll('.sel-bar .gbtn')].find(b => b.dataset.a === 'del').click(); await wait(5500);
     r.deleted = !clients.some(c => c.id === 'ctmp');
     switchTab('suppliers'); renderSuppliersPage(); await wait(50);
@@ -1078,7 +1084,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await login(p, BASE + 'schedule-manager.html', 'boss', 'boss-pass-1');
   await p.waitForNavigation().catch(()=>{});
   ok(await waitFor(p, () => document.getElementById('firmsScreen').style.display === 'block' && __firmsCache.length === 2), 'boss: firms list (listTenants)');
-  // The firms list: ✎ and a bare ⋮ (Disable, Delete last via Undo); Select always on; a single click switches (below).
+  // The firms list: ✎ and a bare ⋮ (Disable, Delete last via Undo); Select; a single click switches (below).
   const fl = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
     const row = document.querySelector('#firmsList .row.tap-edit');
@@ -1232,7 +1238,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await wait(5300); await loadData(); r.keptAfterUndo = myWorkers.some(w => w.id === t1);
     renderWorkersList(); await wait(50);
     r.selecting = document.querySelector('#workersList .workers-rows').classList.contains('selecting') && !!document.querySelector('.sel-head') && !document.querySelector('.sel-bar');
-    lineOf(t2).querySelector('.t3-cb').click(); lineOf(t3).querySelector('.t3-cb').click();
+    (__selState.head.querySelector('[data-h="on"]') || {click(){}}).click(); lineOf(t2).querySelector('.t3-cb').click(); lineOf(t3).click();
     r.count = document.querySelector('.sel-bar b').innerText.trim(); r.noEditor = !document.getElementById('workerOverlay').classList.contains('open');
     [...document.querySelectorAll('.sel-bar .gbtn')].find(b => b.dataset.a === 'del').click(); await wait(300);
     r.barGone = !document.querySelector('.sel-bar'); r.snack = /2 workers deleted/.test(document.getElementById('undoSnack').innerText);
@@ -1256,6 +1262,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.pills = [...document.querySelectorAll('#sectionReview .hrv-day .hrv-pill')].map(x => x.textContent.trim()).join();
     if(pk.length){
       r.selBar = !!document.querySelector('#sectionReview .hrv-selhead') && !document.getElementById('hrvSelBar') && !document.getElementById('hrvSelectBtn');
+      r.noBox = !document.querySelector('#sectionReview .hrv-box'); hrvSelectOn();
       document.querySelector(`#sectionReview .hrv-day[data-key="${pk[0].key}"] .hrv-box`).click();
       r.selCount = document.querySelector('#hrvSelBar b').innerText.trim();
       document.getElementById('hrvApproveSel').click();
@@ -1268,7 +1275,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   await (await p.$('#sectionReview')).screenshot({path: SP + '/supplier-hours-review.png'}).catch(()=>{});
   ok(sr.names.join() === 'Avi Cohen' && !sr.acts.some(t => /Dispute|fix/i.test(t)) && /Every day approved/.test(sr.status), 'supplier: reviews only its own workers, no dispute / fix without those ticks, approves the month ' + JSON.stringify(sr));
-  ok(sr.selBar && /Waiting/.test(sr.pills) && sr.selCount === '1 selected' && sr.selSt === 'approved' && sr.selGone, 'supplier: hours — a status pill per day; Select always on (no bar until a tick), tick a day, Approve in the bar ' + JSON.stringify(sr));
+  ok(sr.selBar && sr.noBox && /Waiting/.test(sr.pills) && sr.selCount === '1 selected' && sr.selSt === 'approved' && sr.selGone, 'supplier: hours — a status pill per day; a Select button, then boxes (no bar until a tick), tick a day, Approve in the bar ' + JSON.stringify(sr));
   // the firm's language reaches the portal with loadSchedule
   const sl = await p.evaluate(async () => { const def = I18N_LANG;
     document.querySelector('#headerActions .lang-btn').click(); document.querySelector('#langSheet .lang-li[data-lang="he"]').click();
@@ -1360,15 +1367,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.n = boxes.length; r.ownerNoBox = boxes[0] === false && boxes.slice(1).every(Boolean);
     const line2 = [...document.querySelectorAll('.admin-users-rows .t3-line')].find(l => /\bclient\b/.test(l.innerText));
     r.kbShown = getComputedStyle(line2.querySelector('.t3-kb')).opacity === '1';
-    document.querySelector('.sel-head button').click();
+    document.querySelector('.sel-head [data-h="on"]').click(); document.querySelector('.sel-head [data-h="all"]').click();
     r.all = document.querySelector('.sel-bar b').innerText.trim(); r.picked = document.querySelectorAll('.admin-users-rows .t3-line.picked').length;
     line2.querySelector('.t3-cb').click(); r.unpicked = !line2.classList.contains('picked') && !document.getElementById('userFormOverlay').classList.contains('open');
     [...document.querySelectorAll('.sel-bar .gbtn')].find(b => b.dataset.a === 'x').click();
-    r.ended = !document.querySelector('.sel-bar') && !!document.querySelector('.sel-head') && /0 selected/.test(document.querySelector('.sel-head').textContent) && !document.querySelector('.admin-users-rows .t3-line.picked');
+    r.ended = !document.querySelector('.sel-bar') && !!document.querySelector('.sel-head') && !!document.querySelector('.sel-head [data-h="on"]') && !document.querySelector('.admin-users-rows .t3-line.picked');
     return r;
   });
   ok(ls.plate && ls.swipe === 2 && ls.pop === 'Edit,!Delete' && ls.hr && ls.gone && ls.snack && ls.back, 'lists: a plate per user; ⋮ opens Edit / Delete; Delete collapses it behind the Undo snack, Undo brings it back ' + JSON.stringify(ls));
-  ok(ls.ownerNoBox && ls.kbShown && ls.picked === ls.n - 1 && ls.all === (ls.n - 1) + ' selected' && ls.unpicked && ls.ended, 'lists: Select always on — boxes (none for the owner), ⋮ stays, Select all, a box tick, ✕ clears the ticks ' + JSON.stringify(ls));
+  ok(ls.ownerNoBox && ls.kbShown && ls.picked === ls.n - 1 && ls.all === (ls.n - 1) + ' selected' && ls.unpicked && ls.ended, 'lists: Select — boxes (none for the owner), ⋮ stays, Select all, a box tick, ✕ clears the ticks ' + JSON.stringify(ls));
   // The user form: one Hours block for HR / supplier / client; "Only own workers" at the bottom, locked on for a supplier and a client.
   const uf = await q.evaluate(() => {
     openCreateUserForm(); const role = document.getElementById('userFormRole'), out = {};

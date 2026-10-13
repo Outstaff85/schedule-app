@@ -17,7 +17,7 @@
 //   hoursReviewReload()
 
 const HOURS_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/hours';
-let __hrv = {el: null, call: null, hideOwner: false, month: 0, tab: 'hours', data: null, loading: false, busy: false, shown: 10, sel: new Set()};
+let __hrv = {el: null, call: null, hideOwner: false, month: 0, tab: 'hours', data: null, loading: false, busy: false, shown: 10, sel: new Set(), selOn: false};
 
 function hoursReviewMount(el, opts){
   __hrv = Object.assign(__hrv, {el, call: opts.call, hideOwner: !!opts.hideOwner, data: null});
@@ -32,8 +32,8 @@ function hoursReviewMount(el, opts){
 
 function hrvMonthKey(){ const n = new Date(); return localYMD(new Date(n.getFullYear(), n.getMonth() + __hrv.month, 1)).slice(0, 7); }
 function hrvCan(p){ return !!(__hrv.data && (__hrv.data.perms || []).includes(p)); }
-function hrvShiftMonth(n){ __hrv.month = Math.min(0, __hrv.month + n); __hrv.shown = 10; __hrv.sel = new Set(); hoursReviewReload(); }
-function hrvSwitchTab(t){ __hrv.tab = t; __hrv.sel = new Set(); hrvRender(); }
+function hrvShiftMonth(n){ __hrv.month = Math.min(0, __hrv.month + n); __hrv.shown = 10; __hrv.sel = new Set(); __hrv.selOn = false; hoursReviewReload(); }
+function hrvSwitchTab(t){ __hrv.tab = t; __hrv.sel = new Set(); __hrv.selOn = false; hrvRender(); }
 
 async function hoursReviewReload(){
   const key = hrvMonthKey();
@@ -185,8 +185,9 @@ function hrvHoursHtml(){
       + (counts.fix ? ' · ' + tr('{n} fixes waiting', {n: counts.fix}) : '');
   const canApproveAll = hrvCan('approve') && days.some(r => ['pending', 'changed', 'rejected'].includes(hrvDayState(r).st));
   const approveBtn = canApproveAll ? `<button class="btn sm hrv-approve" onclick="hrvApproveMonth()"><i class="ti ti-checks"></i> ${esc(tr('Approve the month'))}</button>` : '';
-  // Select is always on (stage 13) for a login that may approve.
-  const sel = hrvCan('approve') ? __hrv.sel : null;
+  // Select (owner 2026-10-13): a login that may approve gets a Select button;
+  // the tick boxes show only after it is tapped.
+  const sel = hrvCan('approve') ? __hrv.sel : null, selOn = !!sel && __hrv.selOn;
   const exportBtn = hrvCan('export') ? `<button class="btn sm" onclick="hrvExport()"><i class="ti ti-file-spreadsheet"></i> ${esc(tr('Export'))}</button>` : '';
   const byW = {};
   days.forEach(r => { (byW[r.workerId] = byW[r.workerId] || []).push(r); });
@@ -210,8 +211,8 @@ function hrvHoursHtml(){
         hrvCan('fix') ? `<button class="hrv-act${st === 'fix' ? ' on' : ''}" title="${esc(tr('Propose a fix'))}" onclick="hrvOpenFix('${k}')"><i class="ti ti-pencil"></i></button>` : '',
       ].join('');
       const can = !!sel && HRV_PICKABLE.includes(st), picked = can && sel.has(r.key);
-      const box = sel ? (can ? `<button type="button" class="hrv-box" aria-label="${esc(tr('Select'))}" onclick="hrvToggleDay('${k}')"></button>` : '<span class="hrv-box-sp"></span>') : '';
-      return `<div class="hrv-day${picked ? ' picked' : ''}" data-key="${k}" style="--c:${S.color === 'var(--text3)' ? 'var(--border2)' : S.color}">
+      const box = selOn ? (can ? `<button type="button" class="hrv-box" aria-label="${esc(tr('Select'))}" onclick="hrvToggleDay('${k}')"></button>` : '<span class="hrv-box-sp"></span>') : '';
+      return `<div class="hrv-day${picked ? ' picked' : ''}" data-key="${k}"${selOn && can ? ` onclick="if(!event.target.closest('button'))hrvToggleDay('${k}')"` : ''} style="--c:${S.color === 'var(--text3)' ? 'var(--border2)' : S.color}">
         ${box}<span class="hrv-pill" style="--pc:${S.color === 'var(--text3)' ? 'var(--ink-2,#8b90a0)' : S.color}" title="${esc(tr(S.label))}">${esc(tr(S.pill))}</span>
         <span class="d">${esc(r.date.toLocaleDateString(uiLocale(), {weekday: 'short', day: '2-digit', month: 'short'}))}</span>
         <span class="t">${esc(times)}</span>
@@ -251,7 +252,7 @@ function hrvApproveMonth(){
 // fix was rejected — the same as the month button) and approve them at once.
 const HRV_PICKABLE = ['pending', 'changed', 'rejected'];
 function hrvPickable(){ return hrvMonthDays().filter(r => HRV_PICKABLE.includes(hrvDayState(r).st)); }
-function hrvClearSelect(){ __hrv.sel.clear(); const y = window.scrollY; hrvRender(); window.scrollTo(0, y); }
+function hrvClearSelect(){ __hrv.sel.clear(); __hrv.selOn = false; const y = window.scrollY; hrvRender(); window.scrollTo(0, y); }
 function hrvToggleDay(key){
   const sel = __hrv.sel; if(!sel) return;
   sel.has(key) ? sel.delete(key) : sel.add(key);
@@ -263,9 +264,11 @@ function hrvSelectAll(){
   if(all.every(k => sel.has(k))) sel.clear(); else all.forEach(k => sel.add(k));
   const y = window.scrollY; hrvRender(); window.scrollTo(0, y);
 }
+function hrvSelectOn(){ __hrv.selOn = true; const y = window.scrollY; hrvRender(); window.scrollTo(0, y); }
 function hrvSelectHtml(days){
   const n = __hrv.sel.size, all = days.filter(r => HRV_PICKABLE.includes(hrvDayState(r).st)).length;
-  return `<div class="hrv-selhead"><span>${esc(tr('{n} selected', {n}))}</span>${all ? `<button type="button" onclick="hrvSelectAll()">${esc(tr(n && n >= all ? 'Clear' : 'Select all'))}</button>` : ''}</div>
+  if(!__hrv.selOn) return all ? `<div class="hrv-selhead"><span></span><button type="button" onclick="hrvSelectOn()">${esc(tr('Select'))}</button></div>` : '';
+  return `<div class="hrv-selhead"><span>${esc(tr('{n} selected', {n}))}</span>${all ? `<button type="button" onclick="hrvSelectAll()">${esc(tr(n && n >= all ? 'Clear' : 'Select all'))}</button>` : ''}<button type="button" onclick="hrvClearSelect()">${esc(tr('Done'))}</button></div>
     ${n ? `<div class="hrv-selbar" id="hrvSelBar"><b>${esc(tr('{n} selected', {n}))}</b>
       <button type="button" class="gbtn primary" id="hrvApproveSel" onclick="hrvApproveSelected()"><i class="ti ti-check"></i> ${esc(tr('Approve'))}</button>
       <button type="button" class="gbtn icon" onclick="hrvClearSelect()" aria-label="${esc(tr('Close'))}"><i class="ti ti-x"></i></button></div>` : ''}`;
@@ -273,7 +276,7 @@ function hrvSelectHtml(days){
 async function hrvApproveSelected(){
   const sel = __hrv.sel; if(!sel || !sel.size) return;
   const lines = hrvPickable().filter(r => sel.has(r.key)).map(r => r.line);
-  __hrv.sel = new Set();
+  __hrv.sel = new Set(); __hrv.selOn = false;
   await hrvSend({action: 'approve', lines}, lines.length === 1 ? tr('Day approved') : tr('{n} days approved', {n: lines.length}));
 }
 function hrvDayTitle(r){

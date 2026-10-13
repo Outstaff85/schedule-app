@@ -21,10 +21,10 @@ The look the user chose on 2026-10-12 for every page (manager app, supplier port
 - ⋮ opens a glass popover with a tail pointing at the button; Delete last, in soft red, under a divider.
 
 ## Plates (every list)
-- Solid plate, radius 16, 4px status bar on the left; the avatar disc is in the **same color as the bar** (bar color at 22 % fill, initials and a thin ring in the bar color). Section icons in editors follow the same rule.
+- Solid plate, radius 16, 4px status bar on the left. **No letters avatar** (owner 2026-10-13): the plate starts with the name; the name's first three letters are drawn large and faint in the plate's background (`.t3-wm`). Icon avatars (firms, alerts, documents) and section icons in editors stay in the bar's color.
 - Worker plate: name short — first name in full, every other part as an initial ("Avi C.", "Maya B. D."); notice chips right after the name (one chip with its word + "+N"; red urgent, amber attention: visa, missing documents, contract ending, no punch today…); a tap on a chip opens the notices sheet (avatar, full name, site, today's punch, hours, one plate per notice with its action: Renew, Upload, Extend, Call; "Open worker card"). Under the name: site · today's punch ("● In 07:58" green, "● No punch" red, "Out 22:00", "On vacation"). At the right: the month's hours (green figure, no box), then a bare ⋮ (thin dots, no box).
 - Swipe left reveals Edit and Delete. Delete never asks: the plate collapses and a glass "Undo" snack runs 5 s with the gradient timer line; the real delete is sent when the timer ends.
-- **Select in every list** (always on since stage 13 — owner's override below): drawn-tick boxes slide in, "N selected · Select all" above, a glass bar below (count, the list's bulk actions, Delete, ✕). Swipe and row ⋮ are off while selecting.
+- **Select in every list** (owner 2026-10-13, replacing "always on"): a Select button above the list, no boxes by default; a tap slides the drawn-tick boxes in, the line reads "N selected · Select all · Done", a tap on a plate ticks it, and a glass bar shows below (count, the list's bulk actions, Delete, ✕). Swipe is off while selecting.
 
 ## Ticks
 - Checkbox tiles: unticked grey box; ticked — tile tinted green, box green, the check mark draws itself (350 ms).
@@ -122,7 +122,7 @@ On 2026-10-13 the owner went through the design system artifact and found many p
 ### Owner overrides (decided after the artifact was made; they win over it)
 - **Language button: only the globe** (done 2026-10-13, PR #234) — the artifact's LanguageButton still shows the name and chevron.
 - **Scan passport next to New** in the Workers header (a glass button beside the primary "New"), not under the header ⋮ (the artifact's RowMenu puts it under ⋮).
-- **Select is always there, on every list:** the line "N selected · Select all" (and the tick boxes on the plates) is shown by default above every list, in the same place it appears now — no ⋮ → Select… needed. Lists: workers, clients, suppliers, users, firms, punches, pending hours, hours approvals, documents, salary rows, and the portals' lists. The header ⋮ keeps its other tools.
+- **Select on every list** (changed by the owner on 2026-10-13 — before: always on): a Select button above every list, in the same place; no tick boxes until it is tapped, then the boxes on every plate and Select all — no ⋮ → Select… needed. Lists: workers, clients, suppliers, users, firms, punches, pending hours, hours approvals, documents, salary rows, and the portals' lists. The header ⋮ keeps its other tools.
 
 ### Checklist (known gaps so far; the audit adds the rest)
 - [x] Tokens + component CSS from `docs/design/system/` in all four pages (method step 1) — `og.css`; the shared components the pages had drawn themselves (popover, Undo snack, Select box, section plates, tabs, avatar) moved into `og.css` too (parts 4–6), one copy for every page; `tests/design/build.py` writes the tokens from `tokens.json`.

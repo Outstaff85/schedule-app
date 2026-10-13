@@ -712,8 +712,12 @@ function cropFieldImage(b64,mediaType,box){
 // instantly in list rows, not stay full-resolution). Resolves null on any
 // failure (missing/degenerate box, decode error) — same best-effort
 // convention as cropFieldImage: never blocks or fails the scan.
+// Switched off (owner 2026-10-13): no photo is taken from a document any more
+// — the lists show no avatar. Every caller already handles null.
+const SCAN_AVATARS=false;
 function cropPortraitAvatar(b64,mediaType,box){
   return new Promise(resolve=>{
+    if(!SCAN_AVATARS){ resolve(null); return; }
     if(!box||typeof box.x0!=='number'||typeof box.x1!=='number'){ resolve(null); return; }
     const img=new Image();
     img.onload=()=>{

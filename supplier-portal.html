@@ -995,6 +995,9 @@ function t3Av(w){
 // o.swipe = {edit: fn(el), del: fn(el)} — a swipe left on a touch screen shows
 // Edit and Delete behind the plate; o.sel = the row's id in a list that can
 // Select (startSelect). Functions are kept in __rowFns, looked up by key.
+// No round letters avatar (owner 2026-10-13): the plate starts with the name
+// and the name's first three letters sit large and faint in its background
+// (.t3-wm); an avatar that is an icon (a firm, an alert, a document) stays.
 const __rowFns = new Map(); let __rowFnSeq = 0;
 function rowFnKey(v){
   const k = 'r' + (++__rowFnSeq); __rowFns.set(k, v);
@@ -1005,7 +1008,9 @@ function t3Line(o){
   const kb = o.menu && o.menu.length ? `<button type="button" class="t3-kb" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey(o.menu)}')"><i class="ti ti-dots-vertical"></i></button>` : '';
   const sel = o.sel != null ? String(o.sel) : null;
   const picked = sel != null && __selState && __selState.picked.has(sel);
-  const line = `<div class="t3-line${o.cls?' '+o.cls:''}${picked?' picked':''}" style="--c:${o.c||'var(--neutral)'}"${sel!=null?` data-sel-id="${esc(sel)}"`:''}${o.onclick?` onclick="${o.onclick}"`:''}${o.attrs?' '+o.attrs:''}>${sel!=null?'<span class="t3-cb"><span class="og-box"></span></span>':''}${o.av||''}<div class="n"><b>${o.name}</b>${[].concat(o.sub||[]).filter(Boolean).map(x=>`<small>${x}</small>`).join('')}</div>${o.right||''}${kb}</div>`;
+  const iconAv = !!o.av && /<i class="ti /.test(o.av);
+  const wm = iconAv ? '' : String(o.name||'').replace(/<[^>]*>/g,' ').replace(/&[#a-z0-9]+;/gi,'').trim().split(/\s+/).join('').replace(/[^\p{L}\p{N}]/gu,'').slice(0,3);
+  const line = `<div class="t3-line${o.cls?' '+o.cls:''}${picked?' picked':''}" style="--c:${o.c||'var(--neutral)'}"${sel!=null?` data-sel-id="${esc(sel)}"`:''}${o.onclick?` onclick="${o.onclick}"`:''}${o.attrs?' '+o.attrs:''}>${wm?`<span class="t3-wm" aria-hidden="true"><span>${esc(wm)}</span></span>`:''}${sel!=null?'<span class="t3-cb"><span class="og-box"></span></span>':''}${iconAv?o.av:''}<div class="n"><b>${o.name}</b>${[].concat(o.sub||[]).filter(Boolean).map(x=>`<small>${x}</small>`).join('')}</div>${o.right||''}${kb}</div>`;
   if(!o.swipe) return line;
   return `<div class="sw" data-sw="${rowFnKey(o.swipe)}"><div class="sw-acts">${o.swipe.edit?`<button type="button" onclick="swipeAct(this,'edit')"><i class="ti ti-pencil"></i><span>${esc(tr('Edit'))}</span></button>`:''}${o.swipe.del?`<button type="button" class="d" onclick="swipeAct(this,'del')"><i class="ti ti-trash"></i><span>${esc(tr('Delete'))}</span></button>`:''}</div>${line}</div>`;
 }
@@ -1046,7 +1051,7 @@ function swipeAct(btn, which){
 document.addEventListener('pointerdown', e => {
   const line = e.target.closest && e.target.closest('.sw > .t3-line');
   document.querySelectorAll('.sw.open').forEach(s => { if(!line || s !== line.parentNode){ swipeClose(s); s.__closedAt = Date.now(); } });
-  if(!line || e.pointerType === 'mouse' || (__selState && __selState.picked.size) || e.target.closest('button, a, input, select, textarea, .t3-cb')) return;
+  if(!line || e.pointerType === 'mouse' || (__selState && __selState.on) || e.target.closest('button, a, input, select, textarea, .t3-cb')) return;
   const sw = line.parentNode, x0 = e.clientX, y0 = e.clientY, W = swipeWidth(sw), base = sw.classList.contains('open') ? -W : 0;
   let dx = base, active = false, dead = false;
   const move = ev => {
@@ -1106,12 +1111,12 @@ function finishUndo(commit){
   if(u.o.undo) u.o.undo();
 }
 window.addEventListener('pagehide', () => finishUndo(true));
-// Select, always on (owner's override, docs/redesign.md → stage 13): every
-// list drawn with o.sel shows "N selected · Select all" above its rows and a
-// drawn-tick box on each selectable plate, without any ⋮ → Select…. A tap on
-// the box ticks the plate; a tap anywhere else on the plate keeps its own job
-// (open the card). When something is ticked the glass bar shows (count, the
-// list's actions, Delete, ✕ clears the ticks).
+// Select (owner 2026-10-13, docs/redesign.md → stage 13): every list drawn
+// with o.sel has a Select button above its rows; no tick boxes until it is
+// tapped. Then every selectable plate shows its drawn-tick box, the line reads
+// "N selected · Select all · Done", and a tap on a plate ticks it. When
+// something is ticked the glass bar shows (count, the list's actions, Delete,
+// ✕). Done, ✕ or Escape clear the ticks and hide the boxes again.
 // startSelect({key, root, ids, actions, del}) — root: the rows' container;
 // ids(): every selectable id (also rows not drawn yet); actions: the bulk
 // actions [{icon, label, fn(ids)}]; del(ids, els): the bulk delete. A list
@@ -1139,8 +1144,8 @@ function selectRoot(key, root){
     if(st && shown(st.root) && win(st.root) && !win(root)) return;
     const f = SELECT_STARTERS[key]; if(f) f(); return;
   }
-  if(st.root && st.root !== root) st.root.classList.remove('selecting');
-  st.root = root; root.classList.add('selecting');
+  if(st.root && st.root !== root) st.root.classList.remove('selecting', 'sel-on');
+  st.root = root; root.classList.add('selecting'); root.classList.toggle('sel-on', !!st.on);
   if(!st.head || !st.head.isConnected || st.head.nextSibling !== root){
     if(st.head) st.head.remove();
     st.head = document.createElement('div'); st.head.className = 'sel-head';
@@ -1154,8 +1159,18 @@ function selectRoot(key, root){
 function drawSelect(){
   const st = __selState; if(!st || !st.head) return;
   const n = st.picked.size, all = st.ids().length;
-  st.head.innerHTML = `<span>${esc(tr('{0} selected', {0: n}))}</span><button type="button">${esc(n === all && all ? tr('Clear') : tr('Select all'))}</button>`;
-  st.head.querySelector('button').onclick = () => { const ids = st.ids().map(String); if(st.picked.size === ids.length) st.picked.clear(); else ids.forEach(i => st.picked.add(i)); syncPicked(); };
+  if(st.root) st.root.classList.toggle('sel-on', !!st.on);
+  if(!st.on){
+    st.head.innerHTML = `<span></span>${all ? `<button type="button" data-h="on">${esc(tr('Select'))}</button>` : ''}`;
+  } else {
+    st.head.innerHTML = `<span>${esc(tr('{0} selected', {0: n}))}</span><button type="button" data-h="all">${esc(n === all && all ? tr('Clear') : tr('Select all'))}</button><button type="button" data-h="off">${esc(tr('Done'))}</button>`;
+  }
+  st.head.querySelectorAll('button').forEach(b => b.onclick = () => {
+    const h = b.dataset.h;
+    if(h === 'on'){ st.on = true; syncPicked(); return; }
+    if(h === 'off'){ selectOff(); return; }
+    const ids = st.ids().map(String); if(st.picked.size === ids.length) st.picked.clear(); else ids.forEach(i => st.picked.add(i)); syncPicked();
+  });
   if(!n){ if(st.bar){ st.bar.remove(); st.bar = null; } return; }
   if(!st.bar){ st.bar = document.createElement('div'); st.bar.className = 'sel-bar'; document.body.appendChild(st.bar); }
   st.bar.innerHTML = `<b>${esc(tr('{0} selected', {0: n}))}</b>`
@@ -1164,10 +1179,10 @@ function drawSelect(){
     + `<button type="button" class="gbtn icon" data-a="x" aria-label="${esc(tr('Close'))}"><i class="ti ti-x"></i></button>`;
   st.bar.querySelectorAll('button').forEach(b => b.onclick = () => {
     const a = b.dataset.a, ids = [...st.picked];
-    if(a === 'x'){ st.picked.clear(); syncPicked(); return; }
+    if(a === 'x'){ selectOff(); return; }
     if(!ids.length) return;
     const els = ids.map(id => st.root.querySelector(`.t3-line[data-sel-id="${CSS.escape(id)}"]`)).filter(Boolean);
-    st.picked.clear(); syncPicked();
+    st.picked.clear(); st.on = false; syncPicked();
     if(a === 'del') st.del(ids, els); else st.actions[+a].fn(ids);
   });
 }
@@ -1176,23 +1191,27 @@ function syncPicked(){
   st.root.querySelectorAll('[data-sel-id]').forEach(l => l.classList.toggle('picked', st.picked.has(l.dataset.selId)));
   drawSelect();
 }
+// Leaves Select on the list: the ticks are cleared, the boxes hidden.
+function selectOff(){ const st = __selState; if(!st) return; st.on = false; st.picked.clear(); syncPicked(); }
 function endSelect(){
   const st = __selState; if(!st) return; __selState = null;
-  if(st.root){ st.root.classList.remove('selecting'); st.root.querySelectorAll('.picked').forEach(l => l.classList.remove('picked')); }
+  if(st.root){ st.root.classList.remove('selecting', 'sel-on'); st.root.querySelectorAll('.picked').forEach(l => l.classList.remove('picked')); }
   if(st.head) st.head.remove(); if(st.bar) st.bar.remove();
 }
-// A tap on a plate's tick box ticks it and does nothing else.
+// While Select is on, a tap on a plate (its box or anywhere but its own
+// buttons) ticks it and does nothing else.
 ['click', 'pointerdown'].forEach(t => document.addEventListener(t, e => {
-  const st = __selState; if(!st || !st.root) return;
-  const box = e.target.closest && e.target.closest('.t3-cb'), line = box && box.closest('[data-sel-id]');
+  const st = __selState; if(!st || !st.root || !st.on) return;
+  const box = e.target.closest && e.target.closest('.t3-cb'), line = e.target.closest && e.target.closest('[data-sel-id]');
   if(!line || !st.root.contains(line)) return;
+  if(!box && e.target.closest('button, a, input, select, textarea')) return;
   e.stopPropagation(); if(t === 'pointerdown') return;
   e.preventDefault();
   const id = line.dataset.selId; if(st.picked.has(id)) st.picked.delete(id); else st.picked.add(id);
   line.classList.toggle('picked', st.picked.has(id)); drawSelect();
 }, true));
-document.addEventListener('keydown', e => { if(e.key === 'Escape'){ closePopover(); if(__selState){ __selState.picked.clear(); syncPicked(); } } });
-// The header ⋮ of a list: its own tools (Select is always on — no Select… item).
+document.addEventListener('keydown', e => { if(e.key === 'Escape'){ closePopover(); if(__selState) selectOff(); } });
+// The header ⋮ of a list: its own tools (Select is the button above the rows — no Select… item).
 function listMenuHtml(items){ return items.length ? `<button type="button" class="t3-kb" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey(items)}')"><i class="ti ti-dots-vertical"></i></button>` : ''; }
 function clientName(id){ const c=myClients.find(x=>x.id===id); return c?c.name:''; }
 function renderWorkersList(){
