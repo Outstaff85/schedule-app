@@ -44,7 +44,7 @@ Loaded on demand (a `<script>` tag, like `scan-pipeline.js`) and run in the page
 Where it runs:
 
 - **Client portal** — the whole page ([client-portal.md](client-portal.md)).
-- **Supplier portal** — the **Hours approval** tab (`#sectionReview`, `openHoursReview`), shown with an hours or schedule tick.
+- **Supplier portal** — the **Approvals** tab (`#tabBtn_review`) (`#sectionReview`, `openHoursReview`), shown with an hours or schedule tick.
 - **Manager app, an HR login** — Accounting → `#accSecReview` (`openHrHoursReview`), shown with an hours or schedule tick (`hrHourReview()`); such an HR gets the Accounting tab for it even without the Accounting section, and then sees only this part.
 
 ## Accounting → Hours approvals (the owner)

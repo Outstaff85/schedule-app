@@ -208,6 +208,7 @@ body:has(.overlay.open){overflow:hidden}
 .og-linkrun{fill:none;stroke:url(#ogMarkGrad);stroke-width:4;stroke-linecap:round;stroke-dasharray:14 90;animation:og-linkrun 2.8s linear infinite}
 @keyframes og-linkrun{from{stroke-dashoffset:104}to{stroke-dashoffset:0}}
 .tab-btn{position:relative;border:1px solid transparent!important;border-radius:14px!important;height:36px;padding:0 14px!important}
+@media (max-width:420px){.tabs{gap:2px;padding:12px 10px}.tab-btn{padding:0 10px!important}}
 .tab-btn.active{background:var(--glass-hi)!important;border-color:rgba(255,255,255,.35)!important;color:#fff!important}
 .tab-btn.active::after{content:'';position:absolute;left:14px;right:14px;bottom:-1px;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55);animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1)}
 @media (prefers-reduced-motion:reduce){.og-run,.og-p,.og-linkrun{animation:none}}
@@ -253,15 +254,15 @@ body:has(.overlay.open){overflow:hidden}
      and hairline, a cyan focus ring; selects carry a thin chevron; labels are
      small and muted. The same block in the manager app and both portals. */
   .modal .field label:not(.check-chip):not([style]){font-size:11px;font-weight:500;color:#8b90a0;margin:0 4px 4px}
-  .modal .field input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]),.modal .field select,.modal .field textarea{
+  :is(.modal,#appRoot) .field input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]),:is(.modal,#appRoot) .field select,:is(.modal,#appRoot) .field textarea{
     height:42px;padding:0 12px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background-color:rgba(255,255,255,.05);color:var(--text);font-size:14px;
     box-shadow:none;transition:border-color .2s,box-shadow .2s,background-color .2s}
-  .modal .field textarea{height:auto;min-height:84px;padding:10px 12px;line-height:1.45}
-  .modal .field select{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;
+  :is(.modal,#appRoot) .field textarea{height:auto;min-height:84px;padding:10px 12px;line-height:1.45}
+  :is(.modal,#appRoot) .field select{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;
     background-image:linear-gradient(45deg,transparent 50%,#8b90a0 50%),linear-gradient(135deg,#8b90a0 50%,transparent 50%);
     background-position:calc(100% - 19px) 18px,calc(100% - 14px) 18px;background-size:5px 5px;background-repeat:no-repeat}
-  .modal [dir=rtl] .field select,.modal .field select[dir=rtl]{padding-right:14px;padding-left:36px;background-position:14px 18px,19px 18px}
-  .modal .field input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]):focus,.modal .field select:focus,.modal .field textarea:focus{
+  :is(.modal,#appRoot) [dir=rtl] .field select,:is(.modal,#appRoot) .field select[dir=rtl]{padding-right:14px;padding-left:36px;background-position:14px 18px,19px 18px}
+  :is(.modal,#appRoot) .field input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]):focus,:is(.modal,#appRoot) .field select:focus,:is(.modal,#appRoot) .field textarea:focus{
     outline:none;border-color:rgba(34,211,238,.6);background-color:rgba(255,255,255,.07);box-shadow:0 0 0 3px rgba(34,211,238,.12)}
   .modal .field input::placeholder,.modal .field textarea::placeholder{color:rgba(255,255,255,.35)}
   .modal .field input:disabled,.modal .field select:disabled{opacity:.55}
@@ -305,7 +306,7 @@ try{ if(localStorage.getItem('supplierPortal_session')) document.documentElement
     <button class="tab-btn" id="tabBtn_dashboard" onclick="switchTab('dashboard')" data-i18n>Dashboard</button>
     <button class="tab-btn" id="tabBtn_workers" onclick="switchTab('workers')" data-i18n>My Workers</button>
     <button class="tab-btn" id="tabBtn_hours" onclick="switchTab('hours')" data-i18n>My Hours</button>
-    <button class="tab-btn" id="tabBtn_review" onclick="switchTab('review')" style="display:none" data-i18n>Hours approval</button>
+    <button class="tab-btn" id="tabBtn_review" onclick="switchTab('review')" style="display:none" data-i18n>Approvals</button>
   </div>
 
   <div id="sectionDashboard" style="padding:16px;display:none">
@@ -320,8 +321,8 @@ try{ if(localStorage.getItem('supplierPortal_session')) document.documentElement
 
   <div id="sectionWorkers" style="padding:16px;display:none">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div style="font-weight:600" data-i18n>My Workers</div>
-      <button class="btn sm accent" onclick="openAddWorkerModal()"><i class="ti ti-plus"></i> <span data-i18n>Add worker</span></button>
+      <div class="page-title" style="font-size:19px;font-weight:600" data-i18n>My Workers</div>
+      <button class="gbtn primary" onclick="openAddWorkerModal()"><i class="ti ti-plus"></i> <span data-i18n>New</span></button>
     </div>
     <div id="workersList"></div>
   </div>
@@ -335,29 +336,29 @@ try{ if(localStorage.getItem('supplierPortal_session')) document.documentElement
     <div class="field"><label data-i18n>Month</label><select id="hoursExportMonthSel" onchange="renderPayTable()"></select></div>
     <!-- With "sees pay": each worker's hours, days, rate, pay and my commission for the month. -->
     <div id="payTableWrap" style="display:none;margin-bottom:16px">
-      <div style="font-weight:600;margin-bottom:8px">Pay</div>
+      <div class="t3-sec" style="margin-top:4px" data-i18n>Pay</div>
       <div id="payTable"></div>
     </div>
-    <div class="field"><label>Worker (for detailed export)</label><select id="hoursExportWorkerSel"></select></div>
+    <div class="field"><label data-i18n>Worker (for detailed export)</label><select id="hoursExportWorkerSel"></select></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-      <button class="btn sm" onclick="runDetailExport('excel')"><i class="ti ti-file-spreadsheet"></i> Detail (Excel)</button>
-      <button class="btn sm" onclick="runDetailExport('pdf')"><i class="ti ti-file-type-pdf"></i> Detail (PDF)</button>
-      <button class="btn sm accent" onclick="runSummaryExport('excel')"><i class="ti ti-file-spreadsheet"></i> Summary (Excel)</button>
-      <button class="btn sm accent" onclick="runSummaryExport('pdf')"><i class="ti ti-file-type-pdf"></i> Summary (PDF)</button>
+      <button class="gbtn" onclick="runDetailExport('excel')"><i class="ti ti-file-spreadsheet"></i> <span data-i18n>Detail (Excel)</span></button>
+      <button class="gbtn" onclick="runDetailExport('pdf')"><i class="ti ti-file-type-pdf"></i> <span data-i18n>Detail (PDF)</span></button>
+      <button class="gbtn" onclick="runSummaryExport('excel')"><i class="ti ti-file-spreadsheet"></i> <span data-i18n>Summary (Excel)</span></button>
+      <button class="gbtn" onclick="runSummaryExport('pdf')"><i class="ti ti-file-type-pdf"></i> <span data-i18n>Summary (PDF)</span></button>
     </div>
     <div id="hoursSummaryPreview"></div>
     <!-- Hours typed here go to the firm owner for approval (supplierSubmitHours);
          the list below shows each batch's status. -->
-    <div style="font-weight:600;margin:8px 0" data-i18n>Send hours for approval</div>
+    <div class="t3-sec" data-i18n>Send hours for approval</div>
     <div class="field"><label data-i18n>Worker</label><select id="sendHoursWorker" onchange="renderSendHoursRows()"></select></div>
     <div id="sendHoursHint" style="font-size:11px;color:var(--text3);margin-bottom:6px"></div>
     <div id="sendHoursRows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-      <button class="btn sm" type="button" onclick="addSendHoursRow()"><i class="ti ti-plus"></i> <span data-i18n>Add shift</span></button>
-      <label class="btn sm" title="Columns: Date, In, Out (and Worker — a name or ID number — for a sheet of several workers)" data-i18n-title="Columns: Date, In, Out (and Worker — a name or ID number — for a sheet of several workers)"><i class="ti ti-file-spreadsheet"></i> <span data-i18n>Load from Excel</span><input type="file" id="timesheetFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="loadTimesheetFile(this)"></label>
-      <button class="btn sm accent" type="button" id="sendHoursBtn" onclick="submitSendHours()"><i class="ti ti-send"></i> <span data-i18n>Send for approval</span></button>
+      <button class="gbtn" type="button" onclick="addSendHoursRow()"><i class="ti ti-plus"></i> <span data-i18n>Add shift</span></button>
+      <label class="gbtn" title="Columns: Date, In, Out (and Worker — a name or ID number — for a sheet of several workers)" data-i18n-title="Columns: Date, In, Out (and Worker — a name or ID number — for a sheet of several workers)"><i class="ti ti-file-spreadsheet"></i> <span data-i18n>Load from Excel</span><input type="file" id="timesheetFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="loadTimesheetFile(this)"></label>
+      <button class="gbtn primary" type="button" id="sendHoursBtn" onclick="submitSendHours()"><i class="ti ti-send"></i> <span data-i18n>Send for approval</span></button>
     </div>
-    <div style="font-weight:600;margin:8px 0" data-i18n>Sent for approval</div>
+    <div class="t3-sec" data-i18n>Sent for approval</div>
     <div id="sentHoursList" style="font-size:12px;color:var(--text3)"></div>
   </div>
 </div>

@@ -621,6 +621,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     click('#hoursImportSubmitBtn');
     for(let i = 0; i < 40 && await pend() === before; i++) await new Promise(res => setTimeout(res, 150));
     r.sentDaily = (await pend()) - before;
+    // The first send is done only when its reply cleared the rows; reopening sooner lets that reply clear the next row.
+    for(let i = 0; i < 40 && __hoursManualRows.length; i++) await new Promise(res => setTimeout(res, 100));
     closeModal('hoursImportOverlay');
     delete workers.find(w => w.id === 'w2').payMode;
     openHoursImportModal('w2');
@@ -628,7 +630,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const before2 = await pend();
     const toasts = []; const orig = window.showToast; window.showToast = (m) => { toasts.push(m); };
     click('#hoursImportSubmitBtn');
-    await new Promise(res => setTimeout(res, 800));
+    for(let i = 0; i < 40 && !toasts.length; i++) await new Promise(res => setTimeout(res, 100));
+    await new Promise(res => setTimeout(res, 300));
     window.showToast = orig;
     r.sentHourly = (await pend()) - before2; r.toast = toasts.join(' | ');
     closeModal('hoursImportOverlay');
