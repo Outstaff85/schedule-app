@@ -21,8 +21,8 @@ The look the user chose on 2026-10-12 for every page (manager app, supplier port
 - ⋮ opens a glass popover with a tail pointing at the button; Delete last, in soft red, under a divider.
 
 ## Plates (every list)
-- Solid plate, radius 16, 4px status bar on the left; the name in medium weight (500, owner 2026-10-13). **No letters avatar** (owner 2026-10-13): the plate starts with the name; the name's first three letters are drawn large (62px), grey and faint in the middle of the plate's background (`.t3-wm`). Icon avatars (firms, alerts, documents) and section icons in editors stay in the bar's color.
-- Worker plate: name short — first name in full, every other part as an initial ("Avi C.", "Maya B. D."); notice chips right after the name (one chip with its word + "+N"; red urgent, amber attention: visa, missing documents, contract ending, no punch today…); a tap on a chip opens the notices sheet (avatar, full name, site, today's punch, hours, one plate per notice with its action: Renew, Upload, Extend, Call; "Open worker card"). Under the name: site · today's punch ("● In 07:58" green, "● No punch" red, "Out 22:00", "On vacation"). At the right: the month's hours (green figure, no box), then a bare ⋮ (thin dots, no box).
+- Solid plate, radius 16, 4px status bar on the left; the name in medium weight (500, owner 2026-10-13). **No letters avatar** (owner 2026-10-13): the plate starts with the name. Icon avatars (firms, alerts, documents) and section icons in editors stay in the bar's color.
+- Worker plate: the full name (owner 2026-10-13; cut with … when it does not fit, never under the chips or the figures); notice chips right after the name (one chip with its word + "+N"; red urgent, amber attention: visa, missing documents, contract ending, no punch today…); a tap on a chip opens the notices sheet (avatar, full name, site, today's punch, hours, one plate per notice with its action: Renew, Upload, Extend, Call; "Open worker card"). Under the name: site · today's punch ("● In 07:58" green, "● No punch" red, "Out 22:00", "On vacation"). At the right: the month's hours (green figure, no box), then a bare ⋮ (thin dots, no box).
 - Swipe left reveals Edit and Delete. Delete never asks: the plate collapses and a glass "Undo" snack runs 5 s with the gradient timer line; the real delete is sent when the timer ends.
 - **Select in every list** (owner 2026-10-13, replacing "always on"): a Select button above the list, no boxes by default; a tap slides the drawn-tick boxes in, the line reads "N selected · Select all · Done", a tap on a plate ticks it, and a glass bar shows below (count, the list's bulk actions, Delete, ✕). Swipe is off while selecting.
 
@@ -38,7 +38,7 @@ The look the user chose on 2026-10-12 for every page (manager app, supplier port
   - Client editor: **Client** → **Place** (address, branch, GPS radius with a small map) → **Rates** (Hourly / Daily switch, worker and client rate, OT, Shabbat, margin figures) → **Hours approval** (ticks); Save.
   - Supplier editor: **Company** → **Commission** (per hour / per day, month figures) → **Portal login** (username, password, what it sees as ticks) → **Workers** (mini plates with hours); Save.
   - HR / user editor: **Person & login** (+ Role switch Staff / HR / Supplier / Client) → **Sections** (tiles) → **Hours** (ticks, Only own workers) → **HR commission** → **Own workers**; Save.
-  - Worker list: header "Workers 24" + glass "New" + ⋮; tabs Active / Vacation / Pending; section label "WORKERS" with its count; worker plates as above (short name, chips, site · punch, green hours, ⋮). Mockups: docs/design/02 and 04.
+  - Worker list: header "Workers 24" + glass "New" + ⋮; tabs Active / Vacation / Pending; section label "WORKERS" with its count; worker plates as above (full name, chips, site · punch, green hours, ⋮). Mockups: docs/design/02 and 04.
 
 ## Header, greeting, notifications
 - Manager header: logo, notifications bell (red count that pulses; the bell swings now and then), Language button, account circle.
@@ -96,7 +96,7 @@ Each stage: tested with (`npm test` in `tests/rules`, `test:auth`, the browser t
 
 1. **Foundation** — the ground, glass and plate styles, the highlight line, tick tiles, the logo 11C with its two lines, the Language button and sheet on every page (replacing the select in the account menu), the bottom bar (variant 11) in the manager app. No tab content changes yet.
 2. **Lists** — plates everywhere (`t3Line` → the new plate: bar-colored avatar, figure in green, bare ⋮), swipe Edit / Delete, the Undo snack instead of confirm dialogs (the real delete after 5 s), the ⋮ popover with a tail, Select mode with the glass bulk bar; in the manager app and the supplier portal (shared helpers mirrored).
-3. **Workers** — the worker plate (short name, notice chips, site · today's punch, month hours), the notices sheet, the worker card.
+3. **Workers** — the worker plate (full name, notice chips, site · today's punch, month hours), the notices sheet, the worker card.
 4. **Editors** — worker, client, supplier, HR / user as section plates (Form 101 labels stay Hebrew; the worker editor keeps saving itself on close).
 5. **Today, greeting, notifications** — the greeting with the time-of-day icons, the bell with its panel and "Mark all read" (read state stored per user; rules and tests).
 6. **Schedule** — the week switcher, worker lines with day marks, opened days.

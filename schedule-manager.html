@@ -752,10 +752,9 @@
   .view-toggle button+button{border-left:1px solid var(--border2)}
   .view-toggle button.active{background:var(--blue-bg);color:var(--blue)}
   .workers-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));column-gap:12px;row-gap:0;align-items:start}
-  /* The worker plate (redesign stage 3): short name, notice chips after it,
+  /* The worker plate (redesign stage 3): the full name (cut with … when it
+     does not fit, owner 2026-10-13), notice chips after it,
      site · today's punch under it, the month's hours at the right. */
-  .wplate .n b{display:flex;align-items:center;gap:6px;min-width:0}
-  .wplate .wp-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;min-width:0}
   .wplate .n small,.wc-hn p{display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden}
   .site{overflow:hidden;text-overflow:ellipsis}
   .dot{color:#4a5068}
@@ -2763,7 +2762,7 @@ function renderGanttBody(){
         <b${on?'':' style="font-family:inherit"'}>${on?esc(x.start+'–'+x.end):esc(tr('Day off'))}</b></div>`;
     }).join('')}</div>`:'';
     return `<div class="gantt-row" draggable="true" data-wi="${wi}" ondragstart="dragStart(event,${wi})" ondragover="dragOver(event,${wi})" ondragleave="dragLeave(event)" ondrop="doDrop(event,${wi})" ondragend="dragEnd(event)">`
-      + t3Line({c:w.status==='vacation'?'var(--warn)':work.length?'var(--ok)':'var(--neutral)', av:t3Av(w), name:`<span title="${esc(w.name)}">${esc(shortName(w.name))}</span>`,
+      + t3Line({c:w.status==='vacation'?'var(--warn)':work.length?'var(--ok)':'var(--neutral)', av:t3Av(w), name:`<span class="wp-n" title="${esc(w.name)}">${esc(w.name)}</span>`,
           sub:[esc(sum), `<span class="daymarks">${marks}</span>`], cls:'sched-line'+(open?' open':''),
           onclick:`toggleSchedWorker('${esc(w.id)}')`, right:`<span class="r">${esc(fmtHoursShort(workerTotalHours(w)))}</span><i class="ti ti-chevron-down t3-chev"></i>`})
       + days + `</div>`;
@@ -3956,7 +3955,7 @@ function supplierEditorExtraHtml(sp){
   const SECT={dashboard:'Dashboard', workers:'My Workers', hours:'My Hours'}, can=isFirmAdminSession();
   const login=(users.length?users.map(u=>`<div class="wc-line" style="margin-bottom:2px"><i class="ti ti-user"></i><span>${esc(u.fullName||u.username)} · ${esc(u.username)}</span></div><div class="check-grid" style="margin:6px 0 10px">${Object.keys(SECT).map(k=>`<label class="check-chip"><input type="checkbox" data-uid="${esc(u.id)}" data-field="supplierSections" value="${k}"${can?'':' disabled'}${(u.supplierSections||Object.keys(SECT)).includes(k)?' checked':''} onchange="saveLoginTicks(this)"><span class="chip-text"><span>${esc(tr(SECT[k]))}</span></span></label>`).join('')}<label class="check-chip"><input type="checkbox" data-uid="${esc(u.id)}" data-field="showPay" value="1"${can?'':' disabled'}${u.showPay!==false?' checked':''} onchange="saveLoginTicks(this)"><span class="chip-text"><span>${esc(tr("Sees own workers' pay"))}</span></span></label></div><div class="check-grid" style="margin:0 0 10px">${Object.keys(HOUR_PERM_LABELS).map(p=>`<label class="check-chip"><input type="checkbox" data-uid="${esc(u.id)}" data-field="hourPerms" value="${esc(p)}"${can?'':' disabled'}${(Array.isArray(u.hourPerms)?u.hourPerms:HOUR_DEFAULT).includes(p)?' checked':''} onchange="saveLoginTicks(this)"><span class="chip-text"><span>${esc(tr(HOUR_PERM_LABELS[p]))}</span></span></label>`).join('')}</div>`).join(''):`<div class="wc-line">${esc(tr('No portal login yet.'))}</div>`)
     +(can?`<button type="button" class="gbtn" onclick="newLoginFor('supplier','${esc(sp.id)}')"><i class="ti ti-user-plus"></i><span>${esc(tr('New portal login'))}</span></button>`:'');
-  const plates=mine.length?mine.map(w=>t3Line({c:isActiveWorker(w)?'var(--ok)':'var(--bad)', av:t3Av(w), name:`<span title="${esc(w.name)}">${esc(shortName(w.name))}</span>`, right:`<span class="r">${esc(fmtHoursShort(hours[w.id]))}</span>`})).join(''):`<div class="t3-empty">${esc(tr('No workers'))}</div>`;
+  const plates=mine.length?mine.map(w=>t3Line({c:isActiveWorker(w)?'var(--ok)':'var(--bad)', av:t3Av(w), name:`<span class="wp-n" title="${esc(w.name)}">${esc(w.name)}</span>`, right:`<span class="r">${esc(fmtHoursShort(hours[w.id]))}</span>`})).join(''):`<div class="t3-empty">${esc(tr('No workers'))}</div>`;
   return SEC('commission','ti-coin','Commission',commission,rateText(cur)+' · '+tr('{0} this month',{0:'₪'+fmtMoneyShort(payable)}))
     +SEC('portal','ti-key','Portal login',login,users.length?users.map(u=>u.username).join(', '):tr('No portal login yet.'))
     +SEC('workers','ti-users-group','Workers',plates,mine.length===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:mine.length,1:''}));
@@ -4694,8 +4693,7 @@ function workersMonthHours(){
   return out;
 }
 // ── The worker plate (redesign stage 3, docs/workers.md → Workers tab) ──
-// "Avi C.", "Maya B. D.": the first name in full, every other part as an initial.
-function shortName(n){ const p=String(n||'').trim().split(/\s+/).filter(Boolean); return p.length<2?(p[0]||''):p[0]+' '+p.slice(1).map(x=>x.charAt(0).toUpperCase()+'.').join(' '); }
+// The full name, cut with … when it does not fit (.wp-n, og.css).
 function todayPunchLog(){ const t=new Date().toDateString(); return getPunchLog().filter(e=>new Date(e.ts).toDateString()===t); }
 // A worker today: on vacation, the latest punch today (in / out and its time),
 // "no punch" when today's shift started 15+ minutes ago with no punch, or nothing.
@@ -4766,7 +4764,7 @@ function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
   const plate=({w,wi})=>{
     const t=workerToday(w,todayLog), ns=workerNotices(w,t), id=esc(w.id), site=workerSiteName(w);
     return t3Line({c:workerBarColor(w,ns), cls:'wplate tap-edit', av:t3Av(w),
-      name:`<span class="wp-n" title="${esc(w.name)}">${esc(shortName(w.name))}</span>${noticeChipsHtml(w,ns)}${newWorkerBadgeHtml(w)}`,
+      name:`<span class="wp-n" title="${esc(w.name)}">${esc(w.name)}</span>${noticeChipsHtml(w,ns)}${newWorkerBadgeHtml(w)}`,
       sub:[site?`<span class="site">${esc(site)}</span>`:'', workerTodayHtml(t)].filter(Boolean).join('<span class="dot">·</span>'),
       right:`<span class="r">${esc(fmtHoursShort(hours[w.id]))}</span>`,
       attrs:`data-wid="${id}" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))"`,
@@ -8022,9 +8020,8 @@ function t3Av(w){
 // o.swipe = {edit: fn(el), del: fn(el)} — a swipe left on a touch screen shows
 // Edit and Delete behind the plate; o.sel = the row's id in a list that can
 // Select (startSelect). Functions are kept in __rowFns, looked up by key.
-// No round letters avatar (owner 2026-10-13): the plate starts with the name
-// and the name's first three letters sit large and faint in its background
-// (.t3-wm); an avatar that is an icon (a firm, an alert, a document) stays.
+// No round letters avatar (owner 2026-10-13): the plate starts with the name;
+// an avatar that is an icon (a firm, an alert, a document) stays.
 const __rowFns = new Map(); let __rowFnSeq = 0;
 function rowFnKey(v){
   const k = 'r' + (++__rowFnSeq); __rowFns.set(k, v);
@@ -8036,8 +8033,7 @@ function t3Line(o){
   const sel = o.sel != null ? String(o.sel) : null;
   const picked = sel != null && __selState && __selState.picked.has(sel);
   const iconAv = !!o.av && /<i class="ti /.test(o.av);
-  const wm = iconAv ? '' : String(o.name||'').replace(/<[^>]*>/g,' ').replace(/&[#a-z0-9]+;/gi,'').trim().split(/\s+/).join('').replace(/[^\p{L}\p{N}]/gu,'').slice(0,3);
-  const line = `<div class="t3-line${o.cls?' '+o.cls:''}${picked?' picked':''}" style="--c:${o.c||'var(--neutral)'}"${sel!=null?` data-sel-id="${esc(sel)}"`:''}${o.onclick?` onclick="${o.onclick}"`:''}${o.attrs?' '+o.attrs:''}>${wm?`<span class="t3-wm" aria-hidden="true"><span>${esc(wm)}</span></span>`:''}${sel!=null?'<span class="t3-cb"><span class="og-box"></span></span>':''}${iconAv?o.av:''}<div class="n"><b>${o.name}</b>${[].concat(o.sub||[]).filter(Boolean).map(x=>`<small>${x}</small>`).join('')}</div>${o.right||''}${kb}</div>`;
+  const line = `<div class="t3-line${o.cls?' '+o.cls:''}${picked?' picked':''}" style="--c:${o.c||'var(--neutral)'}"${sel!=null?` data-sel-id="${esc(sel)}"`:''}${o.onclick?` onclick="${o.onclick}"`:''}${o.attrs?' '+o.attrs:''}>${sel!=null?'<span class="t3-cb"><span class="og-box"></span></span>':''}${iconAv?o.av:''}<div class="n"><b>${o.name}</b>${[].concat(o.sub||[]).filter(Boolean).map(x=>`<small>${x}</small>`).join('')}</div>${o.right||''}${kb}</div>`;
   if(!o.swipe) return line;
   return `<div class="sw" data-sw="${rowFnKey(o.swipe)}"><div class="sw-acts">${o.swipe.edit?`<button type="button" onclick="swipeAct(this,'edit')"><i class="ti ti-pencil"></i><span>${esc(tr('Edit'))}</span></button>`:''}${o.swipe.del?`<button type="button" class="d" onclick="swipeAct(this,'del')"><i class="ti ti-trash"></i><span>${esc(tr('Delete'))}</span></button>`:''}</div>${line}</div>`;
 }
@@ -8284,7 +8280,7 @@ function renderDashboard(){
       if(last&&last.type==='in') h+=Math.max(0,(now-new Date(last.ts))/36e5); });
     return h; };
   const plate=(w,c,right,sub)=>{ const t=workerToday(w,todayLog), ns=workerNotices(w,t), site=workerSiteName(w);
-    return t3Line({c, av:t3Av(w), name:`<span title="${esc(w.name)}">${esc(shortName(w.name))}</span>${noticeChipsHtml(w,ns)}`,
+    return t3Line({c, av:t3Av(w), name:`<span class="wp-n" title="${esc(w.name)}">${esc(w.name)}</span>${noticeChipsHtml(w,ns)}`,
       sub:sub||[site?`<span class="site">${esc(site)}</span>`:'', workerTodayHtml(t)].filter(Boolean).join('<span class="dot">·</span>'),
       right, onclick:`openWorkerCardById('${esc(w.id)}')`}); };
   const hrsRight=w=>`<span class="r">${esc(fmtHoursShort(hoursToday(w)))}</span>`;
@@ -8309,7 +8305,7 @@ function renderDashboard(){
   const noticed=workers.filter(isActiveWorker).map(w=>({w, ns:workerNotices(w,workerToday(w,todayLog))})).filter(x=>x.ns.length)
     .sort((a,b)=>(b.ns.some(n=>n.lvl==='red')?1:0)-(a.ns.some(n=>n.lvl==='red')?1:0));
   draw('notices','dashNoticesWrap','dashNotices',noticed,({w,ns})=>t3Line({c:ns.some(n=>n.lvl==='red')?'var(--bad)':'var(--warn)', av:t3Av(w),
-    name:`<span title="${esc(w.name)}">${esc(shortName(w.name))}</span>${noticeChipsHtml(w,ns)}`, sub:esc(ns.map(n=>n.title).join(' · ')),
+    name:`<span class="wp-n" title="${esc(w.name)}">${esc(w.name)}</span>${noticeChipsHtml(w,ns)}`, sub:esc(ns.map(n=>n.title).join(' · ')),
     onclick:`openNotices('${esc(w.id)}')`}));
   // ── Today's punch log ───────────────────────────────────────────────────
   const dashLogEl = document.getElementById('dashLog');

@@ -231,7 +231,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const wc = await p.evaluate(async () => { switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await new Promise(r => setTimeout(r, 200));
     const c = document.querySelector('#workersCards .wplate'); return c ? {h: c.getBoundingClientRect().height, name: c.querySelector('.wp-n').textContent, full: c.querySelector('.wp-n').title, hrs: (c.querySelector('.r') || {}).textContent, kb: !!c.querySelector('.t3-kb'), sw: !!c.closest('.sw')} : {}; });
   await p.setViewportSize({width: 1280, height: 720});
-  ok(wc.h > 0 && wc.h < 80 && wc.name && wc.name.length < wc.full.length && / [A-Z]\.$/.test(wc.name) && /h$/.test(wc.hrs) && wc.kb && wc.sw, 'workers: on a phone a worker is one plate — short name, the month\'s hours, ⋮, swipe ' + JSON.stringify(wc));
+  ok(wc.h > 0 && wc.h < 80 && wc.name && wc.name === wc.full && /h$/.test(wc.hrs) && wc.kb && wc.sw, 'workers: on a phone a worker is one plate — the full name (… when it does not fit), the month\'s hours, ⋮, swipe ' + JSON.stringify(wc));
   ok(rt.keptAfterEdit, 'worker pay: an edit in the worker modal keeps the pay fields', JSON.stringify(rt));
   ok(rt.moved === 0, "worker pay: moved to a client with a rate, the worker takes the client's rate", JSON.stringify(rt));
   // Commission for a worker paid by the day: a fixed ₪ per day when set, else hours × ₪/h.
