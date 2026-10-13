@@ -175,7 +175,6 @@
   "Deadline: {0}": "מועד אחרון: {0}",
   "Delete": "מחיקה",
   "Delete failed: {0}": "המחיקה נכשלה: {0}",
-  "Delete {0} \"{1}\"?": "למחוק את {0} \"{1}\"?",
   "Deleting…": "מוחק…",
   "Digital punch clock": "שעון נוכחות דיגיטלי",
   "disabled": "מושבת",
@@ -1049,5 +1048,9 @@
   "Detail (Excel)": "פירוט (Excel)",
   "Detail (PDF)": "פירוט (PDF)",
   "Summary (Excel)": "סיכום (Excel)",
-  "Summary (PDF)": "סיכום (PDF)"
+  "Summary (PDF)": "סיכום (PDF)",
+  "Expired {0}": "פג תוקף {0}",
+  "No expiry date": "ללא תאריך תפוגה",
+  "Open": "פתח",
+  "{0} documents": "{0} מסמכים"
 }

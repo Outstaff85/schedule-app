@@ -724,6 +724,33 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(wp.panes.join('|') === 'info|docs|hours' && wp.hoursStatus && wp.edit, 'worker card: Info / Docs / Hours switch, one Edit button ' + JSON.stringify(wp.panes));
   ok(wp.menu === 'Open card,Edit,Pay,Punch link,!Delete' && wp.pendingHidden && wp.stillThere && wp.undone && wp.leftOut && wp.notYet && wp.deleted, 'workers: Delete never asks — Undo keeps the worker, otherwise it is removed after 5 s ' + JSON.stringify(wp));
   ok(wp.selHead && wp.sel === '1 selected' && wp.vac, 'workers: Select always shown (no bar until a tick); a tick on a box, the bulk bar sets Vacation ' + JSON.stringify({selHead: wp.selHead, sel: wp.sel, vac: wp.vac}));
+  // Worker documents (stage 13): plates with Select always on in the card's Docs pane; bulk Delete through Undo; closing the card gives Select back to the workers list.
+  const wd = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
+    const w = workers[0], keep = w.docs;
+    w.docs = [{id:'d1', type:'contract', name:'contract.pdf', url:'#', uploadedAt:'2026-01-02'}, {id:'d2', type:'other', name:'visa.jpg', url:'#', uploadedAt:'2026-01-01'}];
+    switchTab('workers'); await wait(100);
+    openWorkerCard(0); await wait(300); workerCardPane('docs'); await wait(50);
+    const rows = () => document.querySelector('#workerCardModal .worker-docs-rows');
+    r.plates = rows().querySelectorAll('.t3-line .t3-cb').length;
+    r.head = (rows().previousElementSibling || {}).className === 'sel-head' && /0 selected/.test(rows().previousElementSibling.textContent);
+    rows().previousElementSibling.querySelector('button').click(); await wait(50);
+    r.bar = (document.querySelector('.sel-bar b') || {}).textContent;
+    document.querySelector('.sel-bar .gbtn.del').click(); await wait(400);
+    r.pending = w.docs.length === 2 && /2 documents deleted/.test(document.querySelector('#undoSnack').textContent);
+    document.querySelector('#undoSnack .og-snack-u').click(); await wait(400);
+    r.undone = rows() && rows().querySelectorAll('.t3-line:not(.gone)').length === 2 && w.docs.length === 2;
+    rows().querySelector('.t3-line .t3-kb').click(); await wait(50);
+    r.menu = [...document.querySelectorAll('#ogPop .og-pop-it')].map(b => (b.classList.contains('del') ? '!' : '') + b.innerText.trim()).join();
+    document.querySelector('#ogPop .og-pop-it.del').click(); await wait(5400);
+    r.deleted = w.docs.map(d => d.id).join();
+    closeModal('workerCardOverlay'); await wait(200);
+    const wl = document.querySelector('#workersCards');
+    r.back = !!wl && (wl.previousElementSibling || {}).className === 'sel-head' && __selState && __selState.key === 'workers';
+    w.docs = keep; render();
+    return r;
+  });
+  ok(wd.plates === 2 && wd.head && wd.bar === '2 selected' && wd.pending && wd.undone && wd.menu === 'Open,!Delete' && wd.deleted === 'd2' && wd.back, 'worker documents: plates with Select always on, bulk Delete through Undo, ⋮ Delete after 5 s, Select back to the workers list on close ' + JSON.stringify(wd));
   // Editors as section plates (redesign stage 4): worker, client, supplier, user.
   const ed = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};

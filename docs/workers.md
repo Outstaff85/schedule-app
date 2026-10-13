@@ -170,7 +170,8 @@ These are separate from the Form 101 scan, and their labels are English.
   - prepares every file with `fileForStorage()` (images shrunk);
   - uploads them in parallel to Storage with `uploadWorkerFile({action:'saveWorkerFile', workerId, …}, onProgress)` — see [app-core.md](app-core.md) → Data calls;
   - appends `{id, type, name, fileId, url, mediaType, uploadedAt, expiry}` to `w.docs`, then saves.
-- `deleteWorkerFile(workerId, docId)` removes the entry and deletes the file.
+- The card's Docs pane lists them as plates (`workerDocsSectionHtml`, newest first, paged by 10): the type, the file name, the expiry (amber expiring, red expired); a tap opens the file (`openWorkerDocFile`), the ⋮ has Open and — with `hasPermission('workers')` — Delete, a swipe left Delete. Select is always on (`startWorkerDocsSelect`, key `workerDocs`): the plates take it while the Docs pane is on screen, another pane clears the ticks, and closing the card gives Select back to the page's list (the window-close watcher calls `endSelect()` + `render()`).
+- `deleteWorkerFile(workerId, docId, el)` / `deleteWorkerFiles(workerId, ids, els)` never ask: the plates collapse behind the Undo snack; when its time is up the entries are removed, saved, and their files deleted (`gsDeleteWorkerDoc`); Undo brings them back.
 
 ## Hours import (from the worker card)
 
