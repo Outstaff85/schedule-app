@@ -318,7 +318,7 @@
   .acc-period-nav .gbtn.icon{width:40px;height:40px;flex:none}
   .acc-period.gsel{flex:1;min-width:0;height:40px;padding:0 14px;border-radius:16px;background:var(--glass);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--glass-edge);color:#fff;font:600 14px 'DM Sans','Heebo',Arial,sans-serif;text-align:center;text-align-last:center;cursor:pointer;-webkit-appearance:none;appearance:none}
   .acc-period.gsel option{background:#1b1e29;color:#fff}
-  #sectionAccounting[data-acctab="salary"] [data-tab]:not([data-tab="salary"]),#sectionAccounting[data-acctab="billing"] [data-tab]:not([data-tab="billing"]),#sectionAccounting[data-acctab="approvals"] [data-tab]:not([data-tab="approvals"]){display:none !important}
+  #sectionAccounting[data-acctab="salary"] [data-tab]:not([data-tab="salary"]),#sectionAccounting[data-acctab="billing"] [data-tab]:not([data-tab="billing"]),#sectionAccounting[data-acctab="approvals"] [data-tab]:not([data-tab="approvals"]),#sectionAccounting[data-acctab="alerts"] [data-tab]:not([data-tab="alerts"]),#sectionAccounting:not([data-acctab="alerts"]) #accSecAlerts{display:none !important}
   .og-tabs .tab-n{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:4px;border-radius:999px;background:var(--bad);color:#fff;font-size:10px;font-weight:700}
   .sal-row{background:var(--plate) !important;border-left:0 !important;border-radius:16px !important;box-shadow:inset 4px 0 0 var(--c,var(--neutral));margin-top:8px !important}
   .sal-row .sal-line{padding:10px 12px 10px 16px}
@@ -1493,6 +1493,10 @@ body:has(.overlay.open){overflow:hidden}
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-circle-check"></i> <span data-i18n>Hours approvals</span> <button type="button" class="acc-help" onclick="openAccountingHelp('approvals')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
         <div id="hourApprovalsWrap"></div>
       </div>
+
+      <!-- Alerts (stage 13): the accounting-only warnings as plates in three
+           sections — punches and shifts, rates and pay, clients (accAlerts) -->
+      <div data-tab="alerts" id="accSecAlerts" style="margin-top:4px"><div id="accAlertsWrap"></div></div>
 
       <!-- Hours-import approval queue (Admin/Roles plan, stage 14) -->
       <div data-tab="approvals" id="accSecPending" style="margin-top:24px">
@@ -8513,13 +8517,53 @@ function stepSalaryPeriod(dir){
   if(i===sel.selectedIndex) return;
   sel.selectedIndex=i; onSalaryPeriodChange();
 }
-// Salary / Billing / Approvals: CSS shows only the accSec blocks of the open
-// tab (#sectionAccounting[data-acctab]); an HR sees no tabs.
-let __accTab='salary';
+// Salary / Billing / Approvals / Alerts: CSS shows only the accSec blocks of
+// the open tab (#sectionAccounting[data-acctab]); an HR sees no tabs.
+let __accTab='salary', __accAlerts=[];
+// Accounting → Alerts (stage 13, Screens.md): every accounting-only warning
+// of the period's Salary rows, as plates in three sections — Punches and
+// shifts (the analyzeDayPunches warnings, but not a shift still running
+// today), Rates and pay (no rate → pay 0, a daily-paid worker without a daily
+// rate, no bank details) and Clients (worked at in the period with no billing
+// rate → billed 0). A tap opens the place to fix it. Worker notices stay in
+// the bell, hours approvals in Approvals.
+function accAlerts(entries, byClient){
+  const out=[], money=n=>'₪'+Math.round(Number(n)||0);
+  entries.forEach(e=>{
+    const wc=workers.find(w=>w.id===e.workerId); if(!wc) return;
+    (e.warns||[]).forEach(wn=>{
+      if(/still at work/.test(wn)) return;
+      const m=String(wn).match(/^([^:]+):\s*(.*)$/), date=m?m[1]:'', text=m?m[2]:wn;
+      out.push({sec:'punch', lvl:/open shift|>12h/.test(text)?'amber':'red', icon:'ti-clock-exclamation', title:text, sub:[e.worker, date].filter(Boolean).join(' · '), fn:()=>openWorkerCardById(wc.id)});
+    });
+    const mainCid=Object.entries(e.clientHours||{}).sort((a,b)=>b[1]-a[1]).map(x=>x[0])[0]||(wc.clientIds||[])[0]||'';
+    const own=wOwnRate(wc);
+    if(isDailyPay(wc)){ if(own==='') out.push({sec:'pay', lvl:'red', icon:'ti-calendar-dollar', title:tr('No daily rate — pay 0'), sub:e.worker+' · '+tr('{n} days',{n:e.daysUsed}), fn:()=>openPayModal(wc.id)}); }
+    else if(own==='' && !(effectiveRates(wc,mainCid).regRate>0)) out.push({sec:'pay', lvl:'red', icon:'ti-cash-off', title:tr('No rate — pay 0'), sub:e.worker+' · '+tr('{h}h',{h:e.hours.toFixed(1)}), fn:()=>openPayModal(wc.id)});
+    if(!(wc.bank||wc.bankBranch||wc.bankAccountNumber)) out.push({sec:'pay', lvl:'amber', icon:'ti-building-bank', title:tr('No bank details'), sub:e.worker+(e.total>0?' · '+money(e.total):''), fn:()=>openPayModal(wc.id)});
+  });
+  Object.entries(byClient||{}).forEach(([cid,v])=>{
+    const c=clients.find(x=>x.id===cid); if(!c || !(v.hours>0)) return;
+    const has=c.rateMode==='fixed'?Number(c.fixedBillRate)>0:c.rateMode==='daily'?Number(c.dailyBillRate)>0:clientBillRate(c)>0;
+    if(!has) out.push({sec:'client', lvl:'red', icon:'ti-receipt-off', title:tr('No billing rate — billed 0'), sub:c.name+' · '+tr('{h}h',{h:v.hours.toFixed(1)}), fn:()=>openEditClient(cid)});
+  });
+  return out;
+}
+function renderAccAlerts(list){
+  const wrap=document.getElementById('accAlertsWrap'); if(!wrap) return;
+  if(!list.length){ wrap.innerHTML=`<div class="t3-empty">${esc(tr('Nothing to fix in this period'))}</div>`; return; }
+  const SECS=[['punch',tr('Punches and shifts')],['pay',tr('Rates and pay')],['client',tr('Clients')]];
+  const items=[];
+  SECS.forEach(([k,l])=>{ const xs=list.filter(x=>x.sec===k); if(!xs.length) return; items.push({head:l, n:xs.length}); xs.forEach(x=>items.push(x)); });
+  renderPagedList(wrap,'accAlerts',list.length+'|'+(document.getElementById('salaryPeriod')||{}).value,items,x=>x.head
+    ? `<div class="t3-sec">${esc(x.head)}<em>${x.n}</em></div>`
+    : t3Line({c:x.lvl==='red'?'var(--bad)':'var(--warn)', av:`<div class="t3-av"><i class="ti ${esc(x.icon)}"></i></div>`, name:esc(x.title), sub:esc(x.sub), cls:'tap-edit', onclick:`runRowFn('${rowFnKey(x.fn)}')`}));
+}
 function renderAccTabs(){
   const el=document.getElementById('accTabs'); if(!el) return;
   const n=(__hoursBatches||[]).filter(b=>b.status==='pending').length;
-  el.innerHTML=[['salary','Salary'],['billing','Billing'],['approvals','Approvals']].map(([k,l])=>`<button type="button" data-k="${k}" class="${__accTab===k?'on':''}" onclick="setAccTab('${k}')">${esc(tr(l))}${k==='approvals'&&n?` <span class="tab-n">${n}</span>`:''}</button>`).join('');
+  const a=__accAlerts.length;
+  el.innerHTML=[['salary','Salary'],['billing','Billing'],['approvals','Approvals'],['alerts','Alerts']].map(([k,l])=>`<button type="button" data-k="${k}" class="${__accTab===k?'on':''}" onclick="setAccTab('${k}')">${esc(tr(l))}${k==='approvals'&&n?` <span class="tab-n">${n}</span>`:''}${k==='alerts'&&a?` <span class="tab-n">${a}</span>`:''}</button>`).join('');
 }
 function setAccTab(k){ __accTab=k; endSelect(); renderAccounting(); }
 // The figures on top: the period's hours and payroll over every worker (the
@@ -8645,6 +8689,7 @@ function renderSalary(){
   const entries=Object.values(byWorker).filter(e=>!payOnly||((workers.find(w=>w.id===e.workerId)||{}).hrId===me.uid));
   __lastSalaryEntries=entries;
   renderAccFigs(entries);
+  __accAlerts=payOnly?[]:accAlerts(entries, byClient); renderAccAlerts(__accAlerts); renderAccTabs();
   salaryEl.classList.toggle('salary-ro',payOnly);
   if(!entries.length){
     salaryEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('No punch data for this period')}</div>`;
@@ -8663,15 +8708,13 @@ function renderSalary(){
   const shown=q?entries.filter(e=>String(e.worker||'').toLowerCase().includes(q)):entries;
   const totalHours=shown.reduce((s,e)=>s+e.hours,0);
   const payTotal=shown.reduce((s,e)=>s+e.total,0), travelTotal=shown.reduce((s,e)=>s+e.travel,0);
-  const _allWarns=entries.flatMap(e=>(e.warns||[]).map(w=>e.worker+' — '+w));
-  const _reviewBanner=_allWarns.length?`<div style="background:var(--amber-bg);border:1px solid rgba(245,166,35,0.3);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px"><div style="color:var(--amber);font-weight:600;font-size:13px;margin-bottom:4px"><i class="ti ti-alert-triangle"></i> ${tr('{n} to review before calculating',{n:_allWarns.length})}</div><div style="color:var(--text2);font-size:12px;line-height:1.6">${_allWarns.slice(0,12).map(w=>'• '+w).join('<br>')}${_allWarns.length>12?'<br>…'+tr('{n} more',{n:_allWarns.length-12}):''}</div></div>`:'';
   const money=n=>'₪'+(Math.round((Number(n)||0)*100)/100).toLocaleString('en-US');
   // One compact line per worker (per user request 2026-10-11, so a long list
   // stays short): name, hours, total; a tap opens its details below it — the
   // hours split, days, rate, pay, travel, bank (and an HR's commission). The
   // totals sit above the list and cover every row shown.
   const sumCell=(v,l,big)=>`<div><b${big?' class="big"':''}>${v}</b><span>${esc(l)}</span></div>`;
-  salaryEl.innerHTML=_reviewBanner+`
+  salaryEl.innerHTML=`
     <div class="sal-sum">${sumCell(esc(tr('{h}h',{h:totalHours.toFixed(1)})),tr('Hours'))}${sumCell(money(payTotal),tr('Pay'))}${sumCell(travelTotal>0?money(travelTotal):'—',tr('Travel ₪'))}${sumCell(money(payTotal+travelTotal),tr('Total Pay'),true)}${payOnly?sumCell('₪'+shown.reduce((t,e)=>t+hrCom(e),0).toFixed(0),tr('My commission'),true):''}</div>
     <div class="sal-list">
       <div class="sal-head"><span class="c-name">${esc(tr('Worker'))}</span><span class="c-h">${esc(tr('Hours'))}</span><span class="c-t">${esc(tr('Total Pay'))}</span><span></span></div>

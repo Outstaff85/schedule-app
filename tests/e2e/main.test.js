@@ -838,13 +838,24 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.tabs = [...document.querySelectorAll('#accTabs button')].map(b => b.dataset.k).join();
     r.salaryTab = vis('accSecSalary') && !vis('accSecPayable') && !vis('accSecPending');
     setAccTab('billing'); await wait(100); r.billingTab = !vis('accSecSalary') && vis('accSecPayable');
-    setAccTab('approvals'); await wait(100); r.approvalsTab = !vis('accSecSalary') && vis('accSecPending');
+    setAccTab('approvals'); await wait(100); r.approvalsTab = !vis('accSecSalary') && vis('accSecPending') && !vis('accSecAlerts');
+    // Alerts (stage 13): the accounting-only warnings in three sections, a count on the tab, a tap opens the fix place.
+    const w2 = workers.find(w => w.id === 'w1'), keepBank = [w2.bank, w2.bankBranch, w2.bankAccountNumber];
+    w2.bank = w2.bankBranch = w2.bankAccountNumber = ''; renderSalary();
+    setAccTab('alerts'); await wait(100);
+    r.alertsTab = !vis('accSecSalary') && vis('accSecAlerts');
+    r.secs = [...document.querySelectorAll('#accAlertsWrap .t3-sec')].map(x => x.firstChild.textContent.trim()).join();
+    r.tabN = (document.querySelector('#accTabs button[data-k="alerts"] .tab-n') || {}).textContent === String(__accAlerts.length) && __accAlerts.length > 0;
+    const bankLine = [...document.querySelectorAll('#accAlertsWrap .t3-line')].find(l => /No bank details/.test(l.textContent) && /Avi/.test(l.textContent));
+    if(bankLine){ bankLine.click(); await wait(200); r.opensPay = document.getElementById('payOverlay').classList.contains('open'); closeModal('payOverlay'); await wait(200); }
+    r.noBanner = !/to review before calculating/.test(document.getElementById('dashSalary').innerText);
+    [w2.bank, w2.bankBranch, w2.bankAccountNumber] = keepBank;
     setAccTab('salary'); await wait(100);
     const i0 = sel.selectedIndex; document.querySelector('#accPeriodNav .gbtn').click(); await wait(300); r.stepped = sel.selectedIndex === i0 + 1;
     document.querySelectorAll('#accPeriodNav .gbtn')[1].click(); await wait(300); r.back = sel.selectedIndex === i0;
     return r;
   });
-  ok(ac.inNav && ac.figs === 'Hours,Payroll,To approve' && ac.tabs === 'salary,billing,approvals' && ac.salaryTab && ac.billingTab && ac.approvalsTab && ac.stepped && ac.back, 'accounting: glass period ‹ ›, figures, Salary / Billing / Approvals tabs show their sections ' + JSON.stringify(ac));
+  ok(ac.inNav && ac.figs === 'Hours,Payroll,To approve' && ac.tabs === 'salary,billing,approvals,alerts' && ac.salaryTab && ac.billingTab && ac.approvalsTab && ac.alertsTab && /Rates and pay/.test(ac.secs) && ac.tabN && ac.opensPay && ac.noBanner && ac.stepped && ac.back, 'accounting: glass period ‹ ›, figures, Salary / Billing / Approvals / Alerts tabs show their sections; Alerts in sections with a count, a tap opens the pay window ' + JSON.stringify(ac));
   // Greeting and notifications (redesign stage 5): the greeting by time of day; the bell, its panel, "Mark all read" kept on the account.
   const nt = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};

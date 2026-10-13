@@ -832,9 +832,7 @@
   "{h}h × ₪{r}": "{h} ש׳ × ₪{r}",
   "{n} batch(es) rejected": "{n} חבילות נדחו",
   "{n} days × ₪{r}": "{n} ימים × ₪{r}",
-  "{n} more": "ועוד {n}",
   "{n} shift(s) approved": "{n} משמרות אושרו",
-  "{n} to review before calculating": "{n} לבדיקה לפני החישוב",
   "ספח (ID appendix)": "ספח",
   "— No site —": "— ללא אתר —",
   "— None —": "— ללא —",
@@ -1035,5 +1033,13 @@
   "{0} firms": "{0} חברות",
   "{0} firms deleted": "{0} חברות נמחקו",
   "On shift": "במשמרת",
-  "Late": "איחור"
+  "Late": "איחור",
+  "No daily rate — pay 0": "אין תעריף יומי — שכר 0",
+  "No rate — pay 0": "אין תעריף — שכר 0",
+  "No bank details": "אין פרטי בנק",
+  "No billing rate — billed 0": "אין תעריף חיוב — חיוב 0",
+  "Nothing to fix in this period": "אין מה לתקן בתקופה הזו",
+  "Punches and shifts": "החתמות ומשמרות",
+  "Rates and pay": "תעריפים ושכר",
+  "Alerts": "התראות"
 }

@@ -49,7 +49,7 @@ The client keeps the punch log in `localStorage.punchLog` (`getPunchLog()` / `sa
 
 Every text of the tab goes through the chosen language ([translations.md](translations.md)): `tr()` in the render functions, `data-i18n` on the static headers. This covers the help (ⓘ) texts, the pay modal, messages, the period labels (`SALARY_PERIOD_LABELS`, month names in the language's locale) and the salary / payable exports. With Hebrew the tab reads חשבונות and its sections חישוב שכר, שכר עובדים, תעריפים לפי לקוח, עמלות ספקים, לתשלום לספקים, לתשלום למשאבי אנוש, לחיוב לקוחות, שעות ממתינות לאישור. Shift warnings from `analyzeDayPunches` (shared with the rest of the app) stay English.
 
-**Top of the tab** (redesign stage 7): the period in glass (`#accPeriodNav`: ‹ `stepSalaryPeriod(-1)` an earlier period, the period select `#salaryPeriod` styled as a glass button, › a later one), the figures (`#accFigs`, `renderAccFigs(entries)`: the period's hours and payroll — pay + travel — over every Salary row from `salaryEntriesFor`, and the hours batches waiting, a tap opens Approvals), and the tabs **Salary / Billing / Approvals** (`#accTabs`, `__accTab`, `setAccTab(k)`; a red count on Approvals). Each block below carries `data-tab` (salary: Salary Calculation; billing: the rate matrices, Payable by supplier, Payable by HR, Billable by client; approvals: Hours approvals, Pending hours) and CSS shows only the open tab's blocks (`#sectionAccounting[data-acctab]`). An HR sees no tabs (its Hours review and Salary only). The salary lines are plates (the bar and avatar in the line's colour, the total in the figure green).
+**Top of the tab** (redesign stage 7): the period in glass (`#accPeriodNav`: ‹ `stepSalaryPeriod(-1)` an earlier period, the period select `#salaryPeriod` styled as a glass button, › a later one), the figures (`#accFigs`, `renderAccFigs(entries)`: the period's hours and payroll — pay + travel — over every Salary row from `salaryEntriesFor`, and the hours batches waiting, a tap opens Approvals), and the tabs **Salary / Billing / Approvals / Alerts** (`#accTabs`, `__accTab`, `setAccTab(k)`; a red count on Approvals and on Alerts). Each block below carries `data-tab` (salary: Salary Calculation; billing: the rate matrices, Payable by supplier, Payable by HR, Billable by client; approvals: Hours approvals, Pending hours; alerts: `#accSecAlerts`) and CSS shows only the open tab's blocks (`#sectionAccounting[data-acctab]`). An HR sees no tabs (its Hours review and Salary only). The salary lines are plates (the bar and avatar in the line's colour, the total in the figure green).
 
 `renderAccounting()` draws, in this order on the page:
 1. **Salary Calculation** — `renderSalary()` into `#dashSalary`.
@@ -91,7 +91,7 @@ The per-worker and per-client figures come from `salaryEntriesFor(period)` → `
 - **Details** are one line each (the label left, the figure right).
 - **Payable by supplier / by HR, Billable by client:** lines in the template (the supplier's, HR's or client's color on the left; hours under the name; the sum on the right); a tap on a supplier or client line opens a window with the workers behind the sum (`openSupplierPayDetail` — each worker's hours and commission by `commissionFor`; `openClientBillDetail` — each worker's hours at that client from `clientHours`, and the client's total), paged by 10.
 - **A row:** a tap opens or closes its details; the worker's name opens the worker card (`openWorkerCardById`); its details hold **Pay**, which opens the pay window — so does a double click (computer) or a long press (phone) on the row (`openPayModal`, below).
-  - **Warnings** — anomalies show as an amber "N to review" banner and a ⚠ icon per worker.
+  - **Warnings** — a ⚠ icon per worker with punch warnings; no banner (the warnings are listed on the Alerts tab).
 
 ### Pay window (`openPayModal(wid)`, `#payOverlay`)
 
@@ -105,6 +105,15 @@ The one place a worker's money is set — from a Salary row or the worker card's
 ### Per-client rates (`renderRateMatrix()`)
 
 One row per (worker, assigned client). Empty inputs show the resolved rate as a placeholder. `setClientRateOverride(wid, cid, field, val)` writes `w.clientRates[cid][field]` (`null` when emptied; the entry is removed when all three are empty), then saves.
+
+### Alerts (`accAlerts(entries, byClient)`, `renderAccAlerts`)
+
+The fourth tab (stage 13, `docs/design/system/Screens.md`): every accounting-only warning of the period, worked out in `renderSalary` from the Salary rows (`__accAlerts`; none for an HR with pay only), drawn as plates (red / amber bar, an icon) in three sections with their counts, paged by 10; the count sits on the tab.
+- **Punches and shifts:** each `analyzeDayPunches` warning of a row (`e.warns`: open shift — no OUT, double IN, OUT without IN, shift over 12h, 0-minute shift; amber for an open shift or over 12h, red for the rest), with the worker and the date; a shift still running today is left out. A tap opens the worker card.
+- **Rates and pay:** a daily-paid worker without a daily rate ("No daily rate — pay 0"), an hourly worker with no rate of his own and none from the client (`effectiveRates`, "No rate — pay 0"), no bank details (amber). A tap opens the pay window.
+- **Clients:** a client with hours in the period and no billing rate for its mode (fixed `fixedBillRate`, daily `dailyBillRate`, tiered `clientBillRate`) — "No billing rate — billed 0". A tap opens the client editor.
+
+The Salary list keeps only the small ⚠ on a row with punch warnings (no banner). Hours approvals stay in Approvals; worker notices stay in the bell.
 
 ### Supplier commission
 
