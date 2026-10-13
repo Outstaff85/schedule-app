@@ -181,8 +181,8 @@ body:has(.overlay.open){overflow:hidden}
 .og-box{width:24px;height:24px;box-sizing:border-box;flex:none;border-radius:7px;border:2px solid var(--ink-3);position:relative;transition:background .25s,border-color .25s;}
 .og-box::after{content:'';position:absolute;left:5px;top:1px;width:5px;height:10px;border:solid #0b0d14;border-width:0 3px 3px 0;transform:rotate(45deg);clip-path:inset(100% 0 0 0);transition:clip-path .35s .05s;}
 .t3-line.picked{background:#1f2a2c;}
-.t3-line.picked .og-box{background:var(--ok);border-color:var(--ok);}
-.t3-line.picked .og-box::after{clip-path:inset(0);}
+.t3-line.picked .og-box,.sal-row.picked .og-box{background:var(--ok);border-color:var(--ok);}
+.t3-line.picked .og-box::after,.sal-row.picked .og-box::after{clip-path:inset(0);}
 .sel-head{display:flex;align-items:center;gap:8px;margin:-2px 2px 8px;font-size:13px;color:var(--text2);}
 .sel-head span{flex:1;}
 .sel-head button{position:relative;border:0;background:none;color:#fff;font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;padding:2px 0 5px;}
@@ -1238,7 +1238,12 @@ function startSelect(o){
 function selectRoot(key, root){
   if(!root) return;
   const st = __selState;
-  if(!st || st.key !== key){ const f = SELECT_STARTERS[key]; if(f) f(); return; }
+  if(!st || st.key !== key){
+    // A list drawn while hidden (another tab's) never takes Select from the one on screen.
+    const shown = el => !!el && el.isConnected && el.getClientRects().length > 0;
+    if(st && shown(st.root) && !shown(root)) return;
+    const f = SELECT_STARTERS[key]; if(f) f(); return;
+  }
   if(st.root && st.root !== root) st.root.classList.remove('selecting');
   st.root = root; root.classList.add('selecting');
   if(!st.head || !st.head.isConnected || st.head.nextSibling !== root){
@@ -1248,7 +1253,7 @@ function selectRoot(key, root){
   }
   const ids = new Set(st.ids().map(String));
   [...st.picked].forEach(id => { if(!ids.has(id)) st.picked.delete(id); });
-  root.querySelectorAll('.t3-line[data-sel-id]').forEach(l => l.classList.toggle('picked', st.picked.has(l.dataset.selId)));
+  root.querySelectorAll('[data-sel-id]').forEach(l => l.classList.toggle('picked', st.picked.has(l.dataset.selId)));
   drawSelect();
 }
 function drawSelect(){
@@ -1273,18 +1278,18 @@ function drawSelect(){
 }
 function syncPicked(){
   const st = __selState; if(!st || !st.root) return;
-  st.root.querySelectorAll('.t3-line[data-sel-id]').forEach(l => l.classList.toggle('picked', st.picked.has(l.dataset.selId)));
+  st.root.querySelectorAll('[data-sel-id]').forEach(l => l.classList.toggle('picked', st.picked.has(l.dataset.selId)));
   drawSelect();
 }
 function endSelect(){
   const st = __selState; if(!st) return; __selState = null;
-  if(st.root){ st.root.classList.remove('selecting'); st.root.querySelectorAll('.t3-line.picked').forEach(l => l.classList.remove('picked')); }
+  if(st.root){ st.root.classList.remove('selecting'); st.root.querySelectorAll('.picked').forEach(l => l.classList.remove('picked')); }
   if(st.head) st.head.remove(); if(st.bar) st.bar.remove();
 }
 // A tap on a plate's tick box ticks it and does nothing else.
 ['click', 'pointerdown'].forEach(t => document.addEventListener(t, e => {
   const st = __selState; if(!st || !st.root) return;
-  const box = e.target.closest && e.target.closest('.t3-cb'), line = box && box.closest('.t3-line[data-sel-id]');
+  const box = e.target.closest && e.target.closest('.t3-cb'), line = box && box.closest('[data-sel-id]');
   if(!line || !st.root.contains(line)) return;
   e.stopPropagation(); if(t === 'pointerdown') return;
   e.preventDefault();
