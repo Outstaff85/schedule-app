@@ -24,7 +24,7 @@ The look the user chose on 2026-10-12 for every page (manager app, supplier port
 - Solid plate, radius 16, 4px status bar on the left; the avatar disc is in the **same color as the bar** (bar color at 22 % fill, initials and a thin ring in the bar color). Section icons in editors follow the same rule.
 - Worker plate: name short — first name in full, every other part as an initial ("Avi C.", "Maya B. D."); notice chips right after the name (one chip with its word + "+N"; red urgent, amber attention: visa, missing documents, contract ending, no punch today…); a tap on a chip opens the notices sheet (avatar, full name, site, today's punch, hours, one plate per notice with its action: Renew, Upload, Extend, Call; "Open worker card"). Under the name: site · today's punch ("● In 07:58" green, "● No punch" red, "Out 22:00", "On vacation"). At the right: the month's hours (green figure, no box), then a bare ⋮ (thin dots, no box).
 - Swipe left reveals Edit and Delete. Delete never asks: the plate collapses and a glass "Undo" snack runs 5 s with the gradient timer line; the real delete is sent when the timer ends.
-- **Select in every list**: header ⋮ → "Select…" — drawn-tick boxes slide in, "N selected · Select all" above, a glass bar below (count, the list's bulk actions, Delete, ✕). Swipe and row ⋮ are off while selecting.
+- **Select in every list** (always on since stage 13 — owner's override below): drawn-tick boxes slide in, "N selected · Select all" above, a glass bar below (count, the list's bulk actions, Delete, ✕). Swipe and row ⋮ are off while selecting.
 
 ## Ticks
 - Checkbox tiles: unticked grey box; ticked — tile tinted green, box green, the check mark draws itself (350 ms).
@@ -116,6 +116,7 @@ On 2026-10-13 the owner went through the design system artifact and found many p
 ### Method (applies to every step below)
 1. Bring `docs/design/system/tokens.json` into the four pages as CSS custom properties (the same names), and the component CSS from `components/bundle.css` (mapped onto the app's existing class names, or the app switched to the `og-*` names), replacing the hand-written look. One shared file, `og.css` at the root, linked by all four pages (owner's choice 2026-10-13: the design system in `docs/design/system/` is the reference, `og.css` its one copy in the code); `tests/design/check.js` keeps its tokens equal to `tokens.json` and fails when a page redefines a token.
 2. Audit: for every screen in `Screens.md` and every window, in each state (empty, filled, error, Select mode, phone 390px and computer), take a screenshot of the real page (Playwright on the local server, data faked in the page) next to the component previews / mockups; write every difference into the checklist below.
+2a. The audit tool: `cd tests/e2e && PYTHON=<python> E2E_OUT=<dir> npm run audit` (`tests/e2e/audit.js`) — the real pages on the emulators with the test data, every screen and window at 390 and 1280 px, one PNG each.
 3. Fix screen group by screen group (one PR each: Today + Schedule; Workers + worker card + notices; Accounting + approvals + Alerts; Clients, Suppliers, Admin; the portals; sign-in; punch page sheets). Each PR carries before / after screenshots and is merged only when the screenshots match the design.
 
 ### Owner overrides (decided after the artifact was made; they win over it)
@@ -126,10 +127,10 @@ On 2026-10-13 the owner went through the design system artifact and found many p
 ### Checklist (known gaps so far; the audit adds the rest)
 - [x] Tokens + component CSS from `docs/design/system/` in all four pages (method step 1) — `og.css`; the components whose `og-*` names the pages already use for their own versions (popover, snack, section plates, select box, tabs, avatar) are aligned in the screen-group passes.
 - [ ] Admin → Firms: a firm line carries only ✎ and a bare ⋮ (Pause / Activate, Delete last in red under a hairline; Delete through the Undo snack, never a confirm); today it shows ✎, ⏸ and an unstyled ✕ in a white box.
-- [ ] Header bell: the red count must be a whole pulsing disc with the number inside the button; today a red dot is cut off at the top.
-- [ ] Select line: "N selected" on the left of "Select all" (SelectMode), on every list.
-- [ ] Scan passport button next to New (override above).
-- [ ] Select shown by default on every list (override above).
+- [x] Header bell: the red count must be a whole pulsing disc with the number inside the button; today a red dot is cut off at the top.
+- [x] Select line: "N selected" on the left of "Select all" (SelectMode), on every list.
+- [x] Scan passport button next to New (override above).
+- [ ] Select shown by default on every list (override above) — done for workers, clients, suppliers, users, pending hours and the supplier portal's workers; firms, punches, documents, salary rows and hours approvals follow in their groups.
 - [ ] Accounting → new tab **Alerts** after Approvals, with the accounting-only warnings as plates grouped in three sections and a count on the tab (a tap opens the place to fix it; the salary row keeps only a small ⚠):
   - Punches and shifts: open shift — no OUT; double IN; OUT without IN; shift over 12h; 0-minute shift (the `analyzeDayPunches` warnings).
   - Rates and pay: worker with no rate (own or client) — pay 0; daily-paid worker without a daily rate; no bank details.
