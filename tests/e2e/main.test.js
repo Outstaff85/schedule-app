@@ -164,6 +164,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     'phone bottom bar: Today, Schedule, Workers, Accounting, More (the active one in its color); More opens Clients, Suppliers, Admin ' + JSON.stringify(bb));
   // Today, variant A: a figure shows only its section; the arrow folds a section (kept); the salary search opens from its icon.
   const tf = await p.evaluate(async () => {
+    let r_figs = '', r_sections = false;
     const vis = id => getComputedStyle(document.getElementById(id)).display !== 'none';
     const listShown = id => getComputedStyle(document.getElementById(id)).display !== 'none';
     dashFilterTo('log');
@@ -174,11 +175,14 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const folded = !listShown('dashLog'), kept = JSON.parse(localStorage.getItem('dashFolded') || '[]').includes('log');
     document.querySelector('#dashLogWrap .dash-sec').click();
     const open = listShown('dashLog');
+    // Screens.md: the figures are On shift, Late, No punch, Notices; the sections are worker plates.
+    r_figs = [...document.querySelectorAll('#dashStats > div')].map(d => d.childNodes[1] ? d.childNodes[1].textContent.trim() : '').join();
+    r_sections = ['dashOnSiteWrap','dashLateWrap','dashMissingWrap','dashNoticesWrap'].every(id => !!document.getElementById(id));
     switchTab('accounting'); await new Promise(r => setTimeout(r, 300));
     const sr = document.getElementById('salarySearch'), hidden = sr.style.display === 'none';
     toggleSalarySearch(); const shown = sr.style.display !== 'none'; toggleSalarySearch();
     switchTab('dashboard');
-    return {only, all, folded, kept, open, hidden, shown, closed: sr.style.display === 'none'};
+    return {only, all, folded, kept, open, hidden, shown, closed: sr.style.display === 'none', figs: r_figs === 'On shift,Late,No punch,Notices', sections: r_sections};
   });
   ok(Object.values(tf).every(Boolean), 'today: a figure filters to its section, the arrow folds one (kept); salary search opens from its icon ' + JSON.stringify(tf));
   // Schedule, variant 6: a line per worker with its week; the arrow opens 7 days, a day opens the shift editor.
