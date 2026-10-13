@@ -1151,22 +1151,23 @@ body:has(.overlay.open){overflow:hidden}
       <div class="t3-stats" id="dashStats"></div>
       <div id="dashFilterNote" class="dash-filter-note" style="display:none"></div>
 
-      <!-- Missing from shift -->
-      <div id="dashMissingWrap" data-sec="missing">
-        <div class="t3-sec dash-sec" onclick="toggleDashSec('missing')"><i class="ti ti-alert-triangle" style="color:var(--red)"></i> <span data-i18n>Should Be Here (Not Clocked In)</span><em id="dashMissingN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
-        <div id="dashMissing"></div>
-      </div>
-
-      <!-- On-site now -->
+      <!-- Today as in Screens.md (stage 13): On shift, Late, No punch, Notices —
+           worker plates with today's hours on the right; each section folds. -->
       <div id="dashOnSiteWrap" data-sec="onsite">
-        <div class="t3-sec dash-sec" onclick="toggleDashSec('onsite')"><i class="ti ti-map-pin" style="color:var(--green)"></i> <span data-i18n>On Site Now</span><em id="dashOnSiteN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
+        <div class="t3-sec dash-sec" onclick="toggleDashSec('onsite')"><i class="ti ti-map-pin" style="color:var(--green)"></i> <span data-i18n>On shift</span><em id="dashOnSiteN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
         <div id="dashOnSite"></div>
       </div>
-
-      <!-- Contract expiry warnings (hidden unless at least one worker is flagged) -->
-      <div style="display:none" id="dashExpiringWrap" data-sec="expiring">
-        <div class="t3-sec dash-sec" onclick="toggleDashSec('expiring')"><i class="ti ti-id-badge" style="color:var(--amber)"></i> <span data-i18n>Work permit expiring</span><em id="dashExpiringN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
-        <div id="dashExpiring"></div>
+      <div id="dashLateWrap" data-sec="late">
+        <div class="t3-sec dash-sec" onclick="toggleDashSec('late')"><i class="ti ti-clock-hour-4" style="color:var(--amber)"></i> <span data-i18n>Late</span><em id="dashLateN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
+        <div id="dashLate"></div>
+      </div>
+      <div id="dashMissingWrap" data-sec="missing">
+        <div class="t3-sec dash-sec" onclick="toggleDashSec('missing')"><i class="ti ti-clock-off" style="color:var(--red)"></i> <span data-i18n>No punch</span><em id="dashMissingN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
+        <div id="dashMissing"></div>
+      </div>
+      <div id="dashNoticesWrap" data-sec="notices">
+        <div class="t3-sec dash-sec" onclick="toggleDashSec('notices')"><i class="ti ti-alert-triangle" style="color:var(--amber)"></i> <span data-i18n>Notices</span><em id="dashNoticesN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
+        <div id="dashNotices"></div>
       </div>
 
       <!-- Today's log -->
@@ -1634,7 +1635,7 @@ body:has(.overlay.open){overflow:hidden}
 <!-- Super-admin landing screen: pick a firm to open, or create a new one.
      Shown instead of the normal app whenever a superadmin session has no
      viewingTenantId picked yet (see gateApp() / backToFirmsList()). -->
-<div id="firmsScreen" style="display:none;position:fixed;inset:0;z-index:900;background:var(--bg);overflow-y:auto">
+<div id="firmsScreen" class="og-cover" style="display:none;position:fixed;inset:0;z-index:900;overflow-y:auto">
   <div style="max-width:720px;margin:0 auto;padding:28px 20px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px">
       <div style="font-size:20px;font-weight:700"><i class="ti ti-building-skyscraper"></i> <span data-i18n>Firms</span></div>
@@ -8331,43 +8332,42 @@ function renderDashboard(){
     return false;
   });
 
-  // ── Draw (template 3: figures, then a line per worker; a tap opens the card) ──
+  // ── Draw (Screens.md, stage 13): worker plates — the short name and its
+  // first notice chip, site · today's punch under it, today's hours on the right.
   const setN=(id,n)=>{ const el=document.getElementById(id); if(el) el.textContent=n?String(n):''; };
   const show=(id,on)=>{ const el=document.getElementById(id); if(el) el.style.display=on?'':'none'; };
-  const missingEl = document.getElementById('dashMissing');
-  show('dashMissingWrap',missing.length); setN('dashMissingN',missing.length);
-  if(missing.length){
-    renderPagedList(missingEl,'dashMissing','',missing,w=>{
-      const sh=shiftOn(w, now), late=sh&&sh.start?Math.max(0,nowMins-toMins(sh.start)):0;
-      const lateTxt=late>=60?tr('late {h}h',{h:Math.floor(late/60)}):tr('late {m} min',{m:late});
-      return t3Line({c:'var(--red)', av:t3Av(w), name:esc(w.name), sub:esc([(sh?.start||'')+'–'+(sh?.end||''), workerClientNames(w)].filter(Boolean).join(' · ')),
-        right:`<span class="r" style="color:var(--red)">${esc(lateTxt)}</span>`, onclick:`openWorkerCardById('${esc(w.id)}')`});
-    });
-  } else missingEl.innerHTML='';
-  const onSiteEl = document.getElementById('dashOnSite');
-  show('dashOnSiteWrap',onSite.length); setN('dashOnSiteN',onSite.length);
-  if(onSite.length){
-    renderPagedList(onSiteEl,'dashOnSite','',onSite,w=>{
-      const lastIn=latestOf(todayLog.filter(e=>e.workerId===w.id&&e.type==='in'));
-      return t3Line({c:'var(--green)', av:t3Av(w), name:esc(w.name), sub:esc([tr('Since {0}',{0:(lastIn?lastIn.time:'?')}), lastIn?punchSite(lastIn):''].filter(Boolean).join(' · ')),
-        right:lastIn?.dist!=null?`<span class="r"><i class="ti ti-map-pin"></i> ${esc(tr('{m} m',{m:Math.round(lastIn.dist)}))}</span>`:'', onclick:`openWorkerCardById('${esc(w.id)}')`});
-    });
-  } else onSiteEl.innerHTML='';
-  // ── Contract-expiry warnings ─────────────────────────────────────────────
-  // Contract-term warnings plus expiring/expired worker documents (visa,
-  // work permit, contract file — workerDocExpiries()), one line each.
-  const expiring = [
-    ...workers.map(w=>({w, st:workerExpiryStatus(w)})).filter(x=>x.st)
-      .map(({w,st})=>({w, overdue:st.level==='overdue', label:tr(st.level==='overdue'?'Expired':'Expiring soon'), date:st.deadline})),
-    ...workers.filter(isActiveWorker).flatMap(w=>workerDocExpiries(w).map(x=>({w, overdue:x.level==='error',
-      label:tr(x.level==='error'?'{0} expired':'{0} expires',{0:tr(WORKER_DOC_TYPES[x.doc.type]||'Document')}).replace(/\s*\{1\}$/,''), date:x.date}))),
-  ];
-  show('dashExpiringWrap',expiring.length); setN('dashExpiringN',expiring.length);
-  if(expiring.length){
-    renderPagedList(document.getElementById('dashExpiring'),'dashExpiring','',expiring,({w,overdue,label,date})=>
-      t3Line({c:overdue?'var(--red)':'var(--amber)', av:t3Av(w), name:esc(w.name), sub:`<span style="color:${overdue?'var(--red)':'var(--amber)'}">${esc(label)}</span>`,
-        right:`<span class="r">${esc(date.toLocaleDateString('en-GB'))}</span>`, onclick:`openWorkerCardById('${esc(w.id)}')`}));
-  }
+  const hoursToday=w=>{ const es=todayLog.filter(e=>e.workerId===w.id); let h=0;
+    groupPunchesIntoShifts(es).forEach(b=>{ h+=analyzeDayPunches(b.entries,b.date).hours; const last=b.entries[b.entries.length-1];
+      if(last&&last.type==='in') h+=Math.max(0,(now-new Date(last.ts))/36e5); });
+    return h; };
+  const plate=(w,c,right,sub)=>{ const t=workerToday(w,todayLog), ns=workerNotices(w,t), site=workerSiteName(w);
+    return t3Line({c, av:t3Av(w), name:`<span title="${esc(w.name)}">${esc(shortName(w.name))}</span>${noticeChipsHtml(w,ns)}`,
+      sub:sub||[site?`<span class="site">${esc(site)}</span>`:'', workerTodayHtml(t)].filter(Boolean).join('<span class="dot">·</span>'),
+      right, onclick:`openWorkerCardById('${esc(w.id)}')`}); };
+  const hrsRight=w=>`<span class="r">${esc(fmtHoursShort(hoursToday(w)))}</span>`;
+  const draw=(key,wrap,elId,list,fn)=>{ show(wrap,list.length); setN(elId+'N',list.length); const el=document.getElementById(elId);
+    if(list.length) renderPagedList(el,elId,'',list,fn); else el.innerHTML=''; };
+  // On shift: clocked in now.
+  draw('onsite','dashOnSiteWrap','dashOnSite',onSite,w=>plate(w,'var(--ok)',hrsRight(w)));
+  // Late: today's first IN came more than 5 minutes after the planned start.
+  const late=workers.filter(isActiveWorker).map(w=>{ const sh=shiftOn(w,now); if(!sh||sh.type!=='work'||!sh.start) return null;
+    const firstIn=todayLog.filter(e=>e.workerId===w.id&&e.type==='in').sort((a,b)=>new Date(a.ts)-new Date(b.ts))[0];
+    if(!firstIn||!firstIn.time) return null; const by=toMins(firstIn.time)-toMins(sh.start);
+    return by>5?{w,by,firstIn}:null; }).filter(Boolean);
+  const lateTxt=m=>m>=60?tr('late {h}h',{h:Math.floor(m/60)}):tr('late {m} min',{m});
+  draw('late','dashLateWrap','dashLate',late,({w,by,firstIn})=>plate(w,'var(--warn)',hrsRight(w),
+    [`<span class="pin ok"><i></i>${esc(tr('In {0}',{0:firstIn.time}))}</span>`, `<span style="color:var(--warn)">${esc(lateTxt(by))}</span>`].join('<span class="dot">·</span>')));
+  // No punch: today's shift started 15+ minutes ago and nobody punched in.
+  draw('missing','dashMissingWrap','dashMissing',missing,w=>{ const sh=shiftOn(w, now), lt=sh&&sh.start?Math.max(0,nowMins-toMins(sh.start)):0;
+    return plate(w,'var(--bad)',`<span class="r" style="color:var(--bad)">${esc(lateTxt(lt))}</span>`,
+      [`<span class="site">${esc((sh?.start||'')+'–'+(sh?.end||''))}</span>`, workerSiteName(w)?esc(workerSiteName(w)):''].filter(Boolean).join('<span class="dot">·</span>')); });
+  // Notices: every active worker with something to look at (the same notices
+  // as the worker plate); a tap opens the notices sheet.
+  const noticed=workers.filter(isActiveWorker).map(w=>({w, ns:workerNotices(w,workerToday(w,todayLog))})).filter(x=>x.ns.length)
+    .sort((a,b)=>(b.ns.some(n=>n.lvl==='red')?1:0)-(a.ns.some(n=>n.lvl==='red')?1:0));
+  draw('notices','dashNoticesWrap','dashNotices',noticed,({w,ns})=>t3Line({c:ns.some(n=>n.lvl==='red')?'var(--bad)':'var(--warn)', av:t3Av(w),
+    name:`<span title="${esc(w.name)}">${esc(shortName(w.name))}</span>${noticeChipsHtml(w,ns)}`, sub:esc(ns.map(n=>n.title).join(' · ')),
+    onclick:`openNotices('${esc(w.id)}')`}));
   // ── Today's punch log ───────────────────────────────────────────────────
   const dashLogEl = document.getElementById('dashLog');
   setN('dashLogN',todayLog.length);
@@ -8385,17 +8385,17 @@ function renderDashboard(){
   }
   // The figures on top: a tap shows only that figure's list (dashFilterTo).
   const stat=(n,label,col,key)=>`<div class="${n?'go':''}${__dashFilter===key?' on':''}" ${n||__dashFilter===key?`onclick="dashFilterTo('${key}')"`:''}><b style="color:${n?col:'var(--text3)'}">${n}</b>${esc(label)}</div>`;
-  document.getElementById('dashStats').innerHTML=stat(onSite.length,tr('on site'),'var(--green)','onsite')
-    +stat(missing.length,tr('missing'),'var(--red)','missing')
-    +stat(expiring.length,tr('expiring'),'var(--amber)','expiring')
-    +stat(todayLog.length,tr('punches'),'var(--text)','log');
+  document.getElementById('dashStats').innerHTML=stat(onSite.length,tr('On shift'),'var(--green)','onsite')
+    +stat(late.length,tr('Late'),'var(--amber)','late')
+    +stat(missing.length,tr('No punch'),'var(--red)','missing')
+    +stat(noticed.length,tr('Notices'),'var(--amber)','notices');
   renderDashSuppliers();
   applyDashView();
 }
 // Today, variant A (user request 2026-10-11): a figure is a filter — only
 // its section shows, opened, until the same figure or "Show all" is tapped;
 // each section folds with the arrow at its right (kept on this device).
-const DASH_FILTER_LABEL={onsite:'on site',missing:'missing',expiring:'expiring',log:'punches'};
+const DASH_FILTER_LABEL={onsite:'On shift',late:'Late',missing:'No punch',notices:'Notices',log:'Today\'s Log',suppliers:'Workers by Supplier'};
 let __dashFilter=null;
 function dashFolded(){ try{ return JSON.parse(localStorage.getItem('dashFolded')||'[]'); }catch(e){ return []; } }
 function toggleDashSec(key){
