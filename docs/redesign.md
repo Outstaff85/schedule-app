@@ -88,7 +88,7 @@ How a run works (a run = one session, started by the Routine below or by hand wi
 - [x] 10 Supplier and client portals
 - [x] 11 Sign-in
 - [x] 11a WhatsApp reminder (added by the owner 2026-10-12; after stage 11, before the deferred weather)
-- [ ] 13 Conformance pass — every page made to match the design system exactly (below); **waits for the owner's go**, done as one comprehensive pass
+- [ ] 13 Conformance pass — every page made to match the design system exactly (below); the owner gave the go on 2026-10-13; done group by group
 - [ ] 12 Weather — **deferred**: done last, only after the owner puts the OpenWeatherMap key in Secret Manager and says so; the loop stops after stage 11
 
 ### Stages
@@ -114,7 +114,7 @@ Each stage: tested with (`npm test` in `tests/rules`, `test:auth`, the browser t
 On 2026-10-13 the owner went through the design system artifact and found many places where the site differs from it. Causes: the build sessions never read the artifact (this file linked it as private, and the stages were built from this file's summary and 12 mockups); every page re-drew the components by eye instead of using the artifact's tokens and CSS (none of its class or token names are in the code); several screens (Today, Schedule, Accounting, hours approvals, Admin, the portals, sign-in) had only a one-line description; old styles (opaque screens, inline field styles, fixed buttons) overrode the new ones; and a stage counted as done when the tests passed, with no screenshot compared to the design.
 
 ### Method (applies to every step below)
-1. Bring `docs/design/system/tokens.json` into the four pages as CSS custom properties (the same names), and the component CSS from `components/bundle.css` (mapped onto the app's existing class names, or the app switched to the `og-*` names), replacing the hand-written look. One shared block, duplicated on purpose in all four pages (CLAUDE.md → Duplicated on purpose).
+1. Bring `docs/design/system/tokens.json` into the four pages as CSS custom properties (the same names), and the component CSS from `components/bundle.css` (mapped onto the app's existing class names, or the app switched to the `og-*` names), replacing the hand-written look. One shared file, `og.css` at the root, linked by all four pages (owner's choice 2026-10-13: the design system in `docs/design/system/` is the reference, `og.css` its one copy in the code); `tests/design/check.js` keeps its tokens equal to `tokens.json` and fails when a page redefines a token.
 2. Audit: for every screen in `Screens.md` and every window, in each state (empty, filled, error, Select mode, phone 390px and computer), take a screenshot of the real page (Playwright on the local server, data faked in the page) next to the component previews / mockups; write every difference into the checklist below.
 3. Fix screen group by screen group (one PR each: Today + Schedule; Workers + worker card + notices; Accounting + approvals + Alerts; Clients, Suppliers, Admin; the portals; sign-in; punch page sheets). Each PR carries before / after screenshots and is merged only when the screenshots match the design.
 
@@ -124,7 +124,7 @@ On 2026-10-13 the owner went through the design system artifact and found many p
 - **Select is always there, on every list:** the line "N selected · Select all" (and the tick boxes on the plates) is shown by default above every list, in the same place it appears now — no ⋮ → Select… needed. Lists: workers, clients, suppliers, users, firms, punches, pending hours, hours approvals, documents, salary rows, and the portals' lists. The header ⋮ keeps its other tools.
 
 ### Checklist (known gaps so far; the audit adds the rest)
-- [ ] Tokens + component CSS from `docs/design/system/` in all four pages (method step 1).
+- [x] Tokens + component CSS from `docs/design/system/` in all four pages (method step 1) — `og.css`; the components whose `og-*` names the pages already use for their own versions (popover, snack, section plates, select box, tabs, avatar) are aligned in the screen-group passes.
 - [ ] Admin → Firms: a firm line carries only ✎ and a bare ⋮ (Pause / Activate, Delete last in red under a hairline; Delete through the Undo snack, never a confirm); today it shows ✎, ⏸ and an unstyled ✕ in a white box.
 - [ ] Header bell: the red count must be a whole pulsing disc with the number inside the button; today a red dot is cut off at the top.
 - [ ] Select line: "N selected" on the left of "Select all" (SelectMode), on every list.
@@ -137,7 +137,7 @@ On 2026-10-13 the owner went through the design system artifact and found many p
   (Hours approval items — waiting hours, disputes, changed after approval, fixes, "a client approved the month" — stay in Approvals; the bell's worker notices stay in the bell.)
 - [ ] Every screen of `Screens.md` audited and matched: Sign in, Today, Schedule, Workers, Worker card, Clients, Suppliers, Accounting, Hours approvals, Admin, Forms, Punch page (incl. My Schedule / My Hours sheets), and both portals.
 
-### Open questions for the owner (ask before stage 13 touches them)
-- Supplier commission editable in the supplier editor (per hour / per day, rate, "applies from") as in mockup 04 — today one default ₪5/h with per-worker rates in Accounting; changing it changes the commission maths.
-- The hint texts under tick tiles (hidden since the editors pass, as in the mockup) — keep hidden or show.
-
+### Owner answers (2026-10-13)
+- **Go** for stage 13, run group by group; each PR merged by its session on green CI (Auto-continue).
+- **Supplier commission:** the supplier's own rate is edited in the supplier window (per hour / per day, the rate, "applies from"); only the firm owner (`tenant_admin`) and the super-admin may change it — staff and HR see it read-only. Per-worker overrides stay in Accounting and win over the supplier's rate.
+- **Hints under tick tiles:** shown (small grey text under each tile).

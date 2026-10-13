@@ -3,7 +3,7 @@
 // {cache:'no-store'} so the newest code/data is always used; the cache is only
 // a fallback when offline. Data calls (Firebase, Cloud Functions) go to other
 // origins and are never touched by the SW.
-const CACHE = 'schedule-mgr-v125';
+const CACHE = 'schedule-mgr-v126';
 const CORE = [
   './',
   './schedule-manager.html',
@@ -11,6 +11,7 @@ const CORE = [
   './supplier-portal.html',
   './client-portal.html',
   './hours-review.js',
+  './og.css',
   './manifest.json',
   './manifest-punch.json',
   './icon-192.png',
