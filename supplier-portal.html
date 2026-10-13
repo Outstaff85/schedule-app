@@ -208,6 +208,7 @@ body:has(.overlay.open){overflow:hidden}
 .og-linkrun{fill:none;stroke:url(#ogMarkGrad);stroke-width:4;stroke-linecap:round;stroke-dasharray:14 90;animation:og-linkrun 2.8s linear infinite}
 @keyframes og-linkrun{from{stroke-dashoffset:104}to{stroke-dashoffset:0}}
 .tab-btn{position:relative;border:1px solid transparent!important;border-radius:14px!important;height:36px;padding:0 14px!important}
+@media (max-width:420px){.tabs{gap:2px;padding:12px 10px}.tab-btn{padding:0 10px!important}}
 .tab-btn.active{background:var(--glass-hi)!important;border-color:rgba(255,255,255,.35)!important;color:#fff!important}
 .tab-btn.active::after{content:'';position:absolute;left:14px;right:14px;bottom:-1px;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55);animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1)}
 @media (prefers-reduced-motion:reduce){.og-run,.og-p,.og-linkrun{animation:none}}
