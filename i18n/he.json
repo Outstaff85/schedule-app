@@ -1041,5 +1041,8 @@
   "Punches and shifts": "החתמות ומשמרות",
   "Rates and pay": "תעריפים ושכר",
   "Alerts": "התראות",
-  "Waiting": "ממתין"
+  "Waiting": "ממתין",
+  "{0} punches": "{0} החתמות",
+  "Excel": "Excel",
+  "PDF": "PDF"
 }
