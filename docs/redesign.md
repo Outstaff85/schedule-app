@@ -38,7 +38,7 @@ The look the user chose on 2026-10-12 for every page (manager app, supplier port
   - Client editor: **Client** → **Place** (address, branch, GPS radius with a small map) → **Rates** (Hourly / Daily switch, worker and client rate, OT, Shabbat, margin figures) → **Hours approval** (ticks); Save.
   - Supplier editor: **Company** → **Commission** (per hour / per day, month figures) → **Portal login** (username, password, what it sees as ticks) → **Workers** (mini plates with hours); Save.
   - HR / user editor: **Person & login** (+ Role switch Staff / HR / Supplier / Client) → **Sections** (tiles) → **Hours** (ticks, Only own workers) → **HR commission** → **Own workers**; Save.
-  - Worker list: header "Workers 24" + glass "New" + ⋮; tabs Active / Vacation / Pending; section label "WORKERS" with its count; worker plates as above (short name, chips, site · punch, green hours, ⋮). Mockups: docs/design/02 and 04.
+  - Worker list: header "Workers 24" + glass "New" + ⋮; tabs Active / Vacation / Pending; section label "WORKERS" with its count; worker plates as above (full name, chips, site · punch, green hours, ⋮). Mockups: docs/design/02 and 04.
 
 ## Header, greeting, notifications
 - Manager header: logo, notifications bell (red count that pulses; the bell swings now and then), Language button, account circle.
@@ -96,7 +96,7 @@ Each stage: tested with (`npm test` in `tests/rules`, `test:auth`, the browser t
 
 1. **Foundation** — the ground, glass and plate styles, the highlight line, tick tiles, the logo 11C with its two lines, the Language button and sheet on every page (replacing the select in the account menu), the bottom bar (variant 11) in the manager app. No tab content changes yet.
 2. **Lists** — plates everywhere (`t3Line` → the new plate: bar-colored avatar, figure in green, bare ⋮), swipe Edit / Delete, the Undo snack instead of confirm dialogs (the real delete after 5 s), the ⋮ popover with a tail, Select mode with the glass bulk bar; in the manager app and the supplier portal (shared helpers mirrored).
-3. **Workers** — the worker plate (short name, notice chips, site · today's punch, month hours), the notices sheet, the worker card.
+3. **Workers** — the worker plate (full name, notice chips, site · today's punch, month hours), the notices sheet, the worker card.
 4. **Editors** — worker, client, supplier, HR / user as section plates (Form 101 labels stay Hebrew; the worker editor keeps saving itself on close).
 5. **Today, greeting, notifications** — the greeting with the time-of-day icons, the bell with its panel and "Mark all read" (read state stored per user; rules and tests).
 6. **Schedule** — the week switcher, worker lines with day marks, opened days.

@@ -4693,7 +4693,7 @@ function workersMonthHours(){
   return out;
 }
 // ── The worker plate (redesign stage 3, docs/workers.md → Workers tab) ──
-// "Avi C.", "Maya B. D.": the first name in full, every other part as an initial.
+// The full name, cut with … when it does not fit (.wp-n, og.css).
 function todayPunchLog(){ const t=new Date().toDateString(); return getPunchLog().filter(e=>new Date(e.ts).toDateString()===t); }
 // A worker today: on vacation, the latest punch today (in / out and its time),
 // "no punch" when today's shift started 15+ minutes ago with no punch, or nothing.
