@@ -1,6 +1,6 @@
 # Hours review (`hours-review.js`, the `hours` function)
 
-The screen is drawn in the Odinson Glass look (redesign stage 10): glass tabs and month arrows, the status line as a plate with a coloured bar, each day a plate with its state as the bar (`--c`) and the hours in the figure green. Its styles fall back to plain values where a page lacks the design tokens.
+The screen is drawn in the Odinson Glass look (redesign stage 10): glass tabs and month arrows, the status line as a plate with a coloured bar, each day a plate with its state as the bar (`--c`) and as a pill (`.hrv-pill`, `HRV_STATES[st].pill`: Waiting, Approved, Fixed, Changed, Disputed, Fix proposed, Rejected — stage 13) and the hours in the figure green. Its styles fall back to plain values where a page lacks the design tokens.
 
 One screen, one Cloud Function and one store for every login that reviews its workers' hours: a **client** (in the client portal), a **supplier** (the supplier portal's Hours approval tab) and an **HR** (the manager app, Accounting). The same ticks, the same per-day actions, the same code (per user request 2026-10-11: "one template and one set of functions for hours").
 
@@ -9,7 +9,7 @@ One screen, one Cloud Function and one store for every login that reviews its wo
 `HOUR_PERMS` in `functions-auth/core.py` (and `HOUR_PERM_LABELS` in the manager app):
 
 - **hours** — see the month's shifts (in / out / hours per day);
-- **approve** — approve a day, several ticked days at once (Select: a tick box on every day still waiting / changed / whose fix was rejected, a tap ticks it, "Select all", the glass bar's Approve sends their lines in one `approve`, Done leaves; `__hrv.sel`, `hrvStartSelect` / `hrvToggleDay` / `hrvApproveSelected`), or the whole month at once;
+- **approve** — approve a day, several ticked days at once (Select, always on for a login with this tick — stage 13: "N selected · Select all" above the days and a tick box on every day still waiting / changed / whose fix was rejected; a tap on the box ticks it, the day's own buttons stay; with a tick the glass bar shows — its Approve sends their lines in one `approve`, ✕ clears the ticks; `__hrv.sel`, `hrvToggleDay` / `hrvSelectAll` / `hrvClearSelect` / `hrvApproveSelected`), or the whole month at once;
 - **dispute** — dispute a day with a comment;
 - **fix** — propose the right in / out of a day (with a comment); applied only when a manager accepts it;
 - **schedule** — the workers' planned shifts;
