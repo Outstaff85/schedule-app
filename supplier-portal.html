@@ -1134,6 +1134,9 @@ function selectRoot(key, root){
     // A list drawn while hidden (another tab's) never takes Select from the one on screen.
     const shown = el => !!el && el.isConnected && el.getClientRects().length > 0;
     if(st && shown(st.root) && !shown(root)) return;
+    // Nor does a list behind an open window take it from a list in that window.
+    const win = el => el && el.closest('.overlay.open');
+    if(st && shown(st.root) && win(st.root) && !win(root)) return;
     const f = SELECT_STARTERS[key]; if(f) f(); return;
   }
   if(st.root && st.root !== root) st.root.classList.remove('selecting');

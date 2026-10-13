@@ -4991,6 +4991,9 @@ function workerCardPane(k){
   const ov=document.getElementById('workerCardOverlay'); ov.__pane=k;
   ov.querySelectorAll('.seg button').forEach(b=>b.classList.toggle('on',b.dataset.p===k));
   ov.querySelectorAll('.wc-pane').forEach(p=>{ p.hidden=p.dataset.p!==k; });
+  // The Docs pane's plates take Select while it is on screen; another pane clears its ticks.
+  if(k==='docs') selectRoot('workerDocs', ov.querySelector('.worker-docs-rows'));
+  else if(__selState&&__selState.key==='workerDocs'){ __selState.picked.clear(); syncPicked(); }
 }
 
 // The worker card's ✎: its edit form (closing it comes back to the card).
@@ -5011,23 +5014,24 @@ function rescanFromWorkerCard(wi){
 // the "expiring" filter) and the Today tab's expiry cards.
 function workerDocsSectionHtml(w){
   const exp=new Map(workerDocExpiries(w).map(x=>[x.doc.id,x]));
-  const docs=[...(w.docs||[])].sort((a,b)=>String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||'')));
+  const docs=[...(w.docs||[])].filter(d=>!__workerDocDelPending.has(d.id)).sort((a,b)=>String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||'')));
+  const can=hasPermission('workers'), wid=esc(w.id);
+  // A plate per document: a tap opens the file; ⋮ Open / Delete, a swipe
+  // Delete, Select always on (bulk Delete) — all through the Undo snack.
   const row=d=>{
-    const x=exp.get(d.id);
-    const col=x?(x.level==='error'?'var(--red)':'var(--amber)'):'var(--text3)';
-    const exText=d.expiry?((x&&x.level==='error')?'Expired ':'Expires ')+fmtDMY(d.expiry):'No expiry date';
-    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border)">
-      <i class="ti ti-${d.type==='contract'?'file-certificate':d.type==='other'?'file':'id-badge-2'}" style="color:var(--text2)"></i>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:12px;font-weight:600">${esc(tr(WORKER_DOC_TYPES[d.type]||'Document'))}</div>
-        <a href="${esc(d.url||'#')}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);word-break:break-all">${esc(d.name||'file')}</a>
-        <div style="font-size:11px;color:${col}">${esc(exText)}</div>
-      </div>
-      ${hasPermission('workers')?`<button class="btn sm" title="${tr('Delete')}" onclick="deleteWorkerFile('${esc(w.id)}','${esc(d.id)}')" style="padding:0 8px"><i class="ti ti-trash"></i></button>`:''}
-    </div>`;
+    const x=exp.get(d.id), id=String(d.id);
+    const c=x?(x.level==='error'?'var(--bad)':'var(--warn)'):'var(--ok)';
+    const exText=d.expiry?((x&&x.level==='error')?tr('Expired {0}',{0:fmtDMY(d.expiry)}):tr('Expires {0}',{0:fmtDMY(d.expiry)})):tr('No expiry date');
+    return t3Line({c, cls:'wdoc', av:`<span class="og-doc-ic"><i class="ti ti-${d.type==='contract'?'file-certificate':d.type==='other'?'file':'id-badge-2'}"></i></span>`,
+      name:esc(tr(WORKER_DOC_TYPES[d.type]||'Document')), sub:[esc(d.name||'file'), `<span style="color:${x?c:'inherit'}">${esc(exText)}</span>`],
+      attrs:`onclick="openWorkerDocFile('${wid}','${esc(id)}')"`,
+      sel:can?id:null,
+      menu:[{icon:'ti-download', label:tr('Open'), fn:()=>openWorkerDocFile(w.id,id)},
+        ...(can?[{icon:'ti-trash', label:tr('Delete'), danger:true, fn:b=>deleteWorkerFile(w.id,id,b.closest('.t3-line'))}]:[])],
+      swipe:can?{del:el=>deleteWorkerFile(w.id,id,el)}:null});
   };
   // The rows are paged into .worker-docs-rows once the card is on screen.
-  __workerDocsPending={docs,row};
+  __workerDocsPending={docs,row,wid:w.id};
   return `<div style="margin-bottom:14px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
       <div style="font-size:13px;font-weight:700"><i class="ti ti-folder"></i> ${tr('Documents')}</div>
@@ -5035,11 +5039,24 @@ function workerDocsSectionHtml(w){
     ${docs.length?'<div class="worker-docs-rows"></div>':'<div style="font-size:12px;color:var(--text3)">'+tr('No documents yet — contract, visa, work permit…')+'</div>'}
   </div>`;
 }
-let __workerDocsPending=null;
+let __workerDocsPending=null, __workerDocsWid=null;
+const __workerDocDelPending=new Set();
 function pageWorkerDocs(root,workerId){
   const p=__workerDocsPending; __workerDocsPending=null;
   const el=root&&root.querySelector('.worker-docs-rows');
-  if(p&&el) renderPagedList(el,'workerDocs',workerId,p.docs,p.row);
+  __workerDocsWid=p&&el?workerId:null;
+  if(p&&el){ renderPagedList(el,'workerDocs',workerId,p.docs,p.row); selectRoot('workerDocs',el); }
+  else if(__selState&&__selState.key==='workerDocs') endSelect();
+}
+function startWorkerDocsSelect(){
+  const el=document.querySelector('#workerCardModal .worker-docs-rows'), w=workers.find(x=>x.id===__workerDocsWid);
+  if(!el||!w||!hasPermission('workers')) return;
+  startSelect({key:'workerDocs', root:el, ids:()=>(w.docs||[]).filter(d=>!__workerDocDelPending.has(d.id)).map(d=>String(d.id)),
+    del:(ids,els)=>deleteWorkerFiles(w.id,ids,els)});
+}
+function openWorkerDocFile(workerId,docId){
+  const w=workers.find(x=>x.id===workerId), d=w&&(w.docs||[]).find(x=>String(x.id)===String(docId));
+  if(d&&d.url) window.open(d.url,'_blank','noopener');
 }
 let __workerDocUploadId=null;
 function openWorkerDocUpload(workerId){
@@ -5089,14 +5106,25 @@ async function submitWorkerDocUpload(){
     status.textContent=tr('Upload failed: {0}',{0:(e&&e.message||e)}); btn.disabled=false;
   }
 }
-async function deleteWorkerFile(workerId,docId){
+// Delete never asks: the plates go, the Undo snack shows, the files are
+// removed when its time is up.
+function deleteWorkerFile(workerId,docId,el){ deleteWorkerFiles(workerId,[String(docId)],[el]); }
+function deleteWorkerFiles(workerId,ids,els){
   const w=workers.find(x=>x.id===workerId); if(!w) return;
-  const d=(w.docs||[]).find(x=>x.id===docId); if(!d) return;
-  if(!confirm(tr('Delete {0} "{1}"?',{0:(tr(WORKER_DOC_TYPES[d.type]||'Document')),1:(d.name)}))) return;
-  w.docs=(w.docs||[]).filter(x=>x.id!==docId);
-  autoSave(); render();
-  if(d.fileId) gsDeleteWorkerDoc(d.fileId);
-  const wi=workers.findIndex(x=>x.id===workerId); if(wi>=0) openWorkerCard(wi);
+  const docs=(w.docs||[]).filter(d=>ids.includes(String(d.id))); if(!docs.length) return;
+  docs.forEach(d=>__workerDocDelPending.add(d.id));
+  const one=docs.length===1?docs[0]:null;
+  const redraw=()=>{ const ov=document.getElementById('workerCardOverlay'), wi=workers.findIndex(x=>x.id===workerId);
+    if(ov&&ov.classList.contains('open')&&ov.__wid===workerId&&wi>=0) openWorkerCard(wi); };
+  undoDelete({els, label: one?(one.name||tr(WORKER_DOC_TYPES[one.type]||'Document')):tr('{0} documents',{0:docs.length}),
+    commit:()=>{
+      docs.forEach(d=>__workerDocDelPending.delete(d.id));
+      w.docs=(w.docs||[]).filter(x=>!docs.includes(x));
+      autoSave(); render();
+      docs.forEach(d=>{ if(d.fileId) gsDeleteWorkerDoc(d.fileId); });
+      redraw();
+    },
+    undo:()=>{ docs.forEach(d=>__workerDocDelPending.delete(d.id)); redraw(); }});
 }
 
 // --- Hours import (Admin/Roles plan, stage 14) ---------------------------------
@@ -5796,6 +5824,8 @@ new MutationObserver(recs=>{
       el.__returnTo=prev||null;
     } else {
       closedNow.push(el.id);
+      // A list inside the closed window gives Select back to the page's list.
+      if(__selState&&__selState.root&&el.contains(__selState.root)){ endSelect(); render(); }
       const rec={id:el.id, at:Date.now(), followed:false};
       __lastModalClose=rec;
       const back=el.__returnTo; el.__returnTo=null;
@@ -8063,7 +8093,7 @@ window.addEventListener('pagehide', () => finishUndo(true));
 // calls selectRoot(key, root) after drawing its rows: that starts its Select
 // (SELECT_STARTERS[key], which checks the rights) or keeps the ticks across a redraw.
 let __selState = null;
-const SELECT_STARTERS = {salary: () => startSalarySelect(), punches: () => startPunchesSelect(), firms: () => startFirmsSelect(), workers: () => startWorkerSelect(), clients: () => startClientSelect(), suppliers: () => startSupplierSelect(), users: () => startUsersSelect(), pendingHours: () => startPendingSelect()};
+const SELECT_STARTERS = {salary: () => startSalarySelect(), punches: () => startPunchesSelect(), firms: () => startFirmsSelect(), workers: () => startWorkerSelect(), clients: () => startClientSelect(), suppliers: () => startSupplierSelect(), users: () => startUsersSelect(), pendingHours: () => startPendingSelect(), workerDocs: () => startWorkerDocsSelect()};
 function startSelect(o){
   const keep = __selState && __selState.key === o.key ? __selState.picked : null;
   if(!keep) endSelect();
@@ -8079,6 +8109,9 @@ function selectRoot(key, root){
     // A list drawn while hidden (another tab's) never takes Select from the one on screen.
     const shown = el => !!el && el.isConnected && el.getClientRects().length > 0;
     if(st && shown(st.root) && !shown(root)) return;
+    // Nor does a list behind an open window take it from a list in that window.
+    const win = el => el && el.closest('.overlay.open');
+    if(st && shown(st.root) && win(st.root) && !win(root)) return;
     const f = SELECT_STARTERS[key]; if(f) f(); return;
   }
   if(st.root && st.root !== root) st.root.classList.remove('selecting');
