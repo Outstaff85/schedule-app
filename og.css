@@ -60,6 +60,8 @@
 html{background:var(--ground);}
 body{background:transparent;}
 body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(circle at 15% 10%,rgba(79,70,229,.50) 0,transparent 56%),radial-gradient(circle at 92% 62%,rgba(6,182,212,.36) 0,transparent 54%),radial-gradient(circle at 40% 108%,rgba(219,39,119,.34) 0,transparent 56%),var(--ground);}
+/* A full-screen cover over the app (the super-admin's Firms landing): the same blob ground, fixed. */
+.og-cover{background:radial-gradient(circle at 15% 10%,rgba(79,70,229,.50) 0,transparent 56%),radial-gradient(circle at 92% 62%,rgba(6,182,212,.36) 0,transparent 54%),radial-gradient(circle at 40% 108%,rgba(219,39,119,.34) 0,transparent 56%),var(--ground);background-attachment:fixed;}
 @keyframes og-flow{to{background-position:300% 0}}
 @keyframes og-pop{0%{transform:scaleX(0)}60%{transform:scaleX(1.12)}100%{transform:scaleX(1)}}
 /* The highlight line: one 3px flowing gradient line with a glow; .og-line on any

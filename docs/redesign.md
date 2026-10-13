@@ -136,7 +136,11 @@ On 2026-10-13 the owner went through the design system artifact and found many p
   - Rates and pay: worker with no rate (own or client) — pay 0; daily-paid worker without a daily rate; no bank details.
   - Clients: client with no billing rate — billed 0.
   (Hours approval items — waiting hours, disputes, changed after approval, fixes, "a client approved the month" — stay in Approvals; the bell's worker notices stay in the bell.)
-- [ ] The super-admin's Firms landing screen (`#firmsScreen`) shows a flat black page — it needs the blob ground.
+- [x] The super-admin's Firms landing screen (`#firmsScreen`) has the blob ground (`.og-cover` in og.css).
+- [x] Today as in Screens.md: figures On shift / Late / No punch / Notices (tap to filter), folding sections of worker plates with today's hours on the right.
+- [ ] Hours approvals (`hours-review.js`, both portals and an HR): a status pill per day (Approved, Waiting, Disputed…) and Select always on instead of the Select button.
+- [ ] Supplier portal: the solid blue buttons (Add worker, the exports, Send for approval) become glass (one primary per screen), the native selects become glass fields, the tab row fits a phone.
+- [ ] Punch page sheets (My Schedule, My Hours): no "✕ Close" text — they close with a swipe down or a tap on the grab bar, like every sheet.
 - [ ] Every screen of `Screens.md` audited and matched: Sign in, Today, Schedule, Workers, Worker card, Clients, Suppliers, Accounting, Hours approvals, Admin, Forms, Punch page (incl. My Schedule / My Hours sheets), and both portals.
 
 ### Owner answers (2026-10-13)
