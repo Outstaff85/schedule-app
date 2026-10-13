@@ -27,7 +27,7 @@ Who creates a supplier login and how: [admin.md](admin.md) → Users pane. The s
 
 ## Tabs (`switchTab`)
 
-Drawn in the app's template (variant 3, the same CSS and `t3Line` / `t3Av` copies as the manager app): figures as text, lines with a colored mark on the left; on a phone windows open from the bottom.
+Drawn in the app's template (variant 3: the shared CSS in `og.css`, the same `t3Line` / `t3Av` copies as the manager app): figures as text, lines with a colored mark on the left; on a phone windows open from the bottom.
 
 The tabs a supplier login may use are ticked in Admin → Users (`users.supplierSections` → claim `ss`, read by `supplierSections()` in `firestore-backend.js`; none stored = all three): a tab without its tick is hidden and `switchTab` falls back to the first allowed one. The `supplier` function enforces it: worker add / edit / delete need **My Workers** (`workers`), sending and listing hours need **My Hours** (`hours`) — else "Not allowed for this login".
 
