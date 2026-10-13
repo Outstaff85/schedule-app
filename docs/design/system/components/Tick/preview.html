@@ -1,0 +1,8 @@
+<!-- @dsCard group="Forms" height=230 subtitle="Tap: the check draws itself" -->
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Tick</title></head>
+<body>
+<div class="og-ground"><div class="og-sec" style="margin-top:0">Ticks</div><div class="og-row"><button class="og-tick on"><span class="og-box"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>Hours</button><button class="og-tick on"><span class="og-box"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>Approve</button><button class="og-tick"><span class="og-box"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>Dispute</button></div>
+<div class="og-sec">In a window</div><button class="og-tick wide on"><span class="og-box"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>Only own workers</button></div>
+<script>document.querySelectorAll('.og-tick').forEach(function(b){b.onclick=function(){b.classList.toggle('on')}});</script>
+</body></html>

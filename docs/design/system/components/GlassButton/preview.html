@@ -1,0 +1,8 @@
+<!-- @dsCard group="Actions" height=150 subtitle="Hover or tap: shine + underline" -->
+<!doctype html>
+<html><head><meta charset="utf-8"><title>GlassButton</title></head>
+<body>
+<div class="og-ground"><div class="og-row"><button class="og-btn primary"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>New worker</button><button class="og-btn on"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Export</button><button class="og-btn danger"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>Delete</button></div>
+<div class="og-row" style="margin-top:12px"><button class="og-btn icon" aria-label="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg></button><button class="og-btn icon" aria-label="Print"><svg viewBox="0 0 24 24"><path d="M7 9V4h10v5M7 17H5v-6h14v6h-2M7 14h10v6H7z"/></svg></button><button class="og-btn icon" aria-label="More">⋮</button></div></div>
+<script>document.querySelectorAll('.og-btn').forEach(function(b){b.addEventListener('click',function(){b.classList.remove('shine');void b.offsetWidth;b.classList.add('shine');setTimeout(function(){b.classList.remove('shine')},700)})});</script>
+</body></html>

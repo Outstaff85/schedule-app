@@ -1,0 +1,7 @@
+<!-- @dsCard group="Navigation" height=80 subtitle="Tap a tab" -->
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Tabs</title></head>
+<body>
+<div class="og-ground"><div class="og-tabs"><div class="ind"></div><button class="on">Active</button><button>Vacation</button><button>Pending</button></div></div>
+<script>var t=document.querySelector('.og-tabs'),i=t.querySelector('.ind');function p(b){i.style.left=b.offsetLeft+'px';i.style.width=b.offsetWidth+'px'}t.querySelectorAll('button').forEach(function(b){b.onclick=function(){t.querySelector('.on').classList.remove('on');b.classList.add('on');p(b);i.classList.remove('moved');void i.offsetWidth;i.classList.add('moved')}});requestAnimationFrame(function(){p(t.querySelector('.on'))});</script>
+</body></html>

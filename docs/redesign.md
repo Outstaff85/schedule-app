@@ -1,6 +1,6 @@
 # Redesign "Odinson Glass" — decisions (being built, stage by stage)
 
-The look the user chose on 2026-10-12 for every page (manager app, supplier portal, client portal, punch page, sign-in). This file is the brief to build from, stage by stage (one tab or screen per PR); the status list under "Build plan" says which stages are in the code. The shared pieces of stage 1 (ground, glass, plates, highlight line, tick tiles, Language button and sheet) are described in app-core.md → Layout and translations.md. Live HTML mockups of every decision are in `docs/design/` (open them in a browser; not served by Hosting): 01 glass, plates, ticks · 02 worker list with Select and Undo · 03 all screens · 04 editors · 05 logo, greeting, notifications · 06 punch page · 07 punch button variants (B chosen) · 08 My Schedule / My Hours · 09 Language button · 10 logo 11 loops (C chosen) · 11 bottom bar variants (11 chosen) · 12 bottom bar live icons. Where a mockup and this file disagree, this file wins. The full design system — tokens, components with live previews, rules — is the claude.ai artifact "Odinson Glass": https://claude.ai/artifact/WPJ5EKM5zHokFRzWzq2EoZ (private to the owner). Every rule in CLAUDE.md still applies (UI texts in English through the dictionaries, `esc()`, paging by 10, tap reads / long press edits, modals close on the backdrop, payroll only through the canonical functions).
+The look the user chose on 2026-10-12 for every page (manager app, supplier portal, client portal, punch page, sign-in). This file is the brief to build from, stage by stage (one tab or screen per PR); the status list under "Build plan" says which stages are in the code. The shared pieces of stage 1 (ground, glass, plates, highlight line, tick tiles, Language button and sheet) are described in app-core.md → Layout and translations.md. Live HTML mockups of every decision are in `docs/design/` (open them in a browser; not served by Hosting): 01 glass, plates, ticks · 02 worker list with Select and Undo · 03 all screens · 04 editors · 05 logo, greeting, notifications · 06 punch page · 07 punch button variants (B chosen) · 08 My Schedule / My Hours · 09 Language button · 10 logo 11 loops (C chosen) · 11 bottom bar variants (11 chosen) · 12 bottom bar live icons. **The design system itself is in the repo: `docs/design/system/`** (copied from the owner's claude.ai artifact "Odinson Glass", https://claude.ai/artifact/WPJ5EKM5zHokFRzWzq2EoZ, on 2026-10-13): `tokens.json` (every colour, type style, spacing, radius and shadow), `components/bundle.css` (the finished CSS of every component), `README.md` (foundations and rules), `Screens.md` (every screen), `Brand.md`, `Editors.md`, and a `README.md` + live `preview.html` per component (GlassButton, Tabs, Plate, RowMenu, SelectMode, Tick, BottomSheet, UndoSnack, LanguageButton). **Build every look from these files, never from a summary.** Order of authority on looks: the owner's decisions recorded in this file (they win; see "Owner overrides" under stage 13) → `docs/design/system/` → the mockups in `docs/design/`. Every rule in CLAUDE.md still applies (UI texts in English through the dictionaries, `esc()`, paging by 10, tap reads / long press edits, modals close on the backdrop, payroll only through the canonical functions).
 
 ## Name and logo
 - The app is called **Interactive Manager** ("Manager" in a soft indigo → cyan text gradient). Under it, small, two lines: "Connecting people and business", then "Everything under one roof" (soft green).
@@ -88,6 +88,7 @@ How a run works (a run = one session, started by the Routine below or by hand wi
 - [x] 10 Supplier and client portals
 - [x] 11 Sign-in
 - [x] 11a WhatsApp reminder (added by the owner 2026-10-12; after stage 11, before the deferred weather)
+- [ ] 13 Conformance pass — every page made to match the design system exactly (below); **waits for the owner's go**, done as one comprehensive pass
 - [ ] 12 Weather — **deferred**: done last, only after the owner puts the OpenWeatherMap key in Secret Manager and says so; the loop stops after stage 11
 
 ### Stages
@@ -106,3 +107,37 @@ Each stage: tested with (`npm test` in `tests/rules`, `test:auth`, the browser t
 11. **Sign-in** — the compact glass card over the site.
 11a. **WhatsApp reminder** — in the notifications panel and the notices sheet, a "no punch" notification gets a **WhatsApp** button next to Call. It opens `https://wa.me/<number>?text=<message>` (no API, no key; the owner taps Send in WhatsApp — fully automatic sending would need the paid WhatsApp Business API, not now). The number is the worker's phone from the card in international form (Israeli `05X…` → `9725X…`; a number already starting with `+` / `972` is kept, digits only). The message comes from a per-firm template, editable in the firm settings (Admin → Profile), default "Hi {full name}, you have not punched in today (shift {start} · {site})."; placeholders `{full name}`, `{first name}`, `{start}` (the planned shift start), `{site}`. The settings' labels and the default template text go through the dictionaries (English, with Hebrew); the message sent is the firm's template as saved. Tests (the number conversion, the link, the template saved and filled) and docs as usual.
 12. **Weather (deferred, last)** — a Cloud Function calling OpenWeatherMap (key in Secret Manager, 30-minute cache per area), the weather icons and temperature in the greeting, the time-of-day icon as fallback.
+
+## Stage 13 — Conformance pass (recorded 2026-10-13, to be done as one comprehensive pass on the owner's go)
+
+### Why it is needed
+On 2026-10-13 the owner went through the design system artifact and found many places where the site differs from it. Causes: the build sessions never read the artifact (this file linked it as private, and the stages were built from this file's summary and 12 mockups); every page re-drew the components by eye instead of using the artifact's tokens and CSS (none of its class or token names are in the code); several screens (Today, Schedule, Accounting, hours approvals, Admin, the portals, sign-in) had only a one-line description; old styles (opaque screens, inline field styles, fixed buttons) overrode the new ones; and a stage counted as done when the tests passed, with no screenshot compared to the design.
+
+### Method (applies to every step below)
+1. Bring `docs/design/system/tokens.json` into the four pages as CSS custom properties (the same names), and the component CSS from `components/bundle.css` (mapped onto the app's existing class names, or the app switched to the `og-*` names), replacing the hand-written look. One shared block, duplicated on purpose in all four pages (CLAUDE.md → Duplicated on purpose).
+2. Audit: for every screen in `Screens.md` and every window, in each state (empty, filled, error, Select mode, phone 390px and computer), take a screenshot of the real page (Playwright on the local server, data faked in the page) next to the component previews / mockups; write every difference into the checklist below.
+3. Fix screen group by screen group (one PR each: Today + Schedule; Workers + worker card + notices; Accounting + approvals + Alerts; Clients, Suppliers, Admin; the portals; sign-in; punch page sheets). Each PR carries before / after screenshots and is merged only when the screenshots match the design.
+
+### Owner overrides (decided after the artifact was made; they win over it)
+- **Language button: only the globe** (done 2026-10-13, PR #234) — the artifact's LanguageButton still shows the name and chevron.
+- **Scan passport next to New** in the Workers header (a glass button beside the primary "New"), not under the header ⋮ (the artifact's RowMenu puts it under ⋮).
+- **Select is always there, on every list:** the line "N selected · Select all" (and the tick boxes on the plates) is shown by default above every list, in the same place it appears now — no ⋮ → Select… needed. Lists: workers, clients, suppliers, users, firms, punches, pending hours, hours approvals, documents, salary rows, and the portals' lists. The header ⋮ keeps its other tools.
+
+### Checklist (known gaps so far; the audit adds the rest)
+- [ ] Tokens + component CSS from `docs/design/system/` in all four pages (method step 1).
+- [ ] Admin → Firms: a firm line carries only ✎ and a bare ⋮ (Pause / Activate, Delete last in red under a hairline; Delete through the Undo snack, never a confirm); today it shows ✎, ⏸ and an unstyled ✕ in a white box.
+- [ ] Header bell: the red count must be a whole pulsing disc with the number inside the button; today a red dot is cut off at the top.
+- [ ] Select line: "N selected" on the left of "Select all" (SelectMode), on every list.
+- [ ] Scan passport button next to New (override above).
+- [ ] Select shown by default on every list (override above).
+- [ ] Accounting → new tab **Alerts** after Approvals, with the accounting-only warnings as plates grouped in three sections and a count on the tab (a tap opens the place to fix it; the salary row keeps only a small ⚠):
+  - Punches and shifts: open shift — no OUT; double IN; OUT without IN; shift over 12h; 0-minute shift (the `analyzeDayPunches` warnings).
+  - Rates and pay: worker with no rate (own or client) — pay 0; daily-paid worker without a daily rate; no bank details.
+  - Clients: client with no billing rate — billed 0.
+  (Hours approval items — waiting hours, disputes, changed after approval, fixes, "a client approved the month" — stay in Approvals; the bell's worker notices stay in the bell.)
+- [ ] Every screen of `Screens.md` audited and matched: Sign in, Today, Schedule, Workers, Worker card, Clients, Suppliers, Accounting, Hours approvals, Admin, Forms, Punch page (incl. My Schedule / My Hours sheets), and both portals.
+
+### Open questions for the owner (ask before stage 13 touches them)
+- Supplier commission editable in the supplier editor (per hour / per day, rate, "applies from") as in mockup 04 — today one default ₪5/h with per-worker rates in Accounting; changing it changes the commission maths.
+- The hint texts under tick tiles (hidden since the editors pass, as in the mockup) — keep hidden or show.
+
