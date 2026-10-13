@@ -136,6 +136,7 @@ On 2026-10-13 the owner went through the design system artifact and found many p
   - Rates and pay: worker with no rate (own or client) — pay 0; daily-paid worker without a daily rate; no bank details.
   - Clients: client with no billing rate — billed 0.
   (Hours approval items — waiting hours, disputes, changed after approval, fixes, "a client approved the month" — stay in Approvals; the bell's worker notices stay in the bell.)
+- [ ] The super-admin's Firms landing screen (`#firmsScreen`) shows a flat black page — it needs the blob ground.
 - [ ] Every screen of `Screens.md` audited and matched: Sign in, Today, Schedule, Workers, Worker card, Clients, Suppliers, Accounting, Hours approvals, Admin, Forms, Punch page (incl. My Schedule / My Hours sheets), and both portals.
 
 ### Owner answers (2026-10-13)
