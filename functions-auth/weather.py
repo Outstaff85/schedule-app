@@ -2,9 +2,10 @@
 
 weather_action(db, body, caller, api_key, fetch, now=None)
   The place comes from the server's own data, never from the page: a worker
-  punch-link token (body.token) gives that worker's first client with a map
-  point; a manager's ID token (caller) gives the firm's main site — its first
-  client by sortIndex with a map point. Only {kind, temp} goes out: no
+  punch-link token (body.token) gives that worker's site with a map point —
+  body.clientId first when it is one of theirs (the site picked on the punch
+  page), then their clients in order; a manager's ID token (caller) gives
+  the firm's main site — its first client by sortIndex with a map point. Only {kind, temp} goes out: no
   coordinates, no names.
 
 OpenWeatherMap's current weather (free tier, 1,000 calls a day) with the key
@@ -54,12 +55,16 @@ def _point(c):
     return lat, lng
 
 
-def _worker_point(db, token):
+def _worker_point(db, token, client_id=None):
     tid, w = portal.find_worker(db, token)
     if not w:
         return None
     clients = db.collection("tenants").document(tid).collection("clients")
-    for cid in (w.to_dict() or {}).get("clientIds") or []:
+    ids = [str(c) for c in (w.to_dict() or {}).get("clientIds") or []]
+    if client_id and str(client_id) in ids:  # the site the worker picked first
+        ids.remove(str(client_id))
+        ids.insert(0, str(client_id))
+    for cid in ids:
         snap = clients.document(str(cid)).get()
         p = _point(snap.to_dict() or {}) if snap.exists else None
         if p:
@@ -110,7 +115,7 @@ def weather_for(db, lat, lng, api_key, fetch, now=None):
 
 def weather_action(db, body, caller, api_key, fetch, now=None):
     if body.get("token"):
-        p = _worker_point(db, body.get("token"))
+        p = _worker_point(db, body.get("token"), body.get("clientId"))
     elif caller:
         p = _firm_point(db, caller.get("tenantId"))
     else:

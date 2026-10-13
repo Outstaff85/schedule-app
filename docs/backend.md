@@ -22,6 +22,7 @@ Project `schedule-odinson`; Firestore and the `functions-auth` functions in **eu
 | `usernames/{name}` | `{uid}` — keeps usernames unique | functions only |
 | `workerTokens/{token}` | left over from the migration; nothing reads or writes it (the `punch` function finds a token by a collection-group query on `workers.token`) | — |
 | `pushSubscriptions/{sha256(endpoint)}` | a worker's push subscription | `punch` |
+| `weatherCache/{lat_lng}` | `kind, temp, at` — the weather of an area (lat / lng rounded to 0.1°), kept 30 minutes | `weather` |
 | `errors/{auto}`, `timings/{auto}` | telemetry rows (`when, page, role, worker, message, source, stack` / `when, kind, totalMs, tenantId, user, role, details`) | any signed-in caller; login refusals by `login` |
 
 Indexes (`firestore.indexes.json`): punches `workerId + ts`, `hrId + ts` (an own-workers HR's punch queries) and `clientId + ts` (the client portal's month); pendingHours `status + createdAt desc`; a single-field override on `workers.token` with collection-group scope (needed by `punch`).
@@ -82,6 +83,7 @@ A separate codebase so a login never loads OpenCV/PyMuPDF. `main.py` holds the H
 | `supplier` | `Bearer <ID token>` of a supplier | `portal.supplier_action` | |
 | `hours` | `Bearer <ID token>` of a client, supplier or HR login (review), or a manager (`list` / `resolve`) | `hours.hours_action` ([hours-review.md](hours-review.md)) | |
 | `ai_read` | `Bearer <ID token>`, role superadmin/tenant_admin/staff/hr | `ai.run` | 300 s, 512 MB, 1 CPU, up to 20 requests at once per instance (a scan's parallel calls share one warm instance); secret `ANTHROPIC_API_KEY`; `{ping:true}` |
+| `weather` | `{token[, clientId]}` (worker punch link) or `Bearer <ID token>`, role superadmin (`asTenantId`)/tenant_admin/staff/hr | `weather.weather_action` | 20 s, 1 CPU, up to 20 requests at once; secret `OPENWEATHER_API_KEY`. The place comes from the server's data (the worker's site — the picked `clientId` first when it is theirs — or the firm's first client by `sortIndex` with a map point); OpenWeatherMap current weather, one read per area every 30 minutes (`weatherCache`); returns only `{kind: clear\|clouds\|rain\|thunder\|snow\|fog, temp}`, `{}` when nothing can be read |
 
 Minting custom tokens needs the runtime service account to hold "Service Account Token Creator".
 
@@ -200,7 +202,7 @@ Both answer `{"ping":true}` at once (warm-up) and parse the body with `force=Tru
 - punches: read and write by any manager of the firm.
 - hourApprovals: read by managers; never written directly (the `hours` function). A `client` role reads and writes nothing.
 - pendingHours: read by managers; create (managers and any HR) only as `status:'pending'` with `createdBy` = the caller; update/delete only superadmin or `tenant_admin`.
-- `users/{uid}`: read by the user, a superadmin, or that firm's `tenant_admin`; never written by clients. `authSecrets`, `usernames`, `workerTokens`, `pushSubscriptions`: functions only.
+- `users/{uid}`: read by the user, a superadmin, or that firm's `tenant_admin`; never written by clients. `authSecrets`, `usernames`, `workerTokens`, `pushSubscriptions`, `weatherCache`: functions only.
 - `errors`, `timings`: create by anyone signed in, read and delete (Reset) by a superadmin.
 
 **`storage.rules`** — `tenants/{t}/**`: read by managers of the firm (`hrAll` included); create/update by superadmin, `tenant_admin`, or staff / hr with `workers`; delete by those, except an own-workers HR (it deletes through `users_admin`); files under 25 MB. An own-workers HR stamps and reads back only files with its uid in `hrId` metadata ([hr.md](hr.md)).

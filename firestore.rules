@@ -179,6 +179,7 @@ service cloud.firestore {
     match /usernames/{name} { allow read, write: if false; }
     match /workerTokens/{token} { allow read, write: if false; }
     match /pushSubscriptions/{id} { allow read, write: if false; }
+    match /weatherCache/{area} { allow read, write: if false; }  // the weather function only (stage 12)
 
     // Telemetry: any signed-in caller may append, only a superadmin may read.
     // The super-admin reads them and may wipe them (Admin → Reset).
