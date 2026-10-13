@@ -201,6 +201,7 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 .t3-kb.on{color:#fff;}
 .t3-kb.on::after{transform:scaleX(1);}
 .t3-sec .t3-kb{margin-left:4px;height:28px;font-size:18px;color:var(--text2);}
+.t3-sec .gbtn{height:34px;padding:0 12px;border-radius:12px;font-size:13px;margin-left:8px;}
 /* The ⋮ popover: glass, a tail pointing at its button, Delete last in soft red. */
 .og-pop{position:fixed;z-index:4000;min-width:190px;max-width:260px;padding:6px;border-radius:16px;background:rgba(30,35,51,.82);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.22);box-shadow:0 16px 40px rgba(0,0,0,.45);opacity:0;transform:translateY(-6px) scale(.97);transition:opacity .18s,transform .18s;}
 .og-pop.up{transform:translateY(6px) scale(.97);}
@@ -294,6 +295,13 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
   .og-doc b{display:block;font-weight:600}
   .og-doc small{display:block;font-size:11px;color:#8b90a0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .modal-actions .og-save{flex:1}
+  /* Short fields in pairs (CLAUDE.md template): two short fields share a line
+     on a phone and a computer; .stack-phone puts long ones one per line on a
+     phone. A long text field (a textarea) fills its line. */
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .field-row>*{min-width:0}
+  @media (max-width:768px){.field-row{gap:8px}.field-row.stack-phone{grid-template-columns:1fr}}
+  .modal .field textarea{width:100%;box-sizing:border-box}
   .og-av{background:color-mix(in srgb,var(--c,var(--neutral)) 22%,transparent) !important;color:var(--c,var(--neutral)) !important;box-shadow:inset 0 0 0 1.5px var(--c,var(--neutral))}
   .seg{display:flex;gap:4px;padding:4px;margin:10px 0 14px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1)}
   .seg button{position:relative;flex:1;height:34px;border:0;border-radius:10px;background:none;color:var(--text2);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer}

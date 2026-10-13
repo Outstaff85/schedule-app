@@ -384,8 +384,6 @@
   label.check-chip:has(input:checked){border-color:var(--accent);background:rgba(79,142,247,0.12);}
   label.check-chip .chip-text{display:flex;flex-direction:column;gap:2px;min-width:0;}
   label.check-chip .chip-hint{font-size:12px;font-weight:400;color:var(--text2);line-height:1.35;}
-  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-  .field-row > *{min-width:0;}
   .w-toggle{width:100%;display:flex;justify-content:space-between;align-items:center;}
   .w-panel{border:1px solid var(--border2);border-radius:10px;padding:10px 12px;margin-bottom:12px;}
   .w-child{padding-bottom:8px;border-bottom:1px solid var(--border);}
@@ -520,8 +518,6 @@
       max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px); margin: 0;
     }
     .modal-title { font-size: 16px; }
-    .field-row   { gap: 8px; } /* two short fields stay on one line on a phone too */
-    .field-row.stack-phone { grid-template-columns: 1fr; } /* long labels / options: one per line */
     .day-row     { grid-template-columns: 38px 60px 1fr 1fr; gap: 4px; font-size: 12px; }
     .day-row select, .day-row input { font-size: 12px; padding: 5px 4px; }
     .modal-actions { gap: 8px; flex-wrap: wrap; }
@@ -1217,8 +1213,8 @@ body:has(.overlay.open){overflow:hidden}
            openMyFirmForm() rather than re-implementing any of them. -->
       <div id="adminPane_firms" style="display:none">
         <div id="adminFirmsSuperBar" style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-          <button class="btn sm" onclick="toggleSuperadminAccounting()"><i class="ti ti-cash"></i> <span data-i18n>Payable summary (all firms)</span></button>
-          <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> <span data-i18n>New firm</span></button>
+          <button class="gbtn" onclick="toggleSuperadminAccounting()"><i class="ti ti-cash"></i> <span data-i18n>Payable summary (all firms)</span></button>
+          <button class="gbtn primary" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> <span data-i18n>New firm</span></button>
         </div>
         <div id="superadminAccountingWrap" style="display:none;margin-bottom:16px"></div>
         <div id="adminFirmsList"></div>
@@ -1393,7 +1389,7 @@ body:has(.overlay.open){overflow:hidden}
     </div>
     <div style="font-size:11px;color:var(--text3);margin-top:6px" data-i18n>Search an address, or tap the map / drag the pin. The circle is the punch-clock radius.</div>
     <div class="modal-actions">
-      <button class="btn accent" type="button" id="mapPickSave" onclick="saveMapPick()" disabled data-i18n>Use this location</button>
+      <button class="gbtn primary og-save" type="button" id="mapPickSave" onclick="saveMapPick()" disabled><i class="ti ti-check"></i><span data-i18n>Use this location</span></button>
     </div>
   </div>
 </div>
@@ -1474,7 +1470,7 @@ body:has(.overlay.open){overflow:hidden}
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px">
       <div style="font-size:20px;font-weight:700"><i class="ti ti-building-skyscraper"></i> <span data-i18n>Firms</span></div>
       <div id="firmsActions" style="display:flex;align-items:center;gap:4px">
-        <button class="btn sm" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> <span data-i18n>Create firm</span></button>
+        <button class="gbtn primary" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> <span data-i18n>Create firm</span></button>
         <button class="t3-ib" onclick="logout()" title="Sign out" data-i18n-title="Sign out"><i class="ti ti-logout"></i></button>
       </div>
     </div>
@@ -1600,7 +1596,7 @@ body:has(.overlay.open){overflow:hidden}
     <div class="field" style="margin-bottom:10px"><input type="text" id="hrAssignSearch" placeholder="Search by name or document…" data-i18n-placeholder="Search by name or document…" autocomplete="off" oninput="renderHrAssignList()"></div>
     <div id="hrAssignList" style="display:flex;flex-direction:column;gap:4px;max-height:50vh;overflow-y:auto"></div>
     <div class="modal-actions">
-      <button class="btn accent" id="hrAssignSaveBtn" onclick="submitHrAssign()" data-i18n>Assign</button>
+      <button class="gbtn primary og-save" id="hrAssignSaveBtn" onclick="submitHrAssign()"><i class="ti ti-check"></i><span data-i18n>Assign</span></button>
     </div>
   </div>
 </div>
@@ -1636,7 +1632,7 @@ body:has(.overlay.open){overflow:hidden}
     </div>
     <div id="firmEditFormError" style="color:#ff6b78;font-size:13px;margin:2px 0 6px;min-height:1.2em"></div>
     <div class="modal-actions">
-      <button class="btn accent" onclick="submitEditFirm()" id="editFirmBtn" data-i18n>Save</button>
+      <button class="gbtn primary og-save" onclick="submitEditFirm()" id="editFirmBtn"><i class="ti ti-check"></i><span data-i18n>Save</span></button>
     </div>
   </div>
 </div>
@@ -2808,7 +2804,7 @@ function openEditShift(wi,di){
       <div id="hBadge"></div>
     </div>
     <div class="modal-actions">
-      <button class="btn accent" onclick="saveShift(${wi},${di})">${tr('Save')}</button>
+      <button class="gbtn primary og-save" onclick="saveShift(${wi},${di})"><i class="ti ti-check"></i><span>${tr('Save')}</span></button>
     </div>`;
   document.getElementById('editOverlay').classList.add('open');
   updateBadge();
@@ -5071,7 +5067,7 @@ function openWorkerDocUpload(workerId){
     <div class="field"><label>${tr('Files (several at once is fine — PDF or photos)')}</label><input type="file" id="wdFiles" multiple accept="application/pdf,.pdf,image/*,.doc,.docx"></div>
     <div id="wdStatus" style="font-size:12px;color:var(--text2);min-height:1.2em;margin-bottom:6px"></div>
     <div class="modal-actions">
-      <button class="btn accent" id="wdSubmit" onclick="submitWorkerDocUpload()"><i class="ti ti-upload"></i> ${tr('Upload')}</button>
+      <button class="gbtn primary og-save" id="wdSubmit" onclick="submitWorkerDocUpload()"><i class="ti ti-upload"></i> ${tr('Upload')}</button>
     </div>`;
   document.getElementById('workerDocOverlay').classList.add('open');
 }
@@ -5169,7 +5165,7 @@ function renderHoursImportModal(){
     <div id="hoursPayHint" style="font-size:11px;color:var(--text3);margin-bottom:6px">${isDailyPay(w)?tr('Paid by the day: a date is enough — with no times it counts as one day (08:00–16:00).'):tr('Paid by the hour: date, in and out for each shift. (How a worker is paid is set in the pay window: worker card → Pay.)')}</div>
     <div id="hoursManualRows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
     <div class="modal-actions">
-      <button class="btn accent" id="hoursImportSubmitBtn" disabled onclick="submitHoursImportBatch()"><i class="ti ti-upload"></i> ${tr('Upload for approval')}</button>
+      <button class="gbtn primary og-save" id="hoursImportSubmitBtn" disabled onclick="submitHoursImportBatch()"><i class="ti ti-upload"></i> ${tr('Upload for approval')}</button>
     </div>
     <div class="form-section">${tr('Sent for approval')}</div>
     <div id="hoursSentList" style="font-size:12px;color:var(--text3)">${tr('Loading…')}</div>`;
@@ -5384,8 +5380,8 @@ function openHoursExportModal(workerId){
     <div class="modal-title">${tr('Export hours')}</div>
     <div class="field"><label>${tr('Month')}</label><select id="hoursExportMonth">${monthOptions}</select></div>
     <div class="modal-actions">
-      <button class="btn sm" onclick="runHoursExport('${workerId}','excel')"><i class="ti ti-file-spreadsheet"></i> Excel</button>
-      <button class="btn accent" onclick="runHoursExport('${workerId}','pdf')"><i class="ti ti-file-type-pdf"></i> PDF</button>
+      <button class="gbtn" onclick="runHoursExport('${workerId}','excel')"><i class="ti ti-file-spreadsheet"></i> Excel</button>
+      <button class="gbtn primary" onclick="runHoursExport('${workerId}','pdf')"><i class="ti ti-file-type-pdf"></i> PDF</button>
     </div>`;
   document.getElementById('hoursExportOverlay').classList.add('open');
 }
@@ -5594,7 +5590,7 @@ function openManualPunch(cid){
       <i class="ti ti-edit"></i> ${tr('Manual entry — GPS not verified')}
     </div>
     <div class="modal-actions">
-      <button class="btn accent" onclick="saveManualPunch('${cid}')">${tr('Save Punch')}</button>
+      <button class="gbtn primary og-save" onclick="saveManualPunch('${cid}')"><i class="ti ti-check"></i><span>${tr('Save Punch')}</span></button>
     </div>`;
 
   window._mpType = 'in';
@@ -6686,7 +6682,7 @@ function renderAdminUsersRows(el, users){
         menu:[{icon:'ti-pencil', label:tr('Edit'), fn:()=>openEditUserForm(u.id)}, {icon:'ti-trash', label:tr('Delete'), danger:true, fn:b=>deleteUserConfirm(u.id, u.username, b.closest('.t3-line'))}],
         swipe:{edit:()=>openEditUserForm(u.id), del:el=>deleteUserConfirm(u.id, u.username, el)}});
     };
-    el.innerHTML = `<div class="t3-sec" style="margin-top:0"><i class="ti ti-users"></i> ${tr('Logins')}<em>${users.length}</em><button class="btn sm" onclick="openCreateUserForm()"><i class="ti ti-plus"></i> ${tr('New user')}</button></div>`
+    el.innerHTML = `<div class="t3-sec" style="margin-top:0"><i class="ti ti-users"></i> ${tr('Logins')}<em>${users.length}</em><button class="gbtn primary" onclick="openCreateUserForm()"><i class="ti ti-plus"></i> ${tr('New user')}</button></div>`
       + (users.length ? `<div class="admin-users-rows"></div>` : '<div class="t3-empty">'+tr('No staff, HR or supplier users yet.')+'</div>');
     // The firm's owner is always pinned at the top (user request 2026-10-11),
     // then everyone else by name.
@@ -7443,7 +7439,7 @@ function openCreateFirmForm(){
   document.getElementById('firmEditOwnerNameField').style.display = '';
   document.getElementById('firmEditUsernameField').style.display = '';
   document.getElementById('firmEditPasswordField').style.display = '';
-  document.getElementById('editFirmBtn').textContent = tr('Create');
+  document.querySelector('#editFirmBtn span').textContent = tr('Create');
   document.getElementById('firmEditFormError').textContent = '';
   document.getElementById('editFirmOverlay').classList.add('open');
   fillFirmWaField(null);
@@ -7458,7 +7454,7 @@ function openEditFirmForm(tenantId){
   document.getElementById('firmEditUsernameField').style.display = 'none';
   document.getElementById('firmEditOwnerNameField').style.display = 'none';
   document.getElementById('firmEditPasswordField').style.display = 'none';
-  document.getElementById('editFirmBtn').textContent = tr('Save');
+  document.querySelector('#editFirmBtn span').textContent = tr('Save');
   document.getElementById('firmEditFormError').textContent = '';
   document.getElementById('editFirmOverlay').classList.add('open');
   fillFirmWaField(tenantId);
@@ -7481,7 +7477,7 @@ async function openMyFirmForm(){
   document.getElementById('firmEditUsernameField').style.display = 'none';
   document.getElementById('firmEditOwnerNameField').style.display = 'none';
   document.getElementById('firmEditPasswordField').style.display = 'none';
-  document.getElementById('editFirmBtn').textContent = tr('Save');
+  document.querySelector('#editFirmBtn span').textContent = tr('Save');
   document.getElementById('firmEditFormError').textContent = '';
   document.getElementById('editFirmOverlay').classList.add('open');
   fillFirmWaField(tenantId);
@@ -7497,7 +7493,7 @@ async function openMyFirmForm(){
 async function submitEditFirm(){
   const get = id => document.getElementById(id).value.trim();
   const errEl = document.getElementById('firmEditFormError');
-  const btn = document.getElementById('editFirmBtn');
+  const btn = document.getElementById('editFirmBtn'), btnLbl = btn.querySelector('span');
   errEl.textContent = '';
   const profileFields = {
     companyName: get('firmEditCompanyName'),
@@ -7510,7 +7506,7 @@ async function submitEditFirm(){
   if(__firmFormMode === 'create'){
     const username = get('firmEditUsername'), password = document.getElementById('firmEditPassword').value;
     if(!username || !password){ errEl.textContent = tr('Username and password are required'); return; }
-    btn.disabled = true; btn.textContent = tr('Creating…');
+    btn.disabled = true; btnLbl.textContent = tr('Creating…');
     try{
       const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({
         action:'createUser', ...gsAuth(), username, password, ownerName: get('firmEditOwnerName'), ...profileFields,
@@ -7521,11 +7517,11 @@ async function submitEditFirm(){
       showToast(tr('Firm created'));
       renderFirmsList(__firmsListTarget);
     }catch(e){ errEl.textContent = tr('No network'); }
-    finally{ btn.disabled = false; btn.textContent = tr('Create'); }
+    finally{ btn.disabled = false; btnLbl.textContent = tr('Create'); }
     return;
   }
   if(!__editingFirmTenantId){ errEl.textContent = tr('No firm selected'); return; }
-  btn.disabled = true; btn.textContent = tr('Saving…');
+  btn.disabled = true; btnLbl.textContent = tr('Saving…');
   try{
     const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({
       action:'updateTenant', ...gsAuth(),
@@ -7558,7 +7554,7 @@ async function submitEditFirm(){
       showToast(tr('Saved. The Form 101s of this firm\'s workers update when you open it'), 5000);
     }
   }catch(e){ errEl.textContent = tr('No network'); }
-  finally{ btn.disabled = false; btn.textContent = tr('Save'); }
+  finally{ btn.disabled = false; btnLbl.textContent = tr('Save'); }
 }
 
 // Optimistic concurrency: the savedAt value we last loaded from the DB.
@@ -9204,7 +9200,7 @@ function openPayModal(wid){
       <div class="field"><label>${esc(tr('Branch'))}</label><input type="text" id="payBankBranch" value="${v(w.bankBranch)}" placeholder="${esc(tr('Branch #'))}"></div>
     </div>
     <div class="field"><label>${esc(tr('Account number'))}</label><input type="text" id="payBankAccount" value="${v(w.bankAccountNumber)}" placeholder="${esc(tr('Account #'))}"></div>
-    ${ro?'':`<div class="modal-actions"><button class="btn accent" onclick="savePayModal('${esc(w.id)}')">${esc(tr('Save'))}</button></div>`}`;
+    ${ro?'':`<div class="modal-actions"><button class="gbtn primary og-save" onclick="savePayModal('${esc(w.id)}')"><i class="ti ti-check"></i><span>${esc(tr('Save'))}</span></button></div>`}`;
   if(ro) document.querySelectorAll('#payModal input, #payModal select').forEach(el=>{ el.disabled=true; });
   document.getElementById('payOverlay').classList.add('open');
 }
@@ -9298,9 +9294,9 @@ function openSalaryExportModal(){
       </select>
     </div>
     <div class="modal-actions">
-      <button class="btn sm" onclick="runSalaryExport('csv')"><i class="ti ti-file-text"></i> CSV</button>
-      <button class="btn sm" onclick="runSalaryExport('excel')"><i class="ti ti-file-spreadsheet"></i> Excel</button>
-      <button class="btn accent" onclick="runSalaryExport('pdf')"><i class="ti ti-file-type-pdf"></i> PDF</button>
+      <button class="gbtn" onclick="runSalaryExport('csv')"><i class="ti ti-file-text"></i> CSV</button>
+      <button class="gbtn" onclick="runSalaryExport('excel')"><i class="ti ti-file-spreadsheet"></i> Excel</button>
+      <button class="gbtn primary" onclick="runSalaryExport('pdf')"><i class="ti ti-file-type-pdf"></i> PDF</button>
     </div>
     ${hrPayOnly()?'':`<div style="border-top:1px solid var(--border2);margin-top:14px;padding-top:12px">
       <div style="font-size:12px;color:var(--text2);margin-bottom:8px">${esc(tr('For the accountant: one row per worker (ID, days, regular / overtime / Shabbat hours, pay, travel, bank details) and a sheet of every shift.'))}</div>
@@ -9854,7 +9850,7 @@ function editPunchEntry(id){
       <input type="text" id="epNotes" value="${e.notes||''}" placeholder="${tr('Optional note')}">
     </div>
     <div class="modal-actions">
-      <button class="btn accent" onclick="savePunchEntry(${id})">${tr('Save Changes')}</button>
+      <button class="gbtn primary og-save" onclick="savePunchEntry(${id})"><i class="ti ti-check"></i><span>${tr('Save Changes')}</span></button>
     </div>`;
   document.getElementById('editOverlay').classList.add('open');
 }
