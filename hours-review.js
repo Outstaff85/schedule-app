@@ -212,7 +212,7 @@ function hrvHoursHtml(){
       const can = !!sel && HRV_PICKABLE.includes(st), picked = can && sel.has(r.key);
       const box = sel ? (can ? `<button type="button" class="hrv-box" aria-label="${esc(tr('Select'))}" onclick="hrvToggleDay('${k}')"></button>` : '<span class="hrv-box-sp"></span>') : '';
       return `<div class="hrv-day${picked ? ' picked' : ''}" data-key="${k}" style="--c:${S.color === 'var(--text3)' ? 'var(--border2)' : S.color}">
-        ${box}<span class="hrv-pill" style="--pc:${S.color}" title="${esc(tr(S.label))}">${esc(tr(S.pill))}</span>
+        ${box}<span class="hrv-pill" style="--pc:${S.color === 'var(--text3)' ? 'var(--ink-2,#8b90a0)' : S.color}" title="${esc(tr(S.label))}">${esc(tr(S.pill))}</span>
         <span class="d">${esc(r.date.toLocaleDateString(uiLocale(), {weekday: 'short', day: '2-digit', month: 'short'}))}</span>
         <span class="t">${esc(times)}</span>
         <span class="h">${esc(tr('{h}h', {h: r.hours.toFixed(1)}))}</span>${acts}${note}</div>`;
