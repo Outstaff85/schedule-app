@@ -91,7 +91,7 @@ The per-worker and per-client figures come from `salaryEntriesFor(period)` → `
 - **Details** are one line each (the label left, the figure right).
 - **Payable by supplier / by HR, Billable by client:** lines in the template (the supplier's, HR's or client's color on the left; hours under the name; the sum on the right); a tap on a supplier or client line opens a window with the workers behind the sum (`openSupplierPayDetail` — each worker's hours and commission by `commissionFor`; `openClientBillDetail` — each worker's hours at that client from `clientHours`, and the client's total), paged by 10.
 - **A row:** a tap opens or closes its details; the worker's name opens the worker card (`openWorkerCardById`); its details hold **Pay**, which opens the pay window — so does a double click (computer) or a long press (phone) on the row (`openPayModal`, below).
-  - **Warnings** — anomalies show as an amber "N to review" banner and a ⚠ icon per worker.
+  - **Warnings** — a ⚠ icon per worker with punch warnings; no banner (the warnings are listed on the Alerts tab).
 
 ### Pay window (`openPayModal(wid)`, `#payOverlay`)
 
