@@ -105,7 +105,7 @@ Where it is used:
 - workers (cards and table; with grouping, each group title is an item — `workersGroupedItems`);
 - the schedule rows and the sidebar workers and clients;
 - clients, suppliers;
-- Today: on site, missing, suppliers, expiring, today's punches;
+- Today: on shift, late, no punch, notices, suppliers, today's log;
 - salary, supplier payable, client billable, both rate matrices, pending hours;
 - the punch log and client logs, firms, the firm summary, users, errors, timings;
 - a worker's documents in the card (`pageWorkerDocs`).
