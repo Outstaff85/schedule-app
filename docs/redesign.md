@@ -126,16 +126,17 @@ On 2026-10-13 the owner went through the design system artifact and found many p
 
 ### Checklist (known gaps so far; the audit adds the rest)
 - [x] Tokens + component CSS from `docs/design/system/` in all four pages (method step 1) — `og.css`; the components whose `og-*` names the pages already use for their own versions (popover, snack, section plates, select box, tabs, avatar) are aligned in the screen-group passes.
-- [ ] Admin → Firms: a firm line carries only ✎ and a bare ⋮ (Pause / Activate, Delete last in red under a hairline; Delete through the Undo snack, never a confirm); today it shows ✎, ⏸ and an unstyled ✕ in a white box.
+- [x] Admin → Firms: a firm line carries only ✎ and a bare ⋮ (Pause / Activate, Delete last in red under a hairline; Delete through the Undo snack, never a confirm); today it shows ✎, ⏸ and an unstyled ✕ in a white box.
 - [x] Header bell: the red count must be a whole pulsing disc with the number inside the button; today a red dot is cut off at the top.
 - [x] Select line: "N selected" on the left of "Select all" (SelectMode), on every list.
 - [x] Scan passport button next to New (override above).
-- [ ] Select shown by default on every list (override above) — done for workers, clients, suppliers, users, pending hours and the supplier portal's workers; firms, punches, documents, salary rows and hours approvals follow in their groups.
+- [ ] Select shown by default on every list (override above) — done for workers, clients, suppliers, users, firms, pending hours and the supplier portal's workers; punches, documents, salary rows and hours approvals follow in their groups.
 - [ ] Accounting → new tab **Alerts** after Approvals, with the accounting-only warnings as plates grouped in three sections and a count on the tab (a tap opens the place to fix it; the salary row keeps only a small ⚠):
   - Punches and shifts: open shift — no OUT; double IN; OUT without IN; shift over 12h; 0-minute shift (the `analyzeDayPunches` warnings).
   - Rates and pay: worker with no rate (own or client) — pay 0; daily-paid worker without a daily rate; no bank details.
   - Clients: client with no billing rate — billed 0.
   (Hours approval items — waiting hours, disputes, changed after approval, fixes, "a client approved the month" — stay in Approvals; the bell's worker notices stay in the bell.)
+- [ ] The super-admin's Firms landing screen (`#firmsScreen`) shows a flat black page — it needs the blob ground.
 - [ ] Every screen of `Screens.md` audited and matched: Sign in, Today, Schedule, Workers, Worker card, Clients, Suppliers, Accounting, Hours approvals, Admin, Forms, Punch page (incl. My Schedule / My Hours sheets), and both portals.
 
 ### Owner answers (2026-10-13)

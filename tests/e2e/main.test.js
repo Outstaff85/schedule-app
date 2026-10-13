@@ -756,6 +756,32 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(gp.daily === '300,0,300' && gp.dayRow && gp.hourBack, 'clients: billing by the day — one day rate per worked shift, the By day / By hour switch ' + JSON.stringify(gp));
   ok(gp.payable && gp.newLogin && gp.tick && gp.saved, 'supplier editor: commission payable this month, New portal login, portal tabs ticked and saved at once ' + JSON.stringify(gp));
+  // Stage 13: the supplier's own commission rate, set in the supplier window by the owner (per hour / per day, applies from).
+  const scom = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
+    const SP = () => suppliers.find(x => x.id === 's-1'), keep = SP().commission;
+    const mine = Object.values(salaryEntriesFor('month').byWorker).filter(e => (workers.find(w => w.id === e.workerId) || {}).supplierId === 's-1');
+    const hours = mine.reduce((t, e) => t + e.hours, 0), days = mine.reduce((t, e) => t + e.dayKeys.size, 0);
+    r.def = Math.round(supplierMonthPayable(SP())) === Math.round(hours * 5);
+    openEditSupplier('s-1'); await wait(150);
+    r.fields = !!document.getElementById('sComRate') && !!document.getElementById('sComFrom') && !!document.getElementById('sComMode');
+    document.getElementById('sComRate').value = '10'; document.getElementById('sComFrom').value = localYMD(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+    saveSupplier(); await wait(200);
+    r.saved = JSON.stringify(SP().commission);
+    r.hour = Math.round(supplierMonthPayable(SP())) === Math.round(hours * 10);
+    openEditSupplier('s-1'); await wait(150);
+    document.querySelector('#sComMode button[data-m="day"]').click(); document.getElementById('sComRate').value = '50'; document.getElementById('sComFrom').value = localYMD(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+    saveSupplier(); await wait(200);
+    r.day = Math.round(supplierMonthPayable(SP())) === days * 50;
+    // A rate from tomorrow on does not change this month's shifts so far.
+    SP().commission = [{from: localYMD(new Date(Date.now() + 864e5)), mode: 'hour', rate: 99}];
+    r.future = Math.round(supplierMonthPayable(SP())) === Math.round(hours * 5);
+    const sp0 = SP(); if(keep === undefined) delete sp0.commission; else sp0.commission = keep; render(); autoSave(); await wait(800);
+    for(let i = 0; i < 3; i++){ await wait(150); document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); }
+    r.hours = hours; r.days = days;
+    return r;
+  });
+  ok(scom.def && scom.fields && scom.hour && scom.day && scom.future && scom.hours > 0, 'supplier commission: the supplier window sets per hour / per day from a date; Payable follows it shift by shift ' + JSON.stringify(scom));
   // Stage 11a: a "no punch" notice has WhatsApp next to Call — wa.me with the phone in international form and the firm's template.
   const wa = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
@@ -983,15 +1009,24 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await login(p, BASE + 'schedule-manager.html', 'boss', 'boss-pass-1');
   await p.waitForNavigation().catch(()=>{});
   ok(await waitFor(p, () => document.getElementById('firmsScreen').style.display === 'block' && __firmsCache.length === 2), 'boss: firms list (listTenants)');
-  // The firms list: ✎ edits, ✕ deletes; a single click switches (below).
+  // The firms list: ✎ and a bare ⋮ (Disable, Delete last via Undo); Select always on; a single click switches (below).
   const fl = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
     const row = document.querySelector('#firmsList .row.tap-edit');
-    const out = {pencil: !!row.querySelector('.ti-pencil'), del: !!(row && row.querySelector('.t3-x')), trash: !!document.querySelector('#firmsList .ti-trash')};
-    row.querySelector('.ti-pencil').parentElement.click(); await new Promise(r => setTimeout(r, 200));
-    out.edit = document.getElementById('editFirmOverlay').classList.contains('open'); closeModal('editFirmOverlay');
+    const out = {pencil: !!row.querySelector('.ti-pencil'), x: !!row.querySelector('.t3-x'), pause: !!row.querySelector('.ti-player-pause, .ti-player-play'), box: !!row.querySelector('.t3-cb'), head: !!document.querySelector('#firmsList').previousElementSibling && document.querySelector('#firmsList').previousElementSibling.className === 'sel-head'};
+    row.querySelector('.ti-pencil').parentElement.click(); await wait(200);
+    out.edit = document.getElementById('editFirmOverlay').classList.contains('open'); closeModal('editFirmOverlay'); await wait(200);
+    row.querySelector('.t3-kb').click(); await wait(50);
+    out.menu = [...document.querySelectorAll('#ogPop .og-pop-it')].map(b => (b.classList.contains('del') ? '!' : '') + b.textContent.trim()).join();
+    let calls = 0; const f = window.fetch; window.fetch = (u, o) => { if(o && /deleteTenant/.test(o.body)) calls++; return f(u, o); };
+    document.querySelector('#ogPop .og-pop-it.del').click(); await wait(300);
+    out.snack = document.getElementById('undoSnack').classList.contains('open') && !!row.closest('.gone, .sw.gone') || row.classList.contains('gone');
+    document.querySelector('#undoSnack .og-snack-u').click(); await wait(400);
+    out.kept = calls === 0 && __firmsCache.length === 2 && !!document.querySelector('#firmsList .row.tap-edit');
+    window.fetch = f;
     return out;
   });
-  ok(fl.pencil && fl.del && !fl.trash && fl.edit, 'firms: ✎ edits, ✕ deletes, no trash ' + JSON.stringify(fl));
+  ok(fl.pencil && !fl.x && !fl.pause && fl.box && fl.head && fl.edit && fl.menu === 'Disable,!Delete' && fl.snack && fl.kept, 'firms: ✎ edits, ⋮ holds Disable and Delete (Undo, no confirm), Select always on ' + JSON.stringify(fl));
   await p.evaluate(() => switchToTenant('tenant-one'));
   await p.waitForNavigation().catch(()=>{});
   ok(await waitFor(p, () => workers.length === 2), 'boss: viewing Firm One');

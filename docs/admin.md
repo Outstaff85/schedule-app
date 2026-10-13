@@ -68,12 +68,12 @@ The pane bar and the punch log's Log / By Client switch are glass tabs (the open
 
 - **List:** `renderFirmsList('adminFirmsList')` — the same function draws the super-admin's landing screen (`#firmsList`).
   - It draws the cached list first (`localStorage.firmsCache_v1`), then `listTenants`.
-  - A line per firm (template 3): green while active, amber when disabled or its profile is incomplete (`firmProfileMissing(t)`); the name, then worker and client counts and the last save (left out when the date can't be read), then "disabled" / "profile incomplete". A tap → `switchToTenant()`; a double click (computer), a long press (phone) or the ✎ at its right → `openEditFirmForm`; pause / play and a ✕ (`.t3-x`, delete) at the right.
+  - A line per firm (template 3): green while active, amber when disabled or its profile is incomplete (`firmProfileMissing(t)`); the name, then worker and client counts and the last save (left out when the date can't be read), then "disabled" / "profile incomplete". A tap → `switchToTenant()`; a double click (computer), a long press (phone) or the ✎ at its right → `openEditFirmForm`; a bare ⋮ (Disable / Enable, Delete last in red) next to it; Select is always on (`startFirmsSelect`: Disable / Enable / Delete the ticked firms, `setTenantsActive`).
   - The landing screen's header row holds Create firm, the Language button (`placeLangButton` puts it in `#firmsActions`) and a Sign out icon.
   - Row actions:
     - edit (`openEditFirmForm`: the line's ✎, a double click or a long press);
-    - enable / disable (`toggleTenantActive` → `setTenantActive`, the button at the right);
-    - delete (the corner ✕, `confirmDeleteTenant` — confirm, then type the exact firm name → `deleteTenant`: the firm's data, its logins and every worker file in Storage).
+    - enable / disable (`toggleTenantActive` → `setTenantActive`, in the ⋮);
+    - delete (the ⋮'s Delete or the Select bar, `deleteTenantUndo`): never asks — the line collapses behind the Undo snack (`__firmDelPending` keeps it out of a redraw) and `deleteTenant` runs when the 5 s are up: the firm's data, its logins and every worker file in Storage.
 - **Firm form** (`#editFirmOverlay`, one modal, `__firmFormMode`):
   - fields: company name, deductions file number, phone, street, street number, city;
   - Create (`openCreateFirmForm`) also asks for the owner's username and password → `createUser`;

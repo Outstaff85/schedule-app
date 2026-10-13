@@ -10,7 +10,7 @@ Project `schedule-odinson`; Firestore and the `functions-auth` functions in **eu
 |---|---|---|
 | `tenants/{t}` | firm profile: `companyName, deductionsFileNumber, phone, street, streetNumber, city`, `createdAt`, `active`, `workerCount`, `clientCount` | `users_admin`; a `tenant_admin` may update only the profile fields |
 | `tenants/{t}/workers/{id}` | the worker object exactly as the app keeps it, plus `sortIndex` (list position) and `docKeys` (its document numbers in standard form — `docKeysOf` / `doc_keys`, for `checkWorkerDoc`; not kept in the app's copy); `hrId` = the HR login it belongs to | the app (`saveSchedule`), the `supplier` function |
-| `tenants/{t}/clients/{id}`, `…/suppliers/{id}` | same, with `sortIndex` | the app |
+| `tenants/{t}/clients/{id}`, `…/suppliers/{id}` | same, with `sortIndex`; a supplier may carry `commission` `[{from, mode, rate}]` (its own rate by date) | the app; rules: `commission` changed only by the owner or a superadmin |
 | `tenants/{t}/settings/schedule` | `weekStart`, `savedAt` — copied from the sheets by the old migration; nothing writes it now | — |
 | `tenants/{t}/punches/{id}` | a punch ([accounting.md](accounting.md) → the punch) with `ts` as a Timestamp, `day` (`yyyy-MM-dd`), `archived`, `hrId` (the worker's HR, when it has one); `tsRaw` when a migrated sheet timestamp was unreadable | the app, the `punch` function, an approved hours batch |
 | `tenants/{t}/hourApprovals/{kind}_{ownerId}_{YYYY-MM}` | a client, supplier or HR login's month of hours review: `kind, ownerId, ownerName, month, days` ([hours-review.md](hours-review.md)) | the `hours` function |
@@ -126,7 +126,7 @@ See [punch.md](punch.md) and [supplier-portal.md](supplier-portal.md) for the pa
   - `myMonth` `{month:'YYYY-MM'}` → `{punches, pay, clients}` (`_my_month()`): this worker's own punches with `ts` from a day before the month to a day after it (`workerId` + `ts` index), each `{id, workerId, type, time, date, clientId, ts}` (ISO, `Z`); `pay` = `id` + the worker's `WORKER_PAY_FIELDS` (`payMode, hourlyRate, regRate, otRate, shabbatRate, clientRates, dayOverrides, travelAllowance, travelMonthly`); `clients` = the worker's sites as `{id}` + `CLIENT_PAY_FIELDS`. Never GPS, billing, other workers or tokens. A month that is not `YYYY-MM` → "Bad month".
   - `savePushSubscription`, `logError` (no token needed).
 - **`supplier`:** role `supplier` with `tenantId` and `supplierId` in the claims, else "Supplier role only".
-  - `loadSchedule` → own workers through `strip_worker` (the `SUPPLIER_WORKER_FIELDS` allow-list + `supplierRate` and `supplierDayRate`; never a wage, the worker's punch-link token or a file link), clients as `{id, name, object}`, `suppliers: []`;
+  - `loadSchedule` → own workers through `strip_worker` (the `SUPPLIER_WORKER_FIELDS` allow-list + `supplierRate` and `supplierDayRate`; never a wage, the worker's punch-link token or a file link), clients as `{id, name, object}`, `commission` (this supplier's own rate list from its document, `[{from, mode, rate}]`), `suppliers: []`;
   - `loadPunchLog` → own workers' punches of the last 13 months with `id, workerId, workerName, type, time, date, site, clientId, ts` (`workerId in` queries of 30);
   - `supplierAddWorker` / `supplierUpdateWorker` / `supplierDeleteWorker` with the `SUPPLIER_EDITABLE` list (a new worker also gets `createdAt`);
   - `supplierSubmitHours` (a pending hours batch for an own worker) and `supplierListHours` (its batches with their status) ([supplier-portal.md](supplier-portal.md)).

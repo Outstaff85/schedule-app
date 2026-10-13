@@ -126,6 +126,18 @@ def test_supplier_sees_only_own_workers_stripped():
     assert "billRate" not in str(r["clients"]) and "lat" not in str(r["clients"]) and r["suppliers"] == []
 
 
+def test_supplier_gets_its_own_commission_rate_only():
+    ref = DB.collection("tenants").document(T1).collection("suppliers").document("sp1")
+    keep = ref.get().to_dict() if ref.get().exists else None
+    ref.set({"name": "Agency", "commission": [{"from": "2026-10-01", "mode": "day", "rate": 80, "note": "x"}]})
+    r = portal.supplier_action(DB, SUP1, {"action": "loadSchedule"})
+    assert r["commission"] == [{"from": "2026-10-01", "mode": "day", "rate": 80}]
+    ref.delete()
+    assert portal.supplier_action(DB, SUP1, {"action": "loadSchedule"})["commission"] == []
+    if keep is not None:
+        ref.set(keep)
+
+
 def test_supplier_day_commission_only_for_a_daily_worker():
     assert portal.supplier_action(DB, SUP1, {"action": "loadSchedule"})["workers"][0]["supplierDayRate"] is None
     ref = DB.collection("tenants").document(T1).collection("workers").document("w1")
