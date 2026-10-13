@@ -8022,9 +8022,8 @@ function t3Av(w){
 // o.swipe = {edit: fn(el), del: fn(el)} — a swipe left on a touch screen shows
 // Edit and Delete behind the plate; o.sel = the row's id in a list that can
 // Select (startSelect). Functions are kept in __rowFns, looked up by key.
-// No round letters avatar (owner 2026-10-13): the plate starts with the name
-// and the name's first three letters sit large and faint in its background
-// (.t3-wm); an avatar that is an icon (a firm, an alert, a document) stays.
+// No round letters avatar (owner 2026-10-13): the plate starts with the name;
+// an avatar that is an icon (a firm, an alert, a document) stays.
 const __rowFns = new Map(); let __rowFnSeq = 0;
 function rowFnKey(v){
   const k = 'r' + (++__rowFnSeq); __rowFns.set(k, v);
@@ -8036,8 +8035,7 @@ function t3Line(o){
   const sel = o.sel != null ? String(o.sel) : null;
   const picked = sel != null && __selState && __selState.picked.has(sel);
   const iconAv = !!o.av && /<i class="ti /.test(o.av);
-  const wm = iconAv ? '' : String(o.name||'').replace(/<[^>]*>/g,' ').replace(/&[#a-z0-9]+;/gi,'').trim().split(/\s+/).join('').replace(/[^\p{L}\p{N}]/gu,'').slice(0,3);
-  const line = `<div class="t3-line${o.cls?' '+o.cls:''}${picked?' picked':''}" style="--c:${o.c||'var(--neutral)'}"${sel!=null?` data-sel-id="${esc(sel)}"`:''}${o.onclick?` onclick="${o.onclick}"`:''}${o.attrs?' '+o.attrs:''}>${wm?`<span class="t3-wm" aria-hidden="true"><span>${esc(wm)}</span></span>`:''}${sel!=null?'<span class="t3-cb"><span class="og-box"></span></span>':''}${iconAv?o.av:''}<div class="n"><b>${o.name}</b>${[].concat(o.sub||[]).filter(Boolean).map(x=>`<small>${x}</small>`).join('')}</div>${o.right||''}${kb}</div>`;
+  const line = `<div class="t3-line${o.cls?' '+o.cls:''}${picked?' picked':''}" style="--c:${o.c||'var(--neutral)'}"${sel!=null?` data-sel-id="${esc(sel)}"`:''}${o.onclick?` onclick="${o.onclick}"`:''}${o.attrs?' '+o.attrs:''}>${sel!=null?'<span class="t3-cb"><span class="og-box"></span></span>':''}${iconAv?o.av:''}<div class="n"><b>${o.name}</b>${[].concat(o.sub||[]).filter(Boolean).map(x=>`<small>${x}</small>`).join('')}</div>${o.right||''}${kb}</div>`;
   if(!o.swipe) return line;
   return `<div class="sw" data-sw="${rowFnKey(o.swipe)}"><div class="sw-acts">${o.swipe.edit?`<button type="button" onclick="swipeAct(this,'edit')"><i class="ti ti-pencil"></i><span>${esc(tr('Edit'))}</span></button>`:''}${o.swipe.del?`<button type="button" class="d" onclick="swipeAct(this,'del')"><i class="ti ti-trash"></i><span>${esc(tr('Delete'))}</span></button>`:''}</div>${line}</div>`;
 }

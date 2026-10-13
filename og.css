@@ -192,15 +192,11 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
    Delete; Delete never asks — the Undo snack (.og-snack) runs 5 s first;
    Select (.selecting): a Select button above the rows; after a tap (.sel-on)
    drawn-tick boxes, "N selected · Select all · Done" and the glass bulk bar
-   (.sel-bar). No letters avatar: the name's first three letters large and
-   faint behind the plate (.t3-wm). The same block in the manager app and the supplier portal. ── */
+   (.sel-bar). No letters avatar: the plate starts with the name. The same block in the manager app and the supplier portal. ── */
 :root{--neutral:#6b7189;--bar-gap:16px;}
 .t3-line{position:relative;gap:12px;padding:11px 8px 11px 14px;border-left:0;background:var(--plate);border-radius:16px;box-shadow:inset 4px 0 0 var(--c,var(--neutral));margin-bottom:8px;transition:transform .28s cubic-bezier(.3,.7,.3,1),background .2s;}
 .t3-line:hover{background:#20242f;}
 .t3-line>.n,.t3-line>.r,.t3-line>.t3-kb,.t3-line>.t3-cb{position:relative;z-index:1;}
-.t3-wm{position:absolute;inset:0;overflow:hidden;border-radius:inherit;pointer-events:none;display:flex;align-items:center;justify-content:center;}
-.t3-wm span{font:800 62px/1 'DM Sans','Heebo',Arial,sans-serif;letter-spacing:-2px;color:#9aa0b0;opacity:.12;white-space:nowrap;}
-.og-sec-b .t3-wm span{font-size:36px;}
 .t3-line .t3-av{width:38px;height:38px;font-size:13px;background:color-mix(in srgb,var(--c,var(--neutral)) 22%,transparent) !important;color:var(--c,var(--neutral)) !important;box-shadow:inset 0 0 0 1.5px var(--c,var(--neutral));}
 .t3-line .n b{font-size:15px;font-weight:500;}
 .t3-line .n small{font-size:12px;color:#8b90a0;margin-top:1px;}
