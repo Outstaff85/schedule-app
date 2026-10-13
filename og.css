@@ -5,6 +5,7 @@
    keeps them equal), part 2 the shared foundation (ground, glass, plates, the
    highlight line, tick tiles, the Language button), part 3 the components of
    components/bundle.css whose og-* names the pages do not already use. */
+/* tokens:begin — written by tests/design/build.py from tokens.json */
 :root{
   --ground:#10141f;
   --blob-indigo:#4f46e5;
@@ -53,6 +54,7 @@
   --font-sans:"DM Sans", "Heebo", Arial, sans-serif;
   --font-mono:"DM Mono", ui-monospace, monospace;
 }
+/* tokens:end */
 /* ── Odinson Glass foundation (docs/redesign.md): the ground, glass, plates, the
    highlight line, tick tiles, the Language button and sheet. The same block in
    all four pages — keep the copies the same. ── */
@@ -175,3 +177,182 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 .og-sheet h4{margin:0 0 2px;font-size:17px}.og-sheet p{margin:0 0 6px;color:var(--ink-on-glass);font-size:12px}
 /* undo snack */
 
+/* ── Part 4: the list pieces (Plates, RowMenu, UndoSnack, SelectMode as the
+   pages use them: t3Line plates, the ⋮ popover .og-pop, the swipe, the Undo
+   snack .og-snack, Select's .og-box / .sel-head / .sel-bar). One copy for the
+   manager app and the supplier portal (stage 13). ── */
+/* Odinson Glass lists (docs/redesign.md → Plates): every t3Line is a plate —
+   solid, radius 16, a 4px bar in its colour (--c) and the avatar disc in the
+   same colour; figures (.r) in the soft green; a bare ⋮ (.t3-kb) opens the
+   row's glass popover (.og-pop, with a tail); a swipe left (.sw) shows Edit and
+   Delete; Delete never asks — the Undo snack (.og-snack) runs 5 s first;
+   Select, always on (.selecting): drawn-tick boxes, a head line and the glass bulk
+   bar (.sel-bar). The same block in the manager app and the supplier portal. ── */
+:root{--neutral:#6b7189;--bar-gap:16px;}
+.t3-line{position:relative;gap:12px;padding:11px 8px 11px 14px;border-left:0;background:var(--plate);border-radius:16px;box-shadow:inset 4px 0 0 var(--c,var(--neutral));margin-bottom:8px;transition:transform .28s cubic-bezier(.3,.7,.3,1),background .2s;}
+.t3-line:hover{background:#20242f;}
+.t3-line .t3-av{width:38px;height:38px;font-size:13px;background:color-mix(in srgb,var(--c,var(--neutral)) 22%,transparent) !important;color:var(--c,var(--neutral)) !important;box-shadow:inset 0 0 0 1.5px var(--c,var(--neutral));}
+.t3-line .n b{font-size:15px;}
+.t3-line .n small{font-size:12px;color:#8b90a0;margin-top:1px;}
+.t3-line .r{font:700 14px 'DM Mono',ui-monospace,monospace;color:var(--fig);text-shadow:0 0 12px rgba(109,214,160,.22);}
+.t3-kb{position:relative;flex:none;width:26px;height:36px;margin-right:-2px;border:0;background:none;color:#d6d9e2;font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.t3-kb:hover{color:#fff;}
+.t3-kb::after{content:'';position:absolute;left:4px;right:4px;bottom:2px;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55);animation:og-flow 2.4s linear infinite;transform:scaleX(0);transition:transform .45s cubic-bezier(.34,1.56,.64,1);}
+.t3-kb.on{color:#fff;}
+.t3-kb.on::after{transform:scaleX(1);}
+.t3-sec .t3-kb{margin-left:4px;height:28px;font-size:18px;color:var(--text2);}
+/* The ⋮ popover: glass, a tail pointing at its button, Delete last in soft red. */
+.og-pop{position:fixed;z-index:4000;min-width:190px;max-width:260px;padding:6px;border-radius:16px;background:rgba(30,35,51,.82);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.22);box-shadow:0 16px 40px rgba(0,0,0,.45);opacity:0;transform:translateY(-6px) scale(.97);transition:opacity .18s,transform .18s;}
+.og-pop.up{transform:translateY(6px) scale(.97);}
+.og-pop.open{opacity:1;transform:none;}
+.og-pop::before{content:'';position:absolute;top:-7px;left:var(--px,14px);width:12px;height:12px;background:rgba(40,45,64,.95);border-left:1px solid rgba(255,255,255,.22);border-top:1px solid rgba(255,255,255,.22);transform:rotate(45deg);border-radius:2px 0 0 0;}
+.og-pop.up::before{top:auto;bottom:-7px;transform:rotate(225deg);}
+.og-pop-it{position:relative;display:flex;align-items:center;gap:10px;width:100%;padding:10px;border:0;border-radius:10px;background:none;color:#fff;font:500 14px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;text-align:left;}
+.og-pop-it i{font-size:17px;color:rgba(255,255,255,.62);}
+.og-pop-it:hover{background:rgba(255,255,255,.1);}
+.og-pop-it:hover::before{content:'';position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:2px;background:var(--uline);background-size:100% 300%;}
+.og-pop-it.del,.og-pop-it.del i{color:#ffd1d6;}
+.og-pop-hr{height:1px;background:rgba(255,255,255,.14);margin:4px 8px;}
+/* Swipe left: Edit and Delete behind the plate. */
+.sw{position:relative;margin-bottom:8px;border-radius:16px;overflow:hidden;transition:max-height .3s,margin .3s,opacity .3s;}
+.sw>.t3-line{margin-bottom:0;touch-action:pan-y;}
+.sw>.t3-line.drag{transition:none;}
+.sw.gone,.t3-line.gone{max-height:0 !important;margin:0 !important;opacity:0;overflow:hidden;padding-top:0;padding-bottom:0;}
+.t3-line.gone{transition:max-height .3s,margin .3s,opacity .3s,padding .3s;}
+.sw-acts{position:absolute;inset:0;display:flex;justify-content:flex-end;gap:6px;padding:6px;background:rgba(0,0,0,.25);}
+.sw-acts button{width:56px;border-radius:12px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.12);color:#fff;font:600 11px 'DM Sans','Heebo',Arial,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;}
+.sw-acts button i{font-size:17px;}
+.sw-acts button.d{color:#ffd1d6;background:rgba(255,95,109,.22);}
+/* The Undo snack: glass, 5 s, the gradient timer line. */
+.og-snack{position:fixed;left:50%;bottom:var(--bar-gap);z-index:3500;width:min(420px,calc(100% - 28px));display:flex;align-items:center;gap:10px;padding:12px 12px 12px 16px;border-radius:16px;background:rgba(30,35,51,.8);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.24);box-shadow:0 12px 30px rgba(0,0,0,.4);color:#fff;font-size:14px;overflow:hidden;transform:translate(-50%,160%);transition:transform .3s cubic-bezier(.3,.7,.3,1);}
+.og-snack.open{transform:translate(-50%,0);}
+.og-snack-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.og-snack-u{position:relative;border:0;background:none;color:#fff;font:700 14px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;padding:4px 6px;}
+.og-snack-u::after{content:'';position:absolute;left:6px;right:6px;bottom:0;height:2px;border-radius:2px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;}
+.og-snack-bar{position:absolute;left:0;bottom:0;height:3px;width:100%;background:var(--uline);background-size:300% 100%;box-shadow:0 0 8px rgba(34,211,238,.5);}
+.og-snack.open .og-snack-bar{animation:og-flow 2.4s linear infinite,og-shrink 5s linear forwards;}
+@keyframes og-shrink{to{width:0}}
+/* Select mode: drawn-tick boxes slide in, "N selected · Select all", the bulk bar. */
+.t3-cb{width:0;overflow:hidden;flex:none;margin-right:-12px;display:flex;align-items:center;transition:width .25s,margin .25s;}
+.selecting .t3-cb{width:30px;margin-right:-4px;cursor:pointer;}
+.og-box{width:24px;height:24px;box-sizing:border-box;flex:none;border-radius:7px;border:2px solid var(--ink-3);position:relative;transition:background .25s,border-color .25s;}
+.og-box::after{content:'';position:absolute;left:5px;top:1px;width:5px;height:10px;border:solid #0b0d14;border-width:0 3px 3px 0;transform:rotate(45deg);clip-path:inset(100% 0 0 0);transition:clip-path .35s .05s;}
+.t3-line.picked{background:#1f2a2c;}
+.t3-line.picked .og-box{background:var(--ok);border-color:var(--ok);}
+.t3-line.picked .og-box::after{clip-path:inset(0);}
+.sel-head{display:flex;align-items:center;gap:8px;margin:-2px 2px 8px;font-size:13px;color:var(--text2);}
+.sel-head span{flex:1;}
+.sel-head button{position:relative;border:0;background:none;color:#fff;font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;padding:2px 0 5px;}
+.sel-head button::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;border-radius:2px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;}
+.sel-bar{position:fixed;left:50%;bottom:var(--bar-gap);z-index:3400;width:min(520px,calc(100% - 28px));display:flex;align-items:center;gap:6px;padding:8px 8px 8px 14px;border-radius:18px;background:rgba(30,35,51,.8);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.24);box-shadow:0 12px 30px rgba(0,0,0,.4);color:#fff;transform:translate(-50%,0);animation:sel-in .3s cubic-bezier(.3,.7,.3,1);}
+@keyframes sel-in{from{transform:translate(-50%,160%)}}
+.sel-bar b{flex:1;font-size:14px;white-space:nowrap;}
+.sel-bar .gbtn{height:38px;padding:0 12px;font-size:13px;}
+.sel-bar .gbtn.icon{width:38px;padding:0;}
+.sel-bar .gbtn.del{color:#ffd1d6;}
+@media (prefers-reduced-motion:reduce){.t3-kb::after,.og-snack-u::after,.sel-head button::after{animation:none;}}
+.sel-bar .gbtn:disabled{opacity:.45;cursor:default;}
+
+/* ── Part 5: windows — the editor's section plates (.og-sec, the design
+   system's Editors.md and mockup 04), its head, document plates, the avatar
+   disc (.og-av), segmented switches (.seg), tick tiles and glass buttons in a
+   window, the figures (.og-figs). One copy for the manager app and the
+   supplier portal (stage 13). ── */
+  /* Editors as section plates (redesign stage 4): a head (avatar, name,
+     summary, chips, tools), then a stack of section plates that open on a tap. */
+  .og-edh{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  .og-edh>img{width:56px;height:56px;border-radius:50%;object-fit:cover;flex:none;box-shadow:inset 0 0 0 2px var(--c),0 0 0 2px color-mix(in srgb,var(--c) 40%,transparent)}
+  .og-edh-n{flex:1;min-width:0}
+  .og-edh-n h4{font-size:18px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .og-edh-n p{font-size:12px;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .og-edh-n p:empty{display:none}
+  .og-edh-n .wc-chips{margin:6px 0 0}
+  /* The worker editor without a photo: the initials in the status color (a tap adds a photo). */
+  #wAvatarIni{display:none;width:56px;height:56px;font-size:19px;flex:none;cursor:pointer}
+  #wAvatarWrap:not(:has(#wAvatarImg[src^="data"])) #wAvatarIni{display:flex}
+  .og-edh-n p .dot{margin:0 5px}
+  .og-sec{position:relative;background:var(--plate);border-radius:16px;box-shadow:inset 4px 0 0 var(--c,var(--neutral));margin-bottom:8px;transition:box-shadow .25s}
+  .og-sec-h{position:relative;display:flex;align-items:center;gap:12px;width:100%;padding:11px 12px 11px 16px;border:0;background:none;color:var(--text);text-align:start;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent}
+  .og-sec-ic{width:36px;height:36px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--c,var(--neutral));background:color-mix(in srgb,var(--c,var(--neutral)) 22%,transparent);box-shadow:inset 0 0 0 1.5px var(--c,var(--neutral))}
+  .og-sec-t{flex:1;min-width:0}
+  .og-sec-t b{display:block;font-size:15px;font-weight:600}
+  .og-sec-t small{display:block;font-size:12px;color:#8b90a0;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .og-sec-chev{color:var(--text3);font-size:16px;transition:transform .25s}
+  .og-sec.open .og-sec-chev{transform:rotate(180deg)}
+  .og-sec.open .og-sec-t b{position:relative;display:inline-block;padding-bottom:4px}
+  .og-sec.open .og-sec-t b::after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55);animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1)}
+  .og-sec-b{display:none;padding:4px 14px 14px 16px}
+  .og-sec.open .og-sec-b{display:block}
+  .og-sec-b .scan-missing,.og-sec-b input.need:placeholder-shown{border-color:var(--warn) !important;box-shadow:0 0 0 1px rgba(245,166,35,.35)}
+  .seg.seg-sel{margin:0}
+  .og-count{font-style:normal;font-size:14px;font-weight:500;color:var(--text2);margin-left:4px}
+  .workers-count{font-size:12px;color:var(--text2)}
+  .workers-count .sec-lbl{font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+  .og-doc{display:flex;align-items:center;gap:10px;padding:9px 8px 9px 12px;margin-bottom:6px;border-radius:12px;background:rgba(255,255,255,.04);box-shadow:inset 3px 0 0 var(--c)}
+  .og-doc-ic{width:30px;height:30px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--c);background:color-mix(in srgb,var(--c) 18%,transparent)}
+  .og-doc>div{flex:1;min-width:0;font-size:13px}
+  .og-doc b{display:block;font-weight:600}
+  .og-doc small{display:block;font-size:11px;color:#8b90a0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .modal-actions .og-save{flex:1}
+  .og-av{background:color-mix(in srgb,var(--c,var(--neutral)) 22%,transparent) !important;color:var(--c,var(--neutral)) !important;box-shadow:inset 0 0 0 1.5px var(--c,var(--neutral))}
+  .seg{display:flex;gap:4px;padding:4px;margin:10px 0 14px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1)}
+  .seg button{position:relative;flex:1;height:34px;border:0;border-radius:10px;background:none;color:var(--text2);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer}
+  .seg button.on{background:var(--glass-hi);color:#fff}
+  /* Editors exactly as mockup 04 (owner 2026-10-13): section heads with a
+     tinted rounded-square icon and the flowing line across an open head;
+     a badge before the chevron; ticks as compact tiles with a green box;
+     every button in a window is glass; Save carries a check. */
+  .og-sec{overflow:hidden}
+  .og-sec-h{gap:10px;padding:12px 12px 12px 16px}
+  .og-sec-ic{width:30px;height:30px;border-radius:10px;font-size:17px;background:color-mix(in srgb,var(--c,var(--neutral)) 16%,transparent);box-shadow:none}
+  .og-sec-t b{font-size:14px}
+  .og-sec.open .og-sec-t b{display:block;padding-bottom:0}
+  .og-sec.open .og-sec-t b::after{display:none}
+  .og-sec.open .og-sec-h::after{content:'';position:absolute;left:16px;right:12px;bottom:0;height:2px;border-radius:2px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;opacity:.7}
+  .og-sec-b{padding:6px 12px 14px 16px}
+  .og-sec-badge{flex:none;display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:11px;font-size:11px;font-weight:700}
+  .og-sec-badge.amber{background:rgba(245,166,35,.16);color:#f7c062}
+  .og-sec-badge.red{background:rgba(255,95,109,.16);color:#ff8a95}
+  .og-sec-badge.blue{background:rgba(79,142,247,.16);color:#8fb4ff}
+  .modal .check-grid{display:flex;flex-wrap:wrap;gap:6px;grid-template-columns:none}
+  /* Tick tiles in every window: the design system's Tick (docs/design/system/
+     components/Tick) — 46px, radius-md, plate fill, label 15/600 ink-2, a 24px
+     box bordered ink-3; ticked: tick-on fill, ink label, green box with the mark.
+     A tile with a hint (owner 2026-10-13: hints shown) grows to fit it. */
+  .modal label.check-chip{display:inline-flex;width:auto;min-height:46px;height:46px;padding:0 16px 0 12px;gap:10px;margin:0;border:0;border-radius:var(--radius-md);background:var(--plate);color:var(--ink-2);font-size:15px;font-weight:600;transition:background .25s,color .25s}
+  .modal label.check-chip:has(.chip-hint){height:auto;padding:10px 16px 10px 12px}
+  .modal .field>label.check-chip{display:flex;width:100%}
+  .modal label.check-chip:has(input:checked){background:var(--tick-on);color:var(--ink)}
+  .modal label.check-chip .chip-text i.ti{display:none}
+  .modal label.check-chip .chip-text{flex-direction:column;gap:2px}
+  .modal label.check-chip .chip-hint{display:block;font-size:12px;font-weight:400;line-height:1.35;color:var(--ink-2)}
+  .modal label.check-chip input[type=checkbox]{-webkit-appearance:none;appearance:none;width:24px;height:24px;flex:0 0 24px;margin:0;border-radius:7px;border:2px solid var(--ink-3);background:transparent;cursor:pointer;transition:background .25s,border-color .25s}
+  .modal label.check-chip input[type=checkbox]:checked{background:var(--green) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230b0d14' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/15px no-repeat;border-color:var(--green)}
+  .modal label.check-chip input[type=checkbox]:disabled{opacity:.5}
+  .modal .btn{height:40px;padding:0 14px;border-radius:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:var(--text);font-weight:600;font-size:13px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+  .modal .btn.sm{height:36px;border-radius:12px;font-size:12.5px}
+  .modal .btn.accent{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.3);color:#fff}
+  .modal .og-save i{margin-right:2px}
+  .og-edh{flex-wrap:wrap}
+  .og-edh-chips{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px;margin:-4px 0 0}
+  .og-edh-chips:empty{display:none}
+  .og-sec-b .t3-line{min-height:40px;padding-top:6px;padding-bottom:6px;margin-bottom:6px}
+  .og-sec-b .t3-line .t3-av{width:26px;height:26px;font-size:10px}
+  .og-sec-b .t3-line .r{font-family:'DM Mono',monospace;font-size:12px}
+  .modal .field>label{line-height:16px}
+  .og-lbl{display:block;font-size:11px;font-weight:500;color:#8b90a0;margin:2px 4px 4px}
+  .og-figs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0 4px}
+  .og-figs>div,.rate-margin>div{background:#232735;border:0;border-radius:12px;padding:9px 10px;text-align:start}
+  .og-figs b,.rate-margin b{display:block;font:700 15px 'DM Mono',monospace;color:var(--green)}
+  .og-figs small,.rate-margin small{display:block;font-size:11px;color:#8b90a0;margin-top:2px}
+  .modal canvas#wSigCanvas{border-radius:12px !important}
+  .wc-av{width:56px;height:56px;font-size:19px}
+
+/* ── Part 6: glass tabs (.og-tabs, the design system's Tabs) with a count. ── */
+  .og-tabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:4px 0 10px}
+  .og-tabs::-webkit-scrollbar{display:none}
+  .og-tabs:empty{display:none}
+  .og-tabs button{position:relative;flex:none;height:36px;padding:0 14px;border:1px solid transparent;border-radius:14px;background:none;color:var(--text2);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;white-space:nowrap}
+  .og-tabs button.on{background:var(--glass-hi);border-color:rgba(255,255,255,.35);color:#fff;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+  .og-tabs button.on::after{content:'';position:absolute;left:14px;right:14px;bottom:-1px;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55);animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1)}
+  .og-tabs .tab-n{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:4px;border-radius:999px;background:var(--bad);color:#fff;font-size:10px;font-weight:700}

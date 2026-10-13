@@ -125,7 +125,7 @@ On 2026-10-13 the owner went through the design system artifact and found many p
 - **Select is always there, on every list:** the line "N selected · Select all" (and the tick boxes on the plates) is shown by default above every list, in the same place it appears now — no ⋮ → Select… needed. Lists: workers, clients, suppliers, users, firms, punches, pending hours, hours approvals, documents, salary rows, and the portals' lists. The header ⋮ keeps its other tools.
 
 ### Checklist (known gaps so far; the audit adds the rest)
-- [x] Tokens + component CSS from `docs/design/system/` in all four pages (method step 1) — `og.css`; the components whose `og-*` names the pages already use for their own versions (popover, snack, section plates, select box, tabs, avatar) are aligned in the screen-group passes.
+- [x] Tokens + component CSS from `docs/design/system/` in all four pages (method step 1) — `og.css`; the shared components the pages had drawn themselves (popover, Undo snack, Select box, section plates, tabs, avatar) moved into `og.css` too (parts 4–6), one copy for every page; `tests/design/build.py` writes the tokens from `tokens.json`.
 - [x] Admin → Firms: a firm line carries only ✎ and a bare ⋮ (Pause / Activate, Delete last in red under a hairline; Delete through the Undo snack, never a confirm); today it shows ✎, ⏸ and an unstyled ✕ in a white box.
 - [x] Header bell: the red count must be a whole pulsing disc with the number inside the button; today a red dot is cut off at the top.
 - [x] Select line: "N selected" on the left of "Select all" (SelectMode), on every list.

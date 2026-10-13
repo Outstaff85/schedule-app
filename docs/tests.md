@@ -5,7 +5,7 @@ Everything runs on the Firebase emulators — never against the live project, no
 | Suite | Where | What it checks | Run locally |
 |---|---|---|---|
 | Dictionaries | `tests/i18n/check.js` | every `tr()` / `data-i18n` text has a Hebrew translation, none is empty or unused | `node tests/i18n/check.js` |
-| Design tokens | `tests/design/check.js` | `og.css` carries every token of `docs/design/system/tokens.json` with the same value, every page links `og.css`, no page redefines a token | `node tests/design/check.js` |
+| Design tokens | `tests/design/check.js` | `og.css` carries every token of `docs/design/system/tokens.json` with the same value, every page links `og.css`, no page redefines a token | `node tests/design/check.js`; after editing `tokens.json`, `python tests/design/build.py` rewrites the token block of `og.css` |
 | Design audit (not a test) | `tests/e2e/audit.js` | screenshots of every screen and window of every page at 390 and 1280 px, for comparing with `docs/design/system/` (stage 13) | `cd tests/e2e && PYTHON=… E2E_OUT=<dir> npm run audit` |
 | Icons | `tests/icons/check.js` | every `ti-<name>` used by a page is in the self-hosted subset | `node tests/icons/check.js` |
 | Rules | `tests/rules/rules.test.mjs` | `firestore.rules` / `storage.rules`: who may read and write what (firms, roles, HR, suppliers) | `cd tests/rules && npm install && npm test` |
