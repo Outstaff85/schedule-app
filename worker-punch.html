@@ -417,7 +417,6 @@ html,body{
 .gic .moon{animation:gic-moon 4s ease-in-out infinite}@keyframes gic-moon{50%{transform:translateY(-2px) rotate(-6deg)}}
 .gic .tw{transform-box:fill-box;transform-origin:center;animation:gic-tw 2.4s ease-in-out infinite}.gic .tw2{animation-delay:1.2s}@keyframes gic-tw{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.2;transform:scale(.6)}}
 /* weather icons (stage 12) */
-.gname{font-weight:500}
 .gtemp{font-size:.78em;font-weight:600;color:var(--text2);margin-left:6px;vertical-align:1px}
 .gic .drift{animation:gic-drift 6s ease-in-out infinite}.gic .drift.d2{animation-duration:8s;animation-direction:reverse}
 @keyframes gic-drift{0%,100%{transform:translateX(-1px)}50%{transform:translateX(1.5px)}}
@@ -1123,7 +1122,7 @@ function weatherIconHtml(p,wx){
 function greetingHtml(name, wx){
   const p=partOfDay(), first=String(name||'').trim().split(/\s+/)[0]||'';
   const text={morning:'Good morning, {name}',day:'Good afternoon, {name}',evening:'Good evening, {name}',night:'Good night, {name}'}[p];
-  return (first?esc(tr(text,{name:'\u0001'})).replace('\u0001',`<span class="gname">${esc(first)}</span>`):esc(tr(text,{name:''}).replace(/,\s*$/,'')))+weatherIconHtml(p,wx);
+  return esc(first?tr(text,{name:first}):tr(text,{name:''}).replace(/,\s*$/,''))+weatherIconHtml(p,wx);
 }
 // The weather for the greeting: the worker's site (the one picked here first),
 // read again after 30 minutes or for another site; a failure keeps the icon.
