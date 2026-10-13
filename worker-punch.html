@@ -439,7 +439,10 @@ html,body{
 .pp-tag{font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;background:rgba(34,211,238,.2);color:#67e8f9;margin-left:2px}
 .sched-notice{border-radius:14px!important;background:var(--plate)!important;border:0!important;box-shadow:inset 4px 0 0 var(--warn)}
 #screenSchedule,#screenHours{top:max(env(safe-area-inset-top,0px),10px);border-radius:22px 22px 0 0;background:var(--glass-dark)!important;-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border-top:1px solid rgba(255,255,255,.2)}
-#screenSchedule::before,#screenHours::before{content:'';display:block;flex:none;width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.3);margin:-12px auto 14px}
+/* The sheets close like every sheet (stage 13): no ✕ — a tap on the grab bar,
+   a swipe down from the top of the sheet, or Escape. */
+.sheet-grab{display:block;flex:none;width:72px;height:22px;margin:-16px auto 8px;padding:0;border:0;background:none;cursor:pointer;position:relative}
+.sheet-grab::before{content:'';position:absolute;left:16px;right:16px;top:9px;height:4px;border-radius:2px;background:rgba(255,255,255,.3)}
 .sched-cell{border-radius:10px;background:rgba(255,255,255,.035)}
 .sched-cell.today{border-color:transparent;box-shadow:0 0 0 2px var(--info)}
 .shift-bar{border-radius:7px}
@@ -585,9 +588,9 @@ html[lang="he"] *{letter-spacing:normal !important;}
 
 <!-- Screen 5: My schedule (only this worker's own week) -->
 <div class="screen hidden" id="screenSchedule" style="justify-content:flex-start;align-items:center">
+  <button type="button" class="sheet-grab" onclick="closeHistory()" aria-label="Close" title="Close" data-i18n-title="Close"></button>
   <div class="top-bar" style="margin-bottom:16px">
     <div style="font-size:18px;font-weight:500"><i class="ti ti-calendar-week"></i> <span data-i18n>My Schedule</span></div>
-    <div class="back-link" onclick="closeHistory()" style="font-size:14px" data-i18n>✕ Close</div>
   </div>
   <div id="scheduleContent" style="width:100%;max-width:500px"></div>
 </div>
@@ -595,9 +598,9 @@ html[lang="he"] *{letter-spacing:normal !important;}
 <!-- Screen 6: My hours (the month's shifts, each opens to its punches; with the
      worker's own link also a pay estimate — My History merged in, 2026-10-11) -->
 <div class="screen hidden" id="screenHours" style="justify-content:flex-start;align-items:center">
+  <button type="button" class="sheet-grab" onclick="closeHistory()" aria-label="Close" title="Close" data-i18n-title="Close"></button>
   <div class="top-bar" style="margin-bottom:16px">
     <div style="font-size:18px;font-weight:500"><i class="ti ti-clock-hour-4"></i> <span data-i18n>My Hours</span></div>
-    <div class="back-link" onclick="closeHistory()" style="font-size:14px" data-i18n>✕ Close</div>
   </div>
   <div id="hoursContent" style="width:100%;max-width:500px"></div>
 </div>
@@ -1597,6 +1600,19 @@ function travelPay(w, days, months){
 function localYMD(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 
 function closeHistory(){ resetToQR(); }
+// A swipe down on My Schedule / My Hours, from the top of the sheet, closes it.
+(function(){
+  let sw=null;
+  const sheet=()=>['screenSchedule','screenHours'].map(id=>document.getElementById(id)).find(el=>el&&!el.classList.contains('hidden'));
+  document.addEventListener('touchstart',e=>{ const s=sheet(); sw=null; if(!s||e.touches.length!==1||!s.contains(e.target)||s.scrollTop>0) return; sw={s,y:e.touches[0].clientY,x:e.touches[0].clientX,dy:0}; },{passive:true});
+  document.addEventListener('touchmove',e=>{ if(!sw) return; const dy=e.touches[0].clientY-sw.y, dx=e.touches[0].clientX-sw.x;
+    if(dy<0||Math.abs(dx)>Math.abs(dy)){ sw=null; return; } sw.dy=dy; if(dy>8){ sw.s.style.transform='translateY('+dy+'px)'; sw.s.style.transition='none'; } },{passive:true});
+  const end=()=>{ if(!sw) return; const {s,dy}=sw; sw=null; s.style.transition='transform .18s ease';
+    if(dy>90){ s.style.transform='translateY(100%)'; setTimeout(()=>{ s.style.transform=''; s.style.transition=''; closeHistory(); },180); }
+    else { s.style.transform=''; setTimeout(()=>{ s.style.transition=''; },200); } };
+  document.addEventListener('touchend',end); document.addEventListener('touchcancel',end);
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&sheet()) closeHistory(); });
+})();
 
 // ── Helpers ───────────────────────────────────────────────────────
 function getPunchLog(){ try{return JSON.parse(localStorage.getItem('punchLog')||'[]');}catch(e){return[];} }
