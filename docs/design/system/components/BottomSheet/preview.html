@@ -1,0 +1,9 @@
+<!-- @dsCard group="Containers" height=330 -->
+<!doctype html>
+<html><head><meta charset="utf-8"><title>BottomSheet</title></head>
+<body>
+<div class="og-ground"><div class="og-sheet"><h4>Dana Levi</h4><p>Hours access</p>
+<div class="og-sec" style="margin-top:8px">Ticks</div><div class="og-row"><button class="og-tick on"><span class="og-box"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>Hours</button><button class="og-tick"><span class="og-box"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>Export</button></div>
+<div class="og-row" style="margin-top:14px"><button class="og-btn primary" style="flex:1"><svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg>Approve the month</button><button class="og-btn"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Excel</button></div></div></div>
+<script>document.querySelectorAll('.og-btn').forEach(function(b){b.addEventListener('click',function(){b.classList.remove('shine');void b.offsetWidth;b.classList.add('shine');setTimeout(function(){b.classList.remove('shine')},700)})});document.querySelectorAll('.og-tick').forEach(function(b){b.onclick=function(){b.classList.toggle('on')}});</script>
+</body></html>

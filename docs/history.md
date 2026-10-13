@@ -206,3 +206,7 @@ The worker modal once loaded contacts from Google (People API through Google Ide
 
 ## 2026-10-13 — false "Changed after approval" right after sign-in
 The browser test "owner: the client's approval in Accounting, not changed" failed now and then (PRs #232, #233). Cause: Accounting → Hours approvals compared each approved day with the punch log while the month's punches were still loading after sign-in; a day with no punches yet has an empty line, so every approved day read "Changed after approval", and only the Today tab was redrawn when the punches arrived. Fix: `renderHourApprovals` waits for the first punch load (`__punchSynced`) and the punch listener redraws the approvals while Accounting is open.
+
+## 2026-10-13 — the redesign drifted from the design system
+The owner found many differences between the site and the "Odinson Glass" design system artifact. The build sessions had never read the artifact (docs/redesign.md only linked it, marked private), so every page re-drew the components from a summary and 12 mockups; none of the artifact's token or class names reached the code, and stages were ticked when the tests passed, without comparing screenshots. The artifact's files were then copied into `docs/design/system/` and a conformance pass (stage 13 in docs/redesign.md, with a screenshot comparison per screen) was planned.
+

@@ -1,0 +1,22 @@
+<!-- @dsCard group="Navigation" height=420 subtitle="Same button and sheet on every page" -->
+<!doctype html>
+<html><head><meta charset="utf-8"><title>LanguageButton</title>
+<style>
+.lw{position:relative;height:380px;border-radius:18px;overflow:hidden}
+.lb{display:inline-flex}
+.lb svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.9}
+.ls{position:absolute;left:0;right:0;bottom:0;padding:10px 14px 14px;border-radius:22px 22px 0 0;background:var(--glass-sheet);backdrop-filter:blur(18px);border-top:1px solid var(--glass-edge)}
+.ls::before{content:'';display:block;width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.3);margin:0 auto 10px}
+.ls h4{margin:0 4px 8px;font-size:17px}
+.sr{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid var(--hairline);color:var(--ink-2);font-size:14px;margin-bottom:6px}
+.it2{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;position:relative}
+.it2 b{font-size:15px}.it2 small{flex:1;font-size:12px;color:var(--ink-2)}
+.it2.on{background:rgba(109,214,160,.1)}
+.it2.on::after{content:'';position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:2px;background:linear-gradient(180deg,var(--uline-1),var(--uline-2),var(--uline-3))}
+</style></head>
+<body><div class="og-ground lw">
+<div style="display:flex;justify-content:flex-end"><button class="og-btn lb"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.6 5.4 3.6 8.5s-1.1 5.9-3.6 8.5c-2.5-2.6-3.6-5.4-3.6-8.5s1.1-5.9 3.6-8.5z"/></svg>English<svg viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M6 9l6 6 6-6"/></svg></button></div>
+<div class="ls"><h4>Language</h4><div class="sr">Search a language</div>
+<div class="it2 on"><b>English</b><small>English</small><span class="og-box" style="background:var(--green);border-color:var(--green)"><svg viewBox="0 0 24 24" style="stroke-dashoffset:0"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></div>
+<div class="it2"><b>עברית</b><small>Hebrew</small></div><div class="it2"><b>Русский</b><small>Russian</small></div></div>
+</div><script></script></body></html>

@@ -1,0 +1,34 @@
+<!-- @dsCard height=288 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Odinson Glass</title>
+<style>
+ html,body{margin:0;height:100%}
+ body{background:var(--ground);color:var(--ink);font-family:var(--font-sans);overflow:hidden}
+ .cover{position:relative;height:288px;overflow:hidden}
+ .art{position:absolute;top:0;left:480px;width:480px;height:288px;overflow:hidden}
+ .art svg{display:block;width:480px;height:288px}
+ .ind{fill:var(--blob-indigo)} .cy{fill:var(--blob-cyan)} .pk{fill:var(--blob-pink)} .pl{fill:var(--plate)}
+ .g{fill:var(--green)} .a{fill:var(--accent)} .am{fill:var(--amber)} .av{fill:var(--avatar)} .u1{fill:var(--uline-1)} .u2{fill:var(--uline-2)} .u3{fill:var(--uline-3)}
+ .words{position:absolute;left:28px;bottom:28px;max-width:440px}
+ .name{margin:0;font-size:100px;line-height:.92;font-weight:700;letter-spacing:-.02em}
+ .tag{margin:12px 0 0 4px;font-size:14px;line-height:20px;color:var(--ink-on-glass)}
+</style></head>
+<body><div class="cover">
+<div class="art" aria-hidden="true"><svg viewBox="0 0 480 288">
+<!--
+ blocks      blob-indigo 176x208 slab bled off the top · blob-cyan 128x176 · blob-pink 96x96 low · plate rows as the dark tint
+ arrangement one tall indigo slab with a cyan and a pink satellite, three plates stacked across them like the app's list
+ pattern     plates (radius-lg 16, 4px status bar green/accent/amber, avatar disc): the app is lists of plates; the uline gradient as one 3px line under the top plate
+ scales      gaps space-2 (8) and space-5 (16); corners radius-lg 16, radius-xl 22; avatar disc r 14
+-->
+<rect class="ind" x="24" y="-22" width="176" height="208" rx="22"/>
+<rect class="cy" x="216" y="40" width="128" height="176" rx="22"/>
+<rect class="pk" x="360" y="160" width="96" height="96" rx="22"/>
+<rect class="pl" x="104" y="64" width="344" height="52" rx="16"/><rect class="g" x="104" y="64" width="4" height="52"/><circle class="av" cx="138" cy="90" r="14"/>
+<rect class="u1" x="300" y="122" width="48" height="3" rx="1.5"/><rect class="u2" x="348" y="122" width="48" height="3" rx="1.5"/><rect class="u3" x="396" y="122" width="48" height="3" rx="1.5"/>
+<rect class="pl" x="104" y="132" width="344" height="52" rx="16"/><rect class="a" x="104" y="132" width="4" height="52"/><circle class="av" cx="138" cy="158" r="14"/>
+<rect class="pl" x="104" y="200" width="344" height="52" rx="16"/><rect class="am" x="104" y="200" width="4" height="52"/><circle class="av" cx="138" cy="226" r="14"/>
+</svg></div>
+<div class="words"><h1 class="name">Odinson<br>Glass</h1><p class="tag">Frosted glass over colour, solid plates for every list.</p></div>
+</div></body></html>
