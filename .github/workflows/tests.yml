@@ -31,10 +31,11 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Dictionaries and icons
+      - name: Dictionaries, icons and design tokens
         run: |
           node tests/i18n/check.js
           node tests/icons/check.js
+          node tests/design/check.js
 
       - name: Python for the functions
         run: |

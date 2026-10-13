@@ -1,0 +1,175 @@
+/* og.css — Odinson Glass in the codebase (docs/redesign.md → stage 13).
+   The design system itself (the rules and the reference) is docs/design/system/;
+   this file is its one copy in the code, linked by all four pages. Part 1 is
+   tokens.json as CSS custom properties (the same names; tests/design/check.js
+   keeps them equal), part 2 the shared foundation (ground, glass, plates, the
+   highlight line, tick tiles, the Language button), part 3 the components of
+   components/bundle.css whose og-* names the pages do not already use. */
+:root{
+  --ground:#10141f;
+  --blob-indigo:#4f46e5;
+  --blob-cyan:#06b6d4;
+  --blob-pink:#db2777;
+  --surface:#0f1117;
+  --surface-2:#181c27;
+  --surface-3:#1e2333;
+  --plate:#1b1e29;
+  --plate-on:#1f2a2c;
+  --tick-on:#1b2a28;
+  --glass:rgba(255,255,255,0.12);
+  --glass-strong:rgba(255,255,255,0.28);
+  --glass-active:rgba(255,255,255,0.2);
+  --glass-edge:rgba(255,255,255,0.28);
+  --glass-menu:rgba(30,35,51,0.75);
+  --glass-sheet:rgba(17,20,31,0.82);
+  --hairline:rgba(255,255,255,0.14);
+  --ink:#ffffff;
+  --ink-2:#8b90a0;
+  --ink-3:#4a5068;
+  --ink-on-glass:rgba(255,255,255,0.62);
+  --accent:#4f8ef7;
+  --green:#6dd6a0;
+  --amber:#f5a623;
+  --red:#ff5f6d;
+  --red-soft:#ffd1d6;
+  --avatar:#6e5a9e;
+  --uline-1:#818cf8;
+  --uline-2:#22d3ee;
+  --uline-3:#f472b6;
+  --tick-mark:#0b0d14;
+  --space-1:4px;
+  --space-2:8px;
+  --space-3:12px;
+  --space-4:14px;
+  --space-5:16px;
+  --radius-sm:10px;
+  --radius-md:14px;
+  --radius-lg:16px;
+  --radius-xl:22px;
+  --radius-pill:999px;
+  --shadow-glass:0 8px 24px rgba(0,0,0,0.25);
+  --shadow-pop:0 16px 40px rgba(0,0,0,0.45);
+  --shadow-uline:0 0 10px rgba(34,211,238,0.55), 0 0 4px rgba(244,114,182,0.5);
+  --font-sans:"DM Sans", "Heebo", Arial, sans-serif;
+  --font-mono:"DM Mono", ui-monospace, monospace;
+}
+/* ── Odinson Glass foundation (docs/redesign.md): the ground, glass, plates, the
+   highlight line, tick tiles, the Language button and sheet. The same block in
+   all four pages — keep the copies the same. ── */
+:root{--glass-hi:var(--glass-active);--glass-dark:rgba(17,20,31,.92);--fig:#9fe6c0;--ok:var(--green);--info:var(--accent);--warn:var(--amber);--bad:var(--red);--uline:linear-gradient(90deg,var(--uline-1),var(--uline-2),var(--uline-3),var(--uline-1));}
+html{background:var(--ground);}
+body{background:transparent;}
+body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(circle at 15% 10%,rgba(79,70,229,.50) 0,transparent 56%),radial-gradient(circle at 92% 62%,rgba(6,182,212,.36) 0,transparent 54%),radial-gradient(circle at 40% 108%,rgba(219,39,119,.34) 0,transparent 56%),var(--ground);}
+@keyframes og-flow{to{background-position:300% 0}}
+@keyframes og-pop{0%{transform:scaleX(0)}60%{transform:scaleX(1.12)}100%{transform:scaleX(1)}}
+/* The highlight line: one 3px flowing gradient line with a glow; .og-line on any
+   element draws it under that element (it springs in when it appears). */
+.og-line{position:relative;}
+.og-line::after{content:'';position:absolute;left:12px;right:12px;bottom:0;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55),0 0 4px rgba(244,114,182,.5);animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1);pointer-events:none;}
+/* Glass buttons: white fill + blur, a shine sweep on every tap (.shine, set by
+   the pointerdown handler), the highlight line on hover and when .on. */
+.gbtn{position:relative;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:42px;padding:0 16px;border-radius:16px;background:var(--glass);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--glass-edge);color:#fff;font:600 14px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.25);-webkit-tap-highlight-color:transparent;white-space:nowrap;}
+.gbtn.primary{background:rgba(255,255,255,.28);}
+.gbtn.icon{width:42px;padding:0;}
+.gbtn::after{content:'';position:absolute;top:0;left:-60%;width:40%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.45),transparent);transform:skewX(-20deg);pointer-events:none;}
+.gbtn.shine::after{left:130%;transition:left .6s;}
+.gbtn::before{content:'';position:absolute;left:12px;right:12px;bottom:1px;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55),0 0 4px rgba(244,114,182,.5);animation:og-flow 2.4s linear infinite;transform:scaleX(0);transition:transform .45s cubic-bezier(.34,1.56,.64,1);pointer-events:none;}
+@media (hover:hover){.gbtn:hover::before{transform:scaleX(1);}}
+.gbtn.on::before{transform:scaleX(1);}
+/* Plates: the solid content tile, a 4px status bar (--c) on the left and the
+   avatar disc in the same color; figures (hours, money) in one soft green. */
+.plate{position:relative;display:flex;align-items:center;gap:12px;padding:11px 8px 11px 14px;background:var(--plate);border-radius:16px;box-shadow:inset 4px 0 0 var(--c,var(--ok));}
+.plate-av{width:38px;height:38px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--c,var(--ok));background:color-mix(in srgb,var(--c,var(--ok)) 22%,transparent);box-shadow:inset 0 0 0 1.5px var(--c,var(--ok));}
+.fig{font-family:'DM Mono',ui-monospace,monospace;color:var(--fig);}
+/* Tick tiles: a grey box; ticked — the tile tinted green, the box green and
+   the check mark drawing itself (350 ms). */
+label.check-chip{background:var(--plate);border-color:transparent;transition:background .25s,border-color .25s;}
+label.check-chip input[type=checkbox]{-webkit-appearance:none;appearance:none;position:relative;width:22px;height:22px;flex:0 0 22px;margin:0;border-radius:7px;border:2px solid #4a5170;background:transparent;cursor:pointer;transition:background .25s,border-color .25s;}
+label.check-chip input[type=checkbox]::after{content:'';position:absolute;left:5px;top:1px;width:5px;height:10px;border:solid #0b0d14;border-width:0 3px 3px 0;transform:rotate(45deg);clip-path:inset(100% 0 0 0);transition:clip-path .35s .05s;}
+label.check-chip input[type=checkbox]:checked{background:var(--ok);border-color:var(--ok);}
+label.check-chip input[type=checkbox]:checked::after{clip-path:inset(0);}
+label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214,160,.4);}
+/* The Language button (top right of every page) and its sheet. */
+.lang-btn{height:36px;width:36px;padding:0;gap:0;border-radius:14px;font-size:13px;flex:none;justify-content:center;}
+.lang-btn i{font-size:18px;}
+/* Only the globe (owner 2026-10-13): the name and chevron stay in the markup, hidden. */
+.lang-btn .lang-btn-name,.lang-btn .lang-btn-chev{display:none;}
+.lang-btn.on-cover{position:absolute;top:max(env(safe-area-inset-top,0px),12px);right:12px;z-index:2;}
+.lang-ov{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .25s;}
+.lang-ov.open{opacity:1;pointer-events:auto;}
+.lang-sheet{width:min(380px,100%);max-height:min(560px,80vh);display:flex;flex-direction:column;padding:14px 14px 16px;border-radius:22px;background:var(--glass-dark);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.2);box-shadow:0 20px 50px rgba(0,0,0,.5);color:#fff;transform:translateY(12px) scale(.98);transition:transform .35s cubic-bezier(.3,.7,.3,1);}
+.lang-ov.open .lang-sheet{transform:none;}
+.lang-grab{display:none;width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.3);margin:0 auto 10px;}
+.lang-sheet h4{font-size:17px;font-weight:600;margin:0 4px 10px;}
+.lang-search{display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;margin-bottom:8px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);}
+.lang-search i{color:#8b90a0;font-size:16px;}
+.lang-search input{flex:1;min-width:0;border:0;background:none;color:#fff;font:14px 'DM Sans','Heebo',Arial,sans-serif;outline:none;padding:0;}
+.lang-list{overflow:auto;display:flex;flex-direction:column;gap:4px;}
+.lang-li{position:relative;display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:0;border-radius:12px;background:none;color:#fff;font-family:'DM Sans','Heebo',Arial,sans-serif;text-align:left;cursor:pointer;}
+.lang-li:hover{background:rgba(255,255,255,.06);}
+.lang-li b{font-size:15px;font-weight:600;}
+.lang-li small{flex:1;font-size:12px;color:#8b90a0;}
+.lang-li.on{background:rgba(109,214,160,.1);}
+.lang-li.on::after{content:'';position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:2px;background:linear-gradient(180deg,#818cf8,#22d3ee,#f472b6);}
+.lang-tick{width:22px;height:22px;border-radius:7px;background:var(--ok);color:#0b0d14;display:flex;align-items:center;justify-content:center;font-size:14px;}
+.lang-none{padding:14px 12px;color:#8b90a0;font-size:13px;}
+@media (max-width:700px){
+  .lang-ov{align-items:flex-end;padding:0;}
+  .lang-sheet{width:100%;max-height:78vh;border-radius:22px 22px 0 0;border-width:1px 0 0;padding:10px 14px calc(18px + env(safe-area-inset-bottom,0px));transform:translateY(105%);}
+  .lang-grab{display:block;}
+}
+@media (prefers-reduced-motion:reduce){.og-line::after,.gbtn::before{animation:none;}.gbtn.shine::after{transition:none;}}
+/* ── Components from docs/design/system/components/bundle.css (the classes not
+   yet mapped onto the pages' own names — the screen-group passes switch to them). ── */
+/* Odinson Glass components. Every value comes from tokens.css. */
+:root{--og-uline:linear-gradient(90deg,var(--uline-1),var(--uline-2),var(--uline-3),var(--uline-1));--og-spring:cubic-bezier(.34,1.56,.64,1);--og-ease:cubic-bezier(.3,.7,.3,1)}
+@keyframes og-shrink{to{width:0}}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+.og-ground{position:relative;overflow:clip;padding:var(--space-5) var(--space-4);background:radial-gradient(circle at 15% 10%,rgba(79,70,229,.50) 0,transparent 56%),radial-gradient(circle at 92% 62%,rgba(6,182,212,.36) 0,transparent 54%),radial-gradient(circle at 40% 108%,rgba(219,39,119,.34) 0,transparent 56%),var(--ground)}
+.og-row{display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center}
+/* the underline: a flowing gradient line that springs in */
+.og-uline{position:absolute;left:12px;right:12px;bottom:1px;height:3px;border-radius:2px;background:var(--og-uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;box-shadow:var(--shadow-uline);transform:scaleX(0);transition:transform .45s var(--og-spring)}
+/* glass button */
+.og-btn{position:relative;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:42px;padding:0 16px;border-radius:var(--radius-lg);background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--glass-edge);color:var(--ink);font:600 14px var(--font-sans);cursor:pointer;box-shadow:var(--shadow-glass)}
+.og-btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2}
+.og-btn::after{content:'';position:absolute;top:0;left:-60%;width:40%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.45),transparent);transform:skewX(-20deg);transition:left .6s}
+.og-btn:hover::after,.og-btn.shine::after{left:130%}
+.og-btn::before{content:'';position:absolute;left:12px;right:12px;bottom:1px;height:3px;border-radius:2px;background:var(--og-uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;box-shadow:var(--shadow-uline);transform:scaleX(0);transition:transform .45s var(--og-spring)}
+.og-btn:hover::before,.og-btn:focus-visible::before,.og-btn.on::before{transform:scaleX(1)}
+.og-btn:focus-visible{outline:2px solid var(--uline-2);outline-offset:2px}
+.og-btn.primary{background:var(--glass-strong)}
+.og-btn.icon{width:42px;padding:0}
+.og-btn.danger{color:var(--red-soft)}
+/* tabs */
+/* section label */
+/* plate */
+.og-sw{position:relative;margin-bottom:var(--space-2);border-radius:var(--radius-lg);overflow:hidden;max-height:80px;transition:max-height .3s,margin .3s,opacity .3s}
+.og-sw.gone{max-height:0;margin:0;opacity:0}
+.og-acts{position:absolute;inset:0;display:flex;justify-content:flex-end;gap:6px;padding:6px;background:rgba(0,0,0,.25)}
+.og-acts button{width:56px;border-radius:12px;border:1px solid var(--glass-edge);background:var(--glass);color:var(--ink);font:600 11px var(--font-sans);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer}
+.og-acts .del{color:var(--red-soft);background:rgba(255,95,109,.22)}
+.og-acts svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2}
+.og-plate{position:relative;display:flex;align-items:center;gap:var(--space-3);padding:11px 8px 11px var(--space-4);background:var(--plate);border-radius:var(--radius-lg);box-shadow:inset 4px 0 0 var(--bar,var(--green));transition:transform .28s var(--og-ease);touch-action:pan-y;cursor:pointer;user-select:none}
+.og-plate.drag{transition:none}
+.og-plate.on{background:var(--plate-on)}
+.og-kb{position:relative;width:32px;height:32px;border:0;border-radius:var(--radius-sm);background:none;color:var(--ink-2);font-size:18px;cursor:pointer}
+.og-kb::after{content:'';position:absolute;left:9px;right:9px;bottom:3px;height:3px;border-radius:2px;background:var(--og-uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;transform:scaleX(0);transition:transform .45s var(--og-spring)}
+.og-kb.on{color:var(--ink);background:rgba(255,255,255,.08)}.og-kb.on::after{transform:scaleX(1)}
+/* select mode */
+.og-cb{width:0;overflow:hidden;flex:none;margin-right:calc(-1 * var(--space-3));display:flex;align-items:center;transition:width .25s,margin .25s}
+.og-select .og-cb{width:26px;margin-right:0}
+.og-select .og-kb{opacity:0;pointer-events:none}
+.og-selhead{display:none;align-items:center;font-size:13px;color:var(--ink-on-glass);margin:0 2px var(--space-2)}
+.og-select .og-selhead{display:flex}.og-selhead span{flex:1}
+.og-selhead button{position:relative;border:0;background:none;color:var(--ink);font:600 13px var(--font-sans);cursor:pointer;padding:2px 0 5px}
+.og-selhead button::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;border-radius:2px;background:var(--og-uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite}
+/* tick */
+.og-tick{display:inline-flex;align-items:center;gap:10px;height:46px;padding:0 16px 0 12px;border-radius:var(--radius-md);border:0;background:var(--plate);color:var(--ink-2);font:600 15px var(--font-sans);cursor:pointer;transition:background .25s,color .25s}
+.og-tick.wide{width:100%}
+/* popover with a tail */
+/* sheet */
+.og-sheet{padding:10px var(--space-5) 20px;border-radius:var(--radius-xl) var(--radius-xl) 0 0;background:var(--glass-sheet);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-top:1px solid var(--glass-edge)}
+.og-sheet::before{content:'';display:block;width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.3);margin:0 auto 12px}
+.og-sheet h4{margin:0 0 2px;font-size:17px}.og-sheet p{margin:0 0 6px;color:var(--ink-on-glass);font-size:12px}
+/* undo snack */
+
