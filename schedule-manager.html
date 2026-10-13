@@ -345,6 +345,7 @@
   .sal-head .c-t,.sal-line .c-t{text-align:right}
   .sal-row{border-top:1px solid var(--border);cursor:pointer}
   .sal-line .c-name{display:flex;align-items:center;gap:8px;min-width:0}
+  .sal-row.picked{background:var(--plate-on)}
   .sal-av{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;overflow:hidden}
   .sal-nm{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .sal-line .c-h{font-size:13px;font-weight:600}
@@ -8062,7 +8063,7 @@ window.addEventListener('pagehide', () => finishUndo(true));
 // calls selectRoot(key, root) after drawing its rows: that starts its Select
 // (SELECT_STARTERS[key], which checks the rights) or keeps the ticks across a redraw.
 let __selState = null;
-const SELECT_STARTERS = {firms: () => startFirmsSelect(), workers: () => startWorkerSelect(), clients: () => startClientSelect(), suppliers: () => startSupplierSelect(), users: () => startUsersSelect(), pendingHours: () => startPendingSelect()};
+const SELECT_STARTERS = {salary: () => startSalarySelect(), punches: () => startPunchesSelect(), firms: () => startFirmsSelect(), workers: () => startWorkerSelect(), clients: () => startClientSelect(), suppliers: () => startSupplierSelect(), users: () => startUsersSelect(), pendingHours: () => startPendingSelect()};
 function startSelect(o){
   const keep = __selState && __selState.key === o.key ? __selState.picked : null;
   if(!keep) endSelect();
@@ -8074,7 +8075,12 @@ function startSelect(o){
 function selectRoot(key, root){
   if(!root) return;
   const st = __selState;
-  if(!st || st.key !== key){ const f = SELECT_STARTERS[key]; if(f) f(); return; }
+  if(!st || st.key !== key){
+    // A list drawn while hidden (another tab's) never takes Select from the one on screen.
+    const shown = el => !!el && el.isConnected && el.getClientRects().length > 0;
+    if(st && shown(st.root) && !shown(root)) return;
+    const f = SELECT_STARTERS[key]; if(f) f(); return;
+  }
   if(st.root && st.root !== root) st.root.classList.remove('selecting');
   st.root = root; root.classList.add('selecting');
   if(!st.head || !st.head.isConnected || st.head.nextSibling !== root){
@@ -8084,7 +8090,7 @@ function selectRoot(key, root){
   }
   const ids = new Set(st.ids().map(String));
   [...st.picked].forEach(id => { if(!ids.has(id)) st.picked.delete(id); });
-  root.querySelectorAll('.t3-line[data-sel-id]').forEach(l => l.classList.toggle('picked', st.picked.has(l.dataset.selId)));
+  root.querySelectorAll('[data-sel-id]').forEach(l => l.classList.toggle('picked', st.picked.has(l.dataset.selId)));
   drawSelect();
 }
 function drawSelect(){
@@ -8109,18 +8115,18 @@ function drawSelect(){
 }
 function syncPicked(){
   const st = __selState; if(!st || !st.root) return;
-  st.root.querySelectorAll('.t3-line[data-sel-id]').forEach(l => l.classList.toggle('picked', st.picked.has(l.dataset.selId)));
+  st.root.querySelectorAll('[data-sel-id]').forEach(l => l.classList.toggle('picked', st.picked.has(l.dataset.selId)));
   drawSelect();
 }
 function endSelect(){
   const st = __selState; if(!st) return; __selState = null;
-  if(st.root){ st.root.classList.remove('selecting'); st.root.querySelectorAll('.t3-line.picked').forEach(l => l.classList.remove('picked')); }
+  if(st.root){ st.root.classList.remove('selecting'); st.root.querySelectorAll('.picked').forEach(l => l.classList.remove('picked')); }
   if(st.head) st.head.remove(); if(st.bar) st.bar.remove();
 }
 // A tap on a plate's tick box ticks it and does nothing else.
 ['click', 'pointerdown'].forEach(t => document.addEventListener(t, e => {
   const st = __selState; if(!st || !st.root) return;
-  const box = e.target.closest && e.target.closest('.t3-cb'), line = box && box.closest('.t3-line[data-sel-id]');
+  const box = e.target.closest && e.target.closest('.t3-cb'), line = box && box.closest('[data-sel-id]');
   if(!line || !st.root.contains(line)) return;
   e.stopPropagation(); if(t === 'pointerdown') return;
   e.preventDefault();
@@ -8495,6 +8501,14 @@ function salaryEntriesFor(period){
 
   return {byWorker, byClient};
 }
+// Select on the Salary rows (always on, not for an HR with pay only): export
+// the ticked workers' shifts (the same file as Export, only those workers).
+let __salShownIds=[];
+function startSalarySelect(){
+  const root=document.querySelector('#dashSalary .salary-rows'); if(!root||hrPayOnly()||isHrSession()) return;
+  startSelect({key:'salary', root, ids:()=>__salShownIds,
+    actions:[{icon:'ti-file-spreadsheet', label:tr('Excel'), fn:ids=>exportSalary('excel', null, ids)}, {icon:'ti-file-type-pdf', label:tr('PDF'), fn:ids=>exportSalary('pdf', null, ids)}]});
+}
 // The Salary rows opened by a tap stay open through a redraw (a live punch,
 // a period change).
 const __salOpen=new Set();
@@ -8578,9 +8592,10 @@ function renderSalary(){
     const wid=esc(e.workerId), tot=e.total+e.travel;
     const det=(l,v)=>`<div><span>${esc(l)}</span><b>${v}</b></div>`;
     const lc=e.warns&&e.warns.length?'var(--amber)':tot>0?'var(--green)':'var(--border2)';
-    return `<div class="sal-row tap-edit${__salOpen.has(e.workerId)?' open':''}" style="--c:${lc}" data-wid="${wid}" onclick="tapEdit(event,this,()=>toggleSalRow(this),()=>openPayModal('${wid}'))" onpointerdown="longPress(event,this,()=>openPayModal('${wid}'))">
+    const picked=!payOnly&&__selState&&__selState.key==='salary'&&__selState.picked.has(String(e.workerId));
+    return `<div class="sal-row tap-edit${__salOpen.has(e.workerId)?' open':''}${picked?' picked':''}" style="--c:${lc}" data-wid="${wid}"${payOnly?'':` data-sel-id="${wid}"`} onclick="tapEdit(event,this,()=>toggleSalRow(this),()=>openPayModal('${wid}'))" onpointerdown="longPress(event,this,()=>openPayModal('${wid}'))">
       <div class="sal-line">
-        <span class="c-name"><span class="sal-av" style="background:${c.bg};color:${c.text}">${ini}</span><span class="sal-nm" onclick="event.stopPropagation();openWorkerCardById('${wid}')">${esc(e.worker)}</span>${e.warns&&e.warns.length?`<i class="ti ti-alert-triangle" style="color:var(--amber);font-size:14px" title="${e.warns.join('&#10;').replace(/"/g,'&quot;')}"></i>`:''}</span>
+        <span class="c-name">${payOnly?'':'<span class="t3-cb"><span class="og-box"></span></span>'}<span class="sal-av" style="background:${c.bg};color:${c.text}">${ini}</span><span class="sal-nm" onclick="event.stopPropagation();openWorkerCardById('${wid}')">${esc(e.worker)}</span>${e.warns&&e.warns.length?`<i class="ti ti-alert-triangle" style="color:var(--amber);font-size:14px" title="${e.warns.join('&#10;').replace(/"/g,'&quot;')}"></i>`:''}</span>
         <span class="c-h">${esc(tr('{h}h',{h:e.hours.toFixed(1)}))}</span>
         <span class="c-t" style="color:${tot>0?'var(--green)':'var(--text3)'}">${tot>0?money(tot):'—'}</span>
         <i class="ti ti-chevron-down sal-chev"></i>
@@ -8598,6 +8613,7 @@ function renderSalary(){
     </div>`;
   });
   if(payOnly) return;
+  __salShownIds=shown.map(e=>String(e.workerId)); selectRoot('salary', salaryEl.querySelector('.salary-rows'));
   renderSupplierPayable(entries);
   renderHrPayable(entries);
   renderClientBillable(__lastClientBillEntries);
@@ -9281,8 +9297,9 @@ async function runSalaryExport(format){
   await ensurePunchesSince(periodPunchStart(period));
   exportSalary(format, period);
 }
-function buildSalaryExportRows(period){
-  const log=getPunchLog(); const now=new Date();
+function buildSalaryExportRows(period, onlyIds){
+  const only=onlyIds&&onlyIds.length?new Set(onlyIds.map(String)):null;
+  const log=getPunchLog().filter(e=>!only||only.has(String(e.workerId))); const now=new Date();
   let filtered=log;
   if(period==='week'){ const ws=new Date(now); ws.setDate(ws.getDate()-ws.getDay()); ws.setHours(0,0,0,0); filtered=log.filter(e=>new Date(e.ts)>=ws); }
   else if(period==='month'){ filtered=log.filter(e=>new Date(e.ts)>=new Date(now.getFullYear(),now.getMonth(),1)); }
@@ -9326,12 +9343,12 @@ function buildSalaryExportRows(period){
   });
   return rows;
 }
-function exportSalary(format, period){
-  if((format==='excel'||format==='accountant') && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportSalary(format, period)).catch(()=>showToast(tr('Excel library not loaded'))); return; }
+function exportSalary(format, period, onlyIds){
+  if((format==='excel'||format==='accountant') && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportSalary(format, period, onlyIds)).catch(()=>showToast(tr('Excel library not loaded'))); return; }
   if(format==='accountant') return exportAccountantReport(period);
   period=period||document.getElementById('salaryPeriod')?.value||'week';
   const now=new Date();
-  const rows=buildSalaryExportRows(period);
+  const rows=buildSalaryExportRows(period, onlyIds);
   const header=['Worker','Object/Client','Supplier','Date','First In','Last Out','Hours','Rate (₪/h or /day)','Day Pay (₪)','Notes'].map(h=>tr(h));
   const toArr=r=>[r.worker, r.client, r.supplier, r.date, r.firstIn, r.lastOut, r.hours.toFixed(2), r.rate, r.pay.toFixed(2), r.notes];
   const totalHours=rows.reduce((s,r)=>s+r.hours,0), totalPay=rows.reduce((s,r)=>s+r.pay,0);
@@ -9732,7 +9749,16 @@ function renderAdmin(){
   empty.style.display='none';
   // Template 3: a line per punch, IN green / OUT red on the left; a tap opens
   // the punch's edit form.
+  __punchShownIds=filtered.map(e=>String(e.id));
   renderPagedList(listEl, 'punchLog', [filterWorker,filterClient,filterDate,filterType].join('|'), filtered, e=>punchLogLine(e));
+  selectRoot('punches', listEl);
+}
+// Select on the punch log (always on): Delete the ticked punches (Undo first).
+let __punchShownIds=[];
+function startPunchesSelect(){
+  const root=document.getElementById('adminTableBody'); if(!root) return;
+  const raw=ids=>getPunchLog().filter(x=>ids.includes(String(x.id))).map(x=>x.id);
+  startSelect({key:'punches', root, ids:()=>__punchShownIds.filter(id=>![...__punchDelPending].some(p=>String(p)===id)), del:(ids,els)=>deletePunchEntries(raw(ids),els)});
 }
 // One punch as a template-3 line: the log (worker, then the time at the
 // right) or, with cls 'sub', a worker's recent punch in By Client.
@@ -9745,7 +9771,9 @@ function punchLogLine(e, cls){
   return t3Line({c:isIn?'var(--green)':'var(--red)', cls:'tap-edit'+(cls?' '+cls:''), av:cls?'':t3Av(wc),
     name:cls?`<span style="font-family:'DM Mono',monospace">${esc(e.time||'--')}</span>`:esc(e.workerName||tr('Unknown')), sub,
     attrs:`data-pid="${id}" onclick="tapEdit(event,this,null,()=>editPunchEntry(${id}))" onpointerdown="longPress(event,this,()=>editPunchEntry(${id}))"`,
-    right:`${cls?'':`<span class="r" style="color:var(--text);font-size:14px">${esc(e.time||'--')}</span>`}<button class="t3-x" type="button" title="${esc(tr('Delete'))}" onclick="event.stopPropagation();deletePunchEntry(${id},this.closest('.t3-line'))">✕</button>`});
+    sel: cls?null:String(e.id),
+    right: cls?'':`<span class="r" style="color:var(--text);font-size:14px">${esc(e.time||'--')}</span>`,
+    menu:[{icon:'ti-pencil', label:tr('Edit'), fn:()=>editPunchEntry(id)}, {icon:'ti-trash', label:tr('Delete'), danger:true, fn:b=>deletePunchEntry(id, b.closest('.t3-line'))}]});
 }
 // Firestore mode: under the punch log, how far back it goes and buttons to
 // load earlier punches (one more month, or everything).
@@ -9829,12 +9857,13 @@ function savePunchEntry(id){
 // deleted when the 5 s are up.
 // Punches deleted but still inside their Undo time: left out of the log views.
 const __punchDelPending=new Set();
-function deletePunchEntry(id, el){
-  __punchDelPending.add(id);
-  undoDelete({el, label: tr('Punch'), undo:()=>{ __punchDelPending.delete(id); renderAdmin(); if(_adminView==='clients') renderClientLogs(); }, commit:()=>{
-    __punchDelPending.delete(id);
-    savePunchLog(getPunchLog().filter(x=>x.id!==id));
-    gsDeletePunch(id);
+function deletePunchEntry(id, el){ deletePunchEntries([id], [el]); }
+function deletePunchEntries(ids, els){
+  ids.forEach(id=>__punchDelPending.add(id));
+  undoDelete({els, label: ids.length===1 ? tr('Punch') : tr('{0} punches', {0: ids.length}), undo:()=>{ ids.forEach(id=>__punchDelPending.delete(id)); renderAdmin(); if(_adminView==='clients') renderClientLogs(); }, commit:()=>{
+    ids.forEach(id=>__punchDelPending.delete(id));
+    savePunchLog(getPunchLog().filter(x=>!ids.includes(x.id)));
+    ids.forEach(id=>gsDeletePunch(id));
     renderAdmin(); if(_adminView==='clients') renderClientLogs();
     showToast(tr('Record deleted'));
   }});

@@ -558,6 +558,23 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(dates.length === 2 && asTime(dates[0]) > asTime(dates[1]), 'date filter: newest day first (' + dates.join(', ') + ')');
   const c2rows = await p.evaluate(() => { document.getElementById('adminFilterClient').value='c2'; renderAdmin(); return document.getElementById('adminCount').textContent; });
   ok(c2rows === '4 records', 'client filter uses the punch clientId (Site B2 → ' + c2rows + ')');
+  // The punch log: a bare ⋮ (Edit, Delete) instead of ✕; Select always on — tick two, Delete → Undo keeps them.
+  const pls = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)); document.getElementById('adminFilterClient').value = ''; renderAdmin();
+    const lines = [...document.querySelectorAll('#adminTableBody > .t3-line, #adminTableBody > .sw > .t3-line')];
+    const r = {x: !!document.querySelector('#adminTableBody .t3-x'), kb: !!lines[0].querySelector('.t3-kb'), head: /0 selected/.test((document.querySelector('#adminTableBody').previousElementSibling || {}).textContent || '')};
+    lines[0].querySelector('.t3-kb').click(); await wait(50);
+    r.menu = [...document.querySelectorAll('#ogPop .og-pop-it')].map(b => (b.classList.contains('del') ? '!' : '') + b.textContent.trim()).join(); closePopover();
+    const n0 = getPunchLog().length;
+    lines[0].querySelector('.t3-cb').click(); lines[1].querySelector('.t3-cb').click();
+    r.count = (document.querySelector('.sel-bar b') || {}).textContent; r.key = __selState && __selState.key; r.btns = [...document.querySelectorAll('.sel-bar .gbtn')].map(b => b.dataset.a).join();
+    const del = [...document.querySelectorAll('.sel-bar .gbtn')].find(b => b.dataset.a === 'del'); if(!del) return r; del.click(); await wait(300);
+    r.snack = /2 punches deleted/.test(document.getElementById('undoSnack').innerText);
+    document.querySelector('#undoSnack .og-snack-u').click(); await wait(300);
+    r.kept = getPunchLog().length === n0;
+    return r;
+  });
+  ok(!pls.x && pls.kb && pls.head && pls.menu === 'Edit,!Delete' && pls.count === '2 selected' && pls.snack && pls.kept, 'punch log: ⋮ (Edit, Delete) instead of ✕; Select always on, Delete two through Undo ' + JSON.stringify(pls));
   const c1rows = await p.evaluate(() => { document.getElementById('adminFilterClient').value='c1'; renderAdmin(); return document.getElementById('adminCount').textContent; });
   ok(c1rows === '0 records', 'client filter: Avi\'s current client has no punches (' + c1rows + ')');
   // CSV columns
@@ -852,13 +869,20 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const bankLine = [...document.querySelectorAll('#accAlertsWrap .t3-line')].find(l => /No bank details/.test(l.textContent) && /Avi/.test(l.textContent));
     if(bankLine){ bankLine.click(); await wait(200); r.opensPay = document.getElementById('payOverlay').classList.contains('open'); closeModal('payOverlay'); await wait(200); }
     r.noBanner = !/to review before calculating/.test(document.getElementById('dashSalary').innerText);
+    // Select on the Salary rows (always on): a tick exports only that worker.
+    setAccTab('salary'); await wait(100);
+    const srow = document.querySelector('#dashSalary .sal-row[data-sel-id]');
+    r.salSelect = !!document.querySelector('#dashSalary .sel-head') && !!srow && !!srow.querySelector('.t3-cb');
+    if(srow){ srow.querySelector('.t3-cb').click(); r.salBar = /1 selected/.test((document.querySelector('.sel-bar b') || {}).textContent || '') && !document.getElementById('payOverlay').classList.contains('open');
+      r.salRows = buildSalaryExportRows(document.getElementById('salaryPeriod').value, [srow.dataset.selId]).every(x => x.worker === (workers.find(w => w.id === srow.dataset.selId) || {}).name);
+      const xb = [...document.querySelectorAll('.sel-bar .gbtn')].find(b => b.dataset.a === 'x'); if(xb) xb.click(); }
     [w2.bank, w2.bankBranch, w2.bankAccountNumber] = keepBank;
     setAccTab('salary'); await wait(100);
     const i0 = sel.selectedIndex; document.querySelector('#accPeriodNav .gbtn').click(); await wait(300); r.stepped = sel.selectedIndex === i0 + 1;
     document.querySelectorAll('#accPeriodNav .gbtn')[1].click(); await wait(300); r.back = sel.selectedIndex === i0;
     return r;
   });
-  ok(ac.inNav && ac.figs === 'Hours,Payroll,To approve' && ac.tabs === 'salary,billing,approvals,alerts' && ac.salaryTab && ac.billingTab && ac.approvalsTab && ac.alertsTab && /Rates and pay/.test(ac.secs) && ac.tabN && ac.opensPay && ac.noBanner && ac.stepped && ac.back, 'accounting: glass period ‹ ›, figures, Salary / Billing / Approvals / Alerts tabs show their sections; Alerts in sections with a count, a tap opens the pay window ' + JSON.stringify(ac));
+  ok(ac.inNav && ac.figs === 'Hours,Payroll,To approve' && ac.tabs === 'salary,billing,approvals,alerts' && ac.salaryTab && ac.billingTab && ac.approvalsTab && ac.alertsTab && /Rates and pay/.test(ac.secs) && ac.tabN && ac.opensPay && ac.noBanner && ac.salSelect && ac.salBar && ac.salRows && ac.stepped && ac.back, 'accounting: glass period ‹ ›, figures, Salary / Billing / Approvals / Alerts tabs show their sections; Alerts in sections with a count, a tap opens the pay window ' + JSON.stringify(ac));
   // Greeting and notifications (redesign stage 5): the greeting by time of day; the bell, its panel, "Mark all read" kept on the account.
   const nt = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};

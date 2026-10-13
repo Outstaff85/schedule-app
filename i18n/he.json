@@ -1041,10 +1041,13 @@
   "Punches and shifts": "החתמות ומשמרות",
   "Rates and pay": "תעריפים ושכר",
   "Alerts": "התראות",
+  "Waiting": "ממתין",
+  "{0} punches": "{0} החתמות",
+  "Excel": "Excel",
+  "PDF": "PDF",
   "Worker (for detailed export)": "עובד (לייצוא מפורט)",
   "Detail (Excel)": "פירוט (Excel)",
   "Detail (PDF)": "פירוט (PDF)",
   "Summary (Excel)": "סיכום (Excel)",
-  "Summary (PDF)": "סיכום (PDF)",
-  "Waiting": "ממתין"
+  "Summary (PDF)": "סיכום (PDF)"
 }
