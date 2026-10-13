@@ -519,9 +519,10 @@ label.check-chip input[type=checkbox]:checked{background:var(--ok);border-color:
 label.check-chip input[type=checkbox]:checked::after{clip-path:inset(0);}
 label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214,160,.4);}
 /* The Language button (top right of every page) and its sheet. */
-.lang-btn{height:36px;padding:0 10px 0 9px;gap:6px;border-radius:14px;font-size:13px;flex:none;}
-.lang-btn i{font-size:17px;}
-.lang-btn .lang-btn-chev{font-size:14px;opacity:.7;}
+.lang-btn{height:36px;width:36px;padding:0;gap:0;border-radius:14px;font-size:13px;flex:none;justify-content:center;}
+.lang-btn i{font-size:18px;}
+/* Only the globe (owner 2026-10-13): the name and chevron stay in the markup, hidden. */
+.lang-btn .lang-btn-name,.lang-btn .lang-btn-chev{display:none;}
 .lang-btn.on-cover{position:absolute;top:max(env(safe-area-inset-top,0px),12px);right:12px;z-index:2;}
 .lang-ov{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .25s;}
 .lang-ov.open{opacity:1;pointer-events:auto;}
@@ -563,7 +564,7 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 .pp-wm b span{background:linear-gradient(90deg,#c7d2fe,#67e8f9);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .pp-wm small{display:block;font-size:11px;letter-spacing:.02em;color:var(--text2);margin-top:2px;line-height:1.25}
 .pp-wm small i{display:block;font-style:normal;color:#9fe6c0;opacity:.85}
-.pp-top .lang-btn{flex:none;height:38px}
+.pp-top .lang-btn{flex:none;height:38px;width:38px}
 .punch-header{text-align:left;margin-bottom:12px}
 .punch-site,.clock-block{display:none!important}
 .punch-greeting.og-greet-h{position:relative;font-size:21px;margin:4px 0 0;padding:0 2px 9px}
