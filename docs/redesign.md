@@ -88,7 +88,7 @@ How a run works (a run = one session, started by the Routine below or by hand wi
 - [x] 10 Supplier and client portals
 - [x] 11 Sign-in
 - [x] 11a WhatsApp reminder (added by the owner 2026-10-12; after stage 11, before the deferred weather)
-- [ ] 13 Conformance pass — every page made to match the design system exactly (below); the owner gave the go on 2026-10-13; done group by group
+- [x] 13 Conformance pass — every page made to match the design system exactly (below); the owner gave the go on 2026-10-13; done group by group
 - [ ] 12 Weather — **deferred**: done last, only after the owner puts the OpenWeatherMap key in Secret Manager and says so; the loop stops after stage 11
 
 ### Stages
@@ -141,7 +141,8 @@ On 2026-10-13 the owner went through the design system artifact and found many p
 - [x] Hours approvals (`hours-review.js`, both portals and an HR): a status pill per day (Approved, Waiting, Disputed…) and Select always on instead of the Select button.
 - [x] Supplier portal: the solid blue buttons (Add worker, the exports, Send for approval) become glass (one primary per screen), the native selects become glass fields, the tab row fits a phone.
 - [x] Punch page sheets (My Schedule, My Hours): no "✕ Close" text — they close with a swipe down or a tap on the grab bar, like every sheet.
-- [ ] Every screen of `Screens.md` audited and matched: Sign in, Today, Schedule, Workers, Worker card, Clients, Suppliers, Accounting, Hours approvals, Admin, Forms, Punch page (incl. My Schedule / My Hours sheets), and both portals.
+- [x] Every screen of `Screens.md` audited and matched: Sign in, Today, Schedule, Workers, Worker card, Clients, Suppliers, Accounting, Hours approvals, Admin, Forms, Punch page (incl. My Schedule / My Hours sheets), and both portals.
+  The final audit (76 screens at 390 / 1280, `docs/design/audit/13-9-final/` before → after) found and fixed: the last old solid buttons in windows (firm details, pay, shift, manual punch, punch edit, map picker, assign workers, document upload, hours import) are the glass primary with a check (`gbtn primary og-save`), the export windows' buttons glass; the firm details' WhatsApp text fills its line; the supplier portal's worker window pairs its short fields (`.field-row` moved into `og.css`); the super-admin's Create firm / New firm and Admin → Users' New user are the glass primary. Kept on purpose (owner requests): the client window in Hebrew right to left (2026-10-04) and the Hebrew Form 101 labels; Admin shows Errors / Timings to the super-admin only.
 
 ### Owner answers (2026-10-13)
 - **Go** for stage 13, run group by group; each PR merged by its session on green CI (Auto-continue).

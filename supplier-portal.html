@@ -1296,7 +1296,7 @@ function renderWorkerModal(w){
       <div class="field"><label>${tr('City')}</label><input id="wfCity" value="${esc(w.city||'')}"></div></div>
     </div></section>
     <div class="modal-actions">
-      <button class="gbtn primary og-save" onclick="saveWorkerModal('${w.id||''}')">${tr('Save')}</button>
+      <button class="gbtn primary og-save" onclick="saveWorkerModal('${w.id||''}')"><i class="ti ti-check"></i><span>${esc(tr('Save'))}</span></button>
     </div>`;
   ogSections(document.getElementById('workerModal'), 'person');
 }
