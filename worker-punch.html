@@ -547,7 +547,12 @@ html[lang="he"] *{letter-spacing:normal !important;}
 .pp-tile-v{font-size:12px;font-weight:400;color:var(--text2)}
 .pp-tile-v em.fig{font:600 12px 'DM Mono',ui-monospace,monospace;font-style:normal;color:#9fe6c0}
 .gbtn.pp-tile{position:relative}
-.pp-tag{position:absolute;top:10px;right:10px;margin:0;background:rgba(79,142,247,.2);color:#8fb4ff}
+/* The tiles (owner's design 2026-10-13): 96px tall, the "Updated" tag on top,
+   then the icon and the title in a row, then the line. */
+.gbtn.pp-tile{height:96px;justify-content:flex-start;gap:4px;padding:14px 14px 16px}
+.pp-tile .pp-tile-h{flex-direction:row;align-items:center;gap:8px;width:100%}
+.pp-tile .pp-tile-h>i.ti{width:auto;height:auto;background:none;border-radius:0;font-size:20px}
+.pp-tag{position:static;align-self:flex-start;margin:0;background:rgba(79,142,247,.2);color:#8fb4ff}
 .pp-invalid{margin:40px auto 0;padding:26px 20px;border-radius:22px;text-align:center;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
 .pp-invalid-ic{width:56px;height:56px;margin:0 auto 14px;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:28px;background:rgba(255,95,109,.16);color:#ff8a95}
 .pp-invalid b{display:block;font-size:19px;font-weight:700;margin-bottom:8px}
@@ -592,7 +597,7 @@ html[lang="he"] *{letter-spacing:normal !important;}
   </div>
   <div class="pp-result" id="punchResult"></div>
   <div class="pp-tiles">
-    <button type="button" class="gbtn pp-tile" style="--c:#4f8ef7" onclick="openSchedule()"><span class="pp-tile-h"><i class="ti ti-calendar-week"></i> <span data-i18n>My Schedule</span><span class="pp-tag" id="schedBadge" style="display:none" data-i18n>Updated</span></span><span class="pp-tile-v" id="tileNextShift">—</span></button>
+    <button type="button" class="gbtn pp-tile" style="--c:#4f8ef7" onclick="openSchedule()"><span class="pp-tag" id="schedBadge" style="display:none" data-i18n>Updated</span><span class="pp-tile-h"><i class="ti ti-calendar-week"></i> <span data-i18n>My Schedule</span></span><span class="pp-tile-v" id="tileNextShift">—</span></button>
     <button type="button" class="gbtn pp-tile" style="--c:#6dd6a0" id="myHoursLink" onclick="openMyHours()"><span class="pp-tile-h"><i class="ti ti-clock-hour-4"></i> <span data-i18n>My Hours</span></span><span class="pp-tile-v"><span data-i18n>This month</span> <em class="fig" id="tileMonthHours">—</em></span></button>
   </div>
 </div>

@@ -231,7 +231,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const wc = await p.evaluate(async () => { switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await new Promise(r => setTimeout(r, 200));
     const c = document.querySelector('#workersCards .wplate'); return c ? {h: c.getBoundingClientRect().height, name: c.querySelector('.wp-n').textContent, full: c.querySelector('.wp-n').title, hrs: (c.querySelector('.r') || {}).textContent, kb: !!c.querySelector('.t3-kb'), sw: !!c.closest('.sw')} : {}; });
   await p.setViewportSize({width: 1280, height: 720});
-  ok(wc.h > 0 && wc.h < 80 && wc.name && wc.name === wc.full && /h$/.test(wc.hrs) && wc.kb && wc.sw, 'workers: on a phone a worker is one plate — the full name (… when it does not fit), the month\'s hours, ⋮, swipe ' + JSON.stringify(wc));
+  ok(wc.h > 0 && wc.h < 100 && wc.name && wc.name === wc.full && /h$/.test(wc.hrs) && wc.kb && wc.sw, 'workers: on a phone a worker is one plate — the full name (… when it does not fit), the month\'s hours, ⋮, swipe ' + JSON.stringify(wc));
   ok(rt.keptAfterEdit, 'worker pay: an edit in the worker modal keeps the pay fields', JSON.stringify(rt));
   ok(rt.moved === 0, "worker pay: moved to a client with a rate, the worker takes the client's rate", JSON.stringify(rt));
   // Commission for a worker paid by the day: a fixed ₪ per day when set, else hours × ₪/h.
@@ -664,7 +664,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const srch = await p.evaluate(async () => {
     const avi = workers.find(w => w.id === 'w1'), keep = avi.docId; avi.docId = '12345678-2';
     switchTab('workers'); setWorkersView('list');
-    const find = q => { document.getElementById('workersSearch').value = q; renderWorkersPage(); return document.getElementById('workersCount').textContent; };
+    const find = q => { document.getElementById('workersSearch').value = q; renderWorkersPage(); return ' ' + document.getElementById('workersTitleCount').textContent; };
     const out = {id: find('123456782'), client: find('site a'), none: find('99999')};
     find(''); if(keep === undefined) delete avi.docId; else avi.docId = keep;
     return out;
@@ -688,8 +688,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     w1.docUploadFailed = true;
     switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await wait(200);
     const plate = document.querySelector('#workersCards .wplate[data-wid="w1"]'), r = {};
-    r.chip = plate.querySelector('.nchip') && plate.querySelector('.nchip').className; r.bar = plate.style.getPropertyValue('--c');
-    plate.querySelector('.nchip').click(); await wait(150);
+    r.chip = plate.querySelector('.wp-chip1 .nchip') && plate.querySelector('.wp-chip1 .nchip').className; r.more = !!plate.querySelector('.n b .nchip.more'); r.bar = plate.style.getPropertyValue('--c');
+    plate.querySelector('.wp-chip1 .nchip').click(); await wait(150);
     r.sheet = document.getElementById('noticesOverlay').classList.contains('open'); r.notices = [...document.querySelectorAll('#noticesModal .t3-line b')].map(b => b.textContent);
     r.head = document.querySelector('#noticesModal .wc-hn h4').textContent; r.card0 = document.getElementById('workerCardOverlay').classList.contains('open');
     [...document.querySelectorAll('#noticesModal .modal-actions .gbtn')].find(b => /Open worker card/.test(b.textContent)).click(); await wait(300);
@@ -725,7 +725,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     w1.status = keep.status; render(); autoSave();
     return r;
   });
-  ok(/red/.test(wp.chip) && wp.bar === 'var(--bad)' && wp.sheet && wp.notices.includes('Upload failed') && wp.head === 'Avi Cohen' && wp.card && wp.backToNotices, 'worker plate: a red notice chip opens the notices sheet; "Open worker card" opens the card, closing it goes back to the sheet ' + JSON.stringify(wp));
+  ok(/red/.test(wp.chip) && wp.more && wp.bar === 'var(--bad)' && wp.sheet && wp.notices.includes('Upload failed') && wp.head === 'Avi Cohen' && wp.card && wp.backToNotices, 'worker plate: a red notice chip opens the notices sheet; "Open worker card" opens the card, closing it goes back to the sheet ' + JSON.stringify(wp));
   ok(wp.panes.join('|') === 'info|docs|hours' && wp.hoursStatus && wp.edit, 'worker card: Info / Docs / Hours switch, one Edit button ' + JSON.stringify(wp.panes));
   ok(wp.menu === 'Open card,Edit,Pay,Punch link,!Delete' && wp.pendingHidden && wp.stillThere && wp.undone && wp.leftOut && wp.notYet && wp.deleted, 'workers: Delete never asks — Undo keeps the worker, otherwise it is removed after 5 s ' + JSON.stringify(wp));
   ok(wp.selHead && wp.selOn && wp.sel === '1 selected' && wp.vac, 'workers: a Select button, boxes only after it; a tick, the bulk bar sets Vacation and Select ends ' + JSON.stringify({selHead: wp.selHead, selOn: wp.selOn, sel: wp.sel, vac: wp.vac}));

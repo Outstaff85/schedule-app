@@ -109,11 +109,11 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 .lang-ov.open .lang-sheet{transform:none;}
 .lang-grab{display:none;width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.3);margin:0 auto 10px;}
 .lang-sheet h4{font-size:17px;font-weight:600;margin:0 4px 10px;}
-.lang-search{display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;margin-bottom:8px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);}
+.lang-search{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;margin-bottom:8px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);}
 .lang-search i{color:#8b90a0;font-size:16px;}
 .lang-search input{flex:1;min-width:0;border:0;background:none;color:#fff;font:14px 'DM Sans','Heebo',Arial,sans-serif;outline:none;padding:0;}
 .lang-list{overflow:auto;display:flex;flex-direction:column;gap:4px;}
-.lang-li{position:relative;display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:0;border-radius:12px;background:none;color:#fff;font-family:'DM Sans','Heebo',Arial,sans-serif;text-align:left;cursor:pointer;}
+.lang-li{position:relative;display:flex;align-items:center;gap:10px;width:100%;height:38px;padding:0 12px;border:0;border-radius:12px;background:none;color:#fff;font-family:'DM Sans','Heebo',Arial,sans-serif;text-align:left;cursor:pointer;}
 .lang-li:hover{background:rgba(255,255,255,.06);}
 .lang-li b{font-size:15px;font-weight:600;}
 .lang-li small{flex:1;font-size:12px;color:#8b90a0;}
@@ -316,7 +316,7 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
   .modal .field textarea{width:100%;box-sizing:border-box}
   .og-av{background:color-mix(in srgb,var(--c,var(--neutral)) 22%,transparent) !important;color:var(--c,var(--neutral)) !important;box-shadow:inset 0 0 0 1.5px var(--c,var(--neutral))}
   .seg{display:flex;gap:4px;padding:4px;margin:10px 0 14px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1)}
-  .seg button{position:relative;flex:1;height:34px;border:0;border-radius:10px;background:none;color:var(--text2);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer}
+  .seg button{position:relative;flex:1;height:31px;border:0;border-radius:10px;background:none;color:var(--text2);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer}
   .seg button.on{background:var(--glass-hi);color:#fff}
   /* Editors exactly as mockup 04 (owner 2026-10-13): section heads with a
      tinted rounded-square icon and the flowing line across an open head;
@@ -339,7 +339,7 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
      components/Tick) — 46px, radius-md, plate fill, label 15/600 ink-2, a 24px
      box bordered ink-3; ticked: tick-on fill, ink label, green box with the mark.
      A tile with a hint (owner 2026-10-13: hints shown) grows to fit it. */
-  .modal label.check-chip{display:inline-flex;width:auto;min-height:46px;height:46px;padding:0 16px 0 12px;gap:10px;margin:0;border:0;border-radius:var(--radius-md);background:var(--plate);color:var(--ink-2);font-size:15px;font-weight:600;transition:background .25s,color .25s}
+  .modal label.check-chip{display:inline-flex;width:auto;min-height:46px;height:46px;padding:0 16px 0 12px;gap:10px;margin:0;border:0;border-radius:var(--radius-md);background:rgba(255,255,255,.06);color:var(--ink-2);font-size:15px;font-weight:400;transition:background .25s,color .25s}
   .modal label.check-chip:has(.chip-hint){height:auto;padding:10px 16px 10px 12px}
   .modal .field>label.check-chip{display:flex;width:100%}
   .modal label.check-chip:has(input:checked){background:var(--tick-on);color:var(--ink)}
@@ -360,7 +360,7 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
   .og-sec-b .t3-line .t3-av{width:26px;height:26px;font-size:10px}
   .og-sec-b .t3-line .r{font-family:'DM Mono',monospace;font-size:12px}
   .modal .field>label{line-height:16px}
-  .og-lbl{display:block;font-size:11px;font-weight:500;color:#8b90a0;margin:2px 4px 4px}
+  .og-lbl{display:block;font-size:14px;font-weight:500;color:#8b90a0;margin:2px 4px 4px}
   .og-figs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0 4px}
   .og-figs>div,.rate-margin>div{background:#232735;border:0;border-radius:12px;padding:9px 10px;text-align:start}
   .og-figs b,.rate-margin b{display:block;font:700 15px 'DM Mono',monospace;color:var(--green)}
@@ -372,7 +372,7 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
   .og-tabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:4px 0 10px}
   .og-tabs::-webkit-scrollbar{display:none}
   .og-tabs:empty{display:none}
-  .og-tabs button{position:relative;flex:none;height:36px;padding:0 14px;border:1px solid transparent;border-radius:14px;background:none;color:var(--text2);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;white-space:nowrap}
+  .og-tabs button{position:relative;flex:none;height:30px;padding:0 14px;border:1px solid transparent;border-radius:14px;background:none;color:var(--text2);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;white-space:nowrap}
   .og-tabs button.on{background:var(--glass-hi);border-color:rgba(255,255,255,.35);color:#fff;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
   .og-tabs button.on::after{content:'';position:absolute;left:14px;right:14px;bottom:-1px;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55);animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1)}
   .og-tabs .tab-n{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:4px;border-radius:999px;background:var(--bad);color:#fff;font-size:10px;font-weight:700}
