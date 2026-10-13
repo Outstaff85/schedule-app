@@ -34,7 +34,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
 | `incomeType`, `otherIncomeType` | Form 101 income section (`INCOME_TYPE_LABELS`, `OTHER_INCOME_LABELS`) |
 | `docChildren` | `[{name, idNo, dob}]` |
 | `spouseSurname`, `spouseGiven`, `spouseId`, `spouseDob`, `spouseIncome` (`''`/`none`/`work`/`other`) | Form 101 section ו |
-| `avatarB64` | 160×160 JPEG portrait (base64) |
+| `avatarB64` | no longer kept (owner 2026-10-13): `saveWorker` drops it, and `dropWorkerPhotos()` removes an old one from every worker this login may write right after a server load (then `autoSave`) |
 | `docUrl`, `docFileId`, `docSavedAt` | the Form 101 PDF (download URL, Storage path `tenants/…`) |
 | `assetsFileId` | the scan sidecar (scan + signature + extra pages) used to rebuild the PDF |
 | `docHasSignature`, `docExtraPages` | written by `aiFillForm101()` on each successful save |
@@ -105,7 +105,7 @@ One form for add, edit and post-scan review. Labels of every Form 101 field are 
   - a worker with only `name` gets `docGiven`/`docSurname` split from it for display (without this the "name required" check would silently block the save);
   - module state is reset: `__wScheduleOpen`, `__wExpiryOpen`, `__wForm101Open` (all collapsed); `__wClientIds`; `__wChildren`; `__wAvatarB64`; `__wDocType`.
 - **Sections:**
-  - **Avatar.** Upload a photo, then crop it in the editor: `openAvatarCropEditor`, drag (`attachAvatarCropDrag`), zoom (`onAvatarCropZoom`), confirm (`confirmAvatarCrop` → 160 px JPEG, `AVATAR_SIZE`, black and white via `grayscaleCanvas`; the scan's portrait is made the same way). Or delete it (`clearWorkerAvatar`).
+  - **No photo** (owner 2026-10-13): the head shows the initials disc only; the photo upload and delete items are gone from its ⋮ (the crop editor code, `openAvatarCropEditor` / `confirmAvatarCrop`, is no longer reached), and a scan takes no portrait.
   - **Scan fields** (no Documents block in the modal — removed as a duplicate, per user request 2026-10-05: the PDF download and the scan / rescan button are on the worker card, `rescanFromWorkerCard`, which opens the modal and `rescanFromWorkerModal()`; a field the scan didn't find links to it too). `SCAN_FIND_FIELDS` is the list of scan fields: given name, surname, ID or passport number, date of birth and sex, plus street, house number and city for an Israeli ID. For each it records the input, the page (front or ספח), the Hebrew label, and the zoomed re-read kind for digits and dates. `workerMissingScanKeys` / `workerMissingScanFields` give the ones a worker lacks. The "חסרים" line under the documents (`#wMissingScan`) follows the fields live: `refreshModalMissingScan()` recounts the empty scan inputs when one is typed in or picked (one `input`/`change` listener on the modal) and when the field search fills one, so a field filled after the modal opened leaves the line.
     - **Field search** (`markScanMissingFields()`, run after the modal is drawn and after a draft is put back). When the worker has a scan to search (`workerHasScanPages`), every empty scan field gets an amber frame (`.scan-missing`), placeholder "🔍 לחצו לחיפוש בסריקה".
     - Tapping a marked field (`_scanFieldTap`) runs `findScanField(w, key, docType)`. Found → the value is filled and the frame turns green for a moment (or amber "check" when unsure). Not found → a hint under the field with a link to `rescanFromWorkerModal()`, and further taps no longer search. Typing clears the mark.

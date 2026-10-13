@@ -916,6 +916,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   ok(ac.inNav && ac.figs === 'Hours,Payroll,To approve' && ac.tabs === 'salary,billing,approvals,alerts' && ac.salaryTab && ac.billingTab && ac.approvalsTab && ac.alertsTab && /Rates and pay/.test(ac.secs) && ac.tabN && ac.opensPay && ac.noBanner && ac.salSelect && ac.salBar && ac.salRows && ac.stepped && ac.back, 'accounting: glass period ‹ ›, figures, Salary / Billing / Approvals / Alerts tabs show their sections; Alerts in sections with a count, a tap opens the pay window ' + JSON.stringify(ac));
+  // Worker photos are gone (owner 2026-10-13): an old avatarB64 is dropped after a load and never saved again.
+  const ph = await p.evaluate(() => { const w = workers[0]; w.avatarB64 = 'AAAA'; const r = {dropped: dropWorkerPhotos(), gone: !('avatarB64' in w), again: dropWorkerPhotos()}; return r; });
+  ok(ph.dropped && ph.gone && !ph.again, 'workers: an old photo is dropped from the record (dropWorkerPhotos) ' + JSON.stringify(ph));
   // Greeting and notifications (redesign stage 5): the greeting by time of day; the bell, its panel, "Mark all read" kept on the account.
   const nt = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};

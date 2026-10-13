@@ -157,7 +157,7 @@ The scan images stay in `__aiScanImage` / `__aiPacketOtherPages` for the upload.
 - `refineQuadCorners(b64, mediaType, corners, opts)` snaps an approximate quad to real edges on a ≤1200 px copy. For each of 20 samples per side it searches from the guess (`opts.inward` / `opts.outward`, default 4 % + 6 px each way) for the nearest jump that passes the card edge test, then takes the strongest jump within 4 px. Each side's line is fitted robustly (refit on inliers, at least 40 % of the samples) and kept only if the edge test passes on the line at 60 % of the sample positions. A side without such a line keeps the guess's side; the other sides still move their corners along it.
 - `finalTightenPass(img)` is `refineQuadCorners` run from the whole frame, searching up to 15 % inward. It trims a background sliver or a wider tilted band (a strip of table under the card) along its tilt. An already tight page, or a card the colour of the background, is left untouched.
 - `alignScanImage()` rotates by 0/90/180/270° and crops a box; `rotatePointFrac()` maps corners to match.
-- `cropPortraitAvatar(b64, mediaType, photoBox)` → switched off (owner 2026-10-13, `SCAN_AVATARS = false`): always null, no photo is taken from a document; when on it gives a square 160 px JPEG (`AVATAR_SIZE`), black and white (`grayscaleCanvas`, schedule-manager.html).
+- `cropPortraitAvatar(b64, mediaType, photoBox)` → switched off (owner 2026-10-13, `SCAN_AVATARS = false`): always null, no photo is taken from a document, and `readDoc` no longer asks the AI for a `photoBox` (shorter replies); when on it gives a square 160 px JPEG (`AVATAR_SIZE`), black and white (`grayscaleCanvas`, schedule-manager.html).
 
 ## Unreachable code kept
 

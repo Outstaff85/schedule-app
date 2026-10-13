@@ -790,9 +790,9 @@
   @keyframes gic-tw{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.2;transform:scale(.6)}}
   /* the count is a whole disc over the button's corner (mockup 05): .gbtn's own
      overflow:hidden (og.css, later in the cascade) must not cut it. */
-  .gbtn.og-bell{width:38px;height:38px;border-radius:14px;overflow:visible}
+  .gbtn.og-bell{width:40px;height:40px;border-radius:14px;overflow:visible}
   .og-bell::after{display:none}
-  .og-bell i{font-size:19px}
+  .og-bell i{font-size:23px}
   .og-bell.has-new i{animation:og-ring 4s ease-in-out infinite;transform-origin:50% 10%}
   @keyframes og-ring{0%,88%,100%{transform:rotate(0)}90%{transform:rotate(14deg)}93%{transform:rotate(-12deg)}96%{transform:rotate(6deg)}}
   .og-bell-n{position:absolute;top:-4px;right:-4px;z-index:1;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--bad);color:#fff;font:700 10px 'DM Sans',Arial,sans-serif;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px var(--ground);animation:og-bump 2.4s ease-in-out infinite}
@@ -819,7 +819,7 @@
   .wc-hn{flex:1;min-width:0}
   .wc-hn h4{font-size:18px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .wc-hn p{font-size:12px;color:var(--text2);margin-top:2px}
-  .wc-hrs{flex:none;text-align:right;font:700 18px 'DM Mono',monospace;color:var(--fig);text-shadow:0 0 12px rgba(109,214,160,.22)}
+  .wc-hrs{flex:none;text-align:right;font:500 18px 'DM Mono',monospace;color:var(--fig)}
   .wc-hrs small{display:block;font:500 11px 'DM Sans','Heebo',Arial,sans-serif;color:var(--text3);text-shadow:none}
   .wc-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
   .wc-chips:empty{display:none}
@@ -3540,15 +3540,14 @@ function showWorkerModal(w){
   __wClientIds=(w.clientIds||[]).filter(id=>clients.some(c=>c.id===id));
 
   __wChildren=Array.isArray(w.docChildren)?w.docChildren.map(c=>({...c})):[];
-  __wAvatarB64=w.avatarB64||'';
+  __wAvatarB64='';  // no worker photos any more (owner 2026-10-13)
   __wDocType=w.docType||'israeli_id';
   document.getElementById('workerModal').innerHTML=`
     <div class="field og-edh" id="wAvatarWrap" style="--c:${editingWorkerIdx!==null?workerBarColor(w,workerNotices(w,workerToday(w,todayPunchLog()))):'var(--neutral)'}">
       <img id="wAvatarImg" src="${__wAvatarB64?('data:image/jpeg;base64,'+__wAvatarB64):''}" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1px solid var(--border2);background:var(--bg3);display:${__wAvatarB64?'block':'none'}">
-      <div class="t3-av og-av wc-av" id="wAvatarIni" onclick="document.getElementById('wAvatarFile').click()">${esc(initialsOf(w.name||'?'))}</div>
+      <div class="t3-av og-av wc-av" id="wAvatarIni">${esc(initialsOf(w.name||'?'))}</div>
       <div class="og-edh-n"><h4>${esc(w.name||'')||(editingWorkerIdx!==null?'עריכת עובד':'הוספת עובד חדש')}</h4><p>${editingWorkerIdx!==null?[workerSiteName(w)?`<span class="site">${esc(workerSiteName(w))}</span>`:'', workerTodayHtml(workerToday(w,todayPunchLog())), `<span class="fig">${esc(fmtHoursShort(workersMonthHours()[w.id]||0))}</span>`].filter(Boolean).join('<span class="dot">·</span>'):''}</p></div>
       ${editingWorkerIdx!==null?`<button class="gbtn icon" type="button" onclick="rescanFromWorkerModal()" title="${esc(tr('Scan'))}" aria-label="${esc(tr('Scan'))}"><i class="ti ti-scan"></i></button>`:''}
-      <button class="gbtn icon" type="button" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey([{icon:'ti-camera', label:'העלה תמונה', fn:()=>document.getElementById('wAvatarFile').click()}, {icon:'ti-trash', label:'מחק תמונה', danger:true, fn:()=>clearWorkerAvatar()}])}')"><i class="ti ti-dots-vertical"></i></button>
       <span id="wAvatarDeleteBtn" hidden></span>
       <div class="wc-chips og-edh-chips">${editingWorkerIdx!==null?noticeChipsHtml(w,workerNotices(w,workerToday(w,todayPunchLog())),true):''}</div>
       <input type="file" id="wAvatarFile" accept="image/*" style="display:none" onchange="onAvatarFileSelected(this.files[0]); this.value='';">
@@ -4011,7 +4010,7 @@ async function saveWorkerNow(opts){
     incomeType,otherIncomeType,docSurname,docGiven,maritalStatus,healthFund,docChildren,clientIds,schedule,
     spouseSurname,spouseGiven,spouseId,spouseDob,spouseIncome,
     supplierId,
-    avatarB64:__wAvatarB64,docType:__wDocType};
+    docType:__wDocType};
   // Duplicate guard for a NEW worker (checked by document number — unique to
   // one person, unlike a name). Never creates a second record for the same
   // document: two records would carry two diverging Form 101s for one
@@ -4070,7 +4069,7 @@ async function saveWorkerNow(opts){
     const FORM101_WATCHED_FIELDS=['docId','address','houseNumber','city','incomeType','otherIncomeType',
       'docSurname','docGiven','maritalStatus','healthFund','workStartDate','phone','docSex','docDob','docChildren',
       'spouseSurname','spouseGiven','spouseId','spouseDob','spouseIncome'];
-    const updated={...prevW,...commonFields};
+    const updated={...prevW,...commonFields}; delete updated.avatarB64;
     // Moved to a new client that has a rate: that client's rate is the
     // default again — an hourly worker's own rate is cleared (user decision
     // 2026-10-05; it can be set again in the pay window).
@@ -7733,6 +7732,16 @@ function UNSAVED_KEY(){ return STORAGE_KEY()+'_unsaved'; }
 // device that was offline for long can't push stale data over newer edits.
 function hasUnsavedLocal(){ try{ const t=+localStorage.getItem(UNSAVED_KEY()); return t>0 && Date.now()-t<3*864e5 && !!localStorage.getItem(STORAGE_KEY()); }catch(e){ return false; } }
 // Apply a fresh server load, unless local changes are still unsaved.
+// Worker photos are gone (owner 2026-10-13): no list shows them and a scan no
+// longer takes one, so an old photo (avatarB64, 5–10 KB each) is dropped from
+// every worker this login may write; the save that follows removes it from
+// Firestore, and every later load is that much lighter.
+function dropWorkerPhotos(){
+  if(!(hasPermission('workers') || hasPermission('schedule'))) return false;
+  let n=0;
+  workers.forEach(w=>{ if('avatarB64' in w){ delete w.avatarB64; n++; } });
+  return n>0;
+}
 function applyServerLoad(gd){
   if(hasUnsavedLocal()){
     // gsLoad() already moved lastLoadedSavedAt to the server's version, so
@@ -7742,7 +7751,9 @@ function applyServerLoad(gd){
     return false;
   }
   applyData(gd);
+  const photosDropped = dropWorkerPhotos();
   render();
+  if(photosDropped) autoSave();
   const gdJson = JSON.stringify(gd);
   localStorage.setItem(STORAGE_KEY(), gdJson);
   localStorage.setItem(STORAGE_KEY_BASE, gdJson); // legacy key for worker-punch.html's bridge, see autoSave()
