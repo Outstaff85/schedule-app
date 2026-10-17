@@ -1,6 +1,6 @@
 # Tests
 
-Everything runs on the Firebase emulators — never against the live project, no secrets. On every pull request into `main` the workflow `.github/workflows/tests.yml` runs all of it (about 5–10 minutes); a red check on the PR means something below failed — fix it before merging.
+Everything runs on the Firebase emulators — never against the live project, no secrets. On every pull request into `main` the workflow `.github/workflows/tests.yml` runs all of it (about 5–10 minutes; a new push to the same PR cancels the run still in progress, so only the latest commit is tested); a red check on the PR means something below failed — fix it before merging.
 
 | Suite | Where | What it checks | Run locally |
 |---|---|---|---|
