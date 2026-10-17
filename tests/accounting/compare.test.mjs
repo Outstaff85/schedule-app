@@ -182,7 +182,7 @@ function compare(label, workers, clients, suppliers, log, session) {
       sameNum(Math.round(figs.hours), F.figs.hours, `${L}: figure Hours`); sameNum(Math.round(Number(figs.payroll) || 0), F.figs.payroll, `${L}: figure Payroll`);
       shown.forEach((e, i) => {
         const r = F.rows[i], rs = A.rateShown(D, e);
-        assert.deepStrictEqual([rs.kind, rs.value].filter(x => x !== undefined), [r.rate[0] === 'day' && r.rate.length === 1 ? 'day-none' : r.rate[0], ...r.rate.slice(1)].map(x => x === 'day-none' ? 'day-none' : x), `${L} ${e.workerId}: rate shown`);
+        assert.deepStrictEqual([rs.kind, ...(rs.value !== undefined ? [rs.value] : [])], [...r.rate], `${L} ${e.workerId}: rate shown`);
         assert.equal(A.daysByHand(D, e, period), r.byHand, `${L} ${e.workerId}: days by hand`);
         sameNum(e.total + e.travel, r.total, `${L} ${e.workerId}: row total`);
         if (payOnly) sameNum(A.hrCommission(D, e, me.commissionRate, me.commissionDayRate), r.myCom, `${L} ${e.workerId}: my commission`);
