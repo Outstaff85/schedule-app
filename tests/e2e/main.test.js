@@ -250,39 +250,45 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(bb.shown.join() === 'Today,Schedule,Workers,Accounting,More' && bb.fixed && bb.todayColor === 'rgb(34, 211, 238)' && bb.sheet && bb.items.join() === 'Clients,Suppliers,Admin' && bb.tab === 'clients' && bb.moreOn && bb.closed && bb.moreOff,
     'phone bottom bar: Today, Schedule, Workers, Accounting, More (the active one in its color); More opens Clients, Suppliers, Admin ' + JSON.stringify(bb));
-  // Schedule, variant 6: a line per worker with its week; the arrow opens 7 days, a day opens the shift editor.
-  const sch = await p.evaluate(async () => {
-    const w0 = workers.find(w => isActiveWorker(w)), keep = JSON.stringify(w0.schedule || []);
-    w0.schedule = [{type:'off'}, {type:'work', start:'09:00', end:'17:00'}, {type:'off'}, {type:'off'}, {type:'off'}, {type:'off'}, {type:'off'}];
-    switchTab('schedule'); render(); await new Promise(r => setTimeout(r, 200));
-    const line = document.querySelector('#ganttBody .sched-line'), sum = line.querySelector('small').innerText;
-    line.click(); await new Promise(r => setTimeout(r, 100));
-    const days = document.querySelectorAll('#ganttBody .sched-day').length;
-    document.querySelector('#ganttBody .sched-day').click(); await new Promise(r => setTimeout(r, 200));
-    const editor = !!document.querySelector('.overlay.open');
-    document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open'));
-    document.querySelector('#ganttBody .sched-line').click();
-    const closedNow = document.querySelectorAll('#ganttBody .sched-day').length === 0;
-    w0.schedule = JSON.parse(keep); render();
-    return {sum, days, editor, closedNow, week: document.getElementById('schedWeekRange').innerText};
-  });
-  ok(/shift/.test(sch.sum) && /h/.test(sch.sum) && sch.days === 7 && sch.editor && sch.closedNow && /–/.test(sch.week), 'schedule: a line per worker, the arrow opens its 7 days, a day opens the shift editor ' + JSON.stringify(sch));
-  await p.screenshot({path: SP + '/t3-schedule.png'}).catch(()=>{});
-  // Schedule (redesign stage 6): glass week arrows, site tabs, 7 day marks per worker, opened days under it.
-  const sc6 = await p.evaluate(async () => {
-    const w0 = workers.find(w => isActiveWorker(w)), keep = JSON.stringify(w0.schedule || []);
+  // Schedule (stage 6b: React, src/manager/Schedule.tsx): a plate per worker with its week; a tap opens its 7 days, a day opens the shift window.
+  const W0 = await p.evaluate(async () => {
+    const w0 = workers.find(w => isActiveWorker(w)); window.__keepSched = JSON.stringify(w0.schedule || []);
     w0.schedule = [{type:'off'}, {type:'work', start:'09:00', end:'17:00'}, {type:'work', start:'22:00', end:'06:00'}, {type:'off'}, {type:'off'}, {type:'off'}, {type:'off'}];
-    switchTab('schedule'); render(); await new Promise(r => setTimeout(r, 100));
-    const line = document.querySelector('#ganttBody .sched-line'), r = {arrows: document.querySelectorAll('.sched-nav .gbtn.sched-arrow').length, marks: line.querySelectorAll('.daymarks i').length, hrs: (line.querySelector('.r') || {}).textContent};
-    const tabs = [...document.querySelectorAll('#schedSiteTabs button')]; r.tabs = tabs.map(b => b.textContent);
-    if(tabs[1]){ tabs[1].click(); r.filtered = selectedClientId === clients[0].id && document.querySelector('#schedSiteTabs button.on').textContent === clients[0].name; filterByClient(null); }
-    line.click(); await new Promise(r => setTimeout(r, 50));
-    r.dayrows = document.querySelectorAll('#ganttBody .dayrows .sched-day').length; document.querySelector('#ganttBody .sched-line').click();
-    r.kinds = [...document.querySelector('#ganttBody .sched-line').querySelectorAll('.daymarks i')].map(i => i.className.replace(' t', '') || '-').join('');
-    w0.schedule = JSON.parse(keep); render();
+    filterByClient(null); switchTab('schedule'); render(); await new Promise(r => setTimeout(r, 200));
+    return w0.id;
+  });
+  const schedPlate = `#scheduleRoot [data-testid="sched-worker"][data-id="${W0}"] > [data-slot="plate"] > [role="button"]`;
+  const sch = await p.evaluate(sel => {
+    const line = document.querySelector(sel), q = s => document.querySelectorAll('#scheduleRoot ' + s);
+    return {sum: line ? line.querySelector('small').innerText : '', arrows: q('[data-testid="week-prev"]').length + q('[data-testid="week-next"]').length,
+      marks: line ? line.querySelectorAll('[data-testid="daymarks"] i').length : 0, hrs: line ? (line.querySelector('[data-testid="week-hours"]') || {}).textContent : '',
+      kinds: line ? [...line.querySelectorAll('[data-testid="daymarks"] i')].map(i => i.dataset.k).join('') : '',
+      week: (document.querySelector('#scheduleRoot [data-testid="week-range"]') || {}).innerText || '', crumb: document.getElementById('ogCrumb').innerText.replace(/\s+/g, ' '),
+      old: !!document.getElementById('ganttBody')};
+  }, schedPlate);
+  await p.click(schedPlate, {position: {x: 30, y: 14}});
+  sch.days = await waitFor(p, () => document.querySelectorAll('#scheduleRoot [data-testid="sched-day"]').length === 7, 3000);
+  await sleep(300); await p.screenshot({path: SP + '/t3-schedule-days.png'}).catch(()=>{});
+  await p.click('#scheduleRoot [data-testid="sched-day"][data-date] >> nth=1');
+  sch.editor = await waitFor(p, () => !!document.querySelector('[data-testid="shift-window"]') && /09:00/.test(document.getElementById('shiftFrom').value), 3000);
+  await p.keyboard.press('Escape'); await waitFor(p, () => !document.querySelector('[data-testid="shift-window"]'), 3000);
+  await p.click(schedPlate, {position: {x: 30, y: 14}});
+  sch.closedNow = await waitFor(p, () => document.querySelectorAll('#scheduleRoot [data-testid="sched-day"]').length === 0, 3000);
+  ok(/shift/.test(sch.sum) && sch.days && sch.editor && sch.closedNow && /–/.test(sch.week) && !sch.old, 'schedule: a plate per worker, a tap opens its 7 days, a day opens the shift window ' + JSON.stringify(sch));
+  await p.screenshot({path: SP + '/t3-schedule.png'}).catch(()=>{});
+  // Glass week arrows, site tabs (the breadcrumb follows), 7 day marks per worker (green work, blue a night).
+  const sc6 = await p.evaluate(async () => {
+    const r = {}, tabs = [...document.querySelectorAll('#scheduleRoot [data-testid="site-tabs"] button')]; r.tabs = tabs.map(b => b.textContent);
+    r.crumbAll = document.getElementById('ogCrumb').innerText.replace(/\s+/g, ' ');
+    if(tabs[1]){ tabs[1].click(); await new Promise(res => setTimeout(res, 50));
+      r.filtered = selectedClientId === clients[0].id && document.querySelector('#scheduleRoot [data-testid="site-tabs"] button.on').textContent === clients[0].name;
+      r.crumbSite = document.getElementById('ogCrumb').innerText.replace(/\s+/g, ' '); filterByClient(null); }
     return r;
   });
-  ok(sc6.arrows === 2 && sc6.marks === 7 && /h$/.test(sc6.hrs) && sc6.tabs[0] === 'All sites' && sc6.filtered && sc6.dayrows === 7 && sc6.kinds === '-wn----', 'schedule: glass arrows, site tabs filter, 7 day marks and the week\'s hours per worker, its days open under it ' + JSON.stringify(sc6));
+  ok(sch.arrows === 2 && sch.marks === 7 && /h$/.test(sch.hrs) && sch.kinds === '-wn----' && sc6.tabs[0] === 'All sites' && sc6.filtered
+    && /Schedule.*All sites/.test(sc6.crumbAll) && new RegExp('Schedule.*' + sc6.tabs[1]).test(sc6.crumbSite),
+    'schedule: glass arrows, site tabs filter (breadcrumb "Schedule › <site>"), 7 day marks and the week\'s hours per worker ' + JSON.stringify({sch, sc6}));
+  await p.evaluate(() => { workers.find(w => isActiveWorker(w)).schedule = JSON.parse(window.__keepSched); render(); });
   await p.evaluate(async () => { switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await new Promise(r => setTimeout(r, 300)); });
   await p.screenshot({path: SP + '/t3-workers.png'}).catch(()=>{});
   await p.evaluate(async () => { switchTab('accounting'); const sel = document.getElementById('salaryPeriod'); sel.value = 'all'; await onSalaryPeriodChange();
@@ -393,23 +399,73 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await c2.close();
   }
   await p.evaluate(() => setLanguage('en', {save:false}));
-  // Schedule: a shift for one date only wins over the weekly roster on that date
-  const ds = await p.evaluate(async () => {
-    switchTab('schedule'); await new Promise(r => setTimeout(r, 200));
-    const wi = workers.findIndex(w => w.id === 'w1'), di = 3;
-    const weekly = JSON.stringify(workers[wi].schedule[di]);
-    openEditShift(wi, di);
-    document.getElementById('eScope').value = 'date'; document.getElementById('eType').value = 'work';
-    document.getElementById('eStart').value = '10:00'; document.getElementById('eEnd').value = '14:00';
-    saveShift(wi, di);
-    const d = new Date(weekStart); d.setDate(d.getDate() + di);
-    const r = {weeklySame: JSON.stringify(workers[wi].schedule[di]) === weekly, dated: (workers[wi].dateShifts || {})[localYMD(d)], week: weekShifts(workers[wi])[di]};
-    const next = new Date(d); next.setDate(next.getDate() + 7); r.nextWeek = shiftOn(workers[wi], next);
-    clearDateShift(wi, di); r.cleared = !(workers[wi].dateShifts || {})[localYMD(d)];
-    closeModal('editOverlay');
-    return r;
+  // Schedule: a shift for one date only wins over the weekly roster on that date (set in the React shift window).
+  const dsKey = await p.evaluate(async () => {
+    filterByClient('c1'); switchTab('schedule'); await new Promise(r => setTimeout(r, 200));
+    const wi = workers.findIndex(w => w.id === 'w1'), d = new Date(weekStart); d.setDate(d.getDate() + 3);
+    window.__dsWeekly = JSON.stringify(workers[wi].schedule[3]);
+    return localYMD(d);
   });
-  ok(ds.weeklySame && ds.dated && ds.dated.start === '10:00' && ds.week.dated && ds.week.end === '14:00' && !ds.nextWeek.dated && ds.cleared, 'schedule: a one-date shift overrides the weekly day only on that date; back to weekly removes it ' + JSON.stringify(ds));
+  const w1Plate = '#scheduleRoot [data-testid="sched-worker"][data-id="w1"] > [data-slot="plate"] > [role="button"]';
+  if (!(await p.$(`#scheduleRoot [data-testid="sched-day"][data-date="${dsKey}"]`))) await p.click(w1Plate, {position: {x: 30, y: 14}});
+  await p.click(`#scheduleRoot [data-testid="sched-worker"][data-id="w1"] [data-testid="sched-day"][data-date="${dsKey}"]`);
+  await p.waitForSelector('[data-testid="shift-window"]');
+  await p.click('[data-testid="shift-type"] [role="radio"]:first-child');
+  await p.click('[data-testid="shift-scope"]'); await p.click('[role="option"]:has-text("Only")');
+  await p.fill('#shiftFrom', '10:00'); await p.fill('#shiftTo', '14:00');
+  await p.click('[data-testid="shift-save"]');
+  await waitFor(p, () => !document.querySelector('[data-testid="shift-window"]'), 3000);
+  const ds = await p.evaluate(key => {
+    const w = workers.find(x => x.id === 'w1'), d = new Date(weekStart); d.setDate(d.getDate() + 3);
+    const r = {weeklySame: JSON.stringify(w.schedule[3]) === window.__dsWeekly, dated: (w.dateShifts || {})[key], week: weekShifts(w)[3]};
+    const next = new Date(d); next.setDate(next.getDate() + 7); r.nextWeek = shiftOn(w, next);
+    r.dot = !!document.querySelector(`#scheduleRoot [data-testid="sched-day"][data-date="${key}"] [data-testid="sched-dated"]`);
+    return r;
+  }, dsKey);
+  await p.click(`#scheduleRoot [data-testid="sched-worker"][data-id="w1"] [data-testid="sched-day"][data-date="${dsKey}"]`);
+  await p.click('[data-testid="shift-back"]');
+  await waitFor(p, () => !document.querySelector('[data-testid="shift-window"]'), 3000);
+  ds.cleared = await p.evaluate(key => !(workers.find(x => x.id === 'w1').dateShifts || {})[key], dsKey);
+  await p.evaluate(() => filterByClient(null));
+  ok(ds.weeklySame && ds.dated && ds.dated.start === '10:00' && ds.week.dated && ds.week.end === '14:00' && !ds.nextWeek.dated && ds.dot && ds.cleared, 'schedule: a one-date shift overrides the weekly day only on that date; back to weekly removes it ' + JSON.stringify(ds));
+  // Copy last week / Repeat for N weeks (stage 6b): only empty days get a shift, the list shows before anything is saved, Undo takes it back; never punches.
+  const cpDays = await p.evaluate(async () => {
+    filterByClient('c1'); switchTab('schedule');
+    const w = workers.find(x => x.id === 'w1'), ymd = n => { const d = new Date(weekStart); d.setDate(d.getDate() + n); return localYMD(d); };
+    window.__cpKeep = JSON.stringify(w.dateShifts || {}); window.__cpPunches = getPunchLog().length;
+    // last week: Mon 08–12 and Tue 09–13; this week's Tue is already a day off for that date
+    w.dateShifts = Object.assign({}, w.dateShifts, {[ymd(-6)]: {type:'work', start:'08:00', end:'12:00'}, [ymd(-5)]: {type:'work', start:'09:00', end:'13:00'}, [ymd(2)]: {type:'off', start:null, end:null}});
+    render(); await new Promise(r => setTimeout(r, 100));
+    return {mon: ymd(1), tue: ymd(2), mon1: ymd(8), mon2: ymd(15)};
+  });
+  const cw = {};
+  await p.click('#scheduleRoot [data-testid="copy-last"]');
+  cw.preview = await waitFor(p, () => document.querySelectorAll('[data-testid="copy-item"]').length === 1, 3000);
+  cw.item = await p.evaluate(() => (document.querySelector('[data-testid="copy-item"]') || {}).innerText || '');
+  cw.notYet = await p.evaluate(k => !(workers.find(x => x.id === 'w1').dateShifts || {})[k], cpDays.mon);
+  await p.click('[data-testid="copy-apply"]');
+  cw.added = await p.evaluate(d => { const ds = workers.find(x => x.id === 'w1').dateShifts || {}; return ds[d.mon] && ds[d.mon].start === '08:00' && ds[d.mon].end === '12:00' && ds[d.tue].type === 'off'; }, cpDays);
+  cw.snack = await waitFor(p, () => /added/.test((document.querySelector('[data-testid="undo-snack"]') || {}).innerText || ''), 3000);
+  await p.click('[data-testid="undo-snack"] button');
+  cw.undone = await p.evaluate(k => !(workers.find(x => x.id === 'w1').dateShifts || {})[k], cpDays.mon);
+  // Again, kept; then Select → tick Avi → Repeat for 2 weeks
+  await p.click('#scheduleRoot [data-testid="copy-last"]'); await p.click('[data-testid="copy-apply"]');
+  await waitFor(p, () => !document.querySelector('[data-testid="copy-window"]'), 3000);
+  await p.click('#scheduleRoot [data-testid="sched-workers"] button:has-text("Select")');
+  await p.click('#scheduleRoot [data-testid="sched-worker"][data-id="w1"] > [data-slot="plate"] > [role="button"]', {position: {x: 30, y: 14}});
+  await p.click('[data-testid="sel-copy-repeat"]');
+  await p.waitForSelector('[data-testid="copy-window"]');
+  await p.click('[data-testid="copy-weeks"] [role="radio"]:has-text("2")');
+  cw.repeatList = await waitFor(p, () => document.querySelectorAll('[data-testid="copy-item"]').length === 2, 3000);
+  await p.click('[data-testid="copy-apply"]');
+  cw.repeated = await p.evaluate(d => { const ds = workers.find(x => x.id === 'w1').dateShifts || {}; return !!(ds[d.mon1] && ds[d.mon2] && ds[d.mon2].start === '08:00'); }, cpDays);
+  cw.punches = await p.evaluate(() => getPunchLog().length === window.__cpPunches);
+  await sleep(2500);  // autoSave's debounce
+  const cpSrv = await srv('/swapState');
+  cw.saved = !!((cpSrv.dateShifts.w1 || {})[cpDays.mon2]);
+  await p.evaluate(async () => { workers.find(x => x.id === 'w1').dateShifts = JSON.parse(window.__cpKeep); filterByClient(null); await gsSave(getDataObj()); });
+  ok(cw.preview && /08:00–12:00/.test(cw.item) && cw.notYet && cw.added && cw.snack && cw.undone && cw.repeatList && cw.repeated && cw.punches && cw.saved,
+    'schedule: Copy last week fills only empty days, shows the shifts before saving, Undo takes them back; Repeat for N weeks on the selected workers is saved; punches untouched ' + JSON.stringify(cw));
   const xl = await p.evaluate(async () => {
     const atStart = typeof XLSX === 'undefined';
     await loadXlsx();
@@ -522,7 +578,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
         out[view] = [first, stillFirst, document.querySelectorAll(sel).length];
       }
       switchTab('schedule'); render(); await wait(300);
-      out.gantt = document.querySelectorAll('#ganttBody > .gantt-row').length;
+      out.gantt = document.querySelectorAll('#scheduleRoot [data-testid="sched-worker"]').length;
       out.side = document.querySelectorAll('#workerList > .worker-chip').length;
       workers.length = 0; real.forEach(x => workers.push(x)); render();
       return out;
@@ -1790,16 +1846,19 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await mp5.waitForNavigation().catch(() => {});
   await waitFor(mp5, () => typeof workers !== 'undefined' && workers.length === 2, 15000);
   await mp5.evaluate(() => switchTab('schedule'));
-  const mgr = {list: await waitFor(mp5, () => document.querySelectorAll('#schedRequests .shift-req').length === 2, 15000)};
-  mgr.text = await mp5.evaluate(() => document.getElementById('schedRequests').innerText.replace(/\s+/g, ' '));
-  await mp5.click('#schedRequests .sr-ok');
+  const mgr = {list: await waitFor(mp5, () => document.querySelectorAll('#scheduleRoot [data-testid="shift-req"]').length === 2, 15000)};
+  mgr.text = await mp5.evaluate(() => document.querySelector('#scheduleRoot [data-testid="sched-requests"]').innerText.replace(/\s+/g, ' '));
+  // the day the worker can't work shows on its day line too
+  await mp5.click('#scheduleRoot [data-testid="sched-worker"][data-id="w1"] > [data-slot="plate"] > [role="button"]', {position: {x: 30, y: 14}}).catch(() => {});
+  mgr.dayLine = await mp5.evaluate(k => (document.querySelector(`#scheduleRoot [data-testid="sched-worker"][data-id="w1"] [data-testid="sched-day"][data-date="${k}"]`) || {}).innerText || 'not this week', rqKey);
+  await mp5.click('#scheduleRoot [data-testid="sr-ok"]');
   mgr.toast = await waitFor(mp5, () => /Shift handed over/.test(document.body.innerText), 8000);
-  mgr.saved = await waitFor(mp5, () => !document.querySelector('#schedRequests .sr-ok'), 8000);
+  mgr.saved = await waitFor(mp5, () => !document.querySelector('#scheduleRoot [data-testid="sr-ok"]'), 8000);
   await sleep(2500);  // autoSave's debounce
   st5 = await srv('/swapState');
   mgr.status = (st5.requests['s_w1_' + rqKey] || {}).status;
   mgr.avi = JSON.stringify((st5.dateShifts.w1 || {})[rqKey]); mgr.dana = JSON.stringify((st5.dateShifts.w2 || {})[rqKey]);
-  ok(mgr.list && /Avi Cohen → Dana Levi/.test(mgr.text) && /Can't work/.test(mgr.text) && mgr.toast && mgr.status === 'confirmed'
+  ok(mgr.list && /Avi Cohen → Dana Levi/.test(mgr.text) && /Can't work/.test(mgr.text) && (/Can't work/.test(mgr.dayLine) || mgr.dayLine === 'not this week') && mgr.toast && mgr.status === 'confirmed'
     && /"type":"off"/.test(mgr.avi) && /"type":"work"/.test(mgr.dana) && /08:00/.test(mgr.dana) && /16:00/.test(mgr.dana),
     'schedule: the manager sees the day off and the offer, one tap hands the shift over (Avi off, Dana works that date) ' + JSON.stringify(mgr));
   ok(mp5.errs.length === 0, 'schedule: no page errors with the workers\' requests ' + mp5.errs.join(' | '));

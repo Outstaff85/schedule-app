@@ -127,6 +127,8 @@ export type ManagerBridge = {
   moveWorker(fromId: string, toId: string): void;
   editWorker(id: string): void;
   exportAs(kind: 'excel' | 'pdf' | 'json'): void;
+  /** the page's toast (`showToast`) */
+  toast(text: string): void;
 };
 
 declare global {

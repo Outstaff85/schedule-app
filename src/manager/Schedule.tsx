@@ -84,7 +84,6 @@ function ShiftWindow({ edit, start, api, onClose }: { edit: ShiftEdit | null; st
     if (!sh) return;
     setType(sh.type === 'off' ? 'off' : 'work'); setScope(sh.dated ? 'date' : 'week');
     setFrom(sh.start || '09:00'); setTo(sh.end || '17:00');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [edit]);
   const day = edit ? dayLabels()[edit.di] : '';
   const ymd = localYMD(date);
@@ -263,7 +262,7 @@ export function Schedule({ snap, api }: { snap: ScheduleSnapshot; api: ManagerBr
     const dnd = snap.canEdit && !phone && !sel.on;
     return (
       <div key={w.id} data-testid="sched-worker" data-id={w.id} draggable={dnd}
-        className={cn('mb-1.5 rounded-[16px]', over === w.id && 'outline-2 outline-dashed outline-[var(--accent)] -outline-offset-2')}
+        className={cn('mb-1.5 rounded-[16px]', over === w.id && 'outline-2 outline-dashed outline-info -outline-offset-2')}
         onDragStart={dnd ? e => { drag.current = w.id; e.dataTransfer.effectAllowed = 'move'; } : undefined}
         onDragOver={dnd ? e => { e.preventDefault(); if (drag.current && drag.current !== w.id) setOver(w.id); } : undefined}
         onDragLeave={dnd ? () => setOver(o => (o === w.id ? null : o)) : undefined}
@@ -273,7 +272,7 @@ export function Schedule({ snap, api }: { snap: ScheduleSnapshot; api: ManagerBr
           title={w.name}
           color={w.status === 'vacation' ? 'var(--amber)' : work.length ? 'var(--green)' : 'var(--neutral)'}
           sub={<><span>{sum}</span><DayMarks w={w} start={start} today={today} /></>}
-          right={<span className="flex items-center gap-1.5">{hoursShort(weekHours(w, start))}<IconChevronDown className={cn('size-4 text-ink-3 transition-transform duration-150', open && 'rotate-180')} /></span>}
+          right={<span className="flex items-center gap-1.5" data-testid="week-hours">{hoursShort(weekHours(w, start))}<IconChevronDown className={cn('size-4 text-ink-3 transition-transform duration-150', open && 'rotate-180')} /></span>}
           selecting={sel.on} selected={sel.picked.has(w.id)} onToggle={() => sel.toggle(w.id)}
           onOpen={() => toggle(w.id)} onEdit={() => api.editWorker(w.id)}
           expanded={open && !sel.on}
@@ -287,9 +286,9 @@ export function Schedule({ snap, api }: { snap: ScheduleSnapshot; api: ManagerBr
                   <button key={di} type="button" data-testid="sched-day" data-date={ymd} disabled={!snap.canEdit}
                     onClick={() => setEdit({ w, di })}
                     className="flex items-center justify-between gap-2 rounded-lg px-1.5 py-[7px] text-left text-[13px] text-ink-2 hover:bg-white/4 disabled:cursor-default">
-                    <span className={cn('min-w-0 truncate', ymd === today && 'font-bold text-accent')}>
+                    <span className={cn('min-w-0 truncate', ymd === today && 'font-bold text-info')}>
                       {days[di]} {date.getDate()}{w.site ? ' · ' + w.site : ''}
-                      {x.dated && <i title={tr('Changed for this date only')} data-testid="sched-dated" className="ml-1.5 inline-block size-1.5 rounded-full bg-accent align-middle" />}
+                      {x.dated && <i title={tr('Changed for this date only')} data-testid="sched-dated" className="ml-1.5 inline-block size-1.5 rounded-full bg-info align-middle" />}
                       {na && <em className="ml-1.5 text-[11px] font-bold not-italic text-warn">{tr("Can't work")}</em>}
                     </span>
                     <b className={cn('shrink-0 text-[13px] font-semibold', on ? 'font-mono' : 'text-warn', on && (mid ? 'text-info' : 'text-fig'))}>
@@ -348,16 +347,16 @@ export function Schedule({ snap, api }: { snap: ScheduleSnapshot; api: ManagerBr
 
       <Requests list={requests} snap={snap} api={api} />
 
-      <Section label={tr('Workers')} count={vis.length} icon={<IconUsers className="text-ink-2" />} data-testid="sched-workers"
-        tools={snap.canEdit && vis.length > 0 ? (
-          <span className="flex items-center gap-1.5">
+      <Section label={tr('Workers')} count={vis.length} icon={<IconUsers className="text-ink-2" />} data-testid="sched-workers">
+        {snap.canEdit && vis.length > 0 && (
+          <div className="mb-2 flex flex-wrap items-center gap-1.5" data-testid="sched-tools">
             {!sel.on && <>
               <Button size="sm" data-testid="copy-last" onClick={() => askCopy('last', ids)}><IconCopy className="size-4" />{tr('Copy last week')}</Button>
               <Button size="sm" data-testid="copy-repeat" onClick={() => askCopy('repeat', ids)}><IconCalendarRepeat className="size-4" />{tr('Repeat for N weeks')}</Button>
             </>}
-            <SelectHead sel={sel} />
-          </span>
-        ) : undefined}>
+            <span className={cn('flex', !sel.on && 'ml-auto')}><SelectHead sel={sel} /></span>
+          </div>
+        )}
         <PagedList items={vis} columns render={row}
           empty={
             <Empty data-testid="schedule-empty" className="mx-auto max-w-md">

@@ -275,9 +275,6 @@
   .day-name{display:inline-flex;align-items:center;gap:5px;}
   .day-date{font-family:'DM Mono',Consolas,monospace;font-size:11px;font-weight:500;color:var(--text3);letter-spacing:0;text-transform:none;}
   .day-hebrew{font-size:13px;color:var(--accent);font-weight:700;}
-  .gantt-row{position:relative;}
-  .gantt-row.drag-over{background:rgba(79,142,247,0.07)!important;outline:2px dashed var(--accent);outline-offset:-2px;}
-  .gantt-row.dragging{opacity:0.4;}
   .drag-handle{color:var(--text3);font-size:16px;cursor:grab;flex-shrink:0;}
 
   /* Modal */
@@ -566,33 +563,6 @@
   .t3-ib{background:none;border:0;color:var(--text3);font-size:15px;cursor:pointer;padding:4px 6px;flex:none}
   .t3-ib:hover{color:var(--text)}
   .t3-line.off{opacity:.6}
-  /* Schedule, variant 6: the week navigator, a line per worker, its days. */
-  .sched-nav{display:flex;align-items:center;gap:6px;margin:0 0 6px}
-  .sched-arrow.gbtn{width:38px;height:38px;border-radius:14px;padding:0;font-size:18px;flex:none}
-  .sched-arrow:not(.gbtn){width:38px;height:38px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none}
-  .sched-week{flex:1;text-align:center;position:relative;cursor:pointer;min-width:0}
-  .sched-week b{display:block;font-size:16px}
-  .sched-week span{display:block;font-size:11px;color:var(--text2)}
-  .sched-week input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
-  .sched-line .t3-chev{transition:transform .15s}
-  .sched-line.open .t3-chev{transform:rotate(180deg)}
-  /* Schedule (redesign stage 6): site tabs, day marks on a worker's plate, its
-     opened days indented under it with the times in green. */
-  .sched-line .n small{white-space:normal}
-  .daymarks{display:flex;gap:3px;margin-top:5px}
-  .daymarks i{width:16px;height:6px;border-radius:3px;background:rgba(255,255,255,.12)}
-  .daymarks i.w{background:var(--ok)}.daymarks i.n{background:var(--info)}.daymarks i.o{background:var(--warn)}
-  .daymarks i.t{box-shadow:0 0 0 1.5px rgba(255,255,255,.7)}
-  .dayrows{margin:-4px 0 10px 18px;padding-left:12px;border-left:2px solid rgba(255,255,255,.12)}
-  .sched-day{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 6px;font-size:12px;color:#cfd3dd;cursor:pointer;border-radius:8px}
-  .sched-day:hover{background:rgba(255,255,255,.04)}
-  .sched-day.today span{color:var(--accent);font-weight:700}
-  .sched-day b{font-family:'DM Mono',monospace;font-size:12px;font-weight:600;color:var(--c)}
-  /* Workers' requests (stage 5b): a day the worker can't work, and the offer lines' Confirm / Decline. */
-  .sched-na{font-style:normal;font-size:10.5px;font-weight:700;color:var(--warn);margin-left:4px}
-  .t3-line.shift-req .sr-ok{height:32px;padding:0 12px;font-size:12.5px;flex:0 0 auto}
-  .t3-line.shift-req .sr-no{flex:0 0 auto}
-  .sched-dated{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);vertical-align:middle}
 
   /* Today (variant A): a section folds with the arrow at its right; a
      figure picked as a filter is highlighted, the other sections hidden. */
@@ -1085,35 +1055,10 @@ body:has(.overlay.open){overflow:hidden}
       <div id="todayRoot" data-island></div>
     </div>
 
+    <!-- Schedule (stage 6b): drawn in React (src/manager/Schedule.tsx) through
+         window.ManagerIsland — renderSchedulePage() below. -->
     <div class="page-section visible" id="sectionSchedule">
-      <div class="page-header">
-        <div>
-          <div class="page-title" data-i18n>Weekly Schedule</div>
-          <div class="page-sub" id="pageSub"></div>
-        </div>
-      </div>
-      <!-- Variant 6 (user request 2026-10-11): ‹ week › with its totals (a tap
-           on the dates opens the date picker) and the export icon; a line per
-           worker with the week's sum; its arrow opens the 7 days, a day opens
-           the shift editor. -->
-      <div class="sched-nav">
-        <button type="button" class="gbtn icon sched-arrow" onclick="prevWeek()" title="Previous week" data-i18n-title="Previous week"><i class="ti ti-chevron-left"></i></button>
-        <label class="sched-week"><b id="schedWeekRange"></b><span id="schedWeekSum"></span>
-          <input type="date" id="datePicker" onchange="onDateChange()" aria-label="Week"></label>
-        <button type="button" class="gbtn icon sched-arrow" onclick="nextWeek()" title="Next week" data-i18n-title="Next week"><i class="ti ti-chevron-right"></i></button>
-        <div class="export-dropdown" id="exportDropdown">
-          <button type="button" class="t3-ib" onclick="toggleExportMenu()" title="Export" data-i18n-title="Export"><i class="ti ti-download"></i></button>
-          <div class="dropdown-menu" id="exportMenu">
-            <div class="dropdown-item" onclick="exportExcel()"><i class="ti ti-file-spreadsheet"></i> <span data-i18n>Excel (.xlsx)</span></div>
-            <div class="dropdown-item" onclick="exportPDF()"><i class="ti ti-file-type-pdf"></i> PDF</div>
-            <div class="dropdown-item" onclick="exportJSON()"><i class="ti ti-braces"></i> <span data-i18n>JSON</span></div>
-          </div>
-        </div>
-      </div>
-      <div class="og-tabs" id="schedSiteTabs"></div>
-      <div id="schedRequests"></div>
-      <div class="t3-sec" id="ganttHeader"></div>
-      <div id="ganttBody"></div>
+      <div id="scheduleRoot" data-island></div>
     </div>
 
     <div class="page-section" id="sectionWorkers">
@@ -1739,7 +1684,6 @@ let editingSupplierId = null;
 let selColorIdx      = 0;
 let selClientColor   = CLIENT_COLORS[0];
 let selSupplierColor = CLIENT_COLORS[0];
-let dragSrcWi        = null;
 
 let workers = [
   {id:'w1',name:'Raveendra',colorIdx:0,phone:'',clientIds:[],schedule:[
@@ -2430,6 +2374,7 @@ function switchTab(tab){
   // pane would get silently reset back to Punch Log on every unrelated save.
   if(tab==='admin')      setupAdminPaneBar();
   if(tab==='dashboard')  renderDashboard();
+  if(tab==='schedule')   renderSchedulePage();
   if(tab==='accounting'){ __hourApprovalsCache=null; renderAccounting(); } // opening the tab reads the approvals afresh
   document.body.dataset.tab=tab; // V7: the Workers / Filter-by-client panel only on Workers and Schedule
   renderCrumb();
@@ -2663,20 +2608,15 @@ function markAllNotifRead(){
 }
 setInterval(()=>{ if(getSession()){ refreshBell(); renderGreeting(); } }, 60e3);
 
-// --- Week nav -----------------------------------------------------------------
-function prevWeek(){ weekStart.setDate(weekStart.getDate()-7); syncPicker(); render(); }
-function nextWeek(){ weekStart.setDate(weekStart.getDate()+7); syncPicker(); render(); }
-function goToday(){ weekStart=getSundayOfWeek(new Date()); syncPicker(); render(); }
+// --- Week nav: the React Schedule tab sets weekStart (ManagerBridge.setWeek) ---
 // Local-date YYYY-MM-DD — toISOString() is UTC, which in Israel (UTC+2/+3)
 // turns Sunday 00:00 local into the previous Saturday's date.
 function localYMD(d){ return Payroll.localYMD(d); }
-function syncPicker(){ document.getElementById('datePicker').value=localYMD(weekStart); }
-function onDateChange(){ const v=document.getElementById('datePicker').value; if(!v) return; weekStart=getSundayOfWeek(new Date(v+'T00:00')); render(); }
 
 // --- Render -------------------------------------------------------------------
 function render(){
-  document.getElementById('pageSub').textContent=tr('A worker\'s arrow opens the week · a day opens its shift');
-  renderGanttHeader(); renderGanttBody(); renderWorkerList(); renderSidebarClients();
+  renderWorkerList(); renderSidebarClients();
+  if(currentTab==='schedule')   renderSchedulePage();
   // render() only ever refreshed the Schedule tab's own pieces above — every
   // other tab's table (Workers/Clients/Admin/Accounting) is rendered ONLY by
   // switchTab() when the tab is first opened. Every place that mutates data
@@ -2703,97 +2643,21 @@ function render(){
 function hasSchedule(w){ return (w.schedule||[]).some(s=>s.type==='work') || weekShifts(w).some(s=>s.type==='work'); }
 function getVisible(){ const act=workers.filter(isActiveWorker); return selectedClientId ? act.filter(w=>(w.clientIds||[]).includes(selectedClientId)) : act.filter(hasSchedule); }
 
-// Schedule, variant 6 (user request 2026-10-11): the week navigator's
-// dates and totals, then a section line with the worker count.
-function renderGanttHeader(){
-  const vis=getVisible(), sh=vis.flatMap(w=>weekShifts(w)).filter(x=>x.type==='work');
-  const thisWeek=getSundayOfWeek(new Date()).toDateString()===weekStart.toDateString();
-  const set=(id,t)=>{ const el=document.getElementById(id); if(el) el.textContent=t; };
-  set('schedWeekRange', fmtRange(weekStart));
-  set('schedWeekSum', [thisWeek?tr('This week'):'', tr('{h}h',{h:vis.reduce((t,w)=>t+workerTotalHours(w),0).toFixed(0)}), sh.length===1?tr('1 shift'):tr('{n} shifts',{n:sh.length})].filter(Boolean).join(' · '));
-  const el=document.getElementById('ganttHeader');
-  if(el) el.innerHTML=`<i class="ti ti-users"></i> ${esc(tr('Workers'))}<em>${vis.length}</em>`;
-  renderShiftRequests(); loadShiftRequests();
-  // The site tabs: All sites and each client (the same filter as the sidebar's).
-  const tabs=document.getElementById('schedSiteTabs');
-  if(tabs) tabs.innerHTML=clients.length?[`<button type="button" class="${!selectedClientId?'on':''}" onclick="filterByClient(null)">${esc(tr('All sites'))}</button>`]
-    .concat(clients.map(c=>`<button type="button" class="${selectedClientId===c.id?'on':''}" onclick="filterByClient('${esc(c.id)}')">${esc(c.name)}</button>`)).join(''):'';
-}
-// A line per worker: its week in short ("4 shifts · 29h · off Mon, Wed");
-// the arrow (or a tap on the line) opens the 7 days under it, a day opens
-// the shift editor (openEditShift). Open workers are kept while the app is
-// open (__schedOpen). A row can still be dragged to reorder on a computer.
-const __schedOpen=new Set();
-function toggleSchedWorker(id){ if(__schedOpen.has(id)) __schedOpen.delete(id); else __schedOpen.add(id); renderGanttBody(); }
-function renderGanttBody(){
-  const body=document.getElementById('ganttBody');
-  const vis=getVisible(), todayStr=new Date().toDateString();
-  renderPagedList(body,'gantt',String(selectedClientId||''),vis,w=>{
-    const wi=workers.indexOf(w), ws=weekShifts(w), open=__schedOpen.has(w.id), site=workerSiteName(w);
-    const work=ws.filter(x=>x.type==='work'&&x.start&&x.end);
-    const sum=[site, work.length===1?tr('1 shift'):tr('{n} shifts',{n:work.length})].filter(Boolean).join(' · ');
-    const dateOf=di=>{ const d=new Date(weekStart); d.setDate(d.getDate()+di); return d; };
-    // A mark per day: green work, blue a night (crossing midnight), amber off while on vacation, grey off; today ringed.
-    const marks=ws.map((x,di)=>{ const on=x.type==='work'&&x.start&&x.end, mid=on&&toMins(x.end)<=toMins(x.start);
-      return `<i class="${on?(mid?'n':'w'):(w.status==='vacation'?'o':'')}${dateOf(di).toDateString()===todayStr?' t':''}"></i>`; }).join('');
-    const days=open?`<div class="dayrows">${ws.map((x,di)=>{
-      const date=dateOf(di), on=x.type==='work'&&x.start&&x.end, mid=on&&toMins(x.end)<=toMins(x.start);
-      const col=on?(mid?'var(--info)':'var(--fig)'):'var(--warn)';
-      return `<div class="sched-day${date.toDateString()===todayStr?' today':''}" style="--c:${col}" onclick="openEditShift(${wi},${di})">
-        <span>${esc(tr(DAYS[di]))} ${date.getDate()}${site?' · '+esc(site):''}${x.dated?` <i class="sched-dated" title="${esc(tr('Changed for this date only'))}"></i>`:''}${shiftReqOn(w.id,localYMD(date),'unavailable')?` <em class="sched-na">${esc(tr("Can't work"))}</em>`:''}</span>
-        <b${on?'':' style="font-family:inherit"'}>${on?esc(x.start+'–'+x.end):esc(tr('Day off'))}</b></div>`;
-    }).join('')}</div>`:'';
-    return `<div class="gantt-row" draggable="true" data-wi="${wi}" ondragstart="dragStart(event,${wi})" ondragover="dragOver(event,${wi})" ondragleave="dragLeave(event)" ondrop="doDrop(event,${wi})" ondragend="dragEnd(event)">`
-      + t3Line({c:w.status==='vacation'?'var(--warn)':work.length?'var(--ok)':'var(--neutral)', av:t3Av(w), name:`<span class="wp-n" title="${esc(w.name)}">${esc(w.name)}</span>`,
-          sub:[esc(sum), `<span class="daymarks">${marks}</span>`], cls:'sched-line'+(open?' open':''),
-          onclick:`toggleSchedWorker('${esc(w.id)}')`, right:`<span class="r">${esc(fmtHoursShort(workerTotalHours(w)))}</span><i class="ti ti-chevron-down t3-chev"></i>`})
-      + days + `</div>`;
-  });
-}
-
 // Workers' requests (stage 5b, docs/app-core.md → Schedule tab): the days a
 // worker marked they can't work and the shifts offered to a colleague, sent
 // from the punch page (the punch function writes tenants/{t}/shiftRequests).
-// An offer changes nothing until a manager with the schedule section confirms
-// it here with one tap: the worker's date becomes a day off and the
-// colleague's date gets the shift (both "only this date", w.dateShifts, saved
-// with the workers), then the request is marked confirmed. Until stage 6b
-// moves the tab this is a small list above the workers.
+// The React Schedule tab draws them (ManagerBridge.schedule().requests); an
+// offer changes nothing until a manager with the schedule section confirms it
+// there with one tap: decideShiftRequest below — the worker's date becomes a
+// day off and the colleague's date gets the shift (both "only this date",
+// w.dateShifts, saved with the workers), and the request is marked confirmed.
 let __shiftReqs=[], __shiftReqsAt=0, __shiftReqsBusy=false;
 async function loadShiftRequests(force){
   if(__shiftReqsBusy||(!force&&Date.now()-__shiftReqsAt<60e3)) return;
   __shiftReqsBusy=true; __shiftReqsAt=Date.now();
   try{ const j=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'loadShiftRequests'})})).json();
-    if(j&&j.ok){ __shiftReqs=j.requests||[]; renderShiftRequests(); renderGanttBody(); } }catch(e){}
+    if(j&&j.ok){ __shiftReqs=j.requests||[]; if(currentTab==='schedule') renderSchedulePage(); } }catch(e){}
   finally{ __shiftReqsBusy=false; }
-}
-function shiftReqOn(wid,date,kind){ return __shiftReqs.find(q=>q.workerId===wid&&q.date===date&&q.kind===kind&&q.status!=='declined'); }
-function fmtReqDate(ymd){ const [y,m,d]=String(ymd).split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString(uiLocale(),{weekday:'short',day:'numeric',month:'short'}); }
-function renderShiftRequests(){
-  const el=document.getElementById('schedRequests'); if(!el) return;
-  const known=new Set(workers.map(w=>w.id));
-  const list=__shiftReqs.filter(q=>known.has(q.workerId)&&(q.kind==='unavailable'||q.status==='pending'))
-    .filter(q=>!selectedClientId||(workers.find(w=>w.id===q.workerId)?.clientIds||[]).includes(selectedClientId))
-    .sort((a,b)=>(a.kind==='swap'?0:1)-(b.kind==='swap'?0:1)||String(a.date).localeCompare(String(b.date)));
-  if(!list.length){ el.innerHTML=''; return; }
-  const can=hasPermission('schedule');
-  const head=`<div class="t3-sec"><i class="ti ti-calendar-user"></i> ${esc(tr('Requests from workers'))}<em>${list.length}</em></div>`;
-  renderPagedList(el,'shiftReqs',String(selectedClientId||'')+':'+list.length,list,q=>{
-    const w=workers.find(x=>x.id===q.workerId);
-    const [y,m,d]=String(q.date).split('-').map(Number), sh=w?shiftOn(w,new Date(y,m-1,d)):null;
-    if(q.kind==='unavailable'){
-      const planned=sh&&sh.type==='work'&&sh.start?tr('Planned {0}',{0:sh.start+'–'+sh.end}):'';
-      return t3Line({c:'var(--warn)', name:esc(q.workerName||(w&&w.name)||''), cls:'shift-req',
-        sub:[esc(tr("Can't work")+' · '+fmtReqDate(q.date)), planned?`<span style="color:var(--warn)">${esc(planned)}</span>`:'', q.note?esc(q.note):''].filter(Boolean)});
-    }
-    const to=workers.find(x=>x.id===q.toWorkerId), toSh=to?shiftOn(to,new Date(y,m-1,d)):null;
-    const toDay=toSh&&toSh.type==='work'&&toSh.start?tr('{0} already works {1}',{0:to.name,1:toSh.start+'–'+toSh.end}):'';
-    const btns=can?`<button type="button" class="gbtn primary sr-ok" onclick="event.stopPropagation();decideShiftRequest('${esc(q.id)}',true)"><i class="ti ti-check"></i><span>${esc(tr('Confirm'))}</span></button>`
-      +`<button type="button" class="t3-ib sr-no" title="${esc(tr('Decline'))}" onclick="event.stopPropagation();decideShiftRequest('${esc(q.id)}',false)"><i class="ti ti-x"></i></button>`:'';
-    return t3Line({c:'var(--info)', name:esc((q.workerName||'')+' → '+(q.toWorkerName||'')), cls:'shift-req',
-      sub:[esc(tr('Shift offer')+' · '+fmtReqDate(q.date)+' · '+(q.start||'')+'–'+(q.end||'')), toDay?`<span style="color:var(--warn)">${esc(toDay)}</span>`:'', q.note?esc(q.note):''].filter(Boolean),
-      right:btns});
-  },{head});
 }
 async function decideShiftRequest(id,ok){
   const q=__shiftReqs.find(x=>x.id===id); if(!q||!hasPermission('schedule')) return;
@@ -2859,78 +2723,7 @@ function renderSidebarClients(){
 
 function filterByClient(cid){ selectedClientId=cid; render(); }
 
-// --- Drag & Drop --------------------------------------------------------------
-function dragStart(e,wi){ dragSrcWi=wi; e.dataTransfer.effectAllowed='move'; e.currentTarget.classList.add('dragging'); }
-function dragOver(e,wi){ e.preventDefault(); if(wi!==dragSrcWi) e.currentTarget.classList.add('drag-over'); }
-function dragLeave(e){ e.currentTarget.classList.remove('drag-over'); }
-function doDrop(e,wi){
-  e.preventDefault(); e.currentTarget.classList.remove('drag-over');
-  if(dragSrcWi===null||dragSrcWi===wi)return;
-  const moved=workers.splice(dragSrcWi,1)[0];
-  workers.splice(wi,0,moved);
-  dragSrcWi=null; render(); autoSave(); showToast(tr('Order updated'));
-}
-function dragEnd(e){ e.currentTarget.classList.remove('dragging'); document.querySelectorAll('.gantt-row').forEach(r=>r.classList.remove('drag-over')); dragSrcWi=null; }
 
-// --- Edit Shift ---------------------------------------------------------------
-function openEditShift(wi,di){
-  const w=workers[wi];
-  const date=new Date(weekStart); date.setDate(date.getDate()+di);
-  const sh=shiftOn(w,date);
-  document.getElementById('editModal').innerHTML=`
-    <div class="modal-title">${tr('Edit shift — {0}, {1} {2}',{0:(esc(w.name)),1:(tr(DAYS[di])),2:(fmtDate(date))})}</div>
-    <div class="field"><label>${tr('Shift type')}</label>
-      <select id="eType" onchange="toggleEditTime()">
-        <option value="work" ${sh.type==='work'?'selected':''}>${tr('Working')}</option>
-        <option value="off"  ${sh.type==='off' ?'selected':''}>${tr('Day off')}</option>
-      </select>
-    </div>
-    <div class="field"><label>${tr('Applies to')}</label>
-      <select id="eScope">
-        <option value="week" ${sh.dated?'':'selected'}>${esc(tr('Every {0}',{0:tr(DAYS[di])}))}</option>
-        <option value="date" ${sh.dated?'selected':''}>${esc(tr('Only {0}',{0:fmtDate(date)}))}</option>
-      </select>
-      ${sh.dated?`<div style="font-size:12px;color:var(--text2);margin-top:6px">${tr('This date has its own shift.')} <a href="#" onclick="event.preventDefault();clearDateShift(${wi},${di})" style="color:var(--blue)">${tr('Back to the weekly schedule')}</a></div>`:''}
-    </div>
-    <div id="eTimeWrap" ${sh.type==='off'?'style="opacity:0.4;pointer-events:none"':''}>
-      <div class="field-row">
-        <div class="field"><label>${tr('Start')}</label><input type="time" id="eStart" value="${sh.start||'09:00'}" oninput="updateBadge()"></div>
-        <div class="field"><label>${tr('End')}</label><input type="time" id="eEnd" value="${sh.end||'17:00'}" oninput="updateBadge()"></div>
-      </div>
-      <div id="hBadge"></div>
-    </div>
-    <div class="modal-actions">
-      <button class="gbtn primary og-save" onclick="saveShift(${wi},${di})"><i class="ti ti-check"></i><span>${tr('Save')}</span></button>
-    </div>`;
-  document.getElementById('editOverlay').classList.add('open');
-  updateBadge();
-}
-function toggleEditTime(){ const off=document.getElementById('eType').value==='off'; const w=document.getElementById('eTimeWrap'); if(w) w.style.cssText=off?'opacity:0.4;pointer-events:none':''; }
-function updateBadge(){
-  const s=document.getElementById('eStart')?.value, e=document.getElementById('eEnd')?.value, el=document.getElementById('hBadge');
-  if(!el||!s||!e)return;
-  const h=calcHours(s,e);
-  el.innerHTML=`<span class="hours-badge">${tr('{h}h',{h:(h).toFixed(2)})}${isMidnight(s,e)?' · '+tr('crosses midnight'):''}</span>`;
-}
-function saveShift(wi,di){
-  const w=workers[wi], type=document.getElementById('eType').value;
-  const sh={type,start:type==='work'?document.getElementById('eStart').value:null,end:type==='work'?document.getElementById('eEnd').value:null};
-  const date=new Date(weekStart); date.setDate(date.getDate()+di);
-  const key=localYMD(date);
-  if(document.getElementById('eScope').value==='date'){
-    w.dateShifts=pruneDateShifts(Object.assign({}, w.dateShifts, {[key]:sh}));
-  } else {
-    w.schedule[di]=sh;
-    if(w.dateShifts && w.dateShifts[key]){ const d=Object.assign({}, w.dateShifts); delete d[key]; w.dateShifts=pruneDateShifts(d); }
-  }
-  closeModal('editOverlay'); render(); autoSave(); showToast(tr('Shift saved'));
-}
-// Removes the one-date change: the day follows the weekly roster again.
-function clearDateShift(wi,di){
-  const w=workers[wi], date=new Date(weekStart); date.setDate(date.getDate()+di);
-  const d=Object.assign({}, w.dateShifts); delete d[localYMD(date)]; w.dateShifts=pruneDateShifts(d);
-  closeModal('editOverlay'); render(); autoSave(); showToast(tr('Back to the weekly schedule'));
-}
 // Date changes older than 62 days are dropped, so the worker record stays small.
 function pruneDateShifts(d){
   const cut=new Date(); cut.setDate(cut.getDate()-62); const ck=localYMD(cut);
@@ -5928,13 +5721,10 @@ new MutationObserver(recs=>{
 
 
 // --- Export dropdown ----------------------------------------------------------
-function toggleExportMenu(){ document.getElementById('exportMenu').classList.toggle('open'); }
-document.addEventListener('click',e=>{ if(!document.getElementById('exportDropdown').contains(e.target)) document.getElementById('exportMenu').classList.remove('open'); });
 
 // --- Export Excel -------------------------------------------------------------
 function exportExcel(){
   if(true && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportExcel()).catch(()=>showToast(tr('Excel library not loaded'))); return; }
-  document.getElementById('exportMenu').classList.remove('open');
   try {
     const wb=XLSX.utils.book_new();
     const headers=['Worker','Phone',...DAYS.map((d,i)=>{ const dt=new Date(weekStart); dt.setDate(dt.getDate()+i); return d+' '+fmtDate(dt); }),'Total Hours'];
@@ -5970,7 +5760,6 @@ function exportExcel(){
 
 // --- Export PDF ---------------------------------------------------------------
 function exportPDF(){
-  document.getElementById('exportMenu').classList.remove('open');
 
   const dateHdrs=DAYS.map((d,i)=>{
     const dt=new Date(weekStart); dt.setDate(dt.getDate()+i);
@@ -6029,7 +5818,6 @@ function exportPDF(){
 }
 // --- Export JSON --------------------------------------------------------------
 function exportJSON(){
-  document.getElementById('exportMenu').classList.remove('open');
   const data={workers,clients,weekStart:weekStart.toISOString(),exportedAt:new Date().toISOString()};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
@@ -7927,7 +7715,7 @@ async function loadData(){
     console.error('Load failed',e);
     showToast(tr('Offline — using cached data'));
   }
-  if(!__dataReady){ __dataReady=true; if(currentTab==='dashboard') renderDashboard(); }
+  if(!__dataReady){ __dataReady=true; if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); }
 }
 
 // The hours batches (Pending hours), live (listenPendingHours): the count of
@@ -8299,7 +8087,16 @@ function renderDashboard(){
   renderGreeting();
   if(window.ManagerIsland) window.ManagerIsland.renderToday();
 }
-window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); });
+// ── Schedule (stage 6b): drawn in React — src/manager/Schedule.tsx. The week
+// (weekStart), the site filter (selectedClientId, shared with the side panel)
+// and the data stay here; the tab reads them through ManagerBridge.schedule()
+// and writes through its actions below. Opening it reads the workers'
+// requests (at most once a minute).
+function renderSchedulePage(){
+  loadShiftRequests();
+  if(window.ManagerIsland) window.ManagerIsland.renderSchedule();
+}
+window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); renderCrumb(); });
 let __dataReady=false;
 window.ManagerBridge={
   lang:()=>I18N_LANG,
@@ -8325,6 +8122,50 @@ window.ManagerBridge={
   openSuppliers:()=>switchTab('suppliers'),
   addWorker:()=>{ switchTab('workers'); openAddWorker(); },
   refresh:async()=>{ try{ await syncPunchesFromGS(); }catch(e){} render(); },
+  // The Schedule tab's snapshot: the shown week, the site filter, the active
+  // workers' roster and one-date changes, the sites, the workers' requests.
+  schedule(){
+    const off={type:'off',start:null,end:null};
+    return {
+      ready:__dataReady, weekStart:localYMD(weekStart), clientId:selectedClientId||null,
+      workers:workers.filter(isActiveWorker).map(w=>({id:w.id, name:w.name||'', status:w.status||'active', clientIds:w.clientIds||[], site:workerSiteName(w),
+        schedule:[0,1,2,3,4,5,6].map(i=>(w.schedule||[])[i]||off), dateShifts:w.dateShifts||{}})),
+      clients:clients.map(c=>({id:c.id, name:c.name||'', color:c.color||''})),
+      requests:__shiftReqs,
+      canEdit:hasPermission('schedule'), canExport:hasPermission('exports'), canAddWorker:hasPermission('workers'),
+    };
+  },
+  setWeek:ymd=>{ weekStart=getSundayOfWeek(new Date(ymd+'T00:00')); render(); },
+  setClient:id=>filterByClient(id||null),
+  // "Every <weekday>" writes the roster and drops a change of that date; "Only <date>" writes w.dateShifts.
+  setShift(wid,ymd,scope,sh){
+    const w=workers.find(x=>x.id===wid); if(!w) return;
+    const di=new Date(ymd+'T00:00').getDay(), v={type:sh.type, start:sh.type==='work'?sh.start:null, end:sh.type==='work'?sh.end:null};
+    if(scope==='date') w.dateShifts=pruneDateShifts(Object.assign({}, w.dateShifts, {[ymd]:v}));
+    else {
+      w.schedule=[0,1,2,3,4,5,6].map(i=>(w.schedule||[])[i]||{type:'off',start:null,end:null}); w.schedule[di]=v;
+      if(w.dateShifts && w.dateShifts[ymd]){ const d=Object.assign({}, w.dateShifts); delete d[ymd]; w.dateShifts=pruneDateShifts(d); }
+    }
+    render(); autoSave(); showToast(tr('Shift saved'));
+  },
+  // One-date changes (Copy last week, Repeat for N weeks, their Undo, Back to the weekly schedule): shift null drops the change.
+  applyDated(changes){
+    changes.forEach(c=>{ const w=workers.find(x=>x.id===c.workerId); if(!w) return;
+      const d=Object.assign({}, w.dateShifts);
+      if(c.shift) d[c.date]={type:c.shift.type, start:c.shift.start||null, end:c.shift.end||null}; else delete d[c.date];
+      w.dateShifts=pruneDateShifts(d); });
+    render(); autoSave();
+  },
+  decideRequest:(id,ok)=>decideShiftRequest(id,ok),
+  moveWorker(fromId,toId){
+    const from=workers.findIndex(w=>w.id===fromId); if(from<0||fromId===toId) return;
+    const moved=workers.splice(from,1)[0], to=workers.findIndex(w=>w.id===toId);
+    workers.splice(to<0?workers.length:to,0,moved);
+    render(); autoSave(); showToast(tr('Order updated'));
+  },
+  editWorker:id=>{ const i=workers.findIndex(w=>w.id===id); if(i>=0) openEditWorker(i); },
+  exportAs:k=>{ ({excel:exportExcel, pdf:exportPDF, json:exportJSON})[k](); },
+  toast:t=>showToast(t),
 };
 
 // Per-client and per-supplier rate tables in Accounting: turned off for now
@@ -10808,7 +10649,6 @@ applyTablesView();
 loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangButtons(); placeLangButton(); try{
   gateApp(function(){
     loadData();
-    syncPicker();
     render();
     setSaveStatus('saved');
     applyNavPermissions();
