@@ -23,8 +23,8 @@ body{margin:0;font-family:var(--font-sans);color:var(--ink);background:var(--gro
 .og-btn.danger{color:var(--red-soft)}
 /* tabs */
 .og-tabs{position:relative;display:flex;gap:6px}
-.og-tabs button{position:relative;z-index:1;height:38px;padding:0 16px;border:1px solid transparent;border-radius:var(--radius-md);background:none;color:var(--ink);font:600 14px var(--font-sans);cursor:pointer}
-.og-tabs .ind{position:absolute;top:0;height:38px;border-radius:var(--radius-md);background:var(--glass-active);border:1px solid var(--glass-edge);transition:left .3s var(--og-ease),width .3s var(--og-ease)}
+.og-tabs button{position:relative;z-index:1;height:30px;padding:0 16px;border:1px solid transparent;border-radius:var(--radius-md);background:none;color:var(--ink);font:600 14px var(--font-sans);cursor:pointer}
+.og-tabs .ind{position:absolute;top:0;height:30px;border-radius:var(--radius-md);background:var(--glass-active);border:1px solid var(--glass-edge);transition:left .3s var(--og-ease),width .3s var(--og-ease)}
 .og-tabs .ind::after{content:'';position:absolute;left:14px;right:14px;bottom:-1px;height:3px;border-radius:2px;background:var(--og-uline);background-size:300% 100%;box-shadow:var(--shadow-uline);animation:og-flow 2.4s linear infinite,og-pop .5s var(--og-spring)}
 .og-tabs .ind.moved::after{animation:og-flow 2.4s linear infinite,og-pop .5s var(--og-spring)}
 /* section label */

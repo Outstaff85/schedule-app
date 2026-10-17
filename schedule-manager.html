@@ -203,7 +203,7 @@
   .save-indicator{font-size:14px;color:var(--text3);display:flex;align-items:center;gap:4px;transition:color 0.3s;}
   .save-indicator.saving{color:var(--amber);}
   .save-indicator.saved{color:var(--green);}
-  .save-dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+  .save-dot{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor;}
 
   /* Layout */
   .app{display:flex;flex:1;overflow:hidden;}
@@ -756,6 +756,13 @@
      does not fit, owner 2026-10-13), notice chips after it,
      site · today's punch under it, the month's hours at the right. */
   .wplate .n small,.wc-hn p{display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden}
+  .wplate .n small:has(.wp-chip1){margin:3px 0 2px}
+  /* The Workers screen (owner's design 2026-10-13): no "WORKERS N" line, New
+     as plain glass, the Active / Vacation / Pending tabs 78px wide, a 38px search. */
+  #workersCount:empty{display:none}
+  .workers-actions .gbtn.primary{background:var(--glass)}
+  #workersTabs button{width:78px;padding:0;justify-content:center;text-align:center}
+  .workers-search-row input{height:38px}
   .site{overflow:hidden;text-overflow:ellipsis}
   .dot{color:#4a5068}
   .pin{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
@@ -876,18 +883,18 @@ body:has(.overlay.open){overflow:hidden}
 <link rel="stylesheet" href="og.css">
 <style>
   /* Odinson Glass form fields (mockup 04, owner 2026-10-13): every field in a
-     window is a soft rounded glass box — 42px tall, 12px corners, a faint fill
+     window is a soft rounded glass box — 38px tall, 12px corners, a faint fill
      and hairline, a cyan focus ring; selects carry a thin chevron; labels are
      small and muted. The same block in the manager app and both portals. */
-  .modal .field label:not(.check-chip):not([style]){font-size:11px;font-weight:500;color:#8b90a0;margin:0 4px 4px}
+  .modal .field label:not(.check-chip):not([style]){font-size:14px;font-weight:500;color:#8b90a0;margin:0 4px 4px}
   .modal .field input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]),.modal .field select,.modal .field textarea{
-    height:42px;padding:0 12px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background-color:rgba(255,255,255,.05);color:var(--text);font-size:14px;
+    height:38px;padding:0 12px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background-color:rgba(255,255,255,.05);color:var(--text);font-size:14px;
     box-shadow:none;transition:border-color .2s,box-shadow .2s,background-color .2s}
   .modal .field textarea{height:auto;min-height:84px;padding:10px 12px;line-height:1.45}
   .modal .field select{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;
     background-image:linear-gradient(45deg,transparent 50%,#8b90a0 50%),linear-gradient(135deg,#8b90a0 50%,transparent 50%);
-    background-position:calc(100% - 19px) 18px,calc(100% - 14px) 18px;background-size:5px 5px;background-repeat:no-repeat}
-  .modal [dir=rtl] .field select,.modal .field select[dir=rtl]{padding-right:14px;padding-left:36px;background-position:14px 18px,19px 18px}
+    background-position:calc(100% - 19px) 16px,calc(100% - 14px) 16px;background-size:5px 5px;background-repeat:no-repeat}
+  .modal [dir=rtl] .field select,.modal .field select[dir=rtl]{padding-right:14px;padding-left:36px;background-position:14px 16px,19px 16px}
   .modal .field input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]):focus,.modal .field select:focus,.modal .field textarea:focus{
     outline:none;border-color:rgba(34,211,238,.6);background-color:rgba(255,255,255,.07);box-shadow:0 0 0 3px rgba(34,211,238,.12)}
   .modal .field input::placeholder,.modal .field textarea::placeholder{color:rgba(255,255,255,.35)}
@@ -897,13 +904,13 @@ body:has(.overlay.open){overflow:hidden}
   /* Inline old-style fields inside any window (style="background:var(--bg3)…") follow the glass look too. */
   .modal input:is([type=text],[type=number],[type=date],[type=time],[type=tel],[type=email],[type=password],[type=search],[type=url],:not([type])),.modal select,.modal textarea{
     background-color:rgba(255,255,255,.05) !important;border:1px solid rgba(255,255,255,.12) !important;border-radius:12px !important;color:var(--text) !important;font-size:14px !important;box-shadow:none}
-  .modal input:is([type=text],[type=number],[type=date],[type=time],[type=tel],[type=email],[type=password],[type=search],[type=url],:not([type])),.modal select{height:42px !important;padding-top:0 !important;padding-bottom:0 !important}
+  .modal input:is([type=text],[type=number],[type=date],[type=time],[type=tel],[type=email],[type=password],[type=search],[type=url],:not([type])),.modal select{height:38px !important;padding-top:0 !important;padding-bottom:0 !important}
   .modal input:focus,.modal select:focus,.modal textarea:focus{border-color:rgba(34,211,238,.6) !important;box-shadow:0 0 0 3px rgba(34,211,238,.12) !important;outline:none}
   .modal .scan-missing{border-color:rgba(245,166,35,.6) !important;background-color:rgba(245,166,35,.06) !important}
   .modal .field>label i.ti{display:none}
   .modal input[type=date]{color-scheme:dark}
   .modal .seg-toggle{gap:4px;padding:4px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1)}
-  .modal .seg-toggle button{position:relative;height:36px;padding:0 6px;border-radius:10px;color:#8b90a0}
+  .modal .seg-toggle button{position:relative;height:31px;padding:0 6px;border-radius:10px;color:#8b90a0}
   .modal .seg-toggle button.on{background:rgba(255,255,255,.12);color:#fff}
   .modal .seg-toggle button.on::after{content:'';position:absolute;left:28%;right:28%;bottom:3px;height:2px;border-radius:2px;background:var(--uline,#22d3ee);background-size:300% 100%;animation:og-flow 2.4s linear infinite}
 </style>
@@ -916,6 +923,7 @@ body:has(.overlay.open){overflow:hidden}
   <div class="brand og-brand">
     <svg class="og-mark" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="ogMarkGrad" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#818cf8"/><stop offset=".5" stop-color="#22d3ee"/><stop offset="1" stop-color="#f472b6"/></linearGradient></defs><path class="og-roof" d="M10 50L50 16l40 34"/><path class="og-run" d="M10 50L50 16l40 34"/><g class="og-p og-p1"><g transform="translate(30 70) scale(.95)"><circle cx="0" cy="-9" r="7" fill="#818cf8"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#818cf8"/></g></g><g class="og-p og-p2"><g transform="translate(50 66) scale(1.15)"><circle cx="0" cy="-9" r="7" fill="#22d3ee"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#22d3ee"/></g></g><g class="og-p og-p3"><g transform="translate(70 70) scale(.95)"><circle cx="0" cy="-9" r="7" fill="#f472b6"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#f472b6"/></g></g><path class="og-link" d="M24 92H76"/><path class="og-linkrun" d="M24 92H76"/></svg>
     <div class="og-name"><b>Interactive <span>Manager</span></b><small data-i18n>Connecting people and business</small><small class="og-roofline" data-i18n>Everything under one roof</small></div>
+    <div class="save-indicator saved" id="saveIndicator"><div class="save-dot"></div><span data-i18n>Saved</span></div>
   </div>
   <div class="top-tabs">
     <div class="ttab active" id="tabDashboard" style="--k:#22d3ee" onclick="switchTab('dashboard')"><span class="ic"><i class="ti ti-home"></i></span><span class="lb" data-i18n>Today</span></div>
@@ -928,9 +936,6 @@ body:has(.overlay.open){overflow:hidden}
     <div class="ttab" id="tabMore" style="--k:#f472b6" onclick="openMoreSheet()"><span class="ic"><i class="ti ti-dots-vertical"></i></span><span class="lb" data-i18n>More</span></div>
   </div>
   <div class="titlebar-actions">
-    <div class="save-indicator saved" id="saveIndicator">
-      <div class="save-dot"></div><span data-i18n>Saved</span>
-    </div>
     <!-- The account menu (header variant C, per user request 2026-10-11): one
          button with the name; inside it install, language, my name, sign out. -->
     <button type="button" class="gbtn icon og-bell" id="bellBtn" onclick="toggleBell(event)" title="Notifications" data-i18n-title="Notifications" aria-label="Notifications" style="display:none"><i class="ti ti-bell"></i><span class="og-bell-n" id="bellCount"></span></button>
@@ -4750,8 +4755,12 @@ function noticeChipsHtml(w, ns, all){
   if(!ns.length) return '';
   const on=`onclick="event.stopPropagation();openNotices('${esc(w.id)}')"`;
   const chip=n=>`<button type="button" class="nchip ${n.lvl}" ${on}><i class="ti ${n.lvl==='red'?'ti-alert-circle':'ti-alert-triangle'}"></i>${esc(n.word)}</button>`;
-  return all ? ns.map(chip).join('') : chip(ns[0])+(ns.length>1?`<button type="button" class="nchip more" ${on}>+${ns.length-1}</button>`:'');
+  return all ? ns.map(chip).join('') : chip(ns[0])+noticeMoreHtml(w,ns);
 }
+// The worker plate (owner's design 2026-10-13): the first chip on its own line
+// under the name, the "+N" chip after the name.
+function noticeFirstHtml(w, ns){ return ns.length ? `<span class="wp-chip1">${noticeChipsHtml(w,[ns[0]],true)}</span>` : ''; }
+function noticeMoreHtml(w, ns){ return ns.length>1 ? `<button type="button" class="nchip more" onclick="event.stopPropagation();openNotices('${esc(w.id)}')">+${ns.length-1}</button>` : ''; }
 // Workers deleted but still inside their Undo time: left out of the list.
 const __workerDelPending=new Set();
 let __workersShownIds=[];
@@ -4764,8 +4773,8 @@ function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
   const plate=({w,wi})=>{
     const t=workerToday(w,todayLog), ns=workerNotices(w,t), id=esc(w.id), site=workerSiteName(w);
     return t3Line({c:workerBarColor(w,ns), cls:'wplate tap-edit', av:t3Av(w),
-      name:`<span class="wp-n" title="${esc(w.name)}">${esc(w.name)}</span>${noticeChipsHtml(w,ns)}${newWorkerBadgeHtml(w)}`,
-      sub:[site?`<span class="site">${esc(site)}</span>`:'', workerTodayHtml(t)].filter(Boolean).join('<span class="dot">·</span>'),
+      name:`<span class="wp-n" title="${esc(w.name)}">${esc(w.name)}</span>${noticeMoreHtml(w,ns)}${newWorkerBadgeHtml(w)}`,
+      sub:[noticeFirstHtml(w,ns), [site?`<span class="site">${esc(site)}</span>`:'', workerTodayHtml(t)].filter(Boolean).join('<span class="dot">·</span>')],
       right:`<span class="r">${esc(fmtHoursShort(hours[w.id]))}</span>`,
       attrs:`data-wid="${id}" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))"`,
       sel: can?w.id:null,
@@ -4894,8 +4903,7 @@ function renderWorkersPage(){
       return text.includes(q) || (qNum.length>=2 && docNo.includes(qNum));
     });
   }
-  document.getElementById('workersCount').innerHTML=`<span class="sec-lbl">${esc(tr('Workers'))}</span> <em style="font-style:normal;color:var(--text3)">${list.length}</em>`
-    +(!stFilter&&inactiveN?` · <a href="#" class="inactive-link" onclick="event.preventDefault();showInactiveWorkers()">${esc(tr('Inactive: {n} — show',{n:inactiveN}))}</a>`:'')
+  document.getElementById('workersCount').innerHTML=(!stFilter&&inactiveN?`<a href="#" class="inactive-link" onclick="event.preventDefault();showInactiveWorkers()">${esc(tr('Inactive: {n} — show',{n:inactiveN}))}</a>`:'')
     ;
   const tc=document.getElementById('workersTitleCount'); if(tc) tc.textContent=list.length;
   renderWorkersTabs();
@@ -8695,7 +8703,7 @@ function renderSalary(){
     const picked=!payOnly&&__selState&&__selState.key==='salary'&&__selState.picked.has(String(e.workerId));
     return `<div class="sal-row tap-edit${__salOpen.has(e.workerId)?' open':''}${picked?' picked':''}" style="--c:${lc}" data-wid="${wid}"${payOnly?'':` data-sel-id="${wid}"`} onclick="tapEdit(event,this,()=>toggleSalRow(this),()=>openPayModal('${wid}'))" onpointerdown="longPress(event,this,()=>openPayModal('${wid}'))">
       <div class="sal-line">
-        <span class="c-name">${payOnly?'':'<span class="t3-cb"><span class="og-box"></span></span>'}<span class="sal-av" style="background:${c.bg};color:${c.text}">${ini}</span><span class="sal-nm" onclick="event.stopPropagation();openWorkerCardById('${wid}')">${esc(e.worker)}</span>${e.warns&&e.warns.length?`<i class="ti ti-alert-triangle" style="color:var(--amber);font-size:14px" title="${e.warns.join('&#10;').replace(/"/g,'&quot;')}"></i>`:''}</span>
+        <span class="c-name">${payOnly?'':'<span class="t3-cb"><span class="og-box"></span></span>'}<span class="sal-nm" onclick="event.stopPropagation();openWorkerCardById('${wid}')">${esc(e.worker)}</span>${e.warns&&e.warns.length?`<i class="ti ti-alert-triangle" style="color:var(--amber);font-size:14px" title="${e.warns.join('&#10;').replace(/"/g,'&quot;')}"></i>`:''}</span>
         <span class="c-h">${esc(tr('{h}h',{h:e.hours.toFixed(1)}))}</span>
         <span class="c-t" style="color:${tot>0?'var(--green)':'var(--text3)'}">${tot>0?money(tot):'—'}</span>
         <i class="ti ti-chevron-down sal-chev"></i>
