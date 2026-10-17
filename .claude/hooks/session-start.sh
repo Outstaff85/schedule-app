@@ -5,7 +5,9 @@
 #   - branch with no commits of its own beyond origin/main -> fast-forwarded to origin/main;
 #   - otherwise -> fast-forwarded to its own origin/<branch> if that is strictly ahead;
 #   - anything else (own unmerged commits) -> left alone, only reported.
-cd "$CLAUDE_PROJECT_DIR" 2>/dev/null || exit 0
+# Also run outside Claude Code by the local PC's scheduled sync (scripts/install-local-sync.ps1),
+# where CLAUDE_PROJECT_DIR is unset and the repo root is found from this file's own path.
+cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/../..}" 2>/dev/null || exit 0
 
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 note=""
