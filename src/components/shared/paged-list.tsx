@@ -4,7 +4,8 @@
 // - the next 10 come when that row is tapped, or when a scroll that follows the
 //   user's own input (wheel, touch, a key, a pointer press) brings it into view;
 // - an upward input (wheel up, a finger moving down, ↑ / PageUp / Home) never
-//   loads, even with the row in view;
+//   loads, even with the row in view, nor does a scroll that moves up (the
+//   page getting shorter under the reader);
 // - a downward wheel / swipe / key while the row is already in view loads too
 //   (a list too short to scroll fires no scroll event);
 // - each input allows one page at most (a scroll the browser fires after the
@@ -72,7 +73,18 @@ function wire() {
       else if (t === 'pointerdown' && (e as PointerEvent).pointerType === 'mouse') up = false;
       if (down) onScroll();
     }, opts));
-  window.addEventListener('scroll', onScroll, opts);
+  // A scroll that moves up never loads — also the one the browser fires when
+  // the page gets shorter under the reader (a tab change clamps it).
+  const lastTop = new WeakMap<Element, number>();
+  window.addEventListener('scroll', (e: Event) => {
+    const t = e.target, el = t instanceof Element ? t : document.scrollingElement;
+    if (el) {
+      const top = el.scrollTop, prev = lastTop.get(el) ?? top;
+      lastTop.set(el, top);
+      if (top < prev) return;
+    }
+    onScroll();
+  }, opts);
 }
 
 export function PagedList<T>({ items, render, size = PAGE, empty, columns }: {

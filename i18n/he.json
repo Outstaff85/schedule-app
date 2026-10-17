@@ -986,7 +986,6 @@
   "Show all": "הצג הכול",
   "1 shift": "משמרת אחת",
   "{n} shifts": "{n} משמרות",
-  "A worker's arrow opens the week · a day opens its shift": "החץ של עובד פותח את השבוע · יום פותח את המשמרת",
   "Previous week": "השבוע הקודם",
   "Next week": "השבוע הבא",
   "Select": "בחירה",
@@ -1218,5 +1217,19 @@
   "GPS suspicious": "מיקום GPS חשוד",
   "Back to the gallery": "חזרה לגלריה",
   "Plates in three columns": "לוחיות בשלוש עמודות",
-  "Frame (V7)": "מסגרת (V7)"
+  "Frame (V7)": "מסגרת (V7)",
+  "{0} added": "נוספו {0}",
+  "Repeat this week": "חזרה על השבוע",
+  "Copy last week": "העתקת השבוע הקודם",
+  "This week's shifts go to the next weeks. Days that already have a shift keep it.": "המשמרות של השבוע הזה יועתקו לשבועות הבאים. ימים שכבר יש בהם משמרת נשארים כפי שהם.",
+  "Last week's shifts go to this week. Days that already have a shift keep it.": "המשמרות של השבוע הקודם יועתקו לשבוע הזה. ימים שכבר יש בהם משמרת נשארים כפי שהם.",
+  "Add {0}": "הוספת {0}",
+  "For how many weeks": "לכמה שבועות",
+  "Nothing to add: every day already has its shift, or there are no shifts to copy.": "אין מה להוסיף: לכל יום כבר יש משמרת, או שאין משמרות להעתקה.",
+  "A worker's line opens the week · a day opens its shift": "שורת עובד פותחת את השבוע · יום פותח את המשמרת שלו",
+  "Repeat for N weeks": "חזרה ל־N שבועות",
+  "No one on the schedule": "אין אף אחד בסידור",
+  "This site has no active workers.": "אין באתר הזה עובדים פעילים.",
+  "Workers with working days show here; pick a site to see all its workers.": "כאן מופיעים עובדים עם ימי עבודה; בחרו אתר כדי לראות את כל העובדים שלו.",
+  "Add a worker": "הוספת עובד"
 }
