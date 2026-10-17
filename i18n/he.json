@@ -1196,5 +1196,20 @@
   "The mark is removed": "הסימון הוסר",
   "Sent to your manager": "נשלח למנהל",
   "The offer is withdrawn": "ההצעה בוטלה",
-  "Could not send — no connection": "השליחה נכשלה — אין חיבור"
+  "Could not send — no connection": "השליחה נכשלה — אין חיבור",
+  "Signed {date} — {name}": "נחתם {date} — {name}",
+  "Signed PDF": "PDF חתום",
+  "Could not open the file": "לא ניתן לפתוח את הקובץ",
+  "Sign here": "חתמו כאן",
+  "Sign here with your finger": "חתמו כאן באצבע",
+  "Sign again": "חתימה מחדש",
+  "Sign the month": "חתימה על החודש",
+  "Signed — the month is saved for the firm": "נחתם — החודש נשמר אצל החברה",
+  "Sign and save": "חתימה ושמירה",
+  "Your signature confirms the hours of this month; the signed PDF is kept with your documents at the firm.": "החתימה מאשרת את שעות החודש; קובץ ה־PDF החתום נשמר במסמכים שלכם אצל החברה.",
+  "Page {n}": "עמוד {n}",
+  "Monthly hours": "שעות חודשיות",
+  "I approve the hours of this month.": "אני מאשר/ת את שעות החודש.",
+  "Signed by {name}": "נחתם על ידי {name}",
+  "Signature pad": "משטח חתימה"
 }

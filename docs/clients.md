@@ -6,6 +6,8 @@ Clients (sites/objects where workers work): the Clients tab, the client modal, t
 
 Global `clients` array. It is saved with the schedule; each client is one document `tenants/{t}/clients/{id}`.
 
+The client's documents are in Storage under `tenants/{t}/clients/{id}/documents/`: its signed months (`hours-<YYYY-MM>-signed.pdf`, signed in the client portal — [hours-review.md](hours-review.md) → Signing the month), opened from Accounting → Hours approvals.
+
 | Field | Meaning |
 |---|---|
 | `id`, `name`, `color` (from `CLIENT_COLORS`) | |

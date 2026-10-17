@@ -22,9 +22,9 @@ export async function signedMonthPages(data: HoursData, days: DayRow[], signatur
   const owner = data.owner ? [data.owner.name, data.owner.object].filter(Boolean).join(' · ') : '';
   const month = monthStart(data.month).toLocaleDateString(uiLocale(), { month: 'long', year: 'numeric' });
   const total = days.reduce((t, r) => t + r.hours, 0);
-  const cols = [M, M + 250, M + 620, M + 860, M + 990]; // date, worker, shifts, hours, state
+  const cols = [M, M + 240, M + 580, M + 800, M + 910]; // date, worker, shifts, hours, state
   const pages: string[] = [];
-  let c: HTMLCanvasElement, g: CanvasRenderingContext2D, y = 0;
+  let c = document.createElement('canvas'), g = c.getContext('2d')!, y = 0;
 
   const text = (s: string, x: number, yy: number, size = 22, weight = 400, color = '#10213a', max?: number) => {
     g.font = `${weight} ${size}px ${FONT}`; g.fillStyle = color;
@@ -52,8 +52,8 @@ export async function signedMonthPages(data: HoursData, days: DayRow[], signatur
     if (y > H - M - 60) { finish(); newPage(); }
     const st = STATES[dayState(data, r).st];
     text(r.date.toLocaleDateString(uiLocale(), { weekday: 'short', day: '2-digit', month: 'short' }), cols[0], y, 21);
-    text(name(r.workerId), cols[1], y, 21, 600, '#10213a', 350);
-    text(r.shifts.map(s => (s.inT || '--:--') + '–' + (s.outT || '--:--')).join(', '), cols[2], y, 21, 400, '#10213a', 230);
+    text(name(r.workerId), cols[1], y, 21, 600, '#10213a', 330);
+    text(r.shifts.map(s => (s.inT || '--:--') + '–' + (s.outT || '--:--')).join(', '), cols[2], y, 21, 400, '#10213a', 210);
     text(r.hours.toFixed(2), cols[3], y, 21);
     text(tr(st.pill), cols[4], y, 19, 600, '#33445c', W - M - cols[4]);
     line(y + 12);

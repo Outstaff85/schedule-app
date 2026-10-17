@@ -28,7 +28,7 @@ Project `schedule-odinson`; Firestore and the `functions-auth` functions in **eu
 
 Indexes (`firestore.indexes.json`): punches `workerId + ts`, `hrId + ts` (an own-workers HR's punch queries) and `clientId + ts` (the client portal's month); pendingHours `status + createdAt desc`; a single-field override on `workers.token` with collection-group scope (needed by `punch`).
 
-**Storage:** `tenants/<t>/workers/<workerId>/{form101|assets|docs}/<ms>-<name>`. The object path is the file id kept on the worker (`docFileId`, `assetsFileId`, `docs[].fileId`); the PDF and documents also get a download URL (`docUrl`, `docs[].url`), the sidecar does not.
+**Storage:** `tenants/<t>/workers/<workerId>/{form101|assets|docs}/<ms>-<name>`; a client's signed months at `tenants/<t>/clients/<clientId>/documents/hours-<YYYY-MM>-signed.pdf` (written only by the `hours` function's `sign`, read by the managers — `storageUrl(path)`). The object path is the file id kept on the worker (`docFileId`, `assetsFileId`, `docs[].fileId`); the PDF and documents also get a download URL (`docUrl`, `docs[].url`), the sidecar does not.
 
 ## Browser data layer (`firestore-backend.js`)
 

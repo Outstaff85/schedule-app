@@ -8921,6 +8921,9 @@ async function renderHourApprovals(period){
   renderPagedList(wrap.querySelector('.paged-approvals'),'approvals',month,docs,doc=>{
     const {lines,open,done,total}=hourApprovalSummary(doc, month), [kIcon,kLabel]=HOUR_KIND[doc.kind]||HOUR_KIND.client;
     const allOk=!open.length&&done>=total;
+    // A client's signed month (hours.py sign): the PDF in its documents.
+    const sg=doc.kind==='client'&&doc.signed&&doc.signed.path?doc.signed:null;
+    const signed=sg?`<div class="hour-appr-signed" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12px;margin-top:6px;color:var(--green)"><i class="ti ti-signature"></i> ${esc(tr('Signed {date} — {name}',{date:new Date(sg.at).toLocaleString(uiLocale(),{dateStyle:'medium',timeStyle:'short'}),name:sg.byName||''}))}<button class="btn sm" style="margin-left:auto" onclick="openSignedHours('${esc(sg.path)}')"><i class="ti ti-file-type-pdf"></i> ${esc(tr('Signed PDF'))}</button></div>`:'';
     const items=open.map(({k,e,st})=>{
       const [wid,day]=k.split('|'), [col,icon,label]=HOUR_ST[st]||HOUR_ST.pending, now=(lines[k]||'').split('|');
       const times=now.length===4?now[2].split(',').map((x,i)=>(x||'--:--')+'–'+(now[3].split(',')[i]||'--:--')).join(', '):'';
@@ -8932,8 +8935,14 @@ async function renderHourApprovals(period){
       <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
         <div style="font-weight:600"><i class="ti ${kIcon}" style="color:var(--text2)"></i> ${esc(doc.ownerName||doc.ownerId)} <span style="font-size:11px;color:var(--text3);font-weight:500">${esc(tr(kLabel))}</span></div>
         <div style="font-size:12px;font-weight:600;color:${allOk?'var(--green)':open.length?'var(--amber)':'var(--text2)'}"><i class="ti ${allOk?'ti-circle-check':open.length?'ti-alert-triangle':'ti-clock'}"></i> ${esc(tr('{done} of {n} days approved',{done,n:total}))}</div>
-      </div>${items}</div>`;
+      </div>${signed}${items}</div>`;
   });
+}
+// A client's signed month: the PDF opens in a new tab (storage.rules: the firm's managers read).
+async function openSignedHours(path){
+  const win=window.open('', '_blank');
+  try{ const url=await (await loadFirestoreBackend()).storageUrl(path); if(win) win.location.href=url; else location.href=url; }
+  catch(e){ if(win) win.close(); showToast(tr('Could not open the file')); }
 }
 // A proposed fix accepted (the shift's punches get the new times) or rejected.
 async function resolveHourFix(docId, key, accept){

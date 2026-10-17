@@ -34,6 +34,8 @@ export interface HoursData {
   workers?: HoursWorker[];
   punches?: HoursPunch[];
   days?: Record<string, DayEntry>;
+  /** a client's signed month (sign): when and by whom */
+  signed?: { at?: string; byName?: string };
   error?: string;
 }
 export type HoursCall = (body: Record<string, unknown>) => Promise<HoursData & { ok?: boolean }>;

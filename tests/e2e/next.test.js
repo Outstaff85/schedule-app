@@ -35,7 +35,7 @@ const server = http.createServer((req, res) => {
 const DEMOS = {
   controls: ['button', 'input', 'select', 'checkbox', 'toggle-group', 'form'],
   lists: ['plate', 'plate-sizes', 'empty'],
-  windows: ['window', 'menu', 'account', 'sheet'],
+  windows: ['window', 'signature', 'menu', 'account', 'sheet'],
   feedback: ['alert', 'toast', 'progress'],
   data: ['table', 'data-table', 'calendar', 'card'],
   layout: ['tabs', 'accordion', 'collapsible'],
