@@ -8,11 +8,8 @@ import type { SWorker } from './api';
 
 export interface SheetRow { worker: string; date: string; inTime: string; outTime: string }
 
-declare global { interface Window { XLSX?: typeof import('xlsx') } }
-
 export async function parseTimesheetFile(file: File): Promise<SheetRow[]> {
   await loadScript(XLSX_URL);
-  const XLSX = window.XLSX!;
   let buf: ArrayBuffer;
   try { buf = await file.arrayBuffer(); } catch { throw new Error(tr('Could not read the file')); }
   const wb = XLSX.read(buf, { type: 'array', cellDates: true });
