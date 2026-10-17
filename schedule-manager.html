@@ -2719,16 +2719,26 @@ function renderShiftRequests(){
 }
 async function decideShiftRequest(id,ok){
   const q=__shiftReqs.find(x=>x.id===id); if(!q||!hasPermission('schedule')) return;
+  // Confirming changes both workers' dates and the request in one write
+  // (firestore-backend.js): either all of it is saved or nothing, and the
+  // dates are put back here if it fails.
+  let a=null, b=null, before=null, body={action:'decideShiftRequest',id,status:ok?'confirmed':'declined'};
   if(ok){
-    const a=workers.find(w=>w.id===q.workerId), b=workers.find(w=>w.id===q.toWorkerId);
+    a=workers.find(w=>w.id===q.workerId); b=workers.find(w=>w.id===q.toWorkerId);
+    // An own-workers HR's list holds only its own workers: a colleague of another HR isn't found here (the manager hands that shift over).
     if(!a||!b){ showToast(tr('This worker is not in your list')); return; }
+    before=[a.dateShifts, b.dateShifts];
     a.dateShifts=pruneDateShifts(Object.assign({}, a.dateShifts, {[q.date]:{type:'off',start:null,end:null}}));
     b.dateShifts=pruneDateShifts(Object.assign({}, b.dateShifts, {[q.date]:{type:'work',start:q.start,end:q.end}}));
-    autoSave();
+    Object.assign(body, {schedule:getDataObj(), workerIds:[a.id, b.id]});
   }
   let j=null;
-  try{ j=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'decideShiftRequest',id,status:ok?'confirmed':'declined'})})).json(); }catch(e){}
-  if(!j||!j.ok){ showToast(tr('Could not save the decision')); loadShiftRequests(true); return; }
+  try{ j=await (await fetch(API_URL,{method:'POST',body:JSON.stringify(body)})).json(); }catch(e){}
+  if(!j||!j.ok){
+    if(before){ a.dateShifts=before[0]; b.dateShifts=before[1]; render(); }
+    showToast(tr('Could not save the decision')); loadShiftRequests(true); return;
+  }
+  if(ok) autoSave(); // nothing left to write; refreshes this device's cache
   q.status=ok?'confirmed':'declined';
   render(); showToast(ok?tr('Shift handed over'):tr('Offer declined'));
 }
@@ -6914,7 +6924,7 @@ async function deleteUserNow(id, quiet){
 // A worker's hrId is the uid of the HR login it belongs to. Only the firm's
 // owner or a super-admin assigns it: here (the HR's card: list, unassign,
 // "Add workers") or in the worker modal's HR field. Reassigning also moves
-// the worker's past punches to the new HR (setPunchesHr).
+// the worker's past punches, days off and shift offers to the new HR (setPunchesHr).
 // The HR list comes from the cached users list. It is loaded on first need
 // (worker modal, a worker tile or card with an HR) — not at every app open —
 // once per app open; meanwhile the cache from the last time is used.

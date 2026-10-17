@@ -379,14 +379,23 @@ test('shiftRequests: the punch function writes; managers read; a schedule writer
     await assertFails(setDoc(r(u, 'new'), swap));
     await assertFails(deleteDoc(r(u, 'u1')));
   }
-  // A decision: only status / decidedAt / decidedBy, only on a pending offer, only confirmed or declined.
-  const ok = { status: 'confirmed', decidedAt: 'now', decidedBy: 'me' };
-  await assertFails(updateDoc(r('staffNone', 's1'), ok));
-  await assertFails(updateDoc(r('staffSched', 's1'), { ...ok, start: '06:00' }));
-  await assertFails(updateDoc(r('staffSched', 's1'), { status: 'approved' }));
-  await assertFails(updateDoc(r('ownerA', 'u1'), { status: 'confirmed' }));
-  await assertFails(updateDoc(r('hrOwn', 's2'), ok));          // its worker, but no schedule section
-  await assertSucceeds(updateDoc(r('staffSched', 's1'), ok));
-  await assertFails(updateDoc(r('ownerA', 's1'), { status: 'declined' }));  // already decided
-  await assertSucceeds(updateDoc(r('ownerA', 's2'), { status: 'declined', decidedAt: 'now' }));
+  // A decision: only status / decidedAt / decidedBy / decidedByUid (the decider's own uid), only on a pending offer, only confirmed or declined.
+  const ok = u => ({ status: 'confirmed', decidedAt: 'now', decidedBy: 'me', decidedByUid: who[u].uid });
+  await assertFails(updateDoc(r('staffNone', 's1'), ok('staffNone')));
+  await assertFails(updateDoc(r('staffSched', 's1'), { ...ok('staffSched'), start: '06:00' }));
+  await assertFails(updateDoc(r('staffSched', 's1'), { status: 'approved', decidedByUid: who.staffSched.uid }));
+  await assertFails(updateDoc(r('staffSched', 's1'), { ...ok('staffSched'), decidedByUid: who.ownerA.uid }));  // someone else's uid
+  await assertFails(updateDoc(r('staffSched', 's1'), { status: 'confirmed', decidedAt: 'now', decidedBy: 'me' }));  // no uid
+  await assertFails(updateDoc(r('ownerA', 'u1'), { status: 'confirmed', decidedByUid: who.ownerA.uid }));
+  await assertFails(updateDoc(r('hrOwn', 's2'), ok('hrOwn')));          // its worker, but no schedule section
+  await assertSucceeds(updateDoc(r('staffSched', 's1'), ok('staffSched')));
+  await assertFails(updateDoc(r('ownerA', 's1'), { status: 'declined', decidedByUid: who.ownerA.uid }));  // already decided
+  await assertSucceeds(updateDoc(r('ownerA', 's2'), { status: 'declined', decidedAt: 'now', decidedByUid: who.ownerA.uid }));
+  // Reassigning the worker's HR: the owner moves only hrId; nobody else, and nothing else on that path.
+  await assertSucceeds(updateDoc(r('ownerA', 'u1'), { hrId: 'u-hrAll' }));
+  await assertSucceeds(updateDoc(r('superadmin', 'u1'), { hrId: 'u-hrOwn' }));
+  await assertFails(updateDoc(r('staffSched', 'u1'), { hrId: 'u-staffSched' }));
+  await assertFails(updateDoc(r('hrOwn', 'u1'), { hrId: 'u-hrOwn2' }));
+  await assertFails(updateDoc(r('ownerA', 'u1'), { hrId: 'u-hrAll', status: 'gone' }));
+  await assertFails(updateDoc(r('ownerB', 'u1'), { hrId: 'x' }));
 });
