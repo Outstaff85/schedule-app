@@ -70,6 +70,7 @@ It returns:
 - `loadSchedule` / `loadPunchLog` for another firm (super-admin summary): `loadSchedule(t, false)`; punches from the 1st of this month minus 7 days (`punchesOnce`).
 - `deletePunchesByMonths` — `tenant_admin` / `superadmin` only; per month, punches with `day` in the month plus punches without `day` whose `ts` is in it.
 - `setPunchesHr` (`{workerIds, hrId}`) — owner / super-admin only: sets (or clears) `hrId` on every punch of those workers.
+- Workers' requests (stage 5b): `loadShiftRequests` — refused for a supplier or client login; the firm's `shiftRequests` with `date` from today on (an own-workers HR only those with its `hrId`) → `{ok, requests:[{id, …}]}`. `decideShiftRequest` (`{id, status}`) — sets `status` to `confirmed` (anything else → `declined`) with `decidedAt` and `decidedBy` (the username); the rules allow it only on a pending offer and only to a schedule writer. The schedule change itself is saved by the app as workers ([app-core.md](app-core.md) → Schedule tab).
 - Hours queue: `savePendingHoursBatch` (refused for a supplier), `loadPendingHours` (all batches; an own-workers HR only its own), `approvePendingHours` (approver only; for every row an IN and an OUT punch, with the worker's `hrId`, `imp-<batch>-<row>-in|out` with `notes: 'Imported from <file>'` and the batch status in **one** batch write, so approving twice creates nothing new), `rejectPendingHours`.
 
 ## Cloud Functions — `functions-auth/` (codebase `auth`, europe-west3)
