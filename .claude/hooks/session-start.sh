@@ -44,7 +44,7 @@ $status"
 
 py=$(command -v python3 || command -v python)
 if [ -n "$py" ]; then
-  CTX="$ctx" "$py" -c 'import json,os;print(json.dumps({"hookSpecificOutput":{"hookEventName":os.environ["EV"],"additionalContext":os.environ["CTX"]}}))'
+  EV="$event" CTX="$ctx" "$py" -c 'import json,os;print(json.dumps({"hookSpecificOutput":{"hookEventName":os.environ["EV"],"additionalContext":os.environ["CTX"]}}))'
 else
   printf '%s\n' "$ctx"
 fi
