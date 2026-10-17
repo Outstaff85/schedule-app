@@ -1,7 +1,17 @@
 {
   "name": "schedule-app",
   "private": true,
-  "type": "module",
+  "description": "The new stack (docs/build.md): React + Vite + TypeScript + Tailwind + shadcn/ui in src/, built with the old pages into dist/ for Firebase Hosting.",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build && node scripts/copy-static.mjs",
+    "preview": "vite preview",
+    "check:build": "node tests/build/check.js"
+  },
   "dependencies": {
     "clsx": "^2.1.1",
     "react": "^19.3.1",
