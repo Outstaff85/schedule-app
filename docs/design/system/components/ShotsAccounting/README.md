@@ -1,0 +1,1 @@
+Real phone screens (390px) of the four Accounting tabs and how they link: the period switcher and figures stay on every tab; the active tab is a glass pill with the gradient line; Alerts shows its red count. The bottom bar highlights Accounting in amber.

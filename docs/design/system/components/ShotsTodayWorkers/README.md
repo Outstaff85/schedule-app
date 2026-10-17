@@ -1,0 +1,1 @@
+Real screens of Today and Workers on a phone and on a computer. On a computer the tabs are at the top with the Saved dot, bell, Language button and account menu at the right, and the Schedule sidebar lists workers with a client filter.

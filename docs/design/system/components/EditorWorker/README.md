@@ -1,0 +1,3 @@
+The worker editor: the same shape as every editor. A head with the initials disc (ringed in the worst status color), name, "site · today's punch · month hours", notice chips, a scan button and ⋮.
+
+Sections in this order: **Person** (names, ID or passport, sex, marital status, health fund, birth date, phone; labels in Hebrew for Form 101), **Address**, **Work** (clients, supplier, HR, start date, weekly schedule), **Documents**, **Form 101** (income types, spouse, children, signature), **Access** (punch link). A field the scan did not find has an amber frame and a search prompt. There is no money field: pay is set in the Pay window. No Save button; closing saves.

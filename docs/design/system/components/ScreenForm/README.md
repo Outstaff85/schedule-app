@@ -1,0 +1,1 @@
+The pattern of every form: short fields in pairs, long fields alone, choices of two to four as a segmented switch with the gradient line, options as tick tiles, long forms split by section headings, one primary button at the end. A window with no Save button saves itself when it is closed.
