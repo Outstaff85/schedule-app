@@ -16,6 +16,19 @@ branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 note=""
 quiet=""
 
+# UserPromptSubmit: at most one sync per THROTTLE seconds, and a notice only when it differs
+# from the last one given (both kept inside .git, so nothing shows up in git status).
+THROTTLE=300
+gitdir=$(git rev-parse --git-dir 2>/dev/null)
+stamp="$gitdir/claude-sync-at"
+lastnote="$gitdir/claude-sync-note"
+now=$(date +%s)
+if [ "$event" = UserPromptSubmit ]; then
+  last=$(cat "$stamp" 2>/dev/null || echo 0)
+  [ $((now - last)) -lt $THROTTLE ] 2>/dev/null && exit 0
+fi
+echo "$now" > "$stamp" 2>/dev/null
+
 if ! git fetch -q origin 2>/dev/null; then
   note="git fetch failed (offline?) - checkout NOT synced with GitHub."
   quiet=1
