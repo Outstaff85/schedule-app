@@ -74,6 +74,9 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
    the pointerdown handler), the highlight line on hover and when .on. */
 .gbtn{position:relative;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:42px;padding:0 16px;border-radius:16px;background:var(--glass);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--glass-edge);color:#fff;font:600 14px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.25);-webkit-tap-highlight-color:transparent;white-space:nowrap;}
 .gbtn.primary{background:rgba(255,255,255,.28);}
+/* A create button (New, New user, New firm…) is plain glass, like a secondary
+   (owner 2026-10-17, template): every create button carries .og-new. */
+.gbtn.og-new{background:var(--glass);}
 .gbtn.icon{width:42px;padding:0;}
 .gbtn::after{content:'';position:absolute;top:0;left:-60%;width:40%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.45),transparent);transform:skewX(-20deg);pointer-events:none;}
 .gbtn.shine::after{left:130%;transition:left .6s;}
