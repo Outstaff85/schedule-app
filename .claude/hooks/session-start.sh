@@ -33,7 +33,10 @@ else
   ahead=$(git rev-list --count origin/main..HEAD 2>/dev/null)
   behind=$(git rev-list --count HEAD..origin/main 2>/dev/null)
   note="$branch has $ahead own commit(s) not in main and is $behind behind origin/main - not auto-updated; merge origin/main if needed."
+  [ "$behind" = 0 ] && quiet=1
 fi
+
+[ "$event" = UserPromptSubmit ] && [ -n "$quiet" ] && exit 0
 
 status=$(git status --short 2>/dev/null)
 ctx="git status for $PWD (branch: $branch): $note
