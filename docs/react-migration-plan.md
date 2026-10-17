@@ -1,6 +1,6 @@
 # React migration plan (proposal)
 
-**Status: proposal, not approved.** Nothing here changes the current rules ("no build step", CLAUDE.md) until the owner approves stage 0. The trial page (React + Vite + Tailwind + shadcn/ui in the Odinson Glass look) was published as a design artifact only; no code of it is in this repo.
+**Status: approved by the owner on 2026-10-17 as a full migration (no fallback).** The rules in CLAUDE.md ("no build step", "no modules") change in the stage 0 PR, not before; until that PR is merged they stand. The trial page (React + Vite + Tailwind + shadcn/ui in the Odinson Glass look) was published as a design artifact only; no code of it is in this repo.
 
 ## Why
 

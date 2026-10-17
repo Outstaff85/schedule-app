@@ -38,7 +38,7 @@ The backend is **Firestore + Firebase Storage + Cloud Functions**, and nothing e
 | [docs/translations.md](docs/translations.md) | any UI text: `tr()` / `data-i18n`, the dictionaries `i18n/<lang>.json`, the header Language button and its sheet, the check script, adding a language |
 | [docs/tests.md](docs/tests.md) | any test: the suites (dictionaries, icons, rules, functions, browser `tests/e2e/`), how to run them, the CI run on every PR, adding a check |
 | [docs/history.md](docs/history.md) | why things are the way they are: reverted approaches, debugging trails, fixed incidents |
-| [docs/react-migration-plan.md](docs/react-migration-plan.md) | the **proposed** React + Vite + Tailwind + shadcn/ui migration (not approved; the "no build" rule stands until it is) |
+| [docs/react-migration-plan.md](docs/react-migration-plan.md) | the approved full migration to React + Vite + Tailwind + shadcn/ui, stage by stage (the "no build" rule changes in the stage 0 PR) |
 | [docs/redesign.md](docs/redesign.md) | the chosen "Odinson Glass" redesign (being built stage by stage; status list inside): read before any visual change or redesign stage |
 
 Some code comments (the rules, `tests/`, older parts of the pages) still name these files by their old root paths (`FIRESTORE_PLAN.md`, `MULTI_TENANT_PLAN.md`, `HISTORY.md`, `form101-field-map.md`) or point at sections of the former long CLAUDE.md — the content is now in the files above.
