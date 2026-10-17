@@ -31,7 +31,7 @@ else
 fi
 
 status=$(git status --short 2>/dev/null)
-ctx="git status for $CLAUDE_PROJECT_DIR (branch: $branch): $note
+ctx="git status for $PWD (branch: $branch): $note
 $status"
 
 py=$(command -v python3 || command -v python)
