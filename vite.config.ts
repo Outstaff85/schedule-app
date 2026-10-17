@@ -14,6 +14,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': r('src') } },
   publicDir: false,
+  define: { __BUILD_TIME__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC') },
   // only the new pages: the old ones are plain scripts, not modules
   optimizeDeps: { entries: ['next/index.html'] },
   build: {
