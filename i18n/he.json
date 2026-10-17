@@ -1231,5 +1231,8 @@
   "No one on the schedule": "אין אף אחד בסידור",
   "This site has no active workers.": "אין באתר הזה עובדים פעילים.",
   "Workers with working days show here; pick a site to see all its workers.": "כאן מופיעים עובדים עם ימי עבודה; בחרו אתר כדי לראות את כל העובדים שלו.",
-  "Add a worker": "הוספת עובד"
+  "Add a worker": "הוספת עובד",
+  "EXPIRED": "פג תוקף",
+  "EXPIRING SOON": "עומד לפוג",
+  "Add a worker by hand or scan a passport / ID.": "הוסיפו עובד ידנית או סרקו דרכון / תעודת זהות."
 }

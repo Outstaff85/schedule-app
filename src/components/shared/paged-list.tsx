@@ -87,6 +87,23 @@ function wire() {
   }, opts);
 }
 
+/**
+ * The paging state of a list: how many rows are shown, and the ref for its
+ * "Show more" row — a scroll the user started that brings that row into view
+ * shows the next page (the rules above). The Data Table pages its rows with it.
+ */
+export function usePaging(size = PAGE) {
+  const [shown, setShown] = React.useState(size);
+  const moreRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    wire();
+    const entry: Entry = { more: () => moreRef.current, next: () => setShown(s => s + size) };
+    lists.add(entry);
+    return () => { lists.delete(entry); };
+  }, [size]);
+  return { shown, setShown, moreRef };
+}
+
 export function PagedList<T>({ items, render, size = PAGE, empty, columns }: {
   items: T[];
   render: (item: T, index: number) => React.ReactNode;
@@ -95,16 +112,8 @@ export function PagedList<T>({ items, render, size = PAGE, empty, columns }: {
   /** V7: the plates in up to three columns on a wide computer screen (one on a phone) */
   columns?: boolean;
 }) {
-  const [shown, setShown] = React.useState(size);
-  const moreRef = React.useRef<HTMLDivElement>(null);
+  const { shown, setShown, moreRef } = usePaging(size);
   const left = items.length - shown;
-
-  React.useEffect(() => {
-    wire();
-    const entry: Entry = { more: () => moreRef.current, next: () => setShown(s => s + size) };
-    lists.add(entry);
-    return () => { lists.delete(entry); };
-  }, [size]);
 
   if (!items.length) return <>{empty ?? null}</>;
   return (

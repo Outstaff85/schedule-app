@@ -11,9 +11,8 @@ import {
   IconBeach, IconCash, IconChevronDown, IconChevronUp, IconCircleCheck, IconDownload, IconFilter, IconId, IconLayoutGrid, IconLink, IconList,
   IconPlus, IconScan, IconTrash, IconUserPlus, IconUsers, IconX,
 } from '@tabler/icons-react';
-import { tr, uiLocale } from '@/lib/i18n';
+import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import { useIsPhone } from '@/hooks/use-phone';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -79,7 +78,6 @@ function FilterSelect<V extends string>({ id, cap, value, opts, onChange, classN
 }
 
 export function Workers({ snap, api }: { snap: WorkersSnapshot; api: ManagerBridge }) {
-  const phone = useIsPhone();
   const [f, setF] = React.useState<Filters>(kept);
   const [view, setView] = React.useState<'cards' | 'list'>(() => (stored('workersView') === 'list' ? 'list' : 'cards'));
   const [open, setOpen] = React.useState(() => !!stored('workersFiltersOpen'));
@@ -171,7 +169,7 @@ export function Workers({ snap, api }: { snap: WorkersSnapshot; api: ManagerBrid
       const w = c.row.original;
       return (
         <span className="inline-flex gap-1">
-          {w.docUrl && <Button asChild size="icon-sm"><a href={w.docUrl} target="_blank" rel="noopener" aria-label={tr('Download')}><IconDownload className="size-4" /></a></Button>}
+          {w.docUrl && <Button asChild size="icon-sm"><a href={w.docUrl} target="_blank" rel="noopener" title={tr('Download the document (PDF from {0})', { 0: 'Firebase Storage' })} aria-label={tr('Download the document (PDF from {0})', { 0: 'Firebase Storage' })}><IconDownload className="size-4" /></a></Button>}
           {can && <Button size="icon-sm" variant="danger" aria-label={tr('Delete')} data-testid="worker-row-delete" onClick={() => remove([w.id])}><IconTrash className="size-4" /></Button>}
         </span>
       );
@@ -257,10 +255,7 @@ export function Workers({ snap, api }: { snap: WorkersSnapshot; api: ManagerBrid
         <Button size="sm" disabled={!sel.picked.size} data-testid="sel-vacation" onClick={() => { api.setStatus([...sel.picked], 'vacation'); sel.end(); }}><IconBeach className="size-4" />{tr('Vacation')}</Button>
         <Button size="sm" disabled={!sel.picked.size} data-testid="sel-active" onClick={() => { api.setStatus([...sel.picked], 'active'); sel.end(); }}><IconCircleCheck className="size-4" />{tr('Active')}</Button>
       </SelectBar>
-      {phone && null}
     </div>
   );
 }
 
-export const workersCount = (s: WorkersSnapshot) => s.workers.filter(isActive).length;
-export const fmtStart = (ymd: string) => (ymd ? new Date(ymd + 'T00:00').toLocaleDateString(uiLocale()) : '');

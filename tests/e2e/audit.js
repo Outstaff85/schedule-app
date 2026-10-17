@@ -99,7 +99,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     ];
     for(const [n, fn] of M){ await step(p, w, 'manager-' + n, fn); }
     // Select mode on the worker plates
-    await step(p, w, 'manager-workers-select', () => { switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); __selState.head.querySelector('[data-h="on"]').click(); document.querySelector('#workersCards .t3-cb').click(); });
+    await step(p, w, 'manager-workers-select', () => { switchTab('workers'); document.querySelector('#workersRoot [data-testid="workers-select"] button').click(); });
     await ctx.close();
     // Super-admin: firms, errors, timings
     ctx = await newCtx({viewport: vp}); p = await page(ctx);

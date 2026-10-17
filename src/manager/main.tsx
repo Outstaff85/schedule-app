@@ -1,8 +1,8 @@
 // The manager app's React pieces (docs/build.md → The manager's React pieces,
 // react-migration-plan.md → stage 6). schedule-manager.html is still an old
 // page; it loads this module (built as assets/manager.js) and draws a moved tab
-// through `window.ManagerIsland` — now the Today tab into #todayRoot and the
-// Schedule tab into #scheduleRoot. The data and the page's actions come
+// through `window.ManagerIsland` — now the Today tab into #todayRoot, the
+// Schedule tab into #scheduleRoot and the Workers list into #workersRoot. The data and the page's actions come
 // through `window.ManagerBridge` (bridge.ts).
 import { StrictMode, useSyncExternalStore, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
@@ -14,6 +14,7 @@ import { UndoHost } from '@/components/shared/undo';
 import { bridge, type ManagerBridge } from './bridge';
 import { Today } from './Today';
 import { Schedule } from './Schedule';
+import { Workers } from './Workers';
 
 // The styles go right before the page's og.css, so og.css still wins where they meet.
 const style = document.createElement('style');
@@ -56,8 +57,16 @@ function island<S>(rootId: string, read: (b: ManagerBridge) => S, draw: (snap: S
 }
 
 const renderToday = island('todayRoot', b => b.today(), (s, api) => <Today snap={s} api={api} />);
-const renderSchedule = island('scheduleRoot', b => b.schedule(), (s, api) => <><Schedule snap={s} api={api} /><UndoHost /></>);
+const renderSchedule = island('scheduleRoot', b => b.schedule(), (s, api) => <Schedule snap={s} api={api} />);
 
-window.ManagerIsland = { renderToday, renderSchedule };
+const renderWorkers = island('workersRoot', b => b.workers(), (s, api) => <Workers snap={s} api={api} />);
+
+// One Undo snack for every moved tab, outside the tabs' sections (a hidden tab must not hide it).
+const undoRoot = document.createElement('div');
+undoRoot.dataset.island = 'undo';
+document.body.append(undoRoot);
+createRoot(undoRoot).render(<StrictMode><UndoHost /></StrictMode>);
+
+window.ManagerIsland = { renderToday, renderSchedule, renderWorkers };
 // The page may have drawn a tab before this module arrived.
 window.dispatchEvent(new Event('manager-island-ready'));
