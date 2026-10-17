@@ -359,3 +359,34 @@ test('notifReads: a manager-side login reads and writes only its own read list',
   await assertFails(setDoc(doc(db('ownerA'), 'notifReads', me), { ids: Array.from({ length: 501 }, (_, i) => 'n' + i), at: 'x' }));
   await assertFails(getDoc(doc(db('anon'), 'notifReads', me)));
 });
+
+test('shiftRequests: the punch function writes; managers read; a schedule writer only confirms or declines a pending offer', async () => {
+  const swap = { kind: 'swap', workerId: 'w1', date: '2026-11-02', start: '08:00', end: '16:00', toWorkerId: 'w3', status: 'pending' };
+  await env.withSecurityRulesDisabled(async ctx => {
+    const d = ctx.firestore();
+    await setDoc(doc(d, 'tenants', A, 'shiftRequests', 's1'), swap);
+    await setDoc(doc(d, 'tenants', A, 'shiftRequests', 's2'), { ...swap, workerId: 'w2', hrId: 'u-hrOwn' });
+    await setDoc(doc(d, 'tenants', A, 'shiftRequests', 'u1'), { kind: 'unavailable', workerId: 'w1', date: '2026-11-03', status: 'active' });
+  });
+  const r = (who, id) => doc(db(who), 'tenants', A, 'shiftRequests', id);
+  // Read: managers of the firm; an own-workers hr only its workers'; never a supplier, a client or another firm.
+  for (const u of ['ownerA', 'staffNone', 'hrAll', 'superadmin']) await assertSucceeds(getDoc(r(u, 's1')));
+  await assertSucceeds(getDoc(r('hrOwn', 's2')));
+  await assertFails(getDoc(r('hrOwn', 's1')));
+  for (const u of ['supplierA', 'clientA', 'ownerB', 'anon']) await assertFails(getDoc(r(u, 's1')));
+  // Nobody creates or deletes one directly (the worker's link goes through the punch function).
+  for (const u of ['ownerA', 'superadmin', 'staffSched']) {
+    await assertFails(setDoc(r(u, 'new'), swap));
+    await assertFails(deleteDoc(r(u, 'u1')));
+  }
+  // A decision: only status / decidedAt / decidedBy, only on a pending offer, only confirmed or declined.
+  const ok = { status: 'confirmed', decidedAt: 'now', decidedBy: 'me' };
+  await assertFails(updateDoc(r('staffNone', 's1'), ok));
+  await assertFails(updateDoc(r('staffSched', 's1'), { ...ok, start: '06:00' }));
+  await assertFails(updateDoc(r('staffSched', 's1'), { status: 'approved' }));
+  await assertFails(updateDoc(r('ownerA', 'u1'), { status: 'confirmed' }));
+  await assertFails(updateDoc(r('hrOwn', 's2'), ok));          // its worker, but no schedule section
+  await assertSucceeds(updateDoc(r('staffSched', 's1'), ok));
+  await assertFails(updateDoc(r('ownerA', 's1'), { status: 'declined' }));  // already decided
+  await assertSucceeds(updateDoc(r('ownerA', 's2'), { status: 'declined', decidedAt: 'now' }));
+});

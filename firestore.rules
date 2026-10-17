@@ -147,6 +147,20 @@ service cloud.firestore {
         allow read: if manager(t);
         allow write: if false;
       }
+      // A worker's days off and shift offers (stage 5b): written only by the
+      // punch function from the worker's own link. Managers read them (an
+      // own-workers hr only its own workers', by hrId); a schedule writer
+      // confirms or declines a pending offer, changing nothing but its status
+      // and who / when decided (the schedule itself is written as a worker).
+      match /shiftRequests/{id} {
+        allow read: if manager(t) || (hrMine(t) && oldHr() == uid());
+        allow update: if (scheduleWriter(t) || (hrAll(t) && hrCan(t, 'schedule'))
+            || (hrMine(t) && hrCan(t, 'schedule') && oldHr() == uid()))
+          && resource.data.kind == 'swap' && resource.data.status == 'pending'
+          && request.resource.data.status in ['confirmed', 'declined']
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedAt', 'decidedBy']);
+        allow create, delete: if false;
+      }
       match /pendingHours/{id} {
         allow read: if manager(t) || (hrMine(t) && resource.data.createdBy == uid());
         // Submitted as pending by the caller themself; nothing reaches payroll
