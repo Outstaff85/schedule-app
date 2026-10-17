@@ -1,6 +1,8 @@
 # React migration plan (proposal)
 
-**Status: approved by the owner on 2026-10-17 as a full migration (no fallback).** The rules in CLAUDE.md ("no build step", "no modules") change in the stage 0 PR, not before; until that PR is merged they stand. The trial page (React + Vite + Tailwind + shadcn/ui in the Odinson Glass look) was published as a design artifact only; no code of it is in this repo.
+**Status: approved by the owner on 2026-10-17 as a full migration (no fallback).** Stage 0 (foundation) is built: CLAUDE.md's "no build step" / "no modules" rules are replaced by "new code goes to the new stack, old pages keep their style until their stage" (docs/build.md describes the build).
+
+Stage status: 0 Foundation — done · 1 Shared components — next · 2–7 — not started. The trial page (React + Vite + Tailwind + shadcn/ui in the Odinson Glass look) was published as a design artifact only; no code of it is in this repo.
 
 ## Why
 
@@ -46,7 +48,7 @@ GitHub Actions builds after the merge: `npm ci`, `npm run build`, deploy `dist/`
 Every stage is its own PR. It is mergeable on its own: the site keeps working, CI is green, and the old and new pages live side by side until the stage is done. Merging always needs the owner's approval.
 
 ### Stage 0. Foundation
-- Vite + TypeScript project beside the current pages; Tailwind with the shadcn variables mapped onto `tokens.json`; shadcn initialized, no components yet.
+- **Done.** Vite + TypeScript project beside the current pages; Tailwind with the shadcn variables mapped onto `tokens.json` (through `og.css`); shadcn initialized (`components.json`, `cn()`), no components yet.
 - Actions builds after the merge (`npm ci`, `npm run build`) and deploys `dist/` together with the existing static files; `firebase.json` and the workflow adjusted.
 - A test page `/next`.
 - **Mergeable when:** the live site works exactly as before and `/next` opens. **Decision point:** continue or stop.
