@@ -18,12 +18,12 @@ export default defineConfig({
   publicDir: false,
   define: { __BUILD_TIME__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC') },
   // only the new pages: the old ones are plain scripts, not modules
-  optimizeDeps: { entries: ['next/index.html'] },
+  optimizeDeps: { entries: ['next/index.html', 'client-portal.html'] },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
     rolldownOptions: {
-      input: { next: r('next/index.html') },
+      input: { next: r('next/index.html'), client: r('client-portal.html') },
     },
   },
 });

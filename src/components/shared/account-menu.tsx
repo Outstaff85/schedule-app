@@ -27,7 +27,7 @@ export function AccountMenu({ name, sub, onSignOut, children }: {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[230px]" data-testid="account-menu">
-        <DropdownMenuLabel className="grid">
+        <DropdownMenuLabel className="grid !normal-case !tracking-normal">
           <b className="truncate text-[13px] text-ink">{name}</b>
           {sub && <span className="truncate text-[11px] font-normal text-ink-2">{sub}</span>}
         </DropdownMenuLabel>

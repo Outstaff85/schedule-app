@@ -57,6 +57,8 @@ async function reload() {
 }
 /** Reload the month (after a manager's answer, from outside the screen). */
 export const hoursReviewReload = reload;
+/** Whose hours these are (the client or supplier and its object), for the page's header. */
+export const useHoursOwner = () => useSt().data?.owner;
 
 async function send(body: Record<string, unknown>, okText: string) {
   if (busy || !st.data) return;

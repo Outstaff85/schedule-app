@@ -1304,20 +1304,36 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(p.errs.length === 0, 'supplier: no page errors ' + p.errs.join(' | '));
   await ctx.close();
 
-  // ── Client portal (client1 → client c2: Avi's shift yesterday) — the shared hours screen (hours-review.js) ──
+  // ── Client portal (client1 → client c2: Avi's shift yesterday) — a React page (src/client/, stage 3) with the hours review (src/hours-review/) ──
   ctx = await newCtx(); p = await page(ctx);
+  const hoursReplies = [];
+  p.on('response', async r => { if (/cloudfunctions\.net\/hours$/.test(r.url()) && r.request().method() === 'POST') { try { hoursReplies.push(await r.text()); } catch (e) {} } });
   await login(p, BASE + 'client-portal.html', 'client1', 'client-pass-1');
-  ok(await waitFor(p, () => typeof __hrv !== 'undefined' && __hrv.data && __hrv.data.punches && document.querySelectorAll('#hoursRoot .hrv-card').length >= 1, 15000), 'client: sees its workers\' shifts of the month');
-  await payrollCheck(p, 'client portal', ['groupPunchesIntoShifts', 'analyzeDayPunches', 'localYMD']);
-  const cp = await p.evaluate(() => ({text: document.body.innerText, data: JSON.stringify(__hrv.data), cards: [...document.querySelectorAll('#hoursRoot .hrv-card b')].map(b => b.textContent),
-    acts: document.querySelectorAll('#hoursRoot .hrv-day .hrv-act').length}));
-  ok(cp.cards.includes('Avi Cohen') && cp.acts >= 3 && !/₪|Agency|hourlyRate|billRate|gpsAccuracy|"dist"|tok-|supplier|docUrl|0501/i.test(cp.text + cp.data),
-    'client: only hours of its workers, per-day approve / dispute / fix — no money, supplier, GPS, files or tokens ' + JSON.stringify({cards: cp.cards, acts: cp.acts}));
-  const avi = await p.evaluate(() => hrvMonthDays().find(r => r.workerId === 'w1').key);
-  const ca = await p.evaluate(async key => { hrvApproveDay(key);
-    for(let i = 0; i < 40 && hrvDayState(hrvRow(key)).st !== 'approved'; i++) await new Promise(r => setTimeout(r, 150));
-    return {st: hrvDayState(hrvRow(key)).st, status: document.getElementById('hrvStatus').innerText}; }, avi);
-  ok(ca.st === 'approved' && /approved/i.test(ca.status), 'client: approves one day ' + JSON.stringify(ca));
+  const hrvReady = () => !!document.querySelector('[data-testid="hours-review"][data-ready="1"]') && document.querySelectorAll('[data-day-key]').length >= 1;
+  ok(await waitFor(p, hrvReady, 15000), 'client: sees its workers\' shifts of the month');
+  // The helpers below read the React page through its DOM: a day plate by its worker|day key and state.
+  const dayOf = key => `[data-day-key="${key}"]`;
+  const stateOf = key => p.evaluate(k => { const d = document.querySelector(`[data-day-key="${k}"]`); return d ? d.dataset.state : 'none'; }, key);
+  const waitState = async (key, st) => { for (let i = 0; i < 60 && (await stateOf(key)) !== st; i++) await sleep(150); return stateOf(key); };
+  const menuOf = async key => { await p.click(dayOf(key) + ' button[aria-label="Actions"]'); await p.waitForSelector('[role="menuitem"]'); return p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(m => m.innerText.trim())); };
+  const pick = async label => { await p.click(`[role="menuitem"]:has-text("${label}")`); await sleep(200); };
+  const tapOutside = async () => { await p.mouse.click(8, 400); await sleep(300); };
+  const cp = await p.evaluate(() => ({text: document.body.innerText, workers: [...document.querySelectorAll('[data-slot="section"] .og-label > span:first-child')].map(b => b.textContent),
+    old: typeof Payroll !== 'undefined' || typeof hoursReviewMount !== 'undefined' || typeof __hrv !== 'undefined', mark: !!document.querySelector('header [data-testid="brand-mark"]'),
+    sub: (document.querySelector('[data-testid="brand-sub"]') || {}).textContent || '', plate: !!document.querySelector('[data-day-key] .og-plate')}));
+  const avi = await p.evaluate(() => [...document.querySelectorAll('[data-day-key]')].map(d => d.dataset.dayKey).find(k => k.startsWith('w1|')));
+  const acts = await menuOf(avi); await p.keyboard.press('Escape'); await sleep(150);
+  ok(cp.workers.includes('Avi Cohen') && acts.join() === 'Approve this day,Dispute this day,Propose a fix' && hoursReplies.length >= 1 && !/₪|Agency|hourlyRate|billRate|gpsAccuracy|"dist"|tok-|supplier|docUrl|0501/i.test(cp.text + hoursReplies.join('')),
+    'client: only hours of its workers, per-day approve / dispute / fix under ⋮ — no money, supplier, GPS, files or tokens ' + JSON.stringify({workers: cp.workers, acts, replies: hoursReplies.length}));
+  ok(!cp.old && cp.mark && /Site B/.test(cp.sub) && cp.plate, 'client portal: a React page (no old globals), the brand with its client in the title bar, days as plates ' + JSON.stringify({old: cp.old, mark: cp.mark, sub: cp.sub, plate: cp.plate}));
+  // Select mode: Select shows the tick boxes, a tap ticks a day, the glass bar approves the ticked days.
+  await p.click('[data-testid="hours-review"] button:has-text("Select")');
+  await p.click(dayOf(avi) + ' .og-plate b');
+  const sb = await p.evaluate(() => ({bar: (document.querySelector('[data-testid="select-bar"]') || {}).innerText || '', box: !!document.querySelector('[data-day-key] .og-box'), kb: !!document.querySelector('[data-day-key] button[aria-label="Actions"]')}));
+  await p.click('[data-testid="approve-selected"]');
+  const ca = {st: await waitState(avi, 'approved'), status: await p.evaluate(() => document.querySelector('[data-testid="hours-status"]').innerText), sel: sb,
+    barGone: await p.evaluate(() => !document.querySelector('[data-testid="select-bar"]'))};
+  ok(ca.st === 'approved' && /approved/i.test(ca.status) && /1 selected/.test(sb.bar) && sb.box && !sb.kb && ca.barGone, 'client: Select → tick a day → Approve approves it ' + JSON.stringify(ca));
   // The owner sees it in Accounting → Hours approvals (This Month), not changed (the same lines).
   const octx = await newCtx(); const q = await page(octx);
   await login(q, BASE + 'schedule-manager.html', 'owner1', 'owner-pass-1');
@@ -1328,25 +1344,21 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const oa = await appr();
   ok(/Site B/.test(oa) && /Client/.test(oa) && /1 of \d days approved/.test(oa) && !/Changed after approval/.test(oa), 'owner: the client\'s approval in Accounting, not "changed" ' + JSON.stringify(oa));
   // The client disputes the day (the window sends on a tap outside); the owner sees the comment.
-  const cd = await p.evaluate(async key => {
-    hrvOpenDispute(key);
-    document.getElementById('hrvDisputeText').value = 'Left at 15:00';
-    const ov = document.getElementById('hoursReviewOverlay'); ov.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true})); ov.click();
-    for(let i = 0; i < 40 && hrvDayState(hrvRow(key)).st !== 'disputed'; i++) await new Promise(r => setTimeout(r, 150));
-    return {st: hrvDayState(hrvRow(key)).st, text: document.getElementById('hoursRoot').innerText};
-  }, avi);
-  ok(cd.st === 'disputed' && /Left at 15:00/.test(cd.text), 'client: disputes a day with a comment ' + cd.st);
+  await menuOf(avi); await pick('Dispute this day');
+  await p.waitForSelector('[data-testid="dispute-text"]');
+  const dWin = await p.evaluate(() => ({kind: document.querySelector('[data-testid="window"]').dataset.kind, save: [...document.querySelectorAll('[data-testid="window"] button')].map(b => b.innerText.trim()).filter(Boolean)}));
+  await p.fill('[data-testid="dispute-text"]', 'Left at 15:00');
+  await tapOutside();
+  const cd = {st: await waitState(avi, 'disputed'), text: await p.evaluate(() => document.querySelector('[data-testid="hours-review"]').innerText), win: dWin};
+  ok(cd.st === 'disputed' && /Left at 15:00/.test(cd.text) && dWin.kind === 'dialog' && !dWin.save.length, 'client: disputes a day with a comment — a window with no buttons, sent on a tap outside ' + JSON.stringify({st: cd.st, win: dWin}));
   const od = await appr();
   ok(/Disputed/.test(od) && /Left at 15:00/.test(od) && /Avi Cohen/.test(od), 'owner: sees the disputed day and its comment ' + JSON.stringify(od));
-  // The client proposes a fix; the owner accepts it — the shift's punches move to the new times.
-  const cf = await p.evaluate(async key => {
-    hrvOpenFix(key);
-    document.getElementById('hrvFixIn').value = '05:30'; document.getElementById('hrvFixOut').value = '13:30';
-    document.getElementById('hrvFixText').value = 'Came early';
-    const ov = document.getElementById('hoursReviewOverlay'); ov.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true})); ov.click();
-    for(let i = 0; i < 40 && hrvDayState(hrvRow(key)).st !== 'fix'; i++) await new Promise(r => setTimeout(r, 150));
-    return hrvDayState(hrvRow(key)).st;
-  }, avi);
+  // The client proposes a fix (a tap on the day opens it); the owner accepts it — the shift's punches move to the new times.
+  await p.click(dayOf(avi) + ' .og-plate b');
+  await p.waitForSelector('[data-testid="fix-in"]');
+  await p.fill('[data-testid="fix-in"]', '05:30'); await p.fill('[data-testid="fix-out"]', '13:30'); await p.fill('[data-testid="fix-text"]', 'Came early');
+  await tapOutside();
+  const cf = await waitState(avi, 'fix');
   ok(cf === 'fix', 'client: proposes a fix for a day ' + cf);
   const of = await appr();
   ok(/Fix proposed/.test(of) && /05:30–13:30/.test(of) && /Accept/.test(of), 'owner: sees the proposed fix with Accept / Reject ' + JSON.stringify(of));
@@ -1362,7 +1374,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {in: il(p1), out: il(p2), after: (await hourApprovalsOf(salaryMonthOf('month'))).find(d => d.kind === 'client').days[key].status};
   });
   ok(fxa.in === '05:30' && fxa.out === '13:30' && fxa.after === 'fixed', 'owner: accepting a fix moves the shift\'s punches ' + JSON.stringify(fxa));
-  const cfx = await p.evaluate(async key => { await hoursReviewReload(); return hrvDayState(hrvRow(key) || {key, line: ''}).st; }, avi);
+  await p.reload(); await waitFor(p, hrvReady, 15000);
+  const cfx = await stateOf(avi);
   ok(cfx === 'fixed', 'client: the accepted fix shows as done ' + cfx);
   // Admin → Users: the owner is pinned first; the client login shows its client and hours ticks.
   const ul = await q.evaluate(async () => { switchTab('admin'); switchAdminPane('users');
@@ -1412,19 +1425,36 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await q.evaluate(() => closeModal('userFormOverlay'));
   // A kept login opens the portal at once: the login screen never shows on a reload.
   await p.reload({waitUntil: 'domcontentloaded'});
-  ok(await waitFor(p, () => /client-portal/.test(location.pathname) && typeof __hrv !== 'undefined' && !!__hrv.data, 15000), 'client: a reload with a kept login stays in the portal');
+  ok(await waitFor(p, () => /client-portal/.test(location.pathname) && !!document.querySelector('[data-testid="hours-review"][data-ready="1"]'), 15000), 'client: a reload with a kept login stays in the portal');
+  // The language: the Language button switches the portal to Hebrew in place — the month stays loaded (no new load).
+  const nLoads = hoursReplies.length;
+  await p.click('header [data-testid="lang-btn"]'); await p.click('[data-testid="lang-list"] .lang-li:has-text("עברית")');
+  const cl = {he: await waitFor(p, () => document.documentElement.lang === 'he' && localStorage.getItem('uiLang') === 'he' && /פורטל/.test(document.querySelector('header').innerText), 10000)};
+  cl.days = await p.evaluate(() => document.querySelectorAll('[data-day-key]').length); cl.loads = hoursReplies.length - nLoads;
+  cl.ltr = await p.evaluate(() => getComputedStyle(document.body).direction);
+  await p.click('header [data-testid="lang-btn"]'); await p.click('[data-testid="lang-list"] .lang-li:has-text("English")');
+  cl.en = await waitFor(p, () => document.documentElement.lang === 'en' && /Client Portal/.test(document.querySelector('header').innerText), 10000);
+  ok(cl.he && cl.days >= 1 && cl.loads === 0 && cl.ltr === 'ltr' && cl.en, 'client portal: the Language button switches to Hebrew and back in place, the month stays, left to right ' + JSON.stringify(cl));
   await p.screenshot({path: SP + '/client-portal-hours.png', fullPage: true}).catch(()=>{});
   ok(p.errs.length === 0 && q.errs.length === 0, 'client portal: no page errors ' + p.errs.concat(q.errs).join(' | '));
   await octx.close(); await ctx.close();
   // Sign out (the account menu): ends the portal's sign-in and opens the one login page.
   ctx = await newCtx(); p = await page(ctx);
   await login(p, BASE + 'client-portal.html', 'client1', 'client-pass-1');
-  await waitFor(p, () => typeof __hrv !== 'undefined' && !!__hrv.data, 15000);
-  const cpHead = await p.evaluate(() => { const d = document.querySelector('#hoursRoot .hrv-day'); return {mark: !!document.querySelector('.pt-head .pt-mark'), day: d ? getComputedStyle(d).borderRadius : 'none'}; });
-  ok(cpHead.mark && (cpHead.day === '14px' || cpHead.day === 'none'), 'client portal: the logo mark; hours days as plates ' + JSON.stringify(cpHead));
-  const menu = await p.evaluate(() => { toggleAccountMenu(); const m = document.getElementById('accountMenu'); return {open: getComputedStyle(m).display !== 'none', lang: !m.querySelector('.lang-btn, select') && !!document.querySelector('#headerActions > .lang-btn + #accountControl'), text: m.innerText}; });
-  ok(menu.open && menu.lang && /client1/.test(menu.text) && /Sign out/.test(menu.text), 'client portal: the account menu holds the name and Sign out, the Language button beside it ' + JSON.stringify(menu));
-  await p.evaluate(() => logout());
+  await waitFor(p, () => !!document.querySelector('[data-testid="hours-review"][data-ready="1"]'), 15000);
+  await p.click('[data-testid="account-btn"]'); await p.waitForSelector('[data-testid="account-menu"]');
+  const menu = await p.evaluate(() => ({text: document.querySelector('[data-testid="account-menu"]').innerText, lang: !document.querySelector('[data-testid="account-menu"] [data-testid="lang-btn"]') && !!document.querySelector('header [data-testid="lang-btn"] + [data-testid="account-btn"]')}));
+  ok(menu.lang && /client1/.test(menu.text) && /Client/.test(menu.text) && /Sign out/.test(menu.text), 'client portal: the account menu holds the name and Sign out, the Language button beside it ' + JSON.stringify(menu));
+  // A phone: the dispute window opens from the bottom (a sheet).
+  await p.keyboard.press('Escape'); await p.setViewportSize({width: 390, height: 800}); await sleep(300);
+  const k2 = await p.evaluate(() => [...document.querySelectorAll('[data-day-key]')].map(d => d.dataset.dayKey).find(k => k.startsWith('w1|')));
+  await menuOf(k2); await pick('Dispute this day'); await p.waitForSelector('[data-testid="dispute-text"]');
+  const sheet = await p.evaluate(() => document.querySelector('[data-testid="window"]').dataset.kind);
+  await p.screenshot({path: SP + '/client-portal-phone-dispute.png'}).catch(()=>{});
+  await p.keyboard.press('Escape'); await sleep(300); await p.setViewportSize({width: 1280, height: 720});
+  ok(sheet === 'sheet', 'client portal: on a phone a window opens from the bottom ' + sheet);
+  await p.click('[data-testid="account-btn"]'); await p.waitForSelector('[data-testid="account-menu"]');
+  await p.click('[role="menuitem"]:has-text("Sign out")');
   ok(await waitFor(p, () => /schedule-manager/.test(location.pathname) && document.getElementById('loginScreen').style.display !== 'none' && !localStorage.getItem('clientPortal_session'), 15000), 'client portal: Sign out opens the one login page');
   // The portals have no login of their own: opened without a session they send to the one login page.
   await p.goto(BASE + 'supplier-portal.html');
@@ -1433,7 +1463,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // A client login on the main site goes to its portal.
   ctx = await newCtx(); p = await page(ctx);
   await login(p, BASE + 'schedule-manager.html', 'client1', 'client-pass-1');
-  ok(await waitFor(p, () => /client-portal/.test(location.pathname) && typeof __hrv !== 'undefined' && !!__hrv.data, 15000), 'client: a client login on the main site is taken to its portal');
+  ok(await waitFor(p, () => /client-portal/.test(location.pathname) && !!document.querySelector('[data-testid="hours-review"][data-ready="1"]'), 15000), 'client: a client login on the main site is taken to its portal');
   await ctx.close();
 
   // ── Worker punch page without a personal link: a message, no worker picker ──
