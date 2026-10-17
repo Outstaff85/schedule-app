@@ -27,7 +27,8 @@ elif git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
     note="$branch is up to date with origin/main."
     quiet=1
   fi
-elif git rev-parse -q --verify "origin/$branch" >/dev/null && git merge-base --is-ancestor HEAD "origin/$branch"; then
+elif git rev-parse -q --verify "origin/$branch" >/dev/null && [ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/$branch")" ] \
+    && git merge-base --is-ancestor HEAD "origin/$branch"; then
   git merge -q --ff-only "origin/$branch" 2>/dev/null && note="Fast-forwarded $branch to origin/$branch."
 else
   ahead=$(git rev-list --count origin/main..HEAD 2>/dev/null)
