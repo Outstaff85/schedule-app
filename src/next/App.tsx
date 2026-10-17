@@ -188,7 +188,7 @@ const workerSchema = z.object({
   rate: z.coerce.number<string | number>().min(30, 'The rate is below the minimum wage'),
 });
 function WorkerForm() {
-  const form = useForm<z.infer<typeof workerSchema>>({ resolver: zodResolver(workerSchema), defaultValues: { first: '', last: '', phone: '', rate: 35 } });
+  const form = useForm<z.input<typeof workerSchema>, unknown, z.output<typeof workerSchema>>({ resolver: zodResolver(workerSchema), defaultValues: { first: '', last: '', phone: '', rate: 35 } });
   return (
     <Demo id="form" title={tr('Form')}>
       <Form {...form}>
@@ -207,7 +207,7 @@ function WorkerForm() {
               <FormItem><FormLabel>{tr('Phone')}</FormLabel><FormControl><Input type="tel" {...field} /></FormControl><FormMessage /></FormItem>
             )} />
             <FormField control={form.control} name="rate" render={({ field }) => (
-              <FormItem><FormLabel>{tr('Hourly rate, ₪')}</FormLabel><FormControl><Input type="number" {...field} value={field.value as number} /></FormControl><FormMessage /></FormItem>
+              <FormItem><FormLabel>{tr('Hourly rate, ₪')}</FormLabel><FormControl><Input type="number" {...field} value={String(field.value ?? '')} /></FormControl><FormMessage /></FormItem>
             )} />
           </FieldRow>
           <Button type="submit" variant="primary"><IconCheck className="size-[18px]" />{tr('Save')}</Button>

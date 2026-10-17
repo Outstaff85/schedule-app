@@ -17,9 +17,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 export type PlateAction = { label: string; icon?: React.ReactNode; onSelect: () => void; destructive?: boolean };
 
 const SIZES = {
-  sm: { pad: 'py-2 pl-3.5 pr-1.5', name: 'text-sm', sub: 'text-[11px]', fig: 'text-[13px]' },
-  md: { pad: 'py-[11px] pl-[14px] pr-2', name: 'text-[15px]', sub: 'text-xs', fig: 'text-[15px]' },
-  lg: { pad: 'py-3.5 pl-4 pr-2', name: 'text-base', sub: 'text-[13px]', fig: 'text-base' },
+  // og.css (.og-plate) is unlayered: the padding needs `!` to win over it
+  sm: { pad: '!py-2 !pl-3.5 !pr-1.5', name: 'text-sm', sub: 'text-[11px]', fig: 'text-[13px]' },
+  md: { pad: '!py-[11px] !pl-[14px] !pr-2', name: 'text-[15px]', sub: 'text-xs', fig: 'text-[15px]' },
+  lg: { pad: '!py-3.5 !pl-4 !pr-2', name: 'text-base', sub: 'text-[13px]', fig: 'text-base' },
 };
 const SWIPE_OPEN = 128;
 const LONG_PRESS_MS = 550;
@@ -132,7 +133,7 @@ export function Plate({
         onPointerCancel={cancel}
         onDoubleClick={e => { if (!selecting && onEdit && !inControl(e)) onEdit(); }}
         onContextMenu={e => { if (onEdit) e.preventDefault(); }}
-        style={{ ['--bar' as string]: color, transform: `translateX(${dx}px)` }}
+        style={{ ['--bar' as string]: color, transform: `translateX(${dx}px)`, rowGap: 0 }}
         className={cn('og-plate flex-wrap focus-visible:outline-2 focus-visible:outline-[var(--uline-2)]', s.pad, drag && 'drag', selected && 'on')}
       >
         {selecting && (
