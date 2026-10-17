@@ -38,7 +38,7 @@ export function Hours() {
       <div className="grid max-w-80 gap-1.5">
         <Label htmlFor="hoursMonth">{tr('Month')}</Label>
         <Select value={String(ui.month)} onValueChange={v => setUi({ month: Number(v) })}>
-          <SelectTrigger id="hoursMonth" data-testid="hours-month"><SelectValue /></SelectTrigger>
+          <SelectTrigger id="hoursMonth" data-testid="hours-month-pick"><SelectValue /></SelectTrigger>
           <SelectContent>
             {Array.from({ length: 12 }, (_, i) => <SelectItem key={i} value={String(i)}>{monthOf(i).toLocaleDateString(uiLocale(), { month: 'long', year: 'numeric' })}</SelectItem>)}
           </SelectContent>
