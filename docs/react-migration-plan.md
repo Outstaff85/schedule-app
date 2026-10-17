@@ -2,7 +2,7 @@
 
 **Status: approved by the owner on 2026-10-17 as a full migration (no fallback).** Stage 0 (foundation) is built: CLAUDE.md's "no build step" / "no modules" rules are replaced by "new code goes to the new stack, old pages keep their style until their stage" (docs/build.md describes the build).
 
-Stage status: 0 Foundation — done · 1 Shared components — done (docs/components.md) · 2 Payroll as a module — done (docs/accounting.md → Payroll module) · 3 Client portal — done (docs/client-portal.md) · 4 Supplier portal — done (docs/supplier-portal.md) · 5 Worker punch page — next · 6–7 — not started. The trial page (React + Vite + Tailwind + shadcn/ui in the Odinson Glass look) was published as a design artifact only; no code of it is in this repo.
+Stage status: 0 Foundation — done · 1 Shared components — done (docs/components.md) · 2 Payroll as a module — done (docs/accounting.md → Payroll module) · 3 Client portal — done (docs/client-portal.md) · 4 Supplier portal — done (docs/supplier-portal.md) · 5 Worker punch page — done (docs/punch.md) · 6 Manager app — next · 7 — not started. The trial page (React + Vite + Tailwind + shadcn/ui in the Odinson Glass look) was published as a design artifact only; no code of it is in this repo.
 
 ## Why
 
@@ -90,6 +90,7 @@ How a run works (a run = one session, started by the scheduled task "React migra
 - **Mergeable when:** the supplier visibility tests pass and the Firestore/Storage rules did not change.
 
 ### Stage 5. Worker punch page (`/punch`)
+- **Done.** `worker-punch.html` is now a Vite entry (`src/punch/`; same file name and `/punch` route; `manifest-punch.json` built by Vite under a hashed name, with absolute paths and an `id`): the link, the site and the object picker, the GPS checks (`analyseGps` / `getLocation`, the same limits), hold to punch, the offline queue (`gsSavePunch` / `queueEntry` / `flushQueue`, the same keys `punchQueue` / `punchLog` / `schedMgr_v1`), the schedule notice, My Schedule and My Hours (`myMonthFigures` over `src/lib/payroll.ts`) moved one to one; the page's CSS moved to `src/punch/punch.css`; the state in a store outside React (a language change keeps the screen). The shared `LanguageButton`, Sonner toasts and `useVersionWatch` replace the page's own copies. `CACHE` → `schedule-mgr-v129`. The e2e checks are rewritten on the React DOM and add the offline run: the page opens without a connection (the service worker's copy), a punch goes to the queue with the badge, and it is sent when the connection returns.
 - GPS checks and the offline queue move one to one; bump `CACHE` in `service-worker.js`.
 - **Mergeable when:** punching without a connection and the send after it returns are verified.
 

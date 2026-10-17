@@ -1321,6 +1321,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const nLoadsS = supReplies.filter(x => x.action === 'loadSchedule').length;
   await p.click('header [data-testid="lang-btn"]'); await p.click('[data-testid="lang-list"] .lang-li:has-text("עברית")');
   const sl = {he: await waitFor(p, () => document.documentElement.lang === 'he' && localStorage.getItem('uiLang') === 'he', 10000)};
+  // the page is redrawn in the new language: wait for its tabs to be back before reading them
+  await waitFor(p, () => ([...document.querySelectorAll('[data-testid="shell-tabs"] button')].map(b => b.innerText.trim())[2] || '') === 'השעות שלי', 5000);
   sl.tab = await p.evaluate(() => [...document.querySelectorAll('[data-testid="shell-tabs"] button')].map(b => b.innerText.trim())[2]);
   sl.stayed = await p.evaluate(() => document.querySelector('[data-testid="supplier-portal"]').dataset.tab); sl.loads = supReplies.filter(x => x.action === 'loadSchedule').length - nLoadsS;
   ok(sl.he && sl.tab === 'השעות שלי' && sl.stayed === 'hours' && sl.loads === 0, 'supplier: the header Language button switches the portal to Hebrew in place — the tab and the data stay ' + JSON.stringify(sl));
@@ -1512,6 +1514,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await ctx.close();
 
   // ── Worker punch page without a personal link: a message, no worker picker ──
+  // The punch page is a React page (src/punch/, stage 5): the checks read its DOM, localStorage and the punch function's replies.
   ctx = await newCtx(); p = await page(ctx);
   await p.goto(BASE + 'worker-punch.html');
   ok(await waitFor(p, () => /Open your personal link/.test(document.body.innerText), 10000), 'punch: without a personal link the page asks for it');
@@ -1519,82 +1522,123 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
 
   // ── Worker punch link ──
   ctx = await newCtx(); p = await page(ctx);
+  const punchReplies = [];
+  // The punch function's replies; `punchTweak` (when set) rewrites a `load` reply on its way to the page.
+  let punchTweak = null;
+  await p.route(/cloudfunctions\.net\/punch$/, async r => {
+    if (r.request().method() === 'OPTIONS') return r.fallback();
+    const body = r.request().postData() || '{}', action = JSON.parse(body).action;
+    const res = await fetch('http://127.0.0.1:5055/punch', {method: 'POST', body});
+    let text = await res.text();
+    punchReplies.push({action, text});
+    if (punchTweak && action === 'load') { const j = JSON.parse(text); punchTweak(j); text = JSON.stringify(j); }
+    return r.fulfill({status: res.status, contentType: 'application/json', headers: {'Access-Control-Allow-Origin': '*'}, body: text});
+  });
+  const punchReady = () => { const s = document.getElementById('screenPunch'), b = document.getElementById('bigPunchBtn'); return !!s && !s.classList.contains('hidden') && !!b && (b.dataset.state === 'in' || b.dataset.state === 'out'); };
   const before = (await srv('/punches')).n;
   await p.goto(BASE + 'worker-punch.html?t=tok-avi');
-  ok(await waitFor(p, () => !document.getElementById('screenPunch').classList.contains('hidden') && locOk === true, 15000), 'punch: link verified, on site');
-  await payrollCheck(p, 'punch', ['groupPunchesIntoShifts', 'analyzeDayPunches', 'effectiveRates', 'shiftPay', 'shiftPayFor', 'salaryPeriodKey', 'dayOverride', 'wOwnRate', 'localYMD'].concat(['travelPay']));
-  // Hold to punch (redesign stage 9): a short press rolls back and sends nothing; about a second punches.
+  ok(await waitFor(p, punchReady, 15000), 'punch: link verified, on site');
+  ok(await p.evaluate(() => typeof Payroll === 'undefined' && typeof locOk === 'undefined' && typeof getPunchLog === 'undefined' && !!document.querySelector('#screenPunch [data-testid="lang-btn"]')),
+    'punch: a React page (no old globals; the shared Language button in its top bar)');
+  // The PWA manifest: built by Vite under a hashed name, absolute paths, the app's id; its icons and start page load.
+  const mfc = await p.evaluate(async () => { const href = document.querySelector('link[rel="manifest"]').getAttribute('href'), m = await (await fetch(href)).json();
+    const st = async u => (await fetch(u)).status;
+    return {href, id: m.id, start: m.start_url, startSt: await st(m.start_url), icons: await Promise.all(m.icons.map(i => st(i.src)))}; });
+  ok(/^\/assets\/manifest-punch-.+\.json$/.test(mfc.href) && mfc.id === '/worker-punch.html' && mfc.start === '/worker-punch.html' && mfc.startSt === 200 && mfc.icons.length && mfc.icons.every(s => s === 200),
+    'punch: the manifest is a built file with absolute paths and an id; its icons and start page load ' + JSON.stringify(mfc));
+  // Hold to punch: a short press rolls back and sends nothing; about a second punches.
   const pbb = await (await p.$('#bigPunchBtn')).boundingBox(), cx = pbb.x + pbb.width / 2, cy = pbb.y + pbb.height / 2;
   await p.mouse.move(cx, cy); await p.mouse.down(); await sleep(300); await p.mouse.up(); await sleep(600);
-  const shortPress = await p.evaluate(() => ({log: getPunchLog().length, result: document.getElementById('punchResult').textContent}));
+  const shortPress = await p.evaluate(() => ({log: JSON.parse(localStorage.getItem('punchLog') || '[]').length, result: document.getElementById('punchResult').textContent}));
   await p.mouse.down(); await sleep(1300); await p.mouse.up();
   ok(await waitFor(p, () => /Punched in at \d\d:\d\d · have a good shift/.test(document.getElementById('punchResult').textContent) && !document.getElementById('screenPunch').classList.contains('hidden')), 'punch: a hold of about a second punches in; the line under the button says so');
-  ok(shortPress.result === '', 'punch: a short press sends nothing ' + JSON.stringify(shortPress));
+  ok(shortPress.result === '' && shortPress.log === 0, 'punch: a short press sends nothing ' + JSON.stringify(shortPress));
   const tiles = await p.evaluate(() => ({next: document.getElementById('tileNextShift').textContent, hours: document.getElementById('tileMonthHours').textContent, greet: document.getElementById('punchGreeting').innerHTML}));
   ok(tiles.next !== '—' && /Avi/.test(tiles.greet) && /gic/.test(tiles.greet), 'punch: greeting with the first name and its icon; My Schedule tile shows the next shift ' + JSON.stringify(tiles));
   ok(await waitFor(p, () => /14°/.test(document.getElementById('punchGreeting').textContent) && !!document.querySelector('#punchGreeting svg.gic .drop')), 'punch: the greeting shows the weather at the worker\'s site — the rain icon and 14°');
+  ok(await waitFor(p, () => document.getElementById('bigPunchBtn').dataset.state === 'out', 5000), 'punch: after punching in the button offers Punch out');
   await sleep(1500);
   const after = await srv('/punches');
   ok(after.n === before + 1, 'punch: saved through the punch function (' + before + ' → ' + after.n + ')');
   ok(!after.days.includes(null), 'punch: the new punch has a day');
-  const ms = await p.evaluate(async () => { openSchedule(); await new Promise(r => setTimeout(r, 1500));
-    return {shown: !document.getElementById('screenSchedule').classList.contains('hidden'), days: document.querySelectorAll('#scheduleContent .sched-cell').length, empty: /No shifts planned yet/.test(document.getElementById('scheduleContent').innerText), sched: JSON.stringify(selectedWorker.schedule), n: workers.length, keys: Object.keys(selectedWorker).sort().join(','),
-      top: !!document.querySelector('#scheduleContent .sched-sum.top + .sched-grid'), plates: document.querySelectorAll('#scheduleContent .sp-plate').length}; });
-  const mp = await p.evaluate(() => { const keep = [selectedWorker.schedule, selectedWorker.dates];
-    const t = new Date(), k = localYMD(t);
-    selectedWorker.schedule = [0,1,2,3,4,5,6].map(() => ({type:'work', start:'09:00', end:'17:00'})); selectedWorker.dates = {[k]: {type:'work', start:'22:00', end:'06:00'}};
-    renderMySchedule();
-    const c = document.getElementById('scheduleContent'), first = c.querySelector('.sp-plate');
-    const r = {top: !!c.querySelector('.sched-sum.top + .sched-grid'), plates: c.querySelectorAll('.sp-plate').length, more: !!c.querySelector('.sp-more'),
-      first: first ? first.innerText.replace(/\s+/g, ' ') : '', today: !!(first && first.classList.contains('today')), dot: !!c.querySelector('.shift-bar.dated')};
-    [selectedWorker.schedule, selectedWorker.dates] = keep; renderMySchedule(); return r; });
-  ok(mp.top && mp.plates >= 1 && mp.plates <= 10 && mp.today && /22:00 – 06:00/.test(mp.first) && /Night shift/.test(mp.first) && /changed/.test(mp.first) && mp.dot,
-    'punch: My Schedule — figures on top, day plates from today (10 at a time), a changed night day tagged ' + JSON.stringify(mp));
-  ok(ms.shown && (ms.days >= 35 || ms.empty) && ms.n === 1 && ms.keys.includes('schedule'), 'punch: My Schedule shows the worker\'s own week ' + JSON.stringify(ms));
+  const load0 = JSON.parse((punchReplies.find(x => x.action === 'load') || {text: '{}'}).text);
+  await p.click('[data-testid="tile-schedule"]');
+  await waitFor(p, () => !document.getElementById('screenSchedule').classList.contains('hidden'));
+  await sleep(1200);
+  const ms = await p.evaluate(() => ({shown: !document.getElementById('screenSchedule').classList.contains('hidden'), days: document.querySelectorAll('#scheduleContent .sched-cell').length, empty: /No shifts planned yet/.test(document.getElementById('scheduleContent').innerText)}));
+  ms.n = (load0.workers || []).length; ms.sched = (load0.workers || [{}])[0] && 'schedule' in load0.workers[0];
+  ok(ms.shown && (ms.days >= 35 || ms.empty) && ms.n === 1 && ms.sched, 'punch: My Schedule shows the worker\'s own week ' + JSON.stringify(ms));
   // The sheet has no ✕ Close: a swipe down from its top closes it (stage 13).
   const shc = await p.evaluate(async () => {
     const s = document.getElementById('screenSchedule'), r = {noClose: !/Close/.test(s.querySelector('.top-bar').innerText), grab: !!s.querySelector('.sheet-grab')};
     const t = (type, dy) => { const tp = new Touch({identifier: 1, target: s, clientX: 100, clientY: 120 + dy}); s.dispatchEvent(new TouchEvent(type, {bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [tp], changedTouches: [tp]})); };
     t('touchstart', 0); for(let d = 10; d <= 200; d += 20) t('touchmove', d); t('touchend', 200);
-    await new Promise(res => setTimeout(res, 400)); r.closed = s.classList.contains('hidden'); return r; });
+    await new Promise(res => setTimeout(res, 400)); r.closed = s.classList.contains('hidden') && !document.getElementById('screenPunch').classList.contains('hidden'); return r; });
   ok(shc.noClose && shc.grab && shc.closed, 'punch: My Schedule has no ✕ Close; a swipe down closes the sheet ' + JSON.stringify(shc));
-  await p.evaluate(() => closeHistory());
+  // My Schedule's plates: a roster of work every day and tonight changed to a night shift (the load reply rewritten; "today" is the page's clock, E2E_NOW).
+  punchTweak = j => { const t = new Date(process.env.E2E_NOW || Date.now()), k = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+    j.workers[0].schedule = [0, 1, 2, 3, 4, 5, 6].map(() => ({type: 'work', start: '09:00', end: '17:00'})); j.workers[0].dates = {[k]: {type: 'work', start: '22:00', end: '06:00'}}; };
+  await p.reload(); await waitFor(p, punchReady, 15000);
+  await p.click('[data-testid="tile-schedule"]'); await sleep(1500);
+  const mp = await p.evaluate(() => { const c = document.getElementById('scheduleContent'), first = c.querySelector('.sp-plate');
+    return {top: !!c.querySelector('.sched-sum.top + .sched-grid'), plates: c.querySelectorAll('.sp-plate').length, more: !!c.querySelector('.sp-more'),
+      first: first ? first.innerText.replace(/\s+/g, ' ') : '', today: !!(first && first.classList.contains('today')), dot: !!c.querySelector('.shift-bar.dated')}; });
+  ok(mp.top && mp.plates >= 1 && mp.plates <= 10 && mp.today && /22:00 – 06:00/.test(mp.first) && /Night shift/.test(mp.first) && /changed/.test(mp.first) && mp.dot,
+    'punch: My Schedule — figures on top, day plates from today (10 at a time), a changed night day tagged ' + JSON.stringify(mp));
+  await p.keyboard.press('Escape'); await sleep(400);
+  punchTweak = null;
   // A schedule change since this device last saw it: a notice that stays on the punch screen until My Schedule is opened.
-  const sn = await p.evaluate(async () => {
-    localStorage.setItem('schedSeen_' + selectedWorker.id, 'old'); showScreen('screenPunch'); checkScheduleChange();
-    const vis = () => getComputedStyle(document.getElementById('schedNotice')).display !== 'none';
-    const r = {shown: vis()}; await new Promise(res => setTimeout(res, 4500)); r.still = vis();
-    openSchedule(); r.after = vis(); closeHistory(); return r;
-  });
-  ok(sn.shown && sn.still && !sn.after, 'punch: a schedule change shows a notice that stays until My Schedule is opened ' + JSON.stringify(sn));
+  await p.evaluate(() => localStorage.setItem('schedSeen_w1', 'old'));
+  await p.reload(); await waitFor(p, punchReady, 15000);
+  const vis = () => p.evaluate(() => getComputedStyle(document.getElementById('schedNotice')).display !== 'none');
+  const sn = {shown: await vis(), tag: await p.evaluate(() => !!document.getElementById('schedBadge'))};
+  await sleep(4500); sn.still = await vis();
+  await p.click('#schedNotice'); await sleep(300);
+  sn.sheet = await p.evaluate(() => !document.getElementById('screenSchedule').classList.contains('hidden'));
+  sn.after = await vis(); sn.tagAfter = await p.evaluate(() => !!document.getElementById('schedBadge'));
+  ok(sn.shown && sn.tag && sn.still && sn.sheet && !sn.after && !sn.tagAfter, 'punch: a schedule change shows a notice that stays until My Schedule is opened ' + JSON.stringify(sn));
+  await p.keyboard.press('Escape'); await sleep(400);
   // My Hours and Pay: yesterday's seeded 8h shift (hourly 50) from the punch function's myMonth, priced like Salary.
-  const mh = await p.evaluate(async () => {
-    const link = getComputedStyle(document.getElementById('myHoursLink')).display !== 'none';
-    const y = new Date(); y.setDate(y.getDate() - 1);
-    const now = new Date(), back = (y.getFullYear() - now.getFullYear()) * 12 + y.getMonth() - now.getMonth();
-    openMyHours(); if(back) shiftHoursMonth(back);
-    const key = hoursMonthKey();
-    for(let i = 0; i < 50 && !_hoursData[key]; i++) await new Promise(r => setTimeout(r, 100));
-    const d = _hoursData[key] || {}, f = d.punches ? myMonthFigures(d, key) : {};
-    const sh = (f.shifts || []).find(s => s.h > 0) || {};
-    const raw = JSON.stringify(d);
-    return {link, hours: f.hours, total: f.total, sat: sh.date && sh.date.getDay() === 6, text: document.getElementById('hoursContent').innerText.slice(0, 120),
-      leak: /gpsAccuracy|gpsWarnings|billRate|tok-/.test(raw), pay: d.pay,
-      card: ((document.querySelector('#hoursContent .pay-card .pay-r.tot') || {}).innerText || '').replace(/\s+/g, ' ')};
-  });
-  ok(mh.link && mh.hours === 8 && mh.total === (mh.sat ? 600 : 400) && !mh.leak && /8\.0h/.test(mh.text), "punch: My Hours — own shift, priced like Salary, no GPS or billing " + JSON.stringify(mh));
-  ok(/Total ₪(400|600)/.test(mh.card), 'punch: My Hours — the Pay card totals the month ' + JSON.stringify(mh.card));
+  await p.click('[data-testid="tile-hours"]');
+  const back = await p.evaluate(() => { const y = new Date(); y.setDate(y.getDate() - 1); const now = new Date(); return (y.getFullYear() - now.getFullYear()) * 12 + y.getMonth() - now.getMonth(); });
+  if (back) await p.click('#hoursContent .sched-nav[aria-label="Previous month"]');
+  await waitFor(p, () => !!document.querySelector('#hoursContent .hours-shift'), 10000);
+  const mh = await p.evaluate(() => ({text: document.getElementById('hoursContent').innerText.slice(0, 160),
+    card: ((document.querySelector('#hoursContent .pay-card .pay-r.tot') || {}).innerText || '').replace(/\s+/g, ' ')}));
+  const months = punchReplies.filter(x => x.action === 'myMonth');
+  mh.leak = months.some(x => /gpsAccuracy|gpsWarnings|billRate|tok-/.test(x.text)); mh.replies = months.length;
+  ok(mh.replies >= 1 && !mh.leak && /8\.0h/.test(mh.text), "punch: My Hours — own shift, from the punch function's month, no GPS or billing " + JSON.stringify(mh));
+  ok(/Total ₪(400|600)/.test(mh.card), 'punch: My Hours — the Pay card totals the month, priced like Salary ' + JSON.stringify(mh.card));
   // My History is merged in: a tap on a shift opens its punches (in / out, time, site).
   const mx = await p.evaluate(async () => {
-    for(let i = 0; i < 50 && !document.querySelector('#hoursContent .hours-shift'); i++) await new Promise(r => setTimeout(r, 100));
     const sh = [...document.querySelectorAll('#hoursContent .hours-shift')].find(x => x.querySelectorAll('.hp').length === 2); if(!sh) return {}; // a full shift (today's may be open)
-    const before = getComputedStyle(sh.querySelector('.hours-punches')).display; sh.click();
+    const before = getComputedStyle(sh.querySelector('.hours-punches')).display; sh.click(); await new Promise(r => setTimeout(r, 100));
     return {before, after: getComputedStyle(sh.querySelector('.hours-punches')).display, tags: [...sh.querySelectorAll('.hp .tag')].map(t => t.textContent).join(','), dist: /12 m/.test(sh.innerText),
       noHistory: !document.getElementById('screenHistory') && !/My History/.test(document.getElementById('screenPunch').innerText)};
   });
   ok(mx.before === 'none' && mx.after === 'block' && mx.tags === 'IN,OUT' && mx.dist && mx.noHistory, 'punch: My Hours shows each shift\'s punches on a tap; no separate My History ' + JSON.stringify(mx));
-  await p.evaluate(() => closeHistory());
-  ok(await p.evaluate(() => JSON.parse(localStorage.getItem('punchQueue')||'[]').length === 0), 'punch: nothing queued');
+  await p.keyboard.press('Escape'); await sleep(400);
+  ok(await p.evaluate(() => JSON.parse(localStorage.getItem('punchQueue') || '[]').length === 0 && !document.getElementById('offlineBadge')), 'punch: nothing queued');
+  // Without a connection: the page opens from this device (the service worker's copy and the cached worker), a punch is
+  // kept in the queue with the badge, and it is sent when the connection returns.
+  await p.reload(); await waitFor(p, punchReady, 15000); await sleep(1500);
+  const n0 = (await srv('/punches')).n;
+  await ctx.setOffline(true);
+  await p.reload().catch(() => {});
+  const offOpen = await waitFor(p, punchReady, 15000);
+  const off = {open: offOpen, onLine: await p.evaluate(() => navigator.onLine)};
+  const obb = await (await p.$('#bigPunchBtn')).boundingBox();
+  await p.mouse.move(obb.x + obb.width / 2, obb.y + obb.height / 2); await p.mouse.down(); await sleep(1300); await p.mouse.up();
+  off.result = await waitFor(p, () => /Punched out at/.test(document.getElementById('punchResult').textContent), 5000);
+  off.badge = await waitFor(p, () => /Offline — 1 punch queued/.test((document.getElementById('offlineBadge') || {}).textContent || ''), 5000);
+  off.queue = await p.evaluate(() => JSON.parse(localStorage.getItem('punchQueue') || '[]').map(e => e.type + ':' + !!e.workerToken).join());
+  off.notSent = (await srv('/punches')).n === n0;
+  ok(off.open && !off.onLine && off.result && off.badge && off.queue === 'out:true' && off.notSent, 'punch: without a connection the page opens from this device and a punch goes to the queue with the badge ' + JSON.stringify(off));
+  await ctx.setOffline(false);
+  const on = {flushed: await waitFor(p, () => JSON.parse(localStorage.getItem('punchQueue') || '[]').length === 0 && !document.getElementById('offlineBadge'), 15000)};
+  on.toast = await waitFor(p, () => /Synced 1 offline punch/.test(document.body.innerText), 5000);
+  on.sent = (await srv('/punches')).n === n0 + 1;
+  ok(on.flushed && on.toast && on.sent, 'punch: when the connection returns the queued punch is sent and the badge goes ' + JSON.stringify(on));
   await srv('/revoke');
   await p.goto(BASE + 'worker-punch.html?t=tok-avi');
   ok(await waitFor(p, () => /Invalid Link/.test(document.body.innerText)), 'punch: a regenerated link is revoked even from the cache');
@@ -1602,13 +1646,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(await waitFor(p, () => /Invalid Link/.test(document.body.innerText)), 'punch: unknown link refused');
   await p.goto(BASE + 'worker-punch.html?t=tok-new');
   await waitFor(p, () => !document.getElementById('screenPunch').classList.contains('hidden'), 15000);
-  await p.click('#langBtn'); await p.click('#langSheet .lang-li[data-lang="he"]');
-  ok(await waitFor(p, () => I18N_LANG === 'he' && document.querySelector('#langBtn .lang-btn-name').textContent === 'עברית'), 'punch: the Language button and its sheet switch the page');
+  await p.click('#screenPunch [data-testid="lang-btn"]'); await p.click('[data-testid="lang-list"] .lang-li:has-text("עברית")');
+  ok(await waitFor(p, () => document.documentElement.lang === 'he' && localStorage.getItem('uiLang') === 'he' && /שלום|טוב/.test(document.getElementById('punchGreeting').textContent)), 'punch: the Language button and its sheet switch the page');
   await p.goto(BASE + 'worker-punch.html?t=tok-new');
-  ok(await waitFor(p, () => I18N_LANG === 'he' && !document.getElementById('screenPunch').classList.contains('hidden') && /החתמת/.test(document.getElementById('bigPunchBtn').innerText) && /טוב/.test(document.getElementById('punchGreeting').textContent), 15000), 'punch: the page shows the chosen language (Hebrew)');
+  ok(await waitFor(p, () => document.documentElement.lang === 'he' && !document.getElementById('screenPunch').classList.contains('hidden') && /החתמת/.test(document.getElementById('bigPunchBtn').innerText) && /טוב/.test(document.getElementById('punchGreeting').textContent), 15000), 'punch: the page shows the chosen language (Hebrew)');
   await p.goto(BASE + 'worker-punch.html?t=nope');
   ok(await waitFor(p, () => /קישור לא תקין/.test(document.body.innerText)), 'punch: the chosen language is kept on the device');
-  await p.goto(BASE + 'worker-punch.html?t=nope'); await p.evaluate(() => setLanguage('en'));
+  await p.evaluate(() => localStorage.setItem('uiLang', 'en'));
   ok(p.errs.length === 0, 'punch: no page errors ' + p.errs.join(' | '));
   ok(external.filter(u=>/script\.google\.com/.test(u)).length === 0, 'still no request to script.google.com');
   await b.close();

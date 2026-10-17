@@ -211,8 +211,12 @@ async function phone(browser) {
   const kind = await p.locator('[data-testid=window]').getAttribute('data-kind').catch(() => null);
   ok(kind === 'sheet' && /Edit worker/.test(await p.locator('[data-testid=window]').innerText()), 'next: a long press opens the edit form, as a bottom sheet on a phone');
   await p.screenshot({ path: path.join(OUT, 'next-phone-sheet.png') });
-  await p.mouse.click(195, 40); await sleep(600);
-  ok(!(await visible(p, '[data-testid=window]')), 'next: a tap above the sheet closes it');
+  // the sheet's opening animation ends first (a tap during it is not a tap on the backdrop yet); its closing one takes ~0.5 s
+  await p.evaluate(() => Promise.all(document.querySelector('[data-testid=window]').getAnimations({ subtree: true }).map(a => a.finished.catch(() => {}))));
+  await p.mouse.click(195, 40);
+  let sheetGone = false;
+  for (let i = 0; i < 20 && !(sheetGone = !(await visible(p, '[data-testid=window]'))); i++) await sleep(150);
+  ok(sheetGone, 'next: a tap above the sheet closes it');
   ok(errors.length === 0, 'next: no script errors on a phone ' + JSON.stringify(errors));
   await ctx.close();
 }

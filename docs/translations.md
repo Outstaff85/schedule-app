@@ -13,9 +13,9 @@ How the app shows its UI in the language the user picks. The code is always Engl
 The language is **picked with one Language button per page** (`#langBtn`, classes `gbtn lang-btn`), always at the top right: only a globe, a square glass icon button (owner 2026-10-13; the current language's own name `.lang-btn-name` — kept up to date by `syncLangButtons` from `I18N_LANGS` — and the chevron stay in the markup, hidden by CSS). A tap opens the **language sheet** (`openLangSheet()`, `#langSheet`: a bottom sheet on a phone, a centred window on a computer) with a search field (code, own name or English name) and a line per language — its own name and its English name (`I18N_LANG_EN`), the current one ticked; a tap on a line (`pickLanguage`) closes the sheet and calls `setLanguage`. A tap outside the sheet or Escape closes it. `syncLangButtons()` writes the current language's name on the button. Where it sits:
 - manager app: in the title bar, before the account button; while the login screen or the super-admin's Firms screen covers it, the same element moves to that screen's top-right corner (`placeLangButton()`, run by a `MutationObserver` on those screens' `style`);
 - supplier and client portals: in the header, before the account button (`LanguageButton` before `AccountMenu`, docs/components.md);
-- worker punch page: fixed in the top-right corner (`.lang-fixed`; the page has no login).
+- worker punch page: at the right of the punch screen's top bar (`LanguageButton`; the page has no login, so the choice stays on the device).
 
-Languages come only from the dictionaries: the sheet lists `I18N_LANGS` (code → own name) with `I18N_LANG_EN` (code → English name), the same in the two old pages and in `src/lib/i18n.tsx` (the new pages).
+Languages come only from the dictionaries: the sheet lists `I18N_LANGS` (code → own name) with `I18N_LANG_EN` (code → English name), the same in the manager app and in `src/lib/i18n.tsx` (the new pages).
 
 **English is the default.** `setLanguage(lang)` keeps the choice in `localStorage.uiLang` (one key for every page, read by `storedLanguage()`), loads the dictionary and redraws (`redrawForLanguage()`, which also writes the current language on the button, `syncLangButtons()`).
 
@@ -25,7 +25,7 @@ Form 101 is outside this system: its labels in the worker modal and the firm for
 
 ## In the code
 
-The old pages — the manager app and the worker punch page — each hold the same core (`I18N_LANGS`, `tr`, `applyI18n`, `uiLocale`, `loadI18n` — duplicated on purpose, keep the copies the same) and their own `redrawForLanguage()`.
+The old page — the manager app — holds the core (`I18N_LANGS`, `tr`, `applyI18n`, `uiLocale`, `loadI18n` — the same rules as `src/lib/i18n.tsx`, keep the two the same) and its own `redrawForLanguage()`.
 
 - **`tr(text, params)`** returns `text` in the chosen language: `I18N[text]`, else the English `text` itself. `{name}` placeholders are filled from `params`, e.g. `tr('{n} shift(s) approved', {n: 3})`. The translation keeps the placeholder and may move it.
   - In HTML built in JS, a translated text goes into the page like any other text: `${esc(tr('…'))}`, or `${tr('…')}` when it holds no data.
@@ -43,7 +43,7 @@ The old pages — the manager app and the worker punch page — each hold the sa
 
 Every page is translated: the manager app (every tab, modal, toast, confirm, form error, help text and export), the worker punch page and the new-stack pages (the portals, `/next`).
 
-**The punch page** loads the chosen language before it draws (`loadI18n(storedLanguage())` then `init()`); its `redrawForLanguage()` redraws the open screen (the portals: New stack below). Data stays as it is: the GPS diagnostics stored with a punch (`gpsWarnings`), the default site name `Work Site` kept in a punch's `site`, export file names.
+**The new pages** (the portals and the punch page) load the chosen language before they draw (`I18nProvider`, New stack below). Data stays as it is: the GPS diagnostics stored with a punch (`gpsWarnings`), the default site name `Work Site` kept in a punch's `site`, export file names.
 
 More rules the manager app follows:
 - **Dates:** month and weekday names use `uiLocale()` (`en-GB` / `he-IL` / `ru-RU`); numeric dates stay `dd/mm/yyyy` (they are also data, e.g. a punch's `date`).
@@ -100,6 +100,6 @@ Keep using the same words for the same things:
 
 ## Adding a language
 
-1. Add it to `I18N_LANGS` (code and the language's own name) and `I18N_LANG_EN` (its English name) in the two old pages (`schedule-manager.html`, `worker-punch.html`) and in `src/lib/i18n.tsx` (the new pages: `/next`, the client portal) — the language sheet lists it from there — and to `LANGUAGES` in `functions-auth/core.py`.
+1. Add it to `I18N_LANGS` (code and the language's own name) and `I18N_LANG_EN` (its English name) in the manager app (`schedule-manager.html`) and in `src/lib/i18n.tsx` (the new pages: `/next`, the client portal) — the language sheet lists it from there — and to `LANGUAGES` in `functions-auth/core.py`.
 2. Create `i18n/<code>.json`. Copy the keys from `he.json` and translate the values; until then `{}` shows English.
 3. When it is complete, add it to `COMPLETE` in `tests/i18n/check.js`.

@@ -41,7 +41,7 @@ Shared helpers:
 - `esc(s)` — HTML-escapes `& < > " '`. **Every value put into HTML must go through it.**
 - `fmtDate`, `fmtRange`, `fmtDMY`, `localYMD(d)` — use this, not `toISOString()`, which in Israel gives the previous day;
 - `toMins`, `calcHours(s,e)` (crosses midnight), `nowHHMM`, `getSundayOfWeek`;
-- `showToast(msg, dur)` — a small note at the bottom right (above the tab bar on a phone; bottom centre in the portal and the punch page): an icon and a coloured left edge by kind, `toastKind(text)` guessing from the text — error (failed, error, not saved…, red), ongoing (ends with …, blue), warning (check, empty, missing…, amber), else done (green); a new one replaces the shown one. The same function and style are in all three pages.
+- `showToast(msg, dur)` — a small note at the bottom right (above the tab bar on a phone): an icon and a coloured left edge by kind, `toastKind(text)` guessing from the text — error (failed, error, not saved…, red), ongoing (ends with …, blue), warning (check, empty, missing…, amber), else done (green); a new one replaces the shown one. The same function and style are in all three pages.
 
 ## Tabs and rendering
 
@@ -180,14 +180,14 @@ Shown in Admin → Errors / Timings ([admin.md](admin.md)).
   - Network-first, with `cache:'no-store'`; the cache is only the offline fallback.
   - It never touches POSTs or other origins (Firebase, Cloud Functions, CDNs).
   - `.woff2` font files are the exception: cache first (they never change under the same URL).
-  - `CORE` precaches the pages, `hours-review.js`, `og.css`, manifests, app icons, `fonts/fonts.css` and the icon subset.
+  - `CORE` precaches the pages, `hours-review.js`, `og.css`, the manager's manifest, app icons, `fonts/fonts.css` and the icon subset.
   - An offline navigation falls back to the matching page.
   - It also has push / notificationclick handlers.
 - **Registration:** the page registers the worker with `updateViaCache:'none'` and calls `reg.update()`. When a new version takes control (`controllerchange`) it reloads once, after uploads finish.
-- **New version check** (`startVersionWatch(files)` / `showNewVersionBar()`; the same code in the worker page; the new pages: `useVersionWatch`). An app left open keeps the code it loaded, even after a deploy. When the page comes back to the screen (`visibilitychange`), and every 30 min while it is shown, the files it runs are asked for their ETag with `HEAD` and `cache:'no-store'` (the service worker only handles GET): here the page itself, `og.css`, `firestore-backend.js`, and `scan-pipeline.js` / `hours-review.js` once loaded (the portals: the page, `og.css`, `firestore-backend.js` and `hours-review.js` once loaded; the punch page: only itself and `og.css`). The first answer is the baseline; a changed ETag shows one compact line at the top of the screen (a dark pill under the status bar, so it never covers the bottom tab bar): "A new version is available · Update" (reload) and ✕. Nothing reloads on its own. Offline or a failed request: nothing happens.
+- **New version check** (`startVersionWatch(files)` / `showNewVersionBar()`; the new pages: `useVersionWatch`). An app left open keeps the code it loaded, even after a deploy. When the page comes back to the screen (`visibilitychange`), and every 30 min while it is shown, the files it runs are asked for their ETag with `HEAD` and `cache:'no-store'` (the service worker only handles GET): here the page itself, `og.css`, `firestore-backend.js`, and `scan-pipeline.js` / `hours-review.js` once loaded (the portals: the page, `og.css`, `firestore-backend.js` and `hours-review.js` once loaded; the punch page: only itself and `og.css`). The first answer is the baseline; a changed ETag shows one compact line at the top of the screen (a dark pill under the status bar, so it never covers the bottom tab bar): "A new version is available · Update" (reload) and ✕. Nothing reloads on its own. Offline or a failed request: nothing happens.
 - **Install:** `beforeinstallprompt` → "Install app" in the account menu; iOS gets instructions in a toast.
 - **Push:** `PUSH_ENABLED = false`. `subscribeToPush` exists (it keeps the subscription only in `localStorage`) but the button is hidden — no sender exists.
-- **Manifests:** `manifest.json` (manager, start `./schedule-manager.html`) and `manifest-punch.json` (`./worker-punch.html`).
+- **Manifests:** `manifest.json` (manager, start `./schedule-manager.html`, copied as is) and `manifest-punch.json` (the punch page's, [punch.md](punch.md): built by Vite into `dist/assets/manifest-punch-<hash>.json`, so its paths are absolute — `id` and `start_url` `/worker-punch.html`, `scope` `/`, the icons `/icon-*.png`).
 
 ## Hosting and routes
 
