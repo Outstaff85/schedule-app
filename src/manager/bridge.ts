@@ -40,7 +40,7 @@ export type TodaySnapshot = {
   /** false until the page has drawn its data once (the cache or the server) */
   ready: boolean;
   workers: BridgeWorker[];
-  suppliers: { id: string; name: string }[];
+  suppliers: { id: string; name: string; color?: string }[];
   /** today's punches, as stored */
   log: BridgePunch[];
   /** the login may add workers (the `workers` section) */
