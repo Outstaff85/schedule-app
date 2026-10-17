@@ -49,7 +49,7 @@ export const SignaturePad = React.forwardRef<SignaturePadHandle, { onInk?: (has:
     React.useEffect(() => {
       if (!initial) return;
       const im = new Image();
-      im.onload = () => redraw();
+      im.onload = () => { redraw(); setHas(true); onInk?.(true); };
       im.src = initial;
       base.current = im;
     }, [initial]); // eslint-disable-line react-hooks/exhaustive-deps

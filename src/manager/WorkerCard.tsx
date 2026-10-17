@@ -56,7 +56,8 @@ function MissingScanRows({ snap, api }: { snap: CardSnapshot; api: ManagerBridge
   if (!keys.length) return null;
   const can = !!w.assetsFileId;
   const SHOW = 3, more = keys.length - SHOW;
-  const shown = all || more <= 1 ? keys : keys.slice(0, SHOW);
+  // A long list shows its first 3 rows; the rest open with "Show N more".
+  const open = all || more <= 1;
   const find = async (key: string) => {
     if (!can || state[key]) return;
     setState(s => ({ ...s, [key]: 'busy' }));
@@ -64,16 +65,16 @@ function MissingScanRows({ snap, api }: { snap: CardSnapshot; api: ManagerBridge
     try { const res = await api.findScanFields(w.id, [key], w.docType || 'israeli_id'); r = res && res[key]; } catch (e) { console.error(e); }
     if (!r || !r.value) { setState(s => ({ ...s, [key]: 'none' })); return; }
     api.setScanField(w.id, key, r.value);
-    api.toast(scanLabel(key, w.docType) + ': ' + r.value + (r.unsure ? ' — ' + tr('check it') : ''));
+    api.toast(scanLabel(key, w.docType) + ': ' + r.value + (r.unsure ? ' — ' + tr('check it') : ''), r.unsure ? 5000 : undefined);
     api.regenerateDoc(w.id).then(ok => api.toast(ok ? tr('Form 101 updated') : tr('Form 101 update failed')));
   };
   return (
     <div className="mb-3 flex flex-col gap-1.5" data-testid="card-missing">
-      {shown.map(k => {
+      {keys.map((k, i) => {
         const st = state[k];
         return (
-          <div key={k} id={'cardMiss_' + k} data-key={k} role={can && !st ? 'button' : undefined} onClick={() => find(k)}
-            className={cn('flex items-center gap-2 rounded-lg border border-dashed border-warn px-2.5 py-1.5 text-xs text-warn', can && !st && 'cursor-pointer')}>
+          <div key={k} id={'cardMiss_' + k} data-key={k} hidden={!open && i >= SHOW} role={can && !st ? 'button' : undefined} onClick={() => find(k)}
+            className={cn('flex items-center gap-2 rounded-lg border border-dashed border-warn px-2.5 py-1.5 text-xs text-warn [&[hidden]]:hidden', can && !st && 'cursor-pointer')}>
             {st === 'busy' ? <IconLoader2 className="size-4 animate-spin" /> : can && !st ? <IconSearch className="size-4" /> : <IconAlertTriangle className="size-4" />}
             <b dir="rtl">{scanLabel(k, w.docType)}</b>
             <span>— {st === 'busy' ? tr('searching the scan…')
@@ -91,13 +92,16 @@ function MissingScanRows({ snap, api }: { snap: CardSnapshot; api: ManagerBridge
   );
 }
 
-function DocsPane({ snap, api }: { snap: CardSnapshot; api: ManagerBridge }) {
+function DocsPane({ snap, api, active }: { snap: CardSnapshot; api: ManagerBridge; active: boolean }) {
   const w = snap.w, can = snap.canEdit;
   const [, redraw] = React.useReducer((n: number) => n + 1, 0);
   const docs = React.useMemo(() => [...(w.docs || [])].filter(d => !hiddenDocs.has(String(d.id)))
     .sort((a, b) => String(b.uploadedAt || '').localeCompare(String(a.uploadedAt || ''))), [w.docs, hiddenDocs.size]); // eslint-disable-line react-hooks/exhaustive-deps
   const ids = React.useMemo(() => docs.map(d => String(d.id)), [docs]);
   const sel = useSelection(ids);
+  // Another pane clears the ticks.
+  const { end } = sel;
+  React.useEffect(() => { if (!active) end(); }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
   const remove = (which: string[]) => {
     const gone = docs.filter(d => which.includes(String(d.id)));
     if (!gone.length) return;
@@ -208,8 +212,8 @@ export function WorkerCard({ snap, api }: { snap: CardSnapshot; api: ManagerBrid
         <ToggleGroupItem value="hours" data-p="hours">{tr('Hours')}</ToggleGroupItem>
       </ToggleGroup>
 
-      {pane === 'info' && (
-        <div data-testid="card-info">
+      {/* every pane stays in the card, the others hidden (as the old card had them) */}
+      <div data-testid="card-info" data-p="info" hidden={pane !== 'info'}>
           <div className="grid grid-cols-2 gap-2">
             <Kv label={tr('Phone')}>{w.phone}</Kv>
             <Kv label={tr('ID / Passport')}>{docId && <span className="font-mono">{docId}</span>}</Kv>
@@ -224,11 +228,9 @@ export function WorkerCard({ snap, api }: { snap: CardSnapshot; api: ManagerBrid
             {w.otherIncomeType && w.otherIncomeType !== 'none' && OTHER_INCOME_LABELS[w.otherIncomeType] && <Kv label={tr('Other income')}><span dir="rtl">{OTHER_INCOME_LABELS[w.otherIncomeType]}</span></Kv>}
           </div>
           {w.notes && <div className="mt-2 whitespace-pre-wrap rounded-[12px] bg-white/[.04] px-3 py-2 text-[13px] text-ink-2" data-testid="card-notes">{w.notes}</div>}
-        </div>
-      )}
-      {pane === 'docs' && <DocsPane snap={snap} api={api} />}
-      {pane === 'hours' && (
-        <div data-testid="card-hours">
+      </div>
+      <div data-p="docs" hidden={pane !== 'docs'}><DocsPane snap={snap} api={api} active={pane === 'docs'} /></div>
+      <div data-testid="card-hours" data-p="hours" hidden={pane !== 'hours'}>
           <div className="grid grid-cols-2 gap-2">
             <Kv label={tr('This month')}><span className="font-mono text-lg font-bold text-fig">{hoursShort(snap.monthHours)}</span></Kv>
             <Kv label={tr('Scheduled')}>{tr('{0}h scheduled / week', { 0: snap.weekHours.toFixed(1) })}</Kv>
@@ -238,8 +240,7 @@ export function WorkerCard({ snap, api }: { snap: CardSnapshot; api: ManagerBrid
               <IconFileUpload className="size-4" />{tr('Hours sent:')} <HoursStatusChip b={snap.hoursBatch} />
             </div>
           )}
-        </div>
-      )}
+      </div>
 
       <div className="mt-4 flex items-center justify-end gap-2" data-testid="card-actions">
         {can && <Button variant="primary" id="workerCardEdit" data-testid="card-edit" onClick={edit}><IconPencil className="size-[18px]" />{tr('Edit')}</Button>}

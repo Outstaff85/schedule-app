@@ -106,9 +106,8 @@ Where it is used:
 - clients, suppliers;
 - salary, supplier payable, client billable, both rate matrices, pending hours;
 - the punch log and client logs, firms, the firm summary, users, errors, timings;
-- a worker's documents in the card (`pageWorkerDocs`).
 
-The new pages, and the manager app's React tabs (Today: on shift, late, no punch, notices, suppliers, today's log), page by 10 with `PagedList` ([components.md](components.md)), the same rules. Not paged: chips and form rows being edited (selected clients, children), and printed / exported documents.
+The new pages, and the manager app's React tabs and windows (Today: on shift, late, no punch, notices, suppliers, today's log; the worker card's documents; the hours batches sent from Upload hours), page by 10 with `PagedList` ([components.md](components.md)), the same rules. Not paged: chips and form rows being edited (selected clients, children), and printed / exported documents.
 
 ## Login and session
 

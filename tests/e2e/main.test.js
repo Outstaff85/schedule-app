@@ -47,6 +47,26 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       return r.fulfill({status:200, body:''});
     });
     await ctx.addInitScript(() => {
+      // The worker windows are React (stage 6c-2): a field is filled as a person types (the input event),
+      // a select shows its value in data-value, a scan field its mark in data-scan.
+      window.T = {
+        tick: (ms = 0) => new Promise(r => setTimeout(r, ms)),
+        async until(fn, ms = 8000){ const end = Date.now() + ms; while (Date.now() < end){ if (fn()) return true; await new Promise(r => setTimeout(r, 100)); } return !!fn(); },
+        el: sel => typeof sel === 'string' ? (document.getElementById(sel) || document.querySelector(sel)) : sel,
+        fill(sel, v){ const el = T.el(sel); const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+          Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v); el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true})); },
+        val: id => { const el = document.getElementById(id); return el ? (el.dataset.value != null ? el.dataset.value : el.value) : undefined; },
+        scan: id => ((document.getElementById(id) || {}).dataset || {}).scan || '',
+        hint: key => document.querySelector('[data-testid="scan-hint"][data-for="' + key + '"]'),
+        removeClient: id => document.querySelector('[data-testid="editor-clients"] [data-client="' + id + '"] button').click(),
+        async addClient(id){
+          document.getElementById('wClientSearch').click();
+          await T.until(() => document.querySelector('[cmdk-item]'), 3000);
+          const name = clients.find(c => c.id === id).name;
+          [...document.querySelectorAll('[cmdk-item]')].find(x => x.textContent.includes(name)).click();
+          await T.tick(50);
+        },
+      };
       localStorage.setItem('fsEmulator', '127.0.0.1');
       window.FIREBASE_WEB_CONFIG = {apiKey:'fake-key', projectId:'demo-schedule', authDomain:'demo-schedule.firebaseapp.com', storageBucket:'demo-schedule.appspot.com'};
       // A real-looking geolocation reply: not instant (the page flags < 800 ms).
@@ -102,13 +122,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     out.card = row ? row.textContent.replace(/\s+/g, ' ') : '';
     sel.value = 'week'; await onSalaryPeriodChange();
     // An edit in the worker modal keeps the pay fields.
-    openEditWorker(wi); await saveWorker();
+    openEditWorker(wi); await T.tick(); await saveWorker();
     out.keptAfterEdit = workers[wi].hourlyRate === 400 && workers[wi].travelMonthly === 150 && workers[wi].bank === 'Leumi';
     // Moved to a client with its own rate: an hourly worker's own rate gives way to the client's.
     delete workers[wi].payMode; workers[wi].hourlyRate = 70;
     const c2 = clients.find(c => c.id === 'c2'); c2.defaultHourlyRate = 55;
-    openEditWorker(wi); removeWClient('c2'); await saveWorker();
-    openEditWorker(wi); addWClient('c2'); await saveWorker();
+    openEditWorker(wi); await T.tick(); T.removeClient('c2'); await T.tick(); await saveWorker();
+    openEditWorker(wi); await T.tick(); await T.addClient('c2'); await saveWorker();
     out.moved = workers[wi].hourlyRate; delete c2.defaultHourlyRate;
     delete c1.defaultHourlyRate; workers[wi] = keep; await gsSave(getDataObj());
     switchTab('schedule');
@@ -329,11 +349,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await wait(() => badge() && badge().textContent === String(before + 1) && badge().style.display !== 'none');
     r.badge = badge() && badge().style.display !== 'none' ? badge().textContent : null; r.before = before;
     openWorkerCard(workers.findIndex(w => w.id === 'w2'));
-    r.card = document.getElementById('cardHoursStatus').innerText;
+    const hs = () => (document.querySelector('#workerCardModal [data-testid="card-hours-status"]') || {}).textContent || '';
+    r.card = hs();
     const b = latestHoursBatch('w2');
     await rejectHoursBatch(b.batchId);
-    await wait(() => /Rejected/.test(document.getElementById('cardHoursStatus').innerText));
-    r.after = document.getElementById('cardHoursStatus').innerText;
+    await wait(() => /Rejected/.test(hs()));
+    r.after = hs();
     r.badgeAfter = badge().style.display === 'none' ? 0 : Number(badge().textContent);
     closeModal('workerCardOverlay');
     return r;
@@ -343,12 +364,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const as = await p.evaluate(async () => {
     const r = {}, tap = () => { const ov = document.getElementById('workerOverlay'); ov.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true})); ov.click(); };
     const wi = workers.findIndex(w => w.id === 'w2'), keepPhone = workers[wi].phone;
-    openEditWorker(wi); r.noSaveBtn = ![...document.querySelectorAll('#workerModal button')].some(b => /שמור|צור עובד/.test(b.textContent));
-    document.getElementById('wPhone').value = '0547770000'; tap();
+    openEditWorker(wi); r.noSaveBtn = !!document.querySelector('#workerModal [data-testid="worker-editor"]') && ![...document.querySelectorAll('#workerModal button')].some(b => /^\s*(Save|Create|שמור|צור עובד)/.test(b.textContent));
+    T.fill('wPhone', '0547770000'); tap();
     await new Promise(res => setTimeout(res, 300));
     r.saved = workers[wi].phone; r.closed = !document.getElementById('workerOverlay').classList.contains('open');
-    openEditWorker(wi); document.getElementById('wPhone').value = keepPhone || ''; tap(); await new Promise(res => setTimeout(res, 300));
-    openEditWorker(wi); document.getElementById('wGiven').value = ''; document.getElementById('wSurname').value = ''; tap(); await new Promise(res => setTimeout(res, 300));
+    openEditWorker(wi); T.fill('wPhone', keepPhone || ''); tap(); await new Promise(res => setTimeout(res, 300));
+    openEditWorker(wi); T.fill('wGiven', ''); T.fill('wSurname', ''); tap(); await new Promise(res => setTimeout(res, 300));
     r.nameKept = workers[wi].name; r.closedEmpty = !document.getElementById('workerOverlay').classList.contains('open');
     const n = workers.length; openAddWorker(); tap(); await new Promise(res => setTimeout(res, 300));
     r.noNew = workers.length === n && !document.getElementById('workerOverlay').classList.contains('open');
@@ -479,16 +500,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // Scan again from the worker modal: typed values stay, empty ones take the scan's
   const rs = await p.evaluate(async () => {
     openEditWorker(0);
-    document.getElementById('wGiven').value = 'Typed';
-    document.getElementById('wCity').value = '';
-    document.getElementById('wPhone').value = 'P-123';
+    T.fill('wGiven', 'Typed');
+    T.fill('wCity', '');
+    T.fill('wPhone', 'P-123');
     await rescanFromWorkerModal();
     const scanOpen = document.getElementById('aiScanOverlay').classList.contains('open');
     openWorkerModalFromScan({type:'israeli_id', given:'FromScan', surname:'Scan', city:'Haifa'});
-    const r = {scanOpen, given:wGiven.value, city:wCity.value, phone:wPhone.value, rescanned: window.__aiRescannedWorkerId === workers[0].id, draft: window.__wDraft};
+    await T.tick();
+    const r = {scanOpen, given: T.val('wGiven'), city: T.val('wCity'), phone: T.val('wPhone'), rescanned: window.__aiRescannedWorkerId === workers[0].id, draft: window.__wDraft};
     closeModal('workerOverlay'); window.__aiRescannedWorkerId = null;
     openWorkerCard(0);
-    r.card = document.getElementById('workerCardModal').innerHTML.includes('rescanFromWorkerCard');
+    r.card = !!document.querySelector('#workerCardModal [data-testid="card-scan"]');
     closeModal('workerCardOverlay');
     return r;
   });
@@ -499,18 +521,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const w = workers[0]; w.assetsFileId = a.id; w.docType = 'israeli_id'; w.city = ''; w.address = '';
     openWorkerCard(0);
     const rowsBefore = ['city','address'].map(k => !!document.getElementById('cardMiss_'+k));
-    await findScanFieldFromCard(0, 'city');
+    document.getElementById('cardMiss_city').click();
+    await T.until(() => w.city && !document.getElementById('cardMiss_city'));
     const r = {rowsBefore, city: w.city, cityRowGone: !document.getElementById('cardMiss_city'), addrRow: !!document.getElementById('cardMiss_address')};
     closeModal('workerCardOverlay');
-    openEditWorker(0);
-    const addr = document.getElementById('wAddress');
-    r.marked = addr.classList.contains('scan-missing') && !document.getElementById('wCity').classList.contains('scan-missing');
-    addr.click();
-    const end = Date.now() + 8000;
-    while (Date.now() < end && !addr.parentElement.querySelector('.scan-missing-hint')) await new Promise(res => setTimeout(res, 100));
-    r.hint = !!addr.parentElement.querySelector('.scan-missing-hint') && addr.value === '';
-    addr.value = 'Typed'; addr.dispatchEvent(new Event('input'));
-    r.cleared = !addr.classList.contains('scan-missing') && !addr.parentElement.querySelector('.scan-missing-hint');
+    openEditWorker(0); await T.tick();
+    r.marked = T.scan('wAddress') === 'missing' && !T.scan('wCity');
+    document.getElementById('wAddress').click();
+    await T.until(() => T.hint('address'));
+    r.hint = !!T.hint('address') && T.val('wAddress') === '';
+    T.fill('wAddress', 'Typed'); await T.tick();
+    r.cleared = !T.scan('wAddress') && !T.hint('address');
     closeModal('workerOverlay');
     return r;
   });
@@ -523,19 +544,25 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.screenshot({path: SP + '/shot_modal.png'});
   await p.evaluate(() => closeModal('workerOverlay'));
   await p.setViewportSize({width:1280, height:720});
-  ok(fs.rowsBefore.every(Boolean) && fs.city === 'חיפה' && fs.cityRowGone && fs.addrRow, 'card: tapping a missing row finds the city in the saved scan and saves it');
+  await p.evaluate(() => openWorkerCard(0)); await p.waitForTimeout(300);
+  await p.screenshot({path: SP + '/shot_card_1280.png'});
+  await p.evaluate(() => { closeModal('workerCardOverlay'); openEditWorker(0); }); await p.waitForTimeout(300);
+  await p.screenshot({path: SP + '/shot_modal_1280.png'});
+  await p.evaluate(() => closeModal('workerOverlay')); await p.waitForTimeout(300);
+  ok(fs.rowsBefore.every(Boolean) && fs.city === 'חיפה' && fs.cityRowGone && fs.addrRow, 'card: tapping a missing row finds the city in the saved scan and saves it ' + JSON.stringify(fs));
   ok(fs.marked && fs.hint && fs.cleared, 'modal: empty scan field marked; not found shows a hint; typing clears the mark');
   // A field whose zoomed re-read disagreed is framed "check this" until edited
   const uc = await p.evaluate(() => {
     window.__aiPageParsed = [{type:'israeli_id', given:'Avi', city:'חיפה', __uncertain:['city']}];
     window.__aiRescanWorkerId = workers[1].id;
     openWorkerModalFromScan({type:'israeli_id', given:'Avi', city:'חיפה', __uncertain:['city']});
-    const c = document.getElementById('wCity');
-    const r = {marked: c.classList.contains('scan-check') && !!c.parentElement.querySelector('.scan-check-hint'), given: document.getElementById('wGiven').classList.contains('scan-check')};
-    c.value = 'Haifa'; c.dispatchEvent(new Event('input'));
-    r.cleared = !c.classList.contains('scan-check') && !c.parentElement.querySelector('.scan-check-hint');
-    closeModal('workerOverlay'); window.__aiRescannedWorkerId = null; window.__aiPageParsed = [];
-    return r;
+    const r = {marked: T.scan('wCity') === 'check' && !!T.hint('city'), given: T.scan('wGiven') === 'check'};
+    T.fill('wCity', 'Haifa');
+    return T.tick().then(() => {
+      r.cleared = !T.scan('wCity') && !T.hint('city');
+      closeModal('workerOverlay'); window.__aiRescannedWorkerId = null; window.__aiPageParsed = [];
+      return r;
+    });
   });
   ok(uc.marked && !uc.given && uc.cleared, 'modal: a field the two scan reads disagree on is marked "check" until edited');
   // Second pass right after a scan: empty fields are searched for on their own
@@ -545,10 +572,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     window.__aiRescanWorkerId = null; window.__aiPageParsed = [];
     window.__aiScanImage = {b64:'FRONT', mediaType:'image/jpeg'}; window.__aiPacketOtherPages = [{b64:'SEF', mediaType:'image/jpeg'}];
     openWorkerModalFromScan({type:'israeli_id', given:'Neo', surname:'Test', dob:'01/01/1990', sex:'M'});
-    const city = document.getElementById('wCity'), addr = document.getElementById('wAddress');
-    const end = Date.now() + 8000;
-    while (Date.now() < end && !(city.value && addr.parentElement.querySelector('.scan-missing-hint'))) await new Promise(r => setTimeout(r, 100));
-    const r = {city: city.value, addrHint: !!addr.parentElement.querySelector('.scan-missing-hint'), given: document.getElementById('wGiven').value};
+    await T.until(() => T.val('wCity') && T.hint('address'));
+    const r = {city: T.val('wCity'), addrHint: !!T.hint('address'), given: T.val('wGiven')};
     closeModal('workerOverlay'); window.__aiScanImage = null; window.__aiPacketOtherPages = [];
     return r;
   });
@@ -740,20 +765,20 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const pend = async () => ((await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'loadPendingHours'})})).json()).batches||[]).length;
     workers.find(w => w.id === 'w2').payMode = 'daily';
     openHoursImportModal('w2');
-    const addBtn = [...document.querySelectorAll('#hoursImportModal button')].find(b => /Add shift/.test(b.textContent));
-    addBtn.click(); addBtn.click(); addBtn.click();
-    r.dates = [...document.querySelectorAll('#hoursManualRows input[type=date]')].map(i => i.value);
+    const addBtn = () => document.querySelector('#hoursImportModal [data-testid="hours-add-row"]');
+    addBtn().click(); await T.tick(); addBtn().click(); await T.tick(); addBtn().click(); await T.tick();
+    r.dates = [...document.querySelectorAll('#hoursManualRows [data-row]')].map(i => i.dataset.date);
     r.btnOn = !document.getElementById('hoursImportSubmitBtn').disabled;
     const before = await pend();
     click('#hoursImportSubmitBtn');
     for(let i = 0; i < 40 && await pend() === before; i++) await new Promise(res => setTimeout(res, 150));
     r.sentDaily = (await pend()) - before;
     // The first send is done only when its reply cleared the rows; reopening sooner lets that reply clear the next row.
-    for(let i = 0; i < 40 && __hoursManualRows.length; i++) await new Promise(res => setTimeout(res, 100));
+    for(let i = 0; i < 40 && document.querySelector('#hoursManualRows [data-row]'); i++) await new Promise(res => setTimeout(res, 100));
     closeModal('hoursImportOverlay');
     delete workers.find(w => w.id === 'w2').payMode;
     openHoursImportModal('w2');
-    [...document.querySelectorAll('#hoursImportModal button')].find(b => /Add shift/.test(b.textContent)).click();
+    addBtn().click(); await T.tick();
     const before2 = await pend();
     const toasts = []; const orig = window.showToast; window.showToast = (m) => { toasts.push(m); };
     click('#hoursImportSubmitBtn');
@@ -828,14 +853,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const chip = plate.querySelector('[data-testid="worker-chip1"] [data-testid="notice-chip"]');
     r.chip = chip && chip.dataset.lvl; r.more = !!plate.querySelector('[data-testid="notice-more"]'); r.bar = plate.querySelector('.og-plate').style.getPropertyValue('--bar');
     chip.click(); await wait(150);
-    r.sheet = document.getElementById('noticesOverlay').classList.contains('open'); r.notices = [...document.querySelectorAll('#noticesModal .t3-line b')].map(b => b.textContent);
-    r.head = document.querySelector('#noticesModal .wc-hn h4').textContent; r.card0 = document.getElementById('workerCardOverlay').classList.contains('open');
-    [...document.querySelectorAll('#noticesModal .modal-actions .gbtn')].find(b => /Open worker card/.test(b.textContent)).click(); await wait(300);
+    r.sheet = document.getElementById('noticesOverlay').classList.contains('open'); r.notices = [...document.querySelectorAll('#noticesModal [data-testid="notice"] b')].map(b => b.textContent);
+    r.head = document.querySelector('#noticesModal [data-testid="worker-head-name"]').textContent; r.card0 = document.getElementById('workerCardOverlay').classList.contains('open');
+    document.querySelector('#noticesModal [data-testid="notices-open-card"]').click(); await wait(300);
     r.card = document.getElementById('workerCardOverlay').classList.contains('open') && !document.getElementById('noticesOverlay').classList.contains('open');
-    const panes = () => [...document.querySelectorAll('#workerCardModal .wc-pane')].filter(x => !x.hidden).map(x => x.dataset.p).join();
-    r.panes = [panes()]; workerCardPane('docs'); r.panes.push(panes()); workerCardPane('hours'); r.panes.push(panes());
-    r.hoursStatus = !!document.querySelector('#workerCardModal .wc-pane[data-p="hours"] #cardHoursStatus');
-    r.edit = !!document.getElementById('workerCardEdit'); workerCardPane('info');
+    const panes = () => [...document.querySelectorAll('#workerCardModal [data-p]')].filter(x => x.tagName === 'DIV' && !x.hidden).map(x => x.dataset.p).join();
+    const pane = async k => { document.querySelector('#workerCardModal [data-testid="card-panes"] [data-p="' + k + '"]').click(); await wait(50); };
+    r.panes = [panes()]; await pane('docs'); r.panes.push(panes()); await pane('hours'); r.panes.push(panes());
+    r.hoursStatus = !!document.querySelector('#workerCardModal [data-testid="card-hours"]');
+    r.edit = !!document.getElementById('workerCardEdit'); await pane('info');
     // closing the card brings the notices sheet back; on a slow runner that takes longer than a fixed 200 ms, so up to 3 s
     closeModal('workerCardOverlay');
     for (let i = 0; i < 20 && !document.getElementById('noticesOverlay').classList.contains('open'); i++) await wait(150);
@@ -869,48 +895,57 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(wp.panes.join('|') === 'info|docs|hours' && wp.hoursStatus && wp.edit, 'worker card: Info / Docs / Hours switch, one Edit button ' + JSON.stringify(wp.panes));
   ok(wp.menu === 'Edit,Open card,Pay,Punch link,Delete' && wp.pendingHidden && wp.stillThere && wp.undone && wp.leftOut && wp.notYet && wp.deleted, 'workers: Delete never asks — Undo keeps the worker, otherwise it is removed after 5 s ' + JSON.stringify(wp));
   ok(wp.selHead && wp.selOn && wp.sel === '1 selected' && wp.vac, 'workers: a Select button, boxes only after it; a tick, the bulk bar sets Vacation and Select ends ' + JSON.stringify({selHead: wp.selHead, selOn: wp.selOn, sel: wp.sel, vac: wp.vac}));
-  // Worker documents (stage 13): plates with Select in the card's Docs pane; bulk Delete through Undo; closing the card gives Select back to the workers list.
+  // Worker documents (stage 13): plates with Select in the card's Docs pane; bulk Delete through Undo; closing the card ends Select and the workers list keeps its own.
   const wd = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
-    const w = workers[0], keep = w.docs;
+    const w = workers[0]; window.__wdKeep = w.docs;
     w.docs = [{id:'d1', type:'contract', name:'contract.pdf', url:'#', uploadedAt:'2026-01-02'}, {id:'d2', type:'other', name:'visa.jpg', url:'#', uploadedAt:'2026-01-01'}];
     switchTab('workers'); await wait(100);
-    openWorkerCard(0); await wait(300); workerCardPane('docs'); await wait(50);
-    const rows = () => document.querySelector('#workerCardModal .worker-docs-rows');
-    r.plates = rows().querySelectorAll('.t3-line .t3-cb').length;
-    r.head = (rows().previousElementSibling || {}).className === 'sel-head' && !!rows().previousElementSibling.querySelector('[data-h="on"]');
-    rows().previousElementSibling.querySelector('[data-h="on"]').click(); await wait(50);
-    rows().previousElementSibling.querySelector('[data-h="all"]').click(); await wait(50);
-    r.bar = (document.querySelector('.sel-bar b') || {}).textContent;
-    document.querySelector('.sel-bar .gbtn.del').click(); await wait(400);
-    r.pending = w.docs.length === 2 && /2 documents deleted/.test(document.querySelector('#undoSnack').textContent);
-    document.querySelector('#undoSnack .og-snack-u').click(); await wait(400);
-    r.undone = rows() && rows().querySelectorAll('.t3-line:not(.gone)').length === 2 && w.docs.length === 2;
-    rows().querySelector('.t3-line .t3-kb').click(); await wait(50);
-    r.menu = [...document.querySelectorAll('#ogPop .og-pop-it')].map(b => (b.classList.contains('del') ? '!' : '') + b.innerText.trim()).join();
-    document.querySelector('#ogPop .og-pop-it.del').click(); await wait(5400);
-    r.deleted = w.docs.map(d => d.id).join();
-    closeModal('workerCardOverlay'); await wait(200);
-    r.back = !!document.querySelector('#workersRoot [data-testid="workers-select"] button') && !(__selState && __selState.key === 'workerDocs');
-    w.docs = keep; render();
+    openWorkerCard(0); await wait(300);
+    document.querySelector('#workerCardModal [data-testid="card-panes"] [data-p="docs"]').click(); await wait(100);
+    const docs = () => [...document.querySelectorAll('#workerCardModal [data-testid="worker-doc"]')];
+    r.plates = docs().length; r.boxes0 = !document.querySelector('#workerCardModal .og-box');
+    const head = () => document.querySelector('#workerCardModal [data-testid="card-docs"]');
+    [...head().querySelectorAll('button')].find(b => b.textContent.trim() === 'Select').click(); await wait(100);
+    r.head = /0 selected/.test(head().textContent) && document.querySelectorAll('#workerCardModal .og-box').length === 2;
+    [...head().querySelectorAll('.sel-head button')].find(b => /Select all/.test(b.textContent)).click(); await wait(100);
+    r.bar = (document.querySelector('[data-testid="select-bar"] b') || {}).textContent;
+    [...document.querySelectorAll('[data-testid="select-bar"] button')].find(b => /Delete/.test(b.textContent)).click(); await wait(400);
+    r.pending = w.docs.length === 2 && !docs().length && /2 documents/.test(document.querySelector('[data-testid="undo-snack"]').textContent);
+    document.querySelector('[data-testid="undo-snack"] button').click(); await wait(400);
+    r.undone = docs().length === 2 && w.docs.length === 2;
     return r;
   });
-  ok(wd.plates === 2 && wd.head && wd.bar === '2 selected' && wd.pending && wd.undone && wd.menu === 'Open,!Delete' && wd.deleted === 'd2' && wd.back, 'worker documents: plates with Select, bulk Delete through Undo, ⋮ Delete after 5 s, Select ends on close and the workers list keeps its Select ' + JSON.stringify(wd));
+  await p.click('#workerCardModal [data-testid="worker-doc"][data-doc="d2"] button[aria-label="Actions"]'); await sleep(200);
+  wd.menu = await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(b => (/red-soft/.test(b.className) ? '!' : '') + b.innerText.trim()).join());
+  await p.click('[role="menuitem"]:has-text("Delete")'); await sleep(5600);
+  Object.assign(wd, await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), r = {}, w = workers[0];
+    r.deleted = w.docs.map(d => d.id).join();
+    const head = document.querySelector('#workerCardModal [data-testid="card-docs"]');
+    [...head.querySelectorAll('button')].find(b => b.textContent.trim() === 'Select').click(); await wait(100);
+    r.barOn = !!document.querySelector('[data-testid="select-bar"]');
+    closeModal('workerCardOverlay'); await wait(200);
+    r.back = !document.querySelector('[data-testid="select-bar"]') && !!document.querySelector('#workersRoot [data-testid="workers-select"] button');
+    w.docs = window.__wdKeep; render();
+    return r;
+  }));
+  ok(wd.plates === 2 && wd.boxes0 && wd.head && wd.bar === '2 selected' && wd.pending && wd.undone && wd.menu === 'Open,!Delete' && wd.deleted === 'd1' && wd.barOn && wd.back, 'worker documents: plates with Select, bulk Delete through Undo, ⋮ Delete after 5 s, Select ends when the card closes and the workers list keeps its Select ' + JSON.stringify(wd));
   // Editors as section plates (redesign stage 4): worker, client, supplier, user.
   const ed = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
     const secs = id => [...document.querySelectorAll('#' + id + ' .og-sec')].filter(x => x.style.display !== 'none').map(x => x.dataset.sec + (x.classList.contains('open') ? '*' : ''));
+    // The worker editor is React (stage 6c-2): its section plates are Accordion items.
     openEditWorker(workers.findIndex(w => w.id === 'w2')); await wait(200);
-    r.worker = secs('workerModal');
-    const person = document.querySelector('#workerModal .og-sec[data-sec="person"]');
-    r.personSum = person.querySelector('.og-sec-s').textContent;
-    r.sexSeg = [...document.querySelectorAll('#workerModal .seg-sel')].length >= 2 && document.getElementById('wMaritalStatus').style.display !== 'none' && document.getElementById('wSex').style.display === 'none';
-    const segBtn = document.getElementById('wSex').nextElementSibling.querySelector('button[data-v="F"]'); segBtn.click(); r.sexVal = document.getElementById('wSex').value;
-    const addrSec = document.querySelector('#workerModal .og-sec[data-sec="address"]'); addrSec.classList.remove('open');
-    document.getElementById('wCity').focus(); r.focusOpens = addrSec.classList.contains('open');
-    const notes = document.querySelector('#workerModal .og-sec[data-sec="access"]'), wasOpen = notes.classList.contains('open');
-    notes.querySelector('.og-sec-h').click(); r.toggles = notes.classList.contains('open') !== wasOpen;
-    r.noSave = !document.querySelector('#workerModal .og-save');
+    const wsec = k => document.querySelector('#workerModal [data-sec="' + k + '"]');
+    r.worker = [...document.querySelectorAll('#workerModal [data-sec]')].map(x => x.dataset.sec);
+    r.personSum = wsec('person').querySelector('[data-slot="accordion-trigger"] small').textContent;
+    r.sexSeg = document.getElementById('wSex').getAttribute('role') === 'radiogroup' && document.getElementById('wMaritalStatus').getAttribute('role') === 'combobox' && document.getElementById('wSpouseIncome').getAttribute('role') === 'radiogroup';
+    document.querySelector('#wSex [data-v="F"]').click(); await wait(50); r.sexVal = T.val('wSex');
+    const acc = wsec('access'), wasOpen = acc.dataset.state === 'open';
+    acc.querySelector('[data-slot="accordion-trigger"]').click(); await wait(50); r.toggles = (acc.dataset.state === 'open') !== wasOpen;
+    r.closedHidden = [...document.querySelectorAll('#workerModal [data-sec][data-state="closed"] [data-slot="accordion-content"]')].every(c => c.hidden) && !!document.getElementById('wCity');
+    r.noSave = ![...document.querySelectorAll('#workerModal button')].some(b => /^\s*Save/.test(b.textContent));
     workers.find(w => w.id === 'w2').docSex = workers.find(w => w.id === 'w2').docSex; closeModal('workerOverlay');
     openEditClient(clients[0].id); await wait(100); r.client = secs('clientModal'); closeModal('clientOverlay');
     openAddSupplier(); await wait(100); r.supplier = secs('supplierModal'); r.supSave = !!document.querySelector('#supplierModal .og-save');
@@ -924,8 +959,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     for(let i = 0; i < 3; i++){ await wait(150); document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); }
     return r;
   });
-  ok(ed.worker.join() === 'person,address,work,documents,form101,access' && /Dana/.test(ed.personSum) && ed.sexSeg && ed.sexVal === 'F' && ed.focusOpens && ed.toggles && ed.noSave,
-    'editors: the worker editor is section plates (Person · Address · Work · Documents · Form 101 · Access), summaries, segmented choices, a focused field opens its section, no Save ' + JSON.stringify(ed));
+  ok(ed.worker.join() === 'person,address,work,documents,form101,access' && /Dana/.test(ed.personSum) && ed.sexSeg && ed.sexVal === 'F' && ed.toggles && ed.closedHidden && ed.noSave,
+    'editors: the worker editor is section plates (Person · Address · Work · Documents · Form 101 · Access), summaries, segmented choices, closed sections keep their fields, no Save ' + JSON.stringify(ed));
   ok(ed.client.join() === 'client,place,rates,approval' && ed.supplier.join() === 'supplier*' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,sections' && ed.supplierEdit === 'supplier,commission,portal,workers' && ed.userHr === 'person,sections,hours,commission' && ed.roleSeg,
     'editors: client, supplier (one Save, an empty name amber) and user form as section plates ' + JSON.stringify(ed));
   // Redesign gaps: client billing by the day; the supplier editor's payable commission and editable portal ticks (saved at once).
@@ -995,7 +1030,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const n = notifList().find(x => x.id.includes('nopunch:w2:'));
     r.bellActs = n ? n.acts.map(a => a.label).join() : 'none';
     openNotices('w2'); await wait(200);
-    const btn = document.querySelector('#noticesModal .gbtn.nact.wa');
+    const btn = document.querySelector('#noticesModal [data-testid="notice-act"][data-wa]');
     r.sheetBtn = !!btn && /Call/.test(document.getElementById('noticesModal').innerText);
     let opened = null; const wo = window.open; window.open = u => { opened = u; return null; };
     if(btn) btn.click(); window.open = wo;
@@ -1111,12 +1146,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(nt.bell && nt.before >= 1 && nt.item && nt.after === 0 && nt.noNew && nt.kept === 0 && nt.opens, 'notifications: the bell counts, the panel lists the expired ID as new, Mark all read is kept on the account, a tap opens the worker\'s notices ' + JSON.stringify(nt));
   // Worker card: a click only reads; a double click, a long touch or its ✎ opens the edit form;
   // closing it (a tap outside saves it) brings the card back.
-  const cardSpot = '#workerCardModal .wc-kv >> nth=0';
+  const cardSpot = '#workerCardModal [data-testid="card-kv"] >> nth=0';
   await p.evaluate(() => openWorkerCard(1)); await sleep(400);
   await p.click(cardSpot, {position:{x:5, y:5}}); await sleep(500);
   const bk0 = await p.evaluate(() => !document.getElementById('workerOverlay').classList.contains('open') && document.getElementById('workerCardOverlay').classList.contains('open'));
   const lp = await p.evaluate(async () => {
-    const el = document.querySelector('#workerCardModal .wc-kv');
+    const el = document.querySelector('#workerCardModal [data-testid="card-kv"]');
     const r = el.getBoundingClientRect(), o = {bubbles:true, pointerType:'touch', clientX:r.left + 5, clientY:r.top + 5};
     el.dispatchEvent(new PointerEvent('pointerdown', o)); await new Promise(res => setTimeout(res, 250));
     el.dispatchEvent(new PointerEvent('pointerup', o)); await new Promise(res => setTimeout(res, 400));
@@ -1136,7 +1171,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.evaluate(() => { closeModal('workerCardOverlay'); openWorkerCard(1); }); await sleep(400);
   await p.click('#workerCardEdit'); await sleep(400);
   const bk1 = await p.evaluate(() => document.getElementById('workerOverlay').classList.contains('open'));
-  await p.evaluate(() => { document.getElementById('wNotes').value = 'back-to-card'; });
+  await p.evaluate(() => { T.fill('wNotes', 'back-to-card'); });
   await p.mouse.click(5, 450); await sleep(1200);
   const bk = await p.evaluate(() => ({edit: document.getElementById('workerOverlay').classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open'), notes: workers[1].notes}));
   await p.mouse.click(5, 450); await sleep(300);
@@ -1165,16 +1200,16 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     let moved = false;
     t('touchstart', 0); for (let d = 10; d <= 200; d += 20){ t('touchmove', d); if(m.style.transform) moved = true; } t('touchend', 200);
     await new Promise(r => setTimeout(r, 400));
-    const res = {noSwipe: wrap.classList.contains('no-swipe'), moved, open: document.getElementById('aiScanOverlay').classList.contains('open'), touch: getComputedStyle(wrap).touchAction,
-      avatar: document.getElementById('avatarCropBox').classList.contains('no-swipe')};
+    const res = {noSwipe: wrap.classList.contains('no-swipe'), moved, open: document.getElementById('aiScanOverlay').classList.contains('open'), touch: getComputedStyle(wrap).touchAction};
     document.getElementById('aiScanOverlay').classList.remove('open'); document.getElementById('aiScanStage').innerHTML = '';
     return res;
   });
-  ok(crop.noSwipe && !crop.moved && crop.open && crop.touch === 'none' && crop.avatar, 'phone: a drag on the scan crop editor does not move or close the sheet ' + JSON.stringify(crop));
+  ok(crop.noSwipe && !crop.moved && crop.open && crop.touch === 'none', 'phone: a drag on the scan crop editor does not move or close the sheet ' + JSON.stringify(crop));
   await p.setViewportSize({width: 1280, height: 900}); await sleep(300);
   // Any window opened from the worker card goes back to it: Pay → tap outside → the card again.
   await p.evaluate(() => openWorkerCard(1)); await sleep(300);
-  await p.evaluate(() => { document.querySelector('#workerCardModal .wc-more').click(); [...document.querySelectorAll('#ogPop .og-pop-it')].find(b => /Pay/.test(b.textContent)).click(); }); await sleep(400);
+  await p.click('#workerCardModal [data-testid="card-more"]'); await sleep(200);
+  await p.click('[role="menuitem"]:has-text("Pay")'); await sleep(400);
   const pay1 = await p.evaluate(() => ({pay: document.getElementById('payOverlay')?.classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open')}));
   await p.mouse.click(5, 450); await sleep(600);
   const pay2 = await p.evaluate(() => ({pay: document.getElementById('payOverlay')?.classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open')}));

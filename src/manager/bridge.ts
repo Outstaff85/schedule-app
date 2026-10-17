@@ -355,8 +355,8 @@ export type ManagerBridge = WorkerBridge & {
   moveWorker(fromId: string, toId: string): void;
   editWorker(id: string): void;
   exportAs(kind: 'excel' | 'pdf' | 'json'): void;
-  /** the page's toast (`showToast`) */
-  toast(text: string): void;
+  /** the page's toast (`showToast`), for `ms` (its default when left out) */
+  toast(text: string, ms?: number): void;
 
   // ── Workers (stage 6c-1) ──
   workers(): WorkersSnapshot;

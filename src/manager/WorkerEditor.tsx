@@ -36,7 +36,7 @@ import { Line, TodayPin } from './pieces';
 import { hoursShort } from './today';
 import {
   DAYS_EN, DAYS_HE, HEALTH_FUND_LABELS, INCOME_LABELS, MARITAL_LABELS, OTHER_INCOME_LABELS, SCAN_FIELDS, SEX_LABELS, SPOUSE_INCOME_LABELS,
-  WORKER_DOC_TYPES, fmtDMY, formOf, scanLabel, type FormKey, type WorkerForm,
+  WORKER_DOC_TYPES, fmtDMY, formOf, type FormKey, type WorkerForm,
 } from './worker';
 import { saveWorker, type EditorState } from './worker-save';
 
@@ -69,7 +69,7 @@ export const editor: { current: EditorHandle | null } = { current: null };
 function Field({ label, children, className, hint }: { label: React.ReactNode; children: React.ReactNode; className?: string; hint?: React.ReactNode }) {
   return (
     <div className={cn('grid min-w-0 content-start gap-1.5', className)}>
-      <Label dir="auto">{label}</Label>
+      <Label>{label}</Label>
       {children}
       {hint}
     </div>
@@ -137,6 +137,8 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
   const sig = React.useRef<SignaturePadHandle>(null);
   const [open, setOpen] = React.useState<string[]>(() => (w.__scanCheck?.length || !editing ? ['person'] : []));
   const hasScan = info.hasScan;
+  // A closed section keeps its fields in the page (hidden), so every save and search reads them all.
+  const body = (k: string) => ({ forceMount: true as const, hidden: !open.includes(k) });
   const markRef = React.useRef(marks); markRef.current = marks;
 
   const setMark = (key: string, m: Mark | null) => setMarks(cur => { const n = { ...cur }; if (m) n[key] = m; else delete n[key]; return n; });
@@ -172,7 +174,14 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
     });
   };
 
-  React.useLayoutEffect(() => { markMissing(); markUncertain(w.__scanCheck); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useLayoutEffect(() => {
+    markMissing(); markUncertain(w.__scanCheck);
+    // A section with a scan field left empty opens by itself.
+    if (!hasScan) return;
+    const vals = form.getValues() as unknown as Record<string, string>, isId = docType !== 'passport', secs = new Set<string>();
+    for (const [k, f] of Object.entries(SCAN_FIELDS)) if ((isId || !f.idOnly) && !String(vals[k] || '').trim()) secs.add(f.page === 'sefach' ? 'address' : 'person');
+    if (secs.size) setOpen(o => [...new Set([...o, ...secs])]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A search of several empty fields in one request (`findScanFields`).
   const search = async (keys: string[]) => {
@@ -243,14 +252,16 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
     );
   };
   function ScanHint({ k, m }: { k: string; m?: Mark }) {
-    if (!m) return null;
-    if (m.k === 'none') return <Hint>{tr('Not found in the scan')} — <a href="#" className="underline" onClick={e => { e.preventDefault(); api.rescan(); }}>{tr('photograph the page again')}</a> {tr('or type it in')}</Hint>;
-    if (m.k !== 'check') return null;
-    if (m.msg === 'before-after') {
-      return <Hint>{tr('Check — before: {0} · after: {1}', { 0: shown(k, m.prev || ''), 1: shown(k, String((form.getValues() as unknown as Record<string, string>)[k] || '')) })} · <a href="#" className="underline" onClick={e => { e.preventDefault(); restore(k); }}>{tr('Restore')}</a></Hint>;
+    if (!m || (m.k !== 'none' && m.k !== 'check')) return null;
+    let body: React.ReactNode;
+    if (m.k === 'none') body = <>{tr('Not found in the scan')} — <a href="#" className="underline" onClick={e => { e.preventDefault(); api.rescan(); }}>{tr('photograph the page again')}</a> {tr('or type it in')}</>;
+    else if (m.msg === 'before-after') {
+      body = <>{tr('Check — before: {0} · after: {1}', { 0: shown(k, m.prev || ''), 1: shown(k, String((form.getValues() as unknown as Record<string, string>)[k] || '')) })} · <a href="#" className="underline" onClick={e => { e.preventDefault(); restore(k); }}>{tr('Restore')}</a></>;
+    } else {
+      const again = SCAN_FIELDS[k] && hasScan;
+      body = <>{m.msg}{again && <> · <a href="#" className="whitespace-nowrap underline" onClick={e => { e.preventDefault(); recheck(k, true); }}>🔍 {tr('Read it again from the scan')}</a></>}</>;
     }
-    const again = SCAN_FIELDS[k] && hasScan;
-    return <Hint><span data-testid="scan-check-hint">{m.msg}</span>{again && <> · <a href="#" className="whitespace-nowrap underline" onClick={e => { e.preventDefault(); recheck(k, true); }}>🔍 {tr('Read it again from the scan')}</a></>}</Hint>;
+    return <div data-testid="scan-hint" data-for={k} data-k={m.k}><Hint>{body}</Hint></div>;
   }
   const choiceMark = (key: string) => marks[key]?.k;
   const choicePointer = (key: string) => (e: React.PointerEvent) => {
@@ -332,7 +343,7 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
       <Accordion type="multiple" value={open} onValueChange={setOpen}>
         <AccordionItem value="person" data-sec="person" color={colorOf(['docGiven', 'docSurname', 'docId', 'docDob', 'docSex', 'docExpiry'], personVals)}>
           <AccordionTrigger icon={<IconUser />} summary={summary(personVals)}>{tr('Person')}</AccordionTrigger>
-          <AccordionContent forceMount className="grid gap-2.5">
+          <AccordionContent {...body('person')} className="grid gap-2.5">
             <FieldRow>
               {text('docGiven', { label: 'שם פרטי', placeholder: 'שם פרטי' })}
               {text('docSurname', { label: 'שם משפחה', placeholder: 'שם משפחה' })}
@@ -365,7 +376,7 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
 
         <AccordionItem value="address" data-sec="address" color={colorOf(['address', 'houseNumber', 'city'], addrVals)}>
           <AccordionTrigger icon={<IconHome />} summary={summary(addrVals)}>{tr('Address')}</AccordionTrigger>
-          <AccordionContent forceMount>
+          <AccordionContent {...body('address')}>
             <div className="grid grid-cols-[1.6fr_.8fr_1.3fr] gap-2.5 [&>*]:min-w-0">
               {text('address', { label: 'רחוב', placeholder: 'רחוב' })}
               {text('houseNumber', { label: 'מספר בית', placeholder: 'מס׳' })}
@@ -376,7 +387,7 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
 
         <AccordionItem value="work" data-sec="work" color={colorOf([], workVals)}>
           <AccordionTrigger icon={<IconBriefcase />} summary={summary(workVals)}>{tr('Work')}</AccordionTrigger>
-          <AccordionContent forceMount className="grid gap-2.5">
+          <AccordionContent {...body('work')} className="grid gap-2.5">
             <Field label={<><IconUsers className="size-3.5" />{tr('Clients')} {clientIds.length > 0 && <span className="text-ink-3">({clientIds.length})</span>}</>}>
               {clientIds.length > 0 && (
                 <div className="flex flex-wrap gap-1.5" data-testid="editor-clients">
@@ -453,7 +464,7 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
             badge={editing && info.docProblems > 0 ? <Badge variant={info.docLevel === 'error' ? 'bad' : 'warn'}>{info.docLevel === 'error' ? <IconAlertTriangle /> : <IconAlertCircle />}{info.docProblems}</Badge> : undefined}>
             {tr('Documents')}
           </AccordionTrigger>
-          <AccordionContent forceMount className="grid gap-1.5">
+          <AccordionContent {...body('documents')} className="grid gap-1.5">
             {editing ? <>
               <DocLine color={info.docMissing.length ? 'var(--warn)' : 'var(--ok)'} icon={<IconId />} title={tr('ID / Passport')} sub={info.docExpiryText || v.docId}
                 act={info.docMissing.length || info.docFailed ? <Button size="sm" onClick={() => api.rescan()}>{tr('Upload')}</Button> : null} />
@@ -469,7 +480,7 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
 
         <AccordionItem value="form101" data-sec="form101" color={colorOf([], f101Vals)}>
           <AccordionTrigger icon={<IconIdBadge2 />} summary={summary(f101Vals)} badge={editing && !w.docUrl ? <Badge variant="warn"><IconAlertCircle />{tr('Sign')}</Badge> : undefined}>{tr('Form 101')}</AccordionTrigger>
-          <AccordionContent forceMount className="grid gap-2.5">
+          <AccordionContent {...body('form101')} className="grid gap-2.5">
             <div className="grid gap-2.5 min-[480px]:grid-cols-2 [&>*]:min-w-0">
               <Field label="סוג הכנסה (טופס 101)"><Choice id="wIncomeType" value={v.incomeType} opts={Object.entries(INCOME_LABELS)} onChange={val => set('incomeType', val)} /></Field>
               <Field label="הכנסה נוספת (טופס 101)"><Choice id="wOtherIncomeType" value={v.otherIncomeType} opts={Object.entries(OTHER_INCOME_LABELS)} onChange={val => set('otherIncomeType', val)} /></Field>
@@ -515,7 +526,7 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
         {editing && (
           <AccordionItem value="access" data-sec="access" color={token ? 'var(--ok)' : 'var(--neutral)'}>
             <AccordionTrigger icon={<IconKey />} summary={token ? tr('Punch link on') : tr('No punch link yet')}>{tr('Access')}</AccordionTrigger>
-            <AccordionContent forceMount className="grid gap-2">
+            <AccordionContent {...body('access')} className="grid gap-2">
               {token && (
                 <Field label={<><IconLink className="size-3.5" />{tr('Personal punch link')}</>}>
                   <div className="flex flex-wrap items-center gap-2 rounded-[12px] bg-white/[.05] px-3 py-2.5">

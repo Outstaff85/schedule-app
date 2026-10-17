@@ -38,7 +38,7 @@ export function NoticesSheet({ wid, head, api }: { wid: string; head: WorkerHead
             right={n.acts.length ? (
               <span className="flex gap-1">
                 {n.acts.map(a => (
-                  <Button key={a.label} size="sm" className={cn(a.wa && '!text-ok')} onClick={e => { e.stopPropagation(); a.run(); }}><TiIcon name={a.icon} className="size-4" />{a.label}</Button>
+                  <Button key={a.label} size="sm" data-testid="notice-act" data-wa={a.wa || undefined} className={cn(a.wa && '!text-ok')} onClick={e => { e.stopPropagation(); a.run(); }}><TiIcon name={a.icon} className="size-4" />{a.label}</Button>
                 ))}
               </span>
             ) : undefined} />
@@ -202,7 +202,7 @@ export function HoursImport({ wid, api }: { wid: string; api: ManagerBridge }) {
   };
   const submit = async () => {
     const problem = manualRowsProblem(rows, info.daily, info.name);
-    if (problem) { setBad(problem.rows); api.toast(problem.text); return; }
+    if (problem) { setBad(problem.rows); api.toast(problem.text, 6000); return; }
     setBad([]);
     const manual = manualEntries(rows, info.daily);
     if (!entries.length && !manual.length) return;
@@ -241,7 +241,7 @@ export function HoursImport({ wid, api }: { wid: string; api: ManagerBridge }) {
       <div className="my-1.5 text-[11px] text-ink-3">{info.daily ? tr('Paid by the day: a date is enough — with no times it counts as one day (08:00–16:00).') : tr('Paid by the hour: date, in and out for each shift. (How a worker is paid is set in the pay window: worker card → Pay.)')}</div>
       <div id="hoursManualRows" className="mb-2 flex flex-col gap-1.5">
         {rows.map((r, i) => (
-          <div key={i} data-row={i} data-bad={bad.includes(i) || undefined} className={cn('grid grid-cols-[1.4fr_1fr_1fr_auto] items-center gap-1.5 rounded-[12px]', bad.includes(i) && 'outline outline-1 outline-[var(--red)]')}>
+          <div key={i} data-row={i} data-date={r.date} data-bad={bad.includes(i) || undefined} className={cn('grid grid-cols-[1.4fr_1fr_1fr_auto] items-center gap-1.5 rounded-[12px]', bad.includes(i) && 'outline outline-1 outline-[var(--red)]')}>
             <DatePicker value={r.date} onChange={val => setRow(i, 'date', val)} />
             <Input type="time" value={r.inTime} title={tr('In')} onChange={e => setRow(i, 'inTime', e.target.value)} />
             <Input type="time" value={r.outTime} title={tr('Out')} onChange={e => setRow(i, 'outTime', e.target.value)} />
