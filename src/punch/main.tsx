@@ -13,6 +13,14 @@ import { App } from './App';
 window.addEventListener('error', ev => reportError(ev.message, (ev.filename || '') + ':' + (ev.lineno || ''), ev.error && ev.error.stack));
 window.addEventListener('unhandledrejection', ev => { const r = ev.reason; reportError((r && r.message) || String(r), 'promise', r && r.stack); });
 
+// The shine of a tapped glass button (.gbtn — the tiles; the old pages' handler, og.css draws it).
+document.addEventListener('pointerdown', e => {
+  const b = (e.target as HTMLElement).closest?.('.gbtn') as (HTMLElement & { __shineT?: number }) | null;
+  if (!b) return;
+  b.classList.remove('shine'); void b.offsetWidth; b.classList.add('shine');
+  window.clearTimeout(b.__shineT); b.__shineT = window.setTimeout(() => b.classList.remove('shine'), 650);
+});
+
 // The offline queue: sent when the connection returns, and now if any is left from before.
 startQueue();
 

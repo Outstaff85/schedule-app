@@ -538,4 +538,4 @@ html[lang="he"] *{letter-spacing:normal !important;}
 
 /* The icons are Tabler's React icons (svg) with class "ti": they follow the
    font size like the old icon font. */
-svg.ti{width:1em;height:1em;flex:none;vertical-align:-.125em}
+svg.ti{display:inline-block;width:1em;height:1em;flex:none;vertical-align:-.125em}
