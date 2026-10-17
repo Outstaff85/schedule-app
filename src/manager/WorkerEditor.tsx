@@ -197,9 +197,9 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
     }
   };
   // Reads one "check" field again: the same value → the frame goes; another → put in, with before / after and Restore.
-  const recheck = async (key: string) => {
+  const recheck = async (key: string, force = false) => {
     const m = markRef.current[key];
-    if (!m || m.k !== 'check' || m.rechecked || !SCAN_FIELDS[key] || !hasScan) return;
+    if (!m || m.k !== 'check' || (m.rechecked && !force) || !SCAN_FIELDS[key] || !hasScan) return;
     const prev = String((form.getValues() as unknown as Record<string, string>)[key] || '').trim();
     setMark(key, { k: 'check', rechecked: true, msg: tr('Reading the scan again…') });
     let r: ScanHit | null | undefined = null;
@@ -250,7 +250,7 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
       return <Hint>{tr('Check — before: {0} · after: {1}', { 0: shown(k, m.prev || ''), 1: shown(k, String((form.getValues() as unknown as Record<string, string>)[k] || '')) })} · <a href="#" className="underline" onClick={e => { e.preventDefault(); restore(k); }}>{tr('Restore')}</a></Hint>;
     }
     const again = SCAN_FIELDS[k] && hasScan;
-    return <Hint><span data-testid="scan-check-hint">{m.msg}</span>{again && <> · <a href="#" className="whitespace-nowrap underline" onClick={e => { e.preventDefault(); markRef.current[k] = { ...m, rechecked: false }; void (async () => { setMark(k, { ...m, rechecked: false }); await Promise.resolve(); recheck(k); })(); }}>🔍 {tr('Read it again from the scan')}</a></>}</Hint>;
+    return <Hint><span data-testid="scan-check-hint">{m.msg}</span>{again && <> · <a href="#" className="whitespace-nowrap underline" onClick={e => { e.preventDefault(); recheck(k, true); }}>🔍 {tr('Read it again from the scan')}</a></>}</Hint>;
   }
   const choiceMark = (key: string) => marks[key]?.k;
   const choicePointer = (key: string) => (e: React.PointerEvent) => {
@@ -417,7 +417,7 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
                 <div className="mt-2 grid gap-1.5" data-testid="editor-roster">
                   {roster.map((d, i) => (
                     <div key={i} className="grid grid-cols-[48px_1fr_1fr_1fr] items-center gap-1.5">
-                      <span className="text-center text-[11px] leading-tight text-ink-2">{tr(DAYS_EN[i])}<br /><span className="text-accent-foreground">{DAYS_HE[i]}</span></span>
+                      <span className="text-center text-[11px] leading-tight text-ink-2">{tr(DAYS_EN[i])}<br /><span className="text-info">{DAYS_HE[i]}</span></span>
                       <Choice id={'wt' + i} value={d.type} opts={[['work', tr('Work')], ['off', tr('Day off')]]}
                         onChange={val => setRoster(r => r.map((x, j) => (j === i ? { ...x, type: val as 'work' | 'off' } : x)))} />
                       <Input type="time" id={'ws' + i} value={d.start || ''} disabled={d.type === 'off'} className={cn(d.type === 'off' && 'opacity-30')}
