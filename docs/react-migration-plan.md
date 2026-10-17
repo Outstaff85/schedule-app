@@ -130,8 +130,6 @@ New features and polish the owner added to the migration. Each lands in the stag
 - **Hebrew mirrors the frame only:** the side menu and the title bar (logo and breadcrumb on the right, the account on the left, its menu opening from the left edge); page content, plates, tables and windows stay left to right. 6a updates the left-to-right rule in CLAUDE.md and docs/translations.md to say so.
 - The portals and the punch page keep their own headers; they take the readability and tile changes through the shared components.
 
-**For the worker and the portals** — see stages 5b and 5c above.
-
 **Look (every stage from 5 on, through the shared pieces)**
 - **Loading placeholders** — `Skeleton` plates while a list or figures load, never an empty screen (in `PagedList` / `Section`).
 - **Empty screens with an action** — `Empty` with the screen's one action ("Add the first client", "Send a WhatsApp reminder").
