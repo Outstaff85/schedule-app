@@ -36,7 +36,7 @@ elif [ -n "$(git status --porcelain 2>/dev/null)" ]; then
   note="Uncommitted changes present - checkout NOT auto-synced."
 elif git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
   if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
-    git merge -q --ff-only origin/main 2>/dev/null && note="Fast-forwarded $branch to origin/main."
+    git merge -q --ff-only origin/main 2>/dev/null && note="Fast-forwarded $branch to origin/main." && moved=1
   else
     note="$branch is up to date with origin/main."
     quiet=1
