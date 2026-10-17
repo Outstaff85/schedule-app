@@ -8,7 +8,6 @@ import {
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Empty, EmptyContent, EmptyDescription, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
@@ -17,6 +16,7 @@ import { Figures, Section } from '@/components/shared/section';
 import { PagedList } from '@/components/shared/paged-list';
 import { PullRefresh } from '@/components/shared/pull-refresh';
 import type { BridgeWorker, ManagerBridge, TodaySnapshot } from './bridge';
+import { Line, NoticeChips, TodayPin } from './pieces';
 import { hoursShort, lateText, todayModel, type SectionKey } from './today';
 
 const LABEL: Record<SectionKey, string> = {
@@ -26,36 +26,6 @@ const FOLD_KEY = 'dashFolded';
 
 function readFolded(): SectionKey[] {
   try { return JSON.parse(localStorage.getItem(FOLD_KEY) || '[]'); } catch { return []; }
-}
-
-const Dot = () => <span className="text-faint">·</span>;
-
-/** A notice chip (the first notice's word) and "+N"; a tap opens the notices sheet. */
-function NoticeChips({ w, open }: { w: BridgeWorker; open: (id: string) => void }) {
-  if (!w.notices.length) return null;
-  const n = w.notices[0];
-  const go = (e: React.MouseEvent) => { e.stopPropagation(); open(w.id); };
-  return (
-    <>
-      <Badge asChild variant={n.lvl === 'red' ? 'bad' : 'warn'}><button type="button" onClick={go}><IconAlertTriangle />{n.word}</button></Badge>
-      {w.notices.length > 1 && <Badge asChild><button type="button" onClick={go}>+{w.notices.length - 1}</button></Badge>}
-    </>
-  );
-}
-
-/** Today's punch under a worker's name: In 08:02 · Out 16:10 · No punch · On vacation. */
-function TodayPin({ w }: { w: BridgeWorker }) {
-  const t = w.today;
-  if (t.k === 'in') return <span className="inline-flex items-center gap-1 text-ok"><i className="size-1.5 rounded-full bg-ok" />{tr('In {0}', { 0: t.time || '' })}</span>;
-  if (t.k === 'out') return <span>{tr('Out {0}', { 0: t.time || '' })}</span>;
-  if (t.k === 'none') return <span className="inline-flex items-center gap-1 text-bad"><i className="size-1.5 rounded-full bg-bad" />{tr('No punch')}</span>;
-  if (t.k === 'vac') return <span className="text-warn">{tr('On vacation')}</span>;
-  return null;
-}
-
-function Line({ parts }: { parts: React.ReactNode[] }) {
-  const shown = parts.filter(Boolean);
-  return <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5">{shown.map((p, i) => <React.Fragment key={i}>{i > 0 && <Dot />}{p}</React.Fragment>)}</span>;
 }
 
 function Loading() {

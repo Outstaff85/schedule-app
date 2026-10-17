@@ -733,7 +733,6 @@
   .wplate .n small:has(.wp-chip1){margin:3px 0 2px}
   /* The Workers screen (owner's design 2026-10-13): no "WORKERS N" line, the
      Active / Vacation / Pending tabs 78px wide, a 38px search. */
-  #workersCount:empty{display:none}
   #workersTabs button{width:78px;padding:0;justify-content:center;text-align:center}
   .workers-search-row input{height:38px}
   .site{overflow:hidden;text-overflow:ellipsis}
@@ -1061,70 +1060,11 @@ body:has(.overlay.open){overflow:hidden}
       <div id="scheduleRoot" data-island></div>
     </div>
 
+    <!-- Workers (stage 6c-1): the list drawn in React (src/manager/Workers.tsx)
+         through window.ManagerIsland — renderWorkersPage() below. The worker
+         card, the worker window, documents and hours are still this page's. -->
     <div class="page-section" id="sectionWorkers">
-      <div class="page-header workers-head">
-        <div>
-          <div class="page-title"><span data-i18n>Workers</span> <em class="og-count" id="workersTitleCount"></em></div>
-        </div>
-        <div class="workers-actions">
-          <button class="gbtn primary og-new" onclick="openAddWorker()"><i class="ti ti-plus"></i> <span data-i18n>New</span></button>
-          <button type="button" class="gbtn" id="workersScanBtn" onclick="startNewScan()"><i class="ti ti-scan"></i> <span data-i18n>Scan passport</span></button>
-        </div>
-      </div>
-      <!-- Active / Vacation / Pending (documents incomplete): they set the Status and Documents filters. -->
-      <div class="og-tabs" id="workersTabs"></div>
-      <div class="workers-toolbar">
-        <div class="workers-search-row">
-          <input type="text" id="workersSearch" placeholder="Search: name, ID / passport, phone, client..." data-i18n-placeholder="Search: name, ID / passport, phone, client..." oninput="renderWorkersPage()">
-          <button type="button" class="filters-btn" id="workersFiltersBtn" onclick="toggleWorkersFilters()" aria-expanded="false"><i class="ti ti-filter"></i> <span data-i18n>Filters</span> <span class="n" id="workersFiltersCount" style="display:none"></span><i class="ti ti-chevron-down" id="workersFiltersChevron"></i></button>
-          <div class="view-toggle" role="group" aria-label="Layout">
-            <button type="button" id="workersViewList" onclick="setWorkersView('list')" title="List" data-i18n-title="List"><i class="ti ti-list"></i></button>
-            <button type="button" id="workersViewCards" onclick="setWorkersView('cards')" title="Cards" data-i18n-title="Cards"><i class="ti ti-layout-grid"></i></button>
-          </div>
-        </div>
-        <div class="filters-grid" id="workersFiltersGrid" style="--cols:5;display:none">
-          <label class="filter-field"><span class="filter-cap" data-i18n>Status</span><select id="workersFilterStatus" onchange="renderWorkersPage()">
-            <option value="" data-i18n>Active and on vacation</option>
-            <option value="active" data-i18n>Active</option>
-            <option value="vacation" data-i18n>On vacation</option>
-            <option value="fired" data-i18n>Inactive</option>
-            <option value="all" data-i18n>All statuses</option>
-          </select></label>
-          <label class="filter-field"><span class="filter-cap" data-i18n>Documents</span><select id="workersFilterDocs" onchange="renderWorkersPage()">
-            <option value="" data-i18n>All documents</option>
-            <option value="incomplete" data-i18n>Documents incomplete</option>
-            <option value="expiring" data-i18n>ID expired / expiring</option>
-          </select></label>
-          <label class="filter-field"><span class="filter-cap" data-i18n>Client</span><select id="workersFilterClient" onchange="renderWorkersPage()"></select></label>
-          <label class="filter-field"><span class="filter-cap" data-i18n>Supplier</span><select id="workersFilterSupplier" onchange="renderWorkersPage()"></select></label>
-          <label class="filter-field"><span class="filter-cap" data-i18n>Group by</span><select id="workersGroupBy" onchange="renderWorkersPage()" title="Group by" data-i18n-title="Group by">
-            <option value="" data-i18n>No grouping</option>
-            <option value="client" data-i18n>Group by client</option>
-            <option value="supplier" data-i18n>Group by supplier</option>
-          </select></label>
-        </div>
-        <div class="filter-chips" id="workersFilterChips"></div>
-        <div id="workersCount" class="workers-count"></div>
-      </div>
-      <div id="workersCards" class="workers-cards" style="display:none"></div>
-      <div id="workersTableWrap" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow-x:auto;-webkit-overflow-scrolling:touch">
-        <table style="width:100%;min-width:740px;border-collapse:collapse" id="workersTable">
-          <thead>
-            <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)" data-i18n>Worker</th>
-              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)" data-i18n>Status</th>
-              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)" data-i18n>ID / Passport</th>
-              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)" data-i18n>Objects</th>
-              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)" data-i18n>Supplier</th>
-              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)" data-i18n>Phone</th>
-              <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)" data-i18n>Start date</th>
-              <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)" data-i18n>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="workersTableBody"></tbody>
-        </table>
-        <div id="workersEmpty" style="display:none;text-align:center;padding:40px;color:var(--text3);font-size:14px" data-i18n>No workers found</div>
-      </div>
+      <div id="workersRoot" data-island></div>
     </div>
 
     <div class="page-section" id="sectionClients">
@@ -3434,7 +3374,7 @@ function showWorkerModal(w){
       <div class="og-edh-n"><h4>${esc(w.name||'')||(editingWorkerIdx!==null?'עריכת עובד':'הוספת עובד חדש')}</h4><p>${editingWorkerIdx!==null?[workerSiteName(w)?`<span class="site">${esc(workerSiteName(w))}</span>`:'', workerTodayHtml(workerToday(w,todayPunchLog())), `<span class="fig">${esc(fmtHoursShort(workersMonthHours()[w.id]||0))}</span>`].filter(Boolean).join('<span class="dot">·</span>'):''}</p></div>
       ${editingWorkerIdx!==null?`<button class="gbtn icon" type="button" onclick="rescanFromWorkerModal()" title="${esc(tr('Scan'))}" aria-label="${esc(tr('Scan'))}"><i class="ti ti-scan"></i></button>`:''}
       <span id="wAvatarDeleteBtn" hidden></span>
-      <div class="wc-chips og-edh-chips">${editingWorkerIdx!==null?noticeChipsHtml(w,workerNotices(w,workerToday(w,todayPunchLog())),true):''}</div>
+      <div class="wc-chips og-edh-chips">${editingWorkerIdx!==null?noticeChipsHtml(w,workerNotices(w,workerToday(w,todayPunchLog()))):''}</div>
       <input type="file" id="wAvatarFile" accept="image/*" style="display:none" onchange="onAvatarFileSelected(this.files[0]); this.value='';">
     </div>
     <div class="field" id="avatarCropWrap" style="display:none;flex-direction:column;align-items:center;gap:8px;background:var(--bg3);border-radius:8px;padding:12px">
@@ -4504,24 +4444,11 @@ function deleteClients(ids, els){
     },
     undo:()=>{ ids.forEach(id=>__clientDelPending.delete(id)); renderClientsPage(); }});
 }
-// Keeps a <select>'s options in sync with a source array (clients/suppliers)
-// while preserving whatever the user already had picked — called on every
-// renderWorkersPage() since clients/suppliers can change between renders.
 // Highlights every caption-labelled filter that has a choice made.
 function markActiveFilters(){
   document.querySelectorAll('.filter-field select').forEach(el=>el.classList.toggle('filter-on', !!el.value));
 }
 document.addEventListener('change', e=>{ if(e.target.closest && e.target.closest('.filter-field')) markActiveFilters(); });
-function fillFilterSelect(selectId, items, allLabel){
-  const el=document.getElementById(selectId); if(!el) return;
-  const prev=el.value;
-  el.innerHTML=`<option value="">${esc(tr(allLabel))}</option>`+items.map(i=>`<option value="${i.id}">${esc(i.name)}</option>`).join('');
-  if(items.some(i=>i.id===prev)) el.value=prev;
-}
-// Workers tab layout: 'cards' (the default) or 'list' (the table), once
-// the user picks it. Remembered per browser.
-function getWorkersView(){ try{ return localStorage.getItem('workersView')==='list'?'list':'cards'; }catch(e){ return 'cards'; } }
-function setWorkersView(v){ try{ localStorage.setItem('workersView',v); }catch(e){} renderWorkersPage(); }
 // Hours worked this calendar month, per worker — the same canonical shift
 // pairing (getWorkerMonthShifts → groupPunchesIntoShifts/analyzeDayPunches)
 // the hours export uses, so the card can never disagree with it.
@@ -4586,64 +4513,18 @@ function workerBarColor(w, ns){
   if(!isActiveWorker(w) || ns.some(n=>n.lvl==='red')) return 'var(--bad)';
   return (w.status==='vacation' || ns.length) ? 'var(--warn)' : 'var(--ok)';
 }
-// Notice chips: on a plate the first one with its word and "+N"; on the card all.
-function noticeChipsHtml(w, ns, all){
+// Notice chips on the worker card and the worker window: all of them (the
+// plates' first chip and "+N" are the React list's, src/manager/pieces.tsx).
+function noticeChipsHtml(w, ns){
   if(!ns.length) return '';
   const on=`onclick="event.stopPropagation();openNotices('${esc(w.id)}')"`;
-  const chip=n=>`<button type="button" class="nchip ${n.lvl}" ${on}><i class="ti ${n.lvl==='red'?'ti-alert-circle':'ti-alert-triangle'}"></i>${esc(n.word)}</button>`;
-  return all ? ns.map(chip).join('') : chip(ns[0])+noticeMoreHtml(w,ns);
+  return ns.map(n=>`<button type="button" class="nchip ${n.lvl}" ${on}><i class="ti ${n.lvl==='red'?'ti-alert-circle':'ti-alert-triangle'}"></i>${esc(n.word)}</button>`).join('');
 }
-// The worker plate (owner's design 2026-10-13): the first chip on its own line
-// under the name, the "+N" chip after the name.
-function noticeFirstHtml(w, ns){ return ns.length ? `<span class="wp-chip1">${noticeChipsHtml(w,[ns[0]],true)}</span>` : ''; }
-function noticeMoreHtml(w, ns){ return ns.length>1 ? `<button type="button" class="nchip more" onclick="event.stopPropagation();openNotices('${esc(w.id)}')">+${ns.length-1}</button>` : ''; }
-// Workers deleted but still inside their Undo time: left out of the list.
+// Workers deleted from the side panel but still inside their Undo time: left
+// out of the Workers list (ManagerBridge.workers()).
 const __workerDelPending=new Set();
-let __workersShownIds=[];
-// The workers as plates (the cards view), paged by LIST_PAGE (renderPagedList).
-// Grouped, each group's title is one more item in the flat list.
-function renderWorkerCards(box,list,groupBy,stMetaMap,sig){
-  __workersShownIds=list.map(x=>x.w.id);
-  if(!list.length){ box.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:14px">'+tr('No workers found')+'</div>'; return; }
-  const hours=workersMonthHours(), todayLog=todayPunchLog(), can=hasPermission('workers');
-  const plate=({w,wi})=>{
-    const t=workerToday(w,todayLog), ns=workerNotices(w,t), id=esc(w.id), site=workerSiteName(w);
-    return t3Line({c:workerBarColor(w,ns), cls:'wplate tap-edit', av:t3Av(w),
-      name:`<span class="wp-n" title="${esc(w.name)}">${esc(w.name)}</span>${noticeMoreHtml(w,ns)}${newWorkerBadgeHtml(w)}`,
-      sub:[noticeFirstHtml(w,ns), [site?`<span class="site">${esc(site)}</span>`:'', workerTodayHtml(t)].filter(Boolean).join('<span class="dot">·</span>')],
-      right:`<span class="r">${esc(fmtHoursShort(hours[w.id]))}</span>`,
-      attrs:`data-wid="${id}" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))"`,
-      sel: can?w.id:null,
-      menu:[{icon:'ti-id', label:tr('Open card'), fn:()=>openWorkerCardById(w.id)},
-        ...(can?[{icon:'ti-pencil', label:tr('Edit'), fn:()=>openEditWorker(workers.findIndex(x=>x.id===w.id))}]:[]),
-        ...(canEditPay(w)?[{icon:'ti-cash', label:tr('Pay'), fn:()=>openPayModal(w.id)}]:[]),
-        ...(can?[{icon:'ti-link', label:tr('Punch link'), fn:()=>copyWorkerLink(w.id)}, {icon:'ti-trash', label:tr('Delete'), danger:true, fn:b=>deleteWorker(workers.findIndex(x=>x.id===w.id), b.closest('.t3-line'))}]:[])],
-      swipe: can?{edit:()=>openEditWorker(workers.findIndex(x=>x.id===w.id)), del:el=>deleteWorker(workers.findIndex(x=>x.id===w.id), el)}:null});
-  };
-  const title=g=>`<div class="t3-sec workers-group-title">${g.color?`<span style="width:8px;height:8px;border-radius:50%;background:${esc(g.color)}"></span>`:''}${esc(g.name)}<em>${g.count}</em></div>`;
-  renderPagedList(box,'workersCards',sig,workersGroupedItems(list,groupBy),it=>it.group?title(it.group):plate(it),{grid:true});
-  selectRoot('workers', box);
-}
-// The tabs over the list: Active, Vacation, Pending (documents incomplete) —
-// a tap sets the Status / Documents filters, a tap on the open one clears them.
-function renderWorkersTabs(){
-  const el=document.getElementById('workersTabs'); if(!el) return;
-  const st=document.getElementById('workersFilterStatus')?.value||'', dc=document.getElementById('workersFilterDocs')?.value||'';
-  const on=k=>k==='active'?st==='active'&&!dc:k==='vacation'?st==='vacation'&&!dc:!st&&dc==='incomplete';
-  el.innerHTML=[['active','Active'],['vacation','Vacation'],['pending','Pending']].map(([k,l])=>`<button type="button" class="${on(k)?'on':''}" onclick="setWorkersTab('${k}')">${esc(tr(l))}</button>`).join('');
-}
-function setWorkersTab(k){
-  const st=document.getElementById('workersFilterStatus'), dc=document.getElementById('workersFilterDocs');
-  const cur=k==='active'?st.value==='active'&&!dc.value:k==='vacation'?st.value==='vacation'&&!dc.value:!st.value&&dc.value==='incomplete';
-  st.value=cur?'':(k==='pending'?'':k); dc.value=cur?'':(k==='pending'?'incomplete':'');
-  renderWorkersPage();
-}
-function startWorkerSelect(){
-  const box=document.getElementById('workersCards'); if(!box||getWorkersView()!=='cards'||!hasPermission('workers')) return;
-  startSelect({key:'workers', root:box, ids:()=>__workersShownIds,
-    actions:[{icon:'ti-beach', label:tr('Vacation'), fn:ids=>setWorkersStatus(ids,'vacation')}, {icon:'ti-circle-check', label:tr('Active'), fn:ids=>setWorkersStatus(ids,'active')}],
-    del:(ids,els)=>deleteWorkers(ids,els)});
-}
+// The Workers list is drawn in React (stage 6c-1, src/manager/Workers.tsx):
+// the plates, the tabs, the search, the filters and Select live there.
 function setWorkersStatus(ids, v){
   ids.forEach(id=>{ const w=workers.find(x=>x.id===id); if(w) w.status=v; });
   render(); autoSave(); showToast(tr('Saved'));
@@ -4672,118 +4553,10 @@ function workerSheetHeadHtml(w,t,ns){
     <div class="wc-hn"><h4>${esc(w.name)}</h4><p>${[site?`<span class="site">${esc(site)}</span>`:'', workerTodayHtml(t)].filter(Boolean).join('<span class="dot">·</span>')}</p></div>
     <span class="wc-hrs">${esc(fmtHoursShort(h))}<small>${esc(tr('this month'))}</small></span></div>`;
 }
-// The worker list flattened for paging: with a grouping, each group's
-// header is an item ({group:{name,color,count}}) followed by its workers. A
-// client-group worker can appear in several groups (several clientIds); a
-// supplier-group worker in exactly one.
-function workersGroupedItems(list,groupBy){
-  if(!groupBy) return list;
-  const groups=groupBy==='client'
-    ? [...clients.map(c=>({name:c.name,color:c.color,items:list.filter(x=>(x.w.clientIds||[]).includes(c.id))})),
-       {name:'No client assigned',color:null,items:list.filter(x=>!(x.w.clientIds||[]).length)}]
-    : [...suppliers.map(s=>({name:s.name,color:s.color,items:list.filter(x=>x.w.supplierId===s.id)})),
-       {name:'No supplier assigned',color:null,items:list.filter(x=>!x.w.supplierId)}];
-  return groups.filter(g=>g.items.length).flatMap(g=>[{group:{name:g.name,color:g.color,count:g.items.length}},...g.items]);
-}
-// Workers filters: hidden behind the "Filters" button (its open state is kept
-// on this device); each chosen filter shows as a chip under the search, and
-// its ✕ clears just that filter.
-const WORKERS_FILTER_IDS=['workersFilterStatus','workersFilterDocs','workersFilterClient','workersFilterSupplier','workersGroupBy'];
-function toggleWorkersFilters(open){
-  const g=document.getElementById('workersFiltersGrid'); if(!g) return;
-  const show=open!=null?open:g.style.display==='none';
-  g.style.display=show?'':'none';
-  const b=document.getElementById('workersFiltersBtn'), ch=document.getElementById('workersFiltersChevron');
-  if(b){ b.classList.toggle('on',show); b.setAttribute('aria-expanded',show?'true':'false'); }
-  if(ch) ch.className='ti ti-chevron-'+(show?'up':'down');
-  try{ localStorage.setItem('workersFiltersOpen',show?'1':''); }catch(e){}
-}
-function clearWorkersFilter(id){ const el=document.getElementById(id); if(el){ el.value=''; renderWorkersPage(); } }
-function renderWorkersFilterChips(){
-  const box=document.getElementById('workersFilterChips'); if(!box) return;
-  const on=WORKERS_FILTER_IDS.map(id=>document.getElementById(id)).filter(el=>el&&el.value);
-  box.innerHTML=on.map(el=>`<button type="button" class="filter-chip" onclick="clearWorkersFilter('${el.id}')" title="${tr('Clear this filter')}">${esc(el.options[el.selectedIndex]?.text||el.value)} <b>✕</b></button>`).join('');
-  const n=document.getElementById('workersFiltersCount');
-  if(n){ n.textContent=on.length; n.style.display=on.length?'':'none'; }
-}
-function showInactiveWorkers(){ const sel=document.getElementById('workersFilterStatus'); if(sel){ sel.value='fired'; renderWorkersPage(); } }
+// ── Workers (stage 6c-1): the list is drawn in React — src/manager/Workers.tsx.
+// The page keeps the data; the tab reads it through ManagerBridge.workers().
 function renderWorkersPage(){
-  fillFilterSelect('workersFilterClient', clients, 'All clients');
-  fillFilterSelect('workersFilterSupplier', suppliers, 'All suppliers');
-  if(!renderWorkersPage._init){ renderWorkersPage._init=true; let o=''; try{ o=localStorage.getItem('workersFiltersOpen')||''; }catch(e){} if(o) toggleWorkersFilters(true); }
-  renderWorkersFilterChips();
-  const q=(document.getElementById('workersSearch')?.value||'').trim().toLowerCase();
-  const stFilter=document.getElementById('workersFilterStatus')?.value||'';
-  const clientFilter=document.getElementById('workersFilterClient')?.value||'';
-  const supplierFilter=document.getElementById('workersFilterSupplier')?.value||'';
-  const groupBy=document.getElementById('workersGroupBy')?.value||'';
-  const stMetaMap={active:{label:tr('Active'),col:'var(--green)',bg:'var(--green-bg)'},vacation:{label:tr('On vacation'),col:'var(--amber)',bg:'var(--amber-bg)'},fired:{label:tr('Inactive'),col:'var(--red)',bg:'var(--red-bg)'}};
-  let list=workers.map((w,wi)=>({w,wi})).filter(x=>!__workerDelPending.has(x.w.id));
-  const inactiveN=workers.filter(w=>!isActiveWorker(w)).length;
-  if(!stFilter) list=list.filter(x=>isActiveWorker(x.w));
-  else if(stFilter!=='all') list=list.filter(x=>(x.w.status||'active')===stFilter);
-  if(clientFilter) list=list.filter(x=>(x.w.clientIds||[]).includes(clientFilter));
-  if(supplierFilter) list=list.filter(x=>x.w.supplierId===supplierFilter);
-  const docsFilter=document.getElementById('workersFilterDocs')?.value||'';
-  if(docsFilter==='incomplete') list=list.filter(x=>workerDocStatus(x.w).level!=='ok');
-  else if(docsFilter==='expiring') list=list.filter(x=>{ const st=workerDocStatus(x.w); return !!st.expiry||st.docExpiries.length>0; });
-  // Search: name (and the names from the document), phone, ID / passport
-  // number (spaces and dashes ignored), and the worker's clients — name and object.
-  if(q){
-    const qNum=q.replace(/[\s-]/g,'');
-    list=list.filter(x=>{
-      const w=x.w;
-      const objNames=(w.clientIds||[]).map(id=>{ const c=clients.find(c=>c.id===id); return c?(c.name||'')+' '+(c.object||''):''; }).join(' ');
-      const text=[w.name,w.docGiven,w.docSurname,w.phone,objNames].join(' ').toLowerCase();
-      const docNo=String(workerDocId(w)||'').toLowerCase().replace(/[\s-]/g,'');
-      return text.includes(q) || (qNum.length>=2 && docNo.includes(qNum));
-    });
-  }
-  document.getElementById('workersCount').innerHTML=(!stFilter&&inactiveN?`<a href="#" class="inactive-link" onclick="event.preventDefault();showInactiveWorkers()">${esc(tr('Inactive: {n} — show',{n:inactiveN}))}</a>`:'')
-    ;
-  const tc=document.getElementById('workersTitleCount'); if(tc) tc.textContent=list.length;
-  renderWorkersTabs();
-  const view=getWorkersView();
-  if(view!=='cards' && __selState && __selState.key==='workers') endSelect();
-  document.getElementById('workersViewList')?.classList.toggle('active',view==='list');
-  document.getElementById('workersViewCards')?.classList.toggle('active',view==='cards');
-  const cardsBox=document.getElementById('workersCards'), tableWrap=document.getElementById('workersTableWrap');
-  const sig=[q,stFilter,clientFilter,supplierFilter,docsFilter,groupBy].join('|');
-  if(view==='cards'){
-    tableWrap.style.display='none'; cardsBox.style.display='grid';
-    renderWorkerCards(cardsBox,list,groupBy,stMetaMap,sig);
-    return;
-  }
-  cardsBox.style.display='none'; tableWrap.style.display='';
-  const tbody=document.getElementById('workersTableBody'), empty=document.getElementById('workersEmpty');
-  if(!list.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
-  empty.style.display='none';
-
-  const rowHtml=({w,wi})=>{
-    const c=WORKER_COLORS[w.colorIdx%8];
-    const stMeta=stMetaMap[w.status||'active'];
-    const objs=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean);
-    const objBadges=objs.length?objs.map(o=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${o.color}22;border-radius:10px;margin-right:3px"><span style="width:6px;height:6px;border-radius:50%;background:${o.color}"></span>${esc(o.name)}</span>`).join(''):'<span style="color:var(--text3);font-size:12px">—</span>';
-    const sup=suppliers.find(s=>s.id===w.supplierId);
-    const supBadge=sup?`<span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 6px;background:${sup.color}22;border-radius:10px"><span style="width:6px;height:6px;border-radius:50%;background:${sup.color}"></span>${esc(sup.name)}</span>`:'<span style="color:var(--text3);font-size:12px">—</span>';
-    return `<tr class="tap-edit" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))" style="border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background=''">
-      <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${workerAvatarInner(w)}</div><span style="font-size:13px;font-weight:600">${esc(w.name)}</span>${newWorkerBadgeHtml(w)}${expiryBadgeHtml(w)}${docStatusBadgeHtml(w)}</div></td>
-      <td style="padding:10px 12px"><span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col}">${stMeta.label}</span></td>
-      <td style="padding:10px 12px;font-size:13px;color:var(--text2);font-family:monospace">${workerDocId(w)?esc(workerDocId(w)):'—'}</td>
-      <td style="padding:10px 12px">${objBadges}</td>
-      <td style="padding:10px 12px">${supBadge}</td>
-      <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.phone?esc(w.phone):'—'}</td>
-      <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.startDate?fmtDMY(w.startDate):'—'}</td>
-      <td style="padding:10px 12px;text-align:center" onclick="event.stopPropagation()"><div style="display:flex;gap:4px;justify-content:center">
-        ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" title="${tr('Download the document (PDF from {0})',{0:(DOC_STORE)})}" style="padding:3px 8px;font-size:11px"><i class="ti ti-download"></i></a>`:''}
-        ${hasPermission('workers')?`<button class="btn sm red" onclick="deleteWorker(${wi},this.closest('tr'))" style="padding:3px 8px;font-size:11px"><i class="ti ti-x"></i></button>`:''}
-      </div></td>
-    </tr>`;
-  };
-  const groupHeaderHtml=(name,color,count)=>`<tr><td colspan="8" style="padding:8px 12px;background:var(--bg3);font-size:12px;font-weight:700;color:var(--text2)"><span style="display:inline-flex;align-items:center;gap:6px">${color?`<span style="width:8px;height:8px;border-radius:50%;background:${color}"></span>`:''}${esc(name)} <span style="color:var(--text3);font-weight:400">(${count})</span></span></td></tr>`;
-
-  renderPagedList(tbody,'workersTable',sig,workersGroupedItems(list,groupBy),
-    it=>it.group?groupHeaderHtml(it.group.name,it.group.color,it.group.count):rowHtml(it),{table:true,colspan:9});
+  if(window.ManagerIsland) window.ManagerIsland.renderWorkers();
 }
 
 const INCOME_TYPE_LABELS = {monthly:'משכורת חודשית',secondary:'משרה נוספת',partial:'משרה חלקית',daily:'שכר יומי',pension:'פנסיה',scholarship:'מלגה'};
@@ -4811,7 +4584,7 @@ function openWorkerCard(wi){
     ...(can?[{icon:'ti-link', label:tr('Punch link'), fn:()=>copyWorkerLink(w.id)}]:[])];
   document.getElementById('workerCardModal').innerHTML=`
     ${workerSheetHeadHtml(w,t,ns)}
-    <div class="wc-chips">${noticeChipsHtml(w,ns,true)}${can?'':`<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col}">${stMeta.label}</span>`}${newWorkerBadgeHtml(w)}</div>
+    <div class="wc-chips">${noticeChipsHtml(w,ns)}${can?'':`<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${stMeta.bg};color:${stMeta.col}">${stMeta.label}</span>`}${newWorkerBadgeHtml(w)}</div>
     ${can||w.docSavedAt?`<div class="wc-tools">
       ${can?`<div class="status-pills" role="radiogroup" aria-label="${tr('Status')}">
         ${[['active',tr('Active')],['vacation',tr('Vacation')],['fired',tr('Inactive')]].map(([v,l])=>`<button type="button" data-st="${v}" class="${(w.status||'active')===v?'on':''}" onclick="setWorkerStatus(${wi},'${v}')" title="${tr('Set status: {0}',{0:(l)})}"><i></i>${l}</button>`).join('')}
@@ -7988,7 +7761,7 @@ window.addEventListener('pagehide', () => finishUndo(true));
 // calls selectRoot(key, root) after drawing its rows: that starts its Select
 // (SELECT_STARTERS[key], which checks the rights) or keeps the ticks across a redraw.
 let __selState = null;
-const SELECT_STARTERS = {salary: () => startSalarySelect(), punches: () => startPunchesSelect(), firms: () => startFirmsSelect(), workers: () => startWorkerSelect(), clients: () => startClientSelect(), suppliers: () => startSupplierSelect(), users: () => startUsersSelect(), pendingHours: () => startPendingSelect(), workerDocs: () => startWorkerDocsSelect()};
+const SELECT_STARTERS = {salary: () => startSalarySelect(), punches: () => startPunchesSelect(), firms: () => startFirmsSelect(), clients: () => startClientSelect(), suppliers: () => startSupplierSelect(), users: () => startUsersSelect(), pendingHours: () => startPendingSelect(), workerDocs: () => startWorkerDocsSelect()};
 function startSelect(o){
   const keep = __selState && __selState.key === o.key ? __selState.picked : null;
   if(!keep) endSelect();
@@ -8096,7 +7869,7 @@ function renderSchedulePage(){
   loadShiftRequests();
   if(window.ManagerIsland) window.ManagerIsland.renderSchedule();
 }
-window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); renderCrumb(); });
+window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); renderCrumb(); });
 let __dataReady=false;
 window.ManagerBridge={
   lang:()=>I18N_LANG,
@@ -8164,6 +7937,36 @@ window.ManagerBridge={
     render(); autoSave(); showToast(tr('Order updated'));
   },
   editWorker:id=>{ const i=workers.findIndex(w=>w.id===id); if(i>=0) openEditWorker(i); },
+  // The Workers tab's snapshot (stage 6c-1): every worker's list fields, with
+  // today's punch, its notices, the month's hours and the document status
+  // worked out here (the card and the window that use them are still here).
+  workers(){
+    const now=new Date(), t=now.toDateString(), log=getPunchLog().filter(e=>new Date(e.ts).toDateString()===t), hours=workersMonthHours();
+    return {
+      ready:__dataReady,
+      workers:workers.filter(w=>!__workerDelPending.has(w.id)).map(w=>{ const td=workerToday(w,log), st=workerDocStatus(w), ex=workerExpiryStatus(w);
+        const badge=st.level==='ok'?'':st.failed?tr('UPLOAD FAILED'):(st.expiry&&st.expiry.level==='error')?tr('ID EXPIRED')
+          :st.docExpired?tr('{0} EXPIRED',{0:tr(WORKER_DOC_TYPES[st.docExpired.doc.type]||'Document').toUpperCase()}):tr('DOCS');
+        return {id:w.id, name:w.name||'', docGiven:w.docGiven||'', docSurname:w.docSurname||'', phone:w.phone||'', docId:String(workerDocId(w)||''),
+          status:w.status==='vacation'||w.status==='fired'?w.status:'active', clientIds:w.clientIds||[], supplierId:w.supplierId||'', startDate:w.startDate||'',
+          createdAt:w.createdAt||'', docUrl:w.docUrl||'', site:workerSiteName(w), today:{k:td.k, time:td.time||''},
+          notices:workerNotices(w,td).map(n=>({lvl:n.lvl, word:n.word, title:n.title})), monthHours:hours[w.id]||0,
+          docLevel:st.level, docLines:st.lines, docBadge:badge, docExpiring:!!st.expiry||st.docExpiries.length>0,
+          contract:ex?{overdue:ex.level==='overdue', deadline:ex.deadline.toLocaleDateString('en-GB')}:null, canPay:!!canEditPay(w)}; }),
+      clients:clients.map(c=>({id:c.id, name:c.name||'', color:c.color||'', object:c.object||''})),
+      suppliers:suppliers.map(x=>({id:x.id, name:x.name||'', color:x.color||''})),
+      canEdit:hasPermission('workers'),
+    };
+  },
+  scanNew:()=>startNewScan(),
+  openPay:id=>openPayModal(id),
+  copyLink:id=>copyWorkerLink(id),
+  setStatus:(ids,v)=>setWorkersStatus(ids,v),
+  deleteWorkers(ids){
+    const one=ids.length===1?workers.find(x=>x.id===ids[0]):null;
+    ids.forEach(id=>deleteWorkerNow(id)); render(); autoSave();
+    showToast(one?tr('{0} removed',{0:one.name}):tr('{0} workers{1}',{0:ids.length,1:''}));
+  },
   exportAs:k=>{ ({excel:exportExcel, pdf:exportPDF, json:exportJSON})[k](); },
   toast:t=>showToast(t),
 };

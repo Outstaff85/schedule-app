@@ -1,6 +1,6 @@
 // shadcn/ui Data Table: the Table with TanStack Table (v9) under it — a tap on
 // a column head sorts by it (again: the other way, a third time: unsorted);
-// rows page by 10 with "Show more" (CLAUDE.md → Lists page by 10); the totals
+// rows page by 10 with "Show more", or a scroll to its end (CLAUDE.md → Lists page by 10); the totals
 // row (`footer`) always covers every item. On a phone a table becomes plates:
 // `card` draws a row as a Plate, paged the same way (the old pages' table cards).
 import * as React from 'react';
@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { useIsPhone } from '@/hooks/use-phone';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PagedList } from '@/components/shared/paged-list';
+import { PagedList, usePaging } from '@/components/shared/paged-list';
 
 const features = tableFeatures({
   rowSortingFeature,
@@ -22,8 +22,9 @@ type F = typeof features;
 export type DataColumn<T extends RowData> = ColumnDef<F, T, any> & { meta?: { num?: boolean } }; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 const PAGE = 10;
+const inControl = (e: React.MouseEvent) => !!(e.target as HTMLElement).closest('button, a, input, [data-no-tap]');
 
-function DataTable<T extends RowData>({ columns, data, footer, card, empty, rowId, className, ...rest }: {
+function DataTable<T extends RowData>({ columns, data, footer, card, empty, rowId, onRowOpen, onRowEdit, className, ...rest }: {
   columns: DataColumn<T>[];
   data: T[];
   /** the totals row: one cell per column (covers every row, not only the shown ones) */
@@ -32,10 +33,13 @@ function DataTable<T extends RowData>({ columns, data, footer, card, empty, rowI
   card?: (row: T, index: number) => React.ReactNode;
   empty?: React.ReactNode;
   rowId?: (row: T, index: number) => string;
+  /** a tap on a row reads it (opens its card); a double click edits it — a control inside keeps its own job */
+  onRowOpen?: (row: T) => void;
+  onRowEdit?: (row: T) => void;
   className?: string;
 } & Omit<React.ComponentProps<'div'>, 'children'>) {
   const phone = useIsPhone();
-  const [shown, setShown] = React.useState(PAGE);
+  const { shown, setShown, moreRef } = usePaging(PAGE);
   const table = useTable<F, T>({ features, columns, data, getRowId: rowId });
   if (!data.length) return <>{empty ?? null}</>;
   if (phone && card) return <div data-slot="data-table" data-kind="cards" className={className} {...rest}><PagedList items={data} render={card} /></div>;
@@ -65,7 +69,10 @@ function DataTable<T extends RowData>({ columns, data, footer, card, empty, rowI
         </TableHeader>
         <TableBody>
           {rows.slice(0, shown).map(r => (
-            <TableRow key={r.id}>
+            <TableRow key={r.id} data-row-id={r.id}
+              className={cn((onRowOpen || onRowEdit) && 'cursor-pointer')}
+              onClick={onRowOpen ? e => { if (!inControl(e)) onRowOpen(r.original); } : undefined}
+              onDoubleClick={onRowEdit ? e => { if (!inControl(e)) onRowEdit(r.original); } : undefined}>
               {r.getAllCells().map(c => (
                 <TableCell key={c.id} num={!!(c.column.columnDef as DataColumn<T>).meta?.num}><table.FlexRender cell={c} /></TableCell>
               ))}
@@ -81,7 +88,7 @@ function DataTable<T extends RowData>({ columns, data, footer, card, empty, rowI
         )}
       </Table>
       {left > 0 && (
-        <div className="flex justify-center py-1.5" data-slot="paged-more">
+        <div ref={moreRef} className="flex justify-center py-1.5" data-slot="paged-more">
           <Button size="sm" onClick={() => setShown(s => s + PAGE)}><IconChevronDown className="size-4" />{tr('Show more ({0} left)', { 0: left })}</Button>
         </div>
       )}

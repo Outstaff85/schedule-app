@@ -135,13 +135,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // An inactive worker leaves the everyday lists and comes back when set Active; a contract warning shows a notice at the top.
   const ia = await p.evaluate(async () => {
     const w = workers.find(x => x.id === 'w2'), keep = JSON.parse(JSON.stringify(w)), r = {};
-    switchTab('workers'); document.getElementById('workersFilterStatus').value = ''; renderWorkersPage();
-    w.status = 'fired'; render(); renderWorkersPage();
-    const names = () => document.getElementById('sectionWorkers').innerText + ' ' + [...document.querySelectorAll('#sectionWorkers .wp-n')].map(x => x.title).join(' ');
-    r.hidden = !/Dana Levi/.test(names()) && /Inactive: 1/.test(document.getElementById('workersCount').innerText);
+    const wait = ms => new Promise(res => setTimeout(res, ms));
+    switchTab('workers');
+    w.status = 'fired'; render(); await wait(50);
+    const names = () => [...document.querySelectorAll('#workersRoot [data-testid="worker-name"]')].map(x => x.title).join(' ');
+    const link = () => document.querySelector('#workersRoot [data-testid="workers-inactive"]');
+    r.hidden = !/Dana Levi/.test(names()) && !!link() && /Inactive: 1/.test(link().innerText);
     r.sidebar = !/Dana Levi/.test(document.getElementById('workerList').innerText);
-    showInactiveWorkers(); r.shown = /Dana Levi/.test(names());
-    w.status = 'active'; document.getElementById('workersFilterStatus').value = ''; render(); renderWorkersPage(); r.back = /Dana Levi/.test(names());
+    link().click(); await wait(50); r.shown = /Dana Levi/.test(names()) && !link();
+    w.status = 'active'; document.querySelector('#workersRoot [data-testid="workers-chips"] button[data-key="status"]').click(); render(); await wait(50); r.back = /Dana Levi/.test(names());
     const d = new Date(); d.setMonth(d.getMonth() - 2);
     Object.assign(w, {expiryEnabled: true, expiryMonths: 1, expiryWarnMonths: 1, startDate: localYMD(d)});
     try{ sessionStorage.removeItem('contractNoticeClosed'); }catch(e){}
@@ -289,7 +291,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     && /Schedule.*All sites/.test(sc6.crumbAll) && new RegExp('Schedule.*' + sc6.tabs[1]).test(sc6.crumbSite),
     'schedule: glass arrows, site tabs filter (breadcrumb "Schedule › <site>"), 7 day marks and the week\'s hours per worker ' + JSON.stringify({sch, sc6}));
   await p.evaluate(() => { workers.find(w => isActiveWorker(w)).schedule = JSON.parse(window.__keepSched); render(); });
-  await p.evaluate(async () => { switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await new Promise(r => setTimeout(r, 300)); });
+  await p.evaluate(async () => { localStorage.setItem('workersView', 'cards'); switchTab('workers'); await new Promise(r => setTimeout(r, 300)); });
   await p.screenshot({path: SP + '/t3-workers.png'}).catch(()=>{});
   await p.evaluate(async () => { switchTab('accounting'); const sel = document.getElementById('salaryPeriod'); sel.value = 'all'; await onSalaryPeriodChange();
     const r = document.querySelector('#dashSalary .sal-row'); if(r) toggleSalRow(r); window.scrollTo(0, 0); document.querySelector('#sectionAccounting').scrollIntoView(); await new Promise(res => setTimeout(res, 300)); });
@@ -300,8 +302,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(t3.twoRows && t3.fixed && t3.greetHidden && t3.shortDate && t3.noMenu, 'V7 on a phone: two header rows fixed at the top (logo · short date and weather · buttons; the breadcrumb under them), the greeting\'s words hidden, the bottom bar stays ' + JSON.stringify(t3));
   // On a phone a worker card is compact: one summary line instead of the detail rows.
   await p.setViewportSize({width: 390, height: 800});
-  const wc = await p.evaluate(async () => { switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await new Promise(r => setTimeout(r, 200));
-    const c = document.querySelector('#workersCards .wplate'); return c ? {h: c.getBoundingClientRect().height, name: c.querySelector('.wp-n').textContent, full: c.querySelector('.wp-n').title, hrs: (c.querySelector('.r') || {}).textContent, kb: !!c.querySelector('.t3-kb'), sw: !!c.closest('.sw')} : {}; });
+  const wc = await p.evaluate(async () => { switchTab('workers'); await new Promise(r => setTimeout(r, 200));
+    const c = document.querySelector('#workersRoot [data-testid="worker-plate"]'); return c ? {h: c.getBoundingClientRect().height, name: c.querySelector('[data-testid="worker-name"]').textContent, full: c.querySelector('[data-testid="worker-name"]').title, hrs: (c.querySelector('[data-testid="worker-hours"]') || {}).textContent, kb: !!c.querySelector('button[aria-label="Actions"]'), sw: c.classList.contains('og-sw')} : {}; });
   await p.setViewportSize({width: 1280, height: 720});
   ok(wc.h > 0 && wc.h < 100 && wc.name && wc.name === wc.full && /h$/.test(wc.hrs) && wc.kb && wc.sw, 'workers: on a phone a worker is one plate — the full name (… when it does not fit), the month\'s hours, ⋮, swipe ' + JSON.stringify(wc));
   ok(rt.keptAfterEdit, 'worker pay: an edit in the worker modal keeps the pay fields', JSON.stringify(rt));
@@ -564,13 +566,14 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       const wait = ms => new Promise(r => setTimeout(r, ms));
       switchTab('workers');
       for (const view of ['cards', 'list']) {
-        setWorkersView(view); renderWorkersPage(); await wait(400);
-        const sel = view === 'cards' ? '#workersCards > .sw' : '#workersTableBody > tr:not(.paged-more)';
+        document.querySelector(`#workersRoot [data-testid="workers-view"] [aria-label="${view === 'cards' ? 'Cards' : 'List'}"]`).click(); await wait(400);
+        // the list view is a table on a computer, plates on a phone
+        const sel = '#workersRoot [data-testid="worker-plate"], #workersRoot tbody tr';
         const first = document.querySelectorAll(sel).length;
         await wait(600);
         const stillFirst = document.querySelectorAll(sel).length;
-        const pm = document.querySelector(view === 'cards' ? '#workersCards > .paged-more' : '#workersTableBody > .paged-more');
-        if (!pm) { out.dbg = JSON.stringify(Object.fromEntries(Object.entries(__pagedLists).map(([k,v]) => [k, {sig:v.sig, shown:v.shown, more:!!v.more}]))) + ' view=' + getWorkersView() + ' wrap=' + document.getElementById('workersTableWrap').style.display; out[view] = [first, stillFirst, -1, document.getElementById(view === 'cards' ? 'workersCards' : 'workersTableBody').children.length, workers.length]; continue; }
+        const pm = document.querySelector('#workersRoot [data-slot="paged-more"]');
+        if (!pm) { out[view] = [first, stillFirst, -1, workers.length]; continue; }
         pm.scrollIntoView({block:'end'});
         window.dispatchEvent(new WheelEvent('wheel'));
         window.dispatchEvent(new Event('scroll'));
@@ -580,7 +583,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       switchTab('schedule'); render(); await wait(300);
       out.gantt = document.querySelectorAll('#scheduleRoot [data-testid="sched-worker"]').length;
       out.side = document.querySelectorAll('#workerList > .worker-chip').length;
-      workers.length = 0; real.forEach(x => workers.push(x)); render();
+      workers.length = 0; real.forEach(x => workers.push(x)); document.querySelector('#workersRoot [data-testid="workers-view"] [aria-label="Cards"]').click(); render();
       return out;
     });
     console.log('PAGING', w, JSON.stringify(pg));
@@ -786,10 +789,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // Workers search: by ID / passport number (dashes ignored) and by client.
   const srch = await p.evaluate(async () => {
     const avi = workers.find(w => w.id === 'w1'), keep = avi.docId; avi.docId = '12345678-2';
-    switchTab('workers'); setWorkersView('list');
-    const find = q => { document.getElementById('workersSearch').value = q; renderWorkersPage(); return ' ' + document.getElementById('workersTitleCount').textContent; };
-    const out = {id: find('123456782'), client: find('site a'), none: find('99999')};
-    find(''); if(keep === undefined) delete avi.docId; else avi.docId = keep;
+    switchTab('workers'); render(); await new Promise(r => setTimeout(r, 50));
+    const box = document.querySelector('#workersRoot [data-testid="workers-search"]');
+    const setVal = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    const find = async q => { setVal.call(box, q); box.dispatchEvent(new Event('input', {bubbles: true})); await new Promise(r => setTimeout(r, 50));
+      return ' ' + document.querySelectorAll('#workersRoot [data-testid="worker-plate"]').length; };
+    const out = {id: await find('123456782'), client: await find('site a'), none: await find('99999')};
+    await find(''); if(keep === undefined) delete avi.docId; else avi.docId = keep; render();
     return out;
   });
   ok(/ 1$/.test(srch.id) && / 1$/.test(srch.client) && / 0$/.test(srch.none), 'workers search: by ID / passport number and by client ' + JSON.stringify(srch));
@@ -798,8 +804,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const a = workers.find(w => w.id === 'w1'), d = workers.find(w => w.id === 'w2');
     const keep = [a.createdAt, d.createdAt];
     a.createdAt = new Date(Date.now() - 2 * 864e5).toISOString(); d.createdAt = new Date(Date.now() - 4 * 864e5).toISOString();
-    switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await new Promise(r => setTimeout(r, 300));
-    const cards = [...document.querySelectorAll('#workersCards .wplate')].map(c => ({name: c.querySelector('.wp-n').title, isNew: !!c.querySelector('.new-badge')}));
+    switchTab('workers'); await new Promise(r => setTimeout(r, 300));
+    const cards = [...document.querySelectorAll('#workersRoot [data-testid="worker-plate"]')].map(c => ({name: c.querySelector('[data-testid="worker-name"]').title, isNew: !!c.querySelector('[data-testid="new-badge"]')}));
     a.createdAt = keep[0]; d.createdAt = keep[1];
     return cards;
   });
@@ -807,7 +813,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // The worker plate (redesign stage 3): notice chips → the notices sheet → the worker card with Info / Docs / Hours; Delete → Undo → deleted after 5 s; Select → a bulk status.
   const wp = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
-    const w1 = workers.find(w => w.id === 'w1'), keep = {failed: w1.docUploadFailed, status: w1.status};
+    const w1 = workers.find(w => w.id === 'w1');
+    window.__wpKeep = {failed: w1.docUploadFailed, status: w1.status};
     w1.docUploadFailed = true;
     // A clean start: an earlier step's window (the worker form opened from a card) can still be on its way back
     // (__returnTo brings the card back ~60 ms after it closes) and would open the card under this step.
@@ -816,10 +823,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       document.querySelectorAll('.overlay').forEach(o => { o.__returnTo = null; o.classList.remove('open'); });
       await wait(300);
     }
-    switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await wait(200);
-    const plate = document.querySelector('#workersCards .wplate[data-wid="w1"]'), r = {};
-    r.chip = plate.querySelector('.wp-chip1 .nchip') && plate.querySelector('.wp-chip1 .nchip').className; r.more = !!plate.querySelector('.n b .nchip.more'); r.bar = plate.style.getPropertyValue('--c');
-    plate.querySelector('.wp-chip1 .nchip').click(); await wait(150);
+    switchTab('workers'); render(); await wait(200);
+    const plate = document.querySelector('#workersRoot [data-testid="worker-plate"][data-wid="w1"]'), r = {};
+    const chip = plate.querySelector('[data-testid="worker-chip1"] [data-testid="notice-chip"]');
+    r.chip = chip && chip.dataset.lvl; r.more = !!plate.querySelector('[data-testid="notice-more"]'); r.bar = plate.querySelector('.og-plate').style.getPropertyValue('--bar');
+    chip.click(); await wait(150);
     r.sheet = document.getElementById('noticesOverlay').classList.contains('open'); r.notices = [...document.querySelectorAll('#noticesModal .t3-line b')].map(b => b.textContent);
     r.head = document.querySelector('#noticesModal .wc-hn h4').textContent; r.card0 = document.getElementById('workerCardOverlay').classList.contains('open');
     [...document.querySelectorAll('#noticesModal .modal-actions .gbtn')].find(b => /Open worker card/.test(b.textContent)).click(); await wait(300);
@@ -831,35 +839,35 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     // closing the card brings the notices sheet back; on a slow runner that takes longer than a fixed 200 ms, so up to 3 s
     closeModal('workerCardOverlay');
     for (let i = 0; i < 20 && !document.getElementById('noticesOverlay').classList.contains('open'); i++) await wait(150);
-    r.backToNotices = document.getElementById('noticesOverlay').classList.contains('open'); closeModal('noticesOverlay'); w1.docUploadFailed = keep.failed;
-    // Delete: Undo keeps the worker; a second Delete removes it only after 5 s.
-    workers.push({id:'wtmp', name:'Temp Worker Del', colorIdx:1, clientIds:[], schedule:[]}); renderWorkersPage(); await wait(100);
-    const tmp = () => document.querySelector('#workersCards .wplate[data-wid="wtmp"]');
-    tmp().querySelector('.t3-kb').click(); await wait(50);
-    r.menu = [...document.querySelectorAll('#ogPop .og-pop-it')].map(b => (b.classList.contains('del') ? '!' : '') + b.innerText.trim()).join();
-    document.querySelector('#ogPop .og-pop-it.del').click(); await wait(400);
-    r.pendingHidden = !tmp() || !!tmp().closest('.sw.gone'); r.stillThere = workers.some(w => w.id === 'wtmp');
-    document.querySelector('#undoSnack .og-snack-u').click(); await wait(400);
-    r.undone = !!tmp() && !tmp().closest('.sw.gone') && workers.some(w => w.id === 'wtmp');
-    tmp().querySelector('.t3-kb').click(); await wait(50); document.querySelector('#ogPop .og-pop-it.del').click(); await wait(300);
-    renderWorkersPage(); r.leftOut = !tmp(); r.notYet = workers.some(w => w.id === 'wtmp');
-    await wait(5400); r.deleted = !workers.some(w => w.id === 'wtmp');
-    // Select: a Select button above the plates and no boxes; after it "0 selected · Select all · Done", a tick → Vacation.
-    renderWorkersPage(); await wait(50);
-    const wh = document.querySelector('#workersCards').previousElementSibling || {};
-    r.selHead = wh.className === 'sel-head' && !!wh.querySelector('[data-h="on"]') && !/selected/.test(wh.textContent) && !document.querySelector('.sel-bar');
-    wh.querySelector('[data-h="on"]').click(); await wait(50);
-    r.selOn = /0 selected/.test(wh.textContent) && !!wh.querySelector('[data-h="all"]') && !!wh.querySelector('[data-h="off"]');
-    document.querySelector('#workersCards .wplate[data-wid="w1"] .t3-cb').click();
-    r.sel = document.querySelector('.sel-bar b').textContent;
-    [...document.querySelectorAll('.sel-bar .gbtn')].find(b => /Vacation/.test(b.textContent)).click(); await wait(100);
-    r.vac = w1.status === 'vacation' && !document.querySelector('.sel-bar') && !!wh.querySelector('[data-h="on"]');
-    w1.status = keep.status; render(); autoSave();
+    r.backToNotices = document.getElementById('noticesOverlay').classList.contains('open'); closeModal('noticesOverlay'); w1.docUploadFailed = window.__wpKeep.failed;
+    workers.push({id:'wtmp', name:'Temp Worker Del', colorIdx:1, clientIds:[], schedule:[]}); render(); await wait(100);
     return r;
   });
-  ok(/red/.test(wp.chip) && wp.more && wp.bar === 'var(--bad)' && wp.sheet && wp.notices.includes('Upload failed') && wp.head === 'Avi Cohen' && wp.card && wp.backToNotices, 'worker plate: a red notice chip opens the notices sheet; "Open worker card" opens the card, closing it goes back to the sheet ' + JSON.stringify(wp));
+  // Delete: Undo keeps the worker; a second Delete removes it only after 5 s.
+  const tmpSel = '#workersRoot [data-testid="worker-plate"][data-wid="wtmp"]';
+  const delTmp = async () => { await p.click(tmpSel + ' button[aria-label="Actions"]'); await sleep(150);
+    const menu = await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(b => b.innerText.trim()).join());
+    await p.click('[role="menuitem"]:has-text("Delete")'); await sleep(400); return menu; };
+  wp.menu = await delTmp();
+  Object.assign(wp, await p.evaluate(sel => ({pendingHidden: !document.querySelector(sel), stillThere: workers.some(w => w.id === 'wtmp')}), tmpSel));
+  await p.click('[data-testid="undo-snack"] button'); await sleep(400);
+  wp.undone = await p.evaluate(sel => !!document.querySelector(sel) && workers.some(w => w.id === 'wtmp'), tmpSel);
+  await delTmp();
+  Object.assign(wp, await p.evaluate(sel => { render(); return {leftOut: !document.querySelector(sel), notYet: workers.some(w => w.id === 'wtmp')}; }, tmpSel));
+  await sleep(5400); wp.deleted = await p.evaluate(() => !workers.some(w => w.id === 'wtmp'));
+  // Select: a Select button above the plates and no boxes; after it "0 selected · Select all", a tick → Vacation.
+  const wsel = '#workersRoot [data-testid="workers-select"]';
+  wp.selHead = await p.evaluate(sel => { const h = document.querySelector(sel); return !!h && /^Select$/.test(h.innerText.trim()) && !document.querySelector('#workersRoot .og-box') && !document.querySelector('[data-testid="select-bar"]'); }, wsel);
+  await p.click(wsel + ' button:has-text("Select")'); await sleep(100);
+  wp.selOn = await p.evaluate(sel => /0 selected/.test(document.querySelector(sel).innerText) && /Select all/.test(document.querySelector(sel).innerText), wsel);
+  await p.click('#workersRoot [data-testid="worker-plate"][data-wid="w1"] [role="button"]', {position: {x: 30, y: 14}}); await sleep(100);
+  wp.sel = await p.evaluate(() => (document.querySelector('[data-testid="select-bar"] b') || {}).textContent);
+  await p.click('[data-testid="sel-vacation"]'); await sleep(150);
+  wp.vac = await p.evaluate(sel => workers.find(w => w.id === 'w1').status === 'vacation' && !document.querySelector('[data-testid="select-bar"]') && /^Select$/.test(document.querySelector(sel).innerText.trim()), wsel);
+  await p.evaluate(() => { workers.find(w => w.id === 'w1').status = window.__wpKeep.status; render(); autoSave(); });
+  ok(wp.chip === 'red' && wp.more && wp.bar === 'var(--red)' && wp.sheet && wp.notices.includes('Upload failed') && wp.head === 'Avi Cohen' && wp.card && wp.backToNotices, 'worker plate: a red notice chip opens the notices sheet; "Open worker card" opens the card, closing it goes back to the sheet ' + JSON.stringify(wp));
   ok(wp.panes.join('|') === 'info|docs|hours' && wp.hoursStatus && wp.edit, 'worker card: Info / Docs / Hours switch, one Edit button ' + JSON.stringify(wp.panes));
-  ok(wp.menu === 'Open card,Edit,Pay,Punch link,!Delete' && wp.pendingHidden && wp.stillThere && wp.undone && wp.leftOut && wp.notYet && wp.deleted, 'workers: Delete never asks — Undo keeps the worker, otherwise it is removed after 5 s ' + JSON.stringify(wp));
+  ok(wp.menu === 'Edit,Open card,Pay,Punch link,Delete' && wp.pendingHidden && wp.stillThere && wp.undone && wp.leftOut && wp.notYet && wp.deleted, 'workers: Delete never asks — Undo keeps the worker, otherwise it is removed after 5 s ' + JSON.stringify(wp));
   ok(wp.selHead && wp.selOn && wp.sel === '1 selected' && wp.vac, 'workers: a Select button, boxes only after it; a tick, the bulk bar sets Vacation and Select ends ' + JSON.stringify({selHead: wp.selHead, selOn: wp.selOn, sel: wp.sel, vac: wp.vac}));
   // Worker documents (stage 13): plates with Select in the card's Docs pane; bulk Delete through Undo; closing the card gives Select back to the workers list.
   const wd = await p.evaluate(async () => {
@@ -883,12 +891,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     document.querySelector('#ogPop .og-pop-it.del').click(); await wait(5400);
     r.deleted = w.docs.map(d => d.id).join();
     closeModal('workerCardOverlay'); await wait(200);
-    const wl = document.querySelector('#workersCards');
-    r.back = !!wl && (wl.previousElementSibling || {}).className === 'sel-head' && __selState && __selState.key === 'workers';
+    r.back = !!document.querySelector('#workersRoot [data-testid="workers-select"] button') && !(__selState && __selState.key === 'workerDocs');
     w.docs = keep; render();
     return r;
   });
-  ok(wd.plates === 2 && wd.head && wd.bar === '2 selected' && wd.pending && wd.undone && wd.menu === 'Open,!Delete' && wd.deleted === 'd2' && wd.back, 'worker documents: plates with Select, bulk Delete through Undo, ⋮ Delete after 5 s, Select back to the workers list on close ' + JSON.stringify(wd));
+  ok(wd.plates === 2 && wd.head && wd.bar === '2 selected' && wd.pending && wd.undone && wd.menu === 'Open,!Delete' && wd.deleted === 'd2' && wd.back, 'worker documents: plates with Select, bulk Delete through Undo, ⋮ Delete after 5 s, Select ends on close and the workers list keeps its Select ' + JSON.stringify(wd));
   // Editors as section plates (redesign stage 4): worker, client, supplier, user.
   const ed = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
@@ -1005,15 +1012,44 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     'WhatsApp: the firm template saved in the firm form; Call + WhatsApp on a no-punch notice (bell and notices sheet) open wa.me with it ' + JSON.stringify(wa));
   // Worker list header (the owner's fixed structure): "Workers N", glass New, ⋮; tabs Active / Vacation / Pending.
   const wh = await p.evaluate(async () => {
-    switchTab('workers'); setWorkersView('cards'); renderWorkersPage();
-    const tabs = () => [...document.querySelectorAll('#workersTabs button')], r = {tabs: tabs().map(b => b.textContent).join(), count: document.getElementById('workersTitleCount').textContent};
-    tabs()[1].click(); r.vac = document.getElementById('workersFilterStatus').value === 'vacation' && tabs()[1].classList.contains('on');
-    tabs()[1].click(); r.cleared = document.getElementById('workersFilterStatus').value === '';
-    tabs()[2].click(); r.pending = document.getElementById('workersFilterDocs').value === 'incomplete'; tabs()[2].click();
-    r.scan = /Scan passport/.test((document.getElementById('workersScanBtn') || {}).textContent || '') && document.getElementById('workersScanBtn').classList.contains('gbtn') && !document.getElementById('workersHeadMenu');
+    const wait = ms => new Promise(res => setTimeout(res, ms));
+    switchTab('workers'); await wait(50);
+    const crumb = () => document.getElementById('ogCrumb').innerText.replace(/\s+/g, ' ').trim();
+    const chips = () => [...document.querySelectorAll('#workersRoot [data-testid="workers-chips"] button')].map(b => b.dataset.key + ':' + b.innerText.trim()).join();
+    const tabs = () => [...document.querySelectorAll('#workersRoot #workersTabs button')], r = {tabs: tabs().map(b => b.textContent).join(), count: crumb()};
+    tabs()[1].click(); await wait(50); r.vac = chips() === 'status:On vacation' && tabs()[1].classList.contains('on'); r.crumbVac = crumb();
+    tabs()[1].click(); await wait(50); r.cleared = chips() === '' && !tabs().some(b => b.classList.contains('on'));
+    tabs()[2].click(); await wait(50); r.pending = chips() === 'docs:Documents incomplete'; tabs()[2].click(); await wait(50);
+    const scan = document.querySelector('#workersRoot [data-testid="workers-scan"]');
+    r.scan = !!scan && /Scan passport/.test(scan.textContent) && scan.classList.contains('og-btn') && !!document.querySelector('#workersRoot [data-testid="workers-new"].og-new');
+    // Filters: hidden until the button, its count, the open state kept on this device
+    const fb = document.querySelector('#workersRoot [data-testid="workers-filters-btn"]');
+    r.filtersHidden = !document.querySelector('#workersRoot [data-testid="workers-filters"]');
+    fb.click(); await wait(50);
+    r.filtersOpen = document.querySelectorAll('#workersRoot [data-testid="workers-filters"] [data-testid^="wf-"]').length === 5 && localStorage.getItem('workersFiltersOpen') === '1';
+    fb.click(); await wait(50);
     return r;
   });
-  ok(wh.tabs === 'Active,Vacation,Pending' && /^\d+$/.test(wh.count) && wh.vac && wh.cleared && wh.pending && wh.scan, 'workers: header count, New and a glass Scan passport next to it (no ⋮), tabs Active / Vacation / Pending set the filters ' + JSON.stringify(wh));
+  ok(wh.tabs === 'Active,Vacation,Pending' && /^Workers \d+$/.test(wh.count) && wh.vac && /^Workers \d+ Vacation$/.test(wh.crumbVac) && wh.cleared && wh.pending && wh.scan && wh.filtersHidden && wh.filtersOpen,
+    'workers: the breadcrumb "Workers N › <tab>", New and a glass Scan passport, tabs Active / Vacation / Pending set the filters (a chip each), the Filters open on their button ' + JSON.stringify(wh));
+  // Workers filters (stage 6c-1): a filter picked in its select shows as a chip; Group by client draws a section per
+  // site; the list view is a table on a computer — a tap on a row opens the worker card.
+  await p.evaluate(() => { switchTab('workers'); document.querySelector('#workersRoot [data-testid="workers-filters-btn"]').click(); });
+  await sleep(100);
+  await p.click('#workersRoot [data-testid="wf-group"]'); await p.click('[role="option"]:has-text("Group by client")'); await sleep(150);
+  const wf = await p.evaluate(() => ({
+    chips: [...document.querySelectorAll('#workersRoot [data-testid="workers-chips"] button')].map(b => b.dataset.key).join(),
+    groups: [...document.querySelectorAll('#workersRoot [data-testid="workers-group"] > div > button')].map(b => b.innerText.replace(/\s+/g, ' ').trim()),
+  }));
+  await p.click('#workersRoot [data-testid="workers-chips"] button[data-key="group"]');
+  await p.click('#workersRoot [data-testid="workers-view"] [aria-label="List"]'); await sleep(150);
+  wf.table = await p.evaluate(() => document.querySelectorAll('#workersRoot [data-testid="workers-table"] tbody tr').length);
+  await p.click('#workersRoot [data-testid="workers-table"] tbody tr[data-row-id="w2"] td >> nth=2'); await sleep(400);
+  wf.card = await p.evaluate(() => document.getElementById('workerCardOverlay').classList.contains('open') && /Dana Levi/.test(document.getElementById('workerCardModal').innerText));
+  await p.evaluate(() => { closeModal('workerCardOverlay'); document.querySelector('#workersRoot [data-testid="workers-view"] [aria-label="Cards"]').click(); document.querySelector('#workersRoot [data-testid="workers-filters-btn"]').click(); });
+  await sleep(300);
+  ok(wf.chips === 'group' && wf.groups.length >= 1 && wf.groups.every(g => /\d$/.test(g)) && wf.table === 2 && wf.card,
+    'workers: a filter picked in its select shows as a chip, Group by client draws a section per site, the list view is a table whose row opens the card ' + JSON.stringify(wf));
   // Accounting (redesign stage 7): the period in glass, figures, Salary / Billing / Approvals tabs, salary plates.
   const ac = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), vis = id => getComputedStyle(document.getElementById(id)).display !== 'none';

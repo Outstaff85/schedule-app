@@ -3,7 +3,7 @@
 The manager app's skeleton: the page layout, global state, tabs and rendering, the Schedule tab, login and session, data loading and saving, the data-call dispatcher, uploads, telemetry, PWA. Module-specific code is in the other docs.
 
 `schedule-manager.html` is one file: CSS and markup (lines ~1–1100), then one inline `<script>`. Every function of the page is a global. It loads more files:
-- `assets/manager.js` — at startup, one module script: the tabs already moved to React (stage 6; now Today and Schedule), [build.md](build.md) → The manager's React pieces;
+- `assets/manager.js` — at startup, one module script: the tabs already moved to React (stage 6; now Today, Schedule and the Workers list), [build.md](build.md) → The manager's React pieces;
 - `firestore-backend.js` — at startup, the data layer, [backend.md](backend.md);
 - `scan-pipeline.js` — on the first scan, [scan.md](scan.md);
 - pdf.js — when a PDF is read, [scan.md](scan.md).
