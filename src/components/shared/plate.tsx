@@ -18,9 +18,10 @@ export type PlateAction = { label: string; icon?: React.ReactNode; onSelect: () 
 
 const SIZES = {
   // og.css (.og-plate) is unlayered: the padding needs `!` to win over it
-  sm: { pad: '!py-2 !pl-3.5 !pr-1.5', name: 'text-sm', sub: 'text-[11px]', fig: 'text-[13px]' },
-  md: { pad: '!py-[11px] !pl-[14px] !pr-2', name: 'text-[15px]', sub: 'text-xs', fig: 'text-[15px]' },
-  lg: { pad: '!py-3.5 !pl-4 !pr-2', name: 'text-base', sub: 'text-[13px]', fig: 'text-base' },
+  // V7 readability: every size 1px larger than the first plates
+  sm: { pad: '!py-2 !pl-3.5 !pr-1.5', name: 'text-[15px]', sub: 'text-xs', fig: 'text-sm' },
+  md: { pad: '!py-[11px] !pl-[14px] !pr-2', name: 'text-base', sub: 'text-[13px]', fig: 'text-base' },
+  lg: { pad: '!py-3.5 !pl-4 !pr-2', name: 'text-[17px]', sub: 'text-sm', fig: 'text-[17px]' },
 };
 const SWIPE_OPEN = 128;
 const LONG_PRESS_MS = 550;

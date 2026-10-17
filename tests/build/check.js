@@ -54,6 +54,13 @@ function walk(dir, base = '') {
     for (const i of m.icons || []) if (!fs.existsSync(path.join(DIST, i.src))) errs.push(`${mf}: icon ${i.src} is not in dist/`);
     if (!fs.existsSync(path.join(DIST, m.start_url))) errs.push(`${mf}: start_url ${m.start_url} is not in dist/`);
   }
+  // The manager app (an old page, copied) loads its React pieces (stage 6) from the fixed
+  // name assets/manager.js, built by Vite from src/manager/ with every chunk it imports.
+  const mh = fs.existsSync(path.join(DIST, 'schedule-manager.html')) ? fs.readFileSync(path.join(DIST, 'schedule-manager.html'), 'utf8') : '';
+  if (!/<script type="module" src="assets\/manager\.js"><\/script>/.test(mh)) errs.push('dist/schedule-manager.html: no module script assets/manager.js');
+  const mjs = path.join(DIST, 'assets', 'manager.js');
+  if (!fs.existsSync(mjs)) errs.push('dist/assets/manager.js is missing (vite.config.mts → input manager)');
+  else for (const [, dep] of fs.readFileSync(mjs, 'utf8').matchAll(/from"\.\/([^"]+\.js)"/g)) if (!fs.existsSync(path.join(DIST, 'assets', dep))) errs.push(`dist/assets/manager.js imports ${dep}, which is not in dist/assets`);
   const fb = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase.json'), 'utf8'));
   if (fb.hosting.public !== 'dist') errs.push(`firebase.json: hosting.public is "${fb.hosting.public}", must be "dist"`);
   console.log(`${old.length} files of the old pages, ${built.length} files in dist/, ${errs.length} problems`);

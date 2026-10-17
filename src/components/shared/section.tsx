@@ -65,7 +65,7 @@ export function Figures({ items, active, onPick, className }: {
           aria-pressed={onPick ? active === f.key : undefined}
           className={cn('relative grid min-w-0 rounded-[14px] border border-white/12 bg-white/[.06] px-2.5 py-2 text-left backdrop-blur-md disabled:cursor-default min-[701px]:px-3 min-[701px]:py-2.5', onPick && 'hover:bg-white/10', active === f.key && 'border-white/25 bg-white/12')}
         >
-          <b className="font-mono text-[26px] font-medium leading-tight tabular-nums min-[701px]:text-[28px]" style={{ color: f.color || 'var(--fig)' }}>{f.value}</b>
+          <b className="text-[26px] font-semibold leading-tight tabular-nums min-[701px]:text-[28px]" style={{ color: f.color || 'var(--fig)' }}>{f.value}</b>
           <span className="truncate text-xs text-ink-2 min-[701px]:text-[13px]">{f.label}</span>
           <span aria-hidden className={cn('og-uline', active === f.key && '!scale-x-100')} />
         </button>

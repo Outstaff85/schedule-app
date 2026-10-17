@@ -11,10 +11,13 @@ import { toast } from 'sonner';
 import {
   IconAlertTriangle, IconBell, IconBuilding, IconCalendarEvent, IconChartBar, IconCheck, IconCircleCheck, IconCoins,
   IconDownload, IconFileText, IconInfoCircle, IconLayoutGrid, IconListDetails, IconPlus, IconUser, IconUsers, IconX,
+  IconCalendar, IconCash, IconHome, IconLayoutSidebar, IconLock, IconTruckDelivery, IconUsersGroup,
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
 import { useIsPhone } from '@/hooks/use-phone';
-import { Brand, Shell, type ShellSection } from '@/components/shared/shell';
+import { Brand, Shell, ShellGreeting, type ShellSection } from '@/components/shared/shell';
+import { PullRefresh } from '@/components/shared/pull-refresh';
 import { PageHead } from '@/components/shared/page-head';
 import { Figures, Section } from '@/components/shared/section';
 import { Plate } from '@/components/shared/plate';
@@ -553,12 +556,80 @@ function Layout() {
   );
 }
 
+/* ───────── The manager app's frame (V7) ───────── */
+// The Shell with `app`: the side menu, the breadcrumb, the date / greeting /
+// weather in the middle, the Workers / Filter-by-client panel only on Workers
+// and Schedule, a Today-like page (tiles, panels in two columns, pull to refresh).
+const FRAME_SECTIONS: ShellSection[] = [
+  { key: 'dashboard', label: 'Today', icon: <IconHome />, color: '#22d3ee' },
+  { key: 'schedule', label: 'Schedule', icon: <IconCalendar />, color: '#818cf8' },
+  { key: 'workers', label: 'Workers', icon: <IconUsersGroup />, color: '#6dd6a0' },
+  { key: 'clients', label: 'Clients', icon: <IconUsers />, color: '#60a5fa' },
+  { key: 'suppliers', label: 'Suppliers', icon: <IconTruckDelivery />, color: '#c084fc' },
+  { key: 'admin', label: 'Admin', icon: <IconLock />, color: '#ff8a95' },
+  { key: 'accounting', label: 'Accounting', icon: <IconCash />, color: '#f7c062', count: 2 },
+];
+const FRAME_CRUMB: Record<string, { count?: number; sub?: string }> = {
+  schedule: { sub: tr('All sites') }, workers: { count: 12 }, clients: { count: 4 }, accounting: { sub: tr('Salary') }, admin: { sub: tr('Users') },
+};
+function Frame({ onBack }: { onBack: () => void }) {
+  const [tab, setTab] = React.useState('dashboard');
+  const [pick, setPick] = React.useState<string | null>(null);
+  const sections = FRAME_SECTIONS.map(s => ({ ...s, label: tr(s.label) }));
+  const aside = tab === 'workers' || tab === 'schedule' ? (
+    <div className="grid gap-1 px-3">
+      <div className="og-label px-1 pb-1">{tr('Filter by Client')}</div>
+      {['All clients', 'Haifa Port', 'Tel Aviv Mall'].map((c, i) => <div key={c} className={cn('rounded-xl px-3 py-2 text-[15px]', i === 0 && 'bg-white/8')}>{i === 0 ? tr(c) : c}</div>)}
+    </div>
+  ) : undefined;
+  return (
+    <Shell
+      app
+      brand={<Brand name={tr('Interactive Manager')} />}
+      tools={<><LanguageButton /><Button size="sm" onClick={onBack}>{tr('Back to the gallery')}</Button></>}
+      sections={sections}
+      active={tab}
+      onSelect={setTab}
+      crumb={FRAME_CRUMB[tab]}
+      center={<ShellGreeting name="Owner" wx={{ kind: 'rain', temp: 14 }} />}
+      aside={aside}
+    >
+      <PullRefresh onRefresh={() => new Promise(r => setTimeout(r, 600))}>
+        <div data-testid="page-frame">
+          <p className="mb-3 text-[15px] text-ink-2">{tr('Real-time attendance overview')}</p>
+          <Figures active={pick} onPick={k => setPick(p => (p === k ? null : k))} className="min-[701px]:max-w-[680px]" items={[
+            { key: 'on', label: tr('On shift'), value: 3, color: 'var(--green)' },
+            { key: 'late', label: tr('Late'), value: 1, color: 'var(--amber)' },
+            { key: 'none', label: tr('No punch'), value: 0, color: 'var(--ink-2)' },
+            { key: 'notices', label: tr('Notices'), value: 2, color: 'var(--amber)' },
+          ]} />
+          <div className="grid items-start gap-x-4 min-[901px]:grid-cols-2">
+            <div className="min-w-0">
+              <Section panel icon={<IconUsers className="text-ok" />} label={tr('On shift')} count={3} onFold={() => {}}>
+                {WORKERS.slice(0, 3).map(w => <Plate key={w.id} title={w.name} sub={w.site} right="6.5h" className="mb-1.5" />)}
+              </Section>
+            </div>
+            <div className="min-w-0">
+              <Section panel icon={<IconBell className="text-ink-2" />} label={tr("Today's Log")} onFold={() => {}}>
+                <div className="rounded-[14px] border border-dashed border-white/20 px-3 py-3.5 text-center text-[13px] text-ink-2">{tr('No punches today')}</div>
+              </Section>
+            </div>
+          </div>
+          <Section label={tr('Plates in three columns')} count={WORKERS.length}>
+            <PagedList columns items={WORKERS} render={w => <Plate key={w.id} title={w.name} sub={w.site} right="182h" className="mb-1.5" />} />
+          </Section>
+        </div>
+      </PullRefresh>
+    </Shell>
+  );
+}
+
 const PAGES: Record<string, () => React.ReactElement> = { controls: Controls, lists: Lists, windows: Windows, feedback: Feedback, data: Data, layout: Layout };
 
 export function App() {
   const [page, setPage] = React.useState(() => {
     const h = location.hash.slice(1);
-    return PAGES[h] ? h : 'controls';
+    return PAGES[h] || h === 'frame' ? h : 'controls';
   });
   React.useEffect(() => { history.replaceState(null, '', '#' + page); window.scrollTo(0, 0); }, [page]);
   const sections: ShellSection[] = [
@@ -568,7 +639,9 @@ export function App() {
     { key: 'feedback', label: tr('Feedback'), icon: <IconBell />, color: '#f7c062', count: 2 },
     { key: 'data', label: tr('Data'), icon: <IconChartBar />, color: '#4f8ef7' },
     { key: 'layout', label: tr('Layout'), icon: <IconCalendarEvent />, color: '#a78bfa' },
+    { key: 'frame', label: tr('Frame (V7)'), icon: <IconLayoutSidebar />, color: '#f472b6' },
   ];
+  if (page === 'frame') return <Frame onBack={() => setPage('controls')} />;
   const Page = PAGES[page];
   return (
     <Shell

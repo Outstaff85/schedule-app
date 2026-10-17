@@ -72,7 +72,7 @@ export function todayModel(s: TodaySnapshot, now = new Date()): TodayModel {
   const hours = (w: BridgeWorker) => {
     let h = 0;
     groupPunchesIntoShifts(of(w)).forEach(b => {
-      h += analyzeDayPunches(b.entries, b.date, { tr }).hours;
+      h += analyzeDayPunches(b.entries, b.date, { tr: (t, p) => tr(t, p as Record<string, string | number>) }).hours;
       const last = b.entries[b.entries.length - 1];
       if (last && last.type === 'in') h += Math.max(0, (now.getTime() - tsOf(last)) / 36e5);
     });

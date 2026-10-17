@@ -2,14 +2,16 @@
 // on a phone, a centred glass window (Dialog) on a computer; closed by a tap
 // on the backdrop (and a swipe down on a phone); no ✕, no Cancel. The content,
 // title and the one primary button at the end are the same on both.
+// `wide` (V7, a computer): 680px instead of 480 — an editor with its fields in two columns.
 // A window opened from another one goes back to it: the caller keeps which
 // window is open, so closing the second re-opens the first (CLAUDE.md template).
 import * as React from 'react';
+import { cn } from '@/lib/utils';
 import { useIsPhone } from '@/hooks/use-phone';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 
-export function Window({ open, onOpenChange, title, description, footer, children, className }: {
+export function Window({ open, onOpenChange, title, description, footer, children, className, wide }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: React.ReactNode;
@@ -18,6 +20,7 @@ export function Window({ open, onOpenChange, title, description, footer, childre
   footer?: React.ReactNode;
   children?: React.ReactNode;
   className?: string;
+  wide?: boolean;
 }) {
   const phone = useIsPhone();
   if (phone) {
@@ -36,7 +39,7 @@ export function Window({ open, onOpenChange, title, description, footer, childre
   }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={className} data-testid="window" data-kind="dialog">
+      <DialogContent className={cn(wide && 'w-[min(680px,calc(100%-32px))]', className)} data-testid="window" data-kind="dialog" data-wide={wide || undefined}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description ? <DialogDescription>{description}</DialogDescription> : <DialogDescription className="sr-only">{title}</DialogDescription>}

@@ -25,7 +25,7 @@
   --glass-sheet:rgba(17,20,31,0.82);
   --hairline:rgba(255,255,255,0.14);
   --ink:#ffffff;
-  --ink-2:#8b90a0;
+  --ink-2:#a3a9bb;
   --ink-3:#4a5068;
   --ink-on-glass:rgba(255,255,255,0.62);
   --accent:#4f8ef7;
@@ -113,17 +113,17 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 .lang-grab{display:none;width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.3);margin:0 auto 10px;}
 .lang-sheet h4{font-size:17px;font-weight:600;margin:0 4px 10px;}
 .lang-search{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;margin-bottom:8px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);}
-.lang-search i{color:#8b90a0;font-size:16px;}
+.lang-search i{color:var(--ink-2);font-size:16px;}
 .lang-search input{flex:1;min-width:0;border:0;background:none;color:#fff;font:14px 'DM Sans','Heebo',Arial,sans-serif;outline:none;padding:0;}
 .lang-list{overflow:auto;display:flex;flex-direction:column;gap:4px;}
 .lang-li{position:relative;display:flex;align-items:center;gap:10px;width:100%;height:38px;padding:0 12px;border:0;border-radius:12px;background:none;color:#fff;font-family:'DM Sans','Heebo',Arial,sans-serif;text-align:left;cursor:pointer;}
 .lang-li:hover{background:rgba(255,255,255,.06);}
 .lang-li b{font-size:15px;font-weight:600;}
-.lang-li small{flex:1;font-size:12px;color:#8b90a0;}
+.lang-li small{flex:1;font-size:12px;color:var(--ink-2);}
 .lang-li.on{background:rgba(109,214,160,.1);}
 .lang-li.on::after{content:'';position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:2px;background:linear-gradient(180deg,#818cf8,#22d3ee,#f472b6);}
 .lang-tick{width:22px;height:22px;border-radius:7px;background:var(--ok);color:#0b0d14;display:flex;align-items:center;justify-content:center;font-size:14px;}
-.lang-none{padding:14px 12px;color:#8b90a0;font-size:13px;}
+.lang-none{padding:14px 12px;color:var(--ink-2);font-size:13px;}
 @media (max-width:700px){
   .lang-ov{align-items:flex-end;padding:0;}
   .lang-sheet{width:100%;max-height:78vh;border-radius:22px 22px 0 0;border-width:1px 0 0;padding:10px 14px calc(18px + env(safe-area-inset-bottom,0px));transform:translateY(105%);}
@@ -201,14 +201,14 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 .t3-line:hover{background:#20242f;}
 .t3-line>.n,.t3-line>.r,.t3-line>.t3-kb,.t3-line>.t3-cb{position:relative;z-index:1;}
 .t3-line .t3-av{width:38px;height:38px;font-size:13px;background:color-mix(in srgb,var(--c,var(--neutral)) 22%,transparent) !important;color:var(--c,var(--neutral)) !important;box-shadow:inset 0 0 0 1.5px var(--c,var(--neutral));}
-.t3-line .n b{font-size:15px;font-weight:500;}
+.t3-line .n b{font-size:16px;font-weight:500;}
 /* A worker's full name on a plate (.wp-n): cut with … when it does not fit,
    so it never runs under the chips after it or the figures at the right. */
 .t3-line>.n{min-width:0;}
 .t3-line .n b:has(.wp-n){display:flex;align-items:center;gap:6px;min-width:0;}
 .t3-line .n b .wp-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;min-width:0;}
 .t3-line .n b:has(.wp-n)>:not(.wp-n){flex:none;}
-.t3-line .n small{font-size:12px;color:#8b90a0;margin-top:1px;}
+.t3-line .n small{font-size:13px;color:var(--ink-2);margin-top:1px;}
 .t3-line .r{font:500 14px 'DM Mono',ui-monospace,monospace;color:var(--fig);}
 .t3-kb{position:relative;flex:none;width:26px;height:36px;margin-right:-2px;border:0;background:none;color:#d6d9e2;font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .t3-kb:hover{color:#fff;}
@@ -292,7 +292,7 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
   .og-sec-ic{width:36px;height:36px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--c,var(--neutral));background:color-mix(in srgb,var(--c,var(--neutral)) 22%,transparent);box-shadow:inset 0 0 0 1.5px var(--c,var(--neutral))}
   .og-sec-t{flex:1;min-width:0}
   .og-sec-t b{display:block;font-size:15px;font-weight:600}
-  .og-sec-t small{display:block;font-size:12px;color:#8b90a0;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .og-sec-t small{display:block;font-size:12px;color:var(--ink-2);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .og-sec-chev{color:var(--text3);font-size:16px;transition:transform .25s}
   .og-sec.open .og-sec-chev{transform:rotate(180deg)}
   .og-sec.open .og-sec-t b{position:relative;display:inline-block;padding-bottom:4px}
@@ -308,7 +308,7 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
   .og-doc-ic{width:30px;height:30px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--c);background:color-mix(in srgb,var(--c) 18%,transparent)}
   .og-doc>div{flex:1;min-width:0;font-size:13px}
   .og-doc b{display:block;font-weight:600}
-  .og-doc small{display:block;font-size:11px;color:#8b90a0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .og-doc small{display:block;font-size:11px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .modal-actions .og-save{flex:1}
   /* Short fields in pairs (CLAUDE.md template): two short fields share a line
      on a phone and a computer; .stack-phone puts long ones one per line on a
@@ -363,11 +363,11 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
   .og-sec-b .t3-line .t3-av{width:26px;height:26px;font-size:10px}
   .og-sec-b .t3-line .r{font-family:'DM Mono',monospace;font-size:12px}
   .modal .field>label{line-height:16px}
-  .og-lbl{display:block;font-size:14px;font-weight:500;color:#8b90a0;margin:2px 4px 4px}
+  .og-lbl{display:block;font-size:14px;font-weight:500;color:var(--ink-2);margin:2px 4px 4px}
   .og-figs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0 4px}
   .og-figs>div,.rate-margin>div{background:#232735;border:0;border-radius:12px;padding:9px 10px;text-align:start}
   .og-figs b,.rate-margin b{display:block;font:700 15px 'DM Mono',monospace;color:var(--green)}
-  .og-figs small,.rate-margin small{display:block;font-size:11px;color:#8b90a0;margin-top:2px}
+  .og-figs small,.rate-margin small{display:block;font-size:11px;color:var(--ink-2);margin-top:2px}
   .modal canvas#wSigCanvas{border-radius:12px !important}
   .wc-av{width:56px;height:56px;font-size:19px}
 

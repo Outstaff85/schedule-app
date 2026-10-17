@@ -1,4 +1,4 @@
-// The greeting on the punch screen (the same as the manager app's Today —
+// The greeting on the punch screen and in the Shell's title bar (the same as the manager app's title bar —
 // duplicated on purpose, CLAUDE.md): "Good morning / afternoon / evening /
 // night, <first name>" by the device's local time (5–12, 12–17, 17–21, 21–5)
 // with a small animated icon; the weather at the site (the `weather`
@@ -6,6 +6,7 @@
 // The icons are fixed SVG markup; the name and the temperature go in through esc().
 import { tr } from '@/lib/i18n';
 import { esc } from '@/lib/utils';
+import '@/styles/greeting.css';
 
 export const GREET_ICONS: Record<string, string> = {
   morning:'<svg class="gic" viewBox="0 0 32 32" aria-hidden="true"><defs><clipPath id="gicHz"><rect x="0" y="0" width="32" height="23"/></clipPath></defs><g clip-path="url(#gicHz)"><g class="rise"><circle cx="16" cy="22" r="7" fill="#f7c062"/>'+[0,51,102,154,205,257,308].map(a=>`<line x1="16" y1="12" x2="16" y2="9" stroke="#f7c062" stroke-width="2" stroke-linecap="round" transform="rotate(${a} 16 22)"/>`).join('')+'</g></g><line x1="4" y1="23.5" x2="28" y2="23.5" stroke="rgba(255,255,255,.55)" stroke-width="2" stroke-linecap="round"/></svg>',
