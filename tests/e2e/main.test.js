@@ -1321,6 +1321,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const nLoadsS = supReplies.filter(x => x.action === 'loadSchedule').length;
   await p.click('header [data-testid="lang-btn"]'); await p.click('[data-testid="lang-list"] .lang-li:has-text("עברית")');
   const sl = {he: await waitFor(p, () => document.documentElement.lang === 'he' && localStorage.getItem('uiLang') === 'he', 10000)};
+  // the page is redrawn in the new language: wait for its tabs to be back before reading them
+  await waitFor(p, () => ([...document.querySelectorAll('[data-testid="shell-tabs"] button')].map(b => b.innerText.trim())[2] || '') === 'השעות שלי', 5000);
   sl.tab = await p.evaluate(() => [...document.querySelectorAll('[data-testid="shell-tabs"] button')].map(b => b.innerText.trim())[2]);
   sl.stayed = await p.evaluate(() => document.querySelector('[data-testid="supplier-portal"]').dataset.tab); sl.loads = supReplies.filter(x => x.action === 'loadSchedule').length - nLoadsS;
   ok(sl.he && sl.tab === 'השעות שלי' && sl.stayed === 'hours' && sl.loads === 0, 'supplier: the header Language button switches the portal to Hebrew in place — the tab and the data stay ' + JSON.stringify(sl));
