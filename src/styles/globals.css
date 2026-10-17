@@ -36,6 +36,9 @@
   --color-glass-edge: var(--glass-edge);
   --color-sheet: var(--glass-sheet);
   --color-faint: var(--ink-3);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-red-soft: var(--red-soft);
   --color-info: var(--accent);
   --color-ok: var(--green);
   --color-warn: var(--amber);
