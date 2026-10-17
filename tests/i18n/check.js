@@ -10,7 +10,9 @@
 // those by hand before deleting them.
 const fs = require('fs'), path = require('path');
 const ROOT = path.join(__dirname, '..', '..');
-const PAGES = ['schedule-manager.html', 'supplier-portal.html', 'worker-punch.html', 'client-portal.html', 'hours-review.js'];
+// The old pages, and every file of the new stack (src/, docs/build.md): its tr('…') literals.
+const walk = d => fs.existsSync(path.join(ROOT, d)) ? fs.readdirSync(path.join(ROOT, d), { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(d + '/' + e.name) : [d + '/' + e.name]) : [];
+const PAGES = ['schedule-manager.html', 'supplier-portal.html', 'worker-punch.html', 'client-portal.html', 'hours-review.js', ...walk('src').filter(f => /\.tsx?$/.test(f))];
 const COMPLETE = ['he']; // languages that must have every text; the others may be partial
 const unq = s => s.replace(/\\n/g, '\n').replace(/\\(['"`\\])/g, '$1');
 const keys = new Map(); // text → first page:line

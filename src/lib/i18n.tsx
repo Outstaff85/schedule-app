@@ -1,7 +1,7 @@
 // Translations in the new stack (docs/translations.md → New stack): the same
 // dictionaries (i18n/<lang>.json, English text → translation), the same device
 // key (localStorage.uiLang, shared with the old pages) and the same rules as
-// the old pages' core. `tr('English text', {name})` returns the text in the
+// the old pages' core. `tr(text, params)` returns the English text in the
 // chosen language; tests/i18n/check.js reads its literals from src/ too.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 

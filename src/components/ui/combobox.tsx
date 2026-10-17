@@ -32,7 +32,7 @@ function Combobox({ options, value, onChange, placeholder, searchPlaceholder, em
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-(--radix-popover-trigger-width) min-w-60 p-2" align="start" tail={false}>
-        <Command>
+        <Command filter={(value, search) => (value.toLowerCase().includes(search.trim().toLowerCase()) ? 1 : 0)}>
           <CommandInput placeholder={searchPlaceholder || tr('Search')} />
           <CommandList>
             <CommandEmpty>{emptyText || tr('Nothing found')}</CommandEmpty>
