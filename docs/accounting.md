@@ -14,6 +14,14 @@ The client keeps the punch log in `localStorage.punchLog` (`getPunchLog()` / `sa
 
 ## Canonical calculation
 
+### Payroll module (`src/lib/payroll.ts` → `payroll.js`)
+
+- `src/lib/payroll.ts` is the typed source of the pay functions below (`PAY_RULES`, `groupPunchesIntoShifts`, `analyzeDayPunches`, `israeliDayPay`, `effectiveRates`, `shiftPay`, `shiftPayFor`, `isDailyPay`, `dailyRate`, `wOwnRate`, `travelPay`, `salaryPeriodKey`, `dayOverride`, `localYMD`, `roundMins`). The new pages import it; `analyzeDayPunches` and `effectiveRates` take `clients` (and `tr`) as arguments instead of reading page globals.
+- `payroll.js` at the repo root is generated from it by `node scripts/build-payroll.mjs` (`--check` fails when the committed file is stale). It is a plain IIFE that defines the global `Payroll`. Do not edit it by hand.
+- `tests/payroll/` runs the verbatim copies of the old page code (`tests/payroll/legacy.mjs`, from main at 0a1ea33) and the module on the same inputs and requires identical results.
+- The old pages still carry their own copies of these functions in this branch; they are not yet wired to `payroll.js`.
+- The notes below describe the behaviour of these functions.
+
 - **`groupPunchesIntoShifts(entries)`** — one worker's punches, sorted by `ts`, split into shift buckets: each IN starts a bucket and the next OUT closes it. An overnight IN→OUT stays one shift. A bucket's `date` is the date of its first punch.
 - **`analyzeDayPunches(entries, date)`** → `{hours, warnings}`.
   - Pairs IN→OUT; a negative duration wraps past midnight.
