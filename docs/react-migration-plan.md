@@ -117,11 +117,6 @@ New features and polish the owner added to the migration. Each lands in the stag
 - **Pull down to refresh** — phone lists (Today, punches, hours) reload with a pull from the top.
 - **Smooth tab changes** — a short (≈150 ms) fade between screens and the breadcrumb changing with it; off under `prefers-reduced-motion`.
 
-**Technical**
-- **Screenshot comparison in CI** — `tests/e2e/audit.js` runs on every PR and compares each screen (phone and computer) with the last accepted shots; a changed screen fails the check until the new shots are accepted. Its own PR, before stage 6.
-- **Keyboard shortcuts on a computer** — stage 6 (in `Shell`): N new, / search the list, Esc close the window, ← → week / period, ? shows the list.
-- **Accessibility** — a rule for every stage from 5 on: secondary text contrast at least 4.5:1, a visible keyboard focus on plates and buttons, a label on every icon button (bell, language, ⋮).
-
 ### Rules for all stages
 - Each PR adds its own checks and updates the matching `docs/*.md` in the same PR.
 - A failed stage is rolled back by reverting one PR; the rest is untouched.
