@@ -1538,6 +1538,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(await waitFor(p, punchReady, 15000), 'punch: link verified, on site');
   ok(await p.evaluate(() => typeof Payroll === 'undefined' && typeof locOk === 'undefined' && typeof getPunchLog === 'undefined' && !!document.querySelector('#screenPunch [data-testid="lang-btn"]')),
     'punch: a React page (no old globals; the shared Language button in its top bar)');
+  // The PWA manifest: built by Vite under a hashed name, absolute paths, the app's id; its icons and start page load.
+  const mfc = await p.evaluate(async () => { const href = document.querySelector('link[rel="manifest"]').getAttribute('href'), m = await (await fetch(href)).json();
+    const st = async u => (await fetch(u)).status;
+    return {href, id: m.id, start: m.start_url, startSt: await st(m.start_url), icons: await Promise.all(m.icons.map(i => st(i.src)))}; });
+  ok(/^\/assets\/manifest-punch-.+\.json$/.test(mfc.href) && mfc.id === '/worker-punch.html' && mfc.start === '/worker-punch.html' && mfc.startSt === 200 && mfc.icons.length && mfc.icons.every(s => s === 200),
+    'punch: the manifest is a built file with absolute paths and an id; its icons and start page load ' + JSON.stringify(mfc));
   // Hold to punch: a short press rolls back and sends nothing; about a second punches.
   const pbb = await (await p.$('#bigPunchBtn')).boundingBox(), cx = pbb.x + pbb.width / 2, cy = pbb.y + pbb.height / 2;
   await p.mouse.move(cx, cy); await p.mouse.down(); await sleep(300); await p.mouse.up(); await sleep(600);

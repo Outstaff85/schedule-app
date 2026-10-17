@@ -4,6 +4,9 @@
 // a fallback when offline. Data calls (Firebase, Cloud Functions) go to other
 // origins and are never touched by the SW.
 const CACHE = 'schedule-mgr-v129';
+// The punch page's manifest is built by Vite under a hashed name in /assets/
+// (not listed here: addAll fails on a missing file); like the pages' built
+// files, it is kept on its first fetch.
 const CORE = [
   './',
   './schedule-manager.html',
@@ -14,7 +17,6 @@ const CORE = [
   './payroll.js',
   './og.css',
   './manifest.json',
-  './manifest-punch.json',
   './icon-192.png',
   './icon-512.png',
   './fonts/fonts.css',

@@ -1,34 +1,35 @@
 {
+  "id": "/worker-punch.html",
   "name": "Punch Clock",
   "short_name": "Punch",
   "description": "GPS clock in / out",
-  "start_url": "./worker-punch.html",
-  "scope": "./",
+  "start_url": "/worker-punch.html",
+  "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#10141f",
   "theme_color": "#10141f",
   "icons": [
     {
-      "src": "./icon-192.png",
+      "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "./icon-192.png",
+      "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "./icon-512.png",
+      "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "./icon-512.png",
+      "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
