@@ -264,11 +264,11 @@ function SendHours({ d }: { d: SupplierData }) {
 }
 
 // ── Sent for approval: each batch with its status (amber sent, green approved, red rejected) ──
-const STATUS = {
-  pending: { label: 'Sent for review', variant: 'warn', color: 'var(--amber)', icon: <IconClock /> },
-  approved: { label: 'Approved', variant: 'ok', color: 'var(--green)', icon: <IconCircleCheck /> },
-  rejected: { label: 'Rejected', variant: 'bad', color: 'var(--red)', icon: <IconCircleX /> },
-} as const;
+const status = () => ({
+  pending: { label: tr('Sent for review'), variant: 'warn', color: 'var(--amber)', icon: <IconClock /> },
+  approved: { label: tr('Approved'), variant: 'ok', color: 'var(--green)', icon: <IconCircleCheck /> },
+  rejected: { label: tr('Rejected'), variant: 'bad', color: 'var(--red)', icon: <IconCircleX /> },
+} as const);
 
 function SentHours({ d }: { d: SupplierData }) {
   const q = useSentHours();
@@ -280,12 +280,12 @@ function SentHours({ d }: { d: SupplierData }) {
         {q.isError ? <div className="text-xs text-faint">{tr('Could not load')}</div>
           : !q.data ? null
           : <PagedList items={list} empty={<div className="text-xs text-faint">{tr('Nothing sent yet')}</div>} render={(b, i) => {
-            const rows = b.entries || [], s = STATUS[b.status || 'pending'] || STATUS.pending;
+            const rows = b.entries || [], all = status(), s = all[b.status || 'pending'] || all.pending;
             const when = b.status === 'pending' || !b.status ? b.uploadedAt : b.decidedAt;
             return (
               <Plate key={b.id || i} size="sm" color={s.color}
                 title={tr('{0} · {1} shift(s): {2}{3}', { 0: nameOf(rows[0] && rows[0].workerId), 1: rows.length, 2: (rows[0] || {}).date || '', 3: rows.length > 1 ? ' – ' + rows[rows.length - 1].date : '' })}
-                right={<Badge variant={s.variant} className="font-sans">{s.icon}{tr(s.label)}{when ? ' · ' + new Date(when).toLocaleDateString('en-GB') : ''}</Badge>} />
+                right={<Badge variant={s.variant} className="font-sans">{s.icon}{s.label}{when ? ' · ' + new Date(when).toLocaleDateString('en-GB') : ''}</Badge>} />
             );
           }} />}
       </div>
