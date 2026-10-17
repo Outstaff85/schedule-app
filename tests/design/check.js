@@ -20,6 +20,13 @@ for(const f of ['schedule-manager.html', 'supplier-portal.html', 'client-portal.
   if(!/<link rel="stylesheet" href="og\.css">/.test(s)) errs.push(`${f}: does not link og.css`);
   for(const [n] of toks) if(new RegExp('(^|[^\\w-])--' + n + '\\s*:').test(s)) errs.push(`${f}: defines --${n} (it lives in og.css)`);
 }
+// The new stack (docs/build.md) points at the tokens and never defines one.
+const walk = d => fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]) : [];
+for(const f of [...walk(path.join(ROOT, 'src')), path.join(ROOT, 'next', 'index.html')].filter(f => /\.(css|tsx?|html)$/.test(f) && fs.existsSync(f))){
+  const s = fs.readFileSync(f, 'utf8'), rel = path.relative(ROOT, f);
+  for(const [n] of toks) if(new RegExp('(^|[^\\w-])--' + n + '\\s*:').test(s)) errs.push(`${rel}: defines --${n} (it lives in og.css)`);
+}
+if(!/href="\/og\.css"/.test(fs.existsSync(path.join(ROOT, 'next', 'index.html')) ? read('next/index.html') : 'href="/og.css"')) errs.push('next/index.html: does not link /og.css');
 console.log(`${toks.length} tokens, ${errs.length} problems`);
 errs.forEach(e => console.log('  ' + e));
 process.exit(errs.length ? 1 : 0);
