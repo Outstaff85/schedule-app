@@ -41,16 +41,49 @@ GitHub Actions builds after the merge: `npm ci`, `npm run build`, deploy `dist/`
 
 ## Stages
 
-0. **Foundation.** Vite project beside the current pages, tokens mapped, CI build + deploy of `dist/` next to the existing static files, a test that the merge still publishes. Decision point: approve or stop.
-1. **Shared core.** Shell, PageHead, Section, Plate, buttons, dialogs, tabs, toasts, i18n (`tr()` with the dictionaries `i18n/<lang>.json`), language button.
-2. **Payroll module, moved unchanged.** `PAY_RULES`, `israeliDayPay`, `effectiveRates`, `shiftPay`, `shiftPayFor`, shift grouping: copied as a typed module with the existing tests run before and after; no logic rewrite.
-3. **Client portal** (smallest page).
-4. **Supplier portal.**
-5. **Worker punch page** (keep the offline queue and GPS checks identical; service worker cache bump).
-6. **Manager app**, tab by tab: Today, Schedule, Workers, Clients, Suppliers, Accounting, Admin.
-7. **Cleanup.** Remove the old page copies, `og.css` parts replaced by Tailwind, the icon build, the duplicated-helpers list in CLAUDE.md.
+Every stage is its own PR. It is mergeable on its own: the site keeps working, CI is green, and the old and new pages live side by side until the stage is done. Merging always needs the owner's approval.
 
-Each stage is its own PR, merged only after approval and a green CI. The old and new pages live side by side until a stage is done.
+### Stage 0. Foundation
+- Vite + TypeScript project beside the current pages; Tailwind with the shadcn variables mapped onto `tokens.json`; shadcn initialized, no components yet.
+- Actions builds after the merge (`npm ci`, `npm run build`) and deploys `dist/` together with the existing static files; `firebase.json` and the workflow adjusted.
+- A test page `/next`.
+- **Mergeable when:** the live site works exactly as before and `/next` opens. **Decision point:** continue or stop.
+
+### Stage 1. Shared components
+- `Shell`, `PageHead`, `Section`, `Plate` (`size` variants, `right` slot), `GlassButton`; Dialog, Drawer, Sheet, Tabs, Accordion, Badge, Alert, Skeleton, Sonner toasts, Dropdown Menu, Popover, Select, Checkbox, Switch, Radio Group, Calendar, Form, Table.
+- Translations (`tr()` and `i18n/<lang>.json`), the Language button, Tabler Icons, Motion for windows and expanding rows.
+- New rule in CLAUDE.md: check `components/ui` and the shared components first, write a new one only when nothing fits, colors and sizes only from tokens.
+- **Mergeable when:** a demo page shows every component in all states and `npm run test:i18n` is green.
+
+### Stage 2. Payroll as a module
+- `PAY_RULES`, `israeliDayPay`, `effectiveRates`, `shiftPay`, `shiftPayFor`, `groupPunchesIntoShifts`, `analyzeDayPunches`, `salaryPeriodKey`, `localYMD`: moved unchanged into one typed module (strict TypeScript), the single copy used by all pages.
+- The existing tests run against old and new code with the same inputs.
+- **Mergeable when:** old and new results are identical on real months.
+
+### Stage 3. Client portal
+- Smallest page; Table, date-fns, hours review screen.
+- **Mergeable when:** the client e2e tests pass and a client sees the same data and nothing more.
+
+### Stage 4. Supplier portal
+- Forms on React Hook Form + Zod, tables on TanStack Table, reads through TanStack Query.
+- **Mergeable when:** the supplier visibility tests pass and the Firestore/Storage rules did not change.
+
+### Stage 5. Worker punch page (`/punch`)
+- GPS checks and the offline queue move one to one; bump `CACHE` in `service-worker.js`.
+- **Mergeable when:** punching without a connection and the send after it returns are verified.
+
+### Stage 6. Manager app, tab by tab
+One PR per tab, in this order: 6a Today, 6b Schedule, 6c Workers (list, card, worker window, documents, hours), 6d Clients and Suppliers, 6e Accounting (Recharts charts, TanStack Table), 6f Admin (punch log, firms, users, errors). The shell and the tabs not yet moved stay on the old code.
+- **Mergeable when:** the tab works, its e2e tests are rewritten and green, the other tabs still open.
+
+### Stage 7. Cleanup
+- Remove the old page copies, the parts of `og.css` replaced by Tailwind, the icon build and `tests/icons`, the duplicated-helpers list in CLAUDE.md; update `docs/`.
+- **Mergeable when:** no old code is left and the site works.
+
+### Rules for all stages
+- Each PR adds its own checks and updates the matching `docs/*.md` in the same PR.
+- A failed stage is rolled back by reverting one PR; the rest is untouched.
+- The payroll numbers are compared before any tab that shows pay is switched.
 
 ## Risks
 
