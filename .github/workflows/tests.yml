@@ -55,6 +55,9 @@ jobs:
       - name: Payroll (old copies vs src/lib/payroll.ts)
         run: node tests/payroll/compare.test.mjs
 
+      - name: Accounting (the old tab's figures vs src/manager/accounting.ts)
+        run: node tests/accounting/compare.test.mjs
+
       - name: Python for the functions
         run: |
           python -m venv "$RUNNER_TEMP/testvenv"

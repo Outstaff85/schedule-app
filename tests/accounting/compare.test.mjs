@@ -48,6 +48,9 @@ vm.runInContext(fs.readFileSync(path.join(ROOT, 'payroll.js'), 'utf8') + '\nthis
 vm.runInContext(accCode + '\nthis.ManagerAcc = ManagerAcc;', ctx);
 vm.runInContext(fs.readFileSync(path.join(HERE, 'legacy.mjs'), 'utf8').replace(/^export function /gm, 'function ') + '\nthis.legacyAccounting = legacyAccounting;', ctx);
 const { Payroll, ManagerAcc: A, legacyAccounting } = ctx;
+// Both sides' objects come from the vm: cloned into this realm (NaN, undefined, -0 and Sets kept) before a strict compare.
+const C = x => structuredClone(x);
+const same = (a, b, m) => assert.deepStrictEqual(C(a), C(b), m);
 
 const tr = (s, p) => String(s).replace(/\{(\w+)\}/g, (m, k) => (p && k in p ? String(p[k]) : m));
 
@@ -168,21 +171,21 @@ function compare(label, workers, clients, suppliers, log, session) {
     const L = `${label} ${period}${payOnly ? ' hr' : ''}`;
     // salaryEntriesFor
     const o = O.salaryEntriesFor(period), n = A.salaryEntriesFor(D, period);
-    assert.deepStrictEqual(Object.keys(n.byWorker), Object.keys(o.byWorker), `${L}: Salary row order`);
-    for (const k of Object.keys(o.byWorker)) assert.deepStrictEqual(pickE(n.byWorker[k]), pickE(o.byWorker[k]), `${L} ${k}: Salary row`);
-    assert.deepStrictEqual(JSON.parse(JSON.stringify(n.byClient)), JSON.parse(JSON.stringify(o.byClient)), `${L}: billable by client`);
+    same(Object.keys(n.byWorker), Object.keys(o.byWorker), `${L}: Salary row order`);
+    for (const k of Object.keys(o.byWorker)) same(pickE(n.byWorker[k]), pickE(o.byWorker[k]), `${L} ${k}: Salary row`);
+    same(C((n.byClient)), C((o.byClient)), `${L}: billable by client`);
     // The tab: renderSalary's rows, totals, figures, alerts, HR commission (and searched).
     for (const q of ['', 'avi', ' DANA ', 'zzz']) {
       const F = O.salaryFigures(period, q);
       const entries = Object.values(n.byWorker).filter(e => !payOnly || ((workers.find(w => w.id === e.workerId) || {}).hrId === me.uid));
       const shown = A.searchRows(entries, q), tot = A.salaryTotals(shown), figs = A.accFigures(entries);
-      assert.deepStrictEqual(shown.map(e => e.workerId), F.rows.map(r => r.workerId), `${L} q=${q}: rows shown`);
+      same(shown.map(e => e.workerId), F.rows.map(r => r.workerId), `${L} q=${q}: rows shown`);
       sameNum(tot.hours, F.totals.hours, `${L} q=${q}: total hours`); sameNum(tot.pay, F.totals.pay, `${L} q=${q}: total pay`);
       sameNum(tot.travel, F.totals.travel, `${L} q=${q}: total travel`); sameNum(tot.total, F.totals.total, `${L} q=${q}: Total Pay`);
       sameNum(Math.round(figs.hours), F.figs.hours, `${L}: figure Hours`); sameNum(Math.round(Number(figs.payroll) || 0), F.figs.payroll, `${L}: figure Payroll`);
       shown.forEach((e, i) => {
         const r = F.rows[i], rs = A.rateShown(D, e);
-        assert.deepStrictEqual([rs.kind, ...(rs.value !== undefined ? [rs.value] : [])], [...r.rate], `${L} ${e.workerId}: rate shown`);
+        same([rs.kind, ...(rs.value !== undefined ? [rs.value] : [])], [...r.rate], `${L} ${e.workerId}: rate shown`);
         assert.equal(A.daysByHand(D, e, period), r.byHand, `${L} ${e.workerId}: days by hand`);
         sameNum(e.total + e.travel, r.total, `${L} ${e.workerId}: row total`);
         if (payOnly) sameNum(A.hrCommission(D, e, me.commissionRate, me.commissionDayRate), r.myCom, `${L} ${e.workerId}: my commission`);
@@ -190,47 +193,47 @@ function compare(label, workers, clients, suppliers, log, session) {
       if (payOnly) sameNum(shown.reduce((t, e) => t + A.hrCommission(D, e, me.commissionRate, me.commissionDayRate), 0), F.totals.myCom, `${L}: my commission total`);
       if (q) continue;
       const al = payOnly ? [] : A.accAlerts(D, entries, n.byClient);
-      assert.deepStrictEqual(JSON.parse(JSON.stringify(al.map(a => ({ sec: a.sec, lvl: a.lvl, icon: 'ti-' + a.icon, title: a.title, sub: a.sub, go: a.go })))), JSON.parse(JSON.stringify(F.alerts)), `${L}: alerts`);
+      same(C((al.map(a => ({ sec: a.sec, lvl: a.lvl, icon: 'ti-' + a.icon, title: a.title, sub: a.sub, go: a.go })))), C((F.alerts)), `${L}: alerts`);
       if (payOnly) continue;
       // Billing: Payable by supplier (+ its export rows and detail windows), by HR, Billable by client (+ details).
       const SP = O.supplierPayableFigures(F.entries), sp = A.supplierPayable(D, entries);
-      assert.deepStrictEqual(sp.map(r => [r.id, r.hours, r.total]), SP.rows.map(r => [r.id, r.hours, r.total]), `${L}: payable by supplier`);
-      assert.deepStrictEqual(JSON.parse(JSON.stringify(A.payableAoa(sp.map(r => ({ label: r.name, hours: r.hours, rate: tr('commission'), total: r.total })), tr))), JSON.parse(JSON.stringify(O.payableAoa(SP.exportRows))), `${L}: payable summary export`);
+      same(sp.map(r => [r.id, r.hours, r.total]), SP.rows.map(r => [r.id, r.hours, r.total]), `${L}: payable by supplier`);
+      same(C((A.payableAoa(sp.map(r => ({ label: r.name, hours: r.hours, rate: tr('commission'), total: r.total })), tr))), C((O.payableAoa(SP.exportRows))), `${L}: payable summary export`);
       SP.details.forEach(dt => {
         const rows = A.supplierPayDetail(D, entries, dt.id);
-        assert.deepStrictEqual(rows.map(r => ({ n: r.name, h: tr('{h}h', { h: r.hours.toFixed(1) }), m: '₪' + r.total.toFixed(0) })), dt.rows, `${L} ${dt.id}: supplier detail rows`);
-        assert.deepStrictEqual({ h: tr('{h}h', { h: rows.reduce((t, r) => t + r.hours, 0).toFixed(1) }), m: '₪' + rows.reduce((t, r) => t + r.total, 0).toFixed(0) }, dt.total, `${L} ${dt.id}: supplier detail total`);
+        same(rows.map(r => ({ n: r.name, h: tr('{h}h', { h: r.hours.toFixed(1) }), m: '₪' + r.total.toFixed(0) })), dt.rows, `${L} ${dt.id}: supplier detail rows`);
+        same({ h: tr('{h}h', { h: rows.reduce((t, r) => t + r.hours, 0).toFixed(1) }), m: '₪' + rows.reduce((t, r) => t + r.total, 0).toFixed(0) }, dt.total, `${L} ${dt.id}: supplier detail total`);
       });
       const hp = A.hrPayable(D, entries, HRS);
-      assert.deepStrictEqual(hp.map(r => [r.id, r.hours, r.rate, r.dayRate, r.total]), O.hrPayableFigures(F.entries).map(r => [r.id, r.hours, r.rate, r.dayRate, r.total]), `${L}: payable by HR`);
+      same(hp.map(r => [r.id, r.hours, r.rate, r.dayRate, r.total]), O.hrPayableFigures(F.entries).map(r => [r.id, r.hours, r.rate, r.dayRate, r.total]), `${L}: payable by HR`);
       const CB = O.clientBillableFigures(F.clientBillEntries, F.entries), cb = A.clientBillable(D, n.byClient);
-      assert.deepStrictEqual(cb.map(r => [r.id, r.hours, r.total, r.mode]), CB.map(r => [r.id, r.hours, r.total, r.mode.toLowerCase()]), `${L}: billable by client`);
+      same(cb.map(r => [r.id, r.hours, r.total, r.mode]), CB.map(r => [r.id, r.hours, r.total, r.mode.toLowerCase()]), `${L}: billable by client`);
       CB.forEach(c => {
         const rows = A.clientBillDetail(entries, c.id), bill = n.byClient[c.id];
-        assert.deepStrictEqual(rows.map(r => ({ n: r.name, h: tr('{h}h', { h: r.hours.toFixed(1) }) })), c.detail.rows, `${L} ${c.id}: client detail rows`);
-        assert.deepStrictEqual({ h: tr('{h}h', { h: bill.hours.toFixed(1) }), m: bill.total > 0 ? '₪' + bill.total.toFixed(0) : '—' }, c.detail.total, `${L} ${c.id}: client detail total`);
+        same(rows.map(r => ({ n: r.name, h: tr('{h}h', { h: r.hours.toFixed(1) }) })), c.detail.rows, `${L} ${c.id}: client detail rows`);
+        same({ h: tr('{h}h', { h: bill.hours.toFixed(1) }), m: bill.total > 0 ? '₪' + bill.total.toFixed(0) : '—' }, c.detail.total, `${L} ${c.id}: client detail total`);
       });
       // The pay window.
-      for (const w of workers) assert.deepStrictEqual(JSON.parse(JSON.stringify(A.payWindowFigures(D, w, period, entries))), JSON.parse(JSON.stringify(O.payWindowFigures(w.id, period, F.entries))), `${L} ${w.id}: pay window`);
+      for (const w of workers) same(C((A.payWindowFigures(D, w, period, entries))), C((O.payWindowFigures(w.id, period, F.entries))), `${L} ${w.id}: pay window`);
     }
     if (payOnly) continue;
     // Exports: the salary table (all, and Select), the accountant workbook.
     const aoa = A.salaryExportAoa(D, period), oaoa = O.salaryExportAoa(period);
-    assert.deepStrictEqual(JSON.parse(JSON.stringify(aoa)), JSON.parse(JSON.stringify(oaoa)), `${L}: salary export`);
+    same(C((aoa)), C((oaoa)), `${L}: salary export`);
     const some = workers.filter((_, i) => i % 3 === 0).map(w => w.id);
-    assert.deepStrictEqual(JSON.parse(JSON.stringify(A.salaryExportAoa(D, period, some))), JSON.parse(JSON.stringify(O.salaryExportAoa(period, some))), `${L}: salary export of the ticked workers`);
+    same(C((A.salaryExportAoa(D, period, some))), C((O.salaryExportAoa(period, some))), `${L}: salary export of the ticked workers`);
     const month = A.salaryMonthOf(period);
     assert.equal(month, O.salaryMonthOf(period), `${L}: month`);
     const docs = month ? genDocs(workers, log, month) : null;
     const nb = A.accountantSheets(D, period, docs, 'Firm', 'en'), ob = O.accountantSheets(period, docs, 'Firm');
-    assert.deepStrictEqual(JSON.parse(JSON.stringify(nb)), JSON.parse(JSON.stringify(ob)), `${L}: accountant workbook`);
+    same(C((nb)), C((ob)), `${L}: accountant workbook`);
     if (month) {
       const shown = A.approvalDocsShown(docs).map(doc => { const s = A.hourApprovalSummary(D, doc, month);
         return { id: doc.id, done: s.done, total: s.total, allOk: s.allOk, open: s.open.map(x => ({ k: x.k, st: x.st, times: x.times, fix: x.fix })) }; });
-      assert.deepStrictEqual(shown, O.approvalsFigures(docs, month), `${L}: hours approvals`);
-      for (const doc of docs) assert.deepStrictEqual(A.hourDayLines(D, doc, month), O.hourDayLines(doc, month), `${L} ${doc.id}: approval lines`);
+      same(shown, O.approvalsFigures(docs, month), `${L}: hours approvals`);
+      for (const doc of docs) same(A.hourDayLines(D, doc, month), O.hourDayLines(doc, month), `${L} ${doc.id}: approval lines`);
     }
-    assert.deepStrictEqual(A.periodOptions(tr, 'en'), O.salaryExportPeriodOptions(), `${L}: period options`);
+    same(A.periodOptions(tr, 'en'), O.salaryExportPeriodOptions(), `${L}: period options`);
     tally.rows += Object.keys(n.byWorker).length; tally.exportRows += aoa.length - 2;
     Object.values(n.byWorker).forEach(e => { tally.pay += e.total + e.travel; });
     Object.values(o.byWorker).forEach(e => { tally.payOld += e.total + e.travel; });

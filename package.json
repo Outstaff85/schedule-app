@@ -12,7 +12,8 @@
     "build:payroll": "node scripts/build-payroll.mjs",
     "preview": "vite preview",
     "check:build": "node tests/build/check.js",
-    "test:payroll": "node tests/payroll/compare.test.mjs"
+    "test:payroll": "node tests/payroll/compare.test.mjs",
+    "test:accounting": "node tests/accounting/compare.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.2",
