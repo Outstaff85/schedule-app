@@ -228,9 +228,15 @@
         });
         known[kind].forEach((_, id) => { if(!next[kind].has(id)) ops.push(['delete', F.doc(db,'tenants',t,kind,id)]); });
       }
+      if(first){
+        const linked = new Set((first.ids || []).map(String));
+        const isLinked = op => op[1].parent.id === 'workers' && linked.has(op[1].id);
+        ops.splice(0, ops.length, ...first.ops, ...ops.filter(isLinked), ...ops.filter(op => !isLinked(op)));
+      }
       for(let i = 0; i < ops.length; i += BATCH_LIMIT){
         const batch = F.writeBatch(db);
-        ops.slice(i, i + BATCH_LIMIT).forEach(op => op[0] === 'set' ? batch.set(op[1], op[2]) : batch.delete(op[1]));
+        ops.slice(i, i + BATCH_LIMIT).forEach(op => op[0] === 'set' ? batch.set(op[1], op[2])
+          : op[0] === 'update' ? batch.update(op[1], op[2]) : batch.delete(op[1]));
         await batch.commit();
       }
       for(const kind in next) known[kind] = next[kind];
