@@ -2,9 +2,11 @@
 // react-migration-plan.md → stage 6). schedule-manager.html is still an old
 // page; it loads this module (built as assets/manager.js) and draws a moved tab
 // through `window.ManagerIsland` — now the Today tab into #todayRoot, the
-// Schedule tab into #scheduleRoot and the Workers list into #workersRoot — and
-// the worker windows (stage 6c-2: the card, the notices sheet, the worker
-// window, Add document, Upload / Export hours) into the page's overlays, which
+// Schedule tab into #scheduleRoot, the Workers list into #workersRoot and the
+// Clients and Suppliers tabs into #clientsRoot / #suppliersRoot — and the
+// worker windows (stage 6c-2: the card, the notices sheet, the worker window,
+// Add document, Upload / Export hours) and the client, supplier and manual
+// punch windows (stage 6d) into the page's overlays, which
 // the page still opens and closes (so they stack and go back to each other
 // with its other windows: pay, the scan). The data and the page's actions come
 // through `window.ManagerBridge` (bridge.ts).
@@ -22,6 +24,10 @@ import { Workers } from './Workers';
 import { WorkerCard } from './WorkerCard';
 import { WorkerEditor, editor, type Draft, type EditorProps } from './WorkerEditor';
 import { DocUpload, HoursExport, HoursImport, NoticesSheet } from './worker-windows';
+import { Clients, Suppliers } from './Clients';
+import { ClientEditor, clientWindow, type ClientProps } from './ClientEditor';
+import { SupplierEditor, type SupplierProps } from './SupplierEditor';
+import { ManualPunch } from './ManualPunch';
 
 // The styles go right before the page's og.css, so og.css still wins where they meet.
 const style = document.createElement('style');
@@ -67,6 +73,8 @@ const renderToday = island('todayRoot', b => b.today(), (s, api) => <Today snap=
 const renderSchedule = island('scheduleRoot', b => b.schedule(), (s, api) => <Schedule snap={s} api={api} />);
 
 const renderWorkers = island('workersRoot', b => b.workers(), (s, api) => <Workers snap={s} api={api} />);
+const renderClients = island('clientsRoot', b => b.clients(), (s, api) => <Clients snap={s} api={api} />);
+const renderSuppliers = island('suppliersRoot', b => b.suppliers(), (s, api) => <Suppliers snap={s} api={api} />);
 
 /**
  * A window drawn into one of the page's overlays (`.overlay > .modal#modalId`):
@@ -117,6 +125,9 @@ const workerWin = windowRoot<EditorProps>('workerModal', (p, api) => <WorkerEdit
 const docUpload = windowRoot<{ id: string; seq: number }>('workerDocModal', (p, api) => <DocUpload key={p.seq} wid={p.id} api={api} />);
 const hoursImport = windowRoot<{ id: string; seq: number }>('hoursImportModal', (p, api) => <HoursImport key={p.seq} wid={p.id} api={api} />);
 const hoursExport = windowRoot<{ id: string; seq: number }>('hoursExportModal', (p, api) => <HoursExport key={p.seq} wid={p.id} api={api} />);
+const clientWin = windowRoot<ClientProps>('clientModal', (p, api) => <ClientEditor key={p.seq} props={p} info={api.clientInfo(p.editId)} api={api} />);
+const supplierWin = windowRoot<SupplierProps>('supplierModal', (p, api) => <SupplierEditor key={p.seq} props={p} info={api.supplierInfo(p.editId)} api={api} />);
+const manualPunch = windowRoot<{ id: string; seq: number }>('manualPunchModal', (p, api) => <ManualPunch key={p.seq} clientId={p.id} api={api} />);
 // The page's applyWorkerDraft / autoFindMissingScanFields come right after openEditor: the window is drawn by then (flushSync).
 let seq = 0;
 
@@ -127,7 +138,7 @@ document.body.append(undoRoot);
 createRoot(undoRoot).render(<StrictMode><UndoHost /></StrictMode>);
 
 window.ManagerIsland = {
-  renderToday, renderSchedule, renderWorkers,
+  renderToday, renderSchedule, renderWorkers, renderClients, renderSuppliers,
   openCard: id => card.show({ id, seq: ++seq }),
   openNotices: id => notices.show({ id }),
   openEditor: (w, editId) => workerWin.show({ w, editId, seq: ++seq }),
@@ -144,6 +155,10 @@ window.ManagerIsland = {
   openHoursImport: id => hoursImport.show({ id, seq: ++seq }),
   openHoursExport: id => hoursExport.show({ id, seq: ++seq }),
   refreshWindows: () => { card.refresh(); notices.refresh(); workerWin.refresh(); },
+  openClient: (c, editId) => clientWin.show({ c, editId, seq: ++seq }),
+  saveClient: opts => { clientWindow.current?.save(opts); },
+  openSupplier: (s, editId) => supplierWin.show({ s, editId, seq: ++seq }),
+  openManualPunch: id => manualPunch.show({ id, seq: ++seq }),
 };
 // The page may have drawn a tab before this module arrived.
 window.dispatchEvent(new Event('manager-island-ready'));

@@ -82,7 +82,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       ['client-editor', () => { switchTab('clients'); openEditClient(clients[0].id); }],
       ['suppliers', () => switchTab('suppliers')],
       ['supplier-editor', () => { switchTab('suppliers'); openEditSupplier(suppliers[0].id); }],
-      ['supplier-editor-commission', () => { switchTab('suppliers'); openEditSupplier(suppliers[0].id); document.querySelector('#supplierModal .og-sec[data-sec="commission"] .og-sec-h').click(); }],
+      ['supplier-editor-commission', () => { switchTab('suppliers'); openEditSupplier(suppliers[0].id); document.querySelector('#supplierModal [data-sec="commission"] [data-slot="accordion-trigger"]').click(); }],
       ['accounting-salary', () => { switchTab('accounting'); setAccTab('salary'); }],
       ['accounting-billing', () => { switchTab('accounting'); setAccTab('billing'); }],
       ['accounting-approvals', () => { switchTab('accounting'); setAccTab('approvals'); }],

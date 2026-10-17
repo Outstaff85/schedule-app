@@ -370,6 +370,165 @@ export type ManagerBridge = WorkerBridge & {
   setStatus(ids: string[], status: 'active' | 'vacation'): void;
   /** removes the workers and their files (`deleteWorkerNow`) once their Undo time is up; saved */
   deleteWorkers(ids: string[]): void;
+
+  // ── Clients and Suppliers (stage 6d) ──
+  clients(): ClientsSnapshot;
+  suppliers(): SuppliersSnapshot;
+  /** opens the client window (null: a new client) */
+  openClient(id: string | null): void;
+  openSupplier(id: string | null): void;
+  /** the manual punch for this client */
+  manualPunch(id: string): void;
+  /** removes the clients once their Undo time is up: taken off every worker and the site filter; saved */
+  deleteClients(ids: string[]): void;
+  /** removes the suppliers once their Undo time is up: taken off every worker; saved */
+  deleteSuppliers(ids: string[]): void;
+  /** the client window's figures and its logins (`editId` null: a new client) */
+  clientInfo(editId: string | null): ClientInfo;
+  supplierInfo(editId: string | null): SupplierInfo;
+  /** stores the client (editId null: a new one) unless nothing changed, closes the window; saved */
+  commitClient(editId: string | null, fields: ClientRecord): void;
+  commitSupplier(editId: string | null, fields: SupplierRecord): void;
+  /** the client window's ⋮ → Manual punch: the window saved first, then the punch (back to the window on close) */
+  punchFromClient(id: string): void;
+  /** a window's ⋮ → Delete: the window closes without saving and does not come back (the list then deletes behind Undo) */
+  deleteFromEditor(kind: 'client' | 'supplier', id: string): void;
+  /** the map picker over the client window (`openMapPicker`); `onPick` gets the place chosen */
+  pickPlace(start: { lat: number | null; lng: number | null; addr: string; radius: number }, onPick: (p: { lat: number; lng: number; radius: number; mapsUrl: string }) => void): void;
+  /** a login's ticks saved at once (`updateUser`); false when the save failed (the toast is the page's) */
+  saveLogin(uid: string, field: 'hourPerms' | 'supplierSections' | 'showPay', value: string[] | boolean): Promise<boolean>;
+  /** "New client login" / "New portal login": the user form with the role and the client / supplier set */
+  newLogin(role: 'client' | 'supplier', id: string): void;
+  /** the client of a manual punch and the workers it offers (assigned to this client, else every active one) */
+  punchInfo(clientId: string): { client: { id: string; name: string }; workers: { id: string; name: string }[] } | null;
+  /** adds the punch to the local log and sends it (`gsSavePunch`) */
+  addPunch(p: ManualPunch): void;
+};
+
+
+// ── Clients and Suppliers (stage 6d) ──
+
+/** A client on the Clients tab: the record's list fields and what the page works out for it. */
+export type ClientRow = {
+  id: string;
+  name: string;
+  color: string;
+  address: string;
+  object: string;
+  /** its active workers */
+  workers: number;
+  /** this month's hours at the client (`salaryEntriesFor('month').byClient`) */
+  monthHours: number;
+  /** no billing rate and no worker rate */
+  noRate: boolean;
+  /** a pending hours batch has entries for it */
+  waiting: boolean;
+};
+export type ClientsSnapshot = {
+  ready: boolean;
+  clients: ClientRow[];
+  /** the `clients` section: Delete, Select */
+  canEdit: boolean;
+};
+
+/** A supplier on the Suppliers tab. */
+export type SupplierRow = {
+  id: string;
+  name: string;
+  color: string;
+  phone: string;
+  workers: number;
+  /** its workers' hours this month (`workersMonthHours`) */
+  monthHours: number;
+};
+export type SuppliersSnapshot = {
+  ready: boolean;
+  suppliers: SupplierRow[];
+  /** the `suppliers` section: Delete, Select */
+  canEdit: boolean;
+};
+
+/** A client record as stored (docs/clients.md → Data: the client record). */
+export type ClientRecord = {
+  id?: string;
+  name?: string;
+  color?: string;
+  companyNumber?: string;
+  object?: string;
+  address?: string;
+  lat?: number | null;
+  lng?: number | null;
+  radius?: number;
+  mapsUrl?: string;
+  defaultHourlyRate?: number | null;
+  defaultOtRate?: number | null;
+  defaultShabbatRate?: number | null;
+  rateMode?: 'tiered' | 'fixed' | 'daily';
+  billRate?: number | null | '';
+  billOtRate?: number | null;
+  billShabbatRate?: number | null;
+  fixedBillRate?: number | null;
+  dailyBillRate?: number | null;
+  [k: string]: unknown;
+};
+
+/** A supplier's own commission rate from a date (`sp.commission`). */
+export type CommissionEntry = { from?: string; mode?: 'hour' | 'day'; rate: number | string | null };
+/** A supplier record as stored (docs/suppliers.md → Data). */
+export type SupplierRecord = {
+  id?: string;
+  name?: string;
+  color?: string;
+  phone?: string;
+  contactPerson?: string;
+  bank?: string;
+  bankBranch?: string;
+  accountNumber?: string;
+  companyNumber?: string;
+  commission?: CommissionEntry[];
+  [k: string]: unknown;
+};
+
+/** A client / supplier login from the owner's users cache, with the ticks its editor shows. */
+export type LoginRow = { id: string; name: string; username: string; hourPerms?: string[]; supplierSections?: string[]; showPay?: boolean };
+export type LoginsInfo = {
+  logins: LoginRow[];
+  /** the owner / super-admin: ticks and New login */
+  canEdit: boolean;
+  /** `HOUR_PERM_LABELS`, `HOUR_DEFAULT` */
+  hourLabels: Record<string, string>;
+  hourDefault: string[];
+};
+
+export type ClientInfo = LoginsInfo & {
+  /** active workers at the client, this month's hours and billed sum there (0 for a new one) */
+  workers: number;
+  monthHours: number;
+  billed: number;
+  /** pending hours batches for it */
+  waiting: number;
+  /** the `clients` section: Delete from the ⋮ */
+  canDelete: boolean;
+  /** `PAY_RULES.otMult`, `shabbatMult` (the law's figures in the OT / Shabbat placeholders) */
+  otMult: number;
+  shabbatMult: number;
+};
+
+export type SupplierInfo = LoginsInfo & {
+  workers: { id: string; name: string; active: boolean; hours: number }[];
+  /** this month's commission payable (`supplierMonthPayable`) */
+  payable: number;
+  /** the owner / super-admin sets the supplier's own rate */
+  canRate: boolean;
+  canDelete: boolean;
+  /** `SUPPLIER_DEFAULT_RATE` */
+  defaultRate: number;
+};
+
+/** A punch entered by hand from the client window (docs/clients.md → Manual punch). */
+export type ManualPunch = {
+  id: number; workerId: string; workerName: string; type: 'in' | 'out'; time: string; date: string; ts: string; site: string;
+  clientId: string | null; dist: null; gpsVerified: false; manual: true; notes: string; gpsWarnings: string[];
 };
 
 /** What the page calls to draw (src/manager/main.tsx). */
@@ -393,6 +552,14 @@ export type ManagerIsland = {
   openHoursExport(id: string): void;
   /** the open windows read their data again (render(), a live hours batch, the HR list) */
   refreshWindows(): void;
+  // ── Clients and Suppliers (stage 6d) ──
+  renderClients(): void;
+  renderSuppliers(): void;
+  openClient(c: ClientRecord, editId: string | null): void;
+  /** the client window's save (`saveClient`) */
+  saveClient(opts: { auto?: boolean }): void;
+  openSupplier(s: SupplierRecord, editId: string | null): void;
+  openManualPunch(clientId: string): void;
 };
 
 declare global {

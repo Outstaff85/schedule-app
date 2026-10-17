@@ -1067,28 +1067,16 @@ body:has(.overlay.open){overflow:hidden}
       <div id="workersRoot" data-island></div>
     </div>
 
+    <!-- Clients and Suppliers (stage 6d): drawn in React (src/manager/Clients.tsx)
+         through window.ManagerIsland — renderClientsPage() / renderSuppliersPage().
+         Their windows (ClientEditor.tsx, SupplierEditor.tsx, ManualPunch.tsx) are
+         drawn into #clientModal, #supplierModal and #manualPunchModal below. -->
     <div class="page-section" id="sectionClients">
-      <div class="page-header">
-        <div>
-          <div class="page-title"><span data-i18n>Clients</span> <em class="og-count" id="clientsTitleCount"></em></div>
-        </div>
-        <div class="workers-actions">
-          <button class="gbtn primary og-new" onclick="openAddClient()"><i class="ti ti-plus"></i> <span data-i18n>New</span></button>
-        </div>
-      </div>
-      <div class="clients-grid" id="clientsGrid"></div>
+      <div id="clientsRoot" data-island></div>
     </div>
 
     <div class="page-section" id="sectionSuppliers">
-      <div class="page-header">
-        <div>
-          <div class="page-title"><span data-i18n>Suppliers</span> <em class="og-count" id="suppliersTitleCount"></em></div>
-        </div>
-        <div class="workers-actions">
-          <button class="gbtn primary og-new" onclick="openAddSupplier()"><i class="ti ti-plus"></i> <span data-i18n>New</span></button>
-        </div>
-      </div>
-      <div class="clients-grid" id="suppliersGrid"></div>
+      <div id="suppliersRoot" data-island></div>
     </div>
 
     <!-- Admin Section — merged 2026-09-30 with the formerly-separate
@@ -2898,48 +2886,29 @@ function ogAutoSections(root){
 }
 // A field asked to focus (a save that found it empty) opens its section first.
 (()=>{ const f=HTMLElement.prototype.focus; HTMLElement.prototype.focus=function(o){ const sec=this.closest&&this.closest('.og-sec:not(.open)'); if(sec) ogSecOpen(sec); return f.call(this,o); }; })();
-// The client editor's Hours approval: the client logins of this client and
-// their hours ticks (set in Admin → Users; the owner's users cache).
-function clientLoginsHtml(c){
-  const users=(loadAdminCache('users_'+activeTenantIdForAdmin())||[]).filter(u=>u.role==='client'&&c&&u.clientId===c.id);
-  const can=isFirmAdminSession();
-  const ticks=u=>`<div class="check-grid" style="margin:6px 0 10px">${Object.keys(HOUR_PERM_LABELS).map(p=>`<label class="check-chip"><input type="checkbox" data-uid="${esc(u.id)}" data-field="hourPerms" value="${esc(p)}"${can?'':' disabled'}${(u.hourPerms||[]).includes(p)?' checked':''} onchange="saveLoginTicks(this)"><span class="chip-text"><span>${esc(tr(HOUR_PERM_LABELS[p]))}</span></span></label>`).join('')}</div>`;
-  return (users.length?users.map(u=>`<div class="wc-line" style="margin-bottom:2px"><i class="ti ti-user"></i><span>${esc(u.fullName||u.username)} · ${esc(u.username)}</span></div>${ticks(u)}`).join(''):`<div class="wc-line">${esc(tr('No client login yet.'))}</div>`)
-    +(can&&c&&c.id?`<button type="button" class="gbtn" onclick="newLoginFor('client','${esc(c.id)}')"><i class="ti ti-user-plus"></i><span>${esc(tr('New client login'))}</span></button>`:'');
-}
-// A tick of a login (client hours ticks, supplier portal tabs) changed in an
-// editor: saved at once (updateUser — the user signs in again with the new
-// rights), and the users cache follows.
-async function saveLoginTicks(cb){
-  const uid=cb.dataset.uid, field=cb.dataset.field;
-  const values=field==='showPay'?cb.checked:[...document.querySelectorAll(`input[data-uid="${CSS.escape(uid)}"][data-field="${field}"]:checked`)].map(x=>x.value);
+// A tick of a client / supplier login in its window (stage 6d, React —
+// src/manager/logins.tsx): saved at once (updateUser — the user signs in again
+// with the new rights), and the users cache follows. False when it failed.
+async function saveLoginField(uid, field, values){
   try{
     const json=await (await fetch(API_URL,{method:'POST', body:JSON.stringify({action:'updateUser', ...gsAuth(), id:uid, [field]:values})})).json();
-    if(!json||json.error){ showToast(tr((json&&json.error)||'Save failed')); cb.checked=!cb.checked; return; }
+    if(!json||json.error){ showToast(tr((json&&json.error)||'Save failed')); return false; }
     const key='users_'+activeTenantIdForAdmin(), list=loadAdminCache(key)||[], u=list.find(x=>x.id===uid);
     if(u){ u[field]=values; saveAdminCache(key,list); }
     showToast(tr('Saved'));
-  }catch(e){ showToast(tr('Network error')); cb.checked=!cb.checked; }
+    return true;
+  }catch(e){ showToast(tr('Network error')); return false; }
 }
 // "New client login" / "New portal login" from an editor: the user form with
-// the role and the client / supplier already set.
+// the role and the client / supplier already set (the client window is saved
+// first, as on a tap outside; closing the user form brings it back).
 function newLoginFor(role, id){
-  const ov=role==='client'?'clientOverlay':'supplierOverlay';
-  if(role==='client') saveClient({auto:true}); else closeModal(ov);
+  if(role==='client') saveClient({auto:true}); else closeModal('supplierOverlay');
   openCreateUserForm();
   const r=document.getElementById('userFormRole'); r.value=role; onUserFormRoleChange(true);
   const sel=document.getElementById(role==='client'?'userFormClientId':'userFormSupplierId');
   if(sel){ if(role==='client') fillUserFormClientSelect(id); else fillUserFormSupplierSelect(id); sel.value=id; if(role==='supplier') renderUserFormHrWorkers(); }
   userFormSections();
-}
-// The supplier editor's Commission (per hour; this month's hours and the
-// commission payable — the same figures as Accounting → Payable by supplier),
-// Portal login (its supplier logins and the portal tabs they see, editable)
-// and Workers (mini plates with this month's hours).
-// The supplier editor's header line: its workers and this month's commission payable.
-function supplierEditorSub(sp){
-  const n=workers.filter(w=>w.supplierId===sp.id).length;
-  return [n===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:n,1:''}), tr('{0} this month',{0:'₪'+fmtMoneyShort(supplierMonthPayable(sp))})].join(' · ');
 }
 // This month's commission payable to a supplier (the same figure as Accounting → Payable by supplier).
 function supplierMonthPayable(sp){
@@ -2947,36 +2916,13 @@ function supplierMonthPayable(sp){
   Object.values(salaryEntriesFor('month').byWorker||{}).forEach(e=>{ const wc=workers.find(w=>w.id===e.workerId); if(wc&&wc.supplierId===sp.id) payable+=supplierCommission(wc,e,sp.id); });
   return payable;
 }
-function deleteSupplierFromEditor(){
-  const id=editingSupplierId; if(!id) return;
-  closeModal('supplierOverlay');
-  deleteSupplier(id, document.querySelector(`#suppliersGrid .t3-line[data-sel-id="${CSS.escape(id)}"]`));
+// The login rows a client / supplier window shows (the owner's users cache).
+function loginsInfo(role, id){
+  const users=(loadAdminCache('users_'+activeTenantIdForAdmin())||[]).filter(u=>u.role===role&&id&&(role==='client'?u.clientId:u.supplierId)===id);
+  return {logins:users.map(u=>({id:u.id, name:u.fullName||u.username||'', username:u.username||'', hourPerms:u.hourPerms, supplierSections:u.supplierSections, showPay:u.showPay})),
+    canEdit:isFirmAdminSession(), hourLabels:HOUR_PERM_LABELS, hourDefault:HOUR_DEFAULT};
 }
-function supplierEditorExtraHtml(sp){
-  const SEC=(key,icon,title,body,sum)=>`<section class="og-sec" data-sec="${key}"${sum?` data-summary="${esc(sum)}"`:''}><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ${icon}"></i></span><span class="og-sec-t"><b>${esc(tr(title))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">${body}</div></section>`;
-  const mine=workers.filter(w=>w.supplierId===sp.id), hours=workersMonthHours(), total=mine.reduce((t,w)=>t+(hours[w.id]||0),0);
-  const payable=supplierMonthPayable(sp);
-  // The supplier's own rate (per hour / per day, applies from a date): only the
-  // firm owner and the super-admin change it; everyone else reads it.
-  const cur=supplierRateOn(sp.commission, new Date()), canRate=isFirmAdminSession();
-  const rateText=r=>r?('₪'+r.rate+(r.mode==='day'?tr('/day'):tr('/h'))):'₪'+SUPPLIER_DEFAULT_RATE+tr('/h');
-  const hist=[...(sp.commission||[])].filter(x=>x&&x.rate!=null&&x.rate!=='').sort((a,b)=>String(b.from||'').localeCompare(String(a.from||'')));
-  const commission=`<div class="og-figs"><div><b>${esc(fmtHoursShort(total))}</b><small>${esc(tr('hours'))}</small></div><div><b>₪${esc(fmtMoneyShort(payable))}</b><small>${esc(tr('commission'))}</small></div><div><b>${mine.length}</b><small>${esc(tr('workers'))}</small></div></div>
-    ${canRate?`<div class="seg-toggle" id="sComMode">${['hour','day'].map(m=>`<button type="button" data-m="${m}" class="${(cur&&cur.mode==='day'?'day':'hour')===m?'on':''}" onclick="document.querySelectorAll('#sComMode button').forEach(b=>b.classList.toggle('on',b===this))">${esc(tr(m==='day'?'Per day':'Per hour'))}</button>`).join('')}</div>
-    <div class="field-row"><div class="field"><label>${esc(tr('Rate'))}</label><div class="rate-in"><input type="number" min="0" step="0.5" id="sComRate" value="${cur?esc(String(cur.rate)):''}" placeholder="${SUPPLIER_DEFAULT_RATE}"><span>₪</span></div></div>
-      <div class="field"><label>${esc(tr('Applies from'))}</label><input type="date" id="sComFrom" value="${esc(localYMD(new Date()))}"></div></div>`
-      :`<div class="wc-line">${esc(tr('Rate'))}: <b class="fig">${esc(rateText(cur))}</b>${cur&&cur.from?' · '+esc(tr('from {0}',{0:fmtDMY(cur.from)})):''}</div>`}
-    ${hist.length>1?`<div class="wc-line" style="color:var(--ink-2)">${hist.slice(1,4).map(x=>esc(rateText(x)+(x.from?' '+tr('from {0}',{0:fmtDMY(x.from)}):''))).join(' · ')}</div>`:''}
-    <div class="wc-line">${esc(tr('Empty = ₪{0} per hour. A worker\'s own commission in Accounting wins over this rate.',{0:SUPPLIER_DEFAULT_RATE}))}</div>`;
-  const users=(loadAdminCache('users_'+activeTenantIdForAdmin())||[]).filter(u=>u.role==='supplier'&&u.supplierId===sp.id);
-  const SECT={dashboard:'Dashboard', workers:'My Workers', hours:'My Hours'}, can=isFirmAdminSession();
-  const login=(users.length?users.map(u=>`<div class="wc-line" style="margin-bottom:2px"><i class="ti ti-user"></i><span>${esc(u.fullName||u.username)} · ${esc(u.username)}</span></div><div class="check-grid" style="margin:6px 0 10px">${Object.keys(SECT).map(k=>`<label class="check-chip"><input type="checkbox" data-uid="${esc(u.id)}" data-field="supplierSections" value="${k}"${can?'':' disabled'}${(u.supplierSections||Object.keys(SECT)).includes(k)?' checked':''} onchange="saveLoginTicks(this)"><span class="chip-text"><span>${esc(tr(SECT[k]))}</span></span></label>`).join('')}<label class="check-chip"><input type="checkbox" data-uid="${esc(u.id)}" data-field="showPay" value="1"${can?'':' disabled'}${u.showPay!==false?' checked':''} onchange="saveLoginTicks(this)"><span class="chip-text"><span>${esc(tr("Sees own workers' pay"))}</span></span></label></div><div class="check-grid" style="margin:0 0 10px">${Object.keys(HOUR_PERM_LABELS).map(p=>`<label class="check-chip"><input type="checkbox" data-uid="${esc(u.id)}" data-field="hourPerms" value="${esc(p)}"${can?'':' disabled'}${(Array.isArray(u.hourPerms)?u.hourPerms:HOUR_DEFAULT).includes(p)?' checked':''} onchange="saveLoginTicks(this)"><span class="chip-text"><span>${esc(tr(HOUR_PERM_LABELS[p]))}</span></span></label>`).join('')}</div>`).join(''):`<div class="wc-line">${esc(tr('No portal login yet.'))}</div>`)
-    +(can?`<button type="button" class="gbtn" onclick="newLoginFor('supplier','${esc(sp.id)}')"><i class="ti ti-user-plus"></i><span>${esc(tr('New portal login'))}</span></button>`:'');
-  const plates=mine.length?mine.map(w=>t3Line({c:isActiveWorker(w)?'var(--ok)':'var(--bad)', av:t3Av(w), name:`<span class="wp-n" title="${esc(w.name)}">${esc(w.name)}</span>`, right:`<span class="r">${esc(fmtHoursShort(hours[w.id]))}</span>`})).join(''):`<div class="t3-empty">${esc(tr('No workers'))}</div>`;
-  return SEC('commission','ti-coin','Commission',commission,rateText(cur)+' · '+tr('{0} this month',{0:'₪'+fmtMoneyShort(payable)}))
-    +SEC('portal','ti-key','Portal login',login,users.length?users.map(u=>u.username).join(', '):tr('No portal login yet.'))
-    +SEC('workers','ti-users-group','Workers',plates,mine.length===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:mine.length,1:''}));
-}
+
 // The worker window saves itself when it is closed by a tap outside
 // (opts.auto) — the save is the window's (src/manager/worker-save.ts). One
 // save at a time.
@@ -3054,136 +3000,62 @@ function deleteWorkerNow(id){
   docFileIds.forEach(gsDeleteWorkerDoc);
 }
 
-// --- Client Modal -------------------------------------------------------------
-function openAddClient(){ editingClientId=null; selClientColor=CLIENT_COLORS[clients.length%CLIENT_COLORS.length]; showClientModal({name:'',color:selClientColor,address:'',notes:''}); }
-function openEditClient(cid){ editingClientId=cid; const c=clients.find(x=>x.id===cid); selClientColor=c.color; showClientModal(c); }
+// --- Clients (stage 6d) ----------------------------------------------------------
+// The Clients tab and the client window are drawn in React (src/manager/
+// Clients.tsx, ClientEditor.tsx — docs/clients.md); the records, the map picker
+// and the saves stay here (ManagerBridge). The window has no Cancel: a tap
+// outside saves it (saveClient auto); a new client gets the next colour.
+function openAddClient(){ editingClientId=null; showClientModal({name:'',color:CLIENT_COLORS[clients.length%CLIENT_COLORS.length],address:''}); }
+function openEditClient(cid){ const c=clients.find(x=>x.id===cid); if(!c) return; editingClientId=cid; showClientModal(c); }
 function showClientModal(c){
-  // Billing settings live in __cBill while the modal is open — edited via the
-  // rates block (setClientRateMode / onClientBillMainInput), written back by saveClient().
-  __cBill = { rateMode: c.rateMode==='fixed'?'fixed':c.rateMode==='daily'?'daily':'tiered', hourMode: c.rateMode==='fixed'?'fixed':'tiered', dailyBillRate: c.dailyBillRate??null, fixedBillRate: c.fixedBillRate??null,
-    billRate: (c.billRate!=null&&c.billRate!=='') ? c.billRate : (c.defaultHourlyRate??null),
-    billOtRate: c.billOtRate??null, billShabbatRate: c.billShabbatRate??null };
-  // The client card's labels are in Hebrew (per user request 2026-10-04); the layout stays left to right.
-  setTimeout(()=>{ syncClientBillFields(); },0);
-  document.getElementById('clientModal').innerHTML=`
-    <div class="og-edh" style="--c:${esc(c.color||'var(--neutral)')}"><div class="t3-av og-av wc-av">${esc(String(c.name||'?').trim().slice(0,2).toUpperCase())}</div><div class="og-edh-n"><h4>${esc(c.name||'')||(editingClientId?'עריכת לקוח':'לקוח חדש')}</h4><p dir="auto">${esc(editingClientId?clientEditorSub(c):[c.object, c.address].filter(Boolean).join(' · '))}</p></div>${editingClientId?`<button class="gbtn icon" type="button" title="${esc(tr('More'))}" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey([{icon:'ti-clock', label:tr('Manual punch'), fn:()=>punchFromClientModal()}, ...(hasPermission('clients')?[{icon:'ti-trash', label:tr('Delete'), danger:true, fn:()=>deleteClientFromEditor()}]:[])])}')"><i class="ti ti-dots-vertical"></i></button>`:''}</div>
-    <section class="og-sec" data-sec="client"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-building"></i></span><span class="og-sec-t"><b>${esc(tr('Client'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
-    <div class="field-row">
-      <div class="field"><label>שם הלקוח</label><input type="text" class="need" id="cName" value="${esc(c.name||'')}" placeholder="שם הלקוח" autofocus></div>
-      <div class="field"><label>ח.פ (לא חובה)</label><input type="text" id="cCompanyNumber" value="${esc(c.companyNumber||'')}" placeholder="512345678"></div>
-    </div>
-    <!-- Rates (per user request 2026-10-11): the two rates side by side, the
-         billing mode as two buttons, OT / Shabbat inline (empty = by law),
-         and the margin per hour. -->
-</div></section>
-<section class="og-sec" data-sec="place"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-map-pin"></i></span><span class="og-sec-t"><b>${esc(tr('Place'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
-    <div class="field"><label>כתובת (לא חובה)</label><input type="text" id="cAddr" value="${esc(c.address||'')}" placeholder="כתובת"></div>
-    <div class="field-row">
-      <div class="field"><label>אתר / סניף</label><input type="text" id="cObject" value="${esc(c.object||'')}" placeholder="שם האתר או הסניף"></div>
-      <div class="field"><label>רדיוס (מטרים)</label><input type="number" id="cRadius" value="${c.radius||100}" placeholder="100" oninput="drawClientMapMini()"></div>
-    </div>
-    <div class="og-map${c.lat?' set':''}" id="cMapMini" role="button" tabindex="0" onclick="openMapPicker()" onkeydown="if(event.key==='Enter')openMapPicker()"><span class="og-map-r"></span><span class="og-map-tap"><i class="ti ti-map-2"></i></span><i class="ti ti-map-pin og-map-pin"></i><b class="og-map-l"></b></div>
-    <div class="field">
-      <div style="margin-bottom:8px">
-        <label>או הדבקת קישור מ-Google Maps</label>
-        <input type="text" id="cMapsUrl" dir="ltr" placeholder="https://maps.google.com/..." value="${esc(c.mapsUrl||'')}" oninput="parseGoogleMapsUrl(this.value)" style="font-size:12px">
-      </div>
-      <input type="hidden" id="cLat" value="${c.lat||''}"><input type="hidden" id="cLng" value="${c.lng||''}">
-      <div id="cLocStatus" style="font-size:12px;min-height:18px;padding:4px 0;color:${c.lat?'var(--green)':'var(--text2)'}">${c.lat?locSetHtml(c.lat,c.lng):''}</div>
-    </div>
-</div></section>
-    <section class="og-sec" data-sec="rates"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-coin"></i></span><span class="og-sec-t"><b>${esc(tr('Rates'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
-    <!-- Hourly / Daily: how the client is billed (the worker's own pay is not touched). -->
-    <span class="og-lbl">${esc(tr('Pay mode'))}</span>
-    <div class="seg-toggle" id="cPayUnit">
-      <button type="button" data-unit="hour" class="${__cBill.rateMode!=='daily'?'on':''}" onclick="setClientPayUnit('hour')">${esc(tr('By the hour'))}</button>
-      <button type="button" data-unit="day" class="${__cBill.rateMode==='daily'?'on':''}" onclick="setClientPayUnit('day')">${esc(tr('By the day'))}</button>
-    </div>
-    <div class="field" id="cDailyRow" style="${__cBill.rateMode==='daily'?'':'display:none'}"><label>${esc(tr('Client pays per day'))}</label>
-      <div class="rate-in"><input type="number" min="0" step="1" id="cBillDaily" value="${__cBill.dailyBillRate??''}" placeholder="—" oninput="__cBill.dailyBillRate=clientRateNum(this.value); updateClientMargin()"><span>${esc(tr('₪/day'))}</span></div></div>
-    <div class="field-row">
-      <div class="field"><label>שכר העובד</label>
-        <div class="rate-in"><input type="number" min="0" step="0.5" id="cDefRate" value="${c.defaultHourlyRate??''}" placeholder="—" oninput="updateClientMargin()"><span>₪/שעה</span></div></div>
-      <div class="field" id="cBillMainField" style="${__cBill.rateMode==='daily'?'display:none':''}"><label>הלקוח משלם</label>
-        <div class="rate-in"><input type="number" min="0" step="0.5" id="cBillMain" value="${clientBillMain()??''}" placeholder="—" oninput="onClientBillMainInput(this.value)"><span>₪/שעה</span></div></div>
-    </div>
-    <div id="cHourlyBill" style="${__cBill.rateMode==='daily'?'display:none':''}">
-    <div class="seg-toggle" id="cRateMode">
-      <button type="button" data-mode="tiered" class="${__cBill.rateMode==='tiered'?'on':''}" onclick="setClientRateMode('tiered')">לפי החוק (נוספות + שבת)</button>
-      <button type="button" data-mode="fixed" class="${__cBill.rateMode==='fixed'?'on':''}" onclick="setClientRateMode('fixed')">קבוע</button>
-    </div>
-    <div class="field-row" id="cBillExtra" style="${__cBill.rateMode==='fixed'?'display:none':''}">
-      <div class="field"><label>שעות נוספות</label><div class="rate-in"><input type="number" min="0" step="0.5" id="cBillOt" value="${__cBill.billOtRate??''}" oninput="__cBill.billOtRate=clientRateNum(this.value)"><span>₪/שעה</span></div></div>
-      <div class="field"><label>שבת</label><div class="rate-in"><input type="number" min="0" step="0.5" id="cBillShab" value="${__cBill.billShabbatRate??''}" oninput="__cBill.billShabbatRate=clientRateNum(this.value)"><span>₪/שעה</span></div></div>
-    </div>
-    <div class="rate-margin" id="cBillMargin"></div>
-    </div>
-</div></section>
-    <section class="og-sec" data-sec="approval"${clientApprovalAttrs(c)}><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-circle-check"></i></span><span class="og-sec-t"><b>${esc(tr('Hours approval'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
-      ${clientLoginsHtml(c)}
-</div></section>
-    <div class="modal-actions"><button type="button" class="gbtn primary og-save" onclick="saveClient()"><i class="ti ti-check"></i><span>${esc(tr('Save'))}</span></button></div>
-    <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px"><i class="ti ti-device-floppy"></i> ${esc(tr(editingClientId?'Changes are saved when the window closes':'The client is created when the window closes'))}</div>`;
-  // No Save button: a tap outside the window saves it (saveClient auto).
-  const cov=document.getElementById('clientOverlay');
+  if(!window.ManagerIsland) return;
+  const cov=document.getElementById('clientOverlay'), id=editingClientId;
   cov.__onUserClose=()=>saveClient({auto:true});
+  // Coming back to it (from the manual punch or the user form) draws it again from the saved record.
+  cov.__reopen=id?()=>openEditClient(id):null;
+  window.ManagerIsland.openClient(JSON.parse(JSON.stringify(c)), id);
   cov.classList.add('open');
-  ogSections(document.getElementById('clientModal'), editingClientId?null:'client');
-  drawClientMapMini();
 }
-
-function parseGoogleMapsUrl(url){
-  if(!url) return;
-  // Try multiple Google Maps URL formats:
-  // 1. @lat,lng  (most common in share links)
-  // 2. ?q=lat,lng
-  // 3. /place/.../lat,lng
-  // 4. ll=lat,lng
-  // 5. plain "lat, lng" text pasted directly
-  const patterns = [
-    /@(-?\d+\.\d+),(-?\d+\.\d+)/,
-    /[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/,
-    /[?&]ll=(-?\d+\.\d+),(-?\d+\.\d+)/,
-    /\/(-?\d+\.\d+),(-?\d+\.\d+)/,
-    /^\s*(-?\d+\.\d+)[,\s]+(-?\d+\.\d+)\s*$/,
-  ];
-  for(const pat of patterns){
-    const m=url.match(pat);
-    if(m){
-      document.getElementById('cLat').value=m[1];
-      document.getElementById('cLng').value=m[2];
-      updateLocStatus();
-      return;
-    }
-  }
-  // Not matched yet — show hint
-  const el=document.getElementById('cLocStatus');
-  if(url.length>10){
-    el.style.color='var(--amber)';
-    el.textContent='הקישור לא זוהה — ב-Google Maps לחצו לחיצה ימנית על המקום והדביקו את הקואורדינטות';
-  }
-}
-
-function locSetHtml(lat,lng){ return '<i class="ti ti-circle-check"></i> המיקום נקבע: <span dir="ltr">'+Number(lat).toFixed(5)+', '+Number(lng).toFixed(5)+'</span>'; }
-function updateLocStatus(){
-  drawClientMapMini();
-  const lat=document.getElementById('cLat')?.value;
-  const lng=document.getElementById('cLng')?.value;
-  const el=document.getElementById('cLocStatus');
-  if(!el)return;
-  if(lat&&lng&&!isNaN(parseFloat(lat))&&!isNaN(parseFloat(lng))){
-    el.style.color='var(--green)';
-    el.innerHTML=locSetHtml(lat,lng);
+function saveClient(opts){ if(window.ManagerIsland) window.ManagerIsland.saveClient(opts||{}); }
+// The window's record: stored in place (unless nothing changed) or added; saved.
+function commitClient(id, fields){
+  if(id){
+    const idx=clients.findIndex(x=>x.id===id); if(idx<0){ closeModal('clientOverlay'); return; }
+    const next={...clients[idx],...fields};
+    const norm=o=>JSON.stringify(Object.keys(o).sort().map(k=>[k,o[k]??null]));
+    if(norm(next)===norm(clients[idx])){ closeModal('clientOverlay'); return; }  // nothing changed
+    clients[idx]=next;
+    showToast(tr('{0} updated!',{0:fields.name}));
   } else {
-    el.style.color='var(--text2)';
-    el.textContent='';
+    clients.push({id:uid(),...fields});
+    showToast(tr('{0} added!',{0:fields.name}));
   }
+  closeModal('clientOverlay'); renderClientsPage(); renderSidebarClients(); autoSave();
+}
+// Delete from a window's ⋮: the window closes without saving (and does not
+// come back); the list then deletes behind its Undo snack (src/manager/Clients.tsx).
+function closeEditorUnsaved(ov){ const el=document.getElementById(ov); el.__reopen=null; el.__returnTo=null; closeModal(ov); }
+// The manual punch from the client window: the window is saved first (as on a
+// tap outside), then the punch opens; closing it brings the client back.
+function punchFromClientModal(){
+  const cid=editingClientId; if(!cid) return;
+  saveClient({auto:true});
+  if(!document.getElementById('clientOverlay').classList.contains('open')) openManualPunch(cid);
+}
+// A client's Undo time is up: removed, taken off every worker and the site filter; saved.
+function deleteClientsNow(ids){
+  const one=ids.length===1?clients.find(c=>c.id===ids[0]):null;
+  ids.forEach(cid=>{
+    clients=clients.filter(x=>x.id!==cid);
+    workers.forEach(w=>{ if(w.clientIds) w.clientIds=w.clientIds.filter(id=>id!==cid); if(w.clientRates&&w.clientRates[cid]) delete w.clientRates[cid]; });
+    if(selectedClientId===cid) selectedClientId=null; });
+  renderSidebarClients(); render(); autoSave(); showToast(one?tr('{0} removed',{0:one.name}):tr('{0} clients',{0:ids.length}));
 }
 // ── Client geolocation map picker (Google Maps JavaScript API) ─────────────
-// "Pick location on map" in the client modal: search box (Places
-// autocomplete), tap/drag pin, live radius circle, "Use my location". Writes
-// back into the modal's cLat/cLng/cRadius/cMapsUrl inputs — the paste-a-link
-// path below it still works as before. The Maps script is lazy-loaded only
+// The client window's small map opens it (ManagerBridge.pickPlace): search box
+// (Places autocomplete), tap/drag pin, live radius circle, "Use my location".
+// The place picked goes back to the window (onPick: lat, lng, radius and a
+// maps link) — the paste-a-link field in the window still works as before. The Maps script is lazy-loaded only
 // when the picker first opens. Needs GOOGLE_MAPS_API_KEY (a browser key
 // restricted by HTTP referrer to this app's domains, with Maps JavaScript API,
 // Places API (New) and Geocoding API enabled); without one the button falls
@@ -3191,7 +3063,7 @@ function updateLocStatus(){
 const GOOGLE_MAPS_API_KEY = 'AIzaSyDlS9G5zOhg8lK88_jzHewC5BLM1QkeKwc';
 const MAP_PICK_DEFAULT_CENTER = {lat:32.0853, lng:34.7818}; // Tel Aviv
 let _gmapsLoading = null;
-let __mapPick = { map:null, marker:null, circle:null, pos:null };
+let __mapPick = { map:null, marker:null, circle:null, pos:null }, __mapPickDone = null;
 function loadGoogleMaps(){
   if(window.google && google.maps && google.maps.importLibrary) return Promise.resolve();
   if(_gmapsLoading) return _gmapsLoading;
@@ -3207,16 +3079,17 @@ function loadGoogleMaps(){
 }
 // Google calls this global on an invalid/unauthorized key.
 window.gm_authFailure = function(){ showToast(tr('Google Maps key rejected — check GOOGLE_MAPS_API_KEY and its allowed domains'),5000); };
-async function openMapPicker(){
-  const lat=parseFloat(document.getElementById('cLat')?.value), lng=parseFloat(document.getElementById('cLng')?.value);
-  const addr=(document.getElementById('cAddr')?.value||'').trim() || (document.getElementById('cName')?.value||'').trim();
+async function openMapPicker(start, onPick){
+  const lat=start&&start.lat!=null?Number(start.lat):NaN, lng=start&&start.lng!=null?Number(start.lng):NaN;
+  const addr=String((start&&start.addr)||'').trim();
+  __mapPickDone=onPick||null;
   if(!GOOGLE_MAPS_API_KEY){
     const q = !isNaN(lat)&&!isNaN(lng) ? lat+','+lng : (addr||'Israel');
     window.open('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q),'_blank');
     showToast(tr('Pick the point in Google Maps, copy the link and paste it here'),4000);
     return;
   }
-  document.getElementById('mapPickRadius').value = document.getElementById('cRadius')?.value || 100;
+  document.getElementById('mapPickRadius').value = (start&&start.radius) || 100;
   document.getElementById('mapPickSave').disabled = true;
   document.getElementById('mapPickCoords').textContent = '';
   document.getElementById('mapPickOverlay').classList.add('open');
@@ -3283,162 +3156,13 @@ function mapPickUseMyLocation(){
 function saveMapPick(){
   const p=__mapPick.pos; if(!p) return;
   const lat=+p.lat.toFixed(6), lng=+p.lng.toFixed(6);
-  document.getElementById('cLat').value=lat;
-  document.getElementById('cLng').value=lng;
-  document.getElementById('cRadius').value=Number(document.getElementById('mapPickRadius').value)||100;
-  const u=document.getElementById('cMapsUrl'); if(u) u.value='https://www.google.com/maps?q='+lat+','+lng;
-  updateLocStatus();
+  const radius=Number(document.getElementById('mapPickRadius').value)||100;
+  if(__mapPickDone) __mapPickDone({lat, lng, radius, mapsUrl:'https://www.google.com/maps?q='+lat+','+lng});
   closeModal('mapPickOverlay');
 }
-// ── Client billing-rate popup ───────────────────────────────────────────────
-// Picking a billing mode in the client modal immediately pops up the matching
-// rate form: 'fixed' → one flat ₪/h; 'tiered' (with overtime) → Regular plus
-// optional flat OT / Shabbat ₪/h (empty = law tiers ×1.25/×1.5 and ×1.5–×2.0
-// off Regular). These are the CLIENT's billing rates only — the worker-pay
-// "Default rate" block in the same modal is a separate set of fields.
-let __cBill = { rateMode:'tiered', hourMode:'tiered', dailyBillRate:null, fixedBillRate:null, billRate:null, billOtRate:null, billShabbatRate:null };
-// Hourly / Daily: by the day the client pays dailyBillRate per worked shift
-// (clientBillPay); by the hour the law / fixed modes below apply.
-function setClientPayUnit(u){
-  __cBill.rateMode = u==='day' ? 'daily' : (__cBill.hourMode||'tiered');
-  document.querySelectorAll('#cPayUnit button').forEach(b=>b.classList.toggle('on', (b.dataset.unit==='day')===(__cBill.rateMode==='daily')));
-  const daily=__cBill.rateMode==='daily';
-  ['cHourlyBill','cBillMainField'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display=daily?'none':''; });
-  const d=document.getElementById('cDailyRow'); if(d) d.style.display=daily?'':'none';
-  if(!daily) syncClientBillFields(); else updateClientMargin();
-}
-// The client's main billing rate (next to the worker rate in the modal): the
-// flat rate in fixed mode, the regular rate otherwise.
-function clientBillMain(){ return __cBill.rateMode==='fixed' ? __cBill.fixedBillRate : __cBill.billRate; }
-function clientRateNum(v){ return (v===''||v==null)?null:(parseFloat(v)||0); }
-function onClientBillMainInput(v){
-  const n=clientRateNum(v);
-  if(__cBill.rateMode==='fixed') __cBill.fixedBillRate=n; else __cBill.billRate=n;
-  syncClientBillFields(true);
-}
-// The billing mode buttons: by law (OT / Shabbat inline) or one fixed rate.
-function setClientRateMode(mode){
-  __cBill.rateMode = __cBill.hourMode = mode==='fixed' ? 'fixed' : 'tiered';
-  document.querySelectorAll('#cRateMode button').forEach(b=>b.classList.toggle('on', b.dataset.mode===__cBill.rateMode));
-  const main=document.getElementById('cBillMain'); if(main) main.value=clientBillMain()??'';
-  syncClientBillFields();
-}
-// The OT / Shabbat placeholders (the law's rates from the regular one), their
-// row, and the margin line.
-function syncClientBillFields(keepMain){
-  const fixed=__cBill.rateMode==='fixed', reg=Number(__cBill.billRate)||0;
-  const ex=document.getElementById('cBillExtra'); if(ex) ex.style.display=fixed?'none':'';
-  const ph=(id,m)=>{ const el=document.getElementById(id); if(el) el.placeholder=reg?(Math.round(reg*m*100)/100)+' לפי החוק':'לפי החוק'; };
-  ph('cBillOt',PAY_RULES.otMult); ph('cBillShab',PAY_RULES.shabbatMult);
-  if(!keepMain){ const main=document.getElementById('cBillMain'); if(main && document.activeElement!==main) main.value=clientBillMain()??''; }
-  updateClientMargin();
-}
-// What the firm keeps per regular hour: the client's rate minus the worker's.
-function updateClientMargin(){
-  const el=document.getElementById('cBillMargin'); if(!el) return;
-  const w=clientRateNum(document.getElementById('cDefRate')?.value), c=clientBillMain();
-  // The Rates head (mockup 04): "₪45 worker · ₪58 client · hourly".
-  const rs=document.querySelector('#clientModal .og-sec[data-sec="rates"]');
-  if(rs){ const daily=__cBill&&__cBill.rateMode==='daily', cb=daily?__cBill.dailyBillRate:c;
-    rs.dataset.summary=[w!=null?tr('₪{0} worker',{0:w}):'', cb!=null?tr('₪{0} client',{0:cb}):'', daily?tr('daily'):tr('hourly')].filter(Boolean).join(' · ');
-    ogSecSummary(rs); }
-  if(w==null||c==null||!c){ el.style.display='none'; return; }
-  const m=c-w, pct=Math.round(m/c*100);
-  el.style.display='';
-  el.classList.toggle('neg', m<0);
-  const billed=editingClientId?((salaryEntriesFor('month').byClient||{})[editingClientId]||{}).total||0:null;
-  el.innerHTML=`<div><b class="fig">${m<0?'−':''}₪${Math.round(Math.abs(m)*100)/100}</b><small>${m<0?'הפסד לשעה':'רווח לשעה'}</small></div><div><b class="fig">${m<0?'−':''}${Math.abs(pct)}%</b><small>${esc(tr('Margin'))}</small></div>${billed!=null?`<div><b class="fig">₪${esc(fmtMoneyShort(billed))}</b><small>${esc(tr('This month'))}</small></div>`:''}`;
-}
-// The client editor's Hours approval head: its client logins as the summary,
-// "N waiting" (hours batches pending for this client) as the badge.
-function clientApprovalAttrs(c){
-  const users=(loadAdminCache('users_'+activeTenantIdForAdmin())||[]).filter(u=>u.role==='client'&&c&&u.clientId===c.id);
-  const n=c&&c.id?(__hoursBatches||[]).filter(b=>b.status==='pending'&&(b.entries||[]).some(e=>e.clientId===c.id)).length:0;
-  return ` data-summary="${esc(users.length?users.map(u=>u.fullName||u.username).join(', '):tr('No client login yet.'))}"`+(n?` data-badge="amber|${esc(tr('{0} waiting',{0:n}))}"`:'');
-}
-// The client editor's header line: active workers and this month's hours there.
-function clientEditorSub(c){
-  const n=workers.filter(w=>isActiveWorker(w)&&(w.clientIds||[]).includes(c.id)).length;
-  const h=((salaryEntriesFor('month').byClient||{})[c.id]||{}).hours||0;
-  return [n===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:n,1:''}), tr('{0} this month',{0:fmtHoursShort(h)})].join(' · ');
-}
-// "25.2k" for the figures under the rates.
+// "25.2k" for the figures in the user form.
 function fmtMoneyShort(v){ v=Math.round(v||0); return Math.abs(v)>=10000?(Math.round(v/100)/10)+'k':v.toLocaleString('en-US'); }
-// The small map under Place: the GPS radius as a circle, "150 m"; a tap opens the map picker.
-function drawClientMapMini(){
-  const box=document.getElementById('cMapMini'); if(!box) return;
-  const r=parseInt(document.getElementById('cRadius')?.value,10)||100, set=!!document.getElementById('cLat')?.value;
-  box.classList.toggle('set', set);
-  box.querySelector('.og-map-l').textContent=set?tr('{0} m',{0:r}):tr('Tap to pick the place on the map');
-  box.querySelector('.og-map-r').style.setProperty('--r', Math.max(28, Math.min(84, 20+r/4))+'px');
-}
-// Delete from the client editor's ⋮: the window closes without saving, then the Undo snack.
-function deleteClientFromEditor(){
-  const id=editingClientId; if(!id) return;
-  closeModal('clientOverlay');
-  deleteClient(id, document.querySelector(`#clientsGrid .t3-line[data-sel-id="${CSS.escape(id)}"]`));
-}
-// The manual punch from the client window: the window is saved first (as on a
-// tap outside), then the punch opens; closing it brings the client back.
-function punchFromClientModal(){
-  const cid=editingClientId; if(!cid) return;
-  saveClient({auto:true});
-  if(!document.getElementById('clientOverlay').classList.contains('open')) openManualPunch(cid);
-}
-// Saves the client modal. With {auto} (a tap outside — the modal has no Save
-// button): a new client without a name is not created, an unchanged client
-// closes quietly.
-function saveClient(opts){
-  opts=opts||{};
-  const name=document.getElementById('cName').value.trim();
-  if(!name){
-    if(opts.auto){ if(editingClientId) showToast('שם הלקוח ריק — השינויים לא נשמרו'); closeModal('clientOverlay'); return; }
-    document.getElementById('cName').focus(); return;
-  }
-  const object=document.getElementById('cObject')?.value.trim()||'';
-  const address=document.getElementById('cAddr').value.trim();
-  const companyNumber=document.getElementById('cCompanyNumber')?.value.trim()||'';
-  const lat=parseFloat(document.getElementById('cLat').value)||null;
-  const lng=parseFloat(document.getElementById('cLng').value)||null;
-  const radius=parseInt(document.getElementById('cRadius').value)||100;
-  const mapsUrl=document.getElementById('cMapsUrl')?.value.trim()||'';
-  const rateVal=id=>{ const v=document.getElementById(id)?.value; return (v===''||v==null)?null:(parseFloat(v)||0); };
-  // The client card sets only the regular worker rate; OT and Shabbat follow
-  // the law from it (an older client's own OT / Shabbat rates are cleared).
-  const defaultHourlyRate=rateVal('cDefRate'), defaultOtRate=null, defaultShabbatRate=null;
-  const {rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate,dailyBillRate}=__cBill;
-  if(editingClientId){
-    const idx=clients.findIndex(x=>x.id===editingClientId);
-    if(idx>=0){
-      const next={...clients[idx],name,object,address,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate,dailyBillRate};
-      const norm=o=>JSON.stringify(Object.keys(o).sort().map(k=>[k,o[k]??null]));
-      if(norm(next)===norm(clients[idx])){ closeModal('clientOverlay'); return; }  // nothing changed
-      clients[idx]=next;
-    }
-    showToast(name+' עודכן');
-  } else {
-    clients.push({id:uid(),name,object,address,companyNumber,color:selClientColor,lat,lng,radius,mapsUrl,defaultHourlyRate,defaultOtRate,defaultShabbatRate,rateMode,fixedBillRate,billRate,billOtRate,billShabbatRate,dailyBillRate});
-    showToast(name+' נוסף');
-  }
-  closeModal('clientOverlay'); renderClientsPage(); renderSidebarClients(); autoSave();
-}
-// Delete never asks: the plate collapses behind the Undo snack; the client
-// is removed (and taken off every worker) when its 5 s are up.
-function deleteClient(cid, el){ deleteClients([cid], [el]); }
-function deleteClients(ids, els){
-  ids=ids.filter(id=>clients.some(c=>c.id===id)); if(!ids.length) return;
-  ids.forEach(id=>__clientDelPending.add(id));
-  const one=ids.length===1?clients.find(c=>c.id===ids[0]):null;
-  undoDelete({els, label: one?one.name:tr('{0} clients',{0:ids.length}),
-    commit:()=>{
-      ids.forEach(cid=>{ __clientDelPending.delete(cid);
-        clients=clients.filter(x=>x.id!==cid);
-        workers.forEach(w=>{ if(w.clientIds) w.clientIds=w.clientIds.filter(id=>id!==cid); if(w.clientRates&&w.clientRates[cid]) delete w.clientRates[cid]; });
-        if(selectedClientId===cid) selectedClientId=null; });
-      renderClientsPage(); renderSidebarClients(); render(); autoSave(); showToast(one?tr('{0} removed',{0:one.name}):tr('{0} clients',{0:ids.length}));
-    },
-    undo:()=>{ ids.forEach(id=>__clientDelPending.delete(id)); renderClientsPage(); }});
-}
+
 // Highlights every caption-labelled filter that has a choice made.
 function markActiveFilters(){
   document.querySelectorAll('.filter-field select').forEach(el=>el.classList.toggle('filter-on', !!el.value));
@@ -3641,269 +3365,64 @@ function openHoursExportModal(workerId){
   document.getElementById('hoursExportOverlay').classList.add('open');
 }
 
-// The client plates (redesign stage 8): the client's colour, the name and
-// its notices (no rate, hours waiting), "N workers · address", this month's
-// hours at the client (salaryEntriesFor), ⋮ (Edit, Manual punch, Delete), a
-// swipe (Edit, Delete) and Select (bulk Delete). A tap opens the editor.
-const __clientDelPending=new Set();
+// The Clients and Suppliers tabs (stage 6d): drawn in React — src/manager/
+// Clients.tsx; the page keeps the data and the deletes.
 function initialsOf(n){ return String(n||'?').trim().split(/\s+/).map(x=>x.charAt(0)).join('').slice(0,2).toUpperCase(); }
-function renderClientsPage(){
-  const grid=document.getElementById('clientsGrid');
-  const list=clients.filter(c=>!__clientDelPending.has(c.id));
-  const tc=document.getElementById('clientsTitleCount'); if(tc) tc.textContent=list.length;
-  if(!list.length){ grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:14px">'+tr('No clients yet. Click "+ Add Client" to create one.')+'</div>'; return; }
-  const byClient=salaryEntriesFor('month').byClient||{}, can=hasPermission('clients');
-  const waiting=new Set((__hoursBatches||[]).filter(b=>b.status==='pending').flatMap(b=>(b.entries||[]).map(e=>e.clientId)));
-  renderPagedList(grid,'clients','',list,c=>{
-    const n=workers.filter(w=>isActiveWorker(w)&&(w.clientIds||[]).includes(c.id)).length;
-    const chips=[(c.billRate==null||c.billRate==='')&&(c.defaultHourlyRate==null||c.defaultHourlyRate==='')&&!c.fixedBillRate&&!c.dailyBillRate?`<span class="nchip amber"><i class="ti ti-alert-triangle"></i>${esc(tr('No rate'))}</span>`:'',
-      waiting.has(c.id)?`<span class="nchip amber"><i class="ti ti-clock"></i>${esc(tr('Hours waiting'))}</span>`:''].join('');
-    const id=c.id;
-    return t3Line({c:c.color||'var(--neutral)', cls:'wplate tap-edit', av:`<div class="t3-av">${esc(initialsOf(c.name))}</div>`,
-      name:`<span class="wp-n">${esc(c.name)}</span>${chips}`,
-      sub:[[n===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:n,1:''}), c.address||c.object||''].filter(Boolean).map(esc).join('<span class="dot">·</span>')],
-      right:`<span class="r">${esc(fmtHoursShort((byClient[c.id]||{}).hours||0))}</span>`,
-      attrs:`data-cid="${esc(id)}" onclick="tapEdit(event,this,null,()=>openEditClient('${esc(id)}'))" onpointerdown="longPress(event,this,()=>openEditClient('${esc(id)}'))"`,
-      sel: can?id:null,
-      menu:[{icon:'ti-pencil', label:tr('Edit'), fn:()=>openEditClient(id)}, {icon:'ti-clock', label:tr('Manual punch'), fn:()=>openManualPunch(id)},
-        ...(can?[{icon:'ti-trash', label:tr('Delete'), danger:true, fn:b=>deleteClient(id, b.closest('.t3-line'))}]:[])],
-      swipe: can?{edit:()=>openEditClient(id), del:el=>deleteClient(id, el)}:null});
-  },{grid:true});
-  selectRoot('clients', grid);
-}
-function startClientSelect(){
-  const grid=document.getElementById('clientsGrid'); if(!grid||!hasPermission('clients')) return;
-  startSelect({key:'clients', root:grid, ids:()=>clients.filter(c=>!__clientDelPending.has(c.id)).map(c=>c.id), del:(ids,els)=>deleteClients(ids,els)});
-}
-
+function renderClientsPage(){ if(window.ManagerIsland) window.ManagerIsland.renderClients(); }
+function renderSuppliersPage(){ if(window.ManagerIsland) window.ManagerIsland.renderSuppliers(); }
 
 // --- Suppliers ----------------------------------------------------------------
-// Mirrors the Clients tab above (same grid/card CSS classes, same CRUD
-// shape) — a supplier is a staffing agency a worker is linked to via
-// w.supplierId (single, unlike the many-to-many clientIds), see the
-// `suppliers` global's own comment for the field list.
-function openAddSupplier(){ editingSupplierId=null; selSupplierColor=CLIENT_COLORS[suppliers.length%CLIENT_COLORS.length]; showSupplierModal({name:'',color:selSupplierColor,phone:'',bank:'',bankBranch:'',accountNumber:'',companyNumber:''}); }
-function openEditSupplier(sid){ editingSupplierId=sid; const s=suppliers.find(x=>x.id===sid); selSupplierColor=s.color; showSupplierModal(s); }
+// A supplier is a staffing agency a worker is linked to via w.supplierId
+// (single, unlike the many-to-many clientIds), see the `suppliers` global's own
+// comment for the field list. The window is React (src/manager/SupplierEditor.tsx):
+// one Save; a tap outside closes it without saving.
+function openAddSupplier(){ editingSupplierId=null; showSupplierModal({name:'',color:CLIENT_COLORS[suppliers.length%CLIENT_COLORS.length],phone:'',bank:'',bankBranch:'',accountNumber:'',companyNumber:''}); }
+function openEditSupplier(sid){ const s=suppliers.find(x=>x.id===sid); if(!s) return; editingSupplierId=sid; showSupplierModal(s); }
 function showSupplierModal(s){
-  document.getElementById('supplierModal').innerHTML=`
-    <div class="og-edh" style="--c:${esc(s.color||'var(--neutral)')}"><div class="t3-av og-av wc-av">${esc(String(s.name||'?').trim().slice(0,2).toUpperCase())}</div><div class="og-edh-n"><h4>${esc(s.name||'')||esc(editingSupplierId?tr('Edit Supplier'):tr('Add New Supplier'))}</h4><p>${esc(editingSupplierId?supplierEditorSub(s):(s.phone||''))}</p></div>${editingSupplierId&&hasPermission('suppliers')?`<button class="gbtn icon" type="button" title="${esc(tr('More'))}" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey([{icon:'ti-trash', label:tr('Delete'), danger:true, fn:()=>deleteSupplierFromEditor()}])}')"><i class="ti ti-dots-vertical"></i></button>`:''}</div>
-    <section class="og-sec" data-sec="supplier"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-truck-delivery"></i></span><span class="og-sec-t"><b>${esc(tr('Company'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
-    <div class="field"><label>${tr('Name')}</label><input type="text" class="need" id="sName" value="${esc(s.name||'')}" placeholder="${tr('Supplier name')}" autofocus></div>
-    <div class="field-row">
-      <div class="field"><label>ח.פ (optional)</label><input type="text" id="sCompanyNumber" value="${esc(s.companyNumber||'')}" placeholder="512345678"></div>
-      <div class="field"><label>${tr('Phone')}</label><input type="text" id="sPhone" value="${esc(s.phone||'')}" placeholder="${tr('Phone')}"></div>
-    </div>
-    <div class="field"><label>${tr('Contact person')}</label><input type="text" id="sContact" value="${esc(s.contactPerson||'')}" placeholder="${tr('Full name')}"></div>
-    <div class="field">
-      <label><i class="ti ti-building-bank"></i> ${tr('Bank details (optional)')}</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-        <div><label style="font-size:11px;color:var(--text3)">${tr('Bank')}</label>
-          <input type="text" id="sBank" value="${esc(s.bank||'')}" placeholder="${tr('Bank name')}"></div>
-        <div><label style="font-size:11px;color:var(--text3)">${tr('Branch')}</label>
-          <input type="text" id="sBankBranch" value="${esc(s.bankBranch||'')}" placeholder="${tr('Branch #')}"></div>
-        <div><label style="font-size:11px;color:var(--text3)">${tr('Account #')}</label>
-          <input type="text" id="sAccountNumber" value="${esc(s.accountNumber||'')}" placeholder="${tr('Account #')}"></div>
-      </div>
-    </div>
-</div></section>
-    ${editingSupplierId?supplierEditorExtraHtml(s):''}
-    <div class="modal-actions">
-      <button class="gbtn primary og-save" onclick="saveSupplier()"><i class="ti ti-check"></i><span>${esc(editingSupplierId?tr('Save'):tr('Add Supplier'))}</span></button>
-    </div>`;
-  document.getElementById('supplierOverlay').classList.add('open');
-  ogSections(document.getElementById('supplierModal'), editingSupplierId?null:'supplier');
+  if(!window.ManagerIsland) return;
+  const ov=document.getElementById('supplierOverlay'), id=editingSupplierId;
+  ov.__reopen=id?()=>openEditSupplier(id):null;
+  window.ManagerIsland.openSupplier(JSON.parse(JSON.stringify(s)), id);
+  ov.classList.add('open');
 }
-// The Commission fields of the supplier window (owner / super-admin only): a
-// changed rate or mode becomes a new entry of sp.commission from its date
-// (an entry with the same date is replaced); an emptied rate from a date
-// goes back to the default from then on.
-function supplierCommissionFromForm(sp){
-  const rEl=document.getElementById('sComRate'); if(!rEl||!isFirmAdminSession()) return;
-  const v=rEl.value.trim(), mode=(document.querySelector('#sComMode button.on')||{}).dataset?.m==='day'?'day':'hour';
-  const from=(document.getElementById('sComFrom')||{}).value||localYMD(new Date());
-  const cur=supplierRateOn(sp.commission, new Date(from+'T12:00'));
-  const rate=v===''?null:(parseFloat(v)||0);
-  if(cur ? (Number(cur.rate)===rate && (cur.mode||'hour')===mode) : rate==null) return;
-  const list=(sp.commission||[]).filter(x=>x&&String(x.from||'')!==from);
-  list.push({from, mode, rate});
-  sp.commission=list.sort((a,b)=>String(a.from||'').localeCompare(String(b.from||'')));
-}
-function saveSupplier(){
-  const name=document.getElementById('sName').value.trim();
-  if(!name){ document.getElementById('sName').focus(); return; }
-  const phone=document.getElementById('sPhone').value.trim();
-  const bank=document.getElementById('sBank').value.trim();
-  const bankBranch=document.getElementById('sBankBranch').value.trim();
-  const accountNumber=document.getElementById('sAccountNumber').value.trim();
-  const companyNumber=document.getElementById('sCompanyNumber').value.trim();
-  const contactPerson=document.getElementById('sContact').value.trim();
-  if(editingSupplierId){
-    const idx=suppliers.findIndex(x=>x.id===editingSupplierId);
-    if(idx>=0) suppliers[idx]={...suppliers[idx],name,phone,bank,bankBranch,accountNumber,companyNumber,contactPerson,color:selSupplierColor};
-    if(idx>=0) supplierCommissionFromForm(suppliers[idx]);
-    showToast(tr('{0} updated!',{0:(name)}));
+function commitSupplier(id, fields){
+  if(id){
+    const idx=suppliers.findIndex(x=>x.id===id);
+    if(idx>=0) suppliers[idx]={...suppliers[idx],...fields};
+    showToast(tr('{0} updated!',{0:fields.name}));
   } else {
-    suppliers.push({id:uid(),name,phone,bank,bankBranch,accountNumber,companyNumber,contactPerson,color:selSupplierColor});
-    showToast(tr('{0} added!',{0:(name)}));
+    suppliers.push({id:uid(),...fields});
+    showToast(tr('{0} added!',{0:fields.name}));
   }
   closeModal('supplierOverlay'); renderSuppliersPage(); autoSave();
 }
-// Delete never asks (Undo snack); the supplier is removed and taken off its
-// workers when the 5 s are up.
-const __supplierDelPending=new Set();
-function deleteSupplier(sid, el){ deleteSuppliers([sid], [el]); }
-function deleteSuppliers(ids, els){
-  ids=ids.filter(id=>suppliers.some(s=>s.id===id)); if(!ids.length) return;
-  ids.forEach(id=>__supplierDelPending.add(id));
+// A supplier's Undo time is up: removed and taken off every worker; saved.
+function deleteSuppliersNow(ids){
   const one=ids.length===1?suppliers.find(s=>s.id===ids[0]):null;
-  undoDelete({els, label: one?one.name:tr('{0} suppliers',{0:ids.length}),
-    commit:()=>{
-      ids.forEach(sid=>{ __supplierDelPending.delete(sid);
-        suppliers=suppliers.filter(x=>x.id!==sid);
-        workers.forEach(w=>{ if(w.supplierId===sid) w.supplierId=null; if(w.supplierRates&&w.supplierRates[sid]) delete w.supplierRates[sid]; }); });
-      renderSuppliersPage(); render(); autoSave(); showToast(one?tr('{0} removed',{0:one.name}):tr('{0} suppliers',{0:ids.length}));
-    },
-    undo:()=>{ ids.forEach(id=>__supplierDelPending.delete(id)); renderSuppliersPage(); }});
-}
-// The supplier plates (redesign stage 8): colour, name, "N workers · phone",
-// its workers' hours this month, ⋮ (Edit, Delete), swipe, Select.
-function renderSuppliersPage(){
-  const grid=document.getElementById('suppliersGrid');
-  if(!grid) return;
-  const list=suppliers.filter(s=>!__supplierDelPending.has(s.id));
-  const tc=document.getElementById('suppliersTitleCount'); if(tc) tc.textContent=list.length;
-  if(!list.length){ grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:14px">'+tr('No suppliers yet. Click "+ Add Supplier" to create one.')+'</div>'; return; }
-  const hours=workersMonthHours(), can=hasPermission('suppliers');
-  renderPagedList(grid,'suppliers','',list,s=>{
-    const mine=workers.filter(w=>w.supplierId===s.id), id=s.id;
-    return t3Line({c:s.color||'var(--neutral)', cls:'wplate tap-edit', av:`<div class="t3-av">${esc(initialsOf(s.name))}</div>`,
-      name:`<span class="wp-n">${esc(s.name)}</span>`,
-      sub:[[mine.length===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:mine.length,1:''}), s.phone||''].filter(Boolean).map(esc).join('<span class="dot">·</span>')],
-      right:`<span class="r">${esc(fmtHoursShort(mine.reduce((t,w)=>t+(hours[w.id]||0),0)))}</span>`,
-      attrs:`data-sid="${esc(id)}" onclick="tapEdit(event,this,null,()=>openEditSupplier('${esc(id)}'))" onpointerdown="longPress(event,this,()=>openEditSupplier('${esc(id)}'))"`,
-      sel: can?id:null,
-      menu:[{icon:'ti-pencil', label:tr('Edit'), fn:()=>openEditSupplier(id)}, ...(can?[{icon:'ti-trash', label:tr('Delete'), danger:true, fn:b=>deleteSupplier(id, b.closest('.t3-line'))}]:[])],
-      swipe: can?{edit:()=>openEditSupplier(id), del:el=>deleteSupplier(id, el)}:null});
-  },{grid:true});
-  selectRoot('suppliers', grid);
-}
-function startSupplierSelect(){
-  const grid=document.getElementById('suppliersGrid'); if(!grid||!hasPermission('suppliers')) return;
-  startSelect({key:'suppliers', root:grid, ids:()=>suppliers.filter(s=>!__supplierDelPending.has(s.id)).map(s=>s.id), del:(ids,els)=>deleteSuppliers(ids,els)});
+  ids.forEach(sid=>{
+    suppliers=suppliers.filter(x=>x.id!==sid);
+    workers.forEach(w=>{ if(w.supplierId===sid) w.supplierId=null; if(w.supplierRates&&w.supplierRates[sid]) delete w.supplierRates[sid]; }); });
+  render(); autoSave(); showToast(one?tr('{0} removed',{0:one.name}):tr('{0} suppliers',{0:ids.length}));
 }
 
 
+// The manual punch (React — src/manager/ManualPunch.tsx): this client's
+// workers (or every active one), IN / OUT, date, time, a note.
 function openManualPunch(cid){
-  const c = clients.find(x=>x.id===cid);
-  if(!c) return;
-  const assignedWorkers = workers.filter(w=>isActiveWorker(w)&&(w.clientIds||[]).includes(cid));
-  const now = new Date();
-  const hh = String(now.getHours()).padStart(2,'0');
-  const mm = String(now.getMinutes()).padStart(2,'0');
-  const today = now.toISOString().slice(0,10);
-
-  document.getElementById('manualPunchModal').innerHTML = `
-    <div class="modal-title"><i class="ti ti-clock"></i> ${tr('Manual Punch — {0}',{0:(esc(c.name))})}</div>
-    <div class="field">
-      <label>${tr('Worker')}</label>
-      <select id="mpWorker" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:10px;outline:none">
-        <option value="">${tr('— Select worker —')}</option>
-        ${assignedWorkers.length
-          ? assignedWorkers.map(w=>`<option value="${w.id}">${esc(w.name)}</option>`).join('')
-          : workers.filter(isActiveWorker).map(w=>`<option value="${w.id}">${esc(w.name)}</option>`).join('')
-        }
-      </select>
-    </div>
-    <div class="field">
-      <label>${tr('Type')}</label>
-      <div style="display:flex;gap:8px">
-        <button id="mpTypeIn" onclick="setMpType('in')" style="flex:1;padding:10px;border-radius:var(--radius-sm);border:2px solid var(--green);background:var(--green-bg);color:var(--green);font-size:14px;font-weight:700;cursor:pointer"><i class="ti ti-login"></i> ${tr('Clock IN')}</button>
-        <button id="mpTypeOut" onclick="setMpType('out')" style="flex:1;padding:10px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg3);color:var(--text2);font-size:14px;font-weight:600;cursor:pointer"><i class="ti ti-logout"></i> ${tr('Clock OUT')}</button>
-      </div>
-    </div>
-    <div class="field-row">
-      <div class="field">
-        <label>${tr('Date')}</label>
-        <input type="date" id="mpDate" value="${today}" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:9px 10px;outline:none">
-      </div>
-      <div class="field">
-        <label>${tr('Time')}</label>
-        <input type="time" id="mpTime" value="${hh}:${mm}" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:9px 10px;outline:none">
-      </div>
-    </div>
-    <div class="field">
-      <label>${tr('Note (optional)')}</label>
-      <input type="text" id="mpNote" placeholder="${tr('e.g. Late arrival, approved by manager')}" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;padding:9px 10px;outline:none">
-    </div>
-    <div style="background:var(--amber-bg);border:1px solid rgba(245,166,35,0.3);border-radius:var(--radius-sm);padding:8px 12px;font-size:12px;color:var(--amber);margin-bottom:4px">
-      <i class="ti ti-edit"></i> ${tr('Manual entry — GPS not verified')}
-    </div>
-    <div class="modal-actions">
-      <button class="gbtn primary og-save" onclick="saveManualPunch('${cid}')"><i class="ti ti-check"></i><span>${tr('Save Punch')}</span></button>
-    </div>`;
-
-  window._mpType = 'in';
+  if(!clients.some(x=>x.id===cid)||!window.ManagerIsland) return;
+  window.ManagerIsland.openManualPunch(cid);
   document.getElementById('manualPunchOverlay').classList.add('open');
 }
-
-function setMpType(type){
-  window._mpType = type;
-  const inBtn  = document.getElementById('mpTypeIn');
-  const outBtn = document.getElementById('mpTypeOut');
-  if(type==='in'){
-    inBtn.style.cssText  = 'flex:1;padding:10px;border-radius:var(--radius-sm);border:2px solid var(--green);background:var(--green-bg);color:var(--green);font-size:14px;font-weight:700;cursor:pointer';
-    outBtn.style.cssText = 'flex:1;padding:10px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg3);color:var(--text2);font-size:14px;font-weight:600;cursor:pointer';
-  } else {
-    outBtn.style.cssText = 'flex:1;padding:10px;border-radius:var(--radius-sm);border:2px solid var(--red);background:var(--red-bg);color:var(--red);font-size:14px;font-weight:700;cursor:pointer';
-    inBtn.style.cssText  = 'flex:1;padding:10px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg3);color:var(--text2);font-size:14px;font-weight:600;cursor:pointer';
-  }
-}
-
-function saveManualPunch(cid){
-  const wid   = document.getElementById('mpWorker').value;
-  const time  = document.getElementById('mpTime').value;
-  const date  = document.getElementById('mpDate').value;
-  const note  = document.getElementById('mpNote').value.trim();
-  const type  = window._mpType || 'in';
-
-  if(!wid){ showToast(tr('Please select a worker')); return; }
-  if(!time){ showToast(tr('Please enter a time')); return; }
-
-  const w = workers.find(x=>x.id===wid);
-  const c = clients.find(x=>x.id===cid);
-  const ts = new Date(date+'T'+time+':00').toISOString();
-
-  const entry = {
-    id:          Date.now(),
-    workerId:    wid,
-    workerName:  w?.name || 'Unknown',
-    type,
-    time,
-    date:        new Date(date).toLocaleDateString('en-GB'),
-    ts,
-    site:        c?.name || '',
-    clientId:    c?.id || null,
-    dist:        null,
-    gpsVerified: false,
-    manual:      true,
-    notes:       note,
-    gpsWarnings: ['Manual entry by manager'],
-  };
-
-  // Save to localStorage punch log
-  const log = getPunchLog();
-  log.push(entry);
-  savePunchLog(log);
-
+// The punch entered: into the local punch log and to Firestore (gsSavePunch).
+function addManualPunch(entry){
+  const log=getPunchLog(); log.push(entry); savePunchLog(log);
   gsSavePunch(entry);
-
   closeModal('manualPunchOverlay');
-  showToast(tr('Punch saved — {0} {1} at {2}',{0:(w?.name),1:(type.toUpperCase()),2:(time)}));
-
-  // Refresh dashboard if active
+  showToast(tr('Punch saved — {0} {1} at {2}',{0:entry.workerName,1:entry.type.toUpperCase(),2:entry.time}));
   if(currentTab==='dashboard') renderDashboard();
   if(currentTab==='admin') renderAdmin();
 }
+
 
 function openPunchClock(cid){
   const c=clients.find(x=>x.id===cid);
@@ -6338,7 +5857,7 @@ window.addEventListener('pagehide', () => finishUndo(true));
 // calls selectRoot(key, root) after drawing its rows: that starts its Select
 // (SELECT_STARTERS[key], which checks the rights) or keeps the ticks across a redraw.
 let __selState = null;
-const SELECT_STARTERS = {salary: () => startSalarySelect(), punches: () => startPunchesSelect(), firms: () => startFirmsSelect(), clients: () => startClientSelect(), suppliers: () => startSupplierSelect(), users: () => startUsersSelect(), pendingHours: () => startPendingSelect()};
+const SELECT_STARTERS = {salary: () => startSalarySelect(), punches: () => startPunchesSelect(), firms: () => startFirmsSelect(), users: () => startUsersSelect(), pendingHours: () => startPendingSelect()};
 function startSelect(o){
   const keep = __selState && __selState.key === o.key ? __selState.picked : null;
   if(!keep) endSelect();
@@ -6446,7 +5965,7 @@ function renderSchedulePage(){
   loadShiftRequests();
   if(window.ManagerIsland) window.ManagerIsland.renderSchedule();
 }
-window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); renderCrumb(); });
+window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); if(currentTab==='clients') renderClientsPage(); if(currentTab==='suppliers') renderSuppliersPage(); renderCrumb(); });
 let __dataReady=false;
 window.ManagerBridge={
   lang:()=>I18N_LANG,
@@ -6544,6 +6063,55 @@ window.ManagerBridge={
     ids.forEach(id=>deleteWorkerNow(id)); render(); autoSave();
     showToast(one?tr('{0} removed',{0:one.name}):tr('{0} workers{1}',{0:ids.length,1:''}));
   },
+  // ── Clients and Suppliers (stage 6d): the tabs and their windows are React;
+  // the records, the figures (salaryEntriesFor, workersMonthHours), the map
+  // picker, the logins and the saves stay here.
+  clients(){
+    const byClient=salaryEntriesFor('month').byClient||{};
+    const waiting=new Set((__hoursBatches||[]).filter(b=>b.status==='pending').flatMap(b=>(b.entries||[]).map(e=>e.clientId)));
+    const empty=v=>v==null||v==='';
+    return {ready:__dataReady, canEdit:hasPermission('clients'),
+      clients:clients.map(c=>({id:c.id, name:c.name||'', color:c.color||'', address:c.address||'', object:c.object||'',
+        workers:workers.filter(w=>isActiveWorker(w)&&(w.clientIds||[]).includes(c.id)).length, monthHours:(byClient[c.id]||{}).hours||0,
+        noRate:empty(c.billRate)&&empty(c.defaultHourlyRate)&&!c.fixedBillRate&&!c.dailyBillRate, waiting:waiting.has(c.id)}))};
+  },
+  suppliers(){
+    const hours=workersMonthHours();
+    return {ready:__dataReady, canEdit:hasPermission('suppliers'),
+      suppliers:suppliers.map(s=>{ const mine=workers.filter(w=>w.supplierId===s.id);
+        return {id:s.id, name:s.name||'', color:s.color||'', phone:s.phone||'', workers:mine.length, monthHours:mine.reduce((t,w)=>t+(hours[w.id]||0),0)}; })};
+  },
+  openClient:id=>{ if(id) openEditClient(id); else openAddClient(); },
+  openSupplier:id=>{ if(id) openEditSupplier(id); else openAddSupplier(); },
+  manualPunch:id=>openManualPunch(id),
+  deleteClients:ids=>deleteClientsNow(ids.filter(id=>clients.some(c=>c.id===id))),
+  deleteSuppliers:ids=>deleteSuppliersNow(ids.filter(id=>suppliers.some(s=>s.id===id))),
+  clientInfo(id){
+    const c=id?clients.find(x=>x.id===id):null, e=c?((salaryEntriesFor('month').byClient||{})[c.id]||{}):{};
+    return {...loginsInfo('client', c?c.id:null),
+      workers:c?workers.filter(w=>isActiveWorker(w)&&(w.clientIds||[]).includes(c.id)).length:0, monthHours:e.hours||0, billed:e.total||0,
+      waiting:c?(__hoursBatches||[]).filter(b=>b.status==='pending'&&(b.entries||[]).some(x=>x.clientId===c.id)).length:0,
+      canDelete:hasPermission('clients'), otMult:PAY_RULES.otMult, shabbatMult:PAY_RULES.shabbatMult};
+  },
+  supplierInfo(id){
+    const sp=id?suppliers.find(x=>x.id===id):null, hours=workersMonthHours();
+    return {...loginsInfo('supplier', sp?sp.id:null),
+      workers:sp?workers.filter(w=>w.supplierId===sp.id).map(w=>({id:w.id, name:w.name||'', active:isActiveWorker(w), hours:hours[w.id]||0})):[],
+      payable:sp?supplierMonthPayable(sp):0, canRate:isFirmAdminSession(), canDelete:hasPermission('suppliers'), defaultRate:SUPPLIER_DEFAULT_RATE};
+  },
+  commitClient:(id,fields)=>commitClient(id,fields),
+  commitSupplier:(id,fields)=>commitSupplier(id,fields),
+  punchFromClient:()=>punchFromClientModal(),
+  deleteFromEditor:kind=>closeEditorUnsaved(kind==='client'?'clientOverlay':'supplierOverlay'),
+  pickPlace:(start,onPick)=>openMapPicker(start,onPick),
+  saveLogin:(uid,field,value)=>saveLoginField(uid,field,value),
+  newLogin:(role,id)=>newLoginFor(role,id),
+  punchInfo(cid){
+    const c=clients.find(x=>x.id===cid); if(!c) return null;
+    const mine=workers.filter(w=>isActiveWorker(w)&&(w.clientIds||[]).includes(cid));
+    return {client:{id:c.id, name:c.name||''}, workers:(mine.length?mine:workers.filter(isActiveWorker)).map(w=>({id:w.id, name:w.name||''}))};
+  },
+  addPunch:entry=>addManualPunch(entry),
   exportAs:k=>{ ({excel:exportExcel, pdf:exportPDF, json:exportJSON})[k](); },
   toast:(t,ms)=>showToast(t,ms),
 
