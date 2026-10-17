@@ -62,7 +62,7 @@ export function Workers() {
   return (
     <div data-testid="workers">
       <PageHead title={tr('My Workers')}>
-        <Button variant="primary" className="og-new" onClick={() => setEdit('new')}><IconPlus className="size-[18px]" />{tr('New')}</Button>
+        <Button className="og-new" onClick={() => setEdit('new')}><IconPlus className="size-[18px]" />{tr('New')}</Button>
       </PageHead>
       {!d.workers.length
         ? <div className="py-4 text-sm text-faint">{tr('No workers yet')}</div>

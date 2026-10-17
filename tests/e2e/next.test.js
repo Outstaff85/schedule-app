@@ -37,7 +37,7 @@ const DEMOS = {
   lists: ['plate', 'plate-sizes', 'empty'],
   windows: ['window', 'menu', 'account', 'sheet'],
   feedback: ['alert', 'toast', 'progress'],
-  data: ['table', 'calendar', 'card'],
+  data: ['table', 'data-table', 'calendar', 'card'],
   layout: ['tabs', 'accordion', 'collapsible'],
 };
 
@@ -61,7 +61,8 @@ async function computer(browser) {
   const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const errors = [];
   p.on('pageerror', e => errors.push(e.message));
-  p.on('requestfailed', r => errors.push('failed: ' + r.url()));
+  // The tab icon's request cancelled by the test's own reload (open()) is not a failed load.
+  p.on('requestfailed', r => { const why = (r.failure() || {}).errorText; if (!(why === 'net::ERR_ABORTED' && /\/icon-192[^/]*\.png$/.test(r.url()))) errors.push('failed: ' + r.url() + ' ' + why); });
 
   // every component block, on every section
   const missing = [];
@@ -127,6 +128,18 @@ async function computer(browser) {
   // figures as a filter
   await p.getByRole('button', { name: /Notices/ }).click(); await sleep(400);
   ok(await plates() < 10 && await plates() > 0, 'next: a figure filters the list');
+
+  // Data Table (TanStack Table): 10 rows and Show more; a tap on a column head sorts; the totals row covers every row
+  await p.locator('[data-testid=shell-tabs] button', { hasText: 'Data' }).click(); await p.waitForSelector('[data-testid=page-data]');
+  const dt = '[data-testid=data-table-demo]';
+  const dtRows = () => p.locator(dt + ' tbody tr').count();
+  const first = () => p.locator(dt + ' tbody tr').first().locator('td').first().innerText();
+  const r0 = {rows: await dtRows(), foot: await p.locator(dt + ' tfoot').innerText()};
+  await p.locator(dt).getByRole('button', { name: /Show more/ }).click(); await sleep(200);
+  r0.all = await dtRows();
+  await p.locator(dt + ' th button', { hasText: 'Worker' }).click(); await sleep(150); r0.asc = await first();
+  await p.locator(dt + ' th button', { hasText: 'Worker' }).click(); await sleep(150); r0.desc = await first();
+  ok(r0.rows === 10 && r0.all === 14 && /14/.test(r0.foot) && r0.asc === 'Andrei Popescu' && r0.desc === 'Yosef Peretz', 'next: Data Table — 10 rows then Show more, sorting by a column head, totals cover every row ' + JSON.stringify(r0));
 
   // windows: a window opened from another goes back to it
   await open(p, 'windows');

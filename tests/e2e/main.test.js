@@ -1283,12 +1283,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.click(plateOf(wt1) + ' button[aria-label="Actions"]'); await p.waitForSelector('[role="menuitem"]');
   const spl = {menu: await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(m => m.innerText.trim()).join()), nb};
   await p.click('[role="menuitem"]:has-text("Delete")'); await sleep(400);
+  spl.noWindow = !(await p.$('[data-testid="window"]'));
   spl.gone = !(await p.$(plateOf(wt1))); spl.snack = await p.evaluate(() => (document.querySelector('[data-testid="undo-snack"]') || {}).innerText || '');
   await p.click('[data-testid="undo-snack"] .og-snack-u'); await sleep(400);
   spl.back = !!(await p.$(plateOf(wt1)));
   await sleep(5300);
   spl.noDelete = !supReplies.some(x => x.action === 'supplierDeleteWorker');
-  ok(spl.menu === 'Edit,Delete' && spl.nb && spl.gone && /Tmpa Temp deleted/.test(spl.snack) && spl.back && spl.noDelete, 'supplier lists: a NEW badge; ⋮ Edit / Delete; Delete → Undo snack; Undo keeps the worker ' + JSON.stringify(spl));
+  ok(spl.menu === 'Edit,Delete' && spl.nb && spl.noWindow && spl.gone && /Tmpa Temp deleted/.test(spl.snack) && spl.back && spl.noDelete, 'supplier lists: a NEW badge; ⋮ Edit / Delete; Delete (no window opens) → Undo snack; Undo keeps the worker ' + JSON.stringify(spl));
   await p.click('[data-testid="workers"] button:has-text("Select")');
   await p.click(plateOf(wt2) + ' .og-plate b'); await p.click(plateOf(wt3) + ' .og-plate b');
   const s_sel = {count: await p.evaluate(() => document.querySelector('[data-testid="select-bar"] b').innerText.trim()), noEditor: !(await p.$('[data-testid="worker-form"]'))};
@@ -1297,7 +1298,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   s_sel.notYet = supReplies.filter(x => x.action === 'supplierDeleteWorker').length === 0;
   await sleep(5600);
   for (let i = 0; i < 40 && supReplies.filter(x => x.action === 'supplierDeleteWorker').length < 2; i++) await sleep(150);
-  await p.reload(); await waitFor(p, supReady, 15000);
+  await p.reload(); await waitFor(p, supReady, 15000); await tabTo('My Workers');
   s_sel.deleted = !(await p.$(plateOf(wt2))) && !(await p.$(plateOf(wt3))) && !!(await p.$(plateOf(wt1)));
   ok(s_sel.count === '2 selected' && s_sel.noEditor && s_sel.barGone && /2 workers deleted/.test(s_sel.snack) && s_sel.notYet && s_sel.deleted, 'supplier lists: Select two, Delete → Undo snack, deleted on the server only after 5 s ' + JSON.stringify(s_sel));
   await p.click(plateOf(wt1) + ' button[aria-label="Actions"]'); await p.click('[role="menuitem"]:has-text("Delete")');

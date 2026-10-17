@@ -129,7 +129,7 @@ export function Plate({
         role="button"
         tabIndex={0}
         aria-pressed={selecting ? !!selected : undefined}
-        onKeyDown={e => { if (e.key === 'Enter') (selecting ? onToggle : onOpen)?.(); }}
+        onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) (selecting ? onToggle : onOpen)?.(); }}
         onPointerDown={down}
         onPointerMove={move}
         onPointerUp={up}
