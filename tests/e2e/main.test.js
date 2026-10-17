@@ -709,7 +709,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.panes = [panes()]; workerCardPane('docs'); r.panes.push(panes()); workerCardPane('hours'); r.panes.push(panes());
     r.hoursStatus = !!document.querySelector('#workerCardModal .wc-pane[data-p="hours"] #cardHoursStatus');
     r.edit = !!document.getElementById('workerCardEdit'); workerCardPane('info');
-    closeModal('workerCardOverlay'); await wait(200);
+    // closing the card brings the notices sheet back; on a slow runner that takes longer than a fixed 200 ms, so up to 3 s
+    closeModal('workerCardOverlay');
+    for (let i = 0; i < 20 && !document.getElementById('noticesOverlay').classList.contains('open'); i++) await wait(150);
     r.backToNotices = document.getElementById('noticesOverlay').classList.contains('open'); closeModal('noticesOverlay'); w1.docUploadFailed = keep.failed;
     // Delete: Undo keeps the worker; a second Delete removes it only after 5 s.
     workers.push({id:'wtmp', name:'Temp Worker Del', colorIdx:1, clientIds:[], schedule:[]}); renderWorkersPage(); await wait(100);
