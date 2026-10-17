@@ -491,7 +491,7 @@ export function accountantSheets(d: AccData, period: string, approvals: Approval
   const head = ['Worker', 'ID / Passport', 'Supplier', 'Pay mode', 'Rate', 'Days', 'Regular hours', 'Overtime hours', 'Shabbat hours', 'Total hours', 'Pay (₪)', 'Travel (₪)', 'Total (₪)', 'Bank', 'Branch', 'Account', 'Warnings'].map(h => tr(h));
   const list = Object.values(byWorker).map(e => ({ e, w: byId(d.workers, e.workerId) || ({ id: e.workerId, name: e.worker } as AccWorker) }))
     .sort((a, b) => String(a.w.name || '').localeCompare(String(b.w.name || '')));
-  const rows: (string | number)[][] = list.map(({ e, w }) => [w.name || e.worker, workerDocId(w as never) || '', (byId(d.suppliers, w.supplierId) || { name: '' }).name || '',
+  const rows: (string | number)[][] = list.map(({ e, w }) => [w.name || e.worker, workerDocId(w) || '', (byId(d.suppliers, w.supplierId) || { name: '' }).name || '',
     isDailyPay(w) ? tr('By the day') : tr('By the hour'), isDailyPay(w) ? dailyRate(w) : ((wOwnRate(w) as number | string) || ''),
     e.daysUsed, hrs(e.regH), hrs(e.otH), hrs(e.shabH), hrs(e.hours), money(e.total), money(e.travel), money(e.total + e.travel),
     w.bank || '', w.bankBranch || '', w.bankAccountNumber || '', e.warns.length]);
