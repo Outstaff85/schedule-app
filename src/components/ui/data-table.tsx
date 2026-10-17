@@ -4,7 +4,7 @@
 // row (`footer`) always covers every item. On a phone a table becomes plates:
 // `card` draws a row as a Plate, paged the same way (the old pages' table cards).
 import * as React from 'react';
-import { createSortedRowModel, rowSortingFeature, sortFn_alphanumeric, sortFn_basic, tableFeatures, useTable, type ColumnDef } from '@tanstack/react-table';
+import { createSortedRowModel, rowSortingFeature, sortFn_alphanumeric, sortFn_basic, tableFeatures, useTable, type ColumnDef, type RowData } from '@tanstack/react-table';
 import { IconArrowDown, IconArrowUp, IconChevronDown } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -19,11 +19,11 @@ const features = tableFeatures({
   sortFns: { alphanumeric: sortFn_alphanumeric, basic: sortFn_basic },
 });
 type F = typeof features;
-export type DataColumn<T> = ColumnDef<F, T, any> & { meta?: { num?: boolean } }; // eslint-disable-line @typescript-eslint/no-explicit-any
+export type DataColumn<T extends RowData> = ColumnDef<F, T, any> & { meta?: { num?: boolean } }; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 const PAGE = 10;
 
-function DataTable<T>({ columns, data, footer, card, empty, rowId, className, ...rest }: {
+function DataTable<T extends RowData>({ columns, data, footer, card, empty, rowId, className, ...rest }: {
   columns: DataColumn<T>[];
   data: T[];
   /** the totals row: one cell per column (covers every row, not only the shown ones) */
@@ -36,7 +36,7 @@ function DataTable<T>({ columns, data, footer, card, empty, rowId, className, ..
 } & Omit<React.ComponentProps<'div'>, 'children'>) {
   const phone = useIsPhone();
   const [shown, setShown] = React.useState(PAGE);
-  const table = useTable({ features, columns, data, getRowId: rowId ? (r: T, i: number) => rowId(r, i) : undefined });
+  const table = useTable<F, T>({ features, columns, data, getRowId: rowId });
   if (!data.length) return <>{empty ?? null}</>;
   if (phone && card) return <div data-slot="data-table" data-kind="cards" className={className} {...rest}><PagedList items={data} render={card} /></div>;
   const rows = table.getRowModel().rows;
