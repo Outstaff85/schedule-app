@@ -106,10 +106,30 @@ One PR per tab, in this order: 6a Today, 6b Schedule, 6c Workers (list, card, wo
 ### Additions from the UI audit (owner, 2026-10-17)
 New features and polish the owner added to the migration. Each lands in the stage named, in that stage's PR (its checks, docs and Hebrew included), unless it says otherwise.
 
-**For the worker and the portals**
-- **Availability and shift swaps** — stage 5 (the worker marks the days they can't work and offers a shift to a colleague) and 6b (the manager sees both on the Schedule tab and confirms a swap with one tap; nothing changes in the schedule until confirmed). Needs a new Firestore collection and rules for the worker's writes: the rule change is reviewed by the owner before merge (it is not covered by Auto-continue).
-- **Payslip PDF** — stage 5: "Download for the month" in My Hours, the same figures as the screen, from `src/lib/payroll.ts` only (no second calculation), marked as an estimate before deductions.
-- **Client's monthly signature** — after stage 5, as its own PR on the client portal (`src/client/`): after "Approve the month" the client signs with a finger; the signed PDF is stored with the client's documents. A client still sees only its own workers' hours.
+**Order of the extra stages.** They run between the numbered stages, one per session like the others: 5 → **5a** → **5b** → **5c** → 6 (6a starts with the new look) → the light theme → 7. The stage status line counts them once they start; a run that finds stage 5 done and 5a–5c not done takes the first of them.
+
+**Stage 5a. Fixes on the old manager page** (small PR; found by the UI audit)
+- The client window is wrapped in `<div dir="rtl">` (`openEditClient` → `#clientModal`): its section plates are mirrored and a sentence starts with its full stop. Remove the `dir`; the layout stays left to right like every other window.
+- Three Hebrew texts are written in the code instead of going through `tr()`: the note under the worker and client windows ("השינויים נשמרים בסגירת החלון" / "העובד נוצר…" / "הלקוח נוצר…") and the worker card's scan button ("סריקה חוזרת" / "סרוק מסמך"). Write them in English through `tr()`, add the Hebrew to `i18n/he.json`.
+- **Mergeable when:** the manager e2e tests are green and `npm run test:i18n` passes.
+
+**Stage 5b. Worker additions** (on the new punch page, `src/punch/` or wherever stage 5 put it)
+- **Availability and shift swaps** — the worker marks the days they can't work and offers a shift to a colleague; the manager sees both on the Schedule tab and confirms a swap with one tap (until 6b moves that tab, a small list in the old Schedule tab); nothing changes in the schedule until the manager confirms. Needs a new Firestore collection and rules for the worker's writes (through the `punch` function, with the worker's link): **the rule change is reviewed by the owner before merge — this stage is not merged by Auto-continue.**
+- **Payslip PDF** — "Download for the month" in My Hours, the same figures as the screen, from `src/lib/payroll.ts` only (no second calculation), marked as an estimate before deductions.
+- **Mergeable when:** the punch e2e tests cover marking a day, offering and confirming a swap, and the PDF's total equals My Hours; the owner approved the rules.
+
+**Stage 5c. Client's monthly signature** (client portal, `src/client/`)
+- After "Approve the month" the client signs with a finger; the signed PDF (the month's days and the signature) is stored with the client's documents. A client still sees only its own workers' hours; nothing about pay, suppliers or GPS goes into the PDF.
+- **Mergeable when:** the client e2e tests cover the signature and the stored PDF, and the client visibility checks still pass.
+
+**The new look for the manager app (V7, chosen by the owner on 2026-10-17; the UI audit artifact "Аудит интерфейса Odinson" shows every screen before / after)** — built into `Shell` in 6a, so every tab moved after it gets it:
+- **Readability:** screen titles 22 px, figures 26–30 px, secondary text brighter (contrast ≥ 4.5:1), plates 1 px larger text, empty states visible (a dashed frame).
+- **Figures as glass tiles** (4 in a row on a computer and on a phone); sections as panels; in Accounting the figures above the tabs are hidden while Salary shows its own (no repeat).
+- **Computer layout:** the page up to 1200 px; the Workers / Filter-by-client side panel only on Workers and Schedule; Today in two columns of panels; plates in three columns; windows 680 px wide.
+- **Side menu on a computer:** the sections leave the title bar for a menu 210 px wide (icon + name, the active one lit) — on the left, **on the right in Hebrew**. On a phone the bottom bar stays.
+- **Title bar:** brand · the **breadcrumb** (a glass plate: the section's icon in its colour, its name and count, then the open sub-tab — "Accounting › Salary", "Admin › Users", "Schedule › All sites"; the page itself no longer shows its title) · in the middle the date, the greeting and the weather · bell, language, and the firm and user at the end. On a phone two compact rows, fixed at the top: logo · short date and weather · buttons; the breadcrumb under them; the greeting's words are hidden there.
+- **Hebrew mirrors the frame only:** the side menu and the title bar (logo and breadcrumb on the right, the account on the left, its menu opening from the left edge); page content, plates, tables and windows stay left to right. 6a updates the left-to-right rule in CLAUDE.md and docs/translations.md to say so.
+- The portals and the punch page keep their own headers; they take the readability and tile changes through the shared components.
 
 **Look (every stage from 5 on, through the shared pieces)**
 - **Loading placeholders** — `Skeleton` plates while a list or figures load, never an empty screen (in `PagedList` / `Section`).
