@@ -86,6 +86,17 @@ class H(BaseHTTPRequestHandler):
         elif self.path == '/revoke':
             DB.collection('tenants').document(T1).collection('workers').document('w1').update({'token': 'tok-new'})
             status, data = 200, b'{"ok":true}'
+        elif self.path == '/swapSetup':
+            # Stage 5b: Avi works every day 08:00-16:00 and Dana shares his site c1, so Avi can offer her a shift.
+            wc = DB.collection('tenants').document(T1).collection('workers')
+            wc.document('w1').update({'schedule': [{'type': 'work', 'start': '08:00', 'end': '16:00'}] * 7})
+            wc.document('w2').update({'clientIds': ['c2', 'c1']})
+            status, data = 200, b'{"ok":true}'
+        elif self.path == '/swapState':
+            t1 = DB.collection('tenants').document(T1)
+            reqs = {d.id: d.to_dict() for d in t1.collection('shiftRequests').stream()}
+            ws = {d.id: (d.to_dict() or {}).get('dateShifts') or {} for d in t1.collection('workers').stream()}
+            status, data = 200, json.dumps({'requests': reqs, 'dateShifts': ws}, default=str).encode()
         elif self.path.startswith('/lang/'):
             DB.collection('tenants').document(T1).set({'language': self.path[6:]}, merge=True)
             status, data = 200, b'{"ok":true}'
