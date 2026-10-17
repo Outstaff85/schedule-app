@@ -532,9 +532,11 @@
       // Several workers at once (8 in flight): a bulk assign of dozens of
       // workers one after another was slow.
       let n = 0, next = 0;
+      // The worker's days off and shift offers move with it too, so the new
+      // own-workers HR sees them and the old one no longer does.
       async function one(wid){
-        const snap = await F.getDocs(F.query(col(t,'punches'), F.where('workerId','==',wid)));
-        const refs = snap.docs.filter(d => (d.data().hrId || null) !== (hrId || null)).map(d => d.ref);
+        const snaps = await Promise.all(['punches', 'shiftRequests'].map(c => F.getDocs(F.query(col(t,c), F.where('workerId','==',wid)))));
+        const refs = snaps.flatMap(s => s.docs).filter(d => (d.data().hrId || null) !== (hrId || null)).map(d => d.ref);
         const commits = [];
         for(let i = 0; i < refs.length; i += BATCH_LIMIT){
           const batch = F.writeBatch(db);
