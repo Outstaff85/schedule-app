@@ -1,0 +1,47 @@
+/* The new stack's styles (docs/build.md). The tokens are not copied here: every
+   new page links /og.css (the one copy of docs/design/system/tokens.json), and
+   the shadcn/ui color names below point at those tokens. og.css is unlayered,
+   so its :root wins over Tailwind's theme layer where names meet (--font-sans,
+   --radius-sm … --radius-xl): `rounded-lg` and `font-sans` are the Odinson
+   Glass values. Never define a token of og.css here (tests/design/check.js). */
+@import "tailwindcss" source(none);
+@source "../";
+@source "../../next";
+
+@theme inline {
+  --color-background: var(--ground);
+  --color-foreground: var(--ink);
+  --color-card: var(--plate);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--glass-menu);
+  --color-popover-foreground: var(--ink);
+  --color-primary: var(--glass-strong);
+  --color-primary-foreground: var(--ink);
+  --color-secondary: var(--glass);
+  --color-secondary-foreground: var(--ink);
+  --color-muted: var(--surface-2);
+  --color-muted-foreground: var(--ink-2);
+  --color-accent: var(--glass-active);
+  --color-accent-foreground: var(--ink);
+  --color-destructive: var(--red);
+  --color-border: var(--hairline);
+  --color-input: var(--glass-edge);
+  --color-ring: var(--accent);
+  /* Odinson Glass names */
+  --color-plate: var(--plate);
+  --color-plate-on: var(--plate-on);
+  --color-glass: var(--glass);
+  --color-glass-edge: var(--glass-edge);
+  --color-sheet: var(--glass-sheet);
+  --color-faint: var(--ink-3);
+  --color-info: var(--accent);
+  --color-ok: var(--green);
+  --color-warn: var(--amber);
+  --color-bad: var(--red);
+  --color-fig: var(--fig);
+}
+
+@layer base {
+  * { border-color: var(--color-border); }
+  body { color: var(--ink); font-family: var(--font-sans); }
+}
