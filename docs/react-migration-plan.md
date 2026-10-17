@@ -15,7 +15,9 @@ Not a goal: faster page loads (a React bundle is heavier than the current pages)
 **Core**
 - React + Vite + TypeScript.
 - Tailwind CSS, with the shadcn variables mapped onto the tokens of `docs/design/system/tokens.json` (same names as `og.css`).
-- shadcn/ui, only the components that are needed, each restyled to Odinson Glass: Button, Input, Textarea, Label, Select, Checkbox, Switch, Radio Group, Form, Dialog, Drawer, Sheet, Dropdown Menu, Popover, Tabs, Accordion, Collapsible, Table, Badge, Alert, Calendar, Skeleton, Sonner (toasts).
+- shadcn/ui, only the components that are needed, each restyled to Odinson Glass: Button, Input, Textarea, Label, Select, Checkbox, Switch, Radio Group, Form, Dialog, Drawer, Sheet, Dropdown Menu, Popover, Tabs, Accordion, Collapsible, Table, Badge, Alert, Calendar, Skeleton, Sonner (toasts), plus: Card, Separator, Tooltip, Scroll Area, Toggle Group, Button Group, Spinner, Empty, Progress, Alert Dialog, Combobox, Date Picker (Calendar inside Popover, replaces every `type="date"` field), Data Table (Table + TanStack Table), Chart (shadcn wrapper over Recharts, colored from the tokens).
+- Not adopted: Pagination (lists page by 10 on scroll / "Show more"), Input OTP, Sidebar (the Schedule sidebar is built from the shared parts), Kbd. Command, Hover Card, Navigation Menu, Menubar, Carousel, Resizable only when a screen needs them.
+- Alert Dialog confirms irreversible actions (Clear Log and the like); the rule "Delete never asks, the Undo snack" stays for ordinary deletes.
 
 **Visuals**
 - Motion (Framer Motion): expand/collapse of days, window enter/exit, swipe on plates, page transitions.
@@ -50,7 +52,7 @@ Every stage is its own PR. It is mergeable on its own: the site keeps working, C
 - **Mergeable when:** the live site works exactly as before and `/next` opens. **Decision point:** continue or stop.
 
 ### Stage 1. Shared components
-- `Shell`, `PageHead`, `Section`, `Plate` (`size` variants, `right` slot), `GlassButton`; Dialog, Drawer, Sheet, Tabs, Accordion, Badge, Alert, Skeleton, Sonner toasts, Dropdown Menu, Popover, Select, Checkbox, Switch, Radio Group, Calendar, Form, Table.
+- `Shell`, `PageHead`, `Section`, `Plate` (`size` variants, `right` slot), `GlassButton`; Dialog, Drawer, Sheet, Tabs, Accordion, Badge, Alert, Skeleton, Sonner toasts, Dropdown Menu, Popover, Select, Checkbox, Switch, Radio Group, Calendar, Form, Table, Card, Separator, Tooltip, Scroll Area, Toggle Group, Button Group, Spinner, Empty, Progress, Alert Dialog, Combobox, Date Picker.
 - Translations (`tr()` and `i18n/<lang>.json`), the Language button, Tabler Icons, Motion for windows and expanding rows.
 - New rule in CLAUDE.md: check `components/ui` and the shared components first, write a new one only when nothing fits, colors and sizes only from tokens.
 - **Mergeable when:** a demo page shows every component in all states and `npm run test:i18n` is green.
@@ -65,7 +67,7 @@ Every stage is its own PR. It is mergeable on its own: the site keeps working, C
 - **Mergeable when:** the client e2e tests pass and a client sees the same data and nothing more.
 
 ### Stage 4. Supplier portal
-- Forms on React Hook Form + Zod, tables on TanStack Table, reads through TanStack Query.
+- Forms on React Hook Form + Zod, tables on TanStack Table (the Data Table component), reads through TanStack Query; Date Picker and Combobox first used here.
 - **Mergeable when:** the supplier visibility tests pass and the Firestore/Storage rules did not change.
 
 ### Stage 5. Worker punch page (`/punch`)
@@ -73,7 +75,7 @@ Every stage is its own PR. It is mergeable on its own: the site keeps working, C
 - **Mergeable when:** punching without a connection and the send after it returns are verified.
 
 ### Stage 6. Manager app, tab by tab
-One PR per tab, in this order: 6a Today, 6b Schedule, 6c Workers (list, card, worker window, documents, hours), 6d Clients and Suppliers, 6e Accounting (Recharts charts, TanStack Table), 6f Admin (punch log, firms, users, errors). The shell and the tabs not yet moved stay on the old code.
+One PR per tab, in this order: 6a Today, 6b Schedule, 6c Workers (list, card, worker window, documents, hours), 6d Clients and Suppliers, 6e Accounting (Chart on Recharts, Data Table), 6f Admin (punch log, firms, users, errors). The shell and the tabs not yet moved stay on the old code.
 - **Mergeable when:** the tab works, its e2e tests are rewritten and green, the other tabs still open.
 
 ### Stage 7. Cleanup
