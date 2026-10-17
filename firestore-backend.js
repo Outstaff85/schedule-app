@@ -641,11 +641,18 @@
           return {ok:true, requests: snap.docs.map(d => ({id: d.id, ...d.data()})).filter(r => String(r.date||'') >= d0)};
         }
         // A manager confirms or declines a pending shift offer: only its status
-        // and who / when (firestore.rules); the schedule is saved as workers.
+        // and who / when (firestore.rules; decidedByUid must be the caller).
+        // Confirming carries the schedule with both workers' dates changed:
+        // the request and the two worker documents commit in one batch, so a
+        // failed write never leaves the shift handed over with the offer pending.
         case 'decideShiftRequest': {
           const status = params.status === 'confirmed' ? 'confirmed' : 'declined';
-          await F.updateDoc(F.doc(db, 'tenants', t, 'shiftRequests', String(params.id)),
-            {status, decidedAt: new Date().toISOString(), decidedBy: ctx.username || auth.currentUser.uid});
+          const ref = F.doc(db, 'tenants', t, 'shiftRequests', String(params.id));
+          const fields = {status, decidedAt: new Date().toISOString(), decidedBy: ctx.username || auth.currentUser.uid,
+            decidedByUid: auth.currentUser.uid};
+          if(status === 'confirmed' && params.schedule)
+            return saveSchedule(t, params.schedule, {ops: [['update', ref, fields]], ids: params.workerIds});
+          await F.updateDoc(ref, fields);
           return {ok:true};
         }
         // The notifications this login has read (the bell's "Mark all read"),
