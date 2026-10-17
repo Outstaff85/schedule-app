@@ -21,7 +21,7 @@ function walk(dir, base = '') {
   const { staticFiles } = await import(path.join(ROOT, 'scripts', 'static-files.mjs'));
   const errs = [];
   const old = staticFiles(ROOT);
-  for (const f of ['schedule-manager.html', 'supplier-portal.html', 'client-portal.html', 'worker-punch.html', 'service-worker.js', 'og.css', 'manifest.json'])
+  for (const f of ['schedule-manager.html', 'supplier-portal.html', 'client-portal.html', 'worker-punch.html', 'service-worker.js', 'og.css', 'manifest.json', 'payroll.js'])
     if (!old.includes(f)) errs.push(`${f} is not in the list of served files (scripts/static-files.mjs)`);
   for (const f of old) {
     const to = path.join(DIST, f);

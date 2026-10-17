@@ -14,12 +14,17 @@ The client keeps the punch log in `localStorage.punchLog` (`getPunchLog()` / `sa
 
 ## Canonical calculation
 
+### Payroll module (`src/lib/payroll.ts` → `payroll.js`)
+
+- **`src/lib/payroll.ts` is the one copy** of the functions below (strict TypeScript): `PAY_RULES`, `groupPunchesIntoShifts`, `analyzeDayPunches`, `israeliDayPay`, `effectiveRates`, `shiftPay`, `shiftPayFor`, `isDailyPay`, `dailyRate`, `wOwnRate`, `travelPay`, `salaryPeriodKey`, `dayOverride`, `localYMD`, `roundMins` (stage 2 of [react-migration-plan.md](react-migration-plan.md)). A new page imports it. Two signatures differ from the old page globals: `effectiveRates`, `shiftPay` and `shiftPayFor` take the page's `clients` list as their last argument, and `analyzeDayPunches(entries, date, opts?)` does the manager's full check only with `opts.tr` (below).
+- **The old pages** load it as `payroll.js` (`<script src="payroll.js">` in the head, before the page script): a plain script that defines the global `Payroll`, generated from `payroll.ts` by `node scripts/build-payroll.mjs` (`npm run build:payroll`) and committed; `npm run build` fails while it is stale (`--check`). Never edit `payroll.js` by hand. Each page keeps one-line wrappers with the old names and signatures (`function shiftPay(hours, w, isSat, clientId){ return Payroll.shiftPay(hours, w, isSat, clientId, clients); }` …), so its other code is unchanged: the manager app (every function, `analyzeDayPunches` with `{tr}`), the supplier portal and the punch page (the pay functions with their own `clients`, the short `analyzeDayPunches`; the punch page also `travelPay`), the client portal (`groupPunchesIntoShifts`, the short `analyzeDayPunches`, `localYMD`). `wRegRate` / `wOtRate` / `wShabRate` stay page shortcuts over `effectiveRates`. The service worker caches `payroll.js`; every page's new-version check watches it.
+- **A change to payroll** is made in `payroll.ts` only, followed by `npm run build:payroll`. `tests/payroll/compare.test.mjs` runs the old page code (`tests/payroll/legacy.mjs`, a verbatim snapshot of the four pages' copies from main at 0a1ea33) and `payroll.js` on the same generated months and requires identical results ([tests.md](tests.md)); an intended pay change also updates the snapshot and says so in its PR.
+
 - **`groupPunchesIntoShifts(entries)`** — one worker's punches, sorted by `ts`, split into shift buckets: each IN starts a bucket and the next OUT closes it. An overnight IN→OUT stays one shift. A bucket's `date` is the date of its first punch.
-- **`analyzeDayPunches(entries, date)`** → `{hours, warnings}`.
+- **`analyzeDayPunches(entries, date, opts?)`** → `{hours, warnings}`.
   - Pairs IN→OUT; a negative duration wraps past midnight.
-  - Warnings (English texts shown through `tr()`, so in the chosen language): double IN, OUT without IN, a 0-minute shift, a shift over 12 h, an open shift.
-  - An open shift *today* counts up to now.
-  - Durations go through `roundMins()` (`PAY_RULES.roundMinutes`, 0 = off).
+  - With `opts.tr` (the manager app): warnings (English texts through the page's `tr()`, so in the chosen language): double IN, OUT without IN, a 0-minute shift, a shift over 12 h, an open shift; an open shift *today* counts up to now; durations go through `roundMins()` (`PAY_RULES.roundMinutes`, 0 = off); a time with no minutes reads as NaN, as it always did there.
+  - Without it (the portals and the punch page): only closed IN→OUT pairs count, `warnings` stays empty, a time with no minutes reads as HH:00.
 - **`PAY_RULES`** = `{regularMax:8, ot1Span:2, roundMinutes:0, otMult:1.25, shabbatMult:1.5}`.
 - **`israeliDayPay(hours, rate, isSat)`** — Israeli law tiers:
 
@@ -28,7 +33,7 @@ The client keeps the punch log in `localStorage.punchLog` (`getPunchLog()` / `sa
   | first 8 | ×1.0 | ×1.5 |
   | next 2 | ×1.25 | ×1.75 |
   | beyond | ×1.5 | ×2.0 |
-- **`effectiveRates(w, clientId)`** — the most specific rate wins:
+- **`effectiveRates(w, clientId, clients)`** (page wrapper `effectiveRates(w, clientId)`) — the most specific rate wins:
   1. `w.clientRates[clientId]` — the worker's own rate at this client (Accounting matrix);
   2. the worker's own rate — `hourlyRate` (or the older `regRate`), `otRate`, `shabbatRate` — from the worker modal or Accounting → Salary; it changes this worker only;
   3. the client's `defaultHourlyRate` / `defaultOtRate` / `defaultShabbatRate` — shared by every worker there without a rate of their own.

@@ -2,7 +2,7 @@
 
 **Status: approved by the owner on 2026-10-17 as a full migration (no fallback).** Stage 0 (foundation) is built: CLAUDE.md's "no build step" / "no modules" rules are replaced by "new code goes to the new stack, old pages keep their style until their stage" (docs/build.md describes the build).
 
-Stage status: 0 Foundation — done · 1 Shared components — done (docs/components.md) · 2 Payroll as a module — next · 3–7 — not started. The trial page (React + Vite + Tailwind + shadcn/ui in the Odinson Glass look) was published as a design artifact only; no code of it is in this repo.
+Stage status: 0 Foundation — done · 1 Shared components — done (docs/components.md) · 2 Payroll as a module — done (docs/accounting.md → Payroll module) · 3 Client portal — next · 4–7 — not started. The trial page (React + Vite + Tailwind + shadcn/ui in the Odinson Glass look) was published as a design artifact only; no code of it is in this repo.
 
 ## Why
 
@@ -74,6 +74,7 @@ How a run works (a run = one session, started by the scheduled task "React migra
 - **Mergeable when:** a demo page shows every component in all states and `npm run test:i18n` is green.
 
 ### Stage 2. Payroll as a module
+- **Done.** `src/lib/payroll.ts` is the one copy; the old pages load it as the generated, committed `payroll.js` (global `Payroll`, `scripts/build-payroll.mjs`; `npm run build` fails while it is stale) through one-line wrappers that keep the old names and pass the page's `clients` (and the manager's `tr`). The manager's full `analyzeDayPunches` (warnings, today's open shift) and the portals' short one are one function (`opts.tr`). `tests/payroll/compare.test.mjs` runs a verbatim snapshot of the four pages' old code and `payroll.js` on 22 generated months (6,541 manager shifts, every rate tier, daily pay, travel, night and Saturday shifts, the anomalies) — identical results; `--data` compares a real export. No real production month was read from the cloud session (no access to the live data); the owner can run `--data` on an export.
 - `PAY_RULES`, `israeliDayPay`, `effectiveRates`, `shiftPay`, `shiftPayFor`, `groupPunchesIntoShifts`, `analyzeDayPunches`, `salaryPeriodKey`, `localYMD`: moved unchanged into one typed module (strict TypeScript), the single copy used by all pages.
 - The existing tests run against old and new code with the same inputs.
 - **Mergeable when:** old and new results are identical on real months.

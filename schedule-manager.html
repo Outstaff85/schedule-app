@@ -880,6 +880,8 @@ body:has(.overlay.open){overflow:hidden}
 .overlay,.overlay>.modal{overscroll-behavior:contain}
 </style>
 <link rel="stylesheet" href="og.css">
+<!-- the one copy of the shift pairing and pay (src/lib/payroll.ts; docs/accounting.md) -->
+<script src="payroll.js"></script>
 <style>
   /* Odinson Glass form fields (mockup 04, owner 2026-10-13): every field in a
      window is a soft rounded glass box — 38px tall, 12px corners, a faint fill
@@ -2017,57 +2019,16 @@ function workerAvatarInner(w){
 function getSundayOfWeek(d){ const c=new Date(d); c.setDate(c.getDate()-c.getDay()); c.setHours(0,0,0,0); return c; }
 function toMins(t){ if(!t)return null; const[h,m]=t.split(':').map(Number); return h*60+m; }
 function calcHours(s,e){ if(!s||!e)return 0; const sm=toMins(s),em=toMins(e); return em<=sm?(1440-sm+em)/60:(em-sm)/60; }
-function nowHHMM(){ const n=new Date(); return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0'); }
 // ═══ CANONICAL punch-hours calculation — single source of truth. ═══
-// Dashboard salary widget, the salary table and the CSV export ALL call this,
-// so a fix here fixes hours everywhere. The worker-punch "My History" screen
-// mirrors the same chronological IN→OUT pairing. Do not add a second hours calc.
+// The one copy is src/lib/payroll.ts, loaded as payroll.js (the global
+// Payroll; docs/accounting.md → Payroll module); these wrappers pass this
+// page's `tr` and `clients`. Dashboard salary widget, the salary table and the
+// CSV export ALL call it. Do not add a second hours calc.
 // Pair a day's punches chronologically; return total hours + a list of anomalies.
-function analyzeDayPunches(entries,date){
-  const chrono=[...entries].sort((a,b)=>new Date(a.ts)-new Date(b.ts));
-  let hours=0, openIn=null; const warnings=[];
-  chrono.forEach(e=>{
-    if(e.type==='in'){
-      if(openIn) warnings.push(tr('double IN (no OUT after {0})',{0:openIn.time}));
-      openIn=e;
-    } else if(e.type==='out'){
-      if(!openIn){ warnings.push(tr('OUT without IN ({0})',{0:e.time})); return; }
-      if(!openIn.time||!e.time){ openIn=null; return; }
-      let dur=toMins(e.time)-toMins(openIn.time); if(dur<0) dur+=1440; dur=roundMins(dur);
-      const hh=dur/60;
-      if(hh<=0) warnings.push(tr('0-minute shift ({0}→{1})',{0:openIn.time,1:e.time}));
-      else if(hh>12) warnings.push(tr('shift >12h ({0}→{1})',{0:openIn.time,1:e.time}));
-      hours+=hh; openIn=null;
-    }
-  });
-  if(openIn){
-    const isToday=new Date().toDateString()===new Date(date).toDateString();
-    warnings.push(tr(isToday?'open shift from {0} (still at work)':'open shift from {0} — no OUT',{0:openIn.time}));
-    if(isToday && openIn.time){ let dur=toMins(nowHHMM())-toMins(openIn.time); if(dur<0) dur+=1440; dur=roundMins(dur); hours+=dur/60; }
-  }
-  return {hours,warnings};
-}
-// Pair one worker's punches into shifts chronologically, independent of calendar-day
-// boundaries — so an IN before midnight and its OUT after midnight stay one bucket
-// instead of splitting into two half-shifts that analyzeDayPunches can't pair (and
-// whose hours would otherwise vanish from payroll). Each bucket is tagged with the
-// date of its opening punch.
-function groupPunchesIntoShifts(entries){
-  const chrono=[...entries].sort((a,b)=>new Date(a.ts)-new Date(b.ts));
-  const buckets=[]; let cur=null;
-  chrono.forEach(e=>{
-    if(e.type==='in'){
-      if(cur) buckets.push(cur);
-      cur={date:new Date(e.ts),entries:[e]};
-    } else {
-      if(!cur) cur={date:new Date(e.ts),entries:[]};
-      cur.entries.push(e);
-      buckets.push(cur); cur=null;
-    }
-  });
-  if(cur) buckets.push(cur);
-  return buckets;
-}
+function analyzeDayPunches(entries,date){ return Payroll.analyzeDayPunches(entries,date,{tr}); }
+// Pair one worker's punches into shifts chronologically, across midnight; each
+// bucket is tagged with the date of its opening punch.
+function groupPunchesIntoShifts(entries){ return Payroll.groupPunchesIntoShifts(entries); }
 function isMidnight(s,e){ return !!s&&!!e&&toMins(e)<=toMins(s); }
 // Shifts: the weekly roster (w.schedule[0..6], Sunday first) plus changes
 // made for one date only (w.dateShifts['YYYY-MM-DD'] = {type, start, end}),
@@ -2245,104 +2206,37 @@ function docStatusSummaryHtml(w){
   const col=s.level==='error'?'var(--red)':'var(--amber)';
   return `<span style="color:${col}">${s.lines.map(esc).join('<br>')}</span>`;
 }
-// ── Pay rules (Israeli labour-law DEFAULTS — VERIFY against your real rules) ──
-// regularMax: hours at base rate. ot1Span: next N hours at the first OT tier.
-// Rates: weekday base x1.0 / OT1 x1.25 / OT2 x1.5 ; Saturday base x1.5 / x1.75 / x2.0.
-// roundMinutes: round each session to nearest N minutes (0 = off; no change to pay).
-const PAY_RULES = { regularMax: 8, ot1Span: 2, roundMinutes: 0, otMult: 1.25, shabbatMult: 1.5 };
-function roundMins(m){ const n=PAY_RULES.roundMinutes; return n>0 ? Math.round(m/n)*n : m; }
-function israeliDayPay(hours, rate, isSat){
-  const base=isSat?1.5:1.0, ot1=isSat?1.75:1.25, ot2=isSat?2.0:1.5;
-  const RM=PAY_RULES.regularMax, O1=PAY_RULES.ot1Span;
-  const reg=Math.min(hours,RM), o1=Math.min(Math.max(hours-RM,0),O1), o2=Math.max(hours-(RM+O1),0);
-  const regularPay=reg*rate*base, otPay=o1*rate*ot1+o2*rate*ot2;
-  return { regularPay, otPay, total:regularPay+otPay, isSat };
-}
-// Effective per-hour rates for one shift, resolving a 3-tier priority chain —
-// most specific wins, each tier optional, falling through to the next:
-//   1. worker.clientRates[clientId] — this worker's own override for this
-//      specific client (set in the Accounting rate matrix).
-//   2. the worker's own rate — hourlyRate (or the older regRate), otRate,
-//      shabbatRate — set in the worker modal or Accounting → Salary. It
-//      changes this worker only (user decision 2026-10-05).
-//   3. client.defaultHourlyRate/defaultOtRate/defaultShabbatRate — the
-//      client's rate, shared by every worker there without a rate of their own.
-// Each of the three rates resolves on its own. `src` says which tier gave the
-// regular rate: 'override' / 'worker' / 'client' / '' (none). `has*Override` tells shiftPay() whether an
-// explicit flat OT/Shabbat rate was found at ANY tier (vs falling back to
-// the israeliDayPay law tiers) — the three tiers can't be told apart just by
-// comparing the resolved number to a law-tier calculation.
-function effectiveRates(w, clientId){
-  const ov = clientId && w && w.clientRates && w.clientRates[clientId];
-  const cl = clientId && clients.find(c=>c.id===clientId);
-  const set=v=>v!=null&&v!=='';
-  const own = set(w&&w.regRate) ? w.regRate : (Number(w&&w.hourlyRate)>0 ? w.hourlyRate : null);
-  const pick=(ovVal,wVal,clVal,fallback)=>{
-    if(set(ovVal)) return {val:Number(ovVal),has:true,src:'override'};
-    if(set(wVal)) return {val:Number(wVal),has:true,src:'worker'};
-    if(set(clVal)) return {val:Number(clVal),has:true,src:'client'};
-    return {val:fallback,has:false,src:''};
-  };
-  const reg  = pick(ov&&ov.rate,        own,             cl&&cl.defaultHourlyRate,  0);
-  const ot   = pick(ov&&ov.otRate,      w&&w.otRate,      cl&&cl.defaultOtRate,      Math.round(reg.val*PAY_RULES.otMult*100)/100);
-  const shab = pick(ov&&ov.shabbatRate, w&&w.shabbatRate, cl&&cl.defaultShabbatRate, Math.round(reg.val*PAY_RULES.shabbatMult*100)/100);
-  return {regRate:reg.val, otRate:ot.val, shabbatRate:shab.val, hasOtOverride:ot.has, hasShabbatOverride:shab.has,
-    src:reg.src, otSrc:ot.src, shabbatSrc:shab.src};
-}
+// ── Pay (src/lib/payroll.ts through payroll.js — the rules, the 3-tier rate
+// chain, the law tiers, daily pay, travel and the period keys are described
+// there and in docs/accounting.md). ──
+const PAY_RULES = Payroll.PAY_RULES;
+function israeliDayPay(hours, rate, isSat){ return Payroll.israeliDayPay(hours, rate, isSat); }
+// Effective per-hour rates: worker.clientRates[clientId] > the worker's own > the client's.
+function effectiveRates(w, clientId){ return Payroll.effectiveRates(w, clientId, clients); }
 function wRegRate(w,clientId){ return effectiveRates(w,clientId).regRate; }
 function wOtRate(w,clientId){ return effectiveRates(w,clientId).otRate; }
 function wShabRate(w,clientId){ return effectiveRates(w,clientId).shabbatRate; }
-// Pay for one shift's hours. Default: the israeliDayPay law tiers (125%/150% OT,
-// 150%/175%/200% Shabbat) applied to the effective regular rate. An explicit flat
-// OT/Shabbat rate (at any tier above) replaces the law tiers with that single flat
-// rate across all OT/Shabbat hours of the shift, same as before this defaulted to
-// the law. clientId is optional — see effectiveRates() above.
-function shiftPay(hours, w, isSat, clientId){
-  const RM=PAY_RULES.regularMax, r=effectiveRates(w,clientId);
-  if(isSat){
-    if(r.hasShabbatOverride) return hours*r.shabbatRate;
-    return israeliDayPay(hours, r.regRate, true).total;
-  }
-  if(r.hasOtOverride) return Math.min(hours,RM)*r.regRate + Math.max(hours-RM,0)*r.otRate;
-  return israeliDayPay(hours, r.regRate, false).total;
-}
+// Pay for one shift's hours: the law tiers, or a flat OT/Shabbat rate when one is set.
+function shiftPay(hours, w, isSat, clientId){ return Payroll.shiftPay(hours, w, isSat, clientId, clients); }
 // Daily pay (w.payMode === 'daily', picked per worker in Accounting →
 // the pay window): the worker is paid their own rate (read as ₪/day)
 // once for every day worked, whatever the hours. A client's rate (an hourly
 // figure) never applies to a daily-paid worker.
-function isDailyPay(w){ return !!(w && w.payMode==='daily'); }
-function dailyRate(w){ return Number(wOwnRate(w))||0; }
+function isDailyPay(w){ return Payroll.isDailyPay(w); }
+function dailyRate(w){ return Payroll.dailyRate(w); }
 // One shift's pay, for every payroll figure (Salary, its export, the
 // super-admin summary). seenDays is a Set kept per worker over the period:
 // a daily-paid worker's later shifts on a day already paid pay 0.
-function shiftPayFor(hours, w, isSat, clientId, date, seenDays){
-  if(isDailyPay(w)){
-    const k=localYMD(date);
-    if(seenDays.has(k)) return 0;
-    seenDays.add(k);
-    return dailyRate(w);
-  }
-  return shiftPay(hours, w, isSat, clientId);
-}
+function shiftPayFor(hours, w, isSat, clientId, date, seenDays){ return Payroll.shiftPayFor(hours, w, isSat, clientId, date, seenDays, clients); }
 // Travel for a period (the pay window, openPayModal): travelAllowance ₪ for each
 // day worked + travelMonthly ₪ once for each calendar month with work in it.
 // Never part of the wage itself (shiftPay / shiftPayFor).
-function travelPay(w, days, months){
-  return (Number(w&&w.travelAllowance)||0)*days + (Number(w&&w.travelMonthly)||0)*months;
-}
+function travelPay(w, days, months){ return Payroll.travelPay(w, days, months); }
 // The days of a daily-paid worker can be set by hand for one period
 // (w.dayOverrides[key]); key = the concrete period: 'w:<Sunday yyyy-mm-dd>',
 // 'm:<yyyy-mm>' or 'all'.
-function salaryPeriodKey(period, now){
-  now=now||new Date();
-  if(period==='week'){ const ws=new Date(now); ws.setDate(ws.getDate()-ws.getDay()); return 'w:'+localYMD(ws); }
-  if(period==='month') return 'm:'+localYMD(now).slice(0,7);
-  return period||'all';
-}
-function dayOverride(w, key){
-  const v=w&&w.dayOverrides&&w.dayOverrides[key];
-  return (v==null||v==='')?null:Number(v);
-}
+function salaryPeriodKey(period, now){ return Payroll.salaryPeriodKey(period, now); }
+function dayOverride(w, key){ return Payroll.dayOverride(w, key); }
 // What a CLIENT is billed for one shift's hours — a figure entirely separate
 // from shiftPay() above (the worker's own legally-owed wage). client.rateMode
 // ('tiered', the default, or 'fixed') never changes what the worker earns;
@@ -2693,7 +2587,7 @@ function nextWeek(){ weekStart.setDate(weekStart.getDate()+7); syncPicker(); ren
 function goToday(){ weekStart=getSundayOfWeek(new Date()); syncPicker(); render(); }
 // Local-date YYYY-MM-DD — toISOString() is UTC, which in Israel (UTC+2/+3)
 // turns Sunday 00:00 local into the previous Saturday's date.
-function localYMD(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function localYMD(d){ return Payroll.localYMD(d); }
 function syncPicker(){ document.getElementById('datePicker').value=localYMD(weekStart); }
 function onDateChange(){ const v=document.getElementById('datePicker').value; if(!v) return; weekStart=getSundayOfWeek(new Date(v+'T00:00')); render(); }
 
@@ -3362,11 +3256,7 @@ function renderWClientChips(){
   const cnt=document.getElementById('wClientCount'); if(cnt) cnt.textContent=sel.length?('('+sel.length+')'):'';
 }
 // The worker's own regular rate (hourlyRate, or the older regRate); '' = none.
-function wOwnRate(w){
-  if(!w) return '';
-  if(w.regRate!=null&&w.regRate!=='') return w.regRate;
-  return Number(w.hourlyRate)>0?w.hourlyRate:'';
-}
+function wOwnRate(w){ return Payroll.wOwnRate(w); }
 function wClientMatches(){
   const q=(document.getElementById('wClientSearch')?.value||'').trim().toLowerCase();
   return clients.filter(c=>!__wClientIds.includes(c.id) && (!q || (c.name+' '+(c.object||'')).toLowerCase().includes(q)));
@@ -10136,7 +10026,7 @@ function showNewVersionBar(){
     <button type="button" onclick="location.reload()" style="flex:none;border:0;border-radius:999px;padding:6px 14px;background:#4f8ef7;color:#fff;font:inherit;cursor:pointer">${tr('Update')}</button>
     <button type="button" aria-label="${tr('Close')}" onclick="this.parentElement.remove()" style="flex:none;border:0;background:none;color:#7c84a0;font:inherit;font-size:15px;cursor:pointer;padding:4px 8px 4px 2px">✕</button></div>`);
 }
-startVersionWatch(()=>[location.pathname,'og.css','firestore-backend.js',...(window.__scanPipelineReady?['scan-pipeline.js']:[]),...(window.hoursReviewMount?['hours-review.js']:[])]);
+startVersionWatch(()=>[location.pathname,'og.css','payroll.js','firestore-backend.js',...(window.__scanPipelineReady?['scan-pipeline.js']:[]),...(window.hoursReviewMount?['hours-review.js']:[])]);
 
 const AVATAR_SIZE=160; // shared with scan-pipeline.js's cropPortraitAvatar() and confirmAvatarCrop() below (manual crop editor) — must stay in THIS file, not the lazy one, since confirmAvatarCrop() runs on every worker-photo edit regardless of scanning
 // Worker avatars are black and white (per user request 2026-10-04): the
