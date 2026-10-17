@@ -55,7 +55,7 @@ prev=$(cat "$lastnote" 2>/dev/null)
 printf '%s' "$note" > "$lastnote" 2>/dev/null
 if [ "$event" = UserPromptSubmit ]; then
   [ -n "$quiet" ] && exit 0
-  [ "$note" = "$prev" ] && exit 0
+  [ -z "$moved" ] && [ "$note" = "$prev" ] && exit 0
 fi
 
 status=$(git status --short 2>/dev/null)
