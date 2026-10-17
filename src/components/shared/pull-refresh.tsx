@@ -1,6 +1,6 @@
 // PullRefresh: pull down to refresh on a phone (react-migration-plan.md →
 // Look). When the page (or the nearest scrolling box) is at its top, a finger
-// pulled down more than 70px and let go runs `onRefresh`; a spinner shows
+// pulled down far enough (the arrow turns) and let go runs `onRefresh`; a spinner shows
 // under the header while it runs. Touch only; a computer reloads with the page's
 // own controls.
 import * as React from 'react';
@@ -33,7 +33,7 @@ export function PullRefresh({ onRefresh, children, className }: { onRefresh: () 
     setDy(d > 0 ? Math.min(d * 0.5, PULL * 1.3) : 0);
   };
   const onTouchEnd = async () => {
-    const go = dy >= PULL * 0.75 * 1.3 / 1.3 && dy >= PULL * 0.75;
+    const go = dy >= PULL * 0.75;
     start.current = null; setDy(0);
     if (!go) return;
     setBusy(true);
