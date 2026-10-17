@@ -52,6 +52,16 @@ More rules the manager app follows:
 - **Messages from the server** (`json.error`) are English: `showToast()` passes every text through `tr()` (an unknown text stays as it is), and form error lines use `tr((json&&json.error)||'')`. Their Hebrew is in `he.json` like any other text; `check.js` counts the texts of `functions-auth/*.py` and `firestore-backend.js` as used.
 - **Wrapping a new screen:** `tests/i18n/check.js` sees `tr('…')` literals and `data-i18n*`; a text shown through a variable must be added to the dictionaries by hand.
 
+## New stack (`src/lib/i18n.tsx`)
+
+The React pages (docs/build.md, docs/components.md) use the same dictionaries, the same device key and the same rules:
+- `I18N_LANGS`, `I18N_LANG_EN`, `tr(text, params)`, `uiLocale()`, `storedLanguage()` — the old core's names and behaviour; `tr('…')` literals in `src/**/*.ts(x)` are read by `tests/i18n/check.js` like the old pages' (Hebrew must stay complete).
+- `I18nProvider` wraps a page: it loads the stored language (`localStorage.uiLang`, shared with the old pages; this device's copy `localStorage['i18n_' + lang]` first, `/i18n/<lang>.json` refreshes it) before the first draw, sets `<html lang>`, and redraws the whole tree on a change (its children are keyed by the language, so every `tr()` reads the new dictionary). The layout stays left to right: no `dir` is set.
+- `useI18n()` → `{lang, setLanguage, ready}`; `setLanguage(lang)` keeps the choice on the device and calls the provider's `onSave(lang)` — a signed-in page passes the account save there (the old pages' `updateMyLanguage`).
+- The Language button and its window: `LanguageButton` (`src/components/shared/language.tsx`), the same look as the old pages' (`.lang-btn`, `.lang-li`).
+- Dates: `Calendar` / `DatePicker` take the language's date-fns locale; numeric dates stay `dd/mm/yyyy`.
+- A schema's messages (Zod) are English keys; `FormMessage` shows them through `tr()` — add them to the dictionaries like any `tr()` text.
+
 ## Dictionaries (`i18n/<lang>.json`)
 
 - A flat object: `"English text": "translation"`, sorted by key.
