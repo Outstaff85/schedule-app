@@ -43,7 +43,7 @@ elif git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
   fi
 elif git rev-parse -q --verify "origin/$branch" >/dev/null && [ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/$branch")" ] \
     && git merge-base --is-ancestor HEAD "origin/$branch"; then
-  git merge -q --ff-only "origin/$branch" 2>/dev/null && note="Fast-forwarded $branch to origin/$branch."
+  git merge -q --ff-only "origin/$branch" 2>/dev/null && note="Fast-forwarded $branch to origin/$branch." && moved=1
 else
   ahead=$(git rev-list --count origin/main..HEAD 2>/dev/null)
   behind=$(git rev-list --count HEAD..origin/main 2>/dev/null)
