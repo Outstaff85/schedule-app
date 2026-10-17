@@ -97,7 +97,7 @@ export function HoursReview({ call, hideOwner }: { call: HoursCall; hideOwner?: 
         </Tabs>
       )}
       <div className="mb-2 flex items-center gap-2">
-        <Button size="icon" aria-label={tr('Previous month')} onClick={() => set({ month: s.month - 1, data: s.data })}><IconChevronLeft className="size-5" /></Button>
+        <Button size="icon" aria-label={tr('Previous month')} onClick={() => set({ month: s.month - 1 })}><IconChevronLeft className="size-5" /></Button>
         <div className="flex-1 text-center text-base font-bold capitalize" data-testid="hours-month">
           {monthStart(key).toLocaleDateString(uiLocale(), { month: 'long', year: 'numeric' })}
         </div>
@@ -119,7 +119,8 @@ function HoursTab({ data }: { data: HoursData }) {
   const days = React.useMemo(() => monthDays(data), [data]);
   const state = (r: DayRow) => dayState(data, r);
   const pickable = days.filter(r => PICKABLE.includes(state(r).st));
-  const pickKeys = React.useMemo(() => pickable.map(r => r.key), [pickable.map(r => r.key).join()]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pickJoined = pickable.map(r => r.key).join('\n');
+  const pickKeys = React.useMemo(() => (pickJoined ? pickJoined.split('\n') : []), [pickJoined]);
   const sel = useSelection(pickKeys);
   const [win, setWin] = React.useState<{ kind: 'dispute' | 'fix'; row: DayRow } | null>(null);
   const [confirmMonth, setConfirmMonth] = React.useState(false);
@@ -172,8 +173,7 @@ function HoursTab({ data }: { data: HoursData }) {
       <PagedList items={wids} render={wid => {
         const list = byW[wid];
         return (
-          <Section key={wid} label={name(wid)} count={list.length} data-worker={wid}
-            tools={<span className="font-mono text-xs text-fig">{hrs(list.reduce((t, r) => t + r.hours, 0))}</span>}>
+          <Section key={wid} label={name(wid)} count={list.length}            tools={<span className="font-mono text-xs text-fig">{hrs(list.reduce((t, r) => t + r.hours, 0))}</span>}>
             {list.map(r => <DayPlate key={r.key} data={data} row={r} sel={sel} onWindow={(kind, row) => setWin({ kind, row })} />)}
           </Section>
         );
