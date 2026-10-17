@@ -6,7 +6,7 @@
 // or a long press opens its window (no card to read first). Delete never asks
 // (Undo); the record goes when its time is up (the page's delete).
 import * as React from 'react';
-import { IconAlertTriangle, IconBuilding, IconClock, IconPencil, IconPlus, IconTruckDelivery } from '@tabler/icons-react';
+import { IconAlertTriangle, IconBuilding, IconClock, IconPlus, IconTruckDelivery } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -106,7 +106,7 @@ export function Clients({ snap, api }: { snap: ClientsSnapshot; api: ManagerBrid
           <EmptyMedia><IconBuilding /></EmptyMedia>
           <EmptyTitle>{tr('No clients yet')}</EmptyTitle>
           <EmptyDescription>{tr('A client is a site your workers punch in at: its place, its rates and its logins.')}</EmptyDescription>
-          <EmptyContent><Button variant="primary" className="og-new" onClick={() => api.openClient(null)}><IconPencil />{tr('Add the first client')}</Button></EmptyContent>
+          <EmptyContent><Button variant="primary" className="og-new" onClick={() => api.openClient(null)}><IconPlus />{tr('Add the first client')}</Button></EmptyContent>
         </Empty>
       )} />
   );
@@ -133,7 +133,7 @@ export function Suppliers({ snap, api }: { snap: SuppliersSnapshot; api: Manager
           <EmptyMedia><IconTruckDelivery /></EmptyMedia>
           <EmptyTitle>{tr('No suppliers yet')}</EmptyTitle>
           <EmptyDescription>{tr('A supplier is a staffing agency your workers come through: its details, its commission and its portal logins.')}</EmptyDescription>
-          <EmptyContent><Button variant="primary" className="og-new" onClick={() => api.openSupplier(null)}><IconPencil />{tr('Add the first supplier')}</Button></EmptyContent>
+          <EmptyContent><Button variant="primary" className="og-new" onClick={() => api.openSupplier(null)}><IconPlus />{tr('Add the first supplier')}</Button></EmptyContent>
         </Empty>
       )} />
   );
