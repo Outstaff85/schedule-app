@@ -96,6 +96,50 @@ export type ScheduleSnapshot = {
   canAddWorker: boolean;
 };
 
+/** A worker on the Workers tab (stage 6c-1): the record's list fields and what the page works out for it. */
+export type WorkerRow = {
+  id: string;
+  name: string;
+  docGiven: string;
+  docSurname: string;
+  phone: string;
+  /** the ID / passport number (`workerDocId`) */
+  docId: string;
+  status: 'active' | 'vacation' | 'fired';
+  clientIds: string[];
+  supplierId: string;
+  /** YYYY-MM-DD or '' */
+  startDate: string;
+  createdAt?: string | number;
+  /** the Form 101 PDF */
+  docUrl: string;
+  site: string;
+  today: WorkerToday;
+  notices: Notice[];
+  /** this month's hours (`workersMonthHours`, the payroll shift pairing) */
+  monthHours: number;
+  /** `workerDocStatus`: the level, its lines, the list badge (DOCS / ID EXPIRED / … / '' when complete) */
+  docLevel: 'ok' | 'warn' | 'error';
+  docLines: string[];
+  docBadge: string;
+  /** the ID / passport or a document expired or expiring (the Documents filter "expiring") */
+  docExpiring: boolean;
+  /** `workerExpiryStatus`: the contract ended / ending, its deadline as shown */
+  contract: { overdue: boolean; deadline: string } | null;
+  /** `canEditPay(w)` */
+  canPay: boolean;
+};
+
+export type WorkersSnapshot = {
+  ready: boolean;
+  /** every worker in the page's order, except those deleted from the side panel inside their Undo time */
+  workers: WorkerRow[];
+  clients: { id: string; name: string; color?: string; object?: string }[];
+  suppliers: { id: string; name: string; color?: string }[];
+  /** the `workers` section: add, edit, delete, status, punch link, Select */
+  canEdit: boolean;
+};
+
 /** One date of one worker: a shift for that date only, or null to drop the change. */
 export type DatedChange = { workerId: string; date: string; shift: DayShift | null };
 
@@ -129,12 +173,25 @@ export type ManagerBridge = {
   exportAs(kind: 'excel' | 'pdf' | 'json'): void;
   /** the page's toast (`showToast`) */
   toast(text: string): void;
+
+  // ── Workers (stage 6c-1) ──
+  workers(): WorkersSnapshot;
+  /** the scan of a new worker's passport / ID (`startNewScan`) */
+  scanNew(): void;
+  /** the pay window (`openPayModal`) */
+  openPay(id: string): void;
+  /** copies the worker's punch link (`copyWorkerLink`) */
+  copyLink(id: string): void;
+  /** sets the status of several workers; saved */
+  setStatus(ids: string[], status: 'active' | 'vacation'): void;
+  /** removes the workers and their files (`deleteWorkerNow`) once their Undo time is up; saved */
+  deleteWorkers(ids: string[]): void;
 };
 
 declare global {
   interface Window {
     ManagerBridge?: ManagerBridge;
-    ManagerIsland?: { renderToday(): void; renderSchedule(): void };
+    ManagerIsland?: { renderToday(): void; renderSchedule(): void; renderWorkers(): void };
   }
 }
 

@@ -22,8 +22,9 @@ type F = typeof features;
 export type DataColumn<T extends RowData> = ColumnDef<F, T, any> & { meta?: { num?: boolean } }; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 const PAGE = 10;
+const inControl = (e: React.MouseEvent) => !!(e.target as HTMLElement).closest('button, a, input, [data-no-tap]');
 
-function DataTable<T extends RowData>({ columns, data, footer, card, empty, rowId, className, ...rest }: {
+function DataTable<T extends RowData>({ columns, data, footer, card, empty, rowId, onRowOpen, onRowEdit, className, ...rest }: {
   columns: DataColumn<T>[];
   data: T[];
   /** the totals row: one cell per column (covers every row, not only the shown ones) */
@@ -32,6 +33,9 @@ function DataTable<T extends RowData>({ columns, data, footer, card, empty, rowI
   card?: (row: T, index: number) => React.ReactNode;
   empty?: React.ReactNode;
   rowId?: (row: T, index: number) => string;
+  /** a tap on a row reads it (opens its card); a double click edits it — a control inside keeps its own job */
+  onRowOpen?: (row: T) => void;
+  onRowEdit?: (row: T) => void;
   className?: string;
 } & Omit<React.ComponentProps<'div'>, 'children'>) {
   const phone = useIsPhone();
@@ -65,7 +69,10 @@ function DataTable<T extends RowData>({ columns, data, footer, card, empty, rowI
         </TableHeader>
         <TableBody>
           {rows.slice(0, shown).map(r => (
-            <TableRow key={r.id}>
+            <TableRow key={r.id} data-row-id={r.id}
+              className={cn((onRowOpen || onRowEdit) && 'cursor-pointer')}
+              onClick={onRowOpen ? e => { if (!inControl(e)) onRowOpen(r.original); } : undefined}
+              onDoubleClick={onRowEdit ? e => { if (!inControl(e)) onRowEdit(r.original); } : undefined}>
               {r.getAllCells().map(c => (
                 <TableCell key={c.id} num={!!(c.column.columnDef as DataColumn<T>).meta?.num}><table.FlexRender cell={c} /></TableCell>
               ))}
