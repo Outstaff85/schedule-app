@@ -6,6 +6,7 @@
 // still belong to a tab that has not moved (a worker's notices, today's shift,
 // the punch's site), so nothing is computed twice.
 import type { Punch } from '@/lib/payroll';
+import type { AccData, AccWorker, ApprovalDoc, HrLogin } from './accounting';
 
 export type Notice = { lvl: 'red' | 'amber'; word: string; title: string };
 /** A worker today: on vacation, the latest punch (in / out), no punch on a started shift, or nothing. */
@@ -403,6 +404,73 @@ export type ManagerBridge = WorkerBridge & {
   punchInfo(clientId: string): { client: { id: string; name: string }; workers: { id: string; name: string }[] } | null;
   /** adds the punch to the local log and sends it (`gsSavePunch`) */
   addPunch(p: ManualPunch): void;
+
+  // ── Accounting (stage 6e) ──
+  accounting(): AccountingSnapshot;
+  /** the page's data the figures read (src/manager/accounting.ts) */
+  accData(): AccData;
+  /** loads the punches the period needs (`ensurePunchesSince`), then shows it; render() */
+  setPeriod(period: string): Promise<void>;
+  /** loads the punches a period needs (an export of another period) */
+  ensurePeriod(period: string): Promise<void>;
+  openClientWindow(id: string): void;
+  /** the month's hours-approval documents (`hourApprovalsOf`: kept a minute unless `fresh`), once the first punch load is in */
+  hourApprovals(month: string, fresh?: boolean): Promise<ApprovalDoc[]>;
+  /** a proposed fix accepted (the shift's punches move) or rejected; the error text, or '' */
+  resolveFix(docId: string, key: string, accept: boolean): Promise<string>;
+  /** a client's signed month: the PDF in a new tab */
+  openSigned(path: string): void;
+  /** approves a pending hours batch (`approveHoursBatch`: the punches made, loaded back to the earliest) */
+  approveBatch(id: string): Promise<void>;
+  /** rejects batches (`rejectHoursBatch` / `bulkHoursBatches`, which ask first) */
+  rejectBatches(ids: string[]): Promise<void>;
+  /** posts to the `hours` function with the login's ID token (the HR's Hours approval) */
+  hoursCall(body: Record<string, unknown>): Promise<Record<string, unknown>>;
+  /** SheetJS, loaded on first need (`loadXlsx`); null when it failed */
+  xlsx(): Promise<Xlsx | null>;
+  /** the pay window's worker, whether it is read-only, and the period picked */
+  payInfo(id: string): { w: AccWorker; ro: boolean; period: string } | null;
+  /** writes the pay window's fields on the worker (a field undefined is removed), saves, closes the window; render() */
+  savePay(id: string, patch: Record<string, unknown>): void;
+};
+
+/** The SheetJS calls the exports use. */
+export type Xlsx = {
+  utils: { book_new(): unknown; aoa_to_sheet(aoa: unknown[][]): unknown; book_append_sheet(wb: unknown, ws: unknown, name: string): void };
+  writeFile(wb: unknown, name: string): void;
+};
+
+/** A pending hours batch (`tenants/{t}/pendingHours`). */
+export type PendingBatch = { batchId?: string; id?: string; status: string; fileName?: string; uploadedBy?: string; entries: { workerId: string; clientId?: string }[] };
+
+/** The Accounting tab's snapshot (stage 6e). */
+export type AccountingSnapshot = {
+  ready: boolean;
+  /** 'week' | 'month' | 'm:YYYY-MM' | 'all' — kept on the page (the pay window's days follow it) */
+  period: string;
+  /** `uiLocale()`: the month names of the period list */
+  locale: string;
+  /** an HR with the Accounting section: its own workers' Salary only, with its commission (`hrPayOnly`) */
+  payOnly: boolean;
+  /** an HR with an hours tick: Hours approval (the shared React screen) on top (`hrHourReview`) */
+  review: boolean;
+  /** an HR with an hours tick but no Accounting section: Hours approval only */
+  reviewOnly: boolean;
+  me: { uid: string; commissionRate: number; commissionDayRate: number };
+  /** the `exports` section */
+  canExport: boolean;
+  /** the owner / super-admin: approve or reject hours batches */
+  canApprove: boolean;
+  /** `canEditPay(w)` per worker id */
+  canPay: Record<string, boolean>;
+  /** the HR logins with their commission (owner / super-admin; Payable by HR) */
+  hrUsers: HrLogin[];
+  /** hours batches waiting (`__hoursBatches`) and a key that changes with them */
+  waiting: number;
+  batchesKey: string;
+  /** counts the openings of the tab: the approvals are read afresh on each */
+  openSeq: number;
+  firmName: string;
 };
 
 
@@ -560,6 +628,12 @@ export type ManagerIsland = {
   saveClient(opts: { auto?: boolean }): void;
   openSupplier(s: SupplierRecord, editId: string | null): void;
   openManualPunch(clientId: string): void;
+  // ── Accounting (stage 6e) ──
+  renderAccounting(): void;
+  /** Salary / Billing / Approvals / Alerts */
+  setAccTab(tab: string): void;
+  /** the pay window, drawn into the page's #payModal */
+  openPay(id: string): void;
 };
 
 declare global {
