@@ -45,7 +45,20 @@ GitHub Actions builds after the merge: `npm ci`, `npm run build`, deploy `dist/`
 
 ## Stages
 
-Every stage is its own PR. It is mergeable on its own: the site keeps working, CI is green, and the old and new pages live side by side until the stage is done. Merging always needs the owner's approval.
+Every stage is its own PR. It is mergeable on its own: the site keeps working, CI is green, and the old and new pages live side by side until the stage is done. The stages are merged by the session that built them (Auto-continue below).
+
+### Auto-continue (the owner's standing order, 2026-10-17)
+The owner approved running the stages one after another, **one stage per session (a fresh context each time)**, **and each stage is merged into `main` (= deployed) by the session that built it, without asking, once every CI check on its PR is green and the stage's own "Mergeable when" holds** — this overrides "never merge without asking" for these stages only (CLAUDE.md → Git workflow). Anything outside this plan still needs the owner's OK.
+
+How a run works (a run = one session, started by the scheduled task "React migration autopilot" every 2 hours, or by hand with the sentence "Read docs/react-migration-plan.md and do the next stage"):
+1. `git fetch origin main` and work from the latest `main`.
+2. If an open PR titled `React migration stage N: …` exists, an earlier run was cut off or is waiting on CI: check out its branch and finish that stage (fix red CI, merge when green). Otherwise take the first stage that is not done in the stage status line at the top of this file, start a branch `react-stage-N` from `main`, and open its PR early (title `React migration stage N: <name>`) so the next run can find it.
+3. Read the docs the stage touches before the code (CLAUDE.md index); build the stage; run every test suite (`npm run build`, `tests/build/check.js`, `tests/design/check.js`, `tests/i18n/check.js`, `tests/icons/check.js`, the rules and functions tests, `tests/e2e` on `dist/`); fix until green; update the docs, the dictionaries (Hebrew complete), `service-worker.js` CACHE when it changes; mark the stage done in the status line and in its section, in the same PR.
+4. Wait for the PR's CI; when green and the stage's "Mergeable when" holds, merge it (GitHub MCP `merge_pull_request`, merge method `merge`). If CI is red, fix and push; never skip, disable or loosen a test, and never merge a payroll stage whose old and new numbers differ.
+5. **Stop after one merged stage.** The next run starts the next stage in a fresh session.
+- A stage that cannot be finished (a failure it cannot fix, a decision only the owner can make) is marked "blocked: <reason>" in the status line (via its PR), reported in the PR, and the run stops; the next run moves on only to a stage that does not depend on it.
+- Each run starts from this file and the docs it names, not from an earlier chat.
+- When every stage (0–7) is done, a run does nothing but say so and switch the scheduled task off.
 
 ### Stage 0. Foundation
 - **Done.** Vite + TypeScript project beside the current pages; Tailwind with the shadcn variables mapped onto `tokens.json` (through `og.css`); shadcn initialized (`components.json`, `cn()`), no components yet.
