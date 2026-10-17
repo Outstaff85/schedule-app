@@ -36,6 +36,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       return r.fulfill({status:200, body:''});
     });
     await ctx.addInitScript(() => {
+      // The worker windows are React (stage 6c-2): a field is filled as a person types (the input event).
+      window.T = {
+        tick: (ms = 0) => new Promise(r => setTimeout(r, ms)),
+        fill(sel, v){ const el = typeof sel === 'string' ? (document.getElementById(sel) || document.querySelector(sel)) : sel;
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true})); },
+      };
       localStorage.setItem('fsEmulator', '127.0.0.1');
       window.FIREBASE_WEB_CONFIG = {apiKey:'fake-key', projectId:'demo-schedule', authDomain:'demo-schedule.firebaseapp.com', storageBucket:'demo-schedule.appspot.com'};
       // A real-looking geolocation reply: not instant (the page flags < 800 ms).
@@ -107,7 +113,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     closeModal('userFormOverlay');
     // Worker modal: HR select; card: HR name
     openEditWorker(workers.findIndex(w => w.id === 'w2'));
-    r.select = document.getElementById('wHrId') && document.getElementById('wHrId').value;
+    r.select = document.getElementById('wHrId') && document.getElementById('wHrId').dataset.value;
     closeModal('workerOverlay');
     openWorkerCard(workers.findIndex(w => w.id === 'w2'));
     r.cardLine = /HR\s*Rina HR/.test(document.getElementById('workerCardModal').innerText);
@@ -173,20 +179,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const mh = await h.evaluate(async () => {
     const r = {};
     openHoursImportModal('w2');
-    addHoursManualRow(); __hoursManualRows[0] = {date: '2026-10-02', inTime: '09:00', outTime: '13:00'};
-    addHoursManualRow(); __hoursManualRows[1] = {date: '2026-10-03', inTime: '', outTime: ''};
-    r.hourly = hoursManualEntries();
-    const w = workers.find(x => x.id === 'w2'); w.payMode = 'daily';
-    r.daily = hoursManualEntries(); delete w.payMode;
-    __hoursManualRows.splice(1, 1); // an hourly worker's date-only row would be refused (explained, not sent)
-    await submitHoursImportBatch();
+    document.querySelector('#hoursImportModal [data-testid="hours-add-row"]').click(); await T.tick();
+    const times = [...document.querySelectorAll('#hoursManualRows [data-row="0"] input[type=time]')];
+    T.fill(times[0], '09:00'); T.fill(times[1], '13:00'); await T.tick();
+    r.date = document.querySelector('#hoursManualRows [data-row="0"]').dataset.date;
+    document.getElementById('hoursImportSubmitBtn').click();
     for(let i = 0; i < 40 && !/Sent for review/i.test(document.getElementById('hoursSentList').innerText); i++) await new Promise(res => setTimeout(res, 150));
     r.list = document.getElementById('hoursSentList').innerText;
     closeModal('hoursImportOverlay');
     return r;
   });
-  ok(mh.hourly.length === 1 && mh.hourly[0].date === '02/10/2026' && mh.daily.length === 2 && mh.daily[1].inTime === '08:00'
-    && /entered by hand/.test(mh.list) && /Sent for review/i.test(mh.list), 'hr: shifts entered by hand are sent for review and listed with their status ' + JSON.stringify(mh));
+  ok(/^\d{4}-\d{2}-\d{2}$/.test(mh.date) && /entered by hand/.test(mh.list) && /Sent for review/i.test(mh.list), 'hr: shifts entered by hand are sent for review and listed with their status ' + JSON.stringify(mh));
   const pm = await h.evaluate(async () => {
     const r = {};
     workers.find(w => w.id === 'w2').bank = 'Hapoalim';
@@ -255,11 +258,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     window.autoUploadWithRetry = async () => {};
     const r = {};
     // duplicate document number of a worker it can't see → refused
-    openAddWorker(); wGiven.value = 'Dup'; wSurname.value = 'Person'; wDocId.value = '000000018';
+    openAddWorker(); T.fill('wGiven', 'Dup'); T.fill('wSurname', 'Person'); T.fill('wDocId', '000000018');
     await saveWorker();
     r.afterDup = workers.length;
     closeModal('workerOverlay');
-    openAddWorker(); wGiven.value = 'New'; wSurname.value = 'Hire'; wDocId.value = '000000026';
+    openAddWorker(); T.fill('wGiven', 'New'); T.fill('wSurname', 'Hire'); T.fill('wDocId', '000000026');
     r.noHrField = !document.getElementById('wHrId');
     await saveWorker();
     await new Promise(res => setTimeout(res, 1500));

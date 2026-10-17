@@ -1,7 +1,9 @@
 // SignaturePad: a glass box to sign in with a finger (or a mouse). The ink is
 // the page's text colour on screen; `image()` gives the signature as a PNG
 // (dark ink on a clear background, ready for a white page); `clear()` wipes
-// it. `onInk(has)` tells the caller whether anything is drawn. Inside a
+// it. `onInk(has)` tells the caller whether anything is drawn. `initial` (a PNG
+// data URL) is a signature drawn before — the manager's worker window keeps it
+// across a rescan; it counts as ink until cleared. Inside a
 // Window on a phone the box does not drag the sheet (data-vaul-no-drag).
 import * as React from 'react';
 import { IconEraser } from '@tabler/icons-react';
@@ -17,16 +19,18 @@ export interface SignaturePadHandle {
 
 type Pt = { x: number; y: number };
 
-export const SignaturePad = React.forwardRef<SignaturePadHandle, { onInk?: (has: boolean) => void; className?: string }>(
-  function SignaturePad({ onInk, className }, ref) {
+export const SignaturePad = React.forwardRef<SignaturePadHandle, { onInk?: (has: boolean) => void; className?: string; initial?: string | null }>(
+  function SignaturePad({ onInk, className, initial }, ref) {
     const canvas = React.useRef<HTMLCanvasElement>(null);
     const strokes = React.useRef<Pt[][]>([]);
-    const [has, setHas] = React.useState(false);
+    const base = React.useRef<HTMLImageElement | null>(null);
+    const [has, setHas] = React.useState(!!initial);
 
     const draw = React.useCallback((c: HTMLCanvasElement, color: string, scale: number) => {
       const g = c.getContext('2d');
       if (!g) return;
       g.clearRect(0, 0, c.width, c.height);
+      if (base.current && base.current.complete) g.drawImage(base.current, 0, 0, c.width, c.height);
       g.strokeStyle = color; g.lineWidth = 2.4 * scale; g.lineCap = 'round'; g.lineJoin = 'round';
       strokes.current.forEach(s => {
         g.beginPath();
@@ -42,6 +46,13 @@ export const SignaturePad = React.forwardRef<SignaturePadHandle, { onInk?: (has:
       if (c.width !== Math.round(r.width * dpr)) { c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr); }
       draw(c, getComputedStyle(c).color, dpr);
     }, [draw]);
+    React.useEffect(() => {
+      if (!initial) return;
+      const im = new Image();
+      im.onload = () => { redraw(); setHas(true); onInk?.(true); };
+      im.src = initial;
+      base.current = im;
+    }, [initial]); // eslint-disable-line react-hooks/exhaustive-deps
     React.useEffect(() => {
       redraw();
       const ro = new ResizeObserver(redraw);
@@ -65,13 +76,13 @@ export const SignaturePad = React.forwardRef<SignaturePadHandle, { onInk?: (has:
       if (!s || !canvas.current!.hasPointerCapture(e.pointerId)) return;
       s.push(at(e)); redraw();
     };
-    const clear = () => { strokes.current = []; redraw(); mark(false); };
+    const clear = () => { strokes.current = []; base.current = null; redraw(); mark(false); };
 
     React.useImperativeHandle(ref, () => ({
       clear,
       image: () => {
         const c = canvas.current;
-        if (!c || !strokes.current.length) return null;
+        if (!c || (!strokes.current.length && !base.current)) return null;
         const r = c.getBoundingClientRect(), out = document.createElement('canvas');
         out.width = Math.round(r.width * 2); out.height = Math.round(r.height * 2);
         draw(out, '#10213a', 2);

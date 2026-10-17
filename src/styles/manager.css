@@ -16,3 +16,8 @@
 :where([data-island]) :where(button) { background: none; border: 0 solid; color: inherit; font: inherit; padding: 0; cursor: pointer; text-align: inherit; }
 :where([data-island]) :where(svg) { display: block; flex-shrink: 0; }
 :where([data-island]) :where(h1, h2, h3, h4, p) { font: inherit; }
+
+/* The worker windows (stage 6c-2) are drawn into the page's overlays
+   (z-index 100–960): their menus, selects, date pickers and tooltips open
+   above them (Radix copies the content's z-index to its wrapper). */
+[data-slot="select-content"], [data-slot="dropdown-menu-content"], [data-slot="popover-content"], [data-slot="tooltip-content"] { z-index: 3600; }

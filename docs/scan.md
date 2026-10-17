@@ -8,7 +8,7 @@ The worker modal that the scan opens is in [workers.md](workers.md); the PDF bui
 
 - **`startNewScan()`** — the "Scan passport" button.
 - **`rescanWorkerDoc(workerId)`** — a scan tagged to an existing worker; sets `window.__aiRescanWorkerId`.
-- **`rescanFromWorkerModal()`** / **`rescanFromWorkerCard(wi)`** — "Scan / Rescan" in the worker modal and card, keeping the form as a draft ([workers.md](workers.md)).
+- **`rescanFromWorkerModal()`** / **`rescanFromWorkerCard(wi)`** — "Scan / Rescan" in the worker window and card, keeping the window's form as a draft (`ManagerIsland.editorDraft()`, the React window — [workers.md](workers.md)).
 
 Both:
 1. warm the Cloud Functions (`warmCloudFunctions(SCAN_WARM_URLS())` — `{"ping":true}` to `preprocess_scan`, `fill_form_101` and `ai_read`; at most once per URL every 4 min, results in `__fnWarm`);

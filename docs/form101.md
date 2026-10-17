@@ -20,7 +20,7 @@ All paths call `aiFillForm101(isId, 'upload', workerId, btn, presetAssets?)`.
 | A Form 101 field changed on an existing worker | `regenerateWorkerDoc(id)` in the background | the stored sidecar (`loadWorkerAssets(w.assetsFileId)`) — never the live globals, which may belong to another scan |
 | Firm profile changed (employer block) | `regenerateAllWorkerDocs()`, one worker at a time, for workers that have `docUrl` and `assetsFileId` | sidecars |
 
-The trigger fields are `FORM101_WATCHED_FIELDS` in `saveWorker()` ([workers.md](workers.md)). The `'download'` mode (local download instead of upload) still exists in the function but nothing calls it.
+The trigger fields are `FORM101_WATCHED` in `src/manager/worker.ts`, checked by `form101Changed()` in `saveWorker()` (`src/manager/worker-save.ts`, [workers.md](workers.md)). The `'download'` mode (local download instead of upload) still exists in the function but nothing calls it.
 
 ## The payload (`aiFillForm101`)
 
@@ -36,7 +36,7 @@ Everything comes from the saved worker record, `targetWorker`:
 | `address` | street + house number in one string |
 | `city`, `marital`, `workStart` (`workStartDate`), `healthFund`, `children` | worker — for both document types |
 | `spouse` | `{surname, given, idNo, dob, income}` when any spouse field is set |
-| `signaturePngBase64` | live pad (`getSignaturePng('wSigCanvas')`, or the copy captured in `__wCapturedSigPng` before the modal is replaced) or the sidecar's `sigPng`; a signature drawn while editing an existing worker is passed to the rebuild (`regenerateWorkerDoc(id, newSigPng)`, `sigChanged`) |
+| `signaturePngBase64` | the pad of the worker window (the shared `SignaturePad`; its save hands the PNG to `window.__wCapturedSigPng`, which `getSignaturePng()` returns) or the sidecar's `sigPng`; a signature drawn while editing an existing worker is passed to the rebuild (`regenerateWorkerDoc(id, newSigPng)`, `sigChanged`) |
 | `extraPages` | `[{b64, mediaType, caption}]`: the main scan first (`'Document scan'`), then the other pages (`'Document'`) |
 
 Missing firm-profile fields (`firmProfileMissing`) are shown as a toast after the save.
