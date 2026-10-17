@@ -10,7 +10,7 @@ cd "$CLAUDE_PROJECT_DIR" 2>/dev/null || exit 0
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 note=""
 
-if ! timeout 20 git fetch -q origin 2>/dev/null; then
+if ! git fetch -q origin 2>/dev/null; then
   note="git fetch failed (offline?) - checkout NOT synced with GitHub."
 elif [ -n "$(git status --porcelain 2>/dev/null)" ]; then
   note="Uncommitted changes present - checkout NOT auto-synced."
