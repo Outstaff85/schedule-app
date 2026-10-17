@@ -7,10 +7,14 @@
 #   - anything else (own unmerged commits) -> left alone, only reported.
 # Also run outside Claude Code by the local PC's scheduled sync (scripts/install-local-sync.ps1),
 # where CLAUDE_PROJECT_DIR is unset and the repo root is found from this file's own path.
+# $1 = the hook event (SessionStart by default). As UserPromptSubmit it runs before every
+# message of a live session and stays silent unless the checkout changed or needs attention.
 cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/../..}" 2>/dev/null || exit 0
 
+event=${1:-SessionStart}
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 note=""
+quiet=""
 
 if ! git fetch -q origin 2>/dev/null; then
   note="git fetch failed (offline?) - checkout NOT synced with GitHub."
