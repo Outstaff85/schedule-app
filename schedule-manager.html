@@ -2719,16 +2719,27 @@ function renderShiftRequests(){
 }
 async function decideShiftRequest(id,ok){
   const q=__shiftReqs.find(x=>x.id===id); if(!q||!hasPermission('schedule')) return;
+  // Confirming changes both workers' dates and the request in one write
+  // (firestore-backend.js): either all of it is saved or nothing, and the
+  // dates are put back here if it fails.
+  let a=null, b=null, before=null, body={action:'decideShiftRequest',id,status:ok?'confirmed':'declined'};
   if(ok){
-    const a=workers.find(w=>w.id===q.workerId), b=workers.find(w=>w.id===q.toWorkerId);
+    a=workers.find(w=>w.id===q.workerId); b=workers.find(w=>w.id===q.toWorkerId);
     if(!a||!b){ showToast(tr('This worker is not in your list')); return; }
+    // An own-workers HR may change only its own workers' schedules: a colleague of another HR is the manager's to hand over.
+    if(isOwnWorkersHr() && (a.hrId!==mySession().uid || b.hrId!==mySession().uid)){ showToast(tr('{0} is not your worker — ask the manager to confirm',{0:(a.hrId!==mySession().uid?a:b).name})); return; }
+    before=[a.dateShifts, b.dateShifts];
     a.dateShifts=pruneDateShifts(Object.assign({}, a.dateShifts, {[q.date]:{type:'off',start:null,end:null}}));
     b.dateShifts=pruneDateShifts(Object.assign({}, b.dateShifts, {[q.date]:{type:'work',start:q.start,end:q.end}}));
-    autoSave();
+    Object.assign(body, {schedule:getDataObj(), workerIds:[a.id, b.id]});
   }
   let j=null;
-  try{ j=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'decideShiftRequest',id,status:ok?'confirmed':'declined'})})).json(); }catch(e){}
-  if(!j||!j.ok){ showToast(tr('Could not save the decision')); loadShiftRequests(true); return; }
+  try{ j=await (await fetch(API_URL,{method:'POST',body:JSON.stringify(body)})).json(); }catch(e){}
+  if(!j||!j.ok){
+    if(before){ a.dateShifts=before[0]; b.dateShifts=before[1]; render(); }
+    showToast(tr('Could not save the decision')); loadShiftRequests(true); return;
+  }
+  if(ok) autoSave(); // nothing left to write; refreshes this device's cache
   q.status=ok?'confirmed':'declined';
   render(); showToast(ok?tr('Shift handed over'):tr('Offer declined'));
 }
