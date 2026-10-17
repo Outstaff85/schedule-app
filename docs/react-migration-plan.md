@@ -95,6 +95,7 @@ How a run works (a run = one session, started by the scheduled task "React migra
 
 ### Stage 6. Manager app, tab by tab
 One PR per tab, in this order: 6a Today, 6b Schedule, 6c Workers (list, card, worker window, documents, hours), 6d Clients and Suppliers, 6e Accounting (Chart on Recharts, Data Table), 6f Admin (punch log, firms, users, errors). The shell and the tabs not yet moved stay on the old code.
+- **6b adds "Copy last week"** (owner, 2026-10-17; from the UI audit): a button on the Schedule tab that copies the previous week's shifts into the shown week, and "Repeat for N weeks" that copies the shown week forward. Days that already have a shift keep it (no overwrite); the result is shown before saving, with Undo (`undoDelete`). It writes only the schedule, never punches or pay. The 6b PR adds its e2e check and describes it in docs/app-core.md → Schedule tab.
 - **Mergeable when:** the tab works, its e2e tests are rewritten and green, the other tabs still open.
 
 ### Stage 7. Cleanup
