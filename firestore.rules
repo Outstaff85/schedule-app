@@ -151,14 +151,18 @@ service cloud.firestore {
       // punch function from the worker's own link. Managers read them (an
       // own-workers hr only its own workers', by hrId); a schedule writer
       // confirms or declines a pending offer, changing nothing but its status
-      // and who / when decided (the schedule itself is written as a worker).
+      // and who / when decided (the schedule itself is written as a worker, in
+      // the same batch); decidedByUid must be the decider's own uid. The owner
+      // reassigning a worker's HR moves its requests' hrId (setPunchesHr).
       match /shiftRequests/{id} {
         allow read: if manager(t) || (hrMine(t) && oldHr() == uid());
         allow update: if (scheduleWriter(t) || (hrAll(t) && hrCan(t, 'schedule'))
             || (hrMine(t) && hrCan(t, 'schedule') && oldHr() == uid()))
           && resource.data.kind == 'swap' && resource.data.status == 'pending'
           && request.resource.data.status in ['confirmed', 'declined']
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedAt', 'decidedBy']);
+          && request.resource.data.decidedByUid == uid()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedAt', 'decidedBy', 'decidedByUid']);
+        allow update: if isAdmin(t) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hrId']);
         allow create, delete: if false;
       }
       match /pendingHours/{id} {

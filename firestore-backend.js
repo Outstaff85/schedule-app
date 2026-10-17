@@ -201,7 +201,10 @@
     // loaded or saved, and deletes the ones that are gone. Each document is
     // its own record, so two managers editing different workers never
     // overwrite each other.
-    async function saveSchedule(t, data){
+    // first (optional): {ops, ids} — writes that must land together with the
+    // documents of those ids (a confirmed shift offer: the request and its two
+    // workers). They go first, in the first batch, so all of them commit or none.
+    async function saveSchedule(t, data, first){
       if(knownTenant !== t) await loadSchedule(t); // never diff against another firm
       const hrScoped = !!(await hrOnly());
       const ops = [], next = {};
@@ -225,9 +228,15 @@
         });
         known[kind].forEach((_, id) => { if(!next[kind].has(id)) ops.push(['delete', F.doc(db,'tenants',t,kind,id)]); });
       }
+      if(first){
+        const linked = new Set((first.ids || []).map(String));
+        const isLinked = op => op[1].parent.id === 'workers' && linked.has(op[1].id);
+        ops.splice(0, ops.length, ...first.ops, ...ops.filter(isLinked), ...ops.filter(op => !isLinked(op)));
+      }
       for(let i = 0; i < ops.length; i += BATCH_LIMIT){
         const batch = F.writeBatch(db);
-        ops.slice(i, i + BATCH_LIMIT).forEach(op => op[0] === 'set' ? batch.set(op[1], op[2]) : batch.delete(op[1]));
+        ops.slice(i, i + BATCH_LIMIT).forEach(op => op[0] === 'set' ? batch.set(op[1], op[2])
+          : op[0] === 'update' ? batch.update(op[1], op[2]) : batch.delete(op[1]));
         await batch.commit();
       }
       for(const kind in next) known[kind] = next[kind];
@@ -523,9 +532,11 @@
       // Several workers at once (8 in flight): a bulk assign of dozens of
       // workers one after another was slow.
       let n = 0, next = 0;
+      // The worker's days off and shift offers move with it too, so the new
+      // own-workers HR sees them and the old one no longer does.
       async function one(wid){
-        const snap = await F.getDocs(F.query(col(t,'punches'), F.where('workerId','==',wid)));
-        const refs = snap.docs.filter(d => (d.data().hrId || null) !== (hrId || null)).map(d => d.ref);
+        const snaps = await Promise.all(['punches', 'shiftRequests'].map(c => F.getDocs(F.query(col(t,c), F.where('workerId','==',wid)))));
+        const refs = snaps.flatMap(s => s.docs).filter(d => (d.data().hrId || null) !== (hrId || null)).map(d => d.ref);
         const commits = [];
         for(let i = 0; i < refs.length; i += BATCH_LIMIT){
           const batch = F.writeBatch(db);
@@ -632,11 +643,18 @@
           return {ok:true, requests: snap.docs.map(d => ({id: d.id, ...d.data()})).filter(r => String(r.date||'') >= d0)};
         }
         // A manager confirms or declines a pending shift offer: only its status
-        // and who / when (firestore.rules); the schedule is saved as workers.
+        // and who / when (firestore.rules; decidedByUid must be the caller).
+        // Confirming carries the schedule with both workers' dates changed:
+        // the request and the two worker documents commit in one batch, so a
+        // failed write never leaves the shift handed over with the offer pending.
         case 'decideShiftRequest': {
           const status = params.status === 'confirmed' ? 'confirmed' : 'declined';
-          await F.updateDoc(F.doc(db, 'tenants', t, 'shiftRequests', String(params.id)),
-            {status, decidedAt: new Date().toISOString(), decidedBy: ctx.username || auth.currentUser.uid});
+          const ref = F.doc(db, 'tenants', t, 'shiftRequests', String(params.id));
+          const fields = {status, decidedAt: new Date().toISOString(), decidedBy: ctx.username || auth.currentUser.uid,
+            decidedByUid: auth.currentUser.uid};
+          if(status === 'confirmed' && params.schedule)
+            return saveSchedule(t, params.schedule, {ops: [['update', ref, fields]], ids: params.workerIds});
+          await F.updateDoc(ref, fields);
           return {ok:true};
         }
         // The notifications this login has read (the bell's "Mark all read"),
