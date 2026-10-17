@@ -7,90 +7,9 @@
    Glass values. Never define a token of og.css here (tests/design/check.js). */
 @import "tailwindcss" source(none);
 @import "tw-animate-css";
+@import "./theme.css";
 @source "../";
 @source "../../next";
-
-@theme inline {
-  --color-background: var(--ground);
-  --color-foreground: var(--ink);
-  --color-card: var(--plate);
-  --color-card-foreground: var(--ink);
-  --color-popover: var(--glass-menu);
-  --color-popover-foreground: var(--ink);
-  --color-primary: var(--glass-strong);
-  --color-primary-foreground: var(--ink);
-  --color-secondary: var(--glass);
-  --color-secondary-foreground: var(--ink);
-  --color-muted: var(--surface-2);
-  --color-muted-foreground: var(--ink-2);
-  --color-accent: var(--glass-active);
-  --color-accent-foreground: var(--ink);
-  --color-destructive: var(--red);
-  --color-border: var(--hairline);
-  --color-input: var(--glass-edge);
-  --color-ring: var(--accent);
-  /* Odinson Glass names */
-  --color-plate: var(--plate);
-  --color-plate-on: var(--plate-on);
-  --color-glass: var(--glass);
-  --color-glass-edge: var(--glass-edge);
-  --color-sheet: var(--glass-sheet);
-  --color-faint: var(--ink-3);
-  --color-ink: var(--ink);
-  --color-ink-2: var(--ink-2);
-  --color-red-soft: var(--red-soft);
-  --color-info: var(--accent);
-  --color-ok: var(--green);
-  --color-warn: var(--amber);
-  --color-bad: var(--red);
-  --color-fig: var(--fig);
-}
-
-/* Odinson Glass surfaces as utilities (values from docs/design/system: the
-   popover / menu glass, the sheet glass, the form field of a window). The
-   components that og.css already draws (the glass button, plates, the ⋮,
-   swipe actions, tick boxes, the Undo snack) use its classes instead. */
-@utility og-glass-menu {
-  background: rgba(30, 35, 51, .82);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, .22);
-  box-shadow: var(--shadow-pop);
-  border-radius: var(--radius-lg);
-  color: var(--ink);
-}
-@utility og-glass-sheet {
-  background: var(--glass-sheet);
-  -webkit-backdrop-filter: blur(18px);
-  backdrop-filter: blur(18px);
-  border: 1px solid var(--glass-edge);
-  color: var(--ink);
-}
-@utility og-field {
-  height: 38px;
-  width: 100%;
-  min-width: 0;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, .12);
-  background-color: rgba(255, 255, 255, .05);
-  color: var(--ink);
-  font-size: 14px;
-  padding: 0 12px;
-  outline: none;
-  transition: border-color .2s, box-shadow .2s;
-  &::placeholder { color: rgba(255, 255, 255, .35); }
-  &:focus-visible { border-color: rgba(34, 211, 238, .6); box-shadow: 0 0 0 3px rgba(34, 211, 238, .12); }
-  &:disabled { opacity: .55; cursor: not-allowed; }
-  &[aria-invalid="true"] { border-color: rgba(255, 95, 109, .7); }
-}
-/* the section label: 11/600 uppercase, .12em tracking */
-@utility og-label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-  color: var(--ink-2);
-}
 
 @layer base {
   * { border-color: var(--color-border); }

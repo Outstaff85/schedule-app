@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="he">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -20,7 +20,7 @@
   :root {
     --bg:#0f1117; --bg2:#181c27; --bg3:#1e2333;
     --border:rgba(255,255,255,0.08); --border2:rgba(255,255,255,0.14);
-    --text:#e8eaf0; --text2:#8b90a0; --text3:#4a5068;
+    --text:#e8eaf0; --text2:var(--ink-2); --text3:#858ba0;
     --accent2:#3d7af5;
     --green-bg:rgba(109,214,160,0.13);
     --amber-bg:rgba(245,166,35,0.12);
@@ -921,6 +921,91 @@ body:has(.overlay.open){overflow:hidden}
 </style>
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="icons/tabler-icons.css">
+<style>
+  /* ── V7, the new look of the frame (stage 6a; react-migration-plan.md →
+     Additions from the UI audit; the React Shell draws the same frame —
+     docs/components.md). The title bar: brand · the breadcrumb plate · in the
+     middle the date, the greeting and the weather · bell, language, account.
+     On a computer the sections are a side menu (210px, left; right in Hebrew),
+     the Workers / Filter-by-client panel shows only on Workers and Schedule and
+     the page is at most 1200px wide; on a phone the title bar is two compact
+     rows (logo · short date and weather · buttons; the breadcrumb under them)
+     and the bottom bar stays. Hebrew mirrors the frame only. ── */
+  .page-title{display:none}
+  .page-sub{font-size:15px;color:var(--text2)}
+  .titlebar{align-items:center;gap:14px;padding:0 16px}
+  .titlebar .brand{padding-right:0}
+  .titlebar-actions{margin-left:0}
+  .og-crumb{display:flex;align-items:center;gap:8px;height:38px;padding:0 14px;border-radius:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);
+    -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);font-size:14px;white-space:nowrap;min-width:0;max-width:34vw;overflow:hidden;flex:none}
+  .og-crumb:empty{display:none}
+  .og-crumb>i:first-child{color:var(--k);font-size:17px}
+  .og-crumb b{font-weight:600;color:#fff}
+  .og-crumb em{font-style:normal;font:500 12.5px 'DM Mono',ui-monospace,monospace;color:var(--text2)}
+  .og-crumb .og-crumb-sep{font-size:13px;color:var(--text3)}
+  .og-crumb span{color:var(--text2);overflow:hidden;text-overflow:ellipsis}
+  .og-center{margin:0 auto;display:flex;align-items:center;gap:14px;min-width:0;white-space:nowrap}
+  .og-center:has(.og-greet:empty){visibility:hidden}
+  .og-date{font-size:13.5px;color:var(--text2);padding-right:14px;border-right:1px solid rgba(255,255,255,.14)}
+  .og-date-s{display:none}
+  .og-center .og-greet{margin:0}
+  .og-center .og-greet h3{display:flex;align-items:center;font-size:15px;font-weight:600;letter-spacing:0}
+  .og-center .gic{width:24px;height:24px;margin-left:10px;vertical-align:middle}
+  .og-center .gtemp{font-size:12px}
+  .page-section.visible{animation:og-tab-in .15s ease-out}
+  @keyframes og-tab-in{from{opacity:0}to{opacity:1}}
+  @media (prefers-reduced-motion:reduce){.page-section.visible{animation:none}}
+  /* Readability: figures as glass tiles, empty states in a dashed frame. */
+  .t3-stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:2px 0 14px;max-width:680px}
+  .t3-stats>div,.t3-stats>div.on{margin:0;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);font-size:13px;color:var(--text2);box-shadow:none}
+  .t3-stats>div.on{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.25)}
+  .t3-stats b{font-size:28px;font-weight:600;line-height:1.15;font-variant-numeric:tabular-nums}
+  .t3-empty{border:1px dashed rgba(255,255,255,.2);border-radius:14px;padding:12px;text-align:center;color:var(--text2);font-size:13px}
+  /* Accounting: Salary shows its own figures, so the ones above the tabs hide (no repeat). */
+  #sectionAccounting[data-acctab=salary] #accFigs{display:none}
+  @media (min-width:701px){
+    .top-tabs{flex-direction:column;align-items:stretch;gap:4px;width:210px;flex-shrink:0;padding:14px 10px;background:rgba(16,20,31,.35);border-right:1px solid rgba(255,255,255,.08);overflow-y:auto}
+    .ttab{flex-direction:row;justify-content:flex-start;gap:12px;min-width:0;height:40px;padding:0 12px;border-radius:12px;flex:none}
+    .ttab .ic{font-size:18px;width:20px;display:flex;justify-content:center}
+    .ttab .lb{font-size:14.5px;font-weight:500}
+    .ttab:hover{background:rgba(255,255,255,.05)}
+    .ttab.active{background:rgba(255,255,255,.08)}
+    .ttab::after{left:0;right:auto;top:9px;bottom:9px;width:3px;height:auto;background:var(--k);box-shadow:0 0 10px var(--k);transform:scaleY(0);transition:transform .35s cubic-bezier(.34,1.56,.64,1)}
+    .ttab.active::after{transform:scaleY(1);animation:none}
+    body[data-tab]:not([data-tab=workers]):not([data-tab=schedule]) .sidebar{display:none}
+    .main>.page-section{max-width:1200px;margin-left:auto;margin-right:auto}
+    html[lang=he] .app{flex-direction:row-reverse}
+    html[lang=he] .top-tabs{border-right:0;border-left:1px solid rgba(255,255,255,.08)}
+    html[lang=he] .ttab{direction:rtl}
+    html[lang=he] .ttab::after{left:auto;right:0}
+    html[lang=he] .sidebar{border-right:0;border-left:1px solid var(--border)}
+  }
+  @media (min-width:701px) and (max-width:1180px){ .og-center .gtext{display:none} .og-date{border:0;padding:0} }
+  @media (min-width:701px) and (max-width:980px){ .og-name{display:none} .og-date-l{display:none} .og-date-s{display:inline} }
+  @media (max-width:700px){
+    .titlebar{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"brand center acts" "crumb crumb crumb";align-items:center;gap:8px 10px;padding:calc(env(safe-area-inset-top,0px) + 8px) 12px 8px}
+    .titlebar .brand{grid-area:brand}
+    .og-crumb{grid-area:crumb;justify-self:start;height:34px;max-width:100%;font-size:13.5px}
+    .og-center{grid-area:center;justify-self:center;margin:0;gap:8px}
+    .titlebar-actions{grid-area:acts;flex-wrap:nowrap}
+    .og-date{font-size:12.5px;padding-right:8px}
+    .og-date-l,.og-center .gtext{display:none}
+    .og-date-s{display:inline}
+    .og-center .gic{margin-left:0;width:22px;height:22px}
+    .t3-stats{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;max-width:none}
+    .t3-stats>div,.t3-stats>div.on{padding:8px 9px;font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .t3-stats b{font-size:24px}
+  }
+  /* Hebrew mirrors the frame only: logo and breadcrumb on the right, the
+     account on the left (its menu opens from the left edge); the page content,
+     plates, tables and windows stay left to right. */
+  html[lang=he] .titlebar{direction:rtl}
+  html[lang=he] .acct-chip,html[lang=he] .lang-btn,html[lang=he] .acct-menu,html[lang=he] .og-crumb em{direction:ltr}
+  html[lang=he] .acct-menu{right:auto;left:0}
+  html[lang=he] .og-crumb .og-crumb-sep{transform:scaleX(-1)}
+  html[lang=he] .og-date{padding-right:0;padding-left:14px;border-right:0;border-left:1px solid rgba(255,255,255,.14)}
+  html[lang=he] .og-center .gic{margin-left:0;margin-right:10px}
+</style>
 </head>
 <body>
 
@@ -930,16 +1015,11 @@ body:has(.overlay.open){overflow:hidden}
     <div class="og-name"><b>Interactive <span>Manager</span></b><small data-i18n>Connecting people and business</small><small class="og-roofline" data-i18n>Everything under one roof</small></div>
     <div class="save-indicator saved" id="saveIndicator"><div class="save-dot"></div><span data-i18n>Saved</span></div>
   </div>
-  <div class="top-tabs">
-    <div class="ttab active" id="tabDashboard" style="--k:#22d3ee" onclick="switchTab('dashboard')"><span class="ic"><i class="ti ti-home"></i></span><span class="lb" data-i18n>Today</span></div>
-    <div class="ttab" id="tabSchedule" style="--k:#818cf8" onclick="switchTab('schedule')"><span class="ic"><i class="ti ti-calendar"></i></span><span class="lb" data-i18n>Schedule</span></div>
-    <div class="ttab" id="tabWorkers" style="--k:#6dd6a0" onclick="switchTab('workers')"><span class="ic"><i class="ti ti-users-group"></i></span><span class="lb" data-i18n>Workers</span></div>
-    <div class="ttab in-more" id="tabClients" style="--k:#60a5fa" onclick="switchTab('clients')"><span class="ic"><i class="ti ti-users"></i></span><span class="lb" data-i18n>Clients</span></div>
-    <div class="ttab in-more" id="tabSuppliers" style="--k:#c084fc" onclick="switchTab('suppliers')"><span class="ic"><i class="ti ti-truck-delivery"></i></span><span class="lb" data-i18n>Suppliers</span></div>
-    <div class="ttab in-more admin" id="tabAdmin" style="--k:#ff8a95" onclick="switchTab('admin')"><span class="ic"><i class="ti ti-lock"></i></span><span class="lb" data-i18n>Admin</span></div>
-    <div class="ttab admin" id="tabAccounting" style="--k:#f7c062" onclick="switchTab('accounting')"><span class="ic"><i class="ti ti-cash"></i></span><span class="lb" data-i18n>Accounting</span></div>
-    <div class="ttab" id="tabMore" style="--k:#f472b6" onclick="openMoreSheet()"><span class="ic"><i class="ti ti-dots-vertical"></i></span><span class="lb" data-i18n>More</span></div>
-  </div>
+  <!-- V7 (stage 6a): the breadcrumb plate (the section, its count, the open
+       sub-tab — renderCrumb) and, in the middle, the date, the greeting and
+       the weather (renderGreeting). The sections are the side menu below. -->
+  <div class="og-crumb" id="ogCrumb"></div>
+  <div class="og-center" id="ogCenter"><span class="og-date" id="ogDate"></span><div class="og-greet" id="ogGreet"></div></div>
   <div class="titlebar-actions">
     <!-- The account menu (header variant C, per user request 2026-10-11): one
          button with the name; inside it install, language, my name, sign out. -->
@@ -960,6 +1040,17 @@ body:has(.overlay.open){overflow:hidden}
 <!-- Contract warnings when the app opens: stays until shown or closed (per user request 2026-10-11). -->
 <div id="contractNotice" class="contract-notice" style="display:none"></div>
 <div class="app">
+  <!-- The sections: the side menu on a computer (V7: left, right in Hebrew), the bottom bar on a phone. -->
+  <nav class="top-tabs" id="sideNav">
+    <div class="ttab active" id="tabDashboard" style="--k:#22d3ee" onclick="switchTab('dashboard')"><span class="ic"><i class="ti ti-home"></i></span><span class="lb" data-i18n>Today</span></div>
+    <div class="ttab" id="tabSchedule" style="--k:#818cf8" onclick="switchTab('schedule')"><span class="ic"><i class="ti ti-calendar"></i></span><span class="lb" data-i18n>Schedule</span></div>
+    <div class="ttab" id="tabWorkers" style="--k:#6dd6a0" onclick="switchTab('workers')"><span class="ic"><i class="ti ti-users-group"></i></span><span class="lb" data-i18n>Workers</span></div>
+    <div class="ttab in-more" id="tabClients" style="--k:#60a5fa" onclick="switchTab('clients')"><span class="ic"><i class="ti ti-users"></i></span><span class="lb" data-i18n>Clients</span></div>
+    <div class="ttab in-more" id="tabSuppliers" style="--k:#c084fc" onclick="switchTab('suppliers')"><span class="ic"><i class="ti ti-truck-delivery"></i></span><span class="lb" data-i18n>Suppliers</span></div>
+    <div class="ttab in-more admin" id="tabAdmin" style="--k:#ff8a95" onclick="switchTab('admin')"><span class="ic"><i class="ti ti-lock"></i></span><span class="lb" data-i18n>Admin</span></div>
+    <div class="ttab admin" id="tabAccounting" style="--k:#f7c062" onclick="switchTab('accounting')"><span class="ic"><i class="ti ti-cash"></i></span><span class="lb" data-i18n>Accounting</span></div>
+    <div class="ttab" id="tabMore" style="--k:#f472b6" onclick="openMoreSheet()"><span class="ic"><i class="ti ti-dots-vertical"></i></span><span class="lb" data-i18n>More</span></div>
+  </nav>
   <div class="sidebar">
     <div class="sidebar-section">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
@@ -988,51 +1079,10 @@ body:has(.overlay.open){overflow:hidden}
 
   <div class="main">
     <!-- Dashboard Section -->
+    <!-- Today (stage 6a): drawn in React (src/manager/Today.tsx) through
+         window.ManagerIsland — renderDashboard() below. -->
     <div class="page-section" id="sectionDashboard">
-      <div class="og-greet" id="ogGreet"></div>
-      <div class="page-header">
-        <div>
-          <div class="page-title" id="dashTitle" data-i18n>Today</div>
-          <div class="page-sub" id="dashSub"></div>
-        </div>
-      </div>
-
-      <!-- The day in figures (template 3): a tap on a figure shows only its
-           list, a second tap (or "Show all") everything again (variant A). -->
-      <div class="t3-stats" id="dashStats"></div>
-      <div id="dashFilterNote" class="dash-filter-note" style="display:none"></div>
-
-      <!-- Today as in Screens.md (stage 13): On shift, Late, No punch, Notices —
-           worker plates with today's hours on the right; each section folds. -->
-      <div id="dashOnSiteWrap" data-sec="onsite">
-        <div class="t3-sec dash-sec" onclick="toggleDashSec('onsite')"><i class="ti ti-map-pin" style="color:var(--green)"></i> <span data-i18n>On shift</span><em id="dashOnSiteN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
-        <div id="dashOnSite"></div>
-      </div>
-      <div id="dashLateWrap" data-sec="late">
-        <div class="t3-sec dash-sec" onclick="toggleDashSec('late')"><i class="ti ti-clock-hour-4" style="color:var(--amber)"></i> <span data-i18n>Late</span><em id="dashLateN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
-        <div id="dashLate"></div>
-      </div>
-      <div id="dashMissingWrap" data-sec="missing">
-        <div class="t3-sec dash-sec" onclick="toggleDashSec('missing')"><i class="ti ti-clock-off" style="color:var(--red)"></i> <span data-i18n>No punch</span><em id="dashMissingN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
-        <div id="dashMissing"></div>
-      </div>
-      <div id="dashNoticesWrap" data-sec="notices">
-        <div class="t3-sec dash-sec" onclick="toggleDashSec('notices')"><i class="ti ti-alert-triangle" style="color:var(--amber)"></i> <span data-i18n>Notices</span><em id="dashNoticesN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
-        <div id="dashNotices"></div>
-      </div>
-
-      <!-- Today's log -->
-      <div id="dashLogWrap" data-sec="log">
-        <div class="t3-sec dash-sec" onclick="toggleDashSec('log')"><i class="ti ti-clipboard-text"></i> <span data-i18n>Today's Log</span><em id="dashLogN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
-        <div id="dashLog"></div>
-      </div>
-
-      <!-- Workers by supplier (hidden when no supplier has workers) -->
-      <div id="dashSuppliersWrap" data-sec="suppliers">
-        <div class="t3-sec dash-sec" onclick="toggleDashSec('suppliers')"><i class="ti ti-truck-delivery"></i> <span data-i18n>Workers by Supplier</span><em id="dashSuppliersN"></em><i class="ti ti-chevron-down t3-chev"></i></div>
-        <div id="dashSuppliers"></div>
-      </div>
-      <div style="height:20px"></div>
+      <div id="todayRoot" data-island></div>
     </div>
 
     <div class="page-section visible" id="sectionSchedule">
@@ -2381,6 +2431,8 @@ function switchTab(tab){
   if(tab==='admin')      setupAdminPaneBar();
   if(tab==='dashboard')  renderDashboard();
   if(tab==='accounting'){ __hourApprovalsCache=null; renderAccounting(); } // opening the tab reads the approvals afresh
+  document.body.dataset.tab=tab; // V7: the Workers / Filter-by-client panel only on Workers and Schedule
+  renderCrumb();
 }
 
 
@@ -2410,9 +2462,34 @@ function weatherIconHtml(p,wx){
 function greetingHtml(name, wx){
   const p=partOfDay(), first=String(name||'').trim().split(/\s+/)[0]||'';
   const text={morning:'Good morning, {name}',day:'Good afternoon, {name}',evening:'Good evening, {name}',night:'Good night, {name}'}[p];
-  return `<h3 class="t-${p}">${esc(first?tr(text,{name:first}):tr(text,{name:''}).replace(/,\s*$/,''))}${weatherIconHtml(p,wx)}</h3>`;
+  return `<h3 class="t-${p}"><span class="gtext">${esc(first?tr(text,{name:first}):tr(text,{name:''}).replace(/,\s*$/,''))}</span>${weatherIconHtml(p,wx)}</h3>`;
 }
-function renderGreeting(){ const el=document.getElementById('ogGreet'), s=getSession(); if(el&&s){ el.innerHTML=greetingHtml(s.fullName||s.username, __wx&&__wxTid===fsTenantId()?__wx:null); loadWeather(); } }
+// V7 (stage 6a): in the middle of the title bar on every tab — the date (short
+// on a phone), the greeting (its words hidden on a phone) and the weather.
+function renderGreeting(){
+  const el=document.getElementById('ogGreet'), d=document.getElementById('ogDate'), s=getSession(); if(!el||!s) return;
+  const now=new Date();
+  if(d) d.innerHTML=`<span class="og-date-l">${esc(now.toLocaleDateString(uiLocale(),{weekday:'long',day:'numeric',month:'short'}))}</span><span class="og-date-s">${esc(now.toLocaleDateString(uiLocale(),{weekday:'short',day:'numeric',month:'short'}))}</span>`;
+  el.innerHTML=greetingHtml(s.fullName||s.username, __wx&&__wxTid===fsTenantId()?__wx:null); loadWeather();
+}
+// The breadcrumb plate (V7): the section's icon in its colour, its name and
+// count, then the open sub-tab (Accounting › Salary, Admin › Users, Schedule ›
+// All sites); the page itself shows no title.
+const CRUMB_COUNT={workers:()=>workers.filter(isActiveWorker).length, clients:()=>clients.length, suppliers:()=>suppliers.length};
+function renderCrumb(){
+  const el=document.getElementById('ogCrumb'); if(!el) return;
+  const tab=document.getElementById('tab'+currentTab.charAt(0).toUpperCase()+currentTab.slice(1)); if(!tab){ el.innerHTML=''; return; }
+  const sec=document.getElementById('section'+currentTab.charAt(0).toUpperCase()+currentTab.slice(1));
+  const on=sec&&[...sec.querySelectorAll('.og-tabs button.on, .admin-pane-bar .btn.accent')].find(b=>b.offsetParent!==null);
+  let sub='';
+  if(on){ const c=on.cloneNode(true); c.querySelectorAll('i, .tab-n, .tab-badge').forEach(x=>x.remove()); sub=c.textContent.trim(); }
+  const n=CRUMB_COUNT[currentTab]?CRUMB_COUNT[currentTab]():null;
+  el.style.setProperty('--k', tab.style.getPropertyValue('--k'));
+  el.innerHTML=`<i class="${esc((tab.querySelector('.ic i')||{}).className||'')}"></i><b>${esc(tab.querySelector('.lb').textContent)}</b>`
+    +(n!=null?`<em>${n}</em>`:'')+(sub?`<i class="ti ti-chevron-right og-crumb-sep"></i><span>${esc(sub)}</span>`:'');
+}
+// A sub-tab changes without render(): the crumb follows any tap in the page.
+document.addEventListener('click', () => setTimeout(renderCrumb, 0));
 // The weather for the greeting: the firm's main site, read again after 30 minutes
 // or when the super-admin opens another firm; a failure keeps the time-of-day icon.
 const WEATHER_FN_URL='https://europe-west3-schedule-odinson.cloudfunctions.net/weather';
@@ -2584,7 +2661,7 @@ function openNotif(i){
 function markAllNotifRead(){
   __bellItems.forEach(x=>__notifRead.add(x.id)); saveNotifReads(); refreshBell();
 }
-setInterval(()=>{ if(getSession()) refreshBell(); }, 60e3);
+setInterval(()=>{ if(getSession()){ refreshBell(); renderGreeting(); } }, 60e3);
 
 // --- Week nav -----------------------------------------------------------------
 function prevWeek(){ weekStart.setDate(weekStart.getDate()-7); syncPicker(); render(); }
@@ -2616,6 +2693,7 @@ function render(){
   if(currentTab==='dashboard')  renderDashboard();
   if(currentTab==='accounting') renderAccounting();
   refreshBell(); loadNotifReads();
+  renderGreeting(); renderCrumb();
 }
 
 // A worker with no 'work' day at all was never given a schedule (left the
@@ -7823,6 +7901,7 @@ async function loadData(){
     if(raw){
       const d = JSON.parse(raw);
       applyData(d);
+      __dataReady=true;
       render();
       markFirstContent();
     }
@@ -7831,6 +7910,7 @@ async function loadData(){
   // 2. Always load from Firestore (primary source)
   try{
     const gd = await gsLoad();
+    __dataReady=true;
     if(gd){
       applyServerLoad(gd);
       markFreshContent('app');
@@ -7847,6 +7927,7 @@ async function loadData(){
     console.error('Load failed',e);
     showToast(tr('Offline — using cached data'));
   }
+  if(!__dataReady){ __dataReady=true; if(currentTab==='dashboard') renderDashboard(); }
 }
 
 // The hours batches (Pending hours), live (listenPendingHours): the count of
@@ -8210,145 +8291,41 @@ document.addEventListener('keydown', e => { if(e.key === 'Escape'){ closePopover
 // The header ⋮ of a list: its own tools (Select is the button above the rows — no Select… item).
 function listMenuHtml(items){ return items.length ? `<button type="button" class="t3-kb" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey(items)}')"><i class="ti ti-dots-vertical"></i></button>` : ''; }
 function workerClientNames(w){ return (w.clientIds||[]).map(id=>(clients.find(c=>c.id===id)||{}).name).filter(Boolean).join(', '); }
+// ── Today (stage 6a): drawn in React — src/manager/Today.tsx, loaded as
+// assets/manager.js (docs/build.md → The manager's React pieces). The page
+// hands it its data and actions through ManagerBridge; renderDashboard() asks
+// it to draw (render() and switchTab() call it as before).
 function renderDashboard(){
   renderGreeting();
-  const now     = new Date();
-  const todayIdx= now.getDay(); // 0=Sun
-  const todayStr= now.toDateString();
-  document.getElementById('dashTitle').textContent = tr('Today — {0}',{0:now.toLocaleDateString(uiLocale(),{weekday:'long',day:'numeric',month:'short'})});
-  document.getElementById('dashSub').textContent = tr('Real-time attendance overview');
-
-  const log     = getPunchLog();
-  const todayLog= log.filter(e=>new Date(e.ts).toDateString()===todayStr);
-
-  // ── Who is currently on site (clocked IN, not yet OUT) ──────────────────
-  const onSite = workers.filter(w=>{
-    const wEntries = todayLog.filter(e=>e.workerId===w.id);
-    const le=latestOf(wEntries); return !!le && le.type==='in';
-  });
-
-  // ── Who should be here based on schedule but NOT clocked in ─────────────
-  const nowMins = now.getHours()*60+now.getMinutes();
-  const missing = workers.filter(w=>{
-    if(!isActiveWorker(w)) return false;
-    const sh = shiftOn(w, now);
-    if(!sh||sh.type==='off'||!sh.start) return false;
-    const shStart = toMins(sh.start);
-    // Only flag if shift started more than 15 mins ago
-    if(nowMins < shStart+15) return false;
-    const wEntries = todayLog.filter(e=>e.workerId===w.id);
-    const lastEntry= latestOf(wEntries);
-    // Not clocked in at all, or clocked out but shift still ongoing
-    if(!lastEntry) return true;
-    if(lastEntry.type==='out'&&sh.end&&nowMins<toMins(sh.end)-10) return true;
-    return false;
-  });
-
-  // ── Draw (Screens.md, stage 13): worker plates — the short name and its
-  // first notice chip, site · today's punch under it, today's hours on the right.
-  const setN=(id,n)=>{ const el=document.getElementById(id); if(el) el.textContent=n?String(n):''; };
-  const show=(id,on)=>{ const el=document.getElementById(id); if(el) el.style.display=on?'':'none'; };
-  const hoursToday=w=>{ const es=todayLog.filter(e=>e.workerId===w.id); let h=0;
-    groupPunchesIntoShifts(es).forEach(b=>{ h+=analyzeDayPunches(b.entries,b.date).hours; const last=b.entries[b.entries.length-1];
-      if(last&&last.type==='in') h+=Math.max(0,(now-new Date(last.ts))/36e5); });
-    return h; };
-  const plate=(w,c,right,sub)=>{ const t=workerToday(w,todayLog), ns=workerNotices(w,t), site=workerSiteName(w);
-    return t3Line({c, av:t3Av(w), name:`<span class="wp-n" title="${esc(w.name)}">${esc(w.name)}</span>${noticeChipsHtml(w,ns)}`,
-      sub:sub||[site?`<span class="site">${esc(site)}</span>`:'', workerTodayHtml(t)].filter(Boolean).join('<span class="dot">·</span>'),
-      right, onclick:`openWorkerCardById('${esc(w.id)}')`}); };
-  const hrsRight=w=>`<span class="r">${esc(fmtHoursShort(hoursToday(w)))}</span>`;
-  const draw=(key,wrap,elId,list,fn)=>{ show(wrap,list.length); setN(elId+'N',list.length); const el=document.getElementById(elId);
-    if(list.length) renderPagedList(el,elId,'',list,fn); else el.innerHTML=''; };
-  // On shift: clocked in now.
-  draw('onsite','dashOnSiteWrap','dashOnSite',onSite,w=>plate(w,'var(--ok)',hrsRight(w)));
-  // Late: today's first IN came more than 5 minutes after the planned start.
-  const late=workers.filter(isActiveWorker).map(w=>{ const sh=shiftOn(w,now); if(!sh||sh.type!=='work'||!sh.start) return null;
-    const firstIn=todayLog.filter(e=>e.workerId===w.id&&e.type==='in').sort((a,b)=>new Date(a.ts)-new Date(b.ts))[0];
-    if(!firstIn||!firstIn.time) return null; const by=toMins(firstIn.time)-toMins(sh.start);
-    return by>5?{w,by,firstIn}:null; }).filter(Boolean);
-  const lateTxt=m=>m>=60?tr('late {h}h',{h:Math.floor(m/60)}):tr('late {m} min',{m});
-  draw('late','dashLateWrap','dashLate',late,({w,by,firstIn})=>plate(w,'var(--warn)',hrsRight(w),
-    [`<span class="pin ok"><i></i>${esc(tr('In {0}',{0:firstIn.time}))}</span>`, `<span style="color:var(--warn)">${esc(lateTxt(by))}</span>`].join('<span class="dot">·</span>')));
-  // No punch: today's shift started 15+ minutes ago and nobody punched in.
-  draw('missing','dashMissingWrap','dashMissing',missing,w=>{ const sh=shiftOn(w, now), lt=sh&&sh.start?Math.max(0,nowMins-toMins(sh.start)):0;
-    return plate(w,'var(--bad)',`<span class="r" style="color:var(--bad)">${esc(lateTxt(lt))}</span>`,
-      [`<span class="site">${esc((sh?.start||'')+'–'+(sh?.end||''))}</span>`, workerSiteName(w)?esc(workerSiteName(w)):''].filter(Boolean).join('<span class="dot">·</span>')); });
-  // Notices: every active worker with something to look at (the same notices
-  // as the worker plate); a tap opens the notices sheet.
-  const noticed=workers.filter(isActiveWorker).map(w=>({w, ns:workerNotices(w,workerToday(w,todayLog))})).filter(x=>x.ns.length)
-    .sort((a,b)=>(b.ns.some(n=>n.lvl==='red')?1:0)-(a.ns.some(n=>n.lvl==='red')?1:0));
-  draw('notices','dashNoticesWrap','dashNotices',noticed,({w,ns})=>t3Line({c:ns.some(n=>n.lvl==='red')?'var(--bad)':'var(--warn)', av:t3Av(w),
-    name:`<span class="wp-n" title="${esc(w.name)}">${esc(w.name)}</span>${noticeChipsHtml(w,ns)}`, sub:esc(ns.map(n=>n.title).join(' · ')),
-    onclick:`openNotices('${esc(w.id)}')`}));
-  // ── Today's punch log ───────────────────────────────────────────────────
-  const dashLogEl = document.getElementById('dashLog');
-  setN('dashLogN',todayLog.length);
-  if(!todayLog.length){
-    dashLogEl.innerHTML=`<div class="t3-empty">${tr('No punches today')}</div>`;
-  } else {
-    const sorted=[...todayLog].reverse();
-    renderPagedList(dashLogEl,'dashLog',now.toDateString(),sorted,e=>{
-      const wc=workers.find(w=>w.id===e.workerId), isIn=e.type==='in';
-      return t3Line({c:isIn?'var(--green)':'var(--red)', av:t3Av(wc), name:esc(e.workerName),
-        sub:`<span style="color:${isIn?'var(--green)':'var(--red)'};font-weight:600">${isIn?tr('IN'):tr('OUT')}</span> · ${esc(punchSite(e))}`,
-        right:`${e.gpsSuspicious?'<span title="GPS suspicious" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i></span> ':''}<span class="r" style="color:var(--text)">${esc(e.time)}</span>`,
-        onclick:wc?`openWorkerCardById('${esc(wc.id)}')`:''});
-    });
-  }
-  // The figures on top: a tap shows only that figure's list (dashFilterTo).
-  const stat=(n,label,col,key)=>`<div class="${n?'go':''}${__dashFilter===key?' on':''}" ${n||__dashFilter===key?`onclick="dashFilterTo('${key}')"`:''}><b style="color:${n?col:'var(--text3)'}">${n}</b>${esc(label)}</div>`;
-  document.getElementById('dashStats').innerHTML=stat(onSite.length,tr('On shift'),'var(--green)','onsite')
-    +stat(late.length,tr('Late'),'var(--amber)','late')
-    +stat(missing.length,tr('No punch'),'var(--red)','missing')
-    +stat(noticed.length,tr('Notices'),'var(--amber)','notices');
-  renderDashSuppliers();
-  applyDashView();
+  if(window.ManagerIsland) window.ManagerIsland.renderToday();
 }
-// Today, variant A (user request 2026-10-11): a figure is a filter — only
-// its section shows, opened, until the same figure or "Show all" is tapped;
-// each section folds with the arrow at its right (kept on this device).
-const DASH_FILTER_LABEL={onsite:'On shift',late:'Late',missing:'No punch',notices:'Notices',log:'Today\'s Log',suppliers:'Workers by Supplier'};
-let __dashFilter=null;
-function dashFolded(){ try{ return JSON.parse(localStorage.getItem('dashFolded')||'[]'); }catch(e){ return []; } }
-function toggleDashSec(key){
-  if(__dashFilter===key) return; // the filtered section stays open
-  const f=dashFolded(), i=f.indexOf(key);
-  if(i<0) f.push(key); else f.splice(i,1);
-  try{ localStorage.setItem('dashFolded', JSON.stringify(f)); }catch(e){}
-  applyDashView();
-}
-function dashFilterTo(key){ __dashFilter=__dashFilter===key?null:key; renderDashboard(); window.scrollTo({top:0}); }
-function applyDashView(){
-  const folded=dashFolded();
-  document.querySelectorAll('#sectionDashboard [data-sec]').forEach(el=>{
-    const k=el.dataset.sec;
-    el.classList.toggle('dash-off', !!__dashFilter && k!==__dashFilter);
-    el.classList.toggle('dash-fold', k!==__dashFilter && folded.includes(k));
-  });
-  const note=document.getElementById('dashFilterNote');
-  if(note){
-    note.style.display=__dashFilter?'':'none';
-    note.innerHTML=__dashFilter?`${esc(tr('Showing: {0}',{0:tr(DASH_FILTER_LABEL[__dashFilter])}))} · <a onclick="dashFilterTo('${__dashFilter}')">${esc(tr('Show all'))}</a>`:'';
-  }
-}
-
-// ── Workers-by-supplier widget (Dashboard) ──────────────────────────────────
-// Purely a headcount overview: how many workers each supplier has — only the
-// suppliers that have workers; workers without a supplier get no card (user
-// request 2026-10-11), and with none at all the section is hidden. No
-// punch/pay data, unlike the Accounting tab's payable-by-supplier summary.
-function renderDashSuppliers(){
-  const wrap=document.getElementById('dashSuppliers');
-  if(!wrap) return;
-  const counts={};
-  workers.forEach(w=>{ if(w.supplierId) counts[w.supplierId]=(counts[w.supplierId]||0)+1; });
-  const rows=suppliers.filter(s=>counts[s.id]).map(s=>({sup:s,count:counts[s.id]}));
-  const sec=document.getElementById('dashSuppliersWrap'); if(sec) sec.style.display=rows.length?'':'none';
-  if(!rows.length){ wrap.innerHTML=''; return; }
-  const cnt=document.getElementById('dashSuppliersN'); if(cnt) cnt.textContent=rows.length;
-  renderPagedList(wrap,'dashSuppliers','',rows,r=>t3Line({c:r.sup.color, av:`<div class="t3-av" style="background:${r.sup.color}22;color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></div>`,
-    name:esc(r.sup.name), right:`<span class="r">${esc(tr('{0} worker{1}',{0:(r.count),1:(r.count===1?'':'s')}))}</span>`, onclick:"switchTab('suppliers')"}));
-}
+window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); });
+let __dataReady=false;
+window.ManagerBridge={
+  lang:()=>I18N_LANG,
+  dict:()=>I18N,
+  // The snapshot Today draws from: each worker with today's shift, today's punch
+  // and its notices (worked out here — they still belong to the Workers tab),
+  // the suppliers, today's punches with their site.
+  today(){
+    const now=new Date(), t=now.toDateString(), log=getPunchLog().filter(e=>new Date(e.ts).toDateString()===t);
+    return {
+      ready:__dataReady,
+      workers:workers.map(w=>{ const td=workerToday(w,log), sh=shiftOn(w,now);
+        return {id:w.id, name:w.name||'', active:isActiveWorker(w), supplierId:w.supplierId||'', site:workerSiteName(w),
+          shift:sh?{type:sh.type, start:sh.start||'', end:sh.end||''}:null, today:{k:td.k, time:td.time||''},
+          notices:workerNotices(w,td).map(n=>({lvl:n.lvl, word:n.word, title:n.title}))}; }),
+      suppliers:suppliers.map(x=>({id:x.id, name:x.name||'', color:x.color||''})),
+      log:log.map(e=>({...e, site:punchSite(e)})),
+      canAddWorker:hasPermission('workers'),
+    };
+  },
+  openWorker:id=>openWorkerCardById(id),
+  openNotices:id=>openNotices(id),
+  openSuppliers:()=>switchTab('suppliers'),
+  addWorker:()=>{ switchTab('workers'); openAddWorker(); },
+  refresh:async()=>{ try{ await syncPunchesFromGS(); }catch(e){} render(); },
+};
 
 // Per-client and per-supplier rate tables in Accounting: turned off for now
 // (user request 2026-10-11). Rates already set in them still count in pay
@@ -10974,5 +10951,7 @@ function ensureInstallButton(){
 window.addEventListener('load', ensureInstallButton);
 
 </script>
+<!-- The manager's React pieces (src/manager/, built by npm run build): now the Today tab. -->
+<script type="module" src="assets/manager.js"></script>
 </body>
 </html>

@@ -153,10 +153,88 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(ia.hidden && ia.sidebar && ia.shown && ia.back, 'workers: an inactive worker leaves the lists, "Inactive: N — show" brings them, Active returns them ' + JSON.stringify(ia));
   ok(ia.notice && ia.closed, 'contracts: an expired contract shows a notice at the top until closed ' + JSON.stringify(ia));
+  // V7 (stage 6a): the frame on a computer — the sections in a side menu, the breadcrumb plate (section,
+  // count, open sub-tab), the date / greeting / weather in the middle, no page titles, the Workers /
+  // Filter-by-client panel only on Workers and Schedule, the page at most 1200px; Today drawn in React.
+  const v7 = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
+    const box = q => document.querySelector(q).getBoundingClientRect(), shown = q => { const el = document.querySelector(q); return !!el && getComputedStyle(el).display !== 'none'; };
+    const crumb = () => document.getElementById('ogCrumb').innerText.replace(/\s+/g, ' ').trim();
+    switchTab('dashboard'); await wait(300);
+    const nav = box('.top-tabs'), t = box('#tabDashboard'), s2 = box('#tabSchedule');
+    r.menu = nav.left < 2 && Math.abs(nav.width - 210) < 2 && s2.top > t.top && Math.abs(s2.left - t.left) < 2;
+    r.crumbToday = crumb();
+    r.noTitle = [...document.querySelectorAll('.page-title')].every(e => getComputedStyle(e).display === 'none');
+    r.center = /\d/.test(document.getElementById('ogDate').innerText) && /^Good /.test(document.querySelector('#ogGreet .gtext').textContent);
+    r.noSidebarToday = !shown('.sidebar');
+    r.react = !!document.querySelector('#todayRoot [data-testid=today]') && document.querySelectorAll('#todayRoot [data-slot=figures] > button').length === 4 && document.querySelectorAll('#todayRoot section[data-panel]').length >= 1;
+    r.width = getComputedStyle(document.getElementById('sectionDashboard')).maxWidth === '1200px';
+    switchTab('workers'); await wait(200);
+    r.sidebarWorkers = shown('.sidebar'); r.crumbWorkers = crumb();
+    switchTab('accounting'); setAccTab('salary'); await wait(200);
+    r.crumbAcc = crumb(); r.noRepeat = !shown('#accFigs');
+    setAccTab('billing'); document.body.click(); await wait(100);
+    r.crumbBill = crumb(); r.figsBack = shown('#accFigs');
+    setAccTab('salary'); switchTab('dashboard'); await wait(200);
+    return r;
+  });
+  ok(v7.menu && v7.crumbToday === 'Today' && v7.noTitle && v7.center && v7.noSidebarToday && v7.react && v7.width && v7.sidebarWorkers && /^Workers \d+$/.test(v7.crumbWorkers)
+    && v7.crumbAcc === 'Accounting Salary' && v7.noRepeat && v7.crumbBill === 'Accounting Billing' && v7.figsBack,
+    'V7 frame: side menu, breadcrumb with count and sub-tab, date / greeting / weather in the middle, no page titles, the client panel only on Workers and Schedule, Accounting figures not repeated on Salary ' + JSON.stringify(v7));
+  // Hebrew mirrors the frame only: the menu on the right, the account on the left, the page left to right.
+  await p.evaluate(() => setLanguage('he', {save:false})); await waitFor(p, () => I18N_LANG === 'he' && document.documentElement.lang === 'he');
+  await sleep(400);
+  const v7he = await p.evaluate(() => {
+    const box = q => document.querySelector(q).getBoundingClientRect();
+    return {menuRight: box('.top-tabs').right > innerWidth - 2, acctLeft: box('#accountControl').left < box('.og-brand').left, crumbRight: box('#ogCrumb').left > innerWidth / 2,
+      pageLtr: getComputedStyle(document.querySelector('#todayRoot')).direction === 'ltr', today: document.querySelector('#todayRoot [data-testid=today] p').textContent};
+  });
+  await p.evaluate(() => setLanguage('en', {save:false})); await waitFor(p, () => I18N_LANG === 'en');
+  ok(v7he.menuRight && v7he.acctLeft && v7he.crumbRight && v7he.pageLtr && v7he.today === 'נוכחות בזמן אמת', 'V7 Hebrew: the side menu on the right, brand and breadcrumb right, the account left; Today\'s content stays left to right, in Hebrew ' + JSON.stringify(v7he));
+  // Today, drawn in React (stage 6a): the figures as glass tiles, the sections as panels; a figure filters
+  // to its section ("Show all" brings the rest back), the arrow folds a section (kept on this device).
+  const tf = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
+    switchTab('dashboard'); await wait(300);
+    const root = document.getElementById('todayRoot'), secs = () => [...root.querySelectorAll('section[data-sec]')].map(x => x.dataset.sec);
+    const figs = [...root.querySelectorAll('[data-slot=figures] > button')];
+    r.figs = figs.map(b => b.querySelector('span').textContent).join();
+    r.tiles = figs.every(b => getComputedStyle(b).borderTopStyle === 'solid' && parseFloat(getComputedStyle(b.querySelector('b')).fontSize) >= 26);
+    r.all = secs().join();
+    const notices = figs[3]; r.noticeN = Number(notices.querySelector('b').textContent);
+    notices.click(); await wait(150);
+    r.only = secs().join() === 'notices' && /Show all/.test((root.querySelector('[data-testid=today-filter-note]') || {}).textContent || '');
+    root.querySelector('[data-testid=today-filter-note] button').click(); await wait(150);
+    r.back = secs().join() === r.all;
+    const logHead = () => root.querySelector('section[data-sec=log] button[aria-expanded]');
+    logHead().click(); await wait(700);
+    // the body collapses to no height (under the test's fake clock Motion's fade-out never ends, so it may stay in the DOM)
+    const body = logHead().closest('section').children[1];
+    r.folded = logHead().getAttribute('aria-expanded') === 'false' && (!body || body.getBoundingClientRect().height < 1) && JSON.parse(localStorage.getItem('dashFolded') || '[]').includes('log');
+    logHead().click(); await wait(450);
+    r.open = logHead().getAttribute('aria-expanded') === 'true' && JSON.parse(localStorage.getItem('dashFolded') || '[]').indexOf('log') < 0;
+    r.emptyFrame = getComputedStyle(root.querySelector('[data-testid=today-log-empty]')).borderTopStyle === 'dashed';
+    // a notice chip opens the worker's notices sheet; a plate opens the worker card
+    root.querySelector('section[data-sec=notices] [data-slot=badge]').click(); await wait(200);
+    r.sheet = document.getElementById('noticesOverlay').classList.contains('open'); closeModal('noticesOverlay'); await wait(200);
+    switchTab('accounting'); await new Promise(r => setTimeout(r, 300));
+    const sr = document.getElementById('salarySearch'); r.hidden = sr.style.display === 'none';
+    toggleSalarySearch(); r.shown = sr.style.display !== 'none'; toggleSalarySearch(); r.closed = sr.style.display === 'none';
+    switchTab('dashboard');
+    return r;
+  });
+  ok(tf.figs === 'On shift,Late,No punch,Notices' && tf.tiles && /notices/.test(tf.all) && /log/.test(tf.all) && tf.noticeN >= 1 && tf.only && tf.back && tf.folded && tf.open && tf.emptyFrame && tf.sheet && tf.hidden && tf.shown && tf.closed,
+    'today (React): figures as glass tiles, a figure filters to its section and Show all brings the rest back, the arrow folds a section (kept), the empty log in a dashed frame, a chip opens the notices; salary search opens from its icon ' + JSON.stringify(tf));
   // Template 3 on a phone: Today (figures, colored lines), Workers, Accounting — screenshots for review.
   await p.setViewportSize({width: 390, height: 844});
   const t3 = await p.evaluate(async () => { switchTab('dashboard'); await new Promise(r => setTimeout(r, 300));
-    return {stats: document.querySelectorAll('#dashStats > div').length, lines: document.querySelectorAll('#sectionDashboard .t3-line').length}; });
+    const box = q => document.querySelector(q).getBoundingClientRect(), figs = [...document.querySelectorAll('#todayRoot [data-slot=figures] > button')];
+    const cr = box('#ogCrumb'), c = box('#ogCenter'), a = box('.titlebar-actions'), tb = getComputedStyle(document.querySelector('.titlebar'));
+    return {stats: figs.length, row: figs.every(f => Math.abs(f.getBoundingClientRect().top - figs[0].getBoundingClientRect().top) < 1), lines: document.querySelectorAll('#todayRoot .og-plate').length,
+      twoRows: cr.top >= c.bottom - 1 && cr.top >= a.bottom - 1 && Math.abs(c.top - a.top) < 12, fixed: tb.position === 'sticky' && tb.top === '0px',
+      greetHidden: getComputedStyle(document.querySelector('#ogGreet .gtext')).display === 'none' && !!document.querySelector('#ogGreet svg.gic'),
+      shortDate: getComputedStyle(document.querySelector('.og-date-s')).display !== 'none' && getComputedStyle(document.querySelector('.og-date-l')).display === 'none',
+      noMenu: box('.top-tabs').bottom > innerHeight - 2}; });
   await p.screenshot({path: SP + '/t3-today.png'}).catch(()=>{});
   // The phone bottom bar (variant 11): Today, Schedule, Workers, Accounting, More; More opens a sheet with the other tabs.
   const bb = await p.evaluate(async () => {
@@ -172,29 +250,6 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(bb.shown.join() === 'Today,Schedule,Workers,Accounting,More' && bb.fixed && bb.todayColor === 'rgb(34, 211, 238)' && bb.sheet && bb.items.join() === 'Clients,Suppliers,Admin' && bb.tab === 'clients' && bb.moreOn && bb.closed && bb.moreOff,
     'phone bottom bar: Today, Schedule, Workers, Accounting, More (the active one in its color); More opens Clients, Suppliers, Admin ' + JSON.stringify(bb));
-  // Today, variant A: a figure shows only its section; the arrow folds a section (kept); the salary search opens from its icon.
-  const tf = await p.evaluate(async () => {
-    let r_figs = '', r_sections = false;
-    const vis = id => getComputedStyle(document.getElementById(id)).display !== 'none';
-    const listShown = id => getComputedStyle(document.getElementById(id)).display !== 'none';
-    dashFilterTo('log');
-    const only = vis('dashLogWrap') && !vis('dashMissingWrap') && !vis('dashOnSiteWrap') && !vis('dashSuppliersWrap') && /Show all/.test(document.getElementById('dashFilterNote').innerText);
-    dashFilterTo('log');
-    const all = vis('dashSuppliersWrap') || vis('dashLogWrap');
-    document.querySelector('#dashLogWrap .dash-sec').click();
-    const folded = !listShown('dashLog'), kept = JSON.parse(localStorage.getItem('dashFolded') || '[]').includes('log');
-    document.querySelector('#dashLogWrap .dash-sec').click();
-    const open = listShown('dashLog');
-    // Screens.md: the figures are On shift, Late, No punch, Notices; the sections are worker plates.
-    r_figs = [...document.querySelectorAll('#dashStats > div')].map(d => d.childNodes[1] ? d.childNodes[1].textContent.trim() : '').join();
-    r_sections = ['dashOnSiteWrap','dashLateWrap','dashMissingWrap','dashNoticesWrap'].every(id => !!document.getElementById(id));
-    switchTab('accounting'); await new Promise(r => setTimeout(r, 300));
-    const sr = document.getElementById('salarySearch'), hidden = sr.style.display === 'none';
-    toggleSalarySearch(); const shown = sr.style.display !== 'none'; toggleSalarySearch();
-    switchTab('dashboard');
-    return {only, all, folded, kept, open, hidden, shown, closed: sr.style.display === 'none', figs: r_figs === 'On shift,Late,No punch,Notices', sections: r_sections};
-  });
-  ok(Object.values(tf).every(Boolean), 'today: a figure filters to its section, the arrow folds one (kept); salary search opens from its icon ' + JSON.stringify(tf));
   // Schedule, variant 6: a line per worker with its week; the arrow opens 7 days, a day opens the shift editor.
   const sch = await p.evaluate(async () => {
     const w0 = workers.find(w => isActiveWorker(w)), keep = JSON.stringify(w0.schedule || []);
@@ -235,7 +290,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.screenshot({path: SP + '/t3-accounting.png'}).catch(()=>{});
   await p.evaluate(async () => { const sel = document.getElementById('salaryPeriod'); sel.value = 'week'; await onSalaryPeriodChange(); });
   await p.setViewportSize({width: 1280, height: 720});
-  ok(t3.stats === 4 && t3.lines >= 1, 'today: figures on top and colored lines (template 3) ' + JSON.stringify(t3));
+  ok(t3.stats === 4 && t3.row && t3.lines >= 1, 'today: four figure tiles in one row on a phone and colored plates ' + JSON.stringify(t3));
+  ok(t3.twoRows && t3.fixed && t3.greetHidden && t3.shortDate && t3.noMenu, 'V7 on a phone: two header rows fixed at the top (logo · short date and weather · buttons; the breadcrumb under them), the greeting\'s words hidden, the bottom bar stays ' + JSON.stringify(t3));
   // On a phone a worker card is compact: one summary line instead of the detail rows.
   await p.setViewportSize({width: 390, height: 800});
   const wc = await p.evaluate(async () => { switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await new Promise(r => setTimeout(r, 200));

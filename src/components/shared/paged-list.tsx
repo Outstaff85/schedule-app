@@ -14,6 +14,7 @@
 import * as React from 'react';
 import { IconChevronDown } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 const PAGE = 10;
@@ -74,11 +75,13 @@ function wire() {
   window.addEventListener('scroll', onScroll, opts);
 }
 
-export function PagedList<T>({ items, render, size = PAGE, empty }: {
+export function PagedList<T>({ items, render, size = PAGE, empty, columns }: {
   items: T[];
   render: (item: T, index: number) => React.ReactNode;
   size?: number;
   empty?: React.ReactNode;
+  /** V7: the plates in up to three columns on a wide computer screen (one on a phone) */
+  columns?: boolean;
 }) {
   const [shown, setShown] = React.useState(size);
   const moreRef = React.useRef<HTMLDivElement>(null);
@@ -93,10 +96,10 @@ export function PagedList<T>({ items, render, size = PAGE, empty }: {
 
   if (!items.length) return <>{empty ?? null}</>;
   return (
-    <div data-slot="paged-list">
+    <div data-slot="paged-list" className={columns ? 'grid items-start gap-x-3 min-[701px]:grid-cols-2 min-[1100px]:grid-cols-3' : undefined}>
       {items.slice(0, shown).map(render)}
       {left > 0 && (
-        <div ref={moreRef} className="flex justify-center py-1.5" data-slot="paged-more">
+        <div ref={moreRef} className={cn('flex justify-center py-1.5', columns && 'col-span-full')} data-slot="paged-more">
           <Button size="sm" onClick={() => setShown(s => s + size)}>
             <IconChevronDown className="size-4" />{tr('Show more ({0} left)', { 0: left })}
           </Button>

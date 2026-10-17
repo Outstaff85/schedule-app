@@ -1,0 +1,23 @@
+/* The greeting's icons (src/lib/greeting.ts): the time-of-day and weather SVGs
+   and the temperature — the punch page and the Shell's title bar; the manager
+   app has its own copy (CLAUDE.md → Duplicated on purpose). */
+.gic{display:inline-block;width:30px;height:30px;margin-left:8px;vertical-align:-6px;overflow:visible}
+.gic .rise{animation:gic-rise 4s ease-in-out infinite}@keyframes gic-rise{0%,100%{transform:translateY(2px)}50%{transform:translateY(-2px)}}
+.gic .spin{transform-origin:16px 16px;animation:gic-spin 14s linear infinite}@keyframes gic-spin{to{transform:rotate(360deg)}}
+.gic .pulse{transform-origin:16px 16px;animation:gic-pulse 3s ease-in-out infinite}@keyframes gic-pulse{50%{transform:scale(1.08)}}
+.gic .sink{animation:gic-sink 5s ease-in-out infinite}@keyframes gic-sink{0%,100%{transform:translateY(0)}50%{transform:translateY(3px)}}
+.gic .moon{animation:gic-moon 4s ease-in-out infinite}@keyframes gic-moon{50%{transform:translateY(-2px) rotate(-6deg)}}
+.gic .tw{transform-box:fill-box;transform-origin:center;animation:gic-tw 2.4s ease-in-out infinite}.gic .tw2{animation-delay:1.2s}@keyframes gic-tw{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.2;transform:scale(.6)}}
+/* weather icons (stage 12) */
+.gtemp{font-size:.78em;font-weight:600;color:var(--ink-2);margin-left:6px;vertical-align:1px}
+.gic .drift{animation:gic-drift 6s ease-in-out infinite}.gic .drift.d2{animation-duration:8s;animation-direction:reverse}
+@keyframes gic-drift{0%,100%{transform:translateX(-1px)}50%{transform:translateX(1.5px)}}
+.gic .drop{animation:gic-drop 1.1s linear infinite}.gic .flake{animation:gic-flake 2.4s linear infinite}
+.gic .d2{animation-delay:.35s}.gic .d3{animation-delay:.7s}.gic .flake.d2{animation-delay:.8s}.gic .flake.d3{animation-delay:1.6s}
+@keyframes gic-drop{0%{transform:translateY(-3px);opacity:0}30%{opacity:1}100%{transform:translateY(4px);opacity:0}}
+@keyframes gic-flake{0%{transform:translateY(-4px);opacity:0}30%{opacity:1}100%{transform:translateY(5px);opacity:0}}
+.gic .bolt{animation:gic-bolt 2.6s ease-in-out infinite}
+@keyframes gic-bolt{0%,40%,100%{opacity:.25}45%,55%{opacity:1}50%{opacity:.4}}
+.gic .fogl{animation:gic-fog 5s ease-in-out infinite}
+@keyframes gic-fog{0%,100%{transform:translateX(-2px)}50%{transform:translateX(2px)}}
+@media (prefers-reduced-motion:reduce){.gic *{animation:none!important}}

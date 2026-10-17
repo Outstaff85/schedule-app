@@ -446,7 +446,6 @@
   "Not assigned to any object": "לא משויך לאף לקוח",
   "Not available for the supplier role": "לא זמין לתפקיד ספק",
   "Not available for this role": "לא זמין לתפקיד זה",
-  "Not clocked in": "לא החתים כניסה",
   "Not enough rights": "אין מספיק הרשאות",
   "Not filled in": "לא מולא",
   "Not filled in: {0}": "לא מולא: {0}",
@@ -709,7 +708,6 @@
   "Timings": "זמנים",
   "To approve": "לאישור",
   "Today": "היום",
-  "Today — {0}": "היום — {0}",
   "Today's Log": "יומן היום",
   "Today's log": "יומן היום",
   "Tomorrow": "מחר",
@@ -1211,5 +1209,14 @@
   "Monthly hours": "שעות חודשיות",
   "I approve the hours of this month.": "אני מאשר/ת את שעות החודש.",
   "Signed by {name}": "נחתם על ידי {name}",
-  "Signature pad": "משטח חתימה"
+  "Signature pad": "משטח חתימה",
+  "Refreshing…": "מרענן…",
+  "Release to refresh": "שחררו כדי לרענן",
+  "Pull to refresh": "משכו למטה כדי לרענן",
+  "Today shows who is on shift, who is late and who did not punch once workers are added.": "כאן יופיעו מי במשמרת, מי מאחר ומי לא החתים — אחרי שיתווספו עובדים.",
+  "Add the first worker": "הוספת העובד הראשון",
+  "GPS suspicious": "מיקום GPS חשוד",
+  "Back to the gallery": "חזרה לגלריה",
+  "Plates in three columns": "לוחיות בשלוש עמודות",
+  "Frame (V7)": "מסגרת (V7)"
 }

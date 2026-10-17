@@ -90,6 +90,7 @@ How a run works (a run = one session, started by the Routine below or by hand wi
 - [x] 11a WhatsApp reminder (added by the owner 2026-10-12; after stage 11, before the deferred weather)
 - [x] 13 Conformance pass — every page made to match the design system exactly (below); the owner gave the go on 2026-10-13; done group by group
 - [x] 12 Weather — the owner put the OpenWeatherMap key in Secret Manager (`OPENWEATHER_API_KEY`) on 2026-10-13; the `weather` function, the weather icons and the temperature in the greeting
+- [x] V7 frame and readability (owner 2026-10-17, from the UI audit; built in React migration stage 6a): the side menu, the breadcrumb, the greeting and weather in the title bar, brighter secondary text (`--ink-2` `#a3a9bb`), figures as glass tiles, sections as panels — react-migration-plan.md → Additions from the UI audit, docs/app-core.md → The V7 frame. Where it differs from the header and tabs described above, V7 wins.
 
 ### Stages
 Each stage: tested with (`npm test` in `tests/rules`, `test:auth`, the browser tests, `tests/i18n/check.js`, `tests/icons/check.js`), every new text in the dictionaries with Hebrew, the duplicated helpers mirrored in every page (CLAUDE.md → Duplicated on purpose), `service-worker.js` CACHE bumped, docs updated; merged only after the owner's OK. Later stages build on the shared pieces of stage 1.

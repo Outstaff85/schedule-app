@@ -21,7 +21,7 @@ A header "Suppliers N" with a glass **New** (`openAddSupplier`); Select (a butto
 ## Where suppliers are used
 
 - **Workers:** the Supplier `<select>` in the worker modal, the Supplier filter, group by supplier, and the supplier badge on cards and rows ([workers.md](workers.md)).
-- **Today tab:** "Workers by supplier" headcount (`renderDashSuppliers()`, [accounting.md](accounting.md) → Today).
+- **Today tab:** "Workers by supplier" headcount (drawn in React: `todayModel` in `src/manager/today.ts`, the section in `src/manager/Today.tsx`; [accounting.md](accounting.md) → Today).
 - **Accounting:**
   - the commission matrix (`renderSupplierRateMatrix()`);
   - "Payable by supplier" (`renderSupplierPayable()`): per worker `supplierCommission(w, e, sid)` — with an override of the worker's own (`workerHasSupplierOverride`: `supplierRates[sid].rate`, or `.dayRate` for a daily-paid worker) `commissionFor` (hours × the ₪/h, or days × the ₪/day); otherwise `e.supCom`, summed shift by shift in `salaryEntriesFor` by `supplierShiftCommission(sp.commission, h, date, seenDays)`: the supplier's rate on that shift's date (`supplierRateOn`) by the hour (hours × rate) or by the day (the rate once per day worked), or `SUPPLIER_DEFAULT_RATE` = 5 ₪/h.

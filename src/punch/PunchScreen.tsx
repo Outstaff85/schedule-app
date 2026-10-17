@@ -11,7 +11,7 @@ import {
 import { tr, useI18n } from '@/lib/i18n';
 import { LanguageButton } from '@/components/shared/language';
 import { doPunch, loadWeather, locText, nextType, openSchedule, pickObject, set, usePunch, type IconName, type PClient } from './core';
-import { greetingHtml, partOfDay } from './greeting';
+import { greetingHtml, partOfDay } from '@/lib/greeting';
 import { nextShiftText, refreshTileHours } from './figures';
 import { MARK_SVG } from './mark';
 

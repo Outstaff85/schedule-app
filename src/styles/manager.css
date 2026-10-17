@@ -1,0 +1,18 @@
+/* The manager app's React pieces (src/manager/, docs/build.md → The manager's
+   React pieces). They live inside the old page, which has its own reset and
+   links og.css itself, so this sheet has no Tailwind preflight and no og.css:
+   only the theme, the utilities and a small reset scoped to the React roots.
+   It is not in a cascade layer (the page's unlayered `* {margin:0; padding:0}`
+   would beat every layered utility) and src/manager/main.tsx puts it right
+   before the page's og.css link, so og.css still wins where they meet, as on
+   the new pages. */
+@import "tailwindcss/theme.css";
+@import "tw-animate-css";
+@import "./theme.css";
+@import "tailwindcss/utilities.css" source(none);
+@source "../";
+
+:where([data-island], [data-island] *, [data-slot]) { border-color: var(--color-border); }
+:where([data-island]) :where(button) { background: none; border: 0 solid; color: inherit; font: inherit; padding: 0; cursor: pointer; text-align: inherit; }
+:where([data-island]) :where(svg) { display: block; flex-shrink: 0; }
+:where([data-island]) :where(h1, h2, h3, h4, p) { font: inherit; }
