@@ -102,6 +102,26 @@ One PR per tab, in this order: 6a Today, 6b Schedule, 6c Workers (list, card, wo
 - Remove the old page copies, the parts of `og.css` replaced by Tailwind, the icon build and `tests/icons`, the duplicated-helpers list in CLAUDE.md; update `docs/`.
 - **Mergeable when:** no old code is left and the site works.
 
+### Additions from the UI audit (owner, 2026-10-17)
+New features and polish the owner added to the migration. Each lands in the stage named, in that stage's PR (its checks, docs and Hebrew included), unless it says otherwise.
+
+**For the worker and the portals**
+- **Availability and shift swaps** — stage 5 (the worker marks the days they can't work and offers a shift to a colleague) and 6b (the manager sees both on the Schedule tab and confirms a swap with one tap; nothing changes in the schedule until confirmed). Needs a new Firestore collection and rules for the worker's writes: the rule change is reviewed by the owner before merge (it is not covered by Auto-continue).
+- **Payslip PDF** — stage 5: "Download for the month" in My Hours, the same figures as the screen, from `src/lib/payroll.ts` only (no second calculation), marked as an estimate before deductions.
+- **Client's monthly signature** — after stage 5, as its own PR on the client portal (`src/client/`): after "Approve the month" the client signs with a finger; the signed PDF is stored with the client's documents. A client still sees only its own workers' hours.
+
+**Look (every stage from 5 on, through the shared pieces)**
+- **Loading placeholders** — `Skeleton` plates while a list or figures load, never an empty screen (in `PagedList` / `Section`).
+- **Empty screens with an action** — `Empty` with the screen's one action ("Add the first client", "Send a WhatsApp reminder").
+- **Light theme for outdoors** — a second set of token values in `og.css` and a switch in the account menu; the dark look stays the default. Its own PR after stage 6, so every page is on the new stack when it is switched on.
+- **Pull down to refresh** — phone lists (Today, punches, hours) reload with a pull from the top.
+- **Smooth tab changes** — a short (≈150 ms) fade between screens and the breadcrumb changing with it; off under `prefers-reduced-motion`.
+
+**Technical**
+- **Screenshot comparison in CI** — `tests/e2e/audit.js` runs on every PR and compares each screen (phone and computer) with the last accepted shots; a changed screen fails the check until the new shots are accepted. Its own PR, before stage 6.
+- **Keyboard shortcuts on a computer** — stage 6 (in `Shell`): N new, / search the list, Esc close the window, ← → week / period, ? shows the list.
+- **Accessibility** — a rule for every stage from 5 on: secondary text contrast at least 4.5:1, a visible keyboard focus on plates and buttons, a label on every icon button (bell, language, ⋮).
+
 ### Rules for all stages
 - Each PR adds its own checks and updates the matching `docs/*.md` in the same PR.
 - A failed stage is rolled back by reverting one PR; the rest is untouched.
