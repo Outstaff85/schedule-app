@@ -1179,128 +1179,172 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await ctx.close();
 
   // ── A supplier signing in on the main site is taken to its portal ──
+  // The supplier portal is a React page (src/supplier/, stage 4): the checks read its DOM and the supplier function's replies.
+  const supReady = () => !!document.querySelector('[data-testid="supplier-portal"][data-ready="1"]');
   ctx = await newCtx(); p = await page(ctx);
   await login(p, BASE + 'schedule-manager.html', 'sup1', 'sup-pass-11');
-  ok(await waitFor(p, () => /supplier-portal\.html/.test(location.href) && typeof myWorkers !== 'undefined' && myWorkers.length === 1, 15000), 'supplier: a login on the main site lands in the supplier portal, signed in');
+  ok(await waitFor(p, () => /supplier-portal\.html/.test(location.href) && !!document.querySelector('[data-testid="supplier-portal"][data-ready="1"]'), 15000), 'supplier: a login on the main site lands in the supplier portal, signed in');
   ok(await p.evaluate(() => !localStorage.getItem('schedMgr_session')), 'supplier: no manager-app session is left behind');
   await ctx.close();
 
   // ── Supplier portal ──
   ctx = await newCtx(); p = await page(ctx);
+  const supReplies = [];
+  // The supplier function's replies; `supTweak` (when set) rewrites a loadSchedule reply on its way to the page.
+  let supTweak = null;
+  await p.route(/cloudfunctions\.net\/supplier$/, async r => {
+    if (r.request().method() === 'OPTIONS') return r.fallback();
+    const h = r.request().headers(), body = r.request().postData() || '{}';
+    const res = await fetch('http://127.0.0.1:5055/supplier', {method:'POST', body, headers: h.authorization ? {Authorization: h.authorization} : {}});
+    let text = await res.text();
+    supReplies.push({action: JSON.parse(body).action, text});
+    if (supTweak && JSON.parse(body).action === 'loadSchedule') { const j = JSON.parse(text); supTweak(j); text = JSON.stringify(j); }
+    return r.fulfill({status: res.status, contentType: 'application/json', headers: {'Access-Control-Allow-Origin': '*'}, body: text});
+  });
   await login(p, BASE + 'supplier-portal.html', 'sup1', 'sup-pass-11');
-  ok(await waitFor(p, () => typeof myWorkers !== 'undefined' && myWorkers.length === 1), 'supplier: own worker only');
-  ok(await p.evaluate(() => myWorkers[0].name === 'Avi Cohen' && !('token' in myWorkers[0]) && !('docUrl' in myWorkers[0]) && myWorkers[0].hourlyRate === 50 && showPay === true
-    && !JSON.stringify(myClients).includes('billRate')), 'supplier: no token or file link; sees pay by default (own rate), never client billing');
-  const sp = await p.evaluate(() => {
-    switchTab('hours');
-    const y = new Date(Date.now() - 864e5), sel = document.getElementById('hoursExportMonthSel');
-    sel.value = y.getFullYear() + '-' + y.getMonth(); renderPayTable();
-    return document.getElementById('payTable').innerText;
-  });
-  ok(/Avi Cohen\s+8\.0h · 1 day · ₪50\/h · Pay ₪400\s+₪40/.test(sp), 'supplier pay: 8h × own rate 50 = ₪400, commission 8 × 5 = ₪40 ' + JSON.stringify(sp));
-  const spd = await p.evaluate(() => {
-    const w = myWorkers[0], keep = {...w};
-    w.supplierDayRate = 90; w.payMode = 'daily';
-    renderPayTable(); const t = document.getElementById('payTable').innerText;
-    Object.keys(w).forEach(k => delete w[k]); Object.assign(w, keep); renderPayTable();
-    return {t, mc: myCommission({supplierDayRate: 90, supplierRate: 5}, 8, 2), mh: myCommission({supplierDayRate: null, supplierRate: 5}, 8, 2)};
-  });
-  ok(/₪90\s*$/m.test(spd.t) && spd.mc === 180 && spd.mh === 40, 'supplier pay: a daily worker\'s commission is ₪/day × days ' + JSON.stringify(spd));
-  const ts = await p.evaluate(async () => {
-    const lazy = typeof XLSX === 'undefined'; await loadXlsx();
-    const aoa = [['Worker', 'Date', 'In', 'Out'], ['Avi Cohen', '01/10/2026', '08:00', '16:30'], ['Someone Else', '01/10/2026', '09:00', '17:00'], ['avi cohen', '2026-10-02', '7:30', '15:00']];
-    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'T');
-    const file = new File([XLSX.write(wb, {type: 'array', bookType: 'xlsx'})], 'sheet.xlsx');
-    sendHoursRows = []; renderSendHoursRows();
-    await loadTimesheetFile({files: [file], value: ''});
-    const rows = sendHoursRows.map(r => [r.date, r.inTime, r.outTime].join(' '));
-    sendHoursRows = []; renderSendHoursRows();
-    return lazy ? rows : ['xlsx loaded with the page'];
-  });
-  ok(ts.length === 2 && ts[0] === '2026-10-01 08:00 16:30' && ts[1] === '2026-10-02 07:30 15:00', 'supplier: an Excel timesheet fills the picked worker\'s shifts, other workers\' rows are left out ' + JSON.stringify(ts));
-  const sh = await p.evaluate(async () => {
-    addSendHoursRow(); sendHoursRows[0] = {date: '2026-10-02', inTime: '09:00', outTime: '13:00'};
-    await submitSendHours();
-    for(let i = 0; i < 40 && !/Sent for review/i.test(document.getElementById('sentHoursList').innerText); i++) await new Promise(res => setTimeout(res, 150));
-    return document.getElementById('sentHoursList').innerText;
-  });
-  ok(/Avi Cohen · 1 shift\(s\): 02\/10\/2026/.test(sh) && /Sent for review/i.test(sh), 'supplier: hours sent for approval are listed as pending ' + JSON.stringify(sh));
-  ok(await p.evaluate(async () => { const r = await supplierCall({action:'supplierUpdateWorker', workerId:'w1', worker:{phone:'0509'}}); await loadData(); return r.ok && myWorkers[0].phone === '0509'; }), 'supplier: update through the supplier function');
-  // Template 3 in the portal: figures and lines on the dashboard (screenshot at phone width).
-  await p.setViewportSize({width: 390, height: 844});
-  const spT3 = await p.evaluate(async () => { switchTab('dashboard'); await new Promise(r => setTimeout(r, 200));
-    return {stats: document.querySelectorAll('#sectionDashboard .t3-stats > div').length, workers: (switchTab('workers'), document.querySelectorAll('#workersList .t3-line').length)}; });
-  await p.evaluate(() => switchTab('dashboard'));
-  await p.screenshot({path: SP + '/t3-supplier.png'}).catch(()=>{});
-  await p.setViewportSize({width: 1280, height: 720});
-  ok(spT3.stats === 3 && spT3.workers >= 1, 'supplier portal: template 3 (figures, worker lines) ' + JSON.stringify(spT3));
-  await payrollCheck(p, 'supplier portal', ['groupPunchesIntoShifts', 'analyzeDayPunches', 'effectiveRates', 'shiftPay', 'shiftPayFor', 'salaryPeriodKey', 'dayOverride', 'wOwnRate', 'localYMD']);
-  const spHead = await p.evaluate(() => ({mark: !!document.querySelector('.pt-head .pt-mark'), tab: (() => { const b = document.querySelector('.tab-btn.active'); return b ? getComputedStyle(b).borderRadius : ''; })()}));
-  ok(spHead.mark && spHead.tab === '14px', 'supplier portal: the logo mark in a glass header, glass tabs ' + JSON.stringify(spHead));
-  // Lists in the portal (redesign stage 2): ⋮ and swipe actions; Delete → the Undo snack → the real delete only after 5 s; Select with the bulk bar.
-  const spl = await p.evaluate(async () => {
-    const wait = ms => new Promise(r => setTimeout(r, ms));
-    const add = async n => (await supplierCall({action:'supplierAddWorker', worker:{docGiven:n, docSurname:'Temp'}})).worker.id;
-    const t1 = await add('Tmpa'), t2 = await add('Tmpb'), t3 = await add('Tmpc');
-    await loadData(); switchTab('workers'); renderWorkersList(); await wait(100);
-    const lineOf = id => document.querySelector('#workersList .t3-line[data-sel-id="' + id + '"]');
-    const r = {swipe: lineOf(t1).closest('.sw').querySelectorAll('.sw-acts button').length};
-    lineOf(t1).querySelector('.t3-kb').click(); await wait(50);
-    r.pop = [...document.querySelectorAll('#ogPop .og-pop-it')].map(b => (b.classList.contains('del') ? '!' : '') + b.innerText.trim()).join();
-    document.querySelector('#ogPop .og-pop-it.del').click(); await wait(400);
-    r.gone = lineOf(t1).closest('.sw').classList.contains('gone');
-    document.querySelector('#undoSnack .og-snack-u').click(); await wait(400);
-    r.undone = !lineOf(t1).closest('.sw').classList.contains('gone');
-    await wait(5300); await loadData(); r.keptAfterUndo = myWorkers.some(w => w.id === t1);
-    renderWorkersList(); await wait(50);
-    r.selecting = document.querySelector('#workersList .workers-rows').classList.contains('selecting') && !!document.querySelector('.sel-head') && !document.querySelector('.sel-bar');
-    (__selState.head.querySelector('[data-h="on"]') || {click(){}}).click(); lineOf(t2).querySelector('.t3-cb').click(); lineOf(t3).click();
-    r.count = document.querySelector('.sel-bar b').innerText.trim(); r.noEditor = !document.getElementById('workerOverlay').classList.contains('open');
-    [...document.querySelectorAll('.sel-bar .gbtn')].find(b => b.dataset.a === 'del').click(); await wait(300);
-    r.barGone = !document.querySelector('.sel-bar'); r.snack = /2 workers deleted/.test(document.getElementById('undoSnack').innerText);
-    r.notYet = (await (async () => { await loadData(); return myWorkers.filter(w => w.id === t2 || w.id === t3).length; })()) === 2;
-    await wait(5600);
-    for(let i = 0; i < 40 && myWorkers.some(w => w.id === t2 || w.id === t3); i++) await wait(150);
-    r.deleted = !myWorkers.some(w => w.id === t2 || w.id === t3) && myWorkers.some(w => w.id === t1);
-    await supplierCall({action:'supplierDeleteWorker', workerId:t1}); await loadData(); renderWorkersList();
-    return r;
-  });
-  ok(spl.swipe === 2 && spl.pop === 'Edit,!Delete' && spl.gone && spl.undone && spl.keptAfterUndo, 'supplier lists: ⋮ / swipe Edit and Delete; Undo keeps the worker ' + JSON.stringify(spl));
-  ok(spl.selecting && spl.count === '2 selected' && spl.noEditor && spl.barGone && spl.snack && spl.notYet && spl.deleted, 'supplier lists: Select two, Delete → Undo snack, deleted on the server only after 5 s ' + JSON.stringify(spl));
-  // Hours approval tab (hours ticks hours, approve, export): only its own workers; the month approved at once.
-  ok(await waitFor(p, () => document.getElementById('tabBtn_review').style.display !== 'none', 10000), 'supplier: the Hours approval tab shows with an hours tick');
-  await p.evaluate(() => switchTab('review'));
-  ok(await waitFor(p, () => typeof __hrv !== 'undefined' && __hrv.data && __hrv.data.punches, 15000), 'supplier: the hours review loads');
-  const sr = await p.evaluate(async () => {
-    const r = {names: (__hrv.data.workers || []).map(w => w.name), acts: [...document.querySelectorAll('#sectionReview .hrv-act')].map(b => b.title), approveAll: !!document.querySelector('#sectionReview .hrv-approve')};
-    // Select mode: tick one day, approve it with the bar (hours-review.js).
-    const pk = hrvPickable();
-    r.pills = [...document.querySelectorAll('#sectionReview .hrv-day .hrv-pill')].map(x => x.textContent.trim()).join();
-    if(pk.length){
-      r.selBar = !!document.querySelector('#sectionReview .hrv-selhead') && !document.getElementById('hrvSelBar') && !document.getElementById('hrvSelectBtn');
-      r.noBox = !document.querySelector('#sectionReview .hrv-box'); hrvSelectOn();
-      document.querySelector(`#sectionReview .hrv-day[data-key="${pk[0].key}"] .hrv-box`).click();
-      r.selCount = document.querySelector('#hrvSelBar b').innerText.trim();
-      document.getElementById('hrvApproveSel').click();
-      for(let i = 0; i < 40 && hrvDayState(hrvRow(pk[0].key)).st !== 'approved'; i++) await new Promise(res => setTimeout(res, 150));
-      r.selSt = hrvDayState(hrvRow(pk[0].key)).st; r.selGone = !document.getElementById('hrvSelBar'); }
-    r.approveAll = !!document.querySelector('#sectionReview .hrv-approve');
-    if(r.approveAll){ hrvApproveMonth(); for(let i = 0; i < 40 && !/Every day approved/.test(document.getElementById('hrvStatus').innerText); i++) await new Promise(res => setTimeout(res, 150)); }
-    r.status = (document.getElementById('hrvStatus') || {}).innerText || document.getElementById('sectionReview').innerText;
-    return r;
-  });
-  await (await p.$('#sectionReview')).screenshot({path: SP + '/supplier-hours-review.png'}).catch(()=>{});
-  ok(sr.names.join() === 'Avi Cohen' && !sr.acts.some(t => /Dispute|fix/i.test(t)) && /Every day approved/.test(sr.status), 'supplier: reviews only its own workers, no dispute / fix without those ticks, approves the month ' + JSON.stringify(sr));
-  ok(sr.selBar && sr.noBox && /Waiting/.test(sr.pills) && sr.selCount === '1 selected' && sr.selSt === 'approved' && sr.selGone, 'supplier: hours — a status pill per day; a Select button, then boxes (no bar until a tick), tick a day, Approve in the bar ' + JSON.stringify(sr));
-  // the firm's language reaches the portal with loadSchedule
-  const sl = await p.evaluate(async () => { const def = I18N_LANG;
-    document.querySelector('#headerActions .lang-btn').click(); document.querySelector('#langSheet .lang-li[data-lang="he"]').click();
-    for(let i = 0; i < 40 && I18N_LANG !== 'he'; i++) await new Promise(res => setTimeout(res, 150));
-    return {def, lang: I18N_LANG, tab: document.getElementById('tabBtn_hours').textContent.trim(), stored: localStorage.getItem('uiLang')}; });
-  ok(sl.def === 'en' && sl.lang === 'he' && sl.tab === 'השעות שלי' && sl.stored === 'he', 'supplier: English by default; the header Language button switches the portal to Hebrew ' + JSON.stringify(sl));
+  await p.waitForNavigation().catch(()=>{});
+  ok(await waitFor(p, supReady, 15000), 'supplier: the portal loads');
+  const tabTo = async label => { await p.click(`[data-testid="shell-tabs"] button:has-text("${label}")`); await sleep(250); };
+  const sched = () => JSON.parse((supReplies.filter(x => x.action === 'loadSchedule').pop() || {text: '{}'}).text);
+  const s0 = sched();
+  ok((s0.workers || []).length === 1 && s0.workers[0].name === 'Avi Cohen' && !('token' in s0.workers[0]) && !('docUrl' in s0.workers[0]) && s0.workers[0].hourlyRate === 50 && s0.showPay === true
+    && !JSON.stringify(s0.clients).includes('billRate') && !supReplies.some(x => /tok-|billRate|gpsAccuracy|"lat"/.test(x.text)), 'supplier: own worker only; no token or file link; sees pay by default (own rate), never client billing or GPS');
+  const s_sp0 = await p.evaluate(() => ({old: typeof Payroll !== 'undefined' || typeof myWorkers !== 'undefined' || typeof hoursReviewMount !== 'undefined', mark: !!document.querySelector('header [data-testid="brand-mark"]'),
+    tabs: [...document.querySelectorAll('[data-testid="shell-tabs"] button')].map(b => b.innerText.trim()).join()}));
+  ok(!s_sp0.old && s_sp0.mark && s_sp0.tabs === 'Dashboard,My Workers,My Hours,Approvals', 'supplier portal: a React page (no old globals), the brand in the title bar, its tabs (Approvals with an hours tick) ' + JSON.stringify(s_sp0));
+  // Dashboard: figures (on site, my workers, punches today) and today's punches.
+  const db = await p.evaluate(() => ({figs: document.querySelectorAll('[data-testid="dashboard"] [data-slot="figures"] > button').length, text: document.querySelector('[data-testid="dashboard"]').innerText}));
+  ok(db.figs === 3 && /My workers/i.test(db.text) && /Today's log/i.test(db.text), 'supplier dashboard: three figures and today\'s log ' + JSON.stringify(db));
+  // My Hours → Pay (a Data Table on a computer): Avi 8h × own rate 50 = ₪400, commission 8 × 5 = ₪40.
+  await tabTo('My Hours');
+  const payRow = () => p.evaluate(() => { const t = document.querySelector('[data-testid="pay-table"]'); return t ? t.innerText.replace(/\s+/g, ' ') : ''; });
+  const pt = await payRow();
+  ok(/Avi Cohen 8\.0 1 ₪50\/h ₪400 ₪40/.test(pt) && /Total 8\.0 1 ₪400 ₪40/.test(pt) && await p.evaluate(() => !!document.querySelector('[data-testid="pay-table"] [data-slot="data-table"][data-kind="table"]')),
+    'supplier pay: a Data Table — 8h × own rate 50 = ₪400, commission 8 × 5 = ₪40, with totals ' + JSON.stringify(pt));
+  await p.click('[data-testid="pay-table"] th button:has-text("Pay")');
+  ok(await p.evaluate(() => !!document.querySelector('[data-testid="pay-table"] th[aria-sort]')), 'supplier pay: a tap on a column head sorts by it');
+  // A daily-paid worker with a ₪/day commission (the reply rewritten): the commission is ₪/day × days.
+  supTweak = j => { Object.assign(j.workers[0], {payMode: 'daily', supplierDayRate: 90}); };
+  await p.reload(); await waitFor(p, supReady, 15000); await tabTo('My Hours');
+  const ptd = await payRow();
+  supTweak = null;
+  ok(/Avi Cohen 8\.0 1 ₪50\/day ₪50 ₪90/.test(ptd), 'supplier pay: a daily worker — pay by the day, commission ₪/day × days ' + JSON.stringify(ptd));
+  await p.reload(); await waitFor(p, supReady, 15000); await tabTo('My Hours');
+  // A timesheet file fills the picked worker's shifts; other workers' rows are left out.
+  const XLSXn = require('xlsx');
+  const s_wb = XLSXn.utils.book_new();
+  XLSXn.utils.book_append_sheet(s_wb, XLSXn.utils.aoa_to_sheet([['Worker', 'Date', 'In', 'Out'], ['Avi Cohen', '01/10/2026', '08:00', '16:30'], ['Someone Else', '01/10/2026', '09:00', '17:00'], ['avi cohen', '2026-10-02', '7:30', '15:00']]), 'T');
+  const lazy = await p.evaluate(() => typeof XLSX === 'undefined');
+  await p.setInputFiles('[data-testid="timesheet-file"]', {name: 'sheet.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: XLSXn.write(s_wb, {type: 'buffer', bookType: 'xlsx'})});
+  await waitFor(p, () => document.querySelectorAll('[data-send-row]').length >= 2, 10000);
+  const sendRows = () => p.evaluate(() => [...document.querySelectorAll('[data-send-row]')].map(r => [r.querySelector('[data-slot="date-picker"]').innerText.trim(), ...[...r.querySelectorAll('input[type=time]')].map(i => i.value)].join(' ')));
+  const ts = await sendRows();
+  ok(lazy && ts.length === 2 && ts[0] === '01/10/2026 08:00 16:30' && ts[1] === '02/10/2026 07:30 15:00', 'supplier: an Excel timesheet (SheetJS loaded on demand) fills the picked worker\'s shifts, other workers\' rows are left out ' + JSON.stringify(ts));
+  while (await p.$('[data-send-row] button[aria-label="Remove"]')) await p.click('[data-send-row] button[aria-label="Remove"]');
+  // A row without times is outlined and explained, nothing is sent; with times it is sent and listed as pending.
+  await p.click('[data-testid="send-hours"] button:has-text("Add shift")');
+  const nSubmit = () => supReplies.filter(x => x.action === 'supplierSubmitHours').length;
+  await p.click('[data-testid="send-hours-btn"]'); await sleep(300);
+  const bad = {outlined: await p.evaluate(() => !!document.querySelector('[data-send-row][data-bad="1"]')), sent: nSubmit()};
+  await p.fill('[data-send-row] input[aria-label="In"]', '09:00'); await p.fill('[data-send-row] input[aria-label="Out"]', '13:00');
+  await p.click('[data-testid="send-hours-btn"]');
+  const today = await p.evaluate(() => new Date().toLocaleDateString('en-GB'));
+  await waitFor(p, () => /Sent for review/i.test(document.querySelector('[data-testid="sent-hours"]').innerText), 10000);
+  const s_sh = await p.evaluate(() => document.querySelector('[data-testid="sent-hours"]').innerText);
+  ok(bad.outlined && bad.sent === 0 && s_sh.includes('Avi Cohen · 1 shift(s): ' + today) && /Sent for review/i.test(s_sh) && !(await p.$('[data-send-row]')), 'supplier: a row without times is outlined, nothing sent; hours sent for approval are listed as pending ' + JSON.stringify({bad, s_sh}));
+  // The date of a row is picked with the Date Picker (a calendar in a popover).
+  await p.click('[data-testid="send-hours"] button:has-text("Add shift")');
+  await p.click('[data-send-row] [data-slot="date-picker"]');
+  ok(await p.waitForSelector('[data-slot="calendar"], .rdp-root', {timeout: 5000}).then(() => true).catch(() => false), 'supplier: a shift\'s date is picked in the Date Picker');
+  await p.keyboard.press('Escape'); await p.click('[data-send-row] button[aria-label="Remove"]');
+  // My Workers: the edit form (React Hook Form + Zod) — the given name is required; a save goes through the supplier function.
+  await tabTo('My Workers');
+  const plateOf = id => `[data-worker-id="${id}"]`;
+  await p.click(plateOf('w1') + ' .og-plate b');
+  await p.waitForSelector('[data-testid="worker-form"]');
+  const s_ed = await p.evaluate(() => ({secs: [...document.querySelectorAll('[data-testid="worker-form"] [data-slot="accordion-trigger"]')].map(t => t.innerText.split('\n')[0].trim()).join(), kind: document.querySelector('[data-testid="window"]').dataset.kind}));
+  await p.fill('[data-field="docGiven"]', ''); await p.click('[data-testid="worker-save"]'); await sleep(200);
+  const req = await p.evaluate(() => (document.querySelector('[data-testid="worker-form"] [data-slot="form-message"]') || {}).innerText || '');
+  await p.fill('[data-field="docGiven"]', 'Avi'); await p.fill('[data-field="phone"]', '0509');
+  await p.click('[data-testid="worker-save"]');
+  ok(await waitFor(p, () => !document.querySelector('[data-testid="worker-form"]') && /0509/.test((document.querySelector('[data-worker-id="w1"]') || {}).innerText || ''), 10000)
+    && s_ed.secs === 'Person,Address' && s_ed.kind === 'dialog' && req === 'Name required' && supReplies.some(x => x.action === 'supplierUpdateWorker' && /"ok": ?true/.test(x.text)),
+    'supplier: the worker form — section plates, the given name required, saved through the supplier function ' + JSON.stringify({s_ed, req}));
+  // Lists: ⋮ (Edit, Delete); Delete → the Undo snack → the real delete only after 5 s; Select two → Delete.
+  const addWorker = async n => {
+    await p.click('[data-testid="workers"] button.og-new'); await p.waitForSelector('[data-testid="worker-form"]');
+    await p.fill('[data-field="docGiven"]', n); await p.fill('[data-field="docSurname"]', 'Temp'); await p.click('[data-testid="worker-save"]');
+    await p.waitForFunction(n => !document.querySelector('[data-testid="worker-form"]') && [...document.querySelectorAll('[data-worker-id]')].some(e => e.innerText.includes(n + ' Temp')), n, {timeout: 10000}).catch(() => {});
+  };
+  for (const n of ['Tmpa', 'Tmpb', 'Tmpc']) await addWorker(n);
+  const idOf = n => p.evaluate(n => { const e = [...document.querySelectorAll('[data-worker-id]')].find(e => e.innerText.includes(n + ' Temp')); return e ? e.dataset.workerId : ''; }, n);
+  const [wt1, wt2, wt3] = [await idOf('Tmpa'), await idOf('Tmpb'), await idOf('Tmpc')];
+  const nb = await p.evaluate(id => !!document.querySelector(`[data-worker-id="${id}"] [data-testid="new-badge"]`), wt1);
+  await p.click(plateOf(wt1) + ' button[aria-label="Actions"]'); await p.waitForSelector('[role="menuitem"]');
+  const spl = {menu: await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(m => m.innerText.trim()).join()), nb};
+  await p.click('[role="menuitem"]:has-text("Delete")'); await sleep(400);
+  spl.gone = !(await p.$(plateOf(wt1))); spl.snack = await p.evaluate(() => (document.querySelector('[data-testid="undo-snack"]') || {}).innerText || '');
+  await p.click('[data-testid="undo-snack"] .og-snack-u'); await sleep(400);
+  spl.back = !!(await p.$(plateOf(wt1)));
+  await sleep(5300);
+  spl.noDelete = !supReplies.some(x => x.action === 'supplierDeleteWorker');
+  ok(spl.menu === 'Edit,Delete' && spl.nb && spl.gone && /Tmpa Temp deleted/.test(spl.snack) && spl.back && spl.noDelete, 'supplier lists: a NEW badge; ⋮ Edit / Delete; Delete → Undo snack; Undo keeps the worker ' + JSON.stringify(spl));
+  await p.click('[data-testid="workers"] button:has-text("Select")');
+  await p.click(plateOf(wt2) + ' .og-plate b'); await p.click(plateOf(wt3) + ' .og-plate b');
+  const s_sel = {count: await p.evaluate(() => document.querySelector('[data-testid="select-bar"] b').innerText.trim()), noEditor: !(await p.$('[data-testid="worker-form"]'))};
+  await p.click('[data-testid="select-bar"] button:has-text("Delete")'); await sleep(300);
+  s_sel.barGone = !(await p.$('[data-testid="select-bar"]')); s_sel.snack = await p.evaluate(() => (document.querySelector('[data-testid="undo-snack"]') || {}).innerText || '');
+  s_sel.notYet = supReplies.filter(x => x.action === 'supplierDeleteWorker').length === 0;
+  await sleep(5600);
+  for (let i = 0; i < 40 && supReplies.filter(x => x.action === 'supplierDeleteWorker').length < 2; i++) await sleep(150);
+  await p.reload(); await waitFor(p, supReady, 15000);
+  s_sel.deleted = !(await p.$(plateOf(wt2))) && !(await p.$(plateOf(wt3))) && !!(await p.$(plateOf(wt1)));
+  ok(s_sel.count === '2 selected' && s_sel.noEditor && s_sel.barGone && /2 workers deleted/.test(s_sel.snack) && s_sel.notYet && s_sel.deleted, 'supplier lists: Select two, Delete → Undo snack, deleted on the server only after 5 s ' + JSON.stringify(s_sel));
+  await p.click(plateOf(wt1) + ' button[aria-label="Actions"]'); await p.click('[role="menuitem"]:has-text("Delete")');
+  await sleep(5600); for (let i = 0; i < 40 && supReplies.filter(x => x.action === 'supplierDeleteWorker').length < 3; i++) await sleep(150);
+  // Hours approval tab (hours ticks hours, approve, export): only its own workers; no dispute / fix; the month approved at once.
+  await tabTo('Approvals');
+  const hrvReadyS = () => !!document.querySelector('[data-testid="hours-review"][data-ready="1"]') && document.querySelectorAll('[data-day-key]').length >= 1;
+  ok(await waitFor(p, hrvReadyS, 15000), 'supplier: the hours review loads');
+  const sKey = await p.evaluate(() => [...document.querySelectorAll('[data-day-key]')].map(d => d.dataset.dayKey).find(k => k.startsWith('w1|')));
+  await p.click(`[data-day-key="${sKey}"] button[aria-label="Actions"]`); await p.waitForSelector('[role="menuitem"]');
+  const s_sr = {acts: await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(m => m.innerText.trim()).join()),
+    names: await p.evaluate(() => [...document.querySelectorAll('[data-testid="hours-review"] [data-slot="section"] .og-label > span:first-child')].map(b => b.textContent).join())};
+  await p.keyboard.press('Escape'); await sleep(150);
+  await p.click('[data-testid="approve-month"]'); await p.click('[data-testid="approve-month-ok"]');
+  await waitFor(p, () => /Every day approved/.test((document.querySelector('[data-testid="hours-status"]') || {}).innerText || ''), 10000);
+  s_sr.status = await p.evaluate(() => document.querySelector('[data-testid="hours-status"]').innerText);
+  ok(s_sr.names === 'Avi Cohen' && s_sr.acts === 'Approve this day' && /Every day approved/.test(s_sr.status), 'supplier: reviews only its own workers, no dispute / fix without those ticks, approves the month ' + JSON.stringify(s_sr));
+  // The language: English by default; the header Language button switches the portal to Hebrew; a reload keeps it.
+  await tabTo('My Hours');
+  const nLoadsS = supReplies.filter(x => x.action === 'loadSchedule').length;
+  await p.click('header [data-testid="lang-btn"]'); await p.click('[data-testid="lang-list"] .lang-li:has-text("עברית")');
+  const sl = {he: await waitFor(p, () => document.documentElement.lang === 'he' && localStorage.getItem('uiLang') === 'he', 10000)};
+  sl.tab = await p.evaluate(() => [...document.querySelectorAll('[data-testid="shell-tabs"] button')].map(b => b.innerText.trim())[2]);
+  sl.stayed = await p.evaluate(() => document.querySelector('[data-testid="supplier-portal"]').dataset.tab); sl.loads = supReplies.filter(x => x.action === 'loadSchedule').length - nLoadsS;
+  ok(sl.he && sl.tab === 'השעות שלי' && sl.stayed === 'hours' && sl.loads === 0, 'supplier: the header Language button switches the portal to Hebrew in place — the tab and the data stay ' + JSON.stringify(sl));
   await p.reload();
-  ok(await waitFor(p, () => I18N_LANG === 'he' && document.getElementById('tabBtn_dashboard').textContent.trim() === 'לוח בקרה', 15000), 'supplier: a reopened portal keeps the chosen language');
-  await p.evaluate(() => setLanguage('en'));
+  ok(await waitFor(p, () => document.documentElement.lang === 'he' && [...document.querySelectorAll('[data-testid="shell-tabs"] button')].map(b => b.innerText.trim())[0] === 'לוח בקרה', 15000), 'supplier: a reopened portal keeps the chosen language');
+  await p.click('header [data-testid="lang-btn"]'); await p.click('[data-testid="lang-list"] .lang-li:has-text("English")');
+  await waitFor(p, () => document.documentElement.lang === 'en', 10000);
+  // A phone: the bottom bar; the pay table becomes plates; the worker window opens from the bottom.
+  await p.setViewportSize({width: 390, height: 844}); await sleep(300);
+  await p.click('nav button:has-text("My Hours")').catch(() => {}); await sleep(300);
+  const s_ph = {cards: await p.evaluate(() => !!document.querySelector('[data-testid="pay-table"] [data-slot="data-table"][data-kind="cards"]')),
+    plate: await p.evaluate(() => ((document.querySelector('[data-pay-row="w1"]') || {}).innerText || '').replace(/\s+/g, ' '))};
+  await p.click('nav button:has-text("My Workers")').catch(() => {}); await sleep(300);
+  await p.click(plateOf('w1') + ' .og-plate b'); await p.waitForSelector('[data-testid="worker-form"]');
+  s_ph.sheet = await p.evaluate(() => document.querySelector('[data-testid="window"]').dataset.kind);
+  await p.screenshot({path: SP + '/supplier-portal-phone.png'}).catch(()=>{});
+  await p.keyboard.press('Escape'); await sleep(300);
+  await p.setViewportSize({width: 1280, height: 720});
+  ok(s_ph.cards && /Avi Cohen 8\.0h · 1 day · ₪50\/h · Pay ₪400 ₪40/.test(s_ph.plate) && s_ph.sheet === 'sheet', 'supplier portal: on a phone the pay table is plates and a window opens from the bottom ' + JSON.stringify(s_ph));
+  // The account menu: the name, "Supplier", Sign out.
+  await p.click('[data-testid="account-btn"]'); await p.waitForSelector('[data-testid="account-menu"]');
+  const am = await p.evaluate(() => document.querySelector('[data-testid="account-menu"]').innerText);
+  ok(/sup1/.test(am) && /Supplier/.test(am) && /Sign out/.test(am), 'supplier portal: the account menu holds the name and Sign out ' + JSON.stringify(am));
+  await p.click('[role="menuitem"]:has-text("Sign out")');
+  ok(await waitFor(p, () => /schedule-manager/.test(location.pathname) && !localStorage.getItem('supplierPortal_session'), 15000), 'supplier portal: Sign out opens the one login page');
   ok(p.errs.length === 0, 'supplier: no page errors ' + p.errs.join(' | '));
   await ctx.close();
 
