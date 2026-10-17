@@ -210,7 +210,7 @@ def hours(req: https_fn.Request) -> https_fn.Response:
     caller = {k: decoded.get(k) for k in ("role", "tenantId", "clientId", "supplierId", "own", "hp", "perms")}
     caller["uid"] = decoded["uid"]
     try:
-        return _json(hours_mod.hours_action(_db(), caller, _body(req)))
+        return _json(hours_mod.hours_action(_db(), caller, _body(req), storage.bucket))
     except Exception as e:
         return _json({"error": str(e)}, 500)
 

@@ -669,6 +669,9 @@
     return {
       login, loadSchedule, saveSchedule, listenWorkers, listenPendingHours, listenPunches, punchesBetween, punchesOfBatch, savePunch, updatePunch, deletePunch, handleAction,
       uploadWorkerFile, UPLOAD_ACTIONS, isStoragePath,
+      // A link to open a firm's file (storage.rules: the firm's managers read),
+      // e.g. a client's signed month (hours.py sign).
+      storageUrl: async path => { await loadStorage(); return stMod.getDownloadURL(stMod.ref(storage, path)); },
       currentUser: () => auth.currentUser,
       idToken: () => auth.currentUser ? auth.currentUser.getIdToken() : Promise.resolve(null),
       // The hours-review ticks of this login (claim hp: hours, approve,
