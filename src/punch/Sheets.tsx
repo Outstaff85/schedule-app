@@ -2,10 +2,13 @@
 // ✕ — a tap on the grab bar, a swipe down from the top of the sheet (more than
 // 90 px; less springs back) or Escape goes back to the punch screen.
 import * as React from 'react';
-import { IconCalendarWeek, IconChevronDown, IconClockHour4, IconMapPin } from '@tabler/icons-react';
+import { IconArrowsExchange, IconCalendarOff, IconCalendarWeek, IconChevronDown, IconClockHour4, IconFileTypePdf, IconMapPin } from '@tabler/icons-react';
+import { Combobox } from '@/components/ui/combobox';
 import { tr, uiLocale } from '@/lib/i18n';
 import { closeSheet, getState, histSite, URL_TOKEN, usePunch } from './core';
 import { hoursData, loadMonth, money, monthKey, myMonthFigures, schedDay, type MonthShift, type SchedDay } from './figures';
+import { openPayslip } from './payslip';
+import { cancelRequest, loadRequests, offerShift, requestsOn, setUnavailable } from './requests';
 
 /** The swipe down and Escape for the sheet that is open (one document handler, as on the old page). */
 export function useSheetClose() {
@@ -71,7 +74,7 @@ export function ScheduleSheet({ hidden }: { hidden: boolean }) {
   const [month, setMonth] = React.useState(0);
   const [sel, setSel] = React.useState<number | null>(null);
   const [shown, setShown] = React.useState(10);
-  React.useEffect(() => { if (!hidden) { setMonth(0); setSel(null); setShown(10); } }, [hidden]);
+  React.useEffect(() => { if (!hidden) { setMonth(0); setSel(null); setShown(10); void loadRequests(); } }, [hidden]);
   const w = s.worker;
   const shift = (n: number) => { setMonth(m => (n === 0 ? 0 : m + n)); setSel(null); setShown(10); };
   const loc = uiLocale();
@@ -87,7 +90,8 @@ export function ScheduleSheet({ hidden }: { hidden: boolean }) {
     if (i >= 35 && d.getMonth() !== mo) break;
     const x = schedDay(w, d), inMonth = d.getMonth() === mo, t = d.getTime();
     if (inMonth && x.work) { days++; hours += x.hours; }
-    const cls = ['sched-cell', inMonth ? '' : 'out', t === today.getTime() ? 'today' : '', t === selD.getTime() ? 'sel' : ''].join(' ');
+    const rq = requestsOn(ymd(d));
+    const cls = ['sched-cell', inMonth ? '' : 'out', t === today.getTime() ? 'today' : '', t === selD.getTime() ? 'sel' : '', rq.na ? 'na' : '', rq.swap && rq.swap.status === 'pending' ? 'offered' : ''].join(' ');
     cells.push(
       <div key={t} className={cls} onClick={() => setSel(t)}>
         <span className="n">{d.getDate()}</span>
@@ -100,7 +104,8 @@ export function ScheduleSheet({ hidden }: { hidden: boolean }) {
   const plates: { t: number; x: SchedDay }[] = [];
   for (let d = new Date(first); d.getMonth() === mo; d.setDate(d.getDate() + 1)) {
     if (month === 0 && d < today) continue;
-    const x = schedDay(w, d); if (x.work || x.dated) plates.push({ t: d.getTime(), x });
+    const x = schedDay(w, d), rq = requestsOn(ymd(d));
+    if (x.work || x.dated || rq.na || rq.swap) plates.push({ t: d.getTime(), x });
   }
   if (sel != null) {
     const i = plates.findIndex(o => o.t === selD.getTime());
@@ -125,18 +130,28 @@ export function ScheduleSheet({ hidden }: { hidden: boolean }) {
             <span><i style={{ background: 'rgba(79,142,247,0.6)' }} />{tr('Night shift')}</span>
             <span><i style={{ background: 'rgba(245,166,35,0.55)' }} />{tr('Day off')}</span>
             <span><i className="dot" />{tr('Changed')}</span>
+            {URL_TOKEN && <span><i className="na" />{tr("Can't work")}</span>}
           </div>
           <div className="sp-list">
             {plates.slice(0, shown).map(({ t, x }) => {
               const d = new Date(t), isT = t === today.getTime();
               const c = x.work ? (x.night ? 'var(--info)' : 'var(--ok)') : 'var(--warn)';
               const sub = [isT ? tr('Today') : '', x.work ? (x.night ? tr('Night shift — ends the next day') : '') : (x.dated ? '' : tr('Day off'))].filter(Boolean).join(' · ');
+              const isSel = t === selD.getTime(), rq = requestsOn(ymd(d));
               return (
-                <div key={t} className={'sp-plate' + (isT ? ' today' : '') + (t === selD.getTime() ? ' sel' : '')} style={{ ['--c' as string]: c }} onClick={() => setSel(t)}>
-                  <div className="sp-dd">{d.toLocaleDateString(loc, { weekday: 'short' })}<b>{d.getDate()}</b></div>
-                  <div className="sp-tx">{x.work ? x.start + ' – ' + x.end : tr('Day off')}<small>{sub}{x.dated && <>{sub ? ' · ' : ''}{tr('This date only')} <em>{tr('changed')}</em></>}</small></div>
-                  <span className="sp-h">{x.work ? tr('{h}h', { h: x.hours.toFixed(1) }) : '—'}</span>
-                </div>
+                <React.Fragment key={t}>
+                  <div className={'sp-plate' + (isT ? ' today' : '') + (isSel ? ' sel' : '')} style={{ ['--c' as string]: c }} onClick={() => setSel(t)} data-date={ymd(d)}>
+                    <div className="sp-dd">{d.toLocaleDateString(loc, { weekday: 'short' })}<b>{d.getDate()}</b></div>
+                    <div className="sp-tx">{x.work ? x.start + ' – ' + x.end : tr('Day off')}<small>{sub}{x.dated && <>{sub ? ' · ' : ''}{tr('This date only')} <em>{tr('changed')}</em></>}</small>
+                      {(rq.na || rq.swap) && <span className="sp-tags">
+                        {rq.na && <span className="sp-tag na">{tr("Can't work")}</span>}
+                        {rq.swap && <span className={'sp-tag ' + rq.swap.status}>{swapLabel(rq.swap.status, rq.swap.toWorkerName || '')}</span>}
+                      </span>}
+                    </div>
+                    <span className="sp-h">{x.work ? tr('{h}h', { h: x.hours.toFixed(1) }) : '—'}</span>
+                  </div>
+                  {isSel && URL_TOKEN && t >= today.getTime() && <DayActions date={ymd(d)} work={x.work} />}
+                </React.Fragment>
               );
             })}
           </div>
@@ -145,6 +160,50 @@ export function ScheduleSheet({ hidden }: { hidden: boolean }) {
         </>}
       </div>
     </Sheet>
+  );
+}
+
+const ymd = (d: Date) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+function swapLabel(status: string, name: string) {
+  if (status === 'confirmed') return tr('Handed over to {0}', { 0: name });
+  if (status === 'declined') return tr('Offer declined by the manager');
+  return tr('Offered to {0} · waiting for the manager', { 0: name });
+}
+
+// The chosen day's actions (from today on, on the worker's own link): mark it
+// as a day they can't work, and offer its shift to a colleague of their site —
+// the manager confirms the offer before anything changes in the schedule.
+function DayActions({ date, work }: { date: string; work: boolean }) {
+  const s = usePunch();
+  const [to, setTo] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [offering, setOffering] = React.useState(false);
+  React.useEffect(() => { setOffering(false); setTo(''); }, [date]);
+  const rq = requestsOn(date);
+  const run = async (f: () => Promise<boolean>) => { setBusy(true); try { if (await f()) { setOffering(false); setTo(''); } } finally { setBusy(false); } };
+  if (s.requests == null) return <div className="sp-actions"><small>{tr('Loading…')}</small></div>;
+  const canOffer = work && (!rq.swap || rq.swap.status === 'declined');
+  return (
+    <div className="sp-actions" id="dayActions">
+      <button type="button" className="gbtn" id="naToggle" disabled={busy} onClick={() => run(() => setUnavailable(date, !rq.na))}>
+        <IconCalendarOff className="ti" /> {rq.na ? tr('I can work this day') : tr("I can't work this day")}
+      </button>
+      {rq.swap && rq.swap.status === 'pending' && (
+        <button type="button" className="gbtn" id="offerCancel" disabled={busy} onClick={() => run(() => cancelRequest(rq.swap!.id))}>{tr('Withdraw the offer')}</button>
+      )}
+      {canOffer && !offering && (
+        <button type="button" className="gbtn" id="offerOpen" disabled={busy} onClick={() => setOffering(true)}>
+          <IconArrowsExchange className="ti" /> {tr('Offer this shift to a colleague')}
+        </button>
+      )}
+      {canOffer && offering && (s.colleagues.length ? (
+        <div className="sp-offer">
+          <Combobox id="offerTo" options={s.colleagues.map(c => ({ value: c.id, label: c.name }))} value={to} onChange={setTo} placeholder={tr('Choose a colleague')} />
+          <button type="button" className="gbtn primary" id="offerSend" disabled={busy || !to} onClick={() => run(() => offerShift(date, to))}>{tr('Send to the manager')}</button>
+        </div>
+      ) : <small>{tr('No colleagues at your site')}</small>)}
+      <small>{tr('Nothing changes in your schedule until your manager confirms.')}</small>
+    </div>
   );
 }
 
@@ -184,6 +243,7 @@ export function HoursSheet({ hidden }: { hidden: boolean }) {
             {f.shabH > 0 && <PayRow l={tr('Shabbat {h}h', { h: f.shabH.toFixed(1) })} v="" />}
             <PayRow l={tr('Total')} v={money(f.total)} cls="tot" />
             {f.travel > 0 && <PayRow l={tr('Total with travel ({t})', { t: money(f.travel) })} v={money(f.total + f.travel)} />}
+            {!data.local && <button type="button" className="gbtn pay-pdf" id="payslipBtn" onClick={() => openPayslip(f, key, s.worker ? s.worker.name : '')}><IconFileTypePdf className="ti" /> {tr('Download for the month')}</button>}
           </div>
         ) : <div className="hours-break">{parts.join(' · ')}</div>}
         <div className="sched-note">{data.local ? (URL_TOKEN ? tr('Offline — the punches saved on this device.') : tr('The punches saved on this device.'))
