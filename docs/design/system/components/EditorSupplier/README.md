@@ -1,0 +1,1 @@
+The supplier editor. Sections: **Company** (name, company number and phone, contact person, bank), **Commission** (per hour or per day, rate and the date it applies from, figures for the month), **Portal login** (username, password, what the login may see) and **Workers** (mini plates with hours). One primary **Save** at the bottom.

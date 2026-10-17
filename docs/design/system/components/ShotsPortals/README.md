@@ -1,0 +1,1 @@
+Real screens of the other pages: the client portal (hours review of one site), the supplier portal tabs (Dashboard, My Workers, My Hours, Approvals) and the worker's My Hours sheet. The portals use the same glass header with the logo mark, Language button and account circle.

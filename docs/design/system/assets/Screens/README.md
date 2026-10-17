@@ -1,0 +1,1 @@
+Real screenshots from the running app (phone 390px unless named desktop), cropped from the redesign audit in the repository: Accounting tabs, Today, Workers, supplier and client portals, Admin, My Hours. Use them as images beside the mockups in the Screens group; they are full-colour, never recolour them. Sample data only.

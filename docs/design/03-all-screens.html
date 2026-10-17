@@ -293,14 +293,14 @@ const SCR=[
  <div class="seg2"><button class="on">Info</button><button>Docs</button><button>Hours</button></div>
  <div class="kv"><div><small>Phone</small>052-555-0142</div><div><small>ID</small>Passport · TH</div><div><small>Client</small>Site A</div><div><small>Supplier</small>ManPower</div><div><small>Shift</small>09–17</div><div><small>Started</small>03/2025</div></div>
  <div class="row"><button class="g p">${I.e}Edit</button><button class="g i">⋮</button></div></div>`],
-['Clients','Client plate: name, notices (no rate, hours waiting), under it the number of workers and the address, the month's hours on the right.',`
+['Clients','Client plate: name, notices (no rate, hours waiting), under it the number of workers and the address, the month hours on the right.',`
  ${hdr('Clients',9,'New')}${tabs(['Active','Archive'])}
  ${sec('Clients',9)}
  ${plate({name:'Site A',ini:'SA',av:'#3f5f8a',bar:G,sub:'12 workers · Herzl 14, Holon',right:'1,940h'})}
  ${plate({name:'Warehouse North',ini:'WN',av:'#5a4f8a',bar:A,chips:chip('amber','Hours'),sub:'7 workers · Ashdod port',right:'1,102h'})}
  ${plate({name:'Site B',ini:'SB',av:'#3f6f6a',bar:R,chips:chip('red','No rate'),sub:'5 workers · Rishon LeZion',right:'812h'})}
  ${nav(4)}`],
-['Suppliers','Supplier plate: name, under it workers and commission, the month's amount on the right.',`
+['Suppliers','Supplier plate: name, under it workers and commission, the month amount on the right.',`
  ${hdr('Suppliers',4,'New')}
  ${sec('Suppliers',4)}
  ${plate({name:'ManPower Ltd',ini:'MP',av:'#6a5a3c',bar:G,sub:'11 workers · ₪3 / hour',right:'₪5,820'})}
@@ -342,7 +342,7 @@ const SCR=[
  <div class="lbl">Address</div><input class="in" value="Herzl 14, Holon">
  <div class="sec">Access</div>
  <div class="ticks"><button class="tk on"><span class="box">${I.ck}</span>Punch link</button><button class="tk"><span class="box">${I.ck}</span>Night shifts</button><button class="tk on wide w"><span class="box">${I.ck}</span>Sees own hours</button></div>`],
-['Punch (worker page)','A big glass button with a colored line running around it, the GPS check, today's shifts as plates.',`
+['Punch (worker page)','A big glass button with a colored line running around it, the GPS check, today shifts as plates.',`
  <div class="top"><h2>Hi, Avi</h2><button class="g i">⋮</button></div>
  <div class="center"><span class="gpsok">${I.pin.replace('<svg','<svg width=14 height=14 style="stroke:currentColor;fill:none;stroke-width:2"')} At Site A · 40 m</span></div>
  <div class="punchbtn">Punch in<small>shift 09:00 – 17:00</small></div>

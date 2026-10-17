@@ -1,0 +1,1 @@
+The HR / user editor. Sections: **Person & login**, **Role** (Staff / HR / Supplier / Client), **Sections** (permission tiles), **Hours** (ticks and "Only own workers"), **HR commission** and **Own workers**. One primary **Save** at the bottom.
