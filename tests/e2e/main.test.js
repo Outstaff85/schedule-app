@@ -697,6 +697,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const wait = ms => new Promise(r => setTimeout(r, ms));
     const w1 = workers.find(w => w.id === 'w1'), keep = {failed: w1.docUploadFailed, status: w1.status};
     w1.docUploadFailed = true;
+    // A clean start: an earlier step's window (the worker form opened from a card) can still be on its way back
+    // (__returnTo brings the card back ~60 ms after it closes) and would open the card under this step.
+    for (let i = 0; i < 5 && document.querySelector('.overlay.open'); i++) {
+      document.querySelectorAll('.overlay').forEach(o => { o.__returnTo = null; o.classList.remove('open'); });
+      await wait(300);
+    }
     switchTab('workers'); setWorkersView('cards'); renderWorkersPage(); await wait(200);
     const plate = document.querySelector('#workersCards .wplate[data-wid="w1"]'), r = {};
     r.chip = plate.querySelector('.wp-chip1 .nchip') && plate.querySelector('.wp-chip1 .nchip').className; r.more = !!plate.querySelector('.n b .nchip.more'); r.bar = plate.style.getPropertyValue('--c');
