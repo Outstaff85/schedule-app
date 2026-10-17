@@ -6,6 +6,7 @@
    --radius-sm … --radius-xl): `rounded-lg` and `font-sans` are the Odinson
    Glass values. Never define a token of og.css here (tests/design/check.js). */
 @import "tailwindcss" source(none);
+@import "tw-animate-css";
 @source "../";
 @source "../../next";
 
