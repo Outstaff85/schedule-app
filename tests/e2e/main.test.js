@@ -1436,6 +1436,34 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.reload(); await waitFor(p, hrvReady, 15000);
   const cfx = await stateOf(avi);
   ok(cfx === 'fixed', 'client: the accepted fix shows as done ' + cfx);
+  // Stage 5c: "Approve the month" (the days still waiting) opens the signature at once — or, with every day already
+  // done (the seed's other day in the month before), "Sign the month"; the PDF is stored with the client's documents.
+  const viaApprove = await p.evaluate(() => !!document.querySelector('[data-testid="approve-month"]'));
+  if (viaApprove) { await p.click('[data-testid="approve-month"]'); await p.click('[data-testid="approve-month-ok"]'); }
+  else { await p.waitForSelector('[data-testid="sign-month"]', {timeout: 10000}); await p.click('[data-testid="sign-month"]'); }
+  await p.waitForSelector('[data-testid="signature-pad"]', {timeout: 10000});
+  const sgOkOff = await p.evaluate(() => document.querySelector('[data-testid="sign-ok"]').disabled);
+  const box = await (await p.$('[data-testid="signature-pad"]')).boundingBox();
+  await p.mouse.move(box.x + 30, box.y + box.height / 2); await p.mouse.down();
+  for (let i = 1; i <= 12; i++) await p.mouse.move(box.x + 30 + i * 20, box.y + box.height / 2 + (i % 2 ? -25 : 25));
+  await p.mouse.up();
+  const sgInk = await p.evaluate(() => document.querySelector('[data-testid="signature-pad"]').dataset.ink === '1' && !document.querySelector('[data-testid="sign-ok"]').disabled);
+  const nReplies = hoursReplies.length;
+  await p.click('[data-testid="sign-ok"]');
+  const sgNote = await waitFor(p, () => !document.querySelector('[data-testid="signature-pad"]') && /Signed/.test((document.querySelector('[data-testid="signed-note"]') || {}).textContent || ''), 15000);
+  const stored = await srv('/signed');
+  for (let i = 0; i < 25 && hoursReplies.length === nReplies; i++) await sleep(200);
+  const signReply = hoursReplies.slice(nReplies).join('');
+  ok(sgOkOff && sgInk && sgNote && stored.signed && /^tenants\/.+\/clients\/c2\/documents\/hours-\d{4}-\d{2}-signed\.pdf$/.test(stored.signed.path) && stored.head.startsWith('%PDF-') && stored.pages >= 1 && stored.jpegs === stored.pages && stored.size > 5000,
+    'client: signs the approved month with a finger' + (viaApprove ? ' (opened by Approve the month)' : '') + ' — the PDF (the days and the signature) is stored with its documents ' + JSON.stringify({sgOkOff, sgInk, sgNote, stored}));
+  ok(signReply && !/documents\/|path|₪|Agency|hourlyRate|billRate|gpsAccuracy|tok-/.test(signReply), 'client: the sign reply says when and by whom — no file path, money, supplier, GPS or token ' + signReply);
+  await p.reload(); await waitFor(p, hrvReady, 15000);
+  ok(await waitFor(p, () => /Signed/.test((document.querySelector('[data-testid="signed-note"]') || {}).textContent || '') && /Sign again/.test(document.querySelector('[data-testid="sign-month"]').textContent), 10000), 'client: after a reload the month shows as signed (Sign again)');
+  const osg = await q.evaluate(async path => { __hourApprovalsCache = null; switchTab('accounting'); await renderHourApprovals('month'); setAccTab('approvals');
+    const el = document.querySelector('#hourApprovalsWrap .hour-appr-signed'), r = {text: el ? el.innerText : '', btn: !!(el && el.querySelector('button'))};
+    try { r.url = await (await loadFirestoreBackend()).storageUrl(path); } catch (e) { r.err = String(e); }
+    setAccTab('salary'); return r; }, stored.signed.path);
+  ok(/Signed/.test(osg.text) && osg.btn && /signed\.pdf/.test(decodeURIComponent(osg.url || '')), 'owner: the client\'s signed month in Hours approvals, with the PDF to open ' + JSON.stringify(osg));
   // Admin → Users: the owner is pinned first; the client login shows its client and hours ticks.
   const ul = await q.evaluate(async () => { switchTab('admin'); switchAdminPane('users');
     for(let i = 0; i < 60 && document.querySelectorAll('.admin-users-rows > div').length < 2; i++) await new Promise(r => setTimeout(r, 150));

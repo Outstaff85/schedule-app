@@ -34,8 +34,16 @@ Actions (body.action):
                                 (an HR's also carries ownOnly)
   resolve {docId, key, accept}  managers: accept a proposed fix (the shift's
                                 punches get the new times) or reject it
+  sign {month, pages}           a client: the month signed — pages are the
+                                page's JPEG images (the month's days and the
+                                signature, drawn by the portal); stored as one
+                                PDF with the client's documents (Storage
+                                tenants/{t}/clients/{c}/documents/), the
+                                approval document gets signed {path, at,
+                                byName, pages}; load hands back only {at, byName}
 """
 
+import base64
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -48,6 +56,8 @@ PUNCH_FIELDS = ("id", "workerId", "type", "time", "date")
 MAX_LINES = 3000
 E_ROLE = "Not available for this login"
 E_NO_PERM = "Not allowed for this login"
+MAX_SIGN_PAGES = 12
+MAX_SIGN_PAGE = 2 * 1024 * 1024  # bytes of one JPEG page
 
 
 def _now():
@@ -161,10 +171,89 @@ def _days_of(ref):
 
 
 def _write_days(ref, kind, owner, owner_name, month, days):
-    ref.set({"kind": kind, "ownerId": owner, "ownerName": owner_name, "month": month, "days": days})
+    # The listed fields are replaced whole (days too); a month's signature stays.
+    ref.set({"kind": kind, "ownerId": owner, "ownerName": owner_name, "month": month, "days": days},
+            merge=["kind", "ownerId", "ownerName", "month", "days"])
 
 
-def hours_action(db, caller, body):
+def _jpeg_size(b):
+    """(width, height) of a baseline or progressive JPEG, or None."""
+    if b[:2] != b"\xff\xd8":
+        return None
+    i = 2
+    while i + 9 < len(b):
+        if b[i] != 0xFF:
+            return None
+        m = b[i + 1]
+        if m in (0xD8, 0x01) or 0xD0 <= m <= 0xD7:
+            i += 2
+            continue
+        seg = int.from_bytes(b[i + 2:i + 4], "big")
+        if 0xC0 <= m <= 0xCF and m not in (0xC4, 0xC8, 0xCC):
+            h, w = int.from_bytes(b[i + 5:i + 7], "big"), int.from_bytes(b[i + 7:i + 9], "big")
+            return (w, h) if w and h else None
+        i += 2 + seg
+    return None
+
+
+def jpeg_pdf(images):
+    """A PDF of A4 pages, one JPEG (bytes, (w, h)) filling each page."""
+    objs = []  # objs[n - 1] = body of object n
+    kids = []
+    for data, (w, h) in images:
+        scale = min(595 / w, 842 / h)
+        pw, ph = round(w * scale, 2), round(h * scale, 2)
+        n = len(objs) + 3  # 1 catalog, 2 pages, then page, image, content per page
+        kids.append(n)
+        objs.append(None)  # placeholder for the page
+        img = (f"<< /Type /XObject /Subtype /Image /Width {w} /Height {h} /ColorSpace /DeviceRGB "
+               f"/BitsPerComponent 8 /Filter /DCTDecode /Length {len(data)} >>\nstream\n").encode() + data + b"\nendstream"
+        cs = f"q {pw} 0 0 {ph} 0 {round(842 - ph, 2)} cm /Im0 Do Q".encode()
+        objs.append(img)
+        objs.append(f"<< /Length {len(cs)} >>\nstream\n".encode() + cs + b"\nendstream")
+        objs[n - 3] = (f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Im0 {n + 1} 0 R >> >> "
+                       f"/Contents {n + 2} 0 R >>").encode()
+    allobjs = [b"<< /Type /Catalog /Pages 2 0 R >>",
+               f"<< /Type /Pages /Kids [{' '.join(f'{k} 0 R' for k in kids)}] /Count {len(kids)} >>".encode()] + objs
+    out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offs = []
+    for i, body in enumerate(allobjs, 1):
+        offs.append(len(out))
+        out += f"{i} 0 obj\n".encode() + body + b"\nendobj\n"
+    xref = len(out)
+    out += f"xref\n0 {len(allobjs) + 1}\n0000000000 65535 f \n".encode()
+    for o in offs:
+        out += f"{o:010d} 00000 n \n".encode()
+    out += f"trailer\n<< /Size {len(allobjs) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    return bytes(out)
+
+
+def _sign(t_ref, tid, owner, month, ref, by, name, body, bucket):
+    pages = body.get("pages")
+    if not isinstance(pages, list) or not 1 <= len(pages) <= MAX_SIGN_PAGES:
+        return {"error": "Bad pages"}
+    images = []
+    for b64 in pages:
+        try:
+            data = base64.b64decode(str(b64 or ""), validate=True)
+        except (ValueError, TypeError):
+            return {"error": "Bad pages"}
+        size = _jpeg_size(data) if len(data) <= MAX_SIGN_PAGE else None
+        if not size:
+            return {"error": "Bad pages"}
+        images.append((data, size))
+    if not any((e or {}).get("status") in ("approved", "fixed") for e in _days_of(ref).values()):
+        return {"error": "Approve the month first"}
+    path = f"tenants/{tid}/clients/{owner}/documents/hours-{month}-signed.pdf"
+    bucket().blob(path).upload_from_string(jpeg_pdf(images), content_type="application/pdf")
+    signed = {"path": path, "at": _now(), "byName": by, "pages": len(images)}
+    ref.set({"kind": "client", "ownerId": owner, "ownerName": name, "month": month, "signed": signed}, merge=True)
+    return {"ok": True, "signed": {"at": signed["at"], "byName": by}}
+
+
+def hours_action(db, caller, body, bucket=None):
+    """bucket: a callable giving the Storage bucket (main.py: storage.bucket),
+    used only by sign."""
     tid = caller.get("tenantId") or (body.get("tenantId") if caller.get("role") == "superadmin" else None)
     if not tid:
         return {"error": E_ROLE}
@@ -226,13 +315,20 @@ def hours_action(db, caller, body):
                     w = t_ref.collection("workers").document(wid).get()
                     rows[wid] = {"id": wid, "name": ((w.to_dict() or {}).get("name") if w.exists else "") or str(n or "")}
             out["punches"] = punches
-            out["days"] = _days_of(ref)
+            snap = ref.get()
+            doc = (snap.to_dict() or {}) if snap.exists else {}
+            out["days"] = doc.get("days") or {}
+            sg = doc.get("signed")
+            if kind == "client" and isinstance(sg, dict):  # when and by whom, never the file's path
+                out["signed"] = {"at": sg.get("at"), "byName": sg.get("byName")}
         out["workers"] = sorted(rows.values(), key=lambda r: r["name"].lower())
         return out
 
-    if action not in ("approve", "dispute", "fix"):
+    if action not in ("approve", "dispute", "fix", "sign"):
         return {"error": "Unknown action"}
-    need = {"approve": "approve", "dispute": "dispute", "fix": "fix"}[action]
+    if action == "sign" and (kind != "client" or bucket is None):
+        return {"error": E_ROLE}
+    need = {"approve": "approve", "dispute": "dispute", "fix": "fix", "sign": "approve"}[action]
     if need not in perms or "hours" not in perms:
         return {"error": E_NO_PERM}
     if kind == "client":
@@ -244,6 +340,8 @@ def hours_action(db, caller, body):
     by = _caller_name(db, caller["uid"])
     name = _owner_name(db, t_ref, kind, owner)
     name = name[0] if isinstance(name, tuple) else name
+    if action == "sign":
+        return _sign(t_ref, str(tid), owner, month, ref, by, name, body, bucket)
     days = _days_of(ref)
 
     if action == "approve":

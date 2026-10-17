@@ -137,3 +137,56 @@ def test_list_tells_whether_an_hr_sees_only_its_own_workers():
     assert doc["kind"] == "hr" and doc["ownOnly"] is True
     DB.collection("users").document("u-hr").update({"ownOnly": False})
     assert hours.hours_action(DB, OWNER, {"action": "list", "month": "2026-10"})["docs"][0]["ownOnly"] is False
+
+
+# ── A client's monthly signature (stage 5c): the page's JPEG pages → one PDF in Storage.
+class _Blob:
+    def __init__(self, store, path):
+        self.store, self.path = store, path
+
+    def upload_from_string(self, data, content_type=None):
+        self.store[self.path] = (data, content_type)
+
+
+class _Bucket:
+    def __init__(self):
+        self.store = {}
+
+    def blob(self, path):
+        return _Blob(self.store, path)
+
+
+def _jpeg(w=124, h=175):
+    """A minimal JPEG header: SOI, an APP0 segment, SOF0 with the size."""
+    sof = b"\xff\xc0\x00\x11\x08" + h.to_bytes(2, "big") + w.to_bytes(2, "big") + b"\x03" + b"\x01\x22\x00\x02\x11\x01\x03\x11\x01"
+    return b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00" + sof + b"\xff\xd9"
+
+
+def test_a_client_signs_the_month_into_a_pdf_with_its_documents():
+    import base64
+    b = _Bucket()
+    page = base64.b64encode(_jpeg()).decode()
+    sign = lambda caller=CL, **kw: hours.hours_action(DB, caller, dict({"action": "sign", "month": "2026-10", "pages": [page, page]}, **kw), lambda: b)
+    assert sign()["error"] == "Approve the month first" and not b.store
+    hours.hours_action(DB, CL, {"action": "approve", "month": "2026-10", "lines": ["w1|2026-10-05|08:00|17:00"]})
+    r = sign()
+    path = f"tenants/{T1}/clients/c1/documents/hours-2026-10-signed.pdf"
+    assert r["ok"] and r["signed"]["byName"] == "Site boss" and list(b.store) == [path]
+    pdf, ctype = b.store[path]
+    assert ctype == "application/pdf" and pdf.startswith(b"%PDF-1.4") and pdf.rstrip().endswith(b"%%EOF")
+    assert b"/Count 2" in pdf and pdf.count(b"/DCTDecode") == 2 and b"/Width 124 /Height 175" in pdf
+    doc = DB.collection("tenants").document(T1).collection("hourApprovals").document("client_c1_2026-10").get().to_dict()
+    assert doc["signed"]["path"] == path and doc["signed"]["pages"] == 2 and doc["days"]["w1|2026-10-05"]["status"] == "approved"
+    # A later day write keeps the signature; the load says when and by whom — never the file's path.
+    hours.hours_action(DB, CL, {"action": "dispute", "month": "2026-10", "workerId": "w1", "day": "2026-10-05", "line": "x", "comment": "late"})
+    ld = hours.hours_action(DB, CL, {"action": "load", "month": "2026-10"})
+    assert ld["signed"]["byName"] == "Site boss" and ld["signed"]["at"] and "documents" not in str(ld)
+    # Only a client with the approve tick, and only JPEG pages.
+    assert sign(dict(SUP))["error"] == hours.E_ROLE and sign(dict(CL, hp=["hours"]))["error"] == hours.E_NO_PERM
+    for bad in ([], ["not base64!"], [base64.b64encode(b"%PDF-1.4").decode()], [page] * 13):
+        assert sign(pages=bad)["error"] == "Bad pages", bad
+    assert hours.hours_action(DB, CL, {"action": "sign", "month": "2026-10", "pages": [page]})["error"] == hours.E_ROLE  # no bucket
+
+
+def test_a_client_signature_is_not_seen_by_other_scopes():
+    assert "signed" not in hours.hours_action(DB, SUP, {"action": "load", "month": "2026-10"})

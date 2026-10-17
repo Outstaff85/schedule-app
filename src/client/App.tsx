@@ -70,7 +70,7 @@ export function App() {
       </>}
     >
       <div className="mx-auto max-w-[760px] p-4">
-        <HoursReview call={call} hideOwner />
+        <HoursReview call={call} hideOwner sign={{ signer: session.username || '' }} />
       </div>
     </Shell>
   );

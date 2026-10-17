@@ -22,6 +22,7 @@ import { PagedList } from '@/components/shared/paged-list';
 import { undoDelete } from '@/components/shared/undo';
 import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-mode';
 import { Window } from '@/components/shared/window';
+import { SignaturePad } from '@/components/shared/signature-pad';
 import { LanguageButton } from '@/components/shared/language';
 import { AccountMenu } from '@/components/shared/account-menu';
 import { Button } from '@/components/ui/button';
@@ -341,6 +342,10 @@ function Windows() {
         <Window open={second} onOpenChange={setSecond} title={tr('Bank details')} description={tr('Closing it goes back to the first window')}>
           <div className="grid gap-1.5"><Label htmlFor="w-bank">{tr('Bank')}</Label><Input id="w-bank" placeholder={tr('Bank, branch, account')} /></div>
         </Window>
+      </Demo>
+
+      <Demo id="signature" title={tr('Signature pad')}>
+        <SignaturePad />
       </Demo>
 
       <Demo id="menu" title={tr('Dropdown Menu (⋮), Popover, Tooltip')}>

@@ -97,6 +97,17 @@ class H(BaseHTTPRequestHandler):
             reqs = {d.id: d.to_dict() for d in t1.collection('shiftRequests').stream()}
             ws = {d.id: (d.to_dict() or {}).get('dateShifts') or {} for d in t1.collection('workers').stream()}
             status, data = 200, json.dumps({'requests': reqs, 'dateShifts': ws}, default=str).encode()
+        elif self.path == '/signed':
+            # Stage 5c: the client's signed month — the approval document's record and the PDF in Storage.
+            docs = [d.to_dict() or {} for d in DB.collection('tenants').document(T1).collection('hourApprovals').stream()]
+            sg = next((d['signed'] for d in docs if d.get('kind') == 'client' and d.get('signed')), None)
+            pdf = _orig_bucket('demo-schedule.appspot.com').blob(sg['path']).download_as_bytes() if sg else b''
+            if pdf:  # kept with the screenshots, to look at
+                out = os.environ.get('E2E_OUT') or os.path.join(_HERE, 'out')
+                os.makedirs(out, exist_ok=True)
+                open(os.path.join(out, 'client-signed-month.pdf'), 'wb').write(pdf)
+            status, data = 200, json.dumps({'signed': sg, 'size': len(pdf), 'head': pdf[:8].decode('latin1'), 'pages': pdf.count(b'/Type /Page /'),
+                                            'jpegs': pdf.count(b'/Filter /DCTDecode')}, default=str).encode()
         elif self.path.startswith('/lang/'):
             DB.collection('tenants').document(T1).set({'language': self.path[6:]}, merge=True)
             status, data = 200, b'{"ok":true}'

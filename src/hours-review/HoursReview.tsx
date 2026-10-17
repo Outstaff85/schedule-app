@@ -3,11 +3,13 @@
 // month's shifts of the login's own workers; a day approved, disputed (with a
 // comment) or given a proposed fix (applied only when a manager accepts it in
 // Accounting → Approvals); several days or the whole month approved at once;
-// the planned schedule and an Excel export — each by its tick (claim hp). The
+// the planned schedule and an Excel export — each by its tick (claim hp); a
+// client signs the approved month with a finger (`sign`, a PDF kept with its
+// documents). The
 // data comes only from the `hours` function (`call`); this screen never reads
 // Firestore. The old pages' copy is hours-review.js.
 import * as React from 'react';
-import { IconAlertTriangle, IconCheck, IconChecks, IconChevronLeft, IconChevronRight, IconCircleCheck, IconClock, IconFileSpreadsheet, IconPencil } from '@tabler/icons-react';
+import { IconAlertTriangle, IconCheck, IconChecks, IconChevronLeft, IconChevronRight, IconCircleCheck, IconClock, IconFileSpreadsheet, IconPencil, IconSignature } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { tr, uiLocale } from '@/lib/i18n';
 import { loadScript, XLSX_URL } from '@/lib/backend';
@@ -18,6 +20,7 @@ import { Plate, type PlateAction } from '@/components/shared/plate';
 import { PagedList } from '@/components/shared/paged-list';
 import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-mode';
 import { Window } from '@/components/shared/window';
+import { SignaturePad, type SignaturePadHandle } from '@/components/shared/signature-pad';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
@@ -33,6 +36,7 @@ import {
   can, dayState, monthDays, monthKey, monthStart, PICKABLE, planned, shiftsText, STATES,
   type DayRow, type HoursCall, type HoursData,
 } from './hours';
+import { signedMonthPages } from './signed-pdf';
 
 // ── The screen's state, outside React: a language change redraws the page
 // from scratch (I18nProvider), the loaded month stays.
@@ -42,7 +46,10 @@ const subs = new Set<() => void>();
 const set = (p: Partial<St>) => { st = { ...st, ...p }; subs.forEach(f => f()); };
 const useSt = () => React.useSyncExternalStore(cb => { subs.add(cb); return () => { subs.delete(cb); }; }, () => st);
 let callRef: HoursCall | null = null;
+let signRef: SignOpts | undefined;
 let busy = false;
+/** A client's page passes `sign`: the approved month is signed with a finger (the signer's name goes into the PDF). */
+export type SignOpts = { signer: string };
 
 async function reload() {
   const key = monthKey(st.month);
@@ -60,24 +67,29 @@ export const hoursReviewReload = reload;
 /** Whose hours these are (the client or supplier and its object), for the page's header. */
 export const useHoursOwner = () => useSt().data?.owner;
 
-async function send(body: Record<string, unknown>, okText: string) {
-  if (busy || !st.data) return;
+async function send(body: Record<string, unknown>, okText: string): Promise<boolean> {
+  if (busy || !st.data) return false;
   busy = true;
   try {
     const r = await callRef!({ month: st.data.month, ...body });
-    if (r.error) { toast.error(r.error); return; }
+    if (r.error) { toast.error(r.error); return false; }
     set({ data: { ...st.data, days: r.days || {} } });
     toast.success(okText);
+    return true;
   } catch {
     toast.error(tr('Could not save — check the connection and try again.'));
+    return false;
   } finally { busy = false; }
 }
+/** Every day of the month approved (or its fix accepted) — the month can be signed. */
+const allDone = (d: HoursData) => { const ds = monthDays(d); return ds.length > 0 && ds.every(r => ['approved', 'fixed'].includes(dayState(d, r).st)); };
 
 const dayLabel = (d: Date, long = false) => d.toLocaleDateString(uiLocale(), long ? { weekday: 'long', day: 'numeric', month: 'long' } : { weekday: 'short', day: '2-digit', month: 'short' });
 const hrs = (h: number) => tr('{h}h', { h: h.toFixed(1) });
 
-export function HoursReview({ call, hideOwner }: { call: HoursCall; hideOwner?: boolean }) {
+export function HoursReview({ call, hideOwner, sign }: { call: HoursCall; hideOwner?: boolean; sign?: SignOpts }) {
   callRef = call;
+  signRef = sign;
   const s = useSt();
   const d = s.data;
   const key = monthKey(s.month);
@@ -126,6 +138,8 @@ function HoursTab({ data }: { data: HoursData }) {
   const sel = useSelection(pickKeys);
   const [win, setWin] = React.useState<{ kind: 'dispute' | 'fix'; row: DayRow } | null>(null);
   const [confirmMonth, setConfirmMonth] = React.useState(false);
+  const [signing, setSigning] = React.useState(false);
+  const canSign = !!signRef && can(data, 'approve');
   const name = (id: string) => (data.workers || []).find(w => w.id === id)?.name || '';
 
   if (!days.length) return <Msg>{tr('No hours this month')}</Msg>;
@@ -166,7 +180,13 @@ function HoursTab({ data }: { data: HoursData }) {
         <span className="flex flex-wrap gap-1.5">
           {can(data, 'export') && <Button size="sm" onClick={() => void exportXlsx(data, days)}><IconFileSpreadsheet className="size-4" />{tr('Export')}</Button>}
           {can(data, 'approve') && pickable.length > 0 && <Button size="sm" variant="primary" data-testid="approve-month" onClick={() => setConfirmMonth(true)}><IconChecks className="size-4" />{tr('Approve the month')}</Button>}
+          {canSign && !open && <Button size="sm" variant={data.signed ? 'default' : 'primary'} data-testid="sign-month" onClick={() => setSigning(true)}><IconSignature className="size-4" />{data.signed ? tr('Sign again') : tr('Sign the month')}</Button>}
         </span>
+        {canSign && data.signed && data.signed.at && (
+          <span className="basis-full text-xs text-ink-2" data-testid="signed-note">
+            {tr('Signed {date} — {name}', { date: new Date(data.signed.at).toLocaleString(uiLocale(), { dateStyle: 'medium', timeStyle: 'short' }), name: data.signed.byName || '' })}
+          </span>
+        )}
       </div>
       <div className="mb-2.5 flex items-center gap-2">
         <span className="flex-1 text-xs text-ink-2">{tr('Total: {h}h', { h: total.toFixed(1) })}</span>
@@ -193,10 +213,12 @@ function HoursTab({ data }: { data: HoursData }) {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{tr('Cancel')}</AlertDialogCancel>
-            <AlertDialogAction data-testid="approve-month-ok" onClick={() => void send({ action: 'approve', lines: pickable.map(r => r.line) }, tr('Approved — thank you'))}>{tr('Approve')}</AlertDialogAction>
+            <AlertDialogAction data-testid="approve-month-ok" onClick={() => void send({ action: 'approve', lines: pickable.map(r => r.line) }, tr('Approved — thank you'))
+              .then(ok => { if (ok && canSign && st.data && allDone(st.data)) setSigning(true); })}>{tr('Approve')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {signing && <SignWindow data={data} days={days} total={total} onClose={() => setSigning(false)} />}
     </>
   );
 }
@@ -241,6 +263,40 @@ function DayPlate({ data, row: r, sel, onWindow }: {
     >
       {note ? <div className="text-[11px]" style={{ color: S.color }} data-testid="day-note">{note}</div> : undefined}
     </Plate>
+  );
+}
+
+// Signing the month (a client): the month's days and the signature become a
+// PDF stored with the client's documents (signed-pdf.ts, hours.py sign).
+// Closing the window without "Sign and save" signs nothing.
+function SignWindow({ data, days, total, onClose }: { data: HoursData; days: DayRow[]; total: number; onClose: () => void }) {
+  const pad = React.useRef<SignaturePadHandle>(null);
+  const [ink, setInk] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const month = monthStart(data.month).toLocaleDateString(uiLocale(), { month: 'long', year: 'numeric' });
+  const save = async () => {
+    const png = pad.current?.image();
+    if (!png || saving) return;
+    setSaving(true);
+    try {
+      const pages = await signedMonthPages(data, days, png, (signRef && signRef.signer) || '');
+      const r = await callRef!({ action: 'sign', month: data.month, pages });
+      if (r.error) { toast.error(r.error); return; }
+      if (st.data && st.data.month === data.month) set({ data: { ...st.data, signed: r.signed } });
+      toast.success(tr('Signed — the month is saved for the firm'));
+      onClose();
+    } catch {
+      toast.error(tr('Could not save — check the connection and try again.'));
+    } finally { setSaving(false); }
+  };
+  return (
+    <Window open onOpenChange={o => { if (!o && !saving) onClose(); }} title={<><IconSignature className="mr-1.5 inline size-4 align-[-2px]" />{tr('Sign the month')}</>}
+      description={month}
+      footer={<Button variant="primary" disabled={!ink || saving} data-testid="sign-ok" onClick={() => void save()}>
+        {saving ? <Spinner className="size-4" /> : <IconCheck className="size-4" />}{tr('Sign and save')}</Button>}>
+      <p className="mb-2.5 text-[13px] text-ink-2">{tr('{n} days', { n: days.length })} · {tr('Total: {h}h', { h: total.toFixed(1) })}. {tr('Your signature confirms the hours of this month; the signed PDF is kept with your documents at the firm.')}</p>
+      <SignaturePad ref={pad} onInk={setInk} />
+    </Window>
   );
 }
 

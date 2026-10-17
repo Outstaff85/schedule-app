@@ -28,7 +28,7 @@ Project `schedule-odinson`; Firestore and the `functions-auth` functions in **eu
 
 Indexes (`firestore.indexes.json`): punches `workerId + ts`, `hrId + ts` (an own-workers HR's punch queries) and `clientId + ts` (the client portal's month); pendingHours `status + createdAt desc`; a single-field override on `workers.token` with collection-group scope (needed by `punch`).
 
-**Storage:** `tenants/<t>/workers/<workerId>/{form101|assets|docs}/<ms>-<name>`. The object path is the file id kept on the worker (`docFileId`, `assetsFileId`, `docs[].fileId`); the PDF and documents also get a download URL (`docUrl`, `docs[].url`), the sidecar does not.
+**Storage:** `tenants/<t>/workers/<workerId>/{form101|assets|docs}/<ms>-<name>`; a client's signed months at `tenants/<t>/clients/<clientId>/documents/hours-<YYYY-MM>-signed.pdf` (written only by the `hours` function's `sign`, read by the managers — `storageUrl(path)`). The object path is the file id kept on the worker (`docFileId`, `assetsFileId`, `docs[].fileId`); the PDF and documents also get a download URL (`docUrl`, `docs[].url`), the sidecar does not.
 
 ## Browser data layer (`firestore-backend.js`)
 
@@ -56,6 +56,7 @@ It returns:
 | `punchesOfBatch(t, batchId)` | punches with ids starting `imp-<batchId>-` |
 | `savePunch` / `updatePunch` / `deletePunch` | `savePunch` stamps the worker's current `hrId` (`punchDoc`, from the last load/save — `workerHr`); `updatePunch` writes only `type, time, site, notes, clientId` and `editedAt` |
 | `uploadWorkerFile(t, body, onProgress)` | `saveWorkerDoc` → `form101/`, `saveWorkerAssets` → `assets/` (a JSON `{scanB64, scanMediaType, sigPng, extraPages}`; at least one of `scanB64` or `sigPng` must be provided, so the sidecar may hold only a signature when a worker is added without a scan), `saveWorkerFile` → `docs/`; `uploadBytesResumable` with real byte progress; returns `{ok, id: path, url}` (no url for the sidecar); an own-workers HR's files carry `hrId` in their metadata |
+| `storageUrl(path)` | a download URL for a file in the firm's Storage (`storage.rules`: the firm's managers read); used for a client's signed month (`openSignedHours`, the `hours` function's `sign`) |
 | `handleAction(action, params, ctx)` | answers one named data action (below) with a JSON reply, or `null` when there is no such action |
 
 **`handleAction`** — the manager app's `fetch(API_URL, …)` dispatcher calls it ([app-core.md](app-core.md) → Data calls). `ctx` is `{role, username, tenantId}`; the firm is `params.asTenantId || ctx.tenantId`.
