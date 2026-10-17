@@ -19,6 +19,16 @@ export function tr(s: string, params?: Record<string, string | number>): string 
   return out;
 }
 
+/**
+ * Takes a language and its dictionary already loaded by the page — the manager
+ * app's React pieces follow the old page's language (src/manager/), which has
+ * no I18nProvider.
+ */
+export function adoptLanguage(lang: string, d: Record<string, string>): void {
+  current = I18N_LANGS[lang] ? lang : 'en';
+  dict = d || {};
+}
+
 /** The language's locale for dates and numbers. */
 export function uiLocale(lang = current): string {
   return ({ he: 'he-IL', ru: 'ru-RU' } as Record<string, string>)[lang] || 'en-GB';
