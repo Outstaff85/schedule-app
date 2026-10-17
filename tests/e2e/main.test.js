@@ -699,6 +699,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     w1.docUploadFailed = true;
     // A clean start: an earlier step's window (the worker form opened from a card) can still be on its way back
     // (__returnTo brings the card back ~60 ms after it closes) and would open the card under this step.
+    await wait(300);
     for (let i = 0; i < 5 && document.querySelector('.overlay.open'); i++) {
       document.querySelectorAll('.overlay').forEach(o => { o.__returnTo = null; o.classList.remove('open'); });
       await wait(300);
