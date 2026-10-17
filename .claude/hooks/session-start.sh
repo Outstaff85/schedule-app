@@ -25,6 +25,7 @@ elif git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
     git merge -q --ff-only origin/main 2>/dev/null && note="Fast-forwarded $branch to origin/main."
   else
     note="$branch is up to date with origin/main."
+    quiet=1
   fi
 elif git rev-parse -q --verify "origin/$branch" >/dev/null && git merge-base --is-ancestor HEAD "origin/$branch"; then
   git merge -q --ff-only "origin/$branch" 2>/dev/null && note="Fast-forwarded $branch to origin/$branch."
