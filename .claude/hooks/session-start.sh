@@ -15,6 +15,7 @@ event=${1:-SessionStart}
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 note=""
 quiet=""
+moved=""
 
 # UserPromptSubmit: at most one sync per THROTTLE seconds, and a notice only when it differs
 # from the last one given (both kept inside .git, so nothing shows up in git status).
