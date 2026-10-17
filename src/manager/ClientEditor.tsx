@@ -23,6 +23,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import type { ClientInfo, ClientRecord, ManagerBridge } from './bridge';
 import { initials } from './worker-head';
+import { Logins } from './logins';
 import { hoursShort } from './today';
 import {
   billMain, billOf, clientFormOf, clientRecordOf, margin, moneyShort, parseMapsUrl, rateNum, setBillMain, setPayUnit, setRateMode,
@@ -259,7 +260,7 @@ export function ClientEditor({ props, info, api }: { props: ClientProps; info: C
             {tr('Hours approval')}
           </AccordionTrigger>
           <AccordionContent forceMount hidden={!open.includes('approval')}>
-            <LoginsLazy editId={editId} info={info} api={api} />
+            <Logins role="client" ownerId={editId} info={info} api={api} />
           </AccordionContent>
         </AccordionItem>
       </Accordion>
@@ -270,9 +271,4 @@ export function ClientEditor({ props, info, api }: { props: ClientProps; info: C
       </div>
     </div>
   );
-}
-
-import { Logins } from './logins';
-function LoginsLazy({ editId, info, api }: { editId: string | null; info: ClientInfo; api: ManagerBridge }) {
-  return <Logins role="client" ownerId={editId} info={info} api={api} />;
 }
