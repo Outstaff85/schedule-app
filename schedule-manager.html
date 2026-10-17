@@ -588,6 +588,10 @@
   .sched-day:hover{background:rgba(255,255,255,.04)}
   .sched-day.today span{color:var(--accent);font-weight:700}
   .sched-day b{font-family:'DM Mono',monospace;font-size:12px;font-weight:600;color:var(--c)}
+  /* Workers' requests (stage 5b): a day the worker can't work, and the offer lines' Confirm / Decline. */
+  .sched-na{font-style:normal;font-size:10.5px;font-weight:700;color:var(--warn);margin-left:4px}
+  .t3-line.shift-req .sr-ok{height:32px;padding:0 12px;font-size:12.5px;flex:0 0 auto}
+  .t3-line.shift-req .sr-no{flex:0 0 auto}
   .sched-dated{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);vertical-align:middle}
 
   /* Today (variant A): a section folds with the arrow at its right; a
@@ -1057,6 +1061,7 @@ body:has(.overlay.open){overflow:hidden}
         </div>
       </div>
       <div class="og-tabs" id="schedSiteTabs"></div>
+      <div id="schedRequests"></div>
       <div class="t3-sec" id="ganttHeader"></div>
       <div id="ganttBody"></div>
     </div>
@@ -2630,6 +2635,7 @@ function renderGanttHeader(){
   set('schedWeekSum', [thisWeek?tr('This week'):'', tr('{h}h',{h:vis.reduce((t,w)=>t+workerTotalHours(w),0).toFixed(0)}), sh.length===1?tr('1 shift'):tr('{n} shifts',{n:sh.length})].filter(Boolean).join(' · '));
   const el=document.getElementById('ganttHeader');
   if(el) el.innerHTML=`<i class="ti ti-users"></i> ${esc(tr('Workers'))}<em>${vis.length}</em>`;
+  renderShiftRequests(); loadShiftRequests();
   // The site tabs: All sites and each client (the same filter as the sidebar's).
   const tabs=document.getElementById('schedSiteTabs');
   if(tabs) tabs.innerHTML=clients.length?[`<button type="button" class="${!selectedClientId?'on':''}" onclick="filterByClient(null)">${esc(tr('All sites'))}</button>`]
@@ -2656,7 +2662,7 @@ function renderGanttBody(){
       const date=dateOf(di), on=x.type==='work'&&x.start&&x.end, mid=on&&toMins(x.end)<=toMins(x.start);
       const col=on?(mid?'var(--info)':'var(--fig)'):'var(--warn)';
       return `<div class="sched-day${date.toDateString()===todayStr?' today':''}" style="--c:${col}" onclick="openEditShift(${wi},${di})">
-        <span>${esc(tr(DAYS[di]))} ${date.getDate()}${site?' · '+esc(site):''}${x.dated?` <i class="sched-dated" title="${esc(tr('Changed for this date only'))}"></i>`:''}</span>
+        <span>${esc(tr(DAYS[di]))} ${date.getDate()}${site?' · '+esc(site):''}${x.dated?` <i class="sched-dated" title="${esc(tr('Changed for this date only'))}"></i>`:''}${shiftReqOn(w.id,localYMD(date),'unavailable')?` <em class="sched-na">${esc(tr("Can't work"))}</em>`:''}</span>
         <b${on?'':' style="font-family:inherit"'}>${on?esc(x.start+'–'+x.end):esc(tr('Day off'))}</b></div>`;
     }).join('')}</div>`:'';
     return `<div class="gantt-row" draggable="true" data-wi="${wi}" ondragstart="dragStart(event,${wi})" ondragover="dragOver(event,${wi})" ondragleave="dragLeave(event)" ondrop="doDrop(event,${wi})" ondragend="dragEnd(event)">`
@@ -2665,6 +2671,66 @@ function renderGanttBody(){
           onclick:`toggleSchedWorker('${esc(w.id)}')`, right:`<span class="r">${esc(fmtHoursShort(workerTotalHours(w)))}</span><i class="ti ti-chevron-down t3-chev"></i>`})
       + days + `</div>`;
   });
+}
+
+// Workers' requests (stage 5b, docs/app-core.md → Schedule tab): the days a
+// worker marked they can't work and the shifts offered to a colleague, sent
+// from the punch page (the punch function writes tenants/{t}/shiftRequests).
+// An offer changes nothing until a manager with the schedule section confirms
+// it here with one tap: the worker's date becomes a day off and the
+// colleague's date gets the shift (both "only this date", w.dateShifts, saved
+// with the workers), then the request is marked confirmed. Until stage 6b
+// moves the tab this is a small list above the workers.
+let __shiftReqs=[], __shiftReqsAt=0, __shiftReqsBusy=false;
+async function loadShiftRequests(force){
+  if(__shiftReqsBusy||(!force&&Date.now()-__shiftReqsAt<60e3)) return;
+  __shiftReqsBusy=true; __shiftReqsAt=Date.now();
+  try{ const j=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'loadShiftRequests'})})).json();
+    if(j&&j.ok){ __shiftReqs=j.requests||[]; renderShiftRequests(); renderGanttBody(); } }catch(e){}
+  finally{ __shiftReqsBusy=false; }
+}
+function shiftReqOn(wid,date,kind){ return __shiftReqs.find(q=>q.workerId===wid&&q.date===date&&q.kind===kind&&q.status!=='declined'); }
+function fmtReqDate(ymd){ const [y,m,d]=String(ymd).split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString(uiLocale(),{weekday:'short',day:'numeric',month:'short'}); }
+function renderShiftRequests(){
+  const el=document.getElementById('schedRequests'); if(!el) return;
+  const known=new Set(workers.map(w=>w.id));
+  const list=__shiftReqs.filter(q=>known.has(q.workerId)&&(q.kind==='unavailable'||q.status==='pending'))
+    .filter(q=>!selectedClientId||(workers.find(w=>w.id===q.workerId)?.clientIds||[]).includes(selectedClientId))
+    .sort((a,b)=>(a.kind==='swap'?0:1)-(b.kind==='swap'?0:1)||String(a.date).localeCompare(String(b.date)));
+  if(!list.length){ el.innerHTML=''; return; }
+  const can=hasPermission('schedule');
+  const head=`<div class="t3-sec"><i class="ti ti-calendar-user"></i> ${esc(tr('Requests from workers'))}<em>${list.length}</em></div>`;
+  renderPagedList(el,'shiftReqs',String(selectedClientId||'')+':'+list.length,list,q=>{
+    const w=workers.find(x=>x.id===q.workerId);
+    const [y,m,d]=String(q.date).split('-').map(Number), sh=w?shiftOn(w,new Date(y,m-1,d)):null;
+    if(q.kind==='unavailable'){
+      const planned=sh&&sh.type==='work'&&sh.start?tr('Planned {0}',{0:sh.start+'–'+sh.end}):'';
+      return t3Line({c:'var(--warn)', name:esc(q.workerName||(w&&w.name)||''), cls:'shift-req',
+        sub:[esc(tr("Can't work")+' · '+fmtReqDate(q.date)), planned?`<span style="color:var(--warn)">${esc(planned)}</span>`:'', q.note?esc(q.note):''].filter(Boolean)});
+    }
+    const to=workers.find(x=>x.id===q.toWorkerId), toSh=to?shiftOn(to,new Date(y,m-1,d)):null;
+    const toDay=toSh&&toSh.type==='work'&&toSh.start?tr('{0} already works {1}',{0:to.name,1:toSh.start+'–'+toSh.end}):'';
+    const btns=can?`<button type="button" class="gbtn primary sr-ok" onclick="event.stopPropagation();decideShiftRequest('${esc(q.id)}',true)"><i class="ti ti-check"></i><span>${esc(tr('Confirm'))}</span></button>`
+      +`<button type="button" class="t3-ib sr-no" title="${esc(tr('Decline'))}" onclick="event.stopPropagation();decideShiftRequest('${esc(q.id)}',false)"><i class="ti ti-x"></i></button>`:'';
+    return t3Line({c:'var(--info)', name:esc((q.workerName||'')+' → '+(q.toWorkerName||'')), cls:'shift-req',
+      sub:[esc(tr('Shift offer')+' · '+fmtReqDate(q.date)+' · '+(q.start||'')+'–'+(q.end||'')), toDay?`<span style="color:var(--warn)">${esc(toDay)}</span>`:'', q.note?esc(q.note):''].filter(Boolean),
+      right:btns});
+  },{head});
+}
+async function decideShiftRequest(id,ok){
+  const q=__shiftReqs.find(x=>x.id===id); if(!q||!hasPermission('schedule')) return;
+  if(ok){
+    const a=workers.find(w=>w.id===q.workerId), b=workers.find(w=>w.id===q.toWorkerId);
+    if(!a||!b){ showToast(tr('This worker is not in your list')); return; }
+    a.dateShifts=pruneDateShifts(Object.assign({}, a.dateShifts, {[q.date]:{type:'off',start:null,end:null}}));
+    b.dateShifts=pruneDateShifts(Object.assign({}, b.dateShifts, {[q.date]:{type:'work',start:q.start,end:q.end}}));
+    autoSave();
+  }
+  let j=null;
+  try{ j=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'decideShiftRequest',id,status:ok?'confirmed':'declined'})})).json(); }catch(e){}
+  if(!j||!j.ok){ showToast(tr('Could not save the decision')); loadShiftRequests(true); return; }
+  q.status=ok?'confirmed':'declined';
+  render(); showToast(ok?tr('Shift handed over'):tr('Offer declined'));
 }
 
 function renderWorkerList(){

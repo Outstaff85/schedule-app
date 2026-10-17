@@ -1656,6 +1656,72 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.goto(BASE + 'worker-punch.html?t=nope');
   ok(await waitFor(p, () => /קישור לא תקין/.test(document.body.innerText)), 'punch: the chosen language is kept on the device');
   await p.evaluate(() => localStorage.setItem('uiLang', 'en'));
+  // ── Stage 5b: a day the worker can't work, a shift offered to a colleague and confirmed by the manager, the pay estimate ──
+  await srv('/swapSetup');
+  await p.goto(BASE + 'worker-punch.html?t=tok-new');
+  await waitFor(p, () => !document.getElementById('screenPunch').classList.contains('hidden'), 15000);
+  // A day from the server's today on (the browser's clock is E2E_NOW, which can be days behind), in the shown month or the next.
+  const sd = new Date(Date.now() + 86400000), rqKey = sd.getFullYear() + '-' + String(sd.getMonth() + 1).padStart(2, '0') + '-' + String(sd.getDate()).padStart(2, '0');
+  const openDay = async () => {
+    await p.evaluate(k => { window.__rqKey = k; }, rqKey);
+    await p.click('[data-testid="tile-schedule"]');
+    await waitFor(p, () => !document.getElementById('screenSchedule').classList.contains('hidden'));
+    for (let i = 0; i < 2 && !(await p.$(`.sp-plate[data-date="${rqKey}"]`)); i++) { await p.click('#scheduleContent .sched-nav[aria-label="Next month"]'); await sleep(200); }
+    await p.click(`.sp-plate[data-date="${rqKey}"]`);
+    return waitFor(p, () => !!document.getElementById('naToggle'), 8000);
+  };
+  const plateText = () => p.evaluate(k => (document.querySelector(`.sp-plate[data-date="${k}"]`) || {}).innerText || '', rqKey);
+  const rq5 = {open: await openDay()};
+  await p.click('#naToggle');
+  rq5.na = await waitFor(p, () => /Can't work/.test((document.querySelector('.sp-plate[data-date="' + window.__rqKey + '"]') || {}).innerText || ''), 8000);
+  rq5.na = rq5.na || /Can't work/.test(await plateText());
+  await p.click('#offerOpen'); await p.click('#offerTo');
+  await p.click('[cmdk-item]:has-text("Dana Levi")');
+  await p.click('#offerSend');
+  await waitFor(p, () => /Sent to your manager/.test(document.body.innerText), 8000);
+  rq5.offered = /Offered to Dana Levi · waiting for the manager/.test(await plateText());
+  let st5 = await srv('/swapState');
+  const reqU = st5.requests['u_w1_' + rqKey] || {}, reqS = st5.requests['s_w1_' + rqKey] || {};
+  rq5.stored = reqU.kind === 'unavailable' && reqS.status === 'pending' && reqS.toWorkerId === 'w2' && reqS.start === '08:00' && reqS.end === '16:00';
+  rq5.unchanged = !(st5.dateShifts.w1 || {})[rqKey] && !(st5.dateShifts.w2 || {})[rqKey];
+  ok(rq5.open && rq5.na && rq5.offered && rq5.stored && rq5.unchanged, 'punch: the worker marks a day they can\'t work and offers its shift to a colleague; the schedule is unchanged until the manager confirms ' + JSON.stringify(rq5));
+  // The manager sees both on the Schedule tab and confirms the offer with one tap.
+  const mctx5 = await newCtx(), mp5 = await page(mctx5);
+  await login(mp5, BASE + 'schedule-manager.html', 'owner1', 'owner-pass-1');
+  await mp5.waitForNavigation().catch(() => {});
+  await waitFor(mp5, () => typeof workers !== 'undefined' && workers.length === 2, 15000);
+  await mp5.evaluate(() => switchTab('schedule'));
+  const mgr = {list: await waitFor(mp5, () => document.querySelectorAll('#schedRequests .shift-req').length === 2, 15000)};
+  mgr.text = await mp5.evaluate(() => document.getElementById('schedRequests').innerText.replace(/\s+/g, ' '));
+  await mp5.click('#schedRequests .sr-ok');
+  mgr.toast = await waitFor(mp5, () => /Shift handed over/.test(document.body.innerText), 8000);
+  mgr.saved = await waitFor(mp5, () => !document.querySelector('#schedRequests .sr-ok'), 8000);
+  await sleep(2500);  // autoSave's debounce
+  st5 = await srv('/swapState');
+  mgr.status = (st5.requests['s_w1_' + rqKey] || {}).status;
+  mgr.avi = JSON.stringify((st5.dateShifts.w1 || {})[rqKey]); mgr.dana = JSON.stringify((st5.dateShifts.w2 || {})[rqKey]);
+  ok(mgr.list && /Avi Cohen → Dana Levi/.test(mgr.text) && /Can't work/.test(mgr.text) && mgr.toast && mgr.status === 'confirmed'
+    && /"type":"off"/.test(mgr.avi) && /"type":"work"/.test(mgr.dana) && /08:00/.test(mgr.dana) && /16:00/.test(mgr.dana),
+    'schedule: the manager sees the day off and the offer, one tap hands the shift over (Avi off, Dana works that date) ' + JSON.stringify(mgr));
+  ok(mp5.errs.length === 0, 'schedule: no page errors with the workers\' requests ' + mp5.errs.join(' | '));
+  await mctx5.close();
+  // Back on the punch page: the offer shows as handed over and the day as a day off.
+  await p.evaluate(() => document.querySelector('.sheet-grab').click());
+  const after5 = {open: await openDay()};
+  after5.text = await waitFor(p, () => /Handed over to Dana Levi/.test((document.querySelector('.sp-plate[data-date="' + window.__rqKey + '"]') || {}).innerText || ''), 10000);
+  after5.plate = await plateText();
+  ok(/Handed over to Dana Levi/.test(after5.plate) && /Day off/.test(after5.plate), 'punch: the worker sees the shift handed over and the day off ' + JSON.stringify(after5));
+  await p.evaluate(() => document.querySelector('#screenSchedule .sheet-grab').click());
+  // The pay estimate: the same figures as My Hours, from the one payroll copy.
+  await p.click('[data-testid="tile-hours"]');
+  ok(await waitFor(p, () => !!document.getElementById('payslipBtn'), 10000), 'punch: My Hours has "Download for the month"');
+  const payTot = await p.evaluate(() => document.querySelector('#hoursContent .pay-r.tot b').textContent);
+  const [pop] = await Promise.all([p.waitForEvent('popup'), p.click('#payslipBtn')]);
+  await pop.evaluate(() => { window.print = () => {}; }).catch(() => {});
+  await pop.waitForSelector('#payslipSum', {timeout: 5000}).catch(() => {});
+  const slip = await pop.evaluate(() => ({tot: (document.querySelector('#payslipSum .tot td:last-child') || {}).textContent, title: document.title, note: /estimate before deductions/.test(document.body.innerText)})).catch(e => ({err: String(e)}));
+  ok(slip.tot && slip.tot === payTot && /Pay estimate/.test(slip.title) && slip.note, 'punch: the month\'s pay estimate has the same total as My Hours and says it is before deductions ' + JSON.stringify({payTot, slip}));
+  await pop.close().catch(() => {});
   ok(p.errs.length === 0, 'punch: no page errors ' + p.errs.join(' | '));
   ok(external.filter(u=>/script\.google\.com/.test(u)).length === 0, 'still no request to script.google.com');
   await b.close();

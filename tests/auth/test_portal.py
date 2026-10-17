@@ -303,3 +303,79 @@ def test_supplier_sections_limit_the_actions():
     assert DB.collection("tenants").document(T1).collection("workers").document("w1").get().exists
     # With My Workers the change goes through.
     assert portal.supplier_action(DB, dict(SUP1, ss=["workers"]), {"action": "supplierUpdateWorker", "workerId": "w1", "worker": {"phone": "2"}})["ok"]
+
+
+# ── Days off and shift offers (stage 5b) ─────────────────────────────────────
+
+def _in_days(n):
+    from datetime import datetime, timedelta
+    return (datetime.now(portal.TZ).date() + timedelta(days=n)).isoformat()
+
+
+def R(tid, rid):
+    return DB.collection("tenants").document(tid).collection("shiftRequests").document(rid)
+
+
+def _with_roster():
+    work = {"type": "work", "start": "08:00", "end": "16:00"}
+    W(T1, "w1").update({"schedule": [work] * 7, "hrId": "u-hr1"})
+    W(T1, "w3").set({"id": "w3", "name": "Bella Katz", "token": "tok-bella", "clientIds": ["c2"], "hourlyRate": 50,
+                     "phone": "0502222222"})
+    W(T1, "w4").set({"id": "w4", "name": "Gone Worker", "token": "tok-gone", "clientIds": ["c1"], "status": "fired"})
+
+
+def test_my_requests_gives_colleagues_of_the_same_site_names_only():
+    _with_roster()
+    r = portal.punch_action(DB, {"action": "myRequests", "token": "tok-avi"})
+    assert r == {"requests": [], "colleagues": [{"id": "w3", "name": "Bella Katz"}]}  # not w2 (no shared site), not fired w4
+    assert portal.punch_action(DB, {"action": "myRequests", "token": "tok-dana"})["colleagues"] == []
+
+
+def test_mark_and_unmark_a_day_the_worker_cant_work():
+    _with_roster()
+    d = _in_days(3)
+    r = portal.punch_action(DB, {"action": "setUnavailable", "token": "tok-avi", "date": d, "note": "exam"})
+    assert r == {"ok": True, "id": f"u_w1_{d}"}
+    doc = R(T1, f"u_w1_{d}").get().to_dict()
+    assert doc["kind"] == "unavailable" and doc["status"] == "active" and doc["workerId"] == "w1" and doc["hrId"] == "u-hr1"
+    reqs = portal.punch_action(DB, {"action": "myRequests", "token": "tok-avi"})["requests"]
+    assert reqs == [{"id": f"u_w1_{d}", "kind": "unavailable", "date": d, "note": "exam", "status": "active"}]
+    assert portal.punch_action(DB, {"action": "setUnavailable", "token": "tok-avi", "date": d, "on": False}) == {"ok": True}
+    assert not R(T1, f"u_w1_{d}").get().exists
+    # Only from today to 120 days ahead, and only a real date.
+    for bad in (_in_days(-1), _in_days(121), "2026-13-01", "x/y", None):
+        assert portal.punch_action(DB, {"action": "setUnavailable", "token": "tok-avi", "date": bad})["error"] == "Bad date"
+
+
+def test_offer_a_shift_to_a_colleague_waits_for_the_manager():
+    _with_roster()
+    d = _in_days(5)
+    r = portal.punch_action(DB, {"action": "offerShift", "token": "tok-avi", "date": d, "toWorkerId": "w3"})
+    assert r == {"ok": True, "id": f"s_w1_{d}"}
+    doc = R(T1, f"s_w1_{d}").get().to_dict()
+    assert {k: doc[k] for k in ("kind", "status", "start", "end", "toWorkerId", "toWorkerName", "workerName")} == {
+        "kind": "swap", "status": "pending", "start": "08:00", "end": "16:00", "toWorkerId": "w3",
+        "toWorkerName": "Bella Katz", "workerName": "Avi Cohen"}
+    # Nothing in the schedule changes until a manager confirms.
+    assert "dateShifts" not in W(T1, "w1").get().to_dict() and "dateShifts" not in W(T1, "w3").get().to_dict()
+    # Only a colleague of the same site; only a day the worker works.
+    assert portal.punch_action(DB, {"action": "offerShift", "token": "tok-avi", "date": d, "toWorkerId": "w2"})["error"]
+    assert portal.punch_action(DB, {"action": "offerShift", "token": "tok-avi", "date": d, "toWorkerId": "w4"})["error"]
+    W(T1, "w1").update({"dateShifts": {_in_days(6): {"type": "off"}}})
+    assert portal.punch_action(DB, {"action": "offerShift", "token": "tok-avi", "date": _in_days(6), "toWorkerId": "w3"})["error"] == "No shift on this date"
+    # Withdrawn while pending; a decided one can't be withdrawn or offered again.
+    assert portal.punch_action(DB, {"action": "cancelRequest", "token": "tok-avi", "id": f"s_w1_{d}"}) == {"ok": True}
+    portal.punch_action(DB, {"action": "offerShift", "token": "tok-avi", "date": d, "toWorkerId": "w3"})
+    R(T1, f"s_w1_{d}").update({"status": "confirmed"})
+    assert portal.punch_action(DB, {"action": "cancelRequest", "token": "tok-avi", "id": f"s_w1_{d}"})["error"]
+    assert portal.punch_action(DB, {"action": "offerShift", "token": "tok-avi", "date": d, "toWorkerId": "w3"})["error"]
+
+
+def test_a_link_cannot_touch_another_workers_requests():
+    _with_roster()
+    d = _in_days(2)
+    portal.punch_action(DB, {"action": "offerShift", "token": "tok-avi", "date": d, "toWorkerId": "w3"})
+    assert portal.punch_action(DB, {"action": "cancelRequest", "token": "tok-bella", "id": f"s_w1_{d}"})["error"] == "Not your request"
+    assert R(T1, f"s_w1_{d}").get().exists
+    assert portal.punch_action(DB, {"action": "myRequests", "token": "tok-bella"})["requests"] == []
+    assert portal.punch_action(DB, {"action": "myRequests", "token": "tok-other"}) == {"requests": [], "colleagues": []}

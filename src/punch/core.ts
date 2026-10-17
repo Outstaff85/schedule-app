@@ -25,6 +25,9 @@ export interface PunchEntry {
 }
 export type Screen = 'none' | 'loading' | 'invalid' | 'punch' | 'schedule' | 'hours';
 export type IconName = 'link' | 'link-off' | 'wifi-off' | 'alert-triangle';
+/** A day the worker can't work ('unavailable') or their shift offered to a colleague ('swap'), from the punch function's myRequests. */
+export interface ShiftReq { id: string; kind: 'unavailable' | 'swap'; date: string; start?: string; end?: string; toWorkerId?: string; toWorkerName?: string; note?: string; status: 'active' | 'pending' | 'confirmed' | 'declined' }
+export interface Colleague { id: string; name: string }
 export interface MonthData { punches?: Record<string, unknown>[]; pay?: Record<string, unknown>; clients?: PClient[]; local?: boolean; failed?: boolean; error?: string }
 
 // ── The link and the site ──
@@ -75,13 +78,16 @@ export interface PunchState {
   queued: number;
   wx: { kind: string; temp?: number } | null;
   tileHours: string;
+  /** the worker's days off and shift offers (null = not read yet) and the colleagues of their sites (requests.ts) */
+  requests: ShiftReq[] | null;
+  colleagues: Colleague[];
   /** bumped on every write that the screens draw from (the punch log, the month data) */
   rev: number;
 }
 let st: PunchState = {
   screen: 'none', invalid: null, picker: null, worker: null,
   loc: { cls: 'loading', t: 'Checking location...' }, locOk: false,
-  done: null, result: null, schedChanged: false, queued: 0, wx: null, tileHours: '—', rev: 0,
+  done: null, result: null, schedChanged: false, queued: 0, wx: null, tileHours: '—', requests: null, colleagues: [], rev: 0,
 };
 const subs = new Set<() => void>();
 export const set = (p: Partial<PunchState>) => { st = { ...st, ...p }; subs.forEach(f => f()); };

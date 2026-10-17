@@ -14,6 +14,16 @@ punch_action(db, body)            worker-punch.html; body.token is the link toke
                         what the pay functions need to estimate the pay: their
                         own rates (WORKER_PAY_FIELDS) and their sites' worker-pay
                         rates (CLIENT_PAY_FIELDS) — never billing, GPS or others
+  myRequests            the worker's own requests (days they can't work, shifts
+                        offered to a colleague) from today on, and the
+                        colleagues they may offer a shift to: active workers
+                        sharing one of their sites — id and name only
+  setUnavailable        mark / unmark a day (today .. 120 days ahead) the
+                        worker can't work; the manager only sees it
+  offerShift            offer the worker's shift of one date to a colleague;
+                        nothing changes in the schedule until a manager
+                        confirms it (Schedule tab, firestore-backend.js)
+  cancelRequest         withdraw an offer still pending
   savePushSubscription  stored for later (push reminders are off)
   logError              the page's error telemetry
 
@@ -203,6 +213,122 @@ def _my_month(db, tid, w, month):
     return {"punches": punches, "pay": pay, "clients": clients}
 
 
+# ── Days off and shift offers (tenants/{t}/shiftRequests, stage 5b) ─────────
+# One document per worker and date and kind: u_<worker>_<date> (a day the
+# worker can't work, status 'active') and s_<worker>_<date> (their shift of that
+# date offered to a colleague: 'pending' until a manager confirms or declines
+# it). Written here only; managers read them and decide an offer
+# (firestore.rules). The worker's hrId is copied so an own-workers HR sees them.
+REQ_DAYS_AHEAD = 120
+REQ_FIELDS = ("id", "kind", "date", "start", "end", "toWorkerId", "toWorkerName", "note", "status")
+
+
+def _req_col(db, tid):
+    return db.collection("tenants").document(tid).collection("shiftRequests")
+
+
+def _req_date(v):
+    """'YYYY-MM-DD' from today (Israel) to REQ_DAYS_AHEAD days ahead, else None."""
+    v = str(v or "")
+    try:
+        d = datetime.strptime(v, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+    today = datetime.now(TZ).date()
+    return v if today <= d <= today + timedelta(days=REQ_DAYS_AHEAD) else None
+
+
+def _shift_on(wd, date):
+    """The worker's shift on a date, as the app's shiftOn(): a change for that
+    date wins over the weekly roster (Sunday first)."""
+    dated = (wd.get("dateShifts") or {}).get(date) if isinstance(wd.get("dateShifts"), dict) else None
+    if isinstance(dated, dict):
+        return _week([dated])[0]
+    d = datetime.strptime(date, "%Y-%m-%d").date()
+    return _week(wd.get("schedule"))[(d.weekday() + 1) % 7]
+
+
+def _colleagues(db, tid, w):
+    """Active workers of the firm who share one of this worker's sites: id and name only."""
+    mine = set(str(c) for c in ((w.to_dict() or {}).get("clientIds") or []))
+    if not mine:
+        return []
+    out = []
+    q = db.collection("tenants").document(tid).collection("workers").select(["name", "clientIds", "status"])
+    for s in q.stream():
+        d = s.to_dict() or {}
+        if s.id == w.id or d.get("status") == "fired" or not mine & set(str(c) for c in (d.get("clientIds") or [])):
+            continue
+        out.append({"id": s.id, "name": d.get("name") or ""})
+    return sorted(out, key=lambda x: x["name"].lower())
+
+
+def _req_doc(w, kind, date, **extra):
+    wd = w.to_dict() or {}
+    doc = {"kind": kind, "workerId": w.id, "workerName": wd.get("name") or "", "date": date,
+           "createdAt": datetime.now(timezone.utc).isoformat(), **extra}
+    if wd.get("hrId"):
+        doc["hrId"] = str(wd.get("hrId"))
+    return doc
+
+
+def _my_requests(db, tid, w):
+    today = datetime.now(TZ).date().isoformat()
+    reqs = []
+    for s in _req_col(db, tid).where(filter=FieldFilter("workerId", "==", w.id)).stream():
+        d = s.to_dict() or {}
+        if str(d.get("date") or "") >= today:
+            reqs.append({k: (s.id if k == "id" else d.get(k)) for k in REQ_FIELDS if k == "id" or d.get(k) is not None})
+    reqs.sort(key=lambda x: (x.get("date") or "", x.get("kind") or ""))
+    return {"requests": reqs, "colleagues": _colleagues(db, tid, w)}
+
+
+def _set_unavailable(db, tid, w, body):
+    date = _req_date(body.get("date"))
+    if not date:
+        return {"error": "Bad date"}
+    ref = _req_col(db, tid).document(f"u_{w.id}_{date}")
+    if body.get("on") is False:
+        ref.delete()
+        return {"ok": True}
+    ref.set(_req_doc(w, "unavailable", date, status="active", note=_clip(body.get("note"), 200)))
+    return {"ok": True, "id": ref.id}
+
+
+def _offer_shift(db, tid, w, body):
+    date = _req_date(body.get("date"))
+    if not date:
+        return {"error": "Bad date"}
+    sh = _shift_on(w.to_dict() or {}, date)
+    if sh["type"] != "work":
+        return {"error": "No shift on this date"}
+    to = next((c for c in _colleagues(db, tid, w) if c["id"] == str(body.get("toWorkerId") or "")), None)
+    if not to:
+        return {"error": "Pick a colleague from your site"}
+    ref = _req_col(db, tid).document(f"s_{w.id}_{date}")
+    old = ref.get()
+    if old.exists and (old.to_dict() or {}).get("status") == "confirmed":
+        return {"error": "This shift was already handed over"}
+    ref.set(_req_doc(w, "swap", date, start=sh["start"], end=sh["end"], toWorkerId=to["id"],
+                     toWorkerName=to["name"], note=_clip(body.get("note"), 200), status="pending"))
+    return {"ok": True, "id": ref.id}
+
+
+def _cancel_request(db, tid, w, rid):
+    rid = str(rid or "")
+    if not rid.startswith(f"s_{w.id}_") or "/" in rid or len(rid) > 200:
+        return {"error": "Not your request"}
+    ref = _req_col(db, tid).document(rid)
+    snap = ref.get()
+    d = (snap.to_dict() or {}) if snap.exists else {}
+    if not snap.exists or d.get("workerId") != w.id:
+        return {"error": "Not your request"}
+    if d.get("status") != "pending":
+        return {"error": "The manager has already decided"}
+    ref.delete()
+    return {"ok": True}
+
+
 def punch_action(db, body):
     action = str(body.get("action") or "")
     if action == "logError":
@@ -220,6 +346,14 @@ def punch_action(db, body):
         return _save_punch(db, tid, w, body.get("data"))
     if action == "myMonth":
         return _my_month(db, tid, w, body.get("month"))
+    if action == "myRequests":
+        return _my_requests(db, tid, w)
+    if action == "setUnavailable":
+        return _set_unavailable(db, tid, w, body)
+    if action == "offerShift":
+        return _offer_shift(db, tid, w, body)
+    if action == "cancelRequest":
+        return _cancel_request(db, tid, w, body.get("id"))
     if action == "savePushSubscription":
         sub = body.get("subscription") or {}
         endpoint = str(sub.get("endpoint") or "")

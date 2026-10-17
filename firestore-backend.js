@@ -622,6 +622,23 @@
         case 'approvePendingHours': return approvePendingHours(t, ctx, params.batchId);
         case 'rejectPendingHours': return rejectPendingHours(t, ctx, params.batchId);
         case 'setPunchesHr': return setPunchesHr(t, ctx, params.workerIds, params.hrId);
+        // Workers' days off and shift offers (stage 5b; the punch function
+        // writes them): from today on. An own-workers hr reads its workers'.
+        case 'loadShiftRequests': {
+          if(ctx.role === 'supplier' || ctx.role === 'client') return {error:'Not available for this login'};
+          const hr = await hrOnly();
+          const snap = await F.getDocs(hr ? F.query(col(t,'shiftRequests'), F.where('hrId','==',hr)) : col(t,'shiftRequests'));
+          const today = new Date(); const d0 = today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+          return {ok:true, requests: snap.docs.map(d => ({id: d.id, ...d.data()})).filter(r => String(r.date||'') >= d0)};
+        }
+        // A manager confirms or declines a pending shift offer: only its status
+        // and who / when (firestore.rules); the schedule is saved as workers.
+        case 'decideShiftRequest': {
+          const status = params.status === 'confirmed' ? 'confirmed' : 'declined';
+          await F.updateDoc(F.doc(db, 'tenants', t, 'shiftRequests', String(params.id)),
+            {status, decidedAt: new Date().toISOString(), decidedBy: ctx.username || auth.currentUser.uid});
+          return {ok:true};
+        }
         // The notifications this login has read (the bell's "Mark all read"),
         // one doc per login: notifReads/{uid} = {ids, at}. Manager-side logins.
         case 'loadNotifReads': {
