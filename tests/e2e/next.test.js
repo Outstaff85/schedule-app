@@ -37,7 +37,7 @@ const DEMOS = {
   lists: ['plate', 'plate-sizes', 'empty'],
   windows: ['window', 'signature', 'menu', 'account', 'sheet'],
   feedback: ['alert', 'toast', 'progress'],
-  data: ['table', 'data-table', 'calendar', 'card'],
+  data: ['table', 'data-table', 'chart', 'calendar', 'card'],
   layout: ['tabs', 'accordion', 'collapsible'],
 };
 

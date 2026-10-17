@@ -39,6 +39,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       // The worker windows are React (stage 6c-2): a field is filled as a person types (the input event).
       window.T = {
         tick: (ms = 0) => new Promise(r => setTimeout(r, ms)),
+        async until(fn, ms = 8000){ const end = Date.now() + ms; while (Date.now() < end){ if (fn()) return true; await new Promise(r => setTimeout(r, 100)); } return !!fn(); },
         fill(sel, v){ const el = typeof sel === 'string' ? (document.getElementById(sel) || document.querySelector(sel)) : sel;
           Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true})); },
       };
@@ -154,26 +155,34 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(hv.tab === 'workers' && !hv.today && !hv.admin && hv.workersTab && !hv.sched && hv.acc, 'hr: the Workers tab and, with Accounting ticked, its pay view; lands on Workers ' + JSON.stringify(hv));
   const pv = await h.evaluate(async () => {
-    switchTab('accounting'); const sel = document.getElementById('salaryPeriod'); sel.value = 'all'; await onSalaryPeriodChange();
-    const vis = id => document.getElementById(id).style.display !== 'none';
-    const txt = document.getElementById('dashSalary').innerText;
-    return {rows: __lastSalaryEntries.map(e => e.workerId), com: /My commission/.test(txt), rates: vis('accSecRates'), sup: vis('accSecSupplierRates'),
-      payable: vis('accSecPayable'), bill: vis('accSecBillable'), pend: vis('accSecPending'), ro: document.getElementById('dashSalary').classList.contains('salary-ro'),
-      hours: __lastSalaryEntries.reduce((t, e) => t + e.hours, 0), comText: txt};
+    switchTab('accounting'); await ManagerBridge.setPeriod('all'); await T.tick(100);
+    const root = document.getElementById('accountingRoot'), vis = sel => !!root.querySelector(sel);
+    const txt = (root.querySelector('#accSecSalary') || {}).innerText || '';
+    const rows = [...root.querySelectorAll('[data-testid=sal-table] tbody tr')].map(r => r.dataset.rowId);
+    const e = ManagerAcc.salaryEntriesFor(accData(), 'all').byWorker;
+    return {rows, com: /My commission/.test(txt), tabs: vis('#accTabs'), payable: vis('[data-testid=acc-billing]'), pend: vis('#accSecPending'),
+      alerts: vis('#accSecAlerts'), view: (root.querySelector('[data-testid=accounting]') || {dataset: {}}).dataset.view, noExport: !vis('[data-testid=sal-export]'), noSelect: !vis('[data-testid=sal-select]'),
+      hours: rows.reduce((t, id) => t + e[id].hours, 0), comText: txt};
   });
-  ok(pv.rows.length === 1 && pv.rows[0] === 'w2' && pv.com && pv.ro && !pv.rates && !pv.sup && !pv.payable && !pv.bill && !pv.pend,
-    'hr pay view: own worker only, read-only, its commission, nothing else of Accounting ' + JSON.stringify(pv).slice(0, 200));
+  ok(pv.rows.length === 1 && pv.rows[0] === 'w2' && pv.com && pv.view === 'pay' && !pv.tabs && !pv.payable && !pv.pend && !pv.alerts && pv.noExport && pv.noSelect,
+    'hr pay view: own worker only, its commission, no tabs, no export, nothing else of Accounting ' + JSON.stringify(pv).slice(0, 300));
   ok(pv.comText.includes('₪' + (pv.hours * 4).toFixed(0)), 'hr pay view: commission = hours × 4 ' + pv.hours);
   // Hours approval in Accounting (hours ticks): its own worker's days; approve one.
-  const hrv = await h.evaluate(async () => {
-    switchTab('accounting');
-    for(let i = 0; i < 60 && !(typeof __hrv !== 'undefined' && __hrv.data && __hrv.data.punches); i++) await new Promise(r => setTimeout(r, 150));
-    if(!hrvMonthDays().length){ hrvShiftMonth(-1); for(let i = 0; i < 60 && !(__hrv.data && __hrv.data.month === hrvMonthKey() && !__hrv.loading); i++) await new Promise(r => setTimeout(r, 150)); }
-    const r = {shown: document.getElementById('accSecReview').style.display !== 'none', names: (__hrv.data.workers || []).map(w => w.name), days: hrvMonthDays().length};
-    const d = hrvMonthDays()[0];
-    if(d){ hrvApproveDay(d.key); for(let i = 0; i < 40 && hrvDayState(hrvRow(d.key)).st !== 'approved'; i++) await new Promise(res => setTimeout(res, 150)); r.st = hrvDayState(hrvRow(d.key)).st; }
-    return r;
-  });
+  // The HR's Hours approval: the shared React screen (src/hours-review/) on top of Accounting.
+  const hrReady = () => !!document.querySelector('#accSecReview [data-testid="hours-review"][data-ready="1"]');
+  await h.evaluate(() => switchTab('accounting'));
+  await waitFor(h, hrReady, 15000);
+  if (!(await h.evaluate(() => document.querySelectorAll('#accSecReview [data-day-key]').length))) {
+    await h.click('#accSecReview button[aria-label="Previous month"]'); await sleep(300); await waitFor(h, hrReady, 15000);
+  }
+  const hrv0 = await h.evaluate(() => ({shown: !!document.getElementById('accSecReview'), names: [...document.querySelectorAll('#accSecReview [data-slot="section"] .og-label > span:first-child')].map(b => b.textContent),
+    days: document.querySelectorAll('#accSecReview [data-day-key]').length, key: (document.querySelector('#accSecReview [data-day-key]') || {dataset: {}}).dataset.dayKey}));
+  if (hrv0.key) {
+    await h.click(`#accSecReview [data-day-key="${hrv0.key}"] button[aria-label="Actions"]`); await h.waitForSelector('[role="menuitem"]');
+    await h.click('[role="menuitem"]:has-text("Approve this day")'); await sleep(200);
+    for (let i = 0; i < 50 && (await h.evaluate(k => (document.querySelector(`#accSecReview [data-day-key="${k}"]`) || {dataset: {}}).dataset.state, hrv0.key)) !== 'approved'; i++) await sleep(150);
+  }
+  const hrv = {...hrv0, st: await h.evaluate(k => (document.querySelector(`#accSecReview [data-day-key="${k}"]`) || {dataset: {}}).dataset.state, hrv0.key)};
   await (await h.$('#accSecReview')).screenshot({path: SP + '/hr-hours-review.png'}).catch(()=>{});
   ok(hrv.shown && hrv.names.join() === 'Dana Levi' && hrv.days >= 1 && hrv.st === 'approved', 'hr: Hours approval in Accounting — own workers only, approves a day ' + JSON.stringify(hrv));
   const mh = await h.evaluate(async () => {
@@ -193,18 +202,22 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const pm = await h.evaluate(async () => {
     const r = {};
     workers.find(w => w.id === 'w2').bank = 'Hapoalim';
-    switchTab('accounting');
-    r.cards = [...document.querySelectorAll('#dashSalary .salary-rows .sal-row')].map(c => c.textContent.replace(/\s+/g, ' '));
-    r.own = __lastSalaryEntries.length;
-    openPayModal('w2');
+    switchTab('accounting'); await T.tick(50);
+    const row = document.querySelector('#accountingRoot [data-testid=sal-table] tbody tr');
+    r.own = Object.keys(ManagerAcc.salaryEntriesFor(accData(), accPeriod).byWorker).filter(id => (workers.find(w => w.id === id) || {}).hrId).length;
+    if (row) { row.querySelector('td:nth-child(2)').click(); await T.tick(250); }
+    r.cards = [...document.querySelectorAll('#accountingRoot [data-testid=sal-table] tbody tr')].map(c => c.textContent.replace(/\s+/g, ' ') + ' ' + ((document.querySelector('[data-testid=window] [data-testid=sal-det]') || {}).textContent || ''));
+    r.noPayBtn = !document.querySelector('[data-testid=window] [data-testid=sal-pay]');
+    document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); await T.tick(250);
+    openPayModal('w2'); await T.tick(50);
     r.modal = document.getElementById('payOverlay').classList.contains('open');
-    r.allDisabled = [...document.querySelectorAll('#payModal input, #payModal select')].every(el => el.disabled);
+    r.allDisabled = [...document.querySelectorAll('#payModal input, #payModal button[role=combobox]')].every(el => el.disabled);
     r.noSave = ![...document.querySelectorAll('#payModal button')].some(b => /Save/.test(b.textContent));
     r.canEdit = canEditPay();
     closeModal('payOverlay'); delete workers.find(w => w.id === 'w2').bank;
     return r;
   });
-  ok(pm.cards.length === Math.min(pm.own, 10) && pm.own >= 1 && pm.cards.some(t => /Hapoalim/.test(t)) && pm.modal && pm.allDisabled && pm.noSave && !pm.canEdit, 'hr: sees its workers\' Salary rows with the bank, the pay window read-only ' + JSON.stringify(pm));
+  ok(pm.cards.length === Math.min(pm.own, 10) && pm.own >= 1 && pm.cards.some(t => /Hapoalim/.test(t)) && pm.noPayBtn && pm.modal && pm.allDisabled && pm.noSave && !pm.canEdit, 'hr: sees its workers\' Salary rows with the bank, the pay window read-only ' + JSON.stringify(pm));
   // Without "Edit own workers' pay" the server refuses a pay change too.
   const nope = await h.evaluate(async () => {
     const w = workers.find(x => x.id === 'w2'), keep = w.hourlyRate, keepBank = w.bank;
@@ -235,10 +248,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.canEdit = canEditPay(workers.find(w => w.id === 'w2'));
     r.notOthers = !canEditPay({id: 'x', hrId: 'someone-else'});
     switchTab('accounting');
-    openPayModal('w2');
+    openPayModal('w2'); await T.tick(50);
     r.enabled = !document.getElementById('payRate').disabled;
-    document.getElementById('payRate').value = '52'; document.getElementById('payBank').value = 'Discount'; document.getElementById('payBankAccount').value = '777';
-    savePayModal('w2');
+    T.fill('payRate', '52'); T.fill('payBank', 'Discount'); T.fill('payBankAccount', '777'); await T.tick(20);
+    document.querySelector('#payModal [data-testid=pay-save]').click(); await T.tick(50);
     r.saved = await gsSave(getDataObj());
     const d = await (await loadFirestoreBackend()).loadSchedule(fsTenantId(), false);
     const w = d.workers.find(x => x.id === 'w2'); r.stored = w && [w.hourlyRate, w.bank, w.bankAccountNumber].join('|');

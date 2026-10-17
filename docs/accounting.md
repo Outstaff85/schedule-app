@@ -1,6 +1,6 @@
 # Accounting and payroll
 
-Hours and pay calculation, the Accounting tab, supplier commission, client billing, the hours-import approval queue, and the exports. Code is in `schedule-manager.html`.
+Hours and pay calculation, the Accounting tab, supplier commission, client billing, the hours-import approval queue, and the exports. The pay functions are `src/lib/payroll.ts`; the Accounting tab's figures `src/manager/accounting.ts`, its screen `src/manager/Accounting.tsx`; the data and the server calls stay in `schedule-manager.html`.
 
 **Rule:** all hours and pay go through the functions in "Canonical calculation" below. Never add a second hours or pay calculation.
 
@@ -45,123 +45,90 @@ The client keeps the punch log in `localStorage.punchLog` (`getPunchLog()` / `sa
   
   **Saturday = the shift's opening date is a Saturday** (`date.getDay() === 6`).
 - **Daily pay** — `w.payMode === 'daily'` (picked per worker in the pay window, `savePayModal`): the worker is paid `dailyRate(w)` — their own rate (`wOwnRate`), read as ₪/day — once for every day worked, whatever the hours; no OT / Shabbat, and a client's (hourly) rate never applies. Every payroll figure prices a shift with **`shiftPayFor(hours, w, isSat, clientId, date, seenDays)`**: for a daily-paid worker the first shift of a day pays the day rate and later shifts that day pay 0 (`seenDays`, one Set per worker over the period); otherwise `shiftPay`. Days set by hand for a period (`w.dayOverrides[salaryPeriodKey(period)]`, `dayOverride`; keys `w:<Sunday>`, `m:<yyyy-mm>`, `all`) replace the counted days: pay = days × daily rate.
-- **Client billing** — a separate figure that never changes worker pay: `clientBillPay(hours, client, isSat)`.
+- **Client billing** — a separate figure that never changes worker pay: `clientBillPay(hours, client, isSat)` (`src/manager/accounting.ts`).
   - `fixed` → `hours × fixedBillRate`;
   - `daily` → `dailyBillRate` for a shift with hours (0 for an empty one), whatever its length;
   - `tiered` → the law tiers on `clientBillRate(client)` (`billRate`, else the old `defaultHourlyRate`), unless a flat `billOtRate` / `billShabbatRate` is set (applied like `shiftPay`).
 
 ## Accounting tab (`#sectionAccounting`)
 
-Every text of the tab goes through the chosen language ([translations.md](translations.md)): `tr()` in the render functions, `data-i18n` on the static headers. This covers the help (ⓘ) texts, the pay modal, messages, the period labels (`SALARY_PERIOD_LABELS`, month names in the language's locale) and the salary / payable exports. With Hebrew the tab reads חשבונות and its sections חישוב שכר, שכר עובדים, תעריפים לפי לקוח, עמלות ספקים, לתשלום לספקים, לתשלום למשאבי אנוש, לחיוב לקוחות, שעות ממתינות לאישור. Shift warnings from `analyzeDayPunches` (shared with the rest of the app) stay English.
+**Drawn in React** (stage 6e of [react-migration-plan.md](react-migration-plan.md)): `src/manager/Accounting.tsx` mounted into `#accountingRoot` by `assets/manager.js` ([build.md](build.md) → The manager's React pieces); the pay window is `src/manager/PayWindow.tsx`, drawn into the page's `#payModal`; the exports are `src/manager/acc-export.ts`. **Every figure comes from `src/manager/accounting.ts`** — the one copy of the tab's calculation, over `src/lib/payroll.ts` (never a second calculation). The page keeps the period (`accPeriod`), the data, the server calls and the saves; the tab reads `ManagerBridge.accounting()` (the period, the login's view, rights, the HR logins, the batches waiting) and `ManagerBridge.accData()` (`{log, workers, clients, suppliers, tr}`), and acts through the bridge (`setPeriod`, `ensurePeriod`, `openPay`, `openWorker`, `openClientWindow`, `hourApprovals`, `resolveFix`, `openSigned`, `loadPendingHours`, `approveBatch`, `rejectBatches`, `hoursCall`, `xlsx`, `payInfo`, `savePay`). The page's `renderAccounting()` only calls `ManagerIsland.renderAccounting()`; `setAccTab(k)` calls `ManagerIsland.setAccTab(k)`. The page's other callers of the figures (the client and supplier windows, the user form's HR commission, the bell's approvals) use one-line wrappers — `salaryEntriesFor(period)`, `commissionFor`, `supplierCommission`, `hourApprovalSummary` — over `window.ManagerAcc`, which `assets/manager.js` sets. `tests/accounting/compare.test.mjs` runs `accounting.ts` and the old tab's code (`tests/accounting/legacy.mjs`) on generated months and requires identical figures; the browser test does the same on the e2e data against the React DOM and the exports ([tests.md](tests.md)).
 
-**Top of the tab** (redesign stage 7): the period in glass (`#accPeriodNav`: ‹ `stepSalaryPeriod(-1)` an earlier period, the period select `#salaryPeriod` styled as a glass button, › a later one), the figures (`#accFigs`, `renderAccFigs(entries)`: the period's hours and payroll — pay + travel — over every Salary row from `salaryEntriesFor`, and the hours batches waiting, a tap opens Approvals), and the tabs **Salary / Billing / Approvals / Alerts** (`#accTabs`, `__accTab`, `setAccTab(k)`; a red count on Approvals and on Alerts). Each block below carries `data-tab` (salary: Salary Calculation; billing: the rate matrices, Payable by supplier, Payable by HR, Billable by client; approvals: Hours approvals, Pending hours; alerts: `#accSecAlerts`) and CSS shows only the open tab's blocks (`#sectionAccounting[data-acctab]`). An HR sees no tabs (its Hours review and Salary only). The salary lines are plates (the bar in the line's colour, the total in the figure green).
+Every text goes through `tr()` ([translations.md](translations.md)). With Hebrew the tab reads חשבונות and its sections חישוב שכר, לתשלום לספקים, לתשלום למשאבי אנוש, לחיוב לקוחות, אישורי שעות, שעות ממתינות לאישור. Shift warnings from `analyzeDayPunches` (shared with the rest of the app) stay English.
 
-`renderAccounting()` draws, in this order on the page:
-1. **Salary Calculation** — `renderSalary()` into `#dashSalary`.
-2. **Per-client rates** — `renderRateMatrix()`.
-3. **Per-supplier rates** — `renderSupplierRateMatrix()`.
+**Top of the tab:** the period (‹ an earlier period, the period Select, › a later one): This Week (from Sunday), This Month, each of the 12 previous months (`m:YYYY-MM`), All Time (`periodOptions`); a pick runs `ManagerBridge.setPeriod(p)`, which first loads the punches that period needs (`ensurePunchesSince(periodPunchStart(p))` — see [admin.md](admin.md)) and then redraws. Then the figures (`Figures`: Hours, Payroll — pay + travel over every Salary row (`accFigures`) — and To approve, the hours batches waiting, a tap opens Approvals), **hidden while Salary shows its own**; then the tabs **Salary / Billing / Approvals / Alerts** (`.og-tabs`, so the breadcrumb reads "Accounting › <tab>"; a red count on Approvals and on Alerts; the open tab is kept while the app is open).
 
-   Both tables are turned off for now (`ACC_RATE_TABLES = false`, user request 2026-10-11): their sections are hidden and not drawn. Rates already set in them still count — a worker's per-client override (`w.clientRates`, tier 1 of `effectiveRates`) and the per-supplier commission (`w.supplierRates`); `true` shows them again.
-4. **Payable by supplier** — `renderSupplierPayable()`, called from `renderSalary()`.
-   **Payable by HR** — `renderHrPayable()` (owner / super-admin, shown when the firm has HR logins): per HR, `commissionFor` with the HR's commission rates (its `commissionRate` and `commissionDayRate` when set) on the workers whose `hrId` is that HR; never a wage.
-5. **Billable by client** — `renderClientBillable()`, called from `renderSalary()`.
-   **Hours approvals** — `renderHourApprovals(period)`, called from `renderSalary()` (a month period, never for an HR): what each client, supplier and HR login approved, disputed or proposed to fix, with Accept / Reject for a fix ([hours-review.md](hours-review.md)).
-6. **Pending hours** — `renderPendingHours()`.
+**An HR** ([hr.md](hr.md)): with the Accounting section (`hrPayOnly()`) it gets no tabs — only Salary for its own workers (`w.hrId` its uid), with "My commission" (its `commissionRate`, or `commissionDayRate` per day for a daily-paid worker, `hrCommission`), no export and no Select; the pay window read-only unless `payEdit`. With an hours tick (`hrHourReview()`) **Hours approval** sits on top (`#accSecReview`: the shared React `HoursReview` over the `hours` function, [hours-review.md](hours-review.md)); without the Accounting section that is all it sees.
 
-Each section title has an (i) button (`.acc-help`) that opens the section's explanation in a modal (`openAccountingHelp(key)` → `#accHelpOverlay`, texts in `ACCOUNTING_HELP`); the page itself carries no explanatory text. A change to how a section works updates its text there.
+Each section title has an (i) that opens its explanation in a `Window` (the texts in `HELP`, Accounting.tsx); a change to how a section works updates its text there.
 
-The tab is gated by the `accounting` permission. For an HR that permission gives only the reduced tab of `hrPayOnly()` (never the full one) ([hr.md](hr.md) → Pay): `renderAccounting` hides every section but Salary, `renderSalary` keeps only its workers and adds "My commission"; the pay window is read-only for it unless `payEdit`. An HR with an hours tick also gets **Hours approval** at the top (`#accSecReview`, `hrHourReview()`, the shared `hours-review.js`), and the tab for it alone when it has no Accounting section ([hours-review.md](hours-review.md)).
+### Salary
 
-### Salary (`renderSalary()`)
+The rows come from `salaryEntriesFor(d, period)` → `{byWorker, byClient, byDay}` (byWorker entries: `worker, workerId, hours, days, regH, otH, shabH, total, travel, warns, clientHours, countedDays, daysUsed, supCom`); the accountant report reuses them. The worker's own "My Hours and Pay" on the punch page repeats the same steps for one month ([punch.md](punch.md)).
 
-The per-worker and per-client figures come from `salaryEntriesFor(period)` → `{byWorker, byClient}` (byWorker entries: `worker, workerId, hours, days, regH, otH, shabH, total, travel, warns, clientHours, countedDays, daysUsed`); `renderSalary()` draws them and the accountant report reuses them. The worker's own "My Hours and Pay" on the punch page repeats the same steps for one month ([punch.md](punch.md)).
-
-
-- **Period** (`#salaryPeriod`, filled by `fillSalaryPeriodSelect()` from `salaryExportPeriodOptions()`): This Week (from Sunday), This Month, each of the 12 previous months (`m:YYYY-MM`), All Time. `onSalaryPeriodChange()` first loads the punches that period needs (`ensurePunchesSince(periodPunchStart(period))` — see [admin.md](admin.md)), then redraws.
 - **Calculation:**
-  1. Punches are filtered by `ts` to the period and grouped per worker.
-  2. Shifts come from `groupPunchesIntoShifts`; each shift goes through `analyzeDayPunches`.
+  1. Punches are filtered by `ts` to the period (`periodPunches`) and grouped per worker.
+  2. Shifts come from `groupPunchesIntoShifts`; each shift goes through `analyzeDayPunches` (with the warnings).
   3. Per worker it sums hours, days worked and regular / OT / Saturday hours.
-  4. **Pay** per shift = `shiftPay(h, worker, isSat, clientId of the shift's first punch)`.
-  5. **Travel** = `travelPay(w, days, months)`: `w.travelAllowance` ₪ × days worked (`daysUsed`, so a daily worker's days set by hand count) + `w.travelMonthly` ₪ once for each calendar month with a day worked. Travel is never part of the wage (`shiftPayFor`).
-  6. For a worker with a supplier, `e.supCom` sums the supplier's own commission shift by shift (`supplierShiftCommission(sp.commission, h, date, e.supDays)` — the rate on that shift's date).
-  7. In parallel, `byClient[clientId]` sums hours and `clientBillPay()` for shifts that have a `clientId`.
-- **Results:**
-  - `__lastSalaryEntries` holds the per-worker rows (feeds Payable by supplier);
-  - `__lastClientBillEntries` holds the per-client rows (feeds Billable by client).
-- **Head (one line, variant A, user request 2026-10-11):** the title, the period select drawn as accent text with its arrow (`.acc-period`, `#salaryPeriod`), a search icon (`toggleSalarySearch()` opens `#salarySearch` under the line, focused; closing it clears the search) and an export icon (`openSalaryExportModal`). The Payable by supplier head carries its Excel / PDF icons the same way (`.acc-head`).
-- **Rows: only the workers with shifts in the period** (the entries of `salaryEntriesFor`; workers without hours are not listed). `#salarySearch` narrows the rows by name, and the totals with them; Payable by supplier and the rest always use every entry (`__lastSalaryEntries`).
-- **Totals** (`.sal-sum`, above the list): Hours, Pay, Travel ₪, Total Pay (= pay + travel); an HR also gets "My commission". They cover every row shown.
-- **Select** — a Select button over the rows, the boxes after a tap (`startSalarySelect`, not for an HR): the bar exports only the ticked workers (`exportSalary(format, period, onlyIds)` → `buildSalaryExportRows(period, onlyIds)`).
-- **List** (no input fields; one compact line per worker so a long list stays short, user request 2026-10-11): a line (`.sal-row`) holds the worker (⚠ when there are punches to check), hours and total pay; a tap opens its details (`.sal-det`): the Regular / Overtime / Shabbat split, Days (`daysUsed`; "punches: N" when set by hand), Rate (the own rate ₪/h or ₪/day; grey "client ₪x/h" when the client's applies — the client the worker had most hours at, `clientHours`; amber "set a daily rate" / "no rate"), Pay, Travel ₪, Bank (bank, branch, account; amber "no bank details"), and an HR's "My commission". The rows are paged by 10 ([app-core.md](app-core.md) → Long lists). Supplier payable and client billable are paged the same way.
-- **Details** are one line each (the label left, the figure right).
-- **Payable by supplier / by HR, Billable by client:** lines in the template (the supplier's, HR's or client's color on the left; hours under the name; the sum on the right); a tap on a supplier or client line opens a window with the workers behind the sum (`openSupplierPayDetail` — each worker's hours and commission by `commissionFor`; `openClientBillDetail` — each worker's hours at that client from `clientHours`, and the client's total), paged by 10.
-- **A row:** a tap opens or closes its details; the worker's name opens the worker card (`openWorkerCardById`); its details hold **Pay**, which opens the pay window — so does a double click (computer) or a long press (phone) on the row (`openPayModal`, below).
-  - **Warnings** — a ⚠ icon per worker with punch warnings; no banner (the warnings are listed on the Alerts tab).
+  4. **Pay** per shift = `shiftPayFor(h, worker, isSat, clientId of the shift's first punch, date, seen)`; a daily-paid worker's days set by hand for the period replace the counted ones (days × daily rate).
+  5. **Travel** = `travelPay(w, days, months)`: `w.travelAllowance` ₪ × days worked (`daysUsed`) + `w.travelMonthly` ₪ once for each calendar month with a day worked. Travel is never part of the wage.
+  6. For a worker with a supplier, `e.supCom` sums the supplier's own commission shift by shift (`supplierShiftCommission(sp.commission, h, date, e.supDays)`).
+  7. In parallel, `byClient[clientId]` sums hours and `clientBillPay()` for shifts that have a `clientId`, and `byDay` the hours per day (the chart).
+- **Rows: only the workers with shifts in the period.** The search icon opens a field (focused); it narrows the rows and the totals with them (`searchRows`); Billing and Alerts always use every row.
+- **Totals** (`Figures`, above the table): Hours, Pay, Travel ₪, Total Pay (= pay + travel), an HR's My commission (`salaryTotals`).
+- **Chart:** the period's hours by day — by month for All Time over more than two months — a bar chart (`ui/chart`, Recharts); display only.
+- **Table** (`DataTable`): Worker (⚠ with the warnings when there are punches to check; the name opens the worker card), Hours, Regular / OT / Shabbat, Days, Rate (the own rate ₪/h or ₪/day; grey "client ₪x/h" when the client's applies — the client the worker had most hours at, `rateShown`; amber "set a daily rate" / "no rate"), Pay, Travel ₪, Total Pay (an HR's My commission), and the totals row; a column head sorts; 10 rows and Show more. A tap opens the row's details in a window (the hours split, Days with "punches: N" when set by hand, Rate, Pay, Travel, Bank — amber "no bank details" — an HR's commission, **Open card** and **Pay**); a double click opens the pay window. On a phone the rows are plates: a tap opens the details under the plate, a long press the pay window.
+- **Select** (not for an HR): a Select button over the table, a tick column, the bulk bar's **Excel** / **PDF** export only the ticked workers' shifts.
 
-### Pay window (`openPayModal(wid)`, `#payOverlay`)
+### Pay window (`openPayModal(wid)`, `#payOverlay`, `PayWindow.tsx`)
 
-The one place a worker's money is set — from a Salary row or the worker card's "Pay" button (so a worker without shifts in the period is set there); the worker modal and Upload hours carry no rate, pay mode, travel or bank field ([workers.md](workers.md)). There is no separate Worker pay section (merged into Salary, user request 2026-10-11).
+The one place a worker's money is set — from a Salary row or the worker card's "Pay" button (so a worker without shifts in the period is set there); the worker modal and Upload hours carry no rate, pay mode, travel or bank field ([workers.md](workers.md)).
 
-- **Who edits:** `canEditPay(w)` — the firm owner, a super-admin, staff with the `accounting` permission, and an HR with `payEdit` ("Edit own workers' pay") for its own workers only ([hr.md](hr.md)). The **Pay** button in a Salary row's details opens it; so does the worker card's "Pay" button.
-- **Fields:** Paid ₪/h | ₪/day (`payMode`, `onPayModeChange` hides OT / Shabbat and shows Days for a daily worker); Rate (the own rate; empty = the client's, by the hour only); **Days — <period>** for a daily worker (`#payDays`: the days of the period picked in Salary, `dayOverride(w, salaryPeriodKey(period))`; empty = by the punches, shown as the placeholder; saved in `w.dayOverrides`); OT and Shabbat ₪/h (empty = law); Travel ₪/day (`travelAllowance`) and ₪/month (`travelMonthly`); bank, branch, account. `savePayModal` writes them (`regRate` cleared), `autoSave()`, redraws Accounting.
-- **HR** (`hrPayOnly()`): only its own workers' Salary rows, bank included; its **Pay**, a double click or a long press opens the pay window read-only (every field disabled, no Save), or editable with `payEdit`.
+- **Who edits:** `canEditPay(w)` — the firm owner, a super-admin, staff with the `accounting` permission, and an HR with `payEdit` ("Edit own workers' pay") for its own workers only ([hr.md](hr.md)). An HR with pay only opens its own workers' window read-only (every field off, no Save). `openPayModal` checks it (`payWindowAllowed`), then draws the window (`ManagerIsland.openPay`) and opens the overlay.
+- **Fields:** Paid ₪/h | ₪/day (`payMode`; by the day hides OT / Shabbat and shows Days); Rate (the own rate; empty = the client's, by the hour only — its rate in the placeholder); **Days — <period>** for a daily worker (the days of the period picked, `dayOverride(w, salaryPeriodKey(period))`; empty = by the punches, shown as the placeholder; saved in `w.dayOverrides`); OT and Shabbat ₪/h (empty = law); Travel ₪/day (`travelAllowance`) and ₪/month (`travelMonthly`); bank, branch, account. **Save** writes `payPatch(w, form, key)` through `ManagerBridge.savePay` (`regRate` cleared, a field undefined removed), saves, closes and redraws.
 - **Client rule** (`saveWorker`, [workers.md](workers.md)): adding a client that has a rate to an hourly worker with an own rate clears the own rate (`hourlyRate = 0`), so the new client's rate applies.
 
-### Per-client rates (`renderRateMatrix()`)
+The per-client and per-supplier rate tables are not drawn (off since 2026-10-11); rates already set there still count — a worker's per-client override (`w.clientRates`, tier 1 of `effectiveRates`) and the per-supplier commission (`w.supplierRates`).
 
-One row per (worker, assigned client). Empty inputs show the resolved rate as a placeholder. `setClientRateOverride(wid, cid, field, val)` writes `w.clientRates[cid][field]` (`null` when emptied; the entry is removed when all three are empty), then saves.
+### Alerts (`accAlerts(d, entries, byClient)`)
 
-### Alerts (`accAlerts(entries, byClient)`, `renderAccAlerts`)
-
-The fourth tab (stage 13, `docs/design/system/Screens.md`): every accounting-only warning of the period, worked out in `renderSalary` from the Salary rows (`__accAlerts`; none for an HR with pay only), drawn as plates (red / amber bar, an icon) in three sections with their counts, paged by 10; the count sits on the tab.
-- **Punches and shifts:** each `analyzeDayPunches` warning of a row (`e.warns`: open shift — no OUT, double IN, OUT without IN, shift over 12h, 0-minute shift; amber for an open shift or over 12h, red for the rest), with the worker and the date; a shift still running today is left out. A tap opens the worker card.
-- **Rates and pay:** a daily-paid worker without a daily rate ("No daily rate — pay 0"), an hourly worker with no rate of his own and none from the client (`effectiveRates`, "No rate — pay 0"), no bank details (amber). A tap opens the pay window.
-- **Clients:** a client with hours in the period and no billing rate for its mode (fixed `fixedBillRate`, daily `dailyBillRate`, tiered `clientBillRate`) — "No billing rate — billed 0". A tap opens the client editor.
-
-The Salary list keeps only the small ⚠ on a row with punch warnings (no banner). Hours approvals stay in Approvals; worker notices stay in the bell.
+Every accounting-only warning of the period's rows (none for an HR with pay only), as plates (red / amber bar, an icon) in three sections with their counts, paged by 10; the count sits on the tab.
+- **Punches and shifts:** each `analyzeDayPunches` warning of a row (open shift — no OUT, double IN, OUT without IN, shift over 12h, 0-minute shift; amber for an open shift or over 12h, red for the rest), with the worker and the date; a shift still running today is left out. A tap opens the worker card.
+- **Rates and pay:** a daily-paid worker without a daily rate ("No daily rate — pay 0"), an hourly worker with no rate of his own and none from the client ("No rate — pay 0"), no bank details (amber). A tap opens the pay window.
+- **Clients:** a client with hours in the period and no billing rate for its mode (`hasBillRate`: fixed `fixedBillRate`, daily `dailyBillRate`, tiered `clientBillRate`) — "No billing rate — billed 0". A tap opens the client window.
 
 ### Supplier commission
 
 - **The supplier's own rate:** `sp.commission` = `[{from:'YYYY-MM-DD'|'', mode:'hour'|'day', rate}]`, set in the supplier window by the firm owner or the super-admin ([suppliers.md](suppliers.md)); each entry applies from its date. `supplierRateOn(list, date)` → the newest entry whose `from` ≤ the date (an entry with an empty rate = back to the default; none → `null`). `supplierShiftCommission(list, h, date, seenDays)` → one shift: by the hour h × rate, by the day the rate once per day worked (`seenDays`), no rate `SUPPLIER_DEFAULT_RATE` (5) × h.
-- **Worker override:** `supplierCommissionRate(w, sid)` returns `w.supplierRates[sid].rate` if set, otherwise the default; `supplierDayCommission(w, sid)` returns `w.supplierRates[sid].dayRate` if set, else `null` (a fixed ₪ per day worked for a worker paid by the day). `workerHasSupplierOverride(w, sid)`: a `rate`, or a `dayRate` > 0 on a daily-paid worker.
-- **Matrix:** `renderSupplierRateMatrix()` — one row per worker with a supplier and two inputs: "Commission ₪/h" and "₪/day (daily workers)" (empty for a daily worker = hours × ₪/h). `setSupplierRateOverride()` writes it, then redraws the matrix and the payable table.
-- **Commission:** `supplierCommission(w, e, sid)` — a worker's supplier commission for one Salary row: with an override, `commissionFor(w, e, hourRate, dayRate)` (paid by the day with a day rate: days × day rate; else hours × hour rate); otherwise `e.supCom` (the supplier's own rate, shift by shift). `commissionFor` also prices the HR commission.
-- **Payable by supplier:** `renderSupplierPayable(entries)`:
-  - per supplier, `supplierCommission` per worker (never the worker's wage); stored in `__lastSupplierPayableRows` for the export buttons;
-  - Excel / PDF icons in the section head → `exportPayableSummary()`;
-  - **only the suppliers with hours and a commission** in the period; workers without a supplier are left out, and with no row the section (`#accSecPayable`) is hidden (user request 2026-10-11). The same holds for Payable by HR (only HRs with hours and a commission rate, `#accSecHrPayable`) and Billable by client (only clients with hours and a billing rate, `#accSecBillable`); Salary lists only workers with shifts.
+- **Worker override:** `supplierCommissionRate(w, sid)` returns `w.supplierRates[sid].rate` if set, otherwise the default; `supplierDayCommission(w, sid)` returns `w.supplierRates[sid].dayRate` if set, else `null`. `workerHasSupplierOverride(w, sid)`: a `rate`, or a `dayRate` > 0 on a daily-paid worker.
+- **Commission:** `supplierCommission(w, e, sid)` — with an override, `commissionFor(w, e, hourRate, dayRate)` (paid by the day with a day rate: days × day rate; else hours × hour rate); otherwise `e.supCom`. `commissionFor` also prices the HR commission.
 
-### Billable by client (`renderClientBillable(entries)`)
+### Billing
 
-Per client: hours, mode (Fixed / Tiered) and the billable total. It never shows anything about suppliers.
+Three sections; a section with no row is left out, and with none at all "Nothing payable or billable in this period".
+- **Payable by supplier** (`supplierPayable`): per supplier, its workers' hours and `supplierCommission` (never a wage); only the suppliers with hours and a commission; workers without a supplier are left out. Excel / PDF icons in the head write its rows (`exportPayable`). A tap opens a window with the workers behind the sum (`supplierPayDetail`: hours and commission, the largest first, and the total).
+- **Payable by HR** (`hrPayable`, owner / super-admin): per HR login, `commissionFor` with its `commissionRate` / `commissionDayRate` on the workers whose `hrId` is that HR; only HRs with hours and a commission; never a wage.
+- **Billable by client** (`clientBillable`): per client, hours, mode (Fixed / Daily / Tiered) and the bill; only clients with hours and a bill. A tap opens its workers' hours there (`clientBillDetail`) and the total. It never shows anything about suppliers.
 
-### Pending hours (approval queue)
+### Approvals
 
-- **List:** `renderPendingHours()` sends `loadPendingHours` and lists batches with status `pending`, a template-3 line each (amber mark): the worker, then file · uploaded by, then the shift count; ✓ / ✕ icons at the right. For the owner a "Batches" section line and Select (a button; the boxes after a tap — `startPendingSelect`): tick batches, then the glass bar's **Approve** (each through `approveHoursBatch`) or **Reject** (`bulkHoursBatches`, one confirm for all). The batches are `tenants/{t}/pendingHours` documents.
-- **Who may approve:** the Approve / Reject icons show only for `tenant_admin` and `superadmin` (the server checks the same). `staff` sees the list read-only; a `supplier` is refused everywhere.
+- **Hours approvals** (a month period only, never for an HR): see [hours-review.md](hours-review.md) → Accounting → Hours approvals.
+- **Pending hours** (the approval queue): `loadPendingHours` lists the batches with status `pending` as plates (amber): the worker (or the file), "file · uploaded by · N shifts". For the owner / super-admin ✓ / ✕ on each and Select (Approve / Reject the ticked ones); `staff` sees the list read-only; a `supplier` is refused everywhere (the server checks the same). The list is read again when the batches change (`batchesKey`).
 - **Approving:** `approveHoursBatch(id)` → `approvePendingHours` creates IN and OUT punches per row, with no GPS fields and the note `Imported from <file>`. Approving again creates nothing. The app then reads the batch's punches (`punchesOfBatch`) and loads back to the earliest of them, so a past month shows up.
-- **Rejecting:** `rejectHoursBatch(id)` → `rejectPendingHours` marks the batch rejected and creates nothing.
+- **Rejecting:** `rejectHoursBatch(id)` (asks first; several: `bulkHoursBatches`, one question) → `rejectPendingHours` marks the batch rejected and creates nothing.
 - Approving and rejecting store `decidedAt`; the sender sees the batch's status (worker card → Upload hours, [workers.md](workers.md); the supplier portal's My Hours). A supplier's batches (`supplierId`, uploaded by the supplier's name, "entered by hand") come in through the `supplier` function and are approved the same way.
-
-- **Live count and status:** `watchHoursBatches()` (after the load, any manager-side login) keeps `__hoursBatches` from `listenPendingHours`. `updateHoursBadge()` shows the number of batches waiting for a decision on the Accounting tab (`#accPendingBadge`, `.tab-badge`, hidden at 0); the worker card shows the worker's latest batch and its status (`cardHoursStatusHtml` / `latestHoursBatch`, redrawn live while the card is open); an open Accounting tab redraws Pending hours.
+- **Live count and status:** `watchHoursBatches()` (after the load, any manager-side login) keeps `__hoursBatches` from `listenPendingHours`. `updateHoursBadge()` shows the number of batches waiting on the Accounting tab (`#accPendingBadge`, hidden at 0); the worker card shows the worker's latest batch and its status (`cardHoursStatusHtml` / `latestHoursBatch`, redrawn live while the card is open); an open Accounting tab redraws.
 
 Uploading the hours (worker card) is in [workers.md](workers.md).
 
 ## Exports
 
-- **Salary export** (`openSalaryExportModal()` → `runSalaryExport(format)`):
-  - it first loads the period's punches, then calls `exportSalary(format, period)`;
-  - the rows come from `buildSalaryExportRows(period)`: one row per shift — Worker, Object/Client, Supplier, Date, First In, Last Out, Hours, Rate (`wRegRate` at the shift's client, or `<daily rate>/day`), Day Pay (`shiftPayFor`), Notes (the warnings); for a daily-paid worker with days set by hand, one extra row "Days set by hand: N (punches: M)" brings the total to N × rate;
-  - formats:
-    - Excel — SheetJS, sheet "Salary";
-    - PDF — a print page in a new window;
-    - CSV.
-    - **Accountant report** (`'accountant'`, hidden for an HR that only sees pay) — `exportAccountantReport(period)`: an Excel file `accountant-<period>.xlsx` with the sheet "Summary" (title, firm name, then one row per worker from `salaryEntriesFor`: Worker, ID / Passport, Supplier, Pay mode, Rate, Days, Regular / Overtime / Shabbat / Total hours, Pay, Travel, Total, Bank, Branch, Account, Warnings, and a total row) and the sheet "Shifts" (the rows of `buildSalaryExportRows`).
-  
-  `exportSalaryCSV()` = CSV without the picker.
+- **Salary export** (Salary's export icon, the `exports` section, not for an HR with pay only): a window with the period and CSV / Excel / PDF; it first loads the period's punches (`ensurePeriod`), then `exportSalary(api, format, period)` writes `salaryExportAoa(d, period, onlyIds)`:
+  - one row per shift (`buildSalaryExportRows`) — Worker, Object/Client, Supplier, Date, First In, Last Out, Hours, Rate (the regular rate at the shift's client, or `<daily rate>/day`), Day Pay (`shiftPayFor`), Notes (the warnings); for a daily-paid worker with days set by hand, one extra row "Days set by hand: N (punches: M)" brings the total to N × rate; a total row (not in the CSV);
+  - Excel — SheetJS (`ManagerBridge.xlsx()`, the page's `loadXlsx`), sheet "Salary", `salary-<period>.xlsx`; PDF — a print page in a new window; CSV.
+  - **Accountant report** (not for an HR) — `exportAccountant` → `accountantSheets(d, period, approvals, firm)`: `accountant-<period>.xlsx` with the sheet "Summary" (title, firm name, one row per worker from `salaryEntriesFor`: Worker, ID / Passport, Supplier, Pay mode, Rate, Days, Regular / Overtime / Shabbat / Total hours, Pay, Travel, Total, Bank, Branch, Account, Warnings, and a total row), "Shifts" (the rows of `buildSalaryExportRows`) and, for a month, "Hours approvals" (login, role, worker, date, status, proposed fix, comment, by, when — the approvals read afresh).
 - **Hours of one worker:** `getWorkerMonthShifts(workerId, year, month, workerLog?)` → `[{date, inTime, outTime, hours}]` for shifts that *start* in that month. `exportShiftsDetail(workerId, year, month, 'excel'|'pdf')` writes Date / In / Out / Hours plus a total. Opened from the worker card ([workers.md](workers.md)).
-- **Summary rows:** `exportPayableSummary(rows, {title, filename, format})` writes rows the caller already computed (`{label, hours, rate, total}`) to Excel or PDF; it never recalculates.
+- **Summary rows:** `exportPayable(api, rows, title, file, format)` writes rows the tab already computed (`{label, hours, rate, total}`, `payableAoa`) to Excel or PDF; it never recalculates.
 - **Punch log CSV:** `exportPunchCSV()` — see [admin.md](admin.md).
 - **Schedule week (Excel / PDF / JSON):** see [app-core.md](app-core.md).
 

@@ -12,7 +12,8 @@
     "build:payroll": "node scripts/build-payroll.mjs",
     "preview": "vite preview",
     "check:build": "node tests/build/check.js",
-    "test:payroll": "node tests/payroll/compare.test.mjs"
+    "test:payroll": "node tests/payroll/compare.test.mjs",
+    "test:accounting": "node tests/accounting/compare.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.2",
@@ -29,6 +30,7 @@
     "react-day-picker": "^10.0.2",
     "react-dom": "^19.3.1",
     "react-hook-form": "^7.90.0",
+    "recharts": "^3.10.1",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
     "vaul": "^1.1.2",

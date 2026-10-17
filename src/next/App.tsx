@@ -60,6 +60,7 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { Combobox } from '@/components/ui/combobox';
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DataTable, type DataColumn } from '@/components/ui/data-table';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, Recharts, type ChartConfig } from '@/components/ui/chart';
 import { NewBadge } from '@/components/shared/new-badge';
 import { FieldRow, Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormSection } from '@/components/ui/form';
 
@@ -451,6 +452,7 @@ function Feedback() {
 /* ───────── Data ───────── */
 // The Data Table demo: 14 rows (Show more after 10), sorting by a tap on a column head, the totals row.
 const DATA_ROWS = WORKERS.slice(0, 14);
+const CHART_DATA = [7.5, 8, 9.25, 0, 8, 10, 6.5, 8, 8.5, 0, 0, 9, 8, 7].map((hours, i) => ({ label: String(i + 1), hours }));
 const DATA_COLUMNS: DataColumn<W>[] = [
   { id: 'name', header: () => tr('Worker'), accessorFn: r => r.name, sortFn: 'alphanumeric' },
   { id: 'hours', header: () => tr('Hours'), accessorFn: r => r.hours, cell: c => c.row.original.hours + 'h', meta: { num: true } },
@@ -481,6 +483,18 @@ function Data() {
           footer={[tr('Total') + ' · ' + DATA_ROWS.length, DATA_ROWS.reduce((a, r) => a + r.hours, 0) + 'h', '₪' + DATA_ROWS.reduce((a, r) => a + r.hours * 45, 0).toLocaleString('en-US')]}
           card={r => <Plate key={r.id} title={r.name} sub={r.site} right={r.hours + 'h'} color={r.color} />}
         />
+      </Demo>
+
+      <Demo id="chart" title={tr('Chart')}>
+        <ChartContainer data-testid="chart-demo" config={{ hours: { label: tr('Hours'), color: 'var(--info)' } } satisfies ChartConfig} className="aspect-auto h-[160px] w-full">
+          <Recharts.BarChart data={CHART_DATA} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
+            <Recharts.CartesianGrid vertical={false} />
+            <Recharts.XAxis dataKey="label" tickLine={false} axisLine={false} />
+            <Recharts.YAxis tickLine={false} axisLine={false} width={44} />
+            <ChartTooltip content={<ChartTooltipContent formatter={v => v + 'h'} />} />
+            <Recharts.Bar dataKey="hours" fill="var(--color-hours)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+          </Recharts.BarChart>
+        </ChartContainer>
       </Demo>
 
       <Demo id="calendar" title={tr('Calendar')}>

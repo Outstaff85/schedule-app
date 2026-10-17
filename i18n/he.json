@@ -15,7 +15,7 @@
   "A worker with this document number already exists in the firm.": "עובד עם מספר מסמך זה כבר קיים בחברה.",
   "A worker with this document number already exists: {0}.\nOK — update that worker with the data entered here.\nCancel — go back and edit.": "עובד עם מספר מסמך זה כבר קיים: {0}.\nאישור — לעדכן את העובד הזה בנתונים שהוזנו כאן.\nביטול — לחזור ולערוך.",
   "A worker's wage never appears in this table.": "השכר של עובד לעולם אינו מופיע בטבלה הזו.",
-  "A ⚠ next to a worker: punches to check (a missing IN or OUT, an overlong shift…). The list is in the banner above the table.": "⚠ ליד עובד: החתמות לבדיקה (כניסה או יציאה חסרה, משמרת ארוכה מדי…). הרשימה מופיעה בפס שמעל הטבלה.",
+  "A ⚠ next to a worker: punches to check (a missing IN or OUT, an overlong shift…). The list is on the Alerts tab.": "⚠ ליד עובד: החתמות לבדיקה (כניסה או יציאה חסרה, משמרת ארוכה מדי…). הרשימה בלשונית התראות.",
   "acc. {a}": "חשבון {a}",
   "Access": "הרשאות",
   "Account": "חשבון",
@@ -1305,5 +1305,10 @@
   "Add the first client": "הוספת הלקוח הראשון",
   "No suppliers yet": "אין עדיין ספקים",
   "A supplier is a staffing agency your workers come through: its details, its commission and its portal logins.": "ספק הוא חברת כוח אדם שדרכה מגיעים העובדים שלך: הפרטים, העמלה וההתחברויות לפורטל שלו.",
-  "Add the first supplier": "הוספת הספק הראשון"
+  "Add the first supplier": "הוספת הספק הראשון",
+  "Hours by day": "שעות לפי יום",
+  "Hours by month": "שעות לפי חודש",
+  "Regular / OT / Shabbat": "רגילות / נוספות / שבת",
+  "Nothing payable or billable in this period": "אין תשלומים או חיובים בתקופה זו",
+  "Chart": "תרשים"
 }

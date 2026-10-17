@@ -16,7 +16,7 @@ import os, re, sys
 from fontTools import subset
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-FILES = ['schedule-manager.html', 'supplier-portal.html', 'worker-punch.html', 'client-portal.html', 'hours-review.js', 'scan-pipeline.js', 'firestore-backend.js']
+FILES = ['schedule-manager.html', 'supplier-portal.html', 'worker-punch.html', 'client-portal.html', 'scan-pipeline.js', 'firestore-backend.js']
 # Built from pieces in code: 'ti ti-map-pin' + (hasGeo ? '' : '-off') (worker-punch.html),
 # 'ti ti-chevron-' + (open ? 'up' : 'down') (schedule-manager.html).
 EXTRA = ['map-pin-off', 'chevron-up', 'chevron-down']
