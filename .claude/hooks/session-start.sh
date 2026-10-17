@@ -51,7 +51,12 @@ else
   [ "$behind" = 0 ] && quiet=1
 fi
 
-[ "$event" = UserPromptSubmit ] && [ -n "$quiet" ] && exit 0
+prev=$(cat "$lastnote" 2>/dev/null)
+printf '%s' "$note" > "$lastnote" 2>/dev/null
+if [ "$event" = UserPromptSubmit ]; then
+  [ -n "$quiet" ] && exit 0
+  [ "$note" = "$prev" ] && exit 0
+fi
 
 status=$(git status --short 2>/dev/null)
 ctx="git status for $PWD (branch: $branch): $note
