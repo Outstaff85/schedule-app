@@ -65,7 +65,8 @@ export interface PunchState {
   /** the picker of several sites (null = closed) */
   picker: PClient[] | null;
   worker: PWorker | null;
-  loc: { cls: 'loading' | 'ok' | 'warn'; text: string };
+  /** the location pill: its colour and its text (an English key and its values, translated when drawn) */
+  loc: { cls: 'loading' | 'ok' | 'warn'; t: string; p?: Record<string, string | number> };
   locOk: boolean;
   /** the button's face after a punch (the check, ~1.6 s) */
   done: 'in' | 'out' | null;
@@ -79,7 +80,7 @@ export interface PunchState {
 }
 let st: PunchState = {
   screen: 'none', invalid: null, picker: null, worker: null,
-  loc: { cls: 'loading', text: 'Checking location...' }, locOk: false,
+  loc: { cls: 'loading', t: 'Checking location...' }, locOk: false,
   done: null, result: null, schedChanged: false, queued: 0, wx: null, tileHours: '—', rev: 0,
 };
 const subs = new Set<() => void>();
@@ -336,10 +337,10 @@ function analyseGps(pos: GeolocationPosition) {
 }
 /** One GPS reading → the location pill and whether a punch is allowed (locOk). */
 export function getLocation() {
-  set({ loc: { cls: 'loading', text: tr('Checking GPS...') }, locOk: false });
-  if (!navigator.geolocation) { set({ loc: { cls: 'warn', text: tr('GPS not available') } }); return; }
+  set({ loc: { cls: 'loading', t: 'Checking GPS...' }, locOk: false });
+  if (!navigator.geolocation) { set({ loc: { cls: 'warn', t: 'GPS not available' } }); return; }
   // A site without coordinates: the check is skipped and the punch allowed.
-  if (SITE.lat == null || SITE.lng == null) { set({ loc: { cls: 'ok', text: tr('Location check skipped') }, locOk: true }); return; }
+  if (SITE.lat == null || SITE.lng == null) { set({ loc: { cls: 'ok', t: 'Location check skipped' }, locOk: true }); return; }
   const t0 = Date.now();
   navigator.geolocation.getCurrentPosition(pos => {
     const elapsed = Date.now() - t0, a = analyseGps(pos);
@@ -347,12 +348,12 @@ export function getLocation() {
     const tooFast = elapsed < GPS_REQUEST_MS;
     const distOk = dist <= SITE.radius, accOk = a.acc > 0 && a.acc <= GPS_MAX_ACCURACY;
     lastGps = { lat: a.lat, lng: a.lng, accuracy: a.acc, dist, suspicious: a.suspicious || tooFast, warnings: tooFast ? ['Response in ' + elapsed + 'ms (too fast)'].concat(a.warnings) : a.warnings, elapsed };
-    if (!distOk) set({ locOk: false, loc: { cls: 'warn', text: tr('{0}m from site (max {1}m)', { 0: dist, 1: SITE.radius }) } });
-    else if (!accOk) set({ locOk: false, loc: { cls: 'warn', text: tr('Weak GPS (±{0}m) — go outside', { 0: Math.round(a.acc) }) } });
-    else if (a.suspicious || tooFast) set({ locOk: false, loc: { cls: 'warn', text: tr('Suspicious GPS: {0}', { 0: tooFast ? tr('instant response') : a.warnings[0] }) } });
-    else set({ locOk: true, loc: { cls: 'ok', text: tr('On site · {0}m · ±{1}m', { 0: dist, 1: Math.round(a.acc) }) } });
+    if (!distOk) set({ locOk: false, loc: { cls: 'warn', t: '{0}m from site (max {1}m)', p: { 0: dist, 1: SITE.radius } } });
+    else if (!accOk) set({ locOk: false, loc: { cls: 'warn', t: 'Weak GPS (±{0}m) — go outside', p: { 0: Math.round(a.acc) } } });
+    else if (a.suspicious || tooFast) set({ locOk: false, loc: { cls: 'warn', t: 'Suspicious GPS: {0}', p: { 0: tooFast ? tr('instant response') : a.warnings[0] } } });
+    else set({ locOk: true, loc: { cls: 'ok', t: 'On site · {0}m · ±{1}m', p: { 0: dist, 1: Math.round(a.acc) } } });
   }, err => {
-    set({ locOk: false, loc: { cls: 'warn', text: err.code === 1 ? tr('GPS denied — enable in settings') : tr('GPS error — go outside') } });
+    set({ locOk: false, loc: { cls: 'warn', t: err.code === 1 ? 'GPS denied — enable in settings' : 'GPS error — go outside' } });
   }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
 }
 
@@ -438,7 +439,7 @@ export function histSite(e: { clientId?: unknown; site?: unknown }): string {
   const w = st.worker;
   if (w && allClients.length) {
     const wc = (w.clientIds || []).map(id => allClients.find(x => x.id === id)).filter(Boolean) as PClient[];
-    const match = e.site && wc.find(c => c.name === e.site);
+    const match = e.site ? wc.find(c => c.name === e.site) : undefined;
     if (match) return match.name || '';
     if (wc[0]) return wc[0].name || '';
   }
@@ -461,4 +462,22 @@ export function reportError(message: unknown, source?: string, stack?: string) {
       message: String(message || '').slice(0, 500), source: String(source || '').slice(0, 300), stack: String(stack || '').slice(0, 1200),
     }).catch(() => {});
   } catch { /* never throws */ }
+}
+
+/** The location pill's text in the chosen language (the literals here keep the dictionary check honest). */
+export function locText(l: PunchState['loc']): string {
+  const p = l.p;
+  switch (l.t) {
+    case 'Checking location...': return tr('Checking location...');
+    case 'Checking GPS...': return tr('Checking GPS...');
+    case 'GPS not available': return tr('GPS not available');
+    case 'Location check skipped': return tr('Location check skipped');
+    case '{0}m from site (max {1}m)': return tr('{0}m from site (max {1}m)', p);
+    case 'Weak GPS (±{0}m) — go outside': return tr('Weak GPS (±{0}m) — go outside', p);
+    case 'Suspicious GPS: {0}': return tr('Suspicious GPS: {0}', p);
+    case 'On site · {0}m · ±{1}m': return tr('On site · {0}m · ±{1}m', p);
+    case 'GPS denied — enable in settings': return tr('GPS denied — enable in settings');
+    case 'GPS error — go outside': return tr('GPS error — go outside');
+    default: return l.t;
+  }
 }
