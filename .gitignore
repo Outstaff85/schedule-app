@@ -5,6 +5,7 @@ Screenshot_*.png
 Tokens/
 .env
 node_modules/
+dist/
 *.log
 *-local.html
 __pycache__/
