@@ -1148,5 +1148,9 @@
   "Data": "נתונים",
   "Layout": "פריסה",
   "Interactive Manager": "מנהל אינטראקטיבי",
-  "Components": "רכיבים"
+  "Components": "רכיבים",
+  "Enter a first name": "יש להזין שם פרטי",
+  "Enter a last name": "יש להזין שם משפחה",
+  "Enter a phone like 050-1234567": "יש להזין טלפון בתבנית 050-1234567",
+  "The rate is below the minimum wage": "התעריף נמוך משכר המינימום"
 }

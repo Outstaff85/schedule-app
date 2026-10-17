@@ -2,7 +2,7 @@
 
 **Status: approved by the owner on 2026-10-17 as a full migration (no fallback).** Stage 0 (foundation) is built: CLAUDE.md's "no build step" / "no modules" rules are replaced by "new code goes to the new stack, old pages keep their style until their stage" (docs/build.md describes the build).
 
-Stage status: 0 Foundation — done · 1 Shared components — next · 2–7 — not started. The trial page (React + Vite + Tailwind + shadcn/ui in the Odinson Glass look) was published as a design artifact only; no code of it is in this repo.
+Stage status: 0 Foundation — done · 1 Shared components — done (docs/components.md) · 2 Payroll as a module — next · 3–7 — not started. The trial page (React + Vite + Tailwind + shadcn/ui in the Odinson Glass look) was published as a design artifact only; no code of it is in this repo.
 
 ## Why
 
@@ -54,6 +54,7 @@ Every stage is its own PR. It is mergeable on its own: the site keeps working, C
 - **Mergeable when:** the live site works exactly as before and `/next` opens. **Decision point:** continue or stop.
 
 ### Stage 1. Shared components
+- **Done** (docs/components.md; the shadcn sources are written into `src/components/ui` because the shadcn registry is not reachable from the cloud sessions; GlassButton is the shadcn `Button`; `Window`, `PagedList`, `undoDelete`, `useSelection` / `SelectBar`, `Figures`, `LanguageButton` added to the shared set; the gallery is `/next`).
 - `Shell`, `PageHead`, `Section`, `Plate` (`size` variants, `right` slot), `GlassButton`; Dialog, Drawer, Sheet, Tabs, Accordion, Badge, Alert, Skeleton, Sonner toasts, Dropdown Menu, Popover, Select, Checkbox, Switch, Radio Group, Calendar, Form, Table, Card, Separator, Tooltip, Scroll Area, Toggle Group, Button Group, Spinner, Empty, Progress, Alert Dialog, Combobox, Date Picker.
 - Translations (`tr()` and `i18n/<lang>.json`), the Language button, Tabler Icons, Motion for windows and expanding rows.
 - New rule in CLAUDE.md: check `components/ui` and the shared components first, write a new one only when nothing fits, colors and sizes only from tokens.

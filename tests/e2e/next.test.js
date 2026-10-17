@@ -85,8 +85,10 @@ async function computer(browser) {
   // lists: page by 10, tap reads, double click edits, ⋮ → Delete → Undo
   const plates = () => p.locator('[data-testid^=plate-w]').count();
   ok(await plates() === 10, 'next: a list shows 10 rows first');
-  await p.getByRole('button', { name: /Show more/ }).click(); await sleep(300);
-  ok(await plates() === 14, 'next: Show more adds the rest');
+  // reaching the end of the list loads the next rows (the same as a tap on Show more)
+  await p.getByRole('button', { name: /Show more/ }).scrollIntoViewIfNeeded(); await sleep(500);
+  ok(await plates() === 14 && await p.getByRole('button', { name: /Show more/ }).count() === 0, 'next: reaching the end of the list adds the rest');
+  await p.evaluate(() => window.scrollTo(0, 0)); await sleep(200);
   await p.click('[data-testid=plate-w0] .og-plate', { position: { x: 60, y: 20 } }); await sleep(400);
   ok(/Overtime/.test(await p.locator('[data-testid=plate-w0]').innerText()), 'next: a tap on a plate opens its details');
   await p.dblclick('[data-testid=plate-w1] .og-plate', { position: { x: 60, y: 20 } }); await sleep(400);

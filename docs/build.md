@@ -11,13 +11,15 @@ Firebase Hosting serves `dist/`, which `npm run build` makes from both.
 
 | Path | What |
 |---|---|
-| `package.json`, `package-lock.json` | the new stack's packages (React, Vite, TypeScript, Tailwind, `clsx` / `tailwind-merge`) and scripts; Node `^20.19` or `>=22.12` |
+| `package.json`, `package-lock.json` | the new stack's packages and scripts; Node `^20.19` or `>=22.12`. Runtime: React, `radix-ui`, `vaul` (Drawer), `sonner` (toasts), `react-day-picker` + `date-fns` (Calendar), `cmdk` (Combobox), `react-hook-form` + `zod` + `@hookform/resolvers` (Form), `motion`, `@tabler/icons-react`, `class-variance-authority`, `clsx` / `tailwind-merge`; build: Vite, TypeScript, Tailwind, `tw-animate-css` |
 | `vite.config.mts` | Vite: React and Tailwind plugins, alias `@` → `src/`, the pages it builds (`build.rolldownOptions.input`), `__BUILD_TIME__`; the project root is the repo root |
 | `tsconfig.json` | TypeScript, `strict`; checks `src/` and the Vite config |
-| `components.json` | shadcn/ui settings (`npx shadcn add <component>` writes into `src/components/ui`, CSS `src/styles/globals.css`, alias `@/lib/utils`); no component is added yet (stage 1) |
-| `src/styles/globals.css` | Tailwind (`@import "tailwindcss" source(none)`, scanning only `src/` and `next/`) and the shadcn/ui color names mapped onto the Odinson Glass tokens |
+| `components.json` | shadcn/ui settings (`npx shadcn add <component>` writes into `src/components/ui`, CSS `src/styles/globals.css`, alias `@/lib/utils`) |
+| `src/components/ui/`, `src/components/shared/`, `src/hooks/` | the components every new page is built from (docs/components.md) |
+| `src/lib/i18n.tsx` | translations: `tr()`, `I18nProvider`, `useI18n()` (docs/translations.md → New stack) |
+| `src/styles/globals.css` | Tailwind (`@import "tailwindcss" source(none)`, scanning only `src/` and `next/`), `tw-animate-css`, the shadcn/ui color names mapped onto the Odinson Glass tokens, and the surface utilities `og-glass-menu`, `og-glass-sheet`, `og-field`, `og-label` |
 | `src/lib/utils.ts` | `cn()` — shadcn/ui's class helper |
-| `next/index.html`, `src/next/` | the `/next` page: its HTML entry and its React code |
+| `next/index.html`, `src/next/` | the `/next` page — the component gallery: its HTML entry and its React code |
 | `scripts/static-files.mjs` | which files of the old pages Hosting serves (`staticFiles(root)`) |
 | `scripts/copy-static.mjs` | the last build step: copies those files into `dist/` |
 | `dist/` | the build output (git-ignored); what Hosting serves |
