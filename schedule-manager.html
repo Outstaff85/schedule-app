@@ -757,10 +757,9 @@
      site · today's punch under it, the month's hours at the right. */
   .wplate .n small,.wc-hn p{display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden}
   .wplate .n small:has(.wp-chip1){margin:3px 0 2px}
-  /* The Workers screen (owner's design 2026-10-13): no "WORKERS N" line, New
-     as plain glass, the Active / Vacation / Pending tabs 78px wide, a 38px search. */
+  /* The Workers screen (owner's design 2026-10-13): no "WORKERS N" line, the
+     Active / Vacation / Pending tabs 78px wide, a 38px search. */
   #workersCount:empty{display:none}
-  .workers-actions .gbtn.primary{background:var(--glass)}
   #workersTabs button{width:78px;padding:0;justify-content:center;text-align:center}
   .workers-search-row input{height:38px}
   .site{overflow:hidden;text-overflow:ellipsis}
@@ -1066,7 +1065,7 @@ body:has(.overlay.open){overflow:hidden}
           <div class="page-title"><span data-i18n>Workers</span> <em class="og-count" id="workersTitleCount"></em></div>
         </div>
         <div class="workers-actions">
-          <button class="gbtn primary" onclick="openAddWorker()"><i class="ti ti-plus"></i> <span data-i18n>New</span></button>
+          <button class="gbtn primary og-new" onclick="openAddWorker()"><i class="ti ti-plus"></i> <span data-i18n>New</span></button>
           <button type="button" class="gbtn" id="workersScanBtn" onclick="startNewScan()"><i class="ti ti-scan"></i> <span data-i18n>Scan passport</span></button>
         </div>
       </div>
@@ -1132,7 +1131,7 @@ body:has(.overlay.open){overflow:hidden}
           <div class="page-title"><span data-i18n>Clients</span> <em class="og-count" id="clientsTitleCount"></em></div>
         </div>
         <div class="workers-actions">
-          <button class="gbtn primary" onclick="openAddClient()"><i class="ti ti-plus"></i> <span data-i18n>New</span></button>
+          <button class="gbtn primary og-new" onclick="openAddClient()"><i class="ti ti-plus"></i> <span data-i18n>New</span></button>
         </div>
       </div>
       <div class="clients-grid" id="clientsGrid"></div>
@@ -1144,7 +1143,7 @@ body:has(.overlay.open){overflow:hidden}
           <div class="page-title"><span data-i18n>Suppliers</span> <em class="og-count" id="suppliersTitleCount"></em></div>
         </div>
         <div class="workers-actions">
-          <button class="gbtn primary" onclick="openAddSupplier()"><i class="ti ti-plus"></i> <span data-i18n>New</span></button>
+          <button class="gbtn primary og-new" onclick="openAddSupplier()"><i class="ti ti-plus"></i> <span data-i18n>New</span></button>
         </div>
       </div>
       <div class="clients-grid" id="suppliersGrid"></div>
@@ -1230,7 +1229,7 @@ body:has(.overlay.open){overflow:hidden}
       <div id="adminPane_firms" style="display:none">
         <div id="adminFirmsSuperBar" style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-bottom:10px">
           <button class="gbtn" onclick="toggleSuperadminAccounting()"><i class="ti ti-cash"></i> <span data-i18n>Payable summary (all firms)</span></button>
-          <button class="gbtn primary" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> <span data-i18n>New firm</span></button>
+          <button class="gbtn primary og-new" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> <span data-i18n>New firm</span></button>
         </div>
         <div id="superadminAccountingWrap" style="display:none;margin-bottom:16px"></div>
         <div id="adminFirmsList"></div>
@@ -1486,7 +1485,7 @@ body:has(.overlay.open){overflow:hidden}
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px">
       <div style="font-size:20px;font-weight:700"><i class="ti ti-building-skyscraper"></i> <span data-i18n>Firms</span></div>
       <div id="firmsActions" style="display:flex;align-items:center;gap:4px">
-        <button class="gbtn primary" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> <span data-i18n>Create firm</span></button>
+        <button class="gbtn primary og-new" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> <span data-i18n>Create firm</span></button>
         <button class="t3-ib" onclick="logout()" title="Sign out" data-i18n-title="Sign out"><i class="ti ti-logout"></i></button>
       </div>
     </div>
@@ -6732,7 +6731,7 @@ function renderAdminUsersRows(el, users){
         menu:[{icon:'ti-pencil', label:tr('Edit'), fn:()=>openEditUserForm(u.id)}, {icon:'ti-trash', label:tr('Delete'), danger:true, fn:b=>deleteUserConfirm(u.id, u.username, b.closest('.t3-line'))}],
         swipe:{edit:()=>openEditUserForm(u.id), del:el=>deleteUserConfirm(u.id, u.username, el)}});
     };
-    el.innerHTML = `<div class="t3-sec" style="margin-top:0"><i class="ti ti-users"></i> ${tr('Logins')}<em>${users.length}</em><button class="gbtn primary" onclick="openCreateUserForm()"><i class="ti ti-plus"></i> ${tr('New user')}</button></div>`
+    el.innerHTML = `<div class="t3-sec" style="margin-top:0"><i class="ti ti-users"></i> ${tr('Logins')}<em>${users.length}</em><button class="gbtn primary og-new" onclick="openCreateUserForm()"><i class="ti ti-plus"></i> ${tr('New user')}</button></div>`
       + (users.length ? `<div class="admin-users-rows"></div>` : '<div class="t3-empty">'+tr('No staff, HR or supplier users yet.')+'</div>');
     // The firm's owner is always pinned at the top (user request 2026-10-11),
     // then everyone else by name.
