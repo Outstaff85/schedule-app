@@ -6914,7 +6914,7 @@ async function deleteUserNow(id, quiet){
 // A worker's hrId is the uid of the HR login it belongs to. Only the firm's
 // owner or a super-admin assigns it: here (the HR's card: list, unassign,
 // "Add workers") or in the worker modal's HR field. Reassigning also moves
-// the worker's past punches to the new HR (setPunchesHr).
+// the worker's past punches, days off and shift offers to the new HR (setPunchesHr).
 // The HR list comes from the cached users list. It is loaded on first need
 // (worker modal, a worker tile or card with an HR) — not at every app open —
 // once per app open; meanwhile the cache from the last time is used.
