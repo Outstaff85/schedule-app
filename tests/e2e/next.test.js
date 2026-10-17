@@ -8,7 +8,7 @@ const { chromium } = require('playwright');
 const DIST = path.join(__dirname, '..', '..', 'dist');
 const TYPES = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.png': 'image/png', '.json': 'application/json' };
 let fails = 0;
-const ok = (c, msg) => { console.log((c ? '  ok   ' : '  FAIL ') + msg); if (!c) fails++; };
+const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c){ fails++; if (process.env.GITHUB_ACTIONS) console.log('::error::' + String(m).replace(/\r?\n/g, ' ').slice(0, 900)); } };
 
 if (!fs.existsSync(path.join(DIST, 'next', 'index.html'))) { console.log('dist/next/index.html is missing: run `npm run build` at the repo root first'); process.exit(1); }
 
@@ -24,7 +24,7 @@ const server = http.createServer((req, res) => {
 
 (async () => {
   await new Promise(r => server.listen(8766, '127.0.0.1', r));
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
   try {
     const p = await browser.newPage();
     const errors = [];
@@ -53,6 +53,6 @@ const server = http.createServer((req, res) => {
   } finally {
     await browser.close(); server.close();
   }
-  console.log(fails ? `${fails} failed` : 'all passed');
+  console.log(fails ? fails + ' FAILED' : 'ALL PASSED');
   process.exit(fails ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

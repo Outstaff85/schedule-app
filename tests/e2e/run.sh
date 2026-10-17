@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # One browser-test file (main.test.js or hr.test.js), run inside
-# `firebase emulators:exec` (package.json): serves the repo on :8765, starts
+# `firebase emulators:exec` (package.json): serves dist/ (what Hosting serves,
+# built by `npm run build` at the repo root; the repo itself when there is no
+# dist/) on :8765, starts
 # server.py (the real functions-auth functions on the emulators, :5055), runs
 # the file, stops both. PYTHON = a python with functions-auth/requirements.txt.
 set -u
@@ -19,7 +21,9 @@ while not (d.weekday() in (2, 3) and d.day >= 3): d -= timedelta(days=1)
 print(f'{d}T12:00:00Z')")}"
 echo "E2E_NOW=$E2E_NOW"
 LOG="$(mktemp)"
-python3 -m http.server 8765 --bind 127.0.0.1 --directory "$ROOT" >/dev/null 2>&1 &
+WEBROOT="$ROOT"; [ -f "$ROOT/dist/schedule-manager.html" ] && WEBROOT="$ROOT/dist"
+echo "serving $WEBROOT"
+python3 -m http.server 8765 --bind 127.0.0.1 --directory "$WEBROOT" >/dev/null 2>&1 &
 WEB=$!
 "$PY" "$HERE/server.py" > "$LOG" 2>&1 &
 SRV=$!

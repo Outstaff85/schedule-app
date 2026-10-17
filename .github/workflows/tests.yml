@@ -1,7 +1,9 @@
 name: Tests
 
 # Every pull request into main (and by hand): the dictionary and icon checks,
-# the rules tests, the functions tests and the browser tests (docs/tests.md).
+# the build (typecheck, Vite, the old pages copied into dist/), the rules
+# tests, the functions tests and the browser tests on the built dist/
+# (docs/tests.md).
 # Nothing is deployed and no secret is used — everything runs on the emulators.
 on:
   pull_request:
@@ -36,6 +38,12 @@ jobs:
           node tests/i18n/check.js
           node tests/icons/check.js
           node tests/design/check.js
+
+      - name: Build (typecheck, Vite, dist/)
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          node tests/build/check.js
 
       - name: Python for the functions
         run: |

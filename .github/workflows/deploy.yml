@@ -9,6 +9,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Hosting serves dist/ (firebase.json): the new stack built by Vite plus
+      # the old pages copied unchanged (docs/build.md).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          node tests/build/check.js
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: "${{ secrets.GITHUB_TOKEN }}"
