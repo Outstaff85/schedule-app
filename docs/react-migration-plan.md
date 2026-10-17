@@ -2,7 +2,7 @@
 
 **Status: approved by the owner on 2026-10-17 as a full migration (no fallback).** Stage 0 (foundation) is built: CLAUDE.md's "no build step" / "no modules" rules are replaced by "new code goes to the new stack, old pages keep their style until their stage" (docs/build.md describes the build).
 
-Stage status: 0 Foundation — done · 1 Shared components — done (docs/components.md) · 2 Payroll as a module — done (docs/accounting.md → Payroll module) · 3 Client portal — done (docs/client-portal.md) · 4 Supplier portal — next · 5–7 — not started. The trial page (React + Vite + Tailwind + shadcn/ui in the Odinson Glass look) was published as a design artifact only; no code of it is in this repo.
+Stage status: 0 Foundation — done · 1 Shared components — done (docs/components.md) · 2 Payroll as a module — done (docs/accounting.md → Payroll module) · 3 Client portal — done (docs/client-portal.md) · 4 Supplier portal — done (docs/supplier-portal.md) · 5 Worker punch page — next · 6–7 — not started. The trial page (React + Vite + Tailwind + shadcn/ui in the Odinson Glass look) was published as a design artifact only; no code of it is in this repo.
 
 ## Why
 
@@ -85,6 +85,7 @@ How a run works (a run = one session, started by the scheduled task "React migra
 - **Mergeable when:** the client e2e tests pass and a client sees the same data and nothing more.
 
 ### Stage 4. Supplier portal
+- **Done.** `supplier-portal.html` is now a Vite entry (`src/supplier/`; same file name and `/supplier` route, never copied as an old page): forms on React Hook Form + Zod (the worker window: Accordion section plates, the given name required), the pay table on TanStack Table (new `ui/data-table.tsx`: sorting by a column head, the totals row, 10 rows and Show more, plates on a phone), the reads through TanStack Query (`@tanstack/react-query`: loadSchedule + loadPunchLog, the sent batches; cached across a language change, refreshed after a write), the Date Picker for a shift's date and the Combobox for the worker; the Approvals tab is the React `HoursReview`. New shared `NewBadge`, `esc()` in `src/lib/utils.ts`; `Plate` no longer opens when its ⋮ menu (drawn in a portal) is used. What a supplier receives is the same `supplier` / `hours` replies; no Firestore or Storage rule changed. The supplier e2e checks are rewritten on the React DOM. `hours-review.js` is now used only by an HR in the manager app (until stage 6).
 - Forms on React Hook Form + Zod, tables on TanStack Table (the Data Table component), reads through TanStack Query; Date Picker and Combobox first used here.
 - **Mergeable when:** the supplier visibility tests pass and the Firestore/Storage rules did not change.
 

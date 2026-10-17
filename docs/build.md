@@ -2,8 +2,8 @@
 
 The move to React ([react-migration-plan.md](react-migration-plan.md)) runs page by page. Until stage 7 two kinds of page live side by side:
 
-- **New pages** — React + TypeScript + Tailwind + shadcn/ui in `src/`, built by Vite. Now: the test page `/next` (stage 0, `next/index.html` → `src/next/`) and the client portal (stage 3, `client-portal.html` at the repo root → `src/client/`; it keeps its old file name, so `/client`, the manager app's hand-over and the service worker's list stay the same).
-- **Old pages** — the self-contained HTML files at the repo root (`schedule-manager.html`, `worker-punch.html`, `supplier-portal.html`) with their scripts and files, copied into the build unchanged.
+- **New pages** — React + TypeScript + Tailwind + shadcn/ui in `src/`, built by Vite. Now: the test page `/next` (stage 0, `next/index.html` → `src/next/`), the client portal (stage 3, `client-portal.html` at the repo root → `src/client/`) and the supplier portal (stage 4, `supplier-portal.html` → `src/supplier/`); the portals keep their old file names, so `/client`, `/supplier`, the manager app's hand-over and the service worker's list stay the same.
+- **Old pages** — the self-contained HTML files at the repo root (`schedule-manager.html`, `worker-punch.html`) with their scripts and files, copied into the build unchanged.
 
 Firebase Hosting serves `dist/`, which `npm run build` makes from both.
 
@@ -11,7 +11,7 @@ Firebase Hosting serves `dist/`, which `npm run build` makes from both.
 
 | Path | What |
 |---|---|
-| `package.json`, `package-lock.json` | the new stack's packages and scripts; Node `^20.19` or `>=22.12`. Runtime: React, `radix-ui`, `vaul` (Drawer), `sonner` (toasts), `react-day-picker` + `date-fns` (Calendar), `cmdk` (Combobox), `react-hook-form` + `zod` + `@hookform/resolvers` (Form), `motion`, `@tabler/icons-react`, `class-variance-authority`, `clsx` / `tailwind-merge`; build: Vite, TypeScript, Tailwind, `tw-animate-css` |
+| `package.json`, `package-lock.json` | the new stack's packages and scripts; Node `^20.19` or `>=22.12`. Runtime: React, `radix-ui`, `vaul` (Drawer), `sonner` (toasts), `react-day-picker` + `date-fns` (Calendar), `cmdk` (Combobox), `react-hook-form` + `zod` + `@hookform/resolvers` (Form), `@tanstack/react-table` (Data Table), `@tanstack/react-query` (the supplier portal's reads), `motion`, `@tabler/icons-react`, `class-variance-authority`, `clsx` / `tailwind-merge`; build: Vite, TypeScript, Tailwind, `tw-animate-css` |
 | `vite.config.mts` | Vite: React and Tailwind plugins, alias `@` → `src/`, the pages it builds (`build.rolldownOptions.input`), `__BUILD_TIME__`; the project root is the repo root |
 | `tsconfig.json` | TypeScript, `strict`; checks `src/` and the Vite config |
 | `components.json` | shadcn/ui settings (`npx shadcn add <component>` writes into `src/components/ui`, CSS `src/styles/globals.css`, alias `@/lib/utils`) |
@@ -21,6 +21,7 @@ Firebase Hosting serves `dist/`, which `npm run build` makes from both.
 | `src/lib/utils.ts` | `cn()` — shadcn/ui's class helper |
 | `next/index.html`, `src/next/` | the `/next` page — the component gallery: its HTML entry and its React code |
 | `client-portal.html`, `src/client/` | the client portal: its HTML entry (fonts, `/og.css`, a head script that sends a visitor without a session to the login page, the module script) and its React code ([client-portal.md](client-portal.md)) |
+| `supplier-portal.html`, `src/supplier/` | the supplier portal: its HTML entry (the same parts) and its React code ([supplier-portal.md](supplier-portal.md)) |
 | `src/lib/payroll.ts` | the typed pay functions (docs/accounting.md → Payroll module) |
 | `payroll.js` | generated from `src/lib/payroll.ts`, committed; the global `Payroll` for the old pages. Written by `scripts/build-payroll.mjs` (`--check` fails when it is stale) |
 | `scripts/build-payroll.mjs` | builds `payroll.js` from `src/lib/payroll.ts` with Vite |
@@ -36,11 +37,11 @@ Firebase Hosting serves `dist/`, which `npm run build` makes from both.
 
 1. `tsc --noEmit` — the TypeScript check; an error stops the build.
 2. `vite build` — builds every page in `input` into `dist/` (`dist/next/index.html`, hashed files in `dist/assets/`); `dist/` is emptied first.
-3. `node scripts/copy-static.mjs` — copies the old pages' files into `dist/` byte for byte. The list (`staticFiles`) is every file tracked by git (every file on disk when there is no git) except: the top-level `firebase.json`, the rules and index files, the new pages' HTML entries at the top level (`client-portal.html`), `docs/`, `functions/`, `functions-auth/`, `tests/`, `Tokens/`, `node_modules/`, `dist/`, `src/`, `next/`, `scripts/`, `package.json`, `package-lock.json`, `tsconfig.json`, `vite.config.mts`, `components.json`; anything under a dot folder or named with a dot first; and any `*.md`, `Screenshot_*.jpg|png`, `*-local.html`, `*.log`, `*.pyc` or `__pycache__`. A file Vite also built stops the copy with an error.
+3. `node scripts/copy-static.mjs` — copies the old pages' files into `dist/` byte for byte. The list (`staticFiles`) is every file tracked by git (every file on disk when there is no git) except: the top-level `firebase.json`, the rules and index files, the new pages' HTML entries at the top level (`client-portal.html`, `supplier-portal.html`), `docs/`, `functions/`, `functions-auth/`, `tests/`, `Tokens/`, `node_modules/`, `dist/`, `src/`, `next/`, `scripts/`, `package.json`, `package-lock.json`, `tsconfig.json`, `vite.config.mts`, `components.json`; anything under a dot folder or named with a dot first; and any `*.md`, `Screenshot_*.jpg|png`, `*-local.html`, `*.log`, `*.pyc` or `__pycache__`. A file Vite also built stops the copy with an error.
 
 `payroll.js` (the old pages' copy of `src/lib/payroll.ts`, docs/accounting.md → Payroll module) is not built here: it is committed, so the old pages also work from the repo root. Step 1 is followed by `node scripts/build-payroll.mjs --check`, which builds `payroll.ts` in memory (Vite library mode, one IIFE, not minified, global `Payroll`) and stops the build when the committed `payroll.js` differs; `npm run build:payroll` rewrites it. Step 3 copies it like every other old file.
 
-`tests/build/check.js` then checks `dist/`: every listed file is there and identical to the repo's, the three old pages and `service-worker.js`, `og.css`, `manifest.json`, `payroll.js` are on the list and `client-portal.html` is not, nothing that must never be public is in it (functions, tests, docs, `src/`, sources and config, dot files), `dist/next/index.html` and `dist/client-portal.html` point at their built scripts, and `firebase.json` serves `dist`.
+`tests/build/check.js` then checks `dist/`: every listed file is there and identical to the repo's, the two old pages and `service-worker.js`, `og.css`, `manifest.json`, `payroll.js` are on the list and `client-portal.html` / `supplier-portal.html` are not, nothing that must never be public is in it (functions, tests, docs, `src/`, sources and config, dot files), `dist/next/index.html`, `dist/client-portal.html` and `dist/supplier-portal.html` point at their built scripts, and `firebase.json` serves `dist`.
 
 ## Other commands
 
@@ -60,4 +61,4 @@ Firebase Hosting serves `dist/`, which `npm run build` makes from both.
 
 ## Adding a new page
 
-Add its HTML entry (like `next/index.html`: links `/fonts/fonts.css` and `/og.css`, one `<script type="module">` to its code in `src/`) to `input` (and `optimizeDeps.entries`) in `vite.config.mts`, its folder name — or, for an entry at the top level that replaces an old page (`client-portal.html`), its file name — to `EXCLUDED_TOP` in `scripts/static-files.mjs`, the entry to the built pages `tests/build/check.js` checks, its route to the Hosting rewrites, and a browser check.
+Add its HTML entry (like `next/index.html`: links `/fonts/fonts.css` and `/og.css`, one `<script type="module">` to its code in `src/`) to `input` (and `optimizeDeps.entries`) in `vite.config.mts`, its folder name — or, for an entry at the top level that replaces an old page (`client-portal.html`, `supplier-portal.html`), its file name — to `EXCLUDED_TOP` in `scripts/static-files.mjs`, the entry to the built pages `tests/build/check.js` checks, its route to the Hosting rewrites, and a browser check.

@@ -67,7 +67,10 @@ export function Plate({
     return () => document.removeEventListener('pointerdown', close);
   }, [dx]);
 
-  const inControl = (e: React.SyntheticEvent) => !!(e.target as HTMLElement).closest('button, a, input, [data-no-tap]');
+  // A control inside the plate keeps its own job; so does the ⋮ menu, which is
+  // drawn in a portal outside the plate but whose events still bubble up here
+  // through React (a tap on its Delete must not also open the plate).
+  const inControl = (e: React.SyntheticEvent) => !(e.currentTarget as HTMLElement).contains(e.target as Node) || !!(e.target as HTMLElement).closest('button, a, input, [data-no-tap]');
 
   const down = (e: React.PointerEvent) => {
     if (inControl(e)) return;
@@ -126,7 +129,7 @@ export function Plate({
         role="button"
         tabIndex={0}
         aria-pressed={selecting ? !!selected : undefined}
-        onKeyDown={e => { if (e.key === 'Enter') (selecting ? onToggle : onOpen)?.(); }}
+        onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) (selecting ? onToggle : onOpen)?.(); }}
         onPointerDown={down}
         onPointerMove={move}
         onPointerUp={up}

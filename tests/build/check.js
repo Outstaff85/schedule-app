@@ -21,10 +21,11 @@ function walk(dir, base = '') {
   const { staticFiles } = await import(path.join(ROOT, 'scripts', 'static-files.mjs'));
   const errs = [];
   const old = staticFiles(ROOT);
-  for (const f of ['schedule-manager.html', 'supplier-portal.html', 'worker-punch.html', 'service-worker.js', 'og.css', 'manifest.json', 'payroll.js'])
+  for (const f of ['schedule-manager.html', 'worker-punch.html', 'service-worker.js', 'og.css', 'manifest.json', 'payroll.js'])
     if (!old.includes(f)) errs.push(`${f} is not in the list of served files (scripts/static-files.mjs)`);
-  // The new pages are built by Vite, never copied: /next and the client portal (stage 3).
-  if (old.includes('client-portal.html')) errs.push('client-portal.html is a Vite entry (src/client/): it must not be in the copied list');
+  // The new pages are built by Vite, never copied: /next, the client portal (stage 3) and the supplier portal (stage 4).
+  for (const [f, src] of [['client-portal.html', 'src/client/'], ['supplier-portal.html', 'src/supplier/']])
+    if (old.includes(f)) errs.push(`${f} is a Vite entry (${src}): it must not be in the copied list`);
   for (const f of old) {
     const to = path.join(DIST, f);
     if (!fs.existsSync(to)) errs.push(`dist/${f} missing`);
@@ -33,7 +34,7 @@ function walk(dir, base = '') {
   const built = walk(DIST);
   const never = /^(functions|functions-auth|tests|docs|src|scripts|node_modules|Tokens)\/|(^|\/)\.|\.(md|rules|py|ts|tsx|mts)$|^(firebase|package|package-lock|tsconfig|components|firestore\.indexes)\.json$/;
   for (const f of built) if (never.test(f)) errs.push(`dist/${f} must never be served`);
-  for (const [page, what] of [['next/index.html', 'the /next page'], ['client-portal.html', 'the client portal']]) {
+  for (const [page, what] of [['next/index.html', 'the /next page'], ['client-portal.html', 'the client portal'], ['supplier-portal.html', 'the supplier portal']]) {
     const file = path.join(DIST, page);
     if (!fs.existsSync(file)) { errs.push(`dist/${page} missing (${what})`); continue; }
     const html = fs.readFileSync(file, 'utf8');

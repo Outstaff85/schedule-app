@@ -55,6 +55,8 @@ import { Calendar } from '@/components/ui/calendar';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Combobox } from '@/components/ui/combobox';
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DataTable, type DataColumn } from '@/components/ui/data-table';
+import { NewBadge } from '@/components/shared/new-badge';
 import { FieldRow, Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormSection } from '@/components/ui/form';
 
 /** One gallery block: the component's name, then its states. */
@@ -287,6 +289,7 @@ function Lists() {
         <Plate size="lg" title="Andrei Popescu" sub={tr('Large')} right="182h" color="var(--amber)" chips={<Badge variant="warn">{tr('Docs')}</Badge>} />
         <Plate title={tr('Visa expired')} sub="Mikhail Orlov" color="var(--red)" icon={<IconAlertTriangle />} />
         <Plate title="Odinson" sub={tr('Firm')} color="var(--accent)" icon={<IconBuilding />} right={<Badge variant="ok">{tr('Active')}</Badge>} />
+        <Plate title="Noa Katz" sub={tr('Added today')} chips={<NewBadge createdAt={Date.now()} />} />
       </Demo>
 
       <Demo id="empty" title={tr('Empty, Skeleton')}>
@@ -438,6 +441,13 @@ function Feedback() {
 }
 
 /* ───────── Data ───────── */
+// The Data Table demo: 14 rows (Show more after 10), sorting by a tap on a column head, the totals row.
+const DATA_ROWS = WORKERS.slice(0, 14);
+const DATA_COLUMNS: DataColumn<W>[] = [
+  { id: 'name', header: () => tr('Worker'), accessorFn: r => r.name, sortFn: 'alphanumeric' },
+  { id: 'hours', header: () => tr('Hours'), accessorFn: r => r.hours, cell: c => c.row.original.hours + 'h', meta: { num: true } },
+  { id: 'pay', header: () => tr('Pay'), accessorFn: r => r.hours * 45, cell: c => '₪' + (c.row.original.hours * 45).toLocaleString('en-US'), meta: { num: true } },
+];
 function Data() {
   const [day, setDay] = React.useState<Date | undefined>(new Date(2026, 9, 17));
   const rows = WORKERS.slice(0, 5).map((w, i) => ({ ...w, reg: w.hours - 10 - i, ot: 10 + i, pay: w.hours * 45 }));
@@ -452,6 +462,17 @@ function Data() {
           ))}</TableBody>
           <TableFooter><TableRow><TableCell>{tr('Total')} · {rows.length}</TableCell><TableCell num>{sum('reg')}h</TableCell><TableCell num>{sum('ot')}h</TableCell><TableCell num className="text-fig">₪{sum('pay').toLocaleString('en-US')}</TableCell></TableRow></TableFooter>
         </Table>
+      </Demo>
+
+      <Demo id="data-table" title={tr('Data Table')}>
+        <DataTable
+          data-testid="data-table-demo"
+          columns={DATA_COLUMNS}
+          data={DATA_ROWS}
+          rowId={r => r.id}
+          footer={[tr('Total') + ' · ' + DATA_ROWS.length, DATA_ROWS.reduce((a, r) => a + r.hours, 0) + 'h', '₪' + DATA_ROWS.reduce((a, r) => a + r.hours * 45, 0).toLocaleString('en-US')]}
+          card={r => <Plate key={r.id} title={r.name} sub={r.site} right={r.hours + 'h'} color={r.color} />}
+        />
       </Demo>
 
       <Demo id="calendar" title={tr('Calendar')}>

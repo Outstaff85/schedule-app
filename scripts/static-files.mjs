@@ -15,7 +15,7 @@ const EXCLUDED_TOP = new Set([
   'docs', 'functions', 'functions-auth', 'tests', 'Tokens', 'node_modules',
   'dist', 'src', 'next', 'scripts',
   // the new pages' HTML entries at the top level, built by Vite (docs/build.md)
-  'client-portal.html',
+  'client-portal.html', 'supplier-portal.html',
   'package.json', 'package-lock.json', 'tsconfig.json', 'vite.config.mts', 'components.json',
 ]);
 // Any path whose file name matches one of these is never served.

@@ -7,6 +7,10 @@ export interface Backend {
   currentUser(): { uid: string } | null;
   signOut(): Promise<void>;
   idToken(): Promise<string>;
+  /** the login's hours ticks (claim hp) */
+  hourPerms(): Promise<string[]>;
+  /** the supplier portal tabs this login may use (claim ss; none stored = all three) */
+  supplierSections(): Promise<string[]>;
   handleAction(action: string, params: Record<string, unknown>, ctx: Record<string, unknown>): Promise<unknown>;
 }
 

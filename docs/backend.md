@@ -31,7 +31,7 @@ Indexes (`firestore.indexes.json`): punches `workerId + ts`, `hrId + ts` (an own
 
 ## Browser data layer (`firestore-backend.js`)
 
-Loaded by `loadFirestoreBackend()` in the manager app and the supplier portal (the punch page talks only to the `punch` function). One global, `initFirestoreBackend()`:
+Loaded by `loadFirestoreBackend()` in the manager app and by `loadBackend()` (`src/lib/backend.ts`) in the new pages — the portals use only the sign-in, the ID token, the claims and `updateMyLanguage` (the punch page talks only to the `punch` function). One global, `initFirestoreBackend()`:
 
 - imports the Firebase SDK `FB_VERSION` 12.19.0 (app, auth, firestore) from gstatic; Storage only on the first upload, or 4 s after a signed-in start (`loadStorage()`);
 - web config from Hosting's `/__/firebase/init.json`, or `window.FIREBASE_WEB_CONFIG`;
