@@ -20,6 +20,9 @@ Firebase Hosting serves `dist/`, which `npm run build` makes from both.
 | `src/styles/globals.css` | Tailwind (`@import "tailwindcss" source(none)`, scanning only `src/` and `next/`), `tw-animate-css`, the shadcn/ui color names mapped onto the Odinson Glass tokens, and the surface utilities `og-glass-menu`, `og-glass-sheet`, `og-field`, `og-label` |
 | `src/lib/utils.ts` | `cn()` — shadcn/ui's class helper |
 | `next/index.html`, `src/next/` | the `/next` page — the component gallery: its HTML entry and its React code |
+| `src/lib/payroll.ts` | the typed pay functions (docs/accounting.md → Payroll module) |
+| `payroll.js` | generated from `src/lib/payroll.ts`, committed; the global `Payroll` for the old pages. Written by `scripts/build-payroll.mjs` (`--check` fails when it is stale) |
+| `scripts/build-payroll.mjs` | builds `payroll.js` from `src/lib/payroll.ts` with Vite |
 | `scripts/static-files.mjs` | which files of the old pages Hosting serves (`staticFiles(root)`) |
 | `scripts/copy-static.mjs` | the last build step: copies those files into `dist/` |
 | `dist/` | the build output (git-ignored); what Hosting serves |
