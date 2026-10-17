@@ -32,8 +32,10 @@ export type AccClient = {
 export type CommissionRate = { from?: string; mode?: string; rate: number | string | null };
 export type AccSupplier = { id: string; name?: string; color?: string; commission?: CommissionRate[] };
 export type HrLogin = { id: string; fullName?: string; username?: string; commissionRate?: number | string | null; commissionDayRate?: number | string | null };
+/** The page's (or the module's) tr(). */
+export type AccTr = (text: string, params?: Record<string, string | number>) => string;
 /** The page's data the figures read (`ManagerBridge.accData()`). */
-export type AccData = { log: AccPunch[]; workers: AccWorker[]; clients: AccClient[]; suppliers: AccSupplier[]; tr: Translate };
+export type AccData = { log: AccPunch[]; workers: AccWorker[]; clients: AccClient[]; suppliers: AccSupplier[]; tr: AccTr };
 
 /** One worker's Salary row for a period. */
 export type SalaryEntry = {
@@ -137,7 +139,7 @@ export function salaryMonthOf(period: string | null | undefined): string | null 
 }
 const PERIOD_LABELS: Record<string, string> = { week: 'This Week', month: 'This Month', all: 'All Time' };
 /** The period choices: This Week, This Month, each of the 12 previous months, All Time. */
-export function periodOptions(tr: Translate, locale: string): [string, string][] {
+export function periodOptions(tr: AccTr, locale: string): [string, string][] {
   const now = new Date(), opts: [string, string][] = [['week', tr(PERIOD_LABELS.week)], ['month', tr(PERIOD_LABELS.month)]];
   for (let i = 1; i <= 12; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -146,7 +148,7 @@ export function periodOptions(tr: Translate, locale: string): [string, string][]
   opts.push(['all', tr(PERIOD_LABELS.all)]);
   return opts;
 }
-export function periodLabel(period: string, tr: Translate, locale: string): string {
+export function periodLabel(period: string, tr: AccTr, locale: string): string {
   const o = periodOptions(tr, locale).find(([v]) => v === period);
   return o ? o[1] : period;
 }
@@ -177,7 +179,7 @@ export function salaryEntriesFor(d: AccData, period: string): { byWorker: Record
   Object.values(byWorkerDay).forEach(({ worker, workerId, date, entries }) => {
     if (!byWorker[workerId]) byWorker[workerId] = { worker, workerId, hours: 0, days: 0, regH: 0, otH: 0, shabH: 0, total: 0, travel: 0, warns: [], clientHours: {}, seen: new Set(), dayKeys: new Set(), countedDays: 0, daysUsed: 0 };
     const bw = byWorker[workerId];
-    const res = analyzeDayPunches(entries, date, { tr });
+    const res = analyzeDayPunches(entries, date, { tr: tr as Translate });
     const dstr = date.toLocaleDateString('en-GB');
     res.warnings.forEach(wn => bw.warns.push(dstr + ': ' + wn));
     const h = res.hours;
@@ -388,7 +390,7 @@ export function buildSalaryExportRows(d: AccData, period: string, onlyIds?: stri
   });
   const rows: ExportRow[] = [], seenBy: Record<string, Set<string>> = {};
   Object.values(byWD).sort((a, b) => a.worker < b.worker ? -1 : a.worker > b.worker ? 1 : (a.date.getTime() - b.date.getTime())).forEach(x => {
-    const res = analyzeDayPunches(x.entries, x.date, { tr });
+    const res = analyzeDayPunches(x.entries, x.date, { tr: tr as Translate });
     const ins = x.entries.filter(p => p.type === 'in').map(p => p.time as string).sort();
     const outs = x.entries.filter(p => p.type === 'out').map(p => p.time as string).sort();
     const w = byId(d.workers, x.wid);
@@ -518,7 +520,7 @@ export function accountantSheets(d: AccData, period: string, approvals: Approval
   return out;
 }
 /** A summary the caller computed ({label, hours, rate, total}) as a sheet: the header, the rows, the total row. */
-export function payableAoa(rows: { label: string; hours: number; rate: string; total: number }[], tr: Translate): (string | number)[][] {
+export function payableAoa(rows: { label: string; hours: number; rate: string; total: number }[], tr: AccTr): (string | number)[][] {
   const grand = rows.reduce((s, r) => s + r.total, 0);
   return [['Label', 'Hours', 'Rate', 'Total'].map(h => tr(h)), ...rows.map(r => [r.label, r.hours.toFixed(2), r.rate, r.total.toFixed(2)]), ['', '', tr('Total'), grand.toFixed(2)]];
 }

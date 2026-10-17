@@ -146,11 +146,11 @@ export function Accounting({ snap, api }: { snap: AccountingSnapshot; api: Manag
         <Button size="icon" aria-label={tr('Later')} title={tr('Later')} data-testid="acc-later" onClick={() => step(1)}><IconChevronRight /></Button>
       </div>
       {shown !== 'salary' && (
-        <Figures data-testid="acc-figs" className="min-[701px]:max-w-[520px]" onPick={k => { if (k === 'wait') setTab('approvals'); }} items={[
+        <div data-testid="acc-figs"><Figures className="min-[701px]:max-w-[520px]" onPick={k => { if (k === 'wait') setTab('approvals'); }} items={[
           { key: 'hours', label: tr('Hours'), value: String(Math.round(figs.hours)), color: 'var(--info)' },
           { key: 'pay', label: tr('Payroll'), value: '₪' + Math.round(Number(figs.payroll) || 0).toLocaleString('en-US') },
           ...(simple ? [] : [{ key: 'wait', label: tr('To approve'), value: String(snap.waiting), color: snap.waiting ? 'var(--warn)' : 'var(--ink)' }]),
-        ]} />
+        ]} /></div>
       )}
       {!simple && (
         <div className="og-tabs" id="accTabs" data-testid="acc-tabs">
@@ -292,13 +292,13 @@ function SalaryTab({ snap, api, d, entries, byDay, onHelp, onExport }: {
         {!entries.length ? (
           <div data-testid="sal-empty" className="rounded-[14px] border border-dashed border-white/20 px-3 py-4 text-center text-[13px] text-ink-2">{tr('No punch data for this period')}</div>
         ) : <>
-          <Figures data-testid="sal-sum" items={[
+          <div data-testid="sal-sum"><Figures items={[
             { key: 'h', label: tr('Hours'), value: hrs1(tot.hours), color: 'var(--info)' },
             { key: 'p', label: tr('Pay'), value: money2(tot.pay) },
             { key: 't', label: tr('Travel ₪'), value: tot.travel > 0 ? money2(tot.travel) : '—' },
             { key: 'g', label: tr('Total Pay'), value: money2(tot.total) },
             ...(payOnly ? [{ key: 'c', label: tr('My commission'), value: '₪' + rows.reduce((t, e) => t + myCom(e), 0).toFixed(0) }] : []),
-          ]} />
+          ]} /></div>
           <HoursChart byDay={byDay} period={snap.period} entries={entries} />
           {!payOnly && <div className="mb-2 flex" data-testid="sal-select"><SelectHead sel={sel} /></div>}
           <DataTable data-testid="sal-table" columns={columns} data={rows} rowId={e => String(e.workerId)} footer={footer} card={plate}

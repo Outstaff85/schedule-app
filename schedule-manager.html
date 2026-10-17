@@ -301,71 +301,16 @@
   .t3-line .r{font-family:'DM Mono',monospace;font-size:12px;color:var(--text2);white-space:nowrap}
   .t3-av{width:30px;height:30px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;overflow:hidden}
   .t3-empty{color:var(--text3);font-size:13px;padding:6px 2px 4px}
-  /* The lists in the template: worker, client and supplier cards and the
-     Salary lines lose their box and get the colored line on the left. */
+  /* The lists in the template: worker and client cards lose their box and
+     get the colored line on the left. */
   .wcard,.client-card{border:0 !important;border-left:3px solid var(--c,var(--border2)) !important;border-radius:0 10px 10px 0 !important;background:linear-gradient(90deg,rgba(255,255,255,.04),rgba(255,255,255,.012) 70%) !important}
   .wcard:hover,.client-card:hover{background:linear-gradient(90deg,rgba(255,255,255,.07),rgba(255,255,255,.02) 70%) !important}
-  .sal-list{background:none !important;border:0 !important}
-  .sal-head{background:none !important;border-bottom:1px solid var(--border)}
-  .sal-row{border-top:0 !important;border-left:3px solid var(--c,var(--border2));border-radius:0 8px 8px 0;margin-top:4px;background:linear-gradient(90deg,rgba(255,255,255,.035),transparent 85%)}
-  .sal-sum>div{background:none !important;border:0 !important;padding:2px 2px}
-  /* Accounting (redesign stage 7): the period in glass, tabs, salary plates
-     with the amount in green. */
-  .acc-period-nav{display:flex;align-items:center;gap:8px;margin:2px 0 12px;max-width:520px}
-  .acc-period-nav .gbtn.icon{width:40px;height:40px;flex:none}
-  .acc-period.gsel{flex:1;min-width:0;height:40px;padding:0 14px;border-radius:16px;background:var(--glass);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--glass-edge);color:#fff;font:600 14px 'DM Sans','Heebo',Arial,sans-serif;text-align:center;text-align-last:center;cursor:pointer;-webkit-appearance:none;appearance:none}
-  .acc-period.gsel option{background:#1b1e29;color:#fff}
-  #sectionAccounting[data-acctab="salary"] [data-tab]:not([data-tab="salary"]),#sectionAccounting[data-acctab="billing"] [data-tab]:not([data-tab="billing"]),#sectionAccounting[data-acctab="approvals"] [data-tab]:not([data-tab="approvals"]),#sectionAccounting[data-acctab="alerts"] [data-tab]:not([data-tab="alerts"]),#sectionAccounting:not([data-acctab="alerts"]) #accSecAlerts{display:none !important}
-  .sal-row{background:var(--plate) !important;border-left:0 !important;border-radius:16px !important;box-shadow:inset 4px 0 0 var(--c,var(--neutral));margin-top:8px !important}
-  .sal-row .sal-line{padding:10px 12px 10px 16px}
-  .sal-av{width:32px !important;height:32px !important;font-size:11px !important;background:color-mix(in srgb,var(--c,var(--neutral)) 22%,transparent) !important;color:var(--c,var(--neutral)) !important;box-shadow:inset 0 0 0 1.5px var(--c,var(--neutral))}
-  .sal-line .c-t{font-family:'DM Mono',monospace;color:var(--fig)}
-  .sal-head{border-bottom:0 !important;font-size:11px}
-  .sal-sum b{font-size:20px}
-  .sal-sum{grid-template-columns:repeat(4,minmax(0,1fr)) !important;gap:6px !important}
-  @media (max-width:700px){ .sal-sum b{font-size:16px} .sal-sum span{font-size:10px} }
   @media (max-width:700px){
     .overlay{align-items:flex-end}
     .overlay>.modal{width:100% !important;max-width:100% !important;max-height:88vh;border-radius:18px 18px 0 0;border-bottom:0;padding:14px 16px 20px}
     .overlay>.modal::before{content:'';display:block;width:40px;height:4px;border-radius:2px;background:var(--border2);margin:0 auto 12px}
   }
   .modal-title{font-size:19px;font-weight:600;color:var(--text);margin-bottom:18px;letter-spacing:-0.3px;}
-  .sal-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px;margin-bottom:10px}
-  .sal-sum>div{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px}
-  .sal-sum b{display:block;font-size:15px;font-weight:700;color:var(--text)}
-  .sal-sum b.big{color:var(--green)}
-  .sal-sum span{font-size:11px;color:var(--text3)}
-  .sal-list{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
-  .sal-head,.sal-line{display:grid;grid-template-columns:minmax(0,1fr) 72px 96px 16px;gap:8px;align-items:center;padding:8px 12px}
-  .sal-head{background:var(--bg3);font-size:11px;font-weight:600;color:var(--text2)}
-  .sal-head .c-h,.sal-line .c-h{text-align:center}
-  .sal-head .c-t,.sal-line .c-t{text-align:right}
-  .sal-row{border-top:1px solid var(--border);cursor:pointer}
-  .sal-line .c-name{display:flex;align-items:center;gap:8px;min-width:0}
-  .sal-row.picked{background:var(--plate-on)}
-  .sal-av{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;overflow:hidden}
-  .sal-nm{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .sal-line .c-h{font-size:13px;font-weight:600}
-  .sal-line .c-t{font-size:13px;font-weight:700}
-  .sal-chev{color:var(--text3);font-size:14px;transition:transform .15s}
-  .sal-row.open .sal-chev{transform:rotate(180deg)}
-  .sal-det{display:none;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 18px;padding:0 12px 10px 44px;font-size:12px}
-  .sal-row.open .sal-det{display:grid}
-  .sal-det>div{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:1px dashed var(--border)}
-  .sal-det span{color:var(--text3);font-size:12px;white-space:nowrap}
-  .sal-det b{font-weight:600;color:var(--text);text-align:right}
-  .acc-click{cursor:pointer}
-  .acc-click:hover{background:rgba(255,255,255,0.03)}
-  .acc-det-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
-  .acc-det-row .n{flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .acc-det-row .h{color:var(--text2);min-width:56px;text-align:right}
-  .acc-det-row .m{min-width:70px;text-align:right;font-weight:700;color:var(--green)}
-  .salary-ro input,.salary-ro select{pointer-events:none;opacity:.85}
-  .acc-help{background:none;border:none;color:var(--text3);cursor:pointer;padding:2px;font-size:15px;line-height:1;display:inline-flex}
-  .acc-help:hover{color:var(--blue)}
-  .acc-help-body{font-size:13px;color:var(--text2);line-height:1.6}
-  .acc-help-body ul{margin:0;padding-left:18px}
-  .acc-help-body li{margin-bottom:6px}
   .field{margin-bottom:14px;}
   .field label{display:block;font-size:14px;color:var(--text2);margin-bottom:5px;font-weight:500;}
   .field input,.field select{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:15px;font-family:'DM Sans','Heebo',Arial,sans-serif;padding:8px 10px;outline:none;transition:border-color 0.15s;}
@@ -575,13 +520,6 @@
   .t3-stats>div{padding:3px 6px;margin:-3px -6px}
   .dash-filter-note{font-size:11px;color:var(--accent);margin:-8px 2px 8px}
   .dash-filter-note a{color:inherit;text-decoration:underline;cursor:pointer}
-  /* Accounting's section head in one line (variant A): title, period as
-     text with its arrow, icon buttons; the search field opens under it. */
-  .acc-head{display:flex;align-items:center;gap:2px;margin-bottom:8px}
-  .acc-head-title{flex:1;min-width:0;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:4px;white-space:nowrap;overflow:hidden}
-  .acc-period{background:none;border:0;color:var(--accent);font-weight:600;font-size:13px;padding:4px 2px;outline:none;cursor:pointer;max-width:45%}
-  .acc-period option{background:var(--bg2);color:var(--text)}
-  .acc-search{width:100%;margin:0 0 10px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none}
   .t3-line.sub{margin-left:24px;padding:5px 8px 5px 10px;font-size:12px}
   .t3-sec .btn{margin-left:8px}
   /* A worker-modal field the scan left empty: tap it to search the scan for it. */
@@ -931,7 +869,6 @@ body:has(.overlay.open){overflow:hidden}
   .t3-stats b{font-size:28px;font-weight:600;line-height:1.15;font-variant-numeric:tabular-nums}
   .t3-empty{border:1px dashed rgba(255,255,255,.2);border-radius:14px;padding:12px;text-align:center;color:var(--text2);font-size:13px}
   /* Accounting: Salary shows its own figures, so the ones above the tabs hide (no repeat). */
-  #sectionAccounting[data-acctab=salary] #accFigs{display:none}
   @media (min-width:701px){
     .top-tabs{flex-direction:column;align-items:stretch;gap:4px;width:210px;flex-shrink:0;padding:14px 10px;background:rgba(16,20,31,.35);border-right:1px solid rgba(255,255,255,.08);overflow-y:auto}
     .ttab{flex-direction:row;justify-content:flex-start;gap:12px;min-width:0;height:40px;padding:0 12px;border-radius:12px;flex:none}
@@ -1189,95 +1126,11 @@ body:has(.overlay.open){overflow:hidden}
       </div>
     </div>
 
-    <!-- Accounting Section -->
+    <!-- Accounting (stage 6e): drawn in React (src/manager/Accounting.tsx)
+         through window.ManagerIsland — renderAccounting(); the pay window
+         (PayWindow.tsx) is drawn into #payModal below. -->
     <div class="page-section" id="sectionAccounting">
-      <div class="page-header">
-        <div>
-          <div class="page-title"><i class="ti ti-cash"></i> <span data-i18n><span data-i18n>Accounting</span></span></div>
-          <div class="page-sub" data-i18n>Salary calculation and payments</div>
-        </div>
-        <div class="view-toggle tables-view-toggle" role="group" aria-label="Layout">
-            <button type="button" class="tvList" onclick="setTablesView('list')" title="List" data-i18n-title="List"><i class="ti ti-list"></i></button>
-            <button type="button" class="tvCards" onclick="setTablesView('cards')" title="Cards" data-i18n-title="Cards"><i class="ti ti-layout-grid"></i></button>
-          </div>
-      </div>
-
-      <!-- Redesign stage 7: the period in glass (‹ period ›), figures, and the
-           Salary / Billing / Approvals tabs (each accSec carries data-tab). -->
-      <div class="acc-period-nav" id="accPeriodNav"><button type="button" class="gbtn icon" onclick="stepSalaryPeriod(-1)" title="Earlier" data-i18n-title="Earlier"><i class="ti ti-chevron-left"></i></button><select id="salaryPeriod" class="acc-period gsel" onchange="onSalaryPeriodChange()">
-            <option value="week" data-i18n>This Week</option>
-            <option value="month" data-i18n>This Month</option>
-            <option value="all" data-i18n>All Time</option>
-          </select><button type="button" class="gbtn icon" onclick="stepSalaryPeriod(1)" title="Later" data-i18n-title="Later"><i class="ti ti-chevron-right"></i></button></div>
-      <div class="t3-stats" id="accFigs"></div>
-      <div class="og-tabs" id="accTabs"></div>
-      <!-- Hours approval (an HR login with an hours tick): the shared
-           hours-review.js — its workers' days approved, disputed or fixed -->
-      <div id="accSecReview" style="margin-bottom:24px;display:none;max-width:760px"></div>
-
-      <!-- Salary: one row per worker with shifts in the period; the pay window edits (Worker pay merged in, 2026-10-11) -->
-      <div data-tab="salary" id="accSecSalary" style="margin-bottom:24px">
-        <!-- One line (variant A, user request 2026-10-11): the title, then the
-             period as text with ▾, a search icon (opens the field under it)
-             and the export icon. -->
-        <div class="acc-head">
-          <div class="acc-head-title"><i class="ti ti-cash"></i> <span data-i18n>Salary Calculation</span> <button type="button" class="acc-help" onclick="openAccountingHelp('salary')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
-          <button type="button" class="t3-ib" id="salarySearchBtn" onclick="toggleSalarySearch()" title="Search a worker" data-i18n-title="Search a worker"><i class="ti ti-search"></i></button>
-          <button type="button" class="t3-ib perm-exports" onclick="openSalaryExportModal()" title="Export" data-i18n-title="Export"><i class="ti ti-download"></i></button>
-        </div>
-        <input type="search" id="salarySearch" class="acc-search" style="display:none" placeholder="Search a worker" data-i18n-placeholder="Search a worker" oninput="renderSalary()">
-        <div id="dashSalary"></div>
-      </div>
-
-      <!-- Per-client rate matrix -->
-      <div data-tab="billing" id="accSecRates">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-adjustments"></i> <span data-i18n><span data-i18n>Per-client rates</span></span> <button type="button" class="acc-help" onclick="openAccountingHelp('rates')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
-        <div id="rateMatrixWrap"></div>
-      </div>
-
-      <!-- Per-supplier rate matrix (informational — does not feed payroll math) -->
-      <div data-tab="billing" id="accSecSupplierRates" style="margin-top:24px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-truck-delivery"></i> <span data-i18n><span data-i18n>Per-supplier rates</span></span> <button type="button" class="acc-help" onclick="openAccountingHelp('supplierRates')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
-        <div id="supplierRateMatrixWrap"></div>
-      </div>
-
-      <!-- Payable by supplier summary -->
-      <div data-tab="billing" id="accSecPayable" style="margin-top:24px">
-        <div class="acc-head">
-          <div class="acc-head-title"><i class="ti ti-report-money"></i> <span data-i18n>Payable by supplier</span> <button type="button" class="acc-help" onclick="openAccountingHelp('payable')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
-          <button type="button" class="t3-ib" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:tr('Payable by supplier'),filename:'payable-by-supplier',format:'excel'})" title="Excel"><i class="ti ti-file-spreadsheet"></i></button>
-          <button type="button" class="t3-ib" onclick="exportPayableSummary(__lastSupplierPayableRows,{title:tr('Payable by supplier'),filename:'payable-by-supplier',format:'pdf'})" title="PDF"><i class="ti ti-file-type-pdf"></i></button>
-        </div>
-        <div id="supplierPayableWrap"></div>
-      </div>
-
-      <!-- Payable by HR: each HR's commission on its workers' hours (owner) -->
-      <div data-tab="billing" id="accSecHrPayable" style="margin-top:24px;display:none">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-user-dollar"></i> <span data-i18n><span data-i18n>Payable by HR</span></span> <button type="button" class="acc-help" onclick="openAccountingHelp('hrPayable')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
-        <div id="hrPayableWrap"></div>
-      </div>
-
-      <!-- Billable by client (client's own rateMode — tiered or fixed — independent of the worker's real wage above) -->
-      <div data-tab="billing" id="accSecBillable" style="margin-top:24px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-building-store"></i> <span data-i18n><span data-i18n>Billable by client</span></span> <button type="button" class="acc-help" onclick="openAccountingHelp('billable')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
-        <div id="clientBillableWrap"></div>
-      </div>
-
-      <!-- Hours approvals: what each client, supplier and HR login approved, disputed or proposed to fix (month periods only) -->
-      <div data-tab="approvals" id="accSecApprovals" style="margin-top:24px;display:none">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-circle-check"></i> <span data-i18n>Hours approvals</span> <button type="button" class="acc-help" onclick="openAccountingHelp('approvals')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
-        <div id="hourApprovalsWrap"></div>
-      </div>
-
-      <!-- Alerts (stage 13): the accounting-only warnings as plates in three
-           sections — punches and shifts, rates and pay, clients (accAlerts) -->
-      <div data-tab="alerts" id="accSecAlerts" style="margin-top:4px"><div id="accAlertsWrap"></div></div>
-
-      <!-- Hours-import approval queue (Admin/Roles plan, stage 14) -->
-      <div data-tab="approvals" id="accSecPending" style="margin-top:24px">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:4px"><i class="ti ti-file-check"></i> <span data-i18n><span data-i18n>Pending hours</span></span> <button type="button" class="acc-help" onclick="openAccountingHelp('pending')" data-i18n-title="What is this?" title="What is this?"><i class="ti ti-info-circle"></i></button></div>
-        <div id="pendingHoursWrap"></div>
-      </div>
+      <div id="accountingRoot" data-island></div>
     </div>
 
   </div>
@@ -1286,12 +1139,6 @@ body:has(.overlay.open){overflow:hidden}
 <!-- Modals -->
 <div class="overlay" id="payOverlay">
   <div class="modal" id="payModal" style="width:460px"></div>
-</div>
-<div class="overlay" id="accDetailOverlay">
-  <div class="modal" id="accDetailModal" style="width:460px"></div>
-</div>
-<div class="overlay" id="accHelpOverlay">
-  <div class="modal" id="accHelpModal" style="width:460px"></div>
 </div>
 <!-- A worker's notices (a tap on a notice chip). -->
 <div class="overlay" id="noticesOverlay">
@@ -1349,9 +1196,6 @@ body:has(.overlay.open){overflow:hidden}
 </div>
 <div class="overlay" id="clearLogOverlay">
   <div class="modal" id="clearLogModal" style="max-width:400px"></div>
-</div>
-<div class="overlay" id="salaryExportOverlay">
-  <div class="modal" id="salaryExportModal" style="max-width:360px"></div>
 </div>
 <div class="overlay" id="hoursExportOverlay">
   <div class="modal" id="hoursExportModal" style="max-width:360px"></div>
@@ -1492,7 +1336,7 @@ body:has(.overlay.open){overflow:hidden}
     <section class="og-sec" data-sec="hours" data-auto><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-clock"></i></span><span class="og-sec-t"><b data-i18n>Hours</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
     <!-- Hours review (HR, supplier, client — the same ticks for all three,
          users.hourPerms → claim hp, checked by the hours function): the
-         shared hours screen, hours-review.js. -->
+         shared hours screen, src/hours-review/. -->
     <div class="field" id="userFormHourPermsField" style="display:none">
       <div class="check-grid">
         <label class="check-chip"><input type="checkbox" value="hours" class="userFormHourPermCb"><span class="chip-text"><span><i class="ti ti-clock"></i> <span data-i18n>Hours</span></span><span class="chip-hint" data-i18n>In / out of its workers</span></span></label>
@@ -1901,9 +1745,9 @@ function cardTables(root){
 }
 (() => {
   let queued = false;
-  const run = () => { queued = false; ['sectionAccounting','sectionAdmin'].forEach(id => { const el = document.getElementById(id); if(el) cardTables(el); }); };
+  const run = () => { queued = false; ['sectionAdmin'].forEach(id => { const el = document.getElementById(id); if(el) cardTables(el); }); };
   const mo = new MutationObserver(() => { if(!queued){ queued = true; requestAnimationFrame(run); } });
-  ['sectionAccounting','sectionAdmin'].forEach(id => { const el = document.getElementById(id); if(el) mo.observe(el, {childList:true, subtree:true}); });
+  ['sectionAdmin'].forEach(id => { const el = document.getElementById(id); if(el) mo.observe(el, {childList:true, subtree:true}); });
 })();
 // Loads the firm language's dictionary: from this device's copy at once when
 // there is one (no wait at startup), refreshed from i18n/<lang>.json; a newer
@@ -2163,36 +2007,6 @@ function travelPay(w, days, months){ return Payroll.travelPay(w, days, months); 
 // 'm:<yyyy-mm>' or 'all'.
 function salaryPeriodKey(period, now){ return Payroll.salaryPeriodKey(period, now); }
 function dayOverride(w, key){ return Payroll.dayOverride(w, key); }
-// What a CLIENT is billed for one shift's hours — a figure entirely separate
-// from shiftPay() above (the worker's own legally-owed wage). client.rateMode
-// ('tiered', the default, or 'fixed') never changes what the worker earns;
-// it only changes how the client invoice line is computed:
-//   'tiered' — client.billRate (the client's own billing rate, set in the
-//              client modal's billing-rate popup; falls back to the legacy
-//              defaultHourlyRate for clients saved before billRate existed)
-//              through the Israeli OT/Shabbat law tiers (israeliDayPay) —
-//              unless a flat billOtRate / billShabbatRate is set, applied the
-//              same way shiftPay() applies a worker's own OT/Shabbat override.
-//   'fixed'  — a flat client.fixedBillRate ₪/h, no OT/Shabbat tiers at all.
-// A client with no billing rate set bills 0 — this never blocks payroll,
-// it's purely an informational figure.
-function clientBillRate(client){
-  const v = client && (client.billRate!=null && client.billRate!=='' ? client.billRate : client.defaultHourlyRate);
-  return Number(v)||0;
-}
-function clientBillPay(hours, client, isSat){
-  if(!client) return 0;
-  if(client.rateMode==='fixed') return hours*(Number(client.fixedBillRate)||0);
-  // By the day: one dailyBillRate for each worked shift, whatever its hours.
-  if(client.rateMode==='daily') return hours>0 ? (Number(client.dailyBillRate)||0) : 0;
-  const rate=clientBillRate(client), has=v=>v!=null&&v!=='';
-  if(isSat){
-    if(has(client.billShabbatRate)) return hours*Number(client.billShabbatRate);
-    return israeliDayPay(hours, rate, true).total;
-  }
-  if(has(client.billOtRate)){ const RM=PAY_RULES.regularMax; return Math.min(hours,RM)*rate + Math.max(hours-RM,0)*Number(client.billOtRate); }
-  return israeliDayPay(hours, rate, false).total;
-}
 function fmtDate(d){ return d.toLocaleDateString(uiLocale(),{day:'2-digit',month:'short'}); }
 function fmtRange(d){ const e=new Date(d); e.setDate(e.getDate()+6); return fmtDate(d)+' – '+fmtDate(e); }
 // Formats a stored 'YYYY-MM-DD' date string (e.g. w.startDate, straight from
@@ -2239,7 +2053,7 @@ function hrPayOnly(){
   return !!s && s.role === 'hr' && hasPermission('accounting');
 }
 // An HR with an hours tick (users.hourPerms → claim hp) reviews its workers'
-// hours in Accounting → Hours approval (hours-review.js), even without the
+// hours in Accounting → Hours approval (src/hours-review/), even without the
 // Accounting section.
 function hrHourReview(){
   const s = getSession();
@@ -2302,7 +2116,7 @@ function switchTab(tab){
   if(tab==='admin')      setupAdminPaneBar();
   if(tab==='dashboard')  renderDashboard();
   if(tab==='schedule')   renderSchedulePage();
-  if(tab==='accounting'){ __hourApprovalsCache=null; renderAccounting(); } // opening the tab reads the approvals afresh
+  if(tab==='accounting'){ __hourApprovalsCache=null; __accOpenSeq++; renderAccounting(); } // opening the tab reads the approvals afresh
   document.body.dataset.tab=tab; // V7: the Workers / Filter-by-client panel only on Workers and Schedule
   renderCrumb();
 }
@@ -3296,8 +3110,8 @@ function openWorkerDocUpload(workerId){
 // Upload PDF/photo/Excel with a worker's hours, tied to a client — parsed
 // entries land in a server-side PENDING queue (savePendingHoursBatch), never
 // straight into PunchLog/payroll. A human (tenant_admin/superadmin) must
-// explicitly approve the batch (see renderPendingHours() in the Accounting
-// tab below) before it counts toward any salary calculation — this is the
+// explicitly approve the batch (Accounting → Approvals → Pending hours,
+// src/manager/Accounting.tsx) before it counts toward any salary calculation — this is the
 // anti-fraud boundary the user explicitly asked for, which is also exactly
 // why the supplier role never gets this button at all (see supplier-portal
 // plan, stage 16) and the server itself rejects a supplier-role caller.
@@ -5393,7 +5207,7 @@ async function gsLoadPunchLog(){
       if(currentTab === 'dashboard') renderDashboard();
       // Hours approvals compare each day with the punches: redraw them too,
       // or a day could keep showing a stale "Changed after approval".
-      if(currentTab === 'accounting') renderHourApprovals((document.getElementById('salaryPeriod')||{}).value||'month');
+      if(currentTab === 'accounting') renderAccounting();
     }, since);
   }catch(e){ console.warn('Firestore punch load failed: ' + ((e && e.message) || e)); return null; }
 }
@@ -5606,7 +5420,7 @@ function watchHoursBatches(){
     __hoursBatches = list;
     updateHoursBadge(); refreshBell();
     refreshCardHoursStatus();
-    if(currentTab === 'accounting') renderPendingHours();
+    if(currentTab === 'accounting') renderAccounting();
   })).catch(e => { __hoursWatched = false; console.warn('Hours watch failed: ' + ((e && e.message) || e)); });
 }
 function updateHoursBadge(){
@@ -5713,9 +5527,6 @@ function importDataBackup(){
 }
 
 // --- Dashboard -------------------------------------------------------------------
-let __lastSalaryEntries=[];
-let __lastClientBillEntries=[];
-let __lastSupplierPayableRows=[];
 // Template 3 pieces (shared by every list drawn in it): an avatar and a line.
 // name / sub / right are HTML, already escaped by the caller; sub may be a
 // list (one small line each).
@@ -5857,7 +5668,7 @@ window.addEventListener('pagehide', () => finishUndo(true));
 // calls selectRoot(key, root) after drawing its rows: that starts its Select
 // (SELECT_STARTERS[key], which checks the rights) or keeps the ticks across a redraw.
 let __selState = null;
-const SELECT_STARTERS = {salary: () => startSalarySelect(), punches: () => startPunchesSelect(), firms: () => startFirmsSelect(), users: () => startUsersSelect(), pendingHours: () => startPendingSelect()};
+const SELECT_STARTERS = {punches: () => startPunchesSelect(), firms: () => startFirmsSelect(), users: () => startUsersSelect()};
 function startSelect(o){
   const keep = __selState && __selState.key === o.key ? __selState.picked : null;
   if(!keep) endSelect();
@@ -5965,7 +5776,7 @@ function renderSchedulePage(){
   loadShiftRequests();
   if(window.ManagerIsland) window.ManagerIsland.renderSchedule();
 }
-window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); if(currentTab==='clients') renderClientsPage(); if(currentTab==='suppliers') renderSuppliersPage(); renderCrumb(); });
+window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); if(currentTab==='clients') renderClientsPage(); if(currentTab==='suppliers') renderSuppliersPage(); if(currentTab==='accounting') renderAccounting(); renderCrumb(); });
 let __dataReady=false;
 window.ManagerBridge={
   lang:()=>I18N_LANG,
@@ -6097,7 +5908,7 @@ window.ManagerBridge={
     const sp=id?suppliers.find(x=>x.id===id):null, hours=workersMonthHours();
     return {...loginsInfo('supplier', sp?sp.id:null),
       workers:sp?workers.filter(w=>w.supplierId===sp.id).map(w=>({id:w.id, name:w.name||'', active:isActiveWorker(w), hours:hours[w.id]||0})):[],
-      payable:sp?supplierMonthPayable(sp):0, canRate:isFirmAdminSession(), canDelete:hasPermission('suppliers'), defaultRate:SUPPLIER_DEFAULT_RATE};
+      payable:sp?supplierMonthPayable(sp):0, canRate:isFirmAdminSession(), canDelete:hasPermission('suppliers'), defaultRate:ManagerAcc.SUPPLIER_DEFAULT_RATE};
   },
   commitClient:(id,fields)=>commitClient(id,fields),
   commitSupplier:(id,fields)=>commitSupplier(id,fields),
@@ -6112,6 +5923,40 @@ window.ManagerBridge={
     return {client:{id:c.id, name:c.name||''}, workers:(mine.length?mine:workers.filter(isActiveWorker)).map(w=>({id:w.id, name:w.name||''}))};
   },
   addPunch:entry=>addManualPunch(entry),
+  // ── Accounting (stage 6e): the tab and the pay window are React; the
+  // period, the data, the server calls and the saves stay here.
+  accounting(){
+    const s=getSession()||{}, payOnly=hrPayOnly(), review=hrHourReview(), firmAdmin=isFirmAdminSession();
+    const batches=(__hoursBatches||[]);
+    return {
+      ready:__dataReady, period:accPeriod, locale:uiLocale(), payOnly, review, reviewOnly:isHrSession()&&!hasPermission('accounting'),
+      me:{uid:s.uid||'', commissionRate:Number(s.commissionRate)||0, commissionDayRate:Number(s.commissionDayRate)||0},
+      canExport:hasPermission('exports'), canApprove:firmAdmin,
+      canPay:Object.fromEntries(workers.map(w=>[w.id, !!canEditPay(w)])),
+      hrUsers:firmAdmin?hrUsers():[],
+      waiting:batches.filter(b=>b.status==='pending').length, batchesKey:batches.map(b=>(b.id||b.batchId)+':'+b.status).join(),
+      openSeq:__accOpenSeq, firmName:(activeTenantProfile()||{}).companyName||'',
+    };
+  },
+  accData:()=>accData(),
+  setPeriod:async p=>{ await ensurePunchesSince(periodPunchStart(p)); accPeriod=p; renderAccounting(); renderCrumb(); },
+  ensurePeriod:p=>ensurePunchesSince(periodPunchStart(p)),
+  openClientWindow:id=>openEditClient(id),
+  hourApprovals:async(month,fresh)=>{ const docs=await hourApprovalsOf(month,fresh); if(__punchSynced) await __punchSynced.catch(()=>{}); return docs; },
+  resolveFix:async(docId,key,accept)=>{ const r=await hoursCall({action:'resolve', docId, key, accept, tenantId:fsTenantId()}); __hourApprovalsCache=null; return r.error||''; },
+  openSigned:path=>openSignedHours(path),
+  approveBatch:id=>approveHoursBatch(id),
+  rejectBatches:ids=>ids.length===1?rejectHoursBatch(ids[0]):bulkHoursBatches(ids,false),
+  hoursCall:body=>hoursCall(body),
+  xlsx:async()=>{ try{ await loadXlsx(); return window.XLSX||null; }catch(e){ return null; } },
+  payInfo(id){ const w=workers.find(x=>x.id===id); if(!payWindowAllowed(w)) return null; return {w:JSON.parse(JSON.stringify(w)), ro:!canEditPay(w), period:accPeriod}; },
+  savePay(id,patch){
+    const w=workers.find(x=>x.id===id); if(!w || !canEditPay(w)) return;
+    Object.entries(patch).forEach(([k,v])=>{ if(v===undefined) delete w[k]; else w[k]=v; });
+    autoSave(); closeModal('payOverlay');
+    showToast(tr('Pay saved — {name}',{name:w.name||''}));
+    render();
+  },
   exportAs:k=>{ ({excel:exportExcel, pdf:exportPDF, json:exportJSON})[k](); },
   toast:(t,ms)=>showToast(t,ms),
 
@@ -6239,543 +6084,30 @@ function docExpiryMap(w){ const m={}; workerDocExpiries(w).forEach(x=>{ m[String
 // Per-client and per-supplier rate tables in Accounting: turned off for now
 // (user request 2026-10-11). Rates already set in them still count in pay
 // and commission (effectiveRates, w.supplierRates); true shows them again.
-const ACC_RATE_TABLES=false;
-function renderAccounting(){
-  // An HR: Hours approval with an hours tick, Salary (its own workers' pay)
-  // with the Accounting section, nothing else.
-  const review=hrHourReview();
-  document.getElementById('accSecReview').style.display=review?'':'none';
-  if(review) openHrHoursReview();
-  const simple=isHrSession()||hrPayOnly();
-  ['accPeriodNav','accTabs','accFigs'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display=(isHrSession()&&!hasPermission('accounting'))?'none':(id==='accTabs'&&simple?'none':''); });
-  document.getElementById('sectionAccounting').dataset.acctab=simple?'':__accTab;
-  renderAccTabs();
-  if(isHrSession() && !hasPermission('accounting')){
-    document.querySelectorAll('#sectionAccounting > [id^="accSec"]:not(#accSecReview)').forEach(el=>{ el.style.display='none'; });
-    const ex=document.querySelector('#sectionAccounting .perm-exports'); if(ex) ex.style.display='none';
-    const sub=document.querySelector('#sectionAccounting .page-sub'); if(sub) sub.textContent=tr('Your workers\' hours');
-    return;
-  }
-  const payOnly=hrPayOnly();
-  document.getElementById('accSecSalary').style.display='';
-  ['accSecRates','accSecSupplierRates','accSecPayable','accSecBillable','accSecPending'].forEach(id=>{
-    const el=document.getElementById(id); if(el) el.style.display=(payOnly||(!ACC_RATE_TABLES&&(id==='accSecRates'||id==='accSecSupplierRates')))?'none':'';
-  });
-  if(payOnly){ const ex=document.querySelector('#sectionAccounting .perm-exports'); if(ex) ex.style.display='none'; }
-  const sub=document.querySelector('#sectionAccounting .page-sub');
-  if(sub) sub.textContent=payOnly?tr('Your workers\' hours, pay and your commission'):tr('Salary calculation and payments');
-  renderSalary();
-  if(payOnly) return;
-  if(ACC_RATE_TABLES){ renderRateMatrix(); renderSupplierRateMatrix(); }
-  renderPendingHours();
-}
+// ── Accounting (stage 6e): the tab is React (src/manager/Accounting.tsx, the
+// root #accountingRoot) and its figures are src/manager/accounting.ts, which
+// assets/manager.js hands the page as window.ManagerAcc. The period
+// (accPeriod), the data, the server calls (hours approvals, pending batches)
+// and the pay window's save stay here; these wrappers keep the old names for
+// the page's other callers (the client and supplier windows, the user form,
+// the bell).
+let accPeriod='week', __accOpenSeq=0;
+function accData(){ return {log:getPunchLog(), workers, clients, suppliers, tr}; }
+function salaryEntriesFor(period){ return window.ManagerAcc ? ManagerAcc.salaryEntriesFor(accData(), period) : {byWorker:{}, byClient:{}, byDay:{}}; }
+function commissionFor(w, e, hourRate, dayRate){ return ManagerAcc.commissionFor(w, e, hourRate, dayRate); }
+function supplierCommission(w, e, sid){ return ManagerAcc.supplierCommission(w, e, sid); }
+function hourApprovalSummary(doc, month){ return ManagerAcc.hourApprovalSummary(accData(), doc, month); }
+function renderAccounting(){ if(window.ManagerIsland) window.ManagerIsland.renderAccounting(); }
+function setAccTab(k){ if(window.ManagerIsland) window.ManagerIsland.setAccTab(k); renderCrumb(); }
 
-// The shared hours screen (hours-review.js, also in the client and supplier
-// portals) over the hours function, loaded on the first open.
+// The hours function (the HR's Hours approval, the owner's approvals list and fixes).
 const HOURS_REVIEW_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/hours';
-let __hrvLoading = null;
-function loadHoursReview(){
-  if(window.hoursReviewMount) return Promise.resolve();
-  return __hrvLoading = __hrvLoading || new Promise((resolve, reject) => {
-    const el = document.createElement('script');
-    el.src = 'hours-review.js';
-    el.onload = resolve;
-    el.onerror = () => { __hrvLoading = null; reject(new Error('hours-review.js failed to load')); };
-    document.head.appendChild(el);
-  });
-}
 async function hoursCall(body){
   const idToken = await (await loadFirestoreBackend()).idToken();
   const res = await fetch(HOURS_REVIEW_FN_URL, {method:'POST',
     headers:{'Content-Type':'application/json', Authorization:'Bearer ' + idToken}, body: JSON.stringify(body)});
   return res.json();
 }
-async function openHrHoursReview(){
-  const el = document.getElementById('accSecReview');
-  if(el.__mounted) return;
-  try{ await loadHoursReview(); }catch(e){ showToast(tr('Could not load — check the connection and try again.')); return; }
-  el.__mounted = true;
-  hoursReviewMount(el, {call: hoursCall});
-}
-
-// The salary period list: This Week / This Month / each of the 12 previous
-// months / All Time (the same choices as the export). A past month or All
-// Time loads those punches first (ensurePunchesSince, Firestore mode).
-function fillSalaryPeriodSelect(){
-  const sel=document.getElementById('salaryPeriod'); if(!sel || sel.dataset.filled===I18N_LANG) return;
-  const cur=sel.value||'week';
-  sel.innerHTML=salaryExportPeriodOptions().map(([v,l])=>`<option value="${esc(v)}" ${v===cur?'selected':''}>${esc(l)}</option>`).join('');
-  sel.dataset.filled=I18N_LANG;
-}
-// The period arrows: ‹ an earlier period, › a later one (the select's order:
-// This Week, This Month, the previous months, All Time).
-function stepSalaryPeriod(dir){
-  const sel=document.getElementById('salaryPeriod'); if(!sel) return;
-  const i=Math.max(0, Math.min(sel.options.length-1, sel.selectedIndex+(dir<0?1:-1)));
-  if(i===sel.selectedIndex) return;
-  sel.selectedIndex=i; onSalaryPeriodChange();
-}
-// Salary / Billing / Approvals / Alerts: CSS shows only the accSec blocks of
-// the open tab (#sectionAccounting[data-acctab]); an HR sees no tabs.
-let __accTab='salary', __accAlerts=[];
-// Accounting → Alerts (stage 13, Screens.md): every accounting-only warning
-// of the period's Salary rows, as plates in three sections — Punches and
-// shifts (the analyzeDayPunches warnings, but not a shift still running
-// today), Rates and pay (no rate → pay 0, a daily-paid worker without a daily
-// rate, no bank details) and Clients (worked at in the period with no billing
-// rate → billed 0). A tap opens the place to fix it. Worker notices stay in
-// the bell, hours approvals in Approvals.
-function accAlerts(entries, byClient){
-  const out=[], money=n=>'₪'+Math.round(Number(n)||0);
-  entries.forEach(e=>{
-    const wc=workers.find(w=>w.id===e.workerId); if(!wc) return;
-    (e.warns||[]).forEach(wn=>{
-      if(/still at work/.test(wn)) return;
-      const m=String(wn).match(/^([^:]+):\s*(.*)$/), date=m?m[1]:'', text=m?m[2]:wn;
-      out.push({sec:'punch', lvl:/open shift|>12h/.test(text)?'amber':'red', icon:'ti-clock-exclamation', title:text, sub:[e.worker, date].filter(Boolean).join(' · '), fn:()=>openWorkerCardById(wc.id)});
-    });
-    const mainCid=Object.entries(e.clientHours||{}).sort((a,b)=>b[1]-a[1]).map(x=>x[0])[0]||(wc.clientIds||[])[0]||'';
-    const own=wOwnRate(wc);
-    if(isDailyPay(wc)){ if(own==='') out.push({sec:'pay', lvl:'red', icon:'ti-calendar-dollar', title:tr('No daily rate — pay 0'), sub:e.worker+' · '+tr('{n} days',{n:e.daysUsed}), fn:()=>openPayModal(wc.id)}); }
-    else if(own==='' && !(effectiveRates(wc,mainCid).regRate>0)) out.push({sec:'pay', lvl:'red', icon:'ti-cash-off', title:tr('No rate — pay 0'), sub:e.worker+' · '+tr('{h}h',{h:e.hours.toFixed(1)}), fn:()=>openPayModal(wc.id)});
-    if(!(wc.bank||wc.bankBranch||wc.bankAccountNumber)) out.push({sec:'pay', lvl:'amber', icon:'ti-building-bank', title:tr('No bank details'), sub:e.worker+(e.total>0?' · '+money(e.total):''), fn:()=>openPayModal(wc.id)});
-  });
-  Object.entries(byClient||{}).forEach(([cid,v])=>{
-    const c=clients.find(x=>x.id===cid); if(!c || !(v.hours>0)) return;
-    const has=c.rateMode==='fixed'?Number(c.fixedBillRate)>0:c.rateMode==='daily'?Number(c.dailyBillRate)>0:clientBillRate(c)>0;
-    if(!has) out.push({sec:'client', lvl:'red', icon:'ti-receipt-off', title:tr('No billing rate — billed 0'), sub:c.name+' · '+tr('{h}h',{h:v.hours.toFixed(1)}), fn:()=>openEditClient(cid)});
-  });
-  return out;
-}
-function renderAccAlerts(list){
-  const wrap=document.getElementById('accAlertsWrap'); if(!wrap) return;
-  if(!list.length){ wrap.innerHTML=`<div class="t3-empty">${esc(tr('Nothing to fix in this period'))}</div>`; return; }
-  const SECS=[['punch',tr('Punches and shifts')],['pay',tr('Rates and pay')],['client',tr('Clients')]];
-  const items=[];
-  SECS.forEach(([k,l])=>{ const xs=list.filter(x=>x.sec===k); if(!xs.length) return; items.push({head:l, n:xs.length}); xs.forEach(x=>items.push(x)); });
-  renderPagedList(wrap,'accAlerts',list.length+'|'+(document.getElementById('salaryPeriod')||{}).value,items,x=>x.head
-    ? `<div class="t3-sec">${esc(x.head)}<em>${x.n}</em></div>`
-    : t3Line({c:x.lvl==='red'?'var(--bad)':'var(--warn)', av:`<div class="t3-av"><i class="ti ${esc(x.icon)}"></i></div>`, name:esc(x.title), sub:esc(x.sub), cls:'tap-edit', onclick:`runRowFn('${rowFnKey(x.fn)}')`}));
-}
-function renderAccTabs(){
-  const el=document.getElementById('accTabs'); if(!el) return;
-  const n=(__hoursBatches||[]).filter(b=>b.status==='pending').length;
-  const a=__accAlerts.length;
-  el.innerHTML=[['salary','Salary'],['billing','Billing'],['approvals','Approvals'],['alerts','Alerts']].map(([k,l])=>`<button type="button" data-k="${k}" class="${__accTab===k?'on':''}" onclick="setAccTab('${k}')">${esc(tr(l))}${k==='approvals'&&n?` <span class="tab-n">${n}</span>`:''}${k==='alerts'&&a?` <span class="tab-n">${a}</span>`:''}</button>`).join('');
-}
-function setAccTab(k){ __accTab=k; endSelect(); renderAccounting(); }
-// The figures on top: the period's hours and payroll over every worker (the
-// Salary rows, salaryEntriesFor), and how many hours batches wait.
-function renderAccFigs(entries){
-  const el=document.getElementById('accFigs'); if(!el) return;
-  const money=n=>'₪'+Math.round(Number(n)||0).toLocaleString('en-US');
-  const h=entries.reduce((t,e)=>t+e.hours,0), pay=entries.reduce((t,e)=>t+e.total+e.travel,0), wait=(__hoursBatches||[]).filter(b=>b.status==='pending').length;
-  el.innerHTML=`<div><b style="color:var(--info)">${esc(String(Math.round(h)))}</b><span>${esc(tr('Hours'))}</span></div><div><b class="fig">${esc(money(pay))}</b><span>${esc(tr('Payroll'))}</span></div>${hrPayOnly()?'':`<div class="go" onclick="setAccTab('approvals')"><b style="color:${wait?'var(--warn)':'var(--text)'}">${wait}</b><span>${esc(tr('To approve'))}</span></div>`}`;
-}
-async function onSalaryPeriodChange(){
-  const period=document.getElementById('salaryPeriod')?.value||'week';
-  await ensurePunchesSince(periodPunchStart(period));
-  renderAccounting();
-}
-// The Salary table's figures for one period, per worker (one place for the
-// table, its HR view and the accountant export): hours split into regular /
-// OT / Shabbat, days, pay (shiftPayFor; a daily-paid worker's days set by
-// hand win), travel, warnings; plus the billable-by-client figures.
-function salaryEntriesFor(period){
-  const log      = getPunchLog();
-  const now      = new Date();
-  let filtered   = log;
-
-  if(period==='week'){
-    const ws=new Date(now); ws.setDate(ws.getDate()-ws.getDay()); ws.setHours(0,0,0,0);
-    filtered=log.filter(e=>new Date(e.ts)>=ws);
-  } else if(period==='month'){
-    const ms=new Date(now.getFullYear(),now.getMonth(),1);
-    filtered=log.filter(e=>new Date(e.ts)>=ms);
-  } else if(/^m:\d{4}-\d{2}$/.test(period)){
-    const [y,m]=period.slice(2).split('-').map(Number);
-    const from=new Date(y,m-1,1), to=new Date(y,m,1);
-    filtered=log.filter(e=>{ const d=new Date(e.ts); return d>=from && d<to; });
-  }
-
-  // Pair IN/OUT per worker into shifts (workerId-keyed so two workers who share a
-  // display name never get merged; shift-based so overnight shifts stay intact)
-  const byWorkerPunches={};
-  filtered.forEach(e=>{ (byWorkerPunches[e.workerId]=byWorkerPunches[e.workerId]||[]).push(e); });
-  const byWorkerDay={};
-  Object.entries(byWorkerPunches).forEach(([wid,list])=>{
-    groupPunchesIntoShifts(list).forEach((bucket,i)=>{
-      byWorkerDay[wid+'|'+i]={worker:list[0].workerName,workerId:wid,date:bucket.date,entries:bucket.entries};
-    });
-  });
-
-  // Sum hours + Israeli pay per worker, flagging anomalies
-  const byWorker={};
-  const byClient={};
-  Object.values(byWorkerDay).forEach(({worker,workerId,date,entries})=>{
-    if(!byWorker[workerId]) byWorker[workerId]={worker,workerId,hours:0,days:0,regH:0,otH:0,shabH:0,total:0,travel:0,warns:[],clientHours:{},seen:new Set(),dayKeys:new Set()};
-    const _res=analyzeDayPunches(entries,date);
-    const _dstr=date.toLocaleDateString('en-GB');
-    _res.warnings.forEach(wn=> byWorker[workerId].warns.push(_dstr+': '+wn));
-    const h=_res.hours;
-    if(h>0){
-      const isSat=date.getDay()===6, RM=PAY_RULES.regularMax;
-      const wc=workers.find(w=>w.id===workerId);
-      if(isSat){ byWorker[workerId].shabH+=h; }
-      else { byWorker[workerId].regH+=Math.min(h,RM); byWorker[workerId].otH+=Math.max(h-RM,0); }
-      byWorker[workerId].hours+=h;
-      byWorker[workerId].days++;
-      // The shift's own clientId (from its opening IN punch) picks up any
-      // per-client rate override — a worker who worked at two clients with
-      // different rates in the same period still gets each shift priced
-      // correctly, even though this table shows one summed row per worker.
-      const cid=entries[0]&&entries[0].clientId;
-      byWorker[workerId].total+=shiftPayFor(h,wc,isSat,cid,date,byWorker[workerId].seen);
-      // The supplier's own commission, shift by shift (its rate on that date).
-      if(wc && wc.supplierId){ const sp=suppliers.find(s=>s.id===wc.supplierId), bw=byWorker[workerId];
-        bw.supCom=(bw.supCom||0)+supplierShiftCommission(sp&&sp.commission, h, date, bw.supDays||(bw.supDays=new Set())); }
-      byWorker[workerId].dayKeys.add(localYMD(date));
-      if(cid) byWorker[workerId].clientHours[cid]=(byWorker[workerId].clientHours[cid]||0)+h;
-      // Billable-by-client — a parallel, independent figure (see
-      // clientBillPay()'s own comment); never derived from/feeding the
-      // worker's own wage line above.
-      if(cid){
-        if(!byClient[cid]) byClient[cid]={hours:0,total:0};
-        const cl=clients.find(c=>c.id===cid);
-        byClient[cid].hours+=h;
-        byClient[cid].total+=clientBillPay(h,cl,isSat);
-      }
-    }
-  });
-  // Days worked (from the punches) and, for a daily-paid worker, days set by
-  // hand for this period replace the counted ones.
-  const periodKey=salaryPeriodKey(period);
-  Object.values(byWorker).forEach(e=>{
-    e.countedDays=e.dayKeys.size;
-    const wc=workers.find(w=>w.id===e.workerId), ov=isDailyPay(wc)?dayOverride(wc,periodKey):null;
-    if(ov!=null) e.total=ov*dailyRate(wc);
-    e.daysUsed=ov!=null?ov:e.countedDays;
-    e.travel=travelPay(wc,e.daysUsed,new Set([...e.dayKeys].map(k=>k.slice(0,7))).size);
-  });
-
-  return {byWorker, byClient};
-}
-// Select on the Salary rows (always on, not for an HR with pay only): export
-// the ticked workers' shifts (the same file as Export, only those workers).
-let __salShownIds=[];
-function startSalarySelect(){
-  const root=document.querySelector('#dashSalary .salary-rows'); if(!root||hrPayOnly()||isHrSession()) return;
-  startSelect({key:'salary', root, ids:()=>__salShownIds,
-    actions:[{icon:'ti-file-spreadsheet', label:tr('Excel'), fn:ids=>exportSalary('excel', null, ids)}, {icon:'ti-file-type-pdf', label:tr('PDF'), fn:ids=>exportSalary('pdf', null, ids)}]});
-}
-// The Salary rows opened by a tap stay open through a redraw (a live punch,
-// a period change).
-const __salOpen=new Set();
-// The search icon opens the field (focused); emptied and closed again, the
-// list shows everyone.
-function toggleSalarySearch(){
-  const el=document.getElementById('salarySearch'); if(!el) return;
-  const open=el.style.display==='none';
-  el.style.display=open?'':'none';
-  if(open) el.focus(); else if(el.value){ el.value=''; renderSalary(); }
-}
-function toggleSalRow(el){ const id=el.dataset.wid; if(el.classList.toggle('open')) __salOpen.add(id); else __salOpen.delete(id); }
-function renderSalary(){
-  fillSalaryPeriodSelect();
-  const period   = document.getElementById('salaryPeriod')?.value||'week';
-  const {byWorker, byClient} = salaryEntriesFor(period);
-  const periodKey = salaryPeriodKey(period);
-  __lastClientBillEntries=Object.entries(byClient).map(([clientId,v])=>({clientId,...v}));
-  const salaryEl=document.getElementById('dashSalary');
-  // An HR that only sees pay: its own workers only, read-only, plus its
-  // commission (session.commissionRate × hours).
-  const payOnly=hrPayOnly(), me=getSession()||{};
-  const hrRate=Number(me.commissionRate)||0, hrDayRate=Number(me.commissionDayRate)||0;
-  const hrCom=e=>commissionFor(workers.find(w=>w.id===e.workerId),e,hrRate,hrDayRate);
-  const entries=Object.values(byWorker).filter(e=>!payOnly||((workers.find(w=>w.id===e.workerId)||{}).hrId===me.uid));
-  __lastSalaryEntries=entries;
-  renderAccFigs(entries);
-  __accAlerts=payOnly?[]:accAlerts(entries, byClient); renderAccAlerts(__accAlerts); renderAccTabs();
-  salaryEl.classList.toggle('salary-ro',payOnly);
-  if(!entries.length){
-    salaryEl.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('No punch data for this period')}</div>`;
-    if(payOnly) return;
-    renderSupplierPayable(entries);
-    renderHrPayable(entries);
-    renderClientBillable(__lastClientBillEntries);
-    renderHourApprovals(period);
-    return;
-  }
-
-  // Only the workers with shifts in the period (salaryEntriesFor); the search
-  // narrows the rows and the totals with them. Payable by supplier and the
-  // rest always get every row.
-  const q=(document.getElementById('salarySearch')?.value||'').trim().toLowerCase();
-  const shown=q?entries.filter(e=>String(e.worker||'').toLowerCase().includes(q)):entries;
-  const totalHours=shown.reduce((s,e)=>s+e.hours,0);
-  const payTotal=shown.reduce((s,e)=>s+e.total,0), travelTotal=shown.reduce((s,e)=>s+e.travel,0);
-  const money=n=>'₪'+(Math.round((Number(n)||0)*100)/100).toLocaleString('en-US');
-  // One compact line per worker (per user request 2026-10-11, so a long list
-  // stays short): name, hours, total; a tap opens its details below it — the
-  // hours split, days, rate, pay, travel, bank (and an HR's commission). The
-  // totals sit above the list and cover every row shown.
-  const sumCell=(v,l,big)=>`<div><b${big?' class="big"':''}>${v}</b><span>${esc(l)}</span></div>`;
-  salaryEl.innerHTML=`
-    <div class="sal-sum">${sumCell(esc(tr('{h}h',{h:totalHours.toFixed(1)})),tr('Hours'))}${sumCell(money(payTotal),tr('Pay'))}${sumCell(travelTotal>0?money(travelTotal):'—',tr('Travel ₪'))}${sumCell(money(payTotal+travelTotal),tr('Total Pay'),true)}${payOnly?sumCell('₪'+shown.reduce((t,e)=>t+hrCom(e),0).toFixed(0),tr('My commission'),true):''}</div>
-    <div class="sal-list">
-      <div class="sal-head"><span class="c-name">${esc(tr('Worker'))}</span><span class="c-h">${esc(tr('Hours'))}</span><span class="c-t">${esc(tr('Total Pay'))}</span><span></span></div>
-      <div class="salary-rows"></div>
-    </div>`;
-  // No fields in the list: a tap opens a row's details, a double click / long
-  // press the pay modal — where rate, pay mode, travel, bank and (by the day)
-  // the days of this period are set; the name opens the worker card.
-  renderPagedList(salaryEl.querySelector('.salary-rows'),'salary',period+'|'+q,shown,(e,i)=>{
-    const wc=workers.find(w=>w.id===e.workerId);
-    const c=wc?WORKER_COLORS[wc.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
-    // The rate shown: the worker's own, else the client's where the worker
-    // had most hours in the period (grey, "client").
-    const mainCid=Object.entries(e.clientHours||{}).sort((a,b)=>b[1]-a[1]).map(x=>x[0])[0]||(wc&&wc.clientIds||[])[0]||'';
-    const er=wc?effectiveRates(wc,mainCid):{regRate:0,src:''};
-    const daily=isDailyPay(wc), own=wOwnRate(wc);
-    const rate=daily
-      ? (own!==''?money(own)+tr('/day'):`<span style="color:var(--amber)">${esc(tr('set a daily rate'))}</span>`)
-      : (own!==''?money(own)+tr('/h'):(er.regRate>0?`<span style="color:var(--text3)">${esc(tr('client'))} ${money(er.regRate)}${tr('/h')}</span>`:`<span style="color:var(--amber)">${esc(tr('no rate'))}</span>`));
-    const parts=[tr('Regular {h}h',{h:e.regH.toFixed(1)})];
-    if(e.otH>0) parts.push(tr('Overtime {h}h',{h:e.otH.toFixed(1)}));
-    if(e.shabH>0) parts.push(tr('Shabbat {h}h',{h:e.shabH.toFixed(1)}));
-    const byHand=daily&&dayOverride(wc,periodKey)!=null;
-    const bank=wc&&(wc.bank||wc.bankBranch||wc.bankAccountNumber)
-      ? esc([wc.bank||'',wc.bankBranch?tr('branch {b}',{b:wc.bankBranch}):'',wc.bankAccountNumber?tr('acc. {a}',{a:wc.bankAccountNumber}):''].filter(Boolean).join(' · '))
-      : `<span style="color:var(--amber)">${esc(tr('no bank details'))}</span>`;
-    const ini=wc?workerAvatarInner(wc):esc(e.worker.slice(0,2).toUpperCase());
-    const wid=esc(e.workerId), tot=e.total+e.travel;
-    const det=(l,v)=>`<div><span>${esc(l)}</span><b>${v}</b></div>`;
-    const lc=e.warns&&e.warns.length?'var(--amber)':tot>0?'var(--green)':'var(--border2)';
-    const picked=!payOnly&&__selState&&__selState.key==='salary'&&__selState.picked.has(String(e.workerId));
-    return `<div class="sal-row tap-edit${__salOpen.has(e.workerId)?' open':''}${picked?' picked':''}" style="--c:${lc}" data-wid="${wid}"${payOnly?'':` data-sel-id="${wid}"`} onclick="tapEdit(event,this,()=>toggleSalRow(this),()=>openPayModal('${wid}'))" onpointerdown="longPress(event,this,()=>openPayModal('${wid}'))">
-      <div class="sal-line">
-        <span class="c-name">${payOnly?'':'<span class="t3-cb"><span class="og-box"></span></span>'}<span class="sal-nm" onclick="event.stopPropagation();openWorkerCardById('${wid}')">${esc(e.worker)}</span>${e.warns&&e.warns.length?`<i class="ti ti-alert-triangle" style="color:var(--amber);font-size:14px" title="${e.warns.join('&#10;').replace(/"/g,'&quot;')}"></i>`:''}</span>
-        <span class="c-h">${esc(tr('{h}h',{h:e.hours.toFixed(1)}))}</span>
-        <span class="c-t" style="color:${tot>0?'var(--green)':'var(--text3)'}">${tot>0?money(tot):'—'}</span>
-        <i class="ti ti-chevron-down sal-chev"></i>
-      </div>
-      <div class="sal-det">
-        ${det(tr('Hours'),esc(parts.join(' · ')))}
-        ${det(tr('Days'),esc(e.daysUsed)+(byHand?` <span style="color:var(--text3);font-weight:400">(${esc(tr('punches: {n}',{n:e.countedDays}))})</span>`:''))}
-        ${det(tr('Rate'),rate)}
-        ${det(tr('Pay'),e.total>0?money(e.total):'—')}
-        ${det(tr('Travel ₪'),e.travel>0?money(e.travel):'—')}
-        ${det(tr('Bank'),bank)}
-        ${!payOnly||canEditPay(wc)?`<div style="justify-content:flex-end"><button class="btn sm" type="button" onclick="event.stopPropagation();openPayModal('${wid}')"><i class="ti ti-pencil"></i> ${esc(tr('Pay'))}</button></div>`:''}
-        ${payOnly?det(tr('My commission'),'₪'+hrCom(e).toFixed(0)+` <span style="color:var(--text3);font-weight:400">(${isDailyPay(wc)&&hrDayRate>0?tr('{n} days × ₪{r}',{n:esc(e.daysUsed),r:hrDayRate}):tr('{h}h × ₪{r}',{h:e.hours.toFixed(1),r:hrRate})})</span>`):''}
-      </div>
-    </div>`;
-  });
-  if(payOnly) return;
-  __salShownIds=shown.map(e=>String(e.workerId)); selectRoot('salary', salaryEl.querySelector('.salary-rows'));
-  renderSupplierPayable(entries);
-  renderHrPayable(entries);
-  renderClientBillable(__lastClientBillEntries);
-  renderHourApprovals(period);
-}
-
-// Groups the already-computed per-worker pay totals (byWorker[...].total, the
-// same figures shown in the table above) by the worker's assigned supplier —
-// purely a re-grouping of existing correct numbers, never a separate payroll
-// calculation, so it can't drift from the canonical shiftPay()/effectiveRates() math.
-// Default flat commission (₪/h) a supplier is paid when no override is set
-// for a given worker — see setSupplierRateOverride()/SUPPLIER_DEFAULT_RATE's
-// own comment below for why this is a single flat number, not a rate tier.
-const SUPPLIER_DEFAULT_RATE = 5;
-function supplierCommissionRate(w, supplierId){
-  const ov = w.supplierRates && w.supplierRates[supplierId];
-  return (ov && ov.rate!=null) ? ov.rate : SUPPLIER_DEFAULT_RATE;
-}
-// The supplier's fixed ₪ per day for a worker paid by the day (null = none
-// set: the hourly commission applies).
-function supplierDayCommission(w, supplierId){
-  const ov = w.supplierRates && w.supplierRates[supplierId];
-  return (ov && ov.dayRate!=null) ? ov.dayRate : null;
-}
-// A commission (supplier or HR, never part of the wage) for one worker's
-// Salary row: a worker paid by the day earns it as a fixed ₪ per day worked
-// when a day amount is set; otherwise hours × the ₪/h rate.
-function commissionFor(w, e, hourRate, dayRate){
-  if(isDailyPay(w) && Number(dayRate)>0) return (Number(e.daysUsed!=null?e.daysUsed:e.days)||0)*Number(dayRate);
-  return (Number(e.hours)||0)*(Number(hourRate)||0);
-}
-// The supplier's own commission (stage 13, set in the supplier window by the
-// firm owner or the super-admin): sp.commission = [{from:'YYYY-MM-DD'|'',
-// mode:'hour'|'day', rate}] — each entry applies from its date on.
-// supplierRateOn: the newest entry whose from ≤ the date (null = none).
-// supplierShiftCommission: one shift's commission when the worker has no
-// override of his own — by the hour (hours × rate), by the day (the rate once
-// per day worked, seenDays), or the default ₪SUPPLIER_DEFAULT_RATE/h.
-// The same rule in the supplier portal (myShiftCommission) — keep them the same.
-function supplierRateOn(list, date){
-  const d=localYMD(date); let best=null;
-  (list||[]).forEach(x=>{ if(x && (!x.from || x.from<=d) && (!best || String(x.from||'')>=String(best.from||''))) best=x; });
-  return best && best.rate!=null && best.rate!=='' ? best : null;  // an emptied rate = the default from its date
-}
-function supplierShiftCommission(list, h, date, seenDays){
-  const r=supplierRateOn(list, date);
-  if(!r) return h*SUPPLIER_DEFAULT_RATE;
-  if(r.mode==='day'){ const k=localYMD(date); if(seenDays.has(k)) return 0; seenDays.add(k); return Number(r.rate)||0; }
-  return h*(Number(r.rate)||0);
-}
-// A worker's own commission override for this supplier (Accounting → rates)
-// wins over the supplier's rate.
-function workerHasSupplierOverride(w, sid){
-  const ov=w && w.supplierRates && w.supplierRates[sid];
-  return !!ov && (ov.rate!=null || (isDailyPay(w) && Number(ov.dayRate)>0));
-}
-// A Salary row's supplier commission: the worker's override (commissionFor),
-// else the per-shift sum of the supplier's own rate (e.supCom, salaryEntriesFor).
-function supplierCommission(wc, e, sid){
-  if(workerHasSupplierOverride(wc, sid)) return commissionFor(wc, e, supplierCommissionRate(wc, sid), supplierDayCommission(wc, sid));
-  return Number(e.supCom)||0;
-}
-// "Payable by supplier" = hours × the supplier's own flat commission rate —
-// deliberately NOT e.total (the worker's real wage, computed via
-// effectiveRates()/shiftPay()) — see this file's own standing principle:
-// a supplier must never see what a worker actually earns, only what the
-// FIRM owes the AGENCY for that worker's hours. Changed 2026-10-02 (Admin/
-// Roles plan stage 12) — this table used to (incorrectly, by today's
-// standard) sum the worker's real pay per supplier, which is exactly the
-// number a supplier-role login must never be handed.
-// Only the suppliers with hours and something payable this period; workers
-// without a supplier are left out, and with no row the section is hidden
-// (user request 2026-10-11).
-// A tap on a "Payable by supplier" or "Billable by client" row: a window with
-// the workers behind the sum (the same figures, never a second calculation).
-let __lastPayEntries=[];
-function openAccDetail(title, sub, rows, total){
-  document.getElementById('accDetailModal').innerHTML=`<div class="modal-title">${title}</div>
-    <div style="font-size:12px;color:var(--text2);margin:-6px 0 10px">${esc(sub)}</div>
-    <div class="paged-accDetail"></div>
-    <div class="acc-det-row" style="border-bottom:0;font-weight:700"><span class="n">${esc(tr('Total'))}</span><span class="h">${esc(total.h)}</span><span class="m">${esc(total.m)}</span></div>`;
-  renderPagedList(document.querySelector('#accDetailModal .paged-accDetail'),'accDetail',title,rows,r=>`<div class="acc-det-row"><span class="n">${esc(r.n)}</span><span class="h">${esc(r.h)}</span><span class="m">${esc(r.m)}</span></div>`);
-  document.getElementById('accDetailOverlay').classList.add('open');
-}
-function openSupplierPayDetail(sid){
-  const sup=suppliers.find(s=>s.id===sid); if(!sup) return;
-  const list=__lastPayEntries.map(e=>({e,wc:workers.find(w=>w.id===e.workerId)})).filter(x=>x.wc&&x.wc.supplierId===sid);
-  const rows=list.map(({e,wc})=>({n:e.worker,h:tr('{h}h',{h:e.hours.toFixed(1)}),v:supplierCommission(wc,e,sid),hrs:e.hours}))
-    .sort((a,b)=>b.v-a.v).map(r=>({...r,m:'₪'+r.v.toFixed(0)}));
-  openAccDetail(`<i class="ti ti-truck-delivery" style="color:${sup.color}"></i> ${esc(sup.name)}`, tr('Payable by supplier')+' · '+salaryPeriodLabel((document.getElementById('salaryPeriod')||{}).value||'week'), rows,
-    {h:tr('{h}h',{h:rows.reduce((t,r)=>t+r.hrs,0).toFixed(1)}), m:'₪'+rows.reduce((t,r)=>t+r.v,0).toFixed(0)});
-}
-function openClientBillDetail(cid){
-  const cl=clients.find(c=>c.id===cid); if(!cl) return;
-  const bill=(__lastClientBillEntries||[]).find(x=>x.clientId===cid)||{hours:0,total:0};
-  const rows=__lastPayEntries.filter(e=>(e.clientHours||{})[cid]>0).map(e=>({n:e.worker,hrs:e.clientHours[cid]}))
-    .sort((a,b)=>b.hrs-a.hrs).map(r=>({...r,h:tr('{h}h',{h:r.hrs.toFixed(1)}),m:''}));
-  openAccDetail(`<i class="ti ti-building-store" style="color:${cl.color}"></i> ${esc(cl.name)}`, tr('Billable by client')+' · '+salaryPeriodLabel((document.getElementById('salaryPeriod')||{}).value||'week')+' · '+(cl.rateMode==='fixed'?tr('Fixed'):cl.rateMode==='daily'?tr('Daily'):tr('Tiered')), rows,
-    {h:tr('{h}h',{h:bill.hours.toFixed(1)}), m:bill.total>0?'₪'+bill.total.toFixed(0):'—'});
-}
-function renderSupplierPayable(entries){
-  __lastPayEntries=entries;
-  const wrap=document.getElementById('supplierPayableWrap');
-  if(!wrap) return;
-  const sec=document.getElementById('accSecPayable');
-  const bySupplier={};
-  entries.forEach(e=>{
-    const wc=workers.find(w=>w.id===e.workerId);
-    const sid=wc&&wc.supplierId;
-    if(!sid) return;
-    if(!bySupplier[sid]) bySupplier[sid]={hours:0,total:0};
-    bySupplier[sid].hours+=e.hours;
-    bySupplier[sid].total+=supplierCommission(wc,e,sid);
-  });
-  const rows=suppliers.filter(s=>bySupplier[s.id]&&bySupplier[s.id].hours>0&&bySupplier[s.id].total>0).map(s=>({sup:s,...bySupplier[s.id]}));
-  __lastSupplierPayableRows=[];
-  if(sec) sec.style.display=rows.length?'':'none';
-  if(!rows.length){ wrap.innerHTML=''; return; }
-  // Stage 15: same {label,hours,rate,total} shape exportPayableSummary()
-  // expects — built here once so the export buttons below never recompute.
-  __lastSupplierPayableRows = rows.map(r=>({ label:r.sup.name, hours:r.hours, rate:tr('commission'), total:r.total }));
-  wrap.innerHTML=`
-    <div class="paged-supplierPayable"></div>`;
-  renderPagedList(wrap.querySelector('.paged-supplierPayable'),'supplierPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,r=>t3Line({c:r.sup.color,
-    av:`<div class="t3-av" style="background:${r.sup.color}22;color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></div>`, name:esc(r.sup.name),
-    sub:esc(tr('{h}h',{h:r.hours.toFixed(1)})), right:`<span class="r" style="color:${r.total>0?'var(--green)':'var(--text3)'};font-weight:700">${r.total>0?'₪'+r.total.toFixed(0):'—'}</span>`,
-    onclick:`openSupplierPayDetail('${esc(r.sup.id)}')`}));
-}
-
-// "Payable by HR" (owner / super-admin): each HR login's commission on its
-// workers' hours — hours of the workers whose hrId is that HR × its
-// commissionRate (Users form). A re-grouping of the Salary rows, never a
-// wage; an HR without workers in the period has no row.
-function renderHrPayable(entries){
-  const sec=document.getElementById('accSecHrPayable'), wrap=document.getElementById('hrPayableWrap');
-  if(!sec||!wrap) return;
-  const hrs=isFirmAdminSession()?hrUsers():[];
-  const rows=hrs.map(u=>{
-    const mine=entries.filter(e=>((workers.find(w=>w.id===e.workerId)||{}).hrId)===u.id);
-    const hours=mine.reduce((t,e)=>t+e.hours,0);
-    const rate=Number(u.commissionRate)||0, dayRate=Number(u.commissionDayRate)||0;
-    const total=mine.reduce((t,e)=>t+commissionFor(workers.find(w=>w.id===e.workerId),e,rate,dayRate),0);
-    return {u, hours, rate, dayRate, total};
-  }).filter(r=>r.hours>0&&r.total>0);  // only HRs with hours and a commission rate
-  sec.style.display=rows.length?'':'none';
-  if(!rows.length){ wrap.innerHTML=''; return; }
-  wrap.innerHTML='<div class="paged-hrPayable"></div>';
-  renderPagedList(wrap.querySelector('.paged-hrPayable'),'hrPayable',(document.getElementById('salaryPeriod')||{}).value||'',rows,r=>t3Line({c:hrColor(r.u.id),
-    av:`<div class="t3-av" style="background:${hrColor(r.u.id)}22;color:${hrColor(r.u.id)}"><i class="ti ti-user-shield"></i></div>`, name:esc(r.u.fullName||r.u.username),
-    sub:esc(tr('{h}h',{h:r.hours.toFixed(1)})+' · '+(r.rate?'₪'+r.rate+tr('/h'):'—')+(r.dayRate?' · ₪'+r.dayRate+tr('/day'):'')),
-    right:`<span class="r" style="color:${r.total>0?'var(--green)':'var(--text3)'};font-weight:700">${r.total>0?'₪'+r.total.toFixed(0):'—'}</span>`}));
-}
-
-// "Billable by client" — what each client owes the firm, computed via
-// clientBillPay() (tiered law rates off the client's own default rate, or a
-// flat fixedBillRate — see that function's own comment). Deliberately NEVER
-// contains supplier data (suppliers[]/supplierId/supplierRates/commission)
-// anywhere — the standing Client<->Supplier isolation principle (Admin/Roles
-// plan): any client-facing surface must never see a supplier exists.
-// ── Client approvals (the client portal, docs/client-portal.md) ─────────────
-// Accounting → Hours approvals (a month period only): what each client,
-// supplier and HR login did in its hours review (hours-review.js over the
-// hours function): per login the days approved, and every day disputed,
-// with a fix waiting (accepted or rejected here — accept moves the shift's
-// punches to the proposed times), a fix rejected, or changed after approval
-// (the day's shifts now differ from the line approved; hourDayLines builds the
-// same lines as the review).
-function salaryMonthOf(period){
-  if(period==='month') return localYMD(new Date()).slice(0,7);
-  return /^m:\d{4}-\d{2}$/.test(period||'') ? period.slice(2) : null;
-}
-// The days of a login's scope this month: {"<worker>|<day>": line}.
-function hourDayLines(doc, month){
-  const [y,m]=month.split('-').map(Number), from=new Date(y,m-1,1), to=new Date(y,m,1);
-  const lo=new Date(y,m-1,0), hi=new Date(y,m,2);
-  let pick;
-  if(doc.kind==='client') pick=e=>e.clientId===doc.ownerId;
-  else{
-    let ids=null;
-    if(doc.kind==='supplier') ids=new Set(workers.filter(w=>w.supplierId===doc.ownerId).map(w=>w.id));
-    else if(doc.ownOnly!==false) ids=new Set(workers.filter(w=>w.hrId===doc.ownerId).map(w=>w.id));
-    pick=e=>!ids||ids.has(e.workerId);
-  }
-  const byW={};
-  getPunchLog().filter(e=>{ const d=new Date(e.ts); return d>=lo&&d<hi&&pick(e); }).forEach(e=>{ (byW[e.workerId]=byW[e.workerId]||[]).push(e); });
-  const days={};
-  Object.entries(byW).forEach(([wid,list])=>groupPunchesIntoShifts(list).forEach(b=>{
-    if(b.date<from||b.date>=to) return;
-    const inE=b.entries.find(e=>e.type==='in'), outE=[...b.entries].reverse().find(e=>e.type==='out');
-    const k=wid+'|'+localYMD(b.date); (days[k]=days[k]||[]).push([inE&&inE.time||'',outE&&outE.time||'']);
-  }));
-  const out={};
-  Object.entries(days).forEach(([k,sh])=>{ out[k]=[k,sh.map(x=>x[0]).join(','),sh.map(x=>x[1]).join(',')].join('|'); });
-  return out;
-}
-function hourEntryState(e, line){
-  if((e.status==='approved'||e.status==='fixed') && e.line!==line) return 'changed';
-  return e.status||'pending';
-}
-const HOUR_ST={approved:['var(--green)','ti-circle-check','Approved'],fixed:['var(--green)','ti-circle-check','Fix accepted'],
-  changed:['var(--amber)','ti-alert-triangle','Changed after approval'],disputed:['var(--amber)','ti-alert-triangle','Disputed'],
-  fix:['var(--accent)','ti-pencil','Fix proposed'],rejected:['var(--red)','ti-circle-x','Fix rejected'],pending:['var(--text3)','ti-clock','Waiting for approval']};
-const HOUR_KIND={client:['ti-building-store','Client'],supplier:['ti-truck-delivery','Supplier'],hr:['ti-user-check','HR']};
 // The month's approval documents (the hours function, list) — every login's.
 // Kept for a minute per month: Accounting redraws on every punch, which must
 // not ask the server each time; opening the tab and an accept / reject
@@ -6790,122 +6122,15 @@ async function hourApprovalsOf(month, fresh){
   __hourApprovalsCache={key, at:Date.now(), docs:r.docs||[]};
   return __hourApprovalsCache.docs;
 }
-// One login's month: its counts and the days that need a look.
-function hourApprovalSummary(doc, month){
-  const lines=hourDayLines(doc, month), days=doc.days||{};
-  const open=Object.entries(days).map(([k,e])=>({k,e,st:hourEntryState(e,lines[k]||'')}))
-    .filter(x=>x.st!=='approved'&&x.st!=='fixed').sort((a,b)=>a.k.split('|')[1].localeCompare(b.k.split('|')[1]));
-  const done=Object.entries(days).filter(([k,e])=>hourEntryState(e,lines[k]||'')==='approved'||hourEntryState(e,lines[k]||'')==='fixed').length;
-  return {lines, open, done, total:new Set([...Object.keys(lines),...Object.keys(days)]).size};
-}
-let __approvalsReq=0;
-async function renderHourApprovals(period){
-  const sec=document.getElementById('accSecApprovals'), wrap=document.getElementById('hourApprovalsWrap');
-  if(!sec||!wrap) return;
-  const month=salaryMonthOf(period);
-  if(!month||isHrSession()){ sec.style.display='none'; return; }
-  const req=++__approvalsReq;
-  let docs=[];
-  try{ docs=await hourApprovalsOf(month); }catch(e){ console.warn('Hours approvals:', e); }
-  if(__punchSynced) await __punchSynced.catch(()=>{});
-  if(req!==__approvalsReq) return;
-  docs=docs.filter(d=>Object.keys(d.days||{}).length).sort((a,b)=>(a.kind+a.ownerName).localeCompare(b.kind+b.ownerName));
-  sec.style.display=docs.length?'':'none';
-  if(!docs.length){ wrap.innerHTML=''; return; }
-  const wname=id=>(workers.find(w=>w.id===id)||{}).name||id;
-  wrap.innerHTML='<div class="paged-approvals" style="display:flex;flex-direction:column;gap:8px"></div>';
-  renderPagedList(wrap.querySelector('.paged-approvals'),'approvals',month,docs,doc=>{
-    const {lines,open,done,total}=hourApprovalSummary(doc, month), [kIcon,kLabel]=HOUR_KIND[doc.kind]||HOUR_KIND.client;
-    const allOk=!open.length&&done>=total;
-    // A client's signed month (hours.py sign): the PDF in its documents.
-    const sg=doc.kind==='client'&&doc.signed&&doc.signed.path?doc.signed:null;
-    const signed=sg?`<div class="hour-appr-signed" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12px;margin-top:6px;color:var(--green)"><i class="ti ti-signature"></i> ${esc(tr('Signed {date} — {name}',{date:new Date(sg.at).toLocaleString(uiLocale(),{dateStyle:'medium',timeStyle:'short'}),name:sg.byName||''}))}<button class="btn sm" style="margin-left:auto" onclick="openSignedHours('${esc(sg.path)}')"><i class="ti ti-file-type-pdf"></i> ${esc(tr('Signed PDF'))}</button></div>`:'';
-    const items=open.map(({k,e,st})=>{
-      const [wid,day]=k.split('|'), [col,icon,label]=HOUR_ST[st]||HOUR_ST.pending, now=(lines[k]||'').split('|');
-      const times=now.length===4?now[2].split(',').map((x,i)=>(x||'--:--')+'–'+(now[3].split(',')[i]||'--:--')).join(', '):'';
-      const fix=e.inT?' → '+e.inT+'–'+e.outT:'';
-      const btns=st==='fix'?`<span style="display:inline-flex;gap:6px;margin-left:auto"><button class="btn sm" style="color:var(--green)" onclick="resolveHourFix('${esc(doc.id)}','${esc(k)}',true)"><i class="ti ti-check"></i> ${esc(tr('Accept'))}</button><button class="btn sm" style="color:var(--red)" onclick="resolveHourFix('${esc(doc.id)}','${esc(k)}',false)"><i class="ti ti-x"></i> ${esc(tr('Reject'))}</button></span>`:'';
-      return `<div class="hour-appr-item" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12px;margin-top:6px;color:${col}"><i class="ti ${icon}"></i> <b style="color:var(--text)">${esc(wname(wid))}</b> · ${esc(new Date(day+'T12:00').toLocaleDateString(uiLocale(),{day:'2-digit',month:'short'}))} <span style="font-family:'DM Mono',monospace;color:var(--text2)">${esc(times)}${esc(fix)}</span> — ${esc(tr(label))}${e.comment?': '+esc(e.comment):''}${e.byName?` <span style="color:var(--text3)">(${esc(e.byName)})</span>`:''}${btns}</div>`;
-    }).join('');
-    return `<div style="border-left:3px solid ${allOk?'var(--green)':open.length?'var(--amber)':'var(--border2)'};border-radius:0 8px 8px 0;background:linear-gradient(90deg,rgba(255,255,255,.035),transparent 85%);padding:10px 12px">
-      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
-        <div style="font-weight:600"><i class="ti ${kIcon}" style="color:var(--text2)"></i> ${esc(doc.ownerName||doc.ownerId)} <span style="font-size:11px;color:var(--text3);font-weight:500">${esc(tr(kLabel))}</span></div>
-        <div style="font-size:12px;font-weight:600;color:${allOk?'var(--green)':open.length?'var(--amber)':'var(--text2)'}"><i class="ti ${allOk?'ti-circle-check':open.length?'ti-alert-triangle':'ti-clock'}"></i> ${esc(tr('{done} of {n} days approved',{done,n:total}))}</div>
-      </div>${signed}${items}</div>`;
-  });
-}
 // A client's signed month: the PDF opens in a new tab (storage.rules: the firm's managers read).
 async function openSignedHours(path){
   const win=window.open('', '_blank');
   try{ const url=await (await loadFirestoreBackend()).storageUrl(path); if(win) win.location.href=url; else location.href=url; }
   catch(e){ if(win) win.close(); showToast(tr('Could not open the file')); }
 }
-// A proposed fix accepted (the shift's punches get the new times) or rejected.
-async function resolveHourFix(docId, key, accept){
-  if(accept && !confirm(tr('Move this shift to the proposed times?'))) return;
-  const r=await hoursCall({action:'resolve', docId, key, accept, tenantId:fsTenantId()});
-  __hourApprovalsCache=null;
-  if(r.error){ showToast(r.error); return; }
-  showToast(accept?tr('Fix accepted — the punches were updated'):tr('Fix rejected'));
-  // The punch listener brings the moved punches; the section redraws now.
-  renderAccounting();
-}
 
-// Only the clients with hours and a billing rate this period; with no row
-// the section is hidden (user request 2026-10-11).
-function renderClientBillable(entries){
-  const wrap=document.getElementById('clientBillableWrap');
-  if(!wrap) return;
-  const rows=entries.map(e=>({cl:clients.find(c=>c.id===e.clientId),...e})).filter(r=>r.cl&&r.hours>0&&r.total>0);
-  const sec=document.getElementById('accSecBillable'); if(sec) sec.style.display=rows.length?'':'none';
-  if(!rows.length){ wrap.innerHTML=''; return; }
-  wrap.innerHTML='<div class="paged-clientBillable"></div>';
-  renderPagedList(wrap.querySelector('.paged-clientBillable'),'clientBillable',(document.getElementById('salaryPeriod')||{}).value||'',rows,r=>t3Line({c:r.cl.color,
-    av:`<div class="t3-av" style="background:${r.cl.color}22;color:${r.cl.color}"><i class="ti ti-building-store"></i></div>`, name:esc(r.cl.name),
-    sub:esc(tr('{h}h',{h:r.hours.toFixed(1)})+' · '+(r.cl.rateMode==='fixed'?tr('Fixed'):r.cl.rateMode==='daily'?tr('Daily'):tr('Tiered'))),
-    right:`<span class="r" style="color:${r.total>0?'var(--green)':'var(--text3)'};font-weight:700">${r.total>0?'₪'+r.total.toFixed(0):'—'}</span>`,
-    onclick:`openClientBillDetail('${esc(r.cl.id)}')`}));
-}
-
-// Hours-import approval queue (Admin/Roles plan, stage 14). Any non-supplier
-// role can SEE this list (server already tenant-scopes it), but Approve/
-// Reject buttons only render for tenant_admin/superadmin — mirrors the
-// server-side requirePendingHoursApprover() gate exactly, so a staff login
-// sees a read-only view of what it (or a colleague) uploaded, never a way
-// to self-approve its own hours.
-async function renderPendingHours(){
-  const wrap=document.getElementById('pendingHoursWrap');
-  if(!wrap) return;
-  const s=getSession();
-  const canApprove = s && (s.role==='tenant_admin'||s.role==='superadmin');
-  let json;
-  try{
-    const res = await fetch(API_URL+'?'+new URLSearchParams({ action:'loadPendingHours', ...gsAuth() }));
-    json = await res.json();
-  }catch(e){ wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('Could not load')}</div>`; return; }
-  const batches=(json.batches||[]).filter(b=>b.status==='pending');
-  if(!batches.length){ wrap.innerHTML=`<div class="t3-empty">${tr('Nothing pending')}</div>`; return; }
-  // Template 3: a line per batch (amber: waiting) — the worker, the file and
-  // who sent it, the shift count; ✓ approve / ✕ reject at the right (owner).
-  __pendingBatchIds=batches.map(b=>String(b.batchId||''));
-  wrap.innerHTML=(canApprove?`<div class="t3-sec" style="margin-top:0">${esc(tr('Batches'))}<em>${batches.length}</em></div>`:'')+'<div class="pending-hours-rows"></div>';
-  renderPagedList(wrap.querySelector('.pending-hours-rows'),'pendingHours','',batches,b=>{
-    const w = workers.find(x=>x.id===(b.entries[0]&&b.entries[0].workerId)), id = esc(String(b.batchId||''));
-    return t3Line({c:'var(--amber)', av:t3Av(w), name:esc(w?w.name:(b.fileName||'—')),
-      sub:[esc(b.fileName||'—')+' · '+esc(b.uploadedBy||'—'), esc(b.entries.length===1?tr('1 shift'):tr('{n} shifts',{n:b.entries.length}))],
-      sel: canApprove?String(b.batchId||''):null,
-      right:canApprove?`<button class="t3-ib" style="color:var(--green)" title="${esc(tr('Approve'))}" onclick="approveHoursBatch('${id}')"><i class="ti ti-check"></i></button><button class="t3-ib" style="color:var(--red)" title="${esc(tr('Reject'))}" onclick="rejectHoursBatch('${id}')"><i class="ti ti-x"></i></button>`:''});
-  });
-  selectRoot('pendingHours', wrap.querySelector('.pending-hours-rows'));
-}
-// Select in the pending batches: Approve or Reject the picked ones at once.
-let __pendingBatchIds=[];
-function startPendingSelect(){
-  const ss=getSession(); if(!ss||!(ss.role==='tenant_admin'||ss.role==='superadmin')) return;
-  const root=document.querySelector('#pendingHoursWrap .pending-hours-rows'); if(!root) return;
-  startSelect({key:'pendingHours', root, ids:()=>__pendingBatchIds,
-    actions:[{icon:'ti-check', label:tr('Approve'), fn:ids=>bulkHoursBatches(ids,true)}, {icon:'ti-x', label:tr('Reject'), fn:ids=>bulkHoursBatches(ids,false)}]});
-}
+// Hours-import approval queue (Admin/Roles plan, stage 14): only tenant_admin /
+// superadmin approve or reject (the server checks the same).
 async function bulkHoursBatches(ids, approve){
   if(approve){ for(const id of ids) await approveHoursBatch(id); return; }
   if(!confirm(tr('Reject {n} batch(es)?',{n:ids.length}))) return;
@@ -6917,7 +6142,6 @@ async function bulkHoursBatches(ids, approve){
     }catch(e){ showToast(tr('Failed: {e}',{e:e.message})); }
   }
   showToast(tr('{n} batch(es) rejected',{n:done}));
-  renderPendingHours();
 }
 async function approveHoursBatch(batchId){
   try{
@@ -6934,7 +6158,7 @@ async function approveHoursBatch(batchId){
         if(first) await ensurePunchesSince(new Date(first.getFullYear(), first.getMonth(), first.getDate()-1));
       }catch(e){ console.warn('Loading approved punches failed:', e); }
     }
-    renderPendingHours(); renderSalary();
+    renderAccounting();
   }catch(e){ showToast(tr('Failed: {e}',{e:e.message})); }
 }
 async function rejectHoursBatch(batchId){
@@ -6944,153 +6168,15 @@ async function rejectHoursBatch(batchId){
     const json = await res.json();
     if(json.error){ showToast(json.error); return; }
     showToast(tr('Batch rejected'));
-    renderPendingHours();
   }catch(e){ showToast(tr('Failed: {e}',{e:e.message})); }
 }
 
-// Per-worker-per-client rate override matrix (tier 1 of effectiveRates()).
-// One row per (worker, assigned client) pair; empty inputs mean "no override
-// here" and the placeholder shows what effectiveRates() would resolve to
-// (client default, tier 2, or the worker's own base rate, tier 3).
-function renderRateMatrix(){
-  const wrap=document.getElementById('rateMatrixWrap');
-  if(!wrap) return;
-  const rows=[];
-  workers.forEach(w=>{
-    (w.clientIds||[]).forEach(cid=>{
-      const cl=clients.find(c=>c.id===cid);
-      if(cl) rows.push({w,cl});
-    });
-  });
-  if(!rows.length){
-    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('No workers assigned to clients')}</div>`;
-    return;
-  }
-  wrap.innerHTML=`
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-      <table style="width:100%;border-collapse:collapse;min-width:640px">
-        <thead>
-          <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">${tr('Worker')}</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">${tr('Object')}</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">${tr('Regular ₪/h')}</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--amber)">${tr('OT ₪/h')}</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--blue)">${tr('Shabbat ₪/h')}</th>
-          </tr>
-        </thead>
-        <tbody class="paged-rateMatrix"></tbody>
-      </table>
-      </div>
-    </div>`;
-  renderPagedList(wrap.querySelector('.paged-rateMatrix'),'rateMatrix','',rows,(r,i)=>{
-            const ov=(r.w.clientRates&&r.w.clientRates[r.cl.id])||{};
-            const eff=effectiveRates(r.w,r.cl.id);
-            return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
-              <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.w.name)}</td>
-              <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${esc(r.cl.name)}</td>
-              <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${eff.regRate}" title="${tr('Empty = {r} (the worker\'s own rate, else the client\'s)',{r:eff.regRate})}"
-                  onchange="setClientRateOverride('${r.w.id}','${r.cl.id}','rate',this.value)"
-                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
-              </td>
-              <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.otRate??''}" min="0" step="0.5" placeholder="${eff.otRate}" title="${tr('Empty = {r}',{r:eff.otRate})}"
-                  onchange="setClientRateOverride('${r.w.id}','${r.cl.id}','otRate',this.value)"
-                  style="width:70px;background:var(--bg3);border:1px solid rgba(245,166,35,0.35);border-radius:var(--radius-sm);color:var(--amber);font-size:12px;padding:4px 6px;text-align:right;outline:none">
-              </td>
-              <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.shabbatRate??''}" min="0" step="0.5" placeholder="${eff.shabbatRate}" title="${tr('Empty = {r}',{r:eff.shabbatRate})}"
-                  onchange="setClientRateOverride('${r.w.id}','${r.cl.id}','shabbatRate',this.value)"
-                  style="width:70px;background:var(--bg3);border:1px solid rgba(96,165,250,0.35);border-radius:var(--radius-sm);color:var(--blue);font-size:12px;padding:4px 6px;text-align:right;outline:none">
-              </td>
-            </tr>`;
-          },{table:true,colspan:20});
-}
-function setClientRateOverride(wid,cid,field,val){
-  const w=workers.find(x=>x.id===wid);
-  if(!w) return;
-  if(!w.clientRates) w.clientRates={};
-  if(!w.clientRates[cid]) w.clientRates[cid]={};
-  w.clientRates[cid][field]=(val===''||val==null)?null:(parseFloat(val)||0);
-  if(Object.values(w.clientRates[cid]).every(v=>v==null)) delete w.clientRates[cid];
-  autoSave();
-  renderRateMatrix();
-}
-
-// Per-worker-per-supplier FLAT commission matrix (Admin/Roles plan stage 12,
-// 2026-10-02 — narrowed from a 3-column rate/OT/Shabbat matrix to a single
-// flat rate). A supplier has no concept of overtime/Shabbat tiers (unlike a
-// worker's real wage, which does) — it's simply hours × one flat ₪/h
-// commission the firm pays the agency, defaulting to SUPPLIER_DEFAULT_RATE
-// (5) when not explicitly overridden. Still REFERENCE/independent of
-// effectiveRates()'s tier chain — a worker's real pay is driven by which
-// client they worked at, never by which supplier/agency employs them; see
-// renderSupplierPayable() above for where this rate actually gets used (the
-// payable-by-supplier total), never shiftPay()/effectiveRates() itself.
-function renderSupplierRateMatrix(){
-  const wrap=document.getElementById('supplierRateMatrixWrap');
-  if(!wrap) return;
-  const rows=workers.filter(w=>w.supplierId).map(w=>({w,sup:suppliers.find(s=>s.id===w.supplierId)})).filter(r=>r.sup);
-  if(!rows.length){
-    wrap.innerHTML=`<div style="color:var(--text3);font-size:13px;padding:16px 0">${tr('No workers assigned to a supplier')}</div>`;
-    return;
-  }
-  wrap.innerHTML=`
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-      <table style="width:100%;border-collapse:collapse;min-width:420px">
-        <thead>
-          <tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">${tr('Worker')}</th>
-            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:var(--text2)">${tr('Supplier')}</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">${tr('Commission ₪/h')}</th>
-            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:var(--text2)">${tr('₪/day (daily workers)')}</th>
-          </tr>
-        </thead>
-        <tbody class="paged-supplierRateMatrix"></tbody>
-      </table>
-      </div>
-    </div>`;
-  renderPagedList(wrap.querySelector('.paged-supplierRateMatrix'),'supplierRateMatrix','',rows,(r,i)=>{
-            const ov=(r.w.supplierRates&&r.w.supplierRates[r.sup.id])||{};
-            return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,0.01)'}">
-              <td style="padding:10px 12px;font-size:13px;font-weight:600">${esc(r.w.name)}</td>
-              <td style="padding:10px 12px;font-size:13px;color:var(--text2)"><span style="color:${r.sup.color}"><i class="ti ti-truck-delivery"></i></span> ${esc(r.sup.name)}</td>
-              <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.rate??''}" min="0" step="0.5" placeholder="${SUPPLIER_DEFAULT_RATE}" title="${tr('Empty = default ({r} ₪/h)',{r:SUPPLIER_DEFAULT_RATE})}"
-                  onchange="setSupplierRateOverride('${r.w.id}','${r.sup.id}','rate',this.value)"
-                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
-              </td>
-              <td style="padding:10px 12px;text-align:right">
-                <input type="number" value="${ov.dayRate??''}" min="0" step="0.5" placeholder="${isDailyPay(r.w)?tr('by the hour'):'—'}" title="${tr('A fixed ₪ per day, for a worker paid by the day. Empty = hours × ₪/h')}"
-                  onchange="setSupplierRateOverride('${r.w.id}','${r.sup.id}','dayRate',this.value)"
-                  style="width:70px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:4px 6px;text-align:right;outline:none">
-              </td>
-            </tr>`;
-          },{table:true,colspan:20});
-}
-function setSupplierRateOverride(wid,sid,field,val){
-  const w=workers.find(x=>x.id===wid);
-  if(!w) return;
-  if(!w.supplierRates) w.supplierRates={};
-  if(!w.supplierRates[sid]) w.supplierRates[sid]={};
-  w.supplierRates[sid][field]=(val===''||val==null)?null:(parseFloat(val)||0);
-  if(Object.values(w.supplierRates[sid]).every(v=>v==null)) delete w.supplierRates[sid];
-  autoSave();
-  renderSupplierRateMatrix();
-  renderSupplierPayable(__lastSalaryEntries||[]);
-}
-
-// This worker's own regular rate (empty = none: the client's rate applies).
 // ── Pay window (openPayModal; Accounting → Salary and the worker card) ────
-// The one place a worker's money is set: pay mode (₪/h or ₪/day), own rate,
-// OT / Shabbat rates, travel per day and per month, bank details. Every
-// worker is listed (a new one with no shifts too); a tap opens openPayModal.
+// The one place a worker's money is set, drawn in React (src/manager/PayWindow.tsx).
 // The firm owner, a super-admin and staff with Accounting edit; an HR (its
-// reduced Accounting) sees its own workers' cards and pay modal read-only,
-// and edits them too with "Edit own workers' pay" (permission payEdit) —
-// its own workers only (w.hrId is its uid).
+// reduced Accounting) sees its own workers' pay window read-only, and edits
+// it too with "Edit own workers' pay" (permission payEdit) — its own workers
+// only (w.hrId is its uid).
 function canEditPay(w){
   const s=getSession();
   if(!s) return false;
@@ -7100,311 +6186,16 @@ function canEditPay(w){
   return s.role==='staff' && hasPermission('accounting');
 }
 function openWorkerCardById(wid){ const i=workers.findIndex(w=>w.id===wid); if(i>=0) openWorkerCard(i); }
+function payWindowAllowed(w){ return !!w && (canEditPay(w) || (hrPayOnly() && w.hrId===(getSession()||{}).uid)); }
 function openPayModal(wid){
-  const w=workers.find(x=>x.id===wid); if(!w) return;
-  const me=getSession()||{};
-  // An HR with the reduced Accounting views its own workers' pay, read-only.
-  const ro=!canEditPay(w);
-  if(ro && !(hrPayOnly() && w.hrId===me.uid)) return;
-  const daily=isDailyPay(w), cid=(w.clientIds||[])[0];
-  const clientRate=effectiveRates({...w,hourlyRate:0,regRate:null,otRate:null,shabbatRate:null,clientRates:w.clientRates},cid);
-  const v=x=>x==null||x===''?'':esc(x);
-  // By the day: the days of the period picked in Salary — by the punches, or a
-  // number typed here for this period only (w.dayOverrides[salaryPeriodKey]).
-  const psel=document.getElementById('salaryPeriod'), period=psel?.value||'month';
-  const periodLbl=psel&&psel.selectedIndex>=0?psel.options[psel.selectedIndex].text:tr('This Month');
-  const pKey=salaryPeriodKey(period), counted=((__lastSalaryEntries||[]).find(e=>e.workerId===wid)||{}).countedDays||0;
-  document.getElementById('payModal').innerHTML=`<div class="modal-title"><i class="ti ti-wallet"></i> ${esc(tr('Pay — {name}',{name:w.name||''}))}</div>
-    <div class="form-section">${esc(tr('Pay'))}</div>
-    <div class="field-row">
-      <div class="field"><label>${esc(tr('Paid'))}</label><select id="payMode" onchange="onPayModeChange()"><option value="hourly"${daily?'':' selected'}>${esc(tr('By the hour (₪/h)'))}</option><option value="daily"${daily?' selected':''}>${esc(tr('By the day (₪/day)'))}</option></select></div>
-      <div class="field"><label id="payRateLabel">${daily?esc(tr('Rate ₪/day')):esc(tr('Rate ₪/h'))}</label><input type="number" id="payRate" min="0" step="0.5" value="${v(wOwnRate(w))}" data-client="${esc(clientRate.regRate)}" placeholder="${daily?esc(tr('per day')):(clientRate.src==='client'?esc(tr('client: {r}',{r:clientRate.regRate})):'')}"></div>
-    </div>
-    <div class="field" id="payDaysRow" data-key="${esc(pKey)}" style="${daily?'':'display:none'}"><label>${esc(tr('Days — {period}',{period:periodLbl}))}</label>
-      <input type="number" id="payDays" min="0" step="1" value="${v(dayOverride(w,pKey))}" placeholder="${esc(counted)}">
-      <div style="font-size:11px;color:var(--text3);margin-top:4px">${esc(tr('Empty = by the punches ({n})',{n:counted}))}</div></div>
-    <div class="field-row" id="payOtRow" style="${daily?'display:none':''}">
-      <div class="field"><label>${esc(tr('OT ₪/h'))}</label><input type="number" id="payOt" min="0" step="0.5" value="${v(w.otRate)}" placeholder="${esc(tr('law ×{m}',{m:PAY_RULES.otMult}))}"></div>
-      <div class="field"><label>${esc(tr('Shabbat ₪/h'))}</label><input type="number" id="payShab" min="0" step="0.5" value="${v(w.shabbatRate)}" placeholder="${esc(tr('law ×{m}',{m:PAY_RULES.shabbatMult}))}"></div>
-    </div>
-    <div style="font-size:11px;color:var(--text3);margin:-4px 0 8px">${esc(ACC_RATE_TABLES?tr("Empty rate = the client's rate (by the hour only). A rate at one client only is set in Per-client rates."):tr("Empty rate = the client's rate (by the hour only)."))}</div>
-    <div class="form-section">${esc(tr('Travel'))}</div>
-    <div class="field-row">
-      <div class="field"><label>${esc(tr('Travel ₪/day'))}</label><input type="number" id="payTravelDay" min="0" step="0.5" value="${Number(w.travelAllowance)>0?esc(w.travelAllowance):''}" placeholder="0"></div>
-      <div class="field"><label>${esc(tr('Travel ₪/month'))}</label><input type="number" id="payTravelMonth" min="0" step="0.5" value="${Number(w.travelMonthly)>0?esc(w.travelMonthly):''}" placeholder="0"></div>
-    </div>
-    <div class="form-section">${esc(tr('Bank'))}</div>
-    <div class="field-row">
-      <div class="field"><label>${esc(tr('Bank'))}</label><input type="text" id="payBank" value="${v(w.bank)}" placeholder="${esc(tr('Bank name'))}"></div>
-      <div class="field"><label>${esc(tr('Branch'))}</label><input type="text" id="payBankBranch" value="${v(w.bankBranch)}" placeholder="${esc(tr('Branch #'))}"></div>
-    </div>
-    <div class="field"><label>${esc(tr('Account number'))}</label><input type="text" id="payBankAccount" value="${v(w.bankAccountNumber)}" placeholder="${esc(tr('Account #'))}"></div>
-    ${ro?'':`<div class="modal-actions"><button class="gbtn primary og-save" onclick="savePayModal('${esc(w.id)}')"><i class="ti ti-check"></i><span>${esc(tr('Save'))}</span></button></div>`}`;
-  if(ro) document.querySelectorAll('#payModal input, #payModal select').forEach(el=>{ el.disabled=true; });
+  const w=workers.find(x=>x.id===wid); if(!payWindowAllowed(w) || !window.ManagerIsland) return;
+  window.ManagerIsland.openPay(wid);
   document.getElementById('payOverlay').classList.add('open');
 }
-function onPayModeChange(){
-  const daily=document.getElementById('payMode').value==='daily', r=document.getElementById('payRate');
-  document.getElementById('payOtRow').style.display=daily?'none':'';
-  document.getElementById('payDaysRow').style.display=daily?'':'none';
-  document.getElementById('payRateLabel').textContent=daily?tr('Rate ₪/day'):tr('Rate ₪/h');
-  r.placeholder=daily?tr('per day'):(r.dataset.client?tr('client: {r}',{r:r.dataset.client}):'');
-}
-function savePayModal(wid){
-  const w=workers.find(x=>x.id===wid); if(!w || !canEditPay(w)) return;
-  const num=id=>{ const s=document.getElementById(id).value; return s===''?null:(parseFloat(s)||0); };
-  if(document.getElementById('payMode').value==='daily') w.payMode='daily'; else delete w.payMode;
-  w.hourlyRate=num('payRate')||0; w.regRate=null;
-  w.otRate=num('payOt'); w.shabbatRate=num('payShab');
-  w.travelAllowance=num('payTravelDay')||0; w.travelMonthly=num('payTravelMonth')||0;
-  w.bank=document.getElementById('payBank').value.trim();
-  w.bankBranch=document.getElementById('payBankBranch').value.trim();
-  w.bankAccountNumber=document.getElementById('payBankAccount').value.trim();
-  if(w.payMode==='daily'){
-    const key=document.getElementById('payDaysRow').dataset.key, d=document.getElementById('payDays').value;
-    w.dayOverrides={...(w.dayOverrides||{})};
-    if(d==='') delete w.dayOverrides[key]; else w.dayOverrides[key]=Math.max(0,Math.round(Number(d)||0));
-    if(!Object.keys(w.dayOverrides).length) delete w.dayOverrides;
-  }
-  autoSave();
-  closeModal('payOverlay');
-  showToast(tr('Pay saved — {name}',{name:w.name||''}));
-  if(currentTab==='accounting') renderAccounting();
-}
 
-// Accounting → each section's title has an (i) button that opens its
-// explanation here (accHelpOverlay; closes on a tap outside, like every modal).
-const ACCOUNTING_HELP={
-  salary:{icon:'ti-cash',title:'Salary Calculation',items:[
-    'Pay for the picked period, one row per worker who worked in it (workers without shifts are not listed): punches are paired into shifts, each shift priced at the rate of its own client.',
-    'Hours: up to 8 a day are regular, above that OT (×1.25 for the first 2 hours, then ×1.5); a shift that starts on Saturday is paid at the Shabbat rates. The split shows under the hours.',
-    'Rate: the worker\'s own rate, ₪/h or ₪/day; grey "client" = no rate of their own, the client\'s applies (by the hour only).',
-    'Days: counted from the punches (two shifts on one day count once); for a worker paid by the day the days can be set by hand for the picked period in the pay window.',
-    'Travel = ₪/day × days worked + ₪/month once for each calendar month with work. Total Pay = pay + travel.',
-    'A tap on a row opens its details; the name opens the worker card and Pay the pay window: paid by the hour or by the day, rate, OT / Shabbat (empty = the law), travel, bank. A worker without shifts is set from the worker card\'s Pay button.',
-    'A ⚠ next to a worker: punches to check (a missing IN or OUT, an overlong shift…). The list is in the banner above the table.']},
-  rates:{icon:'ti-adjustments',title:'Per-client rates',items:[
-    'One row per worker and client: a rate for this worker at this client only.',
-    'Which rate counts, most specific first: this table → the worker\'s own rate (pay window) → the client\'s rate (client card).',
-    'An empty field = nothing set here; grey shows the rate that applies.']},
-  supplierRates:{icon:'ti-truck-delivery',title:'Per-supplier rates',items:[
-    'What the firm pays a supplier per hour of each of its workers (the supplier\'s commission).',
-    'For a worker paid by the day, ₪/day is a fixed amount for each day worked; empty = hours × ₪/h.',
-    'Feeds "Payable by supplier" only. It never changes a worker\'s pay.']},
-  payable:{icon:'ti-report-money',title:'Payable by supplier',items:[
-    'For the period picked in Salary: each supplier\'s workers\' hours × the supplier rate.',
-    'Only the suppliers with hours and a commission this period are listed; workers without a supplier are left out.',
-    'A worker\'s wage never appears in this table.']},
-  approvals:{icon:'ti-circle-check',title:'Hours approvals',items:[
-    'For a month picked in Salary: each client, supplier and HR login that reviewed its hours this month — how many days it approved, and every day that needs a look.',
-    'Disputed: a day it disputed, with its comment — fix the punches if needed. Fix proposed: the in / out it says is right; Accept moves the shift\'s punches to those times, Reject keeps them.',
-    'Changed after approval: a shift was added or changed after the day was approved; the login sees it and approves again.',
-    'The logins and their hours ticks are set in Admin → Users.']},
-  billable:{icon:'ti-building-store',title:'Billable by client',items:[
-    'What each client owes the firm for the period picked in Salary, by the client\'s own pricing (client card): tiered (the OT / Shabbat law rates on the client\'s billing rate) or one fixed rate.',
-    'Separate from the workers\' pay: it never changes a wage, and a wage never changes it.']},
-  hrPayable:{icon:'ti-user-dollar',title:'Payable by HR',items:[
-    'An HR login with the Accounting section sees only this part for its own workers: their hours, rate and pay, and its commission — never the rest of Accounting.',
-    'For the period picked in Salary: each HR\'s workers\' hours × the HR\'s commission (₪/h, set in Admin → Users on the HR); a worker paid by the day counts days × the HR\'s ₪/day when one is set.',
-    'Separate from the workers\' pay: it never changes a wage.']},
-  pending:{icon:'ti-file-check',title:'Pending hours',items:[
-    'Hours uploaded with a worker\'s "Upload hours" button wait here.',
-    'Nothing here counts toward pay until it is approved; approving turns each row into IN / OUT punches.',
-    'Rejected batches are not counted.']},
-};
-function openAccountingHelp(key){
-  const h=ACCOUNTING_HELP[key]; if(!h) return;
-  document.getElementById('accHelpModal').innerHTML=`<div class="modal-title"><i class="ti ${h.icon}"></i> ${esc(tr(h.title))}</div>
-    <div class="acc-help-body"><ul>${h.items.map(t=>`<li>${esc(tr(t))}</li>`).join('')}</ul></div>`;
-  document.getElementById('accHelpOverlay').classList.add('open');
-}
-// Salary export — Accounting tab's "Export" button opens a format picker
-// (Excel / PDF / CSV); all three share buildSalaryExportRows(), which pairs
-// punches via the canonical groupPunchesIntoShifts()/analyzeDayPunches()/
-// shiftPay() — the formats differ only in how the same rows are written out.
-const SALARY_PERIOD_LABELS={week:'This Week',month:'This Month',all:'All Time'};
-function openSalaryExportModal(){
-  const period=document.getElementById('salaryPeriod')?.value||'week';
-  document.getElementById('salaryExportModal').innerHTML = `
-    <div class="modal-title">${esc(tr('Export salary'))}</div>
-    <div class="field"><label>${esc(tr('Period'))}</label>
-      <select id="salaryExportPeriod" style="width:100%">
-        ${salaryExportPeriodOptions().map(([v,l])=>`<option value="${esc(v)}" ${v===period?'selected':''}>${esc(l)}</option>`).join('')}
-      </select>
-    </div>
-    <div class="modal-actions">
-      <button class="gbtn" onclick="runSalaryExport('csv')"><i class="ti ti-file-text"></i> CSV</button>
-      <button class="gbtn" onclick="runSalaryExport('excel')"><i class="ti ti-file-spreadsheet"></i> Excel</button>
-      <button class="gbtn primary" onclick="runSalaryExport('pdf')"><i class="ti ti-file-type-pdf"></i> PDF</button>
-    </div>
-    ${hrPayOnly()?'':`<div style="border-top:1px solid var(--border2);margin-top:14px;padding-top:12px">
-      <div style="font-size:12px;color:var(--text2);margin-bottom:8px">${esc(tr('For the accountant: one row per worker (ID, days, regular / overtime / Shabbat hours, pay, travel, bank details) and a sheet of every shift.'))}</div>
-      <button class="btn sm" style="width:100%;justify-content:center" onclick="runSalaryExport('accountant')"><i class="ti ti-file-spreadsheet"></i> ${esc(tr('Accountant report (Excel)'))}</button>
-    </div>`}`;
-  document.getElementById('salaryExportOverlay').classList.add('open');
-}
-// Period choices for the export modal: the same This Week / This Month /
-// All Time the salary table offers, plus each of the 12 previous calendar
-// months by name ('m:YYYY-MM') so a closed month can be exported directly.
-function salaryExportPeriodOptions(){
-  const now=new Date(), opts=[['week',tr(SALARY_PERIOD_LABELS.week)],['month',tr(SALARY_PERIOD_LABELS.month)]];
-  for(let i=1;i<=12;i++){
-    const d=new Date(now.getFullYear(), now.getMonth()-i, 1);
-    opts.push(['m:'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'), d.toLocaleDateString(uiLocale(),{month:'long',year:'numeric'})]);
-  }
-  opts.push(['all',tr(SALARY_PERIOD_LABELS.all)]);
-  return opts;
-}
-function salaryPeriodLabel(period){
-  const o=salaryExportPeriodOptions().find(([v])=>v===period);
-  return o ? o[1] : period;
-}
-async function runSalaryExport(format){
-  const period=document.getElementById('salaryExportPeriod')?.value || document.getElementById('salaryPeriod')?.value || 'week';
-  closeModal('salaryExportOverlay');
-  await ensurePunchesSince(periodPunchStart(period));
-  exportSalary(format, period);
-}
-function buildSalaryExportRows(period, onlyIds){
-  const only=onlyIds&&onlyIds.length?new Set(onlyIds.map(String)):null;
-  const log=getPunchLog().filter(e=>!only||only.has(String(e.workerId))); const now=new Date();
-  let filtered=log;
-  if(period==='week'){ const ws=new Date(now); ws.setDate(ws.getDate()-ws.getDay()); ws.setHours(0,0,0,0); filtered=log.filter(e=>new Date(e.ts)>=ws); }
-  else if(period==='month'){ filtered=log.filter(e=>new Date(e.ts)>=new Date(now.getFullYear(),now.getMonth(),1)); }
-  else if(/^m:\d{4}-\d{2}$/.test(period)){
-    const [y,m]=period.slice(2).split('-').map(Number);
-    const from=new Date(y,m-1,1), to=new Date(y,m,1);
-    filtered=log.filter(e=>{ const d=new Date(e.ts); return d>=from && d<to; });
-  }
-  const byWorkerPunches={};
-  filtered.forEach(e=>{ (byWorkerPunches[e.workerId]=byWorkerPunches[e.workerId]||[]).push(e); });
-  const byWD={};
-  Object.entries(byWorkerPunches).forEach(([wid,list])=>{
-    groupPunchesIntoShifts(list).forEach((bucket,i)=>{
-      byWD[wid+'|'+i]={worker:list[0].workerName,wid,date:bucket.date,entries:bucket.entries};
-    });
-  });
-  const rows=[], seenBy={};
-  Object.values(byWD).sort((a,b)=> a.worker<b.worker?-1 : a.worker>b.worker?1 : (a.date-b.date)).forEach(d=>{
-    const res=analyzeDayPunches(d.entries,d.date);
-    const ins=d.entries.filter(x=>x.type==='in').map(x=>x.time).sort();
-    const outs=d.entries.filter(x=>x.type==='out').map(x=>x.time).sort();
-    const _w=workers.find(w=>w.id===d.wid);
-    const shiftClientId=d.entries[0]&&d.entries[0].clientId;
-    const daily=isDailyPay(_w);
-    const rate=daily?dailyRate(_w):wRegRate(_w,shiftClientId);
-    const isSat=d.date.getDay()===6;
-    const seen=seenBy[d.wid]||(seenBy[d.wid]=new Set());
-    const pay=res.hours>0?shiftPayFor(res.hours,_w,isSat,shiftClientId,d.date,seen):0;
-    const clientObj=punchClientObject(d.entries[0])||workerClientObject(d.wid);
-    const supName=suppliers.find(s=>s.id===_w?.supplierId)?.name||'';
-    rows.push({worker:d.worker, client:clientObj, supplier:supName, date:d.date.toLocaleDateString('en-GB'), firstIn:ins[0]||'', lastOut:outs[outs.length-1]||'', hours:res.hours, rate:daily?rate+tr('/day'):rate, pay, notes:res.warnings.join('; ')});
-  });
-  // A daily-paid worker whose days were set by hand for this period: one more
-  // row brings the total to days × rate, the same as the Salary table.
-  const key=salaryPeriodKey(period, now);
-  Object.entries(seenBy).forEach(([wid,seen])=>{
-    const _w=workers.find(w=>w.id===wid), ov=isDailyPay(_w)?dayOverride(_w,key):null;
-    if(ov==null||ov===seen.size) return;
-    rows.push({worker:_w.name||'', client:'', supplier:suppliers.find(s=>s.id===_w.supplierId)?.name||'', date:'', firstIn:'', lastOut:'', hours:0,
-      rate:dailyRate(_w)+tr('/day'), pay:(ov-seen.size)*dailyRate(_w), notes:tr('Days set by hand: {n} (punches: {m})',{n:ov,m:seen.size})});
-  });
-  return rows;
-}
-function exportSalary(format, period, onlyIds){
-  if((format==='excel'||format==='accountant') && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportSalary(format, period, onlyIds)).catch(()=>showToast(tr('Excel library not loaded'))); return; }
-  if(format==='accountant') return exportAccountantReport(period);
-  period=period||document.getElementById('salaryPeriod')?.value||'week';
-  const now=new Date();
-  const rows=buildSalaryExportRows(period, onlyIds);
-  const header=['Worker','Object/Client','Supplier','Date','First In','Last Out','Hours','Rate (₪/h or /day)','Day Pay (₪)','Notes'].map(h=>tr(h));
-  const toArr=r=>[r.worker, r.client, r.supplier, r.date, r.firstIn, r.lastOut, r.hours.toFixed(2), r.rate, r.pay.toFixed(2), r.notes];
-  const totalHours=rows.reduce((s,r)=>s+r.hours,0), totalPay=rows.reduce((s,r)=>s+r.pay,0);
-  const fname='salary-'+(period.startsWith('m:')?period.slice(2):period+'-'+localYMD(now));
-  if(format==='excel'){
-    if(typeof XLSX==='undefined'){ showToast(tr('Excel library not loaded')); return; }
-    const aoa=[header, ...rows.map(toArr), ['','','','','',tr('Total'),totalHours.toFixed(2),'',totalPay.toFixed(2),'']];
-    const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), tr('Salary'));
-    XLSX.writeFile(wb, fname+'.xlsx');
-  } else if(format==='pdf'){
-    const title=tr('Salary — {period}',{period:salaryPeriodLabel(period)});
-    const rowsHtml=rows.map(r=>'<tr>'+toArr(r).map(v=>`<td>${esc(String(v))}</td>`).join('')+'</tr>').join('');
-    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(title)}</title>
-      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #ccc;padding:5px 8px;text-align:left}th{background:#f0f0f0}tfoot td{font-weight:bold}</style>
-      </head><body><h2>${esc(title)}</h2>
-      <table><thead><tr>${header.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
-      <tbody>${rowsHtml}</tbody>
-      <tfoot><tr><td colspan="6">${esc(tr('Total'))}</td><td>${totalHours.toFixed(2)}</td><td></td><td>${totalPay.toFixed(2)}</td><td></td></tr></tfoot>
-      </table></body></html>`;
-    const win=window.open('','_blank');
-    if(!win){ showToast(tr('Pop-up blocked — allow pop-ups to export PDF')); return; }
-    win.document.write(html); win.document.close(); setTimeout(()=>win.print(),400);
-  } else {
-    const csv=[header, ...rows.map(toArr)].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
-    const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const url=URL.createObjectURL(blob);
-    const a=document.createElement('a'); a.href=url; a.download=fname+'.csv'; a.click(); URL.revokeObjectURL(url);
-  }
-  showToast(tr('Salary exported!'));
-}
-// The accountant's workbook for a period: a Summary sheet with one row per
-// worker — the Salary table's own figures (salaryEntriesFor) plus ID, supplier,
-// pay mode and bank details — and a Shifts sheet (buildSalaryExportRows).
-async function exportAccountantReport(period){
-  period=period||'month';
-  // A month: the hours approvals go in a sheet of their own.
-  const month=salaryMonthOf(period);
-  let approvals=null;
-  if(month){ try{ approvals=await hourApprovalsOf(month, true); }catch(e){ approvals=null; } }
-  const {byWorker}=salaryEntriesFor(period);
-  const money=v=>Math.round((Number(v)||0)*100)/100, hrs=v=>Math.round((Number(v)||0)*100)/100;
-  const head=['Worker','ID / Passport','Supplier','Pay mode','Rate','Days','Regular hours','Overtime hours','Shabbat hours','Total hours','Pay (₪)','Travel (₪)','Total (₪)','Bank','Branch','Account','Warnings'].map(h=>tr(h));
-  const list=Object.values(byWorker).map(e=>({e, w:workers.find(x=>x.id===e.workerId)||{name:e.worker}}))
-    .sort((a,b)=>String(a.w.name||'').localeCompare(String(b.w.name||'')));
-  const rows=list.map(({e,w})=>[w.name||e.worker, workerDocId(w)||'', (suppliers.find(s=>s.id===w.supplierId)||{}).name||'',
-    isDailyPay(w)?tr('By the day'):tr('By the hour'), isDailyPay(w)?dailyRate(w):(wOwnRate(w)||''),
-    e.daysUsed, hrs(e.regH), hrs(e.otH), hrs(e.shabH), hrs(e.hours), money(e.total), money(e.travel), money(e.total+e.travel),
-    w.bank||'', w.bankBranch||'', w.bankAccountNumber||'', e.warns.length]);
-  const sum=k=>money(list.reduce((s,{e})=>s+(k==='grand'?e.total+e.travel:e[k]),0));
-  rows.push([tr('Total'),'','','','',list.reduce((s,{e})=>s+e.daysUsed,0),sum('regH'),sum('otH'),sum('shabH'),sum('hours'),sum('total'),sum('travel'),sum('grand'),'','','','']);
-  const shifts=buildSalaryExportRows(period);
-  const sHead=['Worker','Object/Client','Supplier','Date','First In','Last Out','Hours','Rate (₪/h or /day)','Day Pay (₪)','Notes'].map(h=>tr(h));
-  const sRows=shifts.map(r=>[r.worker, r.client, r.supplier, r.date, r.firstIn, r.lastOut, hrs(r.hours), r.rate, money(r.pay), r.notes]);
-  const wb=XLSX.utils.book_new();
-  const title=[tr('Accountant report — {period}',{period:salaryPeriodLabel(period)})], firm=[(activeTenantProfile()||{}).companyName||''];
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([title, firm, [], head, ...rows]), tr('Summary'));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([sHead, ...sRows]), tr('Shifts'));
-  if(approvals && approvals.length){
-    const aRows=[];
-    approvals.forEach(doc=>{
-      const lines=hourDayLines(doc, month), who=doc.ownerName||doc.ownerId, kind=tr((HOUR_KIND[doc.kind]||HOUR_KIND.client)[1]);
-      Object.entries(doc.days||{}).sort((x,y)=>x[0].split('|')[1].localeCompare(y[0].split('|')[1])).forEach(([k,e])=>{
-        const [wid,day]=k.split('|');
-        aRows.push([who, kind, (workers.find(w=>w.id===wid)||{}).name||wid, day, tr((HOUR_ST[hourEntryState(e,lines[k]||'')]||HOUR_ST.pending)[2]),
-          e.inT?e.inT+'–'+e.outT:'', e.comment||'', e.byName||'', e.at?new Date(e.at).toLocaleString('en-GB'):'']);
-      });
-    });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[tr('Login'),tr('Role'),tr('Worker'),tr('Date'),tr('Status'),tr('Proposed fix'),tr('Comment'),tr('By'),tr('When')], ...aRows]), tr('Hours approvals'));
-  }
-  const now=new Date();
-  XLSX.writeFile(wb, 'accountant-'+(period.startsWith('m:')?period.slice(2):period+'-'+localYMD(now))+'.xlsx');
-  showToast(tr('Accountant report exported'));
-}
-// Kept for any existing caller — CSV straight through, no picker.
-function exportSalaryCSV(){ exportSalary('csv'); }
-
-// --- Shifts table → PDF/Excel export module (Admin/Roles plan, stage 15) -------
-// Shared by the firm's own Accounting tab (below) and, per the plan, the
-// future supplier portal (stage 16, which will get its own copy of these
-// same two functions — this file duplicates helpers across HTML files on
-// purpose, see CLAUDE.md's "Shared conventions" note). Two modes, built from
-// already-computed data only — groupPunchesIntoShifts()/analyzeDayPunches()
-// for the detail mode, and whatever hours×rate figures the caller already
-// computed (renderSalary()/renderSupplierPayable()/renderClientBillable())
-// for the summary mode — never a new/independent calculation of its own.
-// "PDF" follows this file's own existing convention (exportPDF() above):
-// a styled print-ready page opened via window.open()+window.print(), not a
-// PDF-generation library — no new dependency introduced for this stage.
+// --- One worker's hours → PDF / Excel (the worker card's Export hours) ------
+// Built from groupPunchesIntoShifts()/analyzeDayPunches() only — never a
+// calculation of its own. "PDF" is a print-ready page (window.print()).
 
 // Detail mode: one worker, one calendar month, Date/In/Out/Hours per shift.
 function getWorkerMonthShifts(workerId, year, month, workerLog){
@@ -7445,37 +6236,6 @@ function exportShiftsDetail(workerId, year, month, format){
     const win=window.open('','_blank'); win.document.write(html); win.document.close(); setTimeout(()=>win.print(),400);
   }
   showToast(tr('Hours exported'));
-}
-// Summary mode: rows the caller already computed — {label, hours, rate,
-// total} — hours×rate=payable (for the firm's own workers, or a supplier's
-// flat commission). `rate` is purely informational (a tiered worker's rate
-// varies by day, so the caller may pass a string like "varies" there);
-// `total` is always the real, already-correct figure from the source table.
-function exportPayableSummary(rows, opts){
-  if(opts && opts.format==='excel' && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportPayableSummary(rows, opts)).catch(()=>showToast(tr('Excel library not loaded'))); return; }
-  opts = opts||{};
-  const title = opts.title || tr('Payable summary');
-  const fname = opts.filename || 'payable-summary';
-  const grand = rows.reduce((s,r)=>s+r.total,0);
-  if(opts.format==='excel'){
-    const aoa=[['Label','Hours','Rate','Total'].map(h=>tr(h))];
-    rows.forEach(r=>aoa.push([r.label, r.hours.toFixed(2), r.rate, r.total.toFixed(2)]));
-    aoa.push(['','',tr('Total'), grand.toFixed(2)]);
-    const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), tr('Summary'));
-    XLSX.writeFile(wb, fname+'.xlsx');
-  } else {
-    const rowsHtml = rows.map(r=>`<tr><td>${esc(r.label)}</td><td>${r.hours.toFixed(2)}</td><td>${esc(String(r.rate))}</td><td>${r.total.toFixed(2)}</td></tr>`).join('');
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(title)}</title>
-      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px;text-align:left}th{background:#f0f0f0}tfoot td{font-weight:bold}</style>
-      </head><body><h2>${esc(title)}</h2>
-      <table><thead><tr>${['Label','Hours','Rate','Total'].map(h=>`<th>${esc(tr(h))}</th>`).join('')}</tr></thead>
-      <tbody>${rowsHtml}</tbody>
-      <tfoot><tr><td colspan="3">${esc(tr('Total'))}</td><td>${grand.toFixed(2)}</td></tr></tfoot>
-      </table></body></html>`;
-    const win=window.open('','_blank'); win.document.write(html); win.document.close(); setTimeout(()=>win.print(),400);
-  }
-  showToast(tr('Summary exported'));
 }
 
 // --- Worker punch history (shown in worker modal) ------------------------------
@@ -7997,7 +6757,7 @@ function showNewVersionBar(){
     <button type="button" onclick="location.reload()" style="flex:none;border:0;border-radius:999px;padding:6px 14px;background:#4f8ef7;color:#fff;font:inherit;cursor:pointer">${tr('Update')}</button>
     <button type="button" aria-label="${tr('Close')}" onclick="this.parentElement.remove()" style="flex:none;border:0;background:none;color:#7c84a0;font:inherit;font-size:15px;cursor:pointer;padding:4px 8px 4px 2px">✕</button></div>`);
 }
-startVersionWatch(()=>[location.pathname,'og.css','payroll.js','firestore-backend.js',...(window.__scanPipelineReady?['scan-pipeline.js']:[]),...(window.hoursReviewMount?['hours-review.js']:[])]);
+startVersionWatch(()=>[location.pathname,'og.css','payroll.js','firestore-backend.js',...(window.__scanPipelineReady?['scan-pipeline.js']:[])]);
 
 const AVATAR_SIZE=160; // shared with scan-pipeline.js's cropPortraitAvatar() and confirmAvatarCrop() below (manual crop editor) — must stay in THIS file, not the lazy one, since confirmAvatarCrop() runs on every worker-photo edit regardless of scanning
 // Worker avatars are black and white (per user request 2026-10-04): the

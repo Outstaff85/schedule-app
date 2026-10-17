@@ -6,7 +6,8 @@
 // Clients and Suppliers tabs into #clientsRoot / #suppliersRoot — and the
 // worker windows (stage 6c-2: the card, the notices sheet, the worker window,
 // Add document, Upload / Export hours) and the client, supplier and manual
-// punch windows (stage 6d) into the page's overlays, which
+// punch windows (stage 6d), and the Accounting tab into #accountingRoot with
+// the pay window (stage 6e) into the page's overlays, which
 // the page still opens and closes (so they stack and go back to each other
 // with its other windows: pay, the scan). The data and the page's actions come
 // through `window.ManagerBridge` (bridge.ts).
@@ -14,6 +15,7 @@ import { StrictMode, useSyncExternalStore, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import css from '@/styles/manager.css?inline';
+import type * as Acc from './accounting';
 import { adoptLanguage } from '@/lib/i18n';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { UndoHost } from '@/components/shared/undo';
@@ -28,6 +30,18 @@ import { Clients, Suppliers } from './Clients';
 import { ClientEditor, clientWindow, type ClientProps } from './ClientEditor';
 import { SupplierEditor, type SupplierProps } from './SupplierEditor';
 import { ManualPunch } from './ManualPunch';
+import { Accounting, setKeptTab } from './Accounting';
+import { PayWindow } from './PayWindow';
+import { commissionFor, hourApprovalSummary, salaryEntriesFor, supplierCommission, SUPPLIER_DEFAULT_RATE } from './accounting';
+
+declare global {
+  interface Window {
+    ManagerAcc?: {
+      salaryEntriesFor: typeof Acc.salaryEntriesFor; commissionFor: typeof Acc.commissionFor; supplierCommission: typeof Acc.supplierCommission;
+      hourApprovalSummary: typeof Acc.hourApprovalSummary; SUPPLIER_DEFAULT_RATE: number;
+    };
+  }
+}
 
 // The styles go right before the page's og.css, so og.css still wins where they meet.
 const style = document.createElement('style');
@@ -75,6 +89,7 @@ const renderSchedule = island('scheduleRoot', b => b.schedule(), (s, api) => <Sc
 const renderWorkers = island('workersRoot', b => b.workers(), (s, api) => <Workers snap={s} api={api} />);
 const renderClients = island('clientsRoot', b => b.clients(), (s, api) => <Clients snap={s} api={api} />);
 const renderSuppliers = island('suppliersRoot', b => b.suppliers(), (s, api) => <Suppliers snap={s} api={api} />);
+const renderAccounting = island('accountingRoot', b => b.accounting(), (s, api) => <Accounting snap={s} api={api} />);
 
 /**
  * A window drawn into one of the page's overlays (`.overlay > .modal#modalId`):
@@ -128,6 +143,7 @@ const hoursExport = windowRoot<{ id: string; seq: number }>('hoursExportModal', 
 const clientWin = windowRoot<ClientProps>('clientModal', (p, api) => <ClientEditor key={p.seq} props={p} info={api.clientInfo(p.editId)} api={api} />);
 const supplierWin = windowRoot<SupplierProps>('supplierModal', (p, api) => <SupplierEditor key={p.seq} props={p} info={api.supplierInfo(p.editId)} api={api} />);
 const manualPunch = windowRoot<{ id: string; seq: number }>('manualPunchModal', (p, api) => <ManualPunch key={p.seq} clientId={p.id} api={api} />);
+const payWin = windowRoot<{ id: string; seq: number }>('payModal', (p, api) => <PayWindow key={p.seq} wid={p.id} api={api} />);
 // The page's applyWorkerDraft / autoFindMissingScanFields come right after openEditor: the window is drawn by then (flushSync).
 let seq = 0;
 
@@ -159,6 +175,15 @@ window.ManagerIsland = {
   saveClient: opts => { clientWindow.current?.save(opts); },
   openSupplier: (s, editId) => supplierWin.show({ s, editId, seq: ++seq }),
   openManualPunch: id => manualPunch.show({ id, seq: ++seq }),
+  renderAccounting,
+  setAccTab: k => { setKeptTab(k); renderAccounting(); },
+  openPay: id => payWin.show({ id, seq: ++seq }),
+};
+// The Accounting figures for the page's other callers (the client and supplier
+// windows, the user form's HR commission, the bell's approvals): its one-line
+// wrappers call these (src/manager/accounting.ts is the one copy).
+window.ManagerAcc = {
+  salaryEntriesFor, commissionFor, supplierCommission, hourApprovalSummary, SUPPLIER_DEFAULT_RATE,
 };
 // The page may have drawn a tab before this module arrived.
 window.dispatchEvent(new Event('manager-island-ready'));
