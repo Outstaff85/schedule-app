@@ -4,11 +4,13 @@
 // in `input` are built; scripts/copy-static.mjs then copies the old pages into
 // dist/ unchanged.
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
-const r = (p: string) => path.resolve(__dirname, p);
+const root = path.dirname(fileURLToPath(import.meta.url));
+const r = (p: string) => path.resolve(root, p);
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

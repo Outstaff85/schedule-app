@@ -14,7 +14,7 @@ const EXCLUDED_TOP = new Set([
   'firebase.json', 'firestore.rules', 'firestore.indexes.json', 'storage.rules',
   'docs', 'functions', 'functions-auth', 'tests', 'Tokens', 'node_modules',
   'dist', 'src', 'next', 'scripts',
-  'package.json', 'package-lock.json', 'tsconfig.json', 'vite.config.ts', 'components.json',
+  'package.json', 'package-lock.json', 'tsconfig.json', 'vite.config.mts', 'components.json',
 ]);
 // Any path whose file name matches one of these is never served.
 const EXCLUDED_NAME = [/\.md$/i, /^Screenshot_.*\.(jpg|png)$/, /-local\.html$/, /\.log$/, /\.pyc$/];

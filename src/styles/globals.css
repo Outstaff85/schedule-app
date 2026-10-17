@@ -1,6 +1,7 @@
 /* The new stack's styles (docs/build.md). The tokens are not copied here: every
-   new page links /og.css (the one copy of docs/design/system/tokens.json), and
-   the shadcn/ui color names below point at those tokens. og.css is unlayered,
+   new page links /og.css (the one copy of docs/design/system/tokens.json; Vite
+   bundles it into the page's CSS), and the shadcn/ui color names below point at
+   those tokens. og.css is unlayered,
    so its :root wins over Tailwind's theme layer where names meet (--font-sans,
    --radius-sm … --radius-xl): `rounded-lg` and `font-sans` are the Odinson
    Glass values. Never define a token of og.css here (tests/design/check.js). */
