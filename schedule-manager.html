@@ -2725,9 +2725,8 @@ async function decideShiftRequest(id,ok){
   let a=null, b=null, before=null, body={action:'decideShiftRequest',id,status:ok?'confirmed':'declined'};
   if(ok){
     a=workers.find(w=>w.id===q.workerId); b=workers.find(w=>w.id===q.toWorkerId);
+    // An own-workers HR's list holds only its own workers: a colleague of another HR isn't found here (the manager hands that shift over).
     if(!a||!b){ showToast(tr('This worker is not in your list')); return; }
-    // An own-workers HR may change only its own workers' schedules: a colleague of another HR is the manager's to hand over.
-    if(isOwnWorkersHr() && (a.hrId!==mySession().uid || b.hrId!==mySession().uid)){ showToast(tr('{0} is not your worker — ask the manager to confirm',{0:(a.hrId!==mySession().uid?a:b).name})); return; }
     before=[a.dateShifts, b.dateShifts];
     a.dateShifts=pruneDateShifts(Object.assign({}, a.dateShifts, {[q.date]:{type:'off',start:null,end:null}}));
     b.dateShifts=pruneDateShifts(Object.assign({}, b.dateShifts, {[q.date]:{type:'work',start:q.start,end:q.end}}));
