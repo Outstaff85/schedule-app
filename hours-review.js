@@ -6,11 +6,12 @@
 // HOUR_PERMS in functions-auth/core.py). The data comes only from the `hours`
 // Cloud Function (functions-auth/hours.py); this file never reads Firestore.
 //
-// Loaded on demand by client-portal.html, supplier-portal.html and
-// schedule-manager.html (an HR login) and run in the page's global scope, like
-// scan-pipeline.js. It uses the page's own esc, tr, uiLocale, localYMD,
-// showToast, closeModal, loadXlsx and the shift pairing
-// (groupPunchesIntoShifts / analyzeDayPunches) — all three pages have them.
+// Loaded on demand by supplier-portal.html and schedule-manager.html (an HR
+// login) and run in the page's global scope, like scan-pipeline.js. It uses the
+// page's own esc, tr, uiLocale, localYMD, showToast, closeModal, loadXlsx and
+// the shift pairing (groupPunchesIntoShifts / analyzeDayPunches) — both pages
+// have them. The client portal runs the React copy, src/hours-review/ (keep
+// hrvMonthDays / hrvDayState / hrvSchedDay the same as its hours.ts).
 // docs/hours-review.md.
 //
 //   hoursReviewMount(el, {call: body => Promise<json>, hideOwner?: bool})

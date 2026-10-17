@@ -12,10 +12,10 @@ How the app shows its UI in the language the user picks. The code is always Engl
 
 The language is **picked with one Language button per page** (`#langBtn`, classes `gbtn lang-btn`), always at the top right: only a globe, a square glass icon button (owner 2026-10-13; the current language's own name `.lang-btn-name` — kept up to date by `syncLangButtons` from `I18N_LANGS` — and the chevron stay in the markup, hidden by CSS). A tap opens the **language sheet** (`openLangSheet()`, `#langSheet`: a bottom sheet on a phone, a centred window on a computer) with a search field (code, own name or English name) and a line per language — its own name and its English name (`I18N_LANG_EN`), the current one ticked; a tap on a line (`pickLanguage`) closes the sheet and calls `setLanguage`. A tap outside the sheet or Escape closes it. `syncLangButtons()` writes the current language's name on the button. Where it sits:
 - manager app: in the title bar, before the account button; while the login screen or the super-admin's Firms screen covers it, the same element moves to that screen's top-right corner (`placeLangButton()`, run by a `MutationObserver` on those screens' `style`);
-- supplier and client portals: in the header, before the account button;
+- supplier and client portals: in the header, before the account button (the client portal: `LanguageButton` before `AccountMenu`, docs/components.md);
 - worker punch page: fixed in the top-right corner (`.lang-fixed`; the page has no login).
 
-Languages come only from the dictionaries: the sheet lists `I18N_LANGS` (code → own name) with `I18N_LANG_EN` (code → English name), the same in all four pages.
+Languages come only from the dictionaries: the sheet lists `I18N_LANGS` (code → own name) with `I18N_LANG_EN` (code → English name), the same in the three old pages and in `src/lib/i18n.tsx` (the new pages).
 
 **English is the default.** `setLanguage(lang)` keeps the choice in `localStorage.uiLang` (one key for all three pages, read by `storedLanguage()`), loads the dictionary and redraws (`redrawForLanguage()`, which also writes the current language on the button, `syncLangButtons()`).
 
@@ -100,6 +100,6 @@ Keep using the same words for the same things:
 
 ## Adding a language
 
-1. Add it to `I18N_LANGS` (code and the language's own name) and `I18N_LANG_EN` (its English name) in all four pages (`schedule-manager.html`, `supplier-portal.html`, `client-portal.html`, `worker-punch.html`) — the language sheet lists it from there — and to `LANGUAGES` in `functions-auth/core.py`.
+1. Add it to `I18N_LANGS` (code and the language's own name) and `I18N_LANG_EN` (its English name) in the three old pages (`schedule-manager.html`, `supplier-portal.html`, `worker-punch.html`) and in `src/lib/i18n.tsx` (the new pages: `/next`, the client portal) — the language sheet lists it from there — and to `LANGUAGES` in `functions-auth/core.py`.
 2. Create `i18n/<code>.json`. Copy the keys from `he.json` and translate the values; until then `{}` shows English.
 3. When it is complete, add it to `COMPLETE` in `tests/i18n/check.js`.

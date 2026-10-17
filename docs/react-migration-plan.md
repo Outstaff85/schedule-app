@@ -2,7 +2,7 @@
 
 **Status: approved by the owner on 2026-10-17 as a full migration (no fallback).** Stage 0 (foundation) is built: CLAUDE.md's "no build step" / "no modules" rules are replaced by "new code goes to the new stack, old pages keep their style until their stage" (docs/build.md describes the build).
 
-Stage status: 0 Foundation — done · 1 Shared components — done (docs/components.md) · 2 Payroll as a module — done (docs/accounting.md → Payroll module) · 3 Client portal — next · 4–7 — not started. The trial page (React + Vite + Tailwind + shadcn/ui in the Odinson Glass look) was published as a design artifact only; no code of it is in this repo.
+Stage status: 0 Foundation — done · 1 Shared components — done (docs/components.md) · 2 Payroll as a module — done (docs/accounting.md → Payroll module) · 3 Client portal — done (docs/client-portal.md) · 4 Supplier portal — next · 5–7 — not started. The trial page (React + Vite + Tailwind + shadcn/ui in the Odinson Glass look) was published as a design artifact only; no code of it is in this repo.
 
 ## Why
 
@@ -80,6 +80,7 @@ How a run works (a run = one session, started by the scheduled task "React migra
 - **Mergeable when:** old and new results are identical on real months.
 
 ### Stage 3. Client portal
+- **Done.** `client-portal.html` is now a Vite entry (`src/client/`; same file name and `/client` route, never copied as an old page); the hours review in React (`src/hours-review/`: `hours.ts` + `HoursReview.tsx` — Plates, Figures, Select mode, Window, Alert Dialog, Tabs, a Table for the schedule, date-fns for the months); new shared `AccountMenu`, `Shell` without sections, `Brand` with a sub line, `src/lib/backend.ts`, `src/lib/version-watch.ts`. The supplier portal and the HR view still use `hours-review.js` until stage 4 / 6. The client e2e checks are rewritten on the React DOM; the data a client receives is the same `hours` reply.
 - Smallest page; Table, date-fns, hours review screen.
 - **Mergeable when:** the client e2e tests pass and a client sees the same data and nothing more.
 

@@ -8,6 +8,7 @@
 //              tile of it behind the icon and a glowing line on the bottom
 //              edge; a red count; a short vibration on a tap. With more than
 //              five sections the first four stay and More opens the rest.
+// A page without sections (a portal with one screen) has only the title bar.
 import * as React from 'react';
 import { IconDots } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
@@ -25,12 +26,12 @@ function Count({ n }: { n?: number }) {
   return <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-destructive px-1 text-[10px] font-bold leading-none text-white">{n}</span>;
 }
 
-export function Shell({ brand, tools, sections, active, onSelect, children }: {
+export function Shell({ brand, tools, sections = [], active = '', onSelect = () => {}, children }: {
   brand: React.ReactNode;
   tools?: React.ReactNode;
-  sections: ShellSection[];
-  active: string;
-  onSelect: (key: string) => void;
+  sections?: ShellSection[];
+  active?: string;
+  onSelect?: (key: string) => void;
   children: React.ReactNode;
 }) {
   const phone = useIsPhone();
@@ -47,7 +48,7 @@ export function Shell({ brand, tools, sections, active, onSelect, children }: {
         {tools}
       </header>
 
-      {!phone && (
+      {!phone && sections.length > 0 && (
         <nav className="sticky top-14 z-20 flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-[rgba(16,20,31,.45)] px-3 backdrop-blur-xl" data-testid="shell-tabs">
           {sections.map(s => {
             const on = s.key === active;
@@ -69,9 +70,9 @@ export function Shell({ brand, tools, sections, active, onSelect, children }: {
         </nav>
       )}
 
-      <main className={cn('flex-1', phone && 'pb-[calc(72px+env(safe-area-inset-bottom,0px))]')}>{children}</main>
+      <main className={cn('flex-1', phone && sections.length > 0 && 'pb-[calc(72px+env(safe-area-inset-bottom,0px))]')}>{children}</main>
 
-      {phone && (
+      {phone && sections.length > 0 && (
         <nav
           data-testid="shell-bar"
           className="fixed inset-x-0 bottom-0 z-30 grid border-t border-border bg-[rgba(17,20,31,.85)] pb-[env(safe-area-inset-bottom,0px)] pt-1.5 backdrop-blur-xl"
@@ -122,12 +123,18 @@ export function Shell({ brand, tools, sections, active, onSelect, children }: {
   );
 }
 
-/** The brand: the 11C mark in the highlight gradient and the app name (the name hides on a phone). */
-export function Brand({ name }: { name: string }) {
+/**
+ * The brand: the 11C mark in the highlight gradient and the app name (the name
+ * hides on a phone). With `sub` (a portal: its client or supplier) the name
+ * stays on a phone too, with the line under it.
+ */
+export function Brand({ name, sub }: { name: string; sub?: string }) {
   return (
     <>
-      <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-[10px] font-mono text-[13px] font-bold text-[var(--tick-mark)]" style={{ background: 'linear-gradient(135deg, var(--uline-1), var(--uline-2), var(--uline-3))' }}>11</span>
-      <b className="truncate text-[15px] font-semibold max-[700px]:hidden">{name}</b>
+      <span aria-hidden data-testid="brand-mark" className="grid size-8 shrink-0 place-items-center rounded-[10px] font-mono text-[13px] font-bold text-[var(--tick-mark)]" style={{ background: 'linear-gradient(135deg, var(--uline-1), var(--uline-2), var(--uline-3))' }}>11</span>
+      {sub == null
+        ? <b className="truncate text-[15px] font-semibold max-[700px]:hidden">{name}</b>
+        : <span className="grid min-w-0 leading-tight"><b className="truncate text-[15px] font-semibold">{name}</b><small className="truncate text-xs text-ink-2" data-testid="brand-sub">{sub}</small></span>}
     </>
   );
 }
