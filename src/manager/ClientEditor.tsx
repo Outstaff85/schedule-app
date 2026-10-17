@@ -24,6 +24,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import type { ClientInfo, ClientRecord, ManagerBridge } from './bridge';
 import { initials } from './worker-head';
 import { Logins } from './logins';
+import { deleteLater } from './Clients';
 import { hoursShort } from './today';
 import {
   billMain, billOf, clientFormOf, clientRecordOf, margin, moneyShort, parseMapsUrl, rateNum, setBillMain, setPayUnit, setRateMode,
@@ -84,7 +85,7 @@ export function EditorHead({ color, name, sub, menu }: { color: string; name: st
             <Button size="icon" title={tr('More')} aria-label={tr('More')} data-testid="editor-menu"><IconDotsVertical className="size-[18px]" /></Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {menu.map(m => <DropdownMenuItem key={m.label} variant={m.danger ? 'destructive' : undefined} onSelect={m.run}>{m.icon}{m.label}</DropdownMenuItem>)}
+            {menu.map(m => <DropdownMenuItem key={m.label} destructive={m.danger} onSelect={m.run}>{m.icon}{m.label}</DropdownMenuItem>)}
           </DropdownMenuContent>
         </DropdownMenu>
       )}
@@ -147,7 +148,7 @@ export function ClientEditor({ props, info, api }: { props: ClientProps; info: C
       <EditorHead color={c.color || 'var(--neutral)'} name={c.name || (editing ? tr('Edit client') : tr('New client'))} sub={sub}
         menu={editing ? [
           { label: tr('Manual punch'), icon: <IconClock />, run: () => api.punchFromClient(editId!) },
-          ...(info.canDelete ? [{ label: tr('Delete'), icon: <IconTrash />, danger: true, run: () => api.deleteFromEditor('client', editId!) }] : []),
+          ...(info.canDelete ? [{ label: tr('Delete'), icon: <IconTrash />, danger: true, run: () => { api.deleteFromEditor('client', editId!); deleteLater('clients', editId!, c.name || '', api); } }] : []),
         ] : undefined} />
 
       <Accordion type="multiple" value={open} onValueChange={setOpen}>

@@ -24,6 +24,36 @@ import { hoursShort } from './today';
 const hiddenClients = new Set<string>();
 const hiddenSuppliers = new Set<string>();
 
+/** Delete from a window's ⋮ (the window already closed unsaved): the plate goes behind the Undo snack, the record when its time is up. */
+export function deleteLater(kind: 'clients' | 'suppliers', id: string, name: string, api: ManagerBridge) {
+  const hidden = kind === 'clients' ? hiddenClients : hiddenSuppliers;
+  const redraw = () => (kind === 'clients' ? window.ManagerIsland?.renderClients() : window.ManagerIsland?.renderSuppliers());
+  hidden.add(id); redraw();
+  undoDelete(name,
+    () => { hidden.delete(id); if (kind === 'clients') api.deleteClients([id]); else api.deleteSuppliers([id]); },
+    () => { hidden.delete(id); redraw(); });
+}
+
+/**
+ * A plate that only opens its window (no card to read first): with a mouse a
+ * single click waits for a possible double click (as the old tapEdit did), so a
+ * double click opens the window once and its second click doesn't land on the
+ * backdrop; a touch opens at once.
+ */
+function useTapOpen(open: (id: string) => void) {
+  const ptr = React.useRef('mouse');
+  const timer = React.useRef(0);
+  React.useEffect(() => () => window.clearTimeout(timer.current), []);
+  return (id: string) => ({
+    onPointerDown: (e: React.PointerEvent) => { ptr.current = e.pointerType; },
+    onOpen: () => {
+      window.clearTimeout(timer.current);
+      if (ptr.current === 'mouse') timer.current = window.setTimeout(() => open(id), 250); else open(id);
+    },
+    onEdit: () => { window.clearTimeout(timer.current); open(id); },
+  });
+}
+
 const workersText = (n: number) => (n === 1 ? tr('1 worker{1}', { 1: '' }) : tr('{0} workers{1}', { 0: n, 1: '' }));
 
 function Loading({ id }: { id: string }) {
@@ -78,6 +108,7 @@ function Directory<R extends { id: string; name: string }>({ kind, rows, canEdit
 }
 
 export function Clients({ snap, api }: { snap: ClientsSnapshot; api: ManagerBridge }) {
+  const tap = useTapOpen(id => api.openClient(id));
   if (!snap.ready) return <Loading id="clients-loading" />;
   const can = snap.canEdit;
   const plate = (c: ClientRow, sel: { on: boolean; picked: boolean; toggle: () => void }, remove: (ids: string[]) => void) => {
@@ -92,8 +123,7 @@ export function Clients({ snap, api }: { snap: ClientsSnapshot; api: ManagerBrid
         sub={<Line parts={[workersText(c.workers), c.address || c.object]} />}
         right={<span data-testid="client-hours">{hoursShort(c.monthHours)}</span>}
         actions={actions}
-        onOpen={() => api.openClient(c.id)}
-        onEdit={() => api.openClient(c.id)}
+        {...tap(c.id)}
         onDelete={can ? () => remove([c.id]) : undefined}
         selecting={sel.on} selected={sel.picked} onToggle={sel.toggle} />
     );
@@ -113,6 +143,7 @@ export function Clients({ snap, api }: { snap: ClientsSnapshot; api: ManagerBrid
 }
 
 export function Suppliers({ snap, api }: { snap: SuppliersSnapshot; api: ManagerBridge }) {
+  const tap = useTapOpen(id => api.openSupplier(id));
   if (!snap.ready) return <Loading id="suppliers-loading" />;
   const can = snap.canEdit;
   const plate = (s: SupplierRow, sel: { on: boolean; picked: boolean; toggle: () => void }, remove: (ids: string[]) => void) => (
@@ -120,8 +151,7 @@ export function Suppliers({ snap, api }: { snap: SuppliersSnapshot; api: Manager
       title={<span title={s.name} data-testid="supplier-name">{s.name}</span>}
       sub={<Line parts={[workersText(s.workers), s.phone]} />}
       right={<span data-testid="supplier-hours">{hoursShort(s.monthHours)}</span>}
-      onOpen={() => api.openSupplier(s.id)}
-      onEdit={() => api.openSupplier(s.id)}
+      {...tap(s.id)}
       onDelete={can ? () => remove([s.id]) : undefined}
       selecting={sel.on} selected={sel.picked} onToggle={sel.toggle} />
   );

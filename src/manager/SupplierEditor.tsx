@@ -22,6 +22,7 @@ import type { CommissionEntry, ManagerBridge, SupplierInfo, SupplierRecord } fro
 import { hoursShort } from './today';
 import { fmtDMY } from './worker';
 import { Logins } from './logins';
+import { deleteLater } from './Clients';
 import { EditorHead, Field, MiniFigs, RateInput } from './ClientEditor';
 import { commissionFromForm, moneyShort, rateOn, supplierFormOf, supplierRecordOf, type SupplierForm } from './clients';
 
@@ -66,7 +67,7 @@ export function SupplierEditor({ props, info, api }: { props: SupplierProps; inf
     <div data-testid="supplier-editor" data-edit={editId || ''} className="grid gap-2">
       <EditorHead color={s.color || 'var(--neutral)'} name={s.name || (editing ? tr('Edit Supplier') : tr('Add New Supplier'))}
         sub={editing ? [workersText, tr('{0} this month', { 0: '₪' + moneyShort(info.payable) })].join(' · ') : s.phone || ''}
-        menu={editing && info.canDelete ? [{ label: tr('Delete'), icon: <IconTrash />, danger: true, run: () => api.deleteFromEditor('supplier', editId!) }] : undefined} />
+        menu={editing && info.canDelete ? [{ label: tr('Delete'), icon: <IconTrash />, danger: true, run: () => { api.deleteFromEditor('supplier', editId!); deleteLater('suppliers', editId!, s.name || '', api); } }] : undefined} />
 
       <Accordion type="multiple" value={open} onValueChange={setOpen}>
         <AccordionItem value="supplier" data-sec="supplier" color={!f.name.trim() ? 'var(--warn)' : 'var(--ok)'}>

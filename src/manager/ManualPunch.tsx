@@ -19,15 +19,15 @@ import { Field } from './ClientEditor';
 const pad = (n: number) => String(n).padStart(2, '0');
 
 export function ManualPunch({ clientId, api }: { clientId: string; api: ManagerBridge }) {
-  const client = api.clients().clients.find(c => c.id === clientId);
-  const workers = React.useMemo(() => api.punchWorkers(clientId), [clientId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const info = React.useMemo(() => api.punchInfo(clientId), [clientId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [now] = React.useState(() => new Date());
   const [wid, setWid] = React.useState('');
   const [type, setType] = React.useState<'in' | 'out'>('in');
   const [date, setDate] = React.useState(now.toISOString().slice(0, 10));
   const [time, setTime] = React.useState(pad(now.getHours()) + ':' + pad(now.getMinutes()));
   const [note, setNote] = React.useState('');
-  if (!client) return null;
+  if (!info) return null;
+  const { client, workers } = info;
 
   const save = () => {
     if (!wid) { api.toast(tr('Please select a worker')); return; }

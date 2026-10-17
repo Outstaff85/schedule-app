@@ -389,8 +389,9 @@ export type ManagerBridge = WorkerBridge & {
   /** stores the client (editId null: a new one) unless nothing changed, closes the window; saved */
   commitClient(editId: string | null, fields: ClientRecord): void;
   commitSupplier(editId: string | null, fields: SupplierRecord): void;
-  /** the client window's ⋮: Manual punch (the window saved first), Delete (closed without saving, then Undo) */
+  /** the client window's ⋮ → Manual punch: the window saved first, then the punch (back to the window on close) */
   punchFromClient(id: string): void;
+  /** a window's ⋮ → Delete: the window closes without saving and does not come back (the list then deletes behind Undo) */
   deleteFromEditor(kind: 'client' | 'supplier', id: string): void;
   /** the map picker over the client window (`openMapPicker`); `onPick` gets the place chosen */
   pickPlace(start: { lat: number | null; lng: number | null; addr: string; radius: number }, onPick: (p: { lat: number; lng: number; radius: number; mapsUrl: string }) => void): void;
@@ -398,8 +399,8 @@ export type ManagerBridge = WorkerBridge & {
   saveLogin(uid: string, field: 'hourPerms' | 'supplierSections' | 'showPay', value: string[] | boolean): Promise<boolean>;
   /** "New client login" / "New portal login": the user form with the role and the client / supplier set */
   newLogin(role: 'client' | 'supplier', id: string): void;
-  /** the workers the manual punch offers (assigned to this client, else every active one) */
-  punchWorkers(clientId: string): { id: string; name: string }[];
+  /** the client of a manual punch and the workers it offers (assigned to this client, else every active one) */
+  punchInfo(clientId: string): { client: { id: string; name: string }; workers: { id: string; name: string }[] } | null;
   /** adds the punch to the local log and sends it (`gsSavePunch`) */
   addPunch(p: ManualPunch): void;
 };

@@ -3,7 +3,8 @@
 // Google Maps link reader, the margin, and the supplier's own rate from a date.
 // Billing never changes a worker's pay; the supplier's rate only its commission.
 import { localYMD } from '@/lib/payroll';
-import { myRateOn, type CommissionRate } from '@/supplier/money';
+import { myRateOn } from '@/supplier/money';
+import type { CommissionRate } from '@/supplier/api';
 import type { ClientRecord, CommissionEntry, SupplierRecord } from './bridge';
 
 /** '' or empty → null, else the number (a bad one → 0), like the old clientRateNum. */

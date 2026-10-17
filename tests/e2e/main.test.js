@@ -947,10 +947,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.closedHidden = [...document.querySelectorAll('#workerModal [data-sec][data-state="closed"] [data-slot="accordion-content"]')].every(c => c.hidden) && !!document.getElementById('wCity');
     r.noSave = ![...document.querySelectorAll('#workerModal button')].some(b => /^\s*Save/.test(b.textContent));
     workers.find(w => w.id === 'w2').docSex = workers.find(w => w.id === 'w2').docSex; closeModal('workerOverlay');
-    openEditClient(clients[0].id); await wait(100); r.client = secs('clientModal'); closeModal('clientOverlay');
-    openAddSupplier(); await wait(100); r.supplier = secs('supplierModal'); r.supSave = !!document.querySelector('#supplierModal .og-save');
-    r.supNameAmber = getComputedStyle(document.querySelector('#supplierModal .og-sec[data-sec="supplier"]')).getPropertyValue('--c').trim(); closeModal('supplierOverlay');
-    openEditSupplier(suppliers[0].id); await wait(100); r.supplierEdit = secs('supplierModal').map(x => x.replace('*', '')).join(); closeModal('supplierOverlay'); await wait(150);
+    // The client and supplier windows are React (stage 6d): their section plates are Accordion items too.
+    const rsecs = id => [...document.querySelectorAll('#' + id + ' [data-sec]')].map(x => x.dataset.sec + (x.dataset.state === 'open' ? '*' : ''));
+    openEditClient(clients[0].id); await wait(100); r.client = rsecs('clientModal'); closeModal('clientOverlay');
+    openAddSupplier(); await wait(100); r.supplier = rsecs('supplierModal'); r.supSave = !!document.querySelector('#supplierModal [data-testid="supplier-save"]');
+    r.supNameAmber = document.querySelector('#supplierModal [data-sec="supplier"]').style.getPropertyValue('--c').trim(); closeModal('supplierOverlay');
+    openEditSupplier(suppliers[0].id); await wait(100); r.supplierEdit = rsecs('supplierModal').map(x => x.replace('*', '')).join(); closeModal('supplierOverlay'); await wait(150);
     openCreateUserForm(); await wait(100); const role = document.getElementById('userFormRole'); role.value = 'hr'; role.dispatchEvent(new Event('change')); await wait(50);
     r.userHr = secs('userFormOverlay').map(x => x.replace('*', '')).join(); r.roleSeg = !!document.querySelector('#userFormOverlay .seg-sel button.on[data-v="hr"]');
     role.value = 'staff'; role.dispatchEvent(new Event('change')); closeModal('userFormOverlay'); await wait(150);
@@ -968,20 +970,22 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
     r.daily = [clientBillPay(5, {rateMode:'daily', dailyBillRate:300}), clientBillPay(0, {rateMode:'daily', dailyBillRate:300}), clientBillPay(11, {rateMode:'daily', dailyBillRate:300}, true)].join();
     openEditClient(clients[0].id); await wait(100);
-    document.querySelector('#cPayUnit button[data-unit="day"]').click();
-    r.dayRow = document.getElementById('cDailyRow').style.display !== 'none' && document.getElementById('cHourlyBill').style.display === 'none';
-    document.querySelector('#cPayUnit button:not([data-unit="day"])').click();
-    r.hourBack = document.getElementById('cDailyRow').style.display === 'none'; closeModal('clientOverlay'); await wait(150);
+    document.querySelector('#cPayUnit [data-unit="day"]').click(); await wait(50);
+    r.dayRow = !!document.getElementById('cBillDaily') && !document.getElementById('cHourlyBill') && !document.getElementById('cBillMain');
+    document.querySelector('#cPayUnit [data-unit="hour"]').click(); await wait(50);
+    r.hourBack = !document.getElementById('cBillDaily') && !!document.getElementById('cHourlyBill'); closeModal('clientOverlay'); await wait(150);
     openEditSupplier('s-1'); await wait(150);
     const m = document.getElementById('supplierModal');
-    r.payable = /commission/.test(m.querySelector('.og-sec[data-sec="commission"]').textContent);
-    r.newLogin = !!m.querySelector('.og-sec[data-sec="portal"] button[onclick^="newLoginFor"]');
-    const cb = m.querySelector('input[data-field="supplierSections"][value="dashboard"]');
-    r.tick = !!cb && !cb.disabled;
-    if(cb){ const was = cb.checked; cb.checked = !was; await saveLoginTicks(cb);
-      const u = loadAdminCache('users_' + activeTenantIdForAdmin()).find(x => x.username === 'sup1');
-      r.saved = (u.supplierSections || []).includes('dashboard') === !was;
-      cb.checked = was; await saveLoginTicks(cb); }
+    r.payable = /commission/.test(m.querySelector('[data-sec="commission"]').textContent);
+    r.newLogin = !!m.querySelector('[data-sec="portal"] [data-testid="new-login"]');
+    // a portal tab tick is saved at once (updateUser) and the users cache follows
+    const cb = () => m.querySelector('[data-field="supplierSections"][data-key="dashboard"]');
+    const u = () => loadAdminCache('users_' + activeTenantIdForAdmin()).find(x => x.username === 'sup1');
+    const has = () => (u().supplierSections || ['dashboard']).includes('dashboard');
+    r.tick = !!cb() && !cb().disabled;
+    if(cb()){ const was = cb().dataset.state === 'checked'; cb().click();
+      r.saved = await T.until(() => has() === !was, 5000) && (cb().dataset.state === 'checked') === !was;
+      cb().click(); await T.until(() => has() === was, 5000); }
     for(let i = 0; i < 3; i++){ await wait(150); document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); }
     return r;
   });
@@ -994,15 +998,20 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const mine = Object.values(salaryEntriesFor('month').byWorker).filter(e => (workers.find(w => w.id === e.workerId) || {}).supplierId === 's-1');
     const hours = mine.reduce((t, e) => t + e.hours, 0), days = mine.reduce((t, e) => t + e.dayKeys.size, 0);
     r.def = Math.round(supplierMonthPayable(SP())) === Math.round(hours * 5);
+    // "Applies from" is a Date Picker: the 1st of this month is picked in its calendar.
+    const first = localYMD(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+    const pickFirst = async () => { document.getElementById('sComFrom').click(); await T.until(() => document.querySelector('[data-day="' + first + '"] button'), 3000);
+      document.querySelector('[data-day="' + first + '"] button').click(); await wait(100); };
+    const save = () => document.querySelector('#supplierModal [data-testid="supplier-save"]').click();
     openEditSupplier('s-1'); await wait(150);
     r.fields = !!document.getElementById('sComRate') && !!document.getElementById('sComFrom') && !!document.getElementById('sComMode');
-    document.getElementById('sComRate').value = '10'; document.getElementById('sComFrom').value = localYMD(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-    saveSupplier(); await wait(200);
+    T.fill('sComRate', '10'); await pickFirst(); r.from = document.getElementById('sComFrom').innerText.trim();
+    save(); await wait(200);
     r.saved = JSON.stringify(SP().commission);
     r.hour = Math.round(supplierMonthPayable(SP())) === Math.round(hours * 10);
     openEditSupplier('s-1'); await wait(150);
-    document.querySelector('#sComMode button[data-m="day"]').click(); document.getElementById('sComRate').value = '50'; document.getElementById('sComFrom').value = localYMD(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-    saveSupplier(); await wait(200);
+    document.querySelector('#sComMode [data-m="day"]').click(); await wait(50); T.fill('sComRate', '50'); await pickFirst();
+    save(); await wait(200);
     r.day = Math.round(supplierMonthPayable(SP())) === days * 50;
     // A rate from tomorrow on does not change this month's shifts so far.
     SP().commission = [{from: localYMD(new Date(Date.now() + 864e5)), mode: 'hour', rate: 99}];
@@ -1215,75 +1224,125 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const pay2 = await p.evaluate(() => ({pay: document.getElementById('payOverlay')?.classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open')}));
   ok(pay1.pay && !pay1.card && !pay2.pay && pay2.card, 'back: closing Pay opened from the worker card shows the card again ' + JSON.stringify({pay1, pay2}));
   await p.mouse.click(5, 450); await sleep(400);
-  // A client card: a single click opens its editor (no card to read first).
+  // The Clients and Suppliers tabs are React (stage 6d, src/manager/Clients.tsx): a client plate's single click
+  // or double click opens its window (no card to read first); the breadcrumb counts them; no side panel.
   await p.evaluate(() => switchTab('clients')); await sleep(400);
-  await p.click('#clientsGrid .t3-line .wp-n >> nth=0'); await sleep(500);
-  const cl1 = await p.evaluate(() => document.getElementById('clientOverlay').classList.contains('open'));
+  await p.click('#clientsRoot [data-testid="client-plate"] [data-testid="client-name"] >> nth=0'); await sleep(500);
+  const cl1 = await p.evaluate(() => document.getElementById('clientOverlay').classList.contains('open') && !!document.querySelector('#clientModal [data-testid="client-editor"]'));
   await p.evaluate(() => closeModal('clientOverlay')); await sleep(200);
-  await p.dblclick('#clientsGrid .t3-line .wp-n >> nth=0'); await sleep(500);
+  await p.dblclick('#clientsRoot [data-testid="client-plate"] [data-testid="client-name"] >> nth=0'); await sleep(500);
   const cl2 = await p.evaluate(() => document.getElementById('clientOverlay').classList.contains('open'));
   ok(cl1 && cl2, 'clients: a single click or a double click opens the editor ' + JSON.stringify({cl1, cl2}));
   await p.evaluate(() => closeModal('clientOverlay')); await sleep(200);
-  // Clients and suppliers as plates (redesign stage 8): ⋮ (Edit, Manual punch, Delete), Delete → Undo, Select; supplier plates.
-  const cpl = await p.evaluate(async () => {
-    const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
-    clients.push({id:'ctmp', name:'Temp Client', color:'#60a5fa'}); switchTab('clients'); renderClientsPage(); await wait(50);
-    const line = () => document.querySelector('#clientsGrid .t3-line[data-cid="ctmp"]');
-    r.noRate = /No rate/.test(line().textContent); r.count = document.getElementById('clientsTitleCount').textContent;
-    line().querySelector('.t3-kb').click(); await wait(50);
-    r.menu = [...document.querySelectorAll('#ogPop .og-pop-it')].map(b => (b.classList.contains('del') ? '!' : '') + b.textContent.trim()).join();
-    document.querySelector('#ogPop .og-pop-it.del').click(); await wait(300);
-    r.pending = clients.some(c => c.id === 'ctmp'); document.querySelector('#undoSnack .og-snack-u').click(); await wait(300);
-    r.undone = !!line() && clients.some(c => c.id === 'ctmp');
-    (__selState.head.querySelector('[data-h="on"]') || {click(){}}).click(); line().querySelector('.t3-cb').click(); r.sel = document.querySelector('.sel-bar b').textContent;
-    [...document.querySelectorAll('.sel-bar .gbtn')].find(b => b.dataset.a === 'del').click(); await wait(5500);
-    r.deleted = !clients.some(c => c.id === 'ctmp');
-    switchTab('suppliers'); renderSuppliersPage(); await wait(50);
-    const sp = document.querySelector('#suppliersGrid .t3-line'); r.supplier = !!sp && !!sp.querySelector('.r') && !!sp.querySelector('.t3-kb') && !!sp.closest('.sw');
-    switchTab('clients');
-    return r;
-  });
-  ok(cpl.noRate && /^\d+$/.test(cpl.count) && cpl.menu === 'Edit,Manual punch,!Delete' && cpl.pending && cpl.undone && cpl.sel === '1 selected' && cpl.deleted && cpl.supplier, 'clients / suppliers: plates with notices, ⋮, Delete → Undo, Select → Delete after 5 s; supplier plates ' + JSON.stringify(cpl));
-  // The client window has no Save button: a tap outside saves it; an empty new client is not created.
+  // Plates: notices, ⋮ (Edit, Manual punch, Delete), Delete → Undo, Select → Delete after 5 s; supplier plates.
+  const crumbNow = () => p.evaluate(() => document.getElementById('ogCrumb').innerText.replace(/\s+/g, ' ').trim());
+  await p.evaluate(() => { clients.push({id:'ctmp', name:'Temp Client', color:'#60a5fa'}); switchTab('clients'); renderClientsPage(); });
+  const ctmp = '#clientsRoot [data-testid="client-plate"][data-cid="ctmp"]';
+  await p.waitForSelector(ctmp);
+  const cpl = await p.evaluate(sel => ({noRate: !!document.querySelector(sel + ' [data-testid="client-norate"]'), sidebar: getComputedStyle(document.querySelector('.sidebar')).display === 'none',
+    old: !document.getElementById('clientsGrid') && !document.querySelector('#sectionClients .page-title')}), ctmp);
+  cpl.crumb = await crumbNow();
+  await p.click(ctmp + ' button[aria-label="Actions"]'); await p.waitForSelector('[role="menuitem"]');
+  cpl.menu = await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(b => b.innerText.trim()).join());
+  await p.click('[role="menuitem"]:has-text("Delete")'); await sleep(400);
+  cpl.pending = await p.evaluate(sel => !document.querySelector(sel) && clients.some(c => c.id === 'ctmp') && /Temp Client/.test(document.querySelector('[data-testid="undo-snack"]').textContent), ctmp);
+  await p.click('[data-testid="undo-snack"] button'); await sleep(400);
+  cpl.undone = await p.evaluate(sel => !!document.querySelector(sel) && clients.some(c => c.id === 'ctmp'), ctmp);
+  await p.click('#clientsRoot [data-testid="clients-select"] button:has-text("Select")'); await sleep(100);
+  await p.click(ctmp + ' [role="button"]', {position: {x: 30, y: 14}}); await sleep(100);
+  cpl.sel = await p.evaluate(() => (document.querySelector('[data-testid="select-bar"] b') || {}).textContent);
+  cpl.noWindow = await p.evaluate(() => !document.getElementById('clientOverlay').classList.contains('open'));
+  await p.click('[data-testid="select-bar"] button:has-text("Delete")'); await sleep(400);
+  cpl.notYet = await p.evaluate(() => clients.some(c => c.id === 'ctmp'));
+  await sleep(5300);
+  cpl.deleted = await p.evaluate(() => !clients.some(c => c.id === 'ctmp'));
+  await p.evaluate(() => switchTab('suppliers')); await sleep(300);
+  cpl.supplier = await p.evaluate(() => { const sp = document.querySelector('#suppliersRoot [data-testid="supplier-plate"]'); return !!sp && !!sp.querySelector('[data-testid="supplier-hours"]') && !!sp.querySelector('button[aria-label="Actions"]') && getComputedStyle(document.querySelector('.sidebar')).display === 'none'; });
+  cpl.crumbS = await crumbNow();
+  await p.click('#suppliersRoot [data-testid="supplier-plate"] button[aria-label="Actions"] >> nth=0'); await p.waitForSelector('[role="menuitem"]');
+  cpl.supMenu = await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(b => b.innerText.trim()).join());
+  await p.keyboard.press('Escape'); await sleep(150);
+  await p.click('#suppliersRoot [data-testid="supplier-plate"] [data-testid="supplier-name"] >> nth=0'); await sleep(400);
+  cpl.supWindow = await p.evaluate(() => document.getElementById('supplierOverlay').classList.contains('open') && !!document.querySelector('#supplierModal [data-testid="supplier-editor"]'));
+  await p.evaluate(() => { closeModal('supplierOverlay'); switchTab('clients'); }); await sleep(200);
+  ok(cpl.noRate && /^Clients \d+$/.test(cpl.crumb) && /^Suppliers \d+$/.test(cpl.crumbS) && cpl.sidebar && cpl.old && cpl.menu === 'Edit,Manual punch,Delete' && cpl.pending && cpl.undone && cpl.sel === '1 selected' && cpl.noWindow && cpl.notYet && cpl.deleted
+    && cpl.supplier && cpl.supMenu === 'Edit,Delete' && cpl.supWindow,
+    'clients / suppliers (React): plates with notices, the breadcrumb count, no side panel, ⋮, Delete → Undo, Select → Delete after 5 s; supplier plates open the supplier window ' + JSON.stringify(cpl));
+  // The client window: a tap outside saves it; an empty new client is not created; the rates block; manual punch from the window and back.
   const cs = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
     const tap = () => { const ov = document.getElementById('clientOverlay'); ov.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true})); ov.click(); };
     const keep = JSON.parse(JSON.stringify(clients.find(c => c.id === 'c1')));
-    openEditClient('c1');
-    const noSave = ![...document.querySelectorAll('#clientModal button')].some(b => /שמירה|הוספת לקוח/.test(b.textContent));
+    openEditClient('c1'); await wait(100);
+    const m = document.getElementById('clientModal');
+    const noClose = ![...m.querySelectorAll('button')].some(b => /^\s*(Cancel|Close)\s*$/.test(b.textContent));
     // Stage 5a: the window is laid out left to right (no dir="rtl" inside) and its note goes through tr().
-    const ltr = {noRtl: !document.querySelector('#clientModal [dir="rtl"]'), note: /Changes are saved when the window closes/.test(document.getElementById('clientModal').innerText)};
-    document.getElementById('cBillMain').value = '130'; onClientBillMainInput('130'); document.getElementById('cDefRate').value = '52'; updateClientMargin();
+    const ltr = {noRtl: !m.querySelector('[dir="rtl"]'), note: /Changes are saved when the window closes/.test(m.innerText)};
+    T.fill('cBillMain', '130'); T.fill('cDefRate', '52'); await wait(50);
     // The rates block: the margin per hour, the mode buttons (by law shows OT / Shabbat inline).
-    const rates = {margin: document.getElementById('cBillMargin').innerText.replace(/\s+/g, ' '), extra: getComputedStyle(document.getElementById('cBillExtra')).display !== 'none'};
-    setClientRateMode('fixed'); rates.fixedHidesExtra = getComputedStyle(document.getElementById('cBillExtra')).display === 'none'; setClientRateMode('tiered');
+    const rates = {margin: document.getElementById('cBillMargin').innerText.replace(/\s+/g, ' '), extra: !!document.getElementById('cBillExtra'), sum: m.querySelector('[data-sec="rates"] [data-slot="accordion-trigger"] small').textContent};
+    document.querySelector('#cRateMode [data-mode="fixed"]').click(); await wait(50); rates.fixedHidesExtra = !document.getElementById('cBillExtra');
+    document.querySelector('#cRateMode [data-mode="tiered"]').click(); await wait(50);
     tap();
-    await new Promise(r => setTimeout(r, 300));
-    const c = clients.find(x => x.id === 'c1'), out = {rates, ltr, noSave, closed: !document.getElementById('clientOverlay').classList.contains('open'), d: c.defaultHourlyRate, b: c.billRate};
-    const n = clients.length; openAddClient(); tap(); await new Promise(r => setTimeout(r, 300)); out.noNew = clients.length === n;
+    await wait(300);
+    const c = clients.find(x => x.id === 'c1'), out = {rates, ltr, noClose, closed: !document.getElementById('clientOverlay').classList.contains('open'), d: c.defaultHourlyRate, b: c.billRate};
+    const n = clients.length; openAddClient(); await wait(100); tap(); await wait(300); out.noNew = clients.length === n;
     // "Manual punch" from the client window: saves it, opens the punch; closing the punch brings the client back.
-    out.noPunchOnCard = !document.querySelector('#clientsGrid .t3-line button[onclick*="openManualPunch"]');
-    openEditClient('c1'); punchFromClientModal(); await new Promise(r => setTimeout(r, 100));
-    out.punch = document.getElementById('manualPunchOverlay').classList.contains('open') && !document.getElementById('clientOverlay').classList.contains('open');
-    closeModal('manualPunchOverlay'); await new Promise(r => setTimeout(r, 200));
-    out.back = document.getElementById('clientOverlay').classList.contains('open'); closeModal('clientOverlay');
+    out.noPunchOnCard = ![...document.querySelectorAll('#clientsRoot [data-testid="client-plate"] button')].some(b => /Manual punch/.test(b.textContent));
+    openEditClient('c1'); await wait(100); punchFromClientModal(); await wait(150);
+    out.punch = document.getElementById('manualPunchOverlay').classList.contains('open') && !document.getElementById('clientOverlay').classList.contains('open') && !!document.querySelector('#manualPunchModal [data-testid="manual-punch"]');
+    closeModal('manualPunchOverlay');
+    out.back = await T.until(() => document.getElementById('clientOverlay').classList.contains('open') && !!document.querySelector('#clientModal [data-testid="client-editor"]'), 3000);
+    // The small map opens the map picker; the place picked there comes back into the window.
+    document.getElementById('cMapMini').click(); await wait(100);
+    out.mapOpen = document.getElementById('mapPickOverlay').classList.contains('open');
+    __mapPick.pos = {lat: 32.0712345, lng: 34.7798765}; document.getElementById('mapPickRadius').value = '150'; saveMapPick(); await wait(100);
+    out.picked = {loc: document.getElementById('cLocStatus').innerText, radius: document.getElementById('cRadius').value, url: document.getElementById('cMapsUrl').value, mapClosed: !document.getElementById('mapPickOverlay').classList.contains('open')};
+    // A pasted link is read too; a link that is not recognised says so.
+    T.fill('cMapsUrl', 'https://www.google.com/maps/@31.5,35.1,15z'); await wait(50); out.link = document.getElementById('cLocStatus').innerText;
+    T.fill('cMapsUrl', 'https://example.com/nothing-here'); await wait(50); out.badLink = document.getElementById('cLocStatus').innerText;
+    closeModal('clientOverlay'); await wait(150);
     Object.assign(c, keep); delete c.defaultOtRate; delete c.defaultShabbatRate; await gsSave(getDataObj());
     return out;
   });
   ok(cs.ltr.noRtl && cs.ltr.note, 'clients: the client window is left to right and its note is English through tr() ' + JSON.stringify(cs.ltr));
-  ok(/₪78.*60%/.test(cs.rates.margin) && cs.rates.extra && cs.rates.fixedHidesExtra, 'clients: the rates block shows the margin per hour; fixed mode hides OT / Shabbat ' + JSON.stringify(cs.rates));
+  ok(/₪78.*60%/.test(cs.rates.margin) && cs.rates.extra && cs.rates.fixedHidesExtra && /₪52 worker · ₪130 client · hourly/.test(cs.rates.sum), 'clients: the rates block shows the margin per hour; fixed mode hides OT / Shabbat ' + JSON.stringify(cs.rates));
+  ok(cs.mapOpen && /32\.0712\d, 34\.7798\d/.test(cs.picked.loc) && cs.picked.radius === '150' && cs.picked.url === 'https://www.google.com/maps?q=32.071235,34.779877' && cs.picked.mapClosed && /31\.50000, 35\.10000/.test(cs.link) && /not recognised/.test(cs.badLink),
+    'clients: the small map opens the map picker and the place comes back; a pasted Google Maps link is read ' + JSON.stringify({mapOpen: cs.mapOpen, picked: cs.picked, link: cs.link, badLink: cs.badLink}));
   // Editors per mockup 04: the client head's ⋮ (Manual punch, Delete) and the small map; the user editor's head; glass fields.
-  const ed4 = await p.evaluate(() => {
-    openEditClient('c1');
-    const head = document.querySelector('#clientModal .og-edh button.gbtn.icon'), map = !!document.getElementById('cMapMini');
+  await p.evaluate(() => openEditClient('c1')); await sleep(200);
+  await p.click('#clientModal [data-testid="editor-menu"]'); await p.waitForSelector('[role="menuitem"]');
+  const ed4items = await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(b => b.innerText.trim()));
+  await p.keyboard.press('Escape'); await sleep(150);
+  const ed4 = await p.evaluate(items => {
+    const map = !!document.getElementById('cMapMini');
     const fieldRadius = getComputedStyle(document.getElementById('cName')).borderTopLeftRadius;
-    head.click(); const items = [...document.querySelectorAll('#ogPop .og-pop-it')].map(b => b.textContent.trim()); closePopover(); closeModal('clientOverlay');
+    closeModal('clientOverlay');
     openCreateUserForm(); document.getElementById('userFormFullName').value = 'Rina Mizrahi'; drawUserFormHead();
     const user = {title: document.getElementById('userFormTitle').textContent, av: document.getElementById('userFormAv').textContent};
     closeModal('userFormOverlay');
     return {items, map, fieldRadius, user};
+  }, ed4items);
+  ok(ed4.items.join() === 'Manual punch,Delete' && ed4.map && ed4.fieldRadius === '12px' && ed4.user.title === 'Rina Mizrahi' && ed4.user.av === 'RM', 'editors: the client head ⋮ (Manual punch, Delete), the small map, glass fields, the user editor head ' + JSON.stringify(ed4));
+  ok(cs.noClose && cs.closed && cs.d === 52 && cs.b === 130 && cs.noNew && cs.noPunchOnCard && cs.punch && cs.back, 'clients: no Cancel / Close, a tap outside saves; an empty new client is not created; manual punch from the window and back ' + JSON.stringify(cs));
+  // The manual punch (React): a worker, OUT, saved as a manual punch of this client, not GPS-verified (sent through gsSavePunch).
+  await sleep(300);
+  await p.evaluate(() => { window.__mpSent = []; window.__mpKeep = gsSavePunch; gsSavePunch = e => { window.__mpSent.push(e); }; openManualPunch('c1'); });
+  await p.waitForSelector('#manualPunchModal [data-testid="manual-punch"]');
+  await p.click('[data-testid="mp-save"]'); await sleep(150);
+  const mpNoWorker = await p.evaluate(() => !window.__mpSent.length && document.getElementById('manualPunchOverlay').classList.contains('open'));
+  await p.click('#mpWorker'); await p.click('[role="option"] >> nth=0'); await sleep(100);
+  await p.click('#manualPunchModal [data-type="out"]'); await p.fill('#mpNote', 'Approved by phone');
+  await p.click('[data-testid="mp-save"]'); await sleep(200);
+  const mpu = await p.evaluate(() => {
+    const e = window.__mpSent[0] || {}, inLog = getPunchLog().some(x => x.id === e.id);
+    const r = {n: window.__mpSent.length, manual: e.manual === true && e.gpsVerified === false && e.dist === null, type: e.type, client: e.clientId, site: e.site, notes: e.notes, warn: (e.gpsWarnings || []).join(),
+      date: /^\d{2}\/\d{2}\/\d{4}$/.test(e.date) && !isNaN(Date.parse(e.ts)), inLog, closed: !document.getElementById('manualPunchOverlay').classList.contains('open')};
+    savePunchLog(getPunchLog().filter(x => x.id !== e.id)); gsSavePunch = window.__mpKeep; render();
+    return r;
   });
-  ok(ed4.items.length === 2 && ed4.map && ed4.fieldRadius === '12px' && ed4.user.title === 'Rina Mizrahi' && ed4.user.av === 'RM', 'editors: the client head ⋮ (Manual punch, Delete), the small map, glass fields, the user editor head ' + JSON.stringify(ed4));
-  ok(cs.noSave && cs.closed && cs.d === 52 && cs.b === 130 && cs.noNew && cs.noPunchOnCard && cs.punch && cs.back, 'clients: no Save button, a tap outside saves; an empty new client is not created; manual punch from the window and back ' + JSON.stringify(cs));
+  ok(mpNoWorker && mpu.n === 1 && mpu.manual && mpu.type === 'out' && mpu.client === 'c1' && mpu.notes === 'Approved by phone' && mpu.warn === 'Manual entry by manager' && mpu.date && mpu.inLog && mpu.closed,
+    'manual punch: a worker must be picked; the punch is manual, not GPS-verified, of this client, in the log and sent ' + JSON.stringify({mpNoWorker, ...mpu}));
   await p.mouse.click(5, 450); await sleep(400);
   ok(external.filter(u=>/script\.google\.com/.test(u)).length === 0, 'no request to script.google.com');
   ok(p.errs.length === 0, 'owner: no page errors ' + p.errs.join(' | '));
