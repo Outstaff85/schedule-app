@@ -1155,5 +1155,10 @@
   "Enter a phone like 050-1234567": "יש להזין טלפון בתבנית 050-1234567",
   "The rate is below the minimum wage": "התעריף נמוך משכר המינימום",
   "Account menu": "תפריט החשבון",
-  "Profile": "פרופיל"
+  "Profile": "פרופיל",
+  "Changes are saved when the window closes": "השינויים נשמרים בסגירת החלון",
+  "The worker is created when the window closes": "העובד נוצר בסגירת החלון",
+  "The client is created when the window closes": "הלקוח נוצר בסגירת החלון",
+  "Rescan": "סריקה חוזרת",
+  "Scan document": "סרוק מסמך"
 }

@@ -3697,7 +3697,7 @@ function showWorkerModal(w){
     </div>` : ''}
       <button class="gbtn" type="button" onclick="regenerateWorkerToken(${editingWorkerIdx})"><i class="ti ti-refresh"></i><span>טוקן חדש</span></button>
     </div></section>` : ''}
-    <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px"><i class="ti ti-device-floppy"></i> ${editingWorkerIdx!==null?'השינויים נשמרים בסגירת החלון':'העובד נוצר בסגירת החלון'}</div>`;
+    <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px"><i class="ti ti-device-floppy"></i> ${esc(tr(editingWorkerIdx!==null?'Changes are saved when the window closes':'The worker is created when the window closes'))}</div>`;
   // No Save button: a tap outside the window saves it (saveWorker auto).
   const wov=document.getElementById('workerOverlay');
   wov.__onUserClose=()=>saveWorker({auto:true});
@@ -4181,9 +4181,9 @@ function showClientModal(c){
   __cBill = { rateMode: c.rateMode==='fixed'?'fixed':c.rateMode==='daily'?'daily':'tiered', hourMode: c.rateMode==='fixed'?'fixed':'tiered', dailyBillRate: c.dailyBillRate??null, fixedBillRate: c.fixedBillRate??null,
     billRate: (c.billRate!=null&&c.billRate!=='') ? c.billRate : (c.defaultHourlyRate??null),
     billOtRate: c.billOtRate??null, billShabbatRate: c.billShabbatRate??null };
-  // The client card is in Hebrew (per user request 2026-10-04).
+  // The client card's labels are in Hebrew (per user request 2026-10-04); the layout stays left to right.
   setTimeout(()=>{ syncClientBillFields(); },0);
-  document.getElementById('clientModal').innerHTML=`<div dir="rtl">
+  document.getElementById('clientModal').innerHTML=`
     <div class="og-edh" style="--c:${esc(c.color||'var(--neutral)')}"><div class="t3-av og-av wc-av">${esc(String(c.name||'?').trim().slice(0,2).toUpperCase())}</div><div class="og-edh-n"><h4>${esc(c.name||'')||(editingClientId?'עריכת לקוח':'לקוח חדש')}</h4><p dir="auto">${esc(editingClientId?clientEditorSub(c):[c.object, c.address].filter(Boolean).join(' · '))}</p></div>${editingClientId?`<button class="gbtn icon" type="button" title="${esc(tr('More'))}" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey([{icon:'ti-clock', label:tr('Manual punch'), fn:()=>punchFromClientModal()}, ...(hasPermission('clients')?[{icon:'ti-trash', label:tr('Delete'), danger:true, fn:()=>deleteClientFromEditor()}]:[])])}')"><i class="ti ti-dots-vertical"></i></button>`:''}</div>
     <section class="og-sec" data-sec="client"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-building"></i></span><span class="og-sec-t"><b>${esc(tr('Client'))}</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
     <div class="field-row">
@@ -4241,7 +4241,7 @@ function showClientModal(c){
       ${clientLoginsHtml(c)}
 </div></section>
     <div class="modal-actions"><button type="button" class="gbtn primary og-save" onclick="saveClient()"><i class="ti ti-check"></i><span>${esc(tr('Save'))}</span></button></div>
-    <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px"><i class="ti ti-device-floppy"></i> ${editingClientId?'השינויים נשמרים בסגירת החלון':'הלקוח נוצר בסגירת החלון'}</div></div>`;
+    <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px"><i class="ti ti-device-floppy"></i> ${esc(tr(editingClientId?'Changes are saved when the window closes':'The client is created when the window closes'))}</div>`;
   // No Save button: a tap outside the window saves it (saveClient auto).
   const cov=document.getElementById('clientOverlay');
   cov.__onUserClose=()=>saveClient({auto:true});
@@ -4870,7 +4870,7 @@ function openWorkerCard(wi){
         ${[['active',tr('Active')],['vacation',tr('Vacation')],['fired',tr('Inactive')]].map(([v,l])=>`<button type="button" data-st="${v}" class="${(w.status||'active')===v?'on':''}" onclick="setWorkerStatus(${wi},'${v}')" title="${tr('Set status: {0}',{0:(l)})}"><i></i>${l}</button>`).join('')}
       </div>`:''}
       ${w.docSavedAt?`<span style="font-size:11px;color:var(--text3)">נשמר: ${esc(new Date(w.docSavedAt).toLocaleDateString('en-GB'))}</span>`:''}
-      ${can?`<button class="gbtn wc-scan" type="button" onclick="rescanFromWorkerCard(${wi})"><i class="ti ti-scan"></i> ${w.docUrl?'סריקה חוזרת':'סרוק מסמך'}</button>`:''}
+      ${can?`<button class="gbtn wc-scan" type="button" onclick="rescanFromWorkerCard(${wi})"><i class="ti ti-scan"></i> ${esc(tr(w.docUrl?'Rescan':'Scan document'))}</button>`:''}
     </div>`:''}
     <div class="seg" role="tablist">${[['info',tr('Info')],['docs',tr('Docs')],['hours',tr('Hours')]].map(([k,l])=>`<button type="button" role="tab" data-p="${k}" class="${pane===k?'on':''}" onclick="workerCardPane('${k}')">${esc(l)}</button>`).join('')}</div>
     <div class="wc-pane" data-p="info"${pane==='info'?'':' hidden'}>

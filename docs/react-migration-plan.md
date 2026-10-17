@@ -2,7 +2,7 @@
 
 **Status: approved by the owner on 2026-10-17 as a full migration (no fallback).** Stage 0 (foundation) is built: CLAUDE.md's "no build step" / "no modules" rules are replaced by "new code goes to the new stack, old pages keep their style until their stage" (docs/build.md describes the build).
 
-Stage status: 0 Foundation — done · 1 Shared components — done (docs/components.md) · 2 Payroll as a module — done (docs/accounting.md → Payroll module) · 3 Client portal — done (docs/client-portal.md) · 4 Supplier portal — done (docs/supplier-portal.md) · 5 Worker punch page — done (docs/punch.md) · 6 Manager app — next · 7 — not started. The trial page (React + Vite + Tailwind + shadcn/ui in the Odinson Glass look) was published as a design artifact only; no code of it is in this repo.
+Stage status: 0 Foundation — done · 1 Shared components — done (docs/components.md) · 2 Payroll as a module — done (docs/accounting.md → Payroll module) · 3 Client portal — done (docs/client-portal.md) · 4 Supplier portal — done (docs/supplier-portal.md) · 5 Worker punch page — done (docs/punch.md) · 5a Fixes on the old manager page — done · 5b Worker additions — next · 5c Client's monthly signature — not started · 6 Manager app — not started · 7 — not started. The trial page (React + Vite + Tailwind + shadcn/ui in the Odinson Glass look) was published as a design artifact only; no code of it is in this repo.
 
 ## Why
 
@@ -109,6 +109,7 @@ New features and polish the owner added to the migration. Each lands in the stag
 **Order of the extra stages.** They run between the numbered stages, one per session like the others: 5 → **5a** → **5b** → **5c** → 6 (6a starts with the new look) → the light theme → 7. The stage status line counts them once they start; a run that finds stage 5 done and 5a–5c not done takes the first of them.
 
 **Stage 5a. Fixes on the old manager page** (small PR; found by the UI audit)
+- **Done.** The client window has no `dir="rtl"` any more; the window note and the worker card's scan button ("Rescan" / "Scan document") go through `tr()`, their Hebrew is in `i18n/he.json`.
 - The client window is wrapped in `<div dir="rtl">` (`openEditClient` → `#clientModal`): its section plates are mirrored and a sentence starts with its full stop. Remove the `dir`; the layout stays left to right like every other window.
 - Three Hebrew texts are written in the code instead of going through `tr()`: the note under the worker and client windows ("השינויים נשמרים בסגירת החלון" / "העובד נוצר…" / "הלקוח נוצר…") and the worker card's scan button ("סריקה חוזרת" / "סרוק מסמך"). Write them in English through `tr()`, add the Hebrew to `i18n/he.json`.
 - **Mergeable when:** the manager e2e tests are green and `npm run test:i18n` passes.

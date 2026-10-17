@@ -1058,13 +1058,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const keep = JSON.parse(JSON.stringify(clients.find(c => c.id === 'c1')));
     openEditClient('c1');
     const noSave = ![...document.querySelectorAll('#clientModal button')].some(b => /שמירה|הוספת לקוח/.test(b.textContent));
+    // Stage 5a: the window is laid out left to right (no dir="rtl" inside) and its note goes through tr().
+    const ltr = {noRtl: !document.querySelector('#clientModal [dir="rtl"]'), note: /Changes are saved when the window closes/.test(document.getElementById('clientModal').innerText)};
     document.getElementById('cBillMain').value = '130'; onClientBillMainInput('130'); document.getElementById('cDefRate').value = '52'; updateClientMargin();
     // The rates block: the margin per hour, the mode buttons (by law shows OT / Shabbat inline).
     const rates = {margin: document.getElementById('cBillMargin').innerText.replace(/\s+/g, ' '), extra: getComputedStyle(document.getElementById('cBillExtra')).display !== 'none'};
     setClientRateMode('fixed'); rates.fixedHidesExtra = getComputedStyle(document.getElementById('cBillExtra')).display === 'none'; setClientRateMode('tiered');
     tap();
     await new Promise(r => setTimeout(r, 300));
-    const c = clients.find(x => x.id === 'c1'), out = {rates, noSave, closed: !document.getElementById('clientOverlay').classList.contains('open'), d: c.defaultHourlyRate, b: c.billRate};
+    const c = clients.find(x => x.id === 'c1'), out = {rates, ltr, noSave, closed: !document.getElementById('clientOverlay').classList.contains('open'), d: c.defaultHourlyRate, b: c.billRate};
     const n = clients.length; openAddClient(); tap(); await new Promise(r => setTimeout(r, 300)); out.noNew = clients.length === n;
     // "Manual punch" from the client window: saves it, opens the punch; closing the punch brings the client back.
     out.noPunchOnCard = !document.querySelector('#clientsGrid .t3-line button[onclick*="openManualPunch"]');
@@ -1075,6 +1077,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     Object.assign(c, keep); delete c.defaultOtRate; delete c.defaultShabbatRate; await gsSave(getDataObj());
     return out;
   });
+  ok(cs.ltr.noRtl && cs.ltr.note, 'clients: the client window is left to right and its note is English through tr() ' + JSON.stringify(cs.ltr));
   ok(/₪78.*60%/.test(cs.rates.margin) && cs.rates.extra && cs.rates.fixedHidesExtra, 'clients: the rates block shows the margin per hour; fixed mode hides OT / Shabbat ' + JSON.stringify(cs.rates));
   // Editors per mockup 04: the client head's ⋮ (Manual punch, Delete) and the small map; the user editor's head; glass fields.
   const ed4 = await p.evaluate(() => {
