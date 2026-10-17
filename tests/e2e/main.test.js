@@ -709,7 +709,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.panes = [panes()]; workerCardPane('docs'); r.panes.push(panes()); workerCardPane('hours'); r.panes.push(panes());
     r.hoursStatus = !!document.querySelector('#workerCardModal .wc-pane[data-p="hours"] #cardHoursStatus');
     r.edit = !!document.getElementById('workerCardEdit'); workerCardPane('info');
-    closeModal('workerCardOverlay'); await wait(200);
+    // closing the card brings the notices sheet back; on a slow runner that takes longer than a fixed 200 ms, so up to 3 s
+    closeModal('workerCardOverlay');
+    for (let i = 0; i < 20 && !document.getElementById('noticesOverlay').classList.contains('open'); i++) await wait(150);
     r.backToNotices = document.getElementById('noticesOverlay').classList.contains('open'); closeModal('noticesOverlay'); w1.docUploadFailed = keep.failed;
     // Delete: Undo keeps the worker; a second Delete removes it only after 5 s.
     workers.push({id:'wtmp', name:'Temp Worker Del', colorIdx:1, clientIds:[], schedule:[]}); renderWorkersPage(); await wait(100);
@@ -1477,6 +1479,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.reload({waitUntil: 'domcontentloaded'});
   ok(await waitFor(p, () => /client-portal/.test(location.pathname) && !!document.querySelector('[data-testid="hours-review"][data-ready="1"]'), 15000), 'client: a reload with a kept login stays in the portal');
   // The language: the Language button switches the portal to Hebrew in place — the month stays loaded (no new load).
+  // The reload's own hours reply can still land after data-ready (its body is read asynchronously), so the count is
+  // taken once it has stayed the same for 1 s (at most 5 s), not straight away.
+  for (let n = -1, still = 0, end = Date.now() + 5000; still < 1000 && Date.now() < end; ) {
+    if (hoursReplies.length === n) still += 200; else { n = hoursReplies.length; still = 0; }
+    await sleep(200);
+  }
   const nLoads = hoursReplies.length;
   await p.click('header [data-testid="lang-btn"]'); await p.click('[data-testid="lang-list"] .lang-li:has-text("עברית")');
   const cl = {he: await waitFor(p, () => document.documentElement.lang === 'he' && localStorage.getItem('uiLang') === 'he' && /פורטל/.test(document.querySelector('header').innerText), 10000)};

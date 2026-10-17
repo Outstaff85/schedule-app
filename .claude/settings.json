@@ -20,8 +20,20 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null && printf '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"git status for %s (branch: %s):\\n%s\"}}' \"$CLAUDE_PROJECT_DIR\" \"$(git rev-parse --abbrev-ref HEAD 2>/dev/null)\" \"$(git status --short 2>/dev/null | sed 's/\"/\\\\\"/g' | tr '\\n' ';')\"",
-            "timeout": 15
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh\" UserPromptSubmit",
+            "timeout": 20
           }
         ]
       }
