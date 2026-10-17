@@ -201,7 +201,10 @@
     // loaded or saved, and deletes the ones that are gone. Each document is
     // its own record, so two managers editing different workers never
     // overwrite each other.
-    async function saveSchedule(t, data){
+    // first (optional): {ops, ids} — writes that must land together with the
+    // documents of those ids (a confirmed shift offer: the request and its two
+    // workers). They go first, in the first batch, so all of them commit or none.
+    async function saveSchedule(t, data, first){
       if(knownTenant !== t) await loadSchedule(t); // never diff against another firm
       const hrScoped = !!(await hrOnly());
       const ops = [], next = {};
