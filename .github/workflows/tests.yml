@@ -13,6 +13,13 @@ on:
 permissions:
   contents: read
 
+# A new push to the same PR cancels its run still in progress: only the latest commit is
+# tested (every file edit is its own auto-commit, so a burst of pushes would otherwise
+# queue a full run per commit).
+concurrency:
+  group: tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   tests:
     runs-on: ubuntu-latest
