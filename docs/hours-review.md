@@ -1,4 +1,4 @@
-# Hours review (`hours-review.js`, the `hours` function)
+# Hours review (`src/hours-review/`, `hours-review.js`, the `hours` function)
 
 The screen is drawn in the Odinson Glass look (redesign stage 10): glass tabs and month arrows, the status line as a plate with a coloured bar, each day a plate with its state as the bar (`--c`) and as a pill (`.hrv-pill`, `HRV_STATES[st].pill`: Waiting, Approved, Fixed, Changed, Disputed, Fix proposed, Rejected — stage 13) and the hours in the figure green. Its styles fall back to plain values where a page lacks the design tokens.
 
@@ -31,7 +31,14 @@ Whose workers: a client — the workers at its site (`punches.clientId`); a supp
 
 Store: `tenants/{t}/hourApprovals/{kind}_{ownerId}_{YYYY-MM}` = `{kind, ownerId, ownerName, month, days: {"<workerId>|<YYYY-MM-DD>": {status, line, comment?, inT?, outT?, byName, at, resolvedBy?, resolvedAt?}}}` — written only by the function; managers read it (`firestore.rules`).
 
-## The screen (`hours-review.js`)
+## The screen in the new stack (`src/hours-review/`)
+
+The client portal's screen (stage 3 of [react-migration-plan.md](react-migration-plan.md)); the supplier portal and the HR view move to it with their stages and keep `hours-review.js` until then.
+
+- `hours.ts` — the data, the same rules as `hours-review.js` (keep the two the same until the old pages move): `HOURS_FN_URL`; the reply types (`HoursData`: `month, perms, owner, workers, punches, days`); `monthKey(offset)` / `monthStart(key)` (date-fns); `can(data, tick)`; `monthDays(data)` (`hrvMonthDays`: the shift pairing of `src/lib/payroll.ts`, a row per worker and day with its `line`); `dayState(data, row)` (`hrvDayState`); `PICKABLE`; `STATES` (colour, label, pill); `planned(worker, date)` (`hrvSchedDay`).
+- `HoursReview.tsx` — `HoursReview({call, hideOwner})`; `call(body)` posts to the `hours` function (the page's own, with its ID token). The state (month, tab, data) lives outside React (`useSyncExternalStore`), so a language change redraws without a new load; `hoursReviewReload()` reloads, `useHoursOwner()` gives the header its client. Tabs **Hours** / **Schedule** (ui Tabs) by their ticks; month arrows (no future months). **Hours**: the Figures (approved, waiting, disputed or changed, fixes proposed); the status plate ("N of M days approved" …, **Export**, **Approve the month** — asks first in an Alert Dialog); the total; **Select** (`useSelection` over the pickable days: a tap ticks a day, the bulk bar's **Approve** sends their lines in one `approve`); a Section per worker (name, days, hours), paged by 10 (`PagedList`), a Plate per day — the date, the state pill, the shifts, the hours, the bar in the state's colour, the state's note under it; its ⋮ holds Approve this day / Dispute this day / Propose a fix by the ticks, and a tap opens the fix (else the dispute). The dispute and fix windows (`Window`) have no buttons: closing one sends (dispute: empty = take it back; fix: only when a time differs from the punches; a day with several shifts first picks the shift). **Schedule**: a Section per worker with a Table of its planned days (today in accent). Plates and controls carry `data-day-key` / `data-state` / `data-testid` for the browser tests.
+
+## The screen (`hours-review.js`, the old pages)
 
 Loaded on demand (a `<script>` tag, like `scan-pipeline.js`) and run in the page's global scope; it uses the page's own `esc`, `tr`, `uiLocale`, `localYMD`, `showToast`, `closeModal`, `loadXlsx`, `groupPunchesIntoShifts` / `analyzeDayPunches`. `hoursReviewMount(el, {call, hideOwner})` draws into `el`; `call(body)` posts to the `hours` function with the page's ID token (`hoursCall`). `hoursReviewReload()` reloads; the pages add `hours-review.js` to `startVersionWatch` once loaded.
 
@@ -43,7 +50,7 @@ Loaded on demand (a `<script>` tag, like `scan-pipeline.js`) and run in the page
 
 Where it runs:
 
-- **Client portal** — the whole page ([client-portal.md](client-portal.md)).
+- **Client portal** — the whole page, the React screen ([client-portal.md](client-portal.md)).
 - **Supplier portal** — the **Approvals** tab (`#tabBtn_review`) (`#sectionReview`, `openHoursReview`), shown with an hours or schedule tick.
 - **Manager app, an HR login** — Accounting → `#accSecReview` (`openHrHoursReview`), shown with an hours or schedule tick (`hrHourReview()`); such an HR gets the Accounting tab for it even without the Accounting section, and then sees only this part.
 

@@ -878,6 +878,7 @@
   "{n} days": "{n} ימים",
   "Total: {h}h": "סה״כ: {h} ש׳",
   "Approve all the hours of this month?": "לאשר את כל השעות של החודש?",
+  "Cancel": "ביטול",
   "Approved — thank you": "אושר — תודה",
   "Dispute — {name}": "ערעור — {name}",
   "What is wrong with this day?": "מה לא נכון ביום הזה?",
@@ -1151,5 +1152,7 @@
   "Enter a first name": "יש להזין שם פרטי",
   "Enter a last name": "יש להזין שם משפחה",
   "Enter a phone like 050-1234567": "יש להזין טלפון בתבנית 050-1234567",
-  "The rate is below the minimum wage": "התעריף נמוך משכר המינימום"
+  "The rate is below the minimum wage": "התעריף נמוך משכר המינימום",
+  "Account menu": "תפריט החשבון",
+  "Profile": "פרופיל"
 }

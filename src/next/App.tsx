@@ -23,6 +23,7 @@ import { undoDelete } from '@/components/shared/undo';
 import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-mode';
 import { Window } from '@/components/shared/window';
 import { LanguageButton } from '@/components/shared/language';
+import { AccountMenu } from '@/components/shared/account-menu';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -365,6 +366,14 @@ function Windows() {
             <TooltipTrigger asChild><Button size="icon" aria-label={tr('Info')}><IconInfoCircle className="size-[18px]" /></Button></TooltipTrigger>
             <TooltipContent>{tr('Hours of the month, every shift')}</TooltipContent>
           </Tooltip>
+        </Row>
+      </Demo>
+
+      <Demo id="account" title={tr('Account menu')}>
+        <Row>
+          <AccountMenu name="Dana Levi" sub={tr('Client')} onSignOut={() => toast(tr('Sign out'))}>
+            <DropdownMenuItem><IconUser />{tr('Profile')}</DropdownMenuItem>
+          </AccountMenu>
         </Row>
       </Demo>
 

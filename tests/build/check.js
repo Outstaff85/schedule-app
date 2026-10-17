@@ -21,8 +21,10 @@ function walk(dir, base = '') {
   const { staticFiles } = await import(path.join(ROOT, 'scripts', 'static-files.mjs'));
   const errs = [];
   const old = staticFiles(ROOT);
-  for (const f of ['schedule-manager.html', 'supplier-portal.html', 'client-portal.html', 'worker-punch.html', 'service-worker.js', 'og.css', 'manifest.json', 'payroll.js'])
+  for (const f of ['schedule-manager.html', 'supplier-portal.html', 'worker-punch.html', 'service-worker.js', 'og.css', 'manifest.json', 'payroll.js'])
     if (!old.includes(f)) errs.push(`${f} is not in the list of served files (scripts/static-files.mjs)`);
+  // The new pages are built by Vite, never copied: /next and the client portal (stage 3).
+  if (old.includes('client-portal.html')) errs.push('client-portal.html is a Vite entry (src/client/): it must not be in the copied list');
   for (const f of old) {
     const to = path.join(DIST, f);
     if (!fs.existsSync(to)) errs.push(`dist/${f} missing`);
@@ -31,13 +33,13 @@ function walk(dir, base = '') {
   const built = walk(DIST);
   const never = /^(functions|functions-auth|tests|docs|src|scripts|node_modules|Tokens)\/|(^|\/)\.|\.(md|rules|py|ts|tsx|mts)$|^(firebase|package|package-lock|tsconfig|components|firestore\.indexes)\.json$/;
   for (const f of built) if (never.test(f)) errs.push(`dist/${f} must never be served`);
-  const next = path.join(DIST, 'next', 'index.html');
-  if (!fs.existsSync(next)) errs.push('dist/next/index.html missing (the /next page)');
-  else {
-    const html = fs.readFileSync(next, 'utf8');
+  for (const [page, what] of [['next/index.html', 'the /next page'], ['client-portal.html', 'the client portal']]) {
+    const file = path.join(DIST, page);
+    if (!fs.existsSync(file)) { errs.push(`dist/${page} missing (${what})`); continue; }
+    const html = fs.readFileSync(file, 'utf8');
     const js = (html.match(/src="\/(assets\/[^"]+\.js)"/) || [])[1];
-    if (!js || !fs.existsSync(path.join(DIST, js))) errs.push('dist/next/index.html: its script is not in dist/assets');
-    if (/src="\/src\//.test(html)) errs.push('dist/next/index.html still points at /src (not built)');
+    if (!js || !fs.existsSync(path.join(DIST, js))) errs.push(`dist/${page}: its script is not in dist/assets`);
+    if (/src="\/src\//.test(html)) errs.push(`dist/${page} still points at /src (not built)`);
   }
   const fb = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase.json'), 'utf8'));
   if (fb.hosting.public !== 'dist') errs.push(`firebase.json: hosting.public is "${fb.hosting.public}", must be "dist"`);
