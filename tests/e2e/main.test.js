@@ -53,6 +53,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
         tick: (ms = 0) => new Promise(r => setTimeout(r, ms)),
         async until(fn, ms = 8000){ const end = Date.now() + ms; while (Date.now() < end){ if (fn()) return true; await new Promise(r => setTimeout(r, 100)); } return !!fn(); },
         el: sel => typeof sel === 'string' ? (document.getElementById(sel) || document.querySelector(sel)) : sel,
+        // a tap on a React Plate (its pointer handlers): touch down and up on the plate
+        tap(sel){ const el = (T.el(sel) || {}).classList && T.el(sel).classList.contains('og-plate') ? T.el(sel) : T.el(sel) && T.el(sel).querySelector('.og-plate'); if(!el) return false;
+          for (const t of ['pointerdown', 'pointerup']) el.dispatchEvent(new PointerEvent(t, {bubbles: true, pointerType: 'touch', isPrimary: true})); return true; },
+        esc: () => document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})),
         fill(sel, v){ const el = T.el(sel); const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
           Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v); el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true})); },
         val: id => { const el = document.getElementById(id); return el ? (el.dataset.value != null ? el.dataset.value : el.value) : undefined; },
@@ -99,28 +103,42 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const rt = await p.evaluate(async () => {
     const out = {};
     const c1 = clients.find(c => c.id === 'c1'); c1.defaultHourlyRate = 60;
-    const wi = workers.findIndex(w => w.id === 'w2'); const keep = JSON.parse(JSON.stringify(workers[wi]));
+    const wi = workers.findIndex(w => w.id === 'w2'); window.__keepW2 = JSON.parse(JSON.stringify(workers[wi]));
     openEditWorker(wi);
     out.noRateInModal = !document.getElementById('wRate') && !document.getElementById('wBank') && !document.getElementById('wTravelAllowance');
     closeModal('workerOverlay');
     switchTab('accounting');
-    out.listed = !document.getElementById('accSecWorkerPay') && !document.getElementById('workerPayWrap');  // one Salary section, no Worker pay
-    openPayModal('w2');
-    out.open = document.getElementById('payOverlay').classList.contains('open');
-    document.getElementById('payMode').value = 'daily'; onPayModeChange();
-    out.otHidden = document.getElementById('payOtRow').style.display === 'none';
-    document.getElementById('payRate').value = '400';
-    document.getElementById('payTravelDay').value = '20';
-    document.getElementById('payTravelMonth').value = '150';
-    document.getElementById('payBank').value = 'Leumi'; document.getElementById('payBankAccount').value = '123';
-    savePayModal('w2');
+    out.listed = !!document.querySelector('#accountingRoot [data-testid="acc-salary"]') && !document.getElementById('workerPayWrap');  // one Salary section, no Worker pay
+    openPayModal('w2'); await T.tick(50);
+    out.open = document.getElementById('payOverlay').classList.contains('open') && !!document.querySelector('#payModal [data-testid="pay-window"]');
+    return out;
+  });
+  // The pay window is React (stage 6e): its Paid select through the page, the fields as a person types.
+  await p.click('#payModal [data-testid="pay-mode"]'); await p.click('[role="option"]:has-text("By the day")'); await sleep(100);
+  Object.assign(rt, await p.evaluate(async () => {
+    const out = {};
+    const wi = workers.findIndex(w => w.id === 'w2');
+    out.otHidden = !document.querySelector('#payModal [data-testid="pay-ot-row"]') && !!document.getElementById('payDays');
+    T.fill('payRate', '400'); T.fill('payTravelDay', '20'); T.fill('payTravelMonth', '150');
+    T.fill('payBank', 'Leumi'); T.fill('payBankAccount', '123'); await T.tick(20);
+    document.querySelector('#payModal [data-testid="pay-save"]').click(); await T.tick(50);
+    out.closed = !document.getElementById('payOverlay').classList.contains('open');
     const w = workers[wi];
-    out.saved = {mode: w.payMode, rate: w.hourlyRate, td: w.travelAllowance, tm: w.travelMonthly, bank: w.bank, acc: w.bankAccountNumber};
+    out.saved = {mode: w.payMode, rate: w.hourlyRate, td: w.travelAllowance, tm: w.travelMonthly, bank: w.bank, acc: w.bankAccountNumber, reg: w.regRate};
     out.travel = travelPay(w, 3, 2);
-    const sel = document.getElementById('salaryPeriod'); sel.value = 'all'; await onSalaryPeriodChange();
-    const row = [...document.querySelectorAll('#dashSalary .salary-rows .sal-row')].find(r => r.textContent.includes(w.name));
+    await ManagerBridge.setPeriod('all'); setAccTab('salary'); await T.tick(50);
+    const row = [...document.querySelectorAll('#accountingRoot [data-testid="sal-table"] tbody tr')].find(r => r.textContent.includes(w.name));
     out.card = row ? row.textContent.replace(/\s+/g, ' ') : '';
-    sel.value = 'week'; await onSalaryPeriodChange();
+    if (row) { row.querySelector('td:nth-child(2)').click(); await T.tick(150); }
+    out.card += ' ' + ((document.querySelector('[data-testid="window"] [data-testid="sal-det"]') || {}).textContent || '');
+    document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); await T.tick(150);
+    await ManagerBridge.setPeriod('week');
+    return out;
+  }));
+  Object.assign(rt, await p.evaluate(async () => {
+    const out = {};
+    const wi = workers.findIndex(w => w.id === 'w2');
+    const c1 = clients.find(c => c.id === 'c1');
     // An edit in the worker modal keeps the pay fields.
     openEditWorker(wi); await T.tick(); await saveWorker();
     out.keptAfterEdit = workers[wi].hourlyRate === 400 && workers[wi].travelMonthly === 150 && workers[wi].bank === 'Leumi';
@@ -130,27 +148,27 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     openEditWorker(wi); await T.tick(); T.removeClient('c2'); await T.tick(); await saveWorker();
     openEditWorker(wi); await T.tick(); await T.addClient('c2'); await saveWorker();
     out.moved = workers[wi].hourlyRate; delete c2.defaultHourlyRate;
-    delete c1.defaultHourlyRate; workers[wi] = keep; await gsSave(getDataObj());
+    delete c1.defaultHourlyRate; workers[wi] = window.__keepW2; await gsSave(getDataObj());
     switchTab('schedule');
     return out;
-  });
-  ok(rt.noRateInModal && rt.listed && rt.open && rt.otHidden, 'worker pay: no money fields in the worker modal; one Salary section; the pay modal opens', JSON.stringify(rt));
+  }));
+  ok(rt.noRateInModal && rt.listed && rt.open && rt.otHidden && rt.closed && rt.saved.reg === null, 'worker pay: no money fields in the worker modal; one Salary section; the pay modal opens', JSON.stringify(rt));
   ok(rt.saved.mode === 'daily' && rt.saved.rate === 400 && rt.saved.td === 20 && rt.saved.tm === 150 && rt.saved.bank === 'Leumi' && rt.saved.acc === '123' && rt.travel === 360 && /₪400\/day/.test(rt.card) && /Leumi/.test(rt.card), 'worker pay: the pay modal saves mode, rate, travel per day and per month, bank; the Salary row shows them', JSON.stringify(rt));
   // Salary: one compact line per worker; a tap opens its details. The header: one account menu.
   const sc = await p.evaluate(async () => {
-    switchTab('accounting'); const sel = document.getElementById('salaryPeriod'); sel.value = 'all'; await onSalaryPeriodChange();
-    const row0 = document.querySelector('#dashSalary .sal-row'); if(!row0) return {};
-    const wid = row0.dataset.wid, row = row0;
-    const det = () => getComputedStyle(document.querySelector('#dashSalary .sal-row[data-wid="' + wid + '"] .sal-det')).display;
+    switchTab('accounting'); setAccTab('salary'); await ManagerBridge.setPeriod('all'); await T.tick(50);
+    const row = document.querySelector('#accountingRoot [data-testid="sal-table"] tbody tr'); if(!row) return {};
+    const det = () => !!document.querySelector('[data-testid="window"] [data-testid="sal-det"]');
     const r = {h: row.getBoundingClientRect().height, before: det()};
-    row.dispatchEvent(new MouseEvent('click', {bubbles: true})); await new Promise(res => setTimeout(res, 450)); r.after = det();
-    sel.value = 'week'; await onSalaryPeriodChange();
+    row.querySelector('td:nth-child(2)').click(); await T.tick(300); r.after = det();
+    document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); await T.tick(300); r.closedDet = !det();
+    await ManagerBridge.setPeriod('week');
     toggleAccountMenu(); const m = document.getElementById('accountMenu');
     r.menu = {open: getComputedStyle(m).display !== 'none', lang: !m.querySelector('.lang-btn, select') && !!document.querySelector('.titlebar-actions > .lang-btn + #accountControl'), out: /Sign out/.test(m.innerText), name: /My name/.test(m.innerText)};
     closeAccountMenu(); r.closed = getComputedStyle(m).display === 'none';
     return r;
   });
-  ok(sc.h > 0 && sc.h < 60 && sc.before === 'none' && sc.after === 'grid', 'salary: one compact line per worker, a tap opens the details ' + JSON.stringify(sc));
+  ok(sc.h > 0 && sc.h < 60 && !sc.before && sc.after && sc.closedDet, 'salary: one compact line per worker (the Data Table), a tap opens its details in a window ' + JSON.stringify(sc));
   ok(sc.menu && sc.menu.open && sc.menu.lang && sc.menu.out && sc.menu.name && sc.closed, 'header: one account menu with my name and sign out; the Language button beside it ' + JSON.stringify(sc.menu));
   // An inactive worker leaves the everyday lists and comes back when set Active; a contract warning shows a notice at the top.
   const ia = await p.evaluate(async () => {
@@ -194,9 +212,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     switchTab('workers'); await wait(200);
     r.sidebarWorkers = shown('.sidebar'); r.crumbWorkers = crumb();
     switchTab('accounting'); setAccTab('salary'); await wait(200);
-    r.crumbAcc = crumb(); r.noRepeat = !shown('#accFigs');
+    r.crumbAcc = crumb(); r.noRepeat = !shown('#accountingRoot [data-testid=acc-figs]') && shown('#accountingRoot [data-testid=sal-sum]');
     setAccTab('billing'); document.body.click(); await wait(100);
-    r.crumbBill = crumb(); r.figsBack = shown('#accFigs');
+    r.crumbBill = crumb(); r.figsBack = shown('#accountingRoot [data-testid=acc-figs]');
     setAccTab('salary'); switchTab('dashboard'); await wait(200);
     return r;
   });
@@ -239,9 +257,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     // a notice chip opens the worker's notices sheet; a plate opens the worker card
     root.querySelector('section[data-sec=notices] [data-slot=badge]').click(); await wait(200);
     r.sheet = document.getElementById('noticesOverlay').classList.contains('open'); closeModal('noticesOverlay'); await wait(200);
-    switchTab('accounting'); await new Promise(r => setTimeout(r, 300));
-    const sr = document.getElementById('salarySearch'); r.hidden = sr.style.display === 'none';
-    toggleSalarySearch(); r.shown = sr.style.display !== 'none'; toggleSalarySearch(); r.closed = sr.style.display === 'none';
+    switchTab('accounting'); setAccTab('salary'); await new Promise(r => setTimeout(r, 300));
+    const sr = () => document.querySelector('#accountingRoot [data-testid=sal-search]'), btn = () => document.querySelector('#accountingRoot [data-testid=sal-search-btn]');
+    r.hidden = !sr(); btn().click(); await wait(50); r.shown = !!sr() && document.activeElement === sr(); btn().click(); await wait(50); r.closed = !sr();
     switchTab('dashboard');
     return r;
   });
@@ -313,10 +331,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.evaluate(() => { workers.find(w => isActiveWorker(w)).schedule = JSON.parse(window.__keepSched); render(); });
   await p.evaluate(async () => { localStorage.setItem('workersView', 'cards'); switchTab('workers'); await new Promise(r => setTimeout(r, 300)); });
   await p.screenshot({path: SP + '/t3-workers.png'}).catch(()=>{});
-  await p.evaluate(async () => { switchTab('accounting'); const sel = document.getElementById('salaryPeriod'); sel.value = 'all'; await onSalaryPeriodChange();
-    const r = document.querySelector('#dashSalary .sal-row'); if(r) toggleSalRow(r); window.scrollTo(0, 0); document.querySelector('#sectionAccounting').scrollIntoView(); await new Promise(res => setTimeout(res, 300)); });
+  // Salary on a phone: the Data Table becomes plates; a tap opens a plate's details under it.
+  const salPhone = await p.evaluate(async () => { switchTab('accounting'); setAccTab('salary'); await ManagerBridge.setPeriod('all'); await new Promise(res => setTimeout(res, 200));
+    const r = {kind: (document.querySelector('#accountingRoot [data-slot=data-table]') || {dataset: {}}).dataset.kind};
+    const plate = document.querySelector('#accountingRoot [data-testid=sal-row] .og-plate');
+    if (plate) { plate.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, pointerType: 'touch', isPrimary: true})); plate.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, pointerType: 'touch', isPrimary: true})); }
+    await new Promise(res => setTimeout(res, 450));
+    const det = document.querySelector('#accountingRoot [data-testid=sal-row] [data-testid=sal-det]'); r.open = !!det && det.getBoundingClientRect().height > 40;
+    window.scrollTo(0, 0); document.querySelector('#sectionAccounting').scrollIntoView(); await new Promise(res => setTimeout(res, 300)); return r; });
   await p.screenshot({path: SP + '/t3-accounting.png'}).catch(()=>{});
-  await p.evaluate(async () => { const sel = document.getElementById('salaryPeriod'); sel.value = 'week'; await onSalaryPeriodChange(); });
+  ok(salPhone.kind === 'cards' && salPhone.open, 'salary on a phone: plates, a tap opens the details under the plate ' + JSON.stringify(salPhone));
+  await p.evaluate(async () => { await ManagerBridge.setPeriod('week'); });
   await p.setViewportSize({width: 1280, height: 720});
   ok(t3.stats === 4 && t3.row && t3.lines >= 1, 'today: four figure tiles in one row on a phone and colored plates ' + JSON.stringify(t3));
   ok(t3.twoRows && t3.fixed && t3.greetHidden && t3.shortDate && t3.noMenu, 'V7 on a phone: two header rows fixed at the top (logo · short date and weather · buttons; the breadcrumb under them), the greeting\'s words hidden, the bottom bar stays ' + JSON.stringify(t3));
@@ -333,8 +358,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const w = {id: 'x', payMode: 'daily', supplierRates: {s1: {rate: 6, dayRate: 70}}};
     const e = {hours: 20, daysUsed: 3};
     return {
-      sup: commissionFor(w, e, supplierCommissionRate(w, 's1'), supplierDayCommission(w, 's1')),
-      noDay: commissionFor({...w, supplierRates: {s1: {rate: 6}}}, e, 6, supplierDayCommission({supplierRates: {s1: {rate: 6}}}, 's1')),
+      sup: commissionFor(w, e, ManagerAcc.supplierCommissionRate(w, 's1'), ManagerAcc.supplierDayCommission(w, 's1')),
+      noDay: commissionFor({...w, supplierRates: {s1: {rate: 6}}}, e, 6, ManagerAcc.supplierDayCommission({supplierRates: {s1: {rate: 6}}}, 's1')),
       hourly: commissionFor({id: 'y'}, e, 6, 70),
       hr: commissionFor(w, e, 4, 40)};
   });
@@ -393,9 +418,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       for(let i = 0; i < 40 && I18N_LANG !== l; i++) await new Promise(res => setTimeout(res, 150));
       switchTab('accounting'); await new Promise(res => setTimeout(res, 300));
       return {lang: I18N_LANG, tab: document.getElementById('tabAccounting').innerText.trim(),
-        head: document.querySelector('#dashSalary .sal-head .c-name') && document.querySelector('#dashSalary .sal-head .c-name').innerText.trim(),
-        sec: document.querySelector('#accSecSalary span[data-i18n]').textContent.trim(),
-        period: document.getElementById('salaryPeriod').options[0].text,
+        head: ((document.querySelector('#accountingRoot [data-testid=sal-table] thead th') || {}).textContent || '').trim(),
+        sec: ((document.querySelector('#accSecSalary [data-slot=section] > div > button span span') || {}).firstChild || {}).textContent,
+        period: document.querySelector('#accountingRoot [data-testid=acc-period]').innerText.trim(),
         stored: localStorage.getItem('uiLang'), selects: [...document.querySelectorAll('.lang-btn .lang-btn-name')].every(x => x.textContent === I18N_LANGS[l]) && !document.getElementById('langSheet').classList.contains('open')};
     };
     r.he = await setLang('he');
@@ -735,26 +760,40 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(lines.length === 5 && lines.every(n => n === lines[0]) && lines[0] === 10, 'CSV: every row has the 10 header columns');
   ok(/"8","n-p\d"/.test(csv), 'CSV: GPS Accuracy is filled (8) and Notes follow it');
   // payable by supplier
-  await p.evaluate(() => switchTab('accounting'));
-  await p.evaluate(async () => { const sel=document.getElementById('salaryPeriod'); sel.value='all'; await onSalaryPeriodChange(); });
+  await p.evaluate(async () => { switchTab('accounting'); await ManagerBridge.setPeriod('all'); });
   await sleep(500);
-  const pay = await p.evaluate(() => { setAccTab('billing'); const t = document.getElementById('supplierPayableWrap').innerText; setAccTab('salary'); return t; });
+  const billing = await p.evaluate(async () => { setAccTab('billing'); await T.tick(50);
+    const el = document.querySelector('#accountingRoot [data-testid=acc-payable]');
+    const r = {pay: el ? el.innerText : '', shown: !!document.querySelector('#accountingRoot [data-testid=acc-billable]'), rows: document.querySelectorAll('#accountingRoot [data-testid=billable-row]').length};
+    // A tap on the supplier's line: its workers behind the sum.
+    const row = document.querySelector('#accountingRoot [data-testid=payable-row] .og-plate');
+    if (row) { row.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, pointerType: 'touch', isPrimary: true})); row.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, pointerType: 'touch', isPrimary: true})); await T.tick(300); }
+    r.detail = ((document.querySelector('[data-testid=acc-detail]') || {}).innerText || '').replace(/\s+/g, ' ');
+    document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); await T.tick(200);
+    setAccTab('salary'); return r; });
+  const pay = billing.pay, bill = {shown: billing.shown, rows: billing.rows};
   ok(!/No supplier assigned/.test(pay), 'Payable by supplier: no row for workers without a supplier');
-  const bill = await p.evaluate(() => ({shown: document.getElementById('accSecBillable').style.display !== 'none', rows: document.querySelectorAll('#clientBillableWrap .t3-line').length}));
   ok(!bill.shown && bill.rows === 0, 'Billable by client: hidden when no client has a billing rate ' + JSON.stringify(bill));
-  ok(/Agency\s+8\.0h\s+₪40/.test(pay), 'Agency row: 8h × default commission 5 = ₪40');
+  ok(/Agency\s+8\.0h\s+₪40/.test(pay), 'Agency row: 8h × default commission 5 = ₪40 ' + JSON.stringify(pay));
+  ok(/Avi Cohen 8\.0h ₪40 Total 8\.0h ₪40/.test(billing.detail), 'Payable by supplier: a tap shows the workers behind the sum ' + JSON.stringify(billing.detail));
   // Daily pay: Dana (1 day, 4h, own rate 40) paid by the day; then 5 days set by hand.
   // The days are set by hand in the pay window (period 'all' picked in Salary).
-  const dp = await p.evaluate(() => {
-    const dana = () => __lastSalaryEntries.find(e => e.workerId === 'w2'), w2 = workers.find(w => w.id === 'w2');
-    const sum = () => buildSalaryExportRows('all').filter(r => r.worker === 'Dana Levi').reduce((s, r) => s + r.pay, 0);
+  const dp = await p.evaluate(async () => {
+    const dana = () => ManagerAcc.salaryEntriesFor(accData(), 'all').byWorker.w2, w2 = workers.find(w => w.id === 'w2');
+    const sum = () => ManagerAcc.buildSalaryExportRows(accData(), 'all').filter(r => r.worker === 'Dana Levi').reduce((s, r) => s + r.pay, 0);
     const out = {hourly: dana().total, hourlyExport: sum()};
-    w2.payMode = 'daily'; renderSalary(); out.daily = dana().total; out.dailyExport = sum(); out.days = dana().countedDays;
-    openPayModal('w2'); out.daysField = getComputedStyle(document.getElementById('payDaysRow')).display !== 'none' && document.getElementById('payDays').placeholder === '1';
-    document.getElementById('payDays').value = '5'; savePayModal('w2'); out.over = dana().total; out.overExport = sum();
-    const row = [...document.querySelectorAll('#dashSalary .salary-rows .sal-row')].find(r => r.textContent.includes('Dana Levi'));
-    out.cellInput = out.daysField && !!row && !row.querySelector('input') && /punches: 1/.test(row.textContent); out.aviDays = __lastSalaryEntries.find(e => e.workerId === 'w1').countedDays;
-    delete w2.dayOverrides; delete w2.payMode; renderSalary(); out.back = dana().total;
+    w2.payMode = 'daily'; render(); out.daily = dana().total; out.dailyExport = sum(); out.days = dana().countedDays;
+    openPayModal('w2'); await T.tick(50); out.daysField = !!document.getElementById('payDays') && document.getElementById('payDays').placeholder === '1';
+    T.fill('payDays', '5'); await T.tick(20); document.querySelector('#payModal [data-testid=pay-save]').click(); await T.tick(50);
+    out.over = dana().total; out.overExport = sum();
+    setAccTab('salary'); await T.tick(50);
+    const row = [...document.querySelectorAll('#accountingRoot [data-testid=sal-table] tbody tr')].find(r => r.textContent.includes('Dana Levi'));
+    if (row) { row.querySelector('td:nth-child(2)').click(); await T.tick(250); }
+    const det = document.querySelector('[data-testid=window] [data-testid=sal-det]');
+    out.cellInput = out.daysField && !!row && !row.querySelector('input') && !!det && /punches: 1/.test(det.textContent);
+    document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); await T.tick(200);
+    out.aviDays = ManagerAcc.salaryEntriesFor(accData(), 'all').byWorker.w1.countedDays;
+    delete w2.dayOverrides; delete w2.payMode; render(); out.back = dana().total;
     return out;
   });
   // Upload hours → Enter by hand, through the buttons: consecutive dates; a daily worker sends dates only,
@@ -801,7 +840,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const acc = await p.evaluate(async () => {
     await loadXlsx();
     let wb = null, name = ''; const orig = XLSX.writeFile; XLSX.writeFile = (w, n) => { wb = w; name = n; };
-    exportSalary('accountant', 'all'); XLSX.writeFile = orig;
+    switchTab('accounting'); setAccTab('salary'); await ManagerBridge.setPeriod('all'); await T.tick(50);
+    document.querySelector('#accountingRoot [data-testid=sal-export]').click(); await T.until(() => document.querySelector('[data-testid=sal-export-accountant]'), 3000);
+    document.querySelector('[data-testid=sal-export-accountant]').click(); await T.until(() => wb, 5000); XLSX.writeFile = orig;
+    await ManagerBridge.setPeriod('week');
     if(!wb) return {none: true};
     const sum = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header: 1});
     const avi = sum.find(r => r[0] === 'Avi Cohen') || [], tot = sum.find(r => r[0] === 'Total') || [];
@@ -811,6 +853,89 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(!acc.none && /^accountant-all-/.test(acc.name) && acc.sheets.length === 2 && acc.pay === acc.want && acc.pay > 0 && acc.hours > 0 && acc.days >= 1 && acc.total >= acc.pay && acc.shifts > 1,
     'accountant report: Summary = Salary figures, total row, Shifts sheet ' + JSON.stringify(acc));
+  // Stage 6e: the numbers of the React Accounting tab = the old tab's code (tests/accounting/legacy.mjs, run here
+  // on the page's own data) — every Salary row and total, the figures, the alerts, the billing rows and their
+  // details, the pay window, and the tables the exports write (salary Excel / CSV, the accountant workbook).
+  await p.addScriptTag({content: require('fs').readFileSync(require('path').join(__dirname, '..', 'accounting', 'legacy.mjs'), 'utf8').replace(/^export function /gm, 'function ') + '\nwindow.legacyAccounting = legacyAccounting;'});
+  const nums = await p.evaluate(async () => {
+    const out = {diffs: [], checked: 0};
+    const eq = (a, b, what) => { out.checked++; if (JSON.stringify(a) !== JSON.stringify(b)) out.diffs.push(what + ': ' + JSON.stringify(a) + ' vs old ' + JSON.stringify(b)); };
+    const root = document.getElementById('accountingRoot'), wait = ms => new Promise(r => setTimeout(r, ms));
+    const keepClients = JSON.parse(JSON.stringify(clients));
+    clients.forEach((c, i) => { c.billRate = 70; c.rateMode = i ? 'fixed' : 'tiered'; c.fixedBillRate = 55; });  // billing rates, so Billable by client has rows
+    const w1 = workers.find(w => w.id === 'w1'), keepW1 = JSON.parse(JSON.stringify(w1)); w1.travelAllowance = 12.5;
+    render();
+    await loadXlsx();
+    const money2 = n => '₪' + (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('en-US'), money0 = n => '₪' + n.toFixed(0), hrs1 = h => tr('{h}h', {h: h.toFixed(1)});
+    for (const period of ['week', 'month', 'all']) {
+      switchTab('accounting'); setAccTab('salary'); await ManagerBridge.setPeriod(period); await wait(100);
+      const O = legacyAccounting({workers, clients, suppliers, log: getPunchLog(), tr, uiLocale: uiLocale(), session: null, hrUsers: hrUsers(), isFirmAdmin: isFirmAdminSession(), Payroll});
+      const F = O.salaryFigures(period, '');
+      // Salary: the rows (Data Table) and the totals.
+      const rows = [...root.querySelectorAll('[data-testid=sal-table] tbody tr')].map(tr0 => { const c = [...tr0.cells].map(x => x.innerText.trim()); return {id: tr0.dataset.rowId, worker: c[0], hours: c[1], days: c[3], pay: c[5], travel: c[6], total: c[7]}; });
+      eq(rows.map(r => r.id), F.rows.map(r => r.workerId), period + ' salary rows');
+      F.rows.forEach((r, i) => { const d = rows[i] || {};
+        eq([d.worker, d.hours, d.days, d.pay, d.travel, d.total], [r.worker, hrs1(r.hours), String(r.days), r.pay > 0 ? money2(r.pay) : '—', r.travel > 0 ? money2(r.travel) : '—', r.total > 0 ? money2(r.total) : '—'], period + ' row ' + r.workerId); });
+      const sum = [...root.querySelectorAll('[data-testid=sal-sum] [data-slot=figures] b')].map(b => b.innerText.trim());
+      if (F.rows.length) eq(sum, [hrs1(F.totals.hours), money2(F.totals.pay), F.totals.travel > 0 ? money2(F.totals.travel) : '—', money2(F.totals.total)], period + ' salary totals');
+      const foot = [...root.querySelectorAll('[data-testid=sal-table] tfoot td')].map(x => x.innerText.trim());
+      if (F.rows.length) eq([foot[1], foot[5], foot[7]], [hrs1(F.totals.hours), money2(F.totals.pay), money2(F.totals.total)], period + ' table totals');
+      // The figures on top (shown on the other tabs) and the alerts.
+      setAccTab('alerts'); await wait(50);
+      eq([...root.querySelectorAll('[data-testid=acc-figs] [data-slot=figures] b')].slice(0, 2).map(b => b.innerText.trim()), [String(F.figs.hours), '₪' + F.figs.payroll.toLocaleString('en-US')], period + ' figures');
+      eq([...root.querySelectorAll('[data-testid=alert-row]')].map(a => a.innerText.replace(/\s+/g, ' ').trim()), F.alerts.map(a => (a.title + ' ' + a.sub).replace(/\s+/g, ' ').trim()), period + ' alerts');
+      // Billing: Payable by supplier (and its detail windows), by HR, Billable by client (and its details).
+      setAccTab('billing'); await wait(50);
+      const SP = O.supplierPayableFigures(F.entries);
+      eq([...root.querySelectorAll('[data-testid=payable-row]')].map(r => [r.dataset.sid, r.innerText.replace(/\s+/g, ' ').trim()]), SP.rows.map(r => [r.id, (suppliers.find(x => x.id === r.id).name + ' ' + hrs1(r.hours) + ' ' + r.shown)]), period + ' payable by supplier');
+      for (const d of SP.details) {
+        T.tap(root.querySelector('[data-testid=payable-row][data-sid="' + d.id + '"]')); await wait(250);
+        const lines = [...document.querySelectorAll('[data-testid=acc-detail] .grid-cols-\\[1fr_auto_auto\\]')].map(x => [...x.children].map(c => c.innerText.trim()));
+        eq(lines, [...d.rows.map(r => [r.n, r.h, r.m]), [tr('Total'), d.total.h, d.total.m]], period + ' supplier detail ' + d.id);
+        T.esc(); await wait(250);
+      }
+      eq([...root.querySelectorAll('[data-testid=hr-payable-row]')].length, O.hrPayableFigures(F.entries).length, period + ' payable by HR');
+      const CB = O.clientBillableFigures(F.clientBillEntries, F.entries);
+      eq([...root.querySelectorAll('[data-testid=billable-row]')].map(r => [r.dataset.cid, r.innerText.replace(/\s+/g, ' ').trim()]), CB.map(r => [r.id, clients.find(x => x.id === r.id).name + ' ' + hrs1(r.hours) + ' · ' + r.mode + ' ' + r.shown]), period + ' billable by client');
+      for (const c of CB) {
+        T.tap(root.querySelector('[data-testid=billable-row][data-cid="' + c.id + '"]')); await wait(250);
+        const lines = [...document.querySelectorAll('[data-testid=acc-detail] .grid-cols-\\[1fr_auto_auto\\]')].map(x => [...x.children].map(e => e.innerText.trim()));
+        eq(lines, [...c.detail.rows.map(r => [r.n, r.h, '']), [tr('Total'), c.detail.total.h, c.detail.total.m]], period + ' client detail ' + c.id);
+        T.esc(); await wait(250);
+      }
+      // The pay window: the days counted (a daily worker) and the client's rate in the placeholder.
+      const w2 = workers.find(w => w.id === 'w2'); w2.payMode = 'daily';
+      openPayModal('w2'); await wait(80);
+      const pw = O.payWindowFigures('w2', period, F.entries);
+      eq(document.getElementById('payDays').placeholder, String(pw.counted), period + ' pay window: days counted');
+      closeModal('payOverlay'); await wait(50); delete w2.payMode;
+      // The exports: the tables written (the aoa SheetJS gets), every format, and the accountant workbook.
+      const sheets = []; const origA = XLSX.utils.aoa_to_sheet, origW = XLSX.writeFile;
+      XLSX.utils.aoa_to_sheet = aoa => { sheets.push(JSON.parse(JSON.stringify(aoa))); return origA(aoa); }; XLSX.writeFile = () => {};
+      setAccTab('salary'); await wait(50);
+      root.querySelector('[data-testid=sal-export]').click(); await T.until(() => document.querySelector('[data-testid=sal-export-excel]'), 3000);
+      document.querySelector('[data-testid=sal-export-excel]').click(); await T.until(() => sheets.length === 1, 3000);
+      eq(sheets[0], JSON.parse(JSON.stringify(O.salaryExportAoa(period))), period + ' salary export');
+      root.querySelector('[data-testid=sal-export]').click(); await T.until(() => document.querySelector('[data-testid=sal-export-accountant]'), 3000);
+      document.querySelector('[data-testid=sal-export-accountant]').click(); await T.until(() => sheets.length >= 3, 5000); await wait(200);
+      const month = O.salaryMonthOf(period), docs = month ? await hourApprovalsOf(month, true) : null;
+      const AS = O.accountantSheets(period, docs, (activeTenantProfile() || {}).companyName || '');
+      eq(sheets.slice(1), JSON.parse(JSON.stringify([AS.summary, AS.shifts, ...(AS.approvals ? [AS.approvals] : [])])), period + ' accountant workbook');
+      if (SP.rows.length) {
+        setAccTab('billing'); await wait(50); sheets.length = 0;
+        root.querySelector('[data-testid=payable-excel]').click(); await T.until(() => sheets.length, 3000);
+        eq(sheets[0], JSON.parse(JSON.stringify(O.payableAoa(SP.exportRows))), period + ' payable summary export');
+      }
+      XLSX.utils.aoa_to_sheet = origA; XLSX.writeFile = origW;
+      out[period] = {rows: F.rows.length, pay: F.totals.total, payable: SP.rows.length, billable: CB.length, alerts: F.alerts.length};
+    }
+    clients.forEach((c, i) => { Object.keys(c).forEach(k => { if (!(k in keepClients[i])) delete c[k]; }); Object.assign(c, keepClients[i]); });
+    Object.keys(w1).forEach(k => { if (!(k in keepW1)) delete w1[k]; }); Object.assign(w1, keepW1);
+    await ManagerBridge.setPeriod('week'); setAccTab('salary'); render();
+    return out;
+  });
+  ok(!nums.diffs.length && nums.checked > 30 && nums.all && nums.all.rows >= 2 && nums.all.payable >= 1 && nums.all.billable >= 1,
+    'accounting numbers: the React tab and its exports equal the old tab\'s code on the e2e data (' + nums.checked + ' figures) ' + JSON.stringify(nums));
   // Workers search: by ID / passport number (dashes ignored) and by client.
   const srch = await p.evaluate(async () => {
     const avi = workers.find(w => w.id === 'w1'), keep = avi.docId; avi.docId = '12345678-2';
@@ -968,7 +1093,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // Redesign gaps: client billing by the day; the supplier editor's payable commission and editable portal ticks (saved at once).
   const gp = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
-    r.daily = [clientBillPay(5, {rateMode:'daily', dailyBillRate:300}), clientBillPay(0, {rateMode:'daily', dailyBillRate:300}), clientBillPay(11, {rateMode:'daily', dailyBillRate:300}, true)].join();
+    r.daily = [ManagerAcc.clientBillPay(5, {rateMode:'daily', dailyBillRate:300}), ManagerAcc.clientBillPay(0, {rateMode:'daily', dailyBillRate:300}), ManagerAcc.clientBillPay(11, {rateMode:'daily', dailyBillRate:300}, true)].join();
     openEditClient(clients[0].id); await wait(100);
     document.querySelector('#cPayUnit [data-unit="day"]').click(); await wait(50);
     r.dayRow = !!document.getElementById('cBillDaily') && !document.getElementById('cHourlyBill') && !document.getElementById('cBillMain');
@@ -1094,40 +1219,46 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await sleep(300);
   ok(wf.chips === 'group' && wf.groups.length >= 1 && wf.groups.every(g => /\d$/.test(g)) && wf.table === 2 && wf.card,
     'workers: a filter picked in its select shows as a chip, Group by client draws a section per site, the list view is a table whose row opens the card ' + JSON.stringify(wf));
-  // Accounting (redesign stage 7): the period in glass, figures, Salary / Billing / Approvals tabs, salary plates.
+  // Accounting (stage 6e, React): the period ‹ select ›, figures, Salary / Billing / Approvals / Alerts tabs.
   const ac = await p.evaluate(async () => {
-    const wait = ms => new Promise(r => setTimeout(r, ms)), vis = id => getComputedStyle(document.getElementById(id)).display !== 'none';
-    switchTab('accounting'); await wait(200);
-    const sel0 = document.getElementById('salaryPeriod'); sel0.value = 'week'; await onSalaryPeriodChange();
-    const sel = document.getElementById('salaryPeriod'), r = {inNav: !!document.querySelector('#accPeriodNav #salaryPeriod'), figs: [...document.querySelectorAll('#accFigs > div span')].map(x => x.textContent).join()};
-    r.tabs = [...document.querySelectorAll('#accTabs button')].map(b => b.dataset.k).join();
-    r.salaryTab = vis('accSecSalary') && !vis('accSecPayable') && !vis('accSecPending');
-    setAccTab('billing'); await wait(100); r.billingTab = !vis('accSecSalary') && vis('accSecPayable');
-    setAccTab('approvals'); await wait(100); r.approvalsTab = !vis('accSecSalary') && vis('accSecPending') && !vis('accSecAlerts');
+    const wait = ms => new Promise(r => setTimeout(r, ms)), root = document.getElementById('accountingRoot'), vis = sel => !!root.querySelector(sel);
+    switchTab('accounting'); await ManagerBridge.setPeriod('week'); await wait(200);
+    setAccTab('billing'); await wait(100);
+    const r = {inNav: !!root.querySelector('[data-testid=acc-period-nav] [data-testid=acc-period]'), figs: [...root.querySelectorAll('[data-testid=acc-figs] [data-slot=figures] span.truncate')].map(x => x.textContent).join()};
+    r.tabs = [...root.querySelectorAll('#accTabs button')].map(b => b.dataset.k).join();
+    r.billingTab = !vis('#accSecSalary') && (vis('[data-testid=acc-billing]') || vis('[data-testid=acc-billing-empty]'));
+    setAccTab('salary'); await wait(100); r.salaryTab = vis('#accSecSalary') && !vis('[data-testid=acc-billing]') && !vis('#accSecPending');
+    setAccTab('approvals'); await wait(100); r.approvalsTab = !vis('#accSecSalary') && vis('#accSecPending') && !vis('#accSecAlerts');
     // Alerts (stage 13): the accounting-only warnings in three sections, a count on the tab, a tap opens the fix place.
-    const w2 = workers.find(w => w.id === 'w1'), keepBank = [w2.bank, w2.bankBranch, w2.bankAccountNumber];
-    w2.bank = w2.bankBranch = w2.bankAccountNumber = ''; renderSalary();
+    const w1 = workers.find(w => w.id === 'w1'), keepBank = [w1.bank, w1.bankBranch, w1.bankAccountNumber];
+    w1.bank = w1.bankBranch = w1.bankAccountNumber = ''; render();
     setAccTab('alerts'); await wait(100);
-    r.alertsTab = !vis('accSecSalary') && vis('accSecAlerts');
-    r.secs = [...document.querySelectorAll('#accAlertsWrap .t3-sec')].map(x => x.firstChild.textContent.trim()).join();
-    r.tabN = (document.querySelector('#accTabs button[data-k="alerts"] .tab-n') || {}).textContent === String(__accAlerts.length) && __accAlerts.length > 0;
-    const bankLine = [...document.querySelectorAll('#accAlertsWrap .t3-line')].find(l => /No bank details/.test(l.textContent) && /Avi/.test(l.textContent));
-    if(bankLine){ bankLine.click(); await wait(200); r.opensPay = document.getElementById('payOverlay').classList.contains('open'); closeModal('payOverlay'); await wait(200); }
-    r.noBanner = !/to review before calculating/.test(document.getElementById('dashSalary').innerText);
+    r.alertsTab = !vis('#accSecSalary') && vis('#accSecAlerts');
+    r.secs = [...root.querySelectorAll('[data-testid=alerts-sec]')].map(x => x.dataset.sec).join();
+    const n = root.querySelectorAll('[data-testid=alert-row]').length;
+    r.tabN = (root.querySelector('#accTabs button[data-k="alerts"] .tab-n') || {}).textContent === String(n) && n > 0;
+    const bankLine = [...root.querySelectorAll('[data-testid=alert-row]')].find(l => /No bank details/.test(l.textContent) && /Avi/.test(l.textContent));
+    if(bankLine){ T.tap(bankLine); await wait(200); r.opensPay = document.getElementById('payOverlay').classList.contains('open') && !!document.querySelector('#payModal [data-testid=pay-window]'); closeModal('payOverlay'); await wait(200); }
     // Select on the Salary rows (after the Select button): a tick exports only that worker.
     setAccTab('salary'); await wait(100);
-    const srow = document.querySelector('#dashSalary .sal-row[data-sel-id]');
-    r.salSelect = !!document.querySelector('#dashSalary .sel-head') && !!srow && !!srow.querySelector('.t3-cb');
-    if(srow){ (__selState.head.querySelector('[data-h="on"]') || {click(){}}).click(); srow.querySelector('.t3-cb').click(); r.salBar = /1 selected/.test((document.querySelector('.sel-bar b') || {}).textContent || '') && !document.getElementById('payOverlay').classList.contains('open');
-      r.salRows = buildSalaryExportRows(document.getElementById('salaryPeriod').value, [srow.dataset.selId]).every(x => x.worker === (workers.find(w => w.id === srow.dataset.selId) || {}).name);
-      const xb = [...document.querySelectorAll('.sel-bar .gbtn')].find(b => b.dataset.a === 'x'); if(xb) xb.click(); }
-    [w2.bank, w2.bankBranch, w2.bankAccountNumber] = keepBank;
-    setAccTab('salary'); await wait(100);
-    const i0 = sel.selectedIndex; document.querySelector('#accPeriodNav .gbtn').click(); await wait(300); r.stepped = sel.selectedIndex === i0 + 1;
-    document.querySelectorAll('#accPeriodNav .gbtn')[1].click(); await wait(300); r.back = sel.selectedIndex === i0;
+    const selBtn = [...root.querySelectorAll('[data-testid=sal-select] button')].find(b => /Select/.test(b.textContent));
+    r.salSelect = !!selBtn;
+    if(selBtn){ selBtn.click(); await wait(100);
+      const tick = root.querySelector('[data-testid=sal-tick]'); const wid = tick && tick.closest('tr').dataset.rowId;
+      if(tick){ tick.click(); await wait(100); }
+      r.salBar = /1 selected/.test((document.querySelector('[data-testid=select-bar] b') || {}).textContent || '') && !document.getElementById('payOverlay').classList.contains('open');
+      await loadXlsx(); let wb = null; const orig = XLSX.writeFile; XLSX.writeFile = w => { wb = w; };
+      document.querySelector('[data-testid=sal-sel-excel]').click(); await T.until(() => wb, 3000); XLSX.writeFile = orig;
+      const rows = wb ? XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header: 1}).slice(1, -1) : [];
+      r.salRows = rows.length > 0 && rows.every(x => x[0] === (workers.find(w => w.id === wid) || {}).name);
+      r.selOff = !document.querySelector('[data-testid=select-bar]'); }
+    [w1.bank, w1.bankBranch, w1.bankAccountNumber] = keepBank; render();
+    const period = () => root.querySelector('[data-testid=acc-period]').innerText.trim(), p0 = period();
+    root.querySelector('[data-testid=acc-earlier]').click(); await wait(400); r.stepped = period() === 'This Month' && accPeriod === 'month';
+    root.querySelector('[data-testid=acc-later]').click(); await wait(400); r.back = period() === p0 && accPeriod === 'week';
     return r;
   });
-  ok(ac.inNav && ac.figs === 'Hours,Payroll,To approve' && ac.tabs === 'salary,billing,approvals,alerts' && ac.salaryTab && ac.billingTab && ac.approvalsTab && ac.alertsTab && /Rates and pay/.test(ac.secs) && ac.tabN && ac.opensPay && ac.noBanner && ac.salSelect && ac.salBar && ac.salRows && ac.stepped && ac.back, 'accounting: glass period ‹ ›, figures, Salary / Billing / Approvals / Alerts tabs show their sections; Alerts in sections with a count, a tap opens the pay window ' + JSON.stringify(ac));
+  ok(ac.inNav && ac.figs === 'Hours,Payroll,To approve' && ac.tabs === 'salary,billing,approvals,alerts' && ac.salaryTab && ac.billingTab && ac.approvalsTab && ac.alertsTab && /pay/.test(ac.secs) && ac.tabN && ac.opensPay && ac.salSelect && ac.salBar && ac.salRows && ac.selOff && ac.stepped && ac.back, 'accounting: period ‹ select ›, figures, Salary / Billing / Approvals / Alerts tabs show their sections; Alerts in sections with a count, a tap opens the pay window; Select exports the ticked worker ' + JSON.stringify(ac));
   // Worker photos are gone (owner 2026-10-13): an old avatarB64 is dropped after a load and never saved again.
   const ph = await p.evaluate(() => { const w = workers[0]; w.avatarB64 = 'AAAA'; const r = {dropped: dropWorkerPhotos(), gone: !('avatarB64' in w), again: dropWorkerPhotos()}; return r; });
   ok(ph.dropped && ph.gone && !ph.again, 'workers: an old photo is dropped from the record (dropWorkerPhotos) ' + JSON.stringify(ph));
@@ -1640,9 +1771,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await login(q, BASE + 'schedule-manager.html', 'owner1', 'owner-pass-1');
   await q.waitForNavigation().catch(()=>{});
   await waitFor(q, () => typeof workers !== 'undefined' && workers.length === 2);
-  const appr = async () => q.evaluate(async () => { switchTab('accounting'); const sel = document.getElementById('salaryPeriod'); sel.value = 'month'; await onSalaryPeriodChange();
-    await renderHourApprovals('month'); setAccTab('approvals'); const t = document.getElementById('hourApprovalsWrap').innerText; setAccTab('salary'); return t; });
-  const oa = await appr();
+  // Accounting → Approvals (React): opening the tab reads the month's documents afresh.
+  const appr = async (until) => q.evaluate(async until => { switchTab('dashboard'); switchTab('accounting'); await ManagerBridge.setPeriod('month'); setAccTab('approvals');
+    const t = () => (document.querySelector('#accountingRoot [data-testid=hour-approvals]') || {}).innerText || '';
+    await T.until(() => t() && (!until || new RegExp(until).test(t())), 8000); await T.tick(200); const text = t(); setAccTab('salary'); return text; }, until);
+  const oa = await appr('approved');
   ok(/Site B/.test(oa) && /Client/.test(oa) && /1 of \d days approved/.test(oa) && !/Changed after approval/.test(oa), 'owner: the client\'s approval in Accounting, not "changed" ' + JSON.stringify(oa));
   // The client disputes the day (the window sends on a tap outside); the owner sees the comment.
   await menuOf(avi); await pick('Dispute this day');
@@ -1652,7 +1785,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await tapOutside();
   const cd = {st: await waitState(avi, 'disputed'), text: await p.evaluate(() => document.querySelector('[data-testid="hours-review"]').innerText), win: dWin};
   ok(cd.st === 'disputed' && /Left at 15:00/.test(cd.text) && dWin.kind === 'dialog' && !dWin.save.length, 'client: disputes a day with a comment — a window with no buttons, sent on a tap outside ' + JSON.stringify({st: cd.st, win: dWin}));
-  const od = await appr();
+  const od = await appr('Disputed');
   ok(/Disputed/.test(od) && /Left at 15:00/.test(od) && /Avi Cohen/.test(od), 'owner: sees the disputed day and its comment ' + JSON.stringify(od));
   // The client proposes a fix (a tap on the day opens it); the owner accepts it — the shift's punches move to the new times.
   await p.click(dayOf(avi) + ' .og-plate b');
@@ -1661,18 +1794,23 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await tapOutside();
   const cf = await waitState(avi, 'fix');
   ok(cf === 'fix', 'client: proposes a fix for a day ' + cf);
-  const of = await appr();
+  const of = await appr('Fix proposed');
   ok(/Fix proposed/.test(of) && /05:30–13:30/.test(of) && /Accept/.test(of), 'owner: sees the proposed fix with Accept / Reject ' + JSON.stringify(of));
+  await q.evaluate(async () => { setAccTab('approvals'); await T.until(() => document.querySelector('#accountingRoot [data-testid=fix-accept]'), 8000); });
   await (await q.$('#accSecApprovals')).screenshot({path: SP + '/hours-approvals-owner.png'}).catch(()=>{});
   const fxa = await q.evaluate(async () => {
-    const docs = await hourApprovalsOf(salaryMonthOf('month')), doc = docs.find(d => d.kind === 'client');
+    const month = localYMD(new Date()).slice(0, 7);
+    const docs = await hourApprovalsOf(month, true), doc = docs.find(d => d.kind === 'client');
     const key = Object.keys(doc.days).find(k => doc.days[k].status === 'fix');
-    await resolveHourFix(doc.id, key, true);
+    // Accept (it asks first: the test accepts the confirm).
+    document.querySelector('#accountingRoot [data-testid=fix-accept]').click();
+    await T.until(() => !document.querySelector('#accountingRoot [data-testid=fix-accept]'), 8000);
     // The proposed times are Israel time (as the punch page writes them).
     const il = e => e && new Date(e.ts).toLocaleTimeString('en-GB', {timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit'});
     for(let i = 0; i < 60 && il(getPunchLog().find(e => e.id === 'p1')) !== '05:30'; i++) await new Promise(r => setTimeout(r, 150));
     const p1 = getPunchLog().find(e => e.id === 'p1'), p2 = getPunchLog().find(e => e.id === 'p2');
-    return {in: il(p1), out: il(p2), after: (await hourApprovalsOf(salaryMonthOf('month'))).find(d => d.kind === 'client').days[key].status};
+    setAccTab('salary');
+    return {in: il(p1), out: il(p2), after: (await hourApprovalsOf(month, true)).find(d => d.kind === 'client').days[key].status};
   });
   ok(fxa.in === '05:30' && fxa.out === '13:30' && fxa.after === 'fixed', 'owner: accepting a fix moves the shift\'s punches ' + JSON.stringify(fxa));
   await p.reload(); await waitFor(p, hrvReady, 15000);
@@ -1701,8 +1839,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(signReply && !/documents\/|path|₪|Agency|hourlyRate|billRate|gpsAccuracy|tok-/.test(signReply), 'client: the sign reply says when and by whom — no file path, money, supplier, GPS or token ' + signReply);
   await p.reload(); await waitFor(p, hrvReady, 15000);
   ok(await waitFor(p, () => /Signed/.test((document.querySelector('[data-testid="signed-note"]') || {}).textContent || '') && /Sign again/.test(document.querySelector('[data-testid="sign-month"]').textContent), 10000), 'client: after a reload the month shows as signed (Sign again)');
-  const osg = await q.evaluate(async path => { __hourApprovalsCache = null; switchTab('accounting'); await renderHourApprovals('month'); setAccTab('approvals');
-    const el = document.querySelector('#hourApprovalsWrap .hour-appr-signed'), r = {text: el ? el.innerText : '', btn: !!(el && el.querySelector('button'))};
+  const osg = await q.evaluate(async path => { switchTab('dashboard'); switchTab('accounting'); setAccTab('approvals');
+    await T.until(() => document.querySelector('#accountingRoot [data-testid=approval-signed]'), 8000);
+    const el = document.querySelector('#accountingRoot [data-testid=approval-signed]'), r = {text: el ? el.innerText : '', btn: !!(el && el.querySelector('button'))};
     try { r.url = await (await loadFirestoreBackend()).storageUrl(path); } catch (e) { r.err = String(e); }
     setAccTab('salary'); return r; }, stored.signed.path);
   ok(/Signed/.test(osg.text) && osg.btn && /signed\.pdf/.test(decodeURIComponent(osg.url || '')), 'owner: the client\'s signed month in Hours approvals, with the PDF to open ' + JSON.stringify(osg));

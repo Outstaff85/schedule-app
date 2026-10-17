@@ -1,6 +1,6 @@
 # Client portal (`client-portal.html`)
 
-A client of the firm (a site where its workers work) signs in with its own login and reviews its workers' hours there. Routed at `/client`. A separate page like the supplier portal, for the same reason: a client must never see wages, rates, suppliers, GPS or documents, and Firestore rules can't hide fields — so the page never reads Firestore; everything comes from the `hours` Cloud Function and is drawn by the shared hours screen, `hours-review.js` ([hours-review.md](hours-review.md) — the ticks, the function, the per-day approve / dispute / fix, the owner's side).
+A client of the firm (a site where its workers work) signs in with its own login and reviews its workers' hours there. Routed at `/client`. A separate page like the supplier portal, for the same reason: a client must never see wages, rates, suppliers, GPS or documents, and Firestore rules can't hide fields — so the page never reads Firestore; everything comes from the `hours` Cloud Function and is drawn by the shared hours screen, `src/hours-review/` ([hours-review.md](hours-review.md) — the ticks, the function, the per-day approve / dispute / fix, the owner's side).
 
 ## Logins
 

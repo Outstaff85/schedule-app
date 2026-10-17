@@ -2,7 +2,7 @@ name: Tests
 
 # Every pull request into main (and by hand): the dictionary and icon checks,
 # the build (typecheck, Vite, the old pages copied into dist/), the payroll
-# comparison (tests/payroll), the rules tests, the functions tests and the browser tests on the built dist/
+# comparison (tests/payroll), the Accounting comparison (tests/accounting), the rules tests, the functions tests and the browser tests on the built dist/
 # (docs/tests.md).
 # Nothing is deployed and no secret is used — everything runs on the emulators.
 on:

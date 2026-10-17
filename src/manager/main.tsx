@@ -32,13 +32,14 @@ import { SupplierEditor, type SupplierProps } from './SupplierEditor';
 import { ManualPunch } from './ManualPunch';
 import { Accounting, setKeptTab } from './Accounting';
 import { PayWindow } from './PayWindow';
-import { commissionFor, hourApprovalSummary, salaryEntriesFor, supplierCommission, SUPPLIER_DEFAULT_RATE } from './accounting';
+import { buildSalaryExportRows, clientBillPay, commissionFor, supplierCommissionRate, supplierDayCommission, hourApprovalSummary, salaryEntriesFor, supplierCommission, SUPPLIER_DEFAULT_RATE } from './accounting';
 
 declare global {
   interface Window {
     ManagerAcc?: {
       salaryEntriesFor: typeof Acc.salaryEntriesFor; commissionFor: typeof Acc.commissionFor; supplierCommission: typeof Acc.supplierCommission;
-      hourApprovalSummary: typeof Acc.hourApprovalSummary; SUPPLIER_DEFAULT_RATE: number;
+      hourApprovalSummary: typeof Acc.hourApprovalSummary; buildSalaryExportRows: typeof Acc.buildSalaryExportRows;
+      supplierCommissionRate: typeof Acc.supplierCommissionRate; supplierDayCommission: typeof Acc.supplierDayCommission; clientBillPay: typeof Acc.clientBillPay; SUPPLIER_DEFAULT_RATE: number;
     };
   }
 }
@@ -181,9 +182,10 @@ window.ManagerIsland = {
 };
 // The Accounting figures for the page's other callers (the client and supplier
 // windows, the user form's HR commission, the bell's approvals): its one-line
-// wrappers call these (src/manager/accounting.ts is the one copy).
+// wrappers call these (src/manager/accounting.ts is the one copy); the browser
+// tests read the export rows and the commission / billing rules here too.
 window.ManagerAcc = {
-  salaryEntriesFor, commissionFor, supplierCommission, hourApprovalSummary, SUPPLIER_DEFAULT_RATE,
+  salaryEntriesFor, commissionFor, supplierCommission, hourApprovalSummary, buildSalaryExportRows, supplierCommissionRate, supplierDayCommission, clientBillPay, SUPPLIER_DEFAULT_RATE,
 };
 // The page may have drawn a tab before this module arrived.
 window.dispatchEvent(new Event('manager-island-ready'));
