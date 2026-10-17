@@ -9,6 +9,16 @@ const BASE = 'http://127.0.0.1:8765/';
 let fails = 0;
 // A failed check is also printed as a GitHub annotation (::error::), so CI shows it without the log.
 const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c){ fails++; if (process.env.GITHUB_ACTIONS) console.log('::error::' + String(m).replace(/\r?\n/g, ' ').slice(0, 900)); } };
+// Payroll (stage 2): the page runs the one copy, payroll.js (src/lib/payroll.ts),
+// through its wrappers — the page's own functions give what Payroll gives.
+const payrollCheck = (p, page, fns) => p.evaluate(([fns]) => {
+  if (typeof Payroll !== 'object') return {loaded: false};
+  const w = {hourlyRate: 40}, d = new Date(2026, 9, 5, 8);
+  const r = {loaded: true, wrapped: fns.every(f => typeof window[f] === 'function' && /Payroll\./.test(String(window[f])))};
+  if (fns.includes('shiftPay')) r.pay = shiftPay(10, w, false, '') === Payroll.shiftPay(10, w, false, '', []) && shiftPay(10, w, false, '') === 420;
+  r.ymd = localYMD(d) === '2026-10-05';
+  return r;
+}, [fns]).then(r => ok(r.loaded && r.wrapped && r.ymd && r.pay !== false, page + ': shift pairing and pay come from payroll.js ' + JSON.stringify(r)));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'POST', body:'{}'})).json();
 
@@ -646,6 +656,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(dp.hourly > 0 && dp.hourlyExport === dp.hourly, 'daily pay: hourly first, Salary = export ' + JSON.stringify(dp));
   ok(dp.daily === 40 && dp.dailyExport === 40 && dp.days === 1 && dp.cellInput && dp.aviDays === 1, 'daily pay: 1 day × 40 in Salary and in the export', JSON.stringify(dp));
   ok(dp.over === 200 && dp.overExport === 200 && dp.back === dp.hourly, 'daily pay: 5 days set by hand → 200, back to hourly → same as before', JSON.stringify(dp));
+  await payrollCheck(p, 'manager', ['groupPunchesIntoShifts', 'analyzeDayPunches', 'effectiveRates', 'shiftPay', 'shiftPayFor', 'salaryPeriodKey', 'dayOverride', 'wOwnRate', 'localYMD'].concat(['travelPay']));
   // Accountant report: the Summary sheet carries the Salary figures (salaryEntriesFor), a total row and the Shifts sheet.
   const acc = await p.evaluate(async () => {
     await loadXlsx();
@@ -1223,6 +1234,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.screenshot({path: SP + '/t3-supplier.png'}).catch(()=>{});
   await p.setViewportSize({width: 1280, height: 720});
   ok(spT3.stats === 3 && spT3.workers >= 1, 'supplier portal: template 3 (figures, worker lines) ' + JSON.stringify(spT3));
+  await payrollCheck(p, 'supplier portal', ['groupPunchesIntoShifts', 'analyzeDayPunches', 'effectiveRates', 'shiftPay', 'shiftPayFor', 'salaryPeriodKey', 'dayOverride', 'wOwnRate', 'localYMD']);
   const spHead = await p.evaluate(() => ({mark: !!document.querySelector('.pt-head .pt-mark'), tab: (() => { const b = document.querySelector('.tab-btn.active'); return b ? getComputedStyle(b).borderRadius : ''; })()}));
   ok(spHead.mark && spHead.tab === '14px', 'supplier portal: the logo mark in a glass header, glass tabs ' + JSON.stringify(spHead));
   // Lists in the portal (redesign stage 2): ⋮ and swipe actions; Delete → the Undo snack → the real delete only after 5 s; Select with the bulk bar.
@@ -1296,6 +1308,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ctx = await newCtx(); p = await page(ctx);
   await login(p, BASE + 'client-portal.html', 'client1', 'client-pass-1');
   ok(await waitFor(p, () => typeof __hrv !== 'undefined' && __hrv.data && __hrv.data.punches && document.querySelectorAll('#hoursRoot .hrv-card').length >= 1, 15000), 'client: sees its workers\' shifts of the month');
+  await payrollCheck(p, 'client portal', ['groupPunchesIntoShifts', 'analyzeDayPunches', 'localYMD']);
   const cp = await p.evaluate(() => ({text: document.body.innerText, data: JSON.stringify(__hrv.data), cards: [...document.querySelectorAll('#hoursRoot .hrv-card b')].map(b => b.textContent),
     acts: document.querySelectorAll('#hoursRoot .hrv-day .hrv-act').length}));
   ok(cp.cards.includes('Avi Cohen') && cp.acts >= 3 && !/₪|Agency|hourlyRate|billRate|gpsAccuracy|"dist"|tok-|supplier|docUrl|0501/i.test(cp.text + cp.data),
@@ -1434,6 +1447,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const before = (await srv('/punches')).n;
   await p.goto(BASE + 'worker-punch.html?t=tok-avi');
   ok(await waitFor(p, () => !document.getElementById('screenPunch').classList.contains('hidden') && locOk === true, 15000), 'punch: link verified, on site');
+  await payrollCheck(p, 'punch', ['groupPunchesIntoShifts', 'analyzeDayPunches', 'effectiveRates', 'shiftPay', 'shiftPayFor', 'salaryPeriodKey', 'dayOverride', 'wOwnRate', 'localYMD'].concat(['travelPay']));
   // Hold to punch (redesign stage 9): a short press rolls back and sends nothing; about a second punches.
   const pbb = await (await p.$('#bigPunchBtn')).boundingBox(), cx = pbb.x + pbb.width / 2, cy = pbb.y + pbb.height / 2;
   await p.mouse.move(cx, cy); await p.mouse.down(); await sleep(300); await p.mouse.up(); await sleep(600);

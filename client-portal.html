@@ -100,6 +100,8 @@ body:has(.overlay.open){overflow:hidden}
 .overlay,.overlay>.modal{overscroll-behavior:contain}
 </style>
 <link rel="stylesheet" href="og.css">
+<!-- the one copy of the shift pairing and pay (src/lib/payroll.ts; docs/accounting.md) -->
+<script src="payroll.js"></script>
 <style>
 /* Portal header and tabs (redesign stage 10): the logo mark, a glass header,
    glass tabs with the highlight line. */
@@ -184,7 +186,7 @@ try{ if(localStorage.getItem('clientPortal_session')) document.documentElement.c
 // ── Shared helpers duplicated on purpose from the other pages (CLAUDE.md →
 // Duplicated on purpose; keep the copies the same).
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function localYMD(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function localYMD(d){ return Payroll.localYMD(d); }
 
 // ── Translations (the same core as schedule-manager.html: I18N_LANGS, tr,
 // applyI18n, uiLocale, loadI18n — keep the copies the same; docs/translations.md).
@@ -349,7 +351,7 @@ function showNewVersionBar(){
     <button type="button" onclick="location.reload()" style="flex:none;border:0;border-radius:999px;padding:6px 14px;background:#4f8ef7;color:#fff;font:inherit;cursor:pointer">${tr('Update')}</button>
     <button type="button" aria-label="${tr('Close')}" onclick="this.parentElement.remove()" style="flex:none;border:0;background:none;color:#7c84a0;font:inherit;font-size:15px;cursor:pointer;padding:4px 8px 4px 2px">✕</button></div>`);
 }
-startVersionWatch(()=>[location.pathname,'og.css','firestore-backend.js',...(window.hoursReviewMount?['hours-review.js']:[])]);
+startVersionWatch(()=>[location.pathname,'og.css','payroll.js','firestore-backend.js',...(window.hoursReviewMount?['hours-review.js']:[])]);
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 // Every modal closes on a tap anywhere outside it — on the dark backdrop,
 // including where the card or row that opened it was (per user request
@@ -411,35 +413,10 @@ document.addEventListener('click',e=>{
 })();
 
 
-// Same shift-pairing logic as schedule-manager.html's own
-// groupPunchesIntoShifts()/analyzeDayPunches() — duplicated here rather than
-// imported (no shared build in this codebase).
-function groupPunchesIntoShifts(entries){
-  const chrono=[...entries].sort((a,b)=>new Date(a.ts)-new Date(b.ts));
-  const buckets=[]; let cur=null;
-  chrono.forEach(e=>{
-    if(e.type==='in'){ if(cur) buckets.push(cur); cur={date:new Date(e.ts),entries:[e]}; }
-    else { if(!cur) cur={date:new Date(e.ts),entries:[]}; cur.entries.push(e); buckets.push(cur); cur=null; }
-  });
-  if(cur) buckets.push(cur);
-  return buckets;
-}
-function toMins(t){ if(!t) return 0; const [h,m]=t.split(':').map(Number); return h*60+(m||0); }
-function roundMins(m){ return m; }
-function analyzeDayPunches(entries,date){
-  const chrono=[...entries].sort((a,b)=>new Date(a.ts)-new Date(b.ts));
-  let hours=0, openIn=null; const warnings=[];
-  chrono.forEach(e=>{
-    if(e.type==='in'){ openIn=e; }
-    else if(e.type==='out'){
-      if(!openIn) return;
-      if(!openIn.time||!e.time){ openIn=null; return; }
-      let dur=toMins(e.time)-toMins(openIn.time); if(dur<0) dur+=1440;
-      hours+=dur/60; openIn=null;
-    }
-  });
-  return {hours,warnings};
-}
+// Shift pairing: the one copy is src/lib/payroll.ts (payroll.js, the global
+// Payroll; docs/accounting.md → Payroll module) — closed IN→OUT pairs only.
+function groupPunchesIntoShifts(entries){ return Payroll.groupPunchesIntoShifts(entries); }
+function analyzeDayPunches(entries,date){ return Payroll.analyzeDayPunches(entries,date); }
 
 
 // ── Session (own key: never shares another page's login) ─────────────────────

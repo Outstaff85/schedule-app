@@ -37,7 +37,9 @@ Firebase Hosting serves `dist/`, which `npm run build` makes from both.
 2. `vite build` — builds every page in `input` into `dist/` (`dist/next/index.html`, hashed files in `dist/assets/`); `dist/` is emptied first.
 3. `node scripts/copy-static.mjs` — copies the old pages' files into `dist/` byte for byte. The list (`staticFiles`) is every file tracked by git (every file on disk when there is no git) except: the top-level `firebase.json`, the rules and index files, `docs/`, `functions/`, `functions-auth/`, `tests/`, `Tokens/`, `node_modules/`, `dist/`, `src/`, `next/`, `scripts/`, `package.json`, `package-lock.json`, `tsconfig.json`, `vite.config.mts`, `components.json`; anything under a dot folder or named with a dot first; and any `*.md`, `Screenshot_*.jpg|png`, `*-local.html`, `*.log`, `*.pyc` or `__pycache__`. A file Vite also built stops the copy with an error.
 
-`tests/build/check.js` then checks `dist/`: every listed file is there and identical to the repo's, the four pages and `service-worker.js`, `og.css`, `manifest.json` are on the list, nothing that must never be public is in it (functions, tests, docs, `src/`, sources and config, dot files), `dist/next/index.html` points at its built script, and `firebase.json` serves `dist`.
+`payroll.js` (the old pages' copy of `src/lib/payroll.ts`, docs/accounting.md → Payroll module) is not built here: it is committed, so the old pages also work from the repo root. Step 1 is followed by `node scripts/build-payroll.mjs --check`, which builds `payroll.ts` in memory (Vite library mode, one IIFE, not minified, global `Payroll`) and stops the build when the committed `payroll.js` differs; `npm run build:payroll` rewrites it. Step 3 copies it like every other old file.
+
+`tests/build/check.js` then checks `dist/`: every listed file is there and identical to the repo's, the four pages and `service-worker.js`, `og.css`, `manifest.json`, `payroll.js` are on the list, nothing that must never be public is in it (functions, tests, docs, `src/`, sources and config, dot files), `dist/next/index.html` points at its built script, and `firebase.json` serves `dist`.
 
 ## Other commands
 

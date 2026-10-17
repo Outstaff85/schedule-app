@@ -1,6 +1,6 @@
 # Worker punch clock (`worker-punch.html`)
 
-The worker-facing clock-in/out page, routed at `/punch`. A worker opens a personal link `…/punch?t=<token>` (built by `buildPunchLink(w)` in the manager app, see [workers.md](workers.md)). There is no login: the token is the only credential. One inline `<script>`, no modules; it duplicates `esc()`, `getPunchLog`/`savePunchLog`, `reportError`, the shift pairing (`groupPunchesIntoShifts`/`analyzeDayPunches`) and the pay functions (`PAY_RULES` … `shiftPayFor`, `dayOverride`, `travelPay`, `localYMD`) on purpose (see CLAUDE.md → rules that apply everywhere).
+The worker-facing clock-in/out page, routed at `/punch`. A worker opens a personal link `…/punch?t=<token>` (built by `buildPunchLink(w)` in the manager app, see [workers.md](workers.md)). There is no login: the token is the only credential. One inline `<script>`, no modules; it duplicates `esc()`, `getPunchLog`/`savePunchLog`, `reportError` on purpose (see CLAUDE.md → rules that apply everywhere); the shift pairing and the pay functions (`groupPunchesIntoShifts`, `analyzeDayPunches`, `PAY_RULES` … `shiftPayFor`, `dayOverride`, `travelPay`, `localYMD`) are wrappers over `payroll.js` (docs/accounting.md → Payroll module), with the page's `clients` (the worker's sites with their worker-pay rates).
 
 ## Server
 

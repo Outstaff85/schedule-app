@@ -8,9 +8,11 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit && vite build && node scripts/copy-static.mjs",
+    "build": "tsc --noEmit && node scripts/build-payroll.mjs --check && vite build && node scripts/copy-static.mjs",
+    "build:payroll": "node scripts/build-payroll.mjs",
     "preview": "vite preview",
-    "check:build": "node tests/build/check.js"
+    "check:build": "node tests/build/check.js",
+    "test:payroll": "node tests/payroll/compare.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.2",
