@@ -35,7 +35,6 @@ export const SignaturePad = React.forwardRef<SignaturePadHandle, { onInk?: (has:
         g.stroke();
       });
     }, []);
-    const ink = () => (canvas.current ? getComputedStyle(canvas.current).color : '#fff');
     const redraw = React.useCallback(() => {
       const c = canvas.current;
       if (!c) return;
@@ -92,7 +91,6 @@ export const SignaturePad = React.forwardRef<SignaturePadHandle, { onInk?: (has:
           onPointerDown={down}
           onPointerMove={move}
           onPointerUp={e => canvas.current?.releasePointerCapture(e.pointerId)}
-          style={{ color: has ? undefined : undefined }}
         />
         <div className="flex items-center justify-between text-[11px] text-faint">
           <span>{has ? '' : tr('Sign here with your finger')}</span>
@@ -102,5 +100,3 @@ export const SignaturePad = React.forwardRef<SignaturePadHandle, { onInk?: (has:
     );
   },
 );
-// The ink colour on screen follows the page's text colour (ink() is kept for callers that redraw).
-void 0;
