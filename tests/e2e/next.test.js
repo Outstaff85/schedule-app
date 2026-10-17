@@ -85,9 +85,18 @@ async function computer(browser) {
   // lists: page by 10, tap reads, double click edits, ⋮ → Delete → Undo
   const plates = () => p.locator('[data-testid^=plate-w]').count();
   ok(await plates() === 10, 'next: a list shows 10 rows first');
-  // reaching the end of the list loads the next rows (the same as a tap on Show more)
-  await p.getByRole('button', { name: /Show more/ }).scrollIntoViewIfNeeded(); await sleep(500);
-  ok(await plates() === 14 && await p.getByRole('button', { name: /Show more/ }).count() === 0, 'next: reaching the end of the list adds the rest');
+  // the next page comes only after the user's own downward input with "Show more (N left)" in view
+  // (the old pages' renderPagedList rules): a scroll by script loads nothing, a wheel up neither
+  const more = p.locator('[data-slot=paged-more]');
+  ok(/Show more \(4 left\)/.test(await more.innerText()), 'next: the list ends with "Show more (4 left)"');
+  await more.scrollIntoViewIfNeeded(); await sleep(400);
+  ok(await plates() === 10, 'next: a scroll that no user input started loads nothing');
+  const box = await more.boundingBox();
+  await p.mouse.move(box.x + 20, box.y - 40);
+  await p.mouse.wheel(0, -60); await sleep(400);
+  ok(await plates() === 10, 'next: a wheel up never loads, even with the row in view');
+  await p.mouse.wheel(0, 60); await sleep(500);
+  ok(await plates() === 14 && await more.count() === 0, 'next: a wheel down with the row in view loads the next page');
   await p.evaluate(() => window.scrollTo(0, 0)); await sleep(200);
   await p.click('[data-testid=plate-w0] .og-plate', { position: { x: 60, y: 20 } }); await sleep(400);
   ok(/Overtime/.test(await p.locator('[data-testid=plate-w0]').innerText()), 'next: a tap on a plate opens its details');
