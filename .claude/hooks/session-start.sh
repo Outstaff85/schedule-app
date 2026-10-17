@@ -18,6 +18,7 @@ quiet=""
 
 if ! git fetch -q origin 2>/dev/null; then
   note="git fetch failed (offline?) - checkout NOT synced with GitHub."
+  quiet=1
 elif [ -n "$(git status --porcelain 2>/dev/null)" ]; then
   note="Uncommitted changes present - checkout NOT auto-synced."
 elif git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
