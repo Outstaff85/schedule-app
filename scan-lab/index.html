@@ -367,8 +367,9 @@ async function takeShot() {
   $('hint').textContent = note + (second ? '; a second document found (' + total() + ' ms)' : '; one document') + ' — Retake for another';
 }
 
-// The second document is looked for by the accurate model twice: on the photo with
-// the first one painted over in the background's colour, then in the widest strip
+// The second document is looked for by the accurate model: on the photo with the
+// first one painted over in the background's colour (then with a margin of that
+// colour, for a document cut off by the photo's edge), then in the widest strip
 // left beside the first. A frame that overlaps the first by over 30 % is the same one.
 function quadArea(q) { let a = 0; for (let i = 0; i < 4; i++) { const [x1, y1] = q[i], [x2, y2] = q[(i + 1) % 4]; a += x1 * y2 - x2 * y1; } return Math.abs(a) / 2; }
 function quadConvex(q) { let sg = 0; for (let i = 0; i < 4; i++) { const [a, b, c] = [q[i], q[(i + 1) % 4], q[(i + 2) % 4]]; const z = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]); if (z) { if (sg && Math.sign(z) !== sg) return false; sg = Math.sign(z); } } return true; }
@@ -393,6 +394,14 @@ async function findSecond(frame, w, h, q1) {
   q1.forEach(([x, y], i) => { const X = (x + (x - cx) * 0.04) * w, Y = (y + (y - cy) * 0.04) * h; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.closePath(); g.fill();
   const masked = await tryIt(c, w, h, p => p);
   if (masked) return masked;
+  // 1b) the same with a 10 % margin of that colour around the photo: a document cut off
+  // by the photo's edge (its far corners outside) then lies whole inside, and its
+  // corners land on the photo's edge.
+  const P = Math.round(0.1 * Math.max(w, h)), pc = document.createElement('canvas'); pc.width = w + 2 * P; pc.height = h + 2 * P;
+  const pg = pc.getContext('2d'); pg.fillStyle = g.fillStyle; pg.fillRect(0, 0, pc.width, pc.height); pg.drawImage(c, P, P);
+  const clamp = v => Math.min(1, Math.max(0, v));
+  const padded = await tryIt(pc, pc.width, pc.height, ([x, y]) => [clamp((x * pc.width - P) / w), clamp((y * pc.height - P) / h)]);
+  if (padded) return padded;
   // 2) the widest strip left beside the first: above, below, left or right of it
   const xs = q1.map(p => p[0]), ys = q1.map(p => p[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
   const strips = [[0, 0, 1, y0], [0, y1, 1, 1], [0, 0, x0, 1], [x1, 0, 1, 1]].filter(([a, b, c2, d2]) => c2 - a >= 0.25 && d2 - b >= 0.2)

@@ -27,7 +27,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: /tmp/models
-          key: scan-lab-models-v1
+          key: scan-lab-models-v2
       - name: The scanner lab's models
         run: scripts/scan-lab/fetch-models.sh dist/scan-lab
       - uses: FirebaseExtended/action-hosting-deploy@v0

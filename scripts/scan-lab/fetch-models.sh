@@ -20,10 +20,12 @@ get 1IlbLPkCv-TdaBLOPh_4J97P1_KHYYJ7a lite.onnx   # the light model (lcnet100), 
 # The face finder that sets a shot upright (YuNet, MIT, OpenCV zoo).
 [ -s "$CACHE/yunet640.onnx" ] || curl -sSL --fail -o "$CACHE/yunet640.onnx" https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
 pip install -q onnx numpy
-[ -s "$CACHE/yunet.onnx" ] || python "$HERE/yunet_dyn.py" "$CACHE/yunet640.onnx" "$CACHE/yunet.onnx"   # any input size: run at 320
+[ -s "$CACHE/yunet_any.onnx" ] || python "$HERE/yunet_dyn.py" "$CACHE/yunet640.onnx" "$CACHE/yunet_any.onnx"   # any input size: run at 320
 # fp16 weights, fp32 math: a plain fp16 conversion gives zeros on WebGPU.
 [ -s "$CACHE/sa24_w16.onnx" ] || python "$HERE/w16.py" "$CACHE/sa24.onnx" "$CACHE/sa24_w16.onnx"
-cp "$CACHE/lite.onnx" "$CACHE/sa24_w16.onnx" "$CACHE/yunet.onnx" "$OUT/"
+cp "$CACHE/lite.onnx" "$CACHE/sa24_w16.onnx" "$OUT/" && cp "$CACHE/yunet_any.onnx" "$OUT/yunet.onnx"
+# The lab runs the face finder at 320×320: a file still fixed at 640 fails every shot's turn.
+python -c "import onnx,sys; d=onnx.load(sys.argv[1]).graph.input[0].type.tensor_type.shape.dim; sys.exit(0 if d[2].dim_param else 'yunet.onnx is still fixed at %d×%d' % (d[2].dim_value, d[3].dim_value))" "$OUT/yunet.onnx"
 # ONNX Runtime Web: 1.22 for the CPU, 1.30 for the GPU (its GPU runs the light model right where 1.22 returned zeros).
 T="$(mktemp -d)"
 for v in 1.22.0:ort 1.30.0:ort130; do
