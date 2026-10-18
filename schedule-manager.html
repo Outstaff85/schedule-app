@@ -4372,21 +4372,6 @@ function retryLoadDataWhenBack(){
 
 
 
-function importDataBackup(){
-  const input=document.createElement('input');
-  input.type='file'; input.accept='.json';
-  input.onchange=async e=>{
-    try{
-      const text=await e.target.files[0].text();
-      const d=JSON.parse(text);
-      applyData(d);
-      render();
-      autoSave();
-      showToast(tr('Data loaded from the file!'));
-    }catch(err){ showToast(tr('Could not load the file')); }
-  };
-  input.click();
-}
 
 // --- Dashboard -------------------------------------------------------------------
 // Template 3 pieces (shared by every list drawn in it): an avatar and a line.
