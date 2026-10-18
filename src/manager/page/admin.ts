@@ -18,6 +18,7 @@ import { cacheTenantProfile, renderAccountControl } from './gate';
 import { closeModal } from './windows';
 import { renderWorkersPage } from './workers';
 import { renderCrumb } from './header';
+import { showToast } from '../toast';
 Object.defineProperties(window, {
   "__firmsCache": {get: () => __firmsCache, set: (v?: any) => { __firmsCache = v; }, configurable: true},
   "renderFirmsViews": {get: () => renderFirmsViews, configurable: true},

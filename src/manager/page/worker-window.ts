@@ -17,6 +17,7 @@ import { isFirmAdminSession } from '../logic/access';
 import { autoSave } from '../data/store';
 import { genToken } from '../data/ids';
 import { render } from './render';
+import { showToast } from '../toast';
 Object.defineProperties(window, {
   "blankWorkerDefaults": {get: () => blankWorkerDefaults, configurable: true},
   "openAddWorker": {get: () => openAddWorker, configurable: true},

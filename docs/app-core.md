@@ -34,7 +34,7 @@ Shared helpers:
 - `esc(s)` — HTML-escapes `& < > " '`. **Every value put into HTML must go through it.**
 - `fmtDate`, `fmtRange`, `fmtDMY`, `localYMD(d)` — use this, not `toISOString()`, which in Israel gives the previous day;
 - `toMins`, `calcHours(s,e)` (crosses midnight), `nowHHMM`, `getSundayOfWeek`;
-- `showToast(msg, dur)` — a small note at the bottom right (above the tab bar on a phone): an icon and a coloured left edge by kind, `toastKind(text)` guessing from the text — error (failed, error, not saved…, red), ongoing (ends with …, blue), warning (check, empty, missing…, amber), else done (green); a new one replaces the shown one. The punch page has a copy (`src/punch/core.ts`); the other React pages use the Sonner toasts.
+- `showToast(msg, dur)` (`src/manager/toast.ts`, imported by the page's modules; `window.showToast` is the same function for `scan-pipeline.js`) — a small note at the bottom right (above the tab bar on a phone): an icon and a coloured left edge by kind, `toastKind(text)` guessing from the text — error (failed, error, not saved…, red), ongoing (ends with …, blue), warning (check, empty, missing…, amber), else done (green); a new one replaces the shown one. A toast whose text reads as an error (failed, could not, offline, denied, ⚠…) is also sent to the error log (`reportError(msg, 'toast')`, Admin → Errors). The punch page has a copy (`src/punch/core.ts`); the other React pages use the Sonner toasts.
 
 ## Tabs and rendering
 

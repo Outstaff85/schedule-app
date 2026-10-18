@@ -925,11 +925,14 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     openHoursImportModal('w2');
     addBtn().click(); await T.tick();
     const before2 = await pend();
-    const toasts = []; const orig = window.showToast; window.showToast = (m) => { toasts.push(m); };
+    // The toasts shown (src/manager/toast.ts draws each into #toast).
+    const toasts = [], toastEl = document.getElementById('toast');
+    const seen = new MutationObserver(() => { const t = toastEl.textContent; if(t && toasts[toasts.length - 1] !== t) toasts.push(t); });
+    seen.observe(toastEl, {childList: true, subtree: true, characterData: true});
     click('#hoursImportSubmitBtn');
     for(let i = 0; i < 40 && !toasts.length; i++) await new Promise(res => setTimeout(res, 100));
     await new Promise(res => setTimeout(res, 300));
-    window.showToast = orig;
+    seen.disconnect();
     r.sentHourly = (await pend()) - before2; r.toast = toasts.join(' | ');
     closeModal('hoursImportOverlay');
     return r;

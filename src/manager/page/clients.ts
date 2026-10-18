@@ -13,6 +13,7 @@ import { autoSave } from '../data/store';
 import { getPunchLog } from '../data/punches';
 import { getWorkerMonthShifts } from '../logic/exports';
 import { render } from './render';
+import { showToast } from '../toast';
 Object.defineProperties(window, {
   "openAddClient": {get: () => openAddClient, configurable: true},
   "openEditClient": {get: () => openEditClient, configurable: true},

@@ -18,6 +18,7 @@ import { refreshTenantProfile } from './admin';
 import { renderWorkerUploadProgress } from './worker-window';
 import { render } from './render';
 import { renderWorkersPage } from './workers';
+import { showToast } from '../toast';
 Object.defineProperties(window, {
   "_scanPipelineLoading": {get: () => _scanPipelineLoading, set: (v?: any) => { _scanPipelineLoading = v; }, configurable: true},
   "ensureScanPipelineLoaded": {get: () => ensureScanPipelineLoaded, configurable: true},

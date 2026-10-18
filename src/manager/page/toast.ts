@@ -1,4 +1,4 @@
-// The manager page's own script, part "toast": the toast and the new version check.
+// The manager page's own script, part "toast": the new version check (the toast itself is src/manager/toast.ts).
 // One of the modules of src/manager/page/ (React migration stage 8c-3; the
 // former inline script of schedule-manager.html, split by section, the same
 // code in the same order — page/entry.ts imports them in that order), typed
@@ -8,34 +8,15 @@
 // other parts and the browser tests use them).
 import { byId } from './dom';
 import { tr } from '../logic/i18n';
+import { showToast } from '../toast';
 Object.defineProperties(window, {
-  "TOAST_ICONS": {get: () => TOAST_ICONS, configurable: true},
-  "toastKind": {get: () => toastKind, configurable: true},
-  // @ts-ignore — reassigned from outside (a wrapper or a test's stub)
-  "showToast": {get: () => showToast, set: (v: any) => { showToast = v; }, configurable: true},
+  "showToast": {get: () => showToast, configurable: true}, // for scan-pipeline.js (src/manager/toast.ts)
   "startVersionWatch": {get: () => startVersionWatch, configurable: true},
   "showNewVersionBar": {get: () => showNewVersionBar, configurable: true},
   "AVATAR_SIZE": {get: () => AVATAR_SIZE, configurable: true},
   "grayscaleCanvas": {get: () => grayscaleCanvas, configurable: true},
 });
 
-// --- Toast ------------------------------------------------------------------------------------------------------------------------------------
-// Any toast text goes through tr(): a server message in the dictionary shows translated.
-// Toast (the same in all three pages): small, an icon and a coloured edge by
-// its kind, guessed from the text — error, ongoing (ends with …), warning,
-// else done.
-const TOAST_ICONS={ok:'ti-circle-check',warn:'ti-alert-triangle',err:'ti-alert-circle',info:'ti-info-circle'};
-function toastKind(t?: any){
-  if(/fail|error|could not|couldn't|not saved|denied|refused|invalid|נכשל|שגיאה|לא נשמר|לא ניתן/i.test(t)) return 'err';
-  if(/(…|\.\.\.)\s*$/.test(t)) return 'info';
-  if(/⚠|warn|check|empty|missing|not found|בדקו|ריק|חסר|לא נמצא/i.test(t)) return 'warn';
-  return 'ok';
-}
-function showToast(msg?: any,dur?: any){
-  const t=byId('toast'), text=typeof msg==='string'?tr(msg):String(msg), k=toastKind(text);
-  t.className='toast show '+k; t.innerHTML='<i class="ti '+TOAST_ICONS[k]+'"></i><span></span>'; t.lastChild.textContent=text;
-  clearTimeout(t.__hide); t.__hide=setTimeout(()=>t.classList.remove('show'),dur||2500);
-}
 // ── New version check (2026-10-04; the same code in schedule-manager.html,
 // worker-punch.html and supplier-portal.html). An app left open — a PWA in
 // the background — keeps running the code it loaded, even after a deploy.

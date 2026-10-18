@@ -13,6 +13,7 @@ import { autoSave } from '../data/store';
 import { getPunchLog, savePunchLog } from '../data/punches';
 import { renderSuppliersPage } from './workers';
 import { render } from './render';
+import { showToast } from '../toast';
 Object.defineProperties(window, {
   "openAddSupplier": {get: () => openAddSupplier, configurable: true},
   "openEditSupplier": {get: () => openEditSupplier, configurable: true},

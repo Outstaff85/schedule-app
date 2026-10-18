@@ -19,6 +19,7 @@ import { gsAuth } from '../data/session';
 import { openEditWorker, rescanFromWorkerModal } from './worker-window';
 import { loadFirmMessages, noPunchActs } from './header';
 import { render } from './render';
+import { showToast } from '../toast';
 Object.defineProperties(window, {
   "todayPunchLog": {get: () => todayPunchLog, configurable: true},
   "workerToday": {get: () => workerToday, configurable: true},

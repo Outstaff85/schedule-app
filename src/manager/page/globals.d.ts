@@ -1,6 +1,6 @@
 // The names the manager page's modules (src/manager/page/) still reach as
 // globals: the state globals.ts gives as window accessors (workers, weekStart…),
-// the functions the browser tests stub (showToast, gsSavePunch…), the names one
+// the functions the browser tests stub (gsSavePunch…), the names one
 // module assigns in another, and the calls to a part loaded later (an import
 // would change the order the parts run in). Loosely typed until those parts are typed.
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -65,7 +65,6 @@ declare global {
   var selectedClientId: any;
   var setTheme: any;
   var setupAdminPaneBar: any;
-  var showToast: any;
   var startNewScan: any;
   var supplierCommission: any;
   var suppliers: any;

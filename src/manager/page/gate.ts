@@ -13,6 +13,7 @@ import { esc } from '../logic/util';
 import { tr } from '../logic/i18n';
 import { API_URL } from '../data/api';
 import { LOGIN_FN_URL, goToClientPortal, goToSupplierPortal } from './wiring';
+import { showToast } from '../toast';
 Object.defineProperties(window, {
   "cacheTenantProfile": {get: () => cacheTenantProfile, configurable: true},
   "gateApp": {get: () => gateApp, configurable: true},

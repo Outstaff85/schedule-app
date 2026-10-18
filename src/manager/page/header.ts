@@ -15,6 +15,7 @@ import { API_URL, loadFirestoreBackend } from '../data/api';
 import { localYMD } from '../logic/pay';
 import { hasPermission, isHrSession } from '../logic/access';
 import { switchTab } from './nav';
+import { showToast } from '../toast';
 Object.defineProperties(window, {
   "GREET_ICONS": {get: () => GREET_ICONS, configurable: true},
   "partOfDay": {get: () => partOfDay, configurable: true},

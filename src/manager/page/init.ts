@@ -21,6 +21,7 @@ import { render } from './render';
 import { setSaveStatus } from './wiring';
 import { applyNavPermissions, switchTab } from './nav';
 import { renderAccounting } from './bridge';
+import { showToast } from '../toast';
 Object.defineProperties(window, {
   "_origConsoleError": {get: () => _origConsoleError, configurable: true},
   "_origConsoleWarn": {get: () => _origConsoleWarn, configurable: true},
@@ -29,8 +30,6 @@ Object.defineProperties(window, {
   "MAPS_MARKER_NOTICE_RE": {get: () => MAPS_MARKER_NOTICE_RE, configurable: true},
   "_mapsNoticeSeenToday": {get: () => _mapsNoticeSeenToday, configurable: true},
   "_consoleNoise": {get: () => _consoleNoise, configurable: true},
-  "ERROR_TOAST_RE": {get: () => ERROR_TOAST_RE, configurable: true},
-  "_origShowToast": {get: () => _origShowToast, configurable: true},
   "watchErrorLine": {get: () => watchErrorLine, configurable: true},
   "VAPID_PUBLIC_KEY": {get: () => VAPID_PUBLIC_KEY, configurable: true},
   "PUSH_ENABLED": {get: () => PUSH_ENABLED, configurable: true},
@@ -80,9 +79,6 @@ function _mapsNoticeSeenToday(){
 const _consoleNoise=(msg?: any)=>SDK_RECONNECT_NOISE_RE.test(msg)||(MAPS_MARKER_NOTICE_RE.test(msg)&&_mapsNoticeSeenToday());
 console.error=function(...args: any[]){ _origConsoleError(...args); try{ const t=_consoleArgsText(args); if(!_consoleNoise(t.msg)) reportError(t.msg,'console.error',t.stack); }catch(e: any){} };
 console.warn=function(...args: any[]){ _origConsoleWarn(...args); try{ const t=_consoleArgsText(args); if(!_consoleNoise(t.msg)) reportError(t.msg,'console.warn',t.stack); }catch(e: any){} };
-const ERROR_TOAST_RE=/fail|could not|error|offline|denied|invalid|no network|not available|no rights|not enough rights|expired|\u26a0|⚠/i;
-const _origShowToast=showToast;
-showToast=function(msg?: any,dur?: any){ _origShowToast(msg,dur); try{ if(ERROR_TOAST_RE.test(String(msg||''))) reportError(String(msg),'toast',''); }catch(e: any){} };
 function watchErrorLine(id?: any){
   const el=byId(id); if(!el||typeof MutationObserver==='undefined') return;
   new MutationObserver(()=>{ const t=(el.textContent||'').trim(); if(t) reportError(t,'form:'+id,''); })
