@@ -145,14 +145,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .lang-btn,.gbtn.og-bell{background:none !important;border:0 !important;box-shadow:none !important;-webkit-backdrop-filter:none !important;backdrop-filter:none !important;}
 .lang-btn::after,.gbtn.og-bell::after{display:none;}
 /* Only the globe (owner 2026-10-13): the name and chevron stay in the markup, hidden. */
-.lang-btn .lang-btn-name,.lang-btn .lang-btn-chev{display:none;}
 .lang-btn.on-cover{position:absolute;top:max(env(safe-area-inset-top,0px),12px);right:12px;z-index:2;}
-.lang-ov{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .25s;}
-.lang-ov.open{opacity:1;pointer-events:auto;}
-.lang-sheet{width:min(380px,100%);max-height:min(560px,80vh);display:flex;flex-direction:column;padding:14px 14px 16px;border-radius:22px;background:var(--glass-dark);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border:1px solid rgba(var(--tint),.2);box-shadow:0 20px 50px rgba(0,0,0,.5);color:var(--ink);transform:translateY(12px) scale(.98);transition:transform .35s cubic-bezier(.3,.7,.3,1);}
-.lang-ov.open .lang-sheet{transform:none;}
-.lang-grab{display:none;width:40px;height:4px;border-radius:2px;background:rgba(var(--tint),.3);margin:0 auto 10px;}
-.lang-sheet h4{font-size:17px;font-weight:600;margin:0 4px 10px;}
 .lang-search{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;margin-bottom:8px;border-radius:12px;background:rgba(var(--tint),.06);border:1px solid rgba(var(--tint),.12);}
 .lang-search i{color:var(--ink-2);font-size:16px;}
 .lang-search input{flex:1;min-width:0;border:0;background:none;color:var(--ink);font:14px 'DM Sans','Heebo',Arial,sans-serif;outline:none;padding:0;}
@@ -165,11 +158,6 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .lang-li.on::after{content:'';position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:2px;background:linear-gradient(180deg,#818cf8,#22d3ee,#f472b6);}
 .lang-tick{width:22px;height:22px;border-radius:7px;background:var(--ok);color:#0b0d14;display:flex;align-items:center;justify-content:center;font-size:14px;}
 .lang-none{padding:14px 12px;color:var(--ink-2);font-size:13px;}
-@media (max-width:700px){
-  .lang-ov{align-items:flex-end;padding:0;}
-  .lang-sheet{width:100%;max-height:78vh;border-radius:22px 22px 0 0;border-width:1px 0 0;padding:10px 14px calc(18px + env(safe-area-inset-bottom,0px));transform:translateY(105%);}
-  .lang-grab{display:block;}
-}
 @media (prefers-reduced-motion:reduce){.gbtn::before{animation:none;}.gbtn.shine::after{transition:none;}}
 /* ── Components from docs/design/system/components/bundle.css that the pages use. ── */
 /* Odinson Glass components. Every value comes from tokens.css. */
@@ -287,7 +275,6 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
    the dark ground. ── */
 :root[data-theme="light"] .t3-line:hover{background:#f3f5f9;}
 :root[data-theme="light"] .og-snack,:root[data-theme="light"] .sel-bar{box-shadow:var(--shadow-pop);}
-:root[data-theme="light"] .lang-sheet{box-shadow:var(--shadow-pop);}
 :root[data-theme="light"] .og-acts{background:rgba(20,24,40,.08);}
 :root[data-theme="light"] .og-box::after{border-color:var(--tick-mark);}
 :root[data-theme="light"] .lang-tick{color:var(--tick-mark);}

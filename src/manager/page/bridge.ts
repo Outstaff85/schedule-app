@@ -27,11 +27,12 @@ import { editFromWorkerCard, openHoursExportModal, openHoursImportModal, openNot
 import { switchTab } from './nav';
 import { buildPunchLink, copyWorkerLink, deleteWorkerNow, findScanFields, loginsInfo, newLoginFor, openAddWorker, openEditWorker, regenerateWorkerToken, rescanFromWorkerModal, saveLoginField, setWorkerStatus, supplierMonthPayable, workerHasScanPages, workerScanLive } from './worker-window';
 import { render } from './render';
+import { setLanguage } from './language';
 import { closeEditorUnsaved, commitClient, deleteClientsNow, openAddClient, openEditClient, openMapPicker, punchFromClientModal, workersMonthHours } from './clients';
 import { addManualPunch, commitSupplier, deleteSuppliersNow, openAddSupplier, openEditSupplier, openManualPunch } from './suppliers';
 import { __adminPane, __firmWin, __firmsCache, __firmsErr, __logPeriod, __usersErr, adminTeam, deleteTenantsNow, deleteUsersNow, firmSaved, firmsRows, hrNameOf, hrUsers, loadFirms, loadLogPane, logPaneSnapshot, openCreateFirmForm, openCreateUserForm, openEditFirmForm, openEditUserForm, openMyFirmForm, prefetchAdminUsers, resetLogs, setTenantsActive, switchAdminPane, userSaved } from './admin';
 import { closeModal } from './windows';
-import { logout, switchToTenant } from './wiring';
+import { logout, pingLogin, signIn, switchToTenant } from './wiring';
 import { cacheTenantProfile, editMyName, setTheme } from './gate';
 import { showToast } from '../toast';
 Object.defineProperties(window, {
@@ -123,6 +124,9 @@ window.ManagerBridge={
   installApp:()=>{ window.installApp(); },
   signOut:()=>{ logout(); },
   saveTheme:(t?: any)=>setTheme(t),
+  setLanguage:(l?: any)=>{ setLanguage(l); },
+  signIn:(u?: any,p?: any)=>signIn(u,p),
+  pingLogin:()=>pingLogin(),
   // The snapshot Today draws from: each worker with today's shift, today's punch
   // and its notices (worked out here — they still belong to the Workers tab),
   // the suppliers, today's punches with their site.

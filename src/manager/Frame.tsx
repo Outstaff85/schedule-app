@@ -6,15 +6,14 @@
 // draws `frame.ts`'s state, which the page's modules write; its actions run
 // the page's own through `ManagerBridge`. The page's sections (#appMain, the
 // tabs' React islands) are moved into the Shell's page area as they are.
-// The Language button is still the page's (#langBtn, moved into the title
-// bar: it also sits on the sign-in and Firms screens), and so is the bell's
-// list (it opens under the bell).
+// The bell's list is still the page's (it opens under the bell).
 import * as React from 'react';
 import { IconCash, IconCalendar, IconDownload, IconHome, IconLock, IconTruckDelivery, IconUserEdit, IconUsers, IconUsersGroup } from '@tabler/icons-react';
 import { LanguageScope, adoptLanguage, tr } from '@/lib/i18n';
 import { Shell, ShellGreeting, type ShellSection } from '@/components/shared/shell';
 import { AppBrand, ShellBell } from '@/components/shared/app-brand';
 import { AccountMenu } from '@/components/shared/account-menu';
+import { LanguageButton } from '@/components/shared/language';
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { useFrame } from './frame';
 import type { ManagerBridge } from './bridge';
@@ -30,22 +29,14 @@ const SECTIONS: { key: string; label: string; Icon: typeof IconHome; color: stri
   { key: 'accounting', label: 'Accounting', Icon: IconCash, color: '#f7c062' },
 ];
 
-/**
- * Puts a page element (found by id) inside this spot, each time the spot
- * mounts — or lets the page place it (`place`: the Language button goes where
- * the screen shown needs it).
- */
-function Slot({ id, className, place }: { id: string; className?: string; place?: () => void }) {
+/** Puts a page element (found by id) inside this spot, each time the spot mounts. */
+function Slot({ id, className }: { id: string; className?: string }) {
   const ref = React.useCallback((el: HTMLDivElement | null) => {
-    if (!el) return;
-    if (place) { place(); return; }
     const node = document.getElementById(id);
-    if (node && node.parentElement !== el) el.appendChild(node);
-  }, [id, place]);
+    if (el && node && node.parentElement !== el) el.appendChild(node);
+  }, [id]);
   return <div ref={ref} className={className} data-slot-for={id} />;
 }
-
-const placeLang = () => { (window as Window & { placeLangButton?: () => void }).placeLangButton?.(); };
 
 export function Frame({ api }: { api: ManagerBridge }) {
   const f = useFrame();
@@ -56,6 +47,8 @@ export function Frame({ api }: { api: ManagerBridge }) {
     icon: <Icon data-testid={`tab-${key}`} style={key === 'admin' && f.adminWarn ? { color: 'var(--warn)' } : undefined} />,
   }));
   const a = f.account;
+  // The sign-in and the super-admin's Firms list cover the page: no frame under them.
+  if (f.screen !== 'app') return null;
   return (
     <LanguageScope lang={f.lang}>
     <Shell
@@ -69,7 +62,7 @@ export function Frame({ api }: { api: ManagerBridge }) {
       center={f.greet && <ShellGreeting name={f.greet.name} wx={f.greet.wx} />}
       tools={<>
         {f.bell.shown && <ShellBell count={f.bell.count} onClick={e => api.toggleBell(e.nativeEvent)} />}
-        <Slot id="langBtn" className="contents" place={placeLang} />
+        <LanguageButton onPick={l => api.setLanguage(l)} />
         {a && (
           <AccountMenu name={a.name} firm={a.firm} sub={a.sub} onSignOut={() => api.signOut()} onThemeSave={t => api.saveTheme(t)}>
             {f.install && <DropdownMenuItem onSelect={() => api.installApp()} data-testid="account-install"><IconDownload />{tr('Install app')}</DropdownMenuItem>}

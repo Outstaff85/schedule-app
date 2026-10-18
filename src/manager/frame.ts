@@ -10,6 +10,8 @@ import { flushSync } from 'react-dom';
 export type FrameState = {
   /** the page's language (I18N_LANG): the frame redraws in it, mirrored in Hebrew */
   lang: string;
+  /** the screen shown: the sign-in, the super-admin's Firms list, or the app (the frame) */
+  screen: 'login' | 'firms' | 'app';
   /** the open section (the page's currentTab) */
   tab: string;
   /** the sections this login may see, in menu order */
@@ -32,7 +34,7 @@ export type FrameState = {
 };
 
 let state: FrameState = {
-  lang: 'en', tab: 'dashboard', tabs: [], counts: {}, crumb: {}, greet: null, save: 'saved',
+  lang: 'en', screen: 'app', tab: 'dashboard', tabs: [], counts: {}, crumb: {}, greet: null, save: 'saved',
   bell: { shown: false, count: 0 }, account: null, adminWarn: false, install: false,
 };
 const listeners = new Set<() => void>();

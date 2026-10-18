@@ -14,7 +14,7 @@ import { homeTab, isHrSession } from '../logic/access';
 import { loadFirestoreBackend } from '../data/api';
 import { getSession, saveSession } from '../data/session';
 import { USERS_ADMIN_FN_URL, warmCloudFunctions } from '../logic/functions';
-import { applyI18n, placeLangButton, showContractNotice, syncLangButtons } from './language';
+import { applyI18n, showContractNotice, syncLangButtons } from './language';
 import { gateApp } from './gate';
 import { render } from './render';
 import { setSaveStatus } from './wiring';
@@ -88,7 +88,7 @@ function watchErrorLine(id?: any){
 ['firmEditFormError','userFormError'].forEach(watchErrorLine);
 window.addEventListener('error', function(ev?: any){ _origConsoleError('App error:', ev.error||ev.message); reportError(ev.message, (ev.filename||'')+':'+(ev.lineno||''), ev.error&&ev.error.stack); });
 window.addEventListener('unhandledrejection', function(ev?: any){ const r=ev.reason; reportError((r&&r.message)||String(r), 'promise', r&&r.stack); });
-loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangButtons(); placeLangButton(); try{
+loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangButtons(); try{
   gateApp(function(){
     loadData();
     render();

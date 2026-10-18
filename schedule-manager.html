@@ -37,16 +37,18 @@
   /* The theme switch (Dark / Light / System): the window's segmented switch (og.css .seg). */
   .login-theme .seg{margin:14px 0 0;}
   .login-theme .seg button,.acct-theme .seg button{display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;}
-  .login-theme .seg button i{font-size:15px;}
+  .login-theme .seg button svg{font-size:15px;}
   /* The active tab: its section color (--k) and the highlight line under it. */
   /* Login screen: the firm's showcase (left, or on top on a phone) and the sign-in card. */
   .login-screen{position:fixed;inset:0;z-index:1000;overflow-y:auto;align-items:stretch;justify-content:center;background:linear-gradient(135deg,#0a0d15,#121829 60%,#0f1117);}
   .login-hero{display:flex;justify-content:center;position:relative;}
+  /* The sign-in screen's icons (React, Tabler svgs) take the size their rules set as font-size. */
+  .login-left svg.tabler-icon,.login-card svg.tabler-icon{width:1em;height:1em;flex-shrink:0;}
   .login-fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;}
   .login-spot{position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(520px circle at var(--mx,30%) var(--my,30%),rgba(79,142,247,.16),transparent 60%);transition:background .1s;}
   .login-left,.login-card{position:relative;z-index:1;}
   .login-floaters{position:absolute;inset:0;pointer-events:none;overflow:hidden;}
-  .login-floaters i{position:absolute;font-size:64px;color:rgba(var(--tint),.045);animation:loginDrift 24s ease-in-out infinite alternate;}
+  .login-floaters svg{position:absolute;font-size:64px;color:rgba(var(--tint),.045);animation:loginDrift 24s ease-in-out infinite alternate;}
   .login-floaters .f1{top:8%;left:6%;} .login-floaters .f2{top:14%;right:8%;animation-duration:28s;font-size:80px;}
   .login-floaters .f3{bottom:12%;left:10%;animation-duration:31s;} .login-floaters .f4{bottom:6%;right:14%;animation-duration:26s;font-size:72px;}
   .login-floaters .f5{top:46%;left:2%;animation-duration:34s;font-size:56px;} .login-floaters .f6{top:40%;right:3%;animation-duration:29s;font-size:52px;}
@@ -60,17 +62,17 @@
   @keyframes loginFloat{0%{transform:translate(0,0) scale(1)}50%{transform:translate(60px,40px) scale(1.12)}100%{transform:translate(-40px,70px) scale(.95)}}
   .login-hero-inner{position:relative;max-width:620px;width:100%;}
   .login-brand{font-size:46px;font-weight:800;letter-spacing:-1px;color:var(--ink);display:flex;align-items:center;gap:12px;}
-  .login-brand i{font-size:42px;color:var(--accent);}
+  .login-brand svg{font-size:42px;color:var(--accent);}
   .login-tagline{margin-top:4px;font-size:24px;font-weight:700;min-height:1.4em;}
   .login-rotator{display:inline-block;background:linear-gradient(90deg,#8fb6ff,#6dd6a0);-webkit-background-clip:text;background-clip:text;color:transparent;transition:opacity .35s,transform .35s;}
   .login-rotator.out{opacity:0;transform:translateY(-10px);}
   .login-desc{margin-top:12px;font-size:15px;line-height:1.6;color:#b9bfd3;}
   .login-sectors{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:24px;}
   .login-sector{position:relative;overflow:hidden;font:inherit;cursor:pointer;background:rgba(var(--tint),.05);border:1px solid rgba(var(--tint),.1);border-radius:14px;padding:14px 8px;text-align:center;color:#e6e9f5;font-size:13px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:6px;transition:transform .25s,border-color .25s,background .25s,box-shadow .25s;}
-  .login-sector i{font-size:28px;color:var(--green);transition:transform .25s;}
+  .login-sector svg{font-size:28px;color:var(--green);transition:transform .25s;}
   .login-sector:hover{transform:translateY(-3px);border-color:rgba(109,214,160,.45);}
   .login-sector.active{background:rgba(109,214,160,.12);border-color:#6dd6a0;box-shadow:0 8px 28px rgba(109,214,160,.18);transform:translateY(-3px);}
-  .login-sector.active i{transform:scale(1.15);}
+  .login-sector.active svg{transform:scale(1.15);}
   .login-roles{margin-top:14px;min-height:34px;display:flex;flex-wrap:wrap;align-items:flex-start;align-content:flex-start;gap:8px;}
   .login-pay{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:4px;animation:loginPop .5s .3s both;}
   .login-pay-label{font-size:13px;color:#9aa1b8;display:inline-flex;align-items:center;gap:5px;}
@@ -96,7 +98,7 @@
   .login-feature:hover{transform:translateY(-2px);border-color:rgba(79,142,247,.45);background:rgba(79,142,247,.08);}
   .login-feature:nth-child(2){animation-delay:.1s} .login-feature:nth-child(3){animation-delay:.2s} .login-feature:nth-child(4){animation-delay:.3s} .login-feature:nth-child(5){animation-delay:.4s}
   .login-feature:last-child{grid-column:1 / -1;}
-  .login-feature i{font-size:24px;color:var(--accent);flex-shrink:0;margin-top:1px;}
+  .login-feature svg{font-size:24px;color:var(--accent);flex-shrink:0;margin-top:1px;}
   .login-feature b{display:block;color:#eef0f8;font-size:14px;margin-bottom:2px;}
   .login-feature span{display:block;color:#9aa1b8;font-size:12.5px;line-height:1.45;}
   .login-card{flex:0 0 400px;display:flex;flex-direction:column;justify-content:center;padding:40px 36px;background:rgba(20,24,36,.72);border-left:1px solid rgba(var(--tint),.08);backdrop-filter:blur(14px);box-shadow:-30px 0 80px rgba(0,0,0,.35);}
@@ -112,7 +114,7 @@
   @media (max-width: 820px){
     .login-screen{flex-direction:column;justify-content:flex-start;}
     .login-left{display:contents;}
-    .login-floaters i{font-size:44px;}
+    .login-floaters svg{font-size:44px;}
     .login-card{box-shadow:none;}
     .login-card::before{display:none;}
     .login-hero{order:1;padding:56px 20px 18px;position:relative;}
@@ -120,10 +122,10 @@
     .login-features{order:3;padding:6px 20px 32px;}
     .login-features-title{margin-top:14px;}
     .login-feature-grid{grid-template-columns:1fr;}
-    .login-brand{font-size:32px;} .login-brand i{font-size:30px;}
+    .login-brand{font-size:32px;} .login-brand svg{font-size:30px;}
     .login-tagline{font-size:19px;} .login-desc{font-size:14px;}
     .login-sectors{grid-template-columns:repeat(3,1fr);gap:6px;margin-top:16px;}
-    .login-sector{padding:10px 4px;font-size:11px;} .login-sector i{font-size:22px;}
+    .login-sector{padding:10px 4px;font-size:11px;} .login-sector svg{font-size:22px;}
     .login-card{flex:none;border-left:0;border-top:1px solid rgba(var(--tint),.08);padding:24px 20px 32px;}
     .login-screen{padding-bottom:170px;}
     .login-card{position:fixed;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));top:auto;min-height:0;z-index:5;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px;border:1px solid rgba(var(--tint),.12);border-radius:18px;background:rgba(18,22,34,.94);box-shadow:0 14px 40px rgba(0,0,0,.55);}
@@ -149,7 +151,7 @@
     .login-card{left:10px;right:10px;width:auto;display:grid;padding:12px;border-radius:18px}
     .login-card .login-card-h{display:none}
   }
-  @media (prefers-reduced-motion: reduce){ .login-blob,.login-role,.login-feature,.login-floaters i,.login-brand-name,.login-card::before{animation:none;} .login-fx{display:none;} .login-rotator,.login-sector{transition:none;} }
+  @media (prefers-reduced-motion: reduce){ .login-blob,.login-role,.login-feature,.login-floaters svg,.login-brand-name,.login-card::before{animation:none;} .login-fx{display:none;} .login-rotator,.login-sector{transition:none;} }
 
   /* Layout */
 
@@ -430,13 +432,11 @@ body:has(.overlay.open){overflow:hidden}
 </head>
 <body>
 
-<!-- The frame — title bar, side menu / bottom bar, bell, account — is React
-     (src/manager/Frame.tsx, the Shell with `app`; React migration stage 8e-1).
-     It moves the page's sections (#appMain) into its page area and the
-     Language button (#langBtn, which also sits on the sign-in and Firms
-     screens — placeLangButton) into its title bar. -->
+<!-- The frame — title bar, side menu / bottom bar, bell, Language button,
+     account — is React (src/manager/Frame.tsx, the Shell with `app`; React
+     migration stage 8e-1). It moves the page's sections (#appMain) into its
+     page area. -->
 <div id="frameRoot" data-island></div>
-<button type="button" class="gbtn lang-btn" id="langBtn" onclick="openLangSheet(event)" title="Language" data-i18n-title="Language" aria-label="Language"><i class="ti ti-world"></i><span class="lang-btn-name">English</span><i class="ti ti-chevron-down lang-btn-chev"></i></button>
 <div class="main" id="appMain">
     <!-- Contract warnings when the app opens: stays until shown or closed (per user request 2026-10-11). -->
     <div id="contractNotice" class="contract-notice" style="display:none"></div>
@@ -554,66 +554,18 @@ body:has(.overlay.open){overflow:hidden}
   <div class="modal" id="manualPunchModal" style="max-width:440px"></div>
 </div>
 
-<!-- Login gate: full-screen, opaque, above everything else. Shown by JS at
+<!-- Login gate: full-screen, opaque, above everything else; drawn in React
+     (src/manager/SignIn.tsx, stage 8e-2). Shown by JS at
      startup when there's no valid (non-expired) session; hides + the normal
      app init runs only after a successful login. -->
-<div id="loginScreen" class="login-screen" style="display:none">
-  <canvas id="loginFx" class="login-fx" aria-hidden="true"></canvas>
-  <div class="login-spot" aria-hidden="true"></div>
-  <!-- The firm's showcase behind the login: name, what it does, the sectors it staffs (startLoginShowcase). -->
-  <div class="login-left">
-  <div class="login-floaters" aria-hidden="true"><div class="login-blob b1"></div><div class="login-blob b2"></div><div class="login-blob b3"></div><i class="ti ti-chef-hat f1"></i><i class="ti ti-building-factory-2 f2"></i><i class="ti ti-bread f3"></i><i class="ti ti-tools-kitchen-2 f4"></i><i class="ti ti-building-community f5"></i><i class="ti ti-spray f6"></i></div>
-  <div class="login-hero">
-    <div class="login-hero-inner">
-      <div class="login-brand"><i class="ti ti-users-group"></i> <span class="login-brand-name">Odinson</span></div>
-      <div class="login-tagline"><span id="loginRotator" class="login-rotator" data-i18n>Staff for restaurants</span></div>
-      <div class="login-desc" data-i18n>We supply reliable workers for restaurants, factories, bakeries and catering, and the full chain of support for residential and commercial property — for a minimum of one month. Office cleaning from 3 hours, paid by app, bank transfer or invoice.</div>
-      <div class="login-sectors" id="loginSectors">
-        <button type="button" class="login-sector" data-sector="0"><i class="ti ti-chef-hat"></i><span data-i18n>Restaurants</span></button>
-        <button type="button" class="login-sector" data-sector="1"><i class="ti ti-building-factory-2"></i><span data-i18n>Factories</span></button>
-        <button type="button" class="login-sector" data-sector="2"><i class="ti ti-bread"></i><span data-i18n>Bakeries</span></button>
-        <button type="button" class="login-sector" data-sector="3"><i class="ti ti-tools-kitchen-2"></i><span data-i18n>Catering</span></button>
-        <button type="button" class="login-sector" data-sector="4"><i class="ti ti-building-community"></i><span data-i18n>Property</span></button>
-        <button type="button" class="login-sector" data-sector="5"><i class="ti ti-spray"></i><span data-i18n>Office cleaning</span></button>
-      </div>
-      <div class="login-roles" id="loginRoles"></div>
-    </div>
-  </div>
-  <div class="login-features">
-    <div class="login-features-title" data-i18n>What we provide</div>
-    <div class="login-feature-grid">
-      <div class="login-feature"><i class="ti ti-fingerprint"></i><div><b data-i18n>Digital punch clock</b><span data-i18n>Workers clock in and out from their phone, with a GPS check on site.</span></div></div>
-      <div class="login-feature"><i class="ti ti-file-certificate"></i><div><b data-i18n>Full document tracking</b><span data-i18n>Every worker's documents in one place, with their expiry dates.</span></div></div>
-      <div class="login-feature"><i class="ti ti-activity-heartbeat"></i><div><b data-i18n>Real-time attendance</b><span data-i18n>See who arrived and who left the moment they punch.</span></div></div>
-      <div class="login-feature"><i class="ti ti-calculator"></i><div><b data-i18n>Hours and accounting, open to you</b><span data-i18n>Calculated hours, pay and billing — transparent and always available.</span></div></div>
-      <div class="login-feature"><i class="ti ti-calendar-user"></i><div><b data-i18n>A schedule for every worker</b><span data-i18n>You can build a personal schedule for each worker, and the worker can then follow it on their phone. Track hours and any other details you need, as you choose.</span></div></div>
-    </div>
-  </div>
-  </div>
-  <div class="login-card">
-    <div class="login-card-h"><svg class="og-mark" viewBox="0 0 100 100" aria-hidden="true"><path class="og-roof" d="M10 50L50 16l40 34"/><path class="og-run" d="M10 50L50 16l40 34"/><g class="og-p og-p1"><g transform="translate(30 70) scale(.95)"><circle cx="0" cy="-9" r="7" fill="#818cf8"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#818cf8"/></g></g><g class="og-p og-p2"><g transform="translate(50 66) scale(1.15)"><circle cx="0" cy="-9" r="7" fill="#22d3ee"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#22d3ee"/></g></g><g class="og-p og-p3"><g transform="translate(70 70) scale(.95)"><circle cx="0" cy="-9" r="7" fill="#f472b6"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#f472b6"/></g></g><path class="og-link" d="M24 92H76"/><path class="og-linkrun" d="M24 92H76"/></svg><div><h3 data-i18n>Sign in</h3><p data-i18n>One login for owners, HR, suppliers and clients</p></div></div>
-    <div class="field"><label data-i18n>Username</label><input type="text" id="loginUsername" autocomplete="username" autofocus placeholder="Username" data-i18n-placeholder="Username"></div>
-    <div class="field"><label data-i18n>Password</label><input type="password" id="loginPassword" autocomplete="current-password" placeholder="Password" data-i18n-placeholder="Password" onkeydown="if(event.key==='Enter')submitLogin()"></div>
-    <div id="loginError" style="color:var(--red-text);font-size:13px;margin:2px 0 10px;min-height:1.2em"></div>
-    <button class="gbtn primary" style="width:100%" onclick="submitLogin()" id="loginBtn" data-i18n>Sign in</button>
-    <!-- The theme before signing in (outdoors): the same switch as the account menu. -->
-    <div class="login-theme" id="loginTheme"><div class="seg theme-seg"><button type="button" data-theme-v="dark" onclick="pickTheme('dark')"><i class="ti ti-moon"></i><span data-i18n>Dark</span></button><button type="button" data-theme-v="light" onclick="pickTheme('light')"><i class="ti ti-sun"></i><span data-i18n>Light</span></button><button type="button" data-theme-v="system" onclick="pickTheme('system')"><i class="ti ti-device-desktop"></i><span data-i18n>System</span></button></div></div>
-  </div>
-</div>
+<div id="loginScreen" class="login-screen" style="display:none" data-island></div>
 
 <!-- Super-admin landing screen: pick a firm to open, or create a new one.
      Shown instead of the normal app whenever a superadmin session has no
      viewingTenantId picked yet (see gateApp() / backToFirmsList()). -->
 <div id="firmsScreen" class="og-cover" style="display:none;position:fixed;inset:0;z-index:900;overflow-y:auto">
   <div style="max-width:720px;margin:0 auto;padding:28px 20px">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px">
-      <div style="font-size:20px;font-weight:700"><i class="ti ti-building-skyscraper"></i> <span data-i18n>Firms</span></div>
-      <div id="firmsActions" style="display:flex;align-items:center;gap:4px">
-        <button class="gbtn primary og-new" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> <span data-i18n>Create firm</span></button>
-        <button class="t3-ib" onclick="logout()" title="Sign out" data-i18n-title="Sign out"><i class="ti ti-logout"></i></button>
-      </div>
-    </div>
-    <!-- Stage 6f-2: the firms are drawn in React (src/manager/Firms.tsx, FirmsScreen). -->
+    <!-- Stages 6f-2 / 8e-2: the header and the firms are drawn in React (src/manager/Firms.tsx, FirmsScreen). -->
     <div id="firmsScreenRoot" data-island></div>
   </div>
 </div>

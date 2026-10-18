@@ -343,6 +343,13 @@ export type ManagerBridge = WorkerBridge & {
   installApp(): void;
   signOut(): void;
   saveTheme(theme: string): void;
+  /** switches the page's language (`setLanguage`: the dictionaries, the account, a redraw) */
+  setLanguage(lang: string): void;
+  // ── The sign-in screen (stage 8e-2) ──
+  /** signs in (the login function, then the page reloads); the error text to show, or null */
+  signIn(username: string, password: string): Promise<string | null>;
+  /** wakes a cold login function while the user types */
+  pingLogin(): void;
   today(): TodaySnapshot;
   openWorker(id: string): void;
   openNotices(id: string): void;

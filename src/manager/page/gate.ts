@@ -11,7 +11,7 @@ import { getSession, saveSession } from '../data/session';
 import { USER_ROLE_LABELS, activeTenantProfile, firmProfileMissing } from '../logic/admin';
 import { tr } from '../logic/i18n';
 import { API_URL } from '../data/api';
-import { LOGIN_FN_URL, goToClientPortal, goToSupplierPortal } from './wiring';
+import { goToClientPortal, goToSupplierPortal } from './wiring';
 import { showToast } from '../toast';
 import { setFrame } from '../frame';
 Object.defineProperties(window, {
@@ -23,7 +23,6 @@ Object.defineProperties(window, {
   "resolveTheme": {get: () => resolveTheme, configurable: true},
   "applyTheme": {get: () => applyTheme, configurable: true},
   "setTheme": {get: () => setTheme, configurable: true},
-  "pickTheme": {get: () => pickTheme, configurable: true},
   "editMyName": {get: () => editMyName, configurable: true},
 });
 
@@ -60,20 +59,19 @@ export function gateApp(runInitApp?: any){
   if(s && s.role === 'supplier'){ goToSupplierPortal(s); return; }
   if(s && s.role === 'client'){ goToClientPortal(s); return; }
   if(!s){
+    // The sign-in screen (React, src/manager/SignIn.tsx) wakes the login function itself.
+    setFrame({screen:'login'});
     byId('loginScreen').style.display = 'flex';
-    // Wake a cold login function while the user types, so the login request
-    // itself doesn't pay the cold start.
-    const pingT0=Date.now();
-    fetch(LOGIN_FN_URL, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{"ping":true}'})
-    .then(()=>{ window.__pingMs=Date.now()-pingT0; }).catch(()=>{});
     return;
   }
   if(s.role === 'superadmin' && !s.viewingTenantId){
+    setFrame({screen:'firms'});
     byId('firmsScreen').style.display = 'block';
     // the React list loads the firms when it is drawn (now, or when the React pieces mount)
     if(window.ManagerIsland) window.ManagerIsland.renderFirmsScreen();
     return;
   }
+  setFrame({screen:'app'});
   renderAccountControl(s);
   runInitApp();
   // A fresh firm profile for this device's Form 101s (see refreshTenantProfile),
@@ -119,7 +117,6 @@ function applyTheme(c?: any){
   const look = resolveTheme(c);
   document.documentElement.setAttribute('data-theme', look);
   qsa('meta[name="theme-color"]').forEach((m?: any) => { m.content = THEME_BAR[look]; });
-  qsa('.theme-seg [data-theme-v]').forEach((b?: any) => b.classList.toggle('on', b.dataset.themeV === c));
 }
 export function setTheme(c?: any, opts?: any){
   c = ['dark','light','system'].includes(c) ? c : 'dark';
@@ -129,7 +126,6 @@ export function setTheme(c?: any, opts?: any){
     fetch(API_URL, {method:'POST', body: JSON.stringify({action:'updateMyTheme', theme: c})}).catch(()=>{});
   }
 }
-function pickTheme(c?: any){ setTheme(c); }
 if(typeof window.matchMedia === 'function') matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => { if(storedTheme() === 'system') applyTheme('system'); });
 window.addEventListener('storage', (e?: any) => { if(e.key === 'uiTheme') applyTheme(); });
 document.addEventListener('DOMContentLoaded', () => applyTheme());

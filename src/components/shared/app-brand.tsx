@@ -7,6 +7,7 @@
 //               (only the mark on a phone) and the save state (Saved / Saving...);
 //   ShellBell → the notifications bell, its count as a red disc over the corner,
 //               ringing while something is unread.
+import * as React from 'react';
 import { IconBell } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -24,26 +25,34 @@ function Person({ n, x, y, scale, color }: { n: number; x: number; y: number; sc
   );
 }
 
+/** The 11C mark alone (the sign-in card); its gradient has its own id. */
+export function LogoMark({ className = 'og-mark' }: { className?: string }) {
+  const id = 'ogMark' + React.useId().replace(/:/g, '');
+  return (
+    <svg className={className} viewBox="0 0 100 100" aria-hidden="true">
+      <defs>
+        <linearGradient id={id} x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0" stopColor="#818cf8" /><stop offset=".5" stopColor="#22d3ee" /><stop offset="1" stopColor="#f472b6" />
+        </linearGradient>
+      </defs>
+      <path className="og-roof" d="M10 50L50 16l40 34" />
+      <path className="og-run" d="M10 50L50 16l40 34" style={{ stroke: `url(#${id})` }} />
+      <Person n={1} x={30} y={70} scale={0.95} color="#818cf8" />
+      <Person n={2} x={50} y={66} scale={1.15} color="#22d3ee" />
+      <Person n={3} x={70} y={70} scale={0.95} color="#f472b6" />
+      <path className="og-link" d="M24 92H76" />
+      <path className="og-linkrun" d="M24 92H76" style={{ stroke: `url(#${id})` }} />
+    </svg>
+  );
+}
+
 export function AppBrand({ save }: {
   /** the save state next to the name; left out = not shown */
   save?: 'saved' | 'saving';
 }) {
   return (
     <div className="og-brand" data-testid="app-brand">
-      <svg className="og-mark" viewBox="0 0 100 100" aria-hidden="true">
-        <defs>
-          <linearGradient id="ogMarkGrad" x1="0" x2="1" y1="0" y2="1">
-            <stop offset="0" stopColor="#818cf8" /><stop offset=".5" stopColor="#22d3ee" /><stop offset="1" stopColor="#f472b6" />
-          </linearGradient>
-        </defs>
-        <path className="og-roof" d="M10 50L50 16l40 34" />
-        <path className="og-run" d="M10 50L50 16l40 34" />
-        <Person n={1} x={30} y={70} scale={0.95} color="#818cf8" />
-        <Person n={2} x={50} y={66} scale={1.15} color="#22d3ee" />
-        <Person n={3} x={70} y={70} scale={0.95} color="#f472b6" />
-        <path className="og-link" d="M24 92H76" />
-        <path className="og-linkrun" d="M24 92H76" />
-      </svg>
+      <LogoMark />
       <div className="og-name">
         <b>Interactive <span>Manager</span></b>
         <small>{tr('Connecting people and business')}</small>

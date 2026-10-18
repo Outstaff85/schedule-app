@@ -19,11 +19,13 @@ import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import css from '@/styles/manager.css?inline';
 import type * as Acc from './accounting';
-import { adoptLanguage } from '@/lib/i18n';
+import { LanguageScope, adoptLanguage } from '@/lib/i18n';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { UndoHost } from '@/components/shared/undo';
 import { bridge, type ManagerBridge } from './bridge';
 import { Frame } from './Frame';
+import { SignIn } from './SignIn';
+import { useFrame } from './frame';
 import { Today } from './Today';
 import { Schedule } from './Schedule';
 import { Workers } from './Workers';
@@ -76,7 +78,7 @@ function island<S>(rootId: string, read: (b: ManagerBridge) => S, draw: (snap: S
   function Island() {
     const v = useSyncExternalStore(subscribe, () => version);
     const api = bridge();
-    return <TooltipProvider><div key={api.lang()} className="contents">{draw(snapshotFor(v), api)}</div></TooltipProvider>;
+    return <TooltipProvider><LanguageScope lang={api.lang()}><div key={api.lang()} className="contents">{draw(snapshotFor(v), api)}</div></LanguageScope></TooltipProvider>;
   }
   return () => {
     const el = document.getElementById(rootId);
@@ -174,6 +176,19 @@ const frameEl = document.getElementById('frameRoot');
 if (frameEl && window.ManagerBridge) {
   const frameRoot = createRoot(frameEl);
   flushSync(() => frameRoot.render(<StrictMode><TooltipProvider><Frame api={bridge()} /></TooltipProvider></StrictMode>));
+}
+// The sign-in screen (stage 8e-2), drawn into the page's #loginScreen, which
+// the page shows while there is no session; it follows the page's language.
+function SignInRoot({ screen }: { screen: HTMLElement }) {
+  const f = useFrame();
+  const api = bridge();
+  adoptLanguage(api.lang(), api.dict());
+  return <LanguageScope lang={f.lang}><SignIn api={api} screen={screen} /></LanguageScope>;
+}
+const loginEl = document.getElementById('loginScreen');
+if (loginEl && window.ManagerBridge) {
+  const loginRoot = createRoot(loginEl);
+  flushSync(() => loginRoot.render(<StrictMode><TooltipProvider><SignInRoot screen={loginEl} /></TooltipProvider></StrictMode>));
 }
 
 window.ManagerIsland = {

@@ -167,7 +167,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const acct = document.querySelector('[data-testid=account-btn]');
     acct.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0, pointerType: 'mouse'})); await T.tick(200);
     const m = document.querySelector('[data-testid=account-menu]');
-    r.menu = {open: !!m, lang: !!m && !m.querySelector('.lang-btn, select') && !!acct.previousElementSibling?.querySelector('#langBtn'), out: !!m && /Sign out/.test(m.innerText), name: !!m && /My name/.test(m.innerText)};
+    r.menu = {open: !!m, lang: !!m && !m.querySelector('.lang-btn, select') && !!acct.previousElementSibling?.matches('[data-testid=lang-btn]'), out: !!m && /Sign out/.test(m.innerText), name: !!m && /My name/.test(m.innerText)};
     document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); await T.tick(200); r.closed = !document.querySelector('[data-testid=account-menu]');
     return r;
   });
@@ -408,33 +408,34 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(as.noSaveBtn && as.saved === '0547770000' && as.closed, 'worker window: no Save button; a tap outside saves and closes ' + JSON.stringify(as));
   ok(as.nameKept === 'Dana Levi' && as.closedEmpty && as.noNew, 'worker window: an empty name is not saved; an empty new worker is not created ' + JSON.stringify(as));
   // The header's language select: English by default; Hebrew from i18n/he.json, Russian (an empty dictionary) falls back to English.
-  const lg = await p.evaluate(async () => {
-    const r = {def: I18N_LANG, sel: document.querySelector('[data-slot-for=langBtn] .lang-btn .lang-btn-name').textContent, firmField: !!document.getElementById('firmEditLanguage')};
-    document.getElementById('langBtn').click();
-    const sh = document.getElementById('langSheet'), inp = sh.querySelector('input');
-    r.sheet = {open: sh.classList.contains('open'), all: [...sh.querySelectorAll('.lang-li')].map(b => b.querySelector('b').textContent + '/' + b.querySelector('small').textContent).join(), ticked: sh.querySelector('.lang-li.on').dataset.lang};
-    inp.value = 'hebr'; inp.dispatchEvent(new Event('input')); r.sheet.found = [...sh.querySelectorAll('.lang-li')].map(b => b.dataset.lang).join();
-    inp.value = 'zz'; inp.dispatchEvent(new Event('input')); r.sheet.none = sh.querySelectorAll('.lang-li').length === 0 && !!sh.querySelector('.lang-none');
-    sh.dispatchEvent(new MouseEvent('click', {bubbles: true})); r.sheet.closed = !sh.classList.contains('open');
-    const setLang = async l => {
-      document.getElementById('langBtn').click();
-      const li = document.querySelector('#langSheet .lang-li[data-lang="' + l + '"]') || document.querySelector('#langSheet .lang-li.on');
-      if(li) li.click();
+  // The Language button is the React frame's (LanguageButton): its window lists every language, with a search.
+  const hdrLang = 'header [data-testid=lang-btn]', list = '[data-testid=lang-list]';
+  const lg = await p.evaluate(() => ({def: I18N_LANG, firmField: !!document.getElementById('firmEditLanguage')}));
+  await p.click(hdrLang); await p.waitForSelector(list);
+  lg.sheet = await p.evaluate(l => { const el = document.querySelector(l); return {open: !!el, all: [...el.querySelectorAll('.lang-li')].map(b => b.querySelector('b').textContent + '/' + b.querySelector('small').textContent).join(), ticked: el.querySelector('.lang-li.on').dataset.lang}; }, list);
+  await p.fill('#lang-search', 'hebr'); lg.sheet.found = await p.evaluate(l => [...document.querySelectorAll(l + ' .lang-li')].map(b => b.dataset.lang).join(), list);
+  await p.fill('#lang-search', 'zz'); lg.sheet.none = await p.evaluate(l => document.querySelectorAll(l + ' .lang-li').length === 0 && !!document.querySelector(l + ' .lang-none'), list);
+  await p.keyboard.press('Escape'); await sleep(500);
+  lg.sheet.closed = await p.evaluate(() => { const w = document.querySelector('[data-testid=window]'); return !w || w.dataset.state === 'closed'; });
+  const setLang = async l => {
+    await p.click(hdrLang); await p.waitForSelector(list); await p.click(list + ' .lang-li[data-lang="' + l + '"]');
+    await sleep(300);
+    return p.evaluate(async l => {
       for(let i = 0; i < 40 && I18N_LANG !== l; i++) await new Promise(res => setTimeout(res, 150));
       switchTab('accounting'); await new Promise(res => setTimeout(res, 300));
+      const w = document.querySelector('[data-testid=window]');
       return {lang: I18N_LANG, tab: document.querySelector('[data-testid=shell-menu] button:has([data-testid=tab-accounting])').innerText.trim(),
         head: ((document.querySelector('#accountingRoot [data-testid=sal-table] thead th') || {}).textContent || '').trim(),
         sec: ((document.querySelector('#accSecSalary [data-slot=section] > div > button span span') || {}).firstChild || {}).textContent,
         period: document.querySelector('#accountingRoot [data-testid=acc-period]').innerText.trim(),
-        stored: localStorage.getItem('uiLang'), selects: [...document.querySelectorAll('.lang-btn .lang-btn-name')].every(x => x.textContent === I18N_LANGS[l]) && !document.getElementById('langSheet').classList.contains('open')};
-    };
-    r.he = await setLang('he');
-    r.ru = await setLang('ru');
-    r.en = await setLang('en');
-    return r;
-  });
-  ok(lg.sheet.open && lg.sheet.all === 'English/English,עברית/Hebrew,Русский/Russian' && lg.sheet.ticked === 'en' && lg.sheet.found === 'he' && lg.sheet.none && lg.sheet.closed, 'language: the Language button opens a sheet with every language (own name + English), the current one ticked, a search, closes on a tap outside ' + JSON.stringify(lg.sheet));
-  ok(lg.he.lang === 'he' && lg.he.tab === 'חשבונות' && lg.he.head === 'עובד' && lg.he.sec === 'חישוב שכר' && lg.he.period === 'השבוע' && lg.he.stored === 'he' && lg.he.selects && lg.def === 'en' && lg.sel === 'English' && !lg.firmField, 'language: English by default; the header Language button switches to Hebrew sees Accounting in Hebrew ' + JSON.stringify(lg.he));
+        stored: localStorage.getItem('uiLang'), selects: document.querySelectorAll('.lang-btn').length === 1 && (!w || w.dataset.state === 'closed')};
+    }, l);
+  };
+  lg.he = await setLang('he');
+  lg.ru = await setLang('ru');
+  lg.en = await setLang('en');
+  ok(lg.sheet.open && lg.sheet.all === 'English/English,עברית/Hebrew,Русский/Russian' && lg.sheet.ticked === 'en' && lg.sheet.found === 'he' && lg.sheet.none && lg.sheet.closed, 'language: the Language button opens a window with every language (own name + English), the current one ticked, a search, closes with Escape ' + JSON.stringify(lg.sheet));
+  ok(lg.he.lang === 'he' && lg.he.tab === 'חשבונות' && lg.he.head === 'עובד' && lg.he.sec === 'חישוב שכר' && lg.he.period === 'השבוע' && lg.he.stored === 'he' && lg.he.selects && lg.def === 'en' && !lg.firmField, 'language: English by default; the header Language button switches to Hebrew sees Accounting in Hebrew ' + JSON.stringify(lg.he));
   ok(lg.ru.lang === 'ru' && lg.ru.tab === 'Accounting' && lg.ru.head === 'Worker', 'language: Russian with an empty dictionary shows English ' + JSON.stringify(lg.ru));
   ok(lg.en.lang === 'en' && lg.en.tab === 'Accounting' && lg.en.sec === 'Salary Calculation' && lg.en.period === 'This Week', 'language: back to English ' + JSON.stringify(lg.en));
   // One Language button per page; the user's last choice follows them to a new device.
@@ -442,10 +443,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   {
     const c2 = await newCtx(); const p2 = await page(c2);
     await p2.goto(BASE + 'schedule-manager.html'); await p2.waitForSelector('#loginScreen', {state:'visible'});
-    const onLogin = await p2.evaluate(() => ({card: (() => { const c = document.querySelector('.login-card'), cs = getComputedStyle(c); return cs.position === 'fixed' && cs.borderRadius === '22px' && !!c.querySelector('.og-mark') && /gbtn/.test(document.getElementById('loginBtn').className); })(), n: document.querySelectorAll('.lang-btn').length, selects: document.querySelectorAll('select.lang-select').length, inLogin: !!document.querySelector('#loginScreen #langBtn.on-cover'), lang: I18N_LANG}));
+    const onLogin = await p2.evaluate(() => ({card: (() => { const c = document.querySelector('.login-card'), cs = getComputedStyle(c); return cs.position === 'fixed' && cs.borderRadius === '22px' && !!c.querySelector('.og-mark') && /gbtn/.test(document.getElementById('loginBtn').className); })(), n: document.querySelectorAll('.lang-btn').length, selects: document.querySelectorAll('select.lang-select').length, inLogin: !!document.querySelector('#loginScreen [data-testid=lang-btn].on-cover'), lang: I18N_LANG}));
     await p2.fill('#loginUsername', 'owner1'); await p2.fill('#loginPassword', 'owner-pass-1'); await p2.click('#loginBtn');
     await p2.waitForNavigation().catch(()=>{});
-    const after = await waitFor(p2, () => I18N_LANG === 'he' && !!document.querySelector('[data-slot-for=langBtn] #langBtn') && document.querySelector('#langBtn .lang-btn-name').textContent === 'עברית' && document.querySelectorAll('.lang-btn').length === 1, 15000);
+    const after = await waitFor(p2, () => I18N_LANG === 'he' && !!document.querySelector('header [data-testid=lang-btn]') && document.querySelectorAll('.lang-btn').length === 1, 15000);
     ok(onLogin.card, 'sign-in: a compact glass card pinned over the site, with the logo and a glass Sign in ' + JSON.stringify(onLogin));
     ok(onLogin.n === 1 && !onLogin.selects && onLogin.inLogin && onLogin.lang === 'en' && after, 'language: one Language button per page (login screen, then the title bar); the user\'s last choice comes back on a new device ' + JSON.stringify(onLogin));
     await p2.evaluate(() => setLanguage('en')); await sleep(1000);
@@ -475,7 +476,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await p3.goto(BASE + 'schedule-manager.html'); await p3.waitForSelector('#loginScreen', {state:'visible'});
     const before = await p3.evaluate(() => ({look: document.documentElement.dataset.theme, sw: document.querySelectorAll('#loginTheme [data-theme-v]').length, on: (document.querySelector('#loginTheme .on') || {}).dataset?.themeV}));
     await p3.fill('#loginUsername', 'owner1'); await p3.fill('#loginPassword', 'owner-pass-1'); await p3.click('#loginBtn');
-    const back = await waitFor(p3, () => !!document.querySelector('[data-slot-for=langBtn] #langBtn') && document.documentElement.dataset.theme === 'light' && localStorage.getItem('uiTheme') === 'light', 15000);
+    const back = await waitFor(p3, () => !!document.querySelector('header [data-testid=lang-btn]') && document.documentElement.dataset.theme === 'light' && localStorage.getItem('uiTheme') === 'light', 15000);
     await p3.screenshot({path: SP + '/theme-light-manager.png'});
     ok(before.look === 'dark' && before.sw === 3 && before.on === 'dark' && back, 'theme: the sign-in screen has the same switch (Dark on a new device); the user\'s light theme comes back with the login ' + JSON.stringify(before));
     // and back: Dark again, on the account too

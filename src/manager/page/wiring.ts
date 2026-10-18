@@ -23,7 +23,8 @@ Object.defineProperties(window, {
   "goToSupplierPortal": {get: () => goToSupplierPortal, configurable: true},
   "goToClientPortal": {get: () => goToClientPortal, configurable: true},
   "logout": {get: () => logout, configurable: true},
-  "submitLogin": {get: () => submitLogin, configurable: true},
+  "signIn": {get: () => signIn, configurable: true},
+  "pingLogin": {get: () => pingLogin, configurable: true},
   "switchToTenant": {get: () => switchToTenant, configurable: true},
   "backToFirmsList": {get: () => backToFirmsList, configurable: true},
 });
@@ -87,44 +88,46 @@ export async function logout(){
 
 
 // The login Cloud Function checks the password and signs this device in to
-// Firebase (firestore-backend.js login()); the session keeps who that is.
-async function submitLogin(){
-  const username = byId('loginUsername').value.trim();
-  const password = byId('loginPassword').value;
-  const errEl = byId('loginError');
-  const btn = byId('loginBtn');
-  errEl.textContent = '';
-  if(!username || !password){ errEl.textContent = tr('Enter a username and password'); return; }
-  btn.disabled = true; btn.textContent = tr('Signing in…');
-  try{
-    const t0 = Date.now();
-    let backend: any;
-    try{ backend = await loadFirestoreBackend(); }
-    catch(e: any){ errEl.textContent = tr('Could not load Firebase — check the network'); return; }
-    let fb: any;
-    try{ fb = await backend.login(username, password); }
-    catch(e: any){ errEl.textContent = tr('No network — try again'); return; }
-    if(!fb || fb.error){ errEl.textContent = tr((fb&&fb.error)||'') || tr('Could not sign in'); return; }
-    // The language this user last picked (on any device) wins over this device's.
-    if(fb.language) try{ localStorage.setItem('uiLang', fb.language); }catch(e: any){}
-    // So does the theme (Dark / Light / System).
-    if(fb.theme) setTheme(fb.theme, {save:false});
-    // A supplier login belongs in the supplier portal: hand the session over
-    // (same origin, same Firebase sign-in) and go there.
-    if(fb.role === 'supplier'){ goToSupplierPortal(fb); return; }
-    if(fb.role === 'client'){ goToClientPortal(fb); return; }
-    try{ sessionStorage.setItem('pendingLoginTiming', JSON.stringify({t0, loginMs:Date.now()-t0, pingMs:window.__pingMs==null?null:window.__pingMs, pingDone:window.__pingMs!=null})); }catch(e: any){}
-    saveSession({
-      uid: fb.uid, role: fb.role, tenantId: fb.tenantId, username: fb.username, tenantProfile: fb.tenantProfile,
-      permissions: fb.permissions, supplierId: fb.supplierId,
-      ownOnly: fb.ownOnly === true, fullName: fb.fullName || '',
-      showPay: fb.showPay === true, commissionRate: Number(fb.commissionRate) || 0,
-      hourPerms: Array.isArray(fb.hourPerms) ? fb.hourPerms : [],
-      commissionDayRate: Number(fb.commissionDayRate) || 0,
-      viewingTenantId: fb.tenantId, // a super-admin (tenantId null) picks one on the Firms screen
-    });
-    location.reload();
-  }finally{ btn.disabled = false; btn.textContent = tr('Sign in'); }
+// Firebase (firestore-backend.js login()); the session keeps who that is. The
+// sign-in card is React (src/manager/SignIn.tsx): this returns the error text
+// to show, or reloads the page signed in.
+export async function signIn(username?: any, password?: any): Promise<string | null>{
+  if(!username || !password) return tr('Enter a username and password');
+  const t0 = Date.now();
+  let backend: any;
+  try{ backend = await loadFirestoreBackend(); }
+  catch(e: any){ return tr('Could not load Firebase — check the network'); }
+  let fb: any;
+  try{ fb = await backend.login(username, password); }
+  catch(e: any){ return tr('No network — try again'); }
+  if(!fb || fb.error) return tr((fb&&fb.error)||'') || tr('Could not sign in');
+  // The language this user last picked (on any device) wins over this device's.
+  if(fb.language) try{ localStorage.setItem('uiLang', fb.language); }catch(e: any){}
+  // So does the theme (Dark / Light / System).
+  if(fb.theme) setTheme(fb.theme, {save:false});
+  // A supplier login belongs in the supplier portal: hand the session over
+  // (same origin, same Firebase sign-in) and go there.
+  if(fb.role === 'supplier'){ goToSupplierPortal(fb); return null; }
+  if(fb.role === 'client'){ goToClientPortal(fb); return null; }
+  try{ sessionStorage.setItem('pendingLoginTiming', JSON.stringify({t0, loginMs:Date.now()-t0, pingMs:window.__pingMs==null?null:window.__pingMs, pingDone:window.__pingMs!=null})); }catch(e: any){}
+  saveSession({
+    uid: fb.uid, role: fb.role, tenantId: fb.tenantId, username: fb.username, tenantProfile: fb.tenantProfile,
+    permissions: fb.permissions, supplierId: fb.supplierId,
+    ownOnly: fb.ownOnly === true, fullName: fb.fullName || '',
+    showPay: fb.showPay === true, commissionRate: Number(fb.commissionRate) || 0,
+    hourPerms: Array.isArray(fb.hourPerms) ? fb.hourPerms : [],
+    commissionDayRate: Number(fb.commissionDayRate) || 0,
+    viewingTenantId: fb.tenantId, // a super-admin (tenantId null) picks one on the Firms screen
+  });
+  location.reload();
+  return null;
+}
+// Wakes a cold login function while the user types, so the login request
+// itself doesn't pay the cold start.
+export function pingLogin(){
+  const pingT0=Date.now();
+  fetch(LOGIN_FN_URL, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{"ping":true}'})
+  .then(()=>{ window.__pingMs=Date.now()-pingT0; }).catch(()=>{});
 }
 
 // A super-admin drilling into one firm's normal view — every subsequent API
