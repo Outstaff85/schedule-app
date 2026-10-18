@@ -4385,81 +4385,17 @@ function t3Line(o){
   const iconAv = !!o.av && /<i class="ti /.test(o.av);
   return `<div class="t3-line${o.cls?' '+o.cls:''}" style="--c:${o.c||'var(--neutral)'}"${o.onclick?` onclick="${o.onclick}"`:''}>${iconAv?o.av:''}<div class="n"><b>${o.name}</b>${[].concat(o.sub||[]).filter(Boolean).map(x=>`<small>${x}</small>`).join('')}</div>${o.right||''}</div>`;
 }
-// The ⋮ popover: glass, a tail pointing at the button, Delete last under a divider.
-function openRowMenu(ev, btn, key){ if(ev) ev.stopPropagation(); openPopover(btn, __rowFns.get(key) || []); }
-function openPopover(btn, items){
-  const again = btn.classList.contains('on'); closePopover(); if(again) return;
-  const list = items.filter(i => !i.danger).concat(items.filter(i => i.danger));
-  const pop = document.createElement('div'); pop.className = 'og-pop'; pop.id = 'ogPop'; pop.setAttribute('role', 'menu');
-  pop.innerHTML = list.map((i, n) => (i.danger && n && !list[n-1].danger ? '<div class="og-pop-hr"></div>' : '')
-    + `<button type="button" class="og-pop-it${i.danger?' del':''}" data-i="${n}" role="menuitem"><i class="ti ${esc(i.icon||'ti-point')}"></i><span>${esc(i.label)}</span></button>`).join('');
-  pop.addEventListener('click', e => { const b = e.target.closest('.og-pop-it'); if(!b) return; e.stopPropagation(); const it = list[+b.dataset.i]; closePopover(); if(it && it.fn) it.fn(btn); });
-  document.body.appendChild(pop); pop.__btn = btn; btn.classList.add('on');
-  const r = btn.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
-  const left = Math.min(window.innerWidth - pw - 8, Math.max(8, r.right - pw + 6));
-  let top = r.bottom + 10, up = false;
-  if(top + ph > window.innerHeight - 8 && r.top - ph - 10 > 8){ top = r.top - ph - 10; up = true; }
-  pop.style.left = left + 'px'; pop.style.top = top + 'px';
-  pop.style.setProperty('--px', Math.max(10, Math.min(pw - 22, r.left + r.width / 2 - left - 6)) + 'px');
-  pop.classList.toggle('up', up);
-  void pop.offsetWidth; pop.classList.add('open');
-}
-function closePopover(){ const p = document.getElementById('ogPop'); if(!p) return; if(p.__btn) p.__btn.classList.remove('on'); p.remove(); }
-document.addEventListener('click', e => { const p = document.getElementById('ogPop'); if(p && !p.contains(e.target)) closePopover(); });
-window.addEventListener('scroll', e => { const p = document.getElementById('ogPop'); if(p && !p.contains(e.target)) closePopover(); }, {capture:true, passive:true});
-window.addEventListener('resize', closePopover);
-// Swipe left on a touch screen (a plate drawn with o.swipe): the plate follows
-// the finger and stays open past half the buttons' width; a tap elsewhere, or
-// on the open plate, closes it. Off while selecting.
-function swipeClose(sw){ sw.classList.remove('open'); const l = sw.querySelector(':scope > .t3-line'); if(l) l.style.transform = ''; }
-function swipeOpen(sw){ sw.classList.add('open'); const l = sw.querySelector(':scope > .t3-line'), a = sw.querySelector('.sw-acts'); if(l && a) l.style.transform = `translateX(${-swipeWidth(sw)}px)`; }
-function swipeWidth(sw){ const bs = sw.querySelectorAll('.sw-acts button'); return bs.length * 62 + 6; }
-function swipeAct(btn, which){
-  const sw = btn.closest('.sw'), v = sw && __rowFns.get(sw.dataset.sw);
-  if(!sw) return; swipeClose(sw);
-  if(v && v[which]) v[which](sw.querySelector(':scope > .t3-line'));
-}
-document.addEventListener('pointerdown', e => {
-  const line = e.target.closest && e.target.closest('.sw > .t3-line');
-  document.querySelectorAll('.sw.open').forEach(s => { if(!line || s !== line.parentNode){ swipeClose(s); s.__closedAt = Date.now(); } });
-  if(!line || e.pointerType === 'mouse' || (__selState && __selState.on) || e.target.closest('button, a, input, select, textarea, .t3-cb')) return;
-  const sw = line.parentNode, x0 = e.clientX, y0 = e.clientY, W = swipeWidth(sw), base = sw.classList.contains('open') ? -W : 0;
-  let dx = base, active = false, dead = false;
-  const move = ev => {
-    if(ev.pointerId !== e.pointerId || dead) return;
-    const mx = ev.clientX - x0, my = ev.clientY - y0;
-    if(!active){
-      if(Math.abs(my) > 10 && Math.abs(my) > Math.abs(mx)){ dead = true; return; }
-      if(Math.abs(mx) < 10) return;
-      active = true; line.classList.add('drag');
-    }
-    dx = Math.min(0, Math.max(-W - 24, base + mx)); line.style.transform = `translateX(${dx}px)`;
-  };
-  const up = ev => {
-    if(ev.pointerId !== e.pointerId) return;
-    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
-    if(!active) return;
-    line.classList.remove('drag'); sw.__swipedAt = Date.now();
-    if(dx < -W / 2) swipeOpen(sw); else swipeClose(sw);
-  };
-  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
-}, true);
-// A click that ends a swipe, or taps an open plate, does nothing else.
-document.addEventListener('click', e => {
-  const sw = e.target.closest && e.target.closest('.sw'); if(!sw || e.target.closest('.sw-acts')) return;
-  if(sw.classList.contains('open') || Date.now() - (sw.__swipedAt || 0) < 400 || Date.now() - (sw.__closedAt || 0) < 400){
-    e.stopPropagation(); e.preventDefault(); swipeClose(sw);
-  }
-}, true);
 // Delete never asks: undoDelete({el | els, label, commit, undo}) collapses the
 // plate(s), shows the glass Undo snack for UNDO_MS with its timer line, and runs
 // commit() — the real delete — when the time is up (or when another delete
 // starts, or the page is left). Undo brings the plates back and runs undo().
+// Used by the side panel's worker list; the React lists have their own
+// (src/components/shared/undo.tsx).
 const UNDO_MS = 5000;
 let __undo = null;
 function undoDelete(o){
   if(__undo) finishUndo(true);
-  const els = [].concat(o.els || o.el || []).filter(Boolean).map(el => el.closest('.sw') || el);
+  const els = [].concat(o.els || o.el || []).filter(Boolean);
   els.forEach(el => { el.style.maxHeight = el.offsetHeight + 'px'; });
   els.forEach(el => { void el.offsetWidth; el.classList.add('gone'); });
   let sn = document.getElementById('undoSnack');
