@@ -36,7 +36,7 @@ export function deleteLater(kind: 'clients' | 'suppliers', id: string, name: str
 
 /**
  * A plate that only opens its window (no card to read first): with a mouse a
- * single click waits for a possible double click (as the old tapEdit did), so a
+ * single click waits for a possible double click, so a
  * double click opens the window once and its second click doesn't land on the
  * backdrop; a touch opens at once.
  */

@@ -216,31 +216,6 @@
   /* Layout */
   .app{display:flex;flex:1;overflow:hidden;}
 
-  /* Sidebar */
-  .sidebar{width:290px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px 0;flex-shrink:0;overflow-y:auto;}
-  .sidebar-section{padding:0 12px;margin-bottom:16px;}
-  .sidebar-label{font-size:13px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:0 4px;margin-bottom:6px;}
-  .worker-list{padding:0 12px;max-height:40vh;overflow-y:auto;}
-  .worker-chip{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--radius-sm);margin-bottom:3px;transition:all 0.15s;}
-  .worker-chip:hover{background:var(--bg3);}
-  .worker-avatar{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;}
-  .avatar-photo{width:100%;height:100%;border-radius:inherit;object-fit:cover;display:block;}
-  .worker-info{flex:1;min-width:0;}
-  .worker-name{font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .worker-hours{font-size:14px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .worker-actions{display:flex;gap:2px;opacity:0;transition:opacity 0.15s;}
-  .worker-chip:hover .worker-actions{opacity:1;}
-  .worker-act-btn{background:none;border:none;cursor:pointer;padding:3px 4px;border-radius:4px;font-size:14px;transition:background 0.15s;}
-  .worker-act-btn.edit{color:var(--blue);}
-  .worker-act-btn.del{color:var(--red);}
-  .worker-act-btn:hover{background:var(--bg);}
-  .client-list{padding:0 12px;max-height:26vh;overflow-y:auto;}
-  .client-chip{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--radius-sm);margin-bottom:3px;cursor:pointer;transition:all 0.15s;border:1px solid transparent;}
-  .client-chip:hover{background:var(--bg3);}
-  .client-chip.selected{background:var(--blue-bg);border-color:rgba(96,165,250,0.25);}
-  .client-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
-  .client-name-label{font-size:15px;color:var(--text);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-
   /* Main */
   .main{flex:1;overflow-y:auto;padding:20px 24px;-webkit-overflow-scrolling:touch;}
   .page-section{display:none;}
@@ -258,8 +233,7 @@
   /* Modal */
   .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:100;align-items:center;justify-content:center;}
   .overlay.open{display:flex;}
-  .tap-edit{cursor:pointer;} /* a tap opens the item's card (or its editor when it has none); a double click / long press its editor (tapEdit, longPress) */
-  @media (pointer:coarse){ .tap-edit{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;} #workerCardModal{-webkit-touch-callout:none;} }
+  @media (pointer:coarse){ #workerCardModal{-webkit-touch-callout:none;} }
   .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto;}
   /* The app's template (variant 3, user request 2026-10-11): rows whose state
      is a colored line on the left (.t3-line, --c); on a phone a window opens
@@ -328,28 +302,8 @@
     .save-indicator { font-size: 10px; }
     .btn.sm { font-size: 11px; padding: 5px 10px; min-height: 34px; }
 
-    /* ── Sidebar → horizontal strip ── */
-    .sidebar {
-      width: 100%; height: auto; flex-direction: row;
-      flex-wrap: nowrap; padding: 8px 12px; gap: 8px;
-      border-right: none; border-bottom: 1px solid var(--border);
-      overflow-x: auto; overflow-y: hidden;
-      -webkit-overflow-scrolling: touch; flex-shrink: 0;
-      scrollbar-width: none;
-    }
-    .sidebar::-webkit-scrollbar { display: none; }
-    .sidebar-section { display: none; }   /* Workers/Filter labels+sort: managed via tabs on mobile */
-    .sidebar-section .btn { white-space: nowrap; font-size: 11px; padding: 5px 10px; min-height: 32px; }
-    /* Hide worker list + client filter — managed via Workers/Clients tabs on mobile */
-    .worker-list, .client-list,
-    .sidebar > div[style*="height:16px"] { display: none; }
-    /* Everything in the sidebar is hidden here: the empty strip goes too. */
-    .sidebar { display: none; }
-
     /* ── Main ── */
     .main { padding: 12px 12px env(safe-area-inset-bottom,12px); overflow: visible; }
-
-    .worker-avatar { width: 22px; height: 22px; font-size: 9px; }
 
     /* ── Modals — full screen bottom sheet ── */
     .overlay { align-items: flex-end; }
@@ -363,11 +317,6 @@
     .modal-title { font-size: 16px; }
     .modal-actions { gap: 8px; flex-wrap: wrap; }
     .modal-actions .btn { flex: 1; justify-content: center; min-height: 42px; }
-
-    /* ── Worker chips in sidebar ── */
-    .worker-chip { padding: 5px 6px; }
-    .worker-name { font-size: 12px; }
-    .worker-hours { font-size: 10px; }
 
     /* ── Buttons ── */
     .btn { min-height: 36px; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
@@ -597,13 +546,11 @@ body:has(.overlay.open){overflow:hidden}
     .ttab.active{background:rgba(var(--tint),.08)}
     .ttab::after{left:0;right:auto;top:9px;bottom:9px;width:3px;height:auto;background:var(--k);box-shadow:0 0 10px var(--k);transform:scaleY(0);transition:transform .35s cubic-bezier(.34,1.56,.64,1)}
     .ttab.active::after{transform:scaleY(1);animation:none}
-    body[data-tab]:not([data-tab=workers]):not([data-tab=schedule]) .sidebar{display:none}
     .main>.page-section{max-width:1200px;margin-left:auto;margin-right:auto}
     html[lang=he] .app{flex-direction:row-reverse}
     html[lang=he] .top-tabs{border-right:0;border-left:1px solid rgba(var(--tint),.08)}
     html[lang=he] .ttab{direction:rtl}
     html[lang=he] .ttab::after{left:auto;right:0}
-    html[lang=he] .sidebar{border-right:0;border-left:1px solid var(--border)}
   }
   @media (min-width:701px) and (max-width:1180px){ .og-center .gtext{display:none} .og-date{border:0;padding:0} }
   @media (min-width:701px) and (max-width:980px){ .og-name{display:none} .og-date-l{display:none} .og-date-s{display:inline} }
@@ -695,32 +642,6 @@ body:has(.overlay.open){overflow:hidden}
     <div class="ttab admin" id="tabAccounting" style="--k:#f7c062" onclick="switchTab('accounting')"><span class="ic"><i class="ti ti-cash"></i></span><span class="lb" data-i18n>Accounting</span></div>
     <div class="ttab" id="tabMore" style="--k:#f472b6" onclick="openMoreSheet()"><span class="ic"><i class="ti ti-dots-vertical"></i></span><span class="lb" data-i18n>More</span></div>
   </nav>
-  <div class="sidebar">
-    <div class="sidebar-section">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <div class="sidebar-label" style="margin-bottom:0" data-i18n>Workers</div>
-        <select id="workerSort" onchange="renderWorkerList()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text2);font-size:11px;padding:2px 5px;outline:none;cursor:pointer">
-          <option value="name">A–Z</option>
-          <option value="hours" data-i18n>Hours</option>
-          <option value="status" data-i18n>Status</option>
-        </select>
-      </div>
-    </div>
-    <div class="worker-list" id="workerList"></div>
-
-    <div style="height:16px"></div>
-    <div class="sidebar-section">
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <div class="sidebar-label" style="margin-bottom:0" data-i18n>Filter by Client</div>
-        <select id="clientSort" onchange="renderSidebarClients()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text2);font-size:11px;padding:2px 5px;outline:none;cursor:pointer">
-          <option value="name">A–Z</option>
-          <option value="workers" data-i18n>Workers</option>
-        </select>
-      </div>
-    </div>
-    <div class="client-list" id="sidebarClientList"></div>
-  </div>
-
   <div class="main">
     <!-- Dashboard Section -->
     <!-- Today (stage 6a): drawn in React (src/manager/Today.tsx) through
@@ -1254,15 +1175,6 @@ function redrawForLanguage(){
   try{ if(typeof render === 'function') render(); }catch(e){}
   try{ if(typeof currentTab !== 'undefined' && currentTab === 'accounting') renderAccounting(); }catch(e){}
 }
-// Shared inner content for every "colored circle" worker avatar spot: a
-// cropped portrait photo (see cropPortraitAvatar) when the worker has one,
-// falling back to the existing colored-initials look otherwise. The caller
-// still owns the outer circle (size/background/color) — this only fills it.
-function workerAvatarInner(w){
-  return w.avatarB64
-    ? `<img class="avatar-photo" src="data:image/jpeg;base64,${w.avatarB64}" alt="">`
-    : esc((w.name||'').slice(0,2).toUpperCase());
-}
 function getSundayOfWeek(d){ const c=new Date(d); c.setDate(c.getDate()-c.getDay()); c.setHours(0,0,0,0); return c; }
 function toMins(t){ if(!t)return null; const[h,m]=t.split(':').map(Number); return h*60+m; }
 function calcHours(s,e){ if(!s||!e)return 0; const sm=toMins(s),em=toMins(e); return em<=sm?(1440-sm+em)/60:(em-sm)/60; }
@@ -1289,7 +1201,7 @@ function weekShifts(w){ return [0,1,2,3,4,5,6].map(i => { const d=new Date(weekS
 function workerTotalHours(w){ return weekShifts(w).reduce((s,sh)=>s+(sh.type==='work'?calcHours(sh.start,sh.end):0),0); }
 
 // Inactive workers (status 'fired') leave the everyday lists — the Workers
-// tab (unless its Status filter picks them), the sidebar, the Schedule, Today
+// tab (unless its Status filter picks them), the Schedule, Today
 // and the contract warnings — and come back when set Active again on their
 // card (per user request 2026-10-11). Accounting still counts their hours.
 function isActiveWorker(w){ return !!w && w.status!=='fired'; }
@@ -1330,28 +1242,6 @@ function showContractNotice(){
   el.style.display='';
 }
 function closeContractNotice(){ try{ sessionStorage.setItem('contractNoticeClosed','1'); }catch(e){} showContractNotice(); }
-// Compact inline badge (matches the existing VAC/FIRED badge styling) for
-// the sidebar chip and the Workers table row.
-function expiryBadgeHtml(w){
-  const st = workerExpiryStatus(w);
-  if(!st) return '';
-  const overdue = st.level==='overdue';
-  const color = overdue?'var(--red)':'var(--amber)';
-  const bg = overdue?'var(--red-bg)':'var(--amber-bg)';
-  const label = overdue?'EXPIRED':'EXPIRING SOON';
-  const dateStr = st.deadline.toLocaleDateString('en-GB');
-  return `<span title="${tr('Deadline: {0}',{0:(dateStr)})}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:${bg};color:${color};margin-left:5px"><i class="ti ti-alert-triangle" style="font-size:9px"></i> ${label}</span>`;
-}
-// Shown only for a worker whose background PDF-generation/upload (right
-// after creation from a scan, or a manual "Upload"/rescan) actually
-// failed — `docUploadFailed` is set by aiFillForm101()'s catch block and
-// cleared the moment an upload succeeds, so a worker who never went through
-// the scan/upload flow at all never gets this badge (no noise for firms not
-// using document storage).
-function docUploadFailedBadgeHtml(w){
-  if(!w.docUploadFailed) return '';
-  return `<span title="${tr('The document could not be saved to {0} — open the card and scan again',{0:(DOC_STORE)})}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px"><i class="ti ti-file-off" style="font-size:9px"></i> ${tr('NO DOCUMENT')}</span>`;
-}
 // ── Worker document completeness ────────────────────────────────────────────
 // One status per worker, used by the Workers list/cards badge, the cards'
 // "Documents" row, the worker card, and the "Documents incomplete" filter.
@@ -1787,7 +1677,6 @@ function localYMD(d){ return Payroll.localYMD(d); }
 
 // --- Render -------------------------------------------------------------------
 function render(){
-  renderWorkerList(); renderSidebarClients();
   if(currentTab==='schedule')   renderSchedulePage();
   // render() only ever refreshed the Schedule tab's own pieces above — every
   // other tab's table (Workers/Clients/Admin/Accounting) is rendered ONLY by
@@ -1859,42 +1748,7 @@ async function decideShiftRequest(id,ok){
   render(); showToast(ok?tr('Shift handed over'):tr('Offer declined'));
 }
 
-function renderWorkerList(){
-  const el=document.getElementById('workerList'); if(!el) return;
-  let list=workers.map((w,wi)=>({w,wi})).filter(x=>isActiveWorker(x.w));
-  const sort=document.getElementById('workerSort')?.value||'name';
-  if(sort==='name')       list.sort((a,b)=>a.w.name.localeCompare(b.w.name));
-  else if(sort==='hours') list.sort((a,b)=>workerTotalHours(b.w)-workerTotalHours(a.w));
-  else if(sort==='status'){ const rank={active:0,vacation:1,fired:2}; list.sort((a,b)=>((rank[a.w.status||'active']??0)-(rank[b.w.status||'active']??0))||a.w.name.localeCompare(b.w.name)); }
-  renderPagedList(el,'sideWorkers',sort,list,({w,wi})=>{
-    const c=WORKER_COLORS[w.colorIdx%8],wh=workerTotalHours(w);
-    return `<div class="worker-chip tap-edit" onclick="tapEdit(event,this,()=>openWorkerCard(${wi}),()=>openEditWorker(${wi}))" onpointerdown="longPress(event,this,()=>openEditWorker(${wi}))">
-      <div class="worker-avatar" style="background:${c.bg};color:${c.text}">${workerAvatarInner(w)}</div>
-      <div class="worker-info"><div class="worker-name">${esc(w.name)}${w.status==='fired'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--red-bg);color:var(--red);margin-left:5px">'+tr('INACTIVE')+'</span>':w.status==='vacation'?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--amber-bg);color:var(--amber);margin-left:5px">'+tr('VAC')+'</span>':''}${expiryBadgeHtml(w)}${docUploadFailedBadgeHtml(w)}</div><div class="worker-hours">${tr('{h}h',{h:(wh).toFixed(1)})}</div></div>
-      <div class="worker-actions">
-        <button class="worker-act-btn edit" onclick="copyWorkerLink('${w.id}')" title="${tr('Copy punch link')}"><i class="ti ti-link"></i></button>
-        <button class="worker-act-btn del"  onclick="deleteWorker(${wi})"   title="${tr('Delete')}"><i class="ti ti-x"></i></button>
-      </div>
-    </div>`;
-  });
-}
-
-function renderSidebarClients(){
-  const el=document.getElementById('sidebarClientList'); if(!el) return;
-  const head=`<div class="client-chip ${!selectedClientId?'selected':''}" onclick="filterByClient(null)">
-    <div class="client-dot" style="background:var(--text2)"></div>
-    <span class="client-name-label">${tr('All clients')}</span>
-  </div>`;
-  let cl=[...clients];
-  const csort=document.getElementById('clientSort')?.value||'name';
-  if(csort==='name')          cl.sort((a,b)=>a.name.localeCompare(b.name));
-  else if(csort==='workers')  cl.sort((a,b)=>workers.filter(w=>(w.clientIds||[]).includes(b.id)).length-workers.filter(w=>(w.clientIds||[]).includes(a.id)).length);
-  renderPagedList(el,'sideClients',csort,cl,c=>`<div class="client-chip ${selectedClientId===c.id?'selected':''}" onclick="filterByClient('${c.id}')">
-      <div class="client-dot" style="background:${c.color}"></div>
-      <span class="client-name-label">${esc(c.name)}</span>
-    </div>`,{head});
-}
-
+// The Schedule tab's site filter (ManagerBridge.setClient).
 function filterByClient(cid){ selectedClientId=cid; render(); }
 
 
@@ -2142,26 +1996,9 @@ function copyWorkerLink(wid){
     prompt(tr('Copy this link:'), link);
   }
 }
-// Delete never asks: the plate (or row) collapses behind the Undo snack and
-// the worker is removed only when its 5 s are up (deleteWorkerNow); until then
-// it is left out of the Workers list (__workerDelPending).
-function deleteWorker(wi, el){
-  const w=workers[wi]; if(!w) return;
-  deleteWorkers([w.id], [el]);
-}
-function deleteWorkers(ids, els){
-  ids=ids.filter(id=>workers.some(x=>x.id===id)); if(!ids.length) return;
-  ids.forEach(id=>__workerDelPending.add(id));
-  const one=ids.length===1?workers.find(x=>x.id===ids[0]):null;
-  undoDelete({els, label: one?one.name:tr('{0} workers{1}',{0:ids.length,1:''}),
-    commit:()=>{ ids.forEach(id=>deleteWorkerNow(id)); render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
-      showToast(one?tr('{0} removed',{0:one.name}):tr('{0} workers{1}',{0:ids.length,1:''})); },
-    undo:()=>{ ids.forEach(id=>__workerDelPending.delete(id)); renderWorkersPage(); }});
-}
 // Removes the worker, then best-effort deletes their files (Form 101 PDF,
 // the scan + signature sidecar, the contract / visa / permit files).
 function deleteWorkerNow(id){
-  __workerDelPending.delete(id);
   const wi=workers.findIndex(x=>x.id===id); if(wi<0) return;
   const w=workers[wi];
   const docFileIds=(w.docs||[]).map(d=>d.fileId).filter(Boolean);
@@ -2201,7 +2038,7 @@ function commitClient(id, fields){
     clients.push({id:uid(),...fields});
     showToast(tr('{0} added!',{0:fields.name}));
   }
-  closeModal('clientOverlay'); renderClientsPage(); renderSidebarClients(); autoSave();
+  closeModal('clientOverlay'); renderClientsPage(); render(); autoSave();
 }
 // Delete from a window's ⋮: the window closes without saving (and does not
 // come back); the list then deletes behind its Undo snack (src/manager/Clients.tsx).
@@ -2220,7 +2057,7 @@ function deleteClientsNow(ids){
     clients=clients.filter(x=>x.id!==cid);
     workers.forEach(w=>{ if(w.clientIds) w.clientIds=w.clientIds.filter(id=>id!==cid); if(w.clientRates&&w.clientRates[cid]) delete w.clientRates[cid]; });
     if(selectedClientId===cid) selectedClientId=null; });
-  renderSidebarClients(); render(); autoSave(); showToast(one?tr('{0} removed',{0:one.name}):tr('{0} clients',{0:ids.length}));
+  render(); autoSave(); showToast(one?tr('{0} removed',{0:one.name}):tr('{0} clients',{0:ids.length}));
 }
 // ── Client geolocation map picker (Google Maps JavaScript API) ─────────────
 // The client window's small map opens it (ManagerBridge.pickPlace): search box
@@ -2388,9 +2225,6 @@ function workerBarColor(w, ns){
   if(!isActiveWorker(w) || ns.some(n=>n.lvl==='red')) return 'var(--bad)';
   return (w.status==='vacation' || ns.length) ? 'var(--warn)' : 'var(--ok)';
 }
-// Workers deleted from the side panel but still inside their Undo time: left
-// out of the Workers list (ManagerBridge.workers()).
-const __workerDelPending=new Set();
 // The Workers list is drawn in React (stage 6c-1, src/manager/Workers.tsx):
 // the plates, the tabs, the search, the filters and Select live there.
 function setWorkersStatus(ids, v){
@@ -2582,62 +2416,6 @@ function addManualPunch(entry){
 
 // --- Modal close --------------------------------------------------------------
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
-// Template (user request 2026-10-11): a single tap on a list item or card
-// opens its card (tapFn) or, when it has none, its edit form (editFn); a
-// double click (computer) or a long press (phone, LONG_PRESS_MS; a move or
-// scroll cancels it) opens the edit form too. A window that reads (the worker
-// card) also has a ✎. A tap on a control inside the item (a button, link,
-// field, or anything with its own onclick) does that control's job instead,
-// and selecting text doesn't count. Markup:
-// onclick="tapEdit(event,this,tapFn,editFn)"
-// onpointerdown="longPress(event,this,editFn)" (class .tap-edit). With a
-// mouse, a tapFn and an editFn the single click waits DBL_CLICK_MS to tell
-// it from a double one. The same helpers are in schedule-manager.html and
-// supplier-portal.html.
-const LONG_PRESS_MS=500, DBL_CLICK_MS=250;
-let __lp=null, __lpFiredAt=0;
-function clearTextSel(){ try{ window.getSelection().removeAllRanges(); }catch(_){} }
-function tapEdit(e, el, tapFn, editFn){
-  if(Date.now()-__lpFiredAt<800) return;  // the click that ends a long press
-  if(e.detail>=2){
-    if(!isPlainTap(e,el,true)) return;
-    clearTimeout(el.__tapT); el.__tapT=null; clearTextSel();
-    if(editFn) editFn();
-    return;
-  }
-  if(!isPlainTap(e,el)) return;
-  const fn=tapFn||editFn; if(!fn) return;
-  if(e.pointerType==='mouse' && tapFn && editFn){ clearTimeout(el.__tapT); el.__tapT=setTimeout(()=>{ el.__tapT=null; fn(); },DBL_CLICK_MS); }
-  else if(!tapFn && e.detail===1 && e.pointerType==='mouse'){ clearTimeout(el.__tapT); el.__tapT=setTimeout(()=>{ el.__tapT=null; fn(); },DBL_CLICK_MS); }
-  else fn();
-}
-function cancelLongPress(){
-  if(!__lp) return;
-  clearTimeout(__lp.timer); __lp.el.removeEventListener('pointermove',__lp.move); __lp=null;
-}
-function longPress(e, el, editFn){
-  if(!editFn || e.pointerType==='mouse' || !isPlainTap(e,el,true)) return;
-  cancelLongPress();
-  const x=e.clientX, y=e.clientY;
-  const move=ev=>{ if(Math.hypot(ev.clientX-x,ev.clientY-y)>10) cancelLongPress(); };
-  el.addEventListener('pointermove',move);
-  el.addEventListener('pointerup',cancelLongPress,{once:true});
-  el.addEventListener('pointercancel',cancelLongPress,{once:true});
-  el.addEventListener('contextmenu',ev=>{ if(__lp||Date.now()-__lpFiredAt<800) ev.preventDefault(); },{once:true});
-  __lp={el, move, timer:setTimeout(()=>{
-    cancelLongPress(); __lpFiredAt=Date.now(); clearTextSel();
-    try{ navigator.vibrate&&navigator.vibrate(15); }catch(_){}
-    editFn();
-  },LONG_PRESS_MS)};
-}
-function isPlainTap(e,container,anySelection){
-  if(!anySelection&&String((window.getSelection&&window.getSelection())||'')) return false;
-  for(let n=e.target;n&&n!==container;n=n.parentElement){
-    if(/^(BUTTON|A|INPUT|SELECT|TEXTAREA|LABEL)$/.test(n.tagName)||n.hasAttribute('onclick')) return false;
-  }
-  return true;
-}
-
 // Every modal closes on a tap anywhere outside it — on the dark backdrop,
 // including where the card or row that opened it was (per user request
 // 2026-10-04, for every modal; modals have no ✕ and no Cancel button). Only
@@ -4055,39 +3833,6 @@ function t3Line(o){
   const iconAv = !!o.av && /<i class="ti /.test(o.av);
   return `<div class="t3-line${o.cls?' '+o.cls:''}" style="--c:${o.c||'var(--neutral)'}"${o.onclick?` onclick="${o.onclick}"`:''}>${iconAv?o.av:''}<div class="n"><b>${o.name}</b>${[].concat(o.sub||[]).filter(Boolean).map(x=>`<small>${x}</small>`).join('')}</div>${o.right||''}</div>`;
 }
-// Delete never asks: undoDelete({el | els, label, commit, undo}) collapses the
-// plate(s), shows the glass Undo snack for UNDO_MS with its timer line, and runs
-// commit() — the real delete — when the time is up (or when another delete
-// starts, or the page is left). Undo brings the plates back and runs undo().
-// Used by the side panel's worker list; the React lists have their own
-// (src/components/shared/undo.tsx).
-const UNDO_MS = 5000;
-let __undo = null;
-function undoDelete(o){
-  if(__undo) finishUndo(true);
-  const els = [].concat(o.els || o.el || []).filter(Boolean);
-  els.forEach(el => { el.style.maxHeight = el.offsetHeight + 'px'; });
-  els.forEach(el => { void el.offsetWidth; el.classList.add('gone'); });
-  let sn = document.getElementById('undoSnack');
-  if(!sn){
-    sn = document.createElement('div'); sn.id = 'undoSnack'; sn.className = 'og-snack'; sn.setAttribute('role', 'status');
-    sn.innerHTML = '<span class="og-snack-t"></span><button type="button" class="og-snack-u"></button><i class="og-snack-bar"></i>';
-    sn.querySelector('button').onclick = () => finishUndo(false);
-    document.body.appendChild(sn);
-  }
-  sn.querySelector('.og-snack-t').textContent = tr('{0} deleted', {0: o.label});
-  sn.querySelector('.og-snack-u').textContent = tr('Undo');
-  sn.classList.remove('open'); void sn.offsetWidth; sn.classList.add('open');
-  __undo = {o, els, t: setTimeout(() => finishUndo(true), UNDO_MS)};
-}
-function finishUndo(commit){
-  const u = __undo; if(!u) return; __undo = null; clearTimeout(u.t);
-  const sn = document.getElementById('undoSnack'); if(sn) sn.classList.remove('open');
-  if(commit){ try{ Promise.resolve(u.o.commit()).catch(e => showToast(tr('Failed: {0}', {0: e && e.message || e}))); }catch(e){ showToast(tr('Failed: {0}', {0: e && e.message || e})); } return; }
-  u.els.forEach(el => { el.classList.remove('gone'); setTimeout(() => { el.style.maxHeight = ''; }, 350); });
-  if(u.o.undo) u.o.undo();
-}
-window.addEventListener('pagehide', () => finishUndo(true));
 // ── Today (stage 6a): drawn in React — src/manager/Today.tsx, loaded as
 // assets/manager.js (docs/build.md → The manager's React pieces). The page
 // hands it its data and actions through ManagerBridge; renderDashboard() asks
@@ -4097,7 +3842,7 @@ function renderDashboard(){
   if(window.ManagerIsland) window.ManagerIsland.renderToday();
 }
 // ── Schedule (stage 6b): drawn in React — src/manager/Schedule.tsx. The week
-// (weekStart), the site filter (selectedClientId, shared with the side panel)
+// (weekStart), the site filter (selectedClientId)
 // and the data stay here; the tab reads them through ManagerBridge.schedule()
 // and writes through its actions below. Opening it reads the workers'
 // requests (at most once a minute).
@@ -4180,7 +3925,7 @@ window.ManagerBridge={
     const now=new Date(), t=now.toDateString(), log=getPunchLog().filter(e=>new Date(e.ts).toDateString()===t), hours=workersMonthHours();
     return {
       ready:__dataReady,
-      workers:workers.filter(w=>!__workerDelPending.has(w.id)).map(w=>{ const td=workerToday(w,log), st=workerDocStatus(w), ex=workerExpiryStatus(w);
+      workers:workers.map(w=>{ const td=workerToday(w,log), st=workerDocStatus(w), ex=workerExpiryStatus(w);
         const badge=st.level==='ok'?'':st.failed?tr('UPLOAD FAILED'):(st.expiry&&st.expiry.level==='error')?tr('ID EXPIRED')
           :st.docExpired?tr('{0} EXPIRED',{0:tr(WORKER_DOC_TYPES[st.docExpired.doc.type]||'Document').toUpperCase()}):tr('DOCS');
         return {id:w.id, name:w.name||'', docGiven:w.docGiven||'', docSurname:w.docSurname||'', phone:w.phone||'', docId:String(workerDocId(w)||''),

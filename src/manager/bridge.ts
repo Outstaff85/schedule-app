@@ -84,7 +84,7 @@ export type ScheduleSnapshot = {
   ready: boolean;
   /** the shown week's Sunday, YYYY-MM-DD (the page's `weekStart`) */
   weekStart: string;
-  /** the site filter (the page's `selectedClientId`, shared with the side panel) */
+  /** the site filter (the page's `selectedClientId`) */
   clientId: string | null;
   /** the active workers, in the page's order */
   workers: SchedWorker[];
@@ -134,7 +134,7 @@ export type WorkerRow = {
 
 export type WorkersSnapshot = {
   ready: boolean;
-  /** every worker in the page's order, except those deleted from the side panel inside their Undo time */
+  /** every worker in the page's order */
   workers: WorkerRow[];
   clients: { id: string; name: string; color?: string; object?: string }[];
   suppliers: { id: string; name: string; color?: string }[];

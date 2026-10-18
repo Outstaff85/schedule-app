@@ -179,7 +179,6 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const names = () => [...document.querySelectorAll('#workersRoot [data-testid="worker-name"]')].map(x => x.title).join(' ');
     const link = () => document.querySelector('#workersRoot [data-testid="workers-inactive"]');
     r.hidden = !/Dana Levi/.test(names()) && !!link() && /Inactive: 1/.test(link().innerText);
-    r.sidebar = !/Dana Levi/.test(document.getElementById('workerList').innerText);
     link().click(); await wait(50); r.shown = /Dana Levi/.test(names()) && !link();
     w.status = 'active'; document.querySelector('#workersRoot [data-testid="workers-chips"] button[data-key="status"]').click(); render(); await wait(50); r.back = /Dana Levi/.test(names());
     const d = new Date(); d.setMonth(d.getMonth() - 2);
@@ -191,11 +190,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     Object.keys(w).forEach(k => delete w[k]); Object.assign(w, keep); render();
     return r;
   });
-  ok(ia.hidden && ia.sidebar && ia.shown && ia.back, 'workers: an inactive worker leaves the lists, "Inactive: N — show" brings them, Active returns them ' + JSON.stringify(ia));
+  ok(ia.hidden && ia.shown && ia.back, 'workers: an inactive worker leaves the lists, "Inactive: N — show" brings them, Active returns them ' + JSON.stringify(ia));
   ok(ia.notice && ia.closed, 'contracts: an expired contract shows a notice at the top until closed ' + JSON.stringify(ia));
   // V7 (stage 6a): the frame on a computer — the sections in a side menu, the breadcrumb plate (section,
-  // count, open sub-tab), the date / greeting / weather in the middle, no page titles, the Workers /
-  // Filter-by-client panel only on Workers and Schedule, the page at most 1200px; Today drawn in React.
+  // count, open sub-tab), the date / greeting / weather in the middle, no page titles, no side panel
+  // (removed, owner 2026-10-18) on any tab, the page at most 1200px; Today drawn in React.
   const v7 = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
     const box = q => document.querySelector(q).getBoundingClientRect(), shown = q => { const el = document.querySelector(q); return !!el && getComputedStyle(el).display !== 'none'; };
@@ -206,11 +205,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.crumbToday = crumb();
     r.noTitle = [...document.querySelectorAll('.page-title')].every(e => getComputedStyle(e).display === 'none');
     r.center = /\d/.test(document.getElementById('ogDate').innerText) && /^Good /.test(document.querySelector('#ogGreet .gtext').textContent);
-    r.noSidebarToday = !shown('.sidebar');
+    r.noSidebarToday = !document.querySelector('.sidebar, #workerList, #sidebarClientList');
     r.react = !!document.querySelector('#todayRoot [data-testid=today]') && document.querySelectorAll('#todayRoot [data-slot=figures] > button').length === 4 && document.querySelectorAll('#todayRoot section[data-panel]').length >= 1;
     r.width = getComputedStyle(document.getElementById('sectionDashboard')).maxWidth === '1200px';
     switchTab('workers'); await wait(200);
-    r.sidebarWorkers = shown('.sidebar'); r.crumbWorkers = crumb();
+    r.sidebarWorkers = !document.querySelector('.sidebar'); r.crumbWorkers = crumb();
     switchTab('accounting'); setAccTab('salary'); await wait(200);
     r.crumbAcc = crumb(); r.noRepeat = !shown('#accountingRoot [data-testid=acc-figs]') && shown('#accountingRoot [data-testid=sal-sum]');
     setAccTab('billing'); document.body.click(); await wait(100);
@@ -220,7 +219,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(v7.menu && v7.crumbToday === 'Today' && v7.noTitle && v7.center && v7.noSidebarToday && v7.react && v7.width && v7.sidebarWorkers && /^Workers \d+$/.test(v7.crumbWorkers)
     && v7.crumbAcc === 'Accounting Salary' && v7.noRepeat && v7.crumbBill === 'Accounting Billing' && v7.figsBack,
-    'V7 frame: side menu, breadcrumb with count and sub-tab, date / greeting / weather in the middle, no page titles, the client panel only on Workers and Schedule, Accounting figures not repeated on Salary ' + JSON.stringify(v7));
+    'V7 frame: side menu, breadcrumb with count and sub-tab, date / greeting / weather in the middle, no page titles, no side panel, Accounting figures not repeated on Salary ' + JSON.stringify(v7));
   // Hebrew mirrors the frame only: the menu on the right, the account on the left, the page left to right.
   await p.evaluate(() => setLanguage('he', {save:false})); await waitFor(p, () => I18N_LANG === 'he' && document.documentElement.lang === 'he');
   await sleep(400);
@@ -663,14 +662,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       }
       switchTab('schedule'); render(); await wait(300);
       out.gantt = document.querySelectorAll('#scheduleRoot [data-testid="sched-worker"]').length;
-      out.side = document.querySelectorAll('#workerList > .worker-chip').length;
       workers.length = 0; real.forEach(x => workers.push(x)); document.querySelector('#workersRoot [data-testid="workers-view"] [aria-label="Cards"]').click(); render();
       return out;
     });
     console.log('PAGING', w, JSON.stringify(pg));
     ok(pg.cards[0] === 10 && pg.cards[1] === 10 && pg.cards[2] === 20 && pg.list[0] === 10 && pg.list[1] === 10 && pg.list[2] === 20,
       `workers at ${w}px: 10 at first, no auto pre-load, +10 after scrolling to the end`);
-    ok(pg.gantt === 10 && pg.side === 10, `schedule rows and sidebar workers: 10 at first at ${w}px`);
+    ok(pg.gantt === 10, `schedule rows: 10 at first at ${w}px`);
   }
   for (const [w, h] of [[390, 760], [1280, 700]]) {
     await p.setViewportSize({width:w, height:h});
@@ -1481,7 +1479,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.evaluate(() => { clients.push({id:'ctmp', name:'Temp Client', color:'#60a5fa'}); switchTab('clients'); renderClientsPage(); });
   const ctmp = '#clientsRoot [data-testid="client-plate"][data-cid="ctmp"]';
   await p.waitForSelector(ctmp);
-  const cpl = await p.evaluate(sel => ({noRate: !!document.querySelector(sel + ' [data-testid="client-norate"]'), sidebar: getComputedStyle(document.querySelector('.sidebar')).display === 'none',
+  const cpl = await p.evaluate(sel => ({noRate: !!document.querySelector(sel + ' [data-testid="client-norate"]'), sidebar: !document.querySelector('.sidebar'),
     old: !document.getElementById('clientsGrid') && !document.querySelector('#sectionClients .page-title')}), ctmp);
   cpl.crumb = await crumbNow();
   await p.click(ctmp + ' button[aria-label="Actions"]'); await p.waitForSelector('[role="menuitem"]');
@@ -1499,7 +1497,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await sleep(5300);
   cpl.deleted = await p.evaluate(() => !clients.some(c => c.id === 'ctmp'));
   await p.evaluate(() => switchTab('suppliers')); await sleep(300);
-  cpl.supplier = await p.evaluate(() => { const sp = document.querySelector('#suppliersRoot [data-testid="supplier-plate"]'); return !!sp && !!sp.querySelector('[data-testid="supplier-hours"]') && !!sp.querySelector('button[aria-label="Actions"]') && getComputedStyle(document.querySelector('.sidebar')).display === 'none'; });
+  cpl.supplier = await p.evaluate(() => { const sp = document.querySelector('#suppliersRoot [data-testid="supplier-plate"]'); return !!sp && !!sp.querySelector('[data-testid="supplier-hours"]') && !!sp.querySelector('button[aria-label="Actions"]') && !document.querySelector('.sidebar'); });
   cpl.crumbS = await crumbNow();
   await p.click('#suppliersRoot [data-testid="supplier-plate"] button[aria-label="Actions"] >> nth=0'); await p.waitForSelector('[role="menuitem"]');
   cpl.supMenu = await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(b => b.innerText.trim()).join());
