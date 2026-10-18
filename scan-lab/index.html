@@ -411,7 +411,7 @@ $('engine').value = ORT_DIR === 'ort130' ? '130' : '122';
 $('engine').onchange = () => { location.search = '?ort=' + $('engine').value + '&v=' + Date.now(); };
 log('CPU engine: ONNX Runtime ' + (ort.env.versions && ort.env.versions.web || ORT_DIR) + ', GPU engine: 1.30.0');
 log('GPU (WebGPU) in this browser: ' + (navigator.gpu ? 'yes' : 'no'));
-log('CPU threads: ' + THREADS + (self.crossOriginIsolated ? '' : ' (page not isolated)') + ' of ' + (navigator.hardwareConcurrency || '?'));
+log('CPU: ' + (navigator.hardwareConcurrency || '?') + ' cores; several background threads of one thread each are used');
 // The models are fetched as soon as the page opens; the camera button waits for them.
 ensureSession().catch(e => log('Model: ' + (e && e.message || e)));
 </script>

@@ -18,9 +18,11 @@ get() {  # DocAligner (Apache-2.0) from its author's Drive
 get 14vUH77v6yGg7zFctUgcT6BzV5Iisg4Dl sa24.onnx   # the accurate model (fastvit_sa24)
 get 1IlbLPkCv-TdaBLOPh_4J97P1_KHYYJ7a lite.onnx   # the light model (lcnet100), the live frame
 # The face finder that sets a shot upright (YuNet, MIT, OpenCV zoo).
-[ -s "$CACHE/yunet.onnx" ] || curl -sSL --fail -o "$CACHE/yunet.onnx" https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
+[ -s "$CACHE/yunet640.onnx" ] || curl -sSL --fail -o "$CACHE/yunet640.onnx" https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
+pip install -q onnx numpy
+[ -s "$CACHE/yunet.onnx" ] || python "$HERE/yunet_dyn.py" "$CACHE/yunet640.onnx" "$CACHE/yunet.onnx"   # any input size: run at 320
 # fp16 weights, fp32 math: a plain fp16 conversion gives zeros on WebGPU.
-[ -s "$CACHE/sa24_w16.onnx" ] || { pip install -q onnx numpy; python "$HERE/w16.py" "$CACHE/sa24.onnx" "$CACHE/sa24_w16.onnx"; }
+[ -s "$CACHE/sa24_w16.onnx" ] || python "$HERE/w16.py" "$CACHE/sa24.onnx" "$CACHE/sa24_w16.onnx"
 cp "$CACHE/lite.onnx" "$CACHE/sa24_w16.onnx" "$CACHE/yunet.onnx" "$OUT/"
 # ONNX Runtime Web: 1.22 for the CPU, 1.30 for the GPU (its GPU runs the light model right where 1.22 returned zeros).
 T="$(mktemp -d)"

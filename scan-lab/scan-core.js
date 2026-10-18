@@ -41,7 +41,7 @@ async function openSession(model, want, onStatus, onLog) {
       if (ep === 'webgpu') {
         onStatus('Checking ' + name + ' with ' + model + '…', 1);
         const t = await limit(selfTest(sess), 'self-test');
-        onLog('GPU (' + layout + ') self-test of ' + model + ': ' + (t.ok ? 'correct' : 'WRONG') + ' (error ' + (t.err * 100).toFixed(1) + '%, confidence ' + t.conf.toFixed(2) + ')');
+        onLog('GPU check, ' + model + ', layout ' + layout + ': ' + (t.ok ? 'right — used' : 'wrong on this GPU — not used') + ' (error ' + (t.err * 100).toFixed(1) + '%, confidence ' + t.conf.toFixed(2) + ')');
         if (!t.ok) { try { sess.release(); } catch (e) {} gpuWrong = true; continue; }
       }
       return { sess, ep };
@@ -143,9 +143,9 @@ async function selfTest(sess) {
   return { ok: err < 0.04, err, conf: r.conf };
 }
 
-// Upright by the face on the document (YuNet, MIT, 640×640 BGR 0..255): the
+// Upright by the face on the document (YuNet, MIT, run at 320×320 BGR 0..255): the
 // face found with the eyes above the mouth tells how to turn the shot.
-const FN = 640;
+const FN = 320;  // a quarter of 640's work, the same turns (scripts/scan-lab/yunet_dyn.py frees the size)
 function mkCanvas(w, h) { return typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h }); }
 // src turned by k clockwise quarter-turns.
 function turned(src, k) {
