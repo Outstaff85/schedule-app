@@ -265,10 +265,9 @@
   .tap-edit{cursor:pointer;} /* a tap opens the item's card (or its editor when it has none); a double click / long press its editor (tapEdit, longPress) */
   @media (pointer:coarse){ .tap-edit{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;} #workerCardModal{-webkit-touch-callout:none;} }
   .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto;}
-  /* The app's template (variant 3, user request 2026-10-11): no boxes — big
-     figures as text (.t3-stats), a section line with its count (.t3-sec),
-     and rows whose state is a colored line on the left (.t3-line, --c);
-     on a phone a window opens from the bottom (a sheet). */
+  /* The app's template (variant 3, user request 2026-10-11): rows whose state
+     is a colored line on the left (.t3-line, --c); on a phone a window opens
+     from the bottom (a sheet). */
   .t3-line{display:flex;align-items:center;gap:10px;padding:9px 10px 9px 12px;border-left:3px solid var(--c,var(--border2));background:linear-gradient(90deg,rgba(var(--tint),.035),transparent 85%);border-radius:0 8px 8px 0;margin-bottom:4px;font-size:13px;cursor:pointer}
   .t3-line:hover{background:linear-gradient(90deg,rgba(var(--tint),.06),transparent 85%)}
   .t3-line .n{flex:1;min-width:0}
