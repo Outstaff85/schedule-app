@@ -61,7 +61,8 @@ def check(example):
     version = str(example.get("model") or "base-v1")[:40]
     shift = round(moved(model, fixed), 5)
     image = None
-    if shift >= MOVED_MIN:  # only a corrected page is kept, so only it carries its copy
+    keep_right = example.get("keep") is True and shift < MOVED_MIN
+    if shift >= MOVED_MIN or keep_right:  # a corrected page, or one in five the model got right, carries its copy
         try:
             base64.b64decode(str(example.get("image") or ""), validate=True)
         except Exception:
@@ -77,11 +78,17 @@ def check(example):
         if page_image is None:
             return None, "a changed kind needs a small JPEG of the page"
     return {"image": image, "cornersModel": model, "cornersFixed": fixed, "source": source, "model": version,
-            "moved": shift, "kindModel": kind_model, "kindFixed": kind_fixed, "pageImage": page_image}, None
+            "moved": shift, "kindModel": kind_model, "kindFixed": kind_fixed, "pageImage": page_image, "right": keep_right}, None
 
 
 def kept(ex):
-    """Whether the example is kept (its corners moved or its kind changed), else only counted."""
+    """Whether the example is kept (its corners moved, its kind changed, or a sampled page the
+    model got right), else only counted."""
+    return ex["moved"] >= MOVED_MIN or ex["pageImage"] is not None or ex["right"]
+
+
+def correction(ex):
+    """Whether the example corrects the model (counts toward retraining); a kept right one does not."""
     return ex["moved"] >= MOVED_MIN or ex["pageImage"] is not None
 
 
@@ -90,7 +97,7 @@ def record(ex, tenant_id, now, path, page_path=None):
     path: the corners' copy (None when only the kind was changed); page_path: the page's."""
     return {"cornersModel": ex["cornersModel"], "cornersFixed": ex["cornersFixed"], "moved": ex["moved"],
             "source": ex["source"], "model": ex["model"], "tenantId": tenant_id or "", "image": path,
-            "kindModel": ex["kindModel"], "kindFixed": ex["kindFixed"], "pageImage": page_path,
+            "kindModel": ex["kindModel"], "kindFixed": ex["kindFixed"], "pageImage": page_path, "right": ex["right"],
             "createdAt": now, "deleteAt": now + datetime.timedelta(days=KEEP_DAYS)}
 
 

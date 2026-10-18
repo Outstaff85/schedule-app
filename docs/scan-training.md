@@ -29,17 +29,18 @@ On **Done**, every page the server found is sent in the background to the functi
 |---|---|---|
 | corners moved (≥ 0.5 % of the photo) | both corners + a 256×256 copy of the part of the photo the model looked at | yes |
 | kind changed | both kinds + a 256×256 copy of the page | yes |
-| neither | the corners and kinds only | no — only counted ("the model was right") |
+| neither — one page in five (`rightSeen`) | its corners and kinds + the same 256×256 copy, marked `keep` | yes, as "the model was right" (`right: true`) — so the training also learns what the model already does well and does not forget it |
+| neither — the other four | the corners and kinds only | no — only counted |
 
-Never the full photo; only small copies.
+**What the corner model learns from** is the photo as the model saw it — before it was cut, straightened or enhanced — scaled to 256×256, which is exactly the model's input: the copy, where the model put the corners on it, and where they really are. The cut page is not needed for the corners; it is used only for the page kind, which a future kind model reads on cut pages. Never the full photo; only small copies.
 
 ## 2. Where it is kept
 
 `scan_feedback` (`functions/main.py`, checks in `functions/feedback.py`; a manager login's ID token):
 
 - the copies → Storage `training/scan/<YYYY-MM>/<id>.jpg` (corners) and `<id>-page.jpg` (kind);
-- the record → Firestore `scanTraining/<id>`: `cornersModel`, `cornersFixed`, `moved`, `kindModel`, `kindFixed`, `source`, `model` (the model version that answered), `tenantId`, `image`, `pageImage`, `createdAt`, `deleteAt`;
-- the counts → Firestore `scanTrainingStats/current`: `newSince` (kept since the last training), `kept`, `right`, `movedSum`, and after a training `lastTrainedAt`, `lastVersion`, `lastReport`.
+- the record → Firestore `scanTraining/<id>`: `cornersModel`, `cornersFixed`, `moved`, `kindModel`, `kindFixed`, `right` (a page the model got right, kept as a sample), `source`, `model` (the model version that answered), `tenantId`, `image`, `pageImage`, `createdAt`, `deleteAt`;
+- the counts → Firestore `scanTrainingStats/current`: `newSince` (corrections since the last training — the kept right pages do not count), `kept`, `right`, `movedSum`, and after a training `lastTrainedAt`, `lastVersion`, `lastReport`.
 
 **Privacy:** no client can read or write any of it (no Firestore or Storage rule opens them); only `scan_feedback` writes, only `/scan-train` on the owner's PC (the owner's own Google account) reads. Every firm's corrections are used, with no switch (owner, 2026-10-18).
 
@@ -47,7 +48,7 @@ Never the full photo; only small copies.
 
 ## 3. When to train
 
-When **200** new examples are kept, the super-admin's bell shows **Time to retrain the scanner** (the server counts; the app asks `scan_feedback` `{"action":"stats"}` at most every 6 hours). Nothing trains by itself.
+When **200** new corrections are kept, the super-admin's bell shows **Time to retrain the scanner** (the server counts; the app asks `scan_feedback` `{"action":"stats"}` at most every 6 hours). Nothing trains by itself.
 
 ## 4. How a model is trained (`/scan-train` on the owner's PC)
 

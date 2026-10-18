@@ -53,7 +53,7 @@ export function cutPage(b64: string, quad: Pt[]): Promise<ServerPage> {
 }
 
 // ── the training examples (docs/scan-plan.md → S6) ──
-export type Example = { image?: string; cornersModel: Pt[]; cornersFixed: Pt[]; source: string; model: string; kindModel?: string; kindFixed?: string; pageImage?: string };
+export type Example = { image?: string; cornersModel: Pt[]; cornersFixed: Pt[]; source: string; model: string; kindModel?: string; kindFixed?: string; pageImage?: string; keep?: boolean };
 const QUEUE_KEY = 'scanFeedbackQueue', QUEUE_MAX = 60;
 const readQueue = (): Example[] => { try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); } catch { return []; } };
 const writeQueue = (q: Example[]) => { try { localStorage.setItem(QUEUE_KEY, JSON.stringify(q.slice(-QUEUE_MAX))); } catch { /* full or private */ } };

@@ -969,15 +969,16 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
             return _json({"error": "no examples"}, 400)
         now = datetime.datetime.now(datetime.timezone.utc)
         bucket = None
-        kept = right = bad = 0
+        kept = right = bad = fixes = 0
         moved_sum = 0.0
         for raw in examples[:feedback.MAX_EXAMPLES]:
             ex, why = feedback.check(raw)
             if not ex:
                 bad += 1
                 continue
-            if not feedback.kept(ex):
+            if not feedback.correction(ex):
                 right += 1
+            if not feedback.kept(ex):
                 continue
             if bucket is None:
                 bucket = _model_bucket(storage)
@@ -992,8 +993,10 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
                 bucket.blob(page_path).upload_from_string(ex["pageImage"], content_type="image/jpeg")
             ref.set(feedback.record(ex, claims.get("tenantId"), now, path, page_path))
             kept += 1
+            fixes += feedback.correction(ex)
             moved_sum += ex["moved"]
-        stats_ref.set({"newSince": firestore.Increment(kept), "kept": firestore.Increment(kept),
+        # newSince counts the corrections only: they make a retraining due, the kept right pages do not
+        stats_ref.set({"newSince": firestore.Increment(fixes), "kept": firestore.Increment(kept),
                        "right": firestore.Increment(right), "movedSum": firestore.Increment(moved_sum),
                        "updatedAt": now}, merge=True)
         return _json({"ok": True, "kept": kept, "right": right, "refused": bad})

@@ -29,6 +29,9 @@ type Page = ScannedPage & {
   kindModel?: PageKind | null; kindPending?: boolean; aiRotate?: number;
 };
 let nextUid = 0;
+// One in five pages the model got right is kept too, with its copy, so the training
+// learns from what the model does well and not only from its mistakes.
+let rightSeen = 0;
 
 const STEADY_MS = 1000, LOCK_MS = 250, MOVE = 0.02, REARM = 0.08; // green after 0.25 s on the edges, the shot after 1 s
 const SEND_MAX = 2400;                             // the photo sent to the server, long side
@@ -284,9 +287,12 @@ export function Scanner({ open, onDone, onClose }: { open: boolean; onDone: (pag
   // and both kinds, the others only counted.
   const examples = async (list: Item[]): Promise<Example[]> => Promise.all(list.flatMap(x => x.pages).filter(p => p.modelQuad).map(async p => {
     const kindChanged = !!p.kindModel && !!p.kind && p.kind !== p.kindModel;
+    const keepRight = !p.fixedPart && p.src && p.part && rightSeen++ % 5 === 0;
+    const rightCopy = keepRight ? await partCopy(p.src!, p.part!).catch(() => undefined) : undefined;
     return {
       cornersModel: p.modelQuad!, cornersFixed: p.fixedPart || p.modelQuad!, source: p.source || 'model', model: '',
       ...(p.fixedPart && p.copy ? { image: p.copy } : {}),
+      ...(rightCopy ? { image: rightCopy, keep: true } : {}),
       ...(p.kindModel ? { kindModel: p.kindModel, kindFixed: p.kind || p.kindModel } : {}),
       ...(kindChanged ? { pageImage: await pageCopy(p.b64, p.mediaType).catch(() => undefined) } : {}),
     };

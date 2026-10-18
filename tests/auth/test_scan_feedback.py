@@ -85,3 +85,13 @@ def test_a_kind_left_as_it_was_is_only_counted_and_bad_kinds_are_dropped():
     e, _ = feedback.check(ex(image=None, kindModel="nonsense", kindFixed="x"))
     assert e["kindModel"] is None and e["kindFixed"] is None and not feedback.kept(e)
     assert feedback.check(ex(image=None, kindModel="sefach", kindFixed="other"))[1] == "a changed kind needs a small JPEG of the page"
+
+
+def test_one_in_five_right_pages_is_kept_with_its_copy_but_is_no_correction():
+    e, why = feedback.check(ex(keep=True))
+    assert why is None and e["right"] and feedback.kept(e) and not feedback.correction(e) and e["image"]
+    assert feedback.check(ex(keep=True, image=None))[1] == "the image is not a small JPEG"
+    e, _ = feedback.check(ex(image=None))
+    assert not e["right"] and not feedback.kept(e)
+    now = datetime.datetime(2026, 10, 18, tzinfo=datetime.timezone.utc)
+    assert feedback.record(e, "t", now, None)["right"] is False
