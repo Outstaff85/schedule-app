@@ -4,8 +4,8 @@ The manager app's skeleton: the page layout, global state, tabs and rendering, t
 
 `schedule-manager.html` is one file: CSS and markup (lines ~1–950), then one inline `<script>`. Every function of the page is a global. Since the React migration (stages 6–7) every tab and window is React; the page keeps the frame (the title bar, the side menu / bottom bar and the More sheet, the bell, the account menu, the Language sheet), the login and the super-admin's Firms screen header, the map picker, the scan window, the data layer and the actions the React pieces call through `window.ManagerBridge`. It loads more files:
 - `assets/manager.js` — at startup, one module script: every tab and window, [build.md](build.md) → The manager's React pieces;
-- `manager-data.js` — before the page's script: the page's data layer (the session, the dispatcher, load / save / cache, the punches, uploads, telemetry — Data calls below), generated from `src/manager/data/` (React migration stage 8b);
-- `firestore-backend.js` — at startup (`manager-data.js` starts loading it), the browser data layer, [backend.md](backend.md);
+- `manager-core.js` — before the page's script: the page's data layer (the session, the dispatcher, load / save / cache, the punches, uploads, telemetry — Data calls below), generated from `src/manager/data/` (React migration stage 8b);
+- `firestore-backend.js` — at startup (`manager-core.js` starts loading it), the browser data layer, [backend.md](backend.md);
 - `scan-pipeline.js` — on the first scan, [scan.md](scan.md);
 - pdf.js — when a PDF is read, [scan.md](scan.md).
 
@@ -114,7 +114,7 @@ Not paged: chips and form rows being edited (selected clients, children), and pr
 
 ## Data calls
 
-The code of this section and the two after it (Loading and saving data, Telemetry) — and of `getSession` / `saveSession` / `clearSession` / `gsAuth` / `fsTenantId` / `STORAGE_KEY` (Login and session), the punch cache (`getPunchLog` / `savePunchLog` / `ensurePunchesSince` / `mergeRemotePunches`), `uid()` / `genToken()` and the data itself (`workers`, `clients`, `suppliers`, `__dataReady`) — is TypeScript in `src/manager/data/`, built by `scripts/build-globals.mjs` into the committed `manager-data.js`, which the page loads before its own script ([build.md](build.md) → Generated scripts; change the TypeScript, then `npm run build:globals`). It is layered, each file using only those above it:
+The code of this section and the two after it (Loading and saving data, Telemetry) — and of `getSession` / `saveSession` / `clearSession` / `gsAuth` / `fsTenantId` / `STORAGE_KEY` (Login and session), the punch cache (`getPunchLog` / `savePunchLog` / `ensurePunchesSince` / `mergeRemotePunches`), `uid()` / `genToken()` and the data itself (`workers`, `clients`, `suppliers`, `__dataReady`) — is TypeScript in `src/manager/data/`, built by `scripts/build-globals.mjs` into the committed `manager-core.js`, which the page loads before its own script ([build.md](build.md) → Generated scripts; change the TypeScript, then `npm run build:globals`). It is layered, each file using only those above it:
 
 | File | What |
 |---|---|

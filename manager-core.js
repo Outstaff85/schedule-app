@@ -1,4 +1,4 @@
-// GENERATED from src/manager/data/*.ts by scripts/build-globals.mjs — never edit
+// GENERATED from src/manager/data/, src/manager/logic/ by scripts/build-globals.mjs — never edit
 // by hand: change the TypeScript and run `node scripts/build-globals.mjs`
 // (npm run build fails while this file is stale). The manager page's data
 // layer — session, dispatcher, load / save / cache, punches, uploads, telemetry —
@@ -6,7 +6,7 @@
 (function() {
 	//#region src/manager/data/events.ts
 	/** A text for the user, translated by the page when shown. */
-	var tr = (text, vars) => ({
+	var tr$1 = (text, vars) => ({
 		text,
 		vars
 	});
@@ -297,7 +297,7 @@
 		} catch {}
 		if (!quiet && json && json.error === "Session expired or invalid — please sign in again" && getSession()) {
 			clearSession();
-			notify(tr("Session expired — please sign in again"));
+			notify(tr$1("Session expired — please sign in again"));
 			setTimeout(() => location.reload(), 1200);
 		}
 		return jsonResponse(json);
@@ -405,14 +405,14 @@
 		ensureChain = ensureChain.then(async () => {
 			const have = loadedFrom || punchWindowStart();
 			if (want >= have) return true;
-			notify(want <= ALL_PUNCHES_FROM ? tr("Loading the whole punch history…") : tr("Loading earlier punches…"), 1500);
+			notify(want <= ALL_PUNCHES_FROM ? tr$1("Loading the whole punch history…") : tr$1("Loading earlier punches…"), 1500);
 			try {
 				const older = await (await loadFirestoreBackend()).punchesBetween(fsTenantId(), want, have);
 				loadedFrom = want;
 				mergeRemotePunches(older);
 				return true;
 			} catch (e) {
-				notify(tr("Could not load earlier punches: {0}", { 0: e && e.message || e }));
+				notify(tr$1("Could not load earlier punches: {0}", { 0: e && e.message || e }));
 				return false;
 			}
 		});
@@ -501,7 +501,7 @@
 	}
 	function applyServerLoad(gd) {
 		if (hasUnsavedLocal()) {
-			notify(tr("Unsaved changes found on this device — saving them now"), 4e3);
+			notify(tr$1("Unsaved changes found on this device — saving them now"), 4e3);
 			autoSave();
 			return false;
 		}
@@ -543,11 +543,11 @@
 					localStorage.removeItem(UNSAVED_KEY());
 				} catch {}
 				emit("save", "saved");
-				notify(ok ? tr("Saved") : tr("Save failed — kept on this device"));
+				notify(ok ? tr$1("Saved") : tr$1("Save failed — kept on this device"));
 			} catch (e) {
 				console.error("Save failed", e);
 				emit("save", "saved");
-				notify(tr("Save error"));
+				notify(tr$1("Save error"));
 			}
 		}, 800);
 	}
@@ -579,13 +579,13 @@
 				watchHoursBatches();
 			} else {
 				const err = loadError();
-				notify(tr("Could not load from the server — showing saved data{0}", { 0: err ? " (" + err.slice(0, 80) + ")" : "" }), 6e3);
+				notify(tr$1("Could not load from the server — showing saved data{0}", { 0: err ? " (" + err.slice(0, 80) + ")" : "" }), 6e3);
 				retryLoadDataWhenBack();
 				if (!wasReady) emit("data");
 			}
 		} catch (e) {
 			console.error("Load failed", e);
-			notify(tr("Offline — using cached data"));
+			notify(tr$1("Offline — using cached data"));
 			if (!state.ready) {
 				state.ready = true;
 				emit("data");
@@ -671,7 +671,7 @@
 			loadRetryArmed = false;
 			if (gd) {
 				try {
-					if (applyServerLoad(gd)) notify(tr("Data loaded"));
+					if (applyServerLoad(gd)) notify(tr$1("Data loaded"));
 				} catch {}
 				afterServerLoad();
 			}
@@ -681,7 +681,356 @@
 		setTimeout(again, 15e3);
 	}
 	//#endregion
-	//#region src/manager/data/global.ts
+	//#region src/manager/logic/access.ts
+	/** A section of a staff / HR login (users.permissions → session.permissions: '*' or a list). Other roles see every section. */
+	function hasPermission(section) {
+		const s = getSession();
+		if (!s || s.role !== "staff" && s.role !== "hr") return true;
+		const perms = s.permissions;
+		return perms === "*" || Array.isArray(perms) && perms.indexOf(section) !== -1;
+	}
+	var NAV_TAB_PERMISSION = {
+		schedule: "schedule",
+		workers: "workers",
+		clients: "clients",
+		suppliers: "suppliers",
+		admin: "workers",
+		accounting: "accounting"
+	};
+	function isHrSession() {
+		const s = getSession();
+		return !!s && s.role === "hr";
+	}
+	function isFirmAdminSession() {
+		const s = getSession();
+		return !!s && (s.role === "tenant_admin" || s.role === "superadmin");
+	}
+	var HR_HIDDEN_TABS = ["dashboard", "admin"];
+	function hrPayOnly() {
+		const s = getSession();
+		return !!s && s.role === "hr" && hasPermission("accounting");
+	}
+	function hrHourReview() {
+		const s = getSession();
+		return !!s && s.role === "hr" && (s.hourPerms || []).some((p) => p === "hours" || p === "schedule");
+	}
+	function tabAllowed(tab) {
+		if (isHrSession() && HR_HIDDEN_TABS.includes(tab)) return false;
+		if (tab === "accounting" && hrHourReview()) return true;
+		return !NAV_TAB_PERMISSION[tab] || hasPermission(NAV_TAB_PERMISSION[tab]);
+	}
+	/** The tab a login opens on. */
+	function homeTab() {
+		if (!isHrSession()) return "dashboard";
+		return [
+			"workers",
+			"schedule",
+			"clients",
+			"suppliers",
+			"accounting"
+		].find(tabAllowed) || "workers";
+	}
+	var MORE_TABS = [
+		"clients",
+		"suppliers",
+		"admin"
+	];
+	//#endregion
+	//#region src/manager/logic/i18n.ts
+	var I18N_LANGS = {
+		en: "English",
+		he: "עברית",
+		ru: "Русский"
+	};
+	var dict = {};
+	var lang = "en";
+	/** the language and its loaded dictionary (the React pieces adopt them, ManagerBridge.lang / dict) */
+	var currentLang = () => lang;
+	var currentDict = () => dict;
+	function tr(s, params) {
+		let out = lang !== "en" && dict[s] || s;
+		if (params) out = out.replace(/\{(\w+)\}/g, (m, k) => params[k] != null ? String(params[k]) : m);
+		return out;
+	}
+	function uiLocale() {
+		return {
+			he: "he-IL",
+			ru: "ru-RU"
+		}[lang] || "en-GB";
+	}
+	function storedLanguage() {
+		try {
+			const l = localStorage.getItem("uiLang");
+			return l && I18N_LANGS[l] ? l : "en";
+		} catch {
+			return "en";
+		}
+	}
+	var onNewer = null;
+	function onNewerDictionary(fn) {
+		onNewer = fn;
+	}
+	async function loadI18n(want) {
+		const set = (l, d) => {
+			lang = l;
+			dict = d || {};
+			document.documentElement.lang = l;
+		};
+		if (!I18N_LANGS[want] || want === "en") {
+			set("en", {});
+			return;
+		}
+		let cached = null;
+		try {
+			cached = JSON.parse(localStorage.getItem("i18n_" + want) || "null");
+		} catch {}
+		if (cached) set(want, cached);
+		const fresh = fetch("i18n/" + want + ".json", { cache: "no-cache" }).then((r) => r.ok ? r.json() : null).then((d) => {
+			if (!d || typeof d !== "object") return false;
+			const changed = JSON.stringify(d) !== JSON.stringify(cached);
+			try {
+				localStorage.setItem("i18n_" + want, JSON.stringify(d));
+			} catch {}
+			if (lang === want || !cached) set(want, d);
+			return changed;
+		}).catch(() => false);
+		if (cached) {
+			fresh.then((ch) => {
+				if (ch && lang === want && onNewer) onNewer();
+			});
+			return;
+		}
+		await fresh;
+	}
+	//#endregion
+	//#region src/lib/utils.ts
+	/** Escapes text put into HTML by hand (a print page) — the old pages' esc(), the same rule (CLAUDE.md → XSS). */
+	function esc(s) {
+		return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({
+			"&": "&amp;",
+			"<": "&lt;",
+			">": "&gt;",
+			"\"": "&quot;",
+			"'": "&#39;"
+		})[c]);
+	}
+	//#endregion
+	//#region src/manager/worker.ts
+	var LEGACY_DOC_IN_ADDRESS = /^\s*(?:ת\.ז\.|Passport)\s*(\S+)\s*$/;
+	function workerDocId(w) {
+		if (w.docId) return w.docId;
+		const m = LEGACY_DOC_IN_ADDRESS.exec(w.address || "");
+		return m ? m[1] : "";
+	}
+	function workerAddress(w) {
+		const addr = w.address || "";
+		if (w.docId) return addr;
+		return LEGACY_DOC_IN_ADDRESS.test(addr) ? "" : addr;
+	}
+	var WORKER_DOC_TYPES = {
+		contract: "Contract",
+		visa: "Visa",
+		work_permit: "Work permit",
+		other: "Other"
+	};
+	/** "DD/MM/YYYY" for a stored YYYY-MM-DD, else the value as it is. */
+	function fmtDMY(s) {
+		const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || "");
+		return m ? `${m[3]}/${m[2]}/${m[1]}` : s || "";
+	}
+	//#endregion
+	//#region src/manager/logic/util.ts
+	var xlsxLoading = null;
+	function loadXlsx() {
+		if (typeof window.XLSX !== "undefined") return Promise.resolve();
+		return xlsxLoading || (xlsxLoading = new Promise((res, rej) => {
+			const sc = document.createElement("script");
+			sc.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+			sc.onload = () => res();
+			sc.onerror = () => {
+				xlsxLoading = null;
+				sc.remove();
+				rej(/* @__PURE__ */ new Error("Excel library not loaded"));
+			};
+			document.head.appendChild(sc);
+		}));
+	}
+	function getSundayOfWeek(d) {
+		const c = new Date(d);
+		c.setDate(c.getDate() - c.getDay());
+		c.setHours(0, 0, 0, 0);
+		return c;
+	}
+	function toMins(t) {
+		if (!t) return null;
+		const [h, m] = t.split(":").map(Number);
+		return h * 60 + m;
+	}
+	/** A shift's hours; one that ends at or before its start crosses midnight. */
+	function calcHours(s, e) {
+		if (!s || !e) return 0;
+		const sm = toMins(s), em = toMins(e);
+		return em <= sm ? (1440 - sm + em) / 60 : (em - sm) / 60;
+	}
+	//#endregion
+	//#region src/manager/logic/pay.ts
+	function analyzeDayPunches(entries, date) {
+		return Payroll.analyzeDayPunches(entries, date, { tr });
+	}
+	function groupPunchesIntoShifts(entries) {
+		return Payroll.groupPunchesIntoShifts(entries);
+	}
+	var PAY_RULES = () => Payroll.PAY_RULES;
+	function effectiveRates(w, clientId) {
+		return Payroll.effectiveRates(w, clientId, state.clients);
+	}
+	function shiftPay(hours, w, isSat, clientId) {
+		return Payroll.shiftPay(hours, w, isSat, clientId, state.clients);
+	}
+	function isDailyPay(w) {
+		return Payroll.isDailyPay(w);
+	}
+	function dailyRate(w) {
+		return Payroll.dailyRate(w);
+	}
+	function shiftPayFor(hours, w, isSat, clientId, date, seenDays) {
+		return Payroll.shiftPayFor(hours, w, isSat, clientId, date, seenDays, state.clients);
+	}
+	function travelPay(w, days, months) {
+		return Payroll.travelPay(w, days, months);
+	}
+	function salaryPeriodKey(period, now) {
+		return Payroll.salaryPeriodKey(period, now);
+	}
+	function dayOverride(w, key) {
+		return Payroll.dayOverride(w, key);
+	}
+	function localYMD(d) {
+		return Payroll.localYMD(d);
+	}
+	function wOwnRate(w) {
+		return Payroll.wOwnRate(w);
+	}
+	//#endregion
+	//#region src/manager/logic/workers.ts
+	/** Where worker files are kept, as the UI names it. */
+	var DOC_STORE = "Firebase Storage";
+	function isActiveWorker(w) {
+		return !!w && w.status !== "fired";
+	}
+	function workerExpiryStatus(w) {
+		if (!w || !isActiveWorker(w) || !w.expiryEnabled || !w.startDate || !w.expiryMonths) return null;
+		const start = /* @__PURE__ */ new Date(w.startDate + "T00:00:00");
+		if (isNaN(start.getTime())) return null;
+		const deadline = new Date(start);
+		deadline.setMonth(deadline.getMonth() + Number(w.expiryMonths));
+		const warnFrom = new Date(deadline);
+		warnFrom.setMonth(warnFrom.getMonth() - Number(w.expiryWarnMonths || 0));
+		const now = /* @__PURE__ */ new Date();
+		if (now >= deadline) return {
+			level: "overdue",
+			deadline
+		};
+		if (now >= warnFrom) return {
+			level: "warning",
+			deadline
+		};
+		return null;
+	}
+	var WORKER_DOC_WARN_DAYS = {
+		contract: 30,
+		visa: 60,
+		work_permit: 60,
+		other: 30
+	};
+	function parseDocDate(v) {
+		const s = String(v || "").trim();
+		let m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/);
+		if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+		m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+		if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+		return null;
+	}
+	function workerDocExpiries(w) {
+		const today = /* @__PURE__ */ new Date();
+		today.setHours(0, 0, 0, 0);
+		const out = [], seen = /* @__PURE__ */ new Set();
+		for (const d of w.docs || []) {
+			const date = parseDocDate(d.expiry);
+			if (!date || isNaN(date.getTime())) continue;
+			const key = d.type + "|" + d.expiry;
+			if (seen.has(key)) continue;
+			seen.add(key);
+			const label = tr(WORKER_DOC_TYPES[d.type] || "Document");
+			const warnAt = new Date(today);
+			warnAt.setDate(warnAt.getDate() + (WORKER_DOC_WARN_DAYS[d.type] || 30));
+			if (date < today) out.push({
+				doc: d,
+				level: "error",
+				date,
+				text: tr("{0} expired {1}", {
+					0: label,
+					1: date.toLocaleDateString("en-GB")
+				})
+			});
+			else if (date <= warnAt) out.push({
+				doc: d,
+				level: "warn",
+				date,
+				text: tr("{0} expires {1}", {
+					0: label,
+					1: date.toLocaleDateString("en-GB")
+				})
+			});
+		}
+		return out.sort((a, b) => a.date.getTime() - b.date.getTime());
+	}
+	function workerDocStatus(w) {
+		const missing = [];
+		if (!workerDocId(w)) missing.push(tr("ID/passport no."));
+		if (!w.docUrl) missing.push(tr("Form 101"));
+		if (!w.assetsFileId) missing.push(tr("document scan"));
+		if (w.docHasSignature === false) missing.push(tr("signature"));
+		if ((w.docType || "israeli_id") === "israeli_id" && w.docExtraPages === 0) missing.push(tr("ספח (ID appendix)"));
+		let expiry = null;
+		const d = parseDocDate(w.docExpiry);
+		if (d && !isNaN(d.getTime())) {
+			const today = /* @__PURE__ */ new Date();
+			today.setHours(0, 0, 0, 0);
+			const warnAt = new Date(today);
+			warnAt.setMonth(warnAt.getMonth() + 3);
+			if (d < today) expiry = {
+				level: "error",
+				date: d,
+				text: tr("ID/passport expired {0}", { 0: d.toLocaleDateString("en-GB") })
+			};
+			else if (d <= warnAt) expiry = {
+				level: "warn",
+				date: d,
+				text: tr("ID/passport expires {0}", { 0: d.toLocaleDateString("en-GB") })
+			};
+		}
+		const failed = !!w.docUploadFailed;
+		const docExpiries = workerDocExpiries(w);
+		const docExpired = docExpiries.find((x) => x.level === "error") || null;
+		const level = failed || expiry && expiry.level === "error" || docExpired ? "error" : missing.length || expiry || docExpiries.length ? "warn" : "ok";
+		const lines = [];
+		if (failed) lines.push(tr("Last upload to {0} failed", { 0: DOC_STORE }));
+		if (missing.length) lines.push(tr("Missing: {0}", { 0: missing.join(", ") }));
+		if (expiry) lines.push(expiry.text);
+		for (const x of docExpiries) lines.push(x.text);
+		return {
+			level,
+			missing,
+			expiry,
+			docExpiries,
+			docExpired,
+			failed,
+			lines
+		};
+	}
+	//#endregion
+	//#region src/manager/globals.ts
 	Object.assign(window, {
 		ManagerData: {
 			on,
@@ -734,7 +1083,53 @@
 		reportTiming,
 		markFirstContent,
 		markFreshContent,
-		reportError
+		reportError,
+		hasPermission,
+		NAV_TAB_PERMISSION,
+		isHrSession,
+		isFirmAdminSession,
+		HR_HIDDEN_TABS,
+		hrPayOnly,
+		hrHourReview,
+		tabAllowed,
+		homeTab,
+		MORE_TABS,
+		I18N_LANGS,
+		tr,
+		uiLocale,
+		storedLanguage,
+		loadI18n,
+		currentLang,
+		currentDict,
+		onNewerDictionary,
+		esc,
+		loadXlsx,
+		getSundayOfWeek,
+		toMins,
+		calcHours,
+		fmtDMY,
+		analyzeDayPunches,
+		groupPunchesIntoShifts,
+		PAY_RULES: PAY_RULES(),
+		effectiveRates,
+		shiftPay,
+		isDailyPay,
+		dailyRate,
+		shiftPayFor,
+		travelPay,
+		salaryPeriodKey,
+		dayOverride,
+		localYMD,
+		wOwnRate,
+		DOC_STORE,
+		workerDocId,
+		workerAddress,
+		isActiveWorker,
+		workerExpiryStatus,
+		WORKER_DOC_TYPES,
+		parseDocDate,
+		workerDocExpiries,
+		workerDocStatus
 	});
 	for (const k of [
 		"workers",
@@ -758,12 +1153,15 @@
 		__uploadsInFlight: uploadsRunning,
 		__punchLoadedFrom: punchLoadedFrom,
 		__punchSynced: punchSynced,
-		__hoursBatches: hoursBatches
+		__hoursBatches: hoursBatches,
+		I18N_LANG: currentLang,
+		I18N: currentDict
 	};
 	for (const [name, get] of Object.entries(getters)) Object.defineProperty(window, name, {
 		get,
 		configurable: true
 	});
+	setHost({ canWriteWorkers: () => hasPermission("workers") || hasPermission("schedule") });
 	installDispatcher();
 	installTelemetryFlush();
 	loadFirestoreBackend().catch((e) => console.warn("Firestore backend:", e));

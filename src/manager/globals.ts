@@ -1,4 +1,4 @@
-// The entry scripts/build-globals.mjs builds into manager-data.js: a plain
+// The entry scripts/build-globals.mjs builds into manager-core.js: a plain
 // script that schedule-manager.html loads before its own script.
 //
 // The data layer, in layers (each file uses only those above it):
@@ -19,15 +19,20 @@
 // clients, suppliers, __dataReady), and the state the page reads as
 // read-only accessors. React migration stage 8b (docs/react-migration-plan.md);
 // 8c imports these modules directly and this file goes.
-import * as events from './events';
-import * as ids from './ids';
-import * as session from './session';
-import { state } from './state';
-import * as stateFns from './state';
-import * as api from './api';
-import * as punches from './punches';
-import * as store from './store';
-import * as telemetry from './telemetry';
+import * as events from './data/events';
+import * as ids from './data/ids';
+import * as session from './data/session';
+import { state } from './data/state';
+import * as stateFns from './data/state';
+import * as api from './data/api';
+import * as punches from './data/punches';
+import * as store from './data/store';
+import * as telemetry from './data/telemetry';
+import * as access from './logic/access';
+import * as i18n from './logic/i18n';
+import * as util from './logic/util';
+import * as pay from './logic/pay';
+import * as wk from './logic/workers';
 
 const w = window as unknown as Record<string, unknown>;
 
@@ -57,6 +62,23 @@ Object.assign(w, {
   // telemetry
   queueTelemetry: telemetry.queueTelemetry, flushTelemetry: telemetry.flushTelemetry, reportTiming: telemetry.reportTiming,
   markFirstContent: telemetry.markFirstContent, markFreshContent: telemetry.markFreshContent, reportError: telemetry.reportError,
+  // who may see what (logic/access.ts)
+  hasPermission: access.hasPermission, NAV_TAB_PERMISSION: access.NAV_TAB_PERMISSION, isHrSession: access.isHrSession,
+  isFirmAdminSession: access.isFirmAdminSession, HR_HIDDEN_TABS: access.HR_HIDDEN_TABS, hrPayOnly: access.hrPayOnly,
+  hrHourReview: access.hrHourReview, tabAllowed: access.tabAllowed, homeTab: access.homeTab, MORE_TABS: access.MORE_TABS,
+  // translations (logic/i18n.ts)
+  I18N_LANGS: i18n.I18N_LANGS, tr: i18n.tr, uiLocale: i18n.uiLocale, storedLanguage: i18n.storedLanguage, loadI18n: i18n.loadI18n,
+  currentLang: i18n.currentLang, currentDict: i18n.currentDict, onNewerDictionary: i18n.onNewerDictionary,
+  // helpers (logic/util.ts)
+  esc: util.esc, loadXlsx: util.loadXlsx, getSundayOfWeek: util.getSundayOfWeek, toMins: util.toMins, calcHours: util.calcHours, fmtDMY: util.fmtDMY,
+  // pay, over payroll.js (logic/pay.ts)
+  analyzeDayPunches: pay.analyzeDayPunches, groupPunchesIntoShifts: pay.groupPunchesIntoShifts, PAY_RULES: pay.PAY_RULES(),
+  effectiveRates: pay.effectiveRates, shiftPay: pay.shiftPay, isDailyPay: pay.isDailyPay, dailyRate: pay.dailyRate, shiftPayFor: pay.shiftPayFor,
+  travelPay: pay.travelPay, salaryPeriodKey: pay.salaryPeriodKey, dayOverride: pay.dayOverride, localYMD: pay.localYMD, wOwnRate: pay.wOwnRate,
+  // a worker's status (logic/workers.ts)
+  DOC_STORE: wk.DOC_STORE, workerDocId: wk.workerDocId, workerAddress: wk.workerAddress, isActiveWorker: wk.isActiveWorker,
+  workerExpiryStatus: wk.workerExpiryStatus, WORKER_DOC_TYPES: wk.WORKER_DOC_TYPES, parseDocDate: wk.parseDocDate,
+  workerDocExpiries: wk.workerDocExpiries, workerDocStatus: wk.workerDocStatus,
 });
 
 // The data, read and replaced by the page under its old names.
@@ -69,8 +91,13 @@ const getters: Record<string, () => unknown> = {
   __punchLoadedFrom: punches.punchLoadedFrom,
   __punchSynced: punches.punchSynced,
   __hoursBatches: store.hoursBatches,
+  I18N_LANG: i18n.currentLang,
+  I18N: i18n.currentDict,
 };
 for (const [name, get] of Object.entries(getters)) Object.defineProperty(window, name, {get, configurable: true});
+
+// The data layer's one question about rights, answered by logic/access.ts.
+events.setHost({canWriteWorkers: () => access.hasPermission('workers') || access.hasPermission('schedule')});
 
 api.installDispatcher();
 telemetry.installTelemetryFlush();

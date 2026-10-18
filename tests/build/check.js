@@ -21,7 +21,7 @@ function walk(dir, base = '') {
   const { staticFiles } = await import(path.join(ROOT, 'scripts', 'static-files.mjs'));
   const errs = [];
   const old = staticFiles(ROOT);
-  for (const f of ['schedule-manager.html', 'service-worker.js', 'og.css', 'manifest.json', 'payroll.js', 'manager-data.js', 'firestore-backend.js', 'icon-192.png', 'icon-512.png'])
+  for (const f of ['schedule-manager.html', 'service-worker.js', 'og.css', 'manifest.json', 'payroll.js', 'manager-core.js', 'firestore-backend.js', 'icon-192.png', 'icon-512.png'])
     if (!old.includes(f)) errs.push(`${f} is not in the list of served files (scripts/static-files.mjs)`);
   // The new pages are built by Vite, never copied: /next, the client portal (stage 3), the supplier portal (stage 4) and the punch page (stage 5).
   for (const [f, src] of [['client-portal.html', 'src/client/'], ['supplier-portal.html', 'src/supplier/'], ['worker-punch.html', 'src/punch/']])

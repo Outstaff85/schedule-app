@@ -14,7 +14,7 @@ const CORE = [
   './supplier-portal.html',
   './client-portal.html',
   './payroll.js',
-  './manager-data.js',
+  './manager-core.js',
   './og.css',
   './manifest.json',
   './icon-192.png',

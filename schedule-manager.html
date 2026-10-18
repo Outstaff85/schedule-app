@@ -476,7 +476,7 @@ body:has(.overlay.open){overflow:hidden}
 <!-- the one copy of the shift pairing and pay (src/lib/payroll.ts; docs/accounting.md) -->
 <script src="payroll.js"></script>
 <!-- the data layer (src/manager/data/; docs/app-core.md → Data calls) -->
-<script src="manager-data.js"></script>
+<script src="manager-core.js"></script>
 <style>
   /* Odinson Glass form fields (mockup 04, owner 2026-10-13): every field in a
      window is a soft rounded glass box — 38px tall, 12px corners, a faint fill
@@ -873,22 +873,8 @@ let editingSupplierId = null;
 // read and replaced here under these names.
 
 // --- Utils --------------------------------------------------------------------
-function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-// SheetJS (Excel read and write, ~900 KB) is loaded only when an Excel
-// export or import needs it, not with the page. Same code in
-// schedule-manager.html and supplier-portal.html.
-let __xlsxLoading = null;
-function loadXlsx(){
-  if(typeof XLSX !== 'undefined') return Promise.resolve();
-  return __xlsxLoading || (__xlsxLoading = new Promise((res, rej) => {
-    const sc = document.createElement('script');
-    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-    sc.onload = () => res();
-    sc.onerror = () => { __xlsxLoading = null; sc.remove(); rej(new Error('Excel library not loaded')); };
-    document.head.appendChild(sc);
-  }));
-}
-
+// esc(), loadXlsx(), getSundayOfWeek(), toMins(), calcHours(), fmtDMY() are
+// src/manager/logic/util.ts, in manager-core.js.
 
 // ── Translations (docs/translations.md) ─────────────────────────────────────
 // Every UI text in the code is English. tr('Total Pay') returns it in the
@@ -900,13 +886,9 @@ function loadXlsx(){
 // language select, English by default, setLanguage()); the layout never
 // changes (left to right). Form 101 is outside this: it is
 // always Hebrew.
-const I18N_LANGS = {en:'English', he:'עברית', ru:'Русский'};
-var I18N = {}, I18N_LANG = 'en';
-function tr(s, params){
-  let out = (I18N_LANG !== 'en' && I18N[s]) || s;
-  if(params) out = out.replace(/\{(\w+)\}/g, (m, k) => params[k] != null ? params[k] : m);
-  return out;
-}
+// tr(), uiLocale(), storedLanguage(), loadI18n(), I18N_LANGS are
+// src/manager/logic/i18n.ts, in manager-core.js; the page's markup and the
+// Language button are here.
 function applyI18n(root){
   const host = root || document;
   const keyOf = (el, attr) => { const k = '__i18n_' + attr; if(el[k] == null) el[k] = attr === 'text' ? (el.getAttribute('data-i18n') || el.textContent.trim()) : el.getAttribute('data-i18n-' + attr); return el[k]; };
@@ -914,10 +896,6 @@ function applyI18n(root){
   host.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = tr(keyOf(el, 'placeholder')); });
   host.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = tr(keyOf(el, 'title')); });
 }
-// The date locale for month and weekday names on screen (numeric dates stay dd/mm/yyyy).
-function uiLocale(){ return {he:'he-IL', ru:'ru-RU'}[I18N_LANG] || 'en-GB'; }
-// This device's language (localStorage.uiLang, shared by the three pages): English by default.
-function storedLanguage(){ try{ const l = localStorage.getItem('uiLang'); return I18N_LANGS[l] ? l : 'en'; }catch(e){ return 'en'; } }
 // The language (the Language button, .lang-btn): keeps the choice on this device and redraws in it;
 // a signed-in user's choice is also saved to their account (updateMyLanguage), and login brings it back on any device.
 async function setLanguage(lang, opts){
@@ -1107,25 +1085,8 @@ function cardTables(root){
   const mo = new MutationObserver(() => { if(!queued){ queued = true; requestAnimationFrame(run); } });
   ['sectionAdmin'].forEach(id => { const el = document.getElementById(id); if(el) mo.observe(el, {childList:true, subtree:true}); });
 })();
-// Loads the firm language's dictionary: from this device's copy at once when
-// there is one (no wait at startup), refreshed from i18n/<lang>.json; a newer
-// file redraws the page. English needs no file.
-async function loadI18n(lang){
-  const set = (l, d) => { I18N_LANG = l; I18N = d || {}; document.documentElement.lang = l; };
-  if(!I18N_LANGS[lang] || lang === 'en'){ set('en', {}); return; }
-  let cached = null;
-  try{ cached = JSON.parse(localStorage.getItem('i18n_' + lang) || 'null'); }catch(e){}
-  if(cached) set(lang, cached);
-  const fresh = fetch('i18n/' + lang + '.json', {cache:'no-cache'}).then(r => r.ok ? r.json() : null).then(d => {
-    if(!d || typeof d !== 'object') return false;
-    const changed = JSON.stringify(d) !== JSON.stringify(cached);
-    try{ localStorage.setItem('i18n_' + lang, JSON.stringify(d)); }catch(e){}
-    if(I18N_LANG === lang || !cached) set(lang, d);
-    return changed;
-  }).catch(() => false);
-  if(cached){ fresh.then(ch => { if(ch && I18N_LANG === lang) redrawForLanguage(); }); return; }
-  await fresh;
-}
+// A newer dictionary than the one shown: redraw in it.
+onNewerDictionary(()=>redrawForLanguage());
 function redrawForLanguage(){
   applyI18n();
   syncLangButtons();
@@ -1135,19 +1096,11 @@ function redrawForLanguage(){
   try{ if(typeof render === 'function') render(); }catch(e){}
   try{ if(typeof currentTab !== 'undefined' && currentTab === 'accounting') renderAccounting(); }catch(e){}
 }
-function getSundayOfWeek(d){ const c=new Date(d); c.setDate(c.getDate()-c.getDay()); c.setHours(0,0,0,0); return c; }
-function toMins(t){ if(!t)return null; const[h,m]=t.split(':').map(Number); return h*60+m; }
-function calcHours(s,e){ if(!s||!e)return 0; const sm=toMins(s),em=toMins(e); return em<=sm?(1440-sm+em)/60:(em-sm)/60; }
 // ═══ CANONICAL punch-hours calculation — single source of truth. ═══
 // The one copy is src/lib/payroll.ts, loaded as payroll.js (the global
-// Payroll; docs/accounting.md → Payroll module); these wrappers pass this
-// page's `tr` and `clients`. Dashboard salary widget, the salary table and the
-// CSV export ALL call it. Do not add a second hours calc.
-// Pair a day's punches chronologically; return total hours + a list of anomalies.
-function analyzeDayPunches(entries,date){ return Payroll.analyzeDayPunches(entries,date,{tr}); }
-// Pair one worker's punches into shifts chronologically, across midnight; each
-// bucket is tagged with the date of its opening punch.
-function groupPunchesIntoShifts(entries){ return Payroll.groupPunchesIntoShifts(entries); }
+// Payroll; docs/accounting.md → Payroll module); its wrappers with the page's
+// names (analyzeDayPunches, shiftPay…) are src/manager/logic/pay.ts. Do not
+// add a second hours calc.
 // Shifts: the weekly roster (w.schedule[0..6], Sunday first) plus changes
 // made for one date only (w.dateShifts['YYYY-MM-DD'] = {type, start, end}),
 // which win over the roster on that date.
@@ -1160,31 +1113,6 @@ function shiftOn(w, date){
 function weekShifts(w){ return [0,1,2,3,4,5,6].map(i => { const d=new Date(weekStart); d.setDate(d.getDate()+i); return shiftOn(w,d); }); }
 function workerTotalHours(w){ return weekShifts(w).reduce((s,sh)=>s+(sh.type==='work'?calcHours(sh.start,sh.end):0),0); }
 
-// Inactive workers (status 'fired') leave the everyday lists — the Workers
-// tab (unless its Status filter picks them), the Schedule, Today
-// and the contract warnings — and come back when set Active again on their
-// card (per user request 2026-10-11). Accounting still counts their hours.
-function isActiveWorker(w){ return !!w && w.status!=='fired'; }
-
-// ── Contract-expiry warning (per-worker, opt-in) ───────────────────────────────
-// A worker can optionally set expiryMonths (how many months after startDate
-// the deadline hits) and expiryWarnMonths (how many months before the
-// deadline to start warning). Returns null if the feature is off/unset for
-// this worker, or {level:'warning'|'overdue', deadline:Date} otherwise.
-// Single source of truth — used by every badge/section below.
-function workerExpiryStatus(w){
-  if(!w || !isActiveWorker(w) || !w.expiryEnabled || !w.startDate || !w.expiryMonths) return null;
-  const start = new Date(w.startDate+'T00:00:00');
-  if(isNaN(start)) return null;
-  const deadline = new Date(start);
-  deadline.setMonth(deadline.getMonth() + Number(w.expiryMonths));
-  const warnFrom = new Date(deadline);
-  warnFrom.setMonth(warnFrom.getMonth() - Number(w.expiryWarnMonths||0));
-  const now = new Date();
-  if(now >= deadline) return {level:'overdue', deadline};
-  if(now >= warnFrom) return {level:'warning', deadline};
-  return null;
-}
 // The notice under the title bar when the app opens: how many contracts have
 // expired or expire soon (workerExpiryStatus, active workers only); "Show"
 // opens Today, where they are listed; ✕ hides it until the next app start.
@@ -1202,163 +1130,17 @@ function showContractNotice(){
   el.style.display='';
 }
 function closeContractNotice(){ try{ sessionStorage.setItem('contractNoticeClosed','1'); }catch(e){} showContractNotice(); }
-// ── Worker document completeness ────────────────────────────────────────────
-// One status per worker, used by the Workers list/cards badge, the cards'
-// "Documents" row, the worker card, and the "Documents incomplete" filter.
-//   missing — ID/passport number (workerDocId), Form 101 PDF (w.docUrl), the
-//     raw scan (w.assetsFileId — the scan sidecar is only ever written when a
-//     scan image exists), signature and, for an Israeli ID, the ספח page.
-//     Signature/ספח are only known for documents saved since these flags
-//     existed (w.docHasSignature / w.docExtraPages, set by aiFillForm101() on
-//     every successful save); older records are treated as unknown, not missing.
-//   expiry — w.docExpiry (ID/passport validity) already past → error; within
-//     DOC_EXPIRY_WARN_MONTHS → warning.
-//   failed — w.docUploadFailed (last upload failed) → error.
-const DOC_EXPIRY_WARN_MONTHS = 3;
-// Worker documents uploaded from the worker card (w.docs, 2026-10-01):
-// [{id, type, name, fileId, url, mediaType, uploadedAt, expiry:'YYYY-MM-DD'|''}].
-// Files live in Storage (tenants/<t>/workers/<id>/docs); only this
-// metadata is on the worker record. Warn this many days before expiry.
-const WORKER_DOC_TYPES = {contract:'Contract', visa:'Visa', work_permit:'Work permit', other:'Other'};
-const WORKER_DOC_WARN_DAYS = {contract:30, visa:60, work_permit:60, other:30};
-function workerDocExpiries(w){
-  const today=new Date(); today.setHours(0,0,0,0);
-  const out=[], seen=new Set();
-  for(const d of (w.docs||[])){
-    const date=parseDocDate(d.expiry);
-    if(!date||isNaN(date)) continue;
-    // One reminder per document, not per file (a visa uploaded as front +
-    // back shares its type and expiry).
-    const key=d.type+'|'+d.expiry; if(seen.has(key)) continue; seen.add(key);
-    const label=tr(WORKER_DOC_TYPES[d.type]||'Document');
-    const warnAt=new Date(today); warnAt.setDate(warnAt.getDate()+(WORKER_DOC_WARN_DAYS[d.type]||30));
-    if(date<today) out.push({doc:d,level:'error',date,text:tr('{0} expired {1}',{0:label,1:date.toLocaleDateString('en-GB')})});
-    else if(date<=warnAt) out.push({doc:d,level:'warn',date,text:tr('{0} expires {1}',{0:label,1:date.toLocaleDateString('en-GB')})});
-  }
-  return out.sort((a,b)=>a.date-b.date);
-}
-function parseDocDate(s){
-  s=String(s||'').trim();
-  let m=s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/);
-  if(m) return new Date(+m[3],+m[2]-1,+m[1]);
-  m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if(m) return new Date(+m[1],+m[2]-1,+m[3]);
-  return null;
-}
-function workerDocStatus(w){
-  const missing=[];
-  if(!workerDocId(w)) missing.push(tr('ID/passport no.'));
-  if(!w.docUrl) missing.push(tr('Form 101'));
-  if(!w.assetsFileId) missing.push(tr('document scan'));
-  if(w.docHasSignature===false) missing.push(tr('signature'));
-  if((w.docType||'israeli_id')==='israeli_id' && w.docExtraPages===0) missing.push(tr('ספח (ID appendix)'));
-  let expiry=null;
-  const d=parseDocDate(w.docExpiry);
-  if(d && !isNaN(d)){
-    const today=new Date(); today.setHours(0,0,0,0);
-    const warnAt=new Date(today); warnAt.setMonth(warnAt.getMonth()+DOC_EXPIRY_WARN_MONTHS);
-    if(d<today) expiry={level:'error',date:d,text:tr('ID/passport expired {0}',{0:d.toLocaleDateString('en-GB')})};
-    else if(d<=warnAt) expiry={level:'warn',date:d,text:tr('ID/passport expires {0}',{0:d.toLocaleDateString('en-GB')})};
-  }
-  const failed=!!w.docUploadFailed;
-  const docExpiries=workerDocExpiries(w);
-  const docExpired=docExpiries.find(x=>x.level==='error')||null;
-  const level = (failed || (expiry&&expiry.level==='error') || docExpired) ? 'error' : ((missing.length||expiry||docExpiries.length) ? 'warn' : 'ok');
-  const lines=[];
-  if(failed) lines.push(tr('Last upload to {0} failed',{0:DOC_STORE}));
-  if(missing.length) lines.push(tr('Missing: {0}',{0:missing.join(', ')}));
-  if(expiry) lines.push(expiry.text);
-  for(const x of docExpiries) lines.push(x.text);
-  return {level, missing, expiry, docExpiries, docExpired, failed, lines};
-}
-// ── Pay (src/lib/payroll.ts through payroll.js — the rules, the 3-tier rate
-// chain, the law tiers, daily pay, travel and the period keys are described
-// there and in docs/accounting.md). ──
-const PAY_RULES = Payroll.PAY_RULES;
-// Effective per-hour rates: worker.clientRates[clientId] > the worker's own > the client's.
-function effectiveRates(w, clientId){ return Payroll.effectiveRates(w, clientId, clients); }
-// Pay for one shift's hours: the law tiers, or a flat OT/Shabbat rate when one is set.
-function shiftPay(hours, w, isSat, clientId){ return Payroll.shiftPay(hours, w, isSat, clientId, clients); }
-// Daily pay (w.payMode === 'daily', picked per worker in Accounting →
-// the pay window): the worker is paid their own rate (read as ₪/day)
-// once for every day worked, whatever the hours. A client's rate (an hourly
-// figure) never applies to a daily-paid worker.
-function isDailyPay(w){ return Payroll.isDailyPay(w); }
-function dailyRate(w){ return Payroll.dailyRate(w); }
-// One shift's pay, for every payroll figure (Salary, its export, the
-// super-admin summary). seenDays is a Set kept per worker over the period:
-// a daily-paid worker's later shifts on a day already paid pay 0.
-function shiftPayFor(hours, w, isSat, clientId, date, seenDays){ return Payroll.shiftPayFor(hours, w, isSat, clientId, date, seenDays, clients); }
-// Travel for a period (the pay window, openPayModal): travelAllowance ₪ for each
-// day worked + travelMonthly ₪ once for each calendar month with work in it.
-// Never part of the wage itself (shiftPay / shiftPayFor).
-function travelPay(w, days, months){ return Payroll.travelPay(w, days, months); }
-// The days of a daily-paid worker can be set by hand for one period
-// (w.dayOverrides[key]); key = the concrete period: 'w:<Sunday yyyy-mm-dd>',
-// 'm:<yyyy-mm>' or 'all'.
-function salaryPeriodKey(period, now){ return Payroll.salaryPeriodKey(period, now); }
-function dayOverride(w, key){ return Payroll.dayOverride(w, key); }
+// A worker's status — active, contract expiry, documents (isActiveWorker,
+// workerExpiryStatus, workerDocStatus, workerDocId…) — and the pay wrappers
+// over payroll.js (shiftPay, effectiveRates, localYMD…) are
+// src/manager/logic/workers.ts and pay.ts, in manager-core.js.
 function fmtDate(d){ return d.toLocaleDateString(uiLocale(),{day:'2-digit',month:'short'}); }
 function fmtRange(d){ const e=new Date(d); e.setDate(e.getDate()+6); return fmtDate(d)+' – '+fmtDate(e); }
-// Formats a stored 'YYYY-MM-DD' date string (e.g. w.startDate, straight from
-// a <input type="date">) as 'DD/MM/YYYY' for display. Leaves the raw value
-// untouched if it doesn't look like an ISO date (so it degrades gracefully).
-function fmtDMY(dateStr){
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr||'');
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : (dateStr||'');
-}
 
 // --- Tab ---------------------------------------------------------------------
-// ── Permission gating (Admin/Roles plan, stage 8) ───────────────────────────
-// Client-side visibility only — the actual enforcement is server-side
-// (requirePermission(), stage 9), this just hides what a staff login has no
-// business seeing so they aren't clicking into a dead end. superadmin/
-// tenant_admin/supplier all bypass this (supplier never reaches this nav at
-// all — it gets its own separate supplier-portal.html, stage 16).
-function hasPermission(section){
-  const s = getSession();
-  if(!s || (s.role !== 'staff' && s.role !== 'hr')) return true;
-  const perms = s.permissions;
-  return perms === '*' || (Array.isArray(perms) && perms.indexOf(section) !== -1);
-}
-// Maps each nav tab to the permission section that gates it. 'admin' (the
-// tab itself — punch log by default, plus Firms/Users/Errors/Profile
-// sub-panes for tenant_admin/superadmin, merged 2026-09-30, see
-// setupAdminPaneBar()) rides on the 'workers' permission — it's operational
-// worker oversight, not a separate concept the plan's PERMISSION_SECTIONS
-// ever called out on its own; a staff login only ever sees the Punch Log
-// pane regardless, the extra panes are gated separately by role. 'dashboard'
-// has no entry — the Today/real-time overview is never gated, every
-// logged-in staff member can always see it.
-const NAV_TAB_PERMISSION = { schedule:'schedule', workers:'workers', clients:'clients', suppliers:'suppliers', admin:'workers', accounting:'accounting' };
-// An HR login (docs/admin.md → HR) gets only the tabs of its sections: never
-// Today or Admin (the firm-wide punch log); it lands on its first tab.
-function isHrSession(){ const s = getSession(); return !!s && s.role === 'hr'; }
-function isFirmAdminSession(){ const s = getSession(); return !!s && (s.role === 'tenant_admin' || s.role === 'superadmin'); }
-const HR_HIDDEN_TABS = ['dashboard','admin'];
-// An HR never gets the full Accounting tab: with the Accounting section
-// (off by default) it gets a reduced one — Salary for its own workers,
-// read-only, with its commission — nothing else (renderAccounting).
-function hrPayOnly(){
-  const s = getSession();
-  return !!s && s.role === 'hr' && hasPermission('accounting');
-}
-// An HR with an hours tick (users.hourPerms → claim hp) reviews its workers'
-// hours in Accounting → Hours approval (src/hours-review/), even without the
-// Accounting section.
-function hrHourReview(){
-  const s = getSession();
-  return !!s && s.role === 'hr' && (s.hourPerms || []).some(p => p === 'hours' || p === 'schedule');
-}
-function tabAllowed(tab){
-  if(isHrSession() && HR_HIDDEN_TABS.includes(tab)) return false;
-  if(tab === 'accounting' && hrHourReview()) return true;
-  return !NAV_TAB_PERMISSION[tab] || hasPermission(NAV_TAB_PERMISSION[tab]);
-}
-function homeTab(){
-  if(!isHrSession()) return 'dashboard';
-  return ['workers','schedule','clients','suppliers','accounting'].find(tabAllowed) || 'workers';
-}
+// The sections and tabs a login may see (hasPermission, tabAllowed, homeTab,
+// hrPayOnly, hrHourReview, NAV_TAB_PERMISSION, MORE_TABS…) are
+// src/manager/logic/access.ts, in manager-core.js. The page shows / hides:
 function applyNavPermissions(){
   ['dashboard', ...Object.keys(NAV_TAB_PERMISSION)].forEach(tab=>{
     const el = document.getElementById('tab'+tab.charAt(0).toUpperCase()+tab.slice(1));
@@ -1375,8 +1157,7 @@ function applyNavPermissions(){
   if(currentTab && !tabAllowed(currentTab)) switchTab(homeTab());
 }
 
-// Phone bottom bar: the tabs that sit under More (CSS .ttab.in-more), and its sheet.
-const MORE_TABS = ['clients','suppliers','admin'];
+// Phone bottom bar: the sheet of the tabs under More (MORE_TABS).
 function openMoreSheet(){
   const items = MORE_TABS.filter(tabAllowed).map(t => {
     const el = document.getElementById('tab'+t.charAt(0).toUpperCase()+t.slice(1));
@@ -1631,9 +1412,6 @@ function markAllNotifRead(){
 setInterval(()=>{ if(getSession()){ refreshBell(); renderGreeting(); } }, 60e3);
 
 // --- Week nav: the React Schedule tab sets weekStart (ManagerBridge.setWeek) ---
-// Local-date YYYY-MM-DD — toISOString() is UTC, which in Israel (UTC+2/+3)
-// turns Sunday 00:00 local into the previous Saturday's date.
-function localYMD(d){ return Payroll.localYMD(d); }
 
 // --- Render -------------------------------------------------------------------
 function render(){
@@ -1720,24 +1498,8 @@ function pruneDateShifts(d){
 }
 
 // --- Worker Modal -------------------------------------------------------------
-// Address and document number used to share one field. Workers created from a
-// scan before the split carry the number inside `address` as "ת.ז. 123456789"
-// / "Passport AB123" (the shape the old scan-to-worker handoff used to write,
-// before it was folded into the unified worker modal) — so these two read it
-// back out of there instead of showing a document number on the address
-// line. Saving such a worker once stores it properly in `docId`.
-const LEGACY_DOC_IN_ADDRESS = /^\s*(?:ת\.ז\.|Passport)\s*(\S+)\s*$/;
-function workerDocId(w){
-  if(w.docId) return w.docId;
-  const m = LEGACY_DOC_IN_ADDRESS.exec(w.address || '');
-  return m ? m[1] : '';
-}
-function workerAddress(w){
-  const addr = w.address || '';
-  if(w.docId) return addr;
-  return LEGACY_DOC_IN_ADDRESS.test(addr) ? '' : addr;
-}
-
+// workerDocId() / workerAddress() (a number older records kept inside
+// `address`) are src/manager/worker.ts, given to the page by manager-core.js.
 function blankWorkerDefaults(){
   return {name:'',docGiven:'',docSurname:'',colorIdx:workers.length%8,phone:'',clientIds:[],
     schedule:DAYS.map(()=>({type:'work',start:'09:00',end:'17:00'}))};
@@ -1860,8 +1622,6 @@ function applyWorkerDraft(){ if(window.ManagerIsland) window.ManagerIsland.apply
 // Second pass right after a scan: every field the scan left empty is searched
 // for in one request (the window's own search, src/manager/WorkerEditor.tsx).
 async function autoFindMissingScanFields(){ if(window.ManagerIsland) await window.ManagerIsland.findMissing(); }
-// The worker's own regular rate (hourlyRate, or the older regRate); '' = none.
-function wOwnRate(w){ return Payroll.wOwnRate(w); }
 
 // The worker window (stage 6c-2) is drawn in React into #workerModal
 // (src/manager/WorkerEditor.tsx); editingWorkerId says which worker it edits
@@ -2585,14 +2345,13 @@ function exportJSON(){
 // The data layer — the session (getSession, gsAuth), the fetch(API_URL)
 // dispatcher, load / save / cache (loadData, autoSave), the punches, the
 // uploads and the telemetry — is src/manager/data/, loaded before this script
-// as manager-data.js under the same names (React migration stage 8b).
+// as manager-core.js under the same names (React migration stage 8b).
 
 // ── The data layer's events (src/manager/data/events.ts) ──
 // The data layer never draws, shows a toast or looks at the screen: it
 // emits events, and this is the one place the page answers them. Its texts
 // come untranslated ({text, vars}) and are translated here.
 ManagerData.setHost({
-  canWriteWorkers:()=>hasPermission('workers')||hasPermission('schedule'),
   // an HR's live worker list waits while one of these is open
   workerWindowOpen:()=>['workerOverlay','workerCardOverlay','payOverlay'].some(id=>document.getElementById(id)?.classList.contains('open')),
   weekStart:()=>weekStart.toISOString(),
@@ -2623,7 +2382,6 @@ function updateHoursBadge(){
 }
 
 const LOGIN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/login';
-const DOC_STORE = 'Firebase Storage';
 // Server-side Form 101 PDF builder (Python + PyMuPDF Cloud Function) — replaces
 // the old client-side pdf-lib build, which had a confirmed bug dropping a
 // glyph of multi-word RTL (Hebrew) text. See functions/main.py.
@@ -3342,8 +3100,8 @@ function renderSchedulePage(){
 }
 window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); if(currentTab==='clients') renderClientsPage(); if(currentTab==='suppliers') renderSuppliersPage(); if(currentTab==='accounting') renderAccounting(); if(currentTab==='admin') renderAdmin(); if(document.getElementById('firmsScreen').style.display==='block') window.ManagerIsland.renderFirmsScreen(); renderCrumb(); });
 window.ManagerBridge={
-  lang:()=>I18N_LANG,
-  dict:()=>I18N,
+  lang:()=>currentLang(),
+  dict:()=>currentDict(),
   // The snapshot Today draws from: each worker with today's shift, today's punch
   // and its notices (worked out here — they still belong to the Workers tab),
   // the suppliers, today's punches with their site.
@@ -4158,7 +3916,7 @@ function showNewVersionBar(){
     <button type="button" onclick="location.reload()" style="flex:none;border:0;border-radius:999px;padding:6px 14px;background:#4f8ef7;color:#fff;font:inherit;cursor:pointer">${tr('Update')}</button>
     <button type="button" aria-label="${tr('Close')}" onclick="this.parentElement.remove()" style="flex:none;border:0;background:none;color:#7c84a0;font:inherit;font-size:15px;cursor:pointer;padding:4px 8px 4px 2px">✕</button></div>`);
 }
-startVersionWatch(()=>[location.pathname,'og.css','payroll.js','manager-data.js','firestore-backend.js',...(window.__scanPipelineReady?['scan-pipeline.js']:[])]);
+startVersionWatch(()=>[location.pathname,'og.css','payroll.js','manager-core.js','firestore-backend.js',...(window.__scanPipelineReady?['scan-pipeline.js']:[])]);
 
 const AVATAR_SIZE=160; // shared with scan-pipeline.js's cropPortraitAvatar() and confirmAvatarCrop() below (manual crop editor) — must stay in THIS file, not the lazy one, since confirmAvatarCrop() runs on every worker-photo edit regardless of scanning
 // Worker avatars are black and white (per user request 2026-10-04): the
