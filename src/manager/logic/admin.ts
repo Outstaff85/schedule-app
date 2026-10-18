@@ -56,10 +56,10 @@ export function loadFirmsCache(): Rec[] | null { try { const v = JSON.parse(loca
 // Punch Log for everyone who reaches the tab (it needs the `workers`
 // section); Firms and Users for an owner or a super-admin; Errors and
 // Timings for a super-admin (gated server-side too).
-export function adminPanes(): string[] {
+export function adminPanes(): ('punchlog' | 'firms' | 'users' | 'errors' | 'timings')[] {
   const s = getSession(); if (!s) return [];
   const isSuper = s.role === 'superadmin', isAdminRole = isSuper || s.role === 'tenant_admin';
-  return ['punchlog'].concat(isAdminRole ? ['firms', 'users'] : [], isSuper ? ['errors', 'timings'] : []);
+  return [...(['punchlog'] as const), ...(isAdminRole ? (['firms', 'users'] as const) : []), ...(isSuper ? (['errors', 'timings'] as const) : [])];
 }
 /** The firm whose logins the Users section manages. */
 export function activeTenantIdForAdmin(): string | null {
@@ -67,14 +67,12 @@ export function activeTenantIdForAdmin(): string | null {
   if (!s) return null;
   return (s.role === 'superadmin' ? s.viewingTenantId : s.tenantId) || null;
 }
-// How a login's role reads (through tr()) — the header's account menu; the
-// React Users section has its copy in src/manager/users.ts.
-export const USER_ROLE_LABELS: Record<string, string> = {tenant_admin: 'owner', superadmin: 'super-admin', staff: 'staff', hr: 'HR', supplier: 'supplier', client: 'client'};
-// The hours-review ticks (users.hourPerms, functions-auth/core.py HOUR_PERMS);
-// a new HR, supplier or client login starts with HOUR_DEFAULT (core.py) — the
-// client and supplier windows' login ticks (loginsInfo).
-export const HOUR_DEFAULT = ['hours', 'approve', 'dispute', 'fix'];
-export const HOUR_PERM_LABELS: Record<string, string> = {hours: 'Hours', approve: 'Approve', dispute: 'Dispute', fix: 'Fix', schedule: 'Schedule', export: 'Export'};
+// How a login's role reads (through tr()) — the header's account menu — and
+// the hours-review ticks (users.hourPerms, functions-auth/core.py HOUR_PERMS;
+// a new HR, supplier or client login starts with HOUR_DEFAULT) — the client
+// and supplier windows' login ticks (loginsInfo): one copy, the React Users
+// section's (src/manager/users.ts).
+export { ROLE_LABELS as USER_ROLE_LABELS, HOUR_DEFAULT, HOUR_PERM_LABELS } from '../users';
 
 // ── HR logins and their workers (docs/hr.md) ──
 // Each HR gets a steady colour from the client palette (picked by its uid),

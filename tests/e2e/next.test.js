@@ -193,7 +193,18 @@ async function computer(browser) {
   ok(fr.menu && fr.crumb === 'Today' && fr.greet && fr.noAside && fr.tiles && fr.panels && fr.aside && fr.crumbW === 'Workers 12' && fr.threeCols,
     'next: the app frame (V7) — side menu, breadcrumb, greeting in the middle, the panel only on Workers, tiles, panels, plates in three columns ' + JSON.stringify(fr));
   await p.screenshot({ path: path.join(OUT, 'next-computer-frame.png') });
-  await p.getByRole('button', { name: 'Back to the gallery' }).click(); await sleep(300);
+  // The title bar as the manager page draws it: the 11C mark with the name and its two lines, Saved, the bell with its count, the account with the firm.
+  const bar = await p.evaluate(() => ({
+    mark: !!document.querySelector('[data-testid=app-brand] svg.og-mark'),
+    name: (document.querySelector('[data-testid=app-brand] .og-name') || {}).innerText || '',
+    saved: (document.querySelector('[data-testid=save-indicator]') || {}).innerText || '',
+    bell: (document.querySelector('[data-testid=shell-bell] .og-bell-n') || {}).textContent || '',
+    acct: (document.querySelector('[data-testid=account-btn]') || {}).innerText || '',
+  }));
+  ok(bar.mark && /Interactive Manager/.test(bar.name) && /Everything under one roof/.test(bar.name) && /Saved/.test(bar.saved) && bar.bell === '2' && /Owner · Firm One/.test(bar.acct),
+    'next: the app frame\'s title bar — the 11C mark and name, Saved, the bell with its count, the account with the firm ' + JSON.stringify(bar));
+  await p.click('[data-testid=account-btn]'); await sleep(300);
+  await p.getByRole('menuitem', { name: 'Back to the gallery' }).click(); await sleep(300);
   ok(await p.locator('[data-testid=page-controls]').count() === 1, 'next: the frame demo goes back to the gallery');
 
   await p.click('[data-testid=lang-btn]'); await sleep(300);
@@ -239,7 +250,7 @@ async function phone(browser) {
   const frp = await p.evaluate(() => {
     const box = q => document.querySelector(q).getBoundingClientRect(), c = box('[data-testid=shell-crumb]'), g = box('[data-testid=shell-greeting]');
     return { rows: c.top >= g.bottom - 1, noMenu: !document.querySelector('[data-testid=shell-menu]'), bar: !!document.querySelector('[data-testid=shell-bar]'),
-      noWords: !/Good /.test(document.querySelector('[data-testid=shell-greeting]').textContent), sticky: getComputedStyle(document.querySelector('[data-slot=shell] > header')).position === 'sticky',
+      noWords: getComputedStyle(document.querySelector('[data-testid=shell-greet-text]')).display === 'none', sticky: getComputedStyle(document.querySelector('[data-slot=shell] > header')).position === 'sticky',
       tilesRow: (() => { const t = [...document.querySelectorAll('[data-slot=figures] > button')].map(b => Math.round(b.getBoundingClientRect().top)); return t.length === 4 && t.every(x => x === t[0]); })() };
   });
   ok(frp.rows && frp.noMenu && frp.bar && frp.noWords && frp.sticky && frp.tilesRow, 'next: the app frame on a phone — two header rows (the breadcrumb under them), no greeting words, the bottom bar, four tiles in a row ' + JSON.stringify(frp));
@@ -364,8 +375,10 @@ async function theme(browser) {
     await computer(browser);
     await phone(browser);
     await theme(browser);
-    const old = await (await fetch('http://127.0.0.1:8766/schedule-manager.html')).text();
-    ok(old === fs.readFileSync(path.join(ROOT, 'schedule-manager.html'), 'utf8'), 'next: the old manager page is served unchanged from dist/');
+    // The manager page is a Vite entry (stage 8c-2): built, its module in /assets, its files loaded as they are.
+    const mgr = await (await fetch('http://127.0.0.1:8766/schedule-manager.html')).text();
+    ok(/<script type="module" crossorigin src="\/assets\/manager-[^"]+\.js"><\/script>/.test(mgr) && !/\/src\//.test(mgr) && /href="og\.css"/.test(mgr) && /src="payroll\.js"/.test(mgr) && !/vite-ignore/.test(mgr),
+      'next: the manager page is served built from dist/ (its module in /assets, og.css and payroll.js as they are)');
   } finally {
     await browser.close(); server.close();
   }

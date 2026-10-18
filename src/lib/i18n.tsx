@@ -98,3 +98,12 @@ export function I18nProvider({ children, onSave }: { children: ReactNode; onSave
 }
 
 export const useI18n = () => useContext(I18nContext);
+
+/**
+ * The manager app's frame (no I18nProvider): the components under it read the
+ * page's language (`lang`, adopted with adoptLanguage) from useI18n — the
+ * Shell mirrors itself in Hebrew by it.
+ */
+export function LanguageScope({ lang, children }: { lang: string; children: ReactNode }) {
+  return <I18nContext.Provider value={{ lang, setLanguage: async () => {}, ready: true }}>{children}</I18nContext.Provider>;
+}

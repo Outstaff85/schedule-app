@@ -1,6 +1,6 @@
 // The manager app's React pieces (docs/build.md → The manager's React pieces,
-// react-migration-plan.md → stage 6). schedule-manager.html is still an old
-// page; it loads this module (built as assets/manager.js) and draws a moved tab
+// react-migration-plan.md → stage 6). The manager page's module
+// (src/manager/page/entry.ts) imports this after the page's own script; it draws a moved tab
 // through `window.ManagerIsland` — now the Today tab into #todayRoot, the
 // Schedule tab into #scheduleRoot, the Workers list into #workersRoot and the
 // Clients and Suppliers tabs into #clientsRoot / #suppliersRoot — and the
@@ -19,10 +19,13 @@ import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import css from '@/styles/manager.css?inline';
 import type * as Acc from './accounting';
-import { adoptLanguage } from '@/lib/i18n';
+import { LanguageScope, adoptLanguage } from '@/lib/i18n';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { UndoHost } from '@/components/shared/undo';
 import { bridge, type ManagerBridge } from './bridge';
+import { Frame } from './Frame';
+import { SignIn } from './SignIn';
+import { useFrame } from './frame';
 import { Today } from './Today';
 import { Schedule } from './Schedule';
 import { Workers } from './Workers';
@@ -33,6 +36,7 @@ import { Clients, Suppliers } from './Clients';
 import { ClientEditor, clientWindow, type ClientProps } from './ClientEditor';
 import { SupplierEditor, type SupplierProps } from './SupplierEditor';
 import { ManualPunch } from './ManualPunch';
+import { MapPicker, mapPicker, type MapPickProps } from './MapPicker';
 import { Accounting, setKeptTab } from './Accounting';
 import { PayWindow } from './PayWindow';
 import { Admin } from './Admin';
@@ -75,7 +79,7 @@ function island<S>(rootId: string, read: (b: ManagerBridge) => S, draw: (snap: S
   function Island() {
     const v = useSyncExternalStore(subscribe, () => version);
     const api = bridge();
-    return <TooltipProvider><div key={api.lang()} className="contents">{draw(snapshotFor(v), api)}</div></TooltipProvider>;
+    return <TooltipProvider><LanguageScope lang={api.lang()}><div key={api.lang()} className="contents">{draw(snapshotFor(v), api)}</div></LanguageScope></TooltipProvider>;
   }
   return () => {
     const el = document.getElementById(rootId);
@@ -153,6 +157,7 @@ const hoursExport = windowRoot<{ id: string; seq: number }>('hoursExportModal', 
 const clientWin = windowRoot<ClientProps>('clientModal', (p, api) => <ClientEditor key={p.seq} props={p} info={api.clientInfo(p.editId)} api={api} />);
 const supplierWin = windowRoot<SupplierProps>('supplierModal', (p, api) => <SupplierEditor key={p.seq} props={p} info={api.supplierInfo(p.editId)} api={api} />);
 const manualPunch = windowRoot<{ id: string; seq: number }>('manualPunchModal', (p, api) => <ManualPunch key={p.seq} clientId={p.id} api={api} />);
+const mapWin = windowRoot<MapPickProps>('mapPickModal', p => <MapPicker key={p.seq} props={p} />);
 const payWin = windowRoot<{ id: string; seq: number }>('payModal', (p, api) => <PayWindow key={p.seq} wid={p.id} api={api} />);
 const firmWin = windowRoot<{ seq: number }>('firmModal', (p, api) => <FirmWindow key={p.seq} api={api} />);
 const userWin = windowRoot<UserProps>('userFormModal', (p, api) => <UserWindow key={p.seq} props={p} info={api.userInfo()} api={api} />);
@@ -165,6 +170,28 @@ const undoRoot = document.createElement('div');
 undoRoot.dataset.island = 'undo';
 document.body.append(undoRoot);
 createRoot(undoRoot).render(<StrictMode><UndoHost /></StrictMode>);
+
+// The frame (stage 8e-1): the Shell with the title bar, the side menu and the
+// bottom bar, drawn once (synchronously, so the page's sections and the
+// Language button are in it before the page goes on); it follows frame.ts.
+const frameEl = document.getElementById('frameRoot');
+if (frameEl && window.ManagerBridge) {
+  const frameRoot = createRoot(frameEl);
+  flushSync(() => frameRoot.render(<StrictMode><TooltipProvider><Frame api={bridge()} /></TooltipProvider></StrictMode>));
+}
+// The sign-in screen (stage 8e-2), drawn into the page's #loginScreen, which
+// the page shows while there is no session; it follows the page's language.
+function SignInRoot({ screen }: { screen: HTMLElement }) {
+  const f = useFrame();
+  const api = bridge();
+  adoptLanguage(api.lang(), api.dict());
+  return <LanguageScope lang={f.lang}><SignIn api={api} screen={screen} /></LanguageScope>;
+}
+const loginEl = document.getElementById('loginScreen');
+if (loginEl && window.ManagerBridge) {
+  const loginRoot = createRoot(loginEl);
+  flushSync(() => loginRoot.render(<StrictMode><TooltipProvider><SignInRoot screen={loginEl} /></TooltipProvider></StrictMode>));
+}
 
 window.ManagerIsland = {
   renderToday, renderSchedule, renderWorkers, renderClients, renderSuppliers,
@@ -188,6 +215,8 @@ window.ManagerIsland = {
   saveClient: opts => { clientWindow.current?.save(opts); },
   openSupplier: (s, editId) => supplierWin.show({ s, editId, seq: ++seq }),
   openManualPunch: id => manualPunch.show({ id, seq: ++seq }),
+  openMapPicker: p => mapWin.show({ ...p, seq: ++seq }),
+  mapPickAt: (lat, lng) => flushSync(() => mapPicker.at(lat, lng)),
   renderAccounting,
   setAccTab: k => { setKeptTab(k); renderAccounting(); },
   openPay: id => payWin.show({ id, seq: ++seq }),

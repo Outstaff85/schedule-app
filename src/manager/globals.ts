@@ -1,5 +1,6 @@
-// The entry scripts/build-globals.mjs builds into manager-core.js: a plain
-// script that schedule-manager.html loads before its own script.
+// The data layer and the logic under their old global names: the first import
+// of the manager page's module (src/manager/page/entry.ts), before the page's
+// own script (page/app.ts).
 //
 // The data layer, in layers (each file uses only those above it):
 //   events.ts    — the events it emits, the Message type, the page's answers (host)

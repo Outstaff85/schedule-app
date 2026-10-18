@@ -94,7 +94,7 @@ export function workerDocStatus(w: Rec) {
   const failed = !!w.docUploadFailed;
   const docExpiries = workerDocExpiries(w);
   const docExpired = docExpiries.find(x => x.level === 'error') || null;
-  const level = (failed || (expiry && expiry.level === 'error') || docExpired) ? 'error' : ((missing.length || expiry || docExpiries.length) ? 'warn' : 'ok');
+  const level: 'error' | 'warn' | 'ok' = (failed || (expiry && expiry.level === 'error') || docExpired) ? 'error' : ((missing.length || expiry || docExpiries.length) ? 'warn' : 'ok');
   const lines: string[] = [];
   if (failed) lines.push(tr('Last upload to {0} failed', {0: DOC_STORE}));
   if (missing.length) lines.push(tr('Missing: {0}', {0: missing.join(', ')}));

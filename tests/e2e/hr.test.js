@@ -100,10 +100,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(made.hrFields && made.perms === 'workers' && made.own && !made.showPayTile && made.ticks === 'hours,approve,dispute,fix', 'owner: HR form shows name/phone, Workers only, own-only on ' + JSON.stringify(made).slice(0, 160));
   ok(/Rina HR HR\s*\nlogin: hr1 · 0521112233\n.*0 workers/.test(made.listed), 'owner: user row: name first, login and phone below, worker count ' + JSON.stringify(made.listed));
   const me = await p.evaluate(async () => {
-    const before = document.getElementById('accountLabelCenter').innerText;
+    const before = document.querySelector('[data-testid=account-btn]').innerText;
     window.prompt = () => 'Avi Owner';
     await editMyName();
-    return {before, after: document.getElementById('accountLabelCenter').innerText, sess: getSession().fullName};
+    return {before, after: document.querySelector('[data-testid=account-btn]').innerText, sess: getSession().fullName};
   });
   ok(/owner1/.test(me.before) && /Avi Owner/.test(me.after) && me.sess === 'Avi Owner', 'owner: header shows the login until a name is set, then the name ' + JSON.stringify(me));
   const asg = await p.evaluate(async () => {
@@ -159,12 +159,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await login(h, BASE + 'schedule-manager.html', 'hr1', 'hr-pass-222');
   await h.waitForNavigation().catch(()=>{});
   ok(await waitFor(h, () => typeof workers !== 'undefined' && workers.length === 1), 'hr: loads only its own workers');
-  ok(await h.evaluate(() => /Rina HR/.test(document.getElementById('accountLabelCenter').innerText) && !/hr1/.test(document.getElementById('accountLabelCenter').innerText)), 'hr: header shows its name, not the login');
+  ok(await h.evaluate(() => { const a = document.querySelector('[data-testid=account-btn]').innerText; return /Rina HR/.test(a) && !/hr1/.test(a); }), 'hr: header shows its name, not the login');
   await waitFor(h, () => getPunchLog().length >= 2);
   const hv = await h.evaluate(() => {
-    const vis = id => document.getElementById(id).style.display !== 'none';
-    return {tab: currentTab, today: vis('tabDashboard'), admin: vis('tabAdmin'), workersTab: vis('tabWorkers'), sched: vis('tabSchedule'),
-      acc: vis('tabAccounting'), name: workers[0].name, punches: getPunchLog().map(e => e.workerId)};
+    // the React frame's side menu shows only the sections this login may see
+    const vis = k => !!document.querySelector('[data-testid=shell-menu] [data-testid=tab-' + k + ']');
+    return {tab: currentTab, today: vis('dashboard'), admin: vis('admin'), workersTab: vis('workers'), sched: vis('schedule'),
+      acc: vis('accounting'), name: workers[0].name, punches: getPunchLog().map(e => e.workerId)};
   });
   ok(hv.tab === 'workers' && !hv.today && !hv.admin && hv.workersTab && !hv.sched && hv.acc, 'hr: the Workers tab and, with Accounting ticked, its pay view; lands on Workers ' + JSON.stringify(hv));
   const pv = await h.evaluate(async () => {
@@ -335,7 +336,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     T.fill('uFullName', 'Avi Boss');
     await T.save();
     r.ownerErr = T.err();
-    r.header = document.getElementById('accountLabelCenter').innerText;
+    r.header = document.querySelector('[data-testid=account-btn]').innerText;
     return r;
   }, hrUid);
   ok(!s1.hrErr && s1.ownerRoleHidden && !s1.ownerErr && /Avi Boss/.test(s1.header), 'owner: edits an HR name and the owner row (name only) ' + JSON.stringify(s1));
@@ -371,7 +372,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // ── Owner sees everything, approves the HR's hours; unassigns Dana ──
   await reload(p);
   ok(await waitFor(p, () => typeof workers !== 'undefined' && workers.length === 3), 'owner: sees all three workers');
-  ok(await p.evaluate(() => /Avi Boss/.test(document.getElementById('accountLabelCenter').innerText)), 'owner: name kept after reload');
+  ok(await p.evaluate(() => /Avi Boss/.test(document.querySelector('[data-testid=account-btn]').innerText)), 'owner: name kept after reload');
   const fin = await p.evaluate(async (hrUid) => {
     const r = {};
     const q = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'loadPendingHours'})})).json();

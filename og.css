@@ -145,14 +145,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .lang-btn,.gbtn.og-bell{background:none !important;border:0 !important;box-shadow:none !important;-webkit-backdrop-filter:none !important;backdrop-filter:none !important;}
 .lang-btn::after,.gbtn.og-bell::after{display:none;}
 /* Only the globe (owner 2026-10-13): the name and chevron stay in the markup, hidden. */
-.lang-btn .lang-btn-name,.lang-btn .lang-btn-chev{display:none;}
 .lang-btn.on-cover{position:absolute;top:max(env(safe-area-inset-top,0px),12px);right:12px;z-index:2;}
-.lang-ov{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .25s;}
-.lang-ov.open{opacity:1;pointer-events:auto;}
-.lang-sheet{width:min(380px,100%);max-height:min(560px,80vh);display:flex;flex-direction:column;padding:14px 14px 16px;border-radius:22px;background:var(--glass-dark);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border:1px solid rgba(var(--tint),.2);box-shadow:0 20px 50px rgba(0,0,0,.5);color:var(--ink);transform:translateY(12px) scale(.98);transition:transform .35s cubic-bezier(.3,.7,.3,1);}
-.lang-ov.open .lang-sheet{transform:none;}
-.lang-grab{display:none;width:40px;height:4px;border-radius:2px;background:rgba(var(--tint),.3);margin:0 auto 10px;}
-.lang-sheet h4{font-size:17px;font-weight:600;margin:0 4px 10px;}
 .lang-search{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;margin-bottom:8px;border-radius:12px;background:rgba(var(--tint),.06);border:1px solid rgba(var(--tint),.12);}
 .lang-search i{color:var(--ink-2);font-size:16px;}
 .lang-search input{flex:1;min-width:0;border:0;background:none;color:var(--ink);font:14px 'DM Sans','Heebo',Arial,sans-serif;outline:none;padding:0;}
@@ -165,11 +158,6 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .lang-li.on::after{content:'';position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:2px;background:linear-gradient(180deg,#818cf8,#22d3ee,#f472b6);}
 .lang-tick{width:22px;height:22px;border-radius:7px;background:var(--ok);color:#0b0d14;display:flex;align-items:center;justify-content:center;font-size:14px;}
 .lang-none{padding:14px 12px;color:var(--ink-2);font-size:13px;}
-@media (max-width:700px){
-  .lang-ov{align-items:flex-end;padding:0;}
-  .lang-sheet{width:100%;max-height:78vh;border-radius:22px 22px 0 0;border-width:1px 0 0;padding:10px 14px calc(18px + env(safe-area-inset-bottom,0px));transform:translateY(105%);}
-  .lang-grab{display:block;}
-}
 @media (prefers-reduced-motion:reduce){.gbtn::before{animation:none;}.gbtn.shine::after{transition:none;}}
 /* ── Components from docs/design/system/components/bundle.css that the pages use. ── */
 /* Odinson Glass components. Every value comes from tokens.css. */
@@ -287,7 +275,6 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
    the dark ground. ── */
 :root[data-theme="light"] .t3-line:hover{background:#f3f5f9;}
 :root[data-theme="light"] .og-snack,:root[data-theme="light"] .sel-bar{box-shadow:var(--shadow-pop);}
-:root[data-theme="light"] .lang-sheet{box-shadow:var(--shadow-pop);}
 :root[data-theme="light"] .og-acts{background:rgba(20,24,40,.08);}
 :root[data-theme="light"] .og-box::after{border-color:var(--tick-mark);}
 :root[data-theme="light"] .lang-tick{color:var(--tick-mark);}
@@ -295,3 +282,74 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 :root[data-theme="light"] .og-name b span,:root[data-theme="light"] .pp-wm b span{background-image:linear-gradient(90deg,#4f46e5,#0e7490);}
 :root[data-theme="light"] .og-name small{color:var(--ink-2);}
 
+
+/* ── The manager app's title bar (the page and the React Shell share it) ── */
+/* The logo 11C "under one roof": a light running over the roof, the three
+   people lighting up in turn, a light along the connection line; the name
+   and its two lines beside it (only the mark on a phone). */
+.og-brand{display:flex;align-items:center;gap:10px;}
+.og-mark{width:36px;height:36px;flex:none;overflow:visible;}
+.og-roof{fill:none;stroke:rgba(var(--tint),.28);stroke-width:7;stroke-linecap:round;stroke-linejoin:round;}
+.og-run{fill:none;stroke:url(#ogMarkGrad);stroke-width:7;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:40 180;animation:og-run 2.8s linear infinite;}
+@keyframes og-run{from{stroke-dashoffset:220}to{stroke-dashoffset:0}}
+.og-p{opacity:.55;animation:og-lit 2.8s ease-in-out infinite;}
+.og-p2{animation-delay:.93s;}.og-p3{animation-delay:1.86s;}
+@keyframes og-lit{0%,100%{opacity:.55;transform:none}15%{opacity:1;transform:translateY(-4px)}35%{opacity:.55;transform:none}}
+.og-link{fill:none;stroke:rgba(var(--tint),.22);stroke-width:4;stroke-linecap:round;}
+.og-linkrun{fill:none;stroke:url(#ogMarkGrad);stroke-width:4;stroke-linecap:round;stroke-dasharray:14 90;animation:og-linkrun 2.8s linear infinite;}
+@keyframes og-linkrun{from{stroke-dashoffset:104}to{stroke-dashoffset:0}}
+.og-name b{display:block;font-size:16px;font-weight:700;letter-spacing:-.2px;white-space:nowrap;color:var(--ink);}
+.og-name b span{background:linear-gradient(90deg,#c7d2fe,#67e8f9);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+.og-name small{display:block;font-size:10.5px;line-height:1.3;color:#8b90a0;white-space:nowrap;}
+.og-name small.og-roofline{color:var(--ok);}
+@media (max-width:980px){ .og-name{display:none;} }
+@media (prefers-reduced-motion:reduce){ .og-run,.og-p,.og-linkrun{animation:none;} .og-p{opacity:1;} }
+.save-indicator{font-size:14px;color:var(--text3);display:flex;align-items:center;gap:4px;transition:color 0.3s;}
+.save-indicator.saving{color:var(--amber);}
+.save-indicator.saved{color:var(--green);}
+.save-dot{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor;}
+@media (max-width:768px){ .save-indicator{font-size:10px;} }
+@media (max-width:480px){ .save-indicator span{display:none;} }
+/* The bell: the count is a whole disc over the button's corner (mockup 05):
+   .gbtn's own overflow:hidden must not cut it. The icon is the page's
+   <i class="ti ti-bell"> or the React Shell's Tabler svg. */
+.gbtn.og-bell{width:40px;height:40px;border-radius:14px;overflow:visible}
+.og-bell::after{display:none}
+.og-bell i{font-size:23px}
+.og-bell svg{width:23px;height:23px}
+.og-bell.has-new i,.og-bell.has-new svg{animation:og-ring 4s ease-in-out infinite;transform-origin:50% 10%}
+@keyframes og-ring{0%,88%,100%{transform:rotate(0)}90%{transform:rotate(14deg)}93%{transform:rotate(-12deg)}96%{transform:rotate(6deg)}}
+.og-bell-n{position:absolute;top:-4px;right:-4px;z-index:1;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--bad);color:#fff;font:700 10px 'DM Sans',Arial,sans-serif;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px var(--ground);animation:og-bump 2.4s ease-in-out infinite}
+@keyframes og-bump{0%,90%,100%{transform:scale(1)}95%{transform:scale(1.2)}}
+
+/* ── The manager app's sections (the React Shell with `app`): the side menu on
+   a computer and the bottom bar on a phone, the glass look the page drew
+   (V7, variant 11). Colours from --tint and --bar-rgb, so the light theme
+   follows; --k is the section's colour. ── */
+.og-side{display:flex;flex-direction:column;gap:4px;width:210px;flex-shrink:0;padding:14px 10px;background:rgba(var(--bar-rgb),.35);border-right:1px solid rgba(var(--tint),.08);overflow-y:auto}
+[dir=rtl].og-side{border-right:0;border-left:1px solid rgba(var(--tint),.08)}
+.og-tab{position:relative;display:flex;align-items:center;cursor:pointer;color:var(--ink-2);transition:color .15s;-webkit-tap-highlight-color:transparent;background:none;border:0;font:inherit}
+.og-tab .ic{position:relative;display:flex;align-items:center;justify-content:center;line-height:1}
+.og-tab.on{color:var(--k)}
+.og-side .og-tab{flex:none;gap:12px;height:40px;padding:0 12px;border-radius:12px;font-size:14.5px;font-weight:500;text-align:start}
+.og-side .og-tab .ic{width:20px}
+.og-side .og-tab .ic svg{width:18px;height:18px}
+.og-side .og-tab:hover{background:rgba(var(--tint),.05);color:var(--ink)}
+.og-side .og-tab.on,.og-side .og-tab.on:hover{background:rgba(var(--tint),.08);color:var(--k)}
+.og-side .og-tab::after{content:'';position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:2px;background:var(--k);box-shadow:0 0 10px var(--k);transform:scaleY(0);transition:transform .35s cubic-bezier(.34,1.56,.64,1);pointer-events:none}
+[dir=rtl] .og-side .og-tab::after,[dir=rtl].og-side .og-tab::after{left:auto;right:0}
+.og-side .og-tab.on::after{transform:scaleY(1)}
+.og-bar{position:fixed;left:0;right:0;bottom:0;z-index:60;display:flex;height:calc(66px + env(safe-area-inset-bottom,0px));padding:0 0 env(safe-area-inset-bottom,0px);
+  background:rgba(var(--bar-rgb),.92);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-top:1px solid rgba(var(--tint),.1)}
+.og-bar::before{content:'';position:absolute;left:0;right:0;top:-1px;height:1px;background:linear-gradient(90deg,transparent,rgba(129,140,248,.5),rgba(34,211,238,.5),rgba(244,114,182,.4),transparent);pointer-events:none}
+.og-bar .og-tab{flex:1 1 0;min-width:0;flex-direction:column;justify-content:center;gap:3px;padding:0 1px;color:rgba(var(--tint),.5)}
+.og-bar .og-tab.on{color:var(--k)}
+.og-bar .og-tab .ic{width:42px;height:30px;border-radius:12px;transition:background .3s}
+.og-bar .og-tab .ic svg{width:21px;height:21px}
+.og-bar .og-tab.on .ic{background:color-mix(in srgb,var(--k) 18%,transparent)}
+.og-bar .og-tab .lb{font-size:10px;font-weight:600;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.og-bar .og-tab::after{content:'';position:absolute;left:30%;right:30%;bottom:0;height:3px;border-radius:3px 3px 0 0;background:var(--k);box-shadow:0 0 10px var(--k);transform:scaleX(0);transition:transform .4s cubic-bezier(.34,1.56,.64,1);pointer-events:none}
+.og-bar .og-tab.on::after{transform:scaleX(1)}
+.og-count{position:absolute;top:-6px;right:-12px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:var(--bad);color:#fff;font-size:9px;font-weight:700;line-height:16px;text-align:center;font-family:inherit;box-shadow:0 0 0 2px var(--ground)}
+.og-bar .og-count{top:-2px;right:-2px}
+@media (prefers-reduced-motion:reduce){.og-tab::after,.og-bar .og-tab .ic{transition:none}}

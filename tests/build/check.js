@@ -21,10 +21,10 @@ function walk(dir, base = '') {
   const { staticFiles } = await import(path.join(ROOT, 'scripts', 'static-files.mjs'));
   const errs = [];
   const old = staticFiles(ROOT);
-  for (const f of ['schedule-manager.html', 'service-worker.js', 'og.css', 'manifest.json', 'payroll.js', 'manager-core.js', 'firestore-backend.js', 'icon-192.png', 'icon-512.png'])
+  for (const f of ['service-worker.js', 'og.css', 'manifest.json', 'payroll.js', 'firestore-backend.js', 'icon-192.png', 'icon-512.png'])
     if (!old.includes(f)) errs.push(`${f} is not in the list of served files (scripts/static-files.mjs)`);
   // The new pages are built by Vite, never copied: /next, the client portal (stage 3), the supplier portal (stage 4) and the punch page (stage 5).
-  for (const [f, src] of [['client-portal.html', 'src/client/'], ['supplier-portal.html', 'src/supplier/'], ['worker-punch.html', 'src/punch/']])
+  for (const [f, src] of [['client-portal.html', 'src/client/'], ['supplier-portal.html', 'src/supplier/'], ['worker-punch.html', 'src/punch/'], ['schedule-manager.html', 'src/manager/page/']])
     if (old.includes(f)) errs.push(`${f} is a Vite entry (${src}): it must not be in the copied list`);
   for (const f of old) {
     const to = path.join(DIST, f);
@@ -34,7 +34,7 @@ function walk(dir, base = '') {
   const built = walk(DIST);
   const never = /^(functions|functions-auth|tests|docs|src|scripts|node_modules|Tokens)\/|(^|\/)\.|\.(md|rules|py|ts|tsx|mts)$|^(firebase|package|package-lock|tsconfig|components|firestore\.indexes)\.json$/;
   for (const f of built) if (never.test(f)) errs.push(`dist/${f} must never be served`);
-  for (const [page, what] of [['next/index.html', 'the /next page'], ['client-portal.html', 'the client portal'], ['supplier-portal.html', 'the supplier portal'], ['worker-punch.html', 'the punch page']]) {
+  for (const [page, what] of [['next/index.html', 'the /next page'], ['client-portal.html', 'the client portal'], ['supplier-portal.html', 'the supplier portal'], ['worker-punch.html', 'the punch page'], ['schedule-manager.html', 'the manager app']]) {
     const file = path.join(DIST, page);
     if (!fs.existsSync(file)) { errs.push(`dist/${page} missing (${what})`); continue; }
     const html = fs.readFileSync(file, 'utf8');
@@ -54,13 +54,11 @@ function walk(dir, base = '') {
     for (const i of m.icons || []) if (!fs.existsSync(path.join(DIST, i.src))) errs.push(`${mf}: icon ${i.src} is not in dist/`);
     if (!fs.existsSync(path.join(DIST, m.start_url))) errs.push(`${mf}: start_url ${m.start_url} is not in dist/`);
   }
-  // The manager app (an old page, copied) loads its React pieces (stage 6) from the fixed
-  // name assets/manager.js, built by Vite from src/manager/ with every chunk it imports.
+  // The manager app (a Vite entry since stage 8c-2): the files it loads as they are (vite-ignore) are copied.
   const mh = fs.existsSync(path.join(DIST, 'schedule-manager.html')) ? fs.readFileSync(path.join(DIST, 'schedule-manager.html'), 'utf8') : '';
-  if (!/<script type="module" src="assets\/manager\.js"><\/script>/.test(mh)) errs.push('dist/schedule-manager.html: no module script assets/manager.js');
-  const mjs = path.join(DIST, 'assets', 'manager.js');
-  if (!fs.existsSync(mjs)) errs.push('dist/assets/manager.js is missing (vite.config.mts → input manager)');
-  else for (const [, dep] of fs.readFileSync(mjs, 'utf8').matchAll(/from"\.\/([^"]+\.js)"/g)) if (!fs.existsSync(path.join(DIST, 'assets', dep))) errs.push(`dist/assets/manager.js imports ${dep}, which is not in dist/assets`);
+  for (const f of ['og.css', 'payroll.js', 'fonts/fonts.css', 'icons/tabler-icons.css', 'manifest.json'])
+    if (!mh.includes(`"${f}"`) || !old.includes(f)) errs.push(`dist/schedule-manager.html: ${f} is not loaded as it is (vite-ignore) or not copied`);
+  if (/vite-ignore/.test(mh)) errs.push('dist/schedule-manager.html: a vite-ignore attribute was left in the built page');
   const fb = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase.json'), 'utf8'));
   if (fb.hosting.public !== 'dist') errs.push(`firebase.json: hosting.public is "${fb.hosting.public}", must be "dist"`);
   console.log(`${old.length} files of the old pages, ${built.length} files in dist/, ${errs.length} problems`);
