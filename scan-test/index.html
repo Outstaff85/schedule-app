@@ -38,8 +38,8 @@
     <option value="lite.onnx">Light only (5 MB)</option>
   </select>
   <select id="engine">
-    <option value="122">Engine: ONNX Runtime 1.22</option>
-    <option value="130">Engine: ONNX Runtime 1.30</option>
+    <option value="122">CPU engine: ONNX Runtime 1.22</option>
+    <option value="130">CPU engine: ONNX Runtime 1.30</option>
   </select>
   <select id="backend">
     <option value="auto">Auto (GPU, else CPU)</option>
@@ -79,8 +79,9 @@
 <div id="log"></div>
 
 <script>
-// The ONNX Runtime build: ?ort=130 picks 1.30.0, else 1.22.0.
-const ORT_DIR = new URLSearchParams(location.search).get('ort') === '130' ? 'ort130' : 'ort';
+// The ONNX Runtime build for the CPU: 1.22.0 (faster and smoother there than 1.30); ?ort=130 picks 1.30.0.
+// The GPU always uses 1.30.0: its GPU runs the light model right on a phone where 1.22 returned zeros.
+const ORT_DIR = new URLSearchParams(location.search).get('ort') === '130' ? 'ort130' : 'ort', GPU_ORT = 'ort130';
 document.write('<script src="/scan-test/' + ORT_DIR + '/ort.all.min.js"><\/script>');
 </script>
 <script src="/scan-test/scan-core.js"></script>
@@ -120,8 +121,8 @@ function pageEngine() {
     stop() {},
   };
 }
-function workerEngine(threads) {
-  const w = new Worker('/scan-test/scan-worker.js?ort=' + ORT_DIR), waiting = new Map(); let n = 0, two = false, heard = performance.now();
+function workerEngine(threads, dir = ORT_DIR) {
+  const w = new Worker('/scan-test/scan-worker.js?ort=' + dir), waiting = new Map(); let n = 0, two = false, heard = performance.now();
   const failAll = why => { for (const p of waiting.values()) p.reject(new Error(why)); waiting.clear(); };
   // A worker that says nothing for 30 s while loading is taken as stuck.
   const watch = setInterval(() => { if (waiting.size && performance.now() - heard > 25000) failAll('no answer for 25 s'); }, 1000);
@@ -148,27 +149,27 @@ function workerEngine(threads) {
 // phone may refuse CPU threads inside a background thread. The way that worked
 // is remembered on this device, so the next open starts with it.
 const WAYS = [
-  { id: 'bg-gpu', label: 'GPU · bg', worker: true, ep: 'webgpu', threads: 1 },
+  { id: 'bg-gpulive', label: 'GPU live + CPU capture · bg', worker: true, gpuLive: true, ep: 'wasm', threads: 1 },
   { id: 'bg-pool', label: 'CPU · ' + POOL + ' bg threads + 1', worker: true, pool: true, ep: 'wasm', threads: 1 },
   { id: 'bg-cpu', label: 'CPU ×' + THREADS + ' · bg', worker: true, ep: 'wasm', threads: THREADS },
   { id: 'bg-cpu1', label: 'CPU ×1 · bg', worker: true, ep: 'wasm', threads: 1 },
   { id: 'page-cpu', label: 'CPU ×' + THREADS + ' · page', worker: false, ep: 'wasm', threads: THREADS },
 ];
-const WAY_KEY = 'scanTestWay2';
+const WAY_KEY = 'scanTestWay3';
 const remembered = { get: () => { try { return localStorage.getItem(WAY_KEY); } catch (e) { return null; } }, set: v => { try { localStorage.setItem(WAY_KEY, v); } catch (e) {} } };
 
 // Several single-thread background threads: the live frames go to them in
 // turn (2–3 frames worked on at once), the accurate model has its own thread,
 // so a capture never stops the live frame. Phones that refuse CPU threads
 // inside a background thread still run several background threads.
-function poolEngine() {
-  const lives = Array.from({ length: POOL }, () => workerEngine(1)), capE = workerEngine(1), free = lives.slice();
+function poolEngine(nLive = POOL, liveEp = null, capEp = null) {
+  const lives = Array.from({ length: nLive }, () => workerEngine(1, liveEp === 'webgpu' ? GPU_ORT : ORT_DIR)), capE = workerEngine(1), free = lives.slice();
   let two = false;
   return {
-    size: POOL,
+    size: nLive,
     async load(liveName, capName, want) {
       two = !!capName;
-      const eps = await Promise.all(lives.map(e => e.load(liveName, null, want)).concat(two ? [capE.load(capName, null, want)] : []));
+      const eps = await Promise.all(lives.map(e => e.load(liveName, null, liveEp || want)).concat(two ? [capE.load(capName, null, capEp || want)] : []));
       return eps[0] + (two && eps[eps.length - 1] !== eps[0] ? '/' + eps[eps.length - 1] : '');
     },
     hasCap: () => two,
@@ -190,16 +191,16 @@ async function ensureSession() {
   engine = null; $('sBackend').textContent = 'loading…'; $('startCam').disabled = true; status('Preparing the model…', 0);
   const t0 = performance.now();
   let ways = WAYS.filter(w => (inWorker || !w.worker) && (want === 'auto' || w.ep === want || (want === 'webgpu' && false)));
-  if (!navigator.gpu) ways = ways.filter(w => w.ep !== 'webgpu');
-  if (want === 'webgpu') ways = WAYS.filter(w => w.ep === 'webgpu' && (inWorker || !w.worker)).concat(inWorker ? [] : [{ id: 'page-gpu', label: 'GPU · page', worker: false, ep: 'webgpu', threads: 1 }]);
+  if (!navigator.gpu) ways = ways.filter(w => w.ep !== 'webgpu' && !w.gpuLive);
+  if (want === 'webgpu') ways = inWorker ? [{ id: 'bg-gpu', label: 'GPU · bg', worker: true, ep: 'webgpu', threads: 1 }] : [{ id: 'page-gpu', label: 'GPU · page', worker: false, ep: 'webgpu', threads: 1 }];
+  if (want === 'wasm') ways = ways.filter(w => !w.gpuLive);
   let last = remembered.get();
-  try { if (!last && (localStorage.getItem('scanTestWay') || localStorage.getItem('scanTestGpuBad') === '1')) last = 'bg-pool'; } catch (e) {}
   const at = ways.findIndex(w => w.id === last);
   if (want === 'auto' && at > 0) { log('Starting with "' + ways[at].label + '" — it worked on this device last time (pick another option to retry all)'); ways = ways.slice(at); }
   let e = null, used = null;
   for (const w of ways) {
     status('Trying ' + w.label + '…', 0);
-    const cand = w.pool ? poolEngine() : w.worker ? workerEngine(w.threads) : pageEngine();
+    const cand = w.gpuLive ? poolEngine(1, 'webgpu', 'wasm') : w.pool ? poolEngine() : w.worker ? workerEngine(w.threads, w.ep === 'webgpu' ? GPU_ORT : ORT_DIR) : pageEngine();
     try { await cand.load(live, cap, w.ep); e = cand; used = w; break; }
     catch (err) { cand.stop(); log(w.label + ': ' + (err && err.message || err) + ' — trying the next way'); }
   }
@@ -280,6 +281,7 @@ async function showShot() {
   const frame = document.createElement('canvas'); frame.width = w; frame.height = h;
   const fctx = frame.getContext('2d'); fctx.drawImage(el, 0, 0, w, h);
   let pts = lastRes.pts, how = 'live frame';
+  while (inFlight) await new Promise(r => setTimeout(r, 10));  // the live frames still in work finish first
   if (isVideo && engine.hasCap()) {
     $('hint').textContent = 'Taking the exact corners…';
     const { res: exact } = await engine.detect('cap', smallRGBA(frame, w, h));
@@ -334,7 +336,7 @@ $('model').onchange = $('backend').onchange = $('useWorker').onchange = async ()
 };
 $('engine').value = ORT_DIR === 'ort130' ? '130' : '122';
 $('engine').onchange = () => { location.search = '?ort=' + $('engine').value + '&v=' + Date.now(); };
-log('Engine: ONNX Runtime ' + (ort.env.versions && ort.env.versions.web || ORT_DIR));
+log('CPU engine: ONNX Runtime ' + (ort.env.versions && ort.env.versions.web || ORT_DIR) + ', GPU engine: 1.30.0');
 log('GPU (WebGPU) in this browser: ' + (navigator.gpu ? 'yes' : 'no'));
 log('CPU threads: ' + THREADS + (self.crossOriginIsolated ? '' : ' (page not isolated)') + ' of ' + (navigator.hardwareConcurrency || '?'));
 // The models are fetched as soon as the page opens; the camera button waits for them.
