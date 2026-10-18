@@ -601,15 +601,33 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     findCalls.push({find: body.find, auth: /^Bearer ./.test(r.request().headers().authorization || ''), image: !!body.image});
     return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, size: [8, 8], pages: [page(0, QUAD), page(-1, QUAD)]})});
   });
+  // Haiku's page kinds (aiDetectAlign): the first page an ID card, the second a ספח
+  let kindCalls = 0;
+  await p.route(/cloudfunctions\.net\/ai_read$/, async r => {
+    if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:CORS});
+    const body = JSON.parse(r.request().postData() || '{}');
+    if (body.action !== 'aiDetectAlign') return r.fallback();
+    kindCalls++;
+    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, align: {kind: kindCalls === 1 ? 'id_front' : 'sefach', rotate: 0}})});
+  });
   await p.route(/cloudfunctions\.net\/scan_feedback$/, async r => {
     if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:CORS});
     feedbackCalls.push(JSON.parse(r.request().postData() || '{}'));
     return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, kept: 1, right: 1})});
   });
-  await p.evaluate(() => { window.__scanDone = null; window.__realProcess = window.processAllPendingPages; window.processAllPendingPages = () => { window.__scanDone = window.__pendingScanPages.map(x => ({ready: x.ready, upright: x.upright})); }; window.__scanGoing = startNewScan(); });
+  await p.evaluate(() => { window.__scanDone = null; window.__realProcess = window.processAllPendingPages; window.processAllPendingPages = () => { window.__scanDone = window.__pendingScanPages.map(x => ({ready: x.ready, upright: x.upright})); window.__scanKinds = window.__pendingScanPages.map(x => x.kind).join(','); }; window.__scanGoing = startNewScan(); });
   await p.waitForSelector('[data-testid="scanner"]');
   await p.setInputFiles('[data-testid="scan-files"] input', {name: 'id.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(JPG, 'base64')});
-  await p.waitForFunction(() => document.querySelectorAll('[data-testid="scan-page"]:not([data-pending])').length === 2, null, {timeout: 15000}).catch(() => {});
+  await p.waitForFunction(() => document.querySelectorAll('[data-testid="scan-page"][data-kind]').length === 2, null, {timeout: 15000}).catch(() => {});
+  // Each page shows Haiku's kind; one set to Other is not saved; set to Contract it is again.
+  const kinds0 = await p.evaluate(() => [...document.querySelectorAll('[data-testid="scan-page"]')].map(e => e.dataset.kind).join(','));
+  const pickKind = async kd => {
+    await p.click('[data-testid="scan-kind"] >> nth=1'); await p.click('[data-testid="scan-kind-' + kd + '"]');
+    await p.waitForSelector('[data-testid="scan-kind-' + kd + '"]', {state: 'detached'}); await p.waitForTimeout(300);
+  };
+  await pickKind('other');
+  const otherDone = await p.textContent('[data-testid="scan-done"]');
+  await pickKind('contract');
   // A page's corners corrected: tap it, drag a corner, Apply — the server cuts it again by them.
   await p.click('[data-testid="scan-page-img"] >> nth=0');
   await p.waitForSelector('[data-testid="scan-corners"]');
@@ -624,18 +642,21 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await window.__scanGoing;
     r.reading = document.getElementById('aiScanOverlay').classList.contains('open');
     r.queued = window.__scanDone;
+    r.kinds = window.__scanKinds;
     closeModal('aiScanOverlay'); window.processAllPendingPages = window.__realProcess; window.__pendingScanPages = [];
     return r;
   });
   await p.waitForTimeout(500);
   const ex = (feedbackCalls[0] && feedbackCalls[0].examples) || [];
   ok(cutCalls.length === 1 && cutCalls[0][0][0] > 0.1 && cutCalls[0][1][0] === 0.9 && feedbackCalls.length === 1 && feedbackCalls[0].action === 'add' && ex.length === 2
-    && ex[0].image && JSON.stringify(ex[0].cornersFixed) !== JSON.stringify(ex[0].cornersModel) && !ex[1].image && JSON.stringify(ex[1].cornersFixed) === JSON.stringify(ex[1].cornersModel),
-    'scan window corners: a page tapped, a corner dragged, Apply cuts it again by them; Done sends the training examples — the corrected page with its copy, the other only counted ' + JSON.stringify({cutCalls, ex: ex.map(e => ({fixed: e.cornersFixed, model: e.cornersModel, image: !!e.image}))}));
+    && ex[0].image && JSON.stringify(ex[0].cornersFixed) !== JSON.stringify(ex[0].cornersModel) && !ex[1].image && JSON.stringify(ex[1].cornersFixed) === JSON.stringify(ex[1].cornersModel)
+    && ex[0].kindModel === 'id_front' && ex[0].kindFixed === 'id_front' && !ex[0].pageImage && ex[1].kindModel === 'sefach' && ex[1].kindFixed === 'contract' && ex[1].pageImage
+    && kinds0 === 'id_front,sefach' && /\(1\)/.test(otherDone) && scw.kinds === 'id_front,contract',
+    'scan window corners and kinds: a page tapped, a corner dragged, Apply cuts it again by them; each page shows Haiku\'s kind, Other is not saved, a changed kind goes to the reading; Done sends the training examples — the corrected page with its copy, the changed kind with a copy of the page ' + JSON.stringify({kinds0, otherDone, kinds: scw.kinds, cutCalls, ex: ex.map(e => ({fixed: e.cornersFixed, model: e.cornersModel, image: !!e.image, km: e.kindModel, kf: e.kindFixed, pi: !!e.pageImage}))}));
   ok(scw.pages === 2 && /2/.test(scw.done) && findCalls.length === 1 && findCalls[0].find === true && findCalls[0].auth && findCalls[0].image && scw.reading
-    && JSON.stringify(scw.queued) === JSON.stringify([{ready: true, upright: true}, {ready: true, upright: false}]),
-    'scan window: a picked photo goes to preprocess_scan whole (find, the sign-in token); its two documents become two pages; Done hands them to the reading, the page without a face still to be turned ' + JSON.stringify({scw, findCalls}));
-  await p.unroute(/cloudfunctions\.net\/preprocess_scan$/); await p.unroute(/cloudfunctions\.net\/scan_feedback$/);
+    && JSON.stringify(scw.queued) === JSON.stringify([{ready: true, upright: true}, {ready: true, upright: true}]),
+    'scan window: a picked photo goes to preprocess_scan whole (find, the sign-in token); its two documents become two pages; Done hands them to the reading, turned and with their kinds (no AI alignment there) ' + JSON.stringify({scw, findCalls}));
+  await p.unroute(/cloudfunctions\.net\/preprocess_scan$/); await p.unroute(/cloudfunctions\.net\/scan_feedback$/); await p.unroute(/cloudfunctions\.net\/ai_read$/);
   // The contract pages of a scan become one PDF, a page per photo (src/scan/pdf.ts).
   const cpdf = await p.evaluate(async jpg => {
     const b64 = await ManagerScan.imagesToPdf([{b64: jpg, mediaType: 'image/jpeg'}, {b64: jpg, mediaType: 'image/jpeg'}]);

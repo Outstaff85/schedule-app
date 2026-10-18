@@ -976,16 +976,21 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
             if not ex:
                 bad += 1
                 continue
-            if ex["moved"] < feedback.MOVED_MIN:
+            if not feedback.kept(ex):
                 right += 1
                 continue
             if bucket is None:
                 bucket = _model_bucket(storage)
             ex["model"] = MODEL_PREFIX.rstrip("/").rsplit("/", 1)[-1]  # the version that found these corners
             ref = db.collection("scanTraining").document()
-            path = feedback.image_path(now, ref.id)
-            bucket.blob(path).upload_from_string(ex["image"], content_type="image/jpeg")
-            ref.set(feedback.record(ex, claims.get("tenantId"), now, path))
+            path = page_path = None
+            if ex["image"] is not None:
+                path = feedback.image_path(now, ref.id)
+                bucket.blob(path).upload_from_string(ex["image"], content_type="image/jpeg")
+            if ex["pageImage"] is not None:
+                page_path = feedback.image_path(now, ref.id, "-page")
+                bucket.blob(page_path).upload_from_string(ex["pageImage"], content_type="image/jpeg")
+            ref.set(feedback.record(ex, claims.get("tenantId"), now, path, page_path))
             kept += 1
             moved_sum += ex["moved"]
         stats_ref.set({"newSince": firestore.Increment(kept), "kept": firestore.Increment(kept),

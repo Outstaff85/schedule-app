@@ -103,7 +103,8 @@ export async function openNewScan(){
   const pages=await openScanner();
   if(!pages||!pages.length) return;
   openAiScan();
-  window.__pendingScanPages=pages.map(p=>({b64:p.b64,mediaType:p.mediaType,hi:null,ready:true,upright:p.turn>=0,blurry:p.blurry}));
+  // a page whose kind came from the scan window was also turned by it: Phase 1 asks the AI nothing
+  window.__pendingScanPages=pages.map(p=>({b64:p.b64,mediaType:p.mediaType,hi:null,ready:true,upright:p.turn>=0||!!p.kind,blurry:p.blurry,kind:p.kind||null}));
   processAllPendingPages();
 }
 // Rescan entry point — kept here (not moved into scan-pipeline.js) purely

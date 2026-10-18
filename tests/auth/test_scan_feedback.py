@@ -69,3 +69,19 @@ def test_server_and_site_use_the_same_model_version():
     server = (ROOT / "functions" / "scan_models_version.txt").read_text().strip()
     site = (ROOT / "scripts" / "scan" / "models-version").read_text().strip()
     assert server == site
+
+
+def test_a_changed_kind_is_kept_with_a_copy_of_the_page():
+    e, why = feedback.check(ex(image=None, kindModel="sefach", kindFixed="contract", pageImage=JPG))
+    assert why is None and feedback.kept(e) and e["kindModel"] == "sefach" and e["kindFixed"] == "contract" and e["pageImage"]
+    now = datetime.datetime(2026, 10, 18, tzinfo=datetime.timezone.utc)
+    r = feedback.record(e, "t1", now, None, feedback.image_path(now, "abc", "-page"))
+    assert r["image"] is None and r["pageImage"] == "training/scan/2026-10/abc-page.jpg" and r["kindFixed"] == "contract"
+
+
+def test_a_kind_left_as_it_was_is_only_counted_and_bad_kinds_are_dropped():
+    e, _ = feedback.check(ex(image=None, kindModel="passport", kindFixed="passport"))
+    assert not feedback.kept(e) and e["pageImage"] is None
+    e, _ = feedback.check(ex(image=None, kindModel="nonsense", kindFixed="x"))
+    assert e["kindModel"] is None and e["kindFixed"] is None and not feedback.kept(e)
+    assert feedback.check(ex(image=None, kindModel="sefach", kindFixed="other"))[1] == "a changed kind needs a small JPEG of the page"

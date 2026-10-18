@@ -1310,5 +1310,10 @@
   "The page could not be cut again — check the connection": "לא ניתן לחתוך את העמוד מחדש — בדקו את החיבור",
   "Corrected": "תוקן",
   "Time to retrain the scanner": "הגיע הזמן לאמן מחדש את הסורק",
-  "{0} corrected pages since the last training — run /scan-train on the PC": "{0} עמודים תוקנו מאז האימון האחרון — הריצו את ‎/scan-train במחשב"
+  "{0} corrected pages since the last training — run /scan-train on the PC": "{0} עמודים תוקנו מאז האימון האחרון — הריצו את ‎/scan-train במחשב",
+  "ID card": "תעודת זהות",
+  "ID card back": "גב תעודת הזהות",
+  "Appendix (ספח)": "ספח",
+  "Passport": "דרכון",
+  "Page kind": "סוג העמוד"
 }

@@ -14,6 +14,7 @@ MOVED_MIN = 0.005          # corners moved less than this: the model was right (
 RETRAIN_AT = 200           # new kept examples that make the retraining due
 KEEP_DAYS = 365
 SOURCES = ("model", "phone", "more", "photo", "whole")
+KINDS = ("id_front", "id_back", "sefach", "passport", "contract", "other")
 
 
 def _corners(v):
@@ -39,8 +40,18 @@ def moved(a, b):
     return max(math.hypot(p[0] - q[0], p[1] - q[1]) for p, q in zip(a, b))
 
 
+def _jpeg(v):
+    try:
+        b = base64.b64decode(str(v or ""), validate=True)
+    except Exception:
+        return None
+    return b if b.startswith(b"\xff\xd8") and len(b) <= MAX_IMAGE_BYTES else None
+
+
 def check(example):
-    """(the example cleaned, None) or (None, why it is refused)."""
+    """(the example cleaned, None) or (None, why it is refused). A page is kept when its
+    corners were moved (with the copy of the part the model saw) or its kind was changed
+    (with a copy of the page); otherwise it is only counted."""
     if not isinstance(example, dict):
         return None, "not an object"
     model, fixed = _corners(example.get("cornersModel")), _corners(example.get("cornersFixed"))
@@ -52,21 +63,36 @@ def check(example):
     image = None
     if shift >= MOVED_MIN:  # only a corrected page is kept, so only it carries its copy
         try:
-            image = base64.b64decode(str(example.get("image") or ""), validate=True)
+            base64.b64decode(str(example.get("image") or ""), validate=True)
         except Exception:
             return None, "bad image"
-        if not image.startswith(b"\xff\xd8") or len(image) > MAX_IMAGE_BYTES:
+        image = _jpeg(example.get("image"))
+        if image is None:
             return None, "the image is not a small JPEG"
+    kind_model = example.get("kindModel") if example.get("kindModel") in KINDS else None
+    kind_fixed = example.get("kindFixed") if example.get("kindFixed") in KINDS else kind_model
+    page_image = None
+    if kind_model and kind_fixed != kind_model:
+        page_image = _jpeg(example.get("pageImage"))
+        if page_image is None:
+            return None, "a changed kind needs a small JPEG of the page"
     return {"image": image, "cornersModel": model, "cornersFixed": fixed, "source": source, "model": version,
-            "moved": shift}, None
+            "moved": shift, "kindModel": kind_model, "kindFixed": kind_fixed, "pageImage": page_image}, None
 
 
-def record(ex, tenant_id, now, path):
-    """The Firestore record of a kept example (deleted by the TTL policy on deleteAt)."""
+def kept(ex):
+    """Whether the example is kept (its corners moved or its kind changed), else only counted."""
+    return ex["moved"] >= MOVED_MIN or ex["pageImage"] is not None
+
+
+def record(ex, tenant_id, now, path, page_path=None):
+    """The Firestore record of a kept example (deleted by the TTL policy on deleteAt).
+    path: the corners' copy (None when only the kind was changed); page_path: the page's."""
     return {"cornersModel": ex["cornersModel"], "cornersFixed": ex["cornersFixed"], "moved": ex["moved"],
             "source": ex["source"], "model": ex["model"], "tenantId": tenant_id or "", "image": path,
+            "kindModel": ex["kindModel"], "kindFixed": ex["kindFixed"], "pageImage": page_path,
             "createdAt": now, "deleteAt": now + datetime.timedelta(days=KEEP_DAYS)}
 
 
-def image_path(now, doc_id):
-    return f"training/scan/{now:%Y-%m}/{doc_id}.jpg"
+def image_path(now, doc_id, suffix=""):
+    return f"training/scan/{now:%Y-%m}/{doc_id}{suffix}.jpg"

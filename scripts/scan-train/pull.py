@@ -16,6 +16,8 @@ def main():
     (WORK / "img").mkdir(parents=True, exist_ok=True)
     for snap in db().collection("scanTraining").stream():
         r = snap.to_dict()
+        if not r.get("image"):
+            continue  # only its kind was changed: for the page-kind model, not the corners
         path = WORK / "img" / f"{snap.id}.jpg"
         if not path.exists():
             blob = b.blob(r["image"])
