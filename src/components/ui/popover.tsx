@@ -28,7 +28,7 @@ function PopoverContent({ className, align = 'center', sideOffset = 10, tail = t
         {...props}
       >
         {children}
-        {tail && <PopoverPrimitive.Arrow width={14} height={7} className="fill-[rgba(40,45,64,.95)]" />}
+        {tail && <PopoverPrimitive.Arrow width={14} height={7} className="fill-[var(--pop-tail)]" />}
       </PopoverPrimitive.Content>
     </PopoverPrimitive.Portal>
   );

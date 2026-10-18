@@ -28,6 +28,7 @@ import { Window } from '@/components/shared/window';
 import { SignaturePad } from '@/components/shared/signature-pad';
 import { LanguageButton } from '@/components/shared/language';
 import { AccountMenu } from '@/components/shared/account-menu';
+import { ThemeButton, ThemeSwitch } from '@/components/shared/theme-switch';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -386,6 +387,13 @@ function Windows() {
           <AccountMenu name="Dana Levi" sub={tr('Client')} onSignOut={() => toast(tr('Sign out'))}>
             <DropdownMenuItem><IconUser />{tr('Profile')}</DropdownMenuItem>
           </AccountMenu>
+        </Row>
+      </Demo>
+
+      <Demo id="theme" title={tr('Theme switch (Dark / Light / System)')}>
+        <Row>
+          <ThemeSwitch className="w-full max-w-[340px]" />
+          <ThemeButton />
         </Row>
       </Demo>
 

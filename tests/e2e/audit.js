@@ -1,6 +1,6 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
-// Screenshots go to E2E_OUT (default: tests/e2e/out, git-ignored).
+// Screenshots go to E2E_OUT (default: tests/e2e/out, git-ignored); E2E_THEME=light takes them in the light theme.
 const SP = process.env.E2E_OUT || (__dirname + '/out/audit');
 fs.mkdirSync(SP, {recursive: true});
 const FB = 'https://www.gstatic.com/firebasejs/12.19.0/';
@@ -36,13 +36,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       external.push(u);
       return r.fulfill({status:200, body:''});
     });
-    await ctx.addInitScript(() => {
+    await ctx.addInitScript(THEME => {
       localStorage.setItem('fsEmulator', '127.0.0.1');
+      // E2E_THEME=light: every screen in the light theme (docs/redesign.md → Light theme).
+      if (THEME) localStorage.setItem('uiTheme', THEME);
       window.FIREBASE_WEB_CONFIG = {apiKey:'fake-key', projectId:'demo-schedule', authDomain:'demo-schedule.firebaseapp.com', storageBucket:'demo-schedule.appspot.com'};
       // A real-looking geolocation reply: not instant (the page flags < 800 ms).
       const pos = {coords:{latitude:32.0, longitude:34.8, accuracy:10, speed:null, altitude:null}, timestamp:Date.now()};
       Object.defineProperty(navigator, 'geolocation', {value:{getCurrentPosition:(ok)=>setTimeout(()=>ok(Object.assign({}, pos, {timestamp:Date.now()})), 900)}});
-    });
+    }, process.env.E2E_THEME || "");
     return ctx;
   }
   const page = async ctx => { const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); p.on('dialog', d => d.accept()); return p; };
@@ -122,9 +124,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     // Punch page
     ctx = await newCtx({viewport: vp}); p = await page(ctx);
     await p.goto(BASE + 'worker-punch.html?t=tok-avi'); await sleep(3500); await shoot(p, 'punch-main-' + w);
-    await step(p, w, 'punch-schedule', () => openSchedule());
-    await p.evaluate(() => closeHistory && closeHistory());
-    await p.evaluate(() => openMyHours()); await sleep(2500); await shoot(p, 'punch-hours-' + w);
+    // The React punch page (stage 5): the tiles open the sheets; a reload closes them.
+    await step(p, w, 'punch-schedule', () => document.querySelector('[data-testid="tile-schedule"]').click());
+    await p.reload(); await sleep(3000);
+    await step(p, w, 'punch-hours', () => document.querySelector('[data-testid="tile-hours"]').click());
     await ctx.close();
   }
   console.log(shots.length + ' screenshots in ' + SP);

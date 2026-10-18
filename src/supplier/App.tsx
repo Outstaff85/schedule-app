@@ -13,6 +13,7 @@ import { useVersionWatch } from '@/lib/version-watch';
 import { Brand, Shell, type ShellSection } from '@/components/shared/shell';
 import { LanguageButton } from '@/components/shared/language';
 import { AccountMenu } from '@/components/shared/account-menu';
+import type { ThemeChoice } from '@/lib/theme';
 import { Spinner } from '@/components/ui/spinner';
 import { HoursReview } from '@/hours-review/HoursReview';
 import { HOURS_FN_URL, type HoursCall } from '@/hours-review/hours';
@@ -21,6 +22,9 @@ import { setUi, useUi, type Tab } from './store';
 import { Dashboard } from './Dashboard';
 import { Workers } from './Workers';
 import { Hours } from './Hours';
+
+// The theme picked in the account menu is also kept on the account (login brings it back on any device).
+const saveTheme = (theme: ThemeChoice) => { loadBackend().then(b => b.handleAction('updateMyTheme', { action: 'updateMyTheme', theme }, {})).catch(() => {}); };
 
 const hoursCall: HoursCall = async body => {
   const token = await (await loadBackend()).idToken();
@@ -76,7 +80,7 @@ function Portal({ gate: g, name }: { gate: Gate; name: string }) {
       brand={<Brand name={tr('Supplier Portal')} />}
       tools={<>
         <LanguageButton />
-        <AccountMenu name={name} sub={tr('Supplier')} onSignOut={() => void logout()} />
+        <AccountMenu name={name} sub={tr('Supplier')} onThemeSave={saveTheme} onSignOut={() => void logout()} />
       </>}
       sections={sections}
       active={tab}

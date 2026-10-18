@@ -31,7 +31,7 @@ export function Dashboard() {
                 size="sm"
                 color={isIn ? 'var(--green)' : 'var(--red)'}
                 title={w ? w.name : e.workerName || ''}
-                sub={<><span className={isIn ? 'font-semibold text-ok' : 'font-semibold text-[#ff8a95]'}>{isIn ? tr('IN') : tr('OUT')}</span>{c ? ' · ' + c : ''}</>}
+                sub={<><span className={isIn ? 'font-semibold text-ok' : 'font-semibold text-[var(--red-text)]'}>{isIn ? tr('IN') : tr('OUT')}</span>{c ? ' · ' + c : ''}</>}
                 right={<span className="text-ink">{String(e.time || '')}</span>}
               />
             );

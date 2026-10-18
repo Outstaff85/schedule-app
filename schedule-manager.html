@@ -15,11 +15,12 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#10141f">
+<script>/* The theme before the first draw (docs/redesign.md → Light theme; src/lib/theme.ts): Dark by default, Light, or System — the device's setting. */try{var t=localStorage.getItem('uiTheme');if(t==='system')t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',t==='light'?'light':'dark');}catch(e){}</script>
 <title>Interactive Manager</title>
 <style>
   :root {
-    --bg:#0f1117; --bg2:#181c27; --bg3:#1e2333;
-    --border:rgba(255,255,255,0.08); --border2:rgba(255,255,255,0.14);
+    --bg:var(--surface); --bg2:var(--surface-2); --bg3:var(--surface-3);
+    --border:rgba(var(--tint),0.08); --border2:rgba(var(--tint),0.14);
     --text:#e8eaf0; --text2:var(--ink-2); --text3:#858ba0;
     --accent2:#3d7af5;
     --green-bg:rgba(109,214,160,0.13);
@@ -31,7 +32,7 @@
   body{font-family:'DM Sans','Heebo',Arial,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
 
   /* Titlebar / top panel */
-  .titlebar{min-height:58px;background:rgba(16,20,31,.55);isolation:isolate;border-bottom:1px solid rgba(255,255,255,.1);display:flex;align-items:stretch;padding:0 14px;gap:6px;flex-shrink:0;position:relative;}
+  .titlebar{min-height:58px;background:rgba(var(--bar-rgb),.55);isolation:isolate;border-bottom:1px solid rgba(var(--tint),.1);display:flex;align-items:stretch;padding:0 14px;gap:6px;flex-shrink:0;position:relative;}
   /* The glass blur sits on a layer behind the bar, not on the bar itself: a
      backdrop-filter on the bar would trap the phone bottom bar (fixed) inside it. */
   .titlebar::before{content:'';position:absolute;inset:0;z-index:-1;-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);pointer-events:none;}
@@ -44,16 +45,16 @@
      and its two lines beside it (only the mark on a phone). */
   .og-brand{display:flex;align-items:center;gap:10px;}
   .og-mark{width:36px;height:36px;flex:none;overflow:visible;}
-  .og-roof{fill:none;stroke:rgba(255,255,255,.28);stroke-width:7;stroke-linecap:round;stroke-linejoin:round;}
+  .og-roof{fill:none;stroke:rgba(var(--tint),.28);stroke-width:7;stroke-linecap:round;stroke-linejoin:round;}
   .og-run{fill:none;stroke:url(#ogMarkGrad);stroke-width:7;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:40 180;animation:og-run 2.8s linear infinite;}
   @keyframes og-run{from{stroke-dashoffset:220}to{stroke-dashoffset:0}}
   .og-p{opacity:.55;animation:og-lit 2.8s ease-in-out infinite;}
   .og-p2{animation-delay:.93s;}.og-p3{animation-delay:1.86s;}
   @keyframes og-lit{0%,100%{opacity:.55;transform:none}15%{opacity:1;transform:translateY(-4px)}35%{opacity:.55;transform:none}}
-  .og-link{fill:none;stroke:rgba(255,255,255,.22);stroke-width:4;stroke-linecap:round;}
+  .og-link{fill:none;stroke:rgba(var(--tint),.22);stroke-width:4;stroke-linecap:round;}
   .og-linkrun{fill:none;stroke:url(#ogMarkGrad);stroke-width:4;stroke-linecap:round;stroke-dasharray:14 90;animation:og-linkrun 2.8s linear infinite;}
   @keyframes og-linkrun{from{stroke-dashoffset:104}to{stroke-dashoffset:0}}
-  .og-name b{display:block;font-size:16px;font-weight:700;letter-spacing:-.2px;white-space:nowrap;color:#fff;}
+  .og-name b{display:block;font-size:16px;font-weight:700;letter-spacing:-.2px;white-space:nowrap;color:var(--ink);}
   .og-name b span{background:linear-gradient(90deg,#c7d2fe,#67e8f9);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
   .og-name small{display:block;font-size:10.5px;line-height:1.3;color:#8b90a0;white-space:nowrap;}
   .og-name small.og-roofline{color:var(--ok);}
@@ -75,6 +76,15 @@
   .acct-mi:hover{background:var(--bg3);}
   .acct-mi.install i{color:var(--accent);}
   .acct-mi.out,.acct-mi.out i{color:var(--red);}
+  /* The theme switch (Dark / Light / System): the window's segmented switch (og.css .seg). */
+  .acct-theme{padding:6px 6px 2px;border-top:1px solid var(--border);margin-top:4px;}
+  .acct-theme>span{display:block;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text2);padding:0 4px;}
+  .acct-theme .seg{margin:6px 0 4px;}
+  .acct-theme .seg button{display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;}
+  .acct-theme .seg button i{font-size:15px;}
+  .login-theme .seg{margin:14px 0 0;}
+  .login-theme .seg button,.acct-theme .seg button{display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;}
+  .login-theme .seg button i{font-size:15px;}
   .top-tabs{display:flex;gap:2px;align-items:stretch;}
   .ttab{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:70px;padding:0 12px;cursor:pointer;color:var(--text2);transition:color 0.15s;-webkit-tap-highlight-color:transparent;}
   /* The active tab: its section color (--k) and the highlight line under it. */
@@ -96,7 +106,7 @@
   .login-spot{position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(520px circle at var(--mx,30%) var(--my,30%),rgba(79,142,247,.16),transparent 60%);transition:background .1s;}
   .login-left,.login-card{position:relative;z-index:1;}
   .login-floaters{position:absolute;inset:0;pointer-events:none;overflow:hidden;}
-  .login-floaters i{position:absolute;font-size:64px;color:rgba(255,255,255,.045);animation:loginDrift 24s ease-in-out infinite alternate;}
+  .login-floaters i{position:absolute;font-size:64px;color:rgba(var(--tint),.045);animation:loginDrift 24s ease-in-out infinite alternate;}
   .login-floaters .f1{top:8%;left:6%;} .login-floaters .f2{top:14%;right:8%;animation-duration:28s;font-size:80px;}
   .login-floaters .f3{bottom:12%;left:10%;animation-duration:31s;} .login-floaters .f4{bottom:6%;right:14%;animation-duration:26s;font-size:72px;}
   .login-floaters .f5{top:46%;left:2%;animation-duration:34s;font-size:56px;} .login-floaters .f6{top:40%;right:3%;animation-duration:29s;font-size:52px;}
@@ -109,15 +119,15 @@
   .login-blob.b3{width:260px;height:260px;background:#e0913b;top:40%;left:45%;opacity:.22;animation-duration:26s;}
   @keyframes loginFloat{0%{transform:translate(0,0) scale(1)}50%{transform:translate(60px,40px) scale(1.12)}100%{transform:translate(-40px,70px) scale(.95)}}
   .login-hero-inner{position:relative;max-width:620px;width:100%;}
-  .login-brand{font-size:46px;font-weight:800;letter-spacing:-1px;color:#fff;display:flex;align-items:center;gap:12px;}
+  .login-brand{font-size:46px;font-weight:800;letter-spacing:-1px;color:var(--ink);display:flex;align-items:center;gap:12px;}
   .login-brand i{font-size:42px;color:var(--accent);}
   .login-tagline{margin-top:4px;font-size:24px;font-weight:700;min-height:1.4em;}
   .login-rotator{display:inline-block;background:linear-gradient(90deg,#8fb6ff,#6dd6a0);-webkit-background-clip:text;background-clip:text;color:transparent;transition:opacity .35s,transform .35s;}
   .login-rotator.out{opacity:0;transform:translateY(-10px);}
   .login-desc{margin-top:12px;font-size:15px;line-height:1.6;color:#b9bfd3;}
   .login-sectors{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:24px;}
-  .login-sector{position:relative;overflow:hidden;font:inherit;cursor:pointer;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:14px 8px;text-align:center;color:#e6e9f5;font-size:13px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:6px;transition:transform .25s,border-color .25s,background .25s,box-shadow .25s;}
-  .login-sector i{font-size:28px;color:#6dd6a0;transition:transform .25s;}
+  .login-sector{position:relative;overflow:hidden;font:inherit;cursor:pointer;background:rgba(var(--tint),.05);border:1px solid rgba(var(--tint),.1);border-radius:14px;padding:14px 8px;text-align:center;color:#e6e9f5;font-size:13px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:6px;transition:transform .25s,border-color .25s,background .25s,box-shadow .25s;}
+  .login-sector i{font-size:28px;color:var(--green);transition:transform .25s;}
   .login-sector:hover{transform:translateY(-3px);border-color:rgba(109,214,160,.45);}
   .login-sector.active{background:rgba(109,214,160,.12);border-color:#6dd6a0;box-shadow:0 8px 28px rgba(109,214,160,.18);transform:translateY(-3px);}
   .login-sector.active i{transform:scale(1.15);}
@@ -125,8 +135,8 @@
   .login-pay{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:4px;animation:loginPop .5s .3s both;}
   .login-pay-label{font-size:13px;color:#9aa1b8;display:inline-flex;align-items:center;gap:5px;}
   /* Payment badges: the payment apps' own marks in our dark-glass chip. */
-  .pay-badge{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px 0 4px;border-radius:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#e6e9f5;font-size:13px;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.25);transition:transform .2s,border-color .2s;}
-  .pay-badge:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.3);}
+  .pay-badge{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px 0 4px;border-radius:10px;background:rgba(var(--tint),.06);border:1px solid rgba(var(--tint),.12);color:#e6e9f5;font-size:13px;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.25);transition:transform .2s,border-color .2s;}
+  .pay-badge:hover{transform:translateY(-2px);border-color:rgba(var(--tint),.3);}
   .pay-ico{width:26px;height:26px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;color:#fff;flex-shrink:0;}
   .pay-ico.gpay{background:#fff;}
   .pay-ico.gpay b{font:800 16px/1 Arial,sans-serif;background:conic-gradient(from -45deg,#ea4335 0 25%,#4285f4 0 50%,#34a853 0 75%,#fbbc05 0);-webkit-background-clip:text;background-clip:text;color:transparent;}
@@ -138,9 +148,9 @@
   @keyframes loginPop{from{opacity:0;transform:translateY(6px) scale(.96)}to{opacity:1;transform:none}}
   .login-left{flex:1 1 58%;display:flex;flex-direction:column;justify-content:safe center;position:relative;padding:36px 40px;}
   .login-features{position:relative;max-width:620px;width:100%;margin:0 auto;}
-  .login-features-title{font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#8fb6ff;margin:22px 0 10px;}
+  .login-features-title{font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue-text);margin:22px 0 10px;}
   .login-feature-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
-  .login-feature{position:relative;overflow:hidden;display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);animation:loginPop .6s both;transition:transform .25s,border-color .25s,background .25s;}
+  .login-feature{position:relative;overflow:hidden;display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:12px;background:rgba(var(--tint),.04);border:1px solid rgba(var(--tint),.08);animation:loginPop .6s both;transition:transform .25s,border-color .25s,background .25s;}
   .login-feature::after,.login-sector::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .25s;background:radial-gradient(180px circle at var(--cx,50%) var(--cy,50%),rgba(109,214,160,.18),transparent 70%);}
   .login-feature:hover::after,.login-sector:hover::after{opacity:1;}
   .login-feature:hover{transform:translateY(-2px);border-color:rgba(79,142,247,.45);background:rgba(79,142,247,.08);}
@@ -149,7 +159,7 @@
   .login-feature i{font-size:24px;color:var(--accent);flex-shrink:0;margin-top:1px;}
   .login-feature b{display:block;color:#eef0f8;font-size:14px;margin-bottom:2px;}
   .login-feature span{display:block;color:#9aa1b8;font-size:12.5px;line-height:1.45;}
-  .login-card{flex:0 0 400px;display:flex;flex-direction:column;justify-content:center;padding:40px 36px;background:rgba(20,24,36,.72);border-left:1px solid rgba(255,255,255,.08);backdrop-filter:blur(14px);box-shadow:-30px 0 80px rgba(0,0,0,.35);}
+  .login-card{flex:0 0 400px;display:flex;flex-direction:column;justify-content:center;padding:40px 36px;background:rgba(20,24,36,.72);border-left:1px solid rgba(var(--tint),.08);backdrop-filter:blur(14px);box-shadow:-30px 0 80px rgba(0,0,0,.35);}
   .login-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:linear-gradient(180deg,transparent,#4f8ef7,#6dd6a0,transparent);background-size:100% 200%;animation:loginEdge 6s linear infinite;opacity:.8;}
   @keyframes loginEdge{0%{background-position:0 100%}100%{background-position:0 -100%}}
   .login-card #loginBtn{background:linear-gradient(90deg,#4f8ef7,#3fb98a);border:0;box-shadow:0 8px 24px rgba(79,142,247,.3);transition:transform .2s,box-shadow .2s;}
@@ -174,9 +184,9 @@
     .login-tagline{font-size:19px;} .login-desc{font-size:14px;}
     .login-sectors{grid-template-columns:repeat(3,1fr);gap:6px;margin-top:16px;}
     .login-sector{padding:10px 4px;font-size:11px;} .login-sector i{font-size:22px;}
-    .login-card{flex:none;border-left:0;border-top:1px solid rgba(255,255,255,.08);padding:24px 20px 32px;}
+    .login-card{flex:none;border-left:0;border-top:1px solid rgba(var(--tint),.08);padding:24px 20px 32px;}
     .login-screen{padding-bottom:170px;}
-    .login-card{position:fixed;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));top:auto;min-height:0;z-index:5;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px;border:1px solid rgba(255,255,255,.12);border-radius:18px;background:rgba(18,22,34,.94);box-shadow:0 14px 40px rgba(0,0,0,.55);}
+    .login-card{position:fixed;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));top:auto;min-height:0;z-index:5;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px;border:1px solid rgba(var(--tint),.12);border-radius:18px;background:rgba(18,22,34,.94);box-shadow:0 14px 40px rgba(0,0,0,.55);}
     .login-card>div:first-child{display:none;}
     .login-card .field{margin:0;}
     .login-card .field label{display:none;}
@@ -187,9 +197,9 @@
   /* Sign-in (redesign stage 11): a compact glass card over the site — pinned
      to the bottom right on a computer, to the bottom on a phone; the showcase
      scrolls under it. */
-  .login-card{position:fixed !important;top:auto !important;right:24px;bottom:24px;left:auto;width:380px;min-height:0 !important;flex:none;display:block;padding:20px 20px 18px;border:1px solid rgba(255,255,255,.22) !important;border-radius:22px;background:rgba(17,20,31,.72) !important;-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);box-shadow:0 20px 50px rgba(0,0,0,.5) !important;z-index:5}
+  .login-card{position:fixed !important;top:auto !important;right:24px;bottom:24px;left:auto;width:380px;min-height:0 !important;flex:none;display:block;padding:20px 20px 18px;border:1px solid rgba(var(--tint),.22) !important;border-radius:22px;background:rgba(17,20,31,.72) !important;-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);box-shadow:0 20px 50px rgba(0,0,0,.5) !important;z-index:5}
   .login-card::before{display:none}
-  .login-card #loginBtn{background:rgba(255,255,255,.28);box-shadow:0 8px 24px rgba(0,0,0,.25);height:44px}
+  .login-card #loginBtn{background:rgba(var(--tint),.28);box-shadow:0 8px 24px rgba(0,0,0,.25);height:44px}
   .login-card-h{display:flex;align-items:center;gap:12px;margin-bottom:14px}
   .login-card-h .og-mark{width:40px;height:40px;flex:none}
   .login-card-h h3{font-size:19px;font-weight:700}
@@ -293,8 +303,8 @@
   .t3-stats b{display:block;font-size:24px;font-weight:700;line-height:1.1;color:var(--text)}
   .t3-sec{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--text2);margin:16px 2px 6px}
   .t3-sec em{font-style:normal;margin-left:auto;color:var(--text3);font-weight:500}
-  .t3-line{display:flex;align-items:center;gap:10px;padding:9px 10px 9px 12px;border-left:3px solid var(--c,var(--border2));background:linear-gradient(90deg,rgba(255,255,255,.035),transparent 85%);border-radius:0 8px 8px 0;margin-bottom:4px;font-size:13px;cursor:pointer}
-  .t3-line:hover{background:linear-gradient(90deg,rgba(255,255,255,.06),transparent 85%)}
+  .t3-line{display:flex;align-items:center;gap:10px;padding:9px 10px 9px 12px;border-left:3px solid var(--c,var(--border2));background:linear-gradient(90deg,rgba(var(--tint),.035),transparent 85%);border-radius:0 8px 8px 0;margin-bottom:4px;font-size:13px;cursor:pointer}
+  .t3-line:hover{background:linear-gradient(90deg,rgba(var(--tint),.06),transparent 85%)}
   .t3-line .n{flex:1;min-width:0}
   .t3-line .n b{display:block;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .t3-line .n small{display:block;color:var(--text2);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -303,8 +313,8 @@
   .t3-empty{color:var(--text3);font-size:13px;padding:6px 2px 4px}
   /* The lists in the template: worker and client cards lose their box and
      get the colored line on the left. */
-  .wcard,.client-card{border:0 !important;border-left:3px solid var(--c,var(--border2)) !important;border-radius:0 10px 10px 0 !important;background:linear-gradient(90deg,rgba(255,255,255,.04),rgba(255,255,255,.012) 70%) !important}
-  .wcard:hover,.client-card:hover{background:linear-gradient(90deg,rgba(255,255,255,.07),rgba(255,255,255,.02) 70%) !important}
+  .wcard,.client-card{border:0 !important;border-left:3px solid var(--c,var(--border2)) !important;border-radius:0 10px 10px 0 !important;background:linear-gradient(90deg,rgba(var(--tint),.04),rgba(var(--tint),.012) 70%) !important}
+  .wcard:hover,.client-card:hover{background:linear-gradient(90deg,rgba(var(--tint),.07),rgba(var(--tint),.02) 70%) !important}
   @media (max-width:700px){
     .overlay{align-items:flex-end}
     .overlay>.modal{width:100% !important;max-width:100% !important;max-height:88vh;border-radius:18px 18px 0 0;border-bottom:0;padding:14px 16px 20px}
@@ -552,17 +562,17 @@
   .seg-toggle button{flex:1;border:0;background:none;color:var(--text2);font:600 13px inherit;padding:8px 4px;border-radius:8px;cursor:pointer}
   .seg-toggle button.on{background:var(--accent);color:#fff}
   .rate-margin{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:8px;margin-bottom:12px}
-  .rate-margin>div{background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:12px;padding:9px 10px;text-align:center}
+  .rate-margin>div{background:rgba(var(--tint),.04);border:1px solid var(--border);border-radius:12px;padding:9px 10px;text-align:center}
   .rate-margin b{display:block;font-size:17px;font-weight:700;color:var(--green)}
   .rate-margin small{display:block;font-size:11px;color:var(--text2);margin-top:2px}
   .rate-margin.neg b{color:var(--red,#ff4f5e)}
   /* The client editor's small map (Place): the GPS radius as a circle; a tap opens the map picker. */
   .og-map{position:relative;height:110px;border-radius:14px;margin:2px 0 12px;cursor:pointer;overflow:hidden;border:1px solid var(--border);
-    background:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px) 0 0/22px 22px,linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px) 0 0/22px 22px,rgba(34,211,238,.05)}
+    background:linear-gradient(rgba(var(--tint),.035) 1px,transparent 1px) 0 0/22px 22px,linear-gradient(90deg,rgba(var(--tint),.035) 1px,transparent 1px) 0 0/22px 22px,rgba(34,211,238,.05)}
   .og-map-r{position:absolute;left:50%;top:50%;width:calc(var(--r,48px)*2);height:calc(var(--r,48px)*2);transform:translate(-50%,-50%);border-radius:50%;border:1.5px dashed rgba(34,211,238,.7);background:rgba(34,211,238,.10)}
   .og-map-pin{position:absolute;left:50%;top:50%;transform:translate(-50%,-80%);font-size:22px;color:#22d3ee}
   .og-map-l{position:absolute;right:8px;bottom:8px;max-width:calc(100% - 16px);padding:3px 9px;border-radius:9px;background:rgba(10,12,20,.7);font-size:11px;font-weight:600;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .og-map-tap{position:absolute;left:10px;top:10px;width:30px;height:30px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:#22d3ee;font-size:16px}
+  .og-map-tap{position:absolute;left:10px;top:10px;width:30px;height:30px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(var(--tint),.08);border:1px solid rgba(var(--tint),.14);color:#22d3ee;font-size:16px}
   .og-map:active{transform:scale(.99)}
   .og-map:not(.set) .og-map-r,.og-map:not(.set) .og-map-pin{opacity:.35}
   .view-toggle{display:inline-flex;border:1px solid var(--border2);border-radius:var(--radius-sm);overflow:hidden}
@@ -609,15 +619,15 @@
        bottom edge that springs in. Clients, Suppliers, Admin are under More. */
     .top-tabs{position:fixed;left:0;right:0;bottom:0;z-index:60;width:auto;order:initial;overflow:visible;display:flex;gap:0;
       height:calc(66px + env(safe-area-inset-bottom,0px));padding:0 0 env(safe-area-inset-bottom,0px);
-      background:rgba(14,17,26,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid rgba(255,255,255,.1);}
+      background:rgba(var(--bar-rgb),.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid rgba(var(--tint),.1);}
     .top-tabs::before{content:'';position:absolute;left:0;right:0;top:-1px;height:1px;background:linear-gradient(90deg,transparent,rgba(129,140,248,.5),rgba(34,211,238,.5),rgba(244,114,182,.4),transparent);pointer-events:none;}
-    .ttab{flex:1 1 0;min-width:0;padding:0 1px;gap:3px;border:0;border-radius:0;color:rgba(255,255,255,.5);}
+    .ttab{flex:1 1 0;min-width:0;padding:0 1px;gap:3px;border:0;border-radius:0;color:rgba(var(--tint),.5);}
     .ttab.in-more{display:none !important;}
     #tabMore{display:flex;}
     .ttab .ic{width:42px;height:30px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:21px;transition:background .3s;}
     .ttab.active .ic{background:color-mix(in srgb,var(--k) 18%,transparent);}
     .ttab::after{left:30%;right:30%;height:3px;border-radius:3px 3px 0 0;background:var(--k);box-shadow:0 0 10px var(--k);animation:none !important;transition:transform .4s cubic-bezier(.34,1.56,.64,1);}
-    .ttab:not(.active):hover{color:rgba(255,255,255,.5);}
+    .ttab:not(.active):hover{color:rgba(var(--tint),.5);}
     .ttab .lb{font-size:10px;font-weight:600;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     .ttab .tab-badge{top:-2px;right:-2px;}
     body{padding-bottom:calc(66px + env(safe-area-inset-bottom,0px));}
@@ -660,12 +670,12 @@
   .dot{color:#4a5068}
   .pin{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
   .pin i{width:6px;height:6px;border-radius:50%;background:currentColor}
-  .pin.ok{color:var(--ok)}.pin.bad{color:#ff8a95}.pin.vac{color:var(--warn)}
+  .pin.ok{color:var(--ok)}.pin.bad{color:var(--red-text)}.pin.vac{color:var(--warn)}
   .nchip{position:relative;flex:none;display:inline-flex;align-items:center;gap:3px;height:20px;padding:0 7px 0 5px;border-radius:999px;border:0;font:600 11px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;white-space:nowrap}
   .nchip i{font-size:12px}
-  .nchip.red{background:rgba(255,95,109,.16);color:#ff9aa4}
-  .nchip.amber{background:rgba(245,166,35,.15);color:#f7c062}
-  .nchip.more{background:rgba(255,255,255,.1);color:#cfd3dd;padding:0 7px}
+  .nchip.red{background:rgba(255,95,109,.16);color:var(--red-text)}
+  .nchip.amber{background:rgba(245,166,35,.15);color:var(--amber-text)}
+  .nchip.more{background:rgba(var(--tint),.1);color:#cfd3dd;padding:0 7px}
   .nchip::after{content:'';position:absolute;left:6px;right:6px;bottom:-3px;height:2px;border-radius:2px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;transform:scaleX(0);transition:transform .4s cubic-bezier(.34,1.56,.64,1)}
   .nchip:hover::after{transform:scaleX(1)}
   tr.gone{display:none}
@@ -708,14 +718,14 @@
   @keyframes og-ring{0%,88%,100%{transform:rotate(0)}90%{transform:rotate(14deg)}93%{transform:rotate(-12deg)}96%{transform:rotate(6deg)}}
   .og-bell-n{position:absolute;top:-4px;right:-4px;z-index:1;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--bad);color:#fff;font:700 10px 'DM Sans',Arial,sans-serif;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px var(--ground);animation:og-bump 2.4s ease-in-out infinite}
   @keyframes og-bump{0%,90%,100%{transform:scale(1)}95%{transform:scale(1.2)}}
-  .og-npop{position:fixed;z-index:4000;width:min(340px,calc(100vw - 16px));max-height:min(480px,70vh);overflow:auto;padding:8px;border-radius:18px;background:rgba(22,26,38,.92);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.2);box-shadow:0 18px 44px rgba(0,0,0,.55);opacity:0;transform:translateY(-6px) scale(.97);transition:opacity .18s,transform .18s}
+  .og-npop{position:fixed;z-index:4000;width:min(340px,calc(100vw - 16px));max-height:min(480px,70vh);overflow:auto;padding:8px;border-radius:18px;background:rgba(22,26,38,.92);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border:1px solid rgba(var(--tint),.2);box-shadow:0 18px 44px rgba(0,0,0,.55);opacity:0;transform:translateY(-6px) scale(.97);transition:opacity .18s,transform .18s}
   .og-npop.open{opacity:1;transform:none;overflow:visible}
   .og-npop-list{max-height:min(420px,62vh);overflow:auto}
-  .og-npop::before{content:'';position:absolute;top:-7px;left:var(--px,14px);width:12px;height:12px;background:rgba(22,26,38,.95);border-left:1px solid rgba(255,255,255,.2);border-top:1px solid rgba(255,255,255,.2);transform:rotate(45deg)}
+  .og-npop::before{content:'';position:absolute;top:-7px;left:var(--px,14px);width:12px;height:12px;background:rgba(22,26,38,.95);border-left:1px solid rgba(var(--tint),.2);border-top:1px solid rgba(var(--tint),.2);transform:rotate(45deg)}
   .og-npop h5{display:flex;align-items:center;font-size:13px;padding:6px 8px 8px}
   .og-npop-all{margin-left:auto;border:0;background:none;color:var(--fig);font:600 12px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer}
   .og-ni{display:flex;gap:10px;width:100%;padding:9px 8px;border:0;border-radius:12px;background:none;color:var(--text);align-items:flex-start;text-align:left;cursor:pointer;font-family:inherit}
-  .og-ni:hover{background:rgba(255,255,255,.06)}
+  .og-ni:hover{background:rgba(var(--tint),.06)}
   .og-ni .ic{width:30px;height:30px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center;font-size:16px;background:color-mix(in srgb,var(--c) 18%,transparent);color:var(--c)}
   .og-ni .tx{flex:1;min-width:0;font-size:13px}
   .og-ni .tx b{display:block;font-weight:600}
@@ -783,7 +793,7 @@ body:has(.overlay.open){overflow:hidden}
      small and muted. The same block in the manager app and both portals. */
   .modal .field label:not(.check-chip):not([style]){font-size:14px;font-weight:500;color:#8b90a0;margin:0 4px 4px}
   .modal .field input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]),.modal .field select,.modal .field textarea{
-    height:38px;padding:0 12px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background-color:rgba(255,255,255,.05);color:var(--text);font-size:14px;
+    height:38px;padding:0 12px;border-radius:12px;border:1px solid rgba(var(--tint),.12);background-color:rgba(var(--tint),.05);color:var(--text);font-size:14px;
     box-shadow:none;transition:border-color .2s,box-shadow .2s,background-color .2s}
   .modal .field textarea{height:auto;min-height:84px;padding:10px 12px;line-height:1.45}
   .modal .field select{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;
@@ -791,22 +801,22 @@ body:has(.overlay.open){overflow:hidden}
     background-position:calc(100% - 19px) 16px,calc(100% - 14px) 16px;background-size:5px 5px;background-repeat:no-repeat}
   .modal [dir=rtl] .field select,.modal .field select[dir=rtl]{padding-right:14px;padding-left:36px;background-position:14px 16px,19px 16px}
   .modal .field input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]):focus,.modal .field select:focus,.modal .field textarea:focus{
-    outline:none;border-color:rgba(34,211,238,.6);background-color:rgba(255,255,255,.07);box-shadow:0 0 0 3px rgba(34,211,238,.12)}
-  .modal .field input::placeholder,.modal .field textarea::placeholder{color:rgba(255,255,255,.35)}
+    outline:none;border-color:rgba(34,211,238,.6);background-color:rgba(var(--tint),.07);box-shadow:0 0 0 3px rgba(34,211,238,.12)}
+  .modal .field input::placeholder,.modal .field textarea::placeholder{color:rgba(var(--tint),.35)}
   .modal .field input:disabled,.modal .field select:disabled{opacity:.55}
   .modal .field .scan-missing{border-color:rgba(245,166,35,.6) !important;background-color:rgba(245,166,35,.06) !important}
   .modal .rate-in input{padding-left:58px !important}
   /* Inline old-style fields inside any window (style="background:var(--bg3)…") follow the glass look too. */
   .modal input:is([type=text],[type=number],[type=date],[type=time],[type=tel],[type=email],[type=password],[type=search],[type=url],:not([type])),.modal select,.modal textarea{
-    background-color:rgba(255,255,255,.05) !important;border:1px solid rgba(255,255,255,.12) !important;border-radius:12px !important;color:var(--text) !important;font-size:14px !important;box-shadow:none}
+    background-color:rgba(var(--tint),.05) !important;border:1px solid rgba(var(--tint),.12) !important;border-radius:12px !important;color:var(--text) !important;font-size:14px !important;box-shadow:none}
   .modal input:is([type=text],[type=number],[type=date],[type=time],[type=tel],[type=email],[type=password],[type=search],[type=url],:not([type])),.modal select{height:38px !important;padding-top:0 !important;padding-bottom:0 !important}
   .modal input:focus,.modal select:focus,.modal textarea:focus{border-color:rgba(34,211,238,.6) !important;box-shadow:0 0 0 3px rgba(34,211,238,.12) !important;outline:none}
   .modal .scan-missing{border-color:rgba(245,166,35,.6) !important;background-color:rgba(245,166,35,.06) !important}
   .modal .field>label i.ti{display:none}
   .modal input[type=date]{color-scheme:dark}
-  .modal .seg-toggle{gap:4px;padding:4px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1)}
+  .modal .seg-toggle{gap:4px;padding:4px;border-radius:14px;background:rgba(var(--tint),.05);border:1px solid rgba(var(--tint),.1)}
   .modal .seg-toggle button{position:relative;height:31px;padding:0 6px;border-radius:10px;color:#8b90a0}
-  .modal .seg-toggle button.on{background:rgba(255,255,255,.12);color:#fff}
+  .modal .seg-toggle button.on{background:rgba(var(--tint),.12);color:var(--ink)}
   .modal .seg-toggle button.on::after{content:'';position:absolute;left:28%;right:28%;bottom:3px;height:2px;border-radius:2px;background:var(--uline,#22d3ee);background-size:300% 100%;animation:og-flow 2.4s linear infinite}
 </style>
 <link rel="stylesheet" href="fonts/fonts.css">
@@ -826,17 +836,17 @@ body:has(.overlay.open){overflow:hidden}
   .titlebar{align-items:center;gap:14px;padding:0 16px}
   .titlebar .brand{padding-right:0}
   .titlebar-actions{margin-left:0}
-  .og-crumb{display:flex;align-items:center;gap:8px;height:38px;padding:0 14px;border-radius:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);
+  .og-crumb{display:flex;align-items:center;gap:8px;height:38px;padding:0 14px;border-radius:14px;background:rgba(var(--tint),.08);border:1px solid rgba(var(--tint),.18);
     -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);font-size:14px;white-space:nowrap;min-width:0;max-width:34vw;overflow:hidden;flex:none}
   .og-crumb:empty{display:none}
   .og-crumb>i:first-child{color:var(--k);font-size:17px}
-  .og-crumb b{font-weight:600;color:#fff}
+  .og-crumb b{font-weight:600;color:var(--ink)}
   .og-crumb em{font-style:normal;font:500 12.5px 'DM Mono',ui-monospace,monospace;color:var(--text2)}
   .og-crumb .og-crumb-sep{font-size:13px;color:var(--text3)}
   .og-crumb span{color:var(--text2);overflow:hidden;text-overflow:ellipsis}
   .og-center{margin:0 auto;display:flex;align-items:center;gap:14px;min-width:0;white-space:nowrap}
   .og-center:has(.og-greet:empty){visibility:hidden}
-  .og-date{font-size:13.5px;color:var(--text2);padding-right:14px;border-right:1px solid rgba(255,255,255,.14)}
+  .og-date{font-size:13.5px;color:var(--text2);padding-right:14px;border-right:1px solid rgba(var(--tint),.14)}
   .og-date-s{display:none}
   .og-center .og-greet{margin:0}
   .og-center .og-greet h3{display:flex;align-items:center;font-size:15px;font-weight:600;letter-spacing:0}
@@ -847,24 +857,24 @@ body:has(.overlay.open){overflow:hidden}
   @media (prefers-reduced-motion:reduce){.page-section.visible{animation:none}}
   /* Readability: figures as glass tiles, empty states in a dashed frame. */
   .t3-stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:2px 0 14px;max-width:680px}
-  .t3-stats>div,.t3-stats>div.on{margin:0;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);font-size:13px;color:var(--text2);box-shadow:none}
-  .t3-stats>div.on{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.25)}
+  .t3-stats>div,.t3-stats>div.on{margin:0;padding:10px 12px;border-radius:14px;background:rgba(var(--tint),.06);border:1px solid rgba(var(--tint),.12);font-size:13px;color:var(--text2);box-shadow:none}
+  .t3-stats>div.on{background:rgba(var(--tint),.12);border-color:rgba(var(--tint),.25)}
   .t3-stats b{font-size:28px;font-weight:600;line-height:1.15;font-variant-numeric:tabular-nums}
-  .t3-empty{border:1px dashed rgba(255,255,255,.2);border-radius:14px;padding:12px;text-align:center;color:var(--text2);font-size:13px}
+  .t3-empty{border:1px dashed rgba(var(--tint),.2);border-radius:14px;padding:12px;text-align:center;color:var(--text2);font-size:13px}
   /* Accounting: Salary shows its own figures, so the ones above the tabs hide (no repeat). */
   @media (min-width:701px){
-    .top-tabs{flex-direction:column;align-items:stretch;gap:4px;width:210px;flex-shrink:0;padding:14px 10px;background:rgba(16,20,31,.35);border-right:1px solid rgba(255,255,255,.08);overflow-y:auto}
+    .top-tabs{flex-direction:column;align-items:stretch;gap:4px;width:210px;flex-shrink:0;padding:14px 10px;background:rgba(var(--bar-rgb),.35);border-right:1px solid rgba(var(--tint),.08);overflow-y:auto}
     .ttab{flex-direction:row;justify-content:flex-start;gap:12px;min-width:0;height:40px;padding:0 12px;border-radius:12px;flex:none}
     .ttab .ic{font-size:18px;width:20px;display:flex;justify-content:center}
     .ttab .lb{font-size:14.5px;font-weight:500}
-    .ttab:hover{background:rgba(255,255,255,.05)}
-    .ttab.active{background:rgba(255,255,255,.08)}
+    .ttab:hover{background:rgba(var(--tint),.05)}
+    .ttab.active{background:rgba(var(--tint),.08)}
     .ttab::after{left:0;right:auto;top:9px;bottom:9px;width:3px;height:auto;background:var(--k);box-shadow:0 0 10px var(--k);transform:scaleY(0);transition:transform .35s cubic-bezier(.34,1.56,.64,1)}
     .ttab.active::after{transform:scaleY(1);animation:none}
     body[data-tab]:not([data-tab=workers]):not([data-tab=schedule]) .sidebar{display:none}
     .main>.page-section{max-width:1200px;margin-left:auto;margin-right:auto}
     html[lang=he] .app{flex-direction:row-reverse}
-    html[lang=he] .top-tabs{border-right:0;border-left:1px solid rgba(255,255,255,.08)}
+    html[lang=he] .top-tabs{border-right:0;border-left:1px solid rgba(var(--tint),.08)}
     html[lang=he] .ttab{direction:rtl}
     html[lang=he] .ttab::after{left:auto;right:0}
     html[lang=he] .sidebar{border-right:0;border-left:1px solid var(--border)}
@@ -892,8 +902,31 @@ body:has(.overlay.open){overflow:hidden}
   html[lang=he] .acct-chip,html[lang=he] .lang-btn,html[lang=he] .acct-menu,html[lang=he] .og-crumb em{direction:ltr}
   html[lang=he] .acct-menu{right:auto;left:0}
   html[lang=he] .og-crumb .og-crumb-sep{transform:scaleX(-1)}
-  html[lang=he] .og-date{padding-right:0;padding-left:14px;border-right:0;border-left:1px solid rgba(255,255,255,.14)}
+  html[lang=he] .og-date{padding-right:0;padding-left:14px;border-right:0;border-left:1px solid rgba(var(--tint),.14)}
   html[lang=he] .og-center .gic{margin-left:0;margin-right:10px}
+  /* ── The light theme (docs/redesign.md → Light theme; the tokens are in
+     og.css): this page's own looks drawn for the dark ground — the sign-in
+     showcase, the bell's popover, the map label, the phone bottom bar. ── */
+  :root[data-theme="light"] .login-screen{background:linear-gradient(135deg,#e6ebf5,#f3f5fa 60%,#eef1f7);}
+  :root[data-theme="light"] .login-blob{opacity:.22;}
+  :root[data-theme="light"] .login-blob.b3{opacity:.12;}
+  :root[data-theme="light"] .login-spot{background:radial-gradient(520px circle at var(--mx,30%) var(--my,30%),rgba(79,142,247,.12),transparent 60%);}
+  :root[data-theme="light"] .login-brand-name{background-image:linear-gradient(90deg,#141826 0%,#1d5fd6 30%,#0e7340 50%,#141826 70%);}
+  :root[data-theme="light"] .login-rotator{background-image:linear-gradient(90deg,#1d5fd6,#0e7340);}
+  :root[data-theme="light"] .login-desc,:root[data-theme="light"] .login-pay-label,:root[data-theme="light"] .login-feature span{color:var(--ink-2);}
+  :root[data-theme="light"] .login-sector,:root[data-theme="light"] .pay-badge,:root[data-theme="light"] .login-role,:root[data-theme="light"] .login-feature b{color:var(--ink);}
+  :root[data-theme="light"] .login-sector,:root[data-theme="light"] .login-feature{background:rgba(255,255,255,.6);}
+  :root[data-theme="light"] .login-sector.active{background:var(--tick-on);border-color:var(--green);}
+  :root[data-theme="light"] .pay-badge{background:rgba(255,255,255,.7);box-shadow:0 4px 14px rgba(20,24,40,.08);}
+  :root[data-theme="light"] .login-card{background:rgba(255,255,255,.88) !important;box-shadow:0 14px 40px rgba(20,24,40,.16) !important;}
+  :root[data-theme="light"] .login-card #loginBtn{background:var(--glass-strong);border:1px solid var(--glass-edge);box-shadow:var(--shadow-glass);}
+  :root[data-theme="light"] .og-npop{background:rgba(255,255,255,.96);box-shadow:var(--shadow-pop);}
+  :root[data-theme="light"] .og-npop::before{background:rgba(255,255,255,.98);}
+  :root[data-theme="light"] .og-map-l{background:rgba(255,255,255,.88);}
+  :root[data-theme="light"] .nchip.more{color:var(--ink-2);}
+  :root[data-theme="light"] .acct-menu{box-shadow:var(--shadow-pop);}
+  :root[data-theme="light"] .modal input[type=date]{color-scheme:light;}
+  @media (max-width:820px){ .login-theme{grid-column:1/-1;} .login-theme .seg{margin:4px 0 0;} }
 </style>
 </head>
 <body>
@@ -920,6 +953,7 @@ body:has(.overlay.open){overflow:hidden}
         <div class="acct-h" id="accountMenuHead"></div>
         <div id="accountInstallSlot"></div>
                 <button type="button" class="acct-mi" id="accountNameItem" onclick="closeAccountMenu();editMyName()"><i class="ti ti-user-edit"></i><span data-i18n>My name</span></button>
+        <div class="acct-theme" id="accountTheme"><span data-i18n>Theme</span><div class="seg theme-seg"><button type="button" data-theme-v="dark" onclick="pickTheme('dark')"><i class="ti ti-moon"></i><span data-i18n>Dark</span></button><button type="button" data-theme-v="light" onclick="pickTheme('light')"><i class="ti ti-sun"></i><span data-i18n>Light</span></button><button type="button" data-theme-v="system" onclick="pickTheme('system')"><i class="ti ti-device-desktop"></i><span data-i18n>System</span></button></div></div>
         <button type="button" class="acct-mi out" onclick="logout()"><i class="ti ti-logout"></i><span data-i18n>Sign out</span></button>
       </div>
     </div>
@@ -1126,8 +1160,10 @@ body:has(.overlay.open){overflow:hidden}
     <div class="login-card-h"><svg class="og-mark" viewBox="0 0 100 100" aria-hidden="true"><path class="og-roof" d="M10 50L50 16l40 34"/><path class="og-run" d="M10 50L50 16l40 34"/><g class="og-p og-p1"><g transform="translate(30 70) scale(.95)"><circle cx="0" cy="-9" r="7" fill="#818cf8"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#818cf8"/></g></g><g class="og-p og-p2"><g transform="translate(50 66) scale(1.15)"><circle cx="0" cy="-9" r="7" fill="#22d3ee"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#22d3ee"/></g></g><g class="og-p og-p3"><g transform="translate(70 70) scale(.95)"><circle cx="0" cy="-9" r="7" fill="#f472b6"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#f472b6"/></g></g><path class="og-link" d="M24 92H76"/><path class="og-linkrun" d="M24 92H76"/></svg><div><h3 data-i18n>Sign in</h3><p data-i18n>One login for owners, HR, suppliers and clients</p></div></div>
     <div class="field"><label data-i18n>Username</label><input type="text" id="loginUsername" autocomplete="username" autofocus placeholder="Username" data-i18n-placeholder="Username"></div>
     <div class="field"><label data-i18n>Password</label><input type="password" id="loginPassword" autocomplete="current-password" placeholder="Password" data-i18n-placeholder="Password" onkeydown="if(event.key==='Enter')submitLogin()"></div>
-    <div id="loginError" style="color:#ff6b78;font-size:13px;margin:2px 0 10px;min-height:1.2em"></div>
+    <div id="loginError" style="color:var(--red-text);font-size:13px;margin:2px 0 10px;min-height:1.2em"></div>
     <button class="gbtn primary" style="width:100%" onclick="submitLogin()" id="loginBtn" data-i18n>Sign in</button>
+    <!-- The theme before signing in (outdoors): the same switch as the account menu. -->
+    <div class="login-theme" id="loginTheme"><div class="seg theme-seg"><button type="button" data-theme-v="dark" onclick="pickTheme('dark')"><i class="ti ti-moon"></i><span data-i18n>Dark</span></button><button type="button" data-theme-v="light" onclick="pickTheme('light')"><i class="ti ti-sun"></i><span data-i18n>Light</span></button><button type="button" data-theme-v="system" onclick="pickTheme('system')"><i class="ti ti-device-desktop"></i><span data-i18n>System</span></button></div></div>
   </div>
 </div>
 
@@ -3218,7 +3254,7 @@ function exportPDF(){
     +'<div style="color:#8b90a8;font-size:13px">Schedule Manager</div>'
     +'<div style="color:#8b90a8;font-size:13px">Generated: '+genDate+'</div>'
     +'<div style="color:#8b90a8;font-size:13px">'+tr('Workers:')+' <span style="color:#ffffff;font-weight:500">'+exW.length+'</span></div>'
-    +'<div style="color:#8b90a8;font-size:13px">'+tr('Total:')+' <span style="color:#6dd6a0;font-weight:500">'+grand+'h</span></div>'
+    +'<div style="color:#8b90a8;font-size:13px">'+tr('Total:')+' <span style="color:var(--green);font-weight:500">'+grand+'h</span></div>'
     +'</div></div>'
     +'<table><thead><tr>'
     +'<th style="background:#1e2333;color:#c0c4d4;padding:8px 10px;text-align:left;font-size:16px;font-weight:500;min-width:120px">'+tr('Worker')+'</th>'
@@ -3226,7 +3262,7 @@ function exportPDF(){
     +'<div style="margin-top:16px;padding:14px;background:#181c27;border-radius:10px;page-break-inside:avoid;page-break-before:avoid">'
     +'<div style="font-weight:700;margin-bottom:10px;font-size:13px;color:#ffffff;font-weight:500;border-bottom:1px solid rgba(255,255,255,0.06);padding-bottom:8px">'+tr('Week Summary')+'</div>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:stretch">'+summary
-    +'<div style="font-size:14px;margin-left:auto;background:#152620;padding:8px 14px;border-radius:8px;display:flex;align-items:center;color:#6dd6a0;font-weight:600;font-family:\'DM Mono\',ui-monospace,monospace">Total: '+grand+'h</div>'
+    +'<div style="font-size:14px;margin-left:auto;background:#152620;padding:8px 14px;border-radius:8px;display:flex;align-items:center;color:var(--green);font-weight:600;font-family:\'DM Mono\',ui-monospace,monospace">Total: '+grand+'h</div>'
     +'</div></div></div></body></html>';
 
   const win=window.open('','_blank');
@@ -3448,6 +3484,8 @@ async function submitLogin(){
     if(!fb || fb.error){ errEl.textContent = tr((fb&&fb.error)||'') || tr('Could not sign in'); return; }
     // The language this user last picked (on any device) wins over this device's.
     if(fb.language) try{ localStorage.setItem('uiLang', fb.language); }catch(e){}
+    // So does the theme (Dark / Light / System).
+    if(fb.theme) setTheme(fb.theme, {save:false});
     // A supplier login belongs in the supplier portal: hand the session over
     // (same origin, same Firebase sign-in) and go there.
     if(fb.role === 'supplier'){ goToSupplierPortal(fb); return; }
@@ -3601,6 +3639,35 @@ function renderAccountControl(s){
   const tabAdminIcon = document.querySelector('#tabAdmin .ic i');
   if(tabAdminIcon) tabAdminIcon.style.color = ((s.role==='superadmin'||s.role==='tenant_admin') && incomplete) ? '#ffb020' : '';
 }
+
+// The theme (docs/redesign.md → Light theme): Dark (the default), Light — for
+// outdoors — or System (the device's setting, followed live). Kept on this
+// device (localStorage.uiTheme, shared by every page) and on the signed-in
+// user's account (updateMyTheme; login brings it back on any device). The
+// <head> script puts it on <html data-theme> before the first draw; og.css
+// holds the light token values. The same functions as src/lib/theme.ts — keep them the same.
+const THEME_BAR = {dark:'#10141f', light:'#eef1f7'};
+function storedTheme(){ try{ const t = localStorage.getItem('uiTheme'); return t === 'light' || t === 'system' ? t : 'dark'; }catch(e){ return 'dark'; } }
+function resolveTheme(c){ return c === 'system' ? (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : c; }
+function applyTheme(c){
+  c = c || storedTheme();
+  const look = resolveTheme(c);
+  document.documentElement.setAttribute('data-theme', look);
+  document.querySelectorAll('meta[name="theme-color"]').forEach(m => { m.content = THEME_BAR[look]; });
+  document.querySelectorAll('.theme-seg [data-theme-v]').forEach(b => b.classList.toggle('on', b.dataset.themeV === c));
+}
+function setTheme(c, opts){
+  c = ['dark','light','system'].includes(c) ? c : 'dark';
+  try{ localStorage.setItem('uiTheme', c); }catch(e){}
+  applyTheme(c);
+  if(!(opts && opts.save === false) && getSession()){
+    fetch(API_URL, {method:'POST', body: JSON.stringify({action:'updateMyTheme', theme: c})}).catch(()=>{});
+  }
+}
+function pickTheme(c){ setTheme(c); }
+if(window.matchMedia) matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => { if(storedTheme() === 'system') applyTheme('system'); });
+window.addEventListener('storage', e => { if(e.key === 'uiTheme') applyTheme(); });
+document.addEventListener('DOMContentLoaded', () => applyTheme());
 
 // The account menu: a tap on the name button opens it, a tap anywhere else
 // (or Escape) closes it.

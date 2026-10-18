@@ -27,7 +27,7 @@ function TabsTrigger({ className, children, count, ...props }: React.ComponentPr
       {...props}
     >
       {children}
-      {count ? <span className="rounded-full bg-destructive px-1.5 text-[10px] font-bold leading-4 text-white">{count}</span> : null}
+      {count ? <span className="rounded-full bg-destructive px-1.5 text-[10px] font-bold leading-4 text-[#fff]">{count}</span> : null}
       <span aria-hidden className="og-uline !left-2.5 !right-2.5 !bottom-[-1px] group-data-[state=active]:!scale-x-100" />
     </TabsPrimitive.Trigger>
   );

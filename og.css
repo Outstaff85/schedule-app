@@ -54,11 +54,64 @@
   --font-sans:"DM Sans", "Heebo", Arial, sans-serif;
   --font-mono:"DM Mono", ui-monospace, monospace;
 }
+:root[data-theme="light"]{
+  --ground:#eef1f7;
+  --blob-indigo:#a5b4fc;
+  --blob-cyan:#67e8f9;
+  --blob-pink:#f9a8d4;
+  --surface:#f4f6fa;
+  --surface-2:#ffffff;
+  --surface-3:#e8ecf4;
+  --plate:#ffffff;
+  --plate-on:#e1f3ea;
+  --tick-on:#dcf2e6;
+  --glass:rgba(255,255,255,0.62);
+  --glass-strong:rgba(255,255,255,0.92);
+  --glass-active:rgba(255,255,255,0.85);
+  --glass-edge:rgba(20,24,40,0.16);
+  --glass-menu:rgba(255,255,255,0.9);
+  --glass-sheet:rgba(246,248,252,0.94);
+  --hairline:rgba(20,24,40,0.12);
+  --ink:#141826;
+  --ink-2:#4a5168;
+  --ink-3:#9aa1b4;
+  --ink-on-glass:rgba(20,24,40,0.72);
+  --accent:#1d5fd6;
+  --green:#0e7340;
+  --amber:#985000;
+  --red:#c21f32;
+  --red-soft:#b4182a;
+  --avatar:#6e5a9e;
+  --uline-1:#6366f1;
+  --uline-2:#0891b2;
+  --uline-3:#db2777;
+  --tick-mark:#ffffff;
+  --shadow-glass:0 8px 24px rgba(20,24,40,0.10);
+  --shadow-pop:0 16px 40px rgba(20,24,40,0.18);
+  --shadow-uline:0 0 8px rgba(8,145,178,0.35), 0 0 3px rgba(219,39,119,0.3);
+}
 /* tokens:end */
 /* ── Odinson Glass foundation (docs/redesign.md): the ground, glass, plates, the
    highlight line, tick tiles, the Language button and sheet. The same block in
    all four pages — keep the copies the same. ── */
 :root{--glass-hi:var(--glass-active);--glass-dark:rgba(17,20,31,.92);--fig:#9fe6c0;--ok:var(--green);--info:var(--accent);--warn:var(--amber);--bad:var(--red);--uline:linear-gradient(90deg,var(--uline-1),var(--uline-2),var(--uline-3),var(--uline-1));}
+/* --tint: the RGB of the see-through glass tints (hover, fields, dividers,
+   frames: rgba(var(--tint),a)) — white on the dark ground, near-black in the
+   light theme, so every tint keeps its strength on both grounds. */
+:root{--tint:255,255,255;color-scheme:dark;}
+/* Derived looks for both themes: the soft status texts (badges, chips, error
+   lines), the see-through bars over the ground (--bar-rgb: the title bar, the
+   side menu) and the glass of popovers and their tails. */
+:root{--red-text:#ff8a95;--amber-text:#f7c062;--blue-text:#8fb4ff;--cyan-text:#67e8f9;--bar-rgb:16,20,31;--pop-rgb:30,35,51;--pop-tail:var(--pop-tail);}
+/* ── The light theme for outdoors (docs/redesign.md → Light theme): the token
+   values are in the tokens block above (from tokens.json); here the values
+   og.css and the pages derive from them, and the few looks a token cannot
+   carry. <html data-theme="light"> is set by the theme switch (the account
+   menu: Dark / Light / System) before the page draws. ── */
+:root[data-theme="light"]{color-scheme:light;--tint:20,24,40;--red-text:#a8182b;--amber-text:#7f4300;--blue-text:#1d4fb8;--cyan-text:#0b6b80;--bar-rgb:248,250,253;--pop-rgb:255,255,255;--pop-tail:rgba(255,255,255,.97);--blue:var(--accent);--green2:var(--green);--glass-dark:rgba(250,251,253,.96);--fig:var(--green);--neutral:#7a8199;--text:var(--ink);--text2:var(--ink-2);--text3:#5c6378;}
+:root[data-theme="light"] body::before,:root[data-theme="light"] .og-cover,:root[data-theme="light"] .og-ground{background:radial-gradient(circle at 15% 10%,rgba(165,180,252,.55) 0,transparent 56%),radial-gradient(circle at 92% 62%,rgba(103,232,249,.40) 0,transparent 54%),radial-gradient(circle at 40% 108%,rgba(249,168,212,.42) 0,transparent 56%),var(--ground);}
+:root[data-theme="light"] .og-cover{background-attachment:fixed;}
+:root[data-theme="light"] .og-line::after,:root[data-theme="light"] .gbtn::before{box-shadow:var(--shadow-uline);}
 html{background:var(--ground);}
 body{background:transparent;}
 body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(circle at 15% 10%,rgba(79,70,229,.50) 0,transparent 56%),radial-gradient(circle at 92% 62%,rgba(6,182,212,.36) 0,transparent 54%),radial-gradient(circle at 40% 108%,rgba(219,39,119,.34) 0,transparent 56%),var(--ground);}
@@ -72,8 +125,8 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .og-line::after{content:'';position:absolute;left:12px;right:12px;bottom:0;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55),0 0 4px rgba(244,114,182,.5);animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1);pointer-events:none;}
 /* Glass buttons: white fill + blur, a shine sweep on every tap (.shine, set by
    the pointerdown handler), the highlight line on hover and when .on. */
-.gbtn{position:relative;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:42px;padding:0 16px;border-radius:16px;background:var(--glass);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--glass-edge);color:#fff;font:600 14px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.25);-webkit-tap-highlight-color:transparent;white-space:nowrap;}
-.gbtn.primary{background:rgba(255,255,255,.28);}
+.gbtn{position:relative;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:42px;padding:0 16px;border-radius:16px;background:var(--glass);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--glass-edge);color:var(--ink);font:600 14px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.25);-webkit-tap-highlight-color:transparent;white-space:nowrap;}
+.gbtn.primary{background:rgba(var(--tint),.28);}
 /* A create button (New, New user, New firm…) is plain glass, like a secondary
    (owner 2026-10-17, template): every create button carries .og-new. */
 .gbtn.og-new{background:var(--glass);}
@@ -95,7 +148,7 @@ label.check-chip input[type=checkbox]{-webkit-appearance:none;appearance:none;po
 label.check-chip input[type=checkbox]::after{content:'';position:absolute;left:5px;top:1px;width:5px;height:10px;border:solid #0b0d14;border-width:0 3px 3px 0;transform:rotate(45deg);clip-path:inset(100% 0 0 0);transition:clip-path .35s .05s;}
 label.check-chip input[type=checkbox]:checked{background:var(--ok);border-color:var(--ok);}
 label.check-chip input[type=checkbox]:checked::after{clip-path:inset(0);}
-label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214,160,.4);}
+label.check-chip:has(input:checked){background:var(--tick-on);border-color:rgba(109,214,160,.4);}
 /* The Language button (top right of every page) and its sheet. */
 .lang-btn{height:40px;width:40px;padding:0;gap:0;border-radius:14px;font-size:13px;flex:none;justify-content:center;}
 .lang-btn i{font-size:23px;}
@@ -108,16 +161,16 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 .lang-btn.on-cover{position:absolute;top:max(env(safe-area-inset-top,0px),12px);right:12px;z-index:2;}
 .lang-ov{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .25s;}
 .lang-ov.open{opacity:1;pointer-events:auto;}
-.lang-sheet{width:min(380px,100%);max-height:min(560px,80vh);display:flex;flex-direction:column;padding:14px 14px 16px;border-radius:22px;background:var(--glass-dark);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.2);box-shadow:0 20px 50px rgba(0,0,0,.5);color:#fff;transform:translateY(12px) scale(.98);transition:transform .35s cubic-bezier(.3,.7,.3,1);}
+.lang-sheet{width:min(380px,100%);max-height:min(560px,80vh);display:flex;flex-direction:column;padding:14px 14px 16px;border-radius:22px;background:var(--glass-dark);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border:1px solid rgba(var(--tint),.2);box-shadow:0 20px 50px rgba(0,0,0,.5);color:var(--ink);transform:translateY(12px) scale(.98);transition:transform .35s cubic-bezier(.3,.7,.3,1);}
 .lang-ov.open .lang-sheet{transform:none;}
-.lang-grab{display:none;width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.3);margin:0 auto 10px;}
+.lang-grab{display:none;width:40px;height:4px;border-radius:2px;background:rgba(var(--tint),.3);margin:0 auto 10px;}
 .lang-sheet h4{font-size:17px;font-weight:600;margin:0 4px 10px;}
-.lang-search{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;margin-bottom:8px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);}
+.lang-search{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;margin-bottom:8px;border-radius:12px;background:rgba(var(--tint),.06);border:1px solid rgba(var(--tint),.12);}
 .lang-search i{color:var(--ink-2);font-size:16px;}
-.lang-search input{flex:1;min-width:0;border:0;background:none;color:#fff;font:14px 'DM Sans','Heebo',Arial,sans-serif;outline:none;padding:0;}
+.lang-search input{flex:1;min-width:0;border:0;background:none;color:var(--ink);font:14px 'DM Sans','Heebo',Arial,sans-serif;outline:none;padding:0;}
 .lang-list{overflow:auto;display:flex;flex-direction:column;gap:4px;}
-.lang-li{position:relative;display:flex;align-items:center;gap:10px;width:100%;height:38px;padding:0 12px;border:0;border-radius:12px;background:none;color:#fff;font-family:'DM Sans','Heebo',Arial,sans-serif;text-align:left;cursor:pointer;}
-.lang-li:hover{background:rgba(255,255,255,.06);}
+.lang-li{position:relative;display:flex;align-items:center;gap:10px;width:100%;height:38px;padding:0 12px;border:0;border-radius:12px;background:none;color:var(--ink);font-family:'DM Sans','Heebo',Arial,sans-serif;text-align:left;cursor:pointer;}
+.lang-li:hover{background:rgba(var(--tint),.06);}
 .lang-li b{font-size:15px;font-weight:600;}
 .lang-li small{flex:1;font-size:12px;color:var(--ink-2);}
 .lang-li.on{background:rgba(109,214,160,.1);}
@@ -165,7 +218,7 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 .og-plate.on{background:var(--plate-on)}
 .og-kb{position:relative;width:32px;height:32px;border:0;border-radius:var(--radius-sm);background:none;color:var(--ink-2);font-size:18px;cursor:pointer}
 .og-kb::after{content:'';position:absolute;left:9px;right:9px;bottom:3px;height:3px;border-radius:2px;background:var(--og-uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;transform:scaleX(0);transition:transform .45s var(--og-spring)}
-.og-kb.on{color:var(--ink);background:rgba(255,255,255,.08)}.og-kb.on::after{transform:scaleX(1)}
+.og-kb.on{color:var(--ink);background:rgba(var(--tint),.08)}.og-kb.on::after{transform:scaleX(1)}
 /* select mode */
 .og-cb{width:0;overflow:hidden;flex:none;margin-right:calc(-1 * var(--space-3));display:flex;align-items:center;transition:width .25s,margin .25s}
 .og-select .og-cb{width:26px;margin-right:0}
@@ -180,7 +233,7 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 /* popover with a tail */
 /* sheet */
 .og-sheet{padding:10px var(--space-5) 20px;border-radius:var(--radius-xl) var(--radius-xl) 0 0;background:var(--glass-sheet);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-top:1px solid var(--glass-edge)}
-.og-sheet::before{content:'';display:block;width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.3);margin:0 auto 12px}
+.og-sheet::before{content:'';display:block;width:40px;height:4px;border-radius:2px;background:rgba(var(--tint),.3);margin:0 auto 12px}
 .og-sheet h4{margin:0 0 2px;font-size:17px}.og-sheet p{margin:0 0 6px;color:var(--ink-on-glass);font-size:12px}
 /* undo snack */
 
@@ -211,24 +264,24 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 .t3-line .n small{font-size:13px;color:var(--ink-2);margin-top:1px;}
 .t3-line .r{font:500 14px 'DM Mono',ui-monospace,monospace;color:var(--fig);}
 .t3-kb{position:relative;flex:none;width:26px;height:36px;margin-right:-2px;border:0;background:none;color:#d6d9e2;font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-.t3-kb:hover{color:#fff;}
+.t3-kb:hover{color:var(--ink);}
 .t3-kb::after{content:'';position:absolute;left:4px;right:4px;bottom:2px;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55);animation:og-flow 2.4s linear infinite;transform:scaleX(0);transition:transform .45s cubic-bezier(.34,1.56,.64,1);}
-.t3-kb.on{color:#fff;}
+.t3-kb.on{color:var(--ink);}
 .t3-kb.on::after{transform:scaleX(1);}
 .t3-sec .t3-kb{margin-left:4px;height:28px;font-size:18px;color:var(--text2);}
 .t3-sec .gbtn{height:34px;padding:0 12px;border-radius:12px;font-size:13px;margin-left:8px;}
 /* The ⋮ popover: glass, a tail pointing at its button, Delete last in soft red. */
-.og-pop{position:fixed;z-index:4000;min-width:190px;max-width:260px;padding:6px;border-radius:16px;background:rgba(30,35,51,.82);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.22);box-shadow:0 16px 40px rgba(0,0,0,.45);opacity:0;transform:translateY(-6px) scale(.97);transition:opacity .18s,transform .18s;}
+.og-pop{position:fixed;z-index:4000;min-width:190px;max-width:260px;padding:6px;border-radius:16px;background:rgba(var(--pop-rgb),.82);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid rgba(var(--tint),.22);box-shadow:0 16px 40px rgba(0,0,0,.45);opacity:0;transform:translateY(-6px) scale(.97);transition:opacity .18s,transform .18s;}
 .og-pop.up{transform:translateY(6px) scale(.97);}
 .og-pop.open{opacity:1;transform:none;}
-.og-pop::before{content:'';position:absolute;top:-7px;left:var(--px,14px);width:12px;height:12px;background:rgba(40,45,64,.95);border-left:1px solid rgba(255,255,255,.22);border-top:1px solid rgba(255,255,255,.22);transform:rotate(45deg);border-radius:2px 0 0 0;}
+.og-pop::before{content:'';position:absolute;top:-7px;left:var(--px,14px);width:12px;height:12px;background:var(--pop-tail);border-left:1px solid rgba(var(--tint),.22);border-top:1px solid rgba(var(--tint),.22);transform:rotate(45deg);border-radius:2px 0 0 0;}
 .og-pop.up::before{top:auto;bottom:-7px;transform:rotate(225deg);}
-.og-pop-it{position:relative;display:flex;align-items:center;gap:10px;width:100%;padding:10px;border:0;border-radius:10px;background:none;color:#fff;font:500 14px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;text-align:left;}
-.og-pop-it i{font-size:17px;color:rgba(255,255,255,.62);}
-.og-pop-it:hover{background:rgba(255,255,255,.1);}
+.og-pop-it{position:relative;display:flex;align-items:center;gap:10px;width:100%;padding:10px;border:0;border-radius:10px;background:none;color:var(--ink);font:500 14px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;text-align:left;}
+.og-pop-it i{font-size:17px;color:rgba(var(--tint),.62);}
+.og-pop-it:hover{background:rgba(var(--tint),.1);}
 .og-pop-it:hover::before{content:'';position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:2px;background:var(--uline);background-size:100% 300%;}
-.og-pop-it.del,.og-pop-it.del i{color:#ffd1d6;}
-.og-pop-hr{height:1px;background:rgba(255,255,255,.14);margin:4px 8px;}
+.og-pop-it.del,.og-pop-it.del i{color:var(--red-soft);}
+.og-pop-hr{height:1px;background:rgba(var(--tint),.14);margin:4px 8px;}
 /* Swipe left: Edit and Delete behind the plate. */
 .sw{position:relative;margin-bottom:8px;border-radius:16px;overflow:hidden;transition:max-height .3s,margin .3s,opacity .3s;}
 .sw>.t3-line{margin-bottom:0;touch-action:pan-y;}
@@ -236,14 +289,14 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 .sw.gone,.t3-line.gone{max-height:0 !important;margin:0 !important;opacity:0;overflow:hidden;padding-top:0;padding-bottom:0;}
 .t3-line.gone{transition:max-height .3s,margin .3s,opacity .3s,padding .3s;}
 .sw-acts{position:absolute;inset:0;display:flex;justify-content:flex-end;gap:6px;padding:6px;background:rgba(0,0,0,.25);}
-.sw-acts button{width:56px;border-radius:12px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.12);color:#fff;font:600 11px 'DM Sans','Heebo',Arial,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;}
+.sw-acts button{width:56px;border-radius:12px;border:1px solid rgba(var(--tint),.25);background:rgba(var(--tint),.12);color:var(--ink);font:600 11px 'DM Sans','Heebo',Arial,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;}
 .sw-acts button i{font-size:17px;}
-.sw-acts button.d{color:#ffd1d6;background:rgba(255,95,109,.22);}
+.sw-acts button.d{color:var(--red-soft);background:rgba(255,95,109,.22);}
 /* The Undo snack: glass, 5 s, the gradient timer line. */
-.og-snack{position:fixed;left:50%;bottom:var(--bar-gap);z-index:3500;width:min(420px,calc(100% - 28px));display:flex;align-items:center;gap:10px;padding:12px 12px 12px 16px;border-radius:16px;background:rgba(30,35,51,.8);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.24);box-shadow:0 12px 30px rgba(0,0,0,.4);color:#fff;font-size:14px;overflow:hidden;transform:translate(-50%,160%);transition:transform .3s cubic-bezier(.3,.7,.3,1);}
+.og-snack{position:fixed;left:50%;bottom:var(--bar-gap);z-index:3500;width:min(420px,calc(100% - 28px));display:flex;align-items:center;gap:10px;padding:12px 12px 12px 16px;border-radius:16px;background:rgba(var(--pop-rgb),.8);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid rgba(var(--tint),.24);box-shadow:0 12px 30px rgba(0,0,0,.4);color:var(--ink);font-size:14px;overflow:hidden;transform:translate(-50%,160%);transition:transform .3s cubic-bezier(.3,.7,.3,1);}
 .og-snack.open{transform:translate(-50%,0);}
 .og-snack-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.og-snack-u{position:relative;border:0;background:none;color:#fff;font:700 14px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;padding:4px 6px;}
+.og-snack-u{position:relative;border:0;background:none;color:var(--ink);font:700 14px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;padding:4px 6px;}
 .og-snack-u::after{content:'';position:absolute;left:6px;right:6px;bottom:0;height:2px;border-radius:2px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;}
 .og-snack-bar{position:absolute;left:0;bottom:0;height:3px;width:100%;background:var(--uline);background-size:300% 100%;box-shadow:0 0 8px rgba(34,211,238,.5);}
 .og-snack.open .og-snack-bar{animation:og-flow 2.4s linear infinite,og-shrink 5s linear forwards;}
@@ -253,19 +306,19 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
 .sel-on .t3-cb{width:30px;margin-right:-4px;cursor:pointer;}
 .og-box{width:24px;height:24px;box-sizing:border-box;flex:none;border-radius:7px;border:2px solid var(--ink-3);position:relative;transition:background .25s,border-color .25s;}
 .og-box::after{content:'';position:absolute;left:5px;top:1px;width:5px;height:10px;border:solid #0b0d14;border-width:0 3px 3px 0;transform:rotate(45deg);clip-path:inset(100% 0 0 0);transition:clip-path .35s .05s;}
-.t3-line.picked{background:#1f2a2c;}
+.t3-line.picked{background:var(--plate-on);}
 .t3-line.picked .og-box,.sal-row.picked .og-box{background:var(--ok);border-color:var(--ok);}
 .t3-line.picked .og-box::after,.sal-row.picked .og-box::after{clip-path:inset(0);}
 .sel-head{display:flex;align-items:center;gap:16px;margin:-2px 2px 8px;font-size:13px;color:var(--text2);}
 .sel-head span{flex:1;}
-.sel-head button{position:relative;border:0;background:none;color:#fff;font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;padding:2px 0 5px;}
+.sel-head button{position:relative;border:0;background:none;color:var(--ink);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;padding:2px 0 5px;}
 .sel-head button::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;border-radius:2px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;}
-.sel-bar{position:fixed;left:50%;bottom:var(--bar-gap);z-index:3400;width:min(520px,calc(100% - 28px));display:flex;align-items:center;gap:6px;padding:8px 8px 8px 14px;border-radius:18px;background:rgba(30,35,51,.8);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.24);box-shadow:0 12px 30px rgba(0,0,0,.4);color:#fff;transform:translate(-50%,0);animation:sel-in .3s cubic-bezier(.3,.7,.3,1);}
+.sel-bar{position:fixed;left:50%;bottom:var(--bar-gap);z-index:3400;width:min(520px,calc(100% - 28px));display:flex;align-items:center;gap:6px;padding:8px 8px 8px 14px;border-radius:18px;background:rgba(var(--pop-rgb),.8);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid rgba(var(--tint),.24);box-shadow:0 12px 30px rgba(0,0,0,.4);color:var(--ink);transform:translate(-50%,0);animation:sel-in .3s cubic-bezier(.3,.7,.3,1);}
 @keyframes sel-in{from{transform:translate(-50%,160%)}}
 .sel-bar b{flex:1;font-size:14px;white-space:nowrap;}
 .sel-bar .gbtn{height:38px;padding:0 12px;font-size:13px;}
 .sel-bar .gbtn.icon{width:38px;padding:0;}
-.sel-bar .gbtn.del{color:#ffd1d6;}
+.sel-bar .gbtn.del{color:var(--red-soft);}
 @media (prefers-reduced-motion:reduce){.t3-kb::after,.og-snack-u::after,.sel-head button::after{animation:none;}}
 .sel-bar .gbtn:disabled{opacity:.45;cursor:default;}
 
@@ -304,7 +357,7 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
   .og-count{font-style:normal;font-size:14px;font-weight:500;color:var(--text2);margin-left:4px}
   .workers-count{font-size:12px;color:var(--text2)}
   .workers-count .sec-lbl{font-size:11px;letter-spacing:.12em;text-transform:uppercase}
-  .og-doc{display:flex;align-items:center;gap:10px;padding:9px 8px 9px 12px;margin-bottom:6px;border-radius:12px;background:rgba(255,255,255,.04);box-shadow:inset 3px 0 0 var(--c)}
+  .og-doc{display:flex;align-items:center;gap:10px;padding:9px 8px 9px 12px;margin-bottom:6px;border-radius:12px;background:rgba(var(--tint),.04);box-shadow:inset 3px 0 0 var(--c)}
   .og-doc-ic{width:30px;height:30px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--c);background:color-mix(in srgb,var(--c) 18%,transparent)}
   .og-doc>div{flex:1;min-width:0;font-size:13px}
   .og-doc b{display:block;font-weight:600}
@@ -318,9 +371,9 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
   @media (max-width:768px){.field-row{gap:8px}.field-row.stack-phone{grid-template-columns:1fr}}
   .modal .field textarea{width:100%;box-sizing:border-box}
   .og-av{background:color-mix(in srgb,var(--c,var(--neutral)) 22%,transparent) !important;color:var(--c,var(--neutral)) !important;box-shadow:inset 0 0 0 1.5px var(--c,var(--neutral))}
-  .seg{display:flex;gap:4px;padding:4px;margin:10px 0 14px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1)}
+  .seg{display:flex;gap:4px;padding:4px;margin:10px 0 14px;border-radius:14px;background:rgba(var(--tint),.06);border:1px solid rgba(var(--tint),.1)}
   .seg button{position:relative;flex:1;height:31px;border:0;border-radius:10px;background:none;color:var(--text2);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer}
-  .seg button.on{background:var(--glass-hi);color:#fff}
+  .seg button.on{background:var(--glass-hi);color:var(--ink)}
   /* Editors exactly as mockup 04 (owner 2026-10-13): section heads with a
      tinted rounded-square icon and the flowing line across an open head;
      a badge before the chevron; ticks as compact tiles with a green box;
@@ -334,15 +387,15 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
   .og-sec.open .og-sec-h::after{content:'';position:absolute;left:16px;right:12px;bottom:0;height:2px;border-radius:2px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;opacity:.7}
   .og-sec-b{padding:6px 12px 14px 16px}
   .og-sec-badge{flex:none;display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:11px;font-size:11px;font-weight:700}
-  .og-sec-badge.amber{background:rgba(245,166,35,.16);color:#f7c062}
-  .og-sec-badge.red{background:rgba(255,95,109,.16);color:#ff8a95}
-  .og-sec-badge.blue{background:rgba(79,142,247,.16);color:#8fb4ff}
+  .og-sec-badge.amber{background:rgba(245,166,35,.16);color:var(--amber-text)}
+  .og-sec-badge.red{background:rgba(255,95,109,.16);color:var(--red-text)}
+  .og-sec-badge.blue{background:rgba(79,142,247,.16);color:var(--blue-text)}
   .modal .check-grid{display:flex;flex-wrap:wrap;gap:6px;grid-template-columns:none}
   /* Tick tiles in every window: the design system's Tick (docs/design/system/
      components/Tick) — 46px, radius-md, plate fill, label 15/600 ink-2, a 24px
      box bordered ink-3; ticked: tick-on fill, ink label, green box with the mark.
      A tile with a hint (owner 2026-10-13: hints shown) grows to fit it. */
-  .modal label.check-chip{display:inline-flex;width:auto;min-height:46px;height:46px;padding:0 16px 0 12px;gap:10px;margin:0;border:0;border-radius:var(--radius-md);background:rgba(255,255,255,.06);color:var(--ink-2);font-size:15px;font-weight:400;transition:background .25s,color .25s}
+  .modal label.check-chip{display:inline-flex;width:auto;min-height:46px;height:46px;padding:0 16px 0 12px;gap:10px;margin:0;border:0;border-radius:var(--radius-md);background:rgba(var(--tint),.06);color:var(--ink-2);font-size:15px;font-weight:400;transition:background .25s,color .25s}
   .modal label.check-chip:has(.chip-hint){height:auto;padding:10px 16px 10px 12px}
   .modal .field>label.check-chip{display:flex;width:100%}
   .modal label.check-chip:has(input:checked){background:var(--tick-on);color:var(--ink)}
@@ -352,9 +405,9 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
   .modal label.check-chip input[type=checkbox]{-webkit-appearance:none;appearance:none;width:24px;height:24px;flex:0 0 24px;margin:0;border-radius:7px;border:2px solid var(--ink-3);background:transparent;cursor:pointer;transition:background .25s,border-color .25s}
   .modal label.check-chip input[type=checkbox]:checked{background:var(--green) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230b0d14' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/15px no-repeat;border-color:var(--green)}
   .modal label.check-chip input[type=checkbox]:disabled{opacity:.5}
-  .modal .btn{height:40px;padding:0 14px;border-radius:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:var(--text);font-weight:600;font-size:13px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+  .modal .btn{height:40px;padding:0 14px;border-radius:14px;background:rgba(var(--tint),.08);border:1px solid rgba(var(--tint),.16);color:var(--text);font-weight:600;font-size:13px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
   .modal .btn.sm{height:36px;border-radius:12px;font-size:12.5px}
-  .modal .btn.accent{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.3);color:#fff}
+  .modal .btn.accent{background:rgba(var(--tint),.2);border-color:rgba(var(--tint),.3);color:var(--ink)}
   .modal .og-save i{margin-right:2px}
   .og-edh{flex-wrap:wrap}
   .og-edh-chips{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px;margin:-4px 0 0}
@@ -376,6 +429,26 @@ label.check-chip:has(input:checked){background:#1b2a28;border-color:rgba(109,214
   .og-tabs::-webkit-scrollbar{display:none}
   .og-tabs:empty{display:none}
   .og-tabs button{position:relative;flex:none;height:30px;padding:0 14px;border:1px solid transparent;border-radius:14px;background:none;color:var(--text2);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;white-space:nowrap}
-  .og-tabs button.on{background:var(--glass-hi);border-color:rgba(255,255,255,.35);color:#fff;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+  .og-tabs button.on{background:var(--glass-hi);border-color:rgba(var(--tint),.35);color:var(--ink);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
   .og-tabs button.on::after{content:'';position:absolute;left:14px;right:14px;bottom:-1px;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55);animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1)}
   .og-tabs .tab-n{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:4px;border-radius:999px;background:var(--bad);color:#fff;font-size:10px;font-weight:700}
+
+/* ── Part 7: the light theme's looks that no token carries (docs/redesign.md →
+   Light theme): solid dark fills of og.css and the brand gradients drawn for
+   the dark ground. ── */
+:root[data-theme="light"] .t3-line:hover{background:#f3f5f9;}
+:root[data-theme="light"] .t3-kb{color:var(--ink-2);}
+:root[data-theme="light"] .t3-kb:hover,:root[data-theme="light"] .t3-kb.on{color:var(--ink);}
+:root[data-theme="light"] .og-figs>div,:root[data-theme="light"] .rate-margin>div{background:var(--surface-3);}
+:root[data-theme="light"] .og-pop,:root[data-theme="light"] .og-snack,:root[data-theme="light"] .sel-bar{box-shadow:var(--shadow-pop);}
+:root[data-theme="light"] .lang-sheet{box-shadow:var(--shadow-pop);}
+:root[data-theme="light"] .og-acts,:root[data-theme="light"] .sw-acts{background:rgba(20,24,40,.08);}
+:root[data-theme="light"] label.check-chip input[type=checkbox]{border-color:var(--ink-3);}
+:root[data-theme="light"] label.check-chip:has(input:checked){border-color:color-mix(in srgb,var(--green) 40%,transparent);}
+:root[data-theme="light"] label.check-chip input[type=checkbox]::after,:root[data-theme="light"] .og-box::after{border-color:var(--tick-mark);}
+:root[data-theme="light"] .lang-tick{color:var(--tick-mark);}
+:root[data-theme="light"] .modal label.check-chip input[type=checkbox]:checked{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E");}
+/* the logo's name ("Interactive Manager"): the gradient word in deep indigo → teal */
+:root[data-theme="light"] .og-name b span,:root[data-theme="light"] .pp-wm b span{background-image:linear-gradient(90deg,#4f46e5,#0e7490);}
+:root[data-theme="light"] .og-name small{color:var(--ink-2);}
+

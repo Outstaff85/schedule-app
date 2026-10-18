@@ -9,9 +9,9 @@ const badgeVariants = cva('inline-flex h-[22px] shrink-0 items-center gap-1 whit
     variant: {
       default: 'bg-white/10 text-ink-2',
       ok: 'bg-[rgba(109,214,160,.16)] text-ok',
-      info: 'bg-[rgba(79,142,247,.16)] text-[#8fb4ff]',
-      warn: 'bg-[rgba(245,166,35,.16)] text-[#f7c062]',
-      bad: 'bg-[rgba(255,95,109,.16)] text-[#ff8a95]',
+      info: 'bg-[rgba(79,142,247,.16)] text-[var(--blue-text)]',
+      warn: 'bg-[rgba(245,166,35,.16)] text-[var(--amber-text)]',
+      bad: 'bg-[rgba(255,95,109,.16)] text-[var(--red-text)]',
     },
   },
   defaultVariants: { variant: 'default' },

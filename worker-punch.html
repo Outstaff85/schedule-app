@@ -6,7 +6,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#0f1117">
+<meta name="theme-color" content="#10141f">
+<script>/* The theme before the first draw (docs/redesign.md → Light theme; src/lib/theme.ts): Dark by default, Light, or System — the device's setting. */try{var t=localStorage.getItem('uiTheme');if(t==='system')t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',t==='light'?'light':'dark');}catch(e){}</script>
 <link rel="manifest" href="/manifest-punch.json">
 <link rel="icon" href="/icon-192.png" type="image/png">
 <meta name="apple-mobile-web-app-title" content="Punch Clock">

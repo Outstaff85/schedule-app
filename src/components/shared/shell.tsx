@@ -43,7 +43,7 @@ const MAX_BAR = 5;
 
 function Count({ n }: { n?: number }) {
   if (!n) return null;
-  return <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-destructive px-1 text-[10px] font-bold leading-none text-white">{n}</span>;
+  return <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-destructive px-1 text-[10px] font-bold leading-none text-[#fff]">{n}</span>;
 }
 
 export function Shell({ brand, tools, sections = [], active = '', onSelect = () => {}, children, app, crumb, center, aside }: {
@@ -74,7 +74,7 @@ export function Shell({ brand, tools, sections = [], active = '', onSelect = () 
     <nav
       data-testid="shell-bar"
       dir="ltr"
-      className="fixed inset-x-0 bottom-0 z-30 grid border-t border-border bg-[rgba(17,20,31,.85)] pb-[env(safe-area-inset-bottom,0px)] pt-1.5 backdrop-blur-xl"
+      className="fixed inset-x-0 bottom-0 z-30 grid border-t border-border bg-[rgba(var(--bar-rgb),.85)] pb-[env(safe-area-inset-bottom,0px)] pt-1.5 backdrop-blur-xl"
       style={{ gridTemplateColumns: `repeat(${inBar.length + (inMore.length ? 1 : 0)}, minmax(0, 1fr))` }}
     >
       {[...inBar, ...(inMore.length ? [{ key: '__more', label: tr('More'), icon: <IconDots />, color: MORE_COLOR, count: inMore.reduce((a, s) => a + (s.count || 0), 0) }] : [])].map(s => {
@@ -111,7 +111,7 @@ export function Shell({ brand, tools, sections = [], active = '', onSelect = () 
           >
             <span style={{ color: s.color }}>{s.icon}</span>
             <span className="flex-1">{s.label}</span>
-            {s.count ? <span className="rounded-full bg-destructive px-1.5 text-[10px] font-bold text-white">{s.count}</span> : null}
+            {s.count ? <span className="rounded-full bg-destructive px-1.5 text-[10px] font-bold text-[#fff]">{s.count}</span> : null}
           </button>
         ))}
       </div>
@@ -133,7 +133,7 @@ export function Shell({ brand, tools, sections = [], active = '', onSelect = () 
       <div data-slot="shell" data-app="" className="flex min-h-dvh flex-col">
         <header
           dir={rtl ? 'rtl' : 'ltr'}
-          className={cn('sticky top-0 z-30 shrink-0 border-b border-border bg-[rgba(16,20,31,.55)] backdrop-blur-xl',
+          className={cn('sticky top-0 z-30 shrink-0 border-b border-border bg-[rgba(var(--bar-rgb),.55)] backdrop-blur-xl',
             phone ? 'grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-2 px-3 pb-2 pt-[calc(env(safe-area-inset-top,0px)+8px)]' : 'flex h-14 items-center gap-3.5 px-4')}
           style={phone ? { gridTemplateAreas: '"brand center tools" "crumb crumb crumb"' } : undefined}
         >
@@ -144,7 +144,7 @@ export function Shell({ brand, tools, sections = [], active = '', onSelect = () 
         </header>
         <div className={cn('flex min-h-0 flex-1', rtl && 'flex-row-reverse')}>
           {!phone && sections.length > 0 && (
-            <nav data-testid="shell-menu" dir={rtl ? 'rtl' : 'ltr'} className={cn('sticky top-14 flex h-[calc(100dvh-56px)] w-[210px] shrink-0 flex-col gap-1 overflow-y-auto bg-[rgba(16,20,31,.35)] px-2.5 py-3.5', rtl ? 'border-l border-white/8' : 'border-r border-white/8')}>
+            <nav data-testid="shell-menu" dir={rtl ? 'rtl' : 'ltr'} className={cn('sticky top-14 flex h-[calc(100dvh-56px)] w-[210px] shrink-0 flex-col gap-1 overflow-y-auto bg-[rgba(var(--bar-rgb),.35)] px-2.5 py-3.5', rtl ? 'border-l border-white/8' : 'border-r border-white/8')}>
               {sections.map(s => {
                 const on = s.key === active;
                 return (
@@ -177,13 +177,13 @@ export function Shell({ brand, tools, sections = [], active = '', onSelect = () 
 
   return (
     <div data-slot="shell" className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-[rgba(16,20,31,.55)] px-[max(16px,env(safe-area-inset-left,0px))] pt-[env(safe-area-inset-top,0px)] backdrop-blur-xl">
+      <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-[rgba(var(--bar-rgb),.55)] px-[max(16px,env(safe-area-inset-left,0px))] pt-[env(safe-area-inset-top,0px)] backdrop-blur-xl">
         <div className="mr-auto flex min-w-0 items-center gap-2.5">{brand}</div>
         {tools}
       </header>
 
       {!phone && sections.length > 0 && (
-        <nav className="sticky top-14 z-20 flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-[rgba(16,20,31,.45)] px-3 backdrop-blur-xl" data-testid="shell-tabs">
+        <nav className="sticky top-14 z-20 flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-[rgba(var(--bar-rgb),.45)] px-3 backdrop-blur-xl" data-testid="shell-tabs">
           {sections.map(s => {
             const on = s.key === active;
             return (
