@@ -38,8 +38,7 @@ The client keeps the punch log in `localStorage.punchLog` (`getPunchLog()` / `sa
   2. the worker's own rate — `hourlyRate` (or the older `regRate`), `otRate`, `shabbatRate` — from the worker modal or Accounting → Salary; it changes this worker only;
   3. the client's `defaultHourlyRate` / `defaultOtRate` / `defaultShabbatRate` — shared by every worker there without a rate of their own.
   
-  Each of the three rates resolves on its own. Without an explicit value, OT = regular × 1.25 and Shabbat = regular × 1.5. `hasOtOverride` / `hasShabbatOverride` say whether an explicit value was found at any tier; `src` / `otSrc` / `shabbatSrc` say which tier (`override`, `worker`, `client`, or empty). Shortcuts: `wRegRate`, `wOtRate`, `wShabRate`.
-- **`shiftPay(hours, w, isSat, clientId)`**:
+  Each of the three rates resolves on its own. Without an explicit value, OT = regular × 1.25 and Shabbat = regular × 1.5. `hasOtOverride` / `hasShabbatOverride` say whether an explicit value was found at any tier; `src` / `otSrc` / `shabbatSrc` say which tier (`override`, `worker`, `client`, or empty).- **`shiftPay(hours, w, isSat, clientId)`**:
   - Saturday — a flat Shabbat override if one exists, otherwise the Saturday law tiers;
   - weekday — with an OT override, `min(h,8) × reg + rest × ot`; otherwise the weekday law tiers.
   
