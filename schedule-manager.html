@@ -1483,19 +1483,9 @@ document.addEventListener('pointerdown', e => {
   clearTimeout(b.__shineT); b.__shineT = setTimeout(() => b.classList.remove('shine'), 650);
 });
 
-// Phone layout of the tables in Accounting and Admin (CSS: table.mtable at
-// ≤ 700 px): each cell gets its column's header as data-label, so a row reads
-// as a card of "label value" lines. Runs after those sections redraw.
-// Phone tables: cards (one card per row) or the list (the table itself,
-// scrolled sideways) — the toggle in the section header, kept on this device
-// (localStorage.tablesView). The same in schedule-manager.html and supplier-portal.html.
-function getTablesView(){ try{ return localStorage.getItem('tablesView')==='list'?'list':'cards'; }catch(e){ return 'cards'; } }
-function applyTablesView(){
-  const v = getTablesView();
-  document.body.classList.toggle('tables-list', v==='list');
-  document.querySelectorAll('.tables-view-toggle .tvList').forEach(b => b.classList.toggle('active', v==='list'));
-  document.querySelectorAll('.tables-view-toggle .tvCards').forEach(b => b.classList.toggle('active', v==='cards'));
-}
+// Phone layout of the tables in Admin (the Errors and Timings tables, CSS:
+// table.mtable at ≤ 700 px): each cell gets its column's header as data-label,
+// so a row reads as a card of "label value" lines. Runs after the section redraws.
 function cardTables(root){
   root.querySelectorAll('table').forEach(t => {
     t.classList.add('mtable');
