@@ -11,7 +11,7 @@
     "ignore": [
       "firebase.json",
       ".firebaserc",
-      "google-apps-script.js",
+      "archive/**",
       "*.md",
       "node_modules/**",
       "functions/**",

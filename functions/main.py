@@ -1,14 +1,17 @@
-"""Fills form101_fillable.pdf with worker/employer data and returns the PDF as
-base64 JSON. Python + PyMuPDF port of the client-side aiFillForm101() in
-schedule-manager.html — see that function's comments for the *why* behind each
-field's rect/size/quirk; this file mirrors it 1:1 unless noted otherwise.
+"""Firebase Cloud Functions (Python):
 
-Key difference from the pdf-lib version: PyMuPDF's own appearance-stream
-generator does not shape/reorder RTL text at all (confirmed empirically — even
-a single Hebrew word renders letter-reversed). So unlike the JS version, which
-only redraws multi-word Hebrew values (pdf-lib's bug only drops a glyph on
-multi-word text), every Hebrew-capable field here is unconditionally corrected
-with bidi.algorithm.get_display() and drawn by hand — see draw_rtl_text().
+- fill_form_101   — fills assets/form101_fillable.pdf with worker/employer data
+                    (PyMuPDF) and returns {pdfBase64, fileName}. The client
+                    (aiFillForm101() in schedule-manager.html) only assembles
+                    the JSON payload. Field map: form101-field-map.md.
+- gs_upload_proxy — CORS-friendly relay to the Apps Script web app so the
+                    browser can report real upload-byte progress.
+- preprocess_scan — contrast enhancement + blur check for scanned documents.
+
+PyMuPDF's appearance-stream generator does not shape/reorder RTL text at all
+(even a single Hebrew word renders letter-reversed), so every Hebrew-capable
+field is corrected with bidi.algorithm.get_display() and drawn by hand — see
+_draw_rtl_text().
 """
 import base64
 import io
@@ -111,7 +114,7 @@ class Form101Builder:
     def _blank_appearance(self, page, widget, state=None):
         """Erase a widget's own (about-to-be-wrong-for-RTL) generated
         appearance stream so our own page.insert_text underneath is what's
-        actually visible — same trick as setH()/chk() in the JS version."""
+        actually visible."""
         key = "AP/N" if state is None else f"AP/N/{state}"
         kind, value = page.parent.xref_get_key(widget.xref, key)
         if kind == "xref":
@@ -144,7 +147,7 @@ class Form101Builder:
         y = rect.y0 + (rect.height - asc) / 2 + asc
         page.insert_text((x, y), disp, fontname=FONT_NAME, fontsize=size, color=(0, 0, 0))
 
-    # ---- field writers (mirror setH/setT/setComb/addNew*Field in the JS) ---
+    # ---- field writers ----------------------------------------------------
 
     def set_hebrew(self, name, value, size=None):
         """Existing template field with Hebrew/RTL content."""
@@ -160,7 +163,7 @@ class Form101Builder:
 
     def set_text(self, name, value, size=None):
         """Existing template field with plain (LTR) content — no RTL bug, so
-        PyMuPDF's own generated appearance is fine, same as JS's setT()."""
+        PyMuPDF's own generated appearance is fine."""
         if not value or name not in self.widgets:
             return
         page, w = self.widgets[name]
@@ -214,44 +217,6 @@ class Form101Builder:
         page.draw_line(p1, p2, color=CHECK_BLUE, width=thickness, lineCap=1)
         page.draw_line(p2, p3, color=CHECK_BLUE, width=thickness, lineCap=1)
 
-    def _new_widget(self, page, name, rect, size, comb=False, max_len=None):
-        w = pymupdf.Widget()
-        w.field_name = name
-        w.field_type = pymupdf.PDF_WIDGET_TYPE_TEXT
-        w.rect = rect
-        w.text_fontsize = size
-        w.border_width = 0
-        w.fill_color = []
-        if comb:
-            w.field_flags = pymupdf.PDF_TX_FIELD_IS_COMB
-            w.text_maxlen = max_len
-        return w
-
-    def _refetch(self, page, name):
-        # A Widget object just passed to add_widget() keeps xref==0 — any
-        # xref-level op (blanking an appearance, further updates) needs the
-        # "live" Widget PyMuPDF hands back from the page's own widget list.
-        return next(x for x in page.widgets() if x.field_name == name)
-
-    def add_comb_field(self, page_h, page, name, xywh, max_len, size, value):
-        if not value:
-            return
-        rect = pdf_rect(page_h, *xywh)
-        w = self._new_widget(page, name, rect, size, comb=True, max_len=max_len)
-        w.field_value = str(value)[:max_len]
-        page.add_widget(w)
-
-    def add_hebrew_field(self, page_h, page, name, xywh, size, value, right_align=True, bottom_align=False):
-        if not value:
-            return
-        rect = pdf_rect(page_h, *xywh)
-        w = self._new_widget(page, name, rect, size)
-        w.field_value = str(value)
-        page.add_widget(w)
-        live = self._refetch(page, name)
-        self._blank_appearance(page, live)
-        self._draw_rtl_text(page, rect, value, size, right_align, bottom_align)
-
     def finalize(self):
         catalog = self.doc.pdf_catalog()
         # xref_set_key's dotted "AcroForm/NeedAppearances" path only works
@@ -276,8 +241,8 @@ class Form101Builder:
 
 
 def _split_street(addr):
-    """Street name + number can arrive in either order — same heuristic as
-    the JS version's regex split."""
+    """Street name + number can arrive in either order ("Rothschild 5" or
+    "5 Rothschild")."""
     m_end = re.match(r"^(.*?)(\d+)\s*$", addr or "")
     if m_end:
         return m_end.group(1).strip(), m_end.group(2).strip()

@@ -225,6 +225,7 @@ async function loadData(){
   ]);
   const sch = await schRes.json();
   const pl = await plRes.json();
+  if(sch.error || pl.error) throw new Error(sch.error || pl.error);
   myWorkers = sch.workers||[];
   myClients = sch.clients||[];
   punchLog = pl.entries||[];
@@ -235,7 +236,12 @@ function gateApp(){
   if(!s){ document.getElementById('loginScreen').style.display='flex'; document.getElementById('appRoot').style.display='none'; return; }
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('appRoot').style.display='block';
-  loadData().then(()=>{ switchTab('dashboard'); });
+  loadData().then(()=>{ switchTab('dashboard'); }).catch(err=>{
+    // Rejected session → back to login; network problem → keep the session, offer a retry.
+    if(/Сессия|session/i.test(String(err&&err.message))){ clearSession(); gateApp(); return; }
+    switchTab('dashboard');
+    document.getElementById('dashLog').innerHTML = 'Could not load data. <button class="btn sm" onclick="gateApp()">Retry</button>';
+  });
 }
 
 function switchTab(tab){
@@ -264,7 +270,7 @@ function renderDashboard(){
   if(!todays.length){ logEl.textContent='No activity today'; return; }
   logEl.innerHTML = todays.map(e=>{
     const w = myWorkers.find(x=>x.id===e.workerId);
-    return `<div>${esc(w?w.name:e.workerName)} — ${e.type.toUpperCase()} ${esc(e.time)}</div>`;
+    return `<div>${esc(w?w.name:e.workerName)} — ${esc(String(e.type||'').toUpperCase())} ${esc(e.time)}</div>`;
   }).join('');
 }
 
@@ -279,11 +285,11 @@ function renderWorkersList(){
     ${myWorkers.map(w=>`<tr>
       <td>${esc(w.name)}</td>
       <td>${esc(w.phone||'')}</td>
-      <td>${(w.clientIds||[]).map(clientName).filter(Boolean).join(', ')}</td>
+      <td>${(w.clientIds||[]).map(clientName).filter(Boolean).map(esc).join(', ')}</td>
       <td>${w.supplierRate!=null?'₪'+w.supplierRate+'/h':'—'}</td>
       <td style="white-space:nowrap">
-        <button class="btn sm" onclick="openEditWorkerModal('${w.id}')"><i class="ti ti-edit"></i></button>
-        <button class="btn sm red" onclick="deleteWorker('${w.id}')"><i class="ti ti-trash"></i></button>
+        <button class="btn sm" onclick="openEditWorkerModal('${esc(w.id)}')"><i class="ti ti-edit"></i></button>
+        <button class="btn sm red" onclick="deleteWorker('${esc(w.id)}')"><i class="ti ti-trash"></i></button>
       </td>
     </tr>`).join('')}
   </tbody></table>`;

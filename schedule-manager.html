@@ -545,7 +545,7 @@
     <!-- Admin Section — merged 2026-09-30 with the formerly-separate
          #adminScreen gear-button panel (Firms/Users/Errors/Profile) into one
          set of sub-tabs here, replacing the header's gear button. See
-         HISTORY.md for why two "Admin" surfaces existed in the first place
+         archive/HISTORY.md for why two "Admin" surfaces existed in the first place
          and setupAdminPaneBar()'s own comment for the merged role-gating. -->
     <div class="page-section" id="sectionAdmin">
       <div class="page-header">
@@ -853,7 +853,7 @@
      existing firm, and a firm's own self-service profile edit — merged
      2026-09-30 (previously two overlays, createFirmOverlay/editFirmOverlay,
      with near-duplicate profile fields; only the login fields were genuinely
-     create-only — see HISTORY.md). __firmFormMode ('create'|'edit') picks
+     create-only — see archive/HISTORY.md). __firmFormMode ('create'|'edit') picks
      submitEditFirm()'s backend action; openCreateFirmForm() shows the
      login fields, openEditFirmForm()/openMyFirmForm() hide them. -->
 <div class="overlay" id="editFirmOverlay" style="z-index:950" onclick="if(event.target===this)closeModal('editFirmOverlay')">
@@ -1729,7 +1729,7 @@ function showWorkerModal(w){
       ${w.idChecksumOk===false?'<div style="font-size:11px;color:var(--amber);margin-top:2px"><i class="ti ti-alert-triangle"></i> המספר לא עבר בדיקת ספרת ביקורת — יש לבדוק ידנית</div>':''}
       ${w.idMismatch?'<div style="font-size:11px;color:var(--amber);margin-top:2px"><i class="ti ti-alert-triangle"></i> המספר בספח לא תואם למספר בצד הקדמי — יש לבדוק ידנית</div>':''}
     </div>
-    <div class="field"><label>טלפון</label><input type="text" id="wPhone" value="${w.phone||''}" placeholder="+972..."></div>
+    <div class="field"><label>טלפון</label><input type="text" id="wPhone" value="${esc(w.phone||'')}" placeholder="+972..."></div>
     <div class="field-row">
       <div class="field"><label>תעריף שעתי (₪/שעה)</label><input type="number" id="wRate" value="${w.hourlyRate||''}" placeholder="לדוגמה: 35" min="0" step="0.5"></div>
       <div class="field"><label>סטטוס</label>
@@ -1741,7 +1741,7 @@ function showWorkerModal(w){
       </div>
     </div>
     <div class="field"><label>Travel allowance (₪ per work day, optional)</label><input type="number" id="wTravelAllowance" value="${w.travelAllowance||''}" placeholder="0" min="0" step="0.5"></div>
-    <div class="field"><label>תאריך תחילת עבודה</label><input type="date" id="wStartDate" value="${w.startDate||w.workStartDate||new Date().toISOString().slice(0,10)}"></div>
+    <div class="field"><label>תאריך תחילת עבודה</label><input type="date" id="wStartDate" value="${esc(w.startDate||w.workStartDate||new Date().toISOString().slice(0,10))}"></div>
     <div class="field"><label>מין</label>
       <select id="wSex">
         <option value="" ${!w.docSex?'selected':''}>— לא נבחר —</option>
@@ -1907,7 +1907,7 @@ function showWorkerModal(w){
         style="width:100%;max-width:340px;height:90px;display:block;background:#fff;border:1px solid var(--border2);border-radius:var(--radius-sm);touch-action:none"></canvas>
       <button class="btn sm" style="margin-top:6px" type="button" onclick="clearSignaturePad('wSigCanvas')"><i class="ti ti-eraser"></i> נקה חתימה</button>
     </div>
-    <div class="field"><label>הערות</label><textarea id="wNotes" placeholder="הערות על העובד" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;padding:8px 10px;outline:none;min-height:56px;resize:vertical">${w.notes||''}</textarea></div>
+    <div class="field"><label>הערות</label><textarea id="wNotes" placeholder="הערות על העובד" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;padding:8px 10px;outline:none;min-height:56px;resize:vertical">${esc(w.notes||'')}</textarea></div>
     <div class="modal-actions">
       ${editingWorkerIdx!==null?`<button class="btn" onclick="regenerateWorkerToken(${editingWorkerIdx})" style="background:var(--amber-bg);border-color:rgba(245,166,35,0.3);color:var(--amber)"><i class="ti ti-refresh"></i> טוקן חדש</button>`:''}
       <button class="btn accent" onclick="saveWorker()">${editingWorkerIdx!==null?'שמור שינויים':'צור עובד'}</button>
@@ -2136,10 +2136,10 @@ function openEditClient(cid){ editingClientId=cid; const c=clients.find(x=>x.id=
 function showClientModal(c){
   document.getElementById('clientModal').innerHTML=`
     <div class="modal-title">${editingClientId?'Edit Client':'Add New Client'}</div>
-    <div class="field"><label>Name</label><input type="text" id="cName" value="${c.name||''}" placeholder="Client name" autofocus></div>
-    <div class="field"><label>Object</label><input type="text" id="cObject" value="${c.object||''}" placeholder="Object / branch name"></div>
-    <div class="field"><label>Address (optional)</label><input type="text" id="cAddr" value="${c.address||''}" placeholder="Address"></div>
-    <div class="field"><label>Notes (optional)</label><input type="text" id="cNotes" value="${c.notes||''}" placeholder="Notes"></div>
+    <div class="field"><label>Name</label><input type="text" id="cName" value="${esc(c.name||'')}" placeholder="Client name" autofocus></div>
+    <div class="field"><label>Object</label><input type="text" id="cObject" value="${esc(c.object||'')}" placeholder="Object / branch name"></div>
+    <div class="field"><label>Address (optional)</label><input type="text" id="cAddr" value="${esc(c.address||'')}" placeholder="Address"></div>
+    <div class="field"><label>Notes (optional)</label><input type="text" id="cNotes" value="${esc(c.notes||'')}" placeholder="Notes"></div>
     <div class="field"><label>ח.פ (Company Number, optional)</label><input type="text" id="cCompanyNumber" value="${esc(c.companyNumber||'')}" placeholder="512345678"></div>
     <div class="field">
       <label><i class="ti ti-cash"></i> Default rate for this client (optional)</label>
@@ -2169,7 +2169,7 @@ function showClientModal(c){
       <label><i class="ti ti-map-pin"></i> Geolocation for Punch Clock</label>
       <div style="margin-bottom:8px">
         <label style="font-size:11px;color:var(--text3);margin-bottom:4px;display:block">Paste Google Maps link</label>
-        <input type="text" id="cMapsUrl" placeholder="https://maps.google.com/..." value="${c.mapsUrl||''}" oninput="parseGoogleMapsUrl(this.value)" style="font-size:12px">
+        <input type="text" id="cMapsUrl" placeholder="https://maps.google.com/..." value="${esc(c.mapsUrl||'')}" oninput="parseGoogleMapsUrl(this.value)" style="font-size:12px">
         <div style="font-size:11px;color:var(--text3);margin-top:4px">Open Google Maps → right-click on location → copy link or coordinates</div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
@@ -2327,7 +2327,7 @@ function renderWorkersPage(){
       <td style="padding:10px 12px">${supBadge}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.phone?esc(w.phone):'—'}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.hourlyRate?('₪'+w.hourlyRate+'/h'):'—'}</td>
-      <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.startDate?fmtDMY(w.startDate):'—'}</td>
+      <td style="padding:10px 12px;font-size:13px;color:var(--text2)">${w.startDate?esc(fmtDMY(w.startDate)):'—'}</td>
       <td style="padding:10px 12px;text-align:center" onclick="event.stopPropagation()"><div style="display:flex;gap:4px;justify-content:center">
         ${w.docUrl?`<a href="${esc(w.docUrl)}" target="_blank" rel="noopener" class="btn sm" title="Скачать документ (PDF с Google Drive)" style="padding:3px 8px;font-size:11px"><i class="ti ti-download"></i></a>`:''}
         <button class="btn sm" onclick="openEditWorker(${wi})" style="padding:3px 8px;font-size:11px"><i class="ti ti-edit"></i></button>
@@ -2378,7 +2378,7 @@ function openWorkerCard(wi){
     <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text2);margin-bottom:14px">
       ${w.phone?`<div><i class="ti ti-phone"></i> ${esc(w.phone)}</div>`:''}
       ${w.hourlyRate?`<div><i class="ti ti-coin"></i> Base ₪${w.hourlyRate}/h${w.otRate!=null?' · OT ₪'+w.otRate+'/h':''}${w.shabbatRate!=null?' · Shabbat ₪'+w.shabbatRate+'/h':''}</div>`:''}
-      ${w.startDate?`<div><i class="ti ti-calendar-event"></i> Started ${fmtDMY(w.startDate)}</div>`:''}
+      ${w.startDate?`<div><i class="ti ti-calendar-event"></i> Started ${esc(fmtDMY(w.startDate))}</div>`:''}
       ${expSt?`<div style="color:${expSt.level==='overdue'?'var(--red)':'var(--amber)'}"><i class="ti ti-alert-triangle"></i> ${expSt.level==='overdue'?'Срок истёк':'Срок приближается'} — ${expSt.deadline.toLocaleDateString('ru-RU')}</div>`:''}
       ${workerDocId(w)?`<div><i class="ti ti-id"></i> ${esc(workerDocId(w))}</div>`:''}
       ${[[workerAddress(w),w.houseNumber].filter(Boolean).join(' '),w.city].filter(Boolean).length?`<div><i class="ti ti-map-pin"></i> ${esc([[workerAddress(w),w.houseNumber].filter(Boolean).join(' '),w.city].filter(Boolean).join(', '))}</div>`:''}
@@ -3428,7 +3428,7 @@ async function renderFirmsList(targetId){
 // Admin tab sub-panes (merged 2026-09-30 into the pre-existing Admin nav tab
 // — previously the gear-button-only #adminScreen modal; the nav tab and the
 // modal were two separately-named "Admin" surfaces, a known source of
-// confusion — see HISTORY.md). setupAdminPaneBar() replaces openAdminScreen()
+// confusion — see archive/HISTORY.md). setupAdminPaneBar() replaces openAdminScreen()
 // and is called once from switchTab() when the Admin tab is opened (not from
 // render()'s own per-mutation refresh of that tab — see switchTab()'s own
 // comment on why renderAdmin() alone runs there). Pane visibility: Punch Log
@@ -4634,8 +4634,8 @@ async function renderPendingHours(){
               <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${esc(b.uploadedBy||'—')}</td>
               <td style="padding:10px 12px;text-align:center;font-size:13px;font-weight:600">${b.entries.length}</td>
               ${canApprove?`<td style="padding:10px 12px;text-align:right;white-space:nowrap">
-                <button class="btn sm" style="color:var(--green)" onclick="approveHoursBatch('${b.batchId}')"><i class="ti ti-check"></i></button>
-                <button class="btn sm red" onclick="rejectHoursBatch('${b.batchId}')"><i class="ti ti-x"></i></button>
+                <button class="btn sm" style="color:var(--green)" onclick="approveHoursBatch('${esc(b.batchId)}')"><i class="ti ti-check"></i></button>
+                <button class="btn sm red" onclick="rejectHoursBatch('${esc(b.batchId)}')"><i class="ti ti-x"></i></button>
               </td>`:''}
             </tr>`;
           }).join('')}
@@ -4650,6 +4650,7 @@ async function approveHoursBatch(batchId){
     const json = await res.json();
     if(json.error){ showToast(json.error); return; }
     showToast(json.created+' shift(s) approved');
+    await syncPunchesFromGS(); // approved punches exist only on the server until synced
     renderPendingHours(); renderSalary();
   }catch(e){ showToast('Failed: '+e.message); }
 }
@@ -5026,7 +5027,7 @@ function renderClientLogs(){
         ${recent.length?`<div style="display:flex;flex-direction:column;gap:3px">${recent.map(e=>`
           <div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 8px;border-radius:5px;background:var(--bg2)">
             <span style="font-weight:700;padding:2px 8px;border-radius:10px;font-size:11px;${e.type==='in'?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${e.type==='in'?'IN':'OUT'}</span>
-            <span style="font-family:monospace;color:var(--text)">${e.time||'--'}</span>
+            <span style="font-family:monospace;color:var(--text)">${esc(e.time||'--')}</span>
             <span style="color:var(--text2)">${new Date(e.ts).toLocaleDateString('en-GB')}</span>
             ${(()=>{const s=punchSite(e);return s?`<span style="color:var(--text3);font-size:11px"><i class="ti ti-map-pin"></i> ${esc(s)}</span>`:'';})()}
             ${e.dist!=null?`<span style="color:var(--text3);font-size:11px">${e.dist}m</span>`:''}
@@ -5106,13 +5107,13 @@ function renderAdmin(){
       <td style="padding:10px 12px;white-space:nowrap"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:50%;background:${c.bg};color:${c.text};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><span style="font-size:13px;font-weight:600">${esc(e.workerName)||'Unknown'}</span></div></td>
       <td style="padding:10px 12px">${clientBadge||'<span style="color:var(--text3);font-size:12px">—</span>'}</td>
       <td style="padding:10px 12px"><span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;${e.type==='in'?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${e.type==='in'?'IN':'OUT'}</span></td>
-      <td style="padding:10px 12px;font-size:13px;font-family:monospace;color:var(--text)">${e.time||'--'}</td>
+      <td style="padding:10px 12px;font-size:13px;font-family:monospace;color:var(--text)">${esc(e.time||'--')}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2);white-space:nowrap">${dateStr}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--text2);white-space:nowrap">${esc(punchSite(e))||'--'}</td>
       <td style="padding:10px 12px;font-size:12px">
         ${e.manual?'<span style="color:var(--amber);font-size:11px;font-weight:700"><i class="ti ti-edit"></i> Manual</span>':(e.dist!=null?'<i class="ti ti-map-pin"></i> '+e.dist+'m':'--')}
         ${!e.manual&&e.gpsAccuracy?`<span style="color:var(--text3);font-size:11px">±${Math.round(e.gpsAccuracy)}m</span>`:''}
-        ${!e.manual&&e.gpsSuspicious?`<span title="${(e.gpsWarnings||[]).join('; ')}" style="color:var(--amber);font-size:11px;cursor:help"> <i class="ti ti-alert-triangle"></i></span>`:''}
+        ${!e.manual&&e.gpsSuspicious?`<span title="${esc((e.gpsWarnings||[]).join('; '))}" style="color:var(--amber);font-size:11px;cursor:help"> <i class="ti ti-alert-triangle"></i></span>`:''}
       </td>
 
       <td style="padding:10px 12px;text-align:center"><div style="display:flex;gap:4px;justify-content:center">
@@ -5139,7 +5140,7 @@ function editPunchEntry(id){
         </select>
       </div>
       <div class="field"><label>Time</label>
-        <input type="time" id="epTime" value="${e.time||'09:00'}">
+        <input type="time" id="epTime" value="${esc(e.time||'09:00')}">
       </div>
     </div>
     <div class="field"><label>Site</label>
@@ -5150,7 +5151,7 @@ function editPunchEntry(id){
       </select>
     </div>
     <div class="field"><label>Notes</label>
-      <input type="text" id="epNotes" value="${e.notes||''}" placeholder="Optional note">
+      <input type="text" id="epNotes" value="${esc(e.notes||'')}" placeholder="Optional note">
     </div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal('editOverlay')">Cancel</button>

@@ -166,7 +166,7 @@ async function onScanFilesSelected(fileList){
             window.__aiScanImage={b64:it.b64,mediaType:it.mediaType};
             window.__aiAvatarB64=p.photoBox?await cropPortraitAvatar(it.b64,it.mediaType,p.photoBox):null;
             needMore=missingCore(foundParsed);
-            window.__aiPageParsed=[foundParsed]; // primary page's own data — parallel to __aiScanImage
+            window.__aiPageParsed=[foundParsed,...window.__aiPageParsed]; // primary first, then pages read before it — parallel to [__aiScanImage, ...otherPages]
             continue; // эта страница уже сохранена как window.__aiScanImage, в "прочие" не дублируем
           }
         }catch(e){ console.error(e); }
@@ -224,7 +224,7 @@ async function onScanFilesSelected(fileList){
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
-      +(err&&err.message||'')+'<br><br>'
+      +esc(err&&err.message||'')+'<br><br>'
       +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
   }
 }
@@ -280,7 +280,7 @@ async function onScanFileSelected(file){
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
-      +(err&&err.message||'')+'<br><br>'
+      +esc(err&&err.message||'')+'<br><br>'
       +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
   }
 }
@@ -336,7 +336,7 @@ async function onSefachFileSelected(file){
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
-      +(err&&err.message||'')+'<br><br>'
+      +esc(err&&err.message||'')+'<br><br>'
       +'<button class="btn sm" onclick="renderScanPagesPrompt()">שוב</button></div>';
   }
 }
@@ -360,7 +360,7 @@ async function runSefachOcr(b64,mediaType){
     const json=await resp.json();
     if(!json||json.error){
       stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאת AI: '
-        +((json&&json.error)||'אין תגובה')+'<br><br>'
+        +esc((json&&json.error)||'אין תגובה')+'<br><br>'
         +'<button class="btn sm" onclick="renderScanPagesPrompt()">שוב</button></div>';
       return;
     }
@@ -389,7 +389,7 @@ async function runSefachOcr(b64,mediaType){
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
-      +(err&&err.message||'')+'<br><br>'
+      +esc(err&&err.message||'')+'<br><br>'
       +'<button class="btn sm" onclick="renderScanPagesPrompt()">שוב</button></div>';
   }
 }
@@ -744,7 +744,7 @@ async function runOcr(b64,mediaType){
     const json=await resp.json();
     if(!json||json.error){
       stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאת AI: '
-        +((json&&json.error)||'אין תגובה')+'<br><br>'
+        +esc((json&&json.error)||'אין תגובה')+'<br><br>'
         +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
       return;
     }
@@ -783,7 +783,7 @@ async function runOcr(b64,mediaType){
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
-      +(err&&err.message||'')+'<br><br>'
+      +esc(err&&err.message||'')+'<br><br>'
       +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
   }
 }
@@ -1471,7 +1471,7 @@ async function processAllPendingPages(){
   // on this function's own full-success tail), so checking the thumbs array here
   // made a resumed "process" after an abort wrongly look like a fresh start,
   // discarding the already-found primary record and re-reading pages from scratch.
-  const resuming=!!(window.__aiPrimaryParsed||window.__aiParsed);
+  const resuming=!!(window.__aiPrimaryParsed||window.__aiParsed||window.__aiPacketOtherPages.length);
   let foundParsed=resuming?(window.__aiPrimaryParsed||window.__aiParsed||null):null;
   let needMore=missingCore(foundParsed);
   const otherPages=resuming?window.__aiPacketOtherPages.slice():[];
@@ -1553,7 +1553,7 @@ async function processAllPendingPages(){
           renderScanProgress('מחדד קצוות… (עמוד '+(i+1)+' מתוך '+queue.length+')',subPct(0.9));
           window.__aiScanImage=await finalTightenPass(it);
           needMore=missingCore(foundParsed);
-          pageParsed=[foundParsed];
+          pageParsed=[foundParsed,...pageParsed]; // keep pages read before the primary (parallel to otherPages)
           continue; // this page's image is __aiScanImage — not duplicated into otherPages
         }
       }catch(e){ console.error(e); }

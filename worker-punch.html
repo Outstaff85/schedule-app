@@ -428,7 +428,20 @@ let _site = null;
 try{ _site=JSON.parse(localStorage.getItem('punchClockSite')||'null'); }catch(e){}
 
 const URL_WORKER = params.get('worker') || null;
-const URL_TOKEN  = params.get('t') || params.get('token') || null;
+// An installed PWA relaunches from manifest start_url without ?t=, so the
+// token from the personal link is remembered and reused in standalone mode.
+const _IS_STANDALONE = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+const URL_TOKEN  = (()=>{
+  const t = params.get('t') || params.get('token') || null;
+  try{
+    if(t) localStorage.setItem('punchToken', t);
+    else if(_IS_STANDALONE) return localStorage.getItem('punchToken') || null;
+  }catch(e){}
+  return t;
+})();
+// Older versions cached the whole firm (every worker + token) under the
+// manager's key on workers' phones — drop it unless a manager uses this device.
+try{ if(URL_TOKEN && !localStorage.getItem('schedMgr_session')) localStorage.removeItem('schedMgr_v1'); }catch(e){}
 
 // A personal link (token in URL) is self-contained: trust ONLY the URL/base,
 // never a stale punchClockSite left in localStorage from an admin session.
@@ -517,7 +530,8 @@ async function flushQueue(){
       }
       catch(err){ failed.push(e); }
     }
-    saveQueue(failed);
+    // Keep anything queued while this loop was awaiting the network.
+    saveQueue(failed.concat(getQueue().slice(q.length)));
   } finally { _flushingQueue=false; }
   if(!failed.length){ hideOfflineBadge(); if(q.length) showSyncToast(q.length); }
 }
@@ -715,7 +729,7 @@ function loadWorkers(){
   if(_site?.workers?.length){ workers=_site.workers; return; }
   // Priority 2: localStorage cache (same device)
   try{
-    const raw=localStorage.getItem('schedMgr_v1')||localStorage.getItem('scheduleManagerData');
+    const raw=localStorage.getItem('punchApp_cache_v1')||localStorage.getItem('schedMgr_v1')||localStorage.getItem('scheduleManagerData');
     if(raw){
       const d=JSON.parse(raw); let list=d.workers||[];
       allClients = d.clients||[];
@@ -735,7 +749,7 @@ function loadWorkers(){
 async function loadWorkersFromGS(){
   // Multi-tenant: resolvable only on a personal link (URL_TOKEN) — the
   // legacy no-token picker-grid flow has no per-request way to name a firm
-  // and will fail against the multi-tenant backend (see MULTI_TENANT_PLAN.md).
+  // and will fail against the multi-tenant backend (see archive/MULTI_TENANT_PLAN.md).
   const url = GS_URL+'?action=loadSchedule&t='+Date.now()+(URL_TOKEN?'&workerToken='+encodeURIComponent(URL_TOKEN):'');
   
   try{
@@ -751,7 +765,7 @@ async function loadWorkersFromGS(){
         list = filtered.length ? filtered : list;
       }
       workers=list.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null,clientIds:w.clientIds||[]}));
-      localStorage.setItem('schedMgr_v1', JSON.stringify(data));
+      localStorage.setItem('punchApp_cache_v1', JSON.stringify(data));
       console.log('GS loaded:', workers.length, 'workers');
       return true;
     }
@@ -765,7 +779,7 @@ async function loadWorkersFromGS(){
         if(data.workers&&data.workers.length){
           allClients=data.clients||[];
           workers=data.workers.map((w,i)=>({id:w.id,name:w.name,colorIdx:w.colorIdx||i,token:w.token||null,clientIds:w.clientIds||[]}));
-          localStorage.setItem('schedMgr_v1', JSON.stringify(data));
+          localStorage.setItem('punchApp_cache_v1', JSON.stringify(data));
           console.log('GS loaded (method 2):', workers.length, 'workers');
           resolve(true);
         } else { resolve(false); }
@@ -936,7 +950,7 @@ function doPunch(){
   const now=new Date(), hh=String(now.getHours()).padStart(2,'0'), mm=String(now.getMinutes()).padStart(2,'0');
   const log=getPunchLog(), last=getLastEntry(log,selectedWorker.id), type=last?.type==='in'?'out':'in';
   const gps=window._lastGpsAnalysis||{};
-  const geoEnforced = !!(SITE.lat && SITE.lng);
+  const geoEnforced = SITE.lat!=null && SITE.lng!=null;
   const entry={
     id:Date.now(), workerId:selectedWorker.id, workerName:selectedWorker.name,
     type, time:hh+':'+mm, ts:now.toISOString(),
