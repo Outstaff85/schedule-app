@@ -238,8 +238,8 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .og-box{width:24px;height:24px;box-sizing:border-box;flex:none;border-radius:7px;border:2px solid var(--ink-3);position:relative;transition:background .25s,border-color .25s;}
 .og-box::after{content:'';position:absolute;left:5px;top:1px;width:5px;height:10px;border:solid #0b0d14;border-width:0 3px 3px 0;transform:rotate(45deg);clip-path:inset(100% 0 0 0);transition:clip-path .35s .05s;}
 .t3-line.picked{background:var(--plate-on);}
-.t3-line.picked .og-box,.sal-row.picked .og-box{background:var(--ok);border-color:var(--ok);}
-.t3-line.picked .og-box::after,.sal-row.picked .og-box::after{clip-path:inset(0);}
+.t3-line.picked .og-box{background:var(--ok);border-color:var(--ok);}
+.t3-line.picked .og-box::after{clip-path:inset(0);}
 .sel-head{display:flex;align-items:center;gap:16px;margin:-2px 2px 8px;font-size:13px;color:var(--text2);}
 .sel-head span{flex:1;}
 .sel-head button{position:relative;border:0;background:none;color:var(--ink);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;padding:2px 0 5px;}
@@ -267,7 +267,6 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
   .seg button{position:relative;flex:1;height:31px;border:0;border-radius:10px;background:none;color:var(--text2);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer}
   .seg button.on{background:var(--glass-hi);color:var(--ink)}
   /* Every button in a window is glass; Save carries a check (mockup 04). */
-  .modal .check-grid{display:flex;flex-wrap:wrap;gap:6px;grid-template-columns:none}
   .modal .btn{height:40px;padding:0 14px;border-radius:14px;background:rgba(var(--tint),.08);border:1px solid rgba(var(--tint),.16);color:var(--text);font-weight:600;font-size:13px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
   .modal .btn.sm{height:36px;border-radius:12px;font-size:12.5px}
   .modal .btn.accent{background:rgba(var(--tint),.2);border-color:rgba(var(--tint),.3);color:var(--ink)}
