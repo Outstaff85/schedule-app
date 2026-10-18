@@ -32,8 +32,9 @@
 <h1>Scan model test</h1>
 <div class="row">
   <select id="model">
-    <option value="sa24_w16.onnx">Accurate (42 MB)</option>
-    <option value="lite.onnx">Light (5 MB)</option>
+    <option value="lite.onnx+sa24_w16.onnx">Live: light · capture: accurate</option>
+    <option value="sa24_w16.onnx">Accurate only (42 MB)</option>
+    <option value="lite.onnx">Light only (5 MB)</option>
   </select>
   <select id="backend">
     <option value="auto">Auto (GPU, else CPU)</option>
@@ -82,7 +83,7 @@ ort.env.wasm.numThreads = 1;
 
 let smooth = null, steadySince = 0, lastRes = null;
 const STEADY_MS = 2000, MOVE = 0.02;
-let session = null, sessionKey = '', running = false, stream = null, busy = false;
+let session = null, capSession = null, sessionKey = '', target = null, shown = null, running = false, stream = null, busy = false;
 const times = [], frames = [];
 const S = 256, H = 128;
 const work = document.createElement('canvas'); work.width = S; work.height = S;
@@ -107,24 +108,40 @@ async function fetchModel(name) {
   }
 }
 
-async function ensureSession() {
-  const model = $('model').value, want = $('backend').value, key = model + '|' + want;
-  if (session && sessionKey === key) return;
-  session = null; $('sBackend').textContent = 'loading…'; $('startCam').disabled = true; status('Preparing the model…');
-  const t0 = performance.now();
+async function openSession(model, want) {
   const bytes = await fetchModel(model);
   const order = want === 'auto' ? ['webgpu', 'wasm'] : [want];
-  let used = '';
   for (const ep of order) {
     if (ep === 'webgpu' && !navigator.gpu) { log('WebGPU is not available in this browser'); continue; }
-    try { session = await ort.InferenceSession.create(bytes, { executionProviders: [ep], graphOptimizationLevel: 'all' }); used = ep; break; }
-    catch (e) { log('Could not start on ' + ep + ': ' + (e && e.message || e)); }
+    try {
+      const sess = await ort.InferenceSession.create(bytes, { executionProviders: [ep], graphOptimizationLevel: 'all' });
+      // Warm-up: the first run compiles the GPU shaders; do it now, not at the first frame / capture.
+      status('Warming up ' + model + '…');
+      await sess.run({ [sess.inputNames[0]]: new ort.Tensor('float32', new Float32Array(3 * S * S), [1, 3, S, S]) });
+      return { s: sess, ep };
+    }
+    catch (e) { log('Could not start ' + model + ' on ' + ep + ': ' + (e && e.message || e)); }
   }
-  if (!session) { $('sBackend').textContent = 'failed'; status('The model could not start — see the log below'); $('startCam').disabled = false; throw new Error('no backend'); }
+  throw new Error('no backend for ' + model);
+}
+
+// The live model draws the frame on every camera frame; the capture model
+// (the accurate one) runs once on the captured frame for the exact corners.
+async function ensureSession() {
+  const [live, cap] = $('model').value.split('+'), want = $('backend').value, key = $('model').value + '|' + want;
+  if (session && sessionKey === key) return;
+  session = capSession = null; $('sBackend').textContent = 'loading…'; $('startCam').disabled = true; status('Preparing the model…');
+  const t0 = performance.now();
+  try {
+    const a = await openSession(live, want); session = a.s;
+    capSession = cap ? (await openSession(cap, want)).s : session;
+    $('sBackend').textContent = a.ep === 'webgpu' ? 'GPU' : 'CPU';
+    log('Live model ' + live + (cap ? ', capture model ' + cap : '') + ' on ' + a.ep);
+  } catch (e) {
+    $('sBackend').textContent = 'failed'; status('The model could not start — see the log below'); $('startCam').disabled = false; throw e;
+  }
   sessionKey = key; times.length = 0; frames.length = 0; $('startCam').disabled = false; status('Model ready — scanning is available');
-  $('sBackend').textContent = used === 'webgpu' ? 'GPU' : 'CPU';
   $('sLoad').textContent = ((performance.now() - t0) / 1000).toFixed(1);
-  log('Model ' + model + ' on ' + used + ', loaded in ' + $('sLoad').textContent + ' s');
 }
 
 function toTensor(src, w, h) {
@@ -204,22 +221,42 @@ function capture(src, w, h, pts) {
   return out.toDataURL('image/jpeg', 0.9);
 }
 
-function draw(res, el) {
+function drawPts(pts, ok, el) {
   const c = $('overlay'), r = el.getBoundingClientRect(), dpr = devicePixelRatio || 1;
-  c.width = r.width * dpr; c.height = r.height * dpr;
+  if (c.width !== Math.round(r.width * dpr) || c.height !== Math.round(r.height * dpr)) { c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr); }
   const g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height);
-  if (res.pts.some(p => !p)) return;
-  g.lineWidth = 4 * dpr; g.strokeStyle = res.conf >= 0.5 ? '#6dd6a0' : '#f5a623'; g.fillStyle = g.strokeStyle;
-  g.beginPath(); res.pts.forEach(([x, y], i) => { const X = x * c.width, Y = y * c.height; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.closePath(); g.stroke();
-  res.pts.forEach(([x, y]) => { g.beginPath(); g.arc(x * c.width, y * c.height, 7 * dpr, 0, 7); g.fill(); });
+  if (!pts) return;
+  g.lineWidth = 4 * dpr; g.strokeStyle = ok ? '#6dd6a0' : '#f5a623'; g.fillStyle = ok ? 'rgba(109,214,160,.18)' : 'rgba(245,166,35,.12)';
+  g.beginPath(); pts.forEach(([x, y], i) => { const X = x * c.width, Y = y * c.height; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.closePath(); g.fill(); g.stroke();
+  g.fillStyle = g.strokeStyle; pts.forEach(([x, y]) => { g.beginPath(); g.arc(x * c.width, y * c.height, 7 * dpr, 0, 7); g.fill(); });
+}
+function draw(res, el) {
+  target = res.pts.some(p => !p) ? null : { pts: res.pts, ok: res.conf >= 0.5 };
+  if (el.tagName !== 'VIDEO') { shown = target && target.pts.map(p => p.slice()); drawPts(shown, target && target.ok, el); }
+}
+// Every screen frame (60/s) the drawn frame glides toward the latest model result.
+function animate() {
+  const v = $('video');
+  if (!v.hidden) {
+    if (!target) shown = null;
+    else if (!shown) shown = target.pts.map(p => p.slice());
+    else shown = shown.map((q, i) => [q[0] + (target.pts[i][0] - q[0]) * 0.35, q[1] + (target.pts[i][1] - q[1]) * 0.35]);
+    drawPts(shown, target && target.ok, v);
+  }
+  requestAnimationFrame(animate);
+}
+requestAnimationFrame(animate);
+
+async function detect(sess, src, w, h) {
+  const out = await sess.run({ [sess.inputNames[0]]: toTensor(src, w, h) });
+  const hm = out[sess.outputNames[0]].data;
+  return corners(hm instanceof Float32Array ? hm : Float32Array.from(hm));
 }
 
 async function runOnce(src, w, h, el) {
   const t = performance.now();
-  const out = await session.run({ [session.inputNames[0]]: toTensor(src, w, h) });
+  const raw = await detect(el.tagName === 'VIDEO' ? session : capSession, src, w, h);
   const ms = performance.now() - t;
-  const hm = out[session.outputNames[0]].data;
-  const raw = corners(hm instanceof Float32Array ? hm : Float32Array.from(hm));
   const res = el.tagName === 'VIDEO' ? smoothen(raw) : raw;
   times.push(ms); if (times.length > 20) times.shift();
   const now = performance.now(); frames.push(now); while (frames.length && now - frames[0] > 2000) frames.shift();
@@ -233,13 +270,21 @@ async function runOnce(src, w, h, el) {
   if (el.tagName === 'VIDEO' && $('auto').checked && res.steady >= STEADY_MS) showShot();
 }
 
-function showShot() {
+async function showShot() {
   const v = $('video'), img = $('still'), isVideo = !v.hidden, el = isVideo ? v : img;
   if (!lastRes || lastRes.pts.some(p => !p)) { $('hint').textContent = 'No frame to capture yet'; return; }
   running = false;
-  const t0 = performance.now();
-  $('shotImg').src = capture(el, isVideo ? v.videoWidth : img.naturalWidth, isVideo ? v.videoHeight : img.naturalHeight, lastRes.pts);
-  $('shot').hidden = false; $('hint').textContent = 'Captured and straightened (' + Math.round(performance.now() - t0) + ' ms) — Retake for another';
+  const t0 = performance.now(), w = isVideo ? v.videoWidth : img.naturalWidth, h = isVideo ? v.videoHeight : img.naturalHeight;
+  const frame = document.createElement('canvas'); frame.width = w; frame.height = h; frame.getContext('2d').drawImage(el, 0, 0, w, h);
+  let pts = lastRes.pts, how = 'live frame';
+  if (isVideo && capSession !== session) {
+    $('hint').textContent = 'Taking the exact corners…';
+    const exact = await detect(capSession, frame, w, h);
+    if (!exact.pts.some(p => !p) && exact.conf >= 0.5) { pts = exact.pts; how = 'accurate model'; }
+    target = { pts, ok: true }; shown = pts.map(p => p.slice()); drawPts(shown, true, v);
+  }
+  $('shotImg').src = capture(frame, w, h, pts);
+  $('shot').hidden = false; $('hint').textContent = 'Captured and straightened by the ' + how + ' (' + Math.round(performance.now() - t0) + ' ms) — Retake for another';
   $('shot').scrollIntoView({ behavior: 'smooth' });
 }
 
@@ -263,7 +308,7 @@ $('startCam').onclick = async () => {
     running = true; loop();
   } catch (e) { log('Camera / model error: ' + (e && e.message || e)); }
 };
-$('retake').onclick = () => { $('shot').hidden = true; smooth = null; steadySince = 0; if (stream) { running = true; loop(); } else $('startCam').click(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+$('retake').onclick = () => { $('shot').hidden = true; smooth = null; target = shown = null; steadySince = 0; if (stream) { running = true; loop(); } else $('startCam').click(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 $('snap').onclick = showShot;
 $('stop').onclick = () => { running = false; if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } };
 $('file').onchange = async e => {
