@@ -75,7 +75,7 @@ Every page loads them from the site itself, not from a CDN, so they also work of
 
 ## Long lists (`renderPagedList`)
 
-Every list that can grow is drawn with `renderPagedList(el, key, sig, items, rowHtml, opts)`:
+Every list that can grow pages by 10. The React tabs and windows use `PagedList` ([components.md](components.md)); the page's own lists (the side panel's workers and clients, the bell's notifications) are drawn with `renderPagedList(el, key, sig, items, rowHtml, opts)`, by the same rules:
 - it shows the first `LIST_PAGE` = 10 items and a "Show more (N left)" row;
 - the next 10 come when that row is tapped, or when a scroll that follows the user's own input brings it into view (`_pagedOnScroll`);
 - user input means wheel, touch, a key or a pointer press;
