@@ -364,8 +364,10 @@ async function theme(browser) {
     await computer(browser);
     await phone(browser);
     await theme(browser);
-    const old = await (await fetch('http://127.0.0.1:8766/schedule-manager.html')).text();
-    ok(old === fs.readFileSync(path.join(ROOT, 'schedule-manager.html'), 'utf8'), 'next: the old manager page is served unchanged from dist/');
+    // The manager page is a Vite entry (stage 8c-2): built, its module in /assets, its files loaded as they are.
+    const mgr = await (await fetch('http://127.0.0.1:8766/schedule-manager.html')).text();
+    ok(/<script type="module" crossorigin src="\/assets\/manager-[^"]+\.js"><\/script>/.test(mgr) && !/\/src\//.test(mgr) && /href="og\.css"/.test(mgr) && /src="payroll\.js"/.test(mgr) && !/vite-ignore/.test(mgr),
+      'next: the manager page is served built from dist/ (its module in /assets, og.css and payroll.js as they are)');
   } finally {
     await browser.close(); server.close();
   }

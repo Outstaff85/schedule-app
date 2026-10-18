@@ -25,11 +25,12 @@ for(const [n, v] of toks){
   if(!m) errs.push(`og.css: token --${n} missing`);
   else if(norm(m[1]) !== norm(v)) errs.push(`og.css: --${n} is ${m[1].trim()}, tokens.json says ${v}`);
 }
-// The old pages link og.css themselves; a new page's HTML entry (next/index.html,
-// client-portal.html) links /og.css and Vite bundles it.
+// Every page links og.css: a new page's HTML entry (next/index.html,
+// client-portal.html) links /og.css and Vite bundles it; the manager page links
+// it as it is (vite-ignore), so its own styles keep their place before it.
 for(const f of ['schedule-manager.html', 'supplier-portal.html', 'client-portal.html', 'worker-punch.html']){
   const s = read(f);
-  if(!/<link rel="stylesheet" href="\/?og\.css">/.test(s)) errs.push(`${f}: does not link og.css`);
+  if(!/<link rel="stylesheet" href="\/?og\.css"( vite-ignore)?>/.test(s)) errs.push(`${f}: does not link og.css`);
   for(const [n] of toks) if(new RegExp('(^|[^\\w-])--' + n + '\\s*:').test(s)) errs.push(`${f}: defines --${n} (it lives in og.css)`);
 }
 // The theme (docs/redesign.md → Light theme): every page puts the chosen look on

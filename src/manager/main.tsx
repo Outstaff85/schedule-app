@@ -1,6 +1,6 @@
 // The manager app's React pieces (docs/build.md → The manager's React pieces,
-// react-migration-plan.md → stage 6). schedule-manager.html is still an old
-// page; it loads this module (built as assets/manager.js) and draws a moved tab
+// react-migration-plan.md → stage 6). The manager page's module
+// (src/manager/page/entry.ts) imports this after the page's own script; it draws a moved tab
 // through `window.ManagerIsland` — now the Today tab into #todayRoot, the
 // Schedule tab into #scheduleRoot, the Workers list into #workersRoot and the
 // Clients and Suppliers tabs into #clientsRoot / #suppliersRoot — and the
