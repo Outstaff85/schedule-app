@@ -46,6 +46,7 @@
   <label class="btn">Photo… <input id="file" type="file" accept="image/*" hidden></label>
   <button id="stop">Stop</button>
 </div>
+<div id="status" style="font-size:13px;color:var(--ink2)">Starting…</div>
 <div class="bar"><i id="prog"></i></div>
 <div class="stage" id="stage">
   <video id="video" playsinline muted hidden></video>
@@ -62,11 +63,15 @@
 </div>
 <div id="log"></div>
 
-<script src="./ort/ort.all.min.js"></script>
+<script src="/scan-test/ort/ort.all.min.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const log = s => { $('log').textContent = s + '\n' + $('log').textContent; };
-ort.env.wasm.wasmPaths = new URL('./ort/', location.href).href;
+const status = s => { $('status').textContent = s; };
+window.addEventListener('error', e => log('Page error: ' + e.message));
+window.addEventListener('unhandledrejection', e => log('Error: ' + (e.reason && e.reason.message || e.reason)));
+if (typeof ort === 'undefined') { document.addEventListener('DOMContentLoaded', () => log('ONNX Runtime did not load (ort.all.min.js)')); }
+ort.env.wasm.wasmPaths = location.origin + '/scan-test/ort/';
 ort.env.wasm.numThreads = 1;
 
 let session = null, sessionKey = '', running = false, stream = null, busy = false;
@@ -80,22 +85,24 @@ async function fetchModel(name) {
     const cache = await caches.open('scan-test-models');
     const hit = await cache.match(name);
     if (hit) { $('prog').style.width = '100%'; return new Uint8Array(await hit.arrayBuffer()); }
-    const res = await fetch(name);
+    const res = await fetch('/scan-test/' + name);
+    if (!res.ok) throw new Error('model download failed: HTTP ' + res.status);
     const total = +res.headers.get('content-length') || 0;
     const reader = res.body.getReader(); const parts = []; let got = 0;
-    for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); got += value.length; if (total) $('prog').style.width = (got / total * 100) + '%'; }
+    for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); got += value.length; if (total) $('prog').style.width = Math.min(100, got / total * 100) + '%'; status('Downloading the model: ' + (got / 1e6).toFixed(1) + (total ? ' / ' + (total / 1e6).toFixed(1) : '') + ' MB'); }
     const buf = new Uint8Array(got); let o = 0; for (const p of parts) { buf.set(p, o); o += p.length; }
     try { await cache.put(name, new Response(buf)); } catch (e) {}
     return buf;
   } catch (e) {
-    const res = await fetch(name); return new Uint8Array(await res.arrayBuffer());
+    log('Model download: ' + (e && e.message || e));
+    const res = await fetch('/scan-test/' + name); return new Uint8Array(await res.arrayBuffer());
   }
 }
 
 async function ensureSession() {
   const model = $('model').value, want = $('backend').value, key = model + '|' + want;
   if (session && sessionKey === key) return;
-  session = null; $('sBackend').textContent = 'loading…';
+  session = null; $('sBackend').textContent = 'loading…'; $('startCam').disabled = true; status('Preparing the model…');
   const t0 = performance.now();
   const bytes = await fetchModel(model);
   const order = want === 'auto' ? ['webgpu', 'wasm'] : [want];
@@ -105,8 +112,8 @@ async function ensureSession() {
     try { session = await ort.InferenceSession.create(bytes, { executionProviders: [ep], graphOptimizationLevel: 'all' }); used = ep; break; }
     catch (e) { log('Could not start on ' + ep + ': ' + (e && e.message || e)); }
   }
-  if (!session) { $('sBackend').textContent = 'failed'; throw new Error('no backend'); }
-  sessionKey = key; times.length = 0; frames.length = 0;
+  if (!session) { $('sBackend').textContent = 'failed'; status('The model could not start — see the log below'); $('startCam').disabled = false; throw new Error('no backend'); }
+  sessionKey = key; times.length = 0; frames.length = 0; $('startCam').disabled = false; status('Model ready — scanning is available');
   $('sBackend').textContent = used === 'webgpu' ? 'GPU' : 'CPU';
   $('sLoad').textContent = ((performance.now() - t0) / 1000).toFixed(1);
   log('Model ' + model + ' on ' + used + ', loaded in ' + $('sLoad').textContent + ' s');
@@ -195,6 +202,8 @@ $('file').onchange = async e => {
 };
 $('model').onchange = $('backend').onchange = async () => { const was = running; running = false; await ensureSession().catch(() => {}); if (was) { running = true; loop(); } };
 log('GPU (WebGPU) in this browser: ' + (navigator.gpu ? 'yes' : 'no'));
+// The model is fetched as soon as the page opens; the camera button waits for it.
+ensureSession().catch(e => log('Model: ' + (e && e.message || e)));
 </script>
 </body>
 </html>
