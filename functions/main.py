@@ -15,6 +15,7 @@ import io
 import json
 import pathlib
 import re
+import threading
 from datetime import date
 
 import cv2
@@ -25,6 +26,7 @@ import firebase_admin
 from firebase_admin import auth as fb_auth
 from firebase_functions import https_fn, options
 
+import docfind
 import gate
 from PIL import Image, ImageEnhance
 
@@ -640,6 +642,7 @@ def fill_form_101(req: https_fn.Request) -> https_fn.Response:
 # the full, un-cropped frame — the thresholds themselves are unchanged, only
 # what they're now applied to (an already-single-document image) differs.
 MAX_WORK_DIM = 1800  # generous margin above the 1568px Claude Vision actually benefits from
+FIND_MAX_DIM = 2400  # the whole photo the documents are found on (several pages may come from it)
 MIN_QUAD_AREA_FRAC = 0.20
 MAX_QUAD_AREA_FRAC = 0.98
 BLUR_VARIANCE_THRESHOLD = 15.0  # below this (Laplacian variance) = reject as too blurry to bother reading
@@ -806,10 +809,86 @@ def preprocess_scan_image(image_bytes):
     }
 
 
+# The scanner's models (docs/scan-plan.md → Scanner lab → Models in Storage), read
+# from the project's own Storage once per instance and kept in memory.
+MODEL_PREFIX = "models/scan/base-v1/"
+MODEL_BUCKETS = ("schedule-odinson.firebasestorage.app", "schedule-odinson.appspot.com")
+_models = {}
+_models_lock = threading.Lock()
+
+
+def _scan_models():
+    """(corner models [accurate, light], face finder) — ONNX Runtime sessions."""
+    with _models_lock:
+        if not _models:
+            import onnxruntime as ort
+            from firebase_admin import storage
+            if not firebase_admin._apps:
+                firebase_admin.initialize_app()
+            last = None
+            for name in MODEL_BUCKETS:
+                try:
+                    bucket = storage.bucket(name)
+                    raw = {m: bucket.blob(MODEL_PREFIX + m).download_as_bytes() for m in ("sa24.onnx", "lite.onnx", "yunet640.onnx")}
+                    break
+                except Exception as e:  # not this project's bucket name
+                    last = e
+            else:
+                raise RuntimeError(f"scan models not reachable: {last}")
+            opts = ort.SessionOptions()
+            opts.intra_op_num_threads = 2
+            new = lambda m: ort.InferenceSession(raw[m], opts, providers=["CPUExecutionProvider"])
+            _models["corners"] = [new("sa24.onnx"), new("lite.onnx")]
+            _models["face"] = new("yunet640.onnx")
+    return _models["corners"], _models["face"]
+
+
+def _hint_corners(value):
+    """The phone's live corners: 4 [x, y] pairs in 0..1, else None."""
+    try:
+        q = np.array(value, np.float64)
+    except (TypeError, ValueError):
+        return None
+    if q.shape != (4, 2) or not np.isfinite(q).all() or (q < -0.05).any() or (q > 1.05).any():
+        return None
+    return np.clip(q, 0, 1)
+
+
+def find_scan_pages(image_bytes, hint=None):
+    """The documents on a photo, each cut flat, turned upright, enhanced and checked
+    for blur (docfind.find_documents; docs/scan.md → Server-side finding)."""
+    img = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        return {"ok": False, "reason": "decode_failed"}
+    img = _resize_max_dim(img, FIND_MAX_DIM)
+    corners, face = _scan_models()
+    pages = []
+    for p in docfind.find_documents(img, corners, face, hint):
+        page = _enhance_contrast_sharpness(_resize_max_dim(p["image"], MAX_WORK_DIM))
+        blur = _blur_variance(cv2.cvtColor(page, cv2.COLOR_BGR2GRAY))
+        ok, buf = cv2.imencode(".jpg", page, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        if not ok:
+            continue
+        pages.append({
+            "quad": [[round(x, 5), round(y, 5)] for x, y in p["quad"]],
+            "box": list(p["box"]) if p["box"] else None,
+            "source": p["source"],
+            "turn": p["turn"],
+            "blurry": blur < BLUR_VARIANCE_THRESHOLD,
+            "blurVariance": blur,
+            "imageBase64": base64.b64encode(buf.tobytes()).decode(),
+            "mediaType": "image/jpeg",
+        })
+    return {"ok": True, "pages": pages, "size": [img.shape[1], img.shape[0]]}
+
+
 @https_fn.on_request(
     cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]),
-    memory=options.MemoryOption.MB_512,
-    timeout_sec=30,
+    memory=options.MemoryOption.GB_2,
+    cpu=2,
+    concurrency=2,
+    max_instances=10,
+    timeout_sec=60,
 )
 def preprocess_scan(req: https_fn.Request) -> https_fn.Response:
     if req.method != "POST":
@@ -826,7 +905,10 @@ def preprocess_scan(req: https_fn.Request) -> https_fn.Response:
         b64 = payload.get("image")
         if not b64:
             return https_fn.Response(json.dumps({"error": "no image"}), status=400, mimetype="application/json")
-        result = preprocess_scan_image(base64.b64decode(b64))
+        if payload.get("find") is True:
+            result = find_scan_pages(base64.b64decode(b64), _hint_corners(payload.get("corners")))
+        else:
+            result = preprocess_scan_image(base64.b64decode(b64))
         return https_fn.Response(json.dumps(result), status=200, mimetype="application/json")
     except Exception as e:
         return https_fn.Response(json.dumps({"error": str(e)}), status=500, mimetype="application/json")

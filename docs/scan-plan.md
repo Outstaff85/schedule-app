@@ -2,7 +2,7 @@
 
 The approved plan for the new document scanner: automatic edge detection, a live frame in the camera, two documents in one photo split into two pages, a queue for multi-page uploads, all of it on the new stack (`src/scan/`). The current scanner is described in docs/scan.md; it stays in place until stage S4 and is deleted only in S5, with the owner's permission.
 
-Status: **S1 in progress** (the sign-in check is done). Each stage is merged only with the owner's OK.
+Status: **S1 in progress** (done: the sign-in check, the server's document finding; left: MRZ, Haiku only for pages without a face). Each stage is merged only with the owner's OK.
 
 ## Models (chosen after tests on the owner's photos)
 
@@ -16,6 +16,7 @@ Status: **S1 in progress** (the sign-in check is done). Each stage is merged onl
 ### S1 — server
 
 - **Done:** `preprocess_scan` and `fill_form_101` (`functions/main.py`) require a manager-side login's ID token (`functions/gate.py`; [backend.md](backend.md) → Cloud Functions) — before, anyone with the URL could call them.
+- **Done:** the server's document finding — `preprocess_scan` with `find` (`functions/docfind.py`, [scan.md](scan.md) → Server-side finding): the accurate model in fp32 (then the light one, then both inside a 10 % margin), the sides pulled onto the edges by OpenCV, several documents, photos on a white page, the face turn, the models read from Storage; 2 GiB, cpu=2, concurrency=2, max_instances=10. On the owner's 36 photos: the same documents as the lab (n and its crop → ID, ספח, bank card), about 0.5–1.5 s a photo on 2 CPU threads.
 - Detection: DocAligner + OpenCV as above; **two documents in one photo** → two quads; after one document is found it is masked and searched again (photos where the second document was missed); a document inside a screenshot frame is searched inside the frame.
 - **Several documents on one photo** (an ID, its ספח, a bank card…; up to 4): each next one is looked for on the photo with every found one painted over — by the accurate model, then the light one — then with a 10 % margin around the photo, then in the strip beside the first; it runs even when the accurate model does not confirm the first. The owner's tablecloth screenshot, cropped to its photo: ID, ספח and bank card all found. A page that is not wanted (a bank card, a part of an old Form 101 in a screenshot) is classified "other" by Haiku and **left unsaved by default** on the review screen (the owner can keep it).
 - **Speed of the search for more documents:** the ways of one step (accurate / light model, painted, with the margin, the strips) run one after another and stop at the first that finds one — on the phone that is faster than running them all at once (tried: 6.0 → 8.8 s on a three-document photo, since the slow accurate model then runs every way and the threads share the CPU). On the server the ways of a step can go as one batch through the model.

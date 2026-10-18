@@ -159,6 +159,20 @@ The scan images stay in `__aiScanImage` / `__aiPacketOtherPages` for the upload.
 - `alignScanImage()` rotates by 0/90/180/270° and crops a box; `rotatePointFrac()` maps corners to match.
 - `cropPortraitAvatar(b64, mediaType, photoBox)` → switched off (owner 2026-10-13, `SCAN_AVATARS = false`): always null, no photo is taken from a document, and `readDoc` no longer asks the AI for a `photoBox` (shorter replies); when on it gives a square 160 px JPEG (`AVATAR_SIZE`), black and white (`grayscaleCanvas`, schedule-manager.html).
 
+## Server-side finding (`preprocess_scan` with `find`)
+
+The new scanner's server step (docs/scan-plan.md → S1); the old pipeline above does not call it yet. `POST preprocess_scan` with `{"image": <base64>, "find": true, "corners": [[x, y] ×4]}` (corners optional: the phone's live frame, 0..1, top-left first, clockwise) answers `{"ok": true, "size": [w, h], "pages": [...]}`; each page: `quad` (0..1 of its photo), `box` (the photo's place on a white page, pixels, or `null`), `source` (`model` — the corner model; `phone` — the phone's corners kept; `more` — another document on the same photo; `photo` — a photo on a white page with no frame in it, whole; `whole` — nothing found, the whole picture), `turn` (clockwise quarter-turns applied by the face; −1 no face, −2 the face finder failed), `blurry` / `blurVariance`, `imageBase64` (JPEG, enhanced, at most 1800 px). The photo is worked on at most 2400 px.
+
+`find_scan_pages()` (`functions/main.py`) → `docfind.find_documents()` (`functions/docfind.py`), the scanner lab's steps in Python:
+
+1. `photos_on_page` — a white page (a form's page, a PDF, a screenshot) is cut into its photos: bands of rows mostly not white, at least 12 % high, their sides from the columns; a mostly dark band (a screenshot's bar) is not a photo; a picture whose rest is not mostly white is not a white page; and when the model sees a document on the whole picture outside the bands, it is a plain photo.
+2. On each photo: the accurate model (sa24, fp32), then the light one; when neither is sure, the same inside a 10 % margin of the background's colour (a document cut by the photo's edge, or cut to its edges already). Sure corners must be convex, cover over 3 % and be no longer than 3 : 1. Then `refine_edges` pulls each side onto the strongest edge within 1.2 % of the long side, kept only when the edges are clearly stronger.
+3. Not sure: the phone's corners (a whole picture), else the photo whole.
+4. `find_next` — up to 4 documents: the found ones painted over in the background's colour, then the margin, then the two widest strips beside the first; accurate model only (the light one finds false second documents); a frame overlapping a found one by over 30 % is that one.
+5. Each page cut flat (`warp`, cubic) and turned upright by YuNet (all 4 turns scored, eyes above the mouth); then the contrast / sharpness step and the blur check of the old path.
+
+The models (`sa24.onnx`, `lite.onnx`, `yunet640.onnx`) are read from Storage `models/scan/base-v1/` once per instance (`_scan_models()`, ONNX Runtime CPU, 2 threads); the function's service account needs read access to the bucket. Tests: `tests/auth/test_scan_find.py` (a stand-in model; the real models are checked by hand on the owner's photos).
+
 ## Unreachable code kept
 
 - `runOcr()` / `_preAlignThenOcr()` — the old one-page-at-a-time path; nothing sets `__scanEditPurpose='preOcr'`.
