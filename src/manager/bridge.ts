@@ -7,6 +7,7 @@
 // the punch's site), so nothing is computed twice.
 import type { Punch } from '@/lib/payroll';
 import type { AccData, AccWorker, ApprovalDoc, HrLogin } from './accounting';
+import type { UserRow } from './users';
 
 export type Notice = { lvl: 'red' | 'amber'; word: string; title: string };
 /** A worker today: on vacation, the latest punch (in / out), no punch on a started shift, or nothing. */
@@ -451,6 +452,85 @@ export type ManagerBridge = WorkerBridge & {
   savePunch(id: string, edit: PunchEdit): void;
   /** deletes the punches (their Undo time is up): the cache and Firestore; render() */
   deletePunches(ids: string[]): void;
+
+  // ── Admin (stage 6f-2: Firms, Users, Errors, Timings, the super-admin's Firms screen) ──
+  /** a data call through the page's dispatcher (`fetch(API_URL)`, POST, with `gsAuth()`); a network failure answers `{error}` */
+  adminCall(body: Record<string, unknown>): Promise<Record<string, unknown>>;
+  /** the firms: a super-admin's list (`listTenants`, cached first) or an owner's own profile (`refreshTenantProfile`); then a redraw */
+  loadFirms(): Promise<void>;
+  /** a super-admin opens a firm (`switchToTenant`: the page reloads into it) */
+  openFirm(tenantId: string): void;
+  /** Disable / Enable firms (`setTenantActive` each; its toast; the list again) */
+  setFirmsActive(ids: string[], active: boolean): Promise<void>;
+  /** deletes firms (their Undo time is up): `deleteTenant` each — the firm's data, logins and files; the toast; the list again */
+  deleteFirms(ids: string[]): Promise<void>;
+  /** the firm window: a new firm, a firm of the list, or the firm being worked in */
+  openFirmWindow(mode: 'create' | 'edit' | 'mine', tenantId?: string): void;
+  /** the Payable summary (all firms): this week's hours and pay of each cached firm, with its own clients (the canonical payroll) */
+  firmsPayable(): Promise<{ name: string; hours: number; pay: number; error?: boolean }[]>;
+  /** the firm's logins (`listUsers`, this firm only, cached); then a redraw */
+  loadUsers(): Promise<void>;
+  /** the user window: a saved login (from the cache, else the server) or a new one (null) */
+  openUserWindow(id: string | null): void;
+  /** deletes logins (their Undo time is up): `deleteUser` each; the toast; the list again */
+  deleteUsers(ids: string[]): Promise<void>;
+  /** Errors / Timings: another period (loaded, cached per period) */
+  setLogPeriod(kind: 'errors' | 'timings', value: string): void;
+  /** Errors / Timings: the period again from the server */
+  reloadLog(kind: 'errors' | 'timings'): Promise<void>;
+  /** Reset: every error and every measurement deleted (all firms, all periods); the caches dropped, the toast */
+  resetLogs(): Promise<void>;
+  /** to the clipboard, with the toast (`copyTextToClipboard`) */
+  copyText(text: string): void;
+  // the windows
+  firmInfo(): FirmWindowInfo | null;
+  /** the firm being worked in: its profile from the server (`loadTenantProfile`), cached in the session */
+  loadProfile(): Promise<FirmProfile | null>;
+  /** the WhatsApp reminder's text (the firm's, else the default in the UI language) after reading it afresh */
+  firmMessage(): Promise<string>;
+  /** the WhatsApp reminder saved on its own (`saveFirmMessages`; the default text = empty) */
+  saveFirmMessage(tenantId: string, text: string): Promise<void>;
+  /** after a firm save: the window closes, the session's profile, the Form 101s (now, or when the firm is opened), the lists */
+  firmSaved(mode: 'create' | 'edit' | 'mine', tenantId: string | null, profile: FirmProfile | null): void;
+  userInfo(): UserWindowInfo;
+  /** this month's commission of an HR at these rates (its workers' Salary rows, `commissionFor`) */
+  hrMonthCommission(uid: string, rate: number, dayRate: number): number;
+  /** an HR's workers (`assignWorkersToHr`: their punches move too) or a supplier's (`assignWorkersToSupplier`); key null unassigns; the count */
+  assignWorkers(kind: 'hr' | 'supplier', ids: string[], key: string | null): Promise<number>;
+  /** "Add workers": the picker over the user window */
+  openAssign(team: AssignTeam): void;
+  /** after a user save: a former HR's workers unassigned, one's own name in the header, the window closes, the toast, the list again */
+  userSaved(id: string | null, origRole: string | null, role: string, fullName: string): Promise<void>;
+};
+
+/** A firm of the super-admin's list (`listTenants`), with what Form 101 would leave empty (`firmProfileMissing`). */
+export type FirmProfile = { companyName?: string; deductionsFileNumber?: string; phone?: string; street?: string; streetNumber?: string; city?: string };
+export type FirmRow = FirmProfile & { tenantId: string; workerCount?: number; clientCount?: number; savedAt?: string; active?: boolean; missing: string[] };
+export type FirmWindowInfo = {
+  mode: 'create' | 'edit' | 'mine';
+  tenantId: string | null;
+  profile: FirmProfile;
+  /** the WhatsApp reminder: only for the firm being worked in */
+  wa: boolean;
+};
+export type AssignTeam = { kind: 'hr' | 'supplier'; key: string; name: string };
+export type TeamWorker = { id: string; name: string; docId: string; hrId?: string; supplierId?: string };
+export type UserWindowInfo = {
+  workers: TeamWorker[];
+  suppliers: { id: string; name: string }[];
+  clients: { id: string; name: string; object?: string }[];
+  /** the HR logins' names (the "now: <name>" of the picker) */
+  hrNames: Record<string, string>;
+};
+export type LogPane = {
+  kind: 'errors' | 'timings';
+  /** the picked period and the list of periods ([value, label]) */
+  period: string;
+  periods: [string, string][];
+  label: string;
+  /** the period's rows (cached, then fresh), null while nothing is loaded */
+  rows: Record<string, unknown>[] | null;
+  error: string;
 };
 
 /** The SheetJS calls the exports use. */
@@ -538,6 +618,25 @@ export type AdminSnapshot = {
   clients: { id: string; name: string; color: string; address: string }[];
   /** the earliest day loaded (dd/mm/yyyy), null when the whole history is in */
   loadedFrom: string | null;
+  // stage 6f-2
+  isSuper: boolean;
+  /** `uiLocale()` */
+  locale: string;
+  /** a super-admin's firms (cached, then fresh), null until loaded; the load error */
+  firms: FirmRow[] | null;
+  firmsError: string;
+  /** an owner's own firm (the session's profile, then fresh) */
+  own: (FirmProfile & { missing: string[] }) | null;
+  /** the firm's logins (cached, then fresh), null until loaded; the load error */
+  users: UserRow[] | null;
+  usersError: string;
+  /** the users' teams: an HR's workers, a supplier's */
+  team: TeamWorker[];
+  suppliers: { id: string; name: string }[];
+  /** Errors / Timings while one is open */
+  logs: LogPane | null;
+  /** the firms' names (a measurement's firm) */
+  firmNames: Record<string, string>;
 };
 
 // ── Clients and Suppliers (stage 6d) ──
@@ -701,8 +800,17 @@ export type ManagerIsland = {
   /** the pay window, drawn into the page's #payModal */
   openPay(id: string): void;
   // ── Admin (stage 6f-1) ──
-  /** the section tabs, the tiles and the punch log (#adminRoot) */
+  /** the section tabs, the tiles and the sections (#adminRoot) */
   renderAdmin(): void;
+  // ── Admin (stage 6f-2) ──
+  /** the super-admin's landing screen's firms (#firmsScreenRoot) */
+  renderFirmsScreen(): void;
+  /** the firm window, drawn into the page's #firmModal */
+  openFirm(): void;
+  /** the user window, drawn into the page's #userFormModal (a new login: the role and its client / supplier may be set) */
+  openUser(u: UserRow | null, preset?: { role: 'client' | 'supplier'; id: string }): void;
+  /** "Add workers", drawn into the page's #hrAssignModal */
+  openAssign(team: AssignTeam): void;
 };
 
 declare global {
