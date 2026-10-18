@@ -475,6 +475,8 @@ body:has(.overlay.open){overflow:hidden}
 <link rel="stylesheet" href="og.css">
 <!-- the one copy of the shift pairing and pay (src/lib/payroll.ts; docs/accounting.md) -->
 <script src="payroll.js"></script>
+<!-- the data layer (src/manager/data/; docs/app-core.md → Data calls) -->
+<script src="manager-data.js"></script>
 <style>
   /* Odinson Glass form fields (mockup 04, owner 2026-10-13): every field in a
      window is a soft rounded glass box — 38px tall, 12px corners, a faint fill
@@ -862,7 +864,6 @@ const DAYS_HE  = ['א',  'ב',  'ג',  'ד',  'ה',  'ו',  'ש' ];
 // --- State -------------------------------------------------------------------
 let weekStart        = getSundayOfWeek(new Date());
 let selectedClientId = null;
-let saveTimer        = null;
 let currentTab       = 'schedule';
 let editingWorkerIdx = null;
 let editingClientId  = null;
@@ -2626,66 +2627,13 @@ function exportJSON(){
 }
 
 // --- Save / Load -------------------------------------------------------------
-// Data is stored in localStorage. Key is fixed so it persists across sessions.
-// Works as long as the file is always opened from the same path/browser.
-// On every change: auto-saves. On load: auto-restores.
+// The data layer — the session (getSession, gsAuth), the fetch(API_URL)
+// dispatcher, load / save / cache (loadData, autoSave), the punches, the
+// uploads and the telemetry — is src/manager/data/, loaded before this script
+// as manager-data.js under the same names (React migration stage 8b).
 
-const STORAGE_KEY_BASE = 'schedMgr_v1';
-// Scoped per tenant (falls back to '_anon' pre-login) so switching firms
-// (super-admin switchToTenant(), which reloads the page) never flashes a
-// DIFFERENT firm's cached workers/clients before the real Sheets data for
-// the newly-selected firm arrives — the old single global key meant the
-// last-viewed firm's stale cache rendered first regardless of which firm
-// you actually switched to.
-function STORAGE_KEY(){
-  const s = getSession();
-  const tid = (s && (s.viewingTenantId || s.tenantId)) || '_anon';
-  return STORAGE_KEY_BASE + '_' + tid;
-}
-// Every data call in this file is written as fetch(API_URL, {method:'POST',
-// body: JSON.stringify({action, ...})}) or fetch(API_URL + '?action=...').
-// API_URL is not a server: the window.fetch wrapper below answers each such
-// call from firestore-backend.js (Firestore, Storage, or the Cloud Functions
-// it calls) in the JSON shape the call site expects, so the call sites stay
-// simple. An action nothing answers gets {error:'Unknown action: …'}.
-const API_URL = 'api://app';
 const LOGIN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/login';
-let __fsBackend = null;
-function loadFirestoreBackend(){
-  if(__fsBackend) return __fsBackend;
-  __fsBackend = new Promise((resolve, reject) => {
-    const el = document.createElement('script');
-    el.src = 'firestore-backend.js';
-    el.onload = () => window.initFirestoreBackend().then(resolve, reject);
-    el.onerror = () => reject(new Error('firestore-backend.js failed to load'));
-    document.head.appendChild(el);
-  }).catch(e => { __fsBackend = null; throw e; });
-  return __fsBackend;
-}
-// Starts loading right away, so the SDK is ready by the time loadData() or
-// the login form needs it.
-loadFirestoreBackend().catch(e => console.warn('Firestore backend:', e));
-function fsTenantId(){
-  const s = getSession();
-  return s ? (s.viewingTenantId || s.tenantId) : null;
-}
-// Worker files — the Form 101 PDF, the scan sidecar and worker documents —
-// are uploaded to Firebase Storage (firestore-backend.js uploadWorkerFile,
-// real byte progress). uploadWorkerFile() below returns {ok,id,url}; the id
-// is the Storage path. The file being replaced (previousFileId) is deleted
-// after the new one is up.
 const DOC_STORE = 'Firebase Storage';
-async function uploadWorkerFile(bodyObj, onProgress){
-  __uploadsInFlight++;
-  try{
-    const b = await loadFirestoreBackend();
-    const json = await b.uploadWorkerFile(fsTenantId(), bodyObj, onProgress);
-    if(json && json.ok && bodyObj.previousFileId && bodyObj.previousFileId !== json.id) gsDeleteWorkerDoc(bodyObj.previousFileId);
-    return json;
-  }catch(e){
-    return {error: 'Storage: ' + ((e && (e.code || e.message)) || e)};
-  }finally{ __uploadsInFlight = Math.max(0, __uploadsInFlight - 1); }
-}
 // Server-side Form 101 PDF builder (Python + PyMuPDF Cloud Function) — replaces
 // the old client-side pdf-lib build, which had a confirmed bug dropping a
 // glyph of multi-word RTL (Hebrew) text. See functions/main.py.
@@ -2695,28 +2643,6 @@ const FORM101_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/
 // corner-adjustment editor (no AI-seeded alignment step in between anymore).
 const PREPROCESS_SCAN_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/preprocess_scan';
 
-// ── Multi-tenant session ────────────────────────────────────────────────────
-// The login function signs the device in to Firebase (the real auth: the
-// security rules and the functions check the Firebase ID token). The session
-// below only remembers who that is — uid, role, firm, permissions — for the
-// UI; gateApp()/gsLoad() send the user back to login when the Firebase
-// sign-in is gone. role is 'superadmin' (sees every firm), 'tenant_admin' or
-// 'staff' (own firm only).
-// viewingTenantId is what every API call actually scopes to — for a normal
-// tenant user it's always their own tenantId; for a super-admin it starts
-// null (no firm picked yet) and changes when they pick one from the Firms
-// screen (switchToTenant()).
-const SESSION_KEY = 'schedMgr_session';
-function getSession(){
-  try{
-    const raw = localStorage.getItem(SESSION_KEY);
-    if(!raw) return null;
-    const s = JSON.parse(raw);
-    if(!s || !s.uid){ localStorage.removeItem(SESSION_KEY); return null; }
-    return s;
-  }catch(e){ return null; }
-}
-function saveSession(s){ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
 // A supplier never uses this app: its login is written as the supplier
 // portal's session (supplier-portal.html, key supplierPortal_session) and the
 // page moves to /supplier, already signed in.
@@ -2731,7 +2657,6 @@ function goToClientPortal(u){
   clearSession();
   location.replace('client-portal.html');
 }
-function clearSession(){ localStorage.removeItem(SESSION_KEY); }
 async function logout(){
   try{ localStorage.removeItem(FIRMS_CACHE_KEY); }catch(e){}
   clearAdminCaches(); clearSession();
@@ -2740,70 +2665,6 @@ async function logout(){
 }
 
 
-// Merged into every data request: asTenantId when a super-admin has switched
-// into a specific firm (omitted for a firm's own login — firestore-backend.js
-// then uses the session's own firm).
-function gsAuth(){
-  const s = getSession();
-  if(!s) return {};
-  const out = {};
-  if(s.role === 'superadmin' && s.viewingTenantId) out.asTenantId = s.viewingTenantId;
-  return out;
-}
-// Uploads still running; the new-app-version reload waits for them (below).
-let __uploadsInFlight=0;
-function gsAuthQuery(){
-  const a = gsAuth();
-  return Object.keys(a).map(k => '&' + k + '=' + encodeURIComponent(a[k])).join('');
-}
-
-// The data-call dispatcher. Every fetch(API_URL…) call in this file (and in
-// scan-pipeline.js) is answered by firestore-backend.js handleAction() —
-// Firestore, Storage, or the users_admin / ai_read functions it calls — and
-// comes back as a JSON Response, so the call sites read it like any reply.
-// A reply with the exact "session expired" text (the functions refused the
-// Firebase ID token: signed out, revoked after a rights change) clears the
-// session and returns to the login screen. A call slower than
-// SLOW_API_CALL_MS goes to the Timings pane as kind "gs:<action>".
-const SESSION_EXPIRED_ERROR = 'Session expired or invalid — please sign in again';
-(function(){
-  const _origFetch = window.fetch.bind(window);
-  // Telemetry and login never trigger the session-expired logout.
-  const NO_LOGOUT_ACTIONS = ['logError','login','logTiming','logBatch'];
-  const SLOW_API_CALL_MS = 2500;
-  function apiParams(url, opts){
-    try{ if(opts && typeof opts.body === 'string') return JSON.parse(opts.body); }catch(e){}
-    try{ return Object.fromEntries(new URL(url).searchParams); }catch(e){ return {}; }
-  }
-  const jsonResponse = obj => new Response(JSON.stringify(obj), {status:200, headers:{'Content-Type':'application/json'}});
-  async function route(url, opts){
-    const params = apiParams(url, opts);
-    const action = params.action || 'loadSchedule';
-    const s = getSession() || {};
-    const ctx = {role: s.role, username: s.username, tenantId: s.viewingTenantId || s.tenantId};
-    const t0 = Date.now();
-    let json;
-    try{ json = await (await loadFirestoreBackend()).handleAction(action, params, ctx); }
-    catch(e){ console.warn(action + ' failed:', e); json = {error: 'Firestore: ' + ((e && e.message) || e)}; }
-    if(json == null) json = {error: 'Unknown action: ' + action};
-    const quiet = NO_LOGOUT_ACTIONS.indexOf(action) !== -1;
-    const ms = Date.now() - t0;
-    // An AI call's reply carries _meta (time at Anthropic, tries, tokens) — kept with the measurement.
-    const meta = json && json._meta && typeof json._meta === 'object' ? json._meta : null;
-    if(meta) delete json._meta;
-    if(!quiet && ms >= SLOW_API_CALL_MS) try{ reportTiming('gs:' + action, ms, Object.assign({}, meta || {}, params.part ? {part: String(params.part)} : {})); }catch(e){}
-    if(!quiet && json && json.error === SESSION_EXPIRED_ERROR && getSession()){
-      clearSession();
-      showToast(tr('Session expired — please sign in again'));
-      setTimeout(() => location.reload(), 1200);
-    }
-    return jsonResponse(json);
-  }
-  window.fetch = function(url, opts){
-    if(typeof url === 'string' && url.indexOf(API_URL) === 0) return route(url, opts);
-    return _origFetch(url, opts);
-  };
-})();
 
 // The login Cloud Function checks the password and signs this device in to
 // Firebase (firestore-backend.js login()); the session keeps who that is.
@@ -3452,368 +3313,7 @@ async function copyTextToClipboard(text){
 }
 
 // Optimistic concurrency: the savedAt value we last loaded from the DB.
-let lastLoadedSavedAt = null;
 
-// ── Data sync (Firestore) ────────────────────────────────────────────────────────
-async function gsSave(data) {
-  // Empty-payload guard: never push an empty dataset (would delete every record).
-  if((!data.workers||!data.workers.length) && (!data.clients||!data.clients.length)){
-    console.warn('Empty payload — skipping save');
-    return false;
-  }
-  try{ const r = await (await loadFirestoreBackend()).saveSchedule(fsTenantId(), data); return !!(r && r.ok); }
-  catch(e){ console.warn('Firestore save failed:', e); return false; }
-}
-
-// The firm's workers, clients and suppliers. A failure leaves its reason in
-// gsLoad.lastError and the Errors pane; loadData() then keeps the cache.
-async function gsLoad() {
-  try{
-    const b = await loadFirestoreBackend();
-    // The Firebase sign-in is gone (site data cleared, signed out elsewhere): log in again.
-    if(!b.currentUser()){ clearSession(); location.reload(); return null; }
-    const d = await b.loadSchedule(fsTenantId()); lastLoadedSavedAt = d.savedAt || null; gsLoad.lastError=''; return d; }
-  catch(e){ gsLoad.lastError = 'Firestore: ' + ((e && e.message) || e); reportError('loadSchedule failed: ' + gsLoad.lastError, 'gsLoad', ''); return null; }
-}
-
-// Pull all punches from the DB and merge with local (DB is authoritative;
-// unsynced local entries are kept). Lets the admin see every worker's punches.
-// Only recent punches are kept: the live listener covers this
-// month plus the week before it (punchWindowStart() — enough for "This week"
-// and for a shift that started before the 1st). Older months are read once,
-// when something asks for them (ensurePunchesSince(): a past month's salary,
-// an export, Clear Log, "Load earlier" in the punch log), and they stay only
-// for this app open: on the next open the cache is trimmed back to the
-// window, so localStorage never fills up with years of punches.
-function punchWindowStart(){
-  const d=new Date(); d.setDate(1); d.setHours(0,0,0,0); d.setDate(d.getDate()-7); return d;
-}
-let __punchLoadedFrom = null;          // earliest punch time loaded this app open
-let __punchEnsureChain = Promise.resolve(true);
-const ALL_PUNCHES_FROM = new Date(2000,0,1);
-function ensurePunchesSince(from){
-  if(!from) return Promise.resolve(true);
-  __punchEnsureChain = __punchEnsureChain.then(async () => {
-    const have = __punchLoadedFrom || punchWindowStart();
-    if(from >= have) return true;
-    showToast(from <= ALL_PUNCHES_FROM ? tr('Loading the whole punch history…') : tr('Loading earlier punches…'), 1500);
-    try{
-      const older = await (await loadFirestoreBackend()).punchesBetween(fsTenantId(), from, have);
-      __punchLoadedFrom = from;
-      mergeRemotePunches(older);
-      return true;
-    }catch(e){
-      showToast(tr('Could not load earlier punches: {0}',{0:((e && e.message) || e)}));
-      return false;
-    }
-  });
-  return __punchEnsureChain;
-}
-function ensureAllPunches(){ return ensurePunchesSince(ALL_PUNCHES_FROM); }
-// Start of the period a salary/export choice needs ('week', 'month',
-// 'm:YYYY-MM', 'all'); a day early, so a shift that started the evening
-// before stays whole.
-function periodPunchStart(period){
-  const now=new Date();
-  if(period==='all') return ALL_PUNCHES_FROM;
-  if(/^m:\d{4}-\d{2}$/.test(period)){ const [y,m]=period.slice(2).split('-').map(Number); return new Date(y,m-1,0); }
-  return null; // week / this month: inside the live window
-}
-async function gsLoadPunchLog(){
-  // A live listener — the first snapshot is the load, and every later change
-  // (a worker's punch on another device) is merged in at once.
-  try{
-    const since = punchWindowStart();
-    if(!__punchLoadedFrom || __punchLoadedFrom > since) __punchLoadedFrom = since;
-    return await (await loadFirestoreBackend()).listenPunches(fsTenantId(), entries => {
-      mergeRemotePunches(entries);
-      if(currentTab === 'dashboard') renderDashboard();
-      // Hours approvals compare each day with the punches: redraw them too,
-      // or a day could keep showing a stale "Changed after approval".
-      if(currentTab === 'accounting') renderAccounting();
-    }, since);
-  }catch(e){ console.warn('Firestore punch load failed: ' + ((e && e.message) || e)); return null; }
-}
-// The first load of the punches (a promise): Accounting → Hours approvals
-// waits for it, so a day is never compared with a punch log still loading
-// (which showed an approved day as "Changed after approval").
-let __punchSynced = null;
-function syncPunchesFromGS(){
-  __punchSynced = (async () => {
-    const remote = await gsLoadPunchLog();
-    if(!remote) return;
-    mergeRemotePunches(remote);
-  })();
-  return __punchSynced;
-}
-function mergeRemotePunches(remote){
-  const local = getPunchLog();
-  const byId = {};
-  remote.forEach(e=>{
-    if(!e) return;
-    // Rebuild the display time from the authoritative ISO timestamp (admin's local tz),
-    // falling back to extracting HH:MM from whatever string we got.
-    const d = e.ts ? new Date(e.ts) : null;
-    if(d && !isNaN(d.getTime())){
-      e.time = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
-    } else if(typeof e.time==='string'){
-      const m=e.time.match(/(\d{1,2}):(\d{2})/); if(m) e.time=m[1].padStart(2,'0')+':'+m[2];
-    }
-    if(e.id!=null) byId[e.id]=e;
-  });
-  // Cached rows older than what this app open has loaded are dropped (loaded
-  // on demand last time), so the cache never grows past what is in use.
-  const keepFrom = (__punchLoadedFrom || punchWindowStart()).getTime();
-  // An own-workers HR keeps cached rows only of the workers it still has (a
-  // worker the owner moved to another HR takes its punches along).
-  const s = getSession();
-  const mine = s && s.role==='hr' && s.ownOnly ? new Set(workers.map(w=>String(w.id))) : null;
-  local.forEach(e=>{ if(e && e.id!=null && !(e.id in byId) && !(new Date(e.ts).getTime() < keepFrom)
-    && (!mine || mine.has(String(e.workerId)))) byId[e.id] = e; });
-  savePunchLog(Object.values(byId));
-  if(currentTab==='admin') renderAdmin();
-}
-
-async function gsSavePunch(entry) {
-  try{ await (await loadFirestoreBackend()).savePunch(fsTenantId(), entry); }catch(e){ console.warn('Firestore punch save failed:', e); }
-}
-
-async function gsDeletePunch(id) {
-  try{ await (await loadFirestoreBackend()).deletePunch(fsTenantId(), id); }catch(e){ console.warn('Firestore delete failed:', e); }
-}
-
-async function gsUpdatePunch(data) {
-  try{ await (await loadFirestoreBackend()).updatePunch(fsTenantId(), data); }catch(e){ console.warn('Firestore update failed:', e); }
-}
-
-// Best-effort: deletes a worker's stored file in Storage (the replaced Form
-// 101 or sidecar, or every file of a deleted worker). Never blocks anything.
-async function gsDeleteWorkerDoc(fileId) {
-  try {
-    await fetch(API_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action: 'deleteWorkerDoc', ...gsAuth(), fileId })
-    });
-  } catch(e) { console.warn('Worker file delete failed:', e); }
-}
-
-function setSaveStatus(s){
-  const el=document.getElementById('saveIndicator');
-  el.className='save-indicator '+s;
-  el.querySelector('span').textContent=s==='saving'?tr('Saving...'):tr('Saved');
-}
-
-function getDataObj(){
-  return {workers, clients, suppliers, weekStart: weekStart.toISOString(), savedAt: new Date().toISOString()};
-}
-
-function applyData(d){
-  if(d.workers) workers=d.workers.map(w=>({id:w.id||uid(),clientIds:w.clientIds||[],token:w.token||genToken(),status:w.status||'active',...w}));
-  if(d.clients) clients=d.clients;
-  if(d.suppliers) suppliers=d.suppliers;
-  // d.weekStart (the week that was on screen at the last save) is deliberately
-  // NOT restored — the Weekly Schedule always opens on the current week, and a
-  // background re-load mustn't yank the manager off a week they navigated to.
-  // The weekly roster is per weekday (w.schedule[0..6]); a change for one
-  // date only lives in w.dateShifts, so the week shown picks those up.
-}
-
-// Set while local changes have not reached the server yet (2026-10-01).
-// loadData() then keeps the local data and saves it, instead of replacing it
-// with the older server copy — that replacement is how a newly added worker
-// vanished from the list when its save had failed.
-function UNSAVED_KEY(){ return STORAGE_KEY()+'_unsaved'; }
-// The flag holds when the save started; one older than 3 days is ignored, so a
-// device that was offline for long can't push stale data over newer edits.
-function hasUnsavedLocal(){ try{ const t=+localStorage.getItem(UNSAVED_KEY()); return t>0 && Date.now()-t<3*864e5 && !!localStorage.getItem(STORAGE_KEY()); }catch(e){ return false; } }
-// Apply a fresh server load, unless local changes are still unsaved.
-// Worker photos are gone (owner 2026-10-13): no list shows them and a scan no
-// longer takes one, so an old photo (avatarB64, 5–10 KB each) is dropped from
-// every worker this login may write; the save that follows removes it from
-// Firestore, and every later load is that much lighter.
-function dropWorkerPhotos(){
-  if(!(hasPermission('workers') || hasPermission('schedule'))) return false;
-  let n=0;
-  workers.forEach(w=>{ if('avatarB64' in w){ delete w.avatarB64; n++; } });
-  return n>0;
-}
-function applyServerLoad(gd){
-  if(hasUnsavedLocal()){
-    // gsLoad() already moved lastLoadedSavedAt to the server's version, so
-    // this save is not refused as a conflict.
-    showToast(tr('Unsaved changes found on this device — saving them now'),4000);
-    autoSave();
-    return false;
-  }
-  applyData(gd);
-  const photosDropped = dropWorkerPhotos();
-  render();
-  if(photosDropped) autoSave();
-  const gdJson = JSON.stringify(gd);
-  localStorage.setItem(STORAGE_KEY(), gdJson);
-  localStorage.setItem(STORAGE_KEY_BASE, gdJson); // legacy key for worker-punch.html's bridge, see autoSave()
-  return true;
-}
-
-function autoSave(){
-  // Glitch guard: don't overwrite existing data with a suddenly-empty state.
-  if((!workers||!workers.length) && (!clients||!clients.length)){
-    let hadData=false;
-    try{ const prev=JSON.parse(localStorage.getItem(STORAGE_KEY())||'{}'); hadData=(prev.workers&&prev.workers.length)||(prev.clients&&prev.clients.length); }catch(e){}
-    if(hadData){ console.warn('Empty state but cache has data — skipping save'); setSaveStatus('saved'); showToast('\u26a0 Empty data — save skipped'); return; }
-  }
-  setSaveStatus('saving');
-  clearTimeout(saveTimer);
-  saveTimer=setTimeout(async ()=>{
-    try{
-      const data = getDataObj();
-      const json = JSON.stringify(data);
-      // localStorage as cache only
-      localStorage.setItem(STORAGE_KEY(), json);
-      localStorage.setItem(STORAGE_KEY()+'_bak', json);
-      // Also mirror under the legacy unscoped key — worker-punch.html's
-      // updateScheduleManager() (same-device convenience bridge) still reads
-      // that literal key and has no tenantId of its own to scope by.
-      localStorage.setItem(STORAGE_KEY_BASE, json);
-      // Firestore is the primary storage
-      try{ localStorage.setItem(UNSAVED_KEY(),String(Date.now())); }catch(e){}
-      const ok = await gsSave(data);
-      if(ok){ try{ localStorage.removeItem(UNSAVED_KEY()); }catch(e){} }
-      setSaveStatus('saved');
-      if(ok) showToast(tr('Saved'));
-      else showToast(tr('Save failed — kept on this device'));
-    }catch(e){
-      console.error('Save failed',e);
-      setSaveStatus('saved');
-      showToast(tr('Save error'));
-    }
-  }, 800);
-}
-
-async function loadData(){
-  // 1. Show cached data instantly while the server loads — read ONLY the
-  // tenant-scoped key (never the legacy unscoped one) so switching firms
-  // (switchToTenant()'s reload) never flashes a DIFFERENT firm's stale
-  // cache; a firm with no cache yet under its own key just skips this step
-  // and waits for the real Sheets response, which is preferable to showing
-  // the wrong firm's data.
-  try{
-    const raw = localStorage.getItem(STORAGE_KEY()) || localStorage.getItem(STORAGE_KEY()+'_bak');
-    if(raw){
-      const d = JSON.parse(raw);
-      applyData(d);
-      __dataReady=true;
-      render();
-      markFirstContent();
-    }
-  }catch(e){}
-
-  // 2. Always load from Firestore (primary source)
-  try{
-    const gd = await gsLoad();
-    __dataReady=true;
-    if(gd){
-      applyServerLoad(gd);
-      markFreshContent('app');
-      setSaveStatus('saved');
-      syncPunchesFromGS();
-      if(isHrSession()) watchHrWorkers();
-      watchHoursBatches();
-      maybeRegenAfterFirmEdit();
-    } else {
-      showToast(tr('Could not load from the server — showing saved data{0}',{0:(gsLoad.lastError?' ('+gsLoad.lastError.slice(0,80)+')':'')}),6000);
-      retryLoadDataWhenBack();
-    }
-  }catch(e){
-    console.error('Load failed',e);
-    showToast(tr('Offline — using cached data'));
-  }
-  if(!__dataReady){ __dataReady=true; if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); }
-}
-
-// The hours batches (Pending hours), live (listenPendingHours): the count of
-// batches waiting for a decision on the Accounting tab, and each worker's
-// latest batch status on the worker card.
-let __hoursWatched = false, __hoursBatches = null;
-function watchHoursBatches(){
-  const s = getSession();
-  if(__hoursWatched || !s || s.role === 'supplier') return;
-  __hoursWatched = true;
-  loadFirestoreBackend().then(b => b.listenPendingHours(fsTenantId(), list => {
-    __hoursBatches = list;
-    updateHoursBadge(); refreshBell();
-    refreshCardHoursStatus();
-    if(currentTab === 'accounting') renderAccounting();
-  })).catch(e => { __hoursWatched = false; console.warn('Hours watch failed: ' + ((e && e.message) || e)); });
-}
-function updateHoursBadge(){
-  const tab = document.getElementById('tabAccounting'); if(!tab) return;
-  const n = (__hoursBatches || []).filter(b => b.status === 'pending').length;
-  let el = document.getElementById('accPendingBadge');
-  if(!el){ el = document.createElement('span'); el.id = 'accPendingBadge'; el.className = 'tab-badge'; tab.querySelector('.ic').appendChild(el); }
-  el.textContent = n > 99 ? '99+' : String(n);
-  el.style.display = n ? '' : 'none';
-  el.title = tr('{0} hours batch(es) waiting for review',{0:(n)});
-}
-// This worker's latest hours batch (by when it was sent), or null.
-function latestHoursBatch(workerId){
-  return (__hoursBatches || []).filter(b => (b.entries || []).some(r => r.workerId === workerId))
-    .sort((a, b) => String(b.uploadedAt).localeCompare(String(a.uploadedAt)))[0] || null;
-}
-// An open worker card shows the worker's latest batch live.
-function refreshCardHoursStatus(){ if(window.ManagerIsland) window.ManagerIsland.refreshWindows(); }
-
-// An HR's worker list follows the server (listenWorkers): a worker the owner
-// assigns appears, one taken away disappears, a field the owner edits (a
-// rate, a phone…) changes. Applied while no worker form
-// or card is open (their index into `workers` must not move); otherwise it
-// waits and tries again.
-let __hrWorkersWatched = false, __hrWorkerChanges = [];
-function watchHrWorkers(){
-  if(__hrWorkersWatched) return;
-  __hrWorkersWatched = true;
-  loadFirestoreBackend().then(b => b.listenWorkers(fsTenantId(), ch => { __hrWorkerChanges.push(ch); applyHrWorkerChanges(); }))
-    .catch(e => { __hrWorkersWatched = false; console.warn('Worker watch failed: ' + ((e && e.message) || e)); });
-}
-function applyHrWorkerChanges(){
-  if(!__hrWorkerChanges.length) return;
-  const busy = ['workerOverlay','workerCardOverlay','payOverlay'].some(id => document.getElementById(id)?.classList.contains('open'));
-  if(busy){ clearTimeout(applyHrWorkerChanges._t); applyHrWorkerChanges._t = setTimeout(applyHrWorkerChanges, 2000); return; }
-  const changes = __hrWorkerChanges.splice(0);
-  let n = 0;
-  changes.forEach(({added, removed, changed}) => {
-    const gone = new Set(removed.map(String));
-    const before = workers.length;
-    workers = workers.filter(w => !gone.has(String(w.id)));
-    n += before - workers.length;
-    added.forEach(x => { if(!workers.some(w => String(w.id) === String(x.id))){ workers.push(x); n++; } });
-    // An edit made elsewhere replaces this copy, unless this copy has edits
-    // of its own not yet saved (those win and are saved over it).
-    (changed || []).forEach(({data, unsaved}) => {
-      const i = workers.findIndex(w => String(w.id) === String(data.id));
-      if(i < 0 || unsaved(workers[i])) return;
-      workers[i] = data; n++;
-    });
-  });
-  if(!n) return;
-  try{ localStorage.setItem(STORAGE_KEY(), JSON.stringify(getDataObj())); }catch(e){}
-  render();
-}
-
-// After a failed load, try again once the device is back online or the tab
-// is shown again, so cached data doesn't stay on screen until a manual reload.
-let __loadRetryArmed=false;
-function retryLoadDataWhenBack(){
-  if(__loadRetryArmed) return; __loadRetryArmed=true;
-  const again=async()=>{
-    if(document.visibilityState==='hidden' || navigator.onLine===false) return;
-    window.removeEventListener('online',again); document.removeEventListener('visibilitychange',again);
-    const gd=await gsLoad(); __loadRetryArmed=false;
-    if(gd){ try{ if(applyServerLoad(gd)) showToast(tr('Data loaded')); }catch(e){} markFreshContent('app'); syncPunchesFromGS(); maybeRegenAfterFirmEdit(); }
-  };
-  window.addEventListener('online',again); document.addEventListener('visibilitychange',again);
-  setTimeout(again,15000);
-}
 
 
 
@@ -4382,9 +3882,6 @@ function exportShiftsDetail(workerId, year, month, format){
 
 
 // --- Admin Panel -------------------------------------------------------------
-function getPunchLog(){
-  try{ return JSON.parse(localStorage.getItem('punchLog')||'[]'); }catch(e){ return []; }
-}
 // True latest punch by timestamp (robust to array order / back-dated manual entries / sync).
 function latestOf(entries){
   if(!entries||!entries.length) return null;
@@ -4403,9 +3900,6 @@ function punchSite(e){
   if(e && e.clientId){ const c=clients.find(x=>x.id===e.clientId); if(c) return c.name; }
   if(e && e.site && clients.some(c=>c.name===e.site)) return e.site; // legacy entries without clientId
   return workerClientName(e && e.workerId) || (e && e.site) || '';
-}
-function savePunchLog(log){
-  localStorage.setItem('punchLog', JSON.stringify(log));
 }
 
 // Every list that grows (workers, clients, suppliers, firms, users, punch
@@ -4668,7 +4162,7 @@ function showNewVersionBar(){
     <button type="button" onclick="location.reload()" style="flex:none;border:0;border-radius:999px;padding:6px 14px;background:#4f8ef7;color:#fff;font:inherit;cursor:pointer">${tr('Update')}</button>
     <button type="button" aria-label="${tr('Close')}" onclick="this.parentElement.remove()" style="flex:none;border:0;background:none;color:#7c84a0;font:inherit;font-size:15px;cursor:pointer;padding:4px 8px 4px 2px">✕</button></div>`);
 }
-startVersionWatch(()=>[location.pathname,'og.css','payroll.js','firestore-backend.js',...(window.__scanPipelineReady?['scan-pipeline.js']:[])]);
+startVersionWatch(()=>[location.pathname,'og.css','payroll.js','manager-data.js','firestore-backend.js',...(window.__scanPipelineReady?['scan-pipeline.js']:[])]);
 
 const AVATAR_SIZE=160; // shared with scan-pipeline.js's cropPortraitAvatar() and confirmAvatarCrop() below (manual crop editor) — must stay in THIS file, not the lazy one, since confirmAvatarCrop() runs on every worker-photo edit regardless of scanning
 // Worker avatars are black and white (per user request 2026-10-04): the
@@ -5220,79 +4714,6 @@ async function regenerateAllWorkerDocs(){
 // here are gone along with the client-side build they supported.
 
 // --- Init ---------------------------------------------------------------------
-// Error telemetry: send client errors to the errors collection (throttled, silent).
-let _errSent={}, _errCount=0;
-// ── Speed telemetry (2026-10-01) ───────────────────────────────────────────
-// Fire-and-forget; lands in the timings collection, shown in Admin → Timings.
-// Telemetry queue: errors and timings are collected and written as one
-// `logBatch` (one Firestore batch write), so they never compete with the
-// requests the user is waiting for: the first send waits
-// TELEMETRY_FIRST_FLUSH_MS after page load, later ones go out every
-// TELEMETRY_FLUSH_MS, and whatever is left goes out when the page is hidden
-// or closed. Nothing is sent before the Firebase sign-in.
-const TELEMETRY_FIRST_FLUSH_MS=8000, TELEMETRY_FLUSH_MS=5000;
-let __telemetryQueue=[], __telemetryTimer=null;
-function queueTelemetry(item){
-  __telemetryQueue.push(item);
-  if(__telemetryQueue.length>50) __telemetryQueue.splice(0,__telemetryQueue.length-50);
-  if(!__telemetryTimer){
-    const sinceLoad=performance.now();
-    __telemetryTimer=setTimeout(flushTelemetry, Math.max(TELEMETRY_FLUSH_MS, TELEMETRY_FIRST_FLUSH_MS-sinceLoad));
-  }
-}
-function flushTelemetry(viaBeacon){
-  clearTimeout(__telemetryTimer); __telemetryTimer=null;
-  if(!__telemetryQueue.length) return;
-  const items=__telemetryQueue; __telemetryQueue=[];
-  const body=JSON.stringify({action:'logBatch', items});
-  try{
-    fetch(API_URL,{method:'POST',body}).catch(()=>{});
-  }catch(e){}
-}
-document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') flushTelemetry(true); });
-window.addEventListener('pagehide',()=>flushTelemetry(true));
-function reportTiming(kind, totalMs, details){
-  try{
-    const s=getSession()||{};
-    queueTelemetry({type:'timing', kind, totalMs:Math.round(totalMs),
-      tenantId:s.viewingTenantId||s.tenantId||'', user:s.username||'', role:s.role||'',
-      details:Object.assign({device:/Mobi|Android|iPhone/i.test(navigator.userAgent)?'mobile':'desktop'},details||{})});
-  }catch(e){}
-}
-// Login → first content → fresh data, measured across the reload that
-// follows a login (submitLogin stores its start in sessionStorage). Without
-// a pending login it measures a plain app open from page start instead.
-// markFirstContent(): cached or fresh content first painted;
-// markFreshContent(screen): fresh server data shown — reports once per page.
-const __pageStartEpoch=Math.round(performance.timeOrigin||Date.now());
-let __firstContentAt=null, __openTimingSent=false;
-function markFirstContent(){ if(!__firstContentAt) __firstContentAt=Date.now(); }
-function markFreshContent(screen){
-  if(__openTimingSent) return; __openTimingSent=true;
-  markFirstContent();
-  const now=Date.now();
-  let pending=null; try{ pending=JSON.parse(sessionStorage.getItem('pendingLoginTiming')||'null'); sessionStorage.removeItem('pendingLoginTiming'); }catch(e){}
-  if(pending&&pending.t0&&now-pending.t0<120000){
-    reportTiming('login', now-pending.t0, {screen, loginRequestMs:pending.loginMs, firstContentMs:__firstContentAt-pending.t0,
-      reloadToFreshMs:now-__pageStartEpoch, pingMs:pending.pingMs, pingDoneBeforeClick:pending.pingDone});
-  } else {
-    reportTiming('open', now-__pageStartEpoch, {screen, firstContentMs:__firstContentAt-__pageStartEpoch});
-  }
-}
-function reportError(message, source, stack){
-  try{
-    if(_errCount>40) return;                                  // hard cap per session
-    const key=String(message||'').slice(0,120), nowT=Date.now();
-    if(_errSent[key] && nowT-_errSent[key]<60000) return;     // dedupe same error within 1 min
-    _errSent[key]=nowT; _errCount++;
-    queueTelemetry({type:'error',
-      page:(location.pathname.split('/').pop()||location.href),
-      role:'manager', worker:(getSession()||{}).username||'',
-      message:String(message||'').slice(0,500),
-      source:String(source||'').slice(0,300),
-      stack:String(stack||'').slice(0,1200)});
-  }catch(e){}
-}
 // Caught failures (2026-10-01): window 'error'/'unhandledrejection' only see
 // errors nobody handled. Most failures are handled — a toast, a console
 // error, a red line in a form — and never reached the Errors sheet. These

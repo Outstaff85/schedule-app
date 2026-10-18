@@ -4,7 +4,8 @@ The manager app's skeleton: the page layout, global state, tabs and rendering, t
 
 `schedule-manager.html` is one file: CSS and markup (lines ~1–950), then one inline `<script>`. Every function of the page is a global. Since the React migration (stages 6–7) every tab and window is React; the page keeps the frame (the title bar, the side menu / bottom bar and the More sheet, the bell, the account menu, the Language sheet), the login and the super-admin's Firms screen header, the map picker, the scan window, the data layer and the actions the React pieces call through `window.ManagerBridge`. It loads more files:
 - `assets/manager.js` — at startup, one module script: every tab and window, [build.md](build.md) → The manager's React pieces;
-- `firestore-backend.js` — at startup, the data layer, [backend.md](backend.md);
+- `manager-data.js` — before the page's script: the page's data layer (the session, the dispatcher, load / save / cache, the punches, uploads, telemetry — Data calls below), generated from `src/manager/data/` (React migration stage 8b);
+- `firestore-backend.js` — at startup (`manager-data.js` starts loading it), the browser data layer, [backend.md](backend.md);
 - `scan-pipeline.js` — on the first scan, [scan.md](scan.md);
 - pdf.js — when a PDF is read, [scan.md](scan.md).
 
@@ -113,7 +114,9 @@ Not paged: chips and form rows being edited (selected clients, children), and pr
 
 ## Data calls
 
-- **Direct calls:** `gsLoad` / `gsSave` / `gsLoadPunchLog` / `gsSavePunch` / `gsUpdatePunch` / `gsDeletePunch` / `gsDeleteWorkerDoc` call `firestore-backend.js` for `fsTenantId()` (the firm being worked in). The names are old; there is no other backend.
+The code of this section and the two after it (Loading and saving data, Telemetry) — and of `getSession` / `saveSession` / `clearSession` / `gsAuth` / `fsTenantId` / `STORAGE_KEY` (Login and session) and `getPunchLog` / `savePunchLog` / `ensurePunchesSince` / `mergeRemotePunches` (the punch cache) — is TypeScript in `src/manager/data/` (`session.ts`, `api.ts`, `punches.ts`, `store.ts`, `telemetry.ts`), built by `scripts/build-globals.mjs` into the committed `manager-data.js`, which the page loads before its own script. Its entry `global.ts` puts every function on `window` under its old name, so the page, `scan-pipeline.js` and the browser tests call them as before; the state the page still reads is given as read-only window properties (`__uploadsInFlight`, `__punchLoadedFrom`, `__punchSynced`, `__hoursBatches`), and the arrays it changes (`workers`, `clients`, `suppliers`, `weekStart`, `currentTab`, `__dataReady`) stay the page's, named in `src/manager/data/page.d.ts`. Change the TypeScript, then `npm run build:globals` ([build.md](build.md) → Generated scripts).
+
+- **Direct calls:** `gsLoad` / `gsSave` / the punch listener (`syncPunchesFromGS`) / `gsSavePunch` / `gsUpdatePunch` / `gsDeletePunch` / `gsDeleteWorkerDoc` call `firestore-backend.js` for `fsTenantId()` (the firm being worked in). The names are old; there is no other backend.
 - **The dispatcher (`API_URL`):** every other data call is written as `fetch(API_URL, {method:'POST', body: JSON.stringify({action, ...})})` or `fetch(API_URL + '?action=…')`. `API_URL` (`'api://app'`) is not a server: a `window.fetch` wrapper sends the call to `firestore-backend.js` `handleAction(action, params, ctx)` and returns its answer as a JSON `Response`. It covers the firms and users actions, Errors / Timings, telemetry, `deletePunchesByMonths`, the hours queue, another firm's `loadSchedule` / `loadPunchLog`, `loadWorkerAssets` / `deleteWorkerDoc`, and the six AI actions ([backend.md](backend.md) has the list). Any other `fetch` passes through untouched.
   - An action nothing answers → `{error:'Unknown action: …'}`; an exception → `{error:'Firestore: …'}`.
   - A call slower than 2500 ms (`SLOW_API_CALL_MS`) goes to Timings as `gs:<action>`. An AI reply's `_meta` (from `ai_read`) is taken off the reply and kept in that measurement's details, with the request's `part`.
@@ -126,7 +129,7 @@ Not paged: chips and form rows being edited (selected clients, children), and pr
 - **`loadData()`:**
   1. Draw the cache at once (`applyData`, `render`, `markFirstContent`).
   2. `gsLoad()`. On success → `applyServerLoad()`, `markFreshContent('app')`, `syncPunchesFromGS()`. On failure → a toast with the reason and `retryLoadDataWhenBack()` (on `online`, on the tab becoming visible, or after 15 s).
-- **`gsLoad()`:** `backend.loadSchedule(fsTenantId())`. With no Firebase user the session is cleared and the page reloads. A failure is kept in `gsLoad.lastError` and sent to Errors.
+- **`gsLoad()`:** `backend.loadSchedule(fsTenantId())`. With no Firebase user the session is cleared and the page reloads. A failure is kept (`loadError()` in `api.ts`) and sent to Errors.
 - **`applyData(d)`** fills `workers` (defaults: `id`, `clientIds`, `token`, `status`), `clients` and `suppliers`.
 - **`applyServerLoad(gd)`:** if this device has unsaved changes (`hasUnsavedLocal()`, the `UNSAVED_KEY()` flag younger than 3 days), it keeps them and calls `autoSave()` instead of applying the server copy. Otherwise it applies the server data and writes the cache.
 - **`autoSave()`:**
