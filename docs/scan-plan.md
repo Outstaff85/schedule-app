@@ -76,7 +76,8 @@ A standing tool kept in the repo for trying and tuning the scanner's on-device p
 - **What is trained:** the light and the accurate DocAligner models (Apache-2.0: the fine-tuned weights are the firm's own); later a small page-kind model (ID / ספח / passport / contract / other) that replaces Haiku's kind. Not trained: YuNet (already right), the MRZ reader (check digits), Haiku / Sonnet (Anthropic's — only their prompts and examples improve).
 - **Where:** on the owner's PC (RTX 4070, 12 GB: ~15–30 min for both corner models on ~500 examples), so the examples never leave the firm's hands; the copies are deleted from the PC after the run.
 - **How:** a repo skill, `/scan-train` (`.claude/skills/scan-train/`), run in Claude Code on the PC: download the new examples → train → an exam against a fixed set of photos with known answers (the old model against the new) → a "before → after" report → on the owner's yes, the new model goes to `models/scan/v<N>/` in Storage and `current.json` points at it; the phones take it by its ETag. The old versions stay for a rollback. The training code is in `scripts/scan-train/`.
-- **The agent:** a scheduled task, once a month, counts the new examples and runs the exam on the current model; when ~200 new examples are in or the score drops, it tells the owner to run `/scan-train`. It never trains nor swaps a model itself.
+- **The agent:** a scheduled task, once a month, counts the new examples and runs the exam on the current model; when ~200 new examples are in or the score drops, it tells the owner to run `/scan-train` — in the app's bell (the super-admin's, until the retraining is done) and as a push in the Claude app; a month with nothing to do sends nothing. It never trains nor swaps a model itself.
+- **The owner's side** (approved 2026-10-18): the notice "time to retrain" comes → on the PC, Claude Code, `/scan-train` → about an hour later the report → yes or no.
 
 ### S3 — reading in TypeScript
 
