@@ -1,0 +1,92 @@
+// The manager page's own script, part "toast": the toast and the new version check.
+// One of the modules of src/manager/page/ (React migration stage 8c-3; the
+// former inline script of schedule-manager.html, split by section, the same
+// code in the same order — page/entry.ts imports them in that order), typed
+// (strict TypeScript; loose records are `any`). Its top-level functions and variables stay
+// reachable under their old global names through the window accessors below
+// (the markup's onclick handlers, scan-pipeline.js, the React bridge, the
+// other parts and the browser tests use them).
+import { byId } from './dom';
+import { tr } from '../logic/i18n';
+Object.defineProperties(window, {
+  "TOAST_ICONS": {get: () => TOAST_ICONS, configurable: true},
+  "toastKind": {get: () => toastKind, configurable: true},
+  // @ts-ignore — reassigned from outside (a wrapper or a test's stub)
+  "showToast": {get: () => showToast, set: (v: any) => { showToast = v; }, configurable: true},
+  "startVersionWatch": {get: () => startVersionWatch, configurable: true},
+  "showNewVersionBar": {get: () => showNewVersionBar, configurable: true},
+  "AVATAR_SIZE": {get: () => AVATAR_SIZE, configurable: true},
+  "grayscaleCanvas": {get: () => grayscaleCanvas, configurable: true},
+});
+
+// --- Toast ------------------------------------------------------------------------------------------------------------------------------------
+// Any toast text goes through tr(): a server message in the dictionary shows translated.
+// Toast (the same in all three pages): small, an icon and a coloured edge by
+// its kind, guessed from the text — error, ongoing (ends with …), warning,
+// else done.
+const TOAST_ICONS={ok:'ti-circle-check',warn:'ti-alert-triangle',err:'ti-alert-circle',info:'ti-info-circle'};
+function toastKind(t?: any){
+  if(/fail|error|could not|couldn't|not saved|denied|refused|invalid|נכשל|שגיאה|לא נשמר|לא ניתן/i.test(t)) return 'err';
+  if(/(…|\.\.\.)\s*$/.test(t)) return 'info';
+  if(/⚠|warn|check|empty|missing|not found|בדקו|ריק|חסר|לא נמצא/i.test(t)) return 'warn';
+  return 'ok';
+}
+function showToast(msg?: any,dur?: any){
+  const t=byId('toast'), text=typeof msg==='string'?tr(msg):String(msg), k=toastKind(text);
+  t.className='toast show '+k; t.innerHTML='<i class="ti '+TOAST_ICONS[k]+'"></i><span></span>'; t.lastChild.textContent=text;
+  clearTimeout(t.__hide); t.__hide=setTimeout(()=>t.classList.remove('show'),dur||2500);
+}
+// ── New version check (2026-10-04; the same code in schedule-manager.html,
+// worker-punch.html and supplier-portal.html). An app left open — a PWA in
+// the background — keeps running the code it loaded, even after a deploy.
+// When the page comes back to the screen, and every 30 min while it is
+// shown, the files it runs are asked for their ETag (HEAD: the service
+// worker only handles GET, and cache:'no-store' skips the HTTP cache). The
+// first answer is the baseline; a changed ETag later means a deploy, and a
+// bar offers to reload. Nothing reloads on its own (typed data stays).
+function startVersionWatch(files?: any){
+  let base: any=null, shown=false;
+  const tags=async()=>{
+    const out: any={};
+    for(const f of files()){
+      const r=await fetch(f,{method:'HEAD',cache:'no-store'});
+      if(!r.ok) return null;
+      out[f]=r.headers.get('etag')||r.headers.get('last-modified')||'';
+    }
+    return out;
+  };
+  const check=async()=>{
+    if(shown||document.visibilityState!=='visible'||navigator.onLine===false) return;
+    try{
+      const t=await tags(); if(!t) return;
+      if(!base){ base=t; return; }
+      for(const f in t){ if(!(f in base)){ base[f]=t[f]; continue; } if(t[f]&&base[f]&&t[f]!==base[f]){ shown=true; showNewVersionBar(); return; } }
+    }catch(e: any){}
+  };
+  document.addEventListener('visibilitychange',check);
+  setInterval(check,30*60*1000);
+  check();
+}
+function showNewVersionBar(){
+  if(byId('newVersionBar')) return;
+  // One compact line at the top (per user request 2026-10-11): it never
+  // covers the bottom tab bar and stays until Update or ✕.
+  document.body.insertAdjacentHTML('beforeend',`<div id="newVersionBar" role="status" style="position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 10px);transform:translateX(-50%);z-index:100000;display:flex;align-items:center;gap:10px;width:max-content;max-width:calc(100% - 24px);box-sizing:border-box;padding:6px 6px 6px 12px;border-radius:999px;background:#181c27;border:1px solid rgba(79,142,247,.45);color:#eef0f8;font:600 13px/1.2 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.45)">
+    <span style="width:8px;height:8px;border-radius:50%;background:#4f8ef7;box-shadow:0 0 0 4px rgba(79,142,247,.2);flex:none"></span>
+    <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${tr('A new version is available')}</span>
+    <button type="button" onclick="location.reload()" style="flex:none;border:0;border-radius:999px;padding:6px 14px;background:#4f8ef7;color:#fff;font:inherit;cursor:pointer">${tr('Update')}</button>
+    <button type="button" aria-label="${tr('Close')}" onclick="this.parentElement.remove()" style="flex:none;border:0;background:none;color:#7c84a0;font:inherit;font-size:15px;cursor:pointer;padding:4px 8px 4px 2px">✕</button></div>`);
+}
+startVersionWatch(()=>[location.pathname,'og.css','payroll.js','firestore-backend.js',...(window.__scanPipelineReady?['scan-pipeline.js']:[])]);
+
+const AVATAR_SIZE=160; // shared with scan-pipeline.js's cropPortraitAvatar() and confirmAvatarCrop() below (manual crop editor) — must stay in THIS file, not the lazy one, since confirmAvatarCrop() runs on every worker-photo edit regardless of scanning
+// Worker avatars are black and white (per user request 2026-10-04): the
+// portrait is turned to grey on the AVATAR_SIZE canvas it was cut onto, in
+// both the scan's portrait crop (cropPortraitAvatar) and the manual crop
+// editor (confirmAvatarCrop). Pixel math, so it works on every browser.
+function grayscaleCanvas(cv?: any){
+  const ctx=cv.getContext('2d'), im=ctx.getImageData(0,0,cv.width,cv.height), d=im.data;
+  for(let i=0;i<d.length;i+=4){ const y=Math.round(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]); d[i]=d[i+1]=d[i+2]=y; }
+  ctx.putImageData(im,0,0);
+  return cv;
+}

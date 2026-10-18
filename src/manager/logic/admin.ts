@@ -56,10 +56,10 @@ export function loadFirmsCache(): Rec[] | null { try { const v = JSON.parse(loca
 // Punch Log for everyone who reaches the tab (it needs the `workers`
 // section); Firms and Users for an owner or a super-admin; Errors and
 // Timings for a super-admin (gated server-side too).
-export function adminPanes(): string[] {
+export function adminPanes(): ('punchlog' | 'firms' | 'users' | 'errors' | 'timings')[] {
   const s = getSession(); if (!s) return [];
   const isSuper = s.role === 'superadmin', isAdminRole = isSuper || s.role === 'tenant_admin';
-  return ['punchlog'].concat(isAdminRole ? ['firms', 'users'] : [], isSuper ? ['errors', 'timings'] : []);
+  return [...(['punchlog'] as const), ...(isAdminRole ? (['firms', 'users'] as const) : []), ...(isSuper ? (['errors', 'timings'] as const) : [])];
 }
 /** The firm whose logins the Users section manages. */
 export function activeTenantIdForAdmin(): string | null {

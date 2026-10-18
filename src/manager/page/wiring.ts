@@ -1,0 +1,163 @@
+// The manager page's own script, part "wiring": the data layer's events and the page's answers to them.
+// One of the modules of src/manager/page/ (React migration stage 8c-3; the
+// former inline script of schedule-manager.html, split by section, the same
+// code in the same order — page/entry.ts imports them in that order), typed
+// (strict TypeScript; loose records are `any`). Its top-level functions and variables stay
+// reachable under their old global names through the window accessors below
+// (the markup's onclick handlers, scan-pipeline.js, the React bridge, the
+// other parts and the browser tests use them).
+import { byId } from './dom';
+import { tr } from '../logic/i18n';
+import { pendingHoursCount } from '../data/store';
+import { clearSession, getSession, saveSession } from '../data/session';
+import { FIRMS_CACHE_KEY, clearAdminCaches } from '../logic/admin';
+import { loadFirestoreBackend } from '../data/api';
+import { render } from './render';
+import { refreshBell } from './header';
+Object.defineProperties(window, {
+  "setSaveStatus": {get: () => setSaveStatus, configurable: true},
+  "updateHoursBadge": {get: () => updateHoursBadge, configurable: true},
+  "LOGIN_FN_URL": {get: () => LOGIN_FN_URL, configurable: true},
+  "goToSupplierPortal": {get: () => goToSupplierPortal, configurable: true},
+  "goToClientPortal": {get: () => goToClientPortal, configurable: true},
+  "logout": {get: () => logout, configurable: true},
+  "submitLogin": {get: () => submitLogin, configurable: true},
+  "switchToTenant": {get: () => switchToTenant, configurable: true},
+  "backToFirmsList": {get: () => backToFirmsList, configurable: true},
+});
+
+// --- Export dropdown ----------------------------------------------------------
+
+// --- Export Excel / PDF / JSON: exportExcel(), exportPDF(), exportJSON() are
+// src/manager/logic/exports.ts.
+
+// --- Save / Load -------------------------------------------------------------
+// The data layer — the session (getSession, gsAuth), the fetch(API_URL)
+// dispatcher, load / save / cache (loadData, autoSave), the punches, the
+// uploads and the telemetry — is src/manager/data/, loaded before this script
+// under the same names through ../globals.ts (React migration stage 8b).
+
+// ── The data layer's events (src/manager/data/events.ts) ──
+// The data layer never draws, shows a toast or looks at the screen: it
+// emits events, and this is the one place the page answers them. Its texts
+// come untranslated ({text, vars}) and are translated here.
+ManagerData.setHost({
+  // an HR's live worker list waits while one of these is open
+  workerWindowOpen:()=>['workerOverlay','workerCardOverlay','payOverlay'].some((id?: any)=>byId(id)?.classList.contains('open')),
+});
+ManagerData.on('data', ()=>render());
+// Hours approvals compare each day with the punches: they redraw too, or a
+// day could keep showing a stale "Changed after approval".
+ManagerData.on('punches', ()=>{ if(currentTab==='dashboard') renderDashboard(); else if(currentTab==='accounting') renderAccounting(); else if(currentTab==='admin') renderAdmin(); });
+// An open worker card shows the worker's latest hours batch live.
+ManagerData.on('hours', ()=>{ updateHoursBadge(); refreshBell(); if(window.ManagerIsland) window.ManagerIsland.refreshWindows(); if(currentTab==='accounting') renderAccounting(); });
+ManagerData.on('save', (s?: any)=>setSaveStatus(s));
+ManagerData.on('notice', ({msg, ms}: any)=>showToast(typeof msg==='string'?msg:tr(msg.text, msg.vars), ms));
+ManagerData.on('loaded', ()=>maybeRegenAfterFirmEdit());
+ManagerData.on('requests', ()=>{ if(currentTab==='schedule') renderSchedulePage(); });
+export function setSaveStatus(s?: any){
+  const el=byId('saveIndicator');
+  el.className='save-indicator '+s;
+  el.querySelector('span').textContent=s==='saving'?tr('Saving...'):tr('Saved');
+}
+// The count of hours batches waiting for a decision, on the Accounting tab.
+function updateHoursBadge(){
+  const tab = byId('tabAccounting'); if(!tab) return;
+  const n = pendingHoursCount();
+  let el = byId('accPendingBadge');
+  if(!el){ el = document.createElement('span'); el.id = 'accPendingBadge'; el.className = 'tab-badge'; tab.querySelector('.ic').appendChild(el); }
+  el.textContent = n > 99 ? '99+' : String(n);
+  el.style.display = n ? '' : 'none';
+  el.title = tr('{0} hours batch(es) waiting for review',{0:(n)});
+}
+
+export const LOGIN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/login';
+
+// A supplier never uses this app: its login is written as the supplier
+// portal's session (supplier-portal.html, key supplierPortal_session) and the
+// page moves to /supplier, already signed in.
+export function goToSupplierPortal(u?: any){
+  try{ localStorage.setItem('supplierPortal_session', JSON.stringify({uid:u.uid, role:'supplier', tenantId:u.tenantId, supplierId:u.supplierId, username:u.username})); }catch(e: any){}
+  clearSession();
+  location.replace('supplier-portal.html');
+}
+// A client login uses the client portal (client-portal.html), handed over the same way.
+export function goToClientPortal(u?: any){
+  try{ localStorage.setItem('clientPortal_session', JSON.stringify({uid:u.uid, role:'client', tenantId:u.tenantId, clientId:u.clientId, username:u.username})); }catch(e: any){}
+  clearSession();
+  location.replace('client-portal.html');
+}
+async function logout(){
+  try{ localStorage.removeItem(FIRMS_CACHE_KEY); }catch(e: any){}
+  clearAdminCaches(); clearSession();
+  try{ await (await loadFirestoreBackend()).signOut(); }catch(e: any){}
+  location.reload();
+}
+
+
+
+// The login Cloud Function checks the password and signs this device in to
+// Firebase (firestore-backend.js login()); the session keeps who that is.
+async function submitLogin(){
+  const username = byId('loginUsername').value.trim();
+  const password = byId('loginPassword').value;
+  const errEl = byId('loginError');
+  const btn = byId('loginBtn');
+  errEl.textContent = '';
+  if(!username || !password){ errEl.textContent = tr('Enter a username and password'); return; }
+  btn.disabled = true; btn.textContent = tr('Signing in…');
+  try{
+    const t0 = Date.now();
+    let backend: any;
+    try{ backend = await loadFirestoreBackend(); }
+    catch(e: any){ errEl.textContent = tr('Could not load Firebase — check the network'); return; }
+    let fb: any;
+    try{ fb = await backend.login(username, password); }
+    catch(e: any){ errEl.textContent = tr('No network — try again'); return; }
+    if(!fb || fb.error){ errEl.textContent = tr((fb&&fb.error)||'') || tr('Could not sign in'); return; }
+    // The language this user last picked (on any device) wins over this device's.
+    if(fb.language) try{ localStorage.setItem('uiLang', fb.language); }catch(e: any){}
+    // So does the theme (Dark / Light / System).
+    if(fb.theme) setTheme(fb.theme, {save:false});
+    // A supplier login belongs in the supplier portal: hand the session over
+    // (same origin, same Firebase sign-in) and go there.
+    if(fb.role === 'supplier'){ goToSupplierPortal(fb); return; }
+    if(fb.role === 'client'){ goToClientPortal(fb); return; }
+    try{ sessionStorage.setItem('pendingLoginTiming', JSON.stringify({t0, loginMs:Date.now()-t0, pingMs:window.__pingMs==null?null:window.__pingMs, pingDone:window.__pingMs!=null})); }catch(e: any){}
+    saveSession({
+      uid: fb.uid, role: fb.role, tenantId: fb.tenantId, username: fb.username, tenantProfile: fb.tenantProfile,
+      permissions: fb.permissions, supplierId: fb.supplierId,
+      ownOnly: fb.ownOnly === true, fullName: fb.fullName || '',
+      showPay: fb.showPay === true, commissionRate: Number(fb.commissionRate) || 0,
+      hourPerms: Array.isArray(fb.hourPerms) ? fb.hourPerms : [],
+      commissionDayRate: Number(fb.commissionDayRate) || 0,
+      viewingTenantId: fb.tenantId, // a super-admin (tenantId null) picks one on the Firms screen
+    });
+    location.reload();
+  }finally{ btn.disabled = false; btn.textContent = tr('Sign in'); }
+}
+
+// A super-admin drilling into one firm's normal view — every subsequent API
+// call sends asTenantId until they switch again or log out. Also caches that
+// firm's own profile (from the already-fetched Firms list — __firmsCache) as
+// viewingTenantProfile, since aiFillForm101() needs it for Form 101 section א
+// and a super-admin's own login never carries a tenantProfile (they have no
+// fixed tenant of their own).
+export function switchToTenant(tenantId?: any){
+  const s = getSession();
+  if(!s || s.role !== 'superadmin') return;
+  const t = __firmsCache.find((x?: any) => x.tenantId === tenantId);
+  s.viewingTenantId = tenantId;
+  s.viewingTenantName = (t && t.companyName) || tenantId;
+  s.viewingTenantProfile = t || null;
+  saveSession(s);
+  location.reload();
+}
+function backToFirmsList(){
+  const s = getSession();
+  if(!s || s.role !== 'superadmin') return;
+  s.viewingTenantId = null;
+  s.viewingTenantName = null;
+  saveSession(s);
+  location.reload();
+}

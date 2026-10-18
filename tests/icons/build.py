@@ -18,7 +18,7 @@ from fontTools import subset
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 # The files that still draw `ti-*` icons: the manager page's frame and login,
 # and the scan pipeline. The React pages import their icons from @tabler/icons-react.
-FILES = ['schedule-manager.html', 'src/manager/page/app.ts', 'scan-pipeline.js']
+FILES = ['schedule-manager.html', *sorted('src/manager/page/' + f for f in os.listdir(os.path.join(ROOT, 'src/manager/page')) if f.endswith('.ts')), 'scan-pipeline.js']
 # Icon names glued from pieces in code (none at the moment).
 EXTRA = []
 VERSION = '3.31.0'
