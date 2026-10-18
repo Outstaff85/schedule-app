@@ -132,8 +132,8 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .gbtn::before{content:'';position:absolute;left:12px;right:12px;bottom:1px;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55),0 0 4px rgba(244,114,182,.5);animation:og-flow 2.4s linear infinite;transform:scaleX(0);transition:transform .45s cubic-bezier(.34,1.56,.64,1);pointer-events:none;}
 @media (hover:hover){.gbtn:hover::before{transform:scaleX(1);}}
 .gbtn.on::before{transform:scaleX(1);}
-/* Plates: the solid content tile, a 4px status bar (--c) on the left and the
-   avatar disc in the same color; figures (hours, money) in one soft green. */
+/* Plates: the solid content tile, a 4px status bar (--c) on the left; figures
+   (hours, money) in one soft green. */
 .plate{position:relative;display:flex;align-items:center;gap:12px;padding:11px 8px 11px 14px;background:var(--plate);border-radius:16px;box-shadow:inset 4px 0 0 var(--c,var(--ok));}
 .fig{font-family:'DM Mono',ui-monospace,monospace;color:var(--fig);}
 /* Tick tiles: a grey box; ticked — the tile tinted green, the box green and
