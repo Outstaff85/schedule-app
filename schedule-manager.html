@@ -3058,8 +3058,6 @@ new MutationObserver(recs=>{
       el.__returnTo=prev||null;
     } else {
       closedNow.push(el.id);
-      // A list inside the closed window gives Select back to the page's list.
-      if(__selState&&__selState.root&&el.contains(__selState.root)){ endSelect(); render(); }
       const rec={id:el.id, at:Date.now(), followed:false};
       __lastModalClose=rec;
       const back=el.__returnTo; el.__returnTo=null;
