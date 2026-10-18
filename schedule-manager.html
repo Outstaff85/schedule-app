@@ -3556,7 +3556,8 @@ function gateApp(runInitApp){
   }
   if(s.role === 'superadmin' && !s.viewingTenantId){
     document.getElementById('firmsScreen').style.display = 'block';
-    loadFirms();
+    // the React list loads the firms when it is drawn (now, or when assets/manager.js arrives)
+    if(window.ManagerIsland) window.ManagerIsland.renderFirmsScreen();
     return;
   }
   renderAccountControl(s);

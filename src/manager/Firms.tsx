@@ -155,8 +155,8 @@ function Payable({ api }: { api: ManagerBridge }) {
   return (
     <Section panel className="mb-3 text-left" data-testid="payable" label={tr('Payable')} icon={<IconCash className="size-4" />}
       tools={<span className="font-mono text-sm text-ink" data-testid="payable-total">{tr('TOTAL')} · {tr('{h}h', { h: hours.toFixed(1) })} · <b className="text-ok">₪{pay.toFixed(0)}</b></span>}>
-      <PagedList items={rows} render={r => (
-        <Plate key={r.name} data-testid="payable-row" className="mb-1.5" size="sm" color={r.error ? 'var(--bad)' : 'var(--ok)'}
+      <PagedList items={rows} render={(r, i) => (
+        <Plate key={i} data-testid="payable-row" className="mb-1.5" size="sm" color={r.error ? 'var(--bad)' : 'var(--ok)'}
           title={r.name} sub={r.error ? <span className="text-bad">{tr('(load failed)')}</span> : tr('Hours (this week)') + ': ' + tr('{h}h', { h: r.hours.toFixed(1) })}
           right={<b className="font-mono text-ok">₪{r.pay.toFixed(0)}</b>} />
       )} />
