@@ -202,24 +202,15 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .og-kb{position:relative;width:32px;height:32px;border:0;border-radius:var(--radius-sm);background:none;color:var(--ink-2);font-size:18px;cursor:pointer}
 .og-kb::after{content:'';position:absolute;left:9px;right:9px;bottom:3px;height:3px;border-radius:2px;background:var(--og-uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;transform:scaleX(0);transition:transform .45s var(--og-spring)}
 .og-kb.on{color:var(--ink);background:rgba(var(--tint),.08)}.og-kb.on::after{transform:scaleX(1)}
-/* select mode */
-/* tick */
-/* popover with a tail */
-/* sheet */
-/* undo snack */
 
-/* ── Part 4: the list pieces (Plates, RowMenu, UndoSnack, SelectMode as the
-   pages use them: t3Line plates, the ⋮ popover .og-pop, the swipe, the Undo
-   snack .og-snack, Select's .og-box / .sel-head / .sel-bar). One copy for the
-   manager app and the supplier portal (stage 13). ── */
-/* Odinson Glass lists (docs/redesign.md → Plates): every t3Line is a plate —
-   solid, radius 16, a 4px bar in its colour (--c) and the avatar disc in the
-   same colour; figures (.r) in the soft green; a bare ⋮ (.t3-kb) opens the
-   row's glass popover (.og-pop, with a tail); a swipe left (.sw) shows Edit and
-   Delete; Delete never asks — the Undo snack (.og-snack) runs 5 s first;
-   Select (.selecting): a Select button above the rows; after a tap (.sel-on)
-   drawn-tick boxes, "N selected · Select all · Done" and the glass bulk bar
-   (.sel-bar). No letters avatar: the plate starts with the name. The same block in the manager app and the supplier portal. ── */
+/* ── Part 4: the list pieces (Plates, UndoSnack, SelectMode as the pages use
+   them: .t3-line plates, the swipe .sw, the Undo snack .og-snack, Select's
+   .og-box / .sel-head / .sel-bar). ── */
+/* Odinson Glass lists (docs/redesign.md → Plates): a plate is solid, radius 16,
+   a 4px bar in its colour (--c); figures (.r) in the soft green; Delete never
+   asks — the Undo snack (.og-snack) runs 5 s first; Select: drawn-tick boxes,
+   "N selected · Select all · Done" and the glass bulk bar (.sel-bar). No
+   letters avatar: the plate starts with the name. ── */
 :root{--neutral:#6b7189;--bar-gap:16px;}
 .t3-line{position:relative;gap:12px;padding:11px 8px 11px 14px;border-left:0;background:var(--plate);border-radius:16px;box-shadow:inset 4px 0 0 var(--c,var(--neutral));margin-bottom:8px;transition:transform .28s cubic-bezier(.3,.7,.3,1),background .2s;}
 .t3-line:hover{background:#20242f;}
