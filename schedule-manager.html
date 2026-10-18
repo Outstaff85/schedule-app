@@ -2311,10 +2311,6 @@ async function findScanFields(w,keys,docType){
   }
   return out;
 }
-async function findScanField(w,key,docType){
-  const r=await findScanFields(w,[key],docType);
-  return r&&r[key];
-}
 // "Scan again" from inside the worker window, without losing what is on the
 // form: the window (React, src/manager/WorkerEditor.tsx) is kept as a draft
 // (window.__wDraft) and the scan opens over it — on its review screen when the
