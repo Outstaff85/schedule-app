@@ -189,8 +189,6 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .og-btn.primary{background:var(--glass-strong)}
 .og-btn.icon{width:42px;padding:0}
 .og-btn.danger{color:var(--red-soft)}
-/* tabs */
-/* section label */
 /* plate */
 .og-sw{position:relative;margin-bottom:var(--space-2);border-radius:var(--radius-lg);overflow:hidden;max-height:80px;transition:max-height .3s,margin .3s,opacity .3s}
 .og-sw.gone{max-height:0;margin:0;opacity:0}
