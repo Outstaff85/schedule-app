@@ -60,7 +60,7 @@ A single non-PDF file → `onScanFileSelected(file)`:
    - **Early read** (fresh scan): page 1 is sent to `aiReadDoc` straight away, as cropped. If it is an ID or passport, its digits are re-checked while Phase 1 runs.
    - **Phase 1, all pages in parallel:**
      1. `autoPreAlignScan()` → `aiDetectAlign`: rotate (`alignScanImage`), refine the corners on pixels (`refineQuadCorners`), and warp (`warpQuadImage`). The warp is skipped when the quad is the full frame (`_isNearIdentityQuad`). It returns the page `kind`.
-     2. `preAlignScan()` → `preprocess_scan`: contrast and sharpness up, then the blur check. Returns `{blurry:true}` or the enhanced image.
+     2. `preAlignScan()` → `preprocess_scan`: contrast and sharpness up, then the blur check. Returns `{blurry:true}` or the enhanced image. The request carries the manager's ID token (`Authorization: Bearer`); without it the function answers 401 ([backend.md](backend.md) → Cloud Functions).
    - **Phase 2, reads:**
      - **Primary.** The first page that is not a contract/other (`isNonIdKind`) and reads as an `israeli_id` or `passport` becomes the primary. The early result is used for page 1 when it worked; otherwise the aligned page is read now. Then:
        - `verifyDigitFields()` and `verifyIdChecksum()`;

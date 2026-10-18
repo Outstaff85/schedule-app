@@ -200,7 +200,7 @@ Conditions for `concurrency` > 1: requests run in threads of one process, so a h
 - `fill_form_101` — builds the Form 101 PDF ([form101.md](form101.md)).
 - `preprocess_scan` — contrast/sharpness enhancement and the blur check ([scan.md](scan.md)). Its classical-CV auto-crop (`_find_document_quad` / `_warp_quad`) is defined but dormant.
 
-Both answer `{"ping":true}` at once (warm-up) and parse the body with `force=True`. `functions/venv` must exist before `firebase deploy --only functions` from a local machine (`python -m venv venv && pip install -r requirements.txt`); CI builds its own. `functions/assets/` holds the PDF template and font the function uses.
+Both answer `{"ping":true}` at once (warm-up, no sign-in needed) and parse the body with `force=True`. Every other call must carry `Authorization: Bearer <Firebase ID token>` of a manager-side login (`superadmin`, `tenant_admin`, `staff`, `hr`): `functions/gate.py` (`check()`, the token verified with `verify_id_token(check_revoked=True)`) answers 401 for a missing, invalid or revoked token and 403 for any other role (supplier, client); `tests/auth/test_scan_gate.py` checks it. The callers send the token from `idToken()` of `firestore-backend.js` (`preAlignScan` in `scan-pipeline.js`, the Form 101 build in `src/manager/page/scan.ts`). `functions/venv` must exist before `firebase deploy --only functions` from a local machine (`python -m venv venv && pip install -r requirements.txt`); CI builds its own. `functions/assets/` holds the PDF template and font the function uses.
 
 ## Security rules
 

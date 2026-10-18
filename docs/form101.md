@@ -2,7 +2,7 @@
 
 How a worker's Form 101 PDF is built, stored and rebuilt.
 - The client assembles a JSON payload (`aiFillForm101()` in `schedule-manager.html`).
-- The Cloud Function `fill_form_101` (`functions/main.py`, PyMuPDF, region us-central1) fills the template and returns the PDF.
+- The Cloud Function `fill_form_101` (`functions/main.py`, PyMuPDF, region us-central1) fills the template and returns the PDF. The call carries the manager's Firebase ID token (`Authorization: Bearer`); the function refuses any other caller (`functions/gate.py`, [backend.md](backend.md) → Cloud Functions).
 - The client stores the PDF and a scan sidecar in Firebase Storage.
 
 **Before touching field rects or the template:** read and update [form101-field-map.md](form101-field-map.md) (every AcroForm field: name, rect, Hebrew label, meaning).

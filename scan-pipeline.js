@@ -487,8 +487,10 @@ function renderScanProgress(label,pct){
 }
 async function preAlignScan(b64,mediaType){
   try{
+    // The function lets in only a signed-in manager-side login (functions/gate.py).
+    const idToken=await (await loadFirestoreBackend()).idToken();
     const resp=await fetch(PREPROCESS_SCAN_FN_URL,{
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST', headers:Object.assign({'Content-Type':'application/json'},idToken?{Authorization:'Bearer '+idToken}:{}),
       body:JSON.stringify({image:b64})
     });
     const json=await resp.json();

@@ -21,7 +21,11 @@ import cv2
 import numpy as np
 import pymupdf
 from bidi.algorithm import get_display
+import firebase_admin
+from firebase_admin import auth as fb_auth
 from firebase_functions import https_fn, options
+
+import gate
 from PIL import Image, ImageEnhance
 
 ASSETS_DIR = pathlib.Path(__file__).parent / "assets"
@@ -566,6 +570,22 @@ def build_form101_pdf(p):
 options.set_global_options(region="us-central1")
 
 
+def _verify_token(token):
+    """The claims of a verified, not revoked Firebase ID token (gate.check)."""
+    if not firebase_admin._apps:
+        firebase_admin.initialize_app()
+    return fb_auth.verify_id_token(token, check_revoked=True)
+
+
+def _gate_response(req):
+    """A 401 / 403 response for a caller who may not use these functions
+    (gate.py: a manager-side login with a valid ID token), None otherwise."""
+    status, error = gate.check(req.headers, _verify_token)
+    if status:
+        return https_fn.Response(json.dumps({"error": error}), status=status, mimetype="application/json")
+    return None
+
+
 def _ping_response(payload):
     """Warm-up call from the app ({"ping": true}, 2026-10-01): wakes a cold
     instance while the user is still taking photos / filling the worker
@@ -591,6 +611,9 @@ def fill_form_101(req: https_fn.Request) -> https_fn.Response:
         pong = _ping_response(payload)
         if pong:
             return pong
+        denied = _gate_response(req)
+        if denied:
+            return denied
         pdf_bytes, file_name, firm_missing = build_form101_pdf(payload)
         body = json.dumps({
             "pdfBase64": base64.b64encode(pdf_bytes).decode(),
@@ -797,6 +820,9 @@ def preprocess_scan(req: https_fn.Request) -> https_fn.Response:
         pong = _ping_response(payload)
         if pong:
             return pong
+        denied = _gate_response(req)
+        if denied:
+            return denied
         b64 = payload.get("image")
         if not b64:
             return https_fn.Response(json.dumps({"error": "no image"}), status=400, mimetype="application/json")

@@ -10,7 +10,7 @@ import { FORM101_FN_URL, SCAN_WARM_URLS, warmCloudFunctions } from '../logic/fun
 import { tr } from '../logic/i18n';
 import { DOC_STORE, workerAddress, workerDocId } from '../logic/workers';
 import { firmProfileMissing } from '../logic/admin';
-import { API_URL, uploadWorkerFile } from '../data/api';
+import { API_URL, loadFirestoreBackend, uploadWorkerFile } from '../data/api';
 import { getSession, gsAuth } from '../data/session';
 import { reportTiming } from '../data/telemetry';
 import { autoSave } from '../data/store';
@@ -257,7 +257,9 @@ async function aiFillForm101(isId?: any,mode?: any,workerId?: any,btnEl?: any,pr
     if(extraPages.length) payload.extraPages=extraPages;
 
     const f101t0=Date.now();
-    const fnResp=await fetch(FORM101_FN_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    // The function lets in only a signed-in manager-side login (functions/gate.py).
+    const idToken=await (await loadFirestoreBackend()).idToken();
+    const fnResp=await fetch(FORM101_FN_URL,{method:'POST',headers:idToken?{'Content-Type':'application/json',Authorization:'Bearer '+idToken}:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const fnJson=await fnResp.json();
     if(!fnResp.ok||fnJson.error) throw new Error(fnJson.error||'Could not build the PDF');
     // Admin → Timings, kind "form101": what each generated form carried —
