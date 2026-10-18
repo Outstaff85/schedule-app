@@ -30,7 +30,7 @@
 //               stays left to right.
 // The portals keep the plain frame (their own headers).
 import * as React from 'react';
-import { IconChevronRight, IconDots } from '@tabler/icons-react';
+import { IconChevronRight, IconDots, IconDotsVertical } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
 import { tr, uiLocale, useI18n } from '@/lib/i18n';
 import { greetingHtml } from '@/lib/greeting';
@@ -75,14 +75,30 @@ export function Shell({ brand, tools, sections = [], active = '', onSelect = () 
   const moreActive = inMore.some(s => s.key === active);
   const pick = (key: string) => { try { navigator.vibrate?.(8); } catch { /* not allowed */ } onSelect(key); };
 
-  const bar = phone && sections.length > 0 && (
+  const barItems = [...inBar, ...(inMore.length ? [{ key: '__more', label: tr('More'), icon: app ? <IconDotsVertical /> : <IconDots />, color: MORE_COLOR, count: inMore.reduce((a, s) => a + (s.count || 0), 0) } as ShellSection] : [])];
+  // The manager app's bottom bar: og.css's glass .og-bar (the page's look, light theme included).
+  const appBar = app && phone && sections.length > 0 && (
+    <nav data-testid="shell-bar" dir="ltr" className="og-bar">
+      {barItems.map(s => {
+        const on = s.key === '__more' ? moreActive : s.key === active;
+        return (
+          <button key={s.key} type="button" aria-current={on ? 'page' : undefined} className={cn('og-tab', on && 'on')} style={{ '--k': s.color } as React.CSSProperties}
+            onClick={() => (s.key === '__more' ? setMoreOpen(true) : pick(s.key))}>
+            <span className="ic">{s.icon}{s.count ? <span data-testid="shell-count" className="og-count" title={s.countTitle}>{s.count > 99 ? '99+' : s.count}</span> : null}</span>
+            <span className="lb">{s.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+  const bar = !app && phone && sections.length > 0 && (
     <nav
       data-testid="shell-bar"
       dir="ltr"
       className="fixed inset-x-0 bottom-0 z-30 grid border-t border-border bg-[rgba(var(--bar-rgb),.85)] pb-[env(safe-area-inset-bottom,0px)] pt-1.5 backdrop-blur-xl"
       style={{ gridTemplateColumns: `repeat(${inBar.length + (inMore.length ? 1 : 0)}, minmax(0, 1fr))` }}
     >
-      {[...inBar, ...(inMore.length ? [{ key: '__more', label: tr('More'), icon: <IconDots />, color: MORE_COLOR, count: inMore.reduce((a, s) => a + (s.count || 0), 0) } as ShellSection] : [])].map(s => {
+      {barItems.map(s => {
         const on = s.key === '__more' ? moreActive : s.key === active;
         return (
           <button
@@ -149,21 +165,14 @@ export function Shell({ brand, tools, sections = [], active = '', onSelect = () 
         </header>
         <div className={cn('flex min-h-0 flex-1', rtl && 'flex-row-reverse')}>
           {!phone && sections.length > 0 && (
-            <nav data-testid="shell-menu" dir={rtl ? 'rtl' : 'ltr'} className={cn('sticky top-14 flex h-[calc(100dvh-56px)] w-[210px] shrink-0 flex-col gap-1 overflow-y-auto bg-[rgba(var(--bar-rgb),.35)] px-2.5 py-3.5', rtl ? 'border-l border-white/8' : 'border-r border-white/8')}>
+            <nav data-testid="shell-menu" dir={rtl ? 'rtl' : 'ltr'} className="og-side sticky top-14 h-[calc(100dvh-56px)]">
               {sections.map(s => {
                 const on = s.key === active;
                 return (
-                  <button
-                    key={s.key}
-                    type="button"
-                    aria-current={on ? 'page' : undefined}
-                    onClick={() => onSelect(s.key)}
-                    className={cn('relative flex h-10 shrink-0 items-center gap-3 rounded-xl px-3 text-start text-[14.5px] font-medium transition-colors [&_svg]:size-[18px]', on ? 'bg-white/8' : 'text-ink-2 hover:bg-white/5 hover:text-ink')}
-                    style={on ? { color: s.color } : undefined}
-                  >
-                    <span className="relative">{s.icon}<Count n={s.count} title={s.countTitle} /></span>
+                  <button key={s.key} type="button" aria-current={on ? 'page' : undefined} onClick={() => onSelect(s.key)}
+                    className={cn('og-tab', on && 'on')} style={{ '--k': s.color } as React.CSSProperties}>
+                    <span className="ic">{s.icon}{s.count ? <span data-testid="shell-count" className="og-count" title={s.countTitle}>{s.count > 99 ? '99+' : s.count}</span> : null}</span>
                     <span className="truncate">{s.label}</span>
-                    {on && <span aria-hidden className={cn('absolute inset-y-[9px] w-[3px] rounded-sm', rtl ? 'right-0' : 'left-0')} style={{ background: s.color, boxShadow: `0 0 10px ${s.color}` }} />}
                   </button>
                 );
               })}
@@ -174,7 +183,7 @@ export function Shell({ brand, tools, sections = [], active = '', onSelect = () 
             <div key={steady ? undefined : active} className={cn('mx-auto w-full max-w-[1200px]', !steady && 'animate-in fade-in duration-150 motion-reduce:animate-none')}>{children}</div>
           </main>
         </div>
-        {bar}
+        {appBar}
         {more}
       </div>
     );

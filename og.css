@@ -334,3 +334,35 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 @keyframes og-ring{0%,88%,100%{transform:rotate(0)}90%{transform:rotate(14deg)}93%{transform:rotate(-12deg)}96%{transform:rotate(6deg)}}
 .og-bell-n{position:absolute;top:-4px;right:-4px;z-index:1;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--bad);color:#fff;font:700 10px 'DM Sans',Arial,sans-serif;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px var(--ground);animation:og-bump 2.4s ease-in-out infinite}
 @keyframes og-bump{0%,90%,100%{transform:scale(1)}95%{transform:scale(1.2)}}
+
+/* ── The manager app's sections (the React Shell with `app`): the side menu on
+   a computer and the bottom bar on a phone, the glass look the page drew
+   (V7, variant 11). Colours from --tint and --bar-rgb, so the light theme
+   follows; --k is the section's colour. ── */
+.og-side{display:flex;flex-direction:column;gap:4px;width:210px;flex-shrink:0;padding:14px 10px;background:rgba(var(--bar-rgb),.35);border-right:1px solid rgba(var(--tint),.08);overflow-y:auto}
+[dir=rtl].og-side{border-right:0;border-left:1px solid rgba(var(--tint),.08)}
+.og-tab{position:relative;display:flex;align-items:center;cursor:pointer;color:var(--ink-2);transition:color .15s;-webkit-tap-highlight-color:transparent;background:none;border:0;font:inherit}
+.og-tab .ic{position:relative;display:flex;align-items:center;justify-content:center;line-height:1}
+.og-tab.on{color:var(--k)}
+.og-side .og-tab{flex:none;gap:12px;height:40px;padding:0 12px;border-radius:12px;font-size:14.5px;font-weight:500;text-align:start}
+.og-side .og-tab .ic{width:20px}
+.og-side .og-tab .ic svg{width:18px;height:18px}
+.og-side .og-tab:hover{background:rgba(var(--tint),.05);color:var(--ink)}
+.og-side .og-tab.on,.og-side .og-tab.on:hover{background:rgba(var(--tint),.08);color:var(--k)}
+.og-side .og-tab::after{content:'';position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:2px;background:var(--k);box-shadow:0 0 10px var(--k);transform:scaleY(0);transition:transform .35s cubic-bezier(.34,1.56,.64,1);pointer-events:none}
+[dir=rtl] .og-side .og-tab::after,[dir=rtl].og-side .og-tab::after{left:auto;right:0}
+.og-side .og-tab.on::after{transform:scaleY(1)}
+.og-bar{position:fixed;left:0;right:0;bottom:0;z-index:60;display:flex;height:calc(66px + env(safe-area-inset-bottom,0px));padding:0 0 env(safe-area-inset-bottom,0px);
+  background:rgba(var(--bar-rgb),.92);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-top:1px solid rgba(var(--tint),.1)}
+.og-bar::before{content:'';position:absolute;left:0;right:0;top:-1px;height:1px;background:linear-gradient(90deg,transparent,rgba(129,140,248,.5),rgba(34,211,238,.5),rgba(244,114,182,.4),transparent);pointer-events:none}
+.og-bar .og-tab{flex:1 1 0;min-width:0;flex-direction:column;justify-content:center;gap:3px;padding:0 1px;color:rgba(var(--tint),.5)}
+.og-bar .og-tab.on{color:var(--k)}
+.og-bar .og-tab .ic{width:42px;height:30px;border-radius:12px;transition:background .3s}
+.og-bar .og-tab .ic svg{width:21px;height:21px}
+.og-bar .og-tab.on .ic{background:color-mix(in srgb,var(--k) 18%,transparent)}
+.og-bar .og-tab .lb{font-size:10px;font-weight:600;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.og-bar .og-tab::after{content:'';position:absolute;left:30%;right:30%;bottom:0;height:3px;border-radius:3px 3px 0 0;background:var(--k);box-shadow:0 0 10px var(--k);transform:scaleX(0);transition:transform .4s cubic-bezier(.34,1.56,.64,1);pointer-events:none}
+.og-bar .og-tab.on::after{transform:scaleX(1)}
+.og-count{position:absolute;top:-6px;right:-12px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:var(--bad);color:#fff;font-size:9px;font-weight:700;line-height:16px;text-align:center;font-family:inherit;box-shadow:0 0 0 2px var(--ground)}
+.og-bar .og-count{top:-2px;right:-2px}
+@media (prefers-reduced-motion:reduce){.og-tab::after,.og-bar .og-tab .ic{transition:none}}

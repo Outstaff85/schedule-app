@@ -281,7 +281,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // The phone bottom bar (variant 11): Today, Schedule, Workers, Accounting, More; More opens a sheet with the other tabs.
   const bb = await p.evaluate(async () => {
     const btns = () => [...document.querySelectorAll('[data-testid=shell-bar] > button')], more = () => btns()[btns().length - 1];
-    const shown = btns().map(t => t.querySelector('span.truncate').textContent.trim());
+    const shown = btns().map(t => t.querySelector('.lb').textContent.trim());
     const bar = document.querySelector('[data-testid=shell-bar]').getBoundingClientRect(), fixed = Math.abs(bar.bottom - innerHeight) < 2 && Math.abs(bar.width - innerWidth) < 2;
     const todayColor = getComputedStyle(btns()[0]).color;
     more().click(); await new Promise(r => setTimeout(r, 400));
