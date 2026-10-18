@@ -654,13 +654,19 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const btns = [...document.querySelectorAll('#adminRoot [data-testid="admin-tabs"] button')].map(b => b.dataset.k);
     switchAdminPane('firms');
     await new Promise(r => setTimeout(r, 2500));
-    const txt = document.getElementById('adminFirmsList').innerText;
+    const own = document.querySelector('#adminRoot [data-testid="own-firm"]');
+    const txt = own ? own.innerText : '';
     const prof = await refreshTenantProfile(0);
-    return {btns, txt: txt.slice(0, 200), superBar: document.getElementById('adminFirmsSuperBar').style.display, prof: prof && prof.companyName, profile: !!document.getElementById('adminPane_profile')};
+    // the React Firms section (stage 6f-2): one plate for the own firm, no super-admin bar, a tap edits it
+    T.tap(own); await T.until(() => document.querySelector('#firmModal [data-testid="firm-window"]'), 3000);
+    const win = document.querySelector('#firmModal [data-testid="firm-window"]');
+    const edit = !!win && win.dataset.mode === 'mine' && document.getElementById('editFirmOverlay').classList.contains('open') && document.getElementById('fCompanyName').value === 'Firm One';
+    closeModal('editFirmOverlay');
+    return {btns, txt: txt.slice(0, 200), superBar: document.querySelector('#adminRoot [data-testid="firms-bar"]') ? 'flex' : 'none', prof: prof && prof.companyName, profile: !!document.getElementById('adminPane_profile'), edit};
   });
   console.log('FIRMS', JSON.stringify(fm));
-  ok(fm.btns.includes('firms') && !fm.btns.includes('profile') && !fm.profile && /Firm One/.test(fm.txt) && /012345678/.test(fm.txt) && fm.superBar === 'none' && fm.prof === 'Firm One',
-    'owner: Firms shows own firm card (Form 101 fields), no Profile pane; profile refreshes from the server');
+  ok(fm.btns.includes('firms') && !fm.btns.includes('profile') && !fm.profile && /Firm One/.test(fm.txt) && /012345678/.test(fm.txt) && fm.superBar === 'none' && fm.prof === 'Firm One' && fm.edit,
+    'owner: Firms shows own firm card (Form 101 fields), no Profile pane, a tap edits it; profile refreshes from the server ' + JSON.stringify(fm));
   // Uploads to Storage: a worker document, the sidecar read back, then deleted
   const up = await p.evaluate(async () => {
     const r = await uploadWorkerFile({action:'saveWorkerFile', workerId:'w1', fileBase64:btoa('hello'), fileName:'contract.pdf', mimeType:'application/pdf'}, ()=>{});
@@ -683,19 +689,23 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     switchTab('admin'); switchAdminPane('users'); await wait(1500);
     const sup = loadAdminCache('users_' + activeTenantIdForAdmin()).find(u => u.username === 'sup1');
     await openEditUserForm(sup.id); await wait(300);
-    const r = {shown: document.getElementById('userFormHrWorkersField').style.display !== 'none', before: document.getElementById('userFormHrWorkers').innerText};
-    openHrAssignModal(); await wait(200);
-    r.offered = document.getElementById('hrAssignList').innerText;
-    toggleHrAssignPick('w2', true); await submitHrAssign(); await wait(300);
-    r.after = document.getElementById('userFormHrWorkers').innerText;
+    // the user window and "Add workers" are React (stage 6f-2), drawn into #userFormModal / #hrAssignModal
+    const team = () => document.querySelector('#userFormModal [data-testid="user-team"]').textContent;
+    const r = {shown: !!document.querySelector('#userFormModal [data-sec="workers"]'), before: team()};
+    document.querySelector('#userFormModal [data-testid="user-add-workers"]').click(); await wait(300);
+    r.offered = document.querySelector('#hrAssignModal [data-testid="assign-list"]').textContent;
+    r.over = document.getElementById('userFormOverlay').classList.contains('open') && document.getElementById('hrAssignOverlay').classList.contains('open');
+    document.querySelector('#hrAssignModal [data-testid="assign-worker"][data-wid="w2"]').click(); await wait(50);
+    document.querySelector('#hrAssignModal [data-testid="assign-save"]').click(); await wait(500);
+    r.after = team(); r.assignClosed = !document.getElementById('hrAssignOverlay').classList.contains('open');
     r.w2 = workers.find(w => w.id === 'w2').supplierId;
-    await unassignHrWorker('w2'); await wait(300);
-    r.back = workers.find(w => w.id === 'w2').supplierId; r.end = document.getElementById('userFormHrWorkers').innerText;
+    document.querySelector('#userFormModal [data-testid="team-worker"][data-wid="w2"] [data-testid="team-unassign"]').click(); await wait(400);
+    r.back = workers.find(w => w.id === 'w2').supplierId; r.end = team();
     closeModal('userFormOverlay');
     return r;
   });
   ok(sw.shown && /Avi Cohen/.test(sw.before) && !/Dana Levi/.test(sw.before) && /Dana Levi/.test(sw.offered) && !/Avi Cohen/.test(sw.offered)
-     && /Dana Levi/.test(sw.after) && sw.w2 === 's-1' && !sw.back && !/Dana Levi/.test(sw.end), 'users: a supplier login lists its supplier\'s workers; add and unassign ' + JSON.stringify(sw));
+     && sw.over && sw.assignClosed && /Dana Levi/.test(sw.after) && sw.w2 === 's-1' && !sw.back && !/Dana Levi/.test(sw.end), 'users: a supplier login lists its supplier\'s workers; add and unassign ' + JSON.stringify(sw));
   // load whole history, then the punch log
   await p.evaluate(() => ensureAllPunches());
   ok(await waitFor(p, () => getPunchLog().length === 4), 'owner: all punches after ensureAllPunches');
@@ -1145,10 +1155,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     openAddSupplier(); await wait(100); r.supplier = rsecs('supplierModal'); r.supSave = !!document.querySelector('#supplierModal [data-testid="supplier-save"]');
     r.supNameAmber = document.querySelector('#supplierModal [data-sec="supplier"]').style.getPropertyValue('--c').trim(); closeModal('supplierOverlay');
     openEditSupplier(suppliers[0].id); await wait(100); r.supplierEdit = rsecs('supplierModal').map(x => x.replace('*', '')).join(); closeModal('supplierOverlay'); await wait(150);
-    openCreateUserForm(); await wait(100); const role = document.getElementById('userFormRole'); role.value = 'hr'; role.dispatchEvent(new Event('change')); await wait(50);
-    r.userHr = secs('userFormOverlay').map(x => x.replace('*', '')).join(); r.roleSeg = !!document.querySelector('#userFormOverlay .seg-sel button.on[data-v="hr"]');
-    role.value = 'staff'; role.dispatchEvent(new Event('change')); closeModal('userFormOverlay'); await wait(150);
-    openCreateUserForm(); await wait(100); r.user = secs('userFormOverlay'); closeModal('userFormOverlay');
+    // the user window is React (stage 6f-2): the Role is a ToggleGroup, the section plates Accordion items
+    openCreateUserForm(); await wait(100); document.querySelector('#userFormModal [data-testid="user-role"] [data-v="hr"]').click(); await wait(50);
+    r.userHr = rsecs('userFormModal').map(x => x.replace('*', '')).join(); r.roleSeg = document.querySelector('#userFormModal [data-testid="user-role"] [data-v="hr"]').dataset.state === 'on';
+    closeModal('userFormOverlay'); await wait(150);
+    openCreateUserForm(); await wait(100); r.user = rsecs('userFormModal'); closeModal('userFormOverlay');
     // closing one window brings back the one it was opened over: close them all
     for(let i = 0; i < 3; i++){ await wait(150); document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); }
     return r;
@@ -1223,8 +1234,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await loadFirmMessages(true);
     r.defLink = decodeURIComponent(waLink(w, {start:'00:01'}));
     openMyFirmForm(); await wait(800);
-    r.field = document.getElementById('firmEditWaField').style.display !== 'none' && /full name/.test(document.getElementById('firmEditWa').value);
-    const ta = document.getElementById('firmEditWa'); ta.value = 'Hello {first name}, shift at {start} · {site}'; await saveFirmWaTemplate();
+    r.field = !!document.querySelector('#firmModal [data-testid="firm-wa"]') && /full name/.test(document.getElementById('fWa').value);
+    // the reminder is saved on its own when it changes (on leaving the field)
+    const ta = document.getElementById('fWa'); ta.focus(); T.fill(ta, 'Hello {first name}, shift at {start} · {site}'); await wait(50); ta.blur();
+    await T.until(() => __firmMsgs && __firmMsgs.waTemplate === 'Hello {first name}, shift at {start} · {site}', 4000);
     closeModal('editFirmOverlay'); await wait(200);
     __firmMsgs = null; await loadFirmMessages(true);
     r.saved = __firmMsgs.waTemplate;
@@ -1512,12 +1525,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.click('#clientModal [data-testid="editor-menu"]'); await p.waitForSelector('[role="menuitem"]');
   const ed4items = await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(b => b.innerText.trim()));
   await p.keyboard.press('Escape'); await sleep(150);
-  const ed4 = await p.evaluate(items => {
+  const ed4 = await p.evaluate(async items => {
     const map = !!document.getElementById('cMapMini');
     const fieldRadius = getComputedStyle(document.getElementById('cName')).borderTopLeftRadius;
-    closeModal('clientOverlay');
-    openCreateUserForm(); document.getElementById('userFormFullName').value = 'Rina Mizrahi'; drawUserFormHead();
-    const user = {title: document.getElementById('userFormTitle').textContent, av: document.getElementById('userFormAv').textContent};
+    closeModal('clientOverlay'); await T.tick(150);
+    openCreateUserForm(); T.fill('uFullName', 'Rina Mizrahi'); await T.tick(50);
+    const head = document.querySelector('#userFormModal [data-testid="editor-head"]');
+    const user = {title: head.querySelector('[data-testid="editor-title"]').textContent, av: head.firstElementChild.textContent};
     closeModal('userFormOverlay');
     return {items, map, fieldRadius, user};
   }, ed4items);
@@ -1550,32 +1564,74 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ctx = await newCtx(); p = await page(ctx);
   await login(p, BASE + 'schedule-manager.html', 'boss', 'boss-pass-1');
   await p.waitForNavigation().catch(()=>{});
-  ok(await waitFor(p, () => document.getElementById('firmsScreen').style.display === 'block' && __firmsCache.length === 2), 'boss: firms list (listTenants)');
-  // The firms list: ✎ and a bare ⋮ (Disable, Delete last via Undo); Select; a single click switches (below).
+  ok(await waitFor(p, () => document.getElementById('firmsScreen').style.display === 'block' && __firmsCache.length === 2 && document.querySelectorAll('#firmsScreenRoot [data-testid="firm-row"]').length === 2), 'boss: firms list (listTenants)');
+  // The firms list (React, stage 6f-2): ✎ and a bare ⋮ (Edit, Disable, Delete last via Undo); Select; a tap opens the firm (below).
   const fl = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
-    const row = document.querySelector('#firmsList .row.tap-edit');
-    const out = {pencil: !!row.querySelector('.ti-pencil'), x: !!row.querySelector('.t3-x'), pause: !!row.querySelector('.ti-player-pause, .ti-player-play'), box: !!row.querySelector('.t3-cb'), head: !!document.querySelector('#firmsList').previousElementSibling && document.querySelector('#firmsList').previousElementSibling.className === 'sel-head'};
-    row.querySelector('.ti-pencil').parentElement.click(); await wait(200);
-    out.edit = document.getElementById('editFirmOverlay').classList.contains('open'); closeModal('editFirmOverlay'); await wait(200);
-    row.querySelector('.t3-kb').click(); await wait(50);
-    out.menu = [...document.querySelectorAll('#ogPop .og-pop-it')].map(b => (b.classList.contains('del') ? '!' : '') + b.textContent.trim()).join();
+    const row = () => document.querySelector('#firmsScreenRoot [data-testid="firm-row"][data-tid="tenant-two"]');
+    const out = {pencil: !!row().querySelector('[data-testid="firm-edit"]'), select: !!document.querySelector('#firmsScreenRoot [data-testid="firms-select"] button'),
+      incomplete: /profile incomplete/.test(row().innerText) === (firmProfileMissing(__firmsCache.find(t => t.tenantId === 'tenant-two')).length > 0)};
+    row().querySelector('[data-testid="firm-edit"]').click(); await wait(300);
+    const win = document.querySelector('#firmModal [data-testid="firm-window"]');
+    out.edit = document.getElementById('editFirmOverlay').classList.contains('open') && !!win && win.dataset.mode === 'edit' && document.getElementById('fCompanyName').value === 'Firm Two' && !document.querySelector('#firmModal [data-testid="firm-wa"]');
+    out.hebrew = /שם המעסיק/.test(win.innerText) && /מספר תיק ניכויים/.test(win.innerText);
+    closeModal('editFirmOverlay'); await wait(200);
     let calls = 0; const f = window.fetch; window.fetch = (u, o) => { if(o && /deleteTenant/.test(o.body)) calls++; return f(u, o); };
-    document.querySelector('#ogPop .og-pop-it.del').click(); await wait(300);
-    out.snack = document.getElementById('undoSnack').classList.contains('open') && !!row.closest('.gone, .sw.gone') || row.classList.contains('gone');
-    document.querySelector('#undoSnack .og-snack-u').click(); await wait(400);
-    out.kept = calls === 0 && __firmsCache.length === 2 && !!document.querySelector('#firmsList .row.tap-edit');
-    window.fetch = f;
+    window.__fl = {calls: () => calls, restore: () => { window.fetch = f; }};
     return out;
   });
-  ok(fl.pencil && !fl.x && !fl.pause && fl.box && fl.head && fl.edit && fl.menu === 'Disable,!Delete' && fl.snack && fl.kept, 'firms: ✎ edits, ⋮ holds Disable and Delete (Undo, no confirm), Select always on ' + JSON.stringify(fl));
-  await p.evaluate(() => switchToTenant('tenant-one'));
+  await p.click('#firmsScreenRoot [data-testid="firm-row"][data-tid="tenant-two"] .og-kb');
+  await p.waitForSelector('[role="menuitem"]');
+  const flMenu = await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(b => b.innerText.trim()).join());
+  await p.click('[role="menuitem"]:has-text("Delete")');
+  await sleep(300);
+  const fl2 = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const out = {snack: !!document.querySelector('[data-testid="undo-snack"]') && !document.querySelector('#firmsScreenRoot [data-testid="firm-row"][data-tid="tenant-two"]')};
+    document.querySelector('[data-testid="undo-snack"] .og-snack-u').click(); await wait(400);
+    out.kept = window.__fl.calls() === 0 && __firmsCache.length === 2 && !!document.querySelector('#firmsScreenRoot [data-testid="firm-row"][data-tid="tenant-two"]');
+    window.__fl.restore();
+    return out;
+  });
+  ok(fl.pencil && fl.select && fl.incomplete && fl.edit && fl.hebrew && flMenu === 'Edit,Disable,Delete' && fl2.snack && fl2.kept,
+    'firms: ✎ edits (the Form 101 labels Hebrew), ⋮ holds Edit, Disable and Delete (Undo, no confirm), Select ' + JSON.stringify({fl, flMenu, fl2}));
+  // A new firm through the firm window: owner name, login and the employer block; the list then shows it.
+  const nf = await p.evaluate(async () => {
+    openCreateFirmForm(); await T.tick(150);
+    const r = {mode: document.querySelector('#firmModal [data-testid="firm-window"]').dataset.mode, login: !!document.getElementById('fUsername')};
+    document.querySelector('#firmModal [data-testid="firm-save"]').click(); await T.tick(100);
+    r.needLogin = /Username and password/.test(document.querySelector('#firmModal [data-testid="firm-error"]').textContent);
+    T.fill('fOwnerName', 'Nir Third'); T.fill('fUsername', 'owner3'); T.fill('fPassword', 'owner-pass-3'); T.fill('fCompanyName', 'Firm Three');
+    await T.tick(50);
+    document.querySelector('#firmModal [data-testid="firm-save"]').click();
+    r.closed = await T.until(() => !document.getElementById('editFirmOverlay').classList.contains('open'), 15000);
+    r.listed = await T.until(() => [...document.querySelectorAll('#firmsScreenRoot [data-testid="firm-row"]')].some(x => /Firm Three/.test(x.innerText)), 10000);
+    return r;
+  });
+  ok(nf.mode === 'create' && nf.login && nf.needLogin && nf.closed && nf.listed, 'firms: a new firm with its owner login through the firm window ' + JSON.stringify(nf));
+  // Disable / Enable from Select, then the new firm deleted (its Undo time runs out).
+  const fd = await p.evaluate(async () => {
+    const row = id => document.querySelector('#firmsScreenRoot [data-testid="firm-row"][data-tid="' + id + '"]');
+    const t3 = __firmsCache.find(t => t.companyName === 'Firm Three').tenantId;
+    document.querySelector('#firmsScreenRoot [data-testid="firms-select"] button').click(); await T.tick(50);
+    T.tap(row(t3)); await T.tick(50);
+    document.querySelector('[data-testid="select-bar"] [data-testid="sel-disable"]').click();
+    const off = await T.until(() => (__firmsCache.find(t => t.tenantId === t3) || {}).active === false && /disabled/.test(row(t3).innerText), 10000);
+    await setTenantsActive([t3], true);
+    const on = (__firmsCache.find(t => t.tenantId === t3) || {}).active !== false;
+    await deleteTenantsNow([t3]);
+    return {off, on, gone: !__firmsCache.some(t => t.tenantId === t3) && !row(t3)};
+  });
+  ok(fd.off && fd.on && fd.gone, 'firms: Select → Disable, Enable, and delete (deleteTenant) ' + JSON.stringify(fd));
+  await p.evaluate(() => { T.tap(document.querySelector('#firmsScreenRoot [data-testid="firm-row"][data-tid="tenant-one"]')); });
   await p.waitForNavigation().catch(()=>{});
-  ok(await waitFor(p, () => workers.length === 2), 'boss: viewing Firm One');
-  await p.evaluate(() => { switchTab('admin'); switchAdminPane('firms'); toggleSuperadminAccounting(); });
-  ok(await waitFor(p, () => /Firm Two/.test(document.getElementById('superadminAccountingWrap').innerText) && !/Loading/.test(document.getElementById('superadminAccountingWrap').innerText)), 'boss: summary rendered');
-  const sum = await p.evaluate(() => document.getElementById('superadminAccountingWrap').innerText);
-  ok(/Firm Two\s+2\.0h\s+₪200/.test(sum), 'summary: Firm Two pays 2h × its own client rate 100 = ₪200');
+  ok(await waitFor(p, () => workers.length === 2), 'boss: viewing Firm One (a tap on its plate)');
+  await p.evaluate(() => { switchTab('admin'); switchAdminPane('firms'); });
+  await p.waitForSelector('#adminRoot [data-testid="firms-payable"]');
+  await p.click('#adminRoot [data-testid="firms-payable"]');
+  ok(await waitFor(p, () => document.querySelectorAll('#adminRoot [data-testid="payable-row"]').length === 2, 20000), 'boss: summary rendered');
+  const sum = await p.evaluate(() => [...document.querySelectorAll('#adminRoot [data-testid="payable-row"]')].map(r => r.innerText.replace(/\s+/g, ' ')).join(' | '));
+  ok(/Firm Two Hours \(this week\): 2\.0h ₪200/.test(sum), 'summary: Firm Two pays 2h × its own client rate 100 = ₪200 ' + sum);
   ok(await p.evaluate(() => clients.length === 2 && clients[0].id === 'c1'), 'summary: the loaded firm\'s clients are back');
   // Admin lists draw 10 rows at first (Errors, Timings), at phone and desktop sizes
   await p.evaluate(async () => {
@@ -1587,46 +1643,51 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   for (const [w, h] of [[1280, 800], [390, 800]]) {
     await p.setViewportSize({width:w, height:h});
     await p.evaluate(() => { switchTab('admin'); switchAdminPane('errors'); });
-    await waitFor(p, () => document.querySelectorAll('#adminErrorsList .errors-rows > .t3-line').length >= 10);
+    await waitFor(p, () => document.querySelectorAll('#adminRoot [data-testid="error-row"]').length >= 10);
     await sleep(1500);
-    const er = await p.evaluate(() => [document.querySelectorAll('#adminErrorsList .errors-rows > .t3-line').length, !!document.querySelector('#adminErrorsList .errors-rows > .paged-more')]);
+    const er = await p.evaluate(() => [document.querySelectorAll('#adminRoot [data-testid="error-row"]').length, !!document.querySelector('#adminRoot [data-testid="errors-list"] [data-slot="paged-more"]')]);
     await p.evaluate(() => switchAdminPane('timings'));
-    await waitFor(p, () => document.querySelectorAll('#timingsLatestList > .t3-line').length >= 10);
+    await waitFor(p, () => document.querySelectorAll('#adminRoot [data-testid="timing-row"]').length >= 10);
     await sleep(1500);
-    const tm = await p.evaluate(() => [document.querySelectorAll('#timingsLatestList > .t3-line').length, !!document.querySelector('#timingsLatestList > .paged-more')]);
+    const tm = await p.evaluate(() => [document.querySelectorAll('#adminRoot [data-testid="timing-row"]').length, !!document.querySelector('#adminRoot [data-testid="timing-rows"] [data-slot="paged-more"]')]);
     await p.screenshot({path: SP + '/shot_timings_' + w + '.png'});
     console.log('LISTS', w, 'errors', JSON.stringify(er), 'timings', JSON.stringify(tm));
     ok(er[0] === 10 && er[1] && tm[0] === 10 && tm[1], `admin lists: exactly 10 rows at first at ${w}px (errors ${er[0]}, timings ${tm[0]})`);
   }
+  await p.setViewportSize({width:1280, height:800});
   // Period picker: a past month has none of today's rows; Copy all takes only the period
   const per = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
+    const rowsOf = kind => (ManagerBridge.admin().logs || {}).rows || [];
     switchAdminPane('timings'); await wait(800);
-    const sel = document.getElementById('adminTimingsPeriod');
-    const opts = [...sel.options].map(o => o.value);
-    const cur = __timingsRows.length;
-    sel.value = opts[3]; await loadTimingsPane();   // last month
-    const past = __timingsRows.length, text = document.getElementById('adminTimingsWrap').innerText;
-    sel.value = '30d'; await loadTimingsPane();
+    const opts = logPeriodOptions().map(o => o[0]);
+    const cur = rowsOf('timings').length, kinds = document.querySelectorAll('#adminRoot [data-testid="timing-kind"]').length;
+    let copied = ''; const keep = copyTextToClipboard; copyTextToClipboard = t => { copied = t; };
+    document.querySelector('#adminRoot [data-testid="log-copy"]').click();
+    ManagerBridge.setLogPeriod('timings', opts[3]); await wait(1200);   // last month
+    const past = rowsOf('timings').length, text = document.querySelector('#adminRoot [data-testid="timings"]').innerText, shownPeriod = document.querySelector('#adminRoot [data-testid="timings"]').dataset.period;
+    ManagerBridge.setLogPeriod('timings', '30d'); await wait(800);
     switchAdminPane('errors'); await wait(800);
-    const esel = document.getElementById('adminErrorsPeriod');
-    esel.value = opts[3]; await loadErrorsList('adminErrorsList');
-    const epast = (__errorsRowsByTarget.adminErrorsList || []).length;
-    esel.value = '30d'; await loadErrorsList('adminErrorsList');
-    return {opts: opts.length, first: opts.slice(0, 3), cur, past, text: text.slice(0, 80), epast, enow: (__errorsRowsByTarget.adminErrorsList || []).length, cards: document.querySelectorAll('#timingsCards > .t3-line').length};
+    ManagerBridge.setLogPeriod('errors', opts[3]); await wait(1200);
+    const epast = rowsOf('errors').length;
+    ManagerBridge.setLogPeriod('errors', '30d'); await wait(1200);
+    copyTextToClipboard = keep;
+    return {opts: opts.length, first: opts.slice(0, 3), cur, past, shownPeriod, text: text.slice(0, 80), epast, enow: rowsOf('errors').length, kinds, copied: copied.slice(0, 60), copiedRows: (copied.match(/\n\n/g) || []).length};
   });
   console.log('PERIOD', JSON.stringify(per));
-  ok(per.opts === 14 && per.cur >= 20 && per.past === 0 && per.epast === 0 && per.enow >= 40, 'errors/timings: period picker loads one period at a time');
-  // Reset (Timings / Errors): every error and measurement is deleted, the panes show none.
+  ok(per.opts === 14 && per.cur >= 20 && per.past === 0 && per.shownPeriod !== '30d' && per.epast === 0 && per.enow >= 40 && per.kinds >= 1 && /median/.test(per.copied), 'errors/timings: period picker loads one period at a time; Copy all ' + JSON.stringify(per));
+  // Reset (Timings / Errors): behind the Alert Dialog; every error and measurement is deleted, the panes show none.
+  await p.evaluate(() => switchAdminPane('timings')); await sleep(800);
+  await p.click('#adminRoot [data-testid="log-reset"]');
+  await p.waitForSelector('[data-testid="reset-logs"]');
+  await p.click('[data-testid="reset-submit"]');
+  await sleep(1500);
   const rst = await p.evaluate(async () => {
-    switchAdminPane('timings'); await new Promise(r => setTimeout(r, 800));
-    const btn = !!document.getElementById('adminResetLogsBtn');
-    await resetLogs(); await new Promise(r => setTimeout(r, 800));
     const t = await (await fetch(API_URL + '?action=loadTimings' + gsAuthQuery())).json();
     const e = await (await fetch(API_URL + '?action=loadErrors' + gsAuthQuery())).json();
-    return {btn, timings: (t.rows || []).length, errors: (e.rows || []).length, shown: __timingsRows.length};
+    return {dialogGone: !document.querySelector('[data-testid="reset-logs"]'), timings: (t.rows || []).length, errors: (e.rows || []).length, shown: ((ManagerBridge.admin().logs || {}).rows || []).length, empty: !!document.querySelector('#adminRoot [data-testid="timings-empty"]')};
   });
-  ok(rst.btn && rst.timings === 0 && rst.errors === 0 && rst.shown === 0, 'timings: Reset deletes every error and measurement ' + JSON.stringify(rst));
+  ok(rst.dialogGone && rst.timings === 0 && rst.errors === 0 && rst.shown === 0 && rst.empty, 'timings: Reset deletes every error and measurement ' + JSON.stringify(rst));
   ok(p.errs.length === 0, 'boss: no page errors ' + p.errs.join(' | '));
   await ctx.close();
 
@@ -1912,50 +1973,54 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     try { r.url = await (await loadFirestoreBackend()).storageUrl(path); } catch (e) { r.err = String(e); }
     setAccTab('salary'); return r; }, stored.signed.path);
   ok(/Signed/.test(osg.text) && osg.btn && /signed\.pdf/.test(decodeURIComponent(osg.url || '')), 'owner: the client\'s signed month in Hours approvals, with the PDF to open ' + JSON.stringify(osg));
-  // Admin → Users: the owner is pinned first; the client login shows its client and hours ticks.
+  // Admin → Users (React, stage 6f-2): the owner is pinned first; the client login shows its client and hours ticks.
   const ul = await q.evaluate(async () => { switchTab('admin'); switchAdminPane('users');
-    for(let i = 0; i < 60 && document.querySelectorAll('.admin-users-rows > div').length < 2; i++) await new Promise(r => setTimeout(r, 150));
-    return [...document.querySelectorAll('.admin-users-rows > div')].map(r => r.innerText.replace(/\s+/g, ' ')); });
+    await T.until(() => document.querySelectorAll('#adminRoot [data-testid="user-row"]').length >= 2, 9000);
+    return [...document.querySelectorAll('#adminRoot [data-testid="user-row"]')].map(r => r.innerText.replace(/\s+/g, ' ')); });
   ok(ul.length >= 2 && /\bowner\b/.test(ul[0]) && ul.some(t => /\bclient\b/.test(t) && /Site B/.test(t) && /Approve/.test(t) && /Fix/.test(t)), 'users: the owner pinned first; a client login shows its client and hours ticks ' + JSON.stringify(ul.slice(0, 3)));
-  // Lists (redesign stage 2): a plate per user, the ⋮ popover (Delete last, red, under a divider), Delete collapses the line behind the Undo snack and Undo brings it back; Select mode.
-  const ls = await q.evaluate(async () => {
-    const wait = ms => new Promise(r => setTimeout(r, ms));
-    const target = [...document.querySelectorAll('.admin-users-rows > .sw')].find(s => /\bclient\b/.test(s.innerText)), line = target.querySelector('.t3-line');
-    const cs = getComputedStyle(line), r = {plate: /inset/.test(cs.boxShadow) && cs.borderRadius === '16px', swipe: target.querySelectorAll('.sw-acts button').length};
-    line.querySelector('.t3-kb').click(); await wait(50);
-    r.pop = [...document.querySelectorAll('#ogPop .og-pop-it')].map(b => (b.classList.contains('del') ? '!' : '') + b.innerText.trim()).join(); r.hr = !!document.querySelector('#ogPop .og-pop-hr');
-    document.querySelector('#ogPop .og-pop-it.del').click(); await wait(400);
-    r.gone = target.classList.contains('gone'); r.snack = document.getElementById('undoSnack').classList.contains('open') && /deleted/.test(document.getElementById('undoSnack').innerText);
-    document.querySelector('#undoSnack .og-snack-u').click(); await wait(400);
-    r.back = !target.classList.contains('gone') && !document.getElementById('undoSnack').classList.contains('open');
-    const boxes = [...document.querySelectorAll('.admin-users-rows .t3-line')].map(l => !!l.querySelector('.t3-cb'));
-    r.n = boxes.length; r.ownerNoBox = boxes[0] === false && boxes.slice(1).every(Boolean);
-    const line2 = [...document.querySelectorAll('.admin-users-rows .t3-line')].find(l => /\bclient\b/.test(l.innerText));
-    r.kbShown = getComputedStyle(line2.querySelector('.t3-kb')).opacity === '1';
-    document.querySelector('.sel-head [data-h="on"]').click(); document.querySelector('.sel-head [data-h="all"]').click();
-    r.all = document.querySelector('.sel-bar b').innerText.trim(); r.picked = document.querySelectorAll('.admin-users-rows .t3-line.picked').length;
-    line2.querySelector('.t3-cb').click(); r.unpicked = !line2.classList.contains('picked') && !document.getElementById('userFormOverlay').classList.contains('open');
-    [...document.querySelectorAll('.sel-bar .gbtn')].find(b => b.dataset.a === 'x').click();
-    r.ended = !document.querySelector('.sel-bar') && !!document.querySelector('.sel-head') && !!document.querySelector('.sel-head [data-h="on"]') && !document.querySelector('.admin-users-rows .t3-line.picked');
+  // Lists: a plate per user, the ⋮ menu (Edit, Delete), Delete takes the plate behind the Undo snack and Undo brings it back; Select mode.
+  const clientRow = '#adminRoot [data-testid="user-row"][data-role="client"]';
+  const lsA = await q.evaluate(sel => ({plate: !!document.querySelector(sel + ' .og-plate'), uid: document.querySelector(sel).dataset.uid}), clientRow);
+  await q.click(clientRow + ' .og-kb'); await q.waitForSelector('[role="menuitem"]');
+  const lsPop = await q.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(b => b.innerText.trim()).join());
+  let delCalls = 0; await q.exposeFunction('__countDel', () => { delCalls++; });
+  await q.evaluate(() => { const f = window.fetch; window.__fetchKeep = f; window.fetch = (u, o) => { if(o && /"deleteUser"/.test(o.body)) window.__countDel(); return f(u, o); }; });
+  await q.click('[role="menuitem"]:has-text("Delete")'); await sleep(400);
+  const ls = await q.evaluate(async ({sel, uid}) => {
+    const r = {gone: !document.querySelector('#adminRoot [data-testid="user-row"][data-uid="' + uid + '"]'), snack: !!document.querySelector('[data-testid="undo-snack"]')};
+    document.querySelector('[data-testid="undo-snack"] .og-snack-u').click(); await T.tick(400);
+    r.back = !!document.querySelector(sel) && !document.querySelector('[data-testid="undo-snack"]');
+    window.fetch = window.__fetchKeep;
+    document.querySelector('#adminRoot [data-testid="users-select"] button').click(); await T.tick(50);
+    const rows = [...document.querySelectorAll('#adminRoot [data-testid="user-row"]')];
+    r.n = rows.length; r.ownerNoBox = !rows[0].querySelector('.og-box') && rows.slice(1).every(x => !!x.querySelector('.og-box'));
+    [...document.querySelectorAll('#adminRoot [data-testid="select-head"] button')].pop().click(); await T.tick(50);
+    r.all = document.querySelector('[data-testid="select-bar"] b').innerText.trim();
+    T.tap(document.querySelector(sel)); await T.tick(50);
+    r.unpicked = document.querySelector('[data-testid="select-bar"] b').innerText.trim() === (r.n - 2) + ' selected' && !document.getElementById('userFormOverlay').classList.contains('open');
+    [...document.querySelectorAll('[data-testid="select-bar"] button')].pop().click(); await T.tick(50);
+    r.ended = !document.querySelector('[data-testid="select-bar"]') && !document.querySelector('#adminRoot .og-box');
     return r;
-  });
-  ok(ls.plate && ls.swipe === 2 && ls.pop === 'Edit,!Delete' && ls.hr && ls.gone && ls.snack && ls.back, 'lists: a plate per user; ⋮ opens Edit / Delete; Delete collapses it behind the Undo snack, Undo brings it back ' + JSON.stringify(ls));
-  ok(ls.ownerNoBox && ls.kbShown && ls.picked === ls.n - 1 && ls.all === (ls.n - 1) + ' selected' && ls.unpicked && ls.ended, 'lists: Select — boxes (none for the owner), ⋮ stays, Select all, a box tick, ✕ clears the ticks ' + JSON.stringify(ls));
-  // The user form: one Hours block for HR / supplier / client; "Only own workers" at the bottom, locked on for a supplier and a client.
-  const uf = await q.evaluate(() => {
-    openCreateUserForm(); const role = document.getElementById('userFormRole'), out = {};
+  }, {sel: clientRow, uid: lsA.uid});
+  ok(lsA.plate && lsPop === 'Edit,Delete' && ls.gone && ls.snack && ls.back && delCalls === 0, 'lists: a plate per user; ⋮ opens Edit / Delete; Delete takes it behind the Undo snack, Undo brings it back ' + JSON.stringify({lsPop, ls, delCalls}));
+  ok(ls.ownerNoBox && ls.all === (ls.n - 1) + ' selected' && ls.unpicked && ls.ended, 'lists: Select — boxes (none for the owner), Select all, a tap unticks, ✕ ends ' + JSON.stringify(ls));
+  // The user form: one Hours block for HR / supplier / client; "Only own workers" locked on for a supplier and a client.
+  const uf = await q.evaluate(async () => {
+    openCreateUserForm(); await T.tick(100); const out = {};
+    const tiles = id => [...document.querySelectorAll('#userFormModal [data-testid="' + id + '"] [data-k]')].filter(x => x.getAttribute('data-state') === 'checked').map(x => x.dataset.k).join(',');
     for(const r of ['staff', 'hr', 'supplier', 'client']){
-      role.value = r; role.dispatchEvent(new Event('change'));
-      const own = document.getElementById('userFormOwnOnly');
-      out[r] = {hours: document.getElementById('userFormHourPermsField').style.display !== 'none', own: document.getElementById('userFormHrFields').style.display !== 'none',
-        locked: own.disabled && own.checked, ticks: [...document.querySelectorAll('.userFormHourPermCb:checked')].map(c => c.value).join(','),
-        secs: document.getElementById('userFormSupSectionsField').style.display !== 'none' ? [...document.querySelectorAll('.userFormSupSecCb:checked')].map(c => c.value).join(',') : null};
+      document.querySelector('#userFormModal [data-testid="user-role"] [data-v="' + r + '"]').click(); await T.tick(50);
+      const own = document.querySelector('#userFormModal button[data-testid="user-own-only"]');
+      out[r] = {hours: !!document.querySelector('#userFormModal [data-sec="hours"]'), own: !!own,
+        locked: !!own && own.disabled && own.dataset.state === 'checked', ticks: tiles('user-hours'),
+        secs: document.querySelector('#userFormModal [data-testid="user-sup-sections"]') ? tiles('user-sup-sections') : null};
     }
     closeModal('userFormOverlay'); return out;
   });
   ok(!uf.staff.hours && !uf.staff.own && uf.hr.hours && uf.hr.own && !uf.hr.locked && uf.supplier.hours && uf.supplier.locked && uf.client.hours && uf.client.locked && uf.client.ticks === 'hours,approve,dispute,fix' && uf.supplier.secs === 'dashboard,workers,hours' && uf.client.secs === null,
     'user form: one Hours block for HR / supplier / client, own-only locked for supplier and client ' + JSON.stringify(uf));
-  await q.evaluate(() => { openCreateUserForm(); const r = document.getElementById('userFormRole'); r.value = 'supplier'; r.dispatchEvent(new Event('change')); });
+  await q.evaluate(async () => { openCreateUserForm(); await T.tick(100); document.querySelector('#userFormModal [data-testid="user-role"] [data-v="supplier"]').click(); });
+  await sleep(150);
   await (await q.$('#userFormOverlay .modal')).screenshot({path: SP + '/user-form-supplier.png'}).catch(()=>{});
   await q.evaluate(() => closeModal('userFormOverlay'));
   // A kept login opens the portal at once: the login screen never shows on a reload.

@@ -151,7 +151,7 @@ The screen (V7): the line "Real-time attendance overview", then four figures as 
 
 ## Super-admin cross-firm summary
 
-Admin → Firms → "Payable summary (all firms)" (`toggleSuperadminAccounting()` → `renderSuperadminAccounting()`).
+Admin → Firms → "Payable summary (all firms)" (a toggle in the React Firms section, `ManagerBridge.firmsPayable()` → the page's `firmsPayableRows()`; the rows are drawn by `src/manager/Firms.tsx`).
 - For each cached firm, `fetchForTenant('loadSchedule'|'loadPunchLog', tenantId)` reads that firm with an explicit `asTenantId`, so the firm being viewed does not change. Punches: this month plus the week before.
-- It computes this week's hours and pay per firm with the canonical functions (`shiftPayFor`; a daily-paid worker's days set by hand for this week count, as in Salary) and shows a table with a grand total.
+- It computes this week's hours and pay per firm with the canonical functions (`shiftPayFor`; a daily-paid worker's days set by hand for this week count, as in Salary) and shows a plate per firm (hours and pay, "(load failed)" for a firm it could not read) with the grand total on the section's line.
 - The client tier of `effectiveRates()` reads the global `clients`, so while a firm's pay is computed its own clients stand in for the loaded firm's, and are swapped back right after.

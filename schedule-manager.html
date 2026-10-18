@@ -1005,47 +1005,11 @@ body:has(.overlay.open){overflow:hidden}
          docs/history.md for why two "Admin" surfaces existed in the first place
          and setupAdminPaneBar()'s own comment for the merged role-gating. -->
     <div class="page-section" id="sectionAdmin">
-      <!-- Stage 6f-1: the section tabs, the tiles (no section chosen) and the
-           Punch Log are drawn in React (src/manager/Admin.tsx) through
-           window.ManagerIsland — renderAdmin(). The panes below are still the
-           page's; switchAdminPane() shows the open one under the tabs. -->
+      <!-- Stages 6f-1 / 6f-2: the section tabs, the tiles (no section chosen)
+           and every section — Punch Log, Firms, Users, Errors, Timings — are
+           drawn in React (src/manager/Admin.tsx) through window.ManagerIsland
+           — renderAdmin(). -->
       <div id="adminRoot" data-island></div>
-
-      <!-- Panes moved here from the old standalone #adminScreen modal
-           (2026-09-30) — content unchanged, just re-hosted; still reuses
-           renderFirmsList()/loadErrorsList() (parametrized) and
-           openMyFirmForm() rather than re-implementing any of them. -->
-      <div id="adminPane_firms" style="display:none">
-        <div id="adminFirmsSuperBar" style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-          <button class="gbtn" onclick="toggleSuperadminAccounting()"><i class="ti ti-cash"></i> <span data-i18n>Payable summary (all firms)</span></button>
-          <button class="gbtn primary og-new" onclick="openCreateFirmForm()"><i class="ti ti-plus"></i> <span data-i18n>New firm</span></button>
-        </div>
-        <div id="superadminAccountingWrap" style="display:none;margin-bottom:16px"></div>
-        <div id="adminFirmsList"></div>
-      </div>
-      <div id="adminPane_users" style="display:none">
-        <div id="adminUsersWrap"></div>
-      </div>
-      <div id="adminPane_errors" style="display:none">
-        <div class="pane-toolbar">
-          <select id="adminErrorsPeriod" onchange="loadErrorsList('adminErrorsList')"></select>
-          <button class="t3-ib" onclick="copyAllErrors('adminErrorsList')" title="Copy all" data-i18n-title="Copy all"><i class="ti ti-copy"></i></button>
-          <button class="t3-ib" onclick="printLogPane('errors')" title="Print" data-i18n-title="Print"><i class="ti ti-printer"></i></button>
-          <button class="t3-ib" onclick="loadErrorsList('adminErrorsList')" title="Refresh" data-i18n-title="Refresh"><i class="ti ti-refresh"></i></button>
-          <button class="t3-ib red" onclick="resetLogs()" title="Reset: delete every error and measurement" data-i18n-title="Reset: delete every error and measurement"><i class="ti ti-trash"></i></button>
-        </div>
-        <div id="adminErrorsList"></div>
-      </div>
-      <div id="adminPane_timings" style="display:none">
-        <div class="pane-toolbar">
-          <select id="adminTimingsPeriod" onchange="loadTimingsPane()"></select>
-          <button class="t3-ib" onclick="copyAllTimings()" title="Copy all" data-i18n-title="Copy all"><i class="ti ti-copy"></i></button>
-          <button class="t3-ib" onclick="printLogPane('timings')" title="Print" data-i18n-title="Print"><i class="ti ti-printer"></i></button>
-          <button class="t3-ib" onclick="loadTimingsPane()" title="Refresh" data-i18n-title="Refresh"><i class="ti ti-refresh"></i></button>
-          <button class="t3-ib red" id="adminResetLogsBtn" onclick="resetLogs()" title="Reset: delete every error and measurement" data-i18n-title="Reset: delete every error and measurement"><i class="ti ti-trash"></i> <span style="font-size:12px;font-weight:600" data-i18n>Reset</span></button>
-        </div>
-        <div id="adminTimingsWrap"></div>
-      </div>
     </div>
 
     <!-- Accounting (stage 6e): drawn in React (src/manager/Accounting.tsx)
@@ -1179,167 +1143,23 @@ body:has(.overlay.open){overflow:hidden}
         <button class="t3-ib" onclick="logout()" title="Sign out" data-i18n-title="Sign out"><i class="ti ti-logout"></i></button>
       </div>
     </div>
-    <div id="firmsList"></div>
+    <!-- Stage 6f-2: the firms are drawn in React (src/manager/Firms.tsx, FirmsScreen). -->
+    <div id="firmsScreenRoot" data-island></div>
   </div>
 </div>
 
-<!-- Super-admin diagnostics: last ~100 rows of the shared errors collection
-     (every firm's client-side errors land in one collection with
-     no tenantId column — see loadErrors()'s own comment server-side for why
-     this screen is superadmin-only). Overlays whatever screen was showing;
-     "Back" just hides it again, no re-render of the underlying screen needed. -->
-<div id="errorsScreen" style="display:none;position:fixed;inset:0;z-index:960;background:var(--bg);overflow-y:auto">
-  <div style="max-width:960px;margin:0 auto;padding:28px 20px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
-      <div style="font-size:20px;font-weight:700"><i class="ti ti-alert-circle"></i> <span data-i18n>Errors (last 100)</span></div>
-      <div style="display:flex;gap:8px">
-        <button class="btn sm" onclick="loadErrorsList()"><i class="ti ti-refresh"></i> <span data-i18n>Refresh</span></button>
-        <button class="btn sm" onclick="closeErrorsScreen()"><i class="ti ti-x"></i> <span data-i18n>Close</span></button>
-      </div>
-    </div>
-    <div id="errorsList" style="display:flex;flex-direction:column;gap:6px"></div>
-  </div>
-</div>
-
-
-<!-- Create/edit staff/supplier user (Admin panel, Users tab — added 2026-10-02,
-     Admin/Roles plan stage 6). Single form for both create and edit, same
-     pattern as the worker modal — __editingUserId null means "create". -->
+<!-- The user window, "Add workers" and the firm window (stage 6f-2) are
+     drawn in React (src/manager/Users.tsx, Firms.tsx) into these overlays'
+     modals, which the page opens and closes (so they stack and go back to the
+     window they were opened from with the page's other windows). -->
 <div class="overlay" id="userFormOverlay" style="z-index:980">
-  <div class="modal" style="max-width:420px">
-    <div class="og-edh" id="userFormHead"><div class="t3-av og-av wc-av" id="userFormAv"></div><div class="og-edh-n"><h4 id="userFormTitle">New user</h4><p id="userFormSub"></p></div><button class="gbtn icon" type="button" id="userFormMenuBtn" title="More" data-i18n-title="More" aria-label="More" onclick="openUserFormMenu(event,this)"><i class="ti ti-dots-vertical"></i></button><div class="og-edh-chips"><span class="nchip" id="userFormRolePill"></span></div></div>
-    <section class="og-sec" data-sec="person"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-user"></i></span><span class="og-sec-t"><b data-i18n>Person & login</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
-    <div class="field-row">
-      <div class="field"><label id="userFormFullNameLabel" data-i18n>Full name</label><input type="text" id="userFormFullName" autocomplete="off" maxlength="80" oninput="drawUserFormHead()"></div>
-      <div class="field"><label data-i18n>Phone</label><input type="tel" id="userFormPhone" autocomplete="off" maxlength="40"></div>
-    </div>
-    <div class="field-row">
-      <div class="field"><label data-i18n>Username</label><input type="text" class="need" id="userFormUsername" autocomplete="off"></div>
-      <div class="field" id="userFormPasswordField"><label id="userFormPasswordLabel" data-i18n>Password (min. 8)</label><input type="password" id="userFormPassword" autocomplete="new-password"></div>
-    </div>
-    <div class="field" id="userFormRoleField"><label data-i18n>Role</label>
-      <select id="userFormRole" data-seg onchange="onUserFormRoleChange(true)">
-        <option value="staff" data-i18n>Staff</option>
-        <option value="hr">HR</option>
-        <option value="supplier" data-i18n>Supplier</option>
-        <option value="client" data-i18n>Client</option>
-      </select>
-    </div>
-    </div></section>
-    <section class="og-sec" data-sec="sections" id="userFormAccessHead" data-auto><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-layout-grid"></i></span><span class="og-sec-t"><b data-i18n>Sections</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
-    <div class="field" id="userFormSupplierField" style="display:none"><label data-i18n>Supplier</label><select id="userFormSupplierId" onchange="renderUserFormHrWorkers()"></select></div>
-    <div class="field" id="userFormClientField" style="display:none"><label data-i18n>Client</label><select id="userFormClientId"></select></div>
-    <!-- A supplier login: the supplier portal's tabs it may use (users.supplierSections → claim ss). -->
-    <div class="field" id="userFormSupSectionsField" style="display:none">
-      <div class="check-grid">
-        <label class="check-chip"><input type="checkbox" value="dashboard" class="userFormSupSecCb"><span class="chip-text"><span><i class="ti ti-home"></i> <span data-i18n>Dashboard</span></span><span class="chip-hint" data-i18n>Who is on site, today's punches</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="workers" class="userFormSupSecCb"><span class="chip-text"><span><i class="ti ti-users-group"></i> <span data-i18n>My Workers</span></span><span class="chip-hint" data-i18n>Add and edit its workers</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="hours" class="userFormSupSecCb"><span class="chip-text"><span><i class="ti ti-clock"></i> <span data-i18n>My Hours</span></span><span class="chip-hint" data-i18n>Exports, pay, hours sent for approval</span></span></label>
-      </div>
-    </div>
-    <div class="field" id="userFormPermsField">
-      <div class="check-grid">
-        <label class="check-chip"><input type="checkbox" value="schedule" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-calendar"></i> <span data-i18n>Schedule</span></span><span class="chip-hint" data-i18n>Schedule tab</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="workers" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-users-group"></i> <span data-i18n>Workers</span></span><span class="chip-hint" data-i18n>Workers tab</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="clients" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-users"></i> <span data-i18n>Clients</span></span><span class="chip-hint" data-i18n>Clients tab</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="suppliers" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-truck-delivery"></i> <span data-i18n>Suppliers</span></span><span class="chip-hint" data-i18n>Suppliers tab</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="accounting" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-cash"></i> <span data-i18n>Accounting</span></span><span class="chip-hint" id="userFormAccountingHint" data-i18n>Accounting tab</span></span></label>
-        <label class="check-chip" id="userFormPayEditChip" style="display:none"><input type="checkbox" value="payEdit" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-wallet"></i> <span data-i18n>Edit own workers' pay</span></span><span class="chip-hint" data-i18n>Rate, travel, bank of its own workers (with Accounting)</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="exports" class="userFormPermCb"><span class="chip-text"><span><i class="ti ti-upload"></i> <span data-i18n>Export</span></span><span class="chip-hint" data-i18n>Export button</span></span></label>
-      </div>
-    </div>
-    </div></section>
-    <section class="og-sec" data-sec="hours" data-auto><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-clock"></i></span><span class="og-sec-t"><b data-i18n>Hours</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
-    <!-- Hours review (HR, supplier, client — the same ticks for all three,
-         users.hourPerms → claim hp, checked by the hours function): the
-         shared hours screen, src/hours-review/. -->
-    <div class="field" id="userFormHourPermsField" style="display:none">
-      <div class="check-grid">
-        <label class="check-chip"><input type="checkbox" value="hours" class="userFormHourPermCb"><span class="chip-text"><span><i class="ti ti-clock"></i> <span data-i18n>Hours</span></span><span class="chip-hint" data-i18n>In / out of its workers</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="approve" class="userFormHourPermCb"><span class="chip-text"><span><i class="ti ti-circle-check"></i> <span data-i18n>Approve</span></span><span class="chip-hint" data-i18n>A day or the whole month</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="dispute" class="userFormHourPermCb"><span class="chip-text"><span><i class="ti ti-alert-triangle"></i> <span data-i18n>Dispute</span></span><span class="chip-hint" data-i18n>Disputes a day with a comment</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="fix" class="userFormHourPermCb"><span class="chip-text"><span><i class="ti ti-pencil"></i> <span data-i18n>Fix</span></span><span class="chip-hint" data-i18n>Proposes the right in / out; the firm accepts it</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="schedule" class="userFormHourPermCb"><span class="chip-text"><span><i class="ti ti-calendar"></i> <span data-i18n>Schedule</span></span><span class="chip-hint" data-i18n>Its workers' planned shifts</span></span></label>
-        <label class="check-chip"><input type="checkbox" value="export" class="userFormHourPermCb"><span class="chip-text"><span><i class="ti ti-upload"></i> <span data-i18n>Export</span></span><span class="chip-hint" data-i18n>Hours to Excel</span></span></label>
-      </div>
-      <div id="userFormClientNote" style="font-size:11px;color:var(--text3);margin-top:6px" data-i18n>Never sees pay, rates, suppliers, GPS or documents.</div>
-    </div>
-    <div class="field" id="userFormHrFields" style="display:none">
-      <label class="check-chip"><input type="checkbox" id="userFormOwnOnly" checked><span class="chip-text"><span data-i18n>Only own workers</span><span class="chip-hint" id="userFormOwnOnlyHint" data-i18n>Sees only the workers assigned to this HR. Unchecked: every worker of the firm.</span></span></label>
-    </div>
-    <div class="field">
-      <div class="check-grid" id="userFormShowPayGrid" style="display:none">
-        <label class="check-chip"><input type="checkbox" id="userFormShowPay" checked><span class="chip-text"><span data-i18n>Sees own workers' pay</span><span class="chip-hint" data-i18n>Their hours, rate and pay, and this login's commission. Nothing else of Accounting.</span></span></label>
-      </div>
-    </div>
-    </div></section>
-    <!-- HR: its commission ₪/h, and ₪/day for a worker paid by the day. -->
-    <section class="og-sec" data-sec="commission" data-auto><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-coin"></i></span><span class="og-sec-t"><b data-i18n>HR commission</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
-    <div class="field" id="userFormPayFields" style="display:none">
-      <div class="field-row" id="userFormCommissionField" style="margin-top:8px">
-        <div class="field"><label data-i18n>HR commission ₪/h</label><input type="number" id="userFormCommission" min="0" step="0.5" oninput="drawUserFormHead()" placeholder="0"></div>
-        <div class="field"><label data-i18n>₪/day (daily workers)</label><input type="number" id="userFormCommissionDay" min="0" step="0.5" oninput="drawUserFormHead()" placeholder="by the hour" data-i18n-placeholder="by the hour"></div>
-      </div>
-    </div>
-    </div></section>
-    <section class="og-sec" data-sec="workers" id="userFormHrWorkersField" style="display:none"><button type="button" class="og-sec-h" onclick="ogSecToggle(this)"><span class="og-sec-ic"><i class="ti ti-users-group"></i></span><span class="og-sec-t"><b data-i18n>Own workers</b><small class="og-sec-s"></small></span><i class="ti ti-chevron-down og-sec-chev"></i></button><div class="og-sec-b">
-      <div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="btn sm" type="button" onclick="openHrAssignModal()"><i class="ti ti-user-plus"></i> <span data-i18n>Add workers</span></button></div>
-      <div id="userFormHrWorkers" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
-    </div></section>
-    <div id="userFormError" style="color:#ff6b78;font-size:13px;margin:2px 0 6px;min-height:1.2em"></div>
-    <div class="modal-actions">
-      <button class="gbtn primary og-save" id="userFormSaveBtn" onclick="submitUserForm()"><i class="ti ti-check"></i><span data-i18n>Save</span></button>
-    </div>
-  </div>
+  <div class="modal" id="userFormModal" style="max-width:480px"></div>
 </div>
-
-<!-- Bulk assign of the firm's workers to one HR login (the HR's card in
-     Users → "Add workers"). -->
 <div class="overlay" id="hrAssignOverlay" style="z-index:990">
-  <div class="modal" style="max-width:440px">
-    <div class="modal-title" id="hrAssignTitle" data-i18n>Add workers</div>
-    <div class="field" style="margin-bottom:10px"><input type="text" id="hrAssignSearch" placeholder="Search by name or document…" data-i18n-placeholder="Search by name or document…" autocomplete="off" oninput="renderHrAssignList()"></div>
-    <div id="hrAssignList" style="display:flex;flex-direction:column;gap:4px;max-height:50vh;overflow-y:auto"></div>
-    <div class="modal-actions">
-      <button class="gbtn primary og-save" id="hrAssignSaveBtn" onclick="submitHrAssign()"><i class="ti ti-check"></i><span data-i18n>Assign</span></button>
-    </div>
-  </div>
+  <div class="modal" id="hrAssignModal" style="max-width:440px"></div>
 </div>
-
-<!-- One shared modal for creating a new firm, super-admin editing an
-     existing firm, and a firm's own self-service profile edit — merged
-     2026-09-30 (previously two overlays, createFirmOverlay/editFirmOverlay,
-     with near-duplicate profile fields; only the login fields were genuinely
-     create-only — see docs/history.md). __firmFormMode ('create'|'edit') picks
-     submitEditFirm()'s backend action; openCreateFirmForm() shows the
-     login fields, openEditFirmForm()/openMyFirmForm() hide them. -->
 <div class="overlay" id="editFirmOverlay" style="z-index:950">
-  <div class="modal" style="max-width:420px" oninput="__firmEditDirty=true">
-    <div class="modal-title" id="firmEditTitle" data-i18n>Edit firm</div>
-    <div style="font-size:11px;color:var(--text3);line-height:1.5;margin:-6px 0 10px">
-      פרטים אלה מודפסים בחלק א׳ („פרטי המעסיק”) של כל טופס 101.
-    </div>
-    <div class="field" id="firmEditOwnerNameField" style="display:none"><label data-i18n>Owner name</label><input type="text" id="firmEditOwnerName" autocomplete="off" maxlength="80"></div>
-    <div class="field" id="firmEditUsernameField" style="display:none"><label data-i18n>Username</label><input type="text" id="firmEditUsername" autocomplete="off"></div>
-    <div class="field" id="firmEditPasswordField" style="display:none"><label data-i18n>Password (min. 8 characters)</label><input type="password" id="firmEditPassword" autocomplete="new-password"></div>
-    <div class="field"><label>שם המעסיק</label><input type="text" id="firmEditCompanyName"></div>
-    <div class="field"><label>מספר תיק ניכויים (8 ספרות)</label><input type="text" id="firmEditDeductionsNo" maxlength="8" inputmode="numeric"></div>
-    <div class="field"><label>טלפון</label><input type="text" id="firmEditPhone"></div>
-    <div class="field-row">
-      <div class="field"><label>רחוב</label><input type="text" id="firmEditStreet"></div>
-      <div class="field"><label>מספר בית</label><input type="text" id="firmEditStreetNumber"></div>
-    </div>
-    <div class="field"><label>עיר</label><input type="text" id="firmEditCity"></div>
-    <div id="firmEditWaField" style="display:none">
-      <div class="form-section"><i class="ti ti-brand-whatsapp"></i> <span data-i18n>WhatsApp reminder</span></div>
-      <div class="field"><label data-i18n>Message when a worker has not punched in</label><textarea id="firmEditWa" rows="3" maxlength="1000" onchange="saveFirmWaTemplate()"></textarea>
-        <div id="firmEditWaHint" style="font-size:11px;color:var(--text3);margin-top:4px"></div></div>
-    </div>
-    <div id="firmEditFormError" style="color:#ff6b78;font-size:13px;margin:2px 0 6px;min-height:1.2em"></div>
-    <div class="modal-actions">
-      <button class="gbtn primary og-save" onclick="submitEditFirm()" id="editFirmBtn"><i class="ti ti-check"></i><span data-i18n>Save</span></button>
-    </div>
-  </div>
+  <div class="modal" id="firmModal" style="max-width:420px"></div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -2170,25 +1990,16 @@ function noPunchActs(w, sh){
   if(!w.phone) return [];
   return [{label:tr('Call'), icon:'ti-phone', fn:()=>callWorker(w)}, ...(waPhone(w.phone)?[{label:tr('WhatsApp'), icon:'ti-brand-whatsapp', fn:()=>openWhatsApp(w,sh), wa:true}]:[])];
 }
-async function saveFirmWaTemplate(){
-  const el=document.getElementById('firmEditWa'); if(!el||!__editingFirmTenantId) return;
-  const v=el.value.trim(), waTemplate=v===waDefaultTemplate()?'':v;
+// The firm window's WhatsApp reminder, saved on its own when it changes (not
+// part of updateTenant, so it never rebuilds Form 101s); the default text = empty.
+async function saveFirmMessage(tenantId, text){
+  const v=String(text||'').trim(), waTemplate=v===waDefaultTemplate()?'':v;
   try{
-    const j=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'saveFirmMessages', asTenantId:__editingFirmTenantId, waTemplate})})).json();
+    const j=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'saveFirmMessages', asTenantId:tenantId, waTemplate})})).json();
     if(!j||j.error){ showToast(tr((j&&j.error)||'Save failed')); return; }
     __firmMsgs=Object.assign({}, __firmMsgs||{}, {waTemplate}); __firmMsgsAt=Date.now();
     showToast(tr('Saved'));
   }catch(e){ showToast(tr('Network error')); }
-}
-// The firm form's WhatsApp field: only for the firm being worked in.
-async function fillFirmWaField(tenantId){
-  const box=document.getElementById('firmEditWaField'); if(!box) return;
-  const s=getSession(), on=!!tenantId&&tenantId===(s&&(s.viewingTenantId||s.tenantId));
-  box.style.display=on?'':'none'; if(!on) return;
-  document.getElementById('firmEditWaHint').textContent=tr('You can use {0}',{0:'{full name}, {first name}, {start}, {site}'});
-  const el=document.getElementById('firmEditWa'); el.value=waTemplate();
-  await loadFirmMessages(true);
-  if(document.activeElement!==el) el.value=waTemplate();
 }
 // A client login that approved every day of this month (the hours function's
 // list, read at most every 5 minutes; firm admins and staff with Accounting).
@@ -2634,11 +2445,7 @@ async function saveLoginField(uid, field, values){
 // first, as on a tap outside; closing the user form brings it back).
 function newLoginFor(role, id){
   if(role==='client') saveClient({auto:true}); else closeModal('supplierOverlay');
-  openCreateUserForm();
-  const r=document.getElementById('userFormRole'); r.value=role; onUserFormRoleChange(true);
-  const sel=document.getElementById(role==='client'?'userFormClientId':'userFormSupplierId');
-  if(sel){ if(role==='client') fillUserFormClientSelect(id); else fillUserFormSupplierSelect(id); sel.value=id; if(role==='supplier') renderUserFormHrWorkers(); }
-  userFormSections();
+  openCreateUserForm({role, id});
 }
 // This month's commission payable to a supplier (the same figure as Accounting → Payable by supplier).
 function supplierMonthPayable(sp){
@@ -3689,9 +3496,9 @@ function backToFirmsList(){
 // own Tenants row (see aiFillForm101). migrateToMultiTenant() created the
 // original firm with a placeholder name and blank phone/address/deductions
 // number, so a firm can sit on a half-empty profile and only discover it on a
-// printed form. These three helpers are the single source of truth for "is
-// this profile complete" — used by the titlebar control, the Form 101 panel,
-// and the super-admin's Firms list.
+// printed form. These helpers are the single source of truth for "is this
+// profile complete" — used by the Admin tab's icon, its Firms tile and the
+// Firms section (an owner's own firm, the super-admin's list).
 const FIRM_PROFILE_FIELDS = [
   {key:'companyName',          label:'Company name'},
   {key:'deductionsFileNumber', label:'מספר תיק ניכויים'},
@@ -3709,22 +3516,6 @@ function firmProfileMissing(profile){
   const p = profile || activeTenantProfile();
   if(!p) return FIRM_PROFILE_FIELDS.map(f => f.label);
   return FIRM_PROFILE_FIELDS.filter(f => !String(p[f.key]==null?'':p[f.key]).trim()).map(f => f.label);
-}
-function firmProfileWarnInner(){
-  const missing = firmProfileMissing();
-  if(!missing.length) return '';
-  return `<div class="tap-edit" onclick="tapEdit(event,this,null,openMyFirmForm)" onpointerdown="longPress(event,this,openMyFirmForm)" style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;border:1px solid #ffb020;border-radius:var(--radius-sm);background:rgba(255,176,32,0.08);font-size:12px;line-height:1.5;color:var(--text2)">
-    <i class="ti ti-alert-triangle" style="color:#ffb020;font-size:15px"></i>
-    <div style="flex:1;min-width:180px">The firm profile is incomplete — these stay empty in Form 101 (section א «פרטי המעסיק»): <b>${esc(missing.join(', '))}</b>.</div>
-  </div>`;
-}
-// Placeholder stays in the DOM even when the profile is complete, so saving
-// the profile can clear the warning in place without a full re-render.
-function firmProfileWarnHtml(){
-  return `<div class="firm-profile-warn">${firmProfileWarnInner()}</div>`;
-}
-function refreshFirmProfileWarnings(){
-  document.querySelectorAll('.firm-profile-warn').forEach(el => { el.innerHTML = firmProfileWarnInner(); });
 }
 // Keeps the session's cached copy of the firm profile in step with a save —
 // the client only ever gets one at login, so without this a firm would have
@@ -3765,7 +3556,8 @@ function gateApp(runInitApp){
   }
   if(s.role === 'superadmin' && !s.viewingTenantId){
     document.getElementById('firmsScreen').style.display = 'block';
-    renderFirmsList();
+    // the React list loads the firms when it is drawn (now, or when assets/manager.js arrives)
+    if(window.ManagerIsland) window.ManagerIsland.renderFirmsScreen();
     return;
   }
   renderAccountControl(s);
@@ -3829,21 +3621,16 @@ async function editMyName(){
   }catch(e){ showToast(tr('Network error')); }
 }
 
+// ── Admin → Firms, Users, Errors, Timings (stage 6f-2) ────────────────────
+// Drawn in React (src/manager/Firms.tsx, Users.tsx, Logs.tsx; the super-admin's
+// landing screen into #firmsScreenRoot); the data, its caches, the saves of
+// workers and the server calls that touch the page's state stay here and are
+// handed over through ManagerBridge (its Admin part below).
 let __firmsCache = [];
-// Remembers which container the list is currently rendered into, so the
-// toggle/delete actions below (which call renderFirmsList() with no target)
-// refresh the right one regardless of whether the list is showing on the
-// super-admin's own landing screen or inside the admin panel's Firms tab.
-let __firmsListTarget = 'firmsList';
-// targetId parametrized 2026-10-02 (Admin/Roles plan stage 5) so the same
-// render logic feeds both the super-admin's own landing screen (#firmsList,
-// the default) and the new consolidated admin panel's Firms tab
-// (#adminFirmsList) without duplicating this function.
 // The Firms list is cached (localStorage) and shown at once; the fresh copy
-// from listTenants replaces it when it arrives (2026-10-01 — opening the
-// list used to wait on a full round-trip every time).
+// from listTenants replaces it when it arrives.
 const FIRMS_CACHE_KEY = 'firmsCache_v1';
-// Same show-cached-then-refresh pattern for the Admin Users / Errors panes.
+// Same show-cached-then-refresh pattern for the Admin Users / Errors / Timings.
 // Keys start with ADMIN_CACHE_PREFIX so logout() can drop them all.
 const ADMIN_CACHE_PREFIX = 'adminCache_';
 function saveAdminCache(key, value){ try{ localStorage.setItem(ADMIN_CACHE_PREFIX+key, JSON.stringify(value)); }catch(e){} }
@@ -3851,85 +3638,52 @@ function loadAdminCache(key){ try{ return JSON.parse(localStorage.getItem(ADMIN_
 function clearAdminCaches(){ try{ Object.keys(localStorage).filter(k=>k.startsWith(ADMIN_CACHE_PREFIX)).forEach(k=>localStorage.removeItem(k)); }catch(e){} }
 function saveFirmsCache(tenants){ try{ localStorage.setItem(FIRMS_CACHE_KEY, JSON.stringify(tenants||[])); }catch(e){} }
 function loadFirmsCache(){ try{ const v=JSON.parse(localStorage.getItem(FIRMS_CACHE_KEY)||'null'); return Array.isArray(v)?v:null; }catch(e){ return null; } }
-function renderFirmsRows(listEl, tenants){
-  __firmsCache = tenants;
-  if(!tenants.length){ listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">'+tr('No firms yet — create the first one.')+'</div>'; return; }
-  // Template 3: a line per firm — green while active, amber when disabled or
-  // its Form 101 profile is incomplete. A tap opens the firm; ✎ (edit) and a bare ⋮
-  // (Disable / Enable, Delete last — through the Undo snack) at the right.
-  const when = v => { const d = new Date(v); return v && !isNaN(d) ? d.toLocaleString(uiLocale(),{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : ''; };
-  __firmsRowsEl = listEl;
-  renderPagedList(listEl, 'firms:' + listEl.id, '', tenants.filter(t => !__firmDelPending.has(t.tenantId)), t => {
-    const missing = firmProfileMissing(t), off = t.active===false, id = esc(t.tenantId);
-    const flags = [off ? `<span style="color:var(--amber)">${tr('disabled')}</span>` : '',
-      missing.length ? `<span style="color:var(--amber)" title="${tr('Not filled in: {0}',{0:esc(missing.join(', '))})}">${tr('profile incomplete')}</span>` : ''].filter(Boolean).join(' · ');
-    return t3Line({c: off||missing.length ? 'var(--amber)' : 'var(--green)', cls:'row tap-edit'+(off?' off':''),
-      av:`<div class="t3-av" style="background:var(--bg3);color:var(--text2)"><i class="ti ti-building-skyscraper"></i></div>`,
-      name: esc(t.companyName || '(no name)'),
-      sub: [tr('{0} workers · {1} clients{2}',{0:(t.workerCount||0),1:(t.clientCount||0),2:(when(t.savedAt)?' · '+tr('saved {0}',{0:esc(when(t.savedAt))}):'')}), flags],
-      attrs:`data-tid="${id}" onclick="tapEdit(event,this,()=>switchToTenant('${id}'),()=>openEditFirmForm('${id}'))" onpointerdown="longPress(event,this,()=>openEditFirmForm('${id}'))"`,
-      sel: t.tenantId,
-      right:`<button class="t3-ib" type="button" onclick="event.stopPropagation();openEditFirmForm('${id}')" title="${esc(tr('Edit'))}" aria-label="${esc(tr('Edit'))}"><i class="ti ti-pencil"></i></button>`,
-      menu:[{icon: off?'ti-player-play':'ti-player-pause', label: off?tr('Enable'):tr('Disable'), fn:()=>toggleTenantActive(t.tenantId, off)},
-        {icon:'ti-trash', label:tr('Delete'), danger:true, fn:b=>deleteTenantUndo([t.tenantId], [b.closest('.t3-line')])}]});
-  });
-  selectRoot('firms', listEl);
-}
-// Select on the firms (always on): Disable / Enable the ticked firms, Delete them.
-let __firmsRowsEl = null;
-const __firmDelPending = new Set();
-function startFirmsSelect(){
-  if(!__firmsRowsEl || getSession()?.role !== 'superadmin') return;
-  startSelect({key:'firms', root:__firmsRowsEl, ids:()=>(__firmsCache||[]).filter(t=>!__firmDelPending.has(t.tenantId)).map(t=>t.tenantId),
-    actions:[{icon:'ti-player-pause', label:tr('Disable'), fn:ids=>setTenantsActive(ids,false)}, {icon:'ti-player-play', label:tr('Enable'), fn:ids=>setTenantsActive(ids,true)}],
-    del:(ids,els)=>deleteTenantUndo(ids,els)});
-}
-async function setTenantsActive(ids, active){
-  for(const tenantId of ids){ try{ await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'setTenantActive', ...gsAuth(), tenantId, active }) }); }catch(e){} }
-  showToast(active ? tr('Firm enabled') : tr('Firm disabled')); renderFirmsList(__firmsListTarget);
-}
-async function renderFirmsList(targetId){
-  __firmsListTarget = targetId || 'firmsList';
-  const listEl = document.getElementById(__firmsListTarget);
-  if(getSession()?.role !== 'superadmin'){ renderOwnFirmCard(listEl); return; }
-  const cached = loadFirmsCache();
-  const isLanding = __firmsListTarget==='firmsList';
-  if(cached){ renderFirmsRows(listEl, cached); if(isLanding) markFirstContent(); }
-  else listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">'+tr('Loading…')+'</div>';
+// The Admin tab and the landing screen draw again (whichever is shown).
+function renderFirmsViews(){ renderAdmin(); if(window.ManagerIsland) window.ManagerIsland.renderFirmsScreen(); }
+let __firmsErr='', __firmsLoaded=false;
+// A super-admin's firms: the cached list first, then listTenants. An owner's
+// own firm: the session's profile, then a fresh read.
+async function loadFirms(){
+  const s=getSession(); if(!s) return;
+  if(s.role!=='superadmin'){ await refreshTenantProfile(0); renderFirmsViews(); return; }
+  const cached=loadFirmsCache(), isLanding=!s.viewingTenantId;
+  if(cached){ if(!__firmsLoaded) __firmsCache=cached; renderFirmsViews(); if(isLanding) markFirstContent(); }
   try{
-    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'listTenants', ...gsAuth() }) });
-    const json = await res.json();
-    if(!json || json.error){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">'+esc(tr((json&&json.error)||'Load failed'))+'</div>'; return; }
-    const tenants = json.tenants || [];
-    saveFirmsCache(tenants);
-    renderFirmsRows(listEl, tenants);
+    const json=await (await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'listTenants', ...gsAuth() }) })).json();
+    if(!json || json.error){ __firmsErr=(json&&json.error)||'Load failed'; renderFirmsViews(); return; }
+    __firmsErr=''; __firmsCache=json.tenants||[]; __firmsLoaded=true;
+    saveFirmsCache(__firmsCache);
+    renderFirmsViews();
     if(isLanding) markFreshContent('firms');
-  }catch(e){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">'+tr('No network')+'</div>'; }
+  }catch(e){ __firmsErr='No network'; renderFirmsViews(); }
 }
-
-// A firm owner's Firms pane: their own firm only — the fields Form 101
-// prints, what is missing, and Edit (openMyFirmForm). Drawn from the cached
-// profile, then from a fresh read.
-async function renderOwnFirmCard(listEl){
-  const draw = p => {
-    p = p || {};
-    const missing = firmProfileMissing(p);
-    const addr = [[p.street, p.streetNumber].filter(Boolean).join(' '), p.city].filter(Boolean).join(', ');
-    // Template 3: the firm is one line (green when Form 101 has everything,
-    // amber when something is missing), its fields as small lines under the
-    // name; a tap edits.
-    const v = x => x ? esc(x) : '<span style="color:var(--amber)">—</span>';
-    listEl.innerHTML = t3Line({c: missing.length ? 'var(--amber)' : 'var(--green)', cls:'tap-edit wrap',
-      av:`<div class="t3-av" style="background:var(--bg3);color:var(--text2)"><i class="ti ti-building-skyscraper"></i></div>`,
-      name: p.companyName ? esc(p.companyName) : `<span style="color:var(--amber)">${tr('Company name')} —</span>`,
-      sub:[`מספר תיק ניכויים: ${v(p.deductionsFileNumber)}`, `${tr('Phone')}: ${v(p.phone)}`, `${tr('Address')}: ${v(addr)}`,
-        missing.length ? `<span style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> ${tr('Empty in Form 101: {0}',{0:esc(missing.join(', '))})}</span>`
-          : `<span style="color:var(--green)"><i class="ti ti-check"></i> ${tr('Everything Form 101 needs is filled in')}</span>`],
-      attrs:`onclick="tapEdit(event,this,null,openMyFirmForm)" onpointerdown="longPress(event,this,openMyFirmForm)"`});
-  };
-  draw(activeTenantProfile());
-  const p = await refreshTenantProfile(0);
-  if(p && listEl.isConnected) draw(p);
+// The firms a super-admin's snapshot shows (cached until listTenants answers), each with what Form 101 would miss.
+function firmsRows(){
+  const s=getSession(); if(!s||s.role!=='superadmin') return null;
+  const list=__firmsLoaded?__firmsCache:(loadFirmsCache()||(__firmsCache.length?__firmsCache:null));
+  return list?list.map(t=>({...t, missing:firmProfileMissing(t)})):null;
+}
+// Disable / Enable: flips every login of the firm (reversible).
+async function setTenantsActive(ids, active){
+  let ok=0;
+  for(const tenantId of ids){
+    try{ const json=await (await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'setTenantActive', ...gsAuth(), tenantId, active }) })).json();
+      if(json && !json.error) ok++; else showToast((json&&json.error)||tr('Error')); }catch(e){ showToast(tr('No network')); }
+  }
+  if(ok) showToast(active ? tr('Firm enabled') : tr('Firm disabled'));
+  await loadFirms();
+}
+// Deletes firms — irreversible: the profile, logins, schedule, punch history
+// and every worker file in Storage. Runs when the Undo time is up (the React list).
+async function deleteTenantsNow(ids){
+  let ok=0;
+  const name=ids.length===1?((__firmsCache.find(t=>t.tenantId===ids[0])||{}).companyName||''):'';
+  for(const tenantId of ids){
+    try{ const json=await (await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'deleteTenant', ...gsAuth(), tenantId }) })).json();
+      if(json && !json.error) ok++; else showToast((json&&json.error)||tr('Error')); }catch(e){ showToast(tr('No network')); }
+  }
+  if(ok) showToast(ok===1 && ids.length===1 ? tr('Firm «{0}» deleted',{0:name}) : tr('{0} firms deleted',{0:ok}));
+  await loadFirms();
 }
 // Form 101's employer block comes from the session's copy of the firm
 // profile. A login keeps the copy it got at sign-in, so a change made
@@ -3944,56 +3698,71 @@ async function refreshTenantProfile(maxAgeMs){
   if(maxAgeMs && Date.now() - __profileFetchedAt < maxAgeMs) return activeTenantProfile();
   try{
     const json = await (await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'loadTenantProfile', ...gsAuth() }) })).json();
-    if(json && json.profile){ __profileFetchedAt = Date.now(); cacheTenantProfile(t, json.profile); refreshFirmProfileWarnings(); return json.profile; }
+    if(json && json.profile){ __profileFetchedAt = Date.now(); cacheTenantProfile(t, json.profile); renderAdmin(); return json.profile; }
   }catch(e){}
   return activeTenantProfile();
 }
 
-// Super-admin-only diagnostics screen (see errorsScreen's own HTML comment
-// and loadErrors()'s server-side comment for why this is superadmin-only —
-// the Errors sheet has no tenantId column, so a normal tenant login must
-// never reach this). Overlays whatever's currently showing; closeErrorsScreen
-// just hides it again since nothing underneath needs to change.
-//
-// Admin tab sub-panes (merged 2026-09-30 into the pre-existing Admin nav tab
-// — previously the gear-button-only #adminScreen modal; the nav tab and the
-// modal were two separately-named "Admin" surfaces, a known source of
-// confusion — see docs/history.md). setupAdminPaneBar() replaces openAdminScreen()
-// and is called once from switchTab() when the Admin tab is opened (not from
-// render()'s own per-mutation refresh of that tab — see switchTab()'s own
-// comment on why renderAdmin() alone runs there). Pane visibility: Punch Log
-// is always reachable (the tab itself is already gated by
-// NAV_TAB_PERMISSION('workers') for a staff login); Firms/Errors are
-// superadmin-only cross-tenant views (see listTenants()/loadErrors()
-// server-side, both already gated there too — this only matches the
-// client-side visibility); Users/Profile are tenant_admin+superadmin. A
-// plain staff login sees only the Punch Log pane/button, same as before this
-// merge. Defaults to the Punch Log pane for every role — that's the one
-// thing every role that reaches this tab already had, so it stays the least-
-// surprising landing view.
+// The firm window (React, #firmModal): a new firm (with its owner's login), a
+// firm of the super-admin's list, or the firm being worked in (a firm's own
+// login fills in its Form 101 employer data itself). __firmWin is what it edits.
+let __firmWin=null;
+function showFirmWindow(mode, tenantId, profile){
+  if(!window.ManagerIsland) return;
+  const s=getSession(), on=!!tenantId&&tenantId===(s&&(s.viewingTenantId||s.tenantId));
+  __firmWin={mode, tenantId:tenantId||null, profile:profile||{}, wa:on};
+  window.ManagerIsland.openFirm();
+  document.getElementById('editFirmOverlay').classList.add('open');
+}
+function openCreateFirmForm(){ showFirmWindow('create', null, {}); }
+function openEditFirmForm(tenantId){
+  const t = __firmsCache.find(x => x.tenantId === tenantId);
+  if(!t){ showToast(tr('Firm not found')); return; }
+  showFirmWindow('edit', tenantId, t);
+}
+function openMyFirmForm(){
+  const s = getSession(); if(!s) return;
+  const tenantId = s.viewingTenantId || s.tenantId;
+  if(!tenantId){ showToast(tr('No firm selected')); return; }
+  showFirmWindow('mine', tenantId, activeTenantProfile() || {});
+}
+// After a save: a new firm → the list; an edited firm → the session's copy of
+// its profile, and every worker's Form 101 (its employer block changed) — now
+// when the edited firm is the one loaded here, else when this device opens it.
+function firmSaved(mode, tenantId, profile){
+  closeModal('editFirmOverlay');
+  if(mode==='create'){ showToast(tr('Firm created')); loadFirms(); return; }
+  showToast(tr('Firm details saved'));
+  cacheTenantProfile(tenantId, profile);
+  if(getSession()?.role === 'superadmin') loadFirms(); else renderAdmin();
+  const s=getSession(), active=s&&(s.viewingTenantId||s.tenantId);
+  if(active===tenantId) regenerateAllWorkerDocs();
+  else {
+    try{ localStorage.setItem('form101Regen:'+tenantId,'1'); }catch(e){}
+    showToast(tr('Saved. The Form 101s of this firm\'s workers update when you open it'), 5000);
+  }
+}
+
+// Admin tab sub-panes (merged 2026-09-30 into the Admin nav tab — see
+// docs/history.md). Punch Log for everyone who reaches the tab (the tab needs
+// the `workers` permission); Firms and Users for an owner or a super-admin;
+// Errors and Timings for a super-admin (listTenants / loadErrors are gated
+// server-side too).
 function setupAdminPaneBar(){
   const s = getSession();
   if(!s) return;
-  const isSuper = s.role === 'superadmin';
-  const isAdminRole = isSuper || s.role === 'tenant_admin';
-  const superBar = document.getElementById('adminFirmsSuperBar');
-  if(superBar) superBar.style.display = isSuper ? 'flex' : 'none';
   switchAdminPane(__adminPane);
-  if(isAdminRole) prefetchAdminUsers();
+  if(s.role === 'superadmin' || s.role === 'tenant_admin') prefetchAdminUsers();
 }
-// The Admin sections this login sees (the React tabs, ManagerBridge.admin()):
-// Punch Log for everyone who reaches the tab; Firms and Users for an owner or
-// a super-admin; Errors and Timings for a super-admin.
+// The Admin sections this login sees (the React tabs, ManagerBridge.admin()).
 function adminPanes(){
   const s = getSession(); if(!s) return [];
   const isSuper = s.role === 'superadmin', isAdminRole = isSuper || s.role === 'tenant_admin';
   return ['punchlog'].concat(isAdminRole ? ['firms','users'] : [], isSuper ? ['errors','timings'] : []);
 }
-// Loads the Users list in the background as soon as the Admin tab opens
-// (2026-10-01), so the Users pane usually draws at once instead of waiting
-// for a slow reply. renderAdminUsers() shares the same request
-// while it is still in flight, so opening Users early never sends a second one.
-let __usersFetch=null;
+// Loads the Users list in the background as soon as the Admin tab opens, so
+// the Users section usually draws at once; a load already in flight is shared.
+let __usersFetch=null, __usersErr='';
 function fetchAdminUsers(){
   if(__usersFetch) return __usersFetch;
   __usersFetch=fetch(API_URL,{method:'POST',body:JSON.stringify({action:'listUsers',...gsAuth()})})
@@ -4001,257 +3770,57 @@ function fetchAdminUsers(){
     .finally(()=>{ __usersFetch=null; });
   return __usersFetch;
 }
+// The firm's logins (listUsers returns more for a super-admin: this firm's
+// only), cached; then what shows them is drawn again.
 function prefetchAdminUsers(){
   const tenantId=activeTenantIdForAdmin();
-  fetchAdminUsers().then(json=>{
+  return fetchAdminUsers().then(json=>{
     if(json && !json.error){
+      __usersErr='';
       saveAdminCache('users_'+tenantId,(json.users||[]).filter(u=>u.tenantId===tenantId));
+      if(currentTab==='admin') renderAdmin();
       // The HR names on the worker tiles come from this list.
       if(currentTab==='workers' && workers.some(w=>w.hrId)) renderWorkersPage();
       // ...and the HR commissions in Accounting → Payable by HR.
       if(currentTab==='accounting' && workers.some(w=>w.hrId)) renderAccounting();
       // ...and the HR field of a worker window already open.
       if(window.ManagerIsland) window.ManagerIsland.refreshWindows();
-    }
-  }).catch(()=>{});
+    } else { __usersErr=(json&&json.error)||'Load failed'; if(currentTab==='admin') renderAdmin(); }
+  }).catch(()=>{ __usersErr='Network error'; if(currentTab==='admin') renderAdmin(); });
 }
-// How a login's role reads in the Users list (through tr()).
+// How a login's role reads (through tr()) — the header's account menu; the
+// React Users section has its copy in src/manager/users.ts.
 const USER_ROLE_LABELS = {tenant_admin:'owner', superadmin:'super-admin', staff:'staff', hr:'HR', supplier:'supplier', client:'client'};
 // The hours-review ticks (users.hourPerms, functions-auth/core.py HOUR_PERMS);
-// a new HR, supplier or client login starts with HOUR_DEFAULT (core.py).
+// a new HR, supplier or client login starts with HOUR_DEFAULT (core.py) — the
+// client and supplier windows' login ticks (loginsInfo).
 const HOUR_DEFAULT = ['hours', 'approve', 'dispute', 'fix'];
 const HOUR_PERM_LABELS = {hours:'Hours', approve:'Approve', dispute:'Dispute', fix:'Fix', schedule:'Schedule', export:'Export'};
-const HOUR_ROLES = ['hr', 'supplier', 'client'];
-// The Admin tab opens with no section (the React tiles): nothing is drawn or
-// loaded until a section is picked. The chosen section is kept while the app
-// stays open; the React tabs draw the Punch Log, the page the other panes.
+// The Admin tab opens with no section (the React tiles): nothing is loaded
+// until a section is picked; the React section loads its own data. The
+// chosen section is kept while the app stays open.
 let __adminPane=null;
 function switchAdminPane(pane){
   __adminPane=pane && adminPanes().includes(pane) ? pane : null;
-  ['firms','users','errors','timings'].forEach(p=>{
-    const el = document.getElementById('adminPane_'+p);
-    if(el) el.style.display = p===__adminPane ? 'block' : 'none';
-  });
+  if(__adminPane==='errors'||__adminPane==='timings') loadLogPane(__adminPane);
   renderAdmin();
-  if(__adminPane==='firms') renderFirmsList('adminFirmsList');
-  else if(__adminPane==='errors') loadErrorsList('adminErrorsList');
-  else if(__adminPane==='timings') loadTimingsPane();
-  else if(__adminPane==='users') renderAdminUsers();
   renderCrumb();
-}
-// ── Users tab (Admin panel, added 2026-10-02, Admin/Roles plan stage 6) ────
-// Scoped to the CURRENTLY ACTIVE firm — same mental model as everything else
-// in the app (a super-admin managing another firm's users switches firms
-// first via the Firms tab, rather than this tab showing every firm's users
-// mixed together). listUsers() itself returns every firm's users for a
-// superadmin (by backend design — see its own comment), filtered down to one
-// firm here client-side.
-const PERMISSION_SECTIONS = ['schedule','workers','clients','suppliers','accounting','exports'];
-let __editingUserId = null;
-// An owner / super-admin row: only name, phone and password are edited here.
-let __editingAdminRow = false;
-let __editingUserOrigRole = null;
-// The user form's section plates: Person open, the rest closed (those with
-// something missing open too).
-// The user editor's header (redesign stage 4, mockup 04): the role-colored
-// avatar, the full name, "HR · 14 own workers" (or the role and its supplier /
-// client), and ⋮ with Delete for a saved login (never for the owner row).
-function drawUserFormHead(){
-  const head=document.getElementById('userFormHead'); if(!head) return;
-  const role=document.getElementById('userFormRole').value;
-  const role0=__editingAdminRow?'tenant_admin':role, col=USER_ROLE_COLOR[role0]||'var(--neutral)';
-  const name=document.getElementById('userFormFullName').value.trim(), user=document.getElementById('userFormUsername').value.trim();
-  head.style.setProperty('--c', col==='var(--border2)'?'var(--neutral)':col);
-  document.getElementById('userFormAv').textContent=initialsOf(name||user||'?');
-  document.getElementById('userFormTitle').textContent=name||user||(__editingUserId?tr('Edit user'):tr('New user'));
-  let what='';
-  if(role0==='hr' && __editingUserId){ const n=hrWorkerCount(__editingUserId); what=n===1?tr('1 own worker'):tr('{0} own workers',{0:n}); }
-  else if(role0==='supplier'){ const sp=(suppliers||[]).find(x=>x.id===document.getElementById('userFormSupplierId').value); what=sp?sp.name:''; }
-  else if(role0==='client'){ const cl=(clients||[]).find(x=>x.id===document.getElementById('userFormClientId').value); what=cl?cl.name:''; }
-  document.getElementById('userFormSub').textContent=[tr(USER_ROLE_LABELS[role0]||role0), what].filter(Boolean).join(' · ');
-  const pill=document.getElementById('userFormRolePill'); pill.textContent=tr(USER_ROLE_LABELS[role0]||role0); pill.style.cssText=`background:color-mix(in srgb,${col==='var(--border2)'?'var(--neutral)':col} 18%,transparent);color:${col==='var(--border2)'?'var(--text2)':col}`;
-  document.getElementById('userFormMenuBtn').style.display=__editingUserId&&!__editingAdminRow?'':'none';
-  // HR commission's summary: the rate and this month's commission on its workers (as in Payable by HR).
-  const cs=document.querySelector('#userFormOverlay .og-sec[data-sec="commission"]');
-  if(cs){
-    const rate=Number(document.getElementById('userFormCommission').value)||0, dayRate=Number(document.getElementById('userFormCommissionDay').value)||0;
-    let sum='';
-    if(rate||dayRate){
-      sum=[rate?'₪'+rate+tr('/h'):'', dayRate?'₪'+dayRate+tr('/day'):''].filter(Boolean).join(' · ');
-      if(role0==='hr' && __editingUserId){
-        const total=Object.values((__ufMonth||(__ufMonth=salaryEntriesFor('month'))).byWorker||{}).reduce((t,e)=>{ const wc=workers.find(w=>w.id===e.workerId); return wc&&wc.hrId===__editingUserId?t+commissionFor(wc,e,rate,dayRate):t; },0);
-        sum+=' · '+tr('{0} this month',{0:'₪'+fmtMoneyShort(total)});
-      }
-    }
-    if(sum) cs.dataset.summary=sum; else delete cs.dataset.summary;
-    ogSecSummary(cs);
-  }
-}
-function openUserFormMenu(ev, btn){
-  const id=__editingUserId; if(!id) return;
-  const user=document.getElementById('userFormUsername').value;
-  openRowMenu(ev, btn, rowFnKey([{icon:'ti-trash', label:tr('Delete'), danger:true, fn:()=>{
-    closeModal('userFormOverlay');
-    const line=document.querySelector(`.admin-users-rows .t3-line[data-sel-id="${CSS.escape(id)}"]`);
-    deleteUserConfirm(id, user, line);
-  }}]));
-}
-let __ufMonth=null;  // this month's Salary rows while the user form is open (drawUserFormHead)
-function userFormSections(){
-  __ufMonth=null;
-  drawUserFormHead();
-  const ov=document.getElementById('userFormOverlay');
-  ov.querySelectorAll('.og-sec').forEach(x=>x.classList.remove('open'));
-  ogAutoSections(ov);
-  ogSections(ov,'person');
-}
-function showUserFormAccess(on){
-  ['userFormRoleField','userFormAccessHead','userFormPermsField'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display = on ? '' : 'none'; });
 }
 function activeTenantIdForAdmin(){
   const s = getSession();
   if(!s) return null;
   return s.role === 'superadmin' ? s.viewingTenantId : s.tenantId;
 }
-async function renderAdminUsers(){
-  const el = document.getElementById('adminUsersWrap');
-  if(!el) return;
-  const tenantId = activeTenantIdForAdmin();
-  const cacheKey = 'users_'+tenantId;
-  const cached = loadAdminCache(cacheKey);
-  if(Array.isArray(cached)) renderAdminUsersRows(el, cached);
-  else el.innerHTML = '<div style="color:var(--text2);font-size:13px">'+tr('Loading…')+'</div>';
-  try{
-    const json = await fetchAdminUsers();
-    if(!json || json.error){ if(!cached) el.innerHTML = '<div style="color:#ff6b78">'+esc(tr((json&&json.error)||'Load failed'))+'</div>'; return; }
-    const users = (json.users||[]).filter(u => u.tenantId === tenantId);
-    saveAdminCache(cacheKey, users);
-    renderAdminUsersRows(el, users);
-  }catch(e){ if(!cached) el.innerHTML = '<div style="color:#ff6b78">'+tr('Network error')+'</div>'; }
+// The user window (React, #userFormModal): a saved login from the list the
+// Users section drew (its cache; the server only when the row isn't there),
+// or a new one.
+function showUserWindow(u, preset){
+  if(!window.ManagerIsland) return;
+  window.ManagerIsland.openUser(u, preset);
+  document.getElementById('userFormOverlay').classList.add('open');
 }
-// Draws the Users pane from an already-filtered user list (cached or fresh).
-// Template 3: a line per login, its role as the colored mark (owner amber,
-// HR purple, supplier blue, client green, staff grey); the name with the
-// role, then the login and phone, then what it reaches. A tap edits; ✕
-// deletes.
-const USER_ROLE_COLOR={tenant_admin:'var(--amber)',superadmin:'var(--accent)',hr:'#a78bfa',supplier:'#60a5fa',client:'var(--green)',staff:'var(--border2)'};
-function renderAdminUsersRows(el, users){
-    const row = u => {
-      const sup = u.role==='supplier' ? (suppliers||[]).find(s=>s.id===u.supplierId) : null;
-      const permsLabel = (u.role!=='staff' && u.role!=='hr') ? '' : (u.permissions==='*' ? tr('Full access') : (Array.isArray(u.permissions)?u.permissions.join(', '):'—'));
-      const count = u.role==='hr' ? hrWorkerCount(u.id) : u.role==='supplier' && u.supplierId ? workers.filter(w => w.supplierId===u.supplierId).length : null;
-      const team = count==null ? '' : (count===1?tr('1 worker{1}',{1:''}):tr('{0} workers{1}',{0:count,1:''})) + (u.role==='hr'&&u.ownOnly===false?' · '+tr('sees all workers'):'');
-      const what = u.role==='supplier' ? (sup?esc(sup.name):'—') : u.role==='client' ? esc(((clients||[]).find(c=>c.id===u.clientId)||{}).name||'—') : esc(permsLabel);
-      const name = (u.fullName||u.username)||'?', col = USER_ROLE_COLOR[u.role]||'var(--border2)';
-      return t3Line({c:col, cls:'tap-edit'+(u.active===false?' off':''),
-        av:`<div class="t3-av" style="background:var(--bg3);color:${col==='var(--border2)'?'var(--text2)':col}">${u.role==='tenant_admin'?'<i class="ti ti-pin"></i>':esc(String(name).trim().slice(0,1).toUpperCase())}</div>`,
-        name:`${esc(name)} <span style="font-size:11px;font-weight:400;color:var(--text2)">${esc(tr(USER_ROLE_LABELS[u.role]||u.role))}</span>${u.active===false?' <span style="font-size:11px;font-weight:400;color:var(--amber)">'+tr('inactive')+'</span>':''}`,
-        sub:[tr('login: {0}{1}',{0:esc(u.username),1:(u.phone?' · '+esc(u.phone):'')}), [what, esc(team)].filter(Boolean).join(' · '),
-          HOUR_ROLES.includes(u.role) && (u.hourPerms||[]).length ? `<i class="ti ti-clock"></i> ${esc(u.hourPerms.map(p=>tr(HOUR_PERM_LABELS[p]||p)).join(', '))}` : ''],
-        attrs:`onclick="tapEdit(event,this,null,()=>openEditUserForm('${esc(u.id)}'))" onpointerdown="longPress(event,this,()=>openEditUserForm('${esc(u.id)}'))"`,
-        sel: USER_UNSELECTABLE.includes(u.role) ? null : u.id,
-        menu:[{icon:'ti-pencil', label:tr('Edit'), fn:()=>openEditUserForm(u.id)}, {icon:'ti-trash', label:tr('Delete'), danger:true, fn:b=>deleteUserConfirm(u.id, u.username, b.closest('.t3-line'))}],
-        swipe:{edit:()=>openEditUserForm(u.id), del:el=>deleteUserConfirm(u.id, u.username, el)}});
-    };
-    el.innerHTML = `<div class="t3-sec" style="margin-top:0"><i class="ti ti-users"></i> ${tr('Logins')}<em>${users.length}</em><button class="gbtn primary og-new" onclick="openCreateUserForm()"><i class="ti ti-plus"></i> ${tr('New user')}</button></div>`
-      + (users.length ? `<div class="admin-users-rows"></div>` : '<div class="t3-empty">'+tr('No staff, HR or supplier users yet.')+'</div>');
-    // The firm's owner is always pinned at the top (user request 2026-10-11),
-    // then everyone else by name.
-    const rank = u => u.role==='tenant_admin' ? 0 : u.role==='superadmin' ? 1 : 2;
-    users = users.slice().sort((a,b) => rank(a)-rank(b) || String(a.fullName||a.username||'').localeCompare(String(b.fullName||b.username||'')));
-    __adminUsersShown = users;
-    if(users.length){ renderPagedList(el.querySelector('.admin-users-rows'), 'users', '', users, row); selectRoot('users', el.querySelector('.admin-users-rows')); }
-}
-// The firm's owner (and a super-admin) can't be picked for a bulk delete.
-const USER_UNSELECTABLE = ['tenant_admin', 'superadmin'];
-let __adminUsersShown = [];
-function startUsersSelect(){
-  const root = document.querySelector('.admin-users-rows'); if(!root) return;
-  startSelect({key:'users', root, ids:() => __adminUsersShown.filter(u => !USER_UNSELECTABLE.includes(u.role)).map(u => u.id),
-    del:(ids, els) => undoDelete({els, label: ids.length === 1 ? ((__adminUsersShown.find(u => u.id === ids[0]) || {}).username || '') : tr('{0} users', {0: ids.length}),
-      commit: async () => { let ok = 0; for(const id of ids) if(await deleteUserNow(id, true)) ok++; if(ok) showToast(tr('User deleted')); renderAdminUsers(); }})});
-}
-function fillUserFormSupplierSelect(selectedId){
-  const sel = document.getElementById('userFormSupplierId');
-  sel.innerHTML = (suppliers||[]).map(s => `<option value="${esc(s.id)}"${s.id===selectedId?' selected':''}>${esc(s.name)}</option>`).join('');
-}
-function fillUserFormClientSelect(selectedId){
-  const sel = document.getElementById('userFormClientId');
-  sel.innerHTML = (clients||[]).map(c => `<option value="${esc(c.id)}"${c.id===selectedId?' selected':''}>${esc(c.name)}${c.object?' · '+esc(c.object):''}</option>`).join('');
-}
-const SUPPLIER_SECTIONS = ['dashboard', 'workers', 'hours'];
-function setUserFormSupSections(list){
-  document.querySelectorAll('.userFormSupSecCb').forEach(cb => cb.checked = (list||[]).includes(cb.value));
-}
-function setUserFormHourPerms(list){
-  document.querySelectorAll('.userFormHourPermCb').forEach(cb => cb.checked = (list||[]).includes(cb.value));
-}
-function onUserFormRoleChange(fromUser){
-  const role = document.getElementById('userFormRole').value;
-  document.getElementById('userFormSupplierField').style.display = role==='supplier' ? '' : 'none';
-  document.getElementById('userFormClientField').style.display = role==='client' ? '' : 'none';
-  document.getElementById('userFormHourPermsField').style.display = HOUR_ROLES.includes(role) ? '' : 'none';
-  document.getElementById('userFormSupSectionsField').style.display = role==='supplier' ? '' : 'none';
-  if(role==='supplier' && fromUser===true && !document.querySelector('.userFormSupSecCb:checked')) setUserFormSupSections(SUPPLIER_SECTIONS);
-  document.getElementById('userFormClientNote').style.display = role==='client' ? '' : 'none';
-  if(role==='client' && fromUser===true) fillUserFormClientSelect(null);
-  // A new review login (or a staff login turned into one) starts with the default ticks.
-  if(fromUser===true && HOUR_ROLES.includes(role) && !document.querySelector('.userFormHourPermCb:checked')) setUserFormHourPerms(HOUR_DEFAULT);
-  document.getElementById('userFormPermsField').style.display = (role==='supplier'||role==='client') ? 'none' : '';
-  // "Only own workers" closes the form: an HR may see every worker when it is
-  // off; a supplier and a client always see only their own (locked on).
-  document.getElementById('userFormHrFields').style.display = HOUR_ROLES.includes(role) ? '' : 'none';
-  const own = document.getElementById('userFormOwnOnly');
-  own.disabled = role!=='hr';
-  if(role!=='hr') own.checked = true;
-  document.getElementById('userFormOwnOnlyHint').textContent = role==='supplier' ? tr('Only this supplier\'s workers — always.')
-    : role==='client' ? tr('Only the workers at this client — always.') : tr('Sees only the workers assigned to this HR. Unchecked: every worker of the firm.');
-  document.getElementById('userFormPayFields').style.display = (role==='hr'||role==='supplier') ? '' : 'none';
-  document.getElementById('userFormCommissionField').style.display = role==='hr' ? '' : 'none';
-  // A supplier's pay view is its own tile; an HR's is the Accounting section.
-  document.getElementById('userFormShowPayGrid').style.display = role==='supplier' ? '' : 'none';
-  document.getElementById('userFormPayEditChip').style.display = role==='hr' ? '' : 'none';
-  if(role!=='hr') document.querySelector('.userFormPermCb[value="payEdit"]').checked = false;
-  document.getElementById('userFormAccountingHint').textContent = role==='hr' ? tr('Own workers\' pay and commission only') : tr('Accounting tab');
-  document.getElementById('userFormFullNameLabel').textContent = role==='hr' ? tr('Full name *') : tr('Full name');
-  document.getElementById('userFormHrWorkersField').style.display = (role==='hr' && __editingUserId) || role==='supplier' ? '' : 'none';
-  if(role==='supplier'){ fillUserFormSupplierSelect(null); renderUserFormHrWorkers(); }
-  // A new HR login starts with the Workers section only.
-  if(role==='hr' && fromUser===true && (!__editingUserId || !document.querySelector('.userFormPermCb:checked')))
-    document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = cb.value==='workers');
-  const rs=document.getElementById('userFormRole'); if(rs.__segDraw) rs.__segDraw();
-  ogAutoSections(document.getElementById('userFormOverlay'));
-  drawUserFormHead();
-}
-function openCreateUserForm(){
-  __editingUserId = null;
-  __editingAdminRow = false;
-  showUserFormAccess(true);
-  document.getElementById('userFormTitle').textContent = tr('New user');
-  document.getElementById('userFormUsername').value = '';
-  document.getElementById('userFormUsername').disabled = false;
-  document.getElementById('userFormPassword').value = '';
-  document.getElementById('userFormPasswordField').style.display = '';
-  document.getElementById('userFormPasswordLabel').textContent = tr('Password (min. 8)');
-  document.getElementById('userFormRole').value = 'staff';
-  document.getElementById('userFormRole').disabled = false;
-  document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = false);
-  document.getElementById('userFormFullName').value = '';
-  document.getElementById('userFormPhone').value = '';
-  document.getElementById('userFormOwnOnly').checked = true;
-  document.getElementById('userFormShowPay').checked = true;
-  document.getElementById('userFormCommission').value = '';
-  document.getElementById('userFormCommissionDay').value = '';
-  document.getElementById('userFormError').textContent = '';
-  fillUserFormClientSelect(null);
-  setUserFormHourPerms([]);
-  setUserFormSupSections([]);
-  onUserFormRoleChange();
-  document.getElementById('userFormOverlay').classList.add('open'); userFormSections();
-}
+function openCreateUserForm(preset){ showUserWindow(null, preset); }
 async function openEditUserForm(id){
-  // From the list the Users pane just drew (its cache) — no server round
-  // trip; the server is asked only when the row isn't there.
   const cachedUsers = loadAdminCache('users_'+activeTenantIdForAdmin());
   let u = Array.isArray(cachedUsers) ? cachedUsers.find(x => x.id === id) : null;
   if(!u){
@@ -4259,121 +3828,34 @@ async function openEditUserForm(id){
     u = ((json && json.users) || []).find(x => x.id === id);
   }
   if(!u){ showToast(tr('User not found')); return; }
-  __editingUserId = id;
-  document.getElementById('userFormTitle').textContent = tr('Edit {0}',{0:(u.username)});
-  document.getElementById('userFormUsername').value = u.username;
-  document.getElementById('userFormUsername').disabled = true; // username is immutable post-creation
-  document.getElementById('userFormPassword').value = '';
-  // A new password is set here too; left empty, the password stays.
-  document.getElementById('userFormPasswordLabel').textContent = tr('New password (empty = keep)');
-  document.getElementById('userFormRole').value = u.role;
-  // The role can change between Staff, HR and Supplier (not for an owner row).
-  document.getElementById('userFormRole').disabled = false;
-  __editingUserOrigRole = u.role;
-  document.getElementById('userFormError').textContent = '';
-  document.getElementById('userFormFullName').value = u.fullName || '';
-  document.getElementById('userFormPhone').value = u.phone || '';
-  document.getElementById('userFormOwnOnly').checked = u.ownOnly !== false;
-  document.getElementById('userFormShowPay').checked = u.showPay !== false;
-  document.getElementById('userFormCommission').value = u.commissionRate ? u.commissionRate : '';
-  document.getElementById('userFormCommissionDay').value = u.commissionDayRate ? u.commissionDayRate : '';
-  __editingAdminRow = u.role==='tenant_admin' || u.role==='superadmin';
-  if(__editingAdminRow){
-    document.getElementById('userFormTitle').textContent = tr('Edit {0} (owner)',{0:(u.fullName || u.username)});
-    ['userFormSupplierField','userFormClientField','userFormHourPermsField','userFormHrFields','userFormHrWorkersField','userFormPayFields','userFormShowPayGrid'].forEach(i => document.getElementById(i).style.display = 'none');
-    showUserFormAccess(false);
-    document.getElementById('userFormOverlay').classList.add('open'); userFormSections();
-    return;
+  showUserWindow(u);
+}
+// After a save: a former HR's workers are no longer assigned to it, one's own
+// new name shows in the header; the window closes and the list is read again.
+async function userSaved(id, origRole, role, fullName){
+  if(id && origRole==='hr' && role!=='hr'){
+    const ids = workers.filter(w => w.hrId===id).map(w => w.id);
+    if(ids.length) await assignWorkersToHr(ids, null);
   }
-  showUserFormAccess(true);
-  onUserFormRoleChange();
-  if(u.role==='supplier') fillUserFormSupplierSelect(u.supplierId);
-  fillUserFormClientSelect(u.role==='client' ? u.clientId : null);
-  setUserFormHourPerms(Array.isArray(u.hourPerms) ? u.hourPerms : HOUR_DEFAULT);
-  setUserFormSupSections(Array.isArray(u.supplierSections) ? u.supplierSections : SUPPLIER_SECTIONS);
-  if(u.role==='hr' || u.role==='supplier') renderUserFormHrWorkers();
-  // A supplier has no sections (listUsers reports its empty list as '*').
-  const perms = (u.role==='supplier'||u.role==='client') ? [] : u.permissions==='*' ? PERMISSION_SECTIONS.slice() : (Array.isArray(u.permissions)?u.permissions:[]);
-  document.querySelectorAll('.userFormPermCb').forEach(cb => cb.checked = perms.indexOf(cb.value)!==-1);
-  document.getElementById('userFormOverlay').classList.add('open'); userFormSections();
+  const me = getSession();
+  if(id && me && me.uid === id){ me.fullName = fullName; saveSession(me); renderAccountControl(me); }
+  closeModal('userFormOverlay');
+  showToast(tr('Saved'));
+  await prefetchAdminUsers();
 }
-async function submitUserForm(){
-  const errEl = document.getElementById('userFormError');
-  errEl.textContent = '';
-  const role = document.getElementById('userFormRole').value;
-  const permissions = Array.from(document.querySelectorAll('.userFormPermCb:checked')).map(cb=>cb.value);
-  const supplierId = document.getElementById('userFormSupplierId').value;
-  const clientId = document.getElementById('userFormClientId').value;
-  const hourPerms = Array.from(document.querySelectorAll('.userFormHourPermCb:checked')).map(cb=>cb.value);
-  if(role==='client' && !clientId){ errEl.textContent = tr('Pick the client'); return; }
-  // Who gets what: a supplier its supplier, a client its client, staff and HR
-  // their sections; HR, supplier and client their hours ticks.
-  const access = body => {
-    if(role==='supplier'){ body.supplierId = supplierId; body.supplierSections = Array.from(document.querySelectorAll('.userFormSupSecCb:checked')).map(cb=>cb.value); }
-    else if(role==='client') body.clientId = clientId; else body.permissions = permissions;
-    if(HOUR_ROLES.includes(role)) body.hourPerms = hourPerms;
-  };
-  const btn = document.getElementById('userFormSaveBtn');
-  btn.disabled = true;
-  try{
-    const hrFields = {
-      fullName: document.getElementById('userFormFullName').value.trim(),
-      phone: document.getElementById('userFormPhone').value.trim() };
-    if(role==='hr') hrFields.ownOnly = document.getElementById('userFormOwnOnly').checked;
-    if(role==='supplier') hrFields.showPay = document.getElementById('userFormShowPay').checked;
-    if(role==='hr') hrFields.commissionRate = parseFloat(document.getElementById('userFormCommission').value)||0;
-    if(role==='hr') hrFields.commissionDayRate = parseFloat(document.getElementById('userFormCommissionDay').value)||0;
-    if(role==='hr' && !hrFields.fullName){ errEl.textContent = tr('Full name required for an HR login'); return; }
-    if(__editingUserId){
-      const password = document.getElementById('userFormPassword').value;
-      if(password){
-        const pr = await (await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'resetUserPassword', ...gsAuth(), id: __editingUserId, password }) })).json();
-        if(!pr || pr.error){ errEl.textContent = tr((pr&&pr.error)||'') ||tr('Password not changed'); return; }
-      }
-      // Rights are sent as they are in the form; the server ends the user's
-      // sessions only when they really changed.
-      const body = __editingAdminRow
-        ? { action:'updateUser', ...gsAuth(), id: __editingUserId, fullName: hrFields.fullName, phone: hrFields.phone }
-        : { action:'updateUser', ...gsAuth(), id: __editingUserId, role, ...hrFields };
-      if(!__editingAdminRow) access(body);
-      const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(body) });
-      const json = await res.json();
-      if(!json || json.error){ errEl.textContent = tr((json&&json.error)||'') ||tr('Save failed'); return; }
-      // No longer an HR: its workers are no longer assigned to it.
-      if(__editingUserOrigRole==='hr' && role!=='hr'){
-        const ids = workers.filter(w => w.hrId===__editingUserId).map(w => w.id);
-        if(ids.length) await assignWorkersToHr(ids, null);
-      }
-      const me = getSession();
-      if(me && me.uid === __editingUserId){ me.fullName = hrFields.fullName; saveSession(me); renderAccountControl(me); }
-    } else {
-      const username = document.getElementById('userFormUsername').value.trim();
-      const password = document.getElementById('userFormPassword').value;
-      if(!username || !password){ errEl.textContent = tr('Username and password required'); return; }
-      const body = { action:'createTenantUser', ...gsAuth(), username, password, role, ...hrFields };
-      access(body);
-      const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(body) });
-      const json = await res.json();
-      if(!json || json.error){ errEl.textContent = tr((json&&json.error)||'') ||tr('Create failed'); return; }
-    }
-    closeModal('userFormOverlay');
-    showToast(tr('Saved'));
-    renderAdminUsers();
-  }catch(e){ errEl.textContent = tr('Network error'); }
-  finally{ btn.disabled = false; }
-}
-// Delete never asks: the line collapses and the Undo snack runs first (undoDelete).
-function deleteUserConfirm(id, username, el){
-  undoDelete({el, label: username, commit: () => deleteUserNow(id)});
-}
-async function deleteUserNow(id, quiet){
-  try{
-    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'deleteUser', ...gsAuth(), id }) });
-    const json = await res.json();
-    if(!json || json.error){ showToast((json&&json.error)||tr('Failed')); if(!quiet) renderAdminUsers(); return false; }
-    if(!quiet){ showToast(tr('User deleted')); renderAdminUsers(); }
-    return true;
-  }catch(e){ showToast(tr('Network error')); if(!quiet) renderAdminUsers(); return false; }
+// The workers as the Users section and its windows see them (an HR's hrId, a supplier's supplierId).
+function adminTeam(){ return workers.map(w=>({id:w.id, name:w.name||'', docId:String(workerDocId(w)||''), hrId:w.hrId||undefined, supplierId:w.supplierId||undefined})); }
+// Logins deleted once their Undo time is up.
+async function deleteUsersNow(ids){
+  let ok=0;
+  for(const id of ids){
+    try{
+      const json = await (await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'deleteUser', ...gsAuth(), id }) })).json();
+      if(!json || json.error) showToast((json&&json.error)||tr('Failed')); else ok++;
+    }catch(e){ showToast(tr('Network error')); }
+  }
+  if(ok) showToast(tr('User deleted'));
+  await prefetchAdminUsers();
 }
 
 // ── HR logins and their workers (docs/admin.md → HR) ────────────────────────
@@ -4424,21 +3906,6 @@ async function assignWorkersToHr(ids, hrId){
   }catch(e){ showToast(tr('Network error — punches not updated')); }
   return changed.length;
 }
-// The user form's "Workers" section serves an HR login (workers whose hrId is
-// its uid) and a supplier login (workers whose supplierId is the supplier the
-// form picks — shared by every login of that supplier). Owner / super-admin.
-function userFormTeam(){
-  const role = document.getElementById('userFormRole').value;
-  if(role==='supplier'){
-    const sid = document.getElementById('userFormSupplierId').value || null;
-    const sup = (suppliers||[]).find(x => x.id===sid);
-    return {kind:'supplier', key:sid, name: sup ? sup.name : tr('Supplier'), has: w => !!sid && w.supplierId===sid,
-      otherName: w => { const o = (suppliers||[]).find(x => x.id===w.supplierId); return o ? o.name : ''; }};
-  }
-  const u = hrUsers().find(x => x.id===__editingUserId);
-  return {kind:'hr', key:__editingUserId, name: (u && (u.fullName||u.username)) || 'HR', has: w => w.hrId===__editingUserId,
-    otherName: w => w.hrId ? (hrNameOf(w.hrId) || tr('another HR')) : ''};
-}
 // A supplier's workers: sets supplierId (null = none) and saves. Punches carry
 // no supplier, so nothing else moves (the portal reads its workers' punches).
 function assignWorkersToSupplier(ids, sid){
@@ -4451,92 +3918,22 @@ function assignWorkersToSupplier(ids, sid){
   if(n){ render(); autoSave(); }
   return n;
 }
-function renderUserFormHrWorkers(){
-  const el = document.getElementById('userFormHrWorkers');
-  if(!el) return;
-  const t = userFormTeam();
-  if(!t.key){ el.innerHTML = '<div style="font-size:12px;color:var(--text3)">'+tr(t.kind==='supplier' ? 'Pick a supplier first' : 'No workers assigned')+'</div>'; return; }
-  const mine = workers.filter(t.has);
-  if(!mine.length){ el.innerHTML = '<div style="font-size:12px;color:var(--text3)">'+tr('No workers assigned')+'</div>'; return; }
-  renderPagedList(el, 'hrWorkers', t.kind+'|'+t.key, mine, w => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;background:var(--bg3);border-radius:var(--radius-sm);font-size:13px">
-      <span>${esc(w.name)}${workerDocId(w)?' <span style="color:var(--text3);font-size:11px">'+esc(workerDocId(w))+'</span>':''}</span>
-      <button class="btn sm" type="button" onclick="unassignHrWorker('${esc(w.id)}')">${tr('Unassign')}</button>
-    </div>`);
-}
-async function unassignHrWorker(id){
-  if(userFormTeam().kind==='supplier') assignWorkersToSupplier([id], null);
-  else await assignWorkersToHr([id], null);
-  renderUserFormHrWorkers(); renderAdminUsers();
-}
-let __hrAssignPicked = new Set();
-function openHrAssignModal(){
-  const t = userFormTeam();
-  if(!t.key){ showToast(tr('Pick a supplier first')); return; }
-  __hrAssignPicked = new Set();
-  document.getElementById('hrAssignTitle').textContent = tr('Add workers to {0}',{0:t.name});
-  document.getElementById('hrAssignSearch').value = '';
-  renderHrAssignList();
-  document.getElementById('hrAssignOverlay').classList.add('open');
-}
-function renderHrAssignList(){
-  const t = userFormTeam();
-  const q = document.getElementById('hrAssignSearch').value.trim().toLowerCase();
-  const list = workers.filter(w => !t.has(w))
-    .filter(w => !q || (w.name||'').toLowerCase().includes(q) || String(workerDocId(w)||'').toLowerCase().includes(q));
-  const el = document.getElementById('hrAssignList');
-  if(!list.length){ el.innerHTML = '<div style="font-size:12px;color:var(--text3)">'+tr('No workers to add')+'</div>'; return; }
-  renderPagedList(el, 'hrAssign', t.kind+'|'+t.key+'|'+q, list, w => {
-    const other = t.otherName(w);
-    return `<label class="check-chip">
-      <input type="checkbox" ${__hrAssignPicked.has(w.id)?'checked':''} onchange="toggleHrAssignPick('${esc(w.id)}',this.checked)">
-      <span class="chip-text">${esc(w.name)}${other?'<span class="chip-hint" style="color:var(--amber)">'+esc(tr('now: {0}',{0:other}))+'</span>':''}</span>
-    </label>`;
-  });
-}
-function toggleHrAssignPick(id, on){ if(on) __hrAssignPicked.add(id); else __hrAssignPicked.delete(id); }
-async function submitHrAssign(){
-  if(!__hrAssignPicked.size){ closeModal('hrAssignOverlay'); return; }
-  const btn = document.getElementById('hrAssignSaveBtn');
-  btn.disabled = true;
-  try{
-    const t = userFormTeam();
-    const n = t.kind==='supplier' ? assignWorkersToSupplier([...__hrAssignPicked], t.key) : await assignWorkersToHr([...__hrAssignPicked], t.key);
-    showToast(tr('{0} assigned',{0:(n)}));
-    closeModal('hrAssignOverlay');
-    renderUserFormHrWorkers(); renderAdminUsers();
-  }finally{ btn.disabled = false; }
-}
 
 // ── Superadmin cross-firm payable summary (Admin/Roles plan, stage 10) ─────
 // Deliberately reuses the exact same canonical payroll functions every
 // firm's own Accounting tab uses (groupPunchesIntoShifts/shiftPay) — never a
-// reimplementation server-side or otherwise, per this file's own standing
-// rule against touching/duplicating that math casually. For each cached firm
-// (__firmsCache, populated by renderFirmsList()), fetches that tenant's own
-// schedule (for worker rate data) + this week's punch log via an explicit
-// asTenantId override in the request — NOT by switching the session's own
-// viewingTenantId/reloading, so browsing this summary never disturbs the
-// admin's actual "currently open" firm. Per-firm total only (hours + payable
-// this week); drilling into a specific supplier's own breakdown is done by
-// switching into that firm (switchToTenant(), already exists) and using its
-// own Accounting tab's payable-by-supplier table — no reason to duplicate
-// that table's rendering here too.
-let __superadminAccountingOpen = false;
-function toggleSuperadminAccounting(){
-  __superadminAccountingOpen = !__superadminAccountingOpen;
-  const wrap = document.getElementById('superadminAccountingWrap');
-  wrap.style.display = __superadminAccountingOpen ? 'block' : 'none';
-  if(__superadminAccountingOpen) renderSuperadminAccounting();
-}
+// reimplementation. For each cached firm (__firmsCache, from loadFirms()),
+// fetches that tenant's own schedule (for worker rate data) + this week's
+// punch log via an explicit asTenantId override in the request — NOT by
+// switching the session's viewingTenantId/reloading, so browsing this summary
+// never disturbs the admin's "currently open" firm. Per-firm total only
+// (hours + payable this week); the rows go to the React Firms section.
 async function fetchForTenant(action, tenantId){
   const q = 'asTenantId='+encodeURIComponent(tenantId)+'&action='+action;
   const res = await fetch(API_URL+'?'+q);
   return res.json();
 }
-async function renderSuperadminAccounting(){
-  const wrap = document.getElementById('superadminAccountingWrap');
-  wrap.innerHTML = '<div style="color:var(--text2);font-size:13px">Loading every firm\'s this-week payable — this can take a moment…</div>';
-  if(!__firmsCache.length){ wrap.innerHTML = '<div style="color:var(--text2);font-size:13px">'+tr('No firms yet.')+'</div>'; return; }
+async function firmsPayableRows(){
   const ws = new Date(); ws.setDate(ws.getDate()-ws.getDay()); ws.setHours(0,0,0,0);
   const rows = [];
   for(const t of __firmsCache){
@@ -4575,55 +3972,13 @@ async function renderSuperadminAccounting(){
       rows.push({ name: t.companyName || t.tenantId, hours: totalHours, pay: totalPay });
     }catch(e){ rows.push({ name: t.companyName || t.tenantId, hours: 0, pay: 0, error: true }); }
   }
-  const grandHours = rows.reduce((s,r)=>s+r.hours,0), grandPay = rows.reduce((s,r)=>s+r.pay,0);
-  wrap.innerHTML = `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-    <table style="width:100%;border-collapse:collapse">
-      <thead><tr style="background:var(--bg3);border-bottom:1px solid var(--border)">
-        <th style="padding:8px 12px;text-align:left;font-size:12px;color:var(--text2)">${tr('Firm')}</th>
-        <th style="padding:8px 12px;text-align:center;font-size:12px;color:var(--text2)">${tr('Hours (this week)')}</th>
-        <th style="padding:8px 12px;text-align:right;font-size:12px;color:var(--text2)">${tr('Payable')}</th>
-      </tr></thead>
-      <tbody class="paged-firmSummary"></tbody>
-      <tfoot><tr style="background:var(--bg3);border-top:2px solid var(--border)">
-        <td style="padding:8px 12px;font-size:13px;font-weight:700">${tr('TOTAL')}</td>
-        <td style="padding:8px 12px;text-align:center;font-size:13px;font-weight:700">${tr('{h}h',{h:(grandHours).toFixed(1)})}</td>
-        <td style="padding:8px 12px;text-align:right;font-size:14px;font-weight:800;color:var(--green)">₪${grandPay.toFixed(0)}</td>
-      </tr></tfoot>
-    </table>
-  </div>`;
-  renderPagedList(wrap.querySelector('.paged-firmSummary'),'firmSummary','',rows,r=>`<tr style="border-bottom:1px solid var(--border)">
-        <td style="padding:8px 12px;font-size:13px;font-weight:600">${esc(r.name)}${r.error?' <span style="color:#ff6b78;font-size:11px">'+tr('(load failed)')+'</span>':''}</td>
-        <td style="padding:8px 12px;text-align:center;font-size:13px">${tr('{h}h',{h:(r.hours).toFixed(1)})}</td>
-        <td style="padding:8px 12px;text-align:right;font-size:13px;font-weight:700;color:var(--green)">₪${r.pay.toFixed(0)}</td>
-      </tr>`,{table:true,colspan:3});
+  return rows;
 }
 
-
-function openErrorsScreen(){
-  document.getElementById('errorsScreen').style.display = 'block';
-  loadErrorsList('errorsList');
-}
-function closeErrorsScreen(){
-  document.getElementById('errorsScreen').style.display = 'none';
-}
-// targetId parametrized 2026-10-02 (Admin/Roles plan stage 5) — same reuse
-// pattern as renderFirmsList() above, feeds either the standalone
-// #errorsScreen or the admin panel's Errors tab (#adminErrorsList).
-//
-// Copy button (added 2026-09-30, per request): each error card gets a small
-// top-right icon button that copies that one error's full text (timestamp +
-// page + source + message) to the clipboard — useful for pasting a row into
-// a bug report/chat without manually selecting wrapped text. Rows are kept
-// in __errorsRowsByTarget, keyed by targetId (the standalone screen and the
-// admin-panel tab load independently, same pattern loadErrorsList() already
-// follows for its own target parametrization), so the button's onclick can
-// just pass back the row index rather than re-serializing the whole error
-// into an inline attribute (awkward/fragile with newlines and quotes).
-let __errorsRowsByTarget = {};
 // ── Errors / Timings: the period picker ─────────────────────────────────
-// Both panes load one period at a time: the last 7 or 30 days, or a calendar
-// month (this one and the 11 before it). Copy all and Print take only that
-// period's rows.
+// Both sections load one period at a time: the last 7 or 30 days, or a
+// calendar month (this one and the 11 before it), each cached on its own
+// (adminCache_errors:<key>, adminCache_timings:<key>).
 function logPeriodOptions(){
   const now=new Date(), opts=[['30d',tr('Last 30 days')],['7d',tr('Last 7 days')]];
   for(let i=0;i<12;i++){
@@ -4632,205 +3987,45 @@ function logPeriodOptions(){
   }
   return opts;
 }
-function fillLogPeriodSelect(id){
-  const sel=document.getElementById(id);
-  if(!sel||sel.options.length) return;
-  sel.innerHTML=logPeriodOptions().map(([v,l])=>`<option value="${v}">${esc(l)}</option>`).join('');
-}
 // {key, from, to, label} for a picker value; from/to are ISO times.
 function logPeriodRange(v){
   v=v||'30d';
-  const opt=logPeriodOptions().find(o=>o[0]===v)||['30d','Last 30 days'];
+  const opt=logPeriodOptions().find(o=>o[0]===v)||['30d',tr('Last 30 days')];
   let from, to=null;
   if(v==='7d'||v==='30d') from=new Date(Date.now()-(v==='7d'?7:30)*864e5);
   else { const [y,m]=v.slice(2).split('-').map(Number); from=new Date(y,m-1,1); to=new Date(y,m,1); }
-  return {key:v, from:from.toISOString(), to:to?to.toISOString():null, label:opt[1]};
+  return {key:opt[0], from:from.toISOString(), to:to?to.toISOString():null, label:opt[1]};
 }
 function logPeriodQuery(pr){ return '&from='+encodeURIComponent(pr.from)+(pr.to?'&to='+encodeURIComponent(pr.to):''); }
-// Short date-time for the compact rows: 04.10 10:18.
-function _shortWhen(w){ const d=new Date(w); return isNaN(d)?'':d.toLocaleDateString(uiLocale(),{day:'2-digit',month:'2-digit'}).replace('/','.')+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); }
-let __errorsPeriod={};
-async function loadErrorsList(targetId){
-  targetId = targetId || 'errorsList';
-  const listEl = document.getElementById(targetId);
-  const pickerId = targetId==='adminErrorsList' ? 'adminErrorsPeriod' : null;
-  if(pickerId) fillLogPeriodSelect(pickerId);
-  const pr = pickerId ? logPeriodRange(document.getElementById(pickerId).value) : null;
-  __errorsPeriod[targetId] = pr;
-  const cacheKey = 'errors' + (pr ? ':' + pr.key : '');
-  const cached = loadAdminCache(cacheKey);
-  if(Array.isArray(cached)) renderErrorsRows(listEl, targetId, cached);
-  else listEl.innerHTML = '<div style="color:var(--text2);font-size:13px">'+tr('Loading…')+'</div>';
+const __logPeriod={errors:'30d', timings:'30d'}, __logErr={errors:'', timings:''};
+// The period's rows: the cached ones are drawn first, then loadErrors / loadTimings.
+async function loadLogPane(kind){
+  const pr=logPeriodRange(__logPeriod[kind]), key=kind+':'+pr.key;
+  __logErr[kind]='';
   try{
-    const res = await fetch(API_URL + '?action=loadErrors' + gsAuthQuery() + (pr ? logPeriodQuery(pr) : ''));
-    const json = await res.json();
-    if(!json || json.error){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">'+esc(tr((json&&json.error)||'Load failed'))+'</div>'; return; }
-    const rows = json.rows || [];
-    saveAdminCache(cacheKey, rows);
-    renderErrorsRows(listEl, targetId, rows);
-  }catch(e){ if(!cached) listEl.innerHTML = '<div style="color:#ff6b78">'+tr('No network')+'</div>'; }
-}
-// Draws the Errors list from rows (cached or fresh), template 3: the count,
-// then a red-marked line per error — the message, then time · page · source ·
-// user — with a copy button; paged by 10.
-function renderErrorsRows(listEl, targetId, rows){
-    __errorsRowsByTarget[targetId] = rows;
-    const pr = __errorsPeriod[targetId];
-    if(!rows.length){ listEl.innerHTML = '<div class="t3-empty">'+esc(tr('No errors'))+(pr?' — '+esc(pr.label):'')+'.</div>'; return; }
-    listEl.innerHTML = `<div class="t3-sec" style="margin-top:0">${tr('{0} error{1}{2}',{0:(rows.length),1:(rows.length===1?'':'s'),2:(pr?' · '+esc(pr.label):'')})}</div><div class="errors-rows"></div>`;
-    renderPagedList(listEl.querySelector('.errors-rows'), 'errors:' + targetId, pr ? pr.key : '', rows, (r,i) => t3Line({c:'var(--red)', cls:'wrap',
-      name:`<span style="font-weight:500">${esc(r.message||'')}</span>`,
-      sub:`<span style="font-family:'DM Mono',monospace">${esc(_shortWhen(r.when))}</span>${[r.page,r.source,r.user||r.worker].filter(Boolean).map(x=>' · '+esc(x)).join('')}`,
-      right:`<button class="t3-ib" type="button" title="${tr('Copy error')}" onclick="copyErrorRow('${targetId}',${i})"><i class="ti ti-copy"></i></button>`}));
-}
-function copyAllErrors(targetId){
-  const rows = __errorsRowsByTarget[targetId] || [], pr = __errorsPeriod[targetId];
-  if(!rows.length){ showToast(tr('Nothing to copy')); return; }
-  copyTextToClipboard((pr ? 'Errors — ' + pr.label + ' (' + rows.length + ')\n\n' : '') + rows.map(errorRowText).join('\n\n'));
-}
-// ── Admin → Timings (super-admin) ─────────────────────────────────────────
-// Summary per kind over the last 7 days (median / 90th percentile of the
-// total and of each phase), then the latest 50 measurements.
-const TIMING_PHASES = {
-  login: [['loginRequestMs','Login request'],['firstContentMs','First content'],['pingMs','Wake-up ping']],
-  open:  [['firstContentMs','First content']],
-  scan:  [['alignMs','AI align'],['enhanceMs','Enhance (server)'],['primaryReadMs','AI read'],['verifyMs','Digit re-check'],['extraWaitMs','Wait for ספח']],
-  scanFiles: [['prepMs','Prepare files'],['classifyMs','Classify pages'],['primaryReadMs','AI read'],['verifyMs','Digit re-check'],['extraWaitMs','Wait for ספח']],
-};
-function _pct(arr,p){ if(!arr.length) return null; const a=[...arr].sort((x,y)=>x-y); return a[Math.min(a.length-1,Math.floor(p*(a.length-1)+0.5))]; }
-const _sec=ms=>ms==null?'—':(ms/1000).toFixed(1)+'s';
-let __timingsPeriod=null;
-async function loadTimingsPane(){
-  const el=document.getElementById('adminTimingsWrap'); if(!el) return;
-  fillLogPeriodSelect('adminTimingsPeriod');
-  const pr=logPeriodRange((document.getElementById('adminTimingsPeriod')||{}).value);
-  __timingsPeriod=pr;
-  const cacheKey='timings:'+pr.key;
-  const cached=loadAdminCache(cacheKey);
-  if(Array.isArray(cached)) renderTimingsPane(el,cached);
-  else el.innerHTML='<div style="color:var(--text2);font-size:13px">'+tr('Loading…')+'</div>';
-  try{
-    const res=await fetch(API_URL+'?action=loadTimings'+gsAuthQuery()+logPeriodQuery(pr));
+    const res=await fetch(API_URL+'?action='+(kind==='errors'?'loadErrors':'loadTimings')+gsAuthQuery()+logPeriodQuery(pr));
     const json=await res.json();
-    if(!json||json.error){ if(!cached) el.innerHTML='<div style="color:#ff6b78">'+esc(tr((json&&json.error)||'Load failed'))+'</div>'; return; }
-    saveAdminCache(cacheKey,json.rows||[]);
-    renderTimingsPane(el,json.rows||[]);
-  }catch(e){ if(!cached) el.innerHTML='<div style="color:#ff6b78">'+tr('Network error')+'</div>'; }
+    if(!json||json.error) __logErr[kind]=(json&&json.error)||'Load failed';
+    else saveAdminCache(key, json.rows||[]);
+  }catch(e){ __logErr[kind]='Network error'; }
+  if(__adminPane===kind) renderAdmin();
 }
-const TIMING_KIND_LABEL={login:'Login → fresh data',open:'App open',scan:'Scan (camera)',scanFiles:'Scan (files)'};
-// Slow data calls arrive as kind "gs:<action>" (see the fetch wrapper).
-function timingKindLabel(k){ return TIMING_KIND_LABEL[k] ? tr(TIMING_KIND_LABEL[k]) : (String(k).indexOf('gs:')===0 ? tr('Slow call: {0}',{0:k.slice(3)}) : k); }
-let __timingsRows=[], __timingsSummaryText='', __timingsSummary=[];
-function _timingFirmName(id){ const firms=(__firmsCache&&__firmsCache.length)?__firmsCache:(loadFirmsCache()||[]); const t=firms.find(x=>x.tenantId===id); return t?(t.companyName||id):(id||'—'); }
-// A slow AI call (gs:ai…) carries ai_read's _meta: the time spent at
-// Anthropic and in retry pauses, the tries and the token counts.
-const TIMING_AI_PHASES=[['apiMs','Anthropic'],['waitMs','Retry pauses']];
-const _timingPhases=kind=>TIMING_PHASES[kind]||(String(kind).indexOf('gs:ai')===0?TIMING_AI_PHASES:[]);
-function _timingSteps(kind,d){ return _timingPhases(kind).map(([key,label])=>typeof d[key]==='number'?[label,d[key]]:null).filter(Boolean); }
-function _timingAiNote(d){
-  return [d.part?'part '+d.part:'',d.tries>1?d.tries+' tries':'',typeof d.outTok==='number'?'out '+d.outTok+' tok':'',
-    typeof d.inTok==='number'?'in '+d.inTok+' tok':'',d.cacheReadTok?'cache read '+d.cacheReadTok:'',d.cacheWriteTok?'cache write '+d.cacheWriteTok:'',
-    d.stop&&d.stop!=='end_turn'?'stop '+d.stop:''].filter(Boolean).join(' · ');
+function logPaneSnapshot(kind){
+  const pr=logPeriodRange(__logPeriod[kind]), rows=loadAdminCache(kind+':'+pr.key);
+  return {kind, period:pr.key, periods:logPeriodOptions(), label:pr.label, rows:Array.isArray(rows)?rows:null, error:__logErr[kind]};
 }
-// One measurement as plain text (what the per-row copy button copies).
-function timingRowText(r){
-  const d=r.details||{};
-  const steps=_timingSteps(r.kind,d).map(([l,v])=>`${l} ${_sec(v)}`).join(' · ');
-  const head=[new Date(r.when).toLocaleString(),timingKindLabel(r.kind),_timingFirmName(r.tenantId),r.user||'',d.device||'',d.pages?d.pages+' page(s)':'',d.aborted||''].filter(Boolean).join(' · ');
-  const note=_timingAiNote(d);
-  return head+'\n'+_sec(r.totalMs)+(steps?' — '+steps:'')+(note?' — '+note:'')+(d.kinds?'\nPage kinds: '+d.kinds.join(', '):'');
-}
-function copyTimingRow(i){ const r=__timingsRows[i]; if(r) copyTextToClipboard(timingRowText(r)); }
-function copyAllTimings(){
-  if(!__timingsRows.length){ showToast(tr('Nothing to copy')); return; }
-  copyTextToClipboard((__timingsSummaryText?__timingsSummaryText+'\n\n':'')+'All measurements ('+__timingsRows.length+'):\n'+__timingsRows.map(timingRowText).join('\n\n'));
-}
-// Summary per kind over the picked period (finished runs only): count,
-// median and 90% of the total, median of each step.
-function _timingsSummary(rows){
-  const done=rows.filter(r=>!(r.details&&r.details.aborted));
-  const kinds=['login','open','scan','scanFiles'].filter(k=>done.some(r=>r.kind===k))
-    .concat([...new Set(done.map(r=>r.kind).filter(k=>String(k).indexOf('gs:')===0))].sort());
-  return kinds.map(k=>{
-    const rs=done.filter(r=>r.kind===k), tot=rs.map(r=>r.totalMs);
-    const steps=_timingPhases(k).map(([key,label])=>{ const v=rs.map(r=>r.details&&r.details[key]).filter(x=>typeof x==='number'); return v.length?[label,_pct(v,0.5)]:null; }).filter(Boolean);
-    return {kind:k,label:timingKindLabel(k),count:rs.length,median:_pct(tot,0.5),p90:_pct(tot,0.9),steps};
-  });
-}
-function renderTimingsPane(el,rows){
-  const pr=__timingsPeriod||logPeriodRange('30d');
-  __timingsRows=rows;
-  __timingsSummary=_timingsSummary(rows);
-  __timingsSummaryText=__timingsSummary.length?pr.label+' (median / 90%):\n'+__timingsSummary.map(x=>
-    `${x.label}: ${x.count}× · median ${_sec(x.median)} · 90% ${_sec(x.p90)}${x.steps.length?' · '+x.steps.map(([l,v])=>l+' '+_sec(v)).join(' · '):''}`).join('\n'):'';
-  if(!rows.length){ el.innerHTML='<div class="t3-empty">'+esc(tr('No measurements'))+' — '+esc(pr.label)+'.</div>'; return; }
-  const p90=Object.fromEntries(__timingsSummary.map(x=>[x.kind,x.p90]));
-  // Template 3: a line per kind (median at the right, its steps under it),
-  // then a line per measurement, newest first — amber when slower than its
-  // kind's 90%. Slow data calls add a kind each, so both page by 10.
-  const cardHtml=x=>t3Line({c:'var(--accent)', cls:'wrap', name:`${esc(x.label)} <span style="font-weight:400;color:var(--text3)">${x.count}×</span>`,
-    sub:x.steps.length?esc(x.steps.map(([l,v])=>l+' '+_sec(v)).join(' · ')):'',
-    right:`<span class="r" style="text-align:right"><b style="color:var(--text);font-size:14px">${_sec(x.median)}</b><br>90% ${_sec(x.p90)}</span>`});
-  const rowHtml=(r,i)=>{
-    const d=r.details||{}, slow=p90[r.kind]!=null&&r.totalMs>p90[r.kind];
-    const steps=[..._timingSteps(r.kind,d).map(([l,v])=>`${esc(l)} ${_sec(v)}`),esc(_timingAiNote(d))].filter(Boolean).join(' · ');
-    return t3Line({c:slow?'var(--amber)':'var(--neutral)', cls:'wrap',
-      name:`${esc(timingKindLabel(r.kind))}${d.aborted?` <span style="color:var(--amber);font-weight:400">${esc(d.aborted)}</span>`:''}`,
-      sub:[steps, `<span style="font-family:'DM Mono',monospace">${esc(_shortWhen(r.when))}</span>${[_timingFirmName(r.tenantId),r.user,d.device,d.pages?d.pages+' page(s)':'',d.kinds?d.kinds.join(', '):''].filter(Boolean).map(x=>' · '+esc(x)).join('')}`],
-      right:`<span class="r" style="color:${slow?'var(--amber)':'var(--text)'};font-size:14px;font-weight:700">${_sec(r.totalMs)}</span><button class="t3-ib" type="button" title="${tr('Copy')}" onclick="copyTimingRow(${i})"><i class="ti ti-copy"></i></button>`});
-  };
-  const slowN=rows.filter(r=>p90[r.kind]!=null&&r.totalMs>p90[r.kind]).length, abortedN=rows.filter(r=>r.details&&r.details.aborted).length;
-  const fig=(n,label,col)=>`<div><b style="color:${n?col:'var(--text3)'}">${n}</b>${esc(label)}</div>`;
-  el.innerHTML=`<div class="t3-stats">${fig(rows.length,tr('measurements'),'var(--text)')}${fig(__timingsSummary.length,tr('kinds'),'var(--text)')}${fig(slowN,tr('above 90%'),'var(--amber)')}${fig(abortedN,tr('aborted'),'var(--red)')}</div>
-    ${__timingsSummary.length?`<div class="t3-sec">${tr('By kind · median / 90%')}<em>${__timingsSummary.length}</em></div><div id="timingsCards"></div>`:''}
-    <div class="t3-sec">${tr('All measurements, newest first')}<em>${rows.length}</em></div>
-    <div id="timingsLatestList"></div>`;
-  if(__timingsSummary.length) renderPagedList(document.getElementById('timingsCards'), 'timingCards', pr.key, __timingsSummary, cardHtml);
-  renderPagedList(document.getElementById('timingsLatestList'), 'timings', pr.key, rows, rowHtml);
-}
-// Reset (Errors and Timings): every error and every measurement, of every
-// firm and period, deleted after a confirm; the cached periods go too.
+// Reset (Errors and Timings, behind the React Alert Dialog): every error and
+// every measurement, of every firm and period, deleted; the cached periods go too.
 async function resetLogs(){
-  if(!confirm(tr('Delete every error and every timing measurement (all firms, all periods)? This cannot be undone.'))) return;
   try{
     const json=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'resetLogs'})})).json();
     if(!json||json.error){ showToast(tr((json&&json.error)||'Not deleted')); return; }
     try{ Object.keys(localStorage).filter(k=>k.startsWith(ADMIN_CACHE_PREFIX+'errors')||k.startsWith(ADMIN_CACHE_PREFIX+'timings')).forEach(k=>localStorage.removeItem(k)); }catch(e){}
     showToast(tr('Deleted: {0} errors, {1} measurements',{0:json.errors||0,1:json.timings||0}));
-    if(__adminPane==='timings') loadTimingsPane(); else if(__adminPane==='errors') loadErrorsList('adminErrorsList');
+    if(__adminPane==='timings'||__adminPane==='errors') await loadLogPane(__adminPane);
   }catch(e){ showToast(tr('Network error')); }
 }
-// Print: the picked period of the Errors or Timings pane as a plain page.
-function printLogPane(which){
-  const isT=which==='timings';
-  const rows=isT?__timingsRows:(__errorsRowsByTarget.adminErrorsList||[]);
-  const pr=isT?__timingsPeriod:__errorsPeriod.adminErrorsList;
-  if(!rows.length){ showToast(tr('Nothing to print')); return; }
-  const title=(isT?'Timings':'Errors')+(pr?' — '+pr.label:'');
-  const th='style="border:1px solid #ccc;padding:4px 6px;background:#f0f0f0;text-align:left"', td='style="border:1px solid #ccc;padding:4px 6px;vertical-align:top"';
-  const summary=isT&&__timingsSummary.length?`<h3>${tr('Summary (median / 90%)')}</h3><table><tr><th ${th}>${tr('What')}</th><th ${th}>${tr('Count')}</th><th ${th}>${tr('Median')}</th><th ${th}>90%</th><th ${th}>${tr('Median by step')}</th></tr>`
-    +__timingsSummary.map(x=>`<tr><td ${td}>${esc(x.label)}</td><td ${td}>${x.count}</td><td ${td}>${_sec(x.median)}</td><td ${td}>${_sec(x.p90)}</td><td ${td}>${esc(x.steps.map(([l,v])=>l+' '+_sec(v)).join(' · '))}</td></tr>`).join('')+'</table>':'';
-  const body=isT
-    ?`<table><tr><th ${th}>${tr('When')}</th><th ${th}>${tr('What')}</th><th ${th}>${tr('Total')}</th><th ${th}>${tr('Steps')}</th><th ${th}>${tr('Firm · user · device')}</th></tr>`
-      +rows.map(r=>{ const d=r.details||{}; return `<tr><td ${td}>${esc(new Date(r.when).toLocaleString())}</td><td ${td}>${esc(timingKindLabel(r.kind))}${d.aborted?' ('+esc(d.aborted)+')':''}</td><td ${td}>${_sec(r.totalMs)}</td><td ${td}>${esc(_timingSteps(r.kind,d).map(([l,v])=>l+' '+_sec(v)).join(' · '))}</td><td ${td}>${esc([_timingFirmName(r.tenantId),r.user,d.device].filter(Boolean).join(' · '))}</td></tr>`; }).join('')+'</table>'
-    :`<table><tr><th ${th}>${tr('When')}</th><th ${th}>${tr('Page')}</th><th ${th}>${tr('Source')}</th><th ${th}>${tr('Message')}</th></tr>`
-      +rows.map(r=>`<tr><td ${td}>${esc(r.when?new Date(r.when).toLocaleString():'')}</td><td ${td}>${esc(r.page||'')}</td><td ${td}>${esc(r.source||'')}</td><td ${td}>${esc(r.message||'')}</td></tr>`).join('')+'</table>';
-  const win=window.open('','_blank');
-  if(!win){ showToast(tr('Allow pop-ups to print')); return; }
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(title)}</title><style>body{font-family:Arial,sans-serif;padding:16px;color:#111;font-size:12px}table{width:100%;border-collapse:collapse;margin-bottom:16px}</style></head><body><h2>${esc(title)}</h2><div>${tr('{0} row(s)',{0:(rows.length)})}</div>${summary}<h3>${isT?'Measurements':'Errors'}</h3>${body}</body></html>`);
-  win.document.close();
-  setTimeout(()=>win.print(),500);
-}
-function errorRowText(r){
-  const head = [r.when ? new Date(r.when).toLocaleString() : '', r.page||'', r.source||''].filter(Boolean).join(' · ');
-  return head + (head && r.message ? '\n' : '') + (r.message||'');
-}
-async function copyErrorRow(targetId, idx){
-  const r = (__errorsRowsByTarget[targetId]||[])[idx];
-  if(!r) return;
-  await copyTextToClipboard(errorRowText(r));
-}
-// Shared by the Errors and Timings panes' copy buttons.
+// Shared by the Errors and Timings copy buttons (and Copy all).
 async function copyTextToClipboard(text){
   try{
     await navigator.clipboard.writeText(text);
@@ -4846,186 +4041,6 @@ async function copyTextToClipboard(text){
       showToast(tr('Copied'));
     }catch(e2){ showToast(tr('Could not copy')); }
   }
-}
-
-// Reversible: flips every login belonging to this firm active/inactive.
-// nextActive is the state to SWITCH TO (opposite of the button's current icon).
-async function toggleTenantActive(tenantId, nextActive){
-  try{
-    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'setTenantActive', ...gsAuth(), tenantId, active: nextActive }) });
-    const json = await res.json();
-    if(!json || json.error){ showToast((json&&json.error)||tr('Error')); return; }
-    showToast(nextActive ? tr('Firm enabled') : tr('Firm disabled'));
-    renderFirmsList(__firmsListTarget);
-  }catch(e){ showToast(tr('No network')); }
-}
-
-// Deletes firms — irreversible once it runs: the profile, logins, schedule,
-// punch history and every worker file in Storage. Delete never asks (stage 13,
-// the owner's rule for every list): the line collapses behind the Undo snack
-// and deleteTenant runs only when its 5 s are up.
-function deleteTenantUndo(ids, els){
-  ids.forEach(id => __firmDelPending.add(id));
-  const name = ids.length === 1 ? (((__firmsCache||[]).find(t => t.tenantId === ids[0]) || {}).companyName || '') : tr('{0} firms', {0: ids.length});
-  undoDelete({els, label: name,
-    undo: () => { ids.forEach(id => __firmDelPending.delete(id)); renderFirmsList(__firmsListTarget); },
-    commit: async () => {
-      let ok = 0;
-      for(const tenantId of ids){
-        try{ const json = await (await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'deleteTenant', ...gsAuth(), tenantId }) })).json();
-          if(json && !json.error) ok++; else showToast((json&&json.error)||tr('Error')); }catch(e){ showToast(tr('No network')); }
-      }
-      ids.forEach(id => __firmDelPending.delete(id));
-      if(ok) showToast(ok === 1 && ids.length === 1 ? tr('Firm «{0}» deleted',{0:name}) : tr('{0} firms deleted',{0:ok}));
-      renderFirmsList(__firmsListTarget);
-    }});
-}
-
-let __editingFirmTenantId = null;
-// 'create' (openCreateFirmForm) picks the createUser action and shows the
-// login fields in submitEditFirm(); 'edit' (openEditFirmForm/openMyFirmForm)
-// picks updateTenant and hides them — see the shared modal's own HTML
-// comment for why this single form replaced two near-duplicate overlays.
-let __firmFormMode = 'edit';
-// Set by the modal's own oninput — a late-arriving server refresh must never
-// overwrite what the user has already started typing.
-let __firmEditDirty = false;
-function fillFirmEditForm(p){
-  document.getElementById('firmEditCompanyName').value = p.companyName || '';
-  document.getElementById('firmEditDeductionsNo').value = p.deductionsFileNumber || '';
-  document.getElementById('firmEditPhone').value = p.phone || '';
-  document.getElementById('firmEditStreet').value = p.street || '';
-  document.getElementById('firmEditStreetNumber').value = p.streetNumber || '';
-  document.getElementById('firmEditCity').value = p.city || '';
-  __firmEditDirty = false;
-}
-function openCreateFirmForm(){
-  __editingFirmTenantId = null;
-  __firmFormMode = 'create';
-  document.getElementById('firmEditTitle').textContent = tr('New firm');
-  fillFirmEditForm({});
-  document.getElementById('firmEditUsername').value = '';
-  document.getElementById('firmEditPassword').value = '';
-  document.getElementById('firmEditOwnerName').value = '';
-  document.getElementById('firmEditOwnerNameField').style.display = '';
-  document.getElementById('firmEditUsernameField').style.display = '';
-  document.getElementById('firmEditPasswordField').style.display = '';
-  document.querySelector('#editFirmBtn span').textContent = tr('Create');
-  document.getElementById('firmEditFormError').textContent = '';
-  document.getElementById('editFirmOverlay').classList.add('open');
-  fillFirmWaField(null);
-}
-function openEditFirmForm(tenantId){
-  const t = __firmsCache.find(x => x.tenantId === tenantId);
-  if(!t){ showToast(tr('Firm not found')); return; }
-  __editingFirmTenantId = tenantId;
-  __firmFormMode = 'edit';
-  document.getElementById('firmEditTitle').textContent = tr('Edit firm');
-  fillFirmEditForm(t);
-  document.getElementById('firmEditUsernameField').style.display = 'none';
-  document.getElementById('firmEditOwnerNameField').style.display = 'none';
-  document.getElementById('firmEditPasswordField').style.display = 'none';
-  document.querySelector('#editFirmBtn span').textContent = tr('Save');
-  document.getElementById('firmEditFormError').textContent = '';
-  document.getElementById('editFirmOverlay').classList.add('open');
-  fillFirmWaField(tenantId);
-}
-
-// Self-service version of the same form, for the firm the session is working
-// in — a firm's own login can fill in its Form 101 employer data itself
-// instead of asking the super-admin. Prefills from the cached profile at once,
-// then refreshes from the server, since the cache is whatever login returned
-// and may be stale if the super-admin edited it since.
-async function openMyFirmForm(){
-  const s = getSession();
-  if(!s) return;
-  const tenantId = s.viewingTenantId || s.tenantId;
-  if(!tenantId){ showToast(tr('No firm selected')); return; }
-  __editingFirmTenantId = tenantId;
-  __firmFormMode = 'edit';
-  document.getElementById('firmEditTitle').textContent = tr('Firm details');
-  fillFirmEditForm(activeTenantProfile() || {});
-  document.getElementById('firmEditUsernameField').style.display = 'none';
-  document.getElementById('firmEditOwnerNameField').style.display = 'none';
-  document.getElementById('firmEditPasswordField').style.display = 'none';
-  document.querySelector('#editFirmBtn span').textContent = tr('Save');
-  document.getElementById('firmEditFormError').textContent = '';
-  document.getElementById('editFirmOverlay').classList.add('open');
-  fillFirmWaField(tenantId);
-  try{
-    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'loadTenantProfile', ...gsAuth() }) });
-    const json = await res.json();
-    if(json && json.profile){
-      cacheTenantProfile(tenantId, json.profile);
-      if(!__firmEditDirty && __editingFirmTenantId === tenantId) fillFirmEditForm(json.profile);
-    }
-  }catch(e){}
-}
-async function submitEditFirm(){
-  const get = id => document.getElementById(id).value.trim();
-  const errEl = document.getElementById('firmEditFormError');
-  const btn = document.getElementById('editFirmBtn'), btnLbl = btn.querySelector('span');
-  errEl.textContent = '';
-  const profileFields = {
-    companyName: get('firmEditCompanyName'),
-    deductionsFileNumber: get('firmEditDeductionsNo'),
-    phone: get('firmEditPhone'),
-    street: get('firmEditStreet'),
-    streetNumber: get('firmEditStreetNumber'),
-    city: get('firmEditCity'),
-  };
-  if(__firmFormMode === 'create'){
-    const username = get('firmEditUsername'), password = document.getElementById('firmEditPassword').value;
-    if(!username || !password){ errEl.textContent = tr('Username and password are required'); return; }
-    btn.disabled = true; btnLbl.textContent = tr('Creating…');
-    try{
-      const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({
-        action:'createUser', ...gsAuth(), username, password, ownerName: get('firmEditOwnerName'), ...profileFields,
-      })});
-      const json = await res.json();
-      if(!json || json.error){ errEl.textContent = tr((json&&json.error)||'') || tr('Could not create the firm'); return; }
-      closeModal('editFirmOverlay');
-      showToast(tr('Firm created'));
-      renderFirmsList(__firmsListTarget);
-    }catch(e){ errEl.textContent = tr('No network'); }
-    finally{ btn.disabled = false; btnLbl.textContent = tr('Create'); }
-    return;
-  }
-  if(!__editingFirmTenantId){ errEl.textContent = tr('No firm selected'); return; }
-  btn.disabled = true; btnLbl.textContent = tr('Saving…');
-  try{
-    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({
-      action:'updateTenant', ...gsAuth(),
-      tenantId: __editingFirmTenantId,
-      ...profileFields,
-    })});
-    const json = await res.json();
-    if(!json || json.error){ errEl.textContent = tr((json&&json.error)||'') || tr('Could not save'); return; }
-    closeModal('editFirmOverlay');
-    showToast(tr('Firm details saved'));
-    cacheTenantProfile(__editingFirmTenantId, json.profile);
-    refreshFirmProfileWarnings();
-    // Only the super-admin has a Firms list to refresh (and the right to ask
-    // the backend for one) — a firm editing its own profile has no such screen.
-    if(getSession()?.role === 'superadmin') renderFirmsList(__firmsListTarget);
-    // A firm-profile edit changes the employer-details row on every worker's
-    // Form 101 — regenerate them, but only when the edited firm is the one
-    // actually loaded into `workers` right now (self-service edit, or a
-    // super-admin currently drilled into that firm): there's nothing in
-    // memory to regenerate for a firm the super-admin edited from the Firms
-    // list without switching into it.
-    const __activeSession=getSession();
-    const __activeTenantId=__activeSession&&(__activeSession.viewingTenantId||__activeSession.tenantId);
-    if(__activeTenantId===__editingFirmTenantId) regenerateAllWorkerDocs();
-    else {
-      // Another firm, edited from the Firms list: its workers aren't loaded
-      // here, so their Form 101s are rebuilt the next time this device opens
-      // that firm (checked in maybeRegenAfterFirmEdit()).
-      try{ localStorage.setItem('form101Regen:'+__editingFirmTenantId,'1'); }catch(e){}
-      showToast(tr('Saved. The Form 101s of this firm\'s workers update when you open it'), 5000);
-    }
-  }catch(e){ errEl.textContent = tr('No network'); }
-  finally{ btn.disabled = false; btnLbl.textContent = tr('Save'); }
 }
 
 // Optimistic concurrency: the savedAt value we last loaded from the DB.
@@ -5568,7 +4583,7 @@ window.addEventListener('pagehide', () => finishUndo(true));
 // calls selectRoot(key, root) after drawing its rows: that starts its Select
 // (SELECT_STARTERS[key], which checks the rights) or keeps the ticks across a redraw.
 let __selState = null;
-const SELECT_STARTERS = {firms: () => startFirmsSelect(), users: () => startUsersSelect()};
+const SELECT_STARTERS = {};
 function startSelect(o){
   const keep = __selState && __selState.key === o.key ? __selState.picked : null;
   if(!keep) endSelect();
@@ -5676,7 +4691,7 @@ function renderSchedulePage(){
   loadShiftRequests();
   if(window.ManagerIsland) window.ManagerIsland.renderSchedule();
 }
-window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); if(currentTab==='clients') renderClientsPage(); if(currentTab==='suppliers') renderSuppliersPage(); if(currentTab==='accounting') renderAccounting(); if(currentTab==='admin') renderAdmin(); renderCrumb(); });
+window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); if(currentTab==='clients') renderClientsPage(); if(currentTab==='suppliers') renderSuppliersPage(); if(currentTab==='accounting') renderAccounting(); if(currentTab==='admin') renderAdmin(); if(document.getElementById('firmsScreen').style.display==='block') window.ManagerIsland.renderFirmsScreen(); renderCrumb(); });
 let __dataReady=false;
 window.ManagerBridge={
   lang:()=>I18N_LANG,
@@ -5868,6 +4883,16 @@ window.ManagerBridge={
       workers:workers.map(w=>({id:w.id, name:w.name||'', clientIds:w.clientIds||[]})),
       clients:clients.map(c=>({id:c.id, name:c.name||'', color:c.color||'', address:c.address||''})),
       loadedFrom:from&&from>ALL_PUNCHES_FROM?from.toLocaleDateString('en-GB'):null,
+      // stage 6f-2
+      isSuper:s.role==='superadmin', locale:uiLocale(),
+      firms:firmsRows(), firmsError:__firmsErr,
+      own:s.role==='superadmin'?null:{...(activeTenantProfile()||{}), missing:firmProfileMissing()},
+      users:__adminPane==='users'?(()=>{ const c=loadAdminCache('users_'+activeTenantIdForAdmin()); return Array.isArray(c)?c:null; })():null,
+      usersError:__usersErr,
+      team:adminTeam(),
+      suppliers:suppliers.map(x=>({id:x.id, name:x.name||''})),
+      logs:__adminPane==='errors'||__adminPane==='timings'?logPaneSnapshot(__adminPane):null,
+      firmNames:Object.fromEntries(((__firmsCache&&__firmsCache.length)?__firmsCache:(loadFirmsCache()||[])).map(t=>[t.tenantId, t.companyName||t.tenantId])),
     };
   },
   setAdminPane:p=>switchAdminPane(p),
@@ -5878,6 +4903,43 @@ window.ManagerBridge={
   clearPunchMonths:months=>clearPunchMonths(months),
   savePunch:(id,ed)=>savePunchEdit(id,ed),
   deletePunches:ids=>deletePunchesNow(ids.map(String)),
+  // ── Admin (stage 6f-2): Firms, Users, Errors, Timings and the landing
+  // screen's firms are React; the data, the saves and the calls stay here.
+  adminCall:async body=>{
+    try{ return (await (await fetch(API_URL,{method:'POST', body:JSON.stringify({...body, ...gsAuth()})})).json())||{}; }
+    catch(e){ return {error:'Network error'}; }
+  },
+  loadFirms:()=>loadFirms(),
+  openFirm:id=>switchToTenant(id),
+  setFirmsActive:(ids,active)=>setTenantsActive(ids,active),
+  deleteFirms:ids=>deleteTenantsNow(ids),
+  openFirmWindow:(mode,id)=>{ if(mode==='create') openCreateFirmForm(); else if(mode==='mine') openMyFirmForm(); else openEditFirmForm(id); },
+  firmsPayable:()=>firmsPayableRows(),
+  loadUsers:()=>prefetchAdminUsers(),
+  openUserWindow:id=>{ if(id) openEditUserForm(id); else openCreateUserForm(); },
+  deleteUsers:ids=>deleteUsersNow(ids),
+  setLogPeriod:(kind,v)=>{ __logPeriod[kind]=v; renderAdmin(); loadLogPane(kind); },
+  reloadLog:kind=>loadLogPane(kind),
+  resetLogs:()=>resetLogs(),
+  copyText:t=>{ copyTextToClipboard(t); },
+  firmInfo:()=>__firmWin,
+  loadProfile:async()=>{
+    try{
+      const json=await (await fetch(API_URL,{method:'POST', body:JSON.stringify({action:'loadTenantProfile', ...gsAuth()})})).json();
+      if(json&&json.profile&&__firmWin){ cacheTenantProfile(__firmWin.tenantId, json.profile); return json.profile; }
+    }catch(e){}
+    return null;
+  },
+  firmMessage:async()=>{ await loadFirmMessages(true); return waTemplate(); },
+  saveFirmMessage:(t,text)=>saveFirmMessage(t,text),
+  firmSaved:(mode,id,profile)=>firmSaved(mode,id,profile),
+  userInfo:()=>{ const hrNames={}; hrUsers().forEach(u=>{ hrNames[u.id]=u.fullName||u.username||''; });
+    return {workers:adminTeam(), suppliers:suppliers.map(x=>({id:x.id, name:x.name||''})),
+      clients:clients.map(c=>({id:c.id, name:c.name||'', object:c.object||''})), hrNames}; },
+  hrMonthCommission:(uid,rate,dayRate)=>Object.values((salaryEntriesFor('month').byWorker)||{}).reduce((t,e)=>{ const wc=workers.find(w=>w.id===e.workerId); return wc&&wc.hrId===uid?t+commissionFor(wc,e,rate,dayRate):t; },0),
+  assignWorkers:async(kind,ids,key)=>{ const n=kind==='supplier'?assignWorkersToSupplier(ids,key):await assignWorkersToHr(ids,key); prefetchAdminUsers(); return n; },
+  openAssign:team=>{ if(!window.ManagerIsland) return; window.ManagerIsland.openAssign(team); document.getElementById('hrAssignOverlay').classList.add('open'); },
+  userSaved:(id,orig,role,name)=>userSaved(id,orig,role,name),
   exportAs:k=>{ ({excel:exportExcel, pdf:exportPDF, json:exportJSON})[k](); },
   toast:(t,ms)=>showToast(t,ms),
 
@@ -6995,7 +6057,7 @@ function maybeRegenAfterFirmEdit(){
 // being edited. Sequential (not parallel) to avoid a burst of simultaneous
 // PDF builds + Storage uploads when a firm
 // has many workers. Only called for the firm currently loaded into
-// `workers` (see submitEditFirm()) — there's nothing to regenerate for a
+// `workers` (see firmSaved()) — there's nothing to regenerate for a
 // firm whose schedule isn't the one open right now.
 async function regenerateAllWorkerDocs(){
   const targets=workers.filter(w=>w.docUrl&&w.assetsFileId);

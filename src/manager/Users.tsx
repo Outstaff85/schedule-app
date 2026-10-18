@@ -1,0 +1,368 @@
+// Admin → Users (docs/admin.md → Users pane, docs/hr.md), drawn in React with
+// stage 6f-2: the firm's logins (cached first, then `listUsers`), the owner
+// pinned first; a plate per login with its role as the coloured mark, its login
+// and phone, what it reaches and its hours ticks; a tap edits, ⋮ / swipe (Edit,
+// Delete through the Undo snack), Select (every login but the owner's). The user
+// window (drawn into the page's #userFormModal) is section plates — Person &
+// login (the Role as a switch), Sections, Hours, HR commission, Own workers —
+// and one Save; "Add workers" (#hrAssignModal) picks an HR's or a supplier's
+// workers. The requests and their rules are in users.ts; the saves of workers
+// (hrId / supplierId) and the server calls go through the page (ManagerBridge).
+import * as React from 'react';
+import {
+  IconCalendar, IconCash, IconCheck, IconCircleCheck, IconClock, IconCoin, IconHome, IconLayoutGrid, IconPencil, IconPin, IconPlus, IconTrash,
+  IconTruckDelivery, IconUpload, IconUser, IconUserPlus, IconUsers, IconUsersGroup, IconWallet, IconAlertTriangle,
+} from '@tabler/icons-react';
+import { tr } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
+import { FieldRow } from '@/components/ui/form';
+import { CheckGrid, CheckTile } from '@/components/ui/checkbox';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Empty, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { Plate } from '@/components/shared/plate';
+import { Section } from '@/components/shared/section';
+import { PagedList } from '@/components/shared/paged-list';
+import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-mode';
+import { undoDelete } from '@/components/shared/undo';
+import type { AdminSnapshot, AssignTeam, ManagerBridge, TeamWorker, UserWindowInfo } from './bridge';
+import { EditorHead, Field, RateInput } from './ClientEditor';
+import { useTapOpen } from './Clients';
+import { moneyShort } from './clients';
+import {
+  createBody, formOf, formParts, formProblem, HOUR_PERM_LABELS, HOUR_ROLES, isAdminRole, newForm, ROLE_LABELS, roleColor, sortUsers, UNSELECTABLE,
+  updateBody, withRole, type FormRole, type UserForm, type UserRow,
+} from './users';
+
+// Logins deleted here and still inside their Undo time: left out of the list.
+const hiddenUsers = new Set<string>();
+const redrawUsers = () => window.ManagerIsland?.renderAdmin();
+
+/** The login goes behind the Undo snack, then `deleteUser`. */
+function deleteLater(ids: string[], label: string, api: ManagerBridge) {
+  ids.forEach(id => hiddenUsers.add(id)); redrawUsers();
+  undoDelete(label,
+    () => { void api.deleteUsers(ids).finally(() => { ids.forEach(id => hiddenUsers.delete(id)); redrawUsers(); }); },
+    () => { ids.forEach(id => hiddenUsers.delete(id)); redrawUsers(); });
+}
+
+const workersText = (n: number) => (n === 1 ? tr('1 worker{1}', { 1: '' }) : tr('{0} workers{1}', { 0: n, 1: '' }));
+
+export function UsersPane({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }) {
+  React.useEffect(() => { void api.loadUsers(); }, [api]);
+  const users = React.useMemo(() => sortUsers((snap.users || []).filter(u => !hiddenUsers.has(u.id))), [snap.users, hiddenUsers.size]); // eslint-disable-line react-hooks/exhaustive-deps
+  const ids = React.useMemo(() => users.filter(u => !UNSELECTABLE.includes(u.role)).map(u => u.id), [users]);
+  const sel = useSelection(ids);
+  const tap = useTapOpen(id => api.openUserWindow(id));
+
+  if (snap.users === null) {
+    if (snap.usersError) return <p className="text-[13px] text-bad" data-testid="users-error">{tr(snap.usersError)}</p>;
+    return <div className="grid gap-2" aria-busy="true" data-testid="users-loading">{[0, 1, 2].map(i => <Skeleton key={i} className="h-[62px]" />)}</div>;
+  }
+  const remove = (which: string[]) => {
+    which = which.filter(id => ids.includes(id));
+    if (!which.length) return;
+    deleteLater(which, which.length === 1 ? (users.find(u => u.id === which[0])?.username || '') : tr('{0} users', { 0: which.length }), api);
+  };
+  const row = (u: UserRow) => {
+    const sup = u.role === 'supplier' ? snap.suppliers.find(s => s.id === u.supplierId) : null;
+    const perms = u.role !== 'staff' && u.role !== 'hr' ? '' : u.permissions === '*' ? tr('Full access') : Array.isArray(u.permissions) ? u.permissions.join(', ') : '—';
+    const count = u.role === 'hr' ? snap.team.filter(w => w.hrId === u.id).length : u.role === 'supplier' && u.supplierId ? snap.team.filter(w => w.supplierId === u.supplierId).length : null;
+    const team = count == null ? '' : workersText(count) + (u.role === 'hr' && u.ownOnly === false ? ' · ' + tr('sees all workers') : '');
+    const what = u.role === 'supplier' ? (sup ? sup.name : '—') : u.role === 'client' ? (snap.clients.find(c => c.id === u.clientId)?.name || '—') : perms;
+    const name = u.fullName || u.username || '?', col = roleColor(u.role);
+    const ticks = HOUR_ROLES.includes(u.role) && (u.hourPerms || []).length ? u.hourPerms!.map(p => tr(HOUR_PERM_LABELS[p] || p)).join(', ') : '';
+    const selectable = !UNSELECTABLE.includes(u.role);
+    return (
+      <Plate key={u.id} data-testid="user-row" data-uid={u.id} data-role={u.role} className={cn('mb-1.5', u.active === false && 'opacity-70')} color={col}
+        icon={u.role === 'tenant_admin' ? <IconPin /> : undefined}
+        title={<span>{name} <span className="text-[11px] font-normal text-ink-2">{tr(ROLE_LABELS[u.role] || u.role)}</span>{u.active === false && <span className="text-[11px] font-normal text-warn"> {tr('inactive')}</span>}</span>}
+        sub={<span className="grid whitespace-normal">
+          <span>{tr('login: {0}{1}', { 0: u.username, 1: u.phone ? ' · ' + u.phone : '' })}</span>
+          {(what || team) && <span>{[what, team].filter(Boolean).join(' · ')}</span>}
+          {ticks && <span className="inline-flex items-center gap-1"><IconClock className="size-3.5" />{ticks}</span>}
+        </span>}
+        {...tap(u.id)}
+        onDelete={() => deleteLater([u.id], u.username, api)}
+        selecting={sel.on && selectable} selected={sel.picked.has(u.id)} onToggle={() => sel.toggle(u.id)} />
+    );
+  };
+  return (
+    <div data-testid="users">
+      <Section label={<span className="inline-flex items-center gap-1.5"><IconUsers className="size-4" />{tr('Logins')}</span>} count={users.length}
+        tools={<Button variant="primary" size="sm" className="og-new" data-testid="user-new" onClick={() => api.openUserWindow(null)}><IconPlus className="size-4" />{tr('New user')}</Button>}>
+        {ids.length > 0 && <div className="mb-2 flex" data-testid="users-select"><SelectHead sel={sel} /></div>}
+        <PagedList items={users} columns render={row}
+          empty={<Empty data-testid="users-empty"><EmptyMedia><IconUsers /></EmptyMedia><EmptyTitle>{tr('No staff, HR or supplier users yet.')}</EmptyTitle></Empty>} />
+      </Section>
+      <SelectBar sel={sel} onDelete={remove} />
+    </div>
+  );
+}
+
+const SECTION_TILES: { k: string; label: string; hint: string; icon: React.ReactNode }[] = [
+  { k: 'schedule', label: 'Schedule', hint: 'Schedule tab', icon: <IconCalendar /> },
+  { k: 'workers', label: 'Workers', hint: 'Workers tab', icon: <IconUsersGroup /> },
+  { k: 'clients', label: 'Clients', hint: 'Clients tab', icon: <IconUsers /> },
+  { k: 'suppliers', label: 'Suppliers', hint: 'Suppliers tab', icon: <IconTruckDelivery /> },
+  { k: 'accounting', label: 'Accounting', hint: 'Accounting tab', icon: <IconCash /> },
+  { k: 'payEdit', label: "Edit own workers' pay", hint: 'Rate, travel, bank of its own workers (with Accounting)', icon: <IconWallet /> },
+  { k: 'exports', label: 'Export', hint: 'Export button', icon: <IconUpload /> },
+];
+const SUP_TILES: { k: string; label: string; hint: string; icon: React.ReactNode }[] = [
+  { k: 'dashboard', label: 'Dashboard', hint: "Who is on site, today's punches", icon: <IconHome /> },
+  { k: 'workers', label: 'My Workers', hint: 'Add and edit its workers', icon: <IconUsersGroup /> },
+  { k: 'hours', label: 'My Hours', hint: 'Exports, pay, hours sent for approval', icon: <IconClock /> },
+];
+const HOUR_TILES: { k: string; hint: string; icon: React.ReactNode }[] = [
+  { k: 'hours', hint: 'In / out of its workers', icon: <IconClock /> },
+  { k: 'approve', hint: 'A day or the whole month', icon: <IconCircleCheck /> },
+  { k: 'dispute', hint: 'Disputes a day with a comment', icon: <IconAlertTriangle /> },
+  { k: 'fix', hint: 'Proposes the right in / out; the firm accepts it', icon: <IconPencil /> },
+  { k: 'schedule', hint: "Its workers' planned shifts", icon: <IconCalendar /> },
+  { k: 'export', hint: 'Hours to Excel', icon: <IconUpload /> },
+];
+const tileLabel = (icon: React.ReactNode, label: string) => <span className="inline-flex items-center gap-1.5 [&_svg]:size-4">{icon}{label}</span>;
+const flip = (list: string[], k: string) => (list.includes(k) ? list.filter(x => x !== k) : [...list, k]);
+
+export type UserProps = { u: UserRow | null; preset?: { role: 'client' | 'supplier'; id: string }; seq: number };
+
+/** The user window: a new login (u null) or a saved one; the owner's row edits only its name, phone and password. */
+export function UserWindow({ props, info, api }: { props: UserProps; info: UserWindowInfo; api: ManagerBridge }) {
+  const { u } = props;
+  const editing = !!u;
+  const adminRow = !!u && isAdminRole(u.role);
+  const ch = { suppliers: info.suppliers, clients: info.clients };
+  const [f, setF] = React.useState<UserForm>(() => {
+    if (u) return formOf(u, ch);
+    let n = newForm();
+    if (props.preset) {
+      n = withRole(n, props.preset.role, false, ch);
+      n = props.preset.role === 'client' ? { ...n, clientId: props.preset.id } : { ...n, supplierId: props.preset.id };
+    }
+    return n;
+  });
+  const [open, setOpen] = React.useState<string[]>(['person']);
+  const [err, setErr] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const set = <K extends keyof UserForm>(k: K, v: UserForm[K]) => setF(c => ({ ...c, [k]: v }));
+  const parts = formParts(f.role, editing, adminRow);
+  const role0 = adminRow ? u!.role : f.role, col = roleColor(role0);
+
+  // The team the Own workers section works on: an HR's (hrId = its uid) or the picked supplier's.
+  const team = f.role === 'supplier'
+    ? { kind: 'supplier' as const, key: f.supplierId, name: info.suppliers.find(s => s.id === f.supplierId)?.name || tr('Supplier'), has: (w: TeamWorker) => !!f.supplierId && w.supplierId === f.supplierId }
+    : { kind: 'hr' as const, key: u?.id || '', name: u?.fullName || u?.username || 'HR', has: (w: TeamWorker) => !!u && w.hrId === u.id };
+  const mine = team.key ? info.workers.filter(team.has) : [];
+
+  let what = '';
+  if (role0 === 'hr' && editing) { const n = info.workers.filter(w => w.hrId === u!.id).length; what = n === 1 ? tr('1 own worker') : tr('{0} own workers', { 0: n }); }
+  else if (role0 === 'supplier') what = info.suppliers.find(s => s.id === f.supplierId)?.name || '';
+  else if (role0 === 'client') what = info.clients.find(c => c.id === f.clientId)?.name || '';
+  const rate = Number(f.commission) || 0, dayRate = Number(f.commissionDay) || 0;
+  let comSum = '';
+  if (rate || dayRate) {
+    comSum = [rate ? '₪' + rate + tr('/h') : '', dayRate ? '₪' + dayRate + tr('/day') : ''].filter(Boolean).join(' · ');
+    if (f.role === 'hr' && editing) comSum += ' · ' + tr('{0} this month', { 0: '₪' + moneyShort(api.hrMonthCommission(u!.id, rate, dayRate)) });
+  }
+
+  const pickRole = (v: string) => { if (v && v !== f.role) setF(c => withRole(c, v as FormRole, editing, ch)); };
+  const save = async () => {
+    setErr('');
+    const bad = formProblem(f, editing);
+    if (bad) { setErr(tr(bad)); return; }
+    setBusy(true);
+    try {
+      if (editing) {
+        if (f.password) {
+          const pr = await api.adminCall({ action: 'resetUserPassword', id: u!.id, password: f.password });
+          if (!pr || pr.error) { setErr(tr(String(pr?.error || '')) || tr('Password not changed')); return; }
+        }
+        // Rights are sent as they are in the form; the server ends the user's sessions only when they really changed.
+        const j = await api.adminCall(updateBody(u!.id, f, adminRow));
+        if (!j || j.error) { setErr(tr(String(j?.error || '')) || tr('Save failed')); return; }
+        await api.userSaved(u!.id, u!.role, adminRow ? u!.role : f.role, f.fullName.trim());
+      } else {
+        const j = await api.adminCall(createBody(f));
+        if (!j || j.error) { setErr(tr(String(j?.error || '')) || tr('Create failed')); return; }
+        await api.userSaved(null, null, f.role, f.fullName.trim());
+      }
+    } finally { setBusy(false); }
+  };
+
+  const sumOf = (vals: (string | false | undefined)[]) => vals.filter(Boolean).join(' · ');
+  const tickNames = (list: string[], labels: Record<string, string>) => list.map(k => tr(labels[k] || k)).join(', ');
+  const secLabels = Object.fromEntries(SECTION_TILES.map(t => [t.k, t.label]));
+  const supLabels = Object.fromEntries(SUP_TILES.map(t => [t.k, t.label]));
+  const roleChoices: FormRole[] = ['staff', 'hr', 'supplier', 'client'];
+
+  return (
+    <div data-testid="user-window" data-edit={u?.id || ''} data-role={f.role} className="grid gap-2">
+      <EditorHead color={col} name={f.fullName.trim() || f.username.trim() || (editing ? tr('Edit user') : tr('New user'))}
+        sub={<>{[tr(ROLE_LABELS[role0] || role0), what].filter(Boolean).join(' · ')}</>}
+        menu={editing && !adminRow ? [{ label: tr('Delete'), icon: <IconTrash />, danger: true, run: () => { api.closeModal('userFormOverlay'); deleteLater([u!.id], u!.username, api); } }] : undefined} />
+      <Accordion type="multiple" value={open} onValueChange={setOpen}>
+        <AccordionItem value="person" data-sec="person" color={col}>
+          <AccordionTrigger icon={<IconUser />} summary={sumOf([f.fullName, f.username, !adminRow && tr(ROLE_LABELS[f.role])])}>{tr('Person & login')}</AccordionTrigger>
+          <AccordionContent forceMount hidden={!open.includes('person')} className="grid gap-2.5">
+            <FieldRow>
+              <Field label={f.role === 'hr' && !adminRow ? tr('Full name *') : tr('Full name')} htmlFor="uFullName"><Input id="uFullName" autoComplete="off" maxLength={80} value={f.fullName} onChange={e => set('fullName', e.target.value)} /></Field>
+              <Field label={tr('Phone')} htmlFor="uPhone"><Input id="uPhone" type="tel" autoComplete="off" maxLength={40} value={f.phone} onChange={e => set('phone', e.target.value)} /></Field>
+            </FieldRow>
+            <FieldRow>
+              <Field label={tr('Username')} htmlFor="uUsername"><Input id="uUsername" autoComplete="off" disabled={editing} value={f.username} onChange={e => set('username', e.target.value)} /></Field>
+              <Field label={editing ? tr('New password (empty = keep)') : tr('Password (min. 8)')} htmlFor="uPassword"><Input id="uPassword" type="password" autoComplete="new-password" value={f.password} onChange={e => set('password', e.target.value)} /></Field>
+            </FieldRow>
+            {!adminRow && (
+              <Field label={tr('Role')} htmlFor="uRole">
+                <ToggleGroup id="uRole" data-testid="user-role" type="single" value={f.role} onValueChange={pickRole}>
+                  {roleChoices.map(r => <ToggleGroupItem key={r} value={r} data-v={r} className="flex-1">{r === 'hr' ? 'HR' : tr(r === 'staff' ? 'Staff' : r === 'supplier' ? 'Supplier' : 'Client')}</ToggleGroupItem>)}
+                </ToggleGroup>
+              </Field>
+            )}
+          </AccordionContent>
+        </AccordionItem>
+
+        {parts.sections && (
+          <AccordionItem value="sections" data-sec="sections" color={col}>
+            <AccordionTrigger icon={<IconLayoutGrid />} summary={parts.supplier ? sumOf([info.suppliers.find(s => s.id === f.supplierId)?.name, tickNames(f.supSections, supLabels)])
+              : parts.client ? info.clients.find(c => c.id === f.clientId)?.name : tickNames(f.perms, secLabels) || tr('Not filled in')}>{tr('Sections')}</AccordionTrigger>
+            <AccordionContent forceMount hidden={!open.includes('sections')} className="grid gap-2.5">
+              {parts.supplier && (
+                <Field label={tr('Supplier')} htmlFor="uSupplier">
+                  <Select value={f.supplierId} onValueChange={v => set('supplierId', v)}>
+                    <SelectTrigger id="uSupplier" className="w-full" data-testid="user-supplier"><SelectValue /></SelectTrigger>
+                    <SelectContent>{info.suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </Field>
+              )}
+              {parts.client && (
+                <Field label={tr('Client')} htmlFor="uClient">
+                  <Select value={f.clientId} onValueChange={v => set('clientId', v)}>
+                    <SelectTrigger id="uClient" className="w-full" data-testid="user-client"><SelectValue /></SelectTrigger>
+                    <SelectContent>{info.clients.map(c => <SelectItem key={c.id} value={c.id}>{c.name}{c.object ? ' · ' + c.object : ''}</SelectItem>)}</SelectContent>
+                  </Select>
+                </Field>
+              )}
+              {parts.supSections && (
+                <CheckGrid data-testid="user-sup-sections">
+                  {SUP_TILES.map(t => <CheckTile key={t.k} data-k={t.k} label={tileLabel(t.icon, tr(t.label))} hint={tr(t.hint)} checked={f.supSections.includes(t.k)} onCheckedChange={() => set('supSections', flip(f.supSections, t.k))} />)}
+                </CheckGrid>
+              )}
+              {parts.perms && (
+                <CheckGrid data-testid="user-perms">
+                  {SECTION_TILES.filter(t => t.k !== 'payEdit' || parts.payEdit).map(t => (
+                    <CheckTile key={t.k} data-k={t.k} label={tileLabel(t.icon, tr(t.label))}
+                      hint={t.k === 'accounting' && f.role === 'hr' ? tr("Own workers' pay and commission only") : tr(t.hint)}
+                      checked={f.perms.includes(t.k)} onCheckedChange={() => set('perms', flip(f.perms, t.k))} />
+                  ))}
+                </CheckGrid>
+              )}
+            </AccordionContent>
+          </AccordionItem>
+        )}
+
+        {parts.hours && (
+          <AccordionItem value="hours" data-sec="hours" color={col}>
+            <AccordionTrigger icon={<IconClock />} summary={tickNames(f.hourPerms, HOUR_PERM_LABELS) || tr('Not filled in')}>{tr('Hours')}</AccordionTrigger>
+            <AccordionContent forceMount hidden={!open.includes('hours')} className="grid gap-2.5">
+              <CheckGrid data-testid="user-hours">
+                {HOUR_TILES.map(t => <CheckTile key={t.k} data-k={t.k} label={tileLabel(t.icon, tr(HOUR_PERM_LABELS[t.k]))} hint={tr(t.hint)} checked={f.hourPerms.includes(t.k)} onCheckedChange={() => set('hourPerms', flip(f.hourPerms, t.k))} />)}
+              </CheckGrid>
+              {f.role === 'client' && <p className="text-[11px] text-ink-3">{tr('Never sees pay, rates, suppliers, GPS or documents.')}</p>}
+              <CheckTile wide data-testid="user-own-only" label={tr('Only own workers')} disabled={f.role !== 'hr'} checked={f.ownOnly} onCheckedChange={c => set('ownOnly', c === true)}
+                hint={f.role === 'supplier' ? tr("Only this supplier's workers — always.") : f.role === 'client' ? tr('Only the workers at this client — always.') : tr('Sees only the workers assigned to this HR. Unchecked: every worker of the firm.')} />
+              {parts.showPay && (
+                <CheckTile wide data-testid="user-show-pay" label={tr("Sees own workers' pay")} checked={f.showPay} onCheckedChange={c => set('showPay', c === true)}
+                  hint={tr("Their hours, rate and pay, and this login's commission. Nothing else of Accounting.")} />
+              )}
+            </AccordionContent>
+          </AccordionItem>
+        )}
+
+        {parts.commission && (
+          <AccordionItem value="commission" data-sec="commission" color={col}>
+            <AccordionTrigger icon={<IconCoin />} summary={comSum || tr('Not filled in')}>{tr('HR commission')}</AccordionTrigger>
+            <AccordionContent forceMount hidden={!open.includes('commission')}>
+              <FieldRow>
+                <Field label={tr('HR commission ₪/h')} htmlFor="uCommission"><RateInput id="uCommission" unit="₪/h" step={0.5} placeholder="0" value={f.commission} onChange={e => set('commission', e.target.value)} /></Field>
+                <Field label={tr('₪/day (daily workers)')} htmlFor="uCommissionDay"><RateInput id="uCommissionDay" unit="₪/day" step={0.5} placeholder={tr('by the hour')} value={f.commissionDay} onChange={e => set('commissionDay', e.target.value)} /></Field>
+              </FieldRow>
+            </AccordionContent>
+          </AccordionItem>
+        )}
+
+        {parts.workers && (
+          <AccordionItem value="workers" data-sec="workers" color={col}>
+            <AccordionTrigger icon={<IconUsersGroup />} summary={team.key ? workersText(mine.length) : tr('Pick a supplier first')}>{tr('Own workers')}</AccordionTrigger>
+            <AccordionContent forceMount hidden={!open.includes('workers')} className="grid gap-2">
+              <div className="flex justify-end">
+                <Button size="sm" data-testid="user-add-workers" onClick={() => { if (!team.key) { api.toast(tr('Pick a supplier first')); return; } api.openAssign({ kind: team.kind, key: team.key, name: team.name }); }}>
+                  <IconUserPlus className="size-4" />{tr('Add workers')}
+                </Button>
+              </div>
+              <div data-testid="user-team">
+                {!team.key ? <p className="text-xs text-ink-3">{tr(team.kind === 'supplier' ? 'Pick a supplier first' : 'No workers assigned')}</p>
+                  : !mine.length ? <p className="text-xs text-ink-3">{tr('No workers assigned')}</p>
+                    : <PagedList key={team.kind + '|' + team.key} items={mine} render={w => (
+                      <Plate key={w.id} data-testid="team-worker" data-wid={w.id} size="sm" className="mb-1" color="var(--neutral)" title={w.name}
+                        sub={w.docId || undefined}
+                        right={<Button size="sm" data-testid="team-unassign" onClick={() => void api.assignWorkers(team.kind, [w.id], null)}>{tr('Unassign')}</Button>} />
+                    )} />}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        )}
+      </Accordion>
+      <p className="min-h-[1.2em] text-[13px] text-bad" data-testid="user-error">{err}</p>
+      <div className="modal-actions">
+        <Button variant="primary" className="og-save" data-testid="user-save" disabled={busy} onClick={() => void save()}><IconCheck className="size-4" />{tr('Save')}</Button>
+      </div>
+    </div>
+  );
+}
+
+/** "Add workers": the firm's workers not in the team yet, a search, tick boxes; a worker of another HR / supplier marked "now: <name>". */
+export function AssignWindow({ team, info, api }: { team: AssignTeam; info: UserWindowInfo; api: ManagerBridge }) {
+  const [q, setQ] = React.useState('');
+  const [picked, setPicked] = React.useState<Set<string>>(new Set());
+  const [busy, setBusy] = React.useState(false);
+  const has = (w: TeamWorker) => (team.kind === 'supplier' ? w.supplierId === team.key : w.hrId === team.key);
+  const other = (w: TeamWorker) => team.kind === 'supplier'
+    ? (info.suppliers.find(s => s.id === w.supplierId)?.name || '')
+    : w.hrId ? (info.hrNames[w.hrId] || tr('another HR')) : '';
+  const s = q.trim().toLowerCase();
+  const list = info.workers.filter(w => !has(w)).filter(w => !s || w.name.toLowerCase().includes(s) || w.docId.toLowerCase().includes(s));
+  const submit = async () => {
+    if (!picked.size) { api.closeModal('hrAssignOverlay'); return; }
+    setBusy(true);
+    try {
+      const n = await api.assignWorkers(team.kind, [...picked], team.key);
+      api.toast(tr('{0} assigned', { 0: n }));
+      api.closeModal('hrAssignOverlay');
+    } finally { setBusy(false); }
+  };
+  return (
+    <div className="grid gap-2.5" data-testid="assign-window">
+      <div className="modal-title" data-testid="assign-title">{tr('Add workers to {0}', { 0: team.name })}</div>
+      <Input data-testid="assign-search" autoComplete="off" placeholder={tr('Search by name or document…')} value={q} onChange={e => setQ(e.target.value)} />
+      <div className="max-h-[50vh] overflow-y-auto" data-testid="assign-list">
+        {list.length ? <PagedList key={s} items={list} render={w => {
+          const o = other(w);
+          return (
+            <CheckTile key={w.id} wide className="mb-1" data-testid="assign-worker" data-wid={w.id} checked={picked.has(w.id)}
+              onCheckedChange={() => setPicked(p => { const n = new Set(p); if (n.has(w.id)) n.delete(w.id); else n.add(w.id); return n; })}
+              label={w.name} hint={o ? <span className="text-warn">{tr('now: {0}', { 0: o })}</span> : undefined} />
+          );
+        }} /> : <p className="text-xs text-ink-3">{tr('No workers to add')}</p>}
+      </div>
+      <div className="modal-actions">
+        <Button variant="primary" className="og-save" data-testid="assign-save" disabled={busy} onClick={() => void submit()}><IconCheck className="size-4" />{tr('Assign')}</Button>
+      </div>
+    </div>
+  );
+}

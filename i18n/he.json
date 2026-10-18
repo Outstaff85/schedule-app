@@ -201,8 +201,6 @@
   "Edit shift — {0}, {1} {2}": "עריכת משמרת — {0}, {1} {2}",
   "Edit Supplier": "עריכת ספק",
   "Edit Worker": "עריכת עובד",
-  "Edit {0}": "עריכת {0}",
-  "Edit {0} (owner)": "עריכת {0} (בעלים)",
   "Empty = default ({r} ₪/h)": "ריק = ברירת מחדל ({r} ₪/ש׳)",
   "Empty = {r}": "ריק = {r}",
   "Empty = {r} (the worker's own rate, else the client's)": "ריק = {r} (התעריף של העובד, אחרת של הלקוח)",
@@ -215,7 +213,6 @@
   "enter the in and out times — this worker is paid by the hour": "יש להזין שעת כניסה ויציאה — עובד זה מקבל שכר לפי שעה",
   "Error": "שגיאה",
   "Errors": "שגיאות",
-  "Errors (last 100)": "שגיאות (100 אחרונות)",
   "Event staff": "צוות אירועים",
   "Every worker's documents in one place, with their expiry dates.": "כל המסמכים של כל עובד במקום אחד, עם תאריכי התוקף שלהם.",
   "Every {0}": "כל {0}",
@@ -1308,5 +1305,7 @@
   "Hours by month": "שעות לפי חודש",
   "Regular / OT / Shabbat": "רגילות / נוספות / שבת",
   "Nothing payable or billable in this period": "אין תשלומים או חיובים בתקופה זו",
-  "Chart": "תרשים"
+  "Chart": "תרשים",
+  "(no name)": "(ללא שם)",
+  "Loading every firm's this-week payable — this can take a moment…": "טוען את הסכום לתשלום של כל החברות השבוע — זה עשוי לקחת רגע…"
 }
