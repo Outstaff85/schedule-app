@@ -2454,4 +2454,4 @@ function warpQuadToRect(img,quadSrcPx){
 }
 
 
-// _loadPdfJs() lives in schedule-manager.html (shared upload preparation).
+// _loadPdfJs() is src/manager/logic/uploads.ts (shared upload preparation), in manager-core.js.

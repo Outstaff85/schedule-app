@@ -475,6 +475,8 @@ body:has(.overlay.open){overflow:hidden}
 <link rel="stylesheet" href="og.css">
 <!-- the one copy of the shift pairing and pay (src/lib/payroll.ts; docs/accounting.md) -->
 <script src="payroll.js"></script>
+<!-- the data layer (src/manager/data/; docs/app-core.md → Data calls) -->
+<script src="manager-core.js"></script>
 <style>
   /* Odinson Glass form fields (mockup 04, owner 2026-10-13): every field in a
      window is a soft rounded glass box — 38px tall, 12px corners, a faint fill
@@ -844,91 +846,21 @@ body:has(.overlay.open){overflow:hidden}
 
 <script>
 // --- Constants ---------------------------------------------------------------
-const WORKER_COLORS = [
-  {bg:'rgba(62,207,142,0.15)',text:'#3ecf8e'},
-  {bg:'rgba(96,165,250,0.15)',text:'#60a5fa'},
-  {bg:'rgba(251,146,60,0.15)',text:'#fb923c'},
-  {bg:'rgba(196,140,250,0.15)',text:'#c48cf5'},
-  {bg:'rgba(251,191,36,0.15)',text:'#fbbf24'},
-  {bg:'rgba(248,113,113,0.15)',text:'#f87171'},
-  {bg:'rgba(52,211,153,0.15)',text:'#34d399'},
-  {bg:'rgba(167,139,250,0.15)',text:'#a78bfa'},
-];
-const CLIENT_COLORS = ['#4f8ef7','#3ecf8e','#fb923c','#c48cf5','#fbbf24','#f87171','#34d399','#a78bfa'];
-// Sunday first
-const DAYS     = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-const DAYS_HE  = ['א',  'ב',  'ג',  'ד',  'ה',  'ו',  'ש' ];
+// DAYS, DAYS_HE, WORKER_COLORS, CLIENT_COLORS are src/manager/logic/schedule.ts.
 
 // --- State -------------------------------------------------------------------
-let weekStart        = getSundayOfWeek(new Date());
-let selectedClientId = null;
-let saveTimer        = null;
 let currentTab       = 'schedule';
 let editingWorkerId = null; // the worker the window edits, by id (a reorder or delete can't shift it)
 let editingClientId  = null;
 let editingSupplierId = null;
 
-let workers = [
-  {id:'w1',name:'Raveendra',colorIdx:0,phone:'',clientIds:[],schedule:[
-    {type:'work',start:'07:00',end:'15:00'},
-    {type:'work',start:'09:00',end:'21:00'},
-    {type:'off', start:null,  end:null},
-    {type:'work',start:'07:00',end:'16:00'},
-    {type:'work',start:'07:00',end:'16:00'},
-    {type:'work',start:'07:00',end:'18:00'},
-    {type:'work',start:'07:00',end:'18:00'}
-  ]},
-  {id:'w2',name:'Nagu',colorIdx:1,phone:'',clientIds:[],schedule:[
-    {type:'work',start:'14:00',end:'22:00'},
-    {type:'work',start:'12:00',end:'22:00'},
-    {type:'work',start:'12:00',end:'00:00'},
-    {type:'work',start:'15:00',end:'00:00'},
-    {type:'work',start:'15:00',end:'00:00'},
-    {type:'off', start:null,  end:null},
-    {type:'work',start:'12:00',end:'00:00'}
-  ]},
-  {id:'w3',name:'Manu',colorIdx:2,phone:'',clientIds:[],schedule:[
-    {type:'off', start:null,  end:null},
-    {type:'work',start:'07:00',end:'12:00'},
-    {type:'work',start:'07:00',end:'12:00'},
-    {type:'off', start:null,  end:null},
-    {type:'off', start:null,  end:null},
-    {type:'off', start:null,  end:null},
-    {type:'off', start:null,  end:null}
-  ]}
-];
-
-let clients = [
-  {id:'c1',name:'Office A',color:'#4f8ef7',address:'Tel Aviv',notes:''},
-  {id:'c2',name:'Mall B',  color:'#3ecf8e',address:'Jerusalem',notes:''},
-];
-
-// Suppliers (added 2026-09-30) — same shape/lifecycle as `clients` (a plain
-// array persisted in the same tenant-scoped Schedule blob, see saveSchedule's
-// own comment). {id,name,color,phone,notes,bank,bankBranch,accountNumber,
-// companyNumber}. A worker is linked via w.supplierId (single, not an array
-// like clientIds — a worker has one supplying agency but can work for
-// several clients).
-let suppliers = [];
+// workers, clients and suppliers are the data layer's (src/manager/data/state.ts),
+// weekStart and selectedClientId (the Schedule's week and site filter) the
+// logic's (src/manager/logic/schedule.ts), read and replaced here under these names.
 
 // --- Utils --------------------------------------------------------------------
-function uid(){ return 'id'+Math.random().toString(36).slice(2,9); }
-function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-// SheetJS (Excel read and write, ~900 KB) is loaded only when an Excel
-// export or import needs it, not with the page. Same code in
-// schedule-manager.html and supplier-portal.html.
-let __xlsxLoading = null;
-function loadXlsx(){
-  if(typeof XLSX !== 'undefined') return Promise.resolve();
-  return __xlsxLoading || (__xlsxLoading = new Promise((res, rej) => {
-    const sc = document.createElement('script');
-    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-    sc.onload = () => res();
-    sc.onerror = () => { __xlsxLoading = null; sc.remove(); rej(new Error('Excel library not loaded')); };
-    document.head.appendChild(sc);
-  }));
-}
-
+// esc(), loadXlsx(), getSundayOfWeek(), toMins(), calcHours(), fmtDMY() are
+// src/manager/logic/util.ts, in manager-core.js.
 
 // ── Translations (docs/translations.md) ─────────────────────────────────────
 // Every UI text in the code is English. tr('Total Pay') returns it in the
@@ -940,13 +872,9 @@ function loadXlsx(){
 // language select, English by default, setLanguage()); the layout never
 // changes (left to right). Form 101 is outside this: it is
 // always Hebrew.
-const I18N_LANGS = {en:'English', he:'עברית', ru:'Русский'};
-var I18N = {}, I18N_LANG = 'en';
-function tr(s, params){
-  let out = (I18N_LANG !== 'en' && I18N[s]) || s;
-  if(params) out = out.replace(/\{(\w+)\}/g, (m, k) => params[k] != null ? params[k] : m);
-  return out;
-}
+// tr(), uiLocale(), storedLanguage(), loadI18n(), I18N_LANGS are
+// src/manager/logic/i18n.ts, in manager-core.js; the page's markup and the
+// Language button are here.
 function applyI18n(root){
   const host = root || document;
   const keyOf = (el, attr) => { const k = '__i18n_' + attr; if(el[k] == null) el[k] = attr === 'text' ? (el.getAttribute('data-i18n') || el.textContent.trim()) : el.getAttribute('data-i18n-' + attr); return el[k]; };
@@ -954,10 +882,6 @@ function applyI18n(root){
   host.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = tr(keyOf(el, 'placeholder')); });
   host.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = tr(keyOf(el, 'title')); });
 }
-// The date locale for month and weekday names on screen (numeric dates stay dd/mm/yyyy).
-function uiLocale(){ return {he:'he-IL', ru:'ru-RU'}[I18N_LANG] || 'en-GB'; }
-// This device's language (localStorage.uiLang, shared by the three pages): English by default.
-function storedLanguage(){ try{ const l = localStorage.getItem('uiLang'); return I18N_LANGS[l] ? l : 'en'; }catch(e){ return 'en'; } }
 // The language (the Language button, .lang-btn): keeps the choice on this device and redraws in it;
 // a signed-in user's choice is also saved to their account (updateMyLanguage), and login brings it back on any device.
 async function setLanguage(lang, opts){
@@ -1147,25 +1071,8 @@ function cardTables(root){
   const mo = new MutationObserver(() => { if(!queued){ queued = true; requestAnimationFrame(run); } });
   ['sectionAdmin'].forEach(id => { const el = document.getElementById(id); if(el) mo.observe(el, {childList:true, subtree:true}); });
 })();
-// Loads the firm language's dictionary: from this device's copy at once when
-// there is one (no wait at startup), refreshed from i18n/<lang>.json; a newer
-// file redraws the page. English needs no file.
-async function loadI18n(lang){
-  const set = (l, d) => { I18N_LANG = l; I18N = d || {}; document.documentElement.lang = l; };
-  if(!I18N_LANGS[lang] || lang === 'en'){ set('en', {}); return; }
-  let cached = null;
-  try{ cached = JSON.parse(localStorage.getItem('i18n_' + lang) || 'null'); }catch(e){}
-  if(cached) set(lang, cached);
-  const fresh = fetch('i18n/' + lang + '.json', {cache:'no-cache'}).then(r => r.ok ? r.json() : null).then(d => {
-    if(!d || typeof d !== 'object') return false;
-    const changed = JSON.stringify(d) !== JSON.stringify(cached);
-    try{ localStorage.setItem('i18n_' + lang, JSON.stringify(d)); }catch(e){}
-    if(I18N_LANG === lang || !cached) set(lang, d);
-    return changed;
-  }).catch(() => false);
-  if(cached){ fresh.then(ch => { if(ch && I18N_LANG === lang) redrawForLanguage(); }); return; }
-  await fresh;
-}
+// A newer dictionary than the one shown: redraw in it.
+onNewerDictionary(()=>redrawForLanguage());
 function redrawForLanguage(){
   applyI18n();
   syncLangButtons();
@@ -1175,56 +1082,14 @@ function redrawForLanguage(){
   try{ if(typeof render === 'function') render(); }catch(e){}
   try{ if(typeof currentTab !== 'undefined' && currentTab === 'accounting') renderAccounting(); }catch(e){}
 }
-function getSundayOfWeek(d){ const c=new Date(d); c.setDate(c.getDate()-c.getDay()); c.setHours(0,0,0,0); return c; }
-function toMins(t){ if(!t)return null; const[h,m]=t.split(':').map(Number); return h*60+m; }
-function calcHours(s,e){ if(!s||!e)return 0; const sm=toMins(s),em=toMins(e); return em<=sm?(1440-sm+em)/60:(em-sm)/60; }
 // ═══ CANONICAL punch-hours calculation — single source of truth. ═══
 // The one copy is src/lib/payroll.ts, loaded as payroll.js (the global
-// Payroll; docs/accounting.md → Payroll module); these wrappers pass this
-// page's `tr` and `clients`. Dashboard salary widget, the salary table and the
-// CSV export ALL call it. Do not add a second hours calc.
-// Pair a day's punches chronologically; return total hours + a list of anomalies.
-function analyzeDayPunches(entries,date){ return Payroll.analyzeDayPunches(entries,date,{tr}); }
-// Pair one worker's punches into shifts chronologically, across midnight; each
-// bucket is tagged with the date of its opening punch.
-function groupPunchesIntoShifts(entries){ return Payroll.groupPunchesIntoShifts(entries); }
-// Shifts: the weekly roster (w.schedule[0..6], Sunday first) plus changes
-// made for one date only (w.dateShifts['YYYY-MM-DD'] = {type, start, end}),
-// which win over the roster on that date.
-function shiftOn(w, date){
-  const o = w.dateShifts && w.dateShifts[localYMD(date)];
-  if(o) return Object.assign({dated:true}, o);
-  return (w.schedule||[])[date.getDay()] || {type:'off', start:null, end:null};
-}
-// The seven shifts of the shown week (weekStart, Sunday first).
-function weekShifts(w){ return [0,1,2,3,4,5,6].map(i => { const d=new Date(weekStart); d.setDate(d.getDate()+i); return shiftOn(w,d); }); }
-function workerTotalHours(w){ return weekShifts(w).reduce((s,sh)=>s+(sh.type==='work'?calcHours(sh.start,sh.end):0),0); }
+// Payroll; docs/accounting.md → Payroll module); its wrappers with the page's
+// names (analyzeDayPunches, shiftPay…) are src/manager/logic/pay.ts. Do not
+// add a second hours calc.
+// shiftOn(), weekShifts(), workerTotalHours(), getVisible() — the Schedule's
+// shifts and who it shows — are src/manager/logic/schedule.ts.
 
-// Inactive workers (status 'fired') leave the everyday lists — the Workers
-// tab (unless its Status filter picks them), the Schedule, Today
-// and the contract warnings — and come back when set Active again on their
-// card (per user request 2026-10-11). Accounting still counts their hours.
-function isActiveWorker(w){ return !!w && w.status!=='fired'; }
-
-// ── Contract-expiry warning (per-worker, opt-in) ───────────────────────────────
-// A worker can optionally set expiryMonths (how many months after startDate
-// the deadline hits) and expiryWarnMonths (how many months before the
-// deadline to start warning). Returns null if the feature is off/unset for
-// this worker, or {level:'warning'|'overdue', deadline:Date} otherwise.
-// Single source of truth — used by every badge/section below.
-function workerExpiryStatus(w){
-  if(!w || !isActiveWorker(w) || !w.expiryEnabled || !w.startDate || !w.expiryMonths) return null;
-  const start = new Date(w.startDate+'T00:00:00');
-  if(isNaN(start)) return null;
-  const deadline = new Date(start);
-  deadline.setMonth(deadline.getMonth() + Number(w.expiryMonths));
-  const warnFrom = new Date(deadline);
-  warnFrom.setMonth(warnFrom.getMonth() - Number(w.expiryWarnMonths||0));
-  const now = new Date();
-  if(now >= deadline) return {level:'overdue', deadline};
-  if(now >= warnFrom) return {level:'warning', deadline};
-  return null;
-}
 // The notice under the title bar when the app opens: how many contracts have
 // expired or expire soon (workerExpiryStatus, active workers only); "Show"
 // opens Today, where they are listed; ✕ hides it until the next app start.
@@ -1242,163 +1107,15 @@ function showContractNotice(){
   el.style.display='';
 }
 function closeContractNotice(){ try{ sessionStorage.setItem('contractNoticeClosed','1'); }catch(e){} showContractNotice(); }
-// ── Worker document completeness ────────────────────────────────────────────
-// One status per worker, used by the Workers list/cards badge, the cards'
-// "Documents" row, the worker card, and the "Documents incomplete" filter.
-//   missing — ID/passport number (workerDocId), Form 101 PDF (w.docUrl), the
-//     raw scan (w.assetsFileId — the scan sidecar is only ever written when a
-//     scan image exists), signature and, for an Israeli ID, the ספח page.
-//     Signature/ספח are only known for documents saved since these flags
-//     existed (w.docHasSignature / w.docExtraPages, set by aiFillForm101() on
-//     every successful save); older records are treated as unknown, not missing.
-//   expiry — w.docExpiry (ID/passport validity) already past → error; within
-//     DOC_EXPIRY_WARN_MONTHS → warning.
-//   failed — w.docUploadFailed (last upload failed) → error.
-const DOC_EXPIRY_WARN_MONTHS = 3;
-// Worker documents uploaded from the worker card (w.docs, 2026-10-01):
-// [{id, type, name, fileId, url, mediaType, uploadedAt, expiry:'YYYY-MM-DD'|''}].
-// Files live in Storage (tenants/<t>/workers/<id>/docs); only this
-// metadata is on the worker record. Warn this many days before expiry.
-const WORKER_DOC_TYPES = {contract:'Contract', visa:'Visa', work_permit:'Work permit', other:'Other'};
-const WORKER_DOC_WARN_DAYS = {contract:30, visa:60, work_permit:60, other:30};
-function workerDocExpiries(w){
-  const today=new Date(); today.setHours(0,0,0,0);
-  const out=[], seen=new Set();
-  for(const d of (w.docs||[])){
-    const date=parseDocDate(d.expiry);
-    if(!date||isNaN(date)) continue;
-    // One reminder per document, not per file (a visa uploaded as front +
-    // back shares its type and expiry).
-    const key=d.type+'|'+d.expiry; if(seen.has(key)) continue; seen.add(key);
-    const label=tr(WORKER_DOC_TYPES[d.type]||'Document');
-    const warnAt=new Date(today); warnAt.setDate(warnAt.getDate()+(WORKER_DOC_WARN_DAYS[d.type]||30));
-    if(date<today) out.push({doc:d,level:'error',date,text:tr('{0} expired {1}',{0:label,1:date.toLocaleDateString('en-GB')})});
-    else if(date<=warnAt) out.push({doc:d,level:'warn',date,text:tr('{0} expires {1}',{0:label,1:date.toLocaleDateString('en-GB')})});
-  }
-  return out.sort((a,b)=>a.date-b.date);
-}
-function parseDocDate(s){
-  s=String(s||'').trim();
-  let m=s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/);
-  if(m) return new Date(+m[3],+m[2]-1,+m[1]);
-  m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if(m) return new Date(+m[1],+m[2]-1,+m[3]);
-  return null;
-}
-function workerDocStatus(w){
-  const missing=[];
-  if(!workerDocId(w)) missing.push(tr('ID/passport no.'));
-  if(!w.docUrl) missing.push(tr('Form 101'));
-  if(!w.assetsFileId) missing.push(tr('document scan'));
-  if(w.docHasSignature===false) missing.push(tr('signature'));
-  if((w.docType||'israeli_id')==='israeli_id' && w.docExtraPages===0) missing.push(tr('ספח (ID appendix)'));
-  let expiry=null;
-  const d=parseDocDate(w.docExpiry);
-  if(d && !isNaN(d)){
-    const today=new Date(); today.setHours(0,0,0,0);
-    const warnAt=new Date(today); warnAt.setMonth(warnAt.getMonth()+DOC_EXPIRY_WARN_MONTHS);
-    if(d<today) expiry={level:'error',date:d,text:tr('ID/passport expired {0}',{0:d.toLocaleDateString('en-GB')})};
-    else if(d<=warnAt) expiry={level:'warn',date:d,text:tr('ID/passport expires {0}',{0:d.toLocaleDateString('en-GB')})};
-  }
-  const failed=!!w.docUploadFailed;
-  const docExpiries=workerDocExpiries(w);
-  const docExpired=docExpiries.find(x=>x.level==='error')||null;
-  const level = (failed || (expiry&&expiry.level==='error') || docExpired) ? 'error' : ((missing.length||expiry||docExpiries.length) ? 'warn' : 'ok');
-  const lines=[];
-  if(failed) lines.push(tr('Last upload to {0} failed',{0:DOC_STORE}));
-  if(missing.length) lines.push(tr('Missing: {0}',{0:missing.join(', ')}));
-  if(expiry) lines.push(expiry.text);
-  for(const x of docExpiries) lines.push(x.text);
-  return {level, missing, expiry, docExpiries, docExpired, failed, lines};
-}
-// ── Pay (src/lib/payroll.ts through payroll.js — the rules, the 3-tier rate
-// chain, the law tiers, daily pay, travel and the period keys are described
-// there and in docs/accounting.md). ──
-const PAY_RULES = Payroll.PAY_RULES;
-// Effective per-hour rates: worker.clientRates[clientId] > the worker's own > the client's.
-function effectiveRates(w, clientId){ return Payroll.effectiveRates(w, clientId, clients); }
-// Pay for one shift's hours: the law tiers, or a flat OT/Shabbat rate when one is set.
-function shiftPay(hours, w, isSat, clientId){ return Payroll.shiftPay(hours, w, isSat, clientId, clients); }
-// Daily pay (w.payMode === 'daily', picked per worker in Accounting →
-// the pay window): the worker is paid their own rate (read as ₪/day)
-// once for every day worked, whatever the hours. A client's rate (an hourly
-// figure) never applies to a daily-paid worker.
-function isDailyPay(w){ return Payroll.isDailyPay(w); }
-function dailyRate(w){ return Payroll.dailyRate(w); }
-// One shift's pay, for every payroll figure (Salary, its export, the
-// super-admin summary). seenDays is a Set kept per worker over the period:
-// a daily-paid worker's later shifts on a day already paid pay 0.
-function shiftPayFor(hours, w, isSat, clientId, date, seenDays){ return Payroll.shiftPayFor(hours, w, isSat, clientId, date, seenDays, clients); }
-// Travel for a period (the pay window, openPayModal): travelAllowance ₪ for each
-// day worked + travelMonthly ₪ once for each calendar month with work in it.
-// Never part of the wage itself (shiftPay / shiftPayFor).
-function travelPay(w, days, months){ return Payroll.travelPay(w, days, months); }
-// The days of a daily-paid worker can be set by hand for one period
-// (w.dayOverrides[key]); key = the concrete period: 'w:<Sunday yyyy-mm-dd>',
-// 'm:<yyyy-mm>' or 'all'.
-function salaryPeriodKey(period, now){ return Payroll.salaryPeriodKey(period, now); }
-function dayOverride(w, key){ return Payroll.dayOverride(w, key); }
-function fmtDate(d){ return d.toLocaleDateString(uiLocale(),{day:'2-digit',month:'short'}); }
-function fmtRange(d){ const e=new Date(d); e.setDate(e.getDate()+6); return fmtDate(d)+' – '+fmtDate(e); }
-// Formats a stored 'YYYY-MM-DD' date string (e.g. w.startDate, straight from
-// a <input type="date">) as 'DD/MM/YYYY' for display. Leaves the raw value
-// untouched if it doesn't look like an ISO date (so it degrades gracefully).
-function fmtDMY(dateStr){
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr||'');
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : (dateStr||'');
-}
+// A worker's status — active, contract expiry, documents (isActiveWorker,
+// workerExpiryStatus, workerDocStatus, workerDocId…) — and the pay wrappers
+// over payroll.js (shiftPay, effectiveRates, localYMD…) are
+// src/manager/logic/workers.ts and pay.ts, in manager-core.js.
 
 // --- Tab ---------------------------------------------------------------------
-// ── Permission gating (Admin/Roles plan, stage 8) ───────────────────────────
-// Client-side visibility only — the actual enforcement is server-side
-// (requirePermission(), stage 9), this just hides what a staff login has no
-// business seeing so they aren't clicking into a dead end. superadmin/
-// tenant_admin/supplier all bypass this (supplier never reaches this nav at
-// all — it gets its own separate supplier-portal.html, stage 16).
-function hasPermission(section){
-  const s = getSession();
-  if(!s || (s.role !== 'staff' && s.role !== 'hr')) return true;
-  const perms = s.permissions;
-  return perms === '*' || (Array.isArray(perms) && perms.indexOf(section) !== -1);
-}
-// Maps each nav tab to the permission section that gates it. 'admin' (the
-// tab itself — punch log by default, plus Firms/Users/Errors/Profile
-// sub-panes for tenant_admin/superadmin, merged 2026-09-30, see
-// setupAdminPaneBar()) rides on the 'workers' permission — it's operational
-// worker oversight, not a separate concept the plan's PERMISSION_SECTIONS
-// ever called out on its own; a staff login only ever sees the Punch Log
-// pane regardless, the extra panes are gated separately by role. 'dashboard'
-// has no entry — the Today/real-time overview is never gated, every
-// logged-in staff member can always see it.
-const NAV_TAB_PERMISSION = { schedule:'schedule', workers:'workers', clients:'clients', suppliers:'suppliers', admin:'workers', accounting:'accounting' };
-// An HR login (docs/admin.md → HR) gets only the tabs of its sections: never
-// Today or Admin (the firm-wide punch log); it lands on its first tab.
-function isHrSession(){ const s = getSession(); return !!s && s.role === 'hr'; }
-function isFirmAdminSession(){ const s = getSession(); return !!s && (s.role === 'tenant_admin' || s.role === 'superadmin'); }
-const HR_HIDDEN_TABS = ['dashboard','admin'];
-// An HR never gets the full Accounting tab: with the Accounting section
-// (off by default) it gets a reduced one — Salary for its own workers,
-// read-only, with its commission — nothing else (renderAccounting).
-function hrPayOnly(){
-  const s = getSession();
-  return !!s && s.role === 'hr' && hasPermission('accounting');
-}
-// An HR with an hours tick (users.hourPerms → claim hp) reviews its workers'
-// hours in Accounting → Hours approval (src/hours-review/), even without the
-// Accounting section.
-function hrHourReview(){
-  const s = getSession();
-  return !!s && s.role === 'hr' && (s.hourPerms || []).some(p => p === 'hours' || p === 'schedule');
-}
-function tabAllowed(tab){
-  if(isHrSession() && HR_HIDDEN_TABS.includes(tab)) return false;
-  if(tab === 'accounting' && hrHourReview()) return true;
-  return !NAV_TAB_PERMISSION[tab] || hasPermission(NAV_TAB_PERMISSION[tab]);
-}
-function homeTab(){
-  if(!isHrSession()) return 'dashboard';
-  return ['workers','schedule','clients','suppliers','accounting'].find(tabAllowed) || 'workers';
-}
+// The sections and tabs a login may see (hasPermission, tabAllowed, homeTab,
+// hrPayOnly, hrHourReview, NAV_TAB_PERMISSION, MORE_TABS…) are
+// src/manager/logic/access.ts, in manager-core.js. The page shows / hides:
 function applyNavPermissions(){
   ['dashboard', ...Object.keys(NAV_TAB_PERMISSION)].forEach(tab=>{
     const el = document.getElementById('tab'+tab.charAt(0).toUpperCase()+tab.slice(1));
@@ -1415,8 +1132,7 @@ function applyNavPermissions(){
   if(currentTab && !tabAllowed(currentTab)) switchTab(homeTab());
 }
 
-// Phone bottom bar: the tabs that sit under More (CSS .ttab.in-more), and its sheet.
-const MORE_TABS = ['clients','suppliers','admin'];
+// Phone bottom bar: the sheet of the tabs under More (MORE_TABS).
 function openMoreSheet(){
   const items = MORE_TABS.filter(tabAllowed).map(t => {
     const el = document.getElementById('tab'+t.charAt(0).toUpperCase()+t.slice(1));
@@ -1671,9 +1387,6 @@ function markAllNotifRead(){
 setInterval(()=>{ if(getSession()){ refreshBell(); renderGreeting(); } }, 60e3);
 
 // --- Week nav: the React Schedule tab sets weekStart (ManagerBridge.setWeek) ---
-// Local-date YYYY-MM-DD — toISOString() is UTC, which in Israel (UTC+2/+3)
-// turns Sunday 00:00 local into the previous Saturday's date.
-function localYMD(d){ return Payroll.localYMD(d); }
 
 // --- Render -------------------------------------------------------------------
 function render(){
@@ -1699,85 +1412,12 @@ function render(){
   if(window.ManagerIsland) window.ManagerIsland.refreshWindows();
 }
 
-// A worker with no 'work' day at all was never given a schedule (left the
-// Weekly Schedule editor closed on creation) — treat that as "manages their
-// own hours, doesn't belong in the combined roster" rather than showing them
-// as a row of day-offs in the All-clients view.
-function hasSchedule(w){ return (w.schedule||[]).some(s=>s.type==='work') || weekShifts(w).some(s=>s.type==='work'); }
-function getVisible(){ const act=workers.filter(isActiveWorker); return selectedClientId ? act.filter(w=>(w.clientIds||[]).includes(selectedClientId)) : act.filter(hasSchedule); }
-
-// Workers' requests (stage 5b, docs/app-core.md → Schedule tab): the days a
-// worker marked they can't work and the shifts offered to a colleague, sent
-// from the punch page (the punch function writes tenants/{t}/shiftRequests).
-// The React Schedule tab draws them (ManagerBridge.schedule().requests); an
-// offer changes nothing until a manager with the schedule section confirms it
-// there with one tap: decideShiftRequest below — the worker's date becomes a
-// day off and the colleague's date gets the shift (both "only this date",
-// w.dateShifts, saved with the workers), and the request is marked confirmed.
-let __shiftReqs=[], __shiftReqsAt=0, __shiftReqsBusy=false;
-async function loadShiftRequests(force){
-  if(__shiftReqsBusy||(!force&&Date.now()-__shiftReqsAt<60e3)) return;
-  __shiftReqsBusy=true; __shiftReqsAt=Date.now();
-  try{ const j=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'loadShiftRequests'})})).json();
-    if(j&&j.ok){ __shiftReqs=j.requests||[]; if(currentTab==='schedule') renderSchedulePage(); } }catch(e){}
-  finally{ __shiftReqsBusy=false; }
-}
-async function decideShiftRequest(id,ok){
-  const q=__shiftReqs.find(x=>x.id===id); if(!q||!hasPermission('schedule')) return;
-  // Confirming changes both workers' dates and the request in one write
-  // (firestore-backend.js): either all of it is saved or nothing, and the
-  // dates are put back here if it fails.
-  let a=null, b=null, before=null, body={action:'decideShiftRequest',id,status:ok?'confirmed':'declined'};
-  if(ok){
-    a=workers.find(w=>w.id===q.workerId); b=workers.find(w=>w.id===q.toWorkerId);
-    // An own-workers HR's list holds only its own workers: a colleague of another HR isn't found here (the manager hands that shift over).
-    if(!a||!b){ showToast(tr('This worker is not in your list')); return; }
-    before=[a.dateShifts, b.dateShifts];
-    a.dateShifts=pruneDateShifts(Object.assign({}, a.dateShifts, {[q.date]:{type:'off',start:null,end:null}}));
-    b.dateShifts=pruneDateShifts(Object.assign({}, b.dateShifts, {[q.date]:{type:'work',start:q.start,end:q.end}}));
-    Object.assign(body, {schedule:getDataObj(), workerIds:[a.id, b.id]});
-  }
-  let j=null;
-  try{ j=await (await fetch(API_URL,{method:'POST',body:JSON.stringify(body)})).json(); }catch(e){}
-  if(!j||!j.ok){
-    if(before){ a.dateShifts=before[0]; b.dateShifts=before[1]; render(); }
-    showToast(tr('Could not save the decision')); loadShiftRequests(true); return;
-  }
-  if(ok) autoSave(); // nothing left to write; refreshes this device's cache
-  q.status=ok?'confirmed':'declined';
-  render(); showToast(ok?tr('Shift handed over'):tr('Offer declined'));
-}
-
-// The Schedule tab's site filter (ManagerBridge.setClient).
-function filterByClient(cid){ selectedClientId=cid; render(); }
-
-
-// Date changes older than 62 days are dropped, so the worker record stays small.
-function pruneDateShifts(d){
-  const cut=new Date(); cut.setDate(cut.getDate()-62); const ck=localYMD(cut);
-  const out={}; Object.keys(d||{}).sort().forEach(k=>{ if(k>=ck) out[k]=d[k]; });
-  return out;
-}
+// The workers' requests (loadShiftRequests, decideShiftRequest), the site
+// filter (filterByClient) and pruneDateShifts() are src/manager/logic/schedule.ts.
 
 // --- Worker Modal -------------------------------------------------------------
-// Address and document number used to share one field. Workers created from a
-// scan before the split carry the number inside `address` as "ת.ז. 123456789"
-// / "Passport AB123" (the shape the old scan-to-worker handoff used to write,
-// before it was folded into the unified worker modal) — so these two read it
-// back out of there instead of showing a document number on the address
-// line. Saving such a worker once stores it properly in `docId`.
-const LEGACY_DOC_IN_ADDRESS = /^\s*(?:ת\.ז\.|Passport)\s*(\S+)\s*$/;
-function workerDocId(w){
-  if(w.docId) return w.docId;
-  const m = LEGACY_DOC_IN_ADDRESS.exec(w.address || '');
-  return m ? m[1] : '';
-}
-function workerAddress(w){
-  const addr = w.address || '';
-  if(w.docId) return addr;
-  return LEGACY_DOC_IN_ADDRESS.test(addr) ? '' : addr;
-}
-
+// workerDocId() / workerAddress() (a number older records kept inside
+// `address`) are src/manager/worker.ts, given to the page by manager-core.js.
 function blankWorkerDefaults(){
   return {name:'',docGiven:'',docSurname:'',colorIdx:workers.length%8,phone:'',clientIds:[],
     schedule:DAYS.map(()=>({type:'work',start:'09:00',end:'17:00'}))};
@@ -1900,8 +1540,6 @@ function applyWorkerDraft(){ if(window.ManagerIsland) window.ManagerIsland.apply
 // Second pass right after a scan: every field the scan left empty is searched
 // for in one request (the window's own search, src/manager/WorkerEditor.tsx).
 async function autoFindMissingScanFields(){ if(window.ManagerIsland) await window.ManagerIsland.findMissing(); }
-// The worker's own regular rate (hourlyRate, or the older regRate); '' = none.
-function wOwnRate(w){ return Payroll.wOwnRate(w); }
 
 // The worker window (stage 6c-2) is drawn in React into #workerModal
 // (src/manager/WorkerEditor.tsx); editingWorkerId says which worker it edits
@@ -1966,9 +1604,6 @@ function setWorkerStatus(wi, v){
   w.status=v;
   render(); autoSave();
   openWorkerCard(wi);
-}
-function genToken(){
-  return Math.random().toString(36).slice(2,6)+Math.random().toString(36).slice(2,6);
 }
 
 // A new punch-link token (the worker window's Access): the old link stops working.
@@ -2519,203 +2154,51 @@ new MutationObserver(recs=>{
 
 // --- Export dropdown ----------------------------------------------------------
 
-// --- Export Excel -------------------------------------------------------------
-function exportExcel(){
-  if(true && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportExcel()).catch(()=>showToast(tr('Excel library not loaded'))); return; }
-  try {
-    const wb=XLSX.utils.book_new();
-    const headers=['Worker','Phone',...DAYS.map((d,i)=>{ const dt=new Date(weekStart); dt.setDate(dt.getDate()+i); return d+' '+fmtDate(dt); }),'Total Hours'];
-    const rows=[headers];
-    const exW=getVisible();
-    exW.forEach(w=>{
-      const row=[w.name,w.phone||'']; let total=0;
-      weekShifts(w).forEach(sh=>{ if(sh.type==='work'&&sh.start&&sh.end){ const h=calcHours(sh.start,sh.end); total+=h; row.push(sh.start+' – '+sh.end+' ('+h.toFixed(1)+'h)'); } else row.push('Day off'); });
-      row.push(total.toFixed(1)+'h'); rows.push(row);
-    });
-    rows.push([]);
-    const totals=['TOTAL',''];
-    DAYS.forEach((_,i)=>totals.push(exW.filter(w=>weekShifts(w)[i]?.type==='work').length+' working'));
-    totals.push(exW.reduce((s,w)=>s+workerTotalHours(w),0).toFixed(1)+'h');
-    rows.push(totals);
-    const ws=XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols']=[{wch:16},{wch:14},...DAYS.map(()=>({wch:22})),{wch:13}];
-    XLSX.utils.book_append_sheet(wb,ws,'Schedule');
-
-    const statsRows=[['Statistics',fmtRange(weekStart)],[],['Worker','Hours','Shifts','Days Off','Clients','Supplier'],
-      ...exW.map(w=>{ const cn=clients.filter(c=>(w.clientIds||[]).includes(c.id)).map(c=>c.name).join(', ');
-        const sn=suppliers.find(s=>s.id===w.supplierId)?.name||'';
-        return [w.name,workerTotalHours(w).toFixed(1),weekShifts(w).filter(s=>s.type==='work').length,weekShifts(w).filter(s=>s.type!=='work').length,cn||'Unassigned',sn]; })];
-    const ws2=XLSX.utils.aoa_to_sheet(statsRows);
-    ws2['!cols']=[{wch:18},{wch:10},{wch:8},{wch:10},{wch:28},{wch:20}];
-    XLSX.utils.book_append_sheet(wb,ws2,'Statistics');
-
-    const fname='Schedule_'+localYMD(weekStart)+'.xlsx';
-    XLSX.writeFile(wb,fname);
-    showToast(tr('Excel exported!'));
-  } catch(e){ showToast(tr('Export failed: {0}',{0:(e.message)})); }
-}
-
-// --- Export PDF ---------------------------------------------------------------
-function exportPDF(){
-
-  const dateHdrs=DAYS.map((d,i)=>{
-    const dt=new Date(weekStart); dt.setDate(dt.getDate()+i);
-    const today=dt.toDateString()===new Date().toDateString();
-    return '<th style="background:#1e2333;border-radius:8px;color:'+(today?'#7eb8ff':'#c0c4d4')+';padding:6px 4px;text-align:center;font-size:14px;font-weight:500">'+d+'<br><span style="font-weight:400;font-size:11px;color:#8b90a0">'+fmtDate(dt)+'</span><br><span style="color:#6fa8e0;font-size:12px;font-weight:500">'+DAYS_HE[i]+'</span></th>';
-  }).join('');
-
-  const exW = getVisible();
-  const workerRows=exW.map((w,ri)=>{
-    const c=WORKER_COLORS[w.colorIdx%8];
-    const rowBg=ri%2===0?'#181c27':'#13161f';
-    const cells=weekShifts(w).map(sh=>{
-      if(sh.type==='work'&&sh.start&&sh.end){
-        const h=calcHours(sh.start,sh.end);
-        const mid=toMins(sh.end)<=toMins(sh.start);
-        const cBg=mid?'#16202e':'#152620', cFg=mid?'#6fa8e0':'#6dd6a0', cSub=mid?'#9ec4ec':'#a7e8c8';
-        return '<td style="padding:2px;text-align:center;background:'+rowBg+';border:none"><div style="background:'+cBg+';color:'+cFg+';border-radius:10px;padding:0;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:78px;font-size:15px;font-weight:500;line-height:1.15;font-family:\'DM Mono\',ui-monospace,monospace;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important">'+sh.start+'<br>'+sh.end+'<br><span style="color:'+cSub+';font-size:12px;font-weight:500;margin-top:0">'+h.toFixed(1)+'h</span></div></td>';
-      }
-      return '<td style="padding:2px;text-align:center;background:'+rowBg+';border:none"><div style="background:#2a2012;color:#f5a623;border-radius:10px;padding:0;display:flex;align-items:center;justify-content:center;width:100%;height:78px;font-size:15px;font-weight:500;letter-spacing:0.3px;font-family:\'DM Sans\',sans-serif;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important">'+tr('Day off')+'</div></td>';
-    }).join('');
-    const ini=w.name.slice(0,2).toUpperCase(), total=workerTotalHours(w).toFixed(1);
-    return '<tr><td style="padding:4px 8px;background:'+rowBg+';border:none;width:130px;max-width:130px"><div style="display:flex;align-items:center;gap:6px;overflow:hidden"><div style="width:32px;height:32px;border-radius:50%;background:'+c.bg+';color:'+c.text+';display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0">'+ini+'</div><div style="overflow:hidden;min-width:0"><div style="font-weight:500;color:#ffffff;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(w.name)+'</div><div style="color:#8b90a0;font-size:12px;margin-top:1px;white-space:nowrap">'+total+'h / week</div></div></div></td>'+cells+'</tr>';
-  }).join('');
-
-  const summary=exW.map(w=>{ const c=WORKER_COLORS[w.colorIdx%8]; return '<div style="font-size:13px;background:#1e2333;padding:8px 12px;border-radius:8px;min-width:80px"><div style="color:'+c.text+';font-weight:500;font-size:13px">'+esc(w.name)+'</div><div style="color:#ffffff;font-weight:600;font-size:15px;margin-top:3px;font-family:\'DM Mono\',ui-monospace,monospace">'+workerTotalHours(w).toFixed(1)+'h</div></div>'; }).join('');
-  const grand=exW.reduce((s,w)=>s+workerTotalHours(w),0).toFixed(1);
-  const genDate=new Date().toLocaleDateString(uiLocale(),{day:'2-digit',month:'short',year:'numeric'});
-  const weekLabel=fmtRange(weekStart);
-
-  const html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Schedule '+weekLabel+'</title>'
-    +'<link href="'+location.origin+'/fonts/fonts.css" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;}html,body{background:#0f1117;min-height:100%;width:100%;}body{font-family:"DM Sans","Heebo",-apple-system,Arial,sans-serif;background:#0f1117;color:#e8eaf0;padding:8px;}@media print{*{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;}html,body{background:#0f1117 !important;}body{padding:6px;}@page{size:A4 landscape;margin:4mm;}html{height:auto;}body{height:auto;}table{font-size:11px;}}table{width:100%;border-collapse:separate !important;border-spacing:3px !important;table-layout:fixed;}th,td{border:none !important;}th{font-weight:500;}tr{height:82px !important;page-break-inside:avoid;break-inside:avoid;}</style>'
-    +'</head><body><div style="width:100%;background:#0f1117;padding:0"><div style="max-width:100%;margin:0 auto;padding:16px">'
-    +'<div style="text-align:center;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.06)">'
-    +(()=>{ const cl=selectedClientId?clients.find(c=>c.id===selectedClientId):null; return cl?'<div style="font-size:28px;font-weight:600;color:#7eb8ff;margin-bottom:6px;font-family:Heebo,Arial,sans-serif">'+esc(cl.name)+'</div>':'<div style="font-size:26px;font-weight:500;color:#5a6075;margin-bottom:6px;letter-spacing:1px">'+tr('ALL CLIENTS')+'</div>'; })()
-    +'<div style="font-size:20px;font-weight:600;color:#ffffff;letter-spacing:-0.5px;line-height:1">'+weekLabel+'</div>'
-    +'<div style="display:flex;justify-content:center;gap:28px;margin-top:12px">'
-    +'<div style="color:#8b90a8;font-size:13px">Schedule Manager</div>'
-    +'<div style="color:#8b90a8;font-size:13px">Generated: '+genDate+'</div>'
-    +'<div style="color:#8b90a8;font-size:13px">'+tr('Workers:')+' <span style="color:#ffffff;font-weight:500">'+exW.length+'</span></div>'
-    +'<div style="color:#8b90a8;font-size:13px">'+tr('Total:')+' <span style="color:var(--green);font-weight:500">'+grand+'h</span></div>'
-    +'</div></div>'
-    +'<table><thead><tr>'
-    +'<th style="background:#1e2333;color:#c0c4d4;padding:8px 10px;text-align:left;font-size:16px;font-weight:500;min-width:120px">'+tr('Worker')+'</th>'
-    +dateHdrs+'</tr></thead><tbody>'+workerRows+'</tbody></table>'
-    +'<div style="margin-top:16px;padding:14px;background:#181c27;border-radius:10px;page-break-inside:avoid;page-break-before:avoid">'
-    +'<div style="font-weight:700;margin-bottom:10px;font-size:13px;color:#ffffff;font-weight:500;border-bottom:1px solid rgba(255,255,255,0.06);padding-bottom:8px">'+tr('Week Summary')+'</div>'
-    +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:stretch">'+summary
-    +'<div style="font-size:14px;margin-left:auto;background:#152620;padding:8px 14px;border-radius:8px;display:flex;align-items:center;color:var(--green);font-weight:600;font-family:\'DM Mono\',ui-monospace,monospace">Total: '+grand+'h</div>'
-    +'</div></div></div></body></html>';
-
-  const win=window.open('','_blank');
-  win.document.write(html);
-  win.document.close();
-  setTimeout(()=>win.print(),600);
-  showToast(tr('PDF — Ctrl+P → Save as PDF'));
-}
-// --- Export JSON --------------------------------------------------------------
-function exportJSON(){
-  const data={workers,clients,weekStart:weekStart.toISOString(),exportedAt:new Date().toISOString()};
-  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url; a.download='schedule_'+localYMD(weekStart)+'.json';
-  a.click(); URL.revokeObjectURL(url);
-  showToast(tr('JSON exported!'));
-}
+// --- Export Excel / PDF / JSON: exportExcel(), exportPDF(), exportJSON() are
+// src/manager/logic/exports.ts.
 
 // --- Save / Load -------------------------------------------------------------
-// Data is stored in localStorage. Key is fixed so it persists across sessions.
-// Works as long as the file is always opened from the same path/browser.
-// On every change: auto-saves. On load: auto-restores.
+// The data layer — the session (getSession, gsAuth), the fetch(API_URL)
+// dispatcher, load / save / cache (loadData, autoSave), the punches, the
+// uploads and the telemetry — is src/manager/data/, loaded before this script
+// as manager-core.js under the same names (React migration stage 8b).
 
-const STORAGE_KEY_BASE = 'schedMgr_v1';
-// Scoped per tenant (falls back to '_anon' pre-login) so switching firms
-// (super-admin switchToTenant(), which reloads the page) never flashes a
-// DIFFERENT firm's cached workers/clients before the real Sheets data for
-// the newly-selected firm arrives — the old single global key meant the
-// last-viewed firm's stale cache rendered first regardless of which firm
-// you actually switched to.
-function STORAGE_KEY(){
-  const s = getSession();
-  const tid = (s && (s.viewingTenantId || s.tenantId)) || '_anon';
-  return STORAGE_KEY_BASE + '_' + tid;
+// ── The data layer's events (src/manager/data/events.ts) ──
+// The data layer never draws, shows a toast or looks at the screen: it
+// emits events, and this is the one place the page answers them. Its texts
+// come untranslated ({text, vars}) and are translated here.
+ManagerData.setHost({
+  // an HR's live worker list waits while one of these is open
+  workerWindowOpen:()=>['workerOverlay','workerCardOverlay','payOverlay'].some(id=>document.getElementById(id)?.classList.contains('open')),
+});
+ManagerData.on('data', ()=>render());
+// Hours approvals compare each day with the punches: they redraw too, or a
+// day could keep showing a stale "Changed after approval".
+ManagerData.on('punches', ()=>{ if(currentTab==='dashboard') renderDashboard(); else if(currentTab==='accounting') renderAccounting(); else if(currentTab==='admin') renderAdmin(); });
+// An open worker card shows the worker's latest hours batch live.
+ManagerData.on('hours', ()=>{ updateHoursBadge(); refreshBell(); if(window.ManagerIsland) window.ManagerIsland.refreshWindows(); if(currentTab==='accounting') renderAccounting(); });
+ManagerData.on('save', s=>setSaveStatus(s));
+ManagerData.on('notice', ({msg, ms})=>showToast(typeof msg==='string'?msg:tr(msg.text, msg.vars), ms));
+ManagerData.on('loaded', ()=>maybeRegenAfterFirmEdit());
+ManagerData.on('requests', ()=>{ if(currentTab==='schedule') renderSchedulePage(); });
+function setSaveStatus(s){
+  const el=document.getElementById('saveIndicator');
+  el.className='save-indicator '+s;
+  el.querySelector('span').textContent=s==='saving'?tr('Saving...'):tr('Saved');
 }
-// Every data call in this file is written as fetch(API_URL, {method:'POST',
-// body: JSON.stringify({action, ...})}) or fetch(API_URL + '?action=...').
-// API_URL is not a server: the window.fetch wrapper below answers each such
-// call from firestore-backend.js (Firestore, Storage, or the Cloud Functions
-// it calls) in the JSON shape the call site expects, so the call sites stay
-// simple. An action nothing answers gets {error:'Unknown action: …'}.
-const API_URL = 'api://app';
+// The count of hours batches waiting for a decision, on the Accounting tab.
+function updateHoursBadge(){
+  const tab = document.getElementById('tabAccounting'); if(!tab) return;
+  const n = pendingHoursCount();
+  let el = document.getElementById('accPendingBadge');
+  if(!el){ el = document.createElement('span'); el.id = 'accPendingBadge'; el.className = 'tab-badge'; tab.querySelector('.ic').appendChild(el); }
+  el.textContent = n > 99 ? '99+' : String(n);
+  el.style.display = n ? '' : 'none';
+  el.title = tr('{0} hours batch(es) waiting for review',{0:(n)});
+}
+
 const LOGIN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/login';
-let __fsBackend = null;
-function loadFirestoreBackend(){
-  if(__fsBackend) return __fsBackend;
-  __fsBackend = new Promise((resolve, reject) => {
-    const el = document.createElement('script');
-    el.src = 'firestore-backend.js';
-    el.onload = () => window.initFirestoreBackend().then(resolve, reject);
-    el.onerror = () => reject(new Error('firestore-backend.js failed to load'));
-    document.head.appendChild(el);
-  }).catch(e => { __fsBackend = null; throw e; });
-  return __fsBackend;
-}
-// Starts loading right away, so the SDK is ready by the time loadData() or
-// the login form needs it.
-loadFirestoreBackend().catch(e => console.warn('Firestore backend:', e));
-function fsTenantId(){
-  const s = getSession();
-  return s ? (s.viewingTenantId || s.tenantId) : null;
-}
-// Worker files — the Form 101 PDF, the scan sidecar and worker documents —
-// are uploaded to Firebase Storage (firestore-backend.js uploadWorkerFile,
-// real byte progress). uploadWorkerFile() below returns {ok,id,url}; the id
-// is the Storage path. The file being replaced (previousFileId) is deleted
-// after the new one is up.
-const DOC_STORE = 'Firebase Storage';
-async function uploadWorkerFile(bodyObj, onProgress){
-  __uploadsInFlight++;
-  try{
-    const b = await loadFirestoreBackend();
-    const json = await b.uploadWorkerFile(fsTenantId(), bodyObj, onProgress);
-    if(json && json.ok && bodyObj.previousFileId && bodyObj.previousFileId !== json.id) gsDeleteWorkerDoc(bodyObj.previousFileId);
-    return json;
-  }catch(e){
-    return {error: 'Storage: ' + ((e && (e.code || e.message)) || e)};
-  }finally{ __uploadsInFlight = Math.max(0, __uploadsInFlight - 1); }
-}
-// Server-side Form 101 PDF builder (Python + PyMuPDF Cloud Function) — replaces
-// the old client-side pdf-lib build, which had a confirmed bug dropping a
-// glyph of multi-word RTL (Hebrew) text. See functions/main.py.
-const FORM101_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/fill_form_101';
-// Scan preprocessing (OpenCV geometry + Pillow contrast/sharpness) — see
-// preAlignScan(). Its result now feeds straight into the manual
-// corner-adjustment editor (no AI-seeded alignment step in between anymore).
-const PREPROCESS_SCAN_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/preprocess_scan';
 
-// ── Multi-tenant session ────────────────────────────────────────────────────
-// The login function signs the device in to Firebase (the real auth: the
-// security rules and the functions check the Firebase ID token). The session
-// below only remembers who that is — uid, role, firm, permissions — for the
-// UI; gateApp()/gsLoad() send the user back to login when the Firebase
-// sign-in is gone. role is 'superadmin' (sees every firm), 'tenant_admin' or
-// 'staff' (own firm only).
-// viewingTenantId is what every API call actually scopes to — for a normal
-// tenant user it's always their own tenantId; for a super-admin it starts
-// null (no firm picked yet) and changes when they pick one from the Firms
-// screen (switchToTenant()).
-const SESSION_KEY = 'schedMgr_session';
-function getSession(){
-  try{
-    const raw = localStorage.getItem(SESSION_KEY);
-    if(!raw) return null;
-    const s = JSON.parse(raw);
-    if(!s || !s.uid){ localStorage.removeItem(SESSION_KEY); return null; }
-    return s;
-  }catch(e){ return null; }
-}
-function saveSession(s){ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
 // A supplier never uses this app: its login is written as the supplier
 // portal's session (supplier-portal.html, key supplierPortal_session) and the
 // page moves to /supplier, already signed in.
@@ -2730,7 +2213,6 @@ function goToClientPortal(u){
   clearSession();
   location.replace('client-portal.html');
 }
-function clearSession(){ localStorage.removeItem(SESSION_KEY); }
 async function logout(){
   try{ localStorage.removeItem(FIRMS_CACHE_KEY); }catch(e){}
   clearAdminCaches(); clearSession();
@@ -2739,70 +2221,6 @@ async function logout(){
 }
 
 
-// Merged into every data request: asTenantId when a super-admin has switched
-// into a specific firm (omitted for a firm's own login — firestore-backend.js
-// then uses the session's own firm).
-function gsAuth(){
-  const s = getSession();
-  if(!s) return {};
-  const out = {};
-  if(s.role === 'superadmin' && s.viewingTenantId) out.asTenantId = s.viewingTenantId;
-  return out;
-}
-// Uploads still running; the new-app-version reload waits for them (below).
-let __uploadsInFlight=0;
-function gsAuthQuery(){
-  const a = gsAuth();
-  return Object.keys(a).map(k => '&' + k + '=' + encodeURIComponent(a[k])).join('');
-}
-
-// The data-call dispatcher. Every fetch(API_URL…) call in this file (and in
-// scan-pipeline.js) is answered by firestore-backend.js handleAction() —
-// Firestore, Storage, or the users_admin / ai_read functions it calls — and
-// comes back as a JSON Response, so the call sites read it like any reply.
-// A reply with the exact "session expired" text (the functions refused the
-// Firebase ID token: signed out, revoked after a rights change) clears the
-// session and returns to the login screen. A call slower than
-// SLOW_API_CALL_MS goes to the Timings pane as kind "gs:<action>".
-const SESSION_EXPIRED_ERROR = 'Session expired or invalid — please sign in again';
-(function(){
-  const _origFetch = window.fetch.bind(window);
-  // Telemetry and login never trigger the session-expired logout.
-  const NO_LOGOUT_ACTIONS = ['logError','login','logTiming','logBatch'];
-  const SLOW_API_CALL_MS = 2500;
-  function apiParams(url, opts){
-    try{ if(opts && typeof opts.body === 'string') return JSON.parse(opts.body); }catch(e){}
-    try{ return Object.fromEntries(new URL(url).searchParams); }catch(e){ return {}; }
-  }
-  const jsonResponse = obj => new Response(JSON.stringify(obj), {status:200, headers:{'Content-Type':'application/json'}});
-  async function route(url, opts){
-    const params = apiParams(url, opts);
-    const action = params.action || 'loadSchedule';
-    const s = getSession() || {};
-    const ctx = {role: s.role, username: s.username, tenantId: s.viewingTenantId || s.tenantId};
-    const t0 = Date.now();
-    let json;
-    try{ json = await (await loadFirestoreBackend()).handleAction(action, params, ctx); }
-    catch(e){ console.warn(action + ' failed:', e); json = {error: 'Firestore: ' + ((e && e.message) || e)}; }
-    if(json == null) json = {error: 'Unknown action: ' + action};
-    const quiet = NO_LOGOUT_ACTIONS.indexOf(action) !== -1;
-    const ms = Date.now() - t0;
-    // An AI call's reply carries _meta (time at Anthropic, tries, tokens) — kept with the measurement.
-    const meta = json && json._meta && typeof json._meta === 'object' ? json._meta : null;
-    if(meta) delete json._meta;
-    if(!quiet && ms >= SLOW_API_CALL_MS) try{ reportTiming('gs:' + action, ms, Object.assign({}, meta || {}, params.part ? {part: String(params.part)} : {})); }catch(e){}
-    if(!quiet && json && json.error === SESSION_EXPIRED_ERROR && getSession()){
-      clearSession();
-      showToast(tr('Session expired — please sign in again'));
-      setTimeout(() => location.reload(), 1200);
-    }
-    return jsonResponse(json);
-  }
-  window.fetch = function(url, opts){
-    if(typeof url === 'string' && url.indexOf(API_URL) === 0) return route(url, opts);
-    return _origFetch(url, opts);
-  };
-})();
 
 // The login Cloud Function checks the password and signs this device in to
 // Firebase (firestore-backend.js login()); the session keeps who that is.
@@ -2870,32 +2288,10 @@ function backToFirmsList(){
   location.reload();
 }
 
-// ── Firm profile (Form 101 section א) ─────────────────────────────────────
-// Every generated Form 101 draws its employer block straight from the firm's
-// own Tenants row (see aiFillForm101). migrateToMultiTenant() created the
-// original firm with a placeholder name and blank phone/address/deductions
-// number, so a firm can sit on a half-empty profile and only discover it on a
-// printed form. These helpers are the single source of truth for "is this
-// profile complete" — used by the Admin tab's icon, its Firms tile and the
-// Firms section (an owner's own firm, the super-admin's list).
-const FIRM_PROFILE_FIELDS = [
-  {key:'companyName',          label:'Company name'},
-  {key:'deductionsFileNumber', label:'מספר תיק ניכויים'},
-  {key:'phone',                label:'Phone'},
-  {key:'street',               label:'Street'},
-  {key:'city',                 label:'City'},
-];
-function activeTenantProfile(){
-  const s = getSession();
-  return (s && (s.viewingTenantProfile || s.tenantProfile)) || null;
-}
-// Labels of the fields Form 101 would leave blank. No argument = the firm the
-// session is currently working in; pass a Tenants row to check another firm.
-function firmProfileMissing(profile){
-  const p = profile || activeTenantProfile();
-  if(!p) return FIRM_PROFILE_FIELDS.map(f => f.label);
-  return FIRM_PROFILE_FIELDS.filter(f => !String(p[f.key]==null?'':p[f.key]).trim()).map(f => f.label);
-}
+// ── Firm profile (Form 101 section א) ──
+// FIRM_PROFILE_FIELDS, activeTenantProfile(), firmProfileMissing() are
+// src/manager/logic/admin.ts, like the Admin caches, the role labels,
+// assignWorkersToHr / ToSupplier, the payable summary and the log periods.
 // Keeps the session's cached copy of the firm profile in step with a save —
 // the client only ever gets one at login, so without this a firm would have
 // to log out and back in before its own edit showed up on a Form 101. Only
@@ -3035,17 +2431,6 @@ async function editMyName(){
 // workers and the server calls that touch the page's state stay here and are
 // handed over through ManagerBridge (its Admin part below).
 let __firmsCache = [];
-// The Firms list is cached (localStorage) and shown at once; the fresh copy
-// from listTenants replaces it when it arrives.
-const FIRMS_CACHE_KEY = 'firmsCache_v1';
-// Same show-cached-then-refresh pattern for the Admin Users / Errors / Timings.
-// Keys start with ADMIN_CACHE_PREFIX so logout() can drop them all.
-const ADMIN_CACHE_PREFIX = 'adminCache_';
-function saveAdminCache(key, value){ try{ localStorage.setItem(ADMIN_CACHE_PREFIX+key, JSON.stringify(value)); }catch(e){} }
-function loadAdminCache(key){ try{ return JSON.parse(localStorage.getItem(ADMIN_CACHE_PREFIX+key)||'null'); }catch(e){ return null; } }
-function clearAdminCaches(){ try{ Object.keys(localStorage).filter(k=>k.startsWith(ADMIN_CACHE_PREFIX)).forEach(k=>localStorage.removeItem(k)); }catch(e){} }
-function saveFirmsCache(tenants){ try{ localStorage.setItem(FIRMS_CACHE_KEY, JSON.stringify(tenants||[])); }catch(e){} }
-function loadFirmsCache(){ try{ const v=JSON.parse(localStorage.getItem(FIRMS_CACHE_KEY)||'null'); return Array.isArray(v)?v:null; }catch(e){ return null; } }
 // The Admin tab and the landing screen draw again (whichever is shown).
 function renderFirmsViews(){ renderAdmin(); if(window.ManagerIsland) window.ManagerIsland.renderFirmsScreen(); }
 let __firmsErr='', __firmsLoaded=false;
@@ -3162,12 +2547,6 @@ function setupAdminPaneBar(){
   switchAdminPane(__adminPane);
   if(s.role === 'superadmin' || s.role === 'tenant_admin') prefetchAdminUsers();
 }
-// The Admin sections this login sees (the React tabs, ManagerBridge.admin()).
-function adminPanes(){
-  const s = getSession(); if(!s) return [];
-  const isSuper = s.role === 'superadmin', isAdminRole = isSuper || s.role === 'tenant_admin';
-  return ['punchlog'].concat(isAdminRole ? ['firms','users'] : [], isSuper ? ['errors','timings'] : []);
-}
 // Loads the Users list in the background as soon as the Admin tab opens, so
 // the Users section usually draws at once; a load already in flight is shared.
 let __usersFetch=null, __usersErr='';
@@ -3196,14 +2575,6 @@ function prefetchAdminUsers(){
     } else { __usersErr=(json&&json.error)||'Load failed'; if(currentTab==='admin') renderAdmin(); }
   }).catch(()=>{ __usersErr='Network error'; if(currentTab==='admin') renderAdmin(); });
 }
-// How a login's role reads (through tr()) — the header's account menu; the
-// React Users section has its copy in src/manager/users.ts.
-const USER_ROLE_LABELS = {tenant_admin:'owner', superadmin:'super-admin', staff:'staff', hr:'HR', supplier:'supplier', client:'client'};
-// The hours-review ticks (users.hourPerms, functions-auth/core.py HOUR_PERMS);
-// a new HR, supplier or client login starts with HOUR_DEFAULT (core.py) — the
-// client and supplier windows' login ticks (loginsInfo).
-const HOUR_DEFAULT = ['hours', 'approve', 'dispute', 'fix'];
-const HOUR_PERM_LABELS = {hours:'Hours', approve:'Approve', dispute:'Dispute', fix:'Fix', schedule:'Schedule', export:'Export'};
 // The Admin tab opens with no section (the React tiles): nothing is loaded
 // until a section is picked; the React section loads its own data. The
 // chosen section is kept while the app stays open.
@@ -3213,11 +2584,6 @@ function switchAdminPane(pane){
   if(__adminPane==='errors'||__adminPane==='timings') loadLogPane(__adminPane);
   renderAdmin();
   renderCrumb();
-}
-function activeTenantIdForAdmin(){
-  const s = getSession();
-  if(!s) return null;
-  return s.role === 'superadmin' ? s.viewingTenantId : s.tenantId;
 }
 // The user window (React, #userFormModal): a saved login from the list the
 // Users section drew (its cache; the server only when the row isn't there),
@@ -3289,121 +2655,7 @@ function hrNameOf(id){
   const u = hrUsers().find(x => x.id===id);
   return u ? (u.fullName || u.username) : '';
 }
-// Each HR gets a steady color from the client palette (picked by its uid),
-// shown like a supplier's badge on the worker tile and card.
-function hrColor(id){
-  let h=0; for(const ch of String(id||'')) h=(h*31+ch.charCodeAt(0))>>>0;
-  return CLIENT_COLORS[h%CLIENT_COLORS.length];
-}
-// Sets the HR of these workers (null = none), saves, and moves their punches.
-async function assignWorkersToHr(ids, hrId){
-  const changed = [];
-  ids.forEach(id => {
-    const w = workers.find(x => x.id===id);
-    if(!w || (w.hrId||null)===(hrId||null)) return;
-    if(hrId) w.hrId = hrId; else delete w.hrId;
-    changed.push(id);
-  });
-  if(!changed.length) return 0;
-  render(); autoSave();
-  try{
-    const res = await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'setPunchesHr', ...gsAuth(), workerIds: changed, hrId: hrId||null})});
-    const json = await res.json();
-    if(!json || json.error) showToast((json&&json.error)||tr('Punches not updated'));
-  }catch(e){ showToast(tr('Network error — punches not updated')); }
-  return changed.length;
-}
-// A supplier's workers: sets supplierId (null = none) and saves. Punches carry
-// no supplier, so nothing else moves (the portal reads its workers' punches).
-function assignWorkersToSupplier(ids, sid){
-  let n = 0;
-  ids.forEach(id => {
-    const w = workers.find(x => x.id===id);
-    if(!w || (w.supplierId||null)===(sid||null)) return;
-    w.supplierId = sid || null; n++;
-  });
-  if(n){ render(); autoSave(); }
-  return n;
-}
-
-// ── Superadmin cross-firm payable summary (Admin/Roles plan, stage 10) ─────
-// Deliberately reuses the exact same canonical payroll functions every
-// firm's own Accounting tab uses (groupPunchesIntoShifts/shiftPay) — never a
-// reimplementation. For each cached firm (__firmsCache, from loadFirms()),
-// fetches that tenant's own schedule (for worker rate data) + this week's
-// punch log via an explicit asTenantId override in the request — NOT by
-// switching the session's viewingTenantId/reloading, so browsing this summary
-// never disturbs the admin's "currently open" firm. Per-firm total only
-// (hours + payable this week); the rows go to the React Firms section.
-async function fetchForTenant(action, tenantId){
-  const q = 'asTenantId='+encodeURIComponent(tenantId)+'&action='+action;
-  const res = await fetch(API_URL+'?'+q);
-  return res.json();
-}
-async function firmsPayableRows(){
-  const ws = new Date(); ws.setDate(ws.getDate()-ws.getDay()); ws.setHours(0,0,0,0);
-  const rows = [];
-  for(const t of __firmsCache){
-    try{
-      const [schJson, logJson] = await Promise.all([
-        fetchForTenant('loadSchedule', t.tenantId),
-        fetchForTenant('loadPunchLog', t.tenantId),
-      ]);
-      const fWorkers = schJson.workers || [];
-      const entries = (logJson.entries || []).filter(e => new Date(e.ts) >= ws);
-      const byWorkerPunches = {};
-      entries.forEach(e => { (byWorkerPunches[e.workerId]=byWorkerPunches[e.workerId]||[]).push(e); });
-      let totalHours = 0, totalPay = 0;
-      // effectiveRates() reads the global `clients` (tier 2: the client's
-      // default rate) — so this firm's own clients stand in while its pay is
-      // computed, then the loaded firm's come back. No await in between.
-      const ownClients = clients;
-      clients = schJson.clients || [];
-      try{
-        Object.entries(byWorkerPunches).forEach(([wid, list]) => {
-          const wc = fWorkers.find(w => w.id === wid), seen = new Set();
-          let wPay = 0;
-          groupPunchesIntoShifts(list).forEach(bucket => {
-            const res = analyzeDayPunches(bucket.entries, bucket.date);
-            if(res.hours > 0){
-              totalHours += res.hours;
-              const isSat = bucket.date.getDay() === 6;
-              wPay += shiftPayFor(res.hours, wc, isSat, bucket.entries[0] && bucket.entries[0].clientId, bucket.date, seen);
-            }
-          });
-          // A daily-paid worker's days set by hand for this week (as in Salary).
-          const ov = isDailyPay(wc) ? dayOverride(wc, salaryPeriodKey('week')) : null;
-          totalPay += ov != null ? ov * dailyRate(wc) : wPay;
-        });
-      }finally{ clients = ownClients; }
-      rows.push({ name: t.companyName || t.tenantId, hours: totalHours, pay: totalPay });
-    }catch(e){ rows.push({ name: t.companyName || t.tenantId, hours: 0, pay: 0, error: true }); }
-  }
-  return rows;
-}
-
-// ── Errors / Timings: the period picker ─────────────────────────────────
-// Both sections load one period at a time: the last 7 or 30 days, or a
-// calendar month (this one and the 11 before it), each cached on its own
-// (adminCache_errors:<key>, adminCache_timings:<key>).
-function logPeriodOptions(){
-  const now=new Date(), opts=[['30d',tr('Last 30 days')],['7d',tr('Last 7 days')]];
-  for(let i=0;i<12;i++){
-    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
-    opts.push(['m:'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),d.toLocaleDateString(uiLocale(),{month:'long',year:'numeric'})]);
-  }
-  return opts;
-}
-// {key, from, to, label} for a picker value; from/to are ISO times.
-function logPeriodRange(v){
-  v=v||'30d';
-  const opt=logPeriodOptions().find(o=>o[0]===v)||['30d',tr('Last 30 days')];
-  let from, to=null;
-  if(v==='7d'||v==='30d') from=new Date(Date.now()-(v==='7d'?7:30)*864e5);
-  else { const [y,m]=v.slice(2).split('-').map(Number); from=new Date(y,m-1,1); to=new Date(y,m,1); }
-  return {key:opt[0], from:from.toISOString(), to:to?to.toISOString():null, label:opt[1]};
-}
-function logPeriodQuery(pr){ return '&from='+encodeURIComponent(pr.from)+(pr.to?'&to='+encodeURIComponent(pr.to):''); }
+// ── Errors / Timings: the period picker (logPeriodOptions / Range / Query, src/manager/logic/admin.ts) ──
 const __logPeriod={errors:'30d', timings:'30d'}, __logErr={errors:'', timings:''};
 // The period's rows: the cached ones are drawn first, then loadErrors / loadTimings.
 async function loadLogPane(kind){
@@ -3432,387 +2684,8 @@ async function resetLogs(){
     if(__adminPane==='timings'||__adminPane==='errors') await loadLogPane(__adminPane);
   }catch(e){ showToast(tr('Network error')); }
 }
-// Shared by the Errors and Timings copy buttons (and Copy all).
-async function copyTextToClipboard(text){
-  try{
-    await navigator.clipboard.writeText(text);
-    showToast(tr('Copied'));
-  }catch(e){
-    // Fallback for contexts where the async Clipboard API is unavailable/denied.
-    try{
-      const ta=document.createElement('textarea');
-      ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
-      document.body.appendChild(ta); ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-      showToast(tr('Copied'));
-    }catch(e2){ showToast(tr('Could not copy')); }
-  }
-}
-
 // Optimistic concurrency: the savedAt value we last loaded from the DB.
-let lastLoadedSavedAt = null;
 
-// ── Data sync (Firestore) ────────────────────────────────────────────────────────
-async function gsSave(data) {
-  // Empty-payload guard: never push an empty dataset (would delete every record).
-  if((!data.workers||!data.workers.length) && (!data.clients||!data.clients.length)){
-    console.warn('Empty payload — skipping save');
-    return false;
-  }
-  try{ const r = await (await loadFirestoreBackend()).saveSchedule(fsTenantId(), data); return !!(r && r.ok); }
-  catch(e){ console.warn('Firestore save failed:', e); return false; }
-}
-
-// The firm's workers, clients and suppliers. A failure leaves its reason in
-// gsLoad.lastError and the Errors pane; loadData() then keeps the cache.
-async function gsLoad() {
-  try{
-    const b = await loadFirestoreBackend();
-    // The Firebase sign-in is gone (site data cleared, signed out elsewhere): log in again.
-    if(!b.currentUser()){ clearSession(); location.reload(); return null; }
-    const d = await b.loadSchedule(fsTenantId()); lastLoadedSavedAt = d.savedAt || null; gsLoad.lastError=''; return d; }
-  catch(e){ gsLoad.lastError = 'Firestore: ' + ((e && e.message) || e); reportError('loadSchedule failed: ' + gsLoad.lastError, 'gsLoad', ''); return null; }
-}
-
-// Pull all punches from the DB and merge with local (DB is authoritative;
-// unsynced local entries are kept). Lets the admin see every worker's punches.
-// Only recent punches are kept: the live listener covers this
-// month plus the week before it (punchWindowStart() — enough for "This week"
-// and for a shift that started before the 1st). Older months are read once,
-// when something asks for them (ensurePunchesSince(): a past month's salary,
-// an export, Clear Log, "Load earlier" in the punch log), and they stay only
-// for this app open: on the next open the cache is trimmed back to the
-// window, so localStorage never fills up with years of punches.
-function punchWindowStart(){
-  const d=new Date(); d.setDate(1); d.setHours(0,0,0,0); d.setDate(d.getDate()-7); return d;
-}
-let __punchLoadedFrom = null;          // earliest punch time loaded this app open
-let __punchEnsureChain = Promise.resolve(true);
-const ALL_PUNCHES_FROM = new Date(2000,0,1);
-function ensurePunchesSince(from){
-  if(!from) return Promise.resolve(true);
-  __punchEnsureChain = __punchEnsureChain.then(async () => {
-    const have = __punchLoadedFrom || punchWindowStart();
-    if(from >= have) return true;
-    showToast(from <= ALL_PUNCHES_FROM ? tr('Loading the whole punch history…') : tr('Loading earlier punches…'), 1500);
-    try{
-      const older = await (await loadFirestoreBackend()).punchesBetween(fsTenantId(), from, have);
-      __punchLoadedFrom = from;
-      mergeRemotePunches(older);
-      return true;
-    }catch(e){
-      showToast(tr('Could not load earlier punches: {0}',{0:((e && e.message) || e)}));
-      return false;
-    }
-  });
-  return __punchEnsureChain;
-}
-function ensureAllPunches(){ return ensurePunchesSince(ALL_PUNCHES_FROM); }
-// Start of the period a salary/export choice needs ('week', 'month',
-// 'm:YYYY-MM', 'all'); a day early, so a shift that started the evening
-// before stays whole.
-function periodPunchStart(period){
-  const now=new Date();
-  if(period==='all') return ALL_PUNCHES_FROM;
-  if(/^m:\d{4}-\d{2}$/.test(period)){ const [y,m]=period.slice(2).split('-').map(Number); return new Date(y,m-1,0); }
-  return null; // week / this month: inside the live window
-}
-async function gsLoadPunchLog(){
-  // A live listener — the first snapshot is the load, and every later change
-  // (a worker's punch on another device) is merged in at once.
-  try{
-    const since = punchWindowStart();
-    if(!__punchLoadedFrom || __punchLoadedFrom > since) __punchLoadedFrom = since;
-    return await (await loadFirestoreBackend()).listenPunches(fsTenantId(), entries => {
-      mergeRemotePunches(entries);
-      if(currentTab === 'dashboard') renderDashboard();
-      // Hours approvals compare each day with the punches: redraw them too,
-      // or a day could keep showing a stale "Changed after approval".
-      if(currentTab === 'accounting') renderAccounting();
-    }, since);
-  }catch(e){ console.warn('Firestore punch load failed: ' + ((e && e.message) || e)); return null; }
-}
-// The first load of the punches (a promise): Accounting → Hours approvals
-// waits for it, so a day is never compared with a punch log still loading
-// (which showed an approved day as "Changed after approval").
-let __punchSynced = null;
-function syncPunchesFromGS(){
-  __punchSynced = (async () => {
-    const remote = await gsLoadPunchLog();
-    if(!remote) return;
-    mergeRemotePunches(remote);
-  })();
-  return __punchSynced;
-}
-function mergeRemotePunches(remote){
-  const local = getPunchLog();
-  const byId = {};
-  remote.forEach(e=>{
-    if(!e) return;
-    // Rebuild the display time from the authoritative ISO timestamp (admin's local tz),
-    // falling back to extracting HH:MM from whatever string we got.
-    const d = e.ts ? new Date(e.ts) : null;
-    if(d && !isNaN(d.getTime())){
-      e.time = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
-    } else if(typeof e.time==='string'){
-      const m=e.time.match(/(\d{1,2}):(\d{2})/); if(m) e.time=m[1].padStart(2,'0')+':'+m[2];
-    }
-    if(e.id!=null) byId[e.id]=e;
-  });
-  // Cached rows older than what this app open has loaded are dropped (loaded
-  // on demand last time), so the cache never grows past what is in use.
-  const keepFrom = (__punchLoadedFrom || punchWindowStart()).getTime();
-  // An own-workers HR keeps cached rows only of the workers it still has (a
-  // worker the owner moved to another HR takes its punches along).
-  const s = getSession();
-  const mine = s && s.role==='hr' && s.ownOnly ? new Set(workers.map(w=>String(w.id))) : null;
-  local.forEach(e=>{ if(e && e.id!=null && !(e.id in byId) && !(new Date(e.ts).getTime() < keepFrom)
-    && (!mine || mine.has(String(e.workerId)))) byId[e.id] = e; });
-  savePunchLog(Object.values(byId));
-  if(currentTab==='admin') renderAdmin();
-}
-
-async function gsSavePunch(entry) {
-  try{ await (await loadFirestoreBackend()).savePunch(fsTenantId(), entry); }catch(e){ console.warn('Firestore punch save failed:', e); }
-}
-
-async function gsDeletePunch(id) {
-  try{ await (await loadFirestoreBackend()).deletePunch(fsTenantId(), id); }catch(e){ console.warn('Firestore delete failed:', e); }
-}
-
-async function gsUpdatePunch(data) {
-  try{ await (await loadFirestoreBackend()).updatePunch(fsTenantId(), data); }catch(e){ console.warn('Firestore update failed:', e); }
-}
-
-// Best-effort: deletes a worker's stored file in Storage (the replaced Form
-// 101 or sidecar, or every file of a deleted worker). Never blocks anything.
-async function gsDeleteWorkerDoc(fileId) {
-  try {
-    await fetch(API_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action: 'deleteWorkerDoc', ...gsAuth(), fileId })
-    });
-  } catch(e) { console.warn('Worker file delete failed:', e); }
-}
-
-function setSaveStatus(s){
-  const el=document.getElementById('saveIndicator');
-  el.className='save-indicator '+s;
-  el.querySelector('span').textContent=s==='saving'?tr('Saving...'):tr('Saved');
-}
-
-function getDataObj(){
-  return {workers, clients, suppliers, weekStart: weekStart.toISOString(), savedAt: new Date().toISOString()};
-}
-
-function applyData(d){
-  if(d.workers) workers=d.workers.map(w=>({id:w.id||uid(),clientIds:w.clientIds||[],token:w.token||genToken(),status:w.status||'active',...w}));
-  if(d.clients) clients=d.clients;
-  if(d.suppliers) suppliers=d.suppliers;
-  // d.weekStart (the week that was on screen at the last save) is deliberately
-  // NOT restored — the Weekly Schedule always opens on the current week, and a
-  // background re-load mustn't yank the manager off a week they navigated to.
-  // The weekly roster is per weekday (w.schedule[0..6]); a change for one
-  // date only lives in w.dateShifts, so the week shown picks those up.
-}
-
-// Set while local changes have not reached the server yet (2026-10-01).
-// loadData() then keeps the local data and saves it, instead of replacing it
-// with the older server copy — that replacement is how a newly added worker
-// vanished from the list when its save had failed.
-function UNSAVED_KEY(){ return STORAGE_KEY()+'_unsaved'; }
-// The flag holds when the save started; one older than 3 days is ignored, so a
-// device that was offline for long can't push stale data over newer edits.
-function hasUnsavedLocal(){ try{ const t=+localStorage.getItem(UNSAVED_KEY()); return t>0 && Date.now()-t<3*864e5 && !!localStorage.getItem(STORAGE_KEY()); }catch(e){ return false; } }
-// Apply a fresh server load, unless local changes are still unsaved.
-// Worker photos are gone (owner 2026-10-13): no list shows them and a scan no
-// longer takes one, so an old photo (avatarB64, 5–10 KB each) is dropped from
-// every worker this login may write; the save that follows removes it from
-// Firestore, and every later load is that much lighter.
-function dropWorkerPhotos(){
-  if(!(hasPermission('workers') || hasPermission('schedule'))) return false;
-  let n=0;
-  workers.forEach(w=>{ if('avatarB64' in w){ delete w.avatarB64; n++; } });
-  return n>0;
-}
-function applyServerLoad(gd){
-  if(hasUnsavedLocal()){
-    // gsLoad() already moved lastLoadedSavedAt to the server's version, so
-    // this save is not refused as a conflict.
-    showToast(tr('Unsaved changes found on this device — saving them now'),4000);
-    autoSave();
-    return false;
-  }
-  applyData(gd);
-  const photosDropped = dropWorkerPhotos();
-  render();
-  if(photosDropped) autoSave();
-  const gdJson = JSON.stringify(gd);
-  localStorage.setItem(STORAGE_KEY(), gdJson);
-  localStorage.setItem(STORAGE_KEY_BASE, gdJson); // legacy key for worker-punch.html's bridge, see autoSave()
-  return true;
-}
-
-function autoSave(){
-  // Glitch guard: don't overwrite existing data with a suddenly-empty state.
-  if((!workers||!workers.length) && (!clients||!clients.length)){
-    let hadData=false;
-    try{ const prev=JSON.parse(localStorage.getItem(STORAGE_KEY())||'{}'); hadData=(prev.workers&&prev.workers.length)||(prev.clients&&prev.clients.length); }catch(e){}
-    if(hadData){ console.warn('Empty state but cache has data — skipping save'); setSaveStatus('saved'); showToast('\u26a0 Empty data — save skipped'); return; }
-  }
-  setSaveStatus('saving');
-  clearTimeout(saveTimer);
-  saveTimer=setTimeout(async ()=>{
-    try{
-      const data = getDataObj();
-      const json = JSON.stringify(data);
-      // localStorage as cache only
-      localStorage.setItem(STORAGE_KEY(), json);
-      localStorage.setItem(STORAGE_KEY()+'_bak', json);
-      // Also mirror under the legacy unscoped key — worker-punch.html's
-      // updateScheduleManager() (same-device convenience bridge) still reads
-      // that literal key and has no tenantId of its own to scope by.
-      localStorage.setItem(STORAGE_KEY_BASE, json);
-      // Firestore is the primary storage
-      try{ localStorage.setItem(UNSAVED_KEY(),String(Date.now())); }catch(e){}
-      const ok = await gsSave(data);
-      if(ok){ try{ localStorage.removeItem(UNSAVED_KEY()); }catch(e){} }
-      setSaveStatus('saved');
-      if(ok) showToast(tr('Saved'));
-      else showToast(tr('Save failed — kept on this device'));
-    }catch(e){
-      console.error('Save failed',e);
-      setSaveStatus('saved');
-      showToast(tr('Save error'));
-    }
-  }, 800);
-}
-
-async function loadData(){
-  // 1. Show cached data instantly while the server loads — read ONLY the
-  // tenant-scoped key (never the legacy unscoped one) so switching firms
-  // (switchToTenant()'s reload) never flashes a DIFFERENT firm's stale
-  // cache; a firm with no cache yet under its own key just skips this step
-  // and waits for the real Sheets response, which is preferable to showing
-  // the wrong firm's data.
-  try{
-    const raw = localStorage.getItem(STORAGE_KEY()) || localStorage.getItem(STORAGE_KEY()+'_bak');
-    if(raw){
-      const d = JSON.parse(raw);
-      applyData(d);
-      __dataReady=true;
-      render();
-      markFirstContent();
-    }
-  }catch(e){}
-
-  // 2. Always load from Firestore (primary source)
-  try{
-    const gd = await gsLoad();
-    __dataReady=true;
-    if(gd){
-      applyServerLoad(gd);
-      markFreshContent('app');
-      setSaveStatus('saved');
-      syncPunchesFromGS();
-      if(isHrSession()) watchHrWorkers();
-      watchHoursBatches();
-      maybeRegenAfterFirmEdit();
-    } else {
-      showToast(tr('Could not load from the server — showing saved data{0}',{0:(gsLoad.lastError?' ('+gsLoad.lastError.slice(0,80)+')':'')}),6000);
-      retryLoadDataWhenBack();
-    }
-  }catch(e){
-    console.error('Load failed',e);
-    showToast(tr('Offline — using cached data'));
-  }
-  if(!__dataReady){ __dataReady=true; if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); }
-}
-
-// The hours batches (Pending hours), live (listenPendingHours): the count of
-// batches waiting for a decision on the Accounting tab, and each worker's
-// latest batch status on the worker card.
-let __hoursWatched = false, __hoursBatches = null;
-function watchHoursBatches(){
-  const s = getSession();
-  if(__hoursWatched || !s || s.role === 'supplier') return;
-  __hoursWatched = true;
-  loadFirestoreBackend().then(b => b.listenPendingHours(fsTenantId(), list => {
-    __hoursBatches = list;
-    updateHoursBadge(); refreshBell();
-    refreshCardHoursStatus();
-    if(currentTab === 'accounting') renderAccounting();
-  })).catch(e => { __hoursWatched = false; console.warn('Hours watch failed: ' + ((e && e.message) || e)); });
-}
-function updateHoursBadge(){
-  const tab = document.getElementById('tabAccounting'); if(!tab) return;
-  const n = (__hoursBatches || []).filter(b => b.status === 'pending').length;
-  let el = document.getElementById('accPendingBadge');
-  if(!el){ el = document.createElement('span'); el.id = 'accPendingBadge'; el.className = 'tab-badge'; tab.querySelector('.ic').appendChild(el); }
-  el.textContent = n > 99 ? '99+' : String(n);
-  el.style.display = n ? '' : 'none';
-  el.title = tr('{0} hours batch(es) waiting for review',{0:(n)});
-}
-// This worker's latest hours batch (by when it was sent), or null.
-function latestHoursBatch(workerId){
-  return (__hoursBatches || []).filter(b => (b.entries || []).some(r => r.workerId === workerId))
-    .sort((a, b) => String(b.uploadedAt).localeCompare(String(a.uploadedAt)))[0] || null;
-}
-// An open worker card shows the worker's latest batch live.
-function refreshCardHoursStatus(){ if(window.ManagerIsland) window.ManagerIsland.refreshWindows(); }
-
-// An HR's worker list follows the server (listenWorkers): a worker the owner
-// assigns appears, one taken away disappears, a field the owner edits (a
-// rate, a phone…) changes. Applied while no worker form
-// or card is open (their index into `workers` must not move); otherwise it
-// waits and tries again.
-let __hrWorkersWatched = false, __hrWorkerChanges = [];
-function watchHrWorkers(){
-  if(__hrWorkersWatched) return;
-  __hrWorkersWatched = true;
-  loadFirestoreBackend().then(b => b.listenWorkers(fsTenantId(), ch => { __hrWorkerChanges.push(ch); applyHrWorkerChanges(); }))
-    .catch(e => { __hrWorkersWatched = false; console.warn('Worker watch failed: ' + ((e && e.message) || e)); });
-}
-function applyHrWorkerChanges(){
-  if(!__hrWorkerChanges.length) return;
-  const busy = ['workerOverlay','workerCardOverlay','payOverlay'].some(id => document.getElementById(id)?.classList.contains('open'));
-  if(busy){ clearTimeout(applyHrWorkerChanges._t); applyHrWorkerChanges._t = setTimeout(applyHrWorkerChanges, 2000); return; }
-  const changes = __hrWorkerChanges.splice(0);
-  let n = 0;
-  changes.forEach(({added, removed, changed}) => {
-    const gone = new Set(removed.map(String));
-    const before = workers.length;
-    workers = workers.filter(w => !gone.has(String(w.id)));
-    n += before - workers.length;
-    added.forEach(x => { if(!workers.some(w => String(w.id) === String(x.id))){ workers.push(x); n++; } });
-    // An edit made elsewhere replaces this copy, unless this copy has edits
-    // of its own not yet saved (those win and are saved over it).
-    (changed || []).forEach(({data, unsaved}) => {
-      const i = workers.findIndex(w => String(w.id) === String(data.id));
-      if(i < 0 || unsaved(workers[i])) return;
-      workers[i] = data; n++;
-    });
-  });
-  if(!n) return;
-  try{ localStorage.setItem(STORAGE_KEY(), JSON.stringify(getDataObj())); }catch(e){}
-  render();
-}
-
-// After a failed load, try again once the device is back online or the tab
-// is shown again, so cached data doesn't stay on screen until a manual reload.
-let __loadRetryArmed=false;
-function retryLoadDataWhenBack(){
-  if(__loadRetryArmed) return; __loadRetryArmed=true;
-  const again=async()=>{
-    if(document.visibilityState==='hidden' || navigator.onLine===false) return;
-    window.removeEventListener('online',again); document.removeEventListener('visibilitychange',again);
-    const gd=await gsLoad(); __loadRetryArmed=false;
-    if(gd){ try{ if(applyServerLoad(gd)) showToast(tr('Data loaded')); }catch(e){} markFreshContent('app'); syncPunchesFromGS(); maybeRegenAfterFirmEdit(); }
-  };
-  window.addEventListener('online',again); document.addEventListener('visibilitychange',again);
-  setTimeout(again,15000);
-}
 
 
 
@@ -3850,10 +2723,9 @@ function renderSchedulePage(){
   if(window.ManagerIsland) window.ManagerIsland.renderSchedule();
 }
 window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); if(currentTab==='clients') renderClientsPage(); if(currentTab==='suppliers') renderSuppliersPage(); if(currentTab==='accounting') renderAccounting(); if(currentTab==='admin') renderAdmin(); if(document.getElementById('firmsScreen').style.display==='block') window.ManagerIsland.renderFirmsScreen(); renderCrumb(); });
-let __dataReady=false;
 window.ManagerBridge={
-  lang:()=>I18N_LANG,
-  dict:()=>I18N,
+  lang:()=>currentLang(),
+  dict:()=>currentDict(),
   // The snapshot Today draws from: each worker with today's shift, today's punch
   // and its notices (worked out here — they still belong to the Workers tab),
   // the suppliers, today's punches with their site.
@@ -4072,7 +2944,7 @@ window.ManagerBridge={
   setFirmsActive:(ids,active)=>setTenantsActive(ids,active),
   deleteFirms:ids=>deleteTenantsNow(ids),
   openFirmWindow:(mode,id)=>{ if(mode==='create') openCreateFirmForm(); else if(mode==='mine') openMyFirmForm(); else openEditFirmForm(id); },
-  firmsPayable:()=>firmsPayableRows(),
+  firmsPayable:()=>firmsPayableRows(__firmsCache),
   loadUsers:()=>prefetchAdminUsers(),
   openUserWindow:id=>{ if(id) openEditUserForm(id); else openCreateUserForm(); },
   deleteUsers:ids=>deleteUsersNow(ids),
@@ -4334,56 +3206,11 @@ function openPayModal(wid){
   document.getElementById('payOverlay').classList.add('open');
 }
 
-// --- One worker's hours → PDF / Excel (the worker card's Export hours) ------
-// Built from groupPunchesIntoShifts()/analyzeDayPunches() only — never a
-// calculation of its own. "PDF" is a print-ready page (window.print()).
-
-// Detail mode: one worker, one calendar month, Date/In/Out/Hours per shift.
-function getWorkerMonthShifts(workerId, year, month, workerLog){
-  const log = workerLog || getPunchLog().filter(e=>e.workerId===workerId);
-  return groupPunchesIntoShifts(log)
-    .filter(b => b.date.getFullYear()===year && b.date.getMonth()===month)
-    .map(b => {
-      const res = analyzeDayPunches(b.entries, b.date);
-      const ins = b.entries.filter(x=>x.type==='in').map(x=>x.time).sort();
-      const outs = b.entries.filter(x=>x.type==='out').map(x=>x.time).sort();
-      return { date: b.date, inTime: ins[0]||'', outTime: outs[outs.length-1]||'', hours: res.hours };
-    })
-    .sort((a,b)=>a.date-b.date);
-}
-function exportShiftsDetail(workerId, year, month, format){
-  if(format==='excel' && typeof XLSX==='undefined'){ loadXlsx().then(()=>exportShiftsDetail(workerId, year, month, format)).catch(()=>showToast(tr('Excel library not loaded'))); return; }
-  const w = workers.find(x=>x.id===workerId);
-  const shifts = getWorkerMonthShifts(workerId, year, month);
-  const monthLabel = new Date(year, month, 1).toLocaleDateString(uiLocale(),{month:'long',year:'numeric'});
-  const totalHours = shifts.reduce((s,x)=>s+x.hours,0);
-  const fname = 'hours-'+(w?w.name.replace(/\s+/g,'_'):workerId)+'-'+year+'-'+String(month+1).padStart(2,'0');
-  if(format==='excel'){
-    const aoa=[['Date','In','Out','Hours'].map(h=>tr(h))];
-    shifts.forEach(s=>aoa.push([s.date.toLocaleDateString('en-GB'), s.inTime, s.outTime, s.hours.toFixed(2)]));
-    aoa.push(['','',tr('Total'), totalHours.toFixed(2)]);
-    const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), tr('Hours'));
-    XLSX.writeFile(wb, fname+'.xlsx');
-  } else {
-    const rowsHtml = shifts.map(s=>`<tr><td>${s.date.toLocaleDateString('en-GB')}</td><td>${esc(s.inTime)}</td><td>${esc(s.outTime)}</td><td>${s.hours.toFixed(2)}</td></tr>`).join('');
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(tr('Hours'))} — ${esc(w?w.name:'')}</title>
-      <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px;text-align:left}th{background:#f0f0f0}tfoot td{font-weight:bold}</style>
-      </head><body><h2>${esc(w?w.name:'')} — ${esc(monthLabel)}</h2>
-      <table><thead><tr><th>${tr('Date')}</th><th>${tr('In')}</th><th>${tr('Out')}</th><th>${tr('Hours')}</th></tr></thead>
-      <tbody>${rowsHtml}</tbody>
-      <tfoot><tr><td colspan="3">${tr('Total')}</td><td>${totalHours.toFixed(2)}</td></tr></tfoot>
-      </table></body></html>`;
-    const win=window.open('','_blank'); win.document.write(html); win.document.close(); setTimeout(()=>win.print(),400);
-  }
-  showToast(tr('Hours exported'));
-}
+// --- One worker's hours → PDF / Excel: getWorkerMonthShifts(), exportShiftsDetail()
+// are src/manager/logic/exports.ts.
 
 
 // --- Admin Panel -------------------------------------------------------------
-function getPunchLog(){
-  try{ return JSON.parse(localStorage.getItem('punchLog')||'[]'); }catch(e){ return []; }
-}
 // True latest punch by timestamp (robust to array order / back-dated manual entries / sync).
 function latestOf(entries){
   if(!entries||!entries.length) return null;
@@ -4402,9 +3229,6 @@ function punchSite(e){
   if(e && e.clientId){ const c=clients.find(x=>x.id===e.clientId); if(c) return c.name; }
   if(e && e.site && clients.some(c=>c.name===e.site)) return e.site; // legacy entries without clientId
   return workerClientName(e && e.workerId) || (e && e.site) || '';
-}
-function savePunchLog(log){
-  localStorage.setItem('punchLog', JSON.stringify(log));
 }
 
 // Every list that grows (workers, clients, suppliers, firms, users, punch
@@ -4674,7 +3498,7 @@ function showNewVersionBar(){
     <button type="button" onclick="location.reload()" style="flex:none;border:0;border-radius:999px;padding:6px 14px;background:#4f8ef7;color:#fff;font:inherit;cursor:pointer">${tr('Update')}</button>
     <button type="button" aria-label="${tr('Close')}" onclick="this.parentElement.remove()" style="flex:none;border:0;background:none;color:#7c84a0;font:inherit;font-size:15px;cursor:pointer;padding:4px 8px 4px 2px">✕</button></div>`);
 }
-startVersionWatch(()=>[location.pathname,'og.css','payroll.js','firestore-backend.js',...(window.__scanPipelineReady?['scan-pipeline.js']:[])]);
+startVersionWatch(()=>[location.pathname,'og.css','payroll.js','manager-core.js','firestore-backend.js',...(window.__scanPipelineReady?['scan-pipeline.js']:[])]);
 
 const AVATAR_SIZE=160; // shared with scan-pipeline.js's cropPortraitAvatar() and confirmAvatarCrop() below (manual crop editor) — must stay in THIS file, not the lazy one, since confirmAvatarCrop() runs on every worker-photo edit regardless of scanning
 // Worker avatars are black and white (per user request 2026-10-04): the
@@ -4700,101 +3524,9 @@ function grayscaleCanvas(cv){
 // once loaded, exactly as if it were still inline here.
 let _scanPipelineLoading=null;
 // --- Upload preparation (shared by every file upload) -------------------------
-// Rule for any feature that sends files to the server (scans, hours import,
-// and anything added later): expand files with filesToUploadPages() — every
-// file in parallel, PDFs page by page — which shrinks each image to
-// UPLOAD_MAX_DIM before it leaves the device, then send the pages' requests
-// in parallel (Promise.all) rather than one after another.
-// Anthropic's vision models don't use more than ~1568px on the long edge, so
-// a full phone photo (3000-4000px+, several MB) is pure upload time on the
-// slowest leg (mobile network). Never upscales; any failure falls through to
-// the original image so a hiccup never blocks an upload.
-const UPLOAD_MAX_DIM=1800;
-function downscaleForUpload(b64,mediaType){
-  return new Promise(resolve=>{
-    const img=new Image();
-    img.onload=()=>{
-      try{
-        const iw=img.naturalWidth, ih=img.naturalHeight;
-        const scale=Math.min(1,UPLOAD_MAX_DIM/Math.max(iw,ih,1));
-        if(scale>=1){ resolve({b64,mediaType}); return; }
-        const cv=document.createElement('canvas');
-        cv.width=Math.round(iw*scale); cv.height=Math.round(ih*scale);
-        const ctx=cv.getContext('2d');
-        ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
-        ctx.drawImage(img,0,0,cv.width,cv.height);
-        resolve({b64:cv.toDataURL('image/jpeg',0.9).split(',')[1],mediaType:'image/jpeg'});
-      }catch(e){ resolve({b64,mediaType}); }
-    };
-    img.onerror=()=>resolve({b64,mediaType});
-    img.src='data:'+mediaType+';base64,'+b64;
-  });
-}
-let _pdfjsLoading=null;
-function _loadPdfJs(){
-  if(window.pdfjsLib) return Promise.resolve();
-  if(_pdfjsLoading) return _pdfjsLoading;
-  _pdfjsLoading=new Promise((res,rej)=>{
-    const sc=document.createElement('script');
-    sc.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-    sc.onload=()=>{ try{ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }catch(e){} res(); };
-    sc.onerror=()=>{ _pdfjsLoading=null; rej(new Error('pdf.js CDN failed')); };
-    document.head.appendChild(sc);
-  });
-  return _pdfjsLoading;
-}
-function isPdfFile(f){ return !!f&&(f.type==='application/pdf'||/\.pdf$/i.test(f.name||'')); }
-function _readFileB64(file){
-  return new Promise((res,rej)=>{
-    const r=new FileReader();
-    r.onload=()=>res(r.result.split(',')[1]);
-    r.onerror=()=>rej(new Error('read failed'));
-    r.readAsDataURL(file);
-  });
-}
-// One file -> its pages as upload-ready images [{b64,mediaType,text,fileName}].
-// An image is one page; a PDF is rendered page by page (pdf.js, scale 2.5,
-// pages rendered in parallel) with its text layer kept in `text`.
-async function fileToUploadPages(file){
-  if(isPdfFile(file)){
-    await _loadPdfJs();
-    const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
-    const nums=Array.from({length:pdf.numPages},(_,i)=>i+1);
-    return Promise.all(nums.map(async n=>{
-      const page=await pdf.getPage(n);
-      const vp=page.getViewport({scale:2.5});
-      const cv=document.createElement('canvas'); cv.width=vp.width; cv.height=vp.height;
-      await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
-      let text='';
-      try{ const tc=await page.getTextContent(); text=tc.items.map(it=>it.str).join(' '); }catch(e){}
-      const d=await downscaleForUpload(cv.toDataURL('image/png').split(',')[1],'image/png');
-      return {b64:d.b64,mediaType:d.mediaType,text,fileName:file.name||''};
-    }));
-  }
-  const raw={b64:await _readFileB64(file),mediaType:file.type||'image/jpeg'};
-  const d=await downscaleForUpload(raw.b64,raw.mediaType);
-  // orig: the photo before shrinking, only when it was shrunk — the scan
-  // crops its zoomed field re-reads from it (scan-pipeline.js _hiFieldCrop).
-  return [{b64:d.b64,mediaType:d.mediaType,text:'',fileName:file.name||'',orig:d.b64!==raw.b64?raw:null}];
-}
-// One file prepared for STORAGE (kept as a single file, unlike the per-page
-// AI path above): an image is shrunk like every upload, anything else (PDF,
-// Word, ...) is sent as-is. -> {b64, mediaType, fileName}
-async function fileForStorage(file){
-  const raw=await _readFileB64(file);
-  const type=file.type||'application/octet-stream';
-  if(/^image\//.test(type)){
-    const d=await downscaleForUpload(raw,type);
-    const name=d.mediaType===type?file.name:String(file.name||'image').replace(/\.[^.]+$/,'')+'.jpg';
-    return {b64:d.b64,mediaType:d.mediaType,fileName:name};
-  }
-  return {b64:raw,mediaType:type,fileName:file.name||'document'};
-}
-// Many files -> one flat, ordered page list; all files processed in parallel.
-async function filesToUploadPages(files){
-  const perFile=await Promise.all([...(files||[])].map(fileToUploadPages));
-  return perFile.flat();
-}
+// downscaleForUpload(), fileToUploadPages(), filesToUploadPages(),
+// fileForStorage(), _loadPdfJs() are src/manager/logic/uploads.ts (CLAUDE.md →
+// Uploads), in manager-core.js.
 
 function ensureScanPipelineLoaded(){
   if(window.__scanPipelineReady) return Promise.resolve();
@@ -4810,27 +3542,8 @@ function ensureScanPipelineLoaded(){
 }
 // New-scan entry point (the "Scan passport" button) — awaits the
 // pipeline before calling openAiScan(), which only exists once it's loaded.
-// Cloud Function warm-up (2026-10-01): a cold preprocess_scan /
-// fill_form_101 / ai_read instance costs seconds on first use (the
-// Timings pane showed ~4-5s in "Enhance (server)"). These {"ping":true} calls
-// wake them while the user is still photographing or filling the form; the
-// functions answer a ping at once without doing any work. At most once per
-// URL per 4 minutes. Results are kept in __fnWarm for the scan timing.
-const __fnWarm={};
-// The AI reads go to the ai_read function, so it is woken too.
-const AI_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/ai_read';
-function SCAN_WARM_URLS(){ return [PREPROCESS_SCAN_FN_URL,FORM101_FN_URL,AI_FN_URL]; }
-const USERS_ADMIN_FN_URL='https://europe-west3-schedule-odinson.cloudfunctions.net/users_admin';
-function warmCloudFunctions(urls){
-  const now=Date.now();
-  for(const url of urls){
-    const w=__fnWarm[url];
-    if(w&&now-w.at<240000) continue;
-    const rec={at:now,ms:null}; __fnWarm[url]=rec;
-    fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:'{"ping":true}'})
-      .then(()=>{ rec.ms=Date.now()-rec.at; }).catch(()=>{});
-  }
-}
+// The Cloud Function warm-up (warmCloudFunctions, SCAN_WARM_URLS, __fnWarm) and
+// the functions' URLs are src/manager/logic/functions.ts, in manager-core.js.
 async function startNewScan(){
   warmCloudFunctions(SCAN_WARM_URLS());
   try{ await ensureScanPipelineLoaded(); }
@@ -5233,79 +3946,6 @@ async function regenerateAllWorkerDocs(){
 // here are gone along with the client-side build they supported.
 
 // --- Init ---------------------------------------------------------------------
-// Error telemetry: send client errors to the errors collection (throttled, silent).
-let _errSent={}, _errCount=0;
-// ── Speed telemetry (2026-10-01) ───────────────────────────────────────────
-// Fire-and-forget; lands in the timings collection, shown in Admin → Timings.
-// Telemetry queue: errors and timings are collected and written as one
-// `logBatch` (one Firestore batch write), so they never compete with the
-// requests the user is waiting for: the first send waits
-// TELEMETRY_FIRST_FLUSH_MS after page load, later ones go out every
-// TELEMETRY_FLUSH_MS, and whatever is left goes out when the page is hidden
-// or closed. Nothing is sent before the Firebase sign-in.
-const TELEMETRY_FIRST_FLUSH_MS=8000, TELEMETRY_FLUSH_MS=5000;
-let __telemetryQueue=[], __telemetryTimer=null;
-function queueTelemetry(item){
-  __telemetryQueue.push(item);
-  if(__telemetryQueue.length>50) __telemetryQueue.splice(0,__telemetryQueue.length-50);
-  if(!__telemetryTimer){
-    const sinceLoad=performance.now();
-    __telemetryTimer=setTimeout(flushTelemetry, Math.max(TELEMETRY_FLUSH_MS, TELEMETRY_FIRST_FLUSH_MS-sinceLoad));
-  }
-}
-function flushTelemetry(viaBeacon){
-  clearTimeout(__telemetryTimer); __telemetryTimer=null;
-  if(!__telemetryQueue.length) return;
-  const items=__telemetryQueue; __telemetryQueue=[];
-  const body=JSON.stringify({action:'logBatch', items});
-  try{
-    fetch(API_URL,{method:'POST',body}).catch(()=>{});
-  }catch(e){}
-}
-document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') flushTelemetry(true); });
-window.addEventListener('pagehide',()=>flushTelemetry(true));
-function reportTiming(kind, totalMs, details){
-  try{
-    const s=getSession()||{};
-    queueTelemetry({type:'timing', kind, totalMs:Math.round(totalMs),
-      tenantId:s.viewingTenantId||s.tenantId||'', user:s.username||'', role:s.role||'',
-      details:Object.assign({device:/Mobi|Android|iPhone/i.test(navigator.userAgent)?'mobile':'desktop'},details||{})});
-  }catch(e){}
-}
-// Login → first content → fresh data, measured across the reload that
-// follows a login (submitLogin stores its start in sessionStorage). Without
-// a pending login it measures a plain app open from page start instead.
-// markFirstContent(): cached or fresh content first painted;
-// markFreshContent(screen): fresh server data shown — reports once per page.
-const __pageStartEpoch=Math.round(performance.timeOrigin||Date.now());
-let __firstContentAt=null, __openTimingSent=false;
-function markFirstContent(){ if(!__firstContentAt) __firstContentAt=Date.now(); }
-function markFreshContent(screen){
-  if(__openTimingSent) return; __openTimingSent=true;
-  markFirstContent();
-  const now=Date.now();
-  let pending=null; try{ pending=JSON.parse(sessionStorage.getItem('pendingLoginTiming')||'null'); sessionStorage.removeItem('pendingLoginTiming'); }catch(e){}
-  if(pending&&pending.t0&&now-pending.t0<120000){
-    reportTiming('login', now-pending.t0, {screen, loginRequestMs:pending.loginMs, firstContentMs:__firstContentAt-pending.t0,
-      reloadToFreshMs:now-__pageStartEpoch, pingMs:pending.pingMs, pingDoneBeforeClick:pending.pingDone});
-  } else {
-    reportTiming('open', now-__pageStartEpoch, {screen, firstContentMs:__firstContentAt-__pageStartEpoch});
-  }
-}
-function reportError(message, source, stack){
-  try{
-    if(_errCount>40) return;                                  // hard cap per session
-    const key=String(message||'').slice(0,120), nowT=Date.now();
-    if(_errSent[key] && nowT-_errSent[key]<60000) return;     // dedupe same error within 1 min
-    _errSent[key]=nowT; _errCount++;
-    queueTelemetry({type:'error',
-      page:(location.pathname.split('/').pop()||location.href),
-      role:'manager', worker:(getSession()||{}).username||'',
-      message:String(message||'').slice(0,500),
-      source:String(source||'').slice(0,300),
-      stack:String(stack||'').slice(0,1200)});
-  }catch(e){}
-}
 // Caught failures (2026-10-01): window 'error'/'unhandledrejection' only see
 // errors nobody handled. Most failures are handled — a toast, a console
 // error, a red line in a form — and never reached the Errors sheet. These

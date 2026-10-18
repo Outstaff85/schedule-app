@@ -1,22 +1,10 @@
-// The browser backend for the new pages: firestore-backend.js (an old-page
-// file, loaded once as a plain script; it defines initFirestoreBackend()) —
-// the same sign-in the old pages use. Only what the new pages call is typed.
-// docs/backend.md → firestore-backend.js.
+// The browser backend for the new pages: firestore-backend.js (built from
+// src/lib/firestore-backend.ts, loaded once as a plain script; it defines
+// initFirestoreBackend()) — the same file and sign-in the manager page uses,
+// so the version check sees one file. docs/backend.md → Browser data layer.
+import type { FirestoreBackend } from './firestore-backend';
 
-export interface Backend {
-  currentUser(): { uid: string } | null;
-  signOut(): Promise<void>;
-  idToken(): Promise<string>;
-  /** the login's hours ticks (claim hp) */
-  hourPerms(): Promise<string[]>;
-  /** the supplier portal tabs this login may use (claim ss; none stored = all three) */
-  supplierSections(): Promise<string[]>;
-  handleAction(action: string, params: Record<string, unknown>, ctx: Record<string, unknown>): Promise<unknown>;
-}
-
-declare global {
-  interface Window { initFirestoreBackend?: () => Promise<Backend> }
-}
+export type Backend = FirestoreBackend;
 
 let loading: Promise<Backend> | null = null;
 
