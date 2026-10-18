@@ -1,5 +1,4 @@
 {
-  "&nbsp;·&nbsp; {0}": "&nbsp;·&nbsp; {0}",
   "(load failed)": "(הטעינה נכשלה)",
   "(unknown HR)": "(משאבי אנוש לא ידוע)",
   "/day": "/יום",
@@ -100,7 +99,6 @@
   "Checking GPS...": "בודק GPS...",
   "Checking location...": "בודק מיקום...",
   "Choose a section": "בחרו מדור",
-  "Choose a section above — nothing is loaded until you do.": "בחרו מדור למעלה — דבר לא נטען עד שתבחרו.",
   "Choose a site": "בחירת אתר",
   "Choose at least one file": "בחרו לפחות קובץ אחד",
   "City": "עיר",

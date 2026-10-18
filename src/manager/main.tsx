@@ -7,7 +7,8 @@
 // worker windows (stage 6c-2: the card, the notices sheet, the worker window,
 // Add document, Upload / Export hours) and the client, supplier and manual
 // punch windows (stage 6d), and the Accounting tab into #accountingRoot with
-// the pay window (stage 6e) into the page's overlays, which
+// the pay window (stage 6e) into the page's overlays, and the Admin tab's
+// section tabs and punch log into #adminRoot (stage 6f-1), which
 // the page still opens and closes (so they stack and go back to each other
 // with its other windows: pay, the scan). The data and the page's actions come
 // through `window.ManagerBridge` (bridge.ts).
@@ -32,6 +33,7 @@ import { SupplierEditor, type SupplierProps } from './SupplierEditor';
 import { ManualPunch } from './ManualPunch';
 import { Accounting, setKeptTab } from './Accounting';
 import { PayWindow } from './PayWindow';
+import { Admin } from './Admin';
 import { buildSalaryExportRows, clientBillPay, commissionFor, supplierCommissionRate, supplierDayCommission, hourApprovalSummary, salaryEntriesFor, supplierCommission, SUPPLIER_DEFAULT_RATE } from './accounting';
 
 declare global {
@@ -91,6 +93,7 @@ const renderWorkers = island('workersRoot', b => b.workers(), (s, api) => <Worke
 const renderClients = island('clientsRoot', b => b.clients(), (s, api) => <Clients snap={s} api={api} />);
 const renderSuppliers = island('suppliersRoot', b => b.suppliers(), (s, api) => <Suppliers snap={s} api={api} />);
 const renderAccounting = island('accountingRoot', b => b.accounting(), (s, api) => <Accounting snap={s} api={api} />);
+const renderAdmin = island('adminRoot', b => b.admin(), (s, api) => <Admin snap={s} api={api} />);
 
 /**
  * A window drawn into one of the page's overlays (`.overlay > .modal#modalId`):
@@ -179,6 +182,7 @@ window.ManagerIsland = {
   renderAccounting,
   setAccTab: k => { setKeptTab(k); renderAccounting(); },
   openPay: id => payWin.show({ id, seq: ++seq }),
+  renderAdmin,
 };
 // The Accounting figures for the page's other callers (the client and supplier
 // windows, the user form's HR commission, the bell's approvals): its one-line

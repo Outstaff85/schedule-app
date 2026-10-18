@@ -93,8 +93,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await login(p, BASE + 'schedule-manager.html', 'owner1', 'owner-pass-1');
   await p.waitForNavigation().catch(()=>{});
   ok(await waitFor(p, () => typeof workers !== 'undefined' && workers.length === 2), 'owner: workers load from Firestore');
-  const idle = await p.evaluate(() => { switchTab('admin'); return {none: document.getElementById('adminPane_none').style.display !== 'none', rows: document.querySelectorAll('#adminTableBody > .t3-line').length, log: document.getElementById('adminPane_punchlog').style.display}; });
-  ok(idle.none && idle.rows === 0 && idle.log === 'none', 'admin opens with no section: punch log not drawn until tapped');
+  const idle = await p.evaluate(() => { switchTab('admin'); return {none: !!document.querySelector('#adminRoot [data-testid="admin-tiles"]') || !window.ManagerIsland, rows: document.querySelectorAll('#adminRoot [data-testid="punch-row"]').length, pane: __adminPane}; });
+  ok(idle.none && idle.rows === 0 && idle.pane === null, 'admin opens with no section: punch log not drawn until tapped ' + JSON.stringify(idle));
   ok(await p.evaluate(() => typeof BACKEND === 'undefined' && typeof API_SECRET === 'undefined' && API_URL === 'api://app'), 'no BACKEND switch, no API_SECRET');
   ok(await waitFor(p, () => getPunchLog().length >= 2), 'owner: punches load (live window)');
   // save round-trip
@@ -651,7 +651,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // Firm owner: one Firms section with their own firm (no separate Profile), fresh profile for Form 101
   const fm = await p.evaluate(async () => {
     switchTab('admin');
-    const btns = [...document.querySelectorAll('#adminPaneBar button')].filter(b => b.style.display !== 'none').map(b => b.id.replace('adminPaneBtn_', ''));
+    const btns = [...document.querySelectorAll('#adminRoot [data-testid="admin-tabs"] button')].map(b => b.dataset.k);
     switchAdminPane('firms');
     await new Promise(r => setTimeout(r, 2500));
     const txt = document.getElementById('adminFirmsList').innerText;
@@ -699,7 +699,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // load whole history, then the punch log
   await p.evaluate(() => ensureAllPunches());
   ok(await waitFor(p, () => getPunchLog().length === 4), 'owner: all punches after ensureAllPunches');
-  // Punch log draws 10 rows at first even with many punches
+  // Punch log (stage 6f-1, src/manager/Admin.tsx): 10 plates at first even with many punches
+  const PL = '#adminRoot [data-testid="punchlog"]';
   for (const [w, h] of [[1280, 800], [390, 800]]) {
     await p.setViewportSize({width:w, height:h});
     const pl = await p.evaluate(async () => {
@@ -709,17 +710,20 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       __punchLogMem = null;
       try { savePunchLog(base.concat(extra)); } catch (e) {}
       switchTab('admin'); switchAdminPane('punchlog');
-      await new Promise(r => setTimeout(r, 1500));
-      const rows = document.querySelectorAll('#adminTableBody > .t3-line').length;
-      const more = !!document.querySelector('#adminTableBody > .paged-more');
+      await new Promise(r => setTimeout(r, 800));
+      const rows = document.querySelectorAll('#adminRoot [data-testid="punch-row"]').length;
+      const more = !!document.querySelector('#adminRoot [data-testid="punchlog"] [data-slot="paged-more"]');
       try { savePunchLog(base); } catch (e) {}
+      render();
       return [rows, more, getPunchLog().length];
     });
-    console.log('PUNCHLOG', w, JSON.stringify(pl));
+    ok(pl[0] === 10 && pl[1], 'punch log: 10 plates and Show more with 64 punches (' + w + 'px) ' + JSON.stringify(pl));
   }
+  // A worker card left open by an earlier check would cover the tab.
+  await p.evaluate(() => [...document.querySelectorAll('.overlay.open')].forEach(o => closeModal(o.id))); await sleep(300);
   for (const [w, h] of [[390, 760], [1280, 720]]) {
     await p.setViewportSize({width:w, height:h});
-    await p.evaluate(() => { switchTab('admin'); window.scrollTo(0,0); });
+    await p.evaluate(() => { switchTab('admin'); switchAdminPane(null); window.scrollTo(0,0); });
     await sleep(300);
     await p.screenshot({path: SP + '/shot_admin_idle_' + w + '.png'});
     await p.evaluate(() => switchAdminPane('punchlog'));
@@ -727,33 +731,96 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await p.screenshot({path: SP + '/shot_admin_log_' + w + '.png'});
   }
   await p.setViewportSize({width:1280, height:720});
-  await p.evaluate(() => switchAdminPane('punchlog'));
-  const dates = await p.evaluate(() => [...document.querySelectorAll('#adminFilterDate option')].slice(1).map(o=>o.value));
+  // The tiles while no section is chosen; a tile opens its section; the breadcrumb follows.
+  const at = await p.evaluate(async () => {
+    switchTab('admin'); switchAdminPane(null); await new Promise(r => setTimeout(r, 100));
+    return {tiles: [...document.querySelectorAll('#adminRoot [data-testid="admin-tile"]')].map(t => t.dataset.k).join(), crumb0: document.getElementById('ogCrumb').innerText.replace(/\s+/g, ' ').trim(),
+      noRows: !document.querySelector('#adminRoot [data-testid="punch-row"]'), oldBar: !!document.getElementById('adminPaneBar')};
+  });
+  await p.click('#adminRoot [data-testid="admin-tile"][data-k="punchlog"] [role="button"]'); await sleep(250);
+  Object.assign(at, await p.evaluate(() => ({
+    opened: __adminPane === 'punchlog' && !!document.querySelector('#adminRoot [data-testid="punchlog"]') && !document.querySelector('#adminRoot [data-testid="admin-tiles"]'),
+    crumb: document.getElementById('ogCrumb').innerText.replace(/\s+/g, ' ').trim(),
+    figs: [...document.querySelectorAll('#adminRoot [data-slot="figures"] button span:first-of-type')].map(x => x.textContent).join()})));
+  ok(at.tiles === 'punchlog,firms,users' && at.crumb0 === 'Admin' && at.noRows && !at.oldBar && at.opened && at.crumb === 'Admin Punch Log' && at.figs === 'Total IN,Total OUT,Today,Total',
+    'admin: three tiles while no section is chosen, a tile opens its section, the breadcrumb "Admin › Punch Log", the figures ' + JSON.stringify(at));
+  // The filters: Radix selects — the date list is newest day first; the client filter uses the punch's own clientId.
+  const pickFilter = async (k, label) => {
+    await p.click(PL + ' [data-testid="punch-filter-' + k + '"]'); await p.waitForSelector('[role="option"]');
+    if (label != null) await p.getByRole('option', {name: label, exact: true}).click(); else await p.keyboard.press('Escape');
+    await sleep(150);
+  };
+  await p.click(PL + ' [data-testid="punch-filter-date"]'); await p.waitForSelector('[role="option"]');
+  const dates = await p.evaluate(() => [...document.querySelectorAll('[role="option"]')].slice(1).map(o => o.textContent.trim()));
+  await p.keyboard.press('Escape'); await sleep(150);
   const asTime = d => { const [dd,mm,yy] = d.split('/'); return new Date(+yy, mm-1, +dd).getTime(); };
   ok(dates.length === 2 && asTime(dates[0]) > asTime(dates[1]), 'date filter: newest day first (' + dates.join(', ') + ')');
-  const c2rows = await p.evaluate(() => { document.getElementById('adminFilterClient').value='c2'; renderAdmin(); return document.getElementById('adminCount').textContent; });
-  ok(c2rows === '4 records', 'client filter uses the punch clientId (Site B2 → ' + c2rows + ')');
-  // The punch log: a bare ⋮ (Edit, Delete) instead of ✕; Select — no boxes until the Select button, then tick two, Delete → Undo keeps them.
-  const pls = await p.evaluate(async () => {
-    const wait = ms => new Promise(r => setTimeout(r, ms)); document.getElementById('adminFilterClient').value = ''; renderAdmin();
-    const lines = [...document.querySelectorAll('#adminTableBody > .t3-line, #adminTableBody > .sw > .t3-line')];
-    const r = {x: !!document.querySelector('#adminTableBody .t3-x'), kb: !!lines[0].querySelector('.t3-kb'), head: !!(document.querySelector('#adminTableBody').previousElementSibling || document.body).querySelector('[data-h="on"]') && lines[0].querySelector('.t3-cb').offsetWidth === 0};
-    lines[0].querySelector('.t3-kb').click(); await wait(50);
-    r.menu = [...document.querySelectorAll('#ogPop .og-pop-it')].map(b => (b.classList.contains('del') ? '!' : '') + b.textContent.trim()).join(); closePopover();
-    const n0 = getPunchLog().length;
-    document.querySelector('#adminTableBody').previousElementSibling.querySelector('[data-h="on"]').click(); await wait(300);
-    r.shown = lines[0].querySelector('.t3-cb').offsetWidth > 0;
-    lines[0].click(); lines[1].querySelector('.t3-cb').click();
-    r.count = (document.querySelector('.sel-bar b') || {}).textContent; r.key = __selState && __selState.key; r.btns = [...document.querySelectorAll('.sel-bar .gbtn')].map(b => b.dataset.a).join();
-    const del = [...document.querySelectorAll('.sel-bar .gbtn')].find(b => b.dataset.a === 'del'); if(!del) return r; del.click(); await wait(300);
-    r.snack = /2 punches deleted/.test(document.getElementById('undoSnack').innerText);
-    document.querySelector('#undoSnack .og-snack-u').click(); await wait(300);
-    r.kept = getPunchLog().length === n0;
-    return r;
-  });
-  ok(!pls.x && pls.kb && pls.head && pls.shown && pls.menu === 'Edit,!Delete' && pls.count === '2 selected' && pls.snack && pls.kept, 'punch log: ⋮ (Edit, Delete) instead of ✕; no boxes until Select, then a tap on a plate or its box ticks it, Delete two through Undo ' + JSON.stringify(pls));
-  const c1rows = await p.evaluate(() => { document.getElementById('adminFilterClient').value='c1'; renderAdmin(); return document.getElementById('adminCount').textContent; });
+  const count = () => p.evaluate(sel => document.querySelector(sel + ' [data-testid="punch-count"]').textContent, PL);
+  const siteName = id => p.evaluate(cid => clients.find(c => c.id === cid).name, id);
+  await pickFilter('client', await siteName('c2'));
+  const c2rows = await count();
+  ok(c2rows === '4 records', 'client filter uses the punch clientId (Site B → ' + c2rows + ')');
+  await pickFilter('client', 'All clients');
+  // A plate: ⋮ (Edit, Delete); Select — no boxes until the Select button, then tick two, Delete → Undo keeps them.
+  const pls = {};
+  pls.box0 = await p.evaluate(sel => !document.querySelector(sel + ' .og-box'), PL);
+  await p.click(PL + ' [data-testid="punch-row"] button[aria-label="Actions"] >> nth=0'); await p.waitForSelector('[role="menuitem"]');
+  pls.menu = await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(b => b.innerText.trim()).join());
+  await p.keyboard.press('Escape'); await sleep(150);
+  pls.n0 = await p.evaluate(() => getPunchLog().length);
+  await p.click(PL + ' [data-testid="punch-select"] button:has-text("Select")'); await sleep(150);
+  pls.shown = await p.evaluate(sel => document.querySelectorAll(sel + ' .og-box').length > 0, PL);
+  await p.click(PL + ' [data-testid="punch-row"] >> nth=0', {position: {x: 30, y: 14}}); await sleep(80);
+  await p.click(PL + ' [data-testid="punch-row"] >> nth=1', {position: {x: 30, y: 14}}); await sleep(80);
+  pls.count = await p.evaluate(() => (document.querySelector('[data-testid="select-bar"] b') || {}).textContent);
+  pls.noWindow = await p.evaluate(() => !document.querySelector('[data-testid="punch-window"]'));
+  await p.click('[data-testid="select-bar"] button:has-text("Delete")'); await sleep(400);
+  pls.snack = await p.evaluate(() => /2 punches/.test(document.querySelector('[data-testid="undo-snack"]').textContent));
+  pls.hidden = await count();
+  await p.click('[data-testid="undo-snack"] button'); await sleep(400);
+  pls.kept = await p.evaluate(n0 => getPunchLog().length === n0, pls.n0);
+  pls.back = await count();
+  ok(pls.box0 && pls.menu === 'Edit,Delete' && pls.shown && pls.count === '2 selected' && pls.noWindow && pls.snack && pls.hidden === '2 records' && pls.kept && pls.back === '4 records',
+    'punch log: ⋮ (Edit, Delete); no boxes until Select, then a tap ticks a plate, Delete two through Undo ' + JSON.stringify(pls));
+  // The punch window: a tap opens it; the notes and the type are saved, marked edited by admin.
+  const pid = await p.evaluate(sel => document.querySelector(sel + ' [data-testid="punch-row"]').dataset.pid, PL);
+  const pw = {};
+  const pBefore = await p.evaluate(id => ({...getPunchLog().find(e => String(e.id) === id)}), pid);
+  await p.click(PL + ' [data-testid="punch-row"] >> nth=0', {position: {x: 30, y: 14}}); await p.waitForSelector('[data-testid="punch-window"]');
+  pw.title = await p.evaluate(() => /Edit Punch Record/.test(document.querySelector('[data-testid="window"]').innerText));
+  await p.fill('[data-testid="punch-notes"]', 'checked by e2e');
+  await p.click('[data-testid="punch-save"]'); await sleep(400);
+  const pAfter = await p.evaluate(id => ({...getPunchLog().find(e => String(e.id) === id)}), pid);
+  // editedBy stays local (updatePunch writes type, time, site, notes, clientId and editedAt); the live listener may bring the row back without it.
+  pw.saved = pAfter.notes === 'checked by e2e' && !!pAfter.editedAt && pAfter.type === pBefore.type && pAfter.clientId === pBefore.clientId;
+  if (!pw.saved) pw.rows = [pBefore, pAfter];
+  pw.closed = await p.evaluate(() => !document.querySelector('[data-testid="punch-window"]'));
+  await p.evaluate(id => { const log = getPunchLog(); const e = log.find(x => String(x.id) === id); e.notes = ''; savePunchLog(log); render(); }, pid);
+  ok(pw.title && pw.saved && pw.closed, 'punch log: a tap opens the punch window; Save writes the notes and editedAt ' + JSON.stringify(pw));
+  // By Client: a section per client with its workers.
+  await p.click(PL + ' [data-testid="punchlog-view"] [data-v="clients"]'); await sleep(250);
+  const bc = await p.evaluate(sel => ({secs: document.querySelectorAll(sel + ' [data-testid="punch-client"]').length, n: clients.length,
+    dana: /Dana Levi/.test((document.querySelector(sel + ' [data-testid="punch-client"][data-cid="c2"]') || {}).innerText || ''), subs: document.querySelectorAll(sel + ' [data-testid="punch-client"][data-cid="c2"] [data-testid="punch-sub"]').length,
+    noFilters: !document.querySelector(sel + ' [data-testid="punch-filters"]')}), PL);
+  await p.click(PL + ' [data-testid="punchlog-view"] [data-v="log"]'); await sleep(200);
+  ok(bc.secs === bc.n && bc.dana && bc.subs >= 1 && bc.noFilters, 'punch log: By Client — a section per client, its workers and their last punches ' + JSON.stringify(bc));
+  // Clear Log behind the Alert Dialog: the months with their counts; Delete only with a month and DELETE typed; Cancel deletes nothing.
+  await p.click(PL + ' [data-testid="punch-clear"]'); await p.waitForSelector('[data-testid="clear-log"]');
+  const clr = {};
+  clr.months = await p.evaluate(() => document.querySelectorAll('[data-testid="clear-month"]').length);
+  clr.off0 = await p.evaluate(() => document.querySelector('[data-testid="clear-submit"]').disabled);
+  await p.click('[data-testid="clear-month"] >> nth=0'); await sleep(80);
+  clr.off1 = await p.evaluate(() => document.querySelector('[data-testid="clear-submit"]').disabled);
+  await p.fill('[data-testid="clear-confirm"]', 'DELETE'); await sleep(80);
+  clr.on = await p.evaluate(() => !document.querySelector('[data-testid="clear-submit"]').disabled && /record/.test(document.querySelector('[data-testid="clear-submit"]').textContent));
+  await p.click('[data-testid="clear-log"] button:has-text("Cancel")'); await sleep(400);
+  clr.closed = await p.evaluate(() => !document.querySelector('[data-testid="clear-log"]'));
+  clr.kept = await p.evaluate(n0 => getPunchLog().length === n0, pls.n0);
+  ok(clr.months >= 1 && clr.off0 && clr.off1 && clr.on && clr.closed && clr.kept, 'punch log: Clear Log asks in the Alert Dialog — months, DELETE typed, Cancel keeps every punch ' + JSON.stringify(clr));
+  await pickFilter('client', await siteName('c1'));
+  const c1rows = await count();
   ok(c1rows === '0 records', 'client filter: Avi\'s current client has no punches (' + c1rows + ')');
+  await pickFilter('client', 'All clients');
   // CSV columns
   const csv = await p.evaluate(async () => { let txt=''; const orig=URL.createObjectURL; URL.createObjectURL = b => { b.text().then(t=>txt=t); return 'blob:x'; }; HTMLAnchorElement.prototype.click = function(){}; await exportPunchCSV(); await new Promise(r=>setTimeout(r,300)); URL.createObjectURL=orig; return txt; });
   const lines = csv.split('\n').map(l => l.split('","').length);

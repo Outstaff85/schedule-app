@@ -48,7 +48,7 @@ Every page is translated: the manager app (every tab, modal, toast, confirm, for
 More rules the manager app follows:
 - **Dates:** month and weekday names use `uiLocale()` (`en-GB` / `he-IL` / `ru-RU`); numeric dates stay `dd/mm/yyyy` (they are also data, e.g. a punch's `date`).
 - **Day names** (`DAYS`: Sun … Sat) are keys: shown as `tr(DAYS[i])`.
-- **Labels kept in a map** (`stMetaMap`, `WORKER_DOC_TYPES`, `USER_ROLE_LABELS`, `ADMIN_PANE_SUBTITLES`, `TIMING_KIND_LABEL`, `SALARY_PERIOD_LABELS`, `ACCOUNTING_HELP`) hold English; the place that shows one wraps it in `tr()`.
+- **Labels kept in a map** (`stMetaMap`, `WORKER_DOC_TYPES`, `USER_ROLE_LABELS`, `SUBTITLES` / `PANES` in `src/manager/Admin.tsx`, `TIMING_KIND_LABEL`, `SALARY_PERIOD_LABELS`, `ACCOUNTING_HELP`) hold English; the place that shows one wraps it in `tr()`.
 - **Messages from the server** (`json.error`) are English: `showToast()` passes every text through `tr()` (an unknown text stays as it is), and form error lines use `tr((json&&json.error)||'')`. Their Hebrew is in `he.json` like any other text; `check.js` counts the texts of `functions-auth/*.py` and `firestore-backend.js` as used.
 - **Wrapping a new screen:** `tests/i18n/check.js` sees `tr('…')` literals and `data-i18n*`; a text shown through a variable must be added to the dictionaries by hand.
 

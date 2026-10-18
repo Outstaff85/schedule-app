@@ -432,6 +432,25 @@ export type ManagerBridge = WorkerBridge & {
   payInfo(id: string): { w: AccWorker; ro: boolean; period: string } | null;
   /** writes the pay window's fields on the worker (a field undefined is removed), saves, closes the window; render() */
   savePay(id: string, patch: Record<string, unknown>): void;
+
+  // ── Admin (stage 6f-1: the section chooser and the punch log) ──
+  admin(): AdminSnapshot;
+  /** opens an Admin section (null: none — the tiles); the old panes not moved yet are shown by the page */
+  setAdminPane(pane: AdminPane | null): void;
+  /** every punch in the cache now (Clear Log counts its months after loading the whole history) */
+  punchLog(): AdminPunch[];
+  /** "Load earlier month": back to the 1st of the month already partly loaded, or the month before */
+  loadEarlierPunches(): Promise<void>;
+  /** loads the whole punch history (`ensureAllPunches`) */
+  loadAllPunches(): Promise<void>;
+  /** Export CSV of the whole history (`exportPunchCSV`) */
+  exportPunches(): Promise<void>;
+  /** Clear Log: a CSV of exactly those punches first, then `deletePunchesByMonths`; the toast is the page's; true when deleted */
+  clearPunchMonths(months: string[]): Promise<boolean>;
+  /** the punch's edit (`editedBy: 'admin'`, `editedAt`), sent with `gsUpdatePunch`; render() */
+  savePunch(id: string, edit: PunchEdit): void;
+  /** deletes the punches (their Undo time is up): the cache and Firestore; render() */
+  deletePunches(ids: string[]): void;
 };
 
 /** The SheetJS calls the exports use. */
@@ -473,6 +492,53 @@ export type AccountingSnapshot = {
   firmName: string;
 };
 
+
+// ── Admin (stage 6f) ──
+
+export type AdminPane = 'punchlog' | 'firms' | 'users' | 'errors' | 'timings';
+
+/** A punch as the log shows it: as stored, with its site worked out (`punchSite`). */
+export type AdminPunch = {
+  id: string | number;
+  workerId: string;
+  workerName: string;
+  type: 'in' | 'out';
+  time: string;
+  ts: string | number;
+  /** dd/MM/yyyy, set by the server */
+  date?: string;
+  site: string;
+  /** the stored site text (a custom site when there is no clientId) */
+  rawSite?: string;
+  clientId?: string | null;
+  dist?: number | null;
+  gpsAccuracy?: number | null;
+  gpsSuspicious?: boolean;
+  gpsWarnings?: string[];
+  manual?: boolean;
+  notes?: string;
+};
+
+/** The punch window's fields; `site` a client id, '' for none, or '__custom__' to keep the stored custom site. */
+export type PunchEdit = { type: 'in' | 'out'; time: string; site: string; notes: string };
+
+export type AdminSnapshot = {
+  ready: boolean;
+  /** the open section (kept while the app stays open), null: none chosen */
+  pane: AdminPane | null;
+  /** the sections this login sees: Punch Log for everyone; Firms, Users for an owner / super-admin; Errors, Timings for a super-admin */
+  panes: AdminPane[];
+  /** Clear Log: an owner / super-admin (the server's gate too) */
+  canClear: boolean;
+  /** the firm's profile misses a Form 101 field (the Firms tile shows it, as the tab's icon does) */
+  firmIncomplete: boolean;
+  /** the cached punches while the Punch Log section is open (empty otherwise) */
+  log: AdminPunch[];
+  workers: { id: string; name: string; clientIds: string[] }[];
+  clients: { id: string; name: string; color: string; address: string }[];
+  /** the earliest day loaded (dd/mm/yyyy), null when the whole history is in */
+  loadedFrom: string | null;
+};
 
 // ── Clients and Suppliers (stage 6d) ──
 
@@ -634,6 +700,9 @@ export type ManagerIsland = {
   setAccTab(tab: string): void;
   /** the pay window, drawn into the page's #payModal */
   openPay(id: string): void;
+  // ── Admin (stage 6f-1) ──
+  /** the section tabs, the tiles and the punch log (#adminRoot) */
+  renderAdmin(): void;
 };
 
 declare global {
