@@ -88,17 +88,10 @@ Options and keys:
 - `opts.table` / `opts.colspan`: rows of a `<tbody>`;
 - `opts.grid`: tiles of a CSS grid, where the "more" row spans the grid;
 - `opts.head`: fixed HTML before the items (the sidebar's "All clients");
-- `key` names the list; while `sig` (filters, grouping, period) stays the same, a redraw keeps the number already opened, and a new `sig` starts again at 10;
-- totals rows (salary, firm summary) are outside the paged rows and cover every item.
+- `key` names the list; while `sig` (filters, sort) stays the same, a redraw keeps the number already opened, and a new `sig` starts again at 10;
+- totals rows are outside the paged rows and cover every item.
 
-Where it is used:
-- workers (cards and table; with grouping, each group title is an item — `workersGroupedItems`);
-- the schedule rows and the sidebar workers and clients;
-- clients, suppliers;
-- salary, supplier payable, client billable, both rate matrices, pending hours;
-- the punch log and client logs, firms, the firm summary, users, errors, timings;
-
-The new pages, and the manager app's React tabs and windows (Today: on shift, late, no punch, notices, suppliers, today's log; the worker card's documents; the hours batches sent from Upload hours), page by 10 with `PagedList` ([components.md](components.md)), the same rules. Not paged: chips and form rows being edited (selected clients, children), and printed / exported documents.
+Not paged: chips and form rows being edited (selected clients, children), and printed / exported documents.
 
 ## Login and session
 
