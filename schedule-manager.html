@@ -5109,12 +5109,6 @@ function exportShiftsDetail(workerId, year, month, format){
   showToast(tr('Hours exported'));
 }
 
-// --- Worker punch history (shown in worker modal) ------------------------------
-function getWorkerHistory(wid, days=7){
-  const log=getPunchLog();
-  const cutoff=new Date(); cutoff.setDate(cutoff.getDate()-days); cutoff.setHours(0,0,0,0);
-  return log.filter(e=>e.workerId===wid&&new Date(e.ts)>=cutoff);
-}
 
 // --- Admin Panel -------------------------------------------------------------
 function getPunchLog(){
