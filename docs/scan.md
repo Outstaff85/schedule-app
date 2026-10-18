@@ -10,10 +10,12 @@ The worker modal that the scan opens is in [workers.md](workers.md); the PDF bui
 - **`rescanWorkerDoc(workerId)`** — a scan tagged to an existing worker; sets `window.__aiRescanWorkerId`.
 - **`rescanFromWorkerModal()`** / **`rescanFromWorkerCard(wi)`** — "Scan / Rescan" in the worker window and card, keeping the window's form as a draft (`ManagerIsland.editorDraft()`, the React window — [workers.md](workers.md)).
 
+**The scan window** (since S2, docs/scan-plan.md): `startNewScan()`, `rescanWorkerDoc()` and a rescan from the worker window (when no scan is in memory) open the new window first — `openNewScan()` (`src/manager/page/scan.ts`) → `openScanner()` (`src/scan/open.tsx`); its pages then go to the reading below. See **The scan window** further down.
+
 Both:
 1. warm the Cloud Functions (`warmCloudFunctions(SCAN_WARM_URLS())` — `{"ping":true}` to `preprocess_scan`, `fill_form_101` and `ai_read`; at most once per URL every 4 min, results in `__fnWarm`);
 2. load the pipeline (`ensureScanPipelineLoaded()`);
-3. call `openAiScan()`.
+3. call `openNewScan()`, which opens the scan window and, on Done, `openAiScan()` with the window's pages queued as ready (`{ready:true, upright, blurry}` in `__pendingScanPages`) and `processAllPendingPages()` started. Phase 1 skips the alignment and enhancement of a ready page; a page with no face (`upright` false) still asks `aiDetectAlign` for its turn and kind. The old queue screen and its "+" tile (Path A / B below) stay as they were, reached from the review screen.
 
 `openAiScan()` opens `#aiScanOverlay` and resets every per-scan global:
 `__aiScanPageThumbs`, `__aiPrimaryParsed`, `__aiParsed`, `__aiScanImage`, `__aiPacketOtherPages`, `__aiAvatarB64`, `__aiPageParsed`, `__pendingScanPages`, `__scanReplace`.
@@ -42,7 +44,7 @@ All of them are sent as `fetch(API_URL, …)`; the dispatcher passes them to the
 |---|---|---|
 | `aiReadDoc` | `ANTHROPIC_MODEL` | Full read of the main page: `type` (`israeli_id` / `passport`), names, numbers, dates, sex, address, children, spouse; for the name cross-check also `latinSurname` / `latinGiven` (the holder's Latin spelling when the page prints one) and `mrzName` (MRZ line 1 from its 6th character); `fieldBoxes` (boxes of the digit fields and of given name, surname, address, house number, city); `photoBox` (the portrait) |
 | `aiReadSefach` | `ANTHROPIC_MODEL` | An extra Israeli-ID page (ספח or card back): address, house number, city, marital status, sex, spouse, children; `idNo`, `given` and `surname` of the holder for cross-check; `fieldBoxes` for address, house number, city. Always `type:'israeli_id'`. With `part:'holder'` / `part:'family'` it returns only the holder's fields (names, ID, address, marital status, sex, `fieldBoxes`) or only `spouse` + `children` |
-| `aiDetectAlign` | `ANTHROPIC_ALIGN_MODEL` (Haiku) | Rotation, 4 corners and the page `kind`: `id_front` / `id_back` / `sefach` / `passport` / `contract` / `other`. A failed call leaves the page as cropped; the error goes to Admin → Errors as `console.warn('aiDetectAlign failed: …')` (`readSefachPage` does the same for `aiReadSefach`) |
+| `aiDetectAlign` | `ANTHROPIC_ALIGN_MODEL` (Haiku) | Rotation and the page `kind` (no corners since S1: the old path below then only turns the page, with no AI crop): `id_front` / `id_back` / `sefach` / `passport` / `contract` / `other`. A failed call leaves the page as cropped; the error goes to Admin → Errors as `console.warn('aiDetectAlign failed: …')` (`readSefachPage` does the same for `aiReadSefach`) |
 | `aiVerifyFields` | `ANTHROPIC_MODEL` | Batched zoomed re-read of several fields (kinds `digits9`, `date`, `passportNo`, `hebrewText`, `latinName`, `houseNumber`) |
 | `aiVerifyField` | `ANTHROPIC_MODEL` | One zoomed re-read (the ID retry) |
 | `aiFindField` | `ANTHROPIC_MODEL` | One missing field searched for on the worker's page photos, from the worker modal or card ([workers.md](workers.md) → field search) |
@@ -59,8 +61,8 @@ A single non-PDF file → `onScanFileSelected(file)`:
    - **Resume:** if a primary record and its image already exist (pages added after a first batch), the run continues that record.
    - **Early read** (fresh scan): page 1 is sent to `aiReadDoc` straight away, as cropped. If it is an ID or passport, its digits are re-checked while Phase 1 runs.
    - **Phase 1, all pages in parallel:**
-     1. `autoPreAlignScan()` → `aiDetectAlign`: rotate (`alignScanImage`), refine the corners on pixels (`refineQuadCorners`), and warp (`warpQuadImage`). The warp is skipped when the quad is the full frame (`_isNearIdentityQuad`). It returns the page `kind`.
-     2. `preAlignScan()` → `preprocess_scan`: contrast and sharpness up, then the blur check. Returns `{blurry:true}` or the enhanced image.
+     1. `autoPreAlignScan()` → `aiDetectAlign`: rotate (`alignScanImage`); the prompt no longer gives corners, so the corner refine and warp (`refineQuadCorners`, `warpQuadImage`) are skipped and the page stays as the user cropped it. It returns the page `kind`.
+     2. `preAlignScan()` → `preprocess_scan`: contrast and sharpness up, then the blur check. Returns `{blurry:true}` or the enhanced image. The request carries the manager's ID token (`Authorization: Bearer`); without it the function answers 401 ([backend.md](backend.md) → Cloud Functions).
    - **Phase 2, reads:**
      - **Primary.** The first page that is not a contract/other (`isNonIdKind`) and reads as an `israeli_id` or `passport` becomes the primary. The early result is used for page 1 when it worked; otherwise the aligned page is read now. Then:
        - `verifyDigitFields()` and `verifyIdChecksum()`;
@@ -98,7 +100,7 @@ The pages are not aligned, enhanced or tightened in this path.
 - **Normalizing:** `_normScanDigits(s)` joins grouped digits (`0 1234567 8` → `012345678`); `_normScanDate(s)` pads to `DD/MM/YYYY`.
 - **`verifyDigitFields(parsed, b64, mediaType, hi)`** builds jobs from `fieldBoxes`:
   - Israeli ID: `idNo` and `dob` (all re-read every time in the same call; `__idZoomed` is set, so `verifyIdChecksum` does not read the same box again);
-  - passport: `passportNo`, `dob`, `expiry` (an expiry taken from the MRZ — `expiryFromMrz`, set by `ai_read` — has no box and is not re-read; without an MRZ, `ai_read` swaps a reversed issue / expiry pair back and marks an implausibly short validity as "check");
+  - passport: `passportNo`, `dob`, `expiry` (a field taken from the MRZ with a right check digit — `passportNoFromMrz` / `dobFromMrz` / `expiryFromMrz`, set by `ai_read` — has no box and is not re-read; without an MRZ, `ai_read` swaps a reversed issue / expiry pair back and marks an implausibly short validity as "check");
   - both (`_pushTextJobs`): every boxed `given`, `surname`, `address` and `city` (`hebrewText`; a passport's names `latinName`) and `houseNumber` (`houseNumber`). All of them go in the same one call. A field left empty is searched for after the scan instead (`autoFindMissingScanFields`, [workers.md](workers.md)).
   
   `verifyFieldsBatch()` crops each box with a margin (`_fieldCrop`: from the photo twin when the page has one, else `cropFieldImage` from the page, scaled to at least 500 px wide; at most 1100 px), then sends one `aiVerifyFields` for all of them. `_applyZoomedRead` keeps only a readable value of the right shape (9 digits, `DD/MM/YYYY`, an uppercased passport number, a house number without spaces, text with single spaces):
@@ -158,6 +160,34 @@ The scan images stay in `__aiScanImage` / `__aiPacketOtherPages` for the upload.
 - `finalTightenPass(img)` is `refineQuadCorners` run from the whole frame, searching up to 15 % inward. It trims a background sliver or a wider tilted band (a strip of table under the card) along its tilt. An already tight page, or a card the colour of the background, is left untouched.
 - `alignScanImage()` rotates by 0/90/180/270° and crops a box; `rotatePointFrac()` maps corners to match.
 - `cropPortraitAvatar(b64, mediaType, photoBox)` → switched off (owner 2026-10-13, `SCAN_AVATARS = false`): always null, no photo is taken from a document, and `readDoc` no longer asks the AI for a `photoBox` (shorter replies); when on it gives a square 160 px JPEG (`AVATAR_SIZE`), black and white (`grayscaleCanvas`, schedule-manager.html).
+
+## The scan window (`src/scan/`)
+
+A `Window` (a bottom sheet on a phone) — `Scanner.tsx`:
+- **Models on the phone** start when the window opens (`engine.ts`): the scanner lab's background threads (`/scan-lab/scan-worker.js` with `/scan-lab/scan-core.js`, ONNX Runtime and the models from `/scan-lab/`, put there at deploy) run the light corner model and the face finder — 2 GPU threads (ONNX Runtime 1.30), else single-thread CPU threads (half the cores, at most 3; 1.22), else one; the way that worked is remembered on the device (`localStorage` `scanWay1`). Camera stays disabled until they are ready; if they cannot start, photos still work.
+- **Camera:** each frame scaled to 256 px and sent to a free thread; the corners smoothed and carried between answers by the lab's tracker (`track.ts` loads `/scan-lab/track.js`); a thin frame, red while searching, green after 0.25 s on the edges; **the shot is taken by itself after 1 s held still**, then not again until the document leaves that place (taken away, turned over, the next one put down) — `Capture` takes one at any time.
+- **A shot** is cut and turned upright on the phone at once (the thread's warp + face turn) and shown in the strip; the full frame (≤ 2400 px) goes to `preprocess_scan` with `find` and the live corners (`server.ts`, the ID token, at most 4 in flight); the server's pages replace the phone's cut (a photo with two documents → two pages); without the server the phone's cut is kept.
+- **Photos or PDF:** `filesToUploadPages` (every page; old filled Form 101 pages left out), every page to `preprocess_scan` with `find` at once (4 in flight); each page's documents join the strip in order; a page the server cannot work on is kept whole.
+- Each page can be removed (🗑). **Done (n)** waits for the pages still with the server and resolves `openScanner()` with `{b64, mediaType, turn, blurry}` per page; closing the window resolves null.
+- Covered by the browser test "scan window" (a picked photo, the server's answer mocked: two documents → two pages → the reading).
+
+## Contracts
+
+An extra page that `aiDetectAlign` calls `contract` and whose read has no ID number and no names is marked `contract` in `__aiPacketOtherPages` (`processAllPendingPages`). `aiFillForm101` (`src/manager/page/scan.ts`) leaves those pages out of Form 101 and, once the worker's documents are saved, `saveScanContract()` puts them together as one PDF (`imagesToPdf`, `src/scan/pdf.ts` — a page per photo, A4 wide, JPEG as is) and saves it to the worker's documents as type `contract` (`saveWorkerFile`, one retry); a failure is a toast and an Admin → Errors entry. Its end date is not read. Browser test: "scan contract".
+
+## Server-side finding (`preprocess_scan` with `find`)
+
+The new scanner's server step (docs/scan-plan.md → S1), called by the scan window (`src/scan/server.ts`). `POST preprocess_scan` with `{"image": <base64>, "find": true, "corners": [[x, y] ×4]}` (corners optional: the phone's live frame, 0..1, top-left first, clockwise) answers `{"ok": true, "size": [w, h], "pages": [...]}`; each page: `quad` (0..1 of its photo), `box` (the photo's place on a white page, pixels, or `null`), `source` (`model` — the corner model; `phone` — the phone's corners kept; `more` — another document on the same photo; `photo` — a photo on a white page with no frame in it, whole; `whole` — nothing found, the whole picture), `turn` (clockwise quarter-turns applied by the face; −1 no face, −2 the face finder failed), `blurry` / `blurVariance`, `imageBase64` (JPEG, enhanced, at most 1800 px). The photo is worked on at most 2400 px.
+
+`find_scan_pages()` (`functions/main.py`) → `docfind.find_documents()` (`functions/docfind.py`), the scanner lab's steps in Python:
+
+1. `photos_on_page` — a white page (a form's page, a PDF, a screenshot) is cut into its photos: bands of rows mostly not white, at least 12 % high, their sides from the columns; a mostly dark band (a screenshot's bar) is not a photo; a picture whose rest is not mostly white is not a white page; and when the model sees a document on the whole picture outside the bands, it is a plain photo.
+2. On each photo: the accurate model (sa24, fp32), then the light one; when neither is sure, the same inside a 10 % margin of the background's colour (a document cut by the photo's edge, or cut to its edges already). Sure corners must be convex, cover over 3 % and be no longer than 3 : 1. Then `refine_edges` pulls each side onto the strongest edge within 1.2 % of the long side, kept only when the edges are clearly stronger.
+3. Not sure: the phone's corners (a whole picture), else the photo whole.
+4. `find_next` — up to 4 documents: the found ones painted over in the background's colour, then the margin, then the two widest strips beside the first; accurate model only (the light one finds false second documents); a frame overlapping a found one by over 30 % is that one.
+5. Each page cut flat (`warp`, cubic) and turned upright by YuNet (all 4 turns scored, eyes above the mouth); then the contrast / sharpness step and the blur check of the old path.
+
+The models (`sa24.onnx`, `lite.onnx`, `yunet640.onnx`) are read from Storage `models/scan/base-v1/` once per instance (`_scan_models()`, ONNX Runtime CPU, 2 threads); the function's service account needs read access to the bucket. Tests: `tests/auth/test_scan_find.py` (a stand-in model; the real models are checked by hand on the owner's photos).
 
 ## Unreachable code kept
 

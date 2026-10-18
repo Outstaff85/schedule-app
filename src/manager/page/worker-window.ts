@@ -17,6 +17,7 @@ import { isFirmAdminSession } from '../logic/access';
 import { autoSave } from '../data/store';
 import { genToken } from '../data/ids';
 import { render } from './render';
+import { openNewScan } from './scan';
 import { showToast } from '../toast';
 Object.defineProperties(window, {
   "blankWorkerDefaults": {get: () => blankWorkerDefaults, configurable: true},
@@ -164,7 +165,7 @@ export async function rescanFromWorkerModal(){
   if(sameSession){
     byId('aiScanOverlay').classList.add('open');
     renderScanPagesPrompt();
-  } else openAiScan();
+  } else await openNewScan();
 }
 function applyWorkerDraft(){ if(window.ManagerIsland) window.ManagerIsland.applyDraft(); else window.__wDraft=null; }
 // Second pass right after a scan: every field the scan left empty is searched

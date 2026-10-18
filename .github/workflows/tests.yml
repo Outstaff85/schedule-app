@@ -61,7 +61,7 @@ jobs:
       - name: Python for the functions
         run: |
           python -m venv "$RUNNER_TEMP/testvenv"
-          "$RUNNER_TEMP/testvenv/bin/pip" install -q -r functions-auth/requirements.txt pytest
+          "$RUNNER_TEMP/testvenv/bin/pip" install -q -r functions-auth/requirements.txt pytest numpy opencv-python-headless
 
       - name: Rules tests
         working-directory: tests/rules

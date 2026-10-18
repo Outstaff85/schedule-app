@@ -1,0 +1,47 @@
+name: Scanner lab (preview channel)
+
+# Puts the scanner lab (scan-lab/, docs/scan-plan.md → Scanner lab) with the
+# branch's changes on a Firebase Hosting PREVIEW channel, to try them on a phone
+# before they go live: https://schedule-odinson--scan-test-<id>.web.app/scan-lab/
+on:
+  push:
+    branches-ignore: [main]
+    paths: ['scan-lab/**', 'scripts/scan-lab/**', '.github/workflows/scan-lab-preview.yml']
+  workflow_dispatch:
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build the site (the channel serves dist/)
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+      - uses: actions/cache@v4
+        with:
+          path: /tmp/models
+          key: scan-lab-models-v3
+      - name: The scanner lab's models and ONNX Runtime
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa.json
+        run: |
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/gcp-sa.json"
+          scripts/scan-lab/fetch-models.sh dist/scan-lab
+          rm -f "$RUNNER_TEMP/gcp-sa.json"
+      - id: deploy
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: "${{ secrets.GITHUB_TOKEN }}"
+          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}"
+          projectId: schedule-odinson
+          channelId: scan-test
+          expires: 7d
+      - name: Lab link
+        run: echo "SCANNER LAB ${{ steps.deploy.outputs.details_url }}/scan-lab/"

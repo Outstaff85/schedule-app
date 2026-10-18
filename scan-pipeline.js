@@ -487,8 +487,10 @@ function renderScanProgress(label,pct){
 }
 async function preAlignScan(b64,mediaType){
   try{
+    // The function lets in only a signed-in manager-side login (functions/gate.py).
+    const idToken=await (await loadFirestoreBackend()).idToken();
     const resp=await fetch(PREPROCESS_SCAN_FN_URL,{
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST', headers:Object.assign({'Content-Type':'application/json'},idToken?{Authorization:'Bearer '+idToken}:{}),
       body:JSON.stringify({image:b64})
     });
     const json=await resp.json();
@@ -2055,6 +2057,15 @@ async function processAllPendingPages(){
   const prepared=await Promise.all(queue.map(async q=>{
     let it=q;
     const as=Date.now();
+    // A page from the scan window (src/scan/) is already cut, upright by its face and
+    // enhanced on the server: only a page with no face asks the AI for its turn and kind.
+    if(q.ready){
+      if(!q.upright){ try{ it=await autoPreAlignScan(it.b64,it.mediaType); }catch(e){ console.error(e); } }
+      tm.alignMs=Math.max(tm.alignMs,Date.now()-as);
+      prepDone++;
+      renderScanProgress('מיישר ומשפר את התמונות… ('+prepDone+' מתוך '+total+')',Math.round(40*prepDone/total));
+      return {b64:it.b64,mediaType:it.mediaType,blurry:!!q.blurry,kind:it.kind||null,hi:null};
+    }
     try{ it=await autoPreAlignScan(it.b64,it.mediaType); }
     catch(e){ console.error(e); }
     const es=Date.now();
@@ -2161,7 +2172,10 @@ async function processAllPendingPages(){
     renderScanProgress('מחדד קצוות… (עמוד '+(i+1)+' מתוך '+total+')',readPct(i));
     it=await finalTightenPass(it);
     pageParsed.push(thisPageParsed);
-    otherPages.push(it);
+    // A page the AI calls a contract that reads as no ID page (no ID number, no names) is
+    // the worker's contract: saved to the worker's documents as one PDF, not into Form 101.
+    const idLike=thisPageParsed&&(thisPageParsed.idNo||thisPageParsed.surname||thisPageParsed.given);
+    otherPages.push(Object.assign({},it,{kind,contract:kind==='contract'&&!idLike}));
   }
   if(blurIdx>=0){
     // `queue` is a snapshot taken before this run: pages before blurIdx were
