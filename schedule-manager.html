@@ -3229,7 +3229,6 @@ function fsTenantId(){
 // real byte progress). uploadWorkerFile() below returns {ok,id,url}; the id
 // is the Storage path. The file being replaced (previousFileId) is deleted
 // after the new one is up.
-const FS_UPLOAD_ACTIONS = ['saveWorkerDoc','saveWorkerAssets','saveWorkerFile'];
 const DOC_STORE = 'Firebase Storage';
 async function uploadWorkerFile(bodyObj, onProgress){
   __uploadsInFlight++;
