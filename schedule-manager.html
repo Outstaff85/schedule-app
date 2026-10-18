@@ -1490,10 +1490,6 @@ document.addEventListener('pointerdown', e => {
 // scrolled sideways) — the toggle in the section header, kept on this device
 // (localStorage.tablesView). The same in schedule-manager.html and supplier-portal.html.
 function getTablesView(){ try{ return localStorage.getItem('tablesView')==='list'?'list':'cards'; }catch(e){ return 'cards'; } }
-function setTablesView(v){
-  try{ localStorage.setItem('tablesView', v); }catch(e){}
-  applyTablesView();
-}
 function applyTablesView(){
   const v = getTablesView();
   document.body.classList.toggle('tables-list', v==='list');
