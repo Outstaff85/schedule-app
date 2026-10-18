@@ -4370,16 +4370,11 @@ function retryLoadDataWhenBack(){
 
 
 
-// ── Odinson Glass list pieces (docs/redesign.md → Plates). The same code in
-// the manager app and the supplier portal — keep the two the same. ──
-// t3Line(o) draws a plate: o.c the bar colour, o.av the avatar (t3Av), o.name /
-// o.sub / o.right HTML already escaped by the caller, o.cls / o.onclick / o.attrs;
-// o.menu = the row's ⋮ items [{icon, label, fn, danger}] (Delete last, in red);
-// o.swipe = {edit: fn(el), del: fn(el)} — a swipe left on a touch screen shows
-// Edit and Delete behind the plate; o.sel = the row's id in a list that can
-// Select (startSelect). Functions are kept in __rowFns, looked up by key.
-// No round letters avatar (owner 2026-10-13): the plate starts with the name;
-// an avatar that is an icon (a firm, an alert, a document) stays.
+// ── Odinson Glass list pieces (docs/redesign.md → Plates) ──
+// t3Line(o) draws a plate (the phone's More sheet): o.c the bar colour, o.av an
+// icon avatar, o.name / o.sub / o.right HTML already escaped by the caller,
+// o.cls / o.onclick. The lists themselves are React (Plate).
+// rowFnKey keeps a function under a key for an onclick (the bell's actions).
 const __rowFns = new Map(); let __rowFnSeq = 0;
 function rowFnKey(v){
   const k = 'r' + (++__rowFnSeq); __rowFns.set(k, v);
@@ -4387,13 +4382,8 @@ function rowFnKey(v){
   return k;
 }
 function t3Line(o){
-  const kb = o.menu && o.menu.length ? `<button type="button" class="t3-kb" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey(o.menu)}')"><i class="ti ti-dots-vertical"></i></button>` : '';
-  const sel = o.sel != null ? String(o.sel) : null;
-  const picked = sel != null && __selState && __selState.picked.has(sel);
   const iconAv = !!o.av && /<i class="ti /.test(o.av);
-  const line = `<div class="t3-line${o.cls?' '+o.cls:''}${picked?' picked':''}" style="--c:${o.c||'var(--neutral)'}"${sel!=null?` data-sel-id="${esc(sel)}"`:''}${o.onclick?` onclick="${o.onclick}"`:''}${o.attrs?' '+o.attrs:''}>${sel!=null?'<span class="t3-cb"><span class="og-box"></span></span>':''}${iconAv?o.av:''}<div class="n"><b>${o.name}</b>${[].concat(o.sub||[]).filter(Boolean).map(x=>`<small>${x}</small>`).join('')}</div>${o.right||''}${kb}</div>`;
-  if(!o.swipe) return line;
-  return `<div class="sw" data-sw="${rowFnKey(o.swipe)}"><div class="sw-acts">${o.swipe.edit?`<button type="button" onclick="swipeAct(this,'edit')"><i class="ti ti-pencil"></i><span>${esc(tr('Edit'))}</span></button>`:''}${o.swipe.del?`<button type="button" class="d" onclick="swipeAct(this,'del')"><i class="ti ti-trash"></i><span>${esc(tr('Delete'))}</span></button>`:''}</div>${line}</div>`;
+  return `<div class="t3-line${o.cls?' '+o.cls:''}" style="--c:${o.c||'var(--neutral)'}"${o.onclick?` onclick="${o.onclick}"`:''}>${iconAv?o.av:''}<div class="n"><b>${o.name}</b>${[].concat(o.sub||[]).filter(Boolean).map(x=>`<small>${x}</small>`).join('')}</div>${o.right||''}</div>`;
 }
 // The ⋮ popover: glass, a tail pointing at the button, Delete last under a divider.
 function openRowMenu(ev, btn, key){ if(ev) ev.stopPropagation(); openPopover(btn, __rowFns.get(key) || []); }
