@@ -307,8 +307,16 @@ async function runOnce(src, w, h, el) {
 // The shot is shown at once, straightened by the live frame; the accurate model
 // then refines the corners in the background and replaces it if they moved.
 let shotId = 0, lastTurn = -1;
-const turnNote = () => lastTurn > 0 ? '; turned ' + lastTurn * 90 + '° by the face' : lastTurn === 0 ? '; upright by the face' : '; no face to set it upright';
+const turnNote = () => lastTurn === -2 ? '; the face finder failed (see the log), not turned' : lastTurn > 0 ? '; turned ' + lastTurn * 90 + '° by the face' : lastTurn === 0 ? '; upright by the face' : '; no face to set it upright';
 async function showShot() {
+  try { await takeShot(); }
+  catch (e) {
+    log('Shot failed: ' + (e && e.message || e));
+    $('hint').textContent = 'The shot failed — see the log; the camera goes on';
+    if ($('video').srcObject && !$('video').hidden) { smooth = null; steadySince = 0; running = true; loop(); startFollow(); }
+  }
+}
+async function takeShot() {
   const v = $('video'), img = $('still'), isVideo = !v.hidden, el = isVideo ? v : img;
   if (!lastRes || lastRes.pts.some(p => !p)) { $('hint').textContent = 'No frame to capture yet'; return; }
   running = false;
@@ -318,7 +326,7 @@ async function showShot() {
   const pix = fctx.getImageData(0, 0, w, h).data;
   const put = async pts => {
     const out = await engine.warp(pix.slice(), w, h, pts, true);
-    lastTurn = out.turn;
+    lastTurn = out.turn; if (out.turnError) log('Face finder: ' + out.turnError);
     if (id !== shotId) return false;
     const oc = document.createElement('canvas'); oc.width = out.width; oc.height = out.height;
     oc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);

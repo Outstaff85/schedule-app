@@ -2,21 +2,27 @@
 // and its background worker: model download, session, corners, warp.
 const S = 256, H = 128;
 
+// A model kept in the browser's cache is used only while it is still the file on
+// the server (same ETag; one small HEAD request) — a changed model is downloaded
+// again. Offline, the kept copy is used as it is.
 async function fetchModel(name, onProgress) {
+  const url = '/scan-lab/' + name;
   try {
     const cache = await caches.open('scan-lab-models');
     const hit = await cache.match(name);
-    if (hit) { onProgress(1, 1); return new Uint8Array(await hit.arrayBuffer()); }
-    const res = await fetch('/scan-lab/' + name);
+    let etag = null;
+    try { const h = await fetch(url, { method: 'HEAD', cache: 'no-cache' }); if (h.ok) etag = h.headers.get('etag'); } catch (e) {}
+    if (hit && (!etag || hit.headers.get('x-etag') === etag)) { onProgress(1, 1); return new Uint8Array(await hit.arrayBuffer()); }
+    const res = await fetch(url, { cache: 'no-cache' });
     if (!res.ok) throw new Error('model download failed: HTTP ' + res.status);
     const total = +res.headers.get('content-length') || 0;
     const reader = res.body.getReader(); const parts = []; let got = 0;
     for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); got += value.length; onProgress(got, total); }
     const buf = new Uint8Array(got); let o = 0; for (const p of parts) { buf.set(p, o); o += p.length; }
-    try { await cache.put(name, new Response(buf)); } catch (e) {}
+    try { await cache.put(name, new Response(buf, { headers: { 'x-etag': res.headers.get('etag') || etag || '' } })); } catch (e) {}
     return buf;
   } catch (e) {
-    const res = await fetch('/scan-lab/' + name); return new Uint8Array(await res.arrayBuffer());
+    const res = await fetch(url); return new Uint8Array(await res.arrayBuffer());
   }
 }
 
@@ -181,7 +187,11 @@ async function faceTurn(sess, src) {
   return bk;
 }
 // The straightened shot (RGBA) turned upright when a face shows the way.
+// A failing face finder never spoils the shot: it stays as it was cut.
 async function uprightRGBA(faceSess, out) {
+  try { return await uprightTurn(faceSess, out); } catch (e) { return Object.assign(out, { turn: -2, turnError: String(e && e.message || e) }); }
+}
+async function uprightTurn(faceSess, out) {
   if (!faceSess) return Object.assign(out, { turn: -1 });
   const c = mkCanvas(out.width, out.height);
   c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data.buffer), out.width, out.height), 0, 0);
