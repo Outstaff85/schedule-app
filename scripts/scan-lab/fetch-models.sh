@@ -7,7 +7,11 @@
 # Actions cache) keeps them between runs.
 #   scripts/scan-lab/fetch-models.sh dist/scan-lab
 set -euo pipefail
-OUT="$1"; CACHE=/tmp/models; HERE="$(cd "$(dirname "$0")" && pwd)"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+# The model version this copy uses (models/scan/<version>/ in Storage): a trained version is
+# tried in the lab first, then given to the site (docs/scan-plan.md → S6).
+export SCAN_MODELS_VERSION="$(cat "$HERE/models-version")"
+OUT="$1"; CACHE=/tmp/models/$SCAN_MODELS_VERSION
 mkdir -p "$OUT/ort" "$OUT/ort130" "$CACHE"
 pip install -q onnx numpy google-cloud-storage
 STORE=""
@@ -16,6 +20,8 @@ if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && python "$HERE/model_store.py"
 get() {
   [ -s "$CACHE/$1" ] && return 0
   [ -n "$STORE" ] && python "$HERE/model_store.py" get "$1" "$CACHE/$1" && return 0
+  # only the base models may come from their authors; a trained version is the firm's own
+  [ "$SCAN_MODELS_VERSION" = base-v1 ] || { echo "$1 is not in models/scan/$SCAN_MODELS_VERSION"; return 1; }
   for i in 1 2 3 4; do
     curl -sSL --fail "$2" -o "$CACHE/$1" && [ "$(stat -c %s "$CACHE/$1")" -gt 100000 ] && break
     rm -f "$CACHE/$1"; sleep $((i * 5))

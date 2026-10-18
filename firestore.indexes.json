@@ -72,6 +72,12 @@
           "queryScope": "COLLECTION_GROUP"
         }
       ]
+    },
+    {
+      "collectionGroup": "scanTraining",
+      "fieldPath": "deleteAt",
+      "ttl": true,
+      "indexes": []
     }
   ]
 }

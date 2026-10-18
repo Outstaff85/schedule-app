@@ -1,13 +1,11 @@
-// The scanner's on-device part (docs/scan-plan.md → S2b): the scanner lab's
-// background threads (/scan-lab/scan-worker.js, which loads /scan-lab/scan-core.js
-// and ONNX Runtime from /scan-lab/) run the light corner model on the camera
-// frames and cut + turn the shot upright by the face. The same files as the lab —
-// one copy, proven on the owner's phone. The accurate model runs on the server.
+// The scanner's on-device part (docs/scan-plan.md → S2b): background threads
+// (worker.ts over core.ts — the site's own copy of what the scanner lab proved on
+// the owner's phone) run the light corner model on the camera frames and cut +
+// turn the shot upright by the face. The accurate model runs on the server.
+import { S, type Detection, type Pt } from './core';
 
-export const S = 256; // the model's input side
-
-export type Pt = [number, number];
-export type Detection = { pts: (Pt | null)[]; conf: number };
+export { S };
+export type { Pt, Detection };
 export type Warped = { data: ArrayBuffer; width: number; height: number; turn: number; turnError?: string };
 export type FrameInput = { bitmap: ImageBitmap } | { rgba: Uint8ClampedArray };
 
@@ -19,7 +17,7 @@ const CPU_ORT = 'ort', GPU_ORT = 'ort130'; // 1.22 is smoother on the CPU; 1.30 
 
 /** One background thread of the lab (scan-worker.js). */
 function workerThread(dir: string, onStatus: Status) {
-  const w = new Worker('/scan-lab/scan-worker.js?ort=' + dir);
+  const w = new Worker(new URL('./worker.ts', import.meta.url));
   const waiting = new Map<number, { resolve: (m: Reply) => void; reject: (e: Error) => void }>();
   let n = 0, heard = performance.now();
   const failAll = (why: string) => { for (const p of waiting.values()) p.reject(new Error(why)); waiting.clear(); };
@@ -35,7 +33,7 @@ function workerThread(dir: string, onStatus: Status) {
     const id = ++n; waiting.set(id, { resolve, reject }); w.postMessage({ ...msg, id }, transfer);
   });
   return {
-    async load(want: string, face: boolean) { return (await call({ type: 'load', live: LIVE, cap: null, want, threads: 1, face })).ep || want; },
+    async load(want: string, face: boolean) { return (await call({ type: 'load', ort: dir, live: LIVE, want, threads: 1, face })).ep || want; },
     async detect(input: FrameInput) {
       const m = 'bitmap' in input ? await call({ type: 'detect', which: 'live', bitmap: input.bitmap }, [input.bitmap])
         : await call({ type: 'detect', which: 'live', rgba: input.rgba.buffer }, [input.rgba.buffer as ArrayBuffer]);

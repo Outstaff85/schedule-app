@@ -1304,5 +1304,16 @@
   "Camera": "מצלמה",
   "Photos or PDF": "תמונות או PDF",
   "The contract ({0} pages) was added to the documents of {1}": "החוזה ({0} עמודים) נוסף למסמכים של {1}",
-  "The contract could not be saved: {0} — add it from Add document": "לא ניתן לשמור את החוזה: {0} — הוסיפו אותו דרך הוספת מסמך"
+  "The contract could not be saved: {0} — add it from Add document": "לא ניתן לשמור את החוזה: {0} — הוסיפו אותו דרך הוספת מסמך",
+  "Corner {0}": "פינה {0}",
+  "Apply": "החל",
+  "The page could not be cut again — check the connection": "לא ניתן לחתוך את העמוד מחדש — בדקו את החיבור",
+  "Corrected": "תוקן",
+  "Time to retrain the scanner": "הגיע הזמן לאמן מחדש את הסורק",
+  "{0} corrected pages since the last training — run /scan-train on the PC": "{0} עמודים תוקנו מאז האימון האחרון — הריצו את ‎/scan-train במחשב",
+  "ID card": "תעודת זהות",
+  "ID card back": "גב תעודת הזהות",
+  "Appendix (ספח)": "ספח",
+  "Passport": "דרכון",
+  "Page kind": "סוג העמוד"
 }

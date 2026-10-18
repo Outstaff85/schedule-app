@@ -15,14 +15,20 @@ MANAGER_ROLES = ("superadmin", "tenant_admin", "staff", "hr")
 def check(headers, verify):
     """(None, None) when the caller may go on, else (status, error text).
     verify(token) returns the token's claims or raises."""
+    status, error, _ = claims_of(headers, verify)
+    return status, error
+
+
+def claims_of(headers, verify):
+    """(None, None, claims) for a manager-side login, else (status, error text, None)."""
     header = (headers.get("Authorization") if headers else "") or ""
     token = header[7:] if header.startswith("Bearer ") else ""
     if not token:
-        return 401, E_SESSION
+        return 401, E_SESSION, None
     try:
         claims = verify(token)
     except Exception:
-        return 401, E_SESSION
+        return 401, E_SESSION, None
     if not isinstance(claims, dict) or claims.get("role") not in MANAGER_ROLES:
-        return 403, E_ROLE
-    return None, None
+        return 403, E_ROLE, None
+    return None, None, claims

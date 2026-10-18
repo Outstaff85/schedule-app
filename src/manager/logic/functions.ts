@@ -10,6 +10,8 @@
 export const FORM101_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/fill_form_101';
 // Scan preprocessing (OpenCV geometry + Pillow contrast / sharpness; scan-pipeline.js preAlignScan()).
 export const PREPROCESS_SCAN_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/preprocess_scan';
+// The scanner's training examples and their counts (docs/scan-plan.md → S6).
+export const SCAN_FEEDBACK_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/scan_feedback';
 // The AI reads (firestore-backend.js sends them).
 export const AI_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/ai_read';
 export const USERS_ADMIN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/users_admin';

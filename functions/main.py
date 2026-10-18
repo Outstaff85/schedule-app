@@ -11,6 +11,7 @@ multi-word text), every Hebrew-capable field here is unconditionally corrected
 with bidi.algorithm.get_display() and drawn by hand — see draw_rtl_text().
 """
 import base64
+import datetime
 import io
 import json
 import pathlib
@@ -27,6 +28,7 @@ from firebase_admin import auth as fb_auth
 from firebase_functions import https_fn, options
 
 import docfind
+import feedback
 import gate
 from PIL import Image, ImageEnhance
 
@@ -811,10 +813,26 @@ def preprocess_scan_image(image_bytes):
 
 # The scanner's models (docs/scan-plan.md → Scanner lab → Models in Storage), read
 # from the project's own Storage once per instance and kept in memory.
-MODEL_PREFIX = "models/scan/base-v1/"
+# The site scanner's model version: the same as scripts/scan/models-version (tests/auth checks it).
+MODEL_PREFIX = "models/scan/" + (pathlib.Path(__file__).parent / "scan_models_version.txt").read_text().strip() + "/"
 MODEL_BUCKETS = ("schedule-odinson.firebasestorage.app", "schedule-odinson.appspot.com")
 _models = {}
 _models_lock = threading.Lock()
+
+
+def _model_bucket(storage):
+    """The project's default bucket (one of its two possible names)."""
+    if not firebase_admin._apps:
+        firebase_admin.initialize_app()
+    last = None
+    for name in MODEL_BUCKETS:
+        try:
+            b = storage.bucket(name)
+            if b.exists():
+                return b
+        except Exception as e:  # not this project's bucket name
+            last = e
+    raise RuntimeError(f"no Storage bucket reachable: {last}")
 
 
 def _scan_models():
@@ -882,6 +900,110 @@ def find_scan_pages(image_bytes, hint=None):
     return {"ok": True, "pages": pages, "size": [img.shape[1], img.shape[0]]}
 
 
+def _page_out(img, quad, turn):
+    page = _enhance_contrast_sharpness(_resize_max_dim(img, MAX_WORK_DIM))
+    blur = _blur_variance(cv2.cvtColor(page, cv2.COLOR_BGR2GRAY))
+    ok, buf = cv2.imencode(".jpg", page, [cv2.IMWRITE_JPEG_QUALITY, 92])
+    if not ok:
+        return None
+    return {"quad": [[round(x, 5), round(y, 5)] for x, y in quad], "box": None, "source": "user", "turn": turn,
+            "blurry": blur < BLUR_VARIANCE_THRESHOLD, "blurVariance": blur,
+            "imageBase64": base64.b64encode(buf.tobytes()).decode(), "mediaType": "image/jpeg"}
+
+
+def cut_scan_page(image_bytes, quad):
+    """One page cut exactly by the corners the user set (0..1 of the photo), turned
+    upright by its face and enhanced (docs/scan.md → The scan window → Corners)."""
+    img = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        return {"ok": False, "reason": "decode_failed"}
+    img = _resize_max_dim(img, FIND_MAX_DIM)
+    _, face = _scan_models()
+    page = docfind.warp(img, quad)
+    try:
+        turn = docfind.face_turn(face, page)
+    except Exception:
+        turn = -2
+    if turn > 0:
+        page = docfind.turned(page, turn)
+    out = _page_out(page, quad, turn)
+    return {"ok": True, "pages": [out] if out else [], "size": [img.shape[1], img.shape[0]]}
+
+
+def _json(obj, status=200):
+    return https_fn.Response(json.dumps(obj, default=str), status=status, mimetype="application/json")
+
+
+@https_fn.on_request(
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]),
+    memory=options.MemoryOption.MB_512,
+    cpu=1,
+    concurrency=20,
+    timeout_sec=30,
+)
+def scan_feedback(req: https_fn.Request) -> https_fn.Response:
+    """The scanner's training examples (feedback.py; docs/scan-plan.md → S6).
+    {"action": "add", "examples": [...]} from the scan window's Done (any manager
+    login): pages whose corners the user moved are kept, the rest only counted.
+    {"action": "stats"} (a super-admin): the counts, and whether retraining is due."""
+    if req.method != "POST":
+        return _json({"error": "POST only"}, 405)
+    try:
+        payload = req.get_json(silent=True, force=True) or {}
+        pong = _ping_response(payload)
+        if pong:
+            return pong
+        status, error, claims = gate.claims_of(req.headers, _verify_token)
+        if status:
+            return _json({"error": error}, status)
+        from firebase_admin import firestore, storage
+        db = firestore.client()
+        stats_ref = db.collection("scanTrainingStats").document("current")
+        if payload.get("action") == "stats":
+            if claims.get("role") != "superadmin":
+                return _json({"error": "Only the super-admin sees the scanner's training"}, 403)
+            stats = (stats_ref.get().to_dict() or {})
+            return _json({"ok": True, "stats": stats, "due": int(stats.get("newSince") or 0) >= feedback.RETRAIN_AT})
+        examples = payload.get("examples")
+        if not isinstance(examples, list) or not examples:
+            return _json({"error": "no examples"}, 400)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        bucket = None
+        kept = right = bad = fixes = 0
+        moved_sum = 0.0
+        for raw in examples[:feedback.MAX_EXAMPLES]:
+            ex, why = feedback.check(raw)
+            if not ex:
+                bad += 1
+                continue
+            if not feedback.correction(ex):
+                right += 1
+            if not feedback.kept(ex):
+                continue
+            if bucket is None:
+                bucket = _model_bucket(storage)
+            ex["model"] = MODEL_PREFIX.rstrip("/").rsplit("/", 1)[-1]  # the version that found these corners
+            ref = db.collection("scanTraining").document()
+            path = page_path = None
+            if ex["image"] is not None:
+                path = feedback.image_path(now, ref.id)
+                bucket.blob(path).upload_from_string(ex["image"], content_type="image/jpeg")
+            if ex["pageImage"] is not None:
+                page_path = feedback.image_path(now, ref.id, "-page")
+                bucket.blob(page_path).upload_from_string(ex["pageImage"], content_type="image/jpeg")
+            ref.set(feedback.record(ex, claims.get("tenantId"), now, path, page_path))
+            kept += 1
+            fixes += feedback.correction(ex)
+            moved_sum += ex["moved"]
+        # newSince counts the corrections only: they make a retraining due, the kept right pages do not
+        stats_ref.set({"newSince": firestore.Increment(fixes), "kept": firestore.Increment(kept),
+                       "right": firestore.Increment(right), "movedSum": firestore.Increment(moved_sum),
+                       "updatedAt": now}, merge=True)
+        return _json({"ok": True, "kept": kept, "right": right, "refused": bad})
+    except Exception as e:
+        return _json({"error": str(e)}, 500)
+
+
 @https_fn.on_request(
     cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]),
     memory=options.MemoryOption.GB_2,
@@ -905,7 +1027,12 @@ def preprocess_scan(req: https_fn.Request) -> https_fn.Response:
         b64 = payload.get("image")
         if not b64:
             return https_fn.Response(json.dumps({"error": "no image"}), status=400, mimetype="application/json")
-        if payload.get("find") is True:
+        if payload.get("cut") is not None:
+            quad = _hint_corners(payload.get("cut"))
+            if quad is None:
+                return https_fn.Response(json.dumps({"error": "bad corners"}), status=400, mimetype="application/json")
+            result = cut_scan_page(base64.b64decode(b64), quad)
+        elif payload.get("find") is True:
             result = find_scan_pages(base64.b64decode(b64), _hint_corners(payload.get("corners")))
         else:
             result = preprocess_scan_image(base64.b64decode(b64))

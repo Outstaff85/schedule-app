@@ -10,3 +10,4 @@ dist/
 *-local.html
 __pycache__/
 *.pyc
+scripts/scan-train/.venv/

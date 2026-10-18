@@ -118,6 +118,15 @@
         ]
       },
       {
+        "source": "/scan/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      },
+      {
         "source": "/scan-lab/**",
         "headers": [
           {

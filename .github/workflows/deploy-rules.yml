@@ -11,6 +11,7 @@ on:
       - 'firestore.indexes.json'
       - 'storage.rules'
       - 'tests/rules/**'
+      - 'scripts/scan/storage_lifecycle.py'
   workflow_dispatch: {}
 
 permissions:
@@ -48,6 +49,17 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa.json
         run: npx firebase deploy --config ../../firebase.json --only firestore:rules,firestore:indexes,storage --project schedule-odinson --non-interactive
         continue-on-error: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # The scanner's training copies are deleted after 12 months (docs/scan-plan.md → S6).
+      - name: Storage lifecycle for the scanner's training copies
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa.json
+        run: |
+          pip install -q google-cloud-storage
+          python scripts/scan/storage_lifecycle.py || echo "::warning::The Storage lifecycle rule for training/ could not be set (the service account needs Storage Admin): set it by hand or re-run."
 
       - name: Open/update an issue if deploy failed
         if: steps.deploy.outcome == 'failure'

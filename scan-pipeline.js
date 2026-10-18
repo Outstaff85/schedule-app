@@ -2064,7 +2064,7 @@ async function processAllPendingPages(){
       tm.alignMs=Math.max(tm.alignMs,Date.now()-as);
       prepDone++;
       renderScanProgress('מיישר ומשפר את התמונות… ('+prepDone+' מתוך '+total+')',Math.round(40*prepDone/total));
-      return {b64:it.b64,mediaType:it.mediaType,blurry:!!q.blurry,kind:it.kind||null,hi:null};
+      return {b64:it.b64,mediaType:it.mediaType,blurry:!!q.blurry,kind:q.kind||it.kind||null,hi:null};
     }
     try{ it=await autoPreAlignScan(it.b64,it.mediaType); }
     catch(e){ console.error(e); }

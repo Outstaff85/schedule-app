@@ -16,6 +16,7 @@ import { hasPermission, isHrSession } from '../logic/access';
 import { switchTab } from './nav';
 import { showToast } from '../toast';
 import { frameState, setFrame } from '../frame';
+import { trainingStats } from '../../scan/server';
 Object.defineProperties(window, {
   "renderGreeting": {get: () => renderGreeting, configurable: true},
   "CRUMB_COUNT": {get: () => CRUMB_COUNT, configurable: true},
@@ -119,7 +120,20 @@ function notifList(){
   if(hasPermission('accounting')) (__hoursBatches||[]).filter((b?: any)=>b.status==='pending').forEach((b?: any)=>{
     out.push({id:t+'hours:'+b.batchId, lvl:'blue', icon:'ti-clock-hour-4', title:tr('Hours waiting for approval'), detail:[b.fileName,b.uploadedBy].filter(Boolean).join(' · '), at:Date.parse(b.uploadedAt)||dayStart, open:()=>switchTab('accounting')}); });
   __notifApprovals.forEach((a?: any)=>out.push(Object.assign({lvl:'green', icon:'ti-circle-check', open:()=>switchTab('accounting')}, a)));
+  const tr6=scanTrainingNotice(); if(tr6) out.push(tr6);
   return out.sort((a?: any,b?: any)=>b.at-a.at);
+}
+// The scanner's "time to retrain" notice (docs/scan-plan.md → S6), the super-admin's
+// only: scan_feedback counts the corrected pages since the last training; at 200 the
+// owner runs /scan-train on the PC. Read at most every 6 hours.
+let __scanTrain: any=null, __scanTrainAt=0;
+function scanTrainingNotice(){
+  if((getSession()||{} as any).role!=='superadmin') return null;
+  if(Date.now()-__scanTrainAt>6*3600e3){ __scanTrainAt=Date.now(); trainingStats().then(r=>{ __scanTrain=r; if(r&&r.due) refreshBell(); }); }
+  if(!(__scanTrain&&__scanTrain.due)) return null;
+  const n=__scanTrain.newSince;
+  return {id:'scan-train:'+Math.floor(n/100), lvl:'blue', icon:'ti-scan', title:tr('Time to retrain the scanner'),
+    detail:tr('{0} corrected pages since the last training — run /scan-train on the PC',{0:n}), at:new Date().setHours(0,0,0,0)};
 }
 // ── WhatsApp reminder (redesign stage 11a, docs/admin.md → Firms): a "no
 // punch" notice gets a WhatsApp button next to Call. It opens wa.me with the
