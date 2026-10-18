@@ -2030,7 +2030,6 @@ function refreshBell(){
 function toggleBell(e){
   if(e) e.stopPropagation();
   if(document.getElementById('bellPanel')){ closeBell(); return; }
-  closePopover();
   const p=document.createElement('div'); p.id='bellPanel'; p.className='og-npop'; p.setAttribute('role','dialog');
   p.addEventListener('click',ev=>ev.stopPropagation());
   document.body.appendChild(p);
