@@ -2854,7 +2854,6 @@ function openHoursExportModal(workerId){
 
 // The Clients and Suppliers tabs (stage 6d): drawn in React — src/manager/
 // Clients.tsx; the page keeps the data and the deletes.
-function initialsOf(n){ return String(n||'?').trim().split(/\s+/).map(x=>x.charAt(0)).join('').slice(0,2).toUpperCase(); }
 function renderClientsPage(){ if(window.ManagerIsland) window.ManagerIsland.renderClients(); }
 function renderSuppliersPage(){ if(window.ManagerIsland) window.ManagerIsland.renderSuppliers(); }
 
