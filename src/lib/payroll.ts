@@ -1,7 +1,7 @@
 // Payroll — the one copy of the shift pairing and the pay functions
 // (docs/accounting.md). Moved unchanged from the pages in stage 2 of the React
 // migration (docs/react-migration-plan.md): the old pages load it as the
-// classic script /payroll.js (built from this file by scripts/build-payroll.mjs,
+// classic script /payroll.js (built from this file by scripts/build-globals.mjs,
 // a global `Payroll`) and call it through thin wrappers that pass their own
 // `clients` list and `tr`; the new pages import it. tests/payroll/ runs it
 // against the old copies (tests/payroll/legacy.mjs) and requires identical

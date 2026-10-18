@@ -1,0 +1,51 @@
+// Who may see what in the manager app (from schedule-manager.html): the
+// sections of a staff / HR login, the tabs, an HR's reduced Accounting.
+// Client-side visibility only — the real enforcement is server-side (the
+// Firestore rules and the functions); this hides what a login has no
+// business seeing so it isn't clicking into a dead end. Pure: it reads the
+// session, never the screen (the page's applyNavPermissions() shows / hides
+// the tabs from tabAllowed()).
+import { getSession } from '../data/session';
+
+/** A section of a staff / HR login (users.permissions → session.permissions: '*' or a list). Other roles see every section. */
+export function hasPermission(section: string): boolean {
+  const s = getSession();
+  if (!s || (s.role !== 'staff' && s.role !== 'hr')) return true;
+  const perms = s.permissions;
+  return perms === '*' || (Array.isArray(perms) && perms.indexOf(section) !== -1);
+}
+// The section that gates each nav tab. 'admin' (the punch log, plus Firms /
+// Users / Errors / Timings for the owner and the super-admin, gated by role)
+// rides on 'workers'. 'dashboard' (Today) is never gated.
+export const NAV_TAB_PERMISSION: Record<string, string> = { schedule: 'schedule', workers: 'workers', clients: 'clients', suppliers: 'suppliers', admin: 'workers', accounting: 'accounting' };
+export function isHrSession(): boolean { const s = getSession(); return !!s && s.role === 'hr'; }
+export function isFirmAdminSession(): boolean { const s = getSession(); return !!s && (s.role === 'tenant_admin' || s.role === 'superadmin'); }
+// An HR login (docs/hr.md) gets only the tabs of its sections: never Today
+// or Admin (the firm-wide punch log); it lands on its first tab.
+export const HR_HIDDEN_TABS = ['dashboard', 'admin'];
+// An HR never gets the full Accounting tab: with the Accounting section
+// (off by default) it gets a reduced one — Salary for its own workers,
+// read-only, with its commission — nothing else.
+export function hrPayOnly(): boolean {
+  const s = getSession();
+  return !!s && s.role === 'hr' && hasPermission('accounting');
+}
+// An HR with an hours tick (users.hourPerms → claim hp) reviews its workers'
+// hours in Accounting → Hours approval (src/hours-review/), even without the
+// Accounting section.
+export function hrHourReview(): boolean {
+  const s = getSession();
+  return !!s && s.role === 'hr' && ((s.hourPerms as string[] | undefined) || []).some(p => p === 'hours' || p === 'schedule');
+}
+export function tabAllowed(tab: string): boolean {
+  if (isHrSession() && HR_HIDDEN_TABS.includes(tab)) return false;
+  if (tab === 'accounting' && hrHourReview()) return true;
+  return !NAV_TAB_PERMISSION[tab] || hasPermission(NAV_TAB_PERMISSION[tab]);
+}
+/** The tab a login opens on. */
+export function homeTab(): string {
+  if (!isHrSession()) return 'dashboard';
+  return ['workers', 'schedule', 'clients', 'suppliers', 'accounting'].find(tabAllowed) || 'workers';
+}
+// Phone bottom bar: the tabs that sit under More (CSS .ttab.in-more).
+export const MORE_TABS = ['clients', 'suppliers', 'admin'];

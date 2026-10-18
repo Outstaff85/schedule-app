@@ -32,6 +32,8 @@ Indexes (`firestore.indexes.json`): punches `workerId + ts`, `hrId + ts` (an own
 
 ## Browser data layer (`firestore-backend.js`)
 
+The code is `src/lib/firestore-backend.ts` (TypeScript, the one copy); `firestore-backend.js` at the root is generated from it by `scripts/build-globals.mjs` and committed — change the TypeScript, then `npm run build:globals` (`npm run build` fails while the file is stale; [build.md](build.md) → Generated scripts). `src/lib/backend.ts` types the new pages' `loadBackend()` with its `FirestoreBackend`.
+
 Loaded by `loadFirestoreBackend()` in the manager app and by `loadBackend()` (`src/lib/backend.ts`) in the new pages — the portals use only the sign-in, the ID token, the claims, `updateMyLanguage` and `updateMyTheme` (the punch page talks only to the `punch` function). One global, `initFirestoreBackend()`:
 
 - imports the Firebase SDK `FB_VERSION` 12.19.0 (app, auth, firestore) from gstatic; Storage only on the first upload, or 4 s after a signed-in start (`loadStorage()`);
@@ -231,7 +233,7 @@ Both answer `{"ping":true}` at once (warm-up) and parse the body with `force=Tru
 | `deploy-functions.yml` | `functions/**`, `functions-auth/**`, `tests/auth/**`, or manual | builds both venvs, runs `tests/auth` on the emulators (a failure stops the deploy), `firebase deploy --only functions --force` (`--force` also deletes deployed functions that are no longer in the code), up to 3 tries a minute apart (a passing hiccup such as "Failed to list functions" is retried); on failure opens/updates the GitHub Issue "Cloud Functions deploy failing", and a good deploy closes it |
 | `deploy-rules.yml` | `firestore.rules`, `firestore.indexes.json`, `storage.rules`, `tests/rules/**`, or manual | rules tests, then deploys rules, indexes and storage; on failure opens an Issue (usual causes: the service account lacks Firebase Rules Admin / Cloud Datastore Index Admin, or Storage is not enabled) |
 
-`firebase.json`: both codebases pinned to `python312`; Hosting serves `dist/` (`hosting.public`, built by `npm run build` — [build.md](build.md)) and rewrites `/` → `schedule-manager.html`, `/punch` → `worker-punch.html`, `/supplier` → `supplier-portal.html`, `/client` → `client-portal.html`, `/next` → `/next/index.html`; the Hosting `ignore` list must keep `functions/**` (otherwise the venv is uploaded as public files), `functions-auth/**`, `tests/**`, the rules files, `*.md` and `docs/**`. HTML and all `.js` files, and the routes `/`, `/punch`, `/supplier`, are served `no-cache`. When `service-worker.js` changes, bump its `CACHE` version (now `schedule-mgr-v132`).
+`firebase.json`: both codebases pinned to `python312`; Hosting serves `dist/` (`hosting.public`, built by `npm run build` — [build.md](build.md)) and rewrites `/` → `schedule-manager.html`, `/punch` → `worker-punch.html`, `/supplier` → `supplier-portal.html`, `/client` → `client-portal.html`, `/next` → `/next/index.html`; the Hosting `ignore` list must keep `functions/**` (otherwise the venv is uploaded as public files), `functions-auth/**`, `tests/**`, the rules files, `*.md` and `docs/**`. HTML and all `.js` files, and the routes `/`, `/punch`, `/supplier`, are served `no-cache`. When `service-worker.js` changes, bump its `CACHE` version (now `schedule-mgr-v133`).
 
 ### Known deploy failures
 

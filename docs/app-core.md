@@ -4,7 +4,8 @@ The manager app's skeleton: the page layout, global state, tabs and rendering, t
 
 `schedule-manager.html` is one file: CSS and markup (lines ~1–950), then one inline `<script>`. Every function of the page is a global. Since the React migration (stages 6–7) every tab and window is React; the page keeps the frame (the title bar, the side menu / bottom bar and the More sheet, the bell, the account menu, the Language sheet), the login and the super-admin's Firms screen header, the map picker, the scan window, the data layer and the actions the React pieces call through `window.ManagerBridge`. It loads more files:
 - `assets/manager.js` — at startup, one module script: every tab and window, [build.md](build.md) → The manager's React pieces;
-- `firestore-backend.js` — at startup, the data layer, [backend.md](backend.md);
+- `manager-core.js` — before the page's script: the page's data layer (the session, the dispatcher, load / save / cache, the punches, uploads, telemetry — Data calls below), generated from `src/manager/globals.ts`, which takes `src/manager/data/` (the data layer) and `src/manager/logic/` (the page's decisions and computations, no drawing) (React migration stages 8b, 8c-1);
+- `firestore-backend.js` — at startup (`manager-core.js` starts loading it), the browser data layer, [backend.md](backend.md);
 - `scan-pipeline.js` — on the first scan, [scan.md](scan.md);
 - pdf.js — when a PDF is read, [scan.md](scan.md).
 
@@ -113,7 +114,24 @@ Not paged: chips and form rows being edited (selected clients, children), and pr
 
 ## Data calls
 
-- **Direct calls:** `gsLoad` / `gsSave` / `gsLoadPunchLog` / `gsSavePunch` / `gsUpdatePunch` / `gsDeletePunch` / `gsDeleteWorkerDoc` call `firestore-backend.js` for `fsTenantId()` (the firm being worked in). The names are old; there is no other backend.
+The code of this section and the two after it (Loading and saving data, Telemetry) — and of `getSession` / `saveSession` / `clearSession` / `gsAuth` / `fsTenantId` / `STORAGE_KEY` (Login and session), the punch cache (`getPunchLog` / `savePunchLog` / `ensurePunchesSince` / `mergeRemotePunches`), `uid()` / `genToken()` and the data itself (`workers`, `clients`, `suppliers`, `__dataReady`) — is TypeScript in `src/manager/data/`, built by `scripts/build-globals.mjs` into the committed `manager-core.js`, which the page loads before its own script ([build.md](build.md) → Generated scripts; change the TypeScript, then `npm run build:globals`). It is layered, each file using only those above it:
+
+| File | What |
+|---|---|
+| `events.ts` | the events the layer emits and the page answers (`data`, `punches`, `hours`, `save`, `notice`, `loaded`), the `Message` type (a text and its values, untranslated), and the page's answers to its questions (`setHost`: may this login write workers, is a worker window open, the week on screen) |
+| `ids.ts` | `uid()`, `genToken()` |
+| `session.ts` | the session, the firm worked in, the cache key, `gsAuth` |
+| `state.ts` | the data: `workers`, `clients`, `suppliers`, `ready`; `applyData`, `getDataObj` |
+| `telemetry.ts` | errors and timings (Telemetry below) |
+| `api.ts` | `firestore-backend.js` loaded once, the dispatcher, the direct calls, uploads |
+| `punches.ts` | the punch cache and its sync |
+| `store.ts` | load, save, the offline cache, the HR and hours watchers |
+
+The page's logic that decides or computes without drawing is in `src/manager/logic/` (React migration stage 8c-1), in the same `manager-core.js` (entry `src/manager/globals.ts`) and under the same old names: `access.ts` (Permissions below: `hasPermission`, `tabAllowed`, `homeTab`, `hrPayOnly`, `hrHourReview`), `i18n.ts` (`tr`, `uiLocale`, `storedLanguage`, `loadI18n` — the markup's `applyI18n` and the Language button stay on the page), `util.ts` (`esc`, `loadXlsx`, `calcHours`, `fmtDMY`…), `pay.ts` (the pay wrappers over `payroll.js`), `workers.ts` (`isActiveWorker`, `workerExpiryStatus`, `workerDocStatus`, `workerDocId` / `workerAddress` — the last two from `src/manager/worker.ts`), `uploads.ts` (Uploads: `fileToUploadPages`, `filesToUploadPages`, `fileForStorage`, `downscaleForUpload`), `functions.ts` (the Cloud Functions' URLs, `warmCloudFunctions`), `schedule.ts` (the Schedule's week and site filter — `weekStart` / `selectedClientId` are accessors to it — `shiftOn`, `weekShifts`, `workerTotalHours`, `getVisible`, `filterByClient`, `pruneDateShifts`, the workers' requests `loadShiftRequests` / `decideShiftRequest`, which emit `requests` / `data`), `exports.ts` (`exportExcel`, `exportPDF`, `exportJSON`, `getWorkerMonthShifts`, `exportShiftsDetail`), `admin.ts` (`firmProfileMissing`, `activeTenantProfile`, the Admin caches `saveAdminCache` / `loadAdminCache`, `adminPanes`, `USER_ROLE_LABELS`, `HOUR_DEFAULT`, `hrColor`, `assignWorkersToHr` / `assignWorkersToSupplier`, `firmsPayableRows(firms)`, `logPeriodRange`, `copyTextToClipboard`). A logic toast is `notify(text)` with a text already translated by `tr()`.
+
+**It never draws:** it never calls a page function, shows a toast or looks at the DOM. The page answers its events in one block (`schedule-manager.html` → "The data layer's events", next to the Save / Load section): `data` → `render()`; `punches` → the open tab's redraw (Today, Accounting, Admin); `hours` → the Accounting badge (`updateHoursBadge`, from `pendingHoursCount()`), the bell, the open windows, Accounting; `save` → the save indicator (`setSaveStatus`); `notice` → `showToast(tr(text, vars))`; `loaded` (fresh server data) → `maybeRegenAfterFirmEdit()`. Its entry `global.ts` gives the page every function under its old name on `window`, the data as read / write accessors (`workers = …` on the page replaces the layer's list), and the state the page reads as read-only accessors (`__uploadsInFlight`, `__punchLoadedFrom`, `__punchSynced`, `__hoursBatches`), so the page's other code, `scan-pipeline.js` and the browser tests call them as before.
+
+- **Direct calls:** `gsLoad` / `gsSave` / the punch listener (`syncPunchesFromGS`) / `gsSavePunch` / `gsUpdatePunch` / `gsDeletePunch` / `gsDeleteWorkerDoc` call `firestore-backend.js` for `fsTenantId()` (the firm being worked in). The names are old; there is no other backend.
 - **The dispatcher (`API_URL`):** every other data call is written as `fetch(API_URL, {method:'POST', body: JSON.stringify({action, ...})})` or `fetch(API_URL + '?action=…')`. `API_URL` (`'api://app'`) is not a server: a `window.fetch` wrapper sends the call to `firestore-backend.js` `handleAction(action, params, ctx)` and returns its answer as a JSON `Response`. It covers the firms and users actions, Errors / Timings, telemetry, `deletePunchesByMonths`, the hours queue, another firm's `loadSchedule` / `loadPunchLog`, `loadWorkerAssets` / `deleteWorkerDoc`, and the six AI actions ([backend.md](backend.md) has the list). Any other `fetch` passes through untouched.
   - An action nothing answers → `{error:'Unknown action: …'}`; an exception → `{error:'Firestore: …'}`.
   - A call slower than 2500 ms (`SLOW_API_CALL_MS`) goes to Timings as `gs:<action>`. An AI reply's `_meta` (from `ai_read`) is taken off the reply and kept in that measurement's details, with the request's `part`.
@@ -126,7 +144,7 @@ Not paged: chips and form rows being edited (selected clients, children), and pr
 - **`loadData()`:**
   1. Draw the cache at once (`applyData`, `render`, `markFirstContent`).
   2. `gsLoad()`. On success → `applyServerLoad()`, `markFreshContent('app')`, `syncPunchesFromGS()`. On failure → a toast with the reason and `retryLoadDataWhenBack()` (on `online`, on the tab becoming visible, or after 15 s).
-- **`gsLoad()`:** `backend.loadSchedule(fsTenantId())`. With no Firebase user the session is cleared and the page reloads. A failure is kept in `gsLoad.lastError` and sent to Errors.
+- **`gsLoad()`:** `backend.loadSchedule(fsTenantId())`. With no Firebase user the session is cleared and the page reloads. A failure is kept (`loadError()` in `api.ts`) and sent to Errors.
 - **`applyData(d)`** fills `workers` (defaults: `id`, `clientIds`, `token`, `status`), `clients` and `suppliers`.
 - **`applyServerLoad(gd)`:** if this device has unsaved changes (`hasUnsavedLocal()`, the `UNSAVED_KEY()` flag younger than 3 days), it keeps them and calls `autoSave()` instead of applying the server copy. Otherwise it applies the server data and writes the cache.
 - **`autoSave()`:**
