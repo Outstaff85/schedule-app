@@ -5875,7 +5875,6 @@ function watchErrorLine(id){
 ['firmEditFormError','userFormError'].forEach(watchErrorLine);
 window.addEventListener('error', function(ev){ _origConsoleError('App error:', ev.error||ev.message); reportError(ev.message, (ev.filename||'')+':'+(ev.lineno||''), ev.error&&ev.error.stack); });
 window.addEventListener('unhandledrejection', function(ev){ const r=ev.reason; reportError((r&&r.message)||String(r), 'promise', r&&r.stack); });
-applyTablesView();
 loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangButtons(); placeLangButton(); try{
   gateApp(function(){
     loadData();
