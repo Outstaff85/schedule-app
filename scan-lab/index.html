@@ -104,7 +104,7 @@ ort.env.wasm.numThreads = THREADS;
 // Background threads for the live frame when the pool is used.
 const POOL = Math.max(1, Math.min(3, Math.floor((navigator.hardwareConcurrency || 2) / 2)));
 
-const STEADY_MS = 1500, MOVE = 0.02, LOCK_MS = 250;  // green after 0.25 s on the edges, the shot after 1.5 s
+const STEADY_MS = 1000, MOVE = 0.02, LOCK_MS = 250;  // green after 0.25 s on the edges, the shot after 1 s
 let smooth = null, steadySince = 0, lastRes = null, target = null, shown = null;
 let fails = 0, engine = null, engineKey = '', running = false, stream = null, inFlight = 0, lastSent = 0, seq = 0, applied = 0;
 const times = [], frames = [], uiFrames = [];
