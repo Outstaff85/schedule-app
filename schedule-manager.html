@@ -2689,7 +2689,6 @@ function workerToday(w, todayLog){
   return {k:''};
 }
 function workerSiteName(w){ const c=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean)[0]; return c?c.name:''; }
-function fmtHoursShort(h){ return tr('{h}h',{h:String(Math.round((h||0)*10)/10)}); }
 // A worker's notices, urgent (red) first: a failed upload, the ID / passport
 // or a document (visa, permit, contract file) expired or expiring, missing
 // documents, the contract ending, no punch on today's shift. Each has a short
