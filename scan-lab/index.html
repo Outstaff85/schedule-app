@@ -68,7 +68,7 @@
   <div class="row"><button class="primary" id="retake">Retake</button><label class="btn" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="auto" checked> Auto capture</label></div>
   <img id="shotImg" alt="" style="width:100%;border-radius:14px;display:block">
   <p id="shot2note" style="color:var(--ink2);margin:10px 0 6px"></p>
-  <div id="shot2" hidden><img id="shotImg2" alt="" style="width:100%;border-radius:14px;display:block"></div>
+  <div id="shotMore" style="display:grid;gap:10px"></div>
 </div>
 <div class="stats">
   <div class="stat"><b id="sBackend">—</b><span>runs on</span></div>
@@ -345,71 +345,80 @@ async function takeShot() {
   const { res: exact } = await engine.detect('cap', { rgba: smallRGBA(frame, w, h) });
   if (id !== shotId) return;
   const total = () => Math.round(performance.now() - t0);
-  if (exact.pts.some(p => !p) || exact.conf < 0.5) { $('hint').textContent = 'Captured by the live frame (' + ms + ' ms); the accurate model did not confirm it — Retake for another'; return; }
-  const moved = Math.max(...exact.pts.map((p, k) => Math.hypot(p[0] - livePts[k][0], p[1] - livePts[k][1])));
-  if (moved > 0.002 && !(await put(exact.pts))) return;
-  target = { pts: exact.pts, ok: true }; shown = exact.pts.map(p => p.slice());
-  if (!isVideo) drawPts(shown, true, img);
-  const note = 'Shown in ' + ms + ' ms; ' + (moved > 0.002 ? 'corners refined by the accurate model (moved ' + (moved * 100).toFixed(1) + '%)' : 'the accurate model agreed') + ' in ' + total() + ' ms' + turnNote();
-  $('hint').textContent = note + ' — looking for a second document…';
-  const s0 = performance.now(); $('shot2note').textContent = 'Looking for a second document on this photo…';
-  // A second document on the same photo (a passport and its ספח).
-  const second = await findSecond(frame, w, h, exact.pts);
-  if (id !== shotId) return;
-  if (second) {
-    const out = await engine.warp(pix.slice(), w, h, second, true);
+  const confirmed = !exact.pts.some(p => !p) && exact.conf >= 0.5;
+  let first = livePts, moved = 0;
+  if (confirmed) {
+    moved = Math.max(...exact.pts.map((p, k) => Math.hypot(p[0] - livePts[k][0], p[1] - livePts[k][1])));
+    if (moved > 0.002 && !(await put(exact.pts))) return;
+    first = exact.pts; target = { pts: exact.pts, ok: true }; shown = exact.pts.map(p => p.slice());
+    if (!isVideo) drawPts(shown, true, img);
+  }
+  const note = 'Shown in ' + ms + ' ms; ' + (!confirmed ? 'the accurate model did not confirm the corners' : moved > 0.002 ? 'corners refined by the accurate model (moved ' + (moved * 100).toFixed(1) + '%)' : 'the accurate model agreed') + ' in ' + total() + ' ms' + turnNote();
+  $('hint').textContent = note + ' — looking for more documents…';
+  const s0 = performance.now(); $('shot2note').textContent = 'Looking for more documents on this photo…';
+  // More documents on the same photo (a passport, its ספח, a card…): up to 4 in all.
+  const found = [first];
+  for (let n = 1; n < 4; n++) {
+    const q = await findNext(frame, w, h, found);
+    if (id !== shotId) return;
+    if (!q) break;
+    found.push(q);
+    const out = await engine.warp(pix.slice(), w, h, q, true);
     if (id !== shotId) return;
     const oc = document.createElement('canvas'); oc.width = out.width; oc.height = out.height;
     oc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
-    $('shotImg2').src = oc.toDataURL('image/jpeg', 0.9); $('shot2').hidden = false;
+    const im = new Image(); im.src = oc.toDataURL('image/jpeg', 0.9); im.style.cssText = 'width:100%;border-radius:14px;display:block'; $('shotMore').appendChild(im);
+    $('shot2note').textContent = 'Found ' + found.length + ' documents so far, looking for more…';
   }
-  $('shot2note').textContent = second ? 'A second document on the same photo (found in ' + Math.round(performance.now() - s0) + ' ms):' : 'One document on this photo (searched for a second in ' + Math.round(performance.now() - s0) + ' ms)';
-  $('hint').textContent = note + (second ? '; a second document found (' + total() + ' ms)' : '; one document') + ' — Retake for another';
+  const more = found.length - 1, took = Math.round(performance.now() - s0);
+  $('shot2note').textContent = more ? found.length + ' documents on this photo (the others found in ' + took + ' ms):' : 'One document on this photo (searched for more in ' + took + ' ms)';
+  $('hint').textContent = note + (more ? '; ' + found.length + ' documents' : '; one document') + ' — Retake for another';
 }
 
-// The second document is looked for by the accurate model: on the photo with the
-// first one painted over in the background's colour (then with a margin of that
-// colour, for a document cut off by the photo's edge), then in the widest strip
-// left beside the first. A frame that overlaps the first by over 30 % is the same one.
+// The next document is looked for on the photo with every one found so far painted
+// over in the background's colour — by the accurate model, then the light one — then
+// the same with a 10 % margin of that colour around the photo (a document cut off by
+// the photo's edge then lies whole inside, its corners on the edge), then in the
+// widest strip left beside the first. A frame overlapping a found one by over 30 % is
+// that one again.
 function quadArea(q) { let a = 0; for (let i = 0; i < 4; i++) { const [x1, y1] = q[i], [x2, y2] = q[(i + 1) % 4]; a += x1 * y2 - x2 * y1; } return Math.abs(a) / 2; }
 function quadConvex(q) { let sg = 0; for (let i = 0; i < 4; i++) { const [a, b, c] = [q[i], q[(i + 1) % 4], q[(i + 2) % 4]]; const z = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]); if (z) { if (sg && Math.sign(z) !== sg) return false; sg = Math.sign(z); } } return true; }
 function inQuad(q, x, y) { let inside = false; for (let i = 0, j = 3; i < 4; j = i++) { const [xi, yi] = q[i], [xj, yj] = q[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside; } return inside; }
 function quadIoU(a, b) { let both = 0, any = 0; for (let y = 0.5; y < 64; y++) for (let x = 0.5; x < 64; x++) { const p = inQuad(a, x / 64, y / 64), q = inQuad(b, x / 64, y / 64); both += p && q; any += p || q; } return any ? both / any : 0; }
 const goodQuad = r => !r.pts.some(p => !p) && r.conf >= 0.5 && quadConvex(r.pts) && quadArea(r.pts) > 0.03;
-async function findSecond(frame, w, h, q1) {
-  const tryIt = async (src, sw, sh, map) => {
-    const { res } = await engine.detect('cap', { rgba: smallRGBA(src, sw, sh) });
+async function findNext(frame, w, h, found) {
+  const fresh = q => found.every(f => quadIoU(q, f) <= 0.3);
+  const tryIt = async (which, src, sw, sh, map) => {
+    const { res } = await engine.detect(which, { rgba: smallRGBA(src, sw, sh) });
     if (!goodQuad(res)) return null;
     const q = res.pts.map(map);
-    return quadIoU(q, q1) > 0.3 ? null : q;
+    return fresh(q) ? q : null;
   };
-  // 1) the first one painted over in the colour of the photo's border
+  const models = engine.hasCap() ? ['cap', 'live'] : ['live'];
+  // the found ones painted over in the colour of the photo's border
   const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.drawImage(frame, 0, 0);
   const t = document.createElement('canvas'); t.width = t.height = 32; const tg = t.getContext('2d'); tg.drawImage(frame, 0, 0, 32, 32);
   const d = tg.getImageData(0, 0, 32, 32).data, rs = [], gs = [], bs = [];
   for (let i = 0; i < 32; i++) for (const [x, y] of [[i, 0], [i, 31], [0, i], [31, i]]) { const k = (y * 32 + x) * 4; rs.push(d[k]); gs.push(d[k + 1]); bs.push(d[k + 2]); }
   const med = a => a.sort((p, q) => p - q)[a.length >> 1];
-  const cx = q1.reduce((a, p) => a + p[0], 0) / 4, cy = q1.reduce((a, p) => a + p[1], 0) / 4;
-  g.fillStyle = `rgb(${med(rs)},${med(gs)},${med(bs)})`; g.beginPath();
-  q1.forEach(([x, y], i) => { const X = (x + (x - cx) * 0.04) * w, Y = (y + (y - cy) * 0.04) * h; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.closePath(); g.fill();
-  const masked = await tryIt(c, w, h, p => p);
-  if (masked) return masked;
-  // 1b) the same with a 10 % margin of that colour around the photo: a document cut off
-  // by the photo's edge (its far corners outside) then lies whole inside, and its
-  // corners land on the photo's edge.
+  g.fillStyle = `rgb(${med(rs)},${med(gs)},${med(bs)})`;
+  for (const q of found) {
+    const cx = q.reduce((a, p) => a + p[0], 0) / 4, cy = q.reduce((a, p) => a + p[1], 0) / 4;
+    g.beginPath(); q.forEach(([x, y], i) => { const X = (x + (x - cx) * 0.04) * w, Y = (y + (y - cy) * 0.04) * h; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.closePath(); g.fill();
+  }
+  for (const m of models) { const q = await tryIt(m, c, w, h, p => p); if (q) return q; }
   const P = Math.round(0.1 * Math.max(w, h)), pc = document.createElement('canvas'); pc.width = w + 2 * P; pc.height = h + 2 * P;
   const pg = pc.getContext('2d'); pg.fillStyle = g.fillStyle; pg.fillRect(0, 0, pc.width, pc.height); pg.drawImage(c, P, P);
   const clamp = v => Math.min(1, Math.max(0, v));
-  const padded = await tryIt(pc, pc.width, pc.height, ([x, y]) => [clamp((x * pc.width - P) / w), clamp((y * pc.height - P) / h)]);
-  if (padded) return padded;
-  // 2) the widest strip left beside the first: above, below, left or right of it
-  const xs = q1.map(p => p[0]), ys = q1.map(p => p[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  for (const m of models) { const q = await tryIt(m, pc, pc.width, pc.height, ([x, y]) => [clamp((x * pc.width - P) / w), clamp((y * pc.height - P) / h)]); if (q) return q; }
+  // the widest strip left beside the first
+  const q1 = found[0], xs = q1.map(p => p[0]), ys = q1.map(p => p[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
   const strips = [[0, 0, 1, y0], [0, y1, 1, 1], [0, 0, x0, 1], [x1, 0, 1, 1]].filter(([a, b, c2, d2]) => c2 - a >= 0.25 && d2 - b >= 0.2)
     .sort((p, q) => (q[2] - q[0]) * (q[3] - q[1]) - (p[2] - p[0]) * (p[3] - p[1]));
   for (const [a, b, c2, d2] of strips.slice(0, 2)) {
     const sw = Math.round((c2 - a) * w), sh = Math.round((d2 - b) * h), sc = document.createElement('canvas'); sc.width = sw; sc.height = sh;
-    sc.getContext('2d').drawImage(frame, Math.round(a * w), Math.round(b * h), sw, sh, 0, 0, sw, sh);
-    const q = await tryIt(sc, sw, sh, ([x, y]) => [a + x * (c2 - a), b + y * (d2 - b)]);
+    sc.getContext('2d').drawImage(c, Math.round(a * w), Math.round(b * h), sw, sh, 0, 0, sw, sh);
+    const q = await tryIt(models[0], sc, sw, sh, ([x, y]) => [a + x * (c2 - a), b + y * (d2 - b)]);
     if (q) return q;
   }
   return null;
@@ -463,13 +472,13 @@ $('startCam').onclick = async () => {
     running = true; loop(); startFollow();
   } catch (e) { log('Camera / model error: ' + (e && e.message || e)); }
 };
-$('retake').onclick = () => { shotId++; $('shot').hidden = true; $('shot2').hidden = true; $('shot2note').textContent = ''; smooth = null; steadySince = 0; target = shown = null; if (stream) { running = true; loop(); startFollow(); } else $('startCam').click(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+$('retake').onclick = () => { shotId++; $('shot').hidden = true; $('shotMore').textContent = ''; $('shot2note').textContent = ''; smooth = null; steadySince = 0; target = shown = null; if (stream) { running = true; loop(); startFollow(); } else $('startCam').click(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 $('snap').onclick = showShot;
 $('stop').onclick = () => { running = false; if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } };
 $('file').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   running = false; while (inFlight) await new Promise(r => setTimeout(r, 10)); await ensureSession();
-  shotId++; $('shot2').hidden = true; $('shot2note').textContent = ''; const img = $('still'); img.src = URL.createObjectURL(f); await img.decode();
+  shotId++; $('shotMore').textContent = ''; $('shot2note').textContent = ''; const img = $('still'); img.src = URL.createObjectURL(f); await img.decode();
   img.hidden = false; $('video').hidden = true;
   $('sRes').textContent = img.naturalWidth + '×' + img.naturalHeight;
   await runOnce(img, img.naturalWidth, img.naturalHeight, img);
