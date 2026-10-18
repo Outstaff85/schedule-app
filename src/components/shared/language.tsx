@@ -8,7 +8,12 @@ import { IconCheck, IconSearch, IconWorld } from '@tabler/icons-react';
 import { I18N_LANG_EN, I18N_LANGS, tr, useI18n } from '@/lib/i18n';
 import { Window } from '@/components/shared/window';
 
-export function LanguageButton() {
+/**
+ * `onPick` — the manager app switches its own language (the page's
+ * setLanguage; the current one comes from LanguageScope); `className` places
+ * the button (`on-cover`: the corner of a full-screen cover, the sign-in screen).
+ */
+export function LanguageButton({ onPick, className }: { onPick?: (lang: string) => void; className?: string } = {}) {
   const { lang, setLanguage } = useI18n();
   const [open, setOpen] = React.useState(false);
   const [q, setQ] = React.useState('');
@@ -18,13 +23,13 @@ export function LanguageButton() {
   });
   return (
     <>
-      <button type="button" className="gbtn lang-btn" aria-label={tr('Language')} data-testid="lang-btn" onClick={() => { setQ(''); setOpen(true); }}>
+      <button type="button" className={className ? `gbtn lang-btn ${className}` : 'gbtn lang-btn'} aria-label={tr('Language')} title={tr('Language')} data-testid="lang-btn" onClick={() => { setQ(''); setOpen(true); }}>
         <IconWorld className="size-[23px]" stroke={1.8} />
       </button>
       <Window open={open} onOpenChange={setOpen} title={tr('Language')}>
         <div className="lang-search !mb-0">
           <IconSearch className="size-4 text-ink-2" />
-          <input id="lang-search" value={q} onChange={e => setQ(e.target.value)} placeholder={tr('Search')} aria-label={tr('Search')} />
+          <input id="lang-search" value={q} onChange={e => setQ(e.target.value)} placeholder={tr('Search a language')} aria-label={tr('Search a language')} />
         </div>
         <div className="lang-list" data-testid="lang-list">
           {list.map(code => (
@@ -32,7 +37,8 @@ export function LanguageButton() {
               key={code}
               type="button"
               className={code === lang ? 'lang-li on' : 'lang-li'}
-              onClick={() => { setOpen(false); void setLanguage(code); }}
+              data-lang={code}
+              onClick={() => { setOpen(false); if (code === lang) return; if (onPick) onPick(code); else void setLanguage(code); }}
             >
               <b>{I18N_LANGS[code]}</b>
               <small>{I18N_LANG_EN[code]}</small>

@@ -28,6 +28,7 @@ import { Window } from '@/components/shared/window';
 import { SignaturePad } from '@/components/shared/signature-pad';
 import { LanguageButton } from '@/components/shared/language';
 import { AccountMenu } from '@/components/shared/account-menu';
+import { AppBrand, ShellBell } from '@/components/shared/app-brand';
 import { ThemeButton, ThemeSwitch } from '@/components/shared/theme-switch';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -607,8 +608,14 @@ function Frame({ onBack }: { onBack: () => void }) {
   return (
     <Shell
       app
-      brand={<Brand name={tr('Interactive Manager')} />}
-      tools={<><LanguageButton /><Button size="sm" onClick={onBack}>{tr('Back to the gallery')}</Button></>}
+      brand={<AppBrand save="saved" />}
+      tools={<>
+        <ShellBell count={2} onClick={() => toast(tr('Notifications'))} />
+        <LanguageButton />
+        <AccountMenu name="Owner" firm="Firm One" sub="Firm One · owner" onSignOut={() => toast(tr('Sign out'))}>
+          <DropdownMenuItem onSelect={onBack}>{tr('Back to the gallery')}</DropdownMenuItem>
+        </AccountMenu>
+      </>}
       sections={sections}
       active={tab}
       onSelect={setTab}

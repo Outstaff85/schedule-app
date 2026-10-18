@@ -9,7 +9,7 @@
 // #firmModal; its Form 101 labels stay Hebrew.
 import * as React from 'react';
 import {
-  IconAlertTriangle, IconBrandWhatsapp, IconBuildingSkyscraper, IconCash, IconCheck, IconPencil, IconPlayerPause, IconPlayerPlay, IconPlus,
+  IconAlertTriangle, IconBrandWhatsapp, IconBuildingSkyscraper, IconCash, IconCheck, IconLogout, IconPencil, IconPlayerPause, IconPlayerPlay, IconPlus,
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -24,6 +24,7 @@ import { Section } from '@/components/shared/section';
 import { PagedList } from '@/components/shared/paged-list';
 import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-mode';
 import { undoDelete } from '@/components/shared/undo';
+import { LanguageButton } from '@/components/shared/language';
 import type { AdminSnapshot, FirmProfile, ManagerBridge } from './bridge';
 import { Field } from './ClientEditor';
 import { useTapOpen } from './Clients';
@@ -51,7 +52,20 @@ export function FirmsPane({ snap, api }: { snap: AdminSnapshot; api: ManagerBrid
 /** The super-admin's landing screen (no firm opened yet): the list under the screen's own header. */
 export function FirmsScreen({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }) {
   React.useEffect(() => { void api.loadFirms(); }, [api]);
-  return <div data-testid="firms-screen"><FirmsList snap={snap} api={api} /></div>;
+  return (
+    <div data-testid="firms-screen">
+      {/* The header (stage 8e-2): Firms, then the Language button, Create firm and Sign out. */}
+      <div className="mb-3.5 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-xl font-bold"><IconBuildingSkyscraper className="size-5" /><span>{tr('Firms')}</span></div>
+        <div className="flex items-center gap-1" data-testid="firms-actions">
+          <LanguageButton onPick={l => api.setLanguage(l)} />
+          <button type="button" className="gbtn primary og-new" onClick={() => api.openFirmWindow('create')} data-testid="firm-create"><IconPlus className="size-4" /> <span>{tr('Create firm')}</span></button>
+          <button type="button" className="t3-ib" onClick={() => api.signOut()} title={tr('Sign out')} aria-label={tr('Sign out')} data-testid="firms-signout"><IconLogout className="size-[18px]" /></button>
+        </div>
+      </div>
+      <FirmsList snap={snap} api={api} />
+    </div>
+  );
 }
 
 const when = (v: string | undefined, locale: string) => {

@@ -7,7 +7,8 @@
 //              the active item takes its colour on icon and label, a soft
 //              tile of it behind the icon and a glowing line on the bottom
 //              edge; a red count; a short vibration on a tap. With more than
-//              five sections the first four stay and More opens the rest.
+//              five sections the first four stay and More opens the rest
+//              (or the sections marked `more`, when any is marked).
 // A page without sections (a portal with one screen) has only the title bar.
 //
 // `app` — the manager app's frame, the V7 look (react-migration-plan.md →
@@ -29,24 +30,25 @@
 //               stays left to right.
 // The portals keep the plain frame (their own headers).
 import * as React from 'react';
-import { IconChevronRight, IconDots } from '@tabler/icons-react';
+import { IconChevronRight, IconDots, IconDotsVertical } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
 import { tr, uiLocale, useI18n } from '@/lib/i18n';
 import { greetingHtml } from '@/lib/greeting';
 import { useIsPhone } from '@/hooks/use-phone';
 import { Window } from '@/components/shared/window';
 
-export type ShellSection = { key: string; label: string; icon: React.ReactNode; color: string; count?: number };
+/** `more` — on a phone this section sits under More (when any section sets it; otherwise the first four stay in the bar). */
+export type ShellSection = { key: string; label: string; icon: React.ReactNode; color: string; count?: number; countTitle?: string; more?: boolean };
 
 const MORE_COLOR = '#f472b6';
 const MAX_BAR = 5;
 
-function Count({ n }: { n?: number }) {
+function Count({ n, title }: { n?: number; title?: string }) {
   if (!n) return null;
-  return <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-destructive px-1 text-[10px] font-bold leading-none text-[#fff]">{n}</span>;
+  return <span data-testid="shell-count" title={title} className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-destructive px-1 text-[10px] font-bold leading-none text-[#fff]">{n}</span>;
 }
 
-export function Shell({ brand, tools, sections = [], active = '', onSelect = () => {}, children, app, crumb, center, aside }: {
+export function Shell({ brand, tools, sections = [], active = '', onSelect = () => {}, children, app, crumb, center, aside, steady }: {
   brand: React.ReactNode;
   tools?: React.ReactNode;
   sections?: ShellSection[];
@@ -61,23 +63,42 @@ export function Shell({ brand, tools, sections = [], active = '', onSelect = () 
   center?: React.ReactNode;
   /** the panel next to the side menu (only the screens that filter by it) */
   aside?: React.ReactNode;
+  /** the page area is kept across sections (no fade-in remount): the manager page, whose sections fade in themselves */
+  steady?: boolean;
 }) {
   const phone = useIsPhone();
   const { lang } = useI18n();
   const [moreOpen, setMoreOpen] = React.useState(false);
-  const inBar = sections.length > MAX_BAR ? sections.slice(0, MAX_BAR - 1) : sections;
-  const inMore = sections.length > MAX_BAR ? sections.slice(MAX_BAR - 1) : [];
+  const marked = sections.some(s => s.more != null);
+  const inBar = marked ? sections.filter(s => !s.more) : sections.length > MAX_BAR ? sections.slice(0, MAX_BAR - 1) : sections;
+  const inMore = marked ? sections.filter(s => s.more) : sections.length > MAX_BAR ? sections.slice(MAX_BAR - 1) : [];
   const moreActive = inMore.some(s => s.key === active);
   const pick = (key: string) => { try { navigator.vibrate?.(8); } catch { /* not allowed */ } onSelect(key); };
 
-  const bar = phone && sections.length > 0 && (
+  const barItems = [...inBar, ...(inMore.length ? [{ key: '__more', label: tr('More'), icon: app ? <IconDotsVertical /> : <IconDots />, color: MORE_COLOR, count: inMore.reduce((a, s) => a + (s.count || 0), 0) } as ShellSection] : [])];
+  // The manager app's bottom bar: og.css's glass .og-bar (the page's look, light theme included).
+  const appBar = app && phone && sections.length > 0 && (
+    <nav data-testid="shell-bar" dir="ltr" className="og-bar">
+      {barItems.map(s => {
+        const on = s.key === '__more' ? moreActive : s.key === active;
+        return (
+          <button key={s.key} type="button" aria-current={on ? 'page' : undefined} className={cn('og-tab', on && 'on')} style={{ '--k': s.color } as React.CSSProperties}
+            onClick={() => (s.key === '__more' ? setMoreOpen(true) : pick(s.key))}>
+            <span className="ic">{s.icon}{s.count ? <span data-testid="shell-count" className="og-count" title={s.countTitle}>{s.count > 99 ? '99+' : s.count}</span> : null}</span>
+            <span className="lb">{s.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+  const bar = !app && phone && sections.length > 0 && (
     <nav
       data-testid="shell-bar"
       dir="ltr"
       className="fixed inset-x-0 bottom-0 z-30 grid border-t border-border bg-[rgba(var(--bar-rgb),.85)] pb-[env(safe-area-inset-bottom,0px)] pt-1.5 backdrop-blur-xl"
       style={{ gridTemplateColumns: `repeat(${inBar.length + (inMore.length ? 1 : 0)}, minmax(0, 1fr))` }}
     >
-      {[...inBar, ...(inMore.length ? [{ key: '__more', label: tr('More'), icon: <IconDots />, color: MORE_COLOR, count: inMore.reduce((a, s) => a + (s.count || 0), 0) }] : [])].map(s => {
+      {barItems.map(s => {
         const on = s.key === '__more' ? moreActive : s.key === active;
         return (
           <button
@@ -89,7 +110,7 @@ export function Shell({ brand, tools, sections = [], active = '', onSelect = () 
             style={{ color: on ? s.color : 'var(--ink-2)' }}
           >
             <span className="relative grid h-8 w-12 place-items-center rounded-xl transition-colors [&_svg]:size-[21px]" style={{ background: on ? `color-mix(in srgb, ${s.color} 18%, transparent)` : undefined }}>
-              {s.icon}<Count n={s.count} />
+              {s.icon}<Count n={s.count} title={s.countTitle} />
             </span>
             <span className="max-w-full truncate px-1">{s.label}</span>
             {on && <span aria-hidden className="absolute inset-x-[18%] bottom-0 h-[3px] rounded-sm animate-[og-pop_.5s_cubic-bezier(.34,1.56,.64,1)]" style={{ background: s.color, boxShadow: `0 0 10px ${s.color}` }} />}
@@ -144,21 +165,14 @@ export function Shell({ brand, tools, sections = [], active = '', onSelect = () 
         </header>
         <div className={cn('flex min-h-0 flex-1', rtl && 'flex-row-reverse')}>
           {!phone && sections.length > 0 && (
-            <nav data-testid="shell-menu" dir={rtl ? 'rtl' : 'ltr'} className={cn('sticky top-14 flex h-[calc(100dvh-56px)] w-[210px] shrink-0 flex-col gap-1 overflow-y-auto bg-[rgba(var(--bar-rgb),.35)] px-2.5 py-3.5', rtl ? 'border-l border-white/8' : 'border-r border-white/8')}>
+            <nav data-testid="shell-menu" dir={rtl ? 'rtl' : 'ltr'} className="og-side sticky top-14 h-[calc(100dvh-56px)]">
               {sections.map(s => {
                 const on = s.key === active;
                 return (
-                  <button
-                    key={s.key}
-                    type="button"
-                    aria-current={on ? 'page' : undefined}
-                    onClick={() => onSelect(s.key)}
-                    className={cn('relative flex h-10 shrink-0 items-center gap-3 rounded-xl px-3 text-start text-[14.5px] font-medium transition-colors [&_svg]:size-[18px]', on ? 'bg-white/8' : 'text-ink-2 hover:bg-white/5 hover:text-ink')}
-                    style={on ? { color: s.color } : undefined}
-                  >
-                    <span className="relative">{s.icon}<Count n={s.count} /></span>
+                  <button key={s.key} type="button" aria-current={on ? 'page' : undefined} onClick={() => onSelect(s.key)}
+                    className={cn('og-tab', on && 'on')} style={{ '--k': s.color } as React.CSSProperties}>
+                    <span className="ic">{s.icon}{s.count ? <span data-testid="shell-count" className="og-count" title={s.countTitle}>{s.count > 99 ? '99+' : s.count}</span> : null}</span>
                     <span className="truncate">{s.label}</span>
-                    {on && <span aria-hidden className={cn('absolute inset-y-[9px] w-[3px] rounded-sm', rtl ? 'right-0' : 'left-0')} style={{ background: s.color, boxShadow: `0 0 10px ${s.color}` }} />}
                   </button>
                 );
               })}
@@ -166,10 +180,10 @@ export function Shell({ brand, tools, sections = [], active = '', onSelect = () 
           )}
           {!phone && aside && <aside data-testid="shell-aside" className={cn('w-[290px] shrink-0 overflow-y-auto py-4', rtl ? 'border-l border-white/8' : 'border-r border-white/8')}>{aside}</aside>}
           <main className={cn('min-w-0 flex-1 px-6 py-5 max-[700px]:px-3 max-[700px]:py-3', phone && sections.length > 0 && 'pb-[calc(84px+env(safe-area-inset-bottom,0px))]')}>
-            <div key={active} className="mx-auto w-full max-w-[1200px] animate-in fade-in duration-150 motion-reduce:animate-none">{children}</div>
+            <div key={steady ? undefined : active} className={cn('mx-auto w-full max-w-[1200px]', !steady && 'animate-in fade-in duration-150 motion-reduce:animate-none')}>{children}</div>
           </main>
         </div>
-        {bar}
+        {appBar}
         {more}
       </div>
     );
@@ -195,7 +209,7 @@ export function Shell({ brand, tools, sections = [], active = '', onSelect = () 
                 className={cn('relative flex h-11 shrink-0 items-center gap-2 px-3.5 text-sm font-semibold transition-colors [&_svg]:size-[18px]', on ? 'text-ink' : 'text-ink-2 hover:text-ink')}
                 style={on ? { color: s.color } : undefined}
               >
-                <span className="relative">{s.icon}<Count n={s.count} /></span>
+                <span className="relative">{s.icon}<Count n={s.count} title={s.countTitle} /></span>
                 <span className={on ? 'text-ink' : undefined}>{s.label}</span>
                 {on && <span aria-hidden className="absolute inset-x-3 bottom-0 h-[3px] rounded-sm animate-[og-pop_.5s_cubic-bezier(.34,1.56,.64,1)]" style={{ background: s.color, boxShadow: `0 0 10px ${s.color}` }} />}
               </button>
@@ -213,20 +227,22 @@ export function Shell({ brand, tools, sections = [], active = '', onSelect = () 
 }
 
 /**
- * The middle of the app title bar (V7): the date — long on a computer, short on
- * a phone —, the greeting by the time of day and the weather icon with the
- * temperature; on a phone the greeting's words are hidden.
+ * The middle of the app title bar (V7): the date — long on a computer, short
+ * up to 980px —, the greeting by the time of day (its words hidden up to
+ * 1180px and on a phone) and the weather icon with the temperature.
  */
 export function ShellGreeting({ name, wx, now = new Date() }: { name?: string; wx?: { kind: string; temp?: number } | null; now?: Date }) {
-  const phone = useIsPhone();
-  const date = now.toLocaleDateString(uiLocale(), phone ? { weekday: 'short', day: 'numeric', month: 'short' } : { weekday: 'long', day: 'numeric', month: 'short' });
+  const long = now.toLocaleDateString(uiLocale(), { weekday: 'long', day: 'numeric', month: 'short' });
+  const short = now.toLocaleDateString(uiLocale(), { weekday: 'short', day: 'numeric', month: 'short' });
   const html = greetingHtml(name, wx || null);
   const at = html.indexOf('<svg');
   return (
     <div data-testid="shell-greeting" className="flex min-w-0 items-center gap-3.5 whitespace-nowrap max-[700px]:gap-2">
-      <span className="border-e border-white/14 pe-3.5 text-[13.5px] text-ink-2 max-[700px]:pe-2 max-[700px]:text-[12.5px]">{date}</span>
+      <span data-testid="shell-date" className="border-e border-white/14 pe-3.5 text-[13.5px] text-ink-2 max-[1180px]:border-0 max-[1180px]:pe-0 max-[700px]:border-e max-[700px]:pe-2 max-[700px]:text-[12.5px]">
+        <span className="max-[980px]:hidden">{long}</span><span className="hidden max-[980px]:inline">{short}</span>
+      </span>
       <span className="flex items-center gap-2.5 text-[15px] font-semibold [&_.gic]:!m-0 [&_.gic]:!size-6">
-        {!phone && <span className="truncate" dangerouslySetInnerHTML={{ __html: html.slice(0, at < 0 ? undefined : at) }} />}
+        <span data-testid="shell-greet-text" className="truncate max-[1180px]:hidden" dangerouslySetInnerHTML={{ __html: html.slice(0, at < 0 ? undefined : at) }} />
         {at >= 0 && <span className="flex items-center" dangerouslySetInnerHTML={{ __html: html.slice(at) }} />}
       </span>
     </div>

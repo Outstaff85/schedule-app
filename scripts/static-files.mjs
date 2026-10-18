@@ -15,7 +15,7 @@ const EXCLUDED_TOP = new Set([
   'docs', 'functions', 'functions-auth', 'tests', 'node_modules',
   'dist', 'src', 'next', 'scripts', 'archive',
   // the new pages' HTML entries at the top level, built by Vite (docs/build.md)
-  'client-portal.html', 'supplier-portal.html', 'worker-punch.html',
+  'client-portal.html', 'supplier-portal.html', 'worker-punch.html', 'schedule-manager.html',
   // a new page's file that Vite builds into dist/assets/ under a hashed name (worker-punch.html's manifest)
   'manifest-punch.json',
   'package.json', 'package-lock.json', 'tsconfig.json', 'vite.config.mts', 'components.json',

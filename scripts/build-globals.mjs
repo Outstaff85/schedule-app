@@ -5,8 +5,6 @@
 //   payroll.js            from src/lib/payroll.ts — the global `Payroll`
 //   firestore-backend.js  from src/lib/firestore-backend-global.ts — the
 //                         global initFirestoreBackend() (src/lib/firestore-backend.ts)
-//   manager-core.js       from src/manager/globals.ts — the manager page's
-//                         data layer and logic under their old global names (stage 8b, 8c)
 //   node scripts/build-globals.mjs          write them
 //   node scripts/build-globals.mjs --check  fail when one is not what its
 //                                           source builds to (npm run build)
@@ -26,8 +24,6 @@ const TARGETS = [
     banner: banner('src/lib/payroll.ts', 'Defines the global `Payroll`\n// used by the old pages (docs/accounting.md → Payroll module).') },
   { out: 'firestore-backend.js', entry: 'src/lib/firestore-backend-global.ts', target: 'es2020',
     banner: banner('src/lib/firestore-backend.ts', 'Defines the global\n// initFirestoreBackend(), the browser data layer (docs/backend.md → Browser data layer).') },
-  { out: 'manager-core.js', entry: 'src/manager/globals.ts', target: 'es2020',
-    banner: banner('src/manager/data/, src/manager/logic/', 'The manager page\'s data\n// layer (session, dispatcher, load / save / cache, punches, uploads, telemetry)\n// and its logic (access, i18n, pay, workers, uploads…) under their old global\n// names (docs/app-core.md → Data calls).') },
 ];
 
 async function codeOf(t) {

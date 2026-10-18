@@ -70,7 +70,7 @@ Drawn by `FirmsPane` in `src/manager/Firms.tsx` from `ManagerBridge.admin()`: `i
 
 **Super-admin:**
 
-- **List** (`FirmsList`, the same component on the landing screen `#firmsScreen` — its header, Create firm, the Language button (`placeLangButton` → `#firmsActions`) and Sign out stay the page's HTML — and in Admin → Firms):
+- **List** (`FirmsList`, the same component on the landing screen `#firmsScreen` — its header (Firms, the Language button, Create firm, Sign out) is React too, `FirmsScreen`, stage 8e-2 — and in Admin → Firms):
   - a plate per firm (`PagedList columns`): green while active, amber when disabled or its profile is incomplete; the name, then worker and client counts and the last save (left out when the date can't be read), then "disabled" / "profile incomplete" (its title lists the missing fields);
   - a tap → `openFirm(id)` → `switchToTenant()` (with a mouse a single click waits 250 ms for a double one, `useTapOpen`); a double click, a long press or the ✎ at its right → the firm window (`openFirmWindow('edit', id)` → `openEditFirmForm`); ⋮: Edit, Disable / Enable (`setFirmsActive` → the page's `setTenantsActive`: `setTenantActive` each, its toast, the list again), Delete; a swipe left on a phone (Edit, Delete);
   - **Delete never asks**: the plate goes behind the React Undo snack (`hiddenFirms` keeps it out of a redraw) and `deleteFirms(ids)` (the page's `deleteTenantsNow`: `deleteTenant` each — the firm's data, its logins and every worker file in Storage — then the toast and the list) runs when the 5 s are up;

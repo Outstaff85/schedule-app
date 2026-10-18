@@ -8,6 +8,8 @@
 import type { Punch } from '@/lib/payroll';
 import type { AccData, AccWorker, ApprovalDoc, HrLogin } from './accounting';
 import type { UserRow } from './users';
+import type { MapPickProps } from './MapPicker';
+import type { BellItem } from './BellPanel';
 
 export type Notice = { lvl: 'red' | 'amber'; word: string; title: string };
 /** A worker today: on vacation, the latest punch (in / out), no punch on a started shift, or nothing. */
@@ -333,6 +335,31 @@ export type ManagerBridge = WorkerBridge & {
   /** the page's language and its loaded dictionary (`I18N_LANG`, `I18N`) */
   lang(): string;
   dict(): Record<string, string>;
+  // ── The frame (stage 8e-1): the React Shell's actions on the page ──
+  /** opens a section (`switchTab`) */
+  switchTab(tab: string): void;
+  /** opens or closes the bell's list under the bell button (`toggleBell`) */
+  toggleBell(e: MouseEvent): void;
+  /** the account menu's items: My name, Install app, Sign out; the theme kept on the account */
+  editMyName(): void;
+  installApp(): void;
+  signOut(): void;
+  saveTheme(theme: string): void;
+  /** switches the page's language (`setLanguage`: the dictionaries, the account, a redraw) */
+  setLanguage(lang: string): void;
+  // ── The bell's list (stage 8e-4, BellPanel.tsx) ──
+  /** the notifications, newest first (`notifList`), with which are unread */
+  bellItems(): BellItem[];
+  /** marks one read and opens what it is about */
+  openNotif(id: string): void;
+  /** runs one of a notification's actions (Call, WhatsApp) */
+  bellAct(id: string, index: number): void;
+  markAllNotifRead(): void;
+  // ── The sign-in screen (stage 8e-2) ──
+  /** signs in (the login function, then the page reloads); the error text to show, or null */
+  signIn(username: string, password: string): Promise<string | null>;
+  /** wakes a cold login function while the user types */
+  pingLogin(): void;
   today(): TodaySnapshot;
   openWorker(id: string): void;
   openNotices(id: string): void;
@@ -793,6 +820,10 @@ export type ManagerIsland = {
   saveClient(opts: { auto?: boolean }): void;
   openSupplier(s: SupplierRecord, editId: string | null): void;
   openManualPunch(clientId: string): void;
+  /** the map picker (stage 8e-3) into #mapPickModal; the page opens the overlay */
+  openMapPicker(p: { start: MapPickProps['start']; onPick: MapPickProps['onPick']; close: () => void }): void;
+  /** sets the map picker's pin (the browser checks) */
+  mapPickAt(lat: number, lng: number): void;
   // ── Accounting (stage 6e) ──
   renderAccounting(): void;
   /** Salary / Billing / Approvals / Alerts */
