@@ -136,8 +136,6 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
    (hours, money) in one soft green. */
 .plate{position:relative;display:flex;align-items:center;gap:12px;padding:11px 8px 11px 14px;background:var(--plate);border-radius:16px;box-shadow:inset 4px 0 0 var(--c,var(--ok));}
 .fig{font-family:'DM Mono',ui-monospace,monospace;color:var(--fig);}
-/* Tick tiles: a grey box; ticked — the tile tinted green, the box green and
-   the check mark drawing itself (350 ms). */
 /* The Language button (top right of every page) and its sheet. */
 .lang-btn{height:40px;width:40px;padding:0;gap:0;border-radius:14px;font-size:13px;flex:none;justify-content:center;}
 .lang-btn i{font-size:23px;}
