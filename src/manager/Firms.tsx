@@ -251,7 +251,7 @@ export function FirmWindow({ api }: { api: ManagerBridge }) {
       <Field label="עיר" htmlFor="fCity"><Input id="fCity" value={f.city} onChange={e => set('city', e.target.value)} /></Field>
       {info.wa && (
         <div data-testid="firm-wa">
-          <FormSection icon={<IconBrandWhatsapp />}>{tr('WhatsApp reminder')}</FormSection>
+          <FormSection className="mb-2 flex items-center gap-1.5 [&_svg]:size-4"><IconBrandWhatsapp />{tr('WhatsApp reminder')}</FormSection>
           <Field label={tr('Message when a worker has not punched in')} htmlFor="fWa">
             <Textarea id="fWa" ref={waEl} rows={3} maxLength={1000} value={wa ?? ''} onChange={e => setWa(e.target.value)} onBlur={saveWa} />
           </Field>
