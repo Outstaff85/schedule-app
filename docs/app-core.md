@@ -68,9 +68,9 @@ A weekly roster, with changes for single dates. **Drawn in React** (stage 6b): `
 
 ## Fonts and icons
 
-All three pages load them from the site itself, not from a CDN, so they also work offline:
+Every page loads them from the site itself, not from a CDN, so they also work offline:
 - `fonts/fonts.css` — DM Sans (Latin, 300–700), DM Mono (Latin, 400/500), Heebo (Hebrew, 400/500/700), woff2 from @fontsource; each face downloads only when the page uses it.
-- `icons/tabler-icons.css` + `icons/tabler-icons.woff2` — a subset of Tabler Icons with only the icons the pages use, built by `tests/icons/build.py`. **A new icon** (`ti-<name>`) needs a rebuild: `npm run test:icons` (in `tests/rules`) fails on an icon missing from the subset. An icon name glued from pieces in code goes into the script's `EXTRA` list.
+- Icons: the React pieces import them from `@tabler/icons-react` (bundled). The page's own markup (the frame, the login, the bell, the scan window) uses `icons/tabler-icons.css` + `icons/tabler-icons.woff2` — a subset of Tabler Icons with only the `ti-<name>` icons `schedule-manager.html` and `scan-pipeline.js` use (83 since stage 7), built by `tests/icons/build.py`. **A new `ti-` icon there** needs a rebuild: `npm run test:icons` (in `tests/rules`) fails on an icon missing from the subset. An icon name glued from pieces in code goes into the script's `EXTRA` list.
 - `.woff2` files are served with a one-year cache (`firebase.json`) and the service worker answers them from its cache first.
 
 ## Long lists (`renderPagedList`)
