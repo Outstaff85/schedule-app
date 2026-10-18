@@ -101,7 +101,7 @@ const POOL = Math.max(1, Math.min(3, Math.floor((navigator.hardwareConcurrency |
 
 const STEADY_MS = 1500, MOVE = 0.02, LOCK_MS = 250;  // green after 0.25 s on the edges, the shot after 1.5 s
 let smooth = null, steadySince = 0, lastRes = null, target = null, shown = null;
-let engine = null, engineKey = '', running = false, stream = null, inFlight = 0, lastSent = 0, seq = 0, applied = 0;
+let fails = 0, engine = null, engineKey = '', running = false, stream = null, inFlight = 0, lastSent = 0, seq = 0, applied = 0;
 const times = [], frames = [], uiFrames = [];
 const small = document.createElement('canvas'); small.width = S; small.height = S;
 const sctx = small.getContext('2d', { willReadFrequently: true });
@@ -224,7 +224,7 @@ let bitmapOk = typeof createImageBitmap === 'function';
 async function frameInput(src, w, h) {
   if (bitmapOk) {
     try { return { bitmap: await createImageBitmap(src, { resizeWidth: S, resizeHeight: S, resizeQuality: 'low' }) }; }
-    catch (e) { bitmapOk = false; log('Frame scaling on the GPU is not available here: ' + (e && e.message || e)); }
+    catch (e) { if (e && e.name === 'InvalidStateError') return null; bitmapOk = false; log('Frame scaling on the GPU is not available here: ' + (e && e.message || e)); }
   }
   return { rgba: smallRGBA(src, w, h) };
 }
@@ -273,8 +273,10 @@ requestAnimationFrame(animate);
 async function runOnce(src, w, h, el) {
   const isVideo = el.tagName === 'VIDEO';
   const my = ++seq;
-  const { res: raw, ms } = await engine.detect(isVideo ? 'live' : 'cap', isVideo ? await frameInput(src, w, h) : { rgba: smallRGBA(src, w, h) });
-  if (isVideo && (!running || my < applied)) return;  // a later frame already answered, or a capture began
+  const input = isVideo ? await frameInput(src, w, h) : { rgba: smallRGBA(src, w, h) };
+  if (!input) return;  // the video had no frame (being hidden or stopped)
+  const { res: raw, ms } = await engine.detect('live', input);
+  if (isVideo && (!running || my < applied || $('video').hidden)) return;  // a later frame already answered, or a capture / photo began
   applied = my;
   const res = isVideo ? smoothen(raw) : raw;
   times.push(ms); if (times.length > 20) times.shift();
@@ -314,7 +316,7 @@ async function showShot() {
   if (!(await put(livePts))) return;
   const ms = Math.round(performance.now() - t0); $('sCap').textContent = ms;
   $('shot').hidden = false; $('shot').scrollIntoView({ behavior: 'smooth' });
-  const refine = isVideo && engine.hasCap();
+  const refine = engine.hasCap();
   $('hint').textContent = 'Captured by the live frame (' + ms + ' ms)' + (refine ? ' — refining the corners…' : ' — Retake for another');
   if (!refine) return;
   while (inFlight) await new Promise(r => setTimeout(r, 10));  // the live frames still in work finish first
@@ -325,6 +327,7 @@ async function showShot() {
   const moved = Math.max(...exact.pts.map((p, k) => Math.hypot(p[0] - livePts[k][0], p[1] - livePts[k][1])));
   if (moved > 0.002 && !(await put(exact.pts))) return;
   target = { pts: exact.pts, ok: true }; shown = exact.pts.map(p => p.slice());
+  if (!isVideo) drawPts(shown, true, img);
   $('hint').textContent = 'Shown in ' + ms + ' ms; ' + (moved > 0.002 ? 'corners refined by the accurate model (moved ' + (moved * 100).toFixed(1) + '%)' : 'the accurate model agreed') + ' in ' + total() + ' ms — Retake for another';
 }
 
@@ -335,7 +338,10 @@ function loop() {
   const avg = times.length ? times.reduce((a, b) => a + b, 0) / times.length : 300;
   if (inFlight < n && v.readyState >= 2 && now - lastSent >= avg / n) {
     inFlight++; lastSent = now;
-    runOnce(v, v.videoWidth, v.videoHeight, v).catch(e => { log('Error: ' + (e && e.message || e)); running = false; }).finally(() => { inFlight--; });
+    runOnce(v, v.videoWidth, v.videoHeight, v).then(() => { fails = 0; }).catch(e => {
+      if (!running || v.hidden) return;
+      log('Frame error: ' + (e && e.message || e)); if (++fails >= 5) { running = false; log('Stopped after 5 failed frames'); }
+    }).finally(() => { inFlight--; });
   }
   requestAnimationFrame(loop);
 }
@@ -354,8 +360,8 @@ $('snap').onclick = showShot;
 $('stop').onclick = () => { running = false; if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } };
 $('file').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
-  running = false; await ensureSession();
-  const img = $('still'); img.src = URL.createObjectURL(f); await img.decode();
+  running = false; while (inFlight) await new Promise(r => setTimeout(r, 10)); await ensureSession();
+  shotId++; const img = $('still'); img.src = URL.createObjectURL(f); await img.decode();
   img.hidden = false; $('video').hidden = true;
   $('sRes').textContent = img.naturalWidth + '×' + img.naturalHeight;
   await runOnce(img, img.naturalWidth, img.naturalHeight, img);
