@@ -40,7 +40,7 @@ export function deleteLater(kind: 'clients' | 'suppliers', id: string, name: str
  * double click opens the window once and its second click doesn't land on the
  * backdrop; a touch opens at once.
  */
-function useTapOpen(open: (id: string) => void) {
+export function useTapOpen(open: (id: string) => void) {
   const ptr = React.useRef('mouse');
   const timer = React.useRef(0);
   React.useEffect(() => () => window.clearTimeout(timer.current), []);
