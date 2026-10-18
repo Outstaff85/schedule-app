@@ -19,9 +19,11 @@ export interface DataEvents {
   /** the save indicator */
   save: 'saving' | 'saved';
   /** a message for the user (a toast) */
-  notice: {msg: Message; ms?: number};
+  notice: {msg: Message | string; ms?: number};
   /** fresh server data was applied (the page then rebuilds Form 101s waiting on a firm edit) */
   loaded: void;
+  /** the workers' requests (days off, shift offers) were read again */
+  requests: void;
 }
 type Name = keyof DataEvents;
 type Handler<K extends Name> = (payload: DataEvents[K]) => void;
@@ -35,7 +37,8 @@ export function emit<K extends Name>(name: K, ...payload: DataEvents[K] extends 
     try { fn(payload[0] as DataEvents[K]); } catch (e) { console.error('Data event ' + name + ' failed:', e); }
   }
 }
-export const notify = (msg: Message, ms?: number): void => emit('notice', {msg, ms});
+/** A toast: a Message (the data layer, untranslated) or a text the logic already translated. */
+export const notify = (msg: Message | string, ms?: number): void => emit('notice', {msg, ms});
 
 // What the data layer needs to know from the page, set once by it
 // (setHost): only questions, never drawing.

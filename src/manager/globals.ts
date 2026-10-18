@@ -35,6 +35,8 @@ import * as pay from './logic/pay';
 import * as wk from './logic/workers';
 import * as up from './logic/uploads';
 import * as fns from './logic/functions';
+import * as sched from './logic/schedule';
+import * as exp from './logic/exports';
 
 const w = window as unknown as Record<string, unknown>;
 
@@ -87,25 +89,38 @@ Object.assign(w, {
   // the functions the page calls directly, and their warm-up (logic/functions.ts)
   FORM101_FN_URL: fns.FORM101_FN_URL, PREPROCESS_SCAN_FN_URL: fns.PREPROCESS_SCAN_FN_URL, AI_FN_URL: fns.AI_FN_URL,
   USERS_ADMIN_FN_URL: fns.USERS_ADMIN_FN_URL, SCAN_WARM_URLS: fns.SCAN_WARM_URLS, __fnWarm: fns.fnWarm, warmCloudFunctions: fns.warmCloudFunctions,
+  // the Schedule: its shifts, who is shown, the workers' requests (logic/schedule.ts)
+  DAYS: sched.DAYS, DAYS_HE: sched.DAYS_HE, WORKER_COLORS: sched.WORKER_COLORS, CLIENT_COLORS: sched.CLIENT_COLORS,
+  shiftOn: sched.shiftOn, weekShifts: sched.weekShifts, workerTotalHours: sched.workerTotalHours, hasSchedule: sched.hasSchedule,
+  getVisible: sched.getVisible, filterByClient: sched.filterByClient, pruneDateShifts: sched.pruneDateShifts,
+  loadShiftRequests: sched.loadShiftRequests, decideShiftRequest: sched.decideShiftRequest,
+  // exports (logic/exports.ts)
+  fmtDate: exp.fmtDate, fmtRange: exp.fmtRange, exportExcel: exp.exportExcel, exportPDF: exp.exportPDF, exportJSON: exp.exportJSON,
+  getWorkerMonthShifts: exp.getWorkerMonthShifts, exportShiftsDetail: exp.exportShiftsDetail,
 });
 
 // The data, read and replaced by the page under its old names.
 for (const k of ['workers', 'clients', 'suppliers'] as const)
   Object.defineProperty(window, k, {get: () => state[k], set: v => { state[k] = v; }, configurable: true});
 Object.defineProperty(window, '__dataReady', {get: () => state.ready, set: v => { state.ready = !!v; }, configurable: true});
+// What the Schedule shows (logic/schedule.ts view): the week and the site filter.
+Object.defineProperty(window, 'weekStart', {get: () => sched.view.weekStart, set: v => { sched.view.weekStart = v; }, configurable: true});
+Object.defineProperty(window, 'selectedClientId', {get: () => sched.view.clientId, set: v => { sched.view.clientId = v; }, configurable: true});
 // The state the page reads by name, read-only.
 const getters: Record<string, () => unknown> = {
   __uploadsInFlight: api.uploadsRunning,
   __punchLoadedFrom: punches.punchLoadedFrom,
   __punchSynced: punches.punchSynced,
   __hoursBatches: store.hoursBatches,
+  __shiftReqs: sched.shiftRequests,
   I18N_LANG: i18n.currentLang,
   I18N: i18n.currentDict,
 };
 for (const [name, get] of Object.entries(getters)) Object.defineProperty(window, name, {get, configurable: true});
 
-// The data layer's one question about rights, answered by logic/access.ts.
-events.setHost({canWriteWorkers: () => access.hasPermission('workers') || access.hasPermission('schedule')});
+// The data layer's questions about rights and the week on screen, answered by the logic.
+events.setHost({canWriteWorkers: () => access.hasPermission('workers') || access.hasPermission('schedule'),
+  weekStart: () => sched.view.weekStart.toISOString()});
 
 api.installDispatcher();
 telemetry.installTelemetryFlush();
