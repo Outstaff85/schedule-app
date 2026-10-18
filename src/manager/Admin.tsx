@@ -1,12 +1,11 @@
 // The Admin tab of the manager app (docs/admin.md), drawn in React inside the
-// old page (stage 6f-1): the section tabs (the breadcrumb "Admin › <section>"),
-// three large tiles while no section is chosen, and the Punch Log section —
-// the figures, Log / By Client, the filters, a plate per punch (a tap edits it,
-// ⋮ / swipe, Delete through the Undo snack, Select), "Load earlier month",
-// Export CSV and Clear Log behind the Alert Dialog. The Firms, Users, Errors
-// and Timings sections are still the page's (6f-2): the page shows them under
-// these tabs. The punches, their saves and the server calls stay on the page
-// (ManagerBridge).
+// old page: the section tabs (the breadcrumb "Admin › <section>"), three large
+// tiles while no section is chosen, and the sections — the Punch Log (stage
+// 6f-1: the figures, Log / By Client, the filters, a plate per punch — a tap
+// edits it, ⋮ / swipe, Delete through the Undo snack, Select —, "Load earlier
+// month", Export CSV and Clear Log behind the Alert Dialog), and Firms, Users,
+// Errors and Timings (stage 6f-2: Firms.tsx, Users.tsx, Logs.tsx). The data,
+// its saves and the server calls stay on the page (ManagerBridge).
 import * as React from 'react';
 import {
   IconAlertCircle, IconAlertTriangle, IconBuildingSkyscraper, IconClipboardText, IconDownload, IconEdit, IconHistory, IconMapPin,
@@ -36,6 +35,9 @@ import { Line } from './pieces';
 import { Field } from './ClientEditor';
 import { useTapOpen } from './Clients';
 import { byClient, dayOf, filterChoices, filterLog, logFigures, monthCounts, NO_FILTERS, type LogFilters } from './punchlog';
+import { FirmsPane } from './Firms';
+import { UsersPane } from './Users';
+import { LogsPane } from './Logs';
 
 const PANES: { k: AdminPane; label: string; icon: React.ReactNode }[] = [
   { k: 'punchlog', label: 'Punch Log', icon: <IconClipboardText /> },
@@ -84,6 +86,9 @@ export function Admin({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }
         </div>
       )}
       {pane === 'punchlog' && (snap.ready ? <PunchLog snap={snap} api={api} /> : <Loading />)}
+      {pane === 'firms' && <FirmsPane snap={snap} api={api} />}
+      {pane === 'users' && <UsersPane snap={snap} api={api} />}
+      {(pane === 'errors' || pane === 'timings') && <LogsPane key={pane} snap={snap} api={api} />}
     </div>
   );
 }

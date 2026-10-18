@@ -24,7 +24,7 @@ import { Section } from '@/components/shared/section';
 import { PagedList } from '@/components/shared/paged-list';
 import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-mode';
 import { undoDelete } from '@/components/shared/undo';
-import type { AdminSnapshot, FirmProfile, FirmRow, ManagerBridge } from './bridge';
+import type { AdminSnapshot, FirmProfile, ManagerBridge } from './bridge';
 import { Field } from './ClientEditor';
 import { useTapOpen } from './Clients';
 import { Line } from './pieces';
@@ -87,7 +87,7 @@ function FirmsList({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }) {
         const off = t.active === false, saved = when(t.savedAt, snap.locale);
         const counts = tr('{0} workers · {1} clients{2}', { 0: t.workerCount || 0, 1: t.clientCount || 0, 2: saved ? ' · ' + tr('saved {0}', { 0: saved }) : '' });
         const flags = [off && <span key="off" className="text-warn">{tr('disabled')}</span>,
-          t.missing.length > 0 && <span key="p" className="text-warn" title={tr('Not filled in: {0}', { 0: t.missing.join(', ') })}>{tr('profile incomplete')}</span>];
+          t.missing.length > 0 && <span key="p" className="text-warn" title={tr('Not filled in: {0}', { 0: t.missing.map(m => tr(m)).join(', ') })}>{tr('profile incomplete')}</span>];
         return (
           <Plate key={t.tenantId} data-testid="firm-row" data-tid={t.tenantId} className={cn('mb-1.5', off && 'opacity-70')}
             color={off || t.missing.length ? 'var(--warn)' : 'var(--ok)'} icon={<IconBuildingSkyscraper />}
@@ -124,7 +124,7 @@ function OwnFirm({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }) {
           <span>{tr('Phone')}: {v(p.phone)}</span>
           <span>{tr('Address')}: {v(addr)}</span>
           {missing.length
-            ? <span className="inline-flex items-center gap-1 text-warn"><IconAlertTriangle className="size-3.5" />{tr('Empty in Form 101: {0}', { 0: missing.join(', ') })}</span>
+            ? <span className="inline-flex items-center gap-1 text-warn"><IconAlertTriangle className="size-3.5" />{tr('Empty in Form 101: {0}', { 0: missing.map(m => tr(m)).join(', ') })}</span>
             : <span className="inline-flex items-center gap-1 text-ok"><IconCheck className="size-3.5" />{tr('Everything Form 101 needs is filled in')}</span>}
         </span>}
         onOpen={edit} onEdit={edit} />

@@ -8,7 +8,9 @@
 // Add document, Upload / Export hours) and the client, supplier and manual
 // punch windows (stage 6d), and the Accounting tab into #accountingRoot with
 // the pay window (stage 6e) into the page's overlays, and the Admin tab's
-// section tabs and punch log into #adminRoot (stage 6f-1), which
+// section tabs and its sections into #adminRoot (stages 6f-1, 6f-2), the
+// super-admin's landing screen's firms into #firmsScreenRoot and the firm, user
+// and Add workers windows into the page's overlays (stage 6f-2), which
 // the page still opens and closes (so they stack and go back to each other
 // with its other windows: pay, the scan). The data and the page's actions come
 // through `window.ManagerBridge` (bridge.ts).
@@ -34,6 +36,9 @@ import { ManualPunch } from './ManualPunch';
 import { Accounting, setKeptTab } from './Accounting';
 import { PayWindow } from './PayWindow';
 import { Admin } from './Admin';
+import { FirmsScreen, FirmWindow } from './Firms';
+import { AssignWindow, UserWindow, type UserProps } from './Users';
+import type { AssignTeam } from './bridge';
 import { buildSalaryExportRows, clientBillPay, commissionFor, supplierCommissionRate, supplierDayCommission, hourApprovalSummary, salaryEntriesFor, supplierCommission, SUPPLIER_DEFAULT_RATE } from './accounting';
 
 declare global {
@@ -94,6 +99,7 @@ const renderClients = island('clientsRoot', b => b.clients(), (s, api) => <Clien
 const renderSuppliers = island('suppliersRoot', b => b.suppliers(), (s, api) => <Suppliers snap={s} api={api} />);
 const renderAccounting = island('accountingRoot', b => b.accounting(), (s, api) => <Accounting snap={s} api={api} />);
 const renderAdmin = island('adminRoot', b => b.admin(), (s, api) => <Admin snap={s} api={api} />);
+const renderFirmsScreen = island('firmsScreenRoot', b => b.admin(), (s, api) => <FirmsScreen snap={s} api={api} />);
 
 /**
  * A window drawn into one of the page's overlays (`.overlay > .modal#modalId`):
@@ -148,6 +154,9 @@ const clientWin = windowRoot<ClientProps>('clientModal', (p, api) => <ClientEdit
 const supplierWin = windowRoot<SupplierProps>('supplierModal', (p, api) => <SupplierEditor key={p.seq} props={p} info={api.supplierInfo(p.editId)} api={api} />);
 const manualPunch = windowRoot<{ id: string; seq: number }>('manualPunchModal', (p, api) => <ManualPunch key={p.seq} clientId={p.id} api={api} />);
 const payWin = windowRoot<{ id: string; seq: number }>('payModal', (p, api) => <PayWindow key={p.seq} wid={p.id} api={api} />);
+const firmWin = windowRoot<{ seq: number }>('firmModal', (p, api) => <FirmWindow key={p.seq} api={api} />);
+const userWin = windowRoot<UserProps>('userFormModal', (p, api) => <UserWindow key={p.seq} props={p} info={api.userInfo()} api={api} />);
+const assignWin = windowRoot<{ team: AssignTeam; seq: number }>('hrAssignModal', (p, api) => <AssignWindow key={p.seq} team={p.team} info={api.userInfo()} api={api} />);
 // The page's applyWorkerDraft / autoFindMissingScanFields come right after openEditor: the window is drawn by then (flushSync).
 let seq = 0;
 
@@ -174,7 +183,7 @@ window.ManagerIsland = {
   openDocUpload: id => docUpload.show({ id, seq: ++seq }),
   openHoursImport: id => hoursImport.show({ id, seq: ++seq }),
   openHoursExport: id => hoursExport.show({ id, seq: ++seq }),
-  refreshWindows: () => { card.refresh(); notices.refresh(); workerWin.refresh(); },
+  refreshWindows: () => { card.refresh(); notices.refresh(); workerWin.refresh(); userWin.refresh(); assignWin.refresh(); },
   openClient: (c, editId) => clientWin.show({ c, editId, seq: ++seq }),
   saveClient: opts => { clientWindow.current?.save(opts); },
   openSupplier: (s, editId) => supplierWin.show({ s, editId, seq: ++seq }),
@@ -183,6 +192,10 @@ window.ManagerIsland = {
   setAccTab: k => { setKeptTab(k); renderAccounting(); },
   openPay: id => payWin.show({ id, seq: ++seq }),
   renderAdmin,
+  renderFirmsScreen,
+  openFirm: () => firmWin.show({ seq: ++seq }),
+  openUser: (u, preset) => userWin.show({ u, preset, seq: ++seq }),
+  openAssign: team => assignWin.show({ team, seq: ++seq }),
 };
 // The Accounting figures for the page's other callers (the client and supplier
 // windows, the user form's HR commission, the bell's approvals): its one-line

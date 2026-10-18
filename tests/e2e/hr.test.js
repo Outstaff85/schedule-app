@@ -39,6 +39,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       // The worker windows are React (stage 6c-2): a field is filled as a person types (the input event).
       window.T = {
         tick: (ms = 0) => new Promise(r => setTimeout(r, ms)),
+        // the user window (React, stage 6f-2): a tile's tick box, the role switch, Save and its error line
+        q: sel => document.querySelector('#userFormModal ' + sel),
+        tile: (group, k) => document.querySelector('#userFormModal [data-testid="' + group + '"] [data-k="' + k + '"]'),
+        ticked: group => [...document.querySelectorAll('#userFormModal [data-testid="' + group + '"] [data-k]')].filter(x => x.dataset.state === 'checked').map(x => x.dataset.k).join(','),
+        role: r => document.querySelector('#userFormModal [data-testid="user-role"] [data-v="' + r + '"]').click(),
+        // Save: the click, then the save running (the button off), then the window closed or the button back with its error
+        // (React draws after a microtask: a test ticks before it clicks Save, so Save sees the last change)
+        async save(){ const open = () => document.getElementById('userFormOverlay').classList.contains('open'), btn = () => document.querySelector('#userFormModal [data-testid="user-save"]');
+          btn().click(); await T.tick(50);
+          await T.until(() => !open() || !btn() || !btn().disabled, 15000); await T.tick(100); },
+        err: () => { const e = document.querySelector('#userFormModal [data-testid="user-error"]'); return e ? e.textContent : ''; },
         async until(fn, ms = 8000){ const end = Date.now() + ms; while (Date.now() < end){ if (fn()) return true; await new Promise(r => setTimeout(r, 100)); } return !!fn(); },
         fill(sel, v){ const el = typeof sel === 'string' ? (document.getElementById(sel) || document.querySelector(sel)) : sel;
           Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true})); },
@@ -70,23 +81,24 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const made = await p.evaluate(async () => {
     workers[0].docId = '000000018'; await gsSave(getDataObj());
     switchTab('admin'); switchAdminPane('users');
-    openCreateUserForm();
-    const role = document.getElementById('userFormRole'); role.value = 'hr'; role.dispatchEvent(new Event('change'));
-    const r = {hrFields: document.getElementById('userFormHrFields').style.display !== 'none',
-      perms: [...document.querySelectorAll('.userFormPermCb:checked')].map(c => c.value).join(','),
-      own: document.getElementById('userFormOwnOnly').checked};
-    userFormUsername.value = 'hr1'; userFormPassword.value = 'hr-pass-111';
-    userFormFullName.value = 'Rina HR'; userFormPhone.value = '0521112233';
-    r.showPayTile = document.getElementById('userFormShowPayGrid').style.display !== 'none'; userFormCommission.value = '4';
-    document.querySelector('.userFormPermCb[value="accounting"]').checked = true; // the reduced pay view
-    ['hours', 'approve', 'dispute'].forEach(v => { document.querySelector('.userFormHourPermCb[value="' + v + '"]').checked = true; }); // hours review
-    await submitUserForm();
-    for(let i = 0; i < 40 && !document.getElementById('adminUsersWrap').innerText.includes('Rina HR'); i++) await new Promise(res => setTimeout(res, 150));
-    r.listed = document.getElementById('adminUsersWrap').innerText;
+    openCreateUserForm(); await T.tick(100);
+    T.role('hr'); await T.tick(50);
+    const own = T.q('button[data-testid="user-own-only"]');
+    const r = {hrFields: !!own && !own.disabled, perms: T.ticked('user-perms'), own: !!own && own.dataset.state === 'checked'};
+    T.fill('uUsername', 'hr1'); T.fill('uPassword', 'hr-pass-111');
+    T.fill('uFullName', 'Rina HR'); T.fill('uPhone', '0521112233');
+    r.showPayTile = !!T.q('[data-testid="user-show-pay"]'); T.fill('uCommission', '4');
+    T.tile('user-perms', 'accounting').click(); await T.tick(50); // the reduced pay view (a React draw before the next step)
+    // hours review: a new HR starts with the default ticks (Hours, Approve, Dispute, Fix)
+    r.ticks = T.ticked('user-hours');
+    await T.save();
+    await T.until(() => [...document.querySelectorAll('#adminRoot [data-testid="user-row"]')].some(x => x.innerText.includes('Rina HR')), 9000);
+    const row = [...document.querySelectorAll('#adminRoot [data-testid="user-row"]')].find(x => x.innerText.includes('Rina HR'));
+    r.listed = row ? row.innerText : document.querySelector('#adminRoot').innerText;
     return r;
   });
-  ok(made.hrFields && made.perms === 'workers' && made.own && !made.showPayTile, 'owner: HR form shows name/phone, Workers only, own-only on ' + JSON.stringify(made).slice(0, 120));
-  ok(/Rina HR HR\nlogin: hr1 · 0521112233\n.*0 workers/.test(made.listed), 'owner: user row: name first, login and phone below, worker count ' + JSON.stringify(made.listed));
+  ok(made.hrFields && made.perms === 'workers' && made.own && !made.showPayTile && made.ticks === 'hours,approve,dispute,fix', 'owner: HR form shows name/phone, Workers only, own-only on ' + JSON.stringify(made).slice(0, 160));
+  ok(/Rina HR HR\s*\nlogin: hr1 · 0521112233\n.*0 workers/.test(made.listed), 'owner: user row: name first, login and phone below, worker count ' + JSON.stringify(made.listed));
   const me = await p.evaluate(async () => {
     const before = document.getElementById('accountLabelCenter').innerText;
     window.prompt = () => 'Avi Owner';
@@ -96,16 +108,16 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(/owner1/.test(me.before) && /Avi Owner/.test(me.after) && me.sess === 'Avi Owner', 'owner: header shows the login until a name is set, then the name ' + JSON.stringify(me));
   const asg = await p.evaluate(async () => {
     const hr = hrUsers()[0];
-    await openEditUserForm(hr.id);
-    const r = {cardWorkers: document.getElementById('userFormHrWorkersField').style.display !== 'none', roleLocked: userFormRole.disabled};
-    openHrAssignModal();
-    r.choices = document.querySelectorAll('#hrAssignList input[type=checkbox]').length;
-    const box = [...document.querySelectorAll('#hrAssignList label')].find(l => /Dana/.test(l.textContent)).querySelector('input');
-    box.checked = true; box.dispatchEvent(new Event('change'));
-    await submitHrAssign();
+    await openEditUserForm(hr.id); await T.tick(150);
+    const r = {cardWorkers: !!T.q('[data-sec="workers"]'), roleLocked: !T.q('[data-testid="user-role"]')};
+    T.q('[data-testid="user-add-workers"]').click(); await T.tick(300);
+    r.choices = document.querySelectorAll('#hrAssignModal [data-testid="assign-worker"]').length;
+    document.querySelector('#hrAssignModal [data-testid="assign-worker"][data-wid="w2"]').click(); await T.tick(50);
+    document.querySelector('#hrAssignModal [data-testid="assign-save"]').click();
+    await T.until(() => !document.getElementById('hrAssignOverlay').classList.contains('open'), 8000); await T.tick(300);
     r.hr = hr.id;
     r.dana = workers.find(w => w.id === 'w2').hrId;
-    r.inCard = document.getElementById('userFormHrWorkers').innerText;
+    r.inCard = T.q('[data-testid="user-team"]').textContent;
     await new Promise(res => setTimeout(res, 1500));
     const b = await loadFirestoreBackend();
     const ps = await b.punchesBetween(fsTenantId(), new Date(Date.now() - 30*864e5), new Date(Date.now() + 864e5));
@@ -128,14 +140,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(p.errs.length === 0, 'owner: no page errors ' + p.errs.join(' | '));
   const hrUid = asg.hr;
   const pw = await p.evaluate(async (id) => {
-    await openEditUserForm(id);
-    const r = {label: userFormPasswordLabel.textContent, shown: userFormPasswordField.style.display !== 'none', empty: userFormPassword.value === '',
-      noKey: !document.querySelector('#adminUsersWrap .ti-key')};
-    userFormPassword.value = 'short';
-    await submitUserForm();
-    r.shortErr = userFormError.textContent;
-    userFormPassword.value = 'hr-pass-222';
-    await submitUserForm();
+    await openEditUserForm(id); await T.tick(150);
+    const pw = document.getElementById('uPassword');
+    const r = {label: document.querySelector('label[for="uPassword"]').textContent, shown: !!pw, empty: pw.value === '',
+      noKey: !document.querySelector('#adminRoot [data-testid="users"] .ti-key')};
+    T.fill('uPassword', 'short');
+    await T.save();
+    r.shortErr = T.err();
+    T.fill('uPassword', 'hr-pass-222');
+    await T.save();
     r.closed = !document.getElementById('userFormOverlay').classList.contains('open');
     return r;
   }, hrUid);
@@ -230,10 +243,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(nope.rate === false && nope.bank === false && nope.other === true, 'hr: without "Edit own workers\' pay" the server refuses a rate or bank change, other edits save ' + JSON.stringify(nope));
   // The owner ticks "Edit own workers' pay"; the HR signs in again.
   const tick = await p.evaluate(async (id) => {
-    await openEditUserForm(id);
-    const chip = document.getElementById('userFormPayEditChip'); const r = {shown: chip.style.display !== 'none'};
-    chip.querySelector('input').checked = true;
-    await submitUserForm();
+    await openEditUserForm(id); await T.tick(150);
+    const chip = T.tile('user-perms', 'payEdit'); const r = {shown: !!chip};
+    if(chip) chip.click(); await T.tick(50);
+    await T.save();
     r.closed = !document.getElementById('userFormOverlay').classList.contains('open');
     return r;
   }, hrUid);
@@ -311,16 +324,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const s1 = await p.evaluate(async (hrUid) => {
     const r = {};
     // editing only the HR's name keeps its session; the owner row edits name only
-    await openEditUserForm(hrUid);
-    userFormFullName.value = 'Rina Cohen';
-    await submitUserForm();
-    r.hrErr = userFormError.textContent;
+    await openEditUserForm(hrUid); await T.tick(150);
+    T.fill('uFullName', 'Rina Cohen');
+    await T.save();
+    r.hrErr = T.err();
     const own = (await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'listUsers'})})).json()).users.find(u=>u.role==='tenant_admin');
-    await openEditUserForm(own.id);
-    r.ownerRoleHidden = document.getElementById('userFormRoleField').style.display==='none' && document.getElementById('userFormPermsField').style.display==='none';
-    userFormFullName.value = 'Avi Boss';
-    await submitUserForm();
-    r.ownerErr = userFormError.textContent;
+    await T.tick(300);
+    await openEditUserForm(own.id); await T.tick(150);
+    r.ownerRoleHidden = !T.q('[data-testid="user-role"]') && !T.q('[data-testid="user-perms"]') && !T.q('[data-sec="sections"]');
+    T.fill('uFullName', 'Avi Boss');
+    await T.save();
+    r.ownerErr = T.err();
     r.header = document.getElementById('accountLabelCenter').innerText;
     return r;
   }, hrUid);
@@ -336,12 +350,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const rc = await p.evaluate(async () => {
     const r = {};
     const sup = (await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'listUsers'})})).json()).users.find(u=>u.role==='supplier');
-    await openEditUserForm(sup.id);
-    r.enabled = !userFormRole.disabled;
-    userFormRole.value = 'staff'; userFormRole.dispatchEvent(new Event('change'));
-    document.querySelector('.userFormPermCb[value="workers"]').checked = true;
-    await submitUserForm();
-    r.err = userFormError.textContent;
+    await openEditUserForm(sup.id); await T.tick(150);
+    r.enabled = !!T.q('[data-testid="user-role"]');
+    T.role('staff'); await T.tick(50);
+    if(T.ticked('user-perms') !== 'workers') T.tile('user-perms', 'workers').click(); await T.tick(50);
+    await T.save();
+    r.err = T.err();
     const u2 = (await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'listUsers'})})).json()).users.find(u=>u.id===sup.id);
     r.role = u2.role; r.perms = u2.permissions;
     return r;
