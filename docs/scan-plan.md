@@ -31,6 +31,7 @@ Status: **planned** — no stage started. Each stage is merged only with the own
   - each page appears in the queue as soon as its frame is found (a green mark); the user corrects page 1 while the rest are still being detected; a photo with two documents becomes two pages in the queue;
   - on Done, the AI reads, the digit verification and the MRZ of all pages start at once (`Promise.all`) and are merged in page order (CLAUDE.md → Parallel AI calls).
 - Through the shared upload helpers (`filesToUploadPages` / `downscaleForUpload` / `fileForStorage`).
+- **Background threads (Web Workers, no special headers needed):** the image preparation (rotation, downscale, PDF → images, 2–4 pages at once), the detection model and the perspective warp each run off the page's thread, so the screen and the queue stay smooth while pages are processed.
 
 ### S2b — camera with a live frame
 
@@ -38,6 +39,8 @@ Status: **planned** — no stage started. Each stage is merged only with the own
 - The model runs on the phone's GPU (WebGPU) where available, else on the CPU (WASM); on the phone the model runs one frame at a time (the GPU queue is serial — parallel runs would only cost memory).
 - A live frame over the camera like CamScanner: the light model (5 MB) draws the frame on every camera frame and the drawn frame glides toward it on every screen frame; at capture the frozen frame goes once through the accurate model for the exact corners; both models are warmed up at load (the first GPU run compiles its shaders).
 - Autocapture when the green frame has held still for 2 s (a countdown shown).
+- The models and the warp run in a background thread (Web Worker); the page only draws the camera picture and the frame, so the frame never stutters while the model works.
+- **GPU self-check:** after loading, each model is run on the GPU on a drawn card with known corners; when the GPU gets it wrong (seen on a real Android phone: the GPU ran, the corners were wrong), that model runs on the CPU instead.
 - The phone model is stored as fp16 weights with fp32 math (`Cast` in front of each weight): a plain fp16 conversion gives zeros on WebGPU.
 - Multithreaded CPU (WASM threads) needs the page cross-origin isolated (`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`); on the manager page this can break the sign-in popup and cross-origin fonts/images, so it is turned on there only after a separate check and with the owner's OK.
 - The test page `scan-test/` and its workflow `.github/workflows/scan-test-preview.yml` (a Firebase preview channel) are temporary and are removed before any PR into `main`.

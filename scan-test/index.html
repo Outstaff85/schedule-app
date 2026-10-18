@@ -47,6 +47,7 @@
   <label class="btn">Photo… <input id="file" type="file" accept="image/*" hidden></label>
   <button id="snap">Capture</button>
   <button id="stop">Stop</button>
+  <label class="btn" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="useWorker" checked> Background thread</label>
 </div>
 <div id="status" style="font-size:13px;color:var(--ink2)">Starting…</div>
 <div class="bar"><i id="prog"></i></div>
@@ -67,112 +68,85 @@
   <div class="stat"><b id="sConf">—</b><span>confidence (≥ 0.50 = found)</span></div>
   <div class="stat"><b id="sLoad">—</b><span>model load, s</span></div>
   <div class="stat"><b id="sRes">—</b><span>camera resolution</span></div>
+  <div class="stat"><b id="sUi">—</b><span>screen frames/s (smoothness)</span></div>
+  <div class="stat"><b id="sCap">—</b><span>capture, ms</span></div>
 </div>
 <div id="log"></div>
 
 <script src="/scan-test/ort/ort.all.min.js"></script>
+<script src="/scan-test/scan-core.js"></script>
 <script>
 const $ = id => document.getElementById(id);
-const log = s => { $('log').textContent = s + '\n' + $('log').textContent; };
-const status = s => { $('status').textContent = s; };
+const log = t => { $('log').textContent = t + '\n' + $('log').textContent; };
+const status = (t, frac) => { $('status').textContent = t; if (frac != null) $('prog').style.width = Math.round(frac * 100) + '%'; };
 window.addEventListener('error', e => log('Page error: ' + e.message));
 window.addEventListener('unhandledrejection', e => log('Error: ' + (e.reason && e.reason.message || e.reason)));
-if (typeof ort === 'undefined') { document.addEventListener('DOMContentLoaded', () => log('ONNX Runtime did not load (ort.all.min.js)')); }
+if (typeof ort === 'undefined') log('ONNX Runtime did not load (ort.all.min.js)');
 ort.env.wasm.wasmPaths = location.origin + '/scan-test/ort/';
 // Several CPU threads need a cross-origin isolated page (COOP/COEP headers on /scan-test).
 const THREADS = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
 ort.env.wasm.numThreads = THREADS;
 
-let smooth = null, steadySince = 0, lastRes = null;
 const STEADY_MS = 2000, MOVE = 0.02;
-let session = null, capSession = null, sessionKey = '', target = null, shown = null, running = false, stream = null, busy = false;
-const times = [], frames = [];
-const S = 256, H = 128;
-const work = document.createElement('canvas'); work.width = S; work.height = S;
-const wctx = work.getContext('2d', { willReadFrequently: true });
+let smooth = null, steadySince = 0, lastRes = null, target = null, shown = null;
+let engine = null, engineKey = '', running = false, stream = null, busy = false;
+const times = [], frames = [], uiFrames = [];
+const small = document.createElement('canvas'); small.width = S; small.height = S;
+const sctx = small.getContext('2d', { willReadFrequently: true });
 
-async function fetchModel(name) {
-  try {
-    const cache = await caches.open('scan-test-models');
-    const hit = await cache.match(name);
-    if (hit) { $('prog').style.width = '100%'; return new Uint8Array(await hit.arrayBuffer()); }
-    const res = await fetch('/scan-test/' + name);
-    if (!res.ok) throw new Error('model download failed: HTTP ' + res.status);
-    const total = +res.headers.get('content-length') || 0;
-    const reader = res.body.getReader(); const parts = []; let got = 0;
-    for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); got += value.length; if (total) $('prog').style.width = Math.min(100, got / total * 100) + '%'; status('Downloading the model: ' + (got / 1e6).toFixed(1) + (total ? ' / ' + (total / 1e6).toFixed(1) : '') + ' MB'); }
-    const buf = new Uint8Array(got); let o = 0; for (const p of parts) { buf.set(p, o); o += p.length; }
-    try { await cache.put(name, new Response(buf)); } catch (e) {}
-    return buf;
-  } catch (e) {
-    log('Model download: ' + (e && e.message || e));
-    const res = await fetch('/scan-test/' + name); return new Uint8Array(await res.arrayBuffer());
-  }
+// Two engines with one interface: in the page itself, or in the background worker.
+function pageEngine() {
+  let live = null, cap = null;
+  return {
+    async load(liveName, capName, want) {
+      const a = await openSession(liveName, want, status, log); live = a.sess;
+      const b = capName ? await openSession(capName, want, status, log) : a; cap = b.sess;
+      return a.ep + (b.ep !== a.ep ? '/' + b.ep : '');
+    },
+    hasCap: () => cap !== live,
+    async detect(which, rgba) { const t = performance.now(); const res = await detectRGBA(which === 'cap' ? cap : live, rgba); return { res, ms: performance.now() - t }; },
+    async warp(rgba, w, h, pts) { return warpRGBA(rgba, w, h, pts); },
+    stop() {},
+  };
+}
+function workerEngine() {
+  const w = new Worker('/scan-test/scan-worker.js'), waiting = new Map(); let n = 0, two = false;
+  w.onmessage = ({ data: m }) => {
+    if (m.type === 'status') status(m.text, m.frac);
+    else if (m.type === 'log') log(m.text);
+    else if (m.type === 'reply') { const p = waiting.get(m.id); waiting.delete(m.id); m.error ? p.reject(new Error(m.error)) : p.resolve(m); }
+  };
+  w.onerror = e => log('Worker error: ' + e.message);
+  const call = (msg, transfer) => new Promise((resolve, reject) => { msg.id = ++n; waiting.set(msg.id, { resolve, reject }); w.postMessage(msg, transfer || []); });
+  return {
+    async load(liveName, capName, want) { two = !!capName; return (await call({ type: 'load', live: liveName, cap: capName, want, threads: THREADS })).ep; },
+    hasCap: () => two,
+    async detect(which, rgba) { const m = await call({ type: 'detect', which, rgba: rgba.buffer }, [rgba.buffer]); return { res: m.res, ms: m.ms }; },
+    async warp(rgba, wd, h, pts) { return (await call({ type: 'warp', rgba: rgba.buffer, w: wd, h, pts }, [rgba.buffer])).out; },
+    stop() { w.terminate(); },
+  };
 }
 
-async function openSession(model, want) {
-  const bytes = await fetchModel(model);
-  const order = want === 'auto' ? ['webgpu', 'wasm'] : [want];
-  for (const ep of order) {
-    if (ep === 'webgpu' && !navigator.gpu) { log('WebGPU is not available in this browser'); continue; }
-    try {
-      const sess = await ort.InferenceSession.create(bytes, { executionProviders: [ep], graphOptimizationLevel: 'all' });
-      // Warm-up: the first run compiles the GPU shaders; do it now, not at the first frame / capture.
-      status('Warming up ' + model + '…');
-      await sess.run({ [sess.inputNames[0]]: new ort.Tensor('float32', new Float32Array(3 * S * S), [1, 3, S, S]) });
-      return { s: sess, ep };
-    }
-    catch (e) { log('Could not start ' + model + ' on ' + ep + ': ' + (e && e.message || e)); }
-  }
-  throw new Error('no backend for ' + model);
-}
-
-// The live model draws the frame on every camera frame; the capture model
-// (the accurate one) runs once on the captured frame for the exact corners.
 async function ensureSession() {
-  const [live, cap] = $('model').value.split('+'), want = $('backend').value, key = $('model').value + '|' + want;
-  if (session && sessionKey === key) return;
-  session = capSession = null; $('sBackend').textContent = 'loading…'; $('startCam').disabled = true; status('Preparing the model…');
-  const t0 = performance.now();
+  const [live, cap] = $('model').value.split('+'), want = $('backend').value, inWorker = $('useWorker').checked;
+  const key = $('model').value + '|' + want + '|' + inWorker;
+  if (engine && engineKey === key) return;
+  if (engine) engine.stop();
+  engine = null; $('sBackend').textContent = 'loading…'; $('startCam').disabled = true; status('Preparing the model…', 0);
+  const t0 = performance.now(), e = inWorker ? workerEngine() : pageEngine();
   try {
-    const a = await openSession(live, want); session = a.s;
-    capSession = cap ? (await openSession(cap, want)).s : session;
-    $('sBackend').textContent = a.ep === 'webgpu' ? 'GPU' : 'CPU ×' + THREADS;
-    log('Live model ' + live + (cap ? ', capture model ' + cap : '') + ' on ' + a.ep);
-  } catch (e) {
-    $('sBackend').textContent = 'failed'; status('The model could not start — see the log below'); $('startCam').disabled = false; throw e;
+    const ep = await e.load(live, cap, want);
+    $('sBackend').textContent = ep.split('/').map(x => x === 'webgpu' ? 'GPU' : 'CPU ×' + THREADS).join(' + ') + (inWorker ? ' · bg' : ' · page');
+    log('Live ' + live + (cap ? ', capture ' + cap : '') + ' on ' + ep + (inWorker ? ', in the background thread' : ', in the page'));
+  } catch (err) {
+    e.stop(); $('sBackend').textContent = 'failed'; status('The model could not start — see the log below'); $('startCam').disabled = false; throw err;
   }
-  sessionKey = key; times.length = 0; frames.length = 0; $('startCam').disabled = false; status('Model ready — scanning is available');
+  engine = e; engineKey = key; times.length = 0; frames.length = 0; $('startCam').disabled = false;
+  status('Model ready — scanning is available', 1);
   $('sLoad').textContent = ((performance.now() - t0) / 1000).toFixed(1);
 }
 
-function toTensor(src, w, h) {
-  wctx.drawImage(src, 0, 0, w, h, 0, 0, S, S);
-  const d = wctx.getImageData(0, 0, S, S).data, n = S * S, f = new Float32Array(3 * n);
-  for (let i = 0; i < n; i++) { f[i] = d[i * 4] / 255; f[n + i] = d[i * 4 + 1] / 255; f[2 * n + i] = d[i * 4 + 2] / 255; }
-  return new ort.Tensor('float32', f, [1, 3, S, S]);
-}
-
-// Each of the 4 heatmaps: the blob around its peak (>= 0.3), its centre.
-function corners(hm) {
-  const pts = [], confs = [];
-  for (let k = 0; k < 4; k++) {
-    const off = k * H * H; let mi = 0, mv = -1;
-    for (let i = 0; i < H * H; i++) { const v = hm[off + i]; if (v > mv) { mv = v; mi = i; } }
-    confs.push(mv);
-    if (mv < 0.3) { pts.push(null); continue; }
-    const seen = new Uint8Array(H * H), q = [mi]; seen[mi] = 1; let sx = 0, sy = 0, sw = 0;
-    while (q.length) {
-      const i = q.pop(), x = i % H, y = (i / H) | 0, v = hm[off + i]; sx += x * v; sy += y * v; sw += v;
-      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
-        const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= H || ny >= H) continue;
-        const j = ny * H + nx; if (!seen[j] && hm[off + j] >= 0.3) { seen[j] = 1; q.push(j); }
-      }
-    }
-    pts.push([(sx / sw + 0.5) / H, (sy / sw + 0.5) / H]);
-  }
-  return { pts, conf: Math.min(...confs) };
-}
+function smallRGBA(src, w, h) { sctx.drawImage(src, 0, 0, w, h, 0, 0, S, S); return sctx.getImageData(0, 0, S, S).data; }
 
 // Average the corners over frames so the frame does not jitter; a big jump resets it.
 function smoothen(res) {
@@ -184,45 +158,6 @@ function smoothen(res) {
   return { pts: smooth, conf: res.conf, steady: now - steadySince };
 }
 
-// Perspective warp of the quad (0..1 coords of src) to a flat rectangle.
-function homography(from, to) {
-  const A = [], b = [];
-  for (let i = 0; i < 4; i++) {
-    const [x, y] = from[i], [u, v] = to[i];
-    A.push([x, y, 1, 0, 0, 0, -u * x, -u * y]); b.push(u);
-    A.push([0, 0, 0, x, y, 1, -v * x, -v * y]); b.push(v);
-  }
-  for (let c = 0; c < 8; c++) {
-    let m = c; for (let r = c + 1; r < 8; r++) if (Math.abs(A[r][c]) > Math.abs(A[m][c])) m = r;
-    [A[c], A[m]] = [A[m], A[c]]; [b[c], b[m]] = [b[m], b[c]];
-    for (let r = 0; r < 8; r++) if (r !== c) { const f = A[r][c] / A[c][c]; for (let k = c; k < 8; k++) A[r][k] -= f * A[c][k]; b[r] -= f * b[c]; }
-  }
-  return b.map((v, i) => v / A[i][i]);
-}
-function capture(src, w, h, pts) {
-  const full = document.createElement('canvas'); full.width = w; full.height = h;
-  const fctx = full.getContext('2d'); fctx.drawImage(src, 0, 0, w, h);
-  const P = pts.map(([x, y]) => [x * w, y * h]);
-  const d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
-  const W = Math.round(Math.max(d(P[0], P[1]), d(P[3], P[2]))), Hh = Math.round(Math.max(d(P[0], P[3]), d(P[1], P[2])));
-  const Hm = homography([[0, 0], [W, 0], [W, Hh], [0, Hh]], P);
-  const sd = fctx.getImageData(0, 0, w, h).data;
-  const out = document.createElement('canvas'); out.width = W; out.height = Hh;
-  const octx = out.getContext('2d'), od = octx.createImageData(W, Hh);
-  for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
-    const z = Hm[6] * x + Hm[7] * y + 1, sx = (Hm[0] * x + Hm[1] * y + Hm[2]) / z, sy = (Hm[3] * x + Hm[4] * y + Hm[5]) / z;
-    const ix = sx | 0, iy = sy | 0; if (ix < 0 || iy < 0 || ix >= w - 1 || iy >= h - 1) continue;
-    const fx = sx - ix, fy = sy - iy, o = (y * W + x) * 4;
-    for (let c = 0; c < 3; c++) {
-      const i0 = (iy * w + ix) * 4 + c;
-      od.data[o + c] = (sd[i0] * (1 - fx) + sd[i0 + 4] * fx) * (1 - fy) + (sd[i0 + w * 4] * (1 - fx) + sd[i0 + w * 4 + 4] * fx) * fy;
-    }
-    od.data[o + 3] = 255;
-  }
-  octx.putImageData(od, 0, 0);
-  return out.toDataURL('image/jpeg', 0.9);
-}
-
 function drawPts(pts, ok, el) {
   const c = $('overlay'), r = el.getBoundingClientRect(), dpr = devicePixelRatio || 1;
   if (c.width !== Math.round(r.width * dpr) || c.height !== Math.round(r.height * dpr)) { c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr); }
@@ -232,12 +167,11 @@ function drawPts(pts, ok, el) {
   g.beginPath(); pts.forEach(([x, y], i) => { const X = x * c.width, Y = y * c.height; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.closePath(); g.fill(); g.stroke();
   g.fillStyle = g.strokeStyle; pts.forEach(([x, y]) => { g.beginPath(); g.arc(x * c.width, y * c.height, 7 * dpr, 0, 7); g.fill(); });
 }
-function draw(res, el) {
-  target = res.pts.some(p => !p) ? null : { pts: res.pts, ok: res.conf >= 0.5 };
-  if (el.tagName !== 'VIDEO') { shown = target && target.pts.map(p => p.slice()); drawPts(shown, target && target.ok, el); }
-}
-// Every screen frame (60/s) the drawn frame glides toward the latest model result.
+// Every screen frame the drawn frame glides toward the latest model result;
+// the screen frames per second show how smooth the page stays.
 function animate() {
+  const now = performance.now(); uiFrames.push(now); while (uiFrames.length && now - uiFrames[0] > 1000) uiFrames.shift();
+  $('sUi').textContent = uiFrames.length;
   const v = $('video');
   if (!v.hidden) {
     if (!target) shown = null;
@@ -249,44 +183,45 @@ function animate() {
 }
 requestAnimationFrame(animate);
 
-async function detect(sess, src, w, h) {
-  const out = await sess.run({ [sess.inputNames[0]]: toTensor(src, w, h) });
-  const hm = out[sess.outputNames[0]].data;
-  return corners(hm instanceof Float32Array ? hm : Float32Array.from(hm));
-}
-
 async function runOnce(src, w, h, el) {
-  const t = performance.now();
-  const raw = await detect(el.tagName === 'VIDEO' ? session : capSession, src, w, h);
-  const ms = performance.now() - t;
-  const res = el.tagName === 'VIDEO' ? smoothen(raw) : raw;
+  const isVideo = el.tagName === 'VIDEO';
+  const { res: raw, ms } = await engine.detect(isVideo ? 'live' : 'cap', smallRGBA(src, w, h));
+  const res = isVideo ? smoothen(raw) : raw;
   times.push(ms); if (times.length > 20) times.shift();
   const now = performance.now(); frames.push(now); while (frames.length && now - frames[0] > 2000) frames.shift();
   $('sMs').textContent = Math.round(times.reduce((a, b) => a + b, 0) / times.length);
   $('sFps').textContent = (frames.length / Math.max(0.5, (now - frames[0]) / 1000)).toFixed(1);
   $('sConf').textContent = res.conf.toFixed(2);
-  draw(res, el); lastRes = res;
+  target = res.pts.some(p => !p) ? null : { pts: res.pts, ok: res.conf >= 0.5 };
+  if (!isVideo) { shown = target && target.pts.map(p => p.slice()); drawPts(shown, target && target.ok, el); }
+  lastRes = res;
   const missing = raw.pts.filter(p => !p).length;
   $('hint').textContent = missing ? (missing === 4 ? 'No document in the frame' : missing + ' corner(s) outside the frame — move the phone back')
     : res.conf < 0.5 ? 'Edges not clear — more light, a darker background' : res.steady != null && res.steady < STEADY_MS ? 'Hold still… ' + ((STEADY_MS - res.steady) / 1000).toFixed(1) + ' s' : 'Found';
-  if (el.tagName === 'VIDEO' && $('auto').checked && res.steady >= STEADY_MS) showShot();
+  if (isVideo && $('auto').checked && res.steady >= STEADY_MS) showShot();
 }
 
+// Freeze the frame, take the exact corners from the accurate model, straighten.
 async function showShot() {
   const v = $('video'), img = $('still'), isVideo = !v.hidden, el = isVideo ? v : img;
   if (!lastRes || lastRes.pts.some(p => !p)) { $('hint').textContent = 'No frame to capture yet'; return; }
   running = false;
   const t0 = performance.now(), w = isVideo ? v.videoWidth : img.naturalWidth, h = isVideo ? v.videoHeight : img.naturalHeight;
-  const frame = document.createElement('canvas'); frame.width = w; frame.height = h; frame.getContext('2d').drawImage(el, 0, 0, w, h);
+  const frame = document.createElement('canvas'); frame.width = w; frame.height = h;
+  const fctx = frame.getContext('2d'); fctx.drawImage(el, 0, 0, w, h);
   let pts = lastRes.pts, how = 'live frame';
-  if (isVideo && capSession !== session) {
+  if (isVideo && engine.hasCap()) {
     $('hint').textContent = 'Taking the exact corners…';
-    const exact = await detect(capSession, frame, w, h);
+    const { res: exact } = await engine.detect('cap', smallRGBA(frame, w, h));
     if (!exact.pts.some(p => !p) && exact.conf >= 0.5) { pts = exact.pts; how = 'accurate model'; }
-    target = { pts, ok: true }; shown = pts.map(p => p.slice()); drawPts(shown, true, v);
+    target = { pts, ok: true }; shown = pts.map(p => p.slice());
   }
-  $('shotImg').src = capture(frame, w, h, pts);
-  $('shot').hidden = false; $('hint').textContent = 'Captured and straightened by the ' + how + ' (' + Math.round(performance.now() - t0) + ' ms) — Retake for another';
+  const out = await engine.warp(fctx.getImageData(0, 0, w, h).data, w, h, pts);
+  const oc = document.createElement('canvas'); oc.width = out.width; oc.height = out.height;
+  oc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
+  $('shotImg').src = oc.toDataURL('image/jpeg', 0.9);
+  const ms = Math.round(performance.now() - t0); $('sCap').textContent = ms;
+  $('shot').hidden = false; $('hint').textContent = 'Captured and straightened by the ' + how + ' (' + ms + ' ms) — Retake for another';
   $('shot').scrollIntoView({ behavior: 'smooth' });
 }
 
@@ -310,7 +245,7 @@ $('startCam').onclick = async () => {
     running = true; loop();
   } catch (e) { log('Camera / model error: ' + (e && e.message || e)); }
 };
-$('retake').onclick = () => { $('shot').hidden = true; smooth = null; target = shown = null; steadySince = 0; if (stream) { running = true; loop(); } else $('startCam').click(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+$('retake').onclick = () => { $('shot').hidden = true; smooth = null; steadySince = 0; target = shown = null; if (stream) { running = true; loop(); } else $('startCam').click(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 $('snap').onclick = showShot;
 $('stop').onclick = () => { running = false; if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } };
 $('file').onchange = async e => {
@@ -319,13 +254,16 @@ $('file').onchange = async e => {
   const img = $('still'); img.src = URL.createObjectURL(f); await img.decode();
   img.hidden = false; $('video').hidden = true;
   $('sRes').textContent = img.naturalWidth + '×' + img.naturalHeight;
-  for (let i = 0; i < 3; i++) await runOnce(img, img.naturalWidth, img.naturalHeight, img);
+  await runOnce(img, img.naturalWidth, img.naturalHeight, img);
   if (lastRes && !lastRes.pts.some(p => !p)) showShot();
 };
-$('model').onchange = $('backend').onchange = async () => { const was = running; running = false; await ensureSession().catch(() => {}); if (was) { running = true; loop(); } };
+$('model').onchange = $('backend').onchange = $('useWorker').onchange = async () => {
+  const was = running; running = false; while (busy) await new Promise(r => setTimeout(r, 30));
+  await ensureSession().catch(() => {}); if (was) { running = true; loop(); }
+};
 log('GPU (WebGPU) in this browser: ' + (navigator.gpu ? 'yes' : 'no'));
 log('CPU threads: ' + THREADS + (self.crossOriginIsolated ? '' : ' (page not isolated)') + ' of ' + (navigator.hardwareConcurrency || '?'));
-// The model is fetched as soon as the page opens; the camera button waits for it.
+// The models are fetched as soon as the page opens; the camera button waits for them.
 ensureSession().catch(e => log('Model: ' + (e && e.message || e)));
 </script>
 </body>

@@ -36,7 +36,7 @@ jobs:
           npm pack onnxruntime-web@1.22.0 --silent
           tar xzf onnxruntime-web-1.22.0.tgz
           cp package/dist/ort.all.min.js package/dist/*.wasm package/dist/ort-wasm-simd-threaded*.mjs dist/scan-test/ort/
-          cp scan-test/index.html dist/scan-test/
+          cp scan-test/index.html scan-test/scan-core.js scan-test/scan-worker.js dist/scan-test/
           ls -la dist/scan-test dist/scan-test/ort
       - name: Cross-origin isolation for /scan-test only (multithreaded WASM)
         run: |
@@ -57,4 +57,7 @@ jobs:
           channelId: scan-test
           expires: 7d
       - name: Test page link
-        run: echo "TEST PAGE ${{ steps.deploy.outputs.details_url }}/scan-test/"
+        run: |
+          echo "TEST PAGE ${{ steps.deploy.outputs.details_url }}/scan-test/"
+          curl -sI "${{ steps.deploy.outputs.details_url }}/scan-test/" | grep -i -E "^HTTP|cross-origin"
+          curl -sI "${{ steps.deploy.outputs.details_url }}/scan-test/scan-worker.js" | grep -i -E "^HTTP|cross-origin"
