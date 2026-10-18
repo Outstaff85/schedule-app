@@ -99,7 +99,7 @@ ort.env.wasm.numThreads = THREADS;
 // Background threads for the live frame when the pool is used.
 const POOL = Math.max(1, Math.min(3, Math.floor((navigator.hardwareConcurrency || 2) / 2)));
 
-const STEADY_MS = 2000, MOVE = 0.02;
+const STEADY_MS = 1500, MOVE = 0.02, LOCK_MS = 250;  // green after 0.25 s on the edges, the shot after 1.5 s
 let smooth = null, steadySince = 0, lastRes = null, target = null, shown = null;
 let engine = null, engineKey = '', running = false, stream = null, inFlight = 0, lastSent = 0, seq = 0, applied = 0;
 const times = [], frames = [], uiFrames = [];
@@ -116,7 +116,7 @@ function pageEngine() {
       return a.ep + (b.ep !== a.ep ? '/' + b.ep : '');
     },
     hasCap: () => cap !== live,
-    async detect(which, rgba) { const t = performance.now(); const res = await detectRGBA(which === 'cap' ? cap : live, rgba); return { res, ms: performance.now() - t }; },
+    async detect(which, input) { const t = performance.now(); const res = await detectRGBA(which === 'cap' ? cap : live, rgbaOf(input)); return { res, ms: performance.now() - t }; },
     async warp(rgba, w, h, pts) { return warpRGBA(rgba, w, h, pts); },
     stop() {},
   };
@@ -137,7 +137,10 @@ function workerEngine(threads, dir = ORT_DIR) {
   return {
     async load(liveName, capName, want) { two = !!capName; return (await call({ type: 'load', live: liveName, cap: capName, want, threads })).ep; },
     hasCap: () => two,
-    async detect(which, rgba) { const m = await call({ type: 'detect', which, rgba: rgba.buffer }, [rgba.buffer]); return { res: m.res, ms: m.ms }; },
+    async detect(which, input) {
+      const m = input.bitmap ? await call({ type: 'detect', which, bitmap: input.bitmap }, [input.bitmap]) : await call({ type: 'detect', which, rgba: input.rgba.buffer }, [input.rgba.buffer]);
+      return { res: m.res, ms: m.ms };
+    },
     async warp(rgba, wd, h, pts) { return (await call({ type: 'warp', rgba: rgba.buffer, w: wd, h, pts }, [rgba.buffer])).out; },
     stop() { clearInterval(watch); w.terminate(); },
   };
@@ -173,10 +176,10 @@ function poolEngine(nLive = POOL, liveEp = null, capEp = null) {
       return eps[0] + (two && eps[eps.length - 1] !== eps[0] ? '/' + eps[eps.length - 1] : '');
     },
     hasCap: () => two,
-    async detect(which, rgba) {
-      if (which === 'cap' && two) return capE.detect('live', rgba);
+    async detect(which, input) {
+      if (which === 'cap' && two) return capE.detect('live', input);
       const e = free.shift() || lives[0];
-      try { return await e.detect('live', rgba); } finally { if (!free.includes(e)) free.push(e); }
+      try { return await e.detect('live', input); } finally { if (!free.includes(e)) free.push(e); }
     },
     warp: (rgba, w, h, pts) => (two ? capE : lives[0]).warp(rgba, w, h, pts),
     stop() { lives.forEach(e => e.stop()); capE.stop(); },
@@ -200,7 +203,7 @@ async function ensureSession() {
   let e = null, used = null;
   for (const w of ways) {
     status('Trying ' + w.label + '…', 0);
-    const cand = w.gpuLive ? poolEngine(1, 'webgpu', 'wasm') : w.pool ? poolEngine() : w.worker ? workerEngine(w.threads, w.ep === 'webgpu' ? GPU_ORT : ORT_DIR) : pageEngine();
+    const cand = w.gpuLive ? poolEngine(2, 'webgpu', 'wasm') : w.pool ? poolEngine() : w.worker ? workerEngine(w.threads, w.ep === 'webgpu' ? GPU_ORT : ORT_DIR) : pageEngine();
     try { await cand.load(live, cap, w.ep); e = cand; used = w; break; }
     catch (err) { cand.stop(); log(w.label + ': ' + (err && err.message || err) + ' — trying the next way'); }
   }
@@ -215,6 +218,20 @@ async function ensureSession() {
 }
 
 function smallRGBA(src, w, h) { sctx.drawImage(src, 0, 0, w, h, 0, 0, S, S); return sctx.getImageData(0, 0, S, S).data; }
+// The camera frame scaled to S×S on the GPU (createImageBitmap) and handed to
+// the background thread as is: no full-size copy into the page's memory.
+let bitmapOk = typeof createImageBitmap === 'function';
+async function frameInput(src, w, h) {
+  if (bitmapOk) {
+    try { return { bitmap: await createImageBitmap(src, { resizeWidth: S, resizeHeight: S, resizeQuality: 'low' }) }; }
+    catch (e) { bitmapOk = false; log('Frame scaling on the GPU is not available here: ' + (e && e.message || e)); }
+  }
+  return { rgba: smallRGBA(src, w, h) };
+}
+function rgbaOf(input) {
+  if (input.rgba) return input.rgba;
+  sctx.drawImage(input.bitmap, 0, 0); input.bitmap.close(); return sctx.getImageData(0, 0, S, S).data;
+}
 
 // Average the corners over frames so the frame does not jitter; a big jump resets it.
 function smoothen(res) {
@@ -231,9 +248,11 @@ function drawPts(pts, ok, el) {
   if (c.width !== Math.round(r.width * dpr) || c.height !== Math.round(r.height * dpr)) { c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr); }
   const g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height);
   if (!pts) return;
-  g.lineWidth = 4 * dpr; g.strokeStyle = ok ? '#6dd6a0' : '#f5a623'; g.fillStyle = ok ? 'rgba(109,214,160,.18)' : 'rgba(245,166,35,.12)';
-  g.beginPath(); pts.forEach(([x, y], i) => { const X = x * c.width, Y = y * c.height; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.closePath(); g.fill(); g.stroke();
-  g.fillStyle = g.strokeStyle; pts.forEach(([x, y]) => { g.beginPath(); g.arc(x * c.width, y * c.height, 7 * dpr, 0, 7); g.fill(); });
+  // A thin line, no corner dots: red while searching, green once it sits on the edges.
+  g.lineWidth = 2 * dpr; g.lineJoin = 'round'; g.strokeStyle = ok ? '#4ade80' : '#ef4444';
+  g.beginPath(); pts.forEach(([x, y], i) => { const X = x * c.width, Y = y * c.height; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.closePath();
+  if (ok) { g.fillStyle = 'rgba(74,222,128,.12)'; g.fill(); }
+  g.stroke();
 }
 // Every screen frame the drawn frame glides toward the latest model result;
 // the screen frames per second show how smooth the page stays.
@@ -254,7 +273,7 @@ requestAnimationFrame(animate);
 async function runOnce(src, w, h, el) {
   const isVideo = el.tagName === 'VIDEO';
   const my = ++seq;
-  const { res: raw, ms } = await engine.detect(isVideo ? 'live' : 'cap', smallRGBA(src, w, h));
+  const { res: raw, ms } = await engine.detect(isVideo ? 'live' : 'cap', isVideo ? await frameInput(src, w, h) : { rgba: smallRGBA(src, w, h) });
   if (isVideo && (!running || my < applied)) return;  // a later frame already answered, or a capture began
   applied = my;
   const res = isVideo ? smoothen(raw) : raw;
@@ -263,7 +282,7 @@ async function runOnce(src, w, h, el) {
   $('sMs').textContent = Math.round(times.reduce((a, b) => a + b, 0) / times.length);
   $('sFps').textContent = (frames.length / Math.max(0.5, (now - frames[0]) / 1000)).toFixed(1);
   $('sConf').textContent = res.conf.toFixed(2);
-  target = res.pts.some(p => !p) ? null : { pts: res.pts, ok: res.conf >= 0.5 };
+  target = res.pts.some(p => !p) ? null : { pts: res.pts, ok: res.conf >= 0.5 && (!isVideo || res.steady >= LOCK_MS) };
   if (!isVideo) { shown = target && target.pts.map(p => p.slice()); drawPts(shown, target && target.ok, el); }
   lastRes = res;
   const missing = raw.pts.filter(p => !p).length;
@@ -284,7 +303,7 @@ async function showShot() {
   while (inFlight) await new Promise(r => setTimeout(r, 10));  // the live frames still in work finish first
   if (isVideo && engine.hasCap()) {
     $('hint').textContent = 'Taking the exact corners…';
-    const { res: exact } = await engine.detect('cap', smallRGBA(frame, w, h));
+    const { res: exact } = await engine.detect('cap', { rgba: smallRGBA(frame, w, h) });
     if (!exact.pts.some(p => !p) && exact.conf >= 0.5) { pts = exact.pts; how = 'accurate model'; }
     target = { pts, ok: true }; shown = pts.map(p => p.slice());
   }

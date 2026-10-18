@@ -18,7 +18,12 @@ self.onmessage = async ({ data: m }) => {
       say('reply', { id: m.id, ep: a.ep + (b.ep !== a.ep ? '/' + b.ep : '') });
     } else if (m.type === 'detect') {
       const t = performance.now();
-      const res = await detectRGBA(m.which === 'cap' ? cap : live, new Uint8ClampedArray(m.rgba));
+      let rgba;
+      if (m.bitmap) {  // already S×S: drawn once on a small canvas here
+        const c = new OffscreenCanvas(S, S), g = c.getContext('2d', { willReadFrequently: true });
+        g.drawImage(m.bitmap, 0, 0); m.bitmap.close(); rgba = g.getImageData(0, 0, S, S).data;
+      } else rgba = new Uint8ClampedArray(m.rgba);
+      const res = await detectRGBA(m.which === 'cap' ? cap : live, rgba);
       say('reply', { id: m.id, res, ms: performance.now() - t });
     } else if (m.type === 'warp') {
       const out = warpRGBA(new Uint8ClampedArray(m.rgba), m.w, m.h, m.pts);
