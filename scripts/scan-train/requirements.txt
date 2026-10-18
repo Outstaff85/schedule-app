@@ -1,0 +1,10 @@
+# The scanner's training on the owner's PC (docs/scan-plan.md → S6; /scan-train).
+# torch with CUDA: pip install torch --index-url https://download.pytorch.org/whl/cu124 (then the rest).
+torch
+onnx
+onnx2torch
+onnxruntime
+numpy
+opencv-python-headless
+google-cloud-storage
+google-cloud-firestore
