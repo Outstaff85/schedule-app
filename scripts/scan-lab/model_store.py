@@ -7,11 +7,13 @@ Run in CI with GOOGLE_APPLICATION_CREDENTIALS (the deploy's service account).
   model_store.py get NAME DEST   -> exit 1 when the model is not stored yet
   model_store.py put SRC NAME
 """
+import os
 import sys
 
 from google.cloud import storage
 
-PREFIX = "models/scan/base-v1/"
+# The model version this copy uses (scripts/scan-lab/models-version, passed by fetch-models.sh).
+PREFIX = "models/scan/" + os.environ.get("SCAN_MODELS_VERSION", "base-v1") + "/"
 # A Firebase project's default bucket has one of these two names.
 BUCKETS = ["schedule-odinson.firebasestorage.app", "schedule-odinson.appspot.com"]
 

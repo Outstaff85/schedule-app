@@ -27,7 +27,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: /tmp/models
-          key: scan-lab-models-v3
+          key: scan-lab-models-v3-${{ hashFiles('scripts/scan-lab/models-version') }}
       - name: The scanner lab's models
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa.json
@@ -39,7 +39,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: /tmp/scan-models
-          key: scan-models-v1
+          key: scan-models-v1-${{ hashFiles('scripts/scan/models-version') }}
       - name: The site scanner's models
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa.json
