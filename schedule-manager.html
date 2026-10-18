@@ -2288,32 +2288,10 @@ function backToFirmsList(){
   location.reload();
 }
 
-// ── Firm profile (Form 101 section א) ─────────────────────────────────────
-// Every generated Form 101 draws its employer block straight from the firm's
-// own Tenants row (see aiFillForm101). migrateToMultiTenant() created the
-// original firm with a placeholder name and blank phone/address/deductions
-// number, so a firm can sit on a half-empty profile and only discover it on a
-// printed form. These helpers are the single source of truth for "is this
-// profile complete" — used by the Admin tab's icon, its Firms tile and the
-// Firms section (an owner's own firm, the super-admin's list).
-const FIRM_PROFILE_FIELDS = [
-  {key:'companyName',          label:'Company name'},
-  {key:'deductionsFileNumber', label:'מספר תיק ניכויים'},
-  {key:'phone',                label:'Phone'},
-  {key:'street',               label:'Street'},
-  {key:'city',                 label:'City'},
-];
-function activeTenantProfile(){
-  const s = getSession();
-  return (s && (s.viewingTenantProfile || s.tenantProfile)) || null;
-}
-// Labels of the fields Form 101 would leave blank. No argument = the firm the
-// session is currently working in; pass a Tenants row to check another firm.
-function firmProfileMissing(profile){
-  const p = profile || activeTenantProfile();
-  if(!p) return FIRM_PROFILE_FIELDS.map(f => f.label);
-  return FIRM_PROFILE_FIELDS.filter(f => !String(p[f.key]==null?'':p[f.key]).trim()).map(f => f.label);
-}
+// ── Firm profile (Form 101 section א) ──
+// FIRM_PROFILE_FIELDS, activeTenantProfile(), firmProfileMissing() are
+// src/manager/logic/admin.ts, like the Admin caches, the role labels,
+// assignWorkersToHr / ToSupplier, the payable summary and the log periods.
 // Keeps the session's cached copy of the firm profile in step with a save —
 // the client only ever gets one at login, so without this a firm would have
 // to log out and back in before its own edit showed up on a Form 101. Only
@@ -2453,17 +2431,6 @@ async function editMyName(){
 // workers and the server calls that touch the page's state stay here and are
 // handed over through ManagerBridge (its Admin part below).
 let __firmsCache = [];
-// The Firms list is cached (localStorage) and shown at once; the fresh copy
-// from listTenants replaces it when it arrives.
-const FIRMS_CACHE_KEY = 'firmsCache_v1';
-// Same show-cached-then-refresh pattern for the Admin Users / Errors / Timings.
-// Keys start with ADMIN_CACHE_PREFIX so logout() can drop them all.
-const ADMIN_CACHE_PREFIX = 'adminCache_';
-function saveAdminCache(key, value){ try{ localStorage.setItem(ADMIN_CACHE_PREFIX+key, JSON.stringify(value)); }catch(e){} }
-function loadAdminCache(key){ try{ return JSON.parse(localStorage.getItem(ADMIN_CACHE_PREFIX+key)||'null'); }catch(e){ return null; } }
-function clearAdminCaches(){ try{ Object.keys(localStorage).filter(k=>k.startsWith(ADMIN_CACHE_PREFIX)).forEach(k=>localStorage.removeItem(k)); }catch(e){} }
-function saveFirmsCache(tenants){ try{ localStorage.setItem(FIRMS_CACHE_KEY, JSON.stringify(tenants||[])); }catch(e){} }
-function loadFirmsCache(){ try{ const v=JSON.parse(localStorage.getItem(FIRMS_CACHE_KEY)||'null'); return Array.isArray(v)?v:null; }catch(e){ return null; } }
 // The Admin tab and the landing screen draw again (whichever is shown).
 function renderFirmsViews(){ renderAdmin(); if(window.ManagerIsland) window.ManagerIsland.renderFirmsScreen(); }
 let __firmsErr='', __firmsLoaded=false;
@@ -2580,12 +2547,6 @@ function setupAdminPaneBar(){
   switchAdminPane(__adminPane);
   if(s.role === 'superadmin' || s.role === 'tenant_admin') prefetchAdminUsers();
 }
-// The Admin sections this login sees (the React tabs, ManagerBridge.admin()).
-function adminPanes(){
-  const s = getSession(); if(!s) return [];
-  const isSuper = s.role === 'superadmin', isAdminRole = isSuper || s.role === 'tenant_admin';
-  return ['punchlog'].concat(isAdminRole ? ['firms','users'] : [], isSuper ? ['errors','timings'] : []);
-}
 // Loads the Users list in the background as soon as the Admin tab opens, so
 // the Users section usually draws at once; a load already in flight is shared.
 let __usersFetch=null, __usersErr='';
@@ -2614,14 +2575,6 @@ function prefetchAdminUsers(){
     } else { __usersErr=(json&&json.error)||'Load failed'; if(currentTab==='admin') renderAdmin(); }
   }).catch(()=>{ __usersErr='Network error'; if(currentTab==='admin') renderAdmin(); });
 }
-// How a login's role reads (through tr()) — the header's account menu; the
-// React Users section has its copy in src/manager/users.ts.
-const USER_ROLE_LABELS = {tenant_admin:'owner', superadmin:'super-admin', staff:'staff', hr:'HR', supplier:'supplier', client:'client'};
-// The hours-review ticks (users.hourPerms, functions-auth/core.py HOUR_PERMS);
-// a new HR, supplier or client login starts with HOUR_DEFAULT (core.py) — the
-// client and supplier windows' login ticks (loginsInfo).
-const HOUR_DEFAULT = ['hours', 'approve', 'dispute', 'fix'];
-const HOUR_PERM_LABELS = {hours:'Hours', approve:'Approve', dispute:'Dispute', fix:'Fix', schedule:'Schedule', export:'Export'};
 // The Admin tab opens with no section (the React tiles): nothing is loaded
 // until a section is picked; the React section loads its own data. The
 // chosen section is kept while the app stays open.
@@ -2631,11 +2584,6 @@ function switchAdminPane(pane){
   if(__adminPane==='errors'||__adminPane==='timings') loadLogPane(__adminPane);
   renderAdmin();
   renderCrumb();
-}
-function activeTenantIdForAdmin(){
-  const s = getSession();
-  if(!s) return null;
-  return s.role === 'superadmin' ? s.viewingTenantId : s.tenantId;
 }
 // The user window (React, #userFormModal): a saved login from the list the
 // Users section drew (its cache; the server only when the row isn't there),
@@ -2707,121 +2655,7 @@ function hrNameOf(id){
   const u = hrUsers().find(x => x.id===id);
   return u ? (u.fullName || u.username) : '';
 }
-// Each HR gets a steady color from the client palette (picked by its uid),
-// shown like a supplier's badge on the worker tile and card.
-function hrColor(id){
-  let h=0; for(const ch of String(id||'')) h=(h*31+ch.charCodeAt(0))>>>0;
-  return CLIENT_COLORS[h%CLIENT_COLORS.length];
-}
-// Sets the HR of these workers (null = none), saves, and moves their punches.
-async function assignWorkersToHr(ids, hrId){
-  const changed = [];
-  ids.forEach(id => {
-    const w = workers.find(x => x.id===id);
-    if(!w || (w.hrId||null)===(hrId||null)) return;
-    if(hrId) w.hrId = hrId; else delete w.hrId;
-    changed.push(id);
-  });
-  if(!changed.length) return 0;
-  render(); autoSave();
-  try{
-    const res = await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'setPunchesHr', ...gsAuth(), workerIds: changed, hrId: hrId||null})});
-    const json = await res.json();
-    if(!json || json.error) showToast((json&&json.error)||tr('Punches not updated'));
-  }catch(e){ showToast(tr('Network error — punches not updated')); }
-  return changed.length;
-}
-// A supplier's workers: sets supplierId (null = none) and saves. Punches carry
-// no supplier, so nothing else moves (the portal reads its workers' punches).
-function assignWorkersToSupplier(ids, sid){
-  let n = 0;
-  ids.forEach(id => {
-    const w = workers.find(x => x.id===id);
-    if(!w || (w.supplierId||null)===(sid||null)) return;
-    w.supplierId = sid || null; n++;
-  });
-  if(n){ render(); autoSave(); }
-  return n;
-}
-
-// ── Superadmin cross-firm payable summary (Admin/Roles plan, stage 10) ─────
-// Deliberately reuses the exact same canonical payroll functions every
-// firm's own Accounting tab uses (groupPunchesIntoShifts/shiftPay) — never a
-// reimplementation. For each cached firm (__firmsCache, from loadFirms()),
-// fetches that tenant's own schedule (for worker rate data) + this week's
-// punch log via an explicit asTenantId override in the request — NOT by
-// switching the session's viewingTenantId/reloading, so browsing this summary
-// never disturbs the admin's "currently open" firm. Per-firm total only
-// (hours + payable this week); the rows go to the React Firms section.
-async function fetchForTenant(action, tenantId){
-  const q = 'asTenantId='+encodeURIComponent(tenantId)+'&action='+action;
-  const res = await fetch(API_URL+'?'+q);
-  return res.json();
-}
-async function firmsPayableRows(){
-  const ws = new Date(); ws.setDate(ws.getDate()-ws.getDay()); ws.setHours(0,0,0,0);
-  const rows = [];
-  for(const t of __firmsCache){
-    try{
-      const [schJson, logJson] = await Promise.all([
-        fetchForTenant('loadSchedule', t.tenantId),
-        fetchForTenant('loadPunchLog', t.tenantId),
-      ]);
-      const fWorkers = schJson.workers || [];
-      const entries = (logJson.entries || []).filter(e => new Date(e.ts) >= ws);
-      const byWorkerPunches = {};
-      entries.forEach(e => { (byWorkerPunches[e.workerId]=byWorkerPunches[e.workerId]||[]).push(e); });
-      let totalHours = 0, totalPay = 0;
-      // effectiveRates() reads the global `clients` (tier 2: the client's
-      // default rate) — so this firm's own clients stand in while its pay is
-      // computed, then the loaded firm's come back. No await in between.
-      const ownClients = clients;
-      clients = schJson.clients || [];
-      try{
-        Object.entries(byWorkerPunches).forEach(([wid, list]) => {
-          const wc = fWorkers.find(w => w.id === wid), seen = new Set();
-          let wPay = 0;
-          groupPunchesIntoShifts(list).forEach(bucket => {
-            const res = analyzeDayPunches(bucket.entries, bucket.date);
-            if(res.hours > 0){
-              totalHours += res.hours;
-              const isSat = bucket.date.getDay() === 6;
-              wPay += shiftPayFor(res.hours, wc, isSat, bucket.entries[0] && bucket.entries[0].clientId, bucket.date, seen);
-            }
-          });
-          // A daily-paid worker's days set by hand for this week (as in Salary).
-          const ov = isDailyPay(wc) ? dayOverride(wc, salaryPeriodKey('week')) : null;
-          totalPay += ov != null ? ov * dailyRate(wc) : wPay;
-        });
-      }finally{ clients = ownClients; }
-      rows.push({ name: t.companyName || t.tenantId, hours: totalHours, pay: totalPay });
-    }catch(e){ rows.push({ name: t.companyName || t.tenantId, hours: 0, pay: 0, error: true }); }
-  }
-  return rows;
-}
-
-// ── Errors / Timings: the period picker ─────────────────────────────────
-// Both sections load one period at a time: the last 7 or 30 days, or a
-// calendar month (this one and the 11 before it), each cached on its own
-// (adminCache_errors:<key>, adminCache_timings:<key>).
-function logPeriodOptions(){
-  const now=new Date(), opts=[['30d',tr('Last 30 days')],['7d',tr('Last 7 days')]];
-  for(let i=0;i<12;i++){
-    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
-    opts.push(['m:'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),d.toLocaleDateString(uiLocale(),{month:'long',year:'numeric'})]);
-  }
-  return opts;
-}
-// {key, from, to, label} for a picker value; from/to are ISO times.
-function logPeriodRange(v){
-  v=v||'30d';
-  const opt=logPeriodOptions().find(o=>o[0]===v)||['30d',tr('Last 30 days')];
-  let from, to=null;
-  if(v==='7d'||v==='30d') from=new Date(Date.now()-(v==='7d'?7:30)*864e5);
-  else { const [y,m]=v.slice(2).split('-').map(Number); from=new Date(y,m-1,1); to=new Date(y,m,1); }
-  return {key:opt[0], from:from.toISOString(), to:to?to.toISOString():null, label:opt[1]};
-}
-function logPeriodQuery(pr){ return '&from='+encodeURIComponent(pr.from)+(pr.to?'&to='+encodeURIComponent(pr.to):''); }
+// ── Errors / Timings: the period picker (logPeriodOptions / Range / Query, src/manager/logic/admin.ts) ──
 const __logPeriod={errors:'30d', timings:'30d'}, __logErr={errors:'', timings:''};
 // The period's rows: the cached ones are drawn first, then loadErrors / loadTimings.
 async function loadLogPane(kind){
@@ -2850,24 +2684,6 @@ async function resetLogs(){
     if(__adminPane==='timings'||__adminPane==='errors') await loadLogPane(__adminPane);
   }catch(e){ showToast(tr('Network error')); }
 }
-// Shared by the Errors and Timings copy buttons (and Copy all).
-async function copyTextToClipboard(text){
-  try{
-    await navigator.clipboard.writeText(text);
-    showToast(tr('Copied'));
-  }catch(e){
-    // Fallback for contexts where the async Clipboard API is unavailable/denied.
-    try{
-      const ta=document.createElement('textarea');
-      ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
-      document.body.appendChild(ta); ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-      showToast(tr('Copied'));
-    }catch(e2){ showToast(tr('Could not copy')); }
-  }
-}
-
 // Optimistic concurrency: the savedAt value we last loaded from the DB.
 
 
@@ -3128,7 +2944,7 @@ window.ManagerBridge={
   setFirmsActive:(ids,active)=>setTenantsActive(ids,active),
   deleteFirms:ids=>deleteTenantsNow(ids),
   openFirmWindow:(mode,id)=>{ if(mode==='create') openCreateFirmForm(); else if(mode==='mine') openMyFirmForm(); else openEditFirmForm(id); },
-  firmsPayable:()=>firmsPayableRows(),
+  firmsPayable:()=>firmsPayableRows(__firmsCache),
   loadUsers:()=>prefetchAdminUsers(),
   openUserWindow:id=>{ if(id) openEditUserForm(id); else openCreateUserForm(); },
   deleteUsers:ids=>deleteUsersNow(ids),

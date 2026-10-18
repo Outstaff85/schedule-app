@@ -37,6 +37,7 @@ import * as up from './logic/uploads';
 import * as fns from './logic/functions';
 import * as sched from './logic/schedule';
 import * as exp from './logic/exports';
+import * as adm from './logic/admin';
 
 const w = window as unknown as Record<string, unknown>;
 
@@ -97,6 +98,16 @@ Object.assign(w, {
   // exports (logic/exports.ts)
   fmtDate: exp.fmtDate, fmtRange: exp.fmtRange, exportExcel: exp.exportExcel, exportPDF: exp.exportPDF, exportJSON: exp.exportJSON,
   getWorkerMonthShifts: exp.getWorkerMonthShifts, exportShiftsDetail: exp.exportShiftsDetail,
+  // the Admin tab's figures and caches (logic/admin.ts)
+  FIRM_PROFILE_FIELDS: adm.FIRM_PROFILE_FIELDS, activeTenantProfile: adm.activeTenantProfile, firmProfileMissing: adm.firmProfileMissing,
+  FIRMS_CACHE_KEY: adm.FIRMS_CACHE_KEY, ADMIN_CACHE_PREFIX: adm.ADMIN_CACHE_PREFIX, saveAdminCache: adm.saveAdminCache, loadAdminCache: adm.loadAdminCache,
+  clearAdminCaches: adm.clearAdminCaches, saveFirmsCache: adm.saveFirmsCache, loadFirmsCache: adm.loadFirmsCache,
+  adminPanes: adm.adminPanes, activeTenantIdForAdmin: adm.activeTenantIdForAdmin, USER_ROLE_LABELS: adm.USER_ROLE_LABELS,
+  HOUR_DEFAULT: adm.HOUR_DEFAULT, HOUR_PERM_LABELS: adm.HOUR_PERM_LABELS, hrColor: adm.hrColor,
+  assignWorkersToHr: adm.assignWorkersToHr, assignWorkersToSupplier: adm.assignWorkersToSupplier,
+  fetchForTenant: adm.fetchForTenant, firmsPayableRows: adm.firmsPayableRows,
+  logPeriodOptions: adm.logPeriodOptions, logPeriodRange: adm.logPeriodRange, logPeriodQuery: adm.logPeriodQuery,
+  copyTextToClipboard: adm.copyTextToClipboard,
 });
 
 // The data, read and replaced by the page under its old names.

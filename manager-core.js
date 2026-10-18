@@ -1615,6 +1615,257 @@
 		notify(tr("Hours exported"));
 	}
 	//#endregion
+	//#region src/manager/logic/admin.ts
+	var FIRM_PROFILE_FIELDS = [
+		{
+			key: "companyName",
+			label: "Company name"
+		},
+		{
+			key: "deductionsFileNumber",
+			label: "מספר תיק ניכויים"
+		},
+		{
+			key: "phone",
+			label: "Phone"
+		},
+		{
+			key: "street",
+			label: "Street"
+		},
+		{
+			key: "city",
+			label: "City"
+		}
+	];
+	/** The profile of the firm the session works in (its copy from the login, kept up to date). */
+	function activeTenantProfile() {
+		const s = getSession();
+		return s && (s.viewingTenantProfile || s.tenantProfile) || null;
+	}
+	function firmProfileMissing(profile) {
+		const p = profile || activeTenantProfile();
+		if (!p) return FIRM_PROFILE_FIELDS.map((f) => f.label);
+		return FIRM_PROFILE_FIELDS.filter((f) => !String(p[f.key] == null ? "" : p[f.key]).trim()).map((f) => f.label);
+	}
+	var FIRMS_CACHE_KEY = "firmsCache_v1";
+	var ADMIN_CACHE_PREFIX = "adminCache_";
+	function saveAdminCache(key, value) {
+		try {
+			localStorage.setItem(ADMIN_CACHE_PREFIX + key, JSON.stringify(value));
+		} catch {}
+	}
+	function loadAdminCache(key) {
+		try {
+			return JSON.parse(localStorage.getItem("adminCache_" + key) || "null");
+		} catch {
+			return null;
+		}
+	}
+	function clearAdminCaches() {
+		try {
+			Object.keys(localStorage).filter((k) => k.startsWith(ADMIN_CACHE_PREFIX)).forEach((k) => localStorage.removeItem(k));
+		} catch {}
+	}
+	function saveFirmsCache(tenants) {
+		try {
+			localStorage.setItem(FIRMS_CACHE_KEY, JSON.stringify(tenants || []));
+		} catch {}
+	}
+	function loadFirmsCache() {
+		try {
+			const v = JSON.parse(localStorage.getItem("firmsCache_v1") || "null");
+			return Array.isArray(v) ? v : null;
+		} catch {
+			return null;
+		}
+	}
+	function adminPanes() {
+		const s = getSession();
+		if (!s) return [];
+		const isSuper = s.role === "superadmin", isAdminRole = isSuper || s.role === "tenant_admin";
+		return ["punchlog"].concat(isAdminRole ? ["firms", "users"] : [], isSuper ? ["errors", "timings"] : []);
+	}
+	/** The firm whose logins the Users section manages. */
+	function activeTenantIdForAdmin() {
+		const s = getSession();
+		if (!s) return null;
+		return (s.role === "superadmin" ? s.viewingTenantId : s.tenantId) || null;
+	}
+	var USER_ROLE_LABELS = {
+		tenant_admin: "owner",
+		superadmin: "super-admin",
+		staff: "staff",
+		hr: "HR",
+		supplier: "supplier",
+		client: "client"
+	};
+	var HOUR_DEFAULT = [
+		"hours",
+		"approve",
+		"dispute",
+		"fix"
+	];
+	var HOUR_PERM_LABELS = {
+		hours: "Hours",
+		approve: "Approve",
+		dispute: "Dispute",
+		fix: "Fix",
+		schedule: "Schedule",
+		export: "Export"
+	};
+	function hrColor(id) {
+		let h = 0;
+		for (const ch of String(id || "")) h = h * 31 + ch.charCodeAt(0) >>> 0;
+		return CLIENT_COLORS[h % CLIENT_COLORS.length];
+	}
+	async function assignWorkersToHr(ids, hrId) {
+		const changed = [];
+		ids.forEach((id) => {
+			const w = state.workers.find((x) => x.id === id);
+			if (!w || (w.hrId || null) === (hrId || null)) return;
+			if (hrId) w.hrId = hrId;
+			else delete w.hrId;
+			changed.push(id);
+		});
+		if (!changed.length) return 0;
+		emit("data");
+		autoSave();
+		try {
+			const json = await (await fetch(API_URL, {
+				method: "POST",
+				body: JSON.stringify({
+					action: "setPunchesHr",
+					...gsAuth(),
+					workerIds: changed,
+					hrId: hrId || null
+				})
+			})).json();
+			if (!json || json.error) notify(json && json.error || tr("Punches not updated"));
+		} catch {
+			notify(tr("Network error — punches not updated"));
+		}
+		return changed.length;
+	}
+	function assignWorkersToSupplier(ids, sid) {
+		let n = 0;
+		ids.forEach((id) => {
+			const w = state.workers.find((x) => x.id === id);
+			if (!w || (w.supplierId || null) === (sid || null)) return;
+			w.supplierId = sid || null;
+			n++;
+		});
+		if (n) {
+			emit("data");
+			autoSave();
+		}
+		return n;
+	}
+	async function fetchForTenant(action, tenantId) {
+		const q = "asTenantId=" + encodeURIComponent(tenantId) + "&action=" + action;
+		return (await fetch(API_URL + "?" + q)).json();
+	}
+	async function firmsPayableRows(firms) {
+		const ws = /* @__PURE__ */ new Date();
+		ws.setDate(ws.getDate() - ws.getDay());
+		ws.setHours(0, 0, 0, 0);
+		const rows = [];
+		for (const t of firms) try {
+			const [schJson, logJson] = await Promise.all([fetchForTenant("loadSchedule", t.tenantId), fetchForTenant("loadPunchLog", t.tenantId)]);
+			const fWorkers = schJson.workers || [];
+			const entries = (logJson.entries || []).filter((e) => new Date(e.ts) >= ws);
+			const byWorkerPunches = {};
+			entries.forEach((e) => {
+				(byWorkerPunches[e.workerId] = byWorkerPunches[e.workerId] || []).push(e);
+			});
+			let totalHours = 0, totalPay = 0;
+			const ownClients = state.clients;
+			state.clients = schJson.clients || [];
+			try {
+				Object.entries(byWorkerPunches).forEach(([wid, list]) => {
+					const wc = fWorkers.find((w) => w.id === wid), seen = /* @__PURE__ */ new Set();
+					let wPay = 0;
+					groupPunchesIntoShifts(list).forEach((bucket) => {
+						const res = analyzeDayPunches(bucket.entries, bucket.date);
+						if (res.hours > 0) {
+							totalHours += res.hours;
+							const isSat = bucket.date.getDay() === 6;
+							wPay += shiftPayFor(res.hours, wc, isSat, bucket.entries[0] && bucket.entries[0].clientId, bucket.date, seen);
+						}
+					});
+					const ov = isDailyPay(wc) ? dayOverride(wc, salaryPeriodKey("week", void 0)) : null;
+					totalPay += ov != null ? ov * dailyRate(wc) : wPay;
+				});
+			} finally {
+				state.clients = ownClients;
+			}
+			rows.push({
+				name: t.companyName || t.tenantId,
+				hours: totalHours,
+				pay: totalPay
+			});
+		} catch {
+			rows.push({
+				name: t.companyName || t.tenantId,
+				hours: 0,
+				pay: 0,
+				error: true
+			});
+		}
+		return rows;
+	}
+	function logPeriodOptions() {
+		const now = /* @__PURE__ */ new Date(), opts = [["30d", tr("Last 30 days")], ["7d", tr("Last 7 days")]];
+		for (let i = 0; i < 12; i++) {
+			const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+			opts.push(["m:" + d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"), d.toLocaleDateString(uiLocale(), {
+				month: "long",
+				year: "numeric"
+			})]);
+		}
+		return opts;
+	}
+	function logPeriodRange(v) {
+		v = v || "30d";
+		const opt = logPeriodOptions().find((o) => o[0] === v) || ["30d", tr("Last 30 days")];
+		let from, to = null;
+		if (v === "7d" || v === "30d") from = /* @__PURE__ */ new Date(Date.now() - (v === "7d" ? 7 : 30) * 864e5);
+		else {
+			const [y, m] = v.slice(2).split("-").map(Number);
+			from = new Date(y, m - 1, 1);
+			to = new Date(y, m, 1);
+		}
+		return {
+			key: opt[0],
+			from: from.toISOString(),
+			to: to ? to.toISOString() : null,
+			label: opt[1]
+		};
+	}
+	function logPeriodQuery(pr) {
+		return "&from=" + encodeURIComponent(pr.from) + (pr.to ? "&to=" + encodeURIComponent(pr.to) : "");
+	}
+	async function copyTextToClipboard(text) {
+		try {
+			await navigator.clipboard.writeText(text);
+			notify(tr("Copied"));
+		} catch {
+			try {
+				const ta = document.createElement("textarea");
+				ta.value = text;
+				ta.style.position = "fixed";
+				ta.style.opacity = "0";
+				document.body.appendChild(ta);
+				ta.select();
+				document.execCommand("copy");
+				document.body.removeChild(ta);
+				notify(tr("Copied"));
+			} catch {
+				notify(tr("Could not copy"));
+			}
+		}
+	}
+	//#endregion
 	//#region src/manager/globals.ts
 	Object.assign(window, {
 		ManagerData: {
@@ -1748,7 +1999,31 @@
 		exportPDF,
 		exportJSON,
 		getWorkerMonthShifts,
-		exportShiftsDetail
+		exportShiftsDetail,
+		FIRM_PROFILE_FIELDS,
+		activeTenantProfile,
+		firmProfileMissing,
+		FIRMS_CACHE_KEY,
+		ADMIN_CACHE_PREFIX,
+		saveAdminCache,
+		loadAdminCache,
+		clearAdminCaches,
+		saveFirmsCache,
+		loadFirmsCache,
+		adminPanes,
+		activeTenantIdForAdmin,
+		USER_ROLE_LABELS,
+		HOUR_DEFAULT,
+		HOUR_PERM_LABELS,
+		hrColor,
+		assignWorkersToHr,
+		assignWorkersToSupplier,
+		fetchForTenant,
+		firmsPayableRows,
+		logPeriodOptions,
+		logPeriodRange,
+		logPeriodQuery,
+		copyTextToClipboard
 	});
 	for (const k of [
 		"workers",
