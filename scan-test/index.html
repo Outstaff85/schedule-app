@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Scan model test</title>
+<!-- Temporary test page (preview channel only, never merged into main): runs
+     DocAligner in the phone's browser on the camera stream, on the GPU
+     (WebGPU) or the CPU (WASM), and shows the corners and the speed. -->
+<style>
+  :root{--bg:#10141f;--plate:#1b1e29;--ink:#fff;--ink2:#a3a9bb;--ok:#6dd6a0;--warn:#f5a623;--bad:#ff5f6d;--line:rgba(255,255,255,.14)}
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,Arial,sans-serif;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 24px max(12px,env(safe-area-inset-left))}
+  h1{font-size:18px;margin:0 0 10px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+  select,button,label.btn{font:inherit;color:var(--ink);background:var(--plate);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+  button.primary{background:#2563eb;border-color:transparent;font-weight:600}
+  .stage{position:relative;width:100%;background:#000;border-radius:14px;overflow:hidden}
+  video,#still{display:block;width:100%;height:auto}
+  #overlay{position:absolute;inset:0;width:100%;height:100%}
+  .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:10px}
+  .stat{background:var(--plate);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+  .stat b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+  .stat span{color:var(--ink2);font-size:12px}
+  #log{white-space:pre-wrap;color:var(--ink2);font-size:12px;margin-top:10px}
+  .bar{height:6px;background:var(--line);border-radius:6px;overflow:hidden;margin:6px 0 10px}
+  .bar i{display:block;height:100%;width:0;background:#2563eb}
+</style>
+</head>
+<body>
+<h1>Scan model test</h1>
+<div class="row">
+  <select id="model">
+    <option value="sa24_fp16.onnx">Accurate fp16 (42 MB)</option>
+    <option value="lite.onnx">Light (5 MB)</option>
+  </select>
+  <select id="backend">
+    <option value="auto">Auto (GPU, else CPU)</option>
+    <option value="webgpu">GPU (WebGPU)</option>
+    <option value="wasm">CPU (WASM)</option>
+  </select>
+</div>
+<div class="row">
+  <button class="primary" id="startCam">Start camera</button>
+  <label class="btn">Photo… <input id="file" type="file" accept="image/*" hidden></label>
+  <button id="stop">Stop</button>
+</div>
+<div class="bar"><i id="prog"></i></div>
+<div class="stage" id="stage">
+  <video id="video" playsinline muted hidden></video>
+  <img id="still" alt="" hidden>
+  <canvas id="overlay"></canvas>
+</div>
+<div class="stats">
+  <div class="stat"><b id="sBackend">—</b><span>runs on</span></div>
+  <div class="stat"><b id="sFps">—</b><span>frames per second</span></div>
+  <div class="stat"><b id="sMs">—</b><span>ms per frame (model)</span></div>
+  <div class="stat"><b id="sConf">—</b><span>confidence (≥ 0.50 = found)</span></div>
+  <div class="stat"><b id="sLoad">—</b><span>model load, s</span></div>
+  <div class="stat"><b id="sRes">—</b><span>camera resolution</span></div>
+</div>
+<div id="log"></div>
+
+<script src="./ort/ort.all.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const log = s => { $('log').textContent = s + '\n' + $('log').textContent; };
+ort.env.wasm.wasmPaths = new URL('./ort/', location.href).href;
+ort.env.wasm.numThreads = 1;
+
+let session = null, sessionKey = '', running = false, stream = null, busy = false;
+const times = [], frames = [];
+const S = 256, H = 128;
+const work = document.createElement('canvas'); work.width = S; work.height = S;
+const wctx = work.getContext('2d', { willReadFrequently: true });
+
+async function fetchModel(name) {
+  try {
+    const cache = await caches.open('scan-test-models');
+    const hit = await cache.match(name);
+    if (hit) { $('prog').style.width = '100%'; return new Uint8Array(await hit.arrayBuffer()); }
+    const res = await fetch(name);
+    const total = +res.headers.get('content-length') || 0;
+    const reader = res.body.getReader(); const parts = []; let got = 0;
+    for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); got += value.length; if (total) $('prog').style.width = (got / total * 100) + '%'; }
+    const buf = new Uint8Array(got); let o = 0; for (const p of parts) { buf.set(p, o); o += p.length; }
+    try { await cache.put(name, new Response(buf)); } catch (e) {}
+    return buf;
+  } catch (e) {
+    const res = await fetch(name); return new Uint8Array(await res.arrayBuffer());
+  }
+}
+
+async function ensureSession() {
+  const model = $('model').value, want = $('backend').value, key = model + '|' + want;
+  if (session && sessionKey === key) return;
+  session = null; $('sBackend').textContent = 'loading…';
+  const t0 = performance.now();
+  const bytes = await fetchModel(model);
+  const order = want === 'auto' ? ['webgpu', 'wasm'] : [want];
+  let used = '';
+  for (const ep of order) {
+    if (ep === 'webgpu' && !navigator.gpu) { log('WebGPU is not available in this browser'); continue; }
+    try { session = await ort.InferenceSession.create(bytes, { executionProviders: [ep], graphOptimizationLevel: 'all' }); used = ep; break; }
+    catch (e) { log('Could not start on ' + ep + ': ' + (e && e.message || e)); }
+  }
+  if (!session) { $('sBackend').textContent = 'failed'; throw new Error('no backend'); }
+  sessionKey = key; times.length = 0; frames.length = 0;
+  $('sBackend').textContent = used === 'webgpu' ? 'GPU' : 'CPU';
+  $('sLoad').textContent = ((performance.now() - t0) / 1000).toFixed(1);
+  log('Model ' + model + ' on ' + used + ', loaded in ' + $('sLoad').textContent + ' s');
+}
+
+function toTensor(src, w, h) {
+  wctx.drawImage(src, 0, 0, w, h, 0, 0, S, S);
+  const d = wctx.getImageData(0, 0, S, S).data, n = S * S, f = new Float32Array(3 * n);
+  for (let i = 0; i < n; i++) { f[i] = d[i * 4] / 255; f[n + i] = d[i * 4 + 1] / 255; f[2 * n + i] = d[i * 4 + 2] / 255; }
+  return new ort.Tensor('float32', f, [1, 3, S, S]);
+}
+
+// Each of the 4 heatmaps: the blob around its peak (>= 0.3), its centre.
+function corners(hm) {
+  const pts = [], confs = [];
+  for (let k = 0; k < 4; k++) {
+    const off = k * H * H; let mi = 0, mv = -1;
+    for (let i = 0; i < H * H; i++) { const v = hm[off + i]; if (v > mv) { mv = v; mi = i; } }
+    confs.push(mv);
+    if (mv < 0.3) { pts.push(null); continue; }
+    const seen = new Uint8Array(H * H), q = [mi]; seen[mi] = 1; let sx = 0, sy = 0, sw = 0;
+    while (q.length) {
+      const i = q.pop(), x = i % H, y = (i / H) | 0, v = hm[off + i]; sx += x * v; sy += y * v; sw += v;
+      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= H || ny >= H) continue;
+        const j = ny * H + nx; if (!seen[j] && hm[off + j] >= 0.3) { seen[j] = 1; q.push(j); }
+      }
+    }
+    pts.push([(sx / sw + 0.5) / H, (sy / sw + 0.5) / H]);
+  }
+  return { pts, conf: Math.min(...confs) };
+}
+
+function draw(res, el) {
+  const c = $('overlay'), r = el.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  c.width = r.width * dpr; c.height = r.height * dpr;
+  const g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height);
+  if (res.pts.some(p => !p)) return;
+  g.lineWidth = 4 * dpr; g.strokeStyle = res.conf >= 0.5 ? '#6dd6a0' : '#f5a623'; g.fillStyle = g.strokeStyle;
+  g.beginPath(); res.pts.forEach(([x, y], i) => { const X = x * c.width, Y = y * c.height; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.closePath(); g.stroke();
+  res.pts.forEach(([x, y]) => { g.beginPath(); g.arc(x * c.width, y * c.height, 7 * dpr, 0, 7); g.fill(); });
+}
+
+async function runOnce(src, w, h, el) {
+  const t = performance.now();
+  const out = await session.run({ [session.inputNames[0]]: toTensor(src, w, h) });
+  const ms = performance.now() - t;
+  const hm = out[session.outputNames[0]].data;
+  const res = corners(hm instanceof Float32Array ? hm : Float32Array.from(hm));
+  times.push(ms); if (times.length > 20) times.shift();
+  const now = performance.now(); frames.push(now); while (frames.length && now - frames[0] > 2000) frames.shift();
+  $('sMs').textContent = Math.round(times.reduce((a, b) => a + b, 0) / times.length);
+  $('sFps').textContent = (frames.length / Math.max(0.5, (now - frames[0]) / 1000)).toFixed(1);
+  $('sConf').textContent = res.conf.toFixed(2);
+  draw(res, el);
+}
+
+async function loop() {
+  if (!running) return;
+  const v = $('video');
+  if (!busy && v.readyState >= 2) {
+    busy = true;
+    try { await runOnce(v, v.videoWidth, v.videoHeight, v); } catch (e) { log('Error: ' + (e && e.message || e)); running = false; }
+    busy = false;
+  }
+  requestAnimationFrame(loop);
+}
+
+$('startCam').onclick = async () => {
+  try {
+    await ensureSession();
+    if (!stream) stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    const v = $('video'); v.srcObject = stream; v.hidden = false; $('still').hidden = true; await v.play();
+    $('sRes').textContent = v.videoWidth + '×' + v.videoHeight;
+    running = true; loop();
+  } catch (e) { log('Camera / model error: ' + (e && e.message || e)); }
+};
+$('stop').onclick = () => { running = false; if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } };
+$('file').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  running = false; await ensureSession();
+  const img = $('still'); img.src = URL.createObjectURL(f); await img.decode();
+  img.hidden = false; $('video').hidden = true;
+  $('sRes').textContent = img.naturalWidth + '×' + img.naturalHeight;
+  for (let i = 0; i < 3; i++) await runOnce(img, img.naturalWidth, img.naturalHeight, img);
+};
+$('model').onchange = $('backend').onchange = async () => { const was = running; running = false; await ensureSession().catch(() => {}); if (was) { running = true; loop(); } };
+log('GPU (WebGPU) in this browser: ' + (navigator.gpu ? 'yes' : 'no'));
+</script>
+</body>
+</html>

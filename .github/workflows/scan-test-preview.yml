@@ -1,0 +1,49 @@
+name: Scan model test (preview channel)
+
+# Temporary: puts scan-test/ (a test page that runs DocAligner in the phone's
+# browser) on a Firebase Hosting PREVIEW channel — never the live site. The
+# models are downloaded and converted here, so no model file is committed.
+# Remove this workflow and scan-test/ before any PR into main.
+on:
+  push:
+    branches: [claude/wonderful-goldberg-lwotm3]
+    paths: ['scan-test/**', '.github/workflows/scan-test-preview.yml']
+  workflow_dispatch:
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build the site (the channel serves dist/)
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+      - name: Models (DocAligner, Apache-2.0) and ONNX Runtime Web
+        run: |
+          pip install -q gdown onnx onnxconverter-common
+          mkdir -p dist/scan-test/ort
+          gdown -q 14vUH77v6yGg7zFctUgcT6BzV5Iisg4Dl -O /tmp/sa24.onnx
+          gdown -q 1IlbLPkCv-TdaBLOPh_4J97P1_KHYYJ7a -O dist/scan-test/lite.onnx
+          python -c "import onnx; from onnxconverter_common import float16; m=onnx.load('/tmp/sa24.onnx'); onnx.save(float16.convert_float_to_float16(m, keep_io_types=True), 'dist/scan-test/sa24_fp16.onnx')"
+          npm pack onnxruntime-web@1.22.0 --silent
+          tar xzf onnxruntime-web-1.22.0.tgz
+          cp package/dist/ort.all.min.js package/dist/*.wasm package/dist/ort-wasm-simd-threaded*.mjs dist/scan-test/ort/
+          cp scan-test/index.html dist/scan-test/
+          ls -la dist/scan-test dist/scan-test/ort
+      - id: deploy
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: "${{ secrets.GITHUB_TOKEN }}"
+          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}"
+          projectId: schedule-odinson
+          channelId: scan-test
+          expires: 7d
+      - name: Test page link
+        run: echo "TEST PAGE ${{ steps.deploy.outputs.details_url }}/scan-test/"
