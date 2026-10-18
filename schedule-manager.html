@@ -4371,15 +4371,6 @@ function retryLoadDataWhenBack(){
 }
 
 
-// Manual export/import for backup
-function exportDataBackup(){
-  const blob=new Blob([JSON.stringify(getDataObj(),null,2)],{type:'application/json'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url; a.download='schedule-backup-'+new Date().toISOString().slice(0,10)+'.json';
-  a.click(); URL.revokeObjectURL(url);
-  showToast(tr('Backup downloaded'));
-}
 
 function importDataBackup(){
   const input=document.createElement('input');
