@@ -26,9 +26,9 @@ Firebase Hosting serves `dist/`, which `npm run build` makes from both.
 | `src/manager/` | the manager app's React pieces: `main.tsx` (the entry, built as `assets/manager.js`), `bridge.ts` (the `ManagerBridge` contract), `Today.tsx` + `today.ts` (the Today tab, [accounting.md](accounting.md) → Today tab), `Schedule.tsx` + `schedule.ts`, `Workers.tsx` + `workers.ts` (the Workers list), `WorkerCard.tsx`, `WorkerEditor.tsx` + `worker-save.ts` + `worker.ts`, `worker-windows.tsx`, `worker-head.tsx` (the worker windows, [workers.md](workers.md)), `Clients.tsx` (the Clients and Suppliers tabs), `ClientEditor.tsx`, `SupplierEditor.tsx`, `ManualPunch.tsx`, `logins.tsx` + `clients.ts` (their windows, [clients.md](clients.md), [suppliers.md](suppliers.md)), `Accounting.tsx` + `accounting.ts` + `acc-export.ts`, `PayWindow.tsx` (the Accounting tab, its figures and exports, the pay window, [accounting.md](accounting.md)) |
 | `src/styles/theme.css`, `src/styles/manager.css`, `src/styles/greeting.css` | the shadcn colour names and surface utilities (shared by `globals.css` and `manager.css`); the manager pieces' sheet (below); the greeting icons' styles (`src/lib/greeting.ts`) |
 | `src/lib/payroll.ts` | the typed pay functions (docs/accounting.md → Payroll module) |
-| `payroll.js` | generated from `src/lib/payroll.ts`, committed; the global `Payroll` for the old pages. Written by `scripts/build-payroll.mjs` (`--check` fails when it is stale) |
+| `payroll.js` | generated from `src/lib/payroll.ts`, committed; the global `Payroll` for `schedule-manager.html`. Written by `scripts/build-payroll.mjs` (`--check` fails when it is stale) |
 | `scripts/build-payroll.mjs` | builds `payroll.js` from `src/lib/payroll.ts` with Vite |
-| `scripts/static-files.mjs` | which files of the old pages Hosting serves (`staticFiles(root)`) |
+| `scripts/static-files.mjs` | which files Hosting serves as they are (the manager page and its files; `staticFiles(root)`) |
 | `scripts/copy-static.mjs` | the last build step: copies those files into `dist/` |
 | `dist/` | the build output (git-ignored); what Hosting serves |
 
