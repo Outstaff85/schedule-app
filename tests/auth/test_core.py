@@ -514,6 +514,18 @@ def test_update_my_language_follows_the_user_to_login():
     assert DB.collection("users").document("u-lang").get().to_dict()["language"] == "ru"
 
 
+def test_update_my_theme_follows_the_user_to_login():
+    seed_legacy("u-theme", "themeu", "theme-pass-11", role="staff", tenantId="t-l", permissions="*")
+    me = {"uid": "u-theme", "role": "staff", "tenantId": "t-l"}
+    assert core.login(DB, "themeu", "theme-pass-11", lambda u, c: "tok")["theme"] is None  # never picked: the device's (Dark by default)
+    assert core.update_my_theme(DB, me, {"theme": "light"}) == {"ok": True, "theme": "light"}
+    assert core.login(DB, "themeu", "theme-pass-11", lambda u, c: "tok")["theme"] == "light"
+    assert core.run_action(DB, me, {"action": "updateMyTheme", "theme": "system"}, None)["theme"] == "system"
+    assert core.update_my_theme(DB, me, {"theme": "blue"})["error"] == "Unknown theme"
+    assert core.update_my_theme(DB, {"uid": "nobody", "role": "staff"}, {"theme": "dark"})["error"]
+    assert DB.collection("users").document("u-theme").get().to_dict()["theme"] == "system"
+
+
 def test_hour_review_ticks_for_client_supplier_and_hr():
     # A client login needs a client; the hours ticks (hourPerms) are the same list for client, supplier and HR.
     assert "client" in core.create_tenant_user(DB, ADMIN1, {"role": "client", "username": "cl0", "password": "client-pass-1"})["error"]

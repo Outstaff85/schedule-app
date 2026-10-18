@@ -5,7 +5,9 @@
 // hold — windows close on the backdrop with no ✕ and go back to the window they
 // came from, a Drawer on a phone, tap reads / double click / long press edits /
 // swipe left, Delete with Undo, Select mode, lists page by 10, the form checks
-// its fields, the language sheet switches the page (layout stays left to right).
+// its fields, the language sheet switches the page (layout stays left to right),
+// the theme switch (Dark / Light / System) turns the light theme on and back off
+// and the light theme's text, plates, bars and badges keep their contrast.
 // No emulators needed.
 const http = require('http'), fs = require('fs'), path = require('path');
 const { chromium } = require('playwright');
@@ -35,7 +37,7 @@ const server = http.createServer((req, res) => {
 const DEMOS = {
   controls: ['button', 'input', 'select', 'checkbox', 'toggle-group', 'form'],
   lists: ['plate', 'plate-sizes', 'empty'],
-  windows: ['window', 'signature', 'menu', 'account', 'sheet'],
+  windows: ['window', 'signature', 'menu', 'account', 'theme', 'sheet'],
   feedback: ['alert', 'toast', 'progress'],
   data: ['table', 'data-table', 'chart', 'calendar', 'card'],
   layout: ['tabs', 'accordion', 'collapsible'],
@@ -262,12 +264,106 @@ async function phone(browser) {
   await ctx.close();
 }
 
+// The light theme (docs/redesign.md → Light theme): the contrast of what is on
+// screen — every text inside plates, badges and the figures against what is
+// really behind it (the rgba fills composited up to the first solid one), and
+// each plate's coloured bar against the plate.
+async function contrastReport(p) {
+  return p.evaluate(() => {
+    const parse = c => { const m = String(c).match(/rgba?\(([^)]+)\)/); if (!m) return null; const [r, g, b, a = 1] = m[1].split(/[ ,/]+/).filter(Boolean).map(Number); return { r, g, b, a }; };
+    const over = (top, bot) => ({ r: top.r * top.a + bot.r * (1 - top.a), g: top.g * top.a + bot.g * (1 - top.a), b: top.b * top.a + bot.b * (1 - top.a), a: 1 });
+    const lum = c => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
+    const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
+    const ground = parse(getComputedStyle(document.documentElement).backgroundColor) || { r: 255, g: 255, b: 255, a: 1 };
+    const behind = el => { const stack = []; for (let e = el; e; e = e.parentElement) { const c = parse(getComputedStyle(e).backgroundColor); if (c && c.a > 0) { stack.push(c); if (c.a >= 1) break; } } return stack.reverse().reduce((acc, c) => over(c, acc), ground); };
+    const out = { texts: 0, low: [], bars: 0, lowBars: [] };
+    const seen = new Set();
+    for (const host of document.querySelectorAll('.og-plate, [data-slot=badge], [data-slot=figures] > *, [data-slot=figure]')) {
+      for (const el of [host, ...host.querySelectorAll('*')]) {
+        if (seen.has(el)) continue; seen.add(el);
+        const own = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
+        const r = el.getBoundingClientRect();
+        if (!own || !r.width || !r.height || getComputedStyle(el).visibility === 'hidden' || Number(getComputedStyle(el).opacity) < 0.5) continue;
+        const fg = parse(getComputedStyle(el).color); if (!fg) continue;
+        const bg = behind(el), k = ratio(over(fg, bg), bg);
+        out.texts++;
+        if (k < 4.5) out.low.push(el.textContent.trim().slice(0, 30) + ' ' + k.toFixed(2) + ' ' + el.className + ' ' + getComputedStyle(el).color + ' on ' + JSON.stringify(bg));
+      }
+    }
+    for (const pl of document.querySelectorAll('.og-plate')) {
+      const bar = parse(getComputedStyle(pl).boxShadow), bg = behind(pl); if (!bar) continue;
+      out.bars++;
+      const k = ratio(bar, bg); if (k < 3) out.lowBars.push(pl.textContent.trim().slice(0, 20) + ' ' + k.toFixed(2));
+    }
+    return out;
+  });
+}
+
+async function theme(browser) {
+  for (const [w, h, mobile] of [[1280, 860, false], [390, 844, true]]) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, isMobile: mobile, hasTouch: mobile });
+    const p = await ctx.newPage();
+    const errors = []; p.on('pageerror', e => errors.push(e.message));
+    const look = () => p.evaluate(() => document.documentElement.dataset.theme);
+    const stored = () => p.evaluate(() => localStorage.getItem('uiTheme'));
+    await open(p, 'windows');
+    ok(await look() === 'dark', `theme ${w}: Dark is the default ` + await look());
+    // the switch in the gallery: Light
+    await p.click('[data-testid=demo-theme] [data-testid=theme-switch] [data-testid=theme-light]');
+    ok(await look() === 'light' && await stored() === 'light', `theme ${w}: Light turns the light theme on and keeps it on the device ` + JSON.stringify([await look(), await stored()]));
+    const ground = await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--ground').trim());
+    ok(ground === '#eef1f7', `theme ${w}: the light tokens of og.css apply (--ground) ` + ground);
+    // it is there before the first draw on the next visit (the <head> script)
+    await p.reload({ waitUntil: 'domcontentloaded' });
+    ok(await look() === 'light', `theme ${w}: the light theme is set before the page draws, after a reload`);
+    await p.waitForSelector('[data-testid=page-windows]');
+    // the readability of the light theme: plates, badges, figures, bars
+    for (const section of ['lists', 'feedback', 'data']) {
+      await open(p, section);
+      const r = await contrastReport(p);
+      ok(r.texts > 0 && r.low.length === 0, `theme ${w}: every text on plates, badges and figures is ≥ 4.5:1 in the light theme (${section}, ${r.texts} texts) ` + JSON.stringify(r.low));
+      if (section === 'lists') ok(r.bars > 3 && r.lowBars.length === 0, `theme ${w}: the plates' coloured bars stand out (≥ 3:1, ${r.bars} plates) ` + JSON.stringify(r.lowBars));
+      await p.screenshot({ path: path.join(OUT, `next-theme-light-${section}-${w}.png`), fullPage: false });
+    }
+    // System follows the device's own setting, live
+    await open(p, 'windows');
+    if (mobile) {
+      // a phone page without an account (the punch page) has the bare button: it opens the switch in a window
+      await p.click('[data-testid=demo-theme] [data-testid=theme-btn]');
+      await p.waitForSelector('[data-testid=window] [data-testid=theme-switch]');
+      await p.click('[data-testid=window] [data-testid=theme-system]');
+      await p.keyboard.press('Escape');
+    } else {
+      // the account menu carries the switch
+      await p.click('[data-testid=demo-account] [data-testid=account-btn]');
+      await p.waitForSelector('[data-testid=account-menu] [data-testid=account-theme]');
+      await p.click('[data-testid=account-menu] [data-testid=theme-system]');
+      ok(await visible(p, '[data-testid=account-menu]'), `theme ${w}: picking a theme leaves the account menu open`);
+      await p.keyboard.press('Escape');
+    }
+    await p.emulateMedia({ colorScheme: 'dark' });
+    await sleep(100);
+    ok(await stored() === 'system' && await look() === 'dark', `theme ${w}: System on a dark device is dark ` + JSON.stringify([await stored(), await look()]));
+    await p.emulateMedia({ colorScheme: 'light' });
+    await sleep(100);
+    ok(await look() === 'light', `theme ${w}: System follows the device turning light`);
+    // and back to Dark
+    await p.click('[data-testid=demo-theme] [data-testid=theme-switch] [data-testid=theme-dark]');
+    ok(await look() === 'dark' && await stored() === 'dark', `theme ${w}: Dark switches the light theme off again ` + JSON.stringify([await look(), await stored()]));
+    const g2 = await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--ground').trim());
+    ok(g2 === '#10141f', `theme ${w}: the dark tokens are back (--ground) ` + g2);
+    ok(errors.length === 0, `theme ${w}: no script errors ` + JSON.stringify(errors));
+    await ctx.close();
+  }
+}
+
 (async () => {
   await new Promise(r => server.listen(8766, '127.0.0.1', r));
   const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
   try {
     await computer(browser);
     await phone(browser);
+    await theme(browser);
     const old = await (await fetch('http://127.0.0.1:8766/schedule-manager.html')).text();
     ok(old === fs.readFileSync(path.join(ROOT, 'schedule-manager.html'), 'utf8'), 'next: the old manager page is served unchanged from dist/');
   } finally {

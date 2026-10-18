@@ -11,8 +11,12 @@ import { useVersionWatch } from '@/lib/version-watch';
 import { Brand, Shell } from '@/components/shared/shell';
 import { LanguageButton } from '@/components/shared/language';
 import { AccountMenu } from '@/components/shared/account-menu';
+import type { ThemeChoice } from '@/lib/theme';
 import { HoursReview, useHoursOwner } from '@/hours-review/HoursReview';
 import { HOURS_FN_URL, type HoursCall } from '@/hours-review/hours';
+
+// The theme picked in the account menu is also kept on the account (login brings it back on any device).
+const saveTheme = (theme: ThemeChoice) => { loadBackend().then(b => b.handleAction('updateMyTheme', { action: 'updateMyTheme', theme }, {})).catch(() => {}); };
 
 export const SESSION_KEY = 'clientPortal_session';
 export type ClientSession = { uid: string; role: 'client'; tenantId?: string; clientId?: string; username?: string };
@@ -66,7 +70,7 @@ export function App() {
       brand={<Brand name={tr('Client Portal')} sub={owner ? [owner.name, owner.object].filter(Boolean).join(' · ') : ''} />}
       tools={<>
         <LanguageButton />
-        <AccountMenu name={session.username || ''} sub={tr('Client')} onSignOut={() => void logout()} />
+        <AccountMenu name={session.username || ''} sub={tr('Client')} onThemeSave={saveTheme} onSignOut={() => void logout()} />
       </>}
     >
       <div className="mx-auto max-w-[760px] p-4">

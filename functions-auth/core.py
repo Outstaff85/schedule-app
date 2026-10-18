@@ -5,7 +5,7 @@ tests/auth/test_core.py runs it against the Firestore and Auth emulators.
 Every function takes the Firestore client and returns a plain dict — either
 the result or {"error": "..."} — for the actions login, createUser (a new
 firm), listUsers, createTenantUser, updateUser, resetUserPassword,
-deleteUser, updateMyName, updateMyLanguage, checkWorkerDoc, listTenants, setTenantActive,
+deleteUser, updateMyName, updateMyLanguage, updateMyTheme, checkWorkerDoc, listTenants, setTenantActive,
 deleteTenant, updateTenant and loadTenantProfile, with the error texts the app shows.
 
 Collections (see firestore.rules — all of these are function-only except
@@ -14,7 +14,8 @@ users/{uid}, which its owner, a superadmin or the firm's tenant_admin may read):
                       supplierId, clientId (a client login), hourPerms (hr,
                       supplier, client: the hours-review ticks), active, createdAt, fullName (the
                       person's name the app shows), phone, language
-                      (the UI language the person last picked: en/he/ru); an 'hr' user also
+                      (the UI language the person last picked: en/he/ru), theme
+                      (the look last picked in the account menu: dark/light/system); an 'hr' user also
                       ownOnly (sees only the workers whose
                       hrId is theirs — see firestore.rules)
   authSecrets/{uid}   algo, salt, hash, failCount, lastFailAt
@@ -74,6 +75,8 @@ ADMIN_ROLES = ("tenant_admin", "superadmin")
 PROFILE_FIELDS = ("companyName", "deductionsFileNumber", "phone", "street", "streetNumber", "city")
 # The UI languages a person can pick in the page header (docs/translations.md).
 LANGUAGES = ("en", "he", "ru")
+# The themes a person can pick in the account menu (docs/redesign.md → Light theme).
+THEMES = ("dark", "light", "system")
 
 MIN_PASSWORD = 8
 LOCK_AFTER_FAILS = 5        # wrong passwords in a row before the account waits
@@ -262,6 +265,7 @@ def login(db, username, password, mint_token, now=None, on_refused=None):
         "commissionDayRate": claims.get("hrcd", 0),
         "fullName": user.get("fullName") or "",
         "language": user.get("language") if user.get("language") in LANGUAGES else None,
+        "theme": user.get("theme") if user.get("theme") in THEMES else None,
         "tenantProfile": profile,
     }
 
@@ -373,6 +377,22 @@ def update_my_language(db, caller, body):
         return {"error": E_NOT_FOUND}
     ref.update({"language": lang})
     return {"ok": True, "language": lang}
+
+
+def update_my_theme(db, caller, body):
+    """updateMyTheme {theme}: any signed-in user keeps the theme they picked in
+    the account menu (dark / light / system); login returns it, so it follows
+    them to every device, like the language."""
+    if not caller.get("uid"):
+        return {"error": E_NOT_FOUND}
+    theme = body.get("theme")
+    if theme not in THEMES:
+        return {"error": "Unknown theme"}
+    ref = db.collection("users").document(str(caller["uid"]))
+    if not ref.get().exists:
+        return {"error": E_NOT_FOUND}
+    ref.update({"theme": theme})
+    return {"ok": True, "theme": theme}
 
 
 def create_firm(db, caller, body):
@@ -765,6 +785,7 @@ ACTIONS = {
     "checkWorkerDoc": lambda db, c, b, r: check_worker_doc(db, c, b),
     "updateMyName": lambda db, c, b, r: update_my_name(db, c, b),
     "updateMyLanguage": lambda db, c, b, r: update_my_language(db, c, b),
+    "updateMyTheme": lambda db, c, b, r: update_my_theme(db, c, b),
 }
 
 

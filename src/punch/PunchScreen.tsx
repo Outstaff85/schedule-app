@@ -10,6 +10,7 @@ import {
 } from '@tabler/icons-react';
 import { tr, useI18n } from '@/lib/i18n';
 import { LanguageButton } from '@/components/shared/language';
+import { ThemeButton } from '@/components/shared/theme-switch';
 import { doPunch, loadWeather, locText, nextType, openSchedule, pickObject, set, usePunch, type IconName, type PClient } from './core';
 import { greetingHtml, partOfDay } from '@/lib/greeting';
 import { nextShiftText, refreshTileHours } from './figures';
@@ -27,7 +28,7 @@ function TopBar() {
         <span className="contents" dangerouslySetInnerHTML={{ __html: MARK_SVG }} />
         <div className="pp-wm"><b>Interactive <span>Manager</span></b><small><span>{tr('Connecting people and business')}</span><i>{tr('Everything under one roof')}</i></small></div>
       </div>
-      <LanguageButton />
+      <div className="flex items-center"><ThemeButton /><LanguageButton /></div>
     </div>
   );
 }

@@ -447,6 +447,37 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await c2.close();
   }
   await p.evaluate(() => setLanguage('en', {save:false}));
+  // The theme (docs/redesign.md → Light theme): Dark by default; the account menu's switch turns the light
+  // theme on and keeps it on the device and on the account — login brings it back on a new device.
+  {
+    const th = await p.evaluate(async () => {
+      const r = {def: document.documentElement.dataset.theme, stored: localStorage.getItem('uiTheme')};
+      toggleAccountMenu();
+      r.items = [...document.querySelectorAll('#accountTheme [data-theme-v]')].map(b => b.dataset.themeV + '/' + b.innerText.trim()).join();
+      document.querySelector('#accountTheme [data-theme-v="light"]').click();
+      r.light = document.documentElement.dataset.theme; r.saved = localStorage.getItem('uiTheme');
+      r.on = (document.querySelector('#accountTheme .on') || {}).dataset?.themeV;
+      r.open = document.getElementById('accountControl').classList.contains('open');
+      r.ground = getComputedStyle(document.documentElement).getPropertyValue('--ground').trim();
+      closeAccountMenu();
+      return r;
+    });
+    ok(th.def === 'dark' && th.items === 'dark/Dark,light/Light,system/System' && th.light === 'light' && th.saved === 'light' && th.on === 'light' && th.open && th.ground === '#eef1f7', 'theme: Dark by default; the account menu\'s switch (Dark / Light / System) turns the light theme on, on this device ' + JSON.stringify(th));
+    await sleep(1500);
+    const c3 = await newCtx(); const p3 = await page(c3);
+    await p3.goto(BASE + 'schedule-manager.html'); await p3.waitForSelector('#loginScreen', {state:'visible'});
+    const before = await p3.evaluate(() => ({look: document.documentElement.dataset.theme, sw: document.querySelectorAll('#loginTheme [data-theme-v]').length, on: (document.querySelector('#loginTheme .on') || {}).dataset?.themeV}));
+    await p3.fill('#loginUsername', 'owner1'); await p3.fill('#loginPassword', 'owner-pass-1'); await p3.click('#loginBtn');
+    const back = await waitFor(p3, () => !!document.querySelector('.titlebar-actions #langBtn') && document.documentElement.dataset.theme === 'light' && localStorage.getItem('uiTheme') === 'light', 15000);
+    await p3.screenshot({path: SP + '/theme-light-manager.png'});
+    ok(before.look === 'dark' && before.sw === 3 && before.on === 'dark' && back, 'theme: the sign-in screen has the same switch (Dark on a new device); the user\'s light theme comes back with the login ' + JSON.stringify(before));
+    // and back: Dark again, on the account too
+    await p3.evaluate(() => { toggleAccountMenu(); document.querySelector('#accountTheme [data-theme-v="dark"]').click(); closeAccountMenu(); });
+    ok(await p3.evaluate(() => document.documentElement.dataset.theme === 'dark' && localStorage.getItem('uiTheme') === 'dark' && getComputedStyle(document.documentElement).getPropertyValue('--ground').trim() === '#10141f'), 'theme: Dark switches the light theme off again');
+    await sleep(1000);
+    await c3.close();
+    await p.evaluate(() => setTheme('dark', {save:false}));
+  }
   // Schedule: a shift for one date only wins over the weekly roster on that date (set in the React shift window).
   const dsKey = await p.evaluate(async () => {
     filterByClient('c1'); switchTab('schedule'); await new Promise(r => setTimeout(r, 200));
@@ -1843,6 +1874,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(await waitFor(p, () => document.documentElement.lang === 'he' && [...document.querySelectorAll('[data-testid="shell-tabs"] button')].map(b => b.innerText.trim())[0] === 'לוח בקרה', 15000), 'supplier: a reopened portal keeps the chosen language');
   await p.click('header [data-testid="lang-btn"]'); await p.click('[data-testid="lang-list"] .lang-li:has-text("English")');
   await waitFor(p, () => document.documentElement.lang === 'en', 10000);
+  // The theme: the account menu of the portal carries the switch; Light and back to Dark.
+  await p.click('header [data-testid="account-btn"]');
+  await p.click('[data-testid="account-menu"] [data-testid="theme-light"]');
+  const stl = await p.evaluate(() => ({look: document.documentElement.dataset.theme, stored: localStorage.getItem('uiTheme')}));
+  await p.reload();
+  stl.kept = await waitFor(p, () => document.documentElement.dataset.theme === 'light' && !!document.querySelector('[data-testid="supplier-portal"]'), 15000);
+  await p.click('header [data-testid="account-btn"]');
+  await p.click('[data-testid="account-menu"] [data-testid="theme-dark"]');
+  await p.keyboard.press('Escape');
+  stl.dark = await p.evaluate(() => document.documentElement.dataset.theme === 'dark' && localStorage.getItem('uiTheme') === 'dark');
+  ok(stl.look === 'light' && stl.stored === 'light' && stl.kept && stl.dark, 'supplier: the account menu\'s theme switch turns the light theme on (kept after a reload) and back to Dark ' + JSON.stringify(stl));
   // A phone: the bottom bar; the pay table becomes plates; the worker window opens from the bottom.
   await p.setViewportSize({width: 390, height: 844}); await sleep(300);
   await p.click('nav button:has-text("My Hours")').catch(() => {}); await sleep(300);
@@ -2212,6 +2254,19 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.goto(BASE + 'worker-punch.html?t=nope');
   ok(await waitFor(p, () => /קישור לא תקין/.test(document.body.innerText)), 'punch: the chosen language is kept on the device');
   await p.evaluate(() => localStorage.setItem('uiLang', 'en'));
+  // The theme on the punch page (no account): the bare button beside the Language button opens the switch.
+  await p.goto(BASE + 'worker-punch.html?t=tok-new');
+  await waitFor(p, () => !document.getElementById('screenPunch').classList.contains('hidden'), 15000);
+  await p.click('#screenPunch [data-testid="theme-btn"]'); await p.click('[data-testid="window"] [data-testid="theme-light"]');
+  const ptl = {on: await waitFor(p, () => document.documentElement.dataset.theme === 'light' && localStorage.getItem('uiTheme') === 'light', 5000)};
+  await p.keyboard.press('Escape');
+  await p.goto(BASE + 'worker-punch.html?t=tok-new');
+  ptl.kept = await waitFor(p, () => document.documentElement.dataset.theme === 'light' && !document.getElementById('screenPunch').classList.contains('hidden'), 15000);
+  await p.screenshot({path: SP + '/theme-light-punch.png'});
+  await p.click('#screenPunch [data-testid="theme-btn"]'); await p.click('[data-testid="window"] [data-testid="theme-dark"]');
+  ptl.dark = await waitFor(p, () => document.documentElement.dataset.theme === 'dark' && localStorage.getItem('uiTheme') === 'dark', 5000);
+  await p.keyboard.press('Escape');
+  ok(ptl.on && ptl.kept && ptl.dark, 'punch: the theme button turns the light theme on (kept on the device) and back to Dark ' + JSON.stringify(ptl));
   // ── Stage 5b: a day the worker can't work, a shift offered to a colleague and confirmed by the manager, the pay estimate ──
   await srv('/swapSetup');
   await p.goto(BASE + 'worker-punch.html?t=tok-new');

@@ -108,7 +108,7 @@
    og.css and the pages derive from them, and the few looks a token cannot
    carry. <html data-theme="light"> is set by the theme switch (the account
    menu: Dark / Light / System) before the page draws. ── */
-:root[data-theme="light"]{color-scheme:light;--tint:20,24,40;--red-text:var(--red);--amber-text:var(--amber);--blue-text:var(--accent);--cyan-text:#0b6b80;--bar-rgb:248,250,253;--pop-rgb:255,255,255;--pop-tail:rgba(255,255,255,.97);--blue:var(--accent);--green2:var(--green);--glass-dark:rgba(250,251,253,.96);--fig:var(--green);--neutral:#7a8199;--text:var(--ink);--text2:var(--ink-2);--text3:#5c6378;}
+:root[data-theme="light"]{color-scheme:light;--tint:20,24,40;--red-text:#a8182b;--amber-text:#7f4300;--blue-text:#1d4fb8;--cyan-text:#0b6b80;--bar-rgb:248,250,253;--pop-rgb:255,255,255;--pop-tail:rgba(255,255,255,.97);--blue:var(--accent);--green2:var(--green);--glass-dark:rgba(250,251,253,.96);--fig:var(--green);--neutral:#7a8199;--text:var(--ink);--text2:var(--ink-2);--text3:#5c6378;}
 :root[data-theme="light"] body::before,:root[data-theme="light"] .og-cover,:root[data-theme="light"] .og-ground{background:radial-gradient(circle at 15% 10%,rgba(165,180,252,.55) 0,transparent 56%),radial-gradient(circle at 92% 62%,rgba(103,232,249,.40) 0,transparent 54%),radial-gradient(circle at 40% 108%,rgba(249,168,212,.42) 0,transparent 56%),var(--ground);}
 :root[data-theme="light"] .og-cover{background-attachment:fixed;}
 :root[data-theme="light"] .og-line::after,:root[data-theme="light"] .gbtn::before{box-shadow:var(--shadow-uline);}
@@ -263,7 +263,7 @@ label.check-chip:has(input:checked){background:var(--tick-on);border-color:rgba(
 .t3-line .n b:has(.wp-n)>:not(.wp-n){flex:none;}
 .t3-line .n small{font-size:13px;color:var(--ink-2);margin-top:1px;}
 .t3-line .r{font:500 14px 'DM Mono',ui-monospace,monospace;color:var(--fig);}
-.t3-kb{position:relative;flex:none;width:26px;height:36px;margin-right:-2px;border:0;background:none;color:var(--text);font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.t3-kb{position:relative;flex:none;width:26px;height:36px;margin-right:-2px;border:0;background:none;color:#d6d9e2;font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .t3-kb:hover{color:var(--ink);}
 .t3-kb::after{content:'';position:absolute;left:4px;right:4px;bottom:2px;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55);animation:og-flow 2.4s linear infinite;transform:scaleX(0);transition:transform .45s cubic-bezier(.34,1.56,.64,1);}
 .t3-kb.on{color:var(--ink);}
@@ -432,3 +432,23 @@ label.check-chip:has(input:checked){background:var(--tick-on);border-color:rgba(
   .og-tabs button.on{background:var(--glass-hi);border-color:rgba(var(--tint),.35);color:var(--ink);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
   .og-tabs button.on::after{content:'';position:absolute;left:14px;right:14px;bottom:-1px;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55);animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1)}
   .og-tabs .tab-n{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:4px;border-radius:999px;background:var(--bad);color:#fff;font-size:10px;font-weight:700}
+
+/* ── Part 7: the light theme's looks that no token carries (docs/redesign.md →
+   Light theme): solid dark fills of og.css and the brand gradients drawn for
+   the dark ground. ── */
+:root[data-theme="light"] .t3-line:hover{background:#f3f5f9;}
+:root[data-theme="light"] .t3-kb{color:var(--ink-2);}
+:root[data-theme="light"] .t3-kb:hover,:root[data-theme="light"] .t3-kb.on{color:var(--ink);}
+:root[data-theme="light"] .og-figs>div,:root[data-theme="light"] .rate-margin>div{background:var(--surface-3);}
+:root[data-theme="light"] .og-pop,:root[data-theme="light"] .og-snack,:root[data-theme="light"] .sel-bar{box-shadow:var(--shadow-pop);}
+:root[data-theme="light"] .lang-sheet{box-shadow:var(--shadow-pop);}
+:root[data-theme="light"] .og-acts,:root[data-theme="light"] .sw-acts{background:rgba(20,24,40,.08);}
+:root[data-theme="light"] label.check-chip input[type=checkbox]{border-color:var(--ink-3);}
+:root[data-theme="light"] label.check-chip:has(input:checked){border-color:color-mix(in srgb,var(--green) 40%,transparent);}
+:root[data-theme="light"] label.check-chip input[type=checkbox]::after,:root[data-theme="light"] .og-box::after{border-color:var(--tick-mark);}
+:root[data-theme="light"] .lang-tick{color:var(--tick-mark);}
+:root[data-theme="light"] .modal label.check-chip input[type=checkbox]:checked{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E");}
+/* the logo's name ("Interactive Manager"): the gradient word in deep indigo → teal */
+:root[data-theme="light"] .og-name b span,:root[data-theme="light"] .pp-wm b span{background-image:linear-gradient(90deg,#4f46e5,#0e7490);}
+:root[data-theme="light"] .og-name small{color:var(--ink-2);}
+

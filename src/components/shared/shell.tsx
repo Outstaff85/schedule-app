@@ -74,7 +74,7 @@ export function Shell({ brand, tools, sections = [], active = '', onSelect = () 
     <nav
       data-testid="shell-bar"
       dir="ltr"
-      className="fixed inset-x-0 bottom-0 z-30 grid border-t border-border bg-[rgba(17,20,31,.85)] pb-[env(safe-area-inset-bottom,0px)] pt-1.5 backdrop-blur-xl"
+      className="fixed inset-x-0 bottom-0 z-30 grid border-t border-border bg-[rgba(var(--bar-rgb),.85)] pb-[env(safe-area-inset-bottom,0px)] pt-1.5 backdrop-blur-xl"
       style={{ gridTemplateColumns: `repeat(${inBar.length + (inMore.length ? 1 : 0)}, minmax(0, 1fr))` }}
     >
       {[...inBar, ...(inMore.length ? [{ key: '__more', label: tr('More'), icon: <IconDots />, color: MORE_COLOR, count: inMore.reduce((a, s) => a + (s.count || 0), 0) }] : [])].map(s => {

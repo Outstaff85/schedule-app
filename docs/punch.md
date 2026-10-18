@@ -41,7 +41,7 @@ The function hands out only this worker and their sites, and accepts punches for
 
 ## Startup (`init()`)
 
-`I18nProvider` first loads the dictionary of the language chosen on this device (`localStorage.uiLang`, English by default), then `App` runs `init()` once. The Language button at the right of the punch screen's top bar (the shared `LanguageButton` in `.pp-top`) opens the language window; a pick is kept on the device and redraws the page, the screen stays ([translations.md](translations.md)). A worker link has no account, so the choice is not sent anywhere.
+`I18nProvider` first loads the dictionary of the language chosen on this device (`localStorage.uiLang`, English by default), then `App` runs `init()` once. The Language button at the right of the punch screen's top bar (the shared `LanguageButton` in `.pp-top`) opens the language window; a pick is kept on the device and redraws the page, the screen stays ([translations.md](translations.md)). A worker link has no account, so the choice is not sent anywhere. The same goes for the theme: a bare icon before the Language button (`ThemeButton`) opens the Dark / Light / System switch in a small window, kept on the device ([redesign.md](redesign.md) → Light theme).
 
 1. `loadWorkers()` reads the worker list from `punchClockSite.workers`, else the legacy cache `localStorage.schedMgr_v1` (or `scheduleManagerData`), filtered to `SITE.clientId` when set (falls back to all if that is empty). Workers are reduced to `{id, name, colorIdx, token, clientIds, schedule, dates}`.
 2. **Personal link:**

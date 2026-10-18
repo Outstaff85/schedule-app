@@ -1307,5 +1307,11 @@
   "Nothing payable or billable in this period": "אין תשלומים או חיובים בתקופה זו",
   "Chart": "תרשים",
   "(no name)": "(ללא שם)",
-  "Loading every firm's this-week payable — this can take a moment…": "טוען את הסכום לתשלום של כל החברות השבוע — זה עשוי לקחת רגע…"
+  "Loading every firm's this-week payable — this can take a moment…": "טוען את הסכום לתשלום של כל החברות השבוע — זה עשוי לקחת רגע…",
+  "Theme": "ערכת נושא",
+  "Dark": "כהה",
+  "Light": "בהירה",
+  "System": "לפי המכשיר",
+  "Unknown theme": "ערכת נושא לא מוכרת",
+  "Theme switch (Dark / Light / System)": "מתג ערכת נושא (כהה / בהירה / לפי המכשיר)"
 }
