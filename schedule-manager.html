@@ -1716,9 +1716,6 @@ function workerDocStatus(w){
 const PAY_RULES = Payroll.PAY_RULES;
 // Effective per-hour rates: worker.clientRates[clientId] > the worker's own > the client's.
 function effectiveRates(w, clientId){ return Payroll.effectiveRates(w, clientId, clients); }
-function wRegRate(w,clientId){ return effectiveRates(w,clientId).regRate; }
-function wOtRate(w,clientId){ return effectiveRates(w,clientId).otRate; }
-function wShabRate(w,clientId){ return effectiveRates(w,clientId).shabbatRate; }
 // Pay for one shift's hours: the law tiers, or a flat OT/Shabbat rate when one is set.
 function shiftPay(hours, w, isSat, clientId){ return Payroll.shiftPay(hours, w, isSat, clientId, clients); }
 // Daily pay (w.payMode === 'daily', picked per worker in Accounting →
