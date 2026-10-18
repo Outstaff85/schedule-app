@@ -2688,13 +2688,6 @@ function workerToday(w, todayLog){
   if(sh && sh.type==='work' && sh.start && now.getHours()*60+now.getMinutes() >= toMins(sh.start)+15) return {k:'none', sh};
   return {k:''};
 }
-function workerTodayHtml(t){
-  if(t.k==='in') return `<span class="pin ok"><i></i>${esc(tr('In {0}',{0:t.time}))}</span>`;
-  if(t.k==='out') return `<span class="pin">${esc(tr('Out {0}',{0:t.time}))}</span>`;
-  if(t.k==='none') return `<span class="pin bad"><i></i>${esc(tr('No punch'))}</span>`;
-  if(t.k==='vac') return `<span class="pin vac">${esc(tr('On vacation'))}</span>`;
-  return '';
-}
 function workerSiteName(w){ const c=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean)[0]; return c?c.name:''; }
 function fmtHoursShort(h){ return tr('{h}h',{h:String(Math.round((h||0)*10)/10)}); }
 // A worker's notices, urgent (red) first: a failed upload, the ID / passport
