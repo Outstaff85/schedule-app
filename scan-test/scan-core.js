@@ -29,8 +29,8 @@ async function openSession(model, want, onStatus, onLog) {
     if (ep === 'webgpu' && !(self.navigator && navigator.gpu)) { onLog('WebGPU is not available here'); continue; }
     try {
       onStatus('Starting ' + model + ' on ' + (ep === 'webgpu' ? 'the GPU' : 'the CPU') + '…', 1);
-      // A GPU step that hangs (seen on a phone) is given up after 20 s.
-      const limit = (p, what) => ep !== 'webgpu' ? p : Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error(what + ' took over 20 s')), 20000))]);
+      // A step that hangs (seen on a phone) is given up after 20 s.
+      const limit = (p, what) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error(what + ' took over 20 s')), 20000))]);
       const sess = await limit(ort.InferenceSession.create(bytes, { executionProviders: [ep], graphOptimizationLevel: 'all' }), 'starting');
       onStatus('Warming up ' + model + ' on ' + (ep === 'webgpu' ? 'the GPU' : 'the CPU') + '…', 1);
       await limit(sess.run({ [sess.inputNames[0]]: new ort.Tensor('float32', new Float32Array(3 * S * S), [1, 3, S, S]) }), 'warm-up');
