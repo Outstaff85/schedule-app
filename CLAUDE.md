@@ -63,7 +63,7 @@ Some code comments (the rules, `tests/`, older parts of the pages) still name th
 
 ## Commands
 
-- Install and build (repo root, Node ≥ 20.19): `npm ci`, then `npm run dev` (dev server: the old pages and the new ones at their Hosting paths), `npm run build` (typecheck + Vite + the old pages copied into `dist/`), `npm run typecheck`, `npm run check:build` (docs/build.md). Local preview of the built site: `npm run build && firebase emulators:start --only hosting`; the old pages can still be opened directly as files.
+- Install and build (repo root, Node ≥ 20.19): `npm ci`, then `npm run dev` (dev server: every page at its Hosting path), `npm run build` (typecheck + Vite + the manager page and its files copied into `dist/`), `npm run typecheck`, `npm run check:build` (docs/build.md). Local preview of the built site: `npm run build && firebase emulators:start --only hosting`.
 - Payroll (old code vs the module): `node tests/payroll/compare.test.mjs`; after editing `src/lib/payroll.ts`: `npm run build:payroll`.
 - Accounting (the old tab's figures vs `src/manager/accounting.ts`): `node tests/accounting/compare.test.mjs` (`npm run test:accounting`).
 - Rules tests: `cd tests/rules && npm install && npm test`. Functions tests: `cd tests/rules && PYTHON=<python with firebase-admin, pytest> npm run test:auth`. Browser tests (after `npm run build` at the root; they run on `dist/`): `cd tests/e2e && npm install && PYTHON=<same python> npm test`. All of them run on every PR into `main` (`tests.yml`); a red check blocks the merge (docs/tests.md). A new feature adds its check in the same PR.
