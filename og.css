@@ -170,8 +170,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
   .lang-grab{display:block;}
 }
 @media (prefers-reduced-motion:reduce){.gbtn::before{animation:none;}.gbtn.shine::after{transition:none;}}
-/* ── Components from docs/design/system/components/bundle.css (the classes not
-   yet mapped onto the pages' own names — the screen-group passes switch to them). ── */
+/* ── Components from docs/design/system/components/bundle.css that the pages use. ── */
 /* Odinson Glass components. Every value comes from tokens.css. */
 :root{--og-uline:linear-gradient(90deg,var(--uline-1),var(--uline-2),var(--uline-3),var(--uline-1));--og-spring:cubic-bezier(.34,1.56,.64,1);--og-ease:cubic-bezier(.3,.7,.3,1)}
 @keyframes og-shrink{to{width:0}}
