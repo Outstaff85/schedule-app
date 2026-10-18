@@ -13,18 +13,41 @@ import { tr } from '@/lib/i18n';
 import { filesToUploadPages } from '@/manager/logic/uploads';
 import { frameInput, startEngine, type Detection, type Engine, type Pt } from './engine';
 import { loadTracker, type Tracker } from './track';
-import { findPages } from './server';
+import { cutPage, findPages, sendFeedback, type Example, type FindResult, type ServerPage } from './server';
+import { Corners } from './Corners';
 
 export type ScannedPage = { b64: string; mediaType: string; turn: number; blurry: boolean };
+// A page the server found keeps what its corners can be corrected on (S6): the photo sent,
+// the part of it the model looked at (0..1; a photo on a white page), the model's corners
+// in that part, the current corners on the whole photo, and — once corrected — the user's
+// corners in the part with a 256×256 copy of the part (the training example).
+type Page = ScannedPage & { src?: string; part?: [number, number, number, number]; modelQuad?: Pt[]; quad?: Pt[]; source?: string; fixedPart?: Pt[]; copy?: string };
 
 const STEADY_MS = 1000, LOCK_MS = 250, MOVE = 0.02, REARM = 0.08; // green after 0.25 s on the edges, the shot after 1 s
 const SEND_MAX = 2400;                             // the photo sent to the server, long side
 // A page of an old filled Form 101 (its printed title / form number) is left out: a new one is always made.
 const OLD_FORM_101 = /כרטיס\s*עובד|0101\/130/;
 
-type Item = { id: number; pending: boolean; pages: ScannedPage[]; note?: string };
+type Item = { id: number; pending: boolean; pages: Page[]; note?: string };
 
 const jpeg = (c: HTMLCanvasElement, q = 0.9) => c.toDataURL('image/jpeg', q).split(',')[1];
+const dataUrl = (b64: string, type = 'image/jpeg') => 'data:' + type + ';base64,' + b64;
+const shift = (a: Pt[], b: Pt[]) => Math.max(...a.map((p, i) => Math.hypot(p[0] - b[i][0], p[1] - b[i][1])));
+// A server page with its corners on the whole photo (src: the photo sent, its data URL).
+function fromServer(f: ServerPage, size: FindResult['size'], src: string): Page {
+  const [W, H] = size, b = f.box;
+  const part: [number, number, number, number] = b ? [b[0] / W, b[1] / H, b[2] / W, b[3] / H] : [0, 0, 1, 1];
+  const quad = f.quad.map(([x, y]) => [part[0] + x * (part[2] - part[0]), part[1] + y * (part[3] - part[1])] as Pt);
+  return { b64: f.imageBase64, mediaType: f.mediaType, turn: f.turn, blurry: f.blurry, src, part, modelQuad: f.quad, quad, source: f.source };
+}
+// The part of the photo the model looked at, as a 256×256 JPEG (the training copy — never the photo itself).
+async function partCopy(src: string, part: [number, number, number, number]): Promise<string> {
+  const im = new Image(); im.src = src; await im.decode();
+  const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+  const [x0, y0, x1, y1] = part, W = im.naturalWidth, H = im.naturalHeight;
+  c.getContext('2d')!.drawImage(im, x0 * W, y0 * H, (x1 - x0) * W, (y1 - y0) * H, 0, 0, 256, 256);
+  return jpeg(c, 0.85);
+}
 function canvasOf(src: CanvasImageSource, w: number, h: number, max: number) {
   const s = Math.min(1, max / Math.max(w, h)), c = document.createElement('canvas');
   c.width = Math.round(w * s); c.height = Math.round(h * s);
@@ -41,6 +64,8 @@ export function Scanner({ open, onDone, onClose }: { open: boolean; onDone: (pag
   const [hint, setHint] = React.useState('');
   const [items, setItems] = React.useState<Item[]>([]);
   const [finishing, setFinishing] = React.useState(false);
+  const [edit, setEdit] = React.useState<{ id: number; k: number } | null>(null);
+  const [cutting, setCutting] = React.useState(false);
   // the live loop's state, kept out of React's renders
   const st = React.useRef({
     engine: null as Engine | null, track: null as Tracker | null, stream: null as MediaStream | null,
@@ -186,8 +211,9 @@ export function Scanner({ open, onDone, onClose }: { open: boolean; onDone: (pag
     // the camera goes on for the next page after a short pause
     setTimeout(() => { if (st.current.stream) resume(); }, 900);
     try {
-      const pages = await findPages(jpeg(canvasOf(frame, w, h, SEND_MAX)), pts);
-      setItem(id, { pending: false, pages: pages.map(p => ({ b64: p.imageBase64, mediaType: p.mediaType, turn: p.turn, blurry: p.blurry })) });
+      const sent = jpeg(canvasOf(frame, w, h, SEND_MAX));
+      const found = await findPages(sent, pts);
+      setItem(id, { pending: false, pages: found.pages.map(f => fromServer(f, found.size, dataUrl(sent))) });
     } catch {
       const p = await local; // the server could not be reached: the phone's own cut is kept
       setItem(id, p ? { pending: false, pages: [p] } : { pending: false, pages: [], note: tr('This shot could not be cut — take it again') });
@@ -204,16 +230,43 @@ export function Scanner({ open, onDone, onClose }: { open: boolean; onDone: (pag
     catch { setItem(wait, { pending: false, note: tr('The files could not be read') }); return; }
     // one item per page, in the files' order, where the waiting tile was
     const ids = pages.map(() => ++st.current.nextId);
-    setItems(xs => xs.flatMap(x => (x.id === wait ? ids.map(id => ({ id, pending: true, pages: [] as ScannedPage[] })) : [x])));
+    setItems(xs => xs.flatMap(x => (x.id === wait ? ids.map(id => ({ id, pending: true, pages: [] as Page[] })) : [x])));
     await Promise.all(pages.map(async (p, i) => {
       try {
         const found = await findPages(p.b64);
-        setItem(ids[i], { pending: false, pages: found.map(f => ({ b64: f.imageBase64, mediaType: f.mediaType, turn: f.turn, blurry: f.blurry })) });
+        setItem(ids[i], { pending: false, pages: found.pages.map(f => fromServer(f, found.size, dataUrl(p.b64, p.mediaType))) });
       } catch {
         setItem(ids[i], { pending: false, pages: [{ b64: p.b64, mediaType: p.mediaType, turn: -1, blurry: false }] });
       }
     }));
   };
+
+  // ── corners: a found page's corners corrected on its photo, the page cut by them again ──
+  const editing = edit ? items.find(x => x.id === edit.id)?.pages[edit.k] : undefined;
+  const apply = async (q: Pt[]) => {
+    const e = edit, pg = editing;
+    if (!e || !pg || !pg.src || !pg.quad || !pg.part) { setEdit(null); return; }
+    if (shift(q, pg.quad) < 0.003) { setEdit(null); return; }
+    setCutting(true);
+    try {
+      const cut = await cutPage(pg.src.split(',')[1], q);
+      const [x0, y0, x1, y1] = pg.part;
+      const fixedPart = q.map(([x, y]) => [(x - x0) / (x1 - x0), (y - y0) / (y1 - y0)] as Pt);
+      const copy = pg.copy || await partCopy(pg.src, pg.part).catch(() => undefined);
+      setItems(xs => xs.map(x => (x.id === e.id ? { ...x, pages: x.pages.map((p, j) => (j === e.k
+        ? { ...p, b64: cut.imageBase64, mediaType: cut.mediaType, turn: cut.turn, blurry: cut.blurry, quad: q, fixedPart, copy } : p)) } : x)));
+      setEdit(null);
+    } catch { setHint(tr('The page could not be cut again — check the connection')); }
+    finally { setCutting(false); }
+  };
+  // The scan's training examples (S6): every page the server found — a corrected one with
+  // its copy and the user's corners, the others only counted.
+  const examples = (list: Item[]): Example[] => list.flatMap(x => x.pages).filter(p => p.modelQuad).map(p => ({
+    cornersModel: p.modelQuad!, cornersFixed: p.fixedPart || p.modelQuad!, source: p.source || 'model', model: '',
+    ...(p.fixedPart && p.copy ? { image: p.copy } : {}),
+  }));
+  // Examples a scan could not send (no network) go out when the window opens again.
+  React.useEffect(() => { if (open) void sendFeedback(); }, [open]);
 
   const pages = items.flatMap(x => x.pages);
   const pending = items.some(x => x.pending);
@@ -227,7 +280,8 @@ export function Scanner({ open, onDone, onClose }: { open: boolean; onDone: (pag
         onClick={async () => {
           setFinishing(true); stopCamera();
           while (itemsRef.current.some(x => x.pending)) await new Promise(r => setTimeout(r, 100));
-          onDone(itemsRef.current.flatMap(x => x.pages));
+          void sendFeedback(examples(itemsRef.current)); // in the background, queued when offline
+          onDone(itemsRef.current.flatMap(x => x.pages).map(({ b64, mediaType, turn, blurry }) => ({ b64, mediaType, turn, blurry })));
         }}>
         {finishing || pending ? <IconLoader2 className="size-[18px] animate-spin" /> : null}
         {tr('Done ({0})', { 0: pages.length })}
@@ -251,6 +305,9 @@ export function Scanner({ open, onDone, onClose }: { open: boolean; onDone: (pag
             </label>
           </Button>
         </div>
+        {editing && editing.src && editing.quad && (
+          <Corners key={edit!.id + ':' + edit!.k} src={editing.src} quad={editing.quad} busy={cutting} onApply={q => void apply(q)} />
+        )}
         {items.length > 0 && (
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4" data-testid="scan-pages">
             {items.map(x => (x.pages.length === 0
@@ -259,10 +316,13 @@ export function Scanner({ open, onDone, onClose }: { open: boolean; onDone: (pag
                 </div>
               : x.pages.map((p, k) => (
                   <div key={x.id + ':' + k} className="relative overflow-hidden rounded-lg bg-plate" data-testid="scan-page" data-pending={x.pending || undefined}>
-                    <img src={'data:' + p.mediaType + ';base64,' + p.b64} alt="" className="block aspect-[3/4] w-full object-contain" />
+                    <img src={'data:' + p.mediaType + ';base64,' + p.b64} alt="" data-testid="scan-page-img"
+                      className={'block aspect-[3/4] w-full object-contain' + (p.quad && !x.pending ? ' cursor-pointer' : '') + (edit && edit.id === x.id && edit.k === k ? ' ring-2 ring-ok' : '')}
+                      onClick={() => { if (p.quad && !x.pending) setEdit(edit && edit.id === x.id && edit.k === k ? null : { id: x.id, k }); }} />
+                    {p.fixedPart && <span className="absolute bottom-1 left-1 rounded-md bg-background/70 px-1.5 text-[11px]">{tr('Corrected')}</span>}
                     {x.pending && <IconLoader2 className="absolute left-1.5 top-1.5 size-4 animate-spin text-muted-foreground" />}
                     <button type="button" aria-label={tr('Remove')} className="absolute right-1 top-1 rounded-md bg-background/70 p-1"
-                      onClick={() => setItems(xs => xs.map(y => (y.id === x.id ? { ...y, pages: y.pages.filter((_, j) => j !== k) } : y)).filter(y => y.pending || y.pages.length || y.note))}>
+                      onClick={() => { setEdit(null); setItems(xs => xs.map(y => (y.id === x.id ? { ...y, pages: y.pages.filter((_, j) => j !== k) } : y)).filter(y => y.pending || y.pages.length || y.note)); }}>
                       <IconTrash className="size-4" />
                     </button>
                   </div>

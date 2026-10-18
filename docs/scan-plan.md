@@ -76,6 +76,8 @@ A standing tool kept in the repo for trying and tuning the scanner's on-device p
 
 ### S6 — the models learn from the corrections (after S1–S2; owner, 2026-10-18)
 
+**Status:** collecting is built — the corner editor in the scan window, `scan_feedback`, 12-month deletion, the super-admin's bell notice (docs/scan.md → Training examples). **Left:** the training on the PC (`scripts/scan-train/`, `/scan-train`); the page kind as a training answer comes when the review screen shows the kinds. The monthly reminder is the bell itself (the server counts); a push in the Claude app would need a scheduled task that can read the counts, which it cannot.
+
 - **What is learned from:** every correction on the review screen — corners moved, a page's kind changed — is a training example.
 - **Where the examples are kept and how they are written** (owner, 2026-10-18):
   - **automatically, in the background**: when the scan is finished as usual ("Done" — no extra step for anyone; a scan closed before that sends nothing, so only final answers count) the phone makes, for every corrected page, a 256×256 copy of the page (never the photo) and sends them with both answers in one request to a new function `scan_feedback` (signed-in users only); with no network the examples wait in a queue on the phone and go when it is back. It checks the login and the firm, then writes the copy to Firebase Storage `training/scan/<YYYY-MM>/<id>.jpg`, its record to Firestore `scanTraining/<id>` — `{kindModel, kindFixed, cornersModel, cornersFixed, moved, model, tenantId, createdAt, deleteAt}` — and updates the counters in `scanTrainingStats` (new examples since the last training, the average move). A page the model got right counts in the statistics only, with no copy.

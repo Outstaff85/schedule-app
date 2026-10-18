@@ -1,0 +1,71 @@
+"""The scanner's training examples (functions/feedback.py, docs/scan-plan.md → S6):
+what is kept, what is only counted, what is refused; the gate's claims; the
+server and the site use the same model version."""
+import base64
+import datetime
+import importlib.util
+import pathlib
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+
+def load(name):
+    spec = importlib.util.spec_from_file_location(name, ROOT / "functions" / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+feedback = load("feedback")
+gate = load("gate")
+
+JPG = base64.b64encode(b"\xff\xd8" + b"\0" * 100 + b"\xff\xd9").decode()
+MODEL = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+
+
+def ex(**kw):
+    return dict({"image": JPG, "cornersModel": MODEL, "cornersFixed": MODEL, "source": "model", "model": "base-v1"}, **kw)
+
+
+def test_a_moved_page_is_kept_with_how_far_it_moved():
+    fixed = [[0.12, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.95]]
+    e, why = feedback.check(ex(cornersFixed=fixed))
+    assert why is None and abs(e["moved"] - 0.05) < 1e-6 and e["moved"] >= feedback.MOVED_MIN
+
+
+def test_a_page_the_model_got_right_is_only_counted_and_needs_no_copy():
+    e, why = feedback.check(ex(image=None))
+    assert why is None and e["moved"] == 0 < feedback.MOVED_MIN and e["image"] is None
+
+
+def test_bad_examples_are_refused():
+    assert feedback.check(ex(cornersFixed=[[0, 0]]))[1] == "bad corners"
+    assert feedback.check(ex(cornersModel=[[0, 0], [2, 0], [1, 1], [0, 1]]))[1] == "bad corners"
+    moved = [[0.2, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+    assert feedback.check(ex(cornersFixed=moved, image="not base64!"))[1] == "bad image"
+    assert feedback.check(ex(cornersFixed=moved, image=None))[1] == "the image is not a small JPEG"
+    assert feedback.check(ex(cornersFixed=moved, image=base64.b64encode(b"PNG....").decode()))[1] == "the image is not a small JPEG"
+    big = base64.b64encode(b"\xff\xd8" + b"\0" * feedback.MAX_IMAGE_BYTES).decode()
+    assert feedback.check(ex(cornersFixed=moved, image=big))[1] == "the image is not a small JPEG"
+    assert feedback.check("x")[1] == "not an object"
+
+
+def test_the_record_is_deleted_after_a_year_and_names_its_firm():
+    e, _ = feedback.check(ex(source="odd"))
+    now = datetime.datetime(2026, 10, 18, tzinfo=datetime.timezone.utc)
+    r = feedback.record(e, "t1", now, feedback.image_path(now, "abc"))
+    assert r["image"] == "training/scan/2026-10/abc.jpg" and r["tenantId"] == "t1" and r["source"] == "model"
+    assert r["deleteAt"] - r["createdAt"] == datetime.timedelta(days=365) and "imageBase64" not in r
+
+
+def test_gate_gives_the_claims_of_a_manager_only():
+    ok = lambda t: {"role": "staff", "tenantId": "t1"}
+    assert gate.claims_of({"Authorization": "Bearer x"}, ok) == (None, None, {"role": "staff", "tenantId": "t1"})
+    assert gate.claims_of({"Authorization": "Bearer x"}, lambda t: {"role": "client"})[0] == 403
+    assert gate.claims_of({}, ok)[0] == 401
+
+
+def test_server_and_site_use_the_same_model_version():
+    server = (ROOT / "functions" / "scan_models_version.txt").read_text().strip()
+    site = (ROOT / "scripts" / "scan" / "models-version").read_text().strip()
+    assert server == site
