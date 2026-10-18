@@ -38,8 +38,6 @@
   .titlebar::before{content:'';position:absolute;inset:0;z-index:-1;-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);pointer-events:none;}
   .titlebar .brand{display:flex;align-items:center;gap:9px;padding-right:14px;}
   .titlebar .brand img{width:28px;height:28px;border-radius:8px;}
-  .titlebar .logo{font-size:16px;font-weight:600;color:var(--text);letter-spacing:-0.3px;align-self:center;white-space:nowrap;}
-  .titlebar .logo span{color:var(--accent);}
   /* The logo 11C "under one roof": a light running over the roof, the three
      people lighting up in turn, a light along the connection line; the name
      and its two lines beside it (only the mark on a phone). */
@@ -220,16 +218,8 @@
 
   /* Sidebar */
   .sidebar{width:290px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px 0;flex-shrink:0;overflow-y:auto;}
-  .tab-nav{padding:0 12px;margin-bottom:16px;display:flex;gap:4px;}
-  .tab-btn{flex:1;padding:7px 6px;border-radius:var(--radius-sm);font-size:14px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--bg3);color:var(--text2);transition:all 0.15s;text-align:center;}
-  .tab-btn.active{background:var(--blue-bg);color:var(--blue);border-color:rgba(96,165,250,0.3);}
   .sidebar-section{padding:0 12px;margin-bottom:16px;}
   .sidebar-label{font-size:13px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:0 4px;margin-bottom:6px;}
-  .week-nav{padding:0 12px;margin-bottom:16px;}
-  .week-display{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;font-size:14px;color:var(--text);text-align:center;margin-bottom:6px;font-family:'DM Mono','Heebo',Consolas,monospace;}
-  .week-btns{display:flex;gap:4px;}
-  .week-btn{flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:var(--radius-sm);padding:5px;cursor:pointer;font-size:15px;transition:all 0.15s;display:flex;align-items:center;justify-content:center;}
-  .week-btn:hover{background:var(--border2);color:var(--text);}
   .worker-list{padding:0 12px;max-height:40vh;overflow-y:auto;}
   .worker-chip{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--radius-sm);margin-bottom:3px;transition:all 0.15s;}
   .worker-chip:hover{background:var(--bg3);}
@@ -255,9 +245,6 @@
   .main{flex:1;overflow-y:auto;padding:20px 24px;-webkit-overflow-scrolling:touch;}
   .page-section{display:none;}
   .page-section.visible{display:block;}
-  .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
-  .page-title{font-size:14px;font-weight:600;color:var(--text);letter-spacing:-0.5px;}
-  .page-sub{font-size:15px;color:var(--text2);margin-top:2px;}
 
   /* Buttons */
   .btn{touch-action:manipulation;display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--radius-sm);font-size:15px;font-family:'DM Sans','Heebo',Arial,sans-serif;font-weight:500;cursor:pointer;border:1px solid var(--border2);background:var(--bg3);color:var(--text);text-decoration:none;transition:all 0.15s;}
@@ -268,53 +255,22 @@
   .btn.red{background:var(--red-bg);border-color:rgba(248,113,113,0.3);color:var(--red);}
   .btn.sm{padding:5px 10px;font-size:14px;}
 
-  /* Export dropdown */
-  .export-dropdown{position:relative;}
-  .dropdown-menu{position:absolute;top:100%;right:0;margin-top:4px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:6px;z-index:50;min-width:200px;display:none;}
-  .dropdown-menu.open{display:block;}
-  .dropdown-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--radius-sm);font-size:15px;cursor:pointer;color:var(--text2);transition:all 0.15s;}
-  .dropdown-item:hover{background:var(--bg3);color:var(--text);}
-
-  /* Stats */
-  .stat-card{background:var(--bg2);border-radius:var(--radius);padding:12px 14px;}
-  .stat-label{font-size:14px;color:var(--text2);margin-bottom:4px;}
-  .stat-val{font-size:22px;font-weight:600;color:var(--text);letter-spacing:-0.5px;font-family:'DM Mono',Consolas,monospace;}
-  .stat-unit{font-size:15px;color:var(--text2);font-weight:400;}
-
-  /* Gantt */
-  .day-name{display:inline-flex;align-items:center;gap:5px;}
-  .day-date{font-family:'DM Mono',Consolas,monospace;font-size:11px;font-weight:500;color:var(--text3);letter-spacing:0;text-transform:none;}
-  .day-hebrew{font-size:13px;color:var(--accent);font-weight:700;}
-  .drag-handle{color:var(--text3);font-size:16px;cursor:grab;flex-shrink:0;}
-
   /* Modal */
   .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:100;align-items:center;justify-content:center;}
   .overlay.open{display:flex;}
   .tap-edit{cursor:pointer;} /* a tap opens the item's card (or its editor when it has none); a double click / long press its editor (tapEdit, longPress) */
   @media (pointer:coarse){ .tap-edit{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;} #workerCardModal{-webkit-touch-callout:none;} }
   .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto;}
-  /* The app's template (variant 3, user request 2026-10-11): no boxes — big
-     figures as text (.t3-stats), a section line with its count (.t3-sec),
-     and rows whose state is a colored line on the left (.t3-line, --c);
-     on a phone a window opens from the bottom (a sheet). */
-  .t3-stats{display:flex;gap:20px;flex-wrap:wrap;margin:2px 2px 14px}
-  .t3-stats>div{font-size:11px;color:var(--text2);cursor:default}
-  .t3-stats>div.go{cursor:pointer}
-  .t3-stats b{display:block;font-size:24px;font-weight:700;line-height:1.1;color:var(--text)}
-  .t3-sec{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--text2);margin:16px 2px 6px}
-  .t3-sec em{font-style:normal;margin-left:auto;color:var(--text3);font-weight:500}
+  /* The app's template (variant 3, user request 2026-10-11): rows whose state
+     is a colored line on the left (.t3-line, --c); on a phone a window opens
+     from the bottom (a sheet). */
   .t3-line{display:flex;align-items:center;gap:10px;padding:9px 10px 9px 12px;border-left:3px solid var(--c,var(--border2));background:linear-gradient(90deg,rgba(var(--tint),.035),transparent 85%);border-radius:0 8px 8px 0;margin-bottom:4px;font-size:13px;cursor:pointer}
   .t3-line:hover{background:linear-gradient(90deg,rgba(var(--tint),.06),transparent 85%)}
   .t3-line .n{flex:1;min-width:0}
   .t3-line .n b{display:block;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .t3-line .n small{display:block;color:var(--text2);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .t3-line .r{font-family:'DM Mono',monospace;font-size:12px;color:var(--text2);white-space:nowrap}
-  .t3-av{width:30px;height:30px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;overflow:hidden}
   .t3-empty{color:var(--text3);font-size:13px;padding:6px 2px 4px}
-  /* The lists in the template: worker and client cards lose their box and
-     get the colored line on the left. */
-  .wcard,.client-card{border:0 !important;border-left:3px solid var(--c,var(--border2)) !important;border-radius:0 10px 10px 0 !important;background:linear-gradient(90deg,rgba(var(--tint),.04),rgba(var(--tint),.012) 70%) !important}
-  .wcard:hover,.client-card:hover{background:linear-gradient(90deg,rgba(var(--tint),.07),rgba(var(--tint),.02) 70%) !important}
   @media (max-width:700px){
     .overlay{align-items:flex-end}
     .overlay>.modal{width:100% !important;max-width:100% !important;max-height:88vh;border-radius:18px 18px 0 0;border-bottom:0;padding:14px 16px 20px}
@@ -325,50 +281,10 @@
   .field label{display:block;font-size:14px;color:var(--text2);margin-bottom:5px;font-weight:500;}
   .field input,.field select{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:15px;font-family:'DM Sans','Heebo',Arial,sans-serif;padding:8px 10px;outline:none;transition:border-color 0.15s;}
   .field input:focus,.field select:focus{border-color:var(--accent);}
-  /* Checkbox choices as tappable tiles (template: user form sections and
-     own-only switch) — the same on a phone and a computer. Overrides the
-     .field label/input styles they sit inside. */
+  /* A heading that splits a longer form (the pay window). */
   .form-section{margin:18px 0 8px;padding-top:12px;border-top:1px solid var(--border2);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text2);}
   .form-section:first-of-type{margin-top:4px;padding-top:0;border-top:none;}
-  .check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
-  .field label.check-chip,label.check-chip{display:flex;align-items:center;gap:10px;margin:0;padding:10px 12px;min-height:44px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:14px;font-weight:500;cursor:pointer;user-select:none;}
-  .field label.check-chip input,label.check-chip input{width:18px;height:18px;flex:0 0 18px;margin:0;padding:0;accent-color:var(--accent);cursor:pointer;}
-  label.check-chip:has(input:checked){border-color:var(--accent);background:rgba(79,142,247,0.12);}
-  label.check-chip .chip-text{display:flex;flex-direction:column;gap:2px;min-width:0;}
-  label.check-chip .chip-hint{font-size:12px;font-weight:400;color:var(--text2);line-height:1.35;}
-  .w-toggle{width:100%;display:flex;justify-content:space-between;align-items:center;}
-  .w-panel{border:1px solid var(--border2);border-radius:10px;padding:10px 12px;margin-bottom:12px;}
-  .w-child{padding-bottom:8px;border-bottom:1px solid var(--border);}
-  /* Worker status on the card: three small pills, a colored dot each; the
-     chosen one is filled in its color. */
-  .status-pills{display:inline-flex;gap:4px;padding:3px;background:var(--bg3);border:1px solid var(--border2);border-radius:999px;}
-  .status-pills button{display:inline-flex;align-items:center;gap:5px;background:none;border:none;border-radius:999px;color:var(--text2);font:600 11px/1 inherit;font-family:inherit;padding:5px 9px;cursor:pointer;}
-  .status-pills button i{width:7px;height:7px;border-radius:50%;background:var(--text3);}
-  .status-pills button[data-st="active"] i{background:var(--green);}
-  .status-pills button[data-st="vacation"] i{background:var(--amber);}
-  .status-pills button[data-st="fired"] i{background:var(--red);}
-  .status-pills button.on[data-st="active"]{background:var(--green-bg);color:var(--green);}
-  .status-pills button.on[data-st="vacation"]{background:var(--amber-bg);color:var(--amber);}
-  .status-pills button.on[data-st="fired"]{background:var(--red-bg);color:var(--red);}
-  .hours-badge{display:inline-block;font-size:14px;color:var(--green);background:var(--green-bg);border-radius:4px;padding:3px 8px;margin-top:6px;font-family:'DM Mono','Heebo',Consolas,monospace;}
   .modal-actions{display:flex;gap:8px;margin-top:20px;justify-content:flex-end;}
-  .day-grid{display:flex;flex-direction:column;gap:6px;}
-  .day-row{display:grid;grid-template-columns:42px 68px 1fr 1fr;gap:6px;align-items:center;}
-  .day-tag{font-size:14px;font-weight:600;color:var(--text2);text-align:center;line-height:1.3;}
-  .day-row select,.day-row input{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;font-family:'DM Sans','Heebo',Arial,sans-serif;padding:5px 7px;outline:none;width:100%;}
-  .day-row select:focus,.day-row input:focus{border-color:var(--accent);}
-
-  /* Clients page */
-  .clients-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));column-gap:12px;row-gap:0;align-items:start;}
-  .client-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;gap:10px;}
-  .wc-row:hover{background:var(--bg3);}
-  .client-card-header{display:flex;align-items:center;gap:10px;}
-  .client-card.tap-edit{position:relative}
-  .client-card.tap-edit .client-card-header{padding-right:22px}
-  .client-card-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0;}
-  .client-card-name{font-size:16px;font-weight:600;color:var(--text);}
-  .client-card-info{font-size:14px;color:var(--text2);}
-  .client-card-actions{display:flex;gap:6px;margin-top:4px;}
 
   /* Scrollbar */
   ::-webkit-scrollbar{width:5px;}
@@ -399,7 +315,6 @@
       padding: env(safe-area-inset-top,8px) 12px 8px;
       gap: 6px; position: sticky; top: 0; z-index: 40;
     }
-    .titlebar .logo { font-size: 13px; }
     .titlebar .brand { padding-right: 8px; }
     .titlebar .brand img { width: 24px; height: 24px; }
     .top-tabs { order: 3; width: 100%; overflow-x: auto; gap: 0; scrollbar-width: none; }
@@ -412,7 +327,6 @@
     .acct-chip { padding: 0 4px; }
     .save-indicator { font-size: 10px; }
     .btn.sm { font-size: 11px; padding: 5px 10px; min-height: 34px; }
-    .dropdown-menu { right: 0; left: auto; min-width: 180px; }
 
     /* ── Sidebar → horizontal strip ── */
     .sidebar {
@@ -424,13 +338,6 @@
       scrollbar-width: none;
     }
     .sidebar::-webkit-scrollbar { display: none; }
-    .tab-nav  { padding: 0; margin-bottom: 0; flex-shrink: 0; min-width: fit-content; }
-    .tab-btn  { font-size: 11px; padding: 6px 8px; white-space: nowrap; min-height: 32px; }
-    .week-nav { padding: 0; margin-bottom: 0; flex-shrink: 0; }
-    .week-nav .sidebar-label { display: none; }
-    .week-display { font-size: 11px; padding: 5px 8px; white-space: nowrap; margin-bottom: 4px; }
-    .week-btns { gap: 3px; }
-    .week-btn  { padding: 5px 10px; font-size: 13px; min-width: 36px; min-height: 32px; }
     .sidebar-section { display: none; }   /* Workers/Filter labels+sort: managed via tabs on mobile */
     .sidebar-section .btn { white-space: nowrap; font-size: 11px; padding: 5px 10px; min-height: 32px; }
     /* Hide worker list + client filter — managed via Workers/Clients tabs on mobile */
@@ -442,23 +349,7 @@
     /* ── Main ── */
     .main { padding: 12px 12px env(safe-area-inset-bottom,12px); overflow: visible; }
 
-    /* ── Page header ── */
-    .page-header { flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 12px; }
-    .page-title  { font-size: 17px; }
-    .page-sub    { font-size: 12px; }
-
-    /* ── Stats row ── */
-    .stat-card  { padding: 10px 12px; }
-    .stat-val   { font-size: 20px; }
-    .stat-label { font-size: 11px; }
-    .stat-unit  { font-size: 12px; }
-
-    /* ── Gantt ── */
-    .day-hebrew { font-size: 10px; }
-    .drag-handle { display: none; }
     .worker-avatar { width: 22px; height: 22px; font-size: 9px; }
-
-    /* ── Legend ── */
 
     /* ── Modals — full screen bottom sheet ── */
     .overlay { align-items: flex-end; }
@@ -470,17 +361,8 @@
       max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px); margin: 0;
     }
     .modal-title { font-size: 16px; }
-    .day-row     { grid-template-columns: 38px 60px 1fr 1fr; gap: 4px; font-size: 12px; }
-    .day-row select, .day-row input { font-size: 12px; padding: 5px 4px; }
     .modal-actions { gap: 8px; flex-wrap: wrap; }
     .modal-actions .btn { flex: 1; justify-content: center; min-height: 42px; }
-
-    /* ── Clients page ── */
-    .clients-grid { grid-template-columns: 1fr; gap: 10px; }
-    .client-card  { padding: 14px; }
-    .client-card-actions { flex-wrap: wrap; gap: 6px; }
-    .client-card-actions .btn { flex: 1; justify-content: center; font-size: 12px; }
-
 
     /* ── Worker chips in sidebar ── */
     .worker-chip { padding: 5px 6px; }
@@ -493,9 +375,6 @@
 
   /* ── Phone only ── */
   @media (max-width: 480px) {
-    .stat-val   { font-size: 18px; }
-    .page-title { font-size: 15px; }
-    .tab-btn    { font-size: 10px; padding: 5px 7px; }
     /* Stack titlebar actions */
     .titlebar-actions { gap: 3px; }
     .save-indicator span { display: none; }
@@ -510,27 +389,7 @@
   .t3-ib{background:none;border:0;color:var(--text3);font-size:15px;cursor:pointer;padding:4px 6px;flex:none}
   .t3-ib:hover{color:var(--text)}
   .t3-line.off{opacity:.6}
-
-  /* Today (variant A): a section folds with the arrow at its right; a
-     figure picked as a filter is highlighted, the other sections hidden. */
-  .dash-sec{cursor:pointer;user-select:none}
-  .t3-chev{color:var(--text3);font-size:15px;margin-left:4px;transition:transform .15s}
-  .dash-fold>.t3-sec .t3-chev{transform:rotate(-90deg)}
-  .dash-fold>.t3-sec+div{display:none}
-  .dash-off{display:none!important}
-  .t3-stats>div.on{background:var(--bg3);border-radius:8px;box-shadow:inset 0 -2px 0 var(--accent)}
-  .t3-stats>div{padding:3px 6px;margin:-3px -6px}
-  .dash-filter-note{font-size:11px;color:var(--accent);margin:-8px 2px 8px}
-  .dash-filter-note a{color:inherit;text-decoration:underline;cursor:pointer}
   .t3-line.sub{margin-left:24px;padding:5px 8px 5px 10px;font-size:12px}
-  .t3-sec .btn{margin-left:8px}
-  /* A worker-modal field the scan left empty: tap it to search the scan for it. */
-  .scan-missing { border-color: var(--amber) !important; box-shadow: 0 0 0 2px rgba(245,166,35,0.25); cursor: pointer; }
-  .scan-busy { opacity: 0.6; }
-  .scan-found { border-color: var(--green) !important; box-shadow: 0 0 0 2px rgba(34,197,94,0.3); }
-  /* Two reads of the scan disagreed on this value: check it. */
-  .scan-check { border-color: var(--amber) !important; box-shadow: 0 0 0 2px rgba(245,166,35,0.25); }
-  .scan-check[data-check-key]:not([data-rechecked]) { cursor: pointer; }
   @keyframes barSlide { 0% { left: -40%; } 100% { left: 100%; } }
   .progress-bar { position: relative; width: 100%; height: 4px; border-radius: 2px;
     background: var(--bg3); overflow: hidden; margin-top: 10px; }
@@ -547,70 +406,13 @@
   /* ── Scan corner (quad) editor ── */
   .quad-handle { fill: var(--accent); stroke: #fff; stroke-width: 2; cursor: grab; touch-action: none; }
   .quad-handle:active { cursor: grabbing; }
-  /* Filter dropdowns: a small caption says what each one filters, and one
-     with a choice made is highlighted, so it is clear without opening them. */
-  .filter-field{display:inline-flex;flex-direction:column;gap:3px}
-  .filter-cap{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;padding-left:2px}
-  .filter-field select.filter-on{border-color:var(--accent)!important;color:var(--accent)!important}
-  .rates-head{display:flex;align-items:center;justify-content:space-between}
-  .rates-help{display:none;font-size:11px;color:var(--text3);margin:-4px 0 10px}
-  .rates-help.open{display:block}
-  .rate-in{position:relative}
-  .rate-in input{padding-left:58px}
-  .rate-in span{position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--text3);pointer-events:none}
-  .seg-toggle{display:flex;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:3px;margin-bottom:12px;gap:3px}
-  .seg-toggle button{flex:1;border:0;background:none;color:var(--text2);font:600 13px inherit;padding:8px 4px;border-radius:8px;cursor:pointer}
-  .seg-toggle button.on{background:var(--accent);color:#fff}
-  .rate-margin{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:8px;margin-bottom:12px}
-  .rate-margin>div{background:rgba(var(--tint),.04);border:1px solid var(--border);border-radius:12px;padding:9px 10px;text-align:center}
-  .rate-margin b{display:block;font-size:17px;font-weight:700;color:var(--green)}
-  .rate-margin small{display:block;font-size:11px;color:var(--text2);margin-top:2px}
-  .rate-margin.neg b{color:var(--red,#ff4f5e)}
-  /* The client editor's small map (Place): the GPS radius as a circle; a tap opens the map picker. */
-  .og-map{position:relative;height:110px;border-radius:14px;margin:2px 0 12px;cursor:pointer;overflow:hidden;border:1px solid var(--border);
-    background:linear-gradient(rgba(var(--tint),.035) 1px,transparent 1px) 0 0/22px 22px,linear-gradient(90deg,rgba(var(--tint),.035) 1px,transparent 1px) 0 0/22px 22px,rgba(34,211,238,.05)}
-  .og-map-r{position:absolute;left:50%;top:50%;width:calc(var(--r,48px)*2);height:calc(var(--r,48px)*2);transform:translate(-50%,-50%);border-radius:50%;border:1.5px dashed rgba(34,211,238,.7);background:rgba(34,211,238,.10)}
-  .og-map-pin{position:absolute;left:50%;top:50%;transform:translate(-50%,-80%);font-size:22px;color:#22d3ee}
-  .og-map-l{position:absolute;right:8px;bottom:8px;max-width:calc(100% - 16px);padding:3px 9px;border-radius:9px;background:rgba(10,12,20,.7);font-size:11px;font-weight:600;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .og-map-tap{position:absolute;left:10px;top:10px;width:30px;height:30px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(var(--tint),.08);border:1px solid rgba(var(--tint),.14);color:#22d3ee;font-size:16px}
-  .og-map:active{transform:scale(.99)}
-  .og-map:not(.set) .og-map-r,.og-map:not(.set) .og-map-pin{opacity:.35}
-  .view-toggle{display:inline-flex;border:1px solid var(--border2);border-radius:var(--radius-sm);overflow:hidden}
-  /* Workers tab toolbar: actions, search + layout toggle, then the filters in
-     one row on a computer and two columns on a phone. */
-  .workers-actions{display:flex;gap:8px}
-  .workers-toolbar{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
-  .workers-search-row{display:flex;gap:8px;align-items:stretch}
-  .workers-search-row input{flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:8px 10px;font-size:13px;outline:none}
-  /* Filter rows everywhere (Workers, Admin): one row of --cols on a
-     computer; two columns without captions on a phone, an odd last one
-     across. */
-  .filters-btn{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;padding:0 12px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);border-radius:var(--radius-sm);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer}
-  .filters-btn.on{border-color:var(--accent);color:var(--accent)}
-  .filters-btn .n{background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px}
-  .filter-chips{display:flex;flex-wrap:wrap;gap:6px}
-  .filter-chips:empty{display:none}
-  .filter-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:rgba(79,142,247,.12);border:1px solid rgba(79,142,247,.4);color:var(--accent);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer}
-  .filter-chip b{opacity:.75}
-  .filters-grid{display:grid;grid-template-columns:repeat(var(--cols,4),minmax(0,1fr));gap:8px}
-  .filters-grid .filter-field{display:flex;min-width:0}
-  .filters-grid select{width:100%;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 8px;font-size:13px;outline:none;text-overflow:ellipsis}
-  .workers-count{font-size:12px;color:var(--text2)}
-  .workers-count .inactive-link{color:var(--text2);text-decoration:underline}
   .contract-notice{flex-shrink:0;display:flex;align-items:center;gap:10px;margin:8px 16px 0;padding:8px 12px;border-radius:10px;background:var(--amber-bg);border:1px solid rgba(245,166,35,0.35);color:var(--amber);font-size:13px;font-weight:600}
   .contract-notice.over{background:var(--red-bg);border-color:rgba(248,113,113,0.35);color:var(--red)}
   .contract-notice span{flex:1}
   .contract-notice button{border:0;background:none;color:inherit;font:inherit;cursor:pointer;padding:2px 4px}
   .contract-notice .go{text-decoration:underline}
-  /* A pane's top row: the period select and icon buttons, one line on a
-     phone too. */
-  .pane-toolbar{display:flex;align-items:center;gap:4px;margin-bottom:10px}
-  .pane-toolbar select{flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none}
-  .pane-toolbar .t3-ib{font-size:18px;padding:6px 7px}
-  .pane-toolbar .t3-ib.red{color:var(--red);opacity:.75}
-  .pane-toolbar .t3-ib.red:hover{opacity:1}
   /* ── Phone (≤ 700 px): the tabs become a bar at the bottom of the screen,
-     and the tables of Accounting and Admin become one card per row
+     and the tables of Admin (Errors, Timings) become one card per row
      (cardTables() puts each column's header on its cells as data-label). ── */
   @media (max-width:700px){
     /* The bottom bar (variant 11, a color per section): Today, Schedule,
@@ -633,53 +435,27 @@
     body{padding-bottom:calc(66px + env(safe-area-inset-bottom,0px));}
     .toast{bottom:calc(76px + env(safe-area-inset-bottom,0px));}
     :root{--bar-gap:calc(76px + env(safe-area-inset-bottom,0px));}
-    body:not(.tables-list) table.mtable{min-width:0 !important;border-collapse:separate !important;}
-    body:not(.tables-list) table.mtable thead{display:none;}
-    body:not(.tables-list) table.mtable,body:not(.tables-list) table.mtable tbody,body:not(.tables-list) table.mtable tfoot,body:not(.tables-list) table.mtable tr,body:not(.tables-list) table.mtable td{display:block;width:100%;box-sizing:border-box;}
-    body:not(.tables-list) table.mtable tr{background:var(--bg2);border:1px solid var(--border2) !important;border-radius:12px;margin:0 0 10px;padding:6px 12px;}
-    body:not(.tables-list) table.mtable td{display:flex;justify-content:flex-end;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:5px 0 !important;border:0 !important;text-align:right !important;min-height:28px;}
-    body:not(.tables-list) table.mtable td::before{content:attr(data-label);color:var(--text3);font-size:12px;font-weight:500;text-align:left;flex-shrink:0;margin-right:auto;}
-    body:not(.tables-list) table.mtable td:first-child{font-weight:600;font-size:15px;justify-content:flex-start;text-align:left !important;}
-    body:not(.tables-list) table.mtable td:first-child::before{display:none;}
-    body:not(.tables-list) table.mtable td:empty{display:none;}
-    body:not(.tables-list) table.mtable td[colspan]{justify-content:center;}
-    body:not(.tables-list) table.mtable td[colspan]::before{display:none;}
+    table.mtable{min-width:0 !important;border-collapse:separate !important;}
+    table.mtable thead{display:none;}
+    table.mtable,table.mtable tbody,table.mtable tfoot,table.mtable tr,table.mtable td{display:block;width:100%;box-sizing:border-box;}
+    table.mtable tr{background:var(--bg2);border:1px solid var(--border2) !important;border-radius:12px;margin:0 0 10px;padding:6px 12px;}
+    table.mtable td{display:flex;justify-content:flex-end;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:5px 0 !important;border:0 !important;text-align:right !important;min-height:28px;}
+    table.mtable td::before{content:attr(data-label);color:var(--text3);font-size:12px;font-weight:500;text-align:left;flex-shrink:0;margin-right:auto;}
+    table.mtable td:first-child{font-weight:600;font-size:15px;justify-content:flex-start;text-align:left !important;}
+    table.mtable td:first-child::before{display:none;}
+    table.mtable td:empty{display:none;}
+    table.mtable td[colspan]{justify-content:center;}
+    table.mtable td[colspan]::before{display:none;}
   }
-  .head-actions{display:flex;gap:8px}
-  @media (max-width:700px){
-    .workers-head .workers-actions,.page-header .head-actions{width:100%}
-    .workers-head .workers-actions .btn,.page-header .head-actions .btn{flex:1;justify-content:center;min-height:40px}
-    .filters-grid{grid-template-columns:1fr 1fr}
-    .filters-grid .filter-field:last-child:nth-child(odd){grid-column:1/-1}
-    .filters-grid .filter-cap{display:none}
-  }
-  .view-toggle button{background:var(--bg3);border:none;color:var(--text2);padding:6px 10px;cursor:pointer;font-size:15px;line-height:1}
-  .view-toggle button+button{border-left:1px solid var(--border2)}
-  .view-toggle button.active{background:var(--blue-bg);color:var(--blue)}
-  .workers-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));column-gap:12px;row-gap:0;align-items:start}
-  /* The worker plate (redesign stage 3): the full name (cut with … when it
-     does not fit, owner 2026-10-13), notice chips after it,
-     site · today's punch under it, the month's hours at the right. */
-  .wplate .n small,.wc-hn p{display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden}
-  .wplate .n small:has(.wp-chip1){margin:3px 0 2px}
-  /* The Workers screen (owner's design 2026-10-13): no "WORKERS N" line, the
-     Active / Vacation / Pending tabs 78px wide, a 38px search. */
+  /* The Workers screen (owner's design 2026-10-13): the Active / Vacation /
+     Pending tabs 78px wide. */
   #workersTabs button{width:78px;padding:0;justify-content:center;text-align:center}
-  .workers-search-row input{height:38px}
   .site{overflow:hidden;text-overflow:ellipsis}
   .dot{color:#4a5068}
   .pin{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
   .pin i{width:6px;height:6px;border-radius:50%;background:currentColor}
   .pin.ok{color:var(--ok)}.pin.bad{color:var(--red-text)}.pin.vac{color:var(--warn)}
-  .nchip{position:relative;flex:none;display:inline-flex;align-items:center;gap:3px;height:20px;padding:0 7px 0 5px;border-radius:999px;border:0;font:600 11px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;white-space:nowrap}
-  .nchip i{font-size:12px}
-  .nchip.red{background:rgba(255,95,109,.16);color:var(--red-text)}
-  .nchip.amber{background:rgba(245,166,35,.15);color:var(--amber-text)}
-  .nchip.more{background:rgba(var(--tint),.1);color:#cfd3dd;padding:0 7px}
-  .nchip::after{content:'';position:absolute;left:6px;right:6px;bottom:-3px;height:2px;border-radius:2px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;transform:scaleX(0);transition:transform .4s cubic-bezier(.34,1.56,.64,1)}
-  .nchip:hover::after{transform:scaleX(1)}
   tr.gone{display:none}
-  /* An avatar in its holder's colour (--c), like a plate's. */
   /* Greeting (Today) and the notifications bell + panel (redesign stage 5). */
   .og-greet{margin:0 2px 14px}
   .og-greet:empty{display:none}
@@ -735,48 +511,12 @@
   .gbtn.nact.wa i{color:#25d366}
   .og-ni.new time::after{content:'';display:block;width:7px;height:7px;border-radius:50%;background:#22d3ee;margin:6px 0 0 auto;box-shadow:0 0 8px #22d3ee}
   @media (prefers-reduced-motion:reduce){.gic *,.og-bell i,.og-bell-n{animation:none !important}}
-  /* The worker card and the notices sheet. */
-  .wc-h{display:flex;align-items:center;gap:12px;margin-bottom:10px}
-  .wc-hn{flex:1;min-width:0}
-  .wc-hn h4{font-size:18px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .wc-hn p{font-size:12px;color:var(--text2);margin-top:2px}
-  .wc-hrs{flex:none;text-align:right;font:500 18px 'DM Mono',monospace;color:var(--fig)}
-  .wc-hrs small{display:block;font:500 11px 'DM Sans','Heebo',Arial,sans-serif;color:var(--text3);text-shadow:none}
-  .wc-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
-  .wc-chips:empty{display:none}
-  .wc-tools{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-bottom:4px}
-  .wc-tools .gbtn{height:34px;padding:0 12px;font-size:13px}
   .seg button.on::after{content:'';position:absolute;left:30%;right:30%;bottom:2px;height:2px;border-radius:2px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1)}
-  .wc-kv{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;font-size:14px;color:var(--text);margin-bottom:12px}
-  .wc-kv>div{min-width:0;overflow-wrap:anywhere}
-  .wc-kv small{display:block;font-size:11px;color:var(--text3);margin-bottom:2px}
-  .wc-kv .wide{grid-column:1/-1}
-  .wc-notes{background:var(--plate);border-radius:12px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:12px}
-  .wc-line{display:flex;gap:6px;font-size:13px;color:var(--text2);margin-bottom:12px}
-  .wc-actions{display:flex;gap:10px;margin-top:6px}
-  .wc-actions .gbtn.primary{flex:1}
   .gbtn.nact{height:32px;padding:0 10px;font-size:12px;border-radius:12px;flex:none}
-  .wcard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:10px;transition:border-color .15s}
-  .wcard:hover{border-color:var(--border2)}
-  .wcard{position:relative}
-  /* Delete: a faint red ✕ in the tile's top-right corner (deleteWorker asks first). */
-  .wcard-del{position:absolute;top:6px;right:6px;background:none;border:none;color:var(--red);opacity:.4;font-size:16px;line-height:1;padding:6px;border-radius:6px;cursor:pointer;transition:opacity .15s,background .15s}
-  .wcard-del:hover{opacity:1;background:var(--bg3)}
-  .wcard-sum{display:none;font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:48px;margin-top:-4px}
-  /* A phone: a compact card (user request 2026-10-11) — name, badges and one
-     line of hours · clients · supplier; the full details open on a tap (the
-     worker card). */
-  @media (max-width:700px){ .wcard{padding:10px 12px;gap:6px} .wcard-rows{display:none !important} .wcard-sum{display:block} }
-  .wcard-rows{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:12px}
-  .wcard-rows .k{color:var(--text3);white-space:nowrap}
-  .wcard-rows .v{color:var(--text);min-width:0;overflow-wrap:anywhere}
-  .workers-group-title{grid-column:1/-1;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--text2);margin-top:6px}
   .quad-side-handle { stroke: #fff; stroke-width: 5; stroke-linecap: round; filter: drop-shadow(0 0 2px rgba(0,0,0,.6)); }
 
 /* Hebrew has no capitals: no letter-spacing (made for spaced-out uppercase Latin). */
 html[lang="he"] *{letter-spacing:normal !important;}
-.tables-view-toggle{display:none !important;}
-@media (max-width:700px){ .tables-view-toggle{display:inline-flex !important;} .page-header{position:relative;} .page-header > .tables-view-toggle{position:absolute;top:0;right:0;} .page-header:has(> .tables-view-toggle) > div:first-child{padding-right:96px;} }
 
 /* A window open: the page behind it does not scroll, and a scroll inside the
    window never carries over to the page (swipe down closes it on a phone). */
@@ -790,7 +530,7 @@ body:has(.overlay.open){overflow:hidden}
   /* Odinson Glass form fields (mockup 04, owner 2026-10-13): every field in a
      window is a soft rounded glass box — 38px tall, 12px corners, a faint fill
      and hairline, a cyan focus ring; selects carry a thin chevron; labels are
-     small and muted. The same block in the manager app and both portals. */
+     small and muted (the map picker, the scan window). */
   .modal .field label:not(.check-chip):not([style]){font-size:14px;font-weight:500;color:#8b90a0;margin:0 4px 4px}
   .modal .field input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]),.modal .field select,.modal .field textarea{
     height:38px;padding:0 12px;border-radius:12px;border:1px solid rgba(var(--tint),.12);background-color:rgba(var(--tint),.05);color:var(--text);font-size:14px;
@@ -804,20 +544,13 @@ body:has(.overlay.open){overflow:hidden}
     outline:none;border-color:rgba(34,211,238,.6);background-color:rgba(var(--tint),.07);box-shadow:0 0 0 3px rgba(34,211,238,.12)}
   .modal .field input::placeholder,.modal .field textarea::placeholder{color:rgba(var(--tint),.35)}
   .modal .field input:disabled,.modal .field select:disabled{opacity:.55}
-  .modal .field .scan-missing{border-color:rgba(245,166,35,.6) !important;background-color:rgba(245,166,35,.06) !important}
-  .modal .rate-in input{padding-left:58px !important}
   /* Inline old-style fields inside any window (style="background:var(--bg3)…") follow the glass look too. */
   .modal input:is([type=text],[type=number],[type=date],[type=time],[type=tel],[type=email],[type=password],[type=search],[type=url],:not([type])),.modal select,.modal textarea{
     background-color:rgba(var(--tint),.05) !important;border:1px solid rgba(var(--tint),.12) !important;border-radius:12px !important;color:var(--text) !important;font-size:14px !important;box-shadow:none}
   .modal input:is([type=text],[type=number],[type=date],[type=time],[type=tel],[type=email],[type=password],[type=search],[type=url],:not([type])),.modal select{height:38px !important;padding-top:0 !important;padding-bottom:0 !important}
   .modal input:focus,.modal select:focus,.modal textarea:focus{border-color:rgba(34,211,238,.6) !important;box-shadow:0 0 0 3px rgba(34,211,238,.12) !important;outline:none}
-  .modal .scan-missing{border-color:rgba(245,166,35,.6) !important;background-color:rgba(245,166,35,.06) !important}
   .modal .field>label i.ti{display:none}
   .modal input[type=date]{color-scheme:dark}
-  .modal .seg-toggle{gap:4px;padding:4px;border-radius:14px;background:rgba(var(--tint),.05);border:1px solid rgba(var(--tint),.1)}
-  .modal .seg-toggle button{position:relative;height:31px;padding:0 6px;border-radius:10px;color:#8b90a0}
-  .modal .seg-toggle button.on{background:rgba(var(--tint),.12);color:var(--ink)}
-  .modal .seg-toggle button.on::after{content:'';position:absolute;left:28%;right:28%;bottom:3px;height:2px;border-radius:2px;background:var(--uline,#22d3ee);background-size:300% 100%;animation:og-flow 2.4s linear infinite}
 </style>
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="icons/tabler-icons.css">
@@ -831,8 +564,6 @@ body:has(.overlay.open){overflow:hidden}
      the page is at most 1200px wide; on a phone the title bar is two compact
      rows (logo · short date and weather · buttons; the breadcrumb under them)
      and the bottom bar stays. Hebrew mirrors the frame only. ── */
-  .page-title{display:none}
-  .page-sub{font-size:15px;color:var(--text2)}
   .titlebar{align-items:center;gap:14px;padding:0 16px}
   .titlebar .brand{padding-right:0}
   .titlebar-actions{margin-left:0}
@@ -855,13 +586,8 @@ body:has(.overlay.open){overflow:hidden}
   .page-section.visible{animation:og-tab-in .15s ease-out}
   @keyframes og-tab-in{from{opacity:0}to{opacity:1}}
   @media (prefers-reduced-motion:reduce){.page-section.visible{animation:none}}
-  /* Readability: figures as glass tiles, empty states in a dashed frame. */
-  .t3-stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:2px 0 14px;max-width:680px}
-  .t3-stats>div,.t3-stats>div.on{margin:0;padding:10px 12px;border-radius:14px;background:rgba(var(--tint),.06);border:1px solid rgba(var(--tint),.12);font-size:13px;color:var(--text2);box-shadow:none}
-  .t3-stats>div.on{background:rgba(var(--tint),.12);border-color:rgba(var(--tint),.25)}
-  .t3-stats b{font-size:28px;font-weight:600;line-height:1.15;font-variant-numeric:tabular-nums}
+  /* Readability: empty states in a dashed frame. */
   .t3-empty{border:1px dashed rgba(var(--tint),.2);border-radius:14px;padding:12px;text-align:center;color:var(--text2);font-size:13px}
-  /* Accounting: Salary shows its own figures, so the ones above the tabs hide (no repeat). */
   @media (min-width:701px){
     .top-tabs{flex-direction:column;align-items:stretch;gap:4px;width:210px;flex-shrink:0;padding:14px 10px;background:rgba(var(--bar-rgb),.35);border-right:1px solid rgba(var(--tint),.08);overflow-y:auto}
     .ttab{flex-direction:row;justify-content:flex-start;gap:12px;min-width:0;height:40px;padding:0 12px;border-radius:12px;flex:none}
@@ -891,9 +617,6 @@ body:has(.overlay.open){overflow:hidden}
     .og-date-l,.og-center .gtext{display:none}
     .og-date-s{display:inline}
     .og-center .gic{margin-left:0;width:22px;height:22px}
-    .t3-stats{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;max-width:none}
-    .t3-stats>div,.t3-stats>div.on{padding:8px 9px;font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .t3-stats b{font-size:24px}
   }
   /* Hebrew mirrors the frame only: logo and breadcrumb on the right, the
      account on the left (its menu opens from the left edge); the page content,
@@ -906,7 +629,7 @@ body:has(.overlay.open){overflow:hidden}
   html[lang=he] .og-center .gic{margin-left:0;margin-right:10px}
   /* ── The light theme (docs/redesign.md → Light theme; the tokens are in
      og.css): this page's own looks drawn for the dark ground — the sign-in
-     showcase, the bell's popover, the map label, the phone bottom bar. ── */
+     showcase, the bell's popover, the account menu. ── */
   :root[data-theme="light"] .login-screen{background:linear-gradient(135deg,#e6ebf5,#f3f5fa 60%,#eef1f7);}
   :root[data-theme="light"] .login-blob{opacity:.22;}
   :root[data-theme="light"] .login-blob.b3{opacity:.12;}
@@ -922,8 +645,6 @@ body:has(.overlay.open){overflow:hidden}
   :root[data-theme="light"] .login-card #loginBtn{background:var(--glass-strong);border:1px solid var(--glass-edge);box-shadow:var(--shadow-glass);}
   :root[data-theme="light"] .og-npop{background:rgba(255,255,255,.96);box-shadow:var(--shadow-pop);}
   :root[data-theme="light"] .og-npop::before{background:rgba(255,255,255,.98);}
-  :root[data-theme="light"] .og-map-l{background:rgba(255,255,255,.88);}
-  :root[data-theme="light"] .nchip.more{color:var(--ink-2);}
   :root[data-theme="light"] .acct-menu{box-shadow:var(--shadow-pop);}
   :root[data-theme="light"] .modal input[type=date]{color-scheme:light;}
   @media (max-width:820px){ .login-theme{grid-column:1/-1;} .login-theme .seg{margin:4px 0 0;} }
@@ -1225,8 +946,6 @@ let currentTab       = 'schedule';
 let editingWorkerIdx = null;
 let editingClientId  = null;
 let editingSupplierId = null;
-let selClientColor   = CLIENT_COLORS[0];
-let selSupplierColor = CLIENT_COLORS[0];
 
 let workers = [
   {id:'w1',name:'Raveendra',colorIdx:0,phone:'',clientIds:[],schedule:[
@@ -1485,23 +1204,9 @@ document.addEventListener('pointerdown', e => {
   clearTimeout(b.__shineT); b.__shineT = setTimeout(() => b.classList.remove('shine'), 650);
 });
 
-// Phone layout of the tables in Accounting and Admin (CSS: table.mtable at
-// ≤ 700 px): each cell gets its column's header as data-label, so a row reads
-// as a card of "label value" lines. Runs after those sections redraw.
-// Phone tables: cards (one card per row) or the list (the table itself,
-// scrolled sideways) — the toggle in the section header, kept on this device
-// (localStorage.tablesView). The same in schedule-manager.html and supplier-portal.html.
-function getTablesView(){ try{ return localStorage.getItem('tablesView')==='list'?'list':'cards'; }catch(e){ return 'cards'; } }
-function setTablesView(v){
-  try{ localStorage.setItem('tablesView', v); }catch(e){}
-  applyTablesView();
-}
-function applyTablesView(){
-  const v = getTablesView();
-  document.body.classList.toggle('tables-list', v==='list');
-  document.querySelectorAll('.tables-view-toggle .tvList').forEach(b => b.classList.toggle('active', v==='list'));
-  document.querySelectorAll('.tables-view-toggle .tvCards').forEach(b => b.classList.toggle('active', v==='cards'));
-}
+// Phone layout of the tables in Admin (the Errors and Timings tables, CSS:
+// table.mtable at ≤ 700 px): each cell gets its column's header as data-label,
+// so a row reads as a card of "label value" lines. Runs after the section redraws.
 function cardTables(root){
   root.querySelectorAll('table').forEach(t => {
     t.classList.add('mtable');
@@ -1571,7 +1276,6 @@ function analyzeDayPunches(entries,date){ return Payroll.analyzeDayPunches(entri
 // Pair one worker's punches into shifts chronologically, across midnight; each
 // bucket is tagged with the date of its opening punch.
 function groupPunchesIntoShifts(entries){ return Payroll.groupPunchesIntoShifts(entries); }
-function isMidnight(s,e){ return !!s&&!!e&&toMins(e)<=toMins(s); }
 // Shifts: the weekly roster (w.schedule[0..6], Sunday first) plus changes
 // made for one date only (w.dateShifts['YYYY-MM-DD'] = {type, start, end}),
 // which win over the roster on that date.
@@ -1717,47 +1421,12 @@ function workerDocStatus(w){
   for(const x of docExpiries) lines.push(x.text);
   return {level, missing, expiry, docExpiries, docExpired, failed, lines};
 }
-// The worker editor's Documents badge: the number of open document problems
-// ("red|2" when one is urgent, "amber|1"), nothing when complete (mockup 04).
-function workerDocBadge(w){
-  const st=workerDocStatus(w), n=st.missing.length+(st.expiry?1:0)+st.docExpiries.length+(st.failed?1:0);
-  return n?(st.level==='error'?'red':'amber')+'|'+n:'';
-}
-// Compact list/cards badge — nothing when documents are complete.
-// "NEW" next to a worker for 3 days after they were added (w.createdAt —
-// set when the manager app or the supplier portal creates the worker).
-// Duplicated on purpose in schedule-manager.html and supplier-portal.html.
-const NEW_WORKER_DAYS = 3;
-function newWorkerBadgeHtml(w){
-  const t = w && w.createdAt ? new Date(w.createdAt).getTime() : NaN;
-  if(!(Date.now() - t < NEW_WORKER_DAYS * 864e5)) return '';
-  return `<span class="new-badge" title="${esc(tr('Added {0}', {0: new Date(t).toLocaleDateString(uiLocale())}))}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--green-bg);color:var(--green);margin-left:5px;white-space:nowrap">${esc(tr('NEW'))}</span>`;
-}
-function docStatusBadgeHtml(w){
-  const s=workerDocStatus(w);
-  if(s.level==='ok') return '';
-  const red=s.level==='error';
-  const label = s.failed ? tr('UPLOAD FAILED') : (s.expiry&&s.expiry.level==='error') ? tr('ID EXPIRED')
-    : s.docExpired ? tr('{0} EXPIRED',{0:tr(WORKER_DOC_TYPES[s.docExpired.doc.type]||'Document').toUpperCase()}) : tr('DOCS');
-  return `<span title="${esc(s.lines.join(' · '))}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(${red?'--red-bg':'--amber-bg'});color:var(${red?'--red':'--amber'});margin-left:5px;white-space:nowrap"><i class="ti ti-${red?'file-off':'file-alert'}" style="font-size:9px"></i> ${label}</span>`;
-}
-// Full one-line summary for the worker card / cards view.
-function docStatusSummaryHtml(w){
-  const s=workerDocStatus(w);
-  if(s.level==='ok') return `<span style="color:var(--green)"><i class="ti ti-circle-check"></i> ${tr('Complete')}</span>`;
-  const col=s.level==='error'?'var(--red)':'var(--amber)';
-  return `<span style="color:${col}">${s.lines.map(esc).join('<br>')}</span>`;
-}
 // ── Pay (src/lib/payroll.ts through payroll.js — the rules, the 3-tier rate
 // chain, the law tiers, daily pay, travel and the period keys are described
 // there and in docs/accounting.md). ──
 const PAY_RULES = Payroll.PAY_RULES;
-function israeliDayPay(hours, rate, isSat){ return Payroll.israeliDayPay(hours, rate, isSat); }
 // Effective per-hour rates: worker.clientRates[clientId] > the worker's own > the client's.
 function effectiveRates(w, clientId){ return Payroll.effectiveRates(w, clientId, clients); }
-function wRegRate(w,clientId){ return effectiveRates(w,clientId).regRate; }
-function wOtRate(w,clientId){ return effectiveRates(w,clientId).otRate; }
-function wShabRate(w,clientId){ return effectiveRates(w,clientId).shabbatRate; }
 // Pay for one shift's hours: the law tiers, or a flat OT/Shabbat rate when one is set.
 function shiftPay(hours, w, isSat, clientId){ return Payroll.shiftPay(hours, w, isSat, clientId, clients); }
 // Daily pay (w.payMode === 'daily', picked per worker in Accounting →
@@ -2072,7 +1741,6 @@ function refreshBell(){
 function toggleBell(e){
   if(e) e.stopPropagation();
   if(document.getElementById('bellPanel')){ closeBell(); return; }
-  closePopover();
   const p=document.createElement('div'); p.id='bellPanel'; p.className='og-npop'; p.setAttribute('role','dialog');
   p.addEventListener('click',ev=>ev.stopPropagation());
   document.body.appendChild(p);
@@ -2353,10 +2021,6 @@ async function findScanFields(w,keys,docType){
   }
   return out;
 }
-async function findScanField(w,key,docType){
-  const r=await findScanFields(w,[key],docType);
-  return r&&r[key];
-}
 // "Scan again" from inside the worker window, without losing what is on the
 // form: the window (React, src/manager/WorkerEditor.tsx) is kept as a draft
 // (window.__wDraft) and the scan opens over it — on its review screen when the
@@ -2397,72 +2061,6 @@ function showWorkerModal(w){
   window.ManagerIsland.openEditor(w, editingWorkerIdx!==null&&workers[editingWorkerIdx]?workers[editingWorkerIdx].id:null);
   wov.classList.add('open');
 }
-// ── Editors as section plates (redesign stage 4, docs/app-core.md → Editors) ──
-// An editor's body is a stack of <section class="og-sec"> plates: an icon, a
-// title and a one-line summary of what is filled in; the bar and icon green
-// when complete, amber when a field is missing (.scan-missing, or an empty
-// .need), red when the section is marked urgent (data-state). A tap on the
-// head opens or closes a section. The fields stay in the page while closed,
-// so every save reads them as before. ogSections(root, openKey) draws the
-// summaries, opens openKey (or every section with something missing), and
-// turns each select[data-seg] (2–4 choices) into a segmented switch.
-function ogSecToggle(h){ const sec=h.closest('.og-sec'); sec.classList.toggle('open'); ogSecSummary(sec); }
-function ogSecOpen(sec){ if(sec && !sec.classList.contains('open')){ sec.classList.add('open'); ogSecSummary(sec); } }
-function ogSecSummary(sec){
-  const hidden=el=>{ for(let p=el.parentElement; p && p!==sec; p=p.parentElement) if(p.style && p.style.display==='none') return true; return false; };
-  const vals=[]; let missing=false;
-  sec.querySelectorAll('.og-sec-b input, .og-sec-b select, .og-sec-b textarea').forEach(f=>{
-    if(f.type==='hidden'||f.type==='file'||f.type==='range'||f.type==='password'||hidden(f)) return;
-    let v='';
-    if(f.tagName==='SELECT'){ const o=f.options[f.selectedIndex]; v=f.value!==''&&o?o.text.trim():''; if(/^—/.test(v)) v=''; }
-    else if(f.type==='checkbox'){ if(f.checked&&f.closest('label.check-chip')){ const t=f.closest('label.check-chip').querySelector('.chip-text span'); v=t?t.textContent.trim():''; } }
-    else v=String(f.value||'').trim();
-    if(f.classList.contains('scan-missing') || (f.classList.contains('need') && !v)) missing=true;
-    if(v && vals.length<3) vals.push(v.length>32?v.slice(0,30)+'…':v);
-  });
-  const st=sec.dataset.state, sum=sec.dataset.summary;
-  const c = st==='red' ? 'var(--bad)' : (st==='amber'||missing) ? 'var(--warn)' : (st==='green'||vals.length) ? 'var(--ok)' : 'var(--neutral)';
-  sec.style.setProperty('--c', c);
-  const s=sec.querySelector('.og-sec-s'); if(s) s.textContent = sum || vals.join(' · ') || tr('Not filled in');
-  // A badge before the chevron: data-badge="red|1", "amber|Sign" (mockup 04).
-  let bd=sec.querySelector(':scope>.og-sec-h>.og-sec-badge');
-  if(sec.dataset.badge){
-    const [k,t]=sec.dataset.badge.split('|');
-    if(!bd){ bd=document.createElement('span'); sec.querySelector(':scope>.og-sec-h>.og-sec-chev').before(bd); }
-    bd.className='og-sec-badge '+k; bd.innerHTML=`<i class="ti ${k==='red'?'ti-alert-triangle':'ti-alert-circle'}"></i>${esc(t)}`;
-  } else if(bd) bd.remove();
-  return missing;
-}
-function ogSections(root, openKey){
-  if(!root) return;
-  root.querySelectorAll('select[data-seg]').forEach(ogSegSelect);
-  root.querySelectorAll('.og-sec').forEach(sec=>{ const miss=ogSecSummary(sec); if(miss || sec.dataset.sec===openKey) sec.classList.add('open'); });
-  if(!root.__ogSecWired){
-    root.__ogSecWired=true;
-    const upd=e=>{ const sec=e.target.closest&&e.target.closest('.og-sec'); if(sec) ogSecSummary(sec); };
-    root.addEventListener('input',upd); root.addEventListener('change',upd);
-  }
-}
-// A select with 2–4 choices as a segmented switch; the select stays the value.
-function ogSegSelect(sel){
-  if(sel.__seg) return;
-  const seg=document.createElement('div'); seg.className='seg seg-sel'; sel.__seg=seg;
-  const draw=()=>{ seg.innerHTML=[...sel.options].filter(o=>o.value!=='').map(o=>`<button type="button" data-v="${esc(o.value)}" class="${o.value===sel.value?'on':''}">${esc(o.text)}</button>`).join(''); };
-  seg.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; sel.value=b.dataset.v; sel.dispatchEvent(new Event('change',{bubbles:true})); draw(); });
-  sel.addEventListener('change',draw); sel.__segDraw=draw;
-  sel.style.display='none'; sel.classList.add('seg-src'); sel.after(seg); draw();
-}
-// A section marked data-auto shows only while one of its fields is shown
-// (the user form: Hours, HR commission depend on the role).
-function ogAutoSections(root){
-  if(!root) return;
-  root.querySelectorAll('.og-sec[data-auto]').forEach(sec=>{
-    const any=[...sec.querySelectorAll('.og-sec-b input, .og-sec-b select')].some(f=>{ for(let p=f.parentElement; p&&p!==sec; p=p.parentElement) if(p.style&&p.style.display==='none') return false; return true; });
-    sec.style.display=any?'':'none';
-  });
-}
-// A field asked to focus (a save that found it empty) opens its section first.
-(()=>{ const f=HTMLElement.prototype.focus; HTMLElement.prototype.focus=function(o){ const sec=this.closest&&this.closest('.og-sec:not(.open)'); if(sec) ogSecOpen(sec); return f.call(this,o); }; })();
 // A tick of a client / supplier login in its window (stage 6d, React —
 // src/manager/logins.tsx): saved at once (updateUser — the user signs in again
 // with the new rights), and the users cache follows. False when it failed.
@@ -2733,14 +2331,7 @@ function saveMapPick(){
   if(__mapPickDone) __mapPickDone({lat, lng, radius, mapsUrl:'https://www.google.com/maps?q='+lat+','+lng});
   closeModal('mapPickOverlay');
 }
-// "25.2k" for the figures in the user form.
-function fmtMoneyShort(v){ v=Math.round(v||0); return Math.abs(v)>=10000?(Math.round(v/100)/10)+'k':v.toLocaleString('en-US'); }
 
-// Highlights every caption-labelled filter that has a choice made.
-function markActiveFilters(){
-  document.querySelectorAll('.filter-field select').forEach(el=>el.classList.toggle('filter-on', !!el.value));
-}
-document.addEventListener('change', e=>{ if(e.target.closest && e.target.closest('.filter-field')) markActiveFilters(); });
 // Hours worked this calendar month, per worker — the same canonical shift
 // pairing (getWorkerMonthShifts → groupPunchesIntoShifts/analyzeDayPunches)
 // the hours export uses, so the card can never disagree with it.
@@ -2766,15 +2357,7 @@ function workerToday(w, todayLog){
   if(sh && sh.type==='work' && sh.start && now.getHours()*60+now.getMinutes() >= toMins(sh.start)+15) return {k:'none', sh};
   return {k:''};
 }
-function workerTodayHtml(t){
-  if(t.k==='in') return `<span class="pin ok"><i></i>${esc(tr('In {0}',{0:t.time}))}</span>`;
-  if(t.k==='out') return `<span class="pin">${esc(tr('Out {0}',{0:t.time}))}</span>`;
-  if(t.k==='none') return `<span class="pin bad"><i></i>${esc(tr('No punch'))}</span>`;
-  if(t.k==='vac') return `<span class="pin vac">${esc(tr('On vacation'))}</span>`;
-  return '';
-}
 function workerSiteName(w){ const c=(w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean)[0]; return c?c.name:''; }
-function fmtHoursShort(h){ return tr('{h}h',{h:String(Math.round((h||0)*10)/10)}); }
 // A worker's notices, urgent (red) first: a failed upload, the ID / passport
 // or a document (visa, permit, contract file) expired or expiring, missing
 // documents, the contract ending, no punch on today's shift. Each has a short
@@ -2940,7 +2523,6 @@ function openHoursExportModal(workerId){
 
 // The Clients and Suppliers tabs (stage 6d): drawn in React — src/manager/
 // Clients.tsx; the page keeps the data and the deletes.
-function initialsOf(n){ return String(n||'?').trim().split(/\s+/).map(x=>x.charAt(0)).join('').slice(0,2).toUpperCase(); }
 function renderClientsPage(){ if(window.ManagerIsland) window.ManagerIsland.renderClients(); }
 function renderSuppliersPage(){ if(window.ManagerIsland) window.ManagerIsland.renderSuppliers(); }
 
@@ -2997,21 +2579,6 @@ function addManualPunch(entry){
 }
 
 
-function openPunchClock(cid){
-  const c=clients.find(x=>x.id===cid);
-  if(!c){ showToast(tr('Client not found')); return; }
-  const punchData={
-    clientId:   cid,
-    clientName: c.name,
-    lat:        c.lat    || null,
-    lng:        c.lng    || null,
-    radius:     c.radius || 100,
-    workers:    workers.filter(w=>(w.clientIds||[]).includes(cid))
-                       .map(w=>({id:w.id, name:w.name, colorIdx:w.colorIdx, token:w.token||null}))
-  };
-  localStorage.setItem('punchClockSite', JSON.stringify(punchData));
-  window.open('worker-punch.html','_blank');
-}
 
 // --- Modal close --------------------------------------------------------------
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
@@ -3161,8 +2728,6 @@ new MutationObserver(recs=>{
       el.__returnTo=prev||null;
     } else {
       closedNow.push(el.id);
-      // A list inside the closed window gives Select back to the page's list.
-      if(__selState&&__selState.root&&el.contains(__selState.root)){ endSelect(); render(); }
       const rec={id:el.id, at:Date.now(), followed:false};
       __lastModalClose=rec;
       const back=el.__returnTo; el.__returnTo=null;
@@ -3331,7 +2896,6 @@ function fsTenantId(){
 // real byte progress). uploadWorkerFile() below returns {ok,id,url}; the id
 // is the Storage path. The file being replaced (previousFileId) is deleted
 // after the new one is up.
-const FS_UPLOAD_ACTIONS = ['saveWorkerDoc','saveWorkerAssets','saveWorkerFile'];
 const DOC_STORE = 'Firebase Storage';
 async function uploadWorkerFile(bodyObj, onProgress){
   __uploadsInFlight++;
@@ -3954,7 +3518,6 @@ function hrColor(id){
   let h=0; for(const ch of String(id||'')) h=(h*31+ch.charCodeAt(0))>>>0;
   return CLIENT_COLORS[h%CLIENT_COLORS.length];
 }
-function hrWorkerCount(id){ return workers.filter(w => w.hrId===id).length; }
 // Sets the HR of these workers (null = none), saves, and moves their punches.
 async function assignWorkersToHr(ids, hrId){
   const changed = [];
@@ -4474,58 +4037,14 @@ function retryLoadDataWhenBack(){
   setTimeout(again,15000);
 }
 
-function timeSince(date){
-  const s=Math.floor((new Date()-date)/1000);
-  if(s<60) return s+'s ago';
-  if(s<3600) return Math.floor(s/60)+'m ago';
-  if(s<86400) return Math.floor(s/3600)+'h ago';
-  return Math.floor(s/86400)+'d ago';
-}
 
-// Manual export/import for backup
-function exportDataBackup(){
-  const blob=new Blob([JSON.stringify(getDataObj(),null,2)],{type:'application/json'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url; a.download='schedule-backup-'+new Date().toISOString().slice(0,10)+'.json';
-  a.click(); URL.revokeObjectURL(url);
-  showToast(tr('Backup downloaded'));
-}
 
-function importDataBackup(){
-  const input=document.createElement('input');
-  input.type='file'; input.accept='.json';
-  input.onchange=async e=>{
-    try{
-      const text=await e.target.files[0].text();
-      const d=JSON.parse(text);
-      applyData(d);
-      render();
-      autoSave();
-      showToast(tr('Data loaded from the file!'));
-    }catch(err){ showToast(tr('Could not load the file')); }
-  };
-  input.click();
-}
 
-// --- Dashboard -------------------------------------------------------------------
-// Template 3 pieces (shared by every list drawn in it): an avatar and a line.
-// name / sub / right are HTML, already escaped by the caller; sub may be a
-// list (one small line each).
-function t3Av(w){
-  const c=w?WORKER_COLORS[w.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
-  return `<div class="t3-av" style="background:${c.bg};color:${c.text}">${w?workerAvatarInner(w):'?'}</div>`;
-}
-// ── Odinson Glass list pieces (docs/redesign.md → Plates). The same code in
-// the manager app and the supplier portal — keep the two the same. ──
-// t3Line(o) draws a plate: o.c the bar colour, o.av the avatar (t3Av), o.name /
-// o.sub / o.right HTML already escaped by the caller, o.cls / o.onclick / o.attrs;
-// o.menu = the row's ⋮ items [{icon, label, fn, danger}] (Delete last, in red);
-// o.swipe = {edit: fn(el), del: fn(el)} — a swipe left on a touch screen shows
-// Edit and Delete behind the plate; o.sel = the row's id in a list that can
-// Select (startSelect). Functions are kept in __rowFns, looked up by key.
-// No round letters avatar (owner 2026-10-13): the plate starts with the name;
-// an avatar that is an icon (a firm, an alert, a document) stays.
+// ── Odinson Glass list pieces (docs/redesign.md → Plates) ──
+// t3Line(o) draws a plate (the phone's More sheet): o.c the bar colour, o.av an
+// icon avatar, o.name / o.sub / o.right HTML already escaped by the caller,
+// o.cls / o.onclick. The lists themselves are React (Plate).
+// rowFnKey keeps a function under a key for an onclick (the bell's actions).
 const __rowFns = new Map(); let __rowFnSeq = 0;
 function rowFnKey(v){
   const k = 'r' + (++__rowFnSeq); __rowFns.set(k, v);
@@ -4533,89 +4052,20 @@ function rowFnKey(v){
   return k;
 }
 function t3Line(o){
-  const kb = o.menu && o.menu.length ? `<button type="button" class="t3-kb" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey(o.menu)}')"><i class="ti ti-dots-vertical"></i></button>` : '';
-  const sel = o.sel != null ? String(o.sel) : null;
-  const picked = sel != null && __selState && __selState.picked.has(sel);
   const iconAv = !!o.av && /<i class="ti /.test(o.av);
-  const line = `<div class="t3-line${o.cls?' '+o.cls:''}${picked?' picked':''}" style="--c:${o.c||'var(--neutral)'}"${sel!=null?` data-sel-id="${esc(sel)}"`:''}${o.onclick?` onclick="${o.onclick}"`:''}${o.attrs?' '+o.attrs:''}>${sel!=null?'<span class="t3-cb"><span class="og-box"></span></span>':''}${iconAv?o.av:''}<div class="n"><b>${o.name}</b>${[].concat(o.sub||[]).filter(Boolean).map(x=>`<small>${x}</small>`).join('')}</div>${o.right||''}${kb}</div>`;
-  if(!o.swipe) return line;
-  return `<div class="sw" data-sw="${rowFnKey(o.swipe)}"><div class="sw-acts">${o.swipe.edit?`<button type="button" onclick="swipeAct(this,'edit')"><i class="ti ti-pencil"></i><span>${esc(tr('Edit'))}</span></button>`:''}${o.swipe.del?`<button type="button" class="d" onclick="swipeAct(this,'del')"><i class="ti ti-trash"></i><span>${esc(tr('Delete'))}</span></button>`:''}</div>${line}</div>`;
+  return `<div class="t3-line${o.cls?' '+o.cls:''}" style="--c:${o.c||'var(--neutral)'}"${o.onclick?` onclick="${o.onclick}"`:''}>${iconAv?o.av:''}<div class="n"><b>${o.name}</b>${[].concat(o.sub||[]).filter(Boolean).map(x=>`<small>${x}</small>`).join('')}</div>${o.right||''}</div>`;
 }
-// The ⋮ popover: glass, a tail pointing at the button, Delete last under a divider.
-function openRowMenu(ev, btn, key){ if(ev) ev.stopPropagation(); openPopover(btn, __rowFns.get(key) || []); }
-function openPopover(btn, items){
-  const again = btn.classList.contains('on'); closePopover(); if(again) return;
-  const list = items.filter(i => !i.danger).concat(items.filter(i => i.danger));
-  const pop = document.createElement('div'); pop.className = 'og-pop'; pop.id = 'ogPop'; pop.setAttribute('role', 'menu');
-  pop.innerHTML = list.map((i, n) => (i.danger && n && !list[n-1].danger ? '<div class="og-pop-hr"></div>' : '')
-    + `<button type="button" class="og-pop-it${i.danger?' del':''}" data-i="${n}" role="menuitem"><i class="ti ${esc(i.icon||'ti-point')}"></i><span>${esc(i.label)}</span></button>`).join('');
-  pop.addEventListener('click', e => { const b = e.target.closest('.og-pop-it'); if(!b) return; e.stopPropagation(); const it = list[+b.dataset.i]; closePopover(); if(it && it.fn) it.fn(btn); });
-  document.body.appendChild(pop); pop.__btn = btn; btn.classList.add('on');
-  const r = btn.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
-  const left = Math.min(window.innerWidth - pw - 8, Math.max(8, r.right - pw + 6));
-  let top = r.bottom + 10, up = false;
-  if(top + ph > window.innerHeight - 8 && r.top - ph - 10 > 8){ top = r.top - ph - 10; up = true; }
-  pop.style.left = left + 'px'; pop.style.top = top + 'px';
-  pop.style.setProperty('--px', Math.max(10, Math.min(pw - 22, r.left + r.width / 2 - left - 6)) + 'px');
-  pop.classList.toggle('up', up);
-  void pop.offsetWidth; pop.classList.add('open');
-}
-function closePopover(){ const p = document.getElementById('ogPop'); if(!p) return; if(p.__btn) p.__btn.classList.remove('on'); p.remove(); }
-document.addEventListener('click', e => { const p = document.getElementById('ogPop'); if(p && !p.contains(e.target)) closePopover(); });
-window.addEventListener('scroll', e => { const p = document.getElementById('ogPop'); if(p && !p.contains(e.target)) closePopover(); }, {capture:true, passive:true});
-window.addEventListener('resize', closePopover);
-// Swipe left on a touch screen (a plate drawn with o.swipe): the plate follows
-// the finger and stays open past half the buttons' width; a tap elsewhere, or
-// on the open plate, closes it. Off while selecting.
-function swipeClose(sw){ sw.classList.remove('open'); const l = sw.querySelector(':scope > .t3-line'); if(l) l.style.transform = ''; }
-function swipeOpen(sw){ sw.classList.add('open'); const l = sw.querySelector(':scope > .t3-line'), a = sw.querySelector('.sw-acts'); if(l && a) l.style.transform = `translateX(${-swipeWidth(sw)}px)`; }
-function swipeWidth(sw){ const bs = sw.querySelectorAll('.sw-acts button'); return bs.length * 62 + 6; }
-function swipeAct(btn, which){
-  const sw = btn.closest('.sw'), v = sw && __rowFns.get(sw.dataset.sw);
-  if(!sw) return; swipeClose(sw);
-  if(v && v[which]) v[which](sw.querySelector(':scope > .t3-line'));
-}
-document.addEventListener('pointerdown', e => {
-  const line = e.target.closest && e.target.closest('.sw > .t3-line');
-  document.querySelectorAll('.sw.open').forEach(s => { if(!line || s !== line.parentNode){ swipeClose(s); s.__closedAt = Date.now(); } });
-  if(!line || e.pointerType === 'mouse' || (__selState && __selState.on) || e.target.closest('button, a, input, select, textarea, .t3-cb')) return;
-  const sw = line.parentNode, x0 = e.clientX, y0 = e.clientY, W = swipeWidth(sw), base = sw.classList.contains('open') ? -W : 0;
-  let dx = base, active = false, dead = false;
-  const move = ev => {
-    if(ev.pointerId !== e.pointerId || dead) return;
-    const mx = ev.clientX - x0, my = ev.clientY - y0;
-    if(!active){
-      if(Math.abs(my) > 10 && Math.abs(my) > Math.abs(mx)){ dead = true; return; }
-      if(Math.abs(mx) < 10) return;
-      active = true; line.classList.add('drag');
-    }
-    dx = Math.min(0, Math.max(-W - 24, base + mx)); line.style.transform = `translateX(${dx}px)`;
-  };
-  const up = ev => {
-    if(ev.pointerId !== e.pointerId) return;
-    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
-    if(!active) return;
-    line.classList.remove('drag'); sw.__swipedAt = Date.now();
-    if(dx < -W / 2) swipeOpen(sw); else swipeClose(sw);
-  };
-  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
-}, true);
-// A click that ends a swipe, or taps an open plate, does nothing else.
-document.addEventListener('click', e => {
-  const sw = e.target.closest && e.target.closest('.sw'); if(!sw || e.target.closest('.sw-acts')) return;
-  if(sw.classList.contains('open') || Date.now() - (sw.__swipedAt || 0) < 400 || Date.now() - (sw.__closedAt || 0) < 400){
-    e.stopPropagation(); e.preventDefault(); swipeClose(sw);
-  }
-}, true);
 // Delete never asks: undoDelete({el | els, label, commit, undo}) collapses the
 // plate(s), shows the glass Undo snack for UNDO_MS with its timer line, and runs
 // commit() — the real delete — when the time is up (or when another delete
 // starts, or the page is left). Undo brings the plates back and runs undo().
+// Used by the side panel's worker list; the React lists have their own
+// (src/components/shared/undo.tsx).
 const UNDO_MS = 5000;
 let __undo = null;
 function undoDelete(o){
   if(__undo) finishUndo(true);
-  const els = [].concat(o.els || o.el || []).filter(Boolean).map(el => el.closest('.sw') || el);
+  const els = [].concat(o.els || o.el || []).filter(Boolean);
   els.forEach(el => { el.style.maxHeight = el.offsetHeight + 'px'; });
   els.forEach(el => { void el.offsetWidth; el.classList.add('gone'); });
   let sn = document.getElementById('undoSnack');
@@ -4638,109 +4088,6 @@ function finishUndo(commit){
   if(u.o.undo) u.o.undo();
 }
 window.addEventListener('pagehide', () => finishUndo(true));
-// Select (owner 2026-10-13, docs/redesign.md → stage 13): every list drawn
-// with o.sel has a Select button above its rows; no tick boxes until it is
-// tapped. Then every selectable plate shows its drawn-tick box, the line reads
-// "N selected · Select all · Done", and a tap on a plate ticks it. When
-// something is ticked the glass bar shows (count, the list's actions, Delete,
-// ✕). Done, ✕ or Escape clear the ticks and hide the boxes again.
-// startSelect({key, root, ids, actions, del}) — root: the rows' container;
-// ids(): every selectable id (also rows not drawn yet); actions: the bulk
-// actions [{icon, label, fn(ids)}]; del(ids, els): the bulk delete. A list
-// calls selectRoot(key, root) after drawing its rows: that starts its Select
-// (SELECT_STARTERS[key], which checks the rights) or keeps the ticks across a redraw.
-let __selState = null;
-const SELECT_STARTERS = {};
-function startSelect(o){
-  const keep = __selState && __selState.key === o.key ? __selState.picked : null;
-  if(!keep) endSelect();
-  closePopover();
-  const prev = __selState;
-  __selState = Object.assign({}, o, {picked: keep || new Set(), head: prev && keep ? prev.head : null, bar: prev && keep ? prev.bar : null, root: prev && keep ? prev.root : null});
-  selectRoot(o.key, o.root);
-}
-function selectRoot(key, root){
-  if(!root) return;
-  const st = __selState;
-  if(!st || st.key !== key){
-    // A list drawn while hidden (another tab's) never takes Select from the one on screen.
-    const shown = el => !!el && el.isConnected && el.getClientRects().length > 0;
-    if(st && shown(st.root) && !shown(root)) return;
-    // Nor does a list behind an open window take it from a list in that window.
-    const win = el => el && el.closest('.overlay.open');
-    if(st && shown(st.root) && win(st.root) && !win(root)) return;
-    const f = SELECT_STARTERS[key]; if(f) f(); return;
-  }
-  if(st.root && st.root !== root) st.root.classList.remove('selecting', 'sel-on');
-  st.root = root; root.classList.add('selecting'); root.classList.toggle('sel-on', !!st.on);
-  if(!st.head || !st.head.isConnected || st.head.nextSibling !== root){
-    if(st.head) st.head.remove();
-    st.head = document.createElement('div'); st.head.className = 'sel-head';
-    root.parentNode.insertBefore(st.head, root);
-  }
-  const ids = new Set(st.ids().map(String));
-  [...st.picked].forEach(id => { if(!ids.has(id)) st.picked.delete(id); });
-  root.querySelectorAll('[data-sel-id]').forEach(l => l.classList.toggle('picked', st.picked.has(l.dataset.selId)));
-  drawSelect();
-}
-function drawSelect(){
-  const st = __selState; if(!st || !st.head) return;
-  const n = st.picked.size, all = st.ids().length;
-  if(st.root) st.root.classList.toggle('sel-on', !!st.on);
-  if(!st.on){
-    st.head.innerHTML = `<span></span>${all ? `<button type="button" data-h="on">${esc(tr('Select'))}</button>` : ''}`;
-  } else {
-    st.head.innerHTML = `<span>${esc(tr('{0} selected', {0: n}))}</span><button type="button" data-h="all">${esc(n === all && all ? tr('Clear') : tr('Select all'))}</button><button type="button" data-h="off">${esc(tr('Done'))}</button>`;
-  }
-  st.head.querySelectorAll('button').forEach(b => b.onclick = () => {
-    const h = b.dataset.h;
-    if(h === 'on'){ st.on = true; syncPicked(); return; }
-    if(h === 'off'){ selectOff(); return; }
-    const ids = st.ids().map(String); if(st.picked.size === ids.length) st.picked.clear(); else ids.forEach(i => st.picked.add(i)); syncPicked();
-  });
-  if(!n){ if(st.bar){ st.bar.remove(); st.bar = null; } return; }
-  if(!st.bar){ st.bar = document.createElement('div'); st.bar.className = 'sel-bar'; document.body.appendChild(st.bar); }
-  st.bar.innerHTML = `<b>${esc(tr('{0} selected', {0: n}))}</b>`
-    + (st.actions || []).map((a, i) => `<button type="button" class="gbtn" data-a="${i}"><i class="ti ${esc(a.icon||'')}"></i><span>${esc(a.label)}</span></button>`).join('')
-    + (st.del ? `<button type="button" class="gbtn del" data-a="del"><i class="ti ti-trash"></i><span>${esc(tr('Delete'))}</span></button>` : '')
-    + `<button type="button" class="gbtn icon" data-a="x" aria-label="${esc(tr('Close'))}"><i class="ti ti-x"></i></button>`;
-  st.bar.querySelectorAll('button').forEach(b => b.onclick = () => {
-    const a = b.dataset.a, ids = [...st.picked];
-    if(a === 'x'){ selectOff(); return; }
-    if(!ids.length) return;
-    const els = ids.map(id => st.root.querySelector(`.t3-line[data-sel-id="${CSS.escape(id)}"]`)).filter(Boolean);
-    st.picked.clear(); st.on = false; syncPicked();
-    if(a === 'del') st.del(ids, els); else st.actions[+a].fn(ids);
-  });
-}
-function syncPicked(){
-  const st = __selState; if(!st || !st.root) return;
-  st.root.querySelectorAll('[data-sel-id]').forEach(l => l.classList.toggle('picked', st.picked.has(l.dataset.selId)));
-  drawSelect();
-}
-// Leaves Select on the list: the ticks are cleared, the boxes hidden.
-function selectOff(){ const st = __selState; if(!st) return; st.on = false; st.picked.clear(); syncPicked(); }
-function endSelect(){
-  const st = __selState; if(!st) return; __selState = null;
-  if(st.root){ st.root.classList.remove('selecting', 'sel-on'); st.root.querySelectorAll('.picked').forEach(l => l.classList.remove('picked')); }
-  if(st.head) st.head.remove(); if(st.bar) st.bar.remove();
-}
-// While Select is on, a tap on a plate (its box or anywhere but its own
-// buttons) ticks it and does nothing else.
-['click', 'pointerdown'].forEach(t => document.addEventListener(t, e => {
-  const st = __selState; if(!st || !st.root || !st.on) return;
-  const box = e.target.closest && e.target.closest('.t3-cb'), line = e.target.closest && e.target.closest('[data-sel-id]');
-  if(!line || !st.root.contains(line)) return;
-  if(!box && e.target.closest('button, a, input, select, textarea')) return;
-  e.stopPropagation(); if(t === 'pointerdown') return;
-  e.preventDefault();
-  const id = line.dataset.selId; if(st.picked.has(id)) st.picked.delete(id); else st.picked.add(id);
-  line.classList.toggle('picked', st.picked.has(id)); drawSelect();
-}, true));
-document.addEventListener('keydown', e => { if(e.key === 'Escape'){ closePopover(); if(__selState) selectOff(); } });
-// The header ⋮ of a list: its own tools (Select is the button above the rows — no Select… item).
-function listMenuHtml(items){ return items.length ? `<button type="button" class="t3-kb" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey(items)}')"><i class="ti ti-dots-vertical"></i></button>` : ''; }
-function workerClientNames(w){ return (w.clientIds||[]).map(id=>(clients.find(c=>c.id===id)||{}).name).filter(Boolean).join(', '); }
 // ── Today (stage 6a): drawn in React — src/manager/Today.tsx, loaded as
 // assets/manager.js (docs/build.md → The manager's React pieces). The page
 // hands it its data and actions through ManagerBridge; renderDashboard() asks
@@ -5288,12 +4635,6 @@ function exportShiftsDetail(workerId, year, month, format){
   showToast(tr('Hours exported'));
 }
 
-// --- Worker punch history (shown in worker modal) ------------------------------
-function getWorkerHistory(wid, days=7){
-  const log=getPunchLog();
-  const cutoff=new Date(); cutoff.setDate(cutoff.getDate()-days); cutoff.setHours(0,0,0,0);
-  return log.filter(e=>e.workerId===wid&&new Date(e.ts)>=cutoff);
-}
 
 // --- Admin Panel -------------------------------------------------------------
 function getPunchLog(){
@@ -5317,19 +4658,6 @@ function punchSite(e){
   if(e && e.clientId){ const c=clients.find(x=>x.id===e.clientId); if(c) return c.name; }
   if(e && e.site && clients.some(c=>c.name===e.site)) return e.site; // legacy entries without clientId
   return workerClientName(e && e.workerId) || (e && e.site) || '';
-}
-// Client object/branch actually recorded on a punch, preferring the shift's own
-// clientId over the worker's CURRENT client assignment (which may have changed
-// since the shift happened).
-function punchClientObject(e){
-  if(e && e.clientId){ const c=clients.find(x=>x.id===e.clientId); if(c) return c.object||c.name||''; }
-  return '';
-}
-function workerClientObject(workerId){
-  const w = workers.find(x=>x.id===workerId);
-  if(!w) return '';
-  const c = (w.clientIds||[]).map(id=>clients.find(x=>x.id===id)).filter(Boolean)[0];
-  return c ? (c.object||c.name||'') : '';
 }
 function savePunchLog(log){
   localStorage.setItem('punchLog', JSON.stringify(log));
@@ -6268,7 +5596,6 @@ function watchErrorLine(id){
 ['firmEditFormError','userFormError'].forEach(watchErrorLine);
 window.addEventListener('error', function(ev){ _origConsoleError('App error:', ev.error||ev.message); reportError(ev.message, (ev.filename||'')+':'+(ev.lineno||''), ev.error&&ev.error.stack); });
 window.addEventListener('unhandledrejection', function(ev){ const r=ev.reason; reportError((r&&r.message)||String(r), 'promise', r&&r.stack); });
-applyTablesView();
 loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangButtons(); placeLangButton(); try{
   gateApp(function(){
     loadData();

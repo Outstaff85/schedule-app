@@ -78,9 +78,9 @@ The filters live in the tab (kept while the app is open, across redraws and a la
   - **docExpiries:** `workerDocExpiries(w)` for `w.docs` — one reminder per type + expiry date; warns `WORKER_DOC_WARN_DAYS` ahead (contract 30, visa / work permit 60, other 30);
   - **failed:** `docUploadFailed`.
   
-  Shown by `docStatusBadgeHtml(w)` (DOCS / ID EXPIRED / `<TYPE> EXPIRED` / UPLOAD FAILED; nothing when complete) and `docStatusSummaryHtml(w)`.
-- **NEW badge** — `newWorkerBadgeHtml(w)`: a green "NEW" next to the name for `NEW_WORKER_DAYS` (3) days after `w.createdAt` (set when the worker is added in the app or by a supplier in its portal; the tooltip gives the date). On the worker cards, the list rows and the worker card; the supplier portal's worker list has the same badge.
-- `docUploadFailedBadgeHtml(w)` — the older NO DOCUMENT badge, still used in the Schedule sidebar.
+  Handed to the React Workers list through the bridge (`docLevel`, `docLines` and the list badge `docBadge`: DOCS / ID EXPIRED / `<TYPE> EXPIRED` / UPLOAD FAILED; nothing when complete).
+- **NEW badge** — the React `NewBadge` (`src/components/shared/new-badge.tsx`): a green "NEW" next to the name for 3 days after `w.createdAt` (set when the worker is added in the app or by a supplier in its portal; the tooltip gives the date). On the Workers list and the worker card; the supplier portal's worker list has the same badge.
+- `docUploadFailedBadgeHtml(w)` — the older NO DOCUMENT badge, still used in the side panel's worker list.
 - `parseDocDate(s)` reads `DD/MM/YYYY` (or `.`, `-`) and ISO dates.
 
 ## The worker windows in React (stage 6c-2)

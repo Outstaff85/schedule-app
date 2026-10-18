@@ -54,7 +54,7 @@ export function RateInput({ unit, className, ...props }: React.ComponentProps<ty
   );
 }
 
-/** Small figures in a window (og.css .og-figs). */
+/** Small figures in a window. */
 export function MiniFigs({ items, bad, ...rest }: { items: { value: React.ReactNode; label: React.ReactNode }[]; bad?: boolean } & React.ComponentProps<'div'>) {
   return (
     <div className="my-1 grid grid-cols-[repeat(auto-fit,minmax(0,1fr))] gap-2" {...rest}>
