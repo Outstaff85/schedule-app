@@ -26,6 +26,7 @@ The backend is **Firestore + Firebase Storage + Cloud Functions**, and nothing e
 | [docs/accounting.md](docs/accounting.md) | **payroll math** (`groupPunchesIntoShifts`, `analyzeDayPunches`, `effectiveRates`, `shiftPay`, `israeliDayPay`), Accounting tab, supplier commission, client billing, hours approval queue, exports, Today tab, super-admin summary |
 | [docs/admin.md](docs/admin.md) | Admin tab (`src/manager/Admin.tsx`, `punchlog.ts`, `Firms.tsx`, `Users.tsx` + `users.ts`, `Logs.tsx` + `adminlogs.ts`): the section tabs and tiles, punch log (month-window loading, filters, paging, Clear Log), Firms (and the super-admin's landing screen), Users (the user window, roles, hours ticks, HR assignment), Errors, Timings |
 | [docs/scan.md](docs/scan.md) | `scan-pipeline.js` and the scan entry points: corner editor, alignment, AI reads, digit verification, page merging |
+| [docs/scan-plan.md](docs/scan-plan.md) | the approved scanner rebuild (edge detection models, live camera frame, two documents per photo, the parallel upload queue), stage by stage, with its status |
 | [docs/form101.md](docs/form101.md) | `aiFillForm101()`, `fill_form_101` (`functions/main.py`), storing the PDF and sidecar |
 | [docs/form101-field-map.md](docs/form101-field-map.md) | **any** Form 101 field rect or the PDF template — keep this map in sync with `functions/main.py` |
 | [docs/punch.md](docs/punch.md) | `worker-punch.html` / `src/punch/` (the React punch page: worker link, GPS checks, offline queue) |
