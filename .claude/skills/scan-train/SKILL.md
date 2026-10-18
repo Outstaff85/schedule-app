@@ -5,6 +5,8 @@ description: Retrain the scanner's corner models on the owner's PC from the corr
 
 # /scan-train — retrain the scanner (owner's PC)
 
+The whole process (what is collected, where it is kept, why each step): docs/scan-training.md.
+
 The site collects every page whose corners a user corrected (`scan_feedback`, Firestore `scanTraining`, Storage `training/scan/`). This skill turns them into a new model version. **The lab learns first, the site follows**: a new version is only ever given to the lab here; the site gets it later, after the owner tried it in the lab (step 7). Talk to the owner in Russian.
 
 ## 1. Check the PC
