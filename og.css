@@ -93,9 +93,8 @@
   --shadow-uline:0 0 8px rgba(8,145,178,0.35), 0 0 3px rgba(219,39,119,0.3);
 }
 /* tokens:end */
-/* ── Odinson Glass foundation (docs/redesign.md): the ground, glass, plates, the
-   highlight line, tick tiles, the Language button and sheet. The same block in
-   all four pages — keep the copies the same. ── */
+/* ── Odinson Glass foundation (docs/redesign.md): the ground, glass, plates,
+   the Language button and sheet. ── */
 :root{--glass-hi:var(--glass-active);--glass-dark:rgba(17,20,31,.92);--fig:#9fe6c0;--ok:var(--green);--info:var(--accent);--warn:var(--amber);--bad:var(--red);--uline:linear-gradient(90deg,var(--uline-1),var(--uline-2),var(--uline-3),var(--uline-1));}
 /* --tint: the RGB of the see-through glass tints (hover, fields, dividers,
    frames: rgba(var(--tint),a)) — white on the dark ground, near-black in the
