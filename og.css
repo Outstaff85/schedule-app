@@ -266,15 +266,8 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
   .seg{display:flex;gap:4px;padding:4px;margin:10px 0 14px;border-radius:14px;background:rgba(var(--tint),.06);border:1px solid rgba(var(--tint),.1)}
   .seg button{position:relative;flex:1;height:31px;border:0;border-radius:10px;background:none;color:var(--text2);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer}
   .seg button.on{background:var(--glass-hi);color:var(--ink)}
-  /* Editors exactly as mockup 04 (owner 2026-10-13): section heads with a
-     tinted rounded-square icon and the flowing line across an open head;
-     a badge before the chevron; ticks as compact tiles with a green box;
-     every button in a window is glass; Save carries a check. */
+  /* Every button in a window is glass; Save carries a check (mockup 04). */
   .modal .check-grid{display:flex;flex-wrap:wrap;gap:6px;grid-template-columns:none}
-  /* Tick tiles in every window: the design system's Tick (docs/design/system/
-     components/Tick) — 46px, radius-md, plate fill, label 15/600 ink-2, a 24px
-     box bordered ink-3; ticked: tick-on fill, ink label, green box with the mark.
-     A tile with a hint (owner 2026-10-13: hints shown) grows to fit it. */
   .modal .btn{height:40px;padding:0 14px;border-radius:14px;background:rgba(var(--tint),.08);border:1px solid rgba(var(--tint),.16);color:var(--text);font-weight:600;font-size:13px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
   .modal .btn.sm{height:36px;border-radius:12px;font-size:12.5px}
   .modal .btn.accent{background:rgba(var(--tint),.2);border-color:rgba(var(--tint),.3);color:var(--ink)}
