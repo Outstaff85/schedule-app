@@ -1714,7 +1714,6 @@ function workerDocStatus(w){
 // chain, the law tiers, daily pay, travel and the period keys are described
 // there and in docs/accounting.md). ──
 const PAY_RULES = Payroll.PAY_RULES;
-function israeliDayPay(hours, rate, isSat){ return Payroll.israeliDayPay(hours, rate, isSat); }
 // Effective per-hour rates: worker.clientRates[clientId] > the worker's own > the client's.
 function effectiveRates(w, clientId){ return Payroll.effectiveRates(w, clientId, clients); }
 function wRegRate(w,clientId){ return effectiveRates(w,clientId).regRate; }
