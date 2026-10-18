@@ -4562,9 +4562,6 @@ function endSelect(){
   line.classList.toggle('picked', st.picked.has(id)); drawSelect();
 }, true));
 document.addEventListener('keydown', e => { if(e.key === 'Escape'){ closePopover(); if(__selState) selectOff(); } });
-// The header ⋮ of a list: its own tools (Select is the button above the rows — no Select… item).
-function listMenuHtml(items){ return items.length ? `<button type="button" class="t3-kb" aria-label="${esc(tr('More'))}" onclick="openRowMenu(event,this,'${rowFnKey(items)}')"><i class="ti ti-dots-vertical"></i></button>` : ''; }
-function workerClientNames(w){ return (w.clientIds||[]).map(id=>(clients.find(c=>c.id===id)||{}).name).filter(Boolean).join(', '); }
 // ── Today (stage 6a): drawn in React — src/manager/Today.tsx, loaded as
 // assets/manager.js (docs/build.md → The manager's React pieces). The page
 // hands it its data and actions through ManagerBridge; renderDashboard() asks
