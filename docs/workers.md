@@ -70,7 +70,7 @@ The filters live in the tab (kept while the app is open, across redraws and a la
 
 ## Badges and status helpers
 
-- **Inactive workers** (`isActiveWorker(w)`: status not `fired`) leave the everyday lists — the Workers tab by default, the sidebar (`renderWorkerList`), the Schedule (`getVisible`), Today (missing, expiries), the manual-punch picker and the contract warnings — and return when set Active on their card (user request 2026-10-11). Accounting still counts their hours; their data and documents stay.
+- **Inactive workers** (`isActiveWorker(w)`: status not `fired`) leave the everyday lists — the Workers tab by default, the Schedule (`getVisible`), Today (missing, expiries), the manual-punch picker and the contract warnings — and return when set Active on their card (user request 2026-10-11). Accounting still counts their hours; their data and documents stay.
 - `workerExpiryStatus(w)` → `null` or `{level:'warning'|'overdue', deadline}` (an active worker with `expiryEnabled`, `startDate`, `expiryMonths`). The deadline is `startDate` + `expiryMonths`, and warning starts `expiryWarnMonths` before it. Shown by `expiryBadgeHtml(w)`, on Today, and when the app opens by a notice under the title bar (`showContractNotice()`: "Contracts: N expired, M expiring soon · Show ✕"; Show opens Today, ✕ hides it until the next start — `sessionStorage.contractNoticeClosed`). The worker form says in red when the warning is on but the start date is empty (`updateExpiryHint`, `#wExpiryNoStart`).
 - `workerDocStatus(w)` → `{level:'ok'|'warn'|'error', missing, expiry, docExpiries, docExpired, failed, lines}`:
   - **missing:** no ID/passport number, no `docUrl` (Form 101), no `assetsFileId` (scan), `docHasSignature === false`, or (Israeli ID) `docExtraPages === 0` (no ספח);
@@ -80,7 +80,6 @@ The filters live in the tab (kept while the app is open, across redraws and a la
   
   Handed to the React Workers list through the bridge (`docLevel`, `docLines` and the list badge `docBadge`: DOCS / ID EXPIRED / `<TYPE> EXPIRED` / UPLOAD FAILED; nothing when complete).
 - **NEW badge** — the React `NewBadge` (`src/components/shared/new-badge.tsx`): a green "NEW" next to the name for 3 days after `w.createdAt` (set when the worker is added in the app or by a supplier in its portal; the tooltip gives the date). On the Workers list and the worker card; the supplier portal's worker list has the same badge.
-- `docUploadFailedBadgeHtml(w)` — the older NO DOCUMENT badge, still used in the side panel's worker list.
 - `parseDocDate(s)` reads `DD/MM/YYYY` (or `.`, `-`) and ISO dates.
 
 ## The worker windows in React (stage 6c-2)
@@ -137,7 +136,7 @@ The window has no Save button: it saves when closed by a tap outside (`workerOve
 
 ### Deleting (`deleteWorker(wi, el)`, `deleteWorkers(ids, els)`)
 
-Started from a plate's ⋮ or swipe, Select's bulk Delete, or the Delete in the list view's row (only with `hasPermission('workers')`; the worker card has no Delete) — the React list, through the React Undo snack (`undoDelete`): the worker leaves the list at once, Undo brings it back, and when the 5 s are up `ManagerBridge.deleteWorkers(ids)` removes them (`deleteWorkerNow`), `render()`, saves and says so in a toast — or from the Schedule side panel's ✕ (`deleteWorker` / `deleteWorkers`, the page's Undo snack; the worker is left out of the Workers list meanwhile, `__workerDelPending`). **It never asks.** `deleteWorkerNow(id)` removes the worker and their files are deleted best-effort through `gsDeleteWorkerDoc()`: the PDF (`docFileId`), the sidecar, and every `docs[].fileId` (punches and hours stay).
+Started from a plate's ⋮ or swipe, Select's bulk Delete, or the Delete in the list view's row (only with `hasPermission('workers')`; the worker card has no Delete) — the React list, through the React Undo snack (`undoDelete`): the worker leaves the list at once, Undo brings it back, and when the 5 s are up `ManagerBridge.deleteWorkers(ids)` removes them (`deleteWorkerNow`), `render()`, saves and says so in a toast. **It never asks.** `deleteWorkerNow(id)` removes the worker and their files are deleted best-effort through `gsDeleteWorkerDoc()`: the PDF (`docFileId`), the sidecar, and every `docs[].fileId` (punches and hours stay).
 
 ## Punch link
 
@@ -167,7 +166,3 @@ Nothing reaches payroll until an owner approves it in Accounting ([accounting.md
 ## Hours export (from the worker card)
 
 `openHoursExportModal(workerId)` (`HoursExport`) offers a month picker for the last 12 months; Excel or PDF loads that month's punches if needed (`ensurePunchesSince`), then calls `exportShiftsDetail(workerId, y, m, 'excel'|'pdf')` ([accounting.md](accounting.md)).
-
-## Schedule sidebar worker list
-
-`renderWorkerList()` (Schedule tab sidebar) sorts by name / hours / status (`#workerSort`). Each row shows status, contract and upload-failed badges, scheduled hours, with copy-link and delete buttons; a tap elsewhere on the row opens the edit form (`openEditWorker`). See [app-core.md](app-core.md) for the Schedule tab.

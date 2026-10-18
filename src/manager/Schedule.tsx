@@ -1,7 +1,7 @@
 // The Schedule tab of the manager app (docs/app-core.md → Schedule tab), drawn
 // in React inside the old page (stage 6b): ‹ week › with its totals (a tap on
-// the dates opens a calendar) and the export menu, the site tabs (the same
-// filter as the side panel's), the workers' requests (a day they can't work, a
+// the dates opens a calendar) and the export menu, the site tabs (the page's
+// site filter), the workers' requests (a day they can't work, a
 // shift offered to a colleague: Confirm hands it over), and a plate per worker
 // with its week — a tap opens its 7 days, a day opens the shift window.
 // Copy last week / Repeat for N weeks fill only empty days, list the shifts
