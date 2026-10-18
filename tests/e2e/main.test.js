@@ -654,7 +654,6 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const pg = await p.evaluate(async () => {
       const real = workers.slice();
       for (let i = 0; i < 25; i++) workers.push({id:'fake' + i, name:'Worker ' + i, colorIdx:i % 8, clientIds:[], schedule:DAYS.map(() => ({type:'work', start:'09:00', end:'17:00'}))});
-      for (const k in __pagedLists) delete __pagedLists[k];
       const out = {};
       const wait = ms => new Promise(r => setTimeout(r, ms));
       switchTab('workers');

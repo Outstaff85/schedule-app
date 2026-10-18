@@ -6,8 +6,7 @@
 // reachable under their old global names through the window accessors below
 // (the markup's onclick handlers, scan-pipeline.js, the React bridge, the
 // other parts and the browser tests use them).
-import { byId, qs } from './dom';
-import { esc, fmtDMY } from '../logic/util';
+import { byId } from './dom';
 import { tr } from '../logic/i18n';
 import { fsTenantId, getSession } from '../data/session';
 import { WORKER_DOC_TYPES, isActiveWorker, workerDocStatus, workerExpiryStatus } from '../logic/workers';
@@ -16,7 +15,7 @@ import { localYMD } from '../logic/pay';
 import { hasPermission, isHrSession } from '../logic/access';
 import { switchTab } from './nav';
 import { showToast } from '../toast';
-import { setFrame } from '../frame';
+import { frameState, setFrame } from '../frame';
 Object.defineProperties(window, {
   "renderGreeting": {get: () => renderGreeting, configurable: true},
   "CRUMB_COUNT": {get: () => CRUMB_COUNT, configurable: true},
@@ -51,7 +50,6 @@ Object.defineProperties(window, {
   "toggleBell": {get: () => toggleBell, configurable: true},
   "closeBell": {get: () => closeBell, configurable: true},
   "__bellItems": {get: () => __bellItems, set: (v?: any) => { __bellItems = v; }, configurable: true},
-  "drawBellPanel": {get: () => drawBellPanel, configurable: true},
   "openNotif": {get: () => openNotif, configurable: true},
   "markAllNotifRead": {get: () => markAllNotifRead, configurable: true},
 });
@@ -192,52 +190,38 @@ function saveNotifReads(){
   const ids=[...__notifRead].slice(-500); __notifRead=new Set(ids);
   fetch(API_URL,{method:'POST',body:JSON.stringify({action:'saveNotifReads', ids})}).catch(()=>{});
 }
-// The bell button is the React frame's (ShellBell, src/manager/Frame.tsx); the list under it is the page's.
-const bellBtn=()=>qs('[data-testid="shell-bell"]');
+// The bell button and its list are the React frame's (ShellBell, BellPanel —
+// src/manager/Frame.tsx); the page builds the list (notifList) and runs its actions.
+let __bellItems: any=[];
 export function refreshBell(){
-  if(!notifEnabled()){ setFrame({bell:{shown:false, count:0}}); return; }
+  if(!notifEnabled()){ setFrame({bell:{shown:false, count:0}, bellOpen:false}); return; }
   const list=notifList(), n=list.filter((x?: any)=>!__notifRead.has(x.id)).length;
-  setFrame({bell:{shown:true, count:n}});
-  if(byId('bellPanel')) drawBellPanel(list);
+  setFrame({bell:{shown:true, count:n}, bellV:frameState().bellV+1});
 }
 export function toggleBell(e?: any){
   if(e) e.stopPropagation();
-  if(byId('bellPanel')){ closeBell(); return; }
-  const p=document.createElement('div'); p.id='bellPanel'; p.className='og-npop'; p.setAttribute('role','dialog');
-  p.addEventListener('click',(ev?: any)=>ev.stopPropagation());
-  document.body.appendChild(p);
-  drawBellPanel(notifList());
-  const r=bellBtn().getBoundingClientRect(), pw=p.offsetWidth;
-  const left=Math.min(window.innerWidth-pw-8, Math.max(8, r.right-pw+40));
-  p.style.left=left+'px'; p.style.top=(r.bottom+10)+'px';
-  p.style.setProperty('--px', Math.max(10, Math.min(pw-22, r.left+r.width/2-left-6))+'px');
-  bellBtn()?.classList.add('on');
-  void p.offsetWidth; p.classList.add('open');
+  if(frameState().bellOpen){ closeBell(); return; }
+  setFrame({bellOpen:true, bellV:frameState().bellV+1});
   refreshNotifApprovals();
   loadFirmMessages();
 }
-function closeBell(){ const p=byId('bellPanel'); if(p) p.remove(); const b=bellBtn(); if(b) b.classList.remove('on'); }
+function closeBell(){ if(frameState().bellOpen) setFrame({bellOpen:false}); }
 document.addEventListener('click',()=>closeBell());
 document.addEventListener('keydown',(e?: any)=>{ if(e.key==='Escape') closeBell(); });
-let __bellItems: any=[];
-function drawBellPanel(list?: any){
-  const p=byId('bellPanel'); if(!p) return;
-  __bellItems=list;
-  const unread=list.some((x?: any)=>!__notifRead.has(x.id));
-  p.innerHTML=`<h5><span>${esc(tr('Notifications'))}</span>${unread?`<button type="button" class="og-npop-all" onclick="markAllNotifRead()">${esc(tr('Mark all read'))}</button>`:''}</h5><div class="og-npop-list"></div>`;
-  const box=p.querySelector('.og-npop-list');
-  if(!list.length){ box.innerHTML=`<div class="t3-empty" style="padding:10px 8px">${esc(tr('Nothing new'))}</div>`; return; }
-  const col: Record<string, string>={red:'var(--bad)', amber:'var(--warn)', blue:'var(--info)', green:'var(--ok)'};
-  const when=(ms?: any)=>{ const d=new Date(ms); return localYMD(d)===localYMD(new Date())?d.toTimeString().slice(0,5):fmtDMY(localYMD(d)); };
-  const acts=(x?: any)=>(x.acts||[]).length?`<div class="og-ni-acts">${x.acts.map((a?: any)=>`<button type="button" class="gbtn nact${a.wa?' wa':''}" onclick="event.stopPropagation();runRowFn('${rowFnKey(a.fn)}')"><i class="ti ${esc(a.icon)}"></i><span>${esc(a.label)}</span></button>`).join('')}</div>`:'';
-  renderPagedList(box,'notifs',list.length+':'+unread,list,(x?: any,i?: any)=>`<div class="og-ni-w"><button type="button" class="og-ni${__notifRead.has(x.id)?'':' new'}" style="--c:${col[x.lvl]||'var(--neutral)'}" onclick="openNotif(${i})"><span class="ic"><i class="ti ${esc(x.icon)}"></i></span><span class="tx"><b>${esc(x.title)}</b><small>${esc(x.detail)}</small></span><time>${esc(when(x.at))}</time></button>${acts(x)}</div>`);
+// The list BellPanel draws: each notification with whether it is unread (its
+// actions stay here, run by bellAct).
+export function bellItems(){
+  __bellItems=notifList();
+  return __bellItems.map((x?: any)=>({id:x.id, lvl:x.lvl, icon:x.icon, title:x.title, detail:x.detail||'', at:x.at, unread:!__notifRead.has(x.id),
+    acts:(x.acts||[]).map((a?: any)=>({label:a.label, icon:a.icon||'', wa:!!a.wa}))}));
 }
-function openNotif(i?: any){
-  const x=__bellItems[i]; if(!x) return;
+export function openNotif(id?: any){
+  const x=__bellItems.find((y?: any)=>y.id===id); if(!x) return;
   if(!__notifRead.has(x.id)){ __notifRead.add(x.id); saveNotifReads(); }
   closeBell(); refreshBell(); if(x.open) x.open();
 }
-function markAllNotifRead(){
+export function bellAct(id?: any, k?: any){ const x=__bellItems.find((y?: any)=>y.id===id); const a=x&&(x.acts||[])[k]; if(a&&a.fn) a.fn(); }
+export function markAllNotifRead(){
   __bellItems.forEach((x?: any)=>__notifRead.add(x.id)); saveNotifReads(); refreshBell();
 }
 setInterval(()=>{ if(getSession()){ refreshBell(); renderGreeting(); } }, 60e3);

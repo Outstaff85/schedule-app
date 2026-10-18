@@ -24,7 +24,6 @@ declare global {
   var __hoursBatches: any;
   var __punchLoadedFrom: any;
   var __punchSynced: any;
-  var __rowFns: any;
   var __shiftReqs: any;
   var __uploadsInFlight: any;
   var autoUploadWithRetry: any;
@@ -59,7 +58,6 @@ declare global {
   var renderSchedulePage: any;
   var renderSuppliersPage: any;
   var renderWorkersPage: any;
-  var rowFnKey: any;
   var salaryEntriesFor: any;
   var saveClient: any;
   var selectedClientId: any;

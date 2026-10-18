@@ -6,7 +6,7 @@
 // draws `frame.ts`'s state, which the page's modules write; its actions run
 // the page's own through `ManagerBridge`. The page's sections (#appMain, the
 // tabs' React islands) are moved into the Shell's page area as they are.
-// The bell's list is still the page's (it opens under the bell).
+// The bell's list (BellPanel) opens under the bell.
 import * as React from 'react';
 import { IconCash, IconCalendar, IconDownload, IconHome, IconLock, IconTruckDelivery, IconUserEdit, IconUsers, IconUsersGroup } from '@tabler/icons-react';
 import { LanguageScope, adoptLanguage, tr } from '@/lib/i18n';
@@ -16,6 +16,7 @@ import { AccountMenu } from '@/components/shared/account-menu';
 import { LanguageButton } from '@/components/shared/language';
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { useFrame } from './frame';
+import { BellPanel } from './BellPanel';
 import type { ManagerBridge } from './bridge';
 
 /** The sections in menu order: their icon and colour; `more` = under More on a phone. */
@@ -73,6 +74,7 @@ export function Frame({ api }: { api: ManagerBridge }) {
     >
       <Slot id="appMain" />
     </Shell>
+    {f.bellOpen && <BellPanel api={api} version={f.bellV} />}
     </LanguageScope>
   );
 }

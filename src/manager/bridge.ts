@@ -9,6 +9,7 @@ import type { Punch } from '@/lib/payroll';
 import type { AccData, AccWorker, ApprovalDoc, HrLogin } from './accounting';
 import type { UserRow } from './users';
 import type { MapPickProps } from './MapPicker';
+import type { BellItem } from './BellPanel';
 
 export type Notice = { lvl: 'red' | 'amber'; word: string; title: string };
 /** A worker today: on vacation, the latest punch (in / out), no punch on a started shift, or nothing. */
@@ -346,6 +347,14 @@ export type ManagerBridge = WorkerBridge & {
   saveTheme(theme: string): void;
   /** switches the page's language (`setLanguage`: the dictionaries, the account, a redraw) */
   setLanguage(lang: string): void;
+  // ── The bell's list (stage 8e-4, BellPanel.tsx) ──
+  /** the notifications, newest first (`notifList`), with which are unread */
+  bellItems(): BellItem[];
+  /** marks one read and opens what it is about */
+  openNotif(id: string): void;
+  /** runs one of a notification's actions (Call, WhatsApp) */
+  bellAct(id: string, index: number): void;
+  markAllNotifRead(): void;
   // ── The sign-in screen (stage 8e-2) ──
   /** signs in (the login function, then the page reloads); the error text to show, or null */
   signIn(username: string, password: string): Promise<string | null>;

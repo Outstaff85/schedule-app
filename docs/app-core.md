@@ -2,7 +2,7 @@
 
 The manager app's skeleton: the page layout, global state, tabs and rendering, the Schedule tab, login and session, data loading and saving, the data-call dispatcher, uploads, telemetry, PWA. Module-specific code is in the other docs.
 
-`schedule-manager.html` is the markup and the page's CSS (inline `<style>`), and one module script, `src/manager/page/entry.ts` (a Vite entry since React migration stage 8c-2): it loads `src/manager/globals.ts` (the data layer and the logic, under their old global names), then the page's own script — the former inline script, the same code, split by section into 17 typed modules of `src/manager/page/` (`base`, `language`, `nav`, `header`, `render`, `worker-window`, `clients`, `workers`, `suppliers`, `windows`, `wiring`, `gate`, `admin`, `bridge`, `toast`, `scan`, `init`, imported in that order; each imports only from the earlier ones, so the code runs in its old order; `dom.ts` holds `byId` / `qs` / `qsa`, `globals.d.ts` the names still reached as globals), then the React pieces (`src/manager/main.tsx`), in one bundle. Every function of the page is a global (window accessors). Since the React migration (stages 6–7) every tab and window is React, and since stage 8e-1 the frame too (the title bar, the side menu / bottom bar and More, the bell button, the account menu — `src/manager/Frame.tsx`, below); the page keeps the bell's list and the scan window (the sign-in, the Firms screen and the map picker are React since stages 8e-2 and 8e-3), the data layer and the actions the React pieces call through `window.ManagerBridge`. It loads more files:
+`schedule-manager.html` is the markup and the page's CSS (inline `<style>`), and one module script, `src/manager/page/entry.ts` (a Vite entry since React migration stage 8c-2): it loads `src/manager/globals.ts` (the data layer and the logic, under their old global names), then the page's own script — the former inline script, the same code, split by section into 17 typed modules of `src/manager/page/` (`base`, `language`, `nav`, `header`, `render`, `worker-window`, `clients`, `workers`, `suppliers`, `windows`, `wiring`, `gate`, `admin`, `bridge`, `toast`, `scan`, `init`, imported in that order; each imports only from the earlier ones, so the code runs in its old order; `dom.ts` holds `byId` / `qs` / `qsa`, `globals.d.ts` the names still reached as globals), then the React pieces (`src/manager/main.tsx`), in one bundle. Every function of the page is a global (window accessors). Since the React migration (stages 6–7) every tab and window is React, and since stage 8e-1 the frame too (the title bar, the side menu / bottom bar and More, the bell button, the account menu — `src/manager/Frame.tsx`, below); the page keeps the scan window (the sign-in, the Firms screen, the map picker and the bell's list are React since stages 8e-2 to 8e-4), the data layer and the actions the React pieces call through `window.ManagerBridge`. It loads more files:
 - `payroll.js` — before the module, the global `Payroll` (docs/accounting.md → Payroll module);
 - `firestore-backend.js` — at startup (the data layer starts loading it), the browser data layer, [backend.md](backend.md);
 - `scan-pipeline.js` — on the first scan, [scan.md](scan.md);
@@ -71,25 +71,9 @@ Every page loads them from the site itself, not from a CDN, so they also work of
 - Icons: the React pieces import them from `@tabler/icons-react` (bundled). The page's own markup (the frame, the login, the bell, the scan window) uses `icons/tabler-icons.css` + `icons/tabler-icons.woff2` — a subset of Tabler Icons with only the `ti-<name>` icons `schedule-manager.html` and `scan-pipeline.js` use (83 since stage 7), built by `tests/icons/build.py`. **A new `ti-` icon there** needs a rebuild: `npm run test:icons` (in `tests/rules`) fails on an icon missing from the subset. An icon name glued from pieces in code goes into the script's `EXTRA` list.
 - `.woff2` files are served with a one-year cache (`firebase.json`) and the service worker answers them from its cache first.
 
-## Long lists (`renderPagedList`)
+## Long lists
 
-Every list that can grow pages by 10. The React tabs and windows use `PagedList` ([components.md](components.md)); the page's own list (the bell's notifications) is drawn with `renderPagedList(el, key, sig, items, rowHtml, opts)`, by the same rules:
-- it shows the first `LIST_PAGE` = 10 items and a "Show more (N left)" row;
-- the next 10 come when that row is tapped, or when a scroll that follows the user's own input brings it into view (`_pagedOnScroll`);
-- user input means wheel, touch, a key or a pointer press;
-- an upward input (wheel up, a finger moving down, ↑ / PageUp / Home) never loads, even with the row in view (`__pagedUp`, the direction of a swipe from `touchstart` / `touchmove`);
-- a downward wheel, a swipe up or a down key (↓, PageDown, End, Space) while the row is already in view also loads the next page — a list short enough that the page doesn't scroll (Errors on a computer) fires no scroll event at all;
-- each input allows one page at most, so a scroll the browser fires after a redraw changes the page height never chain-loads, and there is no pre-loading margin;
-- the visible area is the viewport or the nearest scrolling ancestor, such as a modal (`_pagedVisibleBottom`).
-
-Options and keys:
-- `opts.table` / `opts.colspan`: rows of a `<tbody>`;
-- `opts.grid`: tiles of a CSS grid, where the "more" row spans the grid;
-- `opts.head`: fixed HTML before the items;
-- `key` names the list; while `sig` (filters, sort) stays the same, a redraw keeps the number already opened, and a new `sig` starts again at 10;
-- totals rows are outside the paged rows and cover every item.
-
-Not paged: chips and form rows being edited (selected clients, children), and printed / exported documents.
+Every list that can grow pages by 10, the bell's notifications too: `PagedList` ([components.md](components.md) — 10 rows and "Show more (N left)"; the next 10 when that row is tapped or scrolled into view by the user's own input, never on an upward move). The page's own `renderPagedList` was removed with its last list (the bell, React since stage 8e-4).
 
 ## Login and session
 

@@ -22,7 +22,7 @@ import { exportExcel, exportJSON, exportPDF, exportShiftsDetail } from '../logic
 import { genToken } from '../data/ids';
 import { fileForStorage, fileToUploadPages } from '../logic/uploads';
 import { reportError } from '../data/telemetry';
-import { loadFirmMessages, renderCrumb, renderGreeting, saveFirmMessage, toggleBell, waTemplate } from './header';
+import { bellAct, bellItems, loadFirmMessages, markAllNotifRead, openNotif, renderCrumb, renderGreeting, saveFirmMessage, toggleBell, waTemplate } from './header';
 import { editFromWorkerCard, openHoursExportModal, openHoursImportModal, openNotices, openWorkerCard, openWorkerDocUpload, parseHoursExcelFile, parseHoursImagePage, renderClientsPage, renderSuppliersPage, renderWorkersPage, rescanFromWorkerCard, setWorkersStatus, todayPunchLog, workerBarColor, workerNotices, workerSiteName, workerToday } from './workers';
 import { switchTab } from './nav';
 import { buildPunchLink, copyWorkerLink, deleteWorkerNow, findScanFields, loginsInfo, newLoginFor, openAddWorker, openEditWorker, regenerateWorkerToken, rescanFromWorkerModal, saveLoginField, setWorkerStatus, supplierMonthPayable, workerHasScanPages, workerScanLive } from './worker-window';
@@ -36,9 +36,6 @@ import { logout, pingLogin, signIn, switchToTenant } from './wiring';
 import { cacheTenantProfile, editMyName, setTheme } from './gate';
 import { showToast } from '../toast';
 Object.defineProperties(window, {
-  "__rowFns": {get: () => __rowFns, configurable: true},
-  "__rowFnSeq": {get: () => __rowFnSeq, set: (v?: any) => { __rowFnSeq = v; }, configurable: true},
-  "rowFnKey": {get: () => rowFnKey, configurable: true},
   "renderDashboard": {get: () => renderDashboard, configurable: true},
   "renderSchedulePage": {get: () => renderSchedulePage, configurable: true},
   "workerHeadOf": {get: () => workerHeadOf, configurable: true},
@@ -68,17 +65,6 @@ Object.defineProperties(window, {
   "latestOf": {get: () => latestOf, configurable: true},
   "workerClientName": {get: () => workerClientName, configurable: true},
   "punchSite": {get: () => punchSite, configurable: true},
-  "LIST_PAGE": {get: () => LIST_PAGE, configurable: true},
-  "__pagedLists": {get: () => __pagedLists, configurable: true},
-  "renderPagedList": {get: () => renderPagedList, configurable: true},
-  "pagedMoreHtml": {get: () => pagedMoreHtml, configurable: true},
-  "wirePagedMore": {get: () => wirePagedMore, configurable: true},
-  "__pagedScrollQueued": {get: () => __pagedScrollQueued, set: (v?: any) => { __pagedScrollQueued = v; }, configurable: true},
-  "__pagedUserAt": {get: () => __pagedUserAt, set: (v?: any) => { __pagedUserAt = v; }, configurable: true},
-  "__pagedUp": {get: () => __pagedUp, set: (v?: any) => { __pagedUp = v; }, configurable: true},
-  "__pagedTouchY": {get: () => __pagedTouchY, set: (v?: any) => { __pagedTouchY = v; }, configurable: true},
-  "_pagedVisibleBottom": {get: () => _pagedVisibleBottom, configurable: true},
-  "_pagedOnScroll": {get: () => _pagedOnScroll, configurable: true},
   "renderAdmin": {get: () => renderAdmin, configurable: true},
   "loadEarlierPunchMonth": {get: () => loadEarlierPunchMonth, configurable: true},
   "savePunchEdit": {get: () => savePunchEdit, configurable: true},
@@ -89,13 +75,6 @@ Object.defineProperties(window, {
 });
 
 // ── Odinson Glass list pieces (docs/redesign.md → Plates) ──
-// The lists are React (Plate). rowFnKey keeps a function under a key for an onclick (the bell's actions).
-const __rowFns = new Map(); let __rowFnSeq = 0;
-function rowFnKey(v?: any){
-  const k = 'r' + (++__rowFnSeq); __rowFns.set(k, v);
-  if(__rowFns.size > 4000) __rowFns.delete(__rowFns.keys().next().value);
-  return k;
-}
 // ── Today (stage 6a): drawn in React — src/manager/Today.tsx, loaded as
 // the React pieces (docs/build.md → The manager's React pieces). The page
 // hands it its data and actions through window.ManagerBridge; renderDashboard() asks
@@ -125,6 +104,10 @@ window.ManagerBridge={
   signOut:()=>{ logout(); },
   saveTheme:(t?: any)=>setTheme(t),
   setLanguage:(l?: any)=>{ setLanguage(l); },
+  bellItems:()=>bellItems(),
+  openNotif:(id?: any)=>openNotif(id),
+  bellAct:(id?: any,k?: any)=>bellAct(id,k),
+  markAllNotifRead:()=>markAllNotifRead(),
   signIn:(u?: any,p?: any)=>signIn(u,p),
   pingLogin:()=>pingLogin(),
   // The snapshot Today draws from: each worker with today's shift, today's punch
@@ -632,98 +615,6 @@ function punchSite(e?: any){
   return workerClientName(e && e.workerId) || (e && e.site) || '';
 }
 
-// Every list that grows (workers, clients, suppliers, firms, users, punch
-// log, errors, timings, pending hours, salary and rate tables, ...) draws
-// LIST_PAGE rows at first. The next LIST_PAGE rows come only when the user
-// scrolls the "Show more" row into view, or taps it — exactly one page per
-// reach of the end, no pre-loading. `sig` describes what is listed (filters,
-// grouping): while it stays the same, a redraw (new punch, refresh) keeps
-// what was already opened; a new filter starts again from the first page.
-// opts.table/colspan: rows of a <tbody>; opts.grid: tiles of a CSS grid.
-const LIST_PAGE = 10;
-const __pagedLists: any = {};
-function renderPagedList(el?: any, key?: any, sig?: any, items?: any, rowHtml?: any, opts?: any){
-  if(!el) return;
-  opts = opts || {};
-  const st = __pagedLists[key] && __pagedLists[key].sig === sig ? __pagedLists[key] : (__pagedLists[key] = {sig, shown: LIST_PAGE});
-  const n = Math.min(items.length, st.shown);
-  el.innerHTML = (opts.head || '') + items.slice(0, n).map((it?: any, i?: any) => rowHtml(it, i)).join('') + pagedMoreHtml(items.length - n, opts);
-  wirePagedMore(el, key, items, rowHtml, opts);
-}
-function pagedMoreHtml(left?: any, opts?: any){
-  if(left <= 0) return '';
-  const btn = `<button class="btn sm paged-more-btn" style="margin:6px auto;display:flex"><i class="ti ti-chevron-down"></i> ${tr('Show more ({0} left)',{0:(left)})}</button>`;
-  if(opts.table) return `<tr class="paged-more"><td colspan="${opts.colspan||20}" style="padding:4px">${btn}</td></tr>`;
-  return `<div class="paged-more" style="${opts.grid?'grid-column:1/-1;':''}">${btn}</div>`;
-}
-function wirePagedMore(el?: any, key?: any, items?: any, rowHtml?: any, opts?: any){
-  const st = __pagedLists[key];
-  st.more = null;
-  const more = el.querySelector(':scope > .paged-more');
-  if(!more) return;
-  st.more = more;
-  st.next = () => {
-    if(st.more !== more || !more.isConnected) return;
-    const from = st.shown;
-    st.shown += LIST_PAGE;
-    const to = Math.min(items.length, st.shown);
-    more.insertAdjacentHTML('beforebegin', items.slice(from, to).map((it?: any, i?: any) => rowHtml(it, from + i)).join(''));
-    more.remove();
-    el.insertAdjacentHTML('beforeend', pagedMoreHtml(items.length - to, opts));
-    wirePagedMore(el, key, items, rowHtml, opts);
-  };
-  more.querySelector('button').onclick = () => st.next();
-}
-// On a user scroll (any scrolling element: the page or a modal), each list
-// whose "Show more" row is now visible gets its next page — one per frame.
-// Only a scroll that follows the user's own input (wheel, touch, key, click)
-// counts, and each input allows one page at most: the browser also fires
-// scroll when a page's height changes after a redraw, which would otherwise
-// chain-load page after page.
-// __pagedUp: the last input moved up (wheel up, finger down, ArrowUp…) —
-// then nothing loads, even with "Show more" in view.
-let __pagedScrollQueued = false, __pagedUserAt = 0, __pagedUp = false, __pagedTouchY: any = null;
-['wheel','touchstart','touchmove','touchend','keydown','pointerdown'].forEach((t?: any) =>
-  window.addEventListener(t, (e?: any) => {
-    __pagedUserAt = Date.now();
-    // A downward wheel / swipe / key while "Show more" is already in view
-    // loads the next page too: when the page is short enough not to scroll
-    // (a short list on a big screen) no scroll event would ever come.
-    let down = false;
-    if(t === 'touchstart'){ __pagedTouchY = e.touches && e.touches[0] ? e.touches[0].clientY : null; __pagedUp = false; }
-    else if(t === 'touchmove' && e.touches && e.touches[0] && __pagedTouchY != null){
-      const y = e.touches[0].clientY;
-      if(Math.abs(y - __pagedTouchY) > 4){ __pagedUp = y > __pagedTouchY; down = !__pagedUp; __pagedTouchY = y; }
-    }
-    else if(t === 'wheel' && e.deltaY){ __pagedUp = e.deltaY < 0; down = !__pagedUp; }
-    else if(t === 'keydown'){
-      if(['ArrowDown','PageDown','End',' '].includes(e.key)){ __pagedUp = false; down = true; }
-      else if(['ArrowUp','PageUp','Home'].includes(e.key)) __pagedUp = true;
-    }
-    else if(t === 'pointerdown' && e.pointerType === 'mouse') __pagedUp = false;
-    if(down) _pagedOnScroll();
-  }, {capture:true, passive:true}));
-function _pagedVisibleBottom(node?: any){
-  let bottom = window.innerHeight;
-  for(let p = node.parentElement; p && p !== document.body; p = p.parentElement){
-    const oy = getComputedStyle(p).overflowY;
-    if(oy === 'auto' || oy === 'scroll') bottom = Math.min(bottom, p.getBoundingClientRect().bottom);
-  }
-  return bottom;
-}
-function _pagedOnScroll(){
-  if(__pagedScrollQueued || __pagedUp || !__pagedUserAt || Date.now() - __pagedUserAt > 1500) return;
-  __pagedScrollQueued = true;
-  requestAnimationFrame(() => {
-    __pagedScrollQueued = false;
-    for(const k in __pagedLists){
-      const st = __pagedLists[k], more = st.more;
-      if(!more || !more.isConnected || !more.getClientRects().length) continue;
-      if(more.getBoundingClientRect().top <= _pagedVisibleBottom(more)){ __pagedUserAt = 0; st.next(); return; }
-    }
-  });
-}
-window.addEventListener('scroll', _pagedOnScroll, {capture:true, passive:true});
 
 // ── Admin (stage 6f-1): the section tabs, the tiles and the Punch Log are
 // drawn in React — src/manager/Admin.tsx, the root #adminRoot. The punches

@@ -25,6 +25,9 @@ export type FrameState = {
   save: 'saved' | 'saving';
   /** the bell: shown for the roles that have notifications, its unread count */
   bell: { shown: boolean; count: number };
+  /** the bell's list is open (BellPanel); `bellV` bumps when its items change */
+  bellOpen: boolean;
+  bellV: number;
   /** the account button and the head of its menu */
   account: { name: string; firm: string; sub: string } | null;
   /** the Admin section's icon warns (the firm profile is incomplete) */
@@ -35,7 +38,7 @@ export type FrameState = {
 
 let state: FrameState = {
   lang: 'en', screen: 'app', tab: 'dashboard', tabs: [], counts: {}, crumb: {}, greet: null, save: 'saved',
-  bell: { shown: false, count: 0 }, account: null, adminWarn: false, install: false,
+  bell: { shown: false, count: 0 }, bellOpen: false, bellV: 0, account: null, adminWarn: false, install: false,
 };
 const listeners = new Set<() => void>();
 

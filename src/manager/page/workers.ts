@@ -28,7 +28,6 @@ Object.defineProperties(window, {
   "workerBarColor": {get: () => workerBarColor, configurable: true},
   "setWorkersStatus": {get: () => setWorkersStatus, configurable: true},
   "openNotices": {get: () => openNotices, configurable: true},
-  "runRowFn": {get: () => runRowFn, configurable: true},
   "renderWorkersPage": {get: () => renderWorkersPage, configurable: true},
   "openWorkerCard": {get: () => openWorkerCard, configurable: true},
   "editFromWorkerCard": {get: () => editFromWorkerCard, configurable: true},
@@ -102,7 +101,6 @@ export function openNotices(wid?: any){
   byId('noticesOverlay').classList.add('open');
   loadFirmMessages();
 }
-function runRowFn(k?: any){ const fn=__rowFns.get(k); if(fn) fn(); }
 // ── Workers (stage 6c-1): the list is drawn in React — src/manager/Workers.tsx.
 // The page keeps the data; the tab reads it through window.ManagerBridge.workers().
 export function renderWorkersPage(){
