@@ -23,17 +23,7 @@ Object.defineProperties(window, {
   "closeEditorUnsaved": {get: () => closeEditorUnsaved, configurable: true},
   "punchFromClientModal": {get: () => punchFromClientModal, configurable: true},
   "deleteClientsNow": {get: () => deleteClientsNow, configurable: true},
-  "GOOGLE_MAPS_API_KEY": {get: () => GOOGLE_MAPS_API_KEY, configurable: true},
-  "MAP_PICK_DEFAULT_CENTER": {get: () => MAP_PICK_DEFAULT_CENTER, configurable: true},
-  "_gmapsLoading": {get: () => _gmapsLoading, set: (v?: any) => { _gmapsLoading = v; }, configurable: true},
-  "__mapPick": {get: () => __mapPick, set: (v?: any) => { __mapPick = v; }, configurable: true},
-  "__mapPickDone": {get: () => __mapPickDone, set: (v?: any) => { __mapPickDone = v; }, configurable: true},
-  "loadGoogleMaps": {get: () => loadGoogleMaps, configurable: true},
   "openMapPicker": {get: () => openMapPicker, configurable: true},
-  "mapPickSetPos": {get: () => mapPickSetPos, configurable: true},
-  "mapPickSetRadius": {get: () => mapPickSetRadius, configurable: true},
-  "mapPickUseMyLocation": {get: () => mapPickUseMyLocation, configurable: true},
-  "saveMapPick": {get: () => saveMapPick, configurable: true},
   "workersMonthHours": {get: () => workersMonthHours, configurable: true},
 });
 
@@ -88,114 +78,14 @@ export function deleteClientsNow(ids?: any){
     if(selectedClientId===cid) selectedClientId=null; });
   render(); autoSave(); showToast(one?tr('{0} removed',{0:one.name}):tr('{0} clients',{0:ids.length}));
 }
-// ── Client geolocation map picker (Google Maps JavaScript API) ─────────────
-// The client window's small map opens it (window.ManagerBridge.pickPlace): search box
-// (Places autocomplete), tap/drag pin, live radius circle, "Use my location".
-// The place picked goes back to the window (onPick: lat, lng, radius and a
-// maps link) — the paste-a-link field in the window still works as before. The Maps script is lazy-loaded only
-// when the picker first opens. Needs GOOGLE_MAPS_API_KEY (a browser key
-// restricted by HTTP referrer to this app's domains, with Maps JavaScript API,
-// Places API (New) and Geocoding API enabled); without one the button falls
-// back to opening Google Maps in a new tab so the link can be pasted.
-const GOOGLE_MAPS_API_KEY = 'AIzaSyDlS9G5zOhg8lK88_jzHewC5BLM1QkeKwc';
-const MAP_PICK_DEFAULT_CENTER = {lat:32.0853, lng:34.7818}; // Tel Aviv
-let _gmapsLoading: any = null;
-let __mapPick: {map: any, marker: any, circle: any, pos: any} = { map:null, marker:null, circle:null, pos:null }, __mapPickDone: any = null;
-function loadGoogleMaps(){
-  if(window.google && google.maps && google.maps.importLibrary) return Promise.resolve();
-  if(_gmapsLoading) return _gmapsLoading;
-  _gmapsLoading = new Promise((resolve?: any,reject?: any)=>{
-    window.__gmapsReady = ()=>resolve();
-    const s=document.createElement('script');
-    s.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(GOOGLE_MAPS_API_KEY)+'&v=weekly&loading=async&callback=__gmapsReady';
-    s.async=true;
-    s.onerror=()=>{ _gmapsLoading=null; reject(new Error('Google Maps failed to load')); };
-    document.head.appendChild(s);
-  });
-  return _gmapsLoading;
-}
-// Google calls this global on an invalid/unauthorized key.
-window.gm_authFailure = function(){ showToast(tr('Google Maps key rejected — check GOOGLE_MAPS_API_KEY and its allowed domains'),5000); };
-export async function openMapPicker(start?: any, onPick?: any){
-  const lat=start&&start.lat!=null?Number(start.lat):NaN, lng=start&&start.lng!=null?Number(start.lng):NaN;
-  const addr=String((start&&start.addr)||'').trim();
-  __mapPickDone=onPick||null;
-  if(!GOOGLE_MAPS_API_KEY){
-    const q = !isNaN(lat)&&!isNaN(lng) ? lat+','+lng : (addr||'Israel');
-    window.open('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q),'_blank');
-    showToast(tr('Pick the point in Google Maps, copy the link and paste it here'),4000);
-    return;
-  }
-  byId('mapPickRadius').value = (start&&start.radius) || 100;
-  byId('mapPickSave').disabled = true;
-  byId('mapPickCoords').textContent = '';
+// ── The map picker (React since stage 8e-3: src/manager/MapPicker.tsx, Google
+// Maps in src/manager/maps.ts). The client window's small map opens it
+// (ManagerBridge.pickPlace) over the window; the place picked goes back
+// through onPick (lat, lng, radius and a maps link).
+export function openMapPicker(start?: any, onPick?: any){
+  if(!window.ManagerIsland) return;
+  window.ManagerIsland.openMapPicker({start: start||null, onPick: onPick||null, close: ()=>closeModal('mapPickOverlay')});
   byId('mapPickOverlay').classList.add('open');
-  try{ await loadGoogleMaps(); }catch(e: any){ showToast(e.message); closeModal('mapPickOverlay'); return; }
-  const {Map, Circle} = await google.maps.importLibrary('maps');
-  const {Marker} = await google.maps.importLibrary('marker');
-  __mapPick = { map:null, marker:null, circle:null, pos:null };
-  const hasPos = !isNaN(lat)&&!isNaN(lng);
-  const map = new Map(byId('mapPickMap'), {
-    center: hasPos?{lat,lng}:MAP_PICK_DEFAULT_CENTER, zoom: hasPos?17:12,
-    mapTypeControl:false, streetViewControl:false, fullscreenControl:false, clickableIcons:false, gestureHandling:'greedy'
-  });
-  __mapPick.map = map;
-  // Classic Marker (not AdvancedMarkerElement) — the advanced one requires a
-  // Cloud-configured Map ID; this keeps setup to just the API key.
-  __mapPick.marker = new Marker({ map, draggable:true, visible:false });
-  __mapPick.circle = new Circle({ map, visible:false, strokeColor:'#4f8cff', strokeWeight:2, fillColor:'#4f8cff', fillOpacity:0.15, clickable:false });
-  __mapPick.marker.addListener('dragend', (e?: any)=>mapPickSetPos(e.latLng.lat(), e.latLng.lng(), false));
-  map.addListener('click', (e?: any)=>mapPickSetPos(e.latLng.lat(), e.latLng.lng(), false));
-  if(hasPos) mapPickSetPos(lat,lng,false);
-  else if(addr){
-    try{
-      const {Geocoder} = await google.maps.importLibrary('geocoding');
-      new Geocoder().geocode({address:addr, region:'il'}, (res?: any,status?: any)=>{
-        if(status==='OK' && res[0] && !__mapPick.pos){ map.setCenter(res[0].geometry.location); map.setZoom(17); }
-      });
-    }catch(e: any){}
-  }
-  // Places search box (new PlaceAutocompleteElement). Older builds fire
-  // 'gmp-placeselect' with event.place, newer 'gmp-select' with
-  // event.placePrediction — handle both.
-  const searchHost=byId('mapPickSearch'); searchHost.innerHTML='';
-  try{
-    const {PlaceAutocompleteElement} = await google.maps.importLibrary('places');
-    const ac = new PlaceAutocompleteElement({ includedRegionCodes:['il'] });
-    ac.style.width='100%';
-    searchHost.appendChild(ac);
-    const onPlace = async (place?: any)=>{
-      if(!place) return;
-      await place.fetchFields({fields:['location','formattedAddress']});
-      if(place.location) mapPickSetPos(place.location.lat(), place.location.lng(), true);
-    };
-    ac.addEventListener('gmp-select', (e?: any)=>onPlace(e.placePrediction && e.placePrediction.toPlace()));
-    ac.addEventListener('gmp-placeselect', (e?: any)=>onPlace(e.place));
-  }catch(e: any){ searchHost.innerHTML='<div style="font-size:12px;color:var(--text3)">'+tr('Address search unavailable — tap the map instead')+'</div>'; }
-}
-function mapPickSetPos(lat?: any,lng?: any,recenter?: any){
-  __mapPick.pos={lat,lng};
-  const p={lat,lng};
-  __mapPick.marker.setPosition(p); __mapPick.marker.setVisible(true);
-  __mapPick.circle.setCenter(p); __mapPick.circle.setRadius(Number(byId('mapPickRadius').value)||100); __mapPick.circle.setVisible(true);
-  if(recenter){ __mapPick.map.setCenter(p); __mapPick.map.setZoom(17); }
-  byId('mapPickCoords').textContent=lat.toFixed(5)+', '+lng.toFixed(5);
-  byId('mapPickSave').disabled=false;
-}
-function mapPickSetRadius(v?: any){ if(__mapPick.circle) __mapPick.circle.setRadius(Number(v)||100); }
-function mapPickUseMyLocation(){
-  if(!navigator.geolocation){ showToast(tr('Geolocation not supported on this device')); return; }
-  navigator.geolocation.getCurrentPosition(
-    (pos?: any)=>{ mapPickSetPos(pos.coords.latitude,pos.coords.longitude,true); showToast(tr('Accuracy ±{0} m',{0:(Math.round(pos.coords.accuracy))})); },
-    (err?: any)=>showToast(tr('Could not get location: {0}',{0:(err.message)})),
-    {enableHighAccuracy:true, timeout:15000, maximumAge:0});
-}
-function saveMapPick(){
-  const p=__mapPick.pos; if(!p) return;
-  const lat=+p.lat.toFixed(6), lng=+p.lng.toFixed(6);
-  const radius=Number(byId('mapPickRadius').value)||100;
-  if(__mapPickDone) __mapPickDone({lat, lng, radius, mapsUrl:'https://www.google.com/maps?q='+lat+','+lng});
-  closeModal('mapPickOverlay');
 }
 
 // Hours worked this calendar month, per worker — the same canonical shift

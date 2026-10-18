@@ -41,17 +41,18 @@ Worker pay and client billing are separate sets of fields. Billing never changes
   - **Margin** (`#cBillMargin`, `margin`): what the client pays minus the worker pay per regular hour in ₪ ("Profit per hour", red "Loss per hour" when the client pays less), the same in % of the client's rate ("Margin") and, for a saved client, what it is billed this month ("This month"); hidden while either rate is empty.
 - **Saving:** a tap outside the window saves it (`clientOverlay.__onUserClose` → `saveClient({auto:true})` → the window's `save`); the Save button at the bottom too; a note under it says so. `clientRecordOf` builds the record from the fields and the billing state; `ManagerBridge.commitClient(editId, fields)` → `commitClient` stores it in place (an unchanged client closes without a save) or pushes a new one (`uid()`), toasts "{name} updated!" / "{name} added!", redraws the tab and saves. A new client without a name is not created; an existing one with its name emptied closes with "The client's name is empty — changes were not saved"; Save with an empty name opens Client and focuses the name.
 
-## Map picker (`openMapPicker()`, `#mapPickOverlay`)
+## Map picker (`src/manager/MapPicker.tsx`, `#mapPickOverlay`)
 
-- **Loading:** `GOOGLE_MAPS_API_KEY` is a browser key restricted to the app's domains. Without it, the button opens Google Maps in a new tab so a link can be pasted back. The Maps script loads on first use (`loadGoogleMaps()`); `window.gm_authFailure` toasts when the key is rejected.
+React since stage 8e-3, drawn into the page's `#mapPickModal`; the page opens the overlay over the client window (`openMapPicker(start, onPick)` → `ManagerIsland.openMapPicker`), so it goes back to the window when it closes.
+- **Loading:** `GOOGLE_MAPS_API_KEY` (`src/manager/maps.ts`) is a browser key restricted to the app's domains. The Maps script loads on first use (`loadGoogleMaps()`); `window.gm_authFailure` toasts when the key is rejected; a script that fails to load toasts and closes the picker.
 - **Map:**
-  - it starts at the saved coordinates, or geocodes the address/name (`region:'il'`), or falls back to Tel Aviv (`MAP_PICK_DEFAULT_CENTER`);
+  - it starts at the saved coordinates, or geocodes the address/name (`region:'il'`), or falls back to Tel Aviv (`MAP_DEFAULT_CENTER`);
   - the classic `Marker` is draggable and a tap on the map moves it;
-  - a `Circle` shows the radius.
-- **Search box:** `PlaceAutocompleteElement` limited to Israel. It handles both `gmp-select` and the older `gmp-placeselect` event.
-- **Helpers:** `mapPickSetPos(lat,lng,recenter)`, `mapPickSetRadius(v)`, `mapPickUseMyLocation()` (device GPS).
-- **Opening:** `openMapPicker(start, onPick)` (from the client window's small map, `ManagerBridge.pickPlace`): `start` is the window's point, its address (or name, for the geocoding) and radius.
-- **Saving:** `saveMapPick()` hands lat/lng (6 decimals), the radius and a `https://www.google.com/maps?q=lat,lng` link to `onPick`, which fills the client window.
+  - a `Circle` shows the radius, redrawn as the Radius (m) field changes.
+- **Search box:** `PlaceAutocompleteElement` limited to Israel. It handles both `gmp-select` and the older `gmp-placeselect` event; without Places, "Address search unavailable — tap the map instead".
+- **Use my location:** the device GPS, then a toast with its accuracy.
+- **Opening:** from the client window's small map (`ManagerBridge.pickPlace`): `start` is the window's point, its address (or name, for the geocoding) and radius.
+- **Saving:** Use this location (enabled once a point is set) hands lat/lng (6 decimals), the radius and a `https://www.google.com/maps?q=lat,lng` link to `onPick`, which fills the client window. `ManagerIsland.mapPickAt(lat, lng)` sets the pin from outside (the browser checks — no Google Maps on the emulators).
 
 ## Manual punch (client window ⋮ / a client plate's ⋮ → Manual punch)
 

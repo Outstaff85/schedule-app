@@ -1553,7 +1553,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     // The small map opens the map picker; the place picked there comes back into the window.
     document.getElementById('cMapMini').click(); await wait(100);
     out.mapOpen = document.getElementById('mapPickOverlay').classList.contains('open');
-    __mapPick.pos = {lat: 32.0712345, lng: 34.7798765}; document.getElementById('mapPickRadius').value = '150'; saveMapPick(); await wait(100);
+    out.mapReact = !!document.querySelector('#mapPickModal [data-testid="map-picker"]'); ManagerIsland.mapPickAt(32.0712345, 34.7798765); document.getElementById('mapPickRadius').value = '150'; document.getElementById('mapPickSave').click(); await wait(100);
     out.picked = {loc: document.getElementById('cLocStatus').innerText, radius: document.getElementById('cRadius').value, url: document.getElementById('cMapsUrl').value, mapClosed: !document.getElementById('mapPickOverlay').classList.contains('open')};
     // A pasted link is read too; a link that is not recognised says so.
     T.fill('cMapsUrl', 'https://www.google.com/maps/@31.5,35.1,15z'); await wait(50); out.link = document.getElementById('cLocStatus').innerText;
@@ -1564,7 +1564,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(cs.ltr.noRtl && cs.ltr.note, 'clients: the client window is left to right and its note is English through tr() ' + JSON.stringify(cs.ltr));
   ok(/₪78.*60%/.test(cs.rates.margin) && cs.rates.extra && cs.rates.fixedHidesExtra && /₪52 worker · ₪130 client · hourly/.test(cs.rates.sum), 'clients: the rates block shows the margin per hour; fixed mode hides OT / Shabbat ' + JSON.stringify(cs.rates));
-  ok(cs.mapOpen && /32\.0712\d, 34\.7798\d/.test(cs.picked.loc) && cs.picked.radius === '150' && cs.picked.url === 'https://www.google.com/maps?q=32.071235,34.779877' && cs.picked.mapClosed && /31\.50000, 35\.10000/.test(cs.link) && /not recognised/.test(cs.badLink),
+  ok(cs.mapOpen && cs.mapReact && /32\.0712\d, 34\.7798\d/.test(cs.picked.loc) && cs.picked.radius === '150' && cs.picked.url === 'https://www.google.com/maps?q=32.071235,34.779877' && cs.picked.mapClosed && /31\.50000, 35\.10000/.test(cs.link) && /not recognised/.test(cs.badLink),
     'clients: the small map opens the map picker and the place comes back; a pasted Google Maps link is read ' + JSON.stringify({mapOpen: cs.mapOpen, picked: cs.picked, link: cs.link, badLink: cs.badLink}));
   // Editors per mockup 04: the client head's ⋮ (Manual punch, Delete) and the small map; the user editor's head; glass fields.
   await p.evaluate(() => openEditClient('c1')); await sleep(200);

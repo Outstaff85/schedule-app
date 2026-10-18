@@ -8,6 +8,7 @@
 import type { Punch } from '@/lib/payroll';
 import type { AccData, AccWorker, ApprovalDoc, HrLogin } from './accounting';
 import type { UserRow } from './users';
+import type { MapPickProps } from './MapPicker';
 
 export type Notice = { lvl: 'red' | 'amber'; word: string; title: string };
 /** A worker today: on vacation, the latest punch (in / out), no punch on a started shift, or nothing. */
@@ -810,6 +811,10 @@ export type ManagerIsland = {
   saveClient(opts: { auto?: boolean }): void;
   openSupplier(s: SupplierRecord, editId: string | null): void;
   openManualPunch(clientId: string): void;
+  /** the map picker (stage 8e-3) into #mapPickModal; the page opens the overlay */
+  openMapPicker(p: { start: MapPickProps['start']; onPick: MapPickProps['onPick']; close: () => void }): void;
+  /** sets the map picker's pin (the browser checks) */
+  mapPickAt(lat: number, lng: number): void;
   // ── Accounting (stage 6e) ──
   renderAccounting(): void;
   /** Salary / Billing / Approvals / Alerts */

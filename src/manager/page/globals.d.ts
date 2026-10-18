@@ -8,7 +8,6 @@ export {};
 declare global {
   // scan-pipeline.js and Google Maps (loaded on demand)
   var installApp: any;
-  var google: any;
   var openAiScan: any;
   var verifyFieldsBatch: any;
   var _normScanDigits: any;
@@ -78,8 +77,8 @@ declare global {
   // the page's state kept on window, shared with scan-pipeline.js and the React pieces
   interface Window {
     XLSX?: any; __aiAvatarB64?: any; __aiPacketOtherPages?: any; __aiRescanWorkerId?: any; __aiRescannedWorkerId?: any;
-    __aiScanImage?: any; __aiScanPageThumbs?: any; __gmapsReady?: any; __pingMs?: any; __scanPipelineReady?: any;
-    __wCapturedSigPng?: any; __wDraft?: any; gm_authFailure?: any;
+    __aiScanImage?: any; __aiScanPageThumbs?: any; __pingMs?: any; __scanPipelineReady?: any;
+    __wCapturedSigPng?: any; __wDraft?: any;
   }
   // a window's own hooks on its overlay (docs/app-core.md → Layout: closing, going back)
   interface HTMLElement { __hide?: any; __onUserClose?: any; __reopen?: any; __returnTo?: any }

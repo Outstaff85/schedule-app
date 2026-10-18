@@ -36,6 +36,7 @@ import { Clients, Suppliers } from './Clients';
 import { ClientEditor, clientWindow, type ClientProps } from './ClientEditor';
 import { SupplierEditor, type SupplierProps } from './SupplierEditor';
 import { ManualPunch } from './ManualPunch';
+import { MapPicker, mapPicker, type MapPickProps } from './MapPicker';
 import { Accounting, setKeptTab } from './Accounting';
 import { PayWindow } from './PayWindow';
 import { Admin } from './Admin';
@@ -156,6 +157,7 @@ const hoursExport = windowRoot<{ id: string; seq: number }>('hoursExportModal', 
 const clientWin = windowRoot<ClientProps>('clientModal', (p, api) => <ClientEditor key={p.seq} props={p} info={api.clientInfo(p.editId)} api={api} />);
 const supplierWin = windowRoot<SupplierProps>('supplierModal', (p, api) => <SupplierEditor key={p.seq} props={p} info={api.supplierInfo(p.editId)} api={api} />);
 const manualPunch = windowRoot<{ id: string; seq: number }>('manualPunchModal', (p, api) => <ManualPunch key={p.seq} clientId={p.id} api={api} />);
+const mapWin = windowRoot<MapPickProps>('mapPickModal', p => <MapPicker key={p.seq} props={p} />);
 const payWin = windowRoot<{ id: string; seq: number }>('payModal', (p, api) => <PayWindow key={p.seq} wid={p.id} api={api} />);
 const firmWin = windowRoot<{ seq: number }>('firmModal', (p, api) => <FirmWindow key={p.seq} api={api} />);
 const userWin = windowRoot<UserProps>('userFormModal', (p, api) => <UserWindow key={p.seq} props={p} info={api.userInfo()} api={api} />);
@@ -213,6 +215,8 @@ window.ManagerIsland = {
   saveClient: opts => { clientWindow.current?.save(opts); },
   openSupplier: (s, editId) => supplierWin.show({ s, editId, seq: ++seq }),
   openManualPunch: id => manualPunch.show({ id, seq: ++seq }),
+  openMapPicker: p => mapWin.show({ ...p, seq: ++seq }),
+  mapPickAt: (lat, lng) => flushSync(() => mapPicker.at(lat, lng)),
   renderAccounting,
   setAccTab: k => { setKeptTab(k); renderAccounting(); },
   openPay: id => payWin.show({ id, seq: ++seq }),
