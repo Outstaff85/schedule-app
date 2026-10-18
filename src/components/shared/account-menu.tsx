@@ -10,8 +10,10 @@ import { ThemeSwitch } from '@/components/shared/theme-switch';
 import type { ThemeChoice } from '@/lib/theme';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
-export function AccountMenu({ name, sub, onSignOut, onThemeSave, children }: {
+export function AccountMenu({ name, firm, sub, onSignOut, onThemeSave, children }: {
   name: string;
+  /** the firm after the name on the button (the manager app: "owner1 · Firm One") */
+  firm?: string;
   /** the role or the firm under the name */
   sub?: string;
   onSignOut: () => void;
@@ -27,7 +29,7 @@ export function AccountMenu({ name, sub, onSignOut, onThemeSave, children }: {
           className="flex h-9 max-w-[240px] shrink-0 items-center gap-2 rounded-full border border-glass-edge bg-glass pl-1 pr-2.5 text-[13px] font-semibold max-[500px]:px-1">
           <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-full text-xs font-bold uppercase text-[#fff]"
             style={{ background: 'linear-gradient(135deg, var(--uline-1), var(--uline-2))' }}>{(name.trim()[0] || '?')}</span>
-          <span className="truncate max-[500px]:hidden">{name}</span>
+          <span className="truncate max-[500px]:hidden">{name}{firm && <span className="font-medium text-ink-2"> · {firm}</span>}</span>
           <IconChevronDown className="size-3.5 text-ink-2 max-[500px]:hidden" />
         </button>
       </DropdownMenuTrigger>

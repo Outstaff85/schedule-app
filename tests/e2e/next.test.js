@@ -193,7 +193,18 @@ async function computer(browser) {
   ok(fr.menu && fr.crumb === 'Today' && fr.greet && fr.noAside && fr.tiles && fr.panels && fr.aside && fr.crumbW === 'Workers 12' && fr.threeCols,
     'next: the app frame (V7) — side menu, breadcrumb, greeting in the middle, the panel only on Workers, tiles, panels, plates in three columns ' + JSON.stringify(fr));
   await p.screenshot({ path: path.join(OUT, 'next-computer-frame.png') });
-  await p.getByRole('button', { name: 'Back to the gallery' }).click(); await sleep(300);
+  // The title bar as the manager page draws it: the 11C mark with the name and its two lines, Saved, the bell with its count, the account with the firm.
+  const bar = await p.evaluate(() => ({
+    mark: !!document.querySelector('[data-testid=app-brand] svg.og-mark'),
+    name: (document.querySelector('[data-testid=app-brand] .og-name') || {}).innerText || '',
+    saved: (document.querySelector('[data-testid=save-indicator]') || {}).innerText || '',
+    bell: (document.querySelector('[data-testid=shell-bell] .og-bell-n') || {}).textContent || '',
+    acct: (document.querySelector('[data-testid=account-btn]') || {}).innerText || '',
+  }));
+  ok(bar.mark && /Interactive Manager/.test(bar.name) && /Everything under one roof/.test(bar.name) && /Saved/.test(bar.saved) && bar.bell === '2' && /Owner · Firm One/.test(bar.acct),
+    'next: the app frame\'s title bar — the 11C mark and name, Saved, the bell with its count, the account with the firm ' + JSON.stringify(bar));
+  await p.click('[data-testid=account-btn]'); await sleep(300);
+  await p.getByRole('menuitem', { name: 'Back to the gallery' }).click(); await sleep(300);
   ok(await p.locator('[data-testid=page-controls]').count() === 1, 'next: the frame demo goes back to the gallery');
 
   await p.click('[data-testid=lang-btn]'); await sleep(300);
