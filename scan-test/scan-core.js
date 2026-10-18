@@ -28,17 +28,21 @@ async function openSession(model, want, onStatus, onLog) {
   for (const ep of order) {
     if (ep === 'webgpu' && !(self.navigator && navigator.gpu)) { onLog('WebGPU is not available here'); continue; }
     try {
-      const sess = await ort.InferenceSession.create(bytes, { executionProviders: [ep], graphOptimizationLevel: 'all' });
-      onStatus('Warming up ' + model + '…', 1);
-      await sess.run({ [sess.inputNames[0]]: new ort.Tensor('float32', new Float32Array(3 * S * S), [1, 3, S, S]) });
+      onStatus('Starting ' + model + ' on ' + (ep === 'webgpu' ? 'the GPU' : 'the CPU') + '…', 1);
+      // A GPU step that hangs (seen on a phone) is given up after 20 s.
+      const limit = (p, what) => ep !== 'webgpu' ? p : Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error(what + ' took over 20 s')), 20000))]);
+      const sess = await limit(ort.InferenceSession.create(bytes, { executionProviders: [ep], graphOptimizationLevel: 'all' }), 'starting');
+      onStatus('Warming up ' + model + ' on ' + (ep === 'webgpu' ? 'the GPU' : 'the CPU') + '…', 1);
+      await limit(sess.run({ [sess.inputNames[0]]: new ort.Tensor('float32', new Float32Array(3 * S * S), [1, 3, S, S]) }), 'warm-up');
       // Each model is checked on its own: a GPU may run one right and the other wrong.
       if (ep === 'webgpu') {
-        const t = await selfTest(sess);
+        onStatus('Checking the GPU with ' + model + '…', 1);
+        const t = await limit(selfTest(sess), 'self-test');
         onLog('GPU self-test of ' + model + ': ' + (t.ok ? 'correct' : 'WRONG') + ' (error ' + (t.err * 100).toFixed(1) + '%, confidence ' + t.conf.toFixed(2) + ')');
-        if (!t.ok && want === 'auto') { onLog(model + ': this GPU gives wrong results — using the CPU'); try { await sess.release(); } catch (e) {} continue; }
+        if (!t.ok) { try { sess.release(); } catch (e) {} if (want === 'auto') { onLog(model + ': this GPU gives wrong results — using the CPU'); continue; } throw new Error('this GPU gives wrong results'); }
       }
       return { sess, ep };
-    } catch (e) { onLog('Could not start ' + model + ' on ' + ep + ': ' + (e && e.message || e)); }
+    } catch (e) { onLog('Could not start ' + model + ' on ' + ep + ': ' + (e && e.message || e)); if (want !== 'auto') throw e; }
   }
   throw new Error('no backend for ' + model);
 }

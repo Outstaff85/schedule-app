@@ -110,22 +110,32 @@ function pageEngine() {
   };
 }
 function workerEngine() {
-  const w = new Worker('/scan-test/scan-worker.js'), waiting = new Map(); let n = 0, two = false;
+  const w = new Worker('/scan-test/scan-worker.js'), waiting = new Map(); let n = 0, two = false, heard = performance.now();
+  const failAll = why => { for (const p of waiting.values()) p.reject(new Error(why)); waiting.clear(); };
+  // A worker that says nothing for 30 s while loading is taken as stuck.
+  const watch = setInterval(() => { if (waiting.size && performance.now() - heard > 30000) failAll('the background thread did not answer for 30 s'); }, 1000);
   w.onmessage = ({ data: m }) => {
+    heard = performance.now();
     if (m.type === 'status') status(m.text, m.frac);
     else if (m.type === 'log') log(m.text);
     else if (m.type === 'reply') { const p = waiting.get(m.id); waiting.delete(m.id); m.error ? p.reject(new Error(m.error)) : p.resolve(m); }
   };
-  w.onerror = e => log('Worker error: ' + e.message);
+  w.onerror = e => { log('Worker error: ' + (e.message || 'could not start')); failAll('the background thread failed: ' + (e.message || 'could not start')); };
   const call = (msg, transfer) => new Promise((resolve, reject) => { msg.id = ++n; waiting.set(msg.id, { resolve, reject }); w.postMessage(msg, transfer || []); });
   return {
     async load(liveName, capName, want) { two = !!capName; return (await call({ type: 'load', live: liveName, cap: capName, want, threads: THREADS })).ep; },
     hasCap: () => two,
     async detect(which, rgba) { const m = await call({ type: 'detect', which, rgba: rgba.buffer }, [rgba.buffer]); return { res: m.res, ms: m.ms }; },
     async warp(rgba, wd, h, pts) { return (await call({ type: 'warp', rgba: rgba.buffer, w: wd, h, pts }, [rgba.buffer])).out; },
-    stop() { w.terminate(); },
+    stop() { clearInterval(watch); w.terminate(); },
   };
 }
+
+// The GPU is tried in a throwaway background thread: a GPU that hangs or
+// computes wrong (seen on a phone) is dropped with its thread, and the CPU
+// starts clean in a new one. A bad GPU is remembered on this device.
+const GPU_BAD = 'scanTestGpuBad';
+const memo = { get: () => { try { return localStorage.getItem(GPU_BAD) === '1'; } catch (e) { return false; } }, set: v => { try { v ? localStorage.setItem(GPU_BAD, '1') : localStorage.removeItem(GPU_BAD); } catch (e) {} } };
 
 async function ensureSession() {
   const [live, cap] = $('model').value.split('+'), want = $('backend').value, inWorker = $('useWorker').checked;
@@ -133,15 +143,35 @@ async function ensureSession() {
   if (engine && engineKey === key) return;
   if (engine) engine.stop();
   engine = null; $('sBackend').textContent = 'loading…'; $('startCam').disabled = true; status('Preparing the model…', 0);
-  const t0 = performance.now(), e = inWorker ? workerEngine() : pageEngine();
+  const t0 = performance.now();
+  let e = null, ep = '';
   try {
-    const ep = await e.load(live, cap, want);
-    $('sBackend').textContent = ep.split('/').map(x => x === 'webgpu' ? 'GPU' : 'CPU ×' + THREADS).join(' + ') + (inWorker ? ' · bg' : ' · page');
-    log('Live ' + live + (cap ? ', capture ' + cap : '') + ' on ' + ep + (inWorker ? ', in the background thread' : ', in the page'));
+    if (inWorker) {
+      const tryGpu = want === 'webgpu' || (want === 'auto' && navigator.gpu && !memo.get());
+      if (want === 'auto' && memo.get()) log('GPU skipped: it gave wrong results on this device before (pick "GPU" to try again)');
+      if (tryGpu) {
+        e = workerEngine();
+        try { ep = await e.load(live, cap, 'webgpu'); memo.set(false); }
+        catch (err) { log('GPU: ' + (err && err.message || err) + ' — using the CPU'); e.stop(); e = null; memo.set(true); }
+      }
+      if (!e) {
+        e = workerEngine();
+        try { ep = await e.load(live, cap, 'wasm'); }
+        catch (err) { e.stop(); e = null; log('Background thread: ' + (err && err.message || err) + ' — running in the page instead'); $('useWorker').checked = false; }
+      }
+    }
+    if (!e) {
+      // In the page a hanging GPU cannot be dropped, so the page uses the CPU unless GPU is picked.
+      e = pageEngine(); ep = await e.load(live, cap, want === 'webgpu' ? 'webgpu' : 'wasm');
+    }
   } catch (err) {
-    e.stop(); $('sBackend').textContent = 'failed'; status('The model could not start — see the log below'); $('startCam').disabled = false; throw err;
+    if (e) e.stop();
+    $('sBackend').textContent = 'failed'; status('The model could not start — see the log below'); $('startCam').disabled = false; throw err;
   }
-  engine = e; engineKey = key; times.length = 0; frames.length = 0; $('startCam').disabled = false;
+  const bg = $('useWorker').checked;
+  $('sBackend').textContent = ep.split('/').map(x => x === 'webgpu' ? 'GPU' : 'CPU ×' + THREADS).join(' + ') + (bg ? ' · bg' : ' · page');
+  log('Live ' + live + (cap ? ', capture ' + cap : '') + ' on ' + ep + (bg ? ', in the background thread' : ', in the page'));
+  engine = e; engineKey = $('model').value + '|' + want + '|' + bg; times.length = 0; frames.length = 0; $('startCam').disabled = false;
   status('Model ready — scanning is available', 1);
   $('sLoad').textContent = ((performance.now() - t0) / 1000).toFixed(1);
 }
